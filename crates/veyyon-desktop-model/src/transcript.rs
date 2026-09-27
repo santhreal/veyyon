@@ -2,7 +2,10 @@ use std::{collections::HashMap, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{connection::EntryId, tool_view::ToolPresentation};
+use crate::{
+	connection::EntryId,
+	tool_view::{ToolPresentation, ToolView},
+};
 
 /// Message participant role classification across twelve protocol variants.
 #[derive(
@@ -42,7 +45,7 @@ impl MessageRole {
 }
 
 /// Rich content block payload representing an element within a transcript turn
-/// across seventeen variants.
+/// across eighteen variants.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, strum::EnumDiscriminants)]
 #[strum_discriminants(name(BlockKind), derive(Hash, PartialOrd, Ord, strum::EnumIter))]
 #[strum_discriminants(
@@ -97,6 +100,21 @@ pub enum ContentBlock {
 		bytes:              Option<u64>,
 		unavailable_reason: Option<String>,
 		image:              Option<Vec<u8>>,
+	},
+	/// A recorded message that is neither a prompt nor a model reply, as the
+	/// view its kind states: a background job that finished, diagnostics that
+	/// arrived after a turn, a guest's prompt, a skill invocation,
+	/// agent-to-agent traffic, an advisor note, a dispatched tangent, a handoff
+	/// summary.
+	///
+	/// The host projects the kind, because the facts that separate the eight
+	/// are carried beside the message rather than inside its text. `variant`
+	/// names the kind, so the window states and searches a message by what it
+	/// is; `view` is what it says, in the vocabulary a tool's output already
+	/// arrives in.
+	Custom {
+		variant: String,
+		view:    Arc<ToolView>,
 	},
 	Diff {
 		raw: String,

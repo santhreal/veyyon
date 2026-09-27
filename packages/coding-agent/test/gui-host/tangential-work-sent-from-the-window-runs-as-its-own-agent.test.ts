@@ -81,11 +81,27 @@ function entries(frames: RequestFrame[]): TranscriptEntry[] {
 	});
 }
 
-/** The text of every block those entries carry, concatenated. */
+/**
+ * Every string those entries state, concatenated.
+ *
+ * A dispatch reaches the window as a typed card rather than as prose, so the
+ * strings inside the card's view count as the conversation stating it: a
+ * reader of `Text` alone would report a breadcrumb that is on screen as absent.
+ */
 function text(frames: RequestFrame[]): string {
-	return entries(frames)
-		.flatMap(entry => entry.content.flatMap(block => ("Text" in block ? [block.Text.text] : [])))
-		.join("\n");
+	const said: string[] = [];
+	const walk = (value: unknown): void => {
+		if (typeof value === "string") said.push(value);
+		else if (Array.isArray(value)) for (const item of value) walk(item);
+		else if (value !== null && typeof value === "object") for (const item of Object.values(value)) walk(item);
+	};
+	for (const entry of entries(frames)) {
+		for (const block of entry.content) {
+			if ("Text" in block) said.push(block.Text.text);
+			else if ("Custom" in block) walk(block.Custom.view);
+		}
+	}
+	return said.join("\n");
 }
 
 describe("tangential work sent from the window runs as its own agent", () => {

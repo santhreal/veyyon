@@ -19,10 +19,11 @@
 //! wants `s4`). The tokens are the authority for the values; this suite pins
 //! which token reaches which boundary.
 
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 use strum::IntoEnumIterator;
 use veyyon_desktop_kit::{ColorRole, TokenSet, load_bundled_theme, load_bundled_tokens};
+use veyyon_desktop_model::tool_view::{StatusRowView, ToolView};
 use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_scene::headless::{
 	Headless, RenderOptions, headless_context, render_view_captured,
@@ -73,6 +74,11 @@ fn sample(shape: BlockShape) -> Block {
 			unavailable_reason: None,
 			image:              None,
 		}),
+		BlockShape::Report => Block::Report {
+			variant: "irc".to_owned(),
+			view:    Arc::new(ToolView::StatusRow(StatusRowView::new("IRC ← Scout"))),
+			lines:   vec!["IRC ← Scout".to_owned()],
+		},
 	}
 }
 
@@ -83,7 +89,7 @@ fn every_pair_of_blocks_sits_at_one_of_the_three_gaps_a_turn_owns() {
 	let shapes: Vec<BlockShape> = BlockShape::iter().collect();
 	assert_eq!(
 		shapes.len(),
-		7,
+		8,
 		"a block shape was added or removed; decide which of §5.3's gaps it sits at",
 	);
 

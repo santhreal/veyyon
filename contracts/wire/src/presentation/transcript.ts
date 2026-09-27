@@ -302,6 +302,35 @@ export type CustomBlockDisplay =
 	| BackgroundTanDispatchCustomDisplay
 	| HandoffSummaryCustomDisplay;
 
+/**
+ * Every `CustomBlockDisplay["variant"]`, as a value, so a sweep can enumerate the union at run
+ * time.
+ *
+ * A custom message carries its kind beside its text rather than inside it, and a host that drew the
+ * text alone drew every kind the same way. A host states each one, so the set has to be walkable by
+ * a test rather than inferred from a type.
+ */
+export const CUSTOM_BLOCK_DISPLAY_VARIANTS = [
+	"async-result",
+	"late-diagnostics",
+	"collab-prompt",
+	"skill-prompt",
+	"irc",
+	"advisor",
+	"background-tan",
+	"handoff",
+] as const satisfies readonly CustomBlockDisplay["variant"][];
+
+/**
+ * A new `CustomBlockDisplay` member that is missing from CUSTOM_BLOCK_DISPLAY_VARIANTS makes this
+ * fail to compile, naming the member. `satisfies` above rejects a stale entry; this rejects a
+ * missing one, so the table cannot drift from the union either way.
+ */
+type UnlistedCustomDisplay = Exclude<CustomBlockDisplay["variant"], (typeof CUSTOM_BLOCK_DISPLAY_VARIANTS)[number]>;
+const _custom_block_display_variants_is_exhaustive: UnlistedCustomDisplay extends never ? true : UnlistedCustomDisplay =
+	true;
+void _custom_block_display_variants_is_exhaustive;
+
 /** A host-defined message with no runtime meaning to the renderer beyond its text. */
 export interface CustomBlock {
 	kind: "custom";

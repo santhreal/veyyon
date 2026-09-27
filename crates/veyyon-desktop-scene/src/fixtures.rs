@@ -4,9 +4,12 @@
 //! functions of a seed. No session captures, disk reads, clocks, or random
 //! number generators are used.
 
+use std::sync::Arc;
+
 use veyyon_desktop_model::{
 	BlockKind, ContentBlock, EntryId, EntryMeta, MessageRole, QueuePartition, Session, SessionId,
 	SessionStatus, SessionSummary, TranscriptEntry, UsageTotals,
+	tool_view::{FramedBlockView, StatusRowView, ToolView, ViewSection, ViewSpan},
 };
 
 /// Text fixtures providing typical and extreme strings for layout and rendering
@@ -102,7 +105,8 @@ pub const fn block_reachability(kind: BlockKind) -> Reachability {
 		| BlockKind::FileMention
 		| BlockKind::ModelChange
 		| BlockKind::ThinkingChange
-		| BlockKind::ModeChange => Reachability::Reachable,
+		| BlockKind::ModeChange
+		| BlockKind::Custom => Reachability::Reachable,
 		BlockKind::RedactedThinking | BlockKind::Execution | BlockKind::Diff => {
 			Reachability::Unreachable
 		},
@@ -209,6 +213,20 @@ pub fn content_block_fixture(seed: u64, kind: BlockKind) -> ContentBlock {
 		},
 		BlockKind::Video => {
 			ContentBlock::Video { media_type: "video/mp4".to_string(), bytes: 1024 * (seed + 1) }
+		},
+		BlockKind::Custom => ContentBlock::Custom {
+			variant: "irc".to_string(),
+			view:    Arc::new(ToolView::FramedBlock(FramedBlockView {
+				header: Some(StatusRowView {
+					title: format!("IRC ← Scout{seed}"),
+					..StatusRowView::default()
+				}),
+				sections: vec![ViewSection {
+					lines: vec![vec![ViewSpan::text("Holding src/lib.rs until the rename lands.")]],
+					..ViewSection::default()
+				}],
+				..FramedBlockView::default()
+			})),
 		},
 	}
 }

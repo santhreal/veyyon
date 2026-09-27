@@ -77,6 +77,9 @@ pub fn block_spans(block: &Block) -> Vec<String> {
 		// The pane's lines are its spans; its caption heads the row that opens
 		// it.
 		Block::Pane { lines, .. } | Block::Unknown { lines, .. } => lines.clone(),
+		// A report is drawn from a view, and the rows beside it are the same
+		// words: a drag over the card selects what the card shows.
+		Block::Report { lines, .. } => lines.clone(),
 		// A call the host drew a view for states its text through that view; a
 		// call with a raw result states the lines of the result.
 		Block::Invoke { result, views, .. } => {

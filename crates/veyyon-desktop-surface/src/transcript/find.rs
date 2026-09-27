@@ -191,6 +191,21 @@ impl TranscriptFindState {
 									});
 								}
 							},
+							// A report's words are the rows its view states, and
+							// the kind it was recorded under is one of them: a
+							// reader searching for `irc` finds the message
+							// whose body never says the word.
+							Block::Report { variant, lines, .. } => {
+								if variant.to_lowercase().contains(&trimmed)
+									|| lines.iter().any(|l| l.to_lowercase().contains(&trimmed))
+								{
+									hits.push(TranscriptFindMatch {
+										turn_ix,
+										target: MatchTarget::AssistantBlock(block_ix),
+										snippet: lines.first().cloned().unwrap_or_else(|| variant.clone()),
+									});
+								}
+							},
 						}
 					}
 				},

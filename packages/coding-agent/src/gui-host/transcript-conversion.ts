@@ -2,12 +2,40 @@ import type { AgentMessage } from "@veyyon/agent-core";
 import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
 import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import type { ToolViewContext } from "@veyyon/view";
+import { projectCustomDisplay } from "../presentation/custom-display";
+import { customDisplayToView } from "../presentation/custom-view";
 import type { AgentSession } from "../session/agent-session";
 import type { FileMentionMessage } from "../session/messages";
 import { decodeStreamedToolArgs, streamingStringKeysForTool } from "../tools/core/streamed-tool-args";
 import { base64DecodedBytes } from "../utils/video-loading";
 import { buildToolCallPresentation, buildToolResultPresentation, type PresentationLedger } from "./presentation";
 import type { ContentBlock, EntryMeta, MessageRole, TranscriptEntry, UsageTotals } from "./wire";
+
+/**
+ * The blocks a recorded custom or hook message states.
+ *
+ * A message keyed by `customType` is a background job that finished, diagnostics that arrived
+ * after a turn, a guest's prompt, a skill invocation, agent-to-agent traffic, an advisor note, a
+ * dispatched tangent or a handoff summary, and its `details` carry the facts that separate them.
+ * Sent as its text alone, all eight read as one undifferentiated paragraph in the window. The typed
+ * display is projected once, here as in the terminal, and stated as a view the desktop draws with
+ * the renderer it already has.
+ *
+ * A `customType` with no typed display, and a display whose card states nothing, both fall back to
+ * the message's own content.
+ */
+function customContentBlocks(
+	customType: string,
+	details: unknown,
+	content: unknown,
+	timestampMs: number,
+	message: unknown,
+): ContentBlock[] | undefined {
+	const display = projectCustomDisplay(customType, details, content, timestampMs, message);
+	if (display === undefined) return undefined;
+	const view = customDisplayToView(display);
+	return view === undefined ? undefined : [{ Custom: { variant: display.variant, view } }];
+}
 
 export interface TranscriptConversionOptions {
 	ledger?: PresentationLedger;
@@ -269,6 +297,21 @@ export function agentMessageToTranscriptEntry(
 			: "content" in message
 				? mapContentBlocks(message.content, options)
 				: [];
+	// A live custom or hook message reaches the window before it is recorded,
+	// and its kind is carried by `customType` and `details` rather than by its
+	// content. Projected here as it is on the stored path, so a job that
+	// finished mid-turn reads the same as it does after a reload.
+	if (message.role === "custom" || message.role === "hookMessage") {
+		const customType = "customType" in message && typeof message.customType === "string" ? message.customType : "";
+		const custom = customContentBlocks(
+			customType,
+			"details" in message ? message.details : undefined,
+			"content" in message ? message.content : undefined,
+			typeof message.timestamp === "number" ? message.timestamp : Date.now(),
+			message,
+		);
+		if (custom !== undefined) content = custom;
+	}
 	if (message.role === "toolResult") {
 		const text: string[] = [];
 		const media: ContentBlock[] = [];
@@ -380,9 +423,14 @@ export function sessionEntryToTranscriptEntry(
 			content = tiers.length ? [{ Text: { text: `service tier: ${tiers.join(", ")}` } }] : [];
 			break;
 		}
-		case "custom_message":
-			content = entry.display === false ? [] : mapContentBlocks(entry.content);
+		case "custom_message": {
+			const custom =
+				entry.display === false
+					? undefined
+					: customContentBlocks(entry.customType, entry.details, entry.content, timestampMs, entry);
+			content = entry.display === false ? [] : (custom ?? mapContentBlocks(entry.content));
 			break;
+		}
 		case "compaction":
 			role = "CompactionSummary";
 			content = [{ Summary: { kind: "compaction", text: entry.summary } }];

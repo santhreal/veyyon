@@ -3,7 +3,9 @@
 
 use std::{fmt::Write as _, sync::Arc};
 
-use veyyon_desktop_model::{ContentBlock, MessageRole, TranscriptEntry, TranscriptTree};
+use veyyon_desktop_model::{
+	ContentBlock, MessageRole, TranscriptEntry, TranscriptTree, tool_view::view_rows,
+};
 use veyyon_desktop_surface::{Artifact, Block, Turn};
 
 use super::values::{pane_lines, result_lines, target_of};
@@ -324,6 +326,11 @@ fn push_block(blocks: &mut Vec<Block>, block: &ContentBlock, entry: &TranscriptE
 				None => phase.clone(),
 			},
 			boundary: false,
+		}),
+		ContentBlock::Custom { variant, view } => blocks.push(Block::Report {
+			variant: variant.clone(),
+			view:    Arc::clone(view),
+			lines:   view_rows(view),
 		}),
 		ContentBlock::Summary { kind, text } => {
 			let label = match role {

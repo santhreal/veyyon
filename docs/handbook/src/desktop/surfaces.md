@@ -1466,6 +1466,29 @@ SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=6 \
   proof/docker/record-native.sh proof/scenes/desktop-transcript-prose.sh
 ```
 
+Use `proof/scenes/desktop-side-messages.sh` to open a session holding one of
+every recorded message that is neither a prompt nor a model reply, and
+photograph the transcript drawing them. `proof/docker/seed-side-messages.ts`
+writes one message per variant through the product's own session storage, in
+the shape each producer writes, and fails closed on a variant it does not
+cover, so a ninth kind stops the seed rather than leaving a frame short a card.
+The scene reaches the session through the rail's own search, reads the
+palette's overlay, the typed filter and the ink the cards bring to a column
+that was empty, then asks the host on a second connection which typed cards the
+transcript carries: the after arm requires one per seeded variant, the before
+arm requires none, and both require the seeded text, so an arm that opened
+another row is reported as the wrong session. The host and the window both
+change, so the before arm names the commit before the card and a build of this
+tree without it:
+
+```sh
+SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh \
+  proof/scenes/desktop-side-messages.sh
+SCENE_ARM=before PROOF_BASE_REF=<card-commit>^ SCENE_MOTION_FLOOR=6 \
+  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
+  proof/docker/record-native.sh proof/scenes/desktop-side-messages.sh
+```
+
 Use `proof/scenes/desktop-streamed-shape.sh` to open a persisted pipe table through
 native session search and inspect its rendered grid. The scene checks the header
 rule and the original Markdown returned by the host.

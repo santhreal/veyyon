@@ -3,11 +3,11 @@
 //! that projection: what an operator said, what came back, which branch is
 //! read, and how a pane is held to its ceiling.
 //!
-//! CLASS CLOSED: a `BlockKind` the projection drops. The kinds are swept from
-//! the enum at run time, so a variant added to the model fails here until the
-//! projection states what it draws. Also a streaming reply that lands anywhere
-//! but last, a reopened transcript that shows twice, and an abandoned branch
-//! that is drawn.
+//! CLASS CLOSED: a streaming reply that lands anywhere but last, a reopened
+//! transcript that shows twice, an abandoned branch that is drawn, a mode note
+//! read from a spelling nobody wrote in words, and a pane past its ceiling.
+//! The sweep over every `BlockKind` is
+//! `every-block-kind-keeps-its-display-register.rs`.
 //!
 //! NOT CAUGHT: whether the shell draws a block correctly; that is the surface
 //! crate's pixel suites. Session, changes, drawer and footer projection are
@@ -18,72 +18,13 @@ mod support;
 
 use std::{collections::HashMap, fmt::Write as _};
 
-use strum::IntoEnumIterator as _;
 use support::{NOW_MS, agent_blocks, entry, session};
 use veyyon_desktop::{PANE_LINE_CEILING, SessionIndex, project};
 use veyyon_desktop_model::{
-	BlockKind, ContentBlock, EntryId, EntryMeta, HostEvent, MessageRole, QueuePartition, SessionId,
+	ContentBlock, EntryId, EntryMeta, HostEvent, MessageRole, QueuePartition, SessionId,
 	SnapshotSection, Store, StreamingMessageState, Versioned, reduce,
 };
-use veyyon_desktop_surface::{Artifact, Badge, Block, ShellState, Turn};
-
-fn block_of(kind: BlockKind) -> ContentBlock {
-	match kind {
-		BlockKind::Text => ContentBlock::Text { text: "prose".to_string() },
-		BlockKind::Image => ContentBlock::Image {
-			media_type: "image/png".to_string(),
-			data:       vec![0],
-			alt:        None,
-		},
-		BlockKind::Video => {
-			ContentBlock::Video { media_type: "video/mp4".to_string(), bytes: 12_400_000 }
-		},
-		BlockKind::Thinking => ContentBlock::Thinking { text: "why".to_string() },
-		BlockKind::RedactedThinking => ContentBlock::RedactedThinking { marker: "r".to_string() },
-		BlockKind::ToolCall => ContentBlock::ToolCall {
-			id:           "call-1".to_string(),
-			name:         "read".to_string(),
-			arguments:    serde_json::json!({ "path": "src/lib.rs" }),
-			presentation: None,
-		},
-		BlockKind::ToolResult => ContentBlock::ToolResult {
-			tool:         "read".to_string(),
-			content:      serde_json::json!("12 lines"),
-			is_error:     false,
-			presentation: None,
-		},
-		BlockKind::Execution => ContentBlock::Execution {
-			language:  "bash".to_string(),
-			command:   Some("ls".to_string()),
-			output:    "a\nb".to_string(),
-			exit_code: Some(0),
-		},
-		BlockKind::FileMention => ContentBlock::FileMention {
-			path:               "README.md".to_string(),
-			has_content:        false,
-			lines:              None,
-			bytes:              None,
-			unavailable_reason: None,
-			image:              None,
-		},
-		BlockKind::Diff => ContentBlock::Diff { raw: "-a\n+b".to_string() },
-		BlockKind::ModelChange => {
-			ContentBlock::ModelChange { provider: "p".to_string(), model: "m".to_string() }
-		},
-		BlockKind::ThinkingChange => ContentBlock::ThinkingChange { level: "high".to_string() },
-		BlockKind::ModeChange => ContentBlock::ModeChange { mode: "plan".to_string() },
-		BlockKind::Lifecycle => ContentBlock::Lifecycle { phase: "start".to_string(), reason: None },
-		BlockKind::Summary => {
-			ContentBlock::Summary { kind: "compaction".to_string(), text: "sum".to_string() }
-		},
-		BlockKind::Fallback => {
-			ContentBlock::Fallback { producer: "ext".to_string(), value: serde_json::Value::Null }
-		},
-		BlockKind::Unknown => {
-			ContentBlock::Unknown { tag: "x".to_string(), value: serde_json::Value::Null }
-		},
-	}
-}
+use veyyon_desktop_surface::{Badge, Block, ShellState, Turn};
 
 #[test]
 fn a_turn_is_what_the_operator_said_and_everything_that_came_back() {
@@ -151,47 +92,6 @@ fn empty_entries_preserve_branch_links_without_creating_visible_turns() {
 			matches!(state.transcript.as_slice(), [Turn::Operator(text)] if text == "A visible prompt"),
 			"{role:?}: hidden parents must not introduce empty turns"
 		);
-	}
-}
-
-#[test]
-fn every_block_kind_preserves_its_display_register() {
-	for kind in BlockKind::iter() {
-		let mut store = Store::new();
-		store.persisted.shell.active_session = Some(SessionId::from("s"));
-		let tree = store.transcripts.entry(SessionId::from("s")).or_default();
-		tree.append(entry("a", None, MessageRole::Assistant, vec![block_of(kind)]));
-		let mut state = ShellState::default();
-		project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
-		let blocks = agent_blocks(&state.transcript[0]);
-		assert_eq!(blocks.len(), 1, "{kind:?} draws one block, got {blocks:?}");
-		let expected_note = match kind {
-			BlockKind::ModelChange => Some(("Model", "p/m", false)),
-			BlockKind::ThinkingChange => Some(("Thinking", "high", false)),
-			BlockKind::ModeChange => Some(("Mode", "plan", false)),
-			BlockKind::Lifecycle => Some(("Lifecycle", "start", false)),
-			BlockKind::Summary => Some(("Summary", "compaction: sum", true)),
-			BlockKind::Text
-			| BlockKind::Image
-			| BlockKind::FileMention
-			| BlockKind::Video
-			| BlockKind::Thinking
-			| BlockKind::RedactedThinking
-			| BlockKind::ToolCall
-			| BlockKind::ToolResult
-			| BlockKind::Execution
-			| BlockKind::Diff
-			| BlockKind::Fallback
-			| BlockKind::Unknown => None,
-		};
-		if let Some((label, text, boundary)) = expected_note {
-			assert_eq!(blocks, &[Block::Note { label, text: text.into(), boundary }], "{kind:?}");
-		}
-		if kind == BlockKind::FileMention {
-			assert!(matches!(&blocks[0], Block::Artifact(Artifact::File {
-				path, has_content: false, lines: None, bytes: None, unavailable_reason: None, image: None
-			}) if path == "README.md"));
-		}
 	}
 }
 

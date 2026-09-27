@@ -184,6 +184,16 @@ export type ContentBlock =
 				image: number[] | null;
 			};
 	  }
+	/**
+	 * A recorded message that is neither a prompt nor a model reply, as the
+	 * view its kind states: a finished background job, diagnostics that arrived
+	 * after a turn, a guest's prompt, a skill invocation, agent-to-agent
+	 * traffic, an advisor note, a dispatched tangent, a handoff summary.
+	 *
+	 * `variant` is the kind the host projected, so the window can name and
+	 * search a message by what it is; `view` is what it states.
+	 */
+	| { Custom: { variant: string; view: ToolView } }
 	| { Diff: { raw: string } }
 	| { ModelChange: { provider: string; model: string } }
 	| { ThinkingChange: { level: string } }

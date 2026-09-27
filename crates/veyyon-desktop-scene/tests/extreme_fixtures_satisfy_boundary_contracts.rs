@@ -94,7 +94,7 @@ fn test_role_reachability_partitions_all_twelve_roles() {
 }
 
 #[test]
-fn test_block_reachability_partitions_all_seventeen_kinds() {
+fn test_block_reachability_partitions_all_eighteen_kinds() {
 	let mut reachable = BTreeSet::new();
 	let mut unreachable = BTreeSet::new();
 
@@ -109,11 +109,11 @@ fn test_block_reachability_partitions_all_seventeen_kinds() {
 		}
 	}
 
-	assert_eq!(reachable.len(), 14, "exactly 14 block kinds must be reachable");
+	assert_eq!(reachable.len(), 15, "exactly 15 block kinds must be reachable");
 	assert_eq!(unreachable.len(), 3, "exactly 3 block kinds must be unreachable");
 	assert_eq!(
 		reachable.len() + unreachable.len(),
-		17,
-		"block kinds must partition the entire 17-variant enum"
+		18,
+		"block kinds must partition the entire 18-variant enum"
 	);
 }

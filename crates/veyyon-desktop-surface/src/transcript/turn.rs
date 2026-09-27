@@ -20,7 +20,7 @@ use veyyon_gpui::{
 use super::{
 	blocks::{
 		render_artifact_block, render_invoke_block, render_note_block, render_pane_block,
-		render_prose_block, render_reason_block,
+		render_prose_block, render_reason_block, render_report_block,
 	},
 	footer::{TURN_FOOTER_GROUP, render_turn_footer},
 	selection::selectable_block,
@@ -261,6 +261,7 @@ pub fn agent_turn(
 					selectable,
 				)
 			},
+			Block::Report { view: report, .. } => render_report_block(report, tokens, view),
 		};
 
 		if let Some(previous) = block_ix.checked_sub(1).and_then(|ix| blocks.get(ix)) {
@@ -302,6 +303,7 @@ pub const fn same_kind(left: &Block, right: &Block) -> bool {
 			| (Block::Pane { .. }, Block::Pane { .. })
 			| (Block::Unknown { .. }, Block::Unknown { .. })
 			| (Block::Artifact(_), Block::Artifact(_))
+			| (Block::Report { .. }, Block::Report { .. })
 	)
 }
 

@@ -60,6 +60,11 @@ fn sample(shape: BlockShape) -> Block {
 			unavailable_reason: None,
 			image:              None,
 		}),
+		BlockShape::Report => Block::Report {
+			variant: "advisor".into(),
+			view:    Arc::new(ToolView::TextBlock(TextBlockView::text("Advisor 2 notes"))),
+			lines:   vec!["Advisor 2 notes".into()],
+		},
 	}
 }
 

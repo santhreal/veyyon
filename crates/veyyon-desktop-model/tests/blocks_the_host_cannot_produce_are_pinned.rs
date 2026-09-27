@@ -1,13 +1,13 @@
 //! WHY THIS SUITE EXISTS
 //!
-//! `ContentBlock` declares seventeen variants and `MessageRole` twelve, but the
+//! `ContentBlock` declares eighteen variants and `MessageRole` twelve, but the
 //! host fills neither union. Every producer in
 //! `packages/coding-agent/src/gui-host/` was enumerated against a running host:
 //! `mapContentBlocks`, `agentMessageToTranscriptEntry`,
 //! `sessionEntryToTranscriptEntry` and `mapMessageRole` in `session-bridge.ts`
 //! are all of them, and three block kinds plus four roles appear nowhere
 //! outside their declaration in `wire.ts`. The front end therefore ships
-//! fourteen block render paths, not seventeen.
+//! fifteen block render paths, not eighteen.
 //!
 //! That measurement rots in two directions, and both are silent. A host release
 //! that starts producing `Diff` would reach a renderer that was never written,
@@ -46,7 +46,7 @@ const UNREACHABLE_ROLES: [MessageRole; 4] = [
 ];
 
 /// Block kinds the host constructs, each owing the transcript a render path.
-const REACHABLE_BLOCKS: [BlockKind; 14] = [
+const REACHABLE_BLOCKS: [BlockKind; 15] = [
 	BlockKind::Text,
 	BlockKind::Thinking,
 	BlockKind::Image,
@@ -61,6 +61,7 @@ const REACHABLE_BLOCKS: [BlockKind; 14] = [
 	BlockKind::Lifecycle,
 	BlockKind::Fallback,
 	BlockKind::Unknown,
+	BlockKind::Custom,
 ];
 
 /// Roles the host assigns.
@@ -149,10 +150,10 @@ fn the_unreachable_role_set_is_exactly_the_four_that_were_measured() {
 
 #[test]
 fn every_block_the_host_can_emit_is_one_the_transcript_must_render() {
-	// The renderer's obligation is this set and no larger. Fourteen, not
-	// seventeen.
-	assert_eq!(REACHABLE_BLOCKS.len(), 14);
-	assert_eq!(BlockKind::iter().count(), 17);
+	// The renderer's obligation is this set and no larger. Fifteen, not
+	// eighteen.
+	assert_eq!(REACHABLE_BLOCKS.len(), 15);
+	assert_eq!(BlockKind::iter().count(), 18);
 
 	// Unknown and Fallback are the host's own output for content it does not
 	// recognise, so they are reachable rather than defensive branches.

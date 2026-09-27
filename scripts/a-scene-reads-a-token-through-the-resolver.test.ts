@@ -82,6 +82,7 @@ const SCENE_READS: Record<string, number> = {
 	"desktop-settings-keybinding.sh": 10,
 	"desktop-settings-refusal.sh": 6,
 	"desktop-settings-row.sh": 8,
+	"desktop-side-messages.sh": 2,
 	"desktop-split-grip.sh": 3,
 	"desktop-streamed-shape.sh": 4,
 	"desktop-surface-navigation.sh": 4,

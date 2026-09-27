@@ -55,6 +55,11 @@ pub fn compute_turn_fingerprint(turn: &Turn) -> u64 {
 						producer.hash(&mut hasher);
 						lines.hash(&mut hasher);
 					},
+					Block::Report { variant, lines, .. } => {
+						7u8.hash(&mut hasher);
+						variant.hash(&mut hasher);
+						lines.hash(&mut hasher);
+					},
 					Block::Artifact(artifact) => {
 						6u8.hash(&mut hasher);
 						artifact.hash(&mut hasher);

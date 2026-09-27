@@ -105,6 +105,7 @@ fn block_text(block: &Block) -> String {
 		},
 		Block::Pane { caption, lines } => with_caption(caption, lines),
 		Block::Unknown { producer, lines } => with_caption(producer, lines),
+		Block::Report { lines, .. } => lines.join("\n"),
 		Block::Artifact(artifact) => artifact_text(artifact),
 	}
 }

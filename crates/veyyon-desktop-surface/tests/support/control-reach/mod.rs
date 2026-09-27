@@ -184,7 +184,7 @@ pub fn expected_controls(state: &ShellState) -> usize {
 							Block::Prose(text) => document_spans(text).len(),
 							Block::Note { .. } => 1,
 							Block::Reason(_) | Block::Invoke { .. } | Block::Pane { .. } => 1,
-							Block::Unknown { .. } | Block::Artifact(_) => 1,
+							Block::Unknown { .. } | Block::Artifact(_) | Block::Report { .. } => 1,
 						})
 						.sum::<usize>()
 						+ usize::from(model.is_some()) * 2

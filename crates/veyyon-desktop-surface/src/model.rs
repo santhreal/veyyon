@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use veyyon_desktop_model::tool_view::ToolPresentation;
+use veyyon_desktop_model::tool_view::{ToolPresentation, ToolView};
 use veyyon_desktop_tokens::ColorRole;
 
 mod appearance;
@@ -84,6 +84,22 @@ pub enum Block {
 	},
 	/// An unrecognized record with its retained raw representation.
 	Unknown { producer: String, lines: Vec<String> },
+	/// A message the session recorded that is neither a prompt nor a model
+	/// reply, drawn from the view its kind states.
+	///
+	/// A finished background job, late diagnostics, a guest's prompt, a skill
+	/// invocation, agent-to-agent traffic, an advisor note, a dispatched
+	/// tangent and a handoff summary are eight facts, and drawn as prose they
+	/// are eight identical paragraphs. The host states each one as a view, so
+	/// the renderer that draws a tool's output draws these too.
+	Report {
+		/// The kind the host named, retained for search and for copy.
+		variant: String,
+		/// What the message states.
+		view:    Arc<ToolView>,
+		/// The same words as plain rows, for copy, search and selection.
+		lines:   Vec<String>,
+	},
 	/// A recorded file reference or image with expandable details.
 	Artifact(Artifact),
 }
