@@ -35,8 +35,8 @@ use veyyon_gpui::{
 };
 
 pub use self::{
-	actions::*, attachments::*, background::*, dictate::*, footer::*, history::*, media::*,
-	plan::*, queued::*, state::*, turn::*,
+	actions::*, attachments::*, background::*, dictate::*, footer::*, history::*, media::*, plan::*,
+	queued::*, state::*, turn::*,
 };
 use crate::{
 	Intent, ShellView,

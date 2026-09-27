@@ -174,12 +174,10 @@ pub fn project_controls(
 			&store.connection,
 			veyyon_desktop_model::gate_capability(Capability::Todo, &store.capabilities, registry),
 		);
-		state
-			.controls
-			.set_availability(
-				SurfaceId::ComposerPlanChip(composer_row(Some(row_id))),
-				Availability::from(todo_gate),
-			);
+		state.controls.set_availability(
+			SurfaceId::ComposerPlanChip(composer_row(Some(row_id))),
+			Availability::from(todo_gate),
+		);
 	}
 	if matches!(
 		store.capabilities.get(Capability::BackgroundSubmission),

@@ -82,13 +82,17 @@ fn preset_row() -> AutoswarmFieldView {
 /// One logged run of the ledger.
 fn run(label: &str, metric: &str, delta: Option<&str>, best: bool) -> AutoswarmRunView {
 	AutoswarmRunView {
-		label:   label.to_owned(),
-		arm:     Some("arm-a".to_owned()),
-		metric:  metric.to_owned(),
-		delta:   delta.map(ToOwned::to_owned),
-		outcome: if best { "best".to_owned() } else { "kept".to_owned() },
+		label: label.to_owned(),
+		arm: Some("arm-a".to_owned()),
+		metric: metric.to_owned(),
+		delta: delta.map(ToOwned::to_owned),
+		outcome: if best {
+			"best".to_owned()
+		} else {
+			"kept".to_owned()
+		},
 		best,
-		detail:  vec!["cargo bench --bench parse".to_owned()],
+		detail: vec!["cargo bench --bench parse".to_owned()],
 	}
 }
 
@@ -114,8 +118,7 @@ pub fn console(session: &str) -> AutoswarmConsoleView {
 		],
 		notes:      vec![AutoswarmNoteView {
 			id:   "cost".to_owned(),
-			text: "Three arms over eight attempts, measured against the recorded baseline."
-				.to_owned(),
+			text: "Three arms over eight attempts, measured against the recorded baseline.".to_owned(),
 		}],
 		actions:    vec![
 			AutoswarmActionView {

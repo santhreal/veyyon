@@ -16,32 +16,33 @@ pub fn seed_todo_board(seed: &mut Seed, session: &SessionId) {
 		content: "Publish the board at each todo result".to_owned(),
 		status:  TodoStatus::InProgress,
 	};
-	seed.store.domains.todo.insert(session.clone(), TodoBoardView {
-		phases:  vec![
-			TodoPhaseView {
-				name:   "I. Wire".to_owned(),
-				tasks:  vec![
-					current.clone(),
-					TodoTaskView {
+	seed
+		.store
+		.domains
+		.todo
+		.insert(session.clone(), TodoBoardView {
+			phases:  vec![
+				TodoPhaseView {
+					name:   "I. Wire".to_owned(),
+					tasks:  vec![current.clone(), TodoTaskView {
 						content: "Project the phases the session records".to_owned(),
 						status:  TodoStatus::Completed,
-					},
-				],
-				closed: 1,
-				active: true,
-			},
-			TodoPhaseView {
-				name:   "II. Surface".to_owned(),
-				tasks:  vec![TodoTaskView {
-					content: "Draw the plan in the composer band".to_owned(),
-					status:  TodoStatus::Pending,
-				}],
-				closed: 0,
-				active: false,
-			},
-		],
-		closed:  1,
-		total:   3,
-		current: Some(current),
-	});
+					}],
+					closed: 1,
+					active: true,
+				},
+				TodoPhaseView {
+					name:   "II. Surface".to_owned(),
+					tasks:  vec![TodoTaskView {
+						content: "Draw the plan in the composer band".to_owned(),
+						status:  TodoStatus::Pending,
+					}],
+					closed: 0,
+					active: false,
+				},
+			],
+			closed:  1,
+			total:   3,
+			current: Some(current),
+		});
 }
