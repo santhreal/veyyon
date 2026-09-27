@@ -6,6 +6,7 @@
  */
 
 import { setTimeout as sleep } from "node:timers/promises";
+import { clampLow } from "@veyyon/utils";
 import { type KitTask, kitTask } from "../../../../engine/kit/catalog";
 import { answerHasNumber, type Check, normalizeText } from "../../../../engine/kit/checks";
 import { FormClient, type FormResponse } from "../../../../engine/kit/form-client";
@@ -672,7 +673,7 @@ function planCoverBills(world: BankWorld, rng: Seeded, needsTransfer: boolean): 
 	let startCents: number;
 	if (needsTransfer) {
 		// Short by an amount with cents, so the transfer rounds up to the next whole dollar.
-		const shortfall = rng.int(35, Math.max(36, Math.min(900, Math.floor(sum / 100) - 20))) * 100 + rng.int(1, 99);
+		const shortfall = rng.int(35, clampLow(Math.floor(sum / 100) - 20, 36, 900)) * 100 + rng.int(1, 99);
 		startCents = minimumCents + sum - shortfall;
 		transferCents = Math.ceil(shortfall / 100) * 100;
 	} else {
