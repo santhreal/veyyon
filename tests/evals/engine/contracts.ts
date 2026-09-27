@@ -328,6 +328,12 @@ export interface HarnessAdapter {
 	 * declares none cannot run under `local-cli`.
 	 */
 	localCommand?(context: LocalCommandContext): LocalCommand;
+	/**
+	 * Why `build` (a variant's `--build`) cannot run under this harness, or null when it can. The
+	 * `local-cli` backend asks before any trial starts, so a tree without the harness's entry point
+	 * or a file that is not executable is refused once instead of failing every trial.
+	 */
+	validateBuild?(build: string): Promise<string | null>;
 	validatePreflight?(context: SystemPreflightContext): Promise<SystemPreflightResult> | SystemPreflightResult;
 	buildJobConfigKwargs?(context: SystemJobConfigContext): Record<string, unknown>;
 }

@@ -44,14 +44,28 @@ export function trialRetryDelayMs(attempt: number): number {
 }
 
 /**
+ * A failure its backend classified as having measured nothing, and not as the trial's deadline or
+ * the run's cancellation. Its message may quote the agent's own output, which can say "timed out" or
+ * "aborted" about one provider request, so it is retried by its type whatever its wording.
+ */
+export class InfrastructureTrialError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "InfrastructureTrialError";
+	}
+}
+
+/**
  * Whether a thrown trial failure earns another attempt.
  *
  * Everything a backend throws is infrastructure: a graded outcome comes back as a score, not as an
  * exception. The two exceptions are a cancelled run, where a retry would fight the operator, and a
- * trial killed by its own deadline, where the budget is already spent.
+ * trial killed by its own deadline, where the budget is already spent. An error that does not state
+ * its kind is read by its message.
  */
 export function isRetryableTrialFailure(cause: unknown, signal?: AbortSignal): boolean {
 	if (signal?.aborted) return false;
+	if (cause instanceof InfrastructureTrialError) return true;
 	const message = errorMessage(cause);
 	if (/\babort(ed)?\b/i.test(message)) return false;
 	return !/\b(timed out|timeout|exceeded deadline|deadline)\b/i.test(message);

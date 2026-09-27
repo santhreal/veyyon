@@ -59,7 +59,8 @@ flowchart LR
 3. The suite, each harness and the backend run their preflights. A refusal ends the run.
 4. Workers take cells in order. For each cell the backend runs the trial and the suite scores it;
    the result is appended to `trials.jsonl`. A trial that throws before it produces a result is
-   attempted again up to `--attempts`.
+   attempted again up to `--attempts`. A trial the run's cancellation cuts short settled nothing and
+   is not appended.
 5. When every cell settled, the run record is written and the suite writes its report.
 
 A resumed run reads `trials.jsonl` and runs only the cells it does not hold.

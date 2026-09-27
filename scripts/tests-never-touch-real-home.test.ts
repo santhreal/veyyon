@@ -166,7 +166,7 @@ export const ALLOWLIST: ReadonlyArray<AllowlistEntry> = [
 		reason:
 			"It is the gate's own suite, and half its subject is the tripwire, which cannot be probed without naming the variable that tells the tripwire what to forbid. What it names is NOT the real config root: every occurrence sets `VEYYON_TEST_REAL_CONFIG_ROOT` to a freshly `mkdtemp`ed directory in the child it spawns, precisely so a door that turns out to be UNGUARDED writes there instead of into the operator's home — which is what makes the red proofs of the six write doors safe to run at all. Each probe removes its own root in a `finally`, and each asserts the root is empty afterwards, so an unguarded door is reported by the absence of the file rather than by damage. The real `~/.veyyon` is never resolved, opened, or written by this file.",
 	},
-	// The seven below are all `unresolved-spawn-target`: a spawn whose command argument is a
+	// The eight below are all `unresolved-spawn-target`: a spawn whose command argument is a
 	// variable, a parameter or a property, so no reader of the source alone can say what it
 	// runs. Each reason therefore has to answer the one question the analyzer could not, which
 	// is what the target actually holds at runtime. Two of them genuinely execute a file NAMED
@@ -212,6 +212,12 @@ export const ALLOWLIST: ReadonlyArray<AllowlistEntry> = [
 		rule: "unresolved-spawn-target",
 		reason:
 			'`runtime.pythonPath` is the interpreter the setup path discovered, either the system python or the managed environment\'s. The spawn is `-c "import matplotlib"`, a capability probe against that specific interpreter, which is the one thing a hardcoded path would answer wrongly.',
+	},
+	{
+		file: "tests/evals/test/backends/local-cli/a-finished-local-trial-leaves-no-process-running.test.ts",
+		rule: "unresolved-spawn-target",
+		reason:
+			"`launch.command` is what `sandboxedLaunch` returns for a host without Landlock: the `python3` that `$which` resolved, running the backend's own `landlock-exec.py --no-rules` launcher over `process.execPath` and an agent script the test wrote into its temp directory. The suite's subject is that launch line, so the spawn runs what `sandboxedLaunch` built rather than a literal; the child runs in the temp cwd, writes only its own child's pid there, and reads no config root.",
 	},
 	// The four below are all `bare-config-dir-name`, and they have one shape between them:
 	// the config-dir NAME is the SUBJECT, not the isolation. Each one assigns a name, asks a

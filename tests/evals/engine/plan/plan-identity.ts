@@ -11,7 +11,7 @@
  * disk, so one run id held trials from two plans.
  *
  * The digest states what the key cannot: the suite version and dataset sha, the backend,
- * and every variant's harness, overlay paths, model and attachments. Task selection and
+ * and every variant's harness, overlay paths, model, attachments and build. Task selection and
  * repeat count are deliberately absent — resuming a narrowed task list, or a run with more
  * repeats, is the same plan reaching fewer or more cells.
  */
@@ -30,7 +30,7 @@ export class PlanChangedError extends Error {
 		super(
 			`Journal '${journalPath}' belongs to ${recorded === null ? "an unstated plan" : `plan ${recorded}`}, ` +
 				`and this invocation plans ${current}. ` +
-				`A run id names one plan: its suite version, backend, models and overlays. Start a new run id.`,
+				`A run id names one plan: its suite version, backend, models, overlays and builds. Start a new run id.`,
 		);
 		this.name = "PlanChangedError";
 		this.journalPath = journalPath;
@@ -39,7 +39,10 @@ export class PlanChangedError extends Error {
 	}
 }
 
-/** The fields of a variant that a cell key does not distinguish. */
+/**
+ * The fields of a variant that a cell key does not distinguish. A build joins only when the
+ * variant names one, so the digest of a plan without builds is the one it always was.
+ */
 function variantIdentity(variant: Variant): string {
 	return [
 		variant.name,
@@ -48,6 +51,7 @@ function variantIdentity(variant: Variant): string {
 		variant.promptVariantPath ?? "",
 		variant.model,
 		[...variant.attachments].sort().join(","),
+		...(variant.build ? [variant.build] : []),
 	].join("\u0000");
 }
 

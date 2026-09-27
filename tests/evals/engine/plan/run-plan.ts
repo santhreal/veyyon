@@ -16,8 +16,9 @@ import type {
 	TrialCell,
 	Variant,
 } from "../contracts";
-import { expandVariantMatrix, type VariantMatrixSelection } from "./variant-matrix";
 import { requirePathSegment } from "../package-paths";
+import { sanitizeVariantName } from "../run/layout";
+import { expandVariantMatrix, type VariantMatrixSelection } from "./variant-matrix";
 
 export class EmptyTaskSelectionError extends Error {
 	readonly suiteName: string;
@@ -54,6 +55,22 @@ export class InvalidLimitError extends Error {
 	constructor(limit: number) {
 		super(`limit must be an integer >= 1, got ${limit}.`);
 		this.name = "InvalidLimitError";
+	}
+}
+/**
+ * Two variants whose names become the same directory name. Their trials would share a trial
+ * directory and a scratch directory, and each would delete the other's files.
+ */
+export class VariantSegmentCollisionError extends Error {
+	readonly variants: readonly [string, string];
+
+	constructor(first: string, second: string, segment: string) {
+		super(
+			`Variants "${first}" and "${second}" are both filed as "${segment}": a trial directory keeps only letters, ` +
+				`digits, ".", "_" and "-". Name one of them apart.`,
+		);
+		this.name = "VariantSegmentCollisionError";
+		this.variants = [first, second];
 	}
 }
 export class UnboundHarnessBackendError extends Error {
@@ -124,6 +141,13 @@ export async function buildRunPlan(request: RunPlanRequest): Promise<RunPlan> {
 	const suite = request.suite;
 	const context: SuiteContext = request.context ?? {};
 	const variants = expandVariantMatrix(request.selection);
+	const filedAs = new Map<string, string>();
+	for (const variant of variants) {
+		const segment = sanitizeVariantName(variant.name);
+		const other = filedAs.get(segment);
+		if (other !== undefined) throw new VariantSegmentCollisionError(other, variant.name, segment);
+		filedAs.set(segment, variant.name);
+	}
 	const harnessRegistry = request.harnesses;
 	for (const variant of variants) {
 		const harness = harnessRegistry.require(variant.harness);

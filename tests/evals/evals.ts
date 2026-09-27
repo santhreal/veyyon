@@ -452,6 +452,42 @@ export function tasksForSuite(tasks: readonly string[], suite: string, running: 
 	return scoped.length > 0 ? scoped : unscoped;
 }
 
+/** The flags a resume replaces with its own values, and `--resume` itself. */
+const RESUME_REPLACES: Record<string, true> = { "--suite": true, "--tasks": true, "--run-id": true, "--resume": true };
+
+/**
+ * The arguments that resume one suite's run of an invocation: every flag it was given, that suite
+ * alone with the tasks that applied to it, the run's id and `--resume`. A resume command that named
+ * only the suite and the run id was refused for want of `--model`, and given one planned a run other
+ * than the one interrupted.
+ */
+export function resumeArguments(
+	argv: readonly string[],
+	resume: { readonly suite: string; readonly tasks: readonly string[]; readonly runId: string },
+): string[] {
+	const kept: string[] = [];
+	for (let index = 0; index < argv.length; index += 1) {
+		const arg = argv[index] as string;
+		const eq = arg.indexOf("=");
+		const name = eq === -1 ? arg : arg.slice(0, eq);
+		if (!RESUME_REPLACES[name]) {
+			kept.push(arg);
+			continue;
+		}
+		// A value flag written apart from its value takes the next argument with it.
+		if (eq === -1 && name !== "--resume") index += 1;
+	}
+	return [
+		...kept,
+		"--suite",
+		resume.suite,
+		...(resume.tasks.length > 0 ? ["--tasks", resume.tasks.join(",")] : []),
+		"--run-id",
+		resume.runId,
+		"--resume",
+	];
+}
+
 /**
  * The extensions a task list is written with. Exported so a caller sweeps them rather than
  * restating the set, since every one of them is a value the CLI reads as a file.
@@ -732,7 +768,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
 	let worst = 0;
 	for (const suite of selected) {
 		if (selected.length > 1) process.stdout.write(`\n=== ${suite.id} ===\n`);
-		const code = await runOneSuite(args, suite, names);
+		const code = await runOneSuite(args, suite, names, argv);
 		if (code > worst) worst = code;
 	}
 	return worst;
@@ -768,7 +804,12 @@ export function suiteContext(args: EvalsCliArgs, suite: EvalSuite): SuiteContext
  * Plans and runs one suite. Returns the process exit code this suite earned: 0
  * clean, 1 a refusal or a trial error.
  */
-async function runOneSuite(args: EvalsCliArgs, suite: EvalSuite, running: readonly string[]): Promise<number> {
+async function runOneSuite(
+	args: EvalsCliArgs,
+	suite: EvalSuite,
+	running: readonly string[],
+	argv: readonly string[],
+): Promise<number> {
 	const context = suiteContext(args, suite);
 	const workDir = args.workDir ?? process.cwd();
 	const runsDir = path.resolve(args.runsDir ?? defaultRunsDir());
@@ -917,9 +958,16 @@ async function runOneSuite(args: EvalsCliArgs, suite: EvalSuite, running: readon
 	}
 
 	const total = plan.cells.length;
+	const resume = resumeArguments(argv, {
+		suite: suite.id,
+		tasks: tasksForSuite(args.tasks, suite.id, running),
+		runId: plan.runId,
+	})
+		.map(word => (/^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`))
+		.join(" ");
 	const interruptionNote = (signal: string, completed: number) =>
 		`\nRun ${plan.runId} interrupted by ${signal} (${completed}/${total} trials completed).\n` +
-		`To resume this run:\n  evals --suite ${suite.id} --run-id ${plan.runId} --resume\n`;
+		`To resume this run:\n  evals ${resume}\n`;
 
 	let record: EvalRunRecord;
 	let interrupted: string | null;

@@ -14,8 +14,8 @@
  * TMPDIR, and a credential store holding the model provider's sign-in alone. It inherits only the
  * variables {@link trialEnvironment} keeps, and on Linux runs under Landlock ({@link sandboxRules}):
  * it cannot open the runner's home, the runs directory, this package, the tests of the build it
- * runs, or another trial's scratch, so it can read neither a grader nor an earlier trial's
- * transcript.
+ * runs, the git history of this checkout or the build, or another trial's scratch, so it can read
+ * neither a grader nor an earlier trial's transcript.
  *
  * The variant's build (`--build`) selects which tree or binary runs, so two builds of the agent
  * run interleaved in one plan on the same tasks, and their difference is measured under the same
@@ -27,7 +27,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage, hasFsCode } from "@veyyon/utils";
 import YAML from "yaml";
 import type {
 	BackendId,
@@ -52,8 +52,17 @@ import { loadAndValidateConfigOverlay, loadAndValidatePromptOverlay } from "../.
 import { LOCAL_TRIAL_FILES as TRIAL_FILES, trialDirFor } from "../../engine/run/layout";
 import { boundRawOutput, teardownGraceFromOptions, teardownWithin, trialTimeoutFromOptions } from "../../engine/trial/deadline";
 import { resolveTrialModel } from "../../engine/trial/model";
-import { awaitTrialProcessOutput, terminateProcessTree } from "../../engine/trial/process";
-import { credentialSource, providerCredentialCount, stageCredentials } from "./credentials";
+import { awaitTrialProcessOutput, killProcessGroup, terminateProcessTree } from "../../engine/trial/process";
+import { InfrastructureTrialError } from "../../engine/trial/retry";
+import {
+	credentialSource,
+	providerCredentialCount,
+	REFRESH_MARGIN_MS,
+	refreshExpiringSignIns,
+	type StagedCredentials,
+	stageCredentials,
+	writeStagedCredentials,
+} from "./credentials";
 import { trialEnvironment } from "./environment";
 import { type EventUsage, finalText, readUsage } from "./events";
 import { landlockSandbox, sandboxedLaunch, sandboxRules } from "./sandbox";
@@ -75,14 +84,35 @@ export interface LocalTrialLayout {
 }
 
 /**
- * The directory every trial's scratch is made under; hidden from every trial but its own part.
+ * The directory every trial's scratch is made under, one per user; hidden from every trial but its
+ * own part.
  *
  * Short on purpose: Chrome makes a Unix socket under TMPDIR, and a socket path longer than 107
- * bytes aborts its launch. `/tmp/vey/<12 hex>/tmp/com.google.Chrome.XXXXXX/SingletonSocket` fits;
- * a scratch named after the run, variant and task did not.
+ * bytes aborts its launch. `/tmp/vey-<uid>/<12 hex>/tmp/com.google.Chrome.XXXXXX/SingletonSocket`
+ * fits; a scratch named after the run, variant and task did not.
  */
 export function trialScratchRoot(): string {
-	return path.join(process.platform === "win32" ? os.tmpdir() : "/tmp", "vey");
+	const uid = process.getuid?.();
+	return uid === undefined ? path.join(os.tmpdir(), "vey") : path.join("/tmp", `vey-${uid}`);
+}
+
+/**
+ * Make `root`, readable by this user alone, or refuse it. A root another user made, or a symbolic
+ * link planted in its place, puts every trial's workspace and credential copy where that user
+ * reaches them.
+ */
+export async function requireScratchRoot(root: string): Promise<void> {
+	await fs.mkdir(root, { recursive: true, mode: 0o700 });
+	const stats = await fs.lstat(root);
+	if (stats.isSymbolicLink() || !stats.isDirectory()) {
+		throw new Error(`the scratch root ${root} is not a directory but a link or a file: remove it`);
+	}
+	const uid = process.getuid?.();
+	if (uid === undefined) return;
+	if (stats.uid !== uid) {
+		throw new Error(`the scratch root ${root} belongs to user ${stats.uid}, not to this runner (${uid}): remove it`);
+	}
+	if ((stats.mode & 0o077) !== 0) await fs.chmod(root, 0o700);
 }
 
 export function localTrialLayout(runsDir: string, runId: string, cell: TrialCell): LocalTrialLayout {
@@ -113,6 +143,14 @@ interface PreparedTrial {
 /** How many trailing characters of stderr an error names. */
 const STDERR_TAIL = 2_000;
 
+/**
+ * The teardown of a trial whose run was interrupted. postmortem exits the process 10 s after a
+ * SIGINT or SIGTERM, whatever is still running, so the agent's SIGTERM grace, the 2 s output drain
+ * and the suite's finish fit inside that with room to delete the scratch and its credential copy.
+ */
+const INTERRUPTED_KILL_GRACE_MS = 2_000;
+const INTERRUPTED_FINISH_GRACE_MS = 3_000;
+
 interface AgentRun {
 	readonly stdout: string;
 	readonly stderr: string;
@@ -127,6 +165,26 @@ export class LocalCliBackend implements ExecutionBackend {
 	readonly id: BackendId = "local-cli";
 	/** The settings overlay and the task's settings become `--config` files, the prompt overlay an environment variable, the build the command. */
 	readonly appliesVariantAxes: readonly VariantAxis[] = ["config", "promptVariant", "build"];
+	/**
+	 * The pruned sign-in per credential store and provider, staged once per run and again only when
+	 * its access token would expire during the next trial. Chained, so two trials never refresh one
+	 * sign-in at once: a provider that rotates refresh tokens refuses the second refresh.
+	 */
+	readonly #staged = new Map<string, Promise<StagedCredentials>>();
+
+	#credentials(source: string, provider: string, until: number): Promise<StagedCredentials> {
+		const key = `${source}\u0000${provider}`;
+		const restage = async (): Promise<StagedCredentials> => {
+			await refreshExpiringSignIns(source, provider, until);
+			const root = trialScratchRoot();
+			await requireScratchRoot(root);
+			return await stageCredentials(source, provider, root);
+		};
+		const previous = this.#staged.get(key);
+		const next = previous ? previous.then(staged => (staged.expires >= until ? staged : restage()), restage) : restage();
+		this.#staged.set(key, next);
+		return next;
+	}
 
 	async preflight(context: RunContext): Promise<PreflightVerdict> {
 		const sandbox = landlockSandbox();
@@ -166,6 +224,7 @@ export class LocalCliBackend implements ExecutionBackend {
 		if (!source) throw new Error("no credential store to copy the model's sign-in from");
 
 		const layout = localTrialLayout(context.runsDir || defaultRunsDir(), context.runId, cell);
+		await requireScratchRoot(path.dirname(layout.scratch));
 		// An attempt after a thrown one starts from what a fresh trial would.
 		await fs.rm(layout.trialDir, { recursive: true, force: true });
 		await fs.rm(layout.scratch, { recursive: true, force: true });
@@ -187,10 +246,14 @@ export class LocalCliBackend implements ExecutionBackend {
 				timeoutSec,
 			});
 		} finally {
-			// The workspace is the agent's output; the rest of the scratch (home, credential, temp) is not kept.
-			await fs
-				.cp(layout.workspace, path.join(layout.trialDir, "workspace"), { recursive: true, verbatimSymlinks: true })
-				.catch(() => {});
+			// The workspace is the agent's output; the rest of the scratch (home, credential, temp) is not
+			// kept. A rename is free where the scratch and the runs directory share a filesystem; across
+			// filesystems (EXDEV) the workspace is copied.
+			const kept = path.join(layout.trialDir, "workspace");
+			await fs.rename(layout.workspace, kept).catch(async (error: unknown) => {
+				if (hasFsCode(error, "ENOENT")) return;
+				await fs.cp(layout.workspace, kept, { recursive: true, verbatimSymlinks: true }).catch(() => {});
+			});
 			await fs.rm(layout.scratch, { recursive: true, force: true });
 		}
 
@@ -199,11 +262,14 @@ export class LocalCliBackend implements ExecutionBackend {
 		await fs.writeFile(path.join(layout.trialDir, TRIAL_FILES.stderr), run.stderr);
 		await fs.writeFile(path.join(layout.trialDir, TRIAL_FILES.answer), answer);
 		if (run.aborted) throw new Error("the trial was aborted by the run's cancellation");
-		// An agent that exited on an error before its first turn measured nothing: a bad flag, a
-		// sign-in the provider refused, a build that does not start. That is infrastructure, and
-		// another attempt may succeed; a run that took turns is an outcome and is graded.
+		// An agent that exited on an error before the provider answered one request measured
+		// nothing: a bad flag, a sign-in the provider refused, a connection that failed, a build
+		// that does not start. That is infrastructure, and another attempt may succeed, whatever
+		// the stderr quoted in the message says; a run that took turns is an outcome and is graded.
 		if (run.usage.turns === 0 && !run.timedOut && run.exitCode !== 0) {
-			throw new Error(`the agent exited with code ${run.exitCode} before its first turn: ${run.stderr.slice(-STDERR_TAIL)}`);
+			throw new InfrastructureTrialError(
+				`the agent exited with code ${run.exitCode} before its first turn: ${run.stderr.slice(-STDERR_TAIL)}`,
+			);
 		}
 
 		const files: Record<string, string> = {};
@@ -255,7 +321,8 @@ export class LocalCliBackend implements ExecutionBackend {
 		let run: AgentRun | undefined;
 		let failure: unknown = null;
 		try {
-			stageCredentials(trial.source, trial.provider, layout.agentDir);
+			const until = Date.now() + trial.timeoutSec * 1000 + REFRESH_MARGIN_MS;
+			await writeStagedCredentials(await this.#credentials(trial.source, trial.provider, until), layout.agentDir);
 			const instruction = environment?.instruction ?? (await taskInstruction(trial.descriptor));
 			const configFiles = await trialConfigFiles(variant, environment, layout, context.workDir);
 			const command = trial.localCommand({
@@ -271,7 +338,7 @@ export class LocalCliBackend implements ExecutionBackend {
 				? (await loadAndValidatePromptOverlay(variant.promptVariantPath, context.workDir)).overrides
 				: null;
 			const rules = await sandboxRules({
-				hidden: hiddenDirectories(context, variant.build ?? null),
+				hidden: await hiddenDirectories(context, variant.build ?? null),
 				read: [...command.readable, ...configFiles, ...(environment?.readable ?? [])],
 				write: [layout.scratch],
 			});
@@ -296,7 +363,10 @@ export class LocalCliBackend implements ExecutionBackend {
 			failure = cause;
 		}
 		const finishProblem = environment
-			? await teardownWithin(() => environment.finish(), teardownGraceFromOptions(context.options))
+			? await teardownWithin(
+					() => environment.finish(),
+					context.signal?.aborted ? INTERRUPTED_FINISH_GRACE_MS : teardownGraceFromOptions(context.options),
+				)
 			: null;
 		if (failure !== null) throw failure;
 		if (!run) throw new Error("the agent never started");
@@ -321,11 +391,12 @@ async function variantProblem(
 		return { reason: `the ${variant.harness} harness declares no local command`, missing: "local-command" };
 	}
 	if (variant.build) {
-		try {
-			await fs.stat(variant.build);
-		} catch {
-			return { reason: `the build ${variant.build} does not exist`, missing: "build" };
-		}
+		const buildProblem = harness.validateBuild
+			? await harness.validateBuild(variant.build)
+			: (await fs.stat(variant.build).catch(() => null))
+				? null
+				: `the build ${variant.build} does not exist`;
+		if (buildProblem) return { reason: buildProblem, missing: "build" };
 	}
 	try {
 		if (variant.configPath) await loadAndValidateConfigOverlay(variant.configPath, context.workDir);
@@ -395,16 +466,36 @@ function optionTools(options: Readonly<Record<string, unknown>> | undefined): re
 
 /**
  * What a trial cannot read beyond `hostDataDirectories()`: the runs directory, every trial's scratch
- * (its own is granted back), this package (graders, fixture sources) and the tests of the build it
- * runs.
+ * (its own is granted back), this package (graders, fixture sources), the tests of the build it
+ * runs, and the git history of this checkout and of the build, which holds every version of both.
  */
-function hiddenDirectories(context: RunContext, build: string | null): string[] {
+async function hiddenDirectories(context: RunContext, build: string | null): Promise<string[]> {
+	const checkout = repoRootDir();
+	const tree = path.resolve(build ?? checkout);
+	// A build that is an executable has no tests or history beside it to hide.
+	const isTree = (await fs.stat(tree).catch(() => null))?.isDirectory() === true;
+	const roots = !isTree ? [checkout] : tree === checkout ? [tree] : [checkout, tree];
 	return [
 		path.resolve(context.runsDir || defaultRunsDir()),
 		trialScratchRoot(),
 		evalsPackageDir(),
-		path.join(path.resolve(build ?? repoRootDir()), "tests"),
+		...(isTree ? [path.join(tree, "tests")] : []),
+		...(await Promise.all(roots.map(gitDirectories))).flat(),
 	];
+}
+
+/**
+ * The directories a checkout's history is read from: `<root>/.git`, and for a worktree, whose
+ * `.git` is a file stating its git directory, that directory and the common one holding the
+ * objects.
+ */
+async function gitDirectories(root: string): Promise<string[]> {
+	const dotGit = path.join(root, ".git");
+	const pointer = (await fs.readFile(dotGit, "utf8").catch(() => "")).match(/^gitdir:\s*(.+?)\s*$/m)?.[1];
+	if (!pointer) return [dotGit];
+	const gitDir = path.resolve(root, pointer);
+	const common = (await fs.readFile(path.join(gitDir, "commondir"), "utf8").catch(() => "")).trim();
+	return [dotGit, gitDir, ...(common ? [path.resolve(gitDir, common)] : [])];
 }
 
 interface AgentLaunch {
@@ -418,7 +509,7 @@ interface AgentLaunch {
 /** Run the agent to its exit, its deadline or the run's cancellation, and keep what it printed. */
 async function runAgent(options: AgentLaunch): Promise<AgentRun> {
 	const started = Date.now();
-	// Its own process group, so a deadline ends the agent and every browser and shell it started.
+	// Its own process group, so the trial ends every process the agent started that stays in it.
 	const child = spawn(options.launch.command, [...options.launch.args], {
 		cwd: options.cwd,
 		env: options.env,
@@ -433,9 +524,13 @@ async function runAgent(options: AgentLaunch): Promise<AgentRun> {
 		timeoutMs: options.timeoutMs,
 		signal: options.signal,
 		terminate: async () => {
-			await terminateProcessTree({ pid: child.pid, kill: signal => child.kill(signal), exited });
+			const grace = options.signal?.aborted ? INTERRUPTED_KILL_GRACE_MS : undefined;
+			await terminateProcessTree({ pid: child.pid, kill: signal => child.kill(signal), exited }, grace);
 		},
 	});
+	// An agent that exits on its own can leave behind a process it started: a server on a port the
+	// next trial binds, a shell loop. A deadline and a cancel already ended the group.
+	if (result.kind === "exited") killProcessGroup(child.pid);
 	return {
 		stdout: result.stdout,
 		stderr: result.stderr,

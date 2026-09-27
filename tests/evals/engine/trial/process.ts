@@ -173,6 +173,20 @@ function signalTree(proc: TerminableProcess, signal: "SIGTERM" | "SIGKILL"): voi
 	}
 }
 
+/**
+ * SIGKILL what is left of an exited child's process group: a descendant that ignored SIGTERM, or
+ * one a child that exited on its own left running. The group only: the child is gone and its pid is
+ * free to name another process. Does nothing on a platform without process groups.
+ */
+export function killProcessGroup(pid: number | undefined): void {
+	if (typeof pid !== "number" || pid <= 0) return;
+	try {
+		process.kill(-pid, "SIGKILL");
+	} catch {
+		// No member left, or the child never led a group: nothing remains to end.
+	}
+}
+
 async function exitedWithin(proc: TerminableProcess, graceMs: number): Promise<TerminationOutcome> {
 	const { promise: elapsed, resolve: markElapsed } = Promise.withResolvers<"abandoned">();
 	const timer = setTimeout(() => markElapsed("abandoned"), graceMs);
@@ -190,8 +204,10 @@ async function exitedWithin(proc: TerminableProcess, graceMs: number): Promise<T
 }
 
 /**
- * Terminate `proc` and everything it spawned: SIGTERM the group, then SIGKILL it if the tree is
- * still there after `gracePeriodMs`. Returns whether the tree is gone.
+ * Terminate `proc` and everything it spawned: SIGTERM the group, then SIGKILL it if the child is
+ * still there after `gracePeriodMs`. A child that exits on SIGTERM can leave a descendant that
+ * ignores it, so once the child is gone whatever is left of its group is killed. Returns whether
+ * the child is gone.
  *
  * This never waits without a bound. A caller that ignores the outcome gets the same behaviour it
  * had; a caller that goes on to read the process's pipes must not, because a pipe held by a
@@ -202,7 +218,10 @@ export async function terminateProcessTree(
 	gracePeriodMs = DEFAULT_GRACE_PERIOD_MS,
 ): Promise<TerminationOutcome> {
 	signalTree(proc, "SIGTERM");
-	if ((await exitedWithin(proc, gracePeriodMs)) === "exited") return "exited";
+	if ((await exitedWithin(proc, gracePeriodMs)) === "exited") {
+		killProcessGroup(proc.pid);
+		return "exited";
+	}
 	signalTree(proc, "SIGKILL");
 	return await exitedWithin(proc, KILL_GRACE_PERIOD_MS);
 }

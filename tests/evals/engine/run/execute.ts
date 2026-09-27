@@ -240,10 +240,12 @@ export async function executeRun(options: ExecuteRunOptions): Promise<EvalRunRec
 	}
 
 	const attemptsAllowed = resolveTrialAttempts(context.options);
+	// A cancel ends the backoff: the run stops rather than waiting out a delay for an attempt it
+	// will not make.
 	const sleep =
 		options.sleep ??
 		(async (ms: number) => {
-			await sleepFor(ms);
+			await sleepFor(ms, undefined, { signal: options.signal }).catch(() => {});
 		});
 
 	const runOne = async (cell: TrialCell, index: number): Promise<void> => {
@@ -255,6 +257,8 @@ export async function executeRun(options: ExecuteRunOptions): Promise<EvalRunRec
 		// A trial that threw measured nothing, so the task is lost unless it is attempted again.
 		// A graded outcome — including a trial that spent its whole deadline — is never retried.
 		// Every attempt cleans up after itself: a retry starts from the state a fresh trial would.
+		// A trial the run's cancellation cut short settled nothing: it gets no row, in the journal
+		// or the record, so a resume of the run runs it.
 		for (;;) {
 			attempt += 1;
 			try {
@@ -262,6 +266,7 @@ export async function executeRun(options: ExecuteRunOptions): Promise<EvalRunRec
 				score = await plan.suite.scoreTrial(cell, artifacts);
 				break;
 			} catch (cause) {
+				if (options.signal?.aborted) return;
 				if (attempt >= attemptsAllowed || !isRetryableTrialFailure(cause, options.signal)) {
 					score = erroredScore(cause);
 					break;
@@ -277,6 +282,7 @@ export async function executeRun(options: ExecuteRunOptions): Promise<EvalRunRec
 				}
 			}
 			await sleep(trialRetryDelayMs(attempt + 1));
+			if (options.signal?.aborted) return;
 		}
 		if (attempt > 1) score = { ...score, extra: { ...score.extra, attempts: attempt } };
 		const finishedAtMs = clock();

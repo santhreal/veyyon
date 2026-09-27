@@ -1,22 +1,31 @@
 #!/usr/bin/env python3
-"""Run a command under a Landlock ruleset.
+"""Run a command under a Landlock ruleset, and end everything it started when it exits.
 
     python3 landlock-exec.py --abi
     python3 landlock-exec.py '<rules json>' -- <command> [args...]
+    python3 landlock-exec.py --no-rules -- <command> [args...]
 
 `--abi` prints the kernel's Landlock ABI version and exits 0, or prints why there is none and exits 1.
 
 The rules are `[{"path": ..., "access": "list" | "read" | "write"}]`. Beneath each path the command
 lists directories (`list`), also reads and runs files (`read`), or also creates, changes and deletes
 (`write`); every other file access is refused with EACCES. A path that does not exist grants nothing.
-The restriction survives `exec` and binds every process the command starts. Landlock needs no
+The restriction binds this process and every process the command starts. Landlock needs no
 privilege and no user namespace, only a kernel built with it (5.13 or later) and enabled in its LSM
-list.
+list. `--no-rules` applies none, on a host without Landlock, and keeps what follows.
+
+The command runs as a child of this process, which is a child subreaper: a process the command
+starts in a session of its own (a browser a launcher detaches, a daemon that calls setsid) is
+reparented here when its parent exits instead of to init. When the command exits, every process
+left under this one is killed and reaped, and this process exits with the command's status. SIGTERM,
+SIGINT and SIGHUP are passed to the command, which is killed if it has not exited after
+KILL_AFTER_SEC.
 """
 
 import ctypes
 import json
 import os
+import signal
 import stat
 import sys
 
@@ -26,6 +35,15 @@ SYS_LANDLOCK_RESTRICT_SELF = 446
 LANDLOCK_CREATE_RULESET_VERSION = 1
 LANDLOCK_RULE_PATH_BENEATH = 1
 PR_SET_NO_NEW_PRIVS = 38
+PR_SET_CHILD_SUBREAPER = 36
+
+# Shorter than the runner's own SIGTERM grace, so the command is killed and its descendants ended
+# here before the runner kills this process.
+KILL_AFTER_SEC = 1.5
+
+# Passed to the command. Blocked from before the fork until each process has its handlers, so one
+# arriving in between is held rather than killing this process and orphaning the command.
+FORWARDED = {signal.SIGTERM, signal.SIGINT, signal.SIGHUP}
 
 EXECUTE = 1 << 0
 WRITE_FILE = 1 << 1
@@ -109,6 +127,77 @@ def restrict(rules):
     os.close(ruleset)
 
 
+def children():
+    """The processes whose parent is this one, read from /proc."""
+    me = os.getpid()
+    found = []
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        try:
+            with open(f"/proc/{entry}/stat") as file:
+                line = file.read()
+        except OSError:
+            continue
+        # The parent pid is the second field after the parenthesised command name.
+        if int(line[line.rfind(")") + 2:].split()[1]) == me:
+            found.append(int(entry))
+    return found
+
+
+def end_descendants():
+    """Kill and reap every process under this one. Each killed process's children are reparented
+    here, so the loop ends once nothing is left to wait for."""
+    while True:
+        for pid in children():
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        try:
+            os.waitpid(-1, 0)
+        except ChildProcessError:
+            return
+
+
+def run(command):
+    if libc.prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) != 0:
+        raise failed("prctl(PR_SET_CHILD_SUBREAPER)")
+    signal.pthread_sigmask(signal.SIG_BLOCK, FORWARDED)
+    agent = os.fork()
+    if agent == 0:
+        # The command starts with the default handlers; a signal held since the fork arrives now.
+        signal.pthread_sigmask(signal.SIG_UNBLOCK, FORWARDED)
+        try:
+            os.execvp(command[0], command)
+        except OSError as error:
+            print(f"cannot run {command[0]}: {error.strerror}", file=sys.stderr)
+            os._exit(127)
+
+    def kill_agent(_signum, _frame):
+        try:
+            os.kill(agent, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+    def forward(signum, _frame):
+        try:
+            os.kill(agent, signum)
+        except ProcessLookupError:
+            pass
+        signal.setitimer(signal.ITIMER_REAL, KILL_AFTER_SEC)
+
+    signal.signal(signal.SIGALRM, kill_agent)
+    for signum in FORWARDED:
+        signal.signal(signum, forward)
+    signal.pthread_sigmask(signal.SIG_UNBLOCK, FORWARDED)
+    _, status = os.waitpid(agent, 0)
+    signal.setitimer(signal.ITIMER_REAL, 0)
+    end_descendants()
+    code = os.waitstatus_to_exitcode(status)
+    return code if code >= 0 else 128 - code
+
+
 def main(argv):
     if argv[1:] == ["--abi"]:
         try:
@@ -118,10 +207,12 @@ def main(argv):
             return 1
         return 0
     if len(argv) < 4 or argv[2] != "--":
-        print("usage: landlock-exec.py --abi | '<rules json>' -- <command> [args...]", file=sys.stderr)
+        print("usage: landlock-exec.py --abi | '<rules json>' -- <command> [args...] | --no-rules -- <command> [args...]",
+              file=sys.stderr)
         return 2
-    restrict(json.loads(argv[1]))
-    os.execvp(argv[3], argv[3:])
+    if argv[1] != "--no-rules":
+        restrict(json.loads(argv[1]))
+    return run(argv[3:])
 
 
 if __name__ == "__main__":

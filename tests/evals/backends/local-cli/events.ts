@@ -1,10 +1,12 @@
 /**
  * What a print-mode run's JSON event lines report. Every assistant message is one request that
- * re-sent the whole conversation, so turns and tokens are summed over them.
+ * re-sent the whole conversation, so tokens are summed over all of them. A request the provider
+ * failed (a refused sign-in, an exhausted rate limit, a dropped connection) still ends in an
+ * assistant message, with `stopReason: "error"`: it spends what it reports and is no turn.
  */
 
 export interface EventUsage {
-	/** Assistant messages. */
+	/** Assistant messages that did not end on an error: requests the provider answered. */
 	turns: number;
 	toolCalls: number;
 	inputTokens: number;
@@ -19,6 +21,7 @@ interface AssistantEvent {
 	type?: string;
 	message?: {
 		role?: string;
+		stopReason?: string;
 		content?: Array<{ type?: string; text?: string }>;
 		usage?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; cost?: { total?: number } };
 	};
@@ -49,8 +52,11 @@ export function readUsage(lines: string): EventUsage {
 		costUsd: 0,
 	};
 	for (const message of assistantMessages(lines)) {
-		usage.turns++;
-		usage.toolCalls += message.content?.filter(block => block.type === "toolCall").length ?? 0;
+		// A failed request's tool calls never ran.
+		if (message.stopReason !== "error") {
+			usage.turns++;
+			usage.toolCalls += message.content?.filter(block => block.type === "toolCall").length ?? 0;
+		}
 		usage.inputTokens += message.usage?.input ?? 0;
 		usage.outputTokens += message.usage?.output ?? 0;
 		usage.cacheReadTokens += message.usage?.cacheRead ?? 0;

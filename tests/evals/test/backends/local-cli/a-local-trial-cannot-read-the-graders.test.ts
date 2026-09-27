@@ -9,10 +9,12 @@
  * It proves a trial inherits only the variables it runs on plus the ones its harness and suite
  * name; that its credential store holds the model provider's sign-in and nothing else, and is gone
  * after the trial; and, where the kernel has Landlock, that it cannot open this package, a sibling
- * trial's files, the tests of the build it runs, a link in the build that points at them, or a file
- * another process left in the system temp directory, while its own workspace, home, task settings and
- * the build's `node_modules` still work, so a sandbox that refused everything would fail too. The
- * rules themselves are checked to hide every host data directory on any Linux host.
+ * trial's files, the tests of the build it runs, the build's git history (a `.git` directory, or a
+ * worktree's `.git` file and the git directories it names, each holding every committed version of
+ * the graders), a link in the build that points at the tests, or a file another process left in the
+ * system temp directory, while its own workspace, home, task settings and the build's
+ * `node_modules` still work, so a sandbox that refused everything would fail too. The rules
+ * themselves are checked to hide every host data directory on any Linux host.
  *
  * Not caught: that `/proc` and `/dev` stay writable for Chrome; a real browser trial is the check.
  * Without Landlock (every host but Linux, a kernel without it, or no python3) the probe case skips.
@@ -71,7 +73,13 @@ interface Probe {
 	readonly write: readonly string[];
 }
 
-async function writeTree(root: string): Promise<{ tree: string; answers: string; answersLink: string }> {
+/** How the probe tree keeps its history: a `.git` directory, or a worktree's `.git` file. */
+type GitLayout = "directory" | "worktree";
+
+async function writeTree(
+	root: string,
+	git: GitLayout,
+): Promise<{ tree: string; answers: string; answersLink: string; history: string[] }> {
 	const tree = path.join(root, "tree");
 	const answers = path.join(tree, "tests", "answers.ts");
 	const answersLink = path.join(tree, "answers-link.ts");
@@ -87,7 +95,32 @@ async function writeTree(root: string): Promise<{ tree: string; answers: string;
 		'{ "name": "probe-dep", "type": "module", "exports": "./index.js" }',
 	);
 	await fs.writeFile(path.join(dep, "index.js"), 'export const value = "resolved";');
-	return { tree, answers, answersLink };
+	return { tree, answers, answersLink, history: await writeHistory(tree, git) };
+}
+
+/**
+ * The tree's git history, holding the graders as a checkout's history does. Every part sits inside
+ * the tree, which the trial is granted, so only hiding them keeps them closed. Returns the files a
+ * trial must not open.
+ */
+async function writeHistory(tree: string, git: GitLayout): Promise<string[]> {
+	if (git === "directory") {
+		const object = path.join(tree, ".git", "objects", "graders");
+		await fs.mkdir(path.dirname(object), { recursive: true });
+		await fs.writeFile(object, "the graders, as committed");
+		return [object];
+	}
+	// A worktree's `.git` states its git directory, whose `commondir` names the one with the objects.
+	const common = path.join(tree, "vendor", "git");
+	const gitDir = path.join(common, "worktrees", "tree");
+	const object = path.join(common, "objects", "graders");
+	await fs.mkdir(gitDir, { recursive: true });
+	await fs.mkdir(path.dirname(object), { recursive: true });
+	await fs.writeFile(path.join(tree, ".git"), `gitdir: ${gitDir}\n`);
+	await fs.writeFile(path.join(gitDir, "commondir"), "../..\n");
+	await fs.writeFile(path.join(gitDir, "HEAD"), "ref: refs/heads/main\n");
+	await fs.writeFile(object, "the graders, as committed");
+	return [path.join(tree, ".git"), path.join(gitDir, "HEAD"), object];
 }
 
 interface ProbeRun {
@@ -104,11 +137,16 @@ interface ProbeRun {
 	};
 	readonly layout: LocalTrialLayout;
 	readonly paths: Readonly<Record<string, string>>;
+	/** The build's git history files the probe tried to read. */
+	readonly history: readonly string[];
 }
 
 /** One trial of the probe under the real backend, with a sibling trial's files beside it. */
-async function runProbe(root: string, options: { readonly unsandboxed: boolean }): Promise<ProbeRun> {
-	const { tree, answers, answersLink } = await writeTree(root);
+async function runProbe(
+	root: string,
+	options: { readonly unsandboxed: boolean; readonly git: GitLayout },
+): Promise<ProbeRun> {
+	const { tree, answers, answersLink, history } = await writeTree(root, options.git);
 	const authDb = path.join(root, "agent.db");
 	writeCredentials(authDb);
 	const runsDir = path.join(root, "runs");
@@ -165,6 +203,7 @@ async function runProbe(root: string, options: { readonly unsandboxed: boolean }
 					sibling,
 					otherScratch,
 					import.meta.filename,
+					...history,
 				],
 				write: [paths.workspaceOut, paths.homeOut, paths.tmpOut, "/dev/null", paths.siblingOut, paths.systemTmpOut],
 			};
@@ -215,7 +254,7 @@ async function runProbe(root: string, options: { readonly unsandboxed: boolean }
 		delete process.env.VEYYON_BENCH_PROBE_TOKEN;
 	}
 	const answer = await fs.readFile(path.join(layout.trialDir, LOCAL_TRIAL_FILES.answer), "utf8");
-	return { report: JSON.parse(answer), layout, paths };
+	return { report: JSON.parse(answer), layout, paths, history };
 }
 
 describe("a local trial", () => {
@@ -237,7 +276,10 @@ describe("a local trial", () => {
 
 	it("inherits only its own variables and holds only its model provider's sign-in", async () => {
 		await using dir = await TempDir.create("@evals-local-cli-env-");
-		const { report, layout } = await runProbe(dir.path(), { unsandboxed: !landlockSandbox().usable });
+		const { report, layout } = await runProbe(dir.path(), {
+			unsandboxed: !landlockSandbox().usable,
+			git: "directory",
+		});
 		expect(report.home).toBe(layout.home);
 		expect(report.tmp).toBe(layout.tmp);
 		expect(report.planted).toEqual([]);
@@ -252,28 +294,34 @@ describe("a local trial", () => {
 		);
 	});
 
-	it.skipIf(!landlockSandbox().usable)("opens its own files and none of the graders", async () => {
-		await using dir = await TempDir.create("@evals-local-cli-sandbox-");
-		const { report, paths } = await runProbe(dir.path(), { unsandboxed: false });
-		expect(report.reads).toEqual({
-			[paths.taskFile as string]: "the task's own file",
-			[paths.settings as string]: "probe:\n  enabled: true\n",
-			[paths.answers as string]: "EACCES",
-			[paths.answersLink as string]: "EACCES",
-			[paths.planted as string]: "EACCES",
-			[paths.sibling as string]: "EACCES",
-			[paths.otherScratch as string]: "EACCES",
-			[paths.grader as string]: "EACCES",
-		});
-		expect(report.writes).toEqual({
-			[paths.workspaceOut as string]: "ok",
-			[paths.homeOut as string]: "ok",
-			[paths.tmpOut as string]: "ok",
-			"/dev/null": "ok",
-			[paths.siblingOut as string]: "EACCES",
-			[paths.systemTmpOut as string]: "EACCES",
-		});
-	});
+	for (const git of ["directory", "worktree"] as const) {
+		it.skipIf(!landlockSandbox().usable)(
+			`opens its own files and none of the graders, with a ${git} history`,
+			async () => {
+				await using dir = await TempDir.create("@evals-local-cli-sandbox-");
+				const { report, paths, history } = await runProbe(dir.path(), { unsandboxed: false, git });
+				expect(report.reads).toEqual({
+					[paths.taskFile as string]: "the task's own file",
+					[paths.settings as string]: "probe:\n  enabled: true\n",
+					[paths.answers as string]: "EACCES",
+					[paths.answersLink as string]: "EACCES",
+					[paths.planted as string]: "EACCES",
+					[paths.sibling as string]: "EACCES",
+					[paths.otherScratch as string]: "EACCES",
+					[paths.grader as string]: "EACCES",
+					...Object.fromEntries(history.map(file => [file, "EACCES"])),
+				});
+				expect(report.writes).toEqual({
+					[paths.workspaceOut as string]: "ok",
+					[paths.homeOut as string]: "ok",
+					[paths.tmpOut as string]: "ok",
+					"/dev/null": "ok",
+					[paths.siblingOut as string]: "EACCES",
+					[paths.systemTmpOut as string]: "EACCES",
+				});
+			},
+		);
+	}
 
 	it.skipIf(process.platform !== "linux")(
 		"reads no user's home, temp directory or mounted media, beyond what is granted in one",

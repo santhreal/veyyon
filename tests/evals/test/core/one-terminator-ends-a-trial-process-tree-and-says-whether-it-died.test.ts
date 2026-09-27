@@ -15,7 +15,9 @@
  * deep-swe executor call it, and it returns whether the tree is gone so a caller can decide not to
  * read pipes a survivor still holds. Every path through it is driven here: exits on SIGTERM, exits
  * on SIGKILL, survives both, a rejecting `exited`, a process with no pid, and a pid that is not its
- * own group leader. `drainTrialOutput` is the bounded read the two container backends use after a
+ * own group leader. A real process tree on Linux proves the one path a fake cannot: a child that
+ * exits on SIGTERM while a descendant in its group ignores it, which the terminator used to report
+ * gone and leave running. `drainTrialOutput` is the bounded read the two container backends use after a
  * kill, and its cases cover a pipe that never closes, one of two that does, and a read that threw.
  *
  * The grace periods are real time — bounding real time is the behaviour under test — so every case
@@ -26,6 +28,9 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
+import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { setTimeout as sleep } from "node:timers/promises";
 import type { TerminableProcess, TerminationOutcome } from "../../engine/trial/process";
 import {
 	drainTrialOutput,
@@ -225,4 +230,56 @@ describe("the output a killed trial produced", () => {
 		// minute would leave this file green while each timed-out trial cost a minute of nothing.
 		expect(OUTPUT_DRAIN_GRACE_MS).toBe(2000);
 	});
+});
+
+/** Whether `pid` is a live process. A zombie waiting on its reaper has already died. */
+function running(pid: number): boolean {
+	let stat: string;
+	try {
+		stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+	} catch {
+		return false;
+	}
+	// The state follows the parenthesised command name, which may hold parentheses itself.
+	const state = stat.charAt(stat.lastIndexOf(")") + 2);
+	return state !== "Z" && state !== "X";
+}
+
+describe("a real process tree", () => {
+	it.skipIf(process.platform !== "linux")(
+		"ends a descendant that ignores SIGTERM once its parent has exited on it",
+		async () => {
+			// The parent is a shell that dies on SIGTERM; its child ignores SIGTERM and states its pid.
+			const parent = spawn("sh", ["-c", `sh -c 'trap "" TERM; echo $$; while :; do sleep 1; done' & wait`], {
+				detached: true,
+				stdio: ["ignore", "pipe", "ignore"],
+			});
+			const exited = Promise.withResolvers<number>();
+			parent.once("exit", code => exited.resolve(code ?? -1));
+			const stated = Promise.withResolvers<number>();
+			let printed = "";
+			parent.stdout.setEncoding("utf8");
+			parent.stdout.on("data", (chunk: string) => {
+				printed += chunk;
+				if (printed.includes("\n")) stated.resolve(Number(printed.trim()));
+			});
+			// Bounded, so a tree that never starts fails here rather than hanging the suite.
+			const giveUp = new AbortController();
+			const child = await Promise.race([stated.promise, sleep(10_000, -1, { signal: giveUp.signal })]);
+			giveUp.abort();
+			expect(child).toBeGreaterThan(0);
+			try {
+				const outcome = await terminateProcessTree(
+					{ pid: parent.pid, kill: signal => parent.kill(signal), exited: exited.promise },
+					2_000,
+				);
+				expect(outcome).toBe("exited");
+				// Bounded: a survivor keeps this loop to its limit and fails below.
+				for (let waited = 0; waited < 2_000 && running(child); waited += 20) await sleep(20);
+				expect(running(child)).toBe(false);
+			} finally {
+				if (running(child)) process.kill(child, "SIGKILL");
+			}
+		},
+	);
 });

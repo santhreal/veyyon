@@ -132,10 +132,12 @@ function parseHeader(line: string): RunJournalHeader | null {
 }
 
 /**
- * The header of an existing journal, or null when the file is absent or empty.
- * Throws when a journal exists and states a shape this build does not read.
+ * The header of an existing journal and the text after it, or null when the file is absent or
+ * empty. Throws when a journal exists and states a shape this build does not read.
  */
-async function requireReadableJournal(journalPath: string): Promise<{ header: RunJournalHeader; body: string } | null> {
+async function requireReadableJournal(
+	journalPath: string,
+): Promise<{ header: RunJournalHeader; body: string; content: string } | null> {
 	let content: string;
 	try {
 		content = await fs.readFile(journalPath, "utf-8");
@@ -153,7 +155,25 @@ async function requireReadableJournal(journalPath: string): Promise<{ header: Ru
 	if (header.version !== RUN_JOURNAL_VERSION) {
 		throw new StaleRunJournalError(journalPath, header.version);
 	}
-	return { header, body: newline === -1 ? "" : content.slice(newline + 1) };
+	return { header, body: newline === -1 ? "" : content.slice(newline + 1), content };
+}
+
+/**
+ * End the file on a complete line before anything is appended to it.
+ *
+ * A write cut short (a killed process, a full disk) leaves a torn last line. A reader skips that
+ * line while it is the last one, but a record appended after it joined the two into one line
+ * that parses as nothing, and every later read of the journal failed on it. The torn line is
+ * dropped; a complete record that lost only its newline keeps its record and gets the newline.
+ */
+async function endOnCompleteLine(handle: fs.FileHandle, content: string): Promise<void> {
+	if (content.endsWith("\n")) return;
+	const lineStart = content.lastIndexOf("\n") + 1;
+	if (tryParseJson(content.slice(lineStart)) !== null) {
+		await handle.write("\n");
+		return;
+	}
+	await handle.truncate(Buffer.byteLength(content.slice(0, lineStart)));
 }
 
 /**
@@ -228,6 +248,14 @@ export async function openRunJournal(runsDir: string, runId: string, planDigest:
 		throw new PlanChangedError(journalPath, existing.header.plan, planDigest);
 	}
 	const handle = await fs.open(journalPath, "a");
+	if (existing !== null) {
+		try {
+			await endOnCompleteLine(handle, existing.content);
+		} catch (cause) {
+			await handle.close();
+			throw cause;
+		}
+	}
 	let writeQueue = Promise.resolve();
 
 	if (existing === null) {

@@ -1,10 +1,14 @@
 /**
  * What the local-cli suites run the real backend with: a credential store, a harness whose local
- * command runs a script from a probe tree instead of an agent, and a registry holding only it.
+ * command runs a script from a probe tree instead of an agent, a registry holding only it, and a
+ * run of one kit task.
  */
 import { Database } from "bun:sqlite";
 import * as path from "node:path";
-import type { HarnessAdapter, HarnessLookup } from "../../../engine/contracts";
+import { landlockSandbox } from "../../../backends/local-cli/sandbox";
+import type { HarnessAdapter, HarnessLookup, RunContext, TrialCell, Variant } from "../../../engine/contracts";
+import { kitTask } from "../../../engine/kit/catalog";
+import { defineSuite } from "../../../engine/kit/suite";
 
 /** A store with the model provider's credential, another provider's, and a cached usage report. */
 export function writeCredentials(file: string): void {
@@ -57,4 +61,67 @@ export function lookup(harness: HarnessAdapter): HarnessLookup {
 		list: () => [harness],
 		ids: () => [harness.id],
 	};
+}
+
+export interface OneTrialRun {
+	readonly context: RunContext;
+	readonly cell: TrialCell;
+}
+
+/**
+ * A run of one kit task under `harness`, whose one variant runs `build` against a credential store
+ * written under `root`. Sandboxed wherever the host has Landlock.
+ */
+export function oneTrialRun(options: {
+	readonly root: string;
+	readonly suite: string;
+	readonly harness: HarnessAdapter;
+	readonly build: string;
+	readonly signal?: AbortSignal;
+	/** What the task's `finish` does once the agent stops; by default it records nothing at once. */
+	readonly finish?: () => Promise<Record<string, never>>;
+}): OneTrialRun {
+	const authDb = path.join(options.root, "agent.db");
+	writeCredentials(authDb);
+	const task = kitTask<Record<string, never>>({
+		id: "probe-task",
+		title: "probe",
+		capabilities: ["probe"],
+		difficulty: "easy",
+		start: async () => ({
+			instruction: "probe",
+			solve: async () => "",
+			finish: options.finish ?? (async () => ({})),
+		}),
+		checks: [{ id: "answered", description: "answered", pass: (_state, answer) => answer.length > 0 }],
+	});
+	const variant: Variant = {
+		name: "arm",
+		harness: options.harness.id,
+		configPath: null,
+		promptVariantPath: null,
+		model: "probe/model",
+		attachments: [],
+		build: options.build,
+	};
+	const context: RunContext = {
+		runId: `${options.suite}-${path.basename(options.root)}`,
+		suite: defineSuite({
+			id: options.suite,
+			version: "1.0.0",
+			displayName: options.suite,
+			description: "one probe task",
+			sourceDir: options.root,
+			capabilities: { probe: "probe" },
+			tasks: [task],
+			tools: [],
+			defaultTimeBudgetSec: 60,
+		}),
+		workDir: options.root,
+		runsDir: path.join(options.root, "runs"),
+		signal: options.signal,
+		harnesses: lookup(options.harness),
+		options: { variants: [variant], authDb, ...(landlockSandbox().usable ? {} : { unsandboxed: true }) },
+	};
+	return { context, cell: { variant: "arm", suite: options.suite, task: "probe-task", repeat: 1 } };
 }

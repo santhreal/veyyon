@@ -11,6 +11,9 @@ runs/<run-id>/
   <variant>/<task>/repeat-<n>/   a trial's own files, on backends that file trials this way
 ```
 
+A trial a cancelled run cut short settled nothing and has no line in `trials.jsonl`; a resumed run
+runs it. A line a killed process left incomplete is dropped when the journal is next opened.
+
 The Pier and Harbor backends also write `assets/` (staged binaries, credential stores, container
 programs), `configs/` (one job configuration per trial) and `jobs/` (one directory per trial with the
 container's logs, the verifier's output and the agent's patch). The local-cli backend's trial files

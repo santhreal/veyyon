@@ -9,7 +9,9 @@ The entry point is `evals.ts`, run with Bun from `tests/evals` (`bun evals.ts`, 
 - `evals --suite <ids> --model <ids>` plans and runs one run per suite.
 - `evals --suite <ids> --model <ids> --dry-run` prints the plan and every preflight verdict and runs
   nothing.
-- `evals --resume --run-id <id>` continues an interrupted run from its journal.
+- `evals --resume --run-id <id>` continues an interrupted run from its journal. A run stopped by
+  SIGINT or SIGTERM finishes its trials' teardown and prints this command with the flags it was
+  given.
 - `evals bench [<id> [args...]]` lists the benches, or runs one with the remaining arguments.
 - `evals measure [<id> [args...]]` lists the measurements, or runs one.
 - `evals tool [<id> [args...]]` lists the tools, or runs one.

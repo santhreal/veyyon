@@ -218,6 +218,23 @@ export class VeyyonAdapter implements HarnessAdapter {
 		};
 	}
 
+	/** A tree must hold the CLI it runs; a file must be executable. */
+	async validateBuild(build: string): Promise<string | null> {
+		const stats = await fs.promises.stat(build).catch(() => null);
+		if (!stats) return `the build ${build} does not exist`;
+		if (stats.isDirectory()) {
+			const cli = path.join(build, TREE_CLI);
+			const found = await fs.promises.stat(cli).catch(() => null);
+			return found?.isFile() ? null : `the build ${build} is a directory without ${TREE_CLI}, the CLI a tree runs`;
+		}
+		try {
+			await fs.promises.access(build, fs.constants.X_OK);
+			return null;
+		} catch {
+			return `the build ${build} is a file that is not executable (fix with: chmod +x ${build})`;
+		}
+	}
+
 	buildJobConfigKwargs(context: SystemJobConfigContext): Record<string, unknown> {
 		const kwargs: Record<string, unknown> = {
 			arm_name: context.armName ?? (context.comparisonMode ? "baseline" : context.system),
