@@ -23,22 +23,26 @@ const TASK_TIMEOUT_MS = 60_000;
 
 describe("every browser task", () => {
 	for (const task of BROWSER_TASKS) {
-		it(`${task.id} starts on the seed of every repeat below ${REPEATS}`, async () => {
-			const failures: string[] = [];
-			for (let repeat = 0; repeat < REPEATS; repeat++) {
-				await using dir = await TempDir.create("@evals-browser-seeds-");
-				try {
-					const trial = await task.start({
-						seed: trialSeed({ task: task.id, repeat }),
-						workspace: dir.path(),
-						trialDir: dir.path(),
-					});
-					await trial.finish();
-				} catch (error) {
-					failures.push(`repeat ${repeat}: ${error instanceof Error ? error.message : String(error)}`);
+		it(
+			`${task.id} starts on the seed of every repeat below ${REPEATS}`,
+			async () => {
+				const failures: string[] = [];
+				for (let repeat = 0; repeat < REPEATS; repeat++) {
+					await using dir = await TempDir.create("@evals-browser-seeds-");
+					try {
+						const trial = await task.start({
+							seed: trialSeed({ task: task.id, repeat }),
+							workspace: dir.path(),
+							trialDir: dir.path(),
+						});
+						await trial.finish();
+					} catch (error) {
+						failures.push(`repeat ${repeat}: ${error instanceof Error ? error.message : String(error)}`);
+					}
 				}
-			}
-			expect(failures).toEqual([]);
-		}, TASK_TIMEOUT_MS);
+				expect(failures).toEqual([]);
+			},
+			TASK_TIMEOUT_MS,
+		);
 	}
 });
