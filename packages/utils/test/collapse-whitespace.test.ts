@@ -37,11 +37,15 @@ describe("collapse-whitespace source lock", () => {
 	const IDIOM = 'replace(/\\s+/g, " ").trim()';
 	/**
 	 * Sources whose copy of the idiom runs in a browser page, where no module can be imported:
-	 * `probePress` in the browser tool's tab worker is serialized into the page it probes. Permanent,
-	 * since the reason is where the code runs; a key that stops naming a file with the idiom fails
-	 * below, because a key that matches nothing exempts nothing.
+	 * `probePress` in the browser tool's tab worker is serialized into the page it probes, and so is the
+	 * `:has-text()` query handler puppeteer injects. Permanent, since the reason is where the code runs;
+	 * a key that stops naming a file with the idiom fails below, because a key that matches nothing
+	 * exempts nothing.
 	 */
-	const RUNS_IN_THE_PAGE = new Set(["coding-agent/src/tools/web/browser/tab-worker.ts"]);
+	const RUNS_IN_THE_PAGE = new Set([
+		"coding-agent/src/tools/web/browser/tab-worker.ts",
+		"coding-agent/src/tools/web/browser/has-text.ts",
+	]);
 
 	// The monorepo walk + skip-set is shared with every other source-ownership
 	// lock (see ./support/package-sources).
