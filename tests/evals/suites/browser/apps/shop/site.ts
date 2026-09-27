@@ -15,6 +15,7 @@ import {
 	type HostedSite,
 	hostSite,
 	html,
+	localPath,
 	redirect,
 	type SiteRequest,
 	type SiteResponse,
@@ -173,7 +174,7 @@ export async function startShopSite(world: ShopWorld, seed: number): Promise<Sho
 		const max = Number(url.searchParams.get("max") || "0");
 		const rating = Number(url.searchParams.get("rating") || "0");
 		const sortKey = url.searchParams.get("sort") ?? "relevance";
-		const sort = SORTS[sortKey] ?? FEATURED;
+		const sort = (Object.hasOwn(SORTS, sortKey) && SORTS[sortKey]) || FEATURED;
 		const pageNumber = Math.max(1, Number(url.searchParams.get("page") || "1"));
 		const matches = world.products
 			.filter(item => !q || item.name.toLowerCase().includes(q) || item.description.toLowerCase().includes(q))
@@ -322,7 +323,7 @@ ${field("name", "Full name")}${field("street", "Street")}${field("city", "City")
 		const errors: string[] = [];
 		if (world.cart.length === 0) errors.push("Your cart is empty.");
 		const shipping = fields.shipping as ShippingId | undefined;
-		if (!shipping || !(shipping in SHIPPING)) errors.push("Choose a shipping speed.");
+		if (!shipping || !Object.hasOwn(SHIPPING, shipping)) errors.push("Choose a shipping speed.");
 		let address: Address = world.savedAddress;
 		if (fields.address === "new") {
 			for (const [name, label] of [
@@ -512,8 +513,7 @@ ${error ? `<p class="error">${escapeHtml(error)}</p>` : ""}
 		if (pathname === "/signin" && method === "POST") {
 			if (fields.email?.trim().toLowerCase() === world.account.email && fields.password === world.account.password) {
 				signedIn.add(session);
-				const next = fields.next?.startsWith("/") ? fields.next : "/account";
-				return redirect(next);
+				return redirect(localPath(fields.next, "/account"));
 			}
 			failedSignins++;
 			return signinPage(session, fields.next ?? "/account", "That email and password do not match an account.");
@@ -529,7 +529,7 @@ ${error ? `<p class="error">${escapeHtml(error)}</p>` : ""}
 			if (!item) return text("No such product", { status: 404 });
 			const size = fields.size ?? "";
 			const quantity = Number(fields.quantity ?? "1");
-			if (!(size in item.stock)) return productPage(session, item.sku, "Choose a size.");
+			if (!Object.hasOwn(item.stock, size)) return productPage(session, item.sku, "Choose a size.");
 			if (!Number.isInteger(quantity) || quantity < 1) return productPage(session, item.sku, "Choose a quantity.");
 			const inCart = world.cart.find(line => line.sku === item.sku && line.size === size);
 			if ((item.stock[size] ?? 0) < quantity + (inCart?.quantity ?? 0)) {

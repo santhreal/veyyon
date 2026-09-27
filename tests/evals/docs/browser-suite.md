@@ -27,11 +27,14 @@ its pages and endpoints (`site.ts`) and its tasks (`tasks.ts`).
 | `sheet` | a spreadsheet | cells as divs edited by keystrokes, a formula engine with cross-sheet references, column header menus that sort and filter, comments shown on hover, pre-applied filters that hide rows |
 | `travel` | flight booking, and a payment provider on a second origin | airport type-ahead, a calendar date picker, results behind a spinner, fares in collapsed panels, a seat map, card entry in a cross-origin frame, pre-ticked insurance |
 | `helpdesk` | a support desk with a knowledge base and a forum | customer text, hidden text, alt text, signatures and comments that instruct the agent to do something else, a chip editor and a combobox, actions behind confirmations |
-| `analytics` | a metrics dashboard | numbers drawn on canvas and readable only from hover tooltips, widgets that load after they scroll into view, a two-month range picker, CSV exports |
+| `analytics` | a metrics dashboard | numbers drawn on canvas, which the page shows only in hover tooltips and fetches as JSON, widgets that load after they scroll into view, a two-month range picker, CSV exports |
 
 ## Capabilities
 
-A task names what it exercises; the report breaks pass rates down by these.
+A capability names the path a task is built around: the widgets and page behavior an agent meets
+when it works the task through the page. The grader does not enforce the path. It reads what the
+application recorded and the reply, so an agent that reaches the same state another way passes.
+The report breaks pass rates down by capability.
 
 | Capability | Tasks | Meaning |
 |---|---|---|
@@ -57,9 +60,43 @@ A task names what it exercises; the report breaks pass rates down by these.
 | `virtualized` | 1 | long lists that render only the rows in view |
 | `uploads` | 1 | attaching files from the workspace |
 
+### Endpoints that skip a path
+
+Each application takes its pages' changes and serves their data through its own endpoints, and a
+script run in the page can call them directly. A task completed that way does not exercise the
+capability it names:
+
+| Endpoint | Tasks | Capability skipped |
+|---|---|---|
+| sheet `POST /api/wb/<id>/cells`, `/fill`, `/sort`, `/filter` | `sheet-fill-line-totals`, `sheet-fix-flagged-cells`, `sheet-cross-sheet-summary`, `sheet-reconcile-ledger` | `inline-edit` |
+| sheet `POST /api/wb/<id>/cells`, `/fill` | `sheet-fill-line-totals`, `sheet-cross-sheet-summary` | `keyboard` |
+| analytics `GET /api/series`, `/api/breakdown`: every charted value as JSON | `analytics-peak-week`, `analytics-compare-channels`, `analytics-anomaly-alert` | `canvas` |
+| analytics `GET /api/series`, `/api/breakdown`: no load delay | `analytics-peak-week`, `analytics-compare-channels`, `analytics-anomaly-alert`, `analytics-export-segment` | `timing` |
+| analytics `GET /?from=&to=`, `/export.csv`, `POST /api/reports`: ISO dates | every analytics task | `date-picker` |
+| travel `GET /flights?depart=&return=`, `/trips/<ref>/change?date=`: ISO dates | `travel-cheapest-nonstop`, `travel-change-date-min-cost`, `travel-multi-passenger-book` | `date-picker` |
+| travel `GET /api/search`: results without the spinner | `travel-cheapest-nonstop`, `travel-earliest-arrival` | `timing` |
+| PayBox `POST /api/tokens` from any page on PayBox's origin | `travel-cheapest-nonstop`, `travel-change-date-min-cost`, `travel-multi-passenger-book` | `iframes` |
+| helpdesk `POST /tickets/<id>/fields`: tags as a comma list | `helpdesk-triage-queue` | `keyboard` |
+| helpdesk `POST /settings/profile`: the signature as a field | `helpdesk-profile-update` | `inline-edit` |
+| helpdesk `POST /settings/notifications` under the review banner | `helpdesk-profile-update` | `overlays` |
+| helpdesk `POST /forum/threads/<id>/lock` without `confirm` | `helpdesk-moderate-forum` | `dialogs` |
+| kanban `POST /api/cards/<id>/move` | `kanban-move-review-bugs`, `kanban-sort-by-due-date` | `drag-drop` |
+| kanban `POST /api/cards/<id>` with a title | `kanban-rename-and-archive` | `inline-edit` |
+| kanban `POST /api/cards/<id>` with a due date | `kanban-create-release-card` | `date-picker` |
+| kanban `POST /api/cards/<id>/labels` | `kanban-create-release-card` | `overlays` |
+| bank `POST /api/payees`, `/api/alerts/<key>` | `bank-pay-new-payee`, `bank-alert-settings` | `shadow-dom` |
+| bank form `POST /pay`, `/transfer` without `confirm` | `bank-pay-new-payee`, `bank-cover-bills` | `dialogs` |
+| bank phone `GET /api/conversations/northwind-bank` from the bank's tab | every bank task | `multi-tab`; `timing` in `bank-pay-new-payee` |
+| mail `GET /api/ids` and `POST /api/bulk` | `mail-bulk-archive-newsletters` | `virtualized` |
+| mail `POST /api/attachments` with the file's bytes | `mail-forward-with-attachment` | `uploads` |
+| mail form `POST /compose/send` | `mail-forward-with-attachment` | `overlays` |
+| shop `POST /promo/dismiss` | every shop task | `overlays` |
+| shop `GET /search?sort=price-asc` | `shop-filtered-purchase`, `shop-reorder-size-up` | `search-filter` |
+| shop `POST /cart/add` with a quantity | the shop tasks that set a quantity | `forms` |
+
 ## Tasks
 
-40 tasks with 246 checks: 1 easy, 14 medium, 17 hard, 8 expert.
+40 tasks with 250 checks: 1 easy, 14 medium, 17 hard, 8 expert.
 
 | Task | Difficulty | Budget | Capabilities | What it asks |
 |---|---|---|---|---|
@@ -119,6 +156,9 @@ A task names what it exercises; the report breaks pass rates down by these.
 
 Write it beside its application in `suites/browser/apps/<app>/tasks.ts` with `kitTask`, following
 [the kit](kit.md): seeded data bent so the answer is unique and the tempting wrong answers exist,
-checks over recorded state, a check that no tempting side effect happened, and a `solve()`. The
-sweep in `test/suites/browser/every-browser-task-is-solvable-and-fails-when-nothing-is-done.test.ts`
-picks it up from `BROWSER_TASKS`.
+checks over recorded state, a check that no tempting side effect happened, an answer check that
+fails a reply naming a decoy beside the answer (`answerNamesOnly`, `answerStatesOnly` in
+`engine/kit/checks.ts`), and a `solve()`. A planner that cannot bend a seed draws again rather than
+throw. The sweep in `test/suites/browser/every-browser-task-is-solvable-and-fails-when-nothing-is-done.test.ts`
+and the seed check in `every-browser-task-starts-on-every-seed-of-a-long-run.test.ts` pick it up from
+`BROWSER_TASKS`.

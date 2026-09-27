@@ -5,7 +5,7 @@
  */
 
 import { type KitTask, kitTask } from "../../../../engine/kit/catalog";
-import { answerHasNumber, answerHasText, type Check, normalizeText } from "../../../../engine/kit/checks";
+import { answerNamesOnly, answerStatesOnly, type Check, normalizeText } from "../../../../engine/kit/checks";
 import { FormClient } from "../../../../engine/kit/form-client";
 import { Seeded } from "../../../../engine/kit/seeded";
 import {
@@ -187,6 +187,8 @@ interface PeakWeek {
 	readonly count: number;
 	/** Every week label a wrong reply might name. */
 	readonly candidates: readonly string[];
+	/** Every other week's signups, for the plan and for all plans: the counts a wrong reply might give. */
+	readonly otherCounts: readonly number[];
 }
 
 function planPeakWeek(world: AnalyticsWorld, rng: Seeded): PeakWeek {
@@ -261,7 +263,12 @@ function planPeakWeek(world: AnalyticsWorld, rng: Seeded): PeakWeek {
 	}
 	const candidates = new Set([...weeks.map(week => week.label), isoWeekLabel(quarter.from), isoWeekLabel(quarter.to)]);
 	if (after) candidates.add(after.label);
-	return { plan, quarter, week: target.label, count, candidates: [...candidates] };
+	// A year the reply writes beside the week is a number too, so no decoy may equal one.
+	const years = [Number(target.label.slice(0, 4)), Number(quarter.from.slice(0, 4))];
+	const otherCounts = [...weeks, ...(after ? [after] : [])]
+		.flatMap(week => [inWeek(planSegments, week), inWeek(allSegments, week)])
+		.filter(value => value !== count && !years.includes(value));
+	return { plan, quarter, week: target.label, count, candidates: [...candidates], otherCounts };
 }
 
 const peakWeek = kitTask<AnalyticsState<PeakWeek>>({
@@ -303,14 +310,12 @@ const peakWeek = kitTask<AnalyticsState<PeakWeek>>({
 		{
 			id: "right-week",
 			description: "the reply names the busiest full week of the quarter for the plan, and no other week",
-			pass: (state, answer) =>
-				answerHasText(answer, state.expected.week) &&
-				state.expected.candidates.every(label => label === state.expected.week || !answerHasText(answer, label)),
+			pass: (state, answer) => answerNamesOnly(answer, state.expected.week, state.expected.candidates),
 		},
 		{
 			id: "right-count",
-			description: "the reply states that week's exact number of signups",
-			pass: (state, answer) => answerHasNumber(answer, state.expected.count, 0),
+			description: "the reply states that week's exact number of signups, and no other week's",
+			pass: (state, answer) => answerStatesOnly(answer, state.expected.count, state.expected.otherCounts, 0),
 		},
 		NOTHING_SAVED,
 	],
@@ -434,6 +439,8 @@ interface CompareChannels {
 	readonly channel: string;
 	/** Percent, rounded to one decimal. */
 	readonly growth: number;
+	/** Every other channel's growth, rounded the same way: the figures a wrong reply might give. */
+	readonly otherGrowths: readonly number[];
 }
 
 /** The calendar months, as `YYYY-MM`, whose every day has data. */
@@ -493,7 +500,14 @@ function planCompareChannels(world: AnalyticsWorld, rng: Seeded): CompareChannel
 	}
 	const roundUp = (step: number) => Math.ceil((highestExcluded + 1) / step) * step;
 	const minimum = [1000, 100].map(roundUp).find(value => value <= lowestEligible) ?? lowestEligible;
-	return { first, second, minimum, channel: winner, growth: Math.round(growth(winner) * 10) / 10 };
+	return {
+		first,
+		second,
+		minimum,
+		channel: winner,
+		growth: Math.round(growth(winner) * 10) / 10,
+		otherGrowths: ids.filter(id => id !== winner).map(id => Math.round(growth(id) * 10) / 10),
+	};
 }
 
 const compareChannels = kitTask<AnalyticsState<CompareChannels>>({
@@ -545,16 +559,16 @@ const compareChannels = kitTask<AnalyticsState<CompareChannels>>({
 			id: "right-channel",
 			description: "the reply names the qualifying channel with the largest percentage growth, and no other channel",
 			pass: (state, answer) =>
-				CHANNELS.every(channel =>
-					channel.id === state.expected.channel
-						? answerHasText(answer, channel.label)
-						: !answerHasText(answer, channel.label),
+				answerNamesOnly(
+					answer,
+					labelOf("channels", state.expected.channel),
+					CHANNELS.map(channel => channel.label),
 				),
 		},
 		{
 			id: "right-growth",
-			description: "the reply states that channel's growth to one decimal",
-			pass: (state, answer) => answerHasNumber(answer, state.expected.growth, 0.001),
+			description: "the reply states that channel's growth to one decimal, and no other channel's",
+			pass: (state, answer) => answerStatesOnly(answer, state.expected.growth, state.expected.otherGrowths, 0.001),
 		},
 	],
 });
@@ -691,9 +705,7 @@ const anomalyAlert = kitTask<AnalyticsState<AnomalyAlert>>({
 		{
 			id: "answer-date",
 			description: "the reply names the day of the sharpest drop, and no other day of the window",
-			pass: (state, answer) =>
-				answerHasText(answer, state.expected.date) &&
-				state.expected.dates.every(date => date === state.expected.date || !answerHasText(answer, date)),
+			pass: (state, answer) => answerNamesOnly(answer, state.expected.date, state.expected.dates),
 		},
 		{
 			id: "one-alert",
@@ -750,6 +762,8 @@ interface ExportSegment extends Filters {
 	readonly from: string;
 	readonly to: string;
 	readonly total: number;
+	/** The totals of the tempting wrong exports: the preset's own range, and the default view's extra filter kept. */
+	readonly decoyTotals: readonly number[];
 	/** The two filtered dimensions, in the order the instruction names them. */
 	readonly filtered: readonly DimensionKey[];
 }
@@ -765,25 +779,40 @@ function planExportSegment(world: AnalyticsWorld, rng: Seeded): ExportSegment {
 			if (from >= world.start && to <= world.today) options.push({ preset: preset.label, from, to, step });
 		}
 	}
-	const choice = rng.pick(options);
-	const filtered = rng.sample(DIMENSION_KEYS, 2);
 	// Free accounts earn nothing, so a revenue filter never picks the free plan.
 	const pickId = (key: DimensionKey) =>
 		rng.pick(DIMENSIONS[key].values.filter(value => key !== "plans" || value.id !== "free")).id;
-	const filters: Record<DimensionKey, string[]> = { countries: [], plans: [], channels: [] };
-	for (const key of filtered) filters[key] = [pickId(key)];
-	// The team's default view filters the third dimension, which the export must not keep.
-	const third = DIMENSION_KEYS.find(key => !filtered.includes(key)) as DimensionKey;
-	const stray = pickId(third);
-	world.defaultView = { ...world.defaultView, [third]: [stray] };
 	const revenue = (chosen: Filters, from: string, to: string) => sum(dailyTotals(world, "revenue", chosen, from, to));
-	const total = revenue(filters, choice.from, choice.to);
-	const unshifted = revenue(filters, addDays(choice.from, -choice.step), addDays(choice.to, -choice.step));
-	const withStray = revenue({ ...filters, [third]: [stray] }, choice.from, choice.to);
-	if (total === 0 || total === unshifted || total === withStray) {
-		throw new Error("analytics-export-segment: the export total does not stand apart from its decoys");
+	// A small segment can earn the same over the shifted and the unshifted range, so draw again until
+	// the total stands apart from both decoys.
+	for (let attempt = 0; attempt < 100; attempt++) {
+		const choice = rng.pick(options);
+		const filtered = rng.sample(DIMENSION_KEYS, 2);
+		const filters: Record<DimensionKey, string[]> = { countries: [], plans: [], channels: [] };
+		for (const key of filtered) filters[key] = [pickId(key)];
+		// The team's default view filters the third dimension, which the export must not keep.
+		const third = DIMENSION_KEYS.find(key => !filtered.includes(key)) as DimensionKey;
+		const stray = pickId(third);
+		const total = revenue(filters, choice.from, choice.to);
+		const unshifted = revenue(filters, addDays(choice.from, -choice.step), addDays(choice.to, -choice.step));
+		const withStray = revenue({ ...filters, [third]: [stray] }, choice.from, choice.to);
+		if (total === 0 || total === unshifted || total === withStray) continue;
+		world.defaultView = { ...world.defaultView, [third]: [stray] };
+		// A year the reply writes beside the range is a number too, so no decoy may equal one.
+		const years = [Number(choice.from.slice(0, 4)), Number(choice.to.slice(0, 4))];
+		const decoyTotals = [unshifted, withStray].filter(value => !years.includes(value));
+		return {
+			preset: choice.preset,
+			step: choice.step,
+			from: choice.from,
+			to: choice.to,
+			total,
+			decoyTotals,
+			...filters,
+			filtered,
+		};
 	}
-	return { preset: choice.preset, step: choice.step, from: choice.from, to: choice.to, total, ...filters, filtered };
+	throw new Error("analytics-export-segment: no export total stands apart from its decoys");
 }
 
 const exportSegment = kitTask<AnalyticsState<ExportSegment>>({
@@ -837,8 +866,8 @@ const exportSegment = kitTask<AnalyticsState<ExportSegment>>({
 		},
 		{
 			id: "answer-total",
-			description: "the reply states the exact total of the exported rows",
-			pass: (state, answer) => answerHasNumber(answer, state.expected.total, 0),
+			description: "the reply states the exact total of the exported rows, and no decoy export's total",
+			pass: (state, answer) => answerStatesOnly(answer, state.expected.total, state.expected.decoyTotals, 0),
 		},
 	],
 });

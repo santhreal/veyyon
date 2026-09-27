@@ -252,9 +252,10 @@ ${rows ? `<table><tr><th>Card</th><th>Title</th><th>Archived from</th><th></th><
 		}
 		let due: string | null | undefined;
 		if ("due" in body) {
-			const value = body.due === null ? "" : oneLine(body.due);
+			// Null clears the date; anything but a string is refused rather than read as empty.
+			const value = body.due === null ? "" : typeof body.due === "string" ? oneLine(body.due) : null;
 			due = value ? parseSlashDate(value) : null;
-			if (value && !due) return refuse("Enter the due date as M/D/YYYY, for example 3/9/2027.");
+			if (value === null || (value && !due)) return refuse("Enter the due date as M/D/YYYY, for example 3/9/2027.");
 		}
 		if (title !== undefined) card.title = title;
 		if (assignee !== undefined) card.assignee = assignee;

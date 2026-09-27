@@ -5,7 +5,7 @@
  */
 
 import { type KitTask, kitTask } from "../../../../engine/kit/catalog";
-import { answerHasNumber, answerHasText, normalizeText } from "../../../../engine/kit/checks";
+import { answerHasNumber, answerNamesOnly, normalizeText } from "../../../../engine/kit/checks";
 import { FormClient } from "../../../../engine/kit/form-client";
 import { Seeded } from "../../../../engine/kit/seeded";
 import {
@@ -712,8 +712,13 @@ const sortAndAnswer = kitTask<SheetTaskState<SortAnswer>>({
 		},
 		{
 			id: "answer-third",
-			description: "the reply names the product in the third data row",
-			pass: (state, answer) => answerHasText(answer, state.expected.third),
+			description: "the reply names the product in the third data row, and no other product",
+			pass: (state, answer) =>
+				answerNamesOnly(
+					answer,
+					state.expected.third,
+					state.expected.rows.map(row => row[PRODUCT_HEADERS.indexOf("Product")] ?? ""),
+				),
 		},
 		{
 			id: "nothing-else-changed",
@@ -877,8 +882,9 @@ const crossSheetSummary = kitTask<SheetTaskState<CrossSheet>>({
 		},
 		{
 			id: "answer-best-average",
-			description: "the reply names the region with the highest average sale",
-			pass: (state, answer) => answerHasText(answer, state.expected.best),
+			description: "the reply names the region with the highest average sale, and no other region",
+			pass: (state, answer) =>
+				answerNamesOnly(answer, state.expected.best, state.expected.regions.map(entry => entry.region)),
 		},
 		{
 			id: "nothing-else-changed",
@@ -1077,14 +1083,9 @@ function planReconcile(rng: Seeded): { world: GridWorld; book: Workbook; plan: R
 	throw new Error("no ledger with an unambiguous reconciliation");
 }
 
-/** Whether the answer states `expected` with its sign, written `-12.30`, `-$12.30`, `−12.30` or `($12.30)`. */
+/** Whether the answer states `expected` with its sign; an accounting `($12.30)` reads as `-12.30`. */
 function answerHasSignedAmount(answer: string, expected: number): boolean {
-	const normalized = answer
-		.replaceAll(/[\u2212\u2013]/g, "-")
-		.replaceAll(/-\s*\$\s*/g, "-")
-		.replaceAll(/\$\s*-/g, "-")
-		.replaceAll(/\(\s*\$?\s*(\d[\d,]*(?:\.\d+)?)\s*\)/g, "-$1");
-	return answerHasNumber(normalized, expected);
+	return answerHasNumber(answer.replaceAll(/\(\s*\$?\s*(\d[\d,]*(?:\.\d+)?)\s*\)/g, " -$1"), expected);
 }
 
 const reconcileLedger = kitTask<SheetTaskState<Reconcile>>({

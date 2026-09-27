@@ -8,7 +8,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { clampLow } from "@veyyon/utils";
 import { type KitTask, kitTask } from "../../../../engine/kit/catalog";
-import { answerHasNumber, type Check, normalizeText } from "../../../../engine/kit/checks";
+import { answerStatesOnly, type Check, normalizeText } from "../../../../engine/kit/checks";
 import { FormClient, type FormResponse } from "../../../../engine/kit/form-client";
 import { Seeded } from "../../../../engine/kit/seeded";
 import {
@@ -296,7 +296,10 @@ interface CategorySpend {
 	readonly totalCents: number;
 	/** What the pending charges of the month would add: the answer when they are wrongly counted. */
 	readonly pendingCents: number;
+	/** What the month's refund takes off: the answer is this much higher when it is left in. */
 	readonly refundCents: number;
+	/** The same total over checking alone: the answer when savings is left out. */
+	readonly checkingOnlyCents: number;
 }
 
 function planCategorySpend(world: BankWorld, rng: Seeded): CategorySpend {
@@ -354,7 +357,12 @@ function planCategorySpend(world: BankWorld, rng: Seeded): CategorySpend {
 		.filter(entry => entry.status === "pending" && entry.category === category && entry.date.startsWith(`${month}-`))
 		.reduce((sum, entry) => sum + entry.amountCents, 0);
 	if (totalCents <= 0 || pendingCents <= 0) throw new Error(`${category} in ${month} has no spend or no pending charge`);
-	return { category, month, totalCents, pendingCents, refundCents };
+	const checkingOnlyCents = categorySpend(
+		world.transactions.filter(entry => entry.account === "checking"),
+		category,
+		month,
+	);
+	return { category, month, totalCents, pendingCents, refundCents, checkingOnlyCents };
 }
 
 const categorySpendTask = kitTask<BankState<CategorySpend>>({
@@ -373,7 +381,7 @@ const categorySpendTask = kitTask<BankState<CategorySpend>>({
 				access(site, world),
 				`How much did you spend on ${plan.category} in ${monthLabel(plan.month)}, across your checking and savings accounts together?`,
 				"Count the posted transactions dated in that month and leave out pending ones; a refund reduces the total. Do not change anything in the accounts.",
-				"Reply with the total in dollars and cents.",
+				"Reply with the total in dollars and cents, and state no other total.",
 			].join("\n"),
 			solve: async () => {
 				const client = await signIn(site, world);
@@ -393,8 +401,20 @@ const categorySpendTask = kitTask<BankState<CategorySpend>>({
 	checks: [
 		{
 			id: "answer-total",
-			description: "states the posted total of the category for the month, refunds subtracted",
-			pass: (state, answer) => answerHasNumber(answer, state.expected.totalCents / 100),
+			description: "states the posted total of the category for the month, refunds subtracted, and no miscounted total",
+			pass: (state, answer) => {
+				const { month, totalCents, pendingCents, refundCents, checkingOnlyCents } = state.expected;
+				const slips = [pendingCents, refundCents, checkingOnlyCents - totalCents];
+				// An answer may name the month's year, which reads as that many whole dollars.
+				const yearCents = Number(month.slice(0, 4)) * 100;
+				// Each non-empty combination of the slips is a total a miscounting run arrives at: pending charges
+				// counted, the refund left in, savings left out.
+				const miscounts = [1, 2, 3, 4, 5, 6, 7]
+					.map(mask => slips.reduce((sum, slip, bit) => (mask & (1 << bit) ? sum + slip : sum), totalCents))
+					.filter(cents => cents !== yearCents);
+				// The ledger prints spend as `-$312.40`; an answer that copies the sign states the same total.
+				return answerStatesOnly(answer, totalCents / 100, miscounts.map(cents => cents / 100), undefined, "either");
+			},
 		},
 		NOTHING_CHANGED,
 	],

@@ -18,6 +18,7 @@ import {
 	html,
 	json,
 	jsonBody,
+	localPath,
 	redirect,
 	type SiteRequest,
 	type SiteResponse,
@@ -738,7 +739,7 @@ ${notice ? `<p class="notice">${escapeHtml(notice)}</p>` : ""}${error ? `<p clas
 		if (pathname === "/signin" && method === "POST") {
 			if (fields.email?.trim().toLowerCase() === world.account.email && fields.password === world.account.password) {
 				signedIn.add(session);
-				return redirect(fields.next?.startsWith("/") ? fields.next : "/mail/inbox");
+				return redirect(localPath(fields.next, "/mail/inbox"));
 			}
 			failedSignins++;
 			return signinPage(fields.next ?? "/mail/inbox", "That email and password do not match an account.");
@@ -753,13 +754,20 @@ ${notice ? `<p class="notice">${escapeHtml(notice)}</p>` : ""}${error ? `<p clas
 		}
 
 		if (pathname === "/" || pathname === "/mail") return redirect("/mail/inbox");
-		const notice = NOTICES[url.searchParams.get("notice") ?? ""] ?? "";
+		const noticeKey = url.searchParams.get("notice") ?? "";
+		const notice = (Object.hasOwn(NOTICES, noticeKey) && NOTICES[noticeKey]) || "";
 		if (pathname === "/mail/search") return listPage("inbox", url.searchParams.get("q") ?? "", notice);
 		const folderMatch = /^\/mail\/(inbox|archive|sent|trash|starred)$/.exec(pathname);
 		if (folderMatch && method === "GET") return listPage(folderMatch[1] as string, url.searchParams.get("q") ?? "", notice);
 		const labelMatch = /^\/mail\/label\/(.+)$/.exec(pathname);
 		if (labelMatch && method === "GET") {
-			const label = labelNamed(decodeURIComponent(labelMatch[1] as string));
+			let name: string | undefined;
+			try {
+				name = decodeURIComponent(labelMatch[1] as string);
+			} catch {
+				// A malformed escape names no label.
+			}
+			const label = name === undefined ? undefined : labelNamed(name);
 			if (!label) return text("No such label", { status: 404 });
 			return listPage(`label:${label}`, "", notice);
 		}
@@ -833,7 +841,7 @@ ${notice ? `<p class="notice">${escapeHtml(notice)}</p>` : ""}${error ? `<p clas
 		if (pathname === "/settings/labels" && method === "GET") return labelsPage();
 		if (pathname === "/labels" && method === "POST") {
 			const name = (fields.name ?? "").trim();
-			const back = fields.back?.startsWith("/") ? fields.back : "/settings/labels";
+			const back = localPath(fields.back, "/settings/labels");
 			if (!name || name.length > 40) return labelsPage("", "A label name is 1 to 40 characters.");
 			if (!labelNamed(name)) world.labels.push(name);
 			return redirect(back);

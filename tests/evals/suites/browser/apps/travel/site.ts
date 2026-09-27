@@ -1269,12 +1269,16 @@ ${payment}
 		return text("Not found", { status: 404 });
 	};
 
+	// PayBox is already listening; a Skyway that cannot start must not leave it behind.
 	const site = await hostSite(async request => {
 		const session = sessionOf(request);
 		const response = await route(request, session.id);
 		return session.fresh
 			? { ...response, cookies: [...(response.cookies ?? []), { name: SESSION_COOKIE, value: session.id }] }
 			: response;
+	}).catch(async (error: unknown) => {
+		await paybox.close();
+		throw error;
 	});
 	origin = site.origin;
 

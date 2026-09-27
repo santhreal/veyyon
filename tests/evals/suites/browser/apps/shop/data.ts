@@ -149,7 +149,8 @@ export function randomAddress(rng: Seeded, name?: string): Address {
 	};
 }
 
-function product(rng: Seeded, category: string, index: number): Product {
+/** A product of `category`, with a SKU no product in `catalog` has: pages and forms find a product by SKU alone. */
+function product(rng: Seeded, category: string, catalog: readonly Product[]): Product {
 	const spec = CATEGORIES[category];
 	if (!spec) throw new Error(`unknown category ${category}`);
 	const stock: Record<string, number> = {};
@@ -157,9 +158,11 @@ function product(rng: Seeded, category: string, index: number): Product {
 	else stock[ONE_SIZE] = rng.next() < 0.15 ? 0 : rng.int(1, 20);
 	const brand = rng.pick(BRANDS);
 	const noun = rng.pick(spec.nouns);
+	let sku = `SK-${rng.code(5)}`;
+	while (catalog.some(item => item.sku === sku)) sku = `SK-${rng.code(5)}`;
 	return {
-		sku: `SK-${rng.code(5)}`,
-		name: `${brand} ${noun} ${index + 1}`,
+		sku,
+		name: `${brand} ${noun} ${catalog.length + 1}`,
 		category,
 		priceCents: rng.int(18, 420) * 100 + rng.pick([0, 49, 95, 99]),
 		rating: rng.int(28, 50) / 10,
@@ -175,7 +178,7 @@ export function generateShop(rng: Seeded): ShopWorld {
 	const products: Product[] = [];
 	for (const category of categories()) {
 		const count = rng.int(9, 12);
-		for (let i = 0; i < count; i++) products.push(product(rng, category, products.length));
+		for (let i = 0; i < count; i++) products.push(product(rng, category, products));
 	}
 	const first = rng.pick(FIRST);
 	const last = rng.pick(LAST);

@@ -643,16 +643,10 @@ function criterionTest(criterion: number | string | boolean | null): (value: Val
 	}
 	const blank = (value: Value) => value === null || value === "";
 	if (operand === "") return value => (op === "<>" ? !blank(value) : op === "=" ? blank(value) : false);
-	const pattern = new RegExp(
-		`^${operand
-			.replaceAll(/[.+^${}()|[\]\\]/g, "\\$&")
-			.replaceAll("*", ".*")
-			.replaceAll("?", ".")}$`,
-		"i",
-	);
+	const matchesPattern = wildcardTest(operand);
 	return value => {
 		if (op === "=" || op === "<>") {
-			const matches = typeof value === "string" && pattern.test(value);
+			const matches = typeof value === "string" && matchesPattern(value);
 			return op === "=" ? matches : !matches;
 		}
 		if (typeof value !== "string") return false;
@@ -660,10 +654,51 @@ function criterionTest(criterion: number | string | boolean | null): (value: Val
 	};
 }
 
+/**
+ * The test of whether a text matches a criterion's pattern, `*` standing for any run of characters
+ * and `?` for one, ignoring case. The pattern splits at its stars: the text starts with the first
+ * part, ends with the last, and holds the parts between in order, each placed at its leftmost fit.
+ * A leftmost placement never loses a match, so no placement is retried: the work is at most the
+ * text's length times the pattern's, however many stars the pattern holds.
+ */
+function wildcardTest(pattern: string): (text: string) => boolean {
+	const parts = pattern.toLowerCase().split("*");
+	const head = parts[0] as string;
+	const tail = parts.length > 1 ? (parts[parts.length - 1] as string) : "";
+	const middle = parts.slice(1, -1);
+	const fits = (text: string, at: number, part: string): boolean => {
+		for (let k = 0; k < part.length; k++) {
+			if (part[k] !== "?" && part[k] !== text[at + k]) return false;
+		}
+		return true;
+	};
+	return value => {
+		const text = value.toLowerCase();
+		if (parts.length === 1) return text.length === head.length && fits(text, 0, head);
+		const end = text.length - tail.length;
+		if (end < head.length || !fits(text, 0, head) || !fits(text, end, tail)) return false;
+		let at = head.length;
+		for (const part of middle) {
+			let start = at;
+			while (start + part.length <= end && !fits(text, start, part)) start++;
+			if (start + part.length > end) return false;
+			at = start + part.length;
+		}
+		return true;
+	};
+}
+
 interface Area {
 	readonly sheet: SheetCells;
 	readonly rect: Rect;
 }
+
+/**
+ * How deep one evaluation nests, counting every operator, call and reference it passes through. A
+ * longer chain of references evaluates to `#ERROR!` instead of exhausting the stack; a formula
+ * filled down every row of a sheet nests well inside it.
+ */
+const MAX_DEPTH = 2000;
 
 /**
  * Evaluates the cells of one workbook. Values are computed on demand and remembered, so build a new
@@ -674,6 +709,7 @@ export class Evaluator {
 	readonly #values = new Map<string, Value>();
 	readonly #pending = new Set<string>();
 	readonly #lastRows = new Map<string, number>();
+	#depth = 0;
 
 	constructor(sheets: readonly SheetCells[]) {
 		for (const sheet of sheets) this.#sheets.set(sheet.name.toLowerCase(), sheet);
@@ -693,8 +729,12 @@ export class Evaluator {
 		const raw = sheet.cells[cell];
 		if (raw === undefined) return null;
 		this.#pending.add(key);
-		const value = raw.startsWith("=") ? this.#formula(sheet, raw.slice(1)) : literalValue(raw);
-		this.#pending.delete(key);
+		let value: Value;
+		try {
+			value = raw.startsWith("=") ? this.#formula(sheet, raw.slice(1)) : literalValue(raw);
+		} finally {
+			this.#pending.delete(key);
+		}
 		this.#values.set(key, value);
 		return value;
 	}
@@ -746,28 +786,34 @@ export class Evaluator {
 	}
 
 	#eval(node: Node, sheet: SheetCells): Result {
-		switch (node.t) {
-			case "value":
-				return node.v;
-			case "ref": {
-				const target = this.#sheetFor(node.sheet, sheet);
-				if (!target || node.col >= MAX_COLS || node.row > MAX_ROWS) return fault("#REF!");
-				return this.#cell(target, cellName(node.col, node.row));
+		if (this.#depth >= MAX_DEPTH) return fault("#ERROR!");
+		this.#depth++;
+		try {
+			switch (node.t) {
+				case "value":
+					return node.v;
+				case "ref": {
+					const target = this.#sheetFor(node.sheet, sheet);
+					if (!target || node.col >= MAX_COLS || node.row > MAX_ROWS) return fault("#REF!");
+					return this.#cell(target, cellName(node.col, node.row));
+				}
+				case "range": {
+					const area = this.#area(node, sheet);
+					return isError(area) ? area : { grid: this.#read(area) };
+				}
+				case "unary": {
+					const value = this.#scalar(node.x, sheet);
+					if (node.op === "+") return value;
+					const n = toNumber(value);
+					return isError(n) ? n : -n;
+				}
+				case "binary":
+					return this.#binary(node.op, this.#scalar(node.a, sheet), this.#scalar(node.b, sheet));
+				case "call":
+					return this.#call(node.name, node.args, sheet);
 			}
-			case "range": {
-				const area = this.#area(node, sheet);
-				return isError(area) ? area : { grid: this.#read(area) };
-			}
-			case "unary": {
-				const value = this.#scalar(node.x, sheet);
-				if (node.op === "+") return value;
-				const n = toNumber(value);
-				return isError(n) ? n : -n;
-			}
-			case "binary":
-				return this.#binary(node.op, this.#scalar(node.a, sheet), this.#scalar(node.b, sheet));
-			case "call":
-				return this.#call(node.name, node.args, sheet);
+		} finally {
+			this.#depth--;
 		}
 	}
 

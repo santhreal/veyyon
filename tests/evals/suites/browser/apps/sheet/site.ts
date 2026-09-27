@@ -608,7 +608,8 @@ export async function startSheetSite(world: GridWorld): Promise<GridSite> {
 				const classes = ["cell"];
 				if (cell?.kind === "num") classes.push("num");
 				if (cell?.kind === "err") classes.push("err");
-				if (sheet.comments[name]) classes.push("has-comment");
+				// A comment is read by pointing at its cell, and no pointer reaches a hidden row.
+				if (sheet.comments[name] && !hidden.has(r)) classes.push("has-comment");
 				rowCells += `<div class="${classes.join(" ")}" role="gridcell" aria-colindex="${c + 1}" data-cell="${name}">${escapeHtml(cell?.display ?? "")}</div>`;
 			}
 			gridRows.push(
@@ -663,7 +664,11 @@ ${gridRows.join("\n")}
 	const api = (request: SiteRequest, book: Workbook, action: string): SiteResponse => {
 		if (action === "comment" && request.method === "GET") {
 			const sheet = findSheet(book, request.url.searchParams.get("sheet") ?? "");
-			const comment = sheet?.comments[(request.url.searchParams.get("cell") ?? "").toUpperCase()];
+			const address = parseCellName(request.url.searchParams.get("cell") ?? "");
+			if (!sheet || !address) return fail(404, "that cell has no comment");
+			// The page requests a comment only while the pointer rests on its cell; none rests on a hidden row.
+			if (hiddenRows(book, sheet).has(address.row)) return fail(404, "that cell is in a row the filter hides");
+			const comment = sheet.comments[cellName(address.col, address.row)];
 			return comment ? json(comment) : fail(404, "that cell has no comment");
 		}
 		if (request.method !== "POST") return fail(405, "use POST");

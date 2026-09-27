@@ -218,7 +218,10 @@ export function addDays(iso: string, days: number): string {
 }
 
 export function isIsoDate(value: string): boolean {
-	return /^\d{4}-\d{2}-\d{2}$/.test(value) && isoDate(dayNumber(value)) === value;
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+	// A month or day out of range (`2025-13-01`) parses to no day at all, and no day formats as a date.
+	const day = dayNumber(value);
+	return Number.isFinite(day) && isoDate(day) === value;
 }
 
 /** 0 for Monday through 6 for Sunday. */

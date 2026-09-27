@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { type KitTask, kitTask } from "../../../../engine/kit/catalog";
-import { answerHasNumber, type Check, normalizeText } from "../../../../engine/kit/checks";
+import { answerStatesOnly, type Check, normalizeText } from "../../../../engine/kit/checks";
 import { FormClient } from "../../../../engine/kit/form-client";
 import { Seeded } from "../../../../engine/kit/seeded";
 import {
@@ -325,7 +325,7 @@ const replyWithInvoiceTotal = kitTask<MailState<InvoiceReply>>({
 			instruction: [
 				signIn(site.origin, world),
 				`${plan.company} emailed you invoice ${plan.invoice}. Reply to the email in which they sent that invoice: to its sender, in that email's conversation.`,
-				"In the reply, state the amount currently due on that invoice and its current due date.",
+				"In the reply, state the amount currently due on that invoice and its current due date, and no other amount or due date.",
 				"Send nothing else.",
 			].join("\n"),
 			solve: async () => {
@@ -356,13 +356,21 @@ const replyWithInvoiceTotal = kitTask<MailState<InvoiceReply>>({
 		},
 		{
 			id: "corrected-amount",
-			description: "states the corrected amount due",
-			pass: state => answerHasNumber(ownText(onlySent(state)?.body ?? ""), state.expected.amountCents / 100),
+			description: "states the corrected amount due, not the amount it replaced",
+			pass: state => {
+				const { amountCents, staleAmountCents, dueDate } = state.expected;
+				// A reply names the due date's year, which reads as that many whole dollars.
+				const replaced = staleAmountCents === Number(dueDate.slice(0, 4)) * 100 ? [] : [staleAmountCents / 100];
+				return answerStatesOnly(ownText(onlySent(state)?.body ?? ""), amountCents / 100, replaced);
+			},
 		},
 		{
 			id: "corrected-due-date",
-			description: "states the corrected due date",
-			pass: state => mentionsDate(ownText(onlySent(state)?.body ?? ""), state.expected.dueDate),
+			description: "states the corrected due date, not the date it replaced",
+			pass: state => {
+				const own = ownText(onlySent(state)?.body ?? "");
+				return mentionsDate(own, state.expected.dueDate) && !mentionsDate(own, state.expected.staleDueDate);
+			},
 		},
 	],
 });

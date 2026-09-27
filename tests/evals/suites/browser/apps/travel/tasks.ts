@@ -5,7 +5,7 @@
  */
 
 import { type KitTask, kitTask } from "../../../../engine/kit/catalog";
-import { answerHasNumber, answerHasText, type Check, normalizeText } from "../../../../engine/kit/checks";
+import { answerNamesOnly, answerStatesOnly, type Check, normalizeText } from "../../../../engine/kit/checks";
 import { FormClient, type FormResponse } from "../../../../engine/kit/form-client";
 import { Seeded } from "../../../../engine/kit/seeded";
 import {
@@ -33,6 +33,7 @@ import {
 	longRoutes,
 	makeItinerary,
 	newBookingRef,
+	quoteChange,
 	quoteTrip,
 	randomTraveller,
 	SEAT_ROWS,
@@ -262,10 +263,10 @@ const CARD_USED: Check<TravelState<{ readonly last4: string }>> = {
 
 const ANSWER_REFERENCE: Check<TravelSnapshot> = {
 	id: "answer-reference",
-	description: "the reply states the booking reference",
+	description: "the reply states the new booking's reference, and no other trip's",
 	pass: (state, answer) => {
 		const booking = onlyNewBooking(state);
-		return booking !== undefined && answerHasText(answer, booking.ref);
+		return booking !== undefined && answerNamesOnly(answer, booking.ref, state.bookings.map(entry => entry.ref));
 	},
 };
 
@@ -650,6 +651,8 @@ interface ChangeReturn {
 	readonly newReturn: string;
 	readonly familyId: string;
 	readonly chargeCents: number;
+	/** What a change to each other flight of that day would cost, the decoy's among them. */
+	readonly otherCents: readonly number[];
 	readonly oldFlightKey: string;
 	readonly oldSeat: string;
 	readonly last4: string;
@@ -713,6 +716,9 @@ function planChangeReturn(world: TravelWorld, rng: Seeded) {
 			newReturn: target.id,
 			familyId: family.id,
 			chargeCents: (family.changeFeeCents ?? 0) + price - paid,
+			otherCents: candidates
+				.filter(itinerary => itinerary !== target)
+				.flatMap(itinerary => quoteChange(booking, 1, itinerary)?.totalCents ?? []),
 			oldFlightKey: flightKey(returnLeg.date, oldSegment.flightNo),
 			oldSeat,
 			last4: cardLast4(card),
@@ -793,8 +799,13 @@ const changeReturn = kitTask<TravelState<ChangeReturn>>({
 		CARD_USED,
 		{
 			id: "answer-amount",
-			description: "the reply states the amount paid",
-			pass: (state, answer) => answerHasNumber(answer, state.expected.chargeCents / 100),
+			description: "the reply states the amount paid, and not what another flight would have cost",
+			pass: (state, answer) =>
+				answerStatesOnly(
+					answer,
+					state.expected.chargeCents / 100,
+					state.expected.otherCents.map(cents => cents / 100),
+				),
 		},
 	],
 });
@@ -806,6 +817,8 @@ interface EarliestArrival {
 	readonly flightNo: string;
 	/** `HH:MM`. */
 	readonly arrival: string;
+	/** Every flight of the day's other ways to fly the route, the decoys among them. */
+	readonly others: readonly string[];
 }
 
 function qualifies(itinerary: Itinerary): boolean {
@@ -847,7 +860,15 @@ function planEarliestArrival(world: TravelWorld, rng: Seeded) {
 	}
 	const last = target.segments[target.segments.length - 1];
 	if (!last) throw new Error("an itinerary without flights");
-	return { from, to, date, expected: { flightNo: last.flightNo, arrival: clock(arrival) } satisfies EarliestArrival };
+	const others = day
+		.filter(itinerary => itinerary !== target)
+		.flatMap(itinerary => itinerary.segments.map(segment => segment.flightNo));
+	return {
+		from,
+		to,
+		date,
+		expected: { flightNo: last.flightNo, arrival: clock(arrival), others } satisfies EarliestArrival,
+	};
 }
 
 function answerHasFlight(answer: string, flightNo: string): boolean {
@@ -885,8 +906,9 @@ const earliestArrival = kitTask<TravelState<EarliestArrival>>({
 	checks: [
 		{
 			id: "answer-flight",
-			description: "the reply names the flight that lands first",
-			pass: (state, answer) => answerHasFlight(answer, state.expected.flightNo),
+			description: "the reply names the flight that lands first, and no flight of another way to fly",
+			pass: (state, answer) =>
+				answerNamesOnly(answer, state.expected.flightNo, state.expected.others, answerHasFlight),
 		},
 		{
 			id: "answer-time",

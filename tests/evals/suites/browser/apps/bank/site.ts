@@ -17,6 +17,7 @@ import {
 	html,
 	json,
 	jsonBody,
+	localPath,
 	redirect,
 	type SiteRequest,
 	type SiteResponse,
@@ -166,11 +167,6 @@ function filterQuery(filter: ActivityFilter): string {
 	const params = new URLSearchParams();
 	for (const [name, value] of Object.entries(filter)) if (value) params.set(name, value);
 	return params.toString();
-}
-
-/** A path on this site to land on after sign-in; anything else, including `//host`, lands on `/`. */
-function localPath(value: string | null | undefined): string {
-	return value?.startsWith("/") && !value.startsWith("//") ? value : "/";
 }
 
 function csvCell(value: string): string {
@@ -800,7 +796,7 @@ ${payment.memo ? `<p>Memo: ${escapeHtml(payment.memo)}</p>` : ""}
 		return text("Not found", { status: 404 });
 	};
 
-	const site = await hostSite(request => {
+	const handler = (request: SiteRequest): SiteResponse => {
 		const existing = request.cookies[SESSION_COOKIE];
 		const sessionId = existing && sessions.has(existing) ? existing : `n${rng.code(16)}`;
 		let session = sessions.get(sessionId);
@@ -812,6 +808,11 @@ ${payment.memo ? `<p>Memo: ${escapeHtml(payment.memo)}</p>` : ""}
 		return sessionId === existing
 			? response
 			: { ...response, cookies: [...(response.cookies ?? []), { name: SESSION_COOKIE, value: sessionId }] };
+	};
+	// The phone is already listening; a bank that cannot start must not leave it behind.
+	const site = await hostSite(handler).catch(async (error: unknown) => {
+		await phone.close();
+		throw error;
 	});
 
 	const close = async () => {

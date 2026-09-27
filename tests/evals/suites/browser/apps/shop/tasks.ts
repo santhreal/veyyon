@@ -4,7 +4,7 @@
  * recorded.
  */
 
-import { answerHasNumber, answerHasText, type Check, normalizeText } from "../../../../engine/kit/checks";
+import { answerHasNumber, answerHasText, answerNamesOnly, type Check, normalizeText } from "../../../../engine/kit/checks";
 import { type KitTask, kitTask } from "../../../../engine/kit/catalog";
 import { FormClient, type FormResponse } from "../../../../engine/kit/form-client";
 import { Seeded } from "../../../../engine/kit/seeded";
@@ -343,6 +343,8 @@ interface Warranty {
 	readonly names: readonly string[];
 	readonly sku: string;
 	readonly years: number;
+	/** The SKUs of the two products with shorter warranties. */
+	readonly others: readonly string[];
 }
 
 const warrantyAnswer = kitTask<ShopState<Warranty>>({
@@ -364,14 +366,26 @@ const warrantyAnswer = kitTask<ShopState<Warranty>>({
 			instruction: [
 				`Summit Outfitters is an online shop at ${site.origin}.`,
 				`Of these three products, which has the longest warranty: ${names.join("; ")}?`,
-				"Reply with that product's SKU and its warranty in years. Do not buy anything.",
+				"Reply with that product's SKU and its warranty in years, and name no other product's SKU. Do not buy anything.",
 			].join("\n"),
 			solve: async () => `${winner.sku}, with a ${winner.warrantyYears}-year warranty.`,
-			finish: async () => ({ ...(await site.finish()), expected: { names, sku: winner.sku, years: winner.warrantyYears } }),
+			finish: async () => ({
+				...(await site.finish()),
+				expected: {
+					names,
+					sku: winner.sku,
+					years: winner.warrantyYears,
+					others: updated.filter(item => item !== winner).map(item => item.sku),
+				},
+			}),
 		};
 	},
 	checks: [
-		{ id: "answer-sku", description: "names the SKU with the longest warranty", pass: (state, answer) => answerHasText(answer, state.expected.sku) },
+		{
+			id: "answer-sku",
+			description: "names the SKU with the longest warranty and neither of the others",
+			pass: (state, answer) => answerNamesOnly(answer, state.expected.sku, state.expected.others),
+		},
 		{ id: "answer-years", description: "states its warranty in years", pass: (state, answer) => answerHasNumber(answer, state.expected.years) },
 		{ id: "nothing-bought", description: "placed no order and left the cart empty", pass: state => placedOrders(state).length === 0 && state.cart.length === 0 },
 		NO_SIGNUP,
