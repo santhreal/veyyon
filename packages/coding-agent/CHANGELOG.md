@@ -10,7 +10,8 @@
 - The `browser` tool's `tab.uploadFile` takes a button, label or other control that opens a file chooser and hands the chooser the files, refuses an input that takes no files, and fails naming a control that opens no chooser.
 - The `browser` tool's `tab.ref()` and `tab.id()` can be called on without awaiting the handle first: `await tab.ref("e5").click()`; a call left unawaited on a ref that resolves to nothing no longer ends the tab.
 - The `browser` tool's `tab.ariaSnapshot()`, and an `open`'s page snapshot, nest each iframe's content under its line, cross-site frames and frames within frames included, with refs like `f1e3` that `tab.ref`, `aria-ref=` selectors, `fill` and `click` act on inside the frame; a click there is refused, naming the cover, when the page above the frame covers its point.
-- A `browser` action's selector may be a snapshot line's `role "name"` form, such as `tab.fill('textbox "Email"', …)` or `tab.click('button "Save"')`, which acts on the element with that role and that exact accessible name instead of failing as invalid CSS.
+- A `browser` action's selector may be a snapshot line's `role "name"` form, such as `tab.fill('textbox "Email"', …)` or `tab.click('button "Save"')`, or the attribute forms `textbox[name="Email"]` and `role=button[name="Save"]`, which act on the element with that role and that exact accessible name instead of failing as invalid CSS; `input[name="q"]` stays CSS.
+- A `browser` run whose `fetch` fails on a relative URL such as `/api/items` says that run code executes outside the page and gives the `tab.evaluate` form that makes the page's own request with its cookies.
 
 ### Changed
 

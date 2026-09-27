@@ -143,6 +143,48 @@ const PLAYWRIGHT_ONLY_SELECTOR_RE =
  */
 const SNAPSHOT_LINE_SELECTOR = /^([a-z]+) "((?:[^"\\]|\\.)*)"$/;
 
+/**
+ * A role and a name in attribute form: `textbox[name="Email"]`, or Playwright's
+ * `role=button[name="Sign in"]`. Without `role=` the word must be one of the roles below, so a CSS
+ * selector such as `input[name="q"]` keeps its meaning.
+ */
+const ROLE_NAME_SELECTOR = /^(role=)?([a-z]+)\[name=(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')\]$/;
+
+/**
+ * ARIA roles no HTML element is named after, plus `link`, whose `<link>` element takes no `name`
+ * attribute: `<role>[name=…]` matches nothing as CSS and can only mean the role.
+ */
+const ROLES_WITHOUT_AN_ELEMENT = new Set([
+	"alert",
+	"cell",
+	"checkbox",
+	"columnheader",
+	"combobox",
+	"gridcell",
+	"heading",
+	"link",
+	"listbox",
+	"listitem",
+	"menuitem",
+	"menuitemcheckbox",
+	"menuitemradio",
+	"radio",
+	"row",
+	"rowheader",
+	"searchbox",
+	"slider",
+	"spinbutton",
+	"switch",
+	"tab",
+	"textbox",
+	"treeitem",
+]);
+
+/** Puppeteer's aria selector for the element with `role` and the exact name `quoted` unescapes to. */
+function ariaRoleSelector(role: string, quoted: string): string {
+	return `aria/${quoted.replace(/\\(.)/g, "$1")}[role="${role}"]`;
+}
+
 type DialogPolicy = "accept" | "dismiss";
 type DragTarget = string | { readonly x: number; readonly y: number };
 type ActionabilityResult = { ok: true; x: number; y: number } | { ok: false; reason: string };
@@ -287,8 +329,12 @@ export interface TabApi {
 
 export function normalizeSelector(selector: string): string {
 	if (!selector) return selector;
-	const line = SNAPSHOT_LINE_SELECTOR.exec(selector.trim());
-	if (line) return `aria/${(line[2] ?? "").replace(/\\(.)/g, "$1")}[role="${line[1]}"]`;
+	const trimmed = selector.trim();
+	const line = SNAPSHOT_LINE_SELECTOR.exec(trimmed);
+	if (line?.[1]) return ariaRoleSelector(line[1], line[2] ?? "");
+	const named = ROLE_NAME_SELECTOR.exec(trimmed);
+	if (named?.[2] && (named[1] || ROLES_WITHOUT_AN_ELEMENT.has(named[2])))
+		return ariaRoleSelector(named[2], named[3] ?? named[4] ?? "");
 	if (
 		!SELECTOR_HANDLER_PREFIXES.some(prefix => selector.startsWith(prefix)) &&
 		PLAYWRIGHT_ONLY_SELECTOR_RE.test(selector)
@@ -1103,6 +1149,25 @@ export type WorkerCoreOptions =
 /** How many ended runs' file names stay known, so a rejection one of them floats late is traced to it. */
 const RECENT_RUN_FILES_MAX = 64;
 
+/**
+ * Run code's `fetch` is the tab worker's, which has no page URL to resolve a path such as
+ * `/api/items` against and none of the page's cookies: the call fails as a bare "URL is invalid".
+ * The failure says where a request the page would make belongs.
+ */
+function explainRelativeFetch(error: unknown): unknown {
+	if (
+		!(error instanceof Error) ||
+		error.name !== "TypeError" ||
+		!/^fetch\(\) URL is invalid|^Failed to parse URL from /.test(error.message)
+	)
+		return error;
+	const explained = new ToolError(
+		`${error.message}: run code executes in the tab worker, whose \`fetch\` has no page URL to resolve a path against and none of the page's cookies. Make the page's own request with \`await tab.evaluate(() => fetch("/path").then(r => r.json()))\`, or pass an absolute URL.`,
+	);
+	explained.stack = error.stack;
+	return explained;
+}
+
 /** Report the rejections a run's code floated, beyond the one its result carries, in its output. */
 function reportFloatingRejections(output: RunOutput, reasons: readonly unknown[]): void {
 	for (const reason of reasons) {
@@ -1533,7 +1598,7 @@ export class WorkerCore {
 			// `display()` produced before the throw, and those lines are usually the only evidence
 			// of why it threw; dropping them left a timed-out cell reporting a bare deadline and
 			// nothing that explains it. Screenshots ride along for the same reason.
-			const failure = await this.#explainPageGlobal(error);
+			const failure = explainRelativeFetch(await this.#explainPageGlobal(error));
 			reportFloatingRejections(output, active.floatingRejections.splice(0));
 			this.#transport.send({
 				type: "result",
