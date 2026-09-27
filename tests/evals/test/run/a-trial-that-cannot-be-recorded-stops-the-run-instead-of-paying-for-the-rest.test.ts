@@ -35,10 +35,10 @@ import type {
 	Variant,
 	VariantAxis,
 } from "../../engine/contracts";
-import { executeRun } from "../../engine/run/execute";
 import { harnesses } from "../../engine/members/loaded";
-import { journalPathFor, readRunJournal } from "../../engine/run/journal";
 import type { RunPlan } from "../../engine/plan/run-plan";
+import { executeRun } from "../../engine/run/execute";
+import { journalPathFor, readRunJournal } from "../../engine/run/journal";
 
 const VARIANT: Variant = {
 	name: "default",

@@ -30,7 +30,11 @@ import * as path from "node:path";
 import { parseSectionOverridesJson } from "@veyyon/coding-agent/system-prompt-builder/default-template";
 import { parseStatementOverridesJson } from "@veyyon/coding-agent/system-prompt-builder/statement-registry";
 import YAML from "yaml";
-import { ARM_ATTACHMENT_KINDS, type ArmAttachmentKind, attachmentKindOf } from "../../../engine/harness/arm-attachments";
+import {
+	ARM_ATTACHMENT_KINDS,
+	type ArmAttachmentKind,
+	attachmentKindOf,
+} from "../../../engine/harness/arm-attachments";
 import { harnesses } from "../../../engine/members/loaded";
 import { armsDir, evalsPackageDir, repoRootDir, taskListsDir } from "../../../engine/package-paths";
 import { promptOverrideIdError } from "../../../engine/plan/prompt-overrides";

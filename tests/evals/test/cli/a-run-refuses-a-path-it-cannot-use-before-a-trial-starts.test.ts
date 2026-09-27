@@ -34,15 +34,15 @@ import type {
 	TrialArtifacts,
 	TrialScore,
 } from "../../engine/contracts";
-import { executeRun } from "../../engine/run/execute";
 import { harnesses } from "../../engine/members/loaded";
+import { buildRunPlan } from "../../engine/plan/run-plan";
 import {
 	checkRunDirectories,
 	RUN_DIRECTORY_ROLES,
 	type RunDirectoryRole,
 	UnusableRunDirectoryError,
 } from "../../engine/run/directories";
-import { buildRunPlan } from "../../engine/plan/run-plan";
+import { executeRun } from "../../engine/run/execute";
 import { main, TASK_LIST_EXTENSIONS } from "../../evals";
 
 /** Captures what the CLI wrote to a stream, without letting it reach the terminal. */

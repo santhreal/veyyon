@@ -25,6 +25,7 @@ import os from "node:os";
 import path from "node:path";
 import { PierExecutionBackend } from "../../backends/pier/main";
 import * as pierRunner from "../../backends/pier/runner";
+import type { EvalSuite, HarnessAdapter, RunContext, TrialCell, Variant } from "../../engine/contracts";
 import {
 	CONTAINER_PROGRAM_VERSION,
 	type ContainerProgram,
@@ -36,7 +37,6 @@ import {
 	stageContainerProgram,
 	validateContainerProgram,
 } from "../../engine/harness/container-program";
-import type { EvalSuite, HarnessAdapter, RunContext, TrialCell, Variant } from "../../engine/contracts";
 import { harnesses } from "../../engine/members/loaded";
 
 const RUN_ID = "records-the-build";

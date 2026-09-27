@@ -36,8 +36,10 @@ import type {
 	Variant,
 	VariantAxis,
 } from "../../engine/contracts";
-import { executeRun } from "../../engine/run/execute";
 import { harnesses } from "../../engine/members/loaded";
+import { PlanChangedError, planIdentity } from "../../engine/plan/plan-identity";
+import { buildRunPlan, type RunPlan } from "../../engine/plan/run-plan";
+import { executeRun } from "../../engine/run/execute";
 import {
 	journalPathFor,
 	openRunJournal,
@@ -45,8 +47,6 @@ import {
 	readRunJournal,
 	StaleRunJournalError,
 } from "../../engine/run/journal";
-import { buildRunPlan, type RunPlan } from "../../engine/plan/run-plan";
-import { PlanChangedError, planIdentity } from "../../engine/plan/plan-identity";
 import { main } from "../../evals";
 
 const MODEL_A = "anthropic/claude-sonnet-4-5";

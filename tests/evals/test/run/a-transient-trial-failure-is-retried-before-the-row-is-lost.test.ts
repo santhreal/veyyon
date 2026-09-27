@@ -37,11 +37,11 @@ import type {
 	TrialCell,
 	TrialScore,
 } from "../../engine/contracts";
-import { executeRun } from "../../engine/run/execute";
 import { harnesses } from "../../engine/members/loaded";
-import { readRunJournal } from "../../engine/run/journal";
 import type { RunPlan } from "../../engine/plan/run-plan";
 import { buildRunPlan } from "../../engine/plan/run-plan";
+import { executeRun } from "../../engine/run/execute";
+import { readRunJournal } from "../../engine/run/journal";
 import { summarizeRunCells } from "../../engine/run/record";
 import {
 	DEFAULT_TRIAL_ATTEMPTS,

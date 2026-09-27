@@ -10,9 +10,9 @@ import type {
 	TrialCell,
 	TrialScore,
 } from "../../../engine/contracts";
-import { executeRun } from "../../../engine/run/execute";
 import { harnesses } from "../../../engine/members/loaded";
 import { buildRunPlan } from "../../../engine/plan/run-plan";
+import { executeRun } from "../../../engine/run/execute";
 
 function createConcurrentProbeSuite(): EvalSuite {
 	return {

@@ -23,11 +23,6 @@ import YAML from "yaml";
 import { stagePierAssets } from "../../backends/pier/asset-staging";
 import { PierExecutionBackend } from "../../backends/pier/main";
 import * as pierRunner from "../../backends/pier/runner";
-import {
-	ARM_ATTACHMENT_KINDS,
-	ARM_ATTACHMENT_MANIFEST_VERSION,
-	type ArmAttachmentManifest,
-} from "../../engine/harness/arm-attachments";
 import type {
 	EvalSuite,
 	PreflightVerdict,
@@ -38,6 +33,11 @@ import type {
 	TrialScore,
 	Variant,
 } from "../../engine/contracts";
+import {
+	ARM_ATTACHMENT_KINDS,
+	ARM_ATTACHMENT_MANIFEST_VERSION,
+	type ArmAttachmentManifest,
+} from "../../engine/harness/arm-attachments";
 import { harnesses } from "../../engine/members/loaded";
 import { evalsPackageDir } from "../../engine/package-paths";
 

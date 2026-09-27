@@ -21,6 +21,7 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { HarnessAdapter, Variant } from "../../engine/contracts";
 import {
 	CONTAINER_PROGRAM_FILE,
 	CONTAINER_PROGRAM_PLACEHOLDERS,
@@ -30,7 +31,6 @@ import {
 	programDirFor,
 	validateContainerProgram,
 } from "../../engine/harness/container-program";
-import type { HarnessAdapter, Variant } from "../../engine/contracts";
 import { harnesses } from "../../engine/members/loaded";
 import { agentsDir } from "../../engine/package-paths";
 
