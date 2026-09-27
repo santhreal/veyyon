@@ -136,6 +136,13 @@ const SELECTOR_HANDLER_PREFIXES = [
 const PLAYWRIGHT_ONLY_SELECTOR_RE =
 	/:has-text\(|:text\(|:text-is\(|:text-matches\(|:visible\b|:hidden\b|:nth-match\(|:near\(|:above\(|:below\(|:right-of\(|:left-of\(/;
 
+/**
+ * A snapshot line's own form, `role "name"` (`textbox "Email"`), which a model copies from
+ * `tab.ariaSnapshot()`. It is no CSS, and it names one element exactly: the one with that role and
+ * that accessible name, which puppeteer's aria handler finds.
+ */
+const SNAPSHOT_LINE_SELECTOR = /^([a-z]+) "((?:[^"\\]|\\.)*)"$/;
+
 type DialogPolicy = "accept" | "dismiss";
 type DragTarget = string | { readonly x: number; readonly y: number };
 type ActionabilityResult = { ok: true; x: number; y: number } | { ok: false; reason: string };
@@ -280,6 +287,8 @@ export interface TabApi {
 
 export function normalizeSelector(selector: string): string {
 	if (!selector) return selector;
+	const line = SNAPSHOT_LINE_SELECTOR.exec(selector.trim());
+	if (line) return `aria/${(line[2] ?? "").replace(/\\(.)/g, "$1")}[role="${line[1]}"]`;
 	if (
 		!SELECTOR_HANDLER_PREFIXES.some(prefix => selector.startsWith(prefix)) &&
 		PLAYWRIGHT_ONLY_SELECTOR_RE.test(selector)
