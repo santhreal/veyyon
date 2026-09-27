@@ -18,6 +18,9 @@ import { BROWSER_TASKS } from "../../../suites/browser/main";
 
 const REPEATS = 64;
 
+/** A workflow task starts two or three applications for each of the 64 seeds, several seconds in all. */
+const TASK_TIMEOUT_MS = 60_000;
+
 describe("every browser task", () => {
 	for (const task of BROWSER_TASKS) {
 		it(`${task.id} starts on the seed of every repeat below ${REPEATS}`, async () => {
@@ -36,6 +39,6 @@ describe("every browser task", () => {
 				}
 			}
 			expect(failures).toEqual([]);
-		});
+		}, TASK_TIMEOUT_MS);
 	}
 });
