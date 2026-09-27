@@ -479,19 +479,28 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 				session: this.session,
 			});
 		} catch (error) {
+			// An abort is left alone: the operator cancelled, so there is no failure to explain.
+			if (error instanceof ToolAbortError || !(error instanceof Error)) throw error;
 			// A failed run still reports what it managed to produce. The displayed lines are folded
 			// into the error text because that is the only channel a thrown tool error has, and the
-			// screenshots go onto `details` so they still render. An abort is left alone: the
-			// operator cancelled, so there is no failure to explain.
-			const partial = error instanceof ToolAbortError ? undefined : (error as BrowserRunError).partialRunOutput;
-			if (partial !== undefined && error instanceof Error) {
+			// screenshots go onto `details` so they still render.
+			let text = error.message;
+			const partial = (error as BrowserRunError).partialRunOutput;
+			if (partial !== undefined) {
 				if (partial.screenshots.length) details.screenshots = partial.screenshots;
 				const produced = partial.displays
 					.filter((entry): entry is { type: "text"; text: string } => entry.type === "text")
 					.map(entry => entry.text)
 					.join("\n");
-				if (produced) error.message = `${produced}\n\n${error.message}`;
+				if (produced) text = `${produced}\n\n${text}`;
 			}
+			// Capped as a result's text is: an `execSync`'s stderr or a dumped page runs to hundreds of
+			// KB, and every later turn sends it again. The head and the tail, where the reason is, stay.
+			const capped = await enforceInlineByteCap(text, {
+				...inlineOutputPricing(this.session),
+				saveArtifact: full => saveBrowserOutputArtifact(this.session, full),
+			});
+			if (capped !== error.message) error.message = capped;
 			throw error;
 		}
 		const { displays, returnValue, screenshots } = run;
