@@ -394,12 +394,12 @@ function optionTools(options: Readonly<Record<string, unknown>> | undefined): re
 }
 
 /**
- * What a trial cannot read: the runner's home, the runs directory, every trial's scratch (its own
- * is granted back), this package (graders, fixture sources) and the tests of the build it runs.
+ * What a trial cannot read beyond `hostDataDirectories()`: the runs directory, every trial's scratch
+ * (its own is granted back), this package (graders, fixture sources) and the tests of the build it
+ * runs.
  */
 function hiddenDirectories(context: RunContext, build: string | null): string[] {
 	return [
-		os.homedir(),
 		path.resolve(context.runsDir || defaultRunsDir()),
 		trialScratchRoot(),
 		evalsPackageDir(),

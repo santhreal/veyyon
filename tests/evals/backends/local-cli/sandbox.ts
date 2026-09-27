@@ -4,16 +4,22 @@
  * An agent's tools run code with the file access of the user who started the run: browser run code
  * and a shell both read any file that user can. A trial therefore runs under a ruleset that hides the
  * runner's home, the runs directory, the tests of the build it runs and this package, which hold the
- * graders, the fixture sources and every earlier trial's transcript. The build, the runtime, the
- * overlays and the trial's own directories are granted back inside them.
+ * graders, the fixture sources and every earlier trial's transcript. It also hides every user's
+ * home, the system temp directories and mounted media, since a trial has a home and a TMPDIR of its
+ * own and reads nothing else a user keeps. The build, the runtime, the overlays and the trial's own
+ * directories are granted back inside them.
  *
  * Landlock only grants, so a directory that holds a hidden one is granted entry by entry around it.
- * Listing stays open everywhere because module resolution opens every directory above the file that
- * imports. A path outside every hidden directory stays readable.
+ * A symbolic link among those entries gets no grant: a grant attaches to the link's target, and a
+ * target outside the hidden directories is granted where it is. Listing stays open everywhere
+ * because module resolution opens every directory above the file that imports, so a trial can
+ * read the names in a hidden directory but not its files. Landlock does not govern connecting to a
+ * Unix socket.
  */
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
 import { $which } from "@veyyon/utils";
 
@@ -61,11 +67,21 @@ export interface SandboxLayout {
 }
 
 /**
+ * What no trial reads, besides what its run hides: every user's home, the system temp directories
+ * and mounted media.
+ */
+export function hostDataDirectories(): string[] {
+	const candidates = ["/home", "/root", "/mnt", "/media", "/run/media", "/tmp", "/var/tmp", os.tmpdir(), os.homedir()];
+	return [...new Set(candidates.map(entry => path.resolve(entry)))];
+}
+
+/**
  * Landlock rules for one trial. Every directory can be listed and every file read, except in the
- * hidden directories. `/dev` and `/proc` are writable, which Chrome needs (`/dev/shm` among them);
- * the system temp directory is not, since each trial has a TMPDIR of its own.
+ * hidden directories and `hostDataDirectories()`. `/dev` and `/proc` are writable, which Chrome
+ * needs (`/dev/shm` among them).
  */
 export async function sandboxRules(layout: SandboxLayout): Promise<SandboxRule[]> {
+	const hidden = [...layout.hidden, ...hostDataDirectories()];
 	const grants: SandboxRule[] = [
 		{ path: "/", access: "read" },
 		{ path: "/dev", access: "write" },
@@ -74,7 +90,7 @@ export async function sandboxRules(layout: SandboxLayout): Promise<SandboxRule[]
 		...layout.write.map(entry => ({ path: entry, access: "write" as const })),
 	];
 	const rules: SandboxRule[] = [{ path: "/", access: "list" }];
-	for (const grant of grants) await grantAround(grant, layout.hidden, rules);
+	for (const grant of grants) await grantAround(grant, hidden, rules);
 	return rules;
 }
 
@@ -84,8 +100,9 @@ async function grantAround(grant: SandboxRule, hidden: readonly string[], rules:
 		rules.push(grant);
 		return;
 	}
-	for (const name of await fs.readdir(grant.path)) {
-		await grantAround({ path: path.join(grant.path, name), access: grant.access }, hidden, rules);
+	for (const entry of await fs.readdir(grant.path, { withFileTypes: true })) {
+		if (entry.isSymbolicLink()) continue;
+		await grantAround({ path: path.join(grant.path, entry.name), access: grant.access }, hidden, rules);
 	}
 }
 

@@ -9,21 +9,27 @@
  * It proves a trial inherits only the variables it runs on plus the ones its harness and suite
  * name; that its credential store holds the model provider's sign-in and nothing else, and is gone
  * after the trial; and, where the kernel has Landlock, that it cannot open this package, a sibling
- * trial's files, or the tests of the build it runs, while its own workspace, home, task settings and
- * the build's `node_modules` still work, so a sandbox that refused everything would fail too.
+ * trial's files, the tests of the build it runs, a link in the build that points at them, or a file
+ * another process left in the system temp directory, while its own workspace, home, task settings and
+ * the build's `node_modules` still work, so a sandbox that refused everything would fail too. The
+ * rules themselves are checked to hide every host data directory on any Linux host.
  *
- * Not caught: that the invoking user's home is hidden (the suite never writes there) and that `/tmp`
- * and `/proc` stay writable for Chrome; a real browser trial is the check for both. Without Landlock
- * (every host but Linux, a kernel without it, or no python3) the sandbox case skips.
+ * Not caught: that `/proc` and `/dev` stay writable for Chrome; a real browser trial is the check.
+ * Without Landlock (every host but Linux, a kernel without it, or no python3) the probe case skips.
  */
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
 import { credentialSource } from "../../../backends/local-cli/credentials";
 import { LocalCliBackend, type LocalTrialLayout, localTrialLayout } from "../../../backends/local-cli/main";
-import { landlockSandbox } from "../../../backends/local-cli/sandbox";
+import {
+	hostDataDirectories,
+	landlockSandbox,
+	type SandboxRule,
+	sandboxRules,
+} from "../../../backends/local-cli/sandbox";
 import type { RunContext, Variant } from "../../../engine/contracts";
 import { kitTask } from "../../../engine/kit/catalog";
 import { defineSuite } from "../../../engine/kit/suite";
@@ -65,20 +71,23 @@ interface Probe {
 	readonly write: readonly string[];
 }
 
-async function writeTree(root: string): Promise<{ tree: string; answers: string }> {
+async function writeTree(root: string): Promise<{ tree: string; answers: string; answersLink: string }> {
 	const tree = path.join(root, "tree");
 	const answers = path.join(tree, "tests", "answers.ts");
+	const answersLink = path.join(tree, "answers-link.ts");
 	const dep = path.join(tree, "node_modules", "probe-dep");
 	await fs.mkdir(path.dirname(answers), { recursive: true });
 	await fs.mkdir(dep, { recursive: true });
 	await fs.writeFile(path.join(tree, "probe.ts"), PROBE);
 	await fs.writeFile(answers, "the expected answer");
+	// Beside the hidden directory, pointing into it: a grant on the link would land on the answers.
+	await fs.symlink(path.join("tests", "answers.ts"), answersLink);
 	await fs.writeFile(
 		path.join(dep, "package.json"),
 		'{ "name": "probe-dep", "type": "module", "exports": "./index.js" }',
 	);
 	await fs.writeFile(path.join(dep, "index.js"), 'export const value = "resolved";');
-	return { tree, answers };
+	return { tree, answers, answersLink };
 }
 
 interface ProbeRun {
@@ -99,7 +108,7 @@ interface ProbeRun {
 
 /** One trial of the probe under the real backend, with a sibling trial's files beside it. */
 async function runProbe(root: string, options: { readonly unsandboxed: boolean }): Promise<ProbeRun> {
-	const { tree, answers } = await writeTree(root);
+	const { tree, answers, answersLink } = await writeTree(root);
 	const authDb = path.join(root, "agent.db");
 	writeCredentials(authDb);
 	const runsDir = path.join(root, "runs");
@@ -116,11 +125,20 @@ async function runProbe(root: string, options: { readonly unsandboxed: boolean }
 	await fs.writeFile(otherScratch, "another trial's workspace");
 	await using _otherScratch = { [Symbol.asyncDispose]: () => fs.rm(other.scratch, { recursive: true, force: true }) };
 	// A directory in the system temp directory beside the scratch: another process's, which a trial
-	// with its own TMPDIR has no reason to change.
+	// with its own TMPDIR has no reason to read or change.
 	const outside = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-probe-outside-"));
 	await using _outside = { [Symbol.asyncDispose]: () => fs.rm(outside, { recursive: true, force: true }) };
+	const planted = path.join(outside, "note.txt");
+	await fs.writeFile(planted, "another process's file");
 	const layout = localTrialLayout(runsDir, runId, cell);
-	const paths: Record<string, string> = { answers, sibling, otherScratch, grader: import.meta.filename };
+	const paths: Record<string, string> = {
+		answers,
+		answersLink,
+		planted,
+		sibling,
+		otherScratch,
+		grader: import.meta.filename,
+	};
 
 	const task = kitTask<Record<string, never>>({
 		id: "probe-task",
@@ -138,7 +156,16 @@ async function runProbe(root: string, options: { readonly unsandboxed: boolean }
 			paths.systemTmpOut = path.join(outside, "escape.txt");
 			await fs.writeFile(paths.taskFile, "the task's own file");
 			const plan: Probe = {
-				read: [paths.taskFile, paths.settings, answers, sibling, otherScratch, import.meta.filename],
+				read: [
+					paths.taskFile,
+					paths.settings,
+					answers,
+					answersLink,
+					planted,
+					sibling,
+					otherScratch,
+					import.meta.filename,
+				],
 				write: [paths.workspaceOut, paths.homeOut, paths.tmpOut, "/dev/null", paths.siblingOut, paths.systemTmpOut],
 			};
 			return { instruction: JSON.stringify(plan), solve: async () => "", finish: async () => ({}) };
@@ -232,6 +259,8 @@ describe("a local trial", () => {
 			[paths.taskFile as string]: "the task's own file",
 			[paths.settings as string]: "probe:\n  enabled: true\n",
 			[paths.answers as string]: "EACCES",
+			[paths.answersLink as string]: "EACCES",
+			[paths.planted as string]: "EACCES",
 			[paths.sibling as string]: "EACCES",
 			[paths.otherScratch as string]: "EACCES",
 			[paths.grader as string]: "EACCES",
@@ -245,6 +274,48 @@ describe("a local trial", () => {
 			[paths.systemTmpOut as string]: "EACCES",
 		});
 	});
+
+	it.skipIf(process.platform !== "linux")(
+		"reads no user's home, temp directory or mounted media, beyond what is granted in one",
+		async () => {
+			// A runner whose home and TMPDIR sit outside `/home` and `/tmp`: each is hidden by its own
+			// entry, not by the conventional directory above it.
+			const home = "/var/lib/veyyon-probe-home";
+			const tmp = "/var/lib/veyyon-probe-tmp";
+			const homedir = spyOn(os, "homedir").mockReturnValue(home);
+			const tmpdir = spyOn(os, "tmpdir").mockReturnValue(tmp);
+			let rules: SandboxRule[];
+			let hostData: string[];
+			try {
+				hostData = hostDataDirectories();
+				rules = await sandboxRules({ hidden: [], read: [path.join(home, "src", "veyyon")], write: [] });
+			} finally {
+				homedir.mockRestore();
+				tmpdir.mockRestore();
+			}
+			expect(hostData).toEqual(expect.arrayContaining([home, tmp]));
+			const opens = (file: string) =>
+				rules.some(
+					rule =>
+						rule.access !== "list" &&
+						(file === rule.path || file.startsWith(rule.path === "/" ? "/" : `${rule.path}/`)),
+				);
+			const userFiles = [
+				"/home/someone/notes.txt",
+				"/root/.ssh/id_ed25519",
+				"/tmp/another-process/state.json",
+				"/var/tmp/another-process/state.json",
+				"/mnt/data/report.csv",
+				"/media/usb/photo.jpg",
+				"/run/media/someone/usb/photo.jpg",
+				path.join(tmp, "another-process", "state.json"),
+				path.join(home, ".ssh", "id_ed25519"),
+			];
+			expect(userFiles.filter(opens)).toEqual([]);
+			const granted = [path.join(home, "src", "veyyon", "src", "cli.ts"), "/etc/hosts", "/usr/lib/os-release"];
+			expect(granted.filter(opens)).toEqual(granted);
+		},
+	);
 });
 
 describe("the credential store a local trial copies", () => {

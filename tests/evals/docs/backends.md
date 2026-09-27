@@ -41,10 +41,14 @@ what the harness and the suite add.
 
 On Linux the trial runs under Landlock (`backends/local-cli/landlock-exec.py`). It lists every
 directory and reads every file except in the runner's home, the runs directory, every other trial's
-scratch, this package, and the `tests` of the build it runs; it writes only its own scratch, `/dev`
-and `/proc`. The build, the Bun runtime, the overlays and the paths a suite names are granted back.
-The agent's tools therefore cannot open a grader, a fixture's source, or an earlier trial's
-transcript. On a host without Landlock the backend refuses the run unless `--unsandboxed` is given.
+scratch, this package, the `tests` of the build it runs, every user's home (`/home`, `/root`), the
+system temp directories (`/tmp`, `/var/tmp`, `TMPDIR`) and mounted media (`/mnt`, `/media`,
+`/run/media`); it writes only its own scratch, `/dev` and `/proc`. The build, the Bun runtime, the
+overlays and the paths a suite names are granted back. A symbolic link beside a hidden directory is
+not followed into one. The agent's tools therefore cannot open a grader, a fixture's source, an
+earlier trial's transcript, or another user's files. Names in a hidden directory stay listable, and
+Landlock does not govern connecting to a Unix socket. On a host without Landlock the backend
+refuses the run unless `--unsandboxed` is given.
 
 When the agent stops, the suite's `finish` runs, the workspace is copied into the trial's record
 under the runs directory, and the scratch is deleted:
