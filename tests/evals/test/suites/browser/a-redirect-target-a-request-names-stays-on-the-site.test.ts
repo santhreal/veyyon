@@ -56,11 +56,12 @@ describe("a redirect a request names", () => {
 		});
 	});
 
+	// Five sign-ins, each waiting the bank's 2 s for its code to reach the phone.
 	it("keeps the bank's sign-in on the bank", async () => {
 		await withTrial(taskNamed(BANK_TASKS, "bank-alert-settings"), async trial => {
 			const { origin } = access(trial);
 			expect((await signInToBank(trial, "/activity")).location).toBe("/activity");
 			expect(await offsite(origin, async next => (await signInToBank(trial, next)).location)).toEqual([]);
 		});
-	});
+	}, 30_000);
 });
