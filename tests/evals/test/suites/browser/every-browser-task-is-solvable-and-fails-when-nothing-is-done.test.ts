@@ -16,12 +16,20 @@
  */
 import { describe, expect, it } from "bun:test";
 import { catalogProblems } from "../../../engine/kit/catalog";
-import { BROWSER_CAPABILITIES, BROWSER_TASKS } from "../../../suites/browser/main";
+import browserSuite, { BROWSER_CAPABILITIES, BROWSER_TASKS } from "../../../suites/browser/main";
 import { sweepTasks } from "./task-sweep";
 
 describe("the browser suite", () => {
 	it("has a sound catalog", () => {
 		expect(catalogProblems(BROWSER_TASKS, BROWSER_CAPABILITIES)).toEqual([]);
+	});
+
+	it("counts every pass in the last column of its seconds budgets", () => {
+		// A pass ends within its task's time budget; a ladder that stops short drops the slowest passes.
+		const longest = Math.max(
+			...BROWSER_TASKS.map(task => task.timeBudgetSec ?? browserSuite.spec.defaultTimeBudgetSec),
+		);
+		expect(browserSuite.spec.budgets?.seconds.at(-1)).toBeGreaterThanOrEqual(longest);
 	});
 
 	sweepTasks(BROWSER_TASKS);
