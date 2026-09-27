@@ -13,13 +13,15 @@ preload = ["../../packages/utils/test/helpers/real-data-tripwire.ts"]
 # 113 of them, about 1.9G, each a real project with its own test suite. Bun does not
 # honour .gitignore, so without this a `bun test` here walks into all of them and
 # reports THEIR failures as this repository's. `datasets/deep-swe/corpus/` is the
-# vendored task corpus, `runs/` holds trial artifacts and `.internal/` holds review
-# scratch; none of them carries our tests. `every-arm-flag-and-task-set-the-docs-name-exists.test.ts` fails when an
-# ignored directory has no entry here.
+# vendored task corpus, `datasets/miniwob/` links in MiniWoB++'s upstream pages,
+# `runs/` holds trial artifacts and `.internal/` holds review scratch; none of them
+# carries our tests. `every-arm-flag-and-task-set-the-docs-name-exists.test.ts` fails
+# when an ignored directory has no entry here.
 pathIgnorePatterns = [
 	"**/node_modules/**",
 	"datasets/repo-cache/**",
 	"datasets/deep-swe/corpus/**",
+	"datasets/miniwob/**",
 	"runs/**",
 	".cache/**",
 	".internal/**",
