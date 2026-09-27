@@ -17,6 +17,7 @@ import { isKitSuite } from "../engine/kit/suite";
 import { suites } from "../engine/members/loaded";
 import { type FlagGrammar, parseFlags, requireFlag } from "../engine/plan/flag-grammar";
 import { readRunJournal } from "../engine/run/journal";
+import { trialDirFor } from "../engine/run/layout";
 import { RUN_RECORD_FILE } from "../engine/run/output";
 import type { TrialResultRecord } from "../engine/run/record";
 
@@ -37,20 +38,39 @@ function modelsOf(records: readonly TrialResultRecord[]): string {
 	return [...models].sort().join(", ") || "unknown";
 }
 
-/** The variants' names in plan order, from the run record; empty when the run never wrote one. */
+/**
+ * The variants' names in plan order, from the run record. The first is the baseline every other
+ * arm is paired against, and the journal holds trials in the order they settled, so a run without
+ * a readable record is refused rather than given a baseline by whichever arm finished first.
+ */
 async function planVariants(runDir: string): Promise<string[]> {
+	const file = path.join(runDir, RUN_RECORD_FILE);
 	let record: unknown;
 	try {
-		record = JSON.parse(await fs.readFile(path.join(runDir, RUN_RECORD_FILE), "utf8"));
-	} catch {
-		return [];
+		record = JSON.parse(await fs.readFile(file, "utf8"));
+	} catch (error) {
+		throw new Error(
+			`${file} is missing or unreadable (${errorMessage(error)}); the report takes the arms' order, and so the baseline, from it`,
+		);
 	}
 	const variants: unknown = (record as { variants?: unknown } | null)?.variants;
-	if (!Array.isArray(variants)) return [];
+	if (!Array.isArray(variants)) throw new Error(`${file} lists no variants; the report takes the arms' order from it`);
 	return variants.flatMap((variant: unknown) => {
 		const name = (variant as { name?: unknown } | null)?.name;
 		return typeof name === "string" ? [name] : [];
 	});
+}
+
+/**
+ * Where a trial's files are: the directory the run recorded, or, when that is gone because the run
+ * was copied to another host or renamed, the trial's place under the run directory being read.
+ */
+async function trialDirOf(runDir: string, record: TrialResultRecord, recorded: string): Promise<string> {
+	const present = await fs.stat(recorded).then(
+		() => true,
+		() => false,
+	);
+	return present ? recorded : trialDirFor(path.dirname(runDir), path.basename(runDir), record.cell);
 }
 
 export async function kitReport(runDir: string, regrade: boolean): Promise<string> {
@@ -59,11 +79,15 @@ export async function kitReport(runDir: string, regrade: boolean): Promise<strin
 	if (!first) throw new Error(`${runDir} holds no settled trial`);
 	const suite = suites.require(first.cell.suite);
 	if (!isKitSuite(suite)) throw new Error(`${suite.id} is not a kit suite; its report is its own`);
+	const variants = await planVariants(runDir);
 	const graded = regrade
 		? await Promise.all(
-				records.map(async record =>
-					record.artifacts?.trialDir ? { ...record, score: await suite.scoreTrial(record.cell, record.artifacts) } : record,
-				),
+				records.map(async record => {
+					const recorded = record.artifacts?.trialDir;
+					if (!recorded) return record;
+					const trialDir = await trialDirOf(runDir, record, recorded);
+					return { ...record, score: await suite.scoreTrial(record.cell, { ...record.artifacts, trialDir }) };
+				}),
 			)
 		: records;
 	const summary = summarizeKitRun(
@@ -72,7 +96,7 @@ export async function kitReport(runDir: string, regrade: boolean): Promise<strin
 			model: modelsOf(graded),
 			tasks: [...new Set(graded.map(record => record.cell.task))],
 			repeats: new Set(graded.map(record => record.cell.repeat)).size,
-			variants: await planVariants(runDir),
+			variants,
 		},
 		suite.id,
 		suite.spec.budgets,

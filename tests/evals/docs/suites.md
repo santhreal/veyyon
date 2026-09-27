@@ -8,6 +8,12 @@
 | `browser` | hard web tasks on seeded local applications | local-cli | checks over the state the applications recorded, and the answer |
 | `miniwob` | MiniWoB++ synthetic web tasks | local-cli | the score each task page computes |
 
+The `miniwob` suite serves MiniWoB++'s pages from `datasets/miniwob/html`, which is not in the
+repository; `suites/miniwob/main.ts` lists the commands that link a clone there. Its preflight fails
+while any task page is missing. The pages' files are part of the suite's provenance hash. A score
+comes from the page's own script, so code the run executes in the page, such as the browser tool's
+`tab.evaluate`, can forge it.
+
 A suite is one member of the suite axis. It lists its tasks, describes each one (instruction, time
 budget, input files), states its provenance (a version and a hash of what it read), scores a trial
 from the artifacts the backend returned, and may write a report for a finished run.

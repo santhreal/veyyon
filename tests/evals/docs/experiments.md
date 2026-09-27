@@ -52,6 +52,12 @@ A kit suite writes `report.md` and `summary.json` into the run directory.
 
 Tokens are every token the provider processed: input, cache reads and writes, and output.
 
+`bun evals.ts tool kit-report --run runs/<run-id>` renders the report again, and `--regrade` first
+grades every trial again from its `state.json` and `answer.txt` with the checks as they are now,
+writing `report-regraded.md` and `summary-regraded.json` beside the run's own. A run copied to
+another host is read from its trial directories under `--run`. The tool fails when the run
+directory holds no readable `run.json`, since the arms' order, and so the baseline, comes from it.
+
 ## Rules that keep a result honest
 
 - Compare arms from one run. Rerun both arms when one changes.

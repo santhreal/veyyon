@@ -59,6 +59,16 @@ export const pressTask = kitTask<PressState>({
   reads the file alone and a run can be graded again after a check is fixed.
 - `checks` are named and small. A trial passes (`reward: 1`) when every check passes; the fraction
   that pass is its `partial`. A check that throws fails.
+- `answerHasNumber` reads the numbers an answer writes. A minus (`-`, `−`, or a leading `–`) that
+  touches the digits or a currency sign before them is a sign, so `-$312.40` is negative; digits
+  inside an identifier (`SK-A5HNU`, `ORD-1042`, `W07`) are not a number. A figure a page prints
+  with a sign an answer may copy or drop takes `sign: "either"`, which compares magnitudes.
+  `answerHasText` matches whole terms regardless of case and spacing: `East` is not in `least`,
+  nor `Tent 1` in `Tent 12`. It throws on an empty `expected`, so its check fails. Both pass an
+  answer that lists the right value among wrong ones. When the trial shows candidates, use
+  `answerNamesOnly(answer, expected, others)` or
+  `answerStatesOnly(answer, expected, others, tolerance, sign)`: each fails an answer that also
+  names or states one of `others`.
 - `solve` performs the task through the services' own endpoints and returns the answer a correct
   agent gives. It is required, and only tests call it.
 
@@ -68,8 +78,8 @@ export const pressTask = kitTask<PressState>({
 |---|---|
 | `engine/kit/catalog.ts` | `kitTask`, the task and trial types, `catalogProblems` |
 | `engine/kit/suite.ts` | `defineSuite`, `trialSeed`, the `state.json` name |
-| `engine/kit/checks.ts` | `gradeChecks`, `answerHasText`, `answerHasNumber`, `normalizeText` |
-| `engine/kit/web-host.ts` | `hostSite` (an HTTP server on 127.0.0.1 per trial), responses, forms, cookies |
+| `engine/kit/checks.ts` | `gradeChecks`, `answerHasText`, `answerNamesOnly`, `answerHasNumber`, `answerStatesOnly`, `numbersIn`, `normalizeText` |
+| `engine/kit/web-host.ts` | `hostSite` (an HTTP server on 127.0.0.1 per trial), responses, forms, cookies, `localPath` for a redirect target a request names |
 | `engine/kit/form-client.ts` | `FormClient`: form posts with cookies and redirects, for `solve` |
 | `engine/kit/seeded.ts` | `Seeded`, a deterministic generator for task data |
 | `engine/kit/browser-host.ts` | the browser tool's settings and the Chromium a trial launches |
@@ -95,17 +105,20 @@ export default defineSuite({
 ```
 
 `sourceDir` is hashed into the run's provenance, so two runs of different task code never compare
-as one suite version. `capabilities` is the vocabulary a task names; the preflight refuses a task
-that names another, reuses an id, or has no checks. `hostEnvironment` supplies what every trial's
+as one suite version. `datasetDir`, when set, is a directory outside it that the tasks serve or
+read, such as MiniWoB++'s pages; its files join the hash, and an absent one hashes as absent.
+`capabilities` is the vocabulary a task names; the preflight refuses a task that names another,
+reuses an id, or has no checks. `hostEnvironment` supplies what every trial's
 tools need from this host (the Chromium executable, and read access to its directory). `budgets`
 sets the turn, token and second ladders the report counts passes within; set them to span what the
 suite's trials spend. A suite without them gets 5–40 turns, 50k–500k tokens and 30–300 s.
 
 ## Testing a task list
 
-`test/suites/browser/task-sweep.ts` runs every task over three seeds: the solution must pass every
-check, and a trial in which nothing happens must fail. A task that no agent can pass, or that passes
-when nothing is done, fails the sweep. Call `sweepTasks(tasks)` from the suite's test file.
+`test/suites/browser/task-sweep.ts` runs every task over four seeds, those of repeats 0 to 3, which
+include every seed a `--repeats 3` run meets. The solution must pass every check, and a trial in
+which nothing happens must fail. A task that no agent can pass, or that passes when nothing is done,
+fails the sweep. Call `sweepTasks(tasks)` from the suite's test file.
 
 The sweep proves the grading, not the pages. Perform at least two tasks of an application through
 real pages in Chromium before calling it done, and run the suite once with a real model.

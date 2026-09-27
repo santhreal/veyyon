@@ -6,6 +6,11 @@
  * comparison without failing a run. These cases drive `defineSuite` end to end on a one-task suite
  * whose site counts presses: prepare, solve over HTTP, finish, write the answer, score.
  *
+ * The regrade reads the same files: a run copied to another host recorded trial directories that no
+ * longer exist there, and every trial regraded as an error until the regrade looked for them under
+ * the run directory it reads. A run without its `run.json` has no plan order, and a report that
+ * took the arms in settle order paired every arm against whichever finished first; it is refused.
+ *
  * Not caught: the local-cli backend's own part (writing `answer.txt`, the sandbox); its suite
  * covers that.
  */
@@ -20,7 +25,8 @@ import { DEFAULT_BUDGETS, renderKitReport, summarizeKitRun } from "../../engine/
 import { defineSuite, KIT_FILES, trialSeed } from "../../engine/kit/suite";
 import { hostSite, text } from "../../engine/kit/web-host";
 import { openRunJournal } from "../../engine/run/journal";
-import { LOCAL_TRIAL_FILES } from "../../engine/run/layout";
+import { LOCAL_TRIAL_FILES, trialDirFor } from "../../engine/run/layout";
+import { RUN_RECORD_FILE } from "../../engine/run/output";
 import type { TrialResultRecord } from "../../engine/run/record";
 import browserSuite from "../../suites/browser/main";
 import { kitReport } from "../../tools/kit-report";
@@ -215,12 +221,15 @@ describe("a kit run report", () => {
 		expect(head?.byCapability).toEqual({ forms: { passes: 2, graded: 2 } });
 	});
 
-	it("grades a finished run again from its trial files, with the suite as it is now", async () => {
-		await using dir = await TempDir.create("@evals-kit-regrade-");
-		const runDir = dir.join("run-1");
-		const trialDir = dir.join("run-1", "veyyon", "shop-warranty-answer", "repeat-0");
+	/**
+	 * A run of one `shop-warranty-answer` trial whose files hold a pass under today's checks, while
+	 * the score recorded when the run ended says it failed, as a check with a bug would.
+	 */
+	async function warrantyRun(root: string, options: { recordedAt?: string; runRecord?: boolean } = {}) {
+		const runDir = path.join(root, "run-1");
+		const cell = { variant: "veyyon", suite: "browser", task: "shop-warranty-answer", repeat: 1 };
+		const trialDir = trialDirFor(root, "run-1", cell);
 		await fs.mkdir(trialDir, { recursive: true });
-		// A state whose answer names the SKU and years the checks expect: a pass under today's checks.
 		const state = {
 			orders: [],
 			returns: [],
@@ -229,24 +238,52 @@ describe("a kit run report", () => {
 			newsletterSignups: 0,
 			failedSignins: 0,
 			stock: {},
-			expected: { names: ["A", "B", "C"], sku: "SK-AAAAA", years: 5 },
+			expected: { names: ["A", "B", "C"], sku: "SK-AAAAA", years: 5, others: ["SK-BBBBB", "SK-CCCCC"] },
 		};
 		await fs.writeFile(path.join(trialDir, KIT_FILES.state), JSON.stringify(state));
 		await fs.writeFile(path.join(trialDir, LOCAL_TRIAL_FILES.answer), "SK-AAAAA carries a 5-year warranty.");
-		const journal = await openRunJournal(dir.path(), "run-1", "plan");
-		// The score recorded when the run ended says the trial failed, as a check with a bug would.
+		if (options.runRecord !== false) {
+			await fs.writeFile(path.join(runDir, RUN_RECORD_FILE), JSON.stringify({ variants: [{ name: "veyyon" }] }));
+		}
+		const journal = await openRunJournal(root, "run-1", "plan");
 		await journal.append({
-			cell: { variant: "veyyon", suite: "browser", task: "shop-warranty-answer", repeat: 0 },
+			cell,
 			score: { reward: 0, partial: 0, error: null, usage: null, extra: {} },
-			artifacts: { trialDir, extra: { model: "p/m" } },
+			artifacts: { trialDir: options.recordedAt ?? trialDir, extra: { model: "p/m" } },
 		});
 		await journal.close();
+		return runDir;
+	}
+
+	it("grades a finished run again from its trial files, with the suite as it is now", async () => {
+		await using dir = await TempDir.create("@evals-kit-regrade-");
+		const runDir = await warrantyRun(dir.path());
 
 		const report = await kitReport(runDir, true);
 		const summary = JSON.parse(await fs.readFile(path.join(runDir, "summary-regraded.json"), "utf8"));
 		expect(path.basename(report)).toBe("report-regraded.md");
-		expect(summary.arms).toMatchObject([{ arm: "veyyon", graded: 1, passes: 1 }]);
+		expect(summary.arms).toMatchObject([{ arm: "veyyon", graded: 1, errors: 0, passes: 1 }]);
 		expect(summary.model).toBe("p/m");
+	});
+
+	it("grades a run moved since it ran from the trial files under the directory it is read from", async () => {
+		await using dir = await TempDir.create("@evals-kit-regrade-");
+		// The directory the run recorded, on the host it ran on; nothing is there now.
+		const recordedAt = path.join(dir.path(), "ran-here", "run-1", "veyyon", "shop-warranty-answer", "repeat-1");
+		const runDir = await warrantyRun(dir.path(), { recordedAt });
+
+		await kitReport(runDir, true);
+		const summary = JSON.parse(await fs.readFile(path.join(runDir, "summary-regraded.json"), "utf8"));
+		expect(summary.arms).toMatchObject([{ arm: "veyyon", graded: 1, errors: 0, passes: 1 }]);
+	});
+
+	it("refuses a run without its run record instead of taking a baseline from the settle order", async () => {
+		await using dir = await TempDir.create("@evals-kit-regrade-");
+		const runDir = await warrantyRun(dir.path(), { runRecord: false });
+		for (const regrade of [false, true]) {
+			await expect(kitReport(runDir, regrade)).rejects.toThrow(path.join(runDir, RUN_RECORD_FILE));
+		}
+		await expect(fs.readdir(runDir)).resolves.not.toContain("report.md");
 	});
 
 	it("counts passes within the budgets the suite declares, in the run's report and in a regrade", async () => {
@@ -296,6 +333,7 @@ describe("a kit run report", () => {
 		expect(written.budgets).toEqual(budgets);
 		expect(written.arms[0]).toMatchObject(expected);
 
+		await fs.writeFile(path.join(runDir, RUN_RECORD_FILE), JSON.stringify({ variants: [{ name: "veyyon" }] }));
 		await kitReport(runDir, true);
 		const regraded = JSON.parse(await fs.readFile(path.join(runDir, "summary-regraded.json"), "utf8"));
 		expect(regraded.budgets).toEqual(budgets);

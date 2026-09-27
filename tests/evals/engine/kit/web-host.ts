@@ -8,6 +8,7 @@
 
 import * as http from "node:http";
 import type { AddressInfo, Socket } from "node:net";
+import { errorMessage } from "@veyyon/utils";
 
 /** One request, read in full. */
 export interface SiteRequest {
@@ -83,8 +84,23 @@ async function serve(handler: SiteHandler, incoming: http.IncomingMessage, outgo
 			body,
 		});
 	} catch (error) {
-		response = text(`${error instanceof Error ? error.message : String(error)}\n`, { status: 500 });
+		response = text(`${errorMessage(error)}\n`, { status: 500 });
 	}
+	try {
+		send(outgoing, response);
+	} catch (error) {
+		// Node refuses some responses outright: a header holding a line break or a character outside
+		// Latin-1, a status out of range, a cookie value no URI encoding holds. That is the handler's
+		// error and is answered as one; uncaught, it left the request open and the rejection unhandled.
+		try {
+			send(outgoing, text(`${errorMessage(error)}\n`, { status: 500 }));
+		} catch {
+			outgoing.destroy();
+		}
+	}
+}
+
+function send(outgoing: http.ServerResponse, response: SiteResponse): void {
 	const headers: Record<string, string | string[]> = { "cache-control": "no-store", ...response.headers };
 	if (response.cookies?.length) headers["set-cookie"] = response.cookies.map(formatCookie);
 	outgoing.writeHead(response.status ?? 200, headers);
@@ -107,9 +123,22 @@ function parseCookies(header: string | undefined): Record<string, string> {
 	const cookies: Record<string, string> = {};
 	for (const part of header?.split(";") ?? []) {
 		const eq = part.indexOf("=");
-		if (eq > 0) cookies[part.slice(0, eq).trim()] = decodeURIComponent(part.slice(eq + 1).trim());
+		if (eq > 0) cookies[part.slice(0, eq).trim()] = decodeCookieValue(part.slice(eq + 1).trim());
 	}
 	return cookies;
+}
+
+/**
+ * A value this host encoded, decoded. A value a page set itself (`document.cookie = "a=100%"`) is
+ * no URI encoding and reaches the handler as it was sent: every site on 127.0.0.1 shares the
+ * browser's cookies, so one such cookie would otherwise fail every request to every site.
+ */
+function decodeCookieValue(value: string): string {
+	try {
+		return decodeURIComponent(value);
+	} catch {
+		return value;
+	}
 }
 
 function formatCookie(cookie: SetCookie): string {
@@ -136,11 +165,34 @@ export function redirect(location: string, init: Omit<SiteResponse, "body" | "st
 	return { ...init, status: 303, headers: { location, ...init.headers } };
 }
 
-/** The fields of a urlencoded form body; a repeated field keeps every value, joined by commas. */
+/** The origin a redirect target is resolved against. It serves nothing, so only a path stays on it. */
+const LOCAL_BASE = "http://local.invalid";
+
+/**
+ * A redirect target a request names (`next`, `back`), kept only when it is a path on the site that
+ * serves it. `//host`, `https://host`, `/\host` and a path a browser reads as one of them (`/<tab>/host`)
+ * give `fallback`. The kept path is the URL parser's serialization, so the header holds nothing a
+ * browser strips or reads another way.
+ */
+export function localPath(value: string | null | undefined, fallback = "/"): string {
+	if (!value?.startsWith("/")) return fallback;
+	let url: URL;
+	try {
+		url = new URL(value, LOCAL_BASE);
+	} catch {
+		return fallback;
+	}
+	return url.origin === LOCAL_BASE ? `${url.pathname}${url.search}${url.hash}` : fallback;
+}
+
+/**
+ * The fields of a urlencoded form body; a repeated field keeps every value, joined by commas. The
+ * record has no prototype, so a field named `toString`, `constructor` or `__proto__` is a field.
+ */
 export function formFields(request: SiteRequest): Record<string, string> {
-	const fields: Record<string, string> = {};
+	const fields: Record<string, string> = Object.create(null);
 	for (const [name, value] of new URLSearchParams(request.body)) {
-		fields[name] = name in fields ? `${fields[name]},${value}` : value;
+		fields[name] = Object.hasOwn(fields, name) ? `${fields[name]},${value}` : value;
 	}
 	return fields;
 }

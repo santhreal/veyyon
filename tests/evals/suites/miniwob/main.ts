@@ -9,10 +9,14 @@
  * never submits scores nothing. The agent sees only the task page.
  *
  * The pages are not in this repository. Put MiniWoB++'s `miniwob/html` directory at
- * `tests/evals/datasets/miniwob/html`:
+ * `tests/evals/datasets/miniwob/html`, from the repository root:
  *
- *   git clone https://github.com/Farama-Foundation/miniwob-plusplus
- *   ln -s "$PWD/miniwob-plusplus/miniwob/html" tests/evals/datasets/miniwob/html
+ *   git clone https://github.com/Farama-Foundation/miniwob-plusplus ../miniwob-plusplus
+ *   mkdir -p tests/evals/datasets/miniwob
+ *   ln -s "$(cd ../miniwob-plusplus/miniwob/html && pwd)" tests/evals/datasets/miniwob/html
+ *
+ * The pages' files are part of the suite's provenance, so a run resumed against other pages is
+ * refused as another plan.
  */
 
 import * as fs from "node:fs/promises";
@@ -111,7 +115,11 @@ interface MiniwobState {
 	readonly reason: string | null;
 }
 
-async function serveFile(root: string, pathname: string): Promise<SiteResponse> {
+/**
+ * A file of the MiniWoB++ pages, as a trial's site serves it. A task page (`miniwob/<task>.html`
+ * under `root`) gets the setup script; every other file is served as it is on disk.
+ */
+export async function serveFile(root: string, pathname: string): Promise<SiteResponse> {
 	const file = path.join(root, path.normalize(decodeURIComponent(pathname)).replace(/^([/\\])+/, ""));
 	if (!file.startsWith(root)) return text("forbidden", { status: 403 });
 	let data: Buffer;
@@ -122,7 +130,7 @@ async function serveFile(root: string, pathname: string): Promise<SiteResponse> 
 	}
 	const extension = path.extname(file);
 	const type = CONTENT_TYPES[extension] ?? "application/octet-stream";
-	if (extension === ".html" && file.includes(`${path.sep}miniwob${path.sep}`)) {
+	if (extension === ".html" && path.dirname(path.relative(root, file)) === "miniwob") {
 		return { headers: { "content-type": type }, body: data.toString("utf8").replace(/<\/body>/i, `${SETUP_SCRIPT}</body>`) };
 	}
 	return { headers: { "content-type": type }, body: data };
@@ -211,6 +219,7 @@ export default defineSuite({
 	displayName: "MiniWoB++",
 	description: "Small synthetic web tasks from MiniWoB++, each scored by its own page.",
 	sourceDir: import.meta.dirname,
+	datasetDir: miniwobRoot(),
 	capabilities: CAPABILITIES,
 	tasks: MINIWOB_TASKS,
 	tools: ["browser"],

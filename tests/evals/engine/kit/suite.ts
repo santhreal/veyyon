@@ -42,6 +42,13 @@ export interface KitSuiteSpec {
 	readonly description: string;
 	/** The suite's directory; its files are the suite's provenance hash. */
 	readonly sourceDir: string;
+	/**
+	 * A directory outside `sourceDir` whose files the tasks serve or read, such as an upstream
+	 * benchmark's pages. Its files join the provenance hash, so a run resumed after the directory
+	 * changed is refused as another plan. An absent directory hashes as absent; the suite's
+	 * preflight reports it.
+	 */
+	readonly datasetDir?: string;
 	/** Every capability a task may name, with what it means. */
 	readonly capabilities: Readonly<Record<string, string>>;
 	readonly tasks: readonly KitTask[];
@@ -127,11 +134,23 @@ export function defineSuite(spec: KitSuiteSpec): KitSuite {
 
 		async provenance(): Promise<SuiteProvenance> {
 			const hash = createHash("sha256");
-			for (const file of [...(await listFiles(spec.sourceDir))].sort()) {
-				hash.update(file);
-				hash.update("\0");
-				hash.update(await fs.readFile(path.join(spec.sourceDir, file)));
-				hash.update("\0");
+			// A file is hashed under its relative path with `/` separators, and in that order, so a tree
+			// listed on Windows (`apps\shop\site.ts`) hashes as the same tree listed on Linux.
+			const hashFiles = async (dir: string, files: readonly string[]) => {
+				const named = files.map(file => ({ file, name: file.replaceAll("\\", "/") }));
+				named.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+				for (const { file, name } of named) {
+					hash.update(name);
+					hash.update("\0");
+					hash.update(await fs.readFile(path.join(dir, file)));
+					hash.update("\0");
+				}
+			};
+			await hashFiles(spec.sourceDir, await listFiles(spec.sourceDir));
+			if (spec.datasetDir !== undefined) {
+				const files = await listFiles(spec.datasetDir).catch(() => null);
+				hash.update(files === null ? "dataset absent\0" : "dataset\0");
+				if (files !== null) await hashFiles(spec.datasetDir, files);
 			}
 			return {
 				suite: spec.id,

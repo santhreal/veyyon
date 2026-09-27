@@ -50,9 +50,14 @@ export class FormClient {
 			if (currentBody !== undefined && type) headers["content-type"] = type;
 			const response = await fetch(url, { method: currentMethod, headers, body: currentBody, redirect: "manual" });
 			for (const cookie of response.headers.getSetCookie()) {
-				const [pair] = cookie.split(";");
-				const eq = pair?.indexOf("=") ?? -1;
-				if (pair && eq > 0) this.#cookies.set(pair.slice(0, eq).trim(), pair.slice(eq + 1).trim());
+				const [pair = "", ...attributes] = cookie.split(";");
+				const eq = pair.indexOf("=");
+				if (eq <= 0) continue;
+				const name = pair.slice(0, eq).trim();
+				// `Max-Age=0`, or less, deletes a cookie; `hostSite` writes it for `SetCookie.maxAge: 0`.
+				const maxAge = attributes.map(attribute => /^\s*max-age\s*=\s*(-?\d+)\s*$/i.exec(attribute)).find(Boolean);
+				if (maxAge && Number(maxAge[1]) <= 0) this.#cookies.delete(name);
+				else this.#cookies.set(name, pair.slice(eq + 1).trim());
 			}
 			const location = response.headers.get("location");
 			if (response.status >= 300 && response.status < 400 && location) {

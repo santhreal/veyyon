@@ -7,9 +7,9 @@
  * field holds exactly the value after every fill. A fill that is fast and wrong is not counted as a
  * fill.
  *
- * It imports nothing newer than the browser tool's public API, so the same file runs against any tree
- * that has the tool: run it in the tree before a change and in the tree after, same flags, and the
- * two reports differ only by the change.
+ * Apart from the flag parser in `engine/plan/flag-grammar`, it imports only the browser tool's public
+ * API, so a copy runs in any tree that has both: run it in the tree before a change and in the tree
+ * after, same flags, and the two reports differ only by the change.
  *
  * Deliberately NOT a test: it launches Chromium and its numbers belong to the machine it ran on.
  *

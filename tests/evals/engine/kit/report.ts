@@ -2,8 +2,8 @@
  * The report a kit suite writes into a finished run: `report.md` for a reader and `summary.json`
  * for a script.
  *
- * Per arm it states pass rate with its 95% interval, partial credit, and what the passes cost in
- * tokens, turns and time; the pass rate by capability and by difficulty; how many trials passed
+ * Per arm it states pass rate with its 95% interval, partial credit, and what all its trials spent
+ * in tokens, turns and time; the pass rate by capability and by difficulty; how many trials passed
  * within each turn, token and time budget; and, for every arm against the first, the trials only
  * one of them passed, with a sign test and the spend over the trials both graded.
  */
