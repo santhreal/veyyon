@@ -20,7 +20,10 @@ import {
 import {
 	type HostIdentity,
 	resolveHostIdentity,
+	resolveScreenSize,
+	resolveStealthProfile,
 	resolveSupportedHost,
+	resolveWindowPosition,
 	SUPPORTED_HOSTS,
 } from "@veyyon/coding-agent/tools/web/browser/host-identity";
 
@@ -193,6 +196,42 @@ describe("the identity a headless browser presents", () => {
 			}),
 		).toBeUndefined();
 	});
+});
+
+/**
+ * A desktop screen keeps a taskbar, a dock or a menu bar out of its work area, and a window sits inside
+ * that work area: CreepJS reads `availHeight` equal to `height` as headless, and a window reaching past
+ * the work area is one no desktop places. Swept over every supported host and viewports from small to
+ * larger than the largest screen, at the scales a tab may set.
+ */
+describe("the screen a headless window sits on", () => {
+	const viewports = [
+		{ width: 800, height: 600, deviceScaleFactor: 1 },
+		{ width: 1111, height: 777, deviceScaleFactor: 1.25 },
+		{ width: 1365, height: 768, deviceScaleFactor: 1.25 },
+		{ width: 1280, height: 1100, deviceScaleFactor: 1.25 },
+		{ width: 1280, height: 940, deviceScaleFactor: 1 },
+		{ width: 1920, height: 1080, deviceScaleFactor: 1 },
+		{ width: 2560, height: 1440, deviceScaleFactor: 2 },
+		{ width: 4000, height: 2400, deviceScaleFactor: 1 },
+	];
+	for (const host of SUPPORTED_HOSTS) {
+		it(`keeps a bar out of the work area and the window inside it on ${host.platform} ${host.arch}`, () => {
+			const profile = resolveStealthProfile(host, 16);
+			const { workArea, windowChrome } = profile;
+			expect(workArea.top + workArea.bottom).toBeGreaterThan(0);
+			const position = resolveWindowPosition(profile);
+			for (const viewport of viewports) {
+				const screen = resolveScreenSize(profile, viewport);
+				expect(position.x).toBeGreaterThanOrEqual(0);
+				expect(position.y).toBeGreaterThanOrEqual(workArea.top);
+				expect(position.x + viewport.width + 2 * windowChrome.frame).toBeLessThanOrEqual(screen.width);
+				expect(position.y + viewport.height + windowChrome.top + windowChrome.frame).toBeLessThanOrEqual(
+					screen.height - workArea.bottom,
+				);
+			}
+		});
+	}
 });
 
 /** A PE version resource: some bytes, `VS_FIXEDFILEINFO`, then the `ProductName` `String` entry. */

@@ -272,11 +272,19 @@ export interface WindowChrome {
 	readonly top: number;
 }
 
+/** What a taskbar, dock or menu bar keeps of the screen's top and bottom edges, in CSS pixels. */
+export interface WorkAreaInsets {
+	readonly top: number;
+	readonly bottom: number;
+}
+
 export interface StealthProfile {
 	readonly os: HostOs;
 	/** First entry is the backend the OS runs Chrome on by default. */
 	readonly webgl: readonly WebglProfile[];
 	readonly windowChrome: WindowChrome;
+	/** The screen edges `screen.availTop` and `screen.availHeight` leave out. */
+	readonly workArea: WorkAreaInsets;
 	/** Physical screen sizes common on the OS, smallest first. */
 	readonly screens: readonly (readonly [width: number, height: number])[];
 	/** `navigator.hardwareConcurrency` in the page and every worker. */
@@ -365,6 +373,19 @@ const WINDOW_CHROME: Record<HostOs, WindowChrome> = {
 	linux: { frame: 0, top: 87 },
 };
 
+/**
+ * The screen a desktop leaves to windows: the Windows 11 taskbar along the bottom, the macOS menu bar
+ * with the dock hidden, the GNOME top bar. A headless screen has no work area of its own.
+ */
+const WORK_AREA: Record<HostOs, WorkAreaInsets> = {
+	windows: { top: 0, bottom: 48 },
+	mac: { top: 25, bottom: 0 },
+	linux: { top: 32, bottom: 0 },
+};
+
+/** Gap between the work area's top-left corner and a headless window's, in CSS pixels. */
+export const WINDOW_OFFSET = 10;
+
 const SCREENS: Record<HostOs, readonly (readonly [number, number])[]> = {
 	windows: [
 		[1920, 1080],
@@ -390,6 +411,7 @@ export function resolveStealthProfile(host: SupportedHost, hostCores: number): S
 		os: host.os,
 		webgl: WEBGL_PROFILES[`${host.os}-${host.arch}`],
 		windowChrome: WINDOW_CHROME[host.os],
+		workArea: WORK_AREA[host.os],
 		screens: SCREENS[host.os],
 		hardwareConcurrency: clampLow(Math.floor(hostCores), 1, HARDWARE_CONCURRENCY_CAP),
 	};
@@ -397,17 +419,24 @@ export function resolveStealthProfile(host: SupportedHost, hostCores: number): S
 
 /**
  * The screen, in CSS pixels at `deviceScaleFactor`, a headless window of `viewport` sits on: the
- * smallest common physical screen of the OS that holds the window with its chrome, room for a taskbar
- * or menu bar, and its offset from the screen corner.
+ * smallest common physical screen of the OS whose work area holds the window with its chrome at
+ * {@link WINDOW_OFFSET} from the work area's corner, with as much room again past its far edges.
  */
 export function resolveScreenSize(
 	profile: StealthProfile,
 	viewport: { width: number; height: number; deviceScaleFactor: number },
 ): { width: number; height: number } {
 	const scale = viewport.deviceScaleFactor > 0 ? viewport.deviceScaleFactor : 1;
-	const needWidth = viewport.width + 2 * profile.windowChrome.frame + 20;
-	const needHeight = viewport.height + profile.windowChrome.top + profile.windowChrome.frame + 60;
+	const { windowChrome, workArea } = profile;
+	const needWidth = viewport.width + 2 * windowChrome.frame + 2 * WINDOW_OFFSET;
+	const needHeight =
+		viewport.height + windowChrome.top + windowChrome.frame + workArea.top + workArea.bottom + 2 * WINDOW_OFFSET;
 	const fits = profile.screens.find(([width, height]) => width / scale >= needWidth && height / scale >= needHeight);
 	if (fits) return { width: Math.round(fits[0] / scale), height: Math.round(fits[1] / scale) };
 	return { width: Math.ceil(needWidth), height: Math.ceil(needHeight) };
+}
+
+/** Where a headless window's top-left corner sits on its screen: inside the work area, off its corner. */
+export function resolveWindowPosition(profile: StealthProfile): { x: number; y: number } {
+	return { x: WINDOW_OFFSET, y: profile.workArea.top + WINDOW_OFFSET };
 }

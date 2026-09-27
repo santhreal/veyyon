@@ -105,13 +105,16 @@
 
   // The launch sizes headless Chrome's screen to hold its window. A window made larger later gets the
   // smallest common screen of the host's OS that holds it, so the screen never ends inside the window.
+  const workArea = stealthProfile.workArea;
   const scale = positiveNumber(readValue(window, "devicePixelRatio", 1), 1);
   const needWidth =
     positiveInteger(readValue(window, "outerWidth", 0), 0) +
     Math_max(0, finiteNumber(readValue(window, "screenX", 0), 0));
   const needHeight =
     positiveInteger(readValue(window, "outerHeight", 0), 0) +
-    Math_max(0, finiteNumber(readValue(window, "screenY", 0), 0));
+    Math_max(0, finiteNumber(readValue(window, "screenY", 0), 0)) +
+    workArea.bottom;
+  let enlarged = false;
   if (
     positiveInteger(readValue(screenObject, "width", 0), 0) < needWidth ||
     positiveInteger(readValue(screenObject, "height", 0), 0) < needHeight
@@ -126,16 +129,22 @@
         break;
       }
     }
-    for (const entry of [
-      ["width", screenWidth],
-      ["height", screenHeight],
-      ["availWidth", screenWidth],
-      ["availHeight", screenHeight],
-      ["availLeft", 0],
-      ["availTop", 0],
-    ]) {
-      patchGetter(screenObject, entry[0], () => entry[1]);
-    }
+    patchGetter(screenObject, "width", () => screenWidth);
+    patchGetter(screenObject, "height", () => screenHeight);
+    enlarged = true;
+  }
+
+  // A desktop keeps a taskbar, a dock or a menu bar on its screen, which the work area (`avail*`)
+  // leaves out. Headless Chrome's screen has none, and its work area is the whole screen.
+  if (headlessWindow || enlarged) {
+    const screenWidthNow = () => positiveInteger(readValue(screenObject, "width", 0), 0);
+    const screenHeightNow = () => positiveInteger(readValue(screenObject, "height", 0), 0);
+    patchGetter(screenObject, "availLeft", () => 0);
+    patchGetter(screenObject, "availTop", () => workArea.top);
+    patchGetter(screenObject, "availWidth", () => screenWidthNow());
+    patchGetter(screenObject, "availHeight", () =>
+      Math_max(0, screenHeightNow() - workArea.top - workArea.bottom),
+    );
   }
 
   // Viewport emulation reports a portrait orientation whatever the screen's shape; a desktop screen

@@ -26,6 +26,7 @@ import {
 	resolveScreenSize,
 	resolveStealthProfile,
 	resolveSupportedHost,
+	resolveWindowPosition,
 	type StealthProfile,
 	SUPPORTED_HOSTS,
 	type UserAgentMetadata,
@@ -352,6 +353,10 @@ export async function launchHeadlessBrowser(opts: LaunchHeadlessOptions): Promis
 		// Headless Chrome's own screen is 800x600, smaller than its window.
 		const screen = resolveScreenSize(profile, initialViewport);
 		launchArgs.push(`--screen-info={${screen.width}x${screen.height}}`);
+		// The page scripts give the screen a work area below the menu bar or above the taskbar; the window
+		// sits inside it.
+		const position = resolveWindowPosition(profile);
+		launchArgs.push(`--window-position=${position.x},${position.y}`);
 	}
 	const temporaryProfile = opts.userDataDir === undefined ? await createProfile() : undefined;
 	let browser: Browser | undefined;
@@ -657,6 +662,29 @@ async function holdTargetIdentity(browser: Browser, target: TargetIdentity): Pro
 }
 
 /**
+ * `Window_Proxy` for the page scripts and the worker prelude: a Proxy that refuses a prototype whose
+ * chain leads back to it. An object refuses one with a TypeError, but a Proxy forwards the change to its
+ * target, whose check stops at the Proxy, and the next property read recurses until the stack
+ * overflows; CreepJS reads that difference as a lie. Needs `Native_Proxy`, `Object_assign`,
+ * `Reflect_apply`, `Reflect_getPrototypeOf` and `Reflect_setPrototypeOf` in scope.
+ */
+const GUARDED_PROXY_SOURCE = `const Window_Proxy = function Proxy(target, handler) {
+	let proxy = null;
+	const guarded = Object_assign({}, handler);
+	guarded.setPrototypeOf = (proxied, proto) => {
+		for (let link = proto, steps = 0; link !== null && steps < 4096; steps += 1) {
+			if (link === proxy) return false;
+			link = Reflect_getPrototypeOf(link);
+		}
+		return handler.setPrototypeOf
+			? Reflect_apply(handler.setPrototypeOf, handler, [proxied, proto])
+			: Reflect_setPrototypeOf(proxied, proto);
+	};
+	proxy = new Native_Proxy(target, guarded);
+	return proxy;
+};`;
+
+/**
  * The script a worker evaluates before its own: the page's WebGL patch over the worker's natives, which
  * nothing has touched yet. A page, frame or tab evaluates it too and returns at the first line.
  */
@@ -668,12 +696,16 @@ function buildWorkerPrelude(profile: StealthProfile): string {
 	const Page_WeakMap_set = WeakMap.prototype.set;
 	const Reflect_apply = Reflect.apply;
 	const Reflect_ownKeys = Reflect.ownKeys;
+	const Reflect_getPrototypeOf = Reflect.getPrototypeOf;
+	const Reflect_setPrototypeOf = Reflect.setPrototypeOf;
+	const Object_assign = Object.assign;
 	const Object_getOwnPropertyDescriptor = Object.getOwnPropertyDescriptor;
 	const Object_defineProperty = Object.defineProperty;
 	const Object_getPrototypeOf = Object.getPrototypeOf;
 	const Object_create = Object.create;
 	const Math_max = Math.max;
-	const Window_Proxy = Proxy;
+	const Native_Proxy = Proxy;
+	${GUARDED_PROXY_SOURCE}
 	const stealthProfile = ${JSON.stringify(profile)};
 	const nativeFunctionSources = new Page_WeakMap();
 	const patchToString = (fn, name) => {
@@ -733,7 +765,6 @@ function buildStealthInjectionScript(scripts: readonly string[], profile: Stealt
 	return `(() => {
 				const Page_Function_toString = Function.prototype.toString;
 				const Page_FunctionToStringDescriptor = Object.getOwnPropertyDescriptor(Function.prototype, "toString");
-				const Page_Proxy = Proxy;
 				const Page_WeakMap = WeakMap;
 				const Page_WeakMap_get = Page_WeakMap.prototype.get;
 				const Page_WeakMap_set = Page_WeakMap.prototype.set;
@@ -776,7 +807,7 @@ function buildStealthInjectionScript(scripts: readonly string[], profile: Stealt
 					const Window_Event = nativeWindow.Event;
 					const Promise_resolve = nativeWindow.Promise.resolve.bind(nativeWindow.Promise);
 					const Window_Blob = nativeWindow.Blob;
-					const Window_Proxy = nativeWindow.Proxy;
+					const Native_Proxy = nativeWindow.Proxy;
 					const Reflect_get = nativeWindow.Reflect.get;
 					const Reflect_set = nativeWindow.Reflect.set;
 					const Reflect_apply = nativeWindow.Reflect.apply;
@@ -790,6 +821,7 @@ function buildStealthInjectionScript(scripts: readonly string[], profile: Stealt
 					const Reflect_ownKeys = nativeWindow.Reflect.ownKeys;
 					const Reflect_preventExtensions = nativeWindow.Reflect.preventExtensions;
 					const Reflect_setPrototypeOf = nativeWindow.Reflect.setPrototypeOf;
+					${GUARDED_PROXY_SOURCE}
 					const Intl_DateTimeFormat = nativeWindow.Intl.DateTimeFormat;
 					const Date_constructor = nativeWindow.Date;
 
@@ -802,7 +834,7 @@ function buildStealthInjectionScript(scripts: readonly string[], profile: Stealt
 					const patchToString = (fn, name) => registerNativeSource(fn, makeNativeString(name));
 					const stealthProfile = ${JSON.stringify({ ...profile, headless })};
 					if (${scripts.length > 0 ? "true" : "false"}) {
-						const functionToStringProxy = new Page_Proxy(Page_Function_toString, {
+						const functionToString = new Window_Proxy(Page_Function_toString, {
 							apply(target, thisArg, args) {
 								const source = Reflect_apply(Page_WeakMap_get, nativeFunctionSources, [thisArg]);
 								if (source) return source;
@@ -812,14 +844,14 @@ function buildStealthInjectionScript(scripts: readonly string[], profile: Stealt
 								return Reflect_get(target, key, receiver);
 							},
 						});
-						registerNativeSource(functionToStringProxy, makeNativeString("toString"));
+						registerNativeSource(functionToString, makeNativeString("toString"));
 						Object_defineProperty(Function.prototype, "toString", {
 							...(Page_FunctionToStringDescriptor || {
 								writable: true,
 								configurable: true,
 								enumerable: false,
 							}),
-							value: functionToStringProxy,
+							value: functionToString,
 						});
 					}
 
