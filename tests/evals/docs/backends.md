@@ -54,6 +54,11 @@ fixture's source, an earlier trial's transcript, or another user's files. Names 
 directory stay listable, and Landlock does not govern connecting to a Unix socket. On a host without
 Landlock the backend refuses the run unless `--unsandboxed` is given.
 
+Landlock rules on this backend cover files, not network connections. A trial reaches every listener
+on the host's loopback interface, including the sites and the browser debugging ports of the trials
+running beside it, and `/proc/net/tcp` lists their ports. Run with `--jobs 1` when a result must not
+depend on what another trial can see or change.
+
 The agent runs in a process group of its own. A deadline or a cancel sends the group SIGTERM, then
 SIGKILL to whatever is left once the agent exits or its grace runs out; when the agent exits on its
 own, whatever it left in the group is killed. Under Landlock the launcher is the agent's parent and a
