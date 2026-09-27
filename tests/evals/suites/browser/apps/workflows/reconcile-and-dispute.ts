@@ -497,7 +497,7 @@ export const reconcileAndDisputeTask: KitTask = kitTask<ReconcileState>({
 				`One purchase on the list went through twice: the same merchant charged the same amount again one or two days later. Dispute that later charge at the bank with the reason "${DUPLICATE_REASON}", and add no row for it.`,
 				`One other posted purchase dated in ${month} is on no row. Add it in the first empty row below the list, with its merchant, date and amount written as the rows above write them, and the Status Unexpected.`,
 				"A refund is not a purchase. Change nothing else in the workbook or at the bank.",
-				"Reply with the total, in dollars and cents, of the listed purchases that have posted, and state no other total.",
+				"Reply with the total, in dollars and cents, of the rows you marked Matched, and state no other total.",
 			].join("\n"),
 			solve: async () => {
 				const client = await signIn(bankSite, bank);
@@ -568,7 +568,7 @@ export const reconcileAndDisputeTask: KitTask = kitTask<ReconcileState>({
 				const total = owned.reduce((sum, row) => (row.posted ? sum - row.cents : sum), 0);
 				if (total !== plan.totalCents)
 					throw new Error(`the matched rows total ${total}, the plan ${plan.totalCents}`);
-				return `The listed purchases that have posted total ${usd(total)}.`;
+				return `The rows marked Matched total ${usd(total)}.`;
 			},
 			finish: async () => {
 				const [bankState, gridState] = await Promise.all([bankSite.finish(), gridSite.finish()]);
@@ -642,7 +642,7 @@ export const reconcileAndDisputeTask: KitTask = kitTask<ReconcileState>({
 		},
 		{
 			id: "answer-total",
-			description: "states the total of the listed purchases that posted, and no miscounted total",
+			description: "states the total of the rows marked Matched, the listed purchases that posted, and no miscounted total",
 			pass: (state, answer) =>
 				answerStatesOnly(
 					answer,
