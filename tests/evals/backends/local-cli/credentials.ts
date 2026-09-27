@@ -14,9 +14,12 @@ import * as path from "node:path";
 import { AUTH_DB_SOURCES } from "../../engine/auth/preflight";
 import { snapshotCredentialStore } from "../../engine/auth/seed";
 
-/** The store trials copy from: `options.authDb` when a run names one, else the first that exists. */
+/**
+ * The store trials copy from: the one a run names (`--auth-db`, or `authDb` from a caller that
+ * builds the options itself), else the first of the runner's own that exists.
+ */
 export function credentialSource(options: Readonly<Record<string, unknown>> | undefined): string | null {
-	const named = options?.authDb;
+	const named = options?.authDb ?? options?.["auth-db"];
 	if (typeof named === "string" && named.length > 0) return path.resolve(named);
 	return AUTH_DB_SOURCES.find(candidate => fs.existsSync(candidate)) ?? null;
 }

@@ -14,6 +14,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { writeSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { errorMessage, logger } from "@veyyon/utils";
@@ -29,6 +30,7 @@ import { checkVariantSupport, type UnappliedVariantAxisError, variantSupportQuer
 import type { ConfigSpec, PromptVariantSpec, VariantMatrixSelection } from "./engine/plan/variant-matrix";
 import { checkRunDirectories } from "./engine/run/directories";
 import { executeRun } from "./engine/run/execute";
+import { runUnderSignals } from "./engine/run/interrupt";
 import { journalExists, journalPathFor, readRunJournal, requireJournalPlan } from "./engine/run/journal";
 import type { CellSummary, EvalRunRecord } from "./engine/run/record";
 import { judgeRunOutcome, summarizeRunCells } from "./engine/run/record";
@@ -915,58 +917,54 @@ async function runOneSuite(args: EvalsCliArgs, suite: EvalSuite, running: readon
 	}
 
 	const total = plan.cells.length;
-	const controller = new AbortController();
-	let abortedSignal: string | null = null;
-	const onSigInt = () => {
-		if (!controller.signal.aborted) {
-			abortedSignal = "SIGINT";
-			controller.abort();
-		}
-	};
-	const onSigTerm = () => {
-		if (!controller.signal.aborted) {
-			abortedSignal = "SIGTERM";
-			controller.abort();
-		}
-	};
+	const interruptionNote = (signal: string, completed: number) =>
+		`\nRun ${plan.runId} interrupted by ${signal} (${completed}/${total} trials completed).\n` +
+		`To resume this run:\n  evals --suite ${suite.id} --run-id ${plan.runId} --resume\n`;
 
-	process.on("SIGINT", onSigInt);
-	process.on("SIGTERM", onSigTerm);
-
-	let record: EvalRunRecord | undefined;
+	let record: EvalRunRecord;
+	let interrupted: string | null;
 	try {
-		record = await executeRun({
-			plan,
-			harnesses,
-			backend,
-			workDir,
-			runsDir,
-			jobs: args.jobs,
-			signal: controller.signal,
-			resume: args.resume,
-			// The whole bag every other call site hands a backend, plus the dataset directory
-			// `executeRun` validates. This passed `{ datasetDir }` alone, so on a real run a
-			// backend saw none of the options this file parsed: `--vey-binary` fell back to the
-			// checkout's own build, `--trial-timeout`, `--agent-timeout`,
-			// `--timeout-multiplier` and `--attempts` changed nothing, and a run comparing two
-			// builds measured one build twice. Only the dry-run path above was correct.
-			options: {
-				...context.options,
-				...(args.datasetDir === null ? {} : { datasetDir: args.datasetDir }),
-			},
-			onSkip: (skipped, totalCount) => {
-				process.stdout.write(
-					`resumed run ${plan.runId}: skipping ${skipped} already-settled trial(s) out of ${totalCount}\n`,
-				);
-			},
-			onReportFailure: (reason: string) => {
-				process.stderr.write(`\nRun ${plan.runId} produced no report: ${reason}\n`);
-			},
-			onTrial: (trial, index) => {
-				const outcome = trial.score.error !== null ? `error: ${trial.score.error}` : `reward ${trial.score.reward}`;
-				process.stdout.write(`[${index + 1}/${total}] ${trial.cell.variant} ${trial.cell.task} — ${outcome}\n`);
-			},
-		});
+		({ result: record, interrupted } = await runUnderSignals(
+			`evals-run:${plan.runId}`,
+			signal =>
+				executeRun({
+					plan,
+					harnesses,
+					backend,
+					workDir,
+					runsDir,
+					jobs: args.jobs,
+					signal,
+					resume: args.resume,
+					// The whole bag every other call site hands a backend, plus the dataset directory
+					// `executeRun` validates. This passed `{ datasetDir }` alone, so on a real run a
+					// backend saw none of the options this file parsed: `--vey-binary` fell back to the
+					// checkout's own build, `--trial-timeout`, `--agent-timeout`,
+					// `--timeout-multiplier` and `--attempts` changed nothing, and a run comparing two
+					// builds measured one build twice. Only the dry-run path above was correct.
+					options: {
+						...context.options,
+						...(args.datasetDir === null ? {} : { datasetDir: args.datasetDir }),
+					},
+					onSkip: (skipped, totalCount) => {
+						process.stdout.write(
+							`resumed run ${plan.runId}: skipping ${skipped} already-settled trial(s) out of ${totalCount}\n`,
+						);
+					},
+					onReportFailure: (reason: string) => {
+						process.stderr.write(`\nRun ${plan.runId} produced no report: ${reason}\n`);
+					},
+					onTrial: (trial, index) => {
+						const outcome =
+							trial.score.error !== null ? `error: ${trial.score.error}` : `reward ${trial.score.reward}`;
+						process.stdout.write(
+							`[${index + 1}/${total}] ${trial.cell.variant} ${trial.cell.task} — ${outcome}\n`,
+						);
+					},
+				}),
+			// Written synchronously: the process exits as soon as the run hands its cleanup back.
+			(signal, settledRecord) => writeSync(2, interruptionNote(signal, settledRecord?.results.length ?? 0)),
+		));
 	} catch (error) {
 		// Every refusal `executeRun` states — a journal of another plan, a preflight that said
 		// no, a directory it cannot use — arrived here as an unhandled rejection: Bun printed a
@@ -975,19 +973,8 @@ async function runOneSuite(args: EvalsCliArgs, suite: EvalSuite, running: readon
 		process.stderr.write(`${errorMessage(error)}\n`);
 		logger.error("evals run failed", { runId: plan.runId, suite: suite.id, error });
 		return 1;
-	} finally {
-		process.removeListener("SIGINT", onSigInt);
-		process.removeListener("SIGTERM", onSigTerm);
 	}
-
-	if (controller.signal.aborted || abortedSignal !== null) {
-		const completedCount = record ? record.results.length : 0;
-		process.stderr.write(
-			`\nRun ${plan.runId} interrupted by ${abortedSignal ?? "signal"} (${completedCount}/${total} trials completed).\n` +
-				`To resume this run:\n  evals --suite ${suite.id} --run-id ${plan.runId} --resume\n`,
-		);
-		return 130;
-	}
+	if (interrupted !== null) return 130;
 
 	process.stdout.write(`\n${summaryTable(summarizeRunCells(record))}\n`);
 

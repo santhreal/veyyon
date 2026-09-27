@@ -16,18 +16,19 @@
  * and `/proc` stay writable for Chrome; a real browser trial is the check for both. Without Landlock
  * (every host but Linux, a kernel without it, or no python3) the sandbox case skips.
  */
-import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
+import { credentialSource } from "../../../backends/local-cli/credentials";
 import { LocalCliBackend, type LocalTrialLayout, localTrialLayout } from "../../../backends/local-cli/main";
 import { landlockSandbox } from "../../../backends/local-cli/sandbox";
-import type { HarnessAdapter, HarnessLookup, RunContext, Variant } from "../../../engine/contracts";
+import type { RunContext, Variant } from "../../../engine/contracts";
 import { kitTask } from "../../../engine/kit/catalog";
 import { defineSuite } from "../../../engine/kit/suite";
 import { LOCAL_TRIAL_FILES, trialDirFor } from "../../../engine/run/layout";
+import { lookup, probeHarness, writeCredentials } from "./probe-fixtures";
 
 /** Imports a package the build installs, reads and writes what its plan names, and reports as an assistant message. */
 const PROBE = `import * as fs from "node:fs";
@@ -80,57 +81,6 @@ async function writeTree(root: string): Promise<{ tree: string; answers: string 
 	return { tree, answers };
 }
 
-async function writeCredentials(file: string): Promise<void> {
-	const db = new Database(file);
-	try {
-		db.run(
-			"CREATE TABLE auth_credentials (id INTEGER PRIMARY KEY AUTOINCREMENT, provider TEXT NOT NULL, credential_type TEXT NOT NULL, data TEXT NOT NULL, disabled_cause TEXT DEFAULT NULL, identity_key TEXT DEFAULT NULL)",
-		);
-		db.run("CREATE TABLE cache (key TEXT PRIMARY KEY, value TEXT)");
-		db.run(
-			"INSERT INTO auth_credentials (provider, credential_type, data) VALUES ('probe', 'oauth', '{\"access\":\"not-a-real-token\"}')",
-		);
-		db.run(
-			"INSERT INTO auth_credentials (provider, credential_type, data) VALUES ('other', 'api_key', '{\"key\":\"not-a-real-key\"}')",
-		);
-		db.run("INSERT INTO cache (key, value) VALUES ('usage', 'cached usage report')");
-	} finally {
-		db.close();
-	}
-}
-
-function probeHarness(tree: string): HarnessAdapter {
-	return {
-		id: "probe",
-		displayName: "Probe",
-		description: "reports what a trial can reach",
-		flags: [],
-		defaultModel: null,
-		capabilities: { replay: false, compaction: false, armAttachments: false, promptOverrides: false, builds: true },
-		backends: { "local-cli": {} },
-		preflight: async () => ({ ok: true }),
-		stageAssets() {},
-		localCommand: context => ({
-			command: process.execPath,
-			args: [path.join(context.build ?? tree, "probe.ts"), context.instruction],
-			env: { VEYYON_CODING_AGENT_DIR: context.agentDir, PROBE_FROM_HARNESS: "set" },
-			readable: [context.build ?? tree, path.dirname(process.execPath)],
-		}),
-	};
-}
-
-function lookup(harness: HarnessAdapter): HarnessLookup {
-	return {
-		get: id => (id === harness.id ? harness : undefined),
-		require: id => {
-			if (id !== harness.id) throw new Error(`no harness ${id}`);
-			return harness;
-		},
-		list: () => [harness],
-		ids: () => [harness.id],
-	};
-}
-
 interface ProbeRun {
 	readonly report: {
 		readonly home: string;
@@ -151,7 +101,7 @@ interface ProbeRun {
 async function runProbe(root: string, options: { readonly unsandboxed: boolean }): Promise<ProbeRun> {
 	const { tree, answers } = await writeTree(root);
 	const authDb = path.join(root, "agent.db");
-	await writeCredentials(authDb);
+	writeCredentials(authDb);
 	const runsDir = path.join(root, "runs");
 	const cell = { variant: "arm", suite: "sandbox-probe", task: "probe-task", repeat: 0 };
 	// The scratch root is the system temp directory's, shared with any other run on the host.
@@ -165,6 +115,10 @@ async function runProbe(root: string, options: { readonly unsandboxed: boolean }
 	await fs.mkdir(path.dirname(otherScratch), { recursive: true });
 	await fs.writeFile(otherScratch, "another trial's workspace");
 	await using _otherScratch = { [Symbol.asyncDispose]: () => fs.rm(other.scratch, { recursive: true, force: true }) };
+	// A directory in the system temp directory beside the scratch: another process's, which a trial
+	// with its own TMPDIR has no reason to change.
+	const outside = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-probe-outside-"));
+	await using _outside = { [Symbol.asyncDispose]: () => fs.rm(outside, { recursive: true, force: true }) };
 	const layout = localTrialLayout(runsDir, runId, cell);
 	const paths: Record<string, string> = { answers, sibling, otherScratch, grader: import.meta.filename };
 
@@ -181,7 +135,7 @@ async function runProbe(root: string, options: { readonly unsandboxed: boolean }
 			paths.homeOut = path.join(scratch, "home", "out.txt");
 			paths.tmpOut = path.join(scratch, "tmp", "out.txt");
 			paths.siblingOut = path.join(path.dirname(sibling), "x");
-			paths.systemTmpOut = path.join(os.tmpdir(), `veyyon-probe-escape-${process.pid}.txt`);
+			paths.systemTmpOut = path.join(outside, "escape.txt");
 			await fs.writeFile(paths.taskFile, "the task's own file");
 			const plan: Probe = {
 				read: [paths.taskFile, paths.settings, answers, sibling, otherScratch, import.meta.filename],
@@ -217,7 +171,7 @@ async function runProbe(root: string, options: { readonly unsandboxed: boolean }
 		suite,
 		workDir: root,
 		runsDir,
-		harnesses: lookup(probeHarness(tree)),
+		harnesses: lookup(probeHarness(tree, "probe.ts")),
 		options: { variants: [variant], authDb, ...(options.unsandboxed ? { unsandboxed: true } : {}) },
 	};
 	const backend = new LocalCliBackend();
@@ -290,5 +244,14 @@ describe("a local trial", () => {
 			[paths.siblingOut as string]: "EACCES",
 			[paths.systemTmpOut as string]: "EACCES",
 		});
+	});
+});
+
+describe("the credential store a local trial copies", () => {
+	it("is the one the run names, by the harness flag or by a caller's option", () => {
+		expect(credentialSource({ "auth-db": "stores/agent.db" })).toBe(path.resolve("stores/agent.db"));
+		expect(credentialSource({ authDb: "/stores/a.db", "auth-db": "/stores/b.db" })).toBe(
+			path.resolve("/stores/a.db"),
+		);
 	});
 });

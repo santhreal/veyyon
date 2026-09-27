@@ -112,7 +112,15 @@ export interface TrialProcessWaitResult {
  * uses.
  */
 export async function awaitTrialProcessOutput(options: TrialProcessWaitOptions): Promise<TrialProcessWaitResult> {
-	const { promise: interrupted, resolve: interrupt } = Promise.withResolvers<"timed_out" | "aborted">();
+	const { promise: interrupted, resolve: resolveInterrupted } = Promise.withResolvers<"timed_out" | "aborted">();
+	// Set the moment a deadline or a cancel fires. Terminating the tree makes it exit, and that exit
+	// can settle the wait before the interruption's own branch does; the wait still reports what
+	// stopped the trial, not the exit it caused.
+	let interruptedBy: "timed_out" | "aborted" | null = null;
+	const interrupt = (kind: "timed_out" | "aborted"): void => {
+		interruptedBy ??= kind;
+		resolveInterrupted(kind);
+	};
 	const timer = setTimeout(() => interrupt("timed_out"), options.timeoutMs);
 	const onAbort = (): void => interrupt("aborted");
 	options.signal?.addEventListener("abort", onAbort, { once: true });
@@ -122,8 +130,8 @@ export async function awaitTrialProcessOutput(options: TrialProcessWaitOptions):
 	try {
 		return await Promise.race([
 			Promise.all([options.exited, options.stdout, options.stderr]).then(([code, out, err]) => ({
-				kind: "exited" as const,
-				exitCode: code,
+				kind: interruptedBy ?? ("exited" as const),
+				exitCode: interruptedBy === null ? code : -1,
 				stdout: out,
 				stderr: err,
 				outputComplete: true,

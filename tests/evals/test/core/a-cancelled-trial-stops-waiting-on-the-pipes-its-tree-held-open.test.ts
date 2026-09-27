@@ -21,6 +21,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import { setImmediate as nextTurn } from "node:timers/promises";
 import { awaitTrialProcessOutput, OUTPUT_DRAIN_GRACE_MS } from "../../engine/trial/process";
 
 /** Short enough to keep the suite fast; that the wait ends at all is what is asserted. */
@@ -121,6 +122,39 @@ describe("waiting for a trial's process and output", () => {
 		expect(wait.outputComplete).toBe(false);
 		held.resolve("");
 	});
+
+	for (const [interruption, kind] of [
+		["cancel", "aborted"],
+		["deadline", "timed_out"],
+	] as const) {
+		it(`reports a ${interruption}, not an exit, when terminating the tree makes it exit at once`, async () => {
+			// A tree that dies on SIGTERM closes its pipes before the drain begins, so the exit branch
+			// of the wait settles first; the wait must still report what stopped the trial.
+			const exited = Promise.withResolvers<number>();
+			const stdout = Promise.withResolvers<string>();
+			const stderr = Promise.withResolvers<string>();
+			const controller = new AbortController();
+			const waiting = awaitTrialProcessOutput({
+				exited: exited.promise,
+				stdout: stdout.promise,
+				stderr: stderr.promise,
+				timeoutMs: interruption === "deadline" ? 10 : NEVER_MS,
+				signal: controller.signal,
+				terminate: async () => {
+					exited.resolve(143);
+					stdout.resolve("printed before the signal");
+					stderr.resolve("");
+					// The terminator's own grace, which the exit branch does not wait for.
+					await nextTurn();
+				},
+				drainGraceMs: DRAIN_MS,
+			});
+			if (interruption === "cancel") controller.abort();
+			const wait = await waiting;
+
+			expect([wait.kind, wait.exitCode, wait.stdout]).toEqual([kind, -1, "printed before the signal"]);
+		});
+	}
 
 	it("ends the wait on a signal that was already aborted before it began", async () => {
 		const pipes = pipesNobodyCloses();
