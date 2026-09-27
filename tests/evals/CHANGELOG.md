@@ -6,10 +6,19 @@ All notable changes to `@veyyon/evals` will be documented in this file.
 
 ### Added
 
-- `benches/miniwob.ts` runs MiniWoB++ tasks through the CLI's browser tool with one model and reports success, turns, tool calls, wall time and tokens per episode, for a before and after tree; `--set` picks the form-entry `default` set, a `heldout` set or a `hard` set of long and fiddly tasks.
-- `benches/web-tasks.ts` runs tasks on public browser-practice pages and Wikipedia and scores each by the fact its `ANSWER:` line holds; `--set` picks `easy` (listings, links, logins, a form, late content), `hard` (frames, windows, dialogs, hover, drag and drop, HTTP auth, upload, a postback form, scrolling, several pages), `expert` (sign-in, cart and checkout on a shop, a to-do app) or `workflow` (a password sign-in followed by a checkout, clicks or key presses; two tabs worked in turn; a to-do app edited in place).
-- `benches/cli-episode.ts` runs one bench episode of the CLI with only the browser tool, with an empty home of its own, the browser tool turned on by a config overlay, only the path, locale, time zone, temp, proxy and `PUPPETEER_*` variables of the runner's environment, and the JSON event stream and stderr kept as `events.jsonl` and `stderr.txt`; on a Linux kernel with Landlock it runs the episode under `benches/landlock-exec.py` so the files in the invoking user's home, the bench's work directory and the trees' `tests` are unreadable to it, and each bench's log states whether its episodes ran that way.
+- `suites/browser` runs hard web tasks on seeded local applications (a shop, webmail, a bank with a second-factor phone, a kanban board, a spreadsheet, flight booking with a cross-origin payment frame, a helpdesk seeded with prompt injections, an analytics dashboard drawn on canvas) and grades each by the state the application recorded and the agent's answer.
+- `suites/miniwob` runs MiniWoB++ pages as a suite on the local-cli backend.
+- The `local-cli` backend runs each trial as one print-mode CLI run on this host, in a scratch directory outside every project tree, with an empty home, a credential store holding only the model provider's sign-in, an allowlisted environment, and on Linux a Landlock sandbox that hides the graders, the runs directory and other trials; `--unsandboxed` runs it on a host without Landlock.
+- `--build name=path,...` runs one variant per build of the agent, a source tree or an executable, so two builds compare trial by trial in one plan.
+- `engine/kit` defines a benchmark as a catalog of seeded tasks, each starting its own services and graded by named checks over recorded state; every task carries a scripted solution that the suite's sweep runs.
+- A kit suite's run writes `report.md` and `summary.json` with pass rates and Wilson intervals, capability and difficulty breakdowns, passes within turn, token and time budgets, and a sign test of every arm against the plan's first.
+- `evals tool kit-report --run <dir> [--regrade]` renders a kit suite's report for a finished run and grades it again from the trial files.
+- `tests/evals/docs/` is the evals manual, replacing `EVALS.md`.
 - `benches/browser-fill.ts` times `tab.fill` in headless Chromium for 16, 256 and 4,096 characters and counts a fill correct only when the field holds the value.
+
+### Changed
+
+- `engine/` is grouped by concern into `members`, `plan`, `run`, `trial`, `kit`, `compare`, `harness`, `auth`, `io`, `wire` and `corpus`, and the overlay loaders and paired statistics every suite shares moved into it from the in-process backend and the DeepSWE suite.
 
 ## [1.5.0] - 2026-09-18
 
