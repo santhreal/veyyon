@@ -696,14 +696,20 @@ async function runInTabWithSnapshot(
 			timeoutMs: opts.timeoutMs,
 			session: snapshot,
 		});
+		// A worker that cannot answer even its own deadline is stuck in synchronous work (an
+		// `execSync`, a busy loop). A worker thread is replaced and attached to the same page, as a
+		// timed-out one is, so the page and its session outlive the stuck code; the inline fallback
+		// shares the main thread and cannot be replaced, so its tab is killed.
+		let replaced = false;
 		try {
-			return await raceWithTimeout(
-				promise,
-				opts.timeoutMs + GRACE_MS,
-				() => new ToolError("Browser code execution hung past grace; tab killed"),
-				{ onTimeout: async () => await forceKillTab(name, "Browser code execution hung past grace; tab killed") },
-			);
+			return await raceWithTimeout(promise, opts.timeoutMs + GRACE_MS, () => new ToolError(HUNG_KILLED), {
+				onTimeout: async () => {
+					replaced = await replaceHungWorker(name, tab, opts.timeoutMs + GRACE_MS);
+				},
+			});
 		} catch (error) {
+			if (replaced && error instanceof ToolError && error.message === HUNG_KILLED)
+				throw new ToolError(HUNG_REPLACED);
 			if (error instanceof ToolError && error.message.startsWith("Browser code execution timed out after ")) {
 				try {
 					if (tab.worker.mode === "inline")
@@ -979,6 +985,31 @@ function toErrorPayload(error: unknown): TabRunErrorPayload {
 		};
 	}
 	return { name: "Error", message: errorMessage(error), isAbort: false, isToolError: false };
+}
+
+/** A run that outlived its deadline and the grace after it without answering, and took its tab with it. */
+const HUNG_KILLED = "Browser code execution hung past grace; tab killed";
+
+/** The same, when the tab's worker was replaced and its page kept. */
+const HUNG_REPLACED =
+	"Browser code execution hung past its deadline without answering: synchronous work (an execSync, a busy loop) blocked the tab's worker. The worker was replaced and the page kept, so the next run continues on it.";
+
+/**
+ * Replace a hung worker thread with one attached to the same page, and report whether the page was
+ * kept. A replacement that fails kills the tab, as the inline fallback's tab always is: it runs on the
+ * main thread, where nothing can stop the stuck code.
+ */
+async function replaceHungWorker(name: string, tab: WorkerTabSession, timeoutMs: number): Promise<boolean> {
+	if (tab.worker.mode !== "inline") {
+		try {
+			await recycleTimedOutWorkerTab(tab, timeoutMs);
+			if (tab.state === "alive") return true;
+		} catch (error) {
+			logger.warn("Failed to replace a hung browser tab worker; killing tab", { error: errorMessage(error) });
+		}
+	}
+	await forceKillTab(name, HUNG_KILLED);
+	return false;
 }
 
 async function recycleTimedOutWorkerTab(tab: WorkerTabSession, timeoutMs: number): Promise<void> {
