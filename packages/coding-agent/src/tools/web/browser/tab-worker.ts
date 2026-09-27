@@ -362,6 +362,52 @@ export function normalizeSelector(selector: string): string {
 	return selector;
 }
 
+/**
+ * The alternatives of a comma list that uses a form CSS does not have (`aria-ref=e5`, `[ref=e5]`,
+ * `textbox "Email"`, `text/Sign in`), in the order written; null for any other selector, a plain CSS
+ * list included, which the browser matches itself. A selector that starts with a query handler
+ * (`text/`, `aria/`, …) is that handler's payload to its end, commas included. Commas inside
+ * brackets, parentheses or quotes do not split.
+ */
+export function selectorAlternatives(selector: string): string[] | null {
+	const trimmed = selector.trim();
+	if (SELECTOR_HANDLER_PREFIXES.some(prefix => trimmed.startsWith(prefix))) return null;
+	const parts: string[] = [];
+	let depth = 0;
+	let quote = "";
+	let start = 0;
+	for (let index = 0; index < trimmed.length; index++) {
+		const char = trimmed[index];
+		if (quote !== "") {
+			if (char === "\\") index++;
+			else if (char === quote) quote = "";
+		} else if (char === '"' || char === "'") quote = char;
+		else if (char === "(" || char === "[") depth++;
+		else if (char === ")" || char === "]") depth--;
+		else if (char === "," && depth === 0) {
+			parts.push(trimmed.slice(start, index).trim());
+			start = index + 1;
+		}
+	}
+	parts.push(trimmed.slice(start).trim());
+	if (parts.length < 2 || parts.includes("")) return null;
+	const plainCss = (part: string): boolean =>
+		parseAriaRefSelector(part) === null &&
+		!SELECTOR_HANDLER_PREFIXES.some(prefix => part.startsWith(prefix)) &&
+		normalizeSelector(part) === part;
+	return parts.every(plainCss) ? null : parts;
+}
+
+/** Whether a query failed because its selector does not parse, which waiting cannot change. */
+function isInvalidSelector(error: unknown): boolean {
+	return /is not a valid selector/.test(errorMessage(error));
+}
+
+/** The failure for a selector that does not parse, with the forms a selector may take instead. */
+function invalidSelectorMessage(label: string, selector: string): string {
+	return `${label}: ${JSON.stringify(selector)} is not a valid selector. Use CSS, aria-ref=eN, role "name", text/… or aria/…, alone or as alternatives of a comma list.`;
+}
+
 function isInteractiveNode(node: SerializedAXNode): boolean {
 	if (INTERACTIVE_AX_ROLES.has(node.role)) return true;
 	return (
@@ -1711,7 +1757,7 @@ export class WorkerCore {
 		label: string,
 		cellSignal: AbortSignal,
 		perOpTimeoutMs: number,
-		fn: (signal: AbortSignal) => Promise<T>,
+		fn: (signal: AbortSignal, selector: string | undefined) => Promise<T>,
 		opts?: { selector?: string; zeroMatchAfterMs?: number },
 	): Promise<T> {
 		const opId = active.opCounter++;
@@ -1719,19 +1765,29 @@ export class WorkerCore {
 		const capped = Number.isFinite(perOpTimeoutMs) && perOpTimeoutMs > 0;
 		const opTimeout = capped ? scopedTimeoutSignal(perOpTimeoutMs) : undefined;
 		const opSignal = opTimeout ? AbortSignal.any([cellSignal, opTimeout.signal]) : cellSignal;
-		const selector = opts?.selector;
-		const watchdog =
-			selector !== undefined && opts?.zeroMatchAfterMs !== undefined && parseAriaRefSelector(selector) === null
-				? { selector, afterMs: opts.zeroMatchAfterMs }
-				: undefined;
+		let selector = opts?.selector;
 		// Fired when the watchdog wins the race (tears down the in-flight action) and in
 		// the finally (stops the watchdog's polling once the op settles either way).
 		const earlyAc = new AbortController();
 		try {
-			if (!watchdog) return await fn(opSignal);
+			// A list mixing the tool's own forms is decided here, so the op and its watchdog see one selector.
+			const alternatives = selector === undefined ? null : selectorAlternatives(selector);
+			if (alternatives !== null) {
+				selector = await this.#firstMatchingAlternative(
+					alternatives,
+					label,
+					opts?.zeroMatchAfterMs ?? perOpTimeoutMs,
+					opSignal,
+				);
+			}
+			const watchdog =
+				selector !== undefined && opts?.zeroMatchAfterMs !== undefined && parseAriaRefSelector(selector) === null
+					? { selector, afterMs: opts.zeroMatchAfterMs }
+					: undefined;
+			if (!watchdog) return await fn(opSignal, selector);
 			const racedSignal = AbortSignal.any([opSignal, earlyAc.signal]);
 			return await Promise.race([
-				fn(racedSignal),
+				fn(racedSignal, selector),
 				this.#zeroMatchWatchdog(watchdog.selector, label, watchdog.afterMs, racedSignal),
 			]);
 		} catch (err) {
@@ -1769,7 +1825,9 @@ export class WorkerCore {
 				const handles = await page.$$(resolved);
 				count = handles.length;
 				for (const handle of handles) void releaseHandle(handle);
-			} catch {
+			} catch (error) {
+				// A selector that does not parse never will: fail now instead of at the op's deadline.
+				if (isInvalidSelector(error)) throw new ToolError(invalidSelectorMessage(label, selector));
 				// Inconclusive probe — keep polling without advancing toward failure.
 			}
 			if (count !== null && count > 0) break;
@@ -1783,6 +1841,49 @@ export class WorkerCore {
 			}
 		}
 		return await new Promise<never>(() => {});
+	}
+
+	/**
+	 * The first alternative of a selector list, in the order written, that matches an element, tried
+	 * until one does or `withinMs` passes. A ref alternative matches when the latest snapshot's ref
+	 * resolves.
+	 */
+	async #firstMatchingAlternative(
+		alternatives: readonly string[],
+		label: string,
+		withinMs: number,
+		signal: AbortSignal,
+	): Promise<string> {
+		const page = this.#requirePage();
+		const deadline = Date.now() + withinMs;
+		for (;;) {
+			for (const alternative of alternatives) {
+				const ref = parseAriaRefSelector(alternative);
+				let handle: ElementHandle | null = null;
+				try {
+					handle =
+						ref === null
+							? ((await untilAborted(signal, () =>
+									page.$(normalizeSelector(alternative)),
+								)) as ElementHandle | null)
+							: await untilAborted(signal, () => resolveAriaRefHandle(page, ref, this.#snapshotFrames));
+				} catch (error) {
+					if (signal.aborted) throw error;
+					if (isInvalidSelector(error)) throw new ToolError(invalidSelectorMessage(label, alternative));
+					// A probe that fails mid-navigation counts as no match this round.
+				}
+				if (handle !== null) {
+					void releaseHandle(handle);
+					return alternative;
+				}
+			}
+			if (Date.now() >= deadline) {
+				throw new ToolError(
+					`${label} failed fast after ${withinMs}ms; no alternative of the list matches an element — run tab.ariaSnapshot() to inspect the page`,
+				);
+			}
+			await untilAborted(signal, () => delay(ZERO_MATCH_POLL_MS));
+		}
 	}
 
 	/**
@@ -1821,7 +1922,8 @@ export class WorkerCore {
 		const op = <T>(
 			label: string,
 			perOpMs: number,
-			fn: (sig: AbortSignal) => Promise<T>,
+			// `target` is the selector the op acts on: the one given, or the alternative of a list that matched.
+			fn: (sig: AbortSignal, target: string | undefined) => Promise<T>,
 			selectorOpts?: { selector?: string; zeroMatchAfterMs?: number },
 		): Promise<T> => markHandled(this.#runOp(active, label, signal, perOpMs, fn, selectorOpts));
 		return {
@@ -1902,15 +2004,16 @@ export class WorkerCore {
 				op(
 					`tab.click(${JSON.stringify(selector)})`,
 					actionOpMs,
-					sig => this.#click(selector, `tab.click(${JSON.stringify(selector)})`, actionOpMs, sig),
+					(sig, target = selector) =>
+						this.#click(target, `tab.click(${JSON.stringify(selector)})`, actionOpMs, sig),
 					{ selector, zeroMatchAfterMs: ZERO_MATCH_FAIL_FAST_MS },
 				),
 			type: (selector, text) =>
 				op(
 					`tab.type(${JSON.stringify(selector)})`,
 					actionOpMs,
-					async sig => {
-						const handle = await this.#resolveActionHandle(selector, actionOpMs, sig);
+					async (sig, target = selector) => {
+						const handle = await this.#resolveActionHandle(target, actionOpMs, sig);
 						try {
 							await untilAborted(sig, () => handle.type(text, { delay: 0 }));
 						} finally {
@@ -1923,10 +2026,10 @@ export class WorkerCore {
 				op(
 					`tab.fill(${JSON.stringify(selector)})`,
 					actionOpMs,
-					async sig => {
+					async (sig, target = selector) => {
 						// Visible before it is filled, as a click waits: a field that is still animating in is waited
 						// for rather than refused for not taking focus.
-						const handle = await this.#resolveActionHandle(selector, actionOpMs, sig, { visible: true });
+						const handle = await this.#resolveActionHandle(target, actionOpMs, sig, { visible: true });
 						try {
 							await fillViaHandle(handle, value, sig);
 						} finally {
@@ -1935,12 +2038,26 @@ export class WorkerCore {
 					},
 					{ selector, zeroMatchAfterMs: ZERO_MATCH_FAIL_FAST_MS },
 				),
-			press: (key, opts) =>
-				op(`tab.press(${JSON.stringify(key)})`, actionOpMs, async sig => {
-					const selector = opts?.selector;
-					if (selector) await untilAborted(sig, () => page.focus(normalizeSelector(selector)));
-					await untilAborted(sig, () => page.keyboard.press(key));
-				}),
+			press: (key, opts) => {
+				const selector = opts?.selector;
+				return op(
+					`tab.press(${JSON.stringify(key)})`,
+					actionOpMs,
+					async (sig, target) => {
+						// The element takes focus as a click's does, so a ref or a snapshot line's form reaches it too.
+						if (target !== undefined) {
+							const handle = await this.#resolveActionHandle(target, actionOpMs, sig);
+							try {
+								await untilAborted(sig, () => handle.focus());
+							} finally {
+								await releaseHandle(handle);
+							}
+						}
+						await untilAborted(sig, () => page.keyboard.press(key));
+					},
+					selector ? { selector, zeroMatchAfterMs: ZERO_MATCH_FAIL_FAST_MS } : undefined,
+				);
+			},
 			scroll: (deltaX, deltaY) =>
 				op("tab.scroll()", actionOpMs, sig => untilAborted(sig, () => page.mouse.wheel({ deltaX, deltaY }))),
 			drag: (from, to) => op("tab.drag()", actionOpMs, sig => this.#drag(from, to, sig)),
@@ -1949,8 +2066,8 @@ export class WorkerCore {
 				return op(
 					`tab.waitFor(${JSON.stringify(selector)})`,
 					w,
-					async sig =>
-						toActionableHandle(await this.#resolveActionHandle(selector, w, sig), this.#runHandleAction),
+					async (sig, target = selector) =>
+						toActionableHandle(await this.#resolveActionHandle(target, w, sig), this.#runHandleAction),
 					{ selector, zeroMatchAfterMs: opts?.timeout === undefined ? ZERO_MATCH_FAIL_FAST_MS : undefined },
 				);
 			},
@@ -1959,11 +2076,11 @@ export class WorkerCore {
 				return op(
 					`tab.waitForSelector(${JSON.stringify(selector)})`,
 					w,
-					async sig => {
-						if (parseAriaRefSelector(selector) !== null)
-							return toActionableHandle(await this.#resolveAriaRef(selector), this.#runHandleAction);
+					async (sig, target = selector) => {
+						if (parseAriaRefSelector(target) !== null)
+							return toActionableHandle(await this.#resolveAriaRef(target), this.#runHandleAction);
 						const handle = (await untilAborted(sig, () =>
-							page.waitForSelector(normalizeSelector(selector), {
+							page.waitForSelector(normalizeSelector(target), {
 								timeout: w,
 								visible: opts?.visible,
 								hidden: opts?.hidden,
@@ -1973,7 +2090,8 @@ export class WorkerCore {
 						return handle ? toActionableHandle(handle, this.#runHandleAction) : null;
 					},
 					{
-						selector,
+						// A list waited on for its absence is not narrowed to the one alternative present now.
+						selector: opts?.hidden ? undefined : selector,
 						// `hidden: true` waits for zero matches — that is success, never a fast-fail.
 						zeroMatchAfterMs: opts?.timeout === undefined && !opts?.hidden ? ZERO_MATCH_FAIL_FAST_MS : undefined,
 					},
@@ -2002,8 +2120,8 @@ export class WorkerCore {
 				op(
 					`tab.scrollIntoView(${JSON.stringify(selector)})`,
 					actionOpMs,
-					async sig => {
-						const handle = await this.#resolveActionHandle(selector, actionOpMs, sig);
+					async (sig, target = selector) => {
+						const handle = await this.#resolveActionHandle(target, actionOpMs, sig);
 						try {
 							await untilAborted(sig, () =>
 								handle.evaluate(el => {
@@ -2023,14 +2141,14 @@ export class WorkerCore {
 				op(
 					`tab.select(${JSON.stringify(selector)})`,
 					actionOpMs,
-					sig => this.#select(selector, values, actionOpMs, sig),
+					(sig, target = selector) => this.#select(target, values, actionOpMs, sig),
 					{ selector, zeroMatchAfterMs: ZERO_MATCH_FAIL_FAST_MS },
 				),
 			uploadFile: (selector, ...filePaths) =>
 				op(
 					`tab.uploadFile(${JSON.stringify(selector)})`,
 					actionOpMs,
-					sig => this.#uploadFile(selector, filePaths, actionOpMs, sig, session),
+					(sig, target = selector) => this.#uploadFile(target, filePaths, actionOpMs, sig, session),
 					{ selector, zeroMatchAfterMs: ZERO_MATCH_FAIL_FAST_MS },
 				),
 			waitForUrl: (pattern, opts) => {
@@ -2281,10 +2399,7 @@ export class WorkerCore {
 	}
 
 	async #select(selector: string, values: string[], timeoutMs: number, signal: AbortSignal): Promise<string[]> {
-		const page = this.#requirePage();
-		const handle = (await untilAborted(signal, () =>
-			page.locator(normalizeSelector(selector)).setTimeout(timeoutMs).waitHandle({ signal }),
-		)) as ElementHandle;
+		const handle = await this.#resolveActionHandle(selector, timeoutMs, signal);
 		try {
 			return (await untilAborted(signal, () =>
 				handle.evaluate((el, vals) => {

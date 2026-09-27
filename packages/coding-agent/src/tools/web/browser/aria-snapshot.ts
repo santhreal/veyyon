@@ -297,14 +297,17 @@ export async function resolveAriaRefHandle(
 
 const ARIA_REF_PREFIXES = ["aria-ref=", "aria-ref/", "ariaref/"];
 
+/** A snapshot line's own ref form, `[ref=e5]`, which a model copies from the line it acts on. */
+const BRACKET_REF = /^\[ref=((?:f\d+)?e\d+)\]$/;
+
 /**
  * Recognize the explicit `[ref=eN]` selector forms and return the bare ref id,
- * else null. Accepts `aria-ref=e5` (Playwright-MCP style), `aria-ref/e5`, and
- * `ariaref/e5` — lets `tab.click("aria-ref=e5")` etc. act on snapshot refs. A
- * bare `e5` is intentionally NOT a ref selector: the cmux backend already uses
- * bare `eN`/`@eN` for its own observe ids, so requiring the prefix keeps action
- * selectors meaning the same thing on both backends. (`tab.ref("e5")` still
- * accepts a bare id directly.)
+ * else null. Accepts `aria-ref=e5` (Playwright-MCP style), `aria-ref/e5`,
+ * `ariaref/e5` and the snapshot's own `[ref=e5]` — lets `tab.click("aria-ref=e5")`
+ * etc. act on snapshot refs. A bare `e5` is intentionally NOT a ref selector: the
+ * cmux backend already uses bare `eN`/`@eN` for its own observe ids, so requiring
+ * the prefix keeps action selectors meaning the same thing on both backends.
+ * (`tab.ref("e5")` still accepts a bare id directly.)
  */
 export function parseAriaRefSelector(selector: string): string | null {
 	const trimmed = selector.trim();
@@ -314,7 +317,7 @@ export function parseAriaRefSelector(selector: string): string | null {
 			return /^(?:f\d+)?e\d+$/.test(id) ? id : null;
 		}
 	}
-	return null;
+	return BRACKET_REF.exec(trimmed)?.[1] ?? null;
 }
 
 /**
