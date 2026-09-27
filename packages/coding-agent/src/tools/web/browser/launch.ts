@@ -832,6 +832,7 @@ function buildStealthInjectionScript(scripts: readonly string[], profile: Stealt
 /**
  * Present the host-true identity on a headless page and install the page scripts before its first
  * navigation. `identity` is the one the page's browser launched with; undefined keeps the browser's own.
+ * The overrides and scripts hold while the connection that sent them is open.
  */
 export async function applyStealthPatches(page: Page, identity: HostIdentity | undefined): Promise<void> {
 	patchSourceUrl(page);

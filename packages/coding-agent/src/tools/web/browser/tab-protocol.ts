@@ -48,6 +48,12 @@ export interface SessionSnapshot {
 	naturalInput: boolean;
 }
 
+/** What a page of a browser this process launched is sent: its identity and its viewport. */
+export interface TabPresentation {
+	identity?: HostIdentity;
+	viewport: { width: number; height: number; deviceScaleFactor?: number };
+}
+
 export type WorkerInitPayload =
 	| {
 			mode: "headless";
@@ -73,11 +79,19 @@ export type WorkerInitPayload =
 			 * previously force-killed the tab). Never set for first-time Electron attach.
 			 */
 			recover?: boolean;
+			/**
+			 * Set when the target is a tab of a browser this process launched, re-adopted by a new worker.
+			 * The page's identity overrides, scripts and viewport went with the old worker's connection,
+			 * which the replacement closed, so the new worker sends them again and drives the tab as a
+			 * launched one. Absent for a browser this process attached to.
+			 */
+			present?: TabPresentation;
 	  };
 export type ToolReply = { ok: true; value: unknown } | { ok: false; error: TabRunErrorPayload };
 
 export type TabWorkerInbound =
-	| { type: "init"; payload: WorkerInitPayload }
+	/** `port`, set for a worker thread, is its browser connection, which the main thread holds and relays. */
+	| { type: "init"; payload: WorkerInitPayload; port?: MessagePort }
 	| { type: "run"; id: string; name: string; code: string; timeoutMs: number; session: SessionSnapshot }
 	| { type: "abort"; id: string; expectedCleanup?: boolean }
 	| { type: "tool-reply"; id: string; reply: ToolReply }

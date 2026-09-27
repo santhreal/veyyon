@@ -82,15 +82,24 @@
   const chromeTop = stealthProfile.windowChrome.top;
   const innerWidthNow = () => positiveInteger(readValue(window, "innerWidth", 0), 0);
   const innerHeightNow = () => positiveInteger(readValue(window, "innerHeight", 0), 0);
-  // Headless Chrome under viewport emulation reports a window exactly the size of its viewport: no tab
-  // strip, no toolbar, no frame. `outerWidth` and `outerHeight` are the top-level window's in every
-  // frame, so each frame adds the same chrome to the same native value. A headful window has its own.
+  // Headless Chrome has no tab strip, toolbar or frame, and one window for all its tabs, sized at
+  // launch: a tab whose emulated viewport is not the window's still reports the window's size. A
+  // headless window is therefore the top frame's viewport plus the host's chrome. `outerWidth` and
+  // `outerHeight` are the top-level window's in every frame, so a child frame reads the top frame's
+  // viewport where its origin allows and the native size where it does not. A headful window has its own.
   const headlessWindow = stealthProfile.headless === true;
+  const topViewport = (prop, nativeValue) => {
+    let value = 0;
+    try {
+      value = positiveInteger(window.top[prop], 0);
+    } catch {}
+    return value || positiveInteger(nativeValue, 0);
+  };
 
   if (headlessWindow) {
-    patchGetter(window, "outerWidth", (nativeValue) => positiveInteger(nativeValue, innerWidthNow()) + 2 * frame);
+    patchGetter(window, "outerWidth", (nativeValue) => topViewport("innerWidth", nativeValue) + 2 * frame);
     patchGetter(window, "outerHeight", (nativeValue) =>
-      positiveInteger(nativeValue, innerHeightNow()) + chromeTop + frame,
+      topViewport("innerHeight", nativeValue) + chromeTop + frame,
     );
   }
 

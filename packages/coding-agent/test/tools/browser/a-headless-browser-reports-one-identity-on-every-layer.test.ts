@@ -2,7 +2,11 @@
  * WHY: detectors compare what a page, its workers and its HTTP requests say about the browser. The
  * headless tool browser claimed Windows in the page while its workers, its `navigator.platform` and its
  * requests said Linux and `HeadlessChrome`, its WebGL in a worker was SwiftShader, its screen was the
- * size of its window, and a clicked event's screen offset did not match the window it reported.
+ * size of its window, and a clicked event's screen offset did not match the window it reported. A tab
+ * opened with a viewport of its own reported the shared window's width around it, 254 pixels of
+ * "frame" that devtools detectors read as an open DevTools panel. A tab whose hung run had its worker
+ * replaced lost its viewport, its client hints and its page scripts: they went with the old worker's
+ * connection.
  *
  * The contract, driven through the real tool against real headless Chromium and a local server: the
  * page, a dedicated worker, a shared worker and a service worker report one user agent, platform,
@@ -10,17 +14,22 @@
  * worker's request is that user agent and the page's client-hints headers carry the same brands and
  * platform; WebGL names the same GPU in the page and in a worker and it is not SwiftShader; the screen
  * is larger than the window and the window larger than its viewport; a `tab.click` event's screen
- * position is its viewport position plus the window's screen position and chrome.
+ * position is its viewport position plus the window's screen position and chrome. All of it holds for
+ * a viewport the tab chose, and a tab whose worker was replaced reports the same values on its next
+ * page while the old thread is still stuck.
  *
  * What it does not catch: how a remote detector scores these values, which the bot-detection bench
  * measures, and hosts other than the one it runs on, which the pure identity sweep covers.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import * as fs from "node:fs/promises";
 import * as http from "node:http";
 import type { AddressInfo } from "node:net";
+import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/sdk";
 import { BrowserTool } from "@veyyon/coding-agent/tools/web/browser";
+import { TempDir } from "@veyyon/utils";
 import { chromiumCanLaunch } from "../../helpers/chromium-can-launch";
 
 const CHROMIUM_AVAILABLE = await chromiumCanLaunch();
@@ -141,20 +150,48 @@ function text(result: { content: ReadonlyArray<{ type: string; text?: string }> 
 	return result.content.map(part => (part.type === "text" ? (part.text ?? "") : "")).join("");
 }
 
-describe.skipIf(!CHROMIUM_AVAILABLE)("a headless browser", () => {
-	it("reports one identity in the page, every worker kind, its requests and its geometry", async () => {
-		await tool.execute("open", { action: "open", name: TAB, url: `${origin}/page?load=1` });
-		const result = await tool.execute("run", {
-			action: "run",
-			name: TAB,
-			timeout: 60,
-			code: `await tab.goto(${JSON.stringify(`${origin}/page?load=2`)});
+/** Load the page again on tab `name`, collect every layer and the geometry, and click the target once. */
+async function collectOn(name: string, load: number): Promise<Collected> {
+	const result = await tool.execute("run", {
+		action: "run",
+		name,
+		timeout: 60,
+		code: `await tab.goto(${JSON.stringify(`${origin}/page?load=${load}`)});
 const collected = await tab.evaluate(() => window.collectAll());
 await tab.click("#target");
 const clicks = await tab.evaluate(() => window.clicks);
 return { ...collected, clicks };`,
-		});
-		const collected = JSON.parse(text(result)) as Collected;
+	});
+	return JSON.parse(text(result)) as Collected;
+}
+
+/** The screen holds the window, the window holds the viewport, and a click lands where the window says. */
+function expectOneWindow(collected: Collected): void {
+	const geometry = collected.geometry;
+	expect(geometry.screenWidth).toBeGreaterThan(geometry.outerWidth!);
+	expect(geometry.screenHeight).toBeGreaterThan(geometry.outerHeight!);
+	expect(geometry.outerHeight).toBeGreaterThan(geometry.innerHeight!);
+	expect(geometry.outerWidth).toBeGreaterThanOrEqual(geometry.innerWidth!);
+
+	const click = collected.clicks.find(entry => entry.trusted);
+	expect(click).toBeDefined();
+	const frame = (geometry.outerWidth! - geometry.innerWidth!) / 2;
+	expect(click!.screenX - click!.clientX).toBe(geometry.screenX! + frame);
+	expect(click!.screenY - click!.clientY).toBe(
+		geometry.screenY! + geometry.outerHeight! - geometry.innerHeight! - frame,
+	);
+}
+
+const exists = (file: string): Promise<boolean> =>
+	fs.access(file).then(
+		() => true,
+		() => false,
+	);
+
+describe.skipIf(!CHROMIUM_AVAILABLE)("a headless browser", () => {
+	it("reports one identity in the page, every worker kind, its requests and its geometry", async () => {
+		await tool.execute("open", { action: "open", name: TAB, url: `${origin}/page?load=1` });
+		const collected = await collectOn(TAB, 2);
 		const { main, dedicated, shared, service } = collected.layers;
 
 		for (const layer of [dedicated, shared, service]) {
@@ -183,18 +220,47 @@ return { ...collected, clicks };`,
 		expect(pageLoad?.headers["sec-ch-ua-platform"]).toBe(`"${main.chPlatform}"`);
 		expect(pageLoad?.headers["sec-ch-ua-arch"]).toBe(`"${main.architecture}"`);
 
-		const geometry = collected.geometry;
-		expect(geometry.screenWidth).toBeGreaterThan(geometry.outerWidth!);
-		expect(geometry.screenHeight).toBeGreaterThan(geometry.outerHeight!);
-		expect(geometry.outerHeight).toBeGreaterThan(geometry.innerHeight!);
-		expect(geometry.outerWidth).toBeGreaterThanOrEqual(geometry.innerWidth!);
+		expectOneWindow(collected);
+	}, 120_000);
 
-		const click = collected.clicks.find(entry => entry.trusted);
-		expect(click).toBeDefined();
-		const frame = (geometry.outerWidth! - geometry.innerWidth!) / 2;
-		expect(click!.screenX - click!.clientX).toBe(geometry.screenX! + frame);
-		expect(click!.screenY - click!.clientY).toBe(
-			geometry.screenY! + geometry.outerHeight! - geometry.innerHeight! - frame,
-		);
+	it("keeps one window around a viewport of the tab's own, and keeps both once a hung run's worker is replaced", async () => {
+		const replaced = `${TAB}-replaced`;
+		await tool.execute("open", {
+			action: "open",
+			name: replaced,
+			url: `${origin}/page?load=3`,
+			viewport: { width: 1111, height: 777 },
+		});
+		const before = await collectOn(replaced, 4);
+		expect(before.geometry.innerWidth).toBe(1111);
+		expect(before.geometry.innerHeight).toBe(777);
+		expectOneWindow(before);
+
+		// The replaced thread stays stuck until its `sleep` returns and the marker is written; the page is
+		// read before that, through the new worker alone, and it starts a worker of its own on the way.
+		const scratch = await TempDir.create("@identity-replaced-");
+		try {
+			const marker = path.join(scratch.path(), "hang-ended");
+			let failure = "";
+			try {
+				await tool.execute("run", {
+					action: "run",
+					name: replaced,
+					timeout: 2,
+					code: `require("node:child_process").execSync(${JSON.stringify(`sleep 8; touch '${marker}'`)});\nreturn "never";`,
+				});
+			} catch (error) {
+				failure = error instanceof Error ? error.message : String(error);
+			}
+			expect(failure).toContain("The worker was replaced and the page kept");
+
+			const after = await collectOn(replaced, 5);
+			expect(await exists(marker)).toBe(false);
+			expect(after.layers).toEqual(before.layers);
+			expect(after.geometry).toEqual(before.geometry);
+			expectOneWindow(after);
+		} finally {
+			await scratch.remove();
+		}
 	}, 120_000);
 });

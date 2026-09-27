@@ -37,6 +37,7 @@ import {
 	resolveAriaRefHandle,
 } from "./aria-snapshot";
 import { type ChainedHandle, chainHandle } from "./chained-handle";
+import { PortTransport } from "./connection-relay";
 import { releaseHandle, releaseHandles } from "./handle-release";
 import { hasTextSelector } from "./has-text";
 import {
@@ -1536,7 +1537,7 @@ export class WorkerCore {
 	async #handleMessage(msg: TabWorkerInbound): Promise<void> {
 		switch (msg.type) {
 			case "init":
-				await this.#init(msg.payload);
+				await this.#init(msg.payload, msg.port);
 				return;
 			case "run":
 				await this.#run(msg);
@@ -1558,12 +1559,13 @@ export class WorkerCore {
 		}
 	}
 
-	async #init(payload: WorkerInitPayload): Promise<void> {
+	async #init(payload: WorkerInitPayload, port: MessagePort | undefined): Promise<void> {
 		try {
-			this.#mode = payload.mode;
+			// A tab of a browser this process launched stays one when a new worker re-adopts it.
+			this.#mode = payload.mode === "attach" && payload.present ? "headless" : payload.mode;
 			const puppeteer = await loadPuppeteer();
 			this.#browser = await puppeteer.connect({
-				browserWSEndpoint: payload.browserWSEndpoint,
+				...(port ? { transport: new PortTransport(port) } : { browserWSEndpoint: payload.browserWSEndpoint }),
 				defaultViewport: null,
 				protocolTimeout: BROWSER_PROTOCOL_TIMEOUT_MS,
 			});
@@ -1596,6 +1598,12 @@ export class WorkerCore {
 				if (!page) throw new ToolError(`Target ${payload.targetId} is no longer available on the attached browser`);
 				this.#page = page;
 				this.#observeDialogs();
+				if (payload.present) {
+					// The page's overrides and scripts went with the old worker's connection, which the
+					// replacement closed; this connection sends them again before the next document loads.
+					await applyStealthPatches(page, payload.present.identity);
+					await applyViewport(page, payload.present.viewport);
+				}
 				if (payload.dialogs) this.#applyDialogPolicy(payload.dialogs);
 			}
 			this.#naturalInput = new NaturalInput(this.#page);

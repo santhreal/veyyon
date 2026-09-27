@@ -14,6 +14,7 @@ import type { ToolSession } from "../../index";
 import { pickElectronTarget } from "./attach";
 import { CmuxTab, runCmuxCode } from "./cmux/cmux-tab";
 import { mapWaitUntil } from "./cmux/rpc";
+import { type ConnectionRelay, openConnectionRelay } from "./connection-relay";
 import { DEFAULT_VIEWPORT } from "./launch";
 import {
 	type BrowserHandle,
@@ -29,6 +30,7 @@ import type {
 	ReadyInfo,
 	RunResultOk,
 	SessionSnapshot,
+	TabPresentation,
 	TabRunErrorPayload,
 	TabWorkerInbound,
 	TabWorkerOutbound,
@@ -1040,6 +1042,14 @@ async function recycleTimedOutWorkerTab(tab: WorkerTabSession, timeoutMs: number
 	if (tab.teardown) return;
 	const browserWSEndpoint = tab.browser.browser.wsEndpoint();
 	if (!browserWSEndpoint) throw new ToolError("Browser websocket endpoint is unavailable");
+	// A tab of a browser this process launched: its new worker sends the page its identity and viewport.
+	const present: TabPresentation | undefined =
+		tab.browser.kind.kind === "headless"
+			? {
+					viewport: tab.info.viewport,
+					...(tab.browser.identity === undefined ? {} : { identity: tab.browser.identity }),
+				}
+			: undefined;
 	const payload: WorkerInitPayload = {
 		mode: "attach",
 		browserWSEndpoint,
@@ -1048,6 +1058,7 @@ async function recycleTimedOutWorkerTab(tab: WorkerTabSession, timeoutMs: number
 		// Unblock a wedged page (open JS dialog, hung navigation) before adopting it —
 		// otherwise init stalls, times out, and the tab gets force-killed.
 		recover: true,
+		...(present ? { present } : {}),
 	};
 	// The release or kill of a tab can begin while its new worker starts, and runs against the worker
 	// the tab had then: a worker ready after that is stopped here instead of adopted by a released tab.
@@ -1177,10 +1188,30 @@ async function spawnTabWorker(): Promise<WorkerHandle> {
 }
 
 function wrapBunWorker(worker: Worker): WorkerHandle {
+	// The thread's browser connection, held here so a replacement closes it however the thread is stuck.
+	let relay: ConnectionRelay | undefined;
+	const relayFailures = new Set<(error: Error) => void>();
+	const failRelay = (error: unknown): void => {
+		const failure = error instanceof Error ? error : new ToolError(errorMessage(error));
+		for (const handler of relayFailures) handler(failure);
+	};
 	return {
 		mode: "worker",
 		send(msg, transferList) {
-			worker.postMessage(msg, { transfer: transferList ?? [] });
+			if (msg.type !== "init") {
+				worker.postMessage(msg, { transfer: transferList ?? [] });
+				return;
+			}
+			// Every other message follows the worker's `ready`, which answers this one, so none overtakes it.
+			const opening = openConnectionRelay(msg.payload.browserWSEndpoint);
+			relay = opening;
+			void opening.opened.then(() => {
+				try {
+					worker.postMessage({ ...msg, port: opening.port }, { transfer: [opening.port] });
+				} catch (error) {
+					failRelay(error);
+				}
+			}, failRelay);
 		},
 		onMessage(handler) {
 			const wrap = (event: MessageEvent): void => handler(event.data as TabWorkerOutbound);
@@ -1193,12 +1224,15 @@ function wrapBunWorker(worker: Worker): WorkerHandle {
 				handler(new ToolError(`Tab worker message error: ${String(event.data)}`));
 			worker.addEventListener("error", onError);
 			worker.addEventListener("messageerror", onMessageError);
+			relayFailures.add(handler);
 			return () => {
 				worker.removeEventListener("error", onError);
 				worker.removeEventListener("messageerror", onMessageError);
+				relayFailures.delete(handler);
 			};
 		},
 		async terminate() {
+			relay?.close();
 			worker.terminate();
 		},
 	};
