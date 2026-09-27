@@ -12,7 +12,10 @@
  * element in an open shadow root, an icon that lets pointer events through to its button, and an
  * element a fixed header hides until it is centred are pressed, not refused. A disabled control is
  * waited for until it is enabled, and fails naming that when it never is, before the op's own
- * deadline. `tab.ref(…)` methods work without awaiting the ref. `tab.uploadFile` hands files to the
+ * deadline. A handle's press belongs to the run it is called in: it waits no longer than that run's
+ * action deadline and fails naming why, it ends with the run, so a press nobody awaited never lands
+ * after its run returned, and a call on a ref that resolves to nothing, left unawaited, does not end
+ * the tab. `tab.ref(…)` methods work without awaiting the ref. `tab.uploadFile` hands files to the
  * chooser a control opens, refuses an input that takes no files, and fails naming a control that
  * opens no chooser.
  *
@@ -59,6 +62,7 @@ document.getElementById("host").shadowRoot.getElementById("inner").onclick = () 
 <script>addEventListener("load", () => scrollTo(0, 1000));</script>`,
 	disabled: `<button id="later" disabled onclick="note('later')">Later</button><button id="never" disabled>Never</button>
 <script>setTimeout(() => { document.getElementById("later").disabled = false; }, 400);</script>`,
+	armed: `<button id="armed" disabled onclick="note('armed')">Armed</button>`,
 	upload: `<button id="pick">Choose</button><button id="inert">Nothing</button><input id="name" value="">
 <p id="out"></p>
 <script>document.getElementById("pick").onclick = () => {
@@ -75,8 +79,8 @@ let tool: BrowserTool;
 let files: TempDir;
 const TAB = `press-${process.pid}`;
 
-async function run(code: string): Promise<string> {
-	const result = await tool.execute("run", { action: "run", name: TAB, code });
+async function run(code: string, timeout?: number): Promise<string> {
+	const result = await tool.execute("run", { action: "run", name: TAB, code, ...(timeout ? { timeout } : {}) });
 	return result.content.map(part => (part.type === "text" ? part.text : "")).join("\n");
 }
 
@@ -85,18 +89,24 @@ async function load(page: string): Promise<void> {
 }
 
 /** Run `action` in the page and report how it ended, how long it took and what the page recorded. */
-async function attempt(action: string): Promise<{ failure: string | null; ms: number; presses: string[] }> {
+async function attempt(
+	action: string,
+	timeout?: number,
+): Promise<{ failure: string | null; ms: number; presses: string[] }> {
 	return JSON.parse(
-		await run(`const started = Date.now();
+		await run(
+			`const started = Date.now();
 let failure = null;
 try { ${action} } catch (error) { failure = error.message; }
-return { failure, ms: Date.now() - started, presses: await tab.evaluate(() => presses) };`),
+return { failure, ms: Date.now() - started, presses: await tab.evaluate(() => presses) };`,
+			timeout,
+		),
 	);
 }
 
-/** The ref the last snapshot gave the button named `name`. */
+/** The ref the last snapshot gave the button named `name`, whatever states the snapshot lists for it. */
 function refOf(name: string): string {
-	return `(await tab.ariaSnapshot()).match(/button "${name}" \\[ref=(e\\d+)\\]/)[1]`;
+	return `(await tab.ariaSnapshot()).match(/button "${name}"[^\\n]*?\\[ref=(e\\d+)\\]/)[1]`;
 }
 
 beforeAll(async () => {
@@ -178,6 +188,33 @@ describe.skipIf(!CHROMIUM_AVAILABLE)("a click", () => {
 		const never = await attempt('await tab.click("#never");');
 		expect(never.failure).toContain("stayed disabled");
 		expect(never.ms).toBeLessThan(12_000);
+	}, 60_000);
+
+	it("presses through a handle within its run's action deadline, naming why it could not", async () => {
+		await load("disabled");
+		// A four-second run: a press that waited out a fixed eight seconds ended the whole run instead.
+		const bounded = await attempt(`await tab.ref(${refOf("Never")}).click();`, 4);
+		expect(bounded.failure).toContain("handle.click(): the element stayed disabled");
+		expect(bounded.presses).toEqual([]);
+		expect(bounded.ms).toBeLessThan(3_000);
+	}, 60_000);
+
+	it("never presses through a handle after the run it was called in has returned", async () => {
+		await load("armed");
+		// Called and not awaited: the run returns while the press waits for the button.
+		expect(await run(`tab.ref(${refOf("Armed")}).click(); return "returned";`)).toBe("returned");
+		// A press left waiting lands on its next look once the button is enabled; it looks every 100 ms,
+		// so the wait gives it six looks. Its absence cannot be awaited, only waited for.
+		const presses = await run(
+			'await tab.evaluate(() => { document.getElementById("armed").disabled = false; }); await wait(600); return await tab.evaluate(() => presses);',
+		);
+		expect(JSON.parse(presses)).toEqual([]);
+	}, 60_000);
+
+	it("keeps its tab when a call on a ref that resolves to nothing is never awaited", async () => {
+		await load("covered");
+		expect(await run('tab.ref("e999").click(); return "returned";')).toBe("returned");
+		expect(await run("return 1 + 1;")).toBe("2");
 	}, 60_000);
 });
 

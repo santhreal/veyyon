@@ -10,6 +10,7 @@ import type { HTMLElement } from "linkedom";
 import type {
 	Browser,
 	CDPSession,
+	ClickOptions,
 	Dialog,
 	ElementHandle,
 	ElementScreenshotOptions,
@@ -327,18 +328,50 @@ function asElementHandle(handle: unknown): ElementHandle | null {
 export type ActionableHandle = ElementHandle & { fill(value: string): Promise<void> };
 
 /**
- * Attach `fill()` to a puppeteer ElementHandle before handing it to user code, and route its `click()`
- * and `hover()` through {@link pressUncovered}. Puppeteer handles expose `type()` but no `fill()`; the
- * semantics are the selector-based `tab.fill()`'s.
+ * Runs a handle's action as an op of the run in progress on its tab, given that run's action deadline, so
+ * the action ends with its run and fails naming itself before the run's own deadline.
  */
-export function toActionableHandle(handle: ElementHandle): ActionableHandle {
+type HandleActionRunner = (
+	label: string,
+	action: (signal: AbortSignal, timeoutMs: number) => Promise<void>,
+) => Promise<void>;
+
+/** A handle's own `click` and `hover`, kept at its first enrichment so a later one wraps puppeteer's, not a wrapper. */
+interface OwnPresses {
+	click(options?: Readonly<ClickOptions>): Promise<void>;
+	hover(): Promise<void>;
+}
+
+const ownPresses = new WeakMap<ElementHandle, OwnPresses>();
+
+/**
+ * Attach `fill()` to a puppeteer ElementHandle before handing it to user code, and route its `click()`
+ * and `hover()` through {@link pressUncovered}, each as an action `runAction` runs. Puppeteer handles
+ * expose `type()` but no `fill()`; the semantics are the selector-based `tab.fill()`'s.
+ */
+function toActionableHandle(handle: ElementHandle, runAction: HandleActionRunner): ActionableHandle {
+	const own = ownPresses.get(handle) ?? { click: handle.click.bind(handle), hover: handle.hover.bind(handle) };
+	ownPresses.set(handle, own);
 	const enriched = handle as ActionableHandle;
-	const click = handle.click.bind(handle);
-	const hover = handle.hover.bind(handle);
-	enriched.fill = value => fillViaHandle(enriched, value);
+	enriched.fill = value => runAction("handle.fill()", signal => fillViaHandle(handle, value, signal));
+	// The press gives up before its op's deadline, so the reason it waited (a cover, a disabled control) is reported.
 	enriched.click = options =>
-		pressUncovered(handle, "handle.click()", () => click(options), ACTION_OP_TIMEOUT_MS, { enabled: true });
-	enriched.hover = () => pressUncovered(handle, "handle.hover()", hover, ACTION_OP_TIMEOUT_MS, { enabled: false });
+		runAction("handle.click()", (signal, timeoutMs) =>
+			pressUncovered(
+				handle,
+				"handle.click()",
+				() => own.click(options),
+				Math.max(1, timeoutMs - PRESS_REPORT_MARGIN_MS),
+				{ signal, enabled: true },
+			),
+		);
+	enriched.hover = () =>
+		runAction("handle.hover()", (signal, timeoutMs) =>
+			pressUncovered(handle, "handle.hover()", () => own.hover(), Math.max(1, timeoutMs - PRESS_REPORT_MARGIN_MS), {
+				signal,
+				enabled: false,
+			}),
+		);
 	return enriched;
 }
 
@@ -413,7 +446,17 @@ function planFill(element: unknown, value: string): FillPlan {
 			el.focus();
 			const previous = el.value;
 			el.value = value;
-			if (el.value !== value) {
+			// An input keeps a value it holds in its own form: a colour in lower case, a local date and time
+			// without zero seconds, a range as the number it is. One it cannot hold is replaced: a colour by
+			// black, a range by its nearest step or bound, a date or a time by nothing.
+			const now = el.value ?? "";
+			const held =
+				type === "color"
+					? now === value.toLowerCase()
+					: type === "range"
+						? value.trim() !== "" && Number(now) === Number(value)
+						: now !== "" || value === "";
+			if (!held) {
 				el.value = previous;
 				return refuse(`${JSON.stringify(value)} is not a value an <input type="${type}"> holds`);
 			}
@@ -923,6 +966,34 @@ interface ActiveRun {
 	/** Helper invocations currently awaiting the page/network, keyed by op id. */
 	inflight: Map<number, InflightOp>;
 	opCounter: number;
+	/** The run's deadline for one interactive action (`resolveOpTimeouts`). */
+	actionOpMs: number;
+	/** The name the run's code runs under, which a rejection that code floated carries in its stack. */
+	filename: string;
+	/** Rejections the run's code floated, calls it did not await, claimed while the run is in progress. */
+	floatingRejections: unknown[];
+}
+
+/**
+ * Where a tab's core runs. In the tab's own worker thread only run code and the core float promises, so
+ * the core claims every unhandled rejection there. Inline, on the main thread, it shares the realm with
+ * the session and claims, through postmortem, only a rejection whose stack names a run's code.
+ */
+export type WorkerCoreOptions =
+	| { readonly realm: "thread" }
+	| {
+			readonly realm: "inline";
+			interceptUnhandledRejections(handler: (reason: unknown) => boolean): () => void;
+	  };
+
+/** How many ended runs' file names stay known, so a rejection one of them floats late is traced to it. */
+const RECENT_RUN_FILES_MAX = 64;
+
+/** Report the rejections a run's code floated, beyond the one its result carries, in its output. */
+function reportFloatingRejections(output: RunOutput, reasons: readonly unknown[]): void {
+	for (const reason of reasons) {
+		output.push({ type: "text", text: `[unhandled rejection (missing await?)] ${errorMessage(reason)}` });
+	}
 }
 
 /** Human-readable label for a screenshot op, used in op tracking + timeout errors. */
@@ -968,12 +1039,70 @@ export class WorkerCore {
 	#dialogPolicy?: DialogPolicy;
 	#dialogHandler?: (dialog: Dialog) => void;
 	#openDialog?: OpenDialogInfo;
+	/** The file names of runs that have ended, most recent last, at most {@link RECENT_RUN_FILES_MAX}. */
+	#recentRunFiles = new Set<string>();
+	#uninstallRejectionGuard: () => void;
+	/**
+	 * Run a handle's action as an op of the run in progress on this tab. A handle outlives the run that
+	 * made it, so the action belongs to the run it is called in and ends with that run; one called when
+	 * no run is in progress, by code a finished or cancelled run left behind, does nothing.
+	 */
+	#runHandleAction: HandleActionRunner = (label, action) => {
+		const active = this.#active;
+		if (!active) {
+			return markHandled(
+				Promise.reject(new ToolError(`${label}: no run is in progress on this tab, so nothing was done.`)),
+			);
+		}
+		return markHandled(
+			this.#runOp(active, label, active.signal, active.actionOpMs, signal => action(signal, active.actionOpMs)),
+		);
+	};
 
-	constructor(transport: TabWorkerTransport) {
+	constructor(transport: TabWorkerTransport, options: WorkerCoreOptions) {
 		this.#transport = transport;
 		this.#unsub = this.#transport.onMessage(msg => {
 			void this.#handleMessage(msg as TabWorkerInbound);
 		});
+		this.#uninstallRejectionGuard =
+			options.realm === "inline"
+				? options.interceptUnhandledRejections(reason => this.#claimRejection(reason, false))
+				: this.#listenForRejections();
+	}
+
+	/** The tab thread's own unhandled-rejection listener: every rejection in that thread is the core's. */
+	#listenForRejections(): () => void {
+		const onRejection = (reason: unknown): void => {
+			this.#claimRejection(reason, true);
+		};
+		process.on("unhandledRejection", onRejection);
+		return () => {
+			process.off("unhandledRejection", onRejection);
+		};
+	}
+
+	/**
+	 * Claim an unhandled rejection run code floated, a call it did not await, so that it fails the run in
+	 * progress or, once its run has ended, is logged, instead of ending the worker and leaving the tab to
+	 * hang until it is killed. A rejection whose stack names a run belongs to that run. In the tab's own
+	 * thread (`ownsRealm`) any other rejection belongs to the run in progress, or is logged when none is.
+	 * Returns false for a rejection that is not the core's, which keeps its default fatal path.
+	 */
+	#claimRejection(reason: unknown, ownsRealm: boolean): boolean {
+		// A teardown abort nobody consumed; the main thread's handler drops these before asking.
+		if (postmortem.isExpectedCleanupError(reason)) return ownsRealm;
+		const stack = reason instanceof Error && typeof reason.stack === "string" ? reason.stack : "";
+		const fromEndedRun = Array.from(this.#recentRunFiles).some(file => stack.includes(file));
+		const active = this.#active;
+		if (active && (stack.includes(active.filename) || (ownsRealm && !fromEndedRun))) {
+			active.floatingRejections.push(reason);
+			return true;
+		}
+		if (!ownsRealm && !fromEndedRun) return false;
+		this.#log("warn", "Unhandled rejection from a browser run that has ended (missing await?)", {
+			error: errorPayload(reason),
+		});
+		return true;
 	}
 
 	nextElementId(): number {
@@ -1180,6 +1309,9 @@ export class WorkerCore {
 			pendingTools: new Map(),
 			inflight: new Map(),
 			opCounter: 0,
+			actionOpMs: resolveOpTimeouts(msg.timeoutMs).actionOpMs,
+			filename: `browser-run-${msg.id}.js`,
+			floatingRejections: [],
 		};
 		this.#active = active;
 		try {
@@ -1259,10 +1391,18 @@ export class WorkerCore {
 				const hooks = this.#hooksForActiveRun();
 				if (!hooks) throw new ToolError("Browser runtime started without an active run");
 				const returnValue = await Promise.race([
-					runtime.run(msg.code, `browser-run-${msg.id}.js`, hooks, { runId: msg.id, cwd: msg.session.cwd }),
+					runtime.run(msg.code, active.filename, hooks, { runId: msg.id, cwd: msg.session.cwd }),
 					cancelRejection,
 				]);
 				await this.#postReadyInfo();
+				// One turn more, so a rejection the code floated just before it returned is still this run's.
+				await delay(0);
+				// A call the code did not await failed: the run failed, and says what it forgot to await.
+				const floated = active.floatingRejections.splice(0);
+				if (floated.length > 0) {
+					reportFloatingRejections(output, floated.slice(1));
+					throw new ToolError(`Unhandled rejection (missing await?): ${errorMessage(floated[0])}`);
+				}
 				this.#transport.send({
 					type: "result",
 					id: msg.id,
@@ -1277,16 +1417,23 @@ export class WorkerCore {
 			// `display()` produced before the throw, and those lines are usually the only evidence
 			// of why it threw; dropping them left a timed-out cell reporting a bare deadline and
 			// nothing that explains it. Screenshots ride along for the same reason.
+			const failure = await this.#explainPageGlobal(error);
+			reportFloatingRejections(output, active.floatingRejections.splice(0));
 			this.#transport.send({
 				type: "result",
 				id: msg.id,
 				ok: false,
-				error: errorPayload(await this.#explainPageGlobal(error)),
+				error: errorPayload(failure),
 				partial: { displays: output.finish(), screenshots },
 			});
 		} finally {
 			cellTimeout.cancel();
 			if (this.#active?.id === msg.id) this.#active = null;
+			this.#recentRunFiles.add(active.filename);
+			if (this.#recentRunFiles.size > RECENT_RUN_FILES_MAX) {
+				const oldest = this.#recentRunFiles.values().next().value;
+				if (oldest !== undefined) this.#recentRunFiles.delete(oldest);
+			}
 			runAc.abort(postmortem.markExpectedCleanupError(new ToolAbortError("Browser run ended")));
 		}
 	}
@@ -1619,7 +1766,8 @@ export class WorkerCore {
 				return op(
 					`tab.waitFor(${JSON.stringify(selector)})`,
 					w,
-					async sig => toActionableHandle(await this.#resolveActionHandle(selector, w, sig)),
+					async sig =>
+						toActionableHandle(await this.#resolveActionHandle(selector, w, sig), this.#runHandleAction),
 					{ selector, zeroMatchAfterMs: opts?.timeout === undefined ? ZERO_MATCH_FAIL_FAST_MS : undefined },
 				);
 			},
@@ -1630,7 +1778,7 @@ export class WorkerCore {
 					w,
 					async sig => {
 						if (parseAriaRefSelector(selector) !== null)
-							return toActionableHandle(await this.#resolveAriaRef(selector));
+							return toActionableHandle(await this.#resolveAriaRef(selector), this.#runHandleAction);
 						const handle = (await untilAborted(sig, () =>
 							page.waitForSelector(normalizeSelector(selector), {
 								timeout: w,
@@ -1639,7 +1787,7 @@ export class WorkerCore {
 								signal: sig,
 							}),
 						)) as ElementHandle | null;
-						return handle ? toActionableHandle(handle) : null;
+						return handle ? toActionableHandle(handle, this.#runHandleAction) : null;
 					},
 					{
 						selector,
@@ -1710,8 +1858,12 @@ export class WorkerCore {
 				const w = waitMs(opts?.timeout);
 				return op("tab.waitForResponse()", w, sig => this.#waitForResponse(pattern, w, sig));
 			},
-			id: id => chainHandle(this.#resolveCachedHandle(id).then(toActionableHandle)),
-			ref: id => chainHandle(this.#resolveAriaRef(id).then(toActionableHandle)),
+			id: id =>
+				chainHandle(
+					this.#resolveCachedHandle(id).then(handle => toActionableHandle(handle, this.#runHandleAction)),
+				),
+			ref: id =>
+				chainHandle(this.#resolveAriaRef(id).then(handle => toActionableHandle(handle, this.#runHandleAction))),
 			storageState: opts =>
 				op("tab.storageState()", actionOpMs, sig => this.#storageState(opts?.path, sig, session)),
 			loadStorageState: stateOrPath =>
@@ -2164,6 +2316,7 @@ export class WorkerCore {
 		if (this.#browser?.connected) this.#browser.disconnect();
 		this.#transport.send({ type: "closed" });
 		this.#transport.close();
+		this.#uninstallRejectionGuard();
 	}
 
 	async #storageState(file: string | undefined, signal: AbortSignal, session: SessionSnapshot): Promise<StorageState> {
@@ -2180,6 +2333,13 @@ export class WorkerCore {
 		signal: AbortSignal,
 		session: SessionSnapshot,
 	): Promise<StorageStateLoaded> {
+		// Reading a spawned or connected browser's session is how one is carried into a headless tab;
+		// writing one would overwrite the cookies of a profile a person or an app signs in with.
+		if (this.#mode !== "headless") {
+			throw new ToolError(
+				"tab.loadStorageState() needs the headless browser: this tab runs in a spawned or connected browser's own profile, and a load would write cookies and localStorage into that profile. Load the state into a tab opened without app.",
+			);
+		}
 		const context = this.#requirePage().browserContext();
 		return await untilAborted(signal, async () => {
 			const state =

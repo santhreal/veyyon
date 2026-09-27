@@ -6,11 +6,13 @@
  * The class: a session that leaks or is lost. Every tab naming one context shares its cookies, and
  * no tab of another context, or of the default one, sees them; the context goes with its last tab;
  * a live tab is never moved to another context, and one opened again with no context stays in its
- * own. A state file holds every cookie of the context, on every host, not only the current page's,
- * and is readable by its owner alone; loaded, the first request already carries its cookies, and
- * its localStorage is written once, with no request reaching any server, so a site that clears a key
- * after load does not find it back on the next reload. A tab opened again with a state file loads it
- * into the context it is in.
+ * own. A tab closed twice at once, or opened again while it closes, is released once, so its
+ * context and its browser stay up for the tabs still in them. A state file holds every cookie of
+ * the context, on every host, not only the current page's, and is readable by its owner alone;
+ * loaded, the first request already carries its cookies, and its localStorage is written once,
+ * with no request reaching any server, so a site that clears a key after load does not find it back
+ * on the next reload; a load inside a run leaves that run's tab in front, where its clicks do not
+ * stall. A tab opened again with a state file loads it into the context it is in.
  *
  * Driven through the real tool against real headless Chromium and a local server reached as both
  * 127.0.0.1 and localhost, which are two cookie hosts. Skipped where Chromium cannot run.
@@ -40,7 +42,7 @@ const opened = new Set<string>();
 /** Every request the server answered, as `path cookies`. */
 const requests: string[] = [];
 
-/** `/login?user=x` sets `sid=x` on the host it was asked on; every page shows the cookies its request carried. */
+/** `/login?user=x` sets `sid=x` on the host it was asked on; every page shows the cookies its request carried, and a button. */
 function serve(request: http.IncomingMessage, response: http.ServerResponse): void {
 	const url = new URL(request.url ?? "/", "http://localhost");
 	const user = url.searchParams.get("user");
@@ -48,7 +50,7 @@ function serve(request: http.IncomingMessage, response: http.ServerResponse): vo
 	const sent = (request.headers.cookie ?? "").replace(/[<&]/g, "");
 	requests.push(`${url.pathname} ${sent}`);
 	response.setHeader("Content-Type", "text/html");
-	response.end(`<!doctype html><title>t</title><pre id="sent">${sent}</pre>`);
+	response.end(`<!doctype html><title>t</title><pre id="sent">${sent}</pre><button id="go">go</button>`);
 }
 
 function base(host: "127.0.0.1" | "localhost" = "127.0.0.1"): string {
@@ -154,6 +156,33 @@ describe.skipIf(!CHROMIUM_AVAILABLE)("an isolated browser context", () => {
 		expect(await sentCookies("fay", `${base()}/whoami`)).toBe("sid=fay");
 		await close("fay");
 	}, 90_000);
+
+	it("keeps its other tabs and the browser when a tab is closed twice at once, or opened again while it closes", async () => {
+		// A tab in the default context holds the browser too, so a hold dropped twice shows only at the end.
+		await open("wes-keeper");
+		await open("wes-1", { context: "wes", url: `${base()}/login?user=wes` });
+		await open("wes-2", { context: "wes" });
+		await open("wes-3", { context: "wes" });
+		// Two agents close one tab at once: one closes it, the other finds it on its way out.
+		const closes = await Promise.all([
+			tool.execute("close", { action: "close", name: "wes-1" }),
+			tool.execute("close", { action: "close", name: "wes-1" }),
+		]);
+		opened.delete("wes-1");
+		expect(closes.map(text).sort()).toEqual(['Closed tab "wes-1"', 'No tab named "wes-1"']);
+		// An open of a name whose tab is closing waits for the close rather than releasing the tab again.
+		const [, reopened] = await Promise.all([
+			tool.execute("close", { action: "close", name: "wes-2" }),
+			open("wes-2", { context: "wes" }),
+		]);
+		expect(text(reopened)).toContain('Opened tab "wes-2"');
+		expect(text(reopened)).toContain('in context "wes"');
+		await close("wes-3");
+		await close("wes-keeper");
+		// wes-2 now holds the context and the browser alone.
+		expect(await sentCookies("wes-2", `${base()}/whoami`)).toBe("sid=wes");
+		await close("wes-2");
+	}, 90_000);
 });
 
 describe.skipIf(!CHROMIUM_AVAILABLE)("a storage state file", () => {
@@ -228,6 +257,25 @@ describe.skipIf(!CHROMIUM_AVAILABLE)("a storage state file", () => {
 		expect(JSON.parse(text(loaded))).toEqual({ cookies: 1, origins: [] });
 		expect(await sentCookies("tess", `${base()}/whoami`)).toBe("sid=tess");
 		await close("tess");
+	}, 90_000);
+
+	it("loads from inside a run and leaves the run's tab in front, where a click does not stall", async () => {
+		// The earlier of two tabs is behind the later one until a run in it brings it to the front.
+		await open("xan-1", { url: `${base()}/whoami` });
+		await open("xan-2", { url: `${base()}/whoami` });
+		const loaded = await tool.execute("run", {
+			action: "run",
+			name: "xan-1",
+			// Shorter than the stall: a click in a tab left behind fails the run.
+			timeout: 5,
+			code: `await tab.loadStorageState({ cookies: [], origins: [{ origin: ${JSON.stringify(base())}, localStorage: [{ name: "k", value: "v" }] }] });
+const shown = await tab.evaluate(() => document.visibilityState);
+await tab.click("#go");
+return shown;`,
+		});
+		expect(text(loaded)).toBe("visible");
+		await close("xan-1");
+		await close("xan-2");
 	}, 90_000);
 
 	it("loads into a tab opened again, in the context it is in and no other", async () => {

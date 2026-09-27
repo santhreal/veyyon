@@ -52,9 +52,12 @@ import type { CmuxSocketClient } from "./socket-client";
 // deadline is a different concept from the whole-tool timeout.
 const DEFAULT_OP_TIMEOUT_MS = 30_000;
 
-/** Why a cmux tab has no storage state: its surface shares the cmux app's session. */
+/**
+ * Why a cmux tab has no storage state: its surface shares the cmux app's session. A tab opens on cmux
+ * whenever cmux is on and no `app` is given, so the way out is turning cmux off.
+ */
 const CMUX_HAS_NO_STORAGE_STATE =
-	"Storage state needs the headless browser: a cmux tab runs in the cmux app's own session. Open the tab without app.cmux.";
+	"Storage state needs the headless browser: a cmux tab runs in the cmux app's own session. Tabs open in the headless browser with cmux off: the browser.cmux setting, or VEYYON_BROWSER_CMUX=0.";
 
 interface ScreenshotOptions {
 	selector?: string;

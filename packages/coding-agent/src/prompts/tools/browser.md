@@ -31,7 +31,7 @@ Drives real Chromium tab; full puppeteer access via JS.
   - `tab.evaluate(fn, …args)` — run ad-hoc code in the page's MAIN world. DOM and page-defined globals (`window.myFlag`, `jQuery`) are visible; mutations affect the page. Raw `page.evaluate` runs in an isolated world where page globals are undefined.
   - `tab.screenshot({ selector?, fullPage?, save?, silent? })` — capture + attach for viewing (`silent: true` skips). Pass `save` only when a later step needs the file.
   - `tab.extract(format = "markdown")` — readable page content (`"markdown"` | `"text"`); throws when nothing readable.
-  - `tab.storageState({ path? })` / `tab.loadStorageState(stateOrPath)` — save/load the context's cookies + localStorage (object or file).
+  - `tab.storageState({ path? })` / `tab.loadStorageState(stateOrPath)` — save/load the context's cookies + localStorage (object or file); load is headless only.
 - Selectors: CSS + puppeteer handlers `aria/Sign in`, `text/Continue`, `xpath/…`, `pierce/…`; also Playwright-style `p-aria/…`, `p-text/…`. Playwright-only engines/pseudos (`:has-text()`, `:visible`, …) are rejected — use `text/…` or `aria/…`. A stalled action fails fast with a named `tab.<op>` error and a match count; a selector matching nothing fails in ~2s (give `waitFor`/`waitForSelector` a `{ timeout }` for slow elements). A cell timeout names the stalled op and any dialog blocking the page.
 </instruction>
 

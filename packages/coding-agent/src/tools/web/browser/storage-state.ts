@@ -229,7 +229,9 @@ export async function applyStorageState(context: BrowserContext, state: StorageS
 	if (cookies.length > 0) await context.setCookie(...cookies.map(toCookieData));
 	const origins = state.origins.filter(entry => entry.localStorage.length > 0);
 	if (origins.length > 0) {
-		const page = await context.newPage();
+		// In the background: a page that comes to the front sends a tab's own page behind it, where
+		// Chromium runs no animation frames and every later click in that tab stalls.
+		const page = await context.newPage({ background: true });
 		try {
 			await page.setRequestInterception(true);
 			page.on("request", answerLocally);

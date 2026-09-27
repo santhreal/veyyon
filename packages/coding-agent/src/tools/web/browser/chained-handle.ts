@@ -23,8 +23,8 @@ const PROMISE_MEMBERS = new Set<PropertyKey>(["then", "catch", "finally"]);
  *
  * A method read off the pending handle returns a function that waits for the handle and calls the
  * method on it, so a run need not await the ref before using it. A ref that fails to resolve rejects
- * the call made on it, or the `await`; a ref that is neither awaited nor called is not an unhandled
- * rejection.
+ * the call made on it, or the `await`; neither a ref nor a call on it that nobody awaits is an
+ * unhandled rejection, which ends the tab's worker.
  */
 export function chainHandle<H extends object>(pending: Promise<H>): ChainedHandle<H> {
 	markHandled(pending);
@@ -35,11 +35,13 @@ export function chainHandle<H extends object>(pending: Promise<H>): ChainedHandl
 				return typeof member === "function" ? member.bind(target) : member;
 			}
 			return (...args: unknown[]) =>
-				target.then(handle => {
-					const method: unknown = Reflect.get(handle, key, handle);
-					if (typeof method !== "function") throw new ToolError(`The element handle has no method ${key}().`);
-					return Reflect.apply(method, handle, args);
-				});
+				markHandled(
+					target.then(handle => {
+						const method: unknown = Reflect.get(handle, key, handle);
+						if (typeof method !== "function") throw new ToolError(`The element handle has no method ${key}().`);
+						return Reflect.apply(method, handle, args);
+					}),
+				);
 		},
 	}) as ChainedHandle<H>;
 }

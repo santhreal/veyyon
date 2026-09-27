@@ -6,7 +6,8 @@
  * gives the handle; a method called on it waits for the handle and calls the method with the same
  * arguments and the handle as `this`, returning its result; a handle that fails to resolve rejects
  * the call with the resolution's own error; a method the handle does not have rejects naming it; and
- * a failed handle that nobody awaits or calls is not an unhandled rejection.
+ * neither a failed handle nor a call on one that nobody awaits is an unhandled rejection, which
+ * ends a tab's worker.
  *
  * What it does NOT catch: that the browser backends route `tab.ref`/`tab.id` through it, which the
  * chained `tab.ref(…).click()` routes in `a-click-never-presses-what-covers-its-element.test.ts` drive.
@@ -75,6 +76,15 @@ describe("a pending element handle", () => {
 	it("leaves no unhandled rejection when a failed handle is never awaited or called", async () => {
 		process.on("unhandledRejection", record);
 		chainHandle(Promise.reject(new Error("never looked at")));
+		await nextTurn();
+		await nextTurn();
+		expect(unhandled).toEqual([]);
+	});
+
+	it("leaves no unhandled rejection when a call on a failed handle is never awaited", async () => {
+		process.on("unhandledRejection", record);
+		chainHandle<FakeHandle>(Promise.reject(new Error("never looked at"))).click();
+		chainHandle(Promise.resolve(new FakeHandle())).hover();
 		await nextTurn();
 		await nextTurn();
 		expect(unhandled).toEqual([]);

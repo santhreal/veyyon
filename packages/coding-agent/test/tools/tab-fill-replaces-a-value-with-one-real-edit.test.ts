@@ -7,12 +7,14 @@
  * The contract: fill replaces the whole value of an input, textarea or contenteditable element in one
  * trusted text insertion, which a framework's tracker counts as a change, the empty value included;
  * an input holding a date, time, colour or range takes its value past the framework's tracker with
- * the `input` and `change` a person's edit fires, and a value it cannot hold is refused with the field
- * left as it was; an element fill cannot fill is refused with the call that can. A selector fill waits
- * for its field to be visible, as a click does; an element that cannot take focus is refused before
- * anything is typed, so the value never lands in the field that holds focus instead. A line inside
- * an editor is replaced through the editor that holds it. Every way to reach fill (a selector, an
- * aria ref, a handle from `tab.id` or `tab.waitFor`) replaces the value the same way.
+ * the `input` and `change` a person's edit fires; a value it holds in another form (a colour in
+ * capitals, a date-time with zero seconds, a range as a decimal) is set in the form the input keeps,
+ * and a value it cannot hold is refused with the field left as it was. An element fill cannot fill
+ * is refused with the call that can. A selector fill waits for its field to be visible, as a click
+ * does; an element that cannot take focus is refused before anything is typed, so the value never
+ * lands in the field that holds focus instead. A line inside an editor is replaced through the
+ * editor that holds it. Every way to reach fill (a selector, an aria ref, a handle from `tab.id` or
+ * `tab.waitFor`) replaces the value the same way.
  *
  * Driven through the real tool against real headless Chromium. Skipped where Chromium cannot run.
  *
@@ -46,6 +48,9 @@ const PAGE = `<!doctype html><title>fill</title>
 <input id="late" hidden>
 <div id="editor" contenteditable><p id="line">first</p><p>second</p></div>
 <input id="when" type="date">
+<input id="colour" type="color" value="#123456">
+<input id="stamp" type="datetime-local" value="2026-01-01T08:00">
+<input id="level" type="range" min="0" max="100" value="10">
 <script>
 window.events = [];
 for (const id of ["text", "area", "edit", "date"]) {
@@ -184,6 +189,33 @@ describe.skipIf(!CHROMIUM_AVAILABLE)("tab.fill", () => {
 			'return { value: await tab.evaluate(() => document.getElementById("date").value), events: await tab.evaluate(() => events) };',
 		);
 		expect(JSON.parse(kept)).toEqual({ value: "2026-09-26", events: ["date:input:false", "date:change"] });
+	}, 60_000);
+
+	it("sets a value a colour, date-time or range input holds in another form, and refuses one it cannot hold", async () => {
+		await fresh();
+		const read =
+			"return { colour: await tab.evaluate(() => document.getElementById('colour').value), stamp: await tab.evaluate(() => document.getElementById('stamp').value), level: await tab.evaluate(() => document.getElementById('level').value) };";
+		const filled = await run(
+			`await tab.fill("#colour", "#FF8800"); await tab.fill("#stamp", "2026-09-26T10:30:00"); await tab.fill("#level", "40.0"); ${read}`,
+		);
+		expect(JSON.parse(filled)).toEqual({ colour: "#ff8800", stamp: "2026-09-26T10:30", level: "40" });
+		await fresh();
+		const refusals = {
+			colour: await failureOf('await tab.fill("#colour", "red");'),
+			stamp: await failureOf('await tab.fill("#stamp", "2026-09-26T25:00");'),
+			level: await failureOf('await tab.fill("#level", "150");'),
+		};
+		const reason = (failure: string): string => (failure.match(/fill: [^\n]*/) ?? [failure])[0];
+		expect({
+			colour: reason(refusals.colour),
+			stamp: reason(refusals.stamp),
+			level: reason(refusals.level),
+		}).toEqual({
+			colour: 'fill: "red" is not a value an <input type="color"> holds',
+			stamp: 'fill: "2026-09-26T25:00" is not a value an <input type="datetime-local"> holds',
+			level: 'fill: "150" is not a value an <input type="range"> holds',
+		});
+		expect(JSON.parse(await run(read))).toEqual({ colour: "#123456", stamp: "2026-01-01T08:00", level: "10" });
 	}, 60_000);
 
 	it("refuses an element it cannot fill with the call that can", async () => {
