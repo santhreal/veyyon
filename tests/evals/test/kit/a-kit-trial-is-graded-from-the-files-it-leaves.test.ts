@@ -14,7 +14,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
 import { kitTask } from "../../engine/kit/catalog";
-import { answerHasNumber } from "../../engine/kit/checks";
+import { answerHasNumber, answerHasText, numbersIn } from "../../engine/kit/checks";
 import { FormClient } from "../../engine/kit/form-client";
 import { summarizeKitRun } from "../../engine/kit/report";
 import { defineSuite, KIT_FILES, trialSeed } from "../../engine/kit/suite";
@@ -154,6 +154,21 @@ describe("a kit catalog", () => {
 		expect(verdict.reason).toBe(
 			'press-n-times: the id is used twice; strange: unknown capability "telepathy"; unchecked: has no checks',
 		);
+	});
+});
+
+describe("an answer check", () => {
+	it("reads a number however the agent formats it, and a date's parts as positive numbers", () => {
+		expect(answerHasNumber("The order total is $1,234.50.", 1234.5)).toBe(true);
+		expect(answerHasNumber("Growth was 12.3%", 12.3)).toBe(true);
+		expect(answerHasNumber("It fell by -40 units", -40)).toBe(true);
+		expect(numbersIn("Due 2026-05-03")).toEqual([2026, 5, 3]);
+		expect(answerHasNumber("The order total is $1,234.50.", 1234)).toBe(false);
+	});
+
+	it("matches text regardless of case, spacing and curly quotes", () => {
+		expect(answerHasText("The  SKU is ‘SK-5HANU’", "the sku is 'sk-5hanu'")).toBe(true);
+		expect(answerHasText("SK-5HANU", "SK-5HANV")).toBe(false);
 	});
 });
 
