@@ -9,6 +9,7 @@
 - The `browser` tool's `open` with a `url` returns the loaded page's aria snapshot, whose refs a run can act on, when it is at most 6,000 characters, so a small page needs no separate call to read it; a larger page's size is stated instead, and the open's card draws its own rows as before.
 - The `browser` tool's `tab.uploadFile` takes a button, label or other control that opens a file chooser and hands the chooser the files, refuses an input that takes no files, and fails naming a control that opens no chooser.
 - The `browser` tool's `tab.ref()` and `tab.id()` can be called on without awaiting the handle first: `await tab.ref("e5").click()`; a call left unawaited on a ref that resolves to nothing no longer ends the tab.
+- The `browser` tool's `tab.ariaSnapshot()`, and an `open`'s page snapshot, nest each iframe's content under its line, cross-site frames and frames within frames included, with refs like `f1e3` that `tab.ref`, `aria-ref=` selectors, `fill` and `click` act on inside the frame; a click there is refused, naming the cover, when the page above the frame covers its point.
 
 ### Changed
 
@@ -19,7 +20,7 @@
 - A `browser` run no longer sends a return value that it already displayed, which was 20% of all run-result text in bench sessions.
 - The `browser` tool's `tab.ariaSnapshot()` and an `open`'s page snapshot leave out bare `generic` wrappers (layout `<div>`s with no name, text, state or pointer), 7–30% of a real page's snapshot.
 - A `browser` run that reaches for `document`, `window` or another name the page defines fails with an error that says the name exists in the page and to use it inside `tab.evaluate`, instead of a bare "is not defined".
-- The `browser` tool description (1,688 estimated tokens, from 1,575) states that run code executes outside the page, that raw `page.evaluate` cannot see page globals, that a click never presses a cover and that refs chain, that a state file loads only into a headless tab, and asks the model to act on an open's snapshot without reading the page again, to act and read back in one run, and to act through `tab` actions instead of probing hit targets or page scripts first.
+- The `browser` tool description (1,702 estimated tokens, from 1,575) states that run code executes outside the page, that raw `page.evaluate` cannot see page globals, that a click never presses a cover and that refs chain, that a state file loads only into a headless tab, and that iframe content nests in a snapshot with `f1e3` refs, and asks the model to act on an open's snapshot without reading the page again, to act and read back in one run, and to act through `tab` actions instead of probing hit targets or page scripts first.
 - `veyyon session stats` folds each entry through a reducer with one method per entry kind instead of one 340-line loop, cutting the report on a 104,969-entry session from 36.4 ms to 30.0 ms with an identical report.
 - The legacy agent settings migration runs as one step per retired area over a shared key reader, cutting a legacy-heavy config's migration from 15.0 µs to 10.9 µs per load; a current-format config is unchanged.
 - A compaction pass finds the entry it just wrote by the id the append returned instead of copying the session's entries and scanning them for its summary text, which cuts that step on a 238,086-entry session from 6.53 ms to 0.002 ms.

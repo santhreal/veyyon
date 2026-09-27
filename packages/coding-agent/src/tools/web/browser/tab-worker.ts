@@ -15,6 +15,7 @@ import type {
 	ElementHandle,
 	ElementScreenshotOptions,
 	FileChooser,
+	Frame,
 	HTTPResponse,
 	ImageFormat,
 	KeyInput,
@@ -707,9 +708,15 @@ async function isClickActionable(handle: ElementHandle): Promise<ActionabilityRe
 	})) as ActionabilityResult;
 }
 
-/** What a click or hover would reach on an element, decided in the page. */
+/** A point in a frame's viewport, in CSS pixels. */
+interface FramePoint {
+	readonly x: number;
+	readonly y: number;
+}
+
+/** What a click or hover would reach on an element, decided in the page; a clear press states its point. */
 type PressProbe =
-	| { readonly kind: "clear" }
+	| { readonly kind: "clear"; readonly point?: FramePoint }
 	| { readonly kind: "covered"; readonly by: string }
 	| { readonly kind: "disabled" }
 	| { readonly kind: "detached" };
@@ -775,7 +782,7 @@ function probePress(element: unknown, requireEnabled: boolean): PressProbe {
 		if (!inner || inner === hit) break;
 		hit = inner;
 	}
-	if (!hit) return { kind: "clear" };
+	if (!hit) return { kind: "clear", point };
 	const within = (inner: PressNode, outer: PressNode): boolean => {
 		for (let node: PressNode | null | undefined = inner; node; node = node.parentNode ?? node.host) {
 			if (node === outer) return true;
@@ -783,8 +790,8 @@ function probePress(element: unknown, requireEnabled: boolean): PressProbe {
 		return false;
 	};
 	const target = hit;
-	if (within(target, el) || within(el, target)) return { kind: "clear" };
-	if (Array.from(el.labels ?? []).some(label => within(target, label))) return { kind: "clear" };
+	if (within(target, el) || within(el, target)) return { kind: "clear", point };
+	if (Array.from(el.labels ?? []).some(label => within(target, label))) return { kind: "clear", point };
 	const tag = (target.tagName ?? "node").toLowerCase();
 	const id = target.id ? `#${target.id}` : "";
 	const classes = Array.from(target.classList ?? [])
@@ -793,6 +800,95 @@ function probePress(element: unknown, requireEnabled: boolean): PressProbe {
 		.join("");
 	const text = (target.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 40);
 	return { kind: "covered", by: `<${tag}${id}${classes}>${text ? ` "${text}"` : ""}` };
+}
+
+/** What a press at a point inside a frame meets in the frame's parent: the frame itself, or a cover. */
+type FrameHit =
+	| { readonly kind: "clear"; readonly point?: FramePoint }
+	| { readonly kind: "covered"; readonly by: string };
+
+/**
+ * Decide, in the parent of a frame, whether a press at `x`,`y` in the frame's viewport reaches the frame.
+ *
+ * The point moves into the parent's viewport by the frame element's content box. What `elementFromPoint`
+ * finds there, followed into open shadow roots, is the frame element, or holds it, when the press
+ * reaches the frame; anything else (a banner, a dialog, a cookie wall over the frame) takes it. A point
+ * outside the parent's viewport is left to the press. Serialized into the page, so it reaches nothing
+ * outside itself.
+ */
+function probeFrameHit(element: unknown, x: number, y: number): FrameHit {
+	interface HitNode {
+		readonly parentNode: HitNode | null;
+		readonly host?: HitNode;
+		readonly shadowRoot?: { elementFromPoint(x: number, y: number): HitNode | null } | null;
+		readonly tagName?: string;
+		readonly id?: string;
+		readonly classList?: ArrayLike<string>;
+		readonly textContent: string | null;
+	}
+	interface FrameNode extends HitNode {
+		readonly clientLeft: number;
+		readonly clientTop: number;
+		getBoundingClientRect(): { readonly left: number; readonly top: number };
+		readonly ownerDocument: {
+			readonly documentElement: { readonly clientWidth: number; readonly clientHeight: number };
+			readonly defaultView: { getComputedStyle(node: unknown): { paddingLeft: string; paddingTop: string } } | null;
+			elementFromPoint(x: number, y: number): HitNode | null;
+		};
+	}
+	const frame = element as FrameNode;
+	const doc = frame.ownerDocument;
+	const box = frame.getBoundingClientRect();
+	const style = doc.defaultView?.getComputedStyle(frame);
+	const point = {
+		x: box.left + frame.clientLeft + (Number.parseFloat(style?.paddingLeft ?? "0") || 0) + x,
+		y: box.top + frame.clientTop + (Number.parseFloat(style?.paddingTop ?? "0") || 0) + y,
+	};
+	const { clientWidth, clientHeight } = doc.documentElement;
+	if (point.x < 0 || point.y < 0 || point.x >= clientWidth || point.y >= clientHeight) return { kind: "clear" };
+	let hit = doc.elementFromPoint(point.x, point.y);
+	while (hit?.shadowRoot) {
+		const inner = hit.shadowRoot.elementFromPoint(point.x, point.y);
+		if (!inner || inner === hit) break;
+		hit = inner;
+	}
+	if (!hit) return { kind: "clear", point };
+	for (let node: HitNode | null | undefined = frame; node; node = node.parentNode ?? node.host) {
+		if (node === hit) return { kind: "clear", point };
+	}
+	const tag = (hit.tagName ?? "node").toLowerCase();
+	const id = hit.id ? `#${hit.id}` : "";
+	const classes = Array.from(hit.classList ?? [])
+		.slice(0, 2)
+		.map(name => `.${name}`)
+		.join("");
+	const text = (hit.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 40);
+	return { kind: "covered", by: `<${tag}${id}${classes}>${text ? ` "${text}"` : ""} over its frame` };
+}
+
+/**
+ * What covers a press at `point` in `frame` from a frame above it, or null when every frame up to the
+ * top document lets the press through to the one below.
+ */
+async function coverInParentFrames(frame: Frame, point: FramePoint | undefined): Promise<string | null> {
+	let child = frame;
+	let at = point;
+	while (at && child.parentFrame()) {
+		const owner = await child.frameElement();
+		if (!owner) return null;
+		let hit: FrameHit;
+		try {
+			hit = (await owner.evaluate(probeFrameHit, at.x, at.y)) as FrameHit;
+		} finally {
+			await releaseHandle(owner);
+		}
+		if (hit.kind === "covered") return hit.by;
+		at = hit.point;
+		const parent = child.parentFrame();
+		if (!parent) return null;
+		child = parent;
+	}
+	return null;
 }
 
 /** The element a press was waiting on left the page before it was pressed; nothing was pressed. */
@@ -820,10 +916,12 @@ function centreInView(element: unknown): void {
  * Run `press` once the point it presses on `handle` is the element's own.
  *
  * A press whose point something else holds (an open menu, a dialog, a banner, a toast) lands on that
- * instead, and nothing says so. The element is scrolled into view, then centred once if covered, which
- * clears a sticky header; a cover still there after {@link COVERED_WAIT_MS}, or `timeoutMs` when
- * shorter, fails the action naming it. With `enabled`, a disabled form control is waited for until
- * `timeoutMs`. In every failure nothing is pressed.
+ * instead, and nothing says so. For an element inside a frame, the point is checked in the element's
+ * frame and then in every frame above it, so a banner over the frame counts too. The element is
+ * scrolled into view, then centred once if covered, which clears a sticky header; a cover still there
+ * after {@link COVERED_WAIT_MS}, or `timeoutMs` when shorter, fails the action naming it. With
+ * `enabled`, a disabled form control is waited for until `timeoutMs`. In every failure nothing is
+ * pressed.
  */
 async function pressUncovered(
 	handle: ElementHandle,
@@ -851,18 +949,25 @@ async function pressUncovered(
 				continue;
 			}
 		}
-		if (probe.kind === "clear") {
+		// A point clear in the element's own frame can still be covered by the page above that frame.
+		const cover =
+			probe.kind === "covered"
+				? probe.by
+				: probe.kind === "clear"
+					? await untilAborted(signal, () => coverInParentFrames(handle.frame, probe.point))
+					: null;
+		if (probe.kind === "clear" && cover === null) {
 			await untilAborted(signal, press);
 			return;
 		}
-		if (probe.kind === "covered" && !centred) {
+		if (cover !== null && !centred) {
 			centred = true;
 			await untilAborted(signal, () => handle.evaluate(centreInView));
 			continue;
 		}
-		if (probe.kind === "covered" && elapsed >= Math.min(timeoutMs, COVERED_WAIT_MS)) {
+		if (cover !== null && elapsed >= Math.min(timeoutMs, COVERED_WAIT_MS)) {
 			throw new ToolError(
-				`${label}: ${probe.by} covers the point it would press, so nothing was pressed. Dismiss it (tab.press("Escape"), or a click outside it) or act on it instead.`,
+				`${label}: ${cover} covers the point it would press, so nothing was pressed. Dismiss it (tab.press("Escape"), or a click outside it) or act on it instead.`,
 			);
 		}
 		if (probe.kind === "disabled" && elapsed >= timeoutMs) {
@@ -1041,6 +1146,8 @@ export class WorkerCore {
 	#openDialog?: OpenDialogInfo;
 	/** The file names of runs that have ended, most recent last, at most {@link RECENT_RUN_FILES_MAX}. */
 	#recentRunFiles = new Set<string>();
+	/** The frames the latest `tab.ariaSnapshot()` followed, by the prefix of their refs (`f1`). */
+	#snapshotFrames: ReadonlyMap<string, Frame> = new Map();
 	#uninstallRejectionGuard: () => void;
 	/**
 	 * Run a handle's action as an op of the run in progress on this tab. A handle outlives the run that
@@ -1688,7 +1795,9 @@ export class WorkerCore {
 								);
 						}
 						try {
-							return await untilAborted(sig, () => captureAriaSnapshot(page, root, opts));
+							const capture = await untilAborted(sig, () => captureAriaSnapshot(page, root, opts));
+							this.#snapshotFrames = capture.frames;
+							return capture.text;
 						} finally {
 							await releaseHandle(root);
 						}
@@ -2248,7 +2357,7 @@ export class WorkerCore {
 
 	async #resolveAriaRef(id: string): Promise<ElementHandle> {
 		const ref = parseAriaRefSelector(id) ?? id.trim();
-		const handle = await resolveAriaRefHandle(this.#requirePage(), ref);
+		const handle = await resolveAriaRefHandle(this.#requirePage(), ref, this.#snapshotFrames);
 		if (!handle) {
 			throw new ToolError(
 				`Unknown ARIA ref ${JSON.stringify(ref)}. Run tab.ariaSnapshot() to refresh refs (they renumber each snapshot).`,

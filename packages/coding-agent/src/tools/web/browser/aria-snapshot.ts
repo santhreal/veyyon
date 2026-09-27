@@ -1,4 +1,4 @@
-import type { ElementHandle, JSHandle, Page } from "puppeteer-core";
+import type { ElementHandle, Frame, JSHandle, Page } from "puppeteer-core";
 import ariaBundle from "./aria-snapshot.bundle.txt" with { type: "text" };
 import { releaseHandle } from "./handle-release";
 // `aria-snapshot.bundle.txt` is a generated, committed artifact: Playwright's
@@ -37,25 +37,88 @@ function buildEvaluator(params: string, call: string): (...args: unknown[]) => u
 const evaluateAriaSnapshot = buildEvaluator("root, request", "ariaSnapshot(root, request)");
 const evaluateResolveRef = buildEvaluator("ref", "resolveAriaRef(ref)");
 
+/** A snapshot's text and the frames its frame refs point into. */
+export interface AriaCapture {
+	readonly text: string;
+	/** `f1` for the frame whose refs read `f1e…`, one per iframe the snapshot followed. */
+	readonly frames: ReadonlyMap<string, Frame>;
+}
+
+/** How many iframes deep a snapshot follows. */
+const FRAME_DEPTH_MAX = 3;
+
+/** An iframe's line of a snapshot: its indent and its ref. */
+const IFRAME_LINE = /^(\s*)- iframe\b.*\[ref=((?:f\d+)?e\d+)\]/;
+
 /**
  * Capture a Playwright-format ARIA snapshot of `root` (or the whole document when
  * null). Always runs in `ai` mode so every node carries a `[ref=eN]` id; resolve
  * those to elements with {@link resolveAriaRefHandle}. Ids are renumbered from e1
  * on each call and remain valid until the next snapshot. Bare `generic` wrappers
  * are left out ({@link withoutBareWrappers}).
+ *
+ * An iframe's content, same-origin or not, is snapshotted in its own frame and
+ * nested under the iframe's line, its refs prefixed with the frame (`f1e3`), up to
+ * {@link FRAME_DEPTH_MAX} frames deep, so an element in a payment or sign-in frame
+ * is read and acted on like any other.
  */
 export async function captureAriaSnapshot(
 	page: Page,
 	root: ElementHandle | null,
 	options: AriaSnapshotOptions = {},
+): Promise<AriaCapture> {
+	const frames = new Map<string, Frame>();
+	const text = await snapshotFrame(page.mainFrame(), root, "", options, frames, FRAME_DEPTH_MAX);
+	return { text, frames };
+}
+
+async function snapshotFrame(
+	frame: Frame,
+	root: ElementHandle | null,
+	refPrefix: string,
+	options: AriaSnapshotOptions,
+	frames: Map<string, Frame>,
+	depthLeft: number,
 ): Promise<string> {
-	const request = { depth: options.depth, boxes: options.boxes };
-	const yaml = (await page.evaluate(evaluateAriaSnapshot as never, root as never, request as never)) as string;
-	return withoutBareWrappers(yaml);
+	const request = { depth: options.depth, boxes: options.boxes, refPrefix };
+	const yaml = withoutBareWrappers(
+		(await frame.evaluate(evaluateAriaSnapshot as never, root as never, request as never)) as string,
+	);
+	if (depthLeft === 0 || !yaml.includes("- iframe")) return yaml;
+	const lines: string[] = [];
+	for (const line of yaml.split("\n")) {
+		lines.push(line);
+		const iframe = IFRAME_LINE.exec(line);
+		if (!iframe) continue;
+		const child = await contentFrameOf(frame, iframe[2] ?? "");
+		if (!child) continue;
+		const prefix = `f${frames.size + 1}`;
+		frames.set(prefix, child);
+		// A frame that navigates or goes away while it is read keeps its line and loses its content.
+		const inner = await snapshotFrame(child, null, prefix, options, frames, depthLeft - 1).catch(() => "");
+		if (inner.trim() === "") continue;
+		if (!line.endsWith(":")) lines[lines.length - 1] = `${line}:`;
+		for (const innerLine of inner.split("\n")) if (innerLine.trim() !== "") lines.push(`${iframe[1]}  ${innerLine}`);
+	}
+	return lines.join("\n");
+}
+
+/** The document inside the iframe `ref` names in `frame`, or null when it has none. */
+async function contentFrameOf(frame: Frame, ref: string): Promise<Frame | null> {
+	const handle = (await frame
+		.evaluateHandle(evaluateResolveRef as never, ref as never)
+		.catch(() => null)) as JSHandle | null;
+	if (!handle) return null;
+	try {
+		const element = handle.asElement();
+		return element ? await (element as ElementHandle).contentFrame() : null;
+	} finally {
+		await releaseHandle(handle);
+	}
 }
 
 /** A `generic` node with no name, no text, no state and no pointer: a layout `<div>` and nothing else. */
-const BARE_WRAPPER = /^\s*- generic \[ref=e\d+\]:$/;
+const BARE_WRAPPER = /^\s*- generic \[ref=(?:f\d+)?e\d+\]:$/;
 
 /**
  * The snapshot without its bare `generic` wrappers, each one's children lifted a level into its
@@ -79,13 +142,27 @@ export function withoutBareWrappers(yaml: string): string {
 	return kept.join("\n");
 }
 
+/** A ref in a frame's part of a snapshot: the frame's prefix, then the element's id. */
+const FRAME_REF = /^(f\d+)e\d+$/;
+
 /**
  * Resolve a `[ref=eN]` id from the latest snapshot to a live `ElementHandle`, or
- * null when the ref no longer matches any element. Runs in the main world so it
- * sees the `_ariaRef` expandos the snapshot wrote.
+ * null when the ref no longer matches any element. A frame ref (`f1e3`) resolves in
+ * the frame `frames` names for its prefix, and to null once that frame is gone.
+ * Runs in the main world so it sees the `_ariaRef` expandos the snapshot wrote.
  */
-export async function resolveAriaRefHandle(page: Page, ref: string): Promise<ElementHandle | null> {
-	const handle = (await page.evaluateHandle(evaluateResolveRef as never, ref as never)) as JSHandle;
+export async function resolveAriaRefHandle(
+	page: Page,
+	ref: string,
+	frames: ReadonlyMap<string, Frame> = new Map(),
+): Promise<ElementHandle | null> {
+	const framePrefix = FRAME_REF.exec(ref)?.[1];
+	const frame = framePrefix === undefined ? page.mainFrame() : frames.get(framePrefix);
+	if (!frame || frame.detached) return null;
+	const handle = (await frame
+		.evaluateHandle(evaluateResolveRef as never, ref as never)
+		.catch(() => null)) as JSHandle | null;
+	if (!handle) return null;
 	const element = handle.asElement();
 	if (!element) {
 		await releaseHandle(handle);
@@ -110,7 +187,7 @@ export function parseAriaRefSelector(selector: string): string | null {
 	for (const prefix of ARIA_REF_PREFIXES) {
 		if (trimmed.startsWith(prefix)) {
 			const id = trimmed.slice(prefix.length).trim();
-			return /^e\d+$/.test(id) ? id : null;
+			return /^(?:f\d+)?e\d+$/.test(id) ? id : null;
 		}
 	}
 	return null;

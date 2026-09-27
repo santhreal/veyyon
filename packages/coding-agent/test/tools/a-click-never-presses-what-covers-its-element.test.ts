@@ -22,9 +22,9 @@
  * Driven through the real tool against real headless Chromium. Skipped where Chromium cannot run.
  *
  * What it does NOT catch: an element replaced between two looks, which a CSS selector resolves again
- * (no page replaces an element at a moment a test can pin), a cover in a parent frame over an
- * iframe's element, and a covering `::after` of one of the element's ancestors, which is taken for
- * the element's own box.
+ * (no page replaces an element at a moment a test can pin), and a covering `::after` of one of the
+ * element's ancestors, which is taken for the element's own box. A cover in a parent frame over an
+ * iframe's element is `a-snapshot-reaches-into-frames-and-its-refs-act-there.test.ts`'s.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";

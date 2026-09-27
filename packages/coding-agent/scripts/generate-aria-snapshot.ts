@@ -48,6 +48,8 @@ import { generateAriaTree, renderAriaTree } from "./injected/ariaSnapshot";
 export interface AriaSnapshotRequest {
 	depth?: number;
 	boxes?: boolean;
+	/** Put before every ref, so a frame's refs (\`f1e3\`) never meet the top document's (\`e3\`). */
+	refPrefix?: string;
 }
 
 function walkElements(fn: (el: Element) => void): void {
@@ -67,7 +69,7 @@ export function ariaSnapshot(root: Element | null, request: AriaSnapshotRequest 
 		if ((el as RefElement)._ariaRef) delete (el as RefElement)._ariaRef;
 	});
 	const target = root ?? document.body ?? document.documentElement;
-	const options = { mode: "ai", depth: request.depth, boxes: request.boxes } as const;
+	const options = { mode: "ai", depth: request.depth, boxes: request.boxes, refPrefix: request.refPrefix } as const;
 	const tree = generateAriaTree(target, options);
 	return renderAriaTree(tree, options).text;
 }
