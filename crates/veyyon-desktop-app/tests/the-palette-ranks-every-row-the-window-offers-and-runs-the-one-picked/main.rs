@@ -36,7 +36,7 @@ use veyyon_desktop_app::{
 use veyyon_desktop_model::{Capability, CapabilityStatus, HostAction, HostEvent, SnapshotSection};
 use veyyon_desktop_ui::theme::size as measure;
 
-use self::harness::{WINDOW, delta, seeded, sid, window};
+use self::harness::{THREAD_WORD, WINDOW, delta, seeded, sid, title, window};
 
 fn near(a: Pixels, b: Pixels) -> bool {
 	(f32::from(a) - f32::from(b)).abs() < 0.5
@@ -63,8 +63,8 @@ fn the_palette_opens_centred_a_fifth_of_the_way_down_and_asks_the_host_for_its_c
 	assert_eq!(row.size.height, measure::MENU_ROW);
 
 	let labels = w.labels();
-	for listed in ["title b", "title c", "MCP servers"] {
-		assert!(labels.iter().any(|label| label == listed), "{listed:?} is listed in {labels:?}");
+	for listed in [title("b"), title("c"), "MCP servers".to_owned()] {
+		assert!(labels.contains(&listed), "{listed:?} is listed in {labels:?}");
 	}
 	let texts = w.texts();
 	for drawn in ["Commands", labels[0].as_str()] {
@@ -203,8 +203,8 @@ fn enter_opens_the_highlighted_thread_and_the_arrows_move_the_highlight_around(
 	let mut w = window(app, seeded(), true);
 	w.open();
 	w.sent();
-	w.typed("title");
-	assert_eq!(w.labels(), vec!["title b", "title a", "title c"], "newest first");
+	w.typed(THREAD_WORD);
+	assert_eq!(w.labels(), vec![title("b"), title("a"), title("c")], "newest first");
 	assert_eq!(w.selected(), 0);
 	w.keys("up");
 	assert_eq!(w.selected(), 2, "up from the first row wraps to the last");
@@ -225,7 +225,7 @@ fn a_click_runs_the_row_under_the_pointer_and_a_click_outside_closes_the_palette
 	let mut w = window(app, seeded(), true);
 	w.open();
 	w.sent();
-	w.typed("title");
+	w.typed(THREAD_WORD);
 	w.click("palette.row:2");
 	assert_eq!(w.sent(), vec![HostAction::OpenSession { session: sid("c") }]);
 	assert!(!w.is_open());
@@ -248,14 +248,14 @@ fn a_row_the_host_refuses_is_drawn_with_its_reason_and_runs_nothing(app: &mut Te
 	let mut w = window(app, events, true);
 	w.open();
 	w.sent();
-	w.typed("title b");
+	w.typed(&title("b"));
 	let rows = w.rows();
 	let row = rows
 		.iter()
-		.find(|item| item.label.as_ref() == "title b")
+		.find(|item| item.label.as_ref() == title("b"))
 		.expect("the thread is listed");
 	assert_eq!(row.blocked.as_deref(), Some("The host lists no sessions"));
-	assert_eq!(w.selected(), w.row_of("title b"));
+	assert_eq!(w.selected(), w.row_of(&title("b")));
 	w.keys("enter");
 	assert_eq!(w.sent(), Vec::<HostAction>::new());
 	assert!(w.is_open(), "a refused row leaves the palette open");

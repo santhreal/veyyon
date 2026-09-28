@@ -14,7 +14,7 @@
 use gpui::{Bounds, Pixels, TestAppContext};
 use veyyon_desktop_ui::theme::size as measure;
 
-use crate::harness::{Win, threads, window};
+use crate::harness::{Win, threads, title, window};
 
 /// The shown rows whose driver targets are recorded, in order.
 fn laid_out(w: &mut Win<'_>) -> Vec<usize> {
@@ -35,7 +35,7 @@ fn a_long_list_lays_out_only_the_rows_inside_the_card(app: &mut TestAppContext) 
 	w.open();
 	// An empty query lists the newest threads; a query lists fifty matches a
 	// section.
-	w.typed("title t");
+	w.typed(&title("t"));
 	let count = w.rows().len();
 	assert!(count >= 50, "fifty matching threads are rows: {count} rows");
 	for (place, key) in [("at the top", None), ("wrapped to the last row", Some("up"))] {

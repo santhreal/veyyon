@@ -258,6 +258,16 @@ pub fn sid(id: &str) -> SessionId {
 	SessionId::from(id)
 }
 
+/// The word every seeded thread's title starts with. No command label holds
+/// its letters in order, so a query for it lists the threads alone and a
+/// row the registry gains does not shift them.
+pub const THREAD_WORD: &str = "qjx";
+
+/// The title of thread `id`.
+pub fn title(id: &str) -> String {
+	format!("{THREAD_WORD} {id}")
+}
+
 fn entry(id: &str, parent: Option<&str>, revision: u64) -> TranscriptEntry {
 	TranscriptEntry {
 		id: EntryId::from(id),
@@ -278,7 +288,7 @@ fn summary(id: &str, cwd: &str, modified_at_ms: u64) -> SessionSummary {
 		workspace: "ws-default".to_owned(),
 		path: format!("/sessions/{id}.jsonl"),
 		cwd: cwd.to_owned(),
-		title: Some(format!("title {id}")),
+		title: Some(title(id)),
 		parent_path: None,
 		created_at_ms: 0,
 		modified_at_ms,
@@ -324,7 +334,7 @@ pub fn seeded() -> Vec<HostEvent> {
 	let header = SessionHeaderView {
 		id:             sid("a"),
 		schema_version: 1,
-		title:          Some("title a".to_owned()),
+		title:          Some(title("a")),
 		title_source:   None,
 		parent:         None,
 		created_at_ms:  0,
