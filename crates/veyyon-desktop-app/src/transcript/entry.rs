@@ -21,6 +21,9 @@ use super::{
 };
 use crate::{actions::workspace::ShowPanelTab, driver};
 
+/// The group an item's hover-only actions follow.
+const ITEM_GROUP: &str = "transcript-item";
+
 impl Transcript {
 	/// Draws item `ix`. An entry that draws nothing (a result its call row
 	/// shows) is an empty element, which the list measures at zero height.
@@ -99,7 +102,9 @@ impl Transcript {
 			.collect();
 		let actions =
 			self.item_actions(ix, &plan, &session, last_turn && item_end && !self.working, &palette);
-		let group = SharedString::from(format!("transcript-item-{ix}"));
+		// Group names resolve to the innermost painting ancestor, so one name
+		// serves every item without formatting a name per render.
+		let group = SharedString::new_static(ITEM_GROUP);
 		let column = div()
 			.w_full()
 			.max_w(size::COLUMN_MAX)
@@ -126,7 +131,7 @@ impl Transcript {
 				space::S3
 			})
 			.child(column);
-		driver::target(format!("transcript.entry:{}", plan.id.0), item)
+		driver::target(("transcript.entry", plan.id.0.as_str()), item)
 	}
 
 	#[expect(clippy::too_many_arguments, reason = "the drawing inputs of one piece")]
