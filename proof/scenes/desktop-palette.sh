@@ -10,8 +10,11 @@
 source "$(dirname "${BASH_SOURCE[0]}")/desktop-lib.sh"
 
 desk_ready
+# The clip starts at the chord on a window that draws nothing, so the only
+# frames in it are the palette's: a still window split by an idle redraw reads
+# as slow motion to the cadence check.
+desk_settle 20 3 1
 desk_clip_begin open
-pause 0.6
 desk_action workspace::OpenPalette ctrl+k
 desk_expect_target palette 10
 pause 0.8
