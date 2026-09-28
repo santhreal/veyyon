@@ -44,7 +44,7 @@ const fn ends_with_a_reply(role: MessageRole) -> bool {
 
 /// The ids of every item whose hover row lays out Retry or Rephrase, each
 /// read with the pointer over that item.
-fn offered(thread: &mut Thread<'_>) -> Vec<String> {
+pub fn offered(thread: &mut Thread<'_>) -> Vec<String> {
 	let mut offered = Vec::new();
 	for id in thread.ids() {
 		let Some(item) = laid_out(thread, &format!("transcript.entry:{id}")) else {

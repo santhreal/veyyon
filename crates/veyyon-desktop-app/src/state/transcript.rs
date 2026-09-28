@@ -11,14 +11,17 @@ impl AppState {
 		self.store.streaming.get(session)
 	}
 
-	/// Whether the agent is working in `session`: a reply is streaming or the
-	/// host reports a working window open.
+	/// Whether the agent is working in `session`: a reply is streaming, the
+	/// host reports a working window open, or the turn waits on a decision the
+	/// operator has not made. A turn waiting on a decision is not finished,
+	/// whether or not the host reports a working window.
 	pub fn is_working(&self, session: &SessionId) -> bool {
 		self.store.streaming.contains_key(session)
 			|| self
 				.store
 				.pace(session)
 				.is_some_and(|pace| pace.working_since_ms.is_some())
+			|| self.has_decision(session)
 	}
 
 	/// The title the sidebar lists `session` under.

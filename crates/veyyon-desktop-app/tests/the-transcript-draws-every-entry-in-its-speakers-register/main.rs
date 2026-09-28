@@ -31,6 +31,7 @@ mod position;
 mod roles;
 mod tools;
 mod turns;
+mod waiting;
 
 use std::collections::{HashMap, HashSet};
 
