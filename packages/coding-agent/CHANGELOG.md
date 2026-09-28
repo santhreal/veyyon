@@ -27,6 +27,7 @@
 - Removed the unused `inheritedAgentDir` keybinding option and `ohMyPiXAIUserAgent` alias; xAI requests continue to use `veyyonXAIUserAgent`.
 - `@veyyon/coding-agent/extensibility/hooks` no longer exports `HookRunner`, `HookToolWrapper`, `discoverAndLoadHooks`, `loadHooks` and `execCommand`: the legacy hook runtime is removed, a plugin's `hooks` entry loads through the extension runner, and the subpath keeps the hook types.
 - `UNICODE_SYMBOLS` is `@veyyon/view`'s; `theme/symbols` re-exports it and keeps the terminal-only Nerd Font and ASCII presets, the spinner frames and the bar ramps.
+- `@veyyon/coding-agent/gui-host/wire` uses the desktop model's type names: `PromptHistoryEntryView`, `SettingEntryView`, `SettingOptionView` and `SettingKindTag` are `PromptHistoryEntry`, `SettingEntry`, `SettingOption` and `SettingKind`.
 
 ### Added
 
@@ -158,8 +159,10 @@
 
 ### Changed
 
+- The GUI host wire types and runtime arrays are generated from the Rust desktop model into `gui-host/wire.generated.ts`, and a desktop-model test fails when the committed file differs; frames on the socket are unchanged.
 - The desktop parity tables record the carrier for each agents dashboard operation, `/mcp` subcommand, provider login kind, terminal theme ground and status-line segment; no user-facing effect.
 - The GUI host records how the desktop reaches every terminal setting, session mode and session operation in `gui-host/desktop-parity`; no user-visible behavior changes.
+- The desktop parity tables record the carrier for each builtin slash command, each tool presentation and each extension UI interaction, including the recorded gaps; no user-facing effect.
 - The desktop front end embeds Inter and JetBrains Mono (SIL Open Font License 1.1) in a new `veyyon-desktop-ui` crate and lists both licenses in `THIRD_PARTY_LICENSES.txt`; no window uses the crate yet.
 - `veyyon-desktop-ui` holds the desktop design system: a dark and a light palette in embedded TOML files that reject a missing or unknown role, plus spacing, radius, size, type-ramp and motion constants; no window uses the crate yet.
 - The GUI host's `Sessions` snapshot lists the sessions of every project of the profile, newest first, instead of only the project the host started in.

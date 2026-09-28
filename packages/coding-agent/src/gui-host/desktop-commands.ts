@@ -9,8 +9,8 @@
  *
  * The metadata is the declaration's own. A row listed here with a different
  * description than the terminal's would be a second copy of the command, and
- * `every-command-the-terminal-offers-has-a-desktop-decision.test.ts` reads
- * both from the same declarations for that reason.
+ * `every-slash-command-has-a-desktop-carrier.test.ts` reads both from the
+ * same declarations for that reason.
  */
 import {
 	BUILTIN_SLASH_COMMAND_DECLARATIONS,
