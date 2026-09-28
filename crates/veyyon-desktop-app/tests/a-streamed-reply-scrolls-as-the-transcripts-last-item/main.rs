@@ -13,8 +13,11 @@
 //! The suite drives the real `ThreadView` over an `AppState` fed host events
 //! and reads where the driver targets were laid out.
 //!
-//! Gap: the reply's own fade and the tail spring are not asserted, and the
+//! Gap: the reply's own fade and the tail spring's path are not asserted;
+//! where the list follows to is read once the spring rests, and the
 //! committed entry is assumed to draw its prose at the tail's height.
+
+use std::time::Duration;
 
 use gpui::{
 	AppContext as _, Bounds, Entity, Modifiers, Pixels, Point, ScrollDelta, ScrollWheelEvent,
@@ -30,6 +33,9 @@ use veyyon_desktop_ui::theme::{Appearance, Theme};
 /// The window the thread is drawn in; the transcript is the height less
 /// the thread header.
 const WINDOW: (f32, f32) = (1000.0, 600.0);
+
+/// One frame at 60 Hz.
+const FRAME: Duration = Duration::from_millis(16);
 
 fn entry(
 	id: &str,
@@ -137,6 +143,23 @@ fn apply(state: &Entity<AppState>, cx: &mut VisualTestContext, events: Vec<HostE
 	cx.run_until_parked();
 }
 
+/// Delivers the frames the window asks for, a frame apart on the clock,
+/// until none is asked for: the list following its end lands where it
+/// rests. Fails if it still moves after a second.
+fn settle(cx: &mut VisualTestContext) {
+	let mut ran = Duration::ZERO;
+	loop {
+		cx.executor().advance_clock(FRAME);
+		let asked = cx.update(|window, cx| window.simulate_next_frame(cx));
+		cx.run_until_parked();
+		if asked == 0 {
+			return;
+		}
+		ran += FRAME;
+		assert!(ran <= Duration::from_secs(1), "the list still moves {ran:?} in");
+	}
+}
+
 /// Where the driver last saw `id` laid out.
 fn drawn(cx: &mut VisualTestContext, id: &str) -> Bounds<Pixels> {
 	cx.update(|window, cx| driver::bounds(cx, window.window_handle().window_id(), id))
@@ -165,6 +188,7 @@ fn a_reply_taller_than_the_thread_scrolls_to_its_first_line_and_is_followed_at_t
 ) {
 	let (state, transcript, cx) = thread(app, 2);
 	apply(&state, cx, vec![streamed(&reply(80), 2)]);
+	settle(cx);
 
 	let list = drawn(cx, "transcript");
 	let tail = drawn(cx, "transcript.tail");
@@ -181,6 +205,7 @@ fn a_reply_taller_than_the_thread_scrolls_to_its_first_line_and_is_followed_at_t
 	assert_eq!(transcript.read_with(cx, |t, _| t.item_count()), 3, "two entries and the tail");
 
 	apply(&state, cx, vec![streamed(&reply(100), 3)]);
+	settle(cx);
 	let grown = drawn(cx, "transcript.tail");
 	assert!(grown.size.height > tail.size.height, "the reply grew: {grown:?}");
 	assert!(
