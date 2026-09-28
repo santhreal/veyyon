@@ -7,7 +7,8 @@
 //! another region reaches the composer of the active window.
 
 use gpui::{
-	App, ClipboardEntry, Context, Div, ExternalPaths, PathPromptOptions, Stateful, prelude::*,
+	App, ClipboardEntry, ClipboardItem, Context, Div, ExternalPaths, PathPromptOptions, Stateful,
+	prelude::*,
 };
 use veyyon_desktop_model::{
 	HostAction, HostActionKind, QueueMode, SessionId, SettableMode, SurfaceId,
@@ -28,7 +29,10 @@ fn table<R: Registry<Composer>>(registry: R) -> R {
 		.add::<act::BackgroundCommand>(|this, _, _, cx| this.background_command(cx))
 		.add::<act::ToggleQueueMode>(|this, _, _, cx| this.toggle_queue_mode(cx))
 		.add::<act::TakeBackQueued>(|this, _, _, cx| this.take_back_queued(cx))
-		.add::<act::OpenModelPicker>(|this, _, window, cx| this.open_models(window, cx))
+		.add::<act::OpenModelPicker>(|this, _, window, cx| this.open_models(true, window, cx))
+		.add::<act::OpenThreadModelPicker>(|this, _, window, cx| this.open_models(false, window, cx))
+		.add::<act::NextModel>(|this, _, _, cx| this.cycle_model(true, cx))
+		.add::<act::PreviousModel>(|this, _, _, cx| this.cycle_model(false, cx))
 		.add::<act::OpenThinkingPicker>(|this, _, window, cx| this.open_thinking(window, cx))
 		.add::<act::CycleThinkingLevel>(|this, _, _, cx| this.cycle_thinking(cx))
 		.add::<act::SetModePlan>(|this, _, _, cx| this.set_mode(SettableMode::Plan, cx))
@@ -47,6 +51,8 @@ fn table<R: Registry<Composer>>(registry: R) -> R {
 			}
 		})
 		.add::<act::SearchHistory>(|this, _, window, cx| this.search_history(window, cx))
+		.add::<act::CopyDraft>(|this, _, _, cx| this.copy_draft(cx))
+		.add::<act::EditDraftExternally>(|this, _, _, cx| this.edit_externally(cx))
 		.add::<act::InsertText>(|this, action, window, cx| this.insert_text(&action.text, window, cx))
 }
 
@@ -112,6 +118,15 @@ impl Composer {
 		self.app.update(cx, |app, cx| {
 			app.dispatch(action, surface, cx);
 		});
+	}
+
+	/// Puts the draft on the clipboard as it reads, and nothing while the
+	/// draft is empty.
+	pub(super) fn copy_draft(&self, cx: &Context<Self>) {
+		let text = self.text(cx).to_owned();
+		if !text.is_empty() {
+			cx.write_to_clipboard(ClipboardItem::new_string(text));
+		}
 	}
 
 	/// Puts the session in `mode`, or out of its mode for `None`, while the

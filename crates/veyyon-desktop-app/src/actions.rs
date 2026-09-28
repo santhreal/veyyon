@@ -134,10 +134,24 @@ pub mod composer {
 		TakeBackQueued,
 		/// Opens the model picker.
 		OpenModelPicker,
+		/// Opens the model picker for a model held for this thread only,
+		/// leaving the default model as it is.
+		OpenThreadModelPicker,
+		/// Holds the model after the current one in the host's list for this
+		/// thread only.
+		NextModel,
+		/// Holds the model before the current one in the host's list for this
+		/// thread only.
+		PreviousModel,
 		/// Opens the thinking level picker.
 		OpenThinkingPicker,
 		/// Moves to the next thinking level.
 		CycleThinkingLevel,
+		/// Puts the draft on the clipboard.
+		CopyDraft,
+		/// Opens the draft in the editor `$VISUAL` or `$EDITOR` names and
+		/// takes back the text it saves.
+		EditDraftExternally,
 		/// Puts the session in plan mode.
 		SetModePlan,
 		/// Puts the session in vibe mode.

@@ -1,6 +1,8 @@
 //! The menus the composer opens above itself: the model picker, the thinking
 //! level picker, the session mode and the prompt history.
 
+mod model;
+
 use gpui::{
 	Anchor, AnyElement, App, Context, Entity, Pixels, Point, Subscription, Window, point, prelude::*,
 };
@@ -59,6 +61,9 @@ pub(super) struct Pickers {
 	thinking: Picker,
 	modes:    Picker,
 	history:  Picker,
+	/// Whether a model the model picker picks becomes the default, or is
+	/// held for the shown thread only.
+	persist:  bool,
 }
 
 /// A row marked as the current choice.
@@ -83,6 +88,7 @@ impl Pickers {
 			thinking: Picker::new(cx),
 			modes:    Picker::new(cx),
 			history:  Picker::new(cx),
+			persist:  true,
 		};
 		let subscriptions = pickers
 			.all()
@@ -125,30 +131,6 @@ impl Composer {
 		picker.popover.update(cx, |popover, cx| {
 			popover.open(at, Anchor::BottomLeft, None, window, cx);
 		});
-	}
-
-	/// `composer::OpenModelPicker`: lists the catalog, asking the host for it
-	/// when none has arrived, while the host takes a model.
-	pub(super) fn open_models(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-		if self.refusal(HostActionKind::SelectModel, cx).is_some() {
-			return;
-		}
-		let empty = self
-			.app
-			.read(cx)
-			.store()
-			.domains
-			.models
-			.as_ref()
-			.is_none_or(|models| models.models.is_empty());
-		if empty {
-			self.send_for_session(
-				|session| (HostAction::RefreshModels, SurfaceId::ComposerModelSelector(session)),
-				cx,
-			);
-		}
-		self.fill_models(cx);
-		self.open_picker(|pickers| &pickers.models, window, cx);
 	}
 
 	/// `composer::OpenThinkingPicker`, while the host takes a level.
@@ -207,31 +189,6 @@ impl Composer {
 		if self.pickers.history.is_open(cx) {
 			self.fill_history(cx);
 		}
-	}
-
-	fn fill_models(&mut self, cx: &mut Context<Self>) {
-		let mut rows = Vec::new();
-		if let Some(models) = &self.app.read(cx).store().domains.models {
-			let mut provider = None;
-			for model in &models.models {
-				if provider != Some(model.provider.as_str()) {
-					provider = Some(model.provider.as_str());
-					rows.push((MenuItem::header(model.provider.clone()), None));
-				}
-				let current = models
-					.current
-					.as_ref()
-					.is_some_and(|current| current.provider == model.provider && current.id == model.id);
-				let pick = Pick::Model { provider: model.provider.clone(), id: model.id.clone() };
-				rows.push((row(model.name.clone(), current).into(), Some(pick)));
-			}
-		}
-		if !rows.is_empty() {
-			rows.push((MenuItem::Separator, None));
-		}
-		rows.push((MenuRow::new("Toggle fast mode").hint("/fast").into(), Some(Pick::ToggleFast)));
-		rows.push((MenuRow::new("Refresh models").into(), Some(Pick::RefreshModels)));
-		self.pickers.models.fill(rows, cx);
 	}
 
 	fn fill_thinking(&mut self, cx: &mut Context<Self>) {
@@ -337,9 +294,7 @@ impl Composer {
 		popover.update(cx, |popover, cx| popover.close(window, cx));
 		match pick {
 			Some(Pick::Model { provider, id }) => {
-				self.app.update(cx, |app, cx| {
-					app.select_model(provider, id, cx);
-				});
+				self.select_model(provider, id, self.pickers.persist, cx);
 			},
 			Some(Pick::RefreshModels) => {
 				self.send_for_session(
@@ -362,18 +317,6 @@ impl Composer {
 			Some(Pick::Prompt(prompt)) => self.insert_text(&prompt, window, cx),
 			None => {},
 		}
-	}
-
-	/// `composer::ToggleFast`: flips the priority service tier.
-	pub(super) fn toggle_fast(&self, cx: &mut Context<Self>) {
-		self.send_for_session(
-			|session| {
-				let action =
-					HostAction::RunCommand { session: session.clone(), text: "/fast".to_owned() };
-				(action, SurfaceId::ComposerModelSelector(session))
-			},
-			cx,
-		);
 	}
 
 	/// Whether the host takes `kind` now, and the reason it does not.

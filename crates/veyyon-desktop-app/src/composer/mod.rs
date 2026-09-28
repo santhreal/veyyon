@@ -15,6 +15,7 @@ pub mod attach;
 mod complete;
 mod dictate;
 mod draft;
+pub mod external;
 mod footer;
 mod history;
 mod listen;
@@ -67,8 +68,11 @@ pub struct Composer {
 	attachments:    Vec<Attachment>,
 	/// Paths a persisted draft names that are still being read back.
 	restoring:      Vec<String>,
-	/// Why the last attachment or send was refused here, until the next one.
+	/// Why the last attachment, send or external edit failed here, until the
+	/// next one.
 	notice:         Option<SharedString>,
+	/// Whether the draft is open in the external editor.
+	editing:        bool,
 	/// The prompts in flight and the prompts the host refused, per session.
 	refused:        Refused,
 	queue_mode:     QueueMode,
@@ -133,6 +137,7 @@ impl Composer {
 			attachments: Vec::new(),
 			restoring: Vec::new(),
 			notice: None,
+			editing: false,
 			refused: Refused::default(),
 			queue_mode: QueueMode::default(),
 			running: false,
@@ -176,7 +181,7 @@ impl Composer {
 		&self.attachments
 	}
 
-	/// Why the last attachment or send was refused here.
+	/// Why the last attachment, send or external edit failed here.
 	pub fn notice(&self) -> Option<&str> {
 		self.notice.as_deref()
 	}

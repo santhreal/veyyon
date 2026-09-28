@@ -77,6 +77,11 @@ pub fn table() -> &'static [DefaultBinding] {
 			bind::<composer::OpenModelPicker>("secondary-shift-m", None),
 			bind::<composer::AttachFiles>("secondary-shift-a", None),
 			bind::<composer::Stop>("secondary-.", None),
+			bind::<composer::OpenThreadModelPicker>("alt-p", Some("Composer")),
+			bind::<composer::NextModel>("ctrl-p", Some("Composer")),
+			bind::<composer::PreviousModel>("ctrl-alt-p", Some("Composer")),
+			bind::<composer::CopyDraft>("alt-shift-c", Some("Composer")),
+			bind::<composer::EditDraftExternally>("ctrl-g", Some("Composer")),
 			// Panel
 			bind::<crate::actions::panel::NextTab>("ctrl-pagedown", Some("Panel")),
 			bind::<crate::actions::panel::PreviousTab>("ctrl-pageup", Some("Panel")),

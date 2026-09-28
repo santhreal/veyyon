@@ -88,19 +88,5 @@ impl AppState {
 			cx,
 		)
 	}
-
-	/// Makes `provider`/`model` the default model.
-	pub fn select_model(
-		&mut self,
-		provider: String,
-		model: String,
-		cx: &mut Context<Self>,
-	) -> RequestId {
-		let surface = self
-			.displayed
-			.clone()
-			.map_or(SurfaceId::GlobalTitlebarLine, SurfaceId::ComposerModelSelector);
-		self.dispatch(HostAction::SelectModel { provider, model, persist: true }, surface, cx)
-	}
 }
 

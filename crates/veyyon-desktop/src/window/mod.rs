@@ -70,6 +70,7 @@ pub fn open(endpoint: Option<String>, slot: &Slot, cx: &mut App) {
 	if let Some(dir) = &dir {
 		composer::stash::install(dir.root(), cx);
 	}
+	composer::external::install(composer::external::command_from_env(), env::temp_dir(), cx);
 	let keep = Keep::new(dir, &persisted);
 	let options = options(&persisted, cx);
 	let app = cx.new(|_| AppState::new(Store::with_persisted(persisted)));

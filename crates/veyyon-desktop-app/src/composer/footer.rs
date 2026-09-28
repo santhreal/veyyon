@@ -144,7 +144,7 @@ impl Composer {
 		let refusal = self.refusal(HostActionKind::SelectModel, cx);
 		chip("composer-model", label, refusal.clone(), cx)
 			.when(refusal.is_none(), |chip| {
-				chip.on_click(cx.listener(|this, _, window, cx| this.open_models(window, cx)))
+				chip.on_click(cx.listener(|this, _, window, cx| this.open_models(true, window, cx)))
 			})
 			.into_any_element()
 	}

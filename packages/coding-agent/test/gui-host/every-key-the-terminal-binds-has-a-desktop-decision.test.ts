@@ -49,29 +49,27 @@ const DECISIONS: Record<string, Decision> = {
 	"app.clipboard.copyLine": {
 		client: "the composer field's own copy of its selection, and the copy control a hovered transcript entry draws",
 	},
-	"app.clipboard.copyPrompt": { gap: "no window control copies the composer's draft" },
+	"app.clipboard.copyPrompt": { chord: "composer::CopyDraft" },
 	"app.clipboard.pasteImage": {
 		client: "the composer's own paste, which attaches each image the clipboard holds",
 	},
 	"app.clipboard.pasteTextRaw": { client: "the window's own text field, which pastes what the clipboard holds" },
 	"app.display.reset": { terminalOnly: "redraws a terminal whose screen state was corrupted" },
-	"app.editor.external": { gap: "the draft cannot be opened in an external editor and read back" },
+	"app.editor.external": { chord: "composer::EditDraftExternally" },
 	"app.exit": { chord: "workspace::Quit" },
 	"app.history.search": { palette: "composer::SearchHistory" },
 	"app.interrupt": { chord: "composer::Stop" },
 	"app.message.dequeue": { palette: "composer::TakeBackQueued" },
 	"app.message.followUp": { action: "FollowUp" },
-	"app.model.cycleBackward": { gap: "the catalogue is chosen from, never stepped through" },
-	"app.model.cycleForward": { gap: "the catalogue is chosen from, never stepped through" },
+	"app.model.cycleBackward": { chord: "composer::PreviousModel" },
+	"app.model.cycleForward": { chord: "composer::NextModel" },
 	"app.model.select": { chord: "composer::OpenModelPicker" },
-	"app.model.selectTemporary": {
-		gap: "the model picker makes every choice the default; none is taken for one session",
-	},
+	"app.model.selectTemporary": { chord: "composer::OpenThreadModelPicker" },
 	"app.plan.toggle": { action: "SetSessionMode" },
 	"app.retry": { action: "RetryTurn" },
 	"app.session.fork": { action: "BranchSession" },
 	"app.session.new": { chord: "workspace::NewThread" },
-	"app.session.observe": { gap: "a session running elsewhere cannot be watched from this window" },
+	"app.session.observe": { client: "the agent dashboard `app.agents.hub` opens: the right panel's Agents tab" },
 	"app.session.resume": { action: "SearchSessions" },
 	"app.session.tree": { client: "the sidebar's collapsible branch rows" },
 	"app.stt.toggle": { palette: "composer::ToggleDictation" },
@@ -82,14 +80,7 @@ const DECISIONS: Record<string, Decision> = {
 };
 
 /** The verbs with no desktop surface, as they stand. */
-const RECORDED_GAPS = [
-	"app.clipboard.copyPrompt",
-	"app.editor.external",
-	"app.model.cycleBackward",
-	"app.model.cycleForward",
-	"app.model.selectTemporary",
-	"app.session.observe",
-];
+const RECORDED_GAPS: string[] = [];
 
 /**
  * The window draws its own text field, so every `tui.*` binding — cursor

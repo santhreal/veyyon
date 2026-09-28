@@ -16,7 +16,9 @@
 //! goal the dock pins are driven from the same window. A draft, its queue
 //! mode and its attachments are left in a session and found there again,
 //! the footer states the model, level and context the host reported, and a
-//! key reaches no more than the control it stands for. The suite drives the
+//! key reaches no more than the control it stands for. The verbs the terminal
+//! binds a key to (copying the draft, stepping or holding a model, editing
+//! the draft in an external editor) have a key here too. The suite drives the
 //! real `ThreadView` over an `AppState` fed host events and reads the
 //! requests, the text and the geometry it drew; `column` and `gates` open
 //! the whole workspace with that thread in the thread's place.
@@ -30,6 +32,8 @@ mod column;
 mod composer;
 mod dock;
 mod drafts;
+#[cfg(unix)]
+mod editor;
 mod footer;
 mod freeze;
 mod gates;
@@ -38,6 +42,7 @@ mod mode;
 mod paste;
 mod phase;
 mod queue;
+mod verbs;
 
 use std::path::PathBuf;
 
