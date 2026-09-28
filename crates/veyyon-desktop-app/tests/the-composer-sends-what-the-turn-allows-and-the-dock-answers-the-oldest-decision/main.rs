@@ -19,6 +19,7 @@
 //! the keys and the actions they bind to are. Dictation, attachments from
 //! disk and the pickers are not driven here.
 
+mod branch;
 mod composer;
 mod dock;
 

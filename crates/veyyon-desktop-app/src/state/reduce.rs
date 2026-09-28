@@ -124,12 +124,14 @@ impl AppState {
 				batch.note(&reduce(&mut self.store, HostEvent::RequestSucceeded { request }));
 				self.settle_open(request, true, batch);
 				self.settle_answer(request, true);
+				self.settle_branch(request, true);
 				batch.push(StoreEvent::RequestFinished { request, ok: true });
 			},
 			HostEvent::RequestFailed { request, error } => {
 				self.registry.complete(&request);
 				batch.note(&reduce(&mut self.store, HostEvent::RequestFailed { request, error }));
 				self.settle_open(request, false, batch);
+				self.settle_branch(request, false);
 				if let Some(session) = self.settle_answer(request, false) {
 					batch.push(StoreEvent::InteractionsChanged { session });
 				}

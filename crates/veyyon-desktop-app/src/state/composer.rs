@@ -1,13 +1,14 @@
 //! What the composer and the interaction dock read from and write to the
 //! state: whether a turn runs, the persisted draft, the prompt a dequeue
-//! handed back, the decision the dock shows and the answer to it.
+//! handed back or a branch cut off, the decision the dock shows and the
+//! answer to it.
 
 use serde_json::{Value, json};
 use veyyon_desktop_model::{
 	ApprovalInteraction, AutoswarmConsoleView, Capability, CapabilityStatus, ComposerEditView,
-	ComposerStore, DialogInteraction, Gate, GoalView, HostAction, HostActionKind, InteractionId,
-	PendingDecisions, PlanInteraction, QuestionInteraction, QueueMode, QueuedPromptsView, RequestId,
-	SessionId, SurfaceId, gate_kind,
+	ComposerStore, ContentBlock, DialogInteraction, Gate, GoalView, HostAction, HostActionKind,
+	InteractionId, MessageRole, PendingDecisions, PlanInteraction, QuestionInteraction, QueueMode,
+	QueuedPromptsView, RequestId, SessionId, SurfaceId, gate_kind,
 };
 use veyyon_gpui::Context;
 
@@ -226,6 +227,60 @@ impl AppState {
 	/// Takes the prompt the host handed back to `session`'s draft.
 	pub fn take_restored_prompt(&mut self, session: &SessionId) -> Option<String> {
 		self.restored.remove(session)
+	}
+
+	/// Names the entry a `BranchSession` forks at and holds the prompt the
+	/// fork cuts off until the host answers `request`. The host forks only
+	/// at a prompt and hands its words back to no window, so a request that
+	/// names no entry is pointed at the last prompt of the branch the window
+	/// holds, and the prompt read here is the one the fork removes.
+	pub(super) fn name_fork_point(&mut self, action: &mut HostAction, request: RequestId) {
+		let HostAction::BranchSession { session, entry } = action else {
+			return;
+		};
+		let Some(tree) = self.store.transcripts.get(session) else {
+			return;
+		};
+		let prompt = match entry {
+			Some(id) => tree.get(id).filter(|held| held.role == MessageRole::User),
+			None => self.transcripts.get(session).and_then(|cached| {
+				cached
+					.order
+					.ids()
+					.iter()
+					.rev()
+					.filter_map(|id| tree.get(id))
+					.find(|held| held.role == MessageRole::User)
+			}),
+		};
+		let Some(prompt) = prompt else {
+			return;
+		};
+		*entry = Some(prompt.id.clone());
+		let words = prompt
+			.content
+			.iter()
+			.filter_map(|block| match block {
+				ContentBlock::Text { text } => Some(text.as_str()),
+				_ => None,
+			})
+			.collect();
+		self.branching.insert(request, words);
+	}
+
+	/// Hands the prompt a settled `BranchSession` cut off to the session the
+	/// window shows, which the host made the fork before answering, and
+	/// drops it when the host refused the branch.
+	pub(super) fn settle_branch(&mut self, request: RequestId, ok: bool) {
+		let Some(words) = self.branching.remove(&request) else {
+			return;
+		};
+		if ok
+			&& !words.is_empty()
+			&& let Some(session) = self.displayed.clone()
+		{
+			self.restored.insert(session, words);
+		}
 	}
 
 	/// Takes the edits extensions queued for `session`'s draft, oldest first.

@@ -241,7 +241,13 @@ impl Composer {
 			StoreEvent::InteractionsChanged { session } if self.session.as_ref() == Some(session) => {
 				self.reshape(cx);
 			},
-			StoreEvent::RequestFinished { request, ok } => self.request_finished(*request, *ok, cx),
+			StoreEvent::RequestFinished { request, ok } => {
+				self.request_finished(*request, *ok, cx);
+				// A settled branch hands back the prompt it cut off.
+				if *ok {
+					self.take_restored(cx);
+				}
+			},
 			StoreEvent::DomainChanged(kind) => self.on_domain(*kind, cx),
 			StoreEvent::ConnectionChanged => cx.notify(),
 			_ => {},

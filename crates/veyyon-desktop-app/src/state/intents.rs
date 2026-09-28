@@ -15,15 +15,17 @@ impl AppState {
 	/// Queues `action` on behalf of the control `surface`: registers the
 	/// request in flight against `surface` with its deadline, records it as
 	/// what that control's retry sends again, appends it to the outbox and
-	/// emits [`StoreEvent::OutboxReady`].
+	/// emits [`StoreEvent::OutboxReady`]. A `BranchSession` is sent naming
+	/// the prompt it forks at, whichever control sent it.
 	pub fn dispatch(
 		&mut self,
-		action: HostAction,
+		mut action: HostAction,
 		surface: SurfaceId,
 		cx: &mut Context<Self>,
 	) -> RequestId {
 		self.next_request += 1;
 		let request = RequestId(self.next_request);
+		self.name_fork_point(&mut action, request);
 		self.store
 			.retries
 			.record(request, surface.clone(), action.clone());

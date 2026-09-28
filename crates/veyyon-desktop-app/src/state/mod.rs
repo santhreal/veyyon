@@ -67,9 +67,11 @@ pub struct AppState {
 	/// The `OpenSession` in flight and the session it opens.
 	pending_open: Option<(RequestId, SessionId)>,
 	// Composer
-	/// The prompt each session's last `DequeueQueuedPrompt` handed back, held
-	/// until that session's composer takes it.
+	/// The prompt each session's last `DequeueQueuedPrompt` handed back, or
+	/// a settled branch cut off, held until that session's composer takes it.
 	restored:     HashMap<SessionId, String>,
+	/// The prompt each `BranchSession` in flight cuts off, by its request.
+	branching:    HashMap<RequestId, String>,
 	/// The decisions answered and not yet confirmed, by the request that
 	/// answered each, put back when the host refuses the answer.
 	answering:    HashMap<RequestId, (SessionId, PendingDecisions)>,
@@ -101,6 +103,7 @@ impl AppState {
 			pending_open: None,
 			// Composer
 			restored: HashMap::new(),
+			branching: HashMap::new(),
 			answering: HashMap::new(),
 			// Panel
 			streams: drawer::DrawerStreams::default(),

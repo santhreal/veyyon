@@ -94,6 +94,8 @@ pub struct Plan {
 	pub operator: bool,
 	/// The pieces, top to bottom.
 	pub pieces:   Vec<Piece>,
+	/// Whether the item is a prompt, the one entry a branch can fork at.
+	pub prompt:   bool,
 }
 
 /// The view state a plan reads: which rows the operator opened or closed.
@@ -125,6 +127,7 @@ pub fn plan_entry(
 		id:       entry.id.clone(),
 		revision: entry.revision,
 		operator: matches!(entry.role, MessageRole::User | MessageRole::FileMention),
+		prompt:   entry.role == MessageRole::User,
 		pieces:   Vec::new(),
 	};
 	if entry.role == MessageRole::User {
