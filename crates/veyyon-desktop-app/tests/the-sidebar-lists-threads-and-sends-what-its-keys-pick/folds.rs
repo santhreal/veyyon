@@ -55,14 +55,14 @@ fn branches_list_under_the_nearest_listed_parent_and_fold_under_it(app: &mut Tes
 	assert_eq!(items(&view, cx), open);
 	assert_eq!(folded_parents(&state, cx), Vec::<String>::new());
 
-	state.update(cx, |state, _| {
-		assert_eq!(lines(state, &[], &["r1"], ""), vec![
+	state.update(cx, |state, cx| {
+		assert_eq!(lines(state, cx, &[], &["r1"], ""), vec![
 			Item::Project(0),
 			row(0, 0, 0, Branches::Shown),
 			row(0, 1, 1, Branches::Folded),
 		]);
 		assert_eq!(
-			lines(state, &[], &["r"], "title r2"),
+			lines(state, cx, &[], &["r"], "title r2"),
 			vec![Item::Project(0), leaf(0, 2)],
 			"a filter lists folded matches under their nearest listed parent"
 		);

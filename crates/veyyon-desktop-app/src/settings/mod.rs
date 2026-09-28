@@ -277,6 +277,7 @@ impl SettingsView {
 			| StoreEvent::StreamingChanged { .. }
 			| StoreEvent::InteractionsChanged { .. }
 			| StoreEvent::NotificationsChanged
+			| StoreEvent::Remembered
 			| StoreEvent::OutboxReady => false,
 		};
 		// A hidden view draws nothing; showing it again renders it afresh.

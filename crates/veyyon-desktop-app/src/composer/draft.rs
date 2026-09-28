@@ -99,7 +99,9 @@ impl Composer {
 			queue_mode: self.queue_mode,
 			..ComposerStore::default()
 		};
-		self.app.update(cx, |app, _| app.save_draft(session, draft));
+		self
+			.app
+			.update(cx, |app, cx| app.save_draft(session, draft, cx));
 	}
 
 	/// Puts the prompt a take-back handed back before the draft.

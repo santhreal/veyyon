@@ -244,7 +244,7 @@ fn a_layout_changed_in_a_session_is_the_one_it_reopens_with() {
 	cx.update(|_, cx| {
 		cx.subscribe(&workspace, move |_, event: &WorkspaceEvent, cx| {
 			let WorkspaceEvent::LayoutChanged(layout) = event;
-			recorder.update(cx, |app, _| app.record_layout(layout));
+			recorder.update(cx, |app, cx| app.record_layout(layout, cx));
 		})
 		.detach();
 	});

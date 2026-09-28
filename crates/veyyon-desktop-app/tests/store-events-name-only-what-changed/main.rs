@@ -12,6 +12,7 @@
 //! a revision for different content is caught only when the display order
 //! differs too.
 
+mod remembered;
 mod sessions;
 mod transcript;
 

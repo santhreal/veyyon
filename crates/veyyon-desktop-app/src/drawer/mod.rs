@@ -200,7 +200,7 @@ impl TerminalDrawer {
 	pub fn show(&mut self, tab: DrawerTab, cx: &mut Context<Self>) {
 		self
 			.app
-			.update(cx, |app, _| app.set_active_drawer_tab(&tab.slug()));
+			.update(cx, |app, cx| app.set_active_drawer_tab(&tab.slug(), cx));
 		self.chosen = Some(tab);
 		self.anchor = None;
 		self.refresh_tabs(cx);
@@ -237,7 +237,7 @@ impl TerminalDrawer {
 			self.creating = false;
 			self
 				.app
-				.update(cx, |app, _| app.set_active_drawer_tab(&fresh.slug()));
+				.update(cx, |app, cx| app.set_active_drawer_tab(&fresh.slug(), cx));
 			self.chosen = Some(fresh);
 		}
 		self.screens.retain(|tab, _| strip.contains(tab));

@@ -61,11 +61,13 @@ impl AppState {
 
 	/// Collapses the sidebar block recorded as `key`, or expands it when
 	/// collapsed.
-	pub fn toggle_section(&mut self, key: &str) {
-		let collapsed = &mut self.store.persisted.queue.collapsed_sections;
-		if !collapsed.remove(key) {
-			collapsed.insert(key.to_owned());
-		}
+	pub fn toggle_section(&mut self, key: &str, cx: &mut Context<Self>) {
+		self.remember(cx, |persisted| {
+			let collapsed = &mut persisted.queue.collapsed_sections;
+			if !collapsed.remove(key) {
+				collapsed.insert(key.to_owned());
+			}
+		});
 	}
 
 	/// Whether the threads of the project at `path` are hidden.
@@ -82,8 +84,8 @@ impl AppState {
 	/// Hides the threads of the project at `path`, or shows them when hidden.
 	/// The store records the project beside the blocks, prefixed so that no
 	/// path reads as a block.
-	pub fn toggle_project(&mut self, path: &str) {
-		self.toggle_section(&format!("{PROJECT_KEY}{path}"));
+	pub fn toggle_project(&mut self, path: &str, cx: &mut Context<Self>) {
+		self.toggle_section(&format!("{PROJECT_KEY}{path}"), cx);
 	}
 
 	/// The pages of archived threads the sidebar lists, at least one.
@@ -92,9 +94,11 @@ impl AppState {
 	}
 
 	/// Lists `pages` pages of archived threads, never fewer than it lists.
-	pub fn list_archived_pages(&mut self, pages: usize) {
-		let page = &mut self.store.persisted.queue.parked_page;
-		*page = (*page).max(u32::try_from(pages).unwrap_or(u32::MAX));
+	pub fn list_archived_pages(&mut self, pages: usize, cx: &mut Context<Self>) {
+		self.remember(cx, |persisted| {
+			let page = &mut persisted.queue.parked_page;
+			*page = (*page).max(u32::try_from(pages).unwrap_or(u32::MAX));
+		});
 	}
 
 	/// Whether the branches listed under `session` are folded, which the
@@ -113,19 +117,22 @@ impl AppState {
 
 	/// Folds the branches under `session`, or unfolds them. A session the
 	/// store does not list, or one with no file, changes nothing.
-	pub fn toggle_branches(&mut self, session: &SessionId) {
-		let Some(listed) = self
+	pub fn toggle_branches(&mut self, session: &SessionId, cx: &mut Context<Self>) {
+		let Some(path) = self
 			.store
 			.sessions
 			.get(session)
 			.filter(|listed| !listed.path.is_empty())
+			.map(|listed| listed.path.clone())
 		else {
 			return;
 		};
-		let folded = &mut self.store.persisted.queue.collapsed_parents;
-		if !folded.remove(&listed.path) {
-			folded.insert(listed.path.clone());
-		}
+		self.remember(cx, |persisted| {
+			let folded = &mut persisted.queue.collapsed_parents;
+			if !folded.remove(&path) {
+				folded.insert(path);
+			}
+		});
 	}
 }
 

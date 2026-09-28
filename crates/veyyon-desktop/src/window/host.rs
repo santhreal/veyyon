@@ -49,10 +49,10 @@ impl Host {
 			StoreEvent::StreamingChanged { .. } | StoreEvent::TranscriptSpliced { .. } => {},
 			_ => this.schedule_write(cx),
 		});
+		// Recording the layout emits `Remembered`, which schedules the write.
 		let layout = cx.subscribe(workspace, |this, _, event: &WorkspaceEvent, cx| {
 			let WorkspaceEvent::LayoutChanged(layout) = event;
-			this.app.update(cx, |app, _| app.record_layout(layout));
-			this.schedule_write(cx);
+			this.app.update(cx, |app, cx| app.record_layout(layout, cx));
 		});
 		let bounds = cx.observe_window_bounds(window, |this, window, cx| {
 			this.keep.record_bounds(window.window_bounds());

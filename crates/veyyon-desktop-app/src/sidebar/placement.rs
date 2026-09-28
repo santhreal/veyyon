@@ -138,7 +138,9 @@ impl Sidebar {
 
 	/// Hides the branches under `session`, or shows them when hidden.
 	pub(super) fn toggle_fold(&mut self, session: &SessionId, cx: &mut Context<Self>) {
-		self.app.update(cx, |app, _| app.toggle_branches(session));
+		self
+			.app
+			.update(cx, |app, cx| app.toggle_branches(session, cx));
 		self.rebuild_items(cx);
 		cx.notify();
 	}
@@ -147,16 +149,16 @@ impl Sidebar {
 	pub(super) fn toggle_block(&mut self, block: Block, cx: &mut Context<Self>) {
 		self
 			.app
-			.update(cx, |app, _| app.toggle_section(block.key()));
+			.update(cx, |app, cx| app.toggle_section(block.key(), cx));
 		self.rebuild_items(cx);
 		cx.notify();
 	}
 
 	/// Lists the next page of archived threads.
 	pub(super) fn show_older(&mut self, cx: &mut Context<Self>) {
-		self.app.update(cx, |app, _| {
+		self.app.update(cx, |app, cx| {
 			let next = app.archived_pages().saturating_add(1);
-			app.list_archived_pages(next);
+			app.list_archived_pages(next, cx);
 		});
 		self.rebuild_items(cx);
 		cx.notify();
@@ -192,14 +194,14 @@ impl Sidebar {
 		if collapsed.is_none() && pages.is_none_or(|pages| pages <= app.archived_pages()) {
 			return;
 		}
-		self.app.update(cx, |app, _| {
+		self.app.update(cx, |app, cx| {
 			match (block, collapsed) {
-				(Some(block), Some(_)) => app.toggle_section(block.key()),
-				(None, Some(path)) => app.toggle_project(&path),
+				(Some(block), Some(_)) => app.toggle_section(block.key(), cx),
+				(None, Some(path)) => app.toggle_project(&path, cx),
 				_ => {},
 			}
 			if let Some(pages) = pages {
-				app.list_archived_pages(pages);
+				app.list_archived_pages(pages, cx);
 			}
 		});
 	}

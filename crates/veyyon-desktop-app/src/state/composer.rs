@@ -200,17 +200,19 @@ impl AppState {
 	}
 
 	/// Records the draft the composer leaves in `session`, which the window
-	/// persists with the rest of its state. An empty draft in the default
-	/// queue mode removes the record.
-	pub fn save_draft(&mut self, session: SessionId, draft: ComposerStore) {
+	/// writes with the rest of its state. An empty draft in the default queue
+	/// mode removes the record.
+	pub fn save_draft(&mut self, session: SessionId, draft: ComposerStore, cx: &mut Context<Self>) {
 		let empty = draft.draft_text.is_empty()
 			&& draft.attachments.is_empty()
 			&& draft.queue_mode == QueueMode::default();
-		if empty {
-			self.store.persisted.composer.remove(&session);
-		} else {
-			self.store.persisted.composer.insert(session, draft);
-		}
+		self.remember(cx, |persisted| {
+			if empty {
+				persisted.composer.remove(&session);
+			} else {
+				persisted.composer.insert(session, draft);
+			}
+		});
 	}
 
 	/// Holds the prompt a `DequeueQueuedPrompt` answer handed back until the
@@ -250,7 +252,8 @@ impl AppState {
 	}
 
 	/// Sends again the request the host refused on `surface`. Returns `None`
-	/// when the control holds no refused request.
+	/// when the control holds no refused request or the host called its
+	/// refusal final, and takes the refusal off the control either way.
 	pub fn retry_refused(
 		&mut self,
 		surface: &SurfaceId,

@@ -61,6 +61,11 @@ pub enum StoreEvent {
 		/// `true` when the host took the request, `false` when it refused it.
 		ok:      bool,
 	},
+	/// A store the window writes to disk changed by a choice made in the
+	/// window rather than by a host event: a draft, a panel layout or tab, a
+	/// sidebar fold, the appearance or a review thread. The window writes it
+	/// one debounce window later.
+	Remembered,
 	/// An intent was queued. The transport calls
 	/// [`AppState::drain_outbox`](super::AppState::drain_outbox).
 	OutboxReady,

@@ -29,18 +29,18 @@ mod workspace;
 use std::{collections::HashMap, time::Instant};
 
 use veyyon_desktop_model::{
-	HostEvent, HostRequest, PendingDecisions, RequestId, RequestRegistry, SessionId, Store,
-	TranscriptEntry,
+	HostEvent, HostRequest, PendingDecisions, PersistedState, RequestId, RequestRegistry, SessionId,
+	Store, TranscriptEntry,
 };
 use veyyon_gpui::{Context, EventEmitter};
 
-use self::{cache::TranscriptCache, deadline::Deadline, projects::build_projects};
 pub use self::{
 	cache::TRANSCRIPT_CACHE_SESSIONS,
 	deadline::{EVICTED, REQUEST_TIMEOUT_MS, UNANSWERED},
 	events::StoreEvent,
 	projects::{Project, SessionRow},
 };
+use self::{cache::TranscriptCache, deadline::Deadline, projects::build_projects};
 
 /// The state every desktop view reads, held in one `Entity<AppState>`.
 ///
@@ -122,6 +122,19 @@ impl AppState {
 		&self.store
 	}
 
+	/// Changes the stores the window writes to disk and emits
+	/// [`StoreEvent::Remembered`], which schedules the write. Every change the
+	/// window makes to them, rather than a host event, goes through here.
+	fn remember<R>(
+		&mut self,
+		cx: &mut Context<Self>,
+		write: impl FnOnce(&mut PersistedState) -> R,
+	) -> R {
+		let written = write(&mut self.store.persisted);
+		cx.emit(StoreEvent::Remembered);
+		written
+	}
+
 	/// The requests sent and not yet answered.
 	pub const fn registry(&self) -> &RequestRegistry {
 		&self.registry
@@ -146,7 +159,8 @@ impl AppState {
 	/// The number of entries on the active branch of `session`'s transcript,
 	/// 0 for a session the cache does not hold.
 	pub fn entry_count(&self, session: &SessionId) -> usize {
-		self.transcripts
+		self
+			.transcripts
 			.get(session)
 			.map_or(0, |cached| cached.order.len())
 	}

@@ -46,7 +46,7 @@ impl DiffView {
 				.size(ButtonSize::Sm)
 				.variant(pick(mode == target))
 				.on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-					this.app.update(cx, |app, _| app.set_diff_mode(target));
+					this.app.update(cx, |app, cx| app.set_diff_mode(target, cx));
 					this.relayout(cx);
 				}))
 		};

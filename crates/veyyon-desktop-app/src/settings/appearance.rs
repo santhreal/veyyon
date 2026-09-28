@@ -113,7 +113,7 @@ impl SettingsView {
 	fn choose_appearance(&mut self, appearance: Option<Appearance>, cx: &mut Context<Self>) {
 		self
 			.app
-			.update(cx, |app, _| app.choose_appearance(appearance));
+			.update(cx, |app, cx| app.choose_appearance(appearance, cx));
 		self.previewing = None;
 		let drawn = self.app.read(cx).window_appearance(cx);
 		self.draw_in(drawn, cx);

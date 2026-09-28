@@ -161,9 +161,9 @@ impl DiffView {
 		self.draft = None;
 		if let Some(scope) = self.scope.clone() {
 			let parsed = Arc::clone(&self.parsed);
-			self
-				.app
-				.update(cx, |app, _| review::reconcile(&parsed, app.reviews_mut(), &scope));
+			self.app.update(cx, |app, cx| {
+				app.update_reviews(cx, |reviews| review::reconcile(&parsed, reviews, &scope));
+			});
 		}
 		self.relayout(cx);
 	}
@@ -338,13 +338,15 @@ impl DiffView {
 			return;
 		};
 		let text = draft.editor.read(cx).text().to_owned();
-		self.app.update(cx, |app, _| match draft.target {
-			DraftTarget::New(anchor) => {
-				app.reviews_mut().create(anchor, &text);
-			},
-			DraftTarget::Reply(thread) => {
-				app.reviews_mut().reply(thread, &text);
-			},
+		self.app.update(cx, |app, cx| {
+			app.update_reviews(cx, |reviews| match draft.target {
+				DraftTarget::New(anchor) => {
+					reviews.create(anchor, &text);
+				},
+				DraftTarget::Reply(thread) => {
+					reviews.reply(thread, &text);
+				},
+			});
 		});
 		self.relayout(cx);
 	}
@@ -356,9 +358,9 @@ impl DiffView {
 	}
 
 	fn set_resolved(&mut self, thread: u64, resolved: bool, cx: &mut Context<Self>) {
-		self
-			.app
-			.update(cx, |app, _| app.reviews_mut().set_resolved(thread, resolved));
+		self.app.update(cx, |app, cx| {
+			app.update_reviews(cx, |reviews| reviews.set_resolved(thread, resolved));
+		});
 		self.relayout(cx);
 	}
 }

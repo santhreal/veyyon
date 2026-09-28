@@ -2,7 +2,7 @@
 //! window draws in, which a relaunch comes back in.
 
 use veyyon_desktop_ui::theme::Appearance;
-use veyyon_gpui::App;
+use veyyon_gpui::{App, Context};
 
 use super::AppState;
 
@@ -32,15 +32,16 @@ impl AppState {
 			.unwrap_or_else(|| Appearance::from_system(cx.window_appearance()))
 	}
 
-	/// Records `appearance` as the window's, or `None` to follow the system.
-	/// The window writes it with the rest of its store.
-	pub fn choose_appearance(&mut self, appearance: Option<Appearance>) {
-		self.store.persisted.shell.appearance = appearance.map(|appearance| {
+	/// Records `appearance` as the window's, or `None` to follow the system,
+	/// and schedules the window's write of it.
+	pub fn choose_appearance(&mut self, appearance: Option<Appearance>, cx: &mut Context<Self>) {
+		let name = appearance.map(|appearance| {
 			match appearance {
 				Appearance::Dark => "dark",
 				Appearance::Light => "light",
 			}
 			.to_owned()
 		});
+		self.remember(cx, |persisted| persisted.shell.appearance = name);
 	}
 }

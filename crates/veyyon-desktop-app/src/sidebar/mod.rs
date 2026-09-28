@@ -253,7 +253,7 @@ impl Sidebar {
 
 	/// Hides the threads of the project at `path`, or shows them when hidden.
 	fn toggle_project(&mut self, path: &str, cx: &mut Context<Self>) {
-		self.app.update(cx, |app, _| app.toggle_project(path));
+		self.app.update(cx, |app, cx| app.toggle_project(path, cx));
 		self.rebuild_items(cx);
 		cx.notify();
 	}

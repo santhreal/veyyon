@@ -4,16 +4,17 @@
 //! The tab each system shows and the diff layout are the operator's, per
 //! session, in [`PersistedState::panels`]; the review threads are one
 //! window-local document in [`PersistedState::reviews`]. Neither is a host
-//! domain, so writing one emits no [`StoreEvent`]: the view that wrote it
-//! notifies itself.
+//! domain, so writing one emits only [`StoreEvent::Remembered`], which
+//! schedules the window's write: the view that wrote it notifies itself.
 //!
 //! [`PersistedState::panels`]: veyyon_desktop_model::PersistedState::panels
 //! [`PersistedState::reviews`]: veyyon_desktop_model::PersistedState::reviews
-//! [`StoreEvent`]: super::StoreEvent
+//! [`StoreEvent::Remembered`]: super::StoreEvent::Remembered
 
 use veyyon_desktop_model::{
 	DiffMode, Gate, HostActionKind, PanelsStore, SessionId, gate_kind, review::ReviewsStore,
 };
+use veyyon_gpui::Context;
 
 use super::AppState;
 
@@ -47,20 +48,20 @@ impl AppState {
 
 	/// Records `tab` as the right panel tab of the displayed session. Does
 	/// nothing while no session is displayed.
-	pub fn set_active_right_tab(&mut self, tab: &str) {
-		self.with_displayed_panels(|panels| panels.active_right_tab = Some(tab.to_owned()));
+	pub fn set_active_right_tab(&mut self, tab: &str, cx: &mut Context<Self>) {
+		self.with_displayed_panels(cx, |panels| panels.active_right_tab = Some(tab.to_owned()));
 	}
 
 	/// Records `tab` as the drawer tab of the displayed session. Does nothing
 	/// while no session is displayed.
-	pub fn set_active_drawer_tab(&mut self, tab: &str) {
-		self.with_displayed_panels(|panels| panels.active_drawer_tab = Some(tab.to_owned()));
+	pub fn set_active_drawer_tab(&mut self, tab: &str, cx: &mut Context<Self>) {
+		self.with_displayed_panels(cx, |panels| panels.active_drawer_tab = Some(tab.to_owned()));
 	}
 
 	/// Records `mode` as the displayed session's diff layout. Does nothing
 	/// while no session is displayed.
-	pub fn set_diff_mode(&mut self, mode: DiffMode) {
-		self.with_displayed_panels(|panels| panels.diff_mode = mode);
+	pub fn set_diff_mode(&mut self, mode: DiffMode, cx: &mut Context<Self>) {
+		self.with_displayed_panels(cx, |panels| panels.diff_mode = mode);
 	}
 
 	/// The window-local review threads.
@@ -68,9 +69,14 @@ impl AppState {
 		&self.store.persisted.reviews
 	}
 
-	/// The window-local review threads, to add, answer or resolve one.
-	pub const fn reviews_mut(&mut self) -> &mut ReviewsStore {
-		&mut self.store.persisted.reviews
+	/// Adds, answers or resolves a window-local review thread through
+	/// `write`, and schedules the window's write of the threads.
+	pub fn update_reviews<R>(
+		&mut self,
+		cx: &mut Context<Self>,
+		write: impl FnOnce(&mut ReviewsStore) -> R,
+	) -> R {
+		self.remember(cx, |persisted| write(&mut persisted.reviews))
 	}
 
 	/// The reason the host gave for not taking an action of `kind`, which a
@@ -97,9 +103,13 @@ impl AppState {
 			.and_then(|session| self.store.persisted.panels.get(session))
 	}
 
-	fn with_displayed_panels(&mut self, write: impl FnOnce(&mut PanelsStore)) {
+	fn with_displayed_panels(
+		&mut self,
+		cx: &mut Context<Self>,
+		write: impl FnOnce(&mut PanelsStore),
+	) {
 		if let Some(session) = self.displayed.clone() {
-			write(self.store.persisted.panels.entry(session).or_default());
+			self.remember(cx, |persisted| write(persisted.panels.entry(session).or_default()));
 		}
 	}
 }

@@ -191,18 +191,24 @@ const fn leaf(project: usize, at: usize) -> Item {
 
 /// The lines of `state` listed with `collapsed` projects, `folded` threads
 /// and `query`; the folds are undone after.
-fn lines(state: &mut AppState, collapsed: &[&str], folded: &[&str], query: &str) -> Vec<Item> {
-	let toggle = |state: &mut AppState| {
+fn lines(
+	state: &mut AppState,
+	cx: &mut gpui::Context<AppState>,
+	collapsed: &[&str],
+	folded: &[&str],
+	query: &str,
+) -> Vec<Item> {
+	let toggle = |state: &mut AppState, cx: &mut gpui::Context<AppState>| {
 		for path in collapsed {
-			state.toggle_project(path);
+			state.toggle_project(path, cx);
 		}
 		for session in folded {
-			state.toggle_branches(&sid(session));
+			state.toggle_branches(&sid(session), cx);
 		}
 	};
-	toggle(state);
+	toggle(state, cx);
 	let lines = Listing { app: state, query }.items();
-	toggle(state);
+	toggle(state, cx);
 	lines
 }
 
@@ -254,14 +260,17 @@ fn the_filter_lists_matching_threads_under_their_projects_even_when_collapsed(
 ) {
 	let state = app.new(|_| AppState::new(Store::new()));
 	state.update(app, |state, cx| state.apply(seeded(), cx));
-	state.update(app, |state, _| {
-		assert_eq!(lines(state, &["/w/alpha"], &[], ""), vec![
+	state.update(app, |state, cx| {
+		assert_eq!(lines(state, cx, &["/w/alpha"], &[], ""), vec![
 			Item::Project(0),
 			Item::Project(1),
 			leaf(1, 0),
 		]);
-		assert_eq!(lines(state, &["/w/alpha"], &[], "title a"), vec![Item::Project(0), leaf(0, 1)]);
-		assert_eq!(lines(state, &[], &[], "nothing"), Vec::<Item>::new());
+		assert_eq!(lines(state, cx, &["/w/alpha"], &[], "title a"), vec![
+			Item::Project(0),
+			leaf(0, 1)
+		]);
+		assert_eq!(lines(state, cx, &[], &[], "nothing"), Vec::<Item>::new());
 	});
 }
 
@@ -323,12 +332,12 @@ fn a_thread_holding_an_unsent_prompt_is_listed_under_unsent_once_another_is_open
 	let (state, view, cx) = sidebar(app, seeded());
 	let draft =
 		|text: &str| ComposerStore { draft_text: text.to_owned(), ..ComposerStore::default() };
-	state.update(cx, |state, _| {
-		state.save_draft(sid("a"), draft("half a prompt"));
-		state.save_draft(sid("c"), draft("  \n"));
+	state.update(cx, |state, cx| {
+		state.save_draft(sid("a"), draft("half a prompt"), cx);
+		state.save_draft(sid("c"), draft("  \n"), cx);
 	});
 	assert_eq!(
-		state.update(cx, |state, _| lines(state, &[], &[], "")),
+		state.update(cx, |state, cx| lines(state, cx, &[], &[], "")),
 		vec![Item::Project(0), leaf(0, 0), leaf(0, 1), Item::Project(1), leaf(1, 0)],
 		"the open thread's own draft is not unsent"
 	);

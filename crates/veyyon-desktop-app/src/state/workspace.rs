@@ -38,19 +38,21 @@ impl AppState {
 
 	/// Records the regions' sizes, visibility and right panel tab from the
 	/// workspace's `layout` as the displayed session's persisted layout,
-	/// keeping the fields the panel and the drawer write. Does nothing while
-	/// no session is displayed.
-	pub fn record_layout(&mut self, layout: &PanelsStore) {
+	/// keeping the fields the panel and the drawer write, and schedules the
+	/// window's write of it. Does nothing while no session is displayed.
+	pub fn record_layout(&mut self, layout: &PanelsStore, cx: &mut Context<Self>) {
 		let Some(session) = self.displayed.clone() else {
 			return;
 		};
-		let panels = self.store.persisted.panels.entry(session).or_default();
-		panels.right_panel_visible = layout.right_panel_visible;
-		panels.right_panel_width = layout.right_panel_width;
-		panels.queue_width = layout.queue_width;
-		panels.drawer_visible = layout.drawer_visible;
-		panels.drawer_height = layout.drawer_height;
-		panels.active_right_tab.clone_from(&layout.active_right_tab);
+		self.remember(cx, |persisted| {
+			let panels = persisted.panels.entry(session).or_default();
+			panels.right_panel_visible = layout.right_panel_visible;
+			panels.right_panel_width = layout.right_panel_width;
+			panels.queue_width = layout.queue_width;
+			panels.drawer_visible = layout.drawer_visible;
+			panels.drawer_height = layout.drawer_height;
+			panels.active_right_tab.clone_from(&layout.active_right_tab);
+		});
 	}
 
 	/// Asks the host for the session the last window displayed, which the

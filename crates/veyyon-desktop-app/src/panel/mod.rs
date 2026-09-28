@@ -164,7 +164,7 @@ impl RightPanel {
 				.update(cx, |tabs, cx| tabs.set_tabs(tab::items(self.app.read(cx)), tab.index(), cx));
 			self
 				.app
-				.update(cx, |app, _| app.set_active_right_tab(tab.name()));
+				.update(cx, |app, cx| app.set_active_right_tab(tab.name(), cx));
 			cx.notify();
 		}
 		Self::publish(tab, cx);
@@ -312,12 +312,12 @@ impl RightPanel {
 	}
 
 	fn toggle_diff_mode(&self, cx: &mut Context<Self>) {
-		self.app.update(cx, |app, _| {
+		self.app.update(cx, |app, cx| {
 			let next = match app.diff_mode() {
 				DiffMode::Unified => DiffMode::Split,
 				DiffMode::Split => DiffMode::Unified,
 			};
-			app.set_diff_mode(next);
+			app.set_diff_mode(next, cx);
 		});
 		self.diff.update(cx, |diff, cx| diff.relayout(cx));
 	}
