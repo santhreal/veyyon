@@ -14,12 +14,16 @@ impl AppState {
 	/// host reports a working window open.
 	pub fn is_working(&self, session: &SessionId) -> bool {
 		self.store.streaming.contains_key(session)
-			|| self.store.pace(session).is_some_and(|pace| pace.working_since_ms.is_some())
+			|| self
+				.store
+				.pace(session)
+				.is_some_and(|pace| pace.working_since_ms.is_some())
 	}
 
 	/// The title the sidebar lists `session` under.
 	pub fn session_title(&self, session: &SessionId) -> Option<&str> {
-		self.projects
+		self
+			.projects
 			.iter()
 			.flat_map(|project| project.sessions.iter())
 			.find(|row| &row.id == session)

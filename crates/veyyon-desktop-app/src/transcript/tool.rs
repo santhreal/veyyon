@@ -66,10 +66,17 @@ pub fn render_view(view: &ToolView, id: &str, app: &Entity<AppState>, cx: &App) 
 fn status_row(row: &StatusRowView, id: &str, app: &Entity<AppState>, cx: &App) -> impl IntoElement {
 	let palette = cx.theme().palette;
 	let mark = row.status.map(|status| status_mark(status, &palette));
-	let title_color = row.title_tone.map_or(palette.text.primary, |tone| tone_color(tone, &palette));
+	let title_color = row
+		.title_tone
+		.map_or(palette.text.primary, |tone| tone_color(tone, &palette));
 	let description = row.description.clone().map(|description| {
-		let color = row.description_tone.map_or(palette.text.muted, |tone| tone_color(tone, &palette));
-		let target = row.description_link.clone().or_else(|| row.description_file.clone());
+		let color = row
+			.description_tone
+			.map_or(palette.text.muted, |tone| tone_color(tone, &palette));
+		let target = row
+			.description_link
+			.clone()
+			.or_else(|| row.description_file.clone());
 		link_span(
 			div().text_color(color).truncate().child(description),
 			format!("{id}-desc"),
@@ -89,8 +96,9 @@ fn status_row(row: &StatusRowView, id: &str, app: &Entity<AppState>, cx: &App) -
 				.type_style(text::UI)
 				.children(mark.map(|(glyph, color)| div().text_color(color).child(glyph)))
 				.children(row.emblem.clone().map(|emblem| {
-					let color =
-						row.emblem_tone.map_or(palette.text.muted, |tone| tone_color(tone, &palette));
+					let color = row
+						.emblem_tone
+						.map_or(palette.text.muted, |tone| tone_color(tone, &palette));
 					div().text_color(color).child(emblem)
 				}))
 				.child(div().text_color(title_color).child(row.title.clone()))
@@ -118,7 +126,12 @@ fn headed(block: &HeadedBlockView, id: &str, app: &Entity<AppState>, cx: &App) -
 		.flex()
 		.flex_col()
 		.gap(space::S1)
-		.children(block.header.as_ref().map(|row| status_row(row, id, app, cx)))
+		.children(
+			block
+				.header
+				.as_ref()
+				.map(|row| status_row(row, id, app, cx)),
+		)
 		.child(pane(block.lines.iter(), None, id, app, cx))
 		.children(hidden(block.hidden.as_ref(), cx))
 		.into_any_element()
@@ -134,7 +147,12 @@ fn framed(block: &FramedBlockView, id: &str, app: &Entity<AppState>, cx: &App) -
 		.flex()
 		.flex_col()
 		.gap(space::S1)
-		.children(block.header.as_ref().map(|row| status_row(row, id, app, cx)))
+		.children(
+			block
+				.header
+				.as_ref()
+				.map(|row| status_row(row, id, app, cx)),
+		)
 		.child(
 			div()
 				.flex()
@@ -161,9 +179,16 @@ fn view_section(section: &ViewSection, id: &str, app: &Entity<AppState>, cx: &Ap
 		.flex()
 		.flex_col()
 		.gap(space::S1)
-		.when(section.separator, |d| d.border_t_1().border_color(palette.border.subtle).pt(space::S2))
+		.when(section.separator, |d| {
+			d.border_t_1()
+				.border_color(palette.border.subtle)
+				.pt(space::S2)
+		})
 		.children(section.label.clone().map(|label| {
-			div().type_style(text::SMALL).text_color(palette.text.muted).child(label)
+			div()
+				.type_style(text::SMALL)
+				.text_color(palette.text.muted)
+				.child(label)
 		}))
 		.child(pane(section.lines.iter(), Some(section), id, app, cx))
 		.children(hidden(section.hidden.as_ref(), cx))
@@ -188,8 +213,13 @@ fn pane<'a>(
 	let list = section.is_some_and(|section| section.list);
 	let rows = lines.enumerate().map(|(ix, line)| {
 		let side = diff.and_then(|diff| diff.sides.get(ix)).copied();
-		let depth = tree.and_then(|tree| tree.depth.get(ix)).copied().unwrap_or(0);
-		let number = numbers.as_ref().and_then(|numbers| numbers.get(ix).copied().flatten());
+		let depth = tree
+			.and_then(|tree| tree.depth.get(ix))
+			.copied()
+			.unwrap_or(0);
+		let number = numbers
+			.as_ref()
+			.and_then(|numbers| numbers.get(ix).copied().flatten());
 		let (bg, marker) = match side {
 			Some(ViewDiffSide::Added) => (Some(palette.diff.add_bg), "+"),
 			Some(ViewDiffSide::Removed) => (Some(palette.diff.del_bg), "-"),
@@ -202,11 +232,12 @@ fn pane<'a>(
 			.when_some(bg, |d, bg| d.bg(bg))
 			.children(number.map(|n| div().text_color(palette.text.faint).child(n.to_string())))
 			.when(!marker.is_empty(), |d| d.child(div().text_color(palette.text.muted).child(marker)))
-			.child(
-				div()
-					.pl(space::S3 * depth as f32)
-					.child(view_line(line, &format!("{id}-l{ix}"), app, cx)),
-			)
+			.child(div().pl(space::S3 * depth as f32).child(view_line(
+				line,
+				&format!("{id}-l{ix}"),
+				app,
+				cx,
+			)))
 	});
 	div()
 		.id(SharedString::from(format!("{id}-pane")))
@@ -239,9 +270,18 @@ fn notice_view(notice: &NoticeView, id: &str, app: &Entity<AppState>, cx: &App) 
 				.flex()
 				.items_center()
 				.gap(space::S2)
-				.child(div().text_color(color).child(notice.mark.clone().unwrap_or_else(|| glyph.to_owned())))
+				.child(
+					div()
+						.text_color(color)
+						.child(notice.mark.clone().unwrap_or_else(|| glyph.to_owned())),
+				)
 				.child(view_line(&notice.headline, &format!("{id}-head"), app, cx))
-				.children(notice.tag.clone().map(|tag| div().text_color(palette.text.muted).child(tag))),
+				.children(
+					notice
+						.tag
+						.clone()
+						.map(|tag| div().text_color(palette.text.muted).child(tag)),
+				),
 		)
 		.children(
 			notice
@@ -260,27 +300,34 @@ pub fn view_line(line: &ViewLine, id: &str, app: &Entity<AppState>, cx: &App) ->
 
 fn spans(spans: &[ViewSpan], id: &str, app: &Entity<AppState>, cx: &App) -> impl IntoElement {
 	let palette = cx.theme().palette;
-	div().flex().flex_wrap().children(spans.iter().enumerate().map(|(ix, span)| {
-		let words = if span.captured { sanitize(&span.text) } else { span.text.clone() };
-		let words = match &span.symbol {
-			Some(symbol) => format!("{symbol} {words}"),
-			None => words,
-		};
-		let color = span
-			.status
-			.map(|status| status_mark(status, &palette).1)
-			.or_else(|| span.tone.map(|tone| tone_color(tone, &palette)))
-			.unwrap_or(palette.text.primary);
-		let element = div()
-			.text_color(color)
-			.whitespace_nowrap()
-			.when(span.bold, |d| d.font_weight(gpui::FontWeight::SEMIBOLD))
-			.when(span.italic, |d| d.italic())
-			.when(span.strike, |d| d.line_through())
-			.child(words);
-		let target = span.link.clone().or_else(|| span.file.clone());
-		link_span(element, format!("{id}-{ix}"), target, app)
-	}))
+	div()
+		.flex()
+		.flex_wrap()
+		.children(spans.iter().enumerate().map(|(ix, span)| {
+			let words = if span.captured {
+				sanitize(&span.text)
+			} else {
+				span.text.clone()
+			};
+			let words = match &span.symbol {
+				Some(symbol) => format!("{symbol} {words}"),
+				None => words,
+			};
+			let color = span
+				.status
+				.map(|status| status_mark(status, &palette).1)
+				.or_else(|| span.tone.map(|tone| tone_color(tone, &palette)))
+				.unwrap_or(palette.text.primary);
+			let element = div()
+				.text_color(color)
+				.whitespace_nowrap()
+				.when(span.bold, |d| d.font_weight(gpui::FontWeight::SEMIBOLD))
+				.when(span.italic, |d| d.italic())
+				.when(span.strike, |d| d.line_through())
+				.child(words);
+			let target = span.link.clone().or_else(|| span.file.clone());
+			link_span(element, format!("{id}-{ix}"), target, app)
+		}))
 }
 
 /// `element`, opening `target` through the host when clicked.

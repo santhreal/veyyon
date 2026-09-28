@@ -38,14 +38,22 @@ impl TurnSpan {
 	/// The index of the entry holding the result of call `call_id`.
 	#[must_use]
 	pub fn result_of(&self, call_id: &str) -> Option<usize> {
-		self.results.iter().find(|(id, _)| id == call_id).map(|(_, ix)| *ix)
+		self
+			.results
+			.iter()
+			.find(|(id, _)| id == call_id)
+			.map(|(_, ix)| *ix)
 	}
 
 	/// What the folded row reads: `Worked for 42s · 12 steps`.
 	#[must_use]
 	pub fn summary(&self) -> String {
 		let secs = self.ended_ms.saturating_sub(self.started_ms) / 1000;
-		let steps = if self.steps == 1 { "1 step".to_owned() } else { format!("{} steps", self.steps) };
+		let steps = if self.steps == 1 {
+			"1 step".to_owned()
+		} else {
+			format!("{} steps", self.steps)
+		};
 		format!("Worked for {} · {steps}", duration_words(secs))
 	}
 }
@@ -83,8 +91,13 @@ impl TurnIndex {
 		session: &SessionId,
 		range: &Range<usize>,
 	) -> Range<usize> {
-		let keep = self.turns.partition_point(|turn| turn.range.end <= range.start);
-		let start = self.turns.get(keep).map_or(range.start, |turn| turn.range.start.min(range.start));
+		let keep = self
+			.turns
+			.partition_point(|turn| turn.range.end <= range.start);
+		let start = self
+			.turns
+			.get(keep)
+			.map_or(range.start, |turn| turn.range.start.min(range.start));
 		self.turns.truncate(keep);
 		self.scan_from(app, session, start);
 		start..app.entry_count(session)
@@ -100,7 +113,10 @@ impl TurnIndex {
 	/// Whether the turn at `ix` is the last one.
 	#[must_use]
 	pub fn is_last(&self, ix: usize) -> bool {
-		self.turns.last().is_some_and(|turn| turn.range.contains(&ix))
+		self
+			.turns
+			.last()
+			.is_some_and(|turn| turn.range.contains(&ix))
 	}
 
 	/// The number of turns.
@@ -119,7 +135,9 @@ impl TurnIndex {
 		let count = app.entry_count(session);
 		let mut open: Option<TurnSpan> = None;
 		for ix in start..count {
-			let Some(entry) = app.entry_at(session, ix) else { continue };
+			let Some(entry) = app.entry_at(session, ix) else {
+				continue;
+			};
 			if entry.role == MessageRole::User || open.is_none() {
 				self.turns.extend(open.take());
 				open = Some(TurnSpan {

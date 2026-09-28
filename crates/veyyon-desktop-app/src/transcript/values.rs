@@ -1,8 +1,10 @@
 //! The words a transcript row states about a value the host recorded: the
-//! target a tool call names, the lines a result or a run printed, and terminal
-//! output with its control sequences removed.
+//! target a tool call names, the lines a result or a run printed, terminal
+//! output with its control sequences removed, a role's label, a mode, a byte
+//! count.
 
 use serde_json::Value;
+use veyyon_desktop_model::{MessageRole, TranscriptEntry};
 
 /// The most lines an output pane draws before it states how many it held back.
 pub const PANE_LINE_CEILING: usize = 200;
@@ -32,9 +34,11 @@ pub fn target_of(arguments: &Value) -> Option<String> {
 		let value = object.get(*key)?;
 		let text = match value {
 			Value::String(text) => text.clone(),
-			Value::Array(items) => {
-				items.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(" ")
-			},
+			Value::Array(items) => items
+				.iter()
+				.filter_map(Value::as_str)
+				.collect::<Vec<_>>()
+				.join(" "),
 			Value::Number(number) => number.to_string(),
 			_ => return None,
 		};
@@ -68,7 +72,10 @@ pub fn result_lines(content: &Value, is_error: bool) -> Vec<String> {
 			.iter()
 			.filter_map(|part| match part {
 				Value::String(text) => Some(text.clone()),
-				Value::Object(object) => object.get("text").and_then(Value::as_str).map(str::to_owned),
+				Value::Object(object) => object
+					.get("text")
+					.and_then(Value::as_str)
+					.map(str::to_owned),
 				_ => None,
 			})
 			.collect::<Vec<_>>()
@@ -94,8 +101,11 @@ pub fn pane_lines(output: &str) -> Vec<String> {
 		lines.pop();
 	}
 	let total = lines.len();
-	let mut out: Vec<String> =
-		lines.into_iter().take(PANE_LINE_CEILING).map(str::to_owned).collect();
+	let mut out: Vec<String> = lines
+		.into_iter()
+		.take(PANE_LINE_CEILING)
+		.map(str::to_owned)
+		.collect();
 	if total > PANE_LINE_CEILING {
 		out.push(format!("… {} more lines", total - PANE_LINE_CEILING));
 	}
@@ -103,7 +113,12 @@ pub fn pane_lines(output: &str) -> Vec<String> {
 }
 
 fn first_line(text: &str) -> String {
-	text.lines().map(str::trim).find(|line| !line.is_empty()).unwrap_or_default().to_owned()
+	text
+		.lines()
+		.map(str::trim)
+		.find(|line| !line.is_empty())
+		.unwrap_or_default()
+		.to_owned()
 }
 
 /// `text` with every ECMA-48 control sequence removed.
@@ -163,4 +178,59 @@ fn skip_string(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) {
 			_ => {},
 		}
 	}
+}
+
+/// The label a non-conversation role reads under, `None` for the operator
+/// and the agent.
+#[must_use]
+pub(super) fn role_label(entry: &TranscriptEntry) -> Option<&'static str> {
+	match entry.role {
+		MessageRole::User | MessageRole::Assistant => None,
+		MessageRole::Developer => Some("Developer"),
+		MessageRole::Custom => Some(match entry.raw_discriminator.as_str() {
+			"side_question" => "Side question",
+			"side_answer" => "Side answer",
+			_ => "Custom",
+		}),
+		MessageRole::ToolResult => Some("Tool result"),
+		MessageRole::BashExecution => Some("Shell execution"),
+		MessageRole::PythonExecution => Some("Python execution"),
+		MessageRole::BranchSummary => Some("Branch summary"),
+		MessageRole::CompactionSummary => Some("Compaction summary"),
+		MessageRole::FileMention => Some("File"),
+		MessageRole::Lifecycle => Some("Lifecycle"),
+		MessageRole::Unknown => Some("Unknown"),
+	}
+}
+
+/// The words a recorded mode reads as: `none` is `off`, separators open out.
+#[must_use]
+pub fn mode_words(mode: &str) -> String {
+	match mode {
+		"none" => "off".to_owned(),
+		other => other.replace(['_', '-'], " "),
+	}
+}
+
+pub(super) fn video_words(media_type: &str, bytes: u64) -> String {
+	format!("[video {media_type}, {}]", human_bytes(bytes))
+}
+
+/// `512 B`, `12.3 KB`, `4.0 MB`.
+#[must_use]
+pub fn human_bytes(bytes: u64) -> String {
+	const UNITS: [&str; 4] = ["KB", "MB", "GB", "TB"];
+	if bytes < 1024 {
+		return format!("{bytes} B");
+	}
+	let mut value = bytes;
+	let mut unit = UNITS.iter();
+	let mut name = unit.next().copied().unwrap_or("KB");
+	while value >= 1024 * 1024 {
+		let Some(next) = unit.next() else { break };
+		value /= 1024;
+		name = next;
+	}
+	let tenths = value * 10 / 1024;
+	format!("{}.{} {name}", tenths / 10, tenths % 10)
 }

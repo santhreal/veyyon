@@ -1,13 +1,13 @@
-//! The thread column: header, transcript, streaming tail, then the composer
-//! lane's dock and composer.
+//! The thread column: header and transcript, then the composer lane's dock
+//! and composer.
 //!
-//! `ThreadView` is a cheap shell. Its children are entities of their own and
-//! the header and transcript are embedded cached, so a streamed delta, which
-//! notifies only the tail and dirties its ancestors, re-renders the tail and
-//! this shell and reuses the transcript's last frame.
+//! `ThreadView` is a cheap shell. Its children are entities of their own,
+//! embedded cached. The streaming reply is the transcript list's last item,
+//! so a reply taller than the thread scrolls with the list; a streamed delta
+//! notifies the tail, which dirties the transcript and this shell, and the
+//! header reuses its last frame.
 
 pub mod header;
-pub mod tail;
 
 use gpui::{Context, Entity, Render, StyleRefinement, Subscription, Window, div, prelude::*};
 use veyyon_desktop_model::{HostAction, SurfaceId};
@@ -16,7 +16,7 @@ use veyyon_desktop_ui::{
 	theme::{ActiveTheme, TypeStyled, size, space, text},
 };
 
-use self::{header::ThreadHeader, tail::StreamingTail};
+use self::header::ThreadHeader;
 use crate::{AppState, StoreEvent, transcript::Transcript};
 
 /// The thread region.
@@ -24,7 +24,6 @@ pub struct ThreadView {
 	app:           Entity<AppState>,
 	header:        Entity<ThreadHeader>,
 	transcript:    Entity<Transcript>,
-	tail:          Entity<StreamingTail>,
 	/// Whether the host has frozen every agent, drawn as the paused strip.
 	paused:        bool,
 	_subscription: Subscription,
@@ -35,7 +34,6 @@ impl ThreadView {
 	pub fn new(app: Entity<AppState>, window: &mut Window, cx: &mut Context<Self>) -> Self {
 		let header = cx.new(|cx| ThreadHeader::new(app.clone(), window, cx));
 		let transcript = cx.new(|cx| Transcript::new(app.clone(), window, cx));
-		let tail = cx.new(|cx| StreamingTail::new(app.clone(), window, cx));
 		let subscription = cx.subscribe(&app, |this, app, event: &StoreEvent, cx| {
 			if matches!(event, StoreEvent::DomainChanged(_) | StoreEvent::ConnectionChanged) {
 				let paused = app.read(cx).store().paused.paused;
@@ -46,19 +44,13 @@ impl ThreadView {
 			}
 		});
 		let paused = app.read(cx).store().paused.paused;
-		Self { app, header, transcript, tail, paused, _subscription: subscription }
+		Self { app, header, transcript, paused, _subscription: subscription }
 	}
 
 	/// The transcript entity.
 	#[must_use]
 	pub const fn transcript(&self) -> &Entity<Transcript> {
 		&self.transcript
-	}
-
-	/// The streaming tail entity.
-	#[must_use]
-	pub const fn tail(&self) -> &Entity<StreamingTail> {
-		&self.tail
 	}
 }
 
@@ -71,10 +63,12 @@ impl Render for ThreadView {
 			.flex_col()
 			.bg(palette.bg.app)
 			.child(
-				div()
-					.w_full()
-					.flex_shrink_0()
-					.child(self.header.clone().cached(StyleRefinement::default().w_full().h(size::HEADER))),
+				div().w_full().flex_shrink_0().child(
+					self
+						.header
+						.clone()
+						.cached(StyleRefinement::default().w_full().h(size::HEADER)),
+				),
 			)
 			.children(self.paused.then(|| {
 				let app = self.app.clone();
@@ -98,12 +92,12 @@ impl Render for ThreadView {
 					}))
 			}))
 			.child(
-				div()
-					.flex_1()
-					.min_h_0()
-					.w_full()
-					.child(self.transcript.clone().cached(StyleRefinement::default().size_full())),
+				div().flex_1().min_h_0().w_full().child(
+					self
+						.transcript
+						.clone()
+						.cached(StyleRefinement::default().size_full()),
+				),
 			)
-			.child(div().w_full().flex_shrink_0().child(self.tail.clone()))
 	}
 }

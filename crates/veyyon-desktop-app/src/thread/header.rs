@@ -6,7 +6,7 @@
 
 use std::fmt::Write as _;
 
-use gpui::{Context, Entity, Render, Subscription, WindowControlArea, Window, div, prelude::*};
+use gpui::{Context, Entity, Render, Subscription, Window, WindowControlArea, div, prelude::*};
 use veyyon_desktop_model::{HostAction, SessionId, SessionMode, SurfaceId, domain::ShareRole};
 use veyyon_desktop_ui::{
 	controls::IconButton,
@@ -74,7 +74,11 @@ pub fn status_chips(app: &AppState, session: &SessionId, now_ms: u64) -> Vec<Str
 	if let Some(mode) = app.session_mode(session).and_then(mode_label) {
 		chips.push(mode);
 	}
-	if let Some(current) = domains.models.as_ref().and_then(|models| models.current.as_ref()) {
+	if let Some(current) = domains
+		.models
+		.as_ref()
+		.and_then(|models| models.current.as_ref())
+	{
 		chips.push(current.id.clone());
 	}
 	if let Some(pace) = store.pace(session) {
@@ -84,7 +88,10 @@ pub fn status_chips(app: &AppState, session: &SessionId, now_ms: u64) -> Vec<Str
 			None => chips.push(worked),
 		}
 	}
-	if let Some(account) = store.serving_account(session).filter(|account| account.logins >= 2) {
+	if let Some(account) = store
+		.serving_account(session)
+		.filter(|account| account.logins >= 2)
+	{
 		let predicted = if account.predicted { "~" } else { "" };
 		chips.push(format!("{predicted}{}", account.label));
 	}
@@ -92,16 +99,18 @@ pub fn status_chips(app: &AppState, session: &SessionId, now_ms: u64) -> Vec<Str
 		let window = |label: &str, window: Option<&veyyon_desktop_model::domain::QuotaWindowView>| {
 			window.map(|window| format!("{label} {}%", window.used_permille / 10))
 		};
-		let parts: Vec<String> = [window("5h", quota.five_hour.as_ref()), window("7d", quota.seven_day.as_ref())]
-			.into_iter()
-			.flatten()
-			.collect();
+		let parts: Vec<String> =
+			[window("5h", quota.five_hour.as_ref()), window("7d", quota.seven_day.as_ref())]
+				.into_iter()
+				.flatten()
+				.collect();
 		if !parts.is_empty() {
 			chips.push(parts.join(" · "));
 		}
 	}
 	if let Some(usage) = domains.usage.get(session) {
-		let mut words = format!("↑{} ↓{}", compact_count(usage.input_tokens), compact_count(usage.output_tokens));
+		let mut words =
+			format!("↑{} ↓{}", compact_count(usage.input_tokens), compact_count(usage.output_tokens));
 		if let Some(cost) = usage.cost_microusd {
 			let _ = write!(words, " · ${}.{:02}", cost / 1_000_000, (cost % 1_000_000) / 10_000);
 		}
@@ -133,28 +142,51 @@ impl Render for ThreadHeader {
 			.map_or_else(|| "New thread".to_owned(), str::to_owned);
 		let mut place = Vec::new();
 		if let Some(cwd) = session.as_ref().and_then(|session| app.cwd(session)) {
-			place.push(cwd.rsplit(['/', '\\']).find(|part| !part.is_empty()).unwrap_or(cwd).to_owned());
+			place.push(
+				cwd.rsplit(['/', '\\'])
+					.find(|part| !part.is_empty())
+					.unwrap_or(cwd)
+					.to_owned(),
+			);
 		}
-		let checkout = session.as_ref().and_then(|session| store.checkout(session)).cloned();
+		let checkout = session
+			.as_ref()
+			.and_then(|session| store.checkout(session))
+			.cloned();
 		if let Some(host) = &store.domains.host {
-			place.push(host.hostname.split('.').next().unwrap_or(&host.hostname).to_owned());
+			place.push(
+				host
+					.hostname
+					.split('.')
+					.next()
+					.unwrap_or(&host.hostname)
+					.to_owned(),
+			);
 		}
-		let chips = session.as_ref().map(|session| status_chips(app, session, now_ms())).unwrap_or_default();
+		let chips = session
+			.as_ref()
+			.map(|session| status_chips(app, session, now_ms()))
+			.unwrap_or_default();
 		let share = store.domains.share.as_ref().map(|share| share.role);
 		let paused = store.paused.paused;
 		let muted = palette.text.muted;
-		let pr = checkout.as_ref().and_then(|checkout| checkout.pull_request.clone()).map(|pr| {
-			let app = self.app.clone();
-			div()
-				.id("thread-pr")
-				.text_color(palette.status.info)
-				.cursor_pointer()
-				.child(format!("#{}", pr.number))
-				.on_click(move |_, _, cx| open_external(&app, pr.url.clone(), cx))
-		});
+		let pr = checkout
+			.as_ref()
+			.and_then(|checkout| checkout.pull_request.clone())
+			.map(|pr| {
+				let app = self.app.clone();
+				div()
+					.id("thread-pr")
+					.text_color(palette.status.info)
+					.cursor_pointer()
+					.child(format!("#{}", pr.number))
+					.on_click(move |_, _, cx| open_external(&app, pr.url.clone(), cx))
+			});
 		let branch = checkout.map(|checkout| {
 			let dirty = if checkout.dirty { "*" } else { "" };
-			div().text_color(muted).child(format!("⎇ {}{dirty}", checkout.branch))
+			div()
+				.text_color(muted)
+				.child(format!("⎇ {}{dirty}", checkout.branch))
 		});
 		let share_chip = match share {
 			Some(ShareRole::Hosting) => Some("Sharing"),
@@ -163,10 +195,26 @@ impl Render for ThreadHeader {
 		};
 		let pause = self.host_button(
 			"thread-pause",
-			if paused { IconName::Play } else { IconName::Pause },
-			if paused { "Resume agents" } else { "Pause agents" },
-			if paused { HostAction::ResumeAgents } else { HostAction::PauseAgents },
-			if paused { SurfaceId::AgentsResumeButton } else { SurfaceId::AgentsPauseButton },
+			if paused {
+				IconName::Play
+			} else {
+				IconName::Pause
+			},
+			if paused {
+				"Resume agents"
+			} else {
+				"Pause agents"
+			},
+			if paused {
+				HostAction::ResumeAgents
+			} else {
+				HostAction::PauseAgents
+			},
+			if paused {
+				SurfaceId::AgentsResumeButton
+			} else {
+				SurfaceId::AgentsPauseButton
+			},
 		);
 		let session_buttons = session.map(|session| {
 			[
@@ -181,15 +229,30 @@ impl Render for ThreadHeader {
 					"thread-export",
 					IconName::FileText,
 					"Export as Markdown",
-					HostAction::ExportSession { session: session.clone(), format: "markdown".to_owned() },
+					HostAction::ExportSession {
+						session: session.clone(),
+						format:  "markdown".to_owned(),
+					},
 					SurfaceId::SessionExportButton(session),
 				),
 				self.host_button(
 					"thread-share",
 					IconName::Globe,
-					if share_chip.is_some() { "Stop sharing" } else { "Share thread" },
-					if share_chip.is_some() { HostAction::StopShare } else { HostAction::StartShare { read_only: false } },
-					if share_chip.is_some() { SurfaceId::ShareStopButton } else { SurfaceId::ShareStartButton },
+					if share_chip.is_some() {
+						"Stop sharing"
+					} else {
+						"Share thread"
+					},
+					if share_chip.is_some() {
+						HostAction::StopShare
+					} else {
+						HostAction::StartShare { read_only: false }
+					},
+					if share_chip.is_some() {
+						SurfaceId::ShareStopButton
+					} else {
+						SurfaceId::ShareStartButton
+					},
 				),
 			]
 		});
@@ -205,7 +268,13 @@ impl Render for ThreadHeader {
 			.bg(palette.bg.app)
 			.type_style(text::UI)
 			.window_control_area(WindowControlArea::Drag)
-			.child(div().flex_shrink_0().type_style(text::TITLE).text_color(palette.text.primary).child(title))
+			.child(
+				div()
+					.flex_shrink_0()
+					.type_style(text::TITLE)
+					.text_color(palette.text.primary)
+					.child(title),
+			)
 			.child(
 				div()
 					.flex()
@@ -227,11 +296,18 @@ impl Render for ThreadHeader {
 					.whitespace_nowrap()
 					.child(chip)
 			}))
-			.children(share_chip.map(|chip| div().type_style(text::SMALL).text_color(palette.status.info).child(chip)))
+			.children(share_chip.map(|chip| {
+				div()
+					.type_style(text::SMALL)
+					.text_color(palette.status.info)
+					.child(chip)
+			}))
 			.child(
-				IconButton::new("thread-usage", IconName::Zap).tooltip("Usage and context").on_click(|_, window, cx| {
-					window.dispatch_action(Box::new(ShowPanelTab { tab: "usage".into() }), cx);
-				}),
+				IconButton::new("thread-usage", IconName::Zap)
+					.tooltip("Usage and context")
+					.on_click(|_, window, cx| {
+						window.dispatch_action(Box::new(ShowPanelTab { tab: "usage".into() }), cx);
+					}),
 			)
 			.children(session_buttons.into_iter().flatten())
 			.child(pause)
@@ -258,11 +334,13 @@ impl ThreadHeader {
 		surface: SurfaceId,
 	) -> IconButton {
 		let app = self.app.clone();
-		IconButton::new(id, icon).tooltip(label).on_click(move |_, _, cx| {
-			let (action, surface) = (action.clone(), surface.clone());
-			app.update(cx, |app, cx| {
-				app.dispatch(action, surface, cx);
-			});
-		})
+		IconButton::new(id, icon)
+			.tooltip(label)
+			.on_click(move |_, _, cx| {
+				let (action, surface) = (action.clone(), surface.clone());
+				app.update(cx, |app, cx| {
+					app.dispatch(action, surface, cx);
+				});
+			})
 	}
 }
