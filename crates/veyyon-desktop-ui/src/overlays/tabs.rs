@@ -11,7 +11,10 @@ use veyyon_gpui::{
 };
 
 use super::drive;
-use crate::theme::{ActiveTheme, Palette, TypeStyled, motion, radius, size, space, text};
+use crate::{
+	controls::hover_transition,
+	theme::{ActiveTheme, Palette, TypeStyled, motion, radius, size, space, text},
+};
 
 /// One tab of a [`Tabs`] strip.
 #[derive(Clone, Debug)]
@@ -194,6 +197,7 @@ impl Tabs {
 			.type_style(text::UI_MEDIUM)
 			.cursor_pointer()
 			.text_color(if selected { palette.text.primary } else { palette.text.muted })
+			.transition(hover_transition())
 			.when(!selected, |el| el.hover(|style| style.text_color(palette.text.secondary)))
 			.on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
 				window.focus(&this.focus, cx);
@@ -207,6 +211,7 @@ impl Tabs {
 						.px(space::S0_5)
 						.rounded(radius::SM)
 						.text_color(palette.text.muted)
+						.transition(hover_transition())
 						.hover(|style| style.bg(palette.bg.hover).text_color(palette.text.primary))
 						.on_click(cx.listener(move |_, _: &ClickEvent, _, cx| {
 							cx.stop_propagation();

@@ -8,7 +8,7 @@
 use gpui::{AnyElement, App, Context, Div, ElementId, SharedString, Stateful, div, prelude::*};
 use veyyon_desktop_model::{HostActionKind, QueueMode};
 use veyyon_desktop_ui::{
-	controls::{IconButton, Kbd, Tooltip},
+	controls::{IconButton, Kbd, Tooltip, hover_transition},
 	icons::{Icon, IconName},
 	theme::{ActiveTheme, TypeStyled, radius, size, space, text},
 };
@@ -46,6 +46,7 @@ fn chip(
 			chip
 				.cursor_pointer()
 				.hover(|style| style.bg(palette.bg.hover))
+				.transition(hover_transition())
 		})
 		.child(div().min_w_0().truncate().child(label))
 		.child(

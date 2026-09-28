@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use serde_json::Value;
 use veyyon_desktop_model::{HostAction, SettingEntry, SettingKind, SurfaceId};
 use veyyon_desktop_ui::{
-	controls::{ButtonVariant, Tooltip},
+	controls::{ButtonVariant, Tooltip, hover_transition},
 	theme::{ActiveTheme, Palette, TypeStyled, radius, size, space, text},
 };
 use veyyon_gpui::{AnyElement, Context, IntoElement, SharedString, Window, div, prelude::*};
@@ -152,6 +152,7 @@ impl SettingsView {
 				.items_center()
 				.rounded(radius::MD)
 				.type_style(text::SMALL)
+				.transition(hover_transition())
 				.when(selected, |el| el.bg(palette.bg.selected).text_color(palette.text.primary))
 				.when(!selected, |el| {
 					el.text_color(palette.text.muted)
@@ -321,6 +322,7 @@ impl SettingsView {
 				.rounded(radius::MD)
 				.border_1()
 				.type_style(text::SMALL)
+				.transition(hover_transition())
 				.when(selected, |el| {
 					el.border_color(palette.accent.base)
 						.text_color(palette.text.primary)

@@ -5,7 +5,7 @@ use veyyon_desktop_model::{
 	action::{McpRequest, McpServerTarget},
 };
 use veyyon_desktop_ui::{
-	controls::ButtonVariant,
+	controls::{ButtonVariant, hover_transition},
 	theme::{Palette, TypeStyled, radius, size, space, text},
 };
 use veyyon_gpui::{AnyElement, Context, IntoElement, SharedString, Window, div, prelude::*};
@@ -71,6 +71,7 @@ impl SettingsView {
 					.items_center()
 					.rounded(radius::MD)
 					.type_style(text::SMALL)
+					.transition(hover_transition())
 					.when(selected, |el| el.bg(palette.bg.selected).text_color(palette.text.primary))
 					.when(!selected, |el| {
 						el.text_color(palette.text.muted)

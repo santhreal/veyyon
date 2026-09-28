@@ -4,7 +4,7 @@
 use gpui::{AnyElement, ClickEvent, Context, SharedString, Window, div, prelude::*};
 use veyyon_desktop_model::{ConnectionState, Gate, HostAction, HostActionKind, SurfaceId};
 use veyyon_desktop_ui::{
-	controls::{DotStatus, IconButton, StatusDot, Tooltip},
+	controls::{DotStatus, IconButton, StatusDot, Tooltip, hover_transition},
 	icons::{Icon, IconName},
 	theme::{ActiveTheme, TypeStyled, radius, size, space, text},
 };
@@ -201,6 +201,7 @@ impl Sidebar {
 					.rounded(radius::MD)
 					.type_style(text::UI)
 					.text_color(palette.text.secondary)
+					.transition(hover_transition())
 					.hover(move |style| style.bg(palette.bg.hover).text_color(palette.text.primary))
 					.tooltip(Tooltip::text("Switch profile"))
 					.on_click(cx.listener(|this, event: &ClickEvent, window, cx| {

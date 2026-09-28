@@ -8,7 +8,7 @@ use gpui::{
 };
 use veyyon_desktop_model::SessionId;
 use veyyon_desktop_ui::{
-	controls::{DotStatus, IconButton, StatusDot, Tooltip},
+	controls::{DotStatus, IconButton, StatusDot, Tooltip, hover_transition},
 	icons::{Icon, IconName},
 	theme::{ActiveTheme, Palette, TypeStyled, radius, size, space, text},
 };
@@ -160,6 +160,7 @@ impl Sidebar {
 			.pr(space::S2)
 			.rounded(radius::MD)
 			.type_style(text::UI)
+			.transition(hover_transition())
 			.when(open, |el| el.bg(palette.bg.selected).text_color(palette.text.primary))
 			.when(cursor, |el| el.bg(palette.bg.hover).text_color(palette.text.primary))
 			.when(!open && !cursor, move |el| {

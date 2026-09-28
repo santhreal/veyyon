@@ -9,7 +9,10 @@ use veyyon_gpui::{
 };
 
 use super::drive;
-use crate::theme::{ActiveTheme, Palette, TypeStyled, motion, radius, size, space, text};
+use crate::{
+	controls::hover_transition,
+	theme::{ActiveTheme, Palette, TypeStyled, motion, radius, size, space, text},
+};
 
 /// The tone of a toast, drawn as the color of its status dot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -291,6 +294,7 @@ impl Toasts {
 					.rounded(radius::SM)
 					.text_color(palette.text.muted)
 					.cursor_pointer()
+					.transition(hover_transition())
 					.hover(|style| style.bg(palette.bg.hover).text_color(palette.text.primary))
 					.on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.close(id, cx)))
 					.child("\u{00d7}"),

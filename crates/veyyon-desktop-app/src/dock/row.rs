@@ -3,6 +3,7 @@
 
 use gpui::{AnyElement, App, ClickEvent, ElementId, Pixels, SharedString, Window, div, prelude::*};
 use veyyon_desktop_ui::{
+	controls::hover_transition,
 	icons::{Icon, IconName},
 	theme::{ActiveTheme, Palette, TypeStyled, radius, size, space, text},
 };
@@ -128,6 +129,7 @@ impl OptionRow {
 			.px(space::S2)
 			.py(space::S1_5)
 			.rounded(radius::MD)
+			.transition(hover_transition())
 			.when(self.cursor, |row| row.bg(hover))
 			.when(!self.disabled, |row| {
 				row.cursor_pointer()

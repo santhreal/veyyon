@@ -3,6 +3,7 @@
 //! driver targets the last one drew and this one does not.
 
 use veyyon_desktop_ui::{
+	controls::hover_transition,
 	icons::Icon,
 	theme::{ActiveTheme, TypeStyled, radius, size, space, text},
 };
@@ -37,6 +38,7 @@ impl SettingsView {
 					.rounded(radius::MD)
 					.type_style(text::UI)
 					.text_color(palette.text.muted)
+					.transition(hover_transition())
 					.hover(|el| el.bg(palette.bg.hover))
 					.on_click(|_, window, cx| {
 						window.dispatch_action(Box::new(workspace::CloseSettings), cx);
@@ -54,6 +56,7 @@ impl SettingsView {
 				.px(space::S2)
 				.rounded(radius::MD)
 				.type_style(text::UI)
+				.transition(hover_transition())
 				.when(selected, |el| el.bg(palette.bg.selected).text_color(palette.text.primary))
 				.when(!selected, |el| {
 					el.text_color(palette.text.secondary)

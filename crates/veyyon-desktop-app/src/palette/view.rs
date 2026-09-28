@@ -9,7 +9,7 @@
 use std::ops::Range;
 
 use veyyon_desktop_ui::{
-	controls::{Divider, Tooltip},
+	controls::{Divider, Tooltip, hover_transition},
 	editor::actions::{MoveDown, MoveUp},
 	icons::{Icon, IconName},
 	theme::{ActiveTheme, Palette, TypeStyled, radius, size, space, text},
@@ -217,6 +217,7 @@ impl CommandPalette {
 			.type_style(text::UI)
 			.when(selected, |el| el.bg(palette.bg.selected))
 			.when(!selected, |el| el.hover(|el| el.bg(palette.bg.hover)))
+			.transition(hover_transition())
 			.child(
 				div()
 					.flex_none()

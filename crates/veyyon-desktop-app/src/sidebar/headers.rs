@@ -3,7 +3,7 @@
 
 use gpui::{AnyElement, ClickEvent, Context, div, prelude::*};
 use veyyon_desktop_ui::{
-	controls::{IconButton, Tooltip},
+	controls::{IconButton, Tooltip, hover_transition},
 	icons::{Icon, IconName},
 	theme::{ActiveTheme, TypeStyled, radius, size, space, text},
 };
@@ -32,6 +32,7 @@ impl Sidebar {
 			.rounded(radius::MD)
 			.type_style(text::SMALL)
 			.text_color(palette.text.faint)
+			.transition(hover_transition())
 			.hover(move |style| {
 				style
 					.bg(palette.bg.hover)
@@ -70,6 +71,7 @@ impl Sidebar {
 			.rounded(radius::MD)
 			.type_style(text::SMALL)
 			.text_color(palette.text.faint)
+			.transition(hover_transition())
 			.hover(move |style| {
 				style
 					.bg(palette.bg.hover)
@@ -111,6 +113,7 @@ impl Sidebar {
 			.rounded(radius::MD)
 			.type_style(text::UI_MEDIUM)
 			.text_color(palette.text.muted)
+			.transition(hover_transition())
 			.hover(move |style| style.bg(palette.bg.hover).text_color(palette.text.primary))
 			.tooltip(Tooltip::text(project.path.clone()))
 			.on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {

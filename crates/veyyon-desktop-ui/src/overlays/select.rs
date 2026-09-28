@@ -9,7 +9,10 @@ use veyyon_gpui::{
 };
 
 use super::{Menu, MenuEvent, MenuItem, MenuRow, Popover, PopoverEvent};
-use crate::theme::{ActiveTheme, TypeStyled, radius, size, space, text};
+use crate::{
+	controls::hover_transition,
+	theme::{ActiveTheme, TypeStyled, radius, size, space, text},
+};
 
 /// What a select reports to its owner.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -153,6 +156,7 @@ impl Render for Select {
 			.type_style(text::UI)
 			.text_color(color)
 			.cursor_pointer()
+			.transition(hover_transition())
 			.hover(|style| style.border_color(palette.border.strong))
 			.on_click(cx.listener(|this, _: &ClickEvent, window, cx| this.toggle(window, cx)))
 			.on_key_down(cx.listener(Self::on_key_down))

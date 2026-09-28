@@ -4,7 +4,7 @@
 
 use veyyon_desktop_model::{HostActionKind, ProcessView, SurfaceId};
 use veyyon_desktop_ui::{
-	controls::{Button, ButtonSize, ButtonVariant, DotStatus, StatusDot},
+	controls::{Button, ButtonSize, ButtonVariant, DotStatus, StatusDot, hover_transition},
 	icons::IconName,
 	theme::{ActiveTheme, Palette, TypeStyled, size, space, text},
 };
@@ -118,6 +118,7 @@ impl TerminalDrawer {
 			.min_h(size::ROW)
 			.px(space::S3)
 			.hover(|style| style.bg(palette.bg.hover))
+			.transition(hover_transition())
 			.child(StatusDot::new(status))
 			.child(
 				div()

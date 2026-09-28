@@ -5,7 +5,7 @@
 use gpui::{AnyElement, Context, IntoElement, Render, SharedString, Window, div, prelude::*};
 use veyyon_desktop_model::HostActionKind;
 use veyyon_desktop_ui::{
-	controls::{Button, ButtonSize, ButtonVariant, IconButton},
+	controls::{Button, ButtonSize, ButtonVariant, IconButton, hover_transition},
 	icons::IconName,
 	theme::{ActiveTheme, TypeStyled, motion, radius, size, space, text},
 };
@@ -277,6 +277,7 @@ impl InteractionDock {
 			.py(space::S2)
 			.cursor_pointer()
 			.hover(|style| style.bg(palette.bg.hover))
+			.transition(hover_transition())
 			.on_click(cx.listener(|this, _, window, cx| this.unfold(window, cx)))
 			.child(
 				div()

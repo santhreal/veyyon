@@ -9,6 +9,7 @@ use gpui::{
 	prelude::FluentBuilder,
 };
 use veyyon_desktop_ui::{
+	controls::hover_transition,
 	icons::{Icon, IconName},
 	theme::{ActiveTheme, radius, size},
 };
@@ -89,6 +90,7 @@ fn control(id: &'static str, glyph: AnyElement, cx: &App) -> Stateful<gpui::Div>
 		.size(size::CONTROL)
 		.rounded(radius::MD)
 		.cursor(CursorStyle::PointingHand)
+		.transition(hover_transition())
 		.hover(move |style| style.bg(palette.bg.hover))
 		.active(move |style| style.bg(palette.bg.selected))
 		.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())

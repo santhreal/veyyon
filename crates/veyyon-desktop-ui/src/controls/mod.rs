@@ -27,10 +27,11 @@ use veyyon_gpui::{StyleTransition, motion::MotionModel};
 
 use crate::theme::motion;
 
-/// The style transition a hovered or pressed control changes color with:
+/// The style transition a hovered or pressed element changes color with:
 /// [`motion::HOVER`] expressed as a GPUI style transition. A model other than
 /// a timed one changes color at once.
-fn hover_transition() -> StyleTransition {
+#[must_use]
+pub fn hover_transition() -> StyleTransition {
 	let duration_ms = match motion::HOVER {
 		MotionModel::Duration(timed) => timed.duration_ms,
 		_ => 0,

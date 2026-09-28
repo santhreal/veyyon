@@ -9,7 +9,7 @@ use veyyon_desktop_model::{
 	AutoswarmConsoleView, AutoswarmFieldKind, AutoswarmFieldView, AutoswarmRunView, HostActionKind,
 };
 use veyyon_desktop_ui::{
-	controls::{Button, ButtonSize, ButtonVariant, IconButton, Toggle, Tooltip},
+	controls::{Button, ButtonSize, ButtonVariant, IconButton, Toggle, Tooltip, hover_transition},
 	icons::IconName,
 	theme::{ActiveTheme, TypeStyled, radius, space, text},
 };
@@ -334,6 +334,7 @@ impl InteractionDock {
 				.py(space::S1)
 				.rounded(radius::MD)
 				.cursor_pointer()
+				.transition(hover_transition())
 				.hover(|style| style.bg(palette.bg.hover))
 				.on_click(cx.listener(move |this, _, _, cx| this.toggle_run(index, cx)))
 				.child(

@@ -6,7 +6,7 @@ use veyyon_desktop_model::{
 	Capability, CapabilityStatus, ChangeScope, ChangeStatus, HostAction, HostActionKind,
 };
 use veyyon_desktop_ui::{
-	controls::{Button, IconButton},
+	controls::{Button, IconButton, hover_transition},
 	icons::IconName,
 	markdown::Highlighted,
 	theme::{ActiveTheme, Palette, TypeStyled, space, text},
@@ -255,6 +255,7 @@ impl DiffView {
 			.when(commentable, |gutter| {
 				gutter
 					.cursor_pointer()
+					.transition(hover_transition())
 					.hover(|style| style.text_color(palette.accent.base))
 					.on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
 						cx.stop_propagation();
