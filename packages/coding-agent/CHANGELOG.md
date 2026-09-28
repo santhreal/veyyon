@@ -737,6 +737,10 @@
 - A desktop transcript states a mode once it is entered rather than once per turn, where the goal and loop runtimes record the mode they are in after every completed turn and every token reading, so a goal running twelve turns filed twelve identical `Mode: goal` rows between the prompt and the reply; the rows read as words the way the mode is spoken, so `none` is `off` and `goal_paused` is `goal paused`.
 - A desktop goal card draws `Drop` in the error tint's ink and hands the accent to `Pause` or `Resume` instead, where the control that discards the run sat last in the row and took the accent every card's affirmative carries: a card on a completed goal offers `Drop` alone and invites nothing.
 - The `veyyon-desktop` binary no longer links GPUI's `test-support` feature, which drew every dirty window at the end of each effect flush instead of on the display's frame clock and ran the leak detector at quit, so the window drew several hundred frames a second behind a spinner and panicked on quit.
+- The desktop usage tab asks for the session's token totals and its context breakdown each under the host capability that answers it, so a host that declines one still shows the other.
+- The desktop files tab keeps the rows of the search it ran when the host answers a different search.
+- A desktop drawer terminal shown after the process list is sized to its own box instead of the process list's shorter one.
+- A desktop thread header button sends nothing more while its press is in flight, and the Sharing chip lists each link a hosted share offers and copies it on pick.
 
 ### Removed
 
