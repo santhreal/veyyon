@@ -9924,6 +9924,7 @@ dependencies = [
  "libc",
  "serde",
  "serde_json",
+ "strum",
  "veyyon-desktop-model",
  "veyyon-desktop-ui",
  "veyyon-diff-kernel",
