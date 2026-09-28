@@ -7,6 +7,8 @@
 //! [`EditorEvent`]s. Keys are bound in the [`KEY_CONTEXT`] key context.
 
 pub mod actions;
+#[cfg(test)]
+mod blink_tests;
 mod buffer;
 mod element;
 mod handlers;
@@ -39,6 +41,11 @@ use crate::theme::{TypeStyle, text};
 
 /// Time between caret blink phases.
 const BLINK_INTERVAL: Duration = Duration::from_millis(530);
+
+/// Blink phases without an edit or motion before the caret holds solid and
+/// the editor stops asking for frames: 19 phases of 530 ms, about the 10 s
+/// GTK's `gtk-cursor-blink-timeout` sets.
+const BLINK_PHASES: u32 = 19;
 
 /// Whether the editor holds one line or many.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -101,7 +108,10 @@ pub struct Editor {
 	caret_visible:        bool,
 	/// An edit or motion happened since the last blink phase.
 	typed:                bool,
-	/// The blink timer; `None` while unfocused.
+	/// Blink phases since the last edit or motion.
+	idle_phases:          u32,
+	/// The blink timer; `None` while unfocused. It ends once the caret holds
+	/// solid after [`BLINK_PHASES`] idle phases.
 	blink:                Option<Task<()>>,
 	_focus_subscriptions: [Subscription; 2],
 }
@@ -134,6 +144,7 @@ impl Editor {
 			focused: false,
 			caret_visible: false,
 			typed: false,
+			idle_phases: 0,
 			blink: None,
 			_focus_subscriptions: subscriptions,
 		}
@@ -294,11 +305,14 @@ impl Editor {
 	}
 
 	/// Holds the caret solid through the next blink phase and scrolls it into
-	/// view.
+	/// view. A caret that stopped blinking blinks again.
 	fn show_caret(&mut self, cx: &mut Context<Self>) {
 		self.typed = true;
 		self.caret_visible = self.focused;
 		self.autoscroll = true;
+		if self.focused && self.idle_phases >= BLINK_PHASES {
+			self.start_blink(cx);
+		}
 		cx.notify();
 	}
 
@@ -318,9 +332,10 @@ impl Editor {
 	}
 
 	/// Starts the one timer that blinks the caret. It ends itself when the
-	/// editor blurs, and dropping it on blur cancels a pending phase, so a
-	/// blurred editor schedules no frames.
+	/// editor blurs or the caret holds solid, and dropping it on blur cancels
+	/// a pending phase, so a blurred or idle editor schedules no frames.
 	fn start_blink(&mut self, cx: &Context<Self>) {
+		self.idle_phases = 0;
 		self.blink = Some(cx.spawn(async move |editor, cx| {
 			loop {
 				cx.background_executor().timer(BLINK_INTERVAL).await;
@@ -333,17 +348,27 @@ impl Editor {
 	}
 
 	/// Toggles the caret, or keeps it solid when there was input since the
-	/// last phase. Returns false once the editor is unfocused.
+	/// last phase. Returns false once the editor is unfocused, and once
+	/// [`BLINK_PHASES`] phases pass without input, leaving the caret solid.
 	fn blink_phase(&mut self, cx: &mut Context<Self>) -> bool {
 		if !self.focused {
 			return false;
 		}
 		if std::mem::take(&mut self.typed) {
+			self.idle_phases = 0;
 			self.caret_visible = true;
-		} else {
-			self.caret_visible = !self.caret_visible;
-			cx.notify();
+			return true;
 		}
+		self.idle_phases += 1;
+		if self.idle_phases >= BLINK_PHASES {
+			if !self.caret_visible {
+				self.caret_visible = true;
+				cx.notify();
+			}
+			return false;
+		}
+		self.caret_visible = !self.caret_visible;
+		cx.notify();
 		true
 	}
 }
