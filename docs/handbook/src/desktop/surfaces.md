@@ -156,6 +156,13 @@ readable text and usable pointer targets.
 A card states the title the host reports for that session, including a rename
 during a turn. A session with no title states `new session`.
 
+Opening, creating or clearing to another session leaves the running turn on the
+session it left, including a turn whose prompt was sent in the same moment. The
+turn runs to its end off screen and writes its reply to that session's file,
+and its row states Working until it does. A decision it raises is announced as
+a toast. Opening the session again restores the reply in progress, its pending
+decisions and the extension chrome it set.
+
 ### Branches
 
 A session started from another one is drawn under it, indented one step per

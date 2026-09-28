@@ -11,7 +11,7 @@ import { isDesktopHostCommand } from "../desktop-commands";
 import { publishModelsView } from "../models-view";
 import { reportQueuedPrompts } from "../queued-prompts";
 import { executePromptTurn, getOrCreateAgentSession } from "../turns";
-import { activateSession, emitActiveSession, replyError } from "./active-session";
+import { activateSession, emitActiveSession, replyError, startingWork } from "./active-session";
 import { runDesktopHostCommand } from "./host-commands";
 import type { ActionContext, ActionHandler, ActionHandlersMap } from "./types";
 
@@ -53,7 +53,8 @@ async function reloadPlugins(ctx: ActionContext): Promise<void> {
 
 const handleRunCommand: ActionHandler<RunCommandPayload | undefined> = async (ctx, payload) => {
 	const typed = payload?.text?.trim();
-	if (!payload?.session || !typed) {
+	const target = payload?.session;
+	if (!target || !typed) {
 		ctx.reply.failure({
 			scope: "Session",
 			code: "INVALID_ARGUMENTS",
@@ -77,62 +78,80 @@ const handleRunCommand: ActionHandler<RunCommandPayload | undefined> = async (ct
 		return;
 	}
 
-	try {
-		if (!(await activateSession(ctx, payload.session))) return;
-		const session = await getOrCreateAgentSession(ctx.clientState, ctx.socket, ctx);
+	// A command that starts a turn is work on its way to starting until the
+	// turn has, the way a prompt is.
+	await startingWork(ctx, target, async begun => {
+		try {
+			if (!(await activateSession(ctx, target))) return;
+			const session = await getOrCreateAgentSession(ctx.clientState, ctx.socket, ctx);
+			// A skill's turn and a builtin's are under way once the agent starts
+			// them; the calls that run them answer only when they end.
+			const unsubscribe = session.subscribe(event => {
+				if (event.type === "agent_start") begun();
+			});
+			try {
+				// A skill invocation is a prompt the skill builds, so it is
+				// answered before the builtin table is consulted: the two name
+				// spaces are separate and a skill never shadows a builtin.
+				if (await runSkillCommand(session, text, ctx.clientState.queueMode === "Queue" ? "followUp" : "steer")) {
+					reportQueuedPrompts(ctx.socket, ctx.clientState);
+					ctx.reply.success();
+					return;
+				}
 
-		// A skill invocation is a prompt the skill builds, so it is answered
-		// before the builtin table is consulted: the two name spaces are
-		// separate and a skill never shadows a builtin.
-		if (await runSkillCommand(session, text, ctx.clientState.queueMode === "Queue" ? "followUp" : "steer")) {
-			reportQueuedPrompts(ctx.socket, ctx.clientState);
-			ctx.reply.success();
-			return;
+				// A command this host answers is answered before the builtin
+				// table, which holds the text-mode set and does not know this one.
+				// Its name is a builtin's, so a skill still cannot shadow it. It
+				// starts what it starts on its own, and one of them joins a share
+				// in place of this session, which is a leave of its own.
+				if (isDesktopHostCommand(parsed.name)) {
+					begun();
+					await runDesktopHostCommand(ctx, session, parsed.name, parsed.args);
+					return;
+				}
+
+				const result = await executeAcpBuiltinSlashCommand(text, {
+					session,
+					sessionManager: session.sessionManager,
+					settings: session.settings,
+					cwd: session.sessionManager.getCwd(),
+					output: line => appendCommandOutput(ctx, text, line),
+					refreshCommands: async () => {
+						ctx.reply.snapshot({ Commands: await buildCommandsView(ctx.clientState) });
+					},
+					reloadPlugins: () => reloadPlugins(ctx),
+					notifyTitleChanged: () => {
+						const sm = ctx.clientState.sessionManager;
+						if (sm) emitActiveSession(ctx, sm);
+					},
+					notifyConfigChanged: () => publishModelsView(ctx.socket, ctx),
+				});
+
+				// `false` is a name the builtin table does not answer to, which
+				// is an extension command, a project command file or an MCP
+				// prompt: the session expands each of those itself when the
+				// prompt starts with a slash. `{ prompt }` is what a builtin left
+				// behind for the model.
+				const prompt = result === false ? text : "prompt" in result ? result.prompt : undefined;
+				if (prompt !== undefined) {
+					const streaming = session.isStreaming
+						? ctx.clientState.queueMode === "Queue"
+							? "followUp"
+							: "steer"
+						: undefined;
+					const accepted = executePromptTurn(session, ctx.clientState, prompt, [], streaming);
+					begun();
+					await accepted;
+					reportQueuedPrompts(ctx.socket, ctx.clientState);
+				}
+				ctx.reply.success();
+			} finally {
+				unsubscribe();
+			}
+		} catch (error) {
+			replyError(ctx, "COMMAND_FAILED", error);
 		}
-
-		// A command this host answers is answered before the builtin table,
-		// which holds the text-mode set and does not know this one. Its name
-		// is a builtin's, so a skill still cannot shadow it.
-		if (isDesktopHostCommand(parsed.name)) {
-			await runDesktopHostCommand(ctx, session, parsed.name, parsed.args);
-			return;
-		}
-
-		const result = await executeAcpBuiltinSlashCommand(text, {
-			session,
-			sessionManager: session.sessionManager,
-			settings: session.settings,
-			cwd: session.sessionManager.getCwd(),
-			output: line => appendCommandOutput(ctx, text, line),
-			refreshCommands: async () => {
-				ctx.reply.snapshot({ Commands: await buildCommandsView(ctx.clientState) });
-			},
-			reloadPlugins: () => reloadPlugins(ctx),
-			notifyTitleChanged: () => {
-				const sm = ctx.clientState.sessionManager;
-				if (sm) emitActiveSession(ctx, sm);
-			},
-			notifyConfigChanged: () => publishModelsView(ctx.socket, ctx),
-		});
-
-		// `false` is a name the builtin table does not answer to, which is an
-		// extension command, a project command file or an MCP prompt: the
-		// session expands each of those itself when the prompt starts with a
-		// slash. `{ prompt }` is what a builtin left behind for the model.
-		const prompt = result === false ? text : "prompt" in result ? result.prompt : undefined;
-		if (prompt !== undefined) {
-			const streaming = session.isStreaming
-				? ctx.clientState.queueMode === "Queue"
-					? "followUp"
-					: "steer"
-				: undefined;
-			await executePromptTurn(session, ctx.clientState, prompt, [], streaming);
-			reportQueuedPrompts(ctx.socket, ctx.clientState);
-		}
-		ctx.reply.success();
-	} catch (error) {
-		replyError(ctx, "COMMAND_FAILED", error);
-	}
+	});
 };
 
 export const commandsActionHandlers: ActionHandlersMap = {

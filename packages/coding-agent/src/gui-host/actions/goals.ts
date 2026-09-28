@@ -1,8 +1,8 @@
 import { attachGoalBridge } from "../goal-bridge";
 import { getOrCreateAgentSession } from "../turns";
 import type { GoalControl } from "../wire";
-import { activateSession, replyError } from "./active-session";
-import type { ActionHandler, ActionHandlersMap } from "./types";
+import { activateSession, replyError, startingWork } from "./active-session";
+import type { ActionContext, ActionHandler, ActionHandlersMap } from "./types";
 
 interface SetGoalPayload {
 	session?: string;
@@ -15,7 +15,7 @@ interface ControlGoalPayload {
 	op?: GoalControl;
 }
 
-const handleSetGoal: ActionHandler<SetGoalPayload | undefined> = async (ctx, payload) => {
+async function setGoal(ctx: ActionContext, payload: SetGoalPayload | undefined): Promise<void> {
 	if (!payload?.session) {
 		ctx.reply.failure({
 			scope: "Session",
@@ -76,9 +76,9 @@ const handleSetGoal: ActionHandler<SetGoalPayload | undefined> = async (ctx, pay
 	} catch (error) {
 		replyError(ctx, "SET_GOAL_FAILED", error);
 	}
-};
+}
 
-const handleControlGoal: ActionHandler<ControlGoalPayload | undefined> = async (ctx, payload) => {
+async function controlGoal(ctx: ActionContext, payload: ControlGoalPayload | undefined): Promise<void> {
 	if (!payload?.session) {
 		ctx.reply.failure({
 			scope: "Session",
@@ -177,7 +177,18 @@ const handleControlGoal: ActionHandler<ControlGoalPayload | undefined> = async (
 	} catch (error) {
 		replyError(ctx, "CONTROL_GOAL_FAILED", error);
 	}
-};
+}
+
+/**
+ * A goal set or resumed is under way once its continuation is scheduled,
+ * which is when the request answers; a leave right behind it then finds the
+ * goal where a leave after it would.
+ */
+const handleSetGoal: ActionHandler<SetGoalPayload | undefined> = (ctx, payload) =>
+	startingWork(ctx, payload?.session, () => setGoal(ctx, payload));
+
+const handleControlGoal: ActionHandler<ControlGoalPayload | undefined> = (ctx, payload) =>
+	startingWork(ctx, payload?.session, () => controlGoal(ctx, payload));
 
 export const goalActionHandlers: ActionHandlersMap = {
 	SetGoal: handleSetGoal as ActionHandler<never>,

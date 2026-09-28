@@ -21,7 +21,7 @@ import type { AgentSession } from "../../session/agent-session";
 import type { InteractionLedger } from "../interactions";
 import { exitPlanMode, readSessionPlan, sessionPlanPath } from "../plan-approval";
 import { executePromptTurn, getOrCreateAgentSession } from "../turns";
-import { activateSession } from "./active-session";
+import { activateSession, startingWork } from "./active-session";
 import type { ActionContext, ActionHandler, ActionHandlersMap } from "./types";
 
 interface ReviewPlanPayload {
@@ -91,7 +91,7 @@ async function carryOutcome(
  * decision waiting on a person is not a request in flight, and the window
  * answers it through `RespondToInteraction` like every other card.
  */
-const handleReviewPlan: ActionHandler<ReviewPlanPayload | undefined> = async (ctx, payload) => {
+async function reviewPlan(ctx: ActionContext, payload: ReviewPlanPayload | undefined): Promise<void> {
 	if (payload?.session && !(await activateSession(ctx, payload.session))) return;
 	const session = await getOrCreateAgentSession(ctx.clientState, ctx.socket, ctx);
 	if (!session.getPlanModeState()?.enabled) {
@@ -141,7 +141,11 @@ const handleReviewPlan: ActionHandler<ReviewPlanPayload | undefined> = async (ct
 	void carryOutcome(ctx, session, ledger, located.planFilePath, located.planContent).catch((error: unknown) => {
 		logger.error("gui-host: plan review outcome failed", { error: errorMessage(error) });
 	});
-};
+}
+
+/** The review is under way once its card is up, which is when it answers. */
+const handleReviewPlan: ActionHandler<ReviewPlanPayload | undefined> = (ctx, payload) =>
+	startingWork(ctx, payload?.session, () => reviewPlan(ctx, payload));
 
 export const planReviewActionHandlers: ActionHandlersMap = {
 	ReviewPlan: handleReviewPlan as ActionHandler<never>,

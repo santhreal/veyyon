@@ -14,7 +14,7 @@ import {
 	type LiveTurn,
 } from "../turns";
 import type { AttachmentSubmission } from "../wire";
-import { activateSession, activeManager, isActive, replyError } from "./active-session";
+import { activateSession, activeManager, isActive, replyError, startingWork } from "./active-session";
 import { recordSubmittedPrompt } from "./history";
 import { handleSetSessionMode } from "./session-mode";
 import type { ActionContext, ActionHandler, ActionHandlersMap } from "./types";
@@ -54,7 +54,8 @@ async function deliver(
 	names = true,
 ): Promise<void> {
 	const text = payload?.text?.trim();
-	if (!payload?.session || !text) {
+	const target = payload?.session;
+	if (!target || !text) {
 		ctx.reply.failure({
 			scope: "Session",
 			code: "INVALID_ARGUMENTS",
@@ -63,52 +64,61 @@ async function deliver(
 		});
 		return;
 	}
-	try {
-		if (!(await activateSession(ctx, payload.session))) return;
-		const session = await getOrCreateAgentSession(ctx.clientState, ctx.socket, ctx);
-		const attachments = Array.isArray(payload.attachments) ? payload.attachments : [];
-		const streaming = behavior === "Steer" ? "steer" : behavior === "Queue" ? "followUp" : undefined;
-		if (session.isStreaming && !streaming) {
-			ctx.reply.failure({
-				scope: "Session",
-				code: "TURN_IN_PROGRESS",
-				message: "A turn is running; set a queue mode or use Steer / FollowUp",
-				retryable: true,
-			});
-			return;
+	const submitted = payload?.attachments;
+	const attachments = Array.isArray(submitted) ? submitted : [];
+	const streaming = behavior === "Steer" ? "steer" : behavior === "Queue" ? "followUp" : undefined;
+	// The prompt is work on its way to starting until its turn has started, so
+	// a leave sent right behind it leaves the turn running rather than the
+	// thread it has yet to start on.
+	await startingWork(ctx, target, async begun => {
+		try {
+			if (!(await activateSession(ctx, target))) return;
+			const session = await getOrCreateAgentSession(ctx.clientState, ctx.socket, ctx);
+			if (session.isStreaming && !streaming) {
+				ctx.reply.failure({
+					scope: "Session",
+					code: "TURN_IN_PROGRESS",
+					message: "A turn is running; set a queue mode or use Steer / FollowUp",
+					retryable: true,
+				});
+				return;
+			}
+			// On an idle session a steer or follow-up is the next turn; the
+			// session only queues when one is running. The turn is under way
+			// once the session holds its promise, which it does on the call.
+			const accepted = executePromptTurn(session, ctx.clientState, text, attachments, streaming);
+			begun();
+			await accepted;
+			reportQueuedPrompts(ctx.socket, ctx.clientState);
+			ctx.reply.success();
+			// Both after the reply: the prompt is accepted either way, the title
+			// takes a model call of its own, and the history row is a disk write.
+			// The name reaches the client as a snapshot of its own, the way a
+			// rename does. Both are held to `names`, which states the text was
+			// typed: a fixed instruction is neither worth a title nor worth
+			// recalling.
+			if (names) {
+				void nameSessionFromFirstPrompt(ctx, session, text);
+				recordSubmittedPrompt(text, target);
+			}
+		} catch (error) {
+			if (
+				error instanceof UnsupportedModelInputError ||
+				error instanceof VideoInputTooLargeError ||
+				error instanceof ImageInputTooLargeError ||
+				error instanceof AttachmentValidationError ||
+				(error instanceof Error &&
+					(error.name === "UnsupportedModelInputError" ||
+						error.name === "AttachmentValidationError" ||
+						error.name === "VideoInputTooLargeError" ||
+						error.name === "ImageInputTooLargeError"))
+			) {
+				replyError(ctx, "INVALID_ARGUMENTS", error);
+			} else {
+				replyError(ctx, "PROMPT_REJECTED", error);
+			}
 		}
-		// On an idle session a steer or follow-up is the next turn; the session
-		// only queues when one is running.
-		await executePromptTurn(session, ctx.clientState, text, attachments, streaming);
-		reportQueuedPrompts(ctx.socket, ctx.clientState);
-		ctx.reply.success();
-		// Both after the reply: the prompt is accepted either way, the title
-		// takes a model call of its own, and the history row is a disk write.
-		// The name reaches the client as a snapshot of its own, the way a
-		// rename does. Both are held to `names`, which states the text was
-		// typed: a fixed instruction is neither worth a title nor worth
-		// recalling.
-		if (names) {
-			void nameSessionFromFirstPrompt(ctx, session, text);
-			recordSubmittedPrompt(text, payload.session);
-		}
-	} catch (error) {
-		if (
-			error instanceof UnsupportedModelInputError ||
-			error instanceof VideoInputTooLargeError ||
-			error instanceof ImageInputTooLargeError ||
-			error instanceof AttachmentValidationError ||
-			(error instanceof Error &&
-				(error.name === "UnsupportedModelInputError" ||
-					error.name === "AttachmentValidationError" ||
-					error.name === "VideoInputTooLargeError" ||
-					error.name === "ImageInputTooLargeError"))
-		) {
-			replyError(ctx, "INVALID_ARGUMENTS", error);
-		} else {
-			replyError(ctx, "PROMPT_REJECTED", error);
-		}
-	}
+	});
 }
 
 const handleSubmitPrompt: ActionHandler<PromptPayload | undefined> = (ctx, payload) =>
@@ -163,7 +173,7 @@ const handleAbortTurn: ActionHandler<SessionRef | undefined> = async (ctx, paylo
  * so the transcript carries one attempt, not two. A session in which no turn
  * has run has nothing to re-run and is refused for the same reason.
  */
-const handleRetryTurn: ActionHandler<SessionRef | undefined> = async (ctx, payload) => {
+async function retryTurn(ctx: ActionContext, payload: SessionRef | undefined): Promise<void> {
 	if (payload?.session && !(await activateSession(ctx, payload.session))) return;
 	const session = ctx.clientState.agentSession;
 	if (!session) {
@@ -189,7 +199,11 @@ const handleRetryTurn: ActionHandler<SessionRef | undefined> = async (ctx, paylo
 	} catch (error) {
 		replyError(ctx, "PROMPT_REJECTED", error);
 	}
-};
+}
+
+/** The retry is under way once the session has scheduled it, which is when it answers. */
+const handleRetryTurn: ActionHandler<SessionRef | undefined> = (ctx, payload) =>
+	startingWork(ctx, payload?.session, () => retryTurn(ctx, payload));
 
 /**
  * Ask for the reply on screen again, in plainer prose. It is an ordinary user
@@ -198,7 +212,7 @@ const handleRetryTurn: ActionHandler<SessionRef | undefined> = async (ctx, paylo
  * refuses unless a finished reply is there to work from: mid-turn, or after a
  * turn that produced no text, there is nothing to say again.
  */
-const handleRephraseReply: ActionHandler<SessionRef | undefined> = async (ctx, payload) => {
+async function rephraseReply(ctx: ActionContext, payload: SessionRef | undefined): Promise<void> {
 	if (payload?.session && !(await activateSession(ctx, payload.session))) return;
 	const session = ctx.clientState.agentSession;
 	if (!session?.hasTerminalTextAnswerWithoutQueuedWork()) {
@@ -211,7 +225,10 @@ const handleRephraseReply: ActionHandler<SessionRef | undefined> = async (ctx, p
 		return;
 	}
 	await deliver(ctx, { session: payload?.session, text: REPHRASE_REQUEST }, "RephraseReply", undefined, false);
-};
+}
+
+const handleRephraseReply: ActionHandler<SessionRef | undefined> = (ctx, payload) =>
+	startingWork(ctx, payload?.session, () => rephraseReply(ctx, payload));
 
 interface SetQueueModePayload {
 	session?: string;

@@ -21,7 +21,7 @@ import {
 	seedFirstMessagePosition,
 	sessionEntriesToTranscript,
 } from "../transcript-conversion";
-import { type ClientSessionState, disposeTurnSession, restateStreamingReply } from "../turns";
+import { type ClientSessionState, disposeTurnSession, restateStreamingReply, type StartingWork } from "../turns";
 import type { ErrorScope, GoalStatus, GoalView, TranscriptEntry } from "../wire";
 import { sessionFiles } from "./session-files";
 import type { ActionContext } from "./types";
@@ -74,6 +74,53 @@ function rescopeWorkspace(ctx: ActionContext, previousCwd: string, manager: Sess
 
 export function isActive(sm: SessionManager | undefined, session: string): sm is SessionManager {
 	return sm !== undefined && (sm.getSessionId() === session || sm.getSessionFile() === session);
+}
+
+/**
+ * Run `start`, a request that starts work on `session` -- a turn, a
+ * compaction, a decision -- as work on its way to starting, until it calls
+ * `begun` or settles. `start` calls `begun` once the work is under way, which
+ * is once `isWorking` states it; calling it again does nothing. `session`
+ * omitted is the session on screen.
+ *
+ * A leave arriving meanwhile waits for it: see `leaveOpenSession`.
+ */
+export async function startingWork<T>(
+	ctx: ActionContext,
+	session: string | undefined,
+	start: (begun: () => void) => Promise<T>,
+): Promise<T> {
+	const { promise, resolve } = Promise.withResolvers<void>();
+	const work: StartingWork = { session: session ?? activeManager(ctx)?.getSessionId() ?? "", started: promise };
+	ctx.clientState.startingWork ??= new Set();
+	const starting = ctx.clientState.startingWork;
+	starting.add(work);
+	const begun = () => {
+		starting.delete(work);
+		resolve();
+	};
+	try {
+		return await start(begun);
+	} finally {
+		begun();
+	}
+}
+
+/**
+ * Move the open session to the background when it is still working, as
+ * `parkOpenSession` does, once every request on its way to starting work on
+ * it has started it or failed. A leave sent right behind such a request would
+ * otherwise find a session that states no work yet: a thread's first prompt
+ * builds the agent that runs it, so the leave would leave the turn behind
+ * with no owner and the agent it builds would take the client back onto the
+ * session the window left; with an agent in place, the leave would reload it
+ * onto the next session and the prompt would land there.
+ */
+export async function leaveOpenSession(ctx: ActionContext): Promise<boolean> {
+	const open = activeManager(ctx);
+	const starting = [...(ctx.clientState.startingWork ?? [])].filter(work => isActive(open, work.session));
+	await Promise.all(starting.map(work => work.started));
+	return parkOpenSession(ctx.clientState, ctx.socket);
 }
 
 export function replyError(ctx: ActionContext, code: string, error: unknown, scope: ErrorScope = "Session"): void {
@@ -291,7 +338,7 @@ export function wireSessionManager(ctx: ActionContext, sm: SessionManager): void
  *
  * The session being left keeps whatever it is still doing: a session with a
  * turn in flight or a decision open moves to the background and runs on (see
- * `parkOpenSession`). A session in the background is taken back as it is. An
+ * `leaveOpenSession`). A session in the background is taken back as it is. An
  * idle live agent session otherwise switches in place, so its extensions see
  * `session_before_switch` and its listeners stay attached; without one the
  * session file is opened as a plain manager, and the first prompt attaches an
@@ -306,7 +353,7 @@ export async function activateSession(ctx: ActionContext, session: string): Prom
 
 	const background = backgroundSession(ctx.clientState, session);
 	if (background) {
-		parkOpenSession(ctx.clientState, ctx.socket);
+		await leaveOpenSession(ctx);
 		await disposeTurnSession(ctx.clientState);
 		const agent = await resumeBackgroundSession(ctx.clientState, ctx.socket, background, ctx);
 		rescopeWorkspace(ctx, previousCwd, agent.sessionManager);
@@ -318,7 +365,7 @@ export async function activateSession(ctx: ActionContext, session: string): Prom
 		replySessionNotFound(ctx, session);
 		return undefined;
 	}
-	parkOpenSession(ctx.clientState, ctx.socket);
+	await leaveOpenSession(ctx);
 
 	const agent = ctx.clientState.agentSession;
 	if (agent) {

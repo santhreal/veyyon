@@ -3,10 +3,9 @@ import { errorMessage } from "@veyyon/utils";
 import { mcpManagerInstance } from "../../mcp/manager-instance";
 import type { AgentSession } from "../../session/agent-session";
 import { computeContextBreakdown } from "../../session/context-usage";
-import { parkOpenSession } from "../background-sessions";
 import { getOrCreateAgentSession } from "../turns";
 import type { UsageTotals, UsageView } from "../wire";
-import { emitActiveSessionAndTranscript } from "./active-session";
+import { emitActiveSessionAndTranscript, leaveOpenSession } from "./active-session";
 import type { ActionHandler, ActionHandlersMap } from "./types";
 
 /**
@@ -192,7 +191,7 @@ const handleClearOutput: ActionHandler<ClearOutputPayload | undefined> = async (
 		// Clearing starts the next session; a turn still running on this one
 		// runs on in the background, and the fresh agent that replaces it is
 		// already on an empty session.
-		const parked = parkOpenSession(ctx.clientState, ctx.socket);
+		const parked = await leaveOpenSession(ctx);
 		const agent = ctx.clientState.agentSession ?? (await getOrCreateAgentSession(ctx.clientState, ctx.socket, ctx));
 		if (!parked) await agent.newSession();
 		// The header and the transcript of the session the operator is now on

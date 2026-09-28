@@ -120,6 +120,13 @@ export interface BackgroundSession extends LiveTurn {
 	unsubscribe: () => void;
 }
 
+/** A request on its way to starting work on `session`, named as the request named it. */
+export interface StartingWork {
+	readonly session: string;
+	/** Settles once the work is under way, or the request ended before it was. */
+	readonly started: Promise<void>;
+}
+
 export interface ClientSessionState {
 	revision: number;
 	agentSession?: AgentSession;
@@ -128,6 +135,12 @@ export interface ClientSessionState {
 	sessionManager?: SessionManager;
 	unsubscribeSession?: () => void;
 	activeTurnPromise?: Promise<boolean>;
+	/**
+	 * The requests on their way to starting work -- activating their session,
+	 * building its agent -- before anything states the session is working. A
+	 * leave waits for them: see `startingWork` and `leaveOpenSession`.
+	 */
+	startingWork?: Set<StartingWork>;
 	/**
 	 * Identity of the reply currently streaming, held for as long as it streams.
 	 * Every delta of one reply carries it, so the desktop replaces one

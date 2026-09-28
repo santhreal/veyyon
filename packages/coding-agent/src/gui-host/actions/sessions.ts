@@ -1,6 +1,6 @@
 import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
-import { backgroundSession, parkOpenSession } from "../background-sessions";
+import { backgroundSession } from "../background-sessions";
 import { disposeTurnSession, endBackgroundSession, getOrCreateAgentSession, settleRunningTurn } from "../turns";
 import { ALL_EXPORT_FORMATS } from "../wire";
 import {
@@ -12,8 +12,10 @@ import {
 	replyError as failure,
 	findSessionPath,
 	isActive,
+	leaveOpenSession,
 	replySessionNotFound as notFound,
 	sessionDirFor,
+	startingWork,
 	sessionStorage as storage,
 	wireSessionManager,
 } from "./active-session";
@@ -61,7 +63,7 @@ const handleCreateSession: ActionHandler<CreateSessionPayload | undefined> = asy
 		// A turn running on the session being left runs on in the background;
 		// an idle agent session reloads in place, or is disposed for another
 		// workspace.
-		parkOpenSession(ctx.clientState, ctx.socket);
+		await leaveOpenSession(ctx);
 		const agent = ctx.clientState.agentSession;
 		let sm: SessionManager;
 		if (agent && workspace === agent.sessionManager.getCwd()) {
@@ -304,16 +306,23 @@ const handleCompactSession: ActionHandler<SessionRef | undefined> = async (ctx, 
 		});
 		return;
 	}
-	try {
-		const sm = await activate(ctx, payload.session);
-		if (!sm) return;
-		const agent = await getOrCreateAgentSession(ctx.clientState, ctx.socket, ctx);
-		await agent.compact();
-		emitActiveSessionAndTranscript(ctx, sm);
-		ctx.reply.success();
-	} catch (error) {
-		failure(ctx, "COMPACT_SESSION_FAILED", error);
-	}
+	const target = payload.session;
+	// The compaction is work on its way to starting until the session states
+	// it, which it does on the call.
+	await startingWork(ctx, target, async begun => {
+		try {
+			const sm = await activate(ctx, target);
+			if (!sm) return;
+			const agent = await getOrCreateAgentSession(ctx.clientState, ctx.socket, ctx);
+			const compacted = agent.compact();
+			begun();
+			await compacted;
+			emitActiveSessionAndTranscript(ctx, sm);
+			ctx.reply.success();
+		} catch (error) {
+			failure(ctx, "COMPACT_SESSION_FAILED", error);
+		}
+	});
 };
 
 interface HandoffSessionPayload {

@@ -19,6 +19,13 @@
  * one, left the turn running (the file holds the prompt and no reply yet), and
  * left it reachable, so a stop aimed at it by its own id ends it and files the
  * partial reply with the session that produced it.
+ * The same holds for a leave sent right behind the request that starts the
+ * turn, before anything states the thread is working: a thread's first prompt
+ * builds the agent that runs it, and a leave that got there first left the
+ * turn with no owner and the client back on the thread it left. Every request
+ * that carries text into a turn is swept in front of every leave onto a
+ * session on disk, and in front of an open of a thread working in the
+ * background, which is taken back rather than opened.
  * Around the sweep: a reply that finishes off screen lands in its own file and
  * sends the window nothing but its row; a thread opened again mid-reply has its
  * reply restated behind its transcript; a stop aimed at one thread leaves the
@@ -34,7 +41,14 @@
  * session in place once the relay answers and ends its turn as the terminal's
  * `/join` does, and which needs a relay this suite does not run; and a client
  * that vanishes without closing its socket, which the connection's teardown
- * reaches only when the socket is seen to close.
+ * reaches only when the socket is seen to close. The requests that start work
+ * without text -- a retry, a rephrase, a plan review, a goal, a compaction --
+ * wait for their work the same way (`startingWork`), but each needs a state
+ * of its own to start from, and the right-behind sweep does not build it.
+ * Onto a thread working in the background only the open is sent right behind
+ * a start: every other leave that names that thread reaches it through the
+ * same take-back in `activateSession`, and most of them ask the model about
+ * the thread, whose held reply would hold them too.
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
@@ -47,6 +61,7 @@ import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { computeDefaultSessionDir } from "@veyyon/kernel/session/session-paths";
 import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
+import { getAgentDir } from "@veyyon/utils";
 import { isSessionFileName } from "@veyyon/utils/session-file";
 import { type GuiHostServer, startGuiHostServer } from "../../src/gui-host";
 import { commandsActionHandlers } from "../../src/gui-host/actions/commands";
@@ -59,6 +74,7 @@ import { sessionsActionHandlers } from "../../src/gui-host/actions/sessions";
 import { shareActionHandlers } from "../../src/gui-host/actions/share";
 import { turnActionHandlers } from "../../src/gui-host/actions/turn";
 import type { ActionHandlersMap } from "../../src/gui-host/actions/types";
+import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
 import { isolatedAuthStorage } from "../helpers/isolated-auth-storage";
 import { type RequestFrame, snapshotSections, TestSocketClient } from "./test-client";
 
@@ -177,6 +193,26 @@ const LEAVES_THE_SESSION = [
 	"SubmitPrompt",
 ];
 
+/** A command in the agent's own command directory whose body is this suite's prompt. */
+const COMMAND = "heavy";
+
+/**
+ * The requests that carry text into a turn, each with the text that starts
+ * this suite's turn through it. Pinned against the `PAYLOADS` rows whose
+ * payload holds text, so an action that starts carrying text into a turn is
+ * swept here or recorded.
+ */
+const STARTS_A_TURN: Record<string, string> = {
+	FollowUp: PROMPT,
+	RunCommand: `/${COMMAND}`,
+	Steer: PROMPT,
+	SubmitPrompt: PROMPT,
+};
+
+function carriesText(payload: unknown): boolean {
+	return typeof payload === "object" && payload !== null && "text" in payload;
+}
+
 function assistantMessage(text: string, stopReason: StopReason): AssistantMessage {
 	return {
 		role: "assistant",
@@ -292,31 +328,44 @@ function conversationRoles(frames: RequestFrame[]): string[] | undefined {
 		.filter(role => role !== "Custom");
 }
 
+// The host re-reads the command catalogue off the process's profile whatever
+// agent dir it was started with, so the command this suite runs lives in a
+// profile of this file's own.
+useIsolatedAgentDir();
+
 describe("a thread the window leaves keeps its turn running", () => {
 	let tempDir: string;
 	let sessionDir: string;
 	let server: GuiHostServer | null = null;
 	let finishers: Finish[] = [];
+	/** Settles when the model is asked for the turn under test. */
+	let turnRequested = Promise.withResolvers<void>();
 
 	beforeEach(async () => {
 		tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "gui-host-leave-turn-"));
-		sessionDir = computeDefaultSessionDir(tempDir, new FileSessionStorage(), path.join(tempDir, "sessions"));
+		const profile = getAgentDir();
+		sessionDir = computeDefaultSessionDir(tempDir, new FileSessionStorage(), path.join(profile, "sessions"));
 		await fs.mkdir(sessionDir, { recursive: true });
 		await fs.writeFile(
-			path.join(tempDir, "config.yml"),
+			path.join(profile, "config.yml"),
 			'modelRoles:\n  default: openai/gpt-4o-mini\ncollab:\n  relayUrl: ""\n',
 			"utf8",
 		);
+		await fs.mkdir(path.join(profile, "commands"), { recursive: true });
+		await fs.writeFile(path.join(profile, "commands", `${COMMAND}.md`), `${PROMPT}\n`, "utf8");
 		const authStorage = await isolatedAuthStorage(tempDir);
 		authStorage.upsertCredential("openai", { type: "api_key", key: "test-key" });
 		finishers = [];
-		vi.spyOn(ai, "streamSimple").mockImplementation((_model, context, options) =>
-			isTheTurnUnderTest(context) ? heldStream(options?.signal, finishers) : completedStream("Answered."),
-		);
+		turnRequested = Promise.withResolvers<void>();
+		vi.spyOn(ai, "streamSimple").mockImplementation((_model, context, options) => {
+			if (!isTheTurnUnderTest(context)) return completedStream("Answered.");
+			turnRequested.resolve();
+			return heldStream(options?.signal, finishers);
+		});
 		server = await startGuiHostServer({
 			endpoint: "tcp:127.0.0.1:0",
 			cwd: tempDir,
-			agentDir: tempDir,
+			agentDir: profile,
 			authStorage,
 		});
 	});
@@ -457,6 +506,136 @@ describe("a thread the window leaves keeps its turn running", () => {
 		}
 		expect(left.sort()).toEqual(LEAVES_THE_SESSION);
 	}, 180_000);
+
+	// The window sends a leave in the same breath as the prompt when the
+	// operator opens another thread right after pressing Enter. The leave then
+	// reaches the host while the prompt is still starting its turn -- a
+	// thread's first prompt builds the agent that runs it -- and nothing yet
+	// states the thread is working. Every request that carries text into a
+	// turn is swept as the one in front, against every leave behind it.
+	test("a leave sent right behind the request that starts a turn leaves the turn running", async () => {
+		const carrying = Object.entries(PAYLOADS)
+			.filter(([, payloadFor]) => carriesText(payloadFor("", "")))
+			.map(([action]) => action);
+		expect(carrying.sort()).toEqual(Object.keys(STARTS_A_TURN).sort());
+
+		let id = 100;
+		for (const [starter, text] of Object.entries(STARTS_A_TURN)) {
+			for (const action of LEAVES_THE_SESSION) {
+				const payloadFor = PAYLOADS[action];
+				if (!payloadFor) throw new Error(`no payload for ${action}`);
+				const pair = `${starter} then ${action}`;
+				turnRequested = Promise.withResolvers<void>();
+				const client = await connect();
+				try {
+					const created = await client.request(id, { CreateSession: {} });
+					const onScreen = snapshotSections<ActiveSessionSection>(created.frames, "ActiveSession").at(-1)?.value
+						.id;
+					if (!onScreen) throw new Error("CreateSession emitted no ActiveSession");
+					const other = await sessionOnDisk(`a session ${action} can name`);
+					const [start, leave, probe, stop] = [id + 1, id + 2, id + 3, id + 5];
+					id += 10;
+					client.send({ id: start, action: { [starter]: { session: onScreen, text } } });
+					client.send({ id: leave, action: { [action]: payloadFor(other, onScreen) } });
+					const frames: RequestFrame[] = [];
+					const outcomes = new Map<number, RequestFrame>();
+					while (outcomes.size < 2) {
+						const frame = (await client.nextFrame()) as RequestFrame;
+						frames.push(frame);
+						const answered = frame.RequestSucceeded?.request ?? frame.RequestFailed?.request;
+						if (answered === start || answered === leave) outcomes.set(answered, frame);
+					}
+					expect([pair, outcomes.get(start)]).toEqual([pair, { RequestSucceeded: { request: start } }]);
+					await turnRequested.promise;
+
+					// The client is off the session it left, and on the one the
+					// window was last told of, when it was told of one.
+					expect([pair, await stillOpen(client, onScreen, probe)]).toEqual([pair, false]);
+					const told = snapshotSections<ActiveSessionSection>(frames, "ActiveSession").at(-1)?.value.id;
+					if (told) expect([pair, await stillOpen(client, told, probe + 1)]).toEqual([pair, true]);
+
+					// The turn is running, and still the left session's own.
+					const stopped = await client.request(stop, { AbortTurn: { session: onScreen } });
+					expect([pair, stopped.outcome]).toEqual([pair, { RequestSucceeded: { request: stop } }]);
+					expect([pair, await messagesOnDisk(onScreen)]).toEqual([pair, [prompt, partial]]);
+				} finally {
+					client.destroy();
+				}
+			}
+		}
+	}, 180_000);
+
+	// A thread working in the background is taken back rather than opened from
+	// disk, and that path leaves the thread on screen as well: a leave onto it
+	// right behind a request that starts a turn waits for that turn the same
+	// way, or the turn is built on the agent the leave took back.
+	test("a leave onto a thread working in the background waits for the turn in front of it", async () => {
+		let id = 1_000;
+		for (const [starter, text] of Object.entries(STARTS_A_TURN)) {
+			const client = await connect();
+			try {
+				const working = await sessionWithATurnInFlight(client, id);
+				const created = await client.request(id + 2, { CreateSession: {} });
+				const onScreen = snapshotSections<ActiveSessionSection>(created.frames, "ActiveSession").at(-1)?.value.id;
+				if (!onScreen) throw new Error("CreateSession emitted no ActiveSession");
+				const [start, leave, probe, stop] = [id + 3, id + 4, id + 5, id + 7];
+				id += 10;
+				turnRequested = Promise.withResolvers<void>();
+				client.send({ id: start, action: { [starter]: { session: onScreen, text } } });
+				client.send({ id: leave, action: { OpenSession: { session: working } } });
+				const outcomes = new Map<number, RequestFrame>();
+				while (outcomes.size < 2) {
+					const frame = (await client.nextFrame()) as RequestFrame;
+					const answered = frame.RequestSucceeded?.request ?? frame.RequestFailed?.request;
+					if (answered === start || answered === leave) outcomes.set(answered, frame);
+				}
+				expect([starter, outcomes.get(start), outcomes.get(leave)]).toEqual([
+					starter,
+					{ RequestSucceeded: { request: start } },
+					{ RequestSucceeded: { request: leave } },
+				]);
+				await turnRequested.promise;
+
+				expect([starter, await stillOpen(client, onScreen, probe)]).toEqual([starter, false]);
+				expect([starter, await stillOpen(client, working, probe + 1)]).toEqual([starter, true]);
+				// Each turn is its own thread's, and running: a stop aimed at the
+				// one left ends it alone.
+				const stopped = await client.request(stop, { AbortTurn: { session: onScreen } });
+				expect([starter, stopped.outcome]).toEqual([starter, { RequestSucceeded: { request: stop } }]);
+				expect([starter, await messagesOnDisk(onScreen), await messagesOnDisk(working)]).toEqual([
+					starter,
+					[prompt, partial],
+					[prompt],
+				]);
+			} finally {
+				client.destroy();
+			}
+		}
+	});
+
+	// A leave waits for the request in front only until that request has
+	// started its work or given up. One the host refuses after it began --
+	// a prompt into a thread already mid-turn, with no queue mode set --
+	// must not hold the leave behind it; if it did, this test times out.
+	test("a leave behind a prompt the host refuses is not held by it", async () => {
+		const client = await connect();
+		try {
+			const onScreen = await sessionWithATurnInFlight(client);
+			const other = await sessionOnDisk("elsewhere");
+			client.send({ id: 3, action: { SubmitPrompt: { session: onScreen, text: "a second prompt" } } });
+			client.send({ id: 4, action: { OpenSession: { session: other } } });
+			const outcomes = new Map<number, unknown>();
+			while (outcomes.size < 2) {
+				const frame = (await client.nextFrame()) as RequestFrame;
+				if (frame.RequestSucceeded) outcomes.set(frame.RequestSucceeded.request, "succeeded");
+				if (frame.RequestFailed) outcomes.set(frame.RequestFailed.request, frame.RequestFailed.error.code);
+			}
+			expect(Object.fromEntries(outcomes)).toEqual({ 3: "TURN_IN_PROGRESS", 4: "succeeded" });
+			expect(await stillOpen(client, other, 5)).toBeTrue();
+		} finally {
+			client.destroy();
+		}
+	});
 
 	test("the clear reaches the client before the transcript it switched to", async () => {
 		const client = await connect();
