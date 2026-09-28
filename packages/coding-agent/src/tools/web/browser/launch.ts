@@ -82,8 +82,6 @@ function stealthIgnoreDefaultArgs(executablePath: string | undefined): string[] 
 	return STEALTH_IGNORE_DEFAULT_ARGS.filter(arg => arg !== ENABLE_AUTOMATION_FLAG);
 }
 
-const PUPPETEER_SOURCE_URL_SUFFIX = "//# sourceURL=__puppeteer_evaluation_script__";
-
 /**
  * Lazy-import puppeteer with `process.cwd` pointed at a scratch directory, so
  * cosmiconfig does not choke on a malformed `package.json` in the user's
@@ -488,7 +486,11 @@ function resolvePageClient(page: Page): PuppeteerCdpClient | null {
 
 const patchedClients = new WeakSet<object>();
 
-function patchSourceUrl(page: Page): void {
+/**
+ * `Network.getResponseBody` for a resource the browser no longer holds answers undefined instead of failing.
+ * The pinned puppeteer patch appends no `sourceURL` to evaluated code, so nothing else is rewritten here.
+ */
+function tolerateEvictedResponseBodies(page: Page): void {
 	const client = resolvePageClient(page);
 	if (!client) return;
 	const clientKey = client as object;
@@ -496,39 +498,17 @@ function patchSourceUrl(page: Page): void {
 	patchedClients.add(clientKey);
 	const originalSend = client.send.bind(client);
 	client.send = async (method: string, params?: Record<string, unknown>) => {
-		const next = async (payload?: Record<string, unknown>) => {
-			try {
-				return await originalSend(method, payload);
-			} catch (error) {
-				if (
-					error instanceof Error &&
-					error.message.includes(
-						"Protocol error (Network.getResponseBody): No resource with given identifier found",
-					)
-				) {
-					return undefined;
-				}
-				throw error;
+		try {
+			return await originalSend(method, params);
+		} catch (error) {
+			if (
+				error instanceof Error &&
+				error.message.includes("Protocol error (Network.getResponseBody): No resource with given identifier found")
+			) {
+				return undefined;
 			}
-		};
-		if (!method || !params) {
-			return next(params);
+			throw error;
 		}
-		const key =
-			method === "Runtime.evaluate"
-				? "expression"
-				: method === "Runtime.callFunctionOn"
-					? "functionDeclaration"
-					: null;
-		if (!key) {
-			return next(params);
-		}
-		const value = params[key];
-		if (typeof value !== "string" || !value.includes(PUPPETEER_SOURCE_URL_SUFFIX)) {
-			return next(params);
-		}
-		const patchedParams = { ...params, [key]: value.replace(PUPPETEER_SOURCE_URL_SUFFIX, "") };
-		return next(patchedParams);
 	};
 }
 
@@ -925,7 +905,7 @@ function buildStealthInjectionScript(scripts: readonly string[], profile: Stealt
  * The overrides and scripts hold while the connection that sent them is open.
  */
 export async function applyStealthPatches(page: Page, identity: HostIdentity | undefined): Promise<void> {
-	patchSourceUrl(page);
+	tolerateEvictedResponseBodies(page);
 	const target: TargetIdentity = { identity, profile: hostStealthProfile() };
 	const client = resolvePageClient(page);
 	if (client) {
