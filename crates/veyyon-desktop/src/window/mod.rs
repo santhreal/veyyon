@@ -6,6 +6,8 @@
 
 mod host;
 mod keep;
+#[cfg(test)]
+mod tests;
 
 use std::{cell::RefCell, env, rc::Rc};
 
@@ -17,8 +19,8 @@ use veyyon_desktop_app::{AppState, regions, workspace::Workspace};
 use veyyon_desktop_model::{ConnectionState, PersistedState, Store};
 use veyyon_desktop_ui::theme::{Appearance, Theme};
 use veyyon_gpui::{
-	App, AppContext as _, Bounds, Entity, Pixels, TitlebarOptions, WindowBounds,
-	WindowDecorations, WindowHandle, WindowOptions, px, size,
+	App, AppContext as _, Bounds, Entity, Pixels, TitlebarOptions, WindowBounds, WindowDecorations,
+	WindowHandle, WindowOptions, px, size,
 };
 
 use self::{host::Host, keep::Keep};
