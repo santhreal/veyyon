@@ -25,13 +25,29 @@ export * from "./wire.generated";
  * An approval's `scope` defaults to `"once"`; `"session"` stands for the rest
  * of the session, the same grant the terminal's "for session" rows record. A
  * plan sent back for revision carries the refinement asked for in `feedback`,
- * which is empty when the answer came from the card's own row.
+ * which is empty when the answer came from the card's own row. A dialog is
+ * answered with one answer per question, or with `{ kind: "chat" }` to discuss
+ * the questions in the conversation instead.
  */
 export type InteractionResponse =
 	| { approved: boolean; scope?: "once" | "session" }
 	| { option: number }
 	| { text: string }
-	| { accepted: boolean; feedback?: string };
+	| { accepted: boolean; feedback?: string }
+	| { kind: "submit"; answers: DialogQuestionAnswer[] }
+	| { kind: "chat" };
+
+/**
+ * The answer to one question of a dialog: the indices of the options chosen
+ * (at most one for a question that is not `multi`), a free-text answer, or
+ * both, with an optional note.
+ */
+export interface DialogQuestionAnswer {
+	id: string;
+	selected: number[];
+	custom_input?: string;
+	note?: string;
+}
 
 /** The one tag a section carries; `keyof` a union member is its tag. */
 export function getSnapshotSectionTag(section: SnapshotSection): SnapshotSectionTag {

@@ -13,6 +13,7 @@ import { writeFrame } from "../frames";
 import { goalSection } from "../goal-view";
 import { reportQueuedPrompts } from "../queued-prompts";
 import { sessionHeaderToView, sessionInfoToSummary } from "../session-bridge";
+import { DesktopStatusBridge } from "../status-bridge";
 import { todoSection } from "../todo-view";
 import {
 	appendedEntryToTranscriptEntry,
@@ -135,6 +136,14 @@ export function emitActiveSessionAndTranscript(
 		ctx.reply.snapshot({
 			ForegroundCommand: { session: openSession, command: foregroundSection(openSession) },
 		});
+		// The branch, the pace, the serving login and its quota are stated
+		// once on open; after that they move only at the edges the bridge
+		// follows.
+		ctx.clientState.status ??= new DesktopStatusBridge(ctx.socket);
+		ctx.clientState.status.publishOpened(openSession, sm.getCwd());
+		// A session that reloaded in place kept its extensions, so what they
+		// set is stated under the id it moved to.
+		ctx.clientState.extensionChrome?.follow();
 	}
 	// A session resumed with a plan on it holds that plan before any turn
 	// runs, so the card is drawn from the board the file recorded rather than

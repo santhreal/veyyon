@@ -58,6 +58,25 @@ const PROCESS: &str = "web";
 /// own presentation.
 const NOT_DRAWN: &[SnapshotSectionKind] = &[];
 
+/// Sections only the rebuilt window (`veyyon-desktop-app`) draws. This window
+/// is being retired and grows no surface for them, so they arrive here silent.
+/// Pinned beside `NOT_DRAWN` by exact equality.
+const DRAWN_ONLY_BY_THE_REBUILT_WINDOW: &[SnapshotSectionKind] = &[
+	SnapshotSectionKind::Accounts,
+	SnapshotSectionKind::Extensions,
+	SnapshotSectionKind::Host,
+	SnapshotSectionKind::Checkout,
+	SnapshotSectionKind::Pace,
+	SnapshotSectionKind::ServingAccount,
+	SnapshotSectionKind::Quota,
+	SnapshotSectionKind::McpCatalog,
+	SnapshotSectionKind::McpProbe,
+	SnapshotSectionKind::McpRegistry,
+	SnapshotSectionKind::ExtensionUi,
+	SnapshotSectionKind::ComposerEdit,
+	SnapshotSectionKind::ComposerCompletions,
+];
+
 /// What must already be on the surface for a section's destination to exist.
 ///
 /// A settings domain reaches only an open settings overlay, a search result
@@ -94,7 +113,16 @@ const fn prepare_for(kind: SnapshotSectionKind) -> Prepare {
 		| SnapshotSectionKind::Mcp
 		| SnapshotSectionKind::Agents
 		| SnapshotSectionKind::Diagnostics
-		| SnapshotSectionKind::Profiles => Prepare::Settings,
+		| SnapshotSectionKind::Profiles
+		// Drawn on the rebuilt window's Providers and Extensions settings pages;
+		// listed in `DRAWN_ONLY_BY_THE_REBUILT_WINDOW`.
+		| SnapshotSectionKind::Accounts
+		| SnapshotSectionKind::Extensions
+		// Drawn on the rebuilt window's MCP settings page; listed in
+		// `DRAWN_ONLY_BY_THE_REBUILT_WINDOW`.
+		| SnapshotSectionKind::McpCatalog
+		| SnapshotSectionKind::McpProbe
+		| SnapshotSectionKind::McpRegistry => Prepare::Settings,
 		SnapshotSectionKind::AgentComms => Prepare::Agents,
 		SnapshotSectionKind::Share => Prepare::Share,
 		SnapshotSectionKind::SearchResults => Prepare::Palette(PaletteMode::Files, "app"),
@@ -139,7 +167,24 @@ const fn prepare_for(kind: SnapshotSectionKind) -> Prepare {
 		// The plan chip sits in the composer footer of whatever session is in
 		// hand, so the attached window at rest is where it draws.
 		| SnapshotSectionKind::Todo
-		| SnapshotSectionKind::AgentPause => Prepare::Rest,
+		| SnapshotSectionKind::AgentPause
+		// The status facts draw in the rebuilt window's title bar, run bar,
+		// composer footer and Usage tab; listed in
+		// `DRAWN_ONLY_BY_THE_REBUILT_WINDOW`.
+		| SnapshotSectionKind::Host
+		| SnapshotSectionKind::Checkout
+		| SnapshotSectionKind::Pace
+		| SnapshotSectionKind::ServingAccount
+		| SnapshotSectionKind::Quota
+		// Extension chrome draws around the rebuilt window's composer and in
+		// its run bar, and an edit or a completion lands in its composer;
+		// listed in `DRAWN_ONLY_BY_THE_REBUILT_WINDOW`.
+		| SnapshotSectionKind::ExtensionUi
+		| SnapshotSectionKind::ComposerEdit
+		| SnapshotSectionKind::ComposerCompletions
+		// A notice goes on the announcement stack, which floats over the
+		// attached window at rest.
+		| SnapshotSectionKind::ExtensionNotice => Prepare::Rest,
 	}
 }
 
@@ -259,5 +304,12 @@ fn every_section_the_store_keeps_is_one_the_window_draws() {
 		}
 	}
 
-	assert_eq!(silent, NOT_DRAWN, "sections the window stores and draws nowhere");
+	let mut expected: Vec<SnapshotSectionKind> = NOT_DRAWN
+		.iter()
+		.chain(DRAWN_ONLY_BY_THE_REBUILT_WINDOW)
+		.copied()
+		.collect();
+	expected.sort();
+	silent.sort();
+	assert_eq!(silent, expected, "sections the window stores and draws nowhere");
 }

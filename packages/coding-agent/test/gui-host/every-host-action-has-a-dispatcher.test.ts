@@ -79,7 +79,7 @@ describe("every host action has a dispatcher", () => {
 		// Pinned by exact equality: a new capability turns this red. Dictation
 		// is here because `stt.enabled` is off at the defaults this host runs
 		// under, not because the host cannot recognise speech.
-		expect(actualUnavailable).toEqual(["PendingEdits", "Extensions", "Dictation"]);
+		expect(actualUnavailable).toEqual(["PendingEdits", "Dictation"]);
 
 		client.destroy();
 	});

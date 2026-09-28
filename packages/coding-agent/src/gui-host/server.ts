@@ -8,8 +8,10 @@ import { discoverAuthStorage } from "../session/auth-broker-config";
 import { currentImageDisplayProbe, setImageDisplayProbe } from "../session/image-visibility";
 import { allActionHandlers, subscribeClientForeground } from "./actions";
 import { activeCwd, writeSessionList } from "./actions/active-session";
+import { releaseHostMcpManager } from "./actions/mcp-runtime";
 import { agentPauseSection } from "./actions/pause";
 import type { ActionContext, ReplyHelper } from "./actions/types";
+import { ExtensionChrome } from "./extension-chrome";
 import { FrameDecoder, MAX_FRAME_BYTES, writeFrame } from "./frames";
 import { PresentationLedger } from "./presentation";
 import { buildCapabilitiesSnapshot, mapActionToErrorScope } from "./session-bridge";
@@ -260,6 +262,13 @@ export class GuiHostServer {
 			revision: 0,
 			presentationLedger: new PresentationLedger(),
 		};
+		// The chrome is the connection's, not the agent session's: the session's
+		// extensions load on the first request that needs them, and the draft the
+		// composer reported before then is the one they read.
+		clientState.extensionChrome = new ExtensionChrome(
+			socket,
+			() => (clientState.sessionManager ?? clientState.agentSession?.sessionManager)?.getSessionId() ?? "",
+		);
 		// A turn's own frames carry no status, so the index is what tells the
 		// rail a turn ended. It is re-stated for the connection rather than for
 		// a request, because the turn that ends may have no request in flight.
@@ -499,6 +508,9 @@ export class GuiHostServer {
 		}
 
 		await Promise.all(this.#pendingDisposals);
+		// The MCP servers an action connected belong to this host, not to the
+		// process: the next host in it reads its own configs.
+		await releaseHostMcpManager();
 
 		if (this.#parsedEndpoint.type === "unix" && this.#parsedEndpoint.path) {
 			try {

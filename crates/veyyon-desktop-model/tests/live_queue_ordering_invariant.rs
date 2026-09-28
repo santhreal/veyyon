@@ -22,8 +22,8 @@ use strum::IntoEnumIterator as _;
 use veyyon_desktop_model::{
 	BackendError, ConnectionState, ContentBlock, EntryId, ErrorScope, HostEvent, HostEventKind,
 	MessageRole, QueuePartition, RequestId, Session, SessionId, SessionStatus, SessionSummary,
-	SettingsView, SnapshotSection, SnapshotSectionKind, Store, StreamingMessageState,
-	TranscriptEntry, reduce,
+	SettingsView, SnapshotSection, SnapshotSectionKind, Store, StreamingAppend,
+	StreamingMessageState, TranscriptEntry, reduce,
 };
 
 fn create_sample_live_sessions() -> Vec<Session> {
@@ -124,6 +124,12 @@ fn sample_event(kind: HostEventKind) -> HostEvent {
 			accumulating: entry("stream-1", 1, "streaming..."),
 			revision:     1,
 		})),
+		HostEventKind::StreamingAppended => HostEvent::StreamingAppended(StreamingAppend {
+			entry:    EntryId::from("stream-1"),
+			block:    0,
+			text:     " more".to_string(),
+			revision: 2,
+		}),
 		HostEventKind::RequestSucceeded => HostEvent::RequestSucceeded { request: RequestId(1) },
 		HostEventKind::RequestFailed => HostEvent::RequestFailed {
 			request: RequestId(2),

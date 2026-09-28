@@ -28,7 +28,10 @@ import { expect, test } from "bun:test";
 import { KEYBINDINGS } from "../../../src/config/keybindings";
 import { isDesktopHostCommand } from "../../../src/gui-host/desktop-commands";
 import { membersCarriedBy } from "../../../src/gui-host/desktop-parity/carrier";
-import { SESSION_OPERATION_CARRIERS, SESSION_OPERATION_COMMANDS } from "../../../src/gui-host/desktop-parity/session-ops";
+import {
+	SESSION_OPERATION_CARRIERS,
+	SESSION_OPERATION_COMMANDS,
+} from "../../../src/gui-host/desktop-parity/session-ops";
 import {
 	BUILTIN_SLASH_COMMAND_DECLARATIONS,
 	type BuiltinSlashCommandDeclaration,

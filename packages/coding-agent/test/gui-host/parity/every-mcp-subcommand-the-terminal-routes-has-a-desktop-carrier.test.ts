@@ -6,8 +6,8 @@
  * fails on a route with no row and on a row whose route is gone. The recorded
  * gaps are pinned by exact equality, so closing or opening one is a decision.
  *
- * Not caught: whether `SetMcpEnabled` persists a disabled server the way the
- * terminal's `disable` does; this sweep checks the decision, not the effect.
+ * Not caught: what a carrier does once sent. The effects are pinned by
+ * `an-mcp-server-is-managed-from-the-desktop-as-the-terminal-manages-it.test.ts`.
  */
 import { describe, expect, it, spyOn } from "bun:test";
 import { membersCarriedBy } from "../../../src/gui-host/desktop-parity/carrier";
@@ -32,20 +32,25 @@ async function terminalMcpSubcommands(): Promise<string[]> {
 	return routes.map(route => route.name).sort();
 }
 
-const RECORDED_GAPS = [
-	"add",
-	"notifications",
-	"prompts",
-	"reauth",
-	"reload",
-	"remove",
-	"resources",
-	"smithery-login",
-	"smithery-logout",
-	"smithery-search",
-	"test",
-	"unauth",
-];
+/** Every carried subcommand, with the action or section that carries it. */
+const CARRIED = {
+	add: "AddMcpServer",
+	disable: "SetMcpEnabled",
+	enable: "SetMcpEnabled",
+	list: "RefreshMcp",
+	notifications: "McpCatalog",
+	prompts: "McpCatalog",
+	reauth: "ReauthMcpServer",
+	reconnect: "SetMcpEnabled",
+	reload: "ReloadMcp",
+	remove: "RemoveMcpServer",
+	resources: "McpCatalog",
+	"smithery-login": "LoginMcpRegistry",
+	"smithery-logout": "LogoutMcpRegistry",
+	"smithery-search": "SearchMcpRegistry",
+	test: "TestMcpServer",
+	unauth: "ClearMcpServerAuth",
+};
 
 describe("the /mcp subcommands on the desktop", () => {
 	it("decides every subcommand the terminal routes, and only those", async () => {
@@ -54,9 +59,16 @@ describe("the /mcp subcommands on the desktop", () => {
 		expect(Object.keys(MCP_SUBCOMMAND_CARRIERS).filter(name => !subcommands.includes(name))).toEqual([]);
 	});
 
-	it("pins the carried subcommands, the opt-outs and the recorded gaps", () => {
-		expect(membersCarriedBy(MCP_SUBCOMMAND_CARRIERS, "action")).toEqual(["disable", "enable", "list", "reconnect"]);
+	it("pins the carrier of every subcommand, and records no gap and no opt-out", () => {
+		const carried = Object.fromEntries(
+			Object.entries(MCP_SUBCOMMAND_CARRIERS).flatMap(([name, carrier]): [string, string][] => {
+				if ("action" in carrier) return [[name, carrier.action]];
+				if ("section" in carrier) return [[name, carrier.section]];
+				return [];
+			}),
+		);
+		expect(carried).toEqual(CARRIED);
 		expect(membersCarriedBy(MCP_SUBCOMMAND_CARRIERS, "optOut")).toEqual([]);
-		expect(membersCarriedBy(MCP_SUBCOMMAND_CARRIERS, "gap")).toEqual(RECORDED_GAPS);
+		expect(membersCarriedBy(MCP_SUBCOMMAND_CARRIERS, "gap")).toEqual([]);
 	});
 });

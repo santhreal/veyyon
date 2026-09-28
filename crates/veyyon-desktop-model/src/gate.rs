@@ -96,6 +96,16 @@ pub const fn action_to_capability(action: HostActionKind) -> Capability {
 		HostActionKind::RetryAuthFlow => Capability::Authentication,
 		HostActionKind::RefreshMcp => Capability::Mcp,
 		HostActionKind::SetMcpEnabled => Capability::Mcp,
+		HostActionKind::AddMcpServer => Capability::Mcp,
+		HostActionKind::RemoveMcpServer => Capability::Mcp,
+		HostActionKind::TestMcpServer => Capability::Mcp,
+		HostActionKind::ReauthMcpServer => Capability::Mcp,
+		HostActionKind::ClearMcpServerAuth => Capability::Mcp,
+		HostActionKind::ReloadMcp => Capability::Mcp,
+		HostActionKind::SearchMcpRegistry => Capability::Mcp,
+		HostActionKind::DeployMcpRegistryServer => Capability::Mcp,
+		HostActionKind::LoginMcpRegistry => Capability::Mcp,
+		HostActionKind::LogoutMcpRegistry => Capability::Mcp,
 		HostActionKind::RefreshAgents => Capability::Agents,
 		HostActionKind::ReviveAgent => Capability::Agents,
 		HostActionKind::SpawnTask => Capability::Tasks,
@@ -134,6 +144,15 @@ pub const fn action_to_capability(action: HostActionKind) -> Capability {
 		| HostActionKind::SaveAutoswarmPreset
 		| HostActionKind::DeleteAutoswarmPreset
 		| HostActionKind::CloseAutoswarmConsole => Capability::Autoswarm,
+		HostActionKind::SignOutAccount => Capability::Authentication,
+		HostActionKind::RefreshExtensions
+		| HostActionKind::SetExtensionEnabled
+		| HostActionKind::SetExtensionSourceEnabled => Capability::Extensions,
+		// The draft and the completions are read by the session's extensions,
+		// so a host that loads none withholds both with the rest of them.
+		HostActionKind::ReportComposerDraft | HostActionKind::CompleteComposer => {
+			Capability::Extensions
+		},
 	}
 }
 
@@ -164,7 +183,7 @@ pub fn gate_kind(
 /// while any action of that capability is in flight, else its status.
 ///
 /// This is the one gate for a capability no action maps to (`Questions`,
-/// `Plans`, `Extensions`): its surface still has the fourth state (§1.2).
+/// `Plans`): its surface still has the fourth state (§1.2).
 #[must_use]
 pub fn gate_capability(
 	capability: Capability,

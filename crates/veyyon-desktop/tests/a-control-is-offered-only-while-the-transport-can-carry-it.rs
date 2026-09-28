@@ -115,6 +115,7 @@ fn decisions() -> PendingDecisions {
 			markdown_plan:   "# plan".to_string(),
 			requested_at_ms: CLOCK_MS,
 		}],
+		dialogs:   Vec::new(),
 	}
 }
 

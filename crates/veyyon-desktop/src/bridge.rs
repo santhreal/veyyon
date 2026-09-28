@@ -58,7 +58,14 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::GetContextBreakdown
 		| HostActionKind::RefreshShare
 		| HostActionKind::RefreshProfiles
-		| HostActionKind::ListCommands => ActionClassification::Ephemeral,
+		| HostActionKind::ListCommands
+		| HostActionKind::RefreshExtensions
+		| HostActionKind::TestMcpServer
+		| HostActionKind::SearchMcpRegistry
+		// A draft report is superseded by the next one, and a completion
+		// query by the next keystroke, so either is dropped rather than held.
+		| HostActionKind::ReportComposerDraft
+		| HostActionKind::CompleteComposer => ActionClassification::Ephemeral,
 
 		// Mutations, lifecycle, session modifications, turns, terminals, processes.
 		HostActionKind::Attach
@@ -111,6 +118,14 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::CancelAuthFlow
 		| HostActionKind::RetryAuthFlow
 		| HostActionKind::SetMcpEnabled
+		| HostActionKind::AddMcpServer
+		| HostActionKind::RemoveMcpServer
+		| HostActionKind::ReauthMcpServer
+		| HostActionKind::ClearMcpServerAuth
+		| HostActionKind::ReloadMcp
+		| HostActionKind::DeployMcpRegistryServer
+		| HostActionKind::LoginMcpRegistry
+		| HostActionKind::LogoutMcpRegistry
 		| HostActionKind::ReviveAgent
 		| HostActionKind::SpawnTask
 		| HostActionKind::CancelTask
@@ -135,7 +150,10 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::RunAutoswarmAction
 		| HostActionKind::SaveAutoswarmPreset
 		| HostActionKind::DeleteAutoswarmPreset
-		| HostActionKind::CloseAutoswarmConsole => ActionClassification::Mutation,
+		| HostActionKind::CloseAutoswarmConsole
+		| HostActionKind::SignOutAccount
+		| HostActionKind::SetExtensionEnabled
+		| HostActionKind::SetExtensionSourceEnabled => ActionClassification::Mutation,
 	}
 }
 

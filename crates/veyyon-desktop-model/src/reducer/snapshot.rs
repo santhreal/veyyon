@@ -1,6 +1,15 @@
+mod extension_ui;
 mod sessions;
+mod status;
 
-use self::sessions::{reduce_active_header, reduce_session_index};
+use self::{
+	extension_ui::{
+		reduce_composer_completions, reduce_composer_edit, reduce_extension_notice,
+		reduce_extension_ui,
+	},
+	sessions::{reduce_active_header, reduce_session_index},
+	status::{reduce_checkout, reduce_host, reduce_pace, reduce_quota, reduce_serving_account},
+};
 use super::announce::{announce_decisions_out_of_view, decision_ids, decision_prefix};
 use crate::{
 	damage::{Damage, DamageSet},
@@ -223,6 +232,20 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 			store.domains.mcp = views;
 			damage.insert(Damage::Palette);
 		},
+		// The MCP settings page draws the catalog, a test's outcome and the
+		// registry beside the server rows, so each lands where `Mcp` does.
+		SnapshotSection::McpCatalog(view) => {
+			store.domains.mcp_catalog = Some(view);
+			damage.insert(Damage::Palette);
+		},
+		SnapshotSection::McpProbe(view) => {
+			store.domains.mcp_probe = Some(view);
+			damage.insert(Damage::Palette);
+		},
+		SnapshotSection::McpRegistry(view) => {
+			store.domains.mcp_registry = Some(view);
+			damage.insert(Damage::Palette);
+		},
 		SnapshotSection::Agents(views) => {
 			store.domains.agents = views;
 			damage.insert(Damage::Palette);
@@ -336,6 +359,35 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 				store.domains.todo.remove(&session);
 			}
 			damage.insert(Damage::Composer(session));
+		},
+		SnapshotSection::Accounts(views) => {
+			store.domains.accounts = views;
+			damage.insert(Damage::Palette);
+		},
+		SnapshotSection::Extensions(view) => {
+			store.domains.extensions = Some(view);
+			damage.insert(Damage::Palette);
+		},
+		SnapshotSection::Host(view) => reduce_host(store, view, &mut damage),
+		SnapshotSection::Checkout { session, checkout } => {
+			reduce_checkout(store, session, checkout, &mut damage);
+		},
+		SnapshotSection::Pace { session, pace } => reduce_pace(store, session, pace, &mut damage),
+		SnapshotSection::ServingAccount { session, account } => {
+			reduce_serving_account(store, session, account, &mut damage);
+		},
+		SnapshotSection::Quota { session, quota } => reduce_quota(store, session, quota, &mut damage),
+		SnapshotSection::ExtensionUi { session, ui } => {
+			reduce_extension_ui(store, session, ui, &mut damage);
+		},
+		SnapshotSection::ComposerEdit { session, edit } => {
+			reduce_composer_edit(store, session, edit, &mut damage);
+		},
+		SnapshotSection::ComposerCompletions { session, completions } => {
+			reduce_composer_completions(store, session, completions, &mut damage);
+		},
+		SnapshotSection::ExtensionNotice { session, notice } => {
+			reduce_extension_notice(store, &session, notice, &mut damage);
 		},
 	}
 

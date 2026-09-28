@@ -19,6 +19,7 @@ pub mod registry;
 pub mod retries;
 pub mod review;
 pub mod session;
+pub mod session_listing;
 pub mod signal;
 pub mod store;
 pub mod streaming;
@@ -27,7 +28,9 @@ pub mod text;
 pub mod tool_view;
 pub mod transcript;
 
-pub use action::{AttachmentSubmission, AutoswarmRequest, GoalControl, HostAction, HostRequest};
+pub use action::{
+	AttachmentSubmission, AutoswarmRequest, ComposerRequest, GoalControl, HostAction, HostRequest,
+};
 pub use action_kind::HostActionKind;
 pub use badge::session_badge;
 pub use capabilities::{Capability, CapabilityMap, CapabilityStatus};
@@ -43,18 +46,22 @@ pub use domain::{
 	AuthFlowState, AuthFlowView, AutoswarmAction, AutoswarmActionView, AutoswarmConsoleView,
 	AutoswarmFieldKind, AutoswarmFieldView, AutoswarmNoteView, AutoswarmOptionView,
 	AutoswarmRunView, AutoswarmSwarmView, ChangeScope, ChangeStatus, ChangedFile, ChangesView,
-	CommandSource, CommandSubcommandView, CommandView, ContentMatch, ContentMatchesView,
-	ContextBreakdownView, ContextCategory, DiagnosticSource, DictationState, DictationView, Domains,
-	ExportView, FileContentView, FileKind, FileNode, FileTreeView, ForegroundCommandView,
-	GoalStatus, GoalView, InputModality, KeybindingView, McpServerStatus, McpServerView, ModelRef,
-	ModelView, ModelsView, PROCESS_LOG_CAPACITY_LINES, ProcessLogView, ProcessLogsChunk,
-	ProcessView, ProfileCopyItemView, ProfileView, ProfilesView, PromptHistoryEntry,
-	PromptHistoryView, ProviderView, QueuedPrompts, QueuedPromptsView, SearchResultsView, SeqGap,
-	SessionSearchView, SessionTranscriptView, SettingEntry, SettingKind, SettingOption,
-	SettingsView, ShareGuestView, ShareParticipantView, SharePhase, ShareRole, ShareView,
-	TERMINAL_SCROLLBACK_CAPACITY_BYTES, TerminalOutputChunk, TerminalScrollback, TerminalStatus,
-	TerminalView, ThemeView, ThemesView, TodoBoardView, TodoPhaseView, TodoStatus, TodoTaskView,
-	UsageView, diagnostic_sources,
+	CheckoutView, CommandSource, CommandSubcommandView, CommandView, ComposerCompletionView,
+	ComposerCompletionsView, ComposerEditKind, ComposerEditView, ContentMatch,
+	ContentMatchesView, ContextBreakdownView, ContextCategory, DiagnosticSource, DictationState,
+	DictationView, Domains, ExportView, ExtensionNoticeLevel, ExtensionNoticeView,
+	ExtensionStatusView, ExtensionUiView, ExtensionWidgetPlacement, ExtensionWidgetView,
+	FileContentView, FileKind, FileNode, FileTreeView,
+	ForegroundCommandView, GoalStatus, GoalView, HostView, InputModality, KeybindingView,
+	McpServerStatus, McpServerView, ModelRef, ModelView, ModelsView, PROCESS_LOG_CAPACITY_LINES,
+	PaceView, ProcessLogView, ProcessLogsChunk, ProcessView, ProfileCopyItemView, ProfileView,
+	ProfilesView, PromptHistoryEntry, PromptHistoryView, ProviderView, PullRequestView,
+	QueuedPrompts, QueuedPromptsView, QuotaView, QuotaWindowView, SearchResultsView, SeqGap,
+	ServingAccountView, SessionSearchView, SessionTranscriptView, SettingEntry, SettingKind,
+	SettingOption, SettingsView, ShareGuestView, ShareParticipantView, SharePhase, ShareRole,
+	ShareView, TERMINAL_SCROLLBACK_CAPACITY_BYTES, TerminalOutputChunk, TerminalScrollback,
+	TerminalStatus, TerminalView, ThemeView, ThemesView, TodoBoardView, TodoPhaseView, TodoStatus,
+	TodoTaskView, UsageView, diagnostic_sources,
 };
 pub use error::{BackendError, ErrorScope, fallback_surface, is_scope_retryable, route_error};
 pub use event::{
@@ -63,7 +70,8 @@ pub use event::{
 };
 pub use gate::{Gate, action_to_capability, gate, gate_capability, gate_kind};
 pub use interaction::{
-	ApprovalInteraction, PendingDecisions, PlanInteraction, QuestionInteraction,
+	ApprovalInteraction, DialogInteraction, DialogOption, DialogQuestion, PendingDecisions,
+	PlanInteraction, QuestionInteraction,
 };
 pub use notifications::{
 	CAPACITY as NOTIFICATION_CAPACITY, Notification, NotificationPriority, NotificationQueue,
@@ -83,7 +91,7 @@ pub use session::{
 };
 pub use signal::SupervisorSignal;
 pub use store::Store;
-pub use streaming::StreamingMessageState;
+pub use streaming::{StreamingAppend, StreamingAppendError, StreamingMessageState};
 pub use surface::SurfaceId;
 pub use tool_view::{
 	FramedBlockView, HeadedBlockView, NoticeView, StatusRowBadge, StatusRowView, TextBlockView,

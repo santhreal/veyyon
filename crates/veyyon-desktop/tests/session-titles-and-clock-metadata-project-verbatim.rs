@@ -58,6 +58,7 @@ fn store_with_decisions() -> (Store, SessionIndex) {
 				markdown_plan:   "# Ship it\n- step".to_string(),
 				requested_at_ms: NOW_MS,
 			}],
+			dialogs:   Vec::new(),
 		});
 	let mut index = SessionIndex::new();
 	let mut state = ShellState::default();

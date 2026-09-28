@@ -1,3 +1,4 @@
+import * as os from "node:os";
 import { buildCapabilitiesSnapshot } from "../session-bridge";
 import { disposeClientState } from "../turns";
 import { activeManager, emitActiveSessionAndTranscript, emitSessionList } from "./active-session";
@@ -20,6 +21,8 @@ interface AttachPayload {
  */
 async function emitInitialState(ctx: ActionContext): Promise<void> {
 	ctx.reply.snapshot({ Capabilities: buildCapabilitiesSnapshot(ctx.clientState.agentSession?.settings) });
+	// A window attached to another machine's host names that machine.
+	ctx.reply.snapshot({ Host: { hostname: os.hostname() } });
 	await emitSessionList(ctx);
 	const sm = activeManager(ctx);
 	if (sm) emitActiveSessionAndTranscript(ctx, sm);

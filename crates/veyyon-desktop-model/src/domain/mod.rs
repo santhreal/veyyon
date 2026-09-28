@@ -10,6 +10,8 @@ pub mod changes;
 pub mod commands;
 pub mod diagnostics;
 pub mod dictation;
+pub mod extension_ui;
+pub mod extensions;
 pub mod files;
 pub mod foreground;
 pub mod goal;
@@ -22,6 +24,7 @@ pub mod providers;
 pub mod queued;
 pub mod settings;
 pub mod share;
+pub mod status;
 pub mod terminal;
 pub mod themes;
 pub mod todo;
@@ -36,6 +39,8 @@ pub use changes::*;
 pub use commands::*;
 pub use diagnostics::*;
 pub use dictation::*;
+pub use extension_ui::*;
+pub use extensions::*;
 pub use files::*;
 pub use foreground::*;
 pub use goal::*;
@@ -49,6 +54,7 @@ pub use queued::*;
 use serde::{Deserialize, Serialize};
 pub use settings::*;
 pub use share::*;
+pub use status::*;
 pub use terminal::*;
 pub use themes::*;
 pub use todo::*;
@@ -91,10 +97,22 @@ pub struct Domains {
 	pub models:          Option<ModelsView>,
 	/// Configured AI providers.
 	pub providers:       Vec<ProviderView>,
+	/// Every credential the host stores, which a sign-out names one of.
+	pub accounts:        Vec<StoredAccountView>,
 	/// Active OAuth authentication flow.
 	pub auth_flow:       Option<AuthFlowView>,
 	/// Model Context Protocol servers.
 	pub mcp:             Vec<McpServerView>,
+	/// What the connected MCP servers offer beyond tools, absent until the
+	/// host states it.
+	pub mcp_catalog:     Option<McpCatalogView>,
+	/// The outcome of the last MCP server test.
+	pub mcp_probe:       Option<McpProbeView>,
+	/// The Smithery registry's sign-in state and last search results.
+	pub mcp_registry:    Option<McpRegistryView>,
+	/// The extensions, skills, hooks and other items the host discovers,
+	/// absent until the window asks for them.
+	pub extensions:      Option<ExtensionsView>,
 	/// Active background subagents.
 	pub agents:          Vec<AgentView>,
 	/// Agent-to-agent IRC comms message stream.
@@ -133,6 +151,29 @@ pub struct Domains {
 	/// board holds no task holds no entry, so the card is drawn from the
 	/// entry's presence and never from an empty board.
 	pub todo:            HashMap<SessionId, TodoBoardView>,
+	/// The machine the host runs on, absent until the host states it.
+	pub host:            Option<HostView>,
+	/// The branch each session's checkout is on, keyed by session. A session
+	/// outside a repository holds no entry.
+	pub checkouts:       HashMap<SessionId, CheckoutView>,
+	/// How long the agent has worked in each session and how fast it
+	/// replies, keyed by session.
+	pub pace:            HashMap<SessionId, PaceView>,
+	/// The stored login serving each session, keyed by session. A session
+	/// whose provider stores no login holds no entry.
+	pub serving:         HashMap<SessionId, ServingAccountView>,
+	/// The subscription quota of the login serving each session, keyed by
+	/// session. A provider that reports no quota leaves no entry.
+	pub quotas:          HashMap<SessionId, QuotaView>,
+	/// What each session's extensions draw around its composer, keyed by
+	/// session. A session whose extensions draw nothing holds no entry.
+	pub extension_ui:    HashMap<SessionId, ExtensionUiView>,
+	/// The extension edits each session's composer has not taken yet, keyed
+	/// by session; see [`Domains::take_composer_edits`].
+	pub composer_edits:  HashMap<SessionId, Vec<ComposerEditView>>,
+	/// The newest completions each session's extensions offered, keyed by
+	/// session.
+	pub completions:     HashMap<SessionId, ComposerCompletionsView>,
 }
 
 impl Domains {

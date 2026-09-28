@@ -5,12 +5,20 @@ use veyyon_desktop_model::{
 	AuthFlowState, ChangeScope, ChangeStatus, CommandSource, FileKind, McpServerStatus,
 	SessionSearchView, SessionTranscriptView, SnapshotSection, SnapshotSectionKind, TerminalStatus,
 	Versioned,
+	domain::{
+		CredentialKind, ExtensionItemView, ExtensionKind, ExtensionLevel, ExtensionSourceView,
+		ExtensionState, ExtensionsView, StoredAccountView,
+	},
 };
 
 use super::{
 	agent, auth_flow, autoswarm, changed, changes, command, comms, content_matches, context, export,
-	file_content, file_tree, foreground, keybinding, mcp, models, node, process, profiles,
-	prompt_history, provider, search, settings, terminal, themes, todo, usage,
+	extension_ui::{completions, extension_ui},
+	file_content, file_tree, foreground, keybinding, mcp,
+	mcp_views::{catalog, probe, registry},
+	models, node, process, profiles, prompt_history, provider, search, settings,
+	status::{checkout, host, pace, quota, serving},
+	terminal, themes, todo, usage,
 };
 
 /// Two distinct sections of one kind, or `None` for a kind that does not
@@ -31,6 +39,11 @@ pub fn pair(kind: SnapshotSectionKind) -> Option<[SnapshotSection; 2]> {
 		// proves it replaces and reaches the strip.
 		// Goals are per-session state in `Store::goals`, not a domain view.
 		| SnapshotSectionKind::Goal
+		// An edit queues behind the ones the composer has not taken, by
+		// design, and a notice goes on the announcement stack; each has its
+		// own suite in `extension-chrome-edits-and-completions-reach-the-store.rs`.
+		| SnapshotSectionKind::ComposerEdit
+		| SnapshotSectionKind::ExtensionNotice
 		| SnapshotSectionKind::AgentPause => return None,
 		SnapshotSectionKind::SessionSearch => ["first", "second"].map(|query| {
 			SnapshotSection::SessionSearch(SessionSearchView { query: query.into(), sessions: Vec::new() })
@@ -170,5 +183,70 @@ pub fn pair(kind: SnapshotSectionKind) -> Option<[SnapshotSection; 2]> {
 				revision:  2,
 			}),
 		],
+		SnapshotSectionKind::Accounts => [account(1, "work"), account(2, "home")],
+		SnapshotSectionKind::Extensions => [extensions(true), extensions(false)],
+		SnapshotSectionKind::Host => [host("studio.local"), host("build-01.example.net")],
+		// A branch then the same session on another branch with a pull request
+		// open, so a reducer that kept the first pull request is caught.
+		SnapshotSectionKind::Checkout => {
+			[checkout("s1", Some("main"), None), checkout("s1", Some("feat/gui"), Some(42))]
+		},
+		// Idle after one finished window, then working again: the second
+		// carries a running window and a rate the first lacks.
+		SnapshotSectionKind::Pace => [pace("s1", 12_000, None), pace("s1", 12_000, Some(1_000))],
+		SnapshotSectionKind::ServingAccount => {
+			[serving("s1", Some("work")), serving("s1", Some("home"))]
+		},
+		SnapshotSectionKind::Quota => [quota("s1", Some(805)), quota("s1", Some(120))],
+		// A subscription then none, a pass then a failure, one query then
+		// another: a reducer that merged rather than replaced keeps the first.
+		SnapshotSectionKind::McpCatalog => [catalog(&["docs://readme"]), catalog(&[])],
+		SnapshotSectionKind::McpProbe => [probe(Some(&["search"])), probe(None)],
+		SnapshotSectionKind::McpRegistry => [registry("search"), registry("files")],
+		// A status then another; a completion answer then the next query's.
+		SnapshotSectionKind::ExtensionUi => {
+			[extension_ui("s1", "lint: 2 warnings"), extension_ui("s1", "lint: clean")]
+		},
+		SnapshotSectionKind::ComposerCompletions => {
+			[completions("s1", 1, "#issue-42"), completions("s1", 2, "#issue-7")]
+		},
+	})
+}
+
+fn account(credential_id: u64, label: &str) -> SnapshotSection {
+	SnapshotSection::Accounts(vec![StoredAccountView {
+		provider: "anthropic".into(),
+		credential_id,
+		label: label.into(),
+		kind: CredentialKind::Oauth,
+		selected: true,
+	}])
+}
+
+/// One skill from one source, loaded while the source is on and withheld
+/// once it is switched off.
+fn extensions(source_enabled: bool) -> SnapshotSection {
+	SnapshotSection::Extensions(ExtensionsView {
+		sources: vec![ExtensionSourceView {
+			id:      "claude".into(),
+			name:    "Claude Code".into(),
+			enabled: source_enabled,
+		}],
+		items:   vec![ExtensionItemView {
+			id:          "skill:review".into(),
+			kind:        ExtensionKind::Skill,
+			name:        "review".into(),
+			description: None,
+			trigger:     None,
+			path:        "/home/.claude/skills/review/SKILL.md".into(),
+			source:      "claude".into(),
+			level:       ExtensionLevel::User,
+			state:       if source_enabled {
+				ExtensionState::Active
+			} else {
+				ExtensionState::SourceDisabled
+			},
+			shadowed_by: None,
+		}],
 	})
 }

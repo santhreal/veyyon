@@ -7,8 +7,8 @@ use veyyon_desktop_model::HostActionKind;
 fn all_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_equality() {
 	assert_eq!(
 		HostActionKind::ALL.len(),
-		100,
-		"HostActionKind::ALL must contain exactly 100 actions"
+		116,
+		"HostActionKind::ALL must contain exactly 116 actions"
 	);
 
 	let mut ephemeral_actions = HashSet::new();
@@ -25,9 +25,9 @@ fn all_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_equality() {
 		}
 	}
 
-	assert_eq!(ephemeral_actions.len() + mutation_actions.len(), 100);
+	assert_eq!(ephemeral_actions.len() + mutation_actions.len(), 116);
 
-	// Pinned exact set of 25 ephemeral read-only actions (§8.13). A share read
+	// Pinned exact set of 30 ephemeral read-only actions (§8.13). A share read
 	// again is one of them, and so is a profile listing: each asks the host for
 	// what it holds now and alters nothing, so a full buffer drops it rather
 	// than blocking a press.
@@ -57,6 +57,16 @@ fn all_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_equality() {
 		HostActionKind::GetContextBreakdown,
 		HostActionKind::RefreshShare,
 		HostActionKind::ListCommands,
+		HostActionKind::RefreshExtensions,
+		// A test connects once and leaves the running connection alone, and a
+		// registry search reads the registry; neither alters what the host holds.
+		HostActionKind::TestMcpServer,
+		HostActionKind::SearchMcpRegistry,
+		// A draft report is superseded by the next one and a completion query
+		// by the next keystroke; dropping either loses nothing the next send
+		// does not restate.
+		HostActionKind::ReportComposerDraft,
+		HostActionKind::CompleteComposer,
 	]
 	.into_iter()
 	.collect();
@@ -65,5 +75,5 @@ fn all_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_equality() {
 		ephemeral_actions, expected_ephemeral,
 		"ephemeral action set must match exact pinned definition; any change must be recorded"
 	);
-	assert_eq!(ephemeral_actions.len(), 25);
+	assert_eq!(ephemeral_actions.len(), 30);
 }

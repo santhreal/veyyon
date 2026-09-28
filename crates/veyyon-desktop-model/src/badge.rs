@@ -53,7 +53,7 @@ pub fn session_badge(store: &Store, id: &SessionId, now_ms: u64) -> Option<Sessi
 		if !pending.approvals.is_empty() {
 			return Some(SessionBadge::Approval);
 		}
-		if !pending.questions.is_empty() {
+		if !pending.questions.is_empty() || !pending.dialogs.is_empty() {
 			return Some(SessionBadge::Input);
 		}
 		if !pending.plans.is_empty() {

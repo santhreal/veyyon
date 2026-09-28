@@ -72,7 +72,6 @@ use veyyon_desktop_scene::{
 /// `enabled=unknown | unavailable`.
 const DECLARED_PENDING_OPT_OUTS: &[Capability] = &[
 	Capability::BackgroundSubmission,
-	Capability::Extensions,
 	Capability::PendingEdits,
 	Capability::Plans,
 	Capability::Questions,

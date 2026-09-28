@@ -52,6 +52,11 @@ pub enum SurfaceId {
 	ComposerPlanChip(SessionId),
 	ComposerDictateButton(SessionId),
 	ComposerHistoryButton(SessionId),
+	/// The draft report the composer sends as the draft or its caret moves,
+	/// so a failed report never replaces a refused prompt's retry.
+	ComposerDraftReport(SessionId),
+	/// The completion query the composer sends for extension completions.
+	ComposerCompletionQuery(SessionId),
 
 	// Decision Cards (§5.5)
 	ApprovalApproveButton(SessionId, InteractionId),
@@ -192,6 +197,8 @@ impl SurfaceId {
 			| Self::ComposerPlanChip(_)
 			| Self::ComposerDictateButton(_)
 			| Self::ComposerHistoryButton(_)
+			| Self::ComposerDraftReport(_)
+			| Self::ComposerCompletionQuery(_)
 			| Self::ApprovalApproveButton(..)
 			| Self::ApprovalDeclineButton(..)
 			| Self::ApprovalAlwaysAllowButton(..)
@@ -330,6 +337,8 @@ impl SurfaceId {
 			| Self::ComposerPlanChip(_)
 			| Self::ComposerDictateButton(_)
 			| Self::ComposerHistoryButton(_)
+			| Self::ComposerDraftReport(_)
+			| Self::ComposerCompletionQuery(_)
 			| Self::ApprovalApproveButton(..)
 			| Self::ApprovalDeclineButton(..)
 			| Self::ApprovalAlwaysAllowButton(..)

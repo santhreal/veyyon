@@ -110,6 +110,27 @@ const CORPUS = [
 					},
 				],
 				plans: [{ id: "int-3", markdown_plan: "# Plan\n\n1. Do the thing", requested_at_ms: 1700000002002 }],
+				dialogs: [
+					{
+						id: "int-4",
+						questions: [
+							{
+								id: "db",
+								question: "Which database?",
+								header: "Database",
+								options: [
+									{ label: "SQLite", description: "One file" },
+									{ label: "Postgres", preview: "docker run postgres" },
+								],
+								multi: false,
+								recommended: 0,
+								preselected: [],
+							},
+						],
+						requested_at_ms: 1700000002003,
+						expires_at_ms: 1700000032003,
+					},
+				],
 			},
 		},
 	},
@@ -312,6 +333,76 @@ const CORPUS = [
 			{ name: "broken", enabled: true, status: { Error: { message: "spawn failed" } }, tools: [] },
 			{ name: "paused", enabled: false, status: "Disconnected", tools: [] },
 		],
+	},
+	{
+		McpCatalog: {
+			notifications: true,
+			servers: [
+				{
+					server: "filesystem",
+					resources: [
+						{
+							uri: "file:///repo/README.md",
+							name: "README",
+							description: "Project readme",
+							mime_type: "text/markdown",
+						},
+					],
+					templates: [{ uri_template: "file:///repo/{path}", name: "file", description: null }],
+					prompts: [
+						{
+							name: "summarize",
+							command: "/filesystem:summarize",
+							description: "Summarize a file",
+							arguments: [{ name: "path", description: null, required: true }],
+						},
+					],
+					notifies: {
+						tools_changed: true,
+						resources_changed: false,
+						prompts_changed: false,
+						offers_resources: true,
+						subscribe: true,
+					},
+					subscriptions: ["file:///repo/README.md"],
+				},
+			],
+		},
+	},
+	{
+		McpProbe: {
+			server: "filesystem",
+			outcome: { Connected: { name: "fs-server", version: "1.2.0", tools: ["read_file", "list_dir"] } },
+		},
+	},
+	{
+		McpRegistry: {
+			signed_in: true,
+			query: "search",
+			results: [
+				{
+					id: "acme/search",
+					name: "Acme Search",
+					description: "Search the web",
+					transport: "http",
+					use_count: 42,
+					verified: true,
+					server: "acme-search",
+					warnings: [],
+					inputs: [
+						{
+							key: "apiKey",
+							label: "API key",
+							description: null,
+							required: true,
+							default: null,
+							sensitive: true,
+							choices: [],
+						},
+					],
+				},
+			],
+		},
 	},
 	{
 		Agents: [
@@ -563,6 +654,117 @@ const CORPUS = [
 				total: 5,
 				current: { content: "Publish the board at each todo result", status: "in_progress" },
 			},
+		},
+	},
+	{
+		Accounts: [
+			{ provider: "anthropic", credential_id: 3, label: "work", kind: "oauth", selected: true },
+			{ provider: "openai", credential_id: 4, label: "OpenAI credential #4", kind: "api_key", selected: false },
+		],
+	},
+	{
+		Extensions: {
+			sources: [{ id: "claude", name: "Claude Code", enabled: true }],
+			items: [
+				{
+					id: "skill:review",
+					kind: "skill",
+					name: "review",
+					description: "Review a diff",
+					trigger: null,
+					path: "/home/user/.claude/skills/review/SKILL.md",
+					source: "claude",
+					level: "user",
+					state: "Active",
+					shadowed_by: null,
+				},
+				{
+					id: "hook:pre-commit",
+					kind: "hook",
+					name: "pre-commit",
+					description: null,
+					trigger: null,
+					path: "/repo/.claude/hooks/pre-commit.sh",
+					source: "claude",
+					level: "project",
+					state: "Disabled",
+					shadowed_by: null,
+				},
+			],
+		},
+	},
+	{ Host: { hostname: "build-01.example.net" } },
+	{
+		Checkout: {
+			session: "sess-1",
+			checkout: {
+				branch: "feat/gui",
+				dirty: true,
+				pull_request: { number: 42, url: "https://github.com/example/repo/pull/42" },
+			},
+		},
+	},
+	{
+		Pace: {
+			session: "sess-1",
+			pace: { worked_ms: 754000, working_since_ms: 1700000000000, tokens_per_second_tenths: 423 },
+		},
+	},
+	{
+		ServingAccount: {
+			session: "sess-1",
+			account: { provider: "anthropic", label: "work", logins: 2, predicted: false },
+		},
+	},
+	{
+		Quota: {
+			session: "sess-1",
+			quota: {
+				tier: "max",
+				five_hour: { used_permille: 805, resets_at_ms: 1700000018000 },
+				seven_day: null,
+			},
+		},
+	},
+	{
+		ExtensionUi: {
+			session: "sess-1",
+			ui: {
+				statuses: [{ key: "lint", text: "lint: 2 warnings" }],
+				working_message: "Indexing the workspace",
+				widgets: [{ key: "todo", placement: "BelowEditor", lines: ["3 tasks open", ""], truncated: true }],
+				completes: true,
+			},
+		},
+	},
+	{
+		ComposerEdit: {
+			session: "sess-1",
+			edit: { seq: 3, kind: "Paste", text: "see src/app.rs" },
+		},
+	},
+	{
+		ComposerCompletions: {
+			session: "sess-1",
+			completions: {
+				query: 7,
+				items: [
+					{
+						label: "#issue-42",
+						description: "Crash on start",
+						replace_start: 4,
+						replace_end: 6,
+						insert: "#issue-42 ",
+						caret: 14,
+					},
+				],
+			},
+		},
+	},
+	{
+		ExtensionNotice: {
+			session: "sess-1",
+			notice: { level: "Error", message: "lint server exited", raised_at_ms: 1700000000000 },
 		},
 	},
 ] satisfies SnapshotSection[];

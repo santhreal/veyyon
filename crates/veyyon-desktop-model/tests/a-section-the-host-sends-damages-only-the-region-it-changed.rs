@@ -89,8 +89,9 @@ fn test_damage_decision_for_every_snapshot_section_sweep() {
 					"goal reaches store"
 				);
 			},
-			"Settings" | "Diagnostics" | "Models" | "Providers" | "AuthFlow" | "Mcp" | "Agents"
-			| "AgentComms" | "Share" | "Profiles" | "Themes" | "Keybindings" | "Commands" => {
+			"Settings" | "Diagnostics" | "Models" | "Providers" | "AuthFlow" | "Mcp"
+			| "McpCatalog" | "McpProbe" | "McpRegistry" | "Agents" | "AgentComms" | "Share"
+			| "Profiles" | "Themes" | "Keybindings" | "Commands" | "Accounts" | "Extensions" => {
 				assert!(damage.contains(&Damage::Palette), "{name} must emit Damage::Palette");
 			},
 			"Changes" => {
@@ -167,6 +168,51 @@ fn test_damage_decision_for_every_snapshot_section_sweep() {
 			"Dictation" | "ForegroundCommand" | "Todo" => {
 				assert!(damage.contains(&Damage::Composer(session_id.clone())));
 			},
+			// The status line's facts each repaint the one band that draws
+			// them and nothing else: the host and the checkout the thread
+			// header, the pace the run bar, the serving login the composer
+			// footer and the quota the Usage tab. A pace frame arrives every
+			// quarter second while a reply streams, so a wider damage here
+			// repaints the window at that rate.
+			"Host" | "Checkout" => {
+				assert_eq!(damage.iter().cloned().collect::<Vec<_>>(), [Damage::Titlebar]);
+			},
+			"Pace" => {
+				assert_eq!(damage.iter().cloned().collect::<Vec<_>>(), [Damage::RunBar(
+					session_id.clone()
+				)]);
+			},
+			"ServingAccount" => {
+				assert_eq!(damage.iter().cloned().collect::<Vec<_>>(), [Damage::Composer(
+					session_id.clone()
+				)]);
+			},
+			"Quota" => {
+				assert_eq!(damage.iter().cloned().collect::<Vec<_>>(), [Damage::RightPanelTab(
+					session_id.clone(),
+					"usage".to_string()
+				)]);
+			},
+			// Extension chrome is drawn in the run bar (statuses, the working
+			// message) and around the composer (widgets), so both bands repaint
+			// and nothing else does. An edit and a completion land in the
+			// composer alone, and a notice on the announcement stack alone.
+			"ExtensionUi" => {
+				let mut damaged = damage.iter().cloned().collect::<Vec<_>>();
+				damaged.sort_by_key(|region| format!("{region:?}"));
+				assert_eq!(damaged, [
+					Damage::Composer(session_id.clone()),
+					Damage::RunBar(session_id.clone())
+				]);
+			},
+			"ComposerEdit" | "ComposerCompletions" => {
+				assert_eq!(damage.iter().cloned().collect::<Vec<_>>(), [Damage::Composer(
+					session_id.clone()
+				)]);
+			},
+			"ExtensionNotice" => {
+				assert_eq!(damage.iter().cloned().collect::<Vec<_>>(), [Damage::Notifications]);
+			},
 			other => panic!("Unhandled snapshot section in damage test: {other}"),
 		}
 
@@ -180,6 +226,14 @@ fn test_damage_decision_for_every_snapshot_section_sweep() {
 				assert!(
 					damage_no_session.contains(&Damage::FullWindow),
 					"{name} without active session must fallback to Damage::FullWindow"
+				);
+			},
+			// The header draws the active session's checkout only, so another
+			// session's branch moving is held and repaints nothing.
+			"Checkout" => {
+				assert!(
+					damage_no_session.is_empty(),
+					"a checkout for a session the window is not on repainted {damage_no_session:?}"
 				);
 			},
 			_ => {},

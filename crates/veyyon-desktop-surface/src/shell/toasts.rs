@@ -32,13 +32,20 @@ const WAITING_DETAIL: &str = "Waiting for an answer";
 
 /// The tint a card is drawn on, which states what kind of announcement it is
 /// without reading its words.
-const fn notice_tint(source: NotificationSource) -> TintRole {
-	match source {
+const fn notice_tint(notice: &Notification) -> TintRole {
+	match notice.source {
 		NotificationSource::DecisionWaiting => TintRole::Attention,
 		NotificationSource::RequestFailed => TintRole::Error,
 		// A notifier that did not run states what the window could not do,
 		// not what the session could not do, so it is the quieter tint.
 		NotificationSource::DeliveryFailed => TintRole::Plan,
+		// An extension's notice carries the level it stated as its priority:
+		// an error, a warning, or a notice that is the quieter tint.
+		NotificationSource::Extension => match notice.priority {
+			NotificationPriority::Urgent => TintRole::Error,
+			NotificationPriority::Normal => TintRole::Attention,
+			NotificationPriority::Low => TintRole::Plan,
+		},
 	}
 }
 
@@ -113,7 +120,7 @@ fn card(notice: &Notification, frame: FloatFrame, cx: &Context<ShellView>) -> im
 	let entity = cx.weak_entity();
 	let dismissed = notice.key.clone();
 	let mut toast = Toast::new(format!("notice-{}", notice.key), notice.title.clone())
-		.tint(notice_tint(notice.source))
+		.tint(notice_tint(notice))
 		.entrance(frame)
 		.on_dismiss(move |_window, app| {
 			let Some(entity) = entity.upgrade() else {

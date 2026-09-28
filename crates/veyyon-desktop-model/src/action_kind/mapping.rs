@@ -1,7 +1,7 @@
 //! Mapping from each `HostAction` variant to its discriminant.
 
 use crate::{
-	action::{AutoswarmRequest, HostAction},
+	action::{AutoswarmRequest, HostAction, McpRequest},
 	action_kind::HostActionKind,
 };
 
@@ -106,6 +106,10 @@ impl HostAction {
 			Self::ToggleDictation => HostActionKind::ToggleDictation,
 			Self::CancelDictation => HostActionKind::CancelDictation,
 			Self::Autoswarm(request) => request.kind(),
+			Self::Accounts(request) => request.kind(),
+			Self::Extensions(request) => request.kind(),
+			Self::Composer(request) => request.kind(),
+			Self::McpManage(request) => request.kind(),
 		}
 	}
 }
@@ -120,6 +124,25 @@ impl AutoswarmRequest {
 			Self::SaveAutoswarmPreset { .. } => HostActionKind::SaveAutoswarmPreset,
 			Self::DeleteAutoswarmPreset { .. } => HostActionKind::DeleteAutoswarmPreset,
 			Self::CloseAutoswarmConsole { .. } => HostActionKind::CloseAutoswarmConsole,
+		}
+	}
+}
+
+impl McpRequest {
+	/// Resolves the discriminant kind for this MCP management request.
+	#[must_use]
+	pub const fn kind(&self) -> HostActionKind {
+		match self {
+			Self::AddMcpServer { .. } => HostActionKind::AddMcpServer,
+			Self::RemoveMcpServer { .. } => HostActionKind::RemoveMcpServer,
+			Self::TestMcpServer { .. } => HostActionKind::TestMcpServer,
+			Self::ReauthMcpServer { .. } => HostActionKind::ReauthMcpServer,
+			Self::ClearMcpServerAuth { .. } => HostActionKind::ClearMcpServerAuth,
+			Self::ReloadMcp => HostActionKind::ReloadMcp,
+			Self::SearchMcpRegistry { .. } => HostActionKind::SearchMcpRegistry,
+			Self::DeployMcpRegistryServer { .. } => HostActionKind::DeployMcpRegistryServer,
+			Self::LoginMcpRegistry => HostActionKind::LoginMcpRegistry,
+			Self::LogoutMcpRegistry => HostActionKind::LogoutMcpRegistry,
 		}
 	}
 }

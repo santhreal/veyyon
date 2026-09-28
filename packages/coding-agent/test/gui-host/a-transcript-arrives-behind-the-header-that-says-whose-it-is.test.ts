@@ -243,6 +243,16 @@ describe("a transcript arrives behind the header that says whose it is", () => {
 			RetryAuthFlow: "RetryAuthFlow",
 			RefreshMcp: "RefreshMcp",
 			SetMcpEnabled: { SetMcpEnabled: { server: "none", enabled: false } },
+			AddMcpServer: { AddMcpServer: { name: "", target: { Command: { command: "true", args: [] } } } },
+			RemoveMcpServer: { RemoveMcpServer: { server: "none" } },
+			TestMcpServer: { TestMcpServer: { server: "none" } },
+			ReauthMcpServer: { ReauthMcpServer: { server: "none" } },
+			ClearMcpServerAuth: { ClearMcpServerAuth: { server: "none" } },
+			ReloadMcp: "ReloadMcp",
+			SearchMcpRegistry: { SearchMcpRegistry: { query: "", limit: null, semantic: false } },
+			DeployMcpRegistryServer: { DeployMcpRegistryServer: { result: "none", server: "none", inputs: [] } },
+			LoginMcpRegistry: "LoginMcpRegistry",
+			LogoutMcpRegistry: "LogoutMcpRegistry",
 			ReviveAgent: { ReviveAgent: { agent: "a-1" } },
 			RefreshAgents: "RefreshAgents",
 			SpawnTask: { SpawnTask: { prompt: "" } },
@@ -283,6 +293,14 @@ describe("a transcript arrives behind the header that says whose it is", () => {
 			SaveAutoswarmPreset: { SaveAutoswarmPreset: { session: alpha, name: "" } },
 			DeleteAutoswarmPreset: { DeleteAutoswarmPreset: { session: alpha } },
 			CloseAutoswarmConsole: { CloseAutoswarmConsole: { session: alpha } },
+			// A credential that is not stored, so the sign-out is refused and no
+			// real account is touched.
+			SignOutAccount: { SignOutAccount: { provider: "provider-that-is-not-here", credential_id: 0 } },
+			RefreshExtensions: "RefreshExtensions",
+			SetExtensionEnabled: { SetExtensionEnabled: { id: "extension-that-is-not-here", enabled: true } },
+			SetExtensionSourceEnabled: { SetExtensionSourceEnabled: { source: "native", enabled: true } },
+			ReportComposerDraft: { ReportComposerDraft: { session: alpha, text: "", cursor: 0, applied_edit: 0 } },
+			CompleteComposer: { CompleteComposer: { session: alpha, query: 1, text: "", cursor: 0 } },
 		};
 
 		const swept = ALL_HOST_ACTIONS.filter(tag => tag !== ENDS_THE_CONNECTION && tag !== REATTACHES);

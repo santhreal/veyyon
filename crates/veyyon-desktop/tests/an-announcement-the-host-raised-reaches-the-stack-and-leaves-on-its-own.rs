@@ -140,6 +140,7 @@ fn a_decision_waiting_out_of_view_stays_on_the_stack_across_every_tick() {
 				}],
 				questions: Vec::new(),
 				plans:     Vec::new(),
+				dialogs:   Vec::new(),
 			},
 		}),
 	);

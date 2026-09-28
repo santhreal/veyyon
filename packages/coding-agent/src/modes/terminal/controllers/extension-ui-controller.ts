@@ -1,3 +1,4 @@
+import { MAX_WIDGET_LINES } from "@veyyon/kernel/registry/widget";
 import { abortDetached } from "@veyyon/kernel/session/detached-abort";
 import {
 	type Component,
@@ -95,8 +96,6 @@ export type ExtensionUiControllerContext = Pick<
 	| "toolOutputExpanded"
 	| "ui"
 >;
-
-const MAX_WIDGET_LINES = 10;
 
 interface CollabDialogWinner {
 	source: "local" | "remote";

@@ -139,6 +139,9 @@ export async function publishModelsView(socket: Socket, source: ModelsViewSource
 		const view = await buildModelsView(source);
 		source.clientState.revision += 1;
 		writeFrame(socket, { Snapshot: { Models: view } });
+		// A model on another provider, or a credential stored or removed,
+		// moves the login that serves the session and the quota it spends.
+		source.clientState.status?.publishAccount();
 	} catch (error) {
 		logger.warn("GUI host: model list unavailable", { error: errorMessage(error) });
 	}

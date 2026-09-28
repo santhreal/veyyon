@@ -64,10 +64,21 @@ function assistantMessage(text: string): AssistantMessage {
 	};
 }
 
-/** The text of the first block of the frame's accumulating entry. */
-function textOf(frame: StreamingFrame): string {
-	const block = frame.StreamingChanged.accumulating.content[0];
-	return block && "Text" in block ? block.Text.text : "";
+/**
+ * The text of the reply's first block the window draws after each frame: a
+ * `StreamingChanged` replaces the reply, a `StreamingAppended` grows it.
+ */
+function drawnTexts(frames: StreamingFrame[]): string[] {
+	let text = "";
+	return frames.map(frame => {
+		if ("StreamingAppended" in frame) {
+			text += frame.StreamingAppended.text;
+			return text;
+		}
+		const block = frame.StreamingChanged.accumulating.content[0];
+		text = block && "Text" in block ? block.Text.text : "";
+		return text;
+	});
 }
 
 describe("a streamed reply reaches the window once a frame", () => {
@@ -84,7 +95,7 @@ describe("a streamed reply reaches the window once a frame", () => {
 		const state = session();
 		const frames: StreamingFrame[] = [];
 		pushStreamingFrame(state, { message: assistantMessage("Hel") }, frame => frames.push(frame));
-		expect(frames.map(textOf)).toEqual(["Hel"]);
+		expect(drawnTexts(frames)).toEqual(["Hel"]);
 	});
 
 	test("a burst inside one frame interval writes once and holds the newest state", () => {
@@ -96,12 +107,16 @@ describe("a streamed reply reaches the window once a frame", () => {
 		for (let delta = 1; delta <= 64; delta++) {
 			pushStreamingFrame(state, { message: assistantMessage("x".repeat(delta)) }, write);
 		}
-		expect(frames.map(textOf)).toEqual(["x"]);
+		expect(drawnTexts(frames)).toEqual(["x"]);
 
 		vi.advanceTimersByTime(STREAM_FRAME_INTERVAL_MS);
 		// The trailing frame carries the last delta of the burst, and the 62
-		// intermediate ones cost the socket nothing.
-		expect(frames.map(textOf)).toEqual(["x", "x".repeat(64)]);
+		// intermediate ones cost the socket nothing. Only the text grew, so the
+		// frame carries the 63 characters the window lacks, not the whole reply.
+		expect(drawnTexts(frames)).toEqual(["x", "x".repeat(64)]);
+		expect(frames[1]).toEqual({
+			StreamingAppended: { entry: "stream-1", block: 0, text: "x".repeat(63), revision: 1 },
+		});
 		expect(state.streamFrame?.timer).toBeUndefined();
 	});
 
@@ -120,7 +135,7 @@ describe("a streamed reply reaches the window once a frame", () => {
 		vi.advanceTimersByTime(STREAM_FRAME_INTERVAL_MS);
 		expect(frames.length).toBeLessThanOrEqual(10);
 		expect(frames.length).toBeGreaterThanOrEqual(8);
-		expect(textOf(frames[frames.length - 1] as StreamingFrame)).toBe("d31");
+		expect(drawnTexts(frames).at(-1)).toBe("d31");
 	});
 
 	test("a call that starts between two deltas is a frame of its own", () => {
@@ -133,7 +148,10 @@ describe("a streamed reply reaches the window once a frame", () => {
 		vi.advanceTimersByTime(STREAM_FRAME_INTERVAL_MS);
 		state.streamingTool = "read";
 		pushStreamingFrame(state, { tool: true }, write);
-		expect(frames.map(frame => frame.StreamingChanged.tool)).toEqual([null, "read"]);
+		expect(frames.map(frame => ("StreamingChanged" in frame ? frame.StreamingChanged.tool : "appended"))).toEqual([
+			null,
+			"read",
+		]);
 	});
 
 	test("a result that finished is not regenerated against a partial one", () => {
@@ -178,7 +196,8 @@ describe("a streamed reply reaches the window once a frame", () => {
 		// A reply ends inside the frame its last delta landed in, so the end
 		// writes what is held rather than dropping it.
 		flushStreamingFrame(state, write);
-		expect(frames.map(textOf)).toEqual(["one", "one two"]);
+		expect(drawnTexts(frames)).toEqual(["one", "one two"]);
+		expect(frames[1]).toEqual({ StreamingAppended: { entry: "stream-1", block: 0, text: " two", revision: 1 } });
 		expect(state.streamFrame?.timer).toBeUndefined();
 	});
 
@@ -195,7 +214,7 @@ describe("a streamed reply reaches the window once a frame", () => {
 		// a frame left armed would fire against a socket that is gone.
 		expect(state.streamFrame?.timer).toBeUndefined();
 		vi.advanceTimersByTime(STREAM_FRAME_INTERVAL_MS * 3);
-		expect(frames.map(textOf)).toEqual(["one"]);
+		expect(drawnTexts(frames)).toEqual(["one"]);
 	});
 
 	test("a session no longer streaming holds nothing", () => {

@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	action::{AttachmentSubmission, AutoswarmRequest, GoalControl},
+	action::{
+		AccountsRequest, AttachmentSubmission, AutoswarmRequest, ComposerRequest, ExtensionsRequest,
+		GoalControl, McpRequest,
+	},
 	composer::QueueMode,
 	connection::{EntryId, SessionId},
 	domain::changes::ChangeScope,
@@ -29,7 +32,6 @@ pub enum HostAction {
 	/// Release the freeze, waking every parked agent. Refused when nothing is
 	/// paused, so a stale window cannot release a pause that already ended.
 	ResumeAgents,
-
 	// Sessions family (10 actions)
 	ListSessions,
 	SearchSessions {
@@ -71,7 +73,6 @@ pub enum HostAction {
 		session: SessionId,
 		before:  Option<EntryId>,
 	},
-
 	// Turn control family (11 actions)
 	SubmitPrompt {
 		session:     SessionId,
@@ -161,7 +162,6 @@ pub enum HostAction {
 		#[ts(type = "unknown")]
 		response:       serde_json::Value,
 	},
-
 	// Files family (4 actions)
 	LoadFileTree {
 		root: Option<String>,
@@ -180,20 +180,17 @@ pub enum HostAction {
 	OpenExternal {
 		path: String,
 	},
-
 	// Prompt history family (1 action)
 	/// The prompts submitted earlier that carry `query`. An empty query asks
 	/// for the most recent prompts, which is what the mode opens on.
 	SearchPromptHistory {
 		query: String,
 	},
-
 	// Changes family (2 actions)
 	RefreshChanges,
 	SelectChangeScope {
 		scope: ChangeScope,
 	},
-
 	// Terminals family (7 actions)
 	CreateTerminal {
 		cwd:   Option<String>,
@@ -220,7 +217,6 @@ pub enum HostAction {
 	CloseTerminal {
 		terminal_id: String,
 	},
-
 	// Process supervisor family (9 actions)
 	RefreshProcesses,
 	ProcessLogs {
@@ -250,7 +246,6 @@ pub enum HostAction {
 		command: String,
 		args:    Vec<String>,
 	},
-
 	// Models family (3 actions)
 	RefreshModels,
 	/// Runs the session on a model.
@@ -266,7 +261,6 @@ pub enum HostAction {
 	SetThinkingLevel {
 		level: String,
 	},
-
 	// Auth and Providers family (6 actions)
 	RefreshProviders,
 	StartProviderAuth {
@@ -285,14 +279,12 @@ pub enum HostAction {
 	RetryAuthFlow {
 		provider: String,
 	},
-
 	// MCP family (2 actions)
 	RefreshMcp,
 	SetMcpEnabled {
 		server:  String,
 		enabled: bool,
 	},
-
 	// Agents and Tasks family (4 actions)
 	RefreshAgents,
 	ReviveAgent {
@@ -304,7 +296,6 @@ pub enum HostAction {
 	CancelTask {
 		task_id: String,
 	},
-
 	// Commands family (2 actions)
 	/// Asks for every slash command the host will run, which is what the
 	/// palette lists: the window declares none of them itself.
@@ -317,7 +308,6 @@ pub enum HostAction {
 		session: SessionId,
 		text:    String,
 	},
-
 	// Settings family (6 actions)
 	LoadSettings,
 	SetSetting {
@@ -334,7 +324,6 @@ pub enum HostAction {
 		action: String,
 		keys:   Vec<String>,
 	},
-
 	// Diagnostics and Usage family (5 actions)
 	RefreshDiagnostics,
 	RetryDiagnosticSource {
@@ -349,7 +338,6 @@ pub enum HostAction {
 	GetContextBreakdown {
 		session: SessionId,
 	},
-
 	// Goal mode family (2 actions)
 	SetGoal {
 		session:      SessionId,
@@ -360,7 +348,6 @@ pub enum HostAction {
 		session: SessionId,
 		op:      GoalControl,
 	},
-
 	// Share family (5 actions)
 	StartShare {
 		read_only: bool,
@@ -397,4 +384,16 @@ pub enum HostAction {
 	// Autoswarm family (5 actions), each tagged by `AutoswarmRequest` itself.
 	#[serde(untagged)]
 	Autoswarm(AutoswarmRequest),
+	// MCP management family (10 actions), each tagged by `McpRequest` itself.
+	#[serde(untagged)]
+	McpManage(McpRequest),
+	// Accounts family (1 action), each tagged by `AccountsRequest` itself.
+	#[serde(untagged)]
+	Accounts(AccountsRequest),
+	// Extensions family (3 actions), each tagged by `ExtensionsRequest` itself.
+	#[serde(untagged)]
+	Extensions(ExtensionsRequest),
+	// Composer family (2 actions), each tagged by `ComposerRequest` itself.
+	#[serde(untagged)]
+	Composer(ComposerRequest),
 }

@@ -11,11 +11,15 @@
  * context member turns this red until a carrier is recorded. The table is
  * typed over `keyof ExtensionUIContext` and `keyof ExtensionTerminalCapability`
  * too, so a member added to either interface fails the type check until it is
- * decided. Opt-outs and gaps are pinned by exact equality.
+ * decided. Opt-outs, gaps, and the section or action each carried member
+ * reaches the window by are pinned by exact equality.
  *
  * WHAT IT DOES NOT CATCH: whether the interaction dock draws a raised
- * decision; the desktop app's suites drive the dock. An optional interface
- * member the desktop context omits is found by the type, not by this run.
+ * decision, or whether the host states a chrome member in the section its
+ * row names; the desktop app's suites drive the dock, and
+ * `an-extension-chrome-call-reaches-the-window.test.ts` drives the chrome.
+ * An optional interface member the desktop context omits is found by the
+ * type, not by this run.
  */
 
 import { afterAll, describe, expect, test } from "bun:test";
@@ -27,28 +31,15 @@ import {
 	UI_CONTEXT_CARRIERS,
 } from "../../../src/gui-host/desktop-parity/interactions";
 import { GuiHostUIContext, InteractionLedger } from "../../../src/gui-host/interactions";
+import type { HostActionTag, SnapshotSectionTag } from "../../../src/gui-host/wire";
 
-const RECORDED_GAPS = [
-	"addAutocompleteProvider",
-	"askDialog",
-	"getEditorText",
-	"notify",
-	"pasteToEditor",
-	"setEditorText",
-	"setStatus",
-	"setWidget",
-	"setWorkingMessage",
-];
+const RECORDED_GAPS: string[] = [];
 
 const RECORDED_OPT_OUTS = [
-	"custom",
 	"getAllThemes",
 	"getTheme",
 	"getToolsExpanded",
 	"onTerminalInput",
-	"setEditorComponent",
-	"setFooter",
-	"setHeader",
 	"setTheme",
 	"setTitle",
 	"setToolsExpanded",
@@ -56,8 +47,32 @@ const RECORDED_OPT_OUTS = [
 	"theme",
 ];
 
+/**
+ * Each member the window draws from a section, and the section: the prompts
+ * the interaction dock draws, and the chrome an extension sets.
+ */
+const STATED_IN_A_SECTION: Record<string, SnapshotSectionTag> = {
+	askDialog: "Interactions",
+	confirm: "Interactions",
+	editor: "Interactions",
+	input: "Interactions",
+	notify: "ExtensionNotice",
+	pasteToEditor: "ComposerEdit",
+	select: "Interactions",
+	setEditorText: "ComposerEdit",
+	setStatus: "ExtensionUi",
+	setWidget: "ExtensionUi",
+	setWorkingMessage: "ExtensionUi",
+};
+
+/** Each member the window answers through an action it sends, and the action. */
+const ANSWERED_BY_AN_ACTION: Record<string, HostActionTag> = {
+	addAutocompleteProvider: "CompleteComposer",
+	getEditorText: "ReportComposerDraft",
+};
+
 /** Interface members the desktop context does not implement at all. */
-const OMITTED_BY_THE_DESKTOP_CONTEXT = ["askDialog", "terminal"];
+const OMITTED_BY_THE_DESKTOP_CONTEXT = ["terminal"];
 
 const socket = new net.Socket();
 const ledger = new InteractionLedger(socket, () => "parity-session");
@@ -102,5 +117,23 @@ describe("every interaction the host raises has a desktop carrier", () => {
 
 	test("the members no desktop surface reaches are exactly the recorded gaps", () => {
 		expect(membersCarriedBy(UI_CONTEXT_CARRIERS, "gap")).toEqual(RECORDED_GAPS);
+	});
+
+	test("the members drawn from a section are exactly the recorded ones, each from its section", () => {
+		const stated = Object.fromEntries(
+			Object.entries(UI_CONTEXT_CARRIERS).flatMap(([member, carrier]) =>
+				"section" in carrier ? [[member, carrier.section]] : [],
+			),
+		);
+		expect(stated).toEqual(STATED_IN_A_SECTION);
+	});
+
+	test("the members the window answers are exactly the recorded ones, each by its action", () => {
+		const answered = Object.fromEntries(
+			Object.entries(UI_CONTEXT_CARRIERS).flatMap(([member, carrier]) =>
+				"action" in carrier ? [[member, carrier.action]] : [],
+			),
+		);
+		expect(answered).toEqual(ANSWERED_BY_AN_ACTION);
 	});
 });

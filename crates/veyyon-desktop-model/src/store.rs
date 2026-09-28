@@ -117,4 +117,31 @@ impl Store {
 	pub fn todo(&self, session: &SessionId) -> Option<&crate::domain::TodoBoardView> {
 		self.domains.todo.get(session)
 	}
+
+	/// The checkout a session works in, if it is inside a repository.
+	#[must_use]
+	pub fn checkout(&self, session: &SessionId) -> Option<&crate::domain::CheckoutView> {
+		self.domains.checkouts.get(session)
+	}
+
+	/// How long the agent has worked in a session and how fast it replies.
+	#[must_use]
+	pub fn pace(&self, session: &SessionId) -> Option<&crate::domain::PaceView> {
+		self.domains.pace.get(session)
+	}
+
+	/// The stored login serving a session, if its provider stores one.
+	#[must_use]
+	pub fn serving_account(
+		&self,
+		session: &SessionId,
+	) -> Option<&crate::domain::ServingAccountView> {
+		self.domains.serving.get(session)
+	}
+
+	/// The subscription quota of the login serving a session, if reported.
+	#[must_use]
+	pub fn quota(&self, session: &SessionId) -> Option<&crate::domain::QuotaView> {
+		self.domains.quotas.get(session)
+	}
 }

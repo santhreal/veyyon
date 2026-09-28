@@ -325,7 +325,7 @@ describe("a decision a turn is blocked on does not outlive the stop", () => {
 		expect(answer.outcome).toEqual({ RequestSucceeded: { request: 3 } });
 
 		const withdrawn = pendingFor(answer.frames, session).at(-1);
-		expect(withdrawn).toEqual({ approvals: [], questions: [], plans: [] });
+		expect(withdrawn).toEqual({ approvals: [], questions: [], plans: [], dialogs: [] });
 	});
 
 	test("a stopped call is not reported to the model as one the operator refused", async () => {
@@ -356,7 +356,12 @@ describe("a decision a turn is blocked on does not outlive the stop", () => {
 		// Attribution, not merely emptiness: the ledger stamps every frame with
 		// the session the client holds NOW, so a card withdrawn after the switch
 		// would be published against the session the operator moved to.
-		expect(pendingFor(answer.frames, session).at(-1)).toEqual({ approvals: [], questions: [], plans: [] });
+		expect(pendingFor(answer.frames, session).at(-1)).toEqual({
+			approvals: [],
+			questions: [],
+			plans: [],
+			dialogs: [],
+		});
 		expect(pendingFor(answer.frames, elsewhere).at(-1)?.approvals ?? []).toEqual([]);
 	});
 
@@ -366,7 +371,12 @@ describe("a decision a turn is blocked on does not outlive the stop", () => {
 
 		const answer = await withinTheBound(client.request(3, { CreateSession: {} }));
 		expect(answer.outcome).toEqual({ RequestSucceeded: { request: 3 } });
-		expect(pendingFor(answer.frames, session).at(-1)).toEqual({ approvals: [], questions: [], plans: [] });
+		expect(pendingFor(answer.frames, session).at(-1)).toEqual({
+			approvals: [],
+			questions: [],
+			plans: [],
+			dialogs: [],
+		});
 	});
 
 	test("branching answers while an approval is up", async () => {
@@ -375,7 +385,12 @@ describe("a decision a turn is blocked on does not outlive the stop", () => {
 
 		const answer = await withinTheBound(client.request(3, { BranchSession: { session } }));
 		expect(answer.outcome).toEqual({ RequestSucceeded: { request: 3 } });
-		expect(pendingFor(answer.frames, session).at(-1)).toEqual({ approvals: [], questions: [], plans: [] });
+		expect(pendingFor(answer.frames, session).at(-1)).toEqual({
+			approvals: [],
+			questions: [],
+			plans: [],
+			dialogs: [],
+		});
 	});
 
 	/**
@@ -429,7 +444,12 @@ describe("a decision a turn is blocked on does not outlive the stop", () => {
 
 		const answer = await withinTheBound(client.request(3, { AbortTurn: { session } }));
 		expect(answer.outcome).toEqual({ RequestSucceeded: { request: 3 } });
-		expect(pendingFor(answer.frames, session).at(-1)).toEqual({ approvals: [], questions: [], plans: [] });
+		expect(pendingFor(answer.frames, session).at(-1)).toEqual({
+			approvals: [],
+			questions: [],
+			plans: [],
+			dialogs: [],
+		});
 	});
 
 	describe("every raiser the ledger exposes", () => {
@@ -444,6 +464,11 @@ describe("a decision a turn is blocked on does not outlive the stop", () => {
 			choice: (ledger, signal) => ledger.choice("pick one", ["a", "b"], signal ? { signal } : undefined),
 			text: (ledger, signal) => ledger.text("say something", signal ? { signal } : undefined),
 			plan: (ledger, signal) => ledger.plan("# a plan", signal ? { signal } : undefined),
+			dialog: (ledger, signal) =>
+				ledger.dialog(
+					[{ id: "q", question: "pick one", options: [{ label: "a" }, { label: "b" }] }],
+					signal ? { signal } : undefined,
+				),
 		};
 
 		/** Prototype members that answer or report decisions rather than raising one. */
@@ -485,7 +510,7 @@ describe("a decision a turn is blocked on does not outlive the stop", () => {
 
 		test("carries every kind the wire can publish", async () => {
 			const ledger = await ledgerOn("session-kinds");
-			expect(Object.keys(ledger.pending()).sort()).toEqual(["approvals", "plans", "questions"]);
+			expect(Object.keys(ledger.pending()).sort()).toEqual(["approvals", "dialogs", "plans", "questions"]);
 		});
 
 		for (const [name, raise] of Object.entries(RAISERS)) {
@@ -497,7 +522,7 @@ describe("a decision a turn is blocked on does not outlive the stop", () => {
 				ledger.cancelUnsignalled();
 				expect(await settlesSoon(decision)).toBe(true);
 				expect(ledger.isEmpty).toBe(true);
-				expect(ledger.pending()).toEqual({ approvals: [], questions: [], plans: [] });
+				expect(ledger.pending()).toEqual({ approvals: [], questions: [], plans: [], dialogs: [] });
 			});
 
 			test(`${name} raised with a signal is left to the abort`, async () => {

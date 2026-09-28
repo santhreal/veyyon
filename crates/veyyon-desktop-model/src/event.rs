@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
 
+pub use crate::session_listing::{
+	SessionHeaderView, SessionLoadError, SessionStatus, SessionSummary,
+};
 use crate::{
 	capabilities::{Capability, CapabilityStatus},
 	connection::{ConnectionState, RequestId, SessionId, Versioned},
@@ -12,63 +15,9 @@ use crate::{
 	},
 	error::BackendError,
 	interaction::PendingDecisions,
-	streaming::StreamingMessageState,
+	streaming::{StreamingAppend, StreamingMessageState},
 	transcript::TranscriptEntry,
 };
-
-/// Status summary for a session stored on disk.
-#[derive(
-	Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ts_rs::TS, strum::EnumIter,
-)]
-pub enum SessionStatus {
-	Complete,
-	Interrupted,
-	Aborted,
-	Error,
-	Pending,
-	Unknown,
-}
-
-/// Lightweight session metadata returned in session directory listings.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
-pub struct SessionSummary {
-	pub id:                  SessionId,
-	pub workspace:           String,
-	pub path:                String,
-	pub cwd:                 String,
-	pub title:               Option<String>,
-	pub parent_path:         Option<String>,
-	pub created_at_ms:       u64,
-	pub modified_at_ms:      u64,
-	pub message_count:       u32,
-	pub size_bytes:          u64,
-	pub first_message:       Option<String>,
-	pub searchable_messages: Option<String>,
-	pub status:              SessionStatus,
-}
-
-/// Error encountered when reading or parsing a session header file.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
-pub struct SessionLoadError {
-	pub path:   String,
-	pub reason: String,
-}
-
-/// Detailed session header information for the active session.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
-pub struct SessionHeaderView {
-	pub id:             SessionId,
-	pub schema_version: u32,
-	pub title:          Option<String>,
-	pub title_source:   Option<String>,
-	pub parent:         Option<SessionId>,
-	pub created_at_ms:  u64,
-	pub cwd:            String,
-	/// The mode the session is in as the host spells it (`plan`, `goal`,
-	/// `none`), absent from a host that reports no mode at all.
-	#[serde(default)]
-	pub mode:           Option<String>,
-}
 
 /// Every snapshot section name the protocol defines, in variant order.
 pub const ALL_SECTION_NAMES: &[&str] = &[
@@ -95,6 +44,9 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 	"Providers",
 	"AuthFlow",
 	"Mcp",
+	"McpCatalog",
+	"McpProbe",
+	"McpRegistry",
 	"Agents",
 	"AgentComms",
 	"Share",
@@ -112,6 +64,17 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 	"ForegroundCommand",
 	"AutoswarmConsole",
 	"Todo",
+	"Accounts",
+	"Extensions",
+	"Host",
+	"Checkout",
+	"Pace",
+	"ServingAccount",
+	"Quota",
+	"ExtensionUi",
+	"ComposerEdit",
+	"ComposerCompletions",
+	"ExtensionNotice",
 ];
 
 /// Domain sections received during initial connection or snapshot
@@ -179,6 +142,13 @@ pub enum SnapshotSection {
 	AuthFlow(AuthFlowView),
 	/// Model Context Protocol servers.
 	Mcp(Vec<McpServerView>),
+	/// The resources, prompts and notifications the connected MCP servers
+	/// offer.
+	McpCatalog(crate::domain::McpCatalogView),
+	/// The outcome of a `TestMcpServer`.
+	McpProbe(crate::domain::McpProbeView),
+	/// The Smithery registry's sign-in state and last search results.
+	McpRegistry(crate::domain::McpRegistryView),
 	/// Background subagents.
 	Agents(Vec<AgentView>),
 	/// Agent-to-agent IRC comms message stream.
@@ -236,6 +206,55 @@ pub enum SnapshotSection {
 		/// The board as the host holds it, or None once it records no task.
 		board:   Option<crate::domain::TodoBoardView>,
 	},
+	/// Every credential the host stores for a provider.
+	Accounts(Vec<crate::domain::StoredAccountView>),
+	/// The extensions, skills, hooks and other items the host discovers.
+	Extensions(crate::domain::ExtensionsView),
+	/// The machine the host runs on.
+	Host(crate::domain::HostView),
+	/// The branch a session's checkout is on, or its absence outside a
+	/// repository.
+	Checkout {
+		/// Target session identifier.
+		session:  SessionId,
+		/// The checkout as the host reads it, or None outside a repository.
+		checkout: Option<crate::domain::CheckoutView>,
+	},
+	/// How long the agent has worked in a session and how fast it replies.
+	Pace {
+		/// Target session identifier.
+		session: SessionId,
+		/// The session's pace as the host holds it.
+		pace:    crate::domain::PaceView,
+	},
+	/// The stored login serving a session, or its absence when the session's
+	/// provider stores none.
+	ServingAccount {
+		/// Target session identifier.
+		session: SessionId,
+		/// The serving login, or None when no login is stored.
+		account: Option<crate::domain::ServingAccountView>,
+	},
+	/// The subscription quota of the login serving a session, or its absence
+	/// when the provider reports none.
+	Quota {
+		/// Target session identifier.
+		session: SessionId,
+		/// The quota windows, or None when the provider reports none.
+		quota:   Option<crate::domain::QuotaView>,
+	},
+	/// What a session's extensions draw around its composer.
+	ExtensionUi { session: SessionId, ui: crate::domain::ExtensionUiView },
+	/// An edit an extension made to a session's draft. Sent once per edit and
+	/// never restated, so a reattaching window cannot apply one twice.
+	ComposerEdit { session: SessionId, edit: crate::domain::ComposerEditView },
+	/// The answer to a `CompleteComposer`.
+	ComposerCompletions {
+		session:     SessionId,
+		completions: crate::domain::ComposerCompletionsView,
+	},
+	/// A notice an extension raised in a session.
+	ExtensionNotice { session: SessionId, notice: crate::domain::ExtensionNoticeView },
 }
 
 impl SnapshotSection {
@@ -266,6 +285,9 @@ impl SnapshotSection {
 			Self::Providers(..) => "Providers",
 			Self::AuthFlow(..) => "AuthFlow",
 			Self::Mcp(..) => "Mcp",
+			Self::McpCatalog(..) => "McpCatalog",
+			Self::McpProbe(..) => "McpProbe",
+			Self::McpRegistry(..) => "McpRegistry",
 			Self::Agents(..) => "Agents",
 			Self::AgentComms(..) => "AgentComms",
 			Self::Share(..) => "Share",
@@ -283,6 +305,17 @@ impl SnapshotSection {
 			Self::ForegroundCommand { .. } => "ForegroundCommand",
 			Self::AutoswarmConsole { .. } => "AutoswarmConsole",
 			Self::Todo { .. } => "Todo",
+			Self::Accounts(..) => "Accounts",
+			Self::Extensions(..) => "Extensions",
+			Self::Host(..) => "Host",
+			Self::Checkout { .. } => "Checkout",
+			Self::Pace { .. } => "Pace",
+			Self::ServingAccount { .. } => "ServingAccount",
+			Self::Quota { .. } => "Quota",
+			Self::ExtensionUi { .. } => "ExtensionUi",
+			Self::ComposerEdit { .. } => "ComposerEdit",
+			Self::ComposerCompletions { .. } => "ComposerCompletions",
+			Self::ExtensionNotice { .. } => "ExtensionNotice",
 		}
 	}
 
@@ -305,12 +338,27 @@ impl SnapshotSection {
 pub enum HostEvent {
 	ConnectionChanged(ConnectionState),
 	Snapshot(SnapshotSection),
-	TranscriptAppended { revision: u64, entries: Vec<TranscriptEntry> },
-	TranscriptUpdated { revision: u64, entry: TranscriptEntry },
+	TranscriptAppended {
+		revision: u64,
+		entries:  Vec<TranscriptEntry>,
+	},
+	TranscriptUpdated {
+		revision: u64,
+		entry:    TranscriptEntry,
+	},
 	StreamingChanged(Option<StreamingMessageState>),
-	RequestSucceeded { request: RequestId },
-	RequestFailed { request: RequestId, error: BackendError },
-	FatalProtocolError { message: String },
+	/// Text the streaming reply grew by; see [`StreamingAppend`].
+	StreamingAppended(StreamingAppend),
+	RequestSucceeded {
+		request: RequestId,
+	},
+	RequestFailed {
+		request: RequestId,
+		error:   BackendError,
+	},
+	FatalProtocolError {
+		message: String,
+	},
 }
 
 impl HostEvent {
@@ -323,6 +371,7 @@ impl HostEvent {
 			Self::TranscriptAppended { .. } => "TranscriptAppended",
 			Self::TranscriptUpdated { .. } => "TranscriptUpdated",
 			Self::StreamingChanged(_) => "StreamingChanged",
+			Self::StreamingAppended(_) => "StreamingAppended",
 			Self::RequestSucceeded { .. } => "RequestSucceeded",
 			Self::RequestFailed { .. } => "RequestFailed",
 			Self::FatalProtocolError { .. } => "FatalProtocolError",

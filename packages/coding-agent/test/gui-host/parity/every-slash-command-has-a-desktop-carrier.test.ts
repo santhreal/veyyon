@@ -29,7 +29,7 @@ import {
 } from "../../../src/slash-commands/builtin-declarations";
 
 /** The commands no desktop surface reaches, as they stand. */
-const RECORDED_GAPS = ["extensions", "logout"];
+const RECORDED_GAPS: string[] = [];
 
 /** The commands the desktop does without, each with its reason in the table. */
 const RECORDED_OPT_OUTS: string[] = [];

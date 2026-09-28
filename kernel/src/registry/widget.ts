@@ -24,3 +24,9 @@ export interface ExtensionWidgetOptions {
  * capability and goes through `ui.terminal.setWidgetComponent` instead.
  */
 export type ExtensionWidgetContent = string[] | undefined;
+
+/**
+ * The most lines of one widget a host draws. A host that receives more draws
+ * this many and states under them that the widget was cut.
+ */
+export const MAX_WIDGET_LINES = 10;

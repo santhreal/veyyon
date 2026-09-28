@@ -67,6 +67,9 @@ pub enum NotificationSource {
 	/// keeps a broken notifier from announcing its own failure again for
 	/// every card.
 	DeliveryFailed,
+	/// An extension raised a notice. Its priority is the level the extension
+	/// stated: an error stays until dismissed, a warning and an info expire.
+	Extension,
 }
 
 impl NotificationSource {
@@ -77,6 +80,7 @@ impl NotificationSource {
 			Self::DecisionWaiting => "decision-waiting",
 			Self::RequestFailed => "request-failed",
 			Self::DeliveryFailed => "delivery-failed",
+			Self::Extension => "extension",
 		}
 	}
 }

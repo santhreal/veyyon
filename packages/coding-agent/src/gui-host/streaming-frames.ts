@@ -1,18 +1,17 @@
+import { isDeepStrictEqual } from "node:util";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AgentSession } from "../session/agent-session";
 import type { PresentationLedger } from "./presentation";
 import { agentMessageToTranscriptEntry } from "./transcript-conversion";
-import type { TranscriptEntry } from "./wire";
+import type { StreamingAppend, StreamingMessageState, TranscriptEntry } from "./wire";
 
 /**
  * How often a streaming reply reaches the window, in milliseconds.
  *
- * A provider emits one delta per token chunk, and `StreamingChanged` carries
- * the whole accumulating entry rather than the delta, so converting and
- * serialising one per token costs the square of the reply length on the host,
- * the socket and the window's decoder. The window redraws at the display's
- * rate regardless, so the deltas between two frames are work no operator ever
- * sees.
+ * A provider emits one delta per token chunk, and converting the whole
+ * accumulating reply once per delta costs the square of its length on the
+ * host. The window redraws at the display's rate regardless, so the deltas
+ * between two frames are work no operator ever sees.
  *
  * 16 ms is one frame at 60 Hz: the fastest cadence a repaint can consume.
  */
@@ -55,15 +54,11 @@ export interface StreamingFrameSession {
 	streamFrame?: StreamingFrameState;
 }
 
-/** The frame the window is sent for one streaming state. */
-export type StreamingFrame = {
-	StreamingChanged: {
-		entry: string;
-		tool: string | null;
-		accumulating: TranscriptEntry;
-		revision: number;
-	};
-};
+/**
+ * The frame the window is sent for one streaming state: the whole reply, or
+ * the text it grew by when that is all that changed since the last frame.
+ */
+export type StreamingFrame = { StreamingChanged: StreamingMessageState } | { StreamingAppended: StreamingAppend };
 
 function frameState(state: StreamingFrameSession): StreamingFrameState {
 	state.streamFrame ??= {};
@@ -110,9 +105,54 @@ function resolve(state: StreamingFrameSession): TranscriptEntry | undefined {
 	return state.streamingAccumulating;
 }
 
+/** The text of a `Text` or `Thinking` block, keyed by which of the two it is. */
+function blockText(block: TranscriptEntry["content"][number] | undefined): [kind: string, text: string] | undefined {
+	if (!block) return undefined;
+	if ("Text" in block) return ["Text", block.Text.text];
+	if ("Thinking" in block) return ["Thinking", block.Thinking.text];
+	return undefined;
+}
+
+/**
+ * The text `next` grew by over `sent`, when that is the only difference the
+ * window can draw: the same entry, the same blocks, and the last block a
+ * `Text` or `Thinking` block whose text `sent` is a prefix of. `raw` and
+ * `revision` are not compared: the append carries the revision, and the
+ * window never draws `raw`.
+ */
+function appendedText(
+	sent: TranscriptEntry | undefined,
+	next: TranscriptEntry,
+): { block: number; text: string } | undefined {
+	if (!sent || sent.id !== next.id || sent.content.length !== next.content.length) return undefined;
+	if (
+		sent.parent !== next.parent ||
+		sent.role !== next.role ||
+		sent.timestamp_ms !== next.timestamp_ms ||
+		sent.raw_discriminator !== next.raw_discriminator ||
+		!isDeepStrictEqual(sent.meta, next.meta)
+	) {
+		return undefined;
+	}
+	const last = next.content.length - 1;
+	for (let block = 0; block < last; block++) {
+		if (!isDeepStrictEqual(sent.content[block], next.content[block])) return undefined;
+	}
+	const before = blockText(sent.content[last]);
+	const after = blockText(next.content[last]);
+	if (!before || !after || before[0] !== after[0] || !after[1].startsWith(before[1])) return undefined;
+	return { block: last, text: after[1].slice(before[1].length) };
+}
+
 /**
  * Writes the held streaming state now, if there is any, and starts the next
  * interval from this moment.
+ *
+ * The window holds the reply `streamingAccumulating` last recorded, so a
+ * frame that only grows the text of its last block is written as that text;
+ * any other change, a call starting or ending, or a regenerated presentation
+ * writes the whole reply. A frame identical to the one the window holds is
+ * not written.
  *
  * The interval is measured against the process clock, which is also the one
  * the scheduled frame fires on: two clocks would let a held frame be written
@@ -123,6 +163,8 @@ export function flushStreamingFrame(state: StreamingFrameSession, write: (frame:
 	clearTimeout(held.timer);
 	held.timer = undefined;
 	const pending = held.message !== undefined || held.regenerate !== undefined || held.tool === true;
+	const whole = held.regenerate !== undefined || held.tool === true;
+	const sent = state.streamingAccumulating;
 	const accumulating = resolve(state);
 	if (!pending || !accumulating || !state.streamingEntry) return;
 	// Cleared only once a frame carries them: a change the window was not
@@ -130,6 +172,12 @@ export function flushStreamingFrame(state: StreamingFrameSession, write: (frame:
 	held.regenerate = undefined;
 	held.tool = undefined;
 	held.lastFrameMs = Date.now();
+	const append = whole ? undefined : appendedText(sent, accumulating);
+	if (append?.text === "") return;
+	if (append) {
+		write({ StreamingAppended: { entry: state.streamingEntry, ...append, revision: state.revision } });
+		return;
+	}
 	write({
 		StreamingChanged: {
 			entry: state.streamingEntry,

@@ -6,6 +6,16 @@ import type { TodoStatus } from "@veyyon/wire";
 import type { AgentDisplayState } from "../registry/live-roster";
 
 /**
+ * The requests the providers page sends about an account it lists, each
+ * tagged as the wire names it.
+ *
+ * A family of its own rather than more variants of `HostAction`; the
+ * variant that holds it is `untagged`, so a window still sends
+ * `{"SignOutAccount": {…}}` and the host still reads one flat action.
+ */
+export type AccountsRequest = { "SignOutAccount": { provider: string, credential_id: number, } };
+
+/**
  * How one line of agent traffic landed.
  */
 export type AgentMessageOutcome = "injected" | "woken" | "revived" | "failed";
@@ -509,6 +519,25 @@ diff_truncated: boolean,
 files_withheld: number, };
 
 /**
+ * The branch a session's checkout is on.
+ */
+export type CheckoutView = { 
+/**
+ * The branch name, or the short label of a detached HEAD or of an
+ * operation in progress, spelled as the terminal spells it.
+ */
+branch: string, 
+/**
+ * Whether the tree holds staged, unstaged or untracked changes.
+ */
+dirty: boolean, 
+/**
+ * The pull request `gh` reports for the branch, absent on the default
+ * branch, without a GitHub remote, or while none is open.
+ */
+pull_request: PullRequestView | null, };
+
+/**
  * Where a command came from, which the palette states so two rows with one
  * name are told apart.
  */
@@ -540,6 +569,52 @@ aliases: Array<string>, description: string | null,
  * arguments; a command that takes none has no hint.
  */
 input_hint: string | null, source: CommandSource, subcommands: Array<CommandSubcommandView>, };
+
+/**
+ * One completion an extension offered for the draft.
+ *
+ * Offsets are UTF-8 byte offsets into the draft the `CompleteComposer`
+ * carried. Accepting the completion replaces `replace_start..replace_end`
+ * with `insert` and puts the caret at `caret`, an offset into the draft
+ * after that replacement.
+ */
+export type ComposerCompletionView = { label: string, description: string | null, replace_start: number, replace_end: number, insert: string, caret: number, };
+
+/**
+ * The completions the host answered one `CompleteComposer` with.
+ */
+export type ComposerCompletionsView = { 
+/**
+ * The `query` of the `CompleteComposer` this answers. The store keeps
+ * the answer to the newest query, so a slow answer to an earlier one
+ * never replaces it.
+ */
+query: number, items: Array<ComposerCompletionView>, };
+
+/**
+ * How an extension edit changes the draft.
+ */
+export type ComposerEditKind = "Set" | "Paste";
+
+/**
+ * One edit an extension made to a session's draft.
+ */
+export type ComposerEditView = { 
+/**
+ * The host's number for the edit, rising with every edit it makes. A
+ * `ReportComposerDraft` states the last one the composer applied.
+ */
+seq: number, kind: ComposerEditKind, text: string, };
+
+/**
+ * The requests the composer sends on behalf of a session's extensions, each
+ * tagged as the wire names it.
+ *
+ * A family of its own rather than more variants of `HostAction`; the variant
+ * that holds it is `untagged`, so a window still sends
+ * `{"CompleteComposer": {…}}` and the host still reads one flat action.
+ */
+export type ComposerRequest = { "ReportComposerDraft": { session: SessionId, text: string, cursor: number, applied_edit: number, } } | { "CompleteComposer": { session: SessionId, query: number, text: string, cursor: number, } };
 
 /**
  * Host transport connection states mirroring wire protocol definitions.
@@ -621,6 +696,56 @@ name: string,
 tokens: number, };
 
 /**
+ * How a stored credential signs in, spelled as the credential store spells
+ * it.
+ */
+export type CredentialKind = "oauth" | "api_key";
+
+/**
+ * A dialog of questions answered in one submission.
+ *
+ * The `response` that answers it is `{ "kind": "submit", "answers": [...] }`
+ * with one answer per question, or `{ "kind": "chat" }` to discuss the
+ * questions instead.
+ */
+export type DialogInteraction = { id: InteractionId, questions: Array<DialogQuestion>, requested_at_ms: number, 
+/**
+ * When the host settles the dialog itself, taking each unanswered
+ * question's recommended option. Absent while it waits indefinitely.
+ */
+expires_at_ms?: number, };
+
+/**
+ * One option of a dialog question.
+ */
+export type DialogOption = { label: string, description?: string, 
+/**
+ * Text drawn beside the option while it has focus, such as a code sample.
+ */
+preview?: string, };
+
+/**
+ * One question of a dialog.
+ */
+export type DialogQuestion = { id: string, question: string, 
+/**
+ * Short tab label for the question.
+ */
+header?: string, options: Array<DialogOption>, 
+/**
+ * Whether more than one option may be selected.
+ */
+multi: boolean, 
+/**
+ * Index of the option the asker recommends.
+ */
+recommended?: number, 
+/**
+ * Indices of the options selected when the dialog opens.
+ */
+preselected: Array<number>, };
+
+/**
  * Where a dictation is.
  */
 export type DictationState = "idle" | "recording" | "transcribing";
@@ -693,6 +818,150 @@ path: string | null,
  * Direct exported content string if returned in memory.
  */
 content: string | null, };
+
+/**
+ * One discovered item.
+ */
+export type ExtensionItemView = { 
+/**
+ * `<kind>:<name>`, the id `SetExtensionEnabled` names.
+ */
+id: string, kind: ExtensionKind, name: string, description: string | null, 
+/**
+ * The slash command, glob or pattern that brings the item in.
+ */
+trigger: string | null, 
+/**
+ * File the item was read from.
+ */
+path: string, 
+/**
+ * Id of the source that provides it.
+ */
+source: string, level: ExtensionLevel, state: ExtensionState, 
+/**
+ * The item loaded in its place, when it is shadowed.
+ */
+shadowed_by: string | null, };
+
+/**
+ * What a discovered item is, spelled as the host spells it in the item's id.
+ */
+export type ExtensionKind = "extension-module" | "skill" | "rule" | "tool" | "mcp" | "prompt" | "instruction" | "context-file" | "hook" | "slash-command";
+
+/**
+ * Where an item was found.
+ */
+export type ExtensionLevel = "user" | "project" | "native";
+
+/**
+ * How much an extension notice interrupts, as the extension stated it.
+ */
+export type ExtensionNoticeLevel = "Info" | "Warning" | "Error";
+
+/**
+ * A notice an extension raised.
+ */
+export type ExtensionNoticeView = { level: ExtensionNoticeLevel, message: string, 
+/**
+ * Epoch milliseconds the host received the notice.
+ */
+raised_at_ms: number, };
+
+/**
+ * A source the host discovers items from, such as another agent's
+ * configuration directory.
+ */
+export type ExtensionSourceView = { 
+/**
+ * The id `SetExtensionSourceEnabled` names.
+ */
+id: string, name: string, 
+/**
+ * Whether the host reads it. A source switched off withholds every item
+ * it provides.
+ */
+enabled: boolean, };
+
+/**
+ * Whether the host loads an item, and what withholds it when it does not.
+ */
+export type ExtensionState = "Active" | "Disabled" | "SourceDisabled" | "Shadowed";
+
+/**
+ * One status entry an extension set, drawn in the run bar.
+ */
+export type ExtensionStatusView = { 
+/**
+ * The key the extension set it under; setting the key again replaces it.
+ */
+key: string, 
+/**
+ * The text to draw, with terminal styling already stripped.
+ */
+text: string, };
+
+/**
+ * Everything the extensions of one session draw around its composer.
+ */
+export type ExtensionUiView = { 
+/**
+ * The status entries, ordered by key.
+ */
+statuses: Array<ExtensionStatusView>, 
+/**
+ * The message the run bar states while a turn streams, or `None` for the
+ * window's own.
+ */
+working_message: string | null, 
+/**
+ * The widgets, in the order they were last set.
+ */
+widgets: Array<ExtensionWidgetView>, 
+/**
+ * Whether an extension added a completion source, so the composer asks
+ * the host for completions through `CompleteComposer`.
+ */
+completes: boolean, };
+
+/**
+ * Where a widget sits relative to the composer.
+ */
+export type ExtensionWidgetPlacement = "AboveEditor" | "BelowEditor";
+
+/**
+ * One text widget an extension set.
+ */
+export type ExtensionWidgetView = { 
+/**
+ * The key the extension set it under; setting the key again replaces it.
+ */
+key: string, placement: ExtensionWidgetPlacement, 
+/**
+ * The lines to draw, at most the ten the terminal draws.
+ */
+lines: Array<string>, 
+/**
+ * Whether the extension set more lines than `lines` holds, which the
+ * window states under the last one.
+ */
+truncated: boolean, };
+
+/**
+ * The requests the extensions page sends, each tagged as the wire names it.
+ *
+ * A family of its own rather than three more variants of `HostAction`; the
+ * variant that holds it is `untagged`, so a window still sends
+ * `{"SetExtensionEnabled": {…}}` and the host still reads one flat action.
+ * Every request is answered with a fresh `Extensions` section.
+ */
+export type ExtensionsRequest = "RefreshExtensions" | { "SetExtensionEnabled": { id: string, enabled: boolean, } } | { "SetExtensionSourceEnabled": { source: string, enabled: boolean, } };
+
+/**
+ * Every item the host discovers for its workspace, with the sources they
+ * come from.
+ */
+export type ExtensionsView = { sources: Array<ExtensionSourceView>, items: Array<ExtensionItemView>, };
 
 /**
  * File content snapshot payload.
@@ -815,18 +1084,28 @@ export type HostAction = { "Attach": { endpoint: string | null, } } | "Detach" |
  * Copy-item keys seeded from the active profile; empty makes a blank
  * profile.
  */
-copy: Array<string>, } } | { "RenameProfile": { name: string, display_name: string, } } | { "DeleteProfile": { name: string, } } | "ToggleDictation" | "CancelDictation" | AutoswarmRequest;
+copy: Array<string>, } } | { "RenameProfile": { name: string, display_name: string, } } | { "DeleteProfile": { name: string, } } | "ToggleDictation" | "CancelDictation" | AutoswarmRequest | McpRequest | AccountsRequest | ExtensionsRequest | ComposerRequest;
 
 /**
  * Complete enumeration of the protocol event variants dispatched by host
  * transport.
  */
-export type HostEvent = { "ConnectionChanged": ConnectionState } | { "Snapshot": SnapshotSection } | { "TranscriptAppended": { revision: number, entries: Array<TranscriptEntry>, } } | { "TranscriptUpdated": { revision: number, entry: TranscriptEntry, } } | { "StreamingChanged": StreamingMessageState | null } | { "RequestSucceeded": { request: RequestId, } } | { "RequestFailed": { request: RequestId, error: BackendError, } } | { "FatalProtocolError": { message: string, } };
+export type HostEvent = { "ConnectionChanged": ConnectionState } | { "Snapshot": SnapshotSection } | { "TranscriptAppended": { revision: number, entries: Array<TranscriptEntry>, } } | { "TranscriptUpdated": { revision: number, entry: TranscriptEntry, } } | { "StreamingChanged": StreamingMessageState | null } | { "StreamingAppended": StreamingAppend } | { "RequestSucceeded": { request: RequestId, } } | { "RequestFailed": { request: RequestId, error: BackendError, } } | { "FatalProtocolError": { message: string, } };
 
 /**
  * Request wrapper carrying a unique identifier and action payload.
  */
 export type HostRequest = { id: RequestId, action: HostAction, };
+
+/**
+ * The machine the host process runs on.
+ */
+export type HostView = { 
+/**
+ * The name the operating system reports for the machine, domain
+ * included. The terminal draws the label before the first `.`.
+ */
+hostname: string, };
 
 /**
  * One kind of input a model accepts, as the catalog declares it.
@@ -856,6 +1135,357 @@ keys: Array<string>,
 source: string, };
 
 /**
+ * What the connected MCP servers offer beyond tools: their resources, resource
+ * templates and prompts, and the notifications each one sends.
+ */
+export type McpCatalogView = { 
+/**
+ * Whether the host subscribes to server notifications, as the
+ * `mcp.notifications` setting states.
+ */
+notifications: boolean, 
+/**
+ * One entry per connected server, in the order the host lists them.
+ */
+servers: Array<McpServerCatalogView>, };
+
+/**
+ * The notifications an MCP server declares in its capabilities.
+ */
+export type McpNotificationsView = { 
+/**
+ * The server announces a changed tool list.
+ */
+tools_changed: boolean, 
+/**
+ * The server announces a changed resource list.
+ */
+resources_changed: boolean, 
+/**
+ * The server announces a changed prompt list.
+ */
+prompts_changed: boolean, 
+/**
+ * The server offers resources at all.
+ */
+offers_resources: boolean, 
+/**
+ * The server accepts subscriptions to a resource's updates.
+ */
+subscribe: boolean, };
+
+/**
+ * What a one-off connection to an MCP server found.
+ */
+export type McpProbeOutcome = { "Connected": { 
+/**
+ * The name the server reports for itself.
+ */
+name: string, 
+/**
+ * The version the server reports.
+ */
+version: string, 
+/**
+ * The tools it lists.
+ */
+tools: Array<string>, } } | { "Failed": { 
+/**
+ * The failure, as the transport or the server reported it.
+ */
+message: string, } };
+
+/**
+ * The outcome of connecting to a server once, apart from its running
+ * connection.
+ */
+export type McpProbeView = { 
+/**
+ * The server's configured name.
+ */
+server: string, 
+/**
+ * What the connection found.
+ */
+outcome: McpProbeOutcome, };
+
+/**
+ * One argument of an MCP prompt.
+ */
+export type McpPromptArgumentView = { 
+/**
+ * The argument's name.
+ */
+name: string, 
+/**
+ * The server's description of it.
+ */
+description: string | null, 
+/**
+ * Whether the prompt fails without it.
+ */
+required: boolean, };
+
+/**
+ * A prompt an MCP server lists, which runs as a slash command.
+ */
+export type McpPromptView = { 
+/**
+ * The prompt's name.
+ */
+name: string, 
+/**
+ * The slash command that runs it, `/<server>:<prompt>`.
+ */
+command: string, 
+/**
+ * The server's description of it.
+ */
+description: string | null, 
+/**
+ * Its arguments, in the order the server lists them.
+ */
+arguments: Array<McpPromptArgumentView>, };
+
+/**
+ * One value the operator supplied for a registry server's configuration.
+ */
+export type McpRegistryInputValue = { 
+/**
+ * The input's key, as the registry result states it.
+ */
+key: string, 
+/**
+ * The value.
+ */
+value: string, };
+
+/**
+ * One value a registry server's configuration asks for.
+ */
+export type McpRegistryInputView = { 
+/**
+ * The key `DeployMcpRegistryServer` names it by.
+ */
+key: string, 
+/**
+ * The label to draw beside the field.
+ */
+label: string, 
+/**
+ * The registry's description of it.
+ */
+description: string | null, 
+/**
+ * Whether deploying fails without it.
+ */
+required: boolean, 
+/**
+ * The value used when none is given.
+ */
+default: string | null, 
+/**
+ * Whether the value is a secret the field masks.
+ */
+sensitive: boolean, 
+/**
+ * The values it accepts, or empty for free text.
+ */
+choices: Array<string>, };
+
+/**
+ * One server the registry returned.
+ */
+export type McpRegistryResultView = { 
+/**
+ * The result's id, which `DeployMcpRegistryServer` names.
+ */
+id: string, 
+/**
+ * The registry's display name.
+ */
+name: string, 
+/**
+ * The registry's description.
+ */
+description: string, 
+/**
+ * How the server is reached: `http` or `stdio`.
+ */
+transport: string, 
+/**
+ * How many times the registry reports it used.
+ */
+use_count: number, 
+/**
+ * Whether the registry verified the publisher.
+ */
+verified: boolean, 
+/**
+ * The name it is added under unless another is given: its registry name,
+ * suffixed until no server in the profile's config holds it.
+ */
+server: string, 
+/**
+ * What the registry flagged about the entry.
+ */
+warnings: Array<string>, 
+/**
+ * The values the server's configuration asks for.
+ */
+inputs: Array<McpRegistryInputView>, };
+
+/**
+ * The Smithery registry as this profile reaches it: whether a key is stored,
+ * and the results of the last search.
+ */
+export type McpRegistryView = { 
+/**
+ * Whether a Smithery API key is stored for this profile or set in the
+ * host's environment.
+ */
+signed_in: boolean, 
+/**
+ * The words the last search was for, or None before any search.
+ */
+query: string | null, 
+/**
+ * The last search's results, best first.
+ */
+results: Array<McpRegistryResultView>, };
+
+/**
+ * The MCP management requests, each tagged as the wire names it.
+ *
+ * A family of its own rather than ten more variants of `HostAction`: the
+ * variant that holds this is `untagged`, so a window still sends
+ * `{"RemoveMcpServer": {…}}` and the host still reads one flat action.
+ *
+ * Every server the requests name is read from the profile's own MCP config
+ * file or from the servers the host discovered; a repository's `mcp.json` is
+ * never read, written or connected to.
+ */
+export type McpRequest = { "AddMcpServer": { 
+/**
+ * The server's name, which prefixes its tools.
+ */
+name: string, 
+/**
+ * How it is reached.
+ */
+target: McpServerTarget, } } | { "RemoveMcpServer": { 
+/**
+ * The server's name.
+ */
+server: string, } } | { "TestMcpServer": { 
+/**
+ * The server's name.
+ */
+server: string, } } | { "ReauthMcpServer": { 
+/**
+ * The server's name.
+ */
+server: string, } } | { "ClearMcpServerAuth": { 
+/**
+ * The server's name.
+ */
+server: string, } } | "ReloadMcp" | { "SearchMcpRegistry": { 
+/**
+ * The words to search for.
+ */
+query: string, 
+/**
+ * How many results to return, 1 to 100; the host's default when
+ * absent.
+ */
+limit: number | null, 
+/**
+ * Rank by meaning rather than by name and use count.
+ */
+semantic: boolean, } } | { "DeployMcpRegistryServer": { 
+/**
+ * The result's id, as `McpRegistry` states it.
+ */
+result: string, 
+/**
+ * The name to add it under. A name already configured is refused.
+ */
+server: string, 
+/**
+ * Values for the result's inputs. A required input left out is
+ * refused.
+ */
+inputs: Array<McpRegistryInputValue>, } } | "LoginMcpRegistry" | "LogoutMcpRegistry";
+
+/**
+ * A parameterized resource an MCP server lists, as an RFC 6570 URI template.
+ */
+export type McpResourceTemplateView = { 
+/**
+ * The URI template.
+ */
+uri_template: string, 
+/**
+ * The template's name.
+ */
+name: string, 
+/**
+ * The server's description of it.
+ */
+description: string | null, };
+
+/**
+ * A resource an MCP server lists.
+ */
+export type McpResourceView = { 
+/**
+ * The resource's URI.
+ */
+uri: string, 
+/**
+ * The resource's name.
+ */
+name: string, 
+/**
+ * The server's description of it.
+ */
+description: string | null, 
+/**
+ * Its MIME type, when the server states one.
+ */
+mime_type: string | null, };
+
+/**
+ * One connected server's resources, prompts and notification support.
+ */
+export type McpServerCatalogView = { 
+/**
+ * The server's name.
+ */
+server: string, 
+/**
+ * The resources the server lists.
+ */
+resources: Array<McpResourceView>, 
+/**
+ * The parameterized resources the server lists.
+ */
+templates: Array<McpResourceTemplateView>, 
+/**
+ * The prompts the server lists.
+ */
+prompts: Array<McpPromptView>, 
+/**
+ * The notifications the server declares it sends.
+ */
+notifies: McpNotificationsView, 
+/**
+ * The resource URIs the host is subscribed to on this server. Empty while
+ * notifications are off.
+ */
+subscriptions: Array<string>, };
+
+/**
  * Connectivity and lifecycle status of an MCP server.
  */
 export type McpServerStatus = "Connected" | "Connecting" | "Disconnected" | { "Error": { 
@@ -863,6 +1493,36 @@ export type McpServerStatus = "Connected" | "Connecting" | "Disconnected" | { "E
  * Error detail message.
  */
 message: string, } };
+
+/**
+ * How a server added from the window is reached.
+ */
+export type McpServerTarget = { "Command": { 
+/**
+ * The executable.
+ */
+command: string, 
+/**
+ * Its arguments, in order.
+ */
+args: Array<string>, } } | { "Http": { 
+/**
+ * The endpoint. A URL without a scheme is read as `https://`.
+ */
+url: string, 
+/**
+ * A bearer token sent as the `Authorization` header. Without one the
+ * host detects whether the server wants OAuth and runs the login.
+ */
+token: string | null, } } | { "Sse": { 
+/**
+ * The endpoint. A URL without a scheme is read as `https://`.
+ */
+url: string, 
+/**
+ * A bearer token sent as the `Authorization` header.
+ */
+token: string | null, } };
 
 /**
  * Configured Model Context Protocol server configuration and tool list.
@@ -960,10 +1620,35 @@ thinking_level: string | null,
 thinking_levels: Array<string>, };
 
 /**
- * Single definition of operator decision requests awaiting input, approval, or
- * plan review.
+ * How long the agent has worked in a session and how fast its reply streams.
  */
-export type PendingDecisions = { approvals: Array<ApprovalInteraction>, questions: Array<QuestionInteraction>, plans: Array<PlanInteraction>, };
+export type PaceView = { 
+/**
+ * Milliseconds of every finished working window, summed. Idle time
+ * between turns never counts.
+ */
+worked_ms: number, 
+/**
+ * Epoch milliseconds the running working window opened, absent while
+ * the agent is idle.
+ */
+working_since_ms: number | null, 
+/**
+ * The latest reply's output rate in tenths of a token per second (`423`
+ * is 42.3 tok/s), absent before a reply long enough to rate.
+ */
+tokens_per_second_tenths: number | null, };
+
+/**
+ * Single definition of operator decision requests awaiting input, approval,
+ * plan review or a multi-question dialog.
+ */
+export type PendingDecisions = { approvals: Array<ApprovalInteraction>, questions: Array<QuestionInteraction>, plans: Array<PlanInteraction>, 
+/**
+ * Dialogs of one or more questions answered together, which is what the
+ * `ask` tool raises.
+ */
+dialogs: Array<DialogInteraction>, };
 
 /**
  * Pending plan review requiring acceptance, refinement, or new session fork.
@@ -1155,6 +1840,19 @@ oauth: boolean,
 api_key: boolean, };
 
 /**
+ * A pull request opened from the checked-out branch.
+ */
+export type PullRequestView = { 
+/**
+ * The pull request's number in its repository.
+ */
+number: number, 
+/**
+ * The pull request's web address.
+ */
+url: string, };
+
+/**
  * Pending user question requiring option selection or text entry.
  */
 export type QuestionInteraction = { id: InteractionId, prompt: string, options: Array<string>, requested_at_ms: number, };
@@ -1194,6 +1892,36 @@ follow_up: Array<string>,
 restored: string | null, };
 
 /**
+ * The subscription quota of the login serving a session.
+ */
+export type QuotaView = { 
+/**
+ * The plan tier the provider names, when it names one.
+ */
+tier: string | null, 
+/**
+ * The rolling five-hour window.
+ */
+five_hour: QuotaWindowView | null, 
+/**
+ * The rolling seven-day window.
+ */
+seven_day: QuotaWindowView | null, };
+
+/**
+ * One subscription quota window.
+ */
+export type QuotaWindowView = { 
+/**
+ * Share of the window used, in tenths of a percent (`805` is 80.5%).
+ */
+used_permille: number, 
+/**
+ * Epoch milliseconds the window resets, when the provider reports it.
+ */
+resets_at_ms: number | null, };
+
+/**
  * Request identifier correlating host requests and responses.
  */
 export type RequestId = number;
@@ -1214,6 +1942,29 @@ paths: Array<string>,
  * Flag indicating whether results were truncated due to match limits.
  */
 truncated: boolean, };
+
+/**
+ * The stored login serving a session's provider.
+ */
+export type ServingAccountView = { 
+/**
+ * The provider the session's model runs on.
+ */
+provider: string, 
+/**
+ * The login's display label: its account name, email or identifier.
+ */
+label: string, 
+/**
+ * Logins stored for the provider. The terminal states the account only
+ * when this is two or more, since one login is not in question.
+ */
+logins: number, 
+/**
+ * True before the session's first request, when routing has predicted
+ * the login that will serve rather than confirmed one.
+ */
+predicted: boolean, };
 
 /**
  * Detailed session header information for the active session.
@@ -1451,7 +2202,7 @@ session: SessionId,
 /**
  * Pending decisions.
  */
-pending: PendingDecisions, } } | { "Settings": { [key in string]: SettingEntry } } | { "Diagnostics": unknown } | { "Changes": ChangesView } | { "FileTree": FileTreeView } | { "FileContent": FileContentView } | { "SearchResults": SearchResultsView } | { "ContentMatches": ContentMatchesView } | { "PromptHistory": PromptHistoryView } | { "Terminals": Array<TerminalView> } | { "TerminalOutput": TerminalOutputChunk } | { "Processes": Array<ProcessView> } | { "ProcessLogs": ProcessLogsChunk } | { "Models": ModelsView } | { "Providers": Array<ProviderView> } | { "AuthFlow": AuthFlowView } | { "Mcp": Array<McpServerView> } | { "Agents": Array<AgentView> } | { "AgentComms": Array<AgentMessageView> } | { "Share": ShareView } | { "Profiles": ProfilesView } | { "Usage": UsageView } | { "ContextBreakdown": ContextBreakdownView } | { "Export": ExportView } | { "Themes": ThemesView } | { "Keybindings": Array<KeybindingView> } | { "QueuedPrompts": QueuedPromptsView } | { "Commands": Array<CommandView> } | { "AgentPause": AgentPauseView } | { "Goal": { 
+pending: PendingDecisions, } } | { "Settings": { [key in string]: SettingEntry } } | { "Diagnostics": unknown } | { "Changes": ChangesView } | { "FileTree": FileTreeView } | { "FileContent": FileContentView } | { "SearchResults": SearchResultsView } | { "ContentMatches": ContentMatchesView } | { "PromptHistory": PromptHistoryView } | { "Terminals": Array<TerminalView> } | { "TerminalOutput": TerminalOutputChunk } | { "Processes": Array<ProcessView> } | { "ProcessLogs": ProcessLogsChunk } | { "Models": ModelsView } | { "Providers": Array<ProviderView> } | { "AuthFlow": AuthFlowView } | { "Mcp": Array<McpServerView> } | { "McpCatalog": McpCatalogView } | { "McpProbe": McpProbeView } | { "McpRegistry": McpRegistryView } | { "Agents": Array<AgentView> } | { "AgentComms": Array<AgentMessageView> } | { "Share": ShareView } | { "Profiles": ProfilesView } | { "Usage": UsageView } | { "ContextBreakdown": ContextBreakdownView } | { "Export": ExportView } | { "Themes": ThemesView } | { "Keybindings": Array<KeybindingView> } | { "QueuedPrompts": QueuedPromptsView } | { "Commands": Array<CommandView> } | { "AgentPause": AgentPauseView } | { "Goal": { 
 /**
  * Target session identifier.
  */
@@ -1483,7 +2234,81 @@ session: SessionId,
 /**
  * The board as the host holds it, or None once it records no task.
  */
-board: TodoBoardView | null, } };
+board: TodoBoardView | null, } } | { "Accounts": Array<StoredAccountView> } | { "Extensions": ExtensionsView } | { "Host": HostView } | { "Checkout": { 
+/**
+ * Target session identifier.
+ */
+session: SessionId, 
+/**
+ * The checkout as the host reads it, or None outside a repository.
+ */
+checkout: CheckoutView | null, } } | { "Pace": { 
+/**
+ * Target session identifier.
+ */
+session: SessionId, 
+/**
+ * The session's pace as the host holds it.
+ */
+pace: PaceView, } } | { "ServingAccount": { 
+/**
+ * Target session identifier.
+ */
+session: SessionId, 
+/**
+ * The serving login, or None when no login is stored.
+ */
+account: ServingAccountView | null, } } | { "Quota": { 
+/**
+ * Target session identifier.
+ */
+session: SessionId, 
+/**
+ * The quota windows, or None when the provider reports none.
+ */
+quota: QuotaView | null, } } | { "ExtensionUi": { session: SessionId, ui: ExtensionUiView, } } | { "ComposerEdit": { session: SessionId, edit: ComposerEditView, } } | { "ComposerCompletions": { session: SessionId, completions: ComposerCompletionsView, } } | { "ExtensionNotice": { session: SessionId, notice: ExtensionNoticeView, } };
+
+/**
+ * One credential the host stores for a provider, which `SignOutAccount`
+ * names to remove it.
+ *
+ * Only stored credentials are listed: a key read from an environment
+ * variable or a config file signs in without being stored, and signing out
+ * does not remove it.
+ */
+export type StoredAccountView = { 
+/**
+ * Provider the credential signs in to.
+ */
+provider: string, 
+/**
+ * Row the credential store keeps it under, unique within the host.
+ */
+credential_id: number, 
+/**
+ * The account's chosen name, else its email, organisation or account
+ * id, else the provider and row.
+ */
+label: string, 
+/**
+ * How the credential signs in.
+ */
+kind: CredentialKind, 
+/**
+ * Whether it is the account the provider is set to use on this machine.
+ */
+selected: boolean, };
+
+/**
+ * Text a streaming reply grew by since the frame before it.
+ *
+ * The host sends one instead of a whole [`StreamingMessageState`] when the
+ * reply differs from the one the window holds only by text appended to one
+ * `Text` or `Thinking` block, so a frame costs the size of the delta rather
+ * than the size of the reply. Every other field of the held entry, `raw`
+ * included, keeps the value the last `StreamingChanged` carried.
+ */
+export type StreamingAppend = { entry: EntryId, block: number, text: string, revision: number, };
 
 /**
  * State container representing in-flight assistant token generation and active
@@ -1720,6 +2545,9 @@ export const ALL_SNAPSHOT_SECTIONS = [
 	"Providers",
 	"AuthFlow",
 	"Mcp",
+	"McpCatalog",
+	"McpProbe",
+	"McpRegistry",
 	"Agents",
 	"AgentComms",
 	"Share",
@@ -1737,6 +2565,17 @@ export const ALL_SNAPSHOT_SECTIONS = [
 	"ForegroundCommand",
 	"AutoswarmConsole",
 	"Todo",
+	"Accounts",
+	"Extensions",
+	"Host",
+	"Checkout",
+	"Pace",
+	"ServingAccount",
+	"Quota",
+	"ExtensionUi",
+	"ComposerEdit",
+	"ComposerCompletions",
+	"ExtensionNotice",
 ] as const;
 
 export type SnapshotSectionTag = (typeof ALL_SNAPSHOT_SECTIONS)[number];
@@ -1807,6 +2646,16 @@ export const ALL_HOST_ACTIONS = [
 	"RetryAuthFlow",
 	"RefreshMcp",
 	"SetMcpEnabled",
+	"AddMcpServer",
+	"RemoveMcpServer",
+	"TestMcpServer",
+	"ReauthMcpServer",
+	"ClearMcpServerAuth",
+	"ReloadMcp",
+	"SearchMcpRegistry",
+	"DeployMcpRegistryServer",
+	"LoginMcpRegistry",
+	"LogoutMcpRegistry",
 	"RefreshAgents",
 	"ReviveAgent",
 	"SpawnTask",
@@ -1842,6 +2691,12 @@ export const ALL_HOST_ACTIONS = [
 	"SaveAutoswarmPreset",
 	"DeleteAutoswarmPreset",
 	"CloseAutoswarmConsole",
+	"SignOutAccount",
+	"RefreshExtensions",
+	"SetExtensionEnabled",
+	"SetExtensionSourceEnabled",
+	"ReportComposerDraft",
+	"CompleteComposer",
 ] as const;
 
 export type HostActionTag = (typeof ALL_HOST_ACTIONS)[number];
@@ -1912,6 +2767,16 @@ export const ACTION_TO_CAPABILITY: Record<HostActionTag, Capability> = {
 	RetryAuthFlow: "Authentication",
 	RefreshMcp: "Mcp",
 	SetMcpEnabled: "Mcp",
+	AddMcpServer: "Mcp",
+	RemoveMcpServer: "Mcp",
+	TestMcpServer: "Mcp",
+	ReauthMcpServer: "Mcp",
+	ClearMcpServerAuth: "Mcp",
+	ReloadMcp: "Mcp",
+	SearchMcpRegistry: "Mcp",
+	DeployMcpRegistryServer: "Mcp",
+	LoginMcpRegistry: "Mcp",
+	LogoutMcpRegistry: "Mcp",
 	RefreshAgents: "Agents",
 	ReviveAgent: "Agents",
 	SpawnTask: "Tasks",
@@ -1947,6 +2812,12 @@ export const ACTION_TO_CAPABILITY: Record<HostActionTag, Capability> = {
 	SaveAutoswarmPreset: "Autoswarm",
 	DeleteAutoswarmPreset: "Autoswarm",
 	CloseAutoswarmConsole: "Autoswarm",
+	SignOutAccount: "Authentication",
+	RefreshExtensions: "Extensions",
+	SetExtensionEnabled: "Extensions",
+	SetExtensionSourceEnabled: "Extensions",
+	ReportComposerDraft: "Extensions",
+	CompleteComposer: "Extensions",
 };
 
 export const SHARE_PHASES = [

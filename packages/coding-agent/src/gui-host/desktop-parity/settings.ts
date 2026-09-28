@@ -18,7 +18,8 @@ import type { DesktopCarrier } from "./carrier";
  * be edited from the desktop.
  */
 export const TERMINAL_ONLY_SETTINGS: Readonly<Record<string, string>> = {
-	"tui.": "Terminal renderer tuning (text sizing, scrollback, hyperlinks, inline image cells); the desktop renders with GPUI.",
+	"tui.":
+		"Terminal renderer tuning (text sizing, scrollback, hyperlinks, inline image cells); the desktop renders with GPUI.",
 	"statusLine.": "The terminal status line; the desktop draws session facts from the ActiveSession section instead.",
 	showHardwareCursor: "The terminal hardware cursor; the desktop editor draws its own caret.",
 	symbolPreset: "The terminal glyph set (Unicode, Nerd Font, ASCII); the desktop draws its own icons.",

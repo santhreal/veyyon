@@ -10,15 +10,16 @@ export const STATUS_SEGMENT_CARRIERS: Readonly<Record<string, DesktopCarrier>> =
 	pi: { optOut: "The product mark; the window's title bar and icon draw it." },
 	/** `ModelsView.current` and `ModelsView.thinking_level`. */
 	model: { section: "Models" },
-	account: {
-		gap: "When a provider stores more than one login, the desktop does not show which account serves the session.",
-	},
+	/** `ServingAccountView`, stated when `logins` is two or more as the terminal does. */
+	account: { section: "ServingAccount" },
 	/** `SessionHeaderView.mode`. */
 	mode: { section: "ActiveSession" },
 	/** `SessionHeaderView.cwd`. */
 	path: { section: "ActiveSession" },
-	git: { gap: "The desktop lists changed files from Changes but does not show the checked-out branch." },
-	pr: { gap: "The pull request for the checked-out branch is not shown on the desktop." },
+	/** `CheckoutView.branch` and `CheckoutView.dirty`. */
+	git: { section: "Checkout" },
+	/** `CheckoutView.pull_request`. */
+	pr: { section: "Checkout" },
 	/** One row per agent. */
 	agents: { section: "Agents" },
 	/** A backgrounded conversation is a session listed as running. */
@@ -29,20 +30,21 @@ export const STATUS_SEGMENT_CARRIERS: Readonly<Record<string, DesktopCarrier>> =
 	token_out: { section: "Usage" },
 	/** The sum of the `UsageTotals` token counts. */
 	token_total: { section: "Usage" },
-	token_rate: { gap: "The desktop does not show the reply's tokens per second while it streams." },
+	/** `PaceView.tokens_per_second_tenths`. */
+	token_rate: { section: "Pace" },
 	/** `UsageTotals.cost_microusd`. */
 	cost: { section: "Usage" },
 	/** `ContextBreakdownView.total_tokens` over `limit_tokens`. */
 	context_pct: { section: "ContextBreakdown" },
 	/** `ContextBreakdownView.total_tokens`. */
 	context_total: { section: "ContextBreakdown" },
-	time_spent: { gap: "The desktop does not show how long the agent has worked in this session." },
+	/** `PaceView.worked_ms` plus the running window from `PaceView.working_since_ms`. */
+	time_spent: { section: "Pace" },
 	time: { optOut: "The operating system clock is on screen beside the window." },
 	/** `SessionHeaderView.id`. */
 	session: { section: "ActiveSession" },
-	hostname: {
-		gap: "A window attached to another machine's host does not show that machine's name.",
-	},
+	/** `HostView.hostname`, drawn before its first `.` as the terminal does. */
+	hostname: { section: "Host" },
 	/** `ProfilesView.active`. */
 	profile: { section: "Profiles" },
 	/** `UsageTotals.cache_read_tokens`. */
@@ -53,7 +55,8 @@ export const STATUS_SEGMENT_CARRIERS: Readonly<Record<string, DesktopCarrier>> =
 	cache_hit: { section: "Usage" },
 	/** `SessionHeaderView.title`. */
 	session_name: { section: "ActiveSession" },
-	usage: { gap: "The subscription quota windows (5-hour and 7-day percent and reset) are not shown on the desktop." },
+	/** `QuotaView`: the plan tier and the five-hour and seven-day windows. */
+	usage: { section: "Quota" },
 	/** `ShareView.role` and `ShareView.participants`. */
 	collab: { section: "Share" },
 };

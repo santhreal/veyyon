@@ -33,6 +33,7 @@ export const SUPPORTED_CAPABILITIES: Partial<Record<Capability, true>> = {
 	Providers: true,
 	Authentication: true,
 	Mcp: true,
+	Extensions: true,
 	Agents: true,
 	AgentCommands: true,
 	Tasks: true,
@@ -54,9 +55,8 @@ export const SUPPORTED_CAPABILITIES: Partial<Record<Capability, true>> = {
 };
 
 /** Specific, truthful reasons why each unsupported capability is unavailable. */
-export const UNAVAILABLE_CAPABILITY_REASONS: Record<"PendingEdits" | "Extensions", string> = {
+export const UNAVAILABLE_CAPABILITY_REASONS: Record<"PendingEdits", string> = {
 	PendingEdits: "Pending edit inspection is not supported by this host version",
-	Extensions: "Extension management is handled directly through the extension host",
 };
 
 /**
@@ -201,8 +201,24 @@ const ACTION_ERROR_SCOPES: Record<string, ErrorScope> = {
 	OpenAuthUrl: "Authentication",
 	CancelAuthFlow: "Authentication",
 	RetryAuthFlow: "Authentication",
+	SignOutAccount: "Authentication",
 	RefreshMcp: "Mcp",
 	SetMcpEnabled: "Mcp",
+	AddMcpServer: "Mcp",
+	RemoveMcpServer: "Mcp",
+	TestMcpServer: "Mcp",
+	ReauthMcpServer: "Mcp",
+	ClearMcpServerAuth: "Mcp",
+	ReloadMcp: "Mcp",
+	SearchMcpRegistry: "Mcp",
+	DeployMcpRegistryServer: "Mcp",
+	LoginMcpRegistry: "Mcp",
+	LogoutMcpRegistry: "Mcp",
+	RefreshExtensions: "Extension",
+	SetExtensionEnabled: "Extension",
+	SetExtensionSourceEnabled: "Extension",
+	ReportComposerDraft: "Extension",
+	CompleteComposer: "Extension",
 	ReviveAgent: "Agent",
 	RefreshAgents: "Agent",
 	SpawnTask: "Task",

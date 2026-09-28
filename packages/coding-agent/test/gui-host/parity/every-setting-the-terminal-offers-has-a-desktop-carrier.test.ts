@@ -27,7 +27,12 @@
 import { beforeAll, expect, test } from "bun:test";
 import { bindSettingConditions } from "../../../src/config/setting-conditions";
 import { Settings } from "../../../src/config/settings";
-import { describeSettingTypeMismatch, getUi, SETTINGS_SCHEMA, type SettingPath } from "../../../src/config/settings-schema";
+import {
+	describeSettingTypeMismatch,
+	getUi,
+	SETTINGS_SCHEMA,
+	type SettingPath,
+} from "../../../src/config/settings-schema";
 import { DESKTOP_SETTING_CONDITIONS, dumpSettings } from "../../../src/gui-host/actions/settings";
 import { type DesktopCarrier, membersCarriedBy } from "../../../src/gui-host/desktop-parity/carrier";
 import { desktopSettingCarrier, RECORDED_SETTING_GAPS } from "../../../src/gui-host/desktop-parity/settings";

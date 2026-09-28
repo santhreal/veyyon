@@ -63,5 +63,7 @@ fn every_domain_section_replaces_its_domain_and_the_opt_outs_are_named() {
 		SnapshotSectionKind::QueuedPrompts,
 		SnapshotSectionKind::AgentPause,
 		SnapshotSectionKind::Goal,
+		SnapshotSectionKind::ComposerEdit,
+		SnapshotSectionKind::ExtensionNotice,
 	]);
 }

@@ -112,7 +112,7 @@ describe("raising a decision", () => {
 		expect(ledger.answer(approval.id, { approved: true, scope: "session" })).toBeUndefined();
 		expect(await pending).toBe("Approve for session");
 		const settled = await sink.next();
-		expect(settled.Snapshot.Interactions.pending).toEqual({ approvals: [], questions: [], plans: [] });
+		expect(settled.Snapshot.Interactions.pending).toEqual({ approvals: [], questions: [], plans: [], dialogs: [] });
 	});
 
 	test("every approval answer maps to the wrapper's own label", async () => {
@@ -311,6 +311,6 @@ describe("settling without an answer", () => {
 		expect(await text).toBeUndefined();
 		expect(await plan).toEqual({ accepted: false, feedback: "" });
 		expect(ledger.isEmpty).toBe(true);
-		expect(ledger.pending()).toEqual({ approvals: [], questions: [], plans: [] });
+		expect(ledger.pending()).toEqual({ approvals: [], questions: [], plans: [], dialogs: [] });
 	});
 });

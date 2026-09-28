@@ -25,6 +25,7 @@ import type { DesktopCollabBridge } from "./collab-bridge";
 import type { DesktopCollabGuestBridge } from "./collab-guest-bridge";
 import { publishCommandsView, watchCommandMetadata } from "./commands-view";
 import type { DesktopDictationBridge } from "./dictation-bridge";
+import { ExtensionChrome } from "./extension-chrome";
 import { writeFrame } from "./frames";
 import { attachGoalBridge, type DesktopGoalBridge } from "./goal-bridge";
 import { goalSection } from "./goal-view";
@@ -35,6 +36,7 @@ import { enterPlanModeIfConfigured } from "./plan-approval";
 import type { PresentationLedger } from "./presentation";
 import { reportQueuedPrompts } from "./queued-prompts";
 import { buildCapabilitiesSnapshot } from "./session-bridge";
+import { DesktopStatusBridge } from "./status-bridge";
 import {
 	cancelStreamingFrame,
 	flushStreamingFrame,
@@ -108,6 +110,12 @@ export interface ClientSessionState {
 	 * reaches the client as a `Snapshot.Interactions` section.
 	 */
 	interactions?: InteractionLedger;
+	/**
+	 * What the session's extensions draw around the composer, the draft they
+	 * read and the completion sources they add. Created with the session and
+	 * handed to its UI surface, so each call reaches the window as a section.
+	 */
+	extensionChrome?: ExtensionChrome;
 	terminals?: Map<string, TerminalInstance>;
 	processFollowers?: Map<string, () => void>;
 	goalDriver?: GoalDriver;
@@ -201,6 +209,12 @@ export interface ClientSessionState {
 	 * go with it.
 	 */
 	unsubscribeCommands?: () => void;
+	/**
+	 * The status-line sections this window is sent: the checkout, the pace,
+	 * the serving login and its quota. Made with the first session the window
+	 * opens and ended with the connection.
+	 */
+	status?: DesktopStatusBridge;
 }
 
 /**
@@ -249,7 +263,8 @@ async function initializeAgentSession(
 		// an extension's pending question while initialization is still running.
 		const ledger = new InteractionLedger(socket, () => sm.getSessionId());
 		state.interactions = ledger;
-		const uiContext = new GuiHostUIContext(ledger);
+		state.extensionChrome ??= new ExtensionChrome(socket, () => sm.getSessionId());
+		const uiContext = new GuiHostUIContext(ledger, state.extensionChrome);
 		// The console is attached before extension startup for the same reason
 		// the ledger is: an extension that opens one while initialization runs
 		// finds the surface already there.
@@ -286,8 +301,12 @@ async function initializeAgentSession(
 		return session;
 	} finally {
 		// A session constructed across a disconnect has no attached owner to
-		// dispose it. Keep its teardown inside the initialization completion.
-		if (state.agentSession !== session) await session.dispose();
+		// dispose it. Keep its teardown inside the initialization completion,
+		// and drop what its extensions set on the connection's chrome.
+		if (state.agentSession !== session) {
+			state.extensionChrome?.clear();
+			await session.dispose();
+		}
 	}
 }
 
@@ -354,9 +373,13 @@ export function attachTurnListeners(session: AgentSession, socket: net.Socket, s
 	const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
 		handleSessionEvent(event, socket, state);
 	});
+	state.status ??= new DesktopStatusBridge(socket);
+	const status = state.status;
+	status.attach(session);
 
 	state.unsubscribeSession = () => {
 		unsubscribe();
+		status.detach();
 		if (sm.onEntryAppended) {
 			sm.onEntryAppended = undefined;
 		}
@@ -734,6 +757,10 @@ export async function disposeTurnSession(state: ClientSessionState): Promise<voi
 	// that opened it waits on the close, and nothing is left to answer it.
 	state.autoswarm?.close();
 	state.autoswarm = undefined;
+	// The chrome the session's extensions set goes with them, so the window
+	// stops drawing statuses and widgets nothing will update or clear. The
+	// chrome itself is the connection's and holds the draft for the next one.
+	state.extensionChrome?.clear();
 	state.presentationLedger?.clear();
 	if (state.agentSession) {
 		const session = state.agentSession;
@@ -818,5 +845,7 @@ export async function disposeClientState(state: ClientSessionState): Promise<voi
 			state.authFlow.secretRejecter?.(new Error("The client disconnected before a secret arrived"));
 			state.authFlow = undefined;
 		}
+		state.status?.dispose();
+		state.status = undefined;
 	}
 }

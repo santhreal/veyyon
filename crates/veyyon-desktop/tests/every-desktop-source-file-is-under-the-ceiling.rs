@@ -2,12 +2,13 @@
 //! Five suites grew to 501–844 lines and one source module to 414 before an
 //! audit read the tree by hand. A ceiling that a reader enforces is not one.
 //!
-//! CLASS CLOSED: any Rust file under the eight desktop crates that exceeds
+//! CLASS CLOSED: any Rust file under the desktop crates that exceeds
 //! the ceiling, in `src`, `tests`, `benches`, `examples` or a build script.
 //! The crates are found by walking `crates/` for the `veyyon-desktop` prefix
-//! and the renderer fork, so a ninth crate is held to the ceiling the moment
-//! it exists; a file is found by walking each crate, so a new module is held
-//! without an edit here.
+//! and the renderer fork, and the set found is pinned by name, so a new
+//! crate is held to the ceiling the moment it exists and turns this suite red
+//! until it is listed; a file is found by walking each crate, so a new module
+//! is held without an edit here.
 //!
 //! NOT CAUGHT: a file that keeps under the ceiling by putting many statements
 //! on one line, and the vendored crates under `crates/vendor`, which are not
@@ -63,7 +64,26 @@ fn every_rust_file_in_the_desktop_crates_is_at_or_under_the_ceiling() {
 		})
 		.collect();
 	crates.sort();
-	assert_eq!(crates.len(), 8, "the eight desktop crates of §8.1 were not all found: {crates:?}");
+	let names: Vec<&str> = crates
+		.iter()
+		.filter_map(|path| path.file_name().and_then(|name| name.to_str()))
+		.collect();
+	assert_eq!(
+		names,
+		[
+			"veyyon-desktop",
+			"veyyon-desktop-app",
+			"veyyon-desktop-kit",
+			"veyyon-desktop-model",
+			"veyyon-desktop-motion",
+			"veyyon-desktop-scene",
+			"veyyon-desktop-surface",
+			"veyyon-desktop-tokens",
+			"veyyon-desktop-ui",
+			"veyyon-gpui",
+		],
+		"the desktop crates the ceiling covers changed; list the new set here"
+	);
 
 	let mut files = Vec::new();
 	for krate in &crates {

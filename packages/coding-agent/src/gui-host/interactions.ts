@@ -18,16 +18,25 @@
 import type * as net from "node:net";
 import { setTimeout as scheduleTimeout } from "node:timers";
 import {
+	type AutocompleteProviderFactory,
+	type ExtensionAskDialogQuestion,
+	type ExtensionAskDialogResult,
+	type ExtensionAskDialogResultItem,
 	type ExtensionUIContext,
 	type ExtensionUIDialogOptions,
 	type ExtensionUISelectItem,
+	type ExtensionWidgetContent,
+	type ExtensionWidgetOptions,
 	getExtensionUISelectOptionLabel,
 } from "../extensibility/extensions/types";
 import { APPROVAL_SELECT_OPTIONS } from "../extensibility/extensions/wrapper";
 import { theme } from "../theme/theme";
+import { ExtensionChrome } from "./extension-chrome";
 import { writeFrame } from "./frames";
 import type {
 	ApprovalInteraction,
+	DialogInteraction,
+	DialogQuestionAnswer,
 	InteractionResponse,
 	PendingDecisions,
 	PlanInteraction,
@@ -120,6 +129,7 @@ export class InteractionLedger {
 	#approvals: ApprovalInteraction[] = [];
 	#questions: QuestionInteraction[] = [];
 	#plans: PlanInteraction[] = [];
+	#dialogs: DialogInteraction[] = [];
 	#seq = 0;
 
 	constructor(
@@ -129,7 +139,7 @@ export class InteractionLedger {
 
 	/** The decisions outstanding, as the client last received them. */
 	pending(): PendingDecisions {
-		return { approvals: this.#approvals, questions: this.#questions, plans: this.#plans };
+		return { approvals: this.#approvals, questions: this.#questions, plans: this.#plans, dialogs: this.#dialogs };
 	}
 
 	/** True while any decision waits on the operator. */
@@ -184,14 +194,16 @@ export class InteractionLedger {
 	/**
 	 * Raise a decision and wait for its answer. `decode` turns a well-shaped
 	 * answer into the value the caller gets, or a rejection that leaves the
-	 * decision open. An abort or timeout resolves `fallback`.
+	 * decision open. An abort resolves `fallback`; a timeout resolves
+	 * `timedOut` when given, `fallback` otherwise.
 	 */
 	#raise<T>(
-		kind: "approval" | "question" | "plan",
+		kind: "approval" | "question" | "plan" | "dialog",
 		record: (id: string, now: number) => void,
 		decode: (response: InteractionResponse) => T | AnswerRejection,
 		fallback: T,
 		dialogOptions: ExtensionUIDialogOptions | undefined,
+		timedOut: T = fallback,
 	): Promise<T> {
 		if (this.socket.destroyed || dialogOptions?.signal?.aborted) return Promise.resolve(fallback);
 		this.#seq += 1;
@@ -205,6 +217,7 @@ export class InteractionLedger {
 			this.#approvals = this.#approvals.filter(a => a.id !== id);
 			this.#questions = this.#questions.filter(q => q.id !== id);
 			this.#plans = this.#plans.filter(p => p.id !== id);
+			this.#dialogs = this.#dialogs.filter(d => d.id !== id);
 			this.#publish();
 		};
 		const onAbort = () => {
@@ -216,7 +229,7 @@ export class InteractionLedger {
 			timer = scheduleTimeout(() => {
 				dialogOptions.onTimeout?.();
 				close();
-				resolve(fallback);
+				resolve(timedOut);
 			}, dialogOptions.timeout);
 		}
 
@@ -325,10 +338,118 @@ export class InteractionLedger {
 			dialogOptions,
 		);
 	}
+
+	/**
+	 * A dialog of questions answered together, answered with
+	 * `{ kind: "submit", answers }` (one answer per question) or
+	 * `{ kind: "chat" }`. A timeout settles every question on its recommended
+	 * option, the terminal dialog's own timeout answer.
+	 */
+	dialog(
+		questions: ExtensionAskDialogQuestion[],
+		dialogOptions?: ExtensionUIDialogOptions,
+	): Promise<ExtensionAskDialogResult | undefined> {
+		const labelsOf = (question: ExtensionAskDialogQuestion) => question.options.map(option => option.label);
+		const recommended: ExtensionAskDialogResult = {
+			kind: "submit",
+			results: questions.map(question => {
+				const labels = labelsOf(question);
+				const chosen = question.recommended === undefined ? undefined : labels[question.recommended];
+				return {
+					id: question.id,
+					question: question.question,
+					options: labels,
+					multi: question.multi === true,
+					selectedOptions: chosen === undefined ? [] : [chosen],
+					timedOut: true,
+				};
+			}),
+		};
+		return this.#raise<ExtensionAskDialogResult | undefined>(
+			"dialog",
+			(id, now) => {
+				const dialog: DialogInteraction = {
+					id,
+					questions: questions.map(question => {
+						const labels = labelsOf(question);
+						return {
+							id: question.id,
+							question: question.question,
+							header: question.header,
+							options: question.options.map(option => ({
+								label: option.label,
+								description: option.description,
+								preview: option.preview,
+							})),
+							multi: question.multi === true,
+							recommended: question.recommended,
+							preselected: (question.preselected ?? [])
+								.map(label => labels.indexOf(label))
+								.filter(index => index >= 0),
+						};
+					}),
+					requested_at_ms: now,
+					expires_at_ms: dialogOptions?.timeout === undefined ? undefined : now + dialogOptions.timeout,
+				};
+				this.#dialogs = [...this.#dialogs, dialog];
+			},
+			response => decodeDialogAnswer(questions, labelsOf, response),
+			undefined,
+			dialogOptions,
+			recommended,
+		);
+	}
 }
 
 function invalid(message: string): AnswerRejection {
 	return { code: "INVALID_ARGUMENTS", message };
+}
+
+const DIALOG_SHAPE = 'a dialog is answered with { kind: "submit", answers } or { kind: "chat" }';
+
+function decodeDialogAnswer(
+	questions: ExtensionAskDialogQuestion[],
+	labelsOf: (question: ExtensionAskDialogQuestion) => string[],
+	response: InteractionResponse,
+): ExtensionAskDialogResult | AnswerRejection {
+	if (!("kind" in response)) return invalid(DIALOG_SHAPE);
+	if (response.kind === "chat") return { kind: "chat" };
+	if (response.kind !== "submit" || !Array.isArray(response.answers)) return invalid(DIALOG_SHAPE);
+	const answers = new Map<string, DialogQuestionAnswer>();
+	for (const answer of response.answers) answers.set(answer.id, answer);
+	const results: ExtensionAskDialogResultItem[] = [];
+	for (const question of questions) {
+		const answer = answers.get(question.id);
+		if (!answer) return invalid(`question '${question.id}' has no answer`);
+		const labels = labelsOf(question);
+		const multi = question.multi === true;
+		if (!Array.isArray(answer.selected)) return invalid(`question '${question.id}' needs selected: number[]`);
+		if (!multi && answer.selected.length > 1) {
+			return invalid(`question '${question.id}' takes one option, ${answer.selected.length} were selected`);
+		}
+		const selectedOptions: string[] = [];
+		for (const index of answer.selected) {
+			const label = Number.isInteger(index) ? labels[index] : undefined;
+			if (label === undefined) {
+				return invalid(`option ${index} of question '${question.id}' is out of range (${labels.length} options)`);
+			}
+			selectedOptions.push(label);
+		}
+		const customInput = answer.custom_input?.trim() ? answer.custom_input : undefined;
+		if (selectedOptions.length === 0 && customInput === undefined) {
+			return invalid(`question '${question.id}' needs a selected option or custom_input`);
+		}
+		results.push({
+			id: question.id,
+			question: question.question,
+			options: labels,
+			multi,
+			selectedOptions,
+			...(customInput === undefined ? {} : { customInput }),
+			...(answer.note?.trim() ? { note: answer.note } : {}),
+		});
+	}
+	return { kind: "submit", results };
 }
 
 function isRejection(value: unknown): value is AnswerRejection {
@@ -338,15 +459,24 @@ function isRejection(value: unknown): value is AnswerRejection {
 /**
  * The session's UI surface when a desktop client is attached.
  *
- * The four prompting methods raise decisions on the ledger. The rest of the
- * contract is the terminal's chrome — status line, widgets, editor text,
- * themes — which the desktop draws from its own state; those accept the call
- * and change nothing, the same as the RPC surface.
+ * The prompting methods and the multi-question dialog raise decisions on the
+ * ledger. Notices, status entries, the working message, text widgets, edits
+ * to the draft, reading it and completion sources go to the session's
+ * `ExtensionChrome`, which states them to the window. The rest of the
+ * terminal's chrome — the window title, raw terminal input, themes and tool
+ * expansion — the window keeps as its own, so those accept the call and
+ * change nothing.
  */
 export class GuiHostUIContext implements ExtensionUIContext {
 	readonly timeoutStartsOnPresentation = false;
+	readonly #chrome: ExtensionChrome;
 
-	constructor(readonly ledger: InteractionLedger) {}
+	constructor(
+		readonly ledger: InteractionLedger,
+		chrome = new ExtensionChrome(ledger.socket, ledger.sessionId),
+	) {
+		this.#chrome = chrome;
+	}
 
 	select(
 		title: string,
@@ -374,26 +504,41 @@ export class GuiHostUIContext implements ExtensionUIContext {
 		return this.ledger.text(prompt, dialogOptions);
 	}
 
-	notify(): void {}
+	askDialog(
+		questions: ExtensionAskDialogQuestion[],
+		dialogOptions?: ExtensionUIDialogOptions,
+	): Promise<ExtensionAskDialogResult | undefined> {
+		return this.ledger.dialog(questions, dialogOptions);
+	}
+
+	notify(message: string, type?: "info" | "warning" | "error"): void {
+		this.#chrome.notify(message, type);
+	}
 	onTerminalInput(): () => void {
 		return () => {};
 	}
-	setStatus(): void {}
-	setWorkingMessage(): void {}
-	setWidget(): void {}
-	setFooter(): void {}
-	setHeader(): void {}
+	setStatus(key: string, text: string | undefined): void {
+		this.#chrome.setStatus(key, text);
+	}
+	setWorkingMessage(message?: string): void {
+		this.#chrome.setWorkingMessage(message);
+	}
+	setWidget(key: string, content: ExtensionWidgetContent, options?: ExtensionWidgetOptions): void {
+		this.#chrome.setWidget(key, content, options);
+	}
 	setTitle(): void {}
-	custom<T>(): Promise<T> {
-		return Promise.reject(new Error("Custom TUI components are not available on a desktop client"));
+	setEditorText(text: string): void {
+		this.#chrome.setEditorText(text);
 	}
-	setEditorText(): void {}
-	pasteToEditor(): void {}
+	pasteToEditor(text: string): void {
+		this.#chrome.pasteToEditor(text);
+	}
 	getEditorText(): string {
-		return "";
+		return this.#chrome.getEditorText();
 	}
-	addAutocompleteProvider(): void {}
-	setEditorComponent(): void {}
+	addAutocompleteProvider(factory: AutocompleteProviderFactory): void {
+		this.#chrome.addAutocompleteProvider(factory);
+	}
 	get theme() {
 		return theme;
 	}

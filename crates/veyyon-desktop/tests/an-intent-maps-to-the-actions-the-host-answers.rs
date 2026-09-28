@@ -10,9 +10,8 @@
 //!
 //! NOT CAUGHT: whether the host honours the action; that is the live handshake
 //! suite. Control projection and capability gating are in
-//! `control-availability-and-contextual-statuses-project-from-capabilities.rs`;
-//! session metadata projection is in
-//! `session-titles-and-clock-metadata-project-verbatim.rs`.
+//! `control-availability-and-contextual-statuses-project-from-capabilities.rs`,
+//! session metadata in `session-titles-and-clock-metadata-project-verbatim.rs`.
 
 mod support;
 
@@ -61,6 +60,7 @@ fn store_with_decisions() -> (Store, SessionIndex) {
 				markdown_plan:   "# Ship it\n- step".to_string(),
 				requested_at_ms: NOW_MS,
 			}],
+			dialogs:   Vec::new(),
 		});
 	let mut index = SessionIndex::new();
 	let mut state = ShellState::default();

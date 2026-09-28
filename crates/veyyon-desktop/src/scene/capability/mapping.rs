@@ -22,6 +22,7 @@ pub const fn action_of(capability: Capability) -> Option<HostActionKind> {
 		Capability::Providers => Some(HostActionKind::RefreshProviders),
 		Capability::Authentication => Some(HostActionKind::StartProviderAuth),
 		Capability::Mcp => Some(HostActionKind::SetMcpEnabled),
+		Capability::Extensions => Some(HostActionKind::SetExtensionEnabled),
 		Capability::Agents => Some(HostActionKind::ReviveAgent),
 		Capability::Tasks => Some(HostActionKind::CancelTask),
 		Capability::Settings => Some(HostActionKind::SetSetting),
@@ -40,7 +41,6 @@ pub const fn action_of(capability: Capability) -> Option<HostActionKind> {
 		Capability::Autoswarm => Some(HostActionKind::RunAutoswarmAction),
 		Capability::Questions
 		| Capability::Plans
-		| Capability::Extensions
 		| Capability::PendingEdits
 		| Capability::BackgroundSubmission
 		// The board is the agent's, written by the `todo` tool. The window

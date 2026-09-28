@@ -146,6 +146,7 @@ fn a_decision_waiting_on_a_session_that_is_not_open_is_announced_once() {
 				markdown_plan:   "# Ship it".to_owned(),
 				requested_at_ms: NOW_MS,
 			}],
+			dialogs:   Vec::new(),
 		}),
 	);
 	assert!(damage.contains(&Damage::Notifications));
@@ -177,6 +178,7 @@ fn a_decision_waiting_on_a_session_that_is_not_open_is_announced_once() {
 			approvals: vec![approval("a-1", "bash")],
 			questions: Vec::new(),
 			plans:     Vec::new(),
+			dialogs:   Vec::new(),
 		}),
 	);
 	assert_eq!(
@@ -197,6 +199,7 @@ fn a_decision_on_the_open_session_is_read_rather_than_announced() {
 			approvals: vec![approval("a-1", "bash")],
 			questions: Vec::new(),
 			plans:     Vec::new(),
+			dialogs:   Vec::new(),
 		}),
 	);
 	assert!(store.notifications.is_empty(), "the card is above the composer in front of them");
@@ -213,6 +216,7 @@ fn answering_a_decision_takes_its_card_down() {
 			approvals: vec![approval("a-1", "bash")],
 			questions: Vec::new(),
 			plans:     Vec::new(),
+			dialogs:   Vec::new(),
 		}),
 	);
 	assert_eq!(store.notifications.len(), 1);
@@ -235,6 +239,7 @@ fn opening_the_session_takes_down_every_card_about_it_and_leaves_the_others() {
 			approvals: vec![approval("a-1", "bash"), approval("a-2", "edit")],
 			questions: Vec::new(),
 			plans:     Vec::new(),
+			dialogs:   Vec::new(),
 		}),
 	);
 	reduce(
@@ -243,6 +248,7 @@ fn opening_the_session_takes_down_every_card_about_it_and_leaves_the_others() {
 			approvals: vec![approval("a-3", "write")],
 			questions: Vec::new(),
 			plans:     Vec::new(),
+			dialogs:   Vec::new(),
 		}),
 	);
 	reduce(&mut store, refusal(ErrorScope::Settings, Some("EACCES"), "cannot write"));

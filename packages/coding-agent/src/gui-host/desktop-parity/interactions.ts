@@ -3,11 +3,16 @@
  * each member of the extension UI surface the host hands a plugin.
  *
  * `GuiHostUIContext` is that surface when a window is attached. Its four
- * prompting methods raise decisions on the ledger, which the host publishes in
- * the `Interactions` section and the window draws in the interaction dock.
- * The rest is terminal chrome. Each such member is either opted out with the
- * reason the window does without it, or a recorded gap stating what an
- * extension loses on the desktop.
+ * prompting methods and the multi-question `askDialog` raise decisions on the
+ * ledger, which the host publishes in the `Interactions` section and the
+ * window draws in the interaction dock.
+ * The chrome an extension sets is held by the window's `ExtensionChrome`:
+ * status entries, the working message and text widgets in the `ExtensionUi`
+ * section, notices in `ExtensionNotice`, edits to the draft in
+ * `ComposerEdit`. The composer reports its draft with `ReportComposerDraft`
+ * and asks the extension completion sources with `CompleteComposer`.
+ * The rest is terminal chrome the window keeps as its own, each member opted
+ * out with the reason the window does without it.
  */
 import type { ExtensionUIContext } from "../../extensibility/extensions/types";
 import type { ExtensionTerminalCapability } from "../../extensibility/terminal-capability";
@@ -27,6 +32,7 @@ export const PENDING_DECISION_CARRIERS: Readonly<Record<keyof PendingDecisions, 
 	approvals: DOCK,
 	questions: DOCK,
 	plans: DOCK,
+	dialogs: DOCK,
 };
 
 const THEMES_ARE_THE_WINDOWS =
@@ -35,38 +41,30 @@ const THEMES_ARE_THE_WINDOWS =
 const EXPANSION_IS_PER_ROW =
 	"the window expands tool rows one at a time through SetToolViewExpanded; there is no global expansion state to read or set";
 
-const RETIRED_CHROME =
-	"retired from ExtensionUIContext; no host draws an extension header or footer, and the interface no longer reaches the method";
-
 export const UI_CONTEXT_CARRIERS: Readonly<Record<UiContextMember, DesktopCarrier>> = {
 	select: DOCK,
 	confirm: DOCK,
 	input: DOCK,
 	editor: DOCK,
-	askDialog: {
-		gap: "absent on the desktop context, so the ask tool falls back to one plain question per prompt: option descriptions, previews and the multi-question dialog are not shown",
-	},
-	notify: { gap: "an extension notification is dropped; the window shows no toast for it" },
+	askDialog: DOCK,
+	notify: { section: "ExtensionNotice" },
 	onTerminalInput: {
 		optOut: "a window has no raw terminal byte stream; the returned unsubscribe does nothing",
 	},
-	setStatus: { gap: "status text an extension sets is not shown anywhere in the window" },
-	setWorkingMessage: {
-		gap: "the working message an extension sets while a turn streams is not shown; the window keeps its own",
-	},
-	setWidget: { gap: "text widgets an extension sets above or below the editor are not drawn around the composer" },
+	setStatus: { section: "ExtensionUi" },
+	setWorkingMessage: { section: "ExtensionUi" },
+	setWidget: { section: "ExtensionUi" },
 	setTitle: {
 		optOut: "the window title is the session title the host publishes; an extension does not retitle the window",
 	},
 	terminal: {
-		optOut: "screen takeover hands out a live TUI, which a window does not have; callers take their non-terminal path",
+		optOut:
+			"screen takeover hands out a live TUI, which a window does not have; callers take their non-terminal path",
 	},
-	setEditorText: { gap: "an extension cannot put text into the desktop composer" },
-	pasteToEditor: { gap: "an extension cannot paste into the desktop composer" },
-	getEditorText: { gap: "an extension reads an empty string instead of the desktop composer's draft" },
-	addAutocompleteProvider: {
-		gap: "extension completion sources are not offered in the composer's `/` and `@` completion",
-	},
+	setEditorText: { section: "ComposerEdit" },
+	pasteToEditor: { section: "ComposerEdit" },
+	getEditorText: { action: "ReportComposerDraft" },
+	addAutocompleteProvider: { action: "CompleteComposer" },
 	theme: {
 		optOut: "returns the terminal theme so extension renderers keep formatting; the window draws with its own theme",
 	},
@@ -75,14 +73,6 @@ export const UI_CONTEXT_CARRIERS: Readonly<Record<UiContextMember, DesktopCarrie
 	setTheme: { optOut: THEMES_ARE_THE_WINDOWS },
 	getToolsExpanded: { optOut: EXPANSION_IS_PER_ROW },
 	setToolsExpanded: { optOut: EXPANSION_IS_PER_ROW },
-	setHeader: { optOut: RETIRED_CHROME },
-	setFooter: { optOut: RETIRED_CHROME },
-	custom: {
-		optOut: "the terminal screen takeover moved to `terminal.custom`; this flat member rejects, since a window cannot mount a TUI component",
-	},
-	setEditorComponent: {
-		optOut: "the terminal editor replacement moved to `terminal.setEditorComponent`; the window's composer is not a TUI component",
-	},
 };
 
 /** The terminal-only capability, which the desktop context omits as a whole. */

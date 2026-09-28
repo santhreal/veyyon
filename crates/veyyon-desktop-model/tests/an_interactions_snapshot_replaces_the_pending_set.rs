@@ -46,6 +46,7 @@ fn a_section_replaces_the_session_s_pending_set_and_damages_every_card_it_touche
 				requested_at_ms: 1,
 			}],
 			plans:     Vec::new(),
+			dialogs:   Vec::new(),
 		}),
 	);
 	assert!(
@@ -67,6 +68,7 @@ fn a_section_replaces_the_session_s_pending_set_and_damages_every_card_it_touche
 				markdown_plan:   "# Plan".to_string(),
 				requested_at_ms: 2,
 			}],
+			dialogs:   Vec::new(),
 		}),
 	);
 	let pending = &store.interactions[&SessionId::from("s")];
@@ -91,6 +93,7 @@ fn an_empty_section_clears_the_session_and_leaves_other_sessions_alone() {
 			approvals: vec![approval("a-1")],
 			questions: Vec::new(),
 			plans:     Vec::new(),
+			dialogs:   Vec::new(),
 		}),
 	);
 	reduce(
@@ -99,6 +102,7 @@ fn an_empty_section_clears_the_session_and_leaves_other_sessions_alone() {
 			approvals: vec![approval("a-2")],
 			questions: Vec::new(),
 			plans:     Vec::new(),
+			dialogs:   Vec::new(),
 		}),
 	);
 
@@ -121,7 +125,7 @@ fn an_empty_section_clears_the_session_and_leaves_other_sessions_alone() {
 fn the_section_decodes_from_the_frame_the_host_writes() {
 	// The exact bytes `InteractionLedger.#publish` in
 	// `packages/coding-agent/src/gui-host/interactions.ts` writes.
-	let frame = r#"{"Snapshot":{"Interactions":{"session":"abc","pending":{"approvals":[{"id":"approval-1","tool_name":"bash","detail":"**Scope:** This call only","requested_at_ms":5}],"questions":[{"id":"question-2","prompt":"Name it","options":[],"requested_at_ms":6}],"plans":[]}}}}"#;
+	let frame = r#"{"Snapshot":{"Interactions":{"session":"abc","pending":{"approvals":[{"id":"approval-1","tool_name":"bash","detail":"**Scope:** This call only","requested_at_ms":5}],"questions":[{"id":"question-2","prompt":"Name it","options":[],"requested_at_ms":6}],"plans":[],"dialogs":[]}}}}"#;
 	let event: HostEvent = serde_json::from_str(frame).expect("the host's frame decodes");
 	let HostEvent::Snapshot(SnapshotSection::Interactions { session, pending }) = event else {
 		panic!("decoded as the wrong variant");

@@ -141,6 +141,7 @@ fn pending_decisions_take_precedence_over_active_streaming() {
 			}],
 			questions: Vec::new(),
 			plans:     Vec::new(),
+			dialogs:   Vec::new(),
 		});
 
 	let phase_approval = project_turn_phase(&store, Some(&session_id), QueueMode::Steer);

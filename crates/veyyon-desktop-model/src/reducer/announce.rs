@@ -25,6 +25,7 @@ pub(super) fn decision_ids(pending: &PendingDecisions) -> impl Iterator<Item = I
 		.map(|a| a.id.clone())
 		.chain(pending.questions.iter().map(|q| q.id.clone()))
 		.chain(pending.plans.iter().map(|p| p.id.clone()))
+		.chain(pending.dialogs.iter().map(|d| d.id.clone()))
 }
 
 /// The key every announcement about one session's decision shares, so a
@@ -97,5 +98,12 @@ fn decision_waits(
 				"plan".to_owned(),
 				ask.requested_at_ms,
 			)
+		}))
+		.chain(pending.dialogs.iter().map(|ask| {
+			let title = ask
+				.questions
+				.first()
+				.map_or_else(String::new, |question| question.question.clone());
+			(ask.id.clone(), title, "question".to_owned(), ask.requested_at_ms)
 		}))
 }

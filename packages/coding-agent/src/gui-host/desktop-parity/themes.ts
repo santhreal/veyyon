@@ -18,10 +18,12 @@ export function themeGround(name: string): "dark" | "light" {
 
 export const THEME_GROUND_CARRIERS: Readonly<Record<string, DesktopCarrier>> = {
 	dark: {
-		optOut: "The desktop draws its own dark palette from crates/veyyon-desktop-ui/themes/; a terminal theme holds terminal color tokens only.",
+		optOut:
+			"The desktop draws its own dark palette from crates/veyyon-desktop-ui/themes/; a terminal theme holds terminal color tokens only.",
 	},
 	light: {
-		optOut: "The desktop draws its own light palette from crates/veyyon-desktop-ui/themes/; a terminal theme holds terminal color tokens only.",
+		optOut:
+			"The desktop draws its own light palette from crates/veyyon-desktop-ui/themes/; a terminal theme holds terminal color tokens only.",
 	},
 };
 

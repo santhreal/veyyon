@@ -214,10 +214,20 @@ describe("a prompt submitted from the desktop runs a real turn", () => {
 		);
 		expect(streamed.length).toBeGreaterThan(0);
 		expect(new Set(streamed.map(f => f.StreamingChanged.entry)).size).toBe(1);
-		expect(streamed.at(-1)?.StreamingChanged.accumulating.content).toEqual([
-			{ Text: { text: "Hello from engine!" } },
-		]);
-		expect(streamed.at(-1)?.StreamingChanged.accumulating.role).toBe("Assistant");
+		// Text a reply grows by arrives as an append to the entry the window
+		// holds, so the reply drawn is the last whole state with every later
+		// append applied.
+		const appends = frames.flatMap(f => ("StreamingAppended" in f ? [f.StreamingAppended] : []));
+		expect(appends.every(append => append.entry === streamed[0]?.StreamingChanged.entry)).toBe(true);
+		const drawn = structuredClone(streamed.at(-1)?.StreamingChanged.accumulating);
+		const last = frames.lastIndexOf(streamed.at(-1) as HostEvent);
+		for (const frame of frames.slice(last + 1)) {
+			if (!("StreamingAppended" in frame)) continue;
+			const block = drawn?.content[frame.StreamingAppended.block];
+			if (block && "Text" in block) block.Text.text += frame.StreamingAppended.text;
+		}
+		expect(drawn?.content).toEqual([{ Text: { text: "Hello from engine!" } }]);
+		expect(drawn?.role).toBe("Assistant");
 
 		// The reply ends by clearing that entry, or the desktop draws a reply that
 		// never finished under the one it appended.

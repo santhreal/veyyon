@@ -96,6 +96,8 @@ const handleSelectModel: ActionHandler<SelectModelPayload | undefined> = async (
 		ctx.reply.snapshot({
 			Models: view,
 		});
+		// A model on another provider is served by another login.
+		ctx.clientState.status?.publishAccount();
 		ctx.reply.success();
 	} catch (error) {
 		ctx.reply.failure({

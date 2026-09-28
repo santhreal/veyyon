@@ -13,7 +13,7 @@ import { membersCarriedBy } from "../../../src/gui-host/desktop-parity/carrier";
 import { STATUS_SEGMENT_CARRIERS } from "../../../src/gui-host/desktop-parity/status-line";
 import { ALL_SEGMENT_IDS } from "../../../src/modes/terminal/components/status-line/segments";
 
-const RECORDED_GAPS = ["account", "git", "hostname", "pr", "time_spent", "token_rate", "usage"];
+const RECORDED_GAPS: string[] = [];
 
 describe("status-line segments on the desktop", () => {
 	it("decides every segment the terminal draws, and only those", () => {

@@ -32,11 +32,13 @@ impl EventCoalescer {
 		Self { queue: Vec::with_capacity(capacity), capacity }
 	}
 
-	/// Pushes an incoming event into the queue, evicting lower priority events
-	/// if saturated.
+	/// Pushes an incoming event into the queue. A saturated queue is folded
+	/// first, which supersedes intermediate streaming states and merges
+	/// streaming appends without losing text; it rejects the event only when
+	/// the folded queue is still full.
 	pub fn push(&mut self, event: HostEvent) -> Result<(), EventCoalescerError> {
 		if self.queue.len() >= self.capacity {
-			self.drop_lowest_priority();
+			self.queue = Self::fold(std::mem::take(&mut self.queue));
 			if self.queue.len() >= self.capacity {
 				return Err(EventCoalescerError::QueueFull);
 			}
@@ -67,6 +69,10 @@ impl EventCoalescer {
 		self.queue.len()
 	}
 
+	/// Folds a batch into the fewest events that reduce to the same store:
+	/// each streaming entry keeps its newest whole state with every later
+	/// append applied to it, consecutive appends to one block become one,
+	/// and connection and transcript updates keep their newest value.
 	pub fn fold(events: Vec<HostEvent>) -> Vec<HostEvent> {
 		let mut folded: Vec<HostEvent> = Vec::with_capacity(events.len());
 		let mut latest_streaming: HashMap<Option<EntryId>, usize> = HashMap::new();
@@ -83,6 +89,27 @@ impl EventCoalescer {
 					} else {
 						let idx = folded.len();
 						latest_streaming.insert(key, idx);
+						folded.push(event);
+					}
+				},
+				HostEvent::StreamingAppended(append) => {
+					let key = Some(append.entry.clone());
+					let merged = match latest_streaming
+						.get(&key)
+						.and_then(|&idx| folded.get_mut(idx))
+					{
+						// An append that does not fit the held state stays an
+						// event of its own, so the reducer reports the mismatch.
+						Some(HostEvent::StreamingChanged(Some(state))) => state.append(append).is_ok(),
+						Some(HostEvent::StreamingAppended(held)) if held.block == append.block => {
+							held.text.push_str(&append.text);
+							held.revision = append.revision;
+							true
+						},
+						_ => false,
+					};
+					if !merged {
+						latest_streaming.insert(key, folded.len());
 						folded.push(event);
 					}
 				},
@@ -116,27 +143,5 @@ impl EventCoalescer {
 			}
 		}
 		folded
-	}
-
-	fn drop_lowest_priority(&mut self) {
-		// Drop intermediate streaming updates first.
-		if let Some(pos) = self
-			.queue
-			.iter()
-			.position(|e| matches!(e, HostEvent::StreamingChanged(Some(_))))
-		{
-			self.queue.remove(pos);
-			return;
-		}
-		// Drop non-terminal transcript updates second.
-		if let Some(pos) = self
-			.queue
-			.iter()
-			.position(|e| matches!(e, HostEvent::TranscriptUpdated { .. }))
-		{
-			self.queue.remove(pos);
-		}
-		// FatalProtocolError, RequestFailed, ConnectionChanged, and Snapshot are
-		// never dropped.
 	}
 }

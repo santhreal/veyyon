@@ -4,7 +4,10 @@
 //! These state the protocol's shape rather than the invariant under test, so
 //! they sit beside the suite that sweeps them instead of inside it.
 
+pub mod extension_ui;
+pub mod mcp_views;
 mod pair;
+pub mod status;
 
 use veyyon_desktop_model::{
 	AgentMessageOutcome, AgentMessageView, AgentView, AuthFlowState, AuthFlowView,

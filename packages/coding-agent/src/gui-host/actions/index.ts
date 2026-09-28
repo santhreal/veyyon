@@ -2,9 +2,11 @@ import { agentsActionHandlers } from "./agents";
 import { autoswarmActionHandlers } from "./autoswarm";
 import { changesActionHandlers } from "./changes";
 import { commandsActionHandlers } from "./commands";
+import { composerActionHandlers } from "./composer";
 import { connectionActionHandlers } from "./connection";
 import { diagnosticsActionHandlers } from "./diagnostics";
 import { dictationActionHandlers } from "./dictation";
+import { extensionsActionHandlers } from "./extensions";
 import { filesActionHandlers } from "./files";
 import { foregroundActionHandlers } from "./foreground";
 import { goalActionHandlers } from "./goals";
@@ -27,9 +29,11 @@ export * from "./agents";
 export * from "./autoswarm";
 export * from "./changes";
 export * from "./commands";
+export * from "./composer";
 export * from "./connection";
 export * from "./diagnostics";
 export * from "./dictation";
+export * from "./extensions";
 export * from "./files";
 export * from "./foreground";
 export * from "./goals";
@@ -63,6 +67,8 @@ export const allActionHandlers: ActionHandlersMap = {
 	...modelsActionHandlers,
 	...providersActionHandlers,
 	...mcpActionHandlers,
+	...extensionsActionHandlers,
+	...composerActionHandlers,
 	...agentsActionHandlers,
 	...commandsActionHandlers,
 	...settingsActionHandlers,

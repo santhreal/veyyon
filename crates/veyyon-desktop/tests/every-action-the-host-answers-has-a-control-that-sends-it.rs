@@ -37,6 +37,29 @@ use veyyon_desktop_surface::Intent;
 const PINNED_UNSENT: [HostActionKind; 3] =
 	[HostActionKind::Attach, HostActionKind::Detach, HostActionKind::Shutdown];
 
+/// Host actions only the rebuilt window (`veyyon-desktop-app`) sends. This
+/// window is being retired and grows no control for them; the rebuilt one
+/// draws the surface each belongs to. Pinned beside `PINNED_UNSENT`, so a
+/// new action is still red here until it is sent or listed.
+const SENT_ONLY_BY_THE_REBUILT_WINDOW: &[HostActionKind] = &[
+	HostActionKind::SignOutAccount,
+	HostActionKind::RefreshExtensions,
+	HostActionKind::SetExtensionEnabled,
+	HostActionKind::SetExtensionSourceEnabled,
+	HostActionKind::AddMcpServer,
+	HostActionKind::RemoveMcpServer,
+	HostActionKind::TestMcpServer,
+	HostActionKind::ReauthMcpServer,
+	HostActionKind::ClearMcpServerAuth,
+	HostActionKind::ReloadMcp,
+	HostActionKind::SearchMcpRegistry,
+	HostActionKind::DeployMcpRegistryServer,
+	HostActionKind::LoginMcpRegistry,
+	HostActionKind::LogoutMcpRegistry,
+	HostActionKind::ReportComposerDraft,
+	HostActionKind::CompleteComposer,
+];
+
 fn seeded_store_and_index() -> (Store, SessionIndex) {
 	let mut store = Store::new();
 	let sid = SessionId::from("s1");
@@ -65,6 +88,7 @@ fn seeded_store_and_index() -> (Store, SessionIndex) {
 			markdown_plan:   "# Plan\n- step 1".to_string(),
 			requested_at_ms: 1000,
 		}],
+		dialogs:   Vec::new(),
 	});
 
 	store.domains.terminals = vec![terminal("term-1", TerminalStatus::Running)];
@@ -121,13 +145,16 @@ fn every_action_the_host_answers_has_a_sender_or_is_pinned_unsent() {
 	let unsent_actions: BTreeSet<HostActionKind> =
 		all_actions.difference(&sent_kinds).copied().collect();
 
-	let pinned_set: BTreeSet<HostActionKind> = PINNED_UNSENT.into_iter().collect();
+	let pinned_set: BTreeSet<HostActionKind> = PINNED_UNSENT
+		.into_iter()
+		.chain(SENT_ONLY_BY_THE_REBUILT_WINDOW.iter().copied())
+		.collect();
 
 	assert_eq!(
 		unsent_actions,
 		pinned_set,
-		"Unsent host actions must exactly match the pinned set of 3 actions. Extra unsent: {:?}, \
-		 Missing from unsent: {:?}",
+		"Unsent host actions must exactly match the pinned set. Extra unsent: {:?}, Missing from \
+		 unsent: {:?}",
 		unsent_actions.difference(&pinned_set).collect::<Vec<_>>(),
 		pinned_set.difference(&unsent_actions).collect::<Vec<_>>(),
 	);

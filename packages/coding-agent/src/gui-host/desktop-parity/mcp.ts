@@ -11,18 +11,23 @@ export const MCP_SUBCOMMAND_CARRIERS: Readonly<Record<string, DesktopCarrier>> =
 	disable: { action: "SetMcpEnabled" },
 	/** `SetMcpEnabled` with `enabled: true` reconnects a connected server and connects a disconnected one. */
 	reconnect: { action: "SetMcpEnabled" },
-	add: { gap: "A server cannot be added from the desktop; it is added in the terminal or in the config file." },
-	remove: { gap: "A server cannot be removed from the desktop." },
-	test: { gap: "A server's connection cannot be tested from the desktop without reconnecting it." },
-	reauth: { gap: "An MCP server's OAuth login cannot be started again from the desktop." },
-	unauth: { gap: "An MCP server's stored OAuth login cannot be deleted from the desktop." },
-	resources: { gap: "The resources a connected server offers are not listed on the desktop." },
-	prompts: { gap: "The prompts a connected server offers are not listed on the desktop." },
-	notifications: { gap: "A server's notification capabilities and subscriptions are not shown on the desktop." },
-	"smithery-search": { gap: "The Smithery registry cannot be searched or deployed from on the desktop." },
-	"smithery-login": { gap: "A Smithery API key cannot be stored from the desktop." },
-	"smithery-logout": { gap: "A stored Smithery API key cannot be deleted from the desktop." },
-	reload: {
-		gap: "RefreshMcp re-lists the running manager's servers; a forced rediscovery of MCP runtime tools is not offered.",
-	},
+	/** A remote server that wants OAuth is added once its login, drawn as `AuthFlow` under `mcp:<name>`, completes. */
+	add: { action: "AddMcpServer" },
+	remove: { action: "RemoveMcpServer" },
+	/** The outcome arrives as `McpProbe`; the running connection is left as it was. */
+	test: { action: "TestMcpServer" },
+	reauth: { action: "ReauthMcpServer" },
+	unauth: { action: "ClearMcpServerAuth" },
+	/** `McpCatalog` lists each connected server's resources and resource templates. */
+	resources: { section: "McpCatalog" },
+	/** `McpCatalog` lists each connected server's prompts with the slash command that runs each. */
+	prompts: { section: "McpCatalog" },
+	/** `McpCatalog` states the notifications each server declares and the resources the host is subscribed to. */
+	notifications: { section: "McpCatalog" },
+	/** Results arrive as `McpRegistry`; `DeployMcpRegistryServer` adds one of them. */
+	"smithery-search": { action: "SearchMcpRegistry" },
+	/** The browser step is drawn as `AuthFlow` under `smithery`; a key sent with `SubmitAuthSecret` is taken instead. */
+	"smithery-login": { action: "LoginMcpRegistry" },
+	"smithery-logout": { action: "LogoutMcpRegistry" },
+	reload: { action: "ReloadMcp" },
 };

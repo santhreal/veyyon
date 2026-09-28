@@ -4,12 +4,14 @@ import { PROVIDER_REGISTRY } from "@veyyon/ai/registry";
 import { CATALOG_PROVIDERS } from "@veyyon/catalog/provider-models/descriptors";
 import { errorMessage } from "@veyyon/utils";
 import { formatProviderName } from "../../session/account-format";
+import { accountDisplayLabel, buildAccountInventory } from "../../session/account-inventory";
 import { openPath } from "../../utils/open";
+import { actingSettings } from "../acting-settings";
 import { writeFrame } from "../frames";
 import type { ActiveAuthFlow } from "../turns";
-import type { AuthFlowView, ProviderView } from "../wire";
+import type { AuthFlowView, ProviderView, SnapshotSection } from "../wire";
 import { publishModelsAfterAuthChange } from "./models";
-import type { ActionHandler, ActionHandlersMap } from "./types";
+import type { ActionContext, ActionHandler, ActionHandlersMap } from "./types";
 
 function buildProvidersView(authStorage: AuthStorage): ProviderView[] {
 	const oauthProviders = getOAuthProviders();
@@ -48,12 +50,41 @@ function buildProvidersView(authStorage: AuthStorage): ProviderView[] {
 	return providers;
 }
 
+/**
+ * The provider list and every stored account, as a window draws them after
+ * any change to the credential store.
+ *
+ * The list leaves out the providers the `disabledProviders` setting names,
+ * which is what the terminal's sign-in list does. The accounts are the rows
+ * the terminal's account card lists, one per stored credential, labelled the
+ * way the card labels them. Reads the store as it is held; a caller that
+ * wants a login made by another process reloads it first.
+ */
+async function providerSections(ctx: ActionContext, authStorage: AuthStorage): Promise<SnapshotSection[]> {
+	const disabled = new Set((await actingSettings(ctx)).get("disabledProviders"));
+	const inventory = buildAccountInventory(authStorage);
+	return [
+		{ Providers: buildProvidersView(authStorage).filter(provider => !disabled.has(provider.id)) },
+		{
+			Accounts: inventory.providers.flatMap(entry =>
+				entry.rows.map(row => ({
+					provider: row.provider,
+					credential_id: row.credentialId,
+					label: accountDisplayLabel(row),
+					kind: row.type,
+					selected: row.selectedForProvider,
+				})),
+			),
+		},
+	];
+}
+
 const handleRefreshProviders: ActionHandler = async ctx => {
 	try {
-		const providers = buildProvidersView(await ctx.authStorage());
-		ctx.reply.snapshot({
-			Providers: providers,
-		});
+		const authStorage = await ctx.authStorage();
+		// A login completed by another process is on disk and not in this one.
+		await authStorage.reload();
+		for (const section of await providerSections(ctx, authStorage)) ctx.reply.snapshot(section);
 		ctx.reply.success();
 	} catch (error) {
 		ctx.reply.failure({
@@ -156,6 +187,12 @@ const handleStartProviderAuth: ActionHandler<StartProviderAuthPayload | undefine
 						writeFrame(ctx.socket, { Snapshot: { AuthFlow: flowView } });
 						return promise;
 					},
+					// Device-code and paste flows get no browser redirect of their
+					// own; the terminal opens the success page they serve, and so
+					// does this host, on the machine the login runs on.
+					onSuccessPage: url => {
+						openPath(url);
+					},
 				});
 
 				const completedView: AuthFlowView = {
@@ -170,8 +207,9 @@ const handleStartProviderAuth: ActionHandler<StartProviderAuthPayload | undefine
 				}
 				writeFrame(ctx.socket, { Snapshot: { AuthFlow: completedView } });
 
-				const providers = buildProvidersView(await ctx.authStorage());
-				writeFrame(ctx.socket, { Snapshot: { Providers: providers } });
+				for (const section of await providerSections(ctx, authStorage)) {
+					writeFrame(ctx.socket, { Snapshot: section });
+				}
 				await publishModelsAfterAuthChange(ctx);
 			} catch (err: unknown) {
 				if (abortController.signal.aborted) {
@@ -258,10 +296,7 @@ const handleSubmitAuthSecret: ActionHandler<SubmitAuthSecretPayload | undefined>
 				},
 			});
 		}
-		const providers = buildProvidersView(await ctx.authStorage());
-		ctx.reply.snapshot({
-			Providers: providers,
-		});
+		for (const section of await providerSections(ctx, authStorage)) ctx.reply.snapshot(section);
 		await publishModelsAfterAuthChange(ctx);
 		ctx.reply.success();
 	} catch (error) {
@@ -350,6 +385,56 @@ const handleRetryAuthFlow: ActionHandler<RetryAuthFlowPayload | undefined> = asy
 	await handleStartProviderAuth(ctx, payload);
 };
 
+interface SignOutAccountPayload {
+	provider?: string;
+	credential_id?: number;
+}
+
+/**
+ * Removes one stored credential by its row, which is what the terminal's
+ * account card does, so a provider's other accounts stay signed in.
+ *
+ * The store is reloaded first, so a credential stored or removed by another
+ * process is the one acted on. A key the provider also reads from an
+ * environment variable or a config file is not stored and stays; the
+ * `Providers` section this answers with still states it authenticated.
+ */
+const handleSignOutAccount: ActionHandler<SignOutAccountPayload | undefined> = async (ctx, payload) => {
+	if (!payload?.provider || typeof payload.credential_id !== "number") {
+		ctx.reply.failure({
+			scope: "Authentication",
+			code: "INVALID_ARGUMENTS",
+			message: "SignOutAccount requires provider and credential_id parameters",
+			retryable: false,
+		});
+		return;
+	}
+	const { provider, credential_id: credentialId } = payload;
+	try {
+		const authStorage = await ctx.authStorage();
+		await authStorage.reload();
+		if (!(await authStorage.removeCredential(provider, credentialId))) {
+			ctx.reply.failure({
+				scope: "Authentication",
+				code: "ACCOUNT_NOT_STORED",
+				message: `${formatProviderName(provider)} credential #${credentialId} is no longer stored`,
+				retryable: false,
+			});
+			return;
+		}
+		for (const section of await providerSections(ctx, authStorage)) ctx.reply.snapshot(section);
+		await publishModelsAfterAuthChange(ctx);
+		ctx.reply.success();
+	} catch (error) {
+		ctx.reply.failure({
+			scope: "Authentication",
+			code: "SIGN_OUT_FAILED",
+			message: errorMessage(error),
+			retryable: false,
+		});
+	}
+};
+
 export const providersActionHandlers: ActionHandlersMap = {
 	RefreshProviders: handleRefreshProviders as ActionHandler<never>,
 	StartProviderAuth: handleStartProviderAuth as ActionHandler<never>,
@@ -357,4 +442,5 @@ export const providersActionHandlers: ActionHandlersMap = {
 	OpenAuthUrl: handleOpenAuthUrl as ActionHandler<never>,
 	CancelAuthFlow: handleCancelAuthFlow as ActionHandler<never>,
 	RetryAuthFlow: handleRetryAuthFlow as ActionHandler<never>,
+	SignOutAccount: handleSignOutAccount as ActionHandler<never>,
 };

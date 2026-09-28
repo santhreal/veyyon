@@ -12,7 +12,7 @@ pub use self::{
 	fatal::reduce_fatal_protocol_error,
 	request::{reduce_request_failed, reduce_request_succeeded},
 	snapshot::reduce_snapshot,
-	streaming::reduce_streaming_changed,
+	streaming::{reduce_streaming_appended, reduce_streaming_changed},
 	transcript::{reduce_transcript_appended, reduce_transcript_updated},
 };
 use crate::{damage::DamageSet, event::HostEvent, store::Store};
@@ -30,6 +30,7 @@ pub fn reduce(store: &mut Store, event: HostEvent) -> DamageSet {
 			reduce_transcript_updated(store, revision, entry)
 		},
 		HostEvent::StreamingChanged(stream) => reduce_streaming_changed(store, stream),
+		HostEvent::StreamingAppended(append) => reduce_streaming_appended(store, append),
 		HostEvent::RequestSucceeded { request } => reduce_request_succeeded(store, request),
 		HostEvent::RequestFailed { request, error } => reduce_request_failed(store, request, error),
 		HostEvent::FatalProtocolError { message } => reduce_fatal_protocol_error(store, message),

@@ -102,6 +102,13 @@ const AT_IDLE: Record<SnapshotSectionTag, "restated-at-idle" | "listed-at-idle" 
 	Providers: "on-request",
 	AuthFlow: "on-request",
 	Mcp: "on-request",
+	// Each answers the MCP request that asked for it: the catalog a refresh,
+	// the probe a test, the registry a search or a sign-in. A turn neither
+	// tests a server nor searches the registry, and a server that changes its
+	// resources mid-turn is re-read when the window refreshes the catalog.
+	McpCatalog: "on-request",
+	McpProbe: "on-request",
+	McpRegistry: "on-request",
 	Agents: "on-request",
 	AgentComms: "on-request",
 	Usage: "restated-at-idle",
@@ -142,6 +149,29 @@ const AT_IDLE: Record<SnapshotSectionTag, "restated-at-idle" | "listed-at-idle" 
 	// goes idle, both of which the turn's own frames carry, and a turn that
 	// left the plan where it was writes nothing at either point.
 	Todo: "during-turn",
+	// A turn neither signs in nor signs out, so the stored credentials are
+	// what the last provider action left.
+	Accounts: "on-request",
+	// Toggling an extension or a source is a window action answered with the
+	// section, and a turn does not write the disabled lists.
+	Extensions: "on-request",
+	// The machine is stated when a window attaches and never moves under it.
+	Host: "on-request",
+	// The status bridge states these on the turn's own edges: the pace at its
+	// start, while it streams and at its end, and the checkout, the serving
+	// login and its quota at its end. The idle re-statement owes them nothing.
+	Checkout: "during-turn",
+	Pace: "during-turn",
+	ServingAccount: "during-turn",
+	Quota: "during-turn",
+	// An extension states its chrome, edits the draft and raises a notice
+	// when it calls its UI surface, which may be inside a turn or outside
+	// one; each call publishes its own section. Completions answer the
+	// composer's `CompleteComposer`. The idle re-statement owes none of them.
+	ExtensionUi: "during-turn",
+	ComposerEdit: "during-turn",
+	ComposerCompletions: "on-request",
+	ExtensionNotice: "during-turn",
 };
 
 /** The section the host publishes last, which is what closes a re-statement. */
