@@ -140,11 +140,18 @@ impl Win<'_> {
 		self.cx.run_until_parked();
 	}
 
+	/// Clicks the centre of `id`, which must lie inside the window: a click
+	/// past its edge lands on nothing and would pass for one the control
+	/// ignored.
 	pub fn click(&mut self, id: &str) {
 		let at = self
 			.bounds(id)
 			.unwrap_or_else(|| panic!("{id} is laid out"))
 			.center();
+		let window = self
+			.cx
+			.update(|window, _| Bounds::new(Point::default(), window.viewport_size()));
+		assert!(window.contains(&at), "{id} is drawn inside the window: {at:?}");
 		self.click_at(at);
 	}
 
@@ -161,6 +168,30 @@ impl Win<'_> {
 
 	pub fn draws(&mut self, text: &str) -> bool {
 		self.texts().iter().any(|drawn| drawn.contains(text))
+	}
+
+	/// The sentence the page's error line draws, or `None` while it draws
+	/// none. The window's announcements draw the same sentences elsewhere, so
+	/// only the text inside `settings.error` counts.
+	pub fn error(&mut self) -> Option<String> {
+		let area = self.bounds("settings.error")?;
+		let drawn = self.cx.update(|window, _| {
+			window
+				.rendered_text_runs()
+				.iter()
+				.filter(|run| area.contains(&run.bounds.center()))
+				.map(|run| run.text.to_string())
+				.collect::<Vec<_>>()
+		});
+		Some(drawn.concat())
+	}
+
+	/// Closes settings and opens them again on `page`, which shows it afresh
+	/// and sends its loads again.
+	pub fn reopen(&mut self, page: &str) {
+		self.cx.dispatch_action(act::CloseSettings);
+		self.cx.run_until_parked();
+		self.open(page);
 	}
 
 	pub fn layout(&mut self) -> WorkspaceLayout {

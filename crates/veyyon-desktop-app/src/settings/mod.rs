@@ -28,9 +28,7 @@ mod widgets;
 
 use std::collections::{HashMap, HashSet};
 
-use veyyon_desktop_model::{
-	HostAction, NotificationSource, RequestId, SnapshotSectionKind, SurfaceId,
-};
+use veyyon_desktop_model::{HostAction, RequestId, SnapshotSectionKind, SurfaceId};
 use veyyon_desktop_ui::theme::Appearance;
 use veyyon_gpui::{
 	AnyElement, Context, Entity, FocusHandle, IntoElement, ScrollHandle, SharedString, Subscription,
@@ -76,12 +74,16 @@ pub struct SettingsView {
 	mcp_semantic:   bool,
 	/// The registry result whose add form is unfolded, by id.
 	mcp_deploying:  Option<String>,
-	/// The requests the shown page sent that the host has not answered.
-	sent:           HashSet<RequestId>,
+	/// The requests the shown page sent that the host has not answered, by
+	/// the control each was sent from.
+	sent:           HashMap<RequestId, SurfaceId>,
 	/// The changes those requests make, drawn before the host answers.
 	held:           Held,
 	/// Why the host refused the last request the shown page sent.
 	failure:        Option<SharedString>,
+	/// Whether the gate rejected a load of the shown page, which the page
+	/// asks for again once the gate takes it.
+	unloaded:       bool,
 	/// The window palette drawn while the pointer rests on its row.
 	previewing:     Option<Appearance>,
 	dialog:         Option<(Entity<ConfirmDialog>, Subscription)>,
@@ -119,9 +121,10 @@ impl SettingsView {
 			mcp_transport: mcp_add::Transport::Command,
 			mcp_semantic: false,
 			mcp_deploying: None,
-			sent: HashSet::new(),
+			sent: HashMap::new(),
 			held: Held::default(),
 			failure: None,
+			unloaded: false,
 			previewing: None,
 			dialog: None,
 			focus: cx.focus_handle(),
@@ -156,10 +159,41 @@ impl SettingsView {
 		self.failure = None;
 		self.scroll.set_offset(veyyon_gpui::Point::default());
 		self.preview_appearance(None, cx);
-		for action in page.loads() {
-			self.send(action, SurfaceId::SettingsField(format!("load:{}", page.name())), cx);
-		}
+		self.load(cx);
 		cx.notify();
+	}
+
+	/// Asks the host for what the shown page draws. A load the gate rejects
+	/// is stated on the page and leaves it unloaded.
+	fn load(&mut self, cx: &mut Context<Self>) {
+		let surface = SurfaceId::SettingsField(format!("load:{}", self.page.name()));
+		let loads = self.page.loads();
+		self.unloaded = loads
+			.iter()
+			.any(|action| refusal(self.app.read(cx), action).is_some());
+		for action in loads {
+			self.send(action, surface.clone(), cx);
+		}
+	}
+
+	/// Asks again for what the shown page draws once the gate that rejected
+	/// its load takes it: the link to the host came back, or the host
+	/// declares the capability. While the gate still rejects it, the page
+	/// states the reason the gate gives now.
+	fn reload(&mut self, cx: &mut Context<Self>) {
+		if !self.unloaded || !WorkspaceLayout::get(cx).settings_open {
+			return;
+		}
+		let app = self.app.read(cx);
+		let refused = self
+			.page
+			.loads()
+			.iter()
+			.find_map(|action| refusal(app, action));
+		self.failure = refused;
+		if self.failure.is_none() {
+			self.load(cx);
+		}
 	}
 
 	/// Shows the page `name` states, `<page>` or `<page>#<section>`, scrolled
@@ -223,8 +257,8 @@ impl SettingsView {
 		let change = Change::of(&action, settings);
 		let request = self
 			.app
-			.update(cx, |app, cx| app.dispatch(action, surface, cx));
-		self.sent.insert(request);
+			.update(cx, |app, cx| app.dispatch(action, surface.clone(), cx));
+		self.sent.insert(request, surface);
 		self.held.hold(request, change);
 	}
 
@@ -266,9 +300,15 @@ impl SettingsView {
 				if *kind == SnapshotSectionKind::Settings {
 					self.sync_setting_fields(window, cx);
 				}
+				if *kind == SnapshotSectionKind::Capabilities {
+					self.reload(cx);
+				}
 				self.page.draws(*kind) || *kind == SnapshotSectionKind::Capabilities
 			},
-			StoreEvent::ConnectionChanged => true,
+			StoreEvent::ConnectionChanged => {
+				self.reload(cx);
+				true
+			},
 			StoreEvent::RequestFinished { request, ok } => self.settle(*request, *ok, cx),
 			StoreEvent::SessionsChanged
 			| StoreEvent::ActiveSessionChanged
@@ -287,28 +327,25 @@ impl SettingsView {
 	}
 
 	/// Settles a request the shown page sent: a refusal is stated on the page
-	/// in the words of the host's announcement of it, and a request the host
-	/// takes clears the statement. The change a refused request made is drawn
-	/// no longer, nor any once the page has no request outstanding. Answers
+	/// in the host's words for that request, and a request the host takes
+	/// clears the statement. The change a refused request made is drawn no
+	/// longer, nor any once the page has no request outstanding. Answers
 	/// whether the page changed.
 	fn settle(&mut self, request: RequestId, ok: bool, cx: &Context<Self>) -> bool {
-		if !self.sent.remove(&request) {
+		let Some(surface) = self.sent.remove(&request) else {
 			return false;
-		}
+		};
 		let released = self.held.settle(request, ok, self.sent.is_empty());
 		let failure = (!ok).then(|| {
 			self
 				.app
 				.read(cx)
 				.store()
-				.notifications
-				.raised()
-				.iter()
-				.filter(|held| held.source == NotificationSource::RequestFailed)
-				.max_by_key(|held| held.raised_at_ms)
+				.retries
+				.reason(&surface)
 				.map_or_else(
 					|| SharedString::from("The host refused the request"),
-					|held| SharedString::from(held.title.clone()),
+					|reason| SharedString::from(reason.to_owned()),
 				)
 		});
 		let changed = self.failure != failure || released;

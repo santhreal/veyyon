@@ -47,28 +47,30 @@ pub use domain::{
 	AutoswarmFieldKind, AutoswarmFieldView, AutoswarmNoteView, AutoswarmOptionView,
 	AutoswarmRunView, AutoswarmSwarmView, ChangeScope, ChangeStatus, ChangedFile, ChangesView,
 	CheckoutView, CommandSource, CommandSubcommandView, CommandView, ComposerCompletionView,
-	ComposerCompletionsView, ComposerEditKind, ComposerEditView, ContentMatch,
-	ContentMatchesView, ContextBreakdownView, ContextCategory, DiagnosticSource, DictationState,
-	DictationView, Domains, ExportView, ExtensionNoticeLevel, ExtensionNoticeView,
-	ExtensionStatusView, ExtensionUiView, ExtensionWidgetPlacement, ExtensionWidgetView,
-	FileContentView, FileKind, FileNode, FileTreeView,
-	ForegroundCommandView, GoalStatus, GoalView, HostView, InputModality, KeybindingView,
-	McpServerStatus, McpServerView, ModelRef, ModelView, ModelsView, PROCESS_LOG_CAPACITY_LINES,
-	PaceView, ProcessLogView, ProcessLogsChunk, ProcessView, ProfileCopyItemView, ProfileView,
-	ProfilesView, PromptHistoryEntry, PromptHistoryView, ProviderView, PullRequestView,
-	QueuedPrompts, QueuedPromptsView, QuotaView, QuotaWindowView, SearchResultsView, SeqGap,
-	ServingAccountView, SessionSearchView, SessionTranscriptView, SettingEntry, SettingKind,
-	SettingOption, SettingsView, ShareGuestView, ShareParticipantView, SharePhase, ShareRole,
-	ShareView, TERMINAL_SCROLLBACK_CAPACITY_BYTES, TerminalOutputChunk, TerminalScrollback,
-	TerminalStatus, TerminalView, ThemeView, ThemesView, TodoBoardView, TodoPhaseView, TodoStatus,
-	TodoTaskView, UsageView, diagnostic_sources,
+	ComposerCompletionsView, ComposerEditKind, ComposerEditView, ContentMatch, ContentMatchesView,
+	ContextBreakdownView, ContextCategory, DiagnosticSource, DictationState, DictationView, Domains,
+	ExportView, ExtensionNoticeLevel, ExtensionNoticeView, ExtensionStatusView, ExtensionUiView,
+	ExtensionWidgetPlacement, ExtensionWidgetView, FileContentView, FileKind, FileNode,
+	FileTreeView, ForegroundCommandView, GoalStatus, GoalView, HostView, InputModality,
+	KeybindingView, McpServerStatus, McpServerView, ModelRef, ModelView, ModelsView,
+	PROCESS_LOG_CAPACITY_LINES, PaceView, ProcessLogView, ProcessLogsChunk, ProcessView,
+	ProfileCopyItemView, ProfileView, ProfilesView, PromptHistoryEntry, PromptHistoryView,
+	ProviderView, PullRequestView, QueuedPrompts, QueuedPromptsView, QuotaView, QuotaWindowView,
+	SearchResultsView, SeqGap, ServingAccountView, SessionSearchView, SessionTranscriptView,
+	SettingEntry, SettingKind, SettingOption, SettingsView, ShareGuestView, ShareParticipantView,
+	SharePhase, ShareRole, ShareView, TERMINAL_SCROLLBACK_CAPACITY_BYTES, TerminalOutputChunk,
+	TerminalScrollback, TerminalStatus, TerminalView, ThemeView, ThemesView, TodoBoardView,
+	TodoPhaseView, TodoStatus, TodoTaskView, UsageView, diagnostic_sources,
 };
 pub use error::{BackendError, ErrorScope, fallback_surface, is_scope_retryable, route_error};
 pub use event::{
 	ALL_SECTION_NAMES, HostEvent, HostEventKind, SessionHeaderView, SessionLoadError, SessionStatus,
 	SessionSummary, SnapshotSection, SnapshotSectionKind,
 };
-pub use gate::{Gate, action_to_capability, gate, gate_capability, gate_kind};
+pub use gate::{
+	Gate, LINK_FAILED, LINK_RETRYING, action_to_capability, gate, gate_capability, gate_kind,
+	gate_link, link_refusal,
+};
 pub use interaction::{
 	ApprovalInteraction, DialogInteraction, DialogOption, DialogQuestion, PendingDecisions,
 	PlanInteraction, QuestionInteraction,

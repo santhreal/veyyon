@@ -12,7 +12,7 @@
 //! [`StoreEvent::Remembered`]: super::StoreEvent::Remembered
 
 use veyyon_desktop_model::{
-	DiffMode, Gate, HostActionKind, PanelsStore, SessionId, gate_kind, review::ReviewsStore,
+	DiffMode, HostActionKind, PanelsStore, SessionId, review::ReviewsStore,
 };
 use veyyon_gpui::Context;
 
@@ -79,15 +79,11 @@ impl AppState {
 		self.remember(cx, |persisted| write(&mut persisted.reviews))
 	}
 
-	/// The reason the host gave for not taking an action of `kind`, which a
-	/// panel or drawer control draws in place of acting. Absent when the host
-	/// takes it, while one is in flight, and before it states its
-	/// capabilities.
+	/// The reason a panel or drawer control draws in place of acting: the
+	/// host's refusal of `kind` or the link's. Absent when both take it,
+	/// while one is in flight, and before the host states its capabilities.
 	pub fn panel_unavailable(&self, kind: HostActionKind) -> Option<String> {
-		match gate_kind(kind, &self.store.capabilities, &self.registry) {
-			Gate::Unavailable { reason } => Some(reason),
-			Gate::Enabled | Gate::Pending { .. } | Gate::Unknown => None,
-		}
+		self.refusal(kind)
 	}
 
 	/// Whether a request of `kind` is in flight, which a refresh control

@@ -18,8 +18,13 @@
 
 mod appearance;
 mod focus;
+mod gates;
 mod harness;
+mod kinds;
+mod link;
 mod mcp;
+mod refusals;
+mod secrets;
 
 use gpui::{TestAppContext, point, px};
 use serde_json::json;

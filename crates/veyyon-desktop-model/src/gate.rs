@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	action::{HostAction, HostActionKind},
 	capabilities::{Capability, CapabilityMap, CapabilityStatus},
-	connection::RequestId,
+	connection::{ConnectionState, RequestId},
 	registry::RequestRegistry,
 };
 
@@ -165,22 +165,86 @@ pub fn gate(action: &HostAction, capabilities: &CapabilityMap, registry: &Reques
 
 /// Evaluates the capability gate for an action kind against active capabilities
 /// and pending requests.
+///
+/// A capability the host refused is unavailable whatever is in flight: the
+/// request in flight meets the same refusal, and a pending state would hide
+/// the host's reason.
 #[must_use]
 pub fn gate_kind(
 	action: HostActionKind,
 	capabilities: &CapabilityMap,
 	registry: &RequestRegistry,
 ) -> Gate {
-	if let Some(request) = registry.find_pending_for_action(action) {
-		return Gate::Pending { request };
+	let capability = action_to_capability(action);
+	let refused = matches!(capabilities.get(capability), CapabilityStatus::Unavailable { .. });
+	match registry.find_pending_for_action(action) {
+		Some(request) if !refused => Gate::Pending { request },
+		_ => gate_capability(capability, capabilities, registry),
 	}
-	gate_capability(action_to_capability(action), capabilities, registry)
 }
+
+/// Evaluates the gate for an action kind as [`gate_kind`] does, narrowed by
+/// the link to the host.
+///
+/// An action the link cannot carry now is unavailable for the reason
+/// [`link_refusal`] states, whatever the host declared. The narrowing never
+/// widens: a capability the host refused stays refused.
+#[must_use]
+pub fn gate_link(
+	action: HostActionKind,
+	connection: &ConnectionState,
+	capabilities: &CapabilityMap,
+	registry: &RequestRegistry,
+) -> Gate {
+	match link_refusal(action, connection) {
+		Some(reason) => Gate::Unavailable { reason: reason.to_owned() },
+		None => gate_kind(action, capabilities, registry),
+	}
+}
+
+/// Why the link to the host cannot carry an action of `action` now, or
+/// `None` while it can.
+///
+/// A link that was lost or failed (`Reconnecting`, `Fatal`, and `Connecting`
+/// past its first attempt) carries only `Attach`, `Detach` and
+/// `RetryConnection`, the requests that restore or leave it. The capability
+/// map still holds what the host declared while it was reachable, and a
+/// request sent meanwhile waits for a socket that may never come. A window
+/// that is detached or on its first attempt queues what it sends until the
+/// link starts, and a syncing one has a live socket.
+#[must_use]
+pub const fn link_refusal(
+	action: HostActionKind,
+	connection: &ConnectionState,
+) -> Option<&'static str> {
+	if matches!(
+		action,
+		HostActionKind::Attach | HostActionKind::Detach | HostActionKind::RetryConnection
+	) {
+		return None;
+	}
+	match connection {
+		ConnectionState::Reconnecting { .. } => Some(LINK_RETRYING),
+		ConnectionState::Connecting { attempt } if *attempt > 1 => Some(LINK_RETRYING),
+		ConnectionState::Fatal { .. } => Some(LINK_FAILED),
+		ConnectionState::Detached
+		| ConnectionState::Connecting { .. }
+		| ConnectionState::Syncing { .. }
+		| ConnectionState::Connected { .. } => None,
+	}
+}
+
+/// The reason [`link_refusal`] gives while the link to the host is retried.
+pub const LINK_RETRYING: &str = "Reconnecting to the host";
+
+/// The reason [`link_refusal`] gives once the link to the host failed.
+pub const LINK_FAILED: &str = "Not connected to the host";
 
 /// Evaluates availability for a whole surface (§5.13).
 ///
-/// Applies to cards, panel tabs, drawer tabs, and settings pages. Pending
-/// while any action of that capability is in flight, else its status.
+/// Applies to cards, panel tabs, drawer tabs, and settings pages.
+/// Unavailable while the host refuses the capability, else pending while any
+/// action of that capability is in flight, else its status.
 ///
 /// This is the one gate for a capability no action maps to (`Questions`,
 /// `Plans`): its surface still has the fourth state (§1.2).
@@ -190,12 +254,16 @@ pub fn gate_capability(
 	capabilities: &CapabilityMap,
 	registry: &RequestRegistry,
 ) -> Gate {
+	let status = capabilities.get(capability);
+	if let CapabilityStatus::Unavailable { reason } = status {
+		return Gate::Unavailable { reason: reason.clone() };
+	}
 	if let Some(request) = registry.find_pending_for_capability(capability) {
 		return Gate::Pending { request };
 	}
-	match capabilities.get(capability) {
-		CapabilityStatus::Available => Gate::Enabled,
-		CapabilityStatus::Unavailable { reason } => Gate::Unavailable { reason: reason.clone() },
-		CapabilityStatus::UnknownUntilAttached => Gate::Unknown,
+	if *status == CapabilityStatus::Available {
+		Gate::Enabled
+	} else {
+		Gate::Unknown
 	}
 }

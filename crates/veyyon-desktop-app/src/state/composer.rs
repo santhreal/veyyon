@@ -8,7 +8,7 @@ use veyyon_desktop_model::{
 	ApprovalInteraction, AutoswarmConsoleView, Capability, CapabilityStatus, ComposerEditView,
 	ComposerStore, ContentBlock, DialogInteraction, Gate, GoalView, HostAction, HostActionKind,
 	InteractionId, MessageRole, PendingDecisions, PlanInteraction, QuestionInteraction, QueueMode,
-	QueuedPromptsView, RequestId, SessionId, SurfaceId, gate_kind,
+	QueuedPromptsView, RequestId, SessionId, SurfaceId, gate_link,
 };
 use veyyon_gpui::Context;
 
@@ -159,9 +159,10 @@ impl AppState {
 		self.store.streaming.contains_key(session)
 	}
 
-	/// Whether `kind` may be sent now, and why not when it may not.
+	/// Whether `kind` may be sent now, and why not when it may not: the
+	/// host's capability for it, narrowed by what the link carries.
 	pub fn gate(&self, kind: HostActionKind) -> Gate {
-		gate_kind(kind, &self.store.capabilities, &self.registry)
+		gate_link(kind, &self.store.connection, &self.store.capabilities, &self.registry)
 	}
 
 	/// Why the host takes no `kind` now, or `None` while it does.
