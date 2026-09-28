@@ -1608,6 +1608,10 @@ export class WorkerCore {
 	#runtime: JsRuntime | null = null;
 	#unsub: () => void;
 	#mode?: WorkerInitPayload["mode"];
+	/** Whether the page is in a browser window, whose content area is its viewport. */
+	#visible = false;
+	/** The content area and scale last read from a page no viewport is emulated on. */
+	#windowViewport?: ReadyInfo["viewport"];
 	#dialogPolicy?: DialogPolicy;
 	#dialogHandler?: (dialog: Dialog) => void;
 	#openDialog?: OpenDialogInfo;
@@ -1726,6 +1730,7 @@ export class WorkerCore {
 		try {
 			// A tab of a browser this process launched stays one when a new worker re-adopts it.
 			this.#mode = payload.mode === "attach" && payload.present ? "headless" : payload.mode;
+			this.#visible = payload.mode === "headless" ? payload.visible === true : payload.present?.visible === true;
 			const puppeteer = await loadPuppeteer();
 			this.#browser = await puppeteer.connect({
 				...(port ? { transport: new PortTransport(port) } : { browserWSEndpoint: payload.browserWSEndpoint }),
@@ -1741,7 +1746,7 @@ export class WorkerCore {
 				this.#page = await context.newPage();
 				this.#observeDialogs();
 				await applyStealthPatches(this.#page, payload.identity);
-				await applyViewport(this.#page, payload.viewport);
+				await applyViewport(this.#page, payload.viewport, this.#visible);
 				if (payload.dialogs) this.#applyDialogPolicy(payload.dialogs);
 
 				if (payload.url) {
@@ -1764,8 +1769,9 @@ export class WorkerCore {
 				if (payload.present) {
 					// The page's overrides and scripts went with the old worker's connection, which the
 					// replacement closed; this connection sends them again before the next document loads.
+					// A window keeps the size it has, which a person may have given it.
 					await applyStealthPatches(page, payload.present.identity);
-					await applyViewport(page, payload.present.viewport);
+					if (!payload.present.visible) await applyViewport(page, payload.present.viewport, false);
 				}
 				if (payload.dialogs) this.#applyDialogPolicy(payload.dialogs);
 			}
@@ -1840,9 +1846,28 @@ export class WorkerCore {
 			// Reported to the operator for display; `undefined` is distinct from an empty string, which would
 			// claim the page has no title.
 			title: await optionalResult(page.title(), "a page mid-navigation has no title yet"),
-			viewport: page.viewport() ?? DEFAULT_VIEWPORT,
+			viewport: await this.#viewportNow(page),
 			targetId,
 		};
+	}
+
+	/**
+	 * The page's viewport: the emulated one, or, where none is emulated (a visible tab, an attached app), its
+	 * window's content area at the display's scale, read in the isolated world. A page that cannot be read
+	 * mid-navigation reports the last size read.
+	 */
+	async #viewportNow(page: Page): Promise<ReadyInfo["viewport"]> {
+		const emulated = page.viewport();
+		if (emulated) return emulated;
+		const read = await optionalResult(
+			page.evaluate(() => {
+				const view = globalThis as unknown as { innerWidth: number; innerHeight: number; devicePixelRatio: number };
+				return { width: view.innerWidth, height: view.innerHeight, deviceScaleFactor: view.devicePixelRatio };
+			}),
+			"a page mid-navigation has no window to read; the last size read stands",
+		);
+		if (read) this.#windowViewport = read;
+		return this.#windowViewport ?? DEFAULT_VIEWPORT;
 	}
 
 	#applyDialogPolicy(policy: DialogPolicy): void {
@@ -1921,6 +1946,8 @@ export class WorkerCore {
 					"a page that is already active or closing runs as it is",
 				);
 			}
+			const viewport = msg.viewport;
+			if (viewport) await untilAborted(signal, () => applyViewport(page, viewport, this.#visible));
 			const browser = this.#requireBrowser();
 			const tabApi = guardTabApi(
 				this.#createTabApi(msg.name, msg.timeoutMs, signal, msg.session, output, screenshots, active),
@@ -2577,13 +2604,14 @@ export class WorkerCore {
 		if (!snapshot) throw new ToolError("Accessibility snapshot unavailable");
 		const entries: ObservationEntry[] = [];
 		await collectObservationEntries(this, snapshot, entries, { includeAll, viewportOnly });
-		const scroll = (await untilAborted(options.signal, () =>
+		const { dpr, ...scroll } = (await untilAborted(options.signal, () =>
 			page.evaluate(() => {
 				const win = globalThis as unknown as {
 					scrollX: number;
 					scrollY: number;
 					innerWidth: number;
 					innerHeight: number;
+					devicePixelRatio: number;
 					document: { documentElement: { scrollWidth: number; scrollHeight: number } };
 				};
 				const doc = win.document.documentElement;
@@ -2594,13 +2622,15 @@ export class WorkerCore {
 					height: win.innerHeight,
 					scrollWidth: doc.scrollWidth,
 					scrollHeight: doc.scrollHeight,
+					dpr: win.devicePixelRatio,
 				};
 			}),
-		)) as Observation["scroll"];
+		)) as Observation["scroll"] & { dpr: number };
 		return {
 			url: page.url(),
 			title: (await untilAborted(options.signal, () => page.title())) as string,
-			viewport: page.viewport() ?? DEFAULT_VIEWPORT,
+			// Where no viewport is emulated (a visible tab, an attached app), the window's content area is the viewport.
+			viewport: page.viewport() ?? { width: scroll.width, height: scroll.height, deviceScaleFactor: dpr },
 			scroll,
 			elements: entries,
 		};

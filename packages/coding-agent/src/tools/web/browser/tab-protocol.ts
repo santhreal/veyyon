@@ -48,10 +48,12 @@ export interface SessionSnapshot {
 	naturalInput: boolean;
 }
 
-/** What a page of a browser this process launched is sent: its identity and its viewport. */
+/** What a page of a browser this process launched is sent: its identity, its viewport, and whether it has a window. */
 export interface TabPresentation {
 	identity?: HostIdentity;
 	viewport: { width: number; height: number; deviceScaleFactor?: number };
+	/** A page in a browser window keeps the window's size; its viewport is the window's content area. */
+	visible: boolean;
 }
 
 export type WorkerInitPayload =
@@ -67,6 +69,8 @@ export type WorkerInitPayload =
 			browserContextId?: string;
 			/** The host-true identity the browser launched with; the page takes it before its first navigation. */
 			identity?: HostIdentity;
+			/** The browser has a window: `viewport` resizes it to hold that content area instead of emulating one. */
+			visible?: boolean;
 	  }
 	| {
 			mode: "attach";
@@ -92,7 +96,16 @@ export type ToolReply = { ok: true; value: unknown } | { ok: false; error: TabRu
 export type TabWorkerInbound =
 	/** `port`, set for a worker thread, is its browser connection, which the main thread holds and relays. */
 	| { type: "init"; payload: WorkerInitPayload; port?: MessagePort }
-	| { type: "run"; id: string; name: string; code: string; timeoutMs: number; session: SessionSnapshot }
+	/** `viewport`, when set, sizes the page as `open` does before the code runs. */
+	| {
+			type: "run";
+			id: string;
+			name: string;
+			code: string;
+			timeoutMs: number;
+			session: SessionSnapshot;
+			viewport?: { width: number; height: number; deviceScaleFactor?: number };
+	  }
 	| { type: "abort"; id: string; expectedCleanup?: boolean }
 	| { type: "tool-reply"; id: string; reply: ToolReply }
 	| { type: "close" };

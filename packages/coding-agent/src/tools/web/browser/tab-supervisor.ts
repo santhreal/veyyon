@@ -362,24 +362,20 @@ async function acquireTabImpl(
 					stateLoaded = await applyStorageState(await contextOfTab(existing), opts.storageState);
 				}
 				const reuseSteps: string[] = [];
-				if (opts.viewport && browser.kind.kind !== "cmux") {
-					const dsf = opts.viewport.deviceScaleFactor;
-					reuseSteps.push(
-						`await page.setViewport({ width: ${opts.viewport.width}, height: ${opts.viewport.height}, deviceScaleFactor: ${dsf === undefined ? "undefined" : String(dsf)} });`,
-					);
-				}
 				if (opts.url) {
 					reuseSteps.push(
 						`await tab.goto(${JSON.stringify(opts.url)}, { waitUntil: ${JSON.stringify(opts.waitUntil ?? "load")} });`,
 					);
 				}
-				if (reuseSteps.length) {
+				const viewport = opts.viewport && browser.kind.kind !== "cmux" ? opts.viewport : undefined;
+				if (reuseSteps.length || viewport) {
 					await runInTabWithSnapshot(
 						name,
 						{
 							code: reuseSteps.join("\n"),
 							timeoutMs: opts.timeoutMs,
 							signal: opts.signal,
+							viewport,
 						},
 						// The reuse steps press and type nothing.
 						{ cwd: process.cwd(), naturalInput: false },
@@ -634,7 +630,13 @@ export async function runInTab(name: string, opts: RunInTabOptions): Promise<Run
 
 async function runInTabWithSnapshot(
 	name: string,
-	opts: { code: string; timeoutMs: number; signal?: AbortSignal; session?: ToolSession },
+	opts: {
+		code: string;
+		timeoutMs: number;
+		signal?: AbortSignal;
+		session?: ToolSession;
+		viewport?: { width: number; height: number; deviceScaleFactor?: number };
+	},
 	snapshot: SessionSnapshot,
 ): Promise<RunResultOk> {
 	const tab = tabs.get(name);
@@ -717,6 +719,7 @@ async function runInTabWithSnapshot(
 			code: opts.code,
 			timeoutMs: opts.timeoutMs,
 			session: snapshot,
+			...(opts.viewport ? { viewport: opts.viewport } : {}),
 		});
 		// A worker that cannot answer even its own deadline is stuck in synchronous work (an
 		// `execSync`, a busy loop). A worker thread is replaced and attached to the same page, as a
@@ -907,6 +910,7 @@ async function buildInitPayload(
 			timeoutMs: opts.timeoutMs,
 			...(browserContextId === undefined ? {} : { browserContextId }),
 			...(browser.identity === undefined ? {} : { identity: browser.identity }),
+			...(browser.kind.headless ? {} : { visible: true }),
 		};
 	}
 	const page = await pickElectronTarget(browser.browser, opts.target);
@@ -1047,6 +1051,7 @@ async function recycleTimedOutWorkerTab(tab: WorkerTabSession, timeoutMs: number
 		tab.browser.kind.kind === "headless"
 			? {
 					viewport: tab.info.viewport,
+					visible: !tab.browser.kind.headless,
 					...(tab.browser.identity === undefined ? {} : { identity: tab.browser.identity }),
 				}
 			: undefined;

@@ -371,6 +371,11 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 					: `profile and visible need the headless browser; ${describeKind(kind)} runs in the app's own session and window.`,
 			);
 		}
+		if (kind.kind === "headless" && !kind.headless && params.viewport?.scale !== undefined) {
+			throw new ToolError(
+				"viewport.scale needs a hidden tab: a browser window renders at its display's scale, and viewport sizes the window's content area. Omit scale, or open with visible: false.",
+			);
+		}
 		const contextName = isolatedContextName(params.context);
 		if ((contextName !== undefined || params.storage_state !== undefined) && kind.kind !== "headless") {
 			throw new ToolError(

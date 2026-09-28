@@ -120,7 +120,7 @@ async function browseHtmlPage(
 	try {
 		const activePage = await untilAborted(signal, () => handle.browser.newPage());
 		page = activePage;
-		await applyViewport(activePage);
+		await applyViewport(activePage, undefined, false);
 		await applyStealthPatches(activePage, handle.identity);
 		if (homeUrl) {
 			await untilAborted(signal, () =>

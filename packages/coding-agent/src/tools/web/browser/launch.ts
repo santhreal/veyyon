@@ -390,10 +390,20 @@ export async function launchHeadlessBrowser(opts: LaunchHeadlessOptions): Promis
 	}
 }
 
+/**
+ * Size a page's viewport. A hidden tab emulates `viewport`, or `DEFAULT_VIEWPORT` without one. A visible
+ * tab's viewport is its window's content area at the display's own scale: `viewport` resizes the window
+ * to hold it, and without one the window keeps its size.
+ */
 export async function applyViewport(
 	page: Page,
-	viewport?: { width: number; height: number; deviceScaleFactor?: number },
+	viewport: { width: number; height: number; deviceScaleFactor?: number } | undefined,
+	visible: boolean,
 ): Promise<void> {
+	if (visible) {
+		if (viewport) await fitWindowToContent(page, viewport);
+		return;
+	}
 	if (!viewport) {
 		await page.setViewport(DEFAULT_VIEWPORT);
 		return;
@@ -403,6 +413,54 @@ export async function applyViewport(
 		height: viewport.height,
 		deviceScaleFactor: viewport.deviceScaleFactor ?? DEFAULT_VIEWPORT.deviceScaleFactor,
 	});
+}
+
+/** How long a resized window has to give its page the new content area before the page goes on at the size it has. */
+const WINDOW_RESIZE_SETTLE_MS = 2_000;
+
+/**
+ * Resize the window of `page` so its content area is `size` in CSS pixels. The chrome around the content
+ * is measured in the page's isolated world, after a maximized, minimized or fullscreen window is made
+ * normal, since only a normal window takes a size. The page's viewport follows the window a moment
+ * later, which this waits for; a window manager that keeps a size of its own leaves the page at that size.
+ */
+async function fitWindowToContent(page: Page, size: { width: number; height: number }): Promise<void> {
+	// A window is sized in whole pixels.
+	const width = Math.round(size.width);
+	const height = Math.round(size.height);
+	const session = await page.createCDPSession();
+	try {
+		const { windowId, bounds } = await session.send("Browser.getWindowForTarget");
+		if (bounds.windowState !== undefined && bounds.windowState !== "normal") {
+			await session.send("Browser.setWindowBounds", { windowId, bounds: { windowState: "normal" } });
+		}
+		const chrome = await page.evaluate(() => {
+			const view = globalThis as unknown as {
+				outerWidth: number;
+				outerHeight: number;
+				innerWidth: number;
+				innerHeight: number;
+			};
+			return { width: view.outerWidth - view.innerWidth, height: view.outerHeight - view.innerHeight };
+		});
+		await session.send("Browser.setWindowBounds", {
+			windowId,
+			bounds: { width: width + chrome.width, height: height + chrome.height },
+		});
+	} finally {
+		await bestEffort(session.detach(), "a session to a closing page ends with it");
+	}
+	await bestEffort(
+		page.waitForFunction(
+			(wanted: { width: number; height: number }) => {
+				const view = globalThis as unknown as { innerWidth: number; innerHeight: number };
+				return view.innerWidth === wanted.width && view.innerHeight === wanted.height;
+			},
+			{ polling: 16, timeout: WINDOW_RESIZE_SETTLE_MS },
+			{ width, height },
+		),
+		"a window manager that keeps a size of its own leaves the page at that size, which the tab reports",
+	);
 }
 
 // =====================================================================
