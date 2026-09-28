@@ -18,6 +18,7 @@
 mod folds;
 mod motion;
 mod pointer;
+mod widths;
 
 use gpui::{AppContext as _, Entity, Focusable as _, TestAppContext, VisualTestContext};
 use veyyon_desktop_app::{

@@ -154,6 +154,7 @@ impl Sidebar {
 			.flex()
 			.items_center()
 			.gap(space::S2)
+			.w_full()
 			.h(size::ROW)
 			.pl(space::S2 + indent(depth))
 			.pr(space::S2)
