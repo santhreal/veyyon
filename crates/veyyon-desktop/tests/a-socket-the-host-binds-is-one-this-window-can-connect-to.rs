@@ -118,9 +118,20 @@ fn a_profile_socket_that_fits_is_the_one_the_window_names() {
 
 #[test]
 fn a_relative_profile_is_named_absolutely_so_two_working_directories_agree() {
+	let tree = scratch("gui-socket-relative");
+	let runtime = tree.join("run");
+	std::fs::create_dir_all(&runtime).expect("scratch runtime directory");
+	let _env = RuntimeDirEnv::set(&runtime);
+
+	// The working directory's depth selects the profile socket or the runtime
+	// fallback, so the relative form is compared with its absolute form rather
+	// than with either candidate.
+	let absolute = env::current_dir()
+		.expect("a working directory")
+		.join("relative/agent");
 	let resolved = gui_host_socket_path(Path::new("./relative/agent")).expect("relative profile");
-	let cwd = env::current_dir().expect("a working directory");
-	assert_eq!(resolved, cwd.join("relative/agent/gui-host.sock"));
+	assert!(resolved.is_absolute(), "{} names the working directory", resolved.display());
+	assert_eq!(resolved, gui_host_socket_path(&absolute).expect("absolute profile"));
 }
 
 #[test]
