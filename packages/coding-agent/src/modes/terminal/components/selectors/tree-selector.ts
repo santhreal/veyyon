@@ -9,10 +9,16 @@ import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
 import { truncateToWidth } from "@veyyon/utils/width";
 import type { TreeFilterMode } from "../../../../config/settings-schema";
-import { resolveAssistantErrorPresentation } from "../../../../presentation/transcript-builder";
+import {
+	type FlatTreeNode,
+	flattenSessionTree,
+	isTreeEntryShown,
+	sessionTreeActivePath,
+	type TreeToolCall,
+	treeEntryRow,
+	treeEntryText,
+} from "../../../../presentation/session-tree";
 import { theme } from "../../../../theme/theme";
-import { shortenPath, TRUNCATE_LENGTHS } from "../../../../tools/core/render-utils";
-import { canonicalizeMessage } from "../../../../utils/thinking-display";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
 import {
 	computeModalDims,
@@ -27,47 +33,16 @@ import {
 import { routeModalChrome } from "./select-list-mouse-routing";
 import { centeredWindow, hoverBandAt, renderScrollableList, selectionBand } from "./selector-helpers";
 
-/** Gutter info: position (displayIndent where connector was) and whether to show │ */
-interface GutterInfo {
-	position: number; // displayIndent level where the connector was shown
-	show: boolean; // true = show │, false = show spaces
-}
-
-/** Flattened tree node for navigation */
-interface FlatNode {
-	node: SessionTreeNode;
-	/** Indentation level (each level = 3 chars) */
-	indent: number;
-	/** Whether to show connector (├─ or └─) - true if parent has multiple children */
-	showConnector: boolean;
-	/** If showConnector, true = last sibling (└─), false = not last (├─) */
-	isLast: boolean;
-	/** Gutter info for each ancestor branch point */
-	gutters: GutterInfo[];
-	/** True if this node is a root under a virtual branching root (multiple roots) */
-	isVirtualRootChild: boolean;
-}
-
 /** Filter mode for tree display */
 type FilterMode = TreeFilterMode;
 
-/**
- * Tree list component with selection and ASCII art visualization
- */
-/** Tool call info for lookup */
-interface ToolCallInfo {
-	name: string;
-	arguments: Record<string, unknown>;
-}
-
 class TreeList implements Component {
-	#flatNodes: FlatNode[] = [];
-	#filteredNodes: FlatNode[] = [];
+	#flatNodes: FlatTreeNode[] = [];
+	#filteredNodes: FlatTreeNode[] = [];
 	#selectedIndex = 0;
 	#filterMode: FilterMode;
 	#searchQuery = "";
-	#toolCallMap: Map<string, ToolCallInfo> = new Map();
-	#multipleRoots = false;
+	#toolCalls: ReadonlyMap<string, TreeToolCall> = new Map();
 	#activePathIds: Set<string> = new Set();
 	#lastSelectedId: string | null = null;
 	/** Rows the card can spare for tree entries; the shell decides it per frame. */
@@ -90,36 +65,16 @@ class TreeList implements Component {
 	) {
 		this.#maxVisibleLines = maxVisibleLines;
 		this.#filterMode = initialFilterMode;
-		this.#multipleRoots = tree.length > 1;
-		this.#flatNodes = this.#flattenTree(tree);
-		this.#buildActivePath();
+		const flattened = flattenSessionTree(tree, currentLeafId);
+		this.#flatNodes = flattened.nodes;
+		this.#toolCalls = flattened.toolCalls;
+		this.#activePathIds = sessionTreeActivePath(this.#flatNodes, currentLeafId);
 		this.#applyFilter();
 
 		// Start with initialSelectedId if provided, otherwise current leaf
 		const targetId = initialSelectedId ?? currentLeafId;
 		this.#selectedIndex = this.#findNearestVisibleIndex(targetId);
 		this.#lastSelectedId = this.#filteredNodes[this.#selectedIndex]?.node.entry.id ?? null;
-	}
-
-	/** Build the set of entry IDs on the path from root to current leaf */
-	#buildActivePath(): void {
-		this.#activePathIds.clear();
-		if (!this.currentLeafId) return;
-
-		// Build a map of id -> entry for parent lookup
-		const entryMap = new Map<string, FlatNode>();
-		for (const flatNode of this.#flatNodes) {
-			entryMap.set(flatNode.node.entry.id, flatNode);
-		}
-
-		// Walk from leaf to root
-		let currentId: string | null = this.currentLeafId;
-		while (currentId) {
-			this.#activePathIds.add(currentId);
-			const node = entryMap.get(currentId);
-			if (!node) break;
-			currentId = node.node.entry.parentId ?? null;
-		}
 	}
 
 	/**
@@ -130,7 +85,7 @@ class TreeList implements Component {
 		if (this.#filteredNodes.length === 0) return 0;
 
 		// Build a map for parent lookup
-		const entryMap = new Map<string, FlatNode>();
+		const entryMap = new Map<string, FlatTreeNode>();
 		for (const flatNode of this.#flatNodes) {
 			entryMap.set(flatNode.node.entry.id, flatNode);
 		}
@@ -152,136 +107,6 @@ class TreeList implements Component {
 		return this.#filteredNodes.length - 1;
 	}
 
-	#flattenTree(roots: SessionTreeNode[]): FlatNode[] {
-		const result: FlatNode[] = [];
-		this.#toolCallMap.clear();
-
-		// Indentation rules:
-		// - At indent 0: stay at 0 unless parent has >1 children (then +1)
-		// - At indent 1: children always go to indent 2 (visual grouping of subtree)
-		// - At indent 2+: stay flat for single-child chains, +1 only if parent branches
-
-		// Stack items: [node, indent, justBranched, showConnector, isLast, gutters, isVirtualRootChild]
-		type StackItem = [SessionTreeNode, number, boolean, boolean, boolean, GutterInfo[], boolean];
-		const stack: StackItem[] = [];
-
-		// Determine which subtrees contain the active leaf (to sort current branch first)
-		// Use iterative post-order traversal to avoid stack overflow
-		const containsActive = new Map<SessionTreeNode, boolean>();
-		const leafId = this.currentLeafId;
-		{
-			// Build list in pre-order, then process in reverse for post-order effect
-			const allNodes: SessionTreeNode[] = [];
-			const preOrderStack: SessionTreeNode[] = roots.slice();
-			while (preOrderStack.length > 0) {
-				const node = preOrderStack.pop()!;
-				allNodes.push(node);
-				// Push children in reverse so they're processed left-to-right
-				for (let i = node.children.length - 1; i >= 0; i--) {
-					preOrderStack.push(node.children[i]);
-				}
-			}
-			// Process in reverse (post-order): children before parents
-			for (let i = allNodes.length - 1; i >= 0; i--) {
-				const node = allNodes[i];
-				let has = leafId !== null && node.entry.id === leafId;
-				for (const child of node.children) {
-					if (containsActive.get(child)) {
-						has = true;
-					}
-				}
-				containsActive.set(node, has);
-			}
-		}
-
-		// Add roots in reverse order, prioritizing the one containing the active leaf
-		// If multiple roots, treat them as children of a virtual root that branches
-		const multipleRoots = roots.length > 1;
-		const orderedRoots = roots.slice().sort((a, b) => Number(containsActive.get(b)) - Number(containsActive.get(a)));
-		for (let i = orderedRoots.length - 1; i >= 0; i--) {
-			const isLast = i === orderedRoots.length - 1;
-			stack.push([orderedRoots[i], multipleRoots ? 1 : 0, multipleRoots, multipleRoots, isLast, [], multipleRoots]);
-		}
-
-		while (stack.length > 0) {
-			const [node, indent, justBranched, showConnector, isLast, gutters, isVirtualRootChild] = stack.pop()!;
-
-			// Extract tool calls from assistant messages for later lookup
-			const entry = node.entry;
-			if (entry.type === "message" && entry.message.role === "assistant") {
-				const content = (entry.message as { content?: unknown }).content;
-				if (Array.isArray(content)) {
-					for (const block of content) {
-						if (typeof block === "object" && block !== null && "type" in block && block.type === "toolCall") {
-							const tc = block as { id: string; name: string; arguments: Record<string, unknown> };
-							this.#toolCallMap.set(tc.id, { name: tc.name, arguments: tc.arguments });
-						}
-					}
-				}
-			}
-
-			result.push({ node, indent, showConnector, isLast, gutters, isVirtualRootChild });
-
-			const children = node.children;
-			const multipleChildren = children.length > 1;
-
-			// Order children so the branch containing the active leaf comes first
-			const orderedChildren = (() => {
-				const prioritized: SessionTreeNode[] = [];
-				const rest: SessionTreeNode[] = [];
-				for (const child of children) {
-					if (containsActive.get(child)) {
-						prioritized.push(child);
-					} else {
-						rest.push(child);
-					}
-				}
-				return prioritized.concat(rest);
-			})();
-
-			// Calculate child indent
-			let childIndent: number;
-			if (multipleChildren) {
-				// Parent branches: children get +1
-				childIndent = indent + 1;
-			} else if (justBranched && indent > 0) {
-				// First generation after a branch: +1 for visual grouping
-				childIndent = indent + 1;
-			} else {
-				// Single-child chain: stay flat
-				childIndent = indent;
-			}
-
-			// Build gutters for children
-			// If this node showed a connector, add a gutter entry for descendants
-			// Only add gutter if connector is actually displayed (not suppressed for virtual root children)
-			const connectorDisplayed = showConnector && !isVirtualRootChild;
-			// When connector is displayed, add a gutter entry at the connector's position
-			// Connector is at position (displayIndent - 1), so gutter should be there too
-			const currentDisplayIndent = this.#multipleRoots ? Math.max(0, indent - 1) : indent;
-			const connectorPosition = Math.max(0, currentDisplayIndent - 1);
-			const childGutters: GutterInfo[] = connectorDisplayed
-				? gutters.concat([{ position: connectorPosition, show: !isLast }])
-				: gutters;
-
-			// Add children in reverse order
-			for (let i = orderedChildren.length - 1; i >= 0; i--) {
-				const childIsLast = i === orderedChildren.length - 1;
-				stack.push([
-					orderedChildren[i],
-					childIndent,
-					multipleChildren,
-					multipleChildren,
-					childIsLast,
-					childGutters,
-					false,
-				]);
-			}
-		}
-
-		return result;
-	}
-
 	#applyFilter(): void {
 		// Update lastSelectedId only when we have a valid selection (non-empty list)
 		// This preserves the selection when switching through empty filter results
@@ -292,54 +117,7 @@ class TreeList implements Component {
 		const searchTokens = this.#searchQuery.toLowerCase().split(/\s+/).filter(Boolean);
 
 		this.#filteredNodes = this.#flatNodes.filter(flatNode => {
-			const entry = flatNode.node.entry;
-			const isCurrentLeaf = entry.id === this.currentLeafId;
-
-			// Skip assistant messages with only tool calls (no text) unless error/aborted
-			// Always show current leaf so active position is visible
-			if (entry.type === "message" && entry.message.role === "assistant" && !isCurrentLeaf) {
-				const msg = entry.message as { stopReason?: string; content?: unknown };
-				const hasText = this.#hasTextContent(msg.content);
-				const isErrorOrAborted = msg.stopReason && msg.stopReason !== "stop" && msg.stopReason !== "toolUse";
-				// Only hide if no text AND not an error/aborted message
-				if (!hasText && !isErrorOrAborted) {
-					return false;
-				}
-			}
-
-			// Apply filter mode
-			let passesFilter = true;
-			// Entry types hidden in default view (settings/bookkeeping)
-			const isSettingsEntry =
-				entry.type === "label" ||
-				entry.type === "custom" ||
-				entry.type === "model_change" ||
-				entry.type === "thinking_level_change";
-
-			switch (this.#filterMode) {
-				case "user-only":
-					// Just user messages
-					passesFilter = entry.type === "message" && entry.message.role === "user";
-					break;
-				case "no-tools":
-					// Default minus tool results
-					passesFilter = !isSettingsEntry && !(entry.type === "message" && entry.message.role === "toolResult");
-					break;
-				case "labeled-only":
-					// Just labeled entries
-					passesFilter = flatNode.node.label !== undefined;
-					break;
-				case "all":
-					// Show everything
-					passesFilter = true;
-					break;
-				default:
-					// Default mode: hide settings/bookkeeping entries
-					passesFilter = !isSettingsEntry;
-					break;
-			}
-
-			if (!passesFilter) return false;
+			if (!isTreeEntryShown(flatNode.node, this.#filterMode, this.currentLeafId)) return false;
 
 			// Apply fuzzy search filter
 			if (searchTokens.length > 0) {
@@ -378,7 +156,7 @@ class TreeList implements Component {
 				const msg = entry.message;
 				parts.push(msg.role);
 				if ("content" in msg && msg.content) {
-					parts.push(this.#extractContent(msg.content));
+					parts.push(treeEntryText(msg.content));
 				}
 				if (msg.role === "bashExecution") {
 					const bashMsg = msg as { command?: string };
@@ -391,7 +169,7 @@ class TreeList implements Component {
 				if (typeof entry.content === "string") {
 					parts.push(entry.content);
 				} else {
-					parts.push(this.#extractContent(entry.content));
+					parts.push(treeEntryText(entry.content));
 				}
 				break;
 			}
@@ -601,8 +379,7 @@ class TreeList implements Component {
 			// Build line: cursor + prefix + path marker + label + content
 			const cursor = isSelected ? theme.fg("accent", `${theme.nav.cursor} `) : "  ";
 
-			// If multiple roots, shift display (roots at 0, not 1)
-			const displayIndent = this.#multipleRoots ? Math.max(0, flatNode.indent - 1) : flatNode.indent;
+			const displayIndent = flatNode.depth;
 
 			// Build prefix with gutters at their correct positions, clamped to
 			// `maxIndentLevels` cells so the content always fits. When clamped, the
@@ -689,171 +466,11 @@ class TreeList implements Component {
 	}
 
 	#getEntryDisplayText(node: SessionTreeNode, isSelected: boolean): string {
-		const entry = node.entry;
-		let result: string;
-
-		const normalize = (s: string) => s.replace(/[\n\t]/g, " ").trim();
-
-		switch (entry.type) {
-			case "message": {
-				const msg = entry.message;
-				const role = msg.role;
-				if (role === "user") {
-					const msgWithContent = msg as { content?: unknown };
-					const content = normalize(this.#extractContent(msgWithContent.content));
-					result = theme.fg("accent", "user: ") + content;
-				} else if (role === "developer") {
-					const msgWithContent = msg as { content?: unknown };
-					const content = normalize(this.#extractContent(msgWithContent.content));
-					result = theme.fg("dim", "developer: ") + theme.fg("muted", content);
-				} else if (role === "assistant") {
-					const presentation = resolveAssistantErrorPresentation(msg);
-					if (presentation.kind === "compact-recovered") {
-						result = theme.fg("success", "assistant: ") + theme.fg("dim", presentation.text);
-						break;
-					}
-					const msgWithContent = msg as { content?: unknown; stopReason?: string; errorMessage?: string };
-					const textContent = normalize(this.#extractContent(msgWithContent.content));
-					if (textContent) {
-						result = theme.fg("success", "assistant: ") + textContent;
-					} else if (presentation.kind === "full") {
-						result =
-							theme.fg("success", "assistant: ") + theme.fg("error", normalize(presentation.text).slice(0, 80));
-					} else if (msgWithContent.stopReason === "aborted") {
-						result = theme.fg("success", "assistant: ") + theme.fg("muted", "(aborted)");
-					} else {
-						result = theme.fg("success", "assistant: ") + theme.fg("muted", "(no content)");
-					}
-				} else if (role === "toolResult") {
-					const toolMsg = msg as { toolCallId?: string; toolName?: string };
-					const toolCall = toolMsg.toolCallId ? this.#toolCallMap.get(toolMsg.toolCallId) : undefined;
-					if (toolCall) {
-						result = theme.fg("muted", this.#formatToolCall(toolCall.name, toolCall.arguments));
-					} else {
-						result = theme.fg("muted", `[${toolMsg.toolName ?? "tool"}]`);
-					}
-				} else if (role === "bashExecution") {
-					const bashMsg = msg as { command?: string };
-					result = theme.fg("dim", `[bash]: ${normalize(bashMsg.command ?? "")}`);
-				} else {
-					result = theme.fg("dim", `[${role}]`);
-				}
-				break;
-			}
-			case "custom_message": {
-				const content =
-					typeof entry.content === "string"
-						? entry.content
-						: entry.content
-								.filter((c): c is { type: "text"; text: string } => c.type === "text")
-								.map(c => c.text)
-								.join("");
-				result = theme.fg("customMessageLabel", `[${entry.customType}]: `) + normalize(content);
-				break;
-			}
-			case "compaction": {
-				const tokens = Math.round(entry.tokensBefore / 1000);
-				result = theme.fg("borderAccent", `[compaction: ${tokens}k tokens]`);
-				break;
-			}
-			case "branch_summary":
-				result = theme.fg("warning", `[branch summary]: `) + normalize(entry.summary);
-				break;
-			case "model_change":
-				result = theme.fg("dim", `[model: ${entry.model}]`);
-				break;
-			case "thinking_level_change":
-				result = theme.fg("dim", `[thinking: ${entry.thinkingLevel ?? ThinkingLevel.Off}]`);
-				break;
-			case "custom":
-				result = theme.fg("dim", `[custom: ${entry.customType}]`);
-				break;
-			case "label":
-				result = theme.fg("dim", `[label: ${entry.label ?? "(cleared)"}]`);
-				break;
-			default:
-				result = "";
-		}
-
+		const row = treeEntryRow(node, this.#toolCalls);
+		const result =
+			(row.prefixTone ? theme.fg(row.prefixTone, row.prefix) : row.prefix) +
+			(row.textTone ? theme.fg(row.textTone, row.text) : row.text);
 		return isSelected ? theme.bold(result) : result;
-	}
-
-	#extractContent(content: unknown): string {
-		const maxLen = 200;
-		if (typeof content === "string") return content.slice(0, maxLen);
-		if (Array.isArray(content)) {
-			let result = "";
-			for (const c of content) {
-				if (typeof c === "object" && c !== null && "type" in c && c.type === "text") {
-					result += (c as { text: string }).text;
-					if (result.length >= maxLen) return result.slice(0, maxLen);
-				}
-			}
-			return result;
-		}
-		return "";
-	}
-
-	#hasTextContent(content: unknown): boolean {
-		if (typeof content === "string") return Boolean(canonicalizeMessage(content));
-		if (Array.isArray(content)) {
-			for (const c of content) {
-				if (typeof c === "object" && c !== null && "type" in c && c.type === "text") {
-					const text = (c as { text?: string }).text;
-					if (text && canonicalizeMessage(text)) return true;
-				}
-			}
-		}
-		return false;
-	}
-
-	#formatToolCall(name: string, args: Record<string, unknown>): string {
-		switch (name) {
-			case "read": {
-				const path = shortenPath(String(args.path || args.file_path || ""));
-				const offset = args.offset as number | undefined;
-				const limit = args.limit as number | undefined;
-				let display = path;
-				if (offset !== undefined || limit !== undefined) {
-					const start = offset ?? 1;
-					const end = limit !== undefined ? start + limit - 1 : "";
-					display += `:${start}${end ? `-${end}` : ""}`;
-				}
-				return `[read: ${display}]`;
-			}
-			case "write": {
-				const path = shortenPath(String(args.path || args.file_path || ""));
-				return `[write: ${path}]`;
-			}
-			case "edit": {
-				const path = shortenPath(String(args.path || args.file_path || ""));
-				return `[edit: ${path}]`;
-			}
-			case "bash": {
-				const rawCmd = String(args.command || "");
-				const cmd = rawCmd
-					.replace(/[\n\t]/g, " ")
-					.trim()
-					.slice(0, 50);
-				return `[bash: ${cmd}${rawCmd.length > 50 ? "..." : ""}]`;
-			}
-			case "search": {
-				const type = String(args.type || "?");
-				const input = String(args.input || "");
-				const scope = typeof args.path === "string" ? ` in ${shortenPath(args.path)}` : "";
-				return `[search:${type} ${input}${scope}]`;
-			}
-			case "ls": {
-				const path = shortenPath(String(args.path || "."));
-				return `[ls: ${path}]`;
-			}
-			default: {
-				// Custom tool - show name and truncated JSON args
-				const rawArgs = typeof args === "string" ? args : JSON.stringify(args ?? {});
-				const argsStr = truncateToWidth(rawArgs ?? "{}", TRUNCATE_LENGTHS.SHORT);
-				return `[${name}: ${argsStr}]`;
-			}
-		}
 	}
 
 	handleInput(keyData: string): void {
