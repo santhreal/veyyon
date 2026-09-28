@@ -27,7 +27,10 @@ use veyyon_gpui::{
 	Subscription, UniformListScrollHandle, Window, div, prelude::*, uniform_list,
 };
 
-use super::style::{empty_state, heading, toolbar};
+use super::{
+	sideways::Sideways,
+	style::{empty_state, heading, toolbar},
+};
 use crate::{AppState, StoreEvent};
 
 /// The files tab's view.
@@ -40,8 +43,8 @@ pub struct FilesView {
 	answers:        u64,
 	/// Each line of the viewed file, as a byte range of its text.
 	lines:          Vec<Range<usize>>,
-	/// The line the viewer's scroll width is measured from: the longest.
-	widest:         usize,
+	/// How far the viewed file's code is scrolled past its line numbers.
+	sideways:       Sideways,
 	highlighted:    Option<Arc<Highlighted>>,
 	viewer:         UniformListScrollHandle,
 	search:         Entity<Editor>,
@@ -85,7 +88,7 @@ impl FilesView {
 			open: None,
 			answers: 0,
 			lines: Vec::new(),
-			widest: 0,
+			sideways: Sideways::default(),
 			highlighted: None,
 			viewer: UniformListScrollHandle::new(),
 			search,
@@ -279,7 +282,7 @@ impl FilesView {
 }
 
 impl Render for FilesView {
-	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.renders += 1;
 		let palette = cx.theme().palette;
 		let refused = self
@@ -290,7 +293,7 @@ impl Render for FilesView {
 		let body = match (refused, self.open.clone()) {
 			// A host that browses no files states why in place of the tree.
 			(Some(reason), _) => empty_state(reason, None::<Div>, &palette).into_any_element(),
-			(None, Some((path, _))) => self.render_viewer(&path, &palette, cx),
+			(None, Some((path, _))) => self.render_viewer(&path, &palette, window, cx),
 			(None, None) if !self.query.is_empty() => self.render_results(&palette, cx),
 			(None, None) => self.render_tree(&palette, cx),
 		};

@@ -35,7 +35,7 @@ use self::{
 	rows::{Layout, Placements},
 	words::Emphasis,
 };
-use super::style::language_tag;
+use super::{sideways::Sideways, style::language_tag};
 use crate::{AppState, StoreEvent};
 
 /// What a comment being written will become.
@@ -71,8 +71,10 @@ pub struct DiffView {
 	/// Each file's changed words, `None` while they are being aligned.
 	words:          HashMap<usize, Option<Arc<Emphasis>>>,
 	list:           ListState,
-	/// Whether a line longer than the pane wraps; clipped at its edge when not.
+	/// Whether a line longer than the pane wraps; scrolled sideways past its
+	/// line numbers when not.
 	wrap:           bool,
+	sideways:       Sideways,
 	draft:          Option<Draft>,
 	renders:        u64,
 	_subscriptions: Vec<Subscription>,
@@ -105,6 +107,7 @@ impl DiffView {
 				veyyon_desktop_ui::theme::size::TOOL_OUTPUT_MAX,
 			),
 			wrap: true,
+			sideways: Sideways::default(),
 			draft: None,
 			renders: 0,
 			_subscriptions: vec![subscription],
@@ -154,6 +157,7 @@ impl DiffView {
 		self.highlights.clear();
 		self.pending.clear();
 		self.words.clear();
+		self.sideways.reset();
 		self.draft = None;
 		if let Some(scope) = self.scope.clone() {
 			let parsed = Arc::clone(&self.parsed);

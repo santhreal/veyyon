@@ -157,6 +157,17 @@ impl Win<'_> {
 		})
 	}
 
+	/// Where the last frame drew the first run that reads `text` in full.
+	pub fn run_exact(&mut self, text: &str) -> Option<Bounds<Pixels>> {
+		self.cx.update(|window, _| {
+			window
+				.rendered_text_runs()
+				.iter()
+				.find(|run| run.text.trim() == text)
+				.map(|run| run.bounds)
+		})
+	}
+
 	/// Turns the wheel by `delta` over `at`.
 	pub fn scroll(&mut self, at: Point<Pixels>, delta: Point<Pixels>) {
 		self.cx.simulate_event(ScrollWheelEvent {

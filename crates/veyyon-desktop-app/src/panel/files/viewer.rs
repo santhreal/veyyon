@@ -11,8 +11,8 @@ use veyyon_desktop_ui::{
 	theme::{ActiveTheme, Palette, TypeStyled, space, text},
 };
 use veyyon_gpui::{
-	AnyElement, ClickEvent, Context, IntoElement, ListHorizontalSizingBehavior, ParentElement,
-	ScrollStrategy, SharedString, Styled, div, prelude::*, uniform_list,
+	AnyElement, ClickEvent, Context, IntoElement, ParentElement, ScrollStrategy, ScrollWheelEvent,
+	SharedString, Styled, Window, div, prelude::*, uniform_list,
 };
 
 use super::FilesView;
@@ -49,6 +49,7 @@ impl FilesView {
 			self.answers = answers;
 			self.highlighted = None;
 			self.lines.clear();
+			self.sideways.reset();
 			if let Some(content) = content {
 				self.split(content, cx);
 			}
@@ -62,21 +63,14 @@ impl FilesView {
 		cx.notify();
 	}
 
-	/// Records the line ranges of `content` and its longest line, and
-	/// highlights it on the background executor.
+	/// Records the line ranges of `content`, and highlights it on the
+	/// background executor.
 	fn split(&mut self, content: String, cx: &Context<Self>) {
 		let mut start = 0;
-		self.widest = 0;
 		for line in content.split_inclusive('\n') {
-			let text = start..start + line.trim_end_matches(['\n', '\r']).len();
-			if self
+			self
 				.lines
-				.get(self.widest)
-				.is_none_or(|widest| text.len() > widest.len())
-			{
-				self.widest = self.lines.len();
-			}
-			self.lines.push(text);
+				.push(start..start + line.trim_end_matches(['\n', '\r']).len());
 			start += line.len();
 		}
 		let lang = self
@@ -100,10 +94,13 @@ impl FilesView {
 		.detach();
 	}
 
+	/// The viewed file's header, then its lines in view: the numbers pinned
+	/// at the left and the code scrolled sideways past them.
 	pub(super) fn render_viewer(
-		&self,
+		&mut self,
 		path: &str,
 		palette: &Palette,
+		window: &Window,
 		cx: &Context<Self>,
 	) -> AnyElement {
 		let content = self
@@ -114,6 +111,13 @@ impl FilesView {
 			.file_content
 			.get()
 			.filter(|content| content.path == path);
+		if let Some(content) = content.filter(|content| !content.binary) {
+			let lines = self
+				.lines
+				.iter()
+				.filter_map(|line| content.content.get(line.clone()));
+			self.sideways.measure(lines, window);
+		}
 		let notice = match content {
 			None => Some("Loading\u{2026}"),
 			Some(content) if content.binary => Some("Binary file"),
@@ -149,7 +153,7 @@ impl FilesView {
 						this.send(HostAction::OpenExternal { path: external.clone() }, cx);
 					})),
 			);
-		let body = uniform_list(
+		let mut body = uniform_list(
 			"files-viewer",
 			self.lines.len(),
 			cx.processor(|this, range: Range<usize>, _, cx| {
@@ -167,8 +171,13 @@ impl FilesView {
 								.unwrap_or_default()
 								.to_owned(),
 						);
+						let code = code_line(code, this.highlighted.as_ref(), line.start, &palette);
+						// A row laid out as a flex row shrinks to its content
+						// unless it is given the list's width, and its code
+						// column then has no width to draw in.
 						div()
 							.flex()
+							.w_full()
 							.type_style(text::MONO)
 							.child(
 								div()
@@ -180,20 +189,21 @@ impl FilesView {
 									.text_color(palette.text.faint)
 									.child((ix + 1).to_string()),
 							)
-							.child(
-								div()
-									.whitespace_nowrap()
-									.text_color(palette.text.primary)
-									.child(code_line(code, this.highlighted.as_ref(), line.start, &palette)),
-							)
+							.child(this.sideways.column(code).text_color(palette.text.primary))
 					})
 					.collect()
 			}),
 		)
 		.track_scroll(&self.viewer)
-		.with_horizontal_sizing_behavior(ListHorizontalSizingBehavior::Unconstrained)
-		.with_width_from_item(Some(self.widest))
+		.on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, _, cx| {
+			if this.sideways.wheel(event) {
+				cx.notify();
+			}
+		}))
 		.flex_1();
+		// The list scrolls down only, and would take a sideways gesture as a
+		// scroll down unless held to the gesture's axis.
+		body.style().restrict_scroll_to_axis = Some(true);
 		div()
 			.flex()
 			.flex_col()

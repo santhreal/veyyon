@@ -13,7 +13,7 @@ pub mod agents;
 pub mod diagnostics;
 pub mod diff;
 pub mod files;
-pub(crate) mod focus;
+mod sideways;
 pub mod style;
 pub mod tab;
 pub mod todo;
@@ -180,18 +180,13 @@ impl RightPanel {
 	}
 
 	/// Shows the tab the layout names when a `workspace::ShowPanelTab` moved
-	/// it, asks for what the shown tab draws when the panel opens, and hands
-	/// focus back when it closes; any other change of the layout draws
-	/// nothing here.
-	fn follow_layout(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+	/// it, and asks for what the shown tab draws when the panel opens; any
+	/// other change of the layout draws nothing here.
+	fn follow_layout(&mut self, _: &mut Window, cx: &mut Context<Self>) {
 		let layout = WorkspaceLayout::get(cx);
 		let named = PanelTab::from_name(&layout.panel_tab);
 		let opened = layout.panel_open && !self.open;
-		let closed = !layout.panel_open && self.open;
 		self.open = layout.panel_open;
-		if closed {
-			focus::release(&self.focus, window, cx);
-		}
 		if let Some(tab) = named.filter(|tab| *tab != self.active) {
 			self.show(tab, cx);
 		} else if opened {

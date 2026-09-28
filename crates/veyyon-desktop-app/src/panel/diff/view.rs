@@ -13,7 +13,8 @@ use veyyon_desktop_ui::{
 };
 use veyyon_gpui::{
 	AnyElement, ClickEvent, Context, Div, HighlightStyle, Hsla, IntoElement, ParentElement, Render,
-	SharedString, Stateful, Styled, StyledText, Window, combine_highlights, div, list, prelude::*,
+	ScrollWheelEvent, SharedString, Stateful, Styled, StyledText, Window, combine_highlights, div,
+	list, prelude::*,
 };
 
 use super::{
@@ -276,18 +277,16 @@ impl DiffView {
 			let words = self.words.get(&file)?.as_ref()?;
 			Some((&**words, line, tint))
 		});
+		let code = diff_text(text, highlighted.as_ref(), diff_line.at, emphasis, palette);
+		let code = if self.wrap {
+			div().flex_1().min_w_0().pl(space::S1).child(code)
+		} else {
+			self.sideways.column(code).ml(space::S1)
+		};
 		row.when_some(bg, |row, bg| row.bg(bg))
 			.child(gutter)
 			.when(signed, |row| row.child(div().w(space::S3).flex_none().text_color(ink).child(sign)))
-			.child(
-				div()
-					.flex_1()
-					.min_w_0()
-					.pl(space::S1)
-					.when(!self.wrap, |code| code.overflow_hidden().whitespace_nowrap())
-					.text_color(palette.text.primary)
-					.child(diff_text(text, highlighted.as_ref(), diff_line.at, emphasis, palette)),
-			)
+			.child(code.text_color(palette.text.primary))
 	}
 }
 
@@ -323,7 +322,7 @@ fn notice(copy: &str, palette: &Palette) -> Div {
 }
 
 impl Render for DiffView {
-	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.renders += 1;
 		let palette = cx.theme().palette;
 		let (answered, refused, pending_edits) = {
@@ -358,6 +357,16 @@ impl Render for DiffView {
 			};
 			empty_state(copy, None::<Div>, &palette).into_any_element()
 		} else {
+			if !self.wrap {
+				let parsed = &self.parsed;
+				let lines = parsed
+					.files
+					.iter()
+					.flat_map(|file| &file.lines)
+					.filter(|line| !matches!(line.kind, LineKind::Hunk | LineKind::Note))
+					.filter_map(|line| parsed.source.get(line.text.clone()));
+				self.sideways.measure(lines, window);
+			}
 			list(self.list.clone(), cx.processor(|this, ix, _, cx| this.render_row(ix, cx)))
 				.flex_1()
 				.size_full()
@@ -371,6 +380,20 @@ impl Render for DiffView {
 			// A host that keeps no edit buffer states why above the changes it
 			// still reads.
 			.children(pending_edits.map(|reason| notice(&reason, &palette)))
-			.child(div().flex().flex_col().flex_1().min_h_0().child(body))
+			.child(
+				div()
+					.flex()
+					.flex_col()
+					.flex_1()
+					.min_h_0()
+					.when(!self.wrap, |body| {
+						body.on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, _, cx| {
+							if this.sideways.wheel(event) {
+								cx.notify();
+							}
+						}))
+					})
+					.child(body),
+			)
 	}
 }

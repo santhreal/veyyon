@@ -5,7 +5,7 @@ use veyyon_desktop_ui::overlays::{Tabs, TabsEvent};
 use veyyon_gpui::{Context, Entity, Window};
 
 use super::{DrawerTab, TerminalDrawer, persisted, tabs, terminal::Control};
-use crate::{AppState, StoreEvent, panel::focus, workspace::WorkspaceLayout};
+use crate::{AppState, StoreEvent, workspace::WorkspaceLayout};
 
 impl TerminalDrawer {
 	pub(super) fn on_tabs_event(
@@ -92,8 +92,7 @@ impl TerminalDrawer {
 	}
 
 	/// Opens or closes with the layout: opening shows a terminal, asking the
-	/// host for one when it runs none, and focuses it; closing returns focus
-	/// to the composer when the drawer held it.
+	/// host for one when it runs none, and focuses it.
 	pub(super) fn follow_layout(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		let open = WorkspaceLayout::get(cx).drawer_open;
 		if open == self.open {
@@ -104,7 +103,6 @@ impl TerminalDrawer {
 		} else {
 			self.open = false;
 			self.anchor = None;
-			focus::release(&self.focus, window, cx);
 		}
 		cx.notify();
 	}
