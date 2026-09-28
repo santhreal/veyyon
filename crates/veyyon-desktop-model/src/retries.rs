@@ -107,4 +107,9 @@ impl RetryMemory {
 	pub fn can_retry(&self, surface: &SurfaceId) -> bool {
 		self.failed.get(surface).is_some_and(|refused| refused.retryable)
 	}
+
+	/// Every control that holds a refusal, final or not.
+	pub fn refused(&self) -> impl Iterator<Item = &SurfaceId> {
+		self.failed.keys()
+	}
 }
