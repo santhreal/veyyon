@@ -2,3 +2,4 @@
 //! front end.
 
 pub mod fonts;
+pub mod theme;

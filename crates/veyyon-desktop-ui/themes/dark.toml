@@ -1,0 +1,55 @@
+# Dark palette of the veyyon desktop. Every role is required; an unknown key is an error.
+
+[bg]
+app = "#0b0b0d"
+sidebar = "#0f0f12"
+surface = "#151518"
+elevated = "#1b1b20"
+hover = "#ffffff0d"
+selected = "#ffffff14"
+
+[text]
+primary = "#ededef"
+secondary = "#a1a1aa"
+muted = "#71717a"
+faint = "#52525b"
+
+[border]
+subtle = "#ffffff0f"
+default = "#ffffff1a"
+strong = "#ffffff29"
+
+[accent]
+base = "#f0862e"
+fg = "#0b0b0d"
+focus_ring = "#f0862e80"
+
+[status]
+running = "#f0862e"
+waiting = "#f5c451"
+error = "#f87171"
+success = "#4ade80"
+info = "#60a5fa"
+
+[diff]
+add_bg = "#4ade801a"
+add_fg = "#86efac"
+del_bg = "#f871711a"
+del_fg = "#fca5a5"
+
+[code]
+bg = "#111114"
+
+[syntax]
+keyword = "#c4a7e7"
+string = "#a3d9a5"
+number = "#f5c451"
+comment = "#6b6b75"
+function = "#7cc4fa"
+type = "#f2b880"
+constant = "#f5a97f"
+variable = "#ededef"
+operator = "#a1a1aa"
+punctuation = "#8b8b94"
+tag = "#f38ba8"
+attribute = "#f5c451"

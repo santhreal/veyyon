@@ -9988,6 +9988,9 @@ version = "1.4.1"
 dependencies = [
  "anyhow",
  "fontdb",
+ "serde",
+ "thiserror 2.0.20",
+ "toml 1.1.5+spec-1.1.0",
  "veyyon-gpui",
 ]
 
