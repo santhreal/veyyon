@@ -42,13 +42,18 @@ use veyyon_desktop_model::{
 };
 use veyyon_desktop_ui::theme::{Appearance, Theme};
 
-/// The thread region, found by its selector.
-struct Thread;
+mod chrome;
+mod scale;
+mod width;
 
-impl Render for Thread {
+/// A region drawn as a box filling its slot, found by its selector.
+struct Region(&'static str);
+
+impl Render for Region {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+		let selector = self.0;
 		div()
-			.debug_selector(|| "thread-region".to_owned())
+			.debug_selector(move || selector.to_owned())
 			.size_full()
 	}
 }
@@ -64,23 +69,33 @@ fn open_over(
 	cx: &mut TestAppContext,
 	store: Store,
 ) -> (Entity<AppState>, Entity<Workspace>, &mut VisualTestContext) {
+	open_laid_out(cx, store, PanelsStore::default())
+}
+
+/// A workspace over `store` laid out as `panels` records, under reduced
+/// motion. The sidebar, thread, panel and drawer are each a [`Region`]
+/// selected as `sidebar-region`, `thread-region`, `panel-region` and
+/// `drawer-region`.
+fn open_laid_out(
+	cx: &mut TestAppContext,
+	store: Store,
+	panels: PanelsStore,
+) -> (Entity<AppState>, Entity<Workspace>, &mut VisualTestContext) {
 	cx.update(|cx| Theme::install(Appearance::Dark, cx))
 		.expect("the dark palette parses");
 	cx.update(|cx| cx.set_reduce_motion(true));
 	let app = cx.update(|cx| cx.new(|_| AppState::new(store)));
 	let state = app.clone();
 	let (workspace, cx) = cx.add_window_view(move |window, cx| {
-		let thread = AnyView::from(cx.new(|_| Thread));
-		let mut empty = || AnyView::from(cx.new(|_| EmptyView));
 		let regions = Regions {
-			sidebar: empty(),
-			thread,
-			panel: empty(),
-			drawer: empty(),
-			palette: empty(),
-			settings: empty(),
+			sidebar:  AnyView::from(cx.new(|_| Region("sidebar-region"))),
+			thread:   AnyView::from(cx.new(|_| Region("thread-region"))),
+			panel:    AnyView::from(cx.new(|_| Region("panel-region"))),
+			drawer:   AnyView::from(cx.new(|_| Region("drawer-region"))),
+			palette:  AnyView::from(cx.new(|_| EmptyView)),
+			settings: AnyView::from(cx.new(|_| EmptyView)),
 		};
-		Workspace::new(state, regions, PanelsStore::default(), window, cx)
+		Workspace::new(state, regions, panels, window, cx)
 	});
 	cx.run_until_parked();
 	(app, workspace, cx)

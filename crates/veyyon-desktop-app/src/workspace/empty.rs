@@ -1,12 +1,14 @@
 //! What the window draws in place of the thread while no session is open:
-//! a welcome line, the new-thread action and the most recent threads.
+//! a titlebar row that moves the window and holds the window controls, a
+//! welcome line, the new-thread action and the most recent threads.
 
-use gpui::{Context, Entity, Render, Subscription, Window, div, prelude::*};
+use gpui::{Context, Entity, Render, Subscription, Window, WindowControlArea, div, prelude::*};
 use veyyon_desktop_ui::{
 	controls::{Button, ButtonVariant},
-	theme::{ActiveTheme, TypeStyled, space, text},
+	theme::{ActiveTheme, TypeStyled, size, space, text},
 };
 
+use super::{drag_region, window_controls};
 use crate::{AppState, StoreEvent, actions::workspace as act};
 
 /// How many recent threads the empty state lists.
@@ -31,7 +33,7 @@ impl EmptyState {
 }
 
 impl Render for EmptyState {
-	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let palette = cx.theme().palette;
 		let mut recent: Vec<_> = self
 			.app
@@ -58,14 +60,32 @@ impl Render for EmptyState {
 						}),
 				)
 		});
-		div()
-			.size_full()
+		// The thread header is the window's titlebar while a session is open;
+		// without one this row takes its place, so the window keeps a place
+		// to move it from and its controls.
+		let titlebar = div()
+			.h(size::HEADER)
+			.w_full()
+			.flex()
+			.flex_none()
+			.items_center()
+			.px(space::S4)
+			.window_control_area(WindowControlArea::Drag)
+			.child(drag_region(
+				div()
+					.debug_selector(|| "empty-drag-region".to_owned())
+					.flex_1()
+					.h_full(),
+			))
+			.child(window_controls(window, cx));
+		let welcome = div()
+			.flex_1()
+			.min_h_0()
 			.flex()
 			.flex_col()
 			.items_center()
 			.justify_center()
 			.gap(space::S3)
-			.bg(palette.bg.app)
 			.child(
 				div()
 					.type_style(text::TITLE)
@@ -83,6 +103,13 @@ impl Render for EmptyState {
 							}),
 					),
 			)
-			.children(rows)
+			.children(rows);
+		div()
+			.size_full()
+			.flex()
+			.flex_col()
+			.bg(palette.bg.app)
+			.child(titlebar)
+			.child(welcome)
 	}
 }

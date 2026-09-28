@@ -1,6 +1,7 @@
 //! The client-side titlebar: the window has no system title strip, so the
 //! sidebar's top row and the thread header move the window, and the thread
-//! header draws the window controls at its right end.
+//! header draws the window controls at its right end. With no session open
+//! the empty state's top row does both in the thread header's place.
 
 use gpui::{
 	AnyElement, App, ClickEvent, CursorStyle, InteractiveElement, IntoElement, MouseButton,
@@ -15,7 +16,8 @@ use veyyon_desktop_ui::{
 use crate::driver;
 
 /// Makes `element` move the window when pressed and toggle maximize when
-/// double-clicked. The sidebar's top row and the thread header use it.
+/// double-clicked. The sidebar's top row, the thread header and the empty
+/// state's top row use it.
 pub fn drag_region<E: InteractiveElement>(element: E) -> E {
 	element.on_mouse_down(MouseButton::Left, |event: &MouseDownEvent, window, _| {
 		if event.click_count >= 2 {
@@ -78,6 +80,7 @@ pub fn window_controls(window: &Window, cx: &App) -> AnyElement {
 fn control(id: &'static str, glyph: AnyElement, cx: &App) -> Stateful<gpui::Div> {
 	let palette = cx.theme().palette;
 	div()
+		.debug_selector(|| id.to_owned())
 		.id(id)
 		.flex()
 		.flex_none()
