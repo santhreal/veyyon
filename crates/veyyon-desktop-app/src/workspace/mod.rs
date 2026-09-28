@@ -99,9 +99,10 @@ pub fn init(cx: &mut App) {
 }
 
 impl Workspace {
-	/// Lays out `regions` with the sizes and visibility `store` records, and
-	/// takes keyboard focus when nothing in `window` holds it or when what
-	/// held it leaves the frame.
+	/// Lays out `regions` with the sizes and visibility `store` records. When
+	/// nothing in `window` holds focus, or what held it leaves the frame, the
+	/// keys go to the composer while the thread is drawn, else to the
+	/// workspace.
 	pub fn new(
 		app: Entity<AppState>,
 		regions: Regions,
@@ -134,10 +135,7 @@ impl Workspace {
 		let empty = cx.new(|cx| EmptyState::new(app.clone(), cx));
 		let freeze = cx.new(|cx| FreezeStrip::new(app.clone(), cx));
 		let focus = cx.focus_handle();
-		if window.focused(cx).is_none() {
-			window.focus(&focus, cx);
-		}
-		Self {
+		let workspace = Self {
 			app,
 			regions,
 			sizes,
@@ -151,7 +149,12 @@ impl Workspace {
 			freeze,
 			reduced: Reduced::new(cx),
 			_subscriptions: [observe, lost, store_changed, dismissed],
+		};
+		// A window that opens on a session puts the keys in its composer.
+		if window.focused(cx).is_none() {
+			workspace.focus_composer(window, cx);
 		}
+		workspace
 	}
 
 	/// The stack the announcement queue is drawn in.
