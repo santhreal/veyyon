@@ -13,20 +13,33 @@
 //! on a caret move leaves an extension reading a stale caret. A region
 //! notified per streamed delta or per keystroke elsewhere renders for
 //! nothing. The thread header's freeze control, the session mode and the
-//! goal the dock pins are driven from the same window. The suite drives the
+//! goal the dock pins are driven from the same window. A draft, its queue
+//! mode and its attachments are left in a session and found there again,
+//! the footer states the model, level and context the host reported, and a
+//! key reaches no more than the control it stands for. The suite drives the
 //! real `ThreadView` over an `AppState` fed host events and reads the
-//! requests, the text and the geometry it drew.
+//! requests, the text and the geometry it drew; `column` and `gates` open
+//! the whole workspace with that thread in the thread's place.
 //!
 //! Gap: pointer clicks on the card and goal buttons are not driven; the keys
-//! and the actions they bind to are. Dictation and attachments from disk are
-//! not driven here.
+//! and the actions they bind to are. Dictation is not driven here, and a file
+//! is attached through the file picker or a saved draft, never a drop.
 
 mod branch;
+mod column;
 mod composer;
 mod dock;
+mod drafts;
+mod footer;
 mod freeze;
+mod gates;
 mod goal;
 mod mode;
+mod paste;
+mod phase;
+mod queue;
+
+use std::path::PathBuf;
 
 use gpui::{
 	AppContext as _, Bounds, Entity, Focusable as _, Modifiers, Pixels, TestAppContext,
@@ -36,9 +49,10 @@ use veyyon_desktop_app::{
 	AppState, composer::Composer, dock::InteractionDock, driver, keymap, thread::ThreadView,
 };
 use veyyon_desktop_model::{
-	BackendError, Capability, CapabilityStatus, ComposerRequest, ContentBlock, EntryId, ErrorScope,
-	HostAction, HostEvent, HostRequest, MessageRole, PendingDecisions, RequestId, SessionHeaderView,
-	SessionId, SnapshotSection, Store, StreamingMessageState, TranscriptEntry, Versioned,
+	BackendError, Capability, CapabilityStatus, ComposerRequest, ComposerStore, ContentBlock,
+	EntryId, ErrorScope, HostAction, HostEvent, HostRequest, MessageRole, PendingDecisions,
+	RequestId, SessionHeaderView, SessionId, SnapshotSection, Store, StreamingMessageState,
+	TranscriptEntry, Versioned,
 };
 use veyyon_desktop_ui::theme::{Appearance, Theme};
 
@@ -52,9 +66,8 @@ pub struct Win<'a> {
 	pub cx:       &'a mut VisualTestContext,
 }
 
-/// Opens the thread of session `s` over a store fed `events`, reduced motion
-/// on, and drops the requests the events queued.
-pub fn window(app: &mut TestAppContext, events: Vec<HostEvent>) -> Win<'_> {
+/// Installs the theme, the actions and the keymap, with reduced motion on.
+pub fn install(app: &mut TestAppContext) {
 	driver::enable();
 	app.update(|cx| {
 		Theme::install(Appearance::Dark, cx).expect("the dark palette parses");
@@ -62,7 +75,20 @@ pub fn window(app: &mut TestAppContext, events: Vec<HostEvent>) -> Win<'_> {
 		keymap::install(cx).expect("the default keymap parses");
 		cx.set_reduce_motion(true);
 	});
-	let state = app.new(|_| AppState::new(Store::new()));
+}
+
+/// Opens the thread of session `s` over a store fed `events`, reduced motion
+/// on, and drops the requests the events queued.
+pub fn window(app: &mut TestAppContext, events: Vec<HostEvent>) -> Win<'_> {
+	install(app);
+	reopen(app, Store::new(), events)
+}
+
+/// Opens the thread of session `s` in another window of an app `window` set
+/// up, over `store` fed `events`: a window reopened over what an earlier one
+/// persisted.
+pub fn reopen(app: &mut TestAppContext, store: Store, events: Vec<HostEvent>) -> Win<'_> {
+	let state = app.new(|_| AppState::new(store));
 	state.update(app, |state, cx| state.apply(opened(), cx));
 	state.update(app, |state, cx| state.apply(events, cx));
 	state.update(app, |state, _| state.drain_outbox());
@@ -131,8 +157,8 @@ impl Win<'_> {
 		self.dispatch(veyyon_desktop_app::actions::composer::InsertText { text: text.to_owned() });
 	}
 
-	/// Focuses the composer's editor and types `text` into it.
-	pub fn typed(&mut self, text: &str) {
+	/// Puts the keys in the composer's editor.
+	pub fn focus(&mut self) {
 		let editor = self
 			.composer
 			.read_with(&*self.cx, |composer, _| composer.editor().clone());
@@ -141,6 +167,11 @@ impl Win<'_> {
 			window.focus(&focus, cx);
 		});
 		self.cx.run_until_parked();
+	}
+
+	/// Focuses the composer's editor and types `text` into it.
+	pub fn typed(&mut self, text: &str) {
+		self.focus();
 		self.cx.simulate_input(text);
 		self.cx.run_until_parked();
 	}
@@ -149,6 +180,39 @@ impl Win<'_> {
 		self
 			.composer
 			.read_with(&*self.cx, |composer, cx| composer.text(cx).to_owned())
+	}
+
+	/// Shows `session` in the window, as a click on its row does.
+	pub fn show(&mut self, session: SessionId) {
+		self.state.update(self.cx, |state, cx| {
+			state.open_session(session, cx);
+		});
+		self.cx.run_until_parked();
+	}
+
+	/// The draft saved for `session`.
+	pub fn saved(&self, session: &SessionId) -> Option<ComposerStore> {
+		self
+			.state
+			.read_with(&*self.cx, |state, _| state.draft(session).cloned())
+	}
+
+	/// The name and bytes of each attachment in the tray, in order.
+	pub fn tray(&self) -> Vec<(String, Vec<u8>)> {
+		self.composer.read_with(&*self.cx, |composer, _| {
+			composer
+				.attachments()
+				.iter()
+				.map(|attachment| (attachment.name.clone(), attachment.bytes.to_vec()))
+				.collect()
+		})
+	}
+
+	/// Attaches the files at `paths` through the file picker.
+	pub fn attach(&mut self, paths: Vec<PathBuf>) {
+		self.dispatch(veyyon_desktop_app::actions::composer::AttachFiles);
+		self.cx.simulate_path_prompt_response(move |_| Some(paths));
+		self.cx.run_until_parked();
 	}
 
 	/// The height the thread lays the composer out at.
@@ -195,6 +259,11 @@ pub fn sid() -> SessionId {
 	SessionId::from("s")
 }
 
+/// The other session the tests switch to.
+pub fn other() -> SessionId {
+	SessionId::from("t")
+}
+
 /// The draft and caret a draft report states, or `None` for another action.
 pub fn report(action: &HostAction) -> Option<(String, u32)> {
 	match action {
@@ -205,7 +274,8 @@ pub fn report(action: &HostAction) -> Option<(String, u32)> {
 	}
 }
 
-fn entry(id: &str, role: MessageRole, text: &str, revision: u64) -> TranscriptEntry {
+/// A transcript entry reading `text`.
+pub fn entry(id: &str, role: MessageRole, text: &str, revision: u64) -> TranscriptEntry {
 	TranscriptEntry {
 		id: EntryId::from(id),
 		parent: None,
@@ -246,7 +316,7 @@ pub fn capability(capability: Capability, reason: Option<&str>) -> HostEvent {
 }
 
 /// Session `s` open with its first prompt.
-fn opened() -> Vec<HostEvent> {
+pub fn opened() -> Vec<HostEvent> {
 	vec![
 		header(None, 1),
 		HostEvent::Snapshot(SnapshotSection::Transcript(Versioned {

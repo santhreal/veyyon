@@ -15,7 +15,7 @@ use veyyon_desktop_model::{
 
 use super::{refused, sid, waiting, window};
 
-fn approval(id: &str, tool: &str, at: u64) -> ApprovalInteraction {
+pub fn approval(id: &str, tool: &str, at: u64) -> ApprovalInteraction {
 	ApprovalInteraction {
 		id:              id.into(),
 		tool_name:       tool.to_owned(),
@@ -24,7 +24,7 @@ fn approval(id: &str, tool: &str, at: u64) -> ApprovalInteraction {
 	}
 }
 
-fn question(id: &str, prompt: &str, options: &[&str], at: u64) -> QuestionInteraction {
+pub fn question(id: &str, prompt: &str, options: &[&str], at: u64) -> QuestionInteraction {
 	QuestionInteraction {
 		id:              id.into(),
 		prompt:          prompt.to_owned(),
@@ -33,7 +33,7 @@ fn question(id: &str, prompt: &str, options: &[&str], at: u64) -> QuestionIntera
 	}
 }
 
-fn plan(id: &str, at: u64) -> PlanInteraction {
+pub fn plan(id: &str, at: u64) -> PlanInteraction {
 	PlanInteraction {
 		id:              id.into(),
 		markdown_plan:   "Move the parser behind a trait.".to_owned(),
@@ -41,7 +41,7 @@ fn plan(id: &str, at: u64) -> PlanInteraction {
 	}
 }
 
-fn dialog(id: &str, at: u64) -> DialogInteraction {
+pub fn dialog(id: &str, at: u64) -> DialogInteraction {
 	let option = |label: &str| DialogOption {
 		label:       label.to_owned(),
 		description: None,
@@ -63,7 +63,7 @@ fn dialog(id: &str, at: u64) -> DialogInteraction {
 	}
 }
 
-const fn only(
+pub const fn only(
 	approvals: Vec<ApprovalInteraction>,
 	questions: Vec<QuestionInteraction>,
 	plans: Vec<PlanInteraction>,
