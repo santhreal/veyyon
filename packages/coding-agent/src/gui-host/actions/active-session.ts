@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import type * as net from "node:net";
 import * as path from "node:path";
-import { listSessions, listSessionsReadOnly } from "@veyyon/kernel/session/session-listing";
+import { listSessions, listSessionsReadOnly, type SessionInfo } from "@veyyon/kernel/session/session-listing";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { computeDefaultSessionDir } from "@veyyon/kernel/session/session-paths";
 import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
@@ -202,11 +202,30 @@ export async function writeSessionList(
 	cwd: string,
 	agentDir: string,
 ): Promise<void> {
-	const sessions = await listSessions(sessionDirFor(cwd, agentDir), sessionStorage);
+	const sessions = await listEverySession(cwd, agentDir);
 	clientState.revision += 1;
 	writeFrame(socket, {
 		Snapshot: { Sessions: [{ revision: clientState.revision, value: sessions.map(sessionInfoToSummary) }, []] },
 	});
+}
+
+/**
+ * Every session of the profile, across every project directory, newest first.
+ *
+ * The window groups its sidebar by project, so the listing covers all of them.
+ * The current project's directory is listed with orphan-backup repair, the way
+ * the terminal lists it on start; every other directory is read without
+ * mutation, since no session of it is open.
+ */
+async function listEverySession(cwd: string, agentDir: string): Promise<SessionInfo[]> {
+	const currentDir = sessionDirFor(cwd, agentDir);
+	const directories = new Set((await sessionFiles(agentDir)).map(file => path.dirname(file)));
+	directories.delete(currentDir);
+	const listings = await Promise.all([
+		listSessions(currentDir, sessionStorage),
+		...Array.from(directories, directory => listSessionsReadOnly(directory, sessionStorage)),
+	]);
+	return listings.flat().sort((a, b) => b.modified.getTime() - a.modified.getTime());
 }
 
 export function emitSessionList(ctx: ActionContext): Promise<void> {
