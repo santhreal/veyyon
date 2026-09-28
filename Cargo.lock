@@ -4871,9 +4871,6 @@ dependencies = [
 name = "motion"
 version = "0.1.0"
 source = "git+https://github.com/santhreal/santh-gpui.git?rev=39ec0a37b1d60b161b5cf5e27aea14ae9204858b#39ec0a37b1d60b161b5cf5e27aea14ae9204858b"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "moxcms"
@@ -9902,23 +9899,17 @@ version = "1.4.1"
 dependencies = [
  "bytes",
  "clap",
- "flume 0.11.1",
+ "gpui",
  "gpui_platform",
  "libc",
- "serde",
  "serde_json",
  "sha2",
  "strum",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
- "toml 1.1.5+spec-1.1.0",
  "veyyon-desktop-app",
- "veyyon-desktop-kit",
  "veyyon-desktop-model",
- "veyyon-desktop-scene",
- "veyyon-desktop-surface",
- "veyyon-desktop-tokens",
  "veyyon-desktop-ui",
  "veyyon-gpui",
  "veyyon-test-scratch",
@@ -9940,25 +9931,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "veyyon-desktop-kit"
-version = "1.4.1"
-dependencies = [
- "anyhow",
- "fontdb",
- "gpui_platform",
- "gpui_wgpu",
- "parking_lot",
- "smallvec",
- "strum",
- "thiserror 2.0.20",
- "unicode-segmentation",
- "veyyon-desktop-kit",
- "veyyon-desktop-motion",
- "veyyon-desktop-tokens",
- "veyyon-gpui",
-]
-
-[[package]]
 name = "veyyon-desktop-model"
 version = "1.4.1"
 dependencies = [
@@ -9973,70 +9945,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "veyyon-desktop-motion"
-version = "1.4.1"
-dependencies = [
- "veyyon-gpui",
-]
-
-[[package]]
 name = "veyyon-desktop-scene"
 version = "1.4.1"
 dependencies = [
- "image",
- "motion",
+ "anyhow",
+ "gpui_platform",
+ "gpui_wgpu",
  "png 0.18.1",
- "serde",
  "serde_json",
- "smallvec",
- "strum",
  "thiserror 2.0.20",
- "unicode-segmentation",
- "veyyon-desktop-kit",
+ "veyyon-desktop-app",
  "veyyon-desktop-model",
- "veyyon-desktop-motion",
- "veyyon-desktop-surface",
- "veyyon-desktop-tokens",
+ "veyyon-desktop-ui",
  "veyyon-gpui",
-]
-
-[[package]]
-name = "veyyon-desktop-surface"
-version = "1.4.1"
-dependencies = [
- "image",
- "serde",
- "serde_json",
- "smallvec",
- "strum",
- "syntect",
- "thiserror 2.0.20",
- "toml 1.1.5+spec-1.1.0",
- "unicode-segmentation",
- "unicode-width 0.2.2",
- "veyyon-desktop-kit",
- "veyyon-desktop-model",
- "veyyon-desktop-motion",
- "veyyon-desktop-scene",
- "veyyon-desktop-tokens",
- "veyyon-diff-kernel",
- "veyyon-gpui",
- "veyyon-test-scratch",
-]
-
-[[package]]
-name = "veyyon-desktop-tokens"
-version = "1.4.1"
-dependencies = [
- "flume 0.11.1",
- "motion",
- "notify",
- "parking_lot",
- "serde",
- "thiserror 2.0.20",
- "toml 1.1.5+spec-1.1.0",
- "veyyon-ast",
- "veyyon-test-scratch",
 ]
 
 [[package]]

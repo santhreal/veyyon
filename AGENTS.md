@@ -55,13 +55,11 @@ operator manual.
 |`natives/text/keys`|Zero-copy parser for the Kitty keyboard protocol and legacy escape sequences|
 |`natives/text/measure`|ANSI-aware width measurement, grapheme segmentation and truncation over UTF-16|
 |`tests/conformance`|Whole-product conformance corpus and harness, on virtual clock, filesystem, terminal and network (test only, issue #877)|
-|`crates/veyyon-desktop`|The desktop front end binary: loads tokens and theme, opens the GPUI window, attaches to a GUI host (private)|
-|`crates/veyyon-desktop-kit`|Token-driven primitive kit for the desktop front end: buttons, fields, rows, cards, badges|
+|`crates/veyyon-desktop`|The desktop front end binary: opens the GPUI window, attaches to a GUI host over its socket, and persists window state (private)|
+|`crates/veyyon-desktop-app`|The desktop views over one application state: workspace, sidebar, transcript, composer, dock, right panel, terminal drawer, palette and settings, with their actions and default keymap|
 |`crates/veyyon-desktop-model`|Desktop protocol model: host events, store, reducer, request registry, capabilities and persistence|
-|`crates/veyyon-desktop-motion`|Motion role table, spring integrator, easing curves, reduced-motion resolution and animator registry|
-|`crates/veyyon-desktop-scene`|Deterministic scene construction, headless rasterization and clutter metric evaluation (private)|
-|`crates/veyyon-desktop-surface`|The desktop surfaces: queue, session transcript, composer, run bar, right panel and terminal drawer|
-|`crates/veyyon-desktop-tokens`|Token file loaders and validators: scale, elevation, motion, ceilings, theme and the surface files, with hot reload|
+|`crates/veyyon-desktop-scene`|Headless rendering of the desktop views to PNG for tests (test only, private)|
+|`crates/veyyon-desktop-ui`|Desktop theme, embedded fonts, icons, controls, markdown and code rendering, and motion models over `gpui::motion`|
 |`crates/veyyon-gpui`|Desktop integration with the revision-pinned Santh GPUI framework|
 
 `kernel/` and every `contracts/*`, `hosts/*`, `packages/*`, `plugins/*`, `apps/*`, `clients/*` and

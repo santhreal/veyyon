@@ -1,16 +1,10 @@
 //! Rasterized frame data, owned here rather than in `veyyon-gpui`.
 //!
-//! WHY THIS TYPE LIVES HERE: §8.29 places RGBA extraction helpers in
-//! `veyyon-gpui`, and §8.31 gives two of the six clutter metrics a
-//! `&RgbaFrame` input. If the type were declared in the gpui wrapper, every
-//! metric would link a renderer and the claim in §7 that the whole state layer
-//! and its gates are testable with no window and no renderer would be false.
-//! So the frame is plain data here, and the P10 helper in `veyyon-gpui`
-//! converts a headless surface readback into one.
+//! A frame is plain data: a readback of the headless surface converts into
+//! one, and a caller compares or encodes it with no renderer linked.
 //!
-//! Coordinates: `width` and `height` are DEVICE pixels. Layout bounds
-//! (`crate::layout`) are LOGICAL pixels. `scale_factor` converts between them,
-//! and every metric that reads both states which space it works in.
+//! Coordinates: `width` and `height` are DEVICE pixels. Hit rects and text
+//! runs are LOGICAL pixels. `scale_factor` converts between them.
 
 use thiserror::Error;
 
@@ -33,8 +27,6 @@ pub enum FrameError {
 	ZeroDimension { width: u32, height: u32 },
 	#[error("scale factor must be finite and greater than zero, got {scale_factor}")]
 	InvalidScaleFactor { scale_factor: f32 },
-	#[error("frames differ in geometry: {a_width}x{a_height} against {b_width}x{b_height}")]
-	GeometryMismatch { a_width: u32, a_height: u32, b_width: u32, b_height: u32 },
 }
 
 /// One straight sRGB colour, unpremultiplied.
@@ -60,56 +52,6 @@ impl RgbaColor {
 	/// True when the colour paints nothing.
 	pub const fn is_invisible(&self) -> bool {
 		self.a == 0
-	}
-
-	/// Rec. 709 luma on the sRGB bytes, in `0.0..=255.0`.
-	///
-	/// This is the quantity §8.31 metric 4 divides by 255 to get `ΔL`. It is
-	/// deliberately NOT the linearized luminance below: metric 4 wants a
-	/// cheap perceptual-ish delta over every pixel in the frame, and metric 3
-	/// wants a WCAG contrast ratio at a handful of boundaries.
-	pub fn luma_255(&self) -> f32 {
-		0.0722_f32.mul_add(
-			f32::from(self.b),
-			0.7152_f32.mul_add(f32::from(self.g), 0.2126 * f32::from(self.r)),
-		)
-	}
-
-	/// WCAG 2.1 relative luminance in `0.0..=1.0`, over linearized channels.
-	pub fn relative_luminance(&self) -> f32 {
-		fn linearize(channel: u8) -> f32 {
-			let c = f32::from(channel) / 255.0;
-			if c <= 0.040_45 {
-				c / 12.92
-			} else {
-				((c + 0.055) / 1.055).powf(2.4)
-			}
-		}
-		0.0722_f32.mul_add(
-			linearize(self.b),
-			0.7152_f32.mul_add(linearize(self.g), 0.2126 * linearize(self.r)),
-		)
-	}
-
-	/// WCAG contrast ratio against `other`, always `>= 1.0`.
-	pub fn contrast_ratio(&self, other: &Self) -> f32 {
-		let a = self.relative_luminance();
-		let b = other.relative_luminance();
-		let (hi, lo) = if a >= b { (a, b) } else { (b, a) };
-		(hi + 0.05) / (lo + 0.05)
-	}
-
-	/// Composite `self` over an opaque `ground` using straight alpha.
-	pub fn over(&self, ground: &Self) -> Self {
-		if self.a == 255 {
-			return *self;
-		}
-		let alpha = f32::from(self.a) / 255.0;
-		let mix = |src: u8, dst: u8| -> u8 {
-			let v = f32::from(dst).mul_add(1.0 - alpha, f32::from(src) * alpha);
-			v.round().clamp(0.0, 255.0) as u8
-		};
-		Self { r: mix(self.r, ground.r), g: mix(self.g, ground.g), b: mix(self.b, ground.b), a: 255 }
 	}
 }
 
@@ -174,21 +116,6 @@ impl RgbaFrame {
 		})
 	}
 
-	/// A frame filled with one colour, for tests and for sweep baselines.
-	pub fn filled(
-		width: u32,
-		height: u32,
-		scale_factor: f32,
-		colour: RgbaColor,
-	) -> Result<Self, FrameError> {
-		let count = (width as usize).saturating_mul(height as usize);
-		let mut pixels = Vec::with_capacity(count.saturating_mul(4));
-		for _ in 0..count {
-			pixels.extend_from_slice(&[colour.r, colour.g, colour.b, colour.a]);
-		}
-		Self::new(width, height, scale_factor, pixels)
-	}
-
 	pub const fn width(&self) -> u32 {
 		self.width
 	}
@@ -198,8 +125,7 @@ impl RgbaFrame {
 	}
 
 	/// Device pixels per logical pixel. Reconstructed from the stored
-	/// thousandths so that `RgbaFrame` can derive `Eq` and `Hash`-free byte
-	/// equality, which the §8.30 determinism contract compares directly.
+	/// thousandths so that `RgbaFrame` can derive `Eq`.
 	pub fn scale_factor(&self) -> f32 {
 		self.scale_factor_millis as f32 / 1000.0
 	}
@@ -212,7 +138,7 @@ impl RgbaFrame {
 		self.height as f32 / self.scale_factor()
 	}
 
-	/// The exact bytes the determinism test in §8.30 compares.
+	/// The raster, row-major RGBA8, which a determinism check compares.
 	pub fn as_bytes(&self) -> &[u8] {
 		&self.pixels
 	}
@@ -238,101 +164,5 @@ impl RgbaFrame {
 			.0
 			.iter()
 			.map(|[r, g, b, a]| RgbaColor::new(*r, *g, *b, *a))
-	}
-
-	/// Convert a logical x to the nearest device column inside the frame.
-	pub fn device_x(&self, logical_x: f32) -> Option<u32> {
-		let scaled = (logical_x * self.scale_factor()).round();
-		if !scaled.is_finite() || scaled < 0.0 || scaled >= self.width as f32 {
-			return None;
-		}
-		Some(scaled as u32)
-	}
-
-	/// The rectangle of this frame at `x, y` sized `width` × `height`, all in
-	/// DEVICE pixels, as a frame of its own at the same scale factor.
-	///
-	/// A per-surface ceiling is judged over the surface's own box, so the
-	/// metrics that read pixels need a frame that holds that box and nothing
-	/// around it. A rectangle reaching past an edge is an error rather than a
-	/// clamp: a measurement of a region the frame does not hold is not a
-	/// measurement of that region.
-	pub fn crop(&self, x: u32, y: u32, width: u32, height: u32) -> Result<Self, FrameError> {
-		if width == 0 || height == 0 {
-			return Err(FrameError::ZeroDimension { width, height });
-		}
-		let right = x.checked_add(width);
-		let bottom = y.checked_add(height);
-		if right.is_none_or(|r| r > self.width) || bottom.is_none_or(|b| b > self.height) {
-			return Err(FrameError::ByteCountMismatch {
-				width,
-				height,
-				scale_factor: self.scale_factor(),
-				expected: (width as usize) * (height as usize) * 4,
-				actual: 0,
-			});
-		}
-		let stride = self.width as usize * 4;
-		let row_bytes = width as usize * 4;
-		let mut pixels = Vec::with_capacity(row_bytes * height as usize);
-		for row in y..y + height {
-			let start = row as usize * stride + x as usize * 4;
-			match self.pixels.get(start..start + row_bytes) {
-				Some(slice) => pixels.extend_from_slice(slice),
-				None => {
-					return Err(FrameError::ByteCountMismatch {
-						width,
-						height,
-						scale_factor: self.scale_factor(),
-						expected: row_bytes * height as usize,
-						actual: pixels.len(),
-					});
-				},
-			}
-		}
-		Self::new(width, height, self.scale_factor(), pixels)
-	}
-
-	/// Paints `colour` over the rectangle at `x, y` sized `width` × `height`,
-	/// all in DEVICE pixels, clipped to the frame.
-	///
-	/// A surface with a §6.6 row of its own is measured over its own chrome,
-	/// so a nested surface that carries its own row is painted out of its
-	/// parent's crop before the parent is measured: the block's border is
-	/// charged to the block ceiling and not a second time to the turn that
-	/// holds it. The colour is the ground the surface sits on, so the blank
-	/// introduces no edge of its own.
-	pub fn fill(&mut self, x: u32, y: u32, width: u32, height: u32, colour: RgbaColor) {
-		let right = x.saturating_add(width).min(self.width);
-		let bottom = y.saturating_add(height).min(self.height);
-		let bytes = [colour.r, colour.g, colour.b, colour.a];
-		let stride = self.width as usize * 4;
-		for row in y.min(self.height)..bottom {
-			let start = row as usize * stride;
-			for column in x.min(self.width)..right {
-				let offset = start + column as usize * 4;
-				if let Some(slot) = self.pixels.get_mut(offset..offset + 4) {
-					slot.copy_from_slice(&bytes);
-				}
-			}
-		}
-	}
-}
-
-/// How far two frames of the same geometry diverge. §9.6 reports one of these
-/// per scene per token change, so a change aimed at the queue that moved the
-/// composer is caught in the same second.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct PerceptualDiff {
-	/// Fraction of pixels whose `ΔL` exceeds the metric-4 noise floor.
-	pub changed_fraction: f32,
-	pub mean_delta:       f32,
-	pub max_delta:        f32,
-}
-
-impl PerceptualDiff {
-	/// True when no pixel moved past the noise floor.
-	pub fn is_unchanged(&self) -> bool {
-		self.changed_fraction == 0.0
 	}
 }

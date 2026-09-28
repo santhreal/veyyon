@@ -23,12 +23,17 @@ workspace = true
 # across a front end that did not build.
 #
 # `gpui_platform` and `gpui_wgpu` use the same pinned Santh GPUI revision. The
-# headless offscreen path needs both: the platform crate builds the renderer
-# for the current OS, and the wgpu crate supplies the text system a frame is
-# shaped with. Without them P10 is reachable only as a type.
+# headless offscreen path the integration tests render through needs both: the
+# platform crate builds the renderer for the current OS, and the wgpu crate
+# supplies the text system a frame is shaped with. They are dev-dependencies:
+# `test-support` on `gpui_platform` turns on GPUI's `test-support`, which
+# draws every dirty window at the end of each effect flush instead of on the
+# platform's frame clock and runs the leak detector at quit, and a
+# dependency's features reach every binary that links this crate.
 [dependencies]
 gpui = { workspace = true }
+
+[dev-dependencies]
 gpui_platform = { workspace = true, features = ["test-support"] }
 gpui_wgpu = { workspace = true }
-[dev-dependencies]
 veyyon-desktop-scene = { workspace = true }

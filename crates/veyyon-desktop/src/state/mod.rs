@@ -13,13 +13,10 @@ use std::{fs, io, path::PathBuf};
 
 use veyyon_desktop_model::{PersistedState, Rejection, StoreKind};
 
-pub mod attachment_files;
-mod keeper;
-mod memory;
+mod placement;
 mod writer;
 
-pub use keeper::{Keeper, placement};
-pub use memory::{chosen_appearance, host_shape, record_draft, session_shape};
+pub use placement::placement;
 pub use writer::{DEBOUNCE_MS, StateTracker, StateWriter, WriteFailure};
 
 /// Environment variable naming the directory the window keeps its state in,

@@ -1,15 +1,8 @@
-//! Offscreen rasterisation of a scene to an `RgbaFrame`, and PNG encoding.
+//! Offscreen rasterisation of a view to an `RgbaFrame`, and PNG encoding.
 //!
-//! This is the mechanism the iteration engine rests on. A surface is judged by
-//! looking at it, and looking at it costs a process launch and a window unless
-//! a frame can be produced without either. Fork patch P10 supplies the
-//! surfaceless render target; this module gives it a size, a scale factor and a
-//! root element, and hands back a frame the metrics and the tiler already
-//! consume.
-//!
-//! The frame type is `crate::frame::RgbaFrame` and is not redeclared here: it
-//! already validates dimensions, scale factor and byte count, and every metric
-//! is written against it.
+//! Fork patch P10 supplies the surfaceless render target; this module gives it
+//! a size, a scale factor and a root view, and hands back the frame with the
+//! hit rects and text runs it registered.
 
 use std::{
 	fs,
@@ -19,6 +12,7 @@ use std::{
 	sync::{Mutex, MutexGuard, PoisonError},
 };
 
+use veyyon_desktop_ui::theme::Appearance;
 use veyyon_gpui::{
 	AnyWindowHandle, App, Bounds, Entity, HeadlessAppContext, Pixels, Render, Size, TextRunLayout,
 	Window, px,
@@ -26,8 +20,7 @@ use veyyon_gpui::{
 
 use crate::{
 	frame::{FrameError, RgbaFrame},
-	layout::{LayoutBoxTree, LayoutError},
-	layout_bridge::layout_box_tree_from_quads,
+	renderer::{self, NoOffscreenRenderer},
 };
 
 /// Why a headless render or its encoding did not produce a frame.
@@ -39,22 +32,8 @@ pub enum RenderError {
 	#[error("no offscreen frame can be produced; a GPU with a Vulkan ICD is required: {source}")]
 	NoRenderer {
 		#[source]
-		source: veyyon_desktop_kit::headless::NoOffscreenRenderer,
+		source: NoOffscreenRenderer,
 	},
-
-	/// A sheet with no cells has no size, and an empty image is not a useful
-	/// report: the caller asked for a comparison and supplied nothing.
-	#[error("a contact sheet needs at least one cell")]
-	EmptySheet,
-
-	/// A sheet larger than one texture and one readback buffer can carry. The
-	/// renderer's own failure for this is `BufferAsyncError`, which names
-	/// neither the size nor the column count that produced it.
-	#[error(
-		"a {cells}-cell sheet at {columns} columns renders {width}x{height} device pixels, over the \
-		 {limit} limit; page it or lower the column count"
-	)]
-	SheetTooLarge { width: u32, height: u32, limit: u32, cells: usize, columns: u32 },
 
 	#[error("the offscreen render target produced no frame: {message}")]
 	NoFrame { message: String },
@@ -64,11 +43,9 @@ pub enum RenderError {
 		#[source]
 		source: FrameError,
 	},
-	#[error("layout error during box tree construction: {source}")]
-	Layout {
-		#[source]
-		source: LayoutError,
-	},
+
+	#[error("the theme did not install: {message}")]
+	Theme { message: String },
 
 	#[error("could not create {}: {source}", path.display())]
 	CreateDir {
@@ -98,44 +75,26 @@ pub enum RenderError {
 	Window { message: String },
 }
 
-/// Which appearance a scene is rendered in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumIter)]
-pub enum Appearance {
-	Dark,
-	Light,
-}
-
-impl Appearance {
-	pub const fn as_str(self) -> &'static str {
-		match self {
-			Self::Dark => "dark",
-			Self::Light => "light",
-		}
-	}
-}
-
-/// Everything that decides the bytes a render produces.
-///
-/// Two renders with equal options must produce equal bytes, so every input the
-/// renderer reads belongs here. A value taken from ambient state instead would
-/// make a sweep report cells as changed when only the environment moved.
+/// Everything that decides the bytes a render produces besides the view.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RenderOptions {
+	/// Logical width.
 	pub width:        u32,
+	/// Logical height.
 	pub height:       u32,
+	/// Device pixels per logical pixel.
 	pub scale_factor: f32,
+	/// The palette a view that reads the theme is drawn in.
 	pub appearance:   Appearance,
-	pub seed:         u64,
 }
 
 impl Default for RenderOptions {
 	fn default() -> Self {
 		Self {
-			width:        1180,
-			height:       800,
-			scale_factor: 2.0,
+			width:        1440,
+			height:       900,
+			scale_factor: 1.0,
 			appearance:   Appearance::Dark,
-			seed:         0x5eed_cafe,
 		}
 	}
 }
@@ -150,10 +109,13 @@ impl RenderOptions {
 
 /// Writes a frame as a PNG, creating parent directories.
 ///
-/// A frame is straight-alpha RGBA8 with no row padding, which is exactly PNG's
-/// RGBA8 layout, so the bytes are passed through without conversion.
+/// A frame is straight-alpha RGBA8 with no row padding, which is PNG's RGBA8
+/// layout, so the bytes are passed through without conversion.
 pub fn write_png(frame: &RgbaFrame, path: &Path) -> Result<(), RenderError> {
-	if let Some(parent) = path.parent() {
+	if let Some(parent) = path
+		.parent()
+		.filter(|parent| !parent.as_os_str().is_empty())
+	{
 		fs::create_dir_all(parent)
 			.map_err(|source| RenderError::CreateDir { path: parent.to_path_buf(), source })?;
 	}
@@ -175,9 +137,9 @@ pub fn write_png(frame: &RgbaFrame, path: &Path) -> Result<(), RenderError> {
 
 /// Counts distinct pixel values in a frame.
 ///
-/// A frame holding one value was cleared and never drawn into. Determinism is
-/// satisfied by such a frame comparing equal to itself, so this separates a
-/// stable frame from an empty one, which is the check every render proof needs.
+/// A frame holding one value was cleared and never drawn into. Such a frame
+/// compares equal to itself, so this separates a stable frame from an empty
+/// one.
 pub fn distinct_pixel_values(frame: &RgbaFrame) -> usize {
 	let mut seen = std::collections::BTreeSet::new();
 	for pixel in frame.as_bytes().as_chunks::<4>().0 {
@@ -188,12 +150,11 @@ pub fn distinct_pixel_values(frame: &RgbaFrame) -> usize {
 
 /// One live headless context at a time, process-wide.
 ///
-/// The kit's offscreen renderer draws through a device the process owns, not
-/// the caller, and a test binary runs its tests on parallel threads. Serving
-/// one render at a time keeps the frames a sweep compares independent of how
-/// many threads the runner chose, and keeps the render targets alive at one
-/// per process rather than one per thread. The permit is taken when a context
-/// is built and released when it drops.
+/// The offscreen renderer draws through a device the process owns, and a
+/// third live `HeadlessAppContext` in one process aborts it with SIGSEGV
+/// (`crates/veyyon-gpui/README.md`). A test binary runs its tests on parallel
+/// threads, so the permit is taken when a context is built and released when
+/// it drops.
 static RENDERER: Mutex<()> = Mutex::new(());
 
 /// A headless context holding the process-wide renderer permit.
@@ -220,7 +181,7 @@ impl DerefMut for Headless {
 	}
 }
 
-/// A context wired to the kit's offscreen renderer.
+/// A context wired to the offscreen renderer.
 ///
 /// `HeadlessAppContext::new` hands back a context with no renderer attached,
 /// which renders nothing and reports success, so the renderer is supplied
@@ -231,77 +192,47 @@ impl DerefMut for Headless {
 /// failed render does not turn every later one into a panic of its own.
 pub fn headless_context() -> Result<Headless, RenderError> {
 	let permit = RENDERER.lock().unwrap_or_else(PoisonError::into_inner);
-	let cx = veyyon_desktop_kit::headless::app_context()
-		.map_err(|source| RenderError::NoRenderer { source })?;
+	let cx = renderer::app_context().map_err(|source| RenderError::NoRenderer { source })?;
 	Ok(Headless { cx, _permit: permit })
 }
+
 /// Whether the shared offscreen renderer draws on a software adapter.
 ///
-/// A sweep budget calibrated for hardware cannot hold under lavapipe, so a
-/// timing assertion reads this once and relaxes its bound rather than
-/// reporting a software rasterizer as a regression.
+/// A budget calibrated for hardware cannot hold under lavapipe, so a timing
+/// assertion reads this once and relaxes its bound rather than reporting a
+/// software rasterizer as a regression.
 pub fn renderer_is_software() -> bool {
-	veyyon_desktop_kit::headless::adapter_is_software()
-}
-
-/// Rasterises one root view offscreen and captures the rendered frame and
-/// the layout box tree.
-pub fn render_view_with_layout<V, F>(
-	cx: &mut HeadlessAppContext,
-	options: &RenderOptions,
-	build_root: F,
-) -> Result<(RgbaFrame, LayoutBoxTree), RenderError>
-where
-	V: Render + 'static,
-	F: FnOnce(&mut Window, &mut App) -> Entity<V>,
-{
-	render_view_captured(cx, options, build_root).map(|captured| (captured.frame, captured.layout))
+	renderer::adapter_is_software()
 }
 
 /// Everything one offscreen render produced.
 ///
-/// The frame is what a reviewer looks at, the tree is what the metrics
-/// evaluate, and the hit rects are what an operator can actually reach. A
-/// surface can be correct in all three and wrong in one, so a render hands
-/// back all three rather than the caller choosing which to trust.
+/// The frame is what a reviewer looks at and the hit rects are what an
+/// operator can reach, so a render hands back both.
 #[derive(Debug)]
 pub struct Captured {
 	/// The rasterised frame.
 	pub frame:     RgbaFrame,
-	/// The quad tree, in logical pixels.
-	pub layout:    LayoutBoxTree,
-	/// Every hit rect the frame registered, in logical pixels.
-	///
-	/// A rect appears here only for an element that carries a listener, a
-	/// hover style or another reason to be hit-tested, so this is the set of
-	/// controls the frame is willing to answer a click on — not the set of
-	/// things drawn to look like controls.
+	/// Every hit rect the frame registered, in logical pixels: an element with
+	/// a listener, a hover style or another reason to be hit-tested.
 	pub hitboxes:  Vec<Bounds<Pixels>>,
 	/// Every shaped text run the frame registered, in logical pixels.
 	pub text_runs: Vec<TextRunLayout>,
 }
 
-/// Captures a rendered frame, layout tree, hitboxes and text runs from an open
-/// window.
+/// Captures a rendered frame, hitboxes and text runs from an open window.
 pub fn capture_window(
 	cx: &mut HeadlessAppContext,
 	handle: AnyWindowHandle,
 	scale_factor: f32,
 ) -> Result<Captured, RenderError> {
-	let (frame_result, quads) = cx
-		.update_window(handle, |_, window, _| {
-			let frame = window.render_to_frame(scale_factor);
-			let quads = window.painted_quads();
-			(frame, quads)
-		})
+	let headless_frame = cx
+		.update_window(handle, |_, window, _| window.render_to_frame(scale_factor))
+		.map_err(|error| RenderError::NoFrame { message: format!("{error:?}") })?
 		.map_err(|error| RenderError::NoFrame { message: format!("{error:?}") })?;
-
-	let headless_frame =
-		frame_result.map_err(|error| RenderError::NoFrame { message: format!("{error:?}") })?;
 
 	let hitboxes = headless_frame.hitboxes().to_vec();
 	let text_runs = headless_frame.text_runs().to_vec();
-
 	let frame = RgbaFrame::new(
 		headless_frame.width(),
 		headless_frame.height(),
@@ -310,14 +241,14 @@ pub fn capture_window(
 	)
 	.map_err(|source| RenderError::Readback { source })?;
 
-	let layout = layout_box_tree_from_quads(&quads, scale_factor)
-		.map_err(|source| RenderError::Layout { source })?;
-
-	Ok(Captured { frame, layout, hitboxes, text_runs })
+	Ok(Captured { frame, hitboxes, text_runs })
 }
 
 /// Rasterises one root view offscreen and captures everything the frame knows.
-pub fn render_view_captured<V, F>(
+///
+/// The root is built by a closure rather than passed as a value because a gpui
+/// view is created inside the app context that renders it.
+pub fn render_view<V, F>(
 	cx: &mut HeadlessAppContext,
 	options: &RenderOptions,
 	build_root: F,
@@ -344,20 +275,4 @@ where
 	});
 
 	captured
-}
-
-/// Rasterises one root view offscreen.
-///
-/// The root is built by a closure rather than passed as a value because a gpui
-/// view is created inside the app context that renders it.
-pub fn render_view<V, F>(
-	cx: &mut HeadlessAppContext,
-	options: &RenderOptions,
-	build_root: F,
-) -> Result<RgbaFrame, RenderError>
-where
-	V: Render + 'static,
-	F: FnOnce(&mut Window, &mut App) -> Entity<V>,
-{
-	render_view_with_layout(cx, options, build_root).map(|(frame, _)| frame)
 }

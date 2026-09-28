@@ -3,8 +3,7 @@
 //! Opens the workspace window over one `AppState` and attaches it to a GUI
 //! host, starting one when nothing listens (§8.1, §8.11). With
 //! `VEYYON_DESKTOP_DRIVER` set, the driver socket (§7) opens before the
-//! window does. The `scene`, `sweep` and `tokens` subcommands render the
-//! scene catalogue headless and exit.
+//! window does.
 
 mod window;
 
@@ -12,21 +11,15 @@ use std::{env, path::Path, process, rc::Rc};
 
 use clap::Parser as _;
 use veyyon_desktop::{
-	cli::{Cli, Command},
-	discover_asset_paths,
+	cli::Cli,
 	launch::{WindowExit, reopen_available, window_exit},
-	load_startup_bundle, scene,
 };
 use veyyon_desktop_app::{driver, keymap};
 use veyyon_desktop_ui::{fonts, icons::Assets};
 use veyyon_gpui::{App, Application};
 
 fn main() {
-	let cli = Cli::parse();
-	let endpoint = match cli.command {
-		Some(command) => process::exit(run_command(command)),
-		None => cli.endpoint,
-	};
+	let endpoint = Cli::parse().endpoint;
 
 	let slot = window::Slot::default();
 	let app = Application::with_platform(gpui_platform::current_platform(false)).with_assets(Assets);
@@ -91,20 +84,4 @@ fn prepare(cx: &mut App) -> Result<(), String> {
 			.map_err(|error| format!("the driver socket {} did not open: {error}", path.display()))?;
 	}
 	Ok(())
-}
-
-/// Runs a scene catalogue subcommand and returns its exit code.
-fn run_command(command: Command) -> i32 {
-	let bundle = match load_startup_bundle(discover_asset_paths()) {
-		Ok(bundle) => bundle,
-		Err(error) => {
-			eprintln!("Fatal: failed to load design tokens or bundled theme: {error}");
-			return 1;
-		},
-	};
-	match command {
-		Command::Scene(command) => scene::run_scene(&bundle, command),
-		Command::Sweep(command) => scene::run_sweep(&bundle, command),
-		Command::Tokens(command) => scene::run_tokens(&bundle, command),
-	}
 }

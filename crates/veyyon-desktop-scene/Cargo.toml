@@ -7,30 +7,27 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 publish = false
-description = "Deterministic scene construction, headless rasterization and clutter metric evaluation for the veyyon desktop front end"
+description = "Headless rendering of the veyyon desktop views to PNG, for tests and captures"
 
 [lints]
 workspace = true
 
+# Test and capture tooling only: no crate that ships depends on this one.
+# `test-support` on `gpui_platform` turns on GPUI's `test-support`, which a
+# headless session needs to report an operating-system motion preference, and
+# which changes how a window draws; a dependency's features reach every binary
+# that links it, so a production crate never names this crate outside
+# `[dev-dependencies]`.
 [dependencies]
-image = { workspace = true }
+anyhow = { workspace = true }
+gpui_platform = { workspace = true, features = ["test-support"] }
+# The text system every headless context shapes through, and the Vulkan
+# renderer off macOS.
+gpui_wgpu = { workspace = true }
 png = { workspace = true }
-smallvec = { workspace = true }
-serde = { workspace = true }
 serde_json = { workspace = true }
-strum = { workspace = true }
 thiserror = { workspace = true }
-unicode-segmentation = { workspace = true }
+veyyon-desktop-app = { workspace = true }
 veyyon-desktop-model = { workspace = true }
-# The headless offscreen path is the kit's: its `headless` feature builds the
-# renderer for the current OS and the app context a frame is shaped in.
-veyyon-desktop-kit = { workspace = true, features = ["headless"] }
-veyyon-desktop-tokens = { workspace = true }
+veyyon-desktop-ui = { workspace = true }
 veyyon-gpui = { workspace = true }
-
-[dev-dependencies]
-# The motion probe samples each role through its driver.
-veyyon-desktop-motion = { workspace = true }
-# The dead-token sweep bumps each motion parameter through serde.
-motion = { workspace = true, features = ["serde"] }
-veyyon-desktop-surface = { workspace = true }

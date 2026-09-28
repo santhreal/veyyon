@@ -10,43 +10,30 @@ repository.workspace = true
 [lints]
 workspace = true
 
+# A dependency's features reach this binary: nothing here may turn on GPUI's
+# `test-support`, `bench-support` or `leak-detection`, and the headless scene
+# crate is never a dependency
+# (`tests/the-shipped-binary-links-no-test-only-code.rs`).
 [dependencies]
-veyyon-desktop-model.workspace = true
+bytes.workspace = true
+clap.workspace = true
+gpui_platform = { workspace = true, features = ["x11"] }
+libc.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-thiserror.workspace = true
-bytes.workspace = true
-strum.workspace = true
-clap.workspace = true
-toml.workspace = true
-veyyon-gpui.workspace = true
-gpui_platform = { workspace = true, features = ["x11"] }
-veyyon-desktop-tokens.workspace = true
-flume.workspace = true
-veyyon-desktop-surface.workspace = true
-veyyon-desktop-scene.workspace = true
-sha2.workspace = true
-libc.workspace = true
-veyyon-desktop-kit.workspace = true
 veyyon-desktop-app.workspace = true
+veyyon-desktop-model.workspace = true
 veyyon-desktop-ui.workspace = true
+veyyon-gpui.workspace = true
 
 [dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+strum.workspace = true
 veyyon-test-scratch.workspace = true
 
 [[bin]]
 name = "veyyon-desktop"
 path = "src/main.rs"
-[[bench]]
-name = "session_frame_cost"
-harness = false
-
-[[bench]]
-name = "streaming_turn_damage"
-harness = false
-
-[[bench]]
-name = "workspace_projection"
-harness = false

@@ -73,12 +73,8 @@ fn every_rust_file_in_the_desktop_crates_is_at_or_under_the_ceiling() {
 		[
 			"veyyon-desktop",
 			"veyyon-desktop-app",
-			"veyyon-desktop-kit",
 			"veyyon-desktop-model",
-			"veyyon-desktop-motion",
 			"veyyon-desktop-scene",
-			"veyyon-desktop-surface",
-			"veyyon-desktop-tokens",
 			"veyyon-desktop-ui",
 			"veyyon-gpui",
 		],

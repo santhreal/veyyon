@@ -1,7 +1,7 @@
 //! Stateful headless session driving a window across keystrokes, clicks and
 //! renders.
 //!
-//! While [`crate::headless::render_view_captured`] opens, renders and tears
+//! While [`crate::headless::render_view`] opens, renders and tears
 //! down a window in one shot, a test of user interaction requires the window
 //! and its view entity to persist across multiple frames, clock ticks and input
 //! events.
@@ -79,8 +79,8 @@ impl<'a, V: Render + 'static> HeadlessSession<'a, V> {
 		self.root.clone()
 	}
 
-	/// Delivers the next frame to the window and captures its pixels, layout box
-	/// tree and hitboxes.
+	/// Delivers the next frame to the window and captures its pixels, hit
+	/// rects and text runs.
 	///
 	/// This is one vsync: pending animation callbacks run and the window draws
 	/// if it is dirty, so a transition or a spring advances by however far
