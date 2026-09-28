@@ -1232,7 +1232,7 @@ Record the pair of every surface against the pre-rebuild window:
 
 ```sh
 for surface in empty sidebar thread streaming composer dock palette settings \
-	panel-diff panel-files panel-agents drawer banner toast; do
+	panel-diff panel-files panel-agents drawer banner toast tree; do
 	PROOF_BASE_REF=HEAD PROOF_NATIVE_BEFORE_REF=bbc1b6db59 \
 		PROOF_NATIVE_BEFORE_BINARY=<build-of-bbc1b6db59> \
 		DESKTOP_BINARY=<build-of-this-tree> \
@@ -1269,6 +1269,7 @@ DESKTOP_BINARY=<build-of-this-tree> proof/record.sh proof/scenes/desktop-motion.
 | `desktop-drawer.sh` | The terminal drawer with a shell | `desktop-drawer-open.webp`, `desktop-drawer-drawer.png` |
 | `desktop-banner.sh` | The GUI host ended under the window | `desktop-banner-banner.png` |
 | `desktop-toast.sh` | A decision arriving on a thread that is not open | `desktop-toast-toast.png` |
+| `desktop-tree.sh` | The session tree of a thread with two finished turns | `desktop-tree-tree.png` |
 | `desktop-motion.sh` | The pointer crossing the idle window's top edge, then the sidebar and the panel closing and opening | `desktop-motion-control.webp`, `desktop-motion-slides.webp`, `desktop-motion-motion-panel-open.png` |
 
 Each output is written to `proof/captures/x11/` for the after arm and
