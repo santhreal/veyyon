@@ -392,6 +392,7 @@
 
 ### Fixed
 
+- A desktop request the host leaves unanswered for 30 s fails as a refusal does, so the control that sent it stops drawing its spinner and offers its retry, and a request dropped past the 1024-request ceiling fails the same way, where both were dropped without a word and a drawer refresh the host never answered drew its spinner until another control sent something.
 - Disabling an MCP server from the desktop writes it disabled into the profile's `mcp.json`, where it only disconnected the running server and the next start connected it again.
 - The desktop window draws the card the terminal draws for `read`, `write`, `search`, `ast_edit`, `ask`, `todo`, `irc`, `launch`, `browser`, `github` and `web_search`, and for every tool in a transcript rebuilt without its tool instance, where it drew the tool name and raw arguments because it read the view from the tool instance and not from the view registry.
 - The desktop window reduces motion when the operating system's reduced-motion accessibility setting is on, where a `display.transitions` value of `on` overrode that setting on every frame.

@@ -28,7 +28,9 @@ impl RequestRegistry {
 		Self { pending: BTreeMap::new() }
 	}
 
-	/// Registers a new in-flight request with timestamp and timeout.
+	/// Registers a new in-flight request with timestamp and timeout, and
+	/// returns what the registration pruned: every request past its deadline
+	/// at `now_ms` and, past the capacity ceiling, the oldest.
 	pub fn register(
 		&mut self,
 		id: RequestId,
@@ -36,14 +38,26 @@ impl RequestRegistry {
 		surface: SurfaceId,
 		now_ms: u64,
 		timeout_ms: u64,
-	) {
+	) -> Vec<(RequestId, InFlightRequest)> {
 		self.pending.insert(id, InFlightRequest {
 			action,
 			surface,
 			issued_at_ms: now_ms,
 			timeout_ms,
 		});
-		self.prune_stale(now_ms);
+		self.prune_stale(now_ms)
+	}
+
+	/// The first millisecond at which [`prune_stale`](Self::prune_stale)
+	/// removes a request past its deadline, or `None` while nothing is in
+	/// flight.
+	#[must_use]
+	pub fn next_expiry_ms(&self) -> Option<u64> {
+		self
+			.pending
+			.values()
+			.map(|req| req.issued_at_ms.saturating_add(req.timeout_ms).saturating_add(1))
+			.min()
 	}
 
 	/// Finds the first pending request identifier associated with a given action

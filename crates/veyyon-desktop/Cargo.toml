@@ -30,6 +30,8 @@ veyyon-desktop-scene.workspace = true
 sha2.workspace = true
 libc.workspace = true
 veyyon-desktop-kit.workspace = true
+veyyon-desktop-app.workspace = true
+veyyon-desktop-ui.workspace = true
 
 [dev-dependencies]
 veyyon-test-scratch.workspace = true

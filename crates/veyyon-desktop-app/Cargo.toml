@@ -18,6 +18,8 @@ serde_json = { workspace = true }
 veyyon-desktop-model = { workspace = true }
 veyyon-desktop-ui = { workspace = true }
 veyyon-gpui = { workspace = true }
+# Panel: word-level emphasis of a diff's paired lines.
+veyyon-diff-kernel = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }

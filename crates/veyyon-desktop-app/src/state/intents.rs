@@ -1,43 +1,40 @@
 //! Intents: the requests the window queues for the host.
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use veyyon_desktop_model::{
 	AttachmentSubmission, HostAction, HostRequest, RequestId, SessionId, SurfaceId,
 };
 use veyyon_gpui::Context;
 
-use super::{AppState, StoreEvent, reduce::Batch};
-
-/// How long a request may stay in flight before the registry prunes it.
-const REQUEST_TIMEOUT_MS: u64 = 30_000;
+use super::{
+	AppState, StoreEvent,
+	deadline::{REQUEST_TIMEOUT_MS, clock_ms},
+	reduce::Batch,
+};
 
 impl AppState {
-	/// Queues `action` on behalf of the control `surface` and emits
-	/// [`StoreEvent::OutboxReady`].
+	/// Queues `action` on behalf of the control `surface`: registers the
+	/// request in flight against `surface` with its deadline, records it as
+	/// what that control's retry sends again, appends it to the outbox and
+	/// emits [`StoreEvent::OutboxReady`].
 	pub fn dispatch(
 		&mut self,
 		action: HostAction,
 		surface: SurfaceId,
 		cx: &mut Context<Self>,
 	) -> RequestId {
-		let request = self.enqueue(action, surface);
-		cx.emit(StoreEvent::OutboxReady);
-		request
-	}
-
-	/// Queues `action` without emitting: registers the request in flight
-	/// against `surface`, records it as what that control's retry sends
-	/// again, and appends it to the outbox.
-	pub fn enqueue(&mut self, action: HostAction, surface: SurfaceId) -> RequestId {
 		self.next_request += 1;
 		let request = RequestId(self.next_request);
 		self.store
 			.retries
 			.record(request, surface.clone(), action.clone());
-		self.registry
-			.register(request, action.kind(), surface, now_ms(), REQUEST_TIMEOUT_MS);
+		let now_ms = clock_ms(&mut self.clock_epoch, cx);
+		let pruned =
+			self.registry
+				.register(request, action.kind(), surface, now_ms, REQUEST_TIMEOUT_MS);
 		self.outbox.push(HostRequest { id: request, action });
+		cx.emit(StoreEvent::OutboxReady);
+		self.fail_pruned(pruned, now_ms, cx);
+		self.arm_deadline(cx);
 		request
 	}
 
@@ -105,8 +102,3 @@ impl AppState {
 	}
 }
 
-fn now_ms() -> u64 {
-	SystemTime::now()
-		.duration_since(UNIX_EPOCH)
-		.map_or(0, |elapsed| elapsed.as_millis() as u64)
-}

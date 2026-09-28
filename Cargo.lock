@@ -9913,11 +9913,13 @@ dependencies = [
  "tokio",
  "tokio-util",
  "toml 1.1.5+spec-1.1.0",
+ "veyyon-desktop-app",
  "veyyon-desktop-kit",
  "veyyon-desktop-model",
  "veyyon-desktop-scene",
  "veyyon-desktop-surface",
  "veyyon-desktop-tokens",
+ "veyyon-desktop-ui",
  "veyyon-gpui",
  "veyyon-test-scratch",
 ]
@@ -9933,6 +9935,7 @@ dependencies = [
  "serde_json",
  "veyyon-desktop-model",
  "veyyon-desktop-ui",
+ "veyyon-diff-kernel",
  "veyyon-gpui",
 ]
 

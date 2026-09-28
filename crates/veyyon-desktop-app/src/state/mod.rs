@@ -2,22 +2,42 @@
 //! registry, the intent outbox and the client transcript cache.
 
 mod cache;
+mod deadline;
 mod events;
 mod flat;
 mod intents;
 mod projects;
 mod reduce;
+// Thread
+mod transcript;
+// Composer
+mod composer;
+// Composer
+pub use self::composer::{Answer, Decision, DialogAnswer, decisions};
+// Panel
+mod drawer;
+mod panel;
+// Panel
+pub use self::drawer::StreamMark;
+// Sidebar
+mod sidebar;
+// Palette
+mod settings;
+// Shell
+mod workspace;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Instant};
 
 use veyyon_desktop_model::{
-	HostEvent, HostRequest, RequestId, RequestRegistry, SessionId, Store, TranscriptEntry,
+	HostEvent, HostRequest, PendingDecisions, RequestId, RequestRegistry, SessionId, Store,
+	TranscriptEntry,
 };
 use veyyon_gpui::{Context, EventEmitter};
 
-use self::{cache::TranscriptCache, projects::build_projects};
+use self::{cache::TranscriptCache, deadline::Deadline, projects::build_projects};
 pub use self::{
 	cache::TRANSCRIPT_CACHE_SESSIONS,
+	deadline::{EVICTED, REQUEST_TIMEOUT_MS, UNANSWERED},
 	events::StoreEvent,
 	projects::{Project, SessionRow},
 };
@@ -30,6 +50,11 @@ pub use self::{
 pub struct AppState {
 	store:        Store,
 	registry:     RequestRegistry,
+	/// The timer that fails the next request to outlive its deadline, held
+	/// while a request is in flight.
+	deadline:     Option<Deadline>,
+	/// The executor instant the registry's millisecond clock counts from.
+	clock_epoch:  Option<Instant>,
 	outbox:       Vec<HostRequest>,
 	next_request: u64,
 	transcripts:  TranscriptCache,
@@ -41,6 +66,16 @@ pub struct AppState {
 	displayed:    Option<SessionId>,
 	/// The `OpenSession` in flight and the session it opens.
 	pending_open: Option<(RequestId, SessionId)>,
+	// Composer
+	/// The prompt each session's last `DequeueQueuedPrompt` handed back, held
+	/// until that session's composer takes it.
+	restored:     HashMap<SessionId, String>,
+	/// The decisions answered and not yet confirmed, by the request that
+	/// answered each, put back when the host refuses the answer.
+	answering:    HashMap<RequestId, (SessionId, PendingDecisions)>,
+	// Panel
+	/// How far each terminal's and process's output has run.
+	streams:      drawer::DrawerStreams,
 }
 
 impl EventEmitter<StoreEvent> for AppState {}
@@ -56,21 +91,30 @@ impl AppState {
 			displayed: store.persisted.shell.active_session.clone(),
 			store,
 			registry: RequestRegistry::new(),
+			deadline: None,
+			clock_epoch: None,
 			outbox: Vec::new(),
 			next_request: 0,
 			transcripts: TranscriptCache::default(),
 			cwds,
 			projects,
 			pending_open: None,
+			// Composer
+			restored: HashMap::new(),
+			answering: HashMap::new(),
+			// Panel
+			streams: drawer::DrawerStreams::default(),
 		}
 	}
 
-	/// Reduces a batch of host events and emits one [`StoreEvent`] for each
-	/// region the batch changed.
+	/// Reduces a batch of host events, emits one [`StoreEvent`] for each
+	/// region the batch changed, and points the deadline timer at the next
+	/// request still in flight.
 	pub fn apply(&mut self, events: Vec<HostEvent>, cx: &mut Context<Self>) {
 		for event in self.reduce_batch(events) {
 			cx.emit(event);
 		}
+		self.arm_deadline(cx);
 	}
 
 	/// The store the host events were reduced into.

@@ -108,16 +108,31 @@ impl AppState {
 					batch.push(StoreEvent::StreamingChanged { session });
 				}
 			},
+			// A view draws an append as a change to the reply it already
+			// holds; one that does not fit the held reply fails the
+			// connection, which the connection line states.
+			HostEvent::StreamingAppended(append) => {
+				let damage = reduce(&mut self.store, HostEvent::StreamingAppended(append));
+				batch.note(&damage);
+				match damaged_session(&damage) {
+					Some(session) => batch.push(StoreEvent::StreamingChanged { session }),
+					None => batch.push(StoreEvent::ConnectionChanged),
+				}
+			},
 			HostEvent::RequestSucceeded { request } => {
 				self.registry.complete(&request);
 				batch.note(&reduce(&mut self.store, HostEvent::RequestSucceeded { request }));
 				self.settle_open(request, true, batch);
+				self.settle_answer(request, true);
 				batch.push(StoreEvent::RequestFinished { request, ok: true });
 			},
 			HostEvent::RequestFailed { request, error } => {
 				self.registry.complete(&request);
 				batch.note(&reduce(&mut self.store, HostEvent::RequestFailed { request, error }));
 				self.settle_open(request, false, batch);
+				if let Some(session) = self.settle_answer(request, false) {
+					batch.push(StoreEvent::InteractionsChanged { session });
+				}
 				batch.push(StoreEvent::RequestFinished { request, ok: false });
 			},
 			HostEvent::ConnectionChanged(state) => {
@@ -154,6 +169,20 @@ impl AppState {
 			},
 			SnapshotSection::Transcript(transcript) => Follow::Transcript(transcript.revision),
 			SnapshotSection::Interactions { session, .. } => Follow::Interactions(session.clone()),
+			// Composer
+			SnapshotSection::QueuedPrompts(view) => {
+				self.note_restored(view);
+				Follow::Domain(SnapshotSectionKind::from(&section))
+			},
+			// Panel
+			SnapshotSection::TerminalOutput(chunk) => {
+				self.note_terminal_output(chunk);
+				Follow::Domain(SnapshotSectionKind::TerminalOutput)
+			},
+			SnapshotSection::ProcessLogs(chunk) => {
+				self.note_process_logs(chunk);
+				Follow::Domain(SnapshotSectionKind::ProcessLogs)
+			},
 			other => Follow::Domain(SnapshotSectionKind::from(other)),
 		};
 		let damage = reduce(&mut self.store, HostEvent::Snapshot(section));
@@ -172,6 +201,7 @@ impl AppState {
 				}
 			},
 			Follow::Interactions(session) => {
+				self.forget_answers(&session);
 				batch.push(StoreEvent::InteractionsChanged { session });
 			},
 			Follow::Domain(kind) => batch.push(StoreEvent::DomainChanged(kind)),
