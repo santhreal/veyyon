@@ -19,6 +19,7 @@ use veyyon_desktop_ui::{
 use crate::{
 	AppState, StoreEvent,
 	actions::workspace::{ShowPanelTab, ToggleDrawer, TogglePanel},
+	driver,
 	transcript::{tool::open_external, turn::duration_words},
 	workspace,
 };
@@ -209,6 +210,7 @@ impl Render for ThreadHeader {
 			Some(ShareRole::Off) | None => None,
 		};
 		let pause = self.host_button(
+			app,
 			"thread-pause",
 			if paused {
 				IconName::Play
@@ -234,6 +236,7 @@ impl Render for ThreadHeader {
 		let session_buttons = session.map(|session| {
 			[
 				self.host_button(
+					app,
 					"thread-compact",
 					IconName::Archive,
 					"Compact context",
@@ -241,6 +244,7 @@ impl Render for ThreadHeader {
 					SurfaceId::SessionCompactButton(session.clone()),
 				),
 				self.host_button(
+					app,
 					"thread-export",
 					IconName::FileText,
 					"Export as Markdown",
@@ -251,6 +255,7 @@ impl Render for ThreadHeader {
 					SurfaceId::SessionExportButton(session),
 				),
 				self.host_button(
+					app,
 					"thread-share",
 					IconName::Globe,
 					if share_chip.is_some() {
@@ -326,7 +331,7 @@ impl Render for ThreadHeader {
 					}),
 			)
 			.children(session_buttons.into_iter().flatten())
-			.child(pause)
+			.child(driver::target("thread.pause", pause))
 			.child(
 				IconButton::new("thread-drawer", IconName::PanelBottom)
 					.tooltip("Terminal drawer")
@@ -342,20 +347,26 @@ impl Render for ThreadHeader {
 }
 
 impl ThreadHeader {
+	/// A button sending `action` for `surface`, drawn disabled with the
+	/// host's reason as its tooltip while the host takes no such action.
 	fn host_button(
 		&self,
+		app: &AppState,
 		id: &'static str,
 		icon: IconName,
 		label: &'static str,
 		action: HostAction,
 		surface: SurfaceId,
 	) -> IconButton {
-		let app = self.app.clone();
+		let refusal = app.refusal(action.kind());
+		let disabled = refusal.is_some();
+		let state = self.app.clone();
 		IconButton::new(id, icon)
-			.tooltip(label)
+			.tooltip(refusal.unwrap_or_else(|| label.to_owned()))
+			.disabled(disabled)
 			.on_click(move |_, _, cx| {
 				let (action, surface) = (action.clone(), surface.clone());
-				app.update(cx, |app, cx| {
+				state.update(cx, |app, cx| {
 					app.dispatch(action, surface, cx);
 				});
 			})

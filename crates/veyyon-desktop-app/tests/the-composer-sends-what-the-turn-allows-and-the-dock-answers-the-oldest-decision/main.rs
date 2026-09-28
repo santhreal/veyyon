@@ -12,28 +12,33 @@
 //! decision. A draft report sent per repaint floods the host, and one skipped
 //! on a caret move leaves an extension reading a stale caret. A region
 //! notified per streamed delta or per keystroke elsewhere renders for
-//! nothing. The suite drives the real `ThreadView` over an `AppState` fed
-//! host events and reads the requests, the text and the geometry it drew.
+//! nothing. The thread header's freeze control, the session mode and the
+//! goal the dock pins are driven from the same window. The suite drives the
+//! real `ThreadView` over an `AppState` fed host events and reads the
+//! requests, the text and the geometry it drew.
 //!
-//! Gap: pointer clicks on the footer and the card buttons are not driven;
-//! the keys and the actions they bind to are. Dictation, attachments from
-//! disk and the pickers are not driven here.
+//! Gap: pointer clicks on the card and goal buttons are not driven; the keys
+//! and the actions they bind to are. Dictation and attachments from disk are
+//! not driven here.
 
 mod branch;
 mod composer;
 mod dock;
+mod freeze;
+mod goal;
+mod mode;
 
 use gpui::{
-	AppContext as _, Bounds, Entity, Focusable as _, Pixels, TestAppContext, VisualTestContext, px,
-	size,
+	AppContext as _, Bounds, Entity, Focusable as _, Modifiers, Pixels, TestAppContext,
+	VisualTestContext, px, size,
 };
 use veyyon_desktop_app::{
 	AppState, composer::Composer, dock::InteractionDock, driver, keymap, thread::ThreadView,
 };
 use veyyon_desktop_model::{
-	BackendError, ComposerRequest, ContentBlock, EntryId, ErrorScope, HostAction, HostEvent,
-	HostRequest, MessageRole, PendingDecisions, RequestId, SessionHeaderView, SessionId,
-	SnapshotSection, Store, StreamingMessageState, TranscriptEntry, Versioned,
+	BackendError, Capability, CapabilityStatus, ComposerRequest, ContentBlock, EntryId, ErrorScope,
+	HostAction, HostEvent, HostRequest, MessageRole, PendingDecisions, RequestId, SessionHeaderView,
+	SessionId, SnapshotSection, Store, StreamingMessageState, TranscriptEntry, Versioned,
 };
 use veyyon_desktop_ui::theme::{Appearance, Theme};
 
@@ -105,6 +110,22 @@ impl Win<'_> {
 		self.cx.run_until_parked();
 	}
 
+	/// Presses `keys`, space-separated as gpui spells them.
+	pub fn keys(&mut self, keys: &str) {
+		self.cx.simulate_keystrokes(keys);
+		self.cx.run_until_parked();
+	}
+
+	/// Clicks the middle of the driver target `id`.
+	pub fn click(&mut self, id: &str) {
+		let at = self
+			.bounds(id)
+			.unwrap_or_else(|| panic!("{id} is laid out"))
+			.center();
+		self.cx.simulate_click(at, Modifiers::none());
+		self.cx.run_until_parked();
+	}
+
 	/// Replaces the draft with `text`, as a palette row or an extension does.
 	pub fn write(&mut self, text: &str) {
 		self.dispatch(veyyon_desktop_app::actions::composer::InsertText { text: text.to_owned() });
@@ -144,11 +165,17 @@ impl Win<'_> {
 	}
 
 	pub fn drew(&mut self, text: &str) -> bool {
+		self.count(text) > 0
+	}
+
+	/// How many text runs of the last frame read `text`.
+	pub fn count(&mut self, text: &str) -> usize {
 		self.cx.update(|window, _| {
 			window
 				.rendered_text_runs()
 				.iter()
-				.any(|run| run.text.as_ref() == text)
+				.filter(|run| run.text.as_ref() == text)
+				.count()
 		})
 	}
 
@@ -192,23 +219,36 @@ fn entry(id: &str, role: MessageRole, text: &str, revision: u64) -> TranscriptEn
 	}
 }
 
+/// The header of session `s` at `revision`, in the mode the host names
+/// `mode`.
+pub fn header(mode: Option<&str>, revision: u64) -> HostEvent {
+	HostEvent::Snapshot(SnapshotSection::ActiveSession(Versioned {
+		revision,
+		value: SessionHeaderView {
+			id:             sid(),
+			schema_version: 1,
+			title:          None,
+			title_source:   None,
+			parent:         None,
+			created_at_ms:  0,
+			cwd:            "/w/s".to_owned(),
+			mode:           mode.map(str::to_owned),
+		},
+	}))
+}
+
+/// The host granting `capability`, or withholding it for `reason`.
+pub fn capability(capability: Capability, reason: Option<&str>) -> HostEvent {
+	let status = reason.map_or(CapabilityStatus::Available, |reason| {
+		CapabilityStatus::Unavailable { reason: reason.to_owned() }
+	});
+	HostEvent::Snapshot(SnapshotSection::Capabilities(vec![(capability, status)]))
+}
+
 /// Session `s` open with its first prompt.
 fn opened() -> Vec<HostEvent> {
-	let header = SessionHeaderView {
-		id:             sid(),
-		schema_version: 1,
-		title:          None,
-		title_source:   None,
-		parent:         None,
-		created_at_ms:  0,
-		cwd:            "/w/s".to_owned(),
-		mode:           None,
-	};
 	vec![
-		HostEvent::Snapshot(SnapshotSection::ActiveSession(Versioned {
-			revision: 1,
-			value:    header,
-		})),
+		header(None, 1),
 		HostEvent::Snapshot(SnapshotSection::Transcript(Versioned {
 			revision: 1,
 			value:    vec![entry("s-0", MessageRole::User, "Index the repo.", 1)],

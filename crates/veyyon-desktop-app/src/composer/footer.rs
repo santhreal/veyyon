@@ -14,7 +14,7 @@ use veyyon_desktop_ui::{
 };
 
 use super::{Composer, Primary};
-use crate::keymap;
+use crate::{driver, keymap};
 
 /// A text chip that opens a picker: `label`, then a chevron.
 fn chip(
@@ -116,11 +116,11 @@ impl Composer {
 			|goal| goal.chip_text(),
 		);
 		let refusal = self.refusal(HostActionKind::SetSessionMode, cx);
-		chip("composer-mode", label, refusal.clone(), cx)
+		let button = chip("composer-mode", label, refusal.clone(), cx)
 			.when(refusal.is_none(), |chip| {
 				chip.on_click(cx.listener(|this, _, window, cx| this.open_modes(window, cx)))
-			})
-			.into_any_element()
+			});
+		driver::target("composer.mode", button)
 	}
 
 	fn render_model_chip(&self, cx: &Context<Self>) -> AnyElement {

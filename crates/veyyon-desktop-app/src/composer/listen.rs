@@ -9,7 +9,9 @@
 use gpui::{
 	App, ClipboardEntry, Context, Div, ExternalPaths, PathPromptOptions, Stateful, prelude::*,
 };
-use veyyon_desktop_model::{HostAction, QueueMode, SessionId, SettableMode, SurfaceId};
+use veyyon_desktop_model::{
+	HostAction, HostActionKind, QueueMode, SessionId, SettableMode, SurfaceId,
+};
 use veyyon_desktop_ui::editor::actions as keys;
 
 use super::{
@@ -107,8 +109,12 @@ impl Composer {
 		});
 	}
 
-	/// Puts the session in `mode`, or out of its mode for `None`.
+	/// Puts the session in `mode`, or out of its mode for `None`, while the
+	/// host takes a mode.
 	pub(super) fn set_mode(&self, mode: SettableMode, cx: &mut Context<Self>) {
+		if self.refusal(HostActionKind::SetSessionMode, cx).is_some() {
+			return;
+		}
 		self.send_for_session(
 			|session| {
 				(
@@ -184,10 +190,14 @@ impl Composer {
 		cx.notify();
 	}
 
-	/// Starts a goal whose objective is the draft, and clears the draft.
+	/// Starts a goal whose objective is the draft, and clears the draft; a
+	/// draft the host takes no goal from is kept.
 	pub(super) fn set_goal_from_draft(&mut self, cx: &mut Context<Self>) {
 		let objective = self.text(cx).trim().to_owned();
-		if objective.is_empty() {
+		if objective.is_empty()
+			|| self.session.is_none()
+			|| self.refusal(HostActionKind::SetGoal, cx).is_some()
+		{
 			return;
 		}
 		self.send_for_session(
