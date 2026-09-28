@@ -168,7 +168,8 @@ pub(super) fn plan_body(markdown: &str) -> &str {
 	}
 	let (next, tail) = rest.split_once('\n').unwrap_or((rest, ""));
 	let next = next.trim();
-	let underline = !next.is_empty() && (next.bytes().all(|b| b == b'=') || next.bytes().all(|b| b == b'-'));
+	let underline =
+		!next.is_empty() && (next.bytes().all(|b| b == b'=') || next.bytes().all(|b| b == b'-'));
 	if underline { tail } else { rest }
 }
 

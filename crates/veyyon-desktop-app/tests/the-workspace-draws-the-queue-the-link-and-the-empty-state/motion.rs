@@ -96,7 +96,10 @@ fn a_transitions_setting_reported_after_the_window_opened_lands_a_toggled_region
 	let (app, cx) = moving(&mut cx);
 
 	toggle(cx);
-	assert!(frame(cx, Duration::from_millis(48)), "with motion on, an opening panel asks for frames");
+	assert!(
+		frame(cx, Duration::from_millis(48)),
+		"with motion on, an opening panel asks for frames"
+	);
 	let opening = panel(cx).expect("an opening panel is drawn");
 	assert!(opening > px(0.) && opening < size::PANEL, "the panel slides: {opening:?}");
 	rest(cx);
