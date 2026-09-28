@@ -20,13 +20,14 @@ use veyyon_desktop_app::{
 	workspace::{Regions, Sizes, Workspace, WorkspaceLayout},
 };
 use veyyon_desktop_model::{HostAction, PanelsStore, Store};
-use veyyon_desktop_ui::theme::size;
+use veyyon_desktop_ui::theme::{Appearance, Theme, size};
 
 /// A window laid out from `store` with empty regions.
 fn open(
 	cx: &mut TestAppContext,
 	store: PanelsStore,
 ) -> (WindowHandle<Workspace>, gpui::Entity<AppState>) {
+	cx.update(|cx| Theme::install(Appearance::Dark, cx)).expect("the dark palette parses");
 	let app = cx.update(|cx| cx.new(|_| AppState::new(Store::new())));
 	let state = app.clone();
 	let window = cx.add_window(move |window, cx| {
@@ -196,7 +197,9 @@ fn an_out_of_range_stored_size_is_clamped_and_the_window_opens_as_stored() {
 	);
 
 	let any: AnyWindowHandle = window.into();
-	cx.update(|cx| any.update(cx, |_, window, cx| window.dispatch_actionstep(act::ResetLayout, cx)))
+	cx.update(|cx| {
+		any.update(cx, |_, window, cx| window.dispatch_action(Box::new(act::ResetLayout), cx))
+	})
 		.unwrap_or_else(|error| panic!("the window is open: {error}"));
 	assert_eq!(sizes_after_reset(&mut cx, window), Sizes::default());
 }

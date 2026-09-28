@@ -2,7 +2,7 @@
 //! request, frame events interleaved.
 
 use gpui::{Bounds, Pixels};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 /// A request a client sent.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,31 +83,32 @@ fn wait(kind: Option<&str>, object: &serde_json::Map<String, Value>) -> Result<C
 	}
 }
 
+// Replies are written field by field, so their bytes are the same whether or
+// not serde_json keeps the insertion order of an object's keys.
+
 /// The reply to a request that succeeded with nothing to report.
 pub(super) fn ok(id: &Value) -> String {
-	json!({ "id": id, "ok": true }).to_string()
+	format!("{{\"id\":{id},\"ok\":true}}")
 }
 
 /// The reply to a request that failed.
 pub(super) fn error(id: &Value, message: &str) -> String {
-	json!({ "id": id, "error": message }).to_string()
+	format!("{{\"id\":{id},\"error\":{}}}", Value::from(message))
 }
 
 /// The reply to a bounds request, in window pixels.
 pub(super) fn bounds(id: &Value, bounds: Bounds<Pixels>) -> String {
-	json!({
-		"id": id,
-		"bounds": {
-			"x": f32::from(bounds.origin.x),
-			"y": f32::from(bounds.origin.y),
-			"w": f32::from(bounds.size.width),
-			"h": f32::from(bounds.size.height),
-		},
-	})
-	.to_string()
+	let number = |value: Pixels| Value::from(f32::from(value));
+	format!(
+		"{{\"id\":{id},\"bounds\":{{\"x\":{},\"y\":{},\"w\":{},\"h\":{}}}}}",
+		number(bounds.origin.x),
+		number(bounds.origin.y),
+		number(bounds.size.width),
+		number(bounds.size.height),
+	)
 }
 
 /// The event sent for painted frame `n` at `t_ns` on `CLOCK_MONOTONIC`.
 pub(super) fn frame(n: u64, t_ns: u64) -> String {
-	json!({ "event": "frame", "n": n, "t_ns": t_ns }).to_string()
+	format!("{{\"event\":\"frame\",\"n\":{n},\"t_ns\":{t_ns}}}")
 }

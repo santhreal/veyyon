@@ -8,23 +8,28 @@
 //! it by dispatching a `workspace` action.
 
 mod actions;
+mod banner;
+mod empty;
 mod geometry;
 mod layout;
+mod notices;
 mod render;
 mod titlebar;
 
 use gpui::{
-	AnyView, App, Context, Entity, EventEmitter, FocusHandle, Focusable, Subscription, Window,
+	AnyView, App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable,
+	Subscription, Window,
 };
 use veyyon_desktop_model::PanelsStore;
+use veyyon_desktop_ui::overlays::Toasts;
 
-use self::geometry::Slides;
+use self::{banner::ConnectionBanner, empty::EmptyState, geometry::Slides, notices::Notices};
 pub use self::{
 	geometry::{Openness, Sizes},
 	layout::{DEFAULT_PANEL_TAB, FocusSlot, WorkspaceLayout, focus_slot, register_focus},
 	titlebar::{drag_region, window_controls},
 };
-use crate::AppState;
+use crate::{AppState, StoreEvent};
 
 /// The regions the workspace lays out, each constructed by the caller.
 pub struct Regions {
@@ -52,16 +57,20 @@ pub enum WorkspaceEvent {
 
 /// The window's root view.
 pub struct Workspace {
-	app:      Entity<AppState>,
-	regions:  Regions,
-	sizes:    Sizes,
-	slides:   Slides,
+	app:            Entity<AppState>,
+	regions:        Regions,
+	sizes:          Sizes,
+	slides:         Slides,
 	/// The layout the regions were last laid out for.
-	shown:    WorkspaceLayout,
+	shown:          WorkspaceLayout,
 	/// The persisted fields the workspace does not own, written back as is.
-	store:    PanelsStore,
-	focus:    FocusHandle,
-	_observe: Subscription,
+	store:          PanelsStore,
+	focus:          FocusHandle,
+	/// The announcement queue drawn as toasts.
+	notices:        Notices,
+	banner:         Entity<ConnectionBanner>,
+	empty:          Entity<EmptyState>,
+	_subscriptions: [Subscription; 3],
 }
 
 impl EventEmitter<WorkspaceEvent> for Workspace {}
@@ -95,6 +104,15 @@ impl Workspace {
 		let sizes = Sizes::restore(&store, &mut restored);
 		WorkspaceLayout::update(cx, |layout| *layout = restored.clone());
 		let observe = cx.observe_global_in::<WorkspaceLayout>(window, Self::layout_changed);
+		let store_changed = cx.subscribe(&app, |this, _, event: &StoreEvent, cx| match event {
+			StoreEvent::NotificationsChanged => this.notices.sync(&this.app, cx),
+			StoreEvent::ConnectionChanged | StoreEvent::ActiveSessionChanged => cx.notify(),
+			_ => {},
+		});
+		let (mut notices, dismissed) = Notices::new(cx);
+		notices.sync(&app, cx);
+		let banner = cx.new(|cx| ConnectionBanner::new(app.clone(), cx));
+		let empty = cx.new(|cx| EmptyState::new(app.clone(), cx));
 		let focus = cx.focus_handle();
 		if window.focused(cx).is_none() {
 			window.focus(&focus, cx);
@@ -107,8 +125,16 @@ impl Workspace {
 			shown: restored,
 			store,
 			focus,
-			_observe: observe,
+			notices,
+			banner,
+			empty,
+			_subscriptions: [observe, store_changed, dismissed],
 		}
+	}
+
+	/// The stack the announcement queue is drawn in.
+	pub const fn toasts(&self) -> &Entity<Toasts> {
+		self.notices.toasts()
 	}
 
 	/// The sizes the regions open to.

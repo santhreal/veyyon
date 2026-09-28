@@ -1,5 +1,8 @@
 //! The workspace's frame: sidebar, thread or settings over the drawer, right
-//! panel, and the palette over all of them (CONTRACT §4).
+//! panel, and the palette over all of them (CONTRACT §4). The connection
+//! banner tops the thread column while the link is not up, the empty state
+//! takes the thread's place while no session is open, and the toast stack is
+//! drawn over everything.
 //!
 //! A region slides by clipping a container of `size × open` around content
 //! drawn at its full size and pinned to the container's fixed edge, so the
@@ -15,7 +18,7 @@ use veyyon_desktop_ui::{
 	theme::{ActiveTheme, size},
 };
 
-use super::{Workspace, WorkspaceLayout};
+use super::{Workspace, WorkspaceLayout, banner::ConnectionBanner};
 use crate::driver;
 
 impl Render for Workspace {
@@ -71,11 +74,27 @@ impl Render for Workspace {
 					sizes.drawer_set = false;
 				}))
 		});
+		let (no_session, banner) = {
+			let app = self.app.read(cx);
+			(app.active_session().is_none(), ConnectionBanner::shows(&app.store().connection))
+		};
 		let main = if layout.settings_open {
 			driver::target("settings", fill(&self.regions.settings))
+		} else if no_session {
+			driver::target("empty", fill(&self.empty.clone().into()))
 		} else {
 			fill(&self.regions.thread)
 		};
+		let banner = banner.then(|| {
+			driver::target(
+				"connection-banner",
+				self
+					.banner
+					.clone()
+					.cached(StyleRefinement::default().w_full().h(size::HEADER))
+					.into_any_element(),
+			)
+		});
 
 		let root = div()
 			.id("workspace")
@@ -98,6 +117,7 @@ impl Render for Workspace {
 					.flex_1()
 					.min_w_0()
 					.h_full()
+					.children(banner)
 					.child(div().flex_1().min_h_0().child(main))
 					.children(drawer_handle)
 					.children(drawer),
@@ -110,6 +130,13 @@ impl Render for Workspace {
 					.inset_0()
 					.child(fill(&self.regions.palette)),
 			)
+			.child(
+				div()
+					.absolute()
+					.inset_0()
+					.child(fill(&self.notices.toasts().clone().into())),
+			)
+			.when(driver::is_enabled(), |root| root.child(driver::FrameProbe))
 	}
 }
 

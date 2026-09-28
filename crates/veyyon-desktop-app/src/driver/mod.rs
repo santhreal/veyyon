@@ -1,10 +1,18 @@
-//! The test driver: a Unix socket named by `VEYYON_DESKTOP_DRIVER` that
-//! dispatches actions, types text and reports where named targets are drawn,
-//! and the target registry the views write to.
+//! The test driver: a Unix socket named by `VEYYON_DESKTOP_DRIVER` that acts
+//! on the window and reports what it drew, and the target registry the views
+//! write to.
+//!
+//! A client dispatches actions, types text, reads where a named target is
+//! drawn, subscribes to frames and waits for the window to settle.
 //!
 //! Without the variable no socket is opened and [`target`] returns its
-//! element unchanged, so a window that is not driven records nothing.
+//! element unchanged, so a window that is not driven records nothing. A test
+//! drives a window through a [`Client`] in its own process instead.
 
+#[cfg(unix)]
+mod answer;
+#[cfg(unix)]
+mod client;
 mod element;
 #[cfg(unix)]
 mod probe;
@@ -23,7 +31,10 @@ use gpui::{AnyElement, App, Bounds, Global, IntoElement, Pixels, SharedString, W
 pub use self::element::FrameProbe;
 use self::element::Target;
 #[cfg(unix)]
-pub use self::socket::start;
+pub use self::{
+	client::{Client, waiting},
+	socket::start,
+};
 
 /// Opens the driver socket. Unix domain sockets are unavailable here.
 ///
@@ -39,11 +50,11 @@ pub fn start(_: &std::path::Path, _: &mut App) -> std::io::Result<()> {
 }
 
 /// Reports a painted frame to the subscribed clients.
-fn frame_painted(window: &mut Window, cx: &mut App) {
+fn frame_painted(cx: &mut App) {
 	#[cfg(unix)]
-	socket::frame_painted(window, cx);
+	answer::frame_painted(cx);
 	#[cfg(not(unix))]
-	let _ = (window, cx);
+	let _ = cx;
 }
 
 /// The environment variable naming the driver socket.
@@ -104,6 +115,21 @@ pub fn target(id: impl TargetId, element: impl IntoElement) -> AnyElement {
 		Target::new(id.into_target_id(), element.into_any_element()).into_any_element()
 	} else {
 		element.into_any_element()
+	}
+}
+
+/// Drops the bounds recorded for `id` in `window`, for a target that is no
+/// longer drawn.
+///
+/// A cached view that was not re-rendered keeps its targets: only the view
+/// that stops drawing one can drop them.
+pub fn forget(window: &Window, id: &str, cx: &mut App) {
+	if !is_enabled() || !cx.has_global::<Targets>() {
+		return;
+	}
+	let window = window.window_handle().window_id();
+	if let Some(targets) = cx.global_mut::<Targets>().windows.get_mut(&window) {
+		targets.remove(id);
 	}
 }
 

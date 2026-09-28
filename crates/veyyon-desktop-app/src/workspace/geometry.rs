@@ -20,7 +20,7 @@ use super::layout::WorkspaceLayout;
 const DRAWER_MAX_SHARE: f32 = 0.7;
 
 /// The sizes the regions open to.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Sizes {
 	/// The sidebar width.
 	pub sidebar:     Pixels,
@@ -111,7 +111,7 @@ fn drawer_max(window_height: Pixels) -> Pixels {
 }
 
 #[expect(clippy::cast_precision_loss, reason = "a stored size is far below 2^24 pixels")]
-fn pixels(value: u32) -> Pixels {
+const fn pixels(value: u32) -> Pixels {
 	px(value as f32)
 }
 

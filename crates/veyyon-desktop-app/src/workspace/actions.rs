@@ -9,7 +9,7 @@ use crate::actions::workspace as act;
 
 impl Workspace {
 	/// Registers a listener for every `workspace` action on `root`.
-	pub(super) fn listen<E: InteractiveElement>(root: E, cx: &mut Context<Self>) -> E {
+	pub(super) fn listen<E: InteractiveElement>(root: E, cx: &Context<Self>) -> E {
 		root
 			.on_action(cx.listener(|_, _: &act::ToggleSidebar, _, cx| {
 				WorkspaceLayout::update(cx, |layout| layout.sidebar_visible = !layout.sidebar_visible);

@@ -131,9 +131,9 @@ impl Element for FrameProbe {
 		_: Bounds<Pixels>,
 		(): &mut Self::RequestLayoutState,
 		(): &mut Self::PrepaintState,
-		window: &mut Window,
+		_: &mut Window,
 		cx: &mut App,
 	) {
-		frame_painted(window, cx);
+		frame_painted(cx);
 	}
 }
