@@ -1,7 +1,7 @@
 //! The requests the palette sends itself, rather than a window action or a
 //! command line the host parses.
 
-use veyyon_desktop_model::{HostAction, SurfaceId, domain::ShareRole};
+use veyyon_desktop_model::{HostAction, SurfaceId, TreeRequest, domain::ShareRole};
 
 use super::item::{Group, Item, Run, Takes};
 use crate::state::AppState;
@@ -9,8 +9,8 @@ use crate::state::AppState;
 /// The requests the palette sends itself: pausing or resuming every agent,
 /// joining a share, and the open thread's own, which are reloading its
 /// transcript, `/clear` (the host starts a fresh session in its place),
-/// retrying the last turn, rephrasing the last reply, branching, and
-/// starting, stopping, refreshing or leaving a share. A request whose
+/// retrying the last turn, rephrasing the last reply, branching, forking,
+/// and starting, stopping, refreshing or leaving a share. A request whose
 /// direction depends on state is listed only the way that applies, as the
 /// thread header draws it.
 pub fn requests(app: &AppState, items: &mut Vec<Item>) {
@@ -37,6 +37,7 @@ pub fn requests(app: &AppState, items: &mut Vec<Item>) {
 		return;
 	};
 	let session = || session.clone();
+	let fork = HostAction::Tree(TreeRequest::ForkSession { session: session() });
 	items.extend([
 		host(
 			"Reload the transcript",
@@ -49,8 +50,9 @@ pub fn requests(app: &AppState, items: &mut Vec<Item>) {
 			"/rephrase",
 		]),
 		host("Branch this thread", HostAction::BranchSession { session: session(), entry: None }, &[
-			"/branch", "/fork",
+			"/branch",
 		]),
+		host("Fork this thread", fork, &["/fork"]),
 	]);
 	let refresh = || host("Refresh the share", HostAction::RefreshShare, &["/collab status"]);
 	match role {

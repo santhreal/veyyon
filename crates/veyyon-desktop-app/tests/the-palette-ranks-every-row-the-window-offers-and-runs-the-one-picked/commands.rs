@@ -12,7 +12,7 @@ use gpui::TestAppContext;
 use veyyon_desktop_app::{actions::panel, palette::Scope};
 use veyyon_desktop_model::{
 	CommandSource, CommandSubcommandView, CommandView, HostAction, HostEvent, SearchResultsView,
-	SnapshotSection,
+	SnapshotSection, TreeRequest,
 	domain::{AgentPauseView, ShareRole, ShareView},
 };
 
@@ -120,10 +120,11 @@ fn requests() -> [(&'static str, &'static str, HostAction); 9] {
 			session: sid("a"),
 			entry:   None,
 		}),
-		("/fork", "Branch this thread", HostAction::BranchSession {
-			session: sid("a"),
-			entry:   None,
-		}),
+		(
+			"/fork",
+			"Fork this thread",
+			HostAction::Tree(TreeRequest::ForkSession { session: sid("a") }),
+		),
 		("/collab", "Share thread", HostAction::StartShare { read_only: false }),
 		("/collab view", "Share a read-only link", HostAction::StartShare { read_only: true }),
 	]
