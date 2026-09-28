@@ -12,18 +12,22 @@
 //! clicks its tabs, controls and fields, and reads the drawn text, the requests
 //! queued, the layout and the render counts.
 //!
-//! Gap: the files, diagnostics and usage tabs are reached and their loads
-//! asserted, but their rows are not driven; the split diff layout is proven
+//! Gap: the diagnostics tab is reached and its load asserted, but its rows are
+//! not driven; the split diff layout is proven
 //! by the row pairing tests in the crate, not drawn here. Horizontal scroll
 //! of the diff with wrapping off is not offered: its rows clip.
 
+mod browse;
 mod cuts;
 mod declined;
 mod derived;
+mod gated;
 mod harness;
 mod long_lines;
 mod refusals;
 mod restate;
+mod search;
+mod usage;
 
 use gpui::TestAppContext;
 use veyyon_desktop_app::panel::PanelTab;

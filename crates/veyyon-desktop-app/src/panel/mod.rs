@@ -258,18 +258,18 @@ impl RightPanel {
 			PanelTab::Diagnostics => {
 				Some((HostAction::RefreshDiagnostics, SurfaceId::DiagnosticRefreshButton))
 			},
-			// The one control sends both counts, so a refusal of either
-			// holds both.
-			PanelTab::Usage => session
-				.filter(|_| {
-					app.store()
-						.retries
-						.peek(&SurfaceId::ContextBreakdownRefreshButton)
-						.is_none()
-				})
-				.map(|session| {
-					(HostAction::GetUsage { session: Some(session) }, SurfaceId::UsageRefreshButton)
-				}),
+			// The one control sends both counts, so a refusal of either holds
+			// both; each count is asked by the capability that answers it.
+			PanelTab::Usage => {
+				let retries = &app.store().retries;
+				let held = [SurfaceId::UsageRefreshButton, SurfaceId::ContextBreakdownRefreshButton]
+					.iter()
+					.any(|surface| retries.peek(surface).is_some());
+				if let Some(session) = session.filter(|_| !held) {
+					self.refresh_usage(&session, cx);
+				}
+				return;
+			},
 			PanelTab::Agents | PanelTab::Todo => None,
 		}
 		.filter(|(action, surface)| {
@@ -277,12 +277,8 @@ impl RightPanel {
 				&& app.panel_unavailable(action.kind()).is_none()
 				&& app.store().retries.peek(surface).is_none()
 		});
-		match request {
-			Some((HostAction::GetUsage { session: Some(session) }, _)) => {
-				self.refresh_usage(&session, cx);
-			},
-			Some((action, surface)) => self.send(action, surface, cx),
-			None => {},
+		if let Some((action, surface)) = request {
+			self.send(action, surface, cx);
 		}
 	}
 

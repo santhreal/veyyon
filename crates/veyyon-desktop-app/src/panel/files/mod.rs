@@ -14,7 +14,10 @@ use std::{
 	sync::Arc,
 };
 
-use veyyon_desktop_model::{FileKind, HostAction, HostActionKind, SnapshotSectionKind, SurfaceId};
+use veyyon_desktop_model::{
+	ContentMatchesView, FileKind, HostAction, HostActionKind, SearchResultsView,
+	SnapshotSectionKind, SurfaceId,
+};
 use veyyon_desktop_ui::{
 	controls::{IconButton, ListRow, Tooltip},
 	editor::{Editor, EditorEvent, EditorMode},
@@ -53,6 +56,12 @@ pub struct FilesView {
 	viewer:         UniformListScrollHandle,
 	search:         Entity<Editor>,
 	query:          String,
+	/// The query the tab last asked the host to search for.
+	asked:          String,
+	/// The host's last answers to a query the tab asked, held so an answer to
+	/// a query it did not ask replaces none of the rows drawn.
+	found_paths:    Option<SearchResultsView>,
+	found_lines:    Option<ContentMatchesView>,
 	renders:        u64,
 	_subscriptions: Vec<Subscription>,
 }
@@ -69,10 +78,11 @@ impl FilesView {
 			cx.subscribe(&app, |this, _, event: &StoreEvent, cx| match event {
 				StoreEvent::DomainChanged(SnapshotSectionKind::FileContent) => this.load_content(cx),
 				StoreEvent::DomainChanged(
+					SnapshotSectionKind::SearchResults | SnapshotSectionKind::ContentMatches,
+				) => this.hold_answers(cx),
+				StoreEvent::DomainChanged(
 					SnapshotSectionKind::FileTree
 					| SnapshotSectionKind::Changes
-					| SnapshotSectionKind::SearchResults
-					| SnapshotSectionKind::ContentMatches
 					| SnapshotSectionKind::Capabilities,
 				) => cx.notify(),
 				_ => {},
@@ -99,6 +109,9 @@ impl FilesView {
 			viewer: UniformListScrollHandle::new(),
 			search,
 			query: String::new(),
+			asked: String::new(),
+			found_paths: None,
+			found_lines: None,
 			renders: 0,
 			_subscriptions: subscriptions,
 		}
@@ -145,13 +158,38 @@ impl FilesView {
 			.update(cx, |editor, cx| editor.focus(window, cx));
 	}
 
-	/// Asks the host for the paths and the lines that hold the query.
-	fn run_search(&self, cx: &mut Context<Self>) {
+	/// Asks the host for the paths and the lines that hold the query, whose
+	/// answer is drawn in place of the viewed file.
+	fn run_search(&mut self, cx: &mut Context<Self>) {
 		if self.query.is_empty() {
 			return;
 		}
+		self.asked.clone_from(&self.query);
+		self.open = None;
 		self.send(HostAction::SearchFiles { query: self.query.clone() }, cx);
 		self.send(HostAction::SearchContent { query: self.query.clone() }, cx);
+		cx.notify();
+	}
+
+	/// Holds the host's answers to the query the tab asked for. An answer to
+	/// another one, a slower earlier search or a lookup another surface sent,
+	/// is left to that surface.
+	fn hold_answers(&mut self, cx: &mut Context<Self>) {
+		let domains = &self.app.read(cx).store().domains;
+		if let Some(paths) = domains
+			.search
+			.as_ref()
+			.filter(|paths| paths.query == self.asked)
+		{
+			self.found_paths = Some(paths.clone());
+		}
+		if let Some(lines) = domains
+			.content_matches
+			.as_ref()
+			.filter(|lines| lines.query == self.asked)
+		{
+			self.found_lines = Some(lines.clone());
+		}
 		cx.notify();
 	}
 

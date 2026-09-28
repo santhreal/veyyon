@@ -21,7 +21,7 @@ use veyyon_desktop_model::{
 
 use super::{
 	changed, diff,
-	harness::{SESSION, Win, opened, window},
+	harness::{SESSION, opened, search, window},
 };
 
 const DIFF_CUT: &str = "The diff stops at the host's size limit.";
@@ -55,14 +55,6 @@ fn answer(revision: u64, rows: bool, truncated: bool, withheld: u64) -> HostEven
 		diff_truncated: truncated,
 		files_withheld: withheld,
 	}))
-}
-
-/// Runs a search for `query` in the files tab, as Enter in its field does.
-fn search(w: &mut Win<'_>, query: &str) {
-	let files = w.panel.read_with(&*w.cx, |panel, _| panel.files().clone());
-	w.cx
-		.update(|window, cx| files.update(cx, |files, cx| files.search(query, window, cx)));
-	w.cx.run_until_parked();
 }
 
 #[gpui::test]

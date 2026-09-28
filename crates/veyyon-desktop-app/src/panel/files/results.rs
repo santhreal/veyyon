@@ -1,5 +1,6 @@
 //! The answer to a search: the paths whose names hold the query, then the
-//! lines whose text does. A result for an earlier query is not drawn.
+//! lines whose text does. The tab draws the answers it held for the query
+//! it asked, and a result for an earlier query is not drawn.
 
 use veyyon_desktop_ui::{
 	controls::ListRow,
@@ -15,13 +16,12 @@ use crate::panel::style::{counted, empty_state, heading};
 
 impl FilesView {
 	pub(super) fn render_results(&self, palette: &Palette, cx: &Context<Self>) -> AnyElement {
-		let domains = &self.app.read(cx).store().domains;
-		let paths = domains
-			.search
+		let paths = self
+			.found_paths
 			.as_ref()
 			.filter(|results| results.query == self.query);
-		let lines = domains
-			.content_matches
+		let lines = self
+			.found_lines
 			.as_ref()
 			.filter(|found| found.query == self.query);
 		if paths.is_none() && lines.is_none() {

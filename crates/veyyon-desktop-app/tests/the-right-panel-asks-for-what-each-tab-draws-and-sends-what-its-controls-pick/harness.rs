@@ -301,6 +301,14 @@ pub fn open_file(w: &mut Win<'_>, path: &str) {
 	w.cx.run_until_parked();
 }
 
+/// Runs a search for `query` in the files tab, as Enter in its field does.
+pub fn search(w: &mut Win<'_>, query: &str) {
+	let files = w.panel.read_with(&*w.cx, |panel, _| panel.files().clone());
+	w.cx
+		.update(|window, cx| files.update(cx, |files, cx| files.search(query, window, cx)));
+	w.cx.run_until_parked();
+}
+
 /// An agent `id` called `call_sign`, of `kind`, in `status`, owning
 /// `session`.
 pub fn agent(

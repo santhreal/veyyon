@@ -16,9 +16,12 @@ use veyyon_gpui::{
 };
 
 use super::FilesView;
-use crate::panel::{
-	PanelTab, refusal,
-	style::{code_line, counted, heading, language_tag, toolbar},
+use crate::{
+	driver,
+	panel::{
+		PanelTab, refusal,
+		style::{code_line, counted, heading, language_tag, toolbar},
+	},
 };
 
 impl FilesView {
@@ -148,11 +151,12 @@ impl FilesView {
 		};
 		let external = path.to_owned();
 		let header = toolbar(palette)
-			.child(
+			.child(driver::target(
+				"files.close",
 				IconButton::new("files-close", IconName::X)
 					.tooltip("Close the file")
 					.on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.close(cx))),
-			)
+			))
 			.child(
 				div()
 					.flex_1()

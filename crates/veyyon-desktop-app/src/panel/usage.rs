@@ -8,8 +8,8 @@ use veyyon_desktop_model::{
 };
 use veyyon_desktop_ui::theme::{Palette, TypeStyled, radius, space, text};
 use veyyon_gpui::{
-	AnyElement, ClickEvent, Context, Div, Hsla, IntoElement, ParentElement, Styled, div, prelude::*,
-	relative,
+	AnyElement, ClickEvent, Context, Div, Hsla, IntoElement, ParentElement, SharedString, Styled,
+	div, prelude::*, relative,
 };
 
 use super::{
@@ -27,11 +27,15 @@ pub fn render(panel: &RightPanel, palette: &Palette, cx: &mut Context<RightPanel
 	let domains = &app.store().domains;
 	let pending = app.panel_pending(HostActionKind::GetUsage)
 		|| app.panel_pending(HostActionKind::GetContextBreakdown);
+	let usage_refused = app.panel_unavailable(HostActionKind::GetUsage);
+	let context_refused = app.panel_unavailable(HostActionKind::GetContextBreakdown);
+	// The control asks for both halves, so it is refused only while both are.
+	let refused = usage_refused.clone().filter(|_| context_refused.is_some());
 	let refresh = refresh_control(
 		"usage-refresh",
 		"Count the usage again",
 		pending,
-		app.panel_unavailable(HostActionKind::GetUsage),
+		refused,
 		cx.listener(move |this, _: &ClickEvent, _, cx| this.refresh_usage(&session, cx)),
 	);
 	let session = app.active_session();
@@ -58,14 +62,16 @@ pub fn render(panel: &RightPanel, palette: &Palette, cx: &mut Context<RightPanel
 				.overflow_y_scroll()
 				.pb(space::S3)
 				.child(heading("Spent", palette))
-				.child(match totals {
-					Some(totals) => figures(totals, palette),
-					None => note("The host has not counted this session yet", palette),
+				.child(match (totals, usage_refused) {
+					(Some(totals), _) => figures(totals, palette),
+					(None, Some(reason)) => note(reason, palette),
+					(None, None) => note("The host has not counted this session yet", palette),
 				})
 				.child(heading("Context window", palette))
-				.child(match context {
-					Some(context) => context_rows(context, palette),
-					None => note("The host has not measured the context yet", palette),
+				.child(match (context, context_refused) {
+					(Some(context), _) => context_rows(context, palette),
+					(None, Some(reason)) => note(reason, palette),
+					(None, None) => note("The host has not measured the context yet", palette),
 				})
 				.children(quota.map(|quota| quota_rows(quota, palette))),
 		)
@@ -73,29 +79,36 @@ pub fn render(panel: &RightPanel, palette: &Palette, cx: &mut Context<RightPanel
 }
 
 impl RightPanel {
-	/// Asks the host for the displayed session's totals and context window.
+	/// Asks the host for the displayed session's totals and context window,
+	/// each by the capability that answers it: a host that declines one is
+	/// still asked for the other, and neither is asked while one is in
+	/// flight.
 	pub(super) fn refresh_usage(&mut self, session: &SessionId, cx: &mut Context<Self>) {
-		self.send(
-			HostAction::GetUsage { session: Some(session.clone()) },
-			SurfaceId::UsageRefreshButton,
-			cx,
-		);
-		self.send(
-			HostAction::GetContextBreakdown { session: session.clone() },
-			SurfaceId::ContextBreakdownRefreshButton,
-			cx,
-		);
+		let halves = [
+			(HostAction::GetUsage { session: Some(session.clone()) }, SurfaceId::UsageRefreshButton),
+			(
+				HostAction::GetContextBreakdown { session: session.clone() },
+				SurfaceId::ContextBreakdownRefreshButton,
+			),
+		];
+		for (action, surface) in halves {
+			let app = self.app.read(cx);
+			let kind = action.kind();
+			if !app.panel_pending(kind) && app.panel_unavailable(kind).is_none() {
+				self.send(action, surface, cx);
+			}
+		}
 	}
 }
 
 /// A muted sentence in place of figures the host has not sent.
-fn note(copy: &'static str, palette: &Palette) -> Div {
+fn note(copy: impl Into<SharedString>, palette: &Palette) -> Div {
 	div()
 		.px(space::S3)
 		.py(space::S1)
 		.type_style(text::SMALL)
 		.text_color(palette.text.muted)
-		.child(copy)
+		.child(copy.into())
 }
 
 /// Groups the digits of a count so two figures can be compared.

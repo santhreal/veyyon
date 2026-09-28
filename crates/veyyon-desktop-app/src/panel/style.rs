@@ -14,6 +14,8 @@ use veyyon_gpui::{
 	Styled, StyledText, Window, div,
 };
 
+use crate::driver;
+
 /// The row above a tab's content: its controls, `s3` from each side.
 pub fn toolbar(palette: &Palette) -> Div {
 	div()
@@ -63,7 +65,7 @@ pub fn empty_state(
 
 /// A tab's refresh control: a spinner while its request is in flight, and
 /// disabled, with the host's reason as its tooltip, while the host refuses
-/// it.
+/// it. The control is the driver target `id`.
 pub fn refresh_control(
 	id: &'static str,
 	label: &'static str,
@@ -82,11 +84,13 @@ pub fn refresh_control(
 			.into_any_element();
 	}
 	let disabled = unavailable.is_some();
-	IconButton::new(id, IconName::RefreshCw)
-		.tooltip(unavailable.unwrap_or_else(|| label.to_owned()))
-		.disabled(disabled)
-		.on_click(on_click)
-		.into_any_element()
+	driver::target(
+		id,
+		IconButton::new(id, IconName::RefreshCw)
+			.tooltip(unavailable.unwrap_or_else(|| label.to_owned()))
+			.disabled(disabled)
+			.on_click(on_click),
+	)
 }
 
 /// The spans of `highlighted` that fall inside `range` of the code it was
