@@ -1,5 +1,5 @@
-//! What send does in each phase of a turn, the prompt in flight and the
-//! prompt the host refused.
+//! What send does in each phase of a turn, the prompts in flight and the
+//! prompts the host refused.
 //!
 //! Send starts a turn when the session is idle and steers or queues behind a
 //! running one. A decision the session waits on takes the primary control
@@ -19,26 +19,41 @@ use super::{
 };
 use crate::state::{Answer, Decision};
 
-/// A prompt the composer sent: the request that carries it, the control
-/// that sent it and what the draft held.
+/// A prompt the composer sent: the request that carries it, the session and
+/// the control that sent it and what the draft held.
 pub(super) struct Sent {
 	request:     RequestId,
+	session:     SessionId,
 	surface:     SurfaceId,
 	text:        String,
 	attachments: Vec<Attachment>,
 }
 
-/// The prompt in flight and the prompt the host refused.
+/// The prompts in flight and the prompts the host refused, each under the
+/// session that sent it, so a session the window left gets its own back.
 #[derive(Default)]
 pub(super) struct Refused {
-	in_flight: Option<Sent>,
-	refused:   Option<Sent>,
+	in_flight: Vec<Sent>,
+	refused:   Vec<Sent>,
 }
 
 impl Refused {
-	/// The text of the prompt the host refused.
-	pub(super) fn text(&self) -> Option<&str> {
-		self.refused.as_ref().map(|sent| sent.text.as_str())
+	/// The text of the prompt the host refused in `session`.
+	pub(super) fn text(&self, session: &SessionId) -> Option<&str> {
+		self
+			.refused
+			.iter()
+			.find(|sent| sent.session == *session)
+			.map(|sent| sent.text.as_str())
+	}
+
+	/// Takes the prompt the host refused in `session`.
+	fn take(&mut self, session: &SessionId) -> Option<Sent> {
+		let ix = self
+			.refused
+			.iter()
+			.position(|sent| sent.session == *session)?;
+		Some(self.refused.swap_remove(ix))
 	}
 }
 
@@ -106,11 +121,23 @@ impl Composer {
 			Primary::Send => self.send(session, text, cx),
 			Primary::Steer if !text.is_empty() => {
 				let surface = SurfaceId::ComposerSteerButton(session.clone());
-				self.send_text(HostAction::Steer { session, text }, surface, draft, cx);
+				self.send_text(
+					session.clone(),
+					HostAction::Steer { session, text },
+					surface,
+					draft,
+					cx,
+				);
 			},
 			Primary::Queue if !text.is_empty() => {
 				let surface = SurfaceId::ComposerQueueButton(session.clone());
-				self.send_text(HostAction::FollowUp { session, text }, surface, draft, cx);
+				self.send_text(
+					session.clone(),
+					HostAction::FollowUp { session, text },
+					surface,
+					draft,
+					cx,
+				);
 			},
 			Primary::Answer | Primary::Refine if !text.is_empty() => {
 				self.answer_with_draft(session, text, cx);
@@ -139,7 +166,8 @@ impl Composer {
 		}
 		if self.attachments.is_empty() && self.names_command(&text, cx) {
 			let surface = SurfaceId::ComposerSendButton(session.clone());
-			self.send_text(HostAction::RunCommand { session, text: text.clone() }, surface, text, cx);
+			let action = HostAction::RunCommand { session: session.clone(), text: text.clone() };
+			self.send_text(session, action, surface, text, cx);
 			return;
 		}
 		let model = self
@@ -171,8 +199,8 @@ impl Composer {
 		let request = self
 			.app
 			.update(cx, |app, cx| app.submit_prompt(session.clone(), text.clone(), submissions, cx));
-		let surface = SurfaceId::ComposerSendButton(session);
-		self.sent(Sent { request, surface, text, attachments }, cx);
+		let surface = SurfaceId::ComposerSendButton(session.clone());
+		self.sent(Sent { request, session, surface, text, attachments }, cx);
 	}
 
 	/// Whether `text` starts with a command the host lists, by name or alias.
@@ -191,9 +219,11 @@ impl Composer {
 			.any(|command| command.name == word || command.aliases.iter().any(|alias| alias == word))
 	}
 
-	/// Sends `action`, which carries the draft `text`, on behalf of `surface`.
+	/// Sends `action`, which carries the draft `text` of `session`, on behalf
+	/// of `surface`.
 	fn send_text(
 		&mut self,
+		session: SessionId,
 		action: HostAction,
 		surface: SurfaceId,
 		text: String,
@@ -202,7 +232,7 @@ impl Composer {
 		let request = self
 			.app
 			.update(cx, |app, cx| app.dispatch(action, surface.clone(), cx));
-		self.sent(Sent { request, surface, text, attachments: Vec::new() }, cx);
+		self.sent(Sent { request, session, surface, text, attachments: Vec::new() }, cx);
 	}
 
 	/// Answers the oldest decision with the draft: a question's free-text
@@ -234,9 +264,9 @@ impl Composer {
 			return;
 		};
 		let request = self.app.update(cx, |app, cx| {
-			app.respond_to_interaction(session, &id, &answer, surface.clone(), cx)
+			app.respond_to_interaction(session.clone(), &id, &answer, surface.clone(), cx)
 		});
-		self.sent(Sent { request, surface, text, attachments: Vec::new() }, cx);
+		self.sent(Sent { request, session, surface, text, attachments: Vec::new() }, cx);
 	}
 
 	/// Answers the oldest decision with `answer`, leaving the draft alone.
@@ -271,7 +301,7 @@ impl Composer {
 	/// answers.
 	fn sent(&mut self, sent: Sent, cx: &mut Context<Self>) {
 		self.recall.remember(&sent.text);
-		self.refused.in_flight = Some(sent);
+		self.refused.in_flight.push(sent);
 		self.notice = None;
 		self.completion = None;
 		self.set_text("", cx);
@@ -291,35 +321,45 @@ impl Composer {
 	}
 
 	/// The host answered `request`. A refused prompt goes back into an empty
-	/// draft and is offered again.
+	/// draft of the session that sent it, shown or left, and is offered again
+	/// there.
 	pub(super) fn request_finished(&mut self, request: RequestId, ok: bool, cx: &mut Context<Self>) {
-		let ours = self
+		let Some(ix) = self
 			.refused
 			.in_flight
-			.as_ref()
-			.is_some_and(|sent| sent.request == request);
-		if !ours {
-			return;
-		}
-		let Some(sent) = self.refused.in_flight.take() else {
+			.iter()
+			.position(|sent| sent.request == request)
+		else {
 			return;
 		};
+		let sent = self.refused.in_flight.swap_remove(ix);
 		if ok {
 			return;
 		}
-		if self.text(cx).trim().is_empty() {
-			self.set_text(&sent.text, cx);
+		if self.session.as_ref() == Some(&sent.session) {
+			if self.text(cx).trim().is_empty() {
+				self.set_text(&sent.text, cx);
+			}
+			if self.attachments.is_empty() {
+				self.attachments.clone_from(&sent.attachments);
+				self.save_draft(cx);
+			}
+		} else {
+			self.hand_back(&sent.session, &sent.text, &sent.attachments, cx);
 		}
-		if self.attachments.is_empty() {
-			self.attachments.clone_from(&sent.attachments);
-		}
-		self.refused.refused = Some(sent);
+		self.refused.take(&sent.session);
+		self.refused.refused.push(sent);
 		cx.notify();
 	}
 
-	/// Sends the refused prompt again, clearing the draft it went back into.
+	/// Sends the shown session's refused prompt again, clearing the draft it
+	/// went back into.
 	pub(super) fn retry_refused(&mut self, cx: &mut Context<Self>) {
-		let Some(sent) = self.refused.refused.take() else {
+		let Some(sent) = self
+			.session
+			.clone()
+			.and_then(|session| self.refused.take(&session))
+		else {
 			return;
 		};
 		let request = self
@@ -333,22 +373,23 @@ impl Composer {
 			self.set_text("", cx);
 			self.attachments.clear();
 		}
-		self.refused.in_flight = Some(Sent { request, ..sent });
+		self.refused.in_flight.push(Sent { request, ..sent });
 		cx.notify();
 	}
 
-	/// Forgets the refused prompt; the draft keeps what it went back into.
+	/// Forgets the shown session's refused prompt; the draft keeps what it
+	/// went back into.
 	pub(super) fn dismiss_refused(&mut self, cx: &mut Context<Self>) {
-		if let Some(sent) = self.refused.refused.take() {
-			self
-				.app
-				.update(cx, |app, _| app.forget_refused(&sent.surface));
-			cx.notify();
-		}
-	}
-
-	/// Forgets the prompts of the session the composer leaves.
-	pub(super) fn forget_sent(&mut self) {
-		self.refused = Refused::default();
+		let Some(sent) = self
+			.session
+			.clone()
+			.and_then(|session| self.refused.take(&session))
+		else {
+			return;
+		};
+		self
+			.app
+			.update(cx, |app, _| app.forget_refused(&sent.surface));
+		cx.notify();
 	}
 }

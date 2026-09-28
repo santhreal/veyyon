@@ -21,7 +21,7 @@ use veyyon_desktop_model::{
 
 use super::{
 	Composer,
-	attach::{self, Source},
+	attach::{self, Attachment, Source},
 	dictate::Landing,
 	stash,
 };
@@ -46,7 +46,6 @@ impl Composer {
 	pub(super) fn show_session(&mut self, session: Option<SessionId>, cx: &mut Context<Self>) {
 		self.park_pasted();
 		self.session.clone_from(&session);
-		self.forget_sent();
 		self.recall.forget();
 		self.completion = None;
 		self.notice = None;
@@ -90,10 +89,7 @@ impl Composer {
 		let attachments = self
 			.attachments
 			.iter()
-			.filter_map(|attachment| match &attachment.source {
-				Source::Path(path) => Some(path.display().to_string()),
-				Source::Clipboard { kept, .. } => kept.as_ref().map(|path| path.display().to_string()),
-			})
+			.filter_map(saved_path)
 			.chain(self.restoring.iter().cloned())
 			.collect();
 		let draft = ComposerStore {
@@ -105,6 +101,37 @@ impl Composer {
 		self
 			.app
 			.update(cx, |app, cx| app.save_draft(session, draft, cx));
+	}
+
+	/// Puts a prompt the host refused after its session was left into that
+	/// session's saved draft: the text into an empty draft and the files into
+	/// an empty tray, a pasted image whose file is not written yet parked
+	/// with the session.
+	pub(super) fn hand_back(
+		&mut self,
+		session: &SessionId,
+		text: &str,
+		attachments: &[Attachment],
+		cx: &mut Context<Self>,
+	) {
+		let parked = self.parked.iter().any(|(parked, _)| parked == session);
+		let mut unkept = Vec::new();
+		self.app.update(cx, |app, cx| {
+			let mut draft = app.draft(session).cloned().unwrap_or_default();
+			if draft.draft_text.trim().is_empty() {
+				text.clone_into(&mut draft.draft_text);
+			}
+			if draft.attachments.is_empty() && !parked {
+				for attachment in attachments {
+					match saved_path(attachment) {
+						Some(path) => draft.attachments.push(path),
+						None => unkept.push((session.clone(), attachment.clone())),
+					}
+				}
+			}
+			app.save_draft(session.clone(), draft, cx);
+		});
+		self.parked.extend(unkept);
 	}
 
 	/// Puts the prompt a take-back handed back before the draft.
@@ -341,5 +368,16 @@ impl Composer {
 				ix += 1;
 			}
 		}
+	}
+}
+
+/// The path a saved draft names `attachment` by, `None` for a pasted image
+/// whose file is not written yet.
+fn saved_path(attachment: &Attachment) -> Option<String> {
+	match &attachment.source {
+		Source::Path(path) | Source::Clipboard { kept: Some(path), .. } => {
+			Some(path.display().to_string())
+		},
+		Source::Clipboard { kept: None, .. } => None,
 	}
 }

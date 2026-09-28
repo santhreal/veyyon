@@ -69,7 +69,7 @@ pub struct Composer {
 	restoring:      Vec<String>,
 	/// Why the last attachment or send was refused here, until the next one.
 	notice:         Option<SharedString>,
-	/// The prompt in flight and the prompt the host refused.
+	/// The prompts in flight and the prompts the host refused, per session.
 	refused:        Refused,
 	queue_mode:     QueueMode,
 	/// Whether a turn runs in the session, so a delta renders nothing.

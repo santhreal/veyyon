@@ -52,7 +52,7 @@ impl Composer {
 
 	/// The prompt the host refused, offered again.
 	fn render_refused(&self, cx: &Context<Self>) -> Option<AnyElement> {
-		let text = self.refused.text()?;
+		let text = self.refused.text(self.session.as_ref()?)?;
 		let palette = cx.theme().palette;
 		Some(
 			strip("composer-refused", cx)
