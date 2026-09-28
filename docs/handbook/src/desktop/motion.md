@@ -48,6 +48,9 @@ transition on a private display. Follow the
 [capture requirements](../foundations/verification.md) for paired animated
 clips. A still image does not establish transition timing.
 
-`proof/scenes/desktop-motion.sh` records the sidebar and the right panel
-closing and opening; the [surface scenes](surfaces.md#surface-scenes) table
-lists it with the command that records its pair.
+`proof/scenes/desktop-motion.sh` records a control clip of the pointer crossing
+the idle window's top edge, then the sidebar and the right panel closing and
+opening. x11grab draws the pointer into every frame, so the control clip holds
+the capture interval unless the recorder drops frames. The
+[surface scenes](surfaces.md#surface-scenes) table lists the scene with the
+commands that record its arms.

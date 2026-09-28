@@ -289,18 +289,19 @@ desk_park() {
 
 # ─── Waits ──────────────────────────────────────────────────────────────────
 
-# Until the window stops changing: under 200 differing pixels (a caret blink) for
-# `still` consecutive half-second probes, bounded by the ceiling. The older window
-# has no idle signal, so pixels are the only one.
-desk_settle() { # [<ceiling-s>] [<still-probes>]
-	local ceiling="${1:-20}" still="${2:-3}" quiet=0 half=0
+# Until the window stops changing: under `max-pixels` differing pixels (default
+# 200, a caret blink) for `still` consecutive half-second probes, bounded by the
+# ceiling. The older window has no idle signal, so pixels are the only one. A
+# `max-pixels` of 1 waits for a window that draws nothing at all.
+desk_settle() { # [<ceiling-s>] [<still-probes>] [<max-pixels>]
+	local ceiling="${1:-20}" still="${2:-3}" max="${3:-200}" quiet=0 half=0
 	local crop="${WIN_W}x${WIN_H}+${WIN_X}+${WIN_Y}" previous="${TMPDIR}/settle-a.png" now="${TMPDIR}/settle-b.png"
 	probe_frame "${previous}"
 	while [ "${half}" -lt $((ceiling * 2)) ]; do
 		sleep 0.5
 		half=$((half + 1))
 		probe_frame "${now}"
-		if [ "$(frames_differ_pixels_at "${previous}" "${now}" "${crop}")" -lt 200 ]; then
+		if [ "$(frames_differ_pixels_at "${previous}" "${now}" "${crop}")" -lt "${max}" ]; then
 			quiet=$((quiet + 1))
 			[ "${quiet}" -ge "${still}" ] && return 0
 		else
