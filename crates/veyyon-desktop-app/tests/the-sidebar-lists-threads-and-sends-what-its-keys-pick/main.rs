@@ -18,6 +18,7 @@
 mod folds;
 mod menus;
 mod motion;
+mod placement;
 mod pointer;
 mod widths;
 
