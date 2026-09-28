@@ -10,21 +10,27 @@
 mod actions;
 mod banner;
 mod empty;
+mod freeze;
 mod geometry;
 mod layout;
 mod notices;
 mod render;
 mod titlebar;
+mod transitions;
 
 use gpui::{
 	AnyView, App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable,
 	Subscription, Window,
 };
-use veyyon_desktop_model::PanelsStore;
+use veyyon_desktop_model::{PanelsStore, SnapshotSectionKind};
 use veyyon_desktop_ui::overlays::Toasts;
 
-use self::{banner::ConnectionBanner, empty::EmptyState, geometry::Slides, notices::Notices};
+use self::{
+	banner::ConnectionBanner, empty::EmptyState, geometry::Slides, notices::Notices,
+	transitions::Reduced,
+};
 pub use self::{
+	freeze::FreezeStrip,
 	geometry::{Openness, Sizes},
 	layout::{DEFAULT_PANEL_TAB, FocusSlot, WorkspaceLayout, focus_slot, register_focus},
 	titlebar::{drag_region, window_controls},
@@ -70,6 +76,9 @@ pub struct Workspace {
 	notices:        Notices,
 	banner:         Entity<ConnectionBanner>,
 	empty:          Entity<EmptyState>,
+	freeze:         Entity<FreezeStrip>,
+	/// The inputs reduced motion was last resolved from.
+	reduced:        Reduced,
 	_subscriptions: [Subscription; 4],
 }
 
@@ -111,14 +120,19 @@ impl Workspace {
 		let lost = cx.on_focus_lost(window, |this, window, cx| this.focus_composer(window, cx));
 		let store_changed = cx.subscribe(&app, |this, _, event: &StoreEvent, cx| match event {
 			StoreEvent::NotificationsChanged => this.notices.sync(&this.app, cx),
-			StoreEvent::ConnectionChanged => cx.notify(),
+			StoreEvent::ConnectionChanged
+			| StoreEvent::DomainChanged(SnapshotSectionKind::AgentPause) => cx.notify(),
 			StoreEvent::ActiveSessionChanged => this.session_changed(cx),
+			StoreEvent::DomainChanged(SnapshotSectionKind::Settings) => {
+				this.reduced.resolve(&this.app, cx);
+			},
 			_ => {},
 		});
 		let (mut notices, dismissed) = Notices::new(cx);
 		notices.sync(&app, cx);
 		let banner = cx.new(|cx| ConnectionBanner::new(app.clone(), cx));
 		let empty = cx.new(|cx| EmptyState::new(app.clone(), cx));
+		let freeze = cx.new(|cx| FreezeStrip::new(app.clone(), cx));
 		let focus = cx.focus_handle();
 		if window.focused(cx).is_none() {
 			window.focus(&focus, cx);
@@ -134,6 +148,8 @@ impl Workspace {
 			notices,
 			banner,
 			empty,
+			freeze,
+			reduced: Reduced::new(cx),
 			_subscriptions: [observe, lost, store_changed, dismissed],
 		}
 	}
@@ -141,6 +157,11 @@ impl Workspace {
 	/// The stack the announcement queue is drawn in.
 	pub const fn toasts(&self) -> &Entity<Toasts> {
 		self.notices.toasts()
+	}
+
+	/// The strip drawn while the host holds every agent frozen.
+	pub const fn freeze(&self) -> &Entity<FreezeStrip> {
+		&self.freeze
 	}
 
 	/// The sizes the regions open to.

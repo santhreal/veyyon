@@ -1,8 +1,9 @@
 //! The workspace's frame: sidebar, thread or settings over the drawer, right
 //! panel, and the palette over all of them (CONTRACT §4). The connection
-//! banner tops the thread column while the link is not up, the empty state
-//! takes the thread's place while no session is open, and the toast stack is
-//! drawn over everything.
+//! banner tops the thread column while the link is not up and the freeze
+//! strip while the host holds every agent frozen, the empty state takes the
+//! thread's place while no session is open, and the toast stack is drawn
+//! over everything.
 //!
 //! A region slides by clipping a container of `size × open` around content
 //! drawn at its full size and pinned to the container's fixed edge, so the
@@ -23,6 +24,9 @@ use crate::driver;
 
 impl Render for Workspace {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		// A change of the system preference reaches the app as a redraw of
+		// every window, so the frame resolves it before any driver samples.
+		self.reduced.resolve(&self.app, cx);
 		let open = self.slides.step(window, cx);
 		let layout = WorkspaceLayout::get(cx).clone();
 		let sizes = self.sizes;
@@ -74,9 +78,14 @@ impl Render for Workspace {
 					sizes.drawer_set = false;
 				}))
 		});
-		let (no_session, banner) = {
+		let (no_session, banner, frozen) = {
 			let app = self.app.read(cx);
-			(app.active_session().is_none(), ConnectionBanner::shows(&app.store().connection))
+			let store = app.store();
+			(
+				app.active_session().is_none(),
+				ConnectionBanner::shows(&store.connection),
+				store.paused.paused,
+			)
 		};
 		let main = if layout.settings_open {
 			driver::target("settings", fill(&self.regions.settings))
@@ -95,6 +104,16 @@ impl Render for Workspace {
 					.into_any_element(),
 			)
 		});
+		let freeze = frozen.then(|| {
+			driver::target(
+				"freeze",
+				self
+					.freeze
+					.clone()
+					.cached(StyleRefinement::default().w_full().h(size::HEADER))
+					.into_any_element(),
+			)
+		});
 		// A target not drawn this frame is dropped, so a client never reads the
 		// bounds of a region that closed.
 		for (id, drawn) in [
@@ -104,6 +123,7 @@ impl Render for Workspace {
 			("settings", layout.settings_open),
 			("empty", !layout.settings_open && no_session),
 			("connection-banner", banner.is_some()),
+			("freeze", freeze.is_some()),
 		] {
 			if !drawn {
 				driver::forget(window, id, cx);
@@ -132,6 +152,7 @@ impl Render for Workspace {
 					.min_w_0()
 					.h_full()
 					.children(banner)
+					.children(freeze)
 					.child(div().flex_1().min_h_0().child(main))
 					.children(drawer_handle)
 					.children(drawer),

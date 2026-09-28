@@ -124,8 +124,8 @@ const fn kind(held: &Notification) -> ToastKind {
 }
 
 /// The wall clock in milliseconds since the Unix epoch, the clock the host
-/// stamps announcements with.
-fn now_ms() -> u64 {
+/// stamps announcements and the freeze of its agents with.
+pub(super) fn now_ms() -> u64 {
 	SystemTime::now()
 		.duration_since(UNIX_EPOCH)
 		.map_or(0, |elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX))
