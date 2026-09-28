@@ -9,17 +9,20 @@
 //! fact drops the trailing ones whole, and the title narrows below its own
 //! width only once no fact is left.
 
+mod share;
+
 use gpui::{
-	AnyElement, Context, Entity, MouseButton, Render, Subscription, Window, WindowControlArea, div,
-	prelude::*, relative,
+	AnyElement, ClickEvent, Context, Entity, MouseButton, Render, Subscription, Window,
+	WindowControlArea, div, prelude::*, relative,
 };
 use veyyon_desktop_model::{
-	HostAction, SurfaceId,
+	HostAction, HostActionKind, SnapshotSectionKind, SurfaceId,
 	domain::{ExportFormat, ShareRole},
 };
 use veyyon_desktop_ui::{
 	controls::IconButton,
 	icons::IconName,
+	overlays::ContextMenu,
 	theme::{ActiveTheme, TypeStyled, radius, size, space, text},
 };
 
@@ -32,28 +35,73 @@ use crate::{
 	workspace,
 };
 
+/// The driver target of the sharing chip.
+const CHIP: &str = "thread.share-links";
+
 /// The thread header region.
 pub struct ThreadHeader {
-	app:           Entity<AppState>,
-	_subscription: Subscription,
+	app:            Entity<AppState>,
+	/// The menu the sharing chip opens, and the link each of its rows copies.
+	share_menu:     Entity<ContextMenu>,
+	share_picks:    Vec<Option<String>>,
+	/// The request each host button sends and whether one was in flight, as
+	/// last drawn.
+	drawn:          Vec<(HostActionKind, bool)>,
+	_subscriptions: [Subscription; 2],
 }
 
 impl ThreadHeader {
 	/// Creates the header over `app`.
-	pub fn new(app: Entity<AppState>, _window: &mut Window, cx: &mut Context<Self>) -> Self {
-		let subscription = cx.subscribe(&app, |_, _, event: &StoreEvent, cx| match event {
+	pub fn new(app: Entity<AppState>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+		let store = cx.subscribe(&app, |this, _, event: &StoreEvent, cx| match event {
+			StoreEvent::DomainChanged(SnapshotSectionKind::Share) => {
+				this.restate_share_menu(cx);
+				cx.notify();
+			},
 			StoreEvent::ActiveSessionChanged
 			| StoreEvent::SessionsChanged
 			| StoreEvent::DomainChanged(_)
 			| StoreEvent::ConnectionChanged => cx.notify(),
+			// A press was sent or answered: redraw a button whose request
+			// went in or out of flight.
+			StoreEvent::OutboxReady | StoreEvent::RequestFinished { .. } => {
+				let app = this.app.read(cx);
+				let moved = this
+					.drawn
+					.iter()
+					.any(|(kind, in_flight)| app.panel_pending(*kind) != *in_flight);
+				if moved {
+					cx.notify();
+				}
+			},
 			_ => {},
 		});
-		Self { app, _subscription: subscription }
+		let share_menu = cx.new(|cx| ContextMenu::new(Vec::new(), window, cx));
+		let picked = cx.subscribe_in(&share_menu, window, Self::on_share_pick);
+		Self {
+			app,
+			share_menu,
+			share_picks: Vec::new(),
+			drawn: Vec::new(),
+			_subscriptions: [store, picked],
+		}
 	}
 }
 
 impl Render for ThreadHeader {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let role = self
+			.app
+			.read(cx)
+			.store()
+			.domains
+			.share
+			.as_ref()
+			.map_or(ShareRole::Off, |share| share.role);
+		let share_chip = share::chip(role);
+		if share_chip.is_none() {
+			driver::forget(window, CHIP, cx);
+		}
 		let palette = cx.theme().palette;
 		let app = self.app.read(cx);
 		let session = app.active_session().cloned();
@@ -97,22 +145,26 @@ impl Render for ThreadHeader {
 				);
 			}
 		}
-		let share_chip = match store.domains.share.as_ref().map(|share| share.role) {
-			Some(ShareRole::Hosting) => Some("Sharing"),
-			Some(ShareRole::Guest) => Some("Joined"),
-			Some(ShareRole::Off) | None => None,
-		};
 		let status = session
 			.as_ref()
 			.map(|session| status_chips(app, session, now_ms()))
 			.unwrap_or_default();
 		let chips: Vec<AnyElement> = share_chip
 			.map(|chip| {
-				div()
-					.type_style(text::SMALL)
-					.text_color(palette.status.info)
-					.child(chip)
-					.into_any_element()
+				driver::target(
+					CHIP,
+					div()
+						.id("thread-share-links")
+						.type_style(text::SMALL)
+						.text_color(palette.status.info)
+						.cursor_pointer()
+						// The facts move the window when pressed; the chip opens its menu instead.
+						.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+						.on_click(cx.listener(|this, event: &ClickEvent, window, cx| {
+							this.open_share_menu(event.position(), window, cx);
+						}))
+						.child(chip),
+				)
 			})
 			.into_iter()
 			.chain(status.into_iter().map(|chip| {
@@ -126,74 +178,53 @@ impl Render for ThreadHeader {
 					.into_any_element()
 			}))
 			.collect();
-		let paused = store.paused.paused;
-		let pause = self.host_button(
-			app,
-			"thread-pause",
-			if paused {
-				IconName::Play
-			} else {
-				IconName::Pause
+		let mut drawn = Vec::new();
+		let (icon, label, action, surface) = if store.paused.paused {
+			(IconName::Play, "Resume agents", HostAction::ResumeAgents, SurfaceId::AgentsResumeButton)
+		} else {
+			(IconName::Pause, "Pause agents", HostAction::PauseAgents, SurfaceId::AgentsPauseButton)
+		};
+		let pause = self.host_button(app, &mut drawn, "thread.pause", (icon, label), action, surface);
+		let (share_label, share_action, share_surface) = match role {
+			ShareRole::Off => (
+				"Share thread",
+				HostAction::StartShare { read_only: false },
+				SurfaceId::ShareStartButton,
+			),
+			ShareRole::Hosting => ("Stop sharing", HostAction::StopShare, SurfaceId::ShareStopButton),
+			ShareRole::Guest => {
+				("Leave the share", HostAction::LeaveShare, SurfaceId::ShareLeaveButton)
 			},
-			if paused {
-				"Resume agents"
-			} else {
-				"Pause agents"
-			},
-			if paused {
-				HostAction::ResumeAgents
-			} else {
-				HostAction::PauseAgents
-			},
-			if paused {
-				SurfaceId::AgentsResumeButton
-			} else {
-				SurfaceId::AgentsPauseButton
-			},
-		);
+		};
 		let session_buttons = session.map(|session| {
 			[
 				self.host_button(
 					app,
-					"thread-compact",
-					IconName::Archive,
-					"Compact context",
+					&mut drawn,
+					"thread.compact",
+					(IconName::Archive, "Compact context"),
 					HostAction::CompactSession { session: session.clone() },
 					SurfaceId::SessionCompactButton(session.clone()),
 				),
 				self.host_button(
 					app,
-					"thread-export",
-					IconName::FileText,
-					"Export as HTML",
-					HostAction::ExportSession {
-						session: session.clone(),
-						format:  ExportFormat::Html,
-					},
+					&mut drawn,
+					"thread.export",
+					(IconName::FileText, "Export as HTML"),
+					HostAction::ExportSession { session: session.clone(), format: ExportFormat::Html },
 					SurfaceId::SessionExportButton(session),
 				),
 				self.host_button(
 					app,
-					"thread-share",
-					IconName::Globe,
-					if share_chip.is_some() {
-						"Stop sharing"
-					} else {
-						"Share thread"
-					},
-					if share_chip.is_some() {
-						HostAction::StopShare
-					} else {
-						HostAction::StartShare { read_only: false }
-					},
-					if share_chip.is_some() {
-						SurfaceId::ShareStopButton
-					} else {
-						SurfaceId::ShareStartButton
-					},
+					&mut drawn,
+					"thread.share",
+					(IconName::Globe, share_label),
+					share_action,
+					share_surface,
 				),
 			]
 		});
+		self.drawn = drawn;
 		let window_controls = workspace::window_controls(window, cx);
 		div()
 			.h(size::HEADER)
@@ -241,7 +272,7 @@ impl Render for ThreadHeader {
 							}),
 					)
 					.children(session_buttons.into_iter().flatten())
-					.child(driver::target("thread.pause", pause))
+					.child(pause)
 					.child(
 						IconButton::new("thread-drawer", IconName::PanelBottom)
 							.tooltip("Terminal drawer")
@@ -258,6 +289,7 @@ impl Render for ThreadHeader {
 					),
 			))
 			.child(window_controls)
+			.child(self.share_menu.clone())
 	}
 }
 
@@ -298,28 +330,36 @@ fn facts(place: Vec<AnyElement>, chips: Vec<AnyElement>) -> impl IntoElement {
 }
 
 impl ThreadHeader {
-	/// A button sending `action` for `surface`, drawn disabled with the
-	/// host's reason as its tooltip while the host takes no such action.
+	/// A button sending `action` for `surface`, recorded in `drawn` with
+	/// whether a request of its kind is in flight. It is drawn disabled while
+	/// one is, and with the host's reason as its tooltip while the host takes
+	/// no such action.
 	fn host_button(
 		&self,
 		app: &AppState,
+		drawn: &mut Vec<(HostActionKind, bool)>,
 		id: &'static str,
-		icon: IconName,
-		label: &'static str,
+		(icon, label): (IconName, &'static str),
 		action: HostAction,
 		surface: SurfaceId,
-	) -> IconButton {
-		let refusal = app.refusal(action.kind());
-		let disabled = refusal.is_some();
+	) -> AnyElement {
+		let kind = action.kind();
+		let in_flight = app.panel_pending(kind);
+		drawn.push((kind, in_flight));
+		let refusal = app.refusal(kind);
+		let disabled = refusal.is_some() || in_flight;
 		let state = self.app.clone();
-		IconButton::new(id, icon)
-			.tooltip(refusal.unwrap_or_else(|| label.to_owned()))
-			.disabled(disabled)
-			.on_click(move |_, _, cx| {
-				let (action, surface) = (action.clone(), surface.clone());
-				state.update(cx, |app, cx| {
-					app.dispatch(action, surface, cx);
-				});
-			})
+		driver::target(
+			id,
+			IconButton::new(id, icon)
+				.tooltip(refusal.unwrap_or_else(|| label.to_owned()))
+				.disabled(disabled)
+				.on_click(move |_, _, cx| {
+					let (action, surface) = (action.clone(), surface.clone());
+					state.update(cx, |app, cx| {
+						app.dispatch(action, surface, cx);
+					});
+				}),
+		)
 	}
 }
