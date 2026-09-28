@@ -34,8 +34,8 @@ pub(super) fn choices() -> Vec<Choice> {
 }
 
 impl InteractionDock {
-	/// The plan's title and its body, parsed once when the card opened and
-	/// scrolling past a share of the window.
+	/// The plan's title and the rest of it, parsed once when the card opened
+	/// and scrolling past a share of the window.
 	pub(super) fn render_plan(
 		&self,
 		plan: &PlanInteraction,
@@ -43,7 +43,7 @@ impl InteractionDock {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let palette = cx.theme().palette;
-		let title = plan_title(&plan.markdown_plan).to_owned();
+		let title = plan_title(&plan.markdown_plan);
 		let body = self
 			.shown
 			.as_ref()

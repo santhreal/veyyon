@@ -32,7 +32,7 @@ fn subject(decision: &Owned) -> String {
 	match decision {
 		Owned::Approval(approval) => format!("Run {}?", approval.tool_name),
 		Owned::Question(question) => first_line(&question.prompt).to_owned(),
-		Owned::Plan(plan) => plan_title(&plan.markdown_plan).to_owned(),
+		Owned::Plan(plan) => plan_title(&plan.markdown_plan),
 		Owned::Dialog(dialog) => match dialog.questions.as_slice() {
 			[only] => first_line(&only.question).to_owned(),
 			many => format!("{} questions", many.len()),

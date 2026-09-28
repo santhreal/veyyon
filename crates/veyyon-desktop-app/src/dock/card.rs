@@ -6,7 +6,10 @@ use veyyon_desktop_model::{
 	ApprovalInteraction, DialogInteraction, InteractionId, PlanInteraction, QuestionInteraction,
 	SessionId, SurfaceId,
 };
-use veyyon_desktop_ui::{controls::ButtonVariant, markdown::MarkdownDoc};
+use veyyon_desktop_ui::{
+	controls::ButtonVariant,
+	markdown::{Block, MarkdownDoc},
+};
 
 use super::{InteractionDock, dialog::DialogState};
 use crate::state::{Answer, Decision};
@@ -142,10 +145,44 @@ pub(super) fn first_line(text: &str) -> &str {
 		.unwrap_or_default()
 }
 
-/// A plan's name: its first line with text on it, without heading marks.
-pub(super) fn plan_title(markdown: &str) -> &str {
-	let line = first_line(markdown).trim_start_matches('#').trim();
-	if line.is_empty() { "Plan" } else { line }
+/// A plan's name: the words of its first line when a heading or prose opens
+/// the plan, without the markdown they were written in, else `Plan`.
+pub(super) fn plan_title(markdown: &str) -> String {
+	plan_heading(markdown).unwrap_or_else(|| "Plan".to_owned())
+}
+
+/// What the plan card's body draws: the plan less the line its title was
+/// read from, and less that line's setext underline, so the title is drawn
+/// once.
+pub(super) fn plan_body(markdown: &str) -> &str {
+	if plan_heading(markdown).is_none() {
+		return markdown;
+	}
+	let mut rest = markdown;
+	loop {
+		let (line, tail) = rest.split_once('\n').unwrap_or((rest, ""));
+		rest = tail;
+		if !line.trim().is_empty() || rest.is_empty() {
+			break;
+		}
+	}
+	let (next, tail) = rest.split_once('\n').unwrap_or((rest, ""));
+	let next = next.trim();
+	let underline = !next.is_empty() && (next.bytes().all(|b| b == b'=') || next.bytes().all(|b| b == b'-'));
+	if underline { tail } else { rest }
+}
+
+/// The text of the plan's first line with text on it, parsed as markdown,
+/// when that line is a heading or prose.
+fn plan_heading(markdown: &str) -> Option<String> {
+	let doc = MarkdownDoc::new(first_line(markdown));
+	match doc.blocks().first()? {
+		Block::Heading { runs, .. } | Block::Paragraph(runs) => {
+			let words = runs.text.trim();
+			(!words.is_empty()).then(|| words.to_owned())
+		},
+		_ => None,
+	}
 }
 
 /// The decision shown and the state its card keeps while it stays shown.
@@ -174,7 +211,7 @@ impl Shown {
 		cx: &mut Context<InteractionDock>,
 	) -> Self {
 		let plan = match &decision {
-			Owned::Plan(plan) => Some(MarkdownDoc::new(plan.markdown_plan.clone())),
+			Owned::Plan(plan) => Some(MarkdownDoc::new(plan_body(&plan.markdown_plan))),
 			Owned::Approval(_) | Owned::Question(_) | Owned::Dialog(_) => None,
 		};
 		let (dialog, cursor) = match &decision {
