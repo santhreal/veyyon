@@ -162,6 +162,7 @@
 - `cli/stdout-drain` exports `awaitStdoutDrain` and `exitAfterStdoutDrain`, the one way a non-interactive mode exits after its last frame is written.
 - The desktop runs `/agents`, `/cockpit` and `/hub`, which open a dashboard listing the agents of the session in view, running first, with a session to open and a confirmed termination per row, beside a second view carrying the traffic those agents send each other as it lands.
 - The desktop runs `/tan <work>`, which forks the session to a background agent that carries the tangential work, states the dispatch in the transcript, and lists the agent in the dashboard the window opens.
+- A desktop window announces a session export by the file the host wrote, with an `Open` button that asks the host to open it while the host opens files and the link to it is up.
 
 ### Changed
 
@@ -742,6 +743,10 @@
 - The desktop files tab keeps the rows of the search it ran when the host answers a different search.
 - A desktop drawer terminal shown after the process list is sized to its own box instead of the process list's shorter one.
 - A desktop thread header button sends nothing more while its press is in flight, and the Sharing chip lists each link a hosted share offers and copies it on pick.
+- A desktop window withholds every control but attach, detach and retry while the link to the host is reconnecting or has failed, stating why, and a settings page whose load the link held back loads once the link returns.
+- A desktop settings page states the host's reason for the request it sent, where it stated the newest refusal the host announced for any control.
+- A desktop control is withheld with the host's reason as soon as the host refuses its capability, where a request of that capability still waiting for an answer kept the control offered.
+- A desktop toast wraps a long message inside its width, where a path with no space in it widened the toast and pushed its `Open` and close buttons past the window edge.
 
 ### Removed
 
