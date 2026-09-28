@@ -70,7 +70,7 @@ impl Transcript {
 			.enumerate()
 			.map(|(piece_ix, piece)| self.render_piece(ix, &plan, piece_ix, piece, &session, &palette, window, cx))
 			.collect();
-		let actions = self.item_actions(ix, &plan, &session, last_turn && item_end && !self.working, &palette, cx);
+		let actions = self.item_actions(ix, &plan, &session, last_turn && item_end && !self.working, &palette);
 		let group = SharedString::from(format!("transcript-item-{ix}"));
 		let column = div()
 			.w_full()
@@ -260,7 +260,7 @@ impl Transcript {
 		id: &str,
 		session: &SessionId,
 		palette: &Palette,
-		cx: &mut Context<Self>,
+		cx: &Context<Self>,
 	) -> AnyElement {
 		let (glyph, color) = status_mark(row.status, palette);
 		let this = Self::weak(cx);
@@ -314,7 +314,6 @@ impl Transcript {
 		session: &SessionId,
 		last: bool,
 		palette: &Palette,
-		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let copy = {
 			let app = self.app.clone();
@@ -340,7 +339,6 @@ impl Transcript {
 				self.session_button(format!("t{ix}-rephrase"), IconName::Pencil, "Rephrase", session, None, Action::Rephrase),
 			]
 		});
-		let _ = cx;
 		div()
 			.flex()
 			.gap(space::S1)

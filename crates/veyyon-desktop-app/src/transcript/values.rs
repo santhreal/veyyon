@@ -106,11 +106,13 @@ fn first_line(text: &str) -> String {
 	text.lines().map(str::trim).find(|line| !line.is_empty()).unwrap_or_default().to_owned()
 }
 
-/// `text` with every ECMA-48 control sequence removed: CSI (`ESC [` or
-/// `0x9B` up to a final byte), OSC, DCS, SOS, PM and APC strings (up to `BEL`
-/// or `ESC \`), two-byte escapes, and every C0/C1 control except newline and
-/// tab. A tab becomes four spaces and a carriage return that does not end a
-/// line starts the line over, as a terminal draws it.
+/// `text` with every ECMA-48 control sequence removed.
+///
+/// That covers CSI (`ESC [` or `0x9B` up to a final byte), OSC, DCS, SOS, PM
+/// and APC strings (up to `BEL` or `ESC \`), two-byte escapes, and every
+/// C0/C1 control except newline and tab. A tab becomes four spaces and a
+/// carriage return that does not end a line starts the line over, as a
+/// terminal draws it.
 #[must_use]
 pub fn sanitize(text: &str) -> String {
 	let mut out = String::with_capacity(text.len());

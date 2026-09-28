@@ -1,7 +1,10 @@
-//! The thread header: 44 px, the window's drag region beside the sidebar top
-//! row. Left: the thread's title and where it works (directory, branch, pull
+//! The thread header: 44 px, the window's drag region beside the sidebar.
+//!
+//! Left: the thread's title and where it works (directory, branch, pull
 //! request, machine). Right: what the session runs as and costs (mode, model,
 //! pace, serving account, quota, tokens, context) and the thread's controls.
+
+use std::fmt::Write as _;
 
 use gpui::{Context, Entity, Render, Subscription, WindowControlArea, Window, div, prelude::*};
 use veyyon_desktop_model::{HostAction, SessionId, SessionMode, SurfaceId, domain::ShareRole};
@@ -100,7 +103,7 @@ pub fn status_chips(app: &AppState, session: &SessionId, now_ms: u64) -> Vec<Str
 	if let Some(usage) = domains.usage.get(session) {
 		let mut words = format!("↑{} ↓{}", compact_count(usage.input_tokens), compact_count(usage.output_tokens));
 		if let Some(cost) = usage.cost_microusd {
-			words.push_str(&format!(" · ${}.{:02}", cost / 1_000_000, (cost % 1_000_000) / 10_000));
+			let _ = write!(words, " · ${}.{:02}", cost / 1_000_000, (cost % 1_000_000) / 10_000);
 		}
 		chips.push(words);
 	}
@@ -165,7 +168,7 @@ impl Render for ThreadHeader {
 			if paused { HostAction::ResumeAgents } else { HostAction::PauseAgents },
 			if paused { SurfaceId::AgentsResumeButton } else { SurfaceId::AgentsPauseButton },
 		);
-		let session_buttons = session.clone().map(|session| {
+		let session_buttons = session.map(|session| {
 			[
 				self.host_button(
 					"thread-compact",
@@ -179,7 +182,7 @@ impl Render for ThreadHeader {
 					IconName::FileText,
 					"Export as Markdown",
 					HostAction::ExportSession { session: session.clone(), format: "markdown".to_owned() },
-					SurfaceId::SessionExportButton(session.clone()),
+					SurfaceId::SessionExportButton(session),
 				),
 				self.host_button(
 					"thread-share",
@@ -190,7 +193,7 @@ impl Render for ThreadHeader {
 				),
 			]
 		});
-		let row = div()
+		div()
 			.h(size::HEADER)
 			.w_full()
 			.flex()
@@ -241,8 +244,7 @@ impl Render for ThreadHeader {
 				IconButton::new("thread-panel", IconName::PanelRight)
 					.tooltip("Right panel")
 					.on_click(|_, window, cx| window.dispatch_action(Box::new(TogglePanel), cx)),
-			);
-		row
+			)
 	}
 }
 
