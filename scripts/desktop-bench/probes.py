@@ -303,7 +303,7 @@ class Bench:
 	def __init__(self, cfg: argparse.Namespace, layout: dict) -> None:
 		self.cfg = cfg
 		self.layout = layout
-		self.work = REPO_ROOT / ".internal" / "bench" / "work" / cfg.name
+		self.work = REPO_ROOT / "runs" / "desktop-bench" / "work" / cfg.name
 		if self.work.exists():
 			shutil.rmtree(self.work)
 		self.logs = self.work / "logs"

@@ -33,7 +33,7 @@ esac
 
 binary=""
 samples=20
-out="${REPO_ROOT}/.internal/rebuild/bench"
+out="${REPO_ROOT}/runs/desktop-bench"
 pass=()
 while [ $# -gt 0 ]; do
 	case "$1" in

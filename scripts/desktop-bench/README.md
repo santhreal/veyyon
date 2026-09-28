@@ -24,7 +24,7 @@ are the exception: they read the frames veyyon-desktop reports on its driver soc
 ```sh
 scripts/desktop-bench/run.sh t3 --binary <squashfs-root>/t3code
 scripts/desktop-bench/run.sh veyyon --binary <dir>/veyyon-desktop
-scripts/desktop-bench/compare.sh .internal/rebuild/bench/veyyon.json .internal/rebuild/bench/t3.json
+scripts/desktop-bench/compare.sh runs/desktop-bench/veyyon.json runs/desktop-bench/t3.json
 ```
 
 `run.sh <veyyon|t3>` accepts:
@@ -33,7 +33,7 @@ scripts/desktop-bench/compare.sh .internal/rebuild/bench/veyyon.json .internal/r
 |---|---|
 |`--binary PATH`|App binary. Defaults to `$BENCH_VEYYON_BIN` or `$BENCH_T3_APP`.|
 |`--samples N`|Samples for each repeatable probe. Default 20.|
-|`--out DIR`|Report directory. Default `.internal/rebuild/bench`.|
+|`--out DIR`|Report directory. Default `runs/desktop-bench`.|
 |`--name NAME`|Report file stem and work directory name. Default the app name.|
 |`--probes LIST`|Comma-separated subset of `cold_launch,keystroke,switch,token,steady,palette_open`. Default all but `palette_open`.|
 |`--survey [X,Y ...]`|Launch once, click each point, relaunch, and write a screenshot after each step.|
@@ -42,7 +42,7 @@ scripts/desktop-bench/compare.sh .internal/rebuild/bench/veyyon.json .internal/r
 
 `run.sh` starts a headless sway session through `session.sh` and stops it on exit. `session.sh` rejects
 `:0`, `:1`, and any X display or Wayland socket that was live before it started. The apps run with
-`HOME`, the XDG directories and `CODEX_HOME` under `.internal/bench/work/<name>/`; no probe reads the
+`HOME`, the XDG directories and `CODEX_HOME` under `runs/desktop-bench/work/<name>/`; no probe reads the
 invoking user's configuration.
 
 A run writes `<out>/<name>.json` and `<out>/<name>.md`. `compare.sh a.json b.json` prints one markdown

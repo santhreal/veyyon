@@ -14,7 +14,7 @@ set -euo pipefail
 
 BENCH_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && /bin/pwd -P)"
 REPO_ROOT="$(cd -- "${BENCH_DIR}/../.." && /bin/pwd -P)"
-STATE_DIR="${BENCH_SESSION_DIR:-${REPO_ROOT}/.internal/bench/session}"
+STATE_DIR="${BENCH_SESSION_DIR:-${REPO_ROOT}/runs/desktop-bench/session}"
 DRM_DEVICE="${BENCH_DRM_DEVICE:-/dev/dri/renderD129}"
 RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
