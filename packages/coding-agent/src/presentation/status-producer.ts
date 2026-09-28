@@ -358,6 +358,16 @@ export class StatusPresentationProducer implements StatusDataSource {
 		return meter.activeMs + Math.max(0, Date.now() - meter.activeStartedAt);
 	}
 
+	/**
+	 * The finished working windows summed, and the epoch the running one opened
+	 * or `null` while idle: one read of the meter, so a surface that adds the
+	 * running window at render gets the two halves of one total.
+	 */
+	getWorkedTime(): { workedMs: number; workingSince: number | null } {
+		const meter = this.#meter();
+		return { workedMs: meter.activeMs, workingSince: meter.activeStartedAt };
+	}
+
 	setAutoCompactEnabled(enabled: boolean): void {
 		this.#autoCompactEnabled = enabled;
 	}
@@ -517,8 +527,13 @@ export class StatusPresentationProducer implements StatusDataSource {
 		};
 	}
 
+	/**
+	 * The stored login serving the session's provider, whether or not the
+	 * terminal's footline shows it: `statusLine.showAccount` is that line's
+	 * choice and is applied in {@link getSnapshot}, so a window reads the same
+	 * account the terminal would name.
+	 */
 	getServingAccount(session: AgentSession): StatusServingAccount | null {
-		if (!settings.get("statusLine.showAccount")) return null;
 		const activeProvider = session.state?.model?.provider ?? session.model?.provider;
 		const authStorage = session.modelRegistry?.authStorage;
 		if (!activeProvider || !authStorage) return null;
@@ -650,7 +665,7 @@ export class StatusPresentationProducer implements StatusDataSource {
 				}
 				return cachedContext;
 			},
-			account: this.getServingAccount(this.#session),
+			account: settings.get("statusLine.showAccount") ? this.getServingAccount(this.#session) : null,
 			backgroundJobCount: this.getBackgroundJobCount(this.#session),
 			activeMs: this.getActiveMs(),
 			runClock: this.getRunClock(),
