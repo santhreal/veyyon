@@ -10,7 +10,9 @@
 //!
 //! A request the host accepts is forgotten at once: a control with no
 //! recorded failure has nothing to send again, and its retry falls back to
-//! the action the control would send at rest.
+//! the action the control would send at rest. A refusal the host calls final
+//! (`retryable: false`) is kept so the control can state what was refused,
+//! and is never sent again.
 
 use std::collections::BTreeMap;
 
@@ -29,7 +31,16 @@ const FAILED_CEILING: usize = 256;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RetryMemory {
 	sent:   BTreeMap<RequestId, (SurfaceId, HostAction)>,
-	failed: BTreeMap<SurfaceId, HostAction>,
+	failed: BTreeMap<SurfaceId, Refused>,
+}
+
+/// A request the host refused, the sentence it gave, and whether it said a
+/// second send may be taken.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Refused {
+	action:    HostAction,
+	message:   String,
+	retryable: bool,
 }
 
 impl RetryMemory {
@@ -39,8 +50,10 @@ impl RetryMemory {
 		Self { sent: BTreeMap::new(), failed: BTreeMap::new() }
 	}
 
-	/// Records the request a control just sent.
+	/// Records the request a control just sent, which supersedes any refusal
+	/// the control still states.
 	pub fn record(&mut self, id: RequestId, surface: SurfaceId, action: HostAction) {
+		self.failed.remove(&surface);
 		self.sent.insert(id, (surface, action));
 		while self.sent.len() > SENT_CEILING {
 			self.sent.pop_first();
@@ -52,27 +65,46 @@ impl RetryMemory {
 		self.sent.remove(&id);
 	}
 
-	/// Moves the request the host refused onto the control that sent it, and
-	/// answers with that control. A request nothing recorded -- one the host
-	/// failed twice, or one raised by the transport rather than by a control
-	/// -- moves nothing and answers `None`.
-	pub fn fail(&mut self, id: RequestId) -> Option<SurfaceId> {
+	/// Moves the request the host refused onto the control that sent it,
+	/// with the sentence the host gave and whether it called the refusal
+	/// retryable, and answers with that control. A request nothing recorded
+	/// -- one the host failed twice, or one raised by the transport rather
+	/// than by a control -- moves nothing and answers `None`.
+	pub fn fail(&mut self, id: RequestId, message: String, retryable: bool) -> Option<SurfaceId> {
 		let (surface, action) = self.sent.remove(&id)?;
-		self.failed.insert(surface.clone(), action);
+		self.failed.insert(surface.clone(), Refused { action, message, retryable });
 		while self.failed.len() > FAILED_CEILING {
 			self.failed.pop_first();
 		}
 		Some(surface)
 	}
 
-	/// Takes the request a control would send again, leaving it with none.
+	/// Takes the refusal off a control and answers with the request to send
+	/// again, or `None` when there is none or the host called it final.
 	pub fn take(&mut self, surface: &SurfaceId) -> Option<HostAction> {
-		self.failed.remove(surface)
+		self
+			.failed
+			.remove(surface)
+			.filter(|refused| refused.retryable)
+			.map(|refused| refused.action)
 	}
 
-	/// The request a control would send again, without taking it.
+	/// The request the host refused on a control, final or not.
 	#[must_use]
 	pub fn peek(&self, surface: &SurfaceId) -> Option<&HostAction> {
-		self.failed.get(surface)
+		self.failed.get(surface).map(|refused| &refused.action)
+	}
+
+	/// The sentence the host gave for the request it refused on a control.
+	#[must_use]
+	pub fn reason(&self, surface: &SurfaceId) -> Option<&str> {
+		self.failed.get(surface).map(|refused| refused.message.as_str())
+	}
+
+	/// Whether the host would take the request it refused on a control a
+	/// second time: a `Retry` is offered exactly when this holds.
+	#[must_use]
+	pub fn can_retry(&self, surface: &SurfaceId) -> bool {
+		self.failed.get(surface).is_some_and(|refused| refused.retryable)
 	}
 }

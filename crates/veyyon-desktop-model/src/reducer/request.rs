@@ -14,8 +14,9 @@ pub fn reduce_request_succeeded(store: &mut Store, request: RequestId) -> Damage
 }
 
 /// Reduces a request failure notification, invalidating the connection status
-/// line and leaving the refused request on the control that sent it, which is
-/// what that control's retry sends again.
+/// line and leaving the refused request on the control that sent it, with
+/// the host's sentence and whether the host would take it again, which is
+/// what that control states and its retry sends.
 ///
 /// The control the refusal belongs to may not be drawn -- a settings field
 /// under a closed sheet, a row in a collapsed queue, a panel behind another
@@ -28,7 +29,9 @@ pub fn reduce_request_failed(
 	request: RequestId,
 	error: BackendError,
 ) -> DamageSet {
-	store.retries.fail(request);
+	store
+		.retries
+		.fail(request, error.message.clone(), error.retryable);
 	let announcement = Notification {
 		key:          format!(
 			"request-failed:{}:{}",
