@@ -18,10 +18,19 @@
 //! image's pixels are not read; a picture is proven drawn by the fallback
 //! words it did not draw.
 
+mod actions;
+mod answers;
+mod artifacts;
+mod beside;
 mod decision;
+mod footer;
+mod items;
+mod kinds;
 mod mentions;
 mod position;
+mod roles;
 mod tools;
+mod turns;
 
 use std::collections::{HashMap, HashSet};
 
