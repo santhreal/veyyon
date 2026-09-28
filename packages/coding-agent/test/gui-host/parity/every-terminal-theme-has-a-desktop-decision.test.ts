@@ -16,7 +16,7 @@ import { getBuiltinThemeNames } from "../../../src/theme/builtin-themes";
 describe("terminal themes on the desktop", () => {
 	it("decides the ground of every shipped theme, and only those grounds", () => {
 		const names = getBuiltinThemeNames();
-		const grounds = [...new Set(names.map(themeGround))].sort();
+		const grounds: string[] = [...new Set(names.map(themeGround))].sort();
 		expect(grounds).toEqual(Object.keys(THEME_GROUND_CARRIERS).sort());
 		expect(names.filter(name => themeCarrier(name) === undefined)).toEqual([]);
 	});
