@@ -13,20 +13,11 @@ use veyyon_desktop::{
 	connect_or_spawn,
 	state::{StateDir, placement, report_rejections},
 };
-use veyyon_desktop_app::{
-	AppState,
-	drawer::TerminalDrawer,
-	palette::CommandPalette,
-	panel::RightPanel,
-	settings::SettingsView,
-	sidebar::Sidebar,
-	thread::ThreadView,
-	workspace::{Regions, Workspace},
-};
+use veyyon_desktop_app::{AppState, regions, workspace::Workspace};
 use veyyon_desktop_model::{ConnectionState, PersistedState, Store};
 use veyyon_desktop_ui::theme::{Appearance, Theme};
 use veyyon_gpui::{
-	App, AppContext as _, Bounds, Entity, Pixels, TitlebarOptions, Window, WindowBounds,
+	App, AppContext as _, Bounds, Entity, Pixels, TitlebarOptions, WindowBounds,
 	WindowDecorations, WindowHandle, WindowOptions, px, size,
 };
 
@@ -78,7 +69,7 @@ pub fn open(endpoint: Option<String>, slot: &Slot, cx: &mut App) {
 	let options = options(&persisted, cx);
 	let app = cx.new(|_| AppState::new(Store::with_persisted(persisted)));
 	let opened = cx.open_window(options, |window, cx| {
-		let regions = regions(&app, window, cx);
+		let regions = regions::build(&app, window, cx);
 		cx.new(|cx| Workspace::new(app.clone(), regions, panels, window, cx))
 	});
 	let window = match opened {
@@ -120,24 +111,6 @@ pub fn open(endpoint: Option<String>, slot: &Slot, cx: &mut App) {
 		});
 	})
 	.detach();
-}
-
-/// Constructs the six regions over `app`.
-fn regions(app: &Entity<AppState>, window: &mut Window, cx: &mut App) -> Regions {
-	Regions {
-		sidebar:  cx.new(|cx| Sidebar::new(app.clone(), window, cx)).into(),
-		thread:   cx.new(|cx| ThreadView::new(app.clone(), window, cx)).into(),
-		panel:    cx.new(|cx| RightPanel::new(app.clone(), window, cx)).into(),
-		drawer:   cx
-			.new(|cx| TerminalDrawer::new(app.clone(), window, cx))
-			.into(),
-		palette:  cx
-			.new(|cx| CommandPalette::new(app.clone(), window, cx))
-			.into(),
-		settings: cx
-			.new(|cx| SettingsView::new(app.clone(), window, cx))
-			.into(),
-	}
 }
 
 /// The appearance the window was left in, or the system's when none was
