@@ -1,9 +1,9 @@
-//! The right panel asks the host once for what each tab draws, reopens a
-//! session on the tab it was left on, draws the working tree's changes file
-//! by file, sends what the diff and agents controls pick, and renders
-//! nothing while a turn streams.
+//! The right panel asks the host for what each tab draws on every visit,
+//! reopens a session on the tab it was left on, draws the working tree's
+//! changes file by file, sends what the diff and agents controls pick, and
+//! renders nothing while a turn streams.
 //!
-//! WHY: a tab that asks the host again on every visit floods it, a tab that
+//! WHY: a tab that asks again while its answer is due floods the host, a tab that
 //! never asks draws an empty panel, a closed panel that asks spends the host
 //! on a surface nobody sees, a panel that keeps focus as it closes leaves the
 //! window's bindings reaching nothing, and a panel that redraws per streamed
@@ -17,9 +17,12 @@
 //! by the row pairing tests in the crate, not drawn here. Horizontal scroll
 //! of the diff with wrapping off is not offered: its rows clip.
 
+mod cuts;
 mod declined;
 mod harness;
 mod long_lines;
+mod refusals;
+mod restate;
 
 use gpui::TestAppContext;
 use veyyon_desktop_app::panel::PanelTab;
@@ -30,8 +33,8 @@ use veyyon_desktop_model::{
 
 use self::harness::{SESSION, agent, delta, opened, window};
 
-/// What showing `tab` for the first time asks the host for. A new tab fails
-/// to compile here until its load is decided.
+/// What showing `tab` asks the host for while nothing is held or due. A new
+/// tab fails to compile here until its load is decided.
 fn loads(tab: PanelTab) -> Vec<HostAction> {
 	let session = SessionId::from(SESSION);
 	match tab {
@@ -106,7 +109,7 @@ fn changes() -> HostEvent {
 }
 
 #[gpui::test]
-fn each_tab_asks_the_host_once_for_what_it_draws_and_the_session_reopens_on_it(
+fn each_tab_asks_the_host_for_what_it_draws_and_the_session_reopens_on_it(
 	app: &mut TestAppContext,
 ) {
 	let mut w = window(app, opened(SESSION));
@@ -132,7 +135,7 @@ fn each_tab_asks_the_host_once_for_what_it_draws_and_the_session_reopens_on_it(
 
 	w.toggle();
 	w.toggle();
-	assert_eq!(w.sent(), Vec::<HostAction>::new(), "a reopened panel asks nothing already asked");
+	assert_eq!(w.sent(), Vec::<HostAction>::new(), "a reopened panel asks nothing already due");
 	assert_eq!(w.active(), PanelTab::Usage);
 
 	w.apply(opened("other"));

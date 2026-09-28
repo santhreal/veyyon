@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use veyyon_desktop_model::{
-	Capability, CapabilityStatus, ChangeScope, ChangeStatus, HostActionKind,
+	Capability, CapabilityStatus, ChangeScope, ChangeStatus, HostAction, HostActionKind,
 };
 use veyyon_desktop_ui::{
 	controls::{Button, IconButton},
@@ -21,12 +21,15 @@ use super::{
 	DiffView,
 	parse::LineKind,
 	review::{line_anchor, needs_attention},
-	rows::Row,
+	rows::{self, Row},
 	words::Emphasis,
 };
 use crate::{
 	actions::panel::OpenFile,
-	panel::style::{code_line, counted, empty_state, spans_in},
+	panel::{
+		PanelTab, refusal,
+		style::{code_line, counted, empty_state, spans_in},
+	},
 };
 
 /// The letter and color a file's status is drawn with.
@@ -76,26 +79,11 @@ impl DiffView {
 					&palette,
 				)
 			},
-			Row::Truncated => notice(&self.truncated_copy(), &palette),
+			Row::Truncated => notice(&rows::cut(&self.parsed).unwrap_or_default(), &palette),
 		};
 		// A row laid out as a flex row shrinks to its content unless it is
 		// given the list's width, and a line then never wraps.
 		element.id(("diff-row", ix)).w_full().into_any_element()
-	}
-
-	fn truncated_copy(&self) -> String {
-		let mut copy = String::new();
-		if self.parsed.truncated {
-			copy.push_str("The diff stops at the host's size limit.");
-		}
-		if self.parsed.withheld > 0 {
-			if !copy.is_empty() {
-				copy.push(' ');
-			}
-			copy.push_str(&counted(self.parsed.withheld, "more file", "more files"));
-			copy.push_str(" not shown.");
-		}
-		copy
 	}
 
 	fn file_header(&self, file: usize, palette: &Palette, cx: &Context<Self>) -> Stateful<Div> {
@@ -325,7 +313,7 @@ impl Render for DiffView {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.renders += 1;
 		let palette = cx.theme().palette;
-		let (answered, refused, pending_edits) = {
+		let (answered, refused, load_refused, pending_edits) = {
 			let app = self.app.read(cx);
 			let pending_edits = match app.store().capabilities.get(Capability::PendingEdits) {
 				CapabilityStatus::Unavailable { reason } => Some(reason.clone()),
@@ -334,12 +322,16 @@ impl Render for DiffView {
 			(
 				app.store().domains.changes.is_some(),
 				app.panel_unavailable(HostActionKind::RefreshChanges),
+				refusal::refused(app, PanelTab::Diff, &HostAction::RefreshChanges),
 				pending_edits,
 			)
 		};
 		let body = if let Some(reason) = refused {
 			// A host that reads no repository states why in place of the diff.
 			empty_state(reason, None::<Div>, &palette).into_any_element()
+		} else if load_refused && !answered {
+			// The refusal row above states why the changes never loaded.
+			div().into_any_element()
 		} else if !answered {
 			empty_state(
 				"Changes have not loaded",
@@ -351,9 +343,10 @@ impl Render for DiffView {
 			)
 			.into_any_element()
 		} else if self.parsed.files.is_empty() {
-			let copy = match self.change_scope {
-				ChangeScope::WorkingTree => "No changes in the working tree",
-				ChangeScope::Staged => "Nothing is staged",
+			let copy = match (rows::cut(&self.parsed), self.change_scope) {
+				(Some(cut), _) => cut,
+				(None, ChangeScope::WorkingTree) => "No changes in the working tree".to_owned(),
+				(None, ChangeScope::Staged) => "Nothing is staged".to_owned(),
 			};
 			empty_state(copy, None::<Div>, &palette).into_any_element()
 		} else {

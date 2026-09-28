@@ -14,6 +14,7 @@ use std::{
 use veyyon_desktop_model::DiffMode;
 
 use super::parse::{LineKind, ParsedDiff};
+use crate::panel::style::counted;
 
 /// One row of the diff list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -143,6 +144,23 @@ pub fn layout<S: BuildHasher>(
 		layout.rows.push(Row::Truncated);
 	}
 	layout
+}
+
+/// What a diff the host cut states: the byte cut and the files it held back,
+/// `None` for a whole diff.
+pub fn cut(diff: &ParsedDiff) -> Option<String> {
+	let mut copy = String::new();
+	if diff.truncated {
+		copy.push_str("The diff stops at the host's size limit.");
+	}
+	if diff.withheld > 0 {
+		if !copy.is_empty() {
+			copy.push(' ');
+		}
+		copy.push_str(&counted(diff.withheld, "more file", "more files"));
+		copy.push_str(" not shown.");
+	}
+	(!copy.is_empty()).then_some(copy)
 }
 
 /// Pairs a file's lines for a split layout: context on both sides, each run

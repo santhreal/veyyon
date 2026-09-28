@@ -1,6 +1,7 @@
 //! The row that states a request the host refused, over the top of the shown
-//! tab so a terminal keeps its size while the row shows, with the retry that
-//! sends the request again and the dismissal that forgets it.
+//! tab so a terminal keeps its size while the row shows: the host's sentence,
+//! the retry that sends the request again when the host takes it a second
+//! time, and the dismissal that forgets it.
 
 use veyyon_desktop_model::{HostAction, SurfaceId};
 use veyyon_desktop_ui::{
@@ -13,9 +14,23 @@ use veyyon_gpui::{AnyElement, App, ClickEvent, Context, div, prelude::*};
 use super::TerminalDrawer;
 
 impl TerminalDrawer {
-	/// The refusal row, laid over the top of the shown tab.
+	/// The refusal row, laid over the top of the shown tab. A refusal the
+	/// control no longer holds -- one it sent again -- draws no row.
 	pub(super) fn refusal(&self, palette: &Palette, cx: &Context<Self>) -> Option<AnyElement> {
 		let surface = self.refused.as_ref()?;
+		let retries = &self.app.read(cx).store().retries;
+		let copy =
+			format!("The host refused {}: {}", refused_label(surface), retries.reason(surface)?);
+		let retry = retries.can_retry(surface).then(|| {
+			let button = Button::new("drawer-retry", "Retry")
+				.size(ButtonSize::Sm)
+				.variant(ButtonVariant::Ghost)
+				.on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.retry(cx)));
+			self.target("drawer.retry", button)
+		});
+		let dismiss = IconButton::new("drawer-dismiss", IconName::X)
+			.tooltip("Dismiss")
+			.on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.dismiss(cx)));
 		let row = div()
 			.absolute()
 			.top_0()
@@ -31,23 +46,9 @@ impl TerminalDrawer {
 			.border_color(palette.border.subtle)
 			.type_style(text::SMALL)
 			.text_color(palette.status.error)
-			.child(
-				div()
-					.flex_1()
-					.min_w_0()
-					.child(format!("The host refused {}.", refused_label(surface))),
-			)
-			.child(
-				Button::new("drawer-retry", "Retry")
-					.size(ButtonSize::Sm)
-					.variant(ButtonVariant::Ghost)
-					.on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.retry(cx))),
-			)
-			.child(
-				IconButton::new("drawer-dismiss", IconName::X)
-					.tooltip("Dismiss")
-					.on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.dismiss(cx))),
-			);
+			.child(div().flex_1().min_w_0().child(copy))
+			.children(retry)
+			.child(self.target("drawer.dismiss", dismiss));
 		Some(self.target("drawer.refused", row))
 	}
 

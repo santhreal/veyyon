@@ -16,6 +16,7 @@
 
 mod harness;
 mod processes;
+mod refusals;
 mod scrollback;
 
 use gpui::TestAppContext;
@@ -137,7 +138,7 @@ fn a_refused_control_states_the_refusal_and_retry_sends_it_again(app: &mut TestA
 
 	w.apply(vec![refused(clear.id, "the pty is gone")]);
 	assert!(w.bounds("drawer.refused").is_some());
-	assert!(w.draws("The host refused clearing the terminal."));
+	assert!(w.draws("The host refused clearing the terminal: the pty is gone"));
 
 	w.click_text("Retry");
 	assert_eq!(w.sent(), vec![HostAction::ClearTerminal { terminal_id: "t1".to_owned() }]);
@@ -161,7 +162,7 @@ fn a_refused_terminal_is_not_waited_for_and_retry_waits_for_it_again(app: &mut T
 	assert_eq!(w.shown(), None, "the drawer waits for the terminal it asked for");
 
 	w.apply(vec![refused(create.id, "no pty left")]);
-	assert!(w.draws("The host refused opening the terminal."));
+	assert!(w.draws("The host refused opening the terminal: no pty left"));
 	assert_eq!(w.shown(), Some(DrawerTab::Processes), "a refused terminal is not waited for");
 	assert_eq!(
 		w.sent(),

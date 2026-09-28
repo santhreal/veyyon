@@ -13,6 +13,7 @@ pub mod agents;
 pub mod diagnostics;
 pub mod diff;
 pub mod files;
+pub mod refusal;
 mod sideways;
 pub mod style;
 pub mod tab;
@@ -79,6 +80,8 @@ pub struct RightPanel {
 	awaiting:       Vec<RequestId>,
 	/// Whether the panel is open, as the layout last stated.
 	open:           bool,
+	/// How many refusals the last render stated.
+	stated:         usize,
 	focus:          FocusHandle,
 	renders:        u64,
 	_subscriptions: Vec<Subscription>,
@@ -124,6 +127,7 @@ impl RightPanel {
 			agents,
 			awaiting: Vec::new(),
 			open: WorkspaceLayout::get(cx).panel_open,
+			stated: 0,
 			focus: cx.focus_handle(),
 			renders: 0,
 			_subscriptions: subscriptions,
@@ -155,7 +159,7 @@ impl RightPanel {
 	}
 
 	/// Shows `tab`, records it as the displayed session's tab and asks the
-	/// host for what it draws when nothing has arrived yet.
+	/// host to state again what it draws.
 	pub fn show(&mut self, tab: PanelTab, cx: &mut Context<Self>) {
 		if tab != self.active {
 			self.active = tab;
@@ -202,14 +206,16 @@ impl RightPanel {
 	}
 
 	/// Shows `path` in the files tab, scrolled to `line`, and asks the host
-	/// for its text; an empty `path` shows the tab on its tree.
+	/// for its text; an empty `path` shows the tab on what it holds. The file
+	/// is opened before the tab is shown, so the tab's own ask finds its read
+	/// in flight rather than reading the file it held before.
 	pub fn open_file(&mut self, path: String, line: Option<u32>, cx: &mut Context<Self>) {
-		self.show(PanelTab::Files, cx);
 		if !path.is_empty() {
 			self
 				.files
 				.update(cx, |files, cx| files.open(path, line, cx));
 		}
+		self.show(PanelTab::Files, cx);
 		WorkspaceLayout::update(cx, |layout| layout.panel_open = true);
 	}
 
@@ -223,36 +229,53 @@ impl RightPanel {
 		cx.notify();
 	}
 
-	/// Asks the host for the domain `tab` draws when the panel is open, it
-	/// has none to show, the host takes the request and none is in flight.
+	/// Asks the host to state again the domain `tab` draws when the panel is
+	/// open, so a tree changed while the agent was idle is drawn current; what
+	/// the tab holds stays drawn until the answer lands. Nothing is asked
+	/// while the same ask is in flight, while the control states a refusal,
+	/// or when the host declines the action. The agent roster, which the host
+	/// sends on every change of it, is asked for only while none is held.
 	fn load(&mut self, tab: PanelTab, cx: &mut Context<Self>) {
 		if !self.open {
 			return;
 		}
+		let viewed = self.files.read(cx).open_path().map(str::to_owned);
 		let app = self.app.read(cx);
 		let session = app.active_session().cloned();
-		let domains = &app.store().domains;
 		let request = match tab {
-			PanelTab::Diff if !domains.changes.is_some() => {
+			PanelTab::Diff => {
 				session.map(|s| (HostAction::RefreshChanges, SurfaceId::RightPanelDiffTab(s)))
 			},
-			PanelTab::Files if domains.file_tree.is_none() => session
-				.map(|s| (HostAction::LoadFileTree { root: None }, SurfaceId::RightPanelFileTab(s))),
-			PanelTab::Agents if domains.agents.is_empty() => {
+			PanelTab::Files => session.map(|s| {
+				let action = viewed.map_or(HostAction::LoadFileTree { root: None }, |path| {
+					HostAction::ReadFile { path }
+				});
+				(action, SurfaceId::RightPanelFileTab(s))
+			}),
+			PanelTab::Agents if app.store().domains.agents.is_empty() => {
 				Some((HostAction::RefreshAgents, SurfaceId::TaskSpawnButton))
 			},
-			PanelTab::Diagnostics if domains.diagnostics.is_none() => {
+			PanelTab::Diagnostics => {
 				Some((HostAction::RefreshDiagnostics, SurfaceId::DiagnosticRefreshButton))
 			},
+			// The one control sends both counts, so a refusal of either
+			// holds both.
 			PanelTab::Usage => session
-				.filter(|s| !domains.usage.contains_key(s) || !domains.context.contains_key(s))
+				.filter(|_| {
+					app.store()
+						.retries
+						.peek(&SurfaceId::ContextBreakdownRefreshButton)
+						.is_none()
+				})
 				.map(|session| {
 					(HostAction::GetUsage { session: Some(session) }, SurfaceId::UsageRefreshButton)
 				}),
-			_ => None,
+			PanelTab::Agents | PanelTab::Todo => None,
 		}
-		.filter(|(action, _)| {
-			!app.panel_pending(action.kind()) && app.panel_unavailable(action.kind()).is_none()
+		.filter(|(action, surface)| {
+			!app.panel_pending(action.kind())
+				&& app.panel_unavailable(action.kind()).is_none()
+				&& app.store().retries.peek(surface).is_none()
 		});
 		match request {
 			Some((HostAction::GetUsage { session: Some(session) }, _)) => {
@@ -293,12 +316,8 @@ impl RightPanel {
 				self.load(tab, cx);
 				cx.notify();
 			},
-			StoreEvent::RequestFinished { request, .. } => {
-				if let Some(ix) = self.awaiting.iter().position(|awaited| awaited == request) {
-					self.awaiting.swap_remove(ix);
-					cx.notify();
-				}
-			},
+			StoreEvent::RequestFinished { request, ok } => self.settle(*request, *ok, cx),
+			StoreEvent::OutboxReady if self.stated > 0 => self.follow_refusals(false, cx),
 			_ => {},
 		}
 	}
@@ -346,7 +365,7 @@ impl Focusable for RightPanel {
 }
 
 impl Render for RightPanel {
-	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.renders += 1;
 		let palette = cx.theme().palette;
 		let content = match self.active {
@@ -357,6 +376,7 @@ impl Render for RightPanel {
 			PanelTab::Diagnostics => diagnostics::render(self, &palette, cx),
 			PanelTab::Usage => usage::render(self, &palette, cx),
 		};
+		let refused = self.refusal_rows(&palette, window, cx);
 		// The workspace registers the `panel` target around this region.
 		div()
 			.id("panel")
@@ -371,6 +391,7 @@ impl Render for RightPanel {
 			.border_l_1()
 			.border_color(palette.border.subtle)
 			.child(self.tabs.clone())
+			.children(refused)
 			.child(div().flex().flex_col().flex_1().min_h_0().child(content))
 	}
 }

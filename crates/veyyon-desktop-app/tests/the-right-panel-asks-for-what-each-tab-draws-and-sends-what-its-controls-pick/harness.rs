@@ -14,9 +14,9 @@ use veyyon_desktop_app::{
 	workspace::{Regions, Workspace, WorkspaceLayout},
 };
 use veyyon_desktop_model::{
-	AgentView, EntryId, HostAction, HostEvent, HostRequest, MessageRole, PanelsStore,
-	SessionHeaderView, SessionId, SnapshotSection, Store, StreamingMessageState, TranscriptEntry,
-	Versioned,
+	AgentView, BackendError, EntryId, ErrorScope, HostAction, HostEvent, HostRequest, MessageRole,
+	PanelsStore, RequestId, SessionHeaderView, SessionId, SnapshotSection, Store,
+	StreamingMessageState, TranscriptEntry, Versioned,
 };
 use veyyon_desktop_ui::theme::{Appearance, Theme};
 
@@ -252,6 +252,22 @@ pub fn delta(revision: u64) -> HostEvent {
 		accumulating: entry("s-tail", revision),
 		revision,
 	}))
+}
+
+/// The host refusing `request` with `message`, taking a second send when
+/// `retryable`.
+pub fn refused(request: RequestId, message: &str, retryable: bool) -> HostEvent {
+	HostEvent::RequestFailed {
+		request,
+		error: BackendError {
+			scope: ErrorScope::Change,
+			code: Some("refused".to_owned()),
+			message: message.to_owned(),
+			retryable,
+			request: Some(request),
+			occurred_at_ms: 1,
+		},
+	}
 }
 
 /// An agent `id` called `call_sign`, of `kind`, in `status`, owning

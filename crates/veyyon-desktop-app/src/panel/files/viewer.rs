@@ -16,7 +16,10 @@ use veyyon_gpui::{
 };
 
 use super::FilesView;
-use crate::panel::style::{code_line, counted, heading, language_tag, toolbar};
+use crate::panel::{
+	PanelTab, refusal,
+	style::{code_line, counted, heading, language_tag, toolbar},
+};
 
 impl FilesView {
 	/// Splits the viewed file into lines and highlights it when the host
@@ -119,6 +122,14 @@ impl FilesView {
 			self.sideways.measure(lines, window);
 		}
 		let notice = match content {
+			// The refusal row above states why the file never arrived.
+			None
+				if refusal::refused(self.app.read(cx), PanelTab::Files, &HostAction::ReadFile {
+					path: path.to_owned(),
+				}) =>
+			{
+				None
+			},
 			None => Some("Loading\u{2026}"),
 			Some(content) if content.binary => Some("Binary file"),
 			Some(content) if content.truncated => Some("The file stops at the host's size limit"),
