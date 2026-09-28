@@ -70,7 +70,7 @@ pub struct Workspace {
 	notices:        Notices,
 	banner:         Entity<ConnectionBanner>,
 	empty:          Entity<EmptyState>,
-	_subscriptions: [Subscription; 3],
+	_subscriptions: [Subscription; 4],
 }
 
 impl EventEmitter<WorkspaceEvent> for Workspace {}
@@ -91,7 +91,8 @@ pub fn init(cx: &mut App) {
 
 impl Workspace {
 	/// Lays out `regions` with the sizes and visibility `store` records, and
-	/// takes keyboard focus when nothing in `window` holds it.
+	/// takes keyboard focus when nothing in `window` holds it or when what
+	/// held it leaves the frame.
 	pub fn new(
 		app: Entity<AppState>,
 		regions: Regions,
@@ -104,6 +105,10 @@ impl Workspace {
 		let sizes = Sizes::restore(&store, &mut restored);
 		WorkspaceLayout::update(cx, |layout| *layout = restored.clone());
 		let observe = cx.observe_global_in::<WorkspaceLayout>(window, Self::layout_changed);
+		// A focused node the frame no longer holds (a region that closed while
+		// focused, a field or menu that went away) dispatches every key and
+		// action from the window's root, above every workspace listener.
+		let lost = cx.on_focus_lost(window, |this, window, cx| this.focus_composer(window, cx));
 		let store_changed = cx.subscribe(&app, |this, _, event: &StoreEvent, cx| match event {
 			StoreEvent::NotificationsChanged => this.notices.sync(&this.app, cx),
 			StoreEvent::ConnectionChanged => cx.notify(),
@@ -129,7 +134,7 @@ impl Workspace {
 			notices,
 			banner,
 			empty,
-			_subscriptions: [observe, store_changed, dismissed],
+			_subscriptions: [observe, lost, store_changed, dismissed],
 		}
 	}
 
@@ -187,10 +192,14 @@ impl Workspace {
 		cx.notify();
 	}
 
-	/// Focuses the composer, or the workspace itself while no composer is
-	/// registered, so the window's bindings keep working.
+	/// Focuses the composer while the thread holding it is drawn, else the
+	/// workspace itself, so the window's bindings keep working. A composer
+	/// that is registered but not drawn (no session open, settings in the
+	/// thread's place) is outside the frame and would take the bindings with it.
 	fn focus_composer(&self, window: &mut Window, cx: &mut App) {
-		if !focus_slot(FocusSlot::Composer, window, cx) {
+		let thread_drawn =
+			!WorkspaceLayout::get(cx).settings_open && self.app.read(cx).active_session().is_some();
+		if !(thread_drawn && focus_slot(FocusSlot::Composer, window, cx)) {
 			window.focus(&self.focus, cx);
 		}
 	}
