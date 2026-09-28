@@ -101,23 +101,29 @@ impl Render for ConnectionBanner {
 			.border_b_1()
 			.border_color(palette.border.subtle)
 			.type_style(text::SMALL)
-			.text_color(if notice.lost { palette.status.error } else { palette.text.muted })
+			.text_color(if notice.lost {
+				palette.status.error
+			} else {
+				palette.text.muted
+			})
 			.child(div().flex_1().min_w_0().truncate().child(notice.line))
 			.children(notice.remedy.map(|remedy| {
 				let label = match remedy {
 					Remedy::Attach => "Attach",
 					Remedy::Retry(label) => label,
 				};
-				div().debug_selector(|| "connection-banner-button".to_owned()).child(
-					Button::new("connection-banner-button", label)
-						.size(ButtonSize::Sm)
-						.on_click(move |_, window, cx| match remedy {
-							Remedy::Attach => window.dispatch_action(Box::new(act::Attach), cx),
-							Remedy::Retry(_) => {
-								window.dispatch_action(Box::new(act::RetryConnection), cx);
-							},
-						}),
-				)
+				div()
+					.debug_selector(|| "connection-banner-button".to_owned())
+					.child(
+						Button::new("connection-banner-button", label)
+							.size(ButtonSize::Sm)
+							.on_click(move |_, window, cx| match remedy {
+								Remedy::Attach => window.dispatch_action(Box::new(act::Attach), cx),
+								Remedy::Retry(_) => {
+									window.dispatch_action(Box::new(act::RetryConnection), cx);
+								},
+							}),
+					)
 			}))
 	}
 }

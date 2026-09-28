@@ -46,15 +46,17 @@ impl Render for EmptyState {
 		recent.truncate(RECENT_THREADS);
 		let rows = recent.into_iter().enumerate().map(|(ix, (id, title, _))| {
 			let app = self.app.clone();
-			div().debug_selector(move || format!("empty-recent-thread-{ix}")).child(
-				Button::new(("empty-recent-thread", ix), title)
-					.variant(ButtonVariant::Ghost)
-					.on_click(move |_, _, cx| {
-						app.update(cx, |app, cx| {
-							app.open_session(id.clone(), cx);
-						});
-					}),
-			)
+			div()
+				.debug_selector(move || format!("empty-recent-thread-{ix}"))
+				.child(
+					Button::new(("empty-recent-thread", ix), title)
+						.variant(ButtonVariant::Ghost)
+						.on_click(move |_, _, cx| {
+							app.update(cx, |app, cx| {
+								app.open_session(id.clone(), cx);
+							});
+						}),
+				)
 		});
 		div()
 			.size_full()
@@ -71,11 +73,15 @@ impl Render for EmptyState {
 					.child("No thread is open."),
 			)
 			.child(
-				div().debug_selector(|| "empty-new-thread".to_owned()).child(
-					Button::new("empty-new-thread", "New thread")
-						.variant(ButtonVariant::Primary)
-						.on_click(|_, window, cx| window.dispatch_action(Box::new(act::NewThread), cx)),
-				),
+				div()
+					.debug_selector(|| "empty-new-thread".to_owned())
+					.child(
+						Button::new("empty-new-thread", "New thread")
+							.variant(ButtonVariant::Primary)
+							.on_click(|_, window, cx| {
+								window.dispatch_action(Box::new(act::NewThread), cx);
+							}),
+					),
 			)
 			.children(rows)
 	}

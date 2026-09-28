@@ -95,6 +95,20 @@ impl Render for Workspace {
 					.into_any_element(),
 			)
 		});
+		// A target not drawn this frame is dropped, so a client never reads the
+		// bounds of a region that closed.
+		for (id, drawn) in [
+			("sidebar", sidebar.is_some()),
+			("panel", panel.is_some()),
+			("drawer", drawer.is_some()),
+			("settings", layout.settings_open),
+			("empty", !layout.settings_open && no_session),
+			("connection-banner", banner.is_some()),
+		] {
+			if !drawn {
+				driver::forget(window, id, cx);
+			}
+		}
 
 		let root = div()
 			.id("workspace")

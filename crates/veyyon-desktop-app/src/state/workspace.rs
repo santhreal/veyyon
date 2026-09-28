@@ -1,8 +1,10 @@
-//! The announcement stack the workspace draws as toasts. Every region pushes
-//! through [`AppState::announce`]; the stack takes an announcement down when
-//! it is dismissed or its time is up.
+//! The workspace's reads and writes of the window state: the announcement
+//! stack it draws as toasts, the layout it persists per session, and the
+//! session a new window reopens. Every region pushes through
+//! [`AppState::announce`]; the stack takes an announcement down when it is
+//! dismissed or its time is up.
 
-use veyyon_desktop_model::{Notification, Raised};
+use veyyon_desktop_model::{Notification, PanelsStore, Raised};
 use veyyon_gpui::Context;
 
 use super::{AppState, StoreEvent};
@@ -32,5 +34,42 @@ impl AppState {
 		if self.store.notifications.expire(now_ms) > 0 {
 			cx.emit(StoreEvent::NotificationsChanged);
 		}
+	}
+
+	/// Records the regions' sizes, visibility and right panel tab from the
+	/// workspace's `layout` as the displayed session's persisted layout,
+	/// keeping the fields the panel and the drawer write. Does nothing while
+	/// no session is displayed.
+	pub fn record_layout(&mut self, layout: &PanelsStore) {
+		let Some(session) = self.displayed.clone() else {
+			return;
+		};
+		let panels = self.store.persisted.panels.entry(session).or_default();
+		panels.right_panel_visible = layout.right_panel_visible;
+		panels.right_panel_width = layout.right_panel_width;
+		panels.queue_width = layout.queue_width;
+		panels.drawer_visible = layout.drawer_visible;
+		panels.drawer_height = layout.drawer_height;
+		panels.active_right_tab.clone_from(&layout.active_right_tab);
+	}
+
+	/// Asks the host for the session the last window displayed, which the
+	/// window shows from the persisted state before the host answers. Call it
+	/// once, after the host's session list arrived: a session the host still
+	/// lists is opened, and one it no longer lists is dropped, so the window
+	/// shows no session rather than the header of one that is gone.
+	pub fn reopen_remembered(&mut self, cx: &mut Context<Self>) {
+		let Some(session) = self.displayed.clone() else {
+			return;
+		};
+		if self.store.sessions.items.contains_key(&session) {
+			self.open_session(session, cx);
+			return;
+		}
+		self.displayed = None;
+		if self.store.persisted.shell.active_session.as_ref() == Some(&session) {
+			self.store.persisted.shell.active_session = None;
+		}
+		cx.emit(StoreEvent::ActiveSessionChanged);
 	}
 }

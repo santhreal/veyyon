@@ -47,7 +47,8 @@ struct Driven {
 impl Driven {
 	fn open() -> Self {
 		let mut cx = TestAppContext::single();
-		cx.update(|cx| Theme::install(Appearance::Dark, cx)).expect("the dark palette parses");
+		cx.update(|cx| Theme::install(Appearance::Dark, cx))
+			.expect("the dark palette parses");
 		let client = cx.update(Client::connect);
 		let app = cx.update(|cx| cx.new(|_| AppState::new(Store::new())));
 		let words = cx.update(|cx| cx.new(|_| Words(SharedString::default())));
@@ -69,12 +70,12 @@ impl Driven {
 	}
 
 	/// Sends `line` and returns the reply, if one came.
-	fn ask(&mut self, line: &str) -> Option<String> {
-		send(&mut self.cx, &self.client, line)
+	fn ask(&self, line: &str) -> Option<String> {
+		send(&self.cx, &self.client, line)
 	}
 
 	/// Draws `text` in the sidebar and lets the window paint it.
-	fn show(&mut self, text: &'static str) {
+	fn show(&self, text: &'static str) {
 		self.cx.update(|cx| {
 			self.words.update(cx, |words, cx| {
 				words.0 = text.into();
@@ -93,7 +94,7 @@ impl Driven {
 	}
 }
 
-fn send(cx: &mut TestAppContext, client: &Client, line: &str) -> Option<String> {
+fn send(cx: &TestAppContext, client: &Client, line: &str) -> Option<String> {
 	cx.update(|cx| client.send(line, cx));
 	cx.run_until_parked();
 	client.next_line()
@@ -105,7 +106,7 @@ fn parse(line: &str) -> Value {
 
 #[test]
 fn a_request_that_does_not_parse_is_answered_with_what_is_wrong_and_its_id() {
-	let mut driven = Driven::open();
+	let driven = Driven::open();
 	let cases = [
 		("[1]", r#"{"id":null,"error":"a request is a JSON object"}"#),
 		(
@@ -147,7 +148,7 @@ fn a_request_that_does_not_parse_is_answered_with_what_is_wrong_and_its_id() {
 
 #[test]
 fn a_request_with_no_window_open_is_refused() {
-	let mut cx = TestAppContext::single();
+	let cx = TestAppContext::single();
 	let client = cx.update(Client::connect);
 	for (id, request) in [
 		(1, r#""dispatch":"workspace::ToggleDrawer""#),
@@ -156,7 +157,7 @@ fn a_request_with_no_window_open_is_refused() {
 		(4, r#""wait":"idle""#),
 		(5, r#""wait":"text","target":"sidebar","contains":"a""#),
 	] {
-		let reply = send(&mut cx, &client, &format!(r#"{{"id":{id},{request}}}"#));
+		let reply = send(&cx, &client, &format!(r#"{{"id":{id},{request}}}"#));
 		assert_eq!(reply, Some(format!(r#"{{"id":{id},"error":"no window is open"}}"#)));
 	}
 	assert_eq!(cx.update(|cx| waiting(cx)), 0);
@@ -164,7 +165,7 @@ fn a_request_with_no_window_open_is_refused() {
 
 #[test]
 fn dispatch_builds_the_action_from_its_args_and_runs_it_before_the_reply() {
-	let mut driven = Driven::open();
+	let driven = Driven::open();
 	let reply =
 		driven.ask(r#"{"id":1,"dispatch":"workspace::ShowPanelTab","args":{"tab":"agents"}}"#);
 	assert_eq!(reply.as_deref(), Some(r#"{"id":1,"ok":true}"#));
@@ -181,7 +182,7 @@ fn dispatch_builds_the_action_from_its_args_and_runs_it_before_the_reply() {
 
 #[test]
 fn type_sends_each_character_as_the_keystroke_a_keyboard_would() {
-	let mut driven = Driven::open();
+	let driven = Driven::open();
 	driven.cx.update(|cx| {
 		cx.bind_keys([
 			KeyBinding::new("t", act::ToggleDrawer, Some("Workspace")),
@@ -201,7 +202,7 @@ fn type_sends_each_character_as_the_keystroke_a_keyboard_would() {
 
 #[test]
 fn bounds_reports_where_a_target_was_laid_out_in_window_pixels() {
-	let mut driven = Driven::open();
+	let driven = Driven::open();
 	let viewport = driven
 		.cx
 		.update(|cx| {
@@ -227,7 +228,7 @@ fn bounds_reports_where_a_target_was_laid_out_in_window_pixels() {
 
 #[test]
 fn a_frame_subscription_reports_each_painted_frame_once_in_order() {
-	let mut driven = Driven::open();
+	let driven = Driven::open();
 	assert_eq!(
 		driven.ask(r#"{"id":1,"subscribe":"frames"}"#).as_deref(),
 		Some(r#"{"id":1,"ok":true}"#)
@@ -249,7 +250,7 @@ fn a_frame_subscription_reports_each_painted_frame_once_in_order() {
 
 #[test]
 fn a_text_wait_is_answered_by_the_frame_that_paints_the_text_in_its_target() {
-	let mut driven = Driven::open();
+	let driven = Driven::open();
 	driven.show("nothing yet");
 	let wait = r#"{"id":1,"wait":"text","target":"sidebar","contains":"hello"}"#;
 	assert_eq!(driven.ask(wait), None, "the text is not drawn yet");
@@ -273,7 +274,7 @@ fn a_text_wait_is_answered_by_the_frame_that_paints_the_text_in_its_target() {
 
 #[test]
 fn an_idle_wait_parks_while_the_window_has_a_frame_to_present() {
-	let mut driven = Driven::open();
+	let driven = Driven::open();
 	assert_eq!(driven.ask(r#"{"id":1,"wait":"idle"}"#), None);
 	driven.show("a frame");
 	assert_eq!(driven.client.next_line(), None);
@@ -282,12 +283,12 @@ fn an_idle_wait_parks_while_the_window_has_a_frame_to_present() {
 
 #[test]
 fn the_waits_of_a_client_that_hung_up_are_dropped_after_the_next_frame() {
-	let mut driven = Driven::open();
+	let driven = Driven::open();
 	let other = driven.cx.update(Client::connect);
 	assert_eq!(driven.ask(r#"{"id":1,"wait":"idle"}"#), None);
 	let text = r#"{"id":2,"wait":"text","target":"sidebar","contains":"never"}"#;
-	assert_eq!(send(&mut driven.cx, &other, text), None);
-	assert_eq!(send(&mut driven.cx, &other, r#"{"id":3,"wait":"idle"}"#), None);
+	assert_eq!(send(&driven.cx, &other, text), None);
+	assert_eq!(send(&driven.cx, &other, r#"{"id":3,"wait":"idle"}"#), None);
 	assert_eq!(driven.waiting(), 3);
 	drop(other);
 	driven.show("a frame");

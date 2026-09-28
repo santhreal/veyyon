@@ -27,7 +27,8 @@ fn open(
 	cx: &mut TestAppContext,
 	store: PanelsStore,
 ) -> (WindowHandle<Workspace>, gpui::Entity<AppState>) {
-	cx.update(|cx| Theme::install(Appearance::Dark, cx)).expect("the dark palette parses");
+	cx.update(|cx| Theme::install(Appearance::Dark, cx))
+		.expect("the dark palette parses");
 	let app = cx.update(|cx| cx.new(|_| AppState::new(Store::new())));
 	let state = app.clone();
 	let window = cx.add_window(move |window, cx| {
@@ -57,7 +58,7 @@ fn layout(cx: &TestAppContext) -> WorkspaceLayout {
 	cx.update(|cx| WorkspaceLayout::get(cx).clone())
 }
 
-fn sizes(cx: &mut TestAppContext, window: WindowHandle<Workspace>) -> Sizes {
+fn sizes(cx: &TestAppContext, window: WindowHandle<Workspace>) -> Sizes {
 	cx.update(|cx| window.update(cx, |workspace, _, _| workspace.sizes()))
 		.unwrap_or_else(|error| panic!("the window is open: {error}"))
 }
@@ -190,7 +191,7 @@ fn an_out_of_range_stored_size_is_clamped_and_the_window_opens_as_stored() {
 	let opened = layout(&cx);
 	assert!(opened.panel_open && opened.drawer_open);
 	assert_eq!(opened.panel_tab, "diagnostics");
-	let sizes = sizes(&mut cx, window);
+	let sizes = sizes(&cx, window);
 	assert_eq!(
 		(sizes.sidebar, sizes.panel, sizes.drawer),
 		(size::SIDEBAR_MIN, size::PANEL_MAX, size::DRAWER)
@@ -200,11 +201,11 @@ fn an_out_of_range_stored_size_is_clamped_and_the_window_opens_as_stored() {
 	cx.update(|cx| {
 		any.update(cx, |_, window, cx| window.dispatch_action(Box::new(act::ResetLayout), cx))
 	})
-		.unwrap_or_else(|error| panic!("the window is open: {error}"));
-	assert_eq!(sizes_after_reset(&mut cx, window), Sizes::default());
+	.unwrap_or_else(|error| panic!("the window is open: {error}"));
+	assert_eq!(sizes_after_reset(&cx, window), Sizes::default());
 }
 
-fn sizes_after_reset(cx: &mut TestAppContext, window: WindowHandle<Workspace>) -> Sizes {
+fn sizes_after_reset(cx: &TestAppContext, window: WindowHandle<Workspace>) -> Sizes {
 	cx.run_until_parked();
 	sizes(cx, window)
 }

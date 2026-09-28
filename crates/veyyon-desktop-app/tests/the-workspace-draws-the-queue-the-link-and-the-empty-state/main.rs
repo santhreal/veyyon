@@ -9,28 +9,36 @@
 //! A link that is down with no banner leaves the window looking attached, and
 //! a banner button that sends the wrong request cannot bring the link back. A
 //! window with no session open that draws an empty thread gives nothing to
-//! start from.
+//! start from. A new window that never asks for the session the last one
+//! displayed draws its header over an empty transcript, and one that keeps a
+//! session the host no longer lists draws a thread that is gone.
 //!
 //! Gap: toast tone, the banner's wording and the drawn pixels are not
 //! asserted. A new connection state fails to compile in `remedy` but is swept
 //! only once a state of it is added to `every_state`. Deadlines are stamped a
 //! minute ahead of the wall clock and the timer runs on the executor's clock,
-//! so a run that stalls a minute between stamping and arming misreads.
+//! so a run that stalls a minute between stamping and arming misreads. The
+//! binary calls `reopen_remembered` once, on the first session list; that
+//! trigger is outside this crate and is not exercised here.
 
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::{
+	cell::RefCell,
+	rc::Rc,
+	time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 use gpui::{
 	AnyView, AppContext as _, Context, EmptyView, Entity, IntoElement, Modifiers, Render,
 	TestAppContext, VisualTestContext, Window, div, prelude::*,
 };
 use veyyon_desktop_app::{
-	AppState,
+	AppState, StoreEvent,
 	workspace::{Regions, Workspace},
 };
 use veyyon_desktop_model::{
 	ConnectionState, HostAction, HostEvent, Notification, NotificationPriority as Priority,
-	NotificationSource as Source, PanelsStore, SessionId, SessionStatus, SessionSummary,
-	SnapshotSection, Store, Versioned,
+	NotificationSource as Source, PanelsStore, PersistedState, SessionId, SessionStatus,
+	SessionSummary, SnapshotSection, Store, Versioned,
 };
 use veyyon_desktop_ui::theme::{Appearance, Theme};
 
@@ -39,16 +47,27 @@ struct Thread;
 
 impl Render for Thread {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		div().debug_selector(|| "thread-region".to_owned()).size_full()
+		div()
+			.debug_selector(|| "thread-region".to_owned())
+			.size_full()
 	}
 }
 
 /// A workspace over an empty store, under reduced motion so a toast goes the
 /// moment it is taken down.
 fn open(cx: &mut TestAppContext) -> (Entity<AppState>, Entity<Workspace>, &mut VisualTestContext) {
-	cx.update(|cx| Theme::install(Appearance::Dark, cx)).expect("the dark palette parses");
+	open_over(cx, Store::new())
+}
+
+/// A workspace over `store`, under reduced motion.
+fn open_over(
+	cx: &mut TestAppContext,
+	store: Store,
+) -> (Entity<AppState>, Entity<Workspace>, &mut VisualTestContext) {
+	cx.update(|cx| Theme::install(Appearance::Dark, cx))
+		.expect("the dark palette parses");
 	cx.update(|cx| cx.set_reduce_motion(true));
-	let app = cx.update(|cx| cx.new(|_| AppState::new(Store::new())));
+	let app = cx.update(|cx| cx.new(|_| AppState::new(store)));
 	let state = app.clone();
 	let (workspace, cx) = cx.add_window_view(move |window, cx| {
 		let thread = AnyView::from(cx.new(|_| Thread));
@@ -94,22 +113,25 @@ fn announce(app: &Entity<AppState>, cx: &mut VisualTestContext, notification: No
 }
 
 /// The messages of the drawn toasts, top to bottom.
-fn titles(workspace: &Entity<Workspace>, cx: &mut VisualTestContext) -> Vec<String> {
+fn titles(workspace: &Entity<Workspace>, cx: &VisualTestContext) -> Vec<String> {
 	workspace.read_with(cx, |workspace, cx| {
 		let toasts = workspace.toasts().read(cx);
-		toasts.toasts().map(|(_, toast)| toast.message().to_string()).collect()
+		toasts
+			.toasts()
+			.map(|(_, toast)| toast.message().to_string())
+			.collect()
 	})
 }
 
 /// The keys on the queue, most urgent first.
-fn queued(app: &Entity<AppState>, cx: &mut VisualTestContext) -> Vec<String> {
+fn queued(app: &Entity<AppState>, cx: &VisualTestContext) -> Vec<String> {
 	app.read_with(cx, |app, _| {
 		let queue = app.store().notifications.raised();
 		queue.iter().map(|held| held.key.clone()).collect()
 	})
 }
 
-fn advance(cx: &mut VisualTestContext, by: Duration) {
+fn advance(cx: &VisualTestContext, by: Duration) {
 	cx.executor().advance_clock(by);
 	cx.run_until_parked();
 }
@@ -144,18 +166,24 @@ fn an_announcement_is_drawn_until_the_queue_takes_it_down() {
 	assert_eq!(titles(&workspace, cx), ["saved", "decision"]);
 	let viewport = cx.update(|window, _| window.viewport_size());
 	cx.update(|window, _| window.refresh());
-	let close = cx.debug_bounds("toast-close").expect("a toast's close button is drawn");
+	let close = cx
+		.debug_bounds("toast-close")
+		.expect("a toast's close button is drawn");
 	assert!(
 		close.center().x > viewport.width / 2. && close.center().y > viewport.height / 2.,
 		"the stack sits in the bottom right corner, clear of the pointer at the origin"
 	);
 
 	advance(cx, Duration::from_secs(63));
-	assert_eq!(titles(&workspace, cx), ["saved", "decision"], "both drawn before the low one's time");
+	assert_eq!(
+		titles(&workspace, cx),
+		["saved", "decision"],
+		"both drawn before the low one's time"
+	);
 	advance(cx, Duration::from_secs(2));
 	assert_eq!(queued(&app, cx), ["ask"], "the timer expired the queue at the low one's deadline");
 	assert_eq!(titles(&workspace, cx), ["decision"], "its toast went with it");
-	advance(cx, Duration::from_secs(3600));
+	advance(cx, Duration::from_hours(1));
 	assert_eq!(titles(&workspace, cx), ["decision"], "an urgent announcement never times out");
 
 	app.update(cx, |app, cx| app.dismiss_notification("ask", cx));
@@ -169,7 +197,11 @@ fn a_restated_announcement_is_redrawn_and_closing_its_toast_dismisses_it() {
 	let (app, workspace, cx) = open(&mut cx);
 	let at = raised_at();
 	announce(&app, cx, note("refused", Source::RequestFailed, Priority::Normal, "refused", at));
-	announce(&app, cx, note("refused", Source::RequestFailed, Priority::Normal, "refused again", at));
+	announce(
+		&app,
+		cx,
+		note("refused", Source::RequestFailed, Priority::Normal, "refused again", at),
+	);
 	assert_eq!(titles(&workspace, cx), ["refused again"]);
 
 	click(cx, "toast-close");
@@ -195,7 +227,7 @@ fn only_the_most_urgent_announcements_the_stack_holds_are_drawn() {
 
 /// Whether the banner is drawn for `state`, and the request its button
 /// sends.
-fn remedy(state: &ConnectionState) -> (bool, Option<HostAction>) {
+const fn remedy(state: &ConnectionState) -> (bool, Option<HostAction>) {
 	match state {
 		ConnectionState::Detached => (true, Some(HostAction::Attach { endpoint: None })),
 		ConnectionState::Connecting { .. } => (true, None),
@@ -267,10 +299,12 @@ fn the_empty_state_holds_the_threads_place_until_a_session_opens() {
 	click(cx, "empty-new-thread");
 	assert_eq!(sent(&app, cx), [HostAction::CreateSession { workspace: None, title: None }]);
 
-	let listing: Vec<SessionSummary> =
-		(0..7).map(|ix| summary(&format!("s{ix}"), 100 + ix)).collect();
+	let listing: Vec<SessionSummary> = (0..7)
+		.map(|ix| summary(&format!("s{ix}"), 100 + ix))
+		.collect();
 	app.update(cx, |app, cx| {
-		let listing = SnapshotSection::Sessions(Versioned { revision: 1, value: listing }, Vec::new());
+		let listing =
+			SnapshotSection::Sessions(Versioned { revision: 1, value: listing }, Vec::new());
 		app.apply(vec![HostEvent::Snapshot(listing)], cx);
 	});
 	cx.run_until_parked();
@@ -289,4 +323,60 @@ fn the_empty_state_holds_the_threads_place_until_a_session_opens() {
 	assert_eq!(sent(&app, cx), [HostAction::OpenSession { session: SessionId::from("s6") }]);
 	assert!(drawn(cx, "thread-region"), "the opened thread takes the empty state's place");
 	assert!(!drawn(cx, "empty-new-thread"));
+}
+
+/// The threads the host lists: `s0`, `s1` and `s2`.
+fn listing() -> HostEvent {
+	let listing = (0..3)
+		.map(|ix| summary(&format!("s{ix}"), 100 + ix))
+		.collect();
+	HostEvent::Snapshot(SnapshotSection::Sessions(
+		Versioned { revision: 1, value: listing },
+		Vec::new(),
+	))
+}
+
+/// A store whose last window displayed `id`.
+fn remembering(id: &str) -> Store {
+	let mut persisted = PersistedState::new();
+	persisted.shell.active_session = Some(SessionId::from(id));
+	Store::with_persisted(persisted)
+}
+
+#[test]
+fn a_new_window_asks_the_host_for_the_session_the_last_one_displayed() {
+	let mut cx = TestAppContext::single();
+	let (app, _, cx) = open_over(&mut cx, remembering("s1"));
+	assert!(drawn(cx, "thread-region"), "the remembered thread is drawn before the host answers");
+	assert_eq!(sent(&app, cx), Vec::new(), "nothing is asked for before the host lists its threads");
+
+	app.update(cx, |app, cx| {
+		app.apply(vec![listing()], cx);
+		app.reopen_remembered(cx);
+	});
+	cx.run_until_parked();
+	assert_eq!(sent(&app, cx), [HostAction::OpenSession { session: SessionId::from("s1") }]);
+	assert!(drawn(cx, "thread-region"));
+}
+
+#[test]
+fn a_session_the_host_no_longer_lists_is_dropped_for_the_empty_state() {
+	let mut cx = TestAppContext::single();
+	let (app, _, cx) = open_over(&mut cx, remembering("gone"));
+	app.update(cx, |app, cx| app.apply(vec![listing()], cx));
+	let heard = Rc::new(RefCell::new(Vec::new()));
+	let sink = Rc::clone(&heard);
+	let _heard = cx.update(|_, cx| {
+		cx.subscribe(&app, move |_, event: &StoreEvent, _| sink.borrow_mut().push(event.clone()))
+	});
+	app.update(cx, |app, cx| app.reopen_remembered(cx));
+	cx.run_until_parked();
+	assert_eq!(sent(&app, cx), Vec::new(), "a session that is gone is not asked for");
+	let (active, remembered) = app.read_with(cx, |app, _| {
+		(app.active_session().cloned(), app.store().persisted.shell.active_session.clone())
+	});
+	assert_eq!((active, remembered), (None, None), "nor displayed, nor remembered");
+	assert_eq!(*heard.borrow(), [StoreEvent::ActiveSessionChanged], "every region hears it");
+	assert!(!drawn(cx, "thread-region"));
+	assert!(drawn(cx, "empty-new-thread"), "the empty state takes its place");
 }

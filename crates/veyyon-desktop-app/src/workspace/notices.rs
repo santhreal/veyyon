@@ -9,7 +9,7 @@
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use gpui::{AppContext as _, Context, Entity, Subscription, Task};
+use gpui::{AppContext as _, Context, Entity, Subscription, Task, WeakEntity};
 use veyyon_desktop_model::{Notification, NotificationPriority, NotificationSource};
 use veyyon_desktop_ui::overlays::{Toast, ToastDismissed, ToastId, ToastKind, Toasts};
 
@@ -86,7 +86,7 @@ impl Notices {
 
 		self.expiry = match (next, self.expiry.take()) {
 			(Some(at), Some((armed, task))) if armed == at => Some((armed, task)),
-			(Some(at), _) => Some((at, expire_at(at, app.clone(), cx))),
+			(Some(at), _) => Some((at, expire_at(at, app.downgrade(), cx))),
 			(None, _) => None,
 		};
 	}
@@ -102,11 +102,15 @@ impl Notices {
 }
 
 /// Expires the queue of `app` at `at`, in milliseconds since the Unix epoch.
-fn expire_at(at: u64, app: Entity<AppState>, cx: &Context<Workspace>) -> Task<()> {
+///
+/// The task holds `app` weakly: a task idle at shutdown is dropped after the
+/// entities are, and a strong handle in it would outlive them.
+fn expire_at(at: u64, app: WeakEntity<AppState>, cx: &Context<Workspace>) -> Task<()> {
 	let wait = Duration::from_millis(at.saturating_sub(now_ms()));
 	cx.spawn(async move |_, cx| {
 		cx.background_executor().timer(wait).await;
-		app.update(cx, |app, cx| app.expire_notifications(at, cx));
+		app.update(cx, |app, cx| app.expire_notifications(at, cx))
+			.ok();
 	})
 }
 

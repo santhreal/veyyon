@@ -79,10 +79,23 @@ impl HostLink {
 	pub fn send(&self, action: HostAction) -> RequestId {
 		let id = RequestId(self.next_request.get());
 		self.next_request.set(id.0.wrapping_add(1));
+		self.forward(HostRequest { id, action });
+		id
+	}
+
+	/// Sends a request whose id the window minted, for a window that keeps
+	/// its own request registry. Ids from [`send`](Self::send) and from the
+	/// caller share one space, so a window uses one or the other.
+	///
+	/// The send is queued on the transport runtime and returns at once. A
+	/// bridge failure arrives on the event receiver as `RequestFailed` for
+	/// the request's id.
+	pub fn forward(&self, request: HostRequest) {
+		let id = request.id;
 		let egress = self.egress.clone();
 		let events = self.events.clone();
 		self.handle.spawn(async move {
-			if let Err(failure) = egress.send(HostRequest { id, action }).await {
+			if let Err(failure) = egress.send(request).await {
 				let error = match failure {
 					EgressError::DroppedEphemeral { error, .. }
 					| EgressError::MutationTimeout { error, .. } => error,
@@ -101,6 +114,5 @@ impl HostLink {
 					.await;
 			}
 		});
-		id
 	}
 }

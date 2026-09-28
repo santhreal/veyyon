@@ -27,6 +27,9 @@ pub enum TransportError {
 	HandshakeAborted(String),
 }
 
+/// The first handshake request id: above the window's own ids, below 2^53.
+const HANDSHAKE_IDS: u64 = 1 << 52;
+
 /// Dispatches initial sync actions based on host capability statuses (§8.12).
 ///
 /// `ListSessions` is unconditional. Domain snapshots (`Settings`, `Themes`,
@@ -95,7 +98,7 @@ impl HandshakeDriver {
 			received_settlements: 0,
 			expected_count: None,
 			initial_sync_dispatched: false,
-			next_request_id: 1,
+			next_request_id: HANDSHAKE_IDS,
 			handshake_complete: false,
 		}
 	}
@@ -214,10 +217,8 @@ impl HandshakeDriver {
 	}
 }
 
-/// Applies an inbound event to the store via [`reduce`], returning the
-/// resulting [`DamageSet`].
-///
-/// Ensures the transport thread does not mutate [`Store`] fields directly.
+/// Applies an inbound event to the store through [`reduce`] and returns the
+/// [`DamageSet`], so the transport never writes [`Store`] fields itself.
 #[must_use]
 pub fn apply_event_to_store(store: &mut Store, event: HostEvent) -> DamageSet {
 	reduce(store, event)

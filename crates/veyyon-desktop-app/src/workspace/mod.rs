@@ -106,7 +106,8 @@ impl Workspace {
 		let observe = cx.observe_global_in::<WorkspaceLayout>(window, Self::layout_changed);
 		let store_changed = cx.subscribe(&app, |this, _, event: &StoreEvent, cx| match event {
 			StoreEvent::NotificationsChanged => this.notices.sync(&this.app, cx),
-			StoreEvent::ConnectionChanged | StoreEvent::ActiveSessionChanged => cx.notify(),
+			StoreEvent::ConnectionChanged => cx.notify(),
+			StoreEvent::ActiveSessionChanged => this.session_changed(cx),
 			_ => {},
 		});
 		let (mut notices, dismissed) = Notices::new(cx);
@@ -148,6 +149,24 @@ impl Workspace {
 		let mut store = self.store.clone();
 		self.sizes.record(WorkspaceLayout::get(cx), &mut store);
 		store
+	}
+
+	/// Lays the regions out as the newly displayed session last had them. A
+	/// session with no layout of its own keeps the one on screen.
+	fn session_changed(&mut self, cx: &mut Context<Self>) {
+		let store = {
+			let app = self.app.read(cx);
+			app.active_session()
+				.and_then(|session| app.store().persisted.panels.get(session))
+				.cloned()
+		};
+		if let Some(store) = store {
+			let mut layout = WorkspaceLayout::get(cx).clone();
+			self.sizes = Sizes::restore(&store, &mut layout);
+			self.store = store;
+			WorkspaceLayout::update(cx, |current| *current = layout);
+		}
+		cx.notify();
 	}
 
 	/// Slides the regions whose visibility changed, moves focus to what the
