@@ -20,6 +20,7 @@ mod menus;
 mod motion;
 mod placement;
 mod pointer;
+mod titles;
 mod widths;
 
 use gpui::{AppContext as _, Entity, Focusable as _, TestAppContext, VisualTestContext};
