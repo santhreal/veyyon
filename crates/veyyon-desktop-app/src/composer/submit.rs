@@ -38,13 +38,14 @@ pub(super) struct Refused {
 }
 
 impl Refused {
-	/// The text of the prompt the host refused in `session`.
-	pub(super) fn text(&self, session: &SessionId) -> Option<&str> {
+	/// The text of the prompt the host refused in `session` and the control
+	/// that sent it.
+	pub(super) fn get(&self, session: &SessionId) -> Option<(&str, &SurfaceId)> {
 		self
 			.refused
 			.iter()
 			.find(|sent| sent.session == *session)
-			.map(|sent| sent.text.as_str())
+			.map(|sent| (sent.text.as_str(), &sent.surface))
 	}
 
 	/// Takes the prompt the host refused in `session`.

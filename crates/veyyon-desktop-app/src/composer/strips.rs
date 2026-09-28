@@ -12,6 +12,7 @@ use veyyon_desktop_ui::{
 };
 
 use super::Composer;
+use crate::driver;
 
 /// Most queued prompts the strip lists before it counts the rest.
 const QUEUED_ROWS: usize = 3;
@@ -50,9 +51,11 @@ impl Composer {
 		strips
 	}
 
-	/// The prompt the host refused, offered again.
+	/// The prompt the host refused, offered again while the host called the
+	/// refusal retryable.
 	fn render_refused(&self, cx: &Context<Self>) -> Option<AnyElement> {
-		let text = self.refused.text(self.session.as_ref()?)?;
+		let (text, surface) = self.refused.get(self.session.as_ref()?)?;
+		let retryable = self.app.read(cx).store().retries.can_retry(surface);
 		let palette = cx.theme().palette;
 		Some(
 			strip("composer-refused", cx)
@@ -69,11 +72,14 @@ impl Composer {
 						.child("Not sent"),
 				)
 				.child(div().flex_1().min_w_0().truncate().child(first_line(text)))
-				.child(
-					Button::new("composer-refused-retry", "Retry")
-						.size(ButtonSize::Sm)
-						.on_click(cx.listener(|this, _, _, cx| this.retry_refused(cx))),
-				)
+				.when(retryable, |strip| {
+					strip.child(driver::target(
+						"composer.refused.retry",
+						Button::new("composer-refused-retry", "Retry")
+							.size(ButtonSize::Sm)
+							.on_click(cx.listener(|this, _, _, cx| this.retry_refused(cx))),
+					))
+				})
 				.child(
 					Button::new("composer-refused-dismiss", "Dismiss")
 						.variant(ButtonVariant::Ghost)

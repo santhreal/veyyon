@@ -129,6 +129,42 @@ fn a_prompt_the_host_refuses_goes_back_into_the_draft_and_is_offered_again(
 	w.apply(vec![refused(request)]);
 	assert_eq!(w.draft(), "Index the repo.", "the refused prompt is back in the draft");
 	assert!(w.drew("Not sent"), "the refused strip offers the prompt again");
+
+	w.click("composer.refused.retry");
+	assert_eq!(
+		w.sent(),
+		vec![HostAction::SubmitPrompt {
+			session:     sid(),
+			text:        "Index the repo.".to_owned(),
+			attachments: Vec::new(),
+		}],
+		"Retry sends the refused prompt again",
+	);
+	assert_eq!(w.draft(), "", "the prompt sent again leaves the draft");
+	assert!(!w.drew("Not sent"), "a prompt sent again is not still stated as refused");
+}
+
+#[gpui::test]
+fn a_prompt_the_host_refuses_for_good_is_stated_without_a_retry(app: &mut TestAppContext) {
+	let mut w = window(app, Vec::new());
+	w.write("Index the repo.");
+	w.dispatch(Submit);
+	let request = w
+		.requests()
+		.first()
+		.map(|request| request.id)
+		.expect("the prompt was sent");
+	let mut event = refused(request);
+	if let HostEvent::RequestFailed { error, .. } = &mut event {
+		error.retryable = false;
+	}
+
+	w.apply(vec![event]);
+	assert_eq!(w.draft(), "Index the repo.", "the refused prompt is back in the draft");
+	assert!(w.drew("Not sent"), "the refusal is stated");
+	assert!(w.drew("Dismiss"), "the refusal can be dismissed");
+	assert!(!w.drew("Retry"), "a refusal the host called final offers no Retry");
+	assert_eq!(w.bounds("composer.refused.retry"), None, "no Retry control is laid out");
 }
 
 #[gpui::test]
