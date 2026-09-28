@@ -12,8 +12,15 @@ description = "Application state and views for the veyyon desktop front end"
 workspace = true
 
 [dependencies]
+flume = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 veyyon-desktop-model = { workspace = true }
+veyyon-desktop-ui = { workspace = true }
 veyyon-gpui = { workspace = true }
 
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
 [dev-dependencies]
-serde_json = { workspace = true }
+gpui = { workspace = true, features = ["test-support"] }

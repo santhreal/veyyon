@@ -1,25 +1,23 @@
 //! What the window reports about its frames, for the `wait` requests.
 //!
 //! `wait: "idle"` reads `Window::frame_pending` and `wait: "text"` reads
-//! `Window::rendered_text_runs`. The pinned `santh-gpui` revision has
-//! neither, so both answer [`UNSUPPORTED`] until the pin moves to the
-//! revision that adds them; each function then returns the window's answer.
+//! `Window::rendered_text_runs`, which include the runs of cached views whose
+//! paint the last frame reused.
 
 use gpui::{Bounds, Pixels, SharedString, Window};
 
-/// The error both probes answer on the pinned framework revision.
-pub(super) const UNSUPPORTED: &str = "unsupported by pinned gpui";
-
-/// Whether `window` has requested a frame it has not painted yet.
-pub(super) const fn frame_pending(_window: &Window) -> Result<bool, &'static str> {
-	Err(UNSUPPORTED)
+/// Whether `window` has requested a frame it has not presented yet.
+pub(super) fn frame_pending(window: &Window) -> bool {
+	window.frame_pending()
 }
 
-/// The text of every glyph run the last presented frame painted inside
-/// `bounds`, in paint order.
-pub(super) const fn rendered_text(
-	_window: &Window,
-	_bounds: Bounds<Pixels>,
-) -> Result<Vec<SharedString>, &'static str> {
-	Err(UNSUPPORTED)
+/// The text of every glyph run the last presented frame painted that
+/// overlaps `bounds`, in paint order.
+pub(super) fn rendered_text(window: &Window, bounds: Bounds<Pixels>) -> Vec<SharedString> {
+	window
+		.rendered_text_runs()
+		.iter()
+		.filter(|run| run.bounds.intersects(&bounds))
+		.map(|run| run.text.clone())
+		.collect()
 }
