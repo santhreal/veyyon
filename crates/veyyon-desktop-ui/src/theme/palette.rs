@@ -10,7 +10,7 @@ use veyyon_gpui::{Hsla, Rgba};
 macro_rules! roles {
 	($(#[$doc:meta])* $name:ident { $($(#[$fattr:meta])* $field:ident),+ $(,)? }) => {
 		$(#[$doc])*
-		#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+		#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 		#[serde(deny_unknown_fields)]
 		pub struct $name {
 			$(
@@ -148,7 +148,7 @@ roles! {
 }
 
 /// Every color role of one appearance.
-#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Palette {
 	/// Backgrounds.

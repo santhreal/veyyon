@@ -49,5 +49,8 @@ pub const POPOVER_SCALE: f32 = 0.98;
 /// A hover or press color change.
 pub const HOVER: MotionModel = MotionModel::Duration(timed(80, Easing::Linear));
 
+/// Seconds a spinner takes for one turn.
+pub const SPIN_PERIOD: f32 = 0.8;
+
 /// Longest fade that runs under reduced motion.
 pub const REDUCED_FADE_MS: u32 = 80;

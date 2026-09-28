@@ -54,7 +54,7 @@ pub struct ThemeError {
 }
 
 /// The active appearance and its palette.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Theme {
 	pub appearance: Appearance,
 	pub palette:    Palette,

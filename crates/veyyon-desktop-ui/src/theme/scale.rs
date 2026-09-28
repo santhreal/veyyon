@@ -69,16 +69,38 @@ pub mod size {
 	/// Edge of a small and default icon.
 	pub const ICON_SM: Pixels = px(14.0);
 	pub const ICON: Pixels = px(16.0);
+	/// Diameter of a status dot.
+	pub const DOT: Pixels = px(6.0);
+	/// Width and height of a toggle's track, and the diameter of its knob.
+	pub const TOGGLE_WIDTH: Pixels = px(28.0);
+	pub const TOGGLE_HEIGHT: Pixels = px(16.0);
+	pub const TOGGLE_KNOB: Pixels = px(12.0);
 	/// Width of the hit area of a resize handle.
 	pub const RESIZE_HANDLE: Pixels = px(6.0);
 	/// Tallest an expanded tool output grows before it scrolls.
 	pub const TOOL_OUTPUT_MAX: Pixels = px(320.0);
 	/// Tallest an inline image or artifact is drawn.
 	pub const MEDIA_MAX: Pixels = px(400.0);
+	/// Narrowest a menu or select list is drawn.
+	pub const MENU_MIN_WIDTH: Pixels = px(180.0);
+	/// Width of a toast.
+	pub const TOAST_WIDTH: Pixels = px(356.0);
+	/// Thickness of an overlay scrollbar thumb, and its shortest length.
+	pub const SCROLLBAR: Pixels = px(6.0);
+	pub const SCROLLBAR_THUMB_MIN: Pixels = px(24.0);
+	/// Thickness of the underline under the selected tab.
+	pub const TAB_INDICATOR: Pixels = px(2.0);
+	/// Thickness of a hairline: table rules, a thematic break, and the
+	/// underline and strikethrough of text.
+	pub const HAIRLINE: Pixels = px(1.0);
+	/// Thickness of the rule at the left edge of a block quote.
+	pub const QUOTE_RULE: Pixels = px(2.0);
+	/// Width of the text caret.
+	pub const CARET: Pixels = px(2.0);
 }
 
 /// One step of the type ramp.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TypeStyle {
 	pub size:        Pixels,
 	pub line_height: Pixels,

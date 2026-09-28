@@ -1,6 +1,6 @@
 //! The typefaces the window draws with, embedded in the binary.
 //!
-//! Inter sets the interface and JetBrains Mono sets code. Both ship under the
+//! Inter sets the interface and `JetBrains Mono` sets code. Both ship under the
 //! SIL Open Font License 1.1 (`fonts/*-LICENSE.txt`), and both are compiled in
 //! so the first frame never waits on, or falls back from, a system font lookup.
 
