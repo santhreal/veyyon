@@ -13,8 +13,8 @@ import { AUTONOMY_LABEL, normalizeApprovalMode } from "../../../../tools/core/ap
 // The limits leaf, not `tools/core/render-utils`: that module reaches the tool renderers,
 // path helpers and image resizing, and this row needs two numbers from it.
 import { TRUNCATE_LENGTHS } from "../../../../tools/core/render-limits";
-import { getSessionAccentAnsi, getSessionAccentHex } from "../../../../utils/session-color";
 import * as git from "../../../../utils/git";
+import { getSessionAccentAnsi, getSessionAccentHex } from "../../../../utils/session-color";
 import { renderBranch } from "./branch";
 import {
 	type ContextUsageLevel,
