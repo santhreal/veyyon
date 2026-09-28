@@ -1,51 +1,72 @@
 //! The thread row menu and the profile switcher menu, and what each pick
 //! sends.
 
-use gpui::{Context, Entity, Point, Pixels, Window};
-use veyyon_desktop_model::{HostAction, SurfaceId};
+use gpui::{Context, Entity, Pixels, Point, Window};
+use veyyon_desktop_model::{
+	Gate, HostAction, HostActionKind, QueuePartition, SessionId, SurfaceId,
+};
 use veyyon_desktop_ui::overlays::{ContextMenu, MenuEvent, MenuItem, MenuRow};
 
 use super::{Sidebar, naming::NameTarget};
+use crate::AppState;
 
-/// What a row of the thread menu does, in menu order.
+/// What a row of the thread menu does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum RowPick {
+pub(super) enum RowPick {
 	Open,
 	Rename,
+	/// Toggles the thread in or out of a partition.
+	Place(QueuePartition),
 	Branch,
 	Peek,
 	Export,
 	Compact,
+	Handoff,
 	Delete,
 }
 
-/// The thread menu rows, with the separator before Delete at its item index.
-const ROW_PICKS: [Option<RowPick>; 8] = [
-	Some(RowPick::Open),
-	Some(RowPick::Rename),
-	Some(RowPick::Branch),
-	Some(RowPick::Peek),
-	Some(RowPick::Export),
-	Some(RowPick::Compact),
-	None,
-	Some(RowPick::Delete),
-];
+/// One item of the thread menu and what picking it does.
+type MenuLine = (MenuItem, Option<RowPick>);
 
-/// The thread menu.
-pub(super) fn row_items() -> Vec<MenuItem> {
-	ROW_PICKS
-		.iter()
-		.map(|pick| match pick {
-			Some(RowPick::Open) => MenuRow::new("Open").hint("Enter").into(),
-			Some(RowPick::Rename) => MenuRow::new("Rename").hint("F2").into(),
-			Some(RowPick::Branch) => MenuRow::new("Branch").into(),
-			Some(RowPick::Peek) => MenuRow::new("Peek").into(),
-			Some(RowPick::Export) => MenuRow::new("Export as HTML").into(),
-			Some(RowPick::Compact) => MenuRow::new("Compact").into(),
-			Some(RowPick::Delete) => MenuRow::new("Delete").hint("Del").into(),
-			None => MenuItem::Separator,
-		})
-		.collect()
+/// The thread menu for `session`, and the pick of each of its items. A
+/// placement toggle names the move out when the thread is already placed
+/// there, and a verb the host cannot take now is disabled.
+pub(super) fn row_menu(
+	app: &AppState,
+	session: &SessionId,
+) -> (Vec<MenuItem>, Vec<Option<RowPick>>) {
+	let placed = app.partition(session);
+	let toggle = |into: QueuePartition, add: &str, remove: &str, key: &str| -> MenuLine {
+		let label = if placed == into { remove } else { add };
+		(MenuRow::new(label.to_owned()).hint(key.to_owned()).into(), Some(RowPick::Place(into)))
+	};
+	let gated = |label: &str, key: Option<&str>, kind: HostActionKind, pick: RowPick| -> MenuLine {
+		let row = MenuRow::new(label.to_owned());
+		let row = match (app.gate(kind), key) {
+			(Gate::Enabled | Gate::Unknown, Some(key)) => row.hint(key.to_owned()),
+			(Gate::Enabled | Gate::Unknown, None) => row,
+			(Gate::Pending { .. }, _) => row.hint("In flight").disabled(true),
+			(Gate::Unavailable { .. }, _) => row.disabled(true),
+		};
+		(row.into(), Some(pick))
+	};
+	let rows: [MenuLine; 14] = [
+		(MenuRow::new("Open").hint("Enter").into(), Some(RowPick::Open)),
+		gated("Rename", Some("F2"), HostActionKind::RenameSession, RowPick::Rename),
+		(MenuItem::Separator, None),
+		toggle(QueuePartition::Pinned, "Pin", "Unpin", "P"),
+		toggle(QueuePartition::Deferred, "Defer", "Recall", "D"),
+		toggle(QueuePartition::Parked, "Archive", "Restore", "K"),
+		(MenuItem::Separator, None),
+		gated("Branch", None, HostActionKind::BranchSession, RowPick::Branch),
+		gated("Peek", None, HostActionKind::PreviewSessionTranscript, RowPick::Peek),
+		gated("Export as HTML", None, HostActionKind::ExportSession, RowPick::Export),
+		gated("Compact", None, HostActionKind::CompactSession, RowPick::Compact),
+		gated("Handoff", None, HostActionKind::HandoffSession, RowPick::Handoff),
+		(MenuItem::Separator, None),
+		gated("Delete", Some("Del"), HostActionKind::DeleteSession, RowPick::Delete),
+	];
+	rows.into_iter().unzip()
 }
 
 /// What a row of the profile menu does.
@@ -64,7 +85,14 @@ impl Sidebar {
 	pub(super) fn rebuild_profile_menu(&mut self, cx: &mut Context<Self>) {
 		let mut items = vec![MenuItem::header("Profiles")];
 		let mut picks = vec![ProfilePick::Nothing];
-		let profiles = self.app.read(cx).store().domains.profiles.clone().unwrap_or_default();
+		let profiles = self
+			.app
+			.read(cx)
+			.store()
+			.domains
+			.profiles
+			.clone()
+			.unwrap_or_default();
 		for entry in &profiles.entries {
 			let hint = if entry.is_active {
 				Some("active".to_owned())
@@ -93,7 +121,9 @@ impl Sidebar {
 		items.push(MenuRow::new("Refresh profiles").into());
 		picks.push(ProfilePick::Refresh);
 		self.profile_picks = picks;
-		self.profile_menu.update(cx, |menu, cx| menu.set_items(items, cx));
+		self
+			.profile_menu
+			.update(cx, |menu, cx| menu.set_items(items, cx));
 	}
 
 	/// Opens the profile menu at `position`.
@@ -103,7 +133,8 @@ impl Sidebar {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) {
-		self.profile_menu
+		self
+			.profile_menu
 			.update(cx, |menu, cx| menu.open_at(position, window, cx));
 	}
 
@@ -117,7 +148,7 @@ impl Sidebar {
 		let (MenuEvent::Picked(ix), Some(session)) = (event, self.menu_session.take()) else {
 			return;
 		};
-		let Some(Some(pick)) = ROW_PICKS.get(*ix) else {
+		let Some(Some(pick)) = self.row_picks.get(*ix).copied() else {
 			return;
 		};
 		let sent = match pick {
@@ -127,6 +158,10 @@ impl Sidebar {
 			},
 			RowPick::Rename => {
 				self.rename(session, window, cx);
+				None
+			},
+			RowPick::Place(into) => {
+				self.toggle_placement(&session, into, cx);
 				None
 			},
 			RowPick::Delete => {
@@ -147,6 +182,10 @@ impl Sidebar {
 				HostAction::CompactSession { session: session.clone() },
 				SurfaceId::SessionCompactButton(session),
 			)),
+			RowPick::Handoff => Some((
+				HostAction::HandoffSession { session: session.clone(), target: String::new() },
+				SurfaceId::SessionHandoffButton(session),
+			)),
 			RowPick::Peek => {
 				self.peek = Some(session.clone());
 				cx.notify();
@@ -157,7 +196,9 @@ impl Sidebar {
 			},
 		};
 		if let Some((action, surface)) = sent {
-			self.app.update(cx, |app, cx| app.dispatch(action, surface, cx));
+			self
+				.app
+				.update(cx, |app, cx| app.dispatch(action, surface, cx));
 		}
 	}
 
@@ -193,9 +234,13 @@ impl Sidebar {
 			Some(ProfilePick::Delete(name)) => {
 				(HostAction::DeleteProfile { name: name.clone() }, SurfaceId::ProfileDeleteButton(name))
 			},
-			Some(ProfilePick::Refresh) => (HostAction::RefreshProfiles, SurfaceId::ProfileRefreshButton),
+			Some(ProfilePick::Refresh) => {
+				(HostAction::RefreshProfiles, SurfaceId::ProfileRefreshButton)
+			},
 			Some(ProfilePick::Nothing) | None => return,
 		};
-		self.app.update(cx, |app, cx| app.dispatch(action, surface, cx));
+		self
+			.app
+			.update(cx, |app, cx| app.dispatch(action, surface, cx));
 	}
 }

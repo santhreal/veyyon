@@ -87,7 +87,11 @@ impl Sidebar {
 				.children(messages.into_iter().skip(skip).map(|(user, line)| {
 					div()
 						.truncate()
-						.text_color(if user { palette.text.primary } else { palette.text.secondary })
+						.text_color(if user {
+							palette.text.primary
+						} else {
+							palette.text.secondary
+						})
 						.child(if user { format!("> {line}") } else { line })
 				}))
 				.into_any_element(),

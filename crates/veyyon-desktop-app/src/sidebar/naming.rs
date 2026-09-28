@@ -102,7 +102,9 @@ impl Sidebar {
 			)),
 		};
 		if let Some((action, surface)) = sent {
-			self.app.update(cx, |app, cx| app.dispatch(action, surface, cx));
+			self
+				.app
+				.update(cx, |app, cx| app.dispatch(action, surface, cx));
 		}
 		window.focus(&self.focus, cx);
 		cx.notify();

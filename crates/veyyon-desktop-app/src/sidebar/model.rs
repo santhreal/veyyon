@@ -1,66 +1,13 @@
-//! The sidebar listing model.
-//!
-//! The visible items of the project listing under the collapsed projects and
-//! the search filter, the status glyph of a row, and the relative time label
-//! of a row with the instant it next changes.
-
-use std::{collections::HashSet, hash::BuildHasher};
+//! The sidebar row model: the title filter, the status glyph of a row, and
+//! the relative time label of a row with the instant it next changes.
 
 use veyyon_desktop_model::{SessionBadge, Store, session_badge};
 
-use crate::state::{Project, SessionRow};
+use crate::state::SessionRow;
 
 const MINUTE_MS: u64 = 60_000;
 const HOUR_MS: u64 = 60 * MINUTE_MS;
 const DAY_MS: u64 = 24 * HOUR_MS;
-
-/// One line of the sidebar list, as indices into `AppState::projects`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Item {
-	/// The header of the project at this index.
-	Project(usize),
-	/// Session `row` of project `project`.
-	Session {
-		/// The project index.
-		project: usize,
-		/// The row index inside the project.
-		row:     usize,
-	},
-}
-
-/// The lines the sidebar draws.
-///
-/// An empty `query` lists every project, and the sessions of each project
-/// that is not in `collapsed`, keyed by project path. A query lists only the
-/// sessions whose title contains it, case-insensitively, under their projects,
-/// collapsed or not, and drops a project none of whose sessions match.
-/// `query` is lowercase.
-pub fn visible_items<S: BuildHasher>(
-	projects: &[Project],
-	collapsed: &HashSet<String, S>,
-	query: &str,
-) -> Vec<Item> {
-	let mut items = Vec::new();
-	for (project, listed) in projects.iter().enumerate() {
-		if query.is_empty() {
-			items.push(Item::Project(project));
-			if !collapsed.contains(&listed.path) {
-				items.extend((0..listed.sessions.len()).map(|row| Item::Session { project, row }));
-			}
-			continue;
-		}
-		let header = items.len();
-		for (row, session) in listed.sessions.iter().enumerate() {
-			if contains_folded(&session.title, query) {
-				if items.len() == header {
-					items.push(Item::Project(project));
-				}
-				items.push(Item::Session { project, row });
-			}
-		}
-	}
-	items
-}
 
 /// Whether `text` contains `folded`, a lowercase needle, ignoring case.
 pub fn contains_folded(text: &str, folded: &str) -> bool {
@@ -79,14 +26,17 @@ pub fn contains_folded(text: &str, folded: &str) -> bool {
 /// The state a row's leading glyph shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Glyph {
-	/// A turn is running.
-	Running,
-	/// The session waits on an approval, an answer or a plan review.
-	Waiting,
+	/// A turn is running, or the open session's processes run in the
+	/// background, as the label states.
+	Running(&'static str),
+	/// The session waits on the operator for what the label states: an
+	/// approval, an answer or a plan review.
+	Waiting(&'static str),
 	/// The last turn failed and the failure has not been read.
 	Error,
-	/// The session finished, or a deferral came due, since it was last read.
-	Unread,
+	/// The session finished, or a deferral came due, as the label states,
+	/// since it was last read.
+	Unread(&'static str),
 	/// Nothing needs attention.
 	Idle,
 }
@@ -95,11 +45,24 @@ impl Glyph {
 	/// The glyph of `row`, from the badge the model derives for it.
 	pub fn of(store: &Store, row: &SessionRow, now_ms: u64) -> Self {
 		match session_badge(store, &row.id, now_ms) {
-			Some(SessionBadge::Approval | SessionBadge::Input | SessionBadge::Plan) => Self::Waiting,
+			Some(SessionBadge::Approval) => Self::Waiting("Waiting on an approval"),
+			Some(SessionBadge::Input) => Self::Waiting("Waiting on an answer"),
+			Some(SessionBadge::Plan) => Self::Waiting("A plan to review"),
 			Some(SessionBadge::Failed) => Self::Error,
-			Some(SessionBadge::Working { .. }) => Self::Running,
-			Some(SessionBadge::Done | SessionBadge::Due) => Self::Unread,
-			Some(SessionBadge::Watching) | None => Self::Idle,
+			Some(SessionBadge::Working { .. }) => Self::Running("Working"),
+			Some(SessionBadge::Done) => Self::Unread("Finished"),
+			Some(SessionBadge::Due) => Self::Unread("Deferral due"),
+			Some(SessionBadge::Watching) => Self::Running("Processes running in the background"),
+			None => Self::Idle,
+		}
+	}
+
+	/// What the glyph states, the text of its tooltip; `None` for no glyph.
+	pub const fn label(self) -> Option<&'static str> {
+		match self {
+			Self::Running(label) | Self::Waiting(label) | Self::Unread(label) => Some(label),
+			Self::Error => Some("Failed"),
+			Self::Idle => None,
 		}
 	}
 }

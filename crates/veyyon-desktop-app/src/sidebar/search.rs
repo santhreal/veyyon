@@ -61,7 +61,8 @@ impl Sidebar {
 				cx.background_executor().timer(SEARCH_PAUSE).await;
 				let _ = this.update(cx, |this, cx| {
 					let action = HostAction::SearchSessions { query: sent };
-					this.app
+					this
+						.app
 						.update(cx, |app, cx| app.dispatch(action, SurfaceId::QueueFilterInput, cx));
 				});
 			}));
@@ -79,8 +80,9 @@ impl Sidebar {
 		if view.query != self.query {
 			return None;
 		}
-		let listed: HashSet<SessionId> =
-			(0..self.items.len()).filter_map(|ix| self.session_at(ix, cx)).collect();
+		let listed: HashSet<SessionId> = (0..self.items.len())
+			.filter_map(|ix| self.session_at(ix, cx))
+			.collect();
 		let palette = cx.theme().palette;
 		let rows: Vec<AnyElement> = view
 			.sessions

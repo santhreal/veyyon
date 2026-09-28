@@ -1,18 +1,28 @@
-//! The sidebar: projects and their threads, thread search, the thread row
+//! The sidebar region.
+//!
+//! Pinned, unsent, deferred and archived blocks, projects and their threads
+//! with branches folded under their parents, thread search, the thread row
 //! menu, inline rename, the peek preview, and the footer with settings, the
-//! profile switcher and the connection dot.
+//! profile switcher and the connection dot. The blocks and projects
+//! collapsed, the branches folded and the archived pages listed are written to
+//! the store, so a window reopens them as they were left.
 //!
 //! The sidebar re-renders on the events it draws: the listing, the active
-//! session, the connection, the decisions a session waits on, the profile,
-//! search and preview sections, and a stream starting or ending. A streamed
-//! delta costs one hash lookup and no render. One timer runs to the next
-//! relative-time label change of a drawn row, and only after a render.
+//! session, the connection, the capabilities, the decisions a session waits
+//! on, the profile, search and preview sections, the answer to its own
+//! refresh, and a stream starting or ending. A streamed delta costs one hash
+//! lookup and no render. One timer runs to the next relative-time label
+//! change of a drawn row, and only after a render.
 
 mod chrome;
+mod headers;
 mod keys;
+pub mod listing;
 mod menus;
 pub mod model;
+mod motion;
 mod naming;
+mod placement;
 mod preview;
 mod row;
 mod search;
@@ -26,7 +36,7 @@ use gpui::{
 	Context, Entity, FocusHandle, Focusable, IntoElement, Render, Subscription, Task,
 	UniformListScrollHandle, Window, div, prelude::*, uniform_list,
 };
-use veyyon_desktop_model::{SessionId, SnapshotSectionKind};
+use veyyon_desktop_model::{RequestId, SessionId, SnapshotSectionKind};
 use veyyon_desktop_ui::{
 	editor::{Editor, EditorEvent, EditorMode},
 	overlays::ContextMenu,
@@ -34,8 +44,9 @@ use veyyon_desktop_ui::{
 };
 
 use self::{
-	menus::ProfilePick,
-	model::{Item, visible_items},
+	listing::{Item, Listing},
+	menus::{ProfilePick, RowPick},
+	motion::RowMotion,
 	naming::Naming,
 };
 use crate::{AppState, StoreEvent, driver};
@@ -50,23 +61,28 @@ pub struct Sidebar {
 	/// [`query`](Self::query) lowercased, which the local filter matches.
 	folded:         String,
 	items:          Vec<Item>,
-	/// Paths of the projects whose threads are hidden.
-	collapsed:      HashSet<String>,
 	selected:       Option<SessionId>,
 	/// Sessions a stream is running in, so a delta renders nothing.
 	streaming:      HashSet<SessionId>,
+	/// Whether a supervised process is alive, which the open row's glyph
+	/// states.
+	watching:       bool,
 	naming:         Option<Naming>,
 	confirm_delete: Option<SessionId>,
 	row_menu:       Entity<ContextMenu>,
 	menu_session:   Option<SessionId>,
+	row_picks:      Vec<Option<RowPick>>,
 	profile_menu:   Entity<ContextMenu>,
 	profile_picks:  Vec<ProfilePick>,
 	peek:           Option<SessionId>,
 	scroll:         UniformListScrollHandle,
+	motion:         RowMotion,
 	clock:          fn() -> u64,
 	/// The instant the pending label timer fires at, and the timer.
 	tick:           Option<(u64, Task<()>)>,
 	host_search:    Option<Task<()>>,
+	/// The `ListSessions` the refresh control sent, until the host answers.
+	refreshing:     Option<RequestId>,
 	renders:        usize,
 	_subscriptions: Vec<Subscription>,
 }
@@ -84,7 +100,7 @@ impl Sidebar {
 			&search.focus_handle(cx),
 			cx,
 		);
-		let row_menu = cx.new(|cx| ContextMenu::new(menus::row_items(), window, cx));
+		let row_menu = cx.new(|cx| ContextMenu::new(Vec::new(), window, cx));
 		let profile_menu = cx.new(|cx| ContextMenu::new(Vec::new(), window, cx));
 		let subscriptions = vec![
 			cx.subscribe(&app, |this, _, event: &StoreEvent, cx| this.on_store_event(event, cx)),
@@ -102,23 +118,31 @@ impl Sidebar {
 			query: String::new(),
 			folded: String::new(),
 			items: Vec::new(),
-			collapsed: HashSet::new(),
 			selected,
 			streaming: HashSet::new(),
+			watching: false,
 			naming: None,
 			confirm_delete: None,
 			row_menu,
 			menu_session: None,
+			row_picks: Vec::new(),
 			profile_menu,
 			profile_picks: Vec::new(),
 			peek: None,
 			scroll: UniformListScrollHandle::new(),
+			motion: RowMotion::default(),
 			clock: now_ms,
 			tick: None,
 			host_search: None,
+			refreshing: None,
 			renders: 0,
 			_subscriptions: subscriptions,
 		};
+		sidebar.scroll.set_smooth_wheel(true);
+		sidebar.watching = processes_alive(sidebar.app.read(cx));
+		if let Some(active) = sidebar.selected.clone() {
+			sidebar.reveal(&active, cx);
+		}
 		sidebar.rebuild_items(cx);
 		sidebar.rebuild_profile_menu(cx);
 		sidebar
@@ -149,6 +173,10 @@ impl Sidebar {
 			},
 			StoreEvent::ActiveSessionChanged => {
 				self.selected = self.app.read(cx).active_session().cloned();
+				if let Some(active) = self.selected.clone() {
+					self.reveal(&active, cx);
+				}
+				self.rebuild_items(cx);
 				cx.notify();
 			},
 			StoreEvent::StreamingChanged { session } => {
@@ -162,7 +190,18 @@ impl Sidebar {
 					cx.notify();
 				}
 			},
-			StoreEvent::ConnectionChanged | StoreEvent::InteractionsChanged { .. } => cx.notify(),
+			StoreEvent::ConnectionChanged => {
+				// A link that changed does not answer what the last one sent;
+				// an attach lists the threads again.
+				self.refreshing = None;
+				cx.notify();
+			},
+			StoreEvent::InteractionsChanged { .. }
+			| StoreEvent::DomainChanged(SnapshotSectionKind::Capabilities) => cx.notify(),
+			StoreEvent::RequestFinished { request, .. } if self.refreshing == Some(*request) => {
+				self.refreshing = None;
+				cx.notify();
+			},
 			StoreEvent::DomainChanged(SnapshotSectionKind::Profiles) => {
 				self.rebuild_profile_menu(cx);
 				cx.notify();
@@ -177,19 +216,28 @@ impl Sidebar {
 			{
 				cx.notify();
 			},
+			StoreEvent::DomainChanged(SnapshotSectionKind::Processes) => {
+				let watching = processes_alive(self.app.read(cx));
+				if watching != self.watching {
+					self.watching = watching;
+					cx.notify();
+				}
+			},
 			_ => {},
 		}
 	}
 
 	fn rebuild_items(&mut self, cx: &Context<Self>) {
-		self.items = visible_items(self.app.read(cx).projects(), &self.collapsed, &self.folded);
+		let app = self.app.read(cx);
+		self.items = Listing { app, query: &self.folded }.items();
+		self
+			.motion
+			.relist(&self.items, app.projects(), &self.folded, cx);
 	}
 
-	/// Shows or hides the threads of the project at `path`.
+	/// Hides the threads of the project at `path`, or shows them when hidden.
 	fn toggle_project(&mut self, path: &str, cx: &mut Context<Self>) {
-		if !self.collapsed.remove(path) {
-			self.collapsed.insert(path.to_owned());
-		}
+		self.app.update(cx, |app, _| app.toggle_project(path));
 		self.rebuild_items(cx);
 		cx.notify();
 	}
@@ -225,6 +273,7 @@ impl Focusable for Sidebar {
 impl Render for Sidebar {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.renders += 1;
+		self.motion.step(window, cx);
 		let palette = cx.theme().palette;
 		let list = uniform_list(
 			"sidebar-threads",
@@ -244,6 +293,11 @@ impl Render for Sidebar {
 			.on_action(cx.listener(Self::rename_selected))
 			.on_action(cx.listener(Self::delete_selected))
 			.on_action(cx.listener(Self::cancel))
+			.on_action(cx.listener(Self::toggle_pin_selected))
+			.on_action(cx.listener(Self::toggle_defer_selected))
+			.on_action(cx.listener(Self::toggle_archive_selected))
+			.on_action(cx.listener(Self::fold_selected))
+			.on_action(cx.listener(Self::unfold_selected))
 			.flex()
 			.flex_col()
 			.size_full()
@@ -268,4 +322,13 @@ fn now_ms() -> u64 {
 	SystemTime::now()
 		.duration_since(UNIX_EPOCH)
 		.map_or(0, |elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX))
+}
+
+/// Whether a supervised process is alive, which the open row's glyph states.
+fn processes_alive(app: &AppState) -> bool {
+	app.store()
+		.domains
+		.processes
+		.iter()
+		.any(veyyon_desktop_model::ProcessView::is_alive)
 }

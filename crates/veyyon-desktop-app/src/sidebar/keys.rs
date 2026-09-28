@@ -1,10 +1,10 @@
 //! Keyboard and pointer handling on the thread list: moving the selection,
 //! opening, renaming and deleting the selected thread.
 
-use gpui::{Context, Point, Pixels, ScrollStrategy, Window};
+use gpui::{Context, Pixels, Point, ScrollStrategy, Window};
 use veyyon_desktop_model::{HostAction, SessionId, SurfaceId};
 
-use super::{Sidebar, model::Item, naming::NameTarget};
+use super::{Sidebar, listing::Item, naming::NameTarget};
 use crate::actions::sidebar::{
 	Cancel, DeleteSelected, OpenSelected, RenameSelected, SelectNext, SelectPrev,
 };
@@ -15,7 +15,7 @@ pub const KEY_CONTEXT: &str = "Sidebar";
 impl Sidebar {
 	/// The thread on list line `ix`.
 	pub(super) fn session_at(&self, ix: usize, cx: &Context<Self>) -> Option<SessionId> {
-		let Some(Item::Session { project, row }) = self.items.get(ix) else {
+		let Some(Item::Session { project, row, .. }) = self.items.get(ix) else {
 			return None;
 		};
 		let projects = self.app.read(cx).projects();
@@ -24,7 +24,8 @@ impl Sidebar {
 
 	/// The title of `session` as listed.
 	fn title_of(&self, session: &SessionId, cx: &Context<Self>) -> Option<String> {
-		self.app
+		self
+			.app
 			.read(cx)
 			.projects()
 			.iter()
@@ -34,7 +35,7 @@ impl Sidebar {
 	}
 
 	/// The list line of the selected thread.
-	fn selected_line(&self, cx: &Context<Self>) -> Option<usize> {
+	pub(super) fn selected_line(&self, cx: &Context<Self>) -> Option<usize> {
 		let selected = self.selected.as_ref()?;
 		(0..self.items.len()).find(|ix| self.session_at(*ix, cx).as_ref() == Some(selected))
 	}
@@ -134,7 +135,12 @@ impl Sidebar {
 	}
 
 	/// Opens the rename field in `session`'s row.
-	pub(super) fn rename(&mut self, session: SessionId, window: &mut Window, cx: &mut Context<Self>) {
+	pub(super) fn rename(
+		&mut self,
+		session: SessionId,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) {
 		let title = self.title_of(&session, cx).unwrap_or_default();
 		self.selected = Some(session.clone());
 		self.start_naming(NameTarget::Session(session), &title, window, cx);
@@ -145,7 +151,9 @@ impl Sidebar {
 		self.confirm_delete = None;
 		let surface = SurfaceId::QueueDeleteButton(session.clone());
 		let action = HostAction::DeleteSession { session: session.clone() };
-		self.app.update(cx, |app, cx| app.dispatch(action, surface, cx));
+		self
+			.app
+			.update(cx, |app, cx| app.dispatch(action, surface, cx));
 		cx.notify();
 	}
 
@@ -157,8 +165,12 @@ impl Sidebar {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) {
+		let (items, picks) = super::menus::row_menu(self.app.read(cx), &session);
+		self.row_picks = picks;
 		self.menu_session = Some(session);
-		self.row_menu
-			.update(cx, |menu, cx| menu.open_at(position, window, cx));
+		self.row_menu.update(cx, |menu, cx| {
+			menu.set_items(items, cx);
+			menu.open_at(position, window, cx);
+		});
 	}
 }
