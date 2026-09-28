@@ -120,9 +120,17 @@ impl Workspace {
 		// action from the window's root, above every workspace listener.
 		let lost = cx.on_focus_lost(window, |this, window, cx| this.focus_composer(window, cx));
 		let store_changed = cx.subscribe(&app, |this, _, event: &StoreEvent, cx| match event {
-			StoreEvent::NotificationsChanged => this.notices.sync(&this.app, cx),
-			StoreEvent::ConnectionChanged
-			| StoreEvent::DomainChanged(SnapshotSectionKind::AgentPause) => cx.notify(),
+			// Whether a toast offers to open a file follows the link and the
+			// host's capabilities.
+			StoreEvent::NotificationsChanged
+			| StoreEvent::DomainChanged(SnapshotSectionKind::Capabilities) => {
+				this.notices.sync(&this.app, cx);
+			},
+			StoreEvent::ConnectionChanged => {
+				this.notices.sync(&this.app, cx);
+				cx.notify();
+			},
+			StoreEvent::DomainChanged(SnapshotSectionKind::AgentPause) => cx.notify(),
 			StoreEvent::ActiveSessionChanged => this.session_changed(cx),
 			StoreEvent::DomainChanged(SnapshotSectionKind::Settings) => {
 				this.reduced.resolve(&this.app, cx);

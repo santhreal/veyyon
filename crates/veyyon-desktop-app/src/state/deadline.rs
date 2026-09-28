@@ -102,8 +102,8 @@ impl AppState {
 }
 
 /// The wall clock in milliseconds since the Unix epoch, the clock the host
-/// stamps its errors with.
-fn wall_ms() -> u64 {
+/// stamps its errors and announcements with.
+pub(super) fn wall_ms() -> u64 {
 	SystemTime::now()
 		.duration_since(UNIX_EPOCH)
 		.map_or(0, |elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX))

@@ -4,10 +4,12 @@
 //! [`AppState::announce`]; the stack takes an announcement down when it is
 //! dismissed or its time is up.
 
-use veyyon_desktop_model::{Notification, PanelsStore, Raised};
+use veyyon_desktop_model::{
+	ExportView, Notification, NotificationPriority, NotificationSource, PanelsStore, Raised,
+};
 use veyyon_gpui::Context;
 
-use super::{AppState, StoreEvent};
+use super::{AppState, StoreEvent, deadline::wall_ms};
 
 impl AppState {
 	/// Raises `notification` on the stack, merging it into the announcement
@@ -73,5 +75,26 @@ impl AppState {
 			self.store.persisted.shell.active_session = None;
 		}
 		cx.emit(StoreEvent::ActiveSessionChanged);
+	}
+
+	/// Raises the announcement that the host wrote the export `view` holds,
+	/// and reports whether the stack changed. A file the host wrote is stated
+	/// by its path, which the announcement holds as its detail for the toast
+	/// to open; a document it answered with instead is stated by its format.
+	/// One announcement per file, so exporting twice raises one card.
+	pub(super) fn announce_export(&mut self, view: &ExportView) -> bool {
+		let (key, title) = match &view.path {
+			Some(path) => (path.as_str(), format!("Exported to {path}")),
+			None => (view.format.as_str(), format!("Exported the thread as {}", view.format)),
+		};
+		let raised = self.store.notifications.raise(Notification {
+			key: format!("{}:{}:{key}", NotificationSource::Export.as_str(), view.session.0),
+			source: NotificationSource::Export,
+			priority: NotificationPriority::Low,
+			title,
+			detail: view.path.clone(),
+			raised_at_ms: wall_ms(),
+		});
+		raised != Raised::Refused
 	}
 }

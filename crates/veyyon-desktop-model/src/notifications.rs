@@ -70,6 +70,10 @@ pub enum NotificationSource {
 	/// An extension raised a notice. Its priority is the level the extension
 	/// stated: an error stays until dismissed, a warning and an info expire.
 	Extension,
+	/// The host wrote the export of a session the window asked for. The
+	/// control that asked draws no answer, so the announcement states where
+	/// the file went.
+	Export,
 }
 
 impl NotificationSource {
@@ -81,6 +85,7 @@ impl NotificationSource {
 			Self::RequestFailed => "request-failed",
 			Self::DeliveryFailed => "delivery-failed",
 			Self::Extension => "extension",
+			Self::Export => "export",
 		}
 	}
 }

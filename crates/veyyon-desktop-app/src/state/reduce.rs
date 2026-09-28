@@ -185,6 +185,14 @@ impl AppState {
 				self.note_process_logs(chunk);
 				Follow::Domain(SnapshotSectionKind::ProcessLogs)
 			},
+			// Thread: the control that asked draws no answer, so the answer is
+			// announced.
+			SnapshotSection::Export(view) => {
+				if self.announce_export(view) {
+					batch.push(StoreEvent::NotificationsChanged);
+				}
+				Follow::Domain(SnapshotSectionKind::Export)
+			},
 			other => Follow::Domain(SnapshotSectionKind::from(other)),
 		};
 		let damage = reduce(&mut self.store, HostEvent::Snapshot(section));

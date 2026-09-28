@@ -5,22 +5,25 @@
 //! [`Toasts::LIMIT`] announcements as toasts that never time out on their own,
 //! runs one timer to the queue's next deadline that expires the queue, and
 //! takes an announcement off the queue when its toast's close button is
-//! clicked.
+//! clicked. An export's toast offers to open the file the host wrote.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use gpui::{AppContext as _, Context, Entity, Subscription, Task, WeakEntity};
-use veyyon_desktop_model::{Notification, NotificationPriority, NotificationSource};
+use veyyon_desktop_model::{
+	HostAction, HostActionKind, Notification, NotificationPriority, NotificationSource, SurfaceId,
+};
 use veyyon_desktop_ui::overlays::{Toast, ToastDismissed, ToastId, ToastKind, Toasts};
 
 use super::Workspace;
 use crate::AppState;
 
-/// One announcement drawn as a toast.
+/// One announcement drawn as a toast, and whether it offers to open a file.
 struct Shown {
 	key:   String,
 	title: String,
 	kind:  ToastKind,
+	opens: bool,
 	id:    ToastId,
 }
 
@@ -49,39 +52,56 @@ impl Notices {
 	}
 
 	/// Draws the queue of `app`: takes down the toasts whose announcement
-	/// went or changed, pushes the announcements not drawn yet, and runs the
-	/// timer to the queue's next deadline.
+	/// went or changed, or whose Open the host took or gave back, pushes the
+	/// announcements not drawn yet, and runs the timer to the queue's next
+	/// deadline.
 	pub(super) fn sync(&mut self, app: &Entity<AppState>, cx: &mut Context<Workspace>) {
-		let queue = &app.read(cx).store().notifications;
+		let state = app.read(cx);
+		let opens = state.refusal(HostActionKind::OpenExternal).is_none();
+		let queue = &state.store().notifications;
 		let next = queue
 			.raised()
 			.iter()
 			.filter_map(Notification::expires_at_ms)
 			.min();
-		let wanted: Vec<(String, String, ToastKind)> = queue
+		let wanted: Vec<(String, String, ToastKind, Option<String>)> = queue
 			.raised()
 			.iter()
 			.take(Toasts::LIMIT)
-			.map(|held| (held.key.clone(), held.title.clone(), kind(held)))
+			.map(|held| (held.key.clone(), held.title.clone(), kind(held), opened(held, opens)))
 			.collect();
 
 		let Self { toasts, shown, .. } = self;
 		shown.retain(|held| {
-			let current = wanted.iter().any(|(key, title, kind)| {
-				*key == held.key && *title == held.title && *kind == held.kind
+			let current = wanted.iter().any(|(key, title, kind, open)| {
+				*key == held.key
+					&& *title == held.title
+					&& *kind == held.kind
+					&& open.is_some() == held.opens
 			});
 			if !current {
 				toasts.update(cx, |toasts, cx| toasts.dismiss(held.id, cx));
 			}
 			current
 		});
-		for (key, title, kind) in wanted {
+		for (key, title, kind, open) in wanted {
 			if shown.iter().any(|held| held.key == key) {
 				continue;
 			}
-			let toast = Toast::new(kind, title.clone()).lasts(None);
+			let opens = open.is_some();
+			let mut toast = Toast::new(kind, title.clone()).lasts(None);
+			if let Some(path) = open {
+				let app = app.downgrade();
+				toast = toast.action("Open", move |_, cx| {
+					let action = HostAction::OpenExternal { path: path.clone() };
+					app.update(cx, |app, cx| {
+						app.dispatch(action, SurfaceId::GlobalTitlebarLine, cx);
+					})
+					.ok();
+				});
+			}
 			let id = toasts.update(cx, |toasts, cx| toasts.push(toast, cx));
-			shown.push(Shown { key, title, kind, id });
+			shown.push(Shown { key, title, kind, opens, id });
 		}
 
 		self.expiry = match (next, self.expiry.take()) {
@@ -120,6 +140,20 @@ const fn kind(held: &Notification) -> ToastKind {
 		(NotificationSource::RequestFailed | NotificationSource::DeliveryFailed, _)
 		| (NotificationSource::Extension, NotificationPriority::Urgent) => ToastKind::Error,
 		(NotificationSource::DecisionWaiting | NotificationSource::Extension, _) => ToastKind::Info,
+		(NotificationSource::Export, _) => ToastKind::Success,
+	}
+}
+
+/// The file an announcement offers to open while the host opens files: the
+/// one an export wrote, which its announcement holds as its detail.
+fn opened(held: &Notification, opens: bool) -> Option<String> {
+	match held.source {
+		NotificationSource::Export if opens => held.detail.clone(),
+		NotificationSource::Export
+		| NotificationSource::DecisionWaiting
+		| NotificationSource::RequestFailed
+		| NotificationSource::DeliveryFailed
+		| NotificationSource::Extension => None,
 	}
 }
 
