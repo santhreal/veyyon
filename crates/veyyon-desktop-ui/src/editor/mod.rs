@@ -13,6 +13,9 @@ mod handlers;
 mod history;
 mod input;
 mod layout;
+mod mask;
+#[cfg(test)]
+mod mask_tests;
 mod motion;
 mod render;
 #[cfg(test)]
@@ -25,6 +28,7 @@ use std::{borrow::Cow, ops::Range, rc::Rc, time::Duration};
 pub use actions::KEY_CONTEXT;
 pub use buffer::{Motion, Selection, TextBuffer, Unit};
 pub use history::{EditKind, UNDO_LIMIT};
+pub use mask::MASK_GLYPH;
 use veyyon_gpui::{
 	App, Bounds, Context, EventEmitter, FocusHandle, Focusable, Pixels, Point, SharedString,
 	Subscription, Task, Window,
@@ -79,6 +83,8 @@ pub struct Editor {
 	text_style:           TypeStyle,
 	min_lines:            usize,
 	max_lines:            Option<usize>,
+	/// Draw each grapheme as [`MASK_GLYPH`] and keep the text off the clipboard.
+	masked:               bool,
 	/// The input method's uncommitted text.
 	marked:               Option<Range<usize>>,
 	/// The horizontal position vertical motion returns to.
@@ -117,6 +123,7 @@ impl Editor {
 			text_style: text::BODY,
 			min_lines: 1,
 			max_lines: None,
+			masked: false,
 			marked: None,
 			goal_x: None,
 			layout: None,
@@ -155,6 +162,24 @@ impl Editor {
 	/// True while the editor has keyboard focus.
 	pub const fn is_focused(&self) -> bool {
 		self.focused
+	}
+
+	/// True while the text is masked.
+	pub const fn is_masked(&self) -> bool {
+		self.masked
+	}
+
+	/// Masks or unmasks the text, for a secret. A masked editor draws one
+	/// [`MASK_GLYPH`] per grapheme and a line break as a line break, and hands
+	/// the input method mask glyphs; carets, selections and pointer hits map
+	/// one to one by grapheme. Copy and cut do nothing while masked, and
+	/// [`Self::text`] still returns the text.
+	pub fn set_masked(&mut self, masked: bool, cx: &mut Context<Self>) {
+		if self.masked != masked {
+			self.masked = masked;
+			self.goal_x = None;
+			cx.notify();
+		}
 	}
 
 	/// Replaces the text as one undo step, the caret at its end.
@@ -239,6 +264,7 @@ impl Editor {
 				!layout.placeholder
 					&& layout.revision == self.buffer.revision()
 					&& layout.lines.len() == self.buffer.line_count()
+					&& layout.is_masked() == self.masked
 			})
 			.cloned()
 	}

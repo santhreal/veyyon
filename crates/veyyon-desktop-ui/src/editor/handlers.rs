@@ -108,15 +108,18 @@ impl Editor {
 		self.changed(cx);
 	}
 
+	/// Copies the selection; does nothing while masked.
 	pub(super) fn copy(&self, cx: &Context<Self>) {
 		let selected = self.buffer.selected_text();
-		if !selected.is_empty() {
+		if !self.masked && !selected.is_empty() {
 			cx.write_to_clipboard(ClipboardItem::new_string(selected.to_owned()));
 		}
 	}
 
+	/// Cuts the selection; does nothing while masked, so a secret neither
+	/// reaches the clipboard nor leaves the field.
 	pub(super) fn cut(&mut self, cx: &mut Context<Self>) {
-		if self.buffer.selection().is_empty() {
+		if self.masked || self.buffer.selection().is_empty() {
 			return;
 		}
 		self.copy(cx);

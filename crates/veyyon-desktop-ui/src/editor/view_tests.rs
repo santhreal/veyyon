@@ -13,7 +13,7 @@ type Events = Rc<RefCell<Vec<EditorEvent>>>;
 
 /// Opens a focused editor in `mode` and records every event it emits after
 /// focus.
-fn open(
+pub(super) fn open(
 	app: &mut TestAppContext,
 	mode: EditorMode,
 ) -> (Entity<Editor>, Events, &mut VisualTestContext) {
@@ -34,7 +34,7 @@ fn open(
 	(editor, events, cx)
 }
 
-fn text(editor: &Entity<Editor>, cx: &VisualTestContext) -> String {
+pub(super) fn text(editor: &Entity<Editor>, cx: &VisualTestContext) -> String {
 	editor.read_with(cx, |editor, _| editor.text().to_owned())
 }
 

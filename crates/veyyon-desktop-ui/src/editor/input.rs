@@ -9,7 +9,7 @@ use veyyon_gpui::{
 	Bounds, Context, EntityInputHandler, Pixels, Point, UTF16Selection, Window, size,
 };
 
-use super::{EditKind, Editor, motion::floor_char};
+use super::{EditKind, Editor, MASK_GLYPH, motion::floor_char};
 use crate::theme::size as measure;
 
 /// The UTF-16 offset of byte `offset`.
@@ -49,6 +49,8 @@ impl Editor {
 }
 
 impl EntityInputHandler for Editor {
+	/// The text in `range_utf16`; while masked, one [`MASK_GLYPH`] per UTF-16
+	/// unit, so the input method reads no secret and its offsets still hold.
 	fn text_for_range(
 		&mut self,
 		range_utf16: Range<usize>,
@@ -58,8 +60,11 @@ impl EntityInputHandler for Editor {
 	) -> Option<String> {
 		let text = self.buffer.text();
 		let range = range_from_utf16(text, &range_utf16);
-		adjusted_range.replace(range_to_utf16(text, &range));
-		Some(text[range].to_owned())
+		let adjusted = range_to_utf16(text, &range);
+		let masked = std::iter::repeat_n(MASK_GLYPH, adjusted.len());
+		let result = if self.masked { masked.collect() } else { text[range].to_owned() };
+		adjusted_range.replace(adjusted);
+		Some(result)
 	}
 
 	fn selected_text_range(

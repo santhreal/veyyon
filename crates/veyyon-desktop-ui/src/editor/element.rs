@@ -9,7 +9,7 @@ use veyyon_gpui::{
 	TextStyle, UnderlineStyle, Window, fill, point, relative, size,
 };
 
-use super::{Editor, layout::TextLayout};
+use super::{Editor, layout::TextLayout, mask::Mask};
 use crate::theme::{ActiveTheme, size as measure};
 
 /// The text canvas of an [`Editor`].
@@ -17,18 +17,22 @@ pub struct EditorElement {
 	pub editor: Entity<Editor>,
 }
 
-/// The text and runs a frame shapes: the buffer or the placeholder.
+/// The text and runs a frame shapes: the buffer, its mask, or the
+/// placeholder.
 pub struct Shaping {
 	text:        SharedString,
 	runs:        Vec<TextRun>,
 	placeholder: bool,
+	/// Set when `text` is the mask of a masked buffer.
+	mask:        Option<Mask>,
 	font_size:   Pixels,
 	line_height: Pixels,
 }
 
 impl Editor {
-	/// The text to shape and its runs: the buffer with the composition
-	/// underlined, or the placeholder in `text.faint` when the buffer is empty.
+	/// The text to shape and its runs: the buffer, or its mask while masked,
+	/// with the composition underlined; or the placeholder in `text.faint`
+	/// when the buffer is empty.
 	fn shaping(&self, style: &TextStyle, window: &Window, cx: &App) -> Shaping {
 		let run = |len: usize, color: Hsla, underline: Option<UnderlineStyle>| TextRun {
 			len,
@@ -47,12 +51,22 @@ impl Editor {
 				text: self.placeholder.clone(),
 				runs: vec![run(self.placeholder.len(), faint, None)],
 				placeholder: true,
+				mask: None,
 				font_size,
 				line_height,
 			};
 		}
-		let text = SharedString::from(self.buffer.text().to_owned());
-		let runs = match self.marked.clone() {
+		let mask = self.masked.then(|| Mask::new(self.buffer.text()));
+		let (text, marked) = if let Some(mask) = &mask {
+			let marked = self
+				.marked
+				.clone()
+				.map(|marked| mask.to_display(marked.start)..mask.to_display(marked.end));
+			(mask.display().clone(), marked)
+		} else {
+			(SharedString::from(self.buffer.text().to_owned()), self.marked.clone())
+		};
+		let runs = match marked {
 			Some(marked) if marked.start < marked.end && marked.end <= text.len() => {
 				let underline = UnderlineStyle {
 					thickness: measure::HAIRLINE,
@@ -67,7 +81,7 @@ impl Editor {
 			},
 			_ => vec![run(text.len(), style.color, None)],
 		};
-		Shaping { text, runs, placeholder: false, font_size, line_height }
+		Shaping { text, runs, placeholder: false, mask, font_size, line_height }
 	}
 
 	/// Keeps the frame's layout for hit testing and motion, clamps the scroll
@@ -172,6 +186,7 @@ impl Element for EditorElement {
 			shaping.line_height,
 			revision,
 			shaping.placeholder,
+			shaping.mask.clone(),
 		));
 		self.editor.update(cx, |editor, _| editor.adopt_layout(layout.clone(), bounds));
 		Some(layout)

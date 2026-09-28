@@ -1,22 +1,26 @@
 //! The shaped text of one frame, split into visual rows, with hit testing.
 //!
 //! A logical line shapes into one [`WrappedLine`]; each wrap boundary starts
-//! another visual row. Offsets here are byte offsets into the text that was
-//! shaped. Positions are relative to the top-left of the text content, before
+//! another visual row. Offsets taken and returned here are byte offsets into
+//! the text; a masked layout shaped [`Mask::display`] and maps every offset
+//! through the mask, so a caret or hit lands on the same grapheme in both.
+//! Positions are relative to the top-left of the text content, before
 //! scrolling.
 
 use veyyon_gpui::{Pixels, Point, WrappedLine, point};
+
+use super::mask::Mask;
 
 /// One visual row: a slice of one shaped line.
 #[derive(Clone, Copy, Debug)]
 pub struct Row {
 	/// Index of the shaped line.
 	pub line:      usize,
-	/// Offset of the row start in the whole text.
+	/// Text offset of the row start.
 	pub start:     usize,
-	/// Offset of the row end in the whole text.
+	/// Text offset of the row end.
 	pub end:       usize,
-	/// Offset of the row start inside its shaped line.
+	/// Shaped offset of the row start inside its shaped line.
 	pub rel_start: usize,
 	/// Horizontal position of the row start inside the unwrapped line.
 	pub x0:        Pixels,
@@ -40,16 +44,21 @@ pub struct TextLayout {
 	pub revision:    u64,
 	/// True when the placeholder, not the buffer, was shaped.
 	pub placeholder: bool,
+	/// The mask a masked text was shaped through.
+	mask:            Option<Mask>,
 }
 
 impl TextLayout {
-	/// Splits `lines` into rows.
+	/// Splits `lines`, shaped from the text or from `mask`'s display, into
+	/// rows.
 	pub fn new(
 		lines: Vec<WrappedLine>,
 		line_height: Pixels,
 		revision: u64,
 		placeholder: bool,
+		mask: Option<Mask>,
 	) -> Self {
+		let text_offset = |offset: usize| mask.as_ref().map_or(offset, |mask| mask.to_text(offset));
 		let mut rows = Vec::with_capacity(lines.len());
 		let mut first_row = Vec::with_capacity(lines.len());
 		let mut width = Pixels::ZERO;
@@ -72,8 +81,8 @@ impl TextLayout {
 				width = width.max(layout.x_for_index(rel_end) - x0);
 				rows.push(Row {
 					line: index,
-					start: line_offset + rel_start,
-					end: line_offset + rel_end,
+					start: text_offset(line_offset + rel_start),
+					end: text_offset(line_offset + rel_end),
 					rel_start,
 					x0,
 					wrapped,
@@ -82,7 +91,22 @@ impl TextLayout {
 			}
 			line_offset += line.len() + 1;
 		}
-		Self { lines, first_row, rows, line_height, width, revision, placeholder }
+		Self { lines, first_row, rows, line_height, width, revision, placeholder, mask }
+	}
+
+	/// True when the layout was shaped from a mask.
+	pub const fn is_masked(&self) -> bool {
+		self.mask.is_some()
+	}
+
+	/// The shaped offset of text offset `offset`.
+	fn shaped(&self, offset: usize) -> usize {
+		self.mask.as_ref().map_or(offset, |mask| mask.to_display(offset))
+	}
+
+	/// The text offset of shaped offset `offset`.
+	fn unshaped(&self, offset: usize) -> usize {
+		self.mask.as_ref().map_or(offset, |mask| mask.to_text(offset))
 	}
 
 	/// The number of rows; never zero.
@@ -115,7 +139,8 @@ impl TextLayout {
 		let Some(line) = self.lines.get(row.line) else {
 			return Pixels::ZERO;
 		};
-		let rel = row.rel_start + offset.clamp(row.start, row.end) - row.start;
+		let start = self.shaped(row.start);
+		let rel = row.rel_start + self.shaped(offset.clamp(row.start, row.end)).saturating_sub(start);
 		line.unwrapped_layout.x_for_index(rel) - row.x0
 	}
 
@@ -135,13 +160,14 @@ impl TextLayout {
 		let Some(line) = self.lines.get(row.line) else {
 			return row.start;
 		};
-		let rel_end = row.rel_start + row.end - row.start;
+		let start = self.shaped(row.start);
+		let rel_end = row.rel_start + self.shaped(row.end).saturating_sub(start);
 		let mut rel =
 			line.unwrapped_layout.closest_index_for_x(row.x0 + x).clamp(row.rel_start, rel_end);
 		if row.wrapped && rel == rel_end && rel > row.rel_start {
 			rel -= line.text[..rel].chars().next_back().map_or(0, char::len_utf8);
 		}
-		row.start + rel - row.rel_start
+		self.unshaped(start + rel - row.rel_start)
 	}
 
 	/// The offset closest to `position`, relative to the content origin.
