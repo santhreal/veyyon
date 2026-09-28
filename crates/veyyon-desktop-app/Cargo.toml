@@ -17,6 +17,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 # Composer: pasted attachments are kept in files named by their SHA-256.
 sha2 = { workspace = true }
+# Tree sheet: the filter modes, cycled in the terminal's order.
+strum = { workspace = true }
 veyyon-desktop-model = { workspace = true }
 veyyon-desktop-ui = { workspace = true }
 veyyon-gpui = { workspace = true }
@@ -28,5 +30,4 @@ libc = { workspace = true }
 
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }
-strum = { workspace = true }
 veyyon-test-scratch = { workspace = true }

@@ -12,6 +12,7 @@
 
 pub mod header;
 mod status;
+pub mod tree;
 
 use gpui::{
 	Context, Entity, Pixels, Render, StyleRefinement, Subscription, Window, div, prelude::*,
