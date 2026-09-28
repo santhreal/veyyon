@@ -47,6 +47,8 @@ pub fn init(cx: &mut gpui::App) {
 	workspace::init(cx);
 	// Sidebar
 	sidebar::init(cx);
+	// Thread
+	thread::init(cx);
 	// Panel
 	panel::init(cx);
 	drawer::init(cx);

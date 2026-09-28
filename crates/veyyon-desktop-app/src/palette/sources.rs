@@ -149,6 +149,7 @@ const ACTION_SPELLINGS: &[(&str, &[&str])] = &[
 	("Review plan", &["/plan-review"]),
 	("Delete selected thread", &["/drop"]),
 	("Switch profile", &["/profile", "/profiles"]),
+	("Show the session tree", &["/tree"]),
 ];
 
 /// Every action [`actions::registry`] lists, with the shortcut the keymap

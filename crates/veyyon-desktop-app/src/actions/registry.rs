@@ -5,7 +5,7 @@ use std::sync::LazyLock;
 
 use gpui::Action;
 
-use super::{composer, dock, drawer, panel, sidebar, workspace};
+use super::{composer, dock, drawer, panel, sidebar, thread, workspace};
 use crate::keymap;
 
 /// One action the palette lists.
@@ -74,6 +74,8 @@ pub fn registry() -> &'static [ActionEntry] {
 			entry::<sidebar::FoldSelected>("Hide branches of selected thread"),
 			entry::<sidebar::UnfoldSelected>("Show branches of selected thread"),
 			entry::<sidebar::OpenProfileMenu>("Switch profile"),
+			// Thread
+			entry::<thread::ToggleSessionTree>("Show the session tree"),
 			// Composer
 			entry::<composer::Submit>("Send prompt"),
 			entry::<composer::Stop>("Stop the turn"),

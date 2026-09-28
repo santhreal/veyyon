@@ -113,6 +113,16 @@ pub mod sidebar {
 	]);
 }
 
+// Thread
+/// The thread column.
+pub mod thread {
+	gpui::actions!(thread, [
+		/// Shows the open thread's session tree in place of its transcript, or
+		/// hides it.
+		ToggleSessionTree,
+	]);
+}
+
 // Composer
 /// The composer: sending, stopping, queueing, modes, pickers, attachments and
 /// completion.

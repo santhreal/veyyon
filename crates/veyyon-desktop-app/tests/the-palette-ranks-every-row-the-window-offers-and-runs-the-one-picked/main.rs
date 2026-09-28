@@ -158,6 +158,7 @@ fn the_terminal_spellings_reach_the_rows_that_do_what_they_did(app: &mut TestApp
 		("/drop", "Delete selected thread"),
 		("/profile", "Switch profile"),
 		("/profiles", "Switch profile"),
+		("/tree", "Show the session tree"),
 	];
 	for (typed, label) in spellings {
 		w.query(typed);

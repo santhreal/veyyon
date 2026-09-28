@@ -9,7 +9,7 @@ use std::{rc::Rc, sync::LazyLock};
 
 use gpui::{Action, App, DummyKeyboardMapper, KeyBinding, KeyBindingContextPredicate};
 
-use crate::actions::{build, composer, sidebar, workspace};
+use crate::actions::{build, composer, sidebar, thread, workspace};
 
 /// One default binding.
 #[derive(Clone, Copy, Debug)]
@@ -70,6 +70,8 @@ pub fn table() -> &'static [DefaultBinding] {
 			bind::<sidebar::ToggleArchiveSelected>("k", Some("Sidebar && !Editor && !Menu")),
 			bind::<sidebar::FoldSelected>("left", Some("Sidebar && !Editor && !Menu")),
 			bind::<sidebar::UnfoldSelected>("right", Some("Sidebar && !Editor && !Menu")),
+			// Thread
+			bind::<thread::ToggleSessionTree>("secondary-shift-t", None),
 			// Composer
 			bind::<composer::AcceptCompletion>("tab", Some("Composer")),
 			bind::<composer::CycleThinkingLevel>("shift-tab", Some("Composer")),

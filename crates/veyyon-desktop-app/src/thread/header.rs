@@ -29,7 +29,10 @@ use veyyon_desktop_ui::{
 use super::status::{now_ms, status_chips};
 use crate::{
 	AppState, StoreEvent,
-	actions::workspace::{ShowPanelTab, ToggleDrawer, TogglePanel},
+	actions::{
+		thread::ToggleSessionTree,
+		workspace::{ShowPanelTab, ToggleDrawer, TogglePanel},
+	},
 	driver,
 	transcript::tool::open_external,
 	workspace,
@@ -196,6 +199,22 @@ impl Render for ThreadHeader {
 				("Leave the share", HostAction::LeaveShare, SurfaceId::ShareLeaveButton)
 			},
 		};
+		// A press leaves the keyboard where it is, so the tree it closes still
+		// holds it and hands it to the composer.
+		let tree = session.is_some().then(|| {
+			driver::target(
+				"thread.tree",
+				div()
+					.on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
+					.child(
+						IconButton::new("thread-tree", IconName::GitBranch)
+							.tooltip("Session tree")
+							.on_click(|_, window, cx| {
+								window.dispatch_action(Box::new(ToggleSessionTree), cx);
+							}),
+					),
+			)
+		});
 		let session_buttons = session.map(|session| {
 			[
 				self.host_button(
@@ -271,6 +290,7 @@ impl Render for ThreadHeader {
 								window.dispatch_action(Box::new(ShowPanelTab { tab: "usage".into() }), cx);
 							}),
 					)
+					.children(tree)
 					.children(session_buttons.into_iter().flatten())
 					.child(pause)
 					.child(

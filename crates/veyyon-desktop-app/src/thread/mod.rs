@@ -8,9 +8,11 @@
 //! header reuses its last frame. The dock and the composer are laid out at
 //! the height they last drew at, and the shell renders when one moves. The
 //! freeze of every agent is the host's, not the thread's, so the workspace
-//! draws its strip above the column.
+//! draws its strip above the column. While the session tree is open it
+//! takes the transcript's place.
 
 pub mod header;
+mod slot;
 mod status;
 pub mod tree;
 
@@ -19,40 +21,55 @@ use gpui::{
 };
 use veyyon_desktop_ui::theme::{ActiveTheme, size};
 
-use self::header::ThreadHeader;
+pub use self::slot::init;
+use self::{header::ThreadHeader, slot::Slot};
 use crate::{
 	AppState,
-	composer::{Composer, Resized},
+	composer::{Composer, Resized, route},
 	dock::InteractionDock,
 	transcript::Transcript,
 };
 
 /// The thread region.
 pub struct ThreadView {
+	app:            Entity<AppState>,
 	header:         Entity<ThreadHeader>,
 	transcript:     Entity<Transcript>,
 	dock:           Entity<InteractionDock>,
 	composer:       Entity<Composer>,
+	/// The session tree, while it is open.
+	tree:           Option<Slot>,
 	/// The heights the dock and the composer last drew at.
 	heights:        (Pixels, Pixels),
-	_subscriptions: [Subscription; 2],
+	_subscriptions: [Subscription; 3],
 }
 
 impl ThreadView {
 	/// Creates the thread column over `app`.
 	pub fn new(app: Entity<AppState>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+		route::register(window, &cx.entity(), cx);
 		let header = cx.new(|cx| ThreadHeader::new(app.clone(), window, cx));
 		let transcript = cx.new(|cx| Transcript::new(app.clone(), window, cx));
 		let dock = cx.new(|cx| InteractionDock::new(app.clone(), window, cx));
-		let composer = cx.new(|cx| Composer::new(app, window, cx));
+		let composer = cx.new(|cx| Composer::new(app.clone(), window, cx));
 		let docked = cx.subscribe(&dock, |this, _, event: &Resized, cx| {
 			this.resize((event.0, this.heights.1), cx);
 		});
 		let composed = cx.subscribe(&composer, |this, _, event: &Resized, cx| {
 			this.resize((this.heights.0, event.0), cx);
 		});
+		let store = cx.subscribe(&app, Self::on_store_event);
 		let heights = (dock.read(cx).height(), composer.read(cx).height());
-		Self { header, transcript, dock, composer, heights, _subscriptions: [docked, composed] }
+		Self {
+			app,
+			header,
+			transcript,
+			dock,
+			composer,
+			tree: None,
+			heights,
+			_subscriptions: [docked, composed, store],
+		}
 	}
 
 	/// Lays the dock and the composer out at `heights` from the next frame.
@@ -99,12 +116,11 @@ impl Render for ThreadView {
 				),
 			)
 			.child(
-				div().flex_1().min_h_0().w_full().child(
-					self
-						.transcript
-						.clone()
-						.cached(StyleRefinement::default().size_full()),
-				),
+				div()
+					.flex_1()
+					.min_h_0()
+					.w_full()
+					.child(self.transcript_slot()),
 			)
 			.child(
 				self.dock.clone().cached(

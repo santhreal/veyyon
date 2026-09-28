@@ -27,7 +27,7 @@ use std::{fs, path::PathBuf, time::Duration};
 use serde_json::json;
 use strum::IntoEnumIterator as _;
 use veyyon_desktop_app::{
-	actions::{composer, panel::OpenFile, workspace as act},
+	actions::{composer, panel::OpenFile, thread, workspace as act},
 	drawer::DrawerTab,
 };
 use veyyon_desktop_model::{
@@ -38,10 +38,7 @@ use veyyon_desktop_model::{
 use self::harness::{Win, install, window};
 
 /// Sections the window stores and draws nowhere, with the reason.
-const NOT_DRAWN: &[Kind] = &[
-	// The tree sheet that draws it is not built yet.
-	Kind::SessionTree,
-];
+const NOT_DRAWN: &[Kind] = &[];
 
 /// The surface a section is drawn on, reached the way the operator reaches
 /// it.
@@ -72,6 +69,8 @@ enum Prepare {
 	HistorySearch(&'static str),
 	/// The composer, with an extension completing the draft typed.
 	Completion(&'static str),
+	/// The thread column, showing the open thread's session tree.
+	Tree,
 }
 
 /// Where `kind` is drawn, and the corpus sections of other kinds that
@@ -130,7 +129,7 @@ const fn destination(kind: Kind) -> (Prepare, &'static [Kind]) {
 		Kind::SessionTranscript => (Prepare::Preview, &[]),
 		Kind::PromptHistory => (Prepare::HistorySearch("refactor"), &[]),
 		Kind::ComposerCompletions => (Prepare::Completion("fix #is"), &[]),
-		Kind::SessionTree => (Prepare::Rest, &[]),
+		Kind::SessionTree => (Prepare::Tree, &[]),
 	}
 }
 
@@ -240,6 +239,11 @@ fn prepare(w: &mut Win<'_>, prepare: &Prepare) {
 			} })))]);
 			w.dispatch(act::FocusComposer);
 			w.typed(draft);
+		},
+		// The chord reaches the active window's column; the sweep activates none.
+		Prepare::Tree => {
+			w.cx.update(|window, _| window.activate_window());
+			w.dispatch(thread::ToggleSessionTree);
 		},
 	}
 }
