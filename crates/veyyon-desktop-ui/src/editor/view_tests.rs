@@ -17,7 +17,8 @@ pub(super) fn open(
 	app: &mut TestAppContext,
 	mode: EditorMode,
 ) -> (Entity<Editor>, Events, &mut VisualTestContext) {
-	app.update(|cx| Theme::install(Appearance::Dark, cx)).expect("the dark palette parses");
+	app.update(|cx| Theme::install(Appearance::Dark, cx))
+		.expect("the dark palette parses");
 	let (editor, cx) = app.add_window_view(|window, cx| Editor::new(mode, window, cx));
 	let events = Events::default();
 	let log = events.clone();

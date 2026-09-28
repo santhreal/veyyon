@@ -43,13 +43,21 @@ impl Mask {
 	/// boundary.
 	pub fn to_display(&self, offset: usize) -> usize {
 		let index = self.boundaries.partition_point(|&(text, _)| text <= offset);
-		self.boundaries.get(index.saturating_sub(1)).map_or(0, |&(_, display)| display)
+		self
+			.boundaries
+			.get(index.saturating_sub(1))
+			.map_or(0, |&(_, display)| display)
 	}
 
 	/// The text offset of display offset `offset`, snapped down to a grapheme
 	/// boundary.
 	pub fn to_text(&self, offset: usize) -> usize {
-		let index = self.boundaries.partition_point(|&(_, display)| display <= offset);
-		self.boundaries.get(index.saturating_sub(1)).map_or(0, |&(text, _)| text)
+		let index = self
+			.boundaries
+			.partition_point(|&(_, display)| display <= offset);
+		self
+			.boundaries
+			.get(index.saturating_sub(1))
+			.map_or(0, |&(text, _)| text)
 	}
 }

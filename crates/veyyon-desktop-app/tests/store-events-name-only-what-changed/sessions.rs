@@ -52,11 +52,17 @@ fn projects_group_sessions_by_cwd_newest_first_with_branches_under_their_parent(
 #[test]
 fn the_cache_evicts_the_least_recently_used_of_nine_sessions() {
 	let mut state = AppState::new(Store::new());
-	let names: Vec<String> = (0..=TRANSCRIPT_CACHE_SESSIONS).map(|ix| format!("s{ix}")).collect();
+	let names: Vec<String> = (0..=TRANSCRIPT_CACHE_SESSIONS)
+		.map(|ix| format!("s{ix}"))
+		.collect();
 	for name in &names[..TRANSCRIPT_CACHE_SESSIONS] {
 		state.reduce_batch(opened(name, 1, 2));
 	}
-	assert!(names[..TRANSCRIPT_CACHE_SESSIONS].iter().all(|name| state.is_cached(&sid(name))));
+	assert!(
+		names[..TRANSCRIPT_CACHE_SESSIONS]
+			.iter()
+			.all(|name| state.is_cached(&sid(name)))
+	);
 
 	state.reduce_batch(opened(&names[TRANSCRIPT_CACHE_SESSIONS], 1, 2));
 	assert!(!state.is_cached(&sid("s0")));

@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use veyyon_gpui::{
-	AnyElement, App, Context, ElementId, IntoElement, ParentElement, Pixels,
-	RenderOnce, ScrollHandle, ScrollWheelEvent, Task, Window, div,
+	AnyElement, App, Context, ElementId, IntoElement, ParentElement, Pixels, RenderOnce,
+	ScrollHandle, ScrollWheelEvent, Task, Window, div,
 	motion::{Animator, FrameInstant, MotionDriver},
 	prelude::*,
 	px,
@@ -91,12 +91,13 @@ impl ScrollState {
 	fn fade_after_idle(cx: &Context<Self>) -> Task<()> {
 		cx.spawn(async move |this, cx| {
 			cx.background_executor().timer(IDLE).await;
-			this.update(cx, |this, cx| {
-				this.idle = None;
-				drive(&mut this.thumb, 0.0, motion::REVEAL, cx);
-				cx.notify();
-			})
-			.ok();
+			this
+				.update(cx, |this, cx| {
+					this.idle = None;
+					drive(&mut this.thumb, 0.0, motion::REVEAL, cx);
+					cx.notify();
+				})
+				.ok();
 		})
 	}
 

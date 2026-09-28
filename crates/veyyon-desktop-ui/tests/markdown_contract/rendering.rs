@@ -20,13 +20,16 @@ struct Harness {
 
 impl Render for Harness {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		div().size_full().child(markdown::render(&self.doc, &self.style, window, cx))
+		div()
+			.size_full()
+			.child(markdown::render(&self.doc, &self.style, window, cx))
 	}
 }
 
 fn themed() -> TestAppContext {
 	let cx = TestAppContext::single();
-	cx.update(|cx| Theme::install(Appearance::Dark, cx)).expect("the dark palette parses");
+	cx.update(|cx| Theme::install(Appearance::Dark, cx))
+		.expect("the dark palette parses");
 	cx
 }
 
@@ -67,7 +70,8 @@ fn a_link_handler_receives_the_url_instead_of_the_url_opening() {
 	let mut cx = themed();
 	let clicked = Rc::new(RefCell::new(Vec::<String>::new()));
 	let sink = Rc::clone(&clicked);
-	let style = MarkdownStyle::new("doc").on_link(move |url, _, _| sink.borrow_mut().push(url.to_string()));
+	let style =
+		MarkdownStyle::new("doc").on_link(move |url, _, _| sink.borrow_mut().push(url.to_string()));
 	let doc = MarkdownDoc::new("[documentation link](https://example.com/docs)");
 	let (_, window) = cx.add_window_view(move |_, _| Harness { doc, style });
 	window.run_until_parked();

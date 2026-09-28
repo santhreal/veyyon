@@ -43,7 +43,8 @@ fn refused(view: &Entity<Sidebar>, cx: &VisualTestContext) -> Vec<String> {
 	view.read_with(cx, |view, cx| {
 		let menu = view.row_menu().read(cx);
 		assert!(menu.is_open(cx), "the thread menu is open");
-		menu.menu()
+		menu
+			.menu()
 			.read(cx)
 			.items()
 			.iter()
@@ -101,7 +102,8 @@ fn a_row_menu_left_open_on_a_thread_that_is_not_open_drops_in_flight_when_the_ho
 	);
 	assert_eq!(in_flight_marks(cx), SESSIONS_VERBS.len(), "each held verb states it is in flight");
 
-	state.update(cx, |state, cx| state.apply(vec![HostEvent::RequestSucceeded { request: open }], cx));
+	state
+		.update(cx, |state, cx| state.apply(vec![HostEvent::RequestSucceeded { request: open }], cx));
 	cx.run_until_parked();
 	assert_eq!(
 		refused(&view, cx),

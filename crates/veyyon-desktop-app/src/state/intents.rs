@@ -26,12 +26,14 @@ impl AppState {
 		self.next_request += 1;
 		let request = RequestId(self.next_request);
 		self.name_fork_point(&mut action, request);
-		self.store
+		self
+			.store
 			.retries
 			.record(request, surface.clone(), action.clone());
 		let now_ms = clock_ms(&mut self.clock_epoch, cx);
 		let pruned =
-			self.registry
+			self
+				.registry
 				.register(request, action.kind(), surface, now_ms, REQUEST_TIMEOUT_MS);
 		self.outbox.push(HostRequest { id: request, action });
 		cx.emit(StoreEvent::OutboxReady);
@@ -69,7 +71,8 @@ impl AppState {
 	/// one only when its revision or order differs.
 	pub fn open_session(&mut self, session: SessionId, cx: &mut Context<Self>) -> RequestId {
 		let surface = SurfaceId::QueueSessionRow(session.clone());
-		let request = self.dispatch(HostAction::OpenSession { session: session.clone() }, surface, cx);
+		let request =
+			self.dispatch(HostAction::OpenSession { session: session.clone() }, surface, cx);
 		self.pending_open = Some((request, session.clone()));
 		let mut batch = Batch::default();
 		self.show(session, &mut batch);
@@ -89,4 +92,3 @@ impl AppState {
 		)
 	}
 }
-

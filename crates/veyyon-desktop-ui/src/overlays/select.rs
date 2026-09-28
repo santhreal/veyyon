@@ -95,11 +95,15 @@ impl Select {
 	/// highlighted, or closes them when they are open.
 	pub fn toggle(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		if self.popover.read(cx).is_open() {
-			self.popover.update(cx, |popover, cx| popover.close(window, cx));
+			self
+				.popover
+				.update(cx, |popover, cx| popover.close(window, cx));
 			return;
 		}
 		let selected = self.selected;
-		self.menu.update(cx, |menu, cx| menu.highlight(selected, cx));
+		self
+			.menu
+			.update(cx, |menu, cx| menu.highlight(selected, cx));
 		let trigger = self.trigger_bounds.get();
 		let position = trigger.bottom_left() + point(space::S0, space::S1);
 		self.popover.update(cx, |popover, cx| {
@@ -119,7 +123,9 @@ impl Select {
 			self.set_selected(Some(ix), cx);
 			cx.emit(SelectEvent::Changed(ix));
 		}
-		self.popover.update(cx, |popover, cx| popover.close(window, cx));
+		self
+			.popover
+			.update(cx, |popover, cx| popover.close(window, cx));
 	}
 
 	fn on_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
@@ -151,7 +157,11 @@ impl Render for Select {
 			.px(space::S2_5)
 			.rounded(radius::MD)
 			.border_1()
-			.border_color(if open { palette.border.strong } else { palette.border.default })
+			.border_color(if open {
+				palette.border.strong
+			} else {
+				palette.border.default
+			})
 			.bg(palette.bg.surface)
 			.type_style(text::UI)
 			.text_color(color)
@@ -161,7 +171,12 @@ impl Render for Select {
 			.on_click(cx.listener(|this, _: &ClickEvent, window, cx| this.toggle(window, cx)))
 			.on_key_down(cx.listener(Self::on_key_down))
 			.child(div().flex_1().truncate().child(label))
-			.child(div().flex_none().text_color(palette.text.muted).child("\u{25be}"));
+			.child(
+				div()
+					.flex_none()
+					.text_color(palette.text.muted)
+					.child("\u{25be}"),
+			);
 		div()
 			.on_children_prepainted(move |children, _, _| {
 				if let Some(first) = children.first() {

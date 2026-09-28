@@ -51,7 +51,9 @@ fn a_5000_line_code_block_highlights_in_bounded_time() {
 fn a_long_document_parses_and_streams_in_bounded_time() {
 	let source = joined(2000, |i| match i % 4 {
 		0 => format!("## Section {i}\n\n"),
-		1 => format!("Paragraph {i} with **bold**, `code` and a [link](https://example.com/{i}).\n\n"),
+		1 => {
+			format!("Paragraph {i} with **bold**, `code` and a [link](https://example.com/{i}).\n\n")
+		},
 		2 => format!("- item {i}\n- second item\n  - nested\n\n"),
 		_ => format!("```rust\nfn f{i}() {{}}\n```\n\n"),
 	});
@@ -72,7 +74,8 @@ fn a_long_document_parses_and_streams_in_bounded_time() {
 	}
 	let stream = started.elapsed();
 	eprintln!(
-		"parse {} bytes: full {parse:?}; streamed in 32-byte deltas {stream:?}, slowest append {slowest:?}",
+		"parse {} bytes: full {parse:?}; streamed in 32-byte deltas {stream:?}, slowest append \
+		 {slowest:?}",
 		source.len()
 	);
 	assert_eq!(streamed.blocks(), full.blocks());

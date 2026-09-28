@@ -5,7 +5,8 @@ use veyyon_desktop_ui::{
 	theme::{Appearance, Theme},
 };
 
-const RUST: &str = "fn main() {\n    let answer: u32 = 42; // comment\n    println!(\"{answer}\");\n}";
+const RUST: &str =
+	"fn main() {\n    let answer: u32 = 42; // comment\n    println!(\"{answer}\");\n}";
 
 #[test]
 fn a_rust_fence_draws_fn_in_the_keyword_color() {
@@ -15,8 +16,15 @@ fn a_rust_fence_draws_fn_in_the_keyword_color() {
 	let highlighted = highlight(RUST, Some("rust"));
 	let role = highlighted.role_at(0);
 	assert_eq!(role, Some(SyntaxRole::Keyword), "spans: {:?}", highlighted.spans());
-	assert_eq!(role.map(|role| role.color(&theme.palette.syntax)), Some(theme.palette.syntax.keyword));
-	let at = |needle: &str| RUST.find(needle).and_then(|offset| highlighted.role_at(offset));
+	assert_eq!(
+		role.map(|role| role.color(&theme.palette.syntax)),
+		Some(theme.palette.syntax.keyword)
+	);
+	let at = |needle: &str| {
+		RUST
+			.find(needle)
+			.and_then(|offset| highlighted.role_at(offset))
+	};
 	assert_eq!(at("42"), Some(SyntaxRole::Number));
 	assert_eq!(at("// comment"), Some(SyntaxRole::Comment));
 	assert_eq!(at("\"{answer}\""), Some(SyntaxRole::String));
@@ -47,7 +55,10 @@ fn spans_are_ordered_disjoint_and_on_char_boundaries() {
 	let highlighted = highlight(code, Some("rust"));
 	let mut end = 0;
 	for (range, _) in highlighted.spans() {
-		assert!(end <= range.start && range.start < range.end && range.end <= code.len(), "{range:?}");
+		assert!(
+			end <= range.start && range.start < range.end && range.end <= code.len(),
+			"{range:?}"
+		);
 		assert!(code.is_char_boundary(range.start) && code.is_char_boundary(range.end), "{range:?}");
 		end = range.end;
 	}

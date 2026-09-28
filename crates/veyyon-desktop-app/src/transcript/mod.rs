@@ -262,7 +262,9 @@ impl Transcript {
 		// is read from it once the handler has returned.
 		let weak = Self::weak(cx);
 		cx.defer(move |cx| {
-			weak.update(cx, |this, cx| this.record_position(at_end, cx)).ok();
+			weak
+				.update(cx, |this, cx| this.record_position(at_end, cx))
+				.ok();
 		});
 		if !top {
 			return;

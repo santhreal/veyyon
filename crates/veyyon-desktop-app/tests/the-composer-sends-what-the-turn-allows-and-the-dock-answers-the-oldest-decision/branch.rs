@@ -47,16 +47,18 @@ fn forked(request: RequestId) -> Vec<HostEvent> {
 		mode:           None,
 	};
 	vec![
-		HostEvent::Snapshot(SnapshotSection::ActiveSession(Versioned { revision: 3, value: header })),
+		HostEvent::Snapshot(SnapshotSection::ActiveSession(Versioned {
+			revision: 3,
+			value:    header,
+		})),
 		HostEvent::RequestSucceeded { request },
 	]
 }
 
 fn branch(w: &mut Win<'_>, entry: Option<&str>) -> RequestId {
 	let action = HostAction::BranchSession { session: sid(), entry: entry.map(EntryId::from) };
-	w.state.update(w.cx, |state, cx| {
-		state.dispatch(action, SurfaceId::SessionBranchButton(sid()), cx)
-	})
+	w.state
+		.update(w.cx, |state, cx| state.dispatch(action, SurfaceId::SessionBranchButton(sid()), cx))
 }
 
 #[gpui::test]

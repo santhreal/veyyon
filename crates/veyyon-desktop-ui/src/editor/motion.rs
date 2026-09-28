@@ -114,7 +114,11 @@ pub fn prev_word(text: &str, offset: usize) -> usize {
 /// The run of same-class graphemes around `offset`, for a double click.
 pub fn word_range_at(text: &str, offset: usize) -> Range<usize> {
 	let offset = snap_to_grapheme(text, offset);
-	let probe = if offset == text.len() { prev_grapheme(text, offset) } else { offset };
+	let probe = if offset == text.len() {
+		prev_grapheme(text, offset)
+	} else {
+		offset
+	};
 	let Some(grapheme) = text[probe..].graphemes(true).next() else {
 		return offset..offset;
 	};
@@ -146,7 +150,9 @@ pub fn line_start(text: &str, offset: usize) -> usize {
 /// end of the text.
 pub fn line_end(text: &str, offset: usize) -> usize {
 	let offset = floor_char(text, offset);
-	text[offset..].find('\n').map_or(text.len(), |index| offset + index)
+	text[offset..]
+		.find('\n')
+		.map_or(text.len(), |index| offset + index)
 }
 
 /// The zero-based line and grapheme column of `offset`.

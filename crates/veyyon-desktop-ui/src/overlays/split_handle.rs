@@ -3,8 +3,8 @@
 use std::{cell::Cell, rc::Rc};
 
 use veyyon_gpui::{
-	App, Axis, ClickEvent, DragMoveEvent, ElementId, EmptyView, IntoElement, Pixels,
-	Point, RenderOnce, Window, div, prelude::*,
+	App, Axis, ClickEvent, DragMoveEvent, ElementId, EmptyView, IntoElement, Pixels, Point,
+	RenderOnce, Window, div, prelude::*,
 };
 
 use crate::theme::{ActiveTheme, size};
@@ -65,7 +65,8 @@ impl RenderOnce for SplitHandle {
 		let id = self.id.clone();
 		let on_drag = self.on_drag;
 		let on_reset = self.on_reset;
-		let payload = SplitDrag { id: self.id.clone(), grab: Cell::default(), last: Cell::new(None) };
+		let payload =
+			SplitDrag { id: self.id.clone(), grab: Cell::default(), last: Cell::new(None) };
 		div()
 			.id(self.id)
 			.group("split-handle")
@@ -88,7 +89,10 @@ impl RenderOnce for SplitHandle {
 					return;
 				}
 				let pointer = event.event.position;
-				let last = drag.last.get().unwrap_or_else(|| event.bounds.origin + drag.grab.get());
+				let last = drag
+					.last
+					.get()
+					.unwrap_or_else(|| event.bounds.origin + drag.grab.get());
 				drag.last.set(Some(pointer));
 				let delta = match axis {
 					Axis::Horizontal => pointer.x - last.x,

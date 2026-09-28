@@ -49,7 +49,12 @@ fn the_icon_directory_holds_exactly_the_listed_icons() {
 		.expect("the icon directory is readable")
 		.map(|entry| entry.expect("an icon entry is readable").path())
 		.filter(|path| path.extension().is_some_and(|extension| extension == "svg"))
-		.filter_map(|path| path.file_name().and_then(|name| name.to_str()).map(str::to_owned))
+		.filter_map(|path| {
+			path
+				.file_name()
+				.and_then(|name| name.to_str())
+				.map(str::to_owned)
+		})
 		.map(|name| format!("icons/{name}"))
 		.collect();
 	let listed: BTreeSet<String> = Assets

@@ -135,7 +135,10 @@ impl Popover {
 	/// The opacity and scale the next frame draws with.
 	pub fn presentation(&self, cx: &App) -> Presentation {
 		let now = cx.frame_instant();
-		Presentation { opacity: self.opacity.sample(now).value, scale: self.scale.sample(now).value }
+		Presentation {
+			opacity: self.opacity.sample(now).value,
+			scale:   self.scale.sample(now).value,
+		}
 	}
 
 	fn on_mouse_down_out(
@@ -144,7 +147,10 @@ impl Popover {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) {
-		if self.trigger.is_some_and(|trigger| trigger.contains(&event.position)) {
+		if self
+			.trigger
+			.is_some_and(|trigger| trigger.contains(&event.position))
+		{
 			return;
 		}
 		self.close(window, cx);

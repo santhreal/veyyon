@@ -69,8 +69,8 @@ impl Theme {
 	///
 	/// Returns [`ThemeError`] when the embedded file is not a complete palette.
 	pub fn embedded(appearance: Appearance) -> Result<Self, ThemeError> {
-		let palette = toml::from_str(appearance.source())
-			.map_err(|source| ThemeError { appearance, source })?;
+		let palette =
+			toml::from_str(appearance.source()).map_err(|source| ThemeError { appearance, source })?;
 		Ok(Self { appearance, palette })
 	}
 

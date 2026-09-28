@@ -8,7 +8,10 @@ fn para(text: &str) -> Block {
 
 /// The style of the run that covers the first occurrence of `needle`.
 fn style_of(inlines: &Inlines, needle: &str) -> RunStyle {
-	let at = inlines.text.find(needle).unwrap_or_else(|| panic!("{needle:?} is in {:?}", inlines.text));
+	let at = inlines
+		.text
+		.find(needle)
+		.unwrap_or_else(|| panic!("{needle:?} is in {:?}", inlines.text));
 	let run = inlines
 		.runs
 		.iter()
@@ -43,10 +46,10 @@ fn nested_ordered_and_task_lists_keep_their_structure() {
 	let tasks = Block::List {
 		ordered: false,
 		start:   1,
-		items:   vec![
-			vec![Block::TaskItem { checked: true }, para("done")],
-			vec![Block::TaskItem { checked: false }, para("open")],
-		],
+		items:   vec![vec![Block::TaskItem { checked: true }, para("done")], vec![
+			Block::TaskItem { checked: false },
+			para("open"),
+		]],
 	};
 	let expected = Block::List {
 		ordered: true,
@@ -58,7 +61,8 @@ fn nested_ordered_and_task_lists_keep_their_structure() {
 
 #[test]
 fn fences_name_their_language_and_indented_code_has_none() {
-	let doc = MarkdownDoc::new("```rust,ignore\nfn main() {}\n```\n\n    indented\n\n```\nbare\n```\n");
+	let doc =
+		MarkdownDoc::new("```rust,ignore\nfn main() {}\n```\n\n    indented\n\n```\nbare\n```\n");
 	let code = |lang: Option<&str>, code: &str| Block::CodeBlock {
 		lang: lang.map(Into::into),
 		code: code.into(),
@@ -82,7 +86,12 @@ fn an_unclosed_fence_holds_the_code_streamed_so_far() {
 #[test]
 fn quotes_tables_and_rules_parse_into_their_blocks() {
 	let doc = MarkdownDoc::new("> quoted\n\n| a | b |\n|:--|--:|\n| 1 | 2 |\n| 3 |\n\n---\n");
-	let cells = |texts: &[&str]| texts.iter().map(|text| Inlines::plain(text)).collect::<Vec<_>>();
+	let cells = |texts: &[&str]| {
+		texts
+			.iter()
+			.map(|text| Inlines::plain(text))
+			.collect::<Vec<_>>()
+	};
 	assert_eq!(doc.blocks(), [
 		Block::Quote(vec![para("quoted")]),
 		Block::Table {

@@ -89,16 +89,16 @@ impl Tabs {
 	pub fn new(tabs: Vec<Tab>, selected: usize, cx: &mut Context<Self>) -> Self {
 		Self {
 			selected: selected.min(tabs.len().saturating_sub(1)),
-			items: tabs,
+			items:    tabs,
 			trailing: None,
 			wrap_tab: None,
-			focus: cx.focus_handle(),
+			focus:    cx.focus_handle(),
 			measured: Rc::default(),
-			x: Animator::at_rest(0.0),
-			width: Animator::at_rest(0.0),
-			placed: false,
-			slide: false,
-			driver: MotionDriver::default(),
+			x:        Animator::at_rest(0.0),
+			width:    Animator::at_rest(0.0),
+			placed:   false,
+			slide:    false,
+			driver:   MotionDriver::default(),
 		}
 	}
 
@@ -196,7 +196,11 @@ impl Tabs {
 			.px(space::S3)
 			.type_style(text::UI_MEDIUM)
 			.cursor_pointer()
-			.text_color(if selected { palette.text.primary } else { palette.text.muted })
+			.text_color(if selected {
+				palette.text.primary
+			} else {
+				palette.text.muted
+			})
 			.transition(hover_transition())
 			.when(!selected, |el| el.hover(|style| style.text_color(palette.text.secondary)))
 			.on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {

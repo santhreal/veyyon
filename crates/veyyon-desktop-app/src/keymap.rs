@@ -37,7 +37,11 @@ pub struct KeymapError {
 
 impl std::fmt::Display for KeymapError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "default binding `{}` for {} does not parse: {}", self.keys, self.action, self.reason)
+		write!(
+			f,
+			"default binding `{}` for {} does not parse: {}",
+			self.keys, self.action, self.reason
+		)
 	}
 }
 

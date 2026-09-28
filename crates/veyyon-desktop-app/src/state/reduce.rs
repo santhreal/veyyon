@@ -45,7 +45,8 @@ impl Batch {
 	}
 
 	fn pending(&mut self, session: &SessionId) -> Option<&mut Pending> {
-		self.transcripts
+		self
+			.transcripts
 			.iter_mut()
 			.find(|(held, _)| held == session)
 			.map(|(_, pending)| pending)
@@ -288,7 +289,11 @@ impl AppState {
 			return;
 		}
 		self.pending_open = None;
-		let fallback = if ok { None } else { self.store.persisted.shell.active_session.clone() };
+		let fallback = if ok {
+			None
+		} else {
+			self.store.persisted.shell.active_session.clone()
+		};
 		if let Some(active) = fallback {
 			self.show(active, batch);
 		}

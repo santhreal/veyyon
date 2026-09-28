@@ -38,7 +38,10 @@ impl MenuRow {
 	}
 
 	/// Draws the element `leading` builds before the label.
-	pub fn leading(mut self, leading: impl Fn(&mut Window, &mut App) -> AnyElement + 'static) -> Self {
+	pub fn leading(
+		mut self,
+		leading: impl Fn(&mut Window, &mut App) -> AnyElement + 'static,
+	) -> Self {
 		self.leading = Some(Rc::new(leading));
 		self
 	}
@@ -165,7 +168,11 @@ impl Menu {
 	}
 
 	fn is_pickable(&self, ix: usize) -> bool {
-		self.items.get(ix).and_then(MenuItem::pickable_row).is_some()
+		self
+			.items
+			.get(ix)
+			.and_then(MenuItem::pickable_row)
+			.is_some()
 	}
 
 	/// The next enabled row after the highlight, or before it when
@@ -175,9 +182,17 @@ impl Menu {
 		if len == 0 {
 			return None;
 		}
-		let start = self.highlighted.unwrap_or(if forward { len - 1 } else { 0 });
+		let start = self
+			.highlighted
+			.unwrap_or(if forward { len - 1 } else { 0 });
 		(1..=len)
-			.map(|n| if forward { (start + n) % len } else { (start + len - n) % len })
+			.map(|n| {
+				if forward {
+					(start + n) % len
+				} else {
+					(start + len - n) % len
+				}
+			})
 			.find(|&ix| self.is_pickable(ix))
 	}
 
@@ -259,7 +274,11 @@ impl Menu {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let leading = row.leading.as_ref().map(|leading| leading(window, cx));
-		let color = if row.disabled { palette.text.faint } else { palette.text.primary };
+		let color = if row.disabled {
+			palette.text.faint
+		} else {
+			palette.text.primary
+		};
 		div()
 			.id(("menu-row", ix))
 			.flex()
@@ -301,9 +320,12 @@ impl Render for Menu {
 		for (ix, item) in self.items.iter().enumerate() {
 			let child = match item {
 				MenuItem::Row(row) => self.render_row(ix, row, &palette, window, cx),
-				MenuItem::Separator => {
-					div().flex_none().my(space::S1).h_px().bg(palette.border.subtle).into_any_element()
-				},
+				MenuItem::Separator => div()
+					.flex_none()
+					.my(space::S1)
+					.h_px()
+					.bg(palette.border.subtle)
+					.into_any_element(),
 				MenuItem::Header(label) => div()
 					.px(space::S3)
 					.pt(space::S2)
@@ -336,5 +358,7 @@ fn hint_chip(hint: SharedString, palette: &Palette) -> impl IntoElement {
 /// Whether `label`, lowercased, starts with `folded`, which is lowercase.
 fn starts_with_folded(label: &str, folded: &str) -> bool {
 	let mut label = label.chars().flat_map(char::to_lowercase);
-	folded.chars().all(|expected| label.next() == Some(expected))
+	folded
+		.chars()
+		.all(|expected| label.next() == Some(expected))
 }

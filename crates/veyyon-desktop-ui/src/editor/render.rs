@@ -1,7 +1,9 @@
 //! The editor's element tree: key context, focus, actions and pointer input
 //! around the text element.
 
-use veyyon_gpui::{Context, CursorStyle, IntoElement, MouseButton, Render, Window, div, prelude::*};
+use veyyon_gpui::{
+	Context, CursorStyle, IntoElement, MouseButton, Render, Window, div, prelude::*,
+};
 
 use super::{
 	Editor, EditorEvent, Motion, Unit,

@@ -51,7 +51,8 @@ pub fn build_projects(store: &Store, cwds: &HashMap<SessionId, String>) -> Vec<P
 	let mut groups: HashMap<&str, Vec<&Session>> = HashMap::new();
 	for session in sessions.values() {
 		let cwd = directory_key(
-			cwds.get(&session.id)
+			cwds
+				.get(&session.id)
 				.map_or(session.project_name.as_str(), String::as_str),
 		);
 		groups.entry(cwd).or_default().push(session);
@@ -113,10 +114,10 @@ fn project(cwd: &str, mut members: Vec<&Session>, by_path: &HashMap<&str, &Sessi
 		}
 	}
 	Project {
-		name: directory_name(cwd).to_owned(),
-		path: cwd.to_owned(),
+		name:             directory_name(cwd).to_owned(),
+		path:             cwd.to_owned(),
 		last_activity_ms: members.first().map_or(0, |session| session.modified_at_ms),
-		sessions: rows,
+		sessions:         rows,
 	}
 }
 
@@ -130,7 +131,8 @@ fn directory_key(path: &str) -> &str {
 /// The last component of a POSIX or Windows path, or the whole path when it
 /// has none.
 fn directory_name(path: &str) -> &str {
-	path.rsplit(['/', '\\'])
+	path
+		.rsplit(['/', '\\'])
 		.next()
 		.filter(|name| !name.is_empty())
 		.unwrap_or(path)

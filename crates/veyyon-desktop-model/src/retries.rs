@@ -72,7 +72,9 @@ impl RetryMemory {
 	/// than by a control -- moves nothing and answers `None`.
 	pub fn fail(&mut self, id: RequestId, message: String, retryable: bool) -> Option<SurfaceId> {
 		let (surface, action) = self.sent.remove(&id)?;
-		self.failed.insert(surface.clone(), Refused { action, message, retryable });
+		self
+			.failed
+			.insert(surface.clone(), Refused { action, message, retryable });
 		while self.failed.len() > FAILED_CEILING {
 			self.failed.pop_first();
 		}
@@ -98,14 +100,20 @@ impl RetryMemory {
 	/// The sentence the host gave for the request it refused on a control.
 	#[must_use]
 	pub fn reason(&self, surface: &SurfaceId) -> Option<&str> {
-		self.failed.get(surface).map(|refused| refused.message.as_str())
+		self
+			.failed
+			.get(surface)
+			.map(|refused| refused.message.as_str())
 	}
 
 	/// Whether the host would take the request it refused on a control a
 	/// second time: a `Retry` is offered exactly when this holds.
 	#[must_use]
 	pub fn can_retry(&self, surface: &SurfaceId) -> bool {
-		self.failed.get(surface).is_some_and(|refused| refused.retryable)
+		self
+			.failed
+			.get(surface)
+			.is_some_and(|refused| refused.retryable)
 	}
 
 	/// Every control that holds a refusal, final or not.

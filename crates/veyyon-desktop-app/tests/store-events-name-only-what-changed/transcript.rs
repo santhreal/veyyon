@@ -31,7 +31,9 @@ fn a_streamed_turn_emits_only_streaming_changed() {
 	}
 	assert_eq!(state.reduce_batch(vec![HostEvent::StreamingChanged(None)]), only_streaming);
 
-	let turn = (200..400).map(|revision| delta("s-tail", revision)).collect();
+	let turn = (200..400)
+		.map(|revision| delta("s-tail", revision))
+		.collect();
 	assert_eq!(state.reduce_batch(turn), only_streaming);
 	assert_eq!(state.entry_count(&sid("s")), 2, "a delta adds no transcript entry");
 }
@@ -39,7 +41,8 @@ fn a_streamed_turn_emits_only_streaming_changed() {
 #[test]
 fn appending_three_entries_splices_them_after_the_last() {
 	let mut state = showing_two();
-	let one_event = vec![appended(vec![entry("a", None, 2), entry("b", None, 2), entry("c", None, 2)], 2)];
+	let one_event =
+		vec![appended(vec![entry("a", None, 2), entry("b", None, 2), entry("c", None, 2)], 2)];
 	assert_eq!(state.reduce_batch(one_event), spliced(2..2, 3));
 	assert_eq!(displayed_ids(&state, "s"), ["s-0", "s-1", "a", "b", "c"]);
 
@@ -54,7 +57,8 @@ fn appending_three_entries_splices_them_after_the_last() {
 #[test]
 fn an_update_splices_its_own_item_and_nothing_off_the_branch() {
 	let mut state = showing_two();
-	let update = |id: &str| HostEvent::TranscriptUpdated { revision: 2, entry: entry(id, None, 2) };
+	let update =
+		|id: &str| HostEvent::TranscriptUpdated { revision: 2, entry: entry(id, None, 2) };
 	assert_eq!(state.reduce_batch(vec![update("s-0")]), spliced(0..1, 1));
 
 	// A branch from `s-0` cuts `s-1` off the displayed chain.

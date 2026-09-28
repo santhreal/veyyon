@@ -62,7 +62,11 @@ impl EntityInputHandler for Editor {
 		let range = range_from_utf16(text, &range_utf16);
 		let adjusted = range_to_utf16(text, &range);
 		let masked = std::iter::repeat_n(MASK_GLYPH, adjusted.len());
-		let result = if self.masked { masked.collect() } else { text[range].to_owned() };
+		let result = if self.masked {
+			masked.collect()
+		} else {
+			text[range].to_owned()
+		};
 		adjusted_range.replace(adjusted);
 		Some(result)
 	}
@@ -85,7 +89,10 @@ impl EntityInputHandler for Editor {
 		_window: &mut Window,
 		_cx: &mut Context<Self>,
 	) -> Option<Range<usize>> {
-		self.marked.as_ref().map(|range| range_to_utf16(self.buffer.text(), range))
+		self
+			.marked
+			.as_ref()
+			.map(|range| range_to_utf16(self.buffer.text(), range))
 	}
 
 	fn unmark_text(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -102,7 +109,11 @@ impl EntityInputHandler for Editor {
 		_window: &mut Window,
 		cx: &mut Context<Self>,
 	) {
-		let kind = if self.marked.is_some() { EditKind::Composition } else { EditKind::Typing };
+		let kind = if self.marked.is_some() {
+			EditKind::Composition
+		} else {
+			EditKind::Typing
+		};
 		let range = self.input_range(range_utf16);
 		self.replace_with(range, text, kind, cx);
 	}
@@ -121,7 +132,8 @@ impl EntityInputHandler for Editor {
 		let inserted = self.buffer.edit(range, new_text, EditKind::Composition);
 		if let Some(selected) = new_selected_range_utf16 {
 			let selected = range_from_utf16(new_text, &selected);
-			self.buffer
+			self
+				.buffer
 				.select_within_edit(inserted.start + selected.start, inserted.start + selected.end);
 		}
 		self.marked = (!inserted.is_empty()).then_some(inserted);
@@ -144,8 +156,11 @@ impl EntityInputHandler for Editor {
 		} else {
 			(layout.position(range.start), layout.position(range.end))
 		};
-		let width =
-			if end.y == start.y && end.x > start.x { end.x - start.x } else { measure::CARET };
+		let width = if end.y == start.y && end.x > start.x {
+			end.x - start.x
+		} else {
+			measure::CARET
+		};
 		let origin = element_bounds.origin - self.scroll + start;
 		Some(Bounds::new(origin, size(width, layout.line_height)))
 	}

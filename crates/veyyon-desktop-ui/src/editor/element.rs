@@ -95,13 +95,17 @@ impl Editor {
 		};
 		let mut scroll = self.scroll;
 		if std::mem::take(&mut self.autoscroll) {
-			let caret =
-				if layout.placeholder { Point::default() } else { layout.position(self.buffer.cursor()) };
+			let caret = if layout.placeholder {
+				Point::default()
+			} else {
+				layout.position(self.buffer.cursor())
+			};
 			let far = caret + point(measure::CARET, layout.line_height);
 			scroll.x = scroll.x.min(caret.x).max(far.x - viewport.width);
 			scroll.y = scroll.y.min(caret.y).max(far.y - viewport.height);
 		}
-		self.scroll = point(scroll.x.min(max.x).max(Pixels::ZERO), scroll.y.min(max.y).max(Pixels::ZERO));
+		self.scroll =
+			point(scroll.x.min(max.x).max(Pixels::ZERO), scroll.y.min(max.y).max(Pixels::ZERO));
 		self.layout = Some(layout);
 		self.bounds = Some(bounds);
 	}
@@ -148,15 +152,23 @@ impl Element for EditorElement {
 				AvailableSpace::Definite(width) => Some(width),
 				AvailableSpace::MinContent | AvailableSpace::MaxContent => None,
 			};
-			let wrap_width = if wraps { known.width.or(definite) } else { None };
+			let wrap_width = if wraps {
+				known.width.or(definite)
+			} else {
+				None
+			};
 			let lines = window
 				.text_system()
 				.shape_text(text.clone(), font_size, &runs, wrap_width, None)
 				.unwrap_or_default();
-			let rows: usize = lines.iter().map(|line| line.wrap_boundaries().len() + 1).sum();
+			let rows: usize = lines
+				.iter()
+				.map(|line| line.wrap_boundaries().len() + 1)
+				.sum();
 			let rows = rows.max(min_rows).min(max_rows.unwrap_or(usize::MAX));
-			let widest =
-				lines.iter().fold(Pixels::ZERO, |width, line| width.max(line.unwrapped_layout.width));
+			let widest = lines
+				.iter()
+				.fold(Pixels::ZERO, |width, line| width.max(line.unwrapped_layout.width));
 			Size::new(
 				known.width.or(definite).unwrap_or(widest + measure::CARET),
 				known.height.unwrap_or(line_height * rows as f32),
@@ -188,7 +200,9 @@ impl Element for EditorElement {
 			shaping.placeholder,
 			shaping.mask.clone(),
 		));
-		self.editor.update(cx, |editor, _| editor.adopt_layout(layout.clone(), bounds));
+		self
+			.editor
+			.update(cx, |editor, _| editor.adopt_layout(layout.clone(), bounds));
 		Some(layout)
 	}
 
@@ -281,10 +295,8 @@ fn paint_selection(
 		}
 		if right > left {
 			let top = origin.y + layout.line_height * index as f32;
-			let tint = Bounds::new(
-				point(origin.x + left, top),
-				size(right - left, layout.line_height),
-			);
+			let tint =
+				Bounds::new(point(origin.x + left, top), size(right - left, layout.line_height));
 			window.paint_quad(fill(tint, color));
 		}
 	}

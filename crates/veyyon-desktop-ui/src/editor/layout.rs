@@ -71,7 +71,11 @@ impl TextLayout {
 				.wrap_boundaries()
 				.iter()
 				.filter_map(|boundary| {
-					let glyph = layout.runs.get(boundary.run_ix)?.glyphs.get(boundary.glyph_ix)?;
+					let glyph = layout
+						.runs
+						.get(boundary.run_ix)?
+						.glyphs
+						.get(boundary.glyph_ix)?;
 					Some((glyph.index, true))
 				})
 				.chain([(line.len(), false)]);
@@ -101,12 +105,18 @@ impl TextLayout {
 
 	/// The shaped offset of text offset `offset`.
 	fn shaped(&self, offset: usize) -> usize {
-		self.mask.as_ref().map_or(offset, |mask| mask.to_display(offset))
+		self
+			.mask
+			.as_ref()
+			.map_or(offset, |mask| mask.to_display(offset))
 	}
 
 	/// The text offset of shaped offset `offset`.
 	fn unshaped(&self, offset: usize) -> usize {
-		self.mask.as_ref().map_or(offset, |mask| mask.to_text(offset))
+		self
+			.mask
+			.as_ref()
+			.map_or(offset, |mask| mask.to_text(offset))
 	}
 
 	/// The number of rows; never zero.
@@ -128,7 +138,10 @@ impl TextLayout {
 	/// The row the caret at `offset` is drawn on. An offset on a wrap boundary
 	/// belongs to the row the wrap starts.
 	pub fn row_for_offset(&self, offset: usize) -> usize {
-		self.rows.partition_point(|row| row.start <= offset).saturating_sub(1)
+		self
+			.rows
+			.partition_point(|row| row.start <= offset)
+			.saturating_sub(1)
 	}
 
 	/// The horizontal position of `offset` inside row `index`.
@@ -140,7 +153,10 @@ impl TextLayout {
 			return Pixels::ZERO;
 		};
 		let start = self.shaped(row.start);
-		let rel = row.rel_start + self.shaped(offset.clamp(row.start, row.end)).saturating_sub(start);
+		let rel = row.rel_start
+			+ self
+				.shaped(offset.clamp(row.start, row.end))
+				.saturating_sub(start);
 		line.unwrapped_layout.x_for_index(rel) - row.x0
 	}
 
@@ -162,10 +178,15 @@ impl TextLayout {
 		};
 		let start = self.shaped(row.start);
 		let rel_end = row.rel_start + self.shaped(row.end).saturating_sub(start);
-		let mut rel =
-			line.unwrapped_layout.closest_index_for_x(row.x0 + x).clamp(row.rel_start, rel_end);
+		let mut rel = line
+			.unwrapped_layout
+			.closest_index_for_x(row.x0 + x)
+			.clamp(row.rel_start, rel_end);
 		if row.wrapped && rel == rel_end && rel > row.rel_start {
-			rel -= line.text[..rel].chars().next_back().map_or(0, char::len_utf8);
+			rel -= line.text[..rel]
+				.chars()
+				.next_back()
+				.map_or(0, char::len_utf8);
 		}
 		self.unshaped(start + rel - row.rel_start)
 	}
@@ -174,7 +195,11 @@ impl TextLayout {
 	pub fn offset_for_position(&self, position: Point<Pixels>) -> usize {
 		let y = f32::from(position.y.max(Pixels::ZERO));
 		let height = f32::from(self.line_height);
-		let index = if height > 0.0 { (y / height) as usize } else { 0 };
+		let index = if height > 0.0 {
+			(y / height) as usize
+		} else {
+			0
+		};
 		self.offset_in_row(index, position.x.max(Pixels::ZERO))
 	}
 }

@@ -117,7 +117,11 @@ impl SpliceWindow {
 	/// Opens a window at the batch's first splice of `range` in an order of
 	/// `len_before` items.
 	pub const fn new(range: &Range<usize>, len_before: usize) -> Self {
-		Self { start: range.start, tail: len_before.saturating_sub(range.end), old_len: len_before }
+		Self {
+			start:   range.start,
+			tail:    len_before.saturating_sub(range.end),
+			old_len: len_before,
+		}
 	}
 
 	/// Widens the window by a later splice of `range` in an order of

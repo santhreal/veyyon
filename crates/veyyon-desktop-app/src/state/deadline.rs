@@ -82,7 +82,8 @@ impl AppState {
 			return;
 		}
 		self.deadline = next.map(|at_ms| {
-			let wait = Duration::from_millis(at_ms.saturating_sub(clock_ms(&mut self.clock_epoch, cx)));
+			let wait =
+				Duration::from_millis(at_ms.saturating_sub(clock_ms(&mut self.clock_epoch, cx)));
 			let timer = cx.spawn(async move |this, cx| {
 				cx.background_executor().timer(wait).await;
 				this.update(cx, |state, cx| state.expire(cx)).ok();

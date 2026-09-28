@@ -25,18 +25,30 @@ impl Editor {
 		let head = self.buffer.cursor();
 		let target = if let Some(layout) = self.current_layout() {
 			let row = layout.row_for_offset(head);
-			let edge = if down { row + 1 >= layout.row_count() } else { row == 0 };
+			let edge = if down {
+				row + 1 >= layout.row_count()
+			} else {
+				row == 0
+			};
 			if edge {
 				None
 			} else {
-				let x = *self.goal_x.get_or_insert_with(|| layout.x_in_row(row, head));
+				let x = *self
+					.goal_x
+					.get_or_insert_with(|| layout.x_in_row(row, head));
 				Some(layout.offset_in_row(if down { row + 1 } else { row - 1 }, x))
 			}
 		} else {
 			let (line, _) = self.buffer.line_column(head);
-			let edge = if down { line + 1 >= self.buffer.line_count() } else { line == 0 };
+			let edge = if down {
+				line + 1 >= self.buffer.line_count()
+			} else {
+				line == 0
+			};
 			if !edge {
-				self.buffer.move_caret(if down { Motion::Down } else { Motion::Up }, extend);
+				self
+					.buffer
+					.move_caret(if down { Motion::Down } else { Motion::Up }, extend);
 				self.show_caret(cx);
 				return;
 			}
@@ -48,7 +60,9 @@ impl Editor {
 				self.show_caret(cx);
 			},
 			None if extend => {
-				self.buffer.move_to(if down { self.buffer.len() } else { 0 }, true);
+				self
+					.buffer
+					.move_to(if down { self.buffer.len() } else { 0 }, true);
 				self.moved(cx);
 			},
 			None if down => cx.emit(EditorEvent::HistoryNext),
@@ -90,7 +104,10 @@ impl Editor {
 
 	/// Replaces the marked text, or else the selection, with `text`.
 	pub(super) fn insert(&mut self, text: &str, kind: EditKind, cx: &mut Context<Self>) {
-		let range = self.marked.take().unwrap_or_else(|| self.buffer.selection().range());
+		let range = self
+			.marked
+			.take()
+			.unwrap_or_else(|| self.buffer.selection().range());
 		self.replace_with(range, text, kind, cx);
 	}
 
@@ -202,7 +219,11 @@ impl Editor {
 			self.scroll.y = (self.scroll.y - delta.y).max(Pixels::ZERO).min(max);
 		} else {
 			let max = (layout.width + size::CARET - bounds.size.width).max(Pixels::ZERO);
-			let dx = if delta.x == Pixels::ZERO { delta.y } else { delta.x };
+			let dx = if delta.x == Pixels::ZERO {
+				delta.y
+			} else {
+				delta.x
+			};
 			self.scroll.x = (self.scroll.x - dx).max(Pixels::ZERO).min(max);
 		}
 		if self.scroll != before {

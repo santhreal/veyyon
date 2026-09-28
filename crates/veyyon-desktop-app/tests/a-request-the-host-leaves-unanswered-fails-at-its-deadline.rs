@@ -41,8 +41,10 @@ impl Window {
 		let seen: Rc<RefCell<Vec<StoreEvent>>> = Rc::default();
 		cx.update(|app| {
 			let seen = Rc::clone(&seen);
-			app.subscribe(&state, move |_, event: &StoreEvent, _| seen.borrow_mut().push(event.clone()))
-				.detach();
+			app.subscribe(&state, move |_, event: &StoreEvent, _| {
+				seen.borrow_mut().push(event.clone());
+			})
+			.detach();
 		});
 		Self { state, seen, cx }
 	}
@@ -71,7 +73,8 @@ impl Window {
 
 	/// The requests finished since the last call, and whether each was taken.
 	fn finished(&self) -> Vec<(RequestId, bool)> {
-		self.seen
+		self
+			.seen
 			.take()
 			.into_iter()
 			.filter_map(|event| match event {
@@ -82,14 +85,19 @@ impl Window {
 	}
 
 	fn pending(&self) -> bool {
-		self.cx
-			.update(|app| self.state.read(app).panel_pending(HostActionKind::RefreshProcesses))
+		self.cx.update(|app| {
+			self
+				.state
+				.read(app)
+				.panel_pending(HostActionKind::RefreshProcesses)
+		})
 	}
 
 	/// The key and title of every announcement raised.
 	fn announced(&self) -> Vec<(String, String)> {
 		self.cx.update(|app| {
-			self.state
+			self
+				.state
 				.read(app)
 				.store()
 				.notifications
@@ -102,7 +110,8 @@ impl Window {
 
 	fn retry(&self) -> Option<HostAction> {
 		self.cx.update(|app| {
-			self.state
+			self
+				.state
 				.read(app)
 				.store()
 				.retries
@@ -125,7 +134,11 @@ fn a_request_left_unanswered_fails_at_its_deadline_and_offers_its_retry() {
 	window.advance(1);
 	assert!(!window.pending(), "the control stops drawing it as in flight");
 	assert_eq!(window.finished(), vec![(request, false)]);
-	assert!(window.cx.update(|app| window.state.read(app).registry().is_empty()));
+	assert!(
+		window
+			.cx
+			.update(|app| window.state.read(app).registry().is_empty())
+	);
 	assert_eq!(window.retry(), Some(HostAction::RefreshProcesses), "its retry sends it again");
 	assert_eq!(window.announced(), vec![(
 		format!("request-failed:Connection:{UNANSWERED}"),
@@ -173,7 +186,12 @@ fn a_request_dropped_past_the_capacity_ceiling_fails_as_evicted() {
 		window.refresh();
 	}
 	assert_eq!(window.finished(), vec![(first, false)], "the oldest fails, the rest stay");
-	assert_eq!(window.cx.update(|app| window.state.read(app).registry().len()), CAPACITY);
+	assert_eq!(
+		window
+			.cx
+			.update(|app| window.state.read(app).registry().len()),
+		CAPACITY
+	);
 	assert_eq!(window.announced(), vec![(
 		format!("request-failed:Connection:{EVICTED}"),
 		"Too many requests were in flight; this one was dropped.".to_owned(),

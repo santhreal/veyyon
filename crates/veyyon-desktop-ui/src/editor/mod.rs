@@ -269,7 +269,8 @@ impl Editor {
 	/// The last layout, when it was shaped from the current text and holds one
 	/// shaped line per logical line.
 	fn current_layout(&self) -> Option<Rc<TextLayout>> {
-		self.layout
+		self
+			.layout
 			.as_ref()
 			.filter(|layout| {
 				!layout.placeholder
@@ -288,7 +289,11 @@ impl Editor {
 			return Cow::Borrowed(text);
 		}
 		let text = text.replace("\r\n", "\n").replace('\r', "\n");
-		Cow::Owned(if single { text.replace('\n', " ") } else { text })
+		Cow::Owned(if single {
+			text.replace('\n', " ")
+		} else {
+			text
+		})
 	}
 
 	/// After a caret or selection change: forget the goal column, then show

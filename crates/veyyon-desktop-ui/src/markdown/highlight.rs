@@ -136,7 +136,11 @@ impl Highlighted {
 	/// The role of the byte at `offset`, or `None` for plain text.
 	pub fn role_at(&self, offset: usize) -> Option<SyntaxRole> {
 		let index = self.spans.partition_point(|(range, _)| range.end <= offset);
-		self.spans.get(index).filter(|(range, _)| range.start <= offset).map(|&(_, role)| role)
+		self
+			.spans
+			.get(index)
+			.filter(|(range, _)| range.start <= offset)
+			.map(|&(_, role)| role)
 	}
 }
 
@@ -161,7 +165,10 @@ static PLAIN: LazyLock<Arc<Highlighted>> = LazyLock::new(Arc::default);
 
 fn syntax_for(tag: &str) -> Option<&'static SyntaxReference> {
 	let tag = tag.trim().to_ascii_lowercase();
-	let token = ALIASES.iter().find(|(alias, _)| *alias == tag).map_or(tag.as_str(), |(_, to)| to);
+	let token = ALIASES
+		.iter()
+		.find(|(alias, _)| *alias == tag)
+		.map_or(tag.as_str(), |(_, to)| to);
 	let set: &'static SyntaxSet = &SYNTAXES;
 	let syntax = set.find_syntax_by_token(token)?;
 	(syntax.name != set.find_syntax_plain_text().name).then_some(syntax)
@@ -186,7 +193,10 @@ pub fn highlight(code: &str, lang: Option<&str>) -> Arc<Highlighted> {
 	};
 	let (result, checkpoint) = run(code, syntax, resume);
 	let result = Arc::new(result);
-	CACHE.lock().unwrap_or_else(PoisonError::into_inner).store(key, &result, checkpoint);
+	CACHE
+		.lock()
+		.unwrap_or_else(PoisonError::into_inner)
+		.store(key, &result, checkpoint);
 	result
 }
 
@@ -201,7 +211,10 @@ pub fn cached(code: &str, lang: Option<&str>) -> Option<Arc<Highlighted>> {
 		return Some(PLAIN.clone());
 	};
 	let key = Key { hash: hash(code), len: code.len(), syntax: syntax.name.as_str() };
-	CACHE.lock().unwrap_or_else(PoisonError::into_inner).hit(key)
+	CACHE
+		.lock()
+		.unwrap_or_else(PoisonError::into_inner)
+		.hit(key)
 }
 
 fn hash(text: &str) -> u64 {
@@ -253,7 +266,11 @@ impl Cache {
 			.iter()
 			.enumerate()
 			.filter(|(_, point)| point.syntax == syntax && point.len <= cut)
-			.filter(|(_, point)| code.get(..point.len).is_some_and(|prefix| hash(prefix) == point.hash))
+			.filter(|(_, point)| {
+				code
+					.get(..point.len)
+					.is_some_and(|prefix| hash(prefix) == point.hash)
+			})
 			.max_by_key(|(_, point)| point.len)
 			.map(|(at, _)| at)?;
 		Some(self.checkpoints.remove(at))
@@ -265,7 +282,9 @@ impl Cache {
 		}
 		self.results.push((key, result.clone()));
 		if let Some(checkpoint) = checkpoint {
-			self.checkpoints.retain(|point| point.syntax != checkpoint.syntax || point.hash != checkpoint.hash);
+			self
+				.checkpoints
+				.retain(|point| point.syntax != checkpoint.syntax || point.hash != checkpoint.hash);
 			if self.checkpoints.len() >= CHECKPOINTS {
 				self.checkpoints.remove(0);
 			}
@@ -302,11 +321,11 @@ fn run(
 	}
 	let checkpoint = Checkpoint {
 		syntax: syntax.name.as_str(),
-		len: cut,
-		hash: hash(&code[..cut]),
-		state: state.clone(),
-		stack: stack.clone(),
-		spans: spans.clone(),
+		len:    cut,
+		hash:   hash(&code[..cut]),
+		state:  state.clone(),
+		stack:  stack.clone(),
+		spans:  spans.clone(),
 	};
 	if cut < code.len() {
 		// The incomplete last line is parsed on a copy; the checkpoint stays
@@ -338,11 +357,18 @@ fn parse_line(
 fn role_of(stack: &ScopeStack) -> Option<SyntaxRole> {
 	let rules: &[(Scope, SyntaxRole)] = &SCOPES;
 	stack.as_slice().iter().rev().find_map(|&scope| {
-		rules.iter().find(|(prefix, _)| prefix.is_prefix_of(scope)).map(|&(_, role)| role)
+		rules
+			.iter()
+			.find(|(prefix, _)| prefix.is_prefix_of(scope))
+			.map(|&(_, role)| role)
 	})
 }
 
-fn push_span(spans: &mut Vec<(Range<usize>, SyntaxRole)>, range: Range<usize>, role: Option<SyntaxRole>) {
+fn push_span(
+	spans: &mut Vec<(Range<usize>, SyntaxRole)>,
+	range: Range<usize>,
+	role: Option<SyntaxRole>,
+) {
 	let Some(role) = role else {
 		return;
 	};

@@ -122,7 +122,13 @@ fn elapsed(texts: &[String]) -> Vec<&str> {
 fn masked(texts: &[String]) -> Vec<&str> {
 	texts
 		.iter()
-		.map(|text| if is_elapsed(text) { "<elapsed>" } else { text.as_str() })
+		.map(|text| {
+			if is_elapsed(text) {
+				"<elapsed>"
+			} else {
+				text.as_str()
+			}
+		})
 		.collect()
 }
 
@@ -155,10 +161,7 @@ fn titles_are_listed_and_drawn_as_the_host_wrote_them_and_one_with_no_text_as_ne
 	);
 	let texts = drawn(cx);
 	for title in verbatim {
-		assert!(
-			texts.iter().any(|text| text == title),
-			"{title:?} is drawn as written: {texts:?}"
-		);
+		assert!(texts.iter().any(|text| text == title), "{title:?} is drawn as written: {texts:?}");
 	}
 	assert_eq!(
 		texts.iter().filter(|text| *text == fallback).count(),
@@ -185,7 +188,8 @@ fn a_clock_tick_changes_the_elapsed_labels_and_leaves_titles_and_order_as_they_w
 
 	// Two minutes pass; the label timer is the only thing that redraws.
 	CLOCK_MS.store(T0_MS + 2 * MINUTE_MS, Ordering::SeqCst);
-	cx.executor().advance_clock(Duration::from_millis(2 * MINUTE_MS));
+	cx.executor()
+		.advance_clock(Duration::from_millis(2 * MINUTE_MS));
 	cx.run_until_parked();
 	assert!(
 		view.read_with(cx, |view, _| view.render_count()) > renders,

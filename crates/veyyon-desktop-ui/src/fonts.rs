@@ -53,9 +53,6 @@ mod tests {
 			.faces()
 			.flat_map(|face| face.families.iter().map(|(name, _)| name.clone()))
 			.collect();
-		assert_eq!(
-			families,
-			BTreeSet::from([UI_FAMILY.to_string(), MONO_FAMILY.to_string()])
-		);
+		assert_eq!(families, BTreeSet::from([UI_FAMILY.to_string(), MONO_FAMILY.to_string()]));
 	}
 }

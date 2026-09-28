@@ -61,7 +61,9 @@ impl ContextMenu {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) {
-		self.popover.update(cx, |popover, cx| popover.close(window, cx));
+		self
+			.popover
+			.update(cx, |popover, cx| popover.close(window, cx));
 		cx.emit(*event);
 	}
 }

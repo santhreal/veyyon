@@ -13,9 +13,9 @@ use super::model::{Align, Block, Inlines, Run, RunStyle};
 /// The blocks of one parse.
 pub struct Parsed {
 	/// The top-level blocks.
-	pub blocks: Vec<Block>,
+	pub blocks:                    Vec<Block>,
 	/// The source byte offset each top-level block starts at.
-	pub starts: Vec<usize>,
+	pub starts:                    Vec<usize>,
 	/// Whether the source defines a link reference, which a link anywhere in
 	/// the document can name.
 	pub has_reference_definitions: bool,
@@ -23,8 +23,7 @@ pub struct Parsed {
 
 /// Parses `source`, reporting block offsets shifted by `base`.
 pub fn parse(source: &str, base: usize) -> Parsed {
-	let options =
-		Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
+	let options = Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
 	let mut events = Parser::new_ext(source, options).into_offset_iter();
 	let mut builder = Builder::default();
 	for (event, range) in events.by_ref() {
@@ -123,12 +122,12 @@ impl Builder {
 			Event::Rule => {
 				self.open_block(offset);
 				self.push_block(Block::Rule);
-			}
+			},
 			Event::TaskListMarker(checked) => {
 				self.close_implicit();
 				self.push_block(Block::TaskItem { checked });
-			}
-			_ => {}
+			},
+			_ => {},
 		}
 	}
 
@@ -138,7 +137,7 @@ impl Builder {
 			Tag::Heading { level, .. } => self.open_inline(InlineKind::Heading(level as u8), offset),
 			Tag::TableCell => {
 				self.leaf = Some(Leaf::Inline { kind: InlineKind::Cell, buf: InlineBuf::default() });
-			}
+			},
 			Tag::CodeBlock(kind) => {
 				self.open_block(offset);
 				let lang = match kind {
@@ -146,14 +145,18 @@ impl Builder {
 					CodeBlockKind::Indented => None,
 				};
 				self.leaf = Some(Leaf::Code { lang, code: String::new() });
-			}
+			},
 			Tag::HtmlBlock => {
 				self.open_block(offset);
 				self.leaf = Some(Leaf::Html(String::new()));
-			}
+			},
 			Tag::BlockQuote(_) => self.open_container(Container::Quote(Vec::new()), offset),
 			Tag::List(first) => self.open_container(
-				Container::List { ordered: first.is_some(), start: first.unwrap_or(1), items: Vec::new() },
+				Container::List {
+					ordered: first.is_some(),
+					start:   first.unwrap_or(1),
+					items:   Vec::new(),
+				},
 				offset,
 			),
 			Tag::Item => self.open_container(Container::Item(Vec::new()), offset),
@@ -171,8 +174,8 @@ impl Builder {
 			Tag::Strikethrough => self.style(|buf| buf.strike += 1),
 			Tag::Link { dest_url, .. } | Tag::Image { dest_url, .. } => {
 				self.style(|buf| buf.links.push(Arc::from(&*dest_url)));
-			}
-			_ => {}
+			},
+			_ => {},
 		}
 	}
 
@@ -185,22 +188,22 @@ impl Builder {
 			| TagEnd::HtmlBlock => self.close_leaf(),
 			TagEnd::BlockQuote(_) | TagEnd::List(_) | TagEnd::Item | TagEnd::Table => {
 				self.close_container();
-			}
+			},
 			TagEnd::TableHead => {
 				if let Some(Container::Table { head, row, .. }) = self.stack.last_mut() {
 					*head = mem::take(row);
 				}
-			}
+			},
 			TagEnd::TableRow => {
 				if let Some(Container::Table { rows, row, .. }) = self.stack.last_mut() {
 					rows.push(mem::take(row));
 				}
-			}
+			},
 			TagEnd::Emphasis => self.style(|buf| buf.italic = buf.italic.saturating_sub(1)),
 			TagEnd::Strong => self.style(|buf| buf.bold = buf.bold.saturating_sub(1)),
 			TagEnd::Strikethrough => self.style(|buf| buf.strike = buf.strike.saturating_sub(1)),
 			TagEnd::Link | TagEnd::Image => self.style(|buf| drop(buf.links.pop())),
-			_ => {}
+			_ => {},
 		}
 	}
 
@@ -217,8 +220,9 @@ impl Builder {
 	/// Applies `change` to the open inline buffer, opening an implicit
 	/// paragraph when no leaf is open.
 	fn style(&mut self, change: impl FnOnce(&mut InlineBuf)) {
-		let leaf = self.leaf.get_or_insert_with(|| {
-			Leaf::Inline { kind: InlineKind::Implicit, buf: InlineBuf::default() }
+		let leaf = self.leaf.get_or_insert_with(|| Leaf::Inline {
+			kind: InlineKind::Implicit,
+			buf:  InlineBuf::default(),
 		});
 		if let Leaf::Inline { buf, .. } = leaf {
 			change(buf);
@@ -259,20 +263,20 @@ impl Builder {
 				if let Some(Container::Table { row, .. }) = self.stack.last_mut() {
 					row.push(buf.finish());
 				}
-			}
+			},
 			Leaf::Inline { kind: InlineKind::Heading(level), buf } => {
 				self.push_block(Block::Heading { level, runs: buf.finish() });
-			}
+			},
 			Leaf::Inline { buf, .. } => self.push_block(Block::Paragraph(buf.finish())),
 			Leaf::Code { lang, mut code } => {
 				if code.ends_with('\n') {
 					code.pop();
 				}
 				self.push_block(Block::CodeBlock { lang, code: Arc::from(code) });
-			}
+			},
 			Leaf::Html(html) => {
 				self.push_block(Block::Paragraph(Inlines::plain(html.trim_end_matches('\n'))));
-			}
+			},
 		}
 	}
 
@@ -285,14 +289,14 @@ impl Builder {
 			Container::Quote(blocks) => self.push_block(Block::Quote(blocks)),
 			Container::List { ordered, start, items } => {
 				self.push_block(Block::List { ordered, start, items });
-			}
+			},
 			Container::Item(blocks) => match self.stack.last_mut() {
 				Some(Container::List { items, .. }) => items.push(blocks),
 				_ => blocks.into_iter().for_each(|block| self.push_block(block)),
 			},
 			Container::Table { align, head, rows, .. } => {
 				self.push_block(Block::Table { align, head, rows });
-			}
+			},
 		}
 	}
 
@@ -304,11 +308,11 @@ impl Builder {
 				None => items.push(vec![block]),
 			},
 			// pulldown-cmark nests no block directly in a table.
-			Some(Container::Table { .. }) => {}
+			Some(Container::Table { .. }) => {},
 			None => {
 				self.root.push(block);
 				self.starts.push(self.pending_start);
-			}
+			},
 		}
 	}
 
@@ -324,7 +328,8 @@ impl Builder {
 /// The language word of a fence info string: its text up to the first space
 /// or comma, so `rust,ignore` and `rust title="x"` both name `rust`.
 fn fence_language(info: &str) -> Option<Arc<str>> {
-	info.split(|c: char| c.is_whitespace() || c == ',')
+	info
+		.split(|c: char| c.is_whitespace() || c == ',')
 		.find(|word| !word.is_empty())
 		.map(Arc::from)
 }

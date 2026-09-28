@@ -21,7 +21,8 @@ fn notifications(editor: &Entity<Editor>, cx: &mut VisualTestContext) -> Rc<Cell
 	let count = Rc::new(Cell::new(0));
 	let counted = count.clone();
 	cx.update(|_, cx| {
-		cx.observe(editor, move |_, _| counted.set(counted.get() + 1)).detach();
+		cx.observe(editor, move |_, _| counted.set(counted.get() + 1))
+			.detach();
 	});
 	count
 }

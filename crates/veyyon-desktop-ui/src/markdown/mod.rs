@@ -70,7 +70,11 @@ impl MarkdownDoc {
 			return;
 		}
 		self.source.push_str(delta);
-		let first = if self.has_reference_definitions { 0 } else { self.restart_block() };
+		let first = if self.has_reference_definitions {
+			0
+		} else {
+			self.restart_block()
+		};
 		self.reparse_from(first);
 	}
 
@@ -110,7 +114,10 @@ impl MarkdownDoc {
 
 /// The offset of the start of the line holding byte `at`.
 fn line_start(source: &str, at: usize) -> usize {
-	source.get(..at).and_then(|head| head.rfind('\n')).map_or(0, |newline| newline + 1)
+	source
+		.get(..at)
+		.and_then(|head| head.rfind('\n'))
+		.map_or(0, |newline| newline + 1)
 }
 
 /// Whether the line before the one holding byte `at` is blank: empty or
@@ -120,5 +127,7 @@ fn follows_blank_line(source: &str, at: usize) -> bool {
 		return false;
 	};
 	let previous = line_start(source, newline);
-	source.get(previous..newline).is_some_and(|line| line.trim_matches([' ', '\t', '\r']).is_empty())
+	source
+		.get(previous..newline)
+		.is_some_and(|line| line.trim_matches([' ', '\t', '\r']).is_empty())
 }

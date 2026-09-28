@@ -56,7 +56,11 @@ impl RequestRegistry {
 		self
 			.pending
 			.values()
-			.map(|req| req.issued_at_ms.saturating_add(req.timeout_ms).saturating_add(1))
+			.map(|req| {
+				req.issued_at_ms
+					.saturating_add(req.timeout_ms)
+					.saturating_add(1)
+			})
 			.min()
 	}
 
