@@ -43,6 +43,10 @@ use veyyon_desktop_model::{
 use veyyon_desktop_ui::theme::{Appearance, Theme};
 
 mod chrome;
+mod failure;
+mod freeze;
+mod motion;
+mod refusal;
 mod scale;
 mod width;
 
