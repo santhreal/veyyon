@@ -23,7 +23,10 @@ mod stream;
 
 use std::time::Duration;
 
-use gpui::{AppContext as _, Bounds, Entity, Pixels, TestAppContext, VisualTestContext, px, size};
+use gpui::{
+	AppContext as _, Bounds, Entity, Pixels, TestAppContext, VisualTestContext, motion::Easing, px,
+	size,
+};
 use veyyon_desktop_app::{AppState, driver, thread::ThreadView, transcript::Transcript};
 use veyyon_desktop_model::{
 	ContentBlock, EntryId, HostEvent, MessageRole, SessionHeaderView, SessionId, SnapshotSection,
@@ -208,12 +211,18 @@ fn an_entry_that_lands_while_the_thread_is_open_rises_into_place_and_then_rests(
 		assert!(pair[1] <= pair[0] + 0.01, "the entry only rises: {below:?}");
 	}
 	assert!(below.len() > 10, "frames run until 160 ms: {below:?}");
-	// 16 ms into a 160 ms ease-out the entry is still 3.6 px low; a shorter
-	// reveal is nearer its place, a longer or a linear one further.
-	assert!(
-		(3.0..4.25).contains(&(below[1] - rest)),
-		"the entry rises over frames on the reveal curve: {below:?}"
-	);
+	// Each early frame draws the entry where 160 ms of the reveal curve has
+	// it; a reveal of 120 ms or 200 ms, or a linear one, is half a pixel off
+	// by the second frame.
+	for (ix, low) in below.iter().take(4).enumerate() {
+		let shown = Easing::EaseResort.eval(ix as f32 * FRAME.as_secs_f32() / 0.160);
+		let expected = RISE * (1.0 - shown);
+		assert!(
+			(low - rest - expected).abs() < 0.25,
+			"frame {ix}: the entry is {} px low, the reveal curve has {expected}: {below:?}",
+			low - rest
+		);
+	}
 	assert!(near(below[10], rest), "the entry rests by 160 ms: {below:?}");
 	assert!(!t.frame(), "an entry at rest asks for no frame");
 }

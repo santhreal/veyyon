@@ -7,7 +7,7 @@ use gpui::TestAppContext;
 use veyyon_desktop_model::{EntryId, HostEvent, MessageRole, StreamingMessageState};
 use veyyon_desktop_ui::markdown::FadeStop;
 
-use super::{Thread, entry, near, thread};
+use super::{RISE, Thread, entry, near, thread};
 
 /// The opacity a streamed run is first drawn at: visible, so the frame after
 /// a token already paints it.
@@ -150,4 +150,30 @@ fn the_reply_the_tail_drew_lands_at_rest_when_the_stream_ends_first(app: &mut Te
 #[gpui::test]
 fn the_reply_the_tail_drew_lands_at_rest_when_the_entry_comes_first(app: &mut TestAppContext) {
 	the_reply_the_tail_drew_lands_at_rest(app, Commit::EntryThenEnd);
+}
+
+#[gpui::test]
+fn an_operator_entry_that_lands_beside_the_reply_the_tail_drew_still_rises(
+	app: &mut TestAppContext,
+) {
+	let mut t = thread(app, 2, false);
+	t.apply(vec![streamed("The reply.", 2)]);
+	t.settle(Duration::from_millis(600));
+	let appended = HostEvent::TranscriptAppended {
+		revision: 3,
+		entries:  vec![
+			entry("s-2", Some("s-1"), MessageRole::Assistant, "The reply."),
+			entry("s-3", Some("s-2"), MessageRole::User, "A queued prompt."),
+		],
+	};
+	t.apply(vec![HostEvent::StreamingChanged(None), appended]);
+	let reply = t.below("s-2", "s-1");
+	let first = t.below("s-3", "s-2");
+	t.settle(Duration::from_millis(600));
+	assert!(near(t.below("s-2", "s-1"), reply), "the reply the tail drew lands at rest");
+	let rest = t.below("s-3", "s-2");
+	assert!(
+		near(first - rest, RISE),
+		"the prompt starts {RISE} px below its place: {first} vs {rest}"
+	);
 }
