@@ -1,0 +1,112 @@
+//! Intents: the requests the window queues for the host.
+
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use veyyon_desktop_model::{
+	AttachmentSubmission, HostAction, HostRequest, RequestId, SessionId, SurfaceId,
+};
+use veyyon_gpui::Context;
+
+use super::{AppState, StoreEvent, reduce::Batch};
+
+/// How long a request may stay in flight before the registry prunes it.
+const REQUEST_TIMEOUT_MS: u64 = 30_000;
+
+impl AppState {
+	/// Queues `action` on behalf of the control `surface` and emits
+	/// [`StoreEvent::OutboxReady`].
+	pub fn dispatch(
+		&mut self,
+		action: HostAction,
+		surface: SurfaceId,
+		cx: &mut Context<Self>,
+	) -> RequestId {
+		let request = self.enqueue(action, surface);
+		cx.emit(StoreEvent::OutboxReady);
+		request
+	}
+
+	/// Queues `action` without emitting: registers the request in flight
+	/// against `surface`, records it as what that control's retry sends
+	/// again, and appends it to the outbox.
+	pub fn enqueue(&mut self, action: HostAction, surface: SurfaceId) -> RequestId {
+		self.next_request += 1;
+		let request = RequestId(self.next_request);
+		self.store
+			.retries
+			.record(request, surface.clone(), action.clone());
+		self.registry
+			.register(request, action.kind(), surface, now_ms(), REQUEST_TIMEOUT_MS);
+		self.outbox.push(HostRequest { id: request, action });
+		request
+	}
+
+	/// Takes every queued request, oldest first, for the transport to send.
+	pub fn drain_outbox(&mut self) -> Vec<HostRequest> {
+		std::mem::take(&mut self.outbox)
+	}
+
+	/// Sends a prompt to `session` from the composer.
+	pub fn submit_prompt(
+		&mut self,
+		session: SessionId,
+		text: String,
+		attachments: Vec<AttachmentSubmission>,
+		cx: &mut Context<Self>,
+	) -> RequestId {
+		let surface = SurfaceId::ComposerSendButton(session.clone());
+		self.dispatch(HostAction::SubmitPrompt { session, text, attachments }, surface, cx)
+	}
+
+	/// Stops the turn running in `session`.
+	pub fn abort_turn(&mut self, session: SessionId, cx: &mut Context<Self>) -> RequestId {
+		let surface = SurfaceId::ComposerAbortButton(session.clone());
+		self.dispatch(HostAction::AbortTurn { session }, surface, cx)
+	}
+
+	/// Opens `session`: shows it at once from the transcript cache, emitting
+	/// [`StoreEvent::ActiveSessionChanged`] and [`StoreEvent::TranscriptReset`],
+	/// and asks the host for it. The host's transcript replaces the cached
+	/// one only when its revision or order differs.
+	pub fn open_session(&mut self, session: SessionId, cx: &mut Context<Self>) -> RequestId {
+		let surface = SurfaceId::QueueSessionRow(session.clone());
+		let request = self.dispatch(HostAction::OpenSession { session: session.clone() }, surface, cx);
+		self.pending_open = Some((request, session.clone()));
+		let mut batch = Batch::default();
+		self.show(session, &mut batch);
+		for event in self.finish(batch) {
+			cx.emit(event);
+		}
+		request
+	}
+
+	/// Creates a session in `cwd`, or in the host's working directory for
+	/// `None`.
+	pub fn create_session(&mut self, cwd: Option<String>, cx: &mut Context<Self>) -> RequestId {
+		self.dispatch(
+			HostAction::CreateSession { workspace: cwd, title: None },
+			SurfaceId::NewSessionButton,
+			cx,
+		)
+	}
+
+	/// Makes `provider`/`model` the default model.
+	pub fn select_model(
+		&mut self,
+		provider: String,
+		model: String,
+		cx: &mut Context<Self>,
+	) -> RequestId {
+		let surface = self
+			.displayed
+			.clone()
+			.map_or(SurfaceId::GlobalTitlebarLine, SurfaceId::ComposerModelSelector);
+		self.dispatch(HostAction::SelectModel { provider, model, persist: true }, surface, cx)
+	}
+}
+
+fn now_ms() -> u64 {
+	SystemTime::now()
+		.duration_since(UNIX_EPOCH)
+		.map_or(0, |elapsed| elapsed.as_millis() as u64)
+}

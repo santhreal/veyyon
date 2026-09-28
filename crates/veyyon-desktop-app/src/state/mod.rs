@@ -1,0 +1,121 @@
+//! The application state entity: the model's store, the in-flight request
+//! registry, the intent outbox and the client transcript cache.
+
+mod cache;
+mod events;
+mod flat;
+mod intents;
+mod projects;
+mod reduce;
+
+use std::collections::HashMap;
+
+use veyyon_desktop_model::{
+	HostEvent, HostRequest, RequestId, RequestRegistry, SessionId, Store, TranscriptEntry,
+};
+use veyyon_gpui::{Context, EventEmitter};
+
+use self::{cache::TranscriptCache, projects::build_projects};
+pub use self::{
+	cache::TRANSCRIPT_CACHE_SESSIONS,
+	events::StoreEvent,
+	projects::{Project, SessionRow},
+};
+
+/// The state every desktop view reads, held in one `Entity<AppState>`.
+///
+/// The transport feeds host events to [`apply`](Self::apply) and sends what
+/// [`drain_outbox`](Self::drain_outbox) returns. Views read the store through
+/// `app_state.read(cx)` and subscribe to [`StoreEvent`].
+pub struct AppState {
+	store:        Store,
+	registry:     RequestRegistry,
+	outbox:       Vec<HostRequest>,
+	next_request: u64,
+	transcripts:  TranscriptCache,
+	/// The working directory the host reported for each session.
+	cwds:         HashMap<SessionId, String>,
+	projects:     Vec<Project>,
+	/// The session the window shows. It leads the host's active session
+	/// while an `OpenSession` is in flight.
+	displayed:    Option<SessionId>,
+	/// The `OpenSession` in flight and the session it opens.
+	pending_open: Option<(RequestId, SessionId)>,
+}
+
+impl EventEmitter<StoreEvent> for AppState {}
+
+impl AppState {
+	/// Creates the state over `store`, usually one holding the persisted
+	/// state the last window wrote. The window shows the session the store
+	/// records as active.
+	pub fn new(store: Store) -> Self {
+		let cwds = HashMap::new();
+		let projects = build_projects(&store, &cwds);
+		Self {
+			displayed: store.persisted.shell.active_session.clone(),
+			store,
+			registry: RequestRegistry::new(),
+			outbox: Vec::new(),
+			next_request: 0,
+			transcripts: TranscriptCache::default(),
+			cwds,
+			projects,
+			pending_open: None,
+		}
+	}
+
+	/// Reduces a batch of host events and emits one [`StoreEvent`] for each
+	/// region the batch changed.
+	pub fn apply(&mut self, events: Vec<HostEvent>, cx: &mut Context<Self>) {
+		for event in self.reduce_batch(events) {
+			cx.emit(event);
+		}
+	}
+
+	/// The store the host events were reduced into.
+	pub const fn store(&self) -> &Store {
+		&self.store
+	}
+
+	/// The requests sent and not yet answered.
+	pub const fn registry(&self) -> &RequestRegistry {
+		&self.registry
+	}
+
+	/// The session the window shows.
+	pub const fn active_session(&self) -> Option<&SessionId> {
+		self.displayed.as_ref()
+	}
+
+	/// The sidebar listing, rebuilt when [`StoreEvent::SessionsChanged`] is
+	/// emitted.
+	pub fn projects(&self) -> &[Project] {
+		&self.projects
+	}
+
+	/// The working directory the host reported for `session`.
+	pub fn cwd(&self, session: &SessionId) -> Option<&str> {
+		self.cwds.get(session).map(String::as_str)
+	}
+
+	/// The number of entries on the active branch of `session`'s transcript,
+	/// 0 for a session the cache does not hold.
+	pub fn entry_count(&self, session: &SessionId) -> usize {
+		self.transcripts
+			.get(session)
+			.map_or(0, |cached| cached.order.len())
+	}
+
+	/// The entry at display index `ix` of `session`'s active branch.
+	pub fn entry_at(&self, session: &SessionId, ix: usize) -> Option<&TranscriptEntry> {
+		let id = self.transcripts.get(session)?.order.get(ix)?;
+		self.store.transcripts.get(session)?.get(id)
+	}
+
+	/// Whether the client holds `session`'s transcript, which opening it
+	/// renders before the host answers.
+	pub fn is_cached(&self, session: &SessionId) -> bool {
+		self.transcripts.get(session).is_some()
+	}
+}

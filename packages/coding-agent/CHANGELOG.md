@@ -164,7 +164,9 @@
 - The GUI host records how the desktop reaches every terminal setting, session mode and session operation in `gui-host/desktop-parity`; no user-visible behavior changes.
 - The desktop parity tables record the carrier for each builtin slash command, each tool presentation and each extension UI interaction, including the recorded gaps; no user-facing effect.
 - The desktop front end embeds Inter and JetBrains Mono (SIL Open Font License 1.1) in a new `veyyon-desktop-ui` crate and lists both licenses in `THIRD_PARTY_LICENSES.txt`; no window uses the crate yet.
+- The `veyyon-desktop-ui` crate embeds 56 Lucide icons (ISC license, listed in `THIRD_PARTY_LICENSES.txt`) and adds the button, icon button, key cap, divider, status dot, spinner, tooltip, toggle and list row controls; no window uses them yet.
 - `veyyon-desktop-ui` holds the desktop design system: a dark and a light palette in embedded TOML files that reject a missing or unknown role, plus spacing, radius, size, type-ramp and motion constants; no window uses the crate yet.
+- A new `veyyon-desktop-app` crate holds the desktop application state: it reduces host events into the desktop store and emits one typed event per changed region, keeps each session's transcript display order for exact list splices, caches the transcripts of the eight most recent sessions, groups the sidebar's sessions by working directory and queues outgoing requests; no window uses the crate yet.
 - The GUI host's `Sessions` snapshot lists the sessions of every project of the profile, newest first, instead of only the project the host started in.
 - The share card draws one roster whether the window hosts the room or joined it, so a participant row stands at the height, text size and badges the surface tokens state rather than at a second set of measures on the guest card.
 - The desktop host's bridges and the rule forge read an error's text through `errorMessage` and a record through `isRecord` from `@veyyon/utils` rather than through copies of those predicates. It changes nothing that is reported.
@@ -373,6 +375,7 @@
 
 ### Fixed
 
+- The desktop window draws the card the terminal draws for `read`, `write`, `search`, `ast_edit`, `ask`, `todo`, `irc`, `launch`, `browser`, `github` and `web_search`, and for every tool in a transcript rebuilt without its tool instance, where it drew the tool name and raw arguments because it read the view from the tool instance and not from the view registry.
 - The desktop window reduces motion when the operating system's reduced-motion accessibility setting is on, where a `display.transitions` value of `on` overrode that setting on every frame.
 - Stopping a share sends the closing frame before the socket closes, where the frame was queued behind the close and dropped, leaving each guest reconnecting to a room that no longer exists.
 - Joining a share replies once the guest's own session is stored, where a second join arriving during the first restored the session twice and could reply against a session that was not open yet.
