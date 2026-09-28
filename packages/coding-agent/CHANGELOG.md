@@ -395,7 +395,7 @@
 - Subagent drive paths share abort-aware promise handling with unchanged cancellation behavior.
 - Hook and user-message selectors share search editing without per-keystroke callback or query-array allocations.
 - The desktop host's streaming-reply and agent-roster coalescers share one frame scheduler in `gui-host/streaming-frames.ts`; frame timing is unchanged.
-- A desktop thread you leave by opening, creating or clearing to another keeps its turn running in the background, files its reply to its own session, raises its approvals and questions under its own id, and shows its reply so far when you open it again, where leaving it ended the turn as aborted.
+- A desktop thread left by opening, creating or clearing to another thread, including right after the prompt that started it, keeps its turn running in the background, files its reply to its own session, raises its approvals and questions under its own id, and shows its reply so far, its pending decisions and its extension chrome when opened again, where leaving it ended the turn as aborted.
 
 ### Fixed
 
