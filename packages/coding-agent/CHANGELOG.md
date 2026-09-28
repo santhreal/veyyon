@@ -159,7 +159,7 @@
 
 ### Changed
 
-- The desktop UI toolkit gains a streaming markdown renderer that reparses only the trailing blocks on each appended delta and highlights fenced code onto the theme's syntax colors; no window uses it yet.
+- The desktop UI toolkit gains a streaming markdown renderer that reparses only the trailing blocks on each appended delta and highlights fenced code onto the theme's syntax colors, optionally drawing code plain until a highlight computed off the UI thread is cached; no window uses it yet.
 - The desktop UI toolkit gains a text editor with single-line and multi-line modes, grapheme-aware caret motion and deletion, coalesced undo and redo, and input-method composition.
 - The desktop UI toolkit gains popovers, keyboard-driven menus, context menus, selects, tabs with a sliding underline, overlay scroll areas, split handles and a bottom-right toast stack; no window uses them yet.
 - The GUI host wire types and runtime arrays are generated from the Rust desktop model into `gui-host/wire.generated.ts`, and a desktop-model test fails when the committed file differs; frames on the socket are unchanged.

@@ -190,6 +190,20 @@ pub fn highlight(code: &str, lang: Option<&str>) -> Arc<Highlighted> {
 	result
 }
 
+/// The result [`highlight`] returns for `code` and `lang`, looked up in the
+/// cache without parsing.
+///
+/// Unknown and absent languages return the plain result, as [`highlight`]
+/// does. `None` when the code has not been highlighted in that language or
+/// its result has left the cache.
+pub fn cached(code: &str, lang: Option<&str>) -> Option<Arc<Highlighted>> {
+	let Some(syntax) = lang.and_then(syntax_for) else {
+		return Some(PLAIN.clone());
+	};
+	let key = Key { hash: hash(code), len: code.len(), syntax: syntax.name.as_str() };
+	CACHE.lock().unwrap_or_else(PoisonError::into_inner).hit(key)
+}
+
 fn hash(text: &str) -> u64 {
 	let mut hasher = DefaultHasher::new();
 	text.hash(&mut hasher);

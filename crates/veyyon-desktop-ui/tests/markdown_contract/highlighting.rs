@@ -1,7 +1,7 @@
 //! Highlighting maps a fence's language onto the palette's syntax roles.
 
 use veyyon_desktop_ui::{
-	markdown::{SyntaxRole, highlight, resolve_language},
+	markdown::{SyntaxRole, cached, highlight, resolve_language},
 	theme::{Appearance, Theme},
 };
 
@@ -80,4 +80,17 @@ fn a_growing_code_block_reparses_only_after_its_last_complete_line() {
 
 fn line(i: usize) -> String {
 	format!("fn grow_{i}(x: u32) -> u32 {{ x + {i} }}\n")
+}
+
+#[test]
+fn a_cache_lookup_misses_until_the_code_is_highlighted_and_never_parses() {
+	let code = "let looked_up_only = 1;\nlet then_parsed = 2;";
+	assert_eq!(cached(code, Some("rust")), None);
+	assert_eq!(cached(code, Some("rust")), None, "a lookup stored a result");
+	let parsed = highlight(code, Some("rust"));
+	assert_eq!(cached(code, Some("rs")).as_deref(), Some(&*parsed));
+	assert_eq!(cached(code, Some("python")), None, "the language is part of the key");
+	for lang in [None, Some("klingon")] {
+		assert_eq!(cached(code, lang).map(|plain| plain.spans().is_empty()), Some(true), "{lang:?}");
+	}
 }

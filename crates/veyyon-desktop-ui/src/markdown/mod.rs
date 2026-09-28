@@ -12,7 +12,7 @@ mod model;
 mod parse;
 mod render;
 
-pub use highlight::{Highlighted, SyntaxRole, highlight, resolve_language};
+pub use highlight::{Highlighted, SyntaxRole, cached, highlight, resolve_language};
 pub use model::{Align, Block, Inlines, Run, RunStyle};
 pub use render::{CopyButton, MarkdownStyle, render};
 

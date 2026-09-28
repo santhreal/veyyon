@@ -1,5 +1,6 @@
 //! A document draws in a window: every block kind renders, a code block's
-//! copy slot receives its code, and a link opens its URL on click.
+//! copy slot receives its code, a link opens its URL on click, and a style
+//! with deferred highlighting never parses code while drawing.
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -58,4 +59,25 @@ fn clicking_a_link_opens_its_url() {
 	window.simulate_click(point(px(6.0), px(8.0)), Modifiers::none());
 	window.run_until_parked();
 	assert_eq!(cx.opened_url().as_deref(), Some("https://example.com/docs"));
+}
+
+/// Draws one Rust fence holding `code` with `style` and reports whether the
+/// highlight cache holds a result for that code afterwards.
+fn cache_holds_code_after_drawing(code: &str, style: MarkdownStyle) -> bool {
+	let mut cx = themed();
+	let doc = MarkdownDoc::new(format!("```rust\n{code}\n```\n"));
+	let (_, window) = cx.add_window_view(move |_, _| Harness { doc, style });
+	window.run_until_parked();
+	markdown::cached(code, Some("rust")).is_some()
+}
+
+#[test]
+fn a_deferred_style_draws_without_highlighting_and_the_default_style_highlights() {
+	let deferred = "fn deferred_only() -> u8 { 7 }";
+	assert!(
+		!cache_holds_code_after_drawing(deferred, MarkdownStyle::new("doc").deferred_highlight()),
+		"drawing with deferred highlighting parsed the code"
+	);
+	let eager = "fn eager_only() -> u8 { 8 }";
+	assert!(cache_holds_code_after_drawing(eager, MarkdownStyle::new("doc")));
 }

@@ -2,8 +2,9 @@
 //!
 //! Prose is one `StyledText` per paragraph, with a run per style; a paragraph
 //! holding a link is an `InteractiveText` that opens the link's URL on click.
-//! A code block is highlighted through [`highlight`] and scrolls sideways
-//! instead of wrapping.
+//! A code block is highlighted through [`highlight`], or drawn plain until
+//! [`cached`] holds its result when highlighting is deferred, and scrolls
+//! sideways instead of wrapping.
 
 use std::{rc::Rc, sync::Arc};
 
@@ -16,7 +17,7 @@ use veyyon_gpui::{
 
 use super::{
 	MarkdownDoc,
-	highlight::highlight,
+	highlight::{Highlighted, cached, highlight},
 	model::{Align, Block, Inlines},
 };
 use crate::{
@@ -41,12 +42,16 @@ pub struct MarkdownStyle {
 	pub prose:       TypeStyle,
 	/// The copy button of each code block, or none.
 	pub copy_button: Option<CopyButton>,
+	/// Whether a code block draws only a cached highlight result and draws
+	/// plain text on a miss, leaving [`highlight`] to the caller, for example
+	/// on a background executor followed by a notify.
+	pub deferred_highlight: bool,
 }
 
 impl MarkdownStyle {
 	/// Prose in [`text::BODY`] and code blocks without a copy button.
 	pub fn new(id: impl Into<ElementId>) -> Self {
-		Self { id: id.into(), prose: text::BODY, copy_button: None }
+		Self { id: id.into(), prose: text::BODY, copy_button: None, deferred_highlight: false }
 	}
 
 	/// Places the element `build` returns in the header of each code block.
@@ -55,6 +60,12 @@ impl MarkdownStyle {
 		build: impl Fn(Arc<str>, &mut Window, &mut App) -> AnyElement + 'static,
 	) -> Self {
 		self.copy_button = Some(Rc::new(build));
+		self
+	}
+
+	/// Draws code blocks from [`cached`] results only, and plain on a miss.
+	pub const fn deferred_highlight(mut self) -> Self {
+		self.deferred_highlight = true;
 		self
 	}
 }
@@ -187,8 +198,11 @@ impl Painter<'_> {
 		cx: &mut App,
 	) -> AnyElement {
 		let palette = self.palette;
-		let highlighted = highlight(code, lang.map(|lang| lang.as_ref()));
-		let styles = highlighted.spans().iter().map(|(range, role)| {
+		let tag = lang.map(|lang| lang.as_ref());
+		let highlighted =
+			if self.style.deferred_highlight { cached(code, tag) } else { Some(highlight(code, tag)) };
+		let spans = highlighted.as_deref().map_or(&[][..], Highlighted::spans);
+		let styles = spans.iter().map(|(range, role)| {
 			(range.clone(), HighlightStyle {
 				color: Some(role.color(&palette.syntax)),
 				..HighlightStyle::default()
