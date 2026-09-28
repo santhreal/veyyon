@@ -215,20 +215,6 @@ cannot serve the window: a branch that brings its own GUI host has none in its
 base, and the source hold then records a window attached to nothing rather than
 the surface under test.
 
-A pre-change build reads the token and theme files it was authored against. §9.3
-rejects a key a loader does not know, and a key a later commit made required is
-absent from an older reader, so this checkout's token files fail to load in that
-build. The base's own files come with it, in `PROOF_TOKENS_DIR` and
-`PROOF_THEMES_DIR` as container paths under the mounted repository root:
-
-```sh
-SCENE_ARM=before PROOF_BASE_REF=HEAD \
-  PROOF_NATIVE_BEFORE_BINARY=<base-build> \
-  PROOF_TOKENS_DIR=/repo/<base-tokens>/crates/veyyon-desktop-tokens/tokens \
-  PROOF_THEMES_DIR=/repo/<base-tokens>/crates/veyyon-desktop-tokens/themes \
-  proof/docker/record-native.sh proof/scenes/<name>.sh
-```
-
 One target directory serves every tree on a machine, and cargo names each unit's
 sources relative to its workspace root, so a base tree and this one describe the
 same files and freshness comes down to mtime. A base tree extracted with archived

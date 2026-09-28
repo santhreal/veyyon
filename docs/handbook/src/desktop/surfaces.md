@@ -12,7 +12,8 @@ minimum window width, the composer remains available across the transcript.
 
 The transcript and composer remain the primary work area. Workspace inspection
 and terminal output use contextual panels rather than permanent command menus.
-Typography, spacing, control sizes, and motion use the shared design tokens.
+Typography, spacing, control sizes, and motion use the theme in
+`crates/veyyon-desktop-ui`.
 Every settings row is 44px tall, with its label on one line and its description
 on one line under it. A description longer than the row truncates; the pointer
 over the row opens the whole description in a tag. Focused pages scroll their
@@ -31,55 +32,34 @@ that one instead. A name that is empty or only spaces is rejected in the
 attention strip and sends nothing. `Escape` restores the name the host reports.
 
 `Primary` means `Cmd` on macOS and `Ctrl` on Linux and Windows. Default bindings are
-in `crates/veyyon-desktop-surface/keymap.toml`.
+in `crates/veyyon-desktop-app/src/keymap.rs`.
 
 | Shortcut | Action |
 | --- | --- |
-| `Primary-N` | Create a session |
-| `Primary-B` | Toggle the queue |
+| `Primary-N` | Start a thread in the active project |
+| `Primary-B` | Toggle the sidebar |
 | `Primary-J` | Toggle the terminal drawer |
-| `Primary-\` | Toggle the right panel |
-| `Primary-K` | Open the command palette |
-| `Primary-R` | Open prompt history |
+| `Primary-Shift-D` | Toggle the right panel |
+| `Primary-K` | Toggle the command palette |
+| `Primary-Shift-P` | Open the command palette |
+| `Primary-F` | Search threads |
 | `Primary-,` | Open settings |
-| `Primary-Shift-W` | Close the window |
+| `Primary-Shift-M` | Open the model picker |
+| `Primary-Shift-A` | Attach files to the next prompt |
+| `Primary-.` | Stop the running turn |
+| `Shift-Tab` in the composer | Move to the next thinking level |
+| `Alt-Q` in the composer | Switch a prompt sent during a turn between steering and queueing |
+| `` Ctrl-Shift-` `` | Open a terminal in the drawer |
 | `Primary-Q` | Quit |
-| `F10` | Open the menu bar |
-
-### Menu bar
-
-The titlebar holds five menus: `Veyyon`, `Session`, `View`, `Edit` and `Turn`.
-A press on a word opens its menu under it; a press on the same word closes it.
-A press anywhere outside the open menu closes it and does nothing else.
-`Escape` closes it too. `F10` opens the first menu without a pointer.
-
-While a menu is open it holds the keyboard. `Up` and `Down` walk its entries,
-`Left` and `Right` move to the next menu along the bar, and `Enter` runs the
-entry the walk is on. Closing the menu gives the keyboard back to what held it,
-with any draft in the composer untouched. The entry the walk stands on carries
-the fill every row surface selects with. A verb the host does not offer is
-drawn muted, is skipped by the walk and answers no press; a verb withdrawn
-while the walk stands on it is not run by `Enter` either, and the menu stays
-open.
-
-Every entry runs the same action as its chord and states that chord at its
-trailing edge, including a chord rebound on the Keybindings page. Four verbs
-read an argument from the chord that invokes them and appear in no menu:
-focusing a session by number, moving a selection, scrolling and selecting a
-decision option. Four more are what a key already means where it is pressed:
-the composer's send, its newline, its half-split and the dismissal `Escape`
-carries. `F10` itself is the ninth, since it has nothing to do from inside an
-open bar.
 
 ### Closing the window
 
-`Primary-Shift-W` closes the window and `Primary-Q` ends the process.
-`Primary-W` closes the panel tab or parks the session, which is what it has
-always done. Closing the window writes every store first: the placement, the
-appearance, the queue shape and the open session. On macOS the application
-stays up with no window and the dock icon opens one again, in the placement,
-appearance and session the closed window left; everywhere else a process with
-no window has no way in, so it ends with the window.
+`Primary-Q` closes the window and ends the process. Closing the window writes
+what it remembers first: the placement, the appearance and the open session.
+On macOS the application stays up with no window and the dock icon opens one
+again, in the placement, appearance and session the closed window left;
+everywhere else a process with no window has no way in, so it ends with the
+window.
 
 ## Sessions and drafts
 
@@ -182,8 +162,7 @@ A session started from another one is drawn under it, indented one step per
 generation, in the section that holds it. A row with sessions under it carries
 a chevron on its leading edge: pressing the chevron folds the branch, and every
 generation under it leaves the rail until it is unfolded. Indentation stops at
-the depth `surface/queue.toml` authors, so a deep chain keeps its title
-readable.
+the depth the sidebar allows, so a deep chain keeps its title readable.
 
 A fold belongs to the space it was made in and is written to the window's
 store, so it survives the next session index the host sends and returns with
@@ -473,8 +452,7 @@ use thumbnails; video uses a film glyph; UTF-8 text previews contain at most
 256 characters; binary previews contain the first 16 bytes in hexadecimal.
 An undecodable preview displays its error.
 
-Filenames and captions truncate inside the card width from
-`crates/veyyon-desktop-tokens/tokens/surface/composer.toml`. Hover a card to
+Filenames and captions truncate inside the card width. Hover a card to
 display its remove control. Removing a card preserves the remaining attachments
 and draft text.
 
@@ -590,13 +568,6 @@ reported: a turn that failed three times in a row, a budget spent, or another
 mode holding the session. A host that serves no goals withholds the capability,
 and the controls are drawn as a gate stating that instead of answering a press.
 
-Use `proof/scenes/desktop-goal.sh` to set a goal from the palette and pause it
-again. It reads the status tint twice over: the fill of the chip in the card's
-footer row, and the ink of the card's own edge over the band above the
-composer. A chip drawn off something other than the goal record, a card that
-never arrives, and a pause that reaches the runtime without reaching the
-window are separate failures.
-
 ## Loop
 
 `/loop` repeats the last prompt after each turn ends, and `/loop off` stops
@@ -649,8 +620,6 @@ Type `/` at the beginning of the composer to open the anchored command palette.
 | `/model` | Open the model picker |
 | `/effort` | Select an available thinking level |
 | `/queue-mode` | Select steer or queue mode |
-| `/steer` | Steer the running turn with the command payload |
-| `/queue` | Queue the command payload |
 | `/files` | Find a file in the workspace by name |
 | `/project` | Browse the workspace one directory at a time |
 | `/search` | Search the workspace for text |
@@ -682,12 +651,9 @@ Selecting a composer command removes its command prefix while retaining the
 payload and attachments. `Escape` dismisses the slash palette without deleting
 the typed slash text.
 
-A command name matches in any capitalisation: `/Steer` reaches the same row as
-`/steer`, and the word `commands` after the slash opens the complete list
-whichever way it is capitalised. `/steer` and `/queue` are the two commands
-that take a payload, so text after the name is the message they send. Every
-other command matches on the whole text typed after `/`, and words after its
-name list no row rather than a row that would discard them.
+A command name matches in any capitalisation: `/Model` reaches the same row as
+`/model`. A command that takes arguments prompts for them after it is chosen,
+and `Escape` returns from that prompt to the full list.
 
 `/files`, `/project`, `/search` and `/prompts` open a lookup instead of closing
 the palette. The palette stays open in the mode the command named, at the
@@ -1168,465 +1134,26 @@ recorder with `proof/docker/build-recorder.sh`. The output directory must be
 writable by the recorder container, including on NFS mounts.
 
 ```sh
-proof/docker/record-native.sh proof/scenes/desktop-composer.sh
-```
-
-The session-workflow scene submits a real prompt, pastes a file, reorders tabs,
-opens history, switches spaces and restores the draft after application restart.
-It requires a reachable model endpoint. The diff-review scene creates and
-replies to a thread, resolves and reopens it, restarts the application, and
-refreshes changed source to check relocated and orphaned anchors.
-
-These scenes include static inspection pauses. Set `SCENE_MOTION_FLOOR=4`
-for their recordings; use the streaming scene for animation cadence.
-
-```sh
-PROOF_LLM_BASE_URL=<provider-url> SCENE_MOTION_FLOOR=4 \
-  proof/docker/record-native.sh proof/scenes/desktop-session-workflows.sh
-SCENE_MOTION_FLOOR=4 proof/docker/record-native.sh proof/scenes/desktop-diff-review.sh
+proof/docker/record-native.sh proof/scenes/<name>.sh
 ```
 
 `record-native.sh` runs the window rather than a terminal: it mounts the
-executable into the container, points the session at the checkout's tokens and
-themes, and renders through lavapipe, so a capture needs no GPU. It takes the
-executable from `DESKTOP_BINARY`, or from this workspace's cargo target
-directory, and states the build command when there is none. `SCENE_WIDTH` and
-`SCENE_HEIGHT` default to 1180x800; `OUT_DIR` names the output directory.
+executable into the container and renders through lavapipe, so a capture needs
+no GPU. It takes the executable from `DESKTOP_BINARY`, or from this workspace's
+cargo target directory, and states the build command when there is none.
+`SCENE_WIDTH` and `SCENE_HEIGHT` default to 1180x800; `OUT_DIR` names the output
+directory.
 
 For the host's NVIDIA device instead, set `PROOF_GPU_DEVICE=nvidia.com/gpu=all`
 and `VK_ICD=/etc/vulkan/icd.d/nvidia_icd.json`. The host's CDI specification must
 match its current driver and device nodes.
 
-The scene uses automatic host startup in the container's isolated home. It checks
-the initial session snapshot and waits for the session-creation interaction to
-produce a new host session before entering a draft. It records model-picker
-opening and dismissal, repeated palette transitions, and slash palette opening
-and dismissal. Set `SCENE_WIDTH=800` for the minimum-width case.
-
-Every desktop scene reads this preamble's frames back before it records its own,
-and ends the take naming the guard that failed: the draft reaching the composer,
-each overlay drawing over the transcript, each dismissal returning the transcript
-to the frame it opened over, and the draft surviving both. The reading is printed
-as `scene: draft <n>px, kept <n>px, moved <n>px, picker <n>/1000 open ...`.
-
-The preamble also owns where a prompt is typed. `submit_prompt` clicks the
-editor line the preamble derived from the token files, clears the draft, types
-the text, reads the composer band back, and presses `Return` only when the ink
-is there; `type_prompt` stops before the `Return` for a scene that photographs
-the typed draft. A scene that restates the aim as a number clicks whatever that
-number reaches at the current layout, and a click outside the card focuses the
-transcript, so the keystrokes reach no draft and the take reports a turn the
-model never ran.
-
-Use `proof/scenes/desktop-navigation.sh` with the same capture environment to
-exercise a completed host response, transcript paging, find, contextual panel
-transitions, and session creation through command search. It reads back the model
-row entered, the card grown by an eighty-line draft, Home, a page, a find and its
-next match, the panel's two states, the command palette and the session its row
-made. Set `PROOF_LLM_BASE_URL` to an endpoint reachable from the recorder
-container.
-
-Use `proof/scenes/desktop-surface-navigation.sh` with the same capture environment
-to exercise command groups, focused Account and Settings pages, settings scrolling,
-parent navigation, draft-focus restoration, and queue action visibility.
-
-Use `proof/scenes/desktop-terminal.sh` to open the terminal drawer, focus its grid,
-and execute a shell command. It reads back the drawer drawn over the session and
-the command answered inside it, so a withheld `Capability::Terminals` ends the
-take rather than publishing the session under both frame names. Set `SCENE_WIDTH`
-to `800` and `1180` for overlaid and docked drawers.
-
-Use `proof/scenes/desktop-terminal-width.sh` to print a ninety-six-column rule
-into the drawer's terminal and read how far across the drawer it reaches. The
-strip it measures starts past the eightieth column, where nothing but terminal
-text draws, so a grid left at the old eighty-column constant leaves it as blank
-as the frame taken before the command. Record both arms at each width the drawer
-reaches, since the width is what the grid is counted from:
-
-```sh
-for px in 800 1180; do
-	SCENE_WIDTH=${px} SCENE_MOTION_FLOOR=5 \
-		proof/docker/record-native.sh proof/scenes/desktop-terminal-width.sh
-done
-```
-
-Use `proof/scenes/desktop-tool-view.sh` to record a real tool call and disclose its
-card twice, once with `space` on the focused turn and once by clicking the card's
-row. The two open frames show the same card, which is what a host-held disclosure
-means. The collapsed frame is taken after the keyboard reaches the turn, so the
-three frames differ in the disclosure alone. The card's row is found by clicking
-down the transcript column until a click draws the frame the keyboard produced; a
-click that opens the right panel is undone with `Primary-\` before the next row.
-The take runs a minute and a half, most of it a tool turn whose transcript stands
-still, and the frames it publishes are stills, so pass `SCENE_MOTION_FLOOR=5`:
-
-```sh
-SCENE_MOTION_FLOOR=5 proof/docker/record-native.sh proof/scenes/desktop-tool-view.sh
-```
-
-Use `proof/scenes/desktop-live-edge-pill.sh` to drive a real turn, step the turn
-cursor off the last turn of a transcript that fits the viewport, and count the
-accent pixels the jump button fills with. Record its other arm with
-`PROOF_BASE_REF=HEAD`, since the change is inside the executable alone.
-
-Use `proof/scenes/desktop-queue-badge.sh` to run a real turn and count the
-pixels of the `working` tint the row's badge fills with, while the turn runs and
-after it ends. Record its other arm with `PROOF_BASE_REF=HEAD`, since the change
-is inside the executable alone.
-
-Use `proof/scenes/desktop-settings-field.sh` to type into a real General
-settings row and count the lit pixels of its value column at rest, while a new
-value is typed, and after the host has stored it. Record its other arm with
-`PROOF_BASE_REF=HEAD`, since the change is inside the executable alone.
-
-Use `proof/scenes/desktop-settings-query.sh` to type a query into the General
-page's search field and count the controls the body draws at rest, for a query
-matching one row, for one character more matching nothing, after a backspace
-over the empty page, and after the `Escape` that widens it. Record its other
-arm against a build whose query field is drawn from the query string, with
-`PROOF_BASE_REF=HEAD` and `PROOF_NATIVE_BEFORE_BINARY`.
-
-Use `proof/scenes/desktop-settings-column.sh` to press the leading third of a
-settings row's control column and then a queue card the open dialog covers. It
-counts the lit pixels of the column's leading half and the pixels of the
-titlebar's session name that a press behind the scrim moves. Record its other
-arm with `PROOF_BASE_REF=HEAD`, since the change is inside the executable alone.
-
-Use `proof/scenes/desktop-turn-control.sh` to submit a real prompt on a local
-model and photograph the run bar while the turn runs: its primary action as
-steer, the same run after `primary-/` puts it in queue mode, a follow-up
-submitted behind the running turn, `/Steer <message>` typed as a command, the
-strip listing the steer the host holds, and a turn stopped by `primary-.`. It
-waits on the host's own session state rather than on a pause, so an idle
-composer fails the take instead of being photographed as a running turn. The
-steer and queue frames are one differential: the primary action is the whole
-difference between them. The steering message is read twice, in the strip as
-soon as the host reports holding it and in the transcript once the turn it
-joined has ended, and the abort runs against a turn of its own, since a chord
-pressed at a settled session photographs a finished turn under the name of an
-aborted one. Record its other arm with `PROOF_BASE_REF=HEAD`, since the change
-is inside the executable alone.
-
-Use `proof/scenes/desktop-settings-row.sh` to photograph the General page at
-rest and with the pointer on a row's description. It counts the control bands
-in the page body, the distance between the first two, and the pixels a hovered
-row changes under itself. Record its other arm with the base ref that precedes
-the change, and name a copy of the token files as they stood in
-`PROOF_TOKENS_DIR`: the source hold covers `packages/` and its siblings, never
-`crates/`, so a pre-change executable handed a token file with a key it does
-not know fails to load.
-
-Use `proof/scenes/desktop-content-search.sh` to open Content Search from the
-palette, type a word this workspace contains, and empty the query again. The
-three frames are the mode with nothing to show, the host's answer to that word,
-and the rows gone with the query. A lookup take is still between keystrokes, so
-pass `SCENE_MOTION_FLOOR=9`:
-
-```sh
-SCENE_MOTION_FLOOR=9 proof/docker/record-native.sh proof/scenes/desktop-content-search.sh
-```
-
-Use `proof/scenes/desktop-turn-footer.sh` to run a real turn and reveal the
-model's name on it twice, once with the turn cursor on the last turn and once
-with the pointer over the name, then click the name and photograph the panel
-that opens. The name's own box is the bounding box of the keyboard reveal, so
-the pointer reaches it without a row height being assumed. Record its other arm
-with `PROOF_BASE_REF=HEAD`, since the change is inside the executable alone.
-
-Use `proof/scenes/desktop-settings-keybinding.sh` to rebind an action on the
-Keybindings page and then type a chord that states no key. It counts the ink in
-the row's control column at rest, with the chords typed, and after the commit
-has been read back from the host, then measures the strip band for the refusal.
-Record the other arm with a build of this tree that holds the field back, since
-the change is inside the executable alone:
-
-```sh
-SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh \
-  proof/scenes/desktop-settings-keybinding.sh
-SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=6 \
-  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
-  proof/docker/record-native.sh proof/scenes/desktop-settings-keybinding.sh
-```
-
-Use `proof/scenes/desktop-unsent-rail.sh` to leave an unsubmitted draft in an
-inactive session and measure the rail's inked bounding box when the draft is in
-the active session and after switching to another session. Record the other arm
-with a build of this tree that holds the derived section back, since the change
-is inside the executable alone:
-
-```sh
-SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh \
-  proof/scenes/desktop-unsent-rail.sh
-SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=6 \
-  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
-  proof/docker/record-native.sh proof/scenes/desktop-unsent-rail.sh
-```
-
-Use `proof/scenes/desktop-decision-card.sh` to run a real tool call, answer the
-approval it raises by clicking the accent answer, and open the row the third of
-three concurrent decisions folds into. The differential is the approval mode,
-which is a setting, so both arms are seeded before the session starts and each
-writes its own directory:
-
-```sh
-OUT_DIR="${PWD}/proof/captures/x11/off" SCENE_MOTION_FLOOR=5 \
-  proof/docker/record-native.sh proof/scenes/desktop-decision-card.sh
-OUT_DIR="${PWD}/proof/captures/x11/on" SCENE_MOTION_FLOOR=5 \
-  SCENE_SETTINGS='tools.approvalMode: ask' \
-  proof/docker/record-native.sh proof/scenes/desktop-decision-card.sh
-```
-
-The off arm records the two frames a mode that stops for nothing can reach: the
-read runs unasked and no card is drawn. The folded frames exist only in the on
-arm.
-
-Use `proof/scenes/desktop-mono-pane.sh` to open a file whose lines are wider
-than the right panel and reach the far end of one, measuring the pane's pinned
-gutter and its scrolling code column separately. Record the other arm with a
-build of this tree that holds the pane back, since the change is inside the
-executable alone:
-
-```sh
-SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh \
-  proof/scenes/desktop-mono-pane.sh
-SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=6 \
-  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
-  proof/docker/record-native.sh proof/scenes/desktop-mono-pane.sh
-```
-
-Use `proof/scenes/desktop-split-grip.sh` to open the terminal drawer into its
-split and point at the hairline above it. It reads the split's own row out of
-the frame, counts the lines in the grip band, measures the middle of the tab
-row, and compares the band under the pointer with the band at rest. A pointer
-move and a one-pixel tint are most of what the take contains, so it declares a
-still take's motion floor. Record the other arm with a build of this tree that
-holds the one edge, the tint and the dash's removal back, since the change is
-inside the executable alone:
-
-```sh
-SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh \
-  proof/scenes/desktop-split-grip.sh
-SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=6 \
-  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
-  proof/docker/record-native.sh proof/scenes/desktop-split-grip.sh
-```
-
-Use `proof/scenes/desktop-export-header.sh` to export a session the window is
-not on, from that row's own context menu, and read where the rail's selection
-lands. It reads the selected card and the menu's rows out of the frame it
-opened in, and reads the Export row's ink against the menu's first row: a row
-the gate refused is drawn at a fraction of its strength, swallows the click,
-and both arms then show the export never running, so the take waits for the
-host and abandons rather than clicking it. The change is inside the host, so
-the other arm reuses this build with the host's source held at the commit
-before it and names no second binary:
-
-```sh
-SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh \
-  proof/scenes/desktop-export-header.sh
-SCENE_ARM=before PROOF_BASE_REF=da49c36a25^ SCENE_MOTION_FLOOR=6 \
-  proof/docker/record-native.sh proof/scenes/desktop-export-header.sh
-```
-
-Use `proof/scenes/desktop-session-transcript.sh` to run one turn in each of two
-sessions and switch between them. It runs a one-line prose reply in the session
-the prelude created and a twelve-line reply of digits in a session created with
-`ctrl+n`, then clicks the card of each by its own top rather than walking from
-the selected one, since the rail also lists the seeded session. Each click
-asserts the selection lands on the card that was clicked, each photographed
-frame asserts the transcript column inks as tall as a settled turn, and the
-host is asked on a second connection, after every frame, whether each session
-holds its own prompt and not the other's. Three frames come out of one arm:
-two states of one surface, and the first state reached again. Fifty of the
-take's seconds are spent waiting on two turns of a 1.5B model, so it declares a
-still take's motion floor:
-
-```sh
-SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh \
-  proof/scenes/desktop-session-transcript.sh
-```
-
-Use `proof/scenes/desktop-transcript-prose.sh` to open a session whose reply
-carries inline markdown and photograph the transcript setting it. The reply is
-a committed fixture in `proof/docker/seed-sessions/`, written into the session
-store for this scene alone, so both arms of the pair draw the same paragraph
-instead of two replies a model wrote; the scene reaches it through the rail's
-own search, pressed on the control rather than the `/` chord. It reads the
-palette's overlay, the typed filter and the ink the reply brings to a column
-that was empty, then asks the host on a second connection whether the reply
-still holds the raw markers the fixture wrote. The change is inside the
-executable, so the before arm names a build of this tree without the inline
-reader:
-
-```sh
-SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh \
-  proof/scenes/desktop-transcript-prose.sh
-SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=6 \
-  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
-  proof/docker/record-native.sh proof/scenes/desktop-transcript-prose.sh
-```
-
-Use `proof/scenes/desktop-side-messages.sh` to open a session holding one of
-every recorded message that is neither a prompt nor a model reply, and
-photograph the transcript drawing them. `proof/docker/seed-side-messages.ts`
-writes one message per variant through the product's own session storage, in
-the shape each producer writes, and fails closed on a variant it does not
-cover, so a ninth kind stops the seed rather than leaving a frame short a card.
-The scene reaches the session through the rail's own search, reads the
-palette's overlay, the typed filter and the ink the cards bring to a column
-that was empty, then asks the host on a second connection which typed cards the
-transcript carries: the after arm requires one per seeded variant, the before
-arm requires none, and both require the seeded text, so an arm that opened
-another row is reported as the wrong session. The host and the window both
-change, so the before arm names the commit before the card and a build of this
-tree without it:
-
-```sh
-SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh \
-  proof/scenes/desktop-side-messages.sh
-SCENE_ARM=before PROOF_BASE_REF=<card-commit>^ SCENE_MOTION_FLOOR=6 \
-  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
-  proof/docker/record-native.sh proof/scenes/desktop-side-messages.sh
-```
-
-Use `proof/scenes/desktop-streamed-shape.sh` to open a persisted pipe table through
-native session search and inspect its rendered grid. The scene checks the header
-rule and the original Markdown returned by the host.
-
-Use `proof/scenes/streamed-shape-diagnostic.sh` with a reachable model endpoint to
-record a live numbered reply. The scene requires transcript changes while the
-session reports Working and checks the persisted numbered bold items.
-
-```sh
-proof/docker/record-native.sh proof/scenes/desktop-streamed-shape.sh
-PROOF_LLM_BASE_URL=<provider-url> \
-  proof/docker/record-native.sh proof/scenes/streamed-shape-diagnostic.sh
-SCENE_ARM=before PROOF_BASE_REF=HEAD \
-  PROOF_NATIVE_BEFORE_BINARY=<matched-before-binary> \
-  proof/docker/record-native.sh proof/scenes/desktop-streamed-shape.sh
-```
-
-For a native Before arm, supply a separate executable with the same navigation,
-tokens and protocol. `PROOF_BASE_REF` alone does not replace the native executable.
-Inspect live recordings in motion; a completed reply does not show arrival.
-
-Use `proof/scenes/desktop-attachment.sh` to paste an image into the composer,
-send the prompt that carries it, and read back what the host received. The
-clipboard is loaded through `xclip` with a generated plasma PNG, since the file
-chooser on Linux is the XDG portal and no container runs one; the paste ends in
-the same `attach` as the chooser and a drag. It asserts the clipboard offered
-`image/png` before the chord, that the tray inked a card where the empty
-composer drew nothing, that the editor line came back to where it was once the
-prompt was away, and then asks the host on a second connection whether the
-session holds an image block of exactly the bytes that were pasted. A fourth
-frame selects a model from the picker and pastes again, which is the state a
-card states `Not accepted by <model>` in: every model seeded for these takes is
-a local text model, so the refusal is the caption, and nothing is sent from
-that state:
-
-```sh
-proof/docker/record-native.sh proof/scenes/desktop-attachment.sh
-SCENE_ARM=before PROOF_BASE_REF=HEAD \
-  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
-  proof/docker/record-native.sh proof/scenes/desktop-attachment.sh
-```
-
-Use `proof/scenes/desktop-appearance.sh` to open the Themes page, rest the
-pointer on the appearance the window is not drawn in, and press its Select. It
-reads the mean grey of the page's own ground and of the session rail beside the
-sheet, so a preview that reached the row alone and a selection that reverted
-when the pointer left are separate failures. The two arms of the pair are the
-two appearances: the before arm's page lists none, so both readings stay dark
-through the same three frames. The change is inside the executable, so the
-before arm names a build of this tree without the appearance library:
-
-```sh
-SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh \
-  proof/scenes/desktop-appearance.sh
-SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=6 \
-  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
-  proof/docker/record-native.sh proof/scenes/desktop-appearance.sh
-```
-
-Use `proof/scenes/desktop-detail.sh` to press the composer's model chip with the
-secondary button and then dismiss what it opened. It reads one rectangle, the
-band the popover is drawn in above the press, twice per frame: how many pixels
-of it carry the ground the theme authors for a floating surface, and how many of
-it changed against the frame before. A popover that never appeared, one drawn
-below the chip or slid against the window's foot, and one that outlived its
-dismissal are separate failures. The before arm's chip answers no secondary
-press, so the band holds no floating ground and moves by nothing through the
-same three frames. The change is inside the executable, so the before arm names
-a build of this tree without the popover:
-
-```sh
-proof/docker/record-native.sh proof/scenes/desktop-detail.sh
-SCENE_ARM=before PROOF_BASE_REF=HEAD \
-  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
-  proof/docker/record-native.sh proof/scenes/desktop-detail.sh
-```
-
-Use `proof/scenes/desktop-rail-search.sh` to type into the rail's own session
-search and photograph the rail it was opened from. It reduces the rail's list
-crop to its inked height at rest, under a query one session matches, under one
-nothing matches, and after the search closes, because the overlay's blur falls
-across the rail and a frame difference cannot separate the two. The take is
-four still frames and declares a motion floor of 2. The change is inside the
-executable, so the before arm names a build of this tree whose search narrows
-nothing:
-
-```sh
-SCENE_MOTION_FLOOR=2 proof/docker/record-native.sh \
-  proof/scenes/desktop-rail-search.sh
-SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=2 \
-  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
-  proof/docker/record-native.sh proof/scenes/desktop-rail-search.sh
-```
-
-Use `proof/scenes/desktop-empty-copy.sh` to filter the rail to nothing and
-photograph the two sentences it draws. The search is closed before the shot, so
-the prose is read on the rail's own ground rather than through the overlay's
-blur. It segments the list crop into inked bands and takes the width of each:
-a line that restates the condition is no wider than the condition, and the step
-that replaced it is wider by at least a fifth of the list. The before arm names
-a build of this tree whose rail restates its condition:
-
-```sh
-SCENE_MOTION_FLOOR=2 proof/docker/record-native.sh \
-  proof/scenes/desktop-empty-copy.sh
-SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=2 \
-  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
-  proof/docker/record-native.sh proof/scenes/desktop-empty-copy.sh
-```
-
-Use `proof/scenes/desktop-queue-resize.sh` to drag the handle on the queue
-rail's trailing edge and photograph the width it is left at. It measures the
-rail's own ground out of each frame, at the width its breakpoint row states,
-after a drag of the handle, and after a drag past the ceiling
-`surface/queue.toml` authors. The before arm names a build of this tree whose
-columns row holds no handle:
-
-```sh
-proof/docker/record-native.sh proof/scenes/desktop-queue-resize.sh
-SCENE_ARM=before PROOF_BASE_REF=HEAD \
-  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
-  proof/docker/record-native.sh proof/scenes/desktop-queue-resize.sh
-```
-
-Use `proof/scenes/desktop-panel-tab-close.sh` to close one tab of the right
-panel from its own edge. It reads two columns out of the tab strip: where the
-strip's ink ends, which is the trailing tab's edge, and the run the selected
-tab's pill fills. The close is revealed only under the pointer, the press takes
-a tab out of the strip, and the selection stays where it was. The before arm
-names a build of this tree whose tabs carry no close, where the same press
-selects the tab instead:
-
-```sh
-proof/docker/record-native.sh proof/scenes/desktop-panel-tab-close.sh
-SCENE_ARM=before PROOF_BASE_REF=HEAD \
-  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
-  proof/docker/record-native.sh proof/scenes/desktop-panel-tab-close.sh
-```
+A desktop scene drives the window through the driver socket rather than by
+pixel positions. Set `VEYYON_DESKTOP_DRIVER` to a Unix socket path and the
+window opens it before the first frame: a client dispatches an action by name,
+types into the focused input, reads where a named target is drawn, subscribes
+to frames, and waits for the window to settle. Without the variable no socket
+is opened.
 
 Output is written to `proof/captures/x11/`, or the absolute directory in `OUT_DIR`.
 The [capture requirements](../foundations/verification.md) specify paired static

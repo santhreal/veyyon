@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Record one desktop scene: the GPUI window, not a terminal.
 #
-#   proof/docker/record-native.sh proof/scenes/desktop-tool-view.sh
+#   proof/docker/record-native.sh proof/scenes/<name>.sh
 #
 # The desktop scenes drive an application window rather than a terminal grid, so
 # the session needs SCENE_TERMINAL=native, the executable bind-mounted into the
-# container, and a Vulkan ICD for it to open a device against. That is six
+# container, and a Vulkan ICD for it to open a device against. Those are
 # environment variables whose values are not a caller's choice, and each of the
 # three private drivers that carried them named a different absolute path on a
 # different machine, so a capture worked for whoever wrote the driver and for
@@ -45,7 +45,7 @@
 # VK_ICD to use the host's device instead:
 #
 #   PROOF_GPU_DEVICE=nvidia.com/gpu=all VK_ICD=/etc/vulkan/icd.d/nvidia_icd.json \
-#     proof/docker/record-native.sh proof/scenes/desktop-tool-view.sh
+#     proof/docker/record-native.sh proof/scenes/<name>.sh
 set -euo pipefail
 
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && /bin/pwd -P)"
@@ -74,21 +74,11 @@ if [ ! -x "${BINARY}" ]; then
 	exit 2
 fi
 
-# The token and theme directories are read from the checkout rather than an
-# installed share tree, so a scene photographs the tokens in this working copy.
-#
-# A before arm names another tree in PROOF_TOKENS_DIR (a container path under
-# /repo). The source hold covers packages/ and its siblings, never crates/, so
-# a pre-change executable is handed this checkout's token files: one that adds
-# a key fails to load, since §9.3 rejects a key a loader does not know rather
-# than ignoring it. The arm points at a copy of the tokens as they stood.
 export PROOF_HOST_REPO_SOURCE="${BINARY}"
 export PROOF_HOST_REPO_TARGET=/desktop-bin/veyyon-desktop
 export SCENE_TERMINAL=native
 export SCENE_COMMAND="env VK_DRIVER_FILES=${VK_ICD:-/usr/share/vulkan/icd.d/lvp_icd.json} \
 VEYYON_BIN=/repo/packages/coding-agent/src/cli.ts \
-VEYYON_DESKTOP_TOKENS_DIR=${PROOF_TOKENS_DIR:-/repo/crates/veyyon-desktop-tokens/tokens} \
-VEYYON_DESKTOP_THEMES_DIR=${PROOF_THEMES_DIR:-/repo/crates/veyyon-desktop-tokens/themes} \
 /desktop-bin/veyyon-desktop"
 : "${SCENE_WIDTH:=1180}"
 : "${SCENE_HEIGHT:=800}"

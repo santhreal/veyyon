@@ -67,9 +67,8 @@ New here? Read [onboarding](onboarding.md) and [testing](testing.md) first.
 | Doc | Covers |
 | --- | --- |
 | [../handbook/src/desktop/index.md](../handbook/src/desktop/index.md) | The operator manual for the desktop front end: starting it, attaching to a host, and what an unavailable capability draws. |
-| [../handbook/src/desktop/surfaces.md](../handbook/src/desktop/surfaces.md) | The surfaces: queue, session transcript, composer, run bar, right panel, terminal drawer. |
-| [../handbook/src/desktop/tokens.md](../handbook/src/desktop/tokens.md) | The token files under `crates/veyyon-desktop-tokens/tokens/`: what each controls, which values are named scale steps, and hot reload. |
-| [../handbook/src/desktop/motion.md](../handbook/src/desktop/motion.md) | The motion roles, the spring integrator, and how reduced motion resolves. |
+| [../handbook/src/desktop/surfaces.md](../handbook/src/desktop/surfaces.md) | The surfaces and their interactions, and how a native interaction is recorded. |
+| [../handbook/src/desktop/motion.md](../handbook/src/desktop/motion.md) | The motion models, reduced motion, and interruption. |
 
 The crate layout is in the package table in [`AGENTS.md`](../../AGENTS.md), and
 [`packages/coding-agent/DEVELOPMENT.md`](../../packages/coding-agent/DEVELOPMENT.md) maps each crate

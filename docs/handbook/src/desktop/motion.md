@@ -1,53 +1,27 @@
 # Motion
 
-Motion roles, easing curves, springs, keyed animators, and reduced-motion
-resolution are `gpui::motion`, defined in the `motion` crate of Santh GPUI.
-`crates/veyyon-desktop-motion` holds the drivers that apply them to desktop
-surfaces. Defaults are configured in
-`crates/veyyon-desktop-tokens/tokens/motion.toml`.
+Easing curves, springs, keyed animators, and reduced-motion resolution are
+`gpui::motion`, defined in the `motion` crate of Santh GPUI. The models every
+transition in the window runs on are defined in
+`crates/veyyon-desktop-ui/src/theme/motion.rs`.
 
-## Palette transitions
+## Models
 
-The model picker and slash palette use the `float` role. Opening combines a
-four-pixel vertical rise with a 90 ms opacity transition. The position uses a
-spring with stiffness 300, damping 24, and mass 1.
-
-Closing retains the overlay until both position and opacity settle. Pointer
-activation is blocked on the retained closing content. Reopening during a
-transition starts from its sampled position rather than restarting at the hidden
-position. The spring also retains its sampled velocity.
-
-Animation state persists separately from the rendered element tree. The shell
-requests another frame while the transition is active and stops requesting
-animation frames after it settles.
-
-A detail popover is on the same role, and the card carries the transition whole:
-the ground and the facts on it arrive together, rather than the facts arriving
-inside a card that was already drawn. With transitions off the card is drawn
-where it opened, and only its opacity moves.
-
-## Role table
-
-The shared token table defines these timing models. A role definition does not
-by itself animate a surface; the surface must evaluate and apply it.
-
-| Role | Default model | Reduced-motion resolution |
+| Model | Transition | Default |
 | --- | --- | --- |
-| `tint` | 120 ms, ease out | Instant |
-| `reveal` | Spring: stiffness 220, damping 26, mass 1 | 60 ms opacity only |
-| `float` | Spring plus rise and fade | 60 ms opacity only |
-| `panel` | Direct interaction, then spring: stiffness 180, damping 22, mass 1 | Instant |
-| `shift` | 200 ms layout transition, ease out | Instant |
-| `scroll` | 240 ms, ease in and out | Instant |
-| `caret` | 900 ms two-step period | Steady on |
+| `REGION` | The sidebar, right panel and terminal drawer opening, closing, and settling after a resize | Spring settling in about 0.26 s, damping ratio 0.92 |
+| `LAYOUT` | A row moving to a new position, a section expanding or collapsing | Spring settling in about 0.30 s, damping ratio 0.86 |
+| `REVEAL` | A transcript entry appearing, rising 6px while it fades in | 160 ms |
+| `STREAM_FADE` | A run of streamed text fading in | 120 ms |
+| `POPOVER_OPEN` | A palette, menu or popover opening, scaling up from 0.98 | 120 ms |
+| `POPOVER_CLOSE` | A palette, menu or popover closing | 90 ms, decelerating |
+| `HOVER` | A hover or press colour change | 80 ms, linear |
 
-`resolve_motion` selects the reduced variant. For palette floats, reduced motion
-sets vertical displacement to zero and applies the 60 ms opacity transition.
+A spinner takes 0.8 s for one turn.
 
 ## Reduced motion
 
-The window reduces motion when `display.transitions` is `off` or when the
-operating system requests reduced motion:
+The window reduces motion when the operating system requests it:
 
 | Platform | Setting |
 | --- | --- |
@@ -55,29 +29,21 @@ operating system requests reduced motion:
 | Windows | Show animations in Windows (`SPI_GETCLIENTAREAANIMATION`) |
 | macOS | Reduce motion (`accessibilityDisplayShouldReduceMotion`) |
 
-A change of either applies at the next frame. On Linux the window opens with
-full motion until the portal answers.
+Under reduced motion, position and scale land at once, and a fade lasts at most
+80 ms. A spinner draws a static dot and requests no frame. On Linux the window
+opens with full motion until the portal answers.
 
 ## Evaluation and interruption
 
-Each driver runs its values on `Animator`s; a float moves position and opacity on
-separate animators. The queue rail keys a section's reveal and a row's move on
-one `AnimatorRegistry`. Redirecting a target samples the active animation at the
-interruption time and uses that value as the new starting value. Spring models
-use the sampled velocity; duration models evaluate their easing curve from the
-new starting value.
-
-The spring implementation evaluates a closed-form damped oscillator using
-elapsed time. Rest requires both a position difference below 0.001 and an absolute
-velocity below 0.01 in the animated value's units. Palette position is normalized
-before conversion to pixels.
+Each transition runs its values on `Animator`s. Redirecting a target samples the
+active animation at the interruption time and uses that value as the new
+starting value. Spring models keep the sampled velocity; duration models
+evaluate their easing curve from the new starting value. The window requests
+frames only while a value moves.
 
 ## Capture
 
-Use the [native interaction scene](surfaces.md#record-native-interactions) to
-record palette opening, closing, and repeated interruption on the private X11
-display. The scene includes sustained transitions so idle pauses do not constitute
-the entire motion sample.
-
-Follow the [capture requirements](../foundations/verification.md) for paired
-animated clips. A still image does not establish transition timing.
+Use the [native recorder](surfaces.md#record-native-interactions) to record a
+transition on a private display. Follow the
+[capture requirements](../foundations/verification.md) for paired animated
+clips. A still image does not establish transition timing.

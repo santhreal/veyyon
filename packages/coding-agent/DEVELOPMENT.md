@@ -244,12 +244,10 @@ Center dashboard's.
 
 ### Native desktop (`crates/veyyon-desktop*`, `crates/veyyon-gpui`)
 - Front end binary (`crates/veyyon-desktop`): [index.md](../../docs/handbook/src/desktop/index.md)
-- Surfaces (`crates/veyyon-desktop-surface`): [surfaces.md](../../docs/handbook/src/desktop/surfaces.md)
-- UI primitive kit (`crates/veyyon-desktop-kit`): [surfaces.md](../../docs/handbook/src/desktop/surfaces.md)
+- Views, actions and keymap (`crates/veyyon-desktop-app`): [surfaces.md](../../docs/handbook/src/desktop/surfaces.md)
+- Theme, controls and motion models (`crates/veyyon-desktop-ui`): [motion.md](../../docs/handbook/src/desktop/motion.md)
 - Protocol model (`crates/veyyon-desktop-model`): [index.md](../../docs/handbook/src/desktop/index.md)
-- Motion subsystem (`crates/veyyon-desktop-motion`): [motion.md](../../docs/handbook/src/desktop/motion.md)
-- Design tokens (`crates/veyyon-desktop-tokens`): [tokens.md](../../docs/handbook/src/desktop/tokens.md)
-- Scene evaluation (`crates/veyyon-desktop-scene`): [index.md](../../docs/handbook/src/desktop/index.md)
+- Headless rendering (`crates/veyyon-desktop-scene`): [index.md](../../docs/handbook/src/desktop/index.md)
 - GPUI integration (`crates/veyyon-gpui`): [index.md](../../docs/handbook/src/desktop/index.md), [`crates/veyyon-gpui/README.md`](../../crates/veyyon-gpui/README.md)
 
 ### Build, release, and porting

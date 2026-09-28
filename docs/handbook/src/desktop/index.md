@@ -8,8 +8,8 @@ loopback socket.
 
 The desktop runs no agent of its own. Sessions, models, tools, approvals and
 settings are the host's, reached over that socket, so the sessions it lists are
-the sessions the terminal host lists. It draws the queue, transcript, composer,
-run bar, workspace panels and terminal output at once.
+the sessions the terminal host lists. It draws the sidebar, transcript, composer,
+workspace panels and terminal output at once.
 
 The published installer does not install the desktop executable. It is built
 from source.
@@ -25,20 +25,11 @@ VEYYON_BIN="$PWD/packages/coding-agent/src/cli.ts" cargo run -p veyyon-desktop
 `VEYYON_BIN` selects the executable used to start `veyyon gui`. Without this
 environment variable, the desktop searches `PATH` for `veyyon`.
 
-The initial and minimum window dimensions are 800 × 560 pixels, configured in
-`crates/veyyon-desktop-tokens/tokens/surface/shell.toml`. Startup validates the
-token configuration files and bundled themes. Changes to token files reload
-while the application runs.
+The initial and minimum window dimensions are 800 × 560 pixels.
 
-Monospace text (the terminal drawer, diffs, code blocks, and file paths) is set
-in the first font family installed on the system from the ordered list under
-`[type.family]` in `crates/veyyon-desktop-tokens/tokens/scale.toml`:
-JetBrains Mono, DejaVu Sans Mono, Liberation Mono, Menlo, SF Mono, Consolas,
-Courier New. Every other run is set from the `ui` list in the same table:
-Inter, Segoe UI, SF Pro Text, Helvetica Neue, Cantarell, Noto Sans,
-DejaVu Sans, Arial. Both lists are matched against the system font database.
-If none of a list's families is installed, startup fails and prints the list.
-Install one of the families, or append an installed family to the list.
+Text is set in Inter, and monospace text (the terminal drawer, diffs, code
+blocks, and file paths) in JetBrains Mono. Both families are embedded in the
+executable, so no system font is required.
 
 ## Attach to a host
 
@@ -72,28 +63,28 @@ and the limit.
 
 ## Surfaces
 
-The application window divides into six interactive surfaces:
+The application window divides into these regions:
 
-- **Queue**: A sidebar listing sessions organized into five collapsible
-  sections: Unsent, Pinned, Live, Deferred, and Parked. The header provides
-  session search and session creation. At window widths of 980 pixels and above,
-  the queue docks as a column beside the transcript. Below 980 pixels, the queue
-  floats as an overlay and opens through `Primary-B`.
-- **Session transcript**: The central reading area. Displays conversation turns,
-  user messages, streaming assistant markdown, tool call execution blocks,
-  unified diffs, and decisions awaiting response.
-- **Composer**: A floating input card docked above the lower edge of the
-  transcript. Accepts multi-line prompt text, slash commands, file attachments,
-  and queued inputs.
-- **Run bar**: A 28-pixel status bar displayed directly below the composer
-  during an active turn. Displays a status badge, operation text describing the
-  running tool or decision, and a stop control when the turn is stoppable.
-- **Right panel**: A dockable side panel displaying workspace file trees, opened
-  file contents, diff reviews, and inspector data. A hairline divider separates
-  the panel from the transcript; dragging the divider adjusts the panel width.
-- **Terminal drawer**: A monospace drawer positioned below the transcript.
-  Contains interactive terminal sessions and output logs from background
-  processes supervised by the host.
+- **Sidebar**: Pinned, unsent, deferred and archived blocks, then projects and
+  their threads, with branches folded under the thread they came from. The
+  sidebar holds thread search, a row menu, inline rename, and a footer with
+  settings, the profile switcher and the connection state. `Primary-B` shows or
+  hides it.
+- **Transcript**: The central reading area. Displays conversation turns, user
+  messages, streaming assistant markdown, tool calls and unified diffs.
+- **Composer**: The input card at the lower edge of the transcript. Accepts
+  multi-line prompt text, slash commands, file attachments and dictation, and
+  states the model and thinking level.
+- **Dock**: The strip above the composer that holds the decision the session
+  waits on, the goal it runs and the autoswarm console. One decision shows at a
+  time, the oldest first; `1` to `9` pick its options, `Enter` its default, and
+  `Escape` folds it.
+- **Right panel**: Six tabs over the session's changes, files, agents, plan,
+  diagnostics and usage. `Primary-Shift-D` shows or hides it.
+- **Terminal drawer**: Tabs over the host's terminals, the processes its
+  supervisor runs, and each process's output. `Primary-J` shows or hides it.
+- **Command palette**: Every action the window offers, ranked against the typed
+  query. `Primary-K` opens it.
 
 ## Host capabilities
 
@@ -121,81 +112,61 @@ blocks duplicate submissions until the host answers.
 
 ## Keyboard shortcuts
 
-`Primary` represents `Cmd` on macOS and `Ctrl` on Linux and Windows.
+`Primary` represents `Cmd` on macOS and `Ctrl` on Linux and Windows. Default
+bindings are in `crates/veyyon-desktop-app/src/keymap.rs`.
 
 ### Global shortcuts
 
 | Shortcut | Action |
 | --- | --- |
-| `Primary-K` | Open command palette |
-| `Primary-N` | Create new session |
+| `Primary-N` | Start a thread in the active project |
+| `Primary-B` | Toggle the sidebar |
+| `Primary-J` | Toggle the terminal drawer |
+| `Primary-Shift-D` | Toggle the right panel |
+| `Primary-K` | Toggle the command palette |
+| `Primary-Shift-P` | Open the command palette |
+| `Primary-F` | Search threads |
 | `Primary-,` | Open settings |
-| `Primary-B` | Toggle queue sidebar |
-| `Primary-J` | Toggle terminal drawer |
-| `Primary-\` | Toggle right panel |
-| `Primary-1` .. `Primary-9` | Focus live session 1 through 9 |
-| `Primary-[` | Select previous session |
-| `Primary-]` | Select next session |
-| `Primary-W` | Close panel tab or park session |
-| `Primary-Shift-W` | Close window |
-| `Primary-Q` | Quit application |
-| `F10` | Open menu bar |
+| `Primary-Shift-M` | Open the model picker |
+| `Primary-Shift-A` | Attach files to the next prompt |
+| `Primary-.` | Stop the running turn |
+| `` Ctrl-Shift-` `` | Open a terminal in the drawer |
+| `Primary-Q` | Quit |
 
-### Queue shortcuts
+### Sidebar shortcuts
 
-Focus the queue by selecting a row or pressing `Primary-B`.
+These apply while the sidebar holds focus and no row menu is open.
 
 | Shortcut | Action |
 | --- | --- |
-| `Up` / `Down` | Move row selection |
-| `Enter` | Open selected session |
-| `P` | Toggle pin on selected session |
-| `D` | Toggle defer on selected session |
-| `K` | Toggle park on selected session |
-| `/` | Filter session list |
-
-### Transcript shortcuts
-
-Focus the transcript by selecting its text area.
-
-| Shortcut | Action |
-| --- | --- |
-| `Home` | Scroll to first turn |
-| `End` | Scroll to live edge and resume following |
-| `PageUp` / `PageDown` | Scroll by viewport height |
-| `Primary-Up` / `Primary-Down` | Move to previous or next turn |
-| `Primary-F` | Find in transcript |
-| `Space` | Toggle disclosure on focused block |
-| `Primary-A` | Select full turn text |
-| `Primary-C` | Copy selected text |
+| `Up` / `Down` | Select the thread above or below |
+| `Enter` | Open the selected thread |
+| `F2` | Rename the selected thread |
+| `Delete` | Delete the selected thread, after confirmation |
+| `Escape` | Close the rename field or the delete confirmation |
+| `P` | Pin or unpin the selected thread |
+| `D` | Defer or recall the selected thread |
+| `K` | Archive or restore the selected thread |
+| `Left` / `Right` | Hide or show the branches under the selected thread |
 
 ### Composer shortcuts
 
-Focus the composer text area.
+| Shortcut | Action |
+| --- | --- |
+| `Tab` | Accept the highlighted completion |
+| `Shift-Tab` | Move to the next thinking level |
+| `Alt-Q` | Switch a prompt sent during a turn between steering and queueing |
+
+### Panel and drawer shortcuts
 
 | Shortcut | Action |
 | --- | --- |
-| `Enter` | Send prompt or submit active response |
-| `Shift-Enter` | Insert newline |
-| `Primary-Enter` | Split turn half |
-| `Escape` | Dismiss palette or cancel input |
-| `Primary-.` | Abort running turn |
-| `Primary-/` | Toggle queue mode (immediate or steer) |
-| `1` .. `9` | Select numbered option on attached decision |
-| `Primary-Shift-M` | Open model picker |
-| `Primary-Shift-T` | Open thinking level selector |
-| `Primary-U` | Attach workspace file |
-| `Alt-Up` | Take back newest queued prompt into draft |
+| `Ctrl-PageDown` / `Ctrl-PageUp` | Show the next or previous tab |
+| `Ctrl-Shift-C`, `Cmd-C` in a terminal | Copy the terminal's selected text |
+| `Ctrl-Shift-V`, `Cmd-V` in a terminal | Paste the clipboard into the terminal |
 
-### Panel shortcuts
-
-Focus the right panel or terminal drawer.
-
-| Shortcut | Action |
-| --- | --- |
-| `Primary-Alt-[` | Switch to previous tab |
-| `Primary-Alt-]` | Switch to next tab |
-| `Primary-Shift-D` | Toggle diff presentation mode |
+A focused terminal keeps `Ctrl-B`, `Ctrl-F`, `Ctrl-K`, `Ctrl-N` and `Ctrl-Q` for
+the shell it runs.
 
 ## Connection states
 
@@ -266,10 +237,8 @@ display it does have, at the size it had. A stored size below 800 × 560 opens a
 reopened, and the session is asked for once, so a session closed afterwards
 stays closed.
 
-`shell.json` does not hold the queue rail's width, `panels.json` does not hold
-which tabs the panels offer, and no document holds token overrides. The rail has
-no draggable width, the tabs are the host's and arrive with it, and tokens are
-read from their files.
+`panels.json` does not hold which tabs the panels offer: the tabs are the
+host's and arrive with it.
 
 ## Web inspection
 
@@ -277,36 +246,13 @@ Browser automation runs through the runtime `browser` tool in an external
 browser process. The desktop window does not embed web renderers or HTML
 inspection tools. File inspection actions open local workspace files.
 
-## Headless scene rendering
+## Headless rendering
 
-The desktop binary supports offscreen rendering for visual verification:
-
-```sh
-cargo run -p veyyon-desktop -- scene render 'capability-gate/turn-control-*' --out desktop-scenes
-cargo run -p veyyon-desktop -- scene render '*' --contact-sheet --out desktop-scenes
-```
-
-`scene list` prints the scene catalogue. `scene render` writes PNG files for the
-matching scenes. Capability scenes include draft text, so submission controls
-are actionable when the host capability is available.
-
-`--contact-sheet` tiles the matched scenes into one captioned sheet. A set too
-large for one texture and one readback buffer is split across
-`contact-sheet-01.png`, `contact-sheet-02.png` and so on, each holding whole
-rows, so a cell keeps the column it would have had on one sheet.
-Whole-catalogue sheets at the default 1180x800 frame page at nine rows.
-
-Each rendered scene prints one line of measurements: the six clutter metrics,
-the count of hit rects the frame registered, and `PASS` or `FAIL` against the
-whole-window ceilings in `ceilings.toml`. A breach prints a second line stating
-the metric, what it measured, and its ceiling; a text-size breach also lists the
-sizes. Gaps count the rhythm the frame authored: a span larger than the largest
-spacing step, a value backed by one span, and a span a line of prose crosses are
-content or remainder rather than rhythm, and are not counted.
+`crates/veyyon-desktop-scene` renders the window offscreen to PNG for tests. The
+shipped executable does not link it.
 
 ## Reference
 
 - [Surfaces and interactions](surfaces.md)
 - [Motion](motion.md)
-- [Tokens and themes](tokens.md)
 - [Source installation](../using/install.md)

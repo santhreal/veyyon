@@ -49,7 +49,6 @@
 - [Native desktop](./desktop/index.md)
   - [Surfaces and interactions](./desktop/surfaces.md)
   - [Motion](./desktop/motion.md)
-  - [Tokens and themes](./desktop/tokens.md)
 - [Task guides](./using/task-guides.md)
 - [Examples](./using/examples.md)
 
