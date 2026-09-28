@@ -71,12 +71,17 @@ impl TerminalDrawer {
 		changed
 	}
 
-	/// Resizes the shown screen to the measured grid and tells a running
-	/// terminal its new size once.
+	/// Resizes the shown screen to the grid its box was measured at and tells
+	/// a running terminal its new size once. Does nothing until a frame
+	/// measured the shown tab's own box: another tab's measure would size it,
+	/// and tell the host, a box it does not draw in.
 	pub(super) fn fit_shown(&mut self, cx: &mut Context<Self>) {
 		let (Some(cells), Some(tab)) = (self.cells, self.shown(cx)) else {
 			return;
 		};
+		if self.measured.as_ref() != Some(&tab) {
+			return;
+		}
 		if let Some(screen) = self.screens.get_mut(&tab) {
 			screen.resize(cells);
 		}
@@ -103,9 +108,10 @@ impl TerminalDrawer {
 		self.fire(HostAction::ResizeTerminal { terminal_id: id, cols: cells.0, rows: cells.1 }, cx);
 	}
 
-	/// Takes the box a frame laid the grid in: resizes the shown screen when
-	/// it holds a different count of cells.
-	fn fit(&mut self, bounds: Bounds<Pixels>, cx: &mut Context<Self>) {
+	/// Takes the box a frame laid `tab`'s grid in: resizes the shown screen
+	/// when it holds a different count of cells, or when the measure was
+	/// taken on another tab.
+	fn fit(&mut self, tab: DrawerTab, bounds: Bounds<Pixels>, cx: &mut Context<Self>) {
 		self.grid_box.set(Some(bounds));
 		let Some(cell) = self.cell else {
 			return;
@@ -117,10 +123,11 @@ impl TerminalDrawer {
 			f32::from(cell.height),
 			MIN_CELLS,
 		);
-		if self.cells == Some(cells) {
+		if self.cells == Some(cells) && self.measured.as_ref() == Some(&tab) {
 			return;
 		}
 		self.cells = Some(cells);
+		self.measured = Some(tab);
 		self.fit_shown(cx);
 		cx.notify();
 	}
@@ -264,11 +271,15 @@ impl TerminalDrawer {
 		});
 		let entity = cx.entity().downgrade();
 		let held = self.grid_box.get();
+		let unmeasured = self.measured.as_ref() != Some(tab);
+		let drawn = tab.clone();
 		let measure = canvas(
 			move |bounds, window, cx| {
-				if held != Some(bounds) {
+				if held != Some(bounds) || unmeasured {
 					window.defer(cx, move |_, cx| {
-						entity.update(cx, |this, cx| this.fit(bounds, cx)).ok();
+						entity
+							.update(cx, |this, cx| this.fit(drawn, bounds, cx))
+							.ok();
 					});
 				}
 			},

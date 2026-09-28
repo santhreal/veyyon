@@ -14,10 +14,13 @@
 //! Gap: the emulator's own escape handling is the model crate's; only plain
 //! text and line breaks are drawn here. Selection by drag is not driven.
 
+mod choice;
 mod harness;
+mod offer;
 mod processes;
 mod refusals;
 mod scrollback;
+mod size;
 
 use gpui::TestAppContext;
 use veyyon_desktop_app::drawer::DrawerTab;

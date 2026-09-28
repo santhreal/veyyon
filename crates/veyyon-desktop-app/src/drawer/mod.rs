@@ -65,6 +65,9 @@ pub struct TerminalDrawer {
 	screens:        HashMap<DrawerTab, Screen>,
 	/// The columns and rows the grid's box holds, once a frame measured it.
 	cells:          Option<(u16, u16)>,
+	/// The tab whose box `cells` measured. A process tab's box is shorter
+	/// than a terminal's, so a measure holds only for the tab it was taken on.
+	measured:       Option<DrawerTab>,
 	/// The size each terminal was last told.
 	told:           HashMap<String, (u16, u16)>,
 	/// The terminals whose output the host streams to the drawer.
@@ -137,6 +140,7 @@ impl TerminalDrawer {
 			chosen,
 			screens: HashMap::new(),
 			cells: None,
+			measured: None,
 			told: HashMap::new(),
 			attached: HashSet::new(),
 			following: HashSet::new(),

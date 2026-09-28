@@ -199,6 +199,23 @@ impl Win<'_> {
 	pub fn cells(&self) -> Option<(u16, u16)> {
 		self.drawer.read_with(&*self.cx, |drawer, _| drawer.cells())
 	}
+
+	/// Resizes the window to `width` by `height` and lets the frames it
+	/// raised settle.
+	pub fn resize(&self, width: f32, height: f32) {
+		self.cx.simulate_resize(size(px(width), px(height)));
+		self.cx.run_until_parked();
+	}
+
+	/// The columns and rows `tab`'s screen draws, once the drawer built one.
+	pub fn grid(&self, tab: &DrawerTab) -> Option<(usize, usize)> {
+		self.drawer.read_with(&*self.cx, |drawer, _| {
+			drawer.screen(tab).map(|screen| {
+				let grid = screen.emulator().grid();
+				(grid.cols, grid.rows)
+			})
+		})
+	}
 }
 
 /// `SESSION` open with one entry, and the host's `capabilities`.
@@ -232,6 +249,11 @@ pub fn both() -> Vec<(Capability, CapabilityStatus)> {
 		(Capability::Terminals, CapabilityStatus::Available),
 		(Capability::ProcessSupervisor, CapabilityStatus::Available),
 	]
+}
+
+/// The host stating `list` as its capabilities.
+pub const fn capabilities(list: Vec<(Capability, CapabilityStatus)>) -> HostEvent {
+	HostEvent::Snapshot(SnapshotSection::Capabilities(list))
 }
 
 /// An assistant entry with no content.
