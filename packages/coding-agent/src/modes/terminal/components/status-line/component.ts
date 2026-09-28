@@ -15,7 +15,6 @@ import { transitionsEnabled } from "../../../../theme/shimmer";
 import { theme } from "../../../../theme/theme-binding";
 import * as git from "../../../../utils/git";
 import { readLaunchFacts, recordLaunchFacts } from "../../../launch-facts";
-import { isTreeDirty } from "./branch";
 import { canReuseCachedPr, createPrCacheContext, isSamePrCacheContext, type PrCacheContext } from "./git-utils";
 import { type LocationContext, resolveLocationContext } from "./location-context";
 import {
@@ -458,7 +457,7 @@ export class StatusLineComponent implements Component {
 				nextStatus = null;
 			} finally {
 				if (this.#gitStatusInFlightCwd === gitCwd) {
-					const moved = isTreeDirty(this.#cachedGitStatus) !== isTreeDirty(nextStatus);
+					const moved = git.status.isDirty(this.#cachedGitStatus) !== git.status.isDirty(nextStatus);
 					this.#cachedGitStatus = nextStatus;
 					this.#cachedGitStatusCwd = gitCwd;
 					this.#gitStatusLastFetch = Date.now();

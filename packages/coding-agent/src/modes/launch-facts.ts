@@ -154,7 +154,7 @@ export interface LaunchFacts {
 	/**
 	 * The last scan's summary, not a flag.
 	 *
-	 * The row asks `isTreeDirty` and renders one `*`, but the summary is what a scan produces and
+	 * The row asks `git.status.isDirty` and renders one `*`, but the summary is what a scan produces and
 	 * what the live row carries, so storing it keeps the launch value and the measured value the
 	 * same shape. A synthesised summary standing in for a boolean would be four invented numbers.
 	 */
@@ -327,7 +327,7 @@ function load(): LaunchFactsFile | null {
  * A parsed value shaped like a scan summary, or null.
  *
  * The file is JSON that anything on the machine can edit, so each count is checked rather than
- * assumed: a summary with a string where a number belongs would reach `isTreeDirty`, compare
+ * assumed: a summary with a string where a number belongs would reach `git.status.isDirty`, compare
  * `> 0` against a string, and decide dirtiness on the result.
  */
 function asGitStatus(value: unknown): GitStatusSummary | null {

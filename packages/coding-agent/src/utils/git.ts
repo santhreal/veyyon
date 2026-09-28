@@ -983,6 +983,16 @@ export const status = Object.assign(
 		},
 		/** Parse porcelain status text into counts. */
 		parse: parseStatusPorcelain,
+		/**
+		 * Whether a tree holds staged, unstaged or untracked changes: the one bit
+		 * the terminal's branch segment and a window's thread header both draw.
+		 *
+		 * `truncated` is not consulted. Cut output makes the counts lower bounds,
+		 * and a lower bound above zero is dirty.
+		 */
+		isDirty(summary: GitStatusSummary | null): boolean {
+			return !!summary && (summary.staged > 0 || summary.unstaged > 0 || summary.untracked > 0);
+		},
 	},
 );
 

@@ -14,7 +14,8 @@ import { AUTONOMY_LABEL, normalizeApprovalMode } from "../../../../tools/core/ap
 // path helpers and image resizing, and this row needs two numbers from it.
 import { TRUNCATE_LENGTHS } from "../../../../tools/core/render-limits";
 import { getSessionAccentAnsi, getSessionAccentHex } from "../../../../utils/session-color";
-import { isTreeDirty, renderBranch } from "./branch";
+import * as git from "../../../../utils/git";
+import { renderBranch } from "./branch";
 import {
 	type ContextUsageLevel,
 	formatContextRemainingPercent,
@@ -446,7 +447,7 @@ const gitSegment: StatusLineSegment = {
 		if (!branch && !status) return { content: "", visible: false };
 
 		const showBranch = ctx.options.git?.showBranch !== false;
-		const dirty = isTreeDirty(status);
+		const dirty = git.status.isDirty(status);
 		const content = renderBranch(showBranch ? branch : null, dirty);
 		if (!content) return { content: "", visible: false };
 		return { content, visible: true };

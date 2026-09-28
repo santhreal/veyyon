@@ -522,7 +522,7 @@ describe("what the launch card knows before a session exists", () => {
 	});
 
 	/**
-	 * A summary that parses but is not one. It reaches `isTreeDirty`, which compares each count
+	 * A summary that parses but is not one. It reaches `git.status.isDirty`, which compares each count
 	 * against zero — a string there decides dirtiness on a comparison nobody intended.
 	 */
 	it("rejects a git summary that is not one", async () => {
