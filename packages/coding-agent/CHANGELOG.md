@@ -159,6 +159,7 @@
 
 ### Changed
 
+- The desktop UI toolkit gains a text editor with single-line and multi-line modes, grapheme-aware caret motion and deletion, coalesced undo and redo, and input-method composition.
 - The desktop UI toolkit gains popovers, keyboard-driven menus, context menus, selects, tabs with a sliding underline, overlay scroll areas, split handles and a bottom-right toast stack; no window uses them yet.
 - The GUI host wire types and runtime arrays are generated from the Rust desktop model into `gui-host/wire.generated.ts`, and a desktop-model test fails when the committed file differs; frames on the socket are unchanged.
 - The desktop parity tables record the carrier for each agents dashboard operation, `/mcp` subcommand, provider login kind, terminal theme ground and status-line segment; no user-facing effect.

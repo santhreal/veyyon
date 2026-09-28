@@ -5,6 +5,7 @@
 extern crate veyyon_gpui as gpui;
 
 pub mod controls;
+pub mod editor;
 pub mod fonts;
 pub mod icons;
 pub mod overlays;
