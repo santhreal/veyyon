@@ -31,6 +31,7 @@
 
 ### Added
 
+- The desktop window draws queued announcements as toasts, a banner with a retry button while the host link is down, and a welcome view with recent threads while no session is open.
 - A desktop window adds, removes, tests and reloads MCP servers, signs a remote server in again or out, lists each connected server's resources, resource templates, prompts and notification capabilities, and searches, signs into and adds servers from the Smithery registry, writing each change into the profile's `mcp.json` or key file as the terminal's `/mcp` subcommands do.
 - A desktop window lists every stored provider account and signs one out with `SignOutAccount`, leaving that provider's other accounts signed in, and its provider list leaves out the providers `disabledProviders` names, as the terminal's sign-in list does.
 - A desktop window lists the extensions, skills, rules, hooks and other items the terminal's `/extensions` dashboard lists, and switches an item or a whole source on and off through the same `disabledExtensions` and `disabledProviders` settings.
@@ -166,6 +167,9 @@
 
 ### Changed
 
+- The desktop binary opens the rebuilt workspace window, persists each thread's panel layout, and restores it when the thread is shown again.
+- The desktop window lays out its sidebar, thread, right panel, terminal drawer, palette and settings in one resizable workspace whose regions slide on a spring and persist their sizes per session.
+- Desktop toasts take a lifetime from their owner, report the toasts they take down themselves, and fade out when dismissed.
 - The terminal's `/mcp` subcommands and the desktop's MCP actions test, sign in, sign out and search the Smithery registry through one set of helpers, and the Smithery key is read from and written to the running profile's directory; no behavior change in the terminal.
 - The rebuilt desktop window draws the thread header (title, directory, branch and pull request, host, mode, model, pace, extension statuses, serving account, quota, tokens, context, share, pause, compact, export and panel toggles), a virtualized transcript whose finished turns fold their tool rows into one `Worked for` row, and the streaming reply as the transcript's last item, which scrolls with the list, is followed while the list is at the bottom, reparses only its growing block and hands its place to the committed entry without moving the view, and states an extension's working message in place of its own while a turn streams.
 - The desktop sidebar lists threads by project with branch rows indented under their parent and folded with the arrow keys, pinned, unsent, deferred and archived blocks the row menu, a hover control and `p`, `d` and `k` move a thread into and out of, a status dot with a tooltip and a relative time per row, thread search over titles and message text with a clear control, a refresh control, inline rename, a confirmed delete, a row menu (pin, defer, archive, branch, peek, export, compact, handoff, delete) whose unavailable verbs are disabled, a profile menu the palette's `Switch profile` row also opens and a connection dot, slides a thread that moves to its new row, and re-renders only when a turn starts or ends rather than once per streamed token.
