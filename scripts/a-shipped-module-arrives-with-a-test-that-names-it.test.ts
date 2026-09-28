@@ -308,7 +308,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/commands/auth-gateway.ts",
 	"packages/coding-agent/src/commands/complete.ts",
 	"packages/coding-agent/src/commands/dry-balance.ts",
-	"packages/coding-agent/src/commands/gc.ts",
 	"packages/coding-agent/src/commands/rollback.ts",
 	"packages/coding-agent/src/commands/say.ts",
 	"packages/coding-agent/src/commit/agentic/tools/analyze-file.ts",
