@@ -163,6 +163,7 @@
 - The desktop runs `/agents`, `/cockpit` and `/hub`, which open a dashboard listing the agents of the session in view, running first, with a session to open and a confirmed termination per row, beside a second view carrying the traffic those agents send each other as it lands.
 - The desktop runs `/tan <work>`, which forks the session to a background agent that carries the tangential work, states the dispatch in the transcript, and lists the agent in the dashboard the window opens.
 - A desktop window announces a session export by the file the host wrote, with an `Open` button that asks the host to open it while the host opens files and the link to it is up.
+- The desktop composer copies the draft with Alt+Shift+C, steps the thread's model with Ctrl+P and Ctrl+Alt+P, picks a model for the current thread only with Alt+P, and opens the draft in `$VISUAL` or `$EDITOR` with Ctrl+G.
 
 ### Changed
 
