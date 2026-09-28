@@ -170,8 +170,10 @@ export function emitActiveSessionAndTranscript(
 	ctx.clientState.revision += 1;
 	const ledger = ctx.clientState.presentationLedger;
 	const session = ctx.clientState.agentSession;
+	// The branch the leaf sits on, as the terminal draws it: a session moved
+	// with `NavigateTree` keeps its other branches in the file, off screen.
 	const transcriptEntries =
-		entries ?? sessionEntriesToTranscript(sm.getEntries(), ctx.clientState.revision, { ledger, session });
+		entries ?? sessionEntriesToTranscript(sm.getBranch(), ctx.clientState.revision, { ledger, session });
 	ctx.reply.snapshot({
 		Transcript: { revision: ctx.clientState.revision, value: transcriptEntries },
 	});

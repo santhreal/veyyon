@@ -63,7 +63,7 @@ test("every session operation has a recorded desktop carrier", () => {
 });
 
 test("the session operations the desktop cannot perform are exactly the recorded gaps", () => {
-	expect(membersCarriedBy(SESSION_OPERATION_CARRIERS, "gap")).toEqual(["/fork", "/tree", "app.session.tree"]);
+	expect(membersCarriedBy(SESSION_OPERATION_CARRIERS, "gap")).toEqual([]);
 	expect(membersCarriedBy(SESSION_OPERATION_CARRIERS, "optOut")).toEqual([]);
 });
 

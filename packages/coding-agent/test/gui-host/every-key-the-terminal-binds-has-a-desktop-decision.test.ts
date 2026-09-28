@@ -71,7 +71,7 @@ const DECISIONS: Record<string, Decision> = {
 	"app.session.new": { chord: "workspace::NewThread" },
 	"app.session.observe": { client: "the agent dashboard `app.agents.hub` opens: the right panel's Agents tab" },
 	"app.session.resume": { action: "SearchSessions" },
-	"app.session.tree": { client: "the sidebar's collapsible branch rows" },
+	"app.session.tree": { chord: "thread::ToggleSessionTree" },
 	"app.stt.toggle": { palette: "composer::ToggleDictation" },
 	"app.suspend": { terminalOnly: "stops the process and returns the shell its terminal" },
 	"app.thinking.cycle": { chord: "composer::CycleThinkingLevel" },

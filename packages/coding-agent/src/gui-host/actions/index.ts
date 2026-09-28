@@ -22,6 +22,7 @@ import { sessionsActionHandlers } from "./sessions";
 import { settingsActionHandlers } from "./settings";
 import { shareActionHandlers } from "./share";
 import { terminalsActionHandlers } from "./terminals";
+import { treeActionHandlers } from "./tree";
 import { turnActionHandlers } from "./turn";
 import type { ActionHandlersMap } from "./types";
 
@@ -49,6 +50,7 @@ export * from "./sessions";
 export * from "./settings";
 export * from "./share";
 export * from "./terminals";
+export * from "./tree";
 export * from "./turn";
 export * from "./types";
 
@@ -78,4 +80,5 @@ export const allActionHandlers: ActionHandlersMap = {
 	...diagnosticsActionHandlers,
 	...dictationActionHandlers,
 	...autoswarmActionHandlers,
+	...treeActionHandlers,
 };

@@ -172,6 +172,10 @@ const AT_IDLE: Record<SnapshotSectionTag, "restated-at-idle" | "listed-at-idle" 
 	ComposerEdit: "during-turn",
 	ComposerCompletions: "on-request",
 	ExtensionNotice: "during-turn",
+	// Answers the tree sheet's `LoadSessionTree` and the navigation and label
+	// requests made from it. A turn appends entries the transcript already
+	// carries, and the sheet reads the tree again when it next opens.
+	SessionTree: "on-request",
 };
 
 /** The section the host publishes last, which is what closes a re-statement. */

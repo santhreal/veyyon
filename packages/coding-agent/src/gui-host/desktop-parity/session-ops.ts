@@ -37,19 +37,14 @@ export const SESSION_OPERATION_CARRIERS: Readonly<Record<string, DesktopCarrier>
 	// The terminal opens a picker of earlier user messages; `BranchSession`
 	// takes the chosen entry.
 	"app.session.fork": { action: "BranchSession" },
-	"app.session.tree": {
-		gap: "The desktop cannot browse a session tree or switch to another branch; its transcript shows the active branch only.",
-	},
+	// The chord opens the tree sheet, which loads the tree when it opens.
+	"app.session.tree": { action: "LoadSessionTree" },
 	"app.session.observe": { section: "Agents" },
 	"/new": { action: "CreateSession" },
 	"/resume": { action: "OpenSession" },
 	"/branch": { action: "BranchSession" },
-	"/fork": {
-		gap: "The desktop cannot duplicate a whole session into a new file; BranchSession starts a branch from one message instead.",
-	},
-	"/tree": {
-		gap: "The desktop cannot browse a session tree or switch to another branch; its transcript shows the active branch only.",
-	},
+	"/fork": { action: "ForkSession" },
+	"/tree": { action: "LoadSessionTree" },
 	"/rename": { action: "RenameSession" },
 	"/move": { action: "RunCommand" },
 	// Deleting the open session leaves the window on the session list, where

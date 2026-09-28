@@ -59,6 +59,8 @@ const MAY_CARRY_A_TRANSCRIPT: HostActionTag[] = [
 	"CompactSession",
 	"HandoffSession",
 	"ClearOutput",
+	"ForkSession",
+	"NavigateTree",
 ];
 
 /** The tags that carry one whatever the environment offers a turn. */
@@ -301,6 +303,14 @@ describe("a transcript arrives behind the header that says whose it is", () => {
 			SetExtensionSourceEnabled: { SetExtensionSourceEnabled: { source: "native", enabled: true } },
 			ReportComposerDraft: { ReportComposerDraft: { session: alpha, text: "", cursor: 0, applied_edit: 0 } },
 			CompleteComposer: { CompleteComposer: { session: alpha, query: 1, text: "", cursor: 0 } },
+			ForkSession: { ForkSession: { session: alpha } },
+			LoadSessionTree: { LoadSessionTree: { session: alpha } },
+			// An entry the session does not hold, so the navigation is refused.
+			NavigateTree: {
+				NavigateTree: { session: alpha, entry: "entry-that-is-not-here", summarize: false, instructions: null },
+			},
+			AbortBranchSummary: { AbortBranchSummary: { session: alpha } },
+			SetEntryLabel: { SetEntryLabel: { session: alpha, entry: "entry-that-is-not-here", label: "swept" } },
 		};
 
 		const swept = ALL_HOST_ACTIONS.filter(tag => tag !== ENDS_THE_CONNECTION && tag !== REATTACHES);

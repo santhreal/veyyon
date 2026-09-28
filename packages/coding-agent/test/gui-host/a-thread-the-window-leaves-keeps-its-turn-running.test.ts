@@ -72,6 +72,7 @@ import { historyActionHandlers } from "../../src/gui-host/actions/history";
 import { planReviewActionHandlers } from "../../src/gui-host/actions/plan-review";
 import { sessionsActionHandlers } from "../../src/gui-host/actions/sessions";
 import { shareActionHandlers } from "../../src/gui-host/actions/share";
+import { treeActionHandlers } from "../../src/gui-host/actions/tree";
 import { turnActionHandlers } from "../../src/gui-host/actions/turn";
 import type { ActionHandlersMap } from "../../src/gui-host/actions/types";
 import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
@@ -108,6 +109,7 @@ const SWEPT_TABLES: ActionHandlersMap[] = [
 	shareActionHandlers,
 	foregroundActionHandlers,
 	historyActionHandlers,
+	treeActionHandlers,
 ];
 
 /**
@@ -164,6 +166,13 @@ const PAYLOADS: Record<string, (other: string, onScreen: string) => unknown> = {
 	SearchSessions: () => ({ query: "elsewhere" }),
 	PreviewSessionTranscript: other => ({ session: other }),
 	SearchPromptHistory: () => ({ query: "heavy" }),
+	// The fork moves the window onto it; the tree sheet acts on the thread on
+	// screen, so naming another session is refused and moves nothing.
+	ForkSession: other => ({ session: other }),
+	LoadSessionTree: other => ({ session: other }),
+	NavigateTree: other => ({ session: other, entry: "entry-that-is-not-here", summarize: false, instructions: null }),
+	AbortBranchSummary: other => ({ session: other }),
+	SetEntryLabel: other => ({ session: other, entry: "entry-that-is-not-here", label: "elsewhere" }),
 };
 
 /**
@@ -180,6 +189,7 @@ const LEAVES_THE_SESSION = [
 	"DequeueQueuedPrompt",
 	"ExportSession",
 	"FollowUp",
+	"ForkSession",
 	"HandoffSession",
 	"JoinShare",
 	"LoadTranscript",
@@ -460,7 +470,7 @@ describe("a thread the window leaves keeps its turn running", () => {
 		throw new Error(`the probe for ${session} answered ${JSON.stringify(answer.outcome)}`);
 	}
 
-	// Forty-one actions, each driving a real turn to the point where the
+	// Forty-six actions, each driving a real turn to the point where the
 	// model has produced something and then leaving it: past bun's unit-test
 	// budget, and bounded by the assertions rather than by the clock.
 	test("no action that leaves a thread ends the turn running on it", async () => {
