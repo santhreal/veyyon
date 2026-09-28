@@ -263,15 +263,14 @@ impl SessionTreeSheet {
 	}
 }
 
-/// The row the keyboard lands on when its own is not shown: the leaf, else
-/// the last shown row on the path to it, else the first row shown.
+/// The row the keyboard lands on when its own is not shown: the last shown
+/// row on the path to the leaf, which is the leaf itself when it is shown,
+/// else the first row shown.
 fn landing(tree: &SessionTreeView, shown: &[usize]) -> Option<EntryId> {
 	let mut nodes = shown.iter().filter_map(|ix| tree.nodes.get(*ix));
-	let leaf = nodes
+	nodes
 		.clone()
-		.find(|node| tree.leaf.as_ref() == Some(&node.id));
-	leaf
-		.or_else(|| nodes.clone().rfind(|node| node.on_path))
+		.rfind(|node| node.on_path)
 		.or_else(|| nodes.next())
 		.map(|node| node.id.clone())
 }

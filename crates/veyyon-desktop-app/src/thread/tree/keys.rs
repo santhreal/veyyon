@@ -1,12 +1,12 @@
-//! The sheet's keys, read while no field of the sheet is written in: the
-//! arrows, the page keys, Home and End move the keyboard between rows, Enter
-//! goes to the row, Escape steps back, Ctrl-O and Ctrl-Shift-O cycle the
-//! filter, Alt with a filter's letter picks it and Shift-L labels the row.
+//! The sheet's keys on the rows and the summary choices: the arrows, the page
+//! keys, Home and End move the keyboard between rows, Enter goes to the row,
+//! Escape steps back, Ctrl-O and Ctrl-Shift-O cycle the filter, Alt with a
+//! filter's letter picks it and Shift-L labels the row. A field of the sheet
+//! takes its own Enter and Escape before they reach the sheet.
 
 use gpui::{Context, KeyDownEvent, Modifiers, ScrollStrategy, Window};
 use strum::IntoEnumIterator as _;
 use veyyon_desktop_model::SessionTreeFilter;
-use veyyon_desktop_ui::editor;
 
 use super::{SessionTreeSheet, Step, steps::SUMMARY_CHOICES};
 
@@ -28,9 +28,6 @@ impl SessionTreeSheet {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) {
-		if in_editor(window) {
-			return;
-		}
 		let keystroke = &event.keystroke;
 		let key = keystroke.key.as_str();
 		let handled = if !keystroke.modifiers.modified() && key == "escape" {
@@ -174,12 +171,4 @@ fn filter_key(key: &str) -> Option<SessionTreeFilter> {
 		"a" => SessionTreeFilter::All,
 		_ => return None,
 	})
-}
-
-/// Whether the keyboard is in a text field.
-fn in_editor(window: &Window) -> bool {
-	window
-		.context_stack()
-		.iter()
-		.any(|context| context.contains(editor::KEY_CONTEXT))
 }

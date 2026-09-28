@@ -51,11 +51,12 @@ fn each_summary_choice_sends_its_navigation(app: &mut TestAppContext) {
 	let mut w = browsing(app, branched(true));
 	w.keys("up");
 	// (keys that pick the choice, what the field is given, what is sent)
-	let cases: [(&str, Option<&str>, HostAction); 4] = [
+	let cases: [(&str, Option<&str>, HostAction); 5] = [
 		("enter", None, navigate("u2", false, None)),
 		("down enter", None, navigate("u2", true, None)),
 		("down down enter", Some("  keep the tests  "), navigate("u2", true, Some("keep the tests"))),
 		("up enter", Some("   "), navigate("u2", true, None)),
+		("down down down enter", None, navigate("u2", false, None)),
 	];
 	for (keys, instructions, expected) in cases {
 		w.keys("enter");
