@@ -17,8 +17,48 @@ import type { StreamingAppend, StreamingMessageState, TranscriptEntry } from "./
  */
 export const STREAM_FRAME_INTERVAL_MS = 16;
 
+/**
+ * A coalescer's armed frame and when it last wrote one. Each coalescer
+ * stamps `lastFrameMs` in its own flush, when a frame is written.
+ */
+export interface FrameSlot {
+	timer?: NodeJS.Timeout;
+	/** When the last frame was written, so the first change after a pause is not delayed. */
+	lastFrameMs?: number;
+}
+
+/**
+ * Runs `flush` now when the last frame is an interval old, else arms it for
+ * the moment it is. A frame already armed absorbs the change, so a burst
+ * writes at most one frame per interval and the first change after a pause
+ * is never delayed.
+ */
+export function scheduleFrame(slot: FrameSlot, flush: () => void): void {
+	if (slot.timer) return;
+	const since = Date.now() - (slot.lastFrameMs ?? Number.NEGATIVE_INFINITY);
+	if (since >= STREAM_FRAME_INTERVAL_MS) {
+		flush();
+		return;
+	}
+	const timer = setTimeout(() => {
+		slot.timer = undefined;
+		flush();
+	}, STREAM_FRAME_INTERVAL_MS - since);
+	// An armed frame never holds the process open: the window it would draw
+	// in is gone with the session that armed it.
+	timer.unref?.();
+	slot.timer = timer;
+}
+
+/** Disarms the frame `slot` holds, if any. */
+export function disarmFrame(slot: FrameSlot | undefined): void {
+	if (!slot) return;
+	clearTimeout(slot.timer);
+	slot.timer = undefined;
+}
+
 /** What a session is holding for the next streaming frame. */
-export interface StreamingFrameState {
+export interface StreamingFrameState extends FrameSlot {
 	/**
 	 * The newest assistant message not yet converted. Each is an immutable
 	 * snapshot the agent loop already took, so holding the reference and
@@ -38,9 +78,6 @@ export interface StreamingFrameState {
 	 * a frame of its own even when the reply's text has not moved.
 	 */
 	tool?: boolean;
-	timer?: NodeJS.Timeout;
-	/** When the last frame was written, so the first delta is not delayed. */
-	lastFrameMs?: number;
 }
 
 /** What the coalescer reads and writes on the session it is streaming for. */
@@ -160,8 +197,7 @@ function appendedText(
  */
 export function flushStreamingFrame(state: StreamingFrameSession, write: (frame: StreamingFrame) => void): void {
 	const held = frameState(state);
-	clearTimeout(held.timer);
-	held.timer = undefined;
+	disarmFrame(held);
 	const pending = held.message !== undefined || held.regenerate !== undefined || held.tool === true;
 	const whole = held.regenerate !== undefined || held.tool === true;
 	const sent = state.streamingAccumulating;
@@ -219,21 +255,7 @@ export function pushStreamingFrame(
 		held.regenerate = change.regenerate;
 	}
 	if (change.tool) held.tool = true;
-	if (held.timer) return;
-
-	const since = Date.now() - (held.lastFrameMs ?? Number.NEGATIVE_INFINITY);
-	if (since >= STREAM_FRAME_INTERVAL_MS) {
-		flushStreamingFrame(state, write);
-		return;
-	}
-	const timer = setTimeout(() => {
-		held.timer = undefined;
-		flushStreamingFrame(state, write);
-	}, STREAM_FRAME_INTERVAL_MS - since);
-	// A scheduled frame never holds the process open: the reply it would draw
-	// is gone with the session that was streaming it.
-	timer.unref?.();
-	held.timer = timer;
+	scheduleFrame(held, () => flushStreamingFrame(state, write));
 }
 
 /**
@@ -246,8 +268,7 @@ export function pushStreamingFrame(
 export function cancelStreamingFrame(state: StreamingFrameSession): void {
 	const held = state.streamFrame;
 	if (!held) return;
-	clearTimeout(held.timer);
-	held.timer = undefined;
+	disarmFrame(held);
 	held.message = undefined;
 	held.regenerate = undefined;
 	held.tool = undefined;

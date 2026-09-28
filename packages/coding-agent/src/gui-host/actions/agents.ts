@@ -6,7 +6,7 @@ import { agentDisplayState, collectLiveAgents } from "../../registry/live-roster
 import { TaskTool } from "../../task";
 import { IrcBus } from "../../task/irc-bus";
 import { writeFrame } from "../frames";
-import { STREAM_FRAME_INTERVAL_MS } from "../streaming-frames";
+import { disarmFrame, type FrameSlot, scheduleFrame } from "../streaming-frames";
 import { type ClientSessionState, getOrCreateAgentSession } from "../turns";
 import type { AgentMessageView, AgentView } from "../wire";
 import type { ActionHandler, ActionHandlersMap } from "./types";
@@ -85,10 +85,11 @@ export function subscribeClientAgents(socket: net.Socket, state: ClientSessionSt
 	// stays out of the frame.
 	let agentsDirty = false;
 	let commsDirty = false;
+	const frame: FrameSlot = {};
 
 	const flush = () => {
 		if (state.closed || socket.destroyed) return;
-		state.lastAgentsFrameMs = Date.now();
+		frame.lastFrameMs = Date.now();
 		const currentScope = clientSessionScope(state);
 		if (agentsDirty) {
 			agentsDirty = false;
@@ -102,18 +103,7 @@ export function subscribeClientAgents(socket: net.Socket, state: ClientSessionSt
 
 	const schedule = () => {
 		if (state.closed || socket.destroyed) return;
-		if (state.agentsFrameTimer) return;
-		const since = Date.now() - (state.lastAgentsFrameMs ?? Number.NEGATIVE_INFINITY);
-		if (since >= STREAM_FRAME_INTERVAL_MS) {
-			flush();
-			return;
-		}
-		const timer = setTimeout(() => {
-			state.agentsFrameTimer = undefined;
-			flush();
-		}, STREAM_FRAME_INTERVAL_MS - since);
-		timer.unref?.();
-		state.agentsFrameTimer = timer;
+		scheduleFrame(frame, flush);
 	};
 
 	const unreg = registry.onChange(event => {
@@ -129,10 +119,7 @@ export function subscribeClientAgents(socket: net.Socket, state: ClientSessionSt
 	});
 
 	state.unsubscribeAgents = () => {
-		if (state.agentsFrameTimer) {
-			clearTimeout(state.agentsFrameTimer);
-			state.agentsFrameTimer = undefined;
-		}
+		disarmFrame(frame);
 		unreg();
 	};
 	state.unsubscribeAgentComms = unbus;

@@ -31,6 +31,7 @@
 
 ### Added
 
+- The desktop command palette runs a command with the text typed after its name, such as `/rename a better title` or `/mcp add docs npx docs.server`, and joins, leaves and refreshes a share through `/join <link>`, `/leave` and `/collab status`.
 - The desktop window draws queued announcements as toasts, a banner with a retry button while the host link is down, and a welcome view with recent threads while no session is open.
 - A desktop window adds, removes, tests and reloads MCP servers, signs a remote server in again or out, lists each connected server's resources, resource templates, prompts and notification capabilities, and searches, signs into and adds servers from the Smithery registry, writing each change into the profile's `mcp.json` or key file as the terminal's `/mcp` subcommands do.
 - A desktop window lists every stored provider account and signs one out with `SignOutAccount`, leaving that provider's other accounts signed in, and its provider list leaves out the providers `disabledProviders` names, as the terminal's sign-in list does.
@@ -387,14 +388,17 @@
 - `SETTING_KIND_HANDLERS` is typed per setting kind, so each handler receives the definition variant its key selects instead of the whole union widened to `any`. No user-visible behavior changes.
 - Subagent drive paths share abort-aware promise handling with unchanged cancellation behavior.
 - Hook and user-message selectors share search editing without per-keystroke callback or query-array allocations.
+- The desktop host's streaming-reply and agent-roster coalescers share one frame scheduler in `gui-host/streaming-frames.ts`; frame timing is unchanged.
 
 ### Fixed
 
+- The desktop window stops its motion when `display.transitions` is `off` or the system asks for reduced motion, including a change made while the window is open, where it read neither.
 - The desktop right panel asks the host again for a tab's changes, file tree, open file, diagnostics or usage each time you open that tab, so edits made outside a turn show up without closing and reopening the panel.
 - The desktop right panel and terminal drawer state the host's reason when it refuses a request and offer Retry only when the host accepts a second send, and a diff the host cut before its first file states the cut instead of reading as a clean working tree.
 - A desktop plan card draws its title as plain words once, where it drew the markdown syntax of the plan's first line and then drew that line again in the body.
 - A desktop prompt that only named files draws those files with no empty bubble, and a named image file draws its picture instead of its name a second time.
 - A desktop tool result shown without its call row states `error` in its caption when the tool failed, where a failed result read as a success.
+- The desktop files tab draws none of the previous file's lines while the file opened over it loads, or after the host refuses to read it.
 - The desktop transcript remembers where it was scrolled in each thread and returns there on a switch or relaunch, waiting for the entry it names to arrive, and a thread left at the latest reply comes back at the latest reply.
 - An open desktop thread row menu offers the actions the host allows now, updating when the host's capabilities change or a request finishes, where it kept the actions it was opened with.
 - The desktop window sends no session mode, goal or agent freeze request while the host withholds it, keeps a goal objective in the draft when the host takes no goal, and draws the host's agent freeze above every view of the window, where it drew the freeze only inside an open thread.

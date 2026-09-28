@@ -144,8 +144,6 @@ export interface ClientSessionState {
 	/** Publishes this window's foreground command while one is waiting. */
 	unsubscribeForeground?: () => void;
 	unsubscribeAgentComms?: () => void;
-	agentsFrameTimer?: NodeJS.Timeout;
-	lastAgentsFrameMs?: number;
 	authFlow?: ActiveAuthFlow;
 	/**
 	 * Signature of the last queued prompts frame written for this session, used
@@ -788,10 +786,6 @@ export async function disposeClientState(state: ClientSessionState): Promise<voi
 		// A frame scheduled for a window that is gone draws nothing and holds
 		// the entry it was converting alive until it fires.
 		cancelStreamingFrame(state);
-		if (state.agentsFrameTimer) {
-			clearTimeout(state.agentsFrameTimer);
-			state.agentsFrameTimer = undefined;
-		}
 		state.unsubscribeAgents?.();
 		state.unsubscribeAgents = undefined;
 		state.unsubscribeAgentComms?.();
