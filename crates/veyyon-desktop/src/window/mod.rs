@@ -15,7 +15,7 @@ use veyyon_desktop::{
 	connect_or_spawn,
 	state::{StateDir, placement, report_rejections},
 };
-use veyyon_desktop_app::{AppState, regions, workspace::Workspace};
+use veyyon_desktop_app::{AppState, composer, regions, workspace::Workspace};
 use veyyon_desktop_model::{ConnectionState, PersistedState, Store};
 use veyyon_desktop_ui::theme::{Appearance, Theme};
 use veyyon_gpui::{
@@ -67,6 +67,9 @@ pub fn open(endpoint: Option<String>, slot: &Slot, cx: &mut App) {
 		.and_then(|session| persisted.panels.get(session))
 		.cloned()
 		.unwrap_or_default();
+	if let Some(dir) = &dir {
+		composer::stash::install(dir.root(), cx);
+	}
 	let keep = Keep::new(dir, &persisted);
 	let options = options(&persisted, cx);
 	let app = cx.new(|_| AppState::new(Store::with_persisted(persisted)));

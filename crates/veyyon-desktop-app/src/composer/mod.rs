@@ -22,6 +22,7 @@ pub mod measure;
 mod picker;
 mod primary;
 pub(crate) mod route;
+pub mod stash;
 mod strips;
 mod submit;
 mod tray;
@@ -87,6 +88,9 @@ pub struct Composer {
 	programmatic:   usize,
 	/// Clipboard images pasted so far, which numbers the next one.
 	pasted:         u64,
+	/// Pasted attachments that left the tray with their session before their
+	/// bytes were kept in a file, held until that session is shown again.
+	parked:         Vec<(SessionId, Attachment)>,
 	max_rows:       usize,
 	bounds:         Option<Bounds<Pixels>>,
 	renders:        usize,
@@ -140,6 +144,7 @@ impl Composer {
 			bridge: Bridge::default(),
 			programmatic: 0,
 			pasted: 0,
+			parked: Vec::new(),
 			max_rows: 0,
 			bounds: None,
 			renders: 0,

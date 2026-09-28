@@ -9,6 +9,7 @@
 
 use std::{
 	collections::HashMap,
+	io,
 	path::{Path, PathBuf},
 };
 
@@ -22,6 +23,7 @@ use super::{
 	Composer,
 	attach::{self, Source},
 	dictate::Landing,
+	stash,
 };
 
 /// What the composer exchanges with the host's extension bridge for each
@@ -42,12 +44,12 @@ pub(super) struct Bridge {
 impl Composer {
 	/// Shows `session`'s draft, queue mode and attachments.
 	pub(super) fn show_session(&mut self, session: Option<SessionId>, cx: &mut Context<Self>) {
+		self.park_pasted();
 		self.session.clone_from(&session);
 		self.forget_sent();
 		self.recall.forget();
 		self.completion = None;
 		self.notice = None;
-		self.attachments.clear();
 		self.restoring.clear();
 		self.landing = Landing::default();
 		self.bridge.reported = None;
@@ -72,6 +74,7 @@ impl Composer {
 		self.set_text(&text, cx);
 		self.restoring.clone_from(&paths);
 		self.attach_paths(paths.into_iter().map(PathBuf::from).collect(), true, cx);
+		self.unpark_pasted();
 		self.take_restored(cx);
 		self.apply_edits(cx);
 		self.report_draft(cx);
@@ -89,7 +92,7 @@ impl Composer {
 			.iter()
 			.filter_map(|attachment| match &attachment.source {
 				Source::Path(path) => Some(path.display().to_string()),
-				Source::Clipboard(_) => None,
+				Source::Clipboard { kept, .. } => kept.as_ref().map(|path| path.display().to_string()),
 			})
 			.chain(self.restoring.iter().cloned())
 			.collect();
@@ -175,18 +178,24 @@ impl Composer {
 	}
 
 	/// Reads the files at `paths` off the window's thread and attaches the
-	/// ones that fit; `restoring` marks paths a persisted draft named.
+	/// ones that fit; `restoring` marks paths a persisted draft named. A path
+	/// in the directory pasted attachments are kept in is read back as the
+	/// paste it was.
 	pub(super) fn attach_paths(&self, paths: Vec<PathBuf>, restoring: bool, cx: &Context<Self>) {
 		if paths.is_empty() {
 			return;
 		}
 		let session = self.session.clone();
+		let kept = stash::dir(cx);
 		cx.spawn(async move |this, cx| {
 			let read = cx
 				.background_spawn(async move {
 					paths
 						.iter()
-						.map(|path| attach::read_file(Path::new(path)))
+						.map(|path| match &kept {
+							Some(dir) if stash::holds(dir, path) => stash::read(path),
+							_ => attach::read_file(Path::new(path)),
+						})
 						.collect::<Vec<_>>()
 				})
 				.await;
@@ -210,13 +219,23 @@ impl Composer {
 		read: Vec<Result<attach::Attachment, attach::AttachError>>,
 		cx: &mut Context<Self>,
 	) {
+		let kept = stash::dir(cx);
 		let mut refusal = None;
 		for result in read {
 			let admitted = result.and_then(|attachment| {
 				attach::admit(&self.attachments, &attachment).map(|()| attachment)
 			});
 			match admitted {
-				Ok(attachment) => self.attachments.push(attachment),
+				Ok(mut attachment) => {
+					if let (Source::Path(path), Some(dir)) = (&attachment.source, &kept)
+						&& stash::holds(dir, path)
+					{
+						self.pasted += 1;
+						attachment = attachment.pasted(self.pasted);
+					}
+					Self::keep_pasted(&attachment, kept.clone(), cx);
+					self.attachments.push(attachment);
+				},
 				Err(error) => {
 					refusal.get_or_insert_with(|| error.to_string());
 				},
@@ -235,5 +254,92 @@ impl Composer {
 		cx: &mut Context<Self>,
 	) {
 		self.admit_all(vec![made], cx);
+	}
+
+	/// Writes the bytes of a pasted attachment to the file the draft names it
+	/// by, off the window's thread.
+	fn keep_pasted(attachment: &attach::Attachment, dir: Option<PathBuf>, cx: &Context<Self>) {
+		let (Source::Clipboard { ordinal, kept: None }, Some(dir)) = (&attachment.source, dir) else {
+			return;
+		};
+		let ordinal = *ordinal;
+		let bytes = attachment.bytes.clone();
+		cx.spawn(async move |this, cx| {
+			let made = cx
+				.background_spawn(async move { stash::keep(&dir, &bytes) })
+				.await;
+			let _ = this.update(cx, |this, cx| this.kept_pasted(ordinal, made, cx));
+		})
+		.detach();
+	}
+
+	/// Records the file the pasted attachment `ordinal` was kept in: in the
+	/// shown draft while the tray holds it, else in the saved draft of the
+	/// session it left with.
+	fn kept_pasted(&mut self, ordinal: u64, made: io::Result<PathBuf>, cx: &mut Context<Self>) {
+		let shown = self
+			.attachments
+			.iter()
+			.position(|attachment| attachment.pasted_ordinal() == Some(ordinal));
+		if let Some(ix) = shown {
+			match made {
+				Ok(path) => {
+					self.attachments[ix].source = Source::Clipboard { ordinal, kept: Some(path) };
+					self.save_draft(cx);
+				},
+				Err(error) => {
+					let name = &self.attachments[ix].name;
+					self.notice = Some(format!("Cannot keep {name} with the draft: {error}").into());
+					cx.notify();
+				},
+			}
+			return;
+		}
+		let Some(ix) = self
+			.parked
+			.iter()
+			.position(|(_, attachment)| attachment.pasted_ordinal() == Some(ordinal))
+		else {
+			return;
+		};
+		let Ok(path) = made else {
+			return;
+		};
+		let (session, _) = self.parked.remove(ix);
+		self.app.update(cx, |app, cx| {
+			let mut draft = app.draft(&session).cloned().unwrap_or_default();
+			draft.attachments.push(path.display().to_string());
+			app.save_draft(session, draft, cx);
+		});
+	}
+
+	/// Empties the tray, holding the pasted attachments whose bytes are not
+	/// kept in a file yet under the session they leave with.
+	fn park_pasted(&mut self) {
+		let session = self.session.clone();
+		for attachment in self.attachments.drain(..) {
+			if let Some(session) = &session
+				&& matches!(attachment.source, Source::Clipboard { kept: None, .. })
+			{
+				self.parked.push((session.clone(), attachment));
+			}
+		}
+	}
+
+	/// Puts back the pasted attachments the shown session left with whose
+	/// bytes are not kept in a file yet.
+	fn unpark_pasted(&mut self) {
+		let Some(session) = &self.session else {
+			return;
+		};
+		let mut ix = 0;
+		while ix < self.parked.len() {
+			if self.parked[ix].0 == *session {
+				let (_, attachment) = self.parked.remove(ix);
+				self.attachments.push(attachment);
+			} else {
+				ix += 1;
+			}
+		}
 	}
 }

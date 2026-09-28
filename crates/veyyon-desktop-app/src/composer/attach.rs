@@ -168,8 +168,9 @@ impl MediaType {
 pub enum Source {
 	/// A file on disk, persisted with the draft.
 	Path(PathBuf),
-	/// An image pasted from the clipboard, numbered in paste order.
-	Clipboard(u64),
+	/// An image pasted from the clipboard, numbered in paste order, and the
+	/// file its bytes are kept in once written.
+	Clipboard { ordinal: u64, kept: Option<PathBuf> },
 }
 
 /// One file waiting to be sent with the next prompt.
@@ -206,7 +207,7 @@ impl Attachment {
 	pub fn submission(&self, position: usize) -> AttachmentSubmission {
 		let origin = match &self.source {
 			Source::Path(path) => path.display().to_string(),
-			Source::Clipboard(ordinal) => format!("clipboard:{ordinal}"),
+			Source::Clipboard { ordinal, .. } => format!("clipboard:{ordinal}"),
 		};
 		AttachmentSubmission {
 			id:         format!("{position}:{origin}"),
@@ -215,9 +216,19 @@ impl Attachment {
 			data:       self.bytes.to_vec(),
 		}
 	}
+
+	/// The number the attachment was pasted under, for a pasted one.
+	#[must_use]
+	pub const fn pasted_ordinal(&self) -> Option<u64> {
+		match self.source {
+			Source::Clipboard { ordinal, .. } => Some(ordinal),
+			Source::Path(_) => None,
+		}
+	}
 }
 
-/// Why a file was not attached.
+/// Why a file was not attached. `Unrestored` is a pasted attachment a saved
+/// draft names that could not be read back.
 #[derive(Debug)]
 pub enum AttachError {
 	Unreadable { name: String, source: io::Error },
@@ -227,6 +238,7 @@ pub enum AttachError {
 	PromptFull { name: String, bytes: u64, attached: u64 },
 	TrayFull { name: String },
 	ClipboardFormat,
+	Unrestored { reason: String },
 }
 
 impl fmt::Display for AttachError {
@@ -256,6 +268,7 @@ impl fmt::Display for AttachError {
 			Self::ClipboardFormat => {
 				write!(f, "Cannot attach the clipboard image: its format is not accepted")
 			},
+			Self::Unrestored { reason } => write!(f, "Cannot restore a pasted image: {reason}"),
 		}
 	}
 }
@@ -293,14 +306,20 @@ pub fn read_file(path: &Path) -> Result<Attachment, AttachError> {
 	Ok(Attachment::new(name, media, Source::Path(path.to_path_buf()), data))
 }
 
+/// The name a pasted attachment is shown under.
+pub(super) fn pasted_name(ordinal: u64) -> String {
+	format!("Pasted image {ordinal}")
+}
+
 /// The attachment a pasted clipboard image becomes.
 pub fn from_clipboard(image: &Image, ordinal: u64) -> Result<Attachment, AttachError> {
 	let media = MediaType::sniff(&image.bytes).ok_or(AttachError::ClipboardFormat)?;
-	let name = format!("Pasted image {ordinal}");
+	let name = pasted_name(ordinal);
 	if image.bytes.len() as u64 > MAX_ATTACHMENT_BYTES {
 		return Err(AttachError::TooLarge { name, bytes: image.bytes.len() as u64 });
 	}
-	Ok(Attachment::new(name, media, Source::Clipboard(ordinal), image.bytes.clone()))
+	let source = Source::Clipboard { ordinal, kept: None };
+	Ok(Attachment::new(name, media, source, image.bytes.clone()))
 }
 
 /// Whether `new` fits beside `tray`: the count and the prompt total.
