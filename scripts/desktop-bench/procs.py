@@ -84,6 +84,23 @@ def cpu_ticks(pid: int) -> int | None:
 	return int(fields[11]) + int(fields[12])
 
 
+def cpu_ns(pid: int, thread: int | None = None) -> int | None:
+	"""Time on CPU in ns from schedstat: of thread `thread` of `pid`, else summed over its live threads."""
+	if thread is not None:
+		raw = _read(f"/proc/{pid}/task/{thread}/schedstat")
+		return int(raw.split()[0]) if raw else None
+	try:
+		tasks = os.listdir(f"/proc/{pid}/task")
+	except OSError:
+		return None
+	total = 0
+	for task in tasks:
+		raw = _read(f"/proc/{pid}/task/{task}/schedstat")
+		if raw:
+			total += int(raw.split()[0])
+	return total
+
+
 @dataclass(frozen=True)
 class Memory:
 	rss_kib: int

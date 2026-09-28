@@ -47,8 +47,8 @@ class Launch:
 	# Thread key -> the app's own identifier (session file, thread id).
 	threads: dict[str, str] = field(default_factory=dict)
 
-	def start(self, tag: str, log_path: Path) -> AppProcess:
-		return AppProcess(self.argv, self.env, self.cwd, tag, log_path)
+	def start(self, tag: str, log_path: Path, extra_env: dict[str, str] | None = None) -> AppProcess:
+		return AppProcess(self.argv, {**self.env, **(extra_env or {})}, self.cwd, tag, log_path)
 
 
 def _base_env(home: Path, display: str, runtime_dir: str, path_dirs: list[str]) -> dict[str, str]:

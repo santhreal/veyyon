@@ -2,7 +2,8 @@
 
 The desktop bench measures veyyon-desktop and T3 Code on one private display, with one seeded corpus, one
 fake model server and one measurement method. It reads the app window's pixels through XShm and drives the
-app through XTest, so no probe depends on a hook inside either app.
+app through XTest, so no probe depends on a hook inside either app. The `palette_open_painted_*` results
+are the exception: they read the frames veyyon-desktop reports on its driver socket.
 
 ## Requirements
 
@@ -34,7 +35,7 @@ scripts/desktop-bench/compare.sh .internal/rebuild/bench/veyyon.json .internal/r
 |`--samples N`|Samples for each repeatable probe. Default 20.|
 |`--out DIR`|Report directory. Default `.internal/rebuild/bench`.|
 |`--name NAME`|Report file stem and work directory name. Default the app name.|
-|`--probes LIST`|Comma-separated subset of `cold_launch,keystroke,switch,token,steady`.|
+|`--probes LIST`|Comma-separated subset of `cold_launch,keystroke,switch,token,steady,palette_open`. Default all but `palette_open`.|
 |`--survey [X,Y ...]`|Launch once, click each point, relaunch, and write a screenshot after each step.|
 
 `bun`, `codex` and `node` come from `$BENCH_BUN`, `$BENCH_CODEX` and `$BENCH_NODE`, else from `PATH`.
@@ -48,7 +49,7 @@ A run writes `<out>/<name>.json` and `<out>/<name>.md`. `compare.sh a.json b.jso
 row per probe with both medians, both p95 values and the ratio of b's median to a's.
 
 The work directory holds one log per launch and a full-window screenshot from each probe:
-`ready.png`, `keystroke.png`, `switch.png`, `token.png` and `long-thread.png`.
+`ready.png`, `keystroke.png`, `switch.png`, `token.png`, `long-thread.png` and `palette.png`.
 
 ## Report
 
@@ -91,6 +92,15 @@ smaller than 60 px is a text caret blinking and is ignored. The time of a grab i
 |`scroll_fps`|frames/s|Wheel clicks at 60 Hz for 5 s over the long thread; distinct frames in each second.|
 |`scroll_frame_interval_ms`|ms|Intervals between distinct frames in the same run.|
 |`scroll_gaps`|count|Intervals longer than 1.5 times the output refresh interval.|
+|`palette_open_ms`|ms|With a short thread open and settled, from the XTest press of the layout's `palette_chord` to the first change in the `palette` region. The first open of a launch is not a sample. Escape closes the palette between samples.|
+|`palette_open_settle_ms`|ms|From the same press to the last change before 400 ms without one.|
+|`palette_open_frames`|frames|Distinct frames per open, read until 400 ms pass without a change.|
+|`palette_open_frame_interval_ms`|ms|Intervals between those distinct frames.|
+|`palette_open_gaps`|count|Intervals longer than 1.5 times the output refresh interval, per open.|
+|`palette_open_painted_ms`|ms|veyyon only, in a separate launch with `VEYYON_DESKTOP_DRIVER` set: from the chord press to the first frame the driver socket reports.|
+|`palette_open_painted_frames`|frames|Frames the driver socket reports per open, read until 250 ms pass without one.|
+|`palette_open_painted_interval_ms`|ms|Intervals between those painted frames.|
+|`palette_open_painted_gaps`|count|Painted-frame intervals longer than 1.5 times the output refresh interval, per open.|
 
 The UI process is `veyyon-desktop` for veyyon and the Chromium renderer processes (`--type=renderer`)
 for T3 Code. The process tree is every process that carries the launch's `BENCH_TAG` environment entry,
@@ -113,7 +123,9 @@ except `gamma-07`, titled "long thread", which holds 10,000. Both apps list thre
 
 `layout-<app>.json` holds window coordinates on the 1600x1000 output: the full window size, the pointer
 parking point, the sidebar reference region, the row centers, the composer click point and region, and
-the transcript, stream and scroll regions. `setup_clicks` run once in the warm-up launch;
+the transcript, stream and scroll regions. `palette_chord` lists the keysyms that open the command palette,
+modifiers first, and `palette` is the region the open palette card is drawn in; `palette_open` checks the
+card the driver socket reports lies inside it. `setup_clicks` run once in the warm-up launch;
 `launch_clicks` run after every ready launch. Derive the coordinates from `--survey` screenshots. The
 first survey screenshot can show the window before it reaches its tiled size.
 

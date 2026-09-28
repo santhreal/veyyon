@@ -4,7 +4,7 @@
 run.sh starts the private display this script draws on and calls it:
 
   probes.py --app veyyon|t3 --binary PATH --display :N --out DIR [--samples N]
-            [--name NAME] [--probes cold_launch,keystroke,switch,token,steady]
+            [--name NAME] [--probes cold_launch,keystroke,switch,token,steady,palette_open]
             [--survey [X,Y ...]]
 
 Every probe reads the app window's pixels through XShm and drives the app
@@ -12,7 +12,9 @@ through XTest, so both apps are measured by one method. Times are
 CLOCK_MONOTONIC nanoseconds, the clock fake_llm.py stamps each token with.
 Window coordinates come from layout-<app>.json; `--survey` launches the app
 once, clicks the given points, relaunches it, and writes a screenshot after
-every step, which is how a layout file is derived.
+every step, which is how a layout file is derived. For veyyon the palette
+probe also reads the frames the window paints from its driver socket
+(driver.py).
 """
 
 from __future__ import annotations
@@ -40,6 +42,7 @@ import numpy as np
 import apps
 import corpus
 import procs
+from driver import Driver
 from imaging import write_png
 from xdisplay import Capture, Display, Rect, WindowInfo
 
@@ -61,7 +64,13 @@ IDLE_S = 30
 # the caret filter.
 KEYS = ("m", "o", "w", "s", "e", "k", "a", "n", "d", "h", "x", "b")
 PROMPT = "bench token probe"
-PROBES = ("cold_launch", "keystroke", "switch", "token", "steady")
+# The probes every app runs; `palette_open` runs when named, on an app whose
+# layout defines a `palette` region and a `palette_chord`.
+DEFAULT_PROBES = ("cold_launch", "keystroke", "switch", "token", "steady")
+PROBES = (*DEFAULT_PROBES, "palette_open")
+# The painted frames of one palette open end once none follows for this long,
+# which is shorter than the palette input's 530 ms caret blink.
+FRAME_QUIET_MS = 250
 
 
 def now() -> int:
@@ -177,6 +186,27 @@ def first_change(region: Region, timeout_s: float) -> int | None:
 			return t
 		if t >= limit:
 			return None
+
+
+def changes_until_quiet(region: Region, quiet_ms: int, timeout_s: float) -> list[int]:
+	"""Grab times of every significant change, until `quiet_ms` pass without one after the first."""
+	quiet = quiet_ms * 1_000_000
+	limit = now() + int(timeout_s * 1e9)
+	changes: list[int] = []
+	while True:
+		t, count, bbox = region.poll()
+		if significant(count, bbox):
+			changes.append(t)
+		if (changes and t - changes[-1] >= quiet) or t >= limit:
+			return changes
+
+
+def ui_cpu_ns(pids: list[int]) -> tuple[int, int]:
+	"""CPU time in ns of the main threads of `pids`, and of all of their threads."""
+	return (
+		sum(procs.cpu_ns(pid, pid) or 0 for pid in pids),
+		sum(procs.cpu_ns(pid) or 0 for pid in pids),
+	)
 
 
 class Tail:
@@ -376,12 +406,12 @@ class Bench:
 			shutil.rmtree(self.spec.home)
 		shutil.copytree(self.pristine, self.spec.home, symlinks=True)
 
-	def start(self, label: str) -> procs.AppProcess:
+	def start(self, label: str, extra_env: dict[str, str] | None = None) -> procs.AppProcess:
 		assert self.spec is not None
 		self.launches += 1
 		self.park_pointer()
 		tag = f"bench-{self.cfg.name}-{self.launches}-{label}"
-		return self.spec.start(tag, self.logs / f"{self.launches:03d}-{label}.log")
+		return self.spec.start(tag, self.logs / f"{self.launches:03d}-{label}.log", extra_env)
 
 	def wait_window(self, proc: procs.AppProcess, limit: int) -> WindowInfo:
 		need_w, need_h = self.layout.get("window", [400, 300])
@@ -436,9 +466,9 @@ class Bench:
 			if cap is not None:
 				cap.close()
 
-	def launch_ready(self, label: str) -> tuple[procs.AppProcess, WindowInfo]:
+	def launch_ready(self, label: str, extra_env: dict[str, str] | None = None) -> tuple[procs.AppProcess, WindowInfo]:
 		self.restore()
-		proc = self.start(label)
+		proc = self.start(label, extra_env)
 		try:
 			_, _, window = self.wait_ready(proc)
 			for x, y in self.layout.get("launch_clicks", []):
@@ -872,6 +902,200 @@ class Bench:
 			proc.stop()
 		return results
 
+	# Palette -----------------------------------------------------------------
+
+	def palette_open(self) -> dict[str, object]:
+		"""Opens the command palette by its chord over a settled thread, `samples` times per pass."""
+		if "palette" not in self.layout or "palette_chord" not in self.layout:
+			raise KeyError(f"layout-{self.cfg.app}.json defines no `palette` region and `palette_chord`")
+		chord = [str(key) for key in self.layout["palette_chord"]]
+		rect = rect_of(self.layout, "palette")
+		results: dict[str, object] = {}
+		rows: int | None = None
+		if self.cfg.app == "veyyon":
+			painted, rows = self.palette_frames(chord, rect)
+			results.update(painted)
+		results.update(self.palette_pixels(chord, rect, rows))
+		return results
+
+	def tap_chord(self, chord: list[str]) -> None:
+		self.display.tap(chord[-1], tuple(chord[:-1]))
+
+	def open_short_thread(self, window: WindowInfo) -> None:
+		self.click(window, *self.row(corpus.SWITCH_THREAD_KEYS[0]))
+		time.sleep(1.5)
+		self.park_pointer()
+
+	def palette_frames(self, chord: list[str], rect: Rect) -> tuple[dict[str, object], int]:
+		"""The frames the window paints while the palette opens, read from its driver socket."""
+		path = self.work / "driver.sock"
+		proc, window = self.launch_ready("palette-frames", {"VEYYON_DESKTOP_DRIVER": str(path)})
+		client: Driver | None = None
+		try:
+			client = Driver(path)
+			client.request({"subscribe": "frames"})
+			self.open_short_thread(window)
+			client.idle()
+			# The first open asks the host for its slash commands; it is not a sample.
+			self.tap_chord(chord)
+			time.sleep(1.0)
+			client.idle()
+			card = client.bounds("palette")
+			if card is None:
+				raise RuntimeError("the palette chord opened no card")
+			inside = (
+				rect.x <= card["x"]
+				and rect.y <= card["y"] - 8
+				and card["x"] + card["w"] <= rect.x + rect.w
+				and card["y"] + card["h"] <= rect.y + rect.h
+			)
+			if not inside:
+				raise RuntimeError(f"the open card {card} is not inside the layout's palette region {rect}")
+			rows = self.palette_rows(client)
+			self.display.tap("Escape")
+			client.idle()
+			refresh_ms = 1000.0 / self.refresh_hz
+			first_ms: list[float] = []
+			counts: list[float] = []
+			intervals: list[float] = []
+			gaps: list[float] = []
+			for _ in range(self.cfg.samples):
+				time.sleep(0.3)
+				client.idle()
+				client.pump(0)
+				client.frames.clear()
+				t0 = now()
+				self.tap_chord(chord)
+				painted = client.frames_until_quiet(t0, FRAME_QUIET_MS, 3)
+				if painted:
+					first_ms.append((painted[0] - t0) / 1e6)
+					counts.append(len(painted))
+					spans = [(b - a) / 1e6 for a, b in zip(painted, painted[1:])]
+					intervals.extend(spans)
+					gaps.append(sum(1 for span in spans if span > 1.5 * refresh_ms))
+				self.display.tap("Escape")
+				client.idle()
+		finally:
+			if client is not None:
+				client.close()
+			proc.stop()
+		note = (
+			f"chord {'+'.join(chord)} over an open, settled thread with the driver socket on; {rows} rows listed; "
+			f"painted frames reported by the driver until {FRAME_QUIET_MS} ms pass without one; output refresh "
+			f"{self.refresh_hz:.2f} Hz; {self.cfg.samples - len(first_ms)} opens painted nothing within 3 s"
+		)
+		return {
+			"palette_open_painted_ms": probe(first_ms, "ms", "chord press to the first painted frame; " + note, rows=rows),
+			"palette_open_painted_frames": probe(counts, "frames", "frames painted per open; " + note, rows=rows),
+			"palette_open_painted_interval_ms": probe(intervals, "ms", "interval between painted frames; " + note, rows=rows),
+			"palette_open_painted_gaps": probe(
+				gaps,
+				"count",
+				f"painted-frame intervals over {1.5 * refresh_ms:.2f} ms (1.5x the refresh interval) per open; " + note,
+				rows=rows,
+				total=int(sum(gaps)),
+				longest_gap_ms=round(max(intervals), 3) if intervals else None,
+			),
+		}, rows
+
+	def palette_rows(self, client: Driver) -> int:
+		"""How many rows the open palette lists. Up wraps the highlight to the last row, which the list then draws."""
+		self.display.tap("Up")
+		client.idle()
+		last: int | None = None
+		for n in range(4096):
+			if client.bounds(f"palette.row:{n}") is not None:
+				last = n
+			elif last is not None:
+				break
+		if last is None:
+			raise RuntimeError("the open palette laid out no row")
+		self.display.tap("Down")
+		client.idle()
+		return last + 1
+
+	def palette_pixels(self, chord: list[str], rect: Rect, rows: int | None) -> dict[str, object]:
+		"""The palette region's changes while the palette opens, grabbed through XShm."""
+		proc, window = self.launch_ready("palette")
+		region: Region | None = None
+		try:
+			self.open_short_thread(window)
+			region = Region(self.display, window, rect)
+			settle(region, 1000, 20)
+			# The first open asks the host for its slash commands; it is not a sample.
+			self.tap_chord(chord)
+			settle(region, 1000, 10, need_change=True)
+			self.display.tap("Escape")
+			settle(region, 1000, 10, need_change=True)
+			refresh_ms = 1000.0 / self.refresh_hz
+			first_ms: list[float] = []
+			last_ms: list[float] = []
+			counts: list[float] = []
+			intervals: list[float] = []
+			gaps: list[float] = []
+			ui = self.ui_pids(proc)
+			main_cpu_ms: list[float] = []
+			all_cpu_ms: list[float] = []
+			region.polls = region.poll_ns = 0
+			for i in range(self.cfg.samples):
+				time.sleep(0.3)
+				settle(region, 300, 5)
+				region.poll()
+				main0, all0 = ui_cpu_ns(ui)
+				t0 = now()
+				self.tap_chord(chord)
+				changes = changes_until_quiet(region, QUIET_MS, 3)
+				main1, all1 = ui_cpu_ns(ui)
+				main_cpu_ms.append((main1 - main0) / 1e6)
+				all_cpu_ms.append((all1 - all0) / 1e6)
+				if changes:
+					first_ms.append((changes[0] - t0) / 1e6)
+					last_ms.append((changes[-1] - t0) / 1e6)
+					counts.append(len(changes))
+					spans = [(b - a) / 1e6 for a, b in zip(changes, changes[1:])]
+					intervals.extend(spans)
+					gaps.append(sum(1 for span in spans if span > 1.5 * refresh_ms))
+				if i == self.cfg.samples - 1:
+					self.shot(window, "palette")
+				self.display.tap("Escape")
+				settle(region, QUIET_MS, 5, need_change=True)
+			poll = region.poll_ms()
+		finally:
+			if region is not None:
+				region.close()
+			proc.stop()
+		listed = f"{rows} rows listed" if rows is not None else "rows listed not read"
+		note = (
+			f"chord {'+'.join(chord)} over an open, settled thread; {listed}; palette region {rect.to_json()}; a frame is "
+			f"a grab that differs from the previous one, read until {QUIET_MS} ms pass without one; output refresh "
+			f"{self.refresh_hz:.2f} Hz; poll period {poll:.2f} ms; {self.cfg.samples - len(first_ms)} opens drew nothing within 3 s"
+		)
+		return {
+			"palette_open_ms": probe(first_ms, "ms", "chord press to the first palette-region change; " + note),
+			"palette_open_settle_ms": probe(last_ms, "ms", "chord press to the last palette-region change; " + note),
+			"palette_open_frames": probe(counts, "frames", "distinct frames per open; " + note),
+			"palette_open_frame_interval_ms": probe(intervals, "ms", "interval between distinct frames; " + note),
+			"palette_open_gaps": probe(
+				gaps,
+				"count",
+				f"distinct-frame intervals over {1.5 * refresh_ms:.2f} ms (1.5x the refresh interval) per open; " + note,
+				total=int(sum(gaps)),
+				longest_gap_ms=round(max(intervals), 3) if intervals else None,
+			),
+			"palette_open_ui_main_cpu_ms": probe(
+				main_cpu_ms,
+				"ms",
+				"CPU time of the UI process's main thread from the chord press to the end of the quiet period; " + note,
+				mean=round(statistics.fmean(main_cpu_ms), 3) if main_cpu_ms else None,
+			),
+			"palette_open_ui_cpu_ms": probe(
+				all_cpu_ms,
+				"ms",
+				"CPU time of every thread of the UI process over the same span; " + note,
+				mean=round(statistics.fmean(all_cpu_ms), 3) if all_cpu_ms else None,
+			),
+		}
+
 
 def markdown(report: dict) -> str:
 	lines = [
@@ -904,7 +1128,7 @@ def main() -> int:
 	parser.add_argument("--out", type=Path, required=True)
 	parser.add_argument("--name")
 	parser.add_argument("--samples", type=int, default=20)
-	parser.add_argument("--probes", default=",".join(PROBES))
+	parser.add_argument("--probes", default=",".join(DEFAULT_PROBES))
 	parser.add_argument("--bun", type=Path)
 	parser.add_argument("--codex", type=Path)
 	parser.add_argument("--node", type=Path)
