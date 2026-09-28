@@ -1,5 +1,5 @@
 //! The thread row menu and the profile switcher menu, and what each pick
-//! sends.
+//! sends. An open thread menu states the gates as they change under it.
 
 use gpui::{Context, Entity, Pixels, Point, Window};
 use veyyon_desktop_model::{
@@ -152,6 +152,26 @@ impl Sidebar {
 				cx.notify();
 			},
 		}
+	}
+
+	/// Restates the open thread menu from the gates as they stand, keeping
+	/// the highlighted row while it is still enabled. A closed menu is built
+	/// again when it opens, so it is left as it is.
+	pub(super) fn restate_row_menu(&mut self, cx: &mut Context<Self>) {
+		let Some(session) = self.menu_session.clone() else {
+			return;
+		};
+		if !self.row_menu.read(cx).is_open(cx) {
+			return;
+		}
+		let (items, picks) = row_menu(self.app.read(cx), &session);
+		self.row_picks = picks;
+		self.row_menu.update(cx, |menu, cx| {
+			let rows = menu.menu().clone();
+			let highlighted = rows.read(cx).highlighted();
+			menu.set_items(items, cx);
+			rows.update(cx, |rows, cx| rows.highlight(highlighted, cx));
+		});
 	}
 
 	pub(super) fn on_row_menu_event(

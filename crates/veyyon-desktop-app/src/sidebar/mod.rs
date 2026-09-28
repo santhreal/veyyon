@@ -174,6 +174,11 @@ impl Sidebar {
 		self.renders
 	}
 
+	/// The thread row menu.
+	pub const fn row_menu(&self) -> &Entity<ContextMenu> {
+		&self.row_menu
+	}
+
 	/// Reads the time from `clock`, in milliseconds since the Unix epoch.
 	pub fn set_clock(&mut self, clock: fn() -> u64, cx: &mut Context<Self>) {
 		self.clock = clock;
@@ -212,12 +217,21 @@ impl Sidebar {
 				self.refreshing = None;
 				cx.notify();
 			},
-			StoreEvent::InteractionsChanged { .. }
-			| StoreEvent::DomainChanged(SnapshotSectionKind::Capabilities) => cx.notify(),
-			StoreEvent::RequestFinished { request, .. } if self.refreshing == Some(*request) => {
-				self.refreshing = None;
+			StoreEvent::InteractionsChanged { .. } => cx.notify(),
+			// A gate the open thread menu states changed: the host declared
+			// its capabilities again, answered a request, or one was queued.
+			StoreEvent::DomainChanged(SnapshotSectionKind::Capabilities) => {
+				self.restate_row_menu(cx);
 				cx.notify();
 			},
+			StoreEvent::RequestFinished { request, .. } => {
+				if self.refreshing == Some(*request) {
+					self.refreshing = None;
+					cx.notify();
+				}
+				self.restate_row_menu(cx);
+			},
+			StoreEvent::OutboxReady => self.restate_row_menu(cx),
 			StoreEvent::DomainChanged(SnapshotSectionKind::Profiles) => {
 				self.rebuild_profile_menu(cx);
 				cx.notify();

@@ -16,6 +16,7 @@
 //! not the file the window writes it to.
 
 mod folds;
+mod menus;
 mod motion;
 mod pointer;
 mod widths;
