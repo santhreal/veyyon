@@ -30,7 +30,11 @@ import { computeDefaultSessionDir } from "@veyyon/kernel/session/session-paths";
 import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
 import type { ToolView, ToolViewContext } from "@veyyon/view";
 import { type GuiHostServer, startGuiHostServer } from "../../src/gui-host";
-import { buildToolCallPresentation, buildToolResultPresentation } from "../../src/gui-host/presentation";
+import {
+	buildToolCallPresentation,
+	buildToolResultPresentation,
+	formatGenericCallView,
+} from "../../src/gui-host/presentation";
 import type { ContentBlock, TranscriptEntry } from "../../src/gui-host/wire";
 import { type RequestFrame, TestSocketClient } from "./test-client";
 
@@ -323,6 +327,12 @@ describe("GUI Host ToolPresentation and Disclosure", () => {
 	});
 
 	test("SetToolViewExpanded toggles disclosure and updates transcript over socket", async () => {
+		// `bash` draws its output capped while collapsed and whole while expanded, so the rebuilt
+		// presentation differs between the two states and the toggle is observable in the view.
+		const args = { command: "echo hi" };
+		const registeredCall = (expanded: boolean) =>
+			buildToolCallPresentation("bash", args, undefined, { expanded, hasResult: true }).view;
+		expect(registeredCall(true)).not.toEqual(registeredCall(false));
 		const sm = SessionManager.create(tempDir, sessionDir, storage);
 		const sessionId = sm.getSessionId();
 
@@ -332,8 +342,8 @@ describe("GUI Host ToolPresentation and Disclosure", () => {
 				{
 					type: "toolCall",
 					id: "call-xyz-123",
-					name: "read",
-					arguments: { path: "src/server.ts" },
+					name: "bash",
+					arguments: args,
 				},
 			],
 			api: "openai-chat",
@@ -347,8 +357,8 @@ describe("GUI Host ToolPresentation and Disclosure", () => {
 		sm.appendMessage({
 			role: "toolResult",
 			toolCallId: "call-xyz-123",
-			toolName: "read",
-			content: [{ type: "text", text: "export const port = 3000;\n" }],
+			toolName: "bash",
+			content: [{ type: "text", text: "hi\n" }],
 			isError: false,
 			timestamp: Date.now(),
 		});
@@ -366,9 +376,9 @@ describe("GUI Host ToolPresentation and Disclosure", () => {
 		const callBlock = toolCallBlocks(assistantEntry)[0];
 		expect(callBlock).toBeDefined();
 		expect(callBlock?.ToolCall.id).toBe("call-xyz-123");
-		expect(callBlock?.ToolCall.arguments).toEqual({ path: "src/server.ts" });
+		expect(callBlock?.ToolCall.arguments).toEqual(args);
 		expect(callBlock?.ToolCall.presentation?.expanded).toBe(false);
-		expect(callBlock?.ToolCall.presentation?.view.kind).toBe("statusRow");
+		expect(callBlock?.ToolCall.presentation?.view).toEqual(registeredCall(false));
 
 		const resultBlock = toolResultBlocks(resultEntry)[0];
 		expect(resultBlock).toBeDefined();
@@ -391,7 +401,7 @@ describe("GUI Host ToolPresentation and Disclosure", () => {
 			for (const block of toolCallBlocks(entry)) {
 				sawExpandedCall = true;
 				expect(block.ToolCall.presentation?.expanded).toBe(true);
-				expect(block.ToolCall.presentation?.view.kind).toBe("framedBlock");
+				expect(block.ToolCall.presentation?.view).toEqual(registeredCall(true));
 			}
 			for (const block of toolResultBlocks(entry)) {
 				expect(block.ToolResult.presentation?.expanded).toBe(true);
@@ -412,7 +422,7 @@ describe("GUI Host ToolPresentation and Disclosure", () => {
 		for (const entry of collapsed) {
 			for (const block of toolCallBlocks(entry)) {
 				expect(block.ToolCall.presentation?.expanded).toBe(false);
-				expect(block.ToolCall.presentation?.view.kind).toBe("statusRow");
+				expect(block.ToolCall.presentation?.view).toEqual(registeredCall(false));
 			}
 		}
 	});
@@ -542,17 +552,29 @@ describe("GUI Host ToolPresentation and Disclosure", () => {
 		const callBlocks = toolCallBlocks(assistantEntry);
 		expect(callBlocks.length).toBe(2);
 		expect(callBlocks.map(block => block.ToolCall.id)).toEqual(["call-res-1", "call-res-2"]);
-		for (const block of callBlocks) {
+		// Each block carries the card the tool's registered view draws, not the generic row.
+		const calls = [
+			{ name: "read", args: { path: "packages/core/src/index.ts" } },
+			{ name: "write", args: { path: "packages/core/src/output.ts", content: "export const x = 1;" } },
+		];
+		callBlocks.forEach((block, index) => {
+			const call = calls[index];
+			if (!call) throw new Error("more call blocks than recorded calls");
 			expect(block.ToolCall.presentation?.expanded).toBe(false);
-			expect(block.ToolCall.presentation?.view.kind).toBe("statusRow");
-		}
+			expect(block.ToolCall.presentation?.view).toEqual(
+				buildToolCallPresentation(call.name, call.args, undefined, { expanded: false, hasResult: true }).view,
+			);
+			expect(block.ToolCall.presentation?.view).not.toEqual(
+				formatGenericCallView(call.name, call.args, { expanded: false, hasResult: true }),
+			);
+		});
 
 		const result1 = toolResultBlocks(firstResultEntry)[0];
 		expect(result1?.ToolResult.tool).toBe("call-res-1");
-		expect(result1?.ToolResult.presentation?.view.kind).toBe("statusRow");
+		expect(result1?.ToolResult.presentation?.view.kind).toBe("framedBlock");
 
 		const result2 = toolResultBlocks(secondResultEntry)[0];
 		expect(result2?.ToolResult.tool).toBe("call-res-2");
-		expect(result2?.ToolResult.presentation?.view.kind).toBe("statusRow");
+		expect(result2?.ToolResult.presentation?.view.kind).toBe("framedBlock");
 	});
 });

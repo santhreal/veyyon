@@ -299,10 +299,12 @@ describe("LoadTranscript socket integration", () => {
 describe("tool result identity and presentation", () => {
 	for (const isError of [false, true]) {
 		test(`retains the call identity and error=${isError} while projecting media separately`, () => {
+			// An extension tool with no view of its own, so the presentation is the generic row and
+			// this case pins identity and media, not any tool's card.
 			const message = {
 				role: "toolResult" as const,
 				toolCallId: "call-two",
-				toolName: "read",
+				toolName: "notes_lookup",
 				content: [
 					{ type: "text" as const, text: "first line" },
 					{ type: "image" as const, mimeType: "image/png", data: "AQID" },
@@ -323,7 +325,7 @@ describe("tool result identity and presentation", () => {
 							view: {
 								kind: "statusRow",
 								status: isError ? "error" : "success",
-								title: "read",
+								title: "notes_lookup",
 								description: "first line",
 							},
 						},
