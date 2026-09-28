@@ -45,7 +45,7 @@ impl View {
 			Self::Thread => open_over(cx, remembering("s1")),
 			Self::Settings | Self::Empty => open(cx),
 		};
-		if let Self::Settings = self {
+		if matches!(self, Self::Settings) {
 			cx.update(|window, cx| {
 				window.dispatch_action(Box::new(act::OpenSettings::default()), cx);
 			});

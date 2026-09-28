@@ -38,14 +38,14 @@ fn left_at_e3() -> Store {
 	store
 }
 
-fn remembered(thread: &mut Thread<'_>) -> Option<TranscriptAnchor> {
+fn remembered(thread: &Thread<'_>) -> Option<TranscriptAnchor> {
 	thread
 		.state
 		.read_with(&*thread.cx, |state, _| state.read_position(&sid()).cloned())
 }
 
 /// The item at the top of the view and the whole pixels past its top.
-fn top(thread: &mut Thread<'_>) -> (usize, u32) {
+fn top(thread: &Thread<'_>) -> (usize, u32) {
 	let top = thread
 		.transcript
 		.read_with(&*thread.cx, |transcript, _| transcript.scroll_top());
@@ -61,14 +61,14 @@ fn a_remembered_position_is_placed_whether_its_entry_is_sent_before_or_after_the
 		let mut thread = thread_over(cx, left_at_e3(), opened(first));
 		if sent_late {
 			assert_eq!(
-				remembered(&mut thread).map(|anchor| anchor.entry_id),
+				remembered(&thread).map(|anchor| anchor.entry_id),
 				Some("e3".to_owned()),
 				"a position whose entry has not arrived is held, not overwritten by the frame drawn \
 				 without it"
 			);
 			thread.apply(vec![snapshot(2, prompts(60))]);
 		}
-		assert_eq!(top(&mut thread), (3, 6), "sent late: {sent_late}");
+		assert_eq!(top(&thread), (3, 6), "sent late: {sent_late}");
 		assert!(thread.drew("prompt 3"), "the entry it names is on screen (sent late: {sent_late})");
 		assert!(!thread.drew("prompt 59"), "the live edge is not (sent late: {sent_late})");
 	}
@@ -79,20 +79,20 @@ fn a_scroll_off_the_live_edge_remembers_the_top_entry_and_a_return_to_it_forgets
 	cx: &mut TestAppContext,
 ) {
 	let mut thread = thread(cx, opened(prompts(60)));
-	assert_eq!(remembered(&mut thread), None, "a view at the live edge remembers no position");
+	assert_eq!(remembered(&thread), None, "a view at the live edge remembers no position");
 
 	thread.wheel(700.0);
-	let (item, offset) = top(&mut thread);
+	let (item, offset) = top(&thread);
 	let ids = thread.ids();
 	assert_eq!(
-		remembered(&mut thread),
+		remembered(&thread),
 		Some(TranscriptAnchor { entry_id: ids[item].clone(), offset_px: offset }),
 		"a scroll back remembers the entry at the top of the view and the pixels past it"
 	);
 
 	thread.wheel(-100_000.0);
 	assert_eq!(
-		remembered(&mut thread),
+		remembered(&thread),
 		None,
 		"a return to the live edge forgets the position, so the session comes back at the edge"
 	);

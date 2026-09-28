@@ -89,7 +89,7 @@ pub fn chain(entries: Vec<(&str, MessageRole, Vec<ContentBlock>)>) -> Vec<Transc
 }
 
 /// The host sending session `s`'s transcript whole, at `revision`.
-pub fn snapshot(revision: u64, entries: Vec<TranscriptEntry>) -> HostEvent {
+pub const fn snapshot(revision: u64, entries: Vec<TranscriptEntry>) -> HostEvent {
 	HostEvent::Snapshot(SnapshotSection::Transcript(Versioned { revision, value: entries }))
 }
 
