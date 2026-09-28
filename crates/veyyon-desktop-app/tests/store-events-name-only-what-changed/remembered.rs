@@ -19,7 +19,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use veyyon_desktop_app::{AppState, StoreEvent};
 use veyyon_desktop_model::{
-	ChangeScope, ComposerStore, DiffMode, PanelsStore, PersistedState, Store,
+	ChangeScope, ComposerStore, DiffMode, PanelsStore, PersistedState, Store, TranscriptAnchor,
 	review::{ReviewAnchor, ReviewSide},
 };
 use veyyon_desktop_ui::theme::Appearance;
@@ -66,6 +66,10 @@ const CHANGES: &[(&str, Change)] = &[
 	}),
 	("update_reviews", |app, cx| {
 		app.update_reviews(cx, |reviews| reviews.create(anchor(), "why this line"));
+	}),
+	("set_read_position", |app, cx| {
+		let anchor = TranscriptAnchor { entry_id: "e2".to_owned(), offset_px: 6 };
+		app.set_read_position(sid("a"), Some(anchor), cx);
 	}),
 ];
 
@@ -128,4 +132,13 @@ fn a_panel_change_with_no_session_displayed_records_nothing_and_schedules_nothin
 		assert_eq!(before, after, "{name}");
 		assert_eq!(seen.take(), Vec::<StoreEvent>::new(), "{name}");
 	}
+}
+
+#[test]
+fn a_read_position_written_again_unchanged_schedules_nothing() {
+	let cx = TestAppContext::single();
+	let (state, seen) = state(&cx, true);
+	let (before, after) = around(&cx, &state, |app, cx| app.set_read_position(sid("a"), None, cx));
+	assert_eq!(before, after, "the live edge was already remembered");
+	assert_eq!(seen.take(), Vec::<StoreEvent>::new(), "an unchanged position schedules no write");
 }

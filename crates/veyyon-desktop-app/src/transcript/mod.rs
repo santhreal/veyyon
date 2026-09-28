@@ -15,6 +15,7 @@ mod blocks;
 mod entry;
 mod hover;
 pub mod plan;
+mod position;
 mod row;
 mod slot;
 pub mod tail;
@@ -28,10 +29,12 @@ use std::{
 };
 
 use gpui::{
-	Context, Entity, FollowMode, ListAlignment, ListState, Render, Subscription, WeakEntity, Window,
-	div, list, prelude::*,
+	Context, Entity, FollowMode, ListAlignment, ListOffset, ListState, Render, Subscription,
+	WeakEntity, Window, div, list, prelude::*,
 };
-use veyyon_desktop_model::{EntryId, HostAction, SessionId, SnapshotSectionKind, SurfaceId};
+use veyyon_desktop_model::{
+	EntryId, HostAction, SessionId, SnapshotSectionKind, SurfaceId, TranscriptAnchor,
+};
 use veyyon_desktop_ui::{
 	markdown::MarkdownDoc,
 	theme::{ActiveTheme, TypeStyled, radius, size, space, text},
@@ -63,6 +66,8 @@ pub struct Transcript {
 	at_end:        bool,
 	/// The first entry the last scroll-back request asked for history before.
 	requested:     Option<EntryId>,
+	/// A remembered read position whose entry is not on the branch yet.
+	pending:       Option<TranscriptAnchor>,
 	/// How many prose blocks have been parsed, and how many entry items drawn.
 	parses:        usize,
 	item_renders:  usize,
@@ -101,6 +106,7 @@ impl Transcript {
 			working: false,
 			at_end: true,
 			requested: None,
+			pending: None,
 			parses: 0,
 			item_renders: 0,
 			_subscription: subscription,
@@ -126,6 +132,12 @@ impl Transcript {
 	#[must_use]
 	pub const fn tail(&self) -> &Entity<StreamingTail> {
 		&self.tail
+	}
+
+	/// The item at the top of the view and how far the view starts past it.
+	#[must_use]
+	pub fn scroll_top(&self) -> ListOffset {
+		self.list.logical_scroll_top()
 	}
 
 	/// How many prose blocks the region has parsed.
@@ -199,9 +211,11 @@ impl Transcript {
 		self.thoughts.clear();
 		self.turns_open.clear();
 		self.requested = None;
+		self.pending = None;
 		self.reset(cx);
 		self.list.set_follow_mode(FollowMode::Tail);
 		self.at_end = true;
+		self.restore_position(cx);
 	}
 
 	fn reset(&mut self, cx: &mut Context<Self>) {
@@ -226,6 +240,7 @@ impl Transcript {
 		self.tail.update(cx, |tail, cx| tail.release(cx));
 		self.sync_tail(cx);
 		cx.notify();
+		self.place_position(cx);
 	}
 
 	fn on_scroll(&mut self, top: bool, at_end: bool, cx: &mut Context<Self>) {
@@ -233,6 +248,12 @@ impl Transcript {
 			self.at_end = at_end;
 			cx.notify();
 		}
+		// The list is borrowed while its scroll handler runs, so the position
+		// is read from it once the handler has returned.
+		let weak = Self::weak(cx);
+		cx.defer(move |cx| {
+			weak.update(cx, |this, cx| this.record_position(at_end, cx)).ok();
+		});
 		if !top {
 			return;
 		}
@@ -261,6 +282,7 @@ impl Transcript {
 		self.list.set_follow_mode(FollowMode::Tail);
 		self.at_end = true;
 		cx.notify();
+		self.record_position(true, cx);
 	}
 
 	/// Opens or closes tool row `call_id` at item `ix` and tells the host, so

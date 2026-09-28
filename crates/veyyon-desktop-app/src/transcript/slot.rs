@@ -48,6 +48,7 @@ impl Transcript {
 			self.list.remeasure_items(spliced.end..touched.end);
 		}
 		cx.notify();
+		self.place_position(cx);
 	}
 
 	/// Brings the tail up to the stream and gives it a slot while it draws

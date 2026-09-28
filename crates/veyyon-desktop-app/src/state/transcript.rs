@@ -1,6 +1,7 @@
 //! What the thread header and the transcript read about the session they show.
 
-use veyyon_desktop_model::{SessionId, SessionMode, StreamingMessageState};
+use veyyon_desktop_model::{SessionId, SessionMode, StreamingMessageState, TranscriptAnchor};
+use veyyon_gpui::Context;
 
 use super::AppState;
 
@@ -33,5 +34,36 @@ impl AppState {
 	/// The mode the host reports `session` running in.
 	pub fn session_mode(&self, session: &SessionId) -> Option<&SessionMode> {
 		self.store.modes.get(session)
+	}
+
+	/// Where the window was reading `session`, `None` at the live edge.
+	pub fn read_position(&self, session: &SessionId) -> Option<&TranscriptAnchor> {
+		self
+			.store
+			.persisted
+			.transcripts
+			.get(session)?
+			.scroll_anchor
+			.as_ref()
+	}
+
+	/// Records where the window is reading `session`, `None` at the live
+	/// edge. An unchanged position writes nothing and schedules nothing.
+	pub fn set_read_position(
+		&mut self,
+		session: SessionId,
+		anchor: Option<TranscriptAnchor>,
+		cx: &mut Context<Self>,
+	) {
+		if self.read_position(&session) == anchor.as_ref() {
+			return;
+		}
+		self.remember(cx, |persisted| {
+			persisted
+				.transcripts
+				.entry(session)
+				.or_default()
+				.scroll_anchor = anchor;
+		});
 	}
 }
