@@ -22,8 +22,9 @@ type SmitheryAuthPayload = {
 	apiKey?: string;
 };
 
-function getSmitheryAuthPath(): string {
-	return path.join(getAgentDir(), SMITHERY_AUTH_FILENAME);
+/** The Smithery key file of the profile whose agent dir is `agentDir`. */
+function getSmitheryAuthPath(agentDir: string): string {
+	return path.join(agentDir, SMITHERY_AUTH_FILENAME);
 }
 
 function normalizeApiKey(value: string | undefined): string | undefined {
@@ -69,11 +70,11 @@ export async function pollSmitheryCliAuthSession(
 	return (await response.json()) as SmitheryCliPollResponse;
 }
 
-export async function getSmitheryApiKey(): Promise<string | undefined> {
+export async function getSmitheryApiKey(agentDir: string = getAgentDir()): Promise<string | undefined> {
 	const envKey = normalizeApiKey(process.env.SMITHERY_API_KEY);
 	if (envKey) return envKey;
 
-	const authPath = getSmitheryAuthPath();
+	const authPath = getSmitheryAuthPath(agentDir);
 	try {
 		const payload = (await Bun.file(authPath).json()) as SmitheryAuthPayload;
 		return normalizeApiKey(payload.apiKey);
@@ -84,7 +85,7 @@ export async function getSmitheryApiKey(): Promise<string | undefined> {
 	}
 }
 
-export async function saveSmitheryApiKey(apiKey: string): Promise<void> {
+export async function saveSmitheryApiKey(apiKey: string, agentDir: string = getAgentDir()): Promise<void> {
 	const normalized = normalizeApiKey(apiKey);
 	if (!normalized) {
 		throw new Error(
@@ -92,7 +93,7 @@ export async function saveSmitheryApiKey(apiKey: string): Promise<void> {
 		);
 	}
 
-	const authPath = getSmitheryAuthPath();
+	const authPath = getSmitheryAuthPath(agentDir);
 	const payload: SmitheryAuthPayload = { apiKey: normalized };
 	await Bun.write(authPath, `${JSON.stringify(payload, null, 2)}\n`);
 	try {
@@ -102,8 +103,8 @@ export async function saveSmitheryApiKey(apiKey: string): Promise<void> {
 	}
 }
 
-export async function clearSmitheryApiKey(): Promise<boolean> {
-	const authPath = getSmitheryAuthPath();
+export async function clearSmitheryApiKey(agentDir: string = getAgentDir()): Promise<boolean> {
+	const authPath = getSmitheryAuthPath(agentDir);
 	try {
 		await fs.rm(authPath);
 		return true;
