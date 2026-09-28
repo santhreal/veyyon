@@ -381,8 +381,10 @@ export function classifyChallenge(signals: PageSignals): Challenge | undefined {
 const PROBE_SELECTORS = [...new Set(CHALLENGE_RULES.flatMap(rule => rule.anyOf.flatMap(m => m.selectors ?? [])))];
 
 /**
- * Reads {@link PageSignals} in the page's main world, apart from puppeteer's frame list. A string, so the
- * worker and the cmux backend both run it through `tab.evaluate`.
+ * Reads {@link PageSignals} from the page's DOM, apart from puppeteer's frame list. A string, so the
+ * worker and the cmux backend both run it. It calls only DOM methods and getters, which a page can
+ * replace in its own world and watch: the worker runs it in puppeteer's isolated world, where the
+ * page's replacements are not seen and see nothing.
  */
 const PAGE_PROBE_EXPRESSION = `(() => {
 	const selectors = ${JSON.stringify(PROBE_SELECTORS)};
@@ -444,17 +446,20 @@ export const PROBE_READ_MS = 3_000;
 
 /**
  * The run code that reads a tab's {@link PageSignals}, or null when the page does not answer in
- * {@link PROBE_READ_MS} (a navigation in flight, a busy page, an open dialog). `page.frames()` lists
- * every frame puppeteer tracks; the cmux backend has no frame list and reads the top document's alone.
+ * {@link PROBE_READ_MS} (a navigation in flight, a busy page, an open dialog). `page.evaluate` runs in
+ * puppeteer's isolated world on the worker backend; the cmux backend has no `page`, no isolated world
+ * and no frame list, and reads the top document's alone through `tab.evaluate`.
  */
-export const PROBE_RUN_CODE = `const read = await Promise.race([
-	tab.evaluate(${JSON.stringify(PAGE_PROBE_EXPRESSION)}).catch(() => null),
+export const PROBE_RUN_CODE = `const puppeteerPage = typeof page !== "undefined" && page && typeof page.evaluate === "function" ? page : null;
+const expression = ${JSON.stringify(PAGE_PROBE_EXPRESSION)};
+const read = await Promise.race([
+	(puppeteerPage ? puppeteerPage.evaluate(expression) : tab.evaluate(expression)).catch(() => null),
 	wait(${PROBE_READ_MS}).then(() => null),
 ]);
 if (!read || typeof read !== "object") return null;
 let frames = [];
 try {
-	const list = typeof page !== "undefined" && page && typeof page.frames === "function" ? page.frames() : [];
+	const list = puppeteerPage && typeof puppeteerPage.frames === "function" ? puppeteerPage.frames() : [];
 	if (Array.isArray(list)) frames = list.map(frame => frame.url());
 } catch {}
 return { ...read, frames: [...frames, ...read.frames] };`;

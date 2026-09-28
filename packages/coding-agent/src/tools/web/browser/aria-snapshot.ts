@@ -19,11 +19,11 @@ export interface AriaSnapshotOptions {
  * page CSP never applies. They run the generated Playwright ARIA-snapshot bundle
  * (CJS, see scripts/generate-aria-snapshot.ts) in a throwaway module scope.
  *
- * Puppeteer serializes these functions to a CDP `Runtime.evaluate` in the page's
- * MAIN world (the only world where the bundle's `_ariaRef` ref expandos live —
- * isolated-world locators/query-handlers cannot see them). Nothing is installed
- * on `window`; the only footprint is the `_ariaRef` markers the snapshot writes,
- * which are the price of actionable `[ref=eN]` ids.
+ * `frame.evaluate` runs them in puppeteer's isolated world (the pinned puppeteer patch
+ * sends every evaluation there unless its function opts into the main world), so a
+ * page that replaces DOM methods in its own world neither sees the snapshot's calls
+ * nor changes what they return. The `_ariaRef` markers the snapshot writes are that
+ * world's expandos, which only {@link resolveAriaRefHandle}, running there too, reads.
  */
 function buildEvaluator(params: string, call: string): (...args: unknown[]) => unknown {
 	return new Function(
@@ -273,7 +273,7 @@ const FRAME_REF = /^(f\d+)e\d+$/;
  * Resolve a `[ref=eN]` id from the latest snapshot to a live `ElementHandle`, or
  * null when the ref no longer matches any element. A frame ref (`f1e3`) resolves in
  * the frame `frames` names for its prefix, and to null once that frame is gone.
- * Runs in the main world so it sees the `_ariaRef` expandos the snapshot wrote.
+ * Runs in the isolated world, where the snapshot wrote its `_ariaRef` expandos.
  */
 export async function resolveAriaRefHandle(
 	page: Page,

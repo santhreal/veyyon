@@ -2,10 +2,11 @@
  * `browser.naturalInput` latency bench.
  *
  * Natural input paces the browser tool's clicks, typing and fills the way a person's are paced, and
- * every model action on a page pays for it. This bench times `tab.click`, `tab.type` and `tab.fill`
- * in real headless Chromium, inside the tab worker so the number is the action and not the tool call
- * around it, with the setting off and on in one tab of one browser, and counts an action correct only
- * when the page shows its effect: the pressed button's count, the field's exact value.
+ * every model action on a page pays for it. This bench times `tab.click`, `tab.type`, `tab.fill` on a
+ * text field, a date input and a range, and `tab.select` on a drop-down, in real headless Chromium,
+ * inside the tab worker so the number is the action and not the tool call around it, with the setting
+ * off and on in one tab of one browser, and counts an action correct only when the page shows its
+ * effect: the pressed button's count, the field's exact value, the selected option.
  *
  * Apart from the flag parser in `engine/plan/flag-grammar`, it imports only the browser tool's public
  * API and its settings. The off arm is the instant input that preceded the setting, so the two arms of
@@ -33,10 +34,14 @@ export const NATURAL_INPUT_BENCH_FLAGS = {
 
 const USAGE = "usage: bun benches/natural-input.ts [--label <name>] [--json <out.json>] [--rounds <n, default 15>]\n";
 
-/** Two buttons across the viewport that count their presses, and a field. */
+const COUNTRIES = ["Argentina", "Australia", "Austria", "Belgium", "Brazil", "Canada", "Chile", "Denmark", "Finland", "France", "Germany", "Greece", "India", "Ireland", "Italy", "Japan", "Mexico", "Norway", "Peru", "Poland", "Portugal", "Spain", "Sweden"];
+
+/** Two buttons across the viewport that count their presses, a field, a drop-down, a date and a range. */
 const PAGE = `<!doctype html><title>natural input bench</title>
-<style>body{margin:0}button,input{position:absolute;margin:0}#a{left:40px;top:40px;width:120px;height:40px}#b{left:900px;top:560px;width:120px;height:40px}#field{left:300px;top:240px;width:320px}</style>
+<style>body{margin:0}button,input,select{position:absolute;margin:0}#a{left:40px;top:40px;width:120px;height:40px}#b{left:900px;top:560px;width:120px;height:40px}#field{left:300px;top:240px;width:320px}#country{left:300px;top:300px}#day{left:300px;top:360px}#level{left:300px;top:420px}</style>
 <button id="a" onclick="presses.a++">A</button><button id="b" onclick="presses.b++">B</button><input id="field">
+<select id="country">${COUNTRIES.map(name => `<option>${name}</option>`).join("")}</select>
+<input type="date" id="day"><input type="range" id="level">
 <script>window.presses = { a: 0, b: 0 };</script>`;
 
 /** What each timed action does, as run code: `i` is the round. */
@@ -60,6 +65,21 @@ const ACTIONS = {
 		setup: 'await tab.evaluate(() => { document.getElementById("field").value = "old"; });',
 		act: `await tab.fill("#field", ${JSON.stringify("abcdefghij klmnopqrstuvwxyz0123456789".repeat(7).slice(0, 256))});`,
 		check: `ok = (await tab.evaluate(() => document.getElementById("field").value)) === ${JSON.stringify("abcdefghij klmnopqrstuvwxyz0123456789".repeat(7).slice(0, 256))};`,
+	},
+	select: {
+		setup: "",
+		act: 'await tab.select("#country", i % 2 ? "Norway" : "Brazil");',
+		check: 'ok = (await tab.evaluate(() => document.getElementById("country").value)) === (i % 2 ? "Norway" : "Brazil");',
+	},
+	"fill-date": {
+		setup: "",
+		act: 'await tab.fill("#day", i % 2 ? "1999-12-31" : "2026-09-26");',
+		check: 'ok = (await tab.evaluate(() => document.getElementById("day").value)) === (i % 2 ? "1999-12-31" : "2026-09-26");',
+	},
+	"fill-range": {
+		setup: "",
+		act: 'await tab.fill("#level", i % 2 ? "73" : "20");',
+		check: 'ok = (await tab.evaluate(() => document.getElementById("level").value)) === (i % 2 ? "73" : "20");',
 	},
 } as const;
 

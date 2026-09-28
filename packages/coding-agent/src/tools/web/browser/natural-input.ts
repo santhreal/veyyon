@@ -13,7 +13,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { clampLow, untilAborted } from "@veyyon/utils";
 import { bestEffort } from "@veyyon/utils/discarded-fault";
-import type { ElementHandle, MouseButton, Page } from "puppeteer-core";
+import type { ElementHandle, KeyInput, MouseButton, Page } from "puppeteer-core";
 
 /** A point in the page's top-level viewport, in CSS pixels. */
 export interface ViewportPoint {
@@ -456,10 +456,17 @@ export class NaturalInput {
 
 	/**
 	 * Type `text` into whatever holds focus, a key at a time, within `withinMs` ({@link planKeystrokes}).
-	 * Shift, once down for a character, is always released.
+	 * Shift, once down for a character, is always released. `send` presses one character's key and holds
+	 * it `holdMs`; puppeteer's layout by default, whose keys outside it insert text without a `keypress`.
 	 */
-	async type(text: string, withinMs: number, signal?: AbortSignal): Promise<void> {
+	async type(
+		text: string,
+		withinMs: number,
+		signal?: AbortSignal,
+		send?: (char: string, holdMs: number) => Promise<void>,
+	): Promise<void> {
 		const keyboard = this.#page.keyboard;
+		const press = send ?? ((char: string, holdMs: number) => keyboard.type(char, { delay: holdMs }));
 		for (const stroke of planKeystrokes(text, withinMs, this.#random)) {
 			await delay(0, undefined, { signal });
 			if (stroke.shift) {
@@ -467,13 +474,27 @@ export class NaturalInput {
 				await delay(stroke.shiftLeadMs);
 			}
 			try {
-				await keyboard.type(stroke.char, { delay: stroke.holdMs });
+				await press(stroke.char, stroke.holdMs);
 			} finally {
 				if (stroke.shift) {
 					await bestEffort(keyboard.up("Shift"), "puppeteer clears Shift from its own state before it sends");
 				}
 			}
 			if (stroke.gapMs > 0) await delay(stroke.gapMs, undefined, { signal });
+		}
+	}
+
+	/**
+	 * Press each of `keys` (Home, PageUp, Backspace …) in turn at a person's pace, within `withinMs`: held
+	 * and spaced as {@link planKeystrokes} holds and spaces a typed character.
+	 */
+	async pressKeys(keys: readonly KeyInput[], withinMs: number, signal?: AbortSignal): Promise<void> {
+		const keyboard = this.#page.keyboard;
+		const pace = planKeystrokes("k".repeat(keys.length), withinMs, this.#random);
+		for (let index = 0; index < keys.length; index++) {
+			await delay(0, undefined, { signal });
+			await keyboard.press(keys[index]!, { delay: pace[index]!.holdMs });
+			if (pace[index]!.gapMs > 0) await delay(pace[index]!.gapMs, undefined, { signal });
 		}
 	}
 

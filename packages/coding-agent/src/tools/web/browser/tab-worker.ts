@@ -38,6 +38,7 @@ import {
 } from "./aria-snapshot";
 import { type ChainedHandle, chainHandle } from "./chained-handle";
 import { PortTransport } from "./connection-relay";
+import { type CdpNode, collectDateFields, planDateKeys } from "./field-keys";
 import { releaseHandle, releaseHandles } from "./handle-release";
 import { hasTextSelector } from "./has-text";
 import {
@@ -57,6 +58,7 @@ import {
 	waitForBrowserRun,
 } from "./run-cancellation";
 import { cloneSafe, RunOutput } from "./run-output";
+import { planSelect, readSelectState, type SelectPlan, type SelectState, settleSelection } from "./select-keys";
 import {
 	applyStorageState,
 	captureStorageState,
@@ -540,7 +542,14 @@ function toActionableHandle(handle: ElementHandle, actions: HandleActions): Acti
 /** What `fill` does with an element, decided in the page. */
 type FillPlan =
 	| { readonly kind: "insert" }
-	| { readonly kind: "set" }
+	/** The input holds the value already: a person changes nothing. */
+	| { readonly kind: "held" }
+	/** A date or time input, whose editor's fields take `value`'s parts ({@link planDateKeys}). */
+	| { readonly kind: "fields"; readonly type: string; readonly value: string }
+	/** A range, which these keys move to `value`. */
+	| { readonly kind: "keys"; readonly keys: readonly KeyInput[]; readonly value: string }
+	/** An input no key reaches `value` on (a colour, a range too far for keys); the script sets it. */
+	| { readonly kind: "script"; readonly value: string }
 	| { readonly kind: "refuse"; readonly reason: string };
 
 /** An element as `activeElement` returns it: what took focus in a document or shadow root. */
@@ -555,9 +564,13 @@ interface FillTarget extends FocusHolder {
 	readonly type?: string;
 	readonly disabled?: boolean;
 	readonly readOnly?: boolean;
+	readonly min?: string;
+	readonly max?: string;
+	readonly step?: string;
 	value?: string;
 	focus(): void;
 	select?(): void;
+	cloneNode(deep: boolean): FillTarget;
 	dispatchEvent(event: unknown): boolean;
 	/** The document or shadow root the element is in. */
 	getRootNode(): { readonly activeElement: FocusHolder | null };
@@ -565,6 +578,7 @@ interface FillTarget extends FocusHolder {
 		createRange(): { selectNodeContents(node: unknown): void };
 		readonly defaultView: {
 			getSelection(): { removeAllRanges(): void; addRange(range: unknown): void } | null;
+			getComputedStyle(element: unknown): { readonly writingMode: string };
 			readonly Event: new (type: string, init?: { bubbles?: boolean; composed?: boolean }) => unknown;
 		} | null;
 	};
@@ -572,15 +586,14 @@ interface FillTarget extends FocusHolder {
 
 /**
  * Decide in the page how to fill `element` with `value`, and do the part that happens there. A text
- * field has its contents selected so the insertion, or the first typed key, replaces them; an input
- * whose value is a date, time, colour or number range is assigned it with the `input` and `change` a
- * user's edit fires, and keeps its value when it cannot hold the new one; anything else is refused
- * with what to use instead.
+ * field has its contents selected so the insertion, or the first typed key, replaces them. An input
+ * whose value is a date, time, colour or number range is assigned `value` and given its old value back,
+ * which fires no event, to learn the form it holds `value` in; one it cannot hold is refused. A range's
+ * keys are planned here. Anything else is refused with what to use instead.
  * Serialized into the page, so it reaches nothing outside itself.
  *
  * It runs in puppeteer's isolated world, as every element handle's evaluation does, where a property
- * a framework defines on the element in the page's own world (React's value tracker) is not visible:
- * the assignment reaches the native setter, and the framework counts the events as a change.
+ * a framework defines on the element in the page's own world (React's value tracker) is not visible.
  */
 function planFill(element: unknown, value: string): FillPlan {
 	const el = element as FillTarget;
@@ -605,29 +618,71 @@ function planFill(element: unknown, value: string): FillPlan {
 		if (el.disabled) return refuse("the <input> is disabled");
 		if (el.readOnly) return refuse("the <input> is read-only");
 		if (["color", "date", "datetime-local", "month", "range", "time", "week"].includes(type)) {
-			const view = el.ownerDocument.defaultView;
-			el.focus();
-			const previous = el.value;
+			const previous = el.value ?? "";
 			el.value = value;
 			// An input keeps a value it holds in its own form: a colour in lower case, a local date and time
 			// without zero seconds, a range as the number it is. One it cannot hold is replaced: a colour by
 			// black, a range by its nearest step or bound, a date or a time by nothing.
 			const now = el.value ?? "";
+			el.value = previous;
 			const held =
 				type === "color"
 					? now === value.toLowerCase()
 					: type === "range"
 						? value.trim() !== "" && Number(now) === Number(value)
 						: now !== "" || value === "";
-			if (!held) {
-				el.value = previous;
-				return refuse(`${JSON.stringify(value)} is not a value an <input type="${type}"> holds`);
+			if (!held) return refuse(`${JSON.stringify(value)} is not a value an <input type="${type}"> holds`);
+			if (now === previous) return { kind: "held" };
+			if (type === "color") return { kind: "script", value: now };
+			if (type !== "range") return { kind: "fields", type, value: now };
+			// The keys Chromium's range takes (`RangeInputType::HandleKeydownEvent`): Home and End go to the
+			// ends, PageUp and PageDown move a tenth of the range, and the arrows a step, each clamped and
+			// aligned as an assigned value is, which a detached copy of the input computes. ArrowUp steps up
+			// in a horizontal slider only.
+			const probe = el.cloneNode(false);
+			const settle = (candidate: number): string => {
+				probe.value = String(candidate);
+				return probe.value ?? "";
+			};
+			const number = (text: string | undefined, fallback: number): number => {
+				const parsed = Number(text);
+				return text !== undefined && text.trim() !== "" && Number.isFinite(parsed) ? parsed : fallback;
+			};
+			const minimum = number(el.min, 0);
+			const maximum = Math.max(number(el.max, 100), minimum);
+			const stepText = (el.step ?? "").trim().toLowerCase();
+			const stepNumber = number(el.step, 1);
+			const step = stepText === "any" ? (maximum - minimum) / 100 : stepNumber > 0 ? stepNumber : 1;
+			const bigStep = Math.max((maximum - minimum) / 10, step);
+			const horizontal = el.ownerDocument.defaultView?.getComputedStyle(el).writingMode === "horizontal-tb";
+			const moves: Array<[KeyInput, (from: string) => string]> = [
+				["Home", () => settle(minimum)],
+				["End", () => settle(maximum)],
+				["PageUp", from => settle(Number(from) + bigStep)],
+				["PageDown", from => settle(Number(from) - bigStep)],
+			];
+			if (horizontal) {
+				moves.push(
+					["ArrowUp", from => settle(Number(from) + step)],
+					["ArrowDown", from => settle(Number(from) - step)],
+				);
 			}
-			if (view) {
-				el.dispatchEvent(new view.Event("input", { bubbles: true, composed: true }));
-				el.dispatchEvent(new view.Event("change", { bubbles: true }));
+			const paths = new Map<string, KeyInput[]>([[previous, []]]);
+			const queue = [previous];
+			while (queue.length > 0 && paths.size < 4_000) {
+				const from = queue.shift()!;
+				const path = paths.get(from)!;
+				if (path.length >= 40) continue;
+				for (const [key, move] of moves) {
+					const to = move(from);
+					if (paths.has(to)) continue;
+					const next = [...path, key];
+					if (to === now) return { kind: "keys", keys: next, value: now };
+					paths.set(to, next);
+					queue.push(to);
+				}
 			}
-			return { kind: "set" };
+			return { kind: "script", value: now };
 		}
 		return selectAll();
 	}
@@ -664,6 +719,10 @@ interface FillTyping {
  * holds for the value, as a person types a short one; otherwise in one text insertion, the one a paste
  * makes, which costs one round trip at any length. React, Vue and every other framework that listens
  * for `input` sees a real edit either way. `change` fires when focus leaves, as it does for a person.
+ *
+ * A date or time input is pressed and typed field by field, and a range moved with keys, so its
+ * `input` and `change` are the browser's own. What they leave short of the value, and a colour, which
+ * no key sets, is assigned in the page with the two events dispatched.
  */
 async function fillViaHandle(
 	handle: ElementHandle,
@@ -673,14 +732,111 @@ async function fillViaHandle(
 ): Promise<void> {
 	const plan = await untilAborted(signal, () => handle.evaluate(planFill, value));
 	if (plan.kind === "refuse") throw new ToolError(`fill: ${plan.reason}`);
-	if (plan.kind === "set") return;
-	// The first key replaces the selection, as it does when a person types over selected text.
-	if (typing && fillTypesKeyByKey(value, typing.withinMs)) {
-		await typing.input.type(value, typing.withinMs, signal);
+	if (plan.kind === "held") return;
+	if (plan.kind === "insert") {
+		// The first key replaces the selection, as it does when a person types over selected text.
+		if (typing && fillTypesKeyByKey(value, typing.withinMs)) {
+			await typing.input.type(value, typing.withinMs, signal);
+			return;
+		}
+		// An empty insertion deletes the selection, so clearing a field is the same one edit.
+		await untilAborted(signal, () => handle.frame.page().keyboard.sendCharacter(value));
 		return;
 	}
-	// An empty insertion deletes the selection, so clearing a field is the same one edit.
-	await untilAborted(signal, () => handle.frame.page().keyboard.sendCharacter(value));
+	if (plan.kind === "fields") await typeDateFields(handle, plan.type, plan.value, signal, typing);
+	if (plan.kind === "keys") {
+		const keyboard = handle.frame.page().keyboard;
+		await untilAborted(signal, () => handle.focus());
+		if (typing) await typing.input.pressKeys(plan.keys, typing.withinMs, signal);
+		else for (const key of plan.keys) await untilAborted(signal, () => keyboard.press(key));
+	}
+	await untilAborted(signal, () => handle.evaluate(settleFieldValue, plan.value));
+}
+
+/**
+ * Leave `value` in an input whose keys may have left it short: assign it and dispatch `input` and
+ * `change` when the input holds another value. Serialized into the page.
+ */
+function settleFieldValue(element: unknown, value: string): boolean {
+	const el = element as FillTarget;
+	if (el.value === value) return false;
+	el.focus();
+	el.value = value;
+	const view = el.ownerDocument.defaultView;
+	if (view) {
+		el.dispatchEvent(new view.Event("input", { bubbles: true, composed: true }));
+		el.dispatchEvent(new view.Event("change", { bubbles: true }));
+	}
+	return true;
+}
+
+/**
+ * Press each field of a date or time input's editor and type its part of `value` ({@link planDateKeys}),
+ * or clear it with Backspace for an empty value. The fields are read from the user-agent shadow tree
+ * over the handle's own session, which holds its object id; their boxes are placed on the page by the
+ * input's own box, which puppeteer places across frames.
+ */
+async function typeDateFields(
+	handle: ElementHandle,
+	type: string,
+	value: string,
+	signal: AbortSignal | undefined,
+	typing: FillTyping | null,
+): Promise<void> {
+	const client = (handle as unknown as { client?: CDPSession }).client;
+	const objectId = handle.remoteObject().objectId;
+	if (!client || !objectId) return;
+	const described = (await untilAborted(signal, () =>
+		client.send("DOM.describeNode", { objectId, depth: -1, pierce: true }),
+	)) as { node: CdpNode };
+	const fields = collectDateFields(described.node);
+	const keys = planDateKeys(type, value, fields);
+	if (!keys) return;
+	const page = handle.frame.page();
+	const input = typing?.input ?? null;
+	if (!(await untilAborted(signal, () => handle.isIntersectingViewport({ threshold: 1 })))) {
+		if (!(input && (await input.scrollIntoView(handle, signal)))) {
+			await untilAborted(signal, () => handle.scrollIntoView());
+		}
+	}
+	const box = await untilAborted(signal, () => handle.boundingBox());
+	const model = (await untilAborted(signal, () => client.send("DOM.getBoxModel", { objectId }))) as {
+		model: { border: number[] };
+	};
+	if (!box) return;
+	const offsetX = box.x - (model.model.border[0] ?? 0);
+	const offsetY = box.y - (model.model.border[1] ?? 0);
+	const withinMs = typing ? typing.withinMs / fields.length : 0;
+	for (let index = 0; index < fields.length; index++) {
+		const found = (await untilAborted(signal, () =>
+			client.send("DOM.getContentQuads", { backendNodeId: fields[index]!.backendNodeId }),
+		)) as { quads: number[][] };
+		const quad = found.quads[0];
+		if (!quad) return;
+		const xs = [quad[0]!, quad[2]!, quad[4]!, quad[6]!];
+		const ys = [quad[1]!, quad[3]!, quad[5]!, quad[7]!];
+		const extent = { width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) };
+		const point = {
+			x: offsetX + Math.min(...xs) + extent.width / 2,
+			y: offsetY + Math.min(...ys) + extent.height / 2,
+		};
+		if (input) {
+			await input.moveTo(point, extent, signal);
+			await input.dwell(signal);
+			await input.click({}, signal);
+		} else {
+			await untilAborted(signal, () => page.mouse.click(point.x, point.y));
+		}
+		const text = keys[index]!;
+		if (text === "") {
+			if (input) await input.pressKeys(["Backspace"], withinMs, signal);
+			else await untilAborted(signal, () => page.keyboard.press("Backspace"));
+		} else if (input) {
+			await input.type(text, withinMs, signal);
+		} else {
+			await untilAborted(signal, () => page.keyboard.type(text));
+		}
+	}
 }
 
 /**
@@ -735,7 +891,9 @@ async function collectObservationEntries(
 	options: { viewportOnly: boolean; includeAll: boolean },
 ): Promise<void> {
 	if (options.includeAll || isInteractiveNode(node)) {
-		const handle = await node.elementHandle();
+		// A node of a popup the page opened (a date or colour picker) belongs to no document of the page:
+		// its element resolves to nothing, puppeteer's lookup throws, and it cannot be acted on by id.
+		const handle = await optionalResult(node.elementHandle(), "a node in a picker popup has no element in the page");
 		if (handle) {
 			let inViewport = true;
 			if (options.viewportOnly) {
@@ -1116,6 +1274,9 @@ class DetachedPressTarget extends ToolError {}
  */
 const PRESS_REPORT_MARGIN_MS = 500;
 
+/** How long a `<select>` joins typed keys into one type-ahead search (`kTypeAheadTimeout`), and a margin. */
+const TYPE_AHEAD_SESSION_MS = 1_100;
+
 /** How long `tab.uploadFile` waits, after pressing a control, for the file chooser it opens. */
 const CHOOSER_WAIT_MS = 2_000;
 
@@ -1459,6 +1620,8 @@ export class WorkerCore {
 	#uninstallRejectionGuard: () => void;
 	/** The page's natural input, which follows the page's pointer from the moment the page opens. */
 	#naturalInput?: NaturalInput;
+	/** When `tab.select` last typed type-ahead keys on the page, whose session the next select waits out. */
+	#typeAheadAt = 0;
 	/**
 	 * What a handle's actions reach of the run in progress on this tab. A handle outlives the run that
 	 * made it, so an action belongs to the run it is called in and ends with that run; one called when no
@@ -2367,7 +2530,10 @@ export class WorkerCore {
 				op(
 					`tab.select(${JSON.stringify(selector)})`,
 					actionOpMs,
-					(sig, target = selector) => this.#select(target, values, actionOpMs, sig),
+					(sig, target = selector) => {
+						const started = Date.now();
+						return this.#select(target, values, actionOpMs, sig, active.input, () => typingWithin(started));
+					},
 					{ selector, zeroMatchAfterMs: ZERO_MATCH_FAIL_FAST_MS },
 				),
 			uploadFile: (selector, ...filePaths) =>
@@ -2645,39 +2811,120 @@ export class WorkerCore {
 		}
 	}
 
-	async #select(selector: string, values: string[], timeoutMs: number, signal: AbortSignal): Promise<string[]> {
+	/**
+	 * Select `values` in a `<select>` by type-ahead, then by a modified click for each further option of
+	 * a multiple select ({@link planSelect}), so the page gets the trusted events a person's input sends.
+	 * A state no key or click reaches is set by script, with the events dispatched, as before.
+	 */
+	async #select(
+		selector: string,
+		values: string[],
+		timeoutMs: number,
+		signal: AbortSignal,
+		input: NaturalInput | null,
+		typingMs: () => number,
+	): Promise<string[]> {
 		const handle = await this.#resolveActionHandle(selector, timeoutMs, signal);
 		try {
-			return (await untilAborted(signal, () =>
-				handle.evaluate((el, vals) => {
-					interface SelectOption {
-						value: string;
-						selected: boolean;
-					}
-					interface SelectLike {
-						tagName: string;
-						options: ArrayLike<SelectOption>;
-						dispatchEvent: (event: unknown) => boolean;
-					}
-					const select = el as unknown as SelectLike;
-					if (select?.tagName !== "SELECT") throw new Error("tab.select() requires a <select> element");
-					const EventCtor = (
-						globalThis as unknown as { Event: new (type: string, init?: { bubbles: boolean }) => unknown }
-					).Event;
-					const wanted = new Set(vals as string[]);
-					const selected: string[] = [];
-					for (let i = 0; i < select.options.length; i++) {
-						const opt = select.options[i] as SelectOption;
-						opt.selected = wanted.has(opt.value);
-						if (opt.selected) selected.push(opt.value);
-					}
-					select.dispatchEvent(new EventCtor("input", { bubbles: true }));
-					select.dispatchEvent(new EventCtor("change", { bubbles: true }));
-					return selected;
-				}, values),
-			)) as string[];
+			const state = (await untilAborted(signal, () => handle.evaluate(readSelectState))) as SelectState;
+			if (!state.isSelect) throw new ToolError("tab.select() requires a <select> element");
+			const plan = planSelect(state, values);
+			if (plan.kind === "input")
+				await this.#selectByInput(handle, state, plan, input, typingMs(), timeoutMs, signal);
+			const settled = (await untilAborted(signal, () => handle.evaluate(settleSelection, values))) as {
+				selected: string[];
+				scripted: boolean;
+			};
+			if (settled.scripted) {
+				this.#log("debug", "tab.select() set the selection by script", {
+					reason: plan.kind === "script" ? plan.reason : "the keys and clicks left another selection",
+				});
+			}
+			return settled.selected;
 		} finally {
 			await releaseHandle(handle);
+		}
+	}
+
+	async #selectByInput(
+		handle: ElementHandle,
+		state: SelectState,
+		plan: Extract<SelectPlan, { kind: "input" }>,
+		input: NaturalInput | null,
+		typingMs: number,
+		timeoutMs: number,
+		signal: AbortSignal,
+	): Promise<void> {
+		const page = this.#requirePage();
+		// Keys reach an open drop-down's popup, where they move a highlight; Escape closes it unchanged.
+		if (state.open) await untilAborted(signal, () => page.keyboard.press("Escape"));
+		// A session the select keeps from keys typed a moment ago would join these keys to those. Natural
+		// input waits it out, at a person's pace; instant input ends it with a blur, which resets it.
+		const since = Date.now() - this.#typeAheadAt;
+		if (state.focused && since < TYPE_AHEAD_SESSION_MS) {
+			if (input) await delay(TYPE_AHEAD_SESSION_MS - since, undefined, { signal });
+			else await untilAborted(signal, () => handle.evaluate(el => (el as unknown as { blur(): void }).blur()));
+		}
+		await untilAborted(signal, () => handle.focus());
+		await this.#typeKeys(plan.keys, input, typingMs, signal);
+		this.#typeAheadAt = Date.now();
+		for (const index of plan.extra) {
+			const found = await untilAborted(signal, () =>
+				handle.evaluateHandle(
+					(el, at) => (el as unknown as { options: ArrayLike<unknown> }).options[at as number],
+					index,
+				),
+			);
+			const option = found.asElement() as ElementHandle | null;
+			if (!option) {
+				await releaseHandle(found);
+				continue;
+			}
+			try {
+				await untilAborted(signal, () => page.keyboard.down(plan.modifier));
+				try {
+					await pressUncovered(
+						option,
+						"tab.select()",
+						() => option.click(),
+						Math.max(1, timeoutMs - PRESS_REPORT_MARGIN_MS),
+						{ signal, gesture: { kind: "click" }, input },
+					);
+				} finally {
+					await bestEffort(
+						page.keyboard.up(plan.modifier),
+						"puppeteer clears a modifier from its own state before it sends",
+					);
+				}
+			} finally {
+				await releaseHandle(option);
+			}
+		}
+	}
+
+	/**
+	 * Type `text` at the focused element as keys that each send a `keypress`, which type-ahead reads: a
+	 * character of puppeteer's layout through its keyboard, any other through `Input.dispatchKeyEvent`,
+	 * as puppeteer inserts such a character as text without one.
+	 */
+	async #typeKeys(text: string, input: NaturalInput | null, withinMs: number, signal: AbortSignal): Promise<void> {
+		const page = this.#requirePage();
+		let session: CDPSession | undefined;
+		const send = async (char: string, holdMs: number): Promise<void> => {
+			if (char >= " " && char <= "~") {
+				await page.keyboard.type(char, { delay: holdMs });
+				return;
+			}
+			session ??= await page.createCDPSession();
+			await session.send("Input.dispatchKeyEvent", { type: "keyDown", key: char, text: char, unmodifiedText: char });
+			if (holdMs > 0) await delay(holdMs);
+			await session.send("Input.dispatchKeyEvent", { type: "keyUp", key: char });
+		};
+		try {
+			if (input) await input.type(text, withinMs, signal, send);
+			else for (const char of text) await untilAborted(signal, () => send(char, 0));
+		} finally {
+			if (session) await bestEffort(session.detach(), "a session goes with its page");
 		}
 	}
 

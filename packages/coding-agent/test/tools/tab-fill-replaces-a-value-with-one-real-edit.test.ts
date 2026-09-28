@@ -9,10 +9,12 @@
  * with `browser.naturalInput` off, and with it on one key per character of a short one-line value and
  * one insertion for any other (the pace of the keys is
  * `a-natural-input-session-moves-rests-and-types-as-a-person-does.test.ts`'s);
- * an input holding a date, time, colour or range takes its value past the framework's tracker with
- * the `input` and `change` a person's edit fires; a value it holds in another form (a colour in
- * capitals, a date-time with zero seconds, a range as a decimal) is set in the form the input keeps,
- * and a value it cannot hold is refused with the field left as it was. An element fill cannot fill
+ * a date or time input takes its value by a press and the digits on each field of its editor, a range
+ * by its keys, so every `input` and `change` either sends is trusted, and a framework's tracker sees the
+ * values a person's typing passes through; a colour, which no key sets, is assigned with the two
+ * events. A value an input holds in another form (a colour in capitals, a date-time with zero seconds,
+ * a range as a decimal) is set in the form the input keeps, and a value it cannot hold is refused with
+ * the field left as it was. An element fill cannot fill
  * is refused with the call that can. A selector fill waits for its field to be visible, as a click
  * does; an element that cannot take focus is refused before anything is typed, so the value never
  * lands in the field that holds focus instead. A line inside an editor is replaced through the
@@ -183,28 +185,36 @@ describe.skipIf(!CHROMIUM_AVAILABLE)("tab.fill", () => {
 				expect(JSON.parse(cleared)).toEqual({ edit: "" });
 			}, 60_000);
 
-			it("sets a date field with the input and change a person's edit fires, and refuses a value it cannot hold, leaving the field as it was", async () => {
+			it("sets a date field with trusted events a person's typing sends, and refuses a value it cannot hold, leaving the field as it was", async () => {
 				await fresh();
-				const filled = await run(
-					'await tab.fill("#date", "2026-09-26"); return { value: await tab.evaluate(() => document.getElementById("date").value), events: await tab.evaluate(() => events) };',
-				);
-				expect(JSON.parse(filled)).toEqual({ value: "2026-09-26", events: ["date:input:false", "date:change"] });
-				// Set past a tracker on the element, as a person's pick is: a framework counts it as a change,
-				// whether the field is reached by a selector or by an aria ref.
-				const tracked = await run(`
+				const filled = JSON.parse(
+					await run(
+						'await tab.fill("#date", "2026-09-26"); return { value: await tab.evaluate(() => document.getElementById("date").value), events: await tab.evaluate(() => events) };',
+					),
+				) as { value: string; events: string[] };
+				expect(filled.value).toBe("2026-09-26");
+				expect(filled.events).toContain("date:input:true");
+				expect(filled.events).toContain("date:change");
+				expect(filled.events.filter(event => event === "date:input:false")).toEqual([]);
+				// Set past a tracker on the element, as a person's typing is: a framework counts each value it
+				// passes through as a change, whether the field is reached by a selector or by an aria ref.
+				const tracked = JSON.parse(
+					await run(`
 			await tab.fill("#when", "2026-09-27");
 			const ref = (await tab.ariaSnapshot("#when")).match(/\\[ref=(e\\d+)\\]/)[1];
 			await tab.fill("aria-ref=" + ref, "2026-09-28");
 			return await tab.evaluate(() => dateChanges);
-		`);
-				expect(JSON.parse(tracked)).toEqual(["2026-09-27", "2026-09-28"]);
+		`),
+				) as string[];
+				expect(tracked).toContain("2026-09-27");
+				expect(tracked.at(-1)).toBe("2026-09-28");
 				expect(await failureOf('await tab.fill("#date", "tomorrow");')).toContain(
 					'fill: "tomorrow" is not a value an <input type="date"> holds',
 				);
 				const kept = await run(
 					'return { value: await tab.evaluate(() => document.getElementById("date").value), events: await tab.evaluate(() => events) };',
 				);
-				expect(JSON.parse(kept)).toEqual({ value: "2026-09-26", events: ["date:input:false", "date:change"] });
+				expect(JSON.parse(kept)).toEqual(filled);
 			}, 60_000);
 
 			it("sets a value a colour, date-time or range input holds in another form, and refuses one it cannot hold", async () => {
