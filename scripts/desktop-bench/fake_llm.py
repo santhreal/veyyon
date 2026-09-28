@@ -4,8 +4,11 @@
 Serves `POST /v1/chat/completions` and `POST /v1/responses` as server-sent
 events and `GET /v1/models`. A request that offers tools is a turn: it gets
 the scripted reply, `--tokens` words from a vocabulary shuffled by `--seed`,
-one word every `--rate-ms` after `--first-token-delay-ms`. A request without
-tools (title generation, summaries) gets a three-word reply at once.
+one word every `--rate-ms` after `--first-token-delay-ms`. A turn whose prompt
+holds `--tool-marker` and whose history has no tool result yet gets one call
+of the offered shell tool instead, sent whole after `--tool-call-delay-ms`. A
+request without tools (title generation, summaries) gets a three-word reply at
+once.
 
 Every token is logged to `--log` as one JSON line with the CLOCK_MONOTONIC
 time at which its bytes were handed to the socket, so a probe on the same host
@@ -237,6 +240,15 @@ class Handler(BaseHTTPRequestHandler):
 		head = f"event: {event}\n" if event else ""
 		self._chunk(f"{head}data: {json.dumps(payload, separators=(',', ':'))}\n\n".encode())
 
+	@staticmethod
+	def _wait_until(due_ns: float) -> None:
+		"""Sleeps until CLOCK_MONOTONIC reaches `due_ns`, in steps short enough to send on time."""
+		while True:
+			now = time.monotonic_ns()
+			if now >= due_ns:
+				return
+			time.sleep(min((due_ns - now) / 1e9, 0.002))
+
 	def _pace(self, rid: int, words: list[str], turn: bool, emit) -> str:
 		"""Emits each word on the fixed schedule and logs its send time."""
 		start = time.monotonic_ns()
@@ -245,12 +257,7 @@ class Handler(BaseHTTPRequestHandler):
 		text = ""
 		for index, word in enumerate(words):
 			piece = word if index == 0 else f" {word}"
-			due = start + delay_ns + index * rate_ns
-			while True:
-				now = time.monotonic_ns()
-				if now >= due:
-					break
-				time.sleep(min((due - now) / 1e9, 0.002))
+			self._wait_until(start + delay_ns + index * rate_ns)
 			emit(piece)
 			sent = time.monotonic_ns()
 			text += piece
@@ -265,6 +272,7 @@ class Handler(BaseHTTPRequestHandler):
 		name, arguments, kind = call
 		call_id = f"call_bench_{rid}"
 		model = body.get("model") or self.cfg.model
+		self._wait_until(time.monotonic_ns() + self.cfg.tool_call_delay_ms * 1_000_000)
 		self.log.write({"event": "tool_call", "req": rid, "tool": name, "t_ns": time.monotonic_ns()})
 		if api == "chat":
 			cid = f"chatcmpl-bench-{rid}"
@@ -409,6 +417,12 @@ def main() -> None:
 		"--tool-marker",
 		default="BENCHTOOL",
 		help="a turn whose prompt holds this word first calls the offered shell tool",
+	)
+	parser.add_argument(
+		"--tool-call-delay-ms",
+		type=float,
+		default=0.0,
+		help="how long a turn waits before its tool call is sent",
 	)
 	cfg = parser.parse_args()
 
