@@ -29,6 +29,9 @@ use crate::{
 /// It receives the code and returns the element to place in the header.
 pub type CopyButton = Rc<dyn Fn(Arc<str>, &mut Window, &mut App) -> AnyElement>;
 
+/// Handles a click on a link. It receives the link's URL.
+pub type LinkHandler = Rc<dyn Fn(Arc<str>, &mut Window, &mut App)>;
+
 /// Bullet glyphs by list depth, repeating past the last.
 const BULLETS: [&str; 3] = ["•", "◦", "▪"];
 
@@ -46,12 +49,22 @@ pub struct MarkdownStyle {
 	/// plain text on a miss, leaving [`highlight`] to the caller, for example
 	/// on a background executor followed by a notify.
 	pub deferred_highlight: bool,
+	/// What a click on a link runs, or none to open the URL with
+	/// `App::open_url`.
+	pub on_link: Option<LinkHandler>,
 }
 
 impl MarkdownStyle {
-	/// Prose in [`text::BODY`] and code blocks without a copy button.
+	/// Prose in [`text::BODY`], code blocks without a copy button and links
+	/// opened with `App::open_url`.
 	pub fn new(id: impl Into<ElementId>) -> Self {
-		Self { id: id.into(), prose: text::BODY, copy_button: None, deferred_highlight: false }
+		Self {
+			id: id.into(),
+			prose: text::BODY,
+			copy_button: None,
+			deferred_highlight: false,
+			on_link: None,
+		}
 	}
 
 	/// Places the element `build` returns in the header of each code block.
@@ -66,6 +79,13 @@ impl MarkdownStyle {
 	/// Draws code blocks from [`cached`] results only, and plain on a miss.
 	pub const fn deferred_highlight(mut self) -> Self {
 		self.deferred_highlight = true;
+		self
+	}
+
+	/// Runs `handle` with a link's URL when the link is clicked, instead of
+	/// opening the URL.
+	pub fn on_link(mut self, handle: impl Fn(Arc<str>, &mut Window, &mut App) + 'static) -> Self {
+		self.on_link = Some(Rc::new(handle));
 		self
 	}
 }
@@ -181,10 +201,15 @@ impl Painter<'_> {
 		if links.is_empty() {
 			return styled.into_any_element();
 		}
+		let on_link = self.style.on_link.clone();
 		InteractiveText::new(self.id("md-link"), styled)
-			.on_click(links, move |index, _, cx| {
-				if let Some(url) = urls.get(index) {
-					cx.open_url(url);
+			.on_click(links, move |index, window, cx| {
+				let Some(url) = urls.get(index) else {
+					return;
+				};
+				match &on_link {
+					Some(handle) => handle(url.clone(), window, cx),
+					None => cx.open_url(url),
 				}
 			})
 			.into_any_element()

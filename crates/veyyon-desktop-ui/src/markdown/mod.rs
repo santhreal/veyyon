@@ -14,7 +14,7 @@ mod render;
 
 pub use highlight::{Highlighted, SyntaxRole, cached, highlight, resolve_language};
 pub use model::{Align, Block, Inlines, Run, RunStyle};
-pub use render::{CopyButton, MarkdownStyle, render};
+pub use render::{CopyButton, LinkHandler, MarkdownStyle, render};
 
 /// A markdown source and the blocks it parses into.
 ///

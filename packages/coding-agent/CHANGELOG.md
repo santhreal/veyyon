@@ -31,6 +31,7 @@
 
 ### Added
 
+- The `ask` tool raises its multi-question dialog in a desktop window: each question's header, option descriptions and previews, recommended option, preselection and multi-select cross the `Interactions` section, and the window answers every question at once or chooses to chat about them instead of falling back to one plain question per prompt.
 - A desktop window draws a recorded message that is neither a prompt nor a model reply as its own card: a finished background job, diagnostics that arrived after a turn, a guest's prompt, a skill invocation, agent-to-agent traffic, an advisor note, a dispatched tangent and a handoff summary each state their kind, and the card's text is copied, selected and found like any other block.
 - A desktop window draws the plan the `todo` tool is working as a chip in the composer footer, stating the closed-of-total tally and the phase in flight, and opening the task in flight and every phase tally beside it; the board is re-stated at each `todo` result and when the agent goes idle, and the chip states `todo.enabled` while the tool is off.
 - `/autoresearch` opens its console in a desktop window: the setup rows, the cost notes, the actions the swarm's state allows and the run ledger are projected from the same console model the terminal draws, so a run logged in one is stated the same way in the other. The setup is saved as a preset from the row it is named in, and a saved preset is deleted from the row that offers it.
@@ -159,7 +160,7 @@
 
 ### Changed
 
-- The desktop UI toolkit gains a streaming markdown renderer that reparses only the trailing blocks on each appended delta and highlights fenced code onto the theme's syntax colors, optionally drawing code plain until a highlight computed off the UI thread is cached; no window uses it yet.
+- The desktop UI toolkit gains a streaming markdown renderer that reparses only the trailing blocks on each appended delta, highlights fenced code onto the theme's syntax colors, can draw code plain until a highlight computed off the UI thread is cached, and can route link clicks to a caller-supplied handler; no window uses it yet.
 - The desktop UI toolkit gains a text editor with single-line and multi-line modes, grapheme-aware caret motion and deletion, coalesced undo and redo, and input-method composition.
 - The desktop UI toolkit gains popovers, keyboard-driven menus, context menus, selects, tabs with a sliding underline and an owner-supplied per-tab wrapper, overlay scroll areas, split handles and a bottom-right toast stack; no window uses them yet.
 - The GUI host wire types and runtime arrays are generated from the Rust desktop model into `gui-host/wire.generated.ts`, and a desktop-model test fails when the committed file differs; frames on the socket are unchanged.

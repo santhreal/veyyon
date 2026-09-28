@@ -1,6 +1,7 @@
 //! A document draws in a window: every block kind renders, a code block's
-//! copy slot receives its code, a link opens its URL on click, and a style
-//! with deferred highlighting never parses code while drawing.
+//! copy slot receives its code, a link opens its URL on click or hands it to
+//! the style's link handler, and a style with deferred highlighting never
+//! parses code while drawing.
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -59,6 +60,21 @@ fn clicking_a_link_opens_its_url() {
 	window.simulate_click(point(px(6.0), px(8.0)), Modifiers::none());
 	window.run_until_parked();
 	assert_eq!(cx.opened_url().as_deref(), Some("https://example.com/docs"));
+}
+
+#[test]
+fn a_link_handler_receives_the_url_instead_of_the_url_opening() {
+	let mut cx = themed();
+	let clicked = Rc::new(RefCell::new(Vec::<String>::new()));
+	let sink = Rc::clone(&clicked);
+	let style = MarkdownStyle::new("doc").on_link(move |url, _, _| sink.borrow_mut().push(url.to_string()));
+	let doc = MarkdownDoc::new("[documentation link](https://example.com/docs)");
+	let (_, window) = cx.add_window_view(move |_, _| Harness { doc, style });
+	window.run_until_parked();
+	window.simulate_click(point(px(6.0), px(8.0)), Modifiers::none());
+	window.run_until_parked();
+	assert_eq!(*clicked.borrow(), ["https://example.com/docs"]);
+	assert_eq!(cx.opened_url(), None);
 }
 
 /// Draws one Rust fence holding `code` with `style` and reports whether the
