@@ -21,6 +21,10 @@
  * pass on -- is reached by nothing, so `abortTurn` takes it down before it
  * awaits, and the second half sweeps every raiser the ledger exposes to pin
  * which of the two each one is.
+ * Leaving a session does not end its turn, which runs on in the background
+ * with its card up, so the leave arms assert the card stays where it was
+ * raised and that the stop aimed at it by its id, and a delete, still take it
+ * down within the bound and under that id.
  *
  * The sweep reads its members off `InteractionLedger.prototype` and off the
  * keys of `PendingDecisions` at run time, both by exact equality, so a new
@@ -345,33 +349,45 @@ describe("a decision a turn is blocked on does not outlive the stop", () => {
 		expect(messages).not.toContain("denied for this session");
 	});
 
-	test("leaving the session answers while an approval is up, and withdraws it first", async () => {
+	test("leaving the session answers while an approval is up, and the stop still reaches the card", async () => {
 		const client = await connect();
 		const elsewhere = await sessionOnDisk("a session that was not blocked");
 		const session = await sessionBlockedOnAnApproval(client);
 
 		const answer = await withinTheBound(client.request(3, { OpenSession: { session: elsewhere } }));
 		expect(answer.outcome).toEqual({ RequestSucceeded: { request: 3 } });
+		// The turn runs on in the background, blocked on the card, which stays
+		// up where it was raised: nothing withdraws it, and nothing is stated
+		// against the session the operator moved to.
+		expect(pendingFor(answer.frames, session)).toEqual([]);
+		expect(pendingFor(answer.frames, elsewhere)).toEqual([]);
 
-		// Attribution, not merely emptiness: the ledger stamps every frame with
-		// the session the client holds NOW, so a card withdrawn after the switch
-		// would be published against the session the operator moved to.
-		expect(pendingFor(answer.frames, session).at(-1)).toEqual({
+		// Attribution, not merely emptiness: the stop aimed at the session by
+		// its id answers within the bound and withdraws the card under the id
+		// it was raised under, not under the session the client has open.
+		const stopped = await withinTheBound(client.request(4, { AbortTurn: { session } }));
+		expect(stopped.outcome).toEqual({ RequestSucceeded: { request: 4 } });
+		expect(pendingFor(stopped.frames, session).at(-1)).toEqual({
 			approvals: [],
 			questions: [],
 			plans: [],
 			dialogs: [],
 		});
-		expect(pendingFor(answer.frames, elsewhere).at(-1)?.approvals ?? []).toEqual([]);
+		expect(pendingFor(stopped.frames, elsewhere)).toEqual([]);
 	});
 
-	test("creating a session answers while an approval is up", async () => {
+	test("creating a session answers while an approval is up, and deleting the blocked one withdraws it", async () => {
 		const client = await connect();
 		const session = await sessionBlockedOnAnApproval(client);
 
 		const answer = await withinTheBound(client.request(3, { CreateSession: {} }));
 		expect(answer.outcome).toEqual({ RequestSucceeded: { request: 3 } });
-		expect(pendingFor(answer.frames, session).at(-1)).toEqual({
+		expect(pendingFor(answer.frames, session)).toEqual([]);
+
+		// Deleting the thread ends the work it was left doing, card first.
+		const deleted = await withinTheBound(client.request(4, { DeleteSession: { session } }));
+		expect(deleted.outcome).toEqual({ RequestSucceeded: { request: 4 } });
+		expect(pendingFor(deleted.frames, session).at(-1)).toEqual({
 			approvals: [],
 			questions: [],
 			plans: [],
@@ -471,8 +487,16 @@ describe("a decision a turn is blocked on does not outlive the stop", () => {
 				),
 		};
 
-		/** Prototype members that answer or report decisions rather than raising one. */
-		const NOT_RAISERS = ["answer", "cancelAll", "cancelUnsignalled", "constructor", "isEmpty", "pending"];
+		/** Prototype members that answer, report or watch decisions rather than raising one. */
+		const NOT_RAISERS = [
+			"answer",
+			"cancelAll",
+			"cancelUnsignalled",
+			"constructor",
+			"isEmpty",
+			"onDrained",
+			"pending",
+		];
 
 		let listener: net.Server;
 		let sockets: net.Socket[];

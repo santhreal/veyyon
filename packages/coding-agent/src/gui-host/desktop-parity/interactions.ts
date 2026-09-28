@@ -20,10 +20,16 @@ import type { GuiHostUIContext } from "../interactions";
 import type { PendingDecisions } from "../wire";
 import type { DesktopCarrier } from "./carrier";
 
-/** Every member of the extension UI surface, as declared and as the desktop context implements it. */
+/**
+ * Every member of the extension UI surface, as declared and as the desktop
+ * context implements it. The host's own handles on the context are not part
+ * of that surface: the ledger it raises decisions on, the timeout rule, and
+ * the route that moves where a session's extensions draw as the session goes
+ * to the background and back.
+ */
 export type UiContextMember = Exclude<
 	keyof ExtensionUIContext | keyof GuiHostUIContext,
-	"ledger" | "timeoutStartsOnPresentation"
+	"ledger" | "timeoutStartsOnPresentation" | "chromeRoute"
 >;
 
 const DOCK = { section: "Interactions" } as const;

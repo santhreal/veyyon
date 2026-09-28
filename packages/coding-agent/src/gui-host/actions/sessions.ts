@@ -1,6 +1,7 @@
 import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
-import { disposeTurnSession, getOrCreateAgentSession, settleRunningTurn } from "../turns";
+import { backgroundSession, parkOpenSession } from "../background-sessions";
+import { disposeTurnSession, endBackgroundSession, getOrCreateAgentSession, settleRunningTurn } from "../turns";
 import { ALL_EXPORT_FORMATS } from "../wire";
 import {
 	activateSession as activate,
@@ -57,10 +58,11 @@ interface CreateSessionPayload {
 const handleCreateSession: ActionHandler<CreateSessionPayload | undefined> = async (ctx, payload) => {
 	try {
 		const workspace = payload?.workspace ?? ctx.cwd;
+		// A turn running on the session being left runs on in the background;
+		// an idle agent session reloads in place, or is disposed for another
+		// workspace.
+		parkOpenSession(ctx.clientState, ctx.socket);
 		const agent = ctx.clientState.agentSession;
-		// A new session replaces the one the turn is running on, whether the
-		// agent session reloads in place or is disposed for another workspace.
-		await settleRunningTurn(ctx.clientState);
 		let sm: SessionManager;
 		if (agent && workspace === agent.sessionManager.getCwd()) {
 			if (!(await agent.newSession())) {
@@ -114,13 +116,20 @@ const handleRenameSession: ActionHandler<RenameSessionPayload | undefined> = asy
 			else await active.setSessionName(title, "user");
 			emitActiveSession(ctx, active);
 		} else {
-			const sessionPath = await findSessionPath(payload.session, ctx.cwd, ctx.agentDir);
-			if (!sessionPath) {
-				notFound(ctx, payload.session);
-				return;
+			// A session left working in the background is written by its own
+			// agent: a second manager on its file would interleave with it.
+			const background = backgroundSession(ctx.clientState, payload.session);
+			if (background) {
+				await background.agentSession.setSessionName(title, "user");
+			} else {
+				const sessionPath = await findSessionPath(payload.session, ctx.cwd, ctx.agentDir);
+				if (!sessionPath) {
+					notFound(ctx, payload.session);
+					return;
+				}
+				const sm = await SessionManager.open(sessionPath, undefined, undefined, { suppressBreadcrumb: true });
+				await sm.setSessionName(title, "user");
 			}
-			const sm = await SessionManager.open(sessionPath, undefined, undefined, { suppressBreadcrumb: true });
-			await sm.setSessionName(title, "user");
 		}
 		await emitSessionList(ctx);
 		ctx.reply.success();
@@ -149,6 +158,9 @@ const handleDeleteSession: ActionHandler<SessionRef | undefined> = async (ctx, p
 			await disposeTurnSession(ctx.clientState);
 			ctx.clientState.sessionManager = undefined;
 		}
+		// Deleting a thread ends the work it was left doing.
+		const background = backgroundSession(ctx.clientState, payload.session);
+		if (background) await endBackgroundSession(ctx.clientState, background.id);
 		await storage.deleteSessionWithArtifacts(sessionPath);
 		await emitSessionList(ctx);
 		ctx.reply.success();

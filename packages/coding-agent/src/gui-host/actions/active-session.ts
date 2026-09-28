@@ -8,6 +8,7 @@ import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
 import { errorMessage } from "@veyyon/utils";
 import { goalFromModeData } from "../../goals/driver";
 import type { Goal } from "../../goals/state";
+import { backgroundSession, parkOpenSession, resumeBackgroundSession } from "../background-sessions";
 import { foregroundSection } from "../foreground-view";
 import { writeFrame } from "../frames";
 import { goalSection } from "../goal-view";
@@ -20,7 +21,7 @@ import {
 	seedFirstMessagePosition,
 	sessionEntriesToTranscript,
 } from "../transcript-conversion";
-import { type ClientSessionState, disposeTurnSession, settleRunningTurn } from "../turns";
+import { type ClientSessionState, disposeTurnSession, restateStreamingReply } from "../turns";
 import type { ErrorScope, GoalStatus, GoalView, TranscriptEntry } from "../wire";
 import { sessionFiles } from "./session-files";
 import type { ActionContext } from "./types";
@@ -127,6 +128,9 @@ export function emitActiveSessionAndTranscript(
 	ctx.reply.snapshot({
 		Transcript: { revision: ctx.clientState.revision, value: transcriptEntries },
 	});
+	// A session taken back from the background may be mid-reply, and the
+	// window cleared its stream when it left.
+	restateStreamingReply(ctx.socket, ctx.clientState);
 	reportQueuedPrompts(ctx.socket, ctx.clientState);
 	// A window that opens a session mid-wait draws the control from this
 	// section; the subscription only reports the edges, so without it the
@@ -283,30 +287,41 @@ export function wireSessionManager(ctx: ActionContext, sm: SessionManager): void
 }
 
 /**
- * Make `session` the client's active session. A live agent session switches
- * in place, so its extensions see `session_before_switch` and its listeners
- * stay attached; without one the session file is opened as a plain manager,
- * and the first prompt attaches an agent over it. Returns `undefined` when
- * the session does not exist or an extension cancelled the switch, after
- * replying with the failure.
+ * Make `session` the client's active session.
+ *
+ * The session being left keeps whatever it is still doing: a session with a
+ * turn in flight or a decision open moves to the background and runs on (see
+ * `parkOpenSession`). A session in the background is taken back as it is. An
+ * idle live agent session otherwise switches in place, so its extensions see
+ * `session_before_switch` and its listeners stay attached; without one the
+ * session file is opened as a plain manager, and the first prompt attaches an
+ * agent over it. Returns `undefined` when the session does not exist or an
+ * extension cancelled the switch, after replying with the failure; the session
+ * on screen is left as it was either way.
  */
 export async function activateSession(ctx: ActionContext, session: string): Promise<SessionManager | undefined> {
 	const current = activeManager(ctx);
 	if (isActive(current, session)) return current;
 	const previousCwd = ctx.cwd;
 
+	const background = backgroundSession(ctx.clientState, session);
+	if (background) {
+		parkOpenSession(ctx.clientState, ctx.socket);
+		await disposeTurnSession(ctx.clientState);
+		const agent = await resumeBackgroundSession(ctx.clientState, ctx.socket, background, ctx);
+		rescopeWorkspace(ctx, previousCwd, agent.sessionManager);
+		return agent.sessionManager;
+	}
+
 	const sessionPath = await findSessionPath(session, ctx.cwd, ctx.agentDir);
 	if (!sessionPath) {
 		replySessionNotFound(ctx, session);
 		return undefined;
 	}
+	parkOpenSession(ctx.clientState, ctx.socket);
 
 	const agent = ctx.clientState.agentSession;
 	if (agent) {
-		// The turn ends before the file under it is replaced, and only once the
-		// session is known to exist: a switch to a session that is not there
-		// leaves the turn running.
-		await settleRunningTurn(ctx.clientState);
 		ctx.clientState.presentationLedger?.clear();
 		if (!(await agent.switchSession(sessionPath))) {
 			ctx.reply.failure({

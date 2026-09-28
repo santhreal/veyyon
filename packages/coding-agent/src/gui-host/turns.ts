@@ -78,6 +78,48 @@ export interface TerminalInstance {
 	killed?: boolean;
 }
 
+/** Where a turn runs and what it may be blocked on: the open session, or one in the background. */
+export interface LiveTurn {
+	agentSession?: AgentSession;
+	interactions?: InteractionLedger;
+}
+
+/**
+ * A session this client left while it was still working: a turn in flight,
+ * a compaction, or a decision the operator has not answered.
+ *
+ * Leaving a thread does not end its work. The session is taken off screen
+ * whole -- its agent, the decisions it waits on, the console it has open --
+ * and runs on without drawing: nothing it streams or appends reaches the
+ * window, which files a stream and a transcript under the thread it has open
+ * rather than the one that produced them. Its decisions still do, stamped with
+ * its own id, so the window announces them on a thread that is not open, and
+ * its row is listed again when its turn ends. The window opening it again
+ * takes it back on screen as it is; once nothing is left for it to do it is
+ * disposed.
+ */
+export interface BackgroundSession extends LiveTurn {
+	/** The session's id, which it is held under. */
+	readonly id: string;
+	readonly agentSession: AgentSession;
+	readonly autoswarm?: AutoswarmConsole;
+	/** The session's UI surface, handed back when the session returns. */
+	readonly uiContext?: GuiHostUIContext;
+	/**
+	 * What its extensions draw, stated under its own id while it is off
+	 * screen, and handed back to the connection's chrome when it returns.
+	 */
+	readonly chrome: ExtensionChrome;
+	/** The call in flight inside its streaming reply, restated with the reply when it returns. */
+	tool?: { name: string; id: string };
+	/** The prompt still running on it, dropped once it settles. */
+	activeTurnPromise?: Promise<boolean>;
+	/** The tool set plan mode replaced, handed back when the session returns. */
+	readonly planModePreviousTools?: string[];
+	/** Drops the listener that follows the session while it is off screen. */
+	unsubscribe: () => void;
+}
+
 export interface ClientSessionState {
 	revision: number;
 	agentSession?: AgentSession;
@@ -116,6 +158,8 @@ export interface ClientSessionState {
 	 * handed to its UI surface, so each call reaches the window as a section.
 	 */
 	extensionChrome?: ExtensionChrome;
+	/** The session's UI surface, which is pointed at another chrome while the session works in the background. */
+	uiContext?: GuiHostUIContext;
 	terminals?: Map<string, TerminalInstance>;
 	processFollowers?: Map<string, () => void>;
 	goalDriver?: GoalDriver;
@@ -213,6 +257,11 @@ export interface ClientSessionState {
 	 * opens and ended with the connection.
 	 */
 	status?: DesktopStatusBridge;
+	/**
+	 * The sessions this client left while they were still working, by id. See
+	 * `BackgroundSession`; each is ended with the connection.
+	 */
+	background?: Map<string, BackgroundSession>;
 }
 
 /**
@@ -263,6 +312,7 @@ async function initializeAgentSession(
 		state.interactions = ledger;
 		state.extensionChrome ??= new ExtensionChrome(socket, () => sm.getSessionId());
 		const uiContext = new GuiHostUIContext(ledger, state.extensionChrome);
+		state.uiContext = uiContext;
 		// The console is attached before extension startup for the same reason
 		// the ledger is: an extension that opens one while initialization runs
 		// finds the surface already there.
@@ -279,22 +329,7 @@ async function initializeAgentSession(
 		if (state.closed) throw new Error("The GUI client disconnected");
 		await enterPlanModeIfConfigured(session, ledger, state);
 		if (state.closed) throw new Error("The GUI client disconnected");
-		state.agentSession = session;
-		// The connect-time snapshot was written from the schema defaults,
-		// because no session existed to read settings from. The session
-		// carries them, so a capability a setting withholds is stated again
-		// under the values that are now in effect.
-		writeFrame(socket, { Snapshot: { Capabilities: buildCapabilitiesSnapshot(session.settings) } });
-		attachTurnListeners(session, socket, state);
-		await attachGoalBridge(session, state, socket);
-		await attachLoopBridge(session, state, socket);
-		// Publish the model resolved by the session, not a parallel config lookup.
-		await publishModelsView(socket, { clientState: state, ...options });
-		// The full catalogue replaces the builtins-only list a client got
-		// before any session existed, and follows every later change to it.
-		state.unsubscribeCommands?.();
-		state.unsubscribeCommands = watchCommandMetadata(socket, state, session);
-		await publishCommandsView(socket, state);
+		await adoptAgentSession(session, socket, state, options);
 		if (state.closed) throw new Error("The GUI client disconnected");
 		return session;
 	} finally {
@@ -306,6 +341,36 @@ async function initializeAgentSession(
 			await session.dispose();
 		}
 	}
+}
+
+/**
+ * Make `session` the one this client has open: the one whose frames reach the
+ * window, whose settings, model and commands the window is shown, and whose
+ * goal and loop this client drives. Run for a session just made, and for one
+ * the window takes back from the background.
+ */
+export async function adoptAgentSession(
+	session: AgentSession,
+	socket: net.Socket,
+	state: ClientSessionState,
+	options: { cwd: string; agentDir: string; authStorage: () => Promise<AuthStorage> },
+): Promise<void> {
+	state.agentSession = session;
+	// The connect-time snapshot was written from the schema defaults,
+	// because no session existed to read settings from. The session
+	// carries them, so a capability a setting withholds is stated again
+	// under the values that are now in effect.
+	writeFrame(socket, { Snapshot: { Capabilities: buildCapabilitiesSnapshot(session.settings) } });
+	attachTurnListeners(session, socket, state);
+	await attachGoalBridge(session, state, socket);
+	await attachLoopBridge(session, state, socket);
+	// Publish the model resolved by the session, not a parallel config lookup.
+	await publishModelsView(socket, { clientState: state, ...options });
+	// The full catalogue replaces the builtins-only list a client got
+	// before any session existed, and follows every later change to it.
+	state.unsubscribeCommands?.();
+	state.unsubscribeCommands = watchCommandMetadata(socket, state, session);
+	await publishCommandsView(socket, state);
 }
 
 /**
@@ -391,10 +456,7 @@ export function handleSessionEvent(event: AgentSessionEvent, socket: net.Socket,
 	switch (event.type) {
 		case "message_update": {
 			if (event.message.role === "assistant") {
-				if (!state.streamingEntry) {
-					state.streamingSeq = (state.streamingSeq ?? 0) + 1;
-					state.streamingEntry = `stream-${state.streamingSeq}`;
-				}
+				if (!state.streamingEntry) mintStreamingEntry(state);
 				pushStreaming(socket, state, { message: event.message });
 			}
 			break;
@@ -508,6 +570,53 @@ function clearStreaming(socket: net.Socket, state: ClientSessionState): void {
 	state.streamingTool = undefined;
 	state.streamingToolCallId = undefined;
 	writeFrame(socket, { StreamingChanged: null });
+}
+
+/** Name the reply that starts streaming, which each of its frames replaces. */
+function mintStreamingEntry(state: ClientSessionState): void {
+	state.streamingSeq = (state.streamingSeq ?? 0) + 1;
+	state.streamingEntry = `stream-${state.streamingSeq}`;
+}
+
+/**
+ * Take the open session's stream off the window, as the window leaves that
+ * session with its reply still streaming.
+ *
+ * The window files a stream under the thread it has open, so the clear is
+ * written before anything of the next thread: once the next header arrives a
+ * clear lands on that thread instead, and the reply stays drawn over the one
+ * the operator comes back to. What is held for the next frame goes with it:
+ * the reply runs on in the background and is stated whole again if the
+ * window opens its thread while it still streams.
+ */
+export function dropStreaming(socket: net.Socket, state: ClientSessionState): void {
+	cancelStreamingFrame(state);
+	const drawn = state.streamingEntry !== undefined || state.streamingTool !== undefined;
+	state.streamingEntry = undefined;
+	state.streamingAccumulating = undefined;
+	state.streamingTool = undefined;
+	state.streamingToolCallId = undefined;
+	state.streamFrame = undefined;
+	if (drawn) writeFrame(socket, { StreamingChanged: null });
+}
+
+/**
+ * State the reply the open session is streaming to a window that holds none
+ * for it: a session taken back from the background streamed while nothing
+ * was drawn, and its stream was cleared when the window left it.
+ *
+ * The reply so far is the agent's own in-flight message, so it is stated
+ * whole, and at once rather than at the next frame, since it belongs right
+ * behind the transcript it streams under. The deltas after it grow it as
+ * they would have.
+ */
+export function restateStreamingReply(socket: net.Socket, state: ClientSessionState): void {
+	if (state.streamingEntry) return;
+	const message = state.agentSession?.agent.state.streamMessage;
+	if (message?.role !== "assistant") return;
+	mintStreamingEntry(state);
+	pushStreaming(socket, state, { message });
+	flushStreamingFrame(state, frame => writeFrame(socket, frame));
 }
 
 /**
@@ -678,42 +787,37 @@ export async function executePromptTurn(
 /**
  * Abort an active turn on the session.
  *
- * Takes the whole client state, not the session alone, because the decisions
- * the turn is blocked on are held beside it and have to come down first: see
+ * Takes the session with its decisions, not the session alone, because the
+ * decisions the turn is blocked on have to come down first: see
  * `InteractionLedger.cancelUnsignalled`. A stop that skipped them never
  * returned at all.
  */
-export async function abortTurn(state: ClientSessionState): Promise<void> {
-	const session = state.agentSession;
+export async function abortTurn(live: LiveTurn): Promise<void> {
+	const session = live.agentSession;
 	if (!session) return;
-	state.interactions?.cancelUnsignalled();
+	live.interactions?.cancelUnsignalled();
 	await session.abort({ reason: USER_INTERRUPT_LABEL });
 }
 
 /**
- * End the turn the client is running, before the session it belongs to is
- * left.
+ * End the turn running on a session before the session itself is reloaded or
+ * ended: a branch reloads it in place, a delete removes it, and a disconnect
+ * ends every session the client holds. Leaving it for another session is
+ * neither, and moves it to the background instead: see `BackgroundSession`.
  *
- * One client holds one `AgentSession`, so opening another session, creating
- * one, branching or deleting the open one all reload that session in place,
- * and the turn in flight cannot survive it. `AgentSession` ends it on its own,
- * but as an internal abort after the agent is already disconnected: no
- * `message_end` reaches the listeners, so the reply the model had produced is
- * neither appended nor persisted, `StreamingChanged` is never cleared -- the
- * client draws the abandoned reply over the session it switched to, with the
- * composer still in its running shape -- and the session file trails a prompt
+ * `AgentSession` would end the turn on its own, but as an internal abort after
+ * the agent is already disconnected: no `message_end` reaches the listeners,
+ * so the reply the model had produced is neither appended nor persisted,
+ * `StreamingChanged` is never cleared, and the session file trails a prompt
  * with no reply after it, which the index reports as `pending` and the rail
- * draws as `Working` for a turn that is over.
- *
- * Ending it here, the way the stop control does, keeps all three honest: the
- * partial reply is appended to the session that produced it and flushed, the
- * clear reaches the client, and the row settles on the status the abort gave
- * it.
+ * draws as `Working` for a turn that is over. Ending it here, the way the stop
+ * control does, appends the partial reply to the session that produced it and
+ * flushes it, and the row settles on the status the abort gave it.
  */
-export async function settleRunningTurn(state: ClientSessionState): Promise<void> {
-	const session = state.agentSession;
+export async function settleRunningTurn(live: LiveTurn): Promise<void> {
+	const session = live.agentSession;
 	if (!session?.isStreaming) return;
-	await abortTurn(state);
+	await abortTurn(live);
 	await session.sessionManager.flush();
 }
 
@@ -759,6 +863,7 @@ export async function disposeTurnSession(state: ClientSessionState): Promise<voi
 	// stops drawing statuses and widgets nothing will update or clear. The
 	// chrome itself is the connection's and holds the draft for the next one.
 	state.extensionChrome?.clear();
+	state.uiContext = undefined;
 	state.presentationLedger?.clear();
 	if (state.agentSession) {
 		const session = state.agentSession;
@@ -769,8 +874,40 @@ export async function disposeTurnSession(state: ClientSessionState): Promise<voi
 }
 
 /**
- * Everything a client holds, ended: its session, then its terminals, its
- * process log followers and any auth flow waiting on a secret.
+ * End the background session `id`: its turn, if one still runs, the way a
+ * disposed open session's is ended, then its decisions, its console and the
+ * agent itself. Never throws: a failure is reported, and the rest of the
+ * teardown still runs.
+ */
+export async function endBackgroundSession(state: ClientSessionState, id: string): Promise<void> {
+	const background = state.background?.get(id);
+	if (!background) return;
+	state.background?.delete(id);
+	background.unsubscribe();
+	try {
+		await settleRunningTurn(background);
+	} catch (error) {
+		logger.warn("GUI host could not end a background turn before disposing its session", {
+			session: id,
+			error: errorMessage(error),
+		});
+	}
+	background.interactions?.cancelAll();
+	background.autoswarm?.close();
+	// What its extensions drew is taken off the thread, since nothing is
+	// left to update or clear it.
+	background.chrome.clear();
+	try {
+		await background.agentSession.dispose();
+	} catch (error) {
+		logger.warn("GUI host could not dispose a background session", { session: id, error: errorMessage(error) });
+	}
+}
+
+/**
+ * Everything a client holds, ended: its open session and every session it
+ * left working in the background, then its terminals, its process log
+ * followers and any auth flow waiting on a secret.
  */
 export async function disposeClientState(state: ClientSessionState): Promise<void> {
 	if (state.sessionInitialization) {
@@ -783,6 +920,9 @@ export async function disposeClientState(state: ClientSessionState): Promise<voi
 	try {
 		await disposeTurnSession(state);
 	} finally {
+		// A session the client left working ends with the client: nothing is
+		// left to draw it, answer its decisions or take it back.
+		await Promise.all(Array.from(state.background?.keys() ?? [], id => endBackgroundSession(state, id)));
 		// A frame scheduled for a window that is gone draws nothing and holds
 		// the entry it was converting alive until it fires.
 		cancelStreamingFrame(state);

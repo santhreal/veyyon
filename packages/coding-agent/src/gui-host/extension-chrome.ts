@@ -373,6 +373,29 @@ export class ExtensionChrome {
 	}
 
 	/**
+	 * Give what the extensions set to `to`, which states it from here on, and
+	 * hold nothing: as a session moves to the background with its own chrome,
+	 * and back. Nothing is published, since the window files what it was sent
+	 * under the session it was stated for and keeps it for that session, and
+	 * this chrome no longer clears it there when it states for another. `to`
+	 * holds nothing of its own; the draft is the composer's and stays.
+	 */
+	handOver(to: ExtensionChrome): void {
+		for (const [key, text] of this.#statuses) to.#statuses.set(key, text);
+		for (const [key, widget] of this.#widgets) to.#widgets.set(key, widget);
+		to.#workingMessage = this.#workingMessage;
+		to.#factories.push(...this.#factories);
+		to.#provider = this.#provider;
+		to.#statedFor = this.#statedFor;
+		this.#statuses.clear();
+		this.#widgets.clear();
+		this.#workingMessage = undefined;
+		this.#factories.length = 0;
+		this.#provider = BASE_PROVIDER;
+		this.#statedFor = undefined;
+	}
+
+	/**
 	 * State the chrome under the session id when the id moved. A session that
 	 * reloads in place (a new session, a switch, a branch) keeps its
 	 * extensions, and what they set stays drawn, as the terminal keeps it.
@@ -424,5 +447,43 @@ export class ExtensionChrome {
 	#write(section: SnapshotSection): void {
 		if (this.socket.destroyed) return;
 		writeFrame(this.socket, { Snapshot: section });
+	}
+}
+
+/**
+ * Where a session's extensions draw: the connection's chrome, which states
+ * under the open session's id, or the session's own while it works in the
+ * background. A session drawing into the connection's chrome from the
+ * background would draw its notices, statuses and widgets over another
+ * thread; its own chrome states them under its own id, where the window files
+ * them for when the thread is opened again. The composer is the open
+ * thread's, so the draft reads empty and an edit to it goes nowhere
+ * meanwhile.
+ */
+export class ChromeRoute {
+	#current: ExtensionChrome;
+
+	constructor(readonly home: ExtensionChrome) {
+		this.#current = home;
+	}
+
+	/** The chrome the session's extensions draw into now. */
+	get current(): ExtensionChrome {
+		return this.#current;
+	}
+
+	/** The chrome that holds the window's draft: the connection's, while the session is open. */
+	get composer(): ExtensionChrome | undefined {
+		return this.#current === this.home ? this.home : undefined;
+	}
+
+	/** Draw into `chrome` until `returnHome`, as the session leaves the screen with work left to do. */
+	drawInto(chrome: ExtensionChrome): void {
+		this.#current = chrome;
+	}
+
+	/** Draw into the connection's chrome again, as the session is opened again. */
+	returnHome(): void {
+		this.#current = this.home;
 	}
 }

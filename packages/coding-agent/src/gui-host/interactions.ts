@@ -31,7 +31,7 @@ import {
 } from "../extensibility/extensions/types";
 import { APPROVAL_SELECT_OPTIONS } from "../extensibility/extensions/wrapper";
 import { theme } from "../theme/theme";
-import { ExtensionChrome } from "./extension-chrome";
+import { ChromeRoute, ExtensionChrome } from "./extension-chrome";
 import { writeFrame } from "./frames";
 import type {
 	ApprovalInteraction,
@@ -131,6 +131,7 @@ export class InteractionLedger {
 	#plans: PlanInteraction[] = [];
 	#dialogs: DialogInteraction[] = [];
 	#seq = 0;
+	#drained: (() => void) | undefined;
 
 	constructor(
 		readonly socket: net.Socket,
@@ -145,6 +146,14 @@ export class InteractionLedger {
 	/** True while any decision waits on the operator. */
 	get isEmpty(): boolean {
 		return this.#waiting.size === 0;
+	}
+
+	/**
+	 * Call `listener` each time the last open decision closes, however it
+	 * closed: answered, aborted, timed out or cancelled. `undefined` stops it.
+	 */
+	onDrained(listener: (() => void) | undefined): void {
+		this.#drained = listener;
 	}
 
 	/**
@@ -219,6 +228,7 @@ export class InteractionLedger {
 			this.#plans = this.#plans.filter(p => p.id !== id);
 			this.#dialogs = this.#dialogs.filter(d => d.id !== id);
 			this.#publish();
+			if (this.#waiting.size === 0) this.#drained?.();
 		};
 		const onAbort = () => {
 			close();
@@ -469,13 +479,14 @@ function isRejection(value: unknown): value is AnswerRejection {
  */
 export class GuiHostUIContext implements ExtensionUIContext {
 	readonly timeoutStartsOnPresentation = false;
-	readonly #chrome: ExtensionChrome;
+	/** Where the session's extensions draw, which the host moves as the session goes to the background and back. */
+	readonly chromeRoute: ChromeRoute;
 
 	constructor(
 		readonly ledger: InteractionLedger,
 		chrome = new ExtensionChrome(ledger.socket, ledger.sessionId),
 	) {
-		this.#chrome = chrome;
+		this.chromeRoute = new ChromeRoute(chrome);
 	}
 
 	select(
@@ -512,32 +523,32 @@ export class GuiHostUIContext implements ExtensionUIContext {
 	}
 
 	notify(message: string, type?: "info" | "warning" | "error"): void {
-		this.#chrome.notify(message, type);
+		this.chromeRoute.current.notify(message, type);
 	}
 	onTerminalInput(): () => void {
 		return () => {};
 	}
 	setStatus(key: string, text: string | undefined): void {
-		this.#chrome.setStatus(key, text);
+		this.chromeRoute.current.setStatus(key, text);
 	}
 	setWorkingMessage(message?: string): void {
-		this.#chrome.setWorkingMessage(message);
+		this.chromeRoute.current.setWorkingMessage(message);
 	}
 	setWidget(key: string, content: ExtensionWidgetContent, options?: ExtensionWidgetOptions): void {
-		this.#chrome.setWidget(key, content, options);
+		this.chromeRoute.current.setWidget(key, content, options);
 	}
 	setTitle(): void {}
 	setEditorText(text: string): void {
-		this.#chrome.setEditorText(text);
+		this.chromeRoute.composer?.setEditorText(text);
 	}
 	pasteToEditor(text: string): void {
-		this.#chrome.pasteToEditor(text);
+		this.chromeRoute.composer?.pasteToEditor(text);
 	}
 	getEditorText(): string {
-		return this.#chrome.getEditorText();
+		return this.chromeRoute.composer?.getEditorText() ?? "";
 	}
 	addAutocompleteProvider(factory: AutocompleteProviderFactory): void {
-		this.#chrome.addAutocompleteProvider(factory);
+		this.chromeRoute.current.addAutocompleteProvider(factory);
 	}
 	get theme() {
 		return theme;

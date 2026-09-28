@@ -2,10 +2,17 @@ import { requestsPrompts } from "../../prompts/requests/rows";
 import { UnsupportedModelInputError } from "../../session/agent-session";
 import { ImageInputTooLargeError } from "../../utils/image-loading";
 import { VideoInputTooLargeError } from "../../utils/video-loading";
+import { backgroundSession } from "../background-sessions";
 import { writeFrame } from "../frames";
 import { reportQueuedPrompts } from "../queued-prompts";
 import { nameSessionFromFirstPrompt } from "../session-title";
-import { AttachmentValidationError, abortTurn, executePromptTurn, getOrCreateAgentSession } from "../turns";
+import {
+	AttachmentValidationError,
+	abortTurn,
+	executePromptTurn,
+	getOrCreateAgentSession,
+	type LiveTurn,
+} from "../turns";
 import type { AttachmentSubmission } from "../wire";
 import { activateSession, activeManager, isActive, replyError } from "./active-session";
 import { recordSubmittedPrompt } from "./history";
@@ -116,9 +123,24 @@ interface SessionRef {
 	session?: string;
 }
 
-const handleAbortTurn: ActionHandler<SessionRef | undefined> = async (ctx, _payload) => {
-	const session = ctx.clientState.agentSession;
-	if (!session?.isStreaming) {
+/**
+ * Where the turn `session` names runs: a session working in the background,
+ * stopped or answered by its own id from its row or its announcement without
+ * being opened, or the open session. `undefined` for a session that is
+ * neither: it has no turn and no decision, and the open session must not
+ * stand in for it, or a stop or an answer meant for a thread that just went
+ * idle would land on the one on screen.
+ */
+function turnNamed(ctx: ActionContext, session: string | undefined): LiveTurn | undefined {
+	const background = session ? backgroundSession(ctx.clientState, session) : undefined;
+	if (background) return background;
+	if (!session || isActive(activeManager(ctx), session)) return ctx.clientState;
+	return undefined;
+}
+
+const handleAbortTurn: ActionHandler<SessionRef | undefined> = async (ctx, payload) => {
+	const live = turnNamed(ctx, payload?.session);
+	if (!live?.agentSession?.isStreaming) {
 		ctx.reply.failure({
 			scope: "Session",
 			code: "NOT_RUNNING",
@@ -128,7 +150,7 @@ const handleAbortTurn: ActionHandler<SessionRef | undefined> = async (ctx, _payl
 		return;
 	}
 	try {
-		await abortTurn(ctx.clientState);
+		await abortTurn(live);
 		ctx.reply.success();
 	} catch (error) {
 		replyError(ctx, "ABORT_FAILED", error);
@@ -364,9 +386,17 @@ const handleRespondToInteraction: ActionHandler<RespondToInteractionPayload | un
 		});
 		return;
 	}
-	const rejection = ctx.clientState.interactions
-		? ctx.clientState.interactions.answer(payload.interaction_id, payload.response)
-		: { code: "INTERACTION_NOT_FOUND", message: "No session is attached, so nothing is waiting on an answer" };
+	// Each session numbers its own decisions, so an id alone can name one on
+	// another thread: the answer goes to the session that raised it.
+	const live = turnNamed(ctx, payload.session);
+	const rejection = live?.interactions
+		? live.interactions.answer(payload.interaction_id, payload.response)
+		: {
+				code: "INTERACTION_NOT_FOUND",
+				message: live
+					? "No session is attached, so nothing is waiting on an answer"
+					: `Session '${payload.session}' is waiting on no answer`,
+			};
 	if (rejection) {
 		ctx.reply.failure({ scope: "Interaction", ...rejection, retryable: false });
 		return;
