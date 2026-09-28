@@ -47,3 +47,7 @@ Use the [native recorder](surfaces.md#record-native-interactions) to record a
 transition on a private display. Follow the
 [capture requirements](../foundations/verification.md) for paired animated
 clips. A still image does not establish transition timing.
+
+`proof/scenes/desktop-motion.sh` records the sidebar and the right panel
+closing and opening; the [surface scenes](surfaces.md#surface-scenes) table
+lists it with the command that records its pair.

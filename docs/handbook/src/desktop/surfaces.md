@@ -1168,4 +1168,58 @@ byte-identical Before and After binaries. `SCENE_ARM=before` sends
 `record-native.sh` down that path. For a native-only change, set
 `PROOF_BASE_REF=HEAD` to retain the same host source in both arms.
 
+A base build speaks the host protocol of its own revision. Set
+`PROOF_NATIVE_BEFORE_REF` to that revision and the before arm runs the GUI host
+of that revision, extracted to `proof/captures/.native-before/`, and reads that
+revision's token and theme directories when it has them. The working tree is
+not changed.
+
+### Surface scenes
+
+A scene whose header contains the line `# scene-terminal: native` is a desktop
+scene, and `proof/record.sh` records it through `record-native.sh`, so `--pair`
+records both arms. The session starts through `proof/scenes/desktop-lib.sh`,
+which seeds the desktop bench corpus (three projects of ten threads) into the
+take's home, serves the bench's scripted model on loopback inside the container,
+and opens the window in the first project. A scene sets the model's pacing with
+`# desktop-llm: <fake_llm.py arguments>` and a profile setting with
+`# desktop-config: <yaml line>`. The after arm drives the window through the
+driver socket; a window without one is driven with keys and pointer positions,
+and the take log states which. A span a scene marks as a clip is published as
+`<scene>-<clip>.webp` at the capture rate and checked with
+`proof/webp-cadence.py --expect-ms 33`.
+
+Record the pair of every surface against the pre-rebuild window:
+
+```sh
+for surface in empty sidebar thread streaming composer dock palette settings \
+	panel-diff panel-files panel-agents drawer banner toast motion; do
+	PROOF_BASE_REF=HEAD PROOF_NATIVE_BEFORE_REF=bbc1b6db59 \
+		PROOF_NATIVE_BEFORE_BINARY=<build-of-bbc1b6db59> \
+		DESKTOP_BINARY=<build-of-this-tree> \
+		proof/record.sh --pair "proof/scenes/desktop-${surface}.sh"
+done
+```
+
+| Scene | State | Output |
+| --- | --- | --- |
+| `desktop-empty.sh` | No thread open | `desktop-empty-empty.png` |
+| `desktop-sidebar.sh` | Thread list, filtered by a search, a new thread | `desktop-sidebar-sidebar.png`, `-sidebar-search.png`, `-sidebar-new-thread.png` |
+| `desktop-thread.sh` | A finished turn with a shell tool call | `desktop-thread-thread.png` |
+| `desktop-streaming.sh` | A reply streaming in | `desktop-streaming-stream.webp`, `desktop-streaming-streaming.png` |
+| `desktop-composer.sh` | A four-line draft and the composer footer | `desktop-composer-grow.webp`, `desktop-composer-composer.png` |
+| `desktop-dock.sh` | An approval pending over the composer | `desktop-dock-dock.png` |
+| `desktop-palette.sh` | The palette open and filtered | `desktop-palette-open.webp`, `desktop-palette-palette.png` |
+| `desktop-settings.sh` | The first settings page | `desktop-settings-settings.png` |
+| `desktop-panel-diff.sh` | The right panel's diff tab | `desktop-panel-diff-panel-diff.png` |
+| `desktop-panel-files.sh` | The right panel's files tab | `desktop-panel-files-panel-files.png` |
+| `desktop-panel-agents.sh` | The right panel's agents tab | `desktop-panel-agents-panel-agents.png` |
+| `desktop-drawer.sh` | The terminal drawer with a shell | `desktop-drawer-open.webp`, `desktop-drawer-drawer.png` |
+| `desktop-banner.sh` | The GUI host ended under the window | `desktop-banner-banner.png` |
+| `desktop-toast.sh` | A decision arriving on a thread that is not open | `desktop-toast-toast.png` |
+| `desktop-motion.sh` | The sidebar and the panel closing and opening | `desktop-motion-slides.webp`, `desktop-motion-motion-panel-open.png` |
+
+Each output is written to `proof/captures/x11/` for the after arm and
+`proof/captures/x11/before/` for the before arm.
+
 See [Motion](motion.md) for transition behavior.

@@ -14,6 +14,9 @@
 #   - Static UI change:   two PNG frames, before and after (--still or static scene)
 #   - Animation / timing: two animated clips (WebP/MP4), before and after
 #   - Settings change:    two PNG frames, off and on (--settings)
+#
+# A scene headed `# scene-terminal: native` records the desktop window through
+# proof/docker/record-native.sh; every flag above applies to it unchanged.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -76,6 +79,11 @@ else
 	exit 1
 fi
 
+NATIVE_SCENE=0
+if grep -qx '# scene-terminal: native' "${SCENE_PATH}"; then
+	NATIVE_SCENE=1
+fi
+
 run_arm() {
 	local arm="$1"
 	local out_dir="$2"
@@ -92,8 +100,17 @@ run_arm() {
 		env_args+=(SCENE_STILL="${STILL_NAME}")
 	fi
 
+	# A scene headed `# scene-terminal: native` records the desktop window, not a
+	# terminal; record-native.sh holds that session's environment and routes its
+	# before arm through the same source hold.
 	echo "=== Recording ${arm} arm -> ${out_dir} ==="
-	if [[ "${arm}" == "before" ]]; then
+	if [[ ${NATIVE_SCENE} -eq 1 ]]; then
+		if [[ "${arm}" == "before" ]]; then
+			env OUT_DIR="${out_dir}" SCENE_ARM=before "${env_args[@]}" bash proof/docker/record-native.sh "${SCENE_PATH}"
+		else
+			env OUT_DIR="${out_dir}" "${env_args[@]}" bash proof/docker/record-native.sh "${SCENE_PATH}"
+		fi
+	elif [[ "${arm}" == "before" ]]; then
 		env OUT_DIR="${out_dir}" "${env_args[@]}" bash proof/docker/record-x11-before.sh "${SCENE_PATH}"
 	else
 		env OUT_DIR="${out_dir}" "${env_args[@]}" bash proof/docker/record-x11.sh "${SCENE_PATH}"
