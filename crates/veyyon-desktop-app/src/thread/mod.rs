@@ -11,6 +11,7 @@
 //! draws its strip above the column.
 
 pub mod header;
+mod status;
 
 use gpui::{
 	Context, Entity, Pixels, Render, StyleRefinement, Subscription, Window, div, prelude::*,

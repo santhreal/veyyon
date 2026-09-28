@@ -1,26 +1,31 @@
 //! The thread header: 44 px, the window's drag region beside the sidebar.
 //!
-//! Left: the thread's title and where it works (directory, branch, pull
-//! request, machine). Right: what the session runs as and costs (mode, model,
-//! pace and the extensions' statuses, serving account, quota, tokens,
-//! context), the thread's controls and the window's minimize, maximize and
-//! close buttons.
+//! Left: the thread's title. Then its facts: where it works (directory,
+//! machine, branch, pull request) and what the session runs as and costs
+//! (sharing, mode, model, pace and the extensions' statuses, serving
+//! account, quota, tokens, context). Right: the thread's controls and the
+//! window's minimize, maximize and close buttons. The title takes at most
+//! half the header and truncates past that. A header too narrow for every
+//! fact drops the trailing ones whole, and the title narrows below its own
+//! width only once no fact is left.
 
-use std::fmt::Write as _;
-
-use gpui::{Context, Entity, Render, Subscription, Window, WindowControlArea, div, prelude::*};
-use veyyon_desktop_model::{HostAction, SessionId, SessionMode, SurfaceId, domain::ShareRole};
+use gpui::{
+	AnyElement, Context, Entity, MouseButton, Render, Subscription, Window, WindowControlArea, div,
+	prelude::*, relative,
+};
+use veyyon_desktop_model::{HostAction, SurfaceId, domain::ShareRole};
 use veyyon_desktop_ui::{
 	controls::IconButton,
 	icons::IconName,
 	theme::{ActiveTheme, TypeStyled, radius, size, space, text},
 };
 
+use super::status::{now_ms, status_chips};
 use crate::{
 	AppState, StoreEvent,
 	actions::workspace::{ShowPanelTab, ToggleDrawer, TogglePanel},
 	driver,
-	transcript::{tool::open_external, turn::duration_words},
+	transcript::tool::open_external,
 	workspace,
 };
 
@@ -44,108 +49,6 @@ impl ThreadHeader {
 	}
 }
 
-/// The words a mode chip reads, or `None` for a session in no mode.
-#[must_use]
-pub fn mode_label(mode: &SessionMode) -> Option<String> {
-	match mode {
-		SessionMode::Plan => Some("Plan".to_owned()),
-		SessionMode::PlanPaused => Some("Plan paused".to_owned()),
-		SessionMode::Goal => Some("Goal".to_owned()),
-		SessionMode::Vibe => Some("Vibe".to_owned()),
-		SessionMode::Loop => Some("Loop".to_owned()),
-		SessionMode::Other(name) if name == "none" || name.is_empty() => None,
-		SessionMode::Other(name) => Some(name.replace(['_', '-'], " ")),
-	}
-}
-
-/// `12.3k`, `1.2M`, `950`.
-#[must_use]
-pub fn compact_count(count: u64) -> String {
-	match count {
-		0..1_000 => count.to_string(),
-		1_000..1_000_000 => format!("{}.{}k", count / 1_000, (count % 1_000) / 100),
-		_ => format!("{}.{}M", count / 1_000_000, (count % 1_000_000) / 100_000),
-	}
-}
-
-/// The chips the header states about `session`, left to right, read at
-/// render so a running duration needs no timer.
-#[must_use]
-pub fn status_chips(app: &AppState, session: &SessionId, now_ms: u64) -> Vec<String> {
-	let store = app.store();
-	let domains = &store.domains;
-	let mut chips = Vec::new();
-	if let Some(mode) = app.session_mode(session).and_then(mode_label) {
-		chips.push(mode);
-	}
-	if let Some(current) = domains
-		.models
-		.as_ref()
-		.and_then(|models| models.current.as_ref())
-	{
-		chips.push(current.id.clone());
-	}
-	if let Some(pace) = store.pace(session) {
-		let worked = duration_words(pace.worked_ms_at(now_ms) / 1000);
-		match pace.tokens_per_second_tenths {
-			Some(rate) => chips.push(format!("{}.{} tok/s · {worked}", rate / 10, rate % 10)),
-			None => chips.push(worked),
-		}
-	}
-	if let Some(ui) = domains
-		.extension_ui
-		.get(session)
-		.filter(|ui| !ui.statuses.is_empty())
-	{
-		let texts: Vec<&str> = ui
-			.statuses
-			.iter()
-			.map(|status| status.text.as_str())
-			.collect();
-		chips.push(texts.join(" "));
-	}
-	if let Some(account) = store
-		.serving_account(session)
-		.filter(|account| account.logins >= 2)
-	{
-		let predicted = if account.predicted { "~" } else { "" };
-		chips.push(format!("{predicted}{}", account.label));
-	}
-	if let Some(quota) = store.quota(session) {
-		let window = |label: &str, window: Option<&veyyon_desktop_model::domain::QuotaWindowView>| {
-			window.map(|window| format!("{label} {}%", window.used_permille / 10))
-		};
-		let parts: Vec<String> =
-			[window("5h", quota.five_hour.as_ref()), window("7d", quota.seven_day.as_ref())]
-				.into_iter()
-				.flatten()
-				.collect();
-		if !parts.is_empty() {
-			chips.push(parts.join(" · "));
-		}
-	}
-	if let Some(usage) = domains.usage.get(session) {
-		let mut words =
-			format!("↑{} ↓{}", compact_count(usage.input_tokens), compact_count(usage.output_tokens));
-		if let Some(cost) = usage.cost_microusd {
-			let _ = write!(words, " · ${}.{:02}", cost / 1_000_000, (cost % 1_000_000) / 10_000);
-		}
-		chips.push(words);
-	}
-	if let Some(context) = domains.context.get(session)
-		&& let Some(limit) = context.limit_tokens.filter(|limit| *limit > 0)
-	{
-		chips.push(format!("{}% context", context.total_tokens * 100 / limit));
-	}
-	chips
-}
-
-fn now_ms() -> u64 {
-	std::time::SystemTime::now()
-		.duration_since(std::time::UNIX_EPOCH)
-		.map_or(0, |elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX))
-}
-
 impl Render for ThreadHeader {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let palette = cx.theme().palette;
@@ -156,59 +59,71 @@ impl Render for ThreadHeader {
 			.as_ref()
 			.and_then(|session| app.session_title(session))
 			.map_or_else(|| "New thread".to_owned(), str::to_owned);
-		let mut place = Vec::new();
-		if let Some(cwd) = session.as_ref().and_then(|session| app.cwd(session)) {
-			place.push(
-				cwd.rsplit(['/', '\\'])
-					.find(|part| !part.is_empty())
-					.unwrap_or(cwd)
-					.to_owned(),
-			);
-		}
-		let checkout = session
-			.as_ref()
-			.and_then(|session| store.checkout(session))
-			.cloned();
-		if let Some(host) = &store.domains.host {
-			place.push(
-				host
-					.hostname
-					.split('.')
-					.next()
-					.unwrap_or(&host.hostname)
-					.to_owned(),
-			);
-		}
-		let chips = session
-			.as_ref()
-			.map(|session| status_chips(app, session, now_ms()))
-			.unwrap_or_default();
-		let share = store.domains.share.as_ref().map(|share| share.role);
-		let paused = store.paused.paused;
 		let muted = palette.text.muted;
-		let pr = checkout
-			.as_ref()
-			.and_then(|checkout| checkout.pull_request.clone())
-			.map(|pr| {
-				let app = self.app.clone();
-				div()
-					.id("thread-pr")
-					.text_color(palette.status.info)
-					.cursor_pointer()
-					.child(format!("#{}", pr.number))
-					.on_click(move |_, _, cx| open_external(&app, pr.url.clone(), cx))
-			});
-		let branch = checkout.map(|checkout| {
+		let mut place: Vec<AnyElement> = Vec::new();
+		if let Some(cwd) = session.as_ref().and_then(|session| app.cwd(session)) {
+			let dir = cwd
+				.rsplit(['/', '\\'])
+				.find(|part| !part.is_empty())
+				.unwrap_or(cwd);
+			place.push(div().child(dir.to_owned()).into_any_element());
+		}
+		if let Some(host) = &store.domains.host {
+			let machine = host.hostname.split('.').next().unwrap_or(&host.hostname);
+			place.push(div().child(machine.to_owned()).into_any_element());
+		}
+		if let Some(checkout) = session.as_ref().and_then(|session| store.checkout(session)) {
 			let dirty = if checkout.dirty { "*" } else { "" };
-			div()
-				.text_color(muted)
-				.child(format!("⎇ {}{dirty}", checkout.branch))
-		});
-		let share_chip = match share {
+			place.push(
+				div()
+					.child(format!("⎇ {}{dirty}", checkout.branch))
+					.into_any_element(),
+			);
+			if let Some(pr) = checkout.pull_request.clone() {
+				let app = self.app.clone();
+				place.push(
+					div()
+						.id("thread-pr")
+						.text_color(palette.status.info)
+						.cursor_pointer()
+						// The facts move the window when pressed; the link opens instead.
+						.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+						.on_click(move |_, _, cx| open_external(&app, pr.url.clone(), cx))
+						.child(format!("#{}", pr.number))
+						.into_any_element(),
+				);
+			}
+		}
+		let share_chip = match store.domains.share.as_ref().map(|share| share.role) {
 			Some(ShareRole::Hosting) => Some("Sharing"),
 			Some(ShareRole::Guest) => Some("Joined"),
 			Some(ShareRole::Off) | None => None,
 		};
+		let status = session
+			.as_ref()
+			.map(|session| status_chips(app, session, now_ms()))
+			.unwrap_or_default();
+		let chips: Vec<AnyElement> = share_chip
+			.map(|chip| {
+				div()
+					.type_style(text::SMALL)
+					.text_color(palette.status.info)
+					.child(chip)
+					.into_any_element()
+			})
+			.into_iter()
+			.chain(status.into_iter().map(|chip| {
+				div()
+					.px(space::S2)
+					.rounded(radius::SM)
+					.bg(palette.bg.hover)
+					.type_style(text::SMALL)
+					.text_color(palette.text.secondary)
+					.child(chip)
+					.into_any_element()
+			}))
+			.collect();
+		let paused = store.paused.paused;
 		let pause = self.host_button(
 			app,
 			"thread-pause",
@@ -291,59 +206,92 @@ impl Render for ThreadHeader {
 			.window_control_area(WindowControlArea::Drag)
 			.child(workspace::drag_region(
 				div()
-					.flex_shrink_0()
+					.min_w_0()
+					.max_w(relative(0.5))
+					.truncate()
 					.type_style(text::TITLE)
 					.text_color(palette.text.primary)
 					.child(title),
 			))
-			.child(
+			.child(workspace::drag_region(
+				div()
+					.flex_1()
+					.min_w_0()
+					.h_full()
+					.flex()
+					.items_center()
+					.text_color(muted)
+					.child(facts(place, chips)),
+			))
+			.child(driver::target(
+				"thread.buttons",
 				div()
 					.flex()
-					.min_w_0()
-					.gap(space::S2)
-					.text_color(muted)
-					.children(place.into_iter().map(|part| div().truncate().child(part)))
-					.children(branch)
-					.children(pr),
-			)
-			.child(workspace::drag_region(div().flex_1().h_full()))
-			.children(chips.into_iter().map(|chip| {
-				div()
-					.px(space::S2)
-					.rounded(radius::SM)
-					.bg(palette.bg.hover)
-					.type_style(text::SMALL)
-					.text_color(palette.text.secondary)
-					.whitespace_nowrap()
-					.child(chip)
-			}))
-			.children(share_chip.map(|chip| {
-				div()
-					.type_style(text::SMALL)
-					.text_color(palette.status.info)
-					.child(chip)
-			}))
-			.child(
-				IconButton::new("thread-usage", IconName::Zap)
-					.tooltip("Usage and context")
-					.on_click(|_, window, cx| {
-						window.dispatch_action(Box::new(ShowPanelTab { tab: "usage".into() }), cx);
-					}),
-			)
-			.children(session_buttons.into_iter().flatten())
-			.child(driver::target("thread.pause", pause))
-			.child(
-				IconButton::new("thread-drawer", IconName::PanelBottom)
-					.tooltip("Terminal drawer")
-					.on_click(|_, window, cx| window.dispatch_action(Box::new(ToggleDrawer), cx)),
-			)
-			.child(
-				IconButton::new("thread-panel", IconName::PanelRight)
-					.tooltip("Right panel")
-					.on_click(|_, window, cx| window.dispatch_action(Box::new(TogglePanel), cx)),
-			)
+					.flex_none()
+					.items_center()
+					.gap(space::S1)
+					.child(
+						IconButton::new("thread-usage", IconName::Zap)
+							.tooltip("Usage and context")
+							.on_click(|_, window, cx| {
+								window.dispatch_action(Box::new(ShowPanelTab { tab: "usage".into() }), cx);
+							}),
+					)
+					.children(session_buttons.into_iter().flatten())
+					.child(driver::target("thread.pause", pause))
+					.child(
+						IconButton::new("thread-drawer", IconName::PanelBottom)
+							.tooltip("Terminal drawer")
+							.on_click(|_, window, cx| {
+								window.dispatch_action(Box::new(ToggleDrawer), cx);
+							}),
+					)
+					.child(
+						IconButton::new("thread-panel", IconName::PanelRight)
+							.tooltip("Right panel")
+							.on_click(|_, window, cx| {
+								window.dispatch_action(Box::new(TogglePanel), cx);
+							}),
+					),
+			))
 			.child(window_controls)
 	}
+}
+
+/// The header's facts: as many as fit, in order, and none of the rest.
+///
+/// One wrapping row, one control high, that clips its second line. A fact
+/// that does not fit beside the ones before it wraps there whole, so a
+/// narrow header drops the trailing facts, chips before places, instead of
+/// drawing them over each other. The empty first item, one line high, keeps
+/// even the first fact from overflowing its line, since a flex line always
+/// takes its first item however wide, and holds that line's height when no
+/// fact fits on it. The row's parent grows from nothing into the width the
+/// title, the buttons and the window controls leave, so no fact narrows the
+/// title.
+fn facts(place: Vec<AnyElement>, chips: Vec<AnyElement>) -> impl IntoElement {
+	let slot = |fact: AnyElement| {
+		div()
+			.flex()
+			.flex_none()
+			.items_center()
+			.h(size::CONTROL_SM)
+			.child(fact)
+	};
+	driver::target(
+		"thread.facts",
+		div()
+			.w_full()
+			.h(size::CONTROL_SM)
+			.flex()
+			.flex_wrap()
+			.overflow_hidden()
+			.whitespace_nowrap()
+			.child(div().h(size::CONTROL_SM))
+			.children(place.into_iter().map(|fact| slot(fact).mr(space::S2)))
+			.child(div().flex_1().h(size::CONTROL_SM))
+			.children(chips.into_iter().map(|fact| slot(fact).ml(space::S2))),
+	)
 }
 
 impl ThreadHeader {
