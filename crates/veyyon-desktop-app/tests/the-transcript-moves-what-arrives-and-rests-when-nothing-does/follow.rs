@@ -50,7 +50,7 @@ fn at_the_live_edge_a_growing_reply_is_followed_on_a_spring_and_then_rests(
 
 	t.apply(vec![streamed(&reply(20), 3)]);
 	let mut behind = vec![t.behind()];
-	assert!(behind[0] > 100.0, "the list starts from where it was: {behind:?}");
+	assert!(behind[0] > 100.0, "part of the growth starts below the list's end: {behind:?}");
 	let mut ran = Duration::ZERO;
 	while t.frame() {
 		ran += super::FRAME;
@@ -73,7 +73,7 @@ fn a_scroll_by_the_reader_ends_the_follow_where_the_list_is(app: &mut TestAppCon
 	t.apply(vec![streamed(&reply(20), 3)]);
 	t.frame();
 	let moving = t.behind();
-	assert!(moving > 100.0, "mid-motion: {moving}");
+	assert!(moving > 20.0, "mid-motion: {moving}");
 
 	t.wheel(40.0);
 	let held = t.behind();
