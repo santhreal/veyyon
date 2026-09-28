@@ -6,10 +6,9 @@
 //! (`ListState::splice`), so an entry arriving measures itself and the turn it
 //! landed in and nothing else; a delta notifies the tail, remeasures its one
 //! slot and lays the list out, which draws only the items on screen. A reply
-//! taller than the thread scrolls with the list, which
-//! follows the tail while it is at the bottom. When the stream ends the
-//! committed entry takes the tail's slot in place, at the same index and
-//! scroll offset.
+//! taller than the thread scrolls with the list, which follows the tail while
+//! it is at the bottom. When the stream ends the committed entry takes the
+//! tail's slot in place, at the same index and scroll offset.
 
 mod blocks;
 mod entry;
@@ -138,6 +137,12 @@ impl Transcript {
 	#[must_use]
 	pub const fn tail(&self) -> &Entity<StreamingTail> {
 		&self.tail
+	}
+
+	/// The turns the list cuts its items into, as the last splice left them.
+	#[must_use]
+	pub const fn turns(&self) -> &TurnIndex {
+		&self.turns
 	}
 
 	/// The item at the top of the view and how far the view starts past it.

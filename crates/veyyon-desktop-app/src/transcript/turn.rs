@@ -4,9 +4,10 @@
 //! operator entry is what came back. A finished turn folds its tool rows into
 //! one `Worked for 42s · 12 steps` row, so each list item needs to know which
 //! turn it sits in, whether it is the turn's first tool item and which later
-//! entry answered each call. The index holds that per turn and is rebuilt from
-//! the turn a splice touched, so an entry arriving costs the turn it lands in
-//! and never the whole transcript.
+//! entry answered each call. The index holds that per turn and carries on
+//! from the turn a splice touched, so an entry appended costs itself and an
+//! entry replaced costs the turns from its own to the end, never the whole
+//! transcript.
 
 use std::ops::Range;
 
@@ -69,7 +70,7 @@ pub fn duration_words(secs: u64) -> String {
 }
 
 /// The turns of one session's display order.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct TurnIndex {
 	turns: Vec<TurnSpan>,
 }
@@ -78,13 +79,16 @@ impl TurnIndex {
 	/// Reads every turn of `session` from scratch.
 	pub fn rebuild(&mut self, app: &AppState, session: &SessionId) {
 		self.turns.clear();
-		self.scan_from(app, session, 0);
+		self.scan_from(app, session, 0, None);
 	}
 
 	/// Brings the index up to date after items `range` of the previous order
 	/// were replaced by `count` items, and returns the display range whose
-	/// drawing depends on the change: the turn the splice landed in, from its
-	/// start to the end of the order.
+	/// drawing depends on the change: from the start of the turn the splice
+	/// landed in, or of the turn that ended where it began, to the end of the
+	/// order. An entry that is not a prompt joins the turn before it, so that
+	/// turn is carried on from where it ended rather than read again; a prompt
+	/// closes it.
 	pub fn splice(
 		&mut self,
 		app: &AppState,
@@ -99,8 +103,13 @@ impl TurnIndex {
 			.get(keep)
 			.map_or(range.start, |turn| turn.range.start.min(range.start));
 		self.turns.truncate(keep);
-		self.scan_from(app, session, start);
-		start..app.entry_count(session)
+		// The turn that ends where the splice begins takes what the splice
+		// brought until a prompt opens the next; every entry it holds is before
+		// the splice, so what it holds stands.
+		let open = self.turns.pop_if(|turn| turn.range.end == range.start);
+		let from = open.as_ref().map_or(start, |turn| turn.range.start);
+		self.scan_from(app, session, start, open);
+		from..app.entry_count(session)
 	}
 
 	/// The turn display index `ix` sits in.
@@ -131,9 +140,16 @@ impl TurnIndex {
 		self.turns.is_empty()
 	}
 
-	fn scan_from(&mut self, app: &AppState, session: &SessionId, start: usize) {
+	/// Reads the turns from display index `start` on, carrying on `open`, the
+	/// turn that ends at `start`, until a prompt opens the next.
+	fn scan_from(
+		&mut self,
+		app: &AppState,
+		session: &SessionId,
+		start: usize,
+		mut open: Option<TurnSpan>,
+	) {
 		let count = app.entry_count(session);
-		let mut open: Option<TurnSpan> = None;
 		for ix in start..count {
 			let Some(entry) = app.entry_at(session, ix) else {
 				continue;

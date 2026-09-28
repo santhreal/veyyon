@@ -408,6 +408,7 @@
 - Desktop toasts stack at the top right under the thread header, where they covered the composer's controls and the terminal drawer.
 - The desktop composer offers Retry on a refused prompt only when the host called the refusal retryable, where it drew a Retry that sent nothing.
 - A desktop turn waiting on an approval, question, plan or dialog stays open with its calls drawn as running, where it folded under `Worked for`, drew the call it waited on as aborted, footed itself with its model and offered Retry and Rephrase.
+- A desktop turn whose entries arrive one at a time stays one turn, where each reply, result or note appended after its prompt started a turn of its own, so a live turn folded its calls under `Worked for` while it still ran and drew the gap between turns inside it.
 - The desktop window stops its motion when `display.transitions` is `off` or the system asks for reduced motion, including a change made while the window is open, where it read neither.
 - The desktop right panel asks the host again for a tab's changes, file tree, open file, diagnostics or usage each time you open that tab, so edits made outside a turn show up without closing and reopening the panel.
 - The desktop right panel and terminal drawer state the host's reason when it refuses a request and offer Retry only when the host accepts a second send, and a diff the host cut before its first file states the cut instead of reading as a clean working tree.

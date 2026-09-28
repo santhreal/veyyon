@@ -34,12 +34,12 @@ use super::{
 const MODEL: &str = "bench-model";
 
 /// The host stating the decisions the session waits on.
-fn waiting_on(pending: PendingDecisions) -> HostEvent {
+pub fn waiting_on(pending: PendingDecisions) -> HostEvent {
 	HostEvent::Snapshot(SnapshotSection::Interactions { session: sid(), pending })
 }
 
 /// One pending decision of each queue, named by the queue it sits in.
-fn one_in_each_queue() -> Vec<(&'static str, PendingDecisions)> {
+pub fn one_in_each_queue() -> Vec<(&'static str, PendingDecisions)> {
 	let PendingDecisions { approvals, questions, plans, dialogs } = PendingDecisions {
 		approvals: vec![ApprovalInteraction {
 			id:              "approve".into(),
