@@ -1,18 +1,18 @@
 /**
- * WHY: the terminal draws a tool call from the view registry, and the host
- * builds the window's presentation from the `view` on the tool instance,
- * falling back to the generic row when the instance has none. A tool whose
- * card exists only in the registry is drawn as a card in the terminal and as
- * raw arguments in the window, and nothing recorded which tools those were.
+ * WHY: the terminal draws a tool call from the tool instance's `view`, else
+ * its view-registry entry. The host once read only the instance, so a tool
+ * whose card exists only in the registry (read, write, search, ask, todo and
+ * six more) was a card in the terminal and raw arguments in the window.
  *
- * THE CLASS THIS CLOSES: an undecided tool, and a decision that disagrees
- * with what the host builds. The sweep reads `BUILTIN_TOOL_NAMES`,
- * `HIDDEN_TOOL_NAMES` and every name the terminal has a renderer for at run
- * time, builds each tool the way a session does, and observes both hosts'
- * call presentation. A new tool or renderer turns this red until
- * `TOOL_PRESENTATIONS` records it; a recorded card the window does not receive,
- * or a recorded gap the window has since closed, turns it red too. Opt-outs and
- * gaps are pinned by exact equality.
+ * THE CLASS THIS CLOSES: an undecided tool, a decision that disagrees with what
+ * the host builds, and a host whose view resolution drifts from the
+ * terminal's. The sweep reads `BUILTIN_TOOL_NAMES`, `HIDDEN_TOOL_NAMES` and
+ * every name the terminal has a renderer for at run time, builds each tool the
+ * way a session does, and observes both hosts' call presentation, once with
+ * the live instance and once with none, as a rebuilt transcript of a session
+ * that never constructed the tool sees it. A new tool or renderer turns this
+ * red until `TOOL_PRESENTATIONS` records it; a recorded card the window does
+ * not receive turns it red too. Opt-outs and gaps are pinned by exact equality.
  *
  * WHAT IT DOES NOT CATCH: a view that draws the call alike on both hosts and
  * the result differently, since the call view stands for both here; and how
@@ -24,7 +24,12 @@ import { isDeepStrictEqual } from "node:util";
 import type { ArgotSession } from "argot/session";
 import { carrierKind, membersCarriedBy } from "../../../src/gui-host/desktop-parity/carrier";
 import { TOOL_PRESENTATIONS } from "../../../src/gui-host/desktop-parity/tools";
-import { buildToolCallPresentation, formatGenericCallView } from "../../../src/gui-host/presentation";
+import {
+	buildToolCallPresentation,
+	buildToolResultPresentation,
+	formatGenericCallView,
+	formatGenericResultView,
+} from "../../../src/gui-host/presentation";
 import { buildToolExecutionDisplay } from "../../../src/presentation/tool-execution";
 import { AgentRegistry } from "../../../src/registry/agent-registry";
 import { BUILTIN_TOOLS, HIDDEN_TOOLS, type Tool, type ToolFactory, type ToolSession } from "../../../src/tools";
@@ -35,19 +40,7 @@ import { DebugTool } from "../../../src/tools/shell/debug";
 import { SshTool } from "../../../src/tools/shell/ssh";
 import { makeToolSession } from "../../helpers/tool-session";
 
-const RECORDED_GAPS = [
-	"ask",
-	"ast_edit",
-	"browser",
-	"github",
-	"irc",
-	"launch",
-	"read",
-	"search",
-	"todo",
-	"web_search",
-	"write",
-];
+const RECORDED_GAPS: string[] = [];
 
 const RECORDED_OPT_OUTS = [
 	"argot_load",
@@ -169,5 +162,26 @@ describe("every tool the terminal renders has a desktop presentation", () => {
 
 	test("the tools the window draws generically while the terminal draws a card are exactly the recorded gaps", () => {
 		expect(membersCarriedBy(TOOL_PRESENTATIONS, "gap")).toEqual(RECORDED_GAPS);
+	});
+
+	test("a rebuilt transcript with no tool instance receives the card the terminal draws", () => {
+		const context = { expanded: false, partial: true };
+		const disagreeing = SWEPT.filter(name => {
+			const terminal = buildToolExecutionDisplay({ toolName: name, args: {}, isPartial: true }).callView;
+			const desktop = buildToolCallPresentation(name, {}, undefined, context).view;
+			return !isDeepStrictEqual(desktop, terminal ?? formatGenericCallView(name, {}, context));
+		});
+		expect(disagreeing).toEqual([]);
+	});
+
+	test("a rebuilt transcript with no tool instance receives the result card the terminal draws", () => {
+		const context = { expanded: false, partial: false };
+		const result = { content: [{ type: "text", text: "done" }] };
+		const disagreeing = SWEPT.filter(name => {
+			const terminal = buildToolExecutionDisplay({ toolName: name, args: {}, result, isPartial: false }).resultView;
+			const desktop = buildToolResultPresentation(name, result, {}, undefined, context).view;
+			return !isDeepStrictEqual(desktop, terminal ?? formatGenericResultView(name, result, context, {}));
+		});
+		expect(disagreeing).toEqual([]);
 	});
 });

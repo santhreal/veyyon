@@ -6,10 +6,12 @@ import type {
 	StatusRowView,
 	ToolView,
 	ToolViewContext,
+	ToolViewRenderer,
 	ViewLine,
 	ViewSection,
 	ViewStatus,
 } from "@veyyon/view";
+import { toolViewDefinitions } from "../tools/view-registry";
 import type { ToolPresentation, TranscriptEntry } from "./wire";
 
 export type { ToolPresentation } from "./wire";
@@ -285,7 +287,12 @@ export function buildToolCallPresentation(
 	tool: AgentTool | undefined,
 	context: ToolViewContext,
 ): ToolPresentation {
-	const callRenderer = tool?.view?.renderCall;
+	// Resolved the way the terminal resolves it: the tool instance first, then the registry entry,
+	// which is the only view for a tool that declares none on its instance and for a rebuilt
+	// transcript whose session never constructed the tool. Each view is declared over its own
+	// argument type and receives the payload the terminal hands it.
+	const callRenderer = ((tool?.view ?? toolViewDefinitions[toolName]?.view) as ToolViewRenderer | undefined)
+		?.renderCall;
 	if (callRenderer) {
 		try {
 			const view = callRenderer(args, context);
@@ -315,9 +322,10 @@ export function buildToolResultPresentation(
 	tool: AgentTool | undefined,
 	context: ToolViewContext,
 ): ToolPresentation {
-	// The renderer is declared over the tool's own details type; the normalized
-	// payload carries the same three members the terminal path hands it.
-	const resultRenderer = tool?.view?.renderResult as
+	// Resolved as in buildToolCallPresentation. The normalized payload carries the same three
+	// members the terminal path hands the renderer.
+	const resultRenderer = ((tool?.view ?? toolViewDefinitions[toolName]?.view) as ToolViewRenderer | undefined)
+		?.renderResult as
 		| ((result: RenderableToolResult, context: ToolViewContext, args?: unknown) => ToolView)
 		| undefined;
 	const normalized = normalizeResult(result);
