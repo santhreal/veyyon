@@ -2,7 +2,8 @@
 //!
 //! Left: the thread's title and where it works (directory, branch, pull
 //! request, machine). Right: what the session runs as and costs (mode, model,
-//! pace, serving account, quota, tokens, context) and the thread's controls.
+//! pace and the extensions' statuses, serving account, quota, tokens,
+//! context) and the thread's controls.
 
 use std::fmt::Write as _;
 
@@ -87,6 +88,18 @@ pub fn status_chips(app: &AppState, session: &SessionId, now_ms: u64) -> Vec<Str
 			Some(rate) => chips.push(format!("{}.{} tok/s · {worked}", rate / 10, rate % 10)),
 			None => chips.push(worked),
 		}
+	}
+	if let Some(ui) = domains
+		.extension_ui
+		.get(session)
+		.filter(|ui| !ui.statuses.is_empty())
+	{
+		let texts: Vec<&str> = ui
+			.statuses
+			.iter()
+			.map(|status| status.text.as_str())
+			.collect();
+		chips.push(texts.join(" "));
 	}
 	if let Some(account) = store
 		.serving_account(session)

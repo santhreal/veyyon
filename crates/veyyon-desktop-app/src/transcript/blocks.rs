@@ -16,7 +16,7 @@ pub(super) fn plan_operator(entry: &TranscriptEntry, plan: &mut Plan) {
 		match block {
 			ContentBlock::Text { text } => push_line(&mut words, text),
 			ContentBlock::Video { media_type, bytes } => {
-				push_line(&mut words, &video_words(media_type, *bytes))
+				push_line(&mut words, &video_words(media_type, *bytes));
 			},
 			ContentBlock::Image { .. } | ContentBlock::FileMention { .. } => {
 				plan_artifact(block_ix, block, plan);
@@ -98,7 +98,7 @@ pub(super) fn plan_block(
 			pieces.push(Piece::Pane { caption, lines: pane_lines(output), diff: false });
 		},
 		ContentBlock::Image { .. } | ContentBlock::FileMention { .. } => {
-			plan_artifact(block_ix, block, plan)
+			plan_artifact(block_ix, block, plan);
 		},
 		ContentBlock::Video { media_type, bytes } => pieces.push(Piece::Note {
 			label:    "Video".to_owned(),
@@ -114,7 +114,7 @@ pub(super) fn plan_block(
 			diff:    true,
 		}),
 		ContentBlock::ModelChange { provider, model } => {
-			pieces.push(note("Model", format!("{provider}/{model}")))
+			pieces.push(note("Model", format!("{provider}/{model}")));
 		},
 		ContentBlock::ThinkingChange { level } => pieces.push(note("Thinking", level.clone())),
 		ContentBlock::ModeChange { mode } => pieces.push(note("Mode", mode_words(mode))),

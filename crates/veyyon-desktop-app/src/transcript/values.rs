@@ -1,7 +1,8 @@
-//! The words a transcript row states about a value the host recorded: the
-//! target a tool call names, the lines a result or a run printed, terminal
-//! output with its control sequences removed, a role's label, a mode, a byte
-//! count.
+//! The words a transcript row states about a value the host recorded.
+//!
+//! The target a tool call names, the lines a result or a run printed,
+//! terminal output with its control sequences removed, a role's label, a
+//! mode, a byte count.
 
 use serde_json::Value;
 use veyyon_desktop_model::{MessageRole, TranscriptEntry};

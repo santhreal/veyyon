@@ -191,7 +191,7 @@ fn a_reply_taller_than_the_thread_scrolls_to_its_first_line_and_is_followed_at_t
 	wheel(cx, 100_000.0);
 	let top = drawn(cx, "transcript.tail");
 	assert!(
-		top.top() >= list.top() && top.top() < list.bottom(),
+		(list.top()..list.bottom()).contains(&top.top()),
 		"scrolled up, the reply's first line is in the list: {top:?} in {list:?}",
 	);
 

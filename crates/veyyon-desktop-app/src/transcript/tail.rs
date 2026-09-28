@@ -1,16 +1,18 @@
 //! The streaming tail: the reply the agent is writing, drawn as the last item
 //! of the transcript list while it streams.
 //!
-//! The tail is its own entity so a delta notifies it and nothing else: only
-//! the markdown block still growing is reparsed (`MarkdownDoc::append`). The
-//! transcript drives it ([`StreamingTail::sync`]) and owns its list slot.
+//! The tail is its own entity, holding the reply as one growing document, so
+//! a delta reparses only the markdown block still growing
+//! (`MarkdownDoc::append`). The transcript drives it ([`StreamingTail::sync`])
+//! and owns its list slot. An extension's working message replaces the
+//! tail's own working text while the session states one.
 //! When the stream ends the tail holds the prose it drew until the committed
 //! entry takes its slot ([`StreamingTail::release`]), so a reply never blinks
 //! out between the end of the stream and the entry that records it.
 
 use std::borrow::Cow;
 
-use gpui::{Context, Entity, Render, Window, div, prelude::*};
+use gpui::{Context, Entity, Render, SharedString, Window, div, prelude::*};
 use veyyon_desktop_model::{ContentBlock, SessionId};
 use veyyon_desktop_ui::{
 	markdown::{self, MarkdownDoc, MarkdownStyle},
@@ -25,7 +27,7 @@ use crate::AppState;
 enum Phase {
 	/// Nothing: no stream, and no ended reply held.
 	Idle,
-	/// The model is thinking and has written no prose yet.
+	/// The model is working and has written no prose yet.
 	Thinking,
 	/// A tool is running.
 	Tool(String),
@@ -40,6 +42,9 @@ pub struct StreamingTail {
 	app:     Entity<AppState>,
 	doc:     MarkdownDoc,
 	phase:   Phase,
+	/// The working text an extension set for the session, drawn in place of
+	/// the tail's own while it states one.
+	working: Option<SharedString>,
 	renders: usize,
 }
 
@@ -47,7 +52,7 @@ impl StreamingTail {
 	/// Creates an empty tail over `app`.
 	#[must_use]
 	pub fn new(app: Entity<AppState>) -> Self {
-		Self { app, doc: MarkdownDoc::default(), phase: Phase::Idle, renders: 0 }
+		Self { app, doc: MarkdownDoc::default(), phase: Phase::Idle, working: None, renders: 0 }
 	}
 
 	/// How many times the tail has rendered.
@@ -68,11 +73,14 @@ impl StreamingTail {
 		self.phase == Phase::Idle
 	}
 
-	/// Reads `session`'s stream. An ended stream keeps the prose it wrote,
-	/// held until [`Self::release`]; one that wrote none leaves the tail empty.
+	/// Reads `session`'s stream and the working message its extensions set.
+	/// An ended stream keeps the prose it wrote, held until
+	/// [`Self::release`]; one that wrote none leaves the tail empty.
 	pub(super) fn sync(&mut self, session: Option<&SessionId>, cx: &mut Context<Self>) {
 		let app = self.app.read(cx);
-		let Some(state) = session.and_then(|session| app.streaming(session)) else {
+		let Some((session, state)) =
+			session.and_then(|session| app.streaming(session).map(|state| (session, state)))
+		else {
 			let phase = if self.doc.source().is_empty() {
 				Phase::Idle
 			} else {
@@ -85,9 +93,6 @@ impl StreamingTail {
 			return;
 		};
 		let content = &state.accumulating.content;
-		let thinking = content.iter().any(|block| {
-			matches!(block, ContentBlock::Thinking { .. } | ContentBlock::RedactedThinking { .. })
-		});
 		let mut texts = content.iter().filter_map(|block| match block {
 			ContentBlock::Text { text } => Some(text.as_str()),
 			_ => None,
@@ -102,11 +107,20 @@ impl StreamingTail {
 				Cow::Owned(joined)
 			},
 		};
-		self.phase = match (&state.tool, prose.is_empty(), thinking) {
-			(Some(tool), ..) => Phase::Tool(tool.clone()),
-			(None, true, true) => Phase::Thinking,
-			(None, ..) => Phase::Writing,
+		self.phase = match (&state.tool, prose.is_empty()) {
+			(Some(tool), _) => Phase::Tool(tool.clone()),
+			(None, true) => Phase::Thinking,
+			(None, false) => Phase::Writing,
 		};
+		let working = app
+			.store()
+			.domains
+			.extension_ui
+			.get(session)
+			.and_then(|ui| ui.working_message.as_deref());
+		if self.working.as_deref() != working {
+			self.working = working.map(|message| SharedString::from(message.to_owned()));
+		}
 		let current = self.doc.source();
 		if current != prose {
 			let delta = (!current.is_empty())
@@ -136,10 +150,11 @@ impl Render for StreamingTail {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.renders += 1;
 		let palette = cx.theme().palette;
-		let status = match &self.phase {
-			Phase::Idle | Phase::Writing | Phase::Held => None,
-			Phase::Thinking => Some("Thinking…".to_owned()),
-			Phase::Tool(tool) => Some(format!("Running {tool}…")),
+		let status = match (&self.phase, &self.working) {
+			(Phase::Idle | Phase::Writing | Phase::Held, _) => None,
+			(Phase::Thinking | Phase::Tool(_), Some(message)) => Some(message.clone()),
+			(Phase::Thinking, None) => Some(SharedString::new_static("Thinking…")),
+			(Phase::Tool(tool), None) => Some(SharedString::from(format!("Running {tool}…"))),
 		};
 		let prose = (self.phase != Phase::Idle && !self.doc.source().is_empty()).then(|| {
 			let app = self.app.clone();

@@ -31,7 +31,7 @@ use gpui::{
 	Context, Entity, FollowMode, ListAlignment, ListState, Render, Subscription, WeakEntity, Window,
 	div, list, prelude::*,
 };
-use veyyon_desktop_model::{EntryId, HostAction, SessionId, SurfaceId};
+use veyyon_desktop_model::{EntryId, HostAction, SessionId, SnapshotSectionKind, SurfaceId};
 use veyyon_desktop_ui::{
 	markdown::MarkdownDoc,
 	theme::{ActiveTheme, TypeStyled, radius, size, space, text},
@@ -156,6 +156,11 @@ impl Transcript {
 				self.refresh_working(cx);
 			},
 			StoreEvent::InteractionsChanged { session } if self.session.as_ref() == Some(session) => {
+				self.refresh_working(cx);
+			},
+			// An extension's working message replaces the tail's own text.
+			StoreEvent::DomainChanged(SnapshotSectionKind::ExtensionUi) => {
+				self.sync_tail(cx);
 				self.refresh_working(cx);
 			},
 			StoreEvent::DomainChanged(_) => self.refresh_working(cx),
