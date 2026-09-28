@@ -17,7 +17,7 @@
  * seen, so a run that leaves a mode and returns to it draws both crossings.
  *
  * NOT CAUGHT: the words the desktop draws a mode with, which
- * `crates/veyyon-desktop/tests/a-transcript-projects-as-turns-of-blocks.rs`
+ * `crates/veyyon-desktop-app`
  * holds, and whether the runtime should write the state save at all, which is
  * the goal driver's own contract.
  */

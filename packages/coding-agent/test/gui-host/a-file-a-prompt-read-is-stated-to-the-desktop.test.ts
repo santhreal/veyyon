@@ -17,8 +17,7 @@
  *
  * WHAT IT DOES NOT CATCH:
  * Which turn the block draws on, and whether the artifact row paints, which is
- * `crates/veyyon-desktop/tests/a-file-the-prompt-named-is-drawn-on-the-turn-that-named-it.rs`
- * and the surface crate's artifact suites. A live turn's socket frames are
+ * `crates/veyyon-desktop-app`'s to assert. A live turn's socket frames are
  * covered by `a-prompt-submitted-from-the-desktop-runs-a-real-turn.test.ts`.
  */
 

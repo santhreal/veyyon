@@ -75,7 +75,7 @@ function body(lines: number, text: string): string {
  * that follow it.
  *
  * The window's parser numbers every row of a file from these counts
- * (`crates/veyyon-desktop-surface/src/diff/parse.rs`), so a diff cut inside a
+ * (`crates/veyyon-desktop-app/src/panel/diff/parse.rs`), so a diff cut inside a
  * hunk body arrives as a hunk that lies about its own contents.
  */
 function hunks(diff: string): Array<{ header: string; oldCount: number; newCount: number; old: number; new: number }> {

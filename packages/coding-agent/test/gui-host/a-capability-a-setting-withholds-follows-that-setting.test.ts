@@ -21,8 +21,7 @@
  *
  * WHAT IT DOES NOT CATCH. What the window draws once it holds the snapshot,
  * which is the desktop's own projection of a gate onto a control and is
- * asserted by
- * `crates/veyyon-desktop/tests/a-control-is-withheld-by-the-capability-it-is-gated-by.rs`.
+ * `crates/veyyon-desktop-app`'s to assert.
  * Nor the connect frame itself, which answers from the
  * declared defaults by design and is covered in
  * `a-window-dictates-into-its-own-composer.test.ts`. The sweep reads

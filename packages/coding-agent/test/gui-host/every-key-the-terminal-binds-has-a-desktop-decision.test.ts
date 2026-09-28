@@ -9,8 +9,11 @@
  * run time, so a keybinding added to the terminal turns this red until a
  * decision is recorded for it, and the gaps are pinned by exact equality, so
  * closing one is a change somebody makes on purpose rather than a count that
- * drifts. A decision naming a desktop chord is checked against the keymap the
- * desktop ships, so it cannot name a chord that is not bound.
+ * drifts. A decision naming a desktop chord is checked against the bindings
+ * `crates/veyyon-desktop-app/src/keymap.rs` ships, and one naming a palette
+ * row against the actions `crates/veyyon-desktop-app/src/actions/registry.rs`
+ * lists, both read at run time, so neither can name an action the window
+ * does not offer.
  *
  * WHAT IT DOES NOT CATCH: whether the desktop surface a decision names behaves
  * the way the terminal's does. A decision naming a host action is checked
@@ -26,8 +29,10 @@ import { ALL_HOST_ACTIONS, type HostActionTag } from "../../src/gui-host/wire";
 
 /** How the desktop reaches one verb the terminal binds a key to. */
 type Decision =
-	/** A chord the desktop keymap binds, named by its action. */
+	/** A chord the desktop keymap binds, named by its action (`namespace::Name`). */
 	| { chord: string }
+	/** A command palette row, named by the action it runs (`namespace::Name`). */
+	| { palette: string }
 	/** The window sends this host action, from a control or a palette row. */
 	| { action: HostActionTag }
 	/** The window answers it alone: navigation, a local selection, its editor. */
@@ -38,10 +43,12 @@ type Decision =
 	| { gap: string };
 
 const DECISIONS: Record<string, Decision> = {
-	"app.agents.hub": { client: "SurfaceRoute::Agents, from the /agents palette row" },
+	"app.agents.hub": { client: "the right panel's Agents tab, from the Show agents palette row (/agents)" },
 	"app.bash.background": { action: "BackgroundCommand" },
 	"app.clear": { action: "ClearOutput" },
-	"app.clipboard.copyLine": { chord: "CopySelection" },
+	"app.clipboard.copyLine": {
+		client: "the composer field's own copy of its selection, and the copy control a hovered transcript entry draws",
+	},
 	"app.clipboard.copyPrompt": { gap: "no window control copies the composer's draft" },
 	"app.clipboard.pasteImage": {
 		client: "the composer's own paste, which attaches each image the clipboard holds",
@@ -49,25 +56,27 @@ const DECISIONS: Record<string, Decision> = {
 	"app.clipboard.pasteTextRaw": { client: "the window's own text field, which pastes what the clipboard holds" },
 	"app.display.reset": { terminalOnly: "redraws a terminal whose screen state was corrupted" },
 	"app.editor.external": { gap: "the draft cannot be opened in an external editor and read back" },
-	"app.exit": { chord: "Quit" },
-	"app.history.search": { chord: "PromptHistory" },
-	"app.interrupt": { chord: "AbortTurn" },
-	"app.message.dequeue": { chord: "TakeBackQueuedPrompt" },
+	"app.exit": { chord: "workspace::Quit" },
+	"app.history.search": { palette: "composer::SearchHistory" },
+	"app.interrupt": { chord: "composer::Stop" },
+	"app.message.dequeue": { palette: "composer::TakeBackQueued" },
 	"app.message.followUp": { action: "FollowUp" },
 	"app.model.cycleBackward": { gap: "the catalogue is chosen from, never stepped through" },
 	"app.model.cycleForward": { gap: "the catalogue is chosen from, never stepped through" },
-	"app.model.select": { chord: "ModelPicker" },
-	"app.model.selectTemporary": { client: "the model row taken without persisting, from PaletteState::models" },
+	"app.model.select": { chord: "composer::OpenModelPicker" },
+	"app.model.selectTemporary": {
+		gap: "the model picker makes every choice the default; none is taken for one session",
+	},
 	"app.plan.toggle": { action: "SetSessionMode" },
 	"app.retry": { action: "RetryTurn" },
 	"app.session.fork": { action: "BranchSession" },
-	"app.session.new": { chord: "NewSession" },
+	"app.session.new": { chord: "workspace::NewThread" },
 	"app.session.observe": { gap: "a session running elsewhere cannot be watched from this window" },
 	"app.session.resume": { action: "SearchSessions" },
-	"app.session.tree": { client: "the queue rail's indented, collapsible branch tree" },
-	"app.stt.toggle": { chord: "ToggleDictation" },
+	"app.session.tree": { client: "the sidebar's collapsible branch rows" },
+	"app.stt.toggle": { palette: "composer::ToggleDictation" },
 	"app.suspend": { terminalOnly: "stops the process and returns the shell its terminal" },
-	"app.thinking.cycle": { chord: "ThinkingLevel" },
+	"app.thinking.cycle": { chord: "composer::CycleThinkingLevel" },
 	"app.thinking.toggle": { client: "the same cycle, which walks every level the host reports for the model" },
 	"app.tools.expand": { action: "SetToolViewExpanded" },
 };
@@ -78,6 +87,7 @@ const RECORDED_GAPS = [
 	"app.editor.external",
 	"app.model.cycleBackward",
 	"app.model.cycleForward",
+	"app.model.selectTemporary",
 	"app.session.observe",
 ];
 
@@ -89,27 +99,21 @@ const RECORDED_GAPS = [
  */
 const EDITOR_PREFIX = "tui.";
 
-const KEYMAP_TOML = path.join(
-	import.meta.dirname,
-	"..",
-	"..",
-	"..",
-	"..",
-	"crates",
-	"veyyon-desktop-surface",
-	"keymap.toml",
-);
+const APP_SRC = path.join(import.meta.dirname, "..", "..", "..", "..", "crates", "veyyon-desktop-app", "src");
 
-/** The action names the desktop's shipped keymap binds a chord to. */
-function boundActions(): Set<string> {
-	const toml = fs.readFileSync(KEYMAP_TOML, "utf8");
-	const bound = new Set<string>();
-	for (const line of toml.split("\n")) {
-		const match = /^\s*action\s*=\s*"([^"]+)"/.exec(line);
-		if (match?.[1]) bound.add(match[1]);
-	}
-	return bound;
+/** The `namespace::Name` of every action `pattern` captures in one source file. */
+function actionsIn(file: string, pattern: RegExp): Set<string> {
+	const source = fs.readFileSync(path.join(APP_SRC, file), "utf8");
+	const names = new Set<string>();
+	for (const match of source.matchAll(pattern)) names.add(`${match[1]}::${match[2]}`);
+	return names;
 }
+
+/** The actions the desktop's default keymap binds a chord to. */
+const BOUND = actionsIn("keymap.rs", /bind::<(?:crate::actions::)?(\w+)::(\w+)>/g);
+
+/** The actions the command palette lists a row for. */
+const LISTED = actionsIn(path.join("actions", "registry.rs"), /entry::<(\w+)::(\w+)>/g);
 
 const TERMINAL_VERBS = Object.keys(KEYBINDINGS)
 	.filter(id => !id.startsWith(EDITOR_PREFIX))
@@ -121,12 +125,19 @@ describe("every key the terminal binds has a desktop decision", () => {
 	});
 
 	test("a decision naming a desktop chord names one the shipped keymap binds", () => {
-		const bound = boundActions();
 		const named = Object.entries(DECISIONS).flatMap(([id, decision]) =>
 			"chord" in decision ? [[id, decision.chord] as const] : [],
 		);
 		expect(named.length).toBeGreaterThan(0);
-		expect(named.filter(([, action]) => !bound.has(action))).toEqual([]);
+		expect(named.filter(([, action]) => !BOUND.has(action))).toEqual([]);
+	});
+
+	test("a decision naming a palette row names one the palette lists", () => {
+		const named = Object.entries(DECISIONS).flatMap(([id, decision]) =>
+			"palette" in decision ? [[id, decision.palette] as const] : [],
+		);
+		expect(named.length).toBeGreaterThan(0);
+		expect(named.filter(([, action]) => !LISTED.has(action))).toEqual([]);
 	});
 
 	test("a decision naming a host action names one the protocol carries", () => {
@@ -146,9 +157,9 @@ describe("every key the terminal binds has a desktop decision", () => {
 		expect(gaps).toEqual(RECORDED_GAPS);
 	});
 
-	test("recalling a prompt submitted earlier is bound on both hosts", () => {
+	test("recalling a prompt submitted earlier is reachable on both hosts", () => {
 		expect(KEYBINDINGS["app.history.search"]).toBeDefined();
-		expect(boundActions().has("PromptHistory")).toBe(true);
+		expect(LISTED.has("composer::SearchHistory")).toBe(true);
 	});
 
 	test("a text-editing key is answered by the window's own field, not by a chord", () => {

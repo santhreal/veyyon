@@ -12,8 +12,7 @@
  * added there without a decoder turns this suite red.
  *
  * NOT CAUGHT: the composer's own rendering of the card, which
- * `crates/veyyon-desktop-surface/tests/an-attachment-card-draws-its-name-inside-the-box-it-is-in.rs`
- * owns; video attachments, whose acceptance and refusal
+ * `crates/veyyon-desktop-app` owns; video attachments, whose acceptance and refusal
  * `submit-prompt-video-attachments.test.ts` owns; and the host's readiness to
  * answer a NEW connection while a turn's compaction runs, which is a
  * scheduling property no in-process client observes.

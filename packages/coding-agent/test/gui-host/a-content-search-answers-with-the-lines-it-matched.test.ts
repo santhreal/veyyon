@@ -15,7 +15,7 @@
  * bounded and says so.
  *
  * WHAT IT DOES NOT CATCH: how the rows are drawn, which
- * `crates/veyyon-desktop/tests/a-content-search-lists-the-lines-the-host-found.rs`
+ * `crates/veyyon-desktop-app`
  * owns, and searching a remote filesystem, which is a separate subsystem.
  */
 

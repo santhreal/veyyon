@@ -28,7 +28,7 @@
  *
  * NOT CAUGHT: the desktop's own half -- that the palette offers a row per
  * direction and that the header's mode reaches the composer's chip -- is
- * `crates/veyyon-desktop/tests/a-mode-the-session-runs-in-is-reachable-and-stated.rs`.
+ * `crates/veyyon-desktop-app`'s to assert.
  * It also says nothing about `goal`, which drives turns of its own from a
  * controller the terminal owns, so a request naming it is refused here.
  */

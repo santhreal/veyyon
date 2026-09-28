@@ -15,7 +15,7 @@
  *
  * WHAT IT DOES NOT CATCH: a real provider request (`streamSimple` is stubbed),
  * how the window draws the two entries, which
- * `crates/veyyon-desktop/tests/transcript-roles-retain-their-register-and-searchable-content.rs`
+ * `crates/veyyon-desktop-app`
  * owns, and a last frame restating the concatenated deltas rather than the
  * turn's own reply text — the two agree unless the session rewrites the reply
  * on the way out, which is the secret-expansion path `agent-session` owns.

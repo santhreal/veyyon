@@ -29,7 +29,7 @@
  * NOT CAUGHT: that `agentLoop` polls the gate at its action boundaries, which
  * `packages/agent/test` owns against the loop itself; and the strip the window
  * draws from the section, which
- * `crates/veyyon-desktop/tests/a-freeze-the-host-engaged-reaches-every-window.rs`
+ * `crates/veyyon-desktop-app`
  * owns.
  */
 

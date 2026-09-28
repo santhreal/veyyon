@@ -14,6 +14,7 @@ import { isSubcommand } from "@veyyon/coding-agent/cli-commands";
 import { KEYBINDINGS } from "@veyyon/coding-agent/config/keybindings";
 import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
 import type { ExtensionAPI, ExtensionFactory } from "@veyyon/coding-agent/extensibility/extensions";
+import { builtinCommandViews } from "@veyyon/coding-agent/gui-host/commands-view";
 import { validateServerConfig } from "@veyyon/coding-agent/mcp/config";
 import { MCP_CONFIG_SCHEMA_URL } from "@veyyon/coding-agent/mcp/types";
 import { BUILTIN_SLASH_COMMAND_DEFS } from "@veyyon/coding-agent/slash-commands/builtin-registry";
@@ -531,17 +532,23 @@ describe("docs examples — a documented command exists in the surface whose pag
 	}
 	// The desktop command palette is a SECOND command surface, and the pages
 	// under `docs/handbook/src/desktop/` promise that one rather than the TUI's
-	// registry: `/attach`, `/queue-mode`, `/steer` and `/terminal` are palette
-	// entries the TUI never had. The names are read from the palette's own table
-	// at run time, so a command renamed or dropped in Rust turns this red instead
-	// of leaving a page pointing at a command the window does not offer.
+	// registry. It lists two sets: the window's own spellings (`/attach`,
+	// `/queue-mode` and `/terminal` are ones the TUI never had), read from the
+	// palette's tables at run time, and the catalogue the host states to a
+	// window, read from the builder the host sends. A command renamed or dropped
+	// in either turns this red instead of leaving a page pointing at a command
+	// the window does not offer.
 	const paletteCommands = new Set<string>();
-	{
-		const paletteSrc = fs.readFileSync(
-			path.join(REPO_ROOT, "crates/veyyon-desktop-surface/src/palette/commands.rs"),
-			"utf-8",
-		);
+	for (const table of [
+		"crates/veyyon-desktop-app/src/palette/sources.rs",
+		"crates/veyyon-desktop-app/src/settings/page.rs",
+	]) {
+		const paletteSrc = fs.readFileSync(path.join(REPO_ROOT, table), "utf-8");
 		for (const m of paletteSrc.matchAll(/"\/([a-z][a-z0-9_-]*)(?: [a-z-]+)?"/g)) paletteCommands.add(m[1]);
+	}
+	for (const command of builtinCommandViews()) {
+		paletteCommands.add(command.name);
+		for (const alias of command.aliases) paletteCommands.add(alias);
 	}
 
 	/**

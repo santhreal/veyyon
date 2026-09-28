@@ -25,8 +25,8 @@
  *    name in its own ramp and the pane would repeat it.
  *
  * What it does NOT catch: the desktop's own flattening of a plan's
- * `markdown_plan`, which stays markdown by contract and is covered by
- * `crates/veyyon-desktop/tests/a-decision-card-draws-text-and-never-the-markdown-it-arrived-in.rs`.
+ * `markdown_plan`, which stays markdown by contract and is
+ * `crates/veyyon-desktop-app`'s to assert.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";

@@ -15,7 +15,7 @@
  * against that owner rather than against a written list of words.
  *
  * WHAT IT DOES NOT CATCH. How the window draws each state, which is
- * `crates/veyyon-desktop-surface/tests/a-roster-states-the-state-a-surface-names.rs`,
+ * `crates/veyyon-desktop-app`'s panel,
  * and the lifecycle that writes `waitingOnPeer`, which is the task executor's
  * own suite.
  */

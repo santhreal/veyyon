@@ -147,13 +147,11 @@ describe("settings, themes, and keybindings action group behaviour", () => {
 	});
 
 	test("the transitions setting crosses with the two values the desktop reads motion from", async () => {
-		// WHY: the desktop resolves every motion driver against
-		// `display.transitions`, and its reader
-		// (`reduced_motion` in `crates/veyyon-desktop/src/project/mod.rs`)
-		// treats `off` as reduced and every other value as motion. A third
-		// value declared here would reach that reader as motion without
-		// anybody deciding it should, so the choices the host sends are
-		// pinned by exact equality on the side that declares them.
+		// WHY: `display.transitions` is the setting a window resolves its
+		// motion against, reading `off` as reduced and every other value as
+		// motion. A third value declared here would reach a window as motion
+		// without anybody deciding it should, so the choices the host sends
+		// are pinned by exact equality on the side that declares them.
 		server = await startGuiHostServer({
 			endpoint: "tcp:127.0.0.1:0",
 			cwd: tempDir,

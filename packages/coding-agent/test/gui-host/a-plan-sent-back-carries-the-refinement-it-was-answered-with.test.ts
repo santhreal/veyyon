@@ -17,8 +17,7 @@
  *
  * NOT CAUGHT: a real provider request (`streamSimple` is stubbed at the
  * provider boundary); what the composer sends and which draft it gives up,
- * which `crates/veyyon-desktop-surface/tests/a-draft-the-host-took-as-an-answer-leaves-the-composer.rs`
- * owns; and the shapes the ledger rejects, which
+ * which `crates/veyyon-desktop-app` owns; and the shapes the ledger rejects, which
  * `a-decision-reaches-the-desktop-and-its-answer-comes-back.test.ts` pins.
  */
 

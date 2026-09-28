@@ -15,8 +15,7 @@
  *
  * WHAT IT DOES NOT CATCH: the window's own reconnection schedule, which
  * `crates/veyyon-desktop/tests/a-connection-that-came-back-starts-the-next-retry-from-the-first-attempt.rs`
- * drives over a real socket and `proof/scenes/desktop-host-restart.sh` records
- * against a host killed ten times. The entry a crashed host leaves behind is a
+ * drives over a real socket. The entry a crashed host leaves behind is a
  * socket inode and the one written here is an empty file: both exist, neither
  * answers a connection, and the host takes the same branch for each — a test
  * that killed a real host process would pin the inode type as well. The

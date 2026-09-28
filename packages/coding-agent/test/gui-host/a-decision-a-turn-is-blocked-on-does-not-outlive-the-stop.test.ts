@@ -27,7 +27,7 @@
  * decision kind or a new raiser arrives as a red test rather than as a gap.
  *
  * What it does not catch: the window's own drawing of a withdrawn card, which
- * `crates/veyyon-desktop-surface` owns; plan mode driven end to end, since the
+ * `crates/veyyon-desktop-app` owns; plan mode driven end to end, since the
  * plan review is raised by a standing handler behind a plan file and a
  * `resolve` call, and the sweep covers the property that matters about it (no
  * signal reaches it, so the stop must); and an extension host that raises a

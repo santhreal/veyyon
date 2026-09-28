@@ -22,7 +22,7 @@
  *    spelling every caller before this field used.
  *
  * What it does NOT catch: which row of the desktop picker sends which flag
- * (`crates/veyyon-desktop-surface` owns that, and a Rust suite pins it), and
+ * (`crates/veyyon-desktop-app` owns that), and
  * the thinking level a role carries with it.
  */
 

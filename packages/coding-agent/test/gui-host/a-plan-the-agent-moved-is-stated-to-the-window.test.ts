@@ -20,7 +20,7 @@
  *
  * What it does NOT catch: how the desktop draws the board. A board that
  * crosses correctly into a window that paints it wrong is a surface defect,
- * and `veyyon-desktop-surface` owns that.
+ * and `crates/veyyon-desktop-app` owns that.
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";

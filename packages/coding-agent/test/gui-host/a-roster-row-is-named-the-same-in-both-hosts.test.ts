@@ -15,7 +15,7 @@
  * fails here.
  *
  * WHAT IT DOES NOT CATCH. How the window draws the row, which is
- * `crates/veyyon-desktop-surface/tests/a-roster-row-is-named-by-the-call-sign-both-hosts-use.rs`,
+ * `crates/veyyon-desktop-app`'s panel,
  * and the scoping of the roster to one conversation, which is
  * `the-agent-roster-and-comms-stream-reach-the-desktop-scoped-and-live.test.ts`.
  */

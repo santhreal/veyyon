@@ -23,7 +23,7 @@
  * have left the partial reply in the session that produced it.
  *
  * What it does not catch: the window's own drawing of a cleared stream, which
- * `crates/veyyon-desktop-surface` owns; a turn abandoned by a client that
+ * `crates/veyyon-desktop-app` owns; a turn abandoned by a client that
  * vanishes without closing its socket, which the connection's teardown reaches
  * only when the socket is seen to close; and `HandoffSession`, which activates
  * the session it names before it refuses for a running turn, so its refusal

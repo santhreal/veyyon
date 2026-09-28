@@ -37,7 +37,7 @@ test("GPUI consumers and the resolved framework use one canonical revision witho
 			return name === "gpui" || name.startsWith("gpui_") || git === repository;
 		})
 		.sort(([left], [right]) => left.localeCompare(right));
-	expect(dependencies.map(([name]) => name)).toEqual(["gpui", "gpui_platform", "gpui_wgpu", "motion"]);
+	expect(dependencies.map(([name]) => name)).toEqual(["gpui", "gpui_platform", "gpui_wgpu"]);
 	const revisions = new Set(dependencies.map(([, spec]) => dependencySchema.parse(spec).rev));
 	expect(revisions.size).toBe(1);
 	const revision = [...revisions][0];
