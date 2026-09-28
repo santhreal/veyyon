@@ -93,11 +93,20 @@ model: bench/{model}
 # The design-token and theme directories a pre-rebuild veyyon-desktop reads at
 # start (`VEYYON_DESKTOP_TOKENS_DIR`, `VEYYON_DESKTOP_THEMES_DIR`). They are
 # extracted from one git revision into the run directory, so the files a
-# binary loads do not move while the tree it was built from is edited.
+# binary loads do not move while the tree it was built from is edited. A
+# revision without them built a binary that embeds its fonts and themes.
 VEYYON_ASSET_DIRS = ("crates/veyyon-desktop-tokens/tokens", "crates/veyyon-desktop-tokens/themes")
 
 
-def _extract_assets(run_dir: Path, revision: str) -> Path:
+def _extract_assets(run_dir: Path, revision: str) -> Path | None:
+	listed = subprocess.run(
+		["git", "-C", str(REPO_ROOT), "ls-tree", "-d", "--name-only", revision, "--", *VEYYON_ASSET_DIRS],
+		check=True,
+		capture_output=True,
+		text=True,
+	).stdout.split()
+	if not listed:
+		return None
 	out = run_dir / "veyyon" / "assets"
 	out.mkdir(parents=True, exist_ok=True)
 	archive = subprocess.run(
@@ -134,10 +143,11 @@ def prepare_veyyon(
 			"VEYYON_BIN": str(BENCH_DIR / "veyyon-host.sh"),
 			"BENCH_BUN": str(bun),
 			"BENCH_LLM_KEY": "bench",
-			"VEYYON_DESKTOP_TOKENS_DIR": str(assets / VEYYON_ASSET_DIRS[0]),
-			"VEYYON_DESKTOP_THEMES_DIR": str(assets / VEYYON_ASSET_DIRS[1]),
 		}
 	)
+	if assets is not None:
+		env["VEYYON_DESKTOP_TOKENS_DIR"] = str(assets / VEYYON_ASSET_DIRS[0])
+		env["VEYYON_DESKTOP_THEMES_DIR"] = str(assets / VEYYON_ASSET_DIRS[1])
 	return Launch(
 		app="veyyon",
 		argv=[str(binary)],

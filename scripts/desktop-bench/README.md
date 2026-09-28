@@ -11,8 +11,11 @@ app through XTest, so no probe depends on a hook inside either app.
   `apps.py` pins Vulkan and GL to the PCI device in `DRM_PCI_TAG`.
 - `python3` with numpy, and `libX11`, `libXext` (MIT-SHM) and `libXtst`.
 - veyyon: a `veyyon-desktop` binary and `bun`. The host runs this checkout's CLI under bun
-  (`veyyon-host.sh`). The token and theme directories are extracted from the git revision in the binary's
-  file name suffix (`-<hex>`), else from `HEAD`; `--assets-revision` sets it.
+  (`veyyon-host.sh`). A binary built before the token crate was retired reads its token and theme
+  directories at start; they are extracted from the git revision in the binary's file name suffix
+  (`-<hex>`), else from `HEAD`, and `--assets-revision` sets it. A revision without
+  `crates/veyyon-desktop-tokens` built a binary that embeds its fonts and themes, and nothing is
+  extracted.
 - T3 Code: the unpacked AppImage (`squashfs-root/t3code`), `codex` and `node`.
 
 ## Running
