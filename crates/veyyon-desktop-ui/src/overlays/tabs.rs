@@ -38,6 +38,10 @@ impl Tab {
 	}
 }
 
+/// Wraps the element of the tab at an index before it joins the strip. The
+/// strip measures the returned element for the underline.
+pub type TabWrapper = Rc<dyn Fn(usize, AnyElement) -> AnyElement>;
+
 /// What a tab strip reports to its owner.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TabsEvent {
@@ -58,6 +62,7 @@ pub struct Tabs {
 	items:    Vec<Tab>,
 	selected: usize,
 	trailing: Option<AnyView>,
+	wrap_tab: Option<TabWrapper>,
 	focus:    FocusHandle,
 	/// Bounds of each tab at the last prepaint, in window coordinates.
 	measured: Rc<RefCell<Vec<Bounds<Pixels>>>>,
@@ -83,6 +88,7 @@ impl Tabs {
 			selected: selected.min(tabs.len().saturating_sub(1)),
 			items: tabs,
 			trailing: None,
+			wrap_tab: None,
 			focus: cx.focus_handle(),
 			measured: Rc::default(),
 			x: Animator::at_rest(0.0),
@@ -126,6 +132,13 @@ impl Tabs {
 	/// Shows `trailing` at the end of the strip.
 	pub fn set_trailing(&mut self, trailing: Option<AnyView>, cx: &mut Context<Self>) {
 		self.trailing = trailing;
+		cx.notify();
+	}
+
+	/// Passes each tab's element and index through `wrap` before it joins the
+	/// strip; `None` draws the tabs unwrapped.
+	pub fn set_tab_wrapper(&mut self, wrap: Option<TabWrapper>, cx: &mut Context<Self>) {
+		self.wrap_tab = wrap;
 		cx.notify();
 	}
 
@@ -226,7 +239,13 @@ impl Render for Tabs {
 					window.request_animation_frame();
 				}
 			})
-			.children(self.items.iter().enumerate().map(|(ix, tab)| self.render_tab(ix, tab, &palette, cx)));
+			.children(self.items.iter().enumerate().map(|(ix, tab)| {
+				let element = self.render_tab(ix, tab, &palette, cx);
+				match &self.wrap_tab {
+					Some(wrap) => wrap(ix, element),
+					None => element,
+				}
+			}));
 		div()
 			.track_focus(&self.focus)
 			.key_context("Tabs")

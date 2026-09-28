@@ -20,7 +20,7 @@ pub use popover::{Popover, PopoverEvent, Presentation};
 pub use scroll_area::ScrollArea;
 pub use select::{Select, SelectEvent};
 pub use split_handle::SplitHandle;
-pub use tabs::{Tab, Tabs, TabsEvent};
+pub use tabs::{Tab, TabWrapper, Tabs, TabsEvent};
 pub use toasts::{Toast, ToastId, ToastKind, Toasts};
 use veyyon_gpui::{
 	App,

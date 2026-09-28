@@ -2,25 +2,27 @@
 //!
 //! WHY: a menu that lands the keyboard highlight on a separator, header or
 //! disabled row lets Enter pick nothing or the wrong action; a tab strip that
-//! stops at its ends leaves keyboard users stranded; a popover that animates
-//! under reduced motion moves for an operator who turned motion off; a toast
-//! stack that grows or never dismisses covers the window.
+//! stops at its ends leaves keyboard users stranded; a tab wrapper whose
+//! element is dropped leaves the owner with no tab bounds; a popover that
+//! animates under reduced motion moves for an operator who turned motion off;
+//! a toast stack that grows or never dismisses covers the window.
 //!
 //! It does not catch pixel geometry (the anchored position, the underline's
 //! slide path, the scrollbar thumb), which a headless render covers.
 
-use std::time::Duration;
+use std::{cell::RefCell, collections::BTreeMap, rc::Rc, time::Duration};
 
 use veyyon_desktop_ui::{
 	overlays::{
-		Menu, MenuEvent, MenuItem, MenuRow, Popover, Presentation, Tab, Tabs, TabsEvent, Toast,
-		ToastId, ToastKind, Toasts,
+		Menu, MenuEvent, MenuItem, MenuRow, Popover, Presentation, Tab, TabWrapper, Tabs, TabsEvent,
+		Toast, ToastId, ToastKind, Toasts,
 	},
 	theme::{Appearance, Theme, motion},
 };
 use veyyon_gpui::{
-	Anchor, App, Context, Entity, EventEmitter, FocusHandle, Focusable, IntoElement, Render,
-	TestAppContext, VisualTestContext, Window, div, point, prelude::*, px,
+	Anchor, AnyElement, App, Bounds, Context, Entity, EventEmitter, FocusHandle, Focusable,
+	IntoElement, Pixels, Render, TestAppContext, VisualTestContext, Window, div, point, prelude::*,
+	px,
 };
 
 fn app() -> TestAppContext {
@@ -116,6 +118,37 @@ fn tab_arrows_wrap_at_either_end_and_report_the_new_tab() {
 		host.read_with(cx, |host, _| host.events.clone()),
 		vec![TabsEvent::Selected(0), TabsEvent::Selected(2)]
 	);
+}
+
+#[test]
+fn a_tab_wrapper_receives_every_tab_and_its_element_is_the_one_laid_out() {
+	let mut cx = app();
+	let laid_out: Rc<RefCell<BTreeMap<usize, Bounds<Pixels>>>> = Rc::default();
+	let sink = Rc::clone(&laid_out);
+	let wrap: TabWrapper = Rc::new(move |ix, tab: AnyElement| {
+		let sink = Rc::clone(&sink);
+		div()
+			.child(tab)
+			.on_children_prepainted(move |bounds, _, _| {
+				if let Some(&tab) = bounds.first() {
+					sink.borrow_mut().insert(ix, tab);
+				}
+			})
+			.into_any_element()
+	});
+	let tabs = vec![Tab::new("Diff"), Tab::new("Files"), Tab::new("Agents")];
+	let (_host, cx) = host::<Tabs, TabsEvent>(&mut cx, |cx| {
+		cx.new(|cx| {
+			let mut strip = Tabs::new(tabs, 0, cx);
+			strip.set_tab_wrapper(Some(wrap), cx);
+			strip
+		})
+	});
+	cx.run_until_parked();
+	let laid_out = laid_out.borrow();
+	assert_eq!(laid_out.keys().copied().collect::<Vec<_>>(), vec![0, 1, 2]);
+	let lefts: Vec<Pixels> = laid_out.values().map(Bounds::left).collect();
+	assert!(lefts.windows(2).all(|pair| pair[0] < pair[1]), "tabs lie left to right: {lefts:?}");
 }
 
 /// Content a popover focuses while open.
