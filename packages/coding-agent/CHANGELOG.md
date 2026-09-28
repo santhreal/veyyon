@@ -159,7 +159,6 @@
 ### Changed
 
 - The desktop parity tables record the carrier for each agents dashboard operation, `/mcp` subcommand, provider login kind, terminal theme ground and status-line segment; no user-facing effect.
-
 - The GUI host records how the desktop reaches every terminal setting, session mode and session operation in `gui-host/desktop-parity`; no user-visible behavior changes.
 - The desktop front end embeds Inter and JetBrains Mono (SIL Open Font License 1.1) in a new `veyyon-desktop-ui` crate and lists both licenses in `THIRD_PARTY_LICENSES.txt`; no window uses the crate yet.
 - `veyyon-desktop-ui` holds the desktop design system: a dark and a light palette in embedded TOML files that reject a missing or unknown role, plus spacing, radius, size, type-ramp and motion constants; no window uses the crate yet.
