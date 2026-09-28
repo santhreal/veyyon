@@ -83,7 +83,8 @@ impl Composer {
 		}
 	}
 
-	/// The primary control was pressed while it did `primary`.
+	/// The primary control was pressed while it did `primary`. A control the
+	/// host takes nothing from now sends nothing, from the button or a key.
 	pub(super) fn press(&mut self, primary: Primary, cx: &mut Context<Self>) {
 		let Some(session) = self.session.clone() else {
 			return;
@@ -97,6 +98,9 @@ impl Composer {
 			},
 			_ => (primary, draft.clone()),
 		};
+		if self.refusal(primary.kind(), cx).is_some() {
+			return;
+		}
 		match primary {
 			Primary::Stop => self.stop(cx),
 			Primary::Send => self.send(session, text, cx),
@@ -274,8 +278,11 @@ impl Composer {
 		cx.notify();
 	}
 
-	/// Stops the running turn.
+	/// Stops the running turn, while the host takes a stop.
 	pub(super) fn stop(&self, cx: &mut Context<Self>) {
+		if self.refusal(Primary::Stop.kind(), cx).is_some() {
+			return;
+		}
 		if let Some(session) = self.session.clone() {
 			self.app.update(cx, |app, cx| {
 				app.abort_turn(session, cx);

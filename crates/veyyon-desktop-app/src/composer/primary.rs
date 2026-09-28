@@ -1,6 +1,7 @@
 //! What the composer's primary control does, and the drafts that name it
 //! themselves.
 
+use veyyon_desktop_model::HostActionKind;
 use veyyon_desktop_ui::icons::IconName;
 
 /// What the composer's primary control does now.
@@ -47,6 +48,20 @@ impl Primary {
 			Self::Stop => IconName::Square,
 			Self::Approve | Self::Accept => IconName::Check,
 			Self::Send | Self::Steer | Self::Queue | Self::Answer | Self::Refine => IconName::ArrowUp,
+		}
+	}
+
+	/// The request the control sends, whose gate it reads.
+	#[must_use]
+	pub const fn kind(self) -> HostActionKind {
+		match self {
+			Self::Send => HostActionKind::SubmitPrompt,
+			Self::Steer => HostActionKind::Steer,
+			Self::Queue => HostActionKind::FollowUp,
+			Self::Stop => HostActionKind::AbortTurn,
+			Self::Answer | Self::Approve | Self::Accept | Self::Refine => {
+				HostActionKind::RespondToInteraction
+			},
 		}
 	}
 }

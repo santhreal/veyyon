@@ -94,7 +94,9 @@ impl Composer {
 		table(OnElement { element, cx }).element
 	}
 
-	/// Sends the action `make` builds for the shown session.
+	/// Sends the action `make` builds for the shown session while the host
+	/// takes its kind: a key or a palette row sends no more than the control,
+	/// which is idle while the kind is refused.
 	pub(super) fn send_for_session(
 		&self,
 		make: impl FnOnce(SessionId) -> (HostAction, SurfaceId),
@@ -104,6 +106,9 @@ impl Composer {
 			return;
 		};
 		let (action, surface) = make(session);
+		if self.refusal(action.kind(), cx).is_some() {
+			return;
+		}
 		self.app.update(cx, |app, cx| {
 			app.dispatch(action, surface, cx);
 		});
@@ -165,8 +170,12 @@ impl Composer {
 		);
 	}
 
-	/// Switches a prompt sent during a turn between steering and queueing.
+	/// Switches a prompt sent during a turn between steering and queueing,
+	/// while the host takes a queue mode.
 	pub(super) fn toggle_queue_mode(&mut self, cx: &mut Context<Self>) {
+		if self.refusal(HostActionKind::SetQueueMode, cx).is_some() {
+			return;
+		}
 		let mode = match self.queue_mode {
 			QueueMode::Steer => QueueMode::Queue,
 			QueueMode::Queue => QueueMode::Steer,

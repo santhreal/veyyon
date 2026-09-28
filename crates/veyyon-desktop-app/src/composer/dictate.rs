@@ -88,6 +88,9 @@ impl Composer {
 		let Some(session) = self.session.clone() else {
 			return;
 		};
+		if self.refusal(action.kind(), cx).is_some() {
+			return;
+		}
 		self.app.update(cx, |app, cx| {
 			app.dispatch(action, SurfaceId::ComposerDictateButton(session), cx);
 		});

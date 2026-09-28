@@ -128,8 +128,11 @@ impl Composer {
 	}
 
 	/// `composer::OpenModelPicker`: lists the catalog, asking the host for it
-	/// when none has arrived.
+	/// when none has arrived, while the host takes a model.
 	pub(super) fn open_models(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		if self.refusal(HostActionKind::SelectModel, cx).is_some() {
+			return;
+		}
 		let empty = self
 			.app
 			.read(cx)
@@ -148,8 +151,11 @@ impl Composer {
 		self.open_picker(|pickers| &pickers.models, window, cx);
 	}
 
-	/// `composer::OpenThinkingPicker`.
+	/// `composer::OpenThinkingPicker`, while the host takes a level.
 	pub(super) fn open_thinking(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		if self.refusal(HostActionKind::SetThinkingLevel, cx).is_some() {
+			return;
+		}
 		self.fill_thinking(cx);
 		self.open_picker(|pickers| &pickers.thinking, window, cx);
 	}

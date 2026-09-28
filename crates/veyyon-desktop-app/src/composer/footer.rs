@@ -339,16 +339,7 @@ impl Composer {
 	fn render_primary(&self, cx: &Context<Self>) -> AnyElement {
 		let palette = cx.theme().palette;
 		let (empty, primary) = self.shape;
-		let kind = match primary {
-			Primary::Send => HostActionKind::SubmitPrompt,
-			Primary::Steer => HostActionKind::Steer,
-			Primary::Queue => HostActionKind::FollowUp,
-			Primary::Stop => HostActionKind::AbortTurn,
-			Primary::Answer | Primary::Approve | Primary::Accept | Primary::Refine => {
-				HostActionKind::RespondToInteraction
-			},
-		};
-		let refusal = self.refusal(kind, cx);
+		let refusal = self.refusal(primary.kind(), cx);
 		let needs_text = matches!(
 			primary,
 			Primary::Send | Primary::Steer | Primary::Queue | Primary::Answer | Primary::Refine

@@ -7,7 +7,7 @@
 //! time Up runs out of prompts this composer sent.
 
 use gpui::{Context, Window};
-use veyyon_desktop_model::{HostAction, SurfaceId};
+use veyyon_desktop_model::{HostAction, HostActionKind, SurfaceId};
 
 use super::Composer;
 use crate::AppState;
@@ -93,7 +93,12 @@ impl Composer {
 			.prompt_history
 			.as_ref()
 			.is_some_and(|view| view.query.is_empty());
-		if !asked && !self.recall.wanted {
+		if !asked
+			&& !self.recall.wanted
+			&& self
+				.refusal(HostActionKind::SearchPromptHistory, cx)
+				.is_none()
+		{
 			self.recall.wanted = true;
 			let action = HostAction::SearchPromptHistory { query: String::new() };
 			self.app.update(cx, |app, cx| {
@@ -133,11 +138,18 @@ impl Composer {
 	}
 
 	/// `composer::SearchHistory`: asks the host for the prompts matching the
-	/// draft and opens the history menu on them.
+	/// draft and opens the history menu on them, while the host takes the
+	/// search.
 	pub(super) fn search_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		let Some(session) = self.session.clone() else {
 			return;
 		};
+		if self
+			.refusal(HostActionKind::SearchPromptHistory, cx)
+			.is_some()
+		{
+			return;
+		}
 		let query = self.text(cx).trim().to_owned();
 		self.app.update(cx, |app, cx| {
 			app.dispatch(
