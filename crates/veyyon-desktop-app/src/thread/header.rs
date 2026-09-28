@@ -3,7 +3,8 @@
 //! Left: the thread's title and where it works (directory, branch, pull
 //! request, machine). Right: what the session runs as and costs (mode, model,
 //! pace and the extensions' statuses, serving account, quota, tokens,
-//! context) and the thread's controls.
+//! context), the thread's controls and the window's minimize, maximize and
+//! close buttons.
 
 use std::fmt::Write as _;
 
@@ -19,6 +20,7 @@ use crate::{
 	AppState, StoreEvent,
 	actions::workspace::{ShowPanelTab, ToggleDrawer, TogglePanel},
 	transcript::{tool::open_external, turn::duration_words},
+	workspace,
 };
 
 /// The thread header region.
@@ -144,7 +146,7 @@ fn now_ms() -> u64 {
 }
 
 impl Render for ThreadHeader {
-	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let palette = cx.theme().palette;
 		let app = self.app.read(cx);
 		let session = app.active_session().cloned();
@@ -269,6 +271,7 @@ impl Render for ThreadHeader {
 				),
 			]
 		});
+		let window_controls = workspace::window_controls(window, cx);
 		div()
 			.h(size::HEADER)
 			.w_full()
@@ -281,13 +284,13 @@ impl Render for ThreadHeader {
 			.bg(palette.bg.app)
 			.type_style(text::UI)
 			.window_control_area(WindowControlArea::Drag)
-			.child(
+			.child(workspace::drag_region(
 				div()
 					.flex_shrink_0()
 					.type_style(text::TITLE)
 					.text_color(palette.text.primary)
 					.child(title),
-			)
+			))
 			.child(
 				div()
 					.flex()
@@ -298,7 +301,7 @@ impl Render for ThreadHeader {
 					.children(branch)
 					.children(pr),
 			)
-			.child(div().flex_1())
+			.child(workspace::drag_region(div().flex_1().h_full()))
 			.children(chips.into_iter().map(|chip| {
 				div()
 					.px(space::S2)
@@ -334,6 +337,7 @@ impl Render for ThreadHeader {
 					.tooltip("Right panel")
 					.on_click(|_, window, cx| window.dispatch_action(Box::new(TogglePanel), cx)),
 			)
+			.child(window_controls)
 	}
 }
 
