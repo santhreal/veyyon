@@ -158,6 +158,7 @@
 
 ### Changed
 
+- The desktop front end embeds Inter and JetBrains Mono (SIL Open Font License 1.1) in a new `veyyon-desktop-ui` crate and lists both licenses in `THIRD_PARTY_LICENSES.txt`; no window uses the crate yet.
 - The share card draws one roster whether the window hosts the room or joined it, so a participant row stands at the height, text size and badges the surface tokens state rather than at a second set of measures on the guest card.
 - The desktop host's bridges and the rule forge read an error's text through `errorMessage` and a record through `isRecord` from `@veyyon/utils` rather than through copies of those predicates. It changes nothing that is reported.
 - A streaming reply repaints the desktop window inside the transcript it draws in rather than the whole window: the animation that carries the caret, the scroll spring and a block's reveal now asks for its next frame inside the box the motion reaches, and a frame that cannot be scoped states the viewport so the frame after it is scoped again, so a turn of 52 batches repaints 57.5 million device pixels where it previously repainted 196.4 million.

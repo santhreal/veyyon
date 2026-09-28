@@ -220,6 +220,7 @@ veyyon-desktop-surface = { path = "crates/veyyon-desktop-surface" }
 veyyon-desktop = { path = "crates/veyyon-desktop" }
 veyyon-gpui = { path = "crates/veyyon-gpui" }
 veyyon-desktop-scene = { path = "crates/veyyon-desktop-scene" }
+veyyon-desktop-ui = { path = "crates/veyyon-desktop-ui" }
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Async Runtime & Concurrency

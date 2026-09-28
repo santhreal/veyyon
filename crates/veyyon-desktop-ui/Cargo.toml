@@ -1,0 +1,19 @@
+[package]
+name = "veyyon-desktop-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+description = "Theme, embedded fonts, primitives and motion helpers for the veyyon desktop front end"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+veyyon-gpui = { workspace = true }
+
+[dev-dependencies]
+fontdb = { workspace = true }

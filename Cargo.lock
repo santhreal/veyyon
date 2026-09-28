@@ -9983,6 +9983,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "veyyon-desktop-ui"
+version = "1.4.1"
+dependencies = [
+ "anyhow",
+ "fontdb",
+ "veyyon-gpui",
+]
+
+[[package]]
 name = "veyyon-diff-kernel"
 version = "1.4.1"
 dependencies = [

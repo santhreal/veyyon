@@ -8,6 +8,8 @@ const LEGAL_ARTIFACTS = [
 	"LICENSE",
 	"NOTICE",
 	"UPSTREAM.md",
+	"crates/veyyon-desktop-ui/fonts/INTER-LICENSE.txt",
+	"crates/veyyon-desktop-ui/fonts/JETBRAINS-MONO-LICENSE.txt",
 	"natives/bridge/addon/src/fonts/Silver.LICENSE",
 	"natives/shell/NOTICE",
 	"docs/handbook/fonts/OPEN-SANS-LICENSE.txt",
