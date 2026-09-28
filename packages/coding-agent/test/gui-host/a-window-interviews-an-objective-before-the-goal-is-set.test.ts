@@ -56,6 +56,9 @@ describe("a window interviews an objective before the goal is set", () => {
 	let turns = 0;
 
 	beforeEach(async () => {
+		// A file run earlier in the process can leave the settings singleton
+		// initialised against its own directory; the host must read this one.
+		resetSettingsForTest();
 		turns = 0;
 		tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "gui-host-guided-goal-"));
 		const authStorage = await isolatedAuthStorage(tempDir);

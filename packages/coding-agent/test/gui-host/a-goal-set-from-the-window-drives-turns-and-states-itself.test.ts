@@ -50,6 +50,9 @@ describe("a goal set from the window drives turns and states itself", () => {
 	let client: TestSocketClient;
 
 	beforeEach(async () => {
+		// A file run earlier in the process can leave the settings singleton
+		// initialised against its own directory; the host must read this one.
+		resetSettingsForTest();
 		tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "gui-host-goal-test-"));
 		const authStorage = await isolatedAuthStorage(tempDir);
 		server = await startGuiHostServer({

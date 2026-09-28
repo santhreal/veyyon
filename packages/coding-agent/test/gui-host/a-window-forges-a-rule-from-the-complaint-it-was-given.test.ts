@@ -104,6 +104,10 @@ describe("a window forges a rule from the complaint it was given", () => {
 	let reply: (sent: string) => string = () => ruleJson("Use the safer behavior.");
 
 	beforeEach(async () => {
+		// A file run earlier in the process can leave the settings singleton
+		// initialised against its own directory, and the forge writes the rule
+		// where those settings point rather than under this test's directory.
+		resetSettingsForTest();
 		asked = [];
 		reply = () => ruleJson("Use the safer behavior.");
 		// Installed before the session exists: the side transport is captured
