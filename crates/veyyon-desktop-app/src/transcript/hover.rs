@@ -21,7 +21,7 @@ impl Transcript {
 		ix: usize,
 		plan: &Plan,
 		session: &SessionId,
-		last: bool,
+		offers_turn_actions: bool,
 		palette: &Palette,
 	) -> AnyElement {
 		let copy = {
@@ -38,12 +38,11 @@ impl Transcript {
 					cx.write_to_clipboard(ClipboardItem::new_string(words));
 				})
 		};
-		// The host forks only at a prompt, and retries and rephrases only the
-		// reply that ended the conversation.
+		// The host forks only at a prompt.
 		let branch = plan
 			.prompt
 			.then(|| self.session_button(ix, &plan.id, session, Action::Branch));
-		let turn_actions = (last && !plan.operator).then(|| {
+		let turn_actions = offers_turn_actions.then(|| {
 			[Action::Retry, Action::Rephrase]
 				.map(|action| self.session_button(ix, &plan.id, session, action))
 		});

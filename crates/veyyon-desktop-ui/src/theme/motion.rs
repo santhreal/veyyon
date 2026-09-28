@@ -34,8 +34,12 @@ pub const REVEAL: MotionModel = MotionModel::Duration(timed(160, Easing::EaseRes
 /// Distance an entry rises while it is revealed.
 pub const REVEAL_RISE: Pixels = px(6.0);
 
-/// A run of streamed text fading in.
+/// A run of streamed text fading in from [`STREAM_FADE_FROM`].
 pub const STREAM_FADE: MotionModel = MotionModel::Duration(timed(120, Easing::EaseResort));
+
+/// Opacity a run of streamed text is first drawn at, so the frame after a
+/// token already shows it.
+pub const STREAM_FADE_FROM: f32 = 0.4;
 
 /// A palette, menu or popover opening: scales up from [`POPOVER_SCALE`].
 pub const POPOVER_OPEN: MotionModel = MotionModel::Duration(timed(120, Easing::EaseResort));

@@ -6,89 +6,25 @@
 //! [`cached`] holds its result when highlighting is deferred, and scrolls
 //! sideways instead of wrapping.
 
-use std::{rc::Rc, sync::Arc};
+use std::sync::Arc;
 
 use veyyon_gpui::{
-	AbsoluteLength, AnyElement, App, Div, ElementId, Font, FontStyle, FontWeight, HighlightStyle,
-	Hsla, InteractiveElement, InteractiveText, IntoElement, ParentElement, Pixels, SharedString,
-	StatefulInteractiveElement, StrikethroughStyle, Styled, StyledText, TextRun, UnderlineStyle,
-	Window, div, font,
+	AbsoluteLength, AnyElement, App, Div, ElementId, HighlightStyle, Hsla, InteractiveElement,
+	InteractiveText, IntoElement, ParentElement, Pixels, SharedString, StatefulInteractiveElement,
+	Styled, StyledText, TextRun, Window, combine_highlights, div,
 };
 
 use super::{
-	MarkdownDoc,
+	MarkdownDoc, MarkdownStyle,
+	fade::{FadeStop, fade_highlights, fade_runs, fades},
 	highlight::{Highlighted, cached, highlight},
 	model::{Align, Block, Inlines},
+	style::text_run,
 };
-use crate::{
-	fonts::MONO_FAMILY,
-	theme::{ActiveTheme, Palette, TypeStyle, TypeStyled, radius, size, space, text},
-};
-
-/// Builds the button in a code block's header that copies the block's code.
-/// It receives the code and returns the element to place in the header.
-pub type CopyButton = Rc<dyn Fn(Arc<str>, &mut Window, &mut App) -> AnyElement>;
-
-/// Handles a click on a link. It receives the link's URL.
-pub type LinkHandler = Rc<dyn Fn(Arc<str>, &mut Window, &mut App)>;
+use crate::theme::{ActiveTheme, Palette, TypeStyle, TypeStyled, radius, size, space, text};
 
 /// Bullet glyphs by list depth, repeating past the last.
 const BULLETS: [&str; 3] = ["•", "◦", "▪"];
-
-/// How [`render`] draws a document.
-#[derive(Clone)]
-pub struct MarkdownStyle {
-	/// The id of the root element. It namespaces the ids of the links and
-	/// scroll regions inside, so it is unique among its siblings.
-	pub id:          ElementId,
-	/// The type ramp step of prose; headings and code use their own steps.
-	pub prose:       TypeStyle,
-	/// The copy button of each code block, or none.
-	pub copy_button: Option<CopyButton>,
-	/// Whether a code block draws only a cached highlight result and draws
-	/// plain text on a miss, leaving [`highlight`] to the caller, for example
-	/// on a background executor followed by a notify.
-	pub deferred_highlight: bool,
-	/// What a click on a link runs, or none to open the URL with
-	/// `App::open_url`.
-	pub on_link: Option<LinkHandler>,
-}
-
-impl MarkdownStyle {
-	/// Prose in [`text::BODY`], code blocks without a copy button and links
-	/// opened with `App::open_url`.
-	pub fn new(id: impl Into<ElementId>) -> Self {
-		Self {
-			id: id.into(),
-			prose: text::BODY,
-			copy_button: None,
-			deferred_highlight: false,
-			on_link: None,
-		}
-	}
-
-	/// Places the element `build` returns in the header of each code block.
-	pub fn copy_button(
-		mut self,
-		build: impl Fn(Arc<str>, &mut Window, &mut App) -> AnyElement + 'static,
-	) -> Self {
-		self.copy_button = Some(Rc::new(build));
-		self
-	}
-
-	/// Draws code blocks from [`cached`] results only, and plain on a miss.
-	pub const fn deferred_highlight(mut self) -> Self {
-		self.deferred_highlight = true;
-		self
-	}
-
-	/// Runs `handle` with a link's URL when the link is clicked, instead of
-	/// opening the URL.
-	pub fn on_link(mut self, handle: impl Fn(Arc<str>, &mut Window, &mut App) + 'static) -> Self {
-		self.on_link = Some(Rc::new(handle));
-		self
-	}
-}
 
 /// Draws `doc`: blocks in a column `space::S3` apart, prose in `style.prose`
 /// and `text.primary`.
@@ -98,8 +34,21 @@ pub fn render(
 	window: &mut Window,
 	cx: &mut App,
 ) -> impl IntoElement {
+	render_fading(doc, style, &[], window, cx)
+}
+
+/// Draws `doc` as [`render`] does, the drawn text from each stop of `fade`
+/// at the stop's opacity.
+pub fn render_fading(
+	doc: &MarkdownDoc,
+	style: &MarkdownStyle,
+	fade: &[FadeStop],
+	window: &mut Window,
+	cx: &mut App,
+) -> impl IntoElement {
 	let palette = cx.theme().palette;
-	let mut painter = Painter { palette, style, color: palette.text.primary, ids: 0 };
+	let mut painter =
+		Painter { palette, style, color: palette.text.primary, ids: 0, fade, drawn: 0 };
 	let blocks = painter.blocks(doc.blocks(), 0, window, cx);
 	div()
 		.id(style.id.clone())
@@ -117,6 +66,10 @@ struct Painter<'a> {
 	/// The color of prose at the current depth; quotes draw it muted.
 	color:   Hsla,
 	ids:     usize,
+	/// The opacity of the drawn text from each stop on.
+	fade:    &'a [FadeStop],
+	/// How much of the drawn text the blocks drawn so far hold.
+	drawn:   usize,
 }
 
 impl Painter<'_> {
@@ -132,10 +85,19 @@ impl Painter<'_> {
 		window: &mut Window,
 		cx: &mut App,
 	) -> Vec<AnyElement> {
-		blocks.iter().map(|block| self.block(block, depth, window, cx)).collect()
+		blocks
+			.iter()
+			.map(|block| self.block(block, depth, window, cx))
+			.collect()
 	}
 
-	fn block(&mut self, block: &Block, depth: usize, window: &mut Window, cx: &mut App) -> AnyElement {
+	fn block(
+		&mut self,
+		block: &Block,
+		depth: usize,
+		window: &mut Window,
+		cx: &mut App,
+	) -> AnyElement {
 		match block {
 			Block::Paragraph(inlines) => self.inlines(inlines, self.style.prose, false),
 			Block::Heading { level, runs } => {
@@ -144,59 +106,52 @@ impl Painter<'_> {
 					2 => text::H2,
 					_ => text::H3,
 				};
-				div().type_style(step).child(self.inlines(runs, step, false)).into_any_element()
-			}
+				div()
+					.type_style(step)
+					.child(self.inlines(runs, step, false))
+					.into_any_element()
+			},
 			Block::CodeBlock { lang, code } => self.code_block(lang.as_ref(), code, window, cx),
 			Block::List { ordered, start, items } => {
 				self.list(*ordered, *start, items, depth, window, cx)
-			}
+			},
 			Block::TaskItem { checked } => self.checkbox(*checked),
 			Block::Quote(blocks) => self.quote(blocks, depth, window, cx),
 			Block::Table { align, head, rows } => self.table(align, head, rows),
-			Block::Rule => div().h(size::HAIRLINE).bg(self.palette.border.subtle).into_any_element(),
+			Block::Rule => div()
+				.h(size::HAIRLINE)
+				.bg(self.palette.border.subtle)
+				.into_any_element(),
 		}
 	}
 
 	/// One `StyledText` with a run per style. `strong` sets every run
 	/// semibold, as a table header does.
 	fn inlines(&mut self, inlines: &Inlines, step: TypeStyle, strong: bool) -> AnyElement {
+		let base = self.drawn;
+		self.drawn += inlines.text.len();
 		if inlines.is_empty() {
 			return div().into_any_element();
 		}
 		let (palette, color) = (self.palette, self.color);
 		let mut links = Vec::new();
 		let mut urls: Vec<Arc<str>> = Vec::new();
-		let runs = inlines
+		let runs: Vec<TextRun> = inlines
 			.runs
 			.iter()
 			.map(|run| {
-				let style = &run.style;
-				if let Some(url) = &style.link {
+				if let Some(url) = &run.style.link {
 					links.push(run.range.clone());
 					urls.push(url.clone());
 				}
-				let family = if style.code { MONO_FAMILY } else { step.family };
-				TextRun {
-					len: run.range.len(),
-					font: Font {
-						weight: if style.bold || strong { FontWeight::SEMIBOLD } else { step.weight },
-						style: if style.italic { FontStyle::Italic } else { FontStyle::Normal },
-						..font(SharedString::new_static(family))
-					},
-					color: if style.link.is_some() { palette.accent.base } else { color },
-					background_color: style.code.then_some(palette.code.bg),
-					underline: style.link.as_ref().map(|_| UnderlineStyle {
-						thickness: size::HAIRLINE,
-						color:     Some(palette.accent.base),
-						wavy:      false,
-					}),
-					strikethrough: style
-						.strike
-						.then_some(StrikethroughStyle { thickness: size::HAIRLINE, color: None }),
-					..TextRun::default()
-				}
+				text_run(&run.style, run.range.len(), step, strong, color, &palette)
 			})
 			.collect();
+		let runs = if fades(self.fade, base, inlines.text.len()) {
+			fade_runs(runs, &inlines.text, base, self.fade)
+		} else {
+			runs
+		};
 		let styled = StyledText::new(SharedString::from(inlines.text.clone())).with_runs(runs);
 		if links.is_empty() {
 			return styled.into_any_element();
@@ -223,9 +178,14 @@ impl Painter<'_> {
 		cx: &mut App,
 	) -> AnyElement {
 		let palette = self.palette;
+		let base = self.drawn;
+		self.drawn += code.len();
 		let tag = lang.map(|lang| lang.as_ref());
-		let highlighted =
-			if self.style.deferred_highlight { cached(code, tag) } else { Some(highlight(code, tag)) };
+		let highlighted = if self.style.deferred_highlight {
+			cached(code, tag)
+		} else {
+			Some(highlight(code, tag))
+		};
 		let spans = highlighted.as_deref().map_or(&[][..], Highlighted::spans);
 		let styles = spans.iter().map(|(range, role)| {
 			(range.clone(), HighlightStyle {
@@ -233,9 +193,18 @@ impl Painter<'_> {
 				..HighlightStyle::default()
 			})
 		});
-		let body = StyledText::new(SharedString::from(code.clone())).with_highlights(styles);
+		let body = StyledText::new(SharedString::from(code.clone()));
+		let body = if fades(self.fade, base, code.len()) {
+			body.with_highlights(combine_highlights(styles, fade_highlights(code, base, self.fade)))
+		} else {
+			body.with_highlights(styles)
+		};
 		let label = lang.map_or_else(|| SharedString::new_static("text"), SharedString::from);
-		let button = self.style.copy_button.as_ref().map(|build| build(code.clone(), window, cx));
+		let button = self
+			.style
+			.copy_button
+			.as_ref()
+			.map(|build| build(code.clone(), window, cx));
 		let header = div()
 			.flex()
 			.items_center()
@@ -244,14 +213,18 @@ impl Painter<'_> {
 			.text_color(palette.text.muted)
 			.child(label)
 			.children(button);
-		let scroller = div().id(self.id("md-code")).flex().overflow_x_scroll().child(
-			div()
-				.flex_none()
-				.type_style(text::MONO)
-				.whitespace_nowrap()
-				.text_color(palette.text.primary)
-				.child(body),
-		);
+		let scroller = div()
+			.id(self.id("md-code"))
+			.flex()
+			.overflow_x_scroll()
+			.child(
+				div()
+					.flex_none()
+					.type_style(text::MONO)
+					.whitespace_nowrap()
+					.text_color(palette.text.primary)
+					.child(body),
+			);
 		div()
 			.flex()
 			.flex_col()
@@ -280,10 +253,28 @@ impl Painter<'_> {
 				_ => (self.marker(ordered, number, depth), item.as_slice()),
 			};
 			let body = self.blocks(body, depth + 1, window, cx);
-			let body = div().flex_1().min_w_0().flex().flex_col().gap(space::S1_5).children(body);
-			rows.push(div().flex().gap(space::S2).child(marker).child(body).into_any_element());
+			let body = div()
+				.flex_1()
+				.min_w_0()
+				.flex()
+				.flex_col()
+				.gap(space::S1_5)
+				.children(body);
+			rows.push(
+				div()
+					.flex()
+					.gap(space::S2)
+					.child(marker)
+					.child(body)
+					.into_any_element(),
+			);
 		}
-		div().flex().flex_col().gap(space::S1).children(rows).into_any_element()
+		div()
+			.flex()
+			.flex_col()
+			.gap(space::S1)
+			.children(rows)
+			.into_any_element()
 	}
 
 	fn marker(&self, ordered: bool, number: u64, depth: usize) -> AnyElement {
@@ -292,7 +283,12 @@ impl Painter<'_> {
 		} else {
 			SharedString::new_static(BULLETS[depth % BULLETS.len()])
 		};
-		div().flex_none().min_w(space::S5).text_color(self.palette.text.muted).child(label).into_any_element()
+		div()
+			.flex_none()
+			.min_w(space::S5)
+			.text_color(self.palette.text.muted)
+			.child(label)
+			.into_any_element()
 	}
 
 	fn checkbox(&self, checked: bool) -> AnyElement {
@@ -308,14 +304,28 @@ impl Painter<'_> {
 			.type_style(text::MICRO);
 		let tick = outline(tick, size::HAIRLINE);
 		let tick = if checked {
-			tick.bg(palette.accent.base).border_color(palette.accent.base).text_color(palette.accent.fg).child("✓")
+			tick
+				.bg(palette.accent.base)
+				.border_color(palette.accent.base)
+				.text_color(palette.accent.fg)
+				.child("✓")
 		} else {
 			tick
 		};
-		div().flex_none().min_w(space::S5).child(tick).into_any_element()
+		div()
+			.flex_none()
+			.min_w(space::S5)
+			.child(tick)
+			.into_any_element()
 	}
 
-	fn quote(&mut self, blocks: &[Block], depth: usize, window: &mut Window, cx: &mut App) -> AnyElement {
+	fn quote(
+		&mut self,
+		blocks: &[Block],
+		depth: usize,
+		window: &mut Window,
+		cx: &mut App,
+	) -> AnyElement {
 		let outer = self.color;
 		self.color = self.palette.text.secondary;
 		let body = self.blocks(blocks, depth, window, cx);
@@ -354,7 +364,12 @@ impl Painter<'_> {
 		let mut line = div().flex().border_color(self.palette.border.subtle);
 		for (column, cell) in cells.iter().enumerate() {
 			let content = self.inlines(cell, prose, head);
-			let cell = div().flex().flex_1().min_w_0().px(space::S3).py(space::S1_5);
+			let cell = div()
+				.flex()
+				.flex_1()
+				.min_w_0()
+				.px(space::S3)
+				.py(space::S1_5);
 			let cell = match align.get(column).copied().unwrap_or_default() {
 				Align::Center => cell.justify_center(),
 				Align::Right => cell.justify_end(),

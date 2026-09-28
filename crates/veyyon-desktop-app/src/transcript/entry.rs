@@ -98,8 +98,15 @@ impl Transcript {
 				self.render_piece(ix, &plan, piece_ix, piece, &session, &palette, window, cx)
 			})
 			.collect();
-		let actions =
-			self.item_actions(ix, &plan, &session, last_turn && item_end && !self.working, &palette);
+		// The host retries and rephrases only the reply that ended a finished
+		// conversation.
+		let offers_turn_actions = last_turn && item_end && !self.working && !plan.operator;
+		if !offers_turn_actions && driver::is_enabled() {
+			for verb in ["transcript.retry", "transcript.rephrase"] {
+				driver::forget(window, &format!("{verb}:{}", plan.id.0), cx);
+			}
+		}
+		let actions = self.item_actions(ix, &plan, &session, offers_turn_actions, &palette);
 		// Group names resolve to the innermost painting ancestor, so one name
 		// serves every item without formatting a name per render.
 		let group = SharedString::new_static(ITEM_GROUP);
@@ -129,7 +136,8 @@ impl Transcript {
 				space::S3
 			})
 			.child(column);
-		driver::target(("transcript.entry", plan.id.0.as_str()), item)
+		let item = driver::target(("transcript.entry", plan.id.0.as_str()), item);
+		self.reveal.place(&plan.id.0, item)
 	}
 
 	#[expect(clippy::too_many_arguments, reason = "the drawing inputs of one piece")]

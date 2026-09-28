@@ -28,6 +28,9 @@ impl Transcript {
 		let Some(session) = self.session.clone() else {
 			return;
 		};
+		// A reply the tail drew is not new to the reader: its entry lands at
+		// rest.
+		let drawn_reply = self.slot != Slot::Absent && !self.tail.read(cx).text().is_empty();
 		if self.slot == Slot::Ending && range.end == self.entries && count > range.len() {
 			self.list.splice(range.clone(), count - 1);
 			let slot = range.start + count - 1;
@@ -39,6 +42,12 @@ impl Transcript {
 		}
 		self.entries = self.entries.saturating_sub(range.len()) + count;
 		let app = self.app.read(cx);
+		for ix in range.start..range.start + count {
+			if let Some(entry) = app.entry_at(&session, ix) {
+				let reveal = !(drawn_reply && entry.role == MessageRole::Assistant);
+				self.reveal.land(&entry.id.0, reveal, cx);
+			}
+		}
 		let touched = self.turns.splice(app, &session, range);
 		let spliced = range.start..range.start + count;
 		if touched.start < spliced.start {

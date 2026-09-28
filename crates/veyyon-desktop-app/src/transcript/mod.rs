@@ -16,6 +16,7 @@ mod entry;
 mod hover;
 pub mod plan;
 mod position;
+mod reveal;
 mod row;
 mod slot;
 pub mod tail;
@@ -36,6 +37,7 @@ use veyyon_desktop_model::{
 	EntryId, HostAction, SessionId, SnapshotSectionKind, SurfaceId, TranscriptAnchor,
 };
 use veyyon_desktop_ui::{
+	controls::hover_transition,
 	markdown::MarkdownDoc,
 	theme::{ActiveTheme, TypeStyled, radius, size, space, text},
 };
@@ -71,6 +73,8 @@ pub struct Transcript {
 	/// How many prose blocks have been parsed, and how many entry items drawn.
 	parses:        usize,
 	item_renders:  usize,
+	/// The entries the list has held, and the reveal of each that landed.
+	reveal:        reveal::Reveal,
 	_subscription: Subscription,
 }
 
@@ -82,6 +86,7 @@ impl Transcript {
 		let tail = cx.new(|_| StreamingTail::new(app.clone()));
 		let list = ListState::new(0, ListAlignment::Bottom, size::COLUMN_MAX);
 		list.set_follow_mode(FollowMode::Tail);
+		list.set_smooth_follow(true);
 		let weak = cx.entity().downgrade();
 		list.set_scroll_handler(move |event, _, cx| {
 			let top = event.visible_range.start == 0;
@@ -109,6 +114,7 @@ impl Transcript {
 			pending: None,
 			parses: 0,
 			item_renders: 0,
+			reveal: reveal::Reveal::default(),
 			_subscription: subscription,
 		};
 		this.show_active(cx);
@@ -230,9 +236,13 @@ impl Transcript {
 			.session
 			.as_ref()
 			.is_some_and(|session| app.is_working(session));
-		match &self.session {
-			Some(session) => self.turns.rebuild(app, session),
-			None => self.turns = TurnIndex::default(),
+		if let Some(session) = &self.session {
+			self.turns.rebuild(app, session);
+			let ids = (0..count).filter_map(|ix| app.entry_at(session, ix));
+			self.reveal.reset(ids.map(|entry| entry.id.0.as_str()));
+		} else {
+			self.turns = TurnIndex::default();
+			self.reveal.reset(std::iter::empty());
 		}
 		self.entries = count;
 		self.slot = Slot::Absent;
@@ -327,7 +337,8 @@ impl Transcript {
 }
 
 impl Render for Transcript {
-	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		self.reveal.step(window, cx);
 		let palette = cx.theme().palette;
 		let weak = Self::weak(cx);
 		let (entries, tail) = (self.entries, self.tail.clone());
@@ -360,6 +371,8 @@ impl Render for Transcript {
 						.type_style(text::SMALL)
 						.text_color(palette.text.secondary)
 						.cursor_pointer()
+						.transition(hover_transition())
+						.hover(move |style| style.bg(palette.bg.hover).text_color(palette.text.primary))
 						.child("↓ Latest")
 						.on_click(move |_, _, cx| {
 							weak.update(cx, |this, cx| this.jump_to_end(cx)).ok();

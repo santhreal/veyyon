@@ -8,14 +8,16 @@
 //! tail's own working text while the session states one.
 //! When the stream ends the tail holds the prose it drew until the committed
 //! entry takes its slot ([`StreamingTail::release`]), so a reply never blinks
-//! out between the end of the stream and the entry that records it.
+//! out between the end of the stream and the entry that records it. Each
+//! run a delta appends fades in (`StreamFade`), drawn visible from its first
+//! frame.
 
 use std::borrow::Cow;
 
 use gpui::{Context, Entity, Render, SharedString, Window, div, prelude::*};
 use veyyon_desktop_model::{ContentBlock, SessionId};
 use veyyon_desktop_ui::{
-	markdown::{self, MarkdownDoc, MarkdownStyle},
+	markdown::{self, FadeStop, MarkdownDoc, MarkdownStyle, StreamFade},
 	theme::{ActiveTheme, TypeStyled, size, space, text},
 };
 
@@ -41,6 +43,9 @@ enum Phase {
 pub struct StreamingTail {
 	app:     Entity<AppState>,
 	doc:     MarkdownDoc,
+	/// The length of the doc's drawn text, and the runs of it fading in.
+	drawn:   usize,
+	fade:    StreamFade,
 	phase:   Phase,
 	/// The working text an extension set for the session, drawn in place of
 	/// the tail's own while it states one.
@@ -52,7 +57,15 @@ impl StreamingTail {
 	/// Creates an empty tail over `app`.
 	#[must_use]
 	pub fn new(app: Entity<AppState>) -> Self {
-		Self { app, doc: MarkdownDoc::default(), phase: Phase::Idle, working: None, renders: 0 }
+		Self {
+			app,
+			doc: MarkdownDoc::default(),
+			drawn: 0,
+			fade: StreamFade::default(),
+			phase: Phase::Idle,
+			working: None,
+			renders: 0,
+		}
 	}
 
 	/// How many times the tail has rendered.
@@ -65,6 +78,13 @@ impl StreamingTail {
 	#[must_use]
 	pub fn text(&self) -> &str {
 		self.doc.source()
+	}
+
+	/// The stops the last render drew the streamed text with: where each
+	/// run still fading in starts and its opacity.
+	#[must_use]
+	pub fn fade_stops(&self) -> &[FadeStop] {
+		self.fade.stops()
 	}
 
 	/// Whether the tail draws nothing.
@@ -126,10 +146,13 @@ impl StreamingTail {
 			let delta = (!current.is_empty())
 				.then(|| prose.strip_prefix(current))
 				.flatten();
-			match delta {
-				Some(delta) => self.doc.append(delta),
-				None => self.doc.set_source(prose.into_owned()),
+			if let Some(delta) = delta {
+				self.doc.append(delta);
+			} else {
+				self.fade.clear();
+				self.doc.set_source(prose.into_owned());
 			}
+			self.drawn = markdown::drawn_len(&self.doc);
 		}
 		cx.notify();
 	}
@@ -142,6 +165,8 @@ impl StreamingTail {
 		}
 		self.phase = Phase::Idle;
 		self.doc.set_source(String::new());
+		self.drawn = 0;
+		self.fade.clear();
 		cx.notify();
 	}
 }
@@ -160,7 +185,8 @@ impl Render for StreamingTail {
 			let app = self.app.clone();
 			let style = MarkdownStyle::new("streaming-tail")
 				.on_link(move |url, _, cx| open_external(&app, url.to_string(), cx));
-			markdown::render(&self.doc, &style, window, cx).into_any_element()
+			let fade = self.fade.step(self.drawn, window, cx);
+			markdown::render_fading(&self.doc, &style, fade, window, cx).into_any_element()
 		});
 		let column = div()
 			.w_full()

@@ -5,16 +5,21 @@
 //! reparses from the start of the last top-level block, or of the one before
 //! it when no blank line separates them, so each streamed delta costs the
 //! size of the blocks it can change rather than the size of the document.
-//! [`render`] draws a document with the active theme.
+//! [`render`] draws a document with the active theme, and [`render_fading`]
+//! draws streamed text fading in as a [`StreamFade`] has it.
 
+mod fade;
 pub mod highlight;
 mod model;
 mod parse;
 mod render;
+mod style;
 
+pub use fade::{FadeStop, StreamFade, drawn_len};
 pub use highlight::{Highlighted, SyntaxRole, cached, highlight, resolve_language};
 pub use model::{Align, Block, Inlines, Run, RunStyle};
-pub use render::{CopyButton, LinkHandler, MarkdownStyle, render};
+pub use render::{render, render_fading};
+pub use style::{CopyButton, LinkHandler, MarkdownStyle};
 
 /// A markdown source and the blocks it parses into.
 ///
