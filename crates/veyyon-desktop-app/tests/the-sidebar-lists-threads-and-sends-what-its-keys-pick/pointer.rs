@@ -1,5 +1,6 @@
 //! The pointer paths: the refresh control, the thread row menu, the block
-//! headers and the archive's `Older` line.
+//! headers and the archive's `Older` line; and the profile menu the palette
+//! opens.
 //!
 //! WHY: the row menu opens inside the sidebar, so a sidebar key binding that
 //! also matches inside the menu takes Enter, the arrows and the placement
@@ -12,18 +13,24 @@
 //! flight sends one listing per click. An archive listed whole grows without
 //! bound, and one paged or collapsed in the view alone reopens as it was not
 //! left; a thread opened from elsewhere into a collapsed block or past the
-//! listed page is open and not listed.
+//! listed page is open and not listed. A profile menu that only a sidebar
+//! holding focus hears, or that opens before a hidden sidebar lays out its
+//! button, is one the palette cannot reach.
 //!
-//! Gap: the menu's pointer picks and the profile menu are not driven here;
-//! an overlap is driven only between the `Older` line and a thread row.
+//! Gap: the menu's pointer picks and where the profile menu opens are not
+//! driven here; an overlap is driven only between the `Older` line and a
+//! thread row.
 
 use gpui::{Entity, Modifiers, MouseButton, Pixels, Point, TestAppContext, VisualTestContext};
 use veyyon_desktop_app::{
-	AppState, driver,
+	AppState,
+	actions::sidebar::OpenProfileMenu,
+	driver,
 	sidebar::{
 		Sidebar,
 		listing::{Block, Item},
 	},
+	workspace::WorkspaceLayout,
 };
 use veyyon_desktop_model::{HostAction, HostEvent, QueuePartition};
 
@@ -181,4 +188,32 @@ fn opening_an_archived_thread_past_the_listed_page_pages_it_in(app: &mut TestApp
 	cx.run_until_parked();
 	assert_eq!(items(&view, cx), archived_down_to(0));
 	assert_eq!(archive_state(&state, cx), (2, Vec::new()));
+}
+
+/// Runs the palette's `Switch profile` row from another window, where no
+/// sidebar element is on the focus path, and picks `Refresh profiles` by key.
+fn ask_profile_menu_and_refresh(cx: &mut VisualTestContext) {
+	cx.add_empty_window().dispatch_action(OpenProfileMenu);
+	cx.run_until_parked();
+	cx.update(|window, cx| window.simulate_next_frame(cx));
+	cx.run_until_parked();
+	keys(cx, "r enter");
+}
+
+#[gpui::test]
+fn the_profile_menu_action_opens_the_menu_from_anywhere_and_shows_a_hidden_sidebar(
+	app: &mut TestAppContext,
+) {
+	let (state, _view, cx) = sidebar(app, seeded());
+	ask_profile_menu_and_refresh(cx);
+	assert_eq!(sent(&state, cx), vec![HostAction::RefreshProfiles], "the open menu took the keys");
+
+	cx.update(|_, cx| WorkspaceLayout::update(cx, |layout| layout.sidebar_visible = false));
+	ask_profile_menu_and_refresh(cx);
+	assert!(cx.update(|_, cx| WorkspaceLayout::get(cx).sidebar_visible), "the sidebar is shown");
+	assert_eq!(
+		sent(&state, cx),
+		vec![HostAction::RefreshProfiles],
+		"the menu opens once the shown sidebar lays its button out"
+	);
 }

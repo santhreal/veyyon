@@ -8,7 +8,7 @@ use veyyon_desktop_model::{
 use veyyon_desktop_ui::overlays::{ContextMenu, MenuEvent, MenuItem, MenuRow};
 
 use super::{Sidebar, naming::NameTarget};
-use crate::AppState;
+use crate::{AppState, workspace::WorkspaceLayout};
 
 /// What a row of the thread menu does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -136,6 +136,22 @@ impl Sidebar {
 		self
 			.profile_menu
 			.update(cx, |menu, cx| menu.open_at(position, window, cx));
+	}
+
+	/// Opens the profile menu at the profile button, as the palette asks. A
+	/// hidden sidebar is shown first and the menu opens on the frame after the
+	/// button is laid out, so it opens where the button is drawn now.
+	pub(super) fn request_profile_menu(&self, window: &mut Window, cx: &mut Context<Self>) {
+		match self.profile_button.get() {
+			Some(button) if WorkspaceLayout::get(cx).sidebar_visible => {
+				self.open_profile_menu(button.origin, window, cx);
+			},
+			_ => {
+				WorkspaceLayout::update(cx, |layout| layout.sidebar_visible = true);
+				self.profile_asked.set(true);
+				cx.notify();
+			},
+		}
 	}
 
 	pub(super) fn on_row_menu_event(

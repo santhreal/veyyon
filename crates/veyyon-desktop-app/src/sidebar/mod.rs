@@ -14,6 +14,7 @@
 //! lookup and no render. One timer runs to the next relative-time label
 //! change of a drawn row, and only after a render.
 
+mod bindings;
 mod chrome;
 mod headers;
 mod keys;
@@ -28,13 +29,15 @@ mod row;
 mod search;
 
 use std::{
+	cell::Cell,
 	collections::HashSet,
+	rc::Rc,
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use gpui::{
-	Context, Entity, FocusHandle, Focusable, IntoElement, Render, Subscription, Task,
-	UniformListScrollHandle, Window, div, prelude::*, uniform_list,
+	Bounds, Context, Entity, FocusHandle, Focusable, IntoElement, Pixels, Render, Subscription,
+	Task, UniformListScrollHandle, Window, div, prelude::*, uniform_list,
 };
 use veyyon_desktop_model::{RequestId, SessionId, SnapshotSectionKind};
 use veyyon_desktop_ui::{
@@ -43,7 +46,9 @@ use veyyon_desktop_ui::{
 	theme::ActiveTheme,
 };
 
+pub use self::bindings::init;
 use self::{
+	bindings::SidebarHandle,
 	listing::{Item, Listing},
 	menus::{ProfilePick, RowPick},
 	motion::RowMotion,
@@ -74,6 +79,12 @@ pub struct Sidebar {
 	row_picks:      Vec<Option<RowPick>>,
 	profile_menu:   Entity<ContextMenu>,
 	profile_picks:  Vec<ProfilePick>,
+	/// The profile button's bounds as last laid out, where the profile menu
+	/// opens when an action asks for it.
+	profile_button: Rc<Cell<Option<Bounds<Pixels>>>>,
+	/// An action asked for the profile menu while the button was not laid
+	/// out; the next layout opens it.
+	profile_asked:  Rc<Cell<bool>>,
 	peek:           Option<SessionId>,
 	scroll:         UniformListScrollHandle,
 	motion:         RowMotion,
@@ -110,6 +121,9 @@ impl Sidebar {
 			cx.subscribe_in(&row_menu, window, Self::on_row_menu_event),
 			cx.subscribe_in(&profile_menu, window, Self::on_profile_menu_event),
 		];
+		let handle =
+			SidebarHandle { sidebar: cx.entity().downgrade(), window: window.window_handle() };
+		cx.set_global(handle);
 		let selected = app.read(cx).active_session().cloned();
 		let mut sidebar = Self {
 			app,
@@ -128,6 +142,8 @@ impl Sidebar {
 			row_picks: Vec::new(),
 			profile_menu,
 			profile_picks: Vec::new(),
+			profile_button: Rc::new(Cell::new(None)),
+			profile_asked: Rc::new(Cell::new(false)),
 			peek: None,
 			scroll: UniformListScrollHandle::new(),
 			motion: RowMotion::default(),

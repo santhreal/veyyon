@@ -156,6 +156,9 @@ impl Sidebar {
 			.and_then(|profiles| profiles.active_entry())
 			.map_or_else(|| "Profile".into(), |entry| entry.label().into());
 		let (status, label) = connection(&store.connection);
+		let button = self.profile_button.clone();
+		let asked = self.profile_asked.clone();
+		let sidebar = cx.weak_entity();
 		div()
 			.flex()
 			.items_center()
@@ -164,6 +167,20 @@ impl Sidebar {
 			.py(space::S2)
 			.border_t_1()
 			.border_color(palette.border.subtle)
+			.on_children_prepainted(move |laid, window, _| {
+				let Some(bounds) = laid.get(PROFILE_BUTTON).copied() else {
+					return;
+				};
+				button.set(Some(bounds));
+				if asked.replace(false) {
+					let sidebar = sidebar.clone();
+					window.on_next_frame(move |window, cx| {
+						let _ = sidebar.update(cx, |sidebar, cx| {
+							sidebar.open_profile_menu(bounds.origin, window, cx);
+						});
+					});
+				}
+			})
 			.child(
 				IconButton::new("sidebar-settings", IconName::Settings)
 					.tooltip("Settings")
@@ -209,6 +226,9 @@ impl Sidebar {
 			.into_any_element()
 	}
 }
+
+/// The footer child that is the profile button: settings, profile, connection.
+const PROFILE_BUTTON: usize = 1;
 
 /// The reason a gate states an action cannot run, `None` when it can or may.
 fn unavailable(gate: Gate) -> Option<String> {
