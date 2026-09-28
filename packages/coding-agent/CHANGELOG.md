@@ -390,6 +390,11 @@
 
 ### Fixed
 
+- A desktop plan card draws its title as plain words once, where it drew the markdown syntax of the plan's first line and then drew that line again in the body.
+- A desktop prompt that only named files draws those files with no empty bubble, and a named image file draws its picture instead of its name a second time.
+- A desktop tool result shown without its call row states `error` in its caption when the tool failed, where a failed result read as a success.
+- The desktop transcript remembers where it was scrolled in each thread and returns there on a switch or relaunch, waiting for the entry it names to arrive, and a thread left at the latest reply comes back at the latest reply.
+- An open desktop thread row menu offers the actions the host allows now, updating when the host's capabilities change or a request finishes, where it kept the actions it was opened with.
 - A desktop sidebar line spans the sidebar's width, so a long thread title is cut with an ellipsis and its age label sits at the right edge, where each line was as wide as its text and a long title pushed the age label past the sidebar's edge.
 - A desktop request the host leaves unanswered for 30 s fails as a refusal does, so the control that sent it stops drawing its spinner and offers its retry, and a request dropped past the 1024-request ceiling fails the same way, where both were dropped without a word and a drawer refresh the host never answered drew its spinner until another control sent something.
 - Disabling an MCP server from the desktop writes it disabled into the profile's `mcp.json`, where it only disconnected the running server and the next start connected it again.
