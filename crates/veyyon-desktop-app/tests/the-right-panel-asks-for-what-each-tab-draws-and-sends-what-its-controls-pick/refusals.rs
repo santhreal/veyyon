@@ -162,7 +162,7 @@ fn a_refusal_of_a_control_outside_the_panel_is_stated_on_no_tab(app: &mut TestAp
 		(HostAction::ReadFile { path: "src/lib.rs".to_owned() }, SurfaceId::PaletteInput),
 		(
 			HostAction::ClearTerminal { terminal_id: "t1".to_owned() },
-			SurfaceId::TerminalClearButton(session.clone(), "t1".to_owned()),
+			SurfaceId::TerminalClearButton(session, "t1".to_owned()),
 		),
 	];
 	let mut copies = Vec::new();

@@ -7,8 +7,8 @@ use gpui::{
 	ScrollWheelEvent, TestAppContext, VisualTestContext, px, size,
 };
 use veyyon_desktop_app::{
-	AppState,
-	actions::workspace as act,
+	AppState, StoreEvent,
+	actions::{panel::OpenFile, workspace as act},
 	driver, keymap,
 	panel::{PanelTab, RightPanel},
 	workspace::{Regions, Workspace, WorkspaceLayout},
@@ -197,6 +197,20 @@ impl Win<'_> {
 		})
 	}
 
+	/// How many host answers the diff tab has parsed and the files tab has
+	/// split into lines.
+	pub fn derivations(&self) -> [u64; 2] {
+		self.panel.read_with(&*self.cx, |panel, cx| {
+			[panel.diff().read(cx).derivations(), panel.files().read(cx).derivations()]
+		})
+	}
+
+	/// The store emitting `event` with nothing in it changed.
+	pub fn emit(&mut self, event: StoreEvent) {
+		self.state.update(self.cx, |_, cx| cx.emit(event));
+		self.cx.run_until_parked();
+	}
+
 	/// The tab the displayed session reopens on.
 	pub fn persisted(&self) -> Option<String> {
 		self
@@ -268,6 +282,23 @@ pub fn refused(request: RequestId, message: &str, retryable: bool) -> HostEvent 
 			occurred_at_ms: 1,
 		},
 	}
+}
+
+/// The host taking every request in `asked`.
+pub fn answer(w: &mut Win<'_>, asked: Vec<HostRequest>) {
+	w.apply(
+		asked
+			.into_iter()
+			.map(|request| HostEvent::RequestSucceeded { request: request.id })
+			.collect(),
+	);
+}
+
+/// Opens `path` the way a link in the transcript does.
+pub fn open_file(w: &mut Win<'_>, path: &str) {
+	w.cx
+		.dispatch_action(OpenFile { path: path.to_owned(), line: None });
+	w.cx.run_until_parked();
 }
 
 /// An agent `id` called `call_sign`, of `kind`, in `status`, owning

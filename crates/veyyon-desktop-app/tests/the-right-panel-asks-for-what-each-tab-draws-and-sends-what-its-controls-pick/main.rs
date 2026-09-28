@@ -3,14 +3,14 @@
 //! changes file by file, sends what the diff and agents controls pick, and
 //! renders nothing while a turn streams.
 //!
-//! WHY: a tab that asks again while its answer is due floods the host, a tab that
-//! never asks draws an empty panel, a closed panel that asks spends the host
-//! on a surface nobody sees, a panel that keeps focus as it closes leaves the
-//! window's bindings reaching nothing, and a panel that redraws per streamed
-//! token costs every frame of a turn. The suite drives the real `RightPanel`
-//! inside the real `Workspace` over an `AppState` fed host events, clicks its
-//! tabs, controls and fields, and reads the drawn text, the requests queued,
-//! the layout and the render counts.
+//! WHY: a tab that asks again while its answer is due floods the host, a tab
+//! that never asks draws an empty panel, a closed panel that asks spends the
+//! host on a surface nobody sees, a panel that keeps focus as it closes leaves
+//! the window's bindings reaching nothing, and a panel that redraws per
+//! streamed token costs every frame of a turn. The suite drives the real
+//! `RightPanel` inside the real `Workspace` over an `AppState` fed host events,
+//! clicks its tabs, controls and fields, and reads the drawn text, the requests
+//! queued, the layout and the render counts.
 //!
 //! Gap: the files, diagnostics and usage tabs are reached and their loads
 //! asserted, but their rows are not driven; the split diff layout is proven
@@ -19,6 +19,7 @@
 
 mod cuts;
 mod declined;
+mod derived;
 mod harness;
 mod long_lines;
 mod refusals;

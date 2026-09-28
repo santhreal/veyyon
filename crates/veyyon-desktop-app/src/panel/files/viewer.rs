@@ -23,11 +23,13 @@ use crate::panel::{
 
 impl FilesView {
 	/// Splits the viewed file into lines and highlights it when the host
-	/// answered since the last split, then scrolls to the line asked for. A
-	/// new answer for another path, a file the palette or the diff opened,
-	/// becomes the viewed file.
+	/// answered since the last split or the lines were split from another
+	/// file, then scrolls to the line asked for. Lines of a file other than
+	/// the viewed one are dropped, so a file opened over another draws none of
+	/// its text. A new answer for another path, a file the palette or the diff
+	/// opened, becomes the viewed file.
 	pub(super) fn load_content(&mut self, cx: &mut Context<Self>) {
-		let (answers, content) = {
+		let derive = {
 			let answered = &self.app.read(cx).store().domains.file_content;
 			let answers = answered.answers();
 			if answers != self.answers
@@ -39,6 +41,7 @@ impl FilesView {
 			{
 				self.open = Some((content.path.clone(), None));
 			}
+			self.answers = answers;
 			let content = answered.get().filter(|content| {
 				!content.binary
 					&& self
@@ -46,15 +49,23 @@ impl FilesView {
 						.as_ref()
 						.is_some_and(|(path, _)| *path == content.path)
 			});
-			(answers, content.map(|content| content.content.clone()))
+			let held = self
+				.derived
+				.as_ref()
+				.map(|(answer, path)| (*answer, path.as_str()));
+			(held != content.map(|content| (answers, content.path.as_str()))).then(|| {
+				content.map(|content| (answers, content.path.clone(), content.content.clone()))
+			})
 		};
-		if answers != self.answers || self.lines.is_empty() {
-			self.answers = answers;
+		if let Some(content) = derive {
+			self.derivations += 1;
+			self.derived = None;
 			self.highlighted = None;
 			self.lines.clear();
 			self.sideways.reset();
-			if let Some(content) = content {
-				self.split(content, cx);
+			if let Some((answer, path, text)) = content {
+				self.split(text, cx);
+				self.derived = Some((answer, path));
 			}
 		}
 		if let Some(line) = self.open.as_ref().and_then(|(_, line)| *line)
@@ -81,13 +92,13 @@ impl FilesView {
 			.as_ref()
 			.map(|(path, _)| language_tag(path).to_owned())
 			.unwrap_or_default();
-		let answers = self.answers;
+		let derivation = self.derivations;
 		let task = cx.background_spawn(async move { highlight(&content, Some(&lang)) });
 		cx.spawn(async move |this, cx| {
 			let highlighted = task.await;
 			this
 				.update(cx, |this, cx| {
-					if this.answers == answers {
+					if this.derivations == derivation {
 						this.highlighted = Some(highlighted);
 						cx.notify();
 					}

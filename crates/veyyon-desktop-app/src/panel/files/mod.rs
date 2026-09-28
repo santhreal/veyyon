@@ -39,8 +39,12 @@ pub struct FilesView {
 	expanded:       HashSet<String>,
 	/// The file being viewed and the one-based line to show.
 	open:           Option<(String, Option<u32>)>,
-	/// The `file_content` answer the lines were split from.
+	/// The last `file_content` answer the view read.
 	answers:        u64,
+	/// The `file_content` answer and the path the lines were split from.
+	derived:        Option<(u64, String)>,
+	/// How many host answers the viewer has split into lines.
+	derivations:    u64,
 	/// Each line of the viewed file, as a byte range of its text.
 	lines:          Vec<Range<usize>>,
 	/// How far the viewed file's code is scrolled past its line numbers.
@@ -87,6 +91,8 @@ impl FilesView {
 			expanded: HashSet::new(),
 			open: None,
 			answers: 0,
+			derived: None,
+			derivations: 0,
 			lines: Vec::new(),
 			sideways: Sideways::default(),
 			highlighted: None,
@@ -101,6 +107,12 @@ impl FilesView {
 	/// How many times the tab has rendered.
 	pub const fn render_count(&self) -> u64 {
 		self.renders
+	}
+
+	/// How many host answers the viewer has split into lines, which a view
+	/// test compares across events that answer nothing new.
+	pub const fn derivations(&self) -> u64 {
+		self.derivations
 	}
 
 	/// The file the viewer shows.

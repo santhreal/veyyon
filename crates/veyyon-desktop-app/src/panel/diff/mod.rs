@@ -61,6 +61,8 @@ pub struct DiffView {
 	app:            Entity<AppState>,
 	parsed:         Arc<ParsedDiff>,
 	answers:        u64,
+	/// How many host answers the tab has parsed.
+	derivations:    u64,
 	scope:          Option<ReviewScope>,
 	change_scope:   ChangeScope,
 	layout:         Layout,
@@ -93,6 +95,7 @@ impl DiffView {
 			app,
 			parsed: Arc::default(),
 			answers: 0,
+			derivations: 0,
 			scope: None,
 			change_scope: ChangeScope::WorkingTree,
 			layout: Layout::default(),
@@ -131,6 +134,12 @@ impl DiffView {
 		self.renders
 	}
 
+	/// How many host answers the tab has parsed, which a view test compares
+	/// across events that answer nothing new.
+	pub const fn derivations(&self) -> u64 {
+		self.derivations
+	}
+
 	/// Parses the host's changes again when a new answer arrived, and
 	/// orphans the review threads a complete diff lost.
 	fn reparse(&mut self, cx: &mut Context<Self>) {
@@ -147,6 +156,7 @@ impl DiffView {
 			)
 		};
 		self.answers = answers;
+		self.derivations += 1;
 		self.parsed = Arc::new(parsed);
 		if let Some((_, change_scope)) = scope {
 			self.change_scope = change_scope;

@@ -20,7 +20,7 @@
 //! repository, and how a refusal is drawn is the refusal suite's.
 
 use gpui::TestAppContext;
-use veyyon_desktop_app::{actions::panel::OpenFile, panel::PanelTab};
+use veyyon_desktop_app::panel::PanelTab;
 use veyyon_desktop_model::{
 	ContextBreakdownView, ContextCategory, FileContentView, FileKind, FileNode, FileTreeView,
 	HostAction, HostEvent, HostRequest, SessionId, SnapshotSection, UsageTotals, UsageView,
@@ -28,7 +28,7 @@ use veyyon_desktop_model::{
 
 use super::{
 	changes,
-	harness::{SESSION, Win, agent, opened, refused, window},
+	harness::{SESSION, Win, agent, answer, open_file, opened, refused, window},
 	loads,
 };
 
@@ -106,25 +106,8 @@ fn holding(app: &mut TestAppContext) -> Win<'_> {
 	window(app, events)
 }
 
-/// The host taking every request in `asked`.
-fn answer(w: &mut Win<'_>, asked: Vec<HostRequest>) {
-	w.apply(
-		asked
-			.into_iter()
-			.map(|request| HostEvent::RequestSucceeded { request: request.id })
-			.collect(),
-	);
-}
-
 fn actions(asked: &[HostRequest]) -> Vec<HostAction> {
 	asked.iter().map(|request| request.action.clone()).collect()
-}
-
-/// Opens `path` the way a link in the transcript does.
-fn open_file(w: &mut Win<'_>, path: &str) {
-	w.cx
-		.dispatch_action(OpenFile { path: path.to_owned(), line: None });
-	w.cx.run_until_parked();
 }
 
 #[gpui::test]
