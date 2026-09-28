@@ -390,6 +390,8 @@
 
 ### Fixed
 
+- The desktop right panel asks the host again for a tab's changes, file tree, open file, diagnostics or usage each time you open that tab, so edits made outside a turn show up without closing and reopening the panel.
+- The desktop right panel and terminal drawer state the host's reason when it refuses a request and offer Retry only when the host accepts a second send, and a diff the host cut before its first file states the cut instead of reading as a clean working tree.
 - A desktop plan card draws its title as plain words once, where it drew the markdown syntax of the plan's first line and then drew that line again in the body.
 - A desktop prompt that only named files draws those files with no empty bubble, and a named image file draws its picture instead of its name a second time.
 - A desktop tool result shown without its call row states `error` in its caption when the tool failed, where a failed result read as a success.
