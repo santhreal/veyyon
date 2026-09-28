@@ -7,7 +7,7 @@ use crate::{
 	},
 	composer::QueueMode,
 	connection::{EntryId, SessionId},
-	domain::changes::ChangeScope,
+	domain::{ExportFormat, changes::ChangeScope},
 	session::SettableMode,
 	signal::SupervisorSignal,
 };
@@ -60,7 +60,7 @@ pub enum HostAction {
 	},
 	ExportSession {
 		session: SessionId,
-		format:  String,
+		format:  ExportFormat,
 	},
 	CompactSession {
 		session: SessionId,

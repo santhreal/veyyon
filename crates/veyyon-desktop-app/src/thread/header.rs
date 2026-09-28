@@ -13,7 +13,10 @@ use gpui::{
 	AnyElement, Context, Entity, MouseButton, Render, Subscription, Window, WindowControlArea, div,
 	prelude::*, relative,
 };
-use veyyon_desktop_model::{HostAction, SurfaceId, domain::ShareRole};
+use veyyon_desktop_model::{
+	HostAction, SurfaceId,
+	domain::{ExportFormat, ShareRole},
+};
 use veyyon_desktop_ui::{
 	controls::IconButton,
 	icons::IconName,
@@ -162,10 +165,10 @@ impl Render for ThreadHeader {
 					app,
 					"thread-export",
 					IconName::FileText,
-					"Export as Markdown",
+					"Export as HTML",
 					HostAction::ExportSession {
 						session: session.clone(),
-						format:  "markdown".to_owned(),
+						format:  ExportFormat::Html,
 					},
 					SurfaceId::SessionExportButton(session),
 				),

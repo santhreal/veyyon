@@ -112,7 +112,7 @@ fn the_row_menu_takes_its_keys_and_sends_its_pick_for_the_row_it_opened_on(
 	keys(cx, "e enter");
 	assert_eq!(sent(&state, cx), vec![HostAction::ExportSession {
 		session: sid("b"),
-		format:  "html".to_owned(),
+		format:  veyyon_desktop_model::domain::ExportFormat::Html,
 	}]);
 }
 

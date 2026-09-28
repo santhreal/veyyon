@@ -1,6 +1,7 @@
 import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { disposeTurnSession, getOrCreateAgentSession, settleRunningTurn } from "../turns";
+import { ALL_EXPORT_FORMATS } from "../wire";
 import {
 	activateSession as activate,
 	activeManager,
@@ -236,12 +237,13 @@ const handleExportSession: ActionHandler<ExportSessionPayload | undefined> = asy
 		});
 		return;
 	}
-	const format = payload.format?.toLowerCase() ?? "html";
-	if (format !== "html" && format !== "json") {
+	const requested = payload.format?.toLowerCase() ?? "html";
+	const format = ALL_EXPORT_FORMATS.find(known => known === requested);
+	if (!format) {
 		ctx.reply.failure({
 			scope: "Session",
 			code: "INVALID_ARGUMENTS",
-			message: `ExportSession format '${format}' is not one of html, json`,
+			message: `ExportSession format '${requested}' is not one of ${ALL_EXPORT_FORMATS.join(", ")}`,
 			retryable: false,
 		});
 		return;
@@ -252,14 +254,27 @@ const handleExportSession: ActionHandler<ExportSessionPayload | undefined> = asy
 		// Activating switched the client's session, so the header states which
 		// one the export and everything after it belongs to.
 		emitActiveSession(ctx, sm);
-		if (format === "json") {
-			ctx.reply.snapshot({
-				Export: { session: payload.session, format, path: null, content: JSON.stringify(sm.getEntries(), null, 2) },
-			});
-		} else {
-			const agent = await getOrCreateAgentSession(ctx.clientState, ctx.socket, ctx);
-			const outputPath = await agent.exportToHtml();
-			ctx.reply.snapshot({ Export: { session: payload.session, format, path: outputPath, content: null } });
+		switch (format) {
+			case "json":
+				ctx.reply.snapshot({
+					Export: {
+						session: payload.session,
+						format,
+						path: null,
+						content: JSON.stringify(sm.getEntries(), null, 2),
+					},
+				});
+				break;
+			case "html": {
+				const agent = await getOrCreateAgentSession(ctx.clientState, ctx.socket, ctx);
+				const outputPath = await agent.exportToHtml();
+				ctx.reply.snapshot({ Export: { session: payload.session, format, path: outputPath, content: null } });
+				break;
+			}
+			default: {
+				const unwritten: never = format;
+				throw new Error(`ExportSession has no writer for format '${unwritten}'`);
+			}
 		}
 		ctx.reply.success();
 	} catch (error) {

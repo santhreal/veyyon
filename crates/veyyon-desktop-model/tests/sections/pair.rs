@@ -6,8 +6,8 @@ use veyyon_desktop_model::{
 	SessionSearchView, SessionTranscriptView, SnapshotSection, SnapshotSectionKind, TerminalStatus,
 	Versioned,
 	domain::{
-		CredentialKind, ExtensionItemView, ExtensionKind, ExtensionLevel, ExtensionSourceView,
-		ExtensionState, ExtensionsView, StoredAccountView,
+		CredentialKind, ExportFormat, ExtensionItemView, ExtensionKind, ExtensionLevel,
+		ExtensionSourceView, ExtensionState, ExtensionsView, StoredAccountView,
 	},
 };
 
@@ -118,7 +118,7 @@ pub fn pair(kind: SnapshotSectionKind) -> Option<[SnapshotSection; 2]> {
 		SnapshotSectionKind::ContextBreakdown => {
 			[context(&[("system", 1000)]), context(&[("system", 1000), ("messages", 1500)])]
 		},
-		SnapshotSectionKind::Export => [export("html"), export("md")],
+		SnapshotSectionKind::Export => [export(ExportFormat::Html), export(ExportFormat::Json)],
 		SnapshotSectionKind::Themes => [themes("light", false), themes("dark", true)],
 		SnapshotSectionKind::Keybindings => {
 			[keybinding("app.quit", "ctrl+q"), keybinding("composer.submit", "enter")]

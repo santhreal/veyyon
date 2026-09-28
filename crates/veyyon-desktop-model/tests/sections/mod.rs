@@ -285,11 +285,11 @@ pub fn context(categories: &[(&str, u64)]) -> SnapshotSection {
 	})
 }
 
-pub fn export(format: &str) -> SnapshotSection {
+pub fn export(format: veyyon_desktop_model::domain::ExportFormat) -> SnapshotSection {
 	SnapshotSection::Export(ExportView {
 		session: SessionId::from("sess-1"),
-		format:  format.into(),
-		path:    Some(format!("/repo/export.{format}")),
+		format,
+		path: Some(format!("/repo/export.{}", format.as_str())),
 		content: None,
 	})
 }

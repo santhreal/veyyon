@@ -33,13 +33,49 @@ pub struct UsageView {
 	pub totals:  UsageTotals,
 }
 
+/// A document the host writes a session out as. The host takes no other.
+#[derive(
+	Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ts_rs::TS, strum::EnumIter,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum ExportFormat {
+	/// A standalone page the host writes to disk.
+	Html,
+	/// The session's entries, answered in memory.
+	Json,
+}
+
+impl ExportFormat {
+	/// The format as the wire spells it.
+	pub const fn as_str(self) -> &'static str {
+		match self {
+			Self::Html => "html",
+			Self::Json => "json",
+		}
+	}
+
+	/// The format as a person reads it.
+	pub const fn label(self) -> &'static str {
+		match self {
+			Self::Html => "HTML",
+			Self::Json => "JSON",
+		}
+	}
+}
+
+impl std::fmt::Display for ExportFormat {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(self.label())
+	}
+}
+
 /// Transcript export result or file path snapshot.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct ExportView {
 	/// Exported session identifier.
 	pub session: SessionId,
-	/// Export format (e.g., "html", "markdown", "json").
-	pub format:  String,
+	/// The document the session was written out as.
+	pub format:  ExportFormat,
 	/// Path where the export file was written, if saved to disk.
 	pub path:    Option<String>,
 	/// Direct exported content string if returned in memory.

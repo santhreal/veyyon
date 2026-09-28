@@ -37,7 +37,7 @@ use ts_rs::{Config, TS, TypeVisitor};
 use veyyon_desktop_model::{
 	AgentMessageOutcome, AutoswarmAction, AutoswarmFieldKind, Capability, DictationState,
 	GoalControl, GoalStatus, HostActionKind, HostEvent, HostRequest, PROTOCOL_VERSION, SettableMode,
-	SharePhase, ShareRole, SnapshotSectionKind, action_to_capability,
+	SharePhase, ShareRole, SnapshotSectionKind, action_to_capability, domain::ExportFormat,
 };
 
 /// The command that rewrites the generated file.
@@ -193,6 +193,12 @@ fn generate() -> String {
 		Some("DictationState"),
 	);
 	push_array(&mut out, "SHARE_ROLES", &wire_names::<ShareRole>(), Some("ShareRole"));
+	push_array(
+		&mut out,
+		"ALL_EXPORT_FORMATS",
+		&wire_names::<ExportFormat>(),
+		Some("ExportFormat"),
+	);
 
 	out.truncate(out.trim_end().len());
 	out.push('\n');

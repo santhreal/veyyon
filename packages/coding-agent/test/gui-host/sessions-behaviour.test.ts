@@ -23,6 +23,7 @@ import { computeDefaultSessionDir } from "@veyyon/kernel/session/session-paths";
 import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
 import { type GuiHostServer, startGuiHostServer } from "../../src/gui-host";
 import { findSessionPath } from "../../src/gui-host/actions/active-session";
+import { ALL_EXPORT_FORMATS } from "../../src/gui-host/wire";
 import { type RequestFrame, TestSocketClient } from "./test-client";
 
 interface SessionRow {
@@ -159,6 +160,36 @@ describe("sessions action group behaviour", () => {
 		const exported = await client.request(2, { ExportSession: { session: sessionId, format: "docx" } });
 		expect(exported.outcome.RequestFailed?.error).toMatchObject({ scope: "Session", code: "INVALID_ARGUMENTS" });
 		expect(exported.frames).toHaveLength(1);
+	});
+
+	test("every format the window can send is one the host writes", async () => {
+		const created = await client.request(1, { CreateSession: { title: "Exported" } });
+		const sessionId = snapshot<{ value: { id: string } }>(created.frames, "ActiveSession")?.value.id;
+		const written: Array<{ format: string; path: string | null; content: string | null }> = [];
+		let request = 2;
+		for (const format of ALL_EXPORT_FORMATS) {
+			const exported = await client.request(request, { ExportSession: { session: sessionId, format } });
+			expect(exported.outcome).toEqual({ RequestSucceeded: { request } });
+			const section = snapshot<{ format: string; path: string | null; content: string | null }>(
+				exported.frames,
+				"Export",
+			);
+			if (!section) throw new Error(`the ${format} export answered no Export section`);
+			written.push(section);
+			request += 1;
+		}
+		expect(written.map(section => section.format)).toEqual([...ALL_EXPORT_FORMATS]);
+		for (const section of written) {
+			if (section.format === "html") {
+				expect(section.path ?? "").toEndWith(".html");
+				expect(await fs.readFile(section.path ?? "", "utf8")).toStartWith("<!DOCTYPE html>");
+			} else if (section.format === "json") {
+				const entries = JSON.parse(section.content ?? "null") as Array<{ type: string; title?: string }>;
+				expect(entries.filter(e => e.type === "title_change").map(e => e.title)).toEqual(["Exported"]);
+			} else {
+				throw new Error(`no check states what a ${section.format} export writes`);
+			}
+		}
 	});
 
 	test("a handoff with nothing to hand off fails loud instead of writing a marker", async () => {

@@ -3,7 +3,7 @@
 
 use gpui::{Context, Entity, Pixels, Point, Window};
 use veyyon_desktop_model::{
-	Gate, HostAction, HostActionKind, QueuePartition, SessionId, SurfaceId,
+	Gate, HostAction, HostActionKind, QueuePartition, SessionId, SurfaceId, domain::ExportFormat,
 };
 use veyyon_desktop_ui::overlays::{ContextMenu, MenuEvent, MenuItem, MenuRow};
 
@@ -211,7 +211,7 @@ impl Sidebar {
 				SurfaceId::SessionBranchButton(session),
 			)),
 			RowPick::Export => Some((
-				HostAction::ExportSession { session: session.clone(), format: "html".to_owned() },
+				HostAction::ExportSession { session: session.clone(), format: ExportFormat::Html },
 				SurfaceId::SessionExportButton(session),
 			)),
 			RowPick::Compact => Some((
