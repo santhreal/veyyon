@@ -17,8 +17,10 @@
 //! leaves; the platform folder prompt of "New thread in folder…" is not
 //! answered here.
 
+mod arguments;
 mod commands;
 mod harness;
+mod modes;
 mod motion;
 
 use std::collections::HashSet;

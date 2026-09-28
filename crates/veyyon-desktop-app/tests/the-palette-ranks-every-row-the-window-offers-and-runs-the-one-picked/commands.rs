@@ -2,8 +2,9 @@
 //! that takes an argument asks for it, any other runs as chosen, and none
 //! runs without a thread to run in. The requests the palette sends itself
 //! reach the host under the terminal's spelling for them, each state-bound
-//! pair listed only the way that applies. The files the host matched for the
-//! query open in the panel.
+//! pair listed only the way that applies. The row that moves a running
+//! command to the background asks the host to move the open thread's. The
+//! files the host matched for the query open in the panel.
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -15,7 +16,7 @@ use veyyon_desktop_model::{
 	domain::{AgentPauseView, ShareRole, ShareView},
 };
 
-use super::harness::{Win, listed, seeded, sid, window};
+use super::harness::{Win, listed, seeded, sid, whole_window, window};
 
 fn command(
 	name: &str,
@@ -155,18 +156,7 @@ fn a_request_bound_to_state_is_listed_only_the_way_that_applies(app: &mut TestAp
 			paused:   true,
 			since_ms: Some(1),
 		})),
-		HostEvent::Snapshot(SnapshotSection::Share(ShareView {
-			state:         "hosting".to_owned(),
-			role:          ShareRole::Hosting,
-			relay_url:     None,
-			link:          Some("veyyon://room".to_owned()),
-			web_link:      None,
-			view_link:     None,
-			web_view_link: None,
-			participants:  Vec::new(),
-			guest:         None,
-			error:         None,
-		})),
+		share(ShareRole::Hosting),
 	]);
 	w.query("/unpause");
 	assert!(has(&w, "Resume agents") && !has(&w, "Pause agents"), "{:?}", w.labels());
@@ -179,6 +169,38 @@ fn a_request_bound_to_state_is_listed_only_the_way_that_applies(app: &mut TestAp
 	w.sent();
 	w.pick("Stop sharing");
 	assert_eq!(w.sent(), vec![HostAction::StopShare]);
+	for (role, typed, row, action) in [
+		(ShareRole::Hosting, "/collab status", "Refresh the share", HostAction::RefreshShare),
+		(ShareRole::Guest, "/leave", "Leave the share", HostAction::LeaveShare),
+		(ShareRole::Guest, "/collab status", "Refresh the share", HostAction::RefreshShare),
+	] {
+		w.apply(vec![share(role)]);
+		w.open();
+		w.query("/join");
+		assert!(!has(&w, "Join a share…"), "a window in a share joins no other");
+		w.query("/leave");
+		assert_eq!(has(&w, "Leave the share"), role == ShareRole::Guest, "{role:?}");
+		w.query(typed);
+		w.sent();
+		w.pick(row);
+		assert_eq!(w.sent(), vec![action], "{typed:?} as {role:?}");
+	}
+}
+
+/// The share this window takes part in as `role`.
+fn share(role: ShareRole) -> HostEvent {
+	HostEvent::Snapshot(SnapshotSection::Share(ShareView {
+		state: format!("{role:?}").to_lowercase(),
+		role,
+		relay_url: None,
+		link: Some("veyyon://room".to_owned()),
+		web_link: None,
+		view_link: None,
+		web_view_link: None,
+		participants: Vec::new(),
+		guest: None,
+		error: None,
+	}))
 }
 
 #[gpui::test]
@@ -220,6 +242,31 @@ fn without_an_open_thread_every_command_is_drawn_blocked_and_runs_nothing(
 	w.keys("enter");
 	assert_eq!(w.sent(), Vec::<HostAction>::new());
 	assert!(w.is_open());
+}
+
+/// Picks the row that moves the running command to the background, in a
+/// window over `events`, and returns what it sent.
+fn background(app: &mut TestAppContext, events: Vec<HostEvent>) -> Vec<HostAction> {
+	const ROW: &str = "Move the running command to the background";
+	let mut w = whole_window(app, events);
+	w.open();
+	w.sent();
+	w.query("/background");
+	w.pick(ROW);
+	assert!(!w.is_open(), "{ROW:?} closes the palette");
+	w.sent()
+}
+
+#[gpui::test]
+fn the_background_row_asks_the_host_to_move_the_command_the_open_thread_waits_on(
+	app: &mut TestAppContext,
+) {
+	assert_eq!(background(app, seeded()), vec![HostAction::BackgroundCommand { session: sid("a") }]);
+}
+
+#[gpui::test]
+fn without_an_open_thread_the_background_row_sends_nothing(app: &mut TestAppContext) {
+	assert_eq!(background(app, listed()), Vec::<HostAction>::new());
 }
 
 #[gpui::test]

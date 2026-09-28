@@ -1,6 +1,6 @@
 //! The rows the palette lists and what choosing one does.
 
-use veyyon_desktop_model::{HostAction, SessionId, SurfaceId};
+use veyyon_desktop_model::{HostAction, HostActionKind, SessionId, SurfaceId};
 use veyyon_desktop_ui::controls::Kbd;
 use veyyon_gpui::{Action, SharedString, Window};
 
@@ -46,9 +46,20 @@ pub enum Run {
 	/// Asks for the argument of a slash command, then runs it.
 	Argument {
 		/// The command line the argument is appended to.
-		line: String,
+		line:  String,
 		/// What the command expects, shown as the input's placeholder.
-		hint: String,
+		hint:  String,
+		/// What the argument builds.
+		takes: Takes,
+	},
+	/// Runs an argument row with the text typed after its name at the root.
+	Filled {
+		/// What the argument builds.
+		takes: Takes,
+		/// The command line the argument is appended to.
+		line:  String,
+		/// The text typed after the command's name.
+		text:  String,
 	},
 	/// Lists the subcommands of the command with this name.
 	Subcommands(String),
@@ -58,6 +69,47 @@ pub enum Run {
 	CreateSession(Option<String>),
 	/// Asks the platform for a directory and creates a session in it.
 	CreateSessionInFolder,
+}
+
+/// What the text typed for an argument row builds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Takes {
+	/// The command line with the text appended, which the host parses.
+	Command,
+	/// The link of a share another window hosts, which this window joins.
+	Link,
+}
+
+impl Takes {
+	/// The kind of request the argument sends.
+	pub const fn kind(self) -> HostActionKind {
+		match self {
+			Self::Command => HostActionKind::RunCommand,
+			Self::Link => HostActionKind::JoinShare,
+		}
+	}
+
+	/// Whether the request runs in the session the window shows, and so needs
+	/// one open.
+	pub const fn needs_session(self) -> bool {
+		match self {
+			Self::Command => true,
+			Self::Link => false,
+		}
+	}
+
+	/// The request `line` with `text` after it sends while the window shows
+	/// `session`, or `None` when it needs a session and none is shown, or
+	/// needs text and none was typed.
+	pub fn action(self, line: &str, text: &str, session: Option<SessionId>) -> Option<HostAction> {
+		match self {
+			Self::Command => {
+				Some(HostAction::RunCommand { session: session?, text: format!("{line}{text}") })
+			},
+			Self::Link if text.is_empty() => None,
+			Self::Link => Some(HostAction::JoinShare { session, link: text.to_owned() }),
+		}
+	}
 }
 
 /// A window action with data, built when the row is chosen.

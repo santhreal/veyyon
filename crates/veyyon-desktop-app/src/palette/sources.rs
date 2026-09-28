@@ -2,13 +2,13 @@
 //! command the host advertises, the requests the palette sends itself, every
 //! thread, the files the host matched and every settings page.
 
-use veyyon_desktop_model::{
-	CommandView, Gate, HostAction, HostActionKind, SessionId, SurfaceId, domain::ShareRole, gate,
-	gate_kind,
-};
+use veyyon_desktop_model::{CommandView, Gate, HostAction, HostActionKind, SessionId};
 use veyyon_gpui::{SharedString, Window};
 
-use super::item::{ActionData, Group, Hint, Item, Run, shortcut};
+use super::{
+	item::{ActionData, Group, Hint, Item, Run, Takes, shortcut},
+	requests::requests,
+};
 use crate::{actions, settings::Page, state::AppState};
 
 /// The threads listed while the query is empty.
@@ -24,20 +24,22 @@ pub enum Scope {
 	/// The argument of a command line, which Enter appends and runs.
 	Argument {
 		/// The command line the argument is appended to.
-		line: String,
+		line:  String,
 		/// What the command expects.
-		hint: String,
+		hint:  String,
+		/// What the argument builds.
+		takes: Takes,
 	},
 }
 
 /// Why the host would refuse `action` now, or `None` when it would take it.
 pub fn refusal(app: &AppState, action: &HostAction) -> Option<SharedString> {
-	reason(gate(action, &app.store().capabilities, app.registry()))
+	reason(app.gate(action.kind()))
 }
 
 /// Why the host would refuse an action of `kind` now.
 pub fn refusal_kind(app: &AppState, kind: HostActionKind) -> Option<SharedString> {
-	reason(gate_kind(kind, &app.store().capabilities, app.registry()))
+	reason(app.gate(kind))
 }
 
 fn reason(gate: Gate) -> Option<SharedString> {
@@ -62,6 +64,8 @@ fn root(query: &str, app: &AppState, window: &Window) -> Vec<Item> {
 	window_actions(window, &mut items);
 	commands(&app.store().domains.commands, &mut items);
 	requests(app, &mut items);
+	let filled = filled(query, &items);
+	items.extend(filled);
 	threads(app, query.trim().is_empty(), &mut items);
 	files(app, query, &mut items);
 	for page in Page::ALL {
@@ -165,65 +169,23 @@ fn window_actions(window: &Window, items: &mut Vec<Item>) {
 	}
 }
 
-/// The requests the palette sends itself: pausing or resuming every agent,
-/// and the open thread's own, which are reloading its transcript, `/clear`
-/// (the host starts a fresh session in its place), retrying the last turn,
-/// rephrasing the last reply, branching, and starting or stopping a share. A
-/// request whose direction depends on state is listed only the way that
-/// applies, as the thread header draws it.
-fn requests(app: &AppState, items: &mut Vec<Item>) {
-	let mut row = |label: &'static str, action: HostAction, spellings: &[&str]| {
-		items.push(
-			Item::new(Group::Commands, label, Run::Host(action, SurfaceId::PaletteInput))
-				.also(spellings.iter().map(|spelling| (*spelling).to_owned())),
-		);
-	};
-	let store = app.store();
-	if store.paused.paused {
-		row("Resume agents", HostAction::ResumeAgents, &["/pause", "/unpause"]);
-	} else {
-		row("Pause agents", HostAction::PauseAgents, &["/pause"]);
-	}
-	let Some(session) = app.active_session() else {
-		return;
-	};
-	let session = || session.clone();
-	row(
-		"Reload the transcript",
-		HostAction::LoadTranscript { session: session(), before: None },
-		&["/reload-transcript"],
-	);
-	row("Clear the conversation", HostAction::ClearOutput { session: session() }, &["/clear"]);
-	row("Retry the last turn", HostAction::RetryTurn { session: session() }, &["/retry"]);
-	row("Rephrase the last reply", HostAction::RephraseReply { session: session() }, &["/rephrase"]);
-	row("Branch this thread", HostAction::BranchSession { session: session(), entry: None }, &[
-		"/branch", "/fork",
-	]);
-	let sharing = store
-		.domains
-		.share
-		.as_ref()
-		.is_some_and(|share| share.role != ShareRole::Off);
-	if sharing {
-		row("Stop sharing", HostAction::StopShare, &["/collab stop"]);
-	} else {
-		row("Share thread", HostAction::StartShare { read_only: false }, &[
-			"/collab",
-			"/collab start",
-		]);
-		row("Share a read-only link", HostAction::StartShare { read_only: true }, &["/collab view"]);
-	}
-}
+/// The host commands the palette lists no catalogue row for, because it
+/// sends their request itself: `/join` and `/leave` are
+/// [`requests`]' join and leave rows, the latter listed only on a guest.
+const CARRIED: &[&str] = &["join", "leave"];
 
 /// A row per slash command. A command with subcommands lists them; one that
 /// takes an argument asks for it; any other runs as chosen.
 fn commands(commands: &[CommandView], items: &mut Vec<Item>) {
 	for command in commands {
+		if CARRIED.contains(&command.name.as_str()) {
+			continue;
+		}
 		let line = format!("/{}", command.name);
 		let run = if !command.subcommands.is_empty() {
 			Run::Subcommands(command.name.clone())
 		} else if let Some(hint) = &command.input_hint {
-			Run::Argument { line: format!("{line} "), hint: hint.clone() }
+			Run::Argument { line: format!("{line} "), hint: hint.clone(), takes: Takes::Command }
 		} else {
 			Run::Command(line.clone())
 		};
@@ -235,6 +197,43 @@ fn commands(commands: &[CommandView], items: &mut Vec<Item>) {
 		}
 		items.push(item);
 	}
+}
+
+/// For a root query that is a spelling of a row taking an argument followed
+/// by text, a row that runs it with that text: `/rename a better title` runs
+/// `/rename` with `a better title`. A command with subcommands takes the
+/// subcommand and its arguments as its text.
+fn filled(query: &str, items: &[Item]) -> Vec<Item> {
+	let Some((name, text)) = query.trim().split_once(char::is_whitespace) else {
+		return Vec::new();
+	};
+	let text = text.trim();
+	if !name.starts_with('/') || text.is_empty() {
+		return Vec::new();
+	}
+	items
+		.iter()
+		.filter(|item| {
+			item
+				.targets()
+				.any(|spelling| spelling.eq_ignore_ascii_case(name))
+		})
+		.filter_map(|item| {
+			let (takes, line) = match &item.run {
+				Run::Argument { line, takes, .. } => (*takes, line.clone()),
+				Run::Subcommands(command) => (Takes::Command, format!("/{command} ")),
+				_ => return None,
+			};
+			let label = format!("{line}{text}");
+			let row = Item::new(item.group, label, Run::Filled { takes, line, text: text.to_owned() })
+				.hint(item.hint.clone())
+				.also([query.trim().to_owned()]);
+			Some(match &item.detail {
+				Some(detail) => row.detail(detail.clone()),
+				None => row,
+			})
+		})
+		.collect()
 }
 
 fn subcommands(name: &str, app: &AppState) -> Vec<Item> {
@@ -253,7 +252,11 @@ fn subcommands(name: &str, app: &AppState) -> Vec<Item> {
 		.map(|sub| {
 			let line = format!("/{} {}", command.name, sub.name);
 			let run = match &sub.usage {
-				Some(usage) => Run::Argument { line: format!("{line} "), hint: usage.clone() },
+				Some(usage) => Run::Argument {
+					line:  format!("{line} "),
+					hint:  usage.clone(),
+					takes: Takes::Command,
+				},
 				None => Run::Command(line.clone()),
 			};
 			let item = Item::new(Group::Subcommands, line, run);
@@ -319,13 +322,8 @@ fn files(app: &AppState, query: &str, items: &mut Vec<Item>) {
 /// Marks a row that sends a host request the gate rejects.
 fn gated(item: Item, app: &AppState) -> Item {
 	let reason = match &item.run {
-		Run::Command(_) | Run::Argument { .. } | Run::Subcommands(_) => {
-			if app.active_session().is_none() {
-				Some(SharedString::from("Open a thread to run a command"))
-			} else {
-				refusal_kind(app, HostActionKind::RunCommand)
-			}
-		},
+		Run::Command(_) | Run::Subcommands(_) => argument_refusal(Takes::Command, app),
+		Run::Argument { takes, .. } | Run::Filled { takes, .. } => argument_refusal(*takes, app),
 		Run::OpenSession(_) => refusal_kind(app, HostActionKind::OpenSession),
 		Run::CreateSession(_) | Run::CreateSessionInFolder => {
 			refusal_kind(app, HostActionKind::CreateSession)
@@ -335,6 +333,14 @@ fn gated(item: Item, app: &AppState) -> Item {
 		Run::Action(_) | Run::ActionWith(ActionData::OpenSettings(_)) => None,
 	};
 	item.blocked(reason)
+}
+
+/// Why a row whose argument builds `takes` cannot run now.
+fn argument_refusal(takes: Takes, app: &AppState) -> Option<SharedString> {
+	if takes.needs_session() && app.active_session().is_none() {
+		return Some(SharedString::from("Open a thread to run a command"));
+	}
+	refusal_kind(app, takes.kind())
 }
 
 #[cfg(test)]

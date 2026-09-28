@@ -11,6 +11,7 @@ mod item;
 mod matcher;
 mod motion;
 mod rank;
+mod requests;
 mod run;
 mod sources;
 mod view;
@@ -26,7 +27,7 @@ use veyyon_gpui::{
 };
 
 pub use self::{
-	item::{ActionData, Group, Hint, Item, Run},
+	item::{ActionData, Group, Hint, Item, Run, Takes},
 	matcher::Query,
 	motion::Phase,
 	sources::{Scope, refusal, refusal_kind},
@@ -213,9 +214,13 @@ impl CommandPalette {
 
 	/// Runs the highlighted row, or the argument typed for a command.
 	pub fn confirm(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-		if let Scope::Argument { line, .. } = &self.scope {
-			let text = format!("{line}{}", self.input.read(cx).text().trim());
-			self.run(Run::Command(text), window, cx);
+		if let Scope::Argument { line, takes, .. } = &self.scope {
+			let run = Run::Filled {
+				takes: *takes,
+				line:  line.clone(),
+				text:  self.input.read(cx).text().trim().to_owned(),
+			};
+			self.run(run, window, cx);
 			return;
 		}
 		self.choose(self.selected, window, cx);
@@ -249,7 +254,7 @@ impl CommandPalette {
 		let placeholder = match &scope {
 			Scope::Root => PLACEHOLDER.to_owned(),
 			Scope::Subcommands(name) => format!("Subcommands of /{name}"),
-			Scope::Argument { line, hint } => format!("{line}{hint}"),
+			Scope::Argument { line, hint, .. } => format!("{line}{hint}"),
 		};
 		self.scope = scope;
 		self.set_query("", &placeholder, window, cx);

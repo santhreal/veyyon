@@ -8,13 +8,21 @@ use crate::actions::{panel, workspace};
 
 impl CommandPalette {
 	/// Runs `run`. A row that opens a subcommand list or asks for an argument
-	/// keeps the palette open; every other row closes it first, so a window
-	/// action reaches the element that held focus before the palette opened.
+	/// keeps the palette open, and so does an argument that builds no request;
+	/// every other row closes it first, so a window action reaches the element
+	/// that held focus before the palette opened.
 	pub(super) fn run(&mut self, run: Run, window: &mut Window, cx: &mut Context<Self>) {
-		match run {
+		let filled = match run {
 			Run::Subcommands(name) => return self.enter(Scope::Subcommands(name), window, cx),
-			Run::Argument { line, hint } => {
-				return self.enter(Scope::Argument { line, hint }, window, cx);
+			Run::Argument { line, hint, takes } => {
+				return self.enter(Scope::Argument { line, hint, takes }, window, cx);
+			},
+			Run::Filled { takes, ref line, ref text } => {
+				let session = self.app.read(cx).active_session().cloned();
+				let Some(action) = takes.action(line, text, session) else {
+					return;
+				};
+				Some(action)
 			},
 			Run::Action(_)
 			| Run::ActionWith(_)
@@ -22,9 +30,15 @@ impl CommandPalette {
 			| Run::Command(_)
 			| Run::OpenSession(_)
 			| Run::CreateSession(_)
-			| Run::CreateSessionInFolder => {},
-		}
+			| Run::CreateSessionInFolder => None,
+		};
 		self.close(window, cx);
+		if let Some(action) = filled {
+			self.app.update(cx, |app, cx| {
+				app.dispatch(action, SurfaceId::PaletteInput, cx);
+			});
+			return;
+		}
 		match run {
 			Run::Action(build) => window.dispatch_action(build(), cx),
 			Run::ActionWith(ActionData::OpenSettings(page)) => {
@@ -60,7 +74,7 @@ impl CommandPalette {
 				});
 			},
 			Run::CreateSessionInFolder => Self::create_in_folder(cx),
-			Run::Subcommands(_) | Run::Argument { .. } => {},
+			Run::Subcommands(_) | Run::Argument { .. } | Run::Filled { .. } => {},
 		}
 	}
 

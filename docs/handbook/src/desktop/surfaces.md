@@ -824,8 +824,10 @@ in the terminal's selector.
 ## Sharing a session
 
 `/collab` opens a card over the session that shares it live over a relay.
-`/share` reaches the same card. The window hosts a share; joining somebody
-else's is `/join` in the terminal, which runs a replica of their transcript.
+`/share` reaches the same card. `/join <link>` joins a share hosted elsewhere,
+and the window then shows a replica of the hosting session's transcript. While
+the window is a guest, `/leave` leaves the share. `/collab status` asks the
+host for the share as it stands, on either side of one.
 
 A share runs on the relay named by the `collab.relayUrl` setting. With no relay
 configured the card names that setting and draws no control, because a control

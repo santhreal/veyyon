@@ -1,14 +1,20 @@
 //! A window whose workspace lays out the real palette and settings over a
-//! store fed host events, every other region empty.
+//! store fed host events, every other region empty or, for
+//! [`whole_window`], real.
 
 use gpui::{
 	AnyView, AppContext as _, Bounds, EmptyView, Entity, Modifiers, Pixels, Point, TestAppContext,
 	VisualTestContext, px, size,
 };
 use veyyon_desktop_app::{
-	AppState, driver, keymap,
+	AppState, driver,
+	drawer::TerminalDrawer,
+	keymap,
 	palette::{CommandPalette, Item},
+	panel::RightPanel,
 	settings::SettingsView,
+	sidebar::Sidebar,
+	thread::ThreadView,
 	workspace::{Regions, Workspace, WorkspaceLayout},
 };
 use veyyon_desktop_model::{
@@ -31,6 +37,22 @@ pub struct Win<'a> {
 /// Opens the window over a store fed `events`, with reduced motion on or off,
 /// and drops the requests the events queued.
 pub fn window(app: &mut TestAppContext, events: Vec<HostEvent>, reduce_motion: bool) -> Win<'_> {
+	open_window(app, events, reduce_motion, false)
+}
+
+/// Opens the window with the sidebar, thread, panel and drawer real as well,
+/// so a window action a palette row dispatches reaches the region that
+/// answers it, and drops the requests the events and the regions queued.
+pub fn whole_window(app: &mut TestAppContext, events: Vec<HostEvent>) -> Win<'_> {
+	open_window(app, events, true, true)
+}
+
+fn open_window(
+	app: &mut TestAppContext,
+	events: Vec<HostEvent>,
+	reduce_motion: bool,
+	whole: bool,
+) -> Win<'_> {
 	driver::enable();
 	app.update(|cx| {
 		Theme::install(Appearance::Dark, cx).expect("the dark palette parses");
@@ -47,20 +69,37 @@ pub fn window(app: &mut TestAppContext, events: Vec<HostEvent>, reduce_motion: b
 		let palette = cx.new(|cx| CommandPalette::new(view_state.clone(), window, cx));
 		let settings = cx.new(|cx| SettingsView::new(view_state.clone(), window, cx));
 		built = Some((palette.clone(), settings.clone()));
-		let mut empty = || AnyView::from(cx.new(|_| EmptyView));
-		let regions = Regions {
-			sidebar:  empty(),
-			thread:   empty(),
-			panel:    empty(),
-			drawer:   empty(),
-			palette:  palette.into(),
-			settings: settings.into(),
+		let shared = &view_state;
+		let regions = if whole {
+			Regions {
+				sidebar:  cx.new(|cx| Sidebar::new(shared.clone(), window, cx)).into(),
+				thread:   cx.new(|cx| ThreadView::new(shared.clone(), window, cx)).into(),
+				panel:    cx.new(|cx| RightPanel::new(shared.clone(), window, cx)).into(),
+				drawer:   cx
+					.new(|cx| TerminalDrawer::new(shared.clone(), window, cx))
+					.into(),
+				palette:  palette.into(),
+				settings: settings.into(),
+			}
+		} else {
+			let mut empty = || AnyView::from(cx.new(|_| EmptyView));
+			Regions {
+				sidebar:  empty(),
+				thread:   empty(),
+				panel:    empty(),
+				drawer:   empty(),
+				palette:  palette.into(),
+				settings: settings.into(),
+			}
 		};
-		Workspace::new(view_state, regions, PanelsStore::default(), window, cx)
+		Workspace::new(view_state.clone(), regions, PanelsStore::default(), window, cx)
 	});
 	cx.simulate_resize(size(px(WINDOW.0), px(WINDOW.1)));
 	cx.run_until_parked();
 	let (palette, settings) = built.expect("the window built its regions");
+	if whole {
+		state.update(cx, |state, _| state.drain_outbox());
+	}
 	Win { state, palette, settings, cx }
 }
 

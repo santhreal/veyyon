@@ -541,6 +541,7 @@ describe("docs examples — a documented command exists in the surface whose pag
 	const paletteCommands = new Set<string>();
 	for (const table of [
 		"crates/veyyon-desktop-app/src/palette/sources.rs",
+		"crates/veyyon-desktop-app/src/palette/requests.rs",
 		"crates/veyyon-desktop-app/src/settings/page.rs",
 	]) {
 		const paletteSrc = fs.readFileSync(path.join(REPO_ROOT, table), "utf-8");
