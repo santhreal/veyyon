@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	action::{
 		AccountsRequest, AttachmentSubmission, AutoswarmRequest, ComposerRequest, ExtensionsRequest,
-		GoalControl, McpRequest,
+		GoalControl, McpRequest, TreeRequest,
 	},
 	composer::QueueMode,
 	connection::{EntryId, SessionId},
@@ -381,19 +381,19 @@ pub enum HostAction {
 	ToggleDictation,
 	/// Close the microphone and discard what it heard.
 	CancelDictation,
-	// Autoswarm family (5 actions), each tagged by `AutoswarmRequest` itself.
+	// The families below are each tagged by their own request enum: autoswarm
+	// (5 actions), MCP management (10), accounts (1), extensions (3), composer
+	// (2) and session tree (5).
 	#[serde(untagged)]
 	Autoswarm(AutoswarmRequest),
-	// MCP management family (10 actions), each tagged by `McpRequest` itself.
 	#[serde(untagged)]
 	McpManage(McpRequest),
-	// Accounts family (1 action), each tagged by `AccountsRequest` itself.
 	#[serde(untagged)]
 	Accounts(AccountsRequest),
-	// Extensions family (3 actions), each tagged by `ExtensionsRequest` itself.
 	#[serde(untagged)]
 	Extensions(ExtensionsRequest),
-	// Composer family (2 actions), each tagged by `ComposerRequest` itself.
 	#[serde(untagged)]
 	Composer(ComposerRequest),
+	#[serde(untagged)]
+	Tree(TreeRequest),
 }

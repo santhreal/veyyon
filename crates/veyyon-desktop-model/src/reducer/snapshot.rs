@@ -1,6 +1,7 @@
 mod extension_ui;
 mod sessions;
 mod status;
+mod tree;
 
 use self::{
 	extension_ui::{
@@ -9,6 +10,7 @@ use self::{
 	},
 	sessions::{reduce_active_header, reduce_session_index},
 	status::{reduce_checkout, reduce_host, reduce_pace, reduce_quota, reduce_serving_account},
+	tree::reduce_tree,
 };
 use super::announce::{announce_decisions_out_of_view, decision_ids, decision_prefix};
 use crate::{
@@ -388,6 +390,9 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 		},
 		SnapshotSection::ExtensionNotice { session, notice } => {
 			reduce_extension_notice(store, &session, notice, &mut damage);
+		},
+		SnapshotSection::SessionTree { session, tree } => {
+			reduce_tree(store, session, tree, &mut damage);
 		},
 	}
 

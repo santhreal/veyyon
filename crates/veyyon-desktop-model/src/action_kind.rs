@@ -123,11 +123,16 @@ pub enum HostActionKind {
 	SetExtensionSourceEnabled,
 	ReportComposerDraft,
 	CompleteComposer,
+	ForkSession,
+	LoadSessionTree,
+	NavigateTree,
+	AbortBranchSummary,
+	SetEntryLabel,
 }
 
 impl HostActionKind {
 	/// Complete slice of action kinds for runtime test sweeps.
-	pub const ALL: [Self; 116] = [
+	pub const ALL: [Self; 121] = [
 		Self::Attach,
 		Self::Detach,
 		Self::RetryConnection,
@@ -244,6 +249,11 @@ impl HostActionKind {
 		Self::SetExtensionSourceEnabled,
 		Self::ReportComposerDraft,
 		Self::CompleteComposer,
+		Self::ForkSession,
+		Self::LoadSessionTree,
+		Self::NavigateTree,
+		Self::AbortBranchSummary,
+		Self::SetEntryLabel,
 	];
 
 	/// Returns wire name identifier.
@@ -366,6 +376,11 @@ impl HostActionKind {
 			Self::SetExtensionSourceEnabled => "SetExtensionSourceEnabled",
 			Self::ReportComposerDraft => "ReportComposerDraft",
 			Self::CompleteComposer => "CompleteComposer",
+			Self::ForkSession => "ForkSession",
+			Self::LoadSessionTree => "LoadSessionTree",
+			Self::NavigateTree => "NavigateTree",
+			Self::AbortBranchSummary => "AbortBranchSummary",
+			Self::SetEntryLabel => "SetEntryLabel",
 		}
 	}
 }

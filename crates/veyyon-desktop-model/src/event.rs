@@ -75,6 +75,7 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 	"ComposerEdit",
 	"ComposerCompletions",
 	"ExtensionNotice",
+	"SessionTree",
 ];
 
 /// Domain sections received during initial connection or snapshot
@@ -255,6 +256,9 @@ pub enum SnapshotSection {
 	},
 	/// A notice an extension raised in a session.
 	ExtensionNotice { session: SessionId, notice: crate::domain::ExtensionNoticeView },
+	/// The answer to a `LoadSessionTree`, restated after a navigation or a
+	/// label change moves what it shows.
+	SessionTree { session: SessionId, tree: crate::domain::SessionTreeView },
 }
 
 impl SnapshotSection {
@@ -316,6 +320,7 @@ impl SnapshotSection {
 			Self::ComposerEdit { .. } => "ComposerEdit",
 			Self::ComposerCompletions { .. } => "ComposerCompletions",
 			Self::ExtensionNotice { .. } => "ExtensionNotice",
+			Self::SessionTree { .. } => "SessionTree",
 		}
 	}
 

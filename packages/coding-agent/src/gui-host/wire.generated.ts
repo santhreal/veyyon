@@ -1089,7 +1089,7 @@ export type HostAction = { "Attach": { endpoint: string | null, } } | "Detach" |
  * Copy-item keys seeded from the active profile; empty makes a blank
  * profile.
  */
-copy: Array<string>, } } | { "RenameProfile": { name: string, display_name: string, } } | { "DeleteProfile": { name: string, } } | "ToggleDictation" | "CancelDictation" | AutoswarmRequest | McpRequest | AccountsRequest | ExtensionsRequest | ComposerRequest;
+copy: Array<string>, } } | { "RenameProfile": { name: string, display_name: string, } } | { "DeleteProfile": { name: string, } } | "ToggleDictation" | "CancelDictation" | AutoswarmRequest | McpRequest | AccountsRequest | ExtensionsRequest | ComposerRequest | TreeRequest;
 
 /**
  * Complete enumeration of the protocol event variants dispatched by host
@@ -2006,6 +2006,81 @@ export type SessionSummary = { id: SessionId, workspace: string, path: string, c
 export type SessionTranscriptView = { session: SessionId, transcript: Versioned<Array<TranscriptEntry>>, };
 
 /**
+ * What a tree entry records, which is what its row is toned by.
+ */
+export type SessionTreeEntryKind = "user" | "developer" | "assistant" | "tool_result" | "bash" | "custom_message" | "compaction" | "branch_summary" | "model_change" | "thinking_change" | "label" | "custom" | "other";
+
+/**
+ * Which entries a tree sheet shows, in the order the terminal cycles them.
+ */
+export type SessionTreeFilter = "default" | "no-tools" | "user-only" | "labeled-only" | "all";
+
+/**
+ * One row of the tree sheet.
+ */
+export type SessionTreeNode = { 
+/**
+ * The entry the row stands for; `NavigateTree` names it.
+ */
+id: EntryId, 
+/**
+ * The entry this one follows, or `None` for a root.
+ */
+parent: EntryId | null, 
+/**
+ * The row's indent in levels: a single-child chain stays flat and a
+ * branch point indents its children, as the terminal draws it.
+ */
+depth: number, 
+/**
+ * What the entry records.
+ */
+kind: SessionTreeEntryKind, 
+/**
+ * The role marker drawn in the kind's tone (`user: `, `[branch
+ * summary]: `), or empty when the whole row is one tone.
+ */
+prefix: string, 
+/**
+ * The rest of the row on one line: `[bash]: ls`, `[read: src/a.ts]`.
+ */
+text: string, 
+/**
+ * The label set on the entry, if any.
+ */
+label: string | null, 
+/**
+ * The entry lies on the path from the root to the current leaf.
+ */
+on_path: boolean, 
+/**
+ * The filter modes that show the row. An assistant turn holding only tool
+ * calls lists none unless it is the current leaf.
+ */
+shown_in: Array<SessionTreeFilter>, };
+
+/**
+ * A session's entry tree as the host answered `LoadSessionTree`.
+ */
+export type SessionTreeView = { 
+/**
+ * The entry the session continues from, or `None` before any entry.
+ */
+leaf: EntryId | null, 
+/**
+ * Every entry, in the order the sheet draws them.
+ */
+nodes: Array<SessionTreeNode>, 
+/**
+ * Navigating away from a branch offers to summarize it.
+ */
+summary_offered: boolean, 
+/**
+ * The filter mode the sheet opens in.
+ */
+filter: SessionTreeFilter, };
+
+/**
  * A mode the operator sets from the window, in the spelling the host accepts.
  *
  * Narrower than `SessionMode` on purpose: `goal` runs turns of its own from a
@@ -2271,7 +2346,7 @@ session: SessionId,
 /**
  * The quota windows, or None when the provider reports none.
  */
-quota: QuotaView | null, } } | { "ExtensionUi": { session: SessionId, ui: ExtensionUiView, } } | { "ComposerEdit": { session: SessionId, edit: ComposerEditView, } } | { "ComposerCompletions": { session: SessionId, completions: ComposerCompletionsView, } } | { "ExtensionNotice": { session: SessionId, notice: ExtensionNoticeView, } };
+quota: QuotaView | null, } } | { "ExtensionUi": { session: SessionId, ui: ExtensionUiView, } } | { "ComposerEdit": { session: SessionId, edit: ComposerEditView, } } | { "ComposerCompletions": { session: SessionId, completions: ComposerCompletionsView, } } | { "ExtensionNotice": { session: SessionId, notice: ExtensionNoticeView, } } | { "SessionTree": { session: SessionId, tree: SessionTreeView, } };
 
 /**
  * One credential the host stores for a provider, which `SignOutAccount`
@@ -2502,6 +2577,16 @@ export type ToolPresentation = { expanded: boolean, view: ToolView, };
 export type TranscriptEntry = { id: EntryId, parent: EntryId | null, revision: number, timestamp_ms: number, role: MessageRole, content: Array<ContentBlock>, meta: EntryMeta | null, raw_discriminator: string, raw: unknown, };
 
 /**
+ * The requests the tree sheet and the `/fork` row send, each tagged as the
+ * wire names it.
+ *
+ * A family of its own rather than more variants of `HostAction`; the variant
+ * that holds it is `untagged`, so a window still sends
+ * `{"NavigateTree": {…}}` and the host still reads one flat action.
+ */
+export type TreeRequest = { "ForkSession": { session: SessionId, } } | { "LoadSessionTree": { session: SessionId, } } | { "NavigateTree": { session: SessionId, entry: EntryId, summarize: boolean, instructions: string | null, } } | { "AbortBranchSummary": { session: SessionId, } } | { "SetEntryLabel": { session: SessionId, entry: EntryId, label: string | null, } };
+
+/**
  * Token and financial accounting totals associated with a turn.
  */
 export type UsageTotals = { input_tokens: number, output_tokens: number, cache_read_tokens: number, cache_write_tokens: number, orchestration_tokens: number, premium_requests: number, cost_microusd: number | null, };
@@ -2581,6 +2666,7 @@ export const ALL_SNAPSHOT_SECTIONS = [
 	"ComposerEdit",
 	"ComposerCompletions",
 	"ExtensionNotice",
+	"SessionTree",
 ] as const;
 
 export type SnapshotSectionTag = (typeof ALL_SNAPSHOT_SECTIONS)[number];
@@ -2702,6 +2788,11 @@ export const ALL_HOST_ACTIONS = [
 	"SetExtensionSourceEnabled",
 	"ReportComposerDraft",
 	"CompleteComposer",
+	"ForkSession",
+	"LoadSessionTree",
+	"NavigateTree",
+	"AbortBranchSummary",
+	"SetEntryLabel",
 ] as const;
 
 export type HostActionTag = (typeof ALL_HOST_ACTIONS)[number];
@@ -2823,6 +2914,11 @@ export const ACTION_TO_CAPABILITY: Record<HostActionTag, Capability> = {
 	SetExtensionSourceEnabled: "Extensions",
 	ReportComposerDraft: "Extensions",
 	CompleteComposer: "Extensions",
+	ForkSession: "SessionTreeNavigation",
+	LoadSessionTree: "SessionTreeNavigation",
+	NavigateTree: "SessionTreeNavigation",
+	AbortBranchSummary: "SessionTreeNavigation",
+	SetEntryLabel: "SessionTreeNavigation",
 };
 
 export const SHARE_PHASES = [
@@ -2939,3 +3035,27 @@ export const ALL_EXPORT_FORMATS = [
 	"html",
 	"json",
 ] as const satisfies readonly ExportFormat[];
+
+export const SESSION_TREE_FILTERS = [
+	"default",
+	"no-tools",
+	"user-only",
+	"labeled-only",
+	"all",
+] as const satisfies readonly SessionTreeFilter[];
+
+export const SESSION_TREE_ENTRY_KINDS = [
+	"user",
+	"developer",
+	"assistant",
+	"tool_result",
+	"bash",
+	"custom_message",
+	"compaction",
+	"branch_summary",
+	"model_change",
+	"thinking_change",
+	"label",
+	"custom",
+	"other",
+] as const satisfies readonly SessionTreeEntryKind[];

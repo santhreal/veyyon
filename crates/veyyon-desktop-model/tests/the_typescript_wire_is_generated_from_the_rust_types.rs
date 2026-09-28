@@ -36,8 +36,9 @@ use strum::IntoEnumIterator;
 use ts_rs::{Config, TS, TypeVisitor};
 use veyyon_desktop_model::{
 	AgentMessageOutcome, AutoswarmAction, AutoswarmFieldKind, Capability, DictationState,
-	GoalControl, GoalStatus, HostActionKind, HostEvent, HostRequest, PROTOCOL_VERSION, SettableMode,
-	SharePhase, ShareRole, SnapshotSectionKind, action_to_capability, domain::ExportFormat,
+	GoalControl, GoalStatus, HostActionKind, HostEvent, HostRequest, PROTOCOL_VERSION,
+	SessionTreeEntryKind, SessionTreeFilter, SettableMode, SharePhase, ShareRole,
+	SnapshotSectionKind, action_to_capability, domain::ExportFormat,
 };
 
 /// The command that rewrites the generated file.
@@ -193,11 +194,18 @@ fn generate() -> String {
 		Some("DictationState"),
 	);
 	push_array(&mut out, "SHARE_ROLES", &wire_names::<ShareRole>(), Some("ShareRole"));
+	push_array(&mut out, "ALL_EXPORT_FORMATS", &wire_names::<ExportFormat>(), Some("ExportFormat"));
 	push_array(
 		&mut out,
-		"ALL_EXPORT_FORMATS",
-		&wire_names::<ExportFormat>(),
-		Some("ExportFormat"),
+		"SESSION_TREE_FILTERS",
+		&wire_names::<SessionTreeFilter>(),
+		Some("SessionTreeFilter"),
+	);
+	push_array(
+		&mut out,
+		"SESSION_TREE_ENTRY_KINDS",
+		&wire_names::<SessionTreeEntryKind>(),
+		Some("SessionTreeEntryKind"),
 	);
 
 	out.truncate(out.trim_end().len());

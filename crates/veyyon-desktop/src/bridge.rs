@@ -62,6 +62,7 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::RefreshExtensions
 		| HostActionKind::TestMcpServer
 		| HostActionKind::SearchMcpRegistry
+		| HostActionKind::LoadSessionTree
 		// A draft report is superseded by the next one, and a completion
 		// query by the next keystroke, so either is dropped rather than held.
 		| HostActionKind::ReportComposerDraft
@@ -153,7 +154,11 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::CloseAutoswarmConsole
 		| HostActionKind::SignOutAccount
 		| HostActionKind::SetExtensionEnabled
-		| HostActionKind::SetExtensionSourceEnabled => ActionClassification::Mutation,
+		| HostActionKind::SetExtensionSourceEnabled
+		| HostActionKind::ForkSession
+		| HostActionKind::NavigateTree
+		| HostActionKind::AbortBranchSummary
+		| HostActionKind::SetEntryLabel => ActionClassification::Mutation,
 	}
 }
 

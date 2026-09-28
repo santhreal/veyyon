@@ -103,6 +103,7 @@ impl PanelTab {
 			| S::SessionRetryButton(_)
 			| S::SessionRephraseButton(_)
 			| S::SessionPlanReviewButton(_)
+			| S::SessionTreeSheet(_)
 			| S::ComposerSendButton(_)
 			| S::ComposerSteerButton(_)
 			| S::ComposerQueueButton(_)

@@ -38,7 +38,10 @@ use veyyon_desktop_model::{
 use self::harness::{Win, install, window};
 
 /// Sections the window stores and draws nowhere, with the reason.
-const NOT_DRAWN: &[Kind] = &[];
+const NOT_DRAWN: &[Kind] = &[
+	// The tree sheet that draws it is not built yet.
+	Kind::SessionTree,
+];
 
 /// The surface a section is drawn on, reached the way the operator reaches
 /// it.
@@ -127,6 +130,7 @@ const fn destination(kind: Kind) -> (Prepare, &'static [Kind]) {
 		Kind::SessionTranscript => (Prepare::Preview, &[]),
 		Kind::PromptHistory => (Prepare::HistorySearch("refactor"), &[]),
 		Kind::ComposerCompletions => (Prepare::Completion("fix #is"), &[]),
+		Kind::SessionTree => (Prepare::Rest, &[]),
 	}
 }
 

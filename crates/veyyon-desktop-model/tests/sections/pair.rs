@@ -18,7 +18,9 @@ use super::{
 	mcp_views::{catalog, probe, registry},
 	models, node, process, profiles, prompt_history, provider, search, settings,
 	status::{checkout, host, pace, quota, serving},
-	terminal, themes, todo, usage,
+	terminal, themes, todo,
+	tree::session_tree,
+	usage,
 };
 
 /// Two distinct sections of one kind, or `None` for a kind that does not
@@ -209,6 +211,11 @@ pub fn pair(kind: SnapshotSectionKind) -> Option<[SnapshotSection; 2]> {
 		},
 		SnapshotSectionKind::ComposerCompletions => {
 			[completions("s1", 1, "#issue-42"), completions("s1", 2, "#issue-7")]
+		},
+		// A navigation moves the leaf, then a label lands on the prompt: a
+		// reducer that kept the first tree keeps the old leaf and no label.
+		SnapshotSectionKind::SessionTree => {
+			[session_tree("s1", "e2", None), session_tree("s1", "e1", Some("checkpoint"))]
 		},
 	})
 }

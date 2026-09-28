@@ -8,6 +8,7 @@ pub mod extension_ui;
 pub mod mcp_views;
 mod pair;
 pub mod status;
+pub mod tree;
 
 use veyyon_desktop_model::{
 	AgentMessageOutcome, AgentMessageView, AgentView, AuthFlowState, AuthFlowView,

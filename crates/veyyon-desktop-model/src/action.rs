@@ -7,6 +7,7 @@ mod extensions;
 mod host_action;
 mod mcp_request;
 mod request;
+mod tree_request;
 
 pub use self::{
 	accounts::AccountsRequest,
@@ -15,5 +16,6 @@ pub use self::{
 	host_action::HostAction,
 	mcp_request::{McpRegistryInputValue, McpRequest, McpServerTarget},
 	request::{AttachmentSubmission, AutoswarmRequest, GoalControl, HostRequest},
+	tree_request::TreeRequest,
 };
 pub use crate::action_kind::{HostActionKind, HostActionKind as Kind};

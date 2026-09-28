@@ -153,6 +153,11 @@ pub const fn action_to_capability(action: HostActionKind) -> Capability {
 		HostActionKind::ReportComposerDraft | HostActionKind::CompleteComposer => {
 			Capability::Extensions
 		},
+		HostActionKind::ForkSession
+		| HostActionKind::LoadSessionTree
+		| HostActionKind::NavigateTree
+		| HostActionKind::AbortBranchSummary
+		| HostActionKind::SetEntryLabel => Capability::SessionTreeNavigation,
 	}
 }
 

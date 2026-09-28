@@ -109,6 +109,7 @@ impl HostAction {
 			Self::Accounts(request) => request.kind(),
 			Self::Extensions(request) => request.kind(),
 			Self::Composer(request) => request.kind(),
+			Self::Tree(request) => request.kind(),
 			Self::McpManage(request) => request.kind(),
 		}
 	}

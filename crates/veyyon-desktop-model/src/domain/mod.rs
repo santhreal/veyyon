@@ -28,6 +28,7 @@ pub mod status;
 pub mod terminal;
 pub mod themes;
 pub mod todo;
+pub mod tree;
 pub mod usage;
 
 use std::collections::HashMap;
@@ -58,6 +59,7 @@ pub use status::*;
 pub use terminal::*;
 pub use themes::*;
 pub use todo::*;
+pub use tree::*;
 pub use usage::*;
 
 use crate::{connection::SessionId, transcript::UsageTotals};
@@ -174,6 +176,9 @@ pub struct Domains {
 	/// The newest completions each session's extensions offered, keyed by
 	/// session.
 	pub completions:     HashMap<SessionId, ComposerCompletionsView>,
+	/// The newest entry tree the host answered for each session, keyed by
+	/// session. A session whose tree was never loaded holds no entry.
+	pub session_trees:   HashMap<SessionId, SessionTreeView>,
 }
 
 impl Domains {

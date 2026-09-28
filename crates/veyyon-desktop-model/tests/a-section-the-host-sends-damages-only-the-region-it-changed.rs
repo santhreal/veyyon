@@ -213,6 +213,13 @@ fn test_damage_decision_for_every_snapshot_section_sweep() {
 			"ExtensionNotice" => {
 				assert_eq!(damage.iter().cloned().collect::<Vec<_>>(), [Damage::Notifications]);
 			},
+			// The tree sheet takes the transcript's slot in the session's
+			// thread, so a new tree repaints that slot and nothing else.
+			"SessionTree" => {
+				assert_eq!(damage.iter().cloned().collect::<Vec<_>>(), [Damage::TranscriptFull(
+					session_id.clone()
+				)]);
+			},
 			other => panic!("Unhandled snapshot section in damage test: {other}"),
 		}
 

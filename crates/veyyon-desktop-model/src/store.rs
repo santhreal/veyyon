@@ -124,6 +124,12 @@ impl Store {
 		self.domains.checkouts.get(session)
 	}
 
+	/// The newest entry tree the host answered for a session, if it was loaded.
+	#[must_use]
+	pub fn session_tree(&self, session: &SessionId) -> Option<&crate::domain::SessionTreeView> {
+		self.domains.session_trees.get(session)
+	}
+
 	/// How long the agent has worked in a session and how fast it replies.
 	#[must_use]
 	pub fn pace(&self, session: &SessionId) -> Option<&crate::domain::PaceView> {

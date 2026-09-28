@@ -36,6 +36,7 @@ pub enum SurfaceId {
 	SessionRetryButton(SessionId),
 	SessionRephraseButton(SessionId),
 	SessionPlanReviewButton(SessionId),
+	SessionTreeSheet(SessionId),
 
 	// Composer & Turn Controls (§5.4)
 	ComposerSendButton(SessionId),
@@ -183,6 +184,7 @@ impl SurfaceId {
 			| Self::SessionRetryButton(_)
 			| Self::SessionRephraseButton(_)
 			| Self::SessionPlanReviewButton(_)
+			| Self::SessionTreeSheet(_)
 			| Self::ComposerSendButton(_)
 			| Self::ComposerSteerButton(_)
 			| Self::ComposerQueueButton(_)
@@ -323,6 +325,7 @@ impl SurfaceId {
 			| Self::SessionRetryButton(_)
 			| Self::SessionRephraseButton(_)
 			| Self::SessionPlanReviewButton(_)
+			| Self::SessionTreeSheet(_)
 			| Self::ComposerSendButton(_)
 			| Self::ComposerSteerButton(_)
 			| Self::ComposerQueueButton(_)

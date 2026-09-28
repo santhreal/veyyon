@@ -30,6 +30,7 @@ pub mod transcript;
 
 pub use action::{
 	AttachmentSubmission, AutoswarmRequest, ComposerRequest, GoalControl, HostAction, HostRequest,
+	TreeRequest,
 };
 pub use action_kind::HostActionKind;
 pub use badge::session_badge;
@@ -57,8 +58,9 @@ pub use domain::{
 	ProfileCopyItemView, ProfileView, ProfilesView, PromptHistoryEntry, PromptHistoryView,
 	ProviderView, PullRequestView, QueuedPrompts, QueuedPromptsView, QuotaView, QuotaWindowView,
 	SearchResultsView, SeqGap, ServingAccountView, SessionSearchView, SessionTranscriptView,
-	SettingEntry, SettingKind, SettingOption, SettingsView, ShareGuestView, ShareParticipantView,
-	SharePhase, ShareRole, ShareView, TERMINAL_SCROLLBACK_CAPACITY_BYTES, TerminalOutputChunk,
+	SessionTreeEntryKind, SessionTreeFilter, SessionTreeNode, SessionTreeView, SettingEntry,
+	SettingKind, SettingOption, SettingsView, ShareGuestView, ShareParticipantView, SharePhase,
+	ShareRole, ShareView, TERMINAL_SCROLLBACK_CAPACITY_BYTES, TerminalOutputChunk,
 	TerminalScrollback, TerminalStatus, TerminalView, ThemeView, ThemesView, TodoBoardView,
 	TodoPhaseView, TodoStatus, TodoTaskView, UsageView, diagnostic_sources,
 };
