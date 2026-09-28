@@ -10,11 +10,13 @@ use super::{
 };
 
 /// The operator's entry as one bubble of its words, with its attachments.
+/// An entry that wrote no words draws no bubble: an empty text segment adds
+/// no line, and an entry of attachments alone draws the attachments.
 pub(super) fn plan_operator(entry: &TranscriptEntry, plan: &mut Plan) {
 	let mut words = String::new();
 	for (block_ix, block) in entry.content.iter().enumerate() {
 		match block {
-			ContentBlock::Text { text } => push_line(&mut words, text),
+			ContentBlock::Text { text } if !text.is_empty() => push_line(&mut words, text),
 			ContentBlock::Video { media_type, bytes } => {
 				push_line(&mut words, &video_words(media_type, *bytes));
 			},
@@ -24,15 +26,18 @@ pub(super) fn plan_operator(entry: &TranscriptEntry, plan: &mut Plan) {
 			_ => {},
 		}
 	}
-	plan.pieces.insert(0, Piece::Bubble(words));
+	if !words.is_empty() {
+		plan.pieces.insert(0, Piece::Bubble(words));
+	}
 }
 
+/// An image, or a file and the picture of it the host read.
 fn plan_artifact(block_ix: usize, block: &ContentBlock, plan: &mut Plan) {
 	match block {
 		ContentBlock::Image { alt, .. } => plan
 			.pieces
 			.push(Piece::Image { block: block_ix, alt: alt.clone() }),
-		ContentBlock::FileMention { path, lines, bytes, unavailable_reason, .. } => {
+		ContentBlock::FileMention { path, lines, bytes, unavailable_reason, image, .. } => {
 			let detail = match (unavailable_reason, lines, bytes) {
 				(Some(reason), ..) => reason.clone(),
 				(None, Some(lines), _) => format!("{lines} lines"),
@@ -40,6 +45,11 @@ fn plan_artifact(block_ix: usize, block: &ContentBlock, plan: &mut Plan) {
 				(None, None, None) => String::new(),
 			};
 			plan.pieces.push(Piece::File { path: path.clone(), detail });
+			if image.is_some() {
+				plan
+					.pieces
+					.push(Piece::Image { block: block_ix, alt: Some(path.clone()) });
+			}
 		},
 		_ => {},
 	}
@@ -78,8 +88,14 @@ pub(super) fn plan_block(
 			pieces.push(Piece::Thinking { block: block_ix, text: None, redacted: true });
 		},
 		ContentBlock::ToolCall { .. } => {},
+		// A result no call row shows states its failure in its caption, as a
+		// failed run states its exit code.
 		ContentBlock::ToolResult { tool, content, is_error, .. } => pieces.push(Piece::Pane {
-			caption: tool.clone(),
+			caption: if *is_error {
+				format!("{tool} · error")
+			} else {
+				tool.clone()
+			},
 			lines:   result_lines(content, *is_error),
 			diff:    false,
 		}),

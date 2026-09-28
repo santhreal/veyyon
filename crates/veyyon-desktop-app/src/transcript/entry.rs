@@ -69,13 +69,11 @@ impl Transcript {
 					Piece::Image { block, .. } => {
 						let key = (plan.id.clone(), *block);
 						if !self.images.contains_key(&key)
-							&& let Some(ContentBlock::Image { media_type, data, .. }) =
-								entry.content.get(*block)
-							&& let Some(format) = image_format(media_type)
+							&& let Some((format, data)) = entry.content.get(*block).and_then(image_bytes)
 						{
 							self
 								.images
-								.insert(key, Arc::new(gpui::Image::from_bytes(format, data.clone())));
+								.insert(key, Arc::new(gpui::Image::from_bytes(format, data.to_vec())));
 						}
 					},
 					_ => {},
@@ -260,16 +258,28 @@ impl Transcript {
 				)
 				.child(render_view(view, &id, &self.app, cx))
 				.into_any_element(),
-			Piece::Image { block, alt } => match self.images.get(&(plan.id.clone(), *block)) {
-				Some(image) => img(Arc::clone(image))
-					.max_h(size::MEDIA_MAX)
-					.rounded(radius::LG)
-					.into_any_element(),
-				None => div()
-					.type_style(text::SMALL)
-					.text_color(palette.text.muted)
-					.child(alt.clone().unwrap_or_else(|| "Image".to_owned()))
-					.into_any_element(),
+			// An image whose bytes do not decode draws the words it was sent
+			// with, as one in a format the window does not read does.
+			Piece::Image { block, alt } => {
+				let words = alt.clone().unwrap_or_else(|| "Image".to_owned());
+				let caption = move |palette: &Palette| {
+					div()
+						.type_style(text::SMALL)
+						.text_color(palette.text.muted)
+						.child(words.clone())
+						.into_any_element()
+				};
+				match self.images.get(&(plan.id.clone(), *block)) {
+					Some(image) => {
+						let palette = *palette;
+						img(Arc::clone(image))
+							.max_h(size::MEDIA_MAX)
+							.rounded(radius::LG)
+							.with_fallback(move || caption(&palette))
+							.into_any_element()
+					},
+					None => caption(palette),
+				}
 			},
 			Piece::File { path, detail } => {
 				let app = self.app.clone();
@@ -333,15 +343,27 @@ impl Transcript {
 	}
 }
 
-fn image_format(media_type: &str) -> Option<ImageFormat> {
-	match media_type {
-		"image/png" => Some(ImageFormat::Png),
-		"image/jpeg" | "image/jpg" => Some(ImageFormat::Jpeg),
-		"image/gif" => Some(ImageFormat::Gif),
-		"image/webp" => Some(ImageFormat::Webp),
-		"image/svg+xml" => Some(ImageFormat::Svg),
-		"image/bmp" => Some(ImageFormat::Bmp),
-		"image/tiff" => Some(ImageFormat::Tiff),
+/// The format and bytes of the picture `block` carries: an attached image,
+/// or the picture of a file the prompt named, read by the file's extension.
+fn image_bytes(block: &ContentBlock) -> Option<(ImageFormat, &[u8])> {
+	match block {
+		ContentBlock::Image { media_type, data, .. } => {
+			ImageFormat::from_mime_type(media_type).map(|format| (format, data.as_slice()))
+		},
+		ContentBlock::FileMention { path, image: Some(data), .. } => {
+			let extension = path.rsplit_once('.')?.1.to_ascii_lowercase();
+			let format = match extension.as_str() {
+				"png" => ImageFormat::Png,
+				"jpg" | "jpeg" => ImageFormat::Jpeg,
+				"gif" => ImageFormat::Gif,
+				"webp" => ImageFormat::Webp,
+				"svg" => ImageFormat::Svg,
+				"bmp" => ImageFormat::Bmp,
+				"tif" | "tiff" => ImageFormat::Tiff,
+				_ => return None,
+			};
+			Some((format, data.as_slice()))
+		},
 		_ => None,
 	}
 }
