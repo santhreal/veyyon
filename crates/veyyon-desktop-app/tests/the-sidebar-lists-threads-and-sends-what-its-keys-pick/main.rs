@@ -357,3 +357,27 @@ fn a_thread_holding_an_unsent_prompt_is_listed_under_unsent_once_another_is_open
 		leaf(1, 0),
 	]);
 }
+
+/// Archiving is not deleting: the open thread archived and restored keeps the
+/// prompt it never sent, and is listed under Unsent once another is open.
+#[gpui::test]
+fn an_archived_thread_keeps_the_prompt_it_never_sent(app: &mut TestAppContext) {
+	let (state, view, cx) = sidebar(app, seeded());
+	let draft = ComposerStore { draft_text: "not sent".to_owned(), ..ComposerStore::default() };
+	state.update(cx, |state, cx| state.save_draft(sid("a"), draft, cx));
+	let kept = |cx: &mut VisualTestContext| {
+		state.read_with(cx, |state, _| state.draft(&sid("a")).map(|draft| draft.draft_text.clone()))
+	};
+
+	// `a` is selected.
+	cx.dispatch_action(ToggleArchiveSelected);
+	cx.run_until_parked();
+	assert_eq!(state.read_with(cx, |state, _| state.partition(&sid("a"))), QueuePartition::Parked);
+	assert_eq!(kept(cx), Some("not sent".to_owned()), "the archive keeps the draft");
+	cx.dispatch_action(ToggleArchiveSelected);
+	cx.dispatch_action(SelectPrev);
+	cx.dispatch_action(OpenSelected);
+	cx.run_until_parked();
+	assert_eq!(items(&view, cx)[..2], [Item::Block { block: Block::Unsent, count: 1 }, leaf(0, 1)]);
+	assert_eq!(kept(cx), Some("not sent".to_owned()), "and so does the restore");
+}
