@@ -15,6 +15,7 @@ pub mod state;
 pub mod actions;
 pub mod driver;
 pub mod keymap;
+pub mod regions;
 pub mod workspace;
 
 // Thread
@@ -32,6 +33,10 @@ pub mod settings;
 pub mod drawer;
 pub mod panel;
 
+// Composer
+pub mod composer;
+pub mod dock;
+
 pub use state::{AppState, Project, SessionRow, StoreEvent, TRANSCRIPT_CACHE_SESSIONS};
 
 /// Registers what every region needs before the first window opens: the
@@ -45,4 +50,7 @@ pub fn init(cx: &mut gpui::App) {
 	// Panel
 	panel::init(cx);
 	drawer::init(cx);
+	// Composer
+	composer::init(cx);
+	dock::init(cx);
 }
