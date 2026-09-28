@@ -8,5 +8,6 @@ pub mod controls;
 pub mod editor;
 pub mod fonts;
 pub mod icons;
+pub mod markdown;
 pub mod overlays;
 pub mod theme;

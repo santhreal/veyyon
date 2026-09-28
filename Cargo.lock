@@ -9928,7 +9928,6 @@ version = "1.4.1"
 dependencies = [
  "serde_json",
  "veyyon-desktop-model",
- "veyyon-desktop-ui",
  "veyyon-gpui",
 ]
 
@@ -10045,6 +10044,7 @@ dependencies = [
  "syntect",
  "thiserror 2.0.20",
  "toml 1.1.5+spec-1.1.0",
+ "unicode-segmentation",
  "veyyon-gpui",
 ]
 
