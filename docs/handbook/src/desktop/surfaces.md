@@ -40,6 +40,7 @@ in `crates/veyyon-desktop-app/src/keymap.rs`.
 | `Primary-B` | Toggle the sidebar |
 | `Primary-J` | Toggle the terminal drawer |
 | `Primary-Shift-D` | Toggle the right panel |
+| `Primary-Shift-T` | Show the session tree in place of the transcript |
 | `Primary-K` | Toggle the command palette |
 | `Primary-Shift-P` | Open the command palette |
 | `Primary-F` | Search threads |
@@ -160,7 +161,9 @@ Opening, creating or clearing to another session leaves the running turn on the
 session it left, including a turn whose prompt was sent in the same moment. The
 turn runs to its end off screen and writes its reply to that session's file,
 and its row states Working until it does. A decision it raises is announced as
-a toast. Opening the session again restores the reply in progress, its pending
+a toast. Toasts stack at the top right of the thread column, under the thread
+header and any banner, clear of the composer and the terminal drawer. Opening
+the session again restores the reply in progress, its pending
 decisions and the extension chrome it set.
 
 ### Branches
@@ -174,6 +177,35 @@ the depth the sidebar allows, so a deep chain keeps its title readable.
 A fold belongs to the space it was made in and is written to the window's
 store, so it survives the next session index the host sends and returns with
 the next window.
+
+### Session tree
+
+`Primary-Shift-T`, the Tree button in the thread header, or `/tree` in the
+command palette shows the open session's tree in place of its transcript. Each
+row is an entry of the session file, indented under the entry it follows. The
+rows, their order and the five filters are the ones the terminal's `/tree`
+shows. The transcript draws only the branch that ends at the session's leaf.
+
+| Key | Action |
+| --- | --- |
+| `Up`, `Down` | Move to the previous or next row, wrapping at either end |
+| `Left` or `Page Up`, `Right` or `Page Down` | Move one page, stopping at either end |
+| `Home`, `End` | Move to the first or last row |
+| `Enter` | Move the session's leaf to the row |
+| `Shift-L` | Set or clear the row's label |
+| `Ctrl-O`, `Ctrl-Shift-O` | Show the next or previous filter |
+| `Alt-D`, `Alt-T`, `Alt-U`, `Alt-L`, `Alt-A` | Show the default, no-tools, user-only, labeled-only or all filter |
+| `Escape` | Step back; on the rows, close the tree |
+
+When the host offers a summary of the branch the leaf leaves, `Enter` first
+prompts for No summary, Summarize or Summarize with custom prompt; the last
+opens a field for the summary's instructions. `Escape` while the summary runs
+asks the host to stop it. A move the host takes closes the tree; one it refuses
+returns to the rows and states the host's reason. `Enter` on the current leaf
+sends nothing.
+
+`/fork` in the command palette copies the open session into a new session file
+and opens it. The host rejects a fork while a turn runs.
 
 ### Row badges
 
