@@ -21,7 +21,7 @@ pub use scroll_area::ScrollArea;
 pub use select::{Select, SelectEvent};
 pub use split_handle::SplitHandle;
 pub use tabs::{Tab, TabWrapper, Tabs, TabsEvent};
-pub use toasts::{Toast, ToastId, ToastKind, Toasts};
+pub use toasts::{Toast, ToastDismissed, ToastId, ToastKind, Toasts};
 use veyyon_gpui::{
 	App,
 	motion::{Animator, FrameInstant, MotionModel},

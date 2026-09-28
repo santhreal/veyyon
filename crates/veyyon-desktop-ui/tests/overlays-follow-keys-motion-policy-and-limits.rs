@@ -5,7 +5,11 @@
 //! stops at its ends leaves keyboard users stranded; a tab wrapper whose
 //! element is dropped leaves the owner with no tab bounds; a popover that
 //! animates under reduced motion moves for an operator who turned motion off;
-//! a toast stack that grows or never dismisses covers the window.
+//! a toast stack that grows or never dismisses covers the window; a toast
+//! that outlives the lifetime its owner gave it, or goes without the stack
+//! reporting it, leaves the owner's queue holding a notice nobody sees; a
+//! toast exit that moves under reduced motion, or never ends, keeps the
+//! window drawing frames.
 //!
 //! It does not catch pixel geometry (the anchored position, the underline's
 //! slide path, the scrollbar thumb), which a headless render covers.
@@ -15,14 +19,14 @@ use std::{cell::RefCell, collections::BTreeMap, rc::Rc, time::Duration};
 use veyyon_desktop_ui::{
 	overlays::{
 		Menu, MenuEvent, MenuItem, MenuRow, Popover, Presentation, Tab, TabWrapper, Tabs, TabsEvent,
-		Toast, ToastId, ToastKind, Toasts,
+		Toast, ToastDismissed, ToastId, ToastKind, Toasts,
 	},
 	theme::{Appearance, Theme, motion},
 };
 use veyyon_gpui::{
 	Anchor, AnyElement, App, Bounds, Context, Entity, EventEmitter, FocusHandle, Focusable,
-	IntoElement, Pixels, Render, TestAppContext, VisualTestContext, Window, div, point, prelude::*,
-	px,
+	IntoElement, Modifiers, Pixels, Render, TestAppContext, VisualTestContext, Window, div, point,
+	prelude::*, px,
 };
 
 fn app() -> TestAppContext {
@@ -242,4 +246,130 @@ fn a_toast_dismisses_itself_after_its_timeout_unless_the_stack_is_hovered() {
 	cx.executor().advance_clock(Duration::from_millis(1));
 	cx.run_until_parked();
 	assert!(shown(&toasts, &cx).is_empty(), "gone a full timeout after the pointer left");
+}
+
+#[test]
+fn a_toast_lasts_what_its_owner_gives_it_and_without_a_lifetime_stays_until_dismissed() {
+	let mut cx = app();
+	let toasts = cx.new(|_| Toasts::new());
+	let lasts = Duration::from_secs(2);
+	let before = Duration::from_millis(1_999);
+	let brief = Toast::new(ToastKind::Info, "brief").lasts(Some(lasts));
+	let brief = toasts.update(&mut cx, |toasts, cx| toasts.push(brief, cx));
+	let kept = Toast::new(ToastKind::Error, "kept").lasts(None);
+	let kept = toasts.update(&mut cx, |toasts, cx| toasts.push(kept, cx));
+	let ids = |cx: &TestAppContext| -> Vec<ToastId> {
+		shown(&toasts, cx).into_iter().map(|(id, _)| id).collect()
+	};
+
+	cx.executor().advance_clock(before);
+	cx.run_until_parked();
+	assert_eq!(ids(&cx), vec![brief, kept], "both shown just before the brief one's time");
+	cx.executor().advance_clock(Duration::from_millis(1));
+	cx.run_until_parked();
+	assert_eq!(ids(&cx), vec![kept], "the brief one goes at its own time");
+	cx.executor().advance_clock(Toasts::DISMISS_AFTER * 3);
+	cx.run_until_parked();
+	assert_eq!(ids(&cx), vec![kept], "no timeout takes down a toast without a lifetime");
+	toasts.update(&mut cx, |toasts, cx| toasts.dismiss(kept, cx));
+	assert!(ids(&cx).is_empty(), "dismissing it takes it down");
+}
+
+/// A window that draws a toast stack and records what it emits.
+struct Stage {
+	toasts: Entity<Toasts>,
+	events: Vec<ToastDismissed>,
+}
+
+impl Render for Stage {
+	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+		div().relative().size_full().child(self.toasts.clone())
+	}
+}
+
+fn stage(cx: &mut TestAppContext) -> (Entity<Toasts>, Entity<Stage>, &mut VisualTestContext) {
+	let (stage, cx) = cx.add_window_view(|_, cx| {
+		let toasts = cx.new(|_| Toasts::new());
+		cx.subscribe(&toasts, |stage: &mut Stage, _, event: &ToastDismissed, _| {
+			stage.events.push(*event);
+		})
+		.detach();
+		Stage { toasts, events: Vec::new() }
+	});
+	let toasts = stage.read_with(cx, |stage, _| stage.toasts.clone());
+	(toasts, stage, cx)
+}
+
+/// Delivers a frame every 16 ms while the window requests one, and returns
+/// how many it delivered.
+fn serve_frames(cx: &mut VisualTestContext) -> usize {
+	let mut served = 0;
+	loop {
+		cx.executor().advance_clock(Duration::from_millis(16));
+		if cx.update(|window, cx| window.simulate_next_frame(cx)) == 0 {
+			return served;
+		}
+		served += 1;
+		assert!(served < 120, "the window never stops requesting frames");
+		cx.run_until_parked();
+	}
+}
+
+#[test]
+fn the_stack_reports_a_toast_it_took_down_itself_and_not_one_its_owner_dismissed() {
+	let mut cx = app();
+	cx.update(|cx| cx.set_reduce_motion(true));
+	let (toasts, stage, cx) = stage(&mut cx);
+	let expired = toasts.update(cx, |toasts, cx| toasts.push(Toast::new(ToastKind::Info, "a"), cx));
+	cx.executor().advance_clock(Toasts::DISMISS_AFTER);
+	cx.run_until_parked();
+	let told = Toast::new(ToastKind::Info, "b").lasts(None);
+	let told = toasts.update(cx, |toasts, cx| toasts.push(told, cx));
+	toasts.update(cx, |toasts, cx| toasts.dismiss(told, cx));
+	let closed = Toast::new(ToastKind::Info, "c").lasts(None);
+	let closed = toasts.update(cx, |toasts, cx| toasts.push(closed, cx));
+	cx.run_until_parked();
+
+	let close = cx.debug_bounds("toast-close").expect("the close button is drawn");
+	cx.simulate_click(close.center(), Modifiers::none());
+	cx.run_until_parked();
+	assert_eq!(stage.read_with(cx, |stage, _| stage.events.clone()), vec![
+		ToastDismissed(expired),
+		ToastDismissed(closed),
+	]);
+	assert!(shown(&toasts, cx).is_empty(), "the close button takes its toast down");
+}
+
+/// Takes down a shown toast and returns the opacity it draws with right
+/// after, and how many frames the window requests before it is at rest.
+fn take_down(reduce_motion: bool) -> (Option<f32>, usize) {
+	let mut cx = app();
+	cx.update(|cx| cx.set_reduce_motion(reduce_motion));
+	let (toasts, _stage, cx) = stage(&mut cx);
+	let id = Toast::new(ToastKind::Info, "a").lasts(None);
+	let id = toasts.update(cx, |toasts, cx| toasts.push(id, cx));
+	cx.run_until_parked();
+	serve_frames(cx);
+	toasts.update(cx, |toasts, cx| toasts.dismiss(id, cx));
+	let first = toasts.read_with(cx, |toasts, cx| toasts.opacity(id, cx));
+	cx.run_until_parked();
+	let frames = serve_frames(cx);
+	assert_eq!(
+		toasts.read_with(cx, |toasts, cx| toasts.opacity(id, cx)),
+		None,
+		"nothing of the toast is drawn once the window is at rest"
+	);
+	(first, frames)
+}
+
+#[test]
+fn a_toast_taken_down_under_reduced_motion_goes_on_the_next_frame() {
+	assert_eq!(take_down(true), (None, 0));
+}
+
+#[test]
+fn a_toast_taken_down_fades_out_over_frames_and_the_window_then_rests() {
+	let (first, frames) = take_down(false);
+	assert!(first.is_some_and(|opacity| opacity > 0.99), "the exit starts fully shown: {first:?}");
+	assert!(frames > 1, "the exit runs over several frames, not one: {frames}");
 }
