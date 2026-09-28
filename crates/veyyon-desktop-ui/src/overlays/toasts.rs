@@ -270,6 +270,7 @@ impl Toasts {
 			.child(
 				div()
 					.flex_1()
+					.min_w_0()
 					.text_color(palette.text.primary)
 					.child(entry.toast.message.clone()),
 			)

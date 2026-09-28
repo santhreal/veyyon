@@ -9,7 +9,8 @@
 //! that outlives the lifetime its owner gave it, or goes without the stack
 //! reporting it, leaves the owner's queue holding a notice nobody sees; a
 //! toast exit that moves under reduced motion, or never ends, keeps the
-//! window drawing frames.
+//! window drawing frames; a long message that widens its toast pushes the
+//! toast's buttons past the window edge.
 //!
 //! It does not catch pixel geometry (the anchored position, the underline's
 //! slide path, the scrollbar thumb), which a headless render covers.
@@ -338,6 +339,24 @@ fn the_stack_reports_a_toast_it_took_down_itself_and_not_one_its_owner_dismissed
 		ToastDismissed(closed),
 	]);
 	assert!(shown(&toasts, cx).is_empty(), "the close button takes its toast down");
+}
+
+/// A message with no break in it wraps inside its toast; one that widens the
+/// toast instead pushes the action and the close button past the window edge,
+/// where no click reaches them.
+#[test]
+fn a_toast_keeps_its_buttons_in_the_window_however_long_its_message() {
+	let mut cx = app();
+	let (toasts, _stage, cx) = stage(&mut cx);
+	let message = format!("/{}", "segment/".repeat(40));
+	let toast = Toast::new(ToastKind::Info, message).action("Open", |_, _| {});
+	toasts.update(cx, |toasts, cx| toasts.push(toast.lasts(None), cx));
+	cx.run_until_parked();
+	let width = cx.update(|window, _| window.viewport_size().width);
+	let close = cx
+		.debug_bounds("toast-close")
+		.expect("the close button is drawn");
+	assert!(close.right() <= width, "the close button ends at {close:?} in a {width:?} window");
 }
 
 /// Takes down a shown toast and returns the opacity it draws with right
