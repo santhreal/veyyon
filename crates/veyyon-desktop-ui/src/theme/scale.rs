@@ -62,6 +62,10 @@ pub mod size {
 	pub const MENU_ROW: Pixels = px(32.0);
 	/// Width of the command palette.
 	pub const PALETTE: Pixels = px(640.0);
+	/// Width of the settings page navigation column.
+	pub const SETTINGS_NAV: Pixels = px(200.0);
+	/// Widest a settings page's content column grows.
+	pub const SETTINGS_COLUMN: Pixels = px(720.0);
 	/// Height of a small, default and large control.
 	pub const CONTROL_SM: Pixels = px(24.0);
 	pub const CONTROL: Pixels = px(28.0);
@@ -139,15 +143,20 @@ pub mod text {
 	/// Markdown level-three and deeper headings.
 	pub const H3: TypeStyle = ui(15.0, 22.0, SEMIBOLD);
 	/// Code blocks, tool output, terminal text.
-	pub const MONO: TypeStyle =
-		TypeStyle { size: px(12.5), line_height: px(18.0), weight: REGULAR, family: MONO_FAMILY };
+	pub const MONO: TypeStyle = TypeStyle {
+		size:        px(12.5),
+		line_height: px(18.0),
+		weight:      REGULAR,
+		family:      MONO_FAMILY,
+	};
 }
 
 /// Sets every text property of one ramp step on an element.
 pub trait TypeStyled: Styled + Sized {
 	/// Applies the family, size, line height and weight of `style`.
 	fn type_style(self, style: TypeStyle) -> Self {
-		self.font_family(style.family)
+		self
+			.font_family(style.family)
 			.text_size(style.size)
 			.line_height(style.line_height)
 			.font_weight(style.weight)
