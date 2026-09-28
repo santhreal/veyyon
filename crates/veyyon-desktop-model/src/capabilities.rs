@@ -3,7 +3,18 @@ use serde::{Deserialize, Serialize};
 /// Every protocol capability, with explicit discriminants so the wire value of
 /// one never shifts when another is declared.
 #[derive(
-	Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, strum::EnumIter,
+	Debug,
+	Clone,
+	Copy,
+	PartialEq,
+	Eq,
+	PartialOrd,
+	Ord,
+	Hash,
+	Serialize,
+	Deserialize,
+	ts_rs::TS,
+	strum::EnumIter,
 )]
 #[repr(u8)]
 pub enum Capability {
@@ -137,7 +148,7 @@ impl Capability {
 }
 
 /// Tri-state capability status reported by host transport.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub enum CapabilityStatus {
 	#[default]
 	UnknownUntilAttached,

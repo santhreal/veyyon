@@ -12,7 +12,18 @@ use serde::{Deserialize, Serialize};
 /// Where a command came from, which the palette states so two rows with one
 /// name are told apart.
 #[derive(
-	Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, strum::EnumIter,
+	Debug,
+	Clone,
+	Copy,
+	PartialEq,
+	Eq,
+	PartialOrd,
+	Ord,
+	Hash,
+	Serialize,
+	Deserialize,
+	ts_rs::TS,
+	strum::EnumIter,
 )]
 pub enum CommandSource {
 	/// Declared by the agent itself.
@@ -45,7 +56,7 @@ impl CommandSource {
 }
 
 /// One subcommand of a command that has them.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct CommandSubcommandView {
 	pub name:        String,
 	pub description: Option<String>,
@@ -54,7 +65,7 @@ pub struct CommandSubcommandView {
 }
 
 /// One command the host will run when it is sent back as a `RunCommand`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct CommandView {
 	/// The name without its leading slash, as `RunCommand` spells it.
 	pub name:        String,

@@ -4,7 +4,7 @@ use crate::{connection::EntryId, transcript::TranscriptEntry};
 
 /// State container representing in-flight assistant token generation and active
 /// tool progress.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct StreamingMessageState {
 	pub entry:        EntryId,
 	pub tool:         Option<String>,

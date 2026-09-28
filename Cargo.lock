@@ -8762,6 +8762,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b40688ea6389c8171614b25491f71d4a27946e0c7ce2da1c6de27e25abf1a0ae"
 
 [[package]]
+name = "ts-rs"
+version = "12.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "756050066659291d47a554a9f558125db17428b073c5ffce1daf5dcb0f7231d8"
+dependencies = [
+ "thiserror 2.0.20",
+ "ts-rs-macros",
+]
+
+[[package]]
+name = "ts-rs-macros"
+version = "12.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38d90eea51bc7988ef9e674bf80a85ba6804739e535e9cab48e4bb34a8b652aa"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+ "termcolor",
+]
+
+[[package]]
 name = "ttf-parser"
 version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9884,6 +9906,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "veyyon-desktop-app"
+version = "1.4.1"
+dependencies = [
+ "serde_json",
+ "veyyon-desktop-model",
+ "veyyon-desktop-ui",
+ "veyyon-gpui",
+]
+
+[[package]]
 name = "veyyon-desktop-kit"
 version = "1.4.1"
 dependencies = [
@@ -9912,6 +9944,7 @@ dependencies = [
  "smallvec",
  "strum",
  "thiserror 2.0.20",
+ "ts-rs",
  "unicode-width 0.2.2",
 ]
 
@@ -9988,7 +10021,9 @@ version = "1.4.1"
 dependencies = [
  "anyhow",
  "fontdb",
+ "gpui",
  "serde",
+ "strum",
  "thiserror 2.0.20",
  "toml 1.1.5+spec-1.1.0",
  "veyyon-gpui",

@@ -62,16 +62,17 @@ impl TodoStatus {
 }
 
 /// One task of the plan.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct TodoTaskView {
 	/// The task in the words the board records.
 	pub content: String,
 	/// Where the task stands.
+	#[ts(type = "TodoStatus")]
 	pub status:  TodoStatus,
 }
 
 /// One phase of the plan, with the tally the host computed for it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct TodoPhaseView {
 	/// The phase as the board states it, numbered: `II. Shared`.
 	pub name:   String,
@@ -96,7 +97,7 @@ impl TodoPhaseView {
 /// A session whose board holds no task publishes no view at all, so the
 /// presence of one is what the card is drawn from and there is no empty board
 /// to distinguish from an absent one.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct TodoBoardView {
 	/// The phases in the order the board records them.
 	pub phases:  Vec<TodoPhaseView>,

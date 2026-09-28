@@ -8,7 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Every profile on disk, the active one marked, and what a new one may copy.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct ProfilesView {
 	/// Directory name of the profile the attached host runs under.
 	pub active:     String,
@@ -18,7 +18,7 @@ pub struct ProfilesView {
 }
 
 /// One profile directory under the base config root.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct ProfileView {
 	/// Directory name. The default profile is the literal `default`.
 	pub name:           String,
@@ -35,7 +35,7 @@ pub struct ProfileView {
 }
 
 /// One item a new profile copies from the profile it is seeded off.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct ProfileCopyItemView {
 	/// The key a create sends back for this item.
 	pub key:         String,

@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 /// so a window that attaches mid-pause states how long the freeze has run
 /// rather than starting a clock of its own at zero. It is `None` exactly when
 /// `paused` is false.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct AgentPauseView {
 	/// True while every agent in the host process is frozen.
 	pub paused:   bool,

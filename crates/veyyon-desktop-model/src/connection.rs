@@ -4,12 +4,14 @@ use serde::{Deserialize, Serialize};
 pub const PROTOCOL_VERSION: u32 = 1;
 
 /// Request identifier correlating host requests and responses.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+	Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, ts_rs::TS,
+)]
 #[serde(transparent)]
 pub struct RequestId(pub u64);
 
 /// Unique session identifier.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, ts_rs::TS)]
 #[serde(transparent)]
 pub struct SessionId(pub String);
 
@@ -26,7 +28,7 @@ impl From<String> for SessionId {
 }
 
 /// Unique transcript entry identifier.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, ts_rs::TS)]
 #[serde(transparent)]
 pub struct EntryId(pub String);
 
@@ -43,7 +45,7 @@ impl From<String> for EntryId {
 }
 
 /// Unique interaction identifier for operator decisions.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, ts_rs::TS)]
 #[serde(transparent)]
 pub struct InteractionId(pub String);
 
@@ -60,7 +62,7 @@ impl From<String> for InteractionId {
 }
 
 /// Container associating a monotonically increasing revision with payload.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct Versioned<T> {
 	pub revision: u64,
 	pub value:    T,
@@ -68,7 +70,7 @@ pub struct Versioned<T> {
 
 /// Host transport connection states mirroring wire protocol definitions.
 #[derive(
-	Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, strum::EnumDiscriminants,
+	Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, strum::EnumDiscriminants,
 )]
 #[strum_discriminants(name(ConnectionStateKind), derive(Hash, PartialOrd, Ord, strum::EnumIter))]
 #[strum_discriminants(doc = "Fieldless projection of `ConnectionState`, so a scene catalogue can \

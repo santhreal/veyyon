@@ -41,7 +41,7 @@ pub enum SessionBadge {
 /// Narrower than `SessionMode` on purpose: `goal` runs turns of its own from a
 /// controller no desktop gesture reaches, and `plan_paused` is the agent's,
 /// A mode the operator sets from the window in host wire spelling.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, strum::EnumIter)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, strum::EnumIter)]
 #[serde(rename_all = "snake_case")]
 pub enum SettableMode {
 	/// Plan mode: read-only tools and a plan the operator resolves.

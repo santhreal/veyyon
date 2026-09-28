@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::connection::SessionId;
 
 /// Background or worker subagent execution metadata.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct AgentView {
 	/// Unique agent identifier: what a peer addresses and what a control names.
 	pub id:           String,
@@ -20,6 +20,7 @@ pub struct AgentView {
 	/// `parked` or `aborted`. Finer than the registry's own status, which
 	/// cannot say that a running agent is stopped at an approval prompt or
 	/// that a stopped one is waiting on a peer.
+	#[ts(type = "AgentDisplayState")]
 	pub status:       String,
 	/// Parent agent identifier if nested.
 	pub parent:       Option<String>,
@@ -94,7 +95,7 @@ impl AgentView {
 }
 
 /// How one line of agent traffic landed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, strum::EnumIter)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, strum::EnumIter)]
 #[serde(rename_all = "lowercase")]
 pub enum AgentMessageOutcome {
 	Injected,
@@ -105,7 +106,7 @@ pub enum AgentMessageOutcome {
 
 /// One line of agent-to-agent traffic, oldest first, as the comms stream draws
 /// it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct AgentMessageView {
 	pub id:       String,
 	pub from:     String,

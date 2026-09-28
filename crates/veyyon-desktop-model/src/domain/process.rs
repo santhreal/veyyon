@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Supervised child process metadata.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct ProcessView {
 	/// Process display name.
 	pub name:          String,
@@ -40,7 +40,7 @@ impl ProcessView {
 }
 
 /// Incremental log line chunk from a supervised process.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct ProcessLogsChunk {
 	/// Name of the process producing log lines.
 	pub process: String,

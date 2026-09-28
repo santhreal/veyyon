@@ -17,7 +17,7 @@ import {
 import { getAvailableThemes, isLightTheme } from "../../theme/theme";
 import { actingSettings } from "../acting-settings";
 import { buildCapabilitiesSnapshot, CAPABILITY_GATING_SETTINGS } from "../session-bridge";
-import type { KeybindingView, SettingEntryView, ThemesView, ThemeView } from "../wire";
+import type { KeybindingView, SettingEntry, ThemesView, ThemeView } from "../wire";
 import type { ActionHandler, ActionHandlersMap } from "./types";
 
 /**
@@ -42,8 +42,8 @@ export const DESKTOP_SETTING_CONDITIONS: Record<string, SettingCondition> = {
  * the copy, the choices and the bounds travel with the value rather than being
  * restated on the other side of the wire.
  */
-export function dumpSettings(settings: Settings): Record<string, SettingEntryView> {
-	const dumped: Record<string, SettingEntryView> = {};
+export function dumpSettings(settings: Settings): Record<string, SettingEntry> {
+	const dumped: Record<string, SettingEntry> = {};
 	for (const key of Object.keys(SETTINGS_SCHEMA) as SettingPath[]) {
 		const def = SETTINGS_SCHEMA[key];
 		const ui = getUi(key);

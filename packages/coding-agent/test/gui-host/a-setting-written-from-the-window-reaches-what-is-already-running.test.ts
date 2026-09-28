@@ -39,7 +39,7 @@ import { Settings } from "../../src/config/settings";
 import { SETTINGS_SCHEMA } from "../../src/config/settings-schema";
 import { type GuiHostServer, startGuiHostServer } from "../../src/gui-host";
 import { settingsActionHandlers } from "../../src/gui-host/actions/settings";
-import type { SettingEntryView, ThemesView } from "../../src/gui-host/wire";
+import type { SettingEntry, ThemesView } from "../../src/gui-host/wire";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 import { snapshotSections, TestSocketClient } from "./test-client";
 
@@ -86,7 +86,7 @@ describe("a setting written from the window reaches what is already running", ()
 		Settings.instance.set("collab.relayUrl", RUNNING_RELAY);
 
 		const { frames } = await client.request(1, "LoadSettings");
-		const settings = snapshotSections<Record<string, SettingEntryView>>(frames, "Settings").at(-1);
+		const settings = snapshotSections<Record<string, SettingEntry>>(frames, "Settings").at(-1);
 
 		expect(settings?.["collab.relayUrl"]?.value).toBe(RUNNING_RELAY);
 	});

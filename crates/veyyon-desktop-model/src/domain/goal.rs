@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 use crate::action::GoalControl;
 
 /// Execution status of an autonomous goal.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::EnumIter)]
+#[derive(
+	Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ts_rs::TS, strum::EnumIter,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum GoalStatus {
 	Active,
@@ -79,7 +81,7 @@ impl GoalControl {
 }
 
 /// Snapshot view of an autonomous goal.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct GoalView {
 	pub objective:         String,
 	pub status:            GoalStatus,

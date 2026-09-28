@@ -4,7 +4,7 @@ use crate::connection::InteractionId;
 
 /// Single definition of operator decision requests awaiting input, approval, or
 /// plan review.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct PendingDecisions {
 	pub approvals: Vec<ApprovalInteraction>,
 	pub questions: Vec<QuestionInteraction>,
@@ -26,7 +26,7 @@ impl PendingDecisions {
 }
 
 /// Pending tool execution approval request.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct ApprovalInteraction {
 	pub id:              InteractionId,
 	pub tool_name:       String,
@@ -35,7 +35,7 @@ pub struct ApprovalInteraction {
 }
 
 /// Pending user question requiring option selection or text entry.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct QuestionInteraction {
 	pub id:              InteractionId,
 	pub prompt:          String,
@@ -44,7 +44,7 @@ pub struct QuestionInteraction {
 }
 
 /// Pending plan review requiring acceptance, refinement, or new session fork.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct PlanInteraction {
 	pub id:              InteractionId,
 	pub markdown_plan:   String,

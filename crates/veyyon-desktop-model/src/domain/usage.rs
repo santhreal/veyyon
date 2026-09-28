@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{connection::SessionId, transcript::UsageTotals};
 
 /// Token usage category item in a context window breakdown.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct ContextCategory {
 	/// Category name (e.g., "system", "messages", "tools").
 	pub name:   String,
@@ -12,7 +12,7 @@ pub struct ContextCategory {
 }
 
 /// Token breakdown of the active session context window.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct ContextBreakdownView {
 	/// Owning session identifier.
 	pub session:      SessionId,
@@ -25,7 +25,7 @@ pub struct ContextBreakdownView {
 }
 
 /// Session resource and financial cost accounting totals.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct UsageView {
 	/// Owning session identifier.
 	pub session: SessionId,
@@ -34,7 +34,7 @@ pub struct UsageView {
 }
 
 /// Transcript export result or file path snapshot.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct ExportView {
 	/// Exported session identifier.
 	pub session: SessionId,

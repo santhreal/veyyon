@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Filesystem node kind within a workspace directory tree.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub enum FileKind {
 	/// Regular file.
 	File,
@@ -12,7 +12,7 @@ pub enum FileKind {
 }
 
 /// Individual node within a directory listing.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct FileNode {
 	/// Workspace-relative path separated with forward slashes.
 	pub path:  String,
@@ -25,7 +25,7 @@ pub struct FileNode {
 }
 
 /// Workspace filesystem directory hierarchy view.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct FileTreeView {
 	/// Root directory path.
 	pub root:      String,
@@ -36,7 +36,7 @@ pub struct FileTreeView {
 }
 
 /// File content snapshot payload.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct FileContentView {
 	/// Workspace-relative path of the requested file.
 	pub path:       String,
@@ -51,7 +51,7 @@ pub struct FileContentView {
 }
 
 /// Text search match results across workspace files.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct SearchResultsView {
 	/// Query text or pattern matched.
 	pub query:     String,
@@ -62,7 +62,7 @@ pub struct SearchResultsView {
 }
 
 /// One line of a file that matched a content search.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct ContentMatch {
 	/// Workspace-relative path of the file the line is in.
 	pub path:    String,
@@ -73,7 +73,7 @@ pub struct ContentMatch {
 }
 
 /// The lines a content search matched, in the order the search reported them.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct ContentMatchesView {
 	/// The text that was searched for.
 	pub query:     String,

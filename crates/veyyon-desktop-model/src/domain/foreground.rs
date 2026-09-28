@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 /// is what lets a control be drawn from the view's presence and vanish the
 /// moment the command finishes, without polling for a state that changes
 /// between two turns of the event loop.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct ForegroundCommandView {
 	/// The command line being waited on, truncated by the host to a drawable
 	/// width.

@@ -10,7 +10,9 @@
 use serde::{Deserialize, Serialize};
 
 /// The actions a console offers, as the console model names them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::EnumIter)]
+#[derive(
+	Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ts_rs::TS, strum::EnumIter,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum AutoswarmAction {
 	/// Start a swarm on the setup the rows hold.
@@ -50,7 +52,9 @@ impl AutoswarmAction {
 }
 
 /// The control a row draws, from the kind the console's form declares.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::EnumIter)]
+#[derive(
+	Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ts_rs::TS, strum::EnumIter,
+)]
 pub enum AutoswarmFieldKind {
 	/// A line of text: the goal, the models, the preset name.
 	Text,
@@ -63,7 +67,7 @@ pub enum AutoswarmFieldKind {
 }
 
 /// One option a segmented row offers. A built-in preset cannot be removed.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct AutoswarmOptionView {
 	/// The value sent back when this option is chosen.
 	pub value:     String,
@@ -81,7 +85,7 @@ pub struct AutoswarmOptionView {
 /// formatted, and the typed field beside it is what a change sends back. A
 /// window that drew the number itself would state `3` where the console states
 /// `3 arms`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct AutoswarmFieldView {
 	/// The row's id, which a change names.
 	pub id:          String,
@@ -110,7 +114,7 @@ pub struct AutoswarmFieldView {
 }
 
 /// A line the console states under its rows: the cost, the arms, the harness.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct AutoswarmNoteView {
 	/// The note's id, stable across frames.
 	pub id:   String,
@@ -119,7 +123,7 @@ pub struct AutoswarmNoteView {
 }
 
 /// One action the swarm's state allows, with what stops it when something does.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct AutoswarmActionView {
 	/// The action this row runs.
 	pub action:  AutoswarmAction,
@@ -134,7 +138,7 @@ pub struct AutoswarmActionView {
 }
 
 /// One run of the ledger: a logged experiment, or the one measuring now.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct AutoswarmRunView {
 	/// The run's number and the segment it belongs to.
 	pub label:   String,
@@ -153,7 +157,7 @@ pub struct AutoswarmRunView {
 }
 
 /// The swarm recorded on this branch, once one has started.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct AutoswarmSwarmView {
 	/// The session's name, which the first turn records.
 	pub name:    Option<String>,
@@ -173,7 +177,7 @@ pub struct AutoswarmSwarmView {
 ///
 /// A console with no fields and no actions is the run ledger on its own, which
 /// `/autoresearch status` opens: there is state to read and nothing to change.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct AutoswarmConsoleView {
 	/// The session the console belongs to.
 	pub session:    String,

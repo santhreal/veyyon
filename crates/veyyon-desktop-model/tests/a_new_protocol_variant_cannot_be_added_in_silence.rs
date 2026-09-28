@@ -5,8 +5,7 @@
 //! An array is not the enum. Add an 80th action to `HostActionKind` and forget
 //! to extend `HostActionKind::ALL`, and the sweeps do not fail — they iterate
 //! 79 of 80 variants and pass, which is exactly the failure mode of having no
-//! test at all. The count assertions elsewhere do not catch it either, because
-//! the array is still 79 long and still matches the pinned number.
+//! test at all.
 //!
 //! THE CLASS THIS CLOSES: a variant added to any protocol union that no sweep
 //! reaches. `strum::EnumIter` derives the variant space from the enum itself,
@@ -16,33 +15,25 @@
 //! `BlockKind` and `BadgeKind`, which is also what the scene gate sweeps.
 //!
 //! WHAT IT DOES NOT CATCH: a variant that exists, is iterated, and is handled
-//! wrongly. It proves reachability, not correctness. It also cannot see a
-//! variant deleted from `wire.ts` on the host side; the pinned counts here are
-//! the only guard against protocol drift in that direction, and they are
-//! deliberately literal so that drift needs a human decision.
+//! wrongly. It proves reachability, not correctness. Drift between these enums
+//! and the TypeScript host is not counted here: the host's declarations are
+//! generated from them, which
+//! `the_typescript_wire_is_generated_from_the_rust_types.rs` holds. The two
+//! counts left are of unions that never cross the wire.
 
 use strum::IntoEnumIterator;
 use veyyon_desktop_model::{
-	ALL_SECTION_NAMES, BadgeKind, BlockKind, Capability, ErrorScope, HostActionKind, HostEventKind,
-	MessageRole, QueuePartition, SnapshotSectionKind,
+	ALL_SECTION_NAMES, BadgeKind, BlockKind, Capability, ErrorScope, HostActionKind, MessageRole,
+	QueuePartition, SnapshotSectionKind,
 };
 
 /// Assert that a hand-written `ALL` array names every variant of its enum, in
-/// the enum's own declaration order, and that the total is the count pinned
-/// against `packages/coding-agent/src/gui-host/wire.ts`.
-fn assert_all_is_the_whole_enum<T>(all: &[T], expected: usize, enum_name: &str)
+/// the enum's own declaration order.
+fn assert_all_is_the_whole_enum<T>(all: &[T], enum_name: &str)
 where
 	T: IntoEnumIterator + PartialEq + std::fmt::Debug,
 {
 	let derived: Vec<T> = T::iter().collect();
-
-	assert_eq!(
-		derived.len(),
-		expected,
-		"{enum_name} declares {} variants but the protocol pins {expected}. If wire.ts really \
-		 changed, change the pinned number here and say so; if it did not, the enum drifted.",
-		derived.len(),
-	);
 
 	assert_eq!(
 		all.len(),
@@ -64,14 +55,15 @@ where
 
 #[test]
 fn every_action_capability_scope_role_and_partition_is_named_by_its_all_array() {
-	assert_all_is_the_whole_enum(&HostActionKind::ALL, 100, "HostActionKind");
-	assert_all_is_the_whole_enum(&Capability::ALL, 38, "Capability");
-	assert_all_is_the_whole_enum(&ErrorScope::ALL, 19, "ErrorScope");
-	assert_all_is_the_whole_enum(&MessageRole::ALL, 12, "MessageRole");
+	assert_all_is_the_whole_enum(&HostActionKind::ALL, "HostActionKind");
+	assert_all_is_the_whole_enum(&Capability::ALL, "Capability");
+	assert_all_is_the_whole_enum(&ErrorScope::ALL, "ErrorScope");
+	assert_all_is_the_whole_enum(&MessageRole::ALL, "MessageRole");
+	assert_all_is_the_whole_enum(&QueuePartition::ALL, "QueuePartition");
 	// Four placements, not the five sections the rail draws: `Unsent` is derived
 	// from a session holding an unsubmitted draft, so it is never a placement the
 	// operator chooses or the window persists (§5.2).
-	assert_all_is_the_whole_enum(&QueuePartition::ALL, 4, "QueuePartition");
+	assert_eq!(QueuePartition::ALL.len(), 4, "the queue has 4 placements");
 }
 
 /// `ContentBlock`, `SessionBadge`, and `SnapshotSection` have payload-carrying
@@ -79,12 +71,6 @@ fn every_action_capability_scope_role_and_partition_is_named_by_its_all_array() 
 #[test]
 fn the_field_carrying_unions_project_to_a_sweepable_kind() {
 	let sections: Vec<SnapshotSectionKind> = SnapshotSectionKind::iter().collect();
-	assert_eq!(
-		sections.len(),
-		40,
-		"wire.ts defines 40 snapshot sections. This count is pinned here so additions cannot occur \
-		 in silence."
-	);
 	assert_eq!(
 		ALL_SECTION_NAMES.len(),
 		sections.len(),
@@ -101,25 +87,7 @@ fn the_field_carrying_unions_project_to_a_sweepable_kind() {
 		);
 	}
 
-	let blocks: Vec<BlockKind> = BlockKind::iter().collect();
-	assert_eq!(
-		blocks.len(),
-		18,
-		"wire.ts defines 18 content blocks. This count was once written as 19 and satisfied by four \
-		 variants nobody had defined; it is pinned here so that cannot recur.",
-	);
-
 	assert_eq!(BadgeKind::iter().count(), 8, "the queue has 8 status badges");
-
-	// `HostEvent` is the union the client reduces, so an event nothing sweeps is
-	// an event no invariant is checked against.
-	// `live_queue_ordering_invariant.rs` matches exhaustively on this kind.
-	assert_eq!(
-		HostEventKind::iter().count(),
-		8,
-		"wire.ts sends 8 protocol events. This count is pinned here so an addition needs a decision \
-		 rather than passing in silence."
-	);
 
 	// A projection is only useful if it round-trips from a real value, which is
 	// what the scene gate does when it turns a fixture badge into a scene name.
@@ -131,6 +99,7 @@ fn the_field_carrying_unions_project_to_a_sweepable_kind() {
 
 	// Distinctness: a projection that collapsed two variants onto one kind would
 	// let the gate believe it covered a block it never rendered.
+	let blocks: Vec<BlockKind> = BlockKind::iter().collect();
 	let unique: std::collections::HashSet<BlockKind> = blocks.iter().copied().collect();
 	assert_eq!(unique.len(), blocks.len(), "every block kind must be distinct");
 }

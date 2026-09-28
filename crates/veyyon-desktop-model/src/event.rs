@@ -17,7 +17,9 @@ use crate::{
 };
 
 /// Status summary for a session stored on disk.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::EnumIter)]
+#[derive(
+	Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ts_rs::TS, strum::EnumIter,
+)]
 pub enum SessionStatus {
 	Complete,
 	Interrupted,
@@ -28,7 +30,7 @@ pub enum SessionStatus {
 }
 
 /// Lightweight session metadata returned in session directory listings.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct SessionSummary {
 	pub id:                  SessionId,
 	pub workspace:           String,
@@ -46,14 +48,14 @@ pub struct SessionSummary {
 }
 
 /// Error encountered when reading or parsing a session header file.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct SessionLoadError {
 	pub path:   String,
 	pub reason: String,
 }
 
 /// Detailed session header information for the active session.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct SessionHeaderView {
 	pub id:             SessionId,
 	pub schema_version: u32,
@@ -117,7 +119,9 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 ///
 /// Each section is the whole of its domain as the host holds it at that
 /// moment, so reducing one replaces rather than merges.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, strum::EnumDiscriminants)]
+#[derive(
+	Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, strum::EnumDiscriminants,
+)]
 #[strum_discriminants(name(SnapshotSectionKind), derive(Hash, PartialOrd, Ord, strum::EnumIter))]
 #[strum_discriminants(
 	doc = "Fieldless projection of `SnapshotSection`, so a sweep covers every section variant."
@@ -146,7 +150,7 @@ pub enum SnapshotSection {
 	/// Every setting the host reports, with its schema and copy.
 	Settings(SettingsView),
 	/// Diagnostic sources payload.
-	Diagnostics(serde_json::Value),
+	Diagnostics(#[ts(type = "unknown")] serde_json::Value),
 	/// Git changes view with unified diff.
 	Changes(ChangesView),
 	/// Directory hierarchy tree view.
@@ -291,7 +295,9 @@ impl SnapshotSection {
 
 /// Complete enumeration of the protocol event variants dispatched by host
 /// transport.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, strum::EnumDiscriminants)]
+#[derive(
+	Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, strum::EnumDiscriminants,
+)]
 #[strum_discriminants(name(HostEventKind), derive(Hash, PartialOrd, Ord, strum::EnumIter))]
 #[strum_discriminants(
 	doc = "Fieldless projection of `HostEvent`, so a sweep covers every event the host sends."

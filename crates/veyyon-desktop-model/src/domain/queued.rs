@@ -12,7 +12,7 @@ use crate::connection::SessionId;
 /// `follow_up` runs after the turn ends, both oldest first. `restored` carries
 /// the text a `DequeueQueuedPrompt` took back out, on the one frame that
 /// answers that action and on no other.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct QueuedPromptsView {
 	/// The session holding the prompts.
 	pub session:   SessionId,

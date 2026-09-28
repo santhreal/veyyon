@@ -359,10 +359,11 @@ pub enum ToolView {
 }
 
 /// Host presentation wrapper carrying disclosure state and view.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolPresentation {
 	pub expanded: bool,
+	#[ts(type = "ToolView")]
 	pub view:     ToolView,
 }
 

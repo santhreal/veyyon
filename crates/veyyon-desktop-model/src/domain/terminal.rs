@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Execution status of a managed terminal session.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub enum TerminalStatus {
 	/// Terminal process is active and running.
 	Running,
@@ -18,7 +18,7 @@ pub enum TerminalStatus {
 }
 
 /// Managed terminal instance metadata.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct TerminalView {
 	/// Unique terminal identifier.
 	pub id:     String,
@@ -35,7 +35,7 @@ pub struct TerminalView {
 }
 
 /// Incremental terminal output byte stream chunk.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct TerminalOutputChunk {
 	/// Terminal identifier producing the output.
 	pub terminal: String,

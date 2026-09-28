@@ -221,6 +221,7 @@ veyyon-desktop = { path = "crates/veyyon-desktop" }
 veyyon-gpui = { path = "crates/veyyon-gpui" }
 veyyon-desktop-scene = { path = "crates/veyyon-desktop-scene" }
 veyyon-desktop-ui = { path = "crates/veyyon-desktop-ui" }
+veyyon-desktop-app = { path = "crates/veyyon-desktop-app" }
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Async Runtime & Concurrency
@@ -246,6 +247,7 @@ toml = "1.1"
 # so a new variant turns a sweep red instead of being skipped. Already in the lock at this
 # version through the vendored brush crates.
 strum = { version = "0.28", features = ["derive"] }
+ts-rs = "12.0.1"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Error Handling
@@ -395,6 +397,7 @@ syntect = { version = "5.3", default-features = false, features = [
    "regex-fancy",
    "yaml-load",
 ] }
+pulldown-cmark = { version = "0.13", default-features = false }
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Markup Conversion

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Model provider account and authentication state.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct ProviderView {
 	/// Unique provider identifier.
 	pub id:            String,
@@ -16,7 +16,7 @@ pub struct ProviderView {
 }
 
 /// Interactive OAuth authentication flow phase.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub enum AuthFlowState {
 	/// Awaiting browser authorization from the user.
 	AwaitingBrowser,
@@ -31,7 +31,7 @@ pub enum AuthFlowState {
 }
 
 /// Active OAuth authentication flow progress.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct AuthFlowView {
 	/// Provider identifier undergoing authentication.
 	pub provider: String,

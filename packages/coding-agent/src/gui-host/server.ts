@@ -19,7 +19,6 @@ import {
 	type BackendError,
 	GUI_HOST_PROTOCOL_VERSION,
 	getActionTag,
-	type HostAction,
 	type HostActionTag,
 	type SnapshotSection,
 	snapshotSectionTag,
@@ -341,7 +340,7 @@ export class GuiHostServer {
 		}
 
 		const requestId = rawFrame.id;
-		const action = "action" in rawFrame ? (rawFrame.action as HostAction) : "";
+		const action: unknown = "action" in rawFrame ? rawFrame.action : "";
 		const actionTag = getActionTag(action);
 
 		try {
@@ -364,7 +363,7 @@ export class GuiHostServer {
 		socket: net.Socket,
 		clientState: ClientSessionState,
 		requestId: number,
-		action: HostAction,
+		action: unknown,
 		actionTag: string,
 	): Promise<void> {
 		// A request has one outcome. A handler that fails partway and then

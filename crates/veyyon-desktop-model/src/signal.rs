@@ -15,7 +15,17 @@ use serde::{Deserialize, Serialize};
 /// reads; [`Self::wire`] states the same name for a label to draw and for the
 /// suite that holds the two together.
 #[derive(
-	Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, strum::EnumIter,
+	Debug,
+	Clone,
+	Copy,
+	Default,
+	PartialEq,
+	Eq,
+	Hash,
+	Serialize,
+	Deserialize,
+	ts_rs::TS,
+	strum::EnumIter,
 )]
 pub enum SupervisorSignal {
 	/// What a keyboard interrupt sends: a foreground program's own cancel.

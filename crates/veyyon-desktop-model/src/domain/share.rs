@@ -3,9 +3,10 @@
 use serde::{Deserialize, Serialize};
 
 /// Relay session sharing status and link bundle.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct ShareView {
 	/// Where the share is: what the window draws and what a control may ask for.
+	#[ts(type = "SharePhase")]
 	pub state:         String,
 	/// Whether this window hosts a share, is in one, or is in neither.
 	#[serde(default)]
@@ -28,7 +29,9 @@ pub struct ShareView {
 }
 
 /// Which side of a share this window is on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, strum::EnumIter)]
+#[derive(
+	Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, ts_rs::TS, strum::EnumIter,
+)]
 pub enum ShareRole {
 	#[default]
 	Off,
@@ -37,7 +40,7 @@ pub enum ShareRole {
 }
 
 /// The room this window joined, present only while it is in one.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct ShareGuestView {
 	/// The relay room the link named.
 	pub room:      String,
@@ -49,7 +52,7 @@ pub struct ShareGuestView {
 	pub connected: bool,
 }
 /// One party on the relay, the hosting session included.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct ShareParticipantView {
 	/// Relay peer id. The hosting session is 0.
 	pub id:        u64,

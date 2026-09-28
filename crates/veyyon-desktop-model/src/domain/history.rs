@@ -4,20 +4,20 @@ use serde::{Deserialize, Serialize};
 
 use crate::{SessionId, SessionSummary, TranscriptEntry, Versioned};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct SessionSearchView {
 	pub query:    String,
 	pub sessions: Vec<SessionSummary>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct SessionTranscriptView {
 	pub session:    SessionId,
 	pub transcript: Versioned<Vec<TranscriptEntry>>,
 }
 
 /// One prompt submitted earlier, as the host recorded it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct PromptHistoryEntry {
 	/// Row identifier in the host's history store, stable across searches.
 	pub id:              i64,
@@ -37,7 +37,7 @@ pub struct PromptHistoryEntry {
 ///
 /// An empty `query` is the listing the mode opens on: the most recent prompts
 /// rather than nothing, so the mode carries rows before anything is typed.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct PromptHistoryView {
 	/// Query the entries answer, empty for the opening listing.
 	pub query:   String,

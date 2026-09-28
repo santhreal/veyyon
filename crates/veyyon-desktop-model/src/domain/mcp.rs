@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Connectivity and lifecycle status of an MCP server.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub enum McpServerStatus {
 	/// Server is connected and tools are active.
 	Connected,
@@ -17,7 +17,7 @@ pub enum McpServerStatus {
 }
 
 /// Configured Model Context Protocol server configuration and tool list.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct McpServerView {
 	/// Server identifier name.
 	pub name:    String,

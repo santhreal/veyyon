@@ -8,7 +8,7 @@ import { contentText } from "@veyyon/utils/content-text";
 import { getBlobsDir, getProjectDir } from "@veyyon/utils/dirs";
 import { sessionInfoToSummary } from "../session-bridge";
 import { sessionEntriesToTranscript } from "../transcript-conversion";
-import type { PromptHistoryEntryView, SessionSummary } from "../wire";
+import type { PromptHistoryEntry, SessionSummary } from "../wire";
 import { replyError, sessionStorage } from "./active-session";
 import { sessionFiles } from "./session-files";
 import type { ActionHandler, ActionHandlersMap } from "./types";
@@ -125,7 +125,7 @@ const PROMPT_HISTORY_LIMIT = 200;
 /** Longest prompt sent whole; a longer one arrives cut and says so. */
 const PROMPT_HISTORY_MAX_CHARS = 400;
 
-function toPromptView(entry: HistoryEntry): PromptHistoryEntryView {
+function toPromptView(entry: HistoryEntry): PromptHistoryEntry {
 	const truncated = entry.prompt.length > PROMPT_HISTORY_MAX_CHARS;
 	return {
 		id: entry.id,

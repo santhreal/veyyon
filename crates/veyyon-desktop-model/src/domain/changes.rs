@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Scope of uncommitted git working tree modifications.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, strum::EnumIter)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, strum::EnumIter)]
 pub enum ChangeScope {
 	/// Modified and untracked files in the working tree.
 	WorkingTree,
@@ -10,7 +10,7 @@ pub enum ChangeScope {
 }
 
 /// Status classification for a modified path within a git repository.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, strum::EnumIter)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, strum::EnumIter)]
 pub enum ChangeStatus {
 	/// Newly added file.
 	Added,
@@ -27,7 +27,7 @@ pub enum ChangeStatus {
 }
 
 /// Detailed file modification metadata within a git changes snapshot.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct ChangedFile {
 	/// Workspace-relative path to the file.
 	pub path:          String,
@@ -42,7 +42,7 @@ pub struct ChangedFile {
 }
 
 /// View of uncommitted repository changes and unified diff text.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct ChangesView {
 	/// Revision counter tracking change snapshot order.
 	pub revision:       u64,

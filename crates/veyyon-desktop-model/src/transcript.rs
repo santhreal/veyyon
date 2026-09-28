@@ -9,7 +9,18 @@ use crate::{
 
 /// Message participant role classification across twelve protocol variants.
 #[derive(
-	Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, strum::EnumIter,
+	Debug,
+	Clone,
+	Copy,
+	PartialEq,
+	Eq,
+	PartialOrd,
+	Ord,
+	Hash,
+	Serialize,
+	Deserialize,
+	ts_rs::TS,
+	strum::EnumIter,
 )]
 pub enum MessageRole {
 	User,
@@ -46,7 +57,9 @@ impl MessageRole {
 
 /// Rich content block payload representing an element within a transcript turn
 /// across eighteen variants.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, strum::EnumDiscriminants)]
+#[derive(
+	Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, strum::EnumDiscriminants,
+)]
 #[strum_discriminants(name(BlockKind), derive(Hash, PartialOrd, Ord, strum::EnumIter))]
 #[strum_discriminants(
 	doc = "Fieldless projection of `ContentBlock`, so a scene gate can sweep every block kind."
@@ -76,14 +89,18 @@ pub enum ContentBlock {
 	ToolCall {
 		id:           String,
 		name:         String,
+		#[ts(type = "unknown")]
 		arguments:    serde_json::Value,
+		#[ts(optional)]
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		presentation: Option<Arc<ToolPresentation>>,
 	},
 	ToolResult {
 		tool:         String,
+		#[ts(type = "unknown")]
 		content:      serde_json::Value,
 		is_error:     bool,
+		#[ts(optional)]
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		presentation: Option<Arc<ToolPresentation>>,
 	},
@@ -114,6 +131,7 @@ pub enum ContentBlock {
 	/// arrives in.
 	Custom {
 		variant: String,
+		#[ts(type = "ToolView")]
 		view:    Arc<ToolView>,
 	},
 	Diff {
@@ -142,16 +160,18 @@ pub enum ContentBlock {
 	},
 	Fallback {
 		producer: String,
+		#[ts(type = "unknown")]
 		value:    serde_json::Value,
 	},
 	Unknown {
 		tag:   String,
+		#[ts(type = "unknown")]
 		value: serde_json::Value,
 	},
 }
 
 /// Token and financial accounting totals associated with a turn.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct UsageTotals {
 	pub input_tokens:         u64,
 	pub output_tokens:        u64,
@@ -163,7 +183,7 @@ pub struct UsageTotals {
 }
 
 /// Metadata describing model generation, stop conditions, and resource usage.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct EntryMeta {
 	pub provider:    Option<String>,
 	pub model:       Option<String>,
@@ -173,7 +193,7 @@ pub struct EntryMeta {
 }
 
 /// Fully revisioned node within a session's transcript tree.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct TranscriptEntry {
 	pub id:                EntryId,
 	pub parent:            Option<EntryId>,
@@ -183,6 +203,7 @@ pub struct TranscriptEntry {
 	pub content:           Vec<ContentBlock>,
 	pub meta:              Option<EntryMeta>,
 	pub raw_discriminator: String,
+	#[ts(type = "unknown")]
 	pub raw:               serde_json::Value,
 }
 

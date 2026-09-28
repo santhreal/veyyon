@@ -3,7 +3,9 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 /// The type tag a setting is declared with in the host's schema.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::EnumIter)]
+#[derive(
+	Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ts_rs::TS, strum::EnumIter,
+)]
 #[serde(rename_all = "camelCase")]
 pub enum SettingKind {
 	Boolean,
@@ -16,7 +18,7 @@ pub enum SettingKind {
 }
 
 /// One choice a setting offers, with the copy the settings screen shows for it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct SettingOption {
 	/// The value written when the option is chosen.
 	pub value:       String,
@@ -34,11 +36,13 @@ pub struct SettingOption {
 /// Every field past `source` defaults, so a host that reports only the value
 /// triple still decodes; such an entry renders under its key with no
 /// description and no choices.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct SettingEntry {
 	/// The effective value.
+	#[ts(type = "unknown")]
 	pub value:       serde_json::Value,
 	/// The schema default.
+	#[ts(type = "unknown")]
 	pub default:     serde_json::Value,
 	/// Where the effective value came from (e.g. "default", "profile",
 	/// "project").
@@ -66,9 +70,11 @@ pub struct SettingEntry {
 	pub options:     Vec<SettingOption>,
 	/// Inclusive lower bound of a `Number` setting.
 	#[serde(default)]
+	#[ts(type = "number | null")]
 	pub min:         Option<serde_json::Number>,
 	/// Inclusive upper bound of a `Number` setting.
 	#[serde(default)]
+	#[ts(type = "number | null")]
 	pub max:         Option<serde_json::Number>,
 	/// Whether the value is cross-profile rather than per-profile.
 	#[serde(default)]

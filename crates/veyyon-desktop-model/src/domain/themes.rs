@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Single visual color theme definition.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct ThemeView {
 	/// Unique theme identifier.
 	pub id:   String,
@@ -16,7 +16,7 @@ pub struct ThemeView {
 /// Two themes are configured at once, one per ground, which is the shape the
 /// settings hold. Which of them is drawn is the window's own ground, so the
 /// choice is made where that is known rather than stated here.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct ThemesView {
 	/// List of all installed themes.
 	pub themes: Vec<ThemeView>,
@@ -27,7 +27,7 @@ pub struct ThemesView {
 }
 
 /// Keyboard shortcut binding configuration.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct KeybindingView {
 	/// Target action name triggered by this binding.
 	pub action: String,

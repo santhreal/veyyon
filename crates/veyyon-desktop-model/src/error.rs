@@ -9,7 +9,18 @@ use crate::{
 /// Classification of backend error origins across nineteen distinct protocol
 /// domains.
 #[derive(
-	Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, strum::EnumIter,
+	Debug,
+	Clone,
+	Copy,
+	PartialEq,
+	Eq,
+	PartialOrd,
+	Ord,
+	Hash,
+	Serialize,
+	Deserialize,
+	ts_rs::TS,
+	strum::EnumIter,
 )]
 pub enum ErrorScope {
 	Connection,
@@ -85,7 +96,7 @@ impl ErrorScope {
 }
 
 /// Structured error payload received from the host transport.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct BackendError {
 	pub scope:          ErrorScope,
 	pub code:           Option<String>,

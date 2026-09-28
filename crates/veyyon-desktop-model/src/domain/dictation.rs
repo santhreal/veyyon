@@ -4,7 +4,17 @@ use serde::{Deserialize, Serialize};
 
 /// Where a dictation is.
 #[derive(
-	Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, strum::EnumIter,
+	Debug,
+	Clone,
+	Copy,
+	Default,
+	PartialEq,
+	Eq,
+	Hash,
+	Serialize,
+	Deserialize,
+	ts_rs::TS,
+	strum::EnumIter,
 )]
 #[serde(rename_all = "snake_case")]
 pub enum DictationState {
@@ -46,7 +56,7 @@ impl DictationState {
 }
 
 /// Snapshot view of the speech this window is dictating.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct DictationView {
 	pub state:     DictationState,
 	/// Everything this dictation has committed, trimmed of a spoken submit

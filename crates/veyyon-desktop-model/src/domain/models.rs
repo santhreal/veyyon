@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Reference identifying a provider and model pair.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct ModelRef {
 	/// Provider identifier (e.g. "anthropic", "openai").
 	pub provider: String,
@@ -10,7 +10,7 @@ pub struct ModelRef {
 }
 
 /// One kind of input a model accepts, as the catalog declares it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ts_rs::TS)]
 #[serde(rename_all = "lowercase")]
 pub enum InputModality {
 	Text,
@@ -19,11 +19,12 @@ pub enum InputModality {
 	/// A modality this build does not know (the catalog also lists `audio`
 	/// and `pdf`); kept so one new upstream value never fails a snapshot.
 	#[serde(other)]
+	#[ts(skip)]
 	Other,
 }
 
 /// Detailed model capabilities and token window bounds.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct ModelView {
 	/// Provider identifier.
 	pub provider:       String,
@@ -58,7 +59,7 @@ impl ModelView {
 }
 
 /// Available models, current model selection, and thinking configuration.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct ModelsView {
 	/// List of all available models.
 	pub models:          Vec<ModelView>,

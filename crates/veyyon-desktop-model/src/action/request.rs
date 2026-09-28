@@ -14,24 +14,27 @@ use crate::{
 ///
 /// `media_type` is one of the image or video types the host accepts;
 /// `data` crosses the wire as base64 (see [`crate::base64_bytes`]).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct AttachmentSubmission {
 	pub id:         String,
 	pub name:       String,
 	pub media_type: String,
+	#[ts(type = "string")]
 	#[serde(with = "crate::base64_bytes")]
 	pub data:       Vec<u8>,
 }
 
 /// Request wrapper carrying a unique identifier and action payload.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct HostRequest {
 	pub id:     RequestId,
 	pub action: super::HostAction,
 }
 
 /// Operation applied to an autonomous goal.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::EnumIter)]
+#[derive(
+	Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ts_rs::TS, strum::EnumIter,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum GoalControl {
 	Pause,
@@ -49,7 +52,7 @@ pub enum GoalControl {
 /// Every request names its session. A console belongs to the session it was
 /// opened in, and the host refuses a request naming another one, so a window
 /// that moved on cannot change a setup nobody is looking at.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub enum AutoswarmRequest {
 	/// Set one row of the console.
 	///
@@ -62,12 +65,15 @@ pub enum AutoswarmRequest {
 		/// The row's id, as the console states it.
 		field:   String,
 		/// The text a text or segmented row takes.
+		#[ts(optional)]
 		#[serde(skip_serializing_if = "Option::is_none")]
 		text:    Option<String>,
 		/// The number a stepper takes, held to the row's own bounds.
+		#[ts(optional)]
 		#[serde(skip_serializing_if = "Option::is_none")]
 		number:  Option<i64>,
 		/// The state a toggle takes.
+		#[ts(optional)]
 		#[serde(skip_serializing_if = "Option::is_none")]
 		on:      Option<bool>,
 	},
