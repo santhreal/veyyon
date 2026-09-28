@@ -7,9 +7,9 @@ use gpui::{
 	VisualTestContext, px, size,
 };
 use veyyon_desktop_app::{
-	AppState, driver,
+	AppState,
 	drawer::TerminalDrawer,
-	keymap,
+	driver, keymap,
 	palette::{CommandPalette, Item},
 	panel::RightPanel,
 	settings::SettingsView,
@@ -73,8 +73,12 @@ fn open_window(
 		let regions = if whole {
 			Regions {
 				sidebar:  cx.new(|cx| Sidebar::new(shared.clone(), window, cx)).into(),
-				thread:   cx.new(|cx| ThreadView::new(shared.clone(), window, cx)).into(),
-				panel:    cx.new(|cx| RightPanel::new(shared.clone(), window, cx)).into(),
+				thread:   cx
+					.new(|cx| ThreadView::new(shared.clone(), window, cx))
+					.into(),
+				panel:    cx
+					.new(|cx| RightPanel::new(shared.clone(), window, cx))
+					.into(),
 				drawer:   cx
 					.new(|cx| TerminalDrawer::new(shared.clone(), window, cx))
 					.into(),
@@ -296,6 +300,20 @@ pub fn listed() -> Vec<HostEvent> {
 				summary("b", "/w/alpha", 200),
 				summary("c", "/w/beta", 50),
 			],
+		},
+		Vec::new(),
+	))]
+}
+
+/// `count` threads `t0` to `t{count - 1}` under `/w/alpha`, the last the
+/// newest, none open.
+pub fn threads(count: u64) -> Vec<HostEvent> {
+	vec![HostEvent::Snapshot(SnapshotSection::Sessions(
+		Versioned {
+			revision: 1,
+			value:    (0..count)
+				.map(|n| summary(&format!("t{n}"), "/w/alpha", n + 1))
+				.collect(),
 		},
 		Vec::new(),
 	))]

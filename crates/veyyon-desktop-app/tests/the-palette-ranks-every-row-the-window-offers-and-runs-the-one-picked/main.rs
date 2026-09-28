@@ -22,6 +22,7 @@ mod commands;
 mod harness;
 mod modes;
 mod motion;
+mod scrolling;
 
 use std::collections::HashSet;
 
@@ -61,8 +62,12 @@ fn the_palette_opens_centred_a_fifth_of_the_way_down_and_asks_the_host_for_its_c
 		.expect("the first row is laid out");
 	assert_eq!(row.size.height, measure::MENU_ROW);
 
+	let labels = w.labels();
+	for listed in ["title b", "title c", "MCP servers"] {
+		assert!(labels.iter().any(|label| label == listed), "{listed:?} is listed in {labels:?}");
+	}
 	let texts = w.texts();
-	for drawn in ["Commands", "Threads", "Settings", "title b", "title c", "MCP servers"] {
+	for drawn in ["Commands", labels[0].as_str()] {
 		assert!(texts.iter().any(|text| text == drawn), "{drawn:?} is drawn in {texts:?}");
 	}
 }

@@ -16,14 +16,16 @@ mod run;
 mod sources;
 mod view;
 
+use std::ops::Range;
+
 use veyyon_desktop_model::{HostAction, SnapshotSectionKind, SurfaceId};
 use veyyon_desktop_ui::{
 	editor::{Editor, EditorEvent, EditorMode},
 	theme::text,
 };
 use veyyon_gpui::{
-	App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable, ScrollHandle,
-	Subscription, Window,
+	App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable, ScrollStrategy,
+	Subscription, UniformListScrollHandle, Window,
 };
 
 pub use self::{
@@ -32,7 +34,7 @@ pub use self::{
 	motion::Phase,
 	sources::{Scope, refusal, refusal_kind},
 };
-use self::{motion::Presence, rank::rank};
+use self::{motion::Presence, rank::rank, view::Line};
 use crate::{
 	actions::workspace,
 	state::{AppState, StoreEvent},
@@ -58,12 +60,16 @@ pub struct CommandPalette {
 	scope:          Scope,
 	items:          Vec<Item>,
 	shown:          Vec<usize>,
+	/// The lines the list draws: [`shown`](Self::shown), a heading above
+	/// each section.
+	lines:          Vec<Line>,
 	selected:       usize,
 	return_focus:   Option<FocusHandle>,
-	list:           ScrollHandle,
+	list:           UniformListScrollHandle,
 	renders:        usize,
-	/// How many row targets the last frame drew, so fewer can forget the rest.
-	drawn_rows:     usize,
+	/// The shown rows the list last laid out, so the next layout can forget
+	/// the rest.
+	drawn:          Range<usize>,
 	_subscriptions: [Subscription; 3],
 }
 
@@ -93,11 +99,12 @@ impl CommandPalette {
 			scope: Scope::Root,
 			items: Vec::new(),
 			shown: Vec::new(),
+			lines: Vec::new(),
 			selected: 0,
 			return_focus: None,
-			list: ScrollHandle::new(),
+			list: UniformListScrollHandle::new(),
 			renders: 0,
-			drawn_rows: 0,
+			drawn: 0..0,
 			_subscriptions: subscriptions,
 		}
 	}
@@ -193,23 +200,15 @@ impl CommandPalette {
 		} else {
 			(self.selected + count - 1) % count
 		};
-		self.list.scroll_to_item(self.child_index(self.selected));
+		if let Some(line) = self.line_of(self.selected) {
+			self.list.scroll_to_item(line, ScrollStrategy::Nearest);
+		}
 		cx.notify();
 	}
 
-	/// The index among the list's children of shown row `row`: the rows
-	/// before it plus a heading per section up to and including its own.
-	fn child_index(&self, row: usize) -> usize {
-		let mut headings = 0;
-		let mut section = None;
-		for ix in self.shown.iter().take(row + 1) {
-			let group = self.items.get(*ix).map(|item| item.group);
-			if group != section {
-				section = group;
-				headings += 1;
-			}
-		}
-		row + headings
+	/// The index among the list's lines of shown row `row`.
+	fn line_of(&self, row: usize) -> Option<usize> {
+		self.lines.iter().position(|line| *line == Line::Row(row))
 	}
 
 	/// Runs the highlighted row, or the argument typed for a command.
@@ -280,8 +279,9 @@ impl CommandPalette {
 		let query = self.input.read(cx).text().to_owned();
 		self.items = sources::collect(&self.scope, &query, self.app.read(cx), window);
 		self.shown = rank(&self.items, &Query::new(&query));
+		self.lines = view::lines(&self.shown, &self.items);
 		self.selected = 0;
-		self.list.scroll_to_item(0);
+		self.list.scroll_to_item(0, ScrollStrategy::Top);
 	}
 
 	fn on_input(&mut self, event: EditorEvent, window: &mut Window, cx: &mut Context<Self>) {
