@@ -6,8 +6,8 @@
 
 ### Added
 
-- `@veyyon/utils/session-file` exports `sessionFileMatchesResumeArgument`, which reports whether a transcript filename answers a `--resume` id or prefix.
 - `getBrowserProfilesDir()` returns the persistent browser profiles directory under the agent directory.
+- `@veyyon/utils/session-file` exports `sessionFileMatchesResumeArgument`, which reports whether a transcript filename answers a `--resume` id or prefix.
 
 ### Changed
 
