@@ -247,7 +247,8 @@ fn tool_row(
 }
 
 /// The words copying an entry takes: its prose, its thoughts, the calls it
-/// made, what its runs printed and what its views state, in order.
+/// made, what its runs printed, what its views state and the raw value of a
+/// record the window cannot read, in order.
 #[must_use]
 pub fn copy_text(entry: &TranscriptEntry) -> String {
 	let mut out = String::new();
@@ -278,6 +279,9 @@ pub fn copy_text(entry: &TranscriptEntry) -> String {
 			},
 			ContentBlock::Summary { text, .. } => push_line(&mut out, text),
 			ContentBlock::FileMention { path, .. } => push_line(&mut out, path),
+			ContentBlock::Fallback { value, .. } | ContentBlock::Unknown { value, .. } => {
+				push_line(&mut out, &value.to_string());
+			},
 			_ => {},
 		}
 	}

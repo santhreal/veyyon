@@ -107,8 +107,10 @@ pub fn pane_lines(output: &str) -> Vec<String> {
 		.take(PANE_LINE_CEILING)
 		.map(str::to_owned)
 		.collect();
-	if total > PANE_LINE_CEILING {
-		out.push(format!("… {} more lines", total - PANE_LINE_CEILING));
+	match total.saturating_sub(PANE_LINE_CEILING) {
+		0 => {},
+		1 => out.push("… 1 more line".to_owned()),
+		rest => out.push(format!("… {rest} more lines")),
 	}
 	out
 }
