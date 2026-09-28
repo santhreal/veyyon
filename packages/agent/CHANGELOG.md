@@ -28,6 +28,7 @@
 - A history summary whose single request times out, or does not fit the summarizing model's context window, is produced in stages: the span is summarized as consecutive segments of up to 32k tokens, four at a time, and the segment summaries are merged in rounds into one summary, so a 234k-token session on a model that never begins a whole-span answer still compacts; `compact()` reports the segment count in `summaryStages` and takes `summaryStaging: "staged"` to start staged.
 - A provider's server-side compaction runs under its own ten-minute deadline instead of the three-minute remote-summarizer deadline that cut every codex compaction of a large span.
 - The staged-summary segment budget and worker count clamp through the shared `clampLow`, and the engine classifies a summary timeout through the error-flag leaf modules rather than the error barrel; no behavior change.
+- The agent loop's cooperative yield sleeps only after 50 ms of calls the event loop did not turn between, so a streamed event, a turn start or a tool batch that follows an idle wait is no longer held 20 ms before any view receives it.
 
 ## [1.4.1] - 2026-09-08
 

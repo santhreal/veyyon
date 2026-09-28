@@ -8,59 +8,137 @@ afterEach(() => {
 });
 
 /**
- * Build a gate over an injected clock and a counting sleep so the test drives
- * the gate logic without spying on process-global `Date.now`/`scheduler.wait`.
- * Those globals are shared across files, so under concurrent `bun test` a
- * sibling file's `vi.restoreAllMocks()` could wipe the spies mid-run — the
- * exact race that made the previous singleton-based test flake.
+ * WHY: the shared gate sat in front of every streamed event, every turn start
+ * and every tool batch, and slept 20 ms whenever 50 ms had passed since its
+ * last sleep. A stream whose events arrive more than 50 ms apart — a model
+ * pausing, a slow provider, the first token of a reply — therefore held every
+ * such event 20 ms before any view saw it, although the loop had been idle in
+ * I/O the whole time. The class closed here: the gate sleeps only for a run of
+ * calls the event loop did not turn between, and never for a caller that
+ * already awaited I/O. Not caught: a caller that bypasses the gate, or a hot
+ * loop that turns the event loop on every iteration but still starves it.
+ *
+ * The gate runs over an injected clock, a counting sleep and a manual turn
+ * signal, so no test spies on process-global `performance.now`,
+ * `scheduler.wait` or `setImmediate`: a sibling file's `vi.restoreAllMocks()`
+ * could wipe those spies mid-run under concurrent `bun test`.
  */
-function makeGate(): { gate: YieldGate; advanceBy: (ms: number) => void; sleeps: () => number } {
+function makeGate(): { gate: YieldGate; advanceBy: (ms: number) => void; turn: () => void; sleeps: () => number } {
 	let now = 1_000_000;
+	let pending: (() => void) | undefined;
 	const sleep = vi.fn(async () => {});
-	const gate = new YieldGate({ now: () => now, sleep });
+	const gate = new YieldGate({
+		now: () => now,
+		sleep,
+		onTurn: callback => {
+			pending = callback;
+		},
+	});
 	return {
 		gate,
 		advanceBy: (ms: number) => {
 			now += ms;
+		},
+		turn: () => {
+			const callback = pending;
+			pending = undefined;
+			callback?.();
 		},
 		sleeps: () => sleep.mock.calls.length,
 	};
 }
 
 describe("YieldGate.yieldIfDue", () => {
-	it("sleeps on the first call and gates immediate callers", async () => {
+	it("never sleeps for calls the event loop turned between, however far apart", async () => {
+		const { gate, advanceBy, turn, sleeps } = makeGate();
+
+		for (let i = 0; i < 10; i++) {
+			await gate.yieldIfDue();
+			advanceBy(YIELD_INTERVAL_MS * 5);
+			turn();
+		}
+		expect(sleeps()).toBe(0);
+	});
+
+	it("sleeps once a run without a turn reaches the interval, not before", async () => {
 		const { gate, advanceBy, sleeps } = makeGate();
 
 		await gate.yieldIfDue();
+		advanceBy(YIELD_INTERVAL_MS - 1);
+		await gate.yieldIfDue();
+		expect(sleeps()).toBe(0);
+
+		advanceBy(1);
+		await gate.yieldIfDue();
+		expect(sleeps()).toBe(1);
+	});
+
+	it("starts a new run after a sleep, so the next sleep needs a full interval", async () => {
+		const { gate, advanceBy, sleeps } = makeGate();
+
+		await gate.yieldIfDue();
+		advanceBy(YIELD_INTERVAL_MS);
+		await gate.yieldIfDue();
 		expect(sleeps()).toBe(1);
 
+		await gate.yieldIfDue();
 		advanceBy(YIELD_INTERVAL_MS - 1);
 		await gate.yieldIfDue();
 		expect(sleeps()).toBe(1);
+
+		advanceBy(1);
+		await gate.yieldIfDue();
+		expect(sleeps()).toBe(2);
 	});
 
-	it("sleeps again once the gate window elapses", async () => {
+	it("a turn in the middle of a run restarts it", async () => {
+		const { gate, advanceBy, turn, sleeps } = makeGate();
+
+		await gate.yieldIfDue();
+		advanceBy(YIELD_INTERVAL_MS - 1);
+		turn();
+		await gate.yieldIfDue();
+		advanceBy(YIELD_INTERVAL_MS - 1);
+		await gate.yieldIfDue();
+		expect(sleeps()).toBe(0);
+	});
+
+	it("restarts the run on a backward clock and still sleeps one interval later", async () => {
 		const { gate, advanceBy, sleeps } = makeGate();
 
 		await gate.yieldIfDue();
-		expect(sleeps()).toBe(1);
+		advanceBy(-YIELD_INTERVAL_MS * 4);
+		await gate.yieldIfDue();
+		expect(sleeps()).toBe(0);
 
 		advanceBy(YIELD_INTERVAL_MS);
 		await gate.yieldIfDue();
-		expect(sleeps()).toBe(2);
+		expect(sleeps()).toBe(1);
 	});
 
-	it("treats a backward clock jump as due instead of gating forever", async () => {
-		const { gate, advanceBy, sleeps } = makeGate();
+	it("reads a real event-loop turn from the default signal", async () => {
+		let now = 1_000_000;
+		const sleep = vi.fn(async () => {});
+		const gate = new YieldGate({ now: () => now, sleep });
 
-		await gate.yieldIfDue();
-		expect(sleeps()).toBe(1);
+		// The default signal is a real event-loop turn, which fake timers cannot
+		// produce; an immediate between calls turns the loop with no delay, as
+		// awaiting a socket read does.
+		for (let i = 0; i < 4; i++) {
+			await gate.yieldIfDue();
+			now += YIELD_INTERVAL_MS * 2;
+			await new Promise<void>(resolve => setImmediate(resolve));
+		}
+		expect(sleep.mock.calls.length).toBe(0);
 
-		// NTP correction / fake timers can move the wall clock backward; the next
-		// call must still yield rather than wait for an interval that never comes.
-		advanceBy(-YIELD_INTERVAL_MS * 4);
-		await gate.yieldIfDue();
-		expect(sleeps()).toBe(2);
+		// Settled promises alone never turn it, as a buffered burst of events
+		// does not: calls at 0, 50, 100 and 150 ms sleep at 50 and at 150.
+		for (let i = 0; i < 4; i++) {
+			await gate.yieldIfDue();
+			now += YIELD_INTERVAL_MS;
+			await Promise.resolve();
+		}
+		expect(sleep.mock.calls.length).toBe(2);
 	});
 });
 
