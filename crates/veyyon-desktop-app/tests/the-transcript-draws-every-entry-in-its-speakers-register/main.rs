@@ -231,6 +231,13 @@ impl Thread<'_> {
 
 	/// The plan item `ix` is drawn from, with every finished turn unfolded.
 	pub fn plan(&mut self, ix: usize) -> Plan {
+		self.plan_with(ix, &HashMap::new())
+	}
+
+	/// The plan item `ix` is drawn from, with every finished turn unfolded
+	/// and each tool row `tools` names opened or closed as it states, the way
+	/// a click on the row leaves it.
+	pub fn plan_with(&mut self, ix: usize, tools: &HashMap<String, bool>) -> Plan {
 		self.state.read_with(&*self.cx, |state, _| {
 			let mut index = TurnIndex::default();
 			index.rebuild(state, &sid());
@@ -238,10 +245,10 @@ impl Thread<'_> {
 				.filter_map(|at| index.turn_at(at).map(|turn| turn.range.start))
 				.collect();
 			let opened = Opened {
-				tools:    &HashMap::new(),
+				tools,
 				thoughts: &HashSet::new(),
-				turns:    &turns,
-				working:  state.is_working(&sid()),
+				turns: &turns,
+				working: state.is_working(&sid()),
 			};
 			plan_entry(state, &sid(), ix, &index, &opened)
 				.unwrap_or_else(|| panic!("item {ix} is on the branch"))

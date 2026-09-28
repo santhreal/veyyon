@@ -1,6 +1,6 @@
 //! A tool result reaches the call it answers by the call's id, whatever
-//! order the results arrive in, and a result drawn on its own counts the
-//! lines it holds past its pane's ceiling.
+//! order the results arrive in, and counts the lines it holds past its
+//! pane's ceiling whether it is drawn on its own or in its call's row.
 //!
 //! WHY: calls run side by side and their results come back in the order the
 //! calls finished, so a result matched by its place in the turn draws one
@@ -8,13 +8,21 @@
 //! results of three calls in every order and pins each row the reply plans
 //! to the rows it plans when the results arrive in call order, where only
 //! the first call failed, so a result read under the wrong call changes a
-//! row's status.
+//! row's status. A pane cut at its ceiling with no count of the rest reads
+//! as the whole output, so the count is pinned on both paths a result is
+//! drawn by.
 //!
-//! Gap: the output drawn inside an opened row is `turns`; the arguments a
-//! call is titled by are the view model's.
+//! Gap: the words an opened row paints are `turns`, and here a row's lines
+//! are read from the plan; the arguments a call is titled by are the view
+//! model's.
+
+use std::collections::HashMap;
 
 use gpui::TestAppContext;
-use veyyon_desktop_app::transcript::values::PANE_LINE_CEILING;
+use veyyon_desktop_app::transcript::{
+	plan::{Piece, ToolBody},
+	values::PANE_LINE_CEILING,
+};
 use veyyon_desktop_model::{ContentBlock, MessageRole};
 
 use super::{chain, entry, items::forms, opened, snapshot, text, thread};
@@ -128,4 +136,60 @@ fn a_result_drawn_on_its_own_counts_the_lines_past_its_ceiling(cx: &mut TestAppC
 		}
 	}
 	assert_eq!(broke, Vec::<String>::new(), "a result's pane lost the count of lines past it");
+}
+
+#[gpui::test]
+fn a_result_read_in_its_calls_opened_row_counts_the_lines_past_its_ceiling(
+	cx: &mut TestAppContext,
+) {
+	let mut thread = thread(cx, opened(Vec::new()));
+	let open = HashMap::from([("c1".to_owned(), true)]);
+	let mut broke = Vec::new();
+	for (revision, (printed, rest)) in (2..).zip([
+		(PANE_LINE_CEILING, None),
+		(PANE_LINE_CEILING + 1, Some("… 1 more line")),
+		(PANE_LINE_CEILING + 7, Some("… 7 more lines")),
+	]) {
+		let output = (0..printed)
+			.map(|n| format!("row {n}"))
+			.collect::<Vec<_>>()
+			.join("\n");
+		let ids = ["u", "a", "t"].map(|id| format!("{id}{revision}"));
+		thread.apply(vec![snapshot(
+			revision,
+			chain(vec![
+				(ids[0].as_str(), MessageRole::User, vec![text("read it")]),
+				(ids[1].as_str(), MessageRole::Assistant, vec![call("c1", "src/a.rs")]),
+				(ids[2].as_str(), MessageRole::ToolResult, vec![result("c1", &output, false)]),
+			]),
+		)]);
+		let expected: Vec<String> = (0..printed.min(PANE_LINE_CEILING))
+			.map(|n| format!("row {n}"))
+			.chain(rest.map(str::to_owned))
+			.collect();
+		let bodies: Vec<Option<ToolBody>> = thread
+			.plan_with(1, &open)
+			.pieces
+			.into_iter()
+			.filter_map(|piece| match piece {
+				Piece::Tool(row) => Some(row.body),
+				_ => None,
+			})
+			.collect();
+		let lines = match bodies.as_slice() {
+			[Some(ToolBody::Lines(lines))] => lines,
+			bodies => {
+				broke.push(format!("{printed} lines planned the row bodies {bodies:?}"));
+				continue;
+			},
+		};
+		if *lines != expected {
+			broke.push(format!(
+				"{printed} lines planned a row of {} lines ending {:?}",
+				lines.len(),
+				lines.last()
+			));
+		}
+	}
+	assert_eq!(broke, Vec::<String>::new(), "an opened row lost the count of lines past it");
 }
