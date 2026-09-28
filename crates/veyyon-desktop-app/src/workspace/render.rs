@@ -3,7 +3,8 @@
 //! banner tops the thread column while the link is not up and the freeze
 //! strip while the host holds every agent frozen, the empty state takes the
 //! thread's place while no session is open, and the toast stack is drawn
-//! over everything.
+//! over everything below the thread header, clear of the composer at the
+//! column's foot and the drawer under it.
 //!
 //! A region slides by clipping a container of `size × open` around content
 //! drawn at its full size and pinned to the container's fixed edge, so the
@@ -129,6 +130,9 @@ impl Render for Workspace {
 				driver::forget(window, id, cx);
 			}
 		}
+		// The thread header sits under whichever strips top the column.
+		let strips = 1 + u8::from(banner.is_some()) + u8::from(freeze.is_some());
+		let toasts_top = size::HEADER * f32::from(strips);
 
 		let root = div()
 			.id("workspace")
@@ -168,7 +172,10 @@ impl Render for Workspace {
 			.child(
 				div()
 					.absolute()
-					.inset_0()
+					.top(toasts_top)
+					.left_0()
+					.right_0()
+					.bottom_0()
 					.child(fill(&self.notices.toasts().clone().into())),
 			)
 			.when(driver::is_enabled(), |root| root.child(driver::FrameProbe))

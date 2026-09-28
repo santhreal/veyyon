@@ -39,6 +39,7 @@ mod freeze;
 mod motion;
 mod refusal;
 mod scale;
+mod toasts;
 mod width;
 
 /// A region drawn as a box filling its slot, found by its selector.
@@ -180,8 +181,8 @@ fn an_announcement_is_drawn_until_the_queue_takes_it_down() {
 		.debug_bounds("toast-close")
 		.expect("a toast's close button is drawn");
 	assert!(
-		close.center().x > viewport.width / 2. && close.center().y > viewport.height / 2.,
-		"the stack sits in the bottom right corner, clear of the pointer at the origin"
+		close.center().x > viewport.width / 2.,
+		"the stack sits at the right, clear of the pointer at the origin"
 	);
 
 	advance(cx, Duration::from_secs(63));

@@ -1,4 +1,5 @@
-//! Short notices stacked in the bottom-right corner of the window.
+//! Short notices stacked in the top-right corner of the region they are laid
+//! over.
 
 use std::{rc::Rc, time::Duration};
 
@@ -100,8 +101,8 @@ struct Entry {
 /// reduced motion. A toast with a lifetime ([`Toast::lasts`]) dismisses
 /// itself that long after it appears through one scheduled task; hovering the
 /// stack cancels those tasks and leaving it schedules them again. Render the
-/// entity as the last child of a relatively positioned root: it positions
-/// itself in the bottom-right corner.
+/// entity filling a region laid over the window: it positions itself in that
+/// region's top-right corner.
 #[derive(Default)]
 pub struct Toasts {
 	entries: Vec<Entry>,
@@ -316,14 +317,14 @@ impl Render for Toasts {
 		}
 		let palette = cx.theme().palette;
 		// A cached view lays its root out at the host's origin, so the root
-		// fills the host and the stack is placed against its bottom right.
+		// fills the host and the stack is placed against its top right.
 		div()
 			.size_full()
 			.child(
 				div()
 					.id("toasts")
 					.absolute()
-					.bottom(space::S4)
+					.top(space::S4)
 					.right(space::S4)
 					.flex()
 					.flex_col()

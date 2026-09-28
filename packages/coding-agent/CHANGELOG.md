@@ -185,7 +185,7 @@
 - The desktop UI toolkit gains a streaming markdown renderer that reparses only the trailing blocks on each appended delta, highlights fenced code onto the theme's syntax colors, can draw code plain until a highlight computed off the UI thread is cached, and can route link clicks to a caller-supplied handler.
 - The desktop UI toolkit gains a text editor with single-line and multi-line modes, grapheme-aware caret motion and deletion, coalesced undo and redo, and input-method composition.
 - The desktop UI text editor masks secrets on request, drawing one bullet per character and keeping the text off the clipboard.
-- The desktop UI toolkit gains popovers, keyboard-driven menus, context menus, selects, tabs with a sliding underline and an owner-supplied per-tab wrapper, overlay scroll areas, split handles and a bottom-right toast stack.
+- The desktop UI toolkit gains popovers, keyboard-driven menus, context menus, selects, tabs with a sliding underline and an owner-supplied per-tab wrapper, overlay scroll areas, split handles and a toast stack.
 - The GUI host wire types and runtime arrays are generated from the Rust desktop model into `gui-host/wire.generated.ts`, and a desktop-model test fails when the committed file differs; frames on the socket are unchanged.
 - The GUI host sends a streamed reply's text to a desktop window as appends to the entry the window holds, at most once a frame, and sends the whole reply only when it starts, ends or changes shape; an append that does not match the held reply fails the connection instead of drawing text the host never sent.
 - The desktop parity tables record the carrier for each agents dashboard operation, `/mcp` subcommand, provider login kind, terminal theme ground and status-line segment; no user-facing effect.
@@ -399,6 +399,7 @@
 
 ### Fixed
 
+- Desktop toasts stack at the top right under the thread header, where they covered the composer's controls and the terminal drawer.
 - The desktop window stops its motion when `display.transitions` is `off` or the system asks for reduced motion, including a change made while the window is open, where it read neither.
 - The desktop right panel asks the host again for a tab's changes, file tree, open file, diagnostics or usage each time you open that tab, so edits made outside a turn show up without closing and reopening the panel.
 - The desktop right panel and terminal drawer state the host's reason when it refuses a request and offer Retry only when the host accepts a second send, and a diff the host cut before its first file states the cut instead of reading as a clean working tree.
