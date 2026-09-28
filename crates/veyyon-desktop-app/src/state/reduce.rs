@@ -279,6 +279,7 @@ impl AppState {
 		{
 			return;
 		}
+		self.pending_open = None;
 		let fallback = if ok { None } else { self.store.persisted.shell.active_session.clone() };
 		if let Some(active) = fallback {
 			self.show(active, batch);
