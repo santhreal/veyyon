@@ -31,6 +31,8 @@
 
 ### Added
 
+- The desktop window opens a session's tree in the thread column from `Ctrl+Shift+T` (`Cmd+Shift+T` on macOS), the thread header's Tree button or the palette's `/tree` row, browses its entries under the terminal's five filters, moves the session to a picked entry with an optional branch summary, and sets or clears an entry's label.
+- The GUI host answers `ForkSession`, `LoadSessionTree`, `NavigateTree`, `AbortBranchSummary` and `SetEntryLabel`, so a desktop window forks a thread, reads its session tree, moves to any entry with an optional branch summary, cancels a pending summary, and sets or clears an entry's label.
 - The desktop command palette runs a command with the text typed after its name, such as `/rename a better title` or `/mcp add docs npx docs.server`, and joins, leaves and refreshes a share through `/join <link>`, `/leave` and `/collab status`.
 - The desktop window draws queued announcements as toasts, a banner with a retry button while the host link is down, and a welcome view with recent threads while no session is open.
 - A desktop window adds, removes, tests and reloads MCP servers, signs a remote server in again or out, lists each connected server's resources, resource templates, prompts and notification capabilities, and searches, signs into and adds servers from the Smithery registry, writing each change into the profile's `mcp.json` or key file as the terminal's `/mcp` subcommands do.
@@ -167,6 +169,8 @@
 
 ### Changed
 
+- The desktop palette's `/fork` row forks the thread instead of branching it.
+- The terminal `/tree` picker and the GUI host build session tree rows from one module, so both hosts show the same order, indent, text and filters.
 - The desktop binary opens the rebuilt workspace window, persists each thread's panel layout, and restores it when the thread is shown again.
 - The desktop window lays out its sidebar, thread, right panel, terminal drawer, palette and settings in one resizable workspace whose regions slide on a spring and persist their sizes per session.
 - Desktop toasts take a lifetime from their owner, report the toasts they take down themselves, and fade out when dismissed.
@@ -399,6 +403,7 @@
 
 ### Fixed
 
+- The GUI host sends only a session's current branch as its transcript, where a thread moved with the session tree drew its other branches in file order.
 - Desktop toasts stack at the top right under the thread header, where they covered the composer's controls and the terminal drawer.
 - The desktop window stops its motion when `display.transitions` is `off` or the system asks for reduced motion, including a change made while the window is open, where it read neither.
 - The desktop right panel asks the host again for a tab's changes, file tree, open file, diagnostics or usage each time you open that tab, so edits made outside a turn show up without closing and reopening the panel.
