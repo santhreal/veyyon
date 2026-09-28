@@ -310,21 +310,27 @@ impl Render for Toasts {
 			return div().into_any_element();
 		}
 		let palette = cx.theme().palette;
+		// A cached view lays its root out at the host's origin, so the root
+		// fills the host and the stack is placed against its bottom right.
 		div()
-			.id("toasts")
-			.absolute()
-			.bottom(space::S4)
-			.right(space::S4)
-			.flex()
-			.flex_col()
-			.gap(space::S2)
-			.w(size::TOAST_WIDTH)
-			.on_hover(cx.listener(|this, hovered: &bool, _, cx| this.pause(*hovered, cx)))
-			.children(
-				self
-					.entries
-					.iter()
-					.map(|entry| Self::render_entry(entry, &palette, cx)),
+			.size_full()
+			.child(
+				div()
+					.id("toasts")
+					.absolute()
+					.bottom(space::S4)
+					.right(space::S4)
+					.flex()
+					.flex_col()
+					.gap(space::S2)
+					.w(size::TOAST_WIDTH)
+					.on_hover(cx.listener(|this, hovered: &bool, _, cx| this.pause(*hovered, cx)))
+					.children(
+						self
+							.entries
+							.iter()
+							.map(|entry| Self::render_entry(entry, &palette, cx)),
+					),
 			)
 			.into_any_element()
 	}
