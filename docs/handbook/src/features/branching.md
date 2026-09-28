@@ -20,7 +20,7 @@ Also opens via:
 
 | Mode | Shows |
 | --- | --- |
-| `default` | Conversation nodes; hides label/custom/model_change/thinking bookkeeping and tool-call-only assistant messages |
+| `default` | Messages, custom messages, compactions and branch summaries; hides bookkeeping (labels, settings, model and mode changes, titles, lifecycle markers) and tool-call-only assistant messages |
 | `no-tools` | `default` plus hides tool-result messages |
 | `user-only` | User messages only |
 | `labeled-only` | Entries with labels |

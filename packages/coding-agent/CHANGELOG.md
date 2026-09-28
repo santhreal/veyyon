@@ -404,6 +404,7 @@
 ### Fixed
 
 - The GUI host sends only a session's current branch as its transcript, where a thread moved with the session tree drew its other branches in file order.
+- The session tree in the terminal and the desktop names every entry type, and its Default and No tools views hide the session's bookkeeping (lifecycle markers, settings snapshots, titles, modes, rules, agent spawns), where each of those drew a blank row in every view.
 - Desktop toasts stack at the top right under the thread header, where they covered the composer's controls and the terminal drawer.
 - The desktop composer offers Retry on a refused prompt only when the host called the refusal retryable, where it drew a Retry that sent nothing.
 - The desktop window stops its motion when `display.transitions` is `off` or the system asks for reduced motion, including a change made while the window is open, where it read neither.

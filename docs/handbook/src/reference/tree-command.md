@@ -81,14 +81,12 @@ Filter modes (`TreeList`):
 
 ### `default`
 
-Shows conversational nodes plus any entry types not explicitly suppressed. It hides these setting/bookkeeping entry types:
+Shows the conversation: `message`, `custom_message`, `compaction` and `branch_summary` entries. It hides
+every other entry type as bookkeeping, among them `label`, `custom`, `model_change`,
+`thinking_level_change`, `title_change`, `mode_change`, `settings_snapshot` and `session_lifecycle`.
 
-- `label`
-- `custom`
-- `model_change`
-- `thinking_level_change`
-
-Other internal entry types that are not rendered specially may appear as blank rows in current code.
+Each bookkeeping row reads as its type and its value, for example `[title: List the files]` or
+`[session running: created]`. An entry type this build does not know reads as its bare type tag.
 
 ### `no-tools`
 

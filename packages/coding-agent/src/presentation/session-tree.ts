@@ -185,23 +185,24 @@ export function isTreeEntryShown(node: SessionTreeNode, mode: TreeFilterMode, le
 		if (!hasText(entry.message.content) && !endedAbnormally) return false;
 	}
 
-	// Settings and bookkeeping, which the default view hides.
-	const isSettingsEntry =
-		entry.type === "label" ||
-		entry.type === "custom" ||
-		entry.type === "model_change" ||
-		entry.type === "thinking_level_change";
+	// Settings, titles, lifecycle markers and labels: bookkeeping, which the
+	// default view hides. The conversation is its messages and what replaced them.
+	const isBookkeeping =
+		entry.type !== "message" &&
+		entry.type !== "custom_message" &&
+		entry.type !== "compaction" &&
+		entry.type !== "branch_summary";
 	switch (mode) {
 		case "user-only":
 			return entry.type === "message" && entry.message.role === "user";
 		case "no-tools":
-			return !isSettingsEntry && !(entry.type === "message" && entry.message.role === "toolResult");
+			return !isBookkeeping && !(entry.type === "message" && entry.message.role === "toolResult");
 		case "labeled-only":
 			return node.label !== undefined;
 		case "all":
 			return true;
 		default:
-			return !isSettingsEntry;
+			return !isBookkeeping;
 	}
 }
 
@@ -222,6 +223,8 @@ export function treeEntryText(content: unknown): string {
 /** The line a row reads for `node`, with each part's tone. */
 export function treeEntryRow(node: SessionTreeNode, toolCalls: ReadonlyMap<string, TreeToolCall>): TreeEntryRow {
 	const entry = node.entry;
+	// The tag as written, for an entry a newer writer added after this build.
+	const tag: string = entry.type;
 	switch (entry.type) {
 		case "message": {
 			const message = entry.message;
@@ -278,8 +281,37 @@ export function treeEntryRow(node: SessionTreeNode, toolCalls: ReadonlyMap<strin
 			return whole(`[custom: ${entry.customType}]`, "dim");
 		case "label":
 			return whole(`[label: ${entry.label ?? "(cleared)"}]`, "dim");
-		default:
-			return { prefix: "", prefixTone: undefined, text: "", textTone: undefined };
+		case "service_tier_change": {
+			const tiers = Object.entries(entry.serviceTier ?? {}).map(([family, tier]) => `${family} ${tier}`);
+			return whole(`[service tier: ${tiers.join(", ") || "default"}]`, "dim");
+		}
+		case "title_change":
+			return whole(`[title: ${normalize(entry.title)}]`, "dim");
+		case "mode_change":
+			return whole(`[mode: ${entry.mode}]`, "dim");
+		case "ttsr_injection":
+			return whole(`[rules: ${entry.injectedRules.join(", ")}]`, "dim");
+		case "mcp_tool_selection":
+			return whole(`[mcp tools: ${entry.selectedToolNames.join(", ") || "none"}]`, "dim");
+		case "session_init":
+			return whole("[session start]", "dim");
+		case "subagent_spawn":
+			return whole(`[agent ${entry.agentName}: ${entry.status}]`, "dim");
+		case "settings_snapshot":
+			return whole(
+				entry.kind === "full" ? "[settings]" : `[settings: ${Object.keys(entry.values).join(", ")}]`,
+				"dim",
+			);
+		case "session_lifecycle":
+			return whole(`[session ${entry.state}: ${entry.reason}]`, "dim");
+		case "session_checkpoint":
+			return whole("[checkpoint]", "dim");
+		default: {
+			// A new entry type fails to compile here; one a newer file wrote
+			// still reads as its type.
+			const _exhaustive: never = entry;
+			return whole(`[${tag}]`, "dim");
+		}
 	}
 }
 
