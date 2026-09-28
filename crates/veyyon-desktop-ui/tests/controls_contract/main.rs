@@ -8,8 +8,12 @@
 //! The icon sweep enumerates `IconName` with `EnumIter` and compares the set
 //! with the files in `icons/`, so an icon added on either side alone fails.
 //! It does not catch a glyph that parses but draws the wrong picture.
+//!
+//! A hover color that snaps flickers as the pointer crosses a row, and one
+//! that never lands asks for frames at rest. The hover suite counts the
+//! frames a hover asks for; it does not read the color drawn.
 
-use std::{cell::Cell, collections::BTreeSet, path::Path, rc::Rc, sync::Arc};
+use std::{cell::Cell, collections::BTreeSet, path::Path, rc::Rc, sync::Arc, time::Duration};
 
 use strum::IntoEnumIterator;
 use veyyon_desktop_ui::{
@@ -19,7 +23,7 @@ use veyyon_desktop_ui::{
 };
 use veyyon_gpui::{
 	AssetSource, Context, IntoElement, Keystroke, Modifiers, Render, SvgRenderer, TestAppContext,
-	Window, div, point, prelude::*, px,
+	VisualTestContext, Window, div, point, prelude::*, px,
 };
 
 #[test]
@@ -108,6 +112,45 @@ fn an_enabled_button_runs_its_handler_on_click() {
 #[test]
 fn a_disabled_button_ignores_a_click() {
 	assert_eq!(clicks_on_button(true), 0);
+}
+
+/// Moves the clock a frame on and delivers the frame `window` asked for.
+/// Answers whether anything asked for one.
+fn frame(window: &mut VisualTestContext) -> bool {
+	window.executor().advance_clock(Duration::from_millis(16));
+	let asked = window.update(|window, cx| window.simulate_next_frame(cx));
+	window.run_until_parked();
+	asked > 0
+}
+
+/// Delivers frames until none is asked for and answers how long they ran.
+fn settle(window: &mut VisualTestContext) -> Duration {
+	let mut ran = Duration::ZERO;
+	while frame(window) {
+		ran += Duration::from_millis(16);
+		assert!(ran <= Duration::from_millis(400), "the button still moves {ran:?} in");
+	}
+	ran
+}
+
+/// A hover that snapped its color would ask for no frame; one on a spring
+/// or a longer curve would run past the hover's 80 ms.
+#[test]
+fn a_hovered_button_changes_color_over_80_ms_and_then_asks_for_no_frame() {
+	let mut cx = TestAppContext::single();
+	cx.update(|cx| Theme::install(Appearance::Dark, cx))
+		.expect("the dark palette parses");
+	let (_, window) =
+		cx.add_window_view(|_, _| ButtonHarness { disabled: false, clicks: Rc::default() });
+	window.simulate_mouse_move(point(px(300.0), px(300.0)), None, Modifiers::none());
+	settle(window);
+	assert!(!frame(window), "a button at rest asks for no frame");
+
+	for (at, move_) in [((4.0, 4.0), "in"), ((300.0, 300.0), "out")] {
+		window.simulate_mouse_move(point(px(at.0), px(at.1)), None, Modifiers::none());
+		let ran = settle(window);
+		assert_eq!(ran, Duration::from_millis(80), "a hover {move_} changes color for {ran:?}");
+	}
 }
 
 fn keystroke(source: &str) -> Keystroke {
