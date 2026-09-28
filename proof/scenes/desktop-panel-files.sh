@@ -13,5 +13,5 @@ source "$(dirname "${BASH_SOURCE[0]}")/desktop-lib.sh"
 desk_dirty_tree
 desk_ready
 desk_turn "Summarize the working tree changes" 1
-desk_panel_tab files 970 63
+desk_panel_tab files 1002 63
 shot panel-files

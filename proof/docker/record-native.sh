@@ -112,28 +112,46 @@ ASSET_ENV=""
 if [ "${ARM}" = "before" ] && [ -n "${PROOF_NATIVE_BEFORE_REF:-}" ]; then
 	base_rev="$(git rev-parse --short=10 "${PROOF_NATIVE_BEFORE_REF}^{commit}")"
 	base_dir="proof/captures/.native-before/${base_rev}"
-	if [ ! -f "${base_dir}/packages/coding-agent/src/cli.ts" ]; then
+	tool_views=packages/coding-agent/src/export/html/tool-views.generated.js
+	# The extracted host imports this gitignored bundle at parse time, so git
+	# archive leaves it out. The rest of the workspace resolves at HEAD, and so
+	# does the bundle built from it.
+	if [ ! -f "${tool_views}" ]; then
+		echo "record-native: ${tool_views} is missing" >&2
+		echo "  build it:  bun --cwd=clients/web run gen:tool-views" >&2
+		exit 2
+	fi
+	# Parallel takes share one extracted tree: the first builds it under the lock,
+	# the rest wait and reuse it once .complete marks it whole.
+	mkdir -p proof/captures/.native-before
+	exec 9>proof/captures/.native-before/.lock
+	flock 9
+	if [ ! -f "${base_dir}/.complete" ]; then
+		rm -rf "${base_dir}"
 		mkdir -p "${base_dir}"
 		git archive --format=tar "${base_rev}" -- packages/coding-agent \
 			':(exclude)packages/coding-agent/test' | tar -x -C "${base_dir}"
-	fi
-	HOST_CLI="/repo/${base_dir}/packages/coding-agent/src/cli.ts"
-	assets="$(python3 - "${REPO_ROOT}/scripts/desktop-bench" "${base_dir}" "${base_rev}" <<'PY'
+		cp "${tool_views}" "${base_dir}/${tool_views}"
+		python3 - "${REPO_ROOT}/scripts/desktop-bench" "${base_dir}" "${base_rev}" <<'PY'
 import sys
 from pathlib import Path
 
 sys.path.insert(0, sys.argv[1])
 import apps
 
-out = apps._extract_assets(Path(sys.argv[2]), sys.argv[3])
-print("" if out is None else out)
+apps._extract_assets(Path(sys.argv[2]), sys.argv[3])
 PY
-	)"
-	if [ -n "${assets}" ]; then
+		touch "${base_dir}/.complete"
+	fi
+	flock -u 9
+	exec 9>&-
+	HOST_CLI="/repo/${base_dir}/packages/coding-agent/src/cli.ts"
+	assets="${base_dir}/veyyon/assets"
+	if [ -d "${assets}/crates/veyyon-desktop-tokens/tokens" ]; then
 		ASSET_ENV="VEYYON_DESKTOP_TOKENS_DIR=/repo/${assets}/crates/veyyon-desktop-tokens/tokens \
 VEYYON_DESKTOP_THEMES_DIR=/repo/${assets}/crates/veyyon-desktop-tokens/themes"
 	fi
-	echo "record-native: the before arm runs the GUI host of ${base_rev}${assets:+ and its token directories}"
+	echo "record-native: the before arm runs the GUI host of ${base_rev}${ASSET_ENV:+ and its token directories}"
 fi
 
 export PROOF_HOST_REPO_SOURCE="${BINARY}"

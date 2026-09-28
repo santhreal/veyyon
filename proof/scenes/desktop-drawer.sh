@@ -13,6 +13,10 @@ desk_ready
 desk_action workspace::ToggleDrawer ctrl+j
 desk_expect_target drawer 20
 pause 2
+# The older window leaves focus in the composer; a click on the terminal body
+# focuses the shell in either window.
+desk_click drawer 718 710
+desk_park
 xdotool type --delay 40 -- "ls -la" || abandon_take "drawer" "xdotool could not type"
 desk_key Return
 desk_settle 10
