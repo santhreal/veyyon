@@ -1,4 +1,4 @@
-import type { RunRole, RunRow, RunStatus, TrialStatus } from "../../engine/store-shapes";
+import type { RunRole, RunRow, RunStatus, TrialStatus } from "../../engine/wire/store-shapes";
 
 export const INPUT_CLASS = "rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm";
 

@@ -28,9 +28,9 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import type { EvalSuite, HarnessAdapter, SuiteContext, TaskDescriptor } from "../../engine/contracts";
-import { harnesses, suites } from "../../engine/loaded-members";
-import { Registry } from "../../engine/member-registry";
-import { buildRunPlan, UnboundHarnessBackendError } from "../../engine/run-plan";
+import { harnesses, suites } from "../../engine/members/loaded";
+import { Registry } from "../../engine/members/registry";
+import { buildRunPlan, UnboundHarnessBackendError } from "../../engine/plan/run-plan";
 
 /**
  * A suite discovers its tasks out of a dataset directory, and the harbor-backed suite defaults
@@ -110,16 +110,28 @@ describe("every harness states which backends it runs on", () => {
 			}
 		}
 
-		// veyyon is bound on all 3 backends
+		// veyyon is bound on every backend a suite runs on
 		const veyyonBound = bound.filter(b => b.harness === "veyyon");
-		expect(veyyonBound.map(b => b.backend).sort()).toEqual(["harbor", "in-process", "pier"]);
+		expect(veyyonBound.map(b => b.backend).sort()).toEqual([
+			"harbor",
+			"in-process",
+			"local-cli",
+			"local-cli",
+			"pier",
+		]);
 
 		// Refused pairs are pinned with exact equality - adding any suite/harness turns this RED
 		expect(refused).toEqual([
+			{ harness: "factory", suite: "browser", backend: "local-cli" },
+			{ harness: "factory", suite: "miniwob", backend: "local-cli" },
 			{ harness: "factory", suite: "terminal-bench", backend: "harbor" },
 			{ harness: "factory", suite: "typescript-edit", backend: "in-process" },
+			{ harness: "hermes", suite: "browser", backend: "local-cli" },
+			{ harness: "hermes", suite: "miniwob", backend: "local-cli" },
 			{ harness: "hermes", suite: "terminal-bench", backend: "harbor" },
 			{ harness: "hermes", suite: "typescript-edit", backend: "in-process" },
+			{ harness: "omp", suite: "browser", backend: "local-cli" },
+			{ harness: "omp", suite: "miniwob", backend: "local-cli" },
 			{ harness: "omp", suite: "typescript-edit", backend: "in-process" },
 		]);
 	});
@@ -156,7 +168,13 @@ describe("every harness states which backends it runs on", () => {
 			description: "A newly added harness without recorded backends",
 			flags: [],
 			defaultModel: "anthropic/claude-sonnet-4-5",
-			capabilities: { replay: false, compaction: false, armAttachments: false, promptOverrides: false },
+			capabilities: {
+				replay: false,
+				compaction: false,
+				armAttachments: false,
+				promptOverrides: false,
+				builds: false,
+			},
 			backends: {},
 			async preflight() {
 				return { ok: true };
@@ -196,7 +214,13 @@ describe("every harness states which backends it runs on", () => {
 			description: "Test harness A",
 			flags: [],
 			defaultModel: "model-1",
-			capabilities: { replay: false, compaction: false, armAttachments: false, promptOverrides: false },
+			capabilities: {
+				replay: false,
+				compaction: false,
+				armAttachments: false,
+				promptOverrides: false,
+				builds: false,
+			},
 			backends: { "in-process": {} },
 			async preflight() {
 				return { ok: true };
@@ -209,7 +233,13 @@ describe("every harness states which backends it runs on", () => {
 			description: "Test harness B",
 			flags: [],
 			defaultModel: "model-1",
-			capabilities: { replay: false, compaction: false, armAttachments: false, promptOverrides: false },
+			capabilities: {
+				replay: false,
+				compaction: false,
+				armAttachments: false,
+				promptOverrides: false,
+				builds: false,
+			},
 			backends: { "in-process": {} },
 			async preflight() {
 				return { ok: true };

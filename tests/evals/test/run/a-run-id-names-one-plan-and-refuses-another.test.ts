@@ -9,8 +9,10 @@
  *
  * THE CLASS: two different plans sharing a journal because the key that identifies a trial
  * cannot see what differs between them. The digest covers every field a cell key drops —
- * suite version, dataset sha, backend, and each variant's harness, overlay paths, model and
- * attachments — and each is swept here rather than the one reported. The fields deliberately
+ * suite version, dataset sha, backend, and each variant's harness, overlay paths, model,
+ * attachments and build — and each is swept here rather than the one reported. A variant built with
+ * every axis the matrix expands is also swept field by field, so an axis added to the matrix
+ * without a place in the digest fails here until it has one. The fields deliberately
  * left out (task selection and repeat count) are asserted to be out, since narrowing a task
  * list or asking for more repeats is the same plan reaching fewer or more cells. Both seams
  * are covered: `executeRun`, whose refusal has to land before a preflight, and
@@ -36,17 +38,18 @@ import type {
 	Variant,
 	VariantAxis,
 } from "../../engine/contracts";
-import { executeRun } from "../../engine/execute-run";
-import { harnesses } from "../../engine/loaded-members";
+import { harnesses } from "../../engine/members/loaded";
+import { PlanChangedError, planIdentity } from "../../engine/plan/plan-identity";
+import { buildRunPlan, type RunPlan } from "../../engine/plan/run-plan";
+import { VARIANT_MATRIX_AXES } from "../../engine/plan/variant-matrix";
+import { executeRun } from "../../engine/run/execute";
 import {
 	journalPathFor,
 	openRunJournal,
 	RUN_JOURNAL_VERSION,
 	readRunJournal,
 	StaleRunJournalError,
-} from "../../engine/run-journal";
-import { buildRunPlan, type RunPlan } from "../../engine/run-plan";
-import { PlanChangedError, planIdentity } from "../../engine/run-plan-identity";
+} from "../../engine/run/journal";
 import { main } from "../../evals";
 
 const MODEL_A = "anthropic/claude-sonnet-4-5";
@@ -92,6 +95,7 @@ interface PlanShape extends SuiteShape {
 	readonly configs?: readonly string[];
 	readonly promptVariants?: readonly string[];
 	readonly attachments?: readonly string[];
+	readonly builds?: readonly string[];
 	readonly repeats?: number;
 	readonly taskIds?: readonly string[];
 }
@@ -106,6 +110,7 @@ async function planOf(workDir: string, shape: PlanShape = {}): Promise<RunPlan> 
 			configs: shape.configs,
 			promptVariants: shape.promptVariants,
 			attachments: shape.attachments,
+			builds: shape.builds,
 		},
 		tasks: shape.taskIds,
 		repeats: shape.repeats,
@@ -166,7 +171,25 @@ const CHANGES: { what: string; shape: PlanShape }[] = [
 	{ what: "which directory an overlay of the same name came from", shape: { configs: ["/elsewhere/a.yml"] } },
 	{ what: "a prompt overlay", shape: { promptVariants: ["/overlays/p.json"] } },
 	{ what: "an arm attachment", shape: { attachments: ["prompt/extra.prompt.md"] } },
+	{ what: "a build", shape: { builds: ["/builds/veyyon"] } },
 ];
+
+/** A value on every axis the variant matrix expands, keyed by the axis. */
+const EVERY_AXIS_SET: Record<string, PlanShape> = {
+	// `planOf` names the harness itself.
+	harnesses: {},
+	models: { models: [MODEL_A] },
+	configs: { configs: ["/overlays/a.yml"] },
+	promptVariants: { promptVariants: ["/overlays/p.json"] },
+	attachments: { attachments: ["prompt/extra.prompt.md"] },
+	builds: { builds: ["/builds/veyyon"] },
+};
+
+/** A value no field of a variant holds, of that field's own shape. */
+function changed(value: unknown): unknown {
+	if (Array.isArray(value)) return [...value, "changed"];
+	return typeof value === "string" ? `${value}-changed` : "changed";
+}
 
 /** What a run id is allowed to change and still resume: which cells the plan reaches. */
 const SAME_PLAN: { what: string; shape: PlanShape }[] = [
@@ -215,6 +238,39 @@ describe("planIdentity", () => {
 			// The defect this rules out: both variants are named `a`, so every cell key matches.
 			expect(left.variants.map((v: Variant) => v.name)).toEqual(right.variants.map((v: Variant) => v.name));
 			expect(planIdentity(left)).not.toBe(planIdentity(right));
+		} finally {
+			await temp.remove();
+		}
+	});
+
+	it("distinguishes two single-build plans whose builds differ only by directory", async () => {
+		const temp = await TempDir.create("@evals-test-plan-identity-builds-");
+		try {
+			const left = await planOf(temp.path(), { builds: ["/one/veyyon"] });
+			const right = await planOf(temp.path(), { builds: ["/two/veyyon"] });
+			// One build names no variant apart, so both are `veyyon` and every cell key matches.
+			expect(left.variants.map((v: Variant) => v.name)).toEqual(right.variants.map((v: Variant) => v.name));
+			expect(planIdentity(left)).not.toBe(planIdentity(right));
+		} finally {
+			await temp.remove();
+		}
+	});
+
+	it("answers to every field of a variant the matrix expands", async () => {
+		// A new axis fails here until it is given a value above, and then until the digest reads it.
+		expect(Object.keys(EVERY_AXIS_SET).sort()).toEqual(VARIANT_MATRIX_AXES.map(axis => axis.id).sort());
+		const temp = await TempDir.create("@evals-test-plan-identity-fields-");
+		try {
+			const every: PlanShape = {};
+			for (const shape of Object.values(EVERY_AXIS_SET)) Object.assign(every, shape);
+			const plan = await planOf(temp.path(), every);
+			const [variant] = plan.variants as [Variant];
+			const base = planIdentity(plan);
+			const unanswered = Object.keys(variant).filter(field => {
+				const other = { ...variant, [field]: changed(variant[field as keyof Variant]) } as Variant;
+				return planIdentity({ ...plan, variants: [other] }) === base;
+			});
+			expect(unanswered).toEqual([]);
 		} finally {
 			await temp.remove();
 		}

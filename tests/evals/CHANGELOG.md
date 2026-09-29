@@ -4,6 +4,32 @@ All notable changes to `@veyyon/evals` will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- `suites/browser` runs hard web tasks on seeded local applications (a shop, webmail, a bank with a second-factor phone, a kanban board, a spreadsheet, flight booking with a cross-origin payment frame, a helpdesk seeded with prompt injections, an analytics dashboard drawn on canvas), five workflow tasks that carry one job across two or three of them, and four recovery tasks in which the application fails once, visibly (a declined charge, an expired session, a stale save, a dropped connection), and grades each by the state the applications recorded and the agent's answer.
+- `suites/miniwob` runs MiniWoB++ pages as a suite on the local-cli backend.
+- The `local-cli` backend runs each trial as one print-mode CLI run on this host, in a scratch directory under `/tmp/vey-<uid>` (mode 0700, refused when another user owns it or it is a link), with an empty home, a credential store pruned to the model provider's sign-in once per run and refreshed in the runner's store before a trial would outlive its access token, and an allowlisted environment; on Linux a Landlock sandbox hides the graders, the runs directory, other trials, the git history of the checkout and the build, every user's home, the system temp directories and mounted media, and a launcher ends every process the agent started, a detached Chrome included, when the agent exits; `--unsandboxed` runs it on a host without Landlock.
+- `--build name=path,...` runs one variant per build of the agent, a source tree or an executable, so two builds compare trial by trial in one plan; preflight refuses a tree without the CLI or a file that is not executable, and a resume under another build is refused.
+- `engine/kit` defines a benchmark as a catalog of seeded tasks, each starting its own services and graded by named checks over recorded state; every task carries a scripted solution that the suite's sweep runs. `answerHasText` matches whole terms, `answerHasNumber` ignores digits inside identifiers and reads a leading minus, and `answerNamesOnly` and `answerStatesOnly` fail an answer that names or states a decoy beside the right value.
+- A kit suite's run writes `report.md` and `summary.json` with pass rates and Wilson intervals, capability and difficulty breakdowns, passes within the turn, token and time budgets the suite declares, and a sign test of every arm against the plan's first.
+- `evals tool kit-report --run <dir> [--regrade]` renders a kit suite's report for a finished run and grades it again from the trial files, finding them under the run directory when the run was moved.
+- `tests/evals/docs/` is the evals manual, replacing `EVALS.md`.
+- `benches/browser-fill.ts` times `tab.fill` in headless Chromium for 16, 256 and 4,096 characters and counts a fill correct only when the field holds the value.
+- `benches/natural-input.ts` times `tab.click`, `tab.type`, `tab.fill` on a text field, a date input and a range, and `tab.select` on a drop-down with `browser.naturalInput` off and on, and `benches/bot-detection.ts` opens public bot-detector pages through the browser tool and prints each verdict and the signals it flags.
+
+### Changed
+
+- `engine/` is grouped by concern into `members`, `plan`, `run`, `trial`, `kit`, `compare`, `harness`, `auth`, `io`, `wire` and `corpus`, and the overlay loaders and paired statistics every suite shares moved into it from the in-process backend and the DeepSWE suite.
+
+### Fixed
+
+- A trial cut short by a cancelled run gets no journal row, so `--resume` runs it again, and the retry backoff ends when the run is cancelled.
+- A trial whose agent exited before any provider request succeeded is retried as infrastructure whatever its stderr says, and a failed request no longer counts as a turn.
+- A journal whose last line was cut off by a killed process is repaired before the next append instead of becoming unreadable.
+- A descendant in a trial's process group that ignores SIGTERM is killed once the trial's process exits.
+- The resume command printed after SIGINT or SIGTERM restates every flag of the interrupted run.
+- A plan whose variant names reduce to one directory name is refused, naming both variants.
+
 ## [1.5.0] - 2026-09-18
 
 ### Fixed

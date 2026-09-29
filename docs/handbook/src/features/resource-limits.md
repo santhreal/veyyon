@@ -70,7 +70,7 @@ Some processes belong to no single session and join the root session's budget in
 the shared harness workers, such as the tiny title model and embeddings, and the speech capture
 and playback helpers.
 
-Five kinds of process stay outside the budget. Each is outside for a reason rather than by
+Six kinds of process stay outside the budget. Each is outside for a reason rather than by
 oversight:
 
 - **Anything that starts before a session exists.** Host capability probes, the shell environment
@@ -85,6 +85,8 @@ oversight:
   run as Bun Workers inside the harness process, and a cgroup holds processes, not threads of one.
 - **Processes the session did not start.** Attaching to a browser that is already running adopts
   nothing, because the session does not own that process.
+- **Version probes.** `chrome --version`, run once per browser binary before the managed browser
+  launches, prints the product and exits.
 
 If you cap a session at 1 core, veyyon stays responsive while the build under it crawls.
 

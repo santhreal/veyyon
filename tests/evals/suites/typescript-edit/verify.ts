@@ -6,7 +6,7 @@
 import * as path from "node:path";
 import { errorMessage, splitTextLines } from "@veyyon/utils";
 import { diffLines } from "diff";
-import { listFiles } from "../../engine/list-files";
+import { listFiles } from "../../engine/io/list-files";
 import { formatContent } from "./formatter";
 
 export interface VerificationResult {

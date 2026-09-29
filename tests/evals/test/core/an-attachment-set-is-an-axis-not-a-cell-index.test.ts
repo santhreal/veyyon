@@ -25,7 +25,7 @@ import {
 	EmptyAxisError,
 	expandVariantMatrix,
 	VARIANT_MATRIX_AXES,
-} from "../../engine/variant-matrix";
+} from "../../engine/plan/variant-matrix";
 
 const HARNESS = "veyyon";
 const MODEL = "anthropic/claude-sonnet-4-6";
@@ -40,6 +40,7 @@ describe("the axis table", () => {
 			"promptVariants",
 			"models",
 			"attachments",
+			"builds",
 		]);
 		for (const axis of VARIANT_MATRIX_AXES) {
 			expect(axis.plural).not.toBe("");

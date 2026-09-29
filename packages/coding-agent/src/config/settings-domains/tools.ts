@@ -487,6 +487,18 @@ export const TOOLS_SETTINGS = {
 				"Directory to save screenshots. If unset, screenshots go to a temp file. Supports ~. Examples: ~/Downloads, ~/Desktop, /sdcard/Download (Android)",
 		},
 	},
+	"browser.naturalInput": {
+		type: "boolean",
+		default: true,
+		ui: {
+			tab: "tools",
+			group: "Browser",
+			label: "Natural Input",
+			condition: "browserEnabled",
+			description:
+				"Move the pointer along a curved path and rest before each click, pause between typed keys, fill short values one key at a time, and scroll with the wheel. Off: instant clicks, keys without pauses, and every fill in one insertion. Applies from the next browser run.",
+		},
+	},
 
 	// Tool execution
 	"tools.intentTracing": {

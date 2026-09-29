@@ -16,7 +16,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { ManagerServer } from "../../api/main";
 import { ROUTE_HANDLERS } from "../../api/router";
-import { SERVER_ROUTES } from "../../engine/store-shapes";
+import { SERVER_ROUTES } from "../../engine/wire/store-shapes";
 
 const cleanups: Array<() => void> = [];
 afterEach(async () => {

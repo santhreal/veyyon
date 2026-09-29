@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import type { ArmResult } from "../../../engine/arm-result";
+import type { ArmResult } from "../../../engine/compare/arm-result";
 import { emptyArmResult } from "../../../suites/deep-swe/aggregate/empty-result";
 import { renderReport } from "../../../suites/deep-swe/aggregate/report-render";
 import { ARM_RESULT_FIELDS } from "../../../suites/deep-swe/aggregate/types";

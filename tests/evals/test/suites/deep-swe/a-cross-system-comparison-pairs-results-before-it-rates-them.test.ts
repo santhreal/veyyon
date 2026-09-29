@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
-import { resolvePackagePath } from "../../../engine/package-paths";
+import type { SystemTrialResult } from "../../../engine/compare/shapes";
 import {
 	aggregateSystemComparison,
 	ComparisonRejected,
 	type ComparisonSystem,
 	renderSystemComparison,
-} from "../../../engine/system-comparison";
-import type { SystemTrialResult } from "../../../engine/system-comparison-shapes";
+} from "../../../engine/compare/system-comparison";
+import { resolvePackagePath } from "../../../engine/package-paths";
 import { COMPARISON_TASK_LIST, COMPARISON_TASK_LIST_SHA256 } from "../../../suites/deep-swe/runner/executor";
 
 const TASKS = ["task-a", "task-b"] as const;

@@ -26,4 +26,5 @@ const transport: TabWorkerTransport = {
 	},
 };
 
-new WorkerCore(transport);
+// The tab's own thread: run code floating a rejection must not end it, and nothing else shares it.
+new WorkerCore(transport, { realm: "thread" });

@@ -13,7 +13,7 @@ import * as path from "node:path";
 import { atomicWriteFileSync, isProcessAlive, logger } from "@veyyon/utils";
 import type { BackendId } from "../engine/contracts";
 import { requirePathSegment } from "../engine/package-paths";
-import { type BenchmarkKind, isTrialStatus, type RunRole, type RunStatus, type TraceRow } from "../engine/store-shapes";
+import { type BenchmarkKind, isTrialStatus, type RunRole, type RunStatus, type TraceRow } from "../engine/wire/store-shapes";
 import {
 	canonicalSuiteOf,
 	getBenchmark,
@@ -105,7 +105,7 @@ export interface RunRow {
  * A trial row as stored and as served. The wire declares the shape; the store held a second copy
  * whose `status` was a bare string, which is how a status nothing classifies reached the dashboard.
  */
-export type { TraceRow } from "../engine/store-shapes";
+export type { TraceRow } from "../engine/wire/store-shapes";
 
 /** Row in the `experiments` table: goal metadata keyed by experiment id. */
 export interface ExperimentMeta {

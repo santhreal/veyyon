@@ -7,6 +7,7 @@ export const MUTATION_TOOL_NAMES = ["edit", "write", "ast_edit"] as const;
 type MutationToolName = (typeof MUTATION_TOOL_NAMES)[number];
 const MUTATION_TOOLS = new Set<string>(MUTATION_TOOL_NAMES);
 const PROOF_TOOLS: Record<string, true> = { bash: true, eval: true, debug: true, browser: true };
+const PROOF_TOOL_ORDER = ["bash", "eval", "debug", "browser"] as const;
 const MAX_EVIDENCE = 32;
 const MAX_PENDING_CALLS = 64;
 const MAX_PATHS_PER_MUTATION = 12;
@@ -311,6 +312,12 @@ export class VerificationEvidenceLedger {
 	readonly #mutations: MutationEvidence[] = [];
 	readonly #proofs: ProofEvidence[] = [];
 	readonly #pendingProofCalls = new Map<string, ToolStartEvidence>();
+	/** The session's active tools, so the reminder names only checks the model can run; all of them when absent. */
+	readonly #activeTools: (() => Iterable<string>) | undefined;
+
+	constructor(activeTools?: () => Iterable<string>) {
+		this.#activeTools = activeTools;
+	}
 
 	startUserTurn(): void {
 		this.#intervenedThisTurn = false;
@@ -393,7 +400,16 @@ export class VerificationEvidenceLedger {
 		return prompt.render(sessionPrompts["session/verification-evidence-reminder"].text, {
 			toolName: mutation.toolName,
 			pathsMarkdown: mutation.paths.map(filePath => `- ${escapePromptPath(filePath)}`).join("\n"),
+			proofTools: this.#proofToolList(),
 		});
+	}
+
+	/** `bash, eval or debug`: the proof tools the session has, in a fixed order; empty when it has none. */
+	#proofToolList(): string {
+		const active = this.#activeTools ? new Set(this.#activeTools()) : undefined;
+		const tools = PROOF_TOOL_ORDER.filter(name => active?.has(name) ?? true);
+		if (tools.length <= 1) return tools.join("");
+		return `${tools.slice(0, -1).join(", ")} or ${tools.at(-1)}`;
 	}
 
 	/**

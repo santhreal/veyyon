@@ -28,7 +28,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { AuthStorage, type CredentialHealthResult } from "@veyyon/ai";
 import type { HarnessAdapter } from "../../../engine/contracts";
-import { harnesses } from "../../../engine/loaded-members";
+import { harnesses } from "../../../engine/members/loaded";
 import { internalScratchDir } from "../../../engine/package-paths";
 import { stageAllArms } from "../../../suites/deep-swe/runner/arm-staging";
 import {
@@ -550,7 +550,13 @@ describe("staging and execution failures throw errors and survive process", () =
 				description: "A harness that builds pier kwargs without declaring a pier binding.",
 				flags: [],
 				defaultModel: null,
-				capabilities: { replay: false, compaction: false, armAttachments: false, promptOverrides: false },
+				capabilities: {
+					replay: false,
+					compaction: false,
+					armAttachments: false,
+					promptOverrides: false,
+					builds: false,
+				},
 				backends: { harbor: { agentName: "pier-unbound" } },
 				preflight: async () => ({ ok: true }),
 				stageAssets: () => {},

@@ -10,12 +10,15 @@
  * every backend, so these assertions hold for a suite and a backend that do not exist yet. The two
  * kinds of failure that must NOT be retried are asserted alongside: a spent deadline (the budget is
  * gone, and a second answer would bias the arm toward whichever attempt read better) and a cancelled
- * run (a retry fights the operator). Every attempt is asserted to clean up after itself, and the
- * journal is asserted to hold exactly one row per cell however many attempts it took.
+ * run (a retry works against the cancel). A failure a backend throws as `InfrastructureTrialError` is
+ * retried whatever its message quotes, since an agent's stderr can say "timed out" about one request.
+ * Every attempt is asserted to clean up after itself, and the journal is asserted to hold exactly one
+ * row per cell however many attempts it took.
  *
- * Backoff is injected, so no assertion here depends on wall-clock timing. The bound is asserted by
- * a backend that never succeeds: a retry loop with no ceiling would run forever, so the case is
- * written to terminate with the wrong attempt count rather than to hang.
+ * Backoff is injected, so no assertion here depends on wall-clock timing, except the one case that
+ * cancels during the run's own backoff and asserts the wait ended before the first delay would have.
+ * The bound is asserted by a backend that never succeeds: a retry loop with no ceiling would run
+ * forever, so the case is written to terminate with the wrong attempt count rather than to hang.
  *
  * WHAT IT DOES NOT CATCH: whether a particular backend throws rather than returning artifacts for a
  * given infrastructure failure. A backend that swallows its own spawn error and returns empty
@@ -37,21 +40,22 @@ import type {
 	TrialCell,
 	TrialScore,
 } from "../../engine/contracts";
-import { executeRun } from "../../engine/execute-run";
-import { harnesses } from "../../engine/loaded-members";
-import { readRunJournal } from "../../engine/run-journal";
-import type { RunPlan } from "../../engine/run-plan";
-import { buildRunPlan } from "../../engine/run-plan";
-import { summarizeRunCells } from "../../engine/run-record";
+import { harnesses } from "../../engine/members/loaded";
+import type { RunPlan } from "../../engine/plan/run-plan";
+import { buildRunPlan } from "../../engine/plan/run-plan";
+import { executeRun } from "../../engine/run/execute";
+import { readRunJournal } from "../../engine/run/journal";
+import { summarizeRunCells } from "../../engine/run/record";
 import {
 	DEFAULT_TRIAL_ATTEMPTS,
+	InfrastructureTrialError,
 	isRetryableTrialFailure,
 	MAX_TRIAL_ATTEMPTS,
 	resolveTrialAttempts,
 	TRIAL_RETRY_BASE_DELAY_MS,
 	TRIAL_RETRY_MAX_DELAY_MS,
 	trialRetryDelayMs,
-} from "../../engine/trial-retry";
+} from "../../engine/trial/retry";
 
 const selection = { harnesses: ["veyyon"], models: ["vendor/model-a"] } as const;
 
@@ -154,6 +158,11 @@ describe("the retry decision", () => {
 		["an exceeded deadline", new Error("exceeded deadline for task foo"), false],
 		["an aborted request", new Error("The operation was aborted"), false],
 		["an abort without the d", new Error("fetch abort"), false],
+		[
+			"an infrastructure failure quoting the agent's own timeout",
+			new InfrastructureTrialError("the agent exited with code 1 before its first turn: Request timed out."),
+			true,
+		],
 	] as [string, unknown, boolean][])("decides %s", (_label, cause, expected) => {
 		expect(isRetryableTrialFailure(cause)).toBe(expected);
 	});
@@ -163,6 +172,9 @@ describe("the retry decision", () => {
 		controller.abort();
 
 		expect(isRetryableTrialFailure(new Error("connection refused"), controller.signal)).toBe(false);
+		expect(isRetryableTrialFailure(new InfrastructureTrialError("connection refused"), controller.signal)).toBe(
+			false,
+		);
 		// The same failure earns an attempt while the run is live.
 		expect(isRetryableTrialFailure(new Error("connection refused"), new AbortController().signal)).toBe(true);
 	});
@@ -336,6 +348,30 @@ describe("executeRun retries a thrown trial", () => {
 		});
 
 		expect(probe.attempts).toEqual([1]);
-		expect(record.results[0]?.score.error).toBe("connection refused");
+		// The cancel cut the trial short: it settled nothing, and a resume runs it.
+		expect(record.results).toEqual([]);
+		expect(probe.cleaned).toEqual(["cancelled/veyyon/1"]);
+	});
+
+	it("stops waiting out the backoff when the run is cancelled, and attempts nothing more", async () => {
+		const plan = await planOneTask("backoff");
+		const controller = new AbortController();
+		const probe = flakyBackend(1, () => new Error("connection refused"));
+		const started = Date.now();
+
+		// The run's own backoff, not an injected one: the first retry waits TRIAL_RETRY_BASE_DELAY_MS.
+		const record = await executeRun({
+			plan,
+			harnesses,
+			backend: probe.backend,
+			workDir,
+			runsDir,
+			signal: controller.signal,
+			onRetry: () => controller.abort(),
+		});
+
+		expect(Date.now() - started).toBeLessThan(TRIAL_RETRY_BASE_DELAY_MS);
+		expect(probe.attempts).toEqual([1]);
+		expect(record.results).toEqual([]);
 	});
 });

@@ -24,8 +24,11 @@
 
 import { describe, expect, it, test } from "bun:test";
 import { parseServerArgs, SERVER_FLAGS } from "../../api/main";
+import { BOT_DETECTION_BENCH_FLAGS } from "../../benches/bot-detection";
+import { BROWSER_FILL_BENCH_FLAGS } from "../../benches/browser-fill";
 import { EDIT_PROMPT_BENCH_FLAGS } from "../../benches/edit-prompt";
 import { GOAL_BUDGET_CONTEXT_FLAGS } from "../../benches/goal-budget-context";
+import { NATURAL_INPUT_BENCH_FLAGS } from "../../benches/natural-input";
 import { DISCLOSURE_BENCH_FLAGS } from "../../benches/search/disclosure";
 import { SEARCH_BENCH_FLAGS } from "../../benches/search/main";
 import {
@@ -37,7 +40,7 @@ import {
 	parseFlags,
 	requireFlag,
 	UnknownFlagError,
-} from "../../engine/flag-grammar";
+} from "../../engine/plan/flag-grammar";
 import { CHANNEL_SPLIT_FLAGS } from "../../measurements/channel-split";
 import { CONTEXT_ENCODE_FLAGS } from "../../measurements/context-encode-ceiling";
 import { ONLINE_CODEC_FLAGS } from "../../measurements/online-codec-ceiling";
@@ -47,6 +50,7 @@ import { EDIT_ADAPTER_FLAGS } from "../../suites/typescript-edit/cli";
 import { GENERATE_FLAGS } from "../../suites/typescript-edit/generate";
 import { BENCH_REPORT_FLAGS } from "../../tools/bench-report";
 import { GEN_DICTS_FLAGS } from "../../tools/generate-dicts";
+import { KIT_REPORT_FLAGS } from "../../tools/kit-report";
 import { TRACE_REPORT_FLAGS } from "../../tools/trace-report";
 
 /** Every grammar an evals entry point reads its invocation through. */
@@ -66,6 +70,10 @@ const GRAMMARS: Readonly<Record<string, FlagGrammar>> = {
 	"prefix composition": PREFIX_COMPOSITION_FLAGS,
 	"channel split": CHANNEL_SPLIT_FLAGS,
 	"retype likelihood": RETYPE_LIKELIHOOD_FLAGS,
+	"browser-fill bench": BROWSER_FILL_BENCH_FLAGS,
+	"natural-input bench": NATURAL_INPUT_BENCH_FLAGS,
+	"bot-detection bench": BOT_DETECTION_BENCH_FLAGS,
+	"kit report": KIT_REPORT_FLAGS,
 };
 
 /**
@@ -91,6 +99,10 @@ const COUNT_FLAGS: Readonly<Record<string, readonly string[]>> = {
 	"prefix composition": [],
 	"channel split": [],
 	"retype likelihood": [],
+	"browser-fill bench": ["rounds"],
+	"natural-input bench": ["rounds"],
+	"bot-detection bench": [],
+	"kit report": [],
 };
 
 /** Every flag each grammar declares, valued and valueless together, sorted. */
@@ -132,6 +144,10 @@ const DECLARED_FLAGS: Readonly<Record<string, readonly string[]>> = {
 	"prefix composition": ["help"],
 	"channel split": ["help", "json", "sessions"],
 	"retype likelihood": ["help", "json", "repo", "sessions"],
+	"browser-fill bench": ["help", "json", "label", "rounds"],
+	"natural-input bench": ["help", "json", "label", "rounds"],
+	"bot-detection bench": ["help", "json", "label", "only"],
+	"kit report": ["help", "regrade", "run"],
 };
 
 const REFUSED_COUNTS: readonly string[] = ["abc", "0", "-1", "2.5", "1e400"];

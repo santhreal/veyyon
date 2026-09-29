@@ -3,7 +3,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type * as BrowsersNs from "@puppeteer/browsers";
 import { $which, errorMessage, getPuppeteerDir, logger } from "@veyyon/utils";
-import type { Browser, CDPSession, Page, default as Puppeteer, Target } from "puppeteer-core";
+import { bestEffort } from "@veyyon/utils/discarded-fault";
+import type { Browser, CDPSession, Connection, Page, default as Puppeteer } from "puppeteer-core";
 import { ToolError } from "../../core/tool-errors";
 import stealthTamperingScript from "../puppeteer/00_stealth_tampering.txt" with { type: "text" };
 import stealthActivityScript from "../puppeteer/01_stealth_activity.txt" with { type: "text" };
@@ -14,11 +15,23 @@ import stealthWebglScript from "../puppeteer/05_stealth_webgl.txt" with { type: 
 import stealthScreenScript from "../puppeteer/06_stealth_screen.txt" with { type: "text" };
 import stealthFontsScript from "../puppeteer/07_stealth_fonts.txt" with { type: "text" };
 import stealthAudioScript from "../puppeteer/08_stealth_audio.txt" with { type: "text" };
-import stealthLocaleScript from "../puppeteer/09_stealth_locale.txt" with { type: "text" };
 import stealthPluginsScript from "../puppeteer/10_stealth_plugins.txt" with { type: "text" };
-import stealthHardwareScript from "../puppeteer/11_stealth_hardware.txt" with { type: "text" };
 import stealthCodecsScript from "../puppeteer/12_stealth_codecs.txt" with { type: "text" };
-import stealthWorkerScript from "../puppeteer/13_stealth_worker.txt" with { type: "text" };
+import { readBrowserProduct } from "./browser-product";
+import { HAS_TEXT_HANDLER, hasTextQueryHandler } from "./has-text";
+import {
+	type BrowserProduct,
+	type HostIdentity,
+	resolveHostIdentity,
+	resolveScreenSize,
+	resolveStealthProfile,
+	resolveSupportedHost,
+	resolveWindowPosition,
+	type StealthProfile,
+	SUPPORTED_HOSTS,
+	type UserAgentMetadata,
+} from "./host-identity";
+import { createProfile, removeProfile } from "./profiles";
 
 export const DEFAULT_VIEWPORT = { width: 1365, height: 768, deviceScaleFactor: 1.25 };
 
@@ -69,12 +82,6 @@ function stealthIgnoreDefaultArgs(executablePath: string | undefined): string[] 
 	return STEALTH_IGNORE_DEFAULT_ARGS.filter(arg => arg !== ENABLE_AUTOMATION_FLAG);
 }
 
-const STEALTH_ACCEPT_LANGUAGE = "en-US,en";
-
-const USER_AGENT_TARGET_TIMEOUT_MS = 5_000;
-const USER_AGENT_TARGET_TYPES = new Set(["page", "webview", "background_page"]);
-const PUPPETEER_SOURCE_URL_SUFFIX = "//# sourceURL=__puppeteer_evaluation_script__";
-
 /**
  * Lazy-import puppeteer with `process.cwd` pointed at a scratch directory, so
  * cosmiconfig does not choke on a malformed `package.json` in the user's
@@ -104,7 +111,12 @@ export async function loadPuppeteer(): Promise<typeof Puppeteer> {
 	const realCwd = process.cwd;
 	Object.defineProperty(process, "cwd", { value: () => safeDir, configurable: true });
 	try {
-		puppeteerModule = (await import("puppeteer-core")).default;
+		const puppeteerCore = await import("puppeteer-core");
+		// Selectors with Playwright's `:has-text()` resolve through this handler (`normalizeSelector`).
+		if (!puppeteerCore.Puppeteer.customQueryHandlerNames().includes(HAS_TEXT_HANDLER)) {
+			puppeteerCore.Puppeteer.registerCustomQueryHandler(HAS_TEXT_HANDLER, hasTextQueryHandler);
+		}
+		puppeteerModule = puppeteerCore.default;
 		return puppeteerModule;
 	} finally {
 		Object.defineProperty(process, "cwd", { value: realCwd, configurable: true });
@@ -282,9 +294,23 @@ function resolveSystemChromium(): string | undefined {
 export interface LaunchHeadlessOptions {
 	headless: boolean;
 	viewport?: { width: number; height: number; deviceScaleFactor?: number };
+	/** A persistent profile directory to run on, kept when the browser closes; a temporary one when absent. */
+	userDataDir?: string;
 }
 
-export async function launchHeadlessBrowser(opts: LaunchHeadlessOptions): Promise<Browser> {
+/** A launched browser, the temporary profile directory it runs on when it runs on one, and the identity it presents. */
+export interface LaunchedBrowser {
+	readonly browser: Browser;
+	/** The temporary profile this launch created, which whoever disposes the browser removes; absent on a persistent profile. */
+	readonly profileDir?: string;
+	/**
+	 * The host-true identity a headless browser presents on every target, which each tab applies to its own page.
+	 * Absent for a headful browser, which reports its own identity, and on a host outside `SUPPORTED_HOSTS`.
+	 */
+	readonly identity?: HostIdentity;
+}
+
+export async function launchHeadlessBrowser(opts: LaunchHeadlessOptions): Promise<LaunchedBrowser> {
 	const vp = opts.viewport ?? DEFAULT_VIEWPORT;
 	const initialViewport = {
 		width: vp.width,
@@ -313,20 +339,69 @@ export async function launchHeadlessBrowser(opts: LaunchHeadlessOptions): Promis
 		launchArgs.push("--ignore-certificate-errors");
 	}
 	const executablePath = await ensureChromiumExecutable();
-	return await puppeteer.launch({
-		headless: opts.headless,
-		defaultViewport: opts.headless ? initialViewport : null,
-		executablePath,
-		args: launchArgs,
-		ignoreDefaultArgs: stealthIgnoreDefaultArgs(executablePath),
-		protocolTimeout: BROWSER_PROTOCOL_TIMEOUT_MS,
-	});
+	const profile = hostStealthProfile();
+	let product: BrowserProduct | undefined;
+	let identity: HostIdentity | undefined;
+	if (opts.headless) {
+		// The flag reaches what a DevTools override cannot: service and shared workers, and the request that
+		// fetches a worker's script. Chrome names itself `HeadlessChrome` there otherwise.
+		product = executablePath ? await readBrowserProduct(executablePath) : undefined;
+		identity = product && (await hostIdentityFor(product));
+		if (identity) launchArgs.push(`--user-agent=${identity.userAgent}`);
+		// Headless Chrome's own screen is 800x600, smaller than its window.
+		const screen = resolveScreenSize(profile, initialViewport);
+		launchArgs.push(`--screen-info={${screen.width}x${screen.height}}`);
+		// The page scripts give the screen a work area below the menu bar or above the taskbar; the window
+		// sits inside it.
+		const position = resolveWindowPosition(profile);
+		launchArgs.push(`--window-position=${position.x},${position.y}`);
+	}
+	const temporaryProfile = opts.userDataDir === undefined ? await createProfile() : undefined;
+	let browser: Browser | undefined;
+	try {
+		browser = await puppeteer.launch({
+			headless: opts.headless,
+			defaultViewport: opts.headless ? initialViewport : null,
+			executablePath,
+			args: launchArgs,
+			ignoreDefaultArgs: stealthIgnoreDefaultArgs(executablePath),
+			protocolTimeout: BROWSER_PROTOCOL_TIMEOUT_MS,
+			userDataDir: opts.userDataDir ?? temporaryProfile,
+		});
+		if (opts.headless && !product) {
+			product = productFromBrowserVersion(executablePath, await browser.version());
+			identity = product && (await hostIdentityFor(product));
+			logger.warn(
+				"The headless browser launched without its host-true --user-agent flag, so its service and shared workers report a headless user agent",
+				{
+					executablePath,
+					fix: "Check that `<browser> --version` prints the product name and version, or set PUPPETEER_EXECUTABLE_PATH to a Chrome that does.",
+				},
+			);
+		}
+		await holdTargetIdentity(browser, { identity, profile });
+		return { browser, profileDir: temporaryProfile, identity };
+	} catch (error) {
+		if (browser) await bestEffort(browser.close(), "the browser goes with the launch that failed to finish");
+		if (temporaryProfile !== undefined) await removeProfile(temporaryProfile);
+		throw error;
+	}
 }
 
+/**
+ * Size a page's viewport. A hidden tab emulates `viewport`, or `DEFAULT_VIEWPORT` without one. A visible
+ * tab's viewport is its window's content area at the display's own scale: `viewport` resizes the window
+ * to hold it, and without one the window keeps its size.
+ */
 export async function applyViewport(
 	page: Page,
-	viewport?: { width: number; height: number; deviceScaleFactor?: number },
+	viewport: { width: number; height: number; deviceScaleFactor?: number } | undefined,
+	visible: boolean,
 ): Promise<void> {
+	if (visible) {
+		if (viewport) await fitWindowToContent(page, viewport);
+		return;
+	}
 	if (!viewport) {
 		await page.setViewport(DEFAULT_VIEWPORT);
 		return;
@@ -338,29 +413,67 @@ export async function applyViewport(
 	});
 }
 
+/** How long a resized window has to give its page the new content area before the page goes on at the size it has. */
+const WINDOW_RESIZE_SETTLE_MS = 2_000;
+
+/**
+ * Resize the window of `page` so its content area is `size` in CSS pixels. The chrome around the content
+ * is measured in the page's isolated world, after a maximized, minimized or fullscreen window is made
+ * normal, since only a normal window takes a size. The page's viewport follows the window a moment
+ * later, which this waits for; a window manager that keeps a size of its own leaves the page at that size.
+ */
+async function fitWindowToContent(page: Page, size: { width: number; height: number }): Promise<void> {
+	// A window is sized in whole pixels.
+	const width = Math.round(size.width);
+	const height = Math.round(size.height);
+	const session = await page.createCDPSession();
+	try {
+		const { windowId, bounds } = await session.send("Browser.getWindowForTarget");
+		if (bounds.windowState !== undefined && bounds.windowState !== "normal") {
+			await session.send("Browser.setWindowBounds", { windowId, bounds: { windowState: "normal" } });
+		}
+		const chrome = await page.evaluate(() => {
+			const view = globalThis as unknown as {
+				outerWidth: number;
+				outerHeight: number;
+				innerWidth: number;
+				innerHeight: number;
+			};
+			return { width: view.outerWidth - view.innerWidth, height: view.outerHeight - view.innerHeight };
+		});
+		await session.send("Browser.setWindowBounds", {
+			windowId,
+			bounds: { width: width + chrome.width, height: height + chrome.height },
+		});
+	} finally {
+		await bestEffort(session.detach(), "a session to a closing page ends with it");
+	}
+	await bestEffort(
+		page.waitForFunction(
+			(wanted: { width: number; height: number }) => {
+				const view = globalThis as unknown as { innerWidth: number; innerHeight: number };
+				return view.innerWidth === wanted.width && view.innerHeight === wanted.height;
+			},
+			{ polling: 16, timeout: WINDOW_RESIZE_SETTLE_MS },
+			{ width, height },
+		),
+		"a window manager that keeps a size of its own leaves the page at that size, which the tab reports",
+	);
+}
+
 // =====================================================================
 // Stealth patches
 // =====================================================================
 
 interface PuppeteerCdpClient {
 	send: (method: string, params?: Record<string, unknown>) => Promise<unknown>;
+	connection?: () => Connection | undefined;
 }
 
+/** The user agent and client hints a target reports, in the shape both `setUserAgentOverride` commands take. */
 export interface UserAgentOverride {
 	userAgent: string;
-	platform: string;
-	acceptLanguage: string;
-	userAgentMetadata: {
-		brands: Array<{ brand: string; version: string }>;
-		fullVersion: string;
-		fullVersionList: Array<{ brand: string; version: string }>;
-		platform: string;
-		platformVersion: string;
-		architecture: string;
-		bitness: string;
-		model: string;
-		mobile: boolean;
-	};
+	userAgentMetadata: UserAgentMetadata;
 }
 
 function resolvePageClient(page: Page): PuppeteerCdpClient | null {
@@ -373,7 +486,11 @@ function resolvePageClient(page: Page): PuppeteerCdpClient | null {
 
 const patchedClients = new WeakSet<object>();
 
-function patchSourceUrl(page: Page): void {
+/**
+ * `Network.getResponseBody` for a resource the browser no longer holds answers undefined instead of failing.
+ * The pinned puppeteer patch appends no `sourceURL` to evaluated code, so nothing else is rewritten here.
+ */
+function tolerateEvictedResponseBodies(page: Page): void {
 	const client = resolvePageClient(page);
 	if (!client) return;
 	const clientKey = client as object;
@@ -381,261 +498,272 @@ function patchSourceUrl(page: Page): void {
 	patchedClients.add(clientKey);
 	const originalSend = client.send.bind(client);
 	client.send = async (method: string, params?: Record<string, unknown>) => {
-		const next = async (payload?: Record<string, unknown>) => {
-			try {
-				return await originalSend(method, payload);
-			} catch (error) {
-				if (
-					error instanceof Error &&
-					error.message.includes(
-						"Protocol error (Network.getResponseBody): No resource with given identifier found",
-					)
-				) {
-					return undefined;
-				}
-				throw error;
+		try {
+			return await originalSend(method, params);
+		} catch (error) {
+			if (
+				error instanceof Error &&
+				error.message.includes("Protocol error (Network.getResponseBody): No resource with given identifier found")
+			) {
+				return undefined;
 			}
-		};
-		if (!method || !params) {
-			return next(params);
+			throw error;
 		}
-		const key =
-			method === "Runtime.evaluate"
-				? "expression"
-				: method === "Runtime.callFunctionOn"
-					? "functionDeclaration"
-					: null;
-		if (!key) {
-			return next(params);
-		}
-		const value = params[key];
-		if (typeof value !== "string" || !value.includes(PUPPETEER_SOURCE_URL_SUFFIX)) {
-			return next(params);
-		}
-		const patchedParams = { ...params, [key]: value.replace(PUPPETEER_SOURCE_URL_SUFFIX, "") };
-		return next(patchedParams);
 	};
 }
 
-async function resolveMacOsProductVersion(): Promise<string> {
-	if (os.platform() !== "darwin") return "";
+/** macOS `ProductVersion`, which `platformVersion` reports; empty off macOS or when the plist is unreadable. */
+async function readMacProductVersion(): Promise<string> {
+	if (process.platform !== "darwin") return "";
 	try {
-		const plist = await Bun.file("/System/Library/CoreServices/SystemVersion.plist").text();
+		const plist = await fs.promises.readFile("/System/Library/CoreServices/SystemVersion.plist", "utf8");
 		return plist.match(/<key>ProductVersion<\/key>\s*<string>([^<]+)<\/string>/)?.[1] ?? "";
-	} catch {
-		// The version only decorates a user-agent string, and an unreadable plist leaves it out the same
-		// way a non-macOS host does. Nothing downstream branches on it, so there is no loss to report.
+	} catch (error) {
+		logger.debug("SystemVersion.plist is unreadable; the macOS version comes from the kernel release", {
+			error: errorMessage(error),
+		});
 		return "";
 	}
 }
 
-function resolveHostArchitecture(): string {
-	if (os.arch() === "arm64") return "arm";
-	if (os.arch().includes("64")) return "x86";
-	return "";
-}
-
-function resolveHostBitness(): string {
-	return os.arch().includes("64") ? "64" : "";
-}
-
-async function resolveUserAgentOverride(page: Page): Promise<UserAgentOverride> {
-	const rawUserAgent = await page.browser().userAgent();
-	let userAgent = rawUserAgent.replace("HeadlessChrome/", "Chrome/");
-	if (userAgent.includes("Linux") && !userAgent.includes("Android")) {
-		userAgent = userAgent.replace(/\(([^)]+)\)/, "(Windows NT 10.0; Win64; x64)");
+/** The identity real Chrome presents on this host for `product`, or undefined, reported, off the table. */
+async function hostIdentityFor(product: BrowserProduct): Promise<HostIdentity | undefined> {
+	const identity = resolveHostIdentity({
+		platform: process.platform,
+		machine: os.machine(),
+		osRelease: os.release(),
+		macProductVersion: await readMacProductVersion(),
+		product,
+	});
+	if (!identity) {
+		logger.warn("This host is outside the browser identity table, so the headless browser keeps its own identity", {
+			platform: process.platform,
+			machine: os.machine(),
+			product: `${product.name} ${product.version}`,
+			fix: "Record the host in SUPPORTED_HOSTS (browser/host-identity.ts) with the strings Chrome sends on it.",
+		});
 	}
+	return identity;
+}
 
-	const uaVersionMatch = userAgent.match(/Chrome\/([\d|.]+)/);
-	const browserVersionMatch = (await page.browser().version()).match(/\/([\d|.]+)/);
-	const legacyVersion = uaVersionMatch?.[1] ?? browserVersionMatch?.[1] ?? "0";
-	const fullVersion = browserVersionMatch?.[1] ?? legacyVersion;
-	const majorVersion = Number.parseInt(legacyVersion.split(".")[0] ?? "0", 10) || 0;
-	const isAndroid = userAgent.includes("Android");
-	const isMac = userAgent.includes("Mac OS X");
-	const isWindows = userAgent.includes("Windows");
-	const platform = isMac ? "MacIntel" : isAndroid ? "Android" : userAgent.includes("Linux") ? "Linux" : "Win32";
-	const platformFull = isMac ? "macOS" : isAndroid ? "Android" : userAgent.includes("Linux") ? "Linux" : "Windows";
-	const platformVersion = isMac
-		? await resolveMacOsProductVersion()
-		: userAgent.includes("Android ")
-			? (userAgent.match(/Android ([^;]+)/)?.[1] ?? "")
-			: isWindows
-				? (userAgent.match(/Windows NT ([\d.]+)/)?.[1] ?? "")
-				: "";
-	const architecture = isAndroid ? "" : resolveHostArchitecture();
-	const bitness = isAndroid ? "" : resolveHostBitness();
-	const model = isAndroid ? (userAgent.match(/Android.*?;\s([^)]+)/)?.[1] ?? "") : "";
+/** The product a launched browser reports over CDP, for a binary that did not state its own before launch. */
+function productFromBrowserVersion(
+	executablePath: string | undefined,
+	browserVersion: string,
+): BrowserProduct | undefined {
+	const version = browserVersion.match(/(\d+\.\d+\.\d+\.\d+)/)?.[1];
+	if (!version) return undefined;
+	const binary = (executablePath ?? "").toLowerCase();
+	const name = binary.includes("edge") ? "Microsoft Edge" : binary.includes("chromium") ? "Chromium" : "Google Chrome";
+	return { name, version };
+}
 
-	const brandOrders = [
-		[0, 1, 2],
-		[0, 2, 1],
-		[1, 0, 2],
-		[1, 2, 0],
-		[2, 0, 1],
-		[2, 1, 0],
-	];
-	const order = brandOrders[majorVersion % brandOrders.length] ?? brandOrders[0]!;
-	const escapedChars = [" ", " ", ";"];
-	const greaseyBrand = `${escapedChars[order[0]!]}Not${escapedChars[order[1]!]}A${escapedChars[order[2]!]}Brand`;
-	const brands: { brand: string; version: string }[] = [];
-	brands[order[0]!] = { brand: greaseyBrand, version: "99" };
-	brands[order[1]!] = { brand: "Chromium", version: String(majorVersion) };
-	brands[order[2]!] = { brand: "Google Chrome", version: String(majorVersion) };
-	const fullVersionList = brands.map(({ brand }) => ({
-		brand,
-		version: brand === greaseyBrand ? "99.0.0.0" : fullVersion,
-	}));
+let cachedStealthProfile: StealthProfile | undefined;
 
-	return {
-		userAgent,
-		platform,
-		acceptLanguage: STEALTH_ACCEPT_LANGUAGE,
-		userAgentMetadata: {
-			brands,
-			fullVersion,
-			fullVersionList,
-			platform: platformFull,
-			platformVersion,
-			architecture,
-			bitness,
-			model,
-			mobile: isAndroid,
-		},
-	};
+/** What the page scripts present for this host: its OS, a GPU of that OS, window chrome, screens, capped cores. */
+function hostStealthProfile(): StealthProfile {
+	if (!cachedStealthProfile) {
+		const host =
+			resolveSupportedHost(process.platform, os.machine()) ??
+			SUPPORTED_HOSTS.find(candidate => candidate.platform === process.platform && candidate.arch === "x64") ??
+			SUPPORTED_HOSTS.find(candidate => candidate.platform === "linux" && candidate.arch === "x64");
+		if (!host) throw new ToolError("SUPPORTED_HOSTS lost its linux x64 entry");
+		cachedStealthProfile = resolveStealthProfile(host, os.cpus().length);
+	}
+	return cachedStealthProfile;
 }
 
 function wrapSession(session: CDPSession): PuppeteerCdpClient {
 	return {
 		send: async (method, params) => session.send(method as never, params as never),
+		connection: () => session.connection(),
 	};
+}
+
+/**
+ * A protocol error that means the command does not apply to the target rather than that it failed: a
+ * target type without the domain (a tab, the browser itself), a page with no context yet, or a target
+ * that closed before the command landed.
+ */
+function isInapplicableTarget(error: unknown): boolean {
+	const message = errorMessage(error);
+	return (
+		message.includes("wasn't found") ||
+		message.includes("Session closed") ||
+		message.includes("Target closed") ||
+		message.includes("No target with given id") ||
+		message.includes("Cannot find default execution context") ||
+		message.includes("Execution context was destroyed") ||
+		message.includes("Inspected target navigated or closed")
+	);
 }
 
 /**
  * Apply the user-agent override through both CDP domains.
  *
- * The two are redundant on purpose: `Emulation` is the modern one and
- * `Network` covers older targets, so one of them failing is normal and not
- * worth reporting. BOTH failing is not normal, and it is not cosmetic either:
- * the target keeps its headless user agent, so the page can tell it is
- * automated and behaves differently, which is the exact thing the override
- * exists to prevent.
+ * The two are redundant on purpose: `Emulation` sets what the target's scripts read and `Network` what
+ * its requests send, and either one covers the user agent string. Both commands leave before this
+ * function first yields, so a target waiting for its debugger has them ahead of its resume.
  *
- * Every failure here used to be swallowed (`Network.enable` outright, the other
- * two at `debug`), so a target with no override in place was indistinguishable
- * from one that had it. The loss is reported now, with what was attempted and
- * why each attempt failed (Law 10).
+ * One failing is normal and stays quiet. Both failing on a target that should have taken the override
+ * is reported with each reason: that target contradicts the rest of the browser, and a page that sees
+ * it can tell it is automated. Both failing because the target has neither domain (a tab, the browser)
+ * or is already gone is not a loss.
  */
 export async function sendUserAgentOverride(client: PuppeteerCdpClient, override: UserAgentOverride): Promise<void> {
+	const params: Record<string, unknown> = {
+		userAgent: override.userAgent,
+		userAgentMetadata: override.userAgentMetadata,
+	};
+	const results = await Promise.allSettled([
+		client.send("Network.setUserAgentOverride", params),
+		client.send("Emulation.setUserAgentOverride", params),
+	]);
 	const failures: string[] = [];
-	// Not counted as an override failure: it only prepares the Network domain,
-	// and the Emulation path below does not need it.
-	let networkEnableError: string | undefined;
-	try {
-		await client.send("Network.enable");
-	} catch (error) {
-		networkEnableError = errorMessage(error);
-	}
-	let applied = 0;
-	for (const domain of ["Network", "Emulation"] as const) {
-		try {
-			await client.send(`${domain}.setUserAgentOverride`, override as unknown as Record<string, unknown>);
-			applied++;
-		} catch (error) {
-			failures.push(`${domain}: ${errorMessage(error)}`);
-		}
-	}
-	if (applied > 0) return;
+	let inapplicable = 0;
+	results.forEach((result, index) => {
+		if (result.status === "fulfilled") return;
+		if (isInapplicableTarget(result.reason)) inapplicable++;
+		failures.push(`${index === 0 ? "Network" : "Emulation"}: ${errorMessage(result.reason)}`);
+	});
+	if (failures.length < results.length || inapplicable === results.length) return;
 	logger.warn("The browser user-agent override could not be applied, so this target reports itself as automated", {
 		userAgent: override.userAgent,
 		failures,
-		...(networkEnableError ? { networkEnable: networkEnableError } : {}),
 		fix: "Sites may block or behave differently for this target. Check that the browser supports the CDP Emulation domain, or launch without the stealth user agent.",
 	});
 }
 
-export interface UserAgentSession {
-	override: UserAgentOverride;
-	browserSession: CDPSession | null;
+/** What each target of a browser receives the moment it attaches. */
+interface TargetIdentity {
+	/** Absent for a headful browser, which reports its own identity, and on a host off the table. */
+	readonly identity: HostIdentity | undefined;
+	readonly profile: StealthProfile;
 }
 
-/** Configure UA override on the browser + auto-attach to new targets. */
-async function configureUserAgentTargets(
-	browser: Browser,
-	state: { browserSession: CDPSession | null; override: UserAgentOverride },
-	targetTimeoutMs = USER_AGENT_TARGET_TIMEOUT_MS,
-): Promise<void> {
-	if (!state.browserSession) {
-		state.browserSession = await browser.target().createCDPSession();
-		await state.browserSession.send("Target.setAutoAttach", {
-			autoAttach: true,
-			waitForDebuggerOnStart: false,
-			flatten: true,
+/** Send a command, reporting its failure only when the target should have taken it. */
+function sendToTarget(client: PuppeteerCdpClient, method: string, params: Record<string, unknown>): void {
+	void client.send(method, params).catch(error => {
+		if (isInapplicableTarget(error)) return;
+		logger.warn("A browser target did not take part of its identity, so it disagrees with the rest of the browser", {
+			method,
+			error: errorMessage(error),
+			fix: "Sites that compare the page with its workers may see the difference. Check that the browser supports this CDP method.",
 		});
-		state.browserSession.on(
-			"Target.attachedToTarget",
-			async (event: { sessionId: string; targetInfo?: { type?: string } }) => {
-				if (!targetInfoSupportsUserAgentOverride(event.targetInfo)) return;
-				const connection = state.browserSession?.connection();
-				const session = connection?.session(event.sessionId);
-				if (!session) return;
-				await withSoftTimeout(
-					sendUserAgentOverride(wrapSession(session), state.override),
-					targetTimeoutMs,
-					"new target user-agent override",
-				);
-			},
-		);
+	});
+}
+
+/**
+ * Send a target its identity. Every command leaves synchronously: puppeteer resumes a target that waits
+ * for its debugger as soon as the `sessionattached` listeners return, so a worker runs the prelude before
+ * its own first line and reads the overrides from its first line on. The target's type is not known at
+ * that point, so a page or a tab receives the same commands and ignores what does not apply to it.
+ */
+function applyTargetIdentity(client: PuppeteerCdpClient, target: TargetIdentity, prelude: string): void {
+	sendToTarget(client, "Runtime.evaluate", { expression: prelude });
+	sendToTarget(client, "Emulation.setHardwareConcurrencyOverride", {
+		hardwareConcurrency: target.profile.hardwareConcurrency,
+	});
+	if (target.identity) {
+		void sendUserAgentOverride(client, {
+			userAgent: target.identity.userAgent,
+			userAgentMetadata: target.identity.userAgentMetadata,
+		});
 	}
-
-	const targets = browser.targets().filter(targetSupportsUserAgentOverride);
-	await Promise.all(
-		targets.map(async target => {
-			await withSoftTimeout(
-				applyTargetUserAgentOverride(target, state.override),
-				targetTimeoutMs,
-				"target user-agent override",
-			);
-		}),
-	);
 }
 
-function targetSupportsUserAgentOverride(target: Target): boolean {
-	return targetInfoSupportsUserAgentOverride({ type: target.type() });
+/** Connections whose attaching targets already receive their identity. */
+const identityConnections = new WeakSet<Connection>();
+
+/**
+ * Give every target that attaches to `connection` from now on its identity. Every puppeteer connection
+ * to a browser attaches to every target and resumes the ones waiting for a debugger, so each connection
+ * this process opens is hooked, and whichever resumes a worker first has sent the prelude ahead of it.
+ */
+function presentIdentityOn(connection: Connection, target: TargetIdentity): void {
+	if (identityConnections.has(connection)) return;
+	identityConnections.add(connection);
+	const prelude = buildWorkerPrelude(target.profile);
+	connection.on("sessionattached", session => applyTargetIdentity(wrapSession(session), target, prelude));
 }
 
-function targetInfoSupportsUserAgentOverride(targetInfo: { type?: string } | undefined): boolean {
-	return Boolean(targetInfo?.type && USER_AGENT_TARGET_TYPES.has(targetInfo.type));
+/**
+ * Present the identity on every target of a browser this process launched, for the browser's whole life:
+ * hook the launch connection, and keep one browser-level session attached to every target. Puppeteer
+ * detaches from a service worker right after resuming it, and a detached session's overrides go with it.
+ */
+async function holdTargetIdentity(browser: Browser, target: TargetIdentity): Promise<void> {
+	const session = await browser.target().createCDPSession();
+	const connection = session.connection();
+	if (connection) presentIdentityOn(connection, target);
+	await session.send("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: false, flatten: true });
 }
 
-async function applyTargetUserAgentOverride(target: Target, override: UserAgentOverride): Promise<void> {
-	const session = await target.createCDPSession();
+/**
+ * `Window_Proxy` for the page scripts and the worker prelude: a Proxy that refuses a prototype whose
+ * chain leads back to it. An object refuses one with a TypeError, but a Proxy forwards the change to its
+ * target, whose check stops at the Proxy, and the next property read recurses until the stack
+ * overflows; CreepJS reads that difference as a lie. Needs `Native_Proxy`, `Object_assign`,
+ * `Reflect_apply`, `Reflect_getPrototypeOf` and `Reflect_setPrototypeOf` in scope.
+ */
+const GUARDED_PROXY_SOURCE = `const Window_Proxy = function Proxy(target, handler) {
+	let proxy = null;
+	const guarded = Object_assign({}, handler);
+	guarded.setPrototypeOf = (proxied, proto) => {
+		for (let link = proto, steps = 0; link !== null && steps < 4096; steps += 1) {
+			if (link === proxy) return false;
+			link = Reflect_getPrototypeOf(link);
+		}
+		return handler.setPrototypeOf
+			? Reflect_apply(handler.setPrototypeOf, handler, [proxied, proto])
+			: Reflect_setPrototypeOf(proxied, proto);
+	};
+	proxy = new Native_Proxy(target, guarded);
+	return proxy;
+};`;
+
+/**
+ * The script a worker evaluates before its own: the page's WebGL patch over the worker's natives, which
+ * nothing has touched yet. A page, frame or tab evaluates it too and returns at the first line.
+ */
+function buildWorkerPrelude(profile: StealthProfile): string {
+	return `(() => {
+	if (typeof WorkerGlobalScope === "undefined" || !(self instanceof WorkerGlobalScope)) return;
+	const Page_WeakMap = WeakMap;
+	const Page_WeakMap_get = WeakMap.prototype.get;
+	const Page_WeakMap_set = WeakMap.prototype.set;
+	const Reflect_apply = Reflect.apply;
+	const Reflect_ownKeys = Reflect.ownKeys;
+	const Reflect_getPrototypeOf = Reflect.getPrototypeOf;
+	const Reflect_setPrototypeOf = Reflect.setPrototypeOf;
+	const Object_assign = Object.assign;
+	const Object_getOwnPropertyDescriptor = Object.getOwnPropertyDescriptor;
+	const Object_defineProperty = Object.defineProperty;
+	const Object_getPrototypeOf = Object.getPrototypeOf;
+	const Object_create = Object.create;
+	const Math_max = Math.max;
+	const Native_Proxy = Proxy;
+	${GUARDED_PROXY_SOURCE}
+	const stealthProfile = ${JSON.stringify(profile)};
+	const nativeFunctionSources = new Page_WeakMap();
+	const patchToString = (fn, name) => {
+		if (typeof fn === "function") Reflect_apply(Page_WeakMap_set, nativeFunctionSources, [fn, "function " + (name || "") + "() { [native code] }"]);
+		return fn;
+	};
+	const toStringDescriptor = Object_getOwnPropertyDescriptor(Function.prototype, "toString");
+	if (!toStringDescriptor || typeof toStringDescriptor.value !== "function") return;
+	const functionToString = new Window_Proxy(toStringDescriptor.value, {
+		apply(target, thisArg, args) {
+			const source = Reflect_apply(Page_WeakMap_get, nativeFunctionSources, [thisArg]);
+			return source === undefined ? Reflect_apply(target, thisArg, args) : source;
+		},
+	});
+	patchToString(functionToString, "toString");
+	Object_defineProperty(Function.prototype, "toString", { ...toStringDescriptor, value: functionToString });
 	try {
-		await sendUserAgentOverride(wrapSession(session), override);
-	} finally {
-		// The CDP session is a scratch session created two lines above for one override; detaching from a target
-		// that has already gone fails, and rethrowing here would replace the override's own error.
-		await session.detach().catch(() => undefined);
-	}
-}
-
-async function withSoftTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T | undefined> {
-	const { promise: timeoutPromise, resolve } = Promise.withResolvers<undefined>();
-	const timeout = setTimeout(() => {
-		logger.debug(`Timed out applying ${label}`);
-		resolve(undefined);
-	}, timeoutMs);
-	try {
-		return await Promise.race([
-			promise.catch(error => {
-				logger.debug(`Failed to apply ${label}`, { error: errorMessage(error) });
-				return undefined;
-			}),
-			timeoutPromise,
-		]);
-	} finally {
-		clearTimeout(timeout);
-	}
+		${stealthWebglScript};
+	} catch (e) {}
+})()`;
 }
 
 const STEALTH_PATCH_SCRIPTS = [
@@ -648,17 +776,19 @@ const STEALTH_PATCH_SCRIPTS = [
 	stealthScreenScript,
 	stealthFontsScript,
 	stealthAudioScript,
-	stealthLocaleScript,
 	stealthPluginsScript,
-	stealthHardwareScript,
 	stealthCodecsScript,
-	stealthWorkerScript,
 ];
 
-function buildStealthInjectionScript(scripts: readonly string[] = STEALTH_PATCH_SCRIPTS): string {
+/**
+ * The document-start bootstrap every frame of a page runs: pristine natives, a masked
+ * `Function.prototype.toString`, the host's stealth profile, then each patch script. `headless` says
+ * whether the window has no chrome of its own for the geometry patch to supply.
+ */
+function buildStealthInjectionScript(scripts: readonly string[], profile: StealthProfile, headless: boolean): string {
 	// Each patch is wrapped in its own in-page `try`/`catch` on purpose: the
 	// patches are independent, and one that throws on a given browser build must
-	// not take the other thirteen down with it. There is no channel back from a
+	// not take the others down with it. There is no channel back from a
 	// document-start preload, so the isolation is the whole contract.
 	const joint = scripts
 		.map(
@@ -673,7 +803,6 @@ function buildStealthInjectionScript(scripts: readonly string[] = STEALTH_PATCH_
 	return `(() => {
 				const Page_Function_toString = Function.prototype.toString;
 				const Page_FunctionToStringDescriptor = Object.getOwnPropertyDescriptor(Function.prototype, "toString");
-				const Page_Proxy = Proxy;
 				const Page_WeakMap = WeakMap;
 				const Page_WeakMap_get = Page_WeakMap.prototype.get;
 				const Page_WeakMap_set = Page_WeakMap.prototype.set;
@@ -716,7 +845,7 @@ function buildStealthInjectionScript(scripts: readonly string[] = STEALTH_PATCH_
 					const Window_Event = nativeWindow.Event;
 					const Promise_resolve = nativeWindow.Promise.resolve.bind(nativeWindow.Promise);
 					const Window_Blob = nativeWindow.Blob;
-					const Window_Proxy = nativeWindow.Proxy;
+					const Native_Proxy = nativeWindow.Proxy;
 					const Reflect_get = nativeWindow.Reflect.get;
 					const Reflect_set = nativeWindow.Reflect.set;
 					const Reflect_apply = nativeWindow.Reflect.apply;
@@ -730,6 +859,7 @@ function buildStealthInjectionScript(scripts: readonly string[] = STEALTH_PATCH_
 					const Reflect_ownKeys = nativeWindow.Reflect.ownKeys;
 					const Reflect_preventExtensions = nativeWindow.Reflect.preventExtensions;
 					const Reflect_setPrototypeOf = nativeWindow.Reflect.setPrototypeOf;
+					${GUARDED_PROXY_SOURCE}
 					const Intl_DateTimeFormat = nativeWindow.Intl.DateTimeFormat;
 					const Date_constructor = nativeWindow.Date;
 
@@ -740,8 +870,9 @@ function buildStealthInjectionScript(scripts: readonly string[] = STEALTH_PATCH_
 						return fn;
 					};
 					const patchToString = (fn, name) => registerNativeSource(fn, makeNativeString(name));
+					const stealthProfile = ${JSON.stringify({ ...profile, headless })};
 					if (${scripts.length > 0 ? "true" : "false"}) {
-						const functionToStringProxy = new Page_Proxy(Page_Function_toString, {
+						const functionToString = new Window_Proxy(Page_Function_toString, {
 							apply(target, thisArg, args) {
 								const source = Reflect_apply(Page_WeakMap_get, nativeFunctionSources, [thisArg]);
 								if (source) return source;
@@ -751,14 +882,14 @@ function buildStealthInjectionScript(scripts: readonly string[] = STEALTH_PATCH_
 								return Reflect_get(target, key, receiver);
 							},
 						});
-						registerNativeSource(functionToStringProxy, makeNativeString("toString"));
+						registerNativeSource(functionToString, makeNativeString("toString"));
 						Object_defineProperty(Function.prototype, "toString", {
 							...(Page_FunctionToStringDescriptor || {
 								writable: true,
 								configurable: true,
 								enumerable: false,
 							}),
-							value: functionToStringProxy,
+							value: functionToString,
 						});
 					}
 
@@ -768,46 +899,36 @@ function buildStealthInjectionScript(scripts: readonly string[] = STEALTH_PATCH_
 				}})();`;
 }
 
-async function injectStealthScripts(page: Page): Promise<void> {
-	await page.evaluateOnNewDocument(buildStealthInjectionScript());
-}
-
-/** Builds the browser-page stealth bootstrap source for regression tests. */
-export function buildStealthInjectionScriptForTest(scripts: readonly string[] = STEALTH_PATCH_SCRIPTS): string {
-	return buildStealthInjectionScript(scripts);
-}
-
-/** Apply stealth patches + UA override to a headless page. Idempotent within a tab. */
-export async function applyStealthPatches(
-	browser: Browser,
-	page: Page,
-	state: { browserSession: CDPSession | null; override: UserAgentOverride | null },
-): Promise<void> {
-	patchSourceUrl(page);
-	if (!state.override) {
-		state.override = await resolveUserAgentOverride(page);
-	}
+/**
+ * Present the host-true identity on a headless page and install the page scripts before its first
+ * navigation. `identity` is the one the page's browser launched with; undefined keeps the browser's own.
+ * The overrides and scripts hold while the connection that sent them is open.
+ */
+export async function applyStealthPatches(page: Page, identity: HostIdentity | undefined): Promise<void> {
+	tolerateEvictedResponseBodies(page);
+	const target: TargetIdentity = { identity, profile: hostStealthProfile() };
 	const client = resolvePageClient(page);
 	if (client) {
-		await sendUserAgentOverride(client, state.override);
+		// This tab's connection resumes the page's workers as well, so it hooks them like the launch connection.
+		const connection = client.connection?.();
+		if (connection) presentIdentityOn(connection, target);
+		// The page itself attached before that hook existed.
+		sendToTarget(client, "Emulation.setHardwareConcurrencyOverride", {
+			hardwareConcurrency: target.profile.hardwareConcurrency,
+		});
+		if (identity) {
+			await sendUserAgentOverride(client, {
+				userAgent: identity.userAgent,
+				userAgentMetadata: identity.userAgentMetadata,
+			});
+		}
 	}
-	const targetState = { browserSession: state.browserSession, override: state.override };
-	await configureUserAgentTargets(browser, targetState);
-	state.browserSession = targetState.browserSession;
-	await injectStealthScripts(page);
+	// Only a headless launch resolves an identity. Without one, a headless browser still names its product
+	// `HeadlessChrome` over the protocol; the `--user-agent` flag replaces that name, so it is not the test.
+	const headless = identity !== undefined || (await page.browser().version()).startsWith("Headless");
+	await page.evaluateOnNewDocument(buildStealthInjectionScript(STEALTH_PATCH_SCRIPTS, target.profile, headless));
 }
 
 export function stealthIgnoreDefaultArgsForTest(executablePath: string | undefined): string[] {
 	return stealthIgnoreDefaultArgs(executablePath);
-}
-
-export function targetSupportsUserAgentOverrideForTest(target: Target): boolean {
-	return targetSupportsUserAgentOverride(target);
-}
-export async function configureUserAgentTargetsForTest(
-	browser: Browser,
-	state: { browserSession: CDPSession | null; override: UserAgentOverride },
-	targetTimeoutMs?: number,
-): Promise<void> {
-	await configureUserAgentTargets(browser, state, targetTimeoutMs);
 }

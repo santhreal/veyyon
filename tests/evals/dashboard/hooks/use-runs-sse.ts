@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { RunRow } from "../../engine/store-shapes";
+import type { RunRow } from "../../engine/wire/store-shapes";
 import { resolveRoute } from "../routes";
 
 type EventSourceLike = {

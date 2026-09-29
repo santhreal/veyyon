@@ -2160,6 +2160,11 @@ export function getPuppeteerDir(): string {
 	return dirs.rootSubdir("puppeteer", "cache");
 }
 
+/** Get the persistent browser profiles directory (profile `agent/browser-profiles`; XDG default: $XDG_DATA_HOME/veyyon/browser-profiles). */
+export function getBrowserProfilesDir(): string {
+	return dirs.agentSubdir(undefined, "browser-profiles", "data");
+}
+
 /** Get the docs.rs web cache directory (profile `webcache/`). */
 export function getDocsRsCacheDir(): string {
 	return dirs.rootSubdir("webcache", "cache");

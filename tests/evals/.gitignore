@@ -8,6 +8,8 @@ assets/auth-agent.db*
 # Vendored task corpora and cloned upstream repositories, fetched not committed.
 datasets/deep-swe/corpus/
 datasets/repo-cache/
+# MiniWoB++'s pages, linked in from a clone of the upstream repository.
+datasets/miniwob/
 .cache/
 # Compiled artifacts of TS entrypoints (the .ts file is the source).
 *.js

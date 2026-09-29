@@ -26,7 +26,7 @@ import { afterEach, beforeEach, describe, expect, it, type Mock, spyOn } from "b
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { AuthStorage, type CredentialHealthResult } from "@veyyon/ai";
-import { suites } from "../../../engine/loaded-members";
+import { suites } from "../../../engine/members/loaded";
 import { internalScratchDir } from "../../../engine/package-paths";
 import { deepSweSuite } from "../../../suites/deep-swe/main";
 import { checkBinaryBuildNeeded } from "../../../suites/deep-swe/runner/preflight";

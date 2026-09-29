@@ -505,6 +505,7 @@ veyyon config get compaction.threshold
 | `browser.headless` | Headless Browser | boolean | `true` | Launch browser in headless mode (disable to show browser UI). |
 | `browser.cmux` | cmux Browser | boolean | `true` | Use cmux WKWebView surfaces for browser automation when a cmux socket is available. Set VEYYON_BROWSER_CMUX=0 or VEYYON_BROWSER_CMUX=1 to override. |
 | `browser.screenshotDir` | Screenshot Directory | string | _(unset)_ | Directory to save screenshots. If unset, screenshots go to a temp file. Supports ~. Examples: ~/Downloads, ~/Desktop, /sdcard/Download (Android). |
+| `browser.naturalInput` | Natural Input | boolean | `true` | Move the pointer along a curved path and rest before each click, pause between typed keys, fill short values one key at a time, and scroll with the wheel. Off: instant clicks, keys without pauses, and every fill in one insertion. Applies from the next browser run. |
 
 ### GitHub
 
@@ -897,4 +898,4 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `tui.maxInlineImageRows` | number | `20` |  |
 | `tui.maxInlineImages` | number | `8` |  |
 
-353 settings in /settings, 118 configuration-file keys, 471 in all.
+354 settings in /settings, 118 configuration-file keys, 472 in all.

@@ -20,7 +20,7 @@ import {
 	applyPromptOverridesToSystemPrompt,
 	loadAndValidateConfigOverlay,
 	loadAndValidatePromptOverlay,
-} from "./overlays";
+} from "../../engine/plan/overlays";
 
 export type InProcessEventListener = (event: AgentEvent) => void;
 

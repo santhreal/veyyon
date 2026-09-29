@@ -1,4 +1,4 @@
-import { formatUsd, type RunRole } from "../../engine/store-shapes";
+import { formatUsd, type RunRole } from "../../engine/wire/store-shapes";
 import { useMeasuredWidth } from "../hooks/use-measured-width";
 
 export interface ScatterPt {

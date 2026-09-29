@@ -1,24 +1,33 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { errorMessage } from "@veyyon/utils";
-import type { SystemJobConfigContext, SystemPreflightContext, SystemPreflightResult, SystemStageContext }  from "../engine/contracts"
-import { isLocalInferenceModel, localEndpointRefusal } from "../engine/local-inference-endpoint"
-import { sanitizeVariantName } from "../engine/run-layout";
-import { AUTH_DB_SOURCES, requireStagedAuthCanServeToken } from "../engine/auth-preflight";
-import { decideAuthSeed, probeCredentialStore } from "../engine/auth-seed";
 import type {
 	HarnessAdapter,
 	HarnessCapabilities,
 	HarnessPreflightContext,
 	HarnessStageContext,
+	LocalCommand,
+	LocalCommandContext,
 	PreflightVerdict,
+	SystemJobConfigContext,
+	SystemPreflightContext,
+	SystemPreflightResult,
+	SystemStageContext,
 } from "../engine/contracts";
-import { authDbPath, veyBinaryPath } from "../engine/package-paths";
+import { AUTH_DB_SOURCES, requireStagedAuthCanServeToken } from "../engine/auth/preflight";
+import { decideAuthSeed, probeCredentialStore } from "../engine/auth/seed";
+import { isLocalInferenceModel, localEndpointRefusal } from "../engine/harness/local-inference-endpoint";
+import { authDbPath, repoRootDir, veyBinaryPath } from "../engine/package-paths";
+import { sanitizeVariantName } from "../engine/run/layout";
+
+/** Where the CLI entry sits in a source tree, for a build named by its tree. */
+const TREE_CLI = path.join("packages", "coding-agent", "src", "cli.ts");
 
 export class VeyyonAdapter implements HarnessAdapter {
 	readonly id = "veyyon";
 	readonly displayName = "Veyyon";
-	readonly description = "Main Veyyon headless agent CLI execution and replay in isolated Docker containers.";
+	readonly description =
+		"Veyyon's headless agent CLI: in Docker containers (pier, harbor), in-process, or as a local sandboxed process (local-cli).";
 	// `vey-binary` names the build under test. A run comparing two builds of veyyon names
 	// one per run, so without the flag no invocation can measure anything but the
 	// checkout's own binary. `#namedBinary` reads it wherever a build is resolved, and the
@@ -34,6 +43,7 @@ export class VeyyonAdapter implements HarnessAdapter {
 		compaction: true,
 		armAttachments: true,
 		promptOverrides: true,
+		builds: true,
 	};
 
 	readonly backends = {
@@ -50,6 +60,7 @@ export class VeyyonAdapter implements HarnessAdapter {
 			requiresDocker: true,
 		},
 		"in-process": {},
+		"local-cli": {},
 	} as const;
 
 	/**
@@ -74,20 +85,23 @@ export class VeyyonAdapter implements HarnessAdapter {
 		const options = context.options ?? {};
 		const missing: string[] = [];
 
-		const pinned = typeof options.pinnedBinary === "string" ? path.resolve(options.pinnedBinary) : null;
-		const binary = this.#namedBinary(options) ?? pinned ?? veyBinaryPath();
-
-		if (!fs.existsSync(binary)) {
-			missing.push(
-				`missing vey binary at ${binary} (build with: bun --cwd=packages/coding-agent scripts/build-binary.ts)`,
-			);
-		} else if (!fs.statSync(binary).isFile()) {
-			missing.push(`vey binary path is not a file: ${binary}`);
-		} else {
-			try {
-				fs.accessSync(binary, fs.constants.X_OK);
-			} catch {
-				missing.push(`vey binary at ${binary} is not executable (fix with: chmod +x ${binary})`);
+		// A local run executes a source tree or binary its variant names, which the backend checks;
+		// every other backend runs the built binary.
+		if (context.backend !== "local-cli") {
+			const pinned = typeof options.pinnedBinary === "string" ? path.resolve(options.pinnedBinary) : null;
+			const binary = this.#namedBinary(options) ?? pinned ?? veyBinaryPath();
+			if (!fs.existsSync(binary)) {
+				missing.push(
+					`missing vey binary at ${binary} (build with: bun --cwd=packages/coding-agent scripts/build-binary.ts)`,
+				);
+			} else if (!fs.statSync(binary).isFile()) {
+				missing.push(`vey binary path is not a file: ${binary}`);
+			} else {
+				try {
+					fs.accessSync(binary, fs.constants.X_OK);
+				} catch {
+					missing.push(`vey binary at ${binary} is not executable (fix with: chmod +x ${binary})`);
+				}
 			}
 		}
 
@@ -173,6 +187,52 @@ export class VeyyonAdapter implements HarnessAdapter {
 			return;
 		}
 		// Veyyon binary and auth DB staging are handled via arm-staging pipeline
+	}
+
+	/**
+	 * One print-mode run of the CLI: the JSON event stream on stdout, no session file, every tool
+	 * call approved, the task's tools and nothing else. A build that is a directory is a source
+	 * tree, run with this process's Bun; a file is a compiled binary. No build means this checkout.
+	 */
+	localCommand(context: LocalCommandContext): LocalCommand {
+		const build = context.build ?? repoRootDir();
+		const isTree = fs.existsSync(build) && fs.statSync(build).isDirectory();
+		const args = [
+			"-p",
+			"--mode",
+			"json",
+			"--no-session",
+			"--model",
+			context.model,
+			"--approval-mode",
+			"yolo",
+			...(context.tools.length > 0 ? ["--tools", context.tools.join(",")] : []),
+			...context.configFiles.flatMap(file => ["--config", file]),
+			context.instruction,
+		];
+		return {
+			command: isTree ? process.execPath : build,
+			args: isTree ? [path.join(build, TREE_CLI), ...args] : args,
+			env: { VEYYON_CODING_AGENT_DIR: context.agentDir },
+			readable: isTree ? [build, path.dirname(process.execPath)] : [build],
+		};
+	}
+
+	/** A tree must hold the CLI it runs; a file must be executable. */
+	async validateBuild(build: string): Promise<string | null> {
+		const stats = await fs.promises.stat(build).catch(() => null);
+		if (!stats) return `the build ${build} does not exist`;
+		if (stats.isDirectory()) {
+			const cli = path.join(build, TREE_CLI);
+			const found = await fs.promises.stat(cli).catch(() => null);
+			return found?.isFile() ? null : `the build ${build} is a directory without ${TREE_CLI}, the CLI a tree runs`;
+		}
+		try {
+			await fs.promises.access(build, fs.constants.X_OK);
+			return null;
+		} catch {
+			return `the build ${build} is a file that is not executable (fix with: chmod +x ${build})`;
+		}
 	}
 
 	buildJobConfigKwargs(context: SystemJobConfigContext): Record<string, unknown> {

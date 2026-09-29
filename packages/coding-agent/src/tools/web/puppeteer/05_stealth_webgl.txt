@@ -1,50 +1,7 @@
-const webglPlatformSource =
-	String(navigator.userAgentData?.platform || navigator.platform || "") +
-	" " +
-	String(navigator.userAgent || "");
-const webglPlatformText = webglPlatformSource.toLowerCase();
-const webglPlatformKind = webglPlatformText.includes("android")
-	? "android"
-	: webglPlatformText.includes("iphone") ||
-		  webglPlatformText.includes("ipad") ||
-		  webglPlatformText.includes("ipod")
-		? "ios"
-		: webglPlatformText.includes("mac")
-			? "mac"
-			: webglPlatformText.includes("win")
-				? "windows"
-				: webglPlatformText.includes("cros")
-					? "cros"
-					: "linux";
-
-const webglFallbackProfiles = {
-	android: {
-		vendor: "Qualcomm",
-		renderer: "Adreno (TM) 640",
-	},
-	ios: {
-		vendor: "Apple Inc.",
-		renderer: "Apple GPU",
-	},
-	mac: {
-		vendor: "Google Inc. (Intel Inc.)",
-		renderer: "ANGLE (Intel Inc., Intel(R) Iris(TM) Plus Graphics 640 OpenGL Engine, OpenGL 4.1)",
-	},
-	windows: {
-		vendor: "Google Inc. (Intel)",
-		renderer: "ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11 vs_5_0 ps_5_0, D3D11)",
-	},
-	cros: {
-		vendor: "Google Inc. (Intel)",
-		renderer: "ANGLE (Intel, Mesa Intel(R) UHD Graphics 620 (KBL GT2), OpenGL 4.6)",
-	},
-	linux: {
-		vendor: "Google Inc. (Intel)",
-		renderer: "ANGLE (Intel, Mesa Intel(R) UHD Graphics 620 (KBL GT2), OpenGL 4.6)",
-	},
-};
-const webglFallbackProfile = webglFallbackProfiles[webglPlatformKind] || webglFallbackProfiles.linux;
-const webglContextProfiles = new WeakMap();
+// Runs in the page and, as the worker prelude, in every worker before its own script, so the page and
+// its workers name one GPU. `stealthProfile.webgl` lists GPUs of the host's OS, one per ANGLE backend.
+const webglProfiles = stealthProfile.webgl;
+const webglContextProfiles = new Page_WeakMap();
 const webglIsObjectKey = (value) =>
 	(typeof value === "object" && value !== null) || typeof value === "function";
 
@@ -60,30 +17,26 @@ const webglLooksSoftware = (value) => {
 	);
 };
 
-const webglMatchesPlatform = (renderer) => {
+// The ANGLE backend a renderer string names. Shader translation follows the backend, so a claimed GPU
+// keeps the native backend: SwiftShader is Vulkan, and its translated shaders are SPIR-V.
+const webglBackendOf = (renderer) => {
 	const text = String(renderer || "").toLowerCase();
-	if (webglPlatformKind === "windows") {
-		return !text.includes("apple") && !text.includes("mesa") && !text.includes("opengl engine");
+	if (text.includes("direct3d") || text.includes("d3d1")) return "direct3d";
+	if (text.includes("vulkan")) return "vulkan";
+	if (text.includes("metal")) return "metal";
+	if (text.includes("opengl")) return "opengl";
+	return "";
+};
+
+const webglProfileForBackend = (backend) => {
+	for (let index = 0; index < webglProfiles.length; index += 1) {
+		if (webglProfiles[index].backend === backend) return webglProfiles[index];
 	}
-	if (webglPlatformKind === "mac") {
-		return !text.includes("direct3d") && !text.includes("d3d") && !text.includes("mesa");
-	}
-	if (webglPlatformKind === "android") {
-		return (
-			text.includes("adreno") ||
-			text.includes("mali") ||
-			text.includes("powervr") ||
-			text.includes("qualcomm")
-		);
-	}
-	if (webglPlatformKind === "ios") {
-		return text.includes("apple");
-	}
-	return !text.includes("direct3d") && !text.includes("d3d") && !text.includes("apple");
+	return undefined;
 };
 
 const webglGetContextProfile = (target, thisArg) => {
-	if (!webglIsObjectKey(thisArg)) return webglFallbackProfile;
+	if (!webglIsObjectKey(thisArg)) return webglProfiles[0];
 	const cached = Reflect_apply(Page_WeakMap_get, webglContextProfiles, [thisArg]);
 	if (cached) return cached;
 
@@ -94,19 +47,21 @@ const webglGetContextProfile = (target, thisArg) => {
 		nativeRenderer = Reflect_apply(target, thisArg, [0x9246]);
 	} catch {}
 
-	const nativeProfile =
+	// A real GPU on a backend Chrome runs on this OS is reported as it is.
+	const nativeBackendProfile = webglProfileForBackend(webglBackendOf(nativeRenderer));
+	const profile =
 		typeof nativeVendor === "string" &&
 		typeof nativeRenderer === "string" &&
 		nativeVendor &&
 		nativeRenderer &&
 		!webglLooksSoftware(nativeVendor) &&
 		!webglLooksSoftware(nativeRenderer) &&
-		webglMatchesPlatform(nativeRenderer)
+		nativeBackendProfile
 			? { vendor: nativeVendor, renderer: nativeRenderer }
-			: webglFallbackProfile;
+			: nativeBackendProfile || webglProfiles[0];
 
-	Reflect_apply(Page_WeakMap_set, webglContextProfiles, [thisArg, nativeProfile]);
-	return nativeProfile;
+	Reflect_apply(Page_WeakMap_set, webglContextProfiles, [thisArg, profile]);
+	return profile;
 };
 
 const webglGetParameterHandler = {
@@ -163,14 +118,7 @@ const webglGetShaderPrecisionFormatHandler = {
 	apply(target, thisArg, args) {
 		const result = Reflect_apply(target, thisArg, args);
 		const precisionType = args[1];
-		if (
-			!result ||
-			webglPlatformKind === "android" ||
-			webglPlatformKind === "ios" ||
-			!webglFloatPrecisionTypes[precisionType]
-		) {
-			return result;
-		}
+		if (!result || !webglFloatPrecisionTypes[precisionType]) return result;
 
 		const rangeMin = result.rangeMin;
 		const rangeMax = result.rangeMax;
@@ -215,19 +163,9 @@ const webglInstallMethodProxy = (proto, name, handler) => {
 	} catch {}
 };
 
-if (window.WebGLRenderingContext) {
-	webglInstallMethodProxy(WebGLRenderingContext.prototype, "getParameter", webglGetParameterHandler);
-	webglInstallMethodProxy(
-		WebGLRenderingContext.prototype,
-		"getShaderPrecisionFormat",
-		webglGetShaderPrecisionFormatHandler,
-	);
-}
-if (window.WebGL2RenderingContext) {
-	webglInstallMethodProxy(WebGL2RenderingContext.prototype, "getParameter", webglGetParameterHandler);
-	webglInstallMethodProxy(
-		WebGL2RenderingContext.prototype,
-		"getShaderPrecisionFormat",
-		webglGetShaderPrecisionFormatHandler,
-	);
+for (const contextName of ["WebGLRenderingContext", "WebGL2RenderingContext"]) {
+	const context = self[contextName];
+	if (!context) continue;
+	webglInstallMethodProxy(context.prototype, "getParameter", webglGetParameterHandler);
+	webglInstallMethodProxy(context.prototype, "getShaderPrecisionFormat", webglGetShaderPrecisionFormatHandler);
 }

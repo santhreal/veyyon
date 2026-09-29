@@ -23,7 +23,7 @@ import path from "node:path";
 import { PierExecutionBackend } from "../../backends/pier/main";
 import * as pierRunner from "../../backends/pier/runner";
 import type { EvalSuite, RunContext, TrialCell } from "../../engine/contracts";
-import { backends, harnesses } from "../../engine/loaded-members";
+import { backends, harnesses } from "../../engine/members/loaded";
 
 const RUN_ID = "where-the-run-says";
 

@@ -30,7 +30,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { openRunnerLog, RunnerManager } from "../../api/runner";
-import type { LaunchRequest } from "../../engine/store-shapes";
+import type { LaunchRequest } from "../../engine/wire/store-shapes";
 import { RunStore } from "../../store/sqlite";
 
 const cleanups: Array<() => void> = [];

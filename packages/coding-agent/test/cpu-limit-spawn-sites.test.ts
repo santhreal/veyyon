@@ -253,6 +253,10 @@ const SPAWN_SITES: Record<string, SpawnSiteEntry> = {
 		wired: false,
 		reason: "Bun Worker threads run inside the harness process; a cgroup holds processes, not threads of one",
 	},
+	"packages/coding-agent/src/tools/web/browser/browser-product.ts": {
+		wired: false,
+		reason: "chrome --version prints the product and exits before any browser starts; there is no load to cap",
+	},
 	"packages/coding-agent/src/eval/js/context-manager.ts": {
 		wired: false,
 		reason: "Bun Worker threads are in-process; the subprocess fallback goes through worker-client (wired)",

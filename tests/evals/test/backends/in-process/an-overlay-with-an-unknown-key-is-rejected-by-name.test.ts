@@ -26,7 +26,7 @@ import {
 	loadAndValidateConfigOverlay,
 	loadAndValidatePromptOverlay,
 	resolveOverlayPath,
-} from "../../../backends/in-process/overlays";
+} from "../../../engine/plan/overlays";
 
 describe("resolveOverlayPath", () => {
 	it("keeps an absolute path, resolves a relative one inside the work dir", async () => {

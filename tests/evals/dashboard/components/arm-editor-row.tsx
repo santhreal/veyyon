@@ -1,6 +1,6 @@
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { useState } from "react";
-import type { ArmSummary, RunRole } from "../../engine/store-shapes";
+import type { ArmSummary, RunRole } from "../../engine/wire/store-shapes";
 import { putExperimentMeta } from "../api";
 import { INPUT_CLASS } from "./ui";
 

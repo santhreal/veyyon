@@ -23,7 +23,7 @@ import { parseHTML } from "linkedom";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { useRunsSse } from "../../dashboard/hooks/use-runs-sse";
-import type { RunRow } from "../../engine/store-shapes";
+import type { RunRow } from "../../engine/wire/store-shapes";
 
 interface FakeMessageEvent {
 	readonly data: string;

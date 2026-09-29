@@ -46,8 +46,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { errorMessage } from "@veyyon/utils";
 import { generateDictFromRepo } from "argot";
-import { type FlagGrammar, flagText, parseFlags } from "../engine/flag-grammar";
-import { defaultSessionsDir, readEmissions } from "../engine/transcript-corpus";
+import { type FlagGrammar, flagText, parseFlags } from "../engine/plan/flag-grammar";
+import { defaultSessionsDir, readEmissions } from "../engine/corpus/transcript-corpus";
 
 /** One handle, with what the generator predicted and what the agent really did. */
 export interface RetypeRow {

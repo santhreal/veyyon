@@ -5,7 +5,7 @@
  * benchmark summary metrics.
  */
 
-import { meanOfScored, rateOf } from "../../../engine/trial-outcomes";
+import { meanOfScored, rateOf } from "../../../engine/trial/outcomes";
 import type { EditTask } from "../tasks";
 import { countEditFailureCategories } from "./retry";
 import {

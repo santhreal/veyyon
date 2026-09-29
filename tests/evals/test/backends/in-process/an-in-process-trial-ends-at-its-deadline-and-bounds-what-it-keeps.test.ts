@@ -14,13 +14,13 @@ import type {
 	TrialScore,
 	Variant,
 } from "../../../engine/contracts";
-import { harnesses } from "../../../engine/loaded-members";
+import { harnesses } from "../../../engine/members/loaded";
 import {
 	boundRawOutput,
 	DEFAULT_TRIAL_TIMEOUT_SEC,
 	HARD_CEILING_TRIAL_TIMEOUT_SEC,
 	RAW_OUTPUT_MAX_BYTES,
-} from "../../../engine/trial-deadline";
+} from "../../../engine/trial/deadline";
 
 function createDeadlineProbeSuite(timeBudgetSec = 1): EvalSuite {
 	return {

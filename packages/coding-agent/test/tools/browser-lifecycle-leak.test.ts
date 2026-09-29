@@ -16,7 +16,7 @@
  * spied so no real cmux socket / puppeteer process is needed.
  */
 
-import { afterEach, describe, expect, it, spyOn } from "bun:test";
+import { afterEach, describe, expect, it, spyOn, vi } from "bun:test";
 import { ToolAbortError } from "@veyyon/coding-agent/tools/core/tool-errors";
 import type { CmuxKind } from "@veyyon/coding-agent/tools/web/browser/cmux/rpc";
 import { CmuxSocketClient } from "@veyyon/coding-agent/tools/web/browser/cmux/socket-client";
@@ -96,7 +96,13 @@ describe("browser lifecycle — aborted open must not leak a browser handle", ()
 
 describe("browser lifecycle — session-scoped teardown reaps owned tabs", () => {
 	afterEach(async () => {
-		await drainAllTabs();
+		try {
+			await drainAllTabs();
+		} finally {
+			// The spies sit on `CmuxSocketClient.prototype`: left in place, every later suite in the
+			// process talks to these mocks instead of a socket.
+			vi.restoreAllMocks();
+		}
 	});
 
 	it("acquireTab records ownerSessionId and releaseTabsForOwner tears down only that session's tabs", async () => {

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { listFiles } from "../../engine/list-files";
+import { listFiles } from "../../engine/io/list-files";
 import type { SuiteProvenance } from "../../engine/contracts";
 import { readFixturesArchive } from "./extract";
 import { TYPESCRIPT_EDIT_SUITE_NAME, typescriptEditFixturesArchiveRelative } from "./paths";

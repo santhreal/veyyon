@@ -17,8 +17,8 @@ import {
 	readArmAttachment,
 	stageArmAttachment,
 	writeArmAttachmentManifest,
-} from "../../../engine/arm-attachments";
-import { promptOverrideIdError } from "../../../engine/prompt-overrides";
+} from "../../../engine/harness/arm-attachments";
+import { promptOverrideIdError } from "../../../engine/plan/prompt-overrides";
 import { armsDir } from "../../../engine/package-paths";
 import { effectiveTemperature, PINNED_TEMPERATURE } from "../aggregate/merge";
 import { type ArmAttachmentValues, computeArmFingerprint, findZeroIvCollisions } from "../arm-fingerprint";

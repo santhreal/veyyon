@@ -9,20 +9,20 @@ import { $which, clampLow, errorMessage, readPipeText } from "@veyyon/utils";
 import YAML from "yaml";
 import { cleanupPierContainers } from "../../../backends/pier/runner";
 import { MINIMUM_DEEPSWE_PIER_VERSION, pierSupportsSeparateVerifierCollect } from "../../../backends/pier/version";
-import { awaitTrialProcessOutput, terminateProcessTree } from "../../../engine/trial-process";
+import { awaitTrialProcessOutput, terminateProcessTree } from "../../../engine/trial/process";
 import type { HarnessAdapter, HarnessLookup } from "../../../engine/contracts";
 import {
 	aggregateSystemComparison,
 	type ComparisonSystem,
 	comparisonTrialsFromArmResults,
 	renderSystemComparison,
-} from "../../../engine/system-comparison";
+} from "../../../engine/compare/system-comparison";
 
 export const COMPARISON_TASK_LIST = "datasets/deep-swe/tasks/pilot-10.txt";
 export const COMPARISON_TASK_LIST_SHA256 = "439b07dfbf30a988286e614b6b200def41b56f2447b249583560a78152cbfa06";
 
-import type { ComparisonArmResult, ComparisonExecution } from "../../../engine/arm-result";
-import type { SystemComparison } from "../../../engine/system-comparison-shapes";
+import type { ComparisonArmResult, ComparisonExecution } from "../../../engine/compare/arm-result";
+import type { SystemComparison } from "../../../engine/compare/shapes";
 import {
 	armsDir,
 	comparisonTaskListPath,

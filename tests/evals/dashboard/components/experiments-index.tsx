@@ -1,5 +1,5 @@
 import { formatCount } from "@veyyon/utils/format";
-import { type ExperimentSummary, formatUsd } from "../../engine/store-shapes";
+import { type ExperimentSummary, formatUsd } from "../../engine/wire/store-shapes";
 import { usePolled } from "../hooks/use-polled";
 import { Progress, StaleNotice } from "./ui";
 

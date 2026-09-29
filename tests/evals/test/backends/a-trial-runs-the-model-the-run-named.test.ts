@@ -19,6 +19,7 @@
  * spawn, since no container is started here.
  */
 
+import { Database } from "bun:sqlite";
 import { describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -26,6 +27,7 @@ import * as path from "node:path";
 import { parseArgs, resolveResumeConfig } from "../../backends/harbor/cli";
 import { HarborBackend, NO_MODEL_AGENTS } from "../../backends/harbor/main";
 import { InProcessBackend } from "../../backends/in-process/main";
+import { LocalCliBackend } from "../../backends/local-cli/main";
 import { PierExecutionBackend } from "../../backends/pier/main";
 import * as pierRunner from "../../backends/pier/runner";
 import type {
@@ -38,8 +40,8 @@ import type {
 	TrialScore,
 	Variant,
 } from "../../engine/contracts";
-import { backends, harnesses } from "../../engine/loaded-members";
-import { MalformedModelIdError, ModelNotNamedError, parseModelId, resolveTrialModel } from "../../engine/trial-model";
+import { backends, harnesses } from "../../engine/members/loaded";
+import { MalformedModelIdError, ModelNotNamedError, parseModelId, resolveTrialModel } from "../../engine/trial/model";
 
 const TASK = "name-the-model";
 const SUITE = "model-axis-suite";
@@ -49,6 +51,8 @@ const NAMESPACED_MODEL = "openrouter/openai/gpt-oss-120b";
 const PLAIN_MODEL = "vendor/model-x";
 /** No slash at all, so no provider selects a credential or an endpoint. */
 const BARE_MODEL = "model-x";
+/** What the local-cli trial's command prints: one assistant message, as the CLI's JSON mode does. */
+const ANSWER_EVENT = `console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "done" }] } }))`;
 
 /** `model: ""` is how a variant that names no model is spelled: `Variant.model` is a
  * string, and the matrix refuses an empty models axis, so a plan that names none
@@ -101,13 +105,23 @@ async function makeContext(
 	options: Record<string, unknown> = {},
 ): Promise<RunContext> {
 	const root = await fs.mkdtemp(path.join(os.tmpdir(), "evals-model-axis-"));
+	let authDb: string | undefined;
+	if (backend === "local-cli") {
+		// A credential store with no rows: the local-cli backend copies it into the trial.
+		authDb = path.join(root, "agent.db");
+		const db = new Database(authDb);
+		db.run(
+			"CREATE TABLE auth_credentials (id INTEGER PRIMARY KEY AUTOINCREMENT, provider TEXT NOT NULL, credential_type TEXT NOT NULL, data TEXT NOT NULL, disabled_cause TEXT DEFAULT NULL)",
+		);
+		db.close();
+	}
 	return {
 		runId: "run-model-axis",
 		suite: stubSuite(backend),
 		workDir: root,
 		runsDir: path.join(root, "runs"),
 		harnesses,
-		options: { variants, ...options },
+		options: { variants, ...(authDb ? { authDb } : {}), ...options },
 	};
 }
 
@@ -203,6 +217,21 @@ async function driveTrial(
 			return stubSubprocess();
 		});
 		restore.push(() => spawnSpy.mockRestore());
+	} else if (backendId === "local-cli") {
+		// The harness builds the command line that carries the model; the command it returns here
+		// prints one assistant message, so the trial ends without a provider.
+		const harness = harnesses.require(variant.harness) as HarnessAdapter &
+			Required<Pick<HarnessAdapter, "localCommand">>;
+		const commandSpy = spyOn(harness, "localCommand").mockImplementation(command => {
+			launches.push({ backend: "local-cli", model: command.model });
+			return {
+				command: process.execPath,
+				args: ["-e", ANSWER_EVENT],
+				env: {},
+				readable: [path.dirname(process.execPath)],
+			};
+		});
+		restore.push(() => commandSpy.mockRestore());
 	}
 
 	try {
@@ -213,6 +242,8 @@ async function driveTrial(
 			await inProcessBackend(launches).runTrial(cell(variant.name), context);
 		} else if (backendId === "pier") {
 			await new PierExecutionBackend().runTrial(cell(variant.name), context);
+		} else if (backendId === "local-cli") {
+			await new LocalCliBackend().runTrial(cell(variant.name), context);
 		} else {
 			await new HarborBackend().runTrial(cell(variant.name), context);
 		}
@@ -278,6 +309,7 @@ describe("a trial runs the model the run named", () => {
 			"omp:pier",
 			"veyyon:harbor",
 			"veyyon:in-process",
+			"veyyon:local-cli",
 			"veyyon:pier",
 		]);
 	});

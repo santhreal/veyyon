@@ -23,7 +23,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { EvalSuite, ExecutionBackend, HarnessAdapter, RunContext, TrialCell } from "../../engine/contracts";
-import { backends, harnesses, suites } from "../../engine/loaded-members";
+import { backends, harnesses, suites } from "../../engine/members/loaded";
 import { main, parseEvalsArgs, suiteContext } from "../../evals";
 
 const SUITE = "option-parity-suite";
@@ -68,7 +68,7 @@ function probeHarness(): HarnessAdapter {
 		description: "Probe harness bound to the probe backend.",
 		flags: ["vey-binary"],
 		defaultModel: null,
-		capabilities: { replay: false, compaction: false, armAttachments: false, promptOverrides: false },
+		capabilities: { replay: false, compaction: false, armAttachments: false, promptOverrides: false, builds: false },
 		backends: { [BACKEND]: { agentImportPath: "probe_agent:ProbeAgent" } },
 		async preflight() {
 			return { ok: true };

@@ -29,7 +29,7 @@ import type {
 	TrialScore,
 	Variant,
 } from "../../engine/contracts";
-import { harnesses } from "../../engine/loaded-members";
+import { harnesses } from "../../engine/members/loaded";
 import { typescriptEditSuite } from "../../suites/typescript-edit/main";
 
 function probeSuite(): EvalSuite {

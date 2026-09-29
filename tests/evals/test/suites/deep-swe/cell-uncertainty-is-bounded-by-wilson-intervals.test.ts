@@ -10,9 +10,10 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { wilsonInterval } from "../../../engine/compare/stats";
 import { effectiveTemperature, PINNED_TEMPERATURE } from "../../../suites/deep-swe/aggregate/merge";
 import { renderReport } from "../../../suites/deep-swe/aggregate/report-render";
-import { summarizeCell, wilsonInterval } from "../../../suites/deep-swe/aggregate/stats";
+import { summarizeCell } from "../../../suites/deep-swe/aggregate/stats";
 import type { ArmResult } from "../../../suites/deep-swe/aggregate/types";
 import { res } from "./aggregate-test-helpers";
 

@@ -21,7 +21,7 @@ import {
 	LAUNCH_REQUEST_FIELDS,
 	type LaunchRequest,
 	parseLaunchRequest,
-} from "../../engine/store-shapes";
+} from "../../engine/wire/store-shapes";
 
 /** A value of the right shape for each kind, used to prove a swept field still accepts one. */
 const VALID: Readonly<Record<BodyFieldKind, unknown>> = {

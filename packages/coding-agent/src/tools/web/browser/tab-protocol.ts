@@ -1,4 +1,5 @@
 import type { ImageContent, TextContent } from "@veyyon/ai";
+import type { HostIdentity } from "./host-identity";
 
 export type Transferable = Bun.Transferable;
 
@@ -40,6 +41,19 @@ export interface SessionSnapshot {
 	browserScreenshotDir?: string;
 	/** Force non-WebP screenshot encoding (e.g. for Ollama). Unset honors `VEYYON_NO_WEBP`. */
 	excludeWebP?: boolean;
+	/**
+	 * `browser.naturalInput` for this run: pointer travel, key-by-key typing and wheel scrolling paced as
+	 * a person's when true; instant input otherwise.
+	 */
+	naturalInput: boolean;
+}
+
+/** What a page of a browser this process launched is sent: its identity, its viewport, and whether it has a window. */
+export interface TabPresentation {
+	identity?: HostIdentity;
+	viewport: { width: number; height: number; deviceScaleFactor?: number };
+	/** A page in a browser window keeps the window's size; its viewport is the window's content area. */
+	visible: boolean;
 }
 
 export type WorkerInitPayload =
@@ -51,6 +65,12 @@ export type WorkerInitPayload =
 			url?: string;
 			waitUntil?: "load" | "domcontentloaded" | "networkidle0" | "networkidle2";
 			timeoutMs: number;
+			/** The isolated context to open the page in, by CDP id; the browser's default context when absent. */
+			browserContextId?: string;
+			/** The host-true identity the browser launched with; the page takes it before its first navigation. */
+			identity?: HostIdentity;
+			/** The browser has a window: `viewport` resizes it to hold that content area instead of emulating one. */
+			visible?: boolean;
 	  }
 	| {
 			mode: "attach";
@@ -63,13 +83,29 @@ export type WorkerInitPayload =
 			 * previously force-killed the tab). Never set for first-time Electron attach.
 			 */
 			recover?: boolean;
+			/**
+			 * Set when the target is a tab of a browser this process launched, re-adopted by a new worker.
+			 * The page's identity overrides, scripts and viewport went with the old worker's connection,
+			 * which the replacement closed, so the new worker sends them again and drives the tab as a
+			 * launched one. Absent for a browser this process attached to.
+			 */
+			present?: TabPresentation;
 	  };
-
 export type ToolReply = { ok: true; value: unknown } | { ok: false; error: TabRunErrorPayload };
 
 export type TabWorkerInbound =
-	| { type: "init"; payload: WorkerInitPayload }
-	| { type: "run"; id: string; name: string; code: string; timeoutMs: number; session: SessionSnapshot }
+	/** `port`, set for a worker thread, is its browser connection, which the main thread holds and relays. */
+	| { type: "init"; payload: WorkerInitPayload; port?: MessagePort }
+	/** `viewport`, when set, sizes the page as `open` does before the code runs. */
+	| {
+			type: "run";
+			id: string;
+			name: string;
+			code: string;
+			timeoutMs: number;
+			session: SessionSnapshot;
+			viewport?: { width: number; height: number; deviceScaleFactor?: number };
+	  }
 	| { type: "abort"; id: string; expectedCleanup?: boolean }
 	| { type: "tool-reply"; id: string; reply: ToolReply }
 	| { type: "close" };

@@ -4,7 +4,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { errorMessage } from "@veyyon/utils";
-import { runBoundedCommand, syncCommandOptions } from "../../engine/bounded-command";
+import { runBoundedCommand, syncCommandOptions } from "../../engine/io/bounded-command";
 
 /**
  * The two functions below run before and after a whole harbor invocation rather than inside a trial,

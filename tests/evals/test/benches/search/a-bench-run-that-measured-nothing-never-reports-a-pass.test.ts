@@ -37,7 +37,7 @@ import {
 	sampleExtremes,
 } from "../../../benches/search/main";
 import { registerBuiltinSearchBench, searchArms, searchCaseSuites } from "../../../benches/search/registry";
-import { FlagValueError, flagChoice, flagCount, flagNumber, requireFlag } from "../../../engine/flag-grammar";
+import { FlagValueError, flagChoice, flagCount, flagNumber, requireFlag } from "../../../engine/plan/flag-grammar";
 
 const run = promisify(execFile);
 

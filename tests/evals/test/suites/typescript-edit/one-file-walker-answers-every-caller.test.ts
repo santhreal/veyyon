@@ -11,7 +11,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
-import { listFiles } from "../../../engine/list-files";
+import { listFiles } from "../../../engine/io/list-files";
 
 describe("one file walker answers every caller", () => {
 	it("recursively lists files in alphabetical order", async () => {

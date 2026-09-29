@@ -32,7 +32,7 @@ import * as path from "node:path";
 import { setTimeout as sleepFor } from "node:timers/promises";
 import { RunnerManager } from "../../api/runner";
 import { evalsPackageDir } from "../../engine/package-paths";
-import type { BenchmarkKind, LaunchRequest } from "../../engine/store-shapes";
+import type { BenchmarkKind, LaunchRequest } from "../../engine/wire/store-shapes";
 import {
 	type BenchmarkAdapter,
 	type BenchmarkSnapshot,

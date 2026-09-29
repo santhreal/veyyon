@@ -4,7 +4,7 @@
  * with linear projections for arms still in flight.
  */
 import { isRecord } from "@veyyon/utils";
-import { sumOfMeasured } from "../engine/trial-outcomes";
+import { sumOfMeasured } from "../engine/trial/outcomes";
 import {
 	type ArmProjection,
 	type ArmSummary,
@@ -12,7 +12,7 @@ import {
 	type ExperimentSummary,
 	isDecidedTrialStatus,
 	isGradedTrialStatus,
-} from "../engine/store-shapes";
+} from "../engine/wire/store-shapes";
 import type { RunRow, RunStore, TraceRow } from "./sqlite";
 
 export type { ArmProjection, ArmSummary, ExperimentDetail, ExperimentSummary };

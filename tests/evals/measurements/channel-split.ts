@@ -33,7 +33,7 @@
 import * as fs from "node:fs";
 import { errorMessage } from "@veyyon/utils";
 import { estimateTokens } from "argot";
-import { type FlagGrammar, flagText, parseFlags } from "../engine/flag-grammar";
+import { type FlagGrammar, flagText, parseFlags } from "../engine/plan/flag-grammar";
 import {
 	defaultSessionsDir,
 	type Emission,
@@ -41,7 +41,7 @@ import {
 	emissionsOf,
 	emptyCounts,
 	readEmissions,
-} from "../engine/transcript-corpus";
+} from "../engine/corpus/transcript-corpus";
 
 /** Every newline together with the indentation run that follows it. */
 const STRUCTURE_RUN = /\n[ \t]*/g;

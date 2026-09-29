@@ -35,7 +35,7 @@
 import * as fs from "node:fs";
 import { countTokens as nativeCountTokens } from "@veyyon/natives";
 import { errorMessage } from "@veyyon/utils";
-import { type FlagGrammar, type ParsedArgv, parseArgv } from "../engine/flag-grammar";
+import { type FlagGrammar, type ParsedArgv, parseArgv } from "../engine/plan/flag-grammar";
 import { REFERENCE_RATE_CARD, retainedTokenCost } from "../suites/deep-swe/cost-model";
 
 const countTokens = (text: string): number => nativeCountTokens(text);

@@ -21,11 +21,11 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { errorMessage } from "@veyyon/utils";
-import { type FlagGrammar, parseFlags } from "../engine/flag-grammar";
+import { type FlagGrammar, parseFlags } from "../engine/plan/flag-grammar";
 import { type BenchmarkSnapshot, readBenchmarkSnapshot, requireBenchmark } from "../store/benchmarks";
 import { type RunRow, RunStore } from "../store/sqlite";
 import { harborJobsDir } from "../engine/package-paths";
-import { formatUsd } from "../engine/store-shapes";
+import { formatUsd } from "../engine/wire/store-shapes";
 
 function formatMetric(value: number | null, format: "percent" | "number" | "usd"): string {
 	if (format === "usd") return formatUsd(value, "n/a");

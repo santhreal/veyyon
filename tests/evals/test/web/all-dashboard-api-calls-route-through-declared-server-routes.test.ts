@@ -12,7 +12,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { resolveRoute } from "../../dashboard/routes";
-import { type HttpMethod, SERVER_ROUTES } from "../../engine/store-shapes";
+import { type HttpMethod, SERVER_ROUTES } from "../../engine/wire/store-shapes";
 
 describe("All dashboard API calls route through declared server routes", () => {
 	it("resolves all dashboard endpoint templates against the runtime SERVER_ROUTES table", () => {

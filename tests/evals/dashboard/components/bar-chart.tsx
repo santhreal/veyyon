@@ -1,4 +1,4 @@
-import type { ArmProjection, ArmSummary, RunRole } from "../../engine/store-shapes";
+import type { ArmProjection, ArmSummary, RunRole } from "../../engine/wire/store-shapes";
 
 /** One horizontal bar per arm; running arms chart their projected value. */
 export interface MetricBar {

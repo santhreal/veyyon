@@ -25,7 +25,7 @@ import * as util from "node:util";
 import { clampLow, errorMessage, TempDir } from "@veyyon/utils";
 import { diffLines } from "diff";
 import Handlebars from "handlebars";
-import { type FlagGrammar, flagCount, flagNumber, flagText, parseFlags } from "../../engine/flag-grammar";
+import { type FlagGrammar, flagCount, flagNumber, flagText, parseFlags } from "../../engine/plan/flag-grammar";
 import { formatContent } from "./formatter";
 import { allMutations, type Mutation, type MutationInfo, mutationCategoryMap } from "./mutations/registry";
 import { typescriptEditFixturesArchive } from "./paths";

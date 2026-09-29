@@ -27,12 +27,12 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { AuthStorage } from "@veyyon/ai";
-import { programDirFor } from "../../engine/container-program";
 import type { Variant } from "../../engine/contracts";
-import { preflightHarnesses } from "../../engine/harness-preflight";
-import { harnesses } from "../../engine/loaded-members";
+import { programDirFor } from "../../engine/harness/container-program";
+import { preflightHarnesses } from "../../engine/harness/preflight";
+import { harnesses } from "../../engine/members/loaded";
 import { internalScratchDir } from "../../engine/package-paths";
-import { sanitizeVariantName } from "../../engine/run-layout";
+import { sanitizeVariantName } from "../../engine/run/layout";
 
 interface HarnessFixtureSetup {
 	readonly options: Record<string, unknown>;

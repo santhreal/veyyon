@@ -27,8 +27,8 @@ import {
 	MEMBER_KINDS,
 	type MemberKindName,
 	PACKAGE_ROOT,
-} from "../../engine/member-discovery";
-import { DuplicateMemberError, MemberNotFoundError, Registry } from "../../engine/member-registry";
+} from "../../engine/members/discovery";
+import { DuplicateMemberError, MemberNotFoundError, Registry } from "../../engine/members/registry";
 
 const KINDS = Object.keys(MEMBER_KINDS) as MemberKindName[];
 

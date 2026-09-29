@@ -251,11 +251,14 @@ function hasFloorFirst(text: string): boolean {
 //   - tab-worker.ts runs its bodies inside `handle.evaluate(el => {...})`, which
 //     executes in the browser page where imported module symbols are undefined;
 //     `Math` is the only clamp primitive available there.
+//   - the browser suite's applications (`tests/evals/suites/browser/apps/*`) serve
+//     their page scripts inline as strings; the clamps in those strings run in the
+//     page, where no module can be imported either.
 //   - experiments.ts clamps a logit that is deliberately ±Infinity for unanimous
 //     arms, and raw `Math.max(-4, Math.min(4, x))` maps +Infinity to +4. clampLow
 //     maps non-finite inputs to its LOW bound (-4), which would flip the sign.
 //
-// Both entries are permanent, not shrink-only: the reason each one gives is a
+// Every entry is permanent, not shrink-only: the reason each one gives is a
 // property of where the code runs, not a conversion nobody got to yet. The
 // assertion below still fails when a key stops naming a file that trips the
 // idiom, because a key that matches nothing exempts nothing. The experiments.ts
@@ -267,6 +270,10 @@ function hasFloorFirst(text: string): boolean {
 const FLOOR_FIRST_GRANDFATHERED = new Set([
 	"coding-agent/src/tools/web/browser/tab-worker.ts",
 	"tests/evals/store/experiments.ts",
+	"tests/evals/suites/browser/apps/analytics/scripts.ts",
+	"tests/evals/suites/browser/apps/sheet/site.ts",
+	"tests/evals/suites/browser/apps/shop/site.ts",
+	"tests/evals/suites/browser/apps/travel/scripts.ts",
 ]);
 
 describe("clamp source lock", () => {

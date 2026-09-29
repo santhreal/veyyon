@@ -4,8 +4,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { isRecord } from "@veyyon/utils";
-import type { ComparisonArmResult, ComparisonExecution, NativeCompactionEvidence } from "../../../engine/arm-result";
-import type { ComparisonSystem } from "../../../engine/system-comparison";
+import type { ComparisonArmResult, ComparisonExecution, NativeCompactionEvidence } from "../../../engine/compare/arm-result";
+import type { ComparisonSystem } from "../../../engine/compare/system-comparison";
 import { emptyArmResult } from "../aggregate/empty-result";
 import {
 	finishedWithoutPatch,
