@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { PROMPTS } from "@veyyon/coding-agent/prompts/registry";
-import { buildCoordinationAdvisory, composeSpawnAdvisory } from "@veyyon/coding-agent/task";
+import { buildCoordinationAdvisory, composeSpawnAdvisory } from "@veyyon/coding-agent/task/spawn-advisory";
 import type { TaskItem } from "@veyyon/coding-agent/task/types";
 import { prompt } from "@veyyon/utils";
 

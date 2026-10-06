@@ -17,11 +17,12 @@
  * the object, unrelated sessions staying independent, and a finished tree not
  * leaving its semaphore behind for a later session to inherit.
  *
- * WHAT THEY DO NOT: that `TaskTool` calls `treeSpawnSemaphore` at all. That link
- * is one line in `#getSpawnSemaphore`, and driving it needs a real `ToolSession`
- * with agent discovery. The fallback branch it keeps for the embedded SDK case
- * is asserted here only through `treeSpawnSemaphore` returning undefined, which
- * is the signal the fallback reads.
+ * WHAT THEY DO NOT: that the task tool reads `treeSpawnSemaphore` at all. That
+ * link is `SpawnScheduler`'s semaphore lookup in `task/spawn-scheduler.ts`, and
+ * `a-spawn-cancelled-while-it-waits-for-a-slot-frees-no-slot.test.ts` drives it
+ * with a real tool session. The fallback branch it keeps for the embedded SDK
+ * case is asserted here only through `treeSpawnSemaphore` returning undefined,
+ * which is the signal the fallback reads.
  */
 import { afterEach, describe, expect, it } from "bun:test";
 import { setTimeout as sleep } from "node:timers/promises";
