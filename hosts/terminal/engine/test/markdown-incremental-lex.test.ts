@@ -174,8 +174,8 @@ describe("Markdown incremental streaming lex (E2)", () => {
 	// Regression: marked merges a list with a following same-marker list across a
 	// blank line into one renumbered loose list (CommonMark loose-list
 	// continuation). Freezing across that "\n\n" cut keeps them separate and
-	// renumbers/spaces wrong. These cases must hold at the production reveal
-	// granularity (MIN_STEP=3) and at step=1 — the divergence is phase-sensitive.
+	// renumbers/spaces wrong. These cases must hold at a multi-unit reveal step
+	// and at step=1 — the divergence is phase-sensitive.
 	it("two consecutive ordered lists stay merged/renumbered while growing", () => {
 		const twoLists = "1. a\n2. b\n\n1. c\n2. d";
 		assertIdenticalGrowth(twoLists, 60, 1);
