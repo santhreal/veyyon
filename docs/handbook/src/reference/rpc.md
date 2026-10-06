@@ -8,6 +8,7 @@ RPC mode runs the coding agent as a newline-delimited JSON protocol over stdio.
 Primary implementation:
 
 - `src/modes/rpc/rpc-mode.ts`
+- `src/modes/rpc/rpc-commands.ts`
 - `src/modes/rpc/rpc-types.ts`
 - `src/session/agent-session.ts`
 - `packages/agent/src/agent.ts`

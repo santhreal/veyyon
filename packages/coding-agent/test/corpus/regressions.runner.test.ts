@@ -14,12 +14,14 @@ import {
 } from "@veyyon/coding-agent/config/settings-schema";
 import { createMCPToolName, parseMCPToolName } from "@veyyon/coding-agent/mcp/tool-bridge";
 import {
-	dispatchRpcInputFrame,
-	RpcInputDispatcher,
-	type RpcInputFrameDeps,
 	rpcErrorResponse,
 	rpcSuccessResponse,
 	rpcUnknownCommandResponse,
+} from "@veyyon/coding-agent/modes/rpc/rpc-commands";
+import {
+	dispatchRpcInputFrame,
+	RpcInputDispatcher,
+	type RpcInputFrameDeps,
 } from "@veyyon/coding-agent/modes/rpc/rpc-mode";
 import type { RpcCommand, RpcResponse } from "@veyyon/coding-agent/modes/rpc/rpc-types";
 import {

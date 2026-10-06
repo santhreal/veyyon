@@ -284,7 +284,7 @@ This component is wired by `CommandController.handleBashCommand()` and fed from 
 - [`src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts): session-level `executeBash`, message recording, abort lifecycle.
 - [`src/modes/terminal/components/transcript/bash-execution.ts`](../../packages/coding-agent/src/modes/terminal/components/transcript/bash-execution.ts): interactive `!` command execution component.
 - [`src/modes/terminal/controllers/command-controller.ts`](../../packages/coding-agent/src/modes/terminal/controllers/command-controller.ts): wiring for interactive `!` command UI stream/update completion.
-- [`src/modes/rpc/rpc-mode.ts`](../../packages/coding-agent/src/modes/rpc/rpc-mode.ts): RPC `bash` and `abort_bash` command surface.
+- [`src/modes/rpc/rpc-commands.ts`](../../packages/coding-agent/src/modes/rpc/rpc-commands.ts): RPC `bash` and `abort_bash` command surface.
 - [`src/internal-urls/artifact-protocol.ts`](../../packages/coding-agent/src/internal-urls/artifact-protocol.ts): `artifact://<id>` resolution.
 
 *Verified against `70cae216c2` on 2026-09-01.*

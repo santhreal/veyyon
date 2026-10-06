@@ -9,7 +9,7 @@ import {
 	type RpcSessionChangeCommand,
 	type RpcSessionChangeResult,
 	type RpcSessionChangeSession,
-} from "@veyyon/coding-agent/modes/rpc/rpc-mode";
+} from "@veyyon/coding-agent/modes/rpc/rpc-commands";
 import type { RpcAgentFrame } from "@veyyon/coding-agent/modes/rpc/rpc-types";
 import {
 	type AgentEventPayload,

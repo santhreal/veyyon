@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { tryRunRpcSkillCommand } from "@veyyon/coding-agent/modes/rpc/rpc-mode";
+import { tryRunRpcSkillCommand } from "@veyyon/coding-agent/modes/rpc/rpc-commands";
 import { type CustomMessage, SKILL_PROMPT_MESSAGE_TYPE } from "@veyyon/coding-agent/session/messages";
 import { removeWithRetries, Snowflake } from "@veyyon/utils";
 

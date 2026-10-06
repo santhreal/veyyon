@@ -16,7 +16,7 @@ It explicitly excludes context-overflow recovery via auto-compaction. Overflow i
 - [`../src/config/settings-domains/model.ts`](../../packages/coding-agent/src/config/settings-domains/model.ts)
 - [`../src/modes/terminal/controllers/event-controller.ts`](../../packages/coding-agent/src/modes/terminal/controllers/event-controller.ts)
 - [`../src/modes/terminal/controllers/input-controller.ts`](../../packages/coding-agent/src/modes/terminal/controllers/input-controller.ts)
-- [`../src/modes/rpc/rpc-mode.ts`](../../packages/coding-agent/src/modes/rpc/rpc-mode.ts)
+- [`../src/modes/rpc/rpc-commands.ts`](../../packages/coding-agent/src/modes/rpc/rpc-commands.ts)
 - [`../src/modes/rpc/rpc-client.ts`](../../packages/coding-agent/src/modes/rpc/rpc-client.ts)
 - [`../src/modes/rpc/rpc-types.ts`](../../packages/coding-agent/src/modes/rpc/rpc-types.ts)
 

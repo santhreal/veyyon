@@ -260,7 +260,7 @@ Center dashboard's.
 | An extension (TS/JS module) | [extensions.md](../../docs/handbook/src/features/extensions.md), [extension-loading.md](../../docs/internal/extension-loading.md), [skills/authoring-extensions.md](../../docs/handbook/src/features/extensions-authoring.md) |
 | A hook | `src/extensibility/hooks/types.ts` + [hooks.md](../../docs/handbook/src/reference/hooks.md), [skills/authoring-hooks.md](../../docs/handbook/src/features/hooks-authoring.md) |
 | A slash command | [slash-command-internals.md](../../docs/internal/slash-command-internals.md) |
-| An RPC command | `src/modes/rpc/rpc-types.ts` + [rpc.md](../../docs/handbook/src/reference/rpc.md) |
+| An RPC command | `src/modes/rpc/rpc-types.ts` (the `RpcCommand` union), its handler in `RPC_COMMAND_HANDLERS` in `src/modes/rpc/rpc-commands.ts`, and its schema line in [rpc.md](../../docs/handbook/src/reference/rpc.md) |
 | A skill | [skills.md](../../docs/handbook/src/reference/skills.md) |
 | A marketplace plugin | [marketplace.md](../../docs/handbook/src/features/marketplace.md), [plugin-manager-installer-plumbing.md](../../docs/internal/plugin-manager-installer-plumbing.md), [skills/authoring-marketplaces.md](../../docs/handbook/src/features/marketplace-authoring.md), [gemini-manifest-extensions.md](../../docs/internal/gemini-manifest-extensions.md) |
 | A custom MCP tool/server | [mcp-server-tool-authoring.md](../../docs/internal/mcp-server-tool-authoring.md), [custom-tools.md](../../docs/handbook/src/using/custom-tools.md) |

@@ -81,6 +81,7 @@ class RpcHostToolAdapter<TParams extends TSchema = TSchema, TTheme extends Theme
 export class RpcHostToolBridge {
 	#output: RpcHostToolOutput;
 	#definitions = new Map<string, RpcHostToolDefinition>();
+	#tools: AgentTool[] = [];
 	#pendingCalls = new Map<string, PendingHostToolCall>();
 	#closedError: Error | undefined;
 
@@ -92,9 +93,15 @@ export class RpcHostToolBridge {
 		return Array.from(this.#definitions.keys());
 	}
 
+	/** The tools the last {@link setTools} built, which every session the client attaches receives. */
+	get tools(): AgentTool[] {
+		return this.#tools;
+	}
+
 	setTools(tools: RpcHostToolDefinition[]): AgentTool[] {
 		this.#definitions = new Map(tools.map(tool => [tool.name, tool]));
-		return tools.map(tool => new RpcHostToolAdapter(tool, this));
+		this.#tools = tools.map(tool => new RpcHostToolAdapter(tool, this));
+		return this.#tools;
 	}
 
 	handleResult(frame: RpcHostToolResult): boolean {

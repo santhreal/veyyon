@@ -3,10 +3,8 @@ import { RpcHostToolBridge } from "@veyyon/coding-agent/modes/rpc/host-tools";
 import {
 	dispatchRpcControlFrame,
 	dispatchRpcInputFrame,
-	type PendingExtensionRequest,
 	RpcInputDispatcher,
 	type RpcInputFrameDeps,
-	RpcPendingExtensionRequests,
 	RpcShutdownCoordinator,
 } from "@veyyon/coding-agent/modes/rpc/rpc-mode";
 import type {
@@ -16,6 +14,10 @@ import type {
 	RpcHostToolCancelRequest,
 	RpcResponse,
 } from "@veyyon/coding-agent/modes/rpc/rpc-types";
+import {
+	type PendingExtensionRequest,
+	RpcPendingExtensionRequests,
+} from "@veyyon/coding-agent/modes/rpc/rpc-ui-context";
 import { useIsolatedGlobalSettings } from "./helpers/isolated-global-settings";
 
 type OutputFrame = RpcResponse | object;

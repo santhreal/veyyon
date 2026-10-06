@@ -331,7 +331,7 @@ Supported:
 - `terminal.setWidgetComponent(key, factory, options)` puts a component in the same widget slot `setWidget` writes text into
 - `terminal.setEditorComponent(factory)` replaces the live editor
 
-### RPC mode (`rpc-mode.ts`)
+### RPC mode (`rpc-ui-context.ts`)
 
 `ctx.ui` is backed by RPC `extension_ui_request` events:
 
