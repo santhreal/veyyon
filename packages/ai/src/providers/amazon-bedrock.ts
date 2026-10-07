@@ -21,6 +21,8 @@ import type {
 	AssistantMessage,
 	CacheRetention,
 	Context,
+	ImageContent,
+	Message,
 	Model,
 	StopReason,
 	StreamFunction,
@@ -31,6 +33,7 @@ import type {
 	Tool,
 	ToolCall,
 	ToolResultMessage,
+	UserMessage,
 } from "../types";
 import { normalizeToolCallId, resolveCacheRetention } from "../utils";
 import {
@@ -48,8 +51,8 @@ import { notifyProviderResponse } from "../utils/provider-response";
 import { toolWireSchema } from "../utils/schema/wire";
 import { stopReasonForTerminallessEof } from "../utils/terminalless-eof";
 import { invalidateAwsCredentialCache, resolveAwsCredentials } from "./aws-credentials";
-import { decodeEventStream } from "./aws-eventstream";
-import { signRequest } from "./aws-sigv4";
+import { decodeEventStream, type EventStreamMessage } from "./aws-eventstream";
+import { type AwsCredentials, signRequest } from "./aws-sigv4";
 import { supportsBedrockPromptCaching } from "./bedrock-prompt-cache";
 import { createInitialResponsesAssistantMessage } from "./initial-message";
 import { transformMessages } from "./transform-messages";
@@ -283,327 +286,478 @@ interface MetadataEvent {
 	};
 }
 
+const BEDROCK_REQUEST_HEADERS: Readonly<Record<string, string>> = {
+	"content-type": "application/json",
+	accept: "application/vnd.amazon.eventstream",
+};
+
+/** One Converse Stream turn: its signed request, its event stream and the assistant message they build. */
+class BedrockTurn {
+	readonly stream = new AssistantMessageEventStream();
+	readonly #model: Model<"bedrock-converse-stream">;
+	readonly #context: Context;
+	readonly #options: BedrockOptions;
+	readonly #startTime = performance.now();
+	readonly #output: AssistantMessage;
+	readonly #blocks: Block[];
+	readonly #region: string;
+	#firstTokenTime: number | undefined;
+	#rawRequestDump: RawHttpRequestDump | undefined;
+	/** Exact bytes of the last sent request body; materialized into a dump only on the 400/413 path. */
+	#wireBodyJson: string | undefined;
+	#bearerToken: string | undefined;
+	#sentinelInjected = false;
+	#sawMessageStop = false;
+	#responseHookFailed = false;
+	#responseHookError: unknown;
+
+	constructor(model: Model<"bedrock-converse-stream">, context: Context, options: BedrockOptions) {
+		this.#model = model;
+		this.#context = context;
+		this.#options = options;
+		this.#output = createInitialResponsesAssistantMessage("bedrock-converse-stream" as Api, model.provider, model.id);
+		this.#blocks = this.#output.content as Block[];
+		this.#region = resolveBedrockRegion(model.id, options);
+	}
+
+	async run(): Promise<void> {
+		try {
+			const body = await this.#open();
+			for await (const frame of decodeEventStream(body)) this.#onFrame(frame);
+			this.#finish();
+		} catch (error) {
+			await this.#fail(error);
+		}
+	}
+
+	async #open(): Promise<ReadableStream<Uint8Array>> {
+		const response = await this.#send();
+		if (!response.ok) throw await this.#refusal(response);
+		if (!response.body) throw new AIError.BedrockApiError("Bedrock response has no body", response.status);
+		return response.body;
+	}
+
+	async #send(): Promise<Response> {
+		const options = this.#options;
+		const host = `bedrock-runtime.${this.#region}.amazonaws.com`;
+		const path = `/model/${encodeURIComponent(this.#model.id)}/converse-stream`;
+		const url = `https://${host}${path}`;
+		// Bun's native fetch ceiling is disabled below (`timeout: false`) so
+		// configurable watchdogs govern slow-prefill streams (issue #2422).
+		// Direct callers that bypass `register-builtins` (which installs the
+		// iterator-level first-event watchdog) still need a pre-response
+		// timer, otherwise a Bedrock/proxy that accepts the POST and never
+		// sends headers would hang forever.
+		const firstEventTimeoutMs = options.streamFirstEventTimeoutMs ?? getStreamFirstEventTimeoutMs();
+		// Clear the pre-response timer the instant headers arrive (below): an
+		// absolute `AbortSignal.timeout` would keep aborting the actively
+		// streaming body, not just a stalled time-to-first-byte (issue #2422).
+		const watchdog = armPreResponseTimeout(options.signal, firstEventTimeoutMs);
+		const prepareInit = () => this.#prepareRequest(url, host, path);
+		try {
+			// Preserve the provider's payload-capture contract for an
+			// already-aborted call without creating a physical attempt.
+			if (watchdog.signal?.aborted) await prepareInit();
+			const response = await fetchProviderWithRetry(url, {
+				method: "POST",
+				signal: watchdog.signal,
+				fetch: this.#observedFetch(),
+				timeout: false,
+				prepareInit,
+				maxDelayMs: options?.maxRetryDelayMs,
+			});
+			if (this.#responseHookFailed) throw this.#responseHookError;
+			return response;
+		} finally {
+			watchdog.clear();
+		}
+	}
+
+	/** The transport fetch, reporting each attempt's response to the caller's response hook. */
+	#observedFetch(): (input: string | URL | Request, init?: RequestInit) => Promise<Response> {
+		const transportFetch = this.#options.fetch ?? globalThis.fetch.bind(globalThis);
+		return async (input, init) => {
+			const attemptResponse = await transportFetch(input, init);
+			try {
+				await notifyProviderResponse(
+					this.#options,
+					attemptResponse,
+					this.#model,
+					attemptResponse.headers.get("x-amzn-requestid") ?? attemptResponse.headers.get("x-request-id"),
+				);
+			} catch (error) {
+				// A response hook is part of the request contract, not a transport
+				// failure. Return a non-retryable sentinel so fetchWithRetry cannot
+				// multiply the callback failure into more physical attempts.
+				this.#responseHookFailed = true;
+				this.#responseHookError = error;
+				return new Response(null, { status: 400 });
+			}
+			return attemptResponse;
+		};
+	}
+
+	async #prepareRequest(url: string, host: string, path: string): Promise<RequestInit> {
+		const credentials = await this.#resolveCredentials();
+		const request = await this.#buildRequest();
+		this.#rawRequestDump = {
+			provider: this.#model.provider,
+			api: this.#output.api,
+			model: this.#model.id,
+			method: "POST",
+			url,
+		};
+		// Retain the exact sent BYTES, not the parsed object: a dump body is
+		// read only on the 400/413 path.
+		this.#wireBodyJson = JSON.stringify(request);
+		const body = new TextEncoder().encode(this.#wireBodyJson);
+		if (!credentials) {
+			return { headers: { ...BEDROCK_REQUEST_HEADERS, Authorization: `Bearer ${this.#bearerToken}` }, body };
+		}
+		const signed = await signRequest({
+			method: "POST",
+			host,
+			path,
+			body,
+			region: this.#region,
+			service: "bedrock",
+			credentials,
+			headers: BEDROCK_REQUEST_HEADERS,
+		});
+		return { headers: { ...BEDROCK_REQUEST_HEADERS, ...signed }, body };
+	}
+
+	/** SigV4 credentials, or undefined when a bearer token authenticates the request instead. */
+	async #resolveCredentials(): Promise<AwsCredentials | undefined> {
+		this.#bearerToken = resolveBearerToken(this.#options);
+		if (this.#bearerToken) return undefined;
+		if ($flag("AWS_BEDROCK_SKIP_AUTH")) {
+			return { accessKeyId: "dummy-access-key", secretAccessKey: "dummy-secret-key" };
+		}
+		return resolveAwsCredentials({
+			profile: this.#options.profile,
+			region: this.#region,
+			signal: this.#options.signal,
+			fetch: this.#options.fetch,
+		});
+	}
+
+	async #buildRequest(): Promise<ConverseStreamRequest> {
+		const model = this.#model;
+		const context = this.#context;
+		const options = this.#options;
+		const cacheRetention = resolveCacheRetention(options.cacheRetention);
+		const messages = convertMessages(context, model, cacheRetention);
+		const { toolConfig, sentinelInjected } = planToolConfig(context.tools, options.toolChoice, messages);
+		this.#sentinelInjected = sentinelInjected;
+		const additionalModelRequestFields = buildAdditionalModelRequestFields(model, options);
+		// Bedrock rejects thinking + forced tool_choice ("any" or specific tool),
+		// so a request that forces tool use drops the thinking fields.
+		const forcesToolUse = toolConfig?.toolChoice?.any || toolConfig?.toolChoice?.tool;
+		const request: ConverseStreamRequest = {
+			messages,
+			system: buildSystemPrompt(context.systemPrompt, model, cacheRetention),
+			inferenceConfig: {
+				maxTokens: options.maxTokens,
+				temperature: options.temperature,
+				topP: options.topP,
+			},
+			toolConfig,
+			additionalModelRequestFields: forcesToolUse ? undefined : additionalModelRequestFields,
+		};
+		const replacement = await options.onPayload?.(request, model);
+		return replacement === undefined ? request : (replacement as ConverseStreamRequest);
+	}
+
+	/** The error a non-2xx response stands for. A 401 or 403 also drops cached SigV4 credentials. */
+	async #refusal(response: Response): Promise<AIError.BedrockApiError> {
+		if (!this.#bearerToken && (response.status === 401 || response.status === 403)) {
+			// Stale cached credentials (e.g. rotated session keys in ~/.aws/credentials) —
+			// drop the cache entry so the next attempt re-resolves from scratch.
+			invalidateAwsCredentialCache({ profile: this.#options.profile, region: this.#region });
+		}
+		// The STATUS is the failure; the body is Bedrock's explanation of it. Losing an unreadable body still
+		// leaves the status, which is what the error below is built from. The shared reader replaces a local
+		// 1000-character slice, so the read is bounded too and truncation says so.
+		const detail = await AIError.readProviderErrorDetail(response);
+		return new AIError.BedrockApiError(`Bedrock HTTP ${response.status}: ${detail}`, response.status, {
+			headers: response.headers,
+		});
+	}
+
+	#onFrame(frame: EventStreamMessage): void {
+		const error = frameError(frame);
+		if (error) throw error;
+		if (frame.headers[":message-type"] !== "event") return;
+		const payload = safeParsePayload(frame.payload);
+		if (payload) this.#onEvent(frame.headers[":event-type"], payload);
+	}
+
+	#onEvent(eventType: string | undefined, payload: unknown): void {
+		switch (eventType) {
+			case "messageStart":
+				if ((payload as MessageStartEvent).role !== "assistant") {
+					throw new AIError.BedrockApiError(
+						"Unexpected assistant message start but got user message start instead",
+						0,
+					);
+				}
+				this.stream.push({ type: "start", partial: this.#output });
+				break;
+			case "contentBlockStart":
+				this.#firstTokenTime ??= performance.now();
+				this.#onContentBlockStart(payload as ContentBlockStartEvent);
+				break;
+			case "contentBlockDelta":
+				this.#firstTokenTime ??= performance.now();
+				this.#onContentBlockDelta(payload as ContentBlockDeltaEvent);
+				break;
+			case "contentBlockStop":
+				this.#onContentBlockStop(payload as ContentBlockStopEvent);
+				break;
+			case "messageStop":
+				this.#onMessageStop(payload as MessageStopEvent);
+				break;
+			case "metadata":
+				this.#onMetadata(payload as MetadataEvent);
+				break;
+			// Unknown event types (Bedrock may add new ones) are ignored.
+		}
+	}
+
+	/** Appends a block to the message and announces it; returns its position. */
+	#openBlock(block: Block, type: "text_start" | "thinking_start" | "toolcall_start"): number {
+		this.#output.content.push(block);
+		const position = this.#blocks.length - 1;
+		this.stream.push({ type, contentIndex: position, partial: this.#output });
+		return position;
+	}
+
+	#onContentBlockStart(event: ContentBlockStartEvent): void {
+		const toolUse = event.start?.toolUse;
+		// Drop the sentinel call only when we injected it ourselves. A caller that
+		// registers a real tool named `__no_tools__` would otherwise lose its
+		// legitimate tool-use events on normal turns.
+		if (!toolUse || (this.#sentinelInjected && toolUse.name === NO_TOOLS_SENTINEL_NAME)) return;
+		this.#openBlock(
+			{
+				type: "toolCall",
+				id: normalizeToolCallId(toolUse.toolUseId || ""),
+				name: toolUse.name || "",
+				arguments: {},
+				[kStreamingPartialJson]: "",
+				[kStreamingBlockIndex]: event.contentBlockIndex,
+			},
+			"toolcall_start",
+		);
+	}
+
+	#onContentBlockDelta(event: ContentBlockDeltaEvent): void {
+		const { contentBlockIndex, delta } = event;
+		const position = this.#blocks.findIndex(b => b[kStreamingBlockIndex] === contentBlockIndex);
+		const block = this.#blocks[position];
+		if (delta?.text !== undefined) {
+			// `contentBlockStart` is not sent for text blocks, so the first delta opens one.
+			const textPosition = block
+				? position
+				: this.#openBlock({ type: "text", text: "", [kStreamingBlockIndex]: contentBlockIndex }, "text_start");
+			this.#appendText(textPosition, delta.text);
+		} else if (delta?.toolUse && block?.type === "toolCall") {
+			this.#appendToolInput(block, position, delta.toolUse.input || "");
+		} else if (delta?.reasoningContent) {
+			const thinkingPosition = block
+				? position
+				: this.#openBlock(
+						{ type: "thinking", thinking: "", thinkingSignature: "", [kStreamingBlockIndex]: contentBlockIndex },
+						"thinking_start",
+					);
+			this.#appendReasoning(thinkingPosition, delta.reasoningContent);
+		}
+	}
+
+	#appendText(position: number, text: string): void {
+		const block = this.#blocks[position];
+		if (block.type !== "text") return;
+		block.text += text;
+		this.stream.push({ type: "text_delta", contentIndex: position, delta: text, partial: this.#output });
+	}
+
+	#appendToolInput(block: Extract<Block, { type: "toolCall" }>, position: number, input: string): void {
+		block[kStreamingPartialJson] = (block[kStreamingPartialJson] || "") + input;
+		const throttled = parseStreamingJsonThrottled(block[kStreamingPartialJson], block[kStreamingLastParseLen] ?? 0);
+		if (throttled) {
+			block.arguments = throttled.value;
+			block[kStreamingLastParseLen] = throttled.parsedLen;
+		}
+		this.stream.push({ type: "toolcall_delta", contentIndex: position, delta: input, partial: this.#output });
+	}
+
+	#appendReasoning(position: number, reasoning: { text?: string; signature?: string }): void {
+		const block = this.#blocks[position];
+		if (block.type !== "thinking") return;
+		if (reasoning.text) {
+			block.thinking += reasoning.text;
+			this.stream.push({
+				type: "thinking_delta",
+				contentIndex: position,
+				delta: reasoning.text,
+				partial: this.#output,
+			});
+		}
+		if (reasoning.signature) block.thinkingSignature = (block.thinkingSignature || "") + reasoning.signature;
+	}
+
+	#onContentBlockStop(event: ContentBlockStopEvent): void {
+		const position = this.#blocks.findIndex(b => b[kStreamingBlockIndex] === event.contentBlockIndex);
+		const block = this.#blocks[position];
+		const { stream } = this;
+		const output = this.#output;
+		switch (block?.type) {
+			case "text":
+				stream.push({ type: "text_end", contentIndex: position, content: block.text, partial: output });
+				break;
+			case "thinking":
+				stream.push({ type: "thinking_end", contentIndex: position, content: block.thinking, partial: output });
+				break;
+			case "toolCall":
+				block.arguments = parseStreamingJson(block[kStreamingPartialJson]);
+				clearStreamingPartialJson(block);
+				stream.push({ type: "toolcall_end", contentIndex: position, toolCall: block, partial: output });
+				break;
+		}
+	}
+
+	#onMetadata(event: MetadataEvent): void {
+		const usage = event.usage;
+		if (!usage) return;
+		const total = this.#output.usage;
+		total.input = usage.inputTokens || 0;
+		total.output = usage.outputTokens || 0;
+		total.cacheRead = usage.cacheReadInputTokens || 0;
+		total.cacheWrite = usage.cacheWriteInputTokens || 0;
+		total.totalTokens = usage.totalTokens || total.input + total.output;
+		calculateCost(this.#model, total);
+	}
+
+	#onMessageStop(event: MessageStopEvent): void {
+		this.#sawMessageStop = true;
+		const output = this.#output;
+		// A sentinel-only request must never surface a tool-use stop:
+		// no real tool exists for the agent to dispatch.
+		output.stopReason =
+			this.#sentinelInjected && event.stopReason === "tool_use" ? "stop" : mapStopReason(event.stopReason);
+		if (output.stopReason === "error") {
+			output.errorMessage = AIError.providerFinishErrorMessage(event.stopReason);
+		}
+	}
+
+	#finish(): void {
+		if (this.#options.signal?.aborted) throw new AIError.RequestAbortError();
+		const output = this.#output;
+		if (!this.#sawMessageStop) output.stopReason = this.#terminallessStopReason();
+		if (output.stopReason === "error" || output.stopReason === "aborted") {
+			throw new AIError.BedrockApiError(output.errorMessage ?? "An unknown error occurred", 0);
+		}
+		this.#stampTiming();
+		this.stream.push({ type: "done", reason: output.stopReason, message: output });
+		this.stream.end();
+	}
+
+	/**
+	 * The stop reason of an event stream that ended without a `messageStop`.
+	 *
+	 * Nothing in the response said the turn was over, so `output.stopReason` is
+	 * still the optimistic seed it was given before the first byte arrived, and
+	 * pushing `done` with it reported an empty body as a finished answer. The
+	 * shared rule decides what the accumulated content can stand as; a tool batch
+	 * counts only when every call parsed, which on this dialect means every one of
+	 * them reached `contentBlockStop`.
+	 */
+	#terminallessStopReason(): StopReason {
+		const toolBatchIsComplete = this.#blocks.every(
+			block => block.type !== "toolCall" || getStreamingPartialJson(block) === undefined,
+		);
+		const stopReason = stopReasonForTerminallessEof(this.#output.content, toolBatchIsComplete);
+		if (stopReason === undefined) {
+			throw new AIError.ProviderResponseError(
+				"Bedrock event stream ended without a messageStop (connection dropped or response truncated)",
+				{ provider: this.#model.provider, kind: "incomplete-stream" },
+			);
+		}
+		return stopReason;
+	}
+
+	#stampTiming(): void {
+		this.#output.duration = performance.now() - this.#startTime;
+		if (this.#firstTokenTime) this.#output.ttft = this.#firstTokenTime - this.#startTime;
+	}
+
+	async #fail(error: unknown): Promise<void> {
+		const output = this.#output;
+		for (const block of output.content) {
+			if (block.type === "toolCall") clearStreamingPartialJson(block);
+		}
+		const diagnostics = thinkingDiagnostics(error, this.#context.messages);
+		const result = await AIError.finalize(error, {
+			api: this.#model.api,
+			signal: this.#options.signal,
+			rawRequestDump: materializeDumpBody(this.#rawRequestDump, this.#wireBodyJson),
+		});
+		AIError.applyFinalizeResult(output, result, result.message + diagnostics);
+		this.#stampTiming();
+		this.stream.push({ type: "error", reason: output.stopReason, error: output });
+		this.stream.end();
+	}
+}
+
 export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 	model: Model<"bedrock-converse-stream">,
 	context: Context,
 	options: BedrockOptions,
 ): AssistantMessageEventStream => {
-	const stream = new AssistantMessageEventStream();
-
-	(async () => {
-		const startTime = performance.now();
-		let firstTokenTime: number | undefined;
-
-		const output: AssistantMessage = createInitialResponsesAssistantMessage(
-			"bedrock-converse-stream" as Api,
-			model.provider,
-			model.id,
-		);
-
-		const blocks = output.content as Block[];
-		let rawRequestDump: RawHttpRequestDump | undefined;
-		/** Exact bytes of the last sent request body; materialized into a dump only on the 400/413 path. */
-		let wireBodyJson: string | undefined;
-		const region = resolveBedrockRegion(model.id, options);
-
-		try {
-			let sentinelInjected = false;
-			let sawMessageStop = false;
-			let bearerToken: string | undefined;
-			const host = `bedrock-runtime.${region}.amazonaws.com`;
-			const url = `https://${host}/model/${encodeURIComponent(model.id)}/converse-stream`;
-			const urlPath = `/model/${encodeURIComponent(model.id)}/converse-stream`;
-			const baseHeaders: Record<string, string> = {
-				"content-type": "application/json",
-				accept: "application/vnd.amazon.eventstream",
-			};
-
-			// Bun's native fetch ceiling is disabled below (`timeout: false`) so
-			// configurable watchdogs govern slow-prefill streams (issue #2422).
-			// Direct callers that bypass `register-builtins` (which installs the
-			// iterator-level first-event watchdog) still need a pre-response
-			// timer, otherwise a Bedrock/proxy that accepts the POST and never
-			// sends headers would hang forever.
-			const firstEventTimeoutMs = options.streamFirstEventTimeoutMs ?? getStreamFirstEventTimeoutMs();
-			// Clear the pre-response timer the instant headers arrive (below): an
-			// absolute `AbortSignal.timeout` would keep aborting the actively
-			// streaming body, not just a stalled time-to-first-byte (issue #2422).
-			const watchdog = armPreResponseTimeout(options.signal, firstEventTimeoutMs);
-			const transportFetch = options.fetch ?? globalThis.fetch.bind(globalThis);
-			let responseHookFailed = false;
-			let responseHookError: unknown;
-			const observedFetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
-				const attemptResponse = await transportFetch(input, init);
-				try {
-					await notifyProviderResponse(
-						options,
-						attemptResponse,
-						model,
-						attemptResponse.headers.get("x-amzn-requestid") ?? attemptResponse.headers.get("x-request-id"),
-					);
-				} catch (error) {
-					// A response hook is part of the request contract, not a transport
-					// failure. Return a non-retryable sentinel so fetchWithRetry cannot
-					// multiply the callback failure into more physical attempts.
-					responseHookFailed = true;
-					responseHookError = error;
-					return new Response(null, { status: 400 });
-				}
-				return attemptResponse;
-			};
-			const prepareRequest = async (): Promise<RequestInit> => {
-				bearerToken = resolveBearerToken(options);
-				let credentials: { accessKeyId: string; secretAccessKey: string; sessionToken?: string } | undefined;
-				if (!bearerToken) {
-					credentials = $flag("AWS_BEDROCK_SKIP_AUTH")
-						? { accessKeyId: "dummy-access-key", secretAccessKey: "dummy-secret-key" }
-						: await resolveAwsCredentials({
-								profile: options.profile,
-								region,
-								signal: options.signal,
-								fetch: options.fetch,
-							});
-				}
-
-				const cacheRetention = resolveCacheRetention(options.cacheRetention);
-				const convertedMessages = convertMessages(context, model, cacheRetention);
-				const toolPlan = planToolConfig(context.tools, options.toolChoice, convertedMessages);
-				const toolConfig = toolPlan.toolConfig;
-				sentinelInjected = toolPlan.sentinelInjected;
-				let additionalModelRequestFields = buildAdditionalModelRequestFields(model, options);
-
-				// Bedrock rejects thinking + forced tool_choice ("any" or specific tool).
-				// When tool_choice forces tool use, disable thinking to avoid API errors.
-				if (toolConfig?.toolChoice && additionalModelRequestFields) {
-					const tc = toolConfig.toolChoice;
-					if (tc.any || tc.tool) additionalModelRequestFields = undefined;
-				}
-
-				let commandInput: ConverseStreamRequest = {
-					messages: convertedMessages,
-					system: buildSystemPrompt(context.systemPrompt, model, cacheRetention),
-					inferenceConfig: {
-						maxTokens: options.maxTokens,
-						temperature: options.temperature,
-						topP: options.topP,
-					},
-					toolConfig,
-					additionalModelRequestFields,
-				};
-				const replacementPayload = await options.onPayload?.(commandInput, model);
-				if (replacementPayload !== undefined) {
-					commandInput = replacementPayload as ConverseStreamRequest;
-				}
-
-				rawRequestDump = {
-					provider: model.provider,
-					api: output.api,
-					model: model.id,
-					method: "POST",
-					url,
-				};
-				// Retain the exact sent BYTES, not the parsed object: a dump body is
-				// read only on the 400/413 path.
-				wireBodyJson = JSON.stringify(commandInput);
-				const body = new TextEncoder().encode(wireBodyJson);
-
-				if (bearerToken) {
-					return {
-						headers: { ...baseHeaders, Authorization: `Bearer ${bearerToken}` },
-						body,
-					};
-				}
-				const signed = await signRequest({
-					method: "POST",
-					host,
-					path: urlPath,
-					body,
-					region,
-					service: "bedrock",
-					credentials: credentials!,
-					headers: baseHeaders,
-				});
-				return {
-					headers: { ...baseHeaders, ...signed },
-					body,
-				};
-			};
-			let response: Response;
-			try {
-				// Preserve the provider's payload-capture contract for an
-				// already-aborted call without creating a physical attempt.
-				if (watchdog.signal?.aborted) await prepareRequest();
-				response = await fetchProviderWithRetry(url, {
-					method: "POST",
-					signal: watchdog.signal,
-					fetch: observedFetch,
-					timeout: false,
-					prepareInit: prepareRequest,
-					maxDelayMs: options?.maxRetryDelayMs,
-				});
-				if (responseHookFailed) throw responseHookError;
-			} finally {
-				watchdog.clear();
-			}
-
-			if (!response.ok) {
-				if (!bearerToken && (response.status === 401 || response.status === 403)) {
-					// Stale cached credentials (e.g. rotated session keys in ~/.aws/credentials) —
-					// drop the cache entry so the next attempt re-resolves from scratch.
-					invalidateAwsCredentialCache({ profile: options.profile, region });
-				}
-				// The STATUS is the failure; the body is Bedrock's explanation of it. Losing an unreadable body still
-				// leaves the status, which is what the error below is built from. The shared reader replaces a local
-				// 1000-character slice, so the read is bounded too and truncation says so.
-				const detail = await AIError.readProviderErrorDetail(response);
-				throw new AIError.BedrockApiError(`Bedrock HTTP ${response.status}: ${detail}`, response.status, {
-					headers: response.headers,
-				});
-			}
-			if (!response.body) throw new AIError.BedrockApiError("Bedrock response has no body", response.status);
-
-			// Track first event for the abort/diagnostic path (currently informational).
-			for await (const message of decodeEventStream(response.body)) {
-				const messageType = message.headers[":message-type"];
-				const eventType = message.headers[":event-type"];
-
-				if (messageType === "exception") {
-					const exceptionType = message.headers[":exception-type"] || "Exception";
-					const payload = safeParsePayload(message.payload) as { message?: string } | undefined;
-					const errorMessage = payload?.message || new TextDecoder().decode(message.payload);
-					const text = `${exceptionType}: ${errorMessage}`;
-					throw new AIError.BedrockApiError(text, 400, { code: exceptionType });
-				}
-				if (messageType === "error") {
-					const code = message.headers[":error-code"] || "UnknownError";
-					const errorMessage = message.headers[":error-message"] || new TextDecoder().decode(message.payload);
-					throw new AIError.BedrockApiError(`${code}: ${errorMessage}`, 400, { code });
-				}
-				if (messageType !== "event") continue;
-
-				const payload = safeParsePayload(message.payload);
-				if (!payload) continue;
-
-				switch (eventType) {
-					case "messageStart": {
-						// no-op: first event marker is implicit by stream entry.
-						const ev = payload as MessageStartEvent;
-						if (ev.role !== "assistant") {
-							throw new AIError.BedrockApiError(
-								"Unexpected assistant message start but got user message start instead",
-								0,
-							);
-						}
-						stream.push({ type: "start", partial: output });
-						break;
-					}
-					case "contentBlockStart": {
-						if (!firstTokenTime) firstTokenTime = performance.now();
-						handleContentBlockStart(payload as ContentBlockStartEvent, blocks, output, stream, sentinelInjected);
-						break;
-					}
-					case "contentBlockDelta": {
-						if (!firstTokenTime) firstTokenTime = performance.now();
-						handleContentBlockDelta(payload as ContentBlockDeltaEvent, blocks, output, stream);
-						break;
-					}
-					case "contentBlockStop": {
-						handleContentBlockStop(payload as ContentBlockStopEvent, blocks, output, stream);
-						break;
-					}
-					case "messageStop": {
-						sawMessageStop = true;
-						const ev = payload as MessageStopEvent;
-						// A sentinel-only request must never surface a tool-use stop:
-						// no real tool exists for the agent to dispatch.
-						output.stopReason =
-							sentinelInjected && ev.stopReason === "tool_use" ? "stop" : mapStopReason(ev.stopReason);
-						if (output.stopReason === "error") {
-							output.errorMessage = AIError.providerFinishErrorMessage(ev.stopReason);
-						}
-						break;
-					}
-					case "metadata": {
-						handleMetadata(payload as MetadataEvent, model, output);
-						break;
-					}
-					default:
-						// Unknown event types (Bedrock may add new ones) — ignore.
-						break;
-				}
-			}
-
-			if (options.signal?.aborted) throw new AIError.RequestAbortError();
-
-			// The event stream ended without a `messageStop`, so nothing in the
-			// response ever said the turn was over: `output.stopReason` is still
-			// the optimistic seed it was given before the first byte arrived, and
-			// pushing `done` with it reported an empty body as a finished answer.
-			// The shared rule decides what the accumulated content can stand as;
-			// a tool batch counts only when every call parsed, which on this
-			// dialect means every one of them reached `contentBlockStop`.
-			if (!sawMessageStop) {
-				const toolBatchIsComplete = blocks.every(
-					block => block.type !== "toolCall" || getStreamingPartialJson(block) === undefined,
-				);
-				const stopReason = stopReasonForTerminallessEof(output.content, toolBatchIsComplete);
-				if (stopReason === undefined) {
-					throw new AIError.ProviderResponseError(
-						"Bedrock event stream ended without a messageStop (connection dropped or response truncated)",
-						{ provider: model.provider, kind: "incomplete-stream" },
-					);
-				}
-				output.stopReason = stopReason;
-			}
-
-			if (output.stopReason === "error" || output.stopReason === "aborted") {
-				throw new AIError.BedrockApiError(output.errorMessage ?? "An unknown error occurred", 0);
-			}
-
-			output.duration = performance.now() - startTime;
-			if (firstTokenTime) output.ttft = firstTokenTime - startTime;
-			stream.push({ type: "done", reason: output.stopReason, message: output });
-			stream.end();
-		} catch (error) {
-			for (const block of output.content) {
-				if (block.type === "toolCall") clearStreamingPartialJson(block);
-			}
-			const baseMessage = error instanceof Error ? error.message : JSON.stringify(error);
-			// Enrich error with thinking block diagnostics for signature-related failures
-			let diagnostics = "";
-			if (baseMessage.includes("signature") || baseMessage.includes("thinking")) {
-				const thinkingBlocks = context.messages
-					.filter((m): m is AssistantMessage => m.role === "assistant")
-					.flatMap((m, mi) =>
-						m.content
-							.filter(b => b.type === "thinking")
-							.map((b, bi) => ({
-								msg: mi,
-								block: bi,
-								stop: m.stopReason,
-								sigLen: b.thinkingSignature?.length ?? -1,
-								thinkLen: b.thinking.length,
-							})),
-					);
-				if (thinkingBlocks.length > 0) {
-					diagnostics = `\n[thinking-diag] ${JSON.stringify(thinkingBlocks)}`;
-				}
-			}
-			const result = await AIError.finalize(error, {
-				api: model.api,
-				signal: options.signal,
-				rawRequestDump: materializeDumpBody(rawRequestDump, wireBodyJson),
-			});
-			AIError.applyFinalizeResult(output, result, result.message + diagnostics);
-			output.duration = performance.now() - startTime;
-			if (firstTokenTime) output.ttft = firstTokenTime - startTime;
-			stream.push({ type: "error", reason: output.stopReason, error: output });
-			stream.end();
-		}
-	})();
-
-	return stream;
+	const turn = new BedrockTurn(model, context, options);
+	void turn.run();
+	return turn.stream;
 };
+
+/** The error an `exception` or `error` frame reports, or undefined for any other frame. */
+function frameError(frame: EventStreamMessage): AIError.BedrockApiError | undefined {
+	switch (frame.headers[":message-type"]) {
+		case "exception": {
+			const exceptionType = frame.headers[":exception-type"] || "Exception";
+			const payload = safeParsePayload(frame.payload) as { message?: string } | undefined;
+			const message = payload?.message || new TextDecoder().decode(frame.payload);
+			return new AIError.BedrockApiError(`${exceptionType}: ${message}`, 400, { code: exceptionType });
+		}
+		case "error": {
+			const code = frame.headers[":error-code"] || "UnknownError";
+			const message = frame.headers[":error-message"] || new TextDecoder().decode(frame.payload);
+			return new AIError.BedrockApiError(`${code}: ${message}`, 400, { code });
+		}
+		default:
+			return undefined;
+	}
+}
+
+/** Each replayed thinking block's signature and text length, appended to a signature or thinking refusal. */
+function thinkingDiagnostics(error: unknown, messages: readonly Message[]): string {
+	const baseMessage = error instanceof Error ? error.message : JSON.stringify(error);
+	if (!baseMessage.includes("signature") && !baseMessage.includes("thinking")) return "";
+	const thinkingBlocks = messages
+		.filter((m): m is AssistantMessage => m.role === "assistant")
+		.flatMap((m, mi) =>
+			m.content
+				.filter(b => b.type === "thinking")
+				.map((b, bi) => ({
+					msg: mi,
+					block: bi,
+					stop: m.stopReason,
+					sigLen: b.thinkingSignature?.length ?? -1,
+					thinkLen: b.thinking.length,
+				})),
+		);
+	return thinkingBlocks.length > 0 ? `\n[thinking-diag] ${JSON.stringify(thinkingBlocks)}` : "";
+}
 
 function safeParsePayload(payload: Uint8Array): unknown {
 	if (payload.length === 0) return {};
@@ -614,138 +768,6 @@ function safeParsePayload(payload: Uint8Array): unknown {
 		// unparseable event frame is skipped rather than treated as an empty event, so a malformed frame
 		// cannot look like a legitimate no-op in the stream.
 		return undefined;
-	}
-}
-
-function handleContentBlockStart(
-	event: ContentBlockStartEvent,
-	blocks: Block[],
-	output: AssistantMessage,
-	stream: AssistantMessageEventStream,
-	sentinelInjected: boolean,
-): void {
-	const index = event.contentBlockIndex;
-	const start = event.start;
-
-	// Drop the sentinel call only when we injected it ourselves. A caller that
-	// registers a real tool named `__no_tools__` would otherwise lose its
-	// legitimate tool-use events on normal turns.
-	if (sentinelInjected && start?.toolUse?.name === NO_TOOLS_SENTINEL_NAME) return;
-
-	if (start?.toolUse) {
-		const block: Block = {
-			type: "toolCall",
-			id: normalizeToolCallId(start.toolUse.toolUseId || ""),
-			name: start.toolUse.name || "",
-			arguments: {},
-			[kStreamingPartialJson]: "",
-			[kStreamingBlockIndex]: index,
-		};
-		output.content.push(block);
-		stream.push({ type: "toolcall_start", contentIndex: blocks.length - 1, partial: output });
-	}
-}
-
-function handleContentBlockDelta(
-	event: ContentBlockDeltaEvent,
-	blocks: Block[],
-	output: AssistantMessage,
-	stream: AssistantMessageEventStream,
-): void {
-	const contentBlockIndex = event.contentBlockIndex;
-	const delta = event.delta;
-	let index = blocks.findIndex(b => b[kStreamingBlockIndex] === contentBlockIndex);
-	let block = blocks[index];
-
-	if (delta?.text !== undefined) {
-		// If no text block exists yet, create one — `handleContentBlockStart` is not sent for text blocks
-		if (!block) {
-			const newBlock: Block = { type: "text", text: "", [kStreamingBlockIndex]: contentBlockIndex };
-			output.content.push(newBlock);
-			index = blocks.length - 1;
-			block = blocks[index];
-			stream.push({ type: "text_start", contentIndex: index, partial: output });
-		}
-		if (block.type === "text") {
-			block.text += delta.text;
-			stream.push({ type: "text_delta", contentIndex: index, delta: delta.text, partial: output });
-		}
-	} else if (delta?.toolUse && block?.type === "toolCall") {
-		block[kStreamingPartialJson] = (block[kStreamingPartialJson] || "") + (delta.toolUse.input || "");
-		const throttled = parseStreamingJsonThrottled(block[kStreamingPartialJson], block[kStreamingLastParseLen] ?? 0);
-		if (throttled) {
-			block.arguments = throttled.value;
-			block[kStreamingLastParseLen] = throttled.parsedLen;
-		}
-		stream.push({ type: "toolcall_delta", contentIndex: index, delta: delta.toolUse.input || "", partial: output });
-	} else if (delta?.reasoningContent) {
-		let thinkingBlock = block;
-		let thinkingIndex = index;
-
-		if (!thinkingBlock) {
-			const newBlock: Block = {
-				type: "thinking",
-				thinking: "",
-				thinkingSignature: "",
-				[kStreamingBlockIndex]: contentBlockIndex,
-			};
-			output.content.push(newBlock);
-			thinkingIndex = blocks.length - 1;
-			thinkingBlock = blocks[thinkingIndex];
-			stream.push({ type: "thinking_start", contentIndex: thinkingIndex, partial: output });
-		}
-
-		if (thinkingBlock?.type === "thinking") {
-			if (delta.reasoningContent.text) {
-				thinkingBlock.thinking += delta.reasoningContent.text;
-				stream.push({
-					type: "thinking_delta",
-					contentIndex: thinkingIndex,
-					delta: delta.reasoningContent.text,
-					partial: output,
-				});
-			}
-			if (delta.reasoningContent.signature) {
-				thinkingBlock.thinkingSignature =
-					(thinkingBlock.thinkingSignature || "") + delta.reasoningContent.signature;
-			}
-		}
-	}
-}
-
-function handleMetadata(event: MetadataEvent, model: Model<"bedrock-converse-stream">, output: AssistantMessage): void {
-	if (event.usage) {
-		output.usage.input = event.usage.inputTokens || 0;
-		output.usage.output = event.usage.outputTokens || 0;
-		output.usage.cacheRead = event.usage.cacheReadInputTokens || 0;
-		output.usage.cacheWrite = event.usage.cacheWriteInputTokens || 0;
-		output.usage.totalTokens = event.usage.totalTokens || output.usage.input + output.usage.output;
-		calculateCost(model, output.usage);
-	}
-}
-
-function handleContentBlockStop(
-	event: ContentBlockStopEvent,
-	blocks: Block[],
-	output: AssistantMessage,
-	stream: AssistantMessageEventStream,
-): void {
-	const index = blocks.findIndex(b => b[kStreamingBlockIndex] === event.contentBlockIndex);
-	const block = blocks[index];
-	if (!block) return;
-
-	switch (block.type) {
-		case "text":
-			stream.push({ type: "text_end", contentIndex: index, content: block.text, partial: output });
-			break;
-		case "thinking":
-			stream.push({ type: "thinking_end", contentIndex: index, content: block.thinking, partial: output });
-			break;
-		case "toolCall":
-			block.arguments = parseStreamingJson(block[kStreamingPartialJson]);
-			clearStreamingPartialJson(block);
-			stream.push({ type: "toolcall_end", contentIndex: index, toolCall: block, partial: output });
-			break;
 	}
 }
 
@@ -826,145 +848,135 @@ function convertMessages(
 	cacheRetention: CacheRetention,
 ): WireMessage[] {
 	const result: WireMessage[] = [];
-	const transformedMessages = transformMessages(context.messages, model, normalizeToolCallId);
+	const messages = transformMessages(context.messages, model, normalizeToolCallId);
+	const signsThinking = supportsThinkingSignature(model);
 
-	for (let i = 0; i < transformedMessages.length; i++) {
-		const m = transformedMessages[i];
-
-		switch (m.role) {
-			case "developer":
-			case "user":
-				if (typeof m.content === "string") {
-					// Skip empty user messages
-					if (!m.content || m.content.trim() === "") continue;
-					result.push({ role: "user", content: [{ text: m.content.toWellFormed() }] });
-				} else {
-					const contentBlocks: UserContent[] = [];
-					for (const c of m.content) {
-						switch (c.type) {
-							case "text": {
-								const text = c.text.toWellFormed();
-								if (text.trim().length === 0) continue;
-								contentBlocks.push({ text });
-								break;
-							}
-							case "image":
-								contentBlocks.push({ image: createImageBlock(c.mimeType, c.data) });
-								break;
-							default:
-								throw new AIError.ValidationError("Unknown user content type");
-						}
-					}
-					// Skip message if all blocks filtered out
-					if (contentBlocks.length === 0) continue;
-					result.push({ role: "user", content: contentBlocks });
-				}
-				break;
-			case "assistant": {
-				// Skip assistant messages with empty content (e.g., from aborted requests)
-				// Bedrock rejects messages with empty content arrays
-				if (m.content.length === 0) continue;
-				const contentBlocks: AssistantContent[] = [];
-				for (const c of m.content) {
-					switch (c.type) {
-						case "text":
-							// Skip empty text blocks
-							if (c.text.trim().length === 0) continue;
-							contentBlocks.push({ text: c.text.toWellFormed() });
-							break;
-						case "toolCall":
-							contentBlocks.push({
-								toolUse: {
-									toolUseId: normalizeToolCallId(c.id),
-									name: c.name,
-									input: c.arguments,
-								},
-							});
-							break;
-						case "thinking":
-							// Skip empty thinking blocks
-							if (c.thinking.trim().length === 0) continue;
-							// Thinking blocks require a valid signature when sent as reasoningContent.
-							// If the signature is missing (e.g., from an aborted stream), or the model
-							// doesn't support signatures, convert to plain text instead.
-							if (supportsThinkingSignature(model) && c.thinkingSignature) {
-								contentBlocks.push({
-									reasoningContent: {
-										reasoningText: { text: c.thinking.toWellFormed(), signature: c.thinkingSignature },
-									},
-								});
-							} else if (!supportsThinkingSignature(model)) {
-								// Model doesn't support signatures at all — send as unsigned reasoning
-								contentBlocks.push({
-									reasoningContent: { reasoningText: { text: c.thinking.toWellFormed() } },
-								});
-							} else {
-								// Model requires signature but we don't have one — demote to text
-								contentBlocks.push({ text: renderDemotedThinking(model.id, c.thinking) });
-							}
-							break;
-						default:
-							throw new AIError.ValidationError("Unknown assistant content type");
-					}
-				}
-				// Skip if all content blocks were filtered out
-				if (contentBlocks.length === 0) continue;
-				result.push({ role: "assistant", content: contentBlocks });
-				break;
-			}
-			case "toolResult": {
-				// Collect all consecutive toolResult messages into a single user message —
-				// Bedrock requires all tool results to be in one message.
-				const toolResults: ToolResultBlockWire[] = [];
-				toolResults.push({
-					toolResult: {
-						toolUseId: normalizeToolCallId(m.toolCallId),
-						content: m.content.map(c =>
-							c.type === "image"
-								? { image: createImageBlock(c.mimeType, c.data) }
-								: { text: c.text.toWellFormed() },
-						),
-						status: m.isError ? "error" : "success",
-					},
-				});
-
-				let j = i + 1;
-				while (j < transformedMessages.length && transformedMessages[j].role === "toolResult") {
-					const nextMsg = transformedMessages[j] as ToolResultMessage;
-					toolResults.push({
-						toolResult: {
-							toolUseId: normalizeToolCallId(nextMsg.toolCallId),
-							content: nextMsg.content.map(c =>
-								c.type === "image"
-									? { image: createImageBlock(c.mimeType, c.data) }
-									: { text: c.text.toWellFormed() },
-							),
-							status: nextMsg.isError ? "error" : "success",
-						},
-					});
-					j++;
-				}
-				i = j - 1;
-
-				result.push({ role: "user", content: toolResults });
-				break;
-			}
-			default:
-				throw new AIError.ValidationError("Unknown message role");
+	for (let i = 0; i < messages.length; i++) {
+		const message = messages[i];
+		if (message.role !== "toolResult") {
+			const converted = convertMessage(message, model.id, signsThinking);
+			if (converted) result.push(converted);
+			continue;
 		}
+		// Collect all consecutive toolResult messages into a single user message —
+		// Bedrock requires all tool results to be in one message.
+		const toolResults = [convertToolResult(message)];
+		let next = messages[i + 1];
+		while (next?.role === "toolResult") {
+			toolResults.push(convertToolResult(next));
+			i++;
+			next = messages[i + 1];
+		}
+		result.push({ role: "user", content: toolResults });
 	}
 
 	// Add cache point to the last user message for supported Claude models
-	if (cacheRetention !== "none" && supportsBedrockPromptCaching(model) && result.length > 0) {
-		const lastMessage = result[result.length - 1];
-		if (lastMessage.role === "user" && lastMessage.content) {
-			(lastMessage.content as UserContent[]).push({
-				cachePoint: { type: "default", ...(cacheRetention === "long" ? { ttl: "1h" } : {}) },
-			});
-		}
+	const lastMessage = result.at(-1);
+	if (cacheRetention !== "none" && supportsBedrockPromptCaching(model) && lastMessage?.role === "user") {
+		(lastMessage.content as UserContent[]).push({
+			cachePoint: { type: "default", ...(cacheRetention === "long" ? { ttl: "1h" } : {}) },
+		});
 	}
 
 	return result;
+}
+
+/**
+ * A user, developer or assistant message on the wire, or undefined when nothing
+ * in it survives: Bedrock rejects a message with an empty content array, which
+ * is what an aborted request or a whitespace-only prompt leaves behind.
+ */
+function convertMessage(
+	message: Exclude<Message, ToolResultMessage>,
+	modelId: string,
+	signsThinking: boolean,
+): WireMessage | undefined {
+	switch (message.role) {
+		case "developer":
+		case "user":
+			return convertUserMessage(message.content);
+		case "assistant":
+			return convertAssistantMessage(message.content, modelId, signsThinking);
+		default:
+			throw new AIError.ValidationError("Unknown message role");
+	}
+}
+
+function convertUserMessage(content: UserMessage["content"]): WireMessage | undefined {
+	if (typeof content === "string") {
+		return content.trim() === "" ? undefined : { role: "user", content: [{ text: content.toWellFormed() }] };
+	}
+	const blocks: UserContent[] = [];
+	for (const block of content) {
+		const converted = convertUserBlock(block);
+		if (converted) blocks.push(converted);
+	}
+	return blocks.length > 0 ? { role: "user", content: blocks } : undefined;
+}
+
+function convertAssistantMessage(
+	content: AssistantMessage["content"],
+	modelId: string,
+	signsThinking: boolean,
+): WireMessage | undefined {
+	const blocks: AssistantContent[] = [];
+	for (const block of content) {
+		const converted = convertAssistantBlock(block, modelId, signsThinking);
+		if (converted) blocks.push(converted);
+	}
+	return blocks.length > 0 ? { role: "assistant", content: blocks } : undefined;
+}
+
+/** A user content block on the wire, or undefined for blank text. */
+function convertUserBlock(block: TextContent | ImageContent): UserContent | undefined {
+	switch (block.type) {
+		case "text": {
+			const text = block.text.toWellFormed();
+			return text.trim().length === 0 ? undefined : { text };
+		}
+		case "image":
+			return { image: createImageBlock(block.mimeType, block.data) };
+		default:
+			throw new AIError.ValidationError("Unknown user content type");
+	}
+}
+
+/** An assistant content block on the wire, or undefined for blank text or blank thinking. */
+function convertAssistantBlock(
+	block: AssistantMessage["content"][number],
+	modelId: string,
+	signsThinking: boolean,
+): AssistantContent | undefined {
+	switch (block.type) {
+		case "text":
+			return block.text.trim().length === 0 ? undefined : { text: block.text.toWellFormed() };
+		case "toolCall":
+			return { toolUse: { toolUseId: normalizeToolCallId(block.id), name: block.name, input: block.arguments } };
+		case "thinking": {
+			if (block.thinking.trim().length === 0) return undefined;
+			// A model that rejects the signature field gets unsigned reasoning. A model
+			// that requires one rejects reasoningContent without it, so reasoning that
+			// lost its signature (e.g., to an aborted stream) is demoted to text.
+			if (signsThinking && !block.thinkingSignature) return { text: renderDemotedThinking(modelId, block.thinking) };
+			const text = block.thinking.toWellFormed();
+			const reasoningText = signsThinking ? { text, signature: block.thinkingSignature } : { text };
+			return { reasoningContent: { reasoningText } };
+		}
+		default:
+			throw new AIError.ValidationError("Unknown assistant content type");
+	}
+}
+
+function convertToolResult(message: ToolResultMessage): ToolResultBlockWire {
+	return {
+		toolResult: {
+			toolUseId: normalizeToolCallId(message.toolCallId),
+			content: message.content.map(c =>
+				c.type === "image" ? { image: createImageBlock(c.mimeType, c.data) } : { text: c.text.toWellFormed() },
+			),
+			status: message.isError ? "error" : "success",
+		},
+	};
 }
 
 function messagesHaveToolBlocks(messages: WireMessage[]): boolean {
