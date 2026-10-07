@@ -328,17 +328,24 @@ function validateInPlaceApplicators(
 		pushIssue(issues, path, "must not match excluded schema", { keyword: "not" });
 		valid = false;
 	}
-	// if/then/else: validate the if-branch silently; based on its outcome,
-	// validate against then/else. Each sub-schema is treated as a schema node
-	// (no requirement that branches be objects). This is a minimal correct
-	// semantic — schemas where the if-branch references properties only present
-	// after applying then will still resolve consistently for the LLM-emitted
-	// shapes we encounter.
-	if ("if" in schema) {
-		const branch = validateSchemaNode(schema.if, value, path, ctx, []) ? schema.then : schema.else;
-		if (branch !== undefined) valid = validateSchemaNode(branch, value, path, ctx, issues) && valid;
-	}
+	if ("if" in schema) valid = validateConditional(schema, value, path, ctx, issues) && valid;
 	return valid;
+}
+
+/**
+ * Apply `if`/`then`/`else`: validate the `if` branch silently and, on its outcome, validate the value against `then`
+ * or `else`. Each subschema is a schema node; neither branch has to be an object. A schema whose `if` reads properties
+ * only `then` supplies still resolves consistently for the shapes LLMs emit.
+ */
+function validateConditional(
+	schema: Record<string, unknown>,
+	value: unknown,
+	path: InstancePath,
+	ctx: ValidationContext,
+	issues: JsonSchemaValidationIssue[],
+): boolean {
+	const branch = validateSchemaNode(schema.if, value, path, ctx, []) ? schema.then : schema.else;
+	return branch === undefined || validateSchemaNode(branch, value, path, ctx, issues);
 }
 
 /**
@@ -359,34 +366,32 @@ function validateUnion(
 	let firstIssues: JsonSchemaValidationIssue[] | undefined;
 	let branchIssues: JsonSchemaValidationIssue[] = [];
 	for (const branch of branches) {
-		if (!validateSchemaNode(branch, value, path, ctx, branchIssues)) {
-			if (!firstIssues) {
-				firstIssues = branchIssues;
-				branchIssues = [];
-				continue;
-			}
-		} else {
-			matches += 1;
+		if (validateSchemaNode(branch, value, path, ctx, branchIssues)) matches += 1;
+		else if (!firstIssues) {
+			firstIssues = branchIssues;
+			branchIssues = [];
+			continue;
 		}
 		branchIssues.length = 0;
 	}
 	if (keyword === "anyOf" ? matches > 0 : matches === 1) return true;
-	if (matches === 0 && firstIssues && firstIssues.length > 0) {
-		const unionDepth = path.length;
-		for (const branchIssue of firstIssues) {
-			issues.push(branchIssue.path.length === unionDepth ? { ...branchIssue, fromUnionBranch: true } : branchIssue);
-		}
-	} else {
-		pushIssue(
-			issues,
-			path,
-			keyword === "anyOf" ? "must match at least one schema" : "must match exactly one schema",
-			{
-				keyword,
-			},
-		);
+	if (matches === 0 && firstIssues && firstIssues.length > 0) pushFirstBranchIssues(firstIssues, path.length, issues);
+	else {
+		const message = keyword === "anyOf" ? "must match at least one schema" : "must match exactly one schema";
+		pushIssue(issues, path, message, { keyword });
 	}
 	return false;
+}
+
+/** Push a union's first failed branch's issues, tagging those at the union's own depth `fromUnionBranch`. */
+function pushFirstBranchIssues(
+	branchIssues: readonly JsonSchemaValidationIssue[],
+	unionDepth: number,
+	issues: JsonSchemaValidationIssue[],
+): void {
+	for (const branchIssue of branchIssues) {
+		issues.push(branchIssue.path.length === unionDepth ? { ...branchIssue, fromUnionBranch: true } : branchIssue);
+	}
 }
 
 /**
@@ -437,44 +442,92 @@ function validateObjectKeywords(
 	ctx: ValidationContext,
 	issues: JsonSchemaValidationIssue[],
 ): boolean {
-	let valid = true;
-	if (isRequiredSet(schema.required)) {
-		for (const key of schema.required) {
-			if (Object.hasOwn(value, key)) continue;
-			pushChildIssue(issues, path, key, "is required", { keyword: "required" });
-			valid = false;
-		}
-	}
-
+	let valid = isRequiredSet(schema.required) ? validateRequired(schema.required, value, path, issues) : true;
 	const properties = isRecord(schema.properties) ? schema.properties : undefined;
-	if (properties) {
-		for (const key in properties) {
-			if (!Object.hasOwn(value, key)) continue;
-			valid = validateChild(properties[key], value[key], path, key, ctx, issues) && valid;
-		}
-	}
+	if (properties) valid = validateProperties(properties, value, path, ctx, issues) && valid;
 
 	const additional = schema.additionalProperties;
-	// Keys `additionalProperties` does not govern: property names and keys a `patternProperties`
-	// pattern matched. Built only when `additionalProperties` restricts the leftovers.
-	const known =
-		additional !== undefined && additional !== true ? new Set(properties ? Object.keys(properties) : []) : undefined;
+	const known = knownKeysFor(additional, properties);
 	const keys = needsOwnKeys(schema, known) ? Object.keys(value) : [];
 
 	if (schema.propertyNames !== undefined) {
-		for (const key of keys) valid = validateChild(schema.propertyNames, key, path, key, ctx, issues) && valid;
+		valid = validatePropertyNames(schema.propertyNames, keys, path, ctx, issues) && valid;
 	}
 	if (isRecord(schema.patternProperties)) {
 		valid = validatePatternProperties(schema.patternProperties, value, keys, known, path, ctx, issues) && valid;
 	}
 	valid = validateDependencies(schema, value, path, ctx, issues) && valid;
 	if (known) valid = validateAdditionalProperties(additional, value, keys, known, path, ctx, issues) && valid;
+	return validatePropertyCount(schema, keys.length, path, issues) && valid;
+}
 
-	if (typeof schema.minProperties === "number" && keys.length < schema.minProperties) {
+/**
+ * The keys `additionalProperties` does not govern, seeded with the property names; `patternProperties` adds the keys
+ * its patterns match. Undefined when `additionalProperties` is absent or `true` and so restricts no leftover key.
+ */
+function knownKeysFor(additional: unknown, properties: Record<string, unknown> | undefined): Set<string> | undefined {
+	if (additional === undefined || additional === true) return undefined;
+	return new Set(properties ? Object.keys(properties) : []);
+}
+
+/** Apply `required`: each listed key must be an own property of the instance. */
+function validateRequired(
+	required: readonly string[],
+	value: Record<string, unknown>,
+	path: InstancePath,
+	issues: JsonSchemaValidationIssue[],
+): boolean {
+	let valid = true;
+	for (const key of required) {
+		if (Object.hasOwn(value, key)) continue;
+		pushChildIssue(issues, path, key, "is required", { keyword: "required" });
+		valid = false;
+	}
+	return valid;
+}
+
+/** Apply `properties` to each listed key the instance holds as an own property. */
+function validateProperties(
+	properties: Record<string, unknown>,
+	value: Record<string, unknown>,
+	path: InstancePath,
+	ctx: ValidationContext,
+	issues: JsonSchemaValidationIssue[],
+): boolean {
+	let valid = true;
+	for (const key in properties) {
+		if (!Object.hasOwn(value, key)) continue;
+		valid = validateChild(properties[key], value[key], path, key, ctx, issues) && valid;
+	}
+	return valid;
+}
+
+/** Apply `propertyNames` to each own key, as a string value at the key's own path. */
+function validatePropertyNames(
+	propertyNames: unknown,
+	keys: readonly string[],
+	path: InstancePath,
+	ctx: ValidationContext,
+	issues: JsonSchemaValidationIssue[],
+): boolean {
+	let valid = true;
+	for (const key of keys) valid = validateChild(propertyNames, key, path, key, ctx, issues) && valid;
+	return valid;
+}
+
+/** Apply `minProperties` and `maxProperties` to the instance's own key count. */
+function validatePropertyCount(
+	schema: Record<string, unknown>,
+	count: number,
+	path: InstancePath,
+	issues: JsonSchemaValidationIssue[],
+): boolean {
+	let valid = true;
+	if (typeof schema.minProperties === "number" && count < schema.minProperties) {
 		pushIssue(issues, path, `must have at least ${schema.minProperties} properties`, { keyword: "minProperties" });
 		valid = false;
 	}
-	if (typeof schema.maxProperties === "number" && keys.length > schema.maxProperties) {
+	if (typeof schema.maxProperties === "number" && count > schema.maxProperties) {
 		pushIssue(issues, path, `must have at most ${schema.maxProperties} properties`, { keyword: "maxProperties" });
 		valid = false;
 	}
@@ -530,23 +583,46 @@ function validateDependencies(
 ): boolean {
 	let valid = true;
 	if (isRecord(schema.dependentRequired)) {
-		const dependentRequired = schema.dependentRequired;
-		for (const key in dependentRequired) {
-			const deps = dependentRequired[key];
-			if (!Object.hasOwn(value, key) || !Array.isArray(deps)) continue;
-			for (const dep of deps) {
-				if (typeof dep !== "string" || Object.hasOwn(value, dep)) continue;
-				pushChildIssue(issues, path, dep, `is required when "${key}" is present`, { keyword: "dependentRequired" });
-				valid = false;
-			}
-		}
+		valid = validateDependentRequired(schema.dependentRequired, value, path, issues);
 	}
 	if (isRecord(schema.dependentSchemas)) {
-		const dependentSchemas = schema.dependentSchemas;
-		for (const key in dependentSchemas) {
-			if (!Object.hasOwn(value, key)) continue;
-			valid = validateSchemaNode(dependentSchemas[key], value, path, ctx, issues) && valid;
+		valid = validateDependentSchemas(schema.dependentSchemas, value, path, ctx, issues) && valid;
+	}
+	return valid;
+}
+
+/** Apply `dependentRequired`: for each trigger key the instance holds, every listed string key must be present too. */
+function validateDependentRequired(
+	dependentRequired: Record<string, unknown>,
+	value: Record<string, unknown>,
+	path: InstancePath,
+	issues: JsonSchemaValidationIssue[],
+): boolean {
+	let valid = true;
+	for (const key in dependentRequired) {
+		const deps = dependentRequired[key];
+		if (!Object.hasOwn(value, key) || !Array.isArray(deps)) continue;
+		for (const dep of deps) {
+			if (typeof dep !== "string" || Object.hasOwn(value, dep)) continue;
+			pushChildIssue(issues, path, dep, `is required when "${key}" is present`, { keyword: "dependentRequired" });
+			valid = false;
 		}
+	}
+	return valid;
+}
+
+/** Apply `dependentSchemas`: for each trigger key the instance holds, the whole instance must match its subschema. */
+function validateDependentSchemas(
+	dependentSchemas: Record<string, unknown>,
+	value: Record<string, unknown>,
+	path: InstancePath,
+	ctx: ValidationContext,
+	issues: JsonSchemaValidationIssue[],
+): boolean {
+	let valid = true;
+	for (const key in dependentSchemas) {
+		if (!Object.hasOwn(value, key)) continue;
+		valid = validateSchemaNode(dependentSchemas[key], value, path, ctx, issues) && valid;
 	}
 	return valid;
 }
@@ -591,17 +667,26 @@ function validateArrayKeywords(
 		pushIssue(issues, path, `must have at most ${schema.maxItems} items`, { keyword: "maxItems" });
 		valid = false;
 	}
-	if (schema.uniqueItems === true) {
-		for (let i = 0; i < value.length; i += 1) {
-			for (let j = i + 1; j < value.length; j += 1) {
-				if (!areJsonValuesEqual(value[i], value[j])) continue;
-				pushChildIssue(issues, path, j, "must be unique", { keyword: "uniqueItems" });
-				valid = false;
-			}
-		}
-	}
+	if (schema.uniqueItems === true) valid = validateUniqueItems(value, path, issues) && valid;
 	valid = validateItems(schema, value, path, ctx, issues) && valid;
 	if (schema.contains !== undefined) valid = validateContains(schema, value, path, ctx, issues) && valid;
+	return valid;
+}
+
+/** Apply `uniqueItems: true`: report every element equal to an earlier one, once per earlier match. */
+function validateUniqueItems(
+	value: readonly unknown[],
+	path: InstancePath,
+	issues: JsonSchemaValidationIssue[],
+): boolean {
+	let valid = true;
+	for (let i = 0; i < value.length; i += 1) {
+		for (let j = i + 1; j < value.length; j += 1) {
+			if (!areJsonValuesEqual(value[i], value[j])) continue;
+			pushChildIssue(issues, path, j, "must be unique", { keyword: "uniqueItems" });
+			valid = false;
+		}
+	}
 	return valid;
 }
 
