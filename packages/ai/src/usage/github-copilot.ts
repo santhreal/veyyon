@@ -10,6 +10,7 @@ import { trimTrailingSlashes } from "@veyyon/utils/url";
 import * as AIError from "../error";
 import type {
 	UsageAmount,
+	UsageCredential,
 	UsageFetchContext,
 	UsageFetchParams,
 	UsageLimit,
@@ -239,10 +240,7 @@ function buildLimitFromQuota(
 	};
 }
 
-function normalizeQuotaSnapshots(
-	data: CopilotUsageResponse,
-	accountId?: string,
-): { limits: UsageLimit[]; window?: UsageWindow } {
+function normalizeQuotaSnapshots(data: CopilotUsageResponse, accountId?: string): UsageLimit[] {
 	const window = buildWindow(data.quota_reset_date);
 	const snapshots = data.quota_snapshots ?? {};
 	const limits: UsageLimit[] = [];
@@ -258,7 +256,7 @@ function normalizeQuotaSnapshots(
 	if (completions && !completions.unlimited) {
 		limits.push(buildLimitFromQuota("completions", "Completions", completions, data.copilot_plan, window, accountId));
 	}
-	return { limits, window };
+	return limits;
 }
 
 function normalizeBillingUsage(data: BillingUsageResponse): UsageLimit[] {
@@ -312,6 +310,100 @@ function normalizeBillingUsage(data: BillingUsageResponse): UsageLimit[] {
 	return limits;
 }
 
+/** A report read, or `null` after logging the error that ended the read. */
+async function readUsageReport(ctx: UsageFetchContext, read: () => Promise<UsageReport>): Promise<UsageReport | null> {
+	try {
+		return await read();
+	} catch (error) {
+		ctx.logger?.warn("Copilot usage fetch failed", { error: String(error) });
+		return null;
+	}
+}
+
+function buildQuotaReport(
+	usage: CopilotUsageResponse,
+	accountId: string | undefined,
+	identity: Record<string, unknown>,
+): UsageReport {
+	const limits = normalizeQuotaSnapshots(usage, accountId);
+	return {
+		provider: "github-copilot",
+		fetchedAt: Date.now(),
+		limits,
+		metadata: { ...identity, plan: usage.copilot_plan, quotaResetDate: usage.quota_reset_date },
+		raw: usage,
+	};
+}
+
+/** The billing login the credential states in `accountId`, `metadata.username` or `metadata.user`. */
+function credentialUsername(credential: UsageCredential): string | undefined {
+	const candidate = credential.accountId || credential.metadata?.username || credential.metadata?.user;
+	return typeof candidate === "string" && candidate.trim() ? candidate.trim() : undefined;
+}
+
+/**
+ * An API key reads the premium-request billing report for its login, stated by the credential or
+ * resolved from `/user`; without a login, or when the billing read fails, it reads the Copilot quota.
+ */
+async function fetchApiKeyUsage(
+	params: UsageFetchParams,
+	ctx: UsageFetchContext,
+	baseUrl: string,
+	apiKey: string,
+): Promise<UsageReport | null> {
+	const username =
+		credentialUsername(params.credential) ?? (await resolveGitHubUsername(ctx, baseUrl, apiKey, params.signal));
+	if (username) {
+		const billingReport = await readUsageReport(ctx, async () => {
+			const billing = await fetchBillingUsage(ctx, baseUrl, username, apiKey, params.signal);
+			return {
+				provider: "github-copilot",
+				fetchedAt: Date.now(),
+				limits: normalizeBillingUsage(billing),
+				metadata: { accountId: billing.user, account: billing.user, period: billing.timePeriod },
+			};
+		});
+		if (billingReport) return billingReport;
+	} else {
+		ctx.logger?.warn("Copilot usage requires username for billing API", { provider: params.provider });
+	}
+	return readUsageReport(ctx, async () => {
+		const usage = await fetchInternalUsage(ctx, baseUrl, apiKey, params.signal);
+		return buildQuotaReport(usage, username, { accountId: username });
+	});
+}
+
+/** The credential's account id, else the login the refresh token and then the access token resolve to. */
+async function resolveOAuthAccountId(
+	params: UsageFetchParams,
+	ctx: UsageFetchContext,
+	baseUrl: string,
+): Promise<string | undefined> {
+	const { accountId, refreshToken, accessToken } = params.credential;
+	if (accountId) return accountId;
+	const fromRefresh = refreshToken
+		? await resolveGitHubUsername(ctx, baseUrl, refreshToken, params.signal)
+		: accountId;
+	if (fromRefresh || !accessToken) return fromRefresh;
+	return resolveGitHubUsername(ctx, baseUrl, accessToken, params.signal);
+}
+
+/** An OAuth credential reads the Copilot quota with its GitHub token: the refresh token when set, else the access token. */
+async function fetchOAuthUsage(
+	params: UsageFetchParams,
+	ctx: UsageFetchContext,
+	baseUrl: string,
+): Promise<UsageReport | null> {
+	const { refreshToken, accessToken, email } = params.credential;
+	const githubToken = refreshToken ?? accessToken;
+	if (!githubToken) return null;
+	return readUsageReport(ctx, async () => {
+		const usage = await fetchInternalUsage(ctx, baseUrl, githubToken, params.signal);
+		const accountId = await resolveOAuthAccountId(params, ctx, baseUrl);
+		return buildQuotaReport(usage, accountId, { accountId, email });
+	});
+}
+
 export const githubCopilotUsageProvider: UsageProvider = {
 	id: "github-copilot",
 	supports: ({ provider, credential }) => {
@@ -323,98 +415,9 @@ export const githubCopilotUsageProvider: UsageProvider = {
 	},
 	fetchUsage: async (params, ctx) => {
 		if (!githubCopilotUsageProvider.supports?.(params)) return null;
-
 		const githubApiBaseUrl = resolveGitHubApiBaseUrl(params);
-		let report: UsageReport | null = null;
-
-		if (params.credential.type === "api_key") {
-			let username: string | undefined;
-			const candidate =
-				params.credential.accountId || params.credential.metadata?.username || params.credential.metadata?.user;
-			if (typeof candidate === "string" && candidate.trim()) {
-				username = candidate.trim();
-			}
-			if (!username && params.credential.apiKey) {
-				username = await resolveGitHubUsername(ctx, githubApiBaseUrl, params.credential.apiKey, params.signal);
-			}
-			if (!username) {
-				ctx.logger?.warn("Copilot usage requires username for billing API", { provider: params.provider });
-			} else if (params.credential.apiKey) {
-				try {
-					const billing = await fetchBillingUsage(
-						ctx,
-						githubApiBaseUrl,
-						username,
-						params.credential.apiKey,
-						params.signal,
-					);
-					report = {
-						provider: "github-copilot",
-						fetchedAt: Date.now(),
-						limits: normalizeBillingUsage(billing),
-						metadata: {
-							accountId: billing.user,
-							account: billing.user,
-							period: billing.timePeriod,
-						},
-					};
-				} catch (error) {
-					ctx.logger?.warn("Copilot usage fetch failed", { error: String(error) });
-				}
-			}
-			if (!report && params.credential.apiKey) {
-				try {
-					const usage = await fetchInternalUsage(ctx, githubApiBaseUrl, params.credential.apiKey, params.signal);
-					const normalized = normalizeQuotaSnapshots(usage, username);
-					report = {
-						provider: "github-copilot",
-						fetchedAt: Date.now(),
-						limits: normalized.limits,
-						metadata: {
-							accountId: username,
-							plan: usage.copilot_plan,
-							quotaResetDate: usage.quota_reset_date,
-						},
-						raw: usage,
-					};
-				} catch (error) {
-					ctx.logger?.warn("Copilot usage fetch failed", { error: String(error) });
-				}
-			}
-		} else {
-			const { refreshToken, accessToken } = params.credential;
-			if (!refreshToken && !accessToken) return null;
-			const oauthToken = refreshToken || accessToken;
-			if (!oauthToken) return null;
-			const githubToken = refreshToken ?? accessToken;
-			if (!githubToken) return null;
-			try {
-				const usage = await fetchInternalUsage(ctx, githubApiBaseUrl, githubToken, params.signal);
-				let accountId = params.credential.accountId;
-				if (!accountId && refreshToken) {
-					accountId = await resolveGitHubUsername(ctx, githubApiBaseUrl, refreshToken, params.signal);
-				}
-				if (!accountId && accessToken) {
-					accountId = await resolveGitHubUsername(ctx, githubApiBaseUrl, accessToken, params.signal);
-				}
-				const normalized = normalizeQuotaSnapshots(usage, accountId);
-				report = {
-					provider: "github-copilot",
-					fetchedAt: Date.now(),
-					limits: normalized.limits,
-					metadata: {
-						accountId,
-						email: params.credential.email,
-						plan: usage.copilot_plan,
-						quotaResetDate: usage.quota_reset_date,
-					},
-					raw: usage,
-				};
-			} catch (error) {
-				ctx.logger?.warn("Copilot usage fetch failed", { error: String(error) });
-			}
-		}
-
-		return report;
+		const { credential } = params;
+		if (credential.type === "oauth") return fetchOAuthUsage(params, ctx, githubApiBaseUrl);
+		return credential.apiKey ? fetchApiKeyUsage(params, ctx, githubApiBaseUrl, credential.apiKey) : null;
 	},
 };
