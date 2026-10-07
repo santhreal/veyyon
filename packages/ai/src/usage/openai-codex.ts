@@ -232,8 +232,6 @@ function buildUsageStatus(usedFraction?: number, limitReached?: boolean): UsageL
 function buildUsageLimit(args: {
 	key: "primary" | "secondary";
 	window: ParsedUsageWindow;
-	accountId?: string;
-	planType?: string;
 	limitReached?: boolean;
 	nowMs: number;
 }): UsageLimit {
@@ -281,7 +279,6 @@ function buildAdditionalUsageLimit(args: {
 	accountId?: string;
 	limitReached?: boolean;
 	limitName?: string;
-	meteredFeature?: string;
 	nowMs: number;
 }): UsageLimit {
 	const usageWindow = buildUsageWindow(args.window, args.key, args.nowMs);
@@ -301,6 +298,67 @@ function buildAdditionalUsageLimit(args: {
 		amount,
 		status: buildUsageStatus(amount.usedFraction, args.limitReached),
 	};
+}
+
+const WINDOW_KEYS = ["primary", "secondary"] as const;
+
+// The account-wide windows first, then each additional limit's windows in payload order.
+function buildCodexUsageLimits(parsed: ParsedUsage | null, accountId: string | undefined, nowMs: number): UsageLimit[] {
+	if (!parsed) return [];
+	const limits: UsageLimit[] = [];
+	for (const key of WINDOW_KEYS) {
+		const window = parsed[key];
+		if (window) limits.push(buildUsageLimit({ key, window, limitReached: parsed.limitReached, nowMs }));
+	}
+	for (const extra of parsed.additional) {
+		const slug = additionalLimitSlug(extra);
+		const displayName = additionalDisplayName(slug, extra.limitName);
+		for (const key of WINDOW_KEYS) {
+			const window = extra[key];
+			if (!window) continue;
+			limits.push(
+				buildAdditionalUsageLimit({
+					key,
+					slug,
+					displayName,
+					window,
+					accountId,
+					limitReached: extra.limitReached,
+					limitName: extra.limitName,
+					nowMs,
+				}),
+			);
+		}
+	}
+	return limits;
+}
+
+// The usage payload's credit count can be stale after a credit expires or is redeemed, so the detail
+// endpoint's count replaces it, and its still-available credits are attached.
+async function syncResetCredits(
+	resetCredits: UsageResetCredits,
+	auth: { accessToken: string; accountId: string | undefined },
+	params: UsageFetchParams,
+	ctx: UsageFetchContext,
+): Promise<void> {
+	try {
+		const list = await listCodexResetCredits({
+			accessToken: auth.accessToken,
+			accountId: auth.accountId,
+			baseUrl: params.baseUrl,
+			fetch: ctx.fetch,
+			signal: params.signal,
+		});
+		if (!list) return;
+		if (list.credits.length) {
+			resetCredits.credits = list.credits
+				.filter(c => (c.status ?? "available") === "available")
+				.map(c => ({ grantedAt: c.grantedAt, expiresAt: c.expiresAt, status: c.status }));
+		}
+		resetCredits.availableCount = list.availableCount;
+	} catch (error) {
+		ctx.logger?.warn("Codex reset credits detail fetch failed", { error: String(error) });
+	}
 }
 
 /**
@@ -388,94 +446,10 @@ export const openaiCodexUsageProvider: UsageProvider = {
 			parsed?.planType ??
 			(isRecord(payload) && typeof payload.plan_type === "string" ? payload.plan_type : undefined);
 
-		const limits: UsageLimit[] = [];
-		if (parsed?.primary) {
-			limits.push(
-				buildUsageLimit({
-					key: "primary",
-					window: parsed.primary,
-					accountId,
-					planType,
-					limitReached: parsed.limitReached,
-					nowMs,
-				}),
-			);
-		}
-		if (parsed?.secondary) {
-			limits.push(
-				buildUsageLimit({
-					key: "secondary",
-					window: parsed.secondary,
-					accountId,
-					planType,
-					limitReached: parsed.limitReached,
-					nowMs,
-				}),
-			);
-		}
-		for (const extra of parsed?.additional ?? []) {
-			const slug = additionalLimitSlug({ limitName: extra.limitName, meteredFeature: extra.meteredFeature });
-			const displayName = additionalDisplayName(slug, extra.limitName);
-			if (extra.primary) {
-				limits.push(
-					buildAdditionalUsageLimit({
-						key: "primary",
-						slug,
-						displayName,
-						window: extra.primary,
-						accountId,
-						limitReached: extra.limitReached,
-						limitName: extra.limitName,
-						meteredFeature: extra.meteredFeature,
-						nowMs,
-					}),
-				);
-			}
-			if (extra.secondary) {
-				limits.push(
-					buildAdditionalUsageLimit({
-						key: "secondary",
-						slug,
-						displayName,
-						window: extra.secondary,
-						accountId,
-						limitReached: extra.limitReached,
-						limitName: extra.limitName,
-						meteredFeature: extra.meteredFeature,
-						nowMs,
-					}),
-				);
-			}
-		}
-
+		const limits = buildCodexUsageLimits(parsed, accountId, nowMs);
 		const resetCredits = parseResetCredits(payload);
 		if (resetCredits && resetCredits.availableCount > 0) {
-			try {
-				const list = await listCodexResetCredits({
-					accessToken,
-					accountId,
-					baseUrl: params.baseUrl,
-					fetch: ctx.fetch,
-					signal: params.signal,
-				});
-				if (list?.credits.length) {
-					resetCredits.credits = list.credits
-						.filter(c => (c.status ?? "available") === "available")
-						.map(c => ({
-							grantedAt: c.grantedAt,
-							expiresAt: c.expiresAt,
-							status: c.status,
-						}));
-				}
-				// Always sync the live count from the detail endpoint — it may report
-				// fewer or zero available credits after expiry/redeem, even when the
-				// /wham/usage payload still has a stale count.
-				if (list) {
-					resetCredits.availableCount = list.availableCount;
-				}
-			} catch (error) {
-				ctx.logger?.warn("Codex reset credits detail fetch failed", { error: String(error) });
-			}
+			await syncResetCredits(resetCredits, { accessToken, accountId }, params, ctx);
 		}
 		const report: UsageReport = {
 			provider: "openai-codex",
