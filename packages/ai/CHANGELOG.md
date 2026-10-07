@@ -79,6 +79,7 @@
 - The auth broker and the auth gateway check bearer tokens through one `BearerAllowList`, which encodes the allowed tokens once per server instead of on every request; a token followed by a non-HTTP whitespace character such as a non-breaking space is turned away instead of trimmed.
 - The Codex provider builds its request `input` through `buildResponsesInput`, the builder the OpenAI and Azure Responses providers use, instead of a private converter, and `providers/openai-shared` exports `supportsFreeformApplyPatch`, which `providers/openai-responses` re-exports and which reports `false` for an Azure model, since an Azure request sends every tool as a `function` tool; `BuildResponsesInputOptions.supportsCustomToolCalls` defaults to it.
 - Responses tool-call id normalization reads an id's prefix by scanning its characters instead of matching a regular expression and splits `callId|itemId` without building an array, cutting the normalization of 2,000 ids from 0.57 to 0.44 ms and `convertCodexResponsesMessages` on a 300-turn transcript from 0.58 to 0.51 ms (median of 201), with identical ids across 400,000 generated ids.
+- The auth gateway's Chat Completions request parser converts messages, decoding options and request options in separate steps and maps every content part through one function; parsed requests and errors are identical across 100,000 generated bodies and parse time is unchanged.
 
 ### Fixed
 
