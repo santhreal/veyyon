@@ -6,7 +6,7 @@
  */
 
 import { errorMessage } from "@veyyon/utils/type-guards";
-import type { AuthGatewayParsedRequest, AuthGatewayStreamControl } from "../auth-gateway/types";
+import type { AuthGatewayParsedRequest, AuthGatewayStreamControl, FrameSink } from "../auth-gateway/types";
 import type { AssistantMessage, AssistantMessageEvent, AssistantMessageEventStream, ToolCall } from "../types";
 import {
 	buildOutputItems,
@@ -68,12 +68,6 @@ const TERMINAL_EVENT: Record<ResponseStatus, string> = {
 
 function sseEvent(name: string, data: unknown): string {
 	return `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
-}
-
-/** Where the writer's frames go. `cancelled` silences every frame but the terminal one. */
-interface FrameSink {
-	readonly cancelled: boolean;
-	enqueue(frame: string): void;
 }
 
 /**

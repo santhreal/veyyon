@@ -374,6 +374,129 @@ describe("auth-gateway openai-chat: encodeStream", () => {
 		expect(payloads[1]).toEqual({ error: { message: "upstream went away", type: "upstream_error" } });
 	});
 
+	it("echoes the requested model id in every chunk, escaped as JSON", async () => {
+		const modelId = 'team/"quoted"\\model\u2028ü';
+		const partial = emptyAssistant();
+		const events: AssistantMessageEvent[] = [
+			{ type: "text_delta", contentIndex: 0, delta: "a", partial },
+			{ type: "done", reason: "stop", message: partial },
+		];
+		const lines = await collectStream(encodeStream(makeEventStream(events, partial), modelId));
+		const chunks = lines.slice(0, -1).map(parseSseLine) as Array<{ model: string }>;
+		expect(chunks.map(c => c.model)).toEqual([modelId, modelId, modelId]);
+	});
+
+	it("with include_usage, sends usage null on every chunk and a usage chunk before [DONE]", async () => {
+		const partial = emptyAssistant();
+		const final: AssistantMessage = {
+			...partial,
+			usage: { ...baseUsage, input: 10, output: 4, cacheRead: 6, cacheWrite: 2, reasoningTokens: 3 },
+		};
+		const events: AssistantMessageEvent[] = [
+			{ type: "thinking_delta", contentIndex: 0, delta: "hm", partial },
+			{ type: "text_delta", contentIndex: 1, delta: "ok", partial },
+			{ type: "done", reason: "length", message: final },
+		];
+		const lines = await collectStream(
+			encodeStream(makeEventStream(events, final), "gpt-test", {
+				extra: { includeStreamingUsage: true },
+			}),
+		);
+		const payloads = lines.map(parseSseLine);
+		const { id, created } = payloads[0] as { id: string; created: number };
+		const chunk = (delta: Record<string, unknown>, finish_reason: string | null) => ({
+			id,
+			object: "chat.completion.chunk",
+			created,
+			model: "gpt-test",
+			system_fingerprint: null,
+			choices: [{ index: 0, delta, finish_reason, logprobs: null }],
+			usage: null,
+		});
+		expect(payloads).toEqual([
+			chunk({ role: "assistant" }, null),
+			chunk({ reasoning_content: "hm" }, null),
+			chunk({ content: "ok" }, null),
+			chunk({}, "length"),
+			{
+				id,
+				object: "chat.completion.chunk",
+				created,
+				model: "gpt-test",
+				system_fingerprint: null,
+				choices: [],
+				usage: {
+					prompt_tokens: 18,
+					completion_tokens: 4,
+					total_tokens: 22,
+					prompt_tokens_details: { cached_tokens: 6 },
+					completion_tokens_details: { reasoning_tokens: 3 },
+				},
+			},
+			"[DONE]",
+		]);
+	});
+
+	it("without include_usage, no chunk carries a usage field and no usage chunk is sent", async () => {
+		const partial = emptyAssistant();
+		const final: AssistantMessage = { ...partial, usage: { ...baseUsage, input: 10, output: 4 } };
+		const events: AssistantMessageEvent[] = [
+			{ type: "text_delta", contentIndex: 0, delta: "ok", partial },
+			{ type: "done", reason: "stop", message: final },
+		];
+		const lines = await collectStream(encodeStream(makeEventStream(events, final), "gpt-test"));
+		const payloads = lines.map(parseSseLine);
+		const { id, created } = payloads[0] as { id: string; created: number };
+		const chunk = (delta: Record<string, unknown>, finish_reason: string | null) => ({
+			id,
+			object: "chat.completion.chunk",
+			created,
+			model: "gpt-test",
+			system_fingerprint: null,
+			choices: [{ index: 0, delta, finish_reason, logprobs: null }],
+		});
+		expect(payloads).toStrictEqual([
+			chunk({ role: "assistant" }, null),
+			chunk({ content: "ok" }, null),
+			chunk({}, "stop"),
+			"[DONE]",
+		]);
+	});
+
+	it("fills a tool call id or name that arrived after its start with one chunk carrying only the empty fields", async () => {
+		const partial = emptyAssistant();
+		partial.content = [
+			{ type: "toolCall", id: "", name: "read", arguments: {} },
+			{ type: "toolCall", id: "call_B", name: "", arguments: {} },
+			{ type: "toolCall", id: "call_C", name: "grep", arguments: {} },
+		];
+		const end = (contentIndex: number, id: string, name: string): AssistantMessageEvent => ({
+			type: "toolcall_end",
+			contentIndex,
+			toolCall: { type: "toolCall", id, name, arguments: {} },
+			partial,
+		});
+		const events: AssistantMessageEvent[] = [
+			{ type: "toolcall_start", contentIndex: 0, partial },
+			{ type: "toolcall_start", contentIndex: 1, partial },
+			{ type: "toolcall_start", contentIndex: 2, partial },
+			end(0, "call_A", "read_late"),
+			end(1, "call_B_late", "bash"),
+			end(2, "call_C_late", "grep_late"),
+		];
+		const lines = await collectStream(encodeStream(makeEventStream(events, partial), "gpt-test"));
+		const toolCalls = lines
+			.map(parseSseLine)
+			.filter((p): p is { choices: Array<{ delta: { tool_calls?: unknown[] } }> } => typeof p === "object")
+			.flatMap(p => p.choices[0].delta.tool_calls ?? []);
+		expect(toolCalls.slice(3)).toEqual([
+			{ index: 0, id: "call_A" },
+			{ index: 1, function: { name: "bash" } },
+		]);
+		const finish = parseSseLine(lines[lines.length - 2]) as { choices: Array<{ finish_reason: string }> };
+		expect(finish.choices[0].finish_reason).toBe("tool_calls");
+	});
+
 	it("aborts the upstream gateway request when the client cancels the response body", async () => {
 		const aborted: unknown[] = [];
 		async function* neverEndingEvents() {
@@ -398,5 +521,46 @@ describe("auth-gateway openai-chat: encodeStream", () => {
 		expect(aborted).toEqual(["client timeout"]);
 		expect(requestController.signal.aborted).toBe(true);
 		expect(requestController.signal.reason).toBe("client timeout");
+	});
+
+	it("stops reading the upstream events once the client cancels the response body", async () => {
+		const partial = emptyAssistant();
+		const delta = (text: string): AssistantMessageEvent => ({
+			type: "text_delta",
+			contentIndex: 0,
+			delta: text,
+			partial,
+		});
+		const waiting = Promise.withResolvers<void>();
+		const gate = Promise.withResolvers<void>();
+		const released = Promise.withResolvers<void>();
+		let pulled = 0;
+		async function* events() {
+			try {
+				pulled++;
+				yield delta("a");
+				// The writer applied "a" and asked for the next event.
+				waiting.resolve();
+				await gate.promise;
+				for (const text of ["b", "c", "d"]) {
+					pulled++;
+					yield delta(text);
+				}
+			} finally {
+				released.resolve();
+			}
+		}
+		const upstream = events() as unknown as AssistantMessageEventStream;
+		(upstream as { result(): Promise<AssistantMessage> }).result = async () => partial;
+		const reader = encodeStream(upstream, "gpt-test").getReader();
+
+		expect((await reader.read()).done).toBe(false);
+		await waiting.promise;
+		await reader.cancel("client gone");
+		gate.resolve();
+		await released.promise;
+
+		// The event pending at cancellation is the last one pulled; the rest are never requested.
+		expect(pulled).toBe(2);
 	});
 });
