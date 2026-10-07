@@ -205,119 +205,118 @@ function tryCoerceForExpectedTypes(value: unknown, expectedTypes: string[]): { v
 	return tryCoerceString(value, expectedTypes);
 }
 
+/**
+ * Parses the JSON object or array that opens `value`, ignoring whatever follows
+ * its matching closer. Returns `undefined` when `value` opens no container, the
+ * container never closes, or no repair of it parses.
+ */
 function tryParseLeadingJsonContainer(value: string): unknown | undefined {
-	const firstChar = value[0];
-	const closingChar = firstChar === "{" ? "}" : firstChar === "[" ? "]" : undefined;
-	if (!closingChar) return undefined;
+	const end = leadingJsonContainerEnd(value);
+	return end === -1 ? undefined : parseJsonContainerWithRepairs(value.slice(0, end + 1));
+}
 
+/**
+ * Index of the bracket closing the container `value` opens, or -1. Brackets
+ * inside string literals, and brackets of the other container kind, do not count.
+ */
+function leadingJsonContainerEnd(value: string): number {
+	const open = value[0];
+	const close = open === "{" ? "}" : open === "[" ? "]" : undefined;
+	if (!close) return -1;
 	let depth = 0;
-	let inString = false;
-	let escaped = false;
-
 	for (let index = 0; index < value.length; index += 1) {
 		const char = value[index];
-
-		if (inString) {
-			if (escaped) {
-				escaped = false;
-				continue;
-			}
-			if (char === "\\") {
-				escaped = true;
-				continue;
-			}
-			if (char === '"') inString = false;
-			continue;
-		}
-
 		if (char === '"') {
-			inString = true;
-			continue;
-		}
-
-		if (char === firstChar) {
+			index = jsonStringClose(value, index);
+		} else if (char === open) {
 			depth += 1;
-			continue;
-		}
-
-		if (char !== closingChar) continue;
-		depth -= 1;
-		if (depth !== 0) continue;
-
-		const prefix = value.slice(0, index + 1);
-		try {
-			return JSON.parse(prefix) as unknown;
-		} catch {
-			// LLMs sometimes emit literal `\n` or `\t` between JSON tokens
-			// (e.g. `[{...}\n]`). Convert these to real whitespace and retry.
-			const cleaned = cleanLiteralEscapes(prefix);
-			if (cleaned !== prefix) {
-				try {
-					return JSON.parse(cleaned) as unknown;
-				} catch {
-					// One rung of a repair ladder: this candidate not parsing is the normal
-					// case, and the next repair below is the answer.
-				}
-			}
-			// Try escaping raw control chars that appear inside string literals.
-			const escapedControls = escapeRawControlsInJsonStrings(prefix);
-			if (escapedControls !== prefix) {
-				try {
-					return JSON.parse(escapedControls) as unknown;
-				} catch {
-					// Same ladder: fall through to the single-character healing below.
-				}
-			}
-			// Also try single-char healing on the extracted prefix.
-			return tryHealMalformedJson(prefix);
+		} else if (char === close) {
+			depth -= 1;
+			if (depth === 0) return index;
 		}
 	}
+	return -1;
+}
 
-	return undefined;
+/**
+ * Index of the quote closing the string literal whose opening quote is at
+ * `open`, or `value.length` when the literal is unterminated.
+ */
+function jsonStringClose(value: string, open: number): number {
+	for (let index = open + 1; index < value.length; index += 1) {
+		const char = value[index];
+		if (char === "\\") index += 1;
+		else if (char === '"') return index;
+	}
+	return value.length;
+}
+
+/** Text repairs tried in order on a balanced container that does not parse, each applied to the original text. */
+const JSON_CONTAINER_TEXT_REPAIRS: ReadonlyArray<(text: string) => string> = [
+	// LLMs sometimes emit literal `\n` or `\t` between JSON tokens (e.g. `[{...}\n]`).
+	cleanLiteralEscapes,
+	// LLMs sometimes emit raw newlines or tabs inside string content instead of `\n`/`\t`.
+	escapeRawControlsInJsonStrings,
+];
+
+/**
+ * Parses a balanced JSON container as written, then each text repair of it,
+ * then single-character bracket healing. Returns `undefined` when none parses.
+ */
+function parseJsonContainerWithRepairs(text: string): unknown | undefined {
+	try {
+		return JSON.parse(text) as unknown;
+	} catch {
+		// The repairs below handle text that does not parse as written.
+	}
+	for (const repair of JSON_CONTAINER_TEXT_REPAIRS) {
+		const parsed = parseRepairedJson(text, repair);
+		if (parsed !== undefined) return parsed;
+	}
+	return tryHealMalformedJson(text);
+}
+
+/** Parses `repair(text)`; `undefined` when the repair changes nothing or its result does not parse. */
+function parseRepairedJson(text: string, repair: (text: string) => string): unknown | undefined {
+	const repaired = repair(text);
+	if (repaired === text) return undefined;
+	try {
+		return JSON.parse(repaired) as unknown;
+	} catch {
+		// One rung of a repair ladder: this candidate not parsing is the normal case.
+		return undefined;
+	}
 }
 
 /**
  * Replace literal `\n`, `\t`, `\r` sequences that appear OUTSIDE of JSON
- * strings with actual whitespace.  LLMs sometimes produce these when they
- * confuse the tool-call encoding with the content encoding.
+ * strings with a space.  LLMs sometimes produce these when they
+ * confuse the tool-call encoding with the content encoding. Returns `value`
+ * itself when it holds none.
  */
 function cleanLiteralEscapes(value: string): string {
 	let result = "";
-	let inString = false;
-	let i = 0;
-	while (i < value.length) {
-		const ch = value[i];
-		if (inString) {
-			if (ch === "\\" && i + 1 < value.length) {
-				result += ch + value[i + 1];
-				i += 2;
-				continue;
-			}
-			if (ch === '"') inString = false;
-			result += ch;
-			i += 1;
+	let copiedFrom = 0;
+	for (let index = 0; index < value.length; index += 1) {
+		const char = value[index];
+		if (char === '"') {
+			index = jsonStringClose(value, index);
 			continue;
 		}
-		if (ch === '"') {
-			inString = true;
-			result += ch;
-			i += 1;
-			continue;
-		}
-		// Outside a string: replace literal \n, \t, \r with whitespace
-		if (ch === "\\" && i + 1 < value.length) {
-			const next = value[i + 1];
-			if (next === "n" || next === "t" || next === "r") {
-				result += " ";
-				i += 2;
-				continue;
-			}
-		}
-		result += ch;
-		i += 1;
+		if (char !== "\\") continue;
+		const next = value[index + 1];
+		if (next !== "n" && next !== "t" && next !== "r") continue;
+		result += `${value.slice(copiedFrom, index)} `;
+		copiedFrom = index + 2;
+		index += 1;
 	}
-	return result;
+	return copiedFrom === 0 ? value : result + value.slice(copiedFrom);
 }
+
+/** The JSON escape of each control character 0x00–0x1F: `\b`, `\t`, `\n`, `\f`, `\r` or `\u00xx`. */
+const JSON_CONTROL_ESCAPES: readonly string[] = Array.from({ length: 0x20 }, (_, code) =>
+	JSON.stringify(String.fromCharCode(code)).slice(1, -1),
+);
 
 /**
  * Escape raw control characters (0x00–0x1F) that appear *inside* JSON string
@@ -326,64 +325,28 @@ function cleanLiteralEscapes(value: string): string {
  * even though the surrounding structure is valid.
  *
  * This function only rewrites characters while inside a string; structural
- * whitespace outside of strings is preserved unchanged.
+ * whitespace outside of strings is preserved unchanged. Returns `value` itself
+ * when it holds none.
  */
 function escapeRawControlsInJsonStrings(value: string): string {
 	let result = "";
+	let copiedFrom = 0;
 	let inString = false;
-	let escaped = false;
-	let changed = false;
-	for (let i = 0; i < value.length; i += 1) {
-		const ch = value[i];
-		if (inString) {
-			if (escaped) {
-				result += ch;
-				escaped = false;
-				continue;
-			}
-			if (ch === "\\") {
-				result += ch;
-				escaped = true;
-				continue;
-			}
-			if (ch === '"') {
-				result += ch;
-				inString = false;
-				continue;
-			}
-			const code = ch.charCodeAt(0);
-			if (code < 0x20) {
-				changed = true;
-				switch (ch) {
-					case "\n":
-						result += "\\n";
-						break;
-					case "\r":
-						result += "\\r";
-						break;
-					case "\t":
-						result += "\\t";
-						break;
-					case "\b":
-						result += "\\b";
-						break;
-					case "\f":
-						result += "\\f";
-						break;
-					default:
-						result += `\\u${code.toString(16).padStart(4, "0")}`;
-				}
-				continue;
-			}
-			result += ch;
-			continue;
+	for (let index = 0; index < value.length; index += 1) {
+		const code = value.charCodeAt(index);
+		if (code === 0x22 /* " */) {
+			inString = !inString;
+		} else if (!inString) {
+			// Outside a string every character is structure and stays as written.
+		} else if (code === 0x5c /* \ */) {
+			// The escaped character is copied as written, a quote or a control included.
+			index += 1;
+		} else if (code < 0x20) {
+			result += value.slice(copiedFrom, index) + JSON_CONTROL_ESCAPES[code];
+			copiedFrom = index + 1;
 		}
-		if (ch === '"') {
-			inString = true;
-		}
-		result += ch;
 	}
-	return changed ? result : value;
+	return copiedFrom === 0 ? value : result + value.slice(copiedFrom);
 }
 
 /** Maximum single-character edits to attempt when healing malformed JSON. */
@@ -398,16 +361,10 @@ const BRACKET_CHARS = ["[", "]", "{", "}"] as const;
  *   1. Removing a single character from the last few positions
  *   2. Replacing a single character in the last few positions with each bracket type
  *
+ * `value` has already failed to parse as written.
  * Returns the parsed value on success, undefined on failure.
  */
 function tryHealMalformedJson(value: string): unknown | undefined {
-	// Verify it actually fails to parse
-	try {
-		return JSON.parse(value) as unknown;
-	} catch {
-		// Expected: healing is only attempted on input that does not already parse.
-	}
-
 	// Only attempt edits within the last few characters — the error is always
 	// a bracket issue at the tail for the class of LLM mistakes this targets.
 	const tailStart = Math.max(0, value.length - (MAX_HEAL_DISTANCE * 2 + 1));
@@ -503,52 +460,51 @@ function tryParseJsonForTypes(value: string, expectedTypes: string[], depth = 0)
 	}
 
 	// Quick syntactic checks to avoid unnecessary parse attempts
-	const looksJsonObject = trimmed.startsWith("{") && looksLikeJsonContainerString(trimmed);
-	const looksJsonArray = trimmed.startsWith("[") && looksLikeJsonContainerString(trimmed);
-	const looksJsonString = trimmed.startsWith('"') && !expectedTypes.includes("string");
-	const looksJsonLiteral =
-		trimmed === "true" || trimmed === "false" || trimmed === "null" || JSON_NUMBER_PATTERN.test(trimmed);
+	const looksJsonContainer = looksLikeJsonContainerString(trimmed);
+	const looksJsonScalar =
+		(trimmed.startsWith('"') && !expectedTypes.includes("string")) ||
+		trimmed === "true" ||
+		trimmed === "false" ||
+		trimmed === "null" ||
+		JSON_NUMBER_PATTERN.test(trimmed);
+	if (!looksJsonContainer && !looksJsonScalar) return { value, changed: false };
 
-	if (!looksJsonObject && !looksJsonArray && !looksJsonString && !looksJsonLiteral) {
-		return { value, changed: false };
-	}
-
+	let parsed: unknown;
 	try {
-		const parsed = JSON.parse(trimmed) as unknown;
-		const accepted = acceptParsedJsonForTypes(parsed, trimmed, expectedTypes, depth);
-		if (accepted.changed) return accepted;
+		parsed = JSON.parse(trimmed) as unknown;
 	} catch {
-		if (looksJsonObject || looksJsonArray) {
-			// Try escaping raw control chars inside string literals (LLMs sometimes
-			// emit literal newlines/tabs inside string content rather than `\n`/`\t`).
-			const escapedControls = escapeRawControlsInJsonStrings(trimmed);
-			if (escapedControls !== trimmed) {
-				try {
-					const parsed = JSON.parse(escapedControls) as unknown;
-					const accepted = acceptParsedJsonForTypes(parsed, escapedControls, expectedTypes, depth);
-					if (accepted.changed) return accepted;
-				} catch {
-					// Control-character escaping did not help; the prefix and healing
-					// attempts below are the remaining repairs.
-				}
-			}
-			// Try extracting a valid JSON prefix (handles trailing junk after balanced container)
-			const leading = tryParseLeadingJsonContainer(trimmed);
-			if (leading !== undefined) {
-				const accepted = acceptParsedJsonForTypes(leading, trimmed, expectedTypes, depth);
-				if (accepted.changed) return accepted;
-			}
-			// Try healing single-character bracket errors near the end of the string
-			const healed = tryHealMalformedJson(trimmed);
-			if (healed !== undefined) {
-				const accepted = acceptParsedJsonForTypes(healed, trimmed, expectedTypes, depth);
-				if (accepted.changed) return accepted;
-			}
-		}
-		return { value, changed: false };
+		const repaired = looksJsonContainer
+			? parseRepairedJsonContainerForTypes(trimmed, expectedTypes, depth)
+			: undefined;
+		return repaired ?? { value, changed: false };
 	}
+	const accepted = acceptParsedJsonForTypes(parsed, trimmed, expectedTypes, depth);
+	return accepted.changed ? accepted : { value, changed: false };
+}
 
-	return { value, changed: false };
+/** Repairs tried in order on a JSON container that does not parse; each yields `undefined` when it fails. */
+const JSON_CONTAINER_TYPE_REPAIRS: ReadonlyArray<(text: string) => unknown> = [
+	// LLMs sometimes emit literal newlines/tabs inside string content rather than `\n`/`\t`.
+	text => parseRepairedJson(text, escapeRawControlsInJsonStrings),
+	// A balanced container followed by trailing junk.
+	tryParseLeadingJsonContainer,
+	// A single-character bracket error near the end of the string.
+	tryHealMalformedJson,
+];
+
+/** The first repair of a JSON container that does not parse whose result `expectedTypes` accepts, or `undefined`. */
+function parseRepairedJsonContainerForTypes(
+	text: string,
+	expectedTypes: string[],
+	depth: number,
+): { value: unknown; changed: boolean } | undefined {
+	for (const repair of JSON_CONTAINER_TYPE_REPAIRS) {
+		const repaired = repair(text);
+		if (repaired === undefined) continue;
+		const accepted = acceptParsedJsonForTypes(repaired, text, expectedTypes, depth);
+		if (accepted.changed) return accepted;
+	}
+	return undefined;
 }
 
 // ============================================================================
@@ -580,27 +536,35 @@ function decodeJsonPointer(pointer: string): string[] {
 }
 
 /**
+ * The child of `node` at `segment`: an integer index into an array or a key of
+ * an object. `undefined` for any other node or a non-integer array segment.
+ */
+function childAtSegment(node: unknown, segment: string): unknown {
+	if (Array.isArray(node)) {
+		const index = Number(segment);
+		return Number.isInteger(index) ? node[index] : undefined;
+	}
+	if (typeof node !== "object" || node === null) return undefined;
+	return (node as Record<string, unknown>)[segment];
+}
+
+/** Follows the first `count` segments down from `root`; `undefined` once a step has no child. */
+function descendSegments(root: unknown, segments: readonly string[], count: number): unknown {
+	let current = root;
+	for (let index = 0; index < count && current !== undefined; index += 1) {
+		current = childAtSegment(current, segments[index]);
+	}
+	return current;
+}
+
+/**
  * Retrieves a value from a nested object/array structure using a JSON Pointer.
  * Returns undefined if the path doesn't exist or traversal fails.
  */
 function getValueAtPointer(root: unknown, pointer: string): unknown {
 	if (!pointer) return root;
 	const segments = decodeJsonPointer(pointer);
-	let current: unknown = root;
-
-	for (const segment of segments) {
-		if (current === null || current === undefined) return undefined;
-		if (Array.isArray(current)) {
-			const index = Number(segment);
-			if (!Number.isInteger(index)) return undefined;
-			current = current[index];
-			continue;
-		}
-		if (typeof current !== "object") return undefined;
-		current = (current as Record<string, unknown>)[segment];
-	}
-
-	return current;
+	return descendSegments(root, segments, segments.length);
 }
 
 /**
@@ -611,33 +575,14 @@ function getValueAtPointer(root: unknown, pointer: string): unknown {
 function setValueAtPointer(root: unknown, pointer: string, value: unknown): unknown {
 	if (!pointer) return value;
 	const segments = decodeJsonPointer(pointer);
-	let current: unknown = root;
-
-	// Navigate to the parent of the target location
-	for (let index = 0; index < segments.length - 1; index += 1) {
-		const segment = segments[index];
-		if (current === null || current === undefined) return root;
-		if (Array.isArray(current)) {
-			const arrayIndex = Number(segment);
-			if (!Number.isInteger(arrayIndex)) return root;
-			current = current[arrayIndex];
-			continue;
-		}
-		if (typeof current !== "object") return root;
-		current = (current as Record<string, unknown>)[segment];
+	const parent = descendSegments(root, segments, segments.length - 1);
+	const key = segments[segments.length - 1];
+	if (Array.isArray(parent)) {
+		const index = Number(key);
+		if (Number.isInteger(index)) parent[index] = value;
+	} else if (typeof parent === "object" && parent !== null) {
+		(parent as Record<string, unknown>)[key] = value;
 	}
-
-	// Set the value at the final segment
-	const lastSegment = segments[segments.length - 1];
-	if (Array.isArray(current)) {
-		const arrayIndex = Number(lastSegment);
-		if (!Number.isInteger(arrayIndex)) return root;
-		current[arrayIndex] = value;
-		return root;
-	}
-
-	if (typeof current !== "object" || current === null) return root;
-	(current as Record<string, unknown>)[lastSegment] = value;
 	return root;
 }
 
@@ -1480,18 +1425,26 @@ function mapZodExpectedToJsonSchemaType(expected: unknown): string | null {
  */
 function flattenIssues(issues: ReadonlyArray<ZodIssue>): FlatIssue[] {
 	const out: FlatIssue[] = [];
-	const walk = (issue: ZodIssue, prefix: ReadonlyArray<PropertyKey>, unionBranch: boolean): void => {
-		const fullPath = prefix.length === 0 ? issue.path : prefix.concat(issue.path);
-		if (issue.code === "invalid_type") {
-			const mapped = mapZodExpectedToJsonSchemaType((issue as { expected?: unknown }).expected);
-			if (mapped) {
-				out.push({ keyword: "type", instancePath: pathToPointer(fullPath), expectedTypes: [mapped], unionBranch });
-				return;
-			}
+	for (const issue of issues) flattenIssue(issue, [], false, out);
+	return out;
+}
+
+function flattenIssue(
+	issue: ZodIssue,
+	prefix: ReadonlyArray<PropertyKey>,
+	unionBranch: boolean,
+	out: FlatIssue[],
+): void {
+	const fullPath = prefix.length === 0 ? issue.path : prefix.concat(issue.path);
+	switch (issue.code) {
+		case "invalid_type": {
+			const mapped = mapZodExpectedToJsonSchemaType(issue.expected);
+			if (!mapped) break;
+			out.push({ keyword: "type", instancePath: pathToPointer(fullPath), expectedTypes: [mapped], unionBranch });
+			return;
 		}
-		if (issue.code === "unrecognized_keys") {
-			const keys = (issue as { keys?: ReadonlyArray<string> }).keys ?? [];
-			for (const key of keys) {
+		case "unrecognized_keys":
+			for (const key of issue.keys) {
 				out.push({
 					keyword: "unrecognized",
 					instancePath: pathToPointer(fullPath.concat([key])),
@@ -1500,26 +1453,19 @@ function flattenIssues(issues: ReadonlyArray<ZodIssue>): FlatIssue[] {
 				});
 			}
 			return;
-		}
-		if (issue.code === "invalid_union") {
-			const inner = (issue as unknown as { errors?: ReadonlyArray<ReadonlyArray<ZodIssue>> }).errors;
-			if (inner) {
-				// A union-branch issue only competes with a sibling branch when it
-				// sits at the union node's own path. Issues whose own path is
-				// non-empty live on a deeper field that an already-identified
-				// branch owns, so the singleton-array repair should still apply.
-				for (const branch of inner) {
-					for (const child of branch) {
-						walk(child, fullPath, child.path.length === 0);
-					}
-				}
+		case "invalid_union":
+			// A union-branch issue only competes with a sibling branch when it
+			// sits at the union node's own path. Issues whose own path is
+			// non-empty live on a deeper field that an already-identified
+			// branch owns, so the singleton-array repair should still apply.
+			for (const branch of issue.errors) {
+				for (const child of branch) flattenIssue(child, fullPath, child.path.length === 0, out);
 			}
 			return;
-		}
-		out.push({ keyword: "other", instancePath: pathToPointer(fullPath), expectedTypes: [], unionBranch });
-	};
-	for (const issue of issues) walk(issue, [], false);
-	return out;
+		default:
+			break;
+	}
+	out.push({ keyword: "other", instancePath: pathToPointer(fullPath), expectedTypes: [], unionBranch });
 }
 
 /**
@@ -1561,27 +1507,9 @@ function coerceArgsFromIssues(args: unknown, issues: FlatIssue[]): { value: unkn
 			if (nextArgs !== previous) changed = true;
 			continue;
 		}
-		if (issue.keyword !== "type") continue;
-		if (issue.expectedTypes.length === 0) continue;
+		if (issue.keyword !== "type" || issue.expectedTypes.length === 0) continue;
 
-		const currentValue = getValueAtPointer(nextArgs, issue.instancePath);
-		const result = tryCoerceForExpectedTypes(currentValue, issue.expectedTypes);
-		let coercedValue = result.changed ? result.value : undefined;
-		if (
-			coercedValue === undefined &&
-			issue.expectedTypes.includes("array") &&
-			!issue.unionBranch &&
-			currentValue !== undefined &&
-			!Array.isArray(currentValue)
-		) {
-			const objectCoercion =
-				typeof currentValue === "string"
-					? tryParseJsonForTypes(currentValue, ["object"])
-					: { value: currentValue, changed: false };
-			if (objectCoercion.changed || !looksLikeJsonContainerString(currentValue)) {
-				coercedValue = [objectCoercion.changed ? objectCoercion.value : currentValue];
-			}
-		}
+		const coercedValue = coerceIssueValue(getValueAtPointer(nextArgs, issue.instancePath), issue);
 		if (coercedValue === undefined) continue;
 
 		if (!owned) {
@@ -1593,6 +1521,31 @@ function coerceArgsFromIssues(args: unknown, issues: FlatIssue[]): { value: unkn
 	}
 
 	return { value: changed ? nextArgs : args, changed };
+}
+
+/**
+ * The value a `type` issue rewrites `currentValue` to, or `undefined` when no
+ * coercion applies. A lone value for a non-union `array` expectation is wrapped
+ * in an array.
+ */
+function coerceIssueValue(currentValue: unknown, issue: FlatIssue): unknown {
+	const result = tryCoerceForExpectedTypes(currentValue, issue.expectedTypes);
+	if (result.changed && result.value !== undefined) return result.value;
+	if (!issue.expectedTypes.includes("array") || issue.unionBranch) return undefined;
+	return wrapAsSingletonArray(currentValue);
+}
+
+/**
+ * Wraps a lone non-array value in an array. A string holding a JSON object is
+ * parsed first; a string that looks like a JSON container and does not parse
+ * as an object is left alone.
+ */
+function wrapAsSingletonArray(value: unknown): unknown[] | undefined {
+	if (value === undefined || Array.isArray(value)) return undefined;
+	if (typeof value !== "string") return [value];
+	const objectCoercion = tryParseJsonForTypes(value, ["object"]);
+	if (objectCoercion.changed) return [objectCoercion.value];
+	return looksLikeJsonContainerString(value) ? undefined : [value];
 }
 
 // ============================================================================
@@ -1746,32 +1699,40 @@ function isSpillPairStart(text: string, at: number): boolean {
  */
 function findSpillValueEnd(text: string, from: number): { end: number; next: number } {
 	const close = text.indexOf(ARG_VALUE_CLOSE, from);
-	let wrong = text.indexOf(ARG_KEY_CLOSE, from);
-	let open = text.indexOf(ARG_KEY_OPEN, from);
-	while (true) {
-		const candidates = [close, wrong, open].filter(index => index !== -1);
-		if (candidates.length === 0) return { end: text.length, next: text.length };
-		const at = Math.min(...candidates);
-		if (at === close) return { end: at, next: at + ARG_VALUE_CLOSE.length };
-		if (at === wrong) {
-			const follow = skipSpillWhitespace(text, at + ARG_KEY_CLOSE.length);
-			if (
-				follow >= text.length ||
-				text.startsWith(ARG_KEY_OPEN, follow) ||
-				text.startsWith(TOOL_CALL_CLOSE, follow)
-			) {
-				return { end: at, next: at + ARG_KEY_CLOSE.length };
-			}
-			wrong = text.indexOf(ARG_KEY_CLOSE, at + 1);
-			continue;
-		}
-		if (isSpillPairStart(text, at)) {
-			let end = at;
-			while (end > from && " \n\t\r".includes(text[end - 1]!)) end--;
-			return { end, next: at };
-		}
-		open = text.indexOf(ARG_KEY_OPEN, at + 1);
+	const limit = close === -1 ? text.length : close;
+	const wrong = findMistypedValueCloser(text, from, limit);
+	const pair = findInlinedPairStart(text, from, wrong === -1 ? limit : wrong);
+	if (pair !== -1) {
+		let end = pair;
+		while (end > from && " \n\t\r".includes(text[end - 1]!)) end--;
+		return { end, next: pair };
 	}
+	if (wrong !== -1) return { end: wrong, next: wrong + ARG_KEY_CLOSE.length };
+	if (close !== -1) return { end: close, next: close + ARG_VALUE_CLOSE.length };
+	return { end: text.length, next: text.length };
+}
+
+/**
+ * The first `</arg_key>` before `limit` that the end of input, a next
+ * `<arg_key>` or `</tool_call>` follows, or -1. Any other `</arg_key>` is
+ * value content.
+ */
+function findMistypedValueCloser(text: string, from: number, limit: number): number {
+	for (let at = text.indexOf(ARG_KEY_CLOSE, from); at !== -1 && at < limit; at = text.indexOf(ARG_KEY_CLOSE, at + 1)) {
+		const follow = skipSpillWhitespace(text, at + ARG_KEY_CLOSE.length);
+		if (follow >= text.length || text.startsWith(ARG_KEY_OPEN, follow) || text.startsWith(TOOL_CALL_CLOSE, follow)) {
+			return at;
+		}
+	}
+	return -1;
+}
+
+/** The first `<arg_key>` before `limit` that opens a well-formed key/value pair, or -1. */
+function findInlinedPairStart(text: string, from: number, limit: number): number {
+	for (let at = text.indexOf(ARG_KEY_OPEN, from); at !== -1 && at < limit; at = text.indexOf(ARG_KEY_OPEN, at + 1)) {
+		if (isSpillPairStart(text, at)) return at;
+	}
+	return -1;
 }
 
 /**
