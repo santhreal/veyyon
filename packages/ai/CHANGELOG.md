@@ -16,7 +16,7 @@
 
 - GitLab Duo builds the stream options its Anthropic, Responses and Chat Completions routes share once, and Claude usage builds its account-wide 5-hour and 7-day limits in one place for the usage endpoint and the rate-limit headers; requests and limits are unchanged.
 - `GitLabDuoWorkflowStreamState` drops `stepLimitRequested`, `retryableErrorRequested` and `stalledRequested`, which nothing read; the socket result reports the same outcome.
-- `EventStream`'s iterator `return` passes its value to the generator as `undefined` rather than `void`; behavior is unchanged.
+- `EventStream`'s reader answers `next()`, `return()` and `throw()` from the stream's queue and parked readers directly instead of through an async generator, cutting a 20,000-event drain from 2.04 to 1.10 ms when the events are queued, from 5.63 to 4.22 ms when 4 events arrive per macrotask, and a 5,000-event drain from 3.84 to 3.41 ms when the reader waits on every event (median of 15).
 - The in-band tag scanners find a held-back partial tag by comparing in place at the positions holding the tag's first character instead of slicing every candidate prefix on each delta, cutting the leaked-thinking scan of a 60,000-char answer at 24-char deltas from 2.6 ms to 0.4 ms with identical holds across every text and tag over a three-symbol alphabet.
 - The output-loop guard compares a streamed tail's candidate repeats char by char in place instead of slicing both sides of every candidate length on each delta, cutting its cost on a 200,000-char non-looping stream from 228 ms to 26 ms at 12-char deltas with identical verdicts across 200,000 generated tails.
 - The output-loop guard answers an ASCII char's letter test from its char code, probes only the repeat lengths at which the tail's last char recurs, keeps the recent vocabulary as per-word counts, matches a paragraph's references only when a low-novelty paragraph needs them and stops a trigram comparison once 0.8 is out of reach, cutting its cost on a 200,000-char non-looping stream from 53.0 to 35.7 ms at 4-char deltas and from 20.3 to 10.9 ms at 64-char deltas with identical verdicts across 8,000 generated streams.
@@ -82,6 +82,7 @@
 - The auth gateway's streamed `response.output_item.done` frame for a tool call writes only the call-id half of a composite `{call_id}|{item_id}` id, as the `response.output_item.added` frame and the non-streamed response do, instead of the whole id that clients validating `call_id` against `^[a-zA-Z0-9_-]+$` reject.
 - A GitLab Duo turn that pauses at a later server-side tool boundary while replaying a buffered checkpoint resumes on the next turn from the frames after that boundary and the frames the socket delivered in between, instead of dropping them; a replay that ends any other way leaves no frames buffered on the session.
 - A GitLab Duo checkpoint that grows an earlier message after a later one emitted text opens a new content block for the earlier message's new text instead of appending it to the later message's block.
+- An `EventStream` reader answers overlapping `next()` calls in call order, and an event pushed after a reader's `return()` or `throw()` stays queued for the next reader instead of being consumed by the abandoned read.
 
 ## [1.5.4] - 2026-09-24
 

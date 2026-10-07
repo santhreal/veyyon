@@ -61,6 +61,18 @@ describe("AssistantMessageEventStream", () => {
 		expect(AIError.is(result.errorId, AIError.Flag.UsageLimit)).toBe(true);
 	});
 
+	it("stamps an error message passed to end() with a classified errorId", async () => {
+		const stream = new AssistantMessageEventStream();
+		const message = createPartial();
+		message.stopReason = "error";
+		message.errorMessage = "usage limit reached";
+
+		stream.end(message);
+
+		const result = await stream.result();
+		expect(AIError.is(result.errorId, AIError.Flag.UsageLimit)).toBe(true);
+	});
+
 	it("leaves successful terminal messages without errorId", async () => {
 		const stream = new AssistantMessageEventStream();
 		const message = createPartial("ok");
