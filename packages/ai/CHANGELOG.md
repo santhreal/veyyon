@@ -16,6 +16,7 @@
 - `@veyyon/ai/auth-gateway` exports `AUTH_GATEWAY_COMPLETION_PATHS`, every path the gateway answers a completion `POST` on.
 - `@veyyon/ai/auth-broker` exports `AUTH_BROKER_AUTHORIZED_ROUTES`, every broker route that requires a bearer, and `AuthStorage.hasCredentialId(id)` reports whether a loaded credential row has the id.
 - `EventStream.takeQueued()` removes and returns the events pushed and not yet read, oldest first.
+- `@veyyon/ai/utils/schema` exports `ZOD_INSTANCE_KINDS`, every Zod 4 kind by which `decontaminateZodInstance` recognizes a serialized instance.
 
 ### Changed
 
@@ -80,9 +81,11 @@
 - The Codex provider builds its request `input` through `buildResponsesInput`, the builder the OpenAI and Azure Responses providers use, instead of a private converter, and `providers/openai-shared` exports `supportsFreeformApplyPatch`, which `providers/openai-responses` re-exports and which reports `false` for an Azure model, since an Azure request sends every tool as a `function` tool; `BuildResponsesInputOptions.supportsCustomToolCalls` defaults to it.
 - Responses tool-call id normalization reads an id's prefix by scanning its characters instead of matching a regular expression and splits `callId|itemId` without building an array, cutting the normalization of 2,000 ids from 0.57 to 0.44 ms and `convertCodexResponsesMessages` on a 300-turn transcript from 0.58 to 0.51 ms (median of 201), with identical ids across 400,000 generated ids.
 - The auth gateway's Chat Completions request parser converts messages, decoding options and request options in separate steps and maps every content part through one function; parsed requests and errors are identical across 100,000 generated bodies and parse time is unchanged.
+- `decontaminateZodInstance` rewrites each Zod kind in its own function and copies an object or array only once a value under it changes, so a tool schema with nothing to rewrite is walked without copying any of its objects or arrays; output is identical across 30,000 generated schemas.
 
 ### Fixed
 
+- `decontaminateZodInstance` no longer takes a node whose kind is named for an `Object.prototype` member, such as `constructor`, for a Zod instance, and on a rewritten node keeps a key such as `constructor` that it dropped and drops a null `toString` that it kept.
 - A Codex model without the freeform `apply_patch` grammar replays an earlier `apply_patch` call as a `function_call` that matches its `edit` function tool instead of a `custom_tool_call` its tools do not declare, and an Azure Responses turn or compaction does the same whatever the catalog flag says, since every Azure tool is a function tool.
 - The Codex request transformer repairs unpaired tool calls and outputs through the repair the other Responses providers use, so an unpaired output with no payload folds into an empty note instead of throwing, a null payload is written as empty instead of `null`, and an output with an empty tool name is attributed to `tool`.
 - The Anthropic client waits the window stated by an `anthropic-ratelimit-*-reset` header on a 429 that carries no `retry-after`, instead of retrying on the backoff curve.

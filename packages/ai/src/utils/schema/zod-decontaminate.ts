@@ -87,6 +87,9 @@ const ZOD_KINDS: Record<string, true> = {
 	nonoptional: true,
 };
 
+/** Every Zod 4 kind by which {@link decontaminateZodInstance} recognizes a serialized instance. */
+export const ZOD_INSTANCE_KINDS: readonly string[] = Object.keys(ZOD_KINDS);
+
 const ZOD_SCALAR_TO_JSON_TYPE: Record<string, string> = {
 	string: "string",
 	number: "number",
@@ -120,7 +123,7 @@ function isZodLeak(node: JsonObject): boolean {
 	const def = node.def;
 	if (!isRecord(def)) return false;
 	const defType = def.type;
-	if (typeof defType !== "string" || !ZOD_KINDS[defType]) return false;
+	if (typeof defType !== "string" || !Object.hasOwn(ZOD_KINDS, defType)) return false;
 	// Both surface and inner `.type` must agree — Zod always mirrors `_def.type`
 	// onto the instance, so this is a near-zero false-positive guard.
 	return node.type === defType;
@@ -146,137 +149,130 @@ function unwrapInnerSchema(def: JsonObject): unknown {
 function copyWithoutNoise(node: JsonObject): JsonObject {
 	const out: JsonObject = {};
 	for (const key in node) {
-		if (ZOD_NOISE_KEYS[key]) continue;
+		if (Object.hasOwn(ZOD_NOISE_KEYS, key)) continue;
 		const value = node[key];
-		if (value === null && !KEYS_THAT_ACCEPT_NULL[key]) continue;
+		if (value === null && !Object.hasOwn(KEYS_THAT_ACCEPT_NULL, key)) continue;
 		out[key] = value;
 	}
 	return out;
 }
 
+type KindRewrite = (node: JsonObject, def: JsonObject, seen: WeakSet<object>) => unknown;
+
+function rewriteUnion(node: JsonObject, def: JsonObject, seen: WeakSet<object>): unknown {
+	const arms = Array.isArray(def.options) ? def.options : Array.isArray(node.options) ? node.options : [];
+	return { anyOf: arms.map(arm => walk(arm, seen)) };
+}
+
+function rewriteKeyedCollection(_node: JsonObject, def: JsonObject, seen: WeakSet<object>): unknown {
+	return { type: "object", additionalProperties: walk(def.valueType, seen) };
+}
+
+/** A wrapper kind is its inner schema. */
+function rewriteWrapper(_node: JsonObject, def: JsonObject, seen: WeakSet<object>): unknown {
+	return walk(unwrapInnerSchema(def), seen);
+}
+
+function rewriteNullable(_node: JsonObject, def: JsonObject, seen: WeakSet<object>): unknown {
+	const inner = walk(unwrapInnerSchema(def), seen);
+	if (!isRecord(inner)) return inner;
+	if (typeof inner.type === "string") return { ...inner, type: [inner.type, "null"] };
+	if (Array.isArray(inner.type)) {
+		return inner.type.includes("null") ? inner : { ...inner, type: [...inner.type, "null"] };
+	}
+	// anyOf / allOf / $ref shapes — no scalar `type` field
+	return { anyOf: [inner, { type: "null" }] };
+}
+
+/** The JSON Schema rewrite of each Zod kind modelled; any other kind goes through {@link rewriteUnmodelled}. */
+const KIND_REWRITES: Partial<Record<string, KindRewrite>> = {
+	enum(node, def) {
+		// Prefer node.options (array form Zod exposes) → def.entries values →
+		// object-shaped node.enum values. All three carry the same data.
+		const values = Array.isArray(node.options)
+			? node.options
+			: isRecord(def.entries)
+				? Object.values(def.entries)
+				: isRecord(node.enum)
+					? Object.values(node.enum)
+					: [];
+		return { type: inferTypeFromValues(values), enum: values };
+	},
+	literal(_node, def) {
+		const values = Array.isArray(def.values) ? def.values : [];
+		if (values.length === 1) return { const: values[0] };
+		return values.length > 1 ? { type: inferTypeFromValues(values), enum: values } : {};
+	},
+	union: rewriteUnion,
+	discriminatedUnion: rewriteUnion,
+	intersection(_node, def, seen) {
+		return { allOf: [walk(def.left, seen), walk(def.right, seen)] };
+	},
+	array(_node, def, seen) {
+		return { type: "array", items: walk(def.element, seen) };
+	},
+	set(_node, def, seen) {
+		return { type: "array", uniqueItems: true, items: walk(def.valueType ?? def.element, seen) };
+	},
+	tuple(_node, def, seen) {
+		const items = Array.isArray(def.items) ? def.items : [];
+		const out: JsonObject = { type: "array", prefixItems: items.map(item => walk(item, seen)) };
+		if (def.rest != null) out.items = walk(def.rest, seen);
+		return out;
+	},
+	record: rewriteKeyedCollection,
+	map: rewriteKeyedCollection,
+	object(_node, def, seen) {
+		const shape = isRecord(def.shape) ? def.shape : {};
+		const properties: JsonObject = {};
+		const required: string[] = [];
+		for (const key in shape) {
+			properties[key] = walk(shape[key], seen);
+			if (!isOptionalEntry(shape[key])) required.push(key);
+		}
+		const out: JsonObject = { type: "object", properties };
+		if (required.length > 0) out.required = required;
+		return out;
+	},
+	nullable: rewriteNullable,
+	nonoptional: rewriteWrapper,
+	optional: rewriteWrapper,
+	default: rewriteWrapper,
+	prefault: rewriteWrapper,
+	catch: rewriteWrapper,
+	readonly: rewriteWrapper,
+	brand: rewriteWrapper,
+	lazy: rewriteWrapper,
+	pipe: rewriteWrapper,
+	transform: rewriteWrapper,
+};
+
+/**
+ * Best-effort rewrite of a kind {@link KIND_REWRITES} does not model: drops the noise, maps the kind
+ * to a JSON Schema type where one is known, and otherwise drops an invalid `type` so the node
+ * validates as permissive.
+ */
+function rewriteUnmodelled(node: JsonObject, kind: string): JsonObject {
+	const cleaned = copyWithoutNoise(node);
+	const mapped = ZOD_SCALAR_TO_JSON_TYPE[kind];
+	if (mapped) {
+		cleaned.type = mapped;
+	} else if (typeof cleaned.type === "string" && !Object.hasOwn(VALID_JSON_SCHEMA_TYPES, cleaned.type)) {
+		delete cleaned.type;
+	}
+	// Object-shaped `enum` survives as a noise field — remove if present.
+	if (cleaned.enum !== undefined && !Array.isArray(cleaned.enum)) {
+		delete cleaned.enum;
+	}
+	return cleaned;
+}
+
 function rewriteZodNode(node: JsonObject, seen: WeakSet<object>): unknown {
 	const def = node.def as JsonObject;
 	const kind = def.type as string;
-
-	switch (kind) {
-		case "enum": {
-			// Prefer node.options (array form Zod exposes) → def.entries values →
-			// object-shaped node.enum values. All three carry the same data.
-			const optionsArray = Array.isArray(node.options) ? (node.options as unknown[]) : null;
-			const entries = isRecord(def.entries) ? Object.values(def.entries) : null;
-			const enumObj = isRecord(node.enum) ? Object.values(node.enum) : null;
-			const values = optionsArray ?? entries ?? enumObj ?? [];
-			return { type: inferTypeFromValues(values), enum: values };
-		}
-
-		case "literal": {
-			const values = Array.isArray(def.values) ? (def.values as unknown[]) : [];
-			if (values.length === 1) {
-				return { const: values[0] };
-			}
-			if (values.length > 1) {
-				return { type: inferTypeFromValues(values), enum: values };
-			}
-			return {};
-		}
-
-		case "union":
-		case "discriminatedUnion": {
-			const arms = Array.isArray(def.options)
-				? (def.options as unknown[])
-				: Array.isArray(node.options)
-					? (node.options as unknown[])
-					: [];
-			return { anyOf: arms.map(x => walk(x, seen)) };
-		}
-
-		case "intersection": {
-			return {
-				allOf: [walk(def.left, seen), walk(def.right, seen)],
-			};
-		}
-
-		case "array": {
-			return { type: "array", items: walk(def.element, seen) };
-		}
-
-		case "set": {
-			const element = def.valueType ?? def.element;
-			return { type: "array", uniqueItems: true, items: walk(element, seen) };
-		}
-
-		case "tuple": {
-			const items = Array.isArray(def.items) ? (def.items as unknown[]) : [];
-			const out: JsonObject = { type: "array", prefixItems: items.map(x => walk(x, seen)) };
-			const rest = def.rest;
-			if (rest != null) out.items = walk(rest, seen);
-			return out;
-		}
-
-		case "record":
-		case "map": {
-			return { type: "object", additionalProperties: walk(def.valueType, seen) };
-		}
-
-		case "object": {
-			const shape = isRecord(def.shape) ? def.shape : ({} as JsonObject);
-			const properties: JsonObject = {};
-			const required: string[] = [];
-			for (const key in shape) {
-				const inner = walk(shape[key], seen);
-				properties[key] = inner;
-				if (!isOptionalEntry(shape[key])) required.push(key);
-			}
-			const out: JsonObject = { type: "object", properties };
-			if (required.length > 0) out.required = required;
-			return out;
-		}
-
-		case "nonoptional":
-		case "optional":
-		case "nullable":
-		case "default":
-		case "prefault":
-		case "catch":
-		case "readonly":
-		case "brand":
-		case "lazy":
-		case "pipe":
-		case "transform": {
-			const inner = walk(unwrapInnerSchema(def), seen);
-			if (kind === "nullable" && isRecord(inner)) {
-				if (typeof inner.type === "string") {
-					return { ...inner, type: [inner.type, "null"] };
-				}
-				if (Array.isArray(inner.type)) {
-					return (inner.type as string[]).includes("null")
-						? inner
-						: { ...inner, type: [...(inner.type as string[]), "null"] };
-				}
-				// anyOf / allOf / $ref shapes — no scalar `type` field
-				return { anyOf: [inner, { type: "null" }] };
-			}
-			return inner;
-		}
-
-		default: {
-			// Best-effort: drop the noise, map the kind to a JSON Schema type if
-			// we know one, otherwise drop `type` so the node validates as
-			// permissive.
-			const cleaned = copyWithoutNoise(node);
-			const mapped = ZOD_SCALAR_TO_JSON_TYPE[kind];
-			if (mapped) {
-				cleaned.type = mapped;
-			} else if (typeof cleaned.type === "string" && !VALID_JSON_SCHEMA_TYPES[cleaned.type]) {
-				delete cleaned.type;
-			}
-			// Object-shaped `enum` survives as a noise field — remove if present.
-			if (cleaned.enum !== undefined && !Array.isArray(cleaned.enum)) {
-				delete cleaned.enum;
-			}
-			return cleaned;
-		}
-	}
+	// `kind` is a key of `ZOD_KINDS`, none of which names an `Object.prototype` member.
+	const rewrite = KIND_REWRITES[kind];
+	return rewrite ? rewrite(node, def, seen) : rewriteUnmodelled(node, kind);
 }
 
 function isOptionalEntry(value: unknown): boolean {
@@ -296,17 +292,7 @@ export function decontaminateZodInstance(value: unknown): unknown {
 }
 
 function walk(value: unknown, seen: WeakSet<object>): unknown {
-	if (Array.isArray(value)) {
-		if (seen.has(value)) return value;
-		seen.add(value);
-		let changed = false;
-		const out = value.map(entry => {
-			const rewritten = walk(entry, seen);
-			if (rewritten !== entry) changed = true;
-			return rewritten;
-		});
-		return changed ? out : value;
-	}
+	if (Array.isArray(value)) return walkArray(value, seen);
 	if (!isRecord(value)) return value;
 	if (seen.has(value)) return value;
 	seen.add(value);
@@ -317,16 +303,45 @@ function walk(value: unknown, seen: WeakSet<object>): unknown {
 		const rewritten = rewriteZodNode(value, seen);
 		return rewritten === value ? value : walk(rewritten, seen);
 	}
+	return walkProperties(value, seen);
+}
 
-	// Plain JSON Schema node: recurse into children, preserving identity when
-	// nothing under us changed.
-	let changed = false;
-	const out: JsonObject = {};
+/**
+ * Walks a plain JSON Schema node's values and copies the node only at its first changed value, so a
+ * node with nothing to rewrite under it returns itself without allocating.
+ */
+function walkProperties(value: JsonObject, seen: WeakSet<object>): JsonObject {
+	let out: JsonObject | undefined;
 	for (const key in value) {
 		const child = value[key];
 		const rewritten = walk(child, seen);
-		if (rewritten !== child) changed = true;
-		out[key] = rewritten;
+		if (out) {
+			out[key] = rewritten;
+		} else if (rewritten !== child) {
+			out = {};
+			for (const earlier in value) {
+				if (earlier === key) break;
+				out[earlier] = value[earlier];
+			}
+			out[key] = rewritten;
+		}
 	}
-	return changed ? out : value;
+	return out ?? value;
+}
+
+function walkArray(value: unknown[], seen: WeakSet<object>): unknown[] {
+	if (seen.has(value)) return value;
+	seen.add(value);
+	let out: unknown[] | undefined;
+	for (let i = 0; i < value.length; i++) {
+		const entry = value[i];
+		const rewritten = walk(entry, seen);
+		if (out) {
+			out.push(rewritten);
+		} else if (rewritten !== entry) {
+			out = value.slice(0, i);
+			out.push(rewritten);
+		}
+	}
+	return out ?? value;
 }
