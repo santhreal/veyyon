@@ -6,19 +6,24 @@ export function areJsonValuesEqual(left: unknown, right: unknown): boolean {
 		return true;
 	}
 	if (Array.isArray(left) || Array.isArray(right)) {
-		if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
-			return false;
-		}
-		for (let i = 0; i < left.length; i += 1) {
-			if (!areJsonValuesEqual(left[i], right[i])) {
-				return false;
-			}
-		}
-		return true;
+		return Array.isArray(left) && Array.isArray(right) && areJsonArraysEqual(left, right);
 	}
-	if (!isRecord(left) || !isRecord(right)) {
+	return isRecord(left) && isRecord(right) && areJsonObjectsEqual(left, right);
+}
+
+function areJsonArraysEqual(left: readonly unknown[], right: readonly unknown[]): boolean {
+	if (left.length !== right.length) {
 		return false;
 	}
+	for (let i = 0; i < left.length; i += 1) {
+		if (!areJsonValuesEqual(left[i], right[i])) {
+			return false;
+		}
+	}
+	return true;
+}
+
+function areJsonObjectsEqual(left: JsonObject, right: JsonObject): boolean {
 	let rightLen = 0;
 	for (const _ in right) rightLen++;
 	let leftLen = 0;
@@ -29,45 +34,54 @@ export function areJsonValuesEqual(left: unknown, right: unknown): boolean {
 	return leftLen === rightLen;
 }
 
-export function mergeCompatibleEnumSchemas(existing: unknown, incoming: unknown): JsonObject | null {
-	if (!isRecord(existing) || !isRecord(incoming)) {
-		return null;
+/** Number of keys of `schema` other than `enum`. */
+function countNonEnumKeys(schema: JsonObject): number {
+	let count = 0;
+	for (const key in schema) {
+		if (key !== "enum") count++;
 	}
-	const existingEnum = Array.isArray(existing.enum) ? existing.enum : null;
-	const incomingEnum = Array.isArray(incoming.enum) ? incoming.enum : null;
-	if (!existingEnum || !incomingEnum) {
-		return null;
-	}
-	if (!areJsonValuesEqual(existing.type, incoming.type)) {
-		return null;
-	}
-	let existingNonEnumCount = 0;
-	for (const key in existing) {
-		if (key !== "enum") existingNonEnumCount++;
-	}
-	let incomingNonEnumCount = 0;
-	for (const key in incoming) {
-		if (key !== "enum") incomingNonEnumCount++;
-	}
-	if (existingNonEnumCount !== incomingNonEnumCount) {
-		return null;
+	return count;
+}
+
+/** True when `existing` and `incoming` hold the same keywords with equal values, `enum` aside. */
+function haveEqualNonEnumKeywords(existing: JsonObject, incoming: JsonObject): boolean {
+	if (countNonEnumKeys(existing) !== countNonEnumKeys(incoming)) {
+		return false;
 	}
 	for (const key in existing) {
 		if (key === "enum") continue;
 		if (!(key in incoming) || !areJsonValuesEqual(existing[key], incoming[key])) {
-			return null;
+			return false;
 		}
 	}
+	return true;
+}
 
-	const mergedEnum = existingEnum.slice();
-	for (const enumValue of incomingEnum) {
-		if (!mergedEnum.some(existingValue => areJsonValuesEqual(existingValue, enumValue))) {
-			mergedEnum.push(enumValue);
+/** A copy of `base` followed by each member of `additions` that equals no member already in the result. */
+function unionByJsonEquality(base: readonly unknown[], additions: readonly unknown[]): unknown[] {
+	const union = base.slice();
+	for (const value of additions) {
+		if (!union.some(member => areJsonValuesEqual(member, value))) {
+			union.push(value);
 		}
+	}
+	return union;
+}
+
+export function mergeCompatibleEnumSchemas(existing: unknown, incoming: unknown): JsonObject | null {
+	if (!isRecord(existing) || !isRecord(incoming)) {
+		return null;
+	}
+	if (
+		!Array.isArray(existing.enum) ||
+		!Array.isArray(incoming.enum) ||
+		!haveEqualNonEnumKeywords(existing, incoming)
+	) {
+		return null;
 	}
 	return {
 		...existing,
-		enum: mergedEnum,
+		enum: unionByJsonEquality(existing.enum, incoming.enum),
 	};
 }
 
@@ -87,11 +101,6 @@ export function mergePropertySchemas(existing: unknown, incoming: unknown): unkn
 		return mergedEnumSchema;
 	}
 
-	const mergedAnyOf = getAnyOfVariants(existing).slice();
-	for (const variant of getAnyOfVariants(incoming)) {
-		if (!mergedAnyOf.some(existingVariant => areJsonValuesEqual(existingVariant, variant))) {
-			mergedAnyOf.push(variant);
-		}
-	}
+	const mergedAnyOf = unionByJsonEquality(getAnyOfVariants(existing), getAnyOfVariants(incoming));
 	return mergedAnyOf.length === 1 ? mergedAnyOf[0] : { anyOf: mergedAnyOf };
 }

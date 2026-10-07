@@ -73,47 +73,63 @@ const CHILD_ARRAY_KEYS = ["anyOf", "oneOf", "allOf", "prefixItems"] as const;
  * or `null` when the schema is safe to emit.
  */
 export function findStrictToolSchemaViolation(schema: unknown, path = "#"): string | null {
-	if (Array.isArray(schema)) {
-		for (let i = 0; i < schema.length; i++) {
-			const hit = findStrictToolSchemaViolation(schema[i], `${path}/${i}`);
-			if (hit) return hit;
-		}
-		return null;
-	}
+	const suffix = findViolation(schema);
+	return suffix === null ? null : `${path}${suffix}`;
+}
+
+/**
+ * The path from `schema` to its first offending node, or null. The path is assembled on the way back out of a
+ * hit, so a schema with no violation builds no path strings.
+ */
+function findViolation(schema: unknown): string | null {
+	if (Array.isArray(schema)) return findInSchemaArray(schema);
 	if (typeof schema !== "object" || schema === null) return null;
 	const node = schema as JsonRecord;
+	return findTypeContradiction(node) ?? findInSchemaMaps(node) ?? findInChildSchemas(node);
+}
 
+/** `/enum` or `/const` when a value of that keyword contradicts every declared `type`, else null. */
+function findTypeContradiction(node: JsonRecord): string | null {
 	const types = declaredTypes(node);
-	if (types.length > 0) {
-		if (Array.isArray(node.enum) && node.enum.some(v => !types.some(t => jsonValueMatchesType(v, t)))) {
-			return `${path}/enum`;
-		}
-		if ("const" in node && !types.some(t => jsonValueMatchesType(node.const, t))) {
-			return `${path}/const`;
-		}
+	if (types.length === 0) return null;
+	if (Array.isArray(node.enum) && node.enum.some(value => !types.some(type => jsonValueMatchesType(value, type)))) {
+		return "/enum";
 	}
+	if ("const" in node && !types.some(type => jsonValueMatchesType(node.const, type))) return "/const";
+	return null;
+}
 
+function findInSchemaArray(schemas: readonly unknown[]): string | null {
+	for (let i = 0; i < schemas.length; i++) {
+		const hit = findViolation(schemas[i]);
+		if (hit !== null) return `/${i}${hit}`;
+	}
+	return null;
+}
+
+/** Searches each entry of the node's schema maps (`properties`, `$defs`, …). */
+function findInSchemaMaps(node: JsonRecord): string | null {
 	for (const key of CHILD_MAP_KEYS) {
 		const sub = node[key];
-		if (isRecord(sub)) {
-			for (const k of Object.keys(sub as JsonRecord)) {
-				const hit = findStrictToolSchemaViolation((sub as JsonRecord)[k], `${path}/${key}/${k}`);
-				if (hit) return hit;
-			}
+		if (!isRecord(sub)) continue;
+		for (const name in sub) {
+			const hit = findViolation(sub[name]);
+			if (hit !== null) return `/${key}/${name}${hit}`;
 		}
 	}
+	return null;
+}
+
+/** Searches the node's single-schema keywords, then its schema-array keywords. */
+function findInChildSchemas(node: JsonRecord): string | null {
 	for (const key of CHILD_SCHEMA_KEYS) {
-		if (key in node) {
-			const hit = findStrictToolSchemaViolation(node[key], `${path}/${key}`);
-			if (hit) return hit;
-		}
+		const hit = key in node ? findViolation(node[key]) : null;
+		if (hit !== null) return `/${key}${hit}`;
 	}
 	for (const key of CHILD_ARRAY_KEYS) {
-		const arr = node[key];
-		if (Array.isArray(arr)) {
-			const hit = findStrictToolSchemaViolation(arr, `${path}/${key}`);
-			if (hit) return hit;
-		}
+		const schemas = node[key];
+		const hit = Array.isArray(schemas) ? findInSchemaArray(schemas) : null;
+		if (hit !== null) return `/${key}${hit}`;
 	}
 	return null;
 }
