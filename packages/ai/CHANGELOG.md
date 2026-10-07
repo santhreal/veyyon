@@ -88,6 +88,7 @@
 - A GitLab Duo checkpoint that grows an earlier message after a later one emitted text opens a new content block for the earlier message's new text instead of appending it to the later message's block.
 - An `EventStream` reader answers overlapping `next()` calls in call order, and an event pushed after a reader's `return()` or `throw()` stays queued for the next reader instead of being consumed by the abandoned read.
 - A DeepSeek template token such as `<｜Assistant｜>` is stripped with the whitespace that follows it however the host splits the stream into chunks, instead of leaking the newline after a token that ended one chunk, or deleting the space before a token that began the next.
+- A turn wrapped in empty-completion retries ends with the error an attempt throws before returning its stream, instead of leaving the turn open.
 
 ## [1.5.4] - 2026-09-24
 

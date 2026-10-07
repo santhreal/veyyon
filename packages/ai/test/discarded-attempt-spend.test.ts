@@ -339,6 +339,78 @@ describe("an empty completion that is asked again", () => {
 			10,
 		);
 	});
+
+	/** An empty completion that billed `input` prompt tokens. */
+	const emptyBilling = (input: number) => {
+		const empty = assistantWith(usageOf({ input }));
+		return streamOf([
+			{ type: "start", partial: empty },
+			{ type: "done", reason: "stop", message: empty },
+		]);
+	};
+
+	it("bills every discarded attempt, not only the first", async () => {
+		let attempts = 0;
+		const stream = withEmptyCompletionRetry(MODEL, CONTEXT, { providerRetryWait: async () => {} }, () => {
+			attempts += 1;
+			if (attempts <= 2) return emptyBilling(1_000);
+			const delivered = assistantWith(usageOf({ input: 20, output: 7 }), ["hello"]);
+			return streamOf([
+				{ type: "start", partial: delivered },
+				{ type: "text_delta", contentIndex: 0, delta: "hello", partial: delivered },
+				{ type: "done", reason: "stop", message: delivered },
+			]);
+		});
+
+		const result = await stream.result();
+
+		expect(attempts).toBe(3);
+		expect(result.usage.discarded?.attempts).toBe(2);
+		expect(result.usage.discarded?.input).toBe(2_000);
+	});
+
+	it("bills the discarded prompt on a provider error that ends the turn", async () => {
+		let attempts = 0;
+		const stream = withEmptyCompletionRetry(MODEL, CONTEXT, { providerRetryWait: async () => {} }, () => {
+			attempts += 1;
+			if (attempts === 1) return emptyBilling(5_000);
+			const failure: AssistantMessage = {
+				...assistantWith(usageOf({ input: 20 })),
+				stopReason: "error",
+				errorMessage: "provider rejected the request",
+			};
+			return streamOf([
+				{ type: "start", partial: failure },
+				{ type: "error", reason: "error", error: failure },
+			]);
+		});
+
+		const result = await stream.result();
+
+		expect(attempts).toBe(2);
+		expect(result.errorMessage).toBe("provider rejected the request");
+		expect(result.usage.discarded?.attempts).toBe(1);
+		expect(result.usage.discarded?.input).toBe(5_000);
+	});
+
+	it("bills the discarded prompt on an attempt whose stream ended without a terminal event", async () => {
+		let attempts = 0;
+		const stream = withEmptyCompletionRetry(MODEL, CONTEXT, { providerRetryWait: async () => {} }, () => {
+			attempts += 1;
+			if (attempts === 1) return emptyBilling(5_000);
+			const delivered = assistantWith(usageOf({ input: 20, output: 7 }), ["hello"]);
+			const ended = streamOf([{ type: "start", partial: delivered }]);
+			ended.end(delivered);
+			return ended;
+		});
+
+		const result = await stream.result();
+
+		expect(attempts).toBe(2);
+		expect(result.content).toEqual([{ type: "text", text: "hello" }]);
+		expect(result.usage.discarded?.attempts).toBe(1);
+		expect(result.usage.discarded?.input).toBe(5_000);
+	});
 });
 
 const GEMINI: Model<"google-generative-ai"> = buildModel({
