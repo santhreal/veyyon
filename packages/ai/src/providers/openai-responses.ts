@@ -111,7 +111,10 @@ import {
 	resolveOpenAIOutputTokenParam,
 	resolveOpenAIRequestSetup,
 	shouldRetryWithoutStrictTools,
+	supportsFreeformApplyPatch,
 } from "./openai-shared";
+
+export { supportsFreeformApplyPatch } from "./openai-shared";
 
 // OpenAI Responses-specific options
 export interface OpenAIResponsesOptions extends StreamOptions {
@@ -970,13 +973,13 @@ export function buildParams(
 		context,
 		strictResponsesPairing,
 		supportsImageDetailOriginal: model.compat.supportsImageDetailOriginal,
+		supportsCustomToolCalls: supportsFreeformApplyPatch(model),
 		supportsDeveloperRole: policy.messages.supportsDeveloperRole,
 		nativeHistory: {
 			replay: shouldReplayNativeHistory,
 			filterReasoning: policy.reasoning.filterReasoningHistory,
 		},
 		includeThinkingSignatures: shouldReplayNativeHistory && !policy.reasoning.filterReasoningHistory,
-		repairOrphanOutputs: true,
 	});
 
 	const cacheRetention = resolveCacheRetention(options?.cacheRetention);
@@ -1112,19 +1115,6 @@ export function buildParams(
 	applyOpenAIExtraBody(params, options?.extraBody);
 
 	return { params, strictToolsApplied };
-}
-
-/**
- * Whether this model should get the OpenAI custom-tool grammar variant
- * for `apply_patch`. The generated model catalog sets
- * `model.applyPatchToolType` for first-party GPT-5 Responses models; this
- * runtime path only consumes that metadata.
- * @internal Exported for tests.
- */
-export function supportsFreeformApplyPatch(
-	model: Model<"openai-responses" | "azure-openai-responses" | "openai-codex-responses">,
-): boolean {
-	return model.applyPatchToolType === "freeform";
 }
 
 /** @internal Exported for tests. */

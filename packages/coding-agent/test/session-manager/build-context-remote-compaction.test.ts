@@ -6,7 +6,7 @@ import {
 	type RemoteCompactionPreserveData,
 } from "@veyyon/agent-core/compaction";
 import type { Model } from "@veyyon/ai";
-import { buildResponsesInput } from "@veyyon/ai/providers/openai-shared";
+import { buildResponsesInput, supportsFreeformApplyPatch } from "@veyyon/ai/providers/openai-shared";
 import type { Message } from "@veyyon/ai/types";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { buildSessionContext } from "@veyyon/kernel/session/session-context";
@@ -175,14 +175,15 @@ describe("remote compaction entry rebuild", () => {
 			.map(message => convertMessageToLlm(message))
 			.filter((message): message is Message => message !== undefined);
 
+		const model = getOpenAIModel() as Model<"openai-responses">;
 		const input = buildResponsesInput({
-			model: getOpenAIModel() as Model<"openai-responses">,
+			model,
 			context: { messages: llmMessages },
 			strictResponsesPairing: false,
 			supportsImageDetailOriginal: true,
+			supportsCustomToolCalls: supportsFreeformApplyPatch(model),
 			supportsDeveloperRole: true,
 			nativeHistory: { replay: true, filterReasoning: false },
-			repairOrphanOutputs: true,
 		});
 
 		const wire = JSON.stringify(input);
@@ -211,9 +212,9 @@ describe("remote compaction entry rebuild", () => {
 			context: { messages: llmMessages },
 			strictResponsesPairing: true,
 			supportsImageDetailOriginal: true,
+			supportsCustomToolCalls: false,
 			supportsDeveloperRole: true,
 			nativeHistory: { replay: false, filterReasoning: false },
-			repairOrphanOutputs: true,
 		});
 
 		const wire = JSON.stringify(input);

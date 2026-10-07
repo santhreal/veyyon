@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { buildResponsesInput } from "@veyyon/ai/providers/openai-shared";
+import { buildResponsesInput, supportsFreeformApplyPatch } from "@veyyon/ai/providers/openai-shared";
 import type { Context, ImageContent, ModelSpec, TextContent } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
 
@@ -69,6 +69,7 @@ describe("Responses API empty tool result", () => {
 			context: makeContext([{ type: "text", text: "" }]),
 			strictResponsesPairing: true,
 			supportsImageDetailOriginal: true,
+			supportsCustomToolCalls: supportsFreeformApplyPatch(model),
 		});
 
 		expect(findFunctionCallOutput(items)).toBe("");
@@ -82,6 +83,7 @@ describe("Responses API empty tool result", () => {
 			context: makeContext([{ type: "image", data: "ZmFrZQ==", mimeType: "image/png" }]),
 			strictResponsesPairing: true,
 			supportsImageDetailOriginal: true,
+			supportsCustomToolCalls: supportsFreeformApplyPatch(model),
 		});
 
 		expect(findFunctionCallOutput(items)).toBe("(see attached image)");

@@ -5,7 +5,8 @@ import type { ResponseInput } from "@veyyon/ai/providers/openai-responses-wire";
 import {
 	appendResponsesToolResultMessages,
 	buildResponsesInput,
-	repairOrphanResponsesToolOutputs,
+	repairResponsesToolPairs,
+	supportsFreeformApplyPatch,
 } from "@veyyon/ai/providers/openai-shared";
 import { transformMessages } from "@veyyon/ai/providers/transform-messages";
 import type { AssistantMessage, Context, Message, ModelSpec } from "@veyyon/ai/types";
@@ -188,7 +189,7 @@ describe("a stale tool result never speaks as the assistant", () => {
 			context: orphanResultContext(),
 			strictResponsesPairing: false,
 			supportsImageDetailOriginal: false,
-			repairOrphanOutputs: true,
+			supportsCustomToolCalls: supportsFreeformApplyPatch(responsesModel),
 		});
 
 		expectPayloadNeverSpeaksAsAssistant(items, RECORDED_OUTPUT);
@@ -200,6 +201,7 @@ describe("a stale tool result never speaks as the assistant", () => {
 			context: orphanResultContext(),
 			strictResponsesPairing: true,
 			supportsImageDetailOriginal: false,
+			supportsCustomToolCalls: supportsFreeformApplyPatch(responsesModel),
 		});
 
 		expectPayloadNeverSpeaksAsAssistant(items, RECORDED_OUTPUT);
@@ -218,7 +220,7 @@ describe("a stale tool result never speaks as the assistant", () => {
 			} as ResponseInput[number],
 		];
 
-		const repaired = repairOrphanResponsesToolOutputs(input);
+		const repaired = repairResponsesToolPairs(input);
 
 		expectPayloadNeverSpeaksAsAssistant(repaired, RECORDED_OUTPUT);
 		// The unpaired output itself is gone, which is what the 400 was about.
@@ -234,7 +236,7 @@ describe("a stale tool result never speaks as the assistant", () => {
 			} as ResponseInput[number],
 		];
 
-		expectPayloadNeverSpeaksAsAssistant(repairOrphanResponsesToolOutputs(input), RECORDED_OUTPUT);
+		expectPayloadNeverSpeaksAsAssistant(repairResponsesToolPairs(input), RECORDED_OUTPUT);
 	});
 
 	it("folds an unpaired result into a user note when appending a tool result directly", () => {
@@ -463,8 +465,8 @@ describe("a stale tool result never speaks as the assistant", () => {
 				context: { messages: poisonedSessionWithNativeItems(POISONED_NOTE) },
 				strictResponsesPairing: false,
 				supportsImageDetailOriginal: false,
+				supportsCustomToolCalls: supportsFreeformApplyPatch(responsesModel),
 				nativeHistory: { replay, filterReasoning: false },
-				repairOrphanOutputs: true,
 			});
 
 			for (const item of items) {
@@ -545,7 +547,7 @@ describe("a stale tool result never speaks as the assistant", () => {
 			{ type: "function_call_output", call_id: RECORDED_CALL_ID, output: huge } as ResponseInput[number],
 		];
 
-		const noteItems = notes(repairOrphanResponsesToolOutputs(input));
+		const noteItems = notes(repairResponsesToolPairs(input));
 		expect(noteItems).toHaveLength(1);
 		expect(readRole(noteItems[0])).toBe("user");
 		const text = readText(noteItems[0]);
@@ -566,7 +568,7 @@ describe("a stale tool result never speaks as the assistant", () => {
 			} as ResponseInput[number],
 		];
 
-		const text = readText(notes(repairOrphanResponsesToolOutputs(input))[0]);
+		const text = readText(notes(repairResponsesToolPairs(input))[0]);
 		expect(text).not.toContain('injected="yes"');
 		expect(text).toContain("&quot;");
 		// Exactly one opening tag: nothing in the attributes minted a second.

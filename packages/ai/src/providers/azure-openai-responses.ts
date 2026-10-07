@@ -367,6 +367,8 @@ function buildParams(
 		context,
 		strictResponsesPairing: true,
 		supportsImageDetailOriginal: model.compat.supportsImageDetailOriginal,
+		// The tools below are all `function` tools, so a custom tool call replays as a function call.
+		supportsCustomToolCalls: false,
 		supportsDeveloperRole: model.compat.supportsDeveloperRole,
 		// replay stays off (Azure assistant payloads are not spliced today), but
 		// declaring the policy opens the compaction-window seam: a stored

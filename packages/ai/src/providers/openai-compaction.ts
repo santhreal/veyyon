@@ -65,7 +65,12 @@ import {
 import { applyCodexResponsesLiteShape, resolveCodexResponsesLite } from "./openai-codex/request-transformer";
 import { createOpenAICodexDirectRequest } from "./openai-codex-responses";
 import type { ResponseInput } from "./openai-responses-wire";
-import { buildResponsesInput, parseAzureDeploymentNameMap, resolveOpenAIRequestSetup } from "./openai-shared";
+import {
+	buildResponsesInput,
+	parseAzureDeploymentNameMap,
+	resolveOpenAIRequestSetup,
+	supportsFreeformApplyPatch,
+} from "./openai-shared";
 
 /**
  * What a provider that compacts server-side must implement. The compaction
@@ -304,10 +309,12 @@ function buildCompactInputItems(model: Model<Api>, messages: Message[]): Respons
 		context: { messages },
 		strictResponsesPairing: compat.strictResponsesPairing,
 		supportsImageDetailOriginal: compat.supportsImageDetailOriginal,
+		// Azure's turn offers every tool as a `function` tool, so its compacted span carries no custom tool call.
+		supportsCustomToolCalls:
+			model.api !== "azure-openai-responses" && supportsFreeformApplyPatch(model as Model<"openai-responses">),
 		supportsDeveloperRole: compat.supportsDeveloperRole,
 		nativeHistory: { replay: true, filterReasoning: compat.filterReasoningHistory },
 		includeThinkingSignatures: !compat.filterReasoningHistory,
-		repairOrphanOutputs: true,
 	});
 }
 

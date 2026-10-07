@@ -5,10 +5,8 @@ import {
 	supportsCodexReasoningSummary,
 } from "@veyyon/catalog/identity";
 import { requireSupportedEffort } from "@veyyon/catalog/model-thinking";
-import * as logger from "@veyyon/utils/logger";
 import type { Model } from "../../types";
-import { mapOpenAIReasoningEffort, ORPHAN_TOOL_CALL_PLACEHOLDER } from "../openai-shared";
-import { staleToolResultNote } from "../transform-messages";
+import { mapOpenAIReasoningEffort, repairResponsesToolPairs } from "../openai-shared";
 
 /** Reasoning replay scope for the Codex Responses API (`reasoning.context`). */
 export type CodexReasoningContext = "auto" | "current_turn" | "all_turns";
@@ -198,89 +196,6 @@ function filterInput(input: InputItem[] | undefined): InputItem[] | undefined {
 		});
 }
 
-const CODEX_ORPHAN_OUTPUT_LIMIT = 16_000;
-
-function orphanFunctionOutputToMessage(item: InputItem, callId: string): InputItem {
-	const itemRecord = item as unknown as Record<string, unknown>;
-	const toolName = typeof itemRecord.name === "string" ? itemRecord.name : "tool";
-	let text = "";
-	try {
-		const output = itemRecord.output;
-		text = typeof output === "string" ? output : JSON.stringify(output);
-	} catch {
-		text = String(itemRecord.output ?? "");
-	}
-	if (text.length > CODEX_ORPHAN_OUTPUT_LIMIT) {
-		text = `${text.slice(0, CODEX_ORPHAN_OUTPUT_LIMIT)}\n...[truncated]`;
-	}
-	return {
-		type: "message",
-		role: "user",
-		content: staleToolResultNote({ toolName, toolCallId: callId, text }),
-	} as InputItem;
-}
-
-/**
- * Repair both halves of unpaired tool exchanges so the Responses input grammar
- * stays valid — the API rejects either orphan with a 400:
- *
- * - `function_call_output` / `custom_tool_call_output` with no matching call →
- *   folded into a user-role note (`400 No tool call found for … output`).
- *   Regression of #472 / #1351.
- * - `function_call` / `custom_tool_call` with no matching `*_output` → a
- *   placeholder output is synthesized immediately after the call
- *   (`400 No tool output found for function call …`). Hit when the user
- *   branches/navigates the session tree to a node that ends on a tool call (the
- *   tool-result child is dropped from the reconstructed history) or when a turn
- *   is aborted/crashes after the call streamed but before its result persisted.
- */
-function repairToolCallPairs(input: InputItem[]): InputItem[] {
-	const callIds = new Set<string>();
-	const outputCallIds = new Set<string>();
-	for (const item of input) {
-		const callId = typeof item.call_id === "string" ? item.call_id : undefined;
-		if (callId === undefined) continue;
-		if (item.type === "function_call" || item.type === "custom_tool_call") callIds.add(callId);
-		else if (item.type === "function_call_output" || item.type === "custom_tool_call_output") {
-			outputCallIds.add(callId);
-		}
-	}
-
-	const repaired: InputItem[] = [];
-	for (const item of input) {
-		const callId = typeof item.call_id === "string" ? item.call_id : undefined;
-
-		if (
-			(item.type === "function_call_output" || item.type === "custom_tool_call_output") &&
-			callId !== undefined &&
-			!callIds.has(callId)
-		) {
-			logger.warn("openai-codex: folding a tool output whose call is missing from the request", {
-				toolCallId: callId,
-				knownCallIds: [...callIds],
-				inputItems: input.length,
-			});
-			repaired.push(orphanFunctionOutputToMessage(item, callId));
-			continue;
-		}
-
-		repaired.push(item);
-
-		if (
-			(item.type === "function_call" || item.type === "custom_tool_call") &&
-			callId !== undefined &&
-			!outputCallIds.has(callId)
-		) {
-			repaired.push({
-				type: item.type === "custom_tool_call" ? "custom_tool_call_output" : "function_call_output",
-				call_id: callId,
-				output: ORPHAN_TOOL_CALL_PLACEHOLDER,
-			} as InputItem);
-		}
-	}
-	return repaired;
-}
-
 /**
  * Responses Lite requests must not pin image detail levels: codex-rs strips
  * `detail` from every input image (message content and tool outputs) before
@@ -367,7 +282,7 @@ export async function transformRequestBody(
 	if (body.input && Array.isArray(body.input)) {
 		body.input = filterInput(body.input);
 		if (body.input) {
-			body.input = repairToolCallPairs(body.input);
+			body.input = repairResponsesToolPairs(body.input);
 		}
 	}
 

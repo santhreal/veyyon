@@ -56,15 +56,7 @@ import type {
 	ToolChoice,
 	Usage,
 } from "../types";
-import {
-	createOpenAIResponsesHistoryPayload,
-	getOpenAIResponsesHistoryItems,
-	getOpenAIResponsesHistoryPayload,
-	normalizeSystemPrompts,
-	resolveCacheRetention,
-	sanitizeOpenAIResponsesAssistantFallbackItemsForReplay,
-	sanitizeOpenAIResponsesAssistantHistoryItemsForReplay,
-} from "../utils";
+import { createOpenAIResponsesHistoryPayload, normalizeSystemPrompts, resolveCacheRetention } from "../utils";
 import { clearStreamingPartialJson, kStreamingLastParseLen, kStreamingPartialJson } from "../utils/block-symbols";
 import { withEmptyCompletionRetry } from "../utils/empty-completion-retry";
 import { AssistantMessageEventStream } from "../utils/event-stream";
@@ -113,7 +105,6 @@ import type {
 	ResponseCustomToolCall,
 	ResponseFunctionToolCall,
 	ResponseInput,
-	ResponseInputContent,
 	ResponseOutputMessage,
 	ResponseReasoningItem,
 	ResponseStatus,
@@ -126,12 +117,10 @@ import {
 	appendReasoningSummaryPart,
 	appendReasoningSummaryPartDone,
 	appendReasoningSummaryTextDelta,
-	appendResponsesToolResultMessages,
 	applyOpenAIServiceTier,
 	applyReasoningSummaryDone,
 	buildResponsesDeltaInput,
-	convertResponsesAssistantMessage,
-	convertResponsesInputContent,
+	buildResponsesInput,
 	createSequentialCutoffSummaryState,
 	encodeResponsesToolCallId,
 	encodeTextSignatureV1,
@@ -146,10 +135,10 @@ import {
 	promoteResponsesToolUseStopReason,
 	resolveResponsesToolCallDeltaShape,
 	type SequentialCutoffSummaryState,
+	supportsFreeformApplyPatch,
 	type ToolCallArgumentsDeltaShape,
 } from "./openai-shared";
 import { normalizeOpenAIPromptCacheKey } from "./openai-stable-ids";
-import { transformMessages } from "./transform-messages";
 
 export interface OpenAICodexResponsesOptions extends StreamOptions {
 	reasoning?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -1196,7 +1185,7 @@ export function normalizeCodexToolChoice(
 ): string | Record<string, unknown> | undefined {
 	if (!choice) return undefined;
 	if (typeof choice === "string") return choice;
-	const allowFreeform = model ? model.applyPatchToolType === "freeform" : false;
+	const allowFreeform = model ? supportsFreeformApplyPatch(model) : false;
 	const mapName = (name: string): Record<string, string> | undefined => {
 		const directTool = tools.find(tool => tool.name === name);
 		const customTool = allowFreeform
@@ -1408,7 +1397,7 @@ export async function buildTransformedCodexRequestBody(
 ): Promise<RequestBody> {
 	const params: RequestBody = {
 		model: model.requestModelId ?? model.id,
-		input: convertMessages(model, context),
+		input: convertCodexResponsesMessages(model, context),
 		stream: true,
 		prompt_cache_key: promptCacheKey,
 	};
@@ -4001,160 +3990,24 @@ function resolveCodexResponsesUrl(baseUrl: string | undefined): string {
 	return `${normalized}/codex/responses`;
 }
 
-function convertMessages(model: Model<"openai-codex-responses">, context: Context): ResponseInput {
-	const messages: ResponseInput = [];
-
-	const normalizeToolCallId = (id: string): string => {
-		if (!id.includes("|")) return id;
-		const [callId, itemId] = id.split("|");
-		const sanitizedCallId = callId.replace(/[^a-zA-Z0-9_-]/g, "_");
-		let sanitizedItemId = itemId.replace(/[^a-zA-Z0-9_-]/g, "_");
-		if (!sanitizedItemId.startsWith("fc")) {
-			sanitizedItemId = `fc_${sanitizedItemId}`;
-		}
-		let normalizedCallId = sanitizedCallId.length > 64 ? sanitizedCallId.slice(0, 64) : sanitizedCallId;
-		let normalizedItemId = sanitizedItemId.length > 64 ? sanitizedItemId.slice(0, 64) : sanitizedItemId;
-		normalizedCallId = normalizedCallId.replace(/_+$/, "");
-		normalizedItemId = normalizedItemId.replace(/_+$/, "");
-		return `${normalizedCallId}|${normalizedItemId}`;
-	};
-
-	const transformedMessages = transformMessages(context.messages, model, normalizeToolCallId);
-	let msgIndex = 0;
-	// Track call_ids that originated as custom tool calls so paired tool-result
-	// messages can be replayed as `custom_tool_call_output` rather than
-	// `function_call_output` (OpenAI rejects mismatched pairs).
-	const customCallIds = new Set<string>();
-	const knownCallIds = new Set<string>();
-
-	for (const msg of transformedMessages) {
-		if (msg.role === "user" || msg.role === "developer") {
-			const providerPayload = (msg as { providerPayload?: AssistantMessage["providerPayload"] }).providerPayload;
-			const historyItems = getOpenAIResponsesHistoryItems(providerPayload, model.provider) as
-				| Array<ResponseInput[number]>
-				| undefined;
-			if (historyItems) {
-				for (const item of historyItems) {
-					const maybe = item as { type?: string; call_id?: string };
-					if (maybe.type === "custom_tool_call" && typeof maybe.call_id === "string") {
-						customCallIds.add(maybe.call_id);
-					}
-				}
-				for (let hi = 0; hi < historyItems.length; hi++) messages.push(historyItems[hi]!);
-				msgIndex += 1;
-				continue;
-			}
-
-			if (
-				msg.role === "developer" &&
-				Array.isArray(msg.content) &&
-				msg.content.some(item => item.type === "image")
-			) {
-				const textContent = normalizeInputMessageContent(
-					model,
-					msg.content.filter((item): item is TextContent => item.type === "text"),
-				);
-				const imageContent = normalizeInputMessageContent(
-					model,
-					msg.content.filter(item => item.type === "image"),
-				);
-				if (textContent.length > 0) messages.push({ role: "developer", content: textContent });
-				if (imageContent.length > 0) messages.push({ role: "user", content: imageContent });
-				msgIndex += 1;
-				continue;
-			}
-			const normalizedContent = normalizeInputMessageContent(model, msg.content);
-			if (normalizedContent.length === 0) continue;
-			messages.push({ role: msg.role, content: normalizedContent });
-			msgIndex += 1;
-			continue;
-		}
-
-		if (msg.role === "assistant") {
-			const assistantMsg = msg as AssistantMessage;
-			// Native items are model-bound (reasoning carries encrypted content
-			// minted by the producing model); after a mid-session model switch fall
-			// back to block re-encode, which strips foreign signatures.
-			const providerPayload =
-				assistantMsg.api === model.api && assistantMsg.model === model.id
-					? getOpenAIResponsesHistoryPayload(assistantMsg.providerPayload, model.provider, assistantMsg.provider)
-					: undefined;
-			const historyItems = providerPayload?.items as Array<Record<string, unknown>> | undefined;
-			let suppressHiddenEmptyFallback = false;
-			if (historyItems) {
-				const sanitizedHistoryItems = sanitizeOpenAIResponsesAssistantHistoryItemsForReplay(historyItems);
-				if (sanitizedHistoryItems) {
-					for (const item of sanitizedHistoryItems) {
-						const maybe = item as { type?: string; call_id?: string };
-						if (maybe.type === "custom_tool_call" && typeof maybe.call_id === "string") {
-							customCallIds.add(maybe.call_id);
-						}
-					}
-					if (providerPayload?.dt) {
-						for (let hi = 0; hi < sanitizedHistoryItems.length; hi++) messages.push(sanitizedHistoryItems[hi]!);
-					} else {
-						messages.splice(0, messages.length, ...sanitizedHistoryItems);
-						// Keep customCallIds from the pre-splice state since historyItems may re-introduce them.
-					}
-					msgIndex += 1;
-					continue;
-				}
-				suppressHiddenEmptyFallback = true;
-			}
-
-			const convertedOutputItems = convertResponsesAssistantMessage(
-				msg as AssistantMessage,
-				model,
-				msgIndex,
-				knownCallIds,
-				!suppressHiddenEmptyFallback,
-				customCallIds,
-			);
-			const outputItems = suppressHiddenEmptyFallback
-				? sanitizeOpenAIResponsesAssistantFallbackItemsForReplay(convertedOutputItems)
-				: convertedOutputItems;
-			if (outputItems.length > 0) {
-				for (let oi = 0; oi < outputItems.length; oi++) messages.push(outputItems[oi]!);
-			}
-			msgIndex += 1;
-			continue;
-		}
-
-		if (msg.role === "toolResult") {
-			appendResponsesToolResultMessages(
-				messages,
-				msg,
-				model,
-				false,
-				model.compat.supportsImageDetailOriginal,
-				knownCallIds,
-				customCallIds,
-			);
-		}
-
-		msgIndex += 1;
-	}
-
-	return messages;
+/**
+ * The Codex Responses `input` for a transcript. Native history replays on every turn and the developer role is
+ * kept. Pairing is not strict here because {@link transformRequestBody} strips item ids and repairs unpaired tool
+ * exchanges after this runs.
+ *
+ * @internal Exported for tests.
+ */
+export function convertCodexResponsesMessages(model: Model<"openai-codex-responses">, context: Context): ResponseInput {
+	return buildResponsesInput({
+		model,
+		context,
+		strictResponsesPairing: false,
+		supportsImageDetailOriginal: model.compat.supportsImageDetailOriginal,
+		supportsCustomToolCalls: supportsFreeformApplyPatch(model),
+		nativeHistory: { replay: true, filterReasoning: false },
+		supportsDeveloperRole: true,
+	});
 }
-
-function normalizeInputMessageContent(
-	model: Model<"openai-codex-responses">,
-	content: string | Array<{ type: "text"; text: string } | { type: "image"; mimeType: string; data: string }>,
-): ResponseInputContent[] {
-	if (typeof content === "string") {
-		if (!content || content.trim() === "") return [];
-		return [{ type: "input_text", text: content.toWellFormed() }];
-	}
-
-	return (
-		convertResponsesInputContent(content, model.input.includes("image"), model.compat.supportsImageDetailOriginal) ??
-		[]
-	);
-}
-
-/** @internal Exported for tests. */
-export { convertMessages as convertCodexResponsesMessages };
 
 type CodexToolPayload =
 	| {
@@ -4176,7 +4029,7 @@ export function convertOpenAICodexResponsesTools(
 	tools: Tool[],
 	model: Model<"openai-codex-responses">,
 ): CodexToolPayload[] {
-	const allowFreeform = model.applyPatchToolType === "freeform";
+	const allowFreeform = supportsFreeformApplyPatch(model);
 	return tools.map((tool): CodexToolPayload => {
 		if (allowFreeform && tool.customFormat) {
 			return {

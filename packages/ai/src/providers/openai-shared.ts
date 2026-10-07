@@ -1328,138 +1328,119 @@ function recordIssuedCallIds(items: ResponseInput, knownCallIds: Set<string>, cu
 }
 
 /**
- * Convert orphan `function_call_output` / `custom_tool_call_output` items —
- * those whose `call_id` has no matching preceding `function_call` /
- * `custom_tool_call` in the same input — into user-role notes.
- *
- * The Responses API rejects unpaired outputs with
- * `400 No tool call found for function call output with call_id …`. Orphans
- * sneak in through two paths today:
- *
- * - A previous turn's `providerPayload` snapshot replaces the input array via
- *   the `dt: false` splice (see {@link convertConversationMessages}), wiping
- *   the matching `function_call` while leaving the matching
- *   `function_call_output` queued in a later `toolResult`.
- * - A locally-rejected tool call (argument-validation failure, hook reject,
- *   aborted turn before the call streamed) produces a tool result without a
- *   `function_call` ever landing in any persisted provider payload.
- *
- * Dropping the result loses information the model needs to recover; sending
- * it as-is 400s the request. Folding it into a `message` preserves the payload
- * (call_id + truncated output) while staying within the Responses input
- * grammar. {@link staleToolResultNote} decides the envelope and the role, and
- * states why the role is never `assistant`. Matches the behavior of
- * {@link transformRequestBody} in the codex provider — issue #1351 /
- * regression of #472.
- */
-export function repairOrphanResponsesToolOutputs(input: ResponseInput): ResponseInput {
-	const knownCallIds = new Set<string>();
-	for (const item of input) {
-		const t = (item as { type?: string }).type;
-		const callId = (item as { call_id?: unknown }).call_id;
-		if (typeof callId !== "string") continue;
-		if (t === "function_call" || t === "custom_tool_call") knownCallIds.add(callId);
-	}
-	const orphanCallIds: string[] = [];
-	for (const item of input) {
-		const t = (item as { type?: string }).type;
-		if (t !== "function_call_output" && t !== "custom_tool_call_output") continue;
-		const callId = (item as { call_id?: unknown }).call_id;
-		if (typeof callId === "string" && !knownCallIds.has(callId)) orphanCallIds.push(callId);
-	}
-	if (orphanCallIds.length === 0) return input;
-	// The fold is the only trace of how the pairing was lost. The reported
-	// occurrences (an imitated note in a session with no compaction and every
-	// result paired in storage) cannot be diagnosed from the transcript alone.
-	logger.warn("openai-responses: folding tool outputs whose call is missing from the request", {
-		orphanCallIds,
-		knownCallIds: [...knownCallIds],
-		inputItems: input.length,
-	});
-	return input.map(item => {
-		const t = (item as { type?: string }).type;
-		if (t !== "function_call_output" && t !== "custom_tool_call_output") return item;
-		const record = item as { call_id?: unknown; output?: unknown; name?: unknown };
-		const callId = record.call_id;
-		if (typeof callId !== "string" || knownCallIds.has(callId)) return item;
-		const toolName = typeof record.name === "string" && record.name.length > 0 ? record.name : "tool";
-		const rawOutput = record.output;
-		let text: string;
-		if (typeof rawOutput === "string") text = rawOutput;
-		else if (rawOutput == null) text = "";
-		else {
-			try {
-				text = JSON.stringify(rawOutput);
-			} catch {
-				text = String(rawOutput);
-			}
-		}
-		const ORPHAN_OUTPUT_LIMIT = 16_000;
-		if (text.length > ORPHAN_OUTPUT_LIMIT) text = `${text.slice(0, ORPHAN_OUTPUT_LIMIT)}\n...[truncated]`;
-		return {
-			type: "message",
-			role: "user",
-			content: staleToolResultNote({ toolName, toolCallId: callId, text }),
-		} as ResponseInput[number];
-	});
-}
-
-/**
  * Placeholder output for a tool call whose result is absent from the input.
- * The model reads this text, so it has one owner: the Codex transformer runs
- * the same repair against the same Responses grammar and must not drift into
- * describing the same situation differently.
+ * The model reads this text, so it has one owner: every Responses request
+ * repairs an unpaired call through {@link repairResponsesToolPairs}.
  */
 export const ORPHAN_TOOL_CALL_PLACEHOLDER =
 	"[No tool output recorded: the tool call was interrupted before it produced a result.]";
 
 /**
- * Synthesize a placeholder `function_call_output` / `custom_tool_call_output`
- * for every `function_call` / `custom_tool_call` whose `call_id` has no matching
- * output later in the same input. The Responses API rejects an unpaired call
- * with `400 No tool output found for function call …`.
- *
- * Orphan calls surface when the user branches/navigates the session tree to a
- * node that ends on a tool call (the tool-result child is excluded from the
- * reconstructed history) or when a turn is aborted/crashes after the call
- * streamed but before its result persisted. Dropping the call would erase the
- * assistant's action; a placeholder output keeps the call visible so the model
- * can recover (e.g. re-issue the call). Symmetric to
- * {@link repairOrphanResponsesToolOutputs}.
+ * The fields {@link repairResponsesToolPairs} reads and writes, common to the Responses input and the Codex request
+ * input.
  */
-export function repairOrphanResponsesToolCalls(input: ResponseInput): ResponseInput {
+interface ResponsesToolPairItem {
+	type?: string | null;
+	role?: unknown;
+	content?: unknown;
+	call_id?: unknown;
+	name?: unknown;
+	output?: unknown;
+}
+
+const ORPHAN_OUTPUT_LIMIT = 16_000;
+
+function isToolCallItemType(type: string | null | undefined): boolean {
+	return type === "function_call" || type === "custom_tool_call";
+}
+
+function isToolOutputItemType(type: string | null | undefined): boolean {
+	return type === "function_call_output" || type === "custom_tool_call_output";
+}
+
+/**
+ * Repair both halves of unpaired tool exchanges so the Responses input grammar stays valid. The API rejects
+ * either orphan with a 400.
+ *
+ * - A `function_call_output` / `custom_tool_call_output` whose `call_id` matches no `function_call` /
+ *   `custom_tool_call` in the input (`400 No tool call found for function call output with call_id …`) becomes a
+ *   user-role note. A previous turn's `providerPayload` snapshot can replace the input array via the `dt: false`
+ *   splice (see {@link convertConversationMessages}), wiping the call while its output stays queued in a later
+ *   `toolResult`; a locally rejected call (argument-validation failure, hook reject, a turn aborted before the call
+ *   streamed) produces a result without a call in any persisted payload. Dropping the result loses what the model
+ *   needs to recover, so the note keeps the call id and the truncated output. {@link staleToolResultNote} sets the
+ *   envelope and the role, and states why the role is never `assistant` (#472, #1351).
+ * - A `function_call` / `custom_tool_call` with no matching output (`400 No tool output found for function call …`)
+ *   gets a placeholder output right after it. Branching the session tree to a node that ends on a tool call drops
+ *   the result child, and a turn aborted after the call streamed never persists its result. The placeholder keeps
+ *   the call visible so the model can re-issue it.
+ *
+ * Returns `input` itself when every call and output is paired.
+ */
+export function repairResponsesToolPairs<T extends ResponsesToolPairItem>(input: T[]): T[] {
+	const callIds = new Set<string>();
 	const outputCallIds = new Set<string>();
 	for (const item of input) {
-		const t = (item as { type?: string }).type;
-		if (t !== "function_call_output" && t !== "custom_tool_call_output") continue;
-		const callId = (item as { call_id?: unknown }).call_id;
-		if (typeof callId === "string") outputCallIds.add(callId);
+		// Replayed items come from a stored payload, so the declared string type is not enforced at run time.
+		const callId = item.call_id;
+		if (typeof callId !== "string") continue;
+		if (isToolCallItemType(item.type)) callIds.add(callId);
+		else if (isToolOutputItemType(item.type)) outputCallIds.add(callId);
 	}
-	let hasOrphan = false;
+	const orphanOutputCallIds: string[] = [];
+	for (const callId of outputCallIds) if (!callIds.has(callId)) orphanOutputCallIds.push(callId);
+	let hasOrphanCall = false;
+	for (const callId of callIds) {
+		if (outputCallIds.has(callId)) continue;
+		hasOrphanCall = true;
+		break;
+	}
+	if (orphanOutputCallIds.length === 0 && !hasOrphanCall) return input;
+	if (orphanOutputCallIds.length > 0) {
+		// The fold is the only trace of how the pairing was lost. The reported occurrences (an imitated note in a
+		// session with no compaction and every result paired in storage) cannot be diagnosed from the transcript alone.
+		logger.warn("openai-responses: folding tool outputs whose call is missing from the request", {
+			orphanCallIds: orphanOutputCallIds,
+			knownCallIds: [...callIds],
+			inputItems: input.length,
+		});
+	}
+	const repaired: T[] = [];
 	for (const item of input) {
-		const t = (item as { type?: string }).type;
-		if (t !== "function_call" && t !== "custom_tool_call") continue;
-		const callId = (item as { call_id?: unknown }).call_id;
-		if (typeof callId === "string" && !outputCallIds.has(callId)) {
-			hasOrphan = true;
-			break;
+		const callId = item.call_id;
+		if (typeof callId !== "string") {
+			repaired.push(item);
+		} else if (isToolOutputItemType(item.type) && !callIds.has(callId)) {
+			repaired.push(orphanToolOutputNote(item, callId));
+		} else {
+			repaired.push(item);
+			if (isToolCallItemType(item.type) && !outputCallIds.has(callId)) {
+				repaired.push({
+					type: item.type === "custom_tool_call" ? "custom_tool_call_output" : "function_call_output",
+					call_id: callId,
+					output: ORPHAN_TOOL_CALL_PLACEHOLDER,
+				} as T);
+			}
 		}
 	}
-	if (!hasOrphan) return input;
-	const repaired: ResponseInput = [];
-	for (const item of input) {
-		repaired.push(item);
-		const t = (item as { type?: string }).type;
-		if (t !== "function_call" && t !== "custom_tool_call") continue;
-		const callId = (item as { call_id?: unknown }).call_id;
-		if (typeof callId !== "string" || outputCallIds.has(callId)) continue;
-		repaired.push({
-			type: t === "custom_tool_call" ? "custom_tool_call_output" : "function_call_output",
-			call_id: callId,
-			output: ORPHAN_TOOL_CALL_PLACEHOLDER,
-		} as ResponseInput[number]);
-	}
 	return repaired;
+}
+
+function orphanToolOutputNote<T extends ResponsesToolPairItem>(item: T, callId: string): T {
+	const toolName = typeof item.name === "string" && item.name.length > 0 ? item.name : "tool";
+	const rawOutput = item.output;
+	let text: string;
+	if (typeof rawOutput === "string") text = rawOutput;
+	else if (rawOutput == null) text = "";
+	else {
+		try {
+			text = JSON.stringify(rawOutput);
+		} catch {
+			text = String(rawOutput);
+		}
+	}
+	if (text.length > ORPHAN_OUTPUT_LIMIT) text = `${text.slice(0, ORPHAN_OUTPUT_LIMIT)}\n...[truncated]`;
+	return { type: "message", role: "user", content: staleToolResultNote({ toolName, toolCallId: callId, text }) } as T;
 }
 
 /**
@@ -1571,11 +1552,28 @@ function adaptResponsesReplayItemsForModel(
 	return changed ? adapted : input;
 }
 
+/**
+ * Whether a request to this model offers freeform custom tools (the OpenAI custom-tool grammar variant for
+ * `apply_patch`). The generated catalog and Codex discovery set `model.applyPatchToolType` for the models that
+ * accept them.
+ */
+export function supportsFreeformApplyPatch(
+	model: Model<"openai-responses" | "azure-openai-responses" | "openai-codex-responses">,
+): boolean {
+	return model.applyPatchToolType === "freeform";
+}
+
 export interface BuildResponsesInputOptions<TApi extends Api> {
 	model: Model<TApi>;
 	context: Context;
 	strictResponsesPairing: boolean;
 	supportsImageDetailOriginal: boolean;
+	/**
+	 * Whether the request's tools include freeform custom tools. When false, a custom tool call and its output are
+	 * sent as a `function_call` and a `function_call_output`. Pass the answer the request's tool converter used, so
+	 * the input never carries a call kind its tools do not offer.
+	 */
+	supportsCustomToolCalls: boolean;
 	systemRole?: "system" | "developer";
 	nativeHistory?: {
 		replay: boolean;
@@ -1584,7 +1582,6 @@ export interface BuildResponsesInputOptions<TApi extends Api> {
 	includeThinkingSignatures?: boolean;
 	developerStringContent?: boolean;
 	supportsDeveloperRole?: boolean;
-	repairOrphanOutputs?: boolean;
 	/** Preserve assistant message item IDs from text signatures during fallback replay. */
 	preserveAssistantMessageIds?: boolean;
 }
@@ -1609,8 +1606,7 @@ class ResponsesInputBuilder<TApi extends Api> {
 	// Compat is resolved by the catalog (e.g. Copilot / xai-oauth reject
 	// `detail: "original"`). Do not re-branch on provider id here.
 	readonly #supportsImageDetailOriginal: boolean;
-	// Freeform custom tools (`custom_tool_call`) only when the catalog says so;
-	// same gate as tool conversion (`applyPatchToolType === "freeform"`).
+	// Freeform custom tools (`custom_tool_call`) only when the request's tools offer them.
 	readonly #supportsCustomToolCalls: boolean;
 	readonly #customToolWireNameMap: ReadonlyMap<string, string> | undefined;
 	readonly #includeThinkingSignatures: boolean;
@@ -1619,7 +1615,7 @@ class ResponsesInputBuilder<TApi extends Api> {
 		this.#options = options;
 		this.#acceptsImages = options.model.input.includes("image");
 		this.#supportsImageDetailOriginal = options.supportsImageDetailOriginal;
-		this.#supportsCustomToolCalls = options.model.applyPatchToolType === "freeform";
+		this.#supportsCustomToolCalls = options.supportsCustomToolCalls;
 		this.#customToolWireNameMap = this.#supportsCustomToolCalls
 			? undefined
 			: buildCustomToolWireNameMap(options.context.tools);
@@ -1627,7 +1623,7 @@ class ResponsesInputBuilder<TApi extends Api> {
 	}
 
 	build(): ResponseInput {
-		const { context, model, repairOrphanOutputs, systemRole } = this.#options;
+		const { context, model, systemRole } = this.#options;
 		if (systemRole) {
 			for (const systemPrompt of normalizeSystemPrompts(context.systemPrompt)) {
 				this.#messages.push({ role: systemRole, content: systemPrompt });
@@ -1637,10 +1633,7 @@ class ResponsesInputBuilder<TApi extends Api> {
 		for (const msg of transformMessages(context.messages, model, normalizeResponsesToolCallIdForTransform)) {
 			if (this.#append(msg, msgIndex)) msgIndex++;
 		}
-		const withRepairedOutputs = repairOrphanOutputs
-			? repairOrphanResponsesToolOutputs(this.#messages)
-			: this.#messages;
-		return repairOrphanResponsesToolCalls(withRepairedOutputs);
+		return repairResponsesToolPairs(this.#messages);
 	}
 
 	/** Appends one transcript message. Returns true when it takes a position in the `msg_<index>` id sequence. */
@@ -1974,7 +1967,7 @@ export function appendResponsesToolResultMessages<TApi extends Api>(
 	if (strictResponsesPairing && !knownCallIds.has(normalized.callId)) {
 		// Strict backends (Azure, Copilot) reject unpaired outputs outright, but
 		// silently dropping the result loses information the model needs. Fold it
-		// into a note instead (same shape as repairOrphanResponsesToolOutputs).
+		// into a note instead (same shape as repairResponsesToolPairs).
 		logger.warn("openai-responses: folding a tool result whose call is missing from the request", {
 			provider: model.provider,
 			model: model.id,
@@ -1983,8 +1976,8 @@ export function appendResponsesToolResultMessages<TApi extends Api>(
 			normalizedCallId: normalized.callId,
 			knownCallIds: [...knownCallIds],
 		});
-		const limit = 16_000;
-		const noteText = output.length > limit ? `${output.slice(0, limit)}\n...[truncated]` : output;
+		const noteText =
+			output.length > ORPHAN_OUTPUT_LIMIT ? `${output.slice(0, ORPHAN_OUTPUT_LIMIT)}\n...[truncated]` : output;
 		messages.push({
 			type: "message",
 			role: "user",

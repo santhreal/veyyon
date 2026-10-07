@@ -221,6 +221,7 @@ describe("a Responses tool result pairs only with a call the input carries", () 
 						context: session.context,
 						strictResponsesPairing: true,
 						supportsImageDetailOriginal: true,
+						supportsCustomToolCalls: freeform,
 						nativeHistory: { replay, filterReasoning: false },
 					});
 					checkPairing(input, freeform, session, tally);
