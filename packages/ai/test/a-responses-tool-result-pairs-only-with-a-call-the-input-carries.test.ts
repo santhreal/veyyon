@@ -168,11 +168,11 @@ interface Tally {
 
 const STALE_NOTE_ID = /^<stale-tool-result tool="[^"]*" id="([^"]*)"/;
 
-/** Asserts the pairing invariant over one built input and counts what it saw. */
+/** Asserts the pairing invariant over the items one built input sends, and counts what it saw. */
 function checkPairing(input: ResponseInput, freeform: boolean, session: Session, tally: Tally): void {
 	const callKinds = new Map<string, string>();
-	for (const item of input) {
-		const record = item as Record<string, unknown>;
+	const records: Array<Record<string, unknown>> = JSON.parse(JSON.stringify(input));
+	for (const record of records) {
 		const type = record.type;
 		const callId = record.call_id;
 		if ((type === "function_call" || type === "custom_tool_call") && typeof callId === "string") {
@@ -189,7 +189,7 @@ function checkPairing(input: ResponseInput, freeform: boolean, session: Session,
 				callId,
 				type: callKind === "custom_tool_call" ? "custom_tool_call_output" : "function_call_output",
 			});
-			if (session.resultTexts.has(record.output as string)) {
+			if (typeof record.output === "string" && session.resultTexts.has(record.output)) {
 				if (type === "custom_tool_call_output") tally.customOutputs++;
 				else tally.functionOutputs++;
 			}
