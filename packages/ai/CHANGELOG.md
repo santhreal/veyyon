@@ -33,6 +33,7 @@
 - The Anthropic and OpenAI-compatible providers split their stream loops, message converters and finalization into per-step helpers; no user-visible change.
 - The Responses gateway opens an assistant message output item in its own function; every output item is unchanged.
 - The Ollama chat stream builds its message, markup healing and stop reason in an `OllamaTurn` and opens its response in `openOllamaResponse`; a 20,000-chunk stream decodes in 20.1 ms instead of 20.2 ms (median of 15), and the events it emits are unchanged.
+- The OpenAI-compatible Chat Completions stream builds its message, tool calls, markup healing, DeepSeek token filtering and stop reason in an `OpenAICompletionsTurn`; a 20,000-chunk stream decodes in 43.6 ms instead of 46.4 ms (median of 21), and the events it emits are unchanged across 3,000 generated streams.
 - The OpenAI-compatible stream reads a tool call's prior object arguments through the shared `isRecord` guard instead of an inline check; no user-visible change.
 - Provider message replay splits into per-block replay steps and a tool-result pairing pass, cutting its time on a 52,000-message history by 7% for Anthropic targets and 13% for OpenAI Responses targets.
 - The OpenAI Responses stream decoder routes each event through an open-item registry and per-event handlers instead of one 560-line loop, cutting decode time of a 9,600-event stream by 10%.
