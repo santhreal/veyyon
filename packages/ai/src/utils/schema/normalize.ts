@@ -435,153 +435,107 @@ export function copySchemaWithout(schema: JsonObject, combiner: string): JsonObj
 }
 
 function mergeObjectCombinerVariants(schema: JsonObject, combiner: "anyOf" | "oneOf"): JsonObject {
-	const variantsRaw = schema[combiner];
-	if (!Array.isArray(variantsRaw) || variantsRaw.length === 0) {
-		return schema;
-	}
-
-	const variants: JsonObject[] = [];
-	for (const entry of variantsRaw) {
-		if (!isRecord(entry)) {
-			return schema;
-		}
-		const variantType = entry.type;
-		const hasObjectShape =
-			isRecord(entry.properties) || Array.isArray(entry.required) || Object.hasOwn(entry, "additionalProperties");
-		if (variantType === undefined && !hasObjectShape) {
-			return schema;
-		}
-		if (variantType !== undefined && variantType !== "object") {
-			return schema;
-		}
-		if (entry.properties !== undefined && !isRecord(entry.properties)) {
-			return schema;
-		}
-		if (entry.required !== undefined && !Array.isArray(entry.required)) {
-			return schema;
-		}
-		variants.push(entry);
-	}
-
-	const mergedProperties: JsonObject = {};
+	const variants = schema[combiner];
+	if (!Array.isArray(variants) || variants.length === 0 || !variants.every(isMergeableObjectVariant)) return schema;
 	const ownProperties = isRecord(schema.properties) ? schema.properties : {};
-	for (const name in ownProperties) {
-		if (Object.hasOwn(ownProperties, name)) mergedProperties[name] = ownProperties[name];
-	}
-
-	for (const variant of variants) {
-		const properties = isRecord(variant.properties) ? variant.properties : {};
-		for (const name in properties) {
-			if (!Object.hasOwn(properties, name)) continue;
-			const propertySchema = properties[name];
-			const existingSchema = mergedProperties[name];
-			mergedProperties[name] =
-				existingSchema === undefined ? propertySchema : mergePropertySchemas(existingSchema, propertySchema);
-		}
-	}
-
+	const mergedProperties = mergeVariantProperties(ownProperties, variants);
 	const nextSchema = copySchemaWithout(schema, combiner);
 	nextSchema.type = "object";
 	nextSchema.properties = mergedProperties;
-
-	let requiredIntersection: string[] | undefined;
-	for (const variant of variants) {
-		const variantRequired = Array.isArray(variant.required)
-			? variant.required.filter((r): r is string => typeof r === "string")
-			: [];
-		if (requiredIntersection === undefined) {
-			requiredIntersection = variantRequired.slice();
-		} else {
-			const reqSet = new Set(variantRequired);
-			requiredIntersection = requiredIntersection.filter(r => reqSet.has(r));
-		}
-	}
-	const parentRequired = Array.isArray(schema.required)
-		? schema.required.filter((r): r is string => typeof r === "string")
-		: [];
-	const safeRequired = new Set<string>();
-	for (const name of requiredIntersection ?? []) {
-		if (Object.hasOwn(mergedProperties, name)) safeRequired.add(name);
-	}
-	for (const name of parentRequired) {
-		if (Object.hasOwn(ownProperties, name) && Object.hasOwn(mergedProperties, name)) {
-			safeRequired.add(name);
-		}
-	}
-	const requiredInPropertyOrder: string[] = [];
-	for (const name in mergedProperties) {
-		if (Object.hasOwn(mergedProperties, name) && safeRequired.has(name)) requiredInPropertyOrder.push(name);
-	}
-	if (requiredInPropertyOrder.length > 0) {
-		nextSchema.required = requiredInPropertyOrder;
-	} else {
-		delete nextSchema.required;
-	}
-
+	const required = mergedObjectRequired(schema.required, ownProperties, mergedProperties, variants);
+	if (required.length > 0) nextSchema.required = required;
+	else delete nextSchema.required;
 	return nextSchema;
+}
+
+/** Whether a combiner branch is an object schema whose `properties` and `required` can merge into its parent. */
+function isMergeableObjectVariant(entry: unknown): entry is JsonObject {
+	if (!isRecord(entry)) return false;
+	if (entry.type === undefined) {
+		const hasObjectShape =
+			isRecord(entry.properties) || Array.isArray(entry.required) || Object.hasOwn(entry, "additionalProperties");
+		if (!hasObjectShape) return false;
+	} else if (entry.type !== "object") {
+		return false;
+	}
+	return (
+		(entry.properties === undefined || isRecord(entry.properties)) &&
+		(entry.required === undefined || Array.isArray(entry.required))
+	);
+}
+
+/** The parent's own properties followed by every branch's, a name declared twice merged with {@link mergePropertySchemas}. */
+function mergeVariantProperties(ownProperties: JsonObject, variants: readonly JsonObject[]): JsonObject {
+	const merged: JsonObject = {};
+	for (const name in ownProperties) {
+		if (Object.hasOwn(ownProperties, name)) merged[name] = ownProperties[name];
+	}
+	for (const variant of variants) {
+		const properties = variant.properties;
+		if (!isRecord(properties)) continue;
+		for (const name in properties) {
+			if (!Object.hasOwn(properties, name)) continue;
+			const existing = merged[name];
+			merged[name] = existing === undefined ? properties[name] : mergePropertySchemas(existing, properties[name]);
+		}
+	}
+	return merged;
+}
+
+/**
+ * The merged object's `required`, in property order: each name every branch requires, and each name the
+ * parent required of its own properties, kept only when the merged schema declares it.
+ */
+function mergedObjectRequired(
+	parentRequired: unknown,
+	ownProperties: JsonObject,
+	mergedProperties: JsonObject,
+	variants: readonly JsonObject[],
+): string[] {
+	let intersection: string[] | undefined;
+	for (const variant of variants) {
+		const variantRequired = stringEntries(variant.required);
+		if (intersection === undefined) {
+			intersection = variantRequired;
+		} else {
+			const variantSet = new Set(variantRequired);
+			intersection = intersection.filter(name => variantSet.has(name));
+		}
+	}
+	const kept = new Set<string>();
+	for (const name of intersection ?? []) {
+		if (Object.hasOwn(mergedProperties, name)) kept.add(name);
+	}
+	for (const name of stringEntries(parentRequired)) {
+		if (Object.hasOwn(ownProperties, name) && Object.hasOwn(mergedProperties, name)) kept.add(name);
+	}
+	const ordered: string[] = [];
+	for (const name in mergedProperties) {
+		if (Object.hasOwn(mergedProperties, name) && kept.has(name)) ordered.push(name);
+	}
+	return ordered;
+}
+
+/** The string entries of `value` when it is an array, else none. */
+function stringEntries(value: unknown): string[] {
+	return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
 }
 
 function collapseMixedTypeCombinerVariants(schema: JsonObject, combiner: "anyOf" | "oneOf"): JsonObject {
 	const variantsRaw = schema[combiner];
-	if (!Array.isArray(variantsRaw) || variantsRaw.length === 0) {
-		return schema;
-	}
-
-	const seenTypes = new Set<string>();
-	const variantTypes: string[] = [];
-	const mergedVariantFields: JsonObject = {};
-	for (const entry of variantsRaw) {
-		if (!isRecord(entry) || typeof entry.type !== "string") {
-			return schema;
-		}
-
-		const variantType = entry.type;
-		if (seenTypes.has(variantType)) {
-			return schema;
-		}
-
-		const allowedKeys = CLOUD_CODE_ASSIST_TYPE_SPECIFIC_KEYS[variantType];
-		if (!allowedKeys) {
-			return schema;
-		}
-
-		for (const key in entry) {
-			if (!Object.hasOwn(entry, key)) continue;
-			const variantValue = entry[key];
-			if (key === "type") continue;
-			if (!Object.hasOwn(allowedKeys, key) && !Object.hasOwn(CLOUD_CODE_ASSIST_SHARED_SCHEMA_KEYS, key)) {
-				return schema;
-			}
-
-			const existingValue = mergedVariantFields[key];
-			if (existingValue !== undefined && !areJsonValuesEqual(existingValue, variantValue)) {
-				if (key !== "description") return schema;
-				// Descriptions are annotations, so merge branch-local spill text instead of
-				// treating it as a structural incompatibility.
-				mergedVariantFields[key] = mergeSchemaDescriptions(existingValue, variantValue);
-				continue;
-			}
-			mergedVariantFields[key] = variantValue;
-		}
-
-		seenTypes.add(variantType);
-		variantTypes.push(variantType);
-	}
-
-	if (variantTypes.length < 2 || variantTypes.every(type => type === "object")) {
-		return schema;
-	}
+	if (!Array.isArray(variantsRaw) || variantsRaw.length === 0) return schema;
+	const merged = mergeMixedTypeVariants(variantsRaw);
+	if (!merged) return schema;
+	const { variantTypes, fields } = merged;
+	if (variantTypes.length < 2 || variantTypes.every(type => type === "object")) return schema;
 	const nextSchema = copySchemaWithout(schema, combiner);
-	const nonNullTypes = variantTypes.filter(t => t !== "null");
-	const chosenType: string = nonNullTypes[0] ?? variantTypes[0];
+	const chosenType = variantTypes.find(type => type !== "null") ?? variantTypes[0];
 	nextSchema.type = chosenType;
 	const chosenTypeAllowedKeys = CLOUD_CODE_ASSIST_TYPE_SPECIFIC_KEYS[chosenType] ?? {};
-
 	// Strip sibling keys that were copied from the parent and belong to a
 	// different type (e.g. `items` sibling on a now-string-typed schema).
 	for (const key in nextSchema) {
-		if (!Object.hasOwn(nextSchema, key)) continue;
-		if (key === "type") continue;
+		if (!Object.hasOwn(nextSchema, key) || key === "type") continue;
 		if (
 			Object.hasOwn(ALL_CCA_TYPE_SPECIFIC_KEYS, key) &&
 			!Object.hasOwn(chosenTypeAllowedKeys, key) &&
@@ -590,25 +544,64 @@ function collapseMixedTypeCombinerVariants(schema: JsonObject, combiner: "anyOf"
 			delete nextSchema[key];
 		}
 	}
+	return applyMixedTypeFields(nextSchema, fields, chosenTypeAllowedKeys) ? nextSchema : schema;
+}
 
-	for (const key in mergedVariantFields) {
-		if (!Object.hasOwn(mergedVariantFields, key)) continue;
-		// Drop type-specific keys that don't belong to the chosen type
-		if (!Object.hasOwn(chosenTypeAllowedKeys, key) && !Object.hasOwn(CLOUD_CODE_ASSIST_SHARED_SCHEMA_KEYS, key)) {
-			continue;
-		}
-		const value = mergedVariantFields[key];
-		const existingValue = nextSchema[key];
-		if (existingValue !== undefined && !areJsonValuesEqual(existingValue, value)) {
-			if (key !== "description") return schema;
-			nextSchema[key] = mergeSchemaDescriptions(existingValue, value);
-			continue;
-		}
-		if (existingValue === undefined) {
+/**
+ * The distinct branch types in order and the union of the branches' keys, or undefined when a branch has
+ * no string `type`, repeats a type, has a type Cloud Code Assist does not know, or fails
+ * {@link mergeBranchFields}.
+ */
+function mergeMixedTypeVariants(
+	variants: readonly unknown[],
+): { variantTypes: string[]; fields: JsonObject } | undefined {
+	const seenTypes = new Set<string>();
+	const fields: JsonObject = {};
+	for (const entry of variants) {
+		if (!isRecord(entry) || typeof entry.type !== "string" || seenTypes.has(entry.type)) return undefined;
+		const allowedKeys = CLOUD_CODE_ASSIST_TYPE_SPECIFIC_KEYS[entry.type];
+		if (!allowedKeys || !mergeBranchFields(fields, entry, allowedKeys)) return undefined;
+		seenTypes.add(entry.type);
+	}
+	return { variantTypes: Array.from(seenTypes), fields };
+}
+
+/**
+ * Adds a branch's keys other than `type` to `fields`. Returns false on a key outside the branch type's
+ * and the shared keys, or on a value that conflicts with an earlier branch's under a key other than
+ * `description`. Descriptions are annotations, so conflicting branch-local spill text is joined instead.
+ */
+function mergeBranchFields(fields: JsonObject, entry: JsonObject, allowedKeys: Record<string, true>): boolean {
+	for (const key in entry) {
+		if (!Object.hasOwn(entry, key) || key === "type") continue;
+		if (!Object.hasOwn(allowedKeys, key) && !Object.hasOwn(CLOUD_CODE_ASSIST_SHARED_SCHEMA_KEYS, key)) return false;
+		const value = entry[key];
+		const existing = fields[key];
+		if (existing === undefined || areJsonValuesEqual(existing, value)) fields[key] = value;
+		else if (key === "description") fields[key] = mergeSchemaDescriptions(existing, value);
+		else return false;
+	}
+	return true;
+}
+
+/**
+ * Copies the merged branch keys that belong to the chosen type or are shared onto `nextSchema`, joining
+ * a conflicting `description`. Returns false on any other conflict with a key the parent already set.
+ */
+function applyMixedTypeFields(nextSchema: JsonObject, fields: JsonObject, allowedKeys: Record<string, true>): boolean {
+	for (const key in fields) {
+		if (!Object.hasOwn(fields, key)) continue;
+		if (!Object.hasOwn(allowedKeys, key) && !Object.hasOwn(CLOUD_CODE_ASSIST_SHARED_SCHEMA_KEYS, key)) continue;
+		const value = fields[key];
+		const existing = nextSchema[key];
+		if (existing === undefined) {
 			nextSchema[key] = value;
+		} else if (!areJsonValuesEqual(existing, value)) {
+			if (key !== "description") return false;
+			nextSchema[key] = mergeSchemaDescriptions(existing, value);
 		}
 	}
-	return nextSchema;
+	return true;
 }
 
 function mergeSchemaDescriptions(existing: unknown, incoming: unknown): string {
@@ -1077,11 +1070,13 @@ export function normalizeSchemaForMoonshot(value: unknown): unknown {
 }
 
 // ---------------------------------------------------------------------------
-// Ollama — Go schema parser compatibility
+// Schema-valued keyword walking
 // ---------------------------------------------------------------------------
 
-const OLLAMA_SCHEMA_ARRAY_KEYS = new Set(["anyOf", "oneOf", "allOf", "prefixItems"]);
-const OLLAMA_SCHEMA_VALUE_KEYS = new Set([
+/** Schema keywords whose value is an array of subschemas. */
+const SCHEMA_ARRAY_KEYWORDS: ReadonlySet<string> = new Set(["anyOf", "oneOf", "allOf", "prefixItems"]);
+/** Schema keywords whose value is a single subschema. Disjoint from the array and map keywords. */
+const SCHEMA_VALUE_KEYWORDS: ReadonlySet<string> = new Set([
 	"items",
 	"additionalItems",
 	"contains",
@@ -1095,6 +1090,63 @@ const OLLAMA_SCHEMA_VALUE_KEYS = new Set([
 	"unevaluatedItems",
 	"unevaluatedProperties",
 ]);
+
+/**
+ * `values` with `transform(entry, context)` applied to each entry, or `values` itself when no entry
+ * changed. The copy starts at the first changed entry, so an unchanged array allocates nothing.
+ */
+function mapSchemaArray<C>(
+	values: unknown[],
+	transform: (value: unknown, context: C) => unknown,
+	context: C,
+): unknown[] {
+	let output: unknown[] | undefined;
+	for (let i = 0; i < values.length; i++) {
+		const item = values[i];
+		const next = transform(item, context);
+		if (output) output.push(next);
+		else if (next !== item) {
+			output = values.slice(0, i);
+			output.push(next);
+		}
+	}
+	return output ?? values;
+}
+
+/**
+ * `schemaMap` with `transform(value, context)` applied to each own value, or `schemaMap` itself when
+ * no value changed. The copy starts at the first changed value, so an unchanged map allocates nothing.
+ */
+function mapSchemaMap<C>(
+	schemaMap: JsonObject,
+	transform: (value: unknown, context: C) => unknown,
+	context: C,
+): JsonObject {
+	let output: JsonObject | undefined;
+	for (const key in schemaMap) {
+		if (!Object.hasOwn(schemaMap, key)) continue;
+		const child = schemaMap[key];
+		const next = transform(child, context);
+		if (output) output[key] = next;
+		else if (next !== child) output = copySchemaMapBefore(schemaMap, key, next);
+	}
+	return output ?? schemaMap;
+}
+
+/** A copy of `schemaMap`'s own entries ahead of `key`, then `key` set to `value`. */
+function copySchemaMapBefore(schemaMap: JsonObject, key: string, value: unknown): JsonObject {
+	const output: JsonObject = {};
+	for (const prior in schemaMap) {
+		if (prior === key) break;
+		if (Object.hasOwn(schemaMap, prior)) output[prior] = schemaMap[prior];
+	}
+	output[key] = value;
+	return output;
+}
+
+// ---------------------------------------------------------------------------
+// Ollama — Go schema parser compatibility
+// ---------------------------------------------------------------------------
 
 /**
  * Widened stand-in for a `true` / `{}` subschema in an Ollama-bound tool.
@@ -1124,100 +1176,67 @@ const OLLAMA_OPEN_SUBSCHEMA_WIDENING = Object.freeze({
  * cannot unmarshal into its object-shaped `Schema` struct.
  */
 export function sanitizeSchemaForOllama(schema: JsonObject): JsonObject {
-	const normalizeNode = (value: unknown): unknown => {
-		if (value === true) return OLLAMA_OPEN_SUBSCHEMA_WIDENING;
-		if (value === false) return { not: OLLAMA_OPEN_SUBSCHEMA_WIDENING };
-		if (!isRecord(value)) {
-			if (!Array.isArray(value)) return value;
-			let changed = false;
-			const output = value.map(item => {
-				const next = normalizeNode(item);
-				if (next !== item) changed = true;
-				return next;
-			});
-			return changed ? output : value;
+	return ollamaSchemaNode(schema) as JsonObject;
+}
+
+function ollamaSchemaNode(value: unknown): unknown {
+	if (value === true) return OLLAMA_OPEN_SUBSCHEMA_WIDENING;
+	if (value === false) return { not: OLLAMA_OPEN_SUBSCHEMA_WIDENING };
+	if (Array.isArray(value)) return mapSchemaArray(value, ollamaSchemaNode, undefined);
+	return isRecord(value) ? ollamaSchemaObject(value) : value;
+}
+
+function ollamaSchemaObject(value: JsonObject): JsonObject {
+	let changed = false;
+	const output: JsonObject = {};
+	let typeAlternatives: JsonObject[] | undefined;
+	for (const key in value) {
+		if (!Object.hasOwn(value, key)) continue;
+		const child = value[key];
+		if ((key === "additionalProperties" || key === "unevaluatedProperties") && typeof child === "boolean") {
+			changed = true;
+			continue;
 		}
-
-		let changed = false;
-		const output: JsonObject = {};
-		let typeAlternatives: JsonObject[] | undefined;
-		for (const key in value) {
-			if (!Object.hasOwn(value, key)) continue;
-			const child = value[key];
-			if ((key === "additionalProperties" || key === "unevaluatedProperties") && typeof child === "boolean") {
-				changed = true;
-				continue;
-			}
-			if (key === "type" && Array.isArray(child)) {
-				const variants = child.filter((entry): entry is string => typeof entry === "string");
-				const uniqueVariants = Array.from(new Set(variants));
-				const nonNull = uniqueVariants.filter(entry => entry !== "null");
-				if (nonNull.length <= 1) {
-					output.type = nonNull[0] ?? uniqueVariants[0] ?? child[0];
-				} else {
-					typeAlternatives = uniqueVariants.map(entry => ({ type: entry }));
-				}
-				changed = true;
-				continue;
-			}
-
-			let next = child;
-			if (SCHEMA_MAP_KEYWORDS.has(key) && isRecord(child)) {
-				let mapChanged = false;
-				const mapOutput: JsonObject = {};
-				for (const childKey in child) {
-					if (!Object.hasOwn(child, childKey)) continue;
-					const mapChild = child[childKey];
-					const normalizedChild = normalizeNode(mapChild);
-					if (normalizedChild !== mapChild) mapChanged = true;
-					mapOutput[childKey] = normalizedChild;
-				}
-				next = mapChanged ? mapOutput : child;
-			} else if (OLLAMA_SCHEMA_ARRAY_KEYS.has(key) && Array.isArray(child)) {
-				let arrayChanged = false;
-				const arrayOutput = child.map(item => {
-					const normalizedItem = normalizeNode(item);
-					if (normalizedItem !== item) arrayChanged = true;
-					return normalizedItem;
-				});
-				next = arrayChanged ? arrayOutput : child;
-			} else if (OLLAMA_SCHEMA_VALUE_KEYS.has(key)) {
-				next = normalizeNode(child);
-			}
-			if (next !== child) changed = true;
-			output[key] = next;
+		if (key === "type" && Array.isArray(child)) {
+			typeAlternatives = applyOllamaTypeArray(output, child);
+			changed = true;
+			continue;
 		}
+		const next = ollamaSchemaChild(key, child);
+		if (next !== child) changed = true;
+		output[key] = next;
+	}
+	if (typeAlternatives) {
+		const existingAllOf = output.allOf;
+		const typeUnion = { anyOf: typeAlternatives };
+		output.allOf = Array.isArray(existingAllOf) ? [typeUnion, ...existingAllOf] : [typeUnion];
+	}
+	return changed ? output : value;
+}
 
-		if (typeAlternatives) {
-			const existingAllOf = output.allOf;
-			const typeUnion = { anyOf: typeAlternatives };
-			output.allOf = Array.isArray(existingAllOf) ? [typeUnion, ...existingAllOf] : [typeUnion];
-		}
+/**
+ * Collapses a `type` array Ollama cannot parse. At most one non-null variant becomes that single
+ * `type` on `output`; several variants come back as one `{ type }` alternative each, for an `allOf` union.
+ */
+function applyOllamaTypeArray(output: JsonObject, types: unknown[]): JsonObject[] | undefined {
+	const uniqueVariants = Array.from(new Set(stringEntries(types)));
+	const nonNull = uniqueVariants.filter(entry => entry !== "null");
+	if (nonNull.length > 1) return uniqueVariants.map(entry => ({ type: entry }));
+	output.type = nonNull[0] ?? uniqueVariants[0] ?? types[0];
+	return undefined;
+}
 
-		return changed ? output : value;
-	};
-	return normalizeNode(schema) as JsonObject;
+function ollamaSchemaChild(key: string, child: unknown): unknown {
+	if (SCHEMA_VALUE_KEYWORDS.has(key)) return ollamaSchemaNode(child);
+	if (SCHEMA_MAP_KEYWORDS.has(key)) return isRecord(child) ? mapSchemaMap(child, ollamaSchemaNode, undefined) : child;
+	if (SCHEMA_ARRAY_KEYWORDS.has(key) && Array.isArray(child))
+		return mapSchemaArray(child, ollamaSchemaNode, undefined);
+	return child;
 }
 
 // ---------------------------------------------------------------------------
 // OpenAI Responses — schema-valued normalization
 // ---------------------------------------------------------------------------
-
-const OPENAI_RESPONSES_SCHEMA_ARRAY_KEYS = new Set(["anyOf", "oneOf", "allOf", "prefixItems"]);
-const OPENAI_RESPONSES_SCHEMA_VALUE_KEYS = new Set([
-	"items",
-	"additionalItems",
-	"contains",
-	"contentSchema",
-	"propertyNames",
-	"if",
-	"then",
-	"else",
-	"not",
-	"additionalProperties",
-	"unevaluatedItems",
-	"unevaluatedProperties",
-]);
 
 /**
  * OpenAI Responses rejects `oneOf` in tool schemas even when strict mode is
@@ -1290,37 +1309,18 @@ function normalizeOpenAIResponsesSchemaNode(value: unknown, cache: WeakMap<JsonO
 		// concatenated. A non-array `oneOf` is malformed for the wire but
 		// still preserved verbatim so callers can see the original payload
 		// instead of having it silently disappear.
-		if (key === "oneOf" && Array.isArray(value.oneOf)) {
+		if (isDroppedResponsesKeyword(value, key)) {
 			changed = true;
 			continue;
 		}
-		if (
-			key === "pattern" &&
-			typeof value.pattern === "string" &&
-			hasOpenAIUnsupportedRegexLookaround(value.pattern)
-		) {
-			changed = true;
-			continue;
-		}
-
 		const child = value[key];
-		let next: unknown = child;
-		if (key === "patternProperties" && isRecord(child)) {
-			next = normalizeOpenAIResponsesSchemaMap(child, cache, true);
-		} else if (SCHEMA_MAP_KEYWORDS.has(key) && isRecord(child)) {
-			next = normalizeOpenAIResponsesSchemaMap(child, cache, false);
-		} else if (OPENAI_RESPONSES_SCHEMA_ARRAY_KEYS.has(key) && Array.isArray(child)) {
-			next = normalizeOpenAIResponsesSchemaArray(child, cache);
-		} else if (OPENAI_RESPONSES_SCHEMA_VALUE_KEYS.has(key) && isRecord(child)) {
-			next = normalizeOpenAIResponsesSchemaNode(child, cache);
-		}
-
+		const next = normalizeOpenAIResponsesSchemaChild(key, child, cache);
 		if (next !== child) changed = true;
 		output[key] = next;
 	}
 
 	if (Array.isArray(value.oneOf)) {
-		const rewrittenOneOf = normalizeOpenAIResponsesSchemaArray(value.oneOf, cache);
+		const rewrittenOneOf = mapSchemaArray(value.oneOf, normalizeOpenAIResponsesSchemaNode, cache);
 		const existingAnyOf = output.anyOf;
 		output.anyOf = Array.isArray(existingAnyOf)
 			? (existingAnyOf as unknown[]).concat(rewrittenOneOf as unknown[])
@@ -1353,20 +1353,33 @@ function declaresObjectType(type: unknown): boolean {
 	return false;
 }
 
-function normalizeOpenAIResponsesSchemaArray(value: unknown[], cache: WeakMap<JsonObject, unknown>): unknown[] {
-	let changed = false;
-	const output = value.map(item => {
-		const next = normalizeOpenAIResponsesSchemaNode(item, cache);
-		if (next !== item) changed = true;
-		return next;
-	});
-	return changed ? output : value;
+/** Whether `key` is left out of the rewritten node: a `oneOf` array (re-emitted as `anyOf`) or an unsupported regex `pattern`. */
+function isDroppedResponsesKeyword(value: JsonObject, key: string): boolean {
+	if (key === "oneOf") return Array.isArray(value.oneOf);
+	return key === "pattern" && typeof value.pattern === "string" && hasOpenAIUnsupportedRegexLookaround(value.pattern);
 }
 
-function normalizeOpenAIResponsesSchemaMap(
+function normalizeOpenAIResponsesSchemaChild(
+	key: string,
+	child: unknown,
+	cache: WeakMap<JsonObject, unknown>,
+): unknown {
+	if (SCHEMA_MAP_KEYWORDS.has(key)) {
+		if (!isRecord(child)) return child;
+		return key === "patternProperties"
+			? normalizeOpenAIResponsesPatternProperties(child, cache)
+			: mapSchemaMap(child, normalizeOpenAIResponsesSchemaNode, cache);
+	}
+	if (SCHEMA_ARRAY_KEYWORDS.has(key)) {
+		return Array.isArray(child) ? mapSchemaArray(child, normalizeOpenAIResponsesSchemaNode, cache) : child;
+	}
+	return SCHEMA_VALUE_KEYWORDS.has(key) && isRecord(child) ? normalizeOpenAIResponsesSchemaNode(child, cache) : child;
+}
+
+/** `patternProperties` with each schema normalized and each lookaround pattern key folded into `.*`. */
+function normalizeOpenAIResponsesPatternProperties(
 	schemaMap: JsonObject,
 	cache: WeakMap<JsonObject, unknown>,
-	stripUnsupportedRegexKeys: boolean,
 ): JsonObject {
 	let changed = false;
 	const output: JsonObject = {};
@@ -1375,7 +1388,7 @@ function normalizeOpenAIResponsesSchemaMap(
 		const child = schemaMap[key];
 		const next = normalizeOpenAIResponsesSchemaNode(child, cache);
 		if (next !== child) changed = true;
-		if (stripUnsupportedRegexKeys && hasOpenAIUnsupportedRegexLookaround(key)) {
+		if (hasOpenAIUnsupportedRegexLookaround(key)) {
 			changed = true;
 			appendOpenAIResponsesFallbackPatternProperty(output, next);
 			continue;
@@ -1519,78 +1532,47 @@ function isUnrepresentableStrictBranch(value: unknown): boolean {
  */
 function hasUnrepresentableStrictObjectMap(schema: Record<string, unknown>, epoch: number = epochNext()): boolean {
 	if (!once(schema, epoch)) return false;
-
-	let hasPatternProperties = false;
-	if (isRecord(schema.patternProperties)) {
-		for (const _ in schema.patternProperties) {
-			hasPatternProperties = true;
-			break;
-		}
-	}
-	const additionalPropertiesValue = schema.additionalProperties;
-	const hasSchemaAdditionalProperties = additionalPropertiesValue === true || isRecord(additionalPropertiesValue);
-	if (hasPatternProperties || hasSchemaAdditionalProperties) {
+	if (hasOpenKeyset(schema)) return true;
+	if (isRecord(schema.properties) && someUnrepresentableStrictValue(schema.properties, epoch)) return true;
+	const items = schema.items;
+	if (
+		Array.isArray(items) ? someUnrepresentableStrictChild(items, epoch) : isUnrepresentableStrictChild(items, epoch)
+	) {
 		return true;
 	}
-
-	if (isRecord(schema.properties)) {
-		const properties = schema.properties;
-		for (const k in properties) {
-			const propertySchema = properties[k];
-			if (isUnrepresentableStrictBranch(propertySchema)) return true;
-			if (isRecord(propertySchema) && hasUnrepresentableStrictObjectMap(propertySchema, epoch)) {
-				return true;
-			}
-		}
-	}
-
-	if (isUnrepresentableStrictBranch(schema.items)) {
-		return true;
-	}
-	if (isRecord(schema.items)) {
-		if (hasUnrepresentableStrictObjectMap(schema.items, epoch)) {
-			return true;
-		}
-	} else if (Array.isArray(schema.items)) {
-		for (const itemSchema of schema.items) {
-			if (isUnrepresentableStrictBranch(itemSchema)) return true;
-			if (isRecord(itemSchema) && hasUnrepresentableStrictObjectMap(itemSchema, epoch)) {
-				return true;
-			}
-		}
-	}
-	if (Array.isArray(schema.prefixItems)) {
-		for (const itemSchema of schema.prefixItems) {
-			if (isUnrepresentableStrictBranch(itemSchema)) return true;
-			if (isRecord(itemSchema) && hasUnrepresentableStrictObjectMap(itemSchema, epoch)) {
-				return true;
-			}
-		}
-	}
-
+	if (Array.isArray(schema.prefixItems) && someUnrepresentableStrictChild(schema.prefixItems, epoch)) return true;
 	for (const key of COMBINATOR_KEYS) {
 		const variants = schema[key];
-		if (!Array.isArray(variants)) continue;
-		for (const variant of variants) {
-			if (isUnrepresentableStrictBranch(variant)) return true;
-			if (isRecord(variant) && hasUnrepresentableStrictObjectMap(variant, epoch)) {
-				return true;
-			}
-		}
+		if (Array.isArray(variants) && someUnrepresentableStrictChild(variants, epoch)) return true;
 	}
-
 	for (const defsKey of ["$defs", "definitions"] as const) {
 		const defs = schema[defsKey];
-		if (!isRecord(defs)) continue;
-		for (const k in defs) {
-			const defSchema = defs[k];
-			if (isUnrepresentableStrictBranch(defSchema)) return true;
-			if (isRecord(defSchema) && hasUnrepresentableStrictObjectMap(defSchema, epoch)) {
-				return true;
-			}
-		}
+		if (isRecord(defs) && someUnrepresentableStrictValue(defs, epoch)) return true;
 	}
+	return false;
+}
 
+/** Whether the node admits keys it does not declare: a non-empty `patternProperties` or an open `additionalProperties`. */
+function hasOpenKeyset(schema: Record<string, unknown>): boolean {
+	const additionalProperties = schema.additionalProperties;
+	if (additionalProperties === true || isRecord(additionalProperties)) return true;
+	if (!isRecord(schema.patternProperties)) return false;
+	for (const _ in schema.patternProperties) return true;
+	return false;
+}
+
+/** Whether a schema in a child position is a branch strict mode rejects, or holds one. */
+function isUnrepresentableStrictChild(value: unknown, epoch: number): boolean {
+	return isUnrepresentableStrictBranch(value) || (isRecord(value) && hasUnrepresentableStrictObjectMap(value, epoch));
+}
+
+function someUnrepresentableStrictChild(values: readonly unknown[], epoch: number): boolean {
+	for (const value of values) if (isUnrepresentableStrictChild(value, epoch)) return true;
+	return false;
+}
+
+function someUnrepresentableStrictValue(values: Record<string, unknown>, epoch: number): boolean {
+	for (const key in values) if (isUnrepresentableStrictChild(values[key], epoch)) return true;
 	return false;
 }
 
@@ -1879,6 +1861,9 @@ function isPureAnyOfNode(value: unknown): value is Record<string, unknown> & { a
 	return true;
 }
 
+/** Each source schema node's strict copy, so a node reached twice is converted once. */
+type StrictSchemaCache = WeakMap<Record<string, unknown>, Record<string, unknown>>;
+
 /**
  * Recursively enforces JSON Schema constraints required by OpenAI/Codex strict mode:
  *   - `additionalProperties: false` on every object node
@@ -1895,7 +1880,7 @@ function isPureAnyOfNode(value: unknown): value is Record<string, unknown> & { a
  */
 export function enforceStrictSchema(
 	schema: Record<string, unknown>,
-	cache: WeakMap<Record<string, unknown>, Record<string, unknown>> = new WeakMap(),
+	cache: StrictSchemaCache = new WeakMap(),
 ): Record<string, unknown> {
 	if (!enter(schema)) {
 		throw new AIError.ValidationError("Schema contains a circular object graph — cannot enforce strict mode");
@@ -1905,147 +1890,126 @@ export function enforceStrictSchema(
 		if (cached) return cached;
 		const result = { ...schema };
 		cache.set(schema, result);
-		return enforceStrictSchemaBody(schema, result, cache);
+		return enforceStrictSchemaBody(result, cache);
 	} finally {
 		exit(schema);
 	}
 }
 
-function enforceStrictSchemaBody(
-	_schema: Record<string, unknown>,
-	result: Record<string, unknown>,
-	cache: WeakMap<Record<string, unknown>, Record<string, unknown>>,
-): Record<string, unknown> {
-	const isObjectType = result.type === "object";
-	if (isObjectType) {
-		result.additionalProperties = false;
-		const propertiesValue = result.properties;
-		const props =
-			propertiesValue != null && typeof propertiesValue === "object" && !Array.isArray(propertiesValue)
-				? (propertiesValue as Record<string, unknown>)
-				: {};
-		const originalRequired = new Set<string>(
-			Array.isArray(result.required)
-				? result.required.filter((value): value is string => typeof value === "string")
-				: [],
-		);
-		const strictProperties: Record<string, unknown> = {};
-		for (const key in props) {
-			const value = props[key];
-			const processed =
-				value != null && typeof value === "object" && !Array.isArray(value)
-					? enforceStrictSchema(value as Record<string, unknown>, cache)
-					: value;
-			// Optional property — wrap as nullable so strict mode accepts it
-			if (!originalRequired.has(key)) {
-				// Don't double-wrap if already nullable
-				if (
-					isRecord(processed) &&
-					Array.isArray(processed.anyOf) &&
-					processed.anyOf.some(v => isRecord(v) && v.type === "null")
-				) {
-					strictProperties[key] = processed;
-					continue;
-				}
-				if (isPureAnyOfNode(processed)) {
-					strictProperties[key] = { ...processed, anyOf: processed.anyOf.concat([{ type: "null" }]) };
-					continue;
-				}
-				if (isRecord(processed) && typeof processed.description === "string") {
-					const { description, ...withoutDescription } = processed;
-					strictProperties[key] = { anyOf: [withoutDescription, { type: "null" }], description };
-					continue;
-				}
-				strictProperties[key] = { anyOf: [processed, { type: "null" }] };
-				continue;
-			}
-			strictProperties[key] = processed;
-		}
-		result.properties = strictProperties;
-		result.required = Object.keys(strictProperties);
-	}
-	if (result.items != null && typeof result.items === "object") {
-		if (Array.isArray(result.items)) {
-			result.items = result.items.map(entry =>
-				entry != null && typeof entry === "object" && !Array.isArray(entry)
-					? enforceStrictSchema(entry as Record<string, unknown>, cache)
-					: entry,
-			);
-		} else {
-			result.items = enforceStrictSchema(result.items as Record<string, unknown>, cache);
-		}
-	}
-	if (Array.isArray(result.prefixItems)) {
-		result.prefixItems = result.prefixItems.map(entry =>
-			entry != null && typeof entry === "object" && !Array.isArray(entry)
-				? enforceStrictSchema(entry as Record<string, unknown>, cache)
-				: entry,
-		);
-	}
-	for (const key of COMBINATOR_KEYS) {
-		if (Array.isArray(result[key])) {
-			result[key] = (result[key] as unknown[]).map(entry =>
-				entry != null && typeof entry === "object" && !Array.isArray(entry)
-					? enforceStrictSchema(entry as Record<string, unknown>, cache)
-					: entry,
-			);
-		}
-	}
-	// Splice nested pure unions into the parent `anyOf`: `(A ∨ B) ∨ C` ≡ `A ∨ B ∨ C`.
-	// Some strict-mode validators (e.g. DeepSeek behind OpenRouter) reject anyOf
-	// branches that carry no `type`, which is exactly what a nested combinator
-	// node looks like (#2270). Branch recursion above already flattened deeper
-	// levels bottom-up, so a single pass suffices.
-	if (Array.isArray(result.anyOf) && result.anyOf.some(isPureAnyOfNode)) {
-		const flattened: unknown[] = [];
-		for (const branch of result.anyOf) {
-			if (!isPureAnyOfNode(branch)) {
-				flattened.push(branch);
-				continue;
-			}
-			for (let ai = 0; ai < branch.anyOf.length; ai++) flattened.push(branch.anyOf[ai]!);
-			// Keep the inner annotation when the parent has none.
-			if (typeof branch.description === "string" && result.description === undefined) {
-				result.description = branch.description;
-			}
-		}
-		result.anyOf = flattened;
-	}
-	for (const defsKey of ["$defs", "definitions"] as const) {
-		if (result[defsKey] != null && typeof result[defsKey] === "object" && !Array.isArray(result[defsKey])) {
-			const defs = result[defsKey] as Record<string, unknown>;
-			const nextDefs: Record<string, unknown> = {};
-			for (const name in defs) {
-				const def = defs[name];
-				nextDefs[name] =
-					def != null && typeof def === "object" && !Array.isArray(def)
-						? enforceStrictSchema(def as Record<string, unknown>, cache)
-						: def;
-			}
-			result[defsKey] = nextDefs;
-		}
-	}
-	// Strict mode requires every schema node to declare a concrete type (or
-	// combinator / `$ref` / `not`). When `type` is missing, try to infer it
-	// from a homogeneous-primitive `enum` / `const` so direct calls to
-	// `enforceStrictSchema` (which bypass `sanitizeSchemaForStrictMode`'s own
-	// inference pass) still produce wire-valid output.
-	if (result.type === undefined) {
-		const inferred = inferStrictPrimitiveTypeFromEnumOrConst(result);
-		if (inferred !== undefined) result.type = inferred;
-	}
-	// Schemas like `{}`, `{items: {}}`, mixed-primitive enums, and non-primitive
-	// consts are not representable in strict mode — `enum`/`const` are not
-	// accepted as type substitutes here because they did not yield a single
-	// inferable type above.
+/** `entry` made strict when it is a schema object; any other value passes through unchanged. */
+function enforceStrictEntry(entry: unknown, cache: StrictSchemaCache): unknown {
+	return entry != null && typeof entry === "object" && !Array.isArray(entry)
+		? enforceStrictSchema(entry as Record<string, unknown>, cache)
+		: entry;
+}
+
+/**
+ * An optional property's schema made nullable, so strict mode can require the key while the model
+ * signals omission with null. A schema that already admits null is kept, a pure union gains a null
+ * branch, and a description moves from the wrapped schema to the union.
+ */
+function nullableStrictProperty(processed: unknown): unknown {
 	if (
-		result.type === undefined &&
-		result.$ref === undefined &&
-		!COMBINATOR_KEYS.some(key => Array.isArray(result[key])) &&
-		!isRecord(result.not)
+		isRecord(processed) &&
+		Array.isArray(processed.anyOf) &&
+		processed.anyOf.some(v => isRecord(v) && v.type === "null")
 	) {
+		return processed;
+	}
+	if (isPureAnyOfNode(processed)) return { ...processed, anyOf: processed.anyOf.concat([{ type: "null" }]) };
+	if (isRecord(processed) && typeof processed.description === "string") {
+		const { description, ...withoutDescription } = processed;
+		return { anyOf: [withoutDescription, { type: "null" }], description };
+	}
+	return { anyOf: [processed, { type: "null" }] };
+}
+
+/** Closes an object node and requires every property, making each one the source left optional nullable. */
+function enforceStrictObject(result: Record<string, unknown>, cache: StrictSchemaCache): void {
+	result.additionalProperties = false;
+	const propertiesValue = result.properties;
+	const props = isRecord(propertiesValue) ? propertiesValue : {};
+	const originalRequired = new Set(stringEntries(result.required));
+	const strictProperties: Record<string, unknown> = {};
+	for (const key in props) {
+		const processed = enforceStrictEntry(props[key], cache);
+		strictProperties[key] = originalRequired.has(key) ? processed : nullableStrictProperty(processed);
+	}
+	result.properties = strictProperties;
+	result.required = Object.keys(strictProperties);
+}
+
+/**
+ * Splices nested pure unions into the parent `anyOf`: `(A ∨ B) ∨ C` ≡ `A ∨ B ∨ C`. Some strict-mode
+ * validators (e.g. DeepSeek behind OpenRouter) reject anyOf branches that carry no `type`, which is
+ * what a nested combinator node looks like (#2270). Branch recursion already flattened deeper levels
+ * bottom-up, so a single pass suffices. The first inner description is kept when the parent has none.
+ */
+function flattenNestedAnyOf(result: Record<string, unknown>, anyOf: unknown[]): unknown[] {
+	const flattened: unknown[] = [];
+	for (const branch of anyOf) {
+		if (!isPureAnyOfNode(branch)) {
+			flattened.push(branch);
+			continue;
+		}
+		for (let ai = 0; ai < branch.anyOf.length; ai++) flattened.push(branch.anyOf[ai]!);
+		if (typeof branch.description === "string" && result.description === undefined) {
+			result.description = branch.description;
+		}
+	}
+	return flattened;
+}
+
+/** Makes every definition under `$defs` and `definitions` strict. */
+function enforceStrictDefs(result: Record<string, unknown>, cache: StrictSchemaCache): void {
+	for (const defsKey of ["$defs", "definitions"] as const) {
+		const defs = result[defsKey];
+		if (defs == null || typeof defs !== "object" || Array.isArray(defs)) continue;
+		const nextDefs: Record<string, unknown> = {};
+		for (const name in defs) nextDefs[name] = enforceStrictEntry((defs as Record<string, unknown>)[name], cache);
+		result[defsKey] = nextDefs;
+	}
+}
+
+/**
+ * Strict mode requires every schema node to declare a concrete type, a combinator, `$ref` or `not`.
+ * A missing `type` is inferred from a homogeneous-primitive `enum` / `const`, so direct calls to
+ * `enforceStrictSchema` (which bypass `sanitizeSchemaForStrictMode`'s own inference pass) still
+ * produce wire-valid output. Schemas like `{}`, `{items: {}}`, mixed-primitive enums and non-primitive
+ * consts yield no single type and are rejected: `enum`/`const` are not type substitutes here.
+ */
+function requireStrictType(result: Record<string, unknown>): void {
+	if (result.type !== undefined) return;
+	const inferred = inferStrictPrimitiveTypeFromEnumOrConst(result);
+	if (inferred !== undefined) {
+		result.type = inferred;
+		return;
+	}
+	if (result.$ref === undefined && !COMBINATOR_KEYS.some(key => Array.isArray(result[key])) && !isRecord(result.not)) {
 		throw new AIError.ValidationError("Schema node has no type, combinator, or $ref — cannot enforce strict mode");
 	}
+}
+
+function enforceStrictSchemaBody(result: Record<string, unknown>, cache: StrictSchemaCache): Record<string, unknown> {
+	if (result.type === "object") enforceStrictObject(result, cache);
+	const items = result.items;
+	if (items != null && typeof items === "object") {
+		result.items = Array.isArray(items)
+			? items.map(entry => enforceStrictEntry(entry, cache))
+			: enforceStrictSchema(items as Record<string, unknown>, cache);
+	}
+	if (Array.isArray(result.prefixItems)) {
+		result.prefixItems = result.prefixItems.map(entry => enforceStrictEntry(entry, cache));
+	}
+	for (const key of COMBINATOR_KEYS) {
+		const branches = result[key];
+		if (Array.isArray(branches)) result[key] = branches.map(entry => enforceStrictEntry(entry, cache));
+	}
+	if (Array.isArray(result.anyOf) && result.anyOf.some(isPureAnyOfNode)) {
+		result.anyOf = flattenNestedAnyOf(result, result.anyOf);
+	}
+	enforceStrictDefs(result, cache);
+	requireStrictType(result);
 	return result;
 }
 
