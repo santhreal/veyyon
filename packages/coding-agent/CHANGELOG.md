@@ -218,6 +218,7 @@
 
 ### Fixed
 
+- A TTSR interrupt retries the turn it aborted when the aborted turn settles with a message whose timestamp differs from the partial it streamed, instead of dropping the injection and releasing the resume gate with no continuation.
 - An expanded task card draws an agent's `Output` heading once when the agent returned `{}`, `[]` or an empty JSON value, and when a running agent's live output is one, instead of twice.
 - An agent with several approval cards open at once stays marked as waiting until its last card closes, instead of showing as working once its first card is answered, so the agent dashboard draws it as blocked and the runtime budget excludes the operator's reading time across the whole span, counted once.
 - A non-recursive discovery scan reads only the files directly inside its directory, so a helper module under `tools/<name>/` no longer registers as a custom tool named for its file, and a file below `commands/`, `rules/`, `prompts/` or `instructions/` (`rules/archive/old.md`) no longer loads as a command, rule, prompt or instruction.

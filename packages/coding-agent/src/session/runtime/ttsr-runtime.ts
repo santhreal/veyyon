@@ -131,6 +131,14 @@ export class TtsrRuntime {
 	 *  carries `<system-reminder>` markup. See {@link afterToolCall}. */
 	#pendingToolReminders: { content: string; rules: string[] }[] = [];
 	#abortPending = false;
+	/**
+	 * Timestamp of the assistant message the pending interrupt aborted.
+	 *
+	 * Seeded from the streamed message when the rule matches, then replaced by the message that
+	 * settles while the abort is pending: a stream may end an aborted turn with a new message whose
+	 * timestamp differs from the partial it streamed, and the retry discards the settled one.
+	 */
+	#interruptedMessageTimestamp: number | undefined = undefined;
 	#retryToken = 0;
 	#resumePromise: Promise<void> | undefined = undefined;
 	#resumeResolve: (() => void) | undefined = undefined;
@@ -225,14 +233,16 @@ export class TtsrRuntime {
 	}
 
 	/**
-	 * Settle the turn: resolve the resume gate and queue any deferred injection.
+	 * Settle the turn: resolve the resume gate, or record the interrupted message
+	 * while an interrupt is pending, and queue any deferred injection.
 	 *
 	 * The gate is resolved on {@link isAbortPending} being false rather than on the
 	 * stop reason, because a non-TTSR abort (a streaming edit, say) also reports
 	 * `stopReason === "aborted"` and has no continuation coming behind it.
 	 */
 	onAssistantSettled(assistantMsg: AssistantMessage): void {
-		if (!this.#abortPending) this.resolveResume();
+		if (this.#abortPending) this.#interruptedMessageTimestamp = assistantMsg.timestamp;
+		else this.resolveResume();
 		this.#queueDeferredInjectionIfNeeded(assistantMsg);
 	}
 
@@ -780,6 +790,7 @@ export class TtsrRuntime {
 		}
 
 		// Abort the stream immediately — do not gate on extension callbacks
+		this.#interruptedMessageTimestamp = targetMessageTimestamp;
 		this.#abortPending = true;
 		this.#ensureResumePromise();
 		const abortReason = formatAbortReason(matches);
@@ -804,7 +815,7 @@ export class TtsrRuntime {
 					return;
 				}
 
-				const targetAssistantIndex = this.#findAssistantIndex(targetMessageTimestamp);
+				const targetAssistantIndex = this.#findAssistantIndex(this.#interruptedMessageTimestamp);
 				if (!this.#abortPending || this.#host.promptGeneration() !== generation || targetAssistantIndex === -1) {
 					this.#abortPending = false;
 					this.#pendingInjections = [];
