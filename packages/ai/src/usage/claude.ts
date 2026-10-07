@@ -239,60 +239,79 @@ async function waitBeforeRetry(
 	}
 }
 
-async function fetchUsagePayload(
-	url: string,
-	headers: Record<string, string>,
-	ctx: UsageFetchContext,
-	signal?: AbortSignal,
-): Promise<ClaudeUsagePayload | null> {
-	if (signal?.aborted) return null;
+/** An attempt's verdict: the read's result, or `"next"` to send the request again. */
+type ClaudeUsageStep = ClaudeUsagePayload | null | "next";
 
-	let lastPayload: ClaudeUsageResponse | null = null;
-	let lastOrgId: string | undefined;
-	for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+/**
+ * One usage read of up to `MAX_ATTEMPTS` requests. The read ends with `null` when an attempt fails
+ * without a retry, or when the attempts run out before a response carries usage data.
+ */
+class ClaudeUsageRead {
+	#url: string;
+	#headers: Record<string, string>;
+	#ctx: UsageFetchContext;
+	#signal: AbortSignal | undefined;
+
+	constructor(url: string, headers: Record<string, string>, ctx: UsageFetchContext, signal: AbortSignal | undefined) {
+		this.#url = url;
+		this.#headers = headers;
+		this.#ctx = ctx;
+		this.#signal = signal;
+	}
+
+	async run(): Promise<ClaudeUsagePayload | null> {
+		if (this.#signal?.aborted) return null;
+		for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+			const step = await this.#attempt(attempt);
+			if (step !== "next") return step;
+		}
+		return null;
+	}
+
+	async #attempt(attempt: number): Promise<ClaudeUsageStep> {
 		try {
-			const response = await ctx.fetch(url, { headers, signal });
+			const response = await this.#ctx.fetch(this.#url, { headers: this.#headers, signal: this.#signal });
 			const orgId = response.headers.get("anthropic-organization-id")?.trim() || undefined;
-			lastOrgId = orgId ?? lastOrgId;
-
-			if (!response.ok) {
-				const retryable = await AIError.retryResponseAfterReading(response, USAGE_RESPONSE_RETRY_POLICY);
-				ctx.logger?.warn("Claude usage fetch failed", {
-					status: response.status,
-					statusText: response.statusText,
-					attempt,
-					willRetry: retryable && attempt < MAX_ATTEMPTS - 1,
-				});
-				if (!retryable) return null;
-				const retryAfter = response.headers.get("retry-after");
-				if (!(await waitBeforeRetry(attempt, retryAfter, signal, ctx.retryWait))) break;
-				continue;
-			}
-
-			const parsed = (await response.json()) as unknown;
-			if (isRecord(parsed)) {
-				const payload = parsed as ClaudeUsageResponse;
-				lastPayload = payload;
-				if (hasUsageData(payload)) return { payload, orgId };
-			}
-
-			ctx.logger?.warn("Claude usage response missing usage data", {
-				attempt,
-				willRetry: attempt < MAX_ATTEMPTS - 1,
-			});
-			if (!(await waitBeforeRetry(attempt, null, signal, ctx.retryWait))) break;
+			return response.ok
+				? await this.#readUsage(response, orgId, attempt)
+				: await this.#readFailure(response, attempt);
 		} catch (error) {
-			if (isAbortError(error, signal)) return null;
-			ctx.logger?.warn("Claude usage fetch error", {
+			if (isAbortError(error, this.#signal)) return null;
+			this.#ctx.logger?.warn("Claude usage fetch error", {
 				error: String(error),
 				attempt,
 				willRetry: attempt < MAX_ATTEMPTS - 1,
 			});
-			if (!(await waitBeforeRetry(attempt, null, signal, ctx.retryWait))) break;
+			return this.#retry(attempt, null);
 		}
 	}
 
-	return lastPayload ? { payload: lastPayload, orgId: lastOrgId } : null;
+	async #readFailure(response: Response, attempt: number): Promise<ClaudeUsageStep> {
+		const retryable = await AIError.retryResponseAfterReading(response, USAGE_RESPONSE_RETRY_POLICY);
+		this.#ctx.logger?.warn("Claude usage fetch failed", {
+			status: response.status,
+			statusText: response.statusText,
+			attempt,
+			willRetry: retryable && attempt < MAX_ATTEMPTS - 1,
+		});
+		if (!retryable) return null;
+		return this.#retry(attempt, response.headers.get("retry-after"));
+	}
+
+	async #readUsage(response: Response, orgId: string | undefined, attempt: number): Promise<ClaudeUsageStep> {
+		const parsed = (await response.json()) as unknown;
+		const payload = isRecord(parsed) ? (parsed as ClaudeUsageResponse) : undefined;
+		if (payload && hasUsageData(payload)) return { payload, orgId };
+		this.#ctx.logger?.warn("Claude usage response missing usage data", {
+			attempt,
+			willRetry: attempt < MAX_ATTEMPTS - 1,
+		});
+		return this.#retry(attempt, null);
+	}
+
+	async #retry(attempt: number, retryAfter: string | null): Promise<"next" | null> {
+		return (await waitBeforeRetry(attempt, retryAfter, this.#signal, this.#ctx.retryWait)) ? "next" : null;
+	}
 }
 
 interface ClaudeProfile {
@@ -486,6 +505,56 @@ export function parseClaudeRateLimitHeaders(headers: Record<string, string>, now
 	};
 }
 
+/**
+ * The account-wide windows, the legacy per-model weekly buckets and the model-scoped weekly rows,
+ * with each account-wide window read from `limits[]` when its legacy bucket is absent.
+ */
+function buildClaudeUsageLimits(payload: ClaudeUsageResponse): UsageLimit[] {
+	const apiLimitEntries = parseApiLimitEntries(payload.limits);
+	const fiveHour = parseBucket(payload.five_hour) ?? apiLimitEntries.find(entry => entry.kind === "session")?.bucket;
+	const sevenDay =
+		parseBucket(payload.seven_day) ?? apiLimitEntries.find(entry => entry.kind === "weekly_all")?.bucket;
+	return [
+		...accountWindowLimits(fiveHour, sevenDay),
+		buildUsageLimit({
+			id: "anthropic:7d:opus",
+			label: "Claude 7 Day (Opus)",
+			windowId: "7d",
+			windowLabel: "7 Day",
+			durationMs: WEEK_MS,
+			bucket: parseBucket(payload.seven_day_opus),
+			provider: "anthropic",
+			tier: "opus",
+		}),
+		buildUsageLimit({
+			id: "anthropic:7d:sonnet",
+			label: "Claude 7 Day (Sonnet)",
+			windowId: "7d",
+			windowLabel: "7 Day",
+			durationMs: WEEK_MS,
+			bucket: parseBucket(payload.seven_day_sonnet),
+			provider: "anthropic",
+			tier: "sonnet",
+		}),
+		...buildScopedWeeklyUsageLimits(apiLimitEntries),
+	].filter((limit): limit is UsageLimit => limit !== null);
+}
+
+/** The usage payload's identity, completed from the credential and then, while either is missing, from `/profile`. */
+async function resolveClaudeIdentity(
+	params: UsageFetchParams,
+	ctx: UsageFetchContext,
+	usageIdentity: { accountId?: string; email?: string },
+	baseUrl: string,
+	headers: Record<string, string>,
+): Promise<{ accountId?: string; email?: string }> {
+	const accountId = usageIdentity.accountId ?? params.credential.accountId;
+	const email = usageIdentity.email ?? params.credential.email;
+	if (accountId && email) return { accountId, email };
+	const profileIdentity = extractProfileIdentity(await fetchProfile(baseUrl, headers, ctx, params.signal));
+	return { accountId: accountId ?? profileIdentity.accountId, email: email ?? profileIdentity.email };
+}
+
 async function fetchClaudeUsage(params: UsageFetchParams, ctx: UsageFetchContext): Promise<UsageReport | null> {
 	if (params.provider !== "anthropic") return null;
 	const credential = params.credential;
@@ -496,51 +565,19 @@ async function fetchClaudeUsage(params: UsageFetchParams, ctx: UsageFetchContext
 	const url = `${baseUrl}/usage?${ANTHROPIC_RESET_STATUS_QUERY}`;
 	const headers = claudeOAuthHeaders(credential.accessToken);
 
-	const payloadResult = await fetchUsagePayload(url, headers, ctx, params.signal);
-	if (!payloadResult || !isRecord(payloadResult.payload)) return null;
+	const payloadResult = await new ClaudeUsageRead(url, headers, ctx, params.signal).run();
+	if (!payloadResult) return null;
 	const { payload, orgId } = payloadResult;
 
-	const apiLimitEntries = parseApiLimitEntries(payload.limits);
-	const fiveHour = parseBucket(payload.five_hour) ?? apiLimitEntries.find(entry => entry.kind === "session")?.bucket;
-	const sevenDay =
-		parseBucket(payload.seven_day) ?? apiLimitEntries.find(entry => entry.kind === "weekly_all")?.bucket;
-	const sevenDayOpus = parseBucket(payload.seven_day_opus);
-	const sevenDaySonnet = parseBucket(payload.seven_day_sonnet);
-
-	const limits = [
-		...accountWindowLimits(fiveHour, sevenDay),
-		buildUsageLimit({
-			id: "anthropic:7d:opus",
-			label: "Claude 7 Day (Opus)",
-			windowId: "7d",
-			windowLabel: "7 Day",
-			durationMs: WEEK_MS,
-			bucket: sevenDayOpus,
-			provider: "anthropic",
-			tier: "opus",
-		}),
-		buildUsageLimit({
-			id: "anthropic:7d:sonnet",
-			label: "Claude 7 Day (Sonnet)",
-			windowId: "7d",
-			windowLabel: "7 Day",
-			durationMs: WEEK_MS,
-			bucket: sevenDaySonnet,
-			provider: "anthropic",
-			tier: "sonnet",
-		}),
-		...buildScopedWeeklyUsageLimits(apiLimitEntries),
-	].filter((limit): limit is UsageLimit => limit !== null);
-
+	const limits = buildClaudeUsageLimits(payload);
 	if (limits.length === 0) return null;
-	const identity = extractUsageIdentity(payload, orgId);
-	let accountId = identity.accountId ?? credential.accountId;
-	let email = identity.email ?? credential.email;
-	if ((!accountId || !email) && !params.signal?.aborted) {
-		const profileIdentity = extractProfileIdentity(await fetchProfile(baseUrl, headers, ctx, params.signal));
-		accountId = accountId ?? profileIdentity.accountId;
-		email = email ?? profileIdentity.email;
-	}
+	const { accountId, email } = await resolveClaudeIdentity(
+		params,
+		ctx,
+		extractUsageIdentity(payload, orgId),
+		baseUrl,
+		headers,
+	);
 
 	const resetStatus = parseAnthropicResetStatus(payload[ANTHROPIC_RESET_PROGRAM]);
 	const report: UsageReport = {
