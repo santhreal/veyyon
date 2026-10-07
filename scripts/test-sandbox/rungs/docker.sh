@@ -81,6 +81,26 @@ run_docker() {
 	local -a tty_args=()
 	[ -t 0 ] && [ -t 1 ] && tty_args=(-it)
 
+	# Bounds on what one run takes from this machine, which is a workstation with
+	# other sessions on it. A suite that allocates without end is killed inside its
+	# own memory cgroup at the ceiling, with no swap behind it. --oom-score-adj 1000
+	# puts every guest process first for the kernel OOM killer and for any userspace
+	# killer that reads oom_score, ahead of the sessions that share the machine. The
+	# deadline runs inside the guest as the process that execs the command: a
+	# `docker run` client killed with SIGKILL leaves its container running, so a
+	# deadline held by the client or by this script ends with them.
+	local memory="${VEYYON_SANDBOX_DOCKER_MEMORY:-32g}"
+	local pids="${VEYYON_SANDBOX_DOCKER_PIDS:-8192}"
+	local deadline="${VEYYON_SANDBOX_TIMEOUT:-1800}"
+	[[ "$memory" =~ ^[1-9][0-9]*[bkmg]?$ ]] ||
+		die "VEYYON_SANDBOX_DOCKER_MEMORY must be a docker memory size such as 32g, got '${memory}'"
+	[[ "$pids" =~ ^[1-9][0-9]*$ ]] || die "VEYYON_SANDBOX_DOCKER_PIDS must be a positive integer, got '${pids}'"
+	[[ "$deadline" =~ ^[1-9][0-9]*$ ]] || die "VEYYON_SANDBOX_TIMEOUT must be a positive number of seconds, got '${deadline}'"
+	# Declared to the guest the way VEYYON_TEST_HOST_HOME is: docker applies a
+	# finite pid ceiling of its own when --pids-limit is absent, so the guest can
+	# tell this ceiling took effect only by comparing pids.max with the one set.
+	env_args+=(-e "VEYYON_TEST_PIDS_LIMIT=${pids}")
+
 	# `exec` is set explicitly on the three tmpfs mounts below. Docker's default
 	# tmpfs options are `nosuid,nodev,noexec`, and noexec breaks a suite that
 	# writes a stub binary into TMPDIR and puts it on PATH, which is the ordinary
@@ -88,9 +108,13 @@ run_docker() {
 	# tmpfs and allow exec, so the difference showed up as six tests failing on
 	# this rung alone, with messages that read like the script under test was
 	# broken. `nosuid,nodev` are restated because naming any option drops the
+	# defaults.
 	docker run --rm "${tty_args[@]}" \
 		--network none \
 		--user "$(id -u):$(id -g)" \
+		--memory "${memory}" --memory-swap "${memory}" \
+		--pids-limit "${pids}" \
+		--oom-score-adj 1000 \
 		"${mount_args[@]}" \
 		--tmpfs "/home:rw,nosuid,nodev,exec,mode=0755" \
 		--tmpfs "/tmp:rw,nosuid,nodev,exec,mode=1777" \
@@ -99,7 +123,7 @@ run_docker() {
 		"${env_args[@]}" \
 		--entrypoint /bin/sh \
 		"${GUEST_IMAGE}" \
-		-c 'mkdir -p /sandbox/bin "$HOME/.bun/install/cache" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME"; if [ -f /sandbox/rustup/toolchains/nightly-2026-04-29-x86_64-unknown-linux-gnu/bin/cargo-real ]; then ln -sf /sandbox/rustup/toolchains/nightly-2026-04-29-x86_64-unknown-linux-gnu/bin/cargo-real /sandbox/bin/cargo; fi; exec "$@"' _ "$@"
+		-c 'mkdir -p /sandbox/bin "$HOME/.bun/install/cache" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME"; if [ -f /sandbox/rustup/toolchains/nightly-2026-04-29-x86_64-unknown-linux-gnu/bin/cargo-real ]; then ln -sf /sandbox/rustup/toolchains/nightly-2026-04-29-x86_64-unknown-linux-gnu/bin/cargo-real /sandbox/bin/cargo; fi; exec timeout --foreground -k 10 '"${deadline}"' "$@"' _ "$@"
 }
 
 # Used by --probe to list which binaries the rung provides.

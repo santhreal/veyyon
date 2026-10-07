@@ -58,10 +58,12 @@
 #   the network              --network none. No egress, no LAN, no metadata
 #                            service; loopback only.
 #   pinning the box          --cpus, --memory and --pids-limit bound what one run
-#                            can take, and the whole run is wrapped in
-#                            `timeout -k 10 $VEYYON_SANDBOX_TIMEOUT` (default 1800)
-#                            with a `docker rm -f` after it, so a wedged suite
-#                            cannot hold the machine.
+#                            can take, --memory-swap equal to --memory leaves it no
+#                            swap, --oom-score-adj 1000 makes the run the first
+#                            process the remote's OOM killer takes, and the whole
+#                            run is wrapped in `timeout -k 10 $VEYYON_SANDBOX_TIMEOUT`
+#                            (default 1800) with a `docker rm -f` after it, so a
+#                            wedged suite cannot hold the machine.
 #   filling the disk         The work tree is the only writable host path and it
 #                            is one rsync target under the remote user's home, not
 #                            a shared location.
@@ -270,6 +272,7 @@ run_remote() {
 		-e "VEYYON_TEST_SANDBOX=remote-docker"
 		-e "VEYYON_TEST_HOST_HOME=${HOST_HOME}"
 		-e "VEYYON_SANDBOX_REMOTE_HOME=${REMOTE_HOME}"
+		-e "VEYYON_TEST_PIDS_LIMIT=${VEYYON_SANDBOX_REMOTE_PIDS:-8192}"
 		-e "HOME=/sandbox/home"
 		-e "TMPDIR=/tmp"
 		-e "XDG_CONFIG_HOME=/sandbox/home/.config"
@@ -311,8 +314,10 @@ run_remote() {
 		"--cap-drop=ALL" \
 		"--security-opt=no-new-privileges" \
 		"--pids-limit ${VEYYON_SANDBOX_REMOTE_PIDS:-8192}" \
+		"--oom-score-adj 1000" \
 		"--cpus ${VEYYON_SANDBOX_REMOTE_CPUS:-\$(( \$(nproc) < 24 ? \$(nproc) : 24 ))}" \
 		"--memory ${VEYYON_SANDBOX_REMOTE_MEMORY:-32g}" \
+		"--memory-swap ${VEYYON_SANDBOX_REMOTE_MEMORY:-32g}" \
 		"--mount $(printf '%q' "${repo_mount}")" \
 		"--tmpfs /home:rw,nosuid,nodev,exec,mode=0755" \
 		"--tmpfs /tmp:rw,nosuid,nodev,exec,mode=1777" \

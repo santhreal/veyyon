@@ -303,6 +303,8 @@ Environment:
   VEYYON_SANDBOX_REMOTE_HOST  ssh destination for the remote rung
   VEYYON_SANDBOX_REPO_RO    1 to mount the repo read-only (used by the leak proof)
   VEYYON_SANDBOX_TIMEOUT    seconds before a wedged guest is killed (default 1800)
+  VEYYON_SANDBOX_DOCKER_MEMORY  memory ceiling of a docker guest, no swap (default 32g)
+  VEYYON_SANDBOX_DOCKER_PIDS    process ceiling of a docker guest (default 8192)
   VEYYON_SANDBOX_FORWARD    extra env var names to carry into the sandbox
 EOF
 }

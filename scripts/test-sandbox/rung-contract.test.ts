@@ -32,7 +32,7 @@
  * host, where those rungs exist.
  */
 import { describe, expect, it } from "bun:test";
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -55,6 +55,72 @@ const MARKER_BY_RUNG: Record<string, string> = {
 	microvm: "qemu-microvm",
 	bwrap: "bwrap-userns",
 };
+
+interface HostBound {
+	/**
+	 * `cgroup`: a container whose guest reads its own memory, swap and pid ceilings and its OOM
+	 * priority. `vm`: bounded by the RAM the VM boots with. `none`: bwrap, whose unprivileged user
+	 * namespace has no cgroup to set a ceiling in.
+	 */
+	ceilings: "cgroup" | "vm" | "none";
+	/**
+	 * `guest`: a deadline held by the guest's own init, which ends the run after the client that
+	 * started the container was killed with SIGKILL. `host`: a `timeout` around the client on the
+	 * machine that runs it. `none`: bwrap, whose `--die-with-parent` ends the guest with its caller.
+	 */
+	deadline: "guest" | "host" | "none";
+}
+
+/**
+ * How each rung keeps one run from taking the machine it shares, keyed by the marker its guest
+ * exports. Spelled out for the same reason as {@link MARKER_BY_RUNG}: a new rung has no entry
+ * until one is recorded here, and the suite is red until then.
+ */
+const HOST_BOUND_BY_MARKER: Record<string, HostBound> = {
+	"remote-docker": { ceilings: "cgroup", deadline: "host" },
+	"container-docker": { ceilings: "cgroup", deadline: "guest" },
+	"qemu-microvm": { ceilings: "vm", deadline: "host" },
+	"bwrap-userns": { ceilings: "none", deadline: "none" },
+};
+
+/** `Infinity` for an unbounded cgroup limit, in either hierarchy's spelling. */
+function cgroupLimit(file: string): number {
+	const value = readFileSync(file, "utf8").trim();
+	// cgroup v2 writes `max`; v1 writes the largest page-aligned 64-bit value.
+	if (value === "max") return Number.POSITIVE_INFINITY;
+	const limit = Number(value);
+	return limit >= 2 ** 62 ? Number.POSITIVE_INFINITY : limit;
+}
+
+/** The memory, swap and pid ceilings of the cgroup this process runs in. */
+function guestCeilings(): { memory: number; swap: number; pids: number } {
+	if (existsSync("/sys/fs/cgroup/cgroup.controllers")) {
+		return {
+			memory: cgroupLimit("/sys/fs/cgroup/memory.max"),
+			swap: cgroupLimit("/sys/fs/cgroup/memory.swap.max"),
+			pids: cgroupLimit("/sys/fs/cgroup/pids.max"),
+		};
+	}
+	const memory = cgroupLimit("/sys/fs/cgroup/memory/memory.limit_in_bytes");
+	return {
+		memory,
+		// v1 bounds memory and swap together; the swap a guest may use is the difference.
+		swap: cgroupLimit("/sys/fs/cgroup/memory/memory.memsw.limit_in_bytes") - memory,
+		pids: cgroupLimit("/sys/fs/cgroup/pids/pids.max"),
+	};
+}
+
+/** The deadline in seconds held by the guest's init, or `undefined` when init is not `timeout`. */
+function initDeadline(): number | undefined {
+	const argv = readFileSync("/proc/1/cmdline", "utf8").split("\0");
+	if (path.basename(argv[0] ?? "") !== "timeout") return undefined;
+	for (let i = 1; i < argv.length; i++) {
+		const arg = argv[i] ?? "";
+		if (arg === "-k" || arg === "-s") i++;
+		else if (!arg.startsWith("-")) return Number(arg);
+	}
+	return undefined;
+}
 
 interface Run {
 	status: number;
@@ -345,6 +411,40 @@ describe("the guest this suite is running in", () => {
 		const marker = process.env.VEYYON_TEST_SANDBOX ?? "<unset>";
 
 		expect(Object.values(MARKER_BY_RUNG)).toContain(marker);
+	});
+
+	/*
+	 * A test run shares its machine with the operator's sessions. A container guest with no
+	 * memory ceiling, an OOM priority of 0 and a deadline held only by its client grew to 36 GiB
+	 * after the client was killed, and the machine's OOM killer took sessions before it. These
+	 * read the bounds from inside the guest, where they either took effect or did not. They do not
+	 * show that a ceiling is low enough for a given machine, and the remote rung's host-side
+	 * deadline is not readable from inside its guest.
+	 */
+	const bound = HOST_BOUND_BY_MARKER[process.env.VEYYON_TEST_SANDBOX ?? "<unset>"];
+
+	it("records how every rung bounds a run", () => {
+		expect(Object.keys(HOST_BOUND_BY_MARKER).sort()).toEqual(Object.values(MARKER_BY_RUNG).sort());
+	});
+
+	it.skipIf(bound?.ceilings !== "cgroup")(
+		"runs a container guest under a memory ceiling with no swap, the pid ceiling it declares and OOM priority 1000",
+		() => {
+			const ceilings = guestCeilings();
+			// Docker sets a finite pid ceiling of its own when none is passed, so only the value the
+			// rung declares shows its own ceiling took effect.
+			const declaredPids = process.env.VEYYON_TEST_PIDS_LIMIT ?? "<unset>";
+
+			expect(ceilings.memory).toBeLessThan(Number.POSITIVE_INFINITY);
+			expect(ceilings.swap).toBe(0);
+			expect(declaredPids).toMatch(/^[1-9][0-9]*$/);
+			expect(ceilings.pids).toBe(Number(declaredPids));
+			expect(readFileSync("/proc/self/oom_score_adj", "utf8").trim()).toBe("1000");
+		},
+	);
+
+	it.skipIf(bound?.deadline !== "guest")("ends a container guest at a deadline its own init holds", () => {
+		expect(initDeadline()).toBeGreaterThan(0);
 	});
 
 	/*
