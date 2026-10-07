@@ -149,6 +149,11 @@ describe("captureToolCallMetrics gating", () => {
 		expect(m?.durationMs).toBe(0);
 	});
 
+	it("clamps a queue wait that ends after the call started to zero", () => {
+		const m = captureToolCallMetrics(baseInput({ level: "rich", queuedAt: 1_100 }));
+		expect(m?.queuedMs).toBe(0);
+	});
+
 	it("leaves resultTokens unset when no counter is provided", () => {
 		const m = captureToolCallMetrics(baseInput({ level: "rich", countTokens: undefined }));
 		expect(m?.resultTokens).toBeUndefined();
@@ -281,6 +286,27 @@ describe("captureAssistantTurnMetrics gating", () => {
 		expect(m.cacheWriteTokens).toBe(10);
 		expect(m.reasoningTokens).toBe(40);
 		expect(m.upstreamProvider).toBe("Anthropic");
+	});
+
+	it("reports the share of input served from the cache, and no ratio when there was no input", () => {
+		const m = captureAssistantTurnMetrics(turnInput({ usage: usage({ input: 60, cacheRead: 20 }) }));
+		expect(m?.cacheHitRatio).toBe(0.25);
+		const empty = captureAssistantTurnMetrics(turnInput({ usage: usage({ input: 0, cacheRead: 0 }) }));
+		expect(empty).not.toHaveProperty("cacheHitRatio");
+	});
+
+	/**
+	 * A cache bust is a read below half of a previous read above 1000 tokens. Each boundary is
+	 * pinned on both sides: the floor, and the half-way threshold.
+	 */
+	it("flags a cache bust only below half of a previous read above 1000 tokens", () => {
+		const turn = (previousCacheReadTokens: number, cacheRead: number) =>
+			captureAssistantTurnMetrics(turnInput({ previousCacheReadTokens, usage: usage({ cacheRead }) }));
+		expect(turn(4_000, 1_999)).toMatchObject({ isCacheBust: true, cacheBustDeltaTokens: 2_001 });
+		expect(turn(4_000, 2_000)).not.toHaveProperty("isCacheBust");
+		expect(turn(1_001, 0)).toMatchObject({ isCacheBust: true, cacheBustDeltaTokens: 1_001 });
+		expect(turn(1_000, 0)).not.toHaveProperty("isCacheBust");
+		expect(turn(1_000, 0)).not.toHaveProperty("cacheBustDeltaTokens");
 	});
 
 	it("clamps a backwards turn (endedAt before startedAt) to zero duration", () => {
