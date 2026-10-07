@@ -212,9 +212,11 @@
 - The secret obfuscator validates its registry, installs plain and regex entries, builds regex replacements and restores placeholders in single-purpose methods, and its message, content and provider-context walks share one identity-preserving map; no user-visible change.
 - Structure search resolves its scope, merges overlapping targets, groups matches, renders each file, lays out the result and fits it to the inline budget in single-purpose functions instead of one 280-line closure; no user-visible change.
 - `executeBash` plans the command, joins the CPU budget, leases the persistent shell, arms the abort and deadline, and settles the result in single-purpose steps instead of one 270-line function; a builtin command runs in 0.08 ms and a 20,000-line `seq` in 0.9 ms per call, unchanged.
+- The task card appends every agent, review, finding and nested-call row into one list instead of building and spreading a list per section; its rows are unchanged across a 6,000-card corpus, and drawing that corpus takes 1115 ms instead of 1305 ms.
 
 ### Fixed
 
+- An expanded task card draws an agent's `Output` heading once when the agent returned `{}`, `[]` or an empty JSON value, and when a running agent's live output is one, instead of twice.
 - An agent with several approval cards open at once stays marked as waiting until its last card closes, instead of showing as working once its first card is answered, so the agent dashboard draws it as blocked and the runtime budget excludes the operator's reading time across the whole span, counted once.
 - A non-recursive discovery scan reads only the files directly inside its directory, so a helper module under `tools/<name>/` no longer registers as a custom tool named for its file, and a file below `commands/`, `rules/`, `prompts/` or `instructions/` (`rules/archive/old.md`) no longer loads as a command, rule, prompt or instruction.
 - `VEYYON_TIMING=x` on an interactive launch stops the launch card's terminal before it prints, so the startup timing tree reaches stderr instead of only the log file, and the startup bench's `ready:load` and `ready:boot` arms report samples again.
