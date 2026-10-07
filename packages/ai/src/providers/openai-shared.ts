@@ -206,22 +206,23 @@ function setHeaderIfAbsent(headers: Record<string, string>, name: string, value:
 	headers[name] = value;
 }
 
-export function resolveOpenAIRequestSetup(
+function requireOpenAIApiKey(apiKey: string | undefined): string {
+	if (apiKey) return apiKey;
+	if (!$env.OPENAI_API_KEY) {
+		throw new AIError.MissingApiKeyError(
+			undefined,
+			"OpenAI API key is required. Set OPENAI_API_KEY environment variable or pass it as an argument.",
+		);
+	}
+	return $env.OPENAI_API_KEY;
+}
+
+/** Catalog headers, provider routing headers and caller headers, in that order of precedence. */
+function buildOpenAIRequestHeaders(
 	model: OpenAIRequestSetupModel,
 	options: OpenAIRequestSetupOptions,
-): OpenAIRequestSetup {
-	let apiKey = options.apiKey;
-	if (!apiKey) {
-		if (!$env.OPENAI_API_KEY) {
-			throw new AIError.MissingApiKeyError(
-				undefined,
-				"OpenAI API key is required. Set OPENAI_API_KEY environment variable or pass it as an argument.",
-			);
-		}
-		apiKey = $env.OPENAI_API_KEY;
-	}
-	const rawApiKey = apiKey;
-	let headers = { ...(model.headers ?? {}) };
+): Record<string, string> {
+	const headers = { ...(model.headers ?? {}) };
 	if (model.provider === "openrouter") {
 		Object.assign(headers, getOpenRouterHeaders());
 	}
@@ -241,64 +242,79 @@ export function resolveOpenAIRequestSetup(
 	if (model.provider === "coreweave") {
 		applyCoreWeaveProjectHeader(headers);
 	}
-	if (options.prependHeaders) {
-		headers = { ...options.prependHeaders(), ...headers };
-	}
+	return options.prependHeaders ? { ...options.prependHeaders(), ...headers } : headers;
+}
 
-	let copilotPremiumRequests: number | undefined;
-	let baseUrl = model.baseUrl;
-	if (model.provider === "moonshot") {
-		// Bundled `moonshot` catalog models hardcode the international endpoint
-		// (`api.moonshot.ai`). MOONSHOT_BASE_URL lets users redirect the provider
-		// at the China platform (`api.moonshot.cn`), which only accepts China keys
-		// and rejects the international host. (#2883)
-		const moonshotBaseUrl = $env.MOONSHOT_BASE_URL?.trim();
-		if (moonshotBaseUrl) {
-			baseUrl = moonshotBaseUrl;
-		}
-	}
-	if (model.provider === "sakana") {
-		const sakanaBaseUrl = resolveSakanaRequestBaseUrl();
-		if (sakanaBaseUrl) {
-			baseUrl = sakanaBaseUrl;
-		}
-	}
-	if (model.provider === "github-copilot") {
-		apiKey = parseGitHubCopilotApiKey(rawApiKey).accessToken;
-		const copilot = buildCopilotDynamicHeaders({
-			messages: options.messages,
-			hasImages: hasCopilotVisionInput(options.messages),
-			premiumMultiplier: model.premiumMultiplier,
-			headers,
-			initiatorOverride: options.initiatorOverride,
-		});
-		Object.assign(headers, copilot.headers);
-		copilotPremiumRequests = copilot.premiumRequests;
-		baseUrl = resolveGitHubCopilotBaseUrl(model.baseUrl, rawApiKey) ?? model.baseUrl;
-	}
+/** The credential and endpoint a request authenticates with after provider-specific rewriting. */
+interface OpenAIProviderEndpoint {
+	apiKey: string;
+	baseUrl: string | undefined;
+	copilotPremiumRequests?: number;
+}
 
-	if (options.alibabaCodingPlanAuth && model.provider === "alibaba-coding-plan") {
-		try {
-			const parsed = JSON.parse(rawApiKey);
-			if (typeof parsed?.token === "string") {
-				apiKey = parsed.token;
-			}
-			if (typeof parsed?.enterpriseUrl === "string") {
-				baseUrl = parsed.enterpriseUrl;
-			}
-		} catch {
-			// Not JSON — use raw apiKey and catalog baseUrl.
-		}
+/** An Alibaba Coding Plan key may be JSON naming the token and an enterprise endpoint. */
+function resolveAlibabaCodingPlanEndpoint(rawApiKey: string, baseUrl: string | undefined): OpenAIProviderEndpoint {
+	let parsed: { token?: unknown; enterpriseUrl?: unknown } | null;
+	try {
+		parsed = JSON.parse(rawApiKey);
+	} catch {
+		// Not JSON: the raw key and the catalog base URL stand.
+		return { apiKey: rawApiKey, baseUrl };
 	}
+	return {
+		apiKey: typeof parsed?.token === "string" ? parsed.token : rawApiKey,
+		baseUrl: typeof parsed?.enterpriseUrl === "string" ? parsed.enterpriseUrl : baseUrl,
+	};
+}
 
-	let query: Record<string, string> | undefined;
-	if (options.azureChatCompletions && baseUrl?.includes(".openai.azure.com")) {
-		if (!baseUrl.includes("/deployments/")) {
-			baseUrl = `${baseUrl}/deployments/${options.azureChatCompletions.deploymentName}`;
+/**
+ * Rewrite the key and base URL for providers that derive them from the
+ * environment or from the stored key. GitHub Copilot also merges its dynamic
+ * headers into `headers`.
+ */
+function resolveOpenAIProviderEndpoint(
+	model: OpenAIRequestSetupModel,
+	options: OpenAIRequestSetupOptions,
+	headers: Record<string, string>,
+	rawApiKey: string,
+): OpenAIProviderEndpoint {
+	switch (model.provider) {
+		case "moonshot":
+			// Bundled `moonshot` catalog models hardcode the international endpoint
+			// (`api.moonshot.ai`). MOONSHOT_BASE_URL lets users redirect the provider
+			// at the China platform (`api.moonshot.cn`), which only accepts China keys
+			// and rejects the international host. (#2883)
+			return { apiKey: rawApiKey, baseUrl: $env.MOONSHOT_BASE_URL?.trim() || model.baseUrl };
+		case "sakana":
+			return { apiKey: rawApiKey, baseUrl: resolveSakanaRequestBaseUrl() ?? model.baseUrl };
+		case "github-copilot": {
+			const apiKey = parseGitHubCopilotApiKey(rawApiKey).accessToken;
+			const copilot = buildCopilotDynamicHeaders({
+				messages: options.messages,
+				hasImages: hasCopilotVisionInput(options.messages),
+				premiumMultiplier: model.premiumMultiplier,
+				headers,
+				initiatorOverride: options.initiatorOverride,
+			});
+			Object.assign(headers, copilot.headers);
+			return {
+				apiKey,
+				baseUrl: resolveGitHubCopilotBaseUrl(model.baseUrl, rawApiKey) ?? model.baseUrl,
+				copilotPremiumRequests: copilot.premiumRequests,
+			};
 		}
-		query = { "api-version": options.azureChatCompletions.apiVersion };
+		case "alibaba-coding-plan":
+			if (options.alibabaCodingPlanAuth) return resolveAlibabaCodingPlanEndpoint(rawApiKey, model.baseUrl);
+			break;
 	}
+	return { apiKey: rawApiKey, baseUrl: model.baseUrl };
+}
 
+function applyOpenAISessionHeaders(
+	headers: Record<string, string>,
+	model: OpenAIRequestSetupModel,
+	options: OpenAIRequestSetupOptions,
+): void {
 	if (options.openAISessionId && model.provider === "openai") {
 		setHeaderIfAbsent(headers, "session_id", options.openAISessionId);
 		setHeaderIfAbsent(headers, "x-client-request-id", options.openAISessionId);
@@ -306,13 +322,30 @@ export function resolveOpenAIRequestSetup(
 	if (options.promptCacheSessionId && model.compat?.promptCacheSessionHeader) {
 		setHeaderIfAbsent(headers, model.compat.promptCacheSessionHeader, options.promptCacheSessionId);
 	}
+}
 
+export function resolveOpenAIRequestSetup(
+	model: OpenAIRequestSetupModel,
+	options: OpenAIRequestSetupOptions,
+): OpenAIRequestSetup {
+	const rawApiKey = requireOpenAIApiKey(options.apiKey);
+	const headers = buildOpenAIRequestHeaders(model, options);
+	const endpoint = resolveOpenAIProviderEndpoint(model, options, headers, rawApiKey);
+	let baseUrl = endpoint.baseUrl;
+	let query: Record<string, string> | undefined;
+	if (options.azureChatCompletions && baseUrl?.includes(".openai.azure.com")) {
+		if (!baseUrl.includes("/deployments/")) {
+			baseUrl = `${baseUrl}/deployments/${options.azureChatCompletions.deploymentName}`;
+		}
+		query = { "api-version": options.azureChatCompletions.apiVersion };
+	}
+	applyOpenAISessionHeaders(headers, model, options);
 	if (options.defaultBaseUrl !== undefined) {
 		baseUrl = baseUrl ?? ($env.OPENAI_BASE_URL?.trim() || options.defaultBaseUrl);
 	}
 	const requestHeaders = { ...headers };
-	headers.Authorization ??= `Bearer ${apiKey}`;
-	return { copilotPremiumRequests, baseUrl, headers, query, requestHeaders };
+	headers.Authorization ??= `Bearer ${endpoint.apiKey}`;
+	return { copilotPremiumRequests: endpoint.copilotPremiumRequests, baseUrl, headers, query, requestHeaders };
 }
 
 export function applyOpenAIServiceTier(
@@ -780,47 +813,84 @@ function isImplicitDisableWhenNotRequested(disableMode: OpenAIReasoningDisableMo
 	);
 }
 
-export function resolveOpenAICompatPolicy<TApi extends Api>(
+/** Why the request's tool choice turns reasoning off, if it does. */
+function reasoningToolChoiceConflict(
+	compat: OpenAICompatPolicyCompat,
+	toolChoice: unknown,
+): OpenAIReasoningDisableReason | undefined {
+	if (compat.disableReasoningOnForcedToolChoice && compat.supportsForcedToolChoice && isForcedToolChoice(toolChoice)) {
+		return "forced-tool-choice";
+	}
+	return compat.disableReasoningOnToolChoice && toolChoice !== undefined ? "tool-choice" : undefined;
+}
+
+interface RequestedReasoning {
+	/** `whenThinking` when reasoning is on and the model declares one, else the base compat. */
+	compat: OpenAICompatPolicyCompat;
+	enabled: boolean;
+	/** Z.ai maps a requested effort to `none`, its switch for no reasoning. */
+	disabledByNoneEffort: boolean;
+	wireEffort: string | undefined;
+}
+
+function resolveRequestedReasoning<TApi extends Api>(
 	model: Model<TApi>,
+	baseCompat: OpenAICompatPolicyCompat,
+	effort: string | undefined,
+	blocked: boolean,
+): RequestedReasoning {
+	if (effort === undefined || !model.reasoning || blocked) {
+		return { compat: baseCompat, enabled: false, disabledByNoneEffort: false, wireEffort: undefined };
+	}
+	if (
+		baseCompat.reasoningDisableMode === "zai-thinking-disabled" &&
+		mapOpenAIReasoningEffort(model, baseCompat, effort) === "none"
+	) {
+		return { compat: baseCompat, enabled: false, disabledByNoneEffort: true, wireEffort: undefined };
+	}
+	const compat = (baseCompat.whenThinking as OpenAICompatPolicyCompat | undefined) ?? baseCompat;
+	return {
+		compat,
+		enabled: true,
+		disabledByNoneEffort: false,
+		wireEffort: mapOpenAIReasoningEffort(model, compat, effort),
+	};
+}
+
+/**
+ * The effort sent when the caller turns reasoning off on a `lowest-effort`
+ * host. `lowest-effort` means the host cannot be told to stop reasoning, so
+ * the floor tier stands in for off. A model that publishes no tiers has no
+ * floor to pin, and the request still has to go out: send no
+ * `reasoning_effort` and let the model manage its own reasoning, rather than
+ * fail a turn that asked to turn thinking off on a model with no effort dial.
+ */
+function lowestEffortStandIn<TApi extends Api>(
+	model: Model<TApi>,
+	compat: OpenAICompatPolicyCompat,
+	omitReasoningEffort: boolean,
+): string | undefined {
+	if (compat.reasoningDisableMode !== "lowest-effort" || !compat.supportsReasoningEffort || omitReasoningEffort) {
+		return undefined;
+	}
+	const minEffort = getSupportedEfforts(model)[0];
+	return minEffort === undefined ? undefined : mapOpenAIReasoningEffort(model, compat, minEffort);
+}
+
+function resolveOpenAIReasoningPolicy<TApi extends Api>(
+	model: Model<TApi>,
+	baseCompat: OpenAICompatPolicyCompat,
 	options: ResolveOpenAICompatPolicyOptions,
-): OpenAICompatPolicy {
-	const baseCompat = (options.compat ?? model.compat) as OpenAICompatPolicyCompat;
+): Pick<OpenAICompatPolicy, "compat" | "reasoning"> {
 	const requestedEffort = options.reasoning;
 	const modelSupported = Boolean(model.reasoning);
-	const forcedToolChoiceSuppressesReasoning =
-		baseCompat.disableReasoningOnForcedToolChoice &&
-		baseCompat.supportsForcedToolChoice &&
-		isForcedToolChoice(options.toolChoice);
-	const anyToolChoiceSuppressesReasoning =
-		!forcedToolChoiceSuppressesReasoning &&
-		baseCompat.disableReasoningOnToolChoice &&
-		options.toolChoice !== undefined;
-	const requestedAndAllowed = requestedEffort !== undefined && !options.disableReasoning && modelSupported;
-	const conflictDisableReason: OpenAIReasoningDisableReason | undefined = forcedToolChoiceSuppressesReasoning
-		? "forced-tool-choice"
-		: anyToolChoiceSuppressesReasoning
-			? "tool-choice"
-			: undefined;
-	const disableReason: OpenAIReasoningDisableReason | undefined = options.disableReasoning
-		? "caller"
-		: conflictDisableReason;
-	const enabledBeforeThinkingVariant = requestedAndAllowed && disableReason === undefined;
-	const baseWireEffort =
-		enabledBeforeThinkingVariant && requestedEffort !== undefined
-			? mapOpenAIReasoningEffort(model, baseCompat, requestedEffort)
-			: undefined;
-	const disabledByNoneEffort =
-		enabledBeforeThinkingVariant &&
-		baseCompat.reasoningDisableMode === "zai-thinking-disabled" &&
-		baseWireEffort === "none";
-	const enabled = enabledBeforeThinkingVariant && !disabledByNoneEffort;
-	const compat =
-		enabled && baseCompat.whenThinking ? (baseCompat.whenThinking as OpenAICompatPolicyCompat) : baseCompat;
+	const conflictDisableReason = reasoningToolChoiceConflict(baseCompat, options.toolChoice);
+	const disableReason = options.disableReasoning ? "caller" : conflictDisableReason;
+	const requested = resolveRequestedReasoning(model, baseCompat, requestedEffort, disableReason !== undefined);
+	const compat = requested.compat;
 	const omitReasoningEffort =
 		options.omitReasoningEffort ?? (compat.omitReasoningEffort || !compat.supportsReasoningEffort);
 	const disableMode = compat.reasoningDisableMode;
-	let wireEffort =
-		enabled && requestedEffort !== undefined ? mapOpenAIReasoningEffort(model, compat, requestedEffort) : undefined;
 	const disabledWithoutRequest =
 		modelSupported &&
 		requestedEffort === undefined &&
@@ -829,37 +899,22 @@ export function resolveOpenAICompatPolicy<TApi extends Api>(
 	const disabled =
 		(modelSupported && disableReason === "caller") ||
 		conflictDisableReason !== undefined ||
-		(modelSupported && disabledWithoutRequest) ||
-		disabledByNoneEffort;
-	if (
-		disabled &&
-		disableReason === "caller" &&
-		requestedEffort === undefined &&
-		disableMode === "lowest-effort" &&
-		compat.supportsReasoningEffort &&
-		!omitReasoningEffort
-	) {
-		// `lowest-effort` means the host cannot be told to stop reasoning, so the
-		// floor tier stands in for off. A model that publishes no tiers has no
-		// floor to pin, and the request still has to go out: send no
-		// `reasoning_effort` and let the model manage its own reasoning. Failing
-		// the whole turn here punished the operator for asking to turn thinking
-		// OFF on a model that never offered the dial.
-		const minEffort = getSupportedEfforts(model)[0];
-		wireEffort = minEffort === undefined ? undefined : mapOpenAIReasoningEffort(model, compat, minEffort);
-	}
-
+		disabledWithoutRequest ||
+		requested.disabledByNoneEffort;
+	const callerTurnedOffUnrequested = disabled && disableReason === "caller" && requestedEffort === undefined;
 	return {
-		endpoint: options.endpoint,
 		compat,
 		reasoning: {
 			modelSupported,
 			supportsParams: compat.supportsReasoningParams,
 			requestedEffort,
-			wireEffort,
-			enabled,
+			wireEffort: callerTurnedOffUnrequested
+				? lowestEffortStandIn(model, compat, omitReasoningEffort)
+				: requested.wireEffort,
+			enabled: requested.enabled,
 			disabled,
-			disableReason: disableReason ?? (disabledWithoutRequest || disabledByNoneEffort ? "not-requested" : undefined),
+			disableReason:
+				disableReason ?? (disabledWithoutRequest || requested.disabledByNoneEffort ? "not-requested" : undefined),
 			dialect: compat.thinkingFormat,
 			requiresReasoningContentForToolCalls: compat.requiresReasoningContentForToolCalls,
 			requiresReasoningContentForAllAssistantTurns: compat.requiresReasoningContentForAllAssistantTurns,
@@ -871,6 +926,22 @@ export function resolveOpenAICompatPolicy<TApi extends Api>(
 			includeEncryptedReasoning: options.includeEncryptedReasoning ?? compat.includeEncryptedReasoning,
 			filterReasoningHistory: options.filterReasoningHistory ?? compat.filterReasoningHistory,
 		},
+	};
+}
+
+export function resolveOpenAICompatPolicy<TApi extends Api>(
+	model: Model<TApi>,
+	options: ResolveOpenAICompatPolicyOptions,
+): OpenAICompatPolicy {
+	const { compat, reasoning } = resolveOpenAIReasoningPolicy(
+		model,
+		(options.compat ?? model.compat) as OpenAICompatPolicyCompat,
+		options,
+	);
+	return {
+		endpoint: options.endpoint,
+		compat,
+		reasoning,
 		tools: {
 			strictResponsesPairing: options.strictResponsesPairing ?? compat.strictResponsesPairing ?? false,
 			toolCallIdKind: compat.requiresMistralToolIds
@@ -880,7 +951,7 @@ export function resolveOpenAICompatPolicy<TApi extends Api>(
 					: "default",
 		},
 		messages: {
-			systemRole: modelSupported && compat.supportsDeveloperRole ? "developer" : "system",
+			systemRole: reasoning.modelSupported && compat.supportsDeveloperRole ? "developer" : "system",
 			supportsDeveloperRole: compat.supportsDeveloperRole,
 			supportsMultipleSystemMessages: compat.supportsMultipleSystemMessages ?? true,
 		},
@@ -919,88 +990,98 @@ function encodeChatCompletionsDisabledReasoning(
 	}
 }
 
-export function applyChatCompletionsCompatPolicy(params: OpenAICompletionsParams, policy: OpenAICompatPolicy): void {
-	// `preserve_thinking` is a chat-template HISTORY knob, not a per-turn
-	// thinking switch — it controls whether OLDER assistant turns render
-	// with `<think>...</think>` on Qwen3.6+. Emit it BEFORE the reasoning
-	// state branches and EVERY early-return below, because the wire shape
-	// must carry the kwarg in three cases the auto-detected
-	// `qwenPreserveThinking` flag covers but `reasoning.enabled` does not:
-	//
-	// 1. Discovered local Qwen models. `discoverOpenAICompatibleModels`
-	//    stamps `reasoning: false` on every spec built from a generic
-	//    `/v1/models` endpoint (the upstream doesn't advertise the
-	//    capability), so `model.reasoning === false` → `reasoning.enabled
-	//    === false`, the body wouldn't otherwise see the kwarg, and the
-	//    encoder's `replayReasoningContent` branch would keep shipping
-	//    `reasoning_content` only for the template to strip `<think>` from
-	//    older turns anyway. Exactly the #3528 / #3541 symptom on every
-	//    discovered Qwen build.
-	// 2. Caller-disabled reasoning. The slot's KV cache still holds prior
-	//    `<think>...</think>` tokens from earlier thinking turns; the
-	//    template must keep rendering them or cache invalidates at the
-	//    first historic `<think>`.
-	// 3. Forced-tool-choice / DeepSeek-style auto-disable. Same reasoning
-	//    as (2) — historic thinking blocks have to survive history replay
-	//    even when the current turn cannot think.
-	//
-	// Non-Qwen templates ignore the parameter (jinja `is defined` check
-	// silently no-ops), so emitting it unconditionally for the Qwen-family
-	// + local-cache compat flag is safe.
-	if (policy.compat.qwenPreserveThinking) {
-		// Mirror the dialect split that gates `enable_thinking`. The
-		// `qwen` dialect rides the top-level field (the only place
-		// llama.cpp's `--jinja` hook AND Alibaba Cloud Model Studio's
-		// compatible-mode look) while the `qwen-chat-template` dialect
-		// (NVIDIA NIM, vLLM/SGLang's chat-template-kwargs path) MUST
-		// ride only the kwargs copy — NIM's request schema is
-		// `additionalProperties: false` and rejects every unknown
-		// top-level field, the very reason `enable_thinking` is
-		// route-split this way (#2299, see `catalog/src/compat/openai.ts`
-		// thinkingFormat comment).
-		if (policy.compat.thinkingFormat === "qwen") {
-			params.preserve_thinking = true;
-		}
-		params.chat_template_kwargs = { ...params.chat_template_kwargs, preserve_thinking: true };
+/**
+ * `preserve_thinking` is a chat-template HISTORY knob, not a per-turn
+ * thinking switch — it controls whether OLDER assistant turns render
+ * with `<think>...</think>` on Qwen3.6+. It is emitted before the reasoning
+ * state branches and every early return in
+ * {@link applyChatCompletionsCompatPolicy}, because the wire shape must carry
+ * the kwarg in three cases the auto-detected `qwenPreserveThinking` flag
+ * covers but `reasoning.enabled` does not:
+ *
+ * 1. Discovered local Qwen models. `discoverOpenAICompatibleModels`
+ *    stamps `reasoning: false` on every spec built from a generic
+ *    `/v1/models` endpoint (the upstream doesn't advertise the
+ *    capability), so `model.reasoning === false` → `reasoning.enabled
+ *    === false`, the body wouldn't otherwise see the kwarg, and the
+ *    encoder's `replayReasoningContent` branch would keep shipping
+ *    `reasoning_content` only for the template to strip `<think>` from
+ *    older turns anyway. Exactly the #3528 / #3541 symptom on every
+ *    discovered Qwen build.
+ * 2. Caller-disabled reasoning. The slot's KV cache still holds prior
+ *    `<think>...</think>` tokens from earlier thinking turns; the
+ *    template must keep rendering them or cache invalidates at the
+ *    first historic `<think>`.
+ * 3. Forced-tool-choice / DeepSeek-style auto-disable. Same reasoning
+ *    as (2) — historic thinking blocks have to survive history replay
+ *    even when the current turn cannot think.
+ *
+ * Non-Qwen templates ignore the parameter (jinja `is defined` check
+ * silently no-ops), so emitting it unconditionally for the Qwen-family
+ * + local-cache compat flag is safe.
+ */
+function applyQwenPreserveThinking(params: OpenAICompletionsParams, compat: OpenAICompatPolicyCompat): void {
+	if (!compat.qwenPreserveThinking) return;
+	// Mirror the dialect split that gates `enable_thinking`. The
+	// `qwen` dialect rides the top-level field (the only place
+	// llama.cpp's `--jinja` hook AND Alibaba Cloud Model Studio's
+	// compatible-mode look) while the `qwen-chat-template` dialect
+	// (NVIDIA NIM, vLLM/SGLang's chat-template-kwargs path) MUST
+	// ride only the kwargs copy — NIM's request schema is
+	// `additionalProperties: false` and rejects every unknown
+	// top-level field, the very reason `enable_thinking` is
+	// route-split this way (#2299, see `catalog/src/compat/openai.ts`
+	// thinkingFormat comment).
+	if (compat.thinkingFormat === "qwen") {
+		params.preserve_thinking = true;
 	}
+	params.chat_template_kwargs = { ...params.chat_template_kwargs, preserve_thinking: true };
+}
 
+function encodeChatCompletionsEnabledReasoning(params: OpenAICompletionsParams, policy: OpenAICompatPolicy): void {
+	const reasoning = policy.reasoning;
+	switch (reasoning.disableMode) {
+		case "zai-thinking-disabled":
+			if (reasoning.wireEffort === "none") {
+				encodeChatCompletionsDisabledReasoning(params, reasoning.disableMode);
+				return;
+			}
+			params.thinking = { type: "enabled" };
+			if (policy.compat.thinkingKeep) params.thinking.keep = policy.compat.thinkingKeep;
+			if (policy.compat.supportsReasoningEffort && reasoning.wireEffort !== undefined) {
+				params.reasoning_effort = reasoning.wireEffort as Effort;
+			}
+			break;
+		case "qwen-enable-thinking-false":
+			params.enable_thinking = true;
+			break;
+		case "qwen-template-false":
+			// Spread so the `preserve_thinking` kwarg set by
+			// `applyQwenPreserveThinking` survives the merge — a bare
+			// `{ enable_thinking: true }` would clobber it.
+			params.chat_template_kwargs = { ...params.chat_template_kwargs, enable_thinking: true };
+			break;
+		case "openrouter-enabled-false":
+			if (reasoning.wireEffort !== undefined) {
+				(params as typeof params & { reasoning?: { effort?: string } }).reasoning = {
+					effort: reasoning.wireEffort,
+				};
+			}
+			break;
+		default:
+			if (!reasoning.omitReasoningEffort && reasoning.wireEffort !== undefined) {
+				params.reasoning_effort = reasoning.wireEffort as Effort;
+			}
+			break;
+	}
+}
+
+export function applyChatCompletionsCompatPolicy(params: OpenAICompletionsParams, policy: OpenAICompatPolicy): void {
+	applyQwenPreserveThinking(params, policy.compat);
 	const reasoning = policy.reasoning;
 	if ((!reasoning.modelSupported && !reasoning.disabled) || !reasoning.supportsParams) return;
 	if (reasoning.enabled) {
-		switch (reasoning.disableMode) {
-			case "zai-thinking-disabled":
-				if (reasoning.wireEffort === "none") {
-					encodeChatCompletionsDisabledReasoning(params, reasoning.disableMode);
-					return;
-				}
-				params.thinking = { type: "enabled" };
-				if (policy.compat.thinkingKeep) params.thinking.keep = policy.compat.thinkingKeep;
-				if (policy.compat.supportsReasoningEffort && reasoning.wireEffort !== undefined) {
-					params.reasoning_effort = reasoning.wireEffort as Effort;
-				}
-				break;
-			case "qwen-enable-thinking-false":
-				params.enable_thinking = true;
-				break;
-			case "qwen-template-false":
-				// Spread so the `preserve_thinking` kwarg hoisted above
-				// survives the merge — a bare `{ enable_thinking: true }`
-				// would clobber it.
-				params.chat_template_kwargs = { ...params.chat_template_kwargs, enable_thinking: true };
-				break;
-			case "openrouter-enabled-false":
-				if (reasoning.wireEffort !== undefined) {
-					(params as typeof params & { reasoning?: { effort?: string } }).reasoning = {
-						effort: reasoning.wireEffort,
-					};
-				}
-				break;
-			default:
-				if (!reasoning.omitReasoningEffort && reasoning.wireEffort !== undefined) {
-					params.reasoning_effort = reasoning.wireEffort as Effort;
-				}
-				break;
-		}
+		encodeChatCompletionsEnabledReasoning(params, policy);
 		return;
 	}
 	if (!reasoning.disabled) return;

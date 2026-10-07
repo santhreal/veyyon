@@ -246,7 +246,7 @@ if (params.cache_control != null) return;
 params.cache_control = cacheRetention === "long" ? { type: "ephemeral", ttl: "1h" } : { type: "ephemeral" };
 ```
 
-`isOpenRouterAnthropicModel` (`openai-shared.ts:455`) is `provider === "openrouter"` and an id
+`isOpenRouterAnthropicModel` (`openai-shared.ts:545`) is `provider === "openrouter"` and an id
 starting with `anthropic/`. That prefix test is not the `isAnthropicModel` test
 `compat/openai.ts:494` uses, which is what leaves the alias rows uncovered (see the first known
 limitation below).
@@ -273,7 +273,7 @@ sessionId?: string;
 promptCacheKey?: string;
 ```
 
-`getOpenAIPromptCacheKey` (`packages/ai/src/providers/openai-shared.ts:382`) returns
+`getOpenAIPromptCacheKey` (`packages/ai/src/providers/openai-shared.ts:443`) returns
 `undefined` when retention is `none`, then normalizes `promptCacheKey ?? sessionId`. So opting
 out of caching also removes the identity, rather than leaving a key that identifies a
 conversation for no benefit.
@@ -452,7 +452,7 @@ than we do, and the comparison is included because it makes the gap concrete.
   catalog carries 37 Claude rows under api `openrouter`, four of them the
   `~anthropic/claude-*-latest` aliases that the tilde sorts to the top of the model picker. The
   Responses route's request-level marker is gated on `isOpenRouterAnthropicModel`
-  (`openai-shared.ts:455`), an `anthropic/` prefix test that is false for all four, so those four
+  (`openai-shared.ts:545`), an `anthropic/` prefix test that is false for all four, so those four
   rows send `prompt_cache_key` and nothing an Anthropic upstream acts on by itself. That is the
   same prefix test `compat/openai.ts:494` was changed away from. The
   `cacheControlFormat: "anthropic"` that line computes for `isOpenRouter && isAnthropicModel` is
