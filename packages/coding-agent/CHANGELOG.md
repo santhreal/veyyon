@@ -211,6 +211,7 @@
 - An extension tool call resolves its approval policy, raises its approval card, sends `tool_call` and rewrites its result in four steps instead of one 350-line method; approval, vetting and results are unchanged.
 - The secret obfuscator validates its registry, installs plain and regex entries, builds regex replacements and restores placeholders in single-purpose methods, and its message, content and provider-context walks share one identity-preserving map; no user-visible change.
 - Structure search resolves its scope, merges overlapping targets, groups matches, renders each file, lays out the result and fits it to the inline budget in single-purpose functions instead of one 280-line closure; no user-visible change.
+- `executeBash` plans the command, joins the CPU budget, leases the persistent shell, arms the abort and deadline, and settles the result in single-purpose steps instead of one 270-line function; a builtin command runs in 0.08 ms and a 20,000-line `seq` in 0.9 ms per call, unchanged.
 
 ### Fixed
 
@@ -280,6 +281,7 @@
 - An action on an element named by a `tab.observe()` id or a `tab.ariaSnapshot()` ref lands once on the element that replaced it after the page redrew, when that element is the only one with the node's role and accessible name, instead of failing with "Node is detached from document"; a click, hover or tap reads the element's point and dispatches in one round trip, so it also lands on a page that redraws every animation frame, and an element the role and name cannot single out fails naming the id or ref as stale.
 - `tab.screenshot()` sends a second capture on a CDP session of its own when the first has not answered within 1 second, up to three, so a capture sent while the page commits a navigation no longer holds until the protocol timeout or holds later screenshots and the tab's close behind it.
 - A `tab.goto()` aborted with `net::ERR_ABORTED` by a navigation the page started, such as a click handler's redirect, is sent once more and resolves on its own URL; a goto aborted twice fails naming the navigation that aborted it last.
+- A bash command whose caller cancels while the call joins the session CPU budget returns as cancelled without running, instead of running to completion and reporting success.
 
 ### Removed
 
