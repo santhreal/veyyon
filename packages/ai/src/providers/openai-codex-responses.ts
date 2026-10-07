@@ -4337,81 +4337,70 @@ function readCodexFailureEvent(rawEvent: Record<string, unknown>): CodexFailureE
 	};
 }
 
-export function isRetryableCodexFailureEvent(rawEvent: Record<string, unknown>): boolean {
-	const event = readCodexFailureEvent(rawEvent);
+/** The code, message and status a failure event reports, read nested-first so the retry flag, the error code and the message text agree. */
+interface CodexFailureFields {
+	code?: string | undefined;
+	message?: string | undefined;
+	status?: string | undefined;
+}
+
+function readCodexFailureFields(event: CodexFailureEvent): CodexFailureFields {
 	const error = event.error ?? event.response?.error;
-	const code = error?.code ?? error?.type ?? event.code;
+	return {
+		code: error?.code ?? error?.type ?? event.code,
+		message: error?.message ?? event.message ?? event.response?.message,
+		status: event.response?.status ?? event.status,
+	};
+}
+
+function isRetryableCodexFailure({ code, message }: CodexFailureFields): boolean {
 	if (code && CODEX_RETRYABLE_EVENT_CODES.has(code.toLowerCase())) {
 		return true;
 	}
-	const message = error?.message ?? event.message ?? event.response?.message;
 	return !!message && AIError.isTransientErrorText(message);
+}
+
+export function isRetryableCodexFailureEvent(rawEvent: Record<string, unknown>): boolean {
+	return isRetryableCodexFailure(readCodexFailureFields(readCodexFailureEvent(rawEvent)));
 }
 
 export function createCodexProviderStreamError(rawEvent: Record<string, unknown>): CodexProviderStreamError {
 	const event = readCodexFailureEvent(rawEvent);
-	const nestedError = event.error ?? event.response?.error;
-	const code = nestedError?.code ?? nestedError?.type ?? event.code ?? "";
-	const message = event.message ?? "";
-	const formattedMessage =
-		event.type === "error"
-			? formatCodexErrorEvent(rawEvent, code, message)
-			: (formatCodexFailure(rawEvent) ?? "Codex response failed");
-	return new CodexProviderStreamError(formattedMessage, {
-		retryable: isRetryableCodexFailureEvent(rawEvent),
-		code: code || undefined,
+	const fields = readCodexFailureFields(event);
+	const label = event.type === "error" ? "error event" : "response failed";
+	return new CodexProviderStreamError(formatCodexFailure(label, fields, rawEvent), {
+		retryable: isRetryableCodexFailure(fields),
+		code: fields.code || undefined,
 	});
 }
 
-function formatCodexFailure(rawEvent: Record<string, unknown>): string | null {
-	const event = readCodexFailureEvent(rawEvent);
-	const error = event.error ?? event.response?.error;
-	const message = error?.message ?? event.message ?? event.response?.message;
-	const code = error?.code ?? error?.type ?? event.code;
-	const status = event.response?.status ?? event.status;
+const CODEX_FAILURE_JSON_LIMIT = 800;
 
+/**
+ * `Codex <label>: <message> (code=…, status=…)`, falling back to the metadata alone and then to the raw
+ * event as JSON. Rate-limit and policy classifiers parse these bytes.
+ */
+function formatCodexFailure(
+	label: "error event" | "response failed",
+	{ code, message, status }: CodexFailureFields,
+	rawEvent: Record<string, unknown>,
+): string {
 	const meta: string[] = [];
 	if (code) meta.push(`code=${code}`);
 	if (status) meta.push(`status=${status}`);
-
 	if (message) {
-		const metaText = meta.length ? ` (${meta.join(", ")})` : "";
-		return `Codex response failed: ${message}${metaText}`;
+		return meta.length ? `Codex ${label}: ${message} (${meta.join(", ")})` : `Codex ${label}: ${message}`;
 	}
 	if (meta.length) {
-		return `Codex response failed (${meta.join(", ")})`;
+		return `Codex ${label} (${meta.join(", ")})`;
 	}
 	try {
-		const rawEventJson = JSON.stringify(rawEvent);
-		const truncatedRawEventJson =
-			rawEventJson.length <= 800
-				? rawEventJson
-				: `${rawEventJson.slice(0, 800)}…[truncated ${rawEventJson.length - 800}]`;
-		return `Codex response failed: ${truncatedRawEventJson}`;
+		const json = JSON.stringify(rawEvent);
+		const excess = json.length - CODEX_FAILURE_JSON_LIMIT;
+		return excess <= 0
+			? `Codex ${label}: ${json}`
+			: `Codex ${label}: ${json.slice(0, CODEX_FAILURE_JSON_LIMIT)}…[truncated ${excess}]`;
 	} catch {
-		return "Codex response failed";
-	}
-}
-
-function formatCodexErrorEvent(rawEvent: Record<string, unknown>, code: string, message: string): string {
-	const detail = formatCodexFailure(rawEvent);
-	if (detail) {
-		return detail.replace("response failed", "error event");
-	}
-	const meta: string[] = [];
-	if (code) meta.push(`code=${code}`);
-	if (message) meta.push(`message=${message}`);
-	if (meta.length > 0) {
-		return `Codex error event (${meta.join(", ")})`;
-	}
-	try {
-		const rawEventJson = JSON.stringify(rawEvent);
-		const truncatedRawEventJson =
-			rawEventJson.length <= 800
-				? rawEventJson
-				: `${rawEventJson.slice(0, 800)}…[truncated ${rawEventJson.length - 800}]`;
-		return `Codex error event: ${truncatedRawEventJson}`;
-	} catch {
-		return "Codex error event";
+		return `Codex ${label}`;
 	}
 }
