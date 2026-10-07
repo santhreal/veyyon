@@ -15,6 +15,11 @@ export interface ToolCallLoopGuardOptions {
 	readonly readSubsumptionThreshold?: number;
 }
 
+interface LineRange {
+	start: number;
+	end: number;
+}
+
 interface ReadTargetSpec {
 	readonly basePath: string;
 	readonly isRange: boolean;
@@ -23,13 +28,13 @@ interface ReadTargetSpec {
 	 * one. Carrying only the first chunk judged the whole target subsumed on the
 	 * strength of the first range alone, and recorded only that range in history.
 	 */
-	readonly ranges?: readonly { readonly start: number; readonly end: number }[];
+	readonly ranges?: readonly Readonly<LineRange>[];
 }
 
 interface FileReadHistory {
 	snapshotTag?: string;
 	hasSelectorFree: boolean;
-	ranges: Array<{ start: number; end: number }>;
+	ranges: LineRange[];
 }
 
 const MUTATING_TOOLS: Record<string, true> = {
@@ -40,10 +45,8 @@ const MUTATING_TOOLS: Record<string, true> = {
 };
 
 const RANGE_CHUNK_RE = /^L?(\d+)(?:(\.\.|[-+])L?(\d+)?)?$/i;
-const WINDOWS_DRIVE_RE = /^[A-Za-z]:[\\/]/;
-const URI_SCHEME_PREFIX_RE = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//;
 
-function parseRangeChunk(chunk: string): { startLine: number; endLine: number } | null {
+function parseRangeChunk(chunk: string): LineRange | null {
 	const trimmed = chunk.trim();
 	const match = trimmed.match(RANGE_CHUNK_RE);
 	if (!match) return null;
@@ -59,91 +62,61 @@ function parseRangeChunk(chunk: string): { startLine: number; endLine: number } 
 	} else {
 		endLine = startLine;
 	}
-	return { startLine, endLine };
+	return { start: startLine, end: endLine };
 }
 
-function parseRangeSelector(sel: string): { start: number; end: number }[] | null {
-	const chunks = sel.split(",");
-	if (chunks.length === 0) return null;
-	const ranges: { start: number; end: number }[] = [];
-	for (const chunk of chunks) {
-		const parsed = parseRangeChunk(chunk);
-		if (!parsed) return null;
-		ranges.push({ start: parsed.startLine, end: parsed.endLine });
+function parseRangeSelector(sel: string): LineRange[] | null {
+	const ranges: LineRange[] = [];
+	for (const chunk of sel.split(",")) {
+		const range = parseRangeChunk(chunk);
+		if (!range) return null;
+		ranges.push(range);
 	}
 	return ranges;
 }
 
+/**
+ * The target of a compound selector, `path:raw:2-4` or `path:2-4:raw`, where
+ * `basePath` still ends in the inner selector; null when the inner and outer
+ * selectors do not pair as `raw` plus a range.
+ */
+function compoundSelectorTarget(
+	basePath: string,
+	outerIsRaw: boolean,
+	outerRange: LineRange[] | null,
+): ReadTargetSpec | null {
+	const innerColon = basePath.lastIndexOf(":");
+	if (innerColon <= 0) return null;
+	const inner = basePath.slice(innerColon + 1);
+	let ranges: LineRange[] | null = null;
+	if (outerRange) {
+		if (inner.trim().toLowerCase() === "raw") ranges = outerRange;
+	} else if (outerIsRaw) {
+		ranges = parseRangeSelector(inner);
+	}
+	return ranges ? { basePath: basePath.slice(0, innerColon), isRange: true, ranges } : null;
+}
+
 function parseReadTarget(target: string): ReadTargetSpec {
 	const trimmed = target.trim();
-	if (trimmed.length === 0) {
-		return { basePath: "", isRange: false };
-	}
+	// A Windows drive colon (`C:\path`) or URI scheme colon (`skill://alpha`) is followed by a
+	// separator, which no selector starts with, so such a path keeps that colon below.
+	const colon = trimmed.lastIndexOf(":");
+	if (colon <= 0) return { basePath: trimmed, isRange: false };
 
-	const lastColon = trimmed.lastIndexOf(":");
-	if (lastColon <= 0) {
-		return { basePath: trimmed, isRange: false };
-	}
+	const outer = trimmed.slice(colon + 1);
+	if (outer.length === 0) return { basePath: trimmed.slice(0, colon), isRange: false };
 
-	// If the only colon is part of a Windows drive prefix (e.g. C:\path or C:/path)
-	// or a URI scheme prefix with no other colon (e.g. skill://alpha), there is no selector.
-	if (lastColon === 1 && WINDOWS_DRIVE_RE.test(trimmed)) {
-		return { basePath: trimmed, isRange: false };
-	}
-	if (URI_SCHEME_PREFIX_RE.test(trimmed) && trimmed.indexOf(":") === lastColon) {
-		return { basePath: trimmed, isRange: false };
-	}
+	const outerMode = outer.trim().toLowerCase();
+	const outerIsRaw = outerMode === "raw";
+	const outerRange = parseRangeSelector(outer);
+	// Not a selector this tool reads, so the colon is part of the path.
+	if (!outerIsRaw && outerMode !== "conflicts" && !outerRange) return { basePath: trimmed, isRange: false };
 
-	const outerCandidate = trimmed.slice(lastColon + 1);
-	if (outerCandidate.length === 0) {
-		return { basePath: trimmed.slice(0, lastColon), isRange: false };
-	}
-
-	const outerTrimmedLower = outerCandidate.trim().toLowerCase();
-	const outerIsRaw = outerTrimmedLower === "raw";
-	const outerIsConflicts = outerTrimmedLower === "conflicts";
-	const outerRange = parseRangeSelector(outerCandidate);
-
-	if (!outerIsRaw && !outerIsConflicts && !outerRange) {
-		return { basePath: trimmed, isRange: false };
-	}
-
-	let basePath = trimmed.slice(0, lastColon);
-
-	// Check for compound selector (e.g. `path:raw:2-4` or `path:2-4:raw`)
-	const innerColon = basePath.lastIndexOf(":");
-	if (innerColon > 0) {
-		const innerCandidate = basePath.slice(innerColon + 1);
-		const innerIsRaw = innerCandidate.trim().toLowerCase() === "raw";
-		const innerRange = parseRangeSelector(innerCandidate);
-
-		if (innerIsRaw && outerRange) {
-			basePath = basePath.slice(0, innerColon);
-			return {
-				basePath,
-				isRange: true,
-				ranges: outerRange,
-			};
-		}
-		if (innerRange && outerIsRaw) {
-			basePath = basePath.slice(0, innerColon);
-			return {
-				basePath,
-				isRange: true,
-				ranges: innerRange,
-			};
-		}
-	}
-
-	if (outerRange) {
-		return {
-			basePath,
-			isRange: true,
-			ranges: outerRange,
-		};
-	}
-
-	return { basePath, isRange: false };
+	const basePath = trimmed.slice(0, colon);
+	const compound = compoundSelectorTarget(basePath, outerIsRaw, outerRange);
+	if (compound) return compound;
+	return outerRange ? { basePath, isRange: true, ranges: outerRange } : { basePath, isRange: false };
 }
 
 function parseReadTargets(pathArg: unknown): ReadTargetSpec[] {
@@ -226,6 +199,17 @@ function summarizeToolResult(toolResults: readonly ToolResultMessage[], toolCall
 	return summarizeText(textParts.join("\n"), RESULT_SUMMARY_LIMIT);
 }
 
+/** The message's only tool call, or undefined when it made none or several. */
+function soleToolCall(message: AssistantMessage): ToolCall | undefined {
+	let found: ToolCall | undefined;
+	for (const part of message.content) {
+		if (part.type !== "toolCall") continue;
+		if (found) return undefined;
+		found = part;
+	}
+	return found;
+}
+
 /** Detects consecutive identical assistant tool calls across model turns. */
 export class ToolCallLoopGuard {
 	#threshold: number;
@@ -244,19 +228,17 @@ export class ToolCallLoopGuard {
 
 	/** Records one completed turn and returns the threshold hit, if any. */
 	recordTurn(turn: ToolCallLoopTurn): RepeatedToolCallDetection | null {
-		const toolCalls = turn.message.content.filter((part): part is ToolCall => part.type === "toolCall");
-		if (toolCalls.length !== 1 || this.#exemptTools.has(toolCalls[0]!.name)) {
+		const toolCall = soleToolCall(turn.message);
+		if (!toolCall || this.#exemptTools.has(toolCall.name)) {
 			this.#lastHash = undefined;
 			this.#count = 0;
 			this.#subsumedReadCount = 0;
 			return null;
 		}
 
-		const toolCall = toolCalls[0]!;
-
 		if (
 			MUTATING_TOOLS[toolCall.name] ||
-			(toolCall.name === "bash" && typeof (toolCall.arguments as Record<string, unknown>)?.command === "string")
+			(toolCall.name === "bash" && typeof toolCall.arguments?.command === "string")
 		) {
 			this.#fileReadHistories.clear();
 			this.#subsumedReadCount = 0;
@@ -265,12 +247,8 @@ export class ToolCallLoopGuard {
 		// 1. Check verbatim identical tool-call argument hash
 		const canonicalArgs = JSON.stringify(canonicalizeToolCallValue(toolCall.arguments));
 		const hash = `${toolCall.name}:${canonicalArgs}`;
-		if (hash === this.#lastHash) {
-			this.#count++;
-		} else {
-			this.#lastHash = hash;
-			this.#count = 1;
-		}
+		this.#count = hash === this.#lastHash ? this.#count + 1 : 1;
+		this.#lastHash = hash;
 
 		// Exactly the threshold turn, not every turn past it: the redirect is
 		// steering, and a steer repeated on every subsequent call is noise the
@@ -286,55 +264,44 @@ export class ToolCallLoopGuard {
 		}
 
 		// 2. Check read tool subsumption / redundant read loops
-		if (toolCall.name === "read") {
-			const targets = parseReadTargets((toolCall.arguments as Record<string, unknown>)?.path);
-			const resultText = summarizeToolResult(turn.toolResults, toolCall.id);
-			const currentTag = extractSnapshotTag(resultText);
-			// Are all requested targets already subsumed by earlier reads?
-			const allSubsumed =
-				targets.length > 0 &&
-				targets.every(t => {
-					const history = this.#fileReadHistories.get(t.basePath);
-					return isTargetSubsumed(t, history);
-				});
-
-			if (allSubsumed) {
-				this.#subsumedReadCount++;
-			} else {
-				this.#subsumedReadCount = 0;
-			}
-
-			// Update read history for each target
-			for (const target of targets) {
-				let history = this.#fileReadHistories.get(target.basePath);
-				if (!history || (currentTag && history.snapshotTag && currentTag !== history.snapshotTag)) {
-					history = {
-						snapshotTag: currentTag,
-						hasSelectorFree: false,
-						ranges: [],
-					};
-					this.#fileReadHistories.set(target.basePath, history);
-				}
-				if (currentTag) history.snapshotTag = currentTag;
-				if (target.isRange && target.ranges !== undefined) {
-					history.ranges.push(...target.ranges);
-				} else if (!target.isRange) {
-					history.hasSelectorFree = true;
-				}
-			}
-			if (this.#subsumedReadCount === this.#readSubsumptionThreshold) {
-				return {
-					kind: "repeated_tool_call",
-					toolName: "read",
-					count: this.#subsumedReadCount,
-					resultSummary: "Requested lines are already present in previous turn context",
-					argumentsSummary: summarizeText(canonicalArgs, ARGUMENT_SUMMARY_LIMIT),
-				};
-			}
-		} else {
+		if (toolCall.name !== "read") {
 			this.#subsumedReadCount = 0;
+			return null;
 		}
+		return this.#recordRead(toolCall, turn.toolResults, canonicalArgs);
+	}
 
-		return null;
+	/** Counts a read whose every target earlier reads already cover, then records its targets. */
+	#recordRead(
+		toolCall: ToolCall,
+		toolResults: readonly ToolResultMessage[],
+		canonicalArgs: string,
+	): RepeatedToolCallDetection | null {
+		const targets = parseReadTargets(toolCall.arguments?.path);
+		const currentTag = extractSnapshotTag(summarizeToolResult(toolResults, toolCall.id));
+		const allSubsumed =
+			targets.length > 0 && targets.every(t => isTargetSubsumed(t, this.#fileReadHistories.get(t.basePath)));
+		this.#subsumedReadCount = allSubsumed ? this.#subsumedReadCount + 1 : 0;
+		for (const target of targets) this.#recordReadTarget(target, currentTag);
+		if (this.#subsumedReadCount !== this.#readSubsumptionThreshold) return null;
+		return {
+			kind: "repeated_tool_call",
+			toolName: "read",
+			count: this.#subsumedReadCount,
+			resultSummary: "Requested lines are already present in previous turn context",
+			argumentsSummary: summarizeText(canonicalArgs, ARGUMENT_SUMMARY_LIMIT),
+		};
+	}
+
+	/** Adds `target` to its file's read history, starting the history over when the file's snapshot tag changed. */
+	#recordReadTarget(target: ReadTargetSpec, currentTag: string | undefined): void {
+		let history = this.#fileReadHistories.get(target.basePath);
+		if (!history || (currentTag && history.snapshotTag && currentTag !== history.snapshotTag)) {
+			history = { snapshotTag: currentTag, hasSelectorFree: false, ranges: [] };
+			this.#fileReadHistories.set(target.basePath, history);
+		}
+		if (currentTag) history.snapshotTag = currentTag;
+		if (!target.isRange) history.hasSelectorFree = true;
+		else if (target.ranges !== undefined) history.ranges.push(...target.ranges);
 	}
 }
