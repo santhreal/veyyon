@@ -32,6 +32,7 @@ import {
 	type AssistantMessage,
 	type CacheRetention,
 	type Context,
+	type DeveloperMessage,
 	type ImageContent,
 	type Message,
 	type MessageAttribution,
@@ -48,6 +49,7 @@ import {
 	type ToolCall,
 	type ToolResultMessage,
 	type Usage,
+	type UserMessage,
 } from "../types";
 import {
 	getOpenAIResponsesHistoryItems,
@@ -1229,33 +1231,19 @@ export function normalizeResponsesToolCallIdForTransform(
 	return `${normalized.callId}|${normalized.itemId}`;
 }
 
-export function collectKnownCallIds(messages: ResponseInput): Set<string> {
-	const knownCallIds = new Set<string>();
-	for (const item of messages) {
-		if (item.type === "function_call" && typeof item.call_id === "string") {
-			knownCallIds.add(item.call_id);
-		} else if (
-			(item as { type?: string }).type === "custom_tool_call" &&
-			typeof (item as { call_id?: string }).call_id === "string"
-		) {
-			knownCallIds.add((item as { call_id: string }).call_id);
-		}
+/**
+ * Adds the call ids that `items` issue to `knownCallIds`, and the ones issued as freeform custom tool calls to
+ * `customCallIds`.
+ */
+function recordIssuedCallIds(items: ResponseInput, knownCallIds: Set<string>, customCallIds: Set<string>): void {
+	for (const item of items) {
+		if (item.type !== "function_call" && item.type !== "custom_tool_call") continue;
+		// Replayed items come from a stored payload, so the declared string type is not enforced at run time.
+		const callId: unknown = item.call_id;
+		if (typeof callId !== "string") continue;
+		knownCallIds.add(callId);
+		if (item.type === "custom_tool_call") customCallIds.add(callId);
 	}
-	return knownCallIds;
-}
-
-/** Scan replay items for call_ids that were originally custom tool calls. */
-export function collectCustomCallIds(messages: ResponseInput): Set<string> {
-	const customCallIds = new Set<string>();
-	for (const item of messages) {
-		if (
-			(item as { type?: string }).type === "custom_tool_call" &&
-			typeof (item as { call_id?: string }).call_id === "string"
-		) {
-			customCallIds.add((item as { call_id: string }).call_id);
-		}
-	}
-	return customCallIds;
 }
 
 /**
@@ -1521,168 +1509,197 @@ export interface BuildResponsesInputOptions<TApi extends Api> {
 }
 
 export function buildResponsesInput<TApi extends Api>(options: BuildResponsesInputOptions<TApi>): ResponseInput {
-	const messages: ResponseInput = [];
-	const systemPrompts = options.systemRole ? normalizeSystemPrompts(options.context.systemPrompt) : [];
-	for (const systemPrompt of systemPrompts) {
-		messages.push({ role: options.systemRole as "system" | "developer", content: systemPrompt });
-	}
+	return new ResponsesInputBuilder(options).build();
+}
 
+/**
+ * Builds a Responses `input` from a transcript in one pass.
+ *
+ * `#knownCallIds` holds the call id of every `function_call` and `custom_tool_call` in `#messages`, and
+ * `#customCallIds` every custom call id appended so far. A native-history replay adds the ids of the items it
+ * appends; rescanning the whole input on each replay made a session of incremental snapshots quadratic.
+ */
+class ResponsesInputBuilder<TApi extends Api> {
+	readonly #options: BuildResponsesInputOptions<TApi>;
+	readonly #messages: ResponseInput = [];
+	readonly #knownCallIds = new Set<string>();
+	readonly #customCallIds = new Set<string>();
+	readonly #acceptsImages: boolean;
 	// Compat is resolved by the catalog (e.g. Copilot / xai-oauth reject
 	// `detail: "original"`). Do not re-branch on provider id here.
-	const supportsImageDetailOriginal = options.supportsImageDetailOriginal;
+	readonly #supportsImageDetailOriginal: boolean;
 	// Freeform custom tools (`custom_tool_call`) only when the catalog says so;
 	// same gate as tool conversion (`applyPatchToolType === "freeform"`).
-	const supportsCustomToolCalls = options.model.applyPatchToolType === "freeform";
-	const customToolWireNameMap = supportsCustomToolCalls
-		? undefined
-		: buildCustomToolWireNameMap(options.context.tools);
-	let knownCallIds = new Set<string>();
-	const customCallIds = new Set<string>();
-	const transformedMessages = transformMessages(
-		options.context.messages,
-		options.model,
-		normalizeResponsesToolCallIdForTransform,
-	);
-	const filterReasoning = <T extends { type?: string }>(items: T[]): T[] =>
-		options.nativeHistory?.filterReasoning ? items.filter(item => item?.type !== "reasoning") : items;
-	const includeThinkingSignatures = options.includeThinkingSignatures ?? options.nativeHistory?.replay ?? true;
+	readonly #supportsCustomToolCalls: boolean;
+	readonly #customToolWireNameMap: ReadonlyMap<string, string> | undefined;
+	readonly #includeThinkingSignatures: boolean;
 
-	let msgIndex = 0;
-	for (const msg of transformedMessages) {
-		if (msg.role === "user" || msg.role === "developer") {
-			const providerPayload = (msg as { providerPayload?: AssistantMessage["providerPayload"] }).providerPayload;
-			const historyItems = options.nativeHistory
-				? getOpenAIResponsesHistoryItems(providerPayload, options.model.provider)
-				: undefined;
-			const shouldReplayPayloadItems =
-				options.nativeHistory?.replay ||
-				(historyItems?.some(item => {
-					if (!item || typeof item !== "object") return false;
-					const candidate = item as { type?: unknown };
-					return candidate.type === "compaction" || candidate.type === "compaction_summary";
-				}) ??
-					false);
-			if (historyItems && shouldReplayPayloadItems) {
-				const sanitizedItems = sanitizeOpenAIResponsesHistoryItemsForReplay(filterReasoning(historyItems), {
-					supportsImageDetailOriginal,
-				});
-				messages.push(
-					...adaptResponsesReplayItemsForModel(sanitizedItems, supportsCustomToolCalls, customToolWireNameMap),
-				);
-				knownCallIds = collectKnownCallIds(messages);
-				for (const id of collectCustomCallIds(messages)) customCallIds.add(id);
-				msgIndex++;
-				continue;
-			}
-			if (
-				msg.role === "developer" &&
-				options.supportsDeveloperRole &&
-				Array.isArray(msg.content) &&
-				msg.content.some(item => item.type === "image")
-			) {
-				const textContent = convertResponsesInputContent(
-					msg.content.filter((item): item is TextContent => item.type === "text"),
-					false,
-					supportsImageDetailOriginal,
-				);
-				const imageContent = convertResponsesInputContent(
-					msg.content.filter((item): item is ImageContent => item.type === "image"),
-					options.model.input.includes("image"),
-					supportsImageDetailOriginal,
-				);
-				if (textContent) messages.push({ role: "developer", content: textContent });
-				if (imageContent) messages.push({ role: "user", content: imageContent });
-				continue;
-			}
-			const content = convertResponsesInputContent(
-				msg.content,
-				options.model.input.includes("image"),
-				supportsImageDetailOriginal,
-			);
-			if (!content) continue;
-			messages.push({
-				role: msg.role === "developer" && options.supportsDeveloperRole ? "developer" : "user",
-				content:
-					options.developerStringContent && msg.role === "developer" && typeof msg.content === "string"
-						? msg.content.toWellFormed()
-						: content,
-			});
-		} else if (msg.role === "assistant") {
-			const assistantMsg = msg as AssistantMessage;
-			// Providers replay stale native items even when the current request has
-			// disabled native replay (cold session state, filter policy). Consult
-			// the payload sanitizer directly so hidden-empty turns are recognized
-			// on both the warm and cold paths.
-			const providerPayload =
-				assistantMsg.api === options.model.api && assistantMsg.model === options.model.id
-					? getOpenAIResponsesHistoryPayload(
-							assistantMsg.providerPayload,
-							options.model.provider,
-							assistantMsg.provider,
-						)
-					: undefined;
-			const nativeReplayEnabled = options.nativeHistory?.replay === true;
-			const historyItems = providerPayload?.items;
-			let suppressHiddenEmptyFallback = false;
-			if (historyItems) {
-				const rawSanitizedHistoryItems = sanitizeOpenAIResponsesAssistantHistoryItemsForReplay(
-					filterReasoning(historyItems),
-					{ supportsImageDetailOriginal },
-				);
-				const sanitizedHistoryItems = rawSanitizedHistoryItems
-					? adaptResponsesReplayItemsForModel(
-							rawSanitizedHistoryItems,
-							supportsCustomToolCalls,
-							customToolWireNameMap,
-						)
-					: undefined;
-				if (nativeReplayEnabled && sanitizedHistoryItems) {
-					if (providerPayload?.dt) {
-						for (let hi = 0; hi < sanitizedHistoryItems.length; hi++) messages.push(sanitizedHistoryItems[hi]!);
-					} else {
-						messages.splice(0, messages.length, ...sanitizedHistoryItems);
-					}
-					knownCallIds = collectKnownCallIds(messages);
-					for (const id of collectCustomCallIds(messages)) customCallIds.add(id);
-					msgIndex++;
-					continue;
-				}
-				if (!sanitizedHistoryItems) suppressHiddenEmptyFallback = true;
-			}
-
-			const convertedOutputItems = convertResponsesAssistantMessage(
-				assistantMsg,
-				options.model,
-				msgIndex,
-				knownCallIds,
-				suppressHiddenEmptyFallback ? false : includeThinkingSignatures,
-				customCallIds,
-				options.preserveAssistantMessageIds,
-				supportsCustomToolCalls,
-				customToolWireNameMap,
-			);
-			const outputItems = suppressHiddenEmptyFallback
-				? sanitizeOpenAIResponsesAssistantFallbackItemsForReplay(convertedOutputItems)
-				: convertedOutputItems;
-			if (outputItems.length === 0) continue;
-			for (let oi = 0; oi < outputItems.length; oi++) messages.push(outputItems[oi]!);
-		} else if (msg.role === "toolResult") {
-			appendResponsesToolResultMessages(
-				messages,
-				msg,
-				options.model,
-				options.strictResponsesPairing,
-				supportsImageDetailOriginal,
-				knownCallIds,
-				customCallIds,
-				supportsCustomToolCalls,
-			);
-		}
-		msgIndex++;
+	constructor(options: BuildResponsesInputOptions<TApi>) {
+		this.#options = options;
+		this.#acceptsImages = options.model.input.includes("image");
+		this.#supportsImageDetailOriginal = options.supportsImageDetailOriginal;
+		this.#supportsCustomToolCalls = options.model.applyPatchToolType === "freeform";
+		this.#customToolWireNameMap = this.#supportsCustomToolCalls
+			? undefined
+			: buildCustomToolWireNameMap(options.context.tools);
+		this.#includeThinkingSignatures = options.includeThinkingSignatures ?? options.nativeHistory?.replay ?? true;
 	}
 
-	const withRepairedOutputs = options.repairOrphanOutputs ? repairOrphanResponsesToolOutputs(messages) : messages;
-	return repairOrphanResponsesToolCalls(withRepairedOutputs);
+	build(): ResponseInput {
+		const { context, model, repairOrphanOutputs, systemRole } = this.#options;
+		if (systemRole) {
+			for (const systemPrompt of normalizeSystemPrompts(context.systemPrompt)) {
+				this.#messages.push({ role: systemRole, content: systemPrompt });
+			}
+		}
+		let msgIndex = 0;
+		for (const msg of transformMessages(context.messages, model, normalizeResponsesToolCallIdForTransform)) {
+			if (this.#append(msg, msgIndex)) msgIndex++;
+		}
+		const withRepairedOutputs = repairOrphanOutputs
+			? repairOrphanResponsesToolOutputs(this.#messages)
+			: this.#messages;
+		return repairOrphanResponsesToolCalls(withRepairedOutputs);
+	}
+
+	/** Appends one transcript message. Returns true when it takes a position in the `msg_<index>` id sequence. */
+	#append(msg: Message, msgIndex: number): boolean {
+		switch (msg.role) {
+			case "user":
+			case "developer":
+				return this.#appendInputMessage(msg);
+			case "assistant":
+				return this.#appendAssistantMessage(msg, msgIndex);
+			case "toolResult":
+				appendResponsesToolResultMessages(
+					this.#messages,
+					msg,
+					this.#options.model,
+					this.#options.strictResponsesPairing,
+					this.#supportsImageDetailOriginal,
+					this.#knownCallIds,
+					this.#customCallIds,
+					this.#supportsCustomToolCalls,
+				);
+				return true;
+		}
+	}
+
+	#appendInputMessage(msg: UserMessage | DeveloperMessage): boolean {
+		const { model, nativeHistory, supportsDeveloperRole, developerStringContent } = this.#options;
+		const historyItems = nativeHistory
+			? getOpenAIResponsesHistoryItems(msg.providerPayload, model.provider)
+			: undefined;
+		if (
+			historyItems &&
+			(nativeHistory?.replay ||
+				historyItems.some(item => item?.type === "compaction" || item?.type === "compaction_summary"))
+		) {
+			const sanitizedItems = sanitizeOpenAIResponsesHistoryItemsForReplay(this.#withoutReasoning(historyItems), {
+				supportsImageDetailOriginal: this.#supportsImageDetailOriginal,
+			});
+			this.#appendReplayItems(
+				adaptResponsesReplayItemsForModel(
+					sanitizedItems,
+					this.#supportsCustomToolCalls,
+					this.#customToolWireNameMap,
+				),
+			);
+			return true;
+		}
+		if (
+			msg.role === "developer" &&
+			supportsDeveloperRole &&
+			Array.isArray(msg.content) &&
+			msg.content.some(item => item.type === "image")
+		) {
+			const textContent = convertResponsesInputContent(
+				msg.content.filter((item): item is TextContent => item.type === "text"),
+				false,
+				this.#supportsImageDetailOriginal,
+			);
+			const imageContent = convertResponsesInputContent(
+				msg.content.filter((item): item is ImageContent => item.type === "image"),
+				this.#acceptsImages,
+				this.#supportsImageDetailOriginal,
+			);
+			if (textContent) this.#messages.push({ role: "developer", content: textContent });
+			if (imageContent) this.#messages.push({ role: "user", content: imageContent });
+			return false;
+		}
+		const content = convertResponsesInputContent(msg.content, this.#acceptsImages, this.#supportsImageDetailOriginal);
+		if (!content) return false;
+		this.#messages.push({
+			role: msg.role === "developer" && supportsDeveloperRole ? "developer" : "user",
+			content:
+				developerStringContent && msg.role === "developer" && typeof msg.content === "string"
+					? msg.content.toWellFormed()
+					: content,
+		});
+		return true;
+	}
+
+	#appendAssistantMessage(msg: AssistantMessage, msgIndex: number): boolean {
+		const { model, nativeHistory, preserveAssistantMessageIds } = this.#options;
+		// Providers replay stale native items even when the current request has
+		// disabled native replay (cold session state, filter policy). Consult
+		// the payload sanitizer directly so hidden-empty turns are recognized
+		// on both the warm and cold paths.
+		const providerPayload =
+			msg.api === model.api && msg.model === model.id
+				? getOpenAIResponsesHistoryPayload(msg.providerPayload, model.provider, msg.provider)
+				: undefined;
+		let suppressHiddenEmptyFallback = false;
+		if (providerPayload) {
+			const sanitizedItems = sanitizeOpenAIResponsesAssistantHistoryItemsForReplay(
+				this.#withoutReasoning(providerPayload.items),
+				{ supportsImageDetailOriginal: this.#supportsImageDetailOriginal },
+			);
+			if (!sanitizedItems) {
+				suppressHiddenEmptyFallback = true;
+			} else if (nativeHistory?.replay === true) {
+				const replayItems = adaptResponsesReplayItemsForModel(
+					sanitizedItems,
+					this.#supportsCustomToolCalls,
+					this.#customToolWireNameMap,
+				);
+				// A snapshot without `dt` holds the whole conversation, so it replaces everything appended so far.
+				if (!providerPayload.dt) {
+					this.#messages.length = 0;
+					this.#knownCallIds.clear();
+				}
+				this.#appendReplayItems(replayItems);
+				return true;
+			}
+		}
+
+		const convertedOutputItems = convertResponsesAssistantMessage(
+			msg,
+			model,
+			msgIndex,
+			this.#knownCallIds,
+			!suppressHiddenEmptyFallback && this.#includeThinkingSignatures,
+			this.#customCallIds,
+			preserveAssistantMessageIds,
+			this.#supportsCustomToolCalls,
+			this.#customToolWireNameMap,
+		);
+		const outputItems = suppressHiddenEmptyFallback
+			? sanitizeOpenAIResponsesAssistantFallbackItemsForReplay(convertedOutputItems)
+			: convertedOutputItems;
+		if (outputItems.length === 0) return false;
+		for (const item of outputItems) this.#messages.push(item);
+		return true;
+	}
+
+	#withoutReasoning(items: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+		return this.#options.nativeHistory?.filterReasoning ? items.filter(item => item?.type !== "reasoning") : items;
+	}
+
+	#appendReplayItems(items: ResponseInput): void {
+		for (const item of items) this.#messages.push(item);
+		recordIssuedCallIds(items, this.#knownCallIds, this.#customCallIds);
+	}
 }
 
 type ResponsesReplayAssistantMessage = Omit<ResponseOutputMessage, "id"> & { id?: string };
