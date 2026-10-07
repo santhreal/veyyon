@@ -264,4 +264,4 @@ A new retry chain can still start later on a future retryable error after counte
 - `RpcSessionState` currently exposes `autoCompactionEnabled` but not an `autoRetryEnabled` field; RPC callers must track their own toggle state or query settings through other APIs.
 - Model fallback changes append temporary `model_change` entries and may later restore the primary model when its cooldown expires, depending on `retry.fallbackRevertPolicy`. Restoration runs only between retry sequences (`maybeRestoreFallbackPrimary` returns while `#attempt > 0`).
 
-*Verified against `9a035acb63` on 2026-09-30.*
+*Verified against `deea84f9a0` on 2026-10-06.*

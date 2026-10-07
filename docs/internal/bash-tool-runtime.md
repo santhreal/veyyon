@@ -10,9 +10,9 @@ There are two different bash execution surfaces in coding-agent:
 
 1. **Tool-call surface** (`toolName: "bash"`): used when the model calls the bash tool.
    - Entry point: `BashTool.execute()`.
-   - Parameters include `command`, optional `env`, `timeout`, `cwd`, `pty`, and, when `async.enabled` is true, `async`.
+   - Parameters include `command`, optional `env`, `timeout`, `cwd`, `pty`, `backgroundAfter`, and, when `async.enabled` is true, `async`.
 2. **User bang-command surface** (`!cmd` from interactive input or RPC `bash` command): session-level helper path.
-   - Entry point: `AgentSession.executeBash()`.
+   - Entry point: `AgentSession.executeBash()`. A registered extension `user_bash` handler may return the result instead of running the command.
 
 Both eventually use `executeBash()` in `src/exec/bash-executor.ts` for non-PTY execution, but only the tool-call path runs normalization/interception, optional managed background-job handling, and tool renderer logic.
 
@@ -24,11 +24,11 @@ Set `bash.enabled: false` in settings to remove the model-facing `bash` tool fro
 
 `BashTool.execute()` currently handles input before execution as follows:
 
-- validates optional `env` names against shell-variable syntax,
+- validates optional `env` names against shell-variable syntax (`Invalid bash env name: ...`),
 - extracts a leading single-line `cd <path> && ...` into `cwd` when `cwd` was not supplied,
 - rejects `async: true` when `async.enabled` is false.
 
-There are no structured `head` or `tail` tool parameters in the current schema, and commands run mostly as written: aside from the leading `cd … &&` extraction into `cwd` and internal-URL expansion applied to the command and every env value, there are no pre-execution rewrites. Output limiting is handled by `OutputSink` truncation/artifacts.
+There are no structured `head` or `tail` tool parameters in the current schema, and commands run mostly as written: aside from the leading `cd … &&` extraction into `cwd` and internal-URL expansion (`skill://`, `agent://`, `local:/`, …) applied to the command, every env value and an extracted `cwd`, there are no pre-execution rewrites. A mutating `gh` subcommand also drops the cached `issue://`/`pr://` rows it touches. Output limiting is handled by `OutputSink` truncation/artifacts.
 
 ## 2) Optional interception (blocked-command path)
 
@@ -36,9 +36,9 @@ If `bashInterceptor.enabled` is true, `BashTool` loads rules from settings (`get
 
 Interception behavior:
 
-- command is blocked **only** when:
-  - regex rule matches, and
-  - the suggested tool is present in `ctx.toolNames`.
+- command is blocked **only** when the rule regex matches and either:
+  - the rule's suggested tool is present in `ctx.toolNames`, or
+  - the suggested tool is absent, `search` is present, and the rule has a `search` redirect (`grep`, `find`, `glob`, `ast_grep`); the message then names the matching `search` type.
 - invalid regex rules are silently skipped.
 - on block, `BashTool` throws `ToolError` with message:
   - `Blocked: ...`
@@ -63,13 +63,15 @@ Default rule patterns (defined in code) target common misuses:
 - missing path -> `ToolError("Working directory does not exist: ...")`
 - non-directory -> `ToolError("Working directory is not a directory: ...")`
 
-Timeout is clamped to `[1, 3600]` seconds and converted to milliseconds.
+`timeout: 0` disables the deadline. Any other value, or the 300-second default when omitted, is first capped by `tools.maxTimeout` when that setting is positive, then clamped to `[1, 3600]` seconds and converted to milliseconds. A clamped request adds a notice to the result.
+
+Before anything spawns, `#admitSpawn()` applies the session's budget limits (`session.cpuLimitCores`, `session.cpuLimitKill` and the other session budget settings) and rejects the call while the session's budget group reports saturation.
 
 ## 4) Artifact allocation
 
 Before execution, the tool allocates an artifact path/id (best-effort) for truncated output storage.
 
-- artifact allocation failure is non-fatal (execution continues without artifact spill file),
+- artifact allocation failure is non-fatal: the session logs an error and execution continues without an artifact spill file,
 - artifact id/path are passed into execution path for full-output persistence on truncation.
 
 ## 5) PTY vs non-PTY execution selection
@@ -82,7 +84,12 @@ PTY eligibility is decided by `canUseInteractiveBashPty(pty, ctx)` (`src/tools/s
 
 If `pty` is requested but unavailable, the call falls back to non-PTY and appends a `pty requested but unavailable …` notice.
 
-Before the local PTY/non-PTY choice, a foreground (`async: false`) call can route to a managed background job (auto-backgrounding; see below) or, when the session's client advertises a terminal capability (`clientBridge.capabilities.terminal` + `createTerminal`, with `pty` false), to a **client-bridge editor terminal** that runs the command remotely (streaming `terminalId` updates, killing on timeout, mapping a signalled death to exit code `128 + signal`, throwing when the signal cannot be resolved to a number). Otherwise it uses non-interactive `executeBash()`.
+`BashTool.execute()` dispatches in this order:
+
+1. `async: true` starts a managed bash job and returns its job id.
+2. When the session's client advertises a terminal capability (`clientBridge.capabilities.terminal` + `createTerminal`) and `pty` is false, the command runs on a **client-bridge editor terminal** (streaming `terminalId` updates, killing on timeout, mapping a signalled death to exit code `128 + signal`, throwing when the signal cannot be resolved to a number). The bridge takes precedence over auto-backgrounding.
+3. A non-PTY call with an async job manager below its running-job cap runs as a **managed foreground job** (see "Live tool updates and async jobs").
+4. Otherwise the call runs locally: the PTY overlay when eligible, else `executeBash()` directly. A call at the running-job cap takes this path.
 
 That means print mode and non-UI RPC/tool contexts always use non-PTY.
 
@@ -101,13 +108,18 @@ That means print mode and non-UI RPC/tool contexts always use non-PTY.
 
 Session-level bang-command executions pass `sessionKey: this.sessionId`.
 
-Tool-call executions pass `sessionKey: this.session.getSessionId?.()`, when available. In both surfaces, a session key isolates shell reuse per session; without one, reuse falls back to shell config/snapshot/env.
+Direct tool-call executions pass `sessionKey: this.session.getSessionId?.()`, when available. A managed bash job passes the per-job key `<sessionId>:async:<jobId>`, so each job gets its own shell session, plus `cpuSessionId: <sessionId>` so the job joins the session CPU budget. Without a session key, reuse falls back to shell config/snapshot/env.
 
 Concurrent calls never share one `Shell`: the native session runs one command at a time and `Shell.abort()` kills every in-flight run on it. `executeBash()` tracks in-flight keys in `shellSessionsInUse`; while a key is busy, overlapping calls skip the cache and run on a one-shot `Shell` instance (same isolation as quarantined sessions). Only the owning call releases the in-use flag or deletes the cached session in its `finally`.
 
+Cache eviction:
+
+- a cancelled, timed-out or failed run drops its cached session; a cancelled or timed-out run also quarantines its key, so later calls on it run in one-shot shells until the interrupted run and its abort settle,
+- a per-job `:async:` key drops its session when the job ends; a session with a live `nohup`/`&` child stays referenced until its last background job exits, polled every 5 seconds.
+
 ## Shell config and snapshot behavior
 
-At each call, executor loads settings shell config (`shell`, `env`, optional `prefix`).
+At each call, executor loads settings shell config (`shell`, `env`, optional `prefix`). An interactive `!` command passes `useUserShell: true`: when no `shellPath` is configured, the platform is not Windows, and `$SHELL` names a supported executable shell other than the configured one, the command runs in `$SHELL`. A non-bash user shell receives the command as `<shell> <args…> -i <command>` (interactive flags added).
 
 If selected shell includes `bash`, it attempts `getOrCreateSnapshot()`:
 
@@ -166,7 +178,7 @@ Both PTY and non-PTY paths use `OutputSink`.
 
 The bash executor builds the sink with `headBytes` and `maxColumns` from settings (`resolveOutputSinkHeadBytes` / `resolveOutputMaxColumns`).
 
-- keeps a UTF-8-safe rolling **tail** window (`spillThreshold`, 50KB by default, set by `tools.artifactSpillThreshold`); on overflow it trims to the tail (UTF-8 boundary safe) and marks `truncated`,
+- keeps a UTF-8-safe rolling **tail** window (`spillThreshold`) and, on overflow, trims to the tail (UTF-8 boundary safe) and marks `truncated`. The tool path passes `inlineBudgetFor(session)`: `tools.artifactSpillThreshold` (50KB by default) scaled down as the session's turn index grows, never below the `tools.inlineOutputFloor` fraction. The bang-command path uses the sink default,
 - when `headBytes > 0` (`tools.artifactHeadBytes`, default 20KB) it also retains a **head** window and elides the middle, splicing an elision marker between head and tail in `dump()`,
 - per-line column cap: when `maxColumns > 0` (`tools.outputMaxColumns`, default 768 bytes) over-wide lines are ellipsis-truncated at write time and the rest of the line is dropped,
 - tracks total bytes/lines seen,
@@ -193,11 +205,22 @@ Non-PTY execution also passes shell-minimizer settings into the native `Shell` s
 
 ## Live tool updates and async jobs
 
-For non-PTY foreground execution, `BashTool` uses a separate `TailBuffer` for partial updates and emits `onUpdate` snapshots while command is running.
+For non-PTY execution, `BashTool` uses a separate `TailBuffer` for partial updates and emits `onUpdate` snapshots while the command is running.
 
 For PTY execution, live rendering is handled by custom UI overlay, not by `onUpdate` text chunks.
 
-When `async.enabled` is true and the call passes `async: true`, `BashTool` starts a managed bash job, returns a running job result with a job id, and stores completion through the session managed-job path. Auto-backgrounding can also start this path after `bash.autoBackground.thresholdMs`.
+When `async.enabled` is true and the call passes `async: true`, `BashTool` starts a managed bash job, returns a running job result with a job id, and stores completion through the session managed-job path.
+
+A managed foreground call registers the same managed job, suppresses its completion delivery, and waits for the first of:
+
+- completion, returned as the tool result,
+- failure, thrown as the tool error,
+- the abort signal, which cancels the job and throws `ToolAbortError`,
+- the wall-clock threshold (`bash.autoBackground.thresholdMs`, default 300000 ms, when `bash.autoBackground.enabled` is true), or the call's own `backgroundAfter` seconds, which overrides the setting and applies when it is off; `0` backgrounds at once,
+- the stall window (`bash.stallDetection.stallMs`, when `bash.stallDetection.enabled` is true) with no new output,
+- the operator's background key (`ctrl+b`).
+
+The last three return a running job result with `details.async.reason` set to `threshold`, `stall` or `manual`, and resume completion delivery for the job. Each timer is capped at the command's timeout minus one second and is off when that cap reaches `0`.
 
 ## Result shaping, metadata, and error mapping
 
@@ -208,15 +231,18 @@ After execution:
    - else -> throw `ToolError` (treated as tool failure).
 2. PTY `timedOut` -> throw `ToolError`.
 3. empty output becomes `(no output)`.
-4. attach truncation metadata via `toolResult(...).truncationFromSummary(result, { direction: "tail" })`.
-5. exit-code mapping:
+4. append the call's notices (timeout clamp, unavailable PTY, unresolved skill scope, a CPU-budget kill report on SIGTERM) and, on a non-zero exit, the `formatExitCodeNotice()` line (`Command exited with code N`, or `Command was killed by SIGNAME (n); the shell reports this as exit code N` for a signalled death),
+5. cap the text at the inline budget with `enforceInlineByteCap()`, saving the full text as a `bash-original` artifact with a `[raw output: artifact://<id>]` footer when bytes were elided,
+6. attach truncation metadata via `toolResult(...).truncationFromSummary(result, { direction: "tail" })`.
+7. exit-code mapping:
    - missing exit code -> throw `ToolError("... missing exit status")`
-   - non-zero exit -> error result with `"Command exited with code N"` and `details.exitCode`
+   - non-zero exit -> error result with `details.exitCode` (and `details.signal` for a signalled death)
    - zero exit -> success result.
 
 Success payload structure:
 
 - `content`: text output,
+- `details.timeoutSeconds` (or `details.timeoutDisabled`), `details.requestedTimeoutSeconds` when clamped, `details.wallTimeMs`, and `details.terminalId` on the bridge path,
 - `details.meta.truncation` when truncated, including:
   - `direction`, `truncatedBy`, total/output line+byte counts,
   - `shownRange`,
@@ -226,18 +252,19 @@ Because built-in tools are wrapped with `wrapToolWithMetaNotice()`, truncation n
 
 ## Rendering paths
 
-## Tool-call renderer (`bashToolRenderer`)
+## Tool-call renderer (`bashToolView`)
 
-`bashToolRenderer` is used for tool-call messages (`toolCall` / `toolResult`):
+`bashToolView` (`src/tools/shell/bash-view.ts`) is a host-agnostic `ToolViewRenderer` for tool-call messages (`toolCall` / `toolResult`). It strips the exit-code, wall-time, background and raw-output-artifact notices from the result text and states them as their own facts:
 
-- collapsed mode shows visual-line-truncated preview,
-- expanded mode shows all currently available output text,
-- warning line includes truncation reason and `artifact://<id>` when truncated,
-- timeout value (from args) is shown in footer metadata line.
+- the call section shows the command and its env assignments, including assignments decoded from a still-streaming `__partialJson`,
+- collapsed mode condenses each progress run (for example a `Compiling …` wall) into its newest line plus a count and requests a `tail` window of `DEFAULT_TERMINAL_PREVIEW_LINES` rows; output carrying a SIXEL image is never windowed,
+- expanded mode shows every line of the result text,
+- a stats row shows `Backgrounded: <jobId>`, `Wall: <s>s`, `Timeout: <s>s` (with `(requested Ns clamped)` when clamped, or `Timeout: disabled`), `Artifact: <id>`, and `Exit: N (SIGNAME)` for a failed exit,
+- a warning row shows `formatTruncationMetaNotice()` text when `details.meta.truncation` is present.
 
 ### Caveat: full artifact expansion
 
-`BashRenderContext` has `isFullOutput`, but current renderer context builder does not set it for bash tool results. Expanded view still uses the text already in result content (tail/truncated output) unless another caller provides full artifact content.
+Expanded view shows the text already in the result content (tail/truncated output). Spilled bytes are read through `artifact://<id>`; the renderer does not load them.
 
 ## User bang-command component (`BashExecutionComponent`)
 
@@ -245,7 +272,7 @@ Because built-in tools are wrapped with `wrapToolWithMetaNotice()`, truncation n
 
 - streams chunks live,
 - collapsed preview keeps last 20 logical lines,
-- line clamp at 4000 chars per line,
+- line clamp at 4000 display columns per line, with a `[N visible columns omitted]` note,
 - shows truncation + artifact warnings when metadata is present,
 - marks cancelled/error/exit state separately.
 
@@ -259,13 +286,13 @@ This component is wired by `CommandController.handleBashCommand()` and fed from 
 | Print mode tool call           | `BashTool.execute`                                    | No (no UI context)                                    | No TUI overlay; output appears in event stream/final assistant text flow | Same tool error mapping                          |
 | RPC tool call (agent tooling)  | `BashTool.execute`                                    | Usually no UI -> non-PTY                              | Structured tool events/results                                           | Same tool error mapping                          |
 | Interactive bang command (`!`) | `AgentSession.executeBash` + `BashExecutionComponent` | No (uses executor directly)                           | Dedicated bash execution component                                       | Controller catches exceptions and shows UI error |
-| RPC `bash` command             | `rpc-mode` -> `session.executeBash`                   | No                                                    | Returns `BashResult` directly                                            | Consumer handles returned fields                 |
+| RPC `bash` command             | `rpc-commands` -> `session.executeBash`               | No                                                    | Returns `BashResult` directly                                            | Consumer handles returned fields                 |
 
 ## Operational caveats
 
-- Interceptor only blocks commands when suggested tool is currently available in context.
+- Interceptor only blocks commands when the suggested tool, or `search` for a rule with a `search` redirect, is currently available in context.
 - If artifact allocation fails, truncation still occurs but no `artifact://` back-reference is available.
-- Shell session cache has no explicit eviction in this module; lifetime is process-scoped.
+- The shell session cache is process-scoped; entries are dropped only on reset (cancel, timeout, error) or at the end of a per-job `:async:` key.
 - PTY and non-PTY timeout surfaces differ:
   - PTY exposes explicit `timedOut` result field,
   - non-PTY maps timeout into `cancelled + annotation` summary.
@@ -287,4 +314,4 @@ This component is wired by `CommandController.handleBashCommand()` and fed from 
 - [`src/modes/rpc/rpc-commands.ts`](../../packages/coding-agent/src/modes/rpc/rpc-commands.ts): RPC `bash` and `abort_bash` command surface.
 - [`src/internal-urls/artifact-protocol.ts`](../../packages/coding-agent/src/internal-urls/artifact-protocol.ts): `artifact://<id>` resolution.
 
-*Verified against `70cae216c2` on 2026-09-01.*
+*Verified against `deea84f9a0` on 2026-10-06.*
