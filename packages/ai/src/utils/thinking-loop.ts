@@ -39,7 +39,7 @@
 import { discardAttemptUsage, emptyUsage } from "@veyyon/catalog/models";
 import * as logger from "@veyyon/utils/logger";
 import * as AIError from "../error";
-import type { Api, AssistantMessage, Model, StreamOptions } from "../types";
+import type { Api, AssistantMessage, AssistantMessageEvent, Model, StreamOptions } from "../types";
 import { AssistantMessageEventStream } from "./event-stream";
 
 /** Stable lead phrase of the guard's error message; exported for tests. The
@@ -188,35 +188,65 @@ function describeVerbatimRepeat(unit: string, count: number): string {
  * restates by construction, so those two would reject good summaries.
  */
 export function detectDegenerateRepetition(text: string): string | null {
-	const length = text.length;
-	if (length < VERBATIM_MIN_REPEATED_CHARS) return null;
-	for (let len = 2; len <= VERBATIM_MAX_UNIT && length >= len * 4; len++) {
-		// Four repeats need `3 * len` agreeing positions, and the char floor `MIN - len` of them.
-		const floor = Math.max(3 * len, VERBATIM_MIN_REPEATED_CHARS - len);
-		// Every run starting before `from` has been judged, and `from - 1` is not part of a run.
-		let from = 0;
-		for (let probe = floor - 1; probe + len < length; probe = from + floor - 1) {
-			if (text.charCodeAt(probe) !== text.charCodeAt(probe + len)) {
-				from = probe + 1;
-				continue;
-			}
-			let runStart = probe;
-			while (runStart > from && text.charCodeAt(runStart - 1) === text.charCodeAt(runStart - 1 + len)) runStart--;
-			let runEnd = probe + 1;
-			while (runEnd + len < length && text.charCodeAt(runEnd) === text.charCodeAt(runEnd + len)) runEnd++;
-			from = runEnd + 1;
-			const count = Math.floor((runEnd - runStart + len) / len);
-			if (count < 4 || count * len < VERBATIM_MIN_REPEATED_CHARS) continue;
-			const unit = text.slice(runStart, runStart + len);
-			// Same judgement the streamed detector applies: a whitespace-free run that
-			// only continues a longer token is one long name cycling, not a sampler
-			// runaway. Both paths have to agree, or a path echoed in a completed
-			// message is a loop while the same bytes streamed are not.
-			const continuesToken = !/\s/.test(unit) && runStart > 0 && !/\s/.test(text[runStart - 1] as string);
-			if (VERBATIM_UNIT_CONTENT.test(unit) && !continuesToken) return describeVerbatimRepeat(unit, count);
-		}
+	if (text.length < VERBATIM_MIN_REPEATED_CHARS) return null;
+	for (let len = 2; len <= VERBATIM_MAX_UNIT && text.length >= len * 4; len++) {
+		const hit = degenerateRunOfUnit(text, len);
+		if (hit) return hit;
 	}
 	return null;
+}
+
+/** The first run in `text` of a `len`-char unit repeated back-to-back that clears the floors, described, or null. */
+function degenerateRunOfUnit(text: string, len: number): string | null {
+	const length = text.length;
+	// Four repeats need `3 * len` agreeing positions, and the char floor `MIN - len` of them.
+	const floor = Math.max(3 * len, VERBATIM_MIN_REPEATED_CHARS - len);
+	// Every run starting before `from` has been judged, and `from - 1` is not part of a run.
+	let from = 0;
+	for (let probe = floor - 1; probe + len < length; probe = from + floor - 1) {
+		if (text.charCodeAt(probe) !== text.charCodeAt(probe + len)) {
+			from = probe + 1;
+			continue;
+		}
+		const runStart = periodicRunStart(text, probe, len, from);
+		const runEnd = periodicRunEnd(text, probe, len);
+		from = runEnd + 1;
+		const count = Math.floor((runEnd - runStart + len) / len);
+		if (count < 4 || count * len < VERBATIM_MIN_REPEATED_CHARS) continue;
+		const unit = text.slice(runStart, runStart + len);
+		const before = runStart > 0 ? text.charCodeAt(runStart - 1) : -1;
+		if (VERBATIM_UNIT_CONTENT.test(unit) && !continuesToken(unit, before)) return describeVerbatimRepeat(unit, count);
+	}
+	return null;
+}
+
+/** Where the agreement of `text` with itself `len` chars on, which holds at `probe`, begins; no earlier than `floor`. */
+function periodicRunStart(text: string, probe: number, len: number, floor: number): number {
+	let start = probe;
+	while (start > floor && text.charCodeAt(start - 1) === text.charCodeAt(start - 1 + len)) start--;
+	return start;
+}
+
+/** Where the agreement of `text` with itself `len` chars on, which holds at `probe`, ends (exclusive). */
+function periodicRunEnd(text: string, probe: number, len: number): number {
+	let end = probe + 1;
+	while (end + len < text.length && text.charCodeAt(end) === text.charCodeAt(end + len)) end++;
+	return end;
+}
+
+/**
+ * Whether a run of `unit` only continues a longer token, given the code unit `before` the run, or -1
+ * when the run starts the text. A whitespace-free unit can be a slice of ONE long token — a path
+ * segment, an identifier, a hash — that happens to cycle. A directory named
+ * `probe_on_and_on_and_on…` repeats `_on_and` past the character threshold while being a name that
+ * exists on disk, and echoing it back is not a sampler that lost its footing. A runaway repeats
+ * ACROSS token boundaries, so a whitespace-free run that only continues a longer token is data and
+ * is left alone. A run starting at a token boundary still trips, which keeps a space-free script
+ * covered. The streamed and the completed-text scans both ask this, so bytes that are a loop when
+ * streamed are a loop when echoed in a completed message.
+ */
+function continuesToken(unit: string, before: number): boolean {
+	return before >= 0 && !/\s/.test(unit) && !/\s/.test(String.fromCharCode(before));
 }
 
 /**
@@ -265,44 +295,49 @@ export class ThinkingLoopDetector {
 
 		// 2. Near-duplicate paragraph loop. Append, then drain completed segments.
 		this.#pending += delta;
-		while (true) {
-			SEGMENT_BOUNDARY.lastIndex = this.#boundaryFrom;
-			const boundary = SEGMENT_BOUNDARY.exec(this.#pending);
-			let raw: string;
-			if (boundary) {
-				raw = this.#pending.slice(0, boundary.index);
-				this.#pending = this.#pending.slice(SEGMENT_BOUNDARY.lastIndex);
-			} else if (this.#pending.length > SEGMENT_CHAR_CAP) {
-				// No boundary yet but the segment is runaway-long: force a flush.
-				raw = this.#pending.slice(0, SEGMENT_CHAR_CAP);
-				this.#pending = this.#pending.slice(SEGMENT_CHAR_CAP);
-			} else {
-				// The char before `#boundaryFrom` is not whitespace, so the trailing run starts there at
-				// the earliest.
-				const pending = this.#pending;
-				let from = pending.length;
-				while (from > this.#boundaryFrom) {
-					const code = pending.charCodeAt(from - 1);
-					const space =
-						code < 0x80
-							? code === 0x20 || (code >= 0x09 && code <= 0x0d)
-							: /\s/.test(pending[from - 1] as string);
-					if (!space) break;
-					from--;
-				}
-				this.#boundaryFrom = from;
-				return null;
-			}
-			// What remains was cut from the front, so it is searched from its start.
-			this.#boundaryFrom = 0;
-			// An over-long segment is chunked so each piece stays comparable.
-			for (let rest = raw; rest.length > 0; ) {
-				const chunk = rest.length > SEGMENT_CHAR_CAP ? rest.slice(0, SEGMENT_CHAR_CAP) : rest;
-				rest = rest.slice(chunk.length);
-				const hit = this.#consumeSegment(chunk);
-				if (hit) return hit;
-			}
+		for (let raw = this.#takeSegment(); raw !== undefined; raw = this.#takeSegment()) {
+			const hit = this.#consumeChunks(raw);
+			if (hit) return hit;
 		}
+		return null;
+	}
+
+	/**
+	 * Removes the next completed segment from {@link #pending}: the text before a blank line, or the
+	 * first {@link SEGMENT_CHAR_CAP} chars of a runaway-long segment with no boundary yet. Returns
+	 * undefined when neither is there, after moving {@link #boundaryFrom} to where the next search
+	 * starts.
+	 */
+	#takeSegment(): string | undefined {
+		const pending = this.#pending;
+		SEGMENT_BOUNDARY.lastIndex = this.#boundaryFrom;
+		const boundary = SEGMENT_BOUNDARY.exec(pending);
+		let raw: string;
+		if (boundary) {
+			raw = pending.slice(0, boundary.index);
+			this.#pending = pending.slice(SEGMENT_BOUNDARY.lastIndex);
+		} else if (pending.length > SEGMENT_CHAR_CAP) {
+			raw = pending.slice(0, SEGMENT_CHAR_CAP);
+			this.#pending = pending.slice(SEGMENT_CHAR_CAP);
+		} else {
+			// The char before `#boundaryFrom` is not whitespace, so the trailing run starts there at
+			// the earliest.
+			this.#boundaryFrom = trailingWhitespaceStart(pending, this.#boundaryFrom);
+			return undefined;
+		}
+		// What remains was cut from the front, so it is searched from its start.
+		this.#boundaryFrom = 0;
+		return raw;
+	}
+
+	/** Consumes `raw` in pieces of at most {@link SEGMENT_CHAR_CAP} chars, so an over-long segment
+	 *  stays comparable, and returns the first hit. */
+	#consumeChunks(raw: string): string | null {
+		for (let at = 0; at < raw.length; at += SEGMENT_CHAR_CAP) {
+			const hit = this.#consumeSegment(raw.slice(at, at + SEGMENT_CHAR_CAP));
+			if (hit) return hit;
+		}
+		return null;
 	}
 
 	/** Appends `delta` to {@link #tail}, moving the last {@link VERBATIM_TAIL_WINDOW} code units to the
@@ -328,16 +363,10 @@ export class ThinkingLoopDetector {
 	 *  which may be the one that completes a duplicate cluster — is not dropped. */
 	flush(): string | null {
 		if (!this.#pending) return null;
-		let rest = this.#pending;
+		const rest = this.#pending;
 		this.#pending = "";
 		this.#boundaryFrom = 0;
-		while (rest.length > 0) {
-			const chunk = rest.length > SEGMENT_CHAR_CAP ? rest.slice(0, SEGMENT_CHAR_CAP) : rest;
-			rest = rest.slice(chunk.length);
-			const hit = this.#consumeSegment(chunk);
-			if (hit) return hit;
-		}
-		return null;
+		return this.#consumeChunks(rest);
 	}
 
 	#consumeSegment(raw: string): string | null {
@@ -357,34 +386,55 @@ export class ThinkingLoopDetector {
 			if (nearDuplicate(fingerprint, prev)) cluster++;
 		}
 
-		// (b) Progress-lexicon stall: paragraphs that recycle the recent
-		// vocabulary (low novelty) and add no *new* concrete reference — reworded
-		// filler that burns budget without advancing. The trigram check above
-		// already claims high-overlap near-duplicates; this catches the
-		// low-overlap, reshuffled-wording shape it misses. Requiring a NEW anchor
-		// (not merely any anchor) still catches filler that name-drops one fixed
-		// path/identifier every paragraph, while sparing genuine per-target work
-		// that names a fresh file/symbol each time.
 		const words = new Set<string>(tokens);
+		const anchorsHeld = this.#scoreLexicalStall(segment, words);
+		this.#remember(fingerprint, words, anchorsHeld);
+
+		if (this.#count < SEGMENT_MIN_COUNT) return null;
+		if (cluster >= SEGMENT_MIN_CLUSTER) {
+			return `${cluster} near-identical segments within the last ${SEGMENT_WINDOW}`;
+		}
+		if (this.#lexStallRun >= LEX_STALL_MIN_RUN) {
+			return `${this.#lexStallRun} low-information segments recycling recent wording`;
+		}
+		return null;
+	}
+
+	/**
+	 * (b) Progress-lexicon stall: paragraphs that recycle the recent
+	 * vocabulary (low novelty) and add no *new* concrete reference — reworded
+	 * filler that burns budget without advancing. The trigram check
+	 * already claims high-overlap near-duplicates; this catches the
+	 * low-overlap, reshuffled-wording shape it misses. Requiring a NEW anchor
+	 * (not merely any anchor) still catches filler that name-drops one fixed
+	 * path/identifier every paragraph, while sparing genuine per-target work
+	 * that names a fresh file/symbol each time.
+	 *
+	 * Advances or resets {@link #lexStallRun} and returns what the anchor window holds for this
+	 * segment: its anchors when they were matched, or the segment itself to extract them from later.
+	 */
+	#scoreLexicalStall(segment: string, words: Set<string>): Set<string> | string {
 		const vocabulary = this.#vocabulary;
 		let unseen = 0;
 		for (const w of words) if (!vocabulary.has(w)) unseen++;
 		const novelty = vocabulary.size === 0 ? 1 : unseen / words.size;
-
 		// A segment that adds enough new words resets the run whatever it names, so its anchors are
 		// matched only when it falls under the novelty floor.
-		let anchorsHeld: Set<string> | string = segment;
-		if (novelty <= LEX_STALL_NOVELTY_FLOOR) {
-			const anchors = concreteAnchors(segment);
-			anchorsHeld = anchors;
-			if (this.#namesNewAnchor(anchors)) this.#lexStallRun = 0;
-			else this.#lexStallRun++;
-		} else {
+		if (novelty > LEX_STALL_NOVELTY_FLOOR) {
 			this.#lexStallRun = 0;
+			return segment;
 		}
+		const anchors = concreteAnchors(segment);
+		if (this.#namesNewAnchor(anchors)) this.#lexStallRun = 0;
+		else this.#lexStallRun++;
+		return anchors;
+	}
 
+	/** Slides the segment's fingerprint, words and anchors into their bounded windows. */
+	#remember(fingerprint: Set<string>, words: Set<string>, anchorsHeld: Set<string> | string): void {
 		this.#window.push(fingerprint);
 		if (this.#window.length > SEGMENT_WINDOW) this.#window.shift();
+		const vocabulary = this.#vocabulary;
 		this.#wordWindow.push(words);
 		for (const w of words) vocabulary.set(w, (vocabulary.get(w) ?? 0) + 1);
 		if (this.#wordWindow.length > LEX_NOVELTY_WINDOW) {
@@ -397,16 +447,6 @@ export class ThinkingLoopDetector {
 		this.#anchorWindow.push(anchorsHeld);
 		if (this.#anchorWindow.length > LEX_NOVELTY_WINDOW) this.#anchorWindow.shift();
 		this.#count++;
-
-		if (this.#count >= SEGMENT_MIN_COUNT) {
-			if (cluster >= SEGMENT_MIN_CLUSTER) {
-				return `${cluster} near-identical segments within the last ${SEGMENT_WINDOW}`;
-			}
-			if (this.#lexStallRun >= LEX_STALL_MIN_RUN) {
-				return `${this.#lexStallRun} low-information segments recycling recent wording`;
-			}
-		}
-		return null;
 	}
 
 	/** Whether `anchors` holds a reference no segment in the anchor window named. */
@@ -516,85 +556,118 @@ export function guardThinkingLoopStream(
 	options?: StreamOptions,
 ): AssistantMessageEventStream {
 	const outer = new AssistantMessageEventStream();
-	const thinkingDetector = new ThinkingLoopDetector();
-	const textDetector = new ThinkingLoopDetector();
-	const checkAssistantContent = options?.loopGuard?.checkAssistantContent !== false;
-
-	void (async () => {
-		let thinkingArmed = true;
-		let textArmed = checkAssistantContent;
-		// Last streamed view of the attempt, kept for its usage: a loop that gets
-		// aborted still billed every token it sampled, and the stall message this
-		// guard raises replaces the attempt entirely.
-		let partial: AssistantMessage | undefined;
-		try {
-			for await (const event of inner) {
-				if ("partial" in event) partial = event.partial;
-				let detail: string | null = null;
-				if (thinkingArmed && event.type === "thinking_delta") {
-					detail = thinkingDetector.push(event.delta);
-				} else if (thinkingArmed && event.type === "thinking_end") {
-					detail = thinkingDetector.flush();
-					thinkingArmed = false;
-				} else if (event.type === "text_start" || event.type === "text_delta") {
-					thinkingArmed = false;
-					if (textArmed && event.type === "text_delta") {
-						detail = textDetector.push(event.delta);
-					}
-				} else if (event.type === "toolcall_start" || event.type === "toolcall_delta") {
-					thinkingArmed = false;
-					textArmed = false;
-				} else if (event.type === "done") {
-					// A stream that reached `done` stopped on its own, so a trailing repeat is
-					// the end of an answer rather than a runaway. Raising here discards a turn
-					// that already succeeded and hands the session a retry that resamples the
-					// same prompt, trips the same detector, and fails again — the abort is
-					// deterministic, so the retry ladder cannot recover it. Only a `length`
-					// stop, where the model ran into the token cap still repeating, carries
-					// the runaway signature this guard exists for.
-					if (event.reason === "length") {
-						if (thinkingArmed) {
-							detail = thinkingDetector.flush();
-						}
-						if (textArmed) {
-							detail = detail || textDetector.flush();
-						}
-					}
-				}
-				if (detail) {
-					logger.warn("Thinking loop detected; aborting stream for retry.", {
-						model: model.id,
-						provider: model.provider,
-						detail,
-					});
-					controller.abort(
-						AIError.attach(new Error(THINKING_LOOP_ERROR_MARKER), AIError.create(AIError.Flag.ThinkingLoop)),
-					);
-					const stall = buildThinkingLoopError(model, detail);
-					if (partial) discardAttemptUsage(model, partial.usage, stall.usage);
-					outer.push({
-						type: "error",
-						reason: "error",
-						error: stall,
-					});
-					return;
-				}
-				outer.push(event);
-				if (outer.done) return;
-			}
-			if (!outer.done) {
-				try {
-					outer.end(await inner.result());
-				} catch (err) {
-					outer.fail(err);
-				}
-			}
-		} catch (err) {
-			if (!outer.done) outer.fail(err);
-		}
-	})();
-
+	const detectors = new StreamLoopDetectors(options?.loopGuard?.checkAssistantContent !== false);
+	void pumpGuardedStream(inner, outer, detectors, model, controller);
 	return outer;
+}
+
+/**
+ * The thinking and assistant-text detectors of one guarded stream. Thinking is watched until
+ * the first text or tool-call event, assistant text until the first tool-call event.
+ */
+class StreamLoopDetectors {
+	#thinking = new ThinkingLoopDetector();
+	#text = new ThinkingLoopDetector();
+	#thinkingArmed = true;
+	#textArmed: boolean;
+
+	constructor(checkAssistantContent: boolean) {
+		this.#textArmed = checkAssistantContent;
+	}
+
+	/** The loop `event` completes, or null. */
+	inspect(event: AssistantMessageEvent): string | null {
+		switch (event.type) {
+			case "thinking_delta":
+				return this.#thinkingArmed ? this.#thinking.push(event.delta) : null;
+			case "thinking_end":
+				if (!this.#thinkingArmed) return null;
+				this.#thinkingArmed = false;
+				return this.#thinking.flush();
+			case "text_start":
+				this.#thinkingArmed = false;
+				return null;
+			case "text_delta":
+				this.#thinkingArmed = false;
+				return this.#textArmed ? this.#text.push(event.delta) : null;
+			case "toolcall_start":
+			case "toolcall_delta":
+				this.#thinkingArmed = false;
+				this.#textArmed = false;
+				return null;
+			case "done":
+				// A stream that reached `done` stopped on its own, so a trailing repeat is
+				// the end of an answer rather than a runaway. Raising here discards a turn
+				// that already succeeded and hands the session a retry that resamples the
+				// same prompt, trips the same detector, and fails again — the abort is
+				// deterministic, so the retry ladder cannot recover it. Only a `length`
+				// stop, where the model ran into the token cap still repeating, carries
+				// the runaway signature this guard exists for.
+				return event.reason === "length" ? this.#flushArmed() : null;
+			default:
+				return null;
+		}
+	}
+
+	#flushArmed(): string | null {
+		// Text is pushed only after thinking disarms, and nothing re-arms it, so at most one
+		// detector holds anything to flush.
+		if (this.#thinkingArmed) return this.#thinking.flush();
+		return this.#textArmed ? this.#text.flush() : null;
+	}
+}
+
+/** Forwards `inner` to `outer` until the stream ends or a detector reports a loop. */
+async function pumpGuardedStream(
+	inner: AssistantMessageEventStream,
+	outer: AssistantMessageEventStream,
+	detectors: StreamLoopDetectors,
+	model: Model<Api>,
+	controller: AbortController,
+): Promise<void> {
+	// Last streamed view of the attempt, kept for its usage: a loop that gets
+	// aborted still billed every token it sampled, and the stall message this
+	// guard raises replaces the attempt entirely.
+	let partial: AssistantMessage | undefined;
+	try {
+		for await (const event of inner) {
+			if ("partial" in event) partial = event.partial;
+			const detail = detectors.inspect(event);
+			if (detail) {
+				raiseThinkingLoop(outer, model, controller, detail, partial);
+				return;
+			}
+			// The event that ends `outer` also ended `inner`, so the loop ends after it.
+			outer.push(event);
+		}
+		if (outer.done) return;
+		try {
+			outer.end(await inner.result());
+		} catch (err) {
+			outer.fail(err);
+		}
+	} catch (err) {
+		if (!outer.done) outer.fail(err);
+	}
+}
+
+/** Aborts the upstream and ends `outer` with the retryable stall, which carries the usage the attempt billed. */
+function raiseThinkingLoop(
+	outer: AssistantMessageEventStream,
+	model: Model<Api>,
+	controller: AbortController,
+	detail: string,
+	partial: AssistantMessage | undefined,
+): void {
+	logger.warn("Thinking loop detected; aborting stream for retry.", {
+		model: model.id,
+		provider: model.provider,
+		detail,
+	});
+	controller.abort(AIError.attach(new Error(THINKING_LOOP_ERROR_MARKER), AIError.create(AIError.Flag.ThinkingLoop)));
+	const stall = buildThinkingLoopError(model, detail);
+	if (partial) discardAttemptUsage(model, partial.usage, stall.usage);
+	outer.push({ type: "error", reason: "error", error: stall });
 }
 
 /**
@@ -666,31 +739,7 @@ function detectVerbatimRepetition(tail: Uint16Array, end: number): [unit: string
 	const searchLength = end - start;
 	if (searchLength < VERBATIM_MIN_REPEATED_CHARS) return null;
 
-	// Distance from the end to the nearest letter/emoji, capped at the longest unit probed. Any unit
-	// shorter than this is punctuation, digits or whitespace and is never probed.
-	let contentAt = VERBATIM_MAX_UNIT + 1;
-	const scan = Math.min(searchLength, VERBATIM_MAX_UNIT);
-	for (let back = 1; back <= scan; back++) {
-		const at = end - back;
-		const code = tail[at] as number;
-		// An ASCII char carries content exactly when it is a letter: no ASCII char is a pictograph.
-		if (code < 0x80) {
-			if (((code | 0x20) - 0x61) >>> 0 < 26) {
-				contentAt = back;
-				break;
-			}
-			continue;
-		}
-		// An emoji is two code units and a lone surrogate carries no Unicode property, so a low
-		// surrogate is tested together with the high half in front of it, and a unit has to reach one
-		// char further back to hold the whole pair.
-		const isLowSurrogate = code >= 0xdc00 && code <= 0xdfff && at > start;
-		const char = isLowSurrogate ? String.fromCharCode(tail[at - 1] as number, code) : String.fromCharCode(code);
-		if (VERBATIM_UNIT_CONTENT.test(char)) {
-			contentAt = isLowSurrogate ? back + 1 : back;
-			break;
-		}
-	}
+	const contentAt = contentDistance(tail, start, end);
 	if (contentAt > VERBATIM_MAX_UNIT) return null;
 
 	const minLen = Math.max(2, contentAt);
@@ -702,26 +751,47 @@ function detectVerbatimRepetition(tail: Uint16Array, end: number): [unit: string
 		if (tail[at] !== last) continue;
 		const len = end - 1 - at;
 		const unitAt = end - len;
-		// The last `len` chars are one repeat; count the blocks before them that equal it.
-		let count = 1;
-		let pos = unitAt;
-		while (pos - len >= start && sameUnits(tail, pos - len, unitAt, len)) {
-			count++;
-			pos -= len;
-		}
+		// The last `len` chars are one repeat; the run is every equal block before them.
+		const runAt = repeatRunStart(tail, start, unitAt, len);
+		const count = (unitAt - runAt) / len + 1;
 		if (count < 4 || len * count < VERBATIM_MIN_REPEATED_CHARS) continue;
 		const unit = String.fromCharCode(...tail.subarray(unitAt, end));
-		// A whitespace-free unit can be a slice of ONE long token — a path segment, an
-		// identifier, a hash — that happens to cycle. A directory named
-		// `probe_on_and_on_and_on…` repeats `_on_and` past the character threshold while
-		// being a name that exists on disk, and echoing it back is not a sampler that lost
-		// its footing. A runaway repeats ACROSS token boundaries, so a whitespace-free run
-		// that only continues a longer token is data and is left alone. A run starting at a
-		// token boundary still trips, which keeps a space-free script covered.
-		if (!/\s/.test(unit) && pos > start && !/\s/.test(String.fromCharCode(tail[pos - 1] as number))) continue;
+		if (continuesToken(unit, runAt > start ? (tail[runAt - 1] as number) : -1)) continue;
 		return [unit, count];
 	}
 	return null;
+}
+
+/**
+ * Distance from `end` back to the nearest letter or pictographic emoji in `tail[start, end)`, or
+ * {@link VERBATIM_MAX_UNIT} + 1 when none sits within the longest unit probed. Any unit shorter than
+ * this is punctuation, digits or whitespace and is never probed.
+ */
+function contentDistance(tail: Uint16Array, start: number, end: number): number {
+	const scan = Math.min(end - start, VERBATIM_MAX_UNIT);
+	for (let back = 1; back <= scan; back++) {
+		const at = end - back;
+		const code = tail[at] as number;
+		// An ASCII char carries content exactly when it is a letter: no ASCII char is a pictograph.
+		if (code < 0x80) {
+			if (((code | 0x20) - 0x61) >>> 0 < 26) return back;
+			continue;
+		}
+		// An emoji is two code units and a lone surrogate carries no Unicode property, so a low
+		// surrogate is tested together with the high half in front of it, and a unit has to reach one
+		// char further back to hold the whole pair.
+		const isLowSurrogate = code >= 0xdc00 && code <= 0xdfff && at > start;
+		const char = isLowSurrogate ? String.fromCharCode(tail[at - 1] as number, code) : String.fromCharCode(code);
+		if (VERBATIM_UNIT_CONTENT.test(char)) return isLowSurrogate ? back + 1 : back;
+	}
+	return VERBATIM_MAX_UNIT + 1;
+}
+
+/** Where the run of `len`-unit blocks equal to the one at `unitAt` begins, no earlier than `start`. */
+function repeatRunStart(tail: Uint16Array, start: number, unitAt: number, len: number): number {
+	let pos = unitAt;
+	while (pos - len >= start && sameUnits(tail, pos - len, unitAt, len)) pos -= len;
+	return pos;
 }
 
 /** Whether `tail` holds the same `length` code units at `a` and at `b`. */
@@ -730,6 +800,18 @@ function sameUnits(tail: Uint16Array, a: number, b: number, length: number): boo
 		if (tail[a + i] !== tail[b + i]) return false;
 	}
 	return true;
+}
+
+/** Where the run of whitespace ending `text` begins, searching back no further than `floor`. */
+function trailingWhitespaceStart(text: string, floor: number): number {
+	let from = text.length;
+	while (from > floor) {
+		const code = text.charCodeAt(from - 1);
+		const space = code < 0x80 ? code === 0x20 || (code >= 0x09 && code <= 0x0d) : /\s/.test(text[from - 1] as string);
+		if (!space) break;
+		from--;
+	}
+	return from;
 }
 
 /** Lowercased word tokens of prose plus code/path payloads, dropping pure numbers. */
