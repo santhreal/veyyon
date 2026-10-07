@@ -1,5 +1,5 @@
 import { FETCH_AVAILABLE_MODELS_PATH } from "@veyyon/catalog/discovery/antigravity";
-import { ANTIGRAVITY_ENDPOINTS, ANTIGRAVITY_PRIMARY_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
+import { ANTIGRAVITY_ENDPOINTS } from "@veyyon/catalog/provider-endpoints";
 import { getAntigravityUserAgent } from "@veyyon/catalog/wire/gemini-headers";
 import { DAY_MS, WEEK_MS } from "@veyyon/utils/time";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
@@ -254,6 +254,142 @@ function resolveAccessToken(params: UsageFetchParams): string | undefined {
 	return credential.accessToken;
 }
 
+interface AntigravityModelsResult {
+	data: AntigravityUsageResponse;
+	endpoint: string;
+}
+
+/**
+ * POST `fetchAvailableModels` to the configured base URL, or to each built-in
+ * endpoint in turn while the previous one answers with a transient status or
+ * a network error. A network error on the last endpoint propagates.
+ */
+async function fetchAvailableModels(
+	params: UsageFetchParams,
+	ctx: UsageFetchContext,
+	accessToken: string,
+	projectId: string,
+): Promise<AntigravityModelsResult | undefined> {
+	const baseUrl = params.baseUrl === undefined ? undefined : trimTrailingSlashes(params.baseUrl);
+	const endpoints: readonly string[] = baseUrl ? [baseUrl] : ANTIGRAVITY_ENDPOINTS;
+	const lastEndpoint = endpoints[endpoints.length - 1];
+	const init: RequestInit = {
+		method: "POST",
+		headers: {
+			Authorization: `Bearer ${accessToken}`,
+			"Content-Type": "application/json",
+			"User-Agent": getAntigravityUserAgent(),
+		},
+		body: JSON.stringify({ project: projectId }),
+		signal: params.signal,
+	};
+
+	let response: Response | undefined;
+	for (const endpoint of endpoints) {
+		try {
+			response = await ctx.fetch(`${endpoint}${FETCH_AVAILABLE_MODELS_PATH}`, init);
+		} catch (error) {
+			if (endpoint === lastEndpoint) throw error;
+			continue;
+		}
+		if (response.ok) return { data: (await response.json()) as AntigravityUsageResponse, endpoint };
+		if (!AIError.isTransientStatus(response.status)) break;
+	}
+
+	ctx.logger?.warn("Antigravity usage fetch failed", {
+		status: response?.status ?? 0,
+		statusText: response?.statusText ?? "unknown",
+	});
+	return undefined;
+}
+
+interface AntigravityCounterEntry {
+	amount: UsageAmount;
+	window: UsageWindow | undefined;
+	tier: string | undefined;
+	tierKey: string;
+	windowId: string;
+	counterName: string | undefined;
+	counterKey: string;
+}
+
+function buildCounterEntry(
+	info: AntigravityQuotaInfo,
+	descriptor: AntigravityWindowDescriptor | undefined,
+): AntigravityCounterEntry {
+	const window = parseWindow(info, descriptor);
+	const counterName = formatCounterName(info);
+	return {
+		amount: buildAmount(info),
+		window,
+		tier: info.tier,
+		tierKey: (info.tier ?? "default").toLowerCase(),
+		// Use the parsed window id when available so provider enum names like
+		// WINDOW_WEEKLY normalize into the same visible `/usage` group as
+		// weeklyQuotaInfo entries.
+		windowId: window?.id ?? info.windowId ?? "default",
+		counterName,
+		counterKey: counterName?.toLowerCase() ?? "default",
+	};
+}
+
+/**
+ * Fold a duplicate counter into the one already collected: the lower defined
+ * remaining fraction supplies the bar, and a window that carries a reset time
+ * is kept so "resets in…" survives the merge.
+ */
+function mergeCounterEntry(existing: AntigravityCounterEntry, candidate: AntigravityCounterEntry): void {
+	if (!existing.window?.resetsAt) existing.window = candidate.window ?? existing.window;
+	const existingFraction = existing.amount.remainingFraction;
+	const candidateFraction = candidate.amount.remainingFraction;
+	if (candidateFraction !== undefined && (existingFraction === undefined || candidateFraction < existingFraction)) {
+		existing.amount = candidate.amount;
+		existing.tier = candidate.tier ?? existing.tier;
+		return;
+	}
+	existing.tier ??= candidate.tier;
+}
+
+/**
+ * The API returns per-model quota entries, but quota is shared across models
+ * within the same backend counter, tier, and reset window. Google and
+ * Anthropic-backed models stay separate so a healthy Claude counter cannot
+ * mask an exhausted Gemini counter.
+ */
+function collectCounterEntries(models: Record<string, AntigravityModelInfo>, nowMs: number): AntigravityCounterEntry[] {
+	const entries = new Map<string, AntigravityCounterEntry>();
+	for (const modelInfo of Object.values(models)) {
+		const quotaInfos = normalizeQuotaInfos(modelInfo);
+		const inferredDescriptors = inferWindowDescriptors(quotaInfos, nowMs);
+		for (const quotaInfo of quotaInfos) {
+			const entry = buildCounterEntry(quotaInfo, inferredDescriptors.get(quotaInfo));
+			const key = `${entry.counterKey}|${entry.tierKey}|${entry.windowId}`;
+			const existing = entries.get(key);
+			if (existing) mergeCounterEntry(existing, entry);
+			else entries.set(key, entry);
+		}
+	}
+	return Array.from(entries.values());
+}
+
+function buildCounterLimit(params: UsageFetchParams, entry: AntigravityCounterEntry): UsageLimit {
+	const { credential } = params;
+	return {
+		id: `${params.provider}:${entry.counterKey}:${entry.tierKey}:${entry.windowId}`,
+		label: entry.counterName ? `Usage (${entry.counterName})` : "Usage",
+		scope: {
+			provider: params.provider,
+			accountId: credential.accountId,
+			projectId: credential.projectId,
+			tier: entry.tier,
+			windowId: entry.windowId,
+		},
+		window: entry.window,
+		amount: entry.amount,
+		status: getUsageStatus(entry.amount.remainingFraction),
+	};
+}
+
 async function fetchAntigravityUsage(params: UsageFetchParams, ctx: UsageFetchContext): Promise<UsageReport | null> {
 	const credential = params.credential;
 	if (!credential.projectId) return null;
@@ -263,166 +399,27 @@ async function fetchAntigravityUsage(params: UsageFetchParams, ctx: UsageFetchCo
 	const accessToken = resolveAccessToken(params);
 	if (!accessToken) return null;
 
-	const baseUrl = params.baseUrl === undefined ? undefined : trimTrailingSlashes(params.baseUrl);
-	const endpoints = baseUrl ? [baseUrl] : ANTIGRAVITY_ENDPOINTS.slice();
+	const result = await fetchAvailableModels(params, ctx, accessToken, credential.projectId);
+	if (!result) return null;
+	const { data } = result;
 
-	let response: Response | undefined;
-	let successfulEndpoint = ANTIGRAVITY_PRIMARY_ENDPOINT;
-	for (const endpoint of endpoints) {
-		try {
-			const url = `${endpoint}${FETCH_AVAILABLE_MODELS_PATH}`;
-			response = await ctx.fetch(url, {
-				method: "POST",
-				headers: {
-					Authorization: `Bearer ${accessToken}`,
-					"Content-Type": "application/json",
-					"User-Agent": getAntigravityUserAgent(),
-				},
-				body: JSON.stringify({ project: credential.projectId }),
-				signal: params.signal,
-			});
-
-			if (response.ok) {
-				successfulEndpoint = endpoint;
-				break;
-			}
-
-			if (AIError.isTransientStatus(response.status)) {
-				continue;
-			}
-			break;
-		} catch (error) {
-			if (endpoint === endpoints[endpoints.length - 1]) {
-				throw error;
-			}
-		}
-	}
-
-	if (!response?.ok) {
-		ctx.logger?.warn("Antigravity usage fetch failed", {
-			status: response?.status ?? 0,
-			statusText: response?.statusText ?? "unknown",
-		});
-		return null;
-	}
-	const data = (await response.json()) as AntigravityUsageResponse;
-
-	// The API returns per-model quota entries, but quota is shared across
-	// models within the same backend counter, tier, and reset window. Keep
-	// Google and Anthropic-backed Antigravity models separate so a healthy
-	// Claude counter cannot mask an exhausted Gemini counter.
-	const deduped = new Map<
-		string,
-		{
-			amount: UsageAmount;
-			window: UsageWindow | undefined;
-			tier: string | undefined;
-			tierKey: string;
-			windowId: string;
-			counterName: string | undefined;
-			counterKey: string;
-		}
-	>();
-	let earliestReset: number | undefined;
-
-	for (const [_modelId, modelInfo] of Object.entries(data.models ?? {})) {
-		const quotaInfos = normalizeQuotaInfos(modelInfo);
-		const inferredDescriptors = inferWindowDescriptors(quotaInfos, nowMs);
-		for (const quotaInfo of quotaInfos) {
-			const amount = buildAmount(quotaInfo);
-			const window = parseWindow(quotaInfo, inferredDescriptors.get(quotaInfo));
-			if (window?.resetsAt) {
-				earliestReset = earliestReset ? Math.min(earliestReset, window.resetsAt) : window.resetsAt;
-			}
-			const tierKey = (quotaInfo.tier ?? "default").toLowerCase();
-			const counterName = formatCounterName(quotaInfo);
-			const counterKey = counterName?.toLowerCase() ?? "default";
-			// Use the parsed window id when available so provider enum names like
-			// WINDOW_WEEKLY normalize into the same visible `/usage` group as
-			// weeklyQuotaInfo entries.
-			const windowId = window?.id ?? quotaInfo.windowId ?? "default";
-			const key = `${counterKey}|${tierKey}|${windowId}`;
-			const existing = deduped.get(key);
-			if (!existing) {
-				deduped.set(key, { amount, window, tier: quotaInfo.tier, tierKey, windowId, counterName, counterKey });
-				continue;
-			}
-			// Merge: keep the entry with fraction data for the bar, but
-			// also keep any window with a reset time so "resets in…" survives.
-			const eFrac = existing.amount.remainingFraction;
-			const cFrac = amount.remainingFraction;
-			const eHasFrac = eFrac !== undefined;
-			const cHasFrac = cFrac !== undefined;
-
-			let bestAmount = existing.amount;
-			let bestWindow = existing.window?.resetsAt ? existing.window : (window ?? existing.window);
-			let bestTier = existing.tier ?? quotaInfo.tier;
-
-			if (!eHasFrac && cHasFrac) {
-				bestAmount = amount;
-				bestTier = quotaInfo.tier ?? existing.tier;
-			} else if (eFrac !== undefined && cFrac !== undefined && cFrac < eFrac) {
-				bestAmount = amount;
-				bestTier = quotaInfo.tier ?? existing.tier;
-			}
-			// Always merge in window with reset time if the current
-			// best doesn't have one.
-			if (!bestWindow?.resetsAt && window?.resetsAt) {
-				bestWindow = window;
-			}
-			deduped.set(key, {
-				amount: bestAmount,
-				window: bestWindow,
-				tier: bestTier,
-				tierKey: existing.tierKey,
-				windowId: existing.windowId,
-				counterName: existing.counterName,
-				counterKey: existing.counterKey,
-			});
-		}
-	}
-
-	const limits: UsageLimit[] = [];
-	for (const entry of deduped.values()) {
-		const label = entry.counterName ? `Usage (${entry.counterName})` : "Usage";
-		limits.push({
-			id: `${params.provider}:${entry.counterKey}:${entry.tierKey}:${entry.windowId}`,
-			label,
-			scope: {
-				provider: params.provider,
-				accountId: credential.accountId,
-				projectId: credential.projectId,
-				tier: entry.tier,
-				windowId: entry.windowId,
-			},
-			window: entry.window,
-			amount: entry.amount,
-			status: getUsageStatus(entry.amount.remainingFraction),
-		});
-	}
-
-	limits.sort((a, b) => {
-		const aFraction = a.amount.remainingFraction ?? 1;
-		const bFraction = b.amount.remainingFraction ?? 1;
-		return aFraction - bFraction;
-	});
+	const limits = collectCounterEntries(data.models ?? {}, nowMs).map(entry => buildCounterLimit(params, entry));
+	limits.sort((a, b) => (a.amount.remainingFraction ?? 1) - (b.amount.remainingFraction ?? 1));
 
 	const metadata: UsageReport["metadata"] = {
-		endpoint: successfulEndpoint,
+		endpoint: result.endpoint,
 		projectId: credential.projectId,
 	};
 	if (credential.email) metadata.email = credential.email;
 	if (credential.accountId) metadata.accountId = credential.accountId;
 
-	const report: UsageReport = {
+	return {
 		provider: params.provider,
 		fetchedAt: nowMs,
 		limits,
 		metadata,
 		raw: data,
 	};
-
-	return report;
 }
 
 export const antigravityUsageProvider: UsageProvider = {
