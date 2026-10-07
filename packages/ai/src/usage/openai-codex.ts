@@ -393,6 +393,26 @@ export function parseCodexRateLimitHeaders(headers: Record<string, string>, now 
 	};
 }
 
+/** The usage endpoint's JSON body, or `undefined` after logging a failed or unreadable request. */
+async function requestCodexUsage(
+	url: string,
+	headers: Record<string, string>,
+	params: UsageFetchParams,
+	ctx: UsageFetchContext,
+): Promise<{ payload: unknown } | undefined> {
+	try {
+		const response = await ctx.fetch(url, { headers, signal: params.signal });
+		if (!response.ok) {
+			ctx.logger?.warn("Codex usage request failed", { status: response.status, provider: params.provider });
+			return undefined;
+		}
+		return { payload: await response.json() };
+	} catch (error) {
+		ctx.logger?.warn("Codex usage request error", { provider: params.provider, error: String(error) });
+		return undefined;
+	}
+}
+
 export const openaiCodexUsageProvider: UsageProvider = {
 	id: "openai-codex",
 	supports(params: UsageFetchParams): boolean {
@@ -427,19 +447,9 @@ export const openaiCodexUsageProvider: UsageProvider = {
 			headers["ChatGPT-Account-Id"] = accountId;
 		}
 
-		const url = buildCodexUsageUrl(baseUrl);
-		let payload: unknown;
-		try {
-			const response = await ctx.fetch(url, { headers, signal: params.signal });
-			if (!response.ok) {
-				ctx.logger?.warn("Codex usage request failed", { status: response.status, provider: params.provider });
-				return null;
-			}
-			payload = await response.json();
-		} catch (error) {
-			ctx.logger?.warn("Codex usage request error", { provider: params.provider, error: String(error) });
-			return null;
-		}
+		const body = await requestCodexUsage(buildCodexUsageUrl(baseUrl), headers, params, ctx);
+		if (!body) return null;
+		const { payload } = body;
 
 		const parsed = parseUsagePayload(payload);
 		const planType =
