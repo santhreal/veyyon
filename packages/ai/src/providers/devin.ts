@@ -32,6 +32,7 @@ import {
 	ChatToolCallSchema,
 	CompletionConfigurationSchema,
 	ConversationalPlannerMode,
+	type ImageData,
 	ImageDataSchema,
 	MetadataSchema,
 	type ModelUsageStats,
@@ -51,6 +52,8 @@ import type {
 	Api,
 	AssistantMessage,
 	Context,
+	DeveloperMessage,
+	ImageContent,
 	Message,
 	Model,
 	StreamFunction,
@@ -59,13 +62,16 @@ import type {
 	ThinkingContent,
 	Tool,
 	ToolCall,
+	ToolResultMessage,
 	Usage,
+	UserMessage,
 } from "../types";
 import { clearStreamingPartialJson, setStreamingPartialJson } from "../utils/block-symbols";
 import {
 	CONNECT_COMPRESSED_FLAG,
 	CONNECT_END_STREAM_FLAG,
 	ConnectFrameReader,
+	type ConnectRead,
 	frameConnectMessage,
 	MAX_CONNECT_FRAME_PAYLOAD,
 } from "../utils/connect-frames";
@@ -288,23 +294,27 @@ async function readConnectMessages(
 		if (value) frames.push(value);
 
 		for (let read = frames.next(); read; read = frames.next()) {
-			if (read.kind === "oversized") {
-				throw new AIError.ProviderResponseError(
-					`Devin Connect frame length ${read.length} exceeds ${MAX_CONNECT_FRAME_PAYLOAD}-byte cap`,
-					{ provider: model.provider, kind: "envelope" },
-				);
-			}
-			const raw = read.flags & CONNECT_COMPRESSED_FLAG ? gunzipSync(read.payload) : read.payload;
-			if (read.flags & CONNECT_END_STREAM_FLAG) {
-				const trailerError = readConnectTrailerError(raw.toString("utf8").trim());
-				if (trailerError) throw devinTrailerFailure(trailerError);
-				continue;
-			}
-			onMessage(raw);
+			const payload = devinFramePayload(read, model);
+			if (payload) onMessage(payload);
 		}
 
 		if (done) return;
 	}
+}
+
+/** The message payload of one Connect frame, or `undefined` for an end-of-stream frame with no error. */
+function devinFramePayload(read: ConnectRead, model: Model<"devin-agent">): Buffer | undefined {
+	if (read.kind === "oversized") {
+		throw new AIError.ProviderResponseError(
+			`Devin Connect frame length ${read.length} exceeds ${MAX_CONNECT_FRAME_PAYLOAD}-byte cap`,
+			{ provider: model.provider, kind: "envelope" },
+		);
+	}
+	const raw = read.flags & CONNECT_COMPRESSED_FLAG ? gunzipSync(read.payload) : read.payload;
+	if (!(read.flags & CONNECT_END_STREAM_FLAG)) return raw;
+	const trailerError = readConnectTrailerError(raw.toString("utf8").trim());
+	if (trailerError) throw devinTrailerFailure(trailerError);
+	return undefined;
 }
 
 /** A tool call being streamed: its content block, where it sits, and the argument text so far. */
@@ -678,94 +688,77 @@ function buildDevinChatRequest(
 
 /** Map veyyon `Message` history onto Cascade `ChatMessagePrompt`s (USER / SYSTEM / TOOL channels). */
 function buildChatMessagePrompts(messages: Message[], cascadeId: string): ChatMessagePrompt[] {
-	const prompts: ChatMessagePrompt[] = [];
 	// messageId seeds are `cascadeId\0index\0role[...]` — prompt text is excluded
 	// so ids stay stable across content edits / history rebuilds.
-	for (const [index, msg] of messages.entries()) {
+	return messages.map((msg, index) => {
 		if (msg.role === "user" || msg.role === "developer") {
-			let promptText = "";
-			const images = [];
-			if (typeof msg.content === "string") {
-				promptText = msg.content;
-			} else {
-				for (const part of msg.content) {
-					if (part.type === "text") {
-						promptText += part.text;
-					} else if (part.type === "image") {
-						images.push(create(ImageDataSchema, { base64Data: part.data, mimeType: part.mimeType }));
-					}
-				}
-			}
-			prompts.push(
-				create(ChatMessagePromptSchema, {
-					messageId: deterministicUuid(`${cascadeId}\0${index}\0${msg.role}`),
-					source: ChatMessageSource.USER,
-					prompt: promptText,
-					images,
-				}),
-			);
-		} else if (msg.role === "assistant") {
-			let promptText = "";
-			let thinkingText = "";
-			let signature = "";
-			const toolCalls: ChatToolCall[] = [];
-			for (const part of msg.content) {
-				if (part.type === "text") {
-					promptText += part.text;
-				} else if (part.type === "thinking") {
-					thinkingText += part.thinking;
-					if (!signature && part.thinkingSignature) signature = part.thinkingSignature;
-				} else if (part.type === "toolCall") {
-					toolCalls.push(
-						create(ChatToolCallSchema, {
-							id: part.id,
-							name: part.name,
-							argumentsJson: JSON.stringify(part.arguments),
-						}),
-					);
-				}
-			}
-			prompts.push(
-				create(ChatMessagePromptSchema, {
-					messageId: msg.responseId ?? `bot-${deterministicUuid(`${cascadeId}\0${index}\0assistant`)}`,
-					source: ChatMessageSource.SYSTEM,
-					prompt: promptText,
-					thinking: thinkingText,
-					signature,
-					signatureType: "",
-					toolCalls,
-				}),
-			);
-		} else {
-			let resultText = "";
-			const images = [];
-			for (const part of msg.content) {
-				if (part.type === "text") {
-					resultText += part.text;
-				} else if (part.type === "image") {
-					images.push(create(ImageDataSchema, { base64Data: part.data, mimeType: part.mimeType }));
-				}
-			}
-			prompts.push(
-				create(ChatMessagePromptSchema, {
-					messageId: deterministicUuid(`${cascadeId}\0${index}\0tool\0${msg.toolCallId}`),
-					source: ChatMessageSource.TOOL,
-					toolCallId: msg.toolCallId,
-					toolResultIsError: msg.isError,
-					prompt: resultText,
-					images,
-				}),
+			return userPrompt(msg, deterministicUuid(`${cascadeId}\0${index}\0${msg.role}`));
+		}
+		if (msg.role === "assistant") {
+			return assistantPrompt(msg, msg.responseId ?? `bot-${deterministicUuid(`${cascadeId}\0${index}\0assistant`)}`);
+		}
+		return toolResultPrompt(msg, deterministicUuid(`${cascadeId}\0${index}\0tool\0${msg.toolCallId}`));
+	});
+}
+
+/** The text parts of a user turn or a tool result joined in order, and its images. */
+function promptTextAndImages(content: string | (TextContent | ImageContent)[]): { text: string; images: ImageData[] } {
+	if (typeof content === "string") return { text: content, images: [] };
+	let text = "";
+	const images: ImageData[] = [];
+	for (const part of content) {
+		if (part.type === "text") text += part.text;
+		else if (part.type === "image")
+			images.push(create(ImageDataSchema, { base64Data: part.data, mimeType: part.mimeType }));
+	}
+	return { text, images };
+}
+
+function userPrompt(msg: UserMessage | DeveloperMessage, messageId: string): ChatMessagePrompt {
+	const { text, images } = promptTextAndImages(msg.content);
+	return create(ChatMessagePromptSchema, { messageId, source: ChatMessageSource.USER, prompt: text, images });
+}
+
+function assistantPrompt(msg: AssistantMessage, messageId: string): ChatMessagePrompt {
+	let promptText = "";
+	let thinkingText = "";
+	let signature = "";
+	const toolCalls: ChatToolCall[] = [];
+	for (const part of msg.content) {
+		if (part.type === "text") {
+			promptText += part.text;
+		} else if (part.type === "thinking") {
+			thinkingText += part.thinking;
+			if (!signature && part.thinkingSignature) signature = part.thinkingSignature;
+		} else if (part.type === "toolCall") {
+			toolCalls.push(
+				create(ChatToolCallSchema, { id: part.id, name: part.name, argumentsJson: JSON.stringify(part.arguments) }),
 			);
 		}
 	}
-	return prompts;
+	return create(ChatMessagePromptSchema, {
+		messageId,
+		source: ChatMessageSource.SYSTEM,
+		prompt: promptText,
+		thinking: thinkingText,
+		signature,
+		signatureType: "",
+		toolCalls,
+	});
 }
 
-/**
- * Parse a Connect end-of-stream JSON trailer and return a human-readable error
- * string when it carries `{ error: { code, message } }`, else `null`. The trailer
- * is untrusted server output, so the shape is checked with guards rather than asserted.
- */
+function toolResultPrompt(msg: ToolResultMessage, messageId: string): ChatMessagePrompt {
+	const { text, images } = promptTextAndImages(msg.content);
+	return create(ChatMessagePromptSchema, {
+		messageId,
+		source: ChatMessageSource.TOOL,
+		toolCallId: msg.toolCallId,
+		toolResultIsError: msg.isError,
+		prompt: text,
+		images,
+	});
+}
+
 /**
  * A stream-level failure Cascade reports in its Connect end-stream trailer.
  *
@@ -788,6 +781,10 @@ interface DevinTrailerError {
 	readonly text: string;
 }
 
+/**
+ * Reads the Connect end-of-stream JSON trailer, or `null` when it carries no `{ error: { code,
+ * message } }`. The trailer is untrusted server output, so its shape is checked with guards.
+ */
 function readConnectTrailerError(text: string): DevinTrailerError | null {
 	if (text.length === 0) return null;
 	const parsed = tryParseJson(text);
