@@ -62,6 +62,13 @@ import type {
 	Usage,
 } from "../types";
 import { clearStreamingPartialJson, setStreamingPartialJson } from "../utils/block-symbols";
+import {
+	CONNECT_COMPRESSED_FLAG,
+	CONNECT_END_STREAM_FLAG,
+	ConnectFrameReader,
+	frameConnectMessage,
+	MAX_CONNECT_FRAME_PAYLOAD,
+} from "../utils/connect-frames";
 import { deterministicUuid } from "../utils/deterministic-id";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { toolWireSchema } from "../utils/schema/wire";
@@ -111,19 +118,6 @@ const DEVIN_RETRY_MAX_DELAY_MS = 90_000;
 const CHAT_MESSAGE_PATH = "/exa.api_server_pb.ApiServerService/GetChatMessage";
 const DEVIN_AUTH_PATH = "/exa.auth_pb.AuthService/GetUserJwt";
 const DEVIN_DEFAULT_STOP_PATTERNS = ["<|user|>", "<|bot|>", "<|context_request|>", "<|endoftext|>", "<|end_of_turn|>"];
-
-/** Connect streaming framing: flag byte bit 0x01 = gzip payload, 0x02 = end-of-stream JSON trailers. */
-const CONNECT_COMPRESSED_FLAG = 0x01;
-const CONNECT_END_STREAM_FLAG = 0x02;
-/**
- * Hard upper bound on a single Connect frame payload. The 4-byte length prefix
- * is otherwise attacker-controlled (up to `2**32 - 1`), so a malicious or buggy
- * peer could force {@link streamDevin}'s reader to buffer gigabytes via
- * `Buffer.concat` before the idle-timeout wrapper aborts. Well above any
- * legitimate Cascade response but tight enough that a corrupt length prefix
- * fails fast instead of consuming memory.
- */
-const MAX_CONNECT_FRAME_PAYLOAD = 16 * 1024 * 1024;
 
 export const streamDevin: StreamFunction<"devin-agent"> = (
 	model: Model<"devin-agent">,
@@ -242,11 +236,7 @@ async function postDevinChatRequest(
 	wireMetadata.apiKey = resolvedApiKey;
 	wireMetadata.userJwt = resolvedUserJwt;
 	request.metadata = wireMetadata;
-	const gz = gzipSync(toBinary(GetChatMessageRequestSchema, request));
-	const frame = Buffer.alloc(5 + gz.length);
-	frame[0] = CONNECT_COMPRESSED_FLAG;
-	frame.writeUInt32BE(gz.length, 1);
-	frame.set(gz, 5);
+	const frame = frameConnectMessage(gzipSync(toBinary(GetChatMessageRequestSchema, request)), CONNECT_COMPRESSED_FLAG);
 
 	const response = await fetchImpl(chatBaseUrl + CHAT_MESSAGE_PATH, {
 		method: "POST",
@@ -284,8 +274,7 @@ async function postDevinChatRequest(
  * each to `onMessage` synchronously, so a read holding many frames costs no promise per frame.
  *
  * The end-of-stream frame is not a message: its JSON trailers either carry an error, which is
- * thrown, or nothing. A read is appended to the unconsumed tail only when a frame straddles two
- * reads, so a read holding whole frames is sliced in place rather than copied.
+ * thrown, or nothing.
  */
 async function readConnectMessages(
 	body: ReadableStream<Uint8Array>,
@@ -293,31 +282,20 @@ async function readConnectMessages(
 	onMessage: (payload: Uint8Array) => void,
 ): Promise<void> {
 	const reader = body.getReader();
-	let pending: Buffer = Buffer.alloc(0);
+	const frames = new ConnectFrameReader();
 	for (;;) {
 		const { done, value } = await reader.read();
-		if (value && value.length > 0) {
-			pending =
-				pending.length === 0
-					? Buffer.from(value.buffer, value.byteOffset, value.byteLength)
-					: Buffer.concat([pending, value]);
-		}
+		if (value) frames.push(value);
 
-		while (pending.length >= 5) {
-			const flag = pending[0];
-			const len = pending.readUInt32BE(1);
-			if (len > MAX_CONNECT_FRAME_PAYLOAD) {
+		for (let read = frames.next(); read; read = frames.next()) {
+			if (read.kind === "oversized") {
 				throw new AIError.ProviderResponseError(
-					`Devin Connect frame length ${len} exceeds ${MAX_CONNECT_FRAME_PAYLOAD}-byte cap`,
+					`Devin Connect frame length ${read.length} exceeds ${MAX_CONNECT_FRAME_PAYLOAD}-byte cap`,
 					{ provider: model.provider, kind: "envelope" },
 				);
 			}
-			if (pending.length < 5 + len) break;
-			const payload = pending.subarray(5, 5 + len);
-			pending = pending.subarray(5 + len);
-			const raw = flag & CONNECT_COMPRESSED_FLAG ? gunzipSync(payload) : payload;
-
-			if (flag & CONNECT_END_STREAM_FLAG) {
+			const raw = read.flags & CONNECT_COMPRESSED_FLAG ? gunzipSync(read.payload) : read.payload;
+			if (read.flags & CONNECT_END_STREAM_FLAG) {
 				const trailerError = readConnectTrailerError(raw.toString("utf8").trim());
 				if (trailerError) throw devinTrailerFailure(trailerError);
 				continue;

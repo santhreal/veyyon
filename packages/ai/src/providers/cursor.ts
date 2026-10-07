@@ -145,6 +145,12 @@ import {
 	kStreamingLastParseLen,
 	kStreamingPartialJson,
 } from "../utils/block-symbols";
+import {
+	CONNECT_END_STREAM_FLAG,
+	ConnectFrameReader,
+	frameConnectMessage,
+	MAX_CONNECT_FRAME_PAYLOAD,
+} from "../utils/connect-frames";
 import { deterministicUuid } from "../utils/deterministic-id";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { connectProxiedSocket, getProxyForProvider, shouldBypassProxy } from "../utils/proxy";
@@ -229,15 +235,6 @@ export interface CursorOptions extends StreamOptions {
 	wireModelId?: string;
 }
 
-const CONNECT_END_STREAM_FLAG = 0b00000010;
-
-/**
- * Hard upper bound on a single Connect frame payload in Cursor streams. The 4-byte length prefix
- * is otherwise attacker-controlled (up to `2**32 - 1`), so a corrupt length prefix fails fast
- * instead of buffering indefinitely until memory exhaustion or watchdog timeout.
- */
-const MAX_CONNECT_FRAME_PAYLOAD = 16 * 1024 * 1024;
-
 interface CursorLogEntry {
 	ts: number;
 	type: string;
@@ -263,14 +260,6 @@ function log(type: string, subtype?: string, data?: unknown): void {
 	const dataStr = verbose && normalizedData ? ` ${JSON.stringify(normalizedData, debugReplacer)?.slice(0, 500)}` : "";
 	console.error(`[CURSOR] ${type}${subtype ? `: ${subtype}` : ""}${dataStr}`);
 	void appendCursorDebugLog(entry);
-}
-
-function frameConnectMessage(data: Uint8Array, flags = 0): Buffer {
-	const frame = Buffer.alloc(5 + data.length);
-	frame[0] = flags;
-	frame.writeUInt32BE(data.length, 1);
-	frame.set(data, 5);
-	return frame;
 }
 
 /**
@@ -522,7 +511,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			h2Request = h2Client.request(requestHeaders);
 			stream.push({ type: "start", partial: output });
 
-			let pendingBuffer = Buffer.alloc(0);
+			const frames = new ConnectFrameReader();
 			let endStreamError: Error | null = null;
 			// Settles when the turn has failed, so a termination waiting on in-flight message handlers
 			// stops waiting: a handler blocked on a local tool that never returns would otherwise hold
@@ -674,26 +663,21 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 					if (refusalBody.length < REFUSAL_BODY_LIMIT) refusalBody += chunk.toString("utf8");
 					return;
 				}
-				pendingBuffer = Buffer.concat([pendingBuffer, chunk]);
+				frames.push(chunk);
 
-				while (pendingBuffer.length >= 5) {
-					const flags = pendingBuffer[0];
-					const msgLen = pendingBuffer.readUInt32BE(1);
-					if (msgLen > MAX_CONNECT_FRAME_PAYLOAD) {
+				for (let read = frames.next(); read; read = frames.next()) {
+					if (read.kind === "oversized") {
 						failTurn(
 							new AIError.ProviderResponseError(
-								`Cursor Connect frame length ${msgLen} exceeds ${MAX_CONNECT_FRAME_PAYLOAD}-byte cap`,
+								`Cursor Connect frame length ${read.length} exceeds ${MAX_CONNECT_FRAME_PAYLOAD}-byte cap`,
 								{ provider: model.provider, kind: "envelope" },
 							),
 						);
 						break;
 					}
-					if (pendingBuffer.length < 5 + msgLen) break;
+					const messageBytes = read.payload;
 
-					const messageBytes = pendingBuffer.subarray(5, 5 + msgLen);
-					pendingBuffer = pendingBuffer.subarray(5 + msgLen);
-
-					if (flags & CONNECT_END_STREAM_FLAG) {
+					if (read.flags & CONNECT_END_STREAM_FLAG) {
 						const endError = parseConnectEndStream(messageBytes);
 						if (endError) {
 							failTurn(endError);
