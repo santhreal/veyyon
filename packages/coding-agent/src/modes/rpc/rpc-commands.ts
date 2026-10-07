@@ -8,7 +8,7 @@ import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import type { Model } from "@veyyon/ai";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import { isZodSchema, zodToWireSchema } from "@veyyon/ai/utils/schema";
-import { errorMessage, Snowflake } from "@veyyon/utils";
+import { errorMessage, isRecord, Snowflake } from "@veyyon/utils";
 import type { ExtensionUIContext } from "../../extensibility/extensions";
 import { buildSkillPromptMessage, parseSkillInvocation } from "../../extensibility/skills";
 import type { AgentSession } from "../../session/agent-session";
@@ -111,7 +111,7 @@ function normalizeHostToolDefinitions(tools: RpcHostToolDefinition[]): RpcHostTo
 		if (!description) {
 			throw new Error(`Host tool "${name}" must provide a non-empty description`);
 		}
-		if (!tool.parameters || typeof tool.parameters !== "object" || Array.isArray(tool.parameters)) {
+		if (!isRecord(tool.parameters)) {
 			throw new Error(`Host tool "${name}" must provide a JSON Schema object`);
 		}
 		const label = typeof tool.label === "string" && tool.label.trim() ? tool.label.trim() : name;
