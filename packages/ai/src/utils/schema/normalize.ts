@@ -133,42 +133,49 @@ function applySnakeCaseRenames(obj: JsonObject): JsonObject {
  * original reference otherwise (zero-allocation fast path).
  */
 function preHandleNullFields(obj: JsonObject): JsonObject {
-	if (obj.type === "null") {
-		const out: JsonObject = {};
-		for (const k in obj) {
-			if (!Object.hasOwn(obj, k) || k === "type") continue;
-			out[k] = obj[k];
-		}
-		out.nullable = true;
-		return out;
-	}
+	if (obj.type === "null") return nullTypeAsNullable(obj);
 	if (!Array.isArray(obj.anyOf)) return obj;
-	const variants = obj.anyOf as unknown[];
-	let sawNull = false;
-	const kept: unknown[] = [];
-	for (const v of variants) {
-		if (isRecord(v) && v.type === "null") {
-			sawNull = true;
-			continue;
-		}
-		kept.push(v);
+	const kept = withoutNullBranches(obj.anyOf);
+	return kept === obj.anyOf ? obj : nullableWithBranches(obj, kept);
+}
+
+/** `obj` without its `type`, marked `nullable`. */
+function nullTypeAsNullable(obj: JsonObject): JsonObject {
+	const out: JsonObject = {};
+	for (const k in obj) {
+		if (Object.hasOwn(obj, k) && k !== "type") out[k] = obj[k];
 	}
-	if (!sawNull) return obj;
+	out.nullable = true;
+	return out;
+}
+
+/** `variants` without its `{type: "null"}` branches, or `variants` itself when it has none. */
+function withoutNullBranches(variants: unknown[]): unknown[] {
+	let kept: unknown[] | undefined;
+	for (let i = 0; i < variants.length; i++) {
+		const variant = variants[i];
+		if (isRecord(variant) && variant.type === "null") kept ??= variants.slice(0, i);
+		else kept?.push(variant);
+	}
+	return kept ?? variants;
+}
+
+/**
+ * `obj` marked `nullable` with `anyOf` replaced by the non-null branches `kept`: dropped when none
+ * remain, and merged into the node under its own keys when one object remains.
+ */
+function nullableWithBranches(obj: JsonObject, kept: unknown[]): JsonObject {
 	const out: JsonObject = {};
 	for (const k in obj) {
 		if (Object.hasOwn(obj, k)) out[k] = obj[k];
 	}
 	out.nullable = true;
-	if (kept.length === 0) {
-		delete out.anyOf;
-	} else if (kept.length === 1 && isRecord(kept[0])) {
-		delete out.anyOf;
-		const only = kept[0];
-		for (const k in only) {
-			if (Object.hasOwn(only, k) && !outHasOwn(out, k)) out[k] = only[k];
-		}
-	} else {
-		out.anyOf = kept;
+	const only = kept.length === 1 ? kept[0] : undefined;
+	if (kept.length === 0 || isRecord(only)) delete out.anyOf;
+	else out.anyOf = kept;
+	if (!isRecord(only)) return out;
+	for (const k in only) {
+		if (Object.hasOwn(only, k) && !outHasOwn(out, k)) out[k] = only[k];
 	}
 	return out;
 }
@@ -277,20 +284,8 @@ function normalizeSchemaObjectNode(value: JsonObject, options: NormalizeSchemaOp
 		if (!Object.hasOwn(obj, key) || (combiner !== undefined && (key === combiner || outHasOwn(result, key)))) {
 			continue;
 		}
-		const entry = obj[key];
-		if (options.unsupportedFields(key)) {
-			spill = pushStrippedDescriptionEntry(spill, key, entry, options);
-			continue;
-		}
-		if (options.stripNullableKeyword && key === "nullable") continue;
-		if (combiner === undefined && key === "const") {
-			constValue = entry;
-			continue;
-		}
-		result[key] =
-			SCHEMA_MAP_KEYWORDS.has(key) && isRecord(entry)
-				? normalizeSchemaMap(entry, options)
-				: normalizeSchemaNode(entry, options);
+		if (combiner === undefined && key === "const" && !options.unsupportedFields(key)) constValue = obj[key];
+		else spill = writeNodeEntry(result, key, obj[key], spill, options);
 	}
 	if (combiner === undefined) {
 		settleNodeType(result, constValue, options);
@@ -298,6 +293,27 @@ function normalizeSchemaObjectNode(value: JsonObject, options: NormalizeSchemaOp
 	}
 	applyDescriptionSpill(result, spill, options);
 	return applyNodePostProcessing(result, options);
+}
+
+/**
+ * `entry` written to `result` under `key`, normalized as a schema or, for a {@link SCHEMA_MAP_KEYWORDS}
+ * keyword, as a map of named schemas. An unsupported keyword is dropped and returned in the spill
+ * lifted into `description`; `nullable` is dropped when the provider rejects it.
+ */
+function writeNodeEntry(
+	result: JsonObject,
+	key: string,
+	entry: unknown,
+	spill: Array<[string, unknown]> | undefined,
+	options: NormalizeSchemaOptions,
+): Array<[string, unknown]> | undefined {
+	if (options.unsupportedFields(key)) return pushStrippedDescriptionEntry(spill, key, entry, options);
+	if (options.stripNullableKeyword && key === "nullable") return spill;
+	result[key] =
+		SCHEMA_MAP_KEYWORDS.has(key) && isRecord(entry)
+			? normalizeSchemaMap(entry, options)
+			: normalizeSchemaNode(entry, options);
+	return spill;
 }
 
 /**
@@ -356,9 +372,7 @@ function writeConstUnionEnum(variants: JsonObject[], result: JsonObject, options
  */
 function settleNodeType(result: JsonObject, constValue: unknown, options: NormalizeSchemaOptions): void {
 	if (options.normalizeTypeArrayToNullable && Array.isArray(result.type)) {
-		const types = (result.type as unknown[]).filter((t): t is string => typeof t === "string");
-		if (types.includes("null") && !options.stripNullableKeyword) result.nullable = true;
-		result.type = types.find(t => t !== "null") ?? types[0];
+		settleTypeArray(result, result.type, options);
 	}
 	if (constValue !== undefined) {
 		const existingEnum = Array.isArray(result.enum) ? result.enum : [];
@@ -366,23 +380,39 @@ function settleNodeType(result: JsonObject, constValue: unknown, options: Normal
 		result.enum = existingEnum;
 		if (!result.type) result.type = inferJsonSchemaTypeFromValue(constValue);
 	}
-	if (
-		options.inferTypeForBareEnum &&
-		!result.type &&
-		!Array.isArray(result.anyOf) &&
-		!Array.isArray(result.oneOf) &&
-		Array.isArray(result.enum) &&
-		result.enum.length > 0
-	) {
-		const enumTypes = (result.enum as unknown[]).map(inferJsonSchemaTypeFromValue);
-		if (enumTypes.every((t): t is string => typeof t === "string") && new Set(enumTypes).size === 1) {
-			result.type = enumTypes[0];
-		}
-	}
+	if (options.inferTypeForBareEnum) inferBareEnumType(result);
 	if (options.collapseNullFields && result.type === "null") {
 		delete result.type;
 		if (!options.stripNullableKeyword) result.nullable = true;
 	}
+}
+
+/** `type` set to the first non-null string of `types`, else its first string, and `nullable` when it holds `"null"`. */
+function settleTypeArray(result: JsonObject, types: readonly unknown[], options: NormalizeSchemaOptions): void {
+	let first: string | undefined;
+	let firstNonNull: string | undefined;
+	let hasNull = false;
+	for (const type of types) {
+		if (typeof type !== "string") continue;
+		first ??= type;
+		if (type === "null") hasNull = true;
+		else firstNonNull ??= type;
+	}
+	if (hasNull && !options.stripNullableKeyword) result.nullable = true;
+	result.type = firstNonNull ?? first;
+}
+
+/** `type` set on an untyped, uncombined node whose non-empty `enum` values all share one JSON type. */
+function inferBareEnumType(result: JsonObject): void {
+	const values = result.enum;
+	if (result.type || Array.isArray(result.anyOf) || Array.isArray(result.oneOf) || !Array.isArray(values)) return;
+	let shared: string | undefined;
+	for (const value of values) {
+		const type = inferJsonSchemaTypeFromValue(value);
+		if (type === undefined || (shared !== undefined && type !== shared)) return;
+		shared = type;
+	}
+	if (shared !== undefined) result.type = shared;
 }
 
 /** `propertyOrdering` and an empty `properties` added to an object node for the providers that want them. */
@@ -492,18 +522,8 @@ function mergedObjectRequired(
 	mergedProperties: JsonObject,
 	variants: readonly JsonObject[],
 ): string[] {
-	let intersection: string[] | undefined;
-	for (const variant of variants) {
-		const variantRequired = stringEntries(variant.required);
-		if (intersection === undefined) {
-			intersection = variantRequired;
-		} else {
-			const variantSet = new Set(variantRequired);
-			intersection = intersection.filter(name => variantSet.has(name));
-		}
-	}
 	const kept = new Set<string>();
-	for (const name of intersection ?? []) {
+	for (const name of requiredByEveryVariant(variants)) {
 		if (Object.hasOwn(mergedProperties, name)) kept.add(name);
 	}
 	for (const name of stringEntries(parentRequired)) {
@@ -514,6 +534,21 @@ function mergedObjectRequired(
 		if (Object.hasOwn(mergedProperties, name) && kept.has(name)) ordered.push(name);
 	}
 	return ordered;
+}
+
+/** The names every branch of `variants` requires, in the first branch's order. */
+function requiredByEveryVariant(variants: readonly JsonObject[]): string[] {
+	let intersection: string[] | undefined;
+	for (const variant of variants) {
+		const variantRequired = stringEntries(variant.required);
+		if (intersection === undefined) {
+			intersection = variantRequired;
+		} else {
+			const variantSet = new Set(variantRequired);
+			intersection = intersection.filter(name => variantSet.has(name));
+		}
+	}
+	return intersection ?? [];
 }
 
 /** The string entries of `value` when it is an array, else none. */
@@ -612,53 +647,50 @@ function mergeSchemaDescriptions(existing: unknown, incoming: unknown): string {
 }
 
 function collapseSameTypeCombinerVariants(schema: JsonObject, combiner: "anyOf" | "oneOf"): JsonObject {
-	const variantsRaw = schema[combiner];
-	if (!Array.isArray(variantsRaw) || variantsRaw.length === 0) return schema;
-	let commonType: string | undefined;
-	const variants: JsonObject[] = [];
-	for (const entry of variantsRaw) {
-		if (!isRecord(entry) || typeof entry.type !== "string") return schema;
-		if (commonType === undefined) commonType = entry.type;
-		else if (entry.type !== commonType) return schema;
-		variants.push(entry);
-	}
-	const firstEntry = variants[0];
-	if (!firstEntry) return schema;
-
-	// Same-type collapse otherwise keeps only the first variant's keys, silently
-	// dropping the other branches' `enum` members (e.g. an anyOf of two string
-	// enums collapsing to just the first).
-	const enumVariantCount = variants.reduce((n, variant) => n + (Array.isArray(variant.enum) ? 1 : 0), 0);
-
-	let collapsed: JsonObject;
-	if (enumVariantCount === variants.length) {
-		// Every branch is an `enum` schema: fold them with
-		// `mergeCompatibleEnumSchemas`, which unions the members only when the
-		// branches agree on `type` and every non-`enum` field, returning null
-		// otherwise. Bail to the untouched schema on any disagreement so the
-		// residual-combiner fallback handles it instead of mislabeling.
-		let merged: JsonObject | null = firstEntry;
-		for (let i = 1; i < variants.length && merged !== null; i++) {
-			merged = mergeCompatibleEnumSchemas(merged, variants[i]);
-		}
-		if (merged === null) return schema;
-		collapsed = merged;
-	} else if (enumVariantCount > 0) {
-		// Mixed branches: at least one is unconstrained by `enum` and is therefore
-		// broader. Collapse onto the first such branch so the result keeps its
-		// (broader) keys — never narrowing to an enum branch's members or leaking
-		// its metadata (description/default).
-		collapsed = variants.find(variant => !Array.isArray(variant.enum)) ?? firstEntry;
-	} else {
-		// No `enum` branches: keep the original first-wins behavior.
-		collapsed = firstEntry;
-	}
-
+	const variants = sameTypeVariants(schema[combiner]);
+	const collapsed = variants === undefined ? null : sameTypeCollapseTarget(variants);
+	if (collapsed === null) return schema;
 	const nextSchema = copySchemaWithout(schema, combiner);
 	for (const key in collapsed) {
 		if (Object.hasOwn(collapsed, key) && !outHasOwn(nextSchema, key)) nextSchema[key] = collapsed[key];
 	}
 	return nextSchema;
+}
+
+/** The branches of `variantsRaw` when it is a non-empty array of schemas that share one string `type`. */
+function sameTypeVariants(variantsRaw: unknown): JsonObject[] | undefined {
+	if (!Array.isArray(variantsRaw) || variantsRaw.length === 0) return undefined;
+	let commonType: string | undefined;
+	const variants: JsonObject[] = [];
+	for (const entry of variantsRaw) {
+		if (!isRecord(entry) || typeof entry.type !== "string") return undefined;
+		commonType ??= entry.type;
+		if (entry.type !== commonType) return undefined;
+		variants.push(entry);
+	}
+	return variants;
+}
+
+/**
+ * The schema a same-type union collapses onto, or `null` when its branches cannot merge. A union of
+ * `enum` branches folds through {@link mergeCompatibleEnumSchemas}, which unions the members only when
+ * the branches agree on `type` and every other field; on disagreement the union stays for the
+ * residual-combiner fallback. A union mixing `enum` branches with unconstrained ones collapses onto the
+ * first unconstrained branch, which is the broader one, so neither an enum's members nor its metadata
+ * narrow the result. A union without `enum` branches keeps its first branch.
+ */
+function sameTypeCollapseTarget(variants: readonly JsonObject[]): JsonObject | null {
+	let enumVariantCount = 0;
+	for (const variant of variants) {
+		if (Array.isArray(variant.enum)) enumVariantCount++;
+	}
+	if (enumVariantCount === 0) return variants[0];
+	if (enumVariantCount < variants.length) return variants.find(variant => !Array.isArray(variant.enum)) ?? null;
+	let merged: JsonObject | null = variants[0];
+	for (let i = 1; i < variants.length && merged !== null; i++) {
+		merged = mergeCompatibleEnumSchemas(merged, variants[i]);
+	}
+	return merged;
 }
 
 /**
@@ -678,32 +710,38 @@ export function stripResidualCombiners(value: unknown, epoch: number = epochNext
 	for (const key in value) {
 		if (!Object.hasOwn(value, key)) continue;
 		const entry = value[key];
-		if (!SCHEMA_MAP_KEYWORDS.has(key) || !isRecord(entry)) {
-			result[key] = stripResidualCombiners(entry, epoch);
-			continue;
-		}
-		const map: JsonObject = {};
-		result[key] = map;
-		if (!once(entry, epoch)) continue;
-		for (const name in entry) {
-			if (Object.hasOwn(entry, name)) map[name] = stripResidualCombiners(entry[name], epoch);
-		}
+		result[key] =
+			SCHEMA_MAP_KEYWORDS.has(key) && isRecord(entry)
+				? walkSchemaMapOnce(entry, stripResidualCombiners, epoch)
+				: stripResidualCombiners(entry, epoch);
 	}
-	let current: JsonObject = result;
-	let changed = true;
-	while (changed) {
-		changed = false;
+	return collapseCombinersToFixpoint(result);
+}
+
+/**
+ * A new {@link SCHEMA_MAP_KEYWORDS} map holding `transform(entry, epoch)` for each own entry, or an
+ * empty map when the walk at `epoch` already visited `schemaMap`.
+ */
+function walkSchemaMapOnce(
+	schemaMap: JsonObject,
+	transform: (value: unknown, epoch: number) => unknown,
+	epoch: number,
+): JsonObject {
+	const output: JsonObject = {};
+	if (!once(schemaMap, epoch)) return output;
+	for (const name in schemaMap) {
+		if (Object.hasOwn(schemaMap, name)) output[name] = transform(schemaMap[name], epoch);
+	}
+	return output;
+}
+
+/** `schema` after same-type and mixed-type collapse of each combiner repeat until a pass changes nothing. */
+function collapseCombinersToFixpoint(schema: JsonObject): JsonObject {
+	let current = schema;
+	for (let previous: JsonObject | undefined; previous !== current; ) {
+		previous = current;
 		for (const combiner of JSON_SCHEMA_COMBINERS) {
-			const sameType = collapseSameTypeCombinerVariants(current, combiner);
-			if (sameType !== current) {
-				current = sameType;
-				changed = true;
-			}
-			const mixed = collapseMixedTypeCombinerVariants(current, combiner);
-			if (mixed !== current) {
-				current = mixed;
-				changed = true;
-			}
+			current = collapseMixedTypeCombinerVariants(collapseSameTypeCombinerVariants(current, combiner), combiner);
 		}
 	}
 	return current;
@@ -727,57 +765,66 @@ function withoutNullLayer(schema: JsonObject): JsonObject | undefined {
 		delete nextSchema.nullable;
 		return nextSchema;
 	}
-
-	if (Array.isArray(schema.type)) {
-		const typeVariants = schema.type.filter((entry): entry is string => typeof entry === "string");
-		const nonNullTypes = typeVariants.filter(entry => entry !== "null");
-		if (typeVariants.includes("null") && nonNullTypes.length === 1) {
-			return { ...schema, type: nonNullTypes[0] };
-		}
-	}
-
+	const soleType = Array.isArray(schema.type) ? soleNonNullType(schema.type) : undefined;
+	if (soleType !== undefined) return { ...schema, type: soleType };
 	for (const combiner of JSON_SCHEMA_COMBINERS) {
-		const variantsRaw = schema[combiner];
-		if (!Array.isArray(variantsRaw)) continue;
-
-		let hasNullVariant = false;
-		const nonNullVariants: unknown[] = [];
-		for (const variant of variantsRaw) {
-			if (isRecord(variant) && variant.type === "null") {
-				let keyCount = 0;
-				for (const k in variant) {
-					if (!Object.hasOwn(variant, k)) continue;
-					if (++keyCount > 1) break;
-				}
-				if (keyCount === 1) {
-					hasNullVariant = true;
-					continue;
-				}
-			}
-			nonNullVariants.push(variant);
-		}
-
-		if (!hasNullVariant || nonNullVariants.length !== 1 || !isRecord(nonNullVariants[0])) {
-			continue;
-		}
-
-		const nextSchema = copySchemaWithout(schema, combiner);
-		const nonNullVariant = nonNullVariants[0];
-		for (const key in nonNullVariant) {
-			if (!Object.hasOwn(nonNullVariant, key)) continue;
-			const value = nonNullVariant[key];
-			const existingValue = nextSchema[key];
-			if (existingValue !== undefined && !areJsonValuesEqual(existingValue, value)) {
-				return undefined;
-			}
-			if (existingValue === undefined) {
-				nextSchema[key] = value;
-			}
-		}
-		return nextSchema;
+		const variants = schema[combiner];
+		const branch = Array.isArray(variants) ? soleNonNullBranch(variants) : undefined;
+		if (branch) return mergeBranchIntoNode(schema, combiner, branch);
 	}
-
 	return undefined;
+}
+
+/** The one non-`"null"` string of a `type` array that also holds `"null"`, or `undefined`. */
+function soleNonNullType(types: readonly unknown[]): string | undefined {
+	let hasNull = false;
+	let sole: string | undefined;
+	for (const entry of types) {
+		if (entry === "null") hasNull = true;
+		else if (typeof entry !== "string") continue;
+		else if (sole !== undefined) return undefined;
+		else sole = entry;
+	}
+	return hasNull ? sole : undefined;
+}
+
+/** Whether `variant` is `{type: "null"}` with no other own key. */
+function isBareNullBranch(variant: unknown): boolean {
+	if (!isRecord(variant) || variant.type !== "null") return false;
+	let keys = 0;
+	for (const key in variant) {
+		if (Object.hasOwn(variant, key) && ++keys > 1) return false;
+	}
+	return keys === 1;
+}
+
+/**
+ * The other branch of a combiner whose branches are bare `{type: "null"}` and one object, or
+ * `undefined` when no branch is a bare `null` or the rest is not exactly one object.
+ */
+function soleNonNullBranch(variants: readonly unknown[]): JsonObject | undefined {
+	let hasNull = false;
+	let sole: unknown;
+	let others = 0;
+	for (const variant of variants) {
+		if (isBareNullBranch(variant)) hasNull = true;
+		else if (++others > 1) return undefined;
+		else sole = variant;
+	}
+	return hasNull && isRecord(sole) ? sole : undefined;
+}
+
+/** `schema` without `combiner` and with `branch`'s keys merged in, or `undefined` when a key conflicts. */
+function mergeBranchIntoNode(schema: JsonObject, combiner: string, branch: JsonObject): JsonObject | undefined {
+	const nextSchema = copySchemaWithout(schema, combiner);
+	for (const key in branch) {
+		if (!Object.hasOwn(branch, key)) continue;
+		const value = branch[key];
+		const existing = nextSchema[key];
+		if (existing === undefined) nextSchema[key] = value;
+		else if (!areJsonValuesEqual(existing, value)) return undefined;
+	}
+	return nextSchema;
 }
 
 /**
@@ -806,62 +853,62 @@ function extractNullableUnionSchema(schema: unknown): NullableExtractionResult {
  * {@link SCHEMA_MAP_KEYWORDS} map is walked by entry, so a property named
  * `nullable` or `properties` is a name, and every subtree is walked once.
  */
-function normalizeNullablePropertiesForCloudCodeAssist(
-	value: unknown,
-	isPropertySchema = false,
-	epoch: number = epochNext(),
-): NullableExtractionResult {
+function normalizeNullablePropertiesForCloudCodeAssist(value: unknown, epoch: number = epochNext()): unknown {
 	if (Array.isArray(value)) {
-		if (!once(value, epoch)) {
-			return { schema: [], nullable: false };
-		}
-		return {
-			schema: value.map(entry => normalizeNullablePropertiesForCloudCodeAssist(entry, false, epoch).schema),
-			nullable: false,
-		};
+		return once(value, epoch) ? value.map(entry => normalizeNullablePropertiesForCloudCodeAssist(entry, epoch)) : [];
 	}
-	if (!isRecord(value)) {
-		return { schema: value, nullable: false };
-	}
-	if (!once(value, epoch)) {
-		return { schema: {}, nullable: false };
-	}
+	if (!isRecord(value)) return value;
+	return once(value, epoch) ? cloudCodeAssistNullableObject(value, epoch) : {};
+}
 
+/** One schema object of CCA's nullable pass, its `required` cleared of the properties that admitted `null`. */
+function cloudCodeAssistNullableObject(value: JsonObject, epoch: number): JsonObject {
 	const normalized: JsonObject = {};
 	let nullableProperties: Set<string> | undefined;
 	for (const key in value) {
 		if (!Object.hasOwn(value, key)) continue;
 		const entry = value[key];
-		if (!SCHEMA_MAP_KEYWORDS.has(key) || !isRecord(entry)) {
-			normalized[key] = normalizeNullablePropertiesForCloudCodeAssist(entry, false, epoch).schema;
-			continue;
-		}
-		const map: JsonObject = {};
-		normalized[key] = map;
-		const arePropertySchemas = key === "properties";
-		if (arePropertySchemas) nullableProperties = new Set();
-		if (!once(entry, epoch)) continue;
-		for (const name in entry) {
-			if (!Object.hasOwn(entry, name)) continue;
-			const walked = normalizeNullablePropertiesForCloudCodeAssist(entry[name], arePropertySchemas, epoch);
-			map[name] = walked.schema;
-			if (walked.nullable) nullableProperties?.add(name);
+		if (key === "properties" && isRecord(entry)) {
+			nullableProperties = new Set();
+			normalized[key] = propertiesWithoutNull(entry, nullableProperties, epoch);
+		} else {
+			normalized[key] =
+				SCHEMA_MAP_KEYWORDS.has(key) && isRecord(entry)
+					? walkSchemaMapOnce(entry, normalizeNullablePropertiesForCloudCodeAssist, epoch)
+					: normalizeNullablePropertiesForCloudCodeAssist(entry, epoch);
 		}
 	}
-
 	if (nullableProperties !== undefined && Array.isArray(normalized.required)) {
-		const required = new Set<string>();
-		for (const name of normalized.required) {
-			if (typeof name === "string" && !nullableProperties.has(name)) required.add(name);
-		}
-		normalized.required = Array.from(required);
+		normalized.required = requiredWithout(normalized.required, nullableProperties);
 	}
+	return normalized;
+}
 
-	if (!isPropertySchema) {
-		return { schema: normalized, nullable: false };
+/** The string names of `required` in first-seen order, each once, without the names in `excluded`. */
+function requiredWithout(required: readonly unknown[], excluded: ReadonlySet<string>): string[] {
+	const kept = new Set<string>();
+	for (const name of required) {
+		if (typeof name === "string" && !excluded.has(name)) kept.add(name);
 	}
+	return Array.from(kept);
+}
 
-	return extractNullableUnionSchema(normalized);
+/**
+ * `properties` with each property schema walked and its `null` layers removed, adding to `nullable`
+ * the name of each property that admitted `null`. Empty when the walk at `epoch` already visited it.
+ */
+function propertiesWithoutNull(properties: JsonObject, nullable: Set<string>, epoch: number): JsonObject {
+	const output: JsonObject = {};
+	if (!once(properties, epoch)) return output;
+	for (const name in properties) {
+		if (!Object.hasOwn(properties, name)) continue;
+		const extracted = extractNullableUnionSchema(
+			normalizeNullablePropertiesForCloudCodeAssist(properties[name], epoch),
+		);
+		output[name] = extracted.schema;
+		if (extracted.nullable) nullable.add(name);
+	}
+	return output;
 }
 
 function createResidualIncompatibilityChecks(
@@ -902,31 +949,37 @@ function hasResidualSchemaIncompatibilities(
 		if (!once(value, epoch)) return false;
 		return value.some(entry => hasResidualSchemaIncompatibilities(entry, checks, epoch));
 	}
-	if (!isRecord(value)) {
-		return false;
+	if (!isRecord(value) || !once(value, epoch)) return false;
+	if (hasResidualKeyword(value, checks)) return true;
+	for (const key in value) {
+		if (!Object.hasOwn(value, key)) continue;
+		const child = value[key];
+		const residual =
+			SCHEMA_MAP_KEYWORDS.has(key) && isRecord(child)
+				? someResidualEntry(child, checks, epoch)
+				: hasResidualSchemaIncompatibilities(child, checks, epoch);
+		if (residual) return true;
 	}
-	if (!once(value, epoch)) {
-		return false;
-	}
+	return false;
+}
 
-	if (checks.typeArray && Array.isArray(value.type)) return true;
-	if (checks.typeNull && value.type === "null") return true;
-	if (checks.nullable && Object.hasOwn(value, "nullable")) return true;
-	if (checks.combiners) {
-		for (const combiner of CCA_FORBIDDEN_COMBINERS) {
-			if (Array.isArray(value[combiner])) return true;
-		}
+/** Whether `schema` itself holds a keyword `checks` rejects. */
+function hasResidualKeyword(schema: JsonObject, checks: ResidualIncompatibilityChecks): boolean {
+	if (checks.typeArray && Array.isArray(schema.type)) return true;
+	if (checks.typeNull && schema.type === "null") return true;
+	if (checks.nullable && Object.hasOwn(schema, "nullable")) return true;
+	if (!checks.combiners) return false;
+	for (const combiner of CCA_FORBIDDEN_COMBINERS) {
+		if (Array.isArray(schema[combiner])) return true;
 	}
-	for (const k in value) {
-		if (!Object.hasOwn(value, k)) continue;
-		const child = value[k];
-		if (SCHEMA_MAP_KEYWORDS.has(k) && isRecord(child)) {
-			if (!once(child, epoch)) continue;
-			for (const name in child) {
-				if (Object.hasOwn(child, name) && hasResidualSchemaIncompatibilities(child[name], checks, epoch))
-					return true;
-			}
-		} else if (hasResidualSchemaIncompatibilities(child, checks, epoch)) {
+	return false;
+}
+
+/** Whether an entry of a {@link SCHEMA_MAP_KEYWORDS} map holds a residual incompatibility; false when already visited. */
+function someResidualEntry(schemaMap: JsonObject, checks: ResidualIncompatibilityChecks, epoch: number): boolean {
+	if (!once(schemaMap, epoch)) return false;
+	for (const name in schemaMap) {
+		if (Object.hasOwn(schemaMap, name) && hasResidualSchemaIncompatibilities(schemaMap[name], checks, epoch)) {
 			return true;
 		}
 	}
@@ -942,7 +995,7 @@ export function normalizeSchema(value: unknown, options: NormalizeSchemaOptions)
 		normalized = stripResidualCombiners(normalized);
 	}
 	if (options.extractNullableFromUnions) {
-		normalized = normalizeNullablePropertiesForCloudCodeAssist(normalized).schema;
+		normalized = normalizeNullablePropertiesForCloudCodeAssist(normalized);
 	}
 	const residualChecks = createResidualIncompatibilityChecks(options.rejectResidualIncompatibilities);
 	if (residualChecks && hasResidualSchemaIncompatibilities(normalized, residualChecks)) {
@@ -1203,7 +1256,7 @@ function ollamaSchemaObject(value: JsonObject): JsonObject {
 			continue;
 		}
 		const next = ollamaSchemaChild(key, child);
-		if (next !== child) changed = true;
+		changed ||= next !== child;
 		output[key] = next;
 	}
 	if (typeAlternatives) {
@@ -1301,23 +1354,7 @@ function normalizeOpenAIResponsesSchemaNode(value: unknown, cache: WeakMap<JsonO
 	const output: JsonObject = {};
 	cache.set(value, output);
 
-	let changed = false;
-	for (const key in value) {
-		if (!Object.hasOwn(value, key)) continue;
-		// Drop only well-formed `oneOf` arrays here; they are re-emitted as
-		// `anyOf` after the loop so any neighboring `anyOf` entries can be
-		// concatenated. A non-array `oneOf` is malformed for the wire but
-		// still preserved verbatim so callers can see the original payload
-		// instead of having it silently disappear.
-		if (isDroppedResponsesKeyword(value, key)) {
-			changed = true;
-			continue;
-		}
-		const child = value[key];
-		const next = normalizeOpenAIResponsesSchemaChild(key, child, cache);
-		if (next !== child) changed = true;
-		output[key] = next;
-	}
+	let changed = writeResponsesEntries(value, output, cache);
 
 	if (Array.isArray(value.oneOf)) {
 		const rewrittenOneOf = mapSchemaArray(value.oneOf, normalizeOpenAIResponsesSchemaNode, cache);
@@ -1342,6 +1379,27 @@ function normalizeOpenAIResponsesSchemaNode(value: unknown, cache: WeakMap<JsonO
 	const result = changed ? (isJsonObjectEmpty(output) ? true : output) : value;
 	cache.set(value, result);
 	return result;
+}
+
+/**
+ * `value`'s keys normalized into `output`, except a well-formed `oneOf` array, which is re-emitted as
+ * `anyOf` once every neighboring `anyOf` entry is in place. A non-array `oneOf` is malformed for the
+ * wire but is kept verbatim so the original payload stays visible. True when any entry changed.
+ */
+function writeResponsesEntries(value: JsonObject, output: JsonObject, cache: WeakMap<JsonObject, unknown>): boolean {
+	let changed = false;
+	for (const key in value) {
+		if (!Object.hasOwn(value, key)) continue;
+		if (isDroppedResponsesKeyword(value, key)) {
+			changed = true;
+			continue;
+		}
+		const child = value[key];
+		const next = normalizeOpenAIResponsesSchemaChild(key, child, cache);
+		changed ||= next !== child;
+		output[key] = next;
+	}
+	return changed;
 }
 
 function declaresObjectType(type: unknown): boolean {
@@ -1534,12 +1592,8 @@ function hasUnrepresentableStrictObjectMap(schema: Record<string, unknown>, epoc
 	if (!once(schema, epoch)) return false;
 	if (hasOpenKeyset(schema)) return true;
 	if (isRecord(schema.properties) && someUnrepresentableStrictValue(schema.properties, epoch)) return true;
-	const items = schema.items;
-	if (
-		Array.isArray(items) ? someUnrepresentableStrictChild(items, epoch) : isUnrepresentableStrictChild(items, epoch)
-	) {
-		return true;
-	}
+	// `upgradeJsonSchemaTo202012` has rewritten every tuple-form `items` array into `prefixItems`.
+	if (isUnrepresentableStrictChild(schema.items, epoch)) return true;
 	if (Array.isArray(schema.prefixItems) && someUnrepresentableStrictChild(schema.prefixItems, epoch)) return true;
 	for (const key of COMBINATOR_KEYS) {
 		const variants = schema[key];
