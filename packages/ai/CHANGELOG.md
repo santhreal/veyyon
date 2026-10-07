@@ -80,6 +80,8 @@
 - The leaked-reasoning healer ends a tag-closed reasoning section the stream ends inside when no text is held back, instead of leaving it open.
 - A Hermes or Qwen3 reply that ends on a bare `<tool_call>` shows the tag as text instead of dropping it.
 - The auth gateway's streamed `response.output_item.done` frame for a tool call writes only the call-id half of a composite `{call_id}|{item_id}` id, as the `response.output_item.added` frame and the non-streamed response do, instead of the whole id that clients validating `call_id` against `^[a-zA-Z0-9_-]+$` reject.
+- A GitLab Duo turn that pauses at a later server-side tool boundary while replaying a buffered checkpoint resumes on the next turn from the frames after that boundary and the frames the socket delivered in between, instead of dropping them; a replay that ends any other way leaves no frames buffered on the session.
+- A GitLab Duo checkpoint that grows an earlier message after a later one emitted text opens a new content block for the earlier message's new text instead of appending it to the later message's block.
 
 ## [1.5.4] - 2026-09-24
 

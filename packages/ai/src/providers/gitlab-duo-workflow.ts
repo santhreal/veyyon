@@ -2223,42 +2223,11 @@ export function runGitLabDuoWorkflowSocket(
 	};
 	if (replayMessages && replayMessages.length > 0) {
 		ws.onopen = null;
-		void (async () => {
-			if (active) active.paused = true;
-			const pending: unknown[] = replayMessages.slice();
-			while (!settled) {
-				if (pending.length === 0) {
-					if (active?.pauseBuffer && active.pauseBuffer.length > 0) {
-						for (let pi = 0; pi < active.pauseBuffer.length; pi++) pending.push(active.pauseBuffer[pi]!);
-						active.pauseBuffer = [];
-						continue;
-					}
-					// Replay queue fully drained and no buffered frames remain.
-					break;
-				}
-				const data = pending.shift();
-				let result: GitLabDuoWorkflowMessageResult;
-				try {
-					result = await handleGitLabDuoWorkflowSocketMessage(data, state);
-				} catch (error) {
-					settle("closed", error);
-					return;
-				}
-				if (!handleSocketResult(result, data, pending)) {
-					// An `action` result stops the replay loop to hand the tool call back
-					// to veyyon. Clear the pause flag first: the live `onmessage` handler must
-					// process the resume continuation directly instead of buffering it
-					// (a buffered continuation would idle the turn until timeout).
-					if (active) active.paused = false;
-					return;
-				}
-				if (active?.pauseBuffer && active.pauseBuffer.length > 0) {
-					for (let pi = 0; pi < active.pauseBuffer.length; pi++) pending.push(active.pauseBuffer[pi]!);
-					active.pauseBuffer = [];
-				}
-			}
-			if (!settled && active) active.paused = false;
-		})();
+		void replayGitLabDuoWorkflowFrames(replayMessages, state, active, {
+			isSettled: () => settled,
+			settle,
+			handleResult: handleSocketResult,
+		});
 	} else if (resumeResponse && (!Array.isArray(resumeResponse) || resumeResponse.length > 0)) {
 		ws.onopen = null;
 		// Resume the live socket by returning the tool result for the single pending
@@ -2286,6 +2255,78 @@ export function runGitLabDuoWorkflowSocket(
 		clearIdleTimer();
 		options.signal?.removeEventListener("abort", abort);
 	});
+}
+
+/** What a frame replay reads and drives on the socket run it belongs to. */
+interface GitLabDuoWorkflowReplayHooks {
+	isSettled(): boolean;
+	settle(result: GitLabDuoWorkflowSocketResult, error?: unknown): void;
+	/** Acts on one frame's result; false when the run settled or handed a tool call back. */
+	handleResult(result: GitLabDuoWorkflowMessageResult, data: unknown, remaining: readonly unknown[]): boolean;
+}
+
+/**
+ * Feeds the frames a paused socket buffered through the message handler in order. The session stays
+ * paused while the replay runs, so frames arriving live queue behind the replayed ones in its pause
+ * buffer and are fed after them; the session unpauses once both drain. A pause reached during the
+ * replay keeps the session paused, holding the unreplayed and newly arrived frames for the next turn.
+ */
+async function replayGitLabDuoWorkflowFrames(
+	replayMessages: readonly unknown[],
+	state: GitLabDuoWorkflowStreamState,
+	active: GitLabDuoWorkflowActiveSession | undefined,
+	hooks: GitLabDuoWorkflowReplayHooks,
+): Promise<void> {
+	if (active) active.paused = true;
+	let pending: unknown[] = replayMessages.slice();
+	while (!hooks.isSettled()) {
+		if (pending.length === 0) {
+			const buffered = takeGitLabDuoWorkflowBufferedFrames(active);
+			// Replay queue fully drained and no buffered frames remain.
+			if (!buffered) break;
+			pending = buffered;
+		}
+		const data = pending.shift();
+		let result: GitLabDuoWorkflowMessageResult;
+		try {
+			result = await handleGitLabDuoWorkflowSocketMessage(data, state);
+		} catch (error) {
+			hooks.settle("closed", error);
+			return;
+		}
+		if (!hooks.handleResult(result, data, pending)) {
+			releaseGitLabDuoWorkflowReplay(active, result);
+			return;
+		}
+	}
+	if (!hooks.isSettled() && active) active.paused = false;
+}
+
+/**
+ * Ends the pause a replay held once a frame settled the run. A pause re-buffered the unreplayed frames, and
+ * the next turn replays them only from a session that still reads as paused. Any other result releases the
+ * session and drops the frames that arrived during the replay, so an unpaused session never holds frames a
+ * later pause would replay out of order. After an `action` the live `onmessage` handler must process the
+ * resume continuation directly instead of buffering it (a buffered continuation would idle the turn until
+ * timeout).
+ */
+function releaseGitLabDuoWorkflowReplay(
+	active: GitLabDuoWorkflowActiveSession | undefined,
+	result: GitLabDuoWorkflowMessageResult,
+): void {
+	if (!active || result === "pause") return;
+	active.paused = false;
+	active.pauseBuffer = [];
+}
+
+/** Takes the frames the session buffered while paused, leaving its buffer empty; undefined when it buffered none. */
+function takeGitLabDuoWorkflowBufferedFrames(
+	active: GitLabDuoWorkflowActiveSession | undefined,
+): unknown[] | undefined {
+	const buffered = active?.pauseBuffer;
+	if (!active || !buffered || buffered.length === 0) return undefined;
+	active.pauseBuffer = [];
+	return buffered;
 }
 
 type GitLabDuoWorkflowMessageResult =
@@ -2362,40 +2403,58 @@ async function handleGitLabDuoWorkflowSocketMessage(
 		finishGitLabDuoWorkflowStream(state, "stop");
 		return "terminal";
 	}
-	if (status === "FAILED" || status === "STOPPED") {
-		const message = gitLabDuoWorkflowErrorText(
-			getRecordString(event, "error") ?? getRecordString(event, "message") ?? status,
-		);
-		// The server caps each workflow at a fixed graph-recursion limit (DWS
-		// RECURSION_LIMIT). A long but healthy veyyon tool-call loop legitimately hits
-		// it and surfaces as FAILED with this message. That is not a real failure —
-		// resume by starting a fresh workflow that continues the same conversation
-		// (the accumulated context/tool results replay via the goal envelope).
-		if (status === "FAILED" && isGitLabDuoWorkflowStepLimitMessage(message)) {
-			traceGitLabDuoWorkflow("websocket.step_limit", { status });
-			return "step_limit";
-		}
-		// The DWS catch-all FAILED ("...error processing your request in the Duo Agent
-		// Platform...") is a de-identified wrapper over transient upstream faults
-		// (model 5xx that exhausted retries, AgentStuckError, etc.). Retry ONCE on a
-		// FRESH workflow (the broken same-id reconnect is never used): the accumulated
-		// conversation replays through the goal transcript. Bounded so a deterministic
-		// failure degrades to a surfaced error instead of a quota sink.
-		if (status === "FAILED" && isGitLabDuoWorkflowGenericProcessingError(message)) {
-			traceGitLabDuoWorkflow("websocket.generic_error", { status });
-			// Stash the real message but do NOT push an error event yet: the loop retries
-			// on a fresh workflow and only surfaces this if retries are exhausted.
-			state.output.errorMessage = message;
-			return "retryable_error";
-		}
-		traceGitLabDuoWorkflow("websocket.failed", { status });
-		state.output.stopReason = "error";
-		// An oversized goal that fails terminally is almost certainly failing on the byte
-		// size — surface it as a context-overflow so the session auto-compacts.
-		state.output.errorMessage = state.goalOverflowMessage ?? message;
-		state.stream.push({ type: "error", reason: "error", error: state.output });
-		return "terminal";
+	if (status === "FAILED" || status === "STOPPED") return classifyGitLabDuoWorkflowFailure(event, status, state);
+	return takeGitLabDuoWorkflowActionFrame(event, state);
+}
+
+/**
+ * Classifies a FAILED or STOPPED frame: a step-limit or transient processing failure the socket loop restarts
+ * on a fresh workflow, or a terminal error pushed to the stream.
+ */
+function classifyGitLabDuoWorkflowFailure(
+	event: Record<string, unknown>,
+	status: "FAILED" | "STOPPED",
+	state: GitLabDuoWorkflowStreamState,
+): GitLabDuoWorkflowMessageResult {
+	const message = gitLabDuoWorkflowErrorText(
+		getRecordString(event, "error") ?? getRecordString(event, "message") ?? status,
+	);
+	// The server caps each workflow at a fixed graph-recursion limit (DWS
+	// RECURSION_LIMIT). A long but healthy veyyon tool-call loop legitimately hits
+	// it and surfaces as FAILED with this message. That is not a real failure —
+	// resume by starting a fresh workflow that continues the same conversation
+	// (the accumulated context/tool results replay via the goal envelope).
+	if (status === "FAILED" && isGitLabDuoWorkflowStepLimitMessage(message)) {
+		traceGitLabDuoWorkflow("websocket.step_limit", { status });
+		return "step_limit";
 	}
+	// The DWS catch-all FAILED ("...error processing your request in the Duo Agent
+	// Platform...") is a de-identified wrapper over transient upstream faults
+	// (model 5xx that exhausted retries, AgentStuckError, etc.). Retry ONCE on a
+	// FRESH workflow (the broken same-id reconnect is never used): the accumulated
+	// conversation replays through the goal transcript. Bounded so a deterministic
+	// failure degrades to a surfaced error instead of a quota sink.
+	if (status === "FAILED" && isGitLabDuoWorkflowGenericProcessingError(message)) {
+		traceGitLabDuoWorkflow("websocket.generic_error", { status });
+		// Stash the real message but do NOT push an error event yet: the loop retries
+		// on a fresh workflow and only surfaces this if retries are exhausted.
+		state.output.errorMessage = message;
+		return "retryable_error";
+	}
+	traceGitLabDuoWorkflow("websocket.failed", { status });
+	state.output.stopReason = "error";
+	// An oversized goal that fails terminally is almost certainly failing on the byte
+	// size — surface it as a context-overflow so the session auto-compacts.
+	state.output.errorMessage = state.goalOverflowMessage ?? message;
+	state.stream.push({ type: "error", reason: "error", error: state.output });
+	return "terminal";
+}
+
+/** Emits the tool call a frame's executor action carries, or settles "stalled" when the workflow stopped advancing. */
+function takeGitLabDuoWorkflowActionFrame(
+	event: Record<string, unknown>,
+	state: GitLabDuoWorkflowStreamState,
+): GitLabDuoWorkflowMessageResult {
 	const action = extractGitLabDuoWorkflowAction(event);
 	if (!action) return "continue";
 	traceGitLabDuoWorkflow("websocket.action", {
@@ -2543,40 +2602,12 @@ function emitGitLabDuoWorkflowCheckpoint(
 			continue;
 		}
 
-		const contentByKey = state.checkpointAgentContentByKey ?? {};
-		const contentSignatures = state.checkpointAgentContentSignatures ?? {};
-		const previousContent = contentByKey[entry.messageKey];
-		const contentSignature = `${turnIndex}\u0000${entry.kind}\u0000${entry.content}`;
-		const contentOnlySignature = `${turnIndex}\u0000content\u0000${entry.content}`;
-		const duplicateContent =
-			previousContent === undefined &&
-			(contentSignatures[contentSignature] === true || contentSignatures[contentOnlySignature] === true);
-		const rewroteExistingContent =
-			previousContent !== undefined &&
-			!entry.content.startsWith(previousContent) &&
-			previousContent !== entry.content;
-		const delta = duplicateContent
-			? ""
-			: rewroteExistingContent
-				? ""
-				: previousContent !== undefined
-					? entry.content.slice(previousContent.length)
-					: entry.content;
-
-		contentByKey[entry.messageKey] = entry.content;
-		contentSignatures[contentSignature] = true;
-		contentSignatures[contentOnlySignature] = true;
-		state.checkpointAgentContentByKey = contentByKey;
-		state.checkpointAgentContentSignatures = contentSignatures;
-		syncGitLabDuoWorkflowCheckpointState(state);
-
+		const delta = recordGitLabDuoWorkflowCheckpointEntry(state, entry, turnIndex);
 		if (delta.length === 0) continue;
 
-		if (
-			state.activeCheckpointMessageKey &&
-			state.activeCheckpointMessageKey !== entry.messageKey &&
-			previousContent === undefined
-		) {
+		// A content block holds one message's text: a delta from a message other than the one that
+		// emitted last closes the open block, including an earlier message that grew again.
+		if (state.activeCheckpointMessageKey && state.activeCheckpointMessageKey !== entry.messageKey) {
 			endGitLabDuoWorkflowText(state);
 			endGitLabDuoWorkflowThinking(state);
 		}
@@ -2584,6 +2615,33 @@ function emitGitLabDuoWorkflowCheckpoint(
 		state.activeCheckpointMessageKey = entry.messageKey;
 		deltaThisCheckpoint = true;
 	}
+}
+
+/**
+ * Records an agent entry's content under its message key and its turn position, and returns the text it adds
+ * to the stream: the whole content for a key not seen before, the appended suffix for a key whose content grew,
+ * and nothing for a rewrite of earlier content or for content already emitted at the same turn position under
+ * another key.
+ */
+function recordGitLabDuoWorkflowCheckpointEntry(
+	state: GitLabDuoWorkflowStreamState,
+	entry: GitLabDuoWorkflowCheckpointAgentEntry,
+	turnIndex: number,
+): string {
+	const contentByKey = state.checkpointAgentContentByKey ?? {};
+	const contentSignatures = state.checkpointAgentContentSignatures ?? {};
+	const previousContent = contentByKey[entry.messageKey];
+	// The signature omits the entry kind, so reasoning re-labelled as an answer (or the reverse) still matches.
+	const signature = `${turnIndex}\u0000content\u0000${entry.content}`;
+	let delta: string;
+	if (previousContent === undefined) delta = contentSignatures[signature] === true ? "" : entry.content;
+	else delta = entry.content.startsWith(previousContent) ? entry.content.slice(previousContent.length) : "";
+	contentByKey[entry.messageKey] = entry.content;
+	contentSignatures[signature] = true;
+	state.checkpointAgentContentByKey = contentByKey;
+	state.checkpointAgentContentSignatures = contentSignatures;
+	syncGitLabDuoWorkflowCheckpointState(state);
+	return delta;
 }
 
 // Map the server's per-agent context occupancy onto the assistant usage so the per-message
@@ -3233,40 +3291,41 @@ function readGitLabDuoWorkflowAgentUsage(value: unknown): GitLabDuoWorkflowConte
 
 function extractGitLabCheckpointEntries(checkpointJson: string): GitLabDuoWorkflowCheckpointContent | undefined {
 	const checkpoint = parseJsonRecord(checkpointJson);
-	const channelValues = getRecord(checkpoint, "channel_values");
-	const chatLog = channelValues?.ui_chat_log;
+	const chatLog = getRecord(checkpoint, "channel_values")?.ui_chat_log;
 	if (!Array.isArray(chatLog)) return undefined;
 	const entries: GitLabDuoWorkflowCheckpointEntry[] = [];
 	for (let index = 0; index < chatLog.length; index++) {
-		const entry = chatLog[index];
-		if (!entry || typeof entry !== "object") continue;
-		const record = entry as Record<string, unknown>;
-		const messageType = getRecordString(record, "message_type");
-		if (messageType === "agent") {
-			const content = getRecordString(record, "content");
-			if (!content) continue;
-			const messageId = getRecordString(record, "message_id");
-			// `message_sub_type: "reasoning"` is the agent's pre-tool-call
-			// commentary the inline flow opts into via `on_agent_reasoning`; map it
-			// to a thinking block. Other agent text is the answer → text.
-			const isReasoning = getRecordString(record, "message_sub_type") === "reasoning";
-			const fallbackKey = isReasoning ? `reasoning:${index}` : `agent:${index}`;
-			entries.push({
-				kind: isReasoning ? "thinking" : "text",
-				messageIndex: index,
-				messageKey: messageId ? `agent:${messageId}` : fallbackKey,
-				content,
-			});
-			continue;
-		}
-		if (messageType === "request" || messageType === "tool") {
-			entries.push({ kind: "boundary", messageIndex: index });
-		}
+		const entry = readGitLabDuoWorkflowChatLogEntry(chatLog[index], index);
+		if (entry) entries.push(entry);
 	}
 	return {
 		entries,
 		contentLength: checkpointJson.length,
 		latestMessageType: getGitLabDuoWorkflowLatestMessageType(chatLog),
+	};
+}
+
+/** Maps one `ui_chat_log` record to a checkpoint entry: agent text or reasoning, or a request/tool turn boundary. */
+function readGitLabDuoWorkflowChatLogEntry(
+	value: unknown,
+	index: number,
+): GitLabDuoWorkflowCheckpointEntry | undefined {
+	if (!value || typeof value !== "object") return undefined;
+	const messageType = getRecordString(value, "message_type");
+	if (messageType === "request" || messageType === "tool") return { kind: "boundary", messageIndex: index };
+	if (messageType !== "agent") return undefined;
+	const content = getRecordString(value, "content");
+	if (!content) return undefined;
+	const messageId = getRecordString(value, "message_id");
+	// `message_sub_type: "reasoning"` is the agent's pre-tool-call
+	// commentary the inline flow opts into via `on_agent_reasoning`; map it
+	// to a thinking block. Other agent text is the answer → text.
+	const isReasoning = getRecordString(value, "message_sub_type") === "reasoning";
+	return {
+		kind: isReasoning ? "thinking" : "text",
+		messageIndex: index,
+		messageKey: messageId ? `agent:${messageId}` : isReasoning ? `reasoning:${index}` : `agent:${index}`,
+		content,
 	};
 }
 
