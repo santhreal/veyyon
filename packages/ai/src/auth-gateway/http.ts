@@ -123,8 +123,8 @@ const PASSTHROUGH_HEADER_NAMES: Record<string, true> = {
 
 /**
  * Extract allow-listed passthrough headers from an inbound request. Keys are
- * lowercased; empty values are dropped. Called once per request in
- * `handleFormatEndpoint`; parsers then read `options.headers`.
+ * lowercased; empty values are dropped. Every completion route merges the
+ * result under the headers its parser or client already set.
  */
 export function captureRequestHeaders(headers: Headers): Record<string, string> {
 	const out: Record<string, string> = {};

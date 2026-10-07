@@ -378,7 +378,7 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 	}
 	const cacheKey = resolvePromptCacheKey(body, headers);
 	if (cacheKey !== undefined) options.promptCacheKey = cacheKey;
-	// Allow-listed header capture. The gateway's `handleFormatEndpoint`
+	// Allow-listed header capture. The gateway's `serveFormatRequest`
 	// already merges its own pre-capture under whatever the parser sets, but
 	// we populate here too so direct callers of `parseRequest` (tests, custom
 	// wrappers) see the same surface. `anthropic-version` is the most
