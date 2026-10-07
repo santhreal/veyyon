@@ -63,6 +63,16 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
 		}
 	}
 
+	/**
+	 * Removes and returns the events pushed and not yet read, oldest first. A reader that stops
+	 * reading early uses this to account for the events the producer delivered before it stopped.
+	 */
+	takeQueued(): T[] {
+		const queued = this.queue;
+		this.queue = [];
+		return queued;
+	}
+
 	end(result?: R): void {
 		this.done = true;
 		if (result !== undefined) {

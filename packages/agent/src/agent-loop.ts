@@ -1725,6 +1725,50 @@ async function streamAssistantResponse(
 				await finishChat(aborted);
 				return aborted;
 			};
+			/**
+			 * Applies one event the provider delivered and this loop never processed to the partial and
+			 * the set of closed tool calls, as the stream switch below does, without emitting anything.
+			 * False on a terminal event, which ends what was delivered ahead of the abort.
+			 */
+			const absorbDeliveredEvent = (event: AssistantMessageEvent): boolean => {
+				switch (event.type) {
+					case "done":
+					case "error":
+						return false;
+					case "start":
+						completedToolCallIds.clear();
+						break;
+					case "toolcall_end":
+						completedToolCallIds.add(event.toolCall.id);
+						break;
+				}
+				partialMessage = event.partial;
+				return true;
+			};
+			// The events the provider had delivered and this loop had not read when the abort fired,
+			// taken off the stream by the abort listener below.
+			let deliveredBeforeAbort: AssistantMessageEvent[] | undefined;
+			/**
+			 * Folds the events delivered ahead of the abort into the turn before it is committed:
+			 * `pulled`, the event this pass read and is about to drop, then every event that was
+			 * buffered when the abort fired. An event the provider pushes after the abort is not read.
+			 *
+			 * WHY. Whether a tool call finished is whether the provider delivered its `toolcall_end`
+			 * before the abort, not whether this loop reached that event before it observed the abort.
+			 * A provider pushes a burst of events from one parsed chunk, so an abort raised by an
+			 * earlier event of the burst (a TTSR match on a delta, a streaming-edit stop) fires while
+			 * the call's `toolcall_end` is already buffered. The provider clears the call's
+			 * streaming-JSON marker before it pushes that event, so {@link completedStreamedArguments}
+			 * cannot recover the call either, and the turn dropped a complete call and reported its
+			 * arguments as never finished, depending on microtask order alone.
+			 */
+			const absorbDeliveredEvents = (pulled: AssistantMessageEvent | undefined): void => {
+				if (pulled && !absorbDeliveredEvent(pulled)) return;
+				if (!deliveredBeforeAbort) return;
+				for (const event of deliveredBeforeAbort) {
+					if (!absorbDeliveredEvent(event)) return;
+				}
+			};
 
 			// One race for the whole stream: the abort listener is registered once and settles it once,
 			// and each `iterator.next()` waits on a promise of its own. `Promise.race` against one
@@ -1737,7 +1781,10 @@ async function streamAssistantResponse(
 					return await finishAbortedStream();
 				}
 				const race = new LoopRace<typeof ABORTED>();
-				const onAbort = () => race.resolve(ABORTED);
+				const onAbort = () => {
+					deliveredBeforeAbort = response.takeQueued();
+					race.resolve(ABORTED);
+				};
 				requestSignal.addEventListener("abort", onAbort, { once: true });
 				abortRace = race;
 				detachAbortListener = () => requestSignal.removeEventListener("abort", onAbort);
@@ -1747,8 +1794,11 @@ async function streamAssistantResponse(
 				while (true) {
 					let next: IteratorResult<AssistantMessageEvent>;
 					if (abortRace) {
-						const result = await abortRace.race(responseIterator.next());
+						// An abort observed between reads ends the stream without another read: an event
+						// read now could be one the provider pushed after the abort.
+						const result = abortRace.settled ? ABORTED : await abortRace.race(responseIterator.next());
 						if (result === ABORTED) {
+							absorbDeliveredEvents(undefined);
 							return await finishAbortedStream();
 						}
 						next = result;
@@ -1812,6 +1862,7 @@ async function streamAssistantResponse(
 						return finalMessage;
 					}
 					if (requestSignal?.aborted) {
+						absorbDeliveredEvents(event);
 						return await finishAbortedStream();
 					}
 

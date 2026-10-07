@@ -289,6 +289,7 @@ describe("agentLoop with AgentMessage", () => {
 		const streamFn = () =>
 			({
 				result: () => Promise.withResolvers<AssistantMessage>().promise,
+				takeQueued: (): AssistantMessageEvent[] => [],
 				[Symbol.asyncIterator]: () => ({
 					next: () => Promise.withResolvers<IteratorResult<AssistantMessageEvent>>().promise,
 					return: () => {

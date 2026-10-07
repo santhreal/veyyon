@@ -15,6 +15,7 @@
 - `@veyyon/ai/providers/gitlab-duo-workflow` exports `GITLAB_DUO_WORKFLOW_RESTART_LIMITS`, the socket results a GitLab Duo turn restarts on a fresh workflow for and the restarts it may spend on each.
 - `@veyyon/ai/auth-gateway` exports `AUTH_GATEWAY_COMPLETION_PATHS`, every path the gateway answers a completion `POST` on.
 - `@veyyon/ai/auth-broker` exports `AUTH_BROKER_AUTHORIZED_ROUTES`, every broker route that requires a bearer, and `AuthStorage.hasCredentialId(id)` reports whether a loaded credential row has the id.
+- `EventStream.takeQueued()` removes and returns the events pushed and not yet read, oldest first.
 
 ### Changed
 

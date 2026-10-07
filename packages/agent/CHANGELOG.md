@@ -30,6 +30,7 @@
 
 ### Fixed
 
+- A tool call whose `toolcall_end` the provider delivered before an abort is kept and answered with a result when the abort fires before the loop reads that event, instead of being dropped and reported as unfinished depending on microtask order.
 - A server-side compaction whose cut lands inside a turn that opened before the previous provider window chains that window and posts only the context behind it, instead of posting the whole session, which on a long single-turn Codex run outgrew the provider's context and failed every pass with `context_length_exceeded`.
 - A compaction reads the turns the previous compaction kept, so a local pass no longer drops them from the context and a chained server-side pass no longer omits them from the input it posts.
 - A server-side compaction after a local summary posts that summary ahead of the messages since it, so the window it returns replaces the summary instead of discarding the history the summary held.
