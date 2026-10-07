@@ -980,12 +980,35 @@ function getGitLabDuoWorkflowErrorField(payload: unknown, field: "message" | "er
 	return value;
 }
 
-// Everything `setupForNamespace` resolves for a chosen namespace: the REST/root ids,
-// the discovered project scoping, the prepared START payload, and the direct_access
-// connection. Named rather than derived from the function return type per repo convention
-// so the contract stays explicit for the cached-namespace and re-discovery branches that consume it.
+/** The account, endpoint and provider session one request runs against. */
+interface GitLabDuoWorkflowRequest {
+	readonly model: Model<"gitlab-duo-agent">;
+	readonly context: Context;
+	readonly options: GitLabDuoWorkflowOptions;
+	readonly state: GitLabDuoWorkflowStreamState;
+	readonly apiKey: string;
+	readonly baseUrl: string;
+	readonly fetchImpl: FetchImpl;
+	readonly providerSessionState: GitLabDuoWorkflowProviderSessionState | undefined;
+}
+
+/**
+ * What every namespace a request tries shares: the flow definition, the goal a workflow is created
+ * with, the project the caller configured, and the signal bounding the whole setup phase.
+ */
+interface GitLabDuoWorkflowSetupScope {
+	readonly workflowDefinition: GitLabDuoWorkflowDefinition;
+	readonly goal: string;
+	readonly configuredProjectPath: string | undefined;
+	readonly configuredProjectId: string | undefined;
+	readonly signal: AbortSignal | undefined;
+}
+
+// Everything `setUpGitLabDuoWorkflowNamespace` resolves for a chosen namespace: the REST ids, the
+// discovered project scoping, the prepared START payload, and the direct_access connection. Named
+// rather than derived from the function return type per repo convention so the contract stays
+// explicit for the cached-namespace and re-discovery branches that consume it.
 interface GitLabDuoWorkflowNamespaceSetup {
-	rootNamespaceId: string;
 	restNamespaceId: string;
 	createNamespaceId: string;
 	restProjectId: string | undefined;
@@ -994,6 +1017,13 @@ interface GitLabDuoWorkflowNamespaceSetup {
 	workflowConnection: GitLabDuoWorkflowDirectAccessConnection;
 	workflowId: string;
 	selectedModelIdentifier: string;
+}
+
+/** The project a workflow is scoped to: its path, the id REST bodies use, and the numeric id the socket routes by. */
+interface GitLabDuoWorkflowProjectScope {
+	projectPath: string | undefined;
+	restProjectId: string | undefined;
+	webSocketProjectId: string | undefined;
 }
 
 async function runGitLabDuoWorkflow(
@@ -1005,7 +1035,6 @@ async function runGitLabDuoWorkflow(
 	const apiKey = options.apiKey;
 	if (!apiKey) throw new AIError.MissingApiKeyError("gitlab-duo-agent");
 	const baseUrl = normalizeGitLabBaseUrl(model.baseUrl || GITLAB_SAAS_URL);
-	const fetchImpl = options.fetch ?? fetch;
 	const providerSessionState = getGitLabDuoWorkflowProviderSessionState(
 		options.providerSessionState,
 		baseUrl,
@@ -1013,15 +1042,38 @@ async function runGitLabDuoWorkflow(
 		options.sessionId,
 	);
 	state.providerSessionState = providerSessionState;
+	const request: GitLabDuoWorkflowRequest = {
+		model,
+		context,
+		options,
+		state,
+		apiKey,
+		baseUrl,
+		fetchImpl: options.fetch ?? fetch,
+		providerSessionState,
+	};
+	if (await resumeGitLabDuoWorkflowSession(request)) return;
+	const workflowDefinition = resolveGitLabDuoWorkflowDefinition(options.workflowDefinition);
+	const goal = extractLatestUserPrompt(context.messages);
+	const setup = await setUpGitLabDuoWorkflow(request, workflowDefinition, goal);
+	if (await refuseOversizedGitLabDuoWorkflowGoal(request, setup)) return;
+	await driveGitLabDuoWorkflow(request, setup, workflowDefinition, goal);
+}
+
+/**
+ * Settles the request on the session's live socket when it can: the pending tool call answered with
+ * its result, or the frames a paused socket buffered replayed. True when the request settled there;
+ * false when the caller seeds a fresh workflow.
+ */
+async function resumeGitLabDuoWorkflowSession(request: GitLabDuoWorkflowRequest): Promise<boolean> {
+	const { context, state, providerSessionState } = request;
 	const pendingSession = providerSessionState?.active;
-	if (pendingSession) {
-		hydrateGitLabDuoWorkflowCheckpointState(state, pendingSession);
-	}
+	if (pendingSession) hydrateGitLabDuoWorkflowCheckpointState(state, pendingSession);
 	const pendingActions = pendingSession?.pendingActions;
-	const resolvedBatch =
-		pendingSession && pendingActions && pendingActions.length > 0
-			? resolveGitLabDuoWorkflowActionBatch(context.messages, pendingActions)
-			: undefined;
+	const hasPendingActions = pendingActions !== undefined && pendingActions.length > 0;
+	const resolvedBatch = hasPendingActions
+		? resolveGitLabDuoWorkflowActionBatch(context.messages, pendingActions)
+		: undefined;
 	// Steer mid-tool-loop: the user added a new instruction after this batch's tool
 	// results. Returning the results on the live socket would silently drop the steer
 	// (no in-flight user-message channel). Abandon the workflow and re-seed a fresh one
@@ -1034,38 +1086,18 @@ async function runGitLabDuoWorkflow(
 			buildGitLabDuoWorkflowActionResponse(requestID, buildGitLabDuoWorkflowResponseFromToolResult(result)),
 		);
 		pendingSession.pendingActions = undefined;
-		const resumeResult = await resumeGitLabDuoWorkflowSocket(
-			{ fetchImpl, baseUrl, apiKey, workflowId: pendingSession.workflowId, state, providerSessionState },
-			() =>
-				runGitLabDuoWorkflowSocket(
-					pendingSession.ws,
-					pendingSession.startPayload,
-					state,
-					options,
-					responses,
-					undefined,
-					model,
-				),
-		);
 		// A stall on the resumed socket means the server-side turn stopped advancing even
 		// after the tool result was returned. The helper already stopped that workflow and
 		// dropped `active`; fall through to seed a FRESH workflow whose rebuilt goal
 		// transcript includes the just-returned tool result, breaking the loop.
-		if (resumeResult !== "stalled") return;
+		if (await resumeGitLabDuoWorkflowLive(request, pendingSession, responses, undefined)) return true;
 	}
-	if (providerSessionState?.active?.paused) {
-		const session = providerSessionState.active;
-		const replay = session.pauseBuffer ?? [];
-		session.paused = false;
-		session.pauseBuffer = [];
-		const sessionWorkflowId = session.workflowId;
-		const resumeResult = await resumeGitLabDuoWorkflowSocket(
-			{ fetchImpl, baseUrl, apiKey, workflowId: sessionWorkflowId, state, providerSessionState },
-			() => runGitLabDuoWorkflowSocket(session.ws, session.startPayload, state, options, undefined, replay, model),
-		);
-		// As with the action resume, a stall falls through to a fresh-workflow seed
-		// (the helper already stopped the stalled workflow and dropped `active`).
-		if (resumeResult !== "stalled") return;
+	const pausedSession = providerSessionState?.active;
+	const replay = takeGitLabDuoWorkflowPauseBuffer(pausedSession);
+	// As with the action resume, a stall falls through to a fresh-workflow seed
+	// (the helper already stopped the stalled workflow and dropped `active`).
+	if (pausedSession && replay && (await resumeGitLabDuoWorkflowLive(request, pausedSession, undefined, replay))) {
+		return true;
 	}
 	// Two cases reach here with a live `pendingSession` that must be abandoned before
 	// seeding a fresh workflow:
@@ -1078,304 +1110,397 @@ async function runGitLabDuoWorkflow(
 	//     re-issues the same tool call (the observed "repeats the same tool, ignores
 	//     the result" loop). Both cases need the same cleanup: close the socket, stop
 	//     the workflow server-side, and drop the resumable session so the fresh
-	//     workflow below owns `active`. The accumulated history (including the
-	//     unanswered tool's result) replays through the new goal transcript.
-	const abandonStaleSession = Boolean(
-		pendingSession && (steeredMidBatch || (pendingActions && pendingActions.length > 0 && !resolvedBatch)),
-	);
-	if (abandonStaleSession && pendingSession) {
-		traceGitLabDuoWorkflow(steeredMidBatch ? "workflow.steer_restart" : "workflow.stale_action_restart", {
-			workflowId: pendingSession.workflowId,
-		});
-		pendingSession.pendingActions = undefined;
-		try {
-			pendingSession.ws.close();
-		} catch {
-			// Ignore close failures from already-closed sockets.
-		}
-		if (providerSessionState) providerSessionState.active = undefined;
-		await stopGitLabDuoWorkflow(fetchImpl, baseUrl, apiKey, pendingSession.workflowId);
+	//     workflow owns `active`. The accumulated history (including the unanswered
+	//     tool's result) replays through the new goal transcript.
+	if (pendingSession && (steeredMidBatch || (hasPendingActions && !resolvedBatch))) {
+		await abandonGitLabDuoWorkflowSession(request, pendingSession, steeredMidBatch);
 	}
-	const workflowDefinition = resolveGitLabDuoWorkflowDefinition(options.workflowDefinition);
-	const explicitNamespace = hasGitLabDuoWorkflowExplicitNamespace(options);
+	return false;
+}
+
+/** Unpauses a paused session and returns the frames it buffered; undefined when the session is not paused. */
+function takeGitLabDuoWorkflowPauseBuffer(session: GitLabDuoWorkflowActiveSession | undefined): unknown[] | undefined {
+	if (!session?.paused) return undefined;
+	const replay = session.pauseBuffer ?? [];
+	session.paused = false;
+	session.pauseBuffer = [];
+	return replay;
+}
+
+/**
+ * Runs the request on a session's preserved socket, sending the tool results or replaying the
+ * buffered frames. False when the workflow stalled there: the helper stopped it and dropped
+ * `active`, so the caller seeds a fresh workflow.
+ */
+async function resumeGitLabDuoWorkflowLive(
+	request: GitLabDuoWorkflowRequest,
+	session: GitLabDuoWorkflowActiveSession,
+	responses: readonly GitLabDuoWorkflowActionResponse[] | undefined,
+	replay: readonly unknown[] | undefined,
+): Promise<boolean> {
+	const { model, options, state, apiKey, baseUrl, fetchImpl, providerSessionState } = request;
+	const result = await resumeGitLabDuoWorkflowSocket(
+		{ fetchImpl, baseUrl, apiKey, workflowId: session.workflowId, state, providerSessionState },
+		() => runGitLabDuoWorkflowSocket(session.ws, session.startPayload, state, options, responses, replay, model),
+	);
+	return result !== "stalled";
+}
+
+/** Closes a session that can no longer be resumed, stops its workflow server-side and drops it from the provider session. */
+async function abandonGitLabDuoWorkflowSession(
+	request: GitLabDuoWorkflowRequest,
+	session: GitLabDuoWorkflowActiveSession,
+	steered: boolean,
+): Promise<void> {
+	traceGitLabDuoWorkflow(steered ? "workflow.steer_restart" : "workflow.stale_action_restart", {
+		workflowId: session.workflowId,
+	});
+	session.pendingActions = undefined;
+	try {
+		session.ws.close();
+	} catch {
+		// Ignore close failures from already-closed sockets.
+	}
+	if (request.providerSessionState) request.providerSessionState.active = undefined;
+	await stopGitLabDuoWorkflow(request.fetchImpl, request.baseUrl, request.apiKey, session.workflowId);
+}
+
+/**
+ * Resolves the namespace and everything scoped to it (settings enable, project auto-discovery,
+ * direct_access, workflow create) under one deadline for the whole setup phase. Every REST helper
+ * composes the signal it is handed with its own per-call deadline, so this bounds the chain without
+ * loosening any single call.
+ */
+async function setUpGitLabDuoWorkflow(
+	request: GitLabDuoWorkflowRequest,
+	workflowDefinition: GitLabDuoWorkflowDefinition,
+	goal: string,
+): Promise<GitLabDuoWorkflowNamespaceSetup> {
+	const { options } = request;
 	const configuredProjectPath = nonEmptyString(options.projectPath) ?? nonEmptyString(Bun.env.GITLAB_DUO_PROJECT_PATH);
 	const configuredProjectId = nonEmptyString(options.projectId) ?? nonEmptyString(Bun.env.GITLAB_DUO_PROJECT_ID);
-	const goal = extractLatestUserPrompt(context.messages);
-
-	// One deadline for the whole setup phase. Every REST helper below composes the
-	// signal it is handed with its own per-call deadline, so this bounds the chain
-	// without loosening any single call.
 	const setupBudget = openBoundedFirstEventBudget(
 		options.streamFirstEventTimeoutMs,
 		GITLAB_DUO_WORKFLOW_SETUP_TIMEOUT_MS,
 	);
 	const setupFence = setupBudget.fence(options.signal);
-	const setupSignal = setupFence.signal;
-	const setupOptions: GitLabDuoWorkflowOptions = { ...options, signal: setupSignal };
-
-	// Resolve the namespace and everything scoped to it (settings enable, project
-	// auto-discovery, direct_access, workflow create). With auto-discovery the
-	// namespace is cached per account and reused as the first choice; only if a
-	// cached namespace turns out stale (the dependent calls fail) do we invalidate
-	// it and re-discover once. Explicit namespace/project config bypasses the cache.
-	const setupForNamespace = async (
-		namespaceSelection: GitLabDuoWorkflowNamespaceSelection,
-	): Promise<GitLabDuoWorkflowNamespaceSetup> => {
-		const rootNamespaceId = namespaceSelection.rootNamespaceId;
-		const restNamespaceId = toGitLabRestNamespaceId(rootNamespaceId);
-		const createNamespaceId = namespaceSelection.namespacePath ?? restNamespaceId;
-		traceGitLabDuoWorkflow("run.start", {
-			baseUrl,
-			model: model.id,
-			rootNamespaceId,
-			restNamespaceId,
-			namespaceSource: namespaceSelection.source,
-			toolCount: context.tools?.length ?? 0,
-		});
-		// Once per session, make sure the namespace has the Duo agent-platform + MCP +
-		// beta flags on. The inline ambient flow needs them; a fresh group ships with
-		// them off. Best-effort (PUT needs maintainer) and idempotent, never blocks.
-		if (
-			!isGitLabDuoWorkflowSettingsEnsured(apiKey, baseUrl, options.cwd) &&
-			isGitLabDuoWorkflowInlineFlow(workflowDefinition)
-		) {
-			// Mark the workspace ensured only after a definitive attempt (HTTP response,
-			// success or 4xx). A transient network error / 5xx returns false so a later
-			// turn retries instead of permanently skipping the PUT on a namespace whose
-			// flags are still off.
-			if (await ensureGitLabDuoWorkflowSettings(fetchImpl, baseUrl, apiKey, restNamespaceId, setupSignal)) {
-				markGitLabDuoWorkflowSettingsEnsured(apiKey, baseUrl, options.cwd);
-			}
-		}
-		// The inline `ambient` flow fails server-side without a project, and veyyon has
-		// no project of its own, so auto-discover one when nothing is configured. Prefer
-		// the project the namespace was resolved from (the workspace git remote or an
-		// explicit project), so a group with multiple projects scopes to the actual
-		// repository instead of a generic group-listing pick. Fall back to the generic
-		// membership lookup only when the namespace carries no project. `chat` runs
-		// namespace-only.
-		const discoveredProject =
-			!configuredProjectPath && !configuredProjectId && isGitLabDuoWorkflowInlineFlow(workflowDefinition)
-				? namespaceSelection.projectPath
-					? { path: namespaceSelection.projectPath }
-					: await discoverGitLabDuoWorkflowProject(fetchImpl, baseUrl, apiKey, restNamespaceId, setupSignal)
-				: undefined;
-		if (discoveredProject) {
-			traceGitLabDuoWorkflow("project.discover", {
-				projectId: discoveredProject.id,
-				hasPath: Boolean(discoveredProject.path),
-				fromRemote: Boolean(namespaceSelection.projectPath),
-			});
-		}
-		// A configured `projectId` that carries a slash is really a full `group/project`
-		// path (namespace discovery accepts that form too): route it through the path flow
-		// so `webSocketProjectId` is resolved to a numeric id instead of sending the raw
-		// path string as `project_id` on the WebSocket, which fails project-scoped routing.
-		const configuredProjectIdIsPath = Boolean(configuredProjectId?.includes("/"));
-		const numericConfiguredProjectId = configuredProjectIdIsPath ? undefined : configuredProjectId;
-		const pathConfiguredProjectId = configuredProjectIdIsPath ? configuredProjectId : undefined;
-		const projectPath = configuredProjectPath ?? pathConfiguredProjectId ?? discoveredProject?.path;
-		const projectId = numericConfiguredProjectId ?? discoveredProject?.id;
-		const restProjectId = configuredProjectPath ?? configuredProjectId ?? discoveredProject?.path;
-		const webSocketProjectId =
-			projectId ??
-			(projectPath
-				? await resolveGitLabDuoWorkflowNumericProjectId(fetchImpl, baseUrl, apiKey, projectPath, setupSignal)
-				: undefined);
-		const workflowConnection: GitLabDuoWorkflowDirectAccessConnection = options.workflowToken
-			? { token: options.workflowToken, headers: {}, serviceEndpoint: false }
-			: await requestGitLabDuoWorkflowDirectAccess(
-					fetchImpl,
-					baseUrl,
-					apiKey,
-					rootNamespaceId,
-					restProjectId,
-					workflowDefinition,
-					setupSignal,
-				);
-		const workflowId =
-			options.workflowId ??
-			(await createGitLabDuoWorkflow(
-				fetchImpl,
-				baseUrl,
-				apiKey,
-				createNamespaceId,
-				goal,
-				restProjectId,
-				workflowDefinition,
-				model,
-				options.onPayload,
-				setupSignal,
-			));
-		const availableModels = await fetchGitLabDuoWorkflowAvailableModels(
-			fetchImpl,
-			baseUrl,
-			apiKey,
-			rootNamespaceId,
-			setupSignal,
-		);
-		const selectedModelIdentifier = selectGitLabDuoWorkflowModelRef(model.id, availableModels);
-		// A `toolChoice: "none"` side-request (e.g. handoff keeps live tool definitions
-		// in the cache prefix but disables tool use) must not advertise the tools to
-		// Duo: if the model picked one, the provider would emit a `toolUse` message and
-		// the text-only handoff consumer would yield an empty/partial document. Drop the
-		// advertised tools in that case; named/`auto`/`any` choices keep them.
-		const advertisedTools = options.toolChoice === "none" ? [] : context.tools;
-		const startPayload = buildGitLabDuoWorkflowStartRequest(
-			workflowId,
-			model,
-			context,
-			advertisedTools,
-			availableModels,
-			{
-				projectId: webSocketProjectId,
-				projectPath,
-				namespaceId: restNamespaceId,
-				rootNamespaceId: restNamespaceId,
-				workflowDefinition,
-				inlineFlow: isGitLabDuoWorkflowInlineFlow(workflowDefinition),
-			},
-		);
-		return {
-			rootNamespaceId,
-			restNamespaceId,
-			createNamespaceId,
-			restProjectId,
-			startPayload,
-			webSocketProjectId,
-			workflowConnection,
-			workflowId,
-			selectedModelIdentifier,
-		};
-	};
-
-	const cachedNamespace = explicitNamespace
-		? undefined
-		: getGitLabDuoWorkflowCachedNamespace(apiKey, baseUrl, options.cwd);
-	const resolveSetup = async (): Promise<GitLabDuoWorkflowNamespaceSetup> => {
-		if (cachedNamespace) {
-			try {
-				return await setupForNamespace(cachedNamespace);
-			} catch (cachedError) {
-				// The cached account namespace no longer works (revoked access, deleted
-				// group, membership change). Drop it and re-discover once from scratch.
-				traceGitLabDuoWorkflow("namespace.cache_invalidate", {
-					rootNamespaceId: cachedNamespace.rootNamespaceId,
-					error: gitLabDuoWorkflowErrorText(cachedError),
-				});
-				clearGitLabDuoWorkflowCachedNamespace(apiKey, baseUrl, options.cwd);
-				const rediscovered = await resolveGitLabDuoWorkflowNamespaceSelection(
-					model,
-					setupOptions,
-					apiKey,
-					baseUrl,
-					fetchImpl,
-				);
-				const rediscoveredSetup = await setupForNamespace(rediscovered);
-				setGitLabDuoWorkflowCachedNamespace(apiKey, baseUrl, options.cwd, rediscovered);
-				return rediscoveredSetup;
-			}
-		}
-		const namespaceSelection = await resolveGitLabDuoWorkflowNamespaceSelection(
-			model,
-			setupOptions,
-			apiKey,
-			baseUrl,
-			fetchImpl,
-		);
-		const freshSetup = await setupForNamespace(namespaceSelection);
-		// Cache the freshly discovered namespace per account so the next session/turn
-		// reuses it instead of re-discovering. Explicit config is never cached.
-		if (!explicitNamespace) {
-			setGitLabDuoWorkflowCachedNamespace(apiKey, baseUrl, options.cwd, namespaceSelection);
-		}
-		return freshSetup;
+	const scope: GitLabDuoWorkflowSetupScope = {
+		workflowDefinition,
+		goal,
+		configuredProjectPath,
+		configuredProjectId,
+		signal: setupFence.signal,
 	};
 	// `.finally` rather than try/finally: the deadline's backing timer must be
 	// cleared whether setup resolved or threw, and the phase is over either way.
-	const setup = await resolveSetup().finally(() => setupFence.cancel());
-	const restNamespaceId = setup.restNamespaceId;
-	const createNamespaceId = setup.createNamespaceId;
-	const restProjectId = setup.restProjectId;
-	const webSocketProjectId = setup.webSocketProjectId;
-	const workflowConnection = setup.workflowConnection;
-	const selectedModelIdentifier = setup.selectedModelIdentifier;
+	return await resolveGitLabDuoWorkflowSetup(request, scope).finally(() => setupFence.cancel());
+}
+
+/**
+ * Picks the namespace to set up. With auto-discovery the namespace is cached per account and reused
+ * as the first choice; only if a cached namespace turns out stale (the dependent calls fail) is it
+ * invalidated and re-discovered once. Explicit namespace/project config bypasses the cache.
+ */
+async function resolveGitLabDuoWorkflowSetup(
+	request: GitLabDuoWorkflowRequest,
+	scope: GitLabDuoWorkflowSetupScope,
+): Promise<GitLabDuoWorkflowNamespaceSetup> {
+	const { model, options, apiKey, baseUrl, fetchImpl } = request;
+	const setupOptions: GitLabDuoWorkflowOptions = { ...options, signal: scope.signal };
+	const explicitNamespace = hasGitLabDuoWorkflowExplicitNamespace(options);
+	const cachedNamespace = explicitNamespace
+		? undefined
+		: getGitLabDuoWorkflowCachedNamespace(apiKey, baseUrl, options.cwd);
+	if (cachedNamespace) {
+		try {
+			return await setUpGitLabDuoWorkflowNamespace(request, scope, cachedNamespace);
+		} catch (cachedError) {
+			// The cached account namespace no longer works (revoked access, deleted
+			// group, membership change). Drop it and re-discover once from scratch.
+			traceGitLabDuoWorkflow("namespace.cache_invalidate", {
+				rootNamespaceId: cachedNamespace.rootNamespaceId,
+				error: gitLabDuoWorkflowErrorText(cachedError),
+			});
+			clearGitLabDuoWorkflowCachedNamespace(apiKey, baseUrl, options.cwd);
+			const rediscovered = await resolveGitLabDuoWorkflowNamespaceSelection(
+				model,
+				setupOptions,
+				apiKey,
+				baseUrl,
+				fetchImpl,
+			);
+			const rediscoveredSetup = await setUpGitLabDuoWorkflowNamespace(request, scope, rediscovered);
+			setGitLabDuoWorkflowCachedNamespace(apiKey, baseUrl, options.cwd, rediscovered);
+			return rediscoveredSetup;
+		}
+	}
+	const namespaceSelection = await resolveGitLabDuoWorkflowNamespaceSelection(
+		model,
+		setupOptions,
+		apiKey,
+		baseUrl,
+		fetchImpl,
+	);
+	const freshSetup = await setUpGitLabDuoWorkflowNamespace(request, scope, namespaceSelection);
+	// Cache the freshly discovered namespace per account so the next session/turn
+	// reuses it instead of re-discovering. Explicit config is never cached.
+	if (!explicitNamespace) {
+		setGitLabDuoWorkflowCachedNamespace(apiKey, baseUrl, options.cwd, namespaceSelection);
+	}
+	return freshSetup;
+}
+
+/** Prepares a workflow inside one namespace: its flags, project, connection, workflow id and START payload. */
+async function setUpGitLabDuoWorkflowNamespace(
+	request: GitLabDuoWorkflowRequest,
+	scope: GitLabDuoWorkflowSetupScope,
+	namespaceSelection: GitLabDuoWorkflowNamespaceSelection,
+): Promise<GitLabDuoWorkflowNamespaceSetup> {
+	const { model, context, options, apiKey, baseUrl, fetchImpl } = request;
+	const { workflowDefinition, signal } = scope;
+	const rootNamespaceId = namespaceSelection.rootNamespaceId;
+	const restNamespaceId = toGitLabRestNamespaceId(rootNamespaceId);
+	const createNamespaceId = namespaceSelection.namespacePath ?? restNamespaceId;
+	traceGitLabDuoWorkflow("run.start", {
+		baseUrl,
+		model: model.id,
+		rootNamespaceId,
+		restNamespaceId,
+		namespaceSource: namespaceSelection.source,
+		toolCount: context.tools?.length ?? 0,
+	});
+	await enableGitLabDuoWorkflowNamespaceFlags(request, workflowDefinition, restNamespaceId, signal);
+	const project = await resolveGitLabDuoWorkflowProjectScope(request, scope, namespaceSelection, restNamespaceId);
+	const workflowConnection: GitLabDuoWorkflowDirectAccessConnection = options.workflowToken
+		? { token: options.workflowToken, headers: {}, serviceEndpoint: false }
+		: await requestGitLabDuoWorkflowDirectAccess(
+				fetchImpl,
+				baseUrl,
+				apiKey,
+				rootNamespaceId,
+				project.restProjectId,
+				workflowDefinition,
+				signal,
+			);
+	const workflowId =
+		options.workflowId ??
+		(await createGitLabDuoWorkflow(
+			fetchImpl,
+			baseUrl,
+			apiKey,
+			createNamespaceId,
+			scope.goal,
+			project.restProjectId,
+			workflowDefinition,
+			model,
+			options.onPayload,
+			signal,
+		));
+	const availableModels = await fetchGitLabDuoWorkflowAvailableModels(
+		fetchImpl,
+		baseUrl,
+		apiKey,
+		rootNamespaceId,
+		signal,
+	);
+	// A `toolChoice: "none"` side-request (e.g. handoff keeps live tool definitions
+	// in the cache prefix but disables tool use) must not advertise the tools to
+	// Duo: if the model picked one, the provider would emit a `toolUse` message and
+	// the text-only handoff consumer would yield an empty/partial document. Drop the
+	// advertised tools in that case; named/`auto`/`any` choices keep them.
+	const advertisedTools = options.toolChoice === "none" ? [] : context.tools;
+	const startPayload = buildGitLabDuoWorkflowStartRequest(
+		workflowId,
+		model,
+		context,
+		advertisedTools,
+		availableModels,
+		{
+			projectId: project.webSocketProjectId,
+			projectPath: project.projectPath,
+			namespaceId: restNamespaceId,
+			rootNamespaceId: restNamespaceId,
+			workflowDefinition,
+			inlineFlow: isGitLabDuoWorkflowInlineFlow(workflowDefinition),
+		},
+	);
+	return {
+		restNamespaceId,
+		createNamespaceId,
+		restProjectId: project.restProjectId,
+		startPayload,
+		webSocketProjectId: project.webSocketProjectId,
+		workflowConnection,
+		workflowId,
+		selectedModelIdentifier: selectGitLabDuoWorkflowModelRef(model.id, availableModels),
+	};
+}
+
+/**
+ * Once per account, turns on the namespace's Duo agent-platform, MCP and beta flags. The inline
+ * ambient flow needs them and a fresh group ships with them off. Best-effort (PUT needs maintainer)
+ * and idempotent; it never blocks the run.
+ */
+async function enableGitLabDuoWorkflowNamespaceFlags(
+	request: GitLabDuoWorkflowRequest,
+	workflowDefinition: GitLabDuoWorkflowDefinition,
+	restNamespaceId: string,
+	signal: AbortSignal | undefined,
+): Promise<void> {
+	const { options, apiKey, baseUrl, fetchImpl } = request;
+	if (!isGitLabDuoWorkflowInlineFlow(workflowDefinition)) return;
+	if (isGitLabDuoWorkflowSettingsEnsured(apiKey, baseUrl, options.cwd)) return;
+	// Mark the workspace ensured only after a definitive attempt (HTTP response,
+	// success or 4xx). A transient network error / 5xx returns false so a later
+	// turn retries instead of permanently skipping the PUT on a namespace whose
+	// flags are still off.
+	if (await ensureGitLabDuoWorkflowSettings(fetchImpl, baseUrl, apiKey, restNamespaceId, signal)) {
+		markGitLabDuoWorkflowSettingsEnsured(apiKey, baseUrl, options.cwd);
+	}
+}
+
+/** The project a workflow in this namespace is scoped to: the configured one, else a discovered one. */
+async function resolveGitLabDuoWorkflowProjectScope(
+	request: GitLabDuoWorkflowRequest,
+	scope: GitLabDuoWorkflowSetupScope,
+	namespaceSelection: GitLabDuoWorkflowNamespaceSelection,
+	restNamespaceId: string,
+): Promise<GitLabDuoWorkflowProjectScope> {
+	const { configuredProjectPath, configuredProjectId } = scope;
+	const discoveredProject = await discoverGitLabDuoWorkflowNamespaceProject(
+		request,
+		scope,
+		namespaceSelection,
+		restNamespaceId,
+	);
+	// A configured `projectId` that carries a slash is really a full `group/project`
+	// path (namespace discovery accepts that form too): route it through the path flow
+	// so `webSocketProjectId` is resolved to a numeric id instead of sending the raw
+	// path string as `project_id` on the WebSocket, which fails project-scoped routing.
+	const configuredProjectIdIsPath = Boolean(configuredProjectId?.includes("/"));
+	const numericConfiguredProjectId = configuredProjectIdIsPath ? undefined : configuredProjectId;
+	const pathConfiguredProjectId = configuredProjectIdIsPath ? configuredProjectId : undefined;
+	const projectPath = configuredProjectPath ?? pathConfiguredProjectId ?? discoveredProject?.path;
+	const projectId = numericConfiguredProjectId ?? discoveredProject?.id;
+	const webSocketProjectId =
+		projectId ??
+		(projectPath
+			? await resolveGitLabDuoWorkflowNumericProjectId(
+					request.fetchImpl,
+					request.baseUrl,
+					request.apiKey,
+					projectPath,
+					scope.signal,
+				)
+			: undefined);
+	return {
+		projectPath,
+		restProjectId: configuredProjectPath ?? configuredProjectId ?? discoveredProject?.path,
+		webSocketProjectId,
+	};
+}
+
+/**
+ * The inline `ambient` flow fails server-side without a project, and veyyon has no project of its
+ * own, so one is discovered when nothing is configured. The project the namespace was resolved from
+ * (the workspace git remote or an explicit project) comes first, so a group with multiple projects
+ * scopes to the actual repository instead of a generic group-listing pick; the generic membership
+ * lookup runs only when the namespace carries no project. `chat` runs namespace-only.
+ */
+async function discoverGitLabDuoWorkflowNamespaceProject(
+	request: GitLabDuoWorkflowRequest,
+	scope: GitLabDuoWorkflowSetupScope,
+	namespaceSelection: GitLabDuoWorkflowNamespaceSelection,
+	restNamespaceId: string,
+): Promise<GitLabDuoWorkflowDiscoveredProject | undefined> {
+	if (scope.configuredProjectPath || scope.configuredProjectId) return undefined;
+	if (!isGitLabDuoWorkflowInlineFlow(scope.workflowDefinition)) return undefined;
+	const project = namespaceSelection.projectPath
+		? { path: namespaceSelection.projectPath }
+		: await discoverGitLabDuoWorkflowProject(
+				request.fetchImpl,
+				request.baseUrl,
+				request.apiKey,
+				restNamespaceId,
+				scope.signal,
+			);
+	if (project) {
+		traceGitLabDuoWorkflow("project.discover", {
+			projectId: project.id,
+			hasPath: Boolean(project.path),
+			fromRemote: Boolean(namespaceSelection.projectPath),
+		});
+	}
+	return project;
+}
+
+/**
+ * Places the rendered goal in one of three byte zones (see GITLAB_DUO_WORKFLOW_GOAL_*_OVERFLOW_BYTES):
+ *  - [HARD, ∞): necessary-fail. The request is not spent: the overflow error is emitted now so the
+ *    session compacts immediately, and the workflow setup created is stopped. Returns true.
+ *  - [SOFT, HARD): jitter. The run is attempted once (it can succeed); the overflow label is stashed
+ *    so that IF the run errors it is re-labeled as a context-overflow rather than a transient fault.
+ *  - [0, SOFT): reliable. The label stays undefined; ordinary errors surface verbatim.
+ */
+async function refuseOversizedGitLabDuoWorkflowGoal(
+	request: GitLabDuoWorkflowRequest,
+	setup: GitLabDuoWorkflowNamespaceSetup,
+): Promise<boolean> {
+	const { state, apiKey, baseUrl, fetchImpl, providerSessionState } = request;
+	const renderedGoalBytes = Buffer.byteLength(setup.startPayload.goal, "utf8");
+	if (renderedGoalBytes < GITLAB_DUO_WORKFLOW_GOAL_SOFT_OVERFLOW_BYTES) return false;
+	const zone = renderedGoalBytes >= GITLAB_DUO_WORKFLOW_GOAL_HARD_OVERFLOW_BYTES ? "hard" : "jitter";
+	traceGitLabDuoWorkflow("goal.over_budget", {
+		renderedGoalBytes,
+		zone,
+		soft: GITLAB_DUO_WORKFLOW_GOAL_SOFT_OVERFLOW_BYTES,
+		hard: GITLAB_DUO_WORKFLOW_GOAL_HARD_OVERFLOW_BYTES,
+	});
+	const overflowMessage = buildGitLabDuoWorkflowGoalOverflowMessage(renderedGoalBytes);
+	if (zone === "jitter") {
+		state.goalOverflowMessage = overflowMessage;
+		return false;
+	}
+	if (!state.stream.done) {
+		state.output.stopReason = "error";
+		state.output.errorMessage = overflowMessage;
+		state.stream.push({ type: "error", reason: "error", error: state.output });
+	}
+	// Stop the freshly created server-side workflow so it is not stranded, then
+	// return without opening the socket — the request is never spent.
+	if (providerSessionState) providerSessionState.active = undefined;
+	await stopGitLabDuoWorkflow(fetchImpl, baseUrl, apiKey, setup.workflowId);
+	return true;
+}
+
+/** Socket results a request recovers from on a fresh workflow, and the restarts one request may spend on each. */
+const GITLAB_DUO_WORKFLOW_RESTART_LIMITS: Partial<Record<GitLabDuoWorkflowSocketResult, number>> = {
+	timeout: 1,
+	step_limit: GITLAB_DUO_WORKFLOW_MAX_STEP_LIMIT_RESTARTS,
+	stalled: GITLAB_DUO_WORKFLOW_MAX_STALL_RESTARTS,
+	retryable_error: GITLAB_DUO_WORKFLOW_MAX_GENERIC_ERROR_RETRIES,
+};
+
+/**
+ * Runs the workflow setup prepared, opening a socket per attempt: an approval reopens it on the
+ * approval START payload, and a recoverable result restarts on a fresh workflow until its restarts
+ * are spent.
+ */
+async function driveGitLabDuoWorkflow(
+	request: GitLabDuoWorkflowRequest,
+	setup: GitLabDuoWorkflowNamespaceSetup,
+	workflowDefinition: GitLabDuoWorkflowDefinition,
+	goal: string,
+): Promise<void> {
+	const { model, options, state, apiKey, baseUrl, fetchImpl, providerSessionState } = request;
 	let workflowId = setup.workflowId;
 	let startPayload = setup.startPayload;
-	// Three byte zones (see GITLAB_DUO_WORKFLOW_GOAL_*_OVERFLOW_BYTES):
-	//  - [HARD, ∞): necessary-fail. Do NOT spend the request — emit the overflow error
-	//    now so the session compacts immediately. The fresh-workflow already created in
-	//    setup is stopped by the `finally` below.
-	//  - [SOFT, HARD): jitter. Attempt once (it can succeed); stash the overflow label so
-	//    that IF the run errors it is re-labeled as a context-overflow rather than a
-	//    transient fault.
-	//  - [0, SOFT): reliable. Leave the label undefined; ordinary errors surface verbatim.
-	const renderedGoalBytes = Buffer.byteLength(startPayload.goal, "utf8");
-	if (renderedGoalBytes >= GITLAB_DUO_WORKFLOW_GOAL_HARD_OVERFLOW_BYTES) {
-		traceGitLabDuoWorkflow("goal.over_budget", {
-			renderedGoalBytes,
-			zone: "hard",
-			soft: GITLAB_DUO_WORKFLOW_GOAL_SOFT_OVERFLOW_BYTES,
-			hard: GITLAB_DUO_WORKFLOW_GOAL_HARD_OVERFLOW_BYTES,
-		});
-		if (!state.stream.done) {
-			state.output.stopReason = "error";
-			state.output.errorMessage = buildGitLabDuoWorkflowGoalOverflowMessage(renderedGoalBytes);
-			state.stream.push({ type: "error", reason: "error", error: state.output });
-		}
-		// Stop the freshly created server-side workflow so it is not stranded, then
-		// return without opening the socket — the request is never spent.
-		if (providerSessionState) providerSessionState.active = undefined;
-		await stopGitLabDuoWorkflow(fetchImpl, baseUrl, apiKey, workflowId);
-		return;
-	}
-	if (renderedGoalBytes >= GITLAB_DUO_WORKFLOW_GOAL_SOFT_OVERFLOW_BYTES) {
-		state.goalOverflowMessage = buildGitLabDuoWorkflowGoalOverflowMessage(renderedGoalBytes);
-		traceGitLabDuoWorkflow("goal.over_budget", {
-			renderedGoalBytes,
-			zone: "jitter",
-			soft: GITLAB_DUO_WORKFLOW_GOAL_SOFT_OVERFLOW_BYTES,
-			hard: GITLAB_DUO_WORKFLOW_GOAL_HARD_OVERFLOW_BYTES,
-		});
-	}
 	let lastSocketResult: GitLabDuoWorkflowSocketResult = "closed";
-	let timeoutReconnected = false;
-	let stepLimitRestarts = 0;
-	let genericErrorRetries = 0;
-	let stallRestarts = 0;
+	const restarts: Partial<Record<GitLabDuoWorkflowSocketResult, number>> = {};
 	let settledNormally = false;
 	try {
 		for (let attempt = 0; attempt < 12; attempt++) {
-			const ws = openGitLabDuoWorkflowSocket(workflowConnection.baseUrl ?? baseUrl, {
-				token: workflowConnection.token,
-				projectId: webSocketProjectId,
-				// Pass the resolved namespace/root even when no numeric project id is
-				// available (project path unresolved, or auto-discovery found none): the
-				// REST direct_access/create calls may be namespace- or path-scoped, but the
-				// socket must still route inside the selected namespace. Dropping them with
-				// the project left the socket scope-less and could route/fail outside it.
-				namespaceId: restNamespaceId,
-				rootNamespaceId: restNamespaceId,
-				selectedModelIdentifier,
-				workflowDefinition,
-				serviceEndpoint: workflowConnection.serviceEndpoint,
-				extraHeaders: workflowConnection.headers,
-				originBaseUrl: baseUrl,
-				webSocketFactory: options.webSocketFactory,
-			});
-			if (providerSessionState) {
-				// Capture the CURRENT workflow id (it is reassigned across timeout/step-limit/
-				// retry restarts) so a later session-dispose stops the right workflow.
-				const stopWorkflowId = workflowId;
-				providerSessionState.active = {
-					workflowId,
-					startPayload,
-					ws,
-					stop: () => {
-						void stopGitLabDuoWorkflow(fetchImpl, baseUrl, apiKey, stopWorkflowId);
-					},
-				};
-			}
+			const ws = openGitLabDuoWorkflowAttempt(request, setup, workflowDefinition, workflowId, startPayload);
 			lastSocketResult = await runGitLabDuoWorkflowSocket(
 				ws,
 				startPayload,
@@ -1390,85 +1515,8 @@ async function runGitLabDuoWorkflow(
 				state.lastApprovalStatus = undefined;
 				continue;
 			}
-			// A silent half-open socket (no frame within the idle window) leaves the
-			// remote workflow stuck. Same-id reconnect is NOT recoverable on an inline
-			// flow: a second connection re-compiles the flow from the live `flowConfig`
-			// and the LangGraph checkpoint replay rejects the rebuilt graph topology
-			// (server-side FAILED, agent never runs — verified live). So recover the
-			// same way step_limit does: stop the dead workflow and create a FRESH one
-			// (status CREATED → START branch, no checkpoint replay), then reopen the
-			// socket. The accumulated conversation replays through the goal transcript.
-			// Bounded to a single retry so a persistently dead endpoint can't loop on quota.
-			if (lastSocketResult === "timeout" && !timeoutReconnected) {
-				timeoutReconnected = true;
-				traceGitLabDuoWorkflow("websocket.idle_restart", { workflowId });
-			}
-			// The server caps each workflow at a fixed step (graph-recursion) limit.
-			// A long but healthy veyyon tool-call loop legitimately overruns it; that is
-			// not a real failure. Stop the exhausted run and create a FRESH workflow
-			// (a new id resets the step budget — unlike the timeout case, resending on
-			// the same id would not), then reopen the socket. The conversation so far
-			// (assistant text + tool results accumulated in `context`) replays through
-			// the goal envelope, so the new workflow continues where it left off; the
-			// checkpoint dedupe drops any re-sent ui_chat_log entries. Bounded so a
-			// task that perpetually overruns degrades to a graceful stop, not a quota
-			// sink.
-			else if (
-				lastSocketResult === "step_limit" &&
-				stepLimitRestarts < GITLAB_DUO_WORKFLOW_MAX_STEP_LIMIT_RESTARTS
-			) {
-				stepLimitRestarts++;
-				state.stepLimitRequested = false;
-				traceGitLabDuoWorkflow("websocket.step_limit_restart", { workflowId, restart: stepLimitRestarts });
-			}
-			// The server emitted a fresh tool-call boundary whose `ui_chat_log` total did
-			// not advance past the previous boundary of this workflow — the server-side
-			// turn stopped progressing (captured live: total pinned while the model
-			// repeated one tool call). Recover exactly like step_limit: stop the stalled
-			// workflow and create a FRESH one (a new id with no checkpoint replay), then
-			// reopen the socket. The conversation replays through the goal transcript,
-			// rebuilt from the agent loop's intact `context.messages`, so no in-flight
-			// tool result is lost. Bounded so a persistently stalling endpoint degrades to
-			// a surfaced result instead of looping on quota.
-			else if (lastSocketResult === "stalled" && stallRestarts < GITLAB_DUO_WORKFLOW_MAX_STALL_RESTARTS) {
-				stallRestarts++;
-				state.stalledRequested = false;
-				traceGitLabDuoWorkflow("websocket.stall_restart", { workflowId, restart: stallRestarts });
-			}
-			// The server returned its de-identified catch-all FAILED — a wrapper over a
-			// transient upstream fault (model 5xx, AgentStuckError, …). Retry on a FRESH
-			// workflow exactly like step_limit (same-id reconnect is broken on inline
-			// flows): the conversation replays through the goal transcript. Bounded low
-			// so a deterministic failure surfaces instead of looping on quota.
-			else if (
-				lastSocketResult === "retryable_error" &&
-				genericErrorRetries < GITLAB_DUO_WORKFLOW_MAX_GENERIC_ERROR_RETRIES
-			) {
-				genericErrorRetries++;
-				state.retryableErrorRequested = false;
-				// Clear the stashed message: it only surfaces if the retry also fails.
-				state.output.errorMessage = undefined;
-				traceGitLabDuoWorkflow("websocket.generic_error_retry", { workflowId, retry: genericErrorRetries });
-			} else {
-				// A retryable error that exhausted its retries must surface as a real error;
-				// the FAILED branch suppressed the error event expecting a retry, so emit it
-				// now before falling through to the terminal break.
-				if (lastSocketResult === "retryable_error" && !state.stream.done) {
-					state.output.stopReason = "error";
-					// An oversized goal that exhausted its retry is almost certainly failing on
-					// the byte size, not a transient fault — surface it as a context-overflow so
-					// the session auto-compacts instead of hard-failing.
-					if (state.goalOverflowMessage) state.output.errorMessage = state.goalOverflowMessage;
-					state.stream.push({ type: "error", reason: "error", error: state.output });
-				}
-				// A stall that exhausted its fresh-workflow restarts is a persistent failure to
-				// progress; surface it as a real error so the run does not stop silently.
-				if (lastSocketResult === "stalled" && !state.stream.done) {
-					state.output.stopReason = "error";
-					state.output.errorMessage =
-						state.goalOverflowMessage ?? state.output.errorMessage ?? GITLAB_DUO_WORKFLOW_STALL_ERROR_MESSAGE;
-					state.stream.push({ type: "error", reason: "error", error: state.output });
-				}
+			if (!spendGitLabDuoWorkflowRestart(lastSocketResult, restarts, state, workflowId)) {
+				surfaceExhaustedGitLabDuoWorkflowRestart(state, lastSocketResult);
 				break;
 			}
 			await stopGitLabDuoWorkflow(fetchImpl, baseUrl, apiKey, workflowId);
@@ -1476,9 +1524,9 @@ async function runGitLabDuoWorkflow(
 				fetchImpl,
 				baseUrl,
 				apiKey,
-				createNamespaceId,
+				setup.createNamespaceId,
 				goal,
-				restProjectId,
+				setup.restProjectId,
 				workflowDefinition,
 				model,
 				options.onPayload,
@@ -1510,12 +1558,144 @@ async function runGitLabDuoWorkflow(
 			lastSocketResult === "timeout" ||
 			lastSocketResult === "stalled"
 		) {
-			if (providerSessionState) {
-				providerSessionState.active = undefined;
-			}
+			if (providerSessionState) providerSessionState.active = undefined;
 			await stopGitLabDuoWorkflow(fetchImpl, baseUrl, apiKey, workflowId);
 		}
 	}
+}
+
+/** Opens one attempt's socket and records it as the provider session's resumable workflow. */
+function openGitLabDuoWorkflowAttempt(
+	request: GitLabDuoWorkflowRequest,
+	setup: GitLabDuoWorkflowNamespaceSetup,
+	workflowDefinition: GitLabDuoWorkflowDefinition,
+	workflowId: string,
+	startPayload: GitLabDuoWorkflowStartRequest,
+): GitLabDuoWorkflowWebSocketLike {
+	const { options, apiKey, baseUrl, fetchImpl, providerSessionState } = request;
+	const { workflowConnection } = setup;
+	const ws = openGitLabDuoWorkflowSocket(workflowConnection.baseUrl ?? baseUrl, {
+		token: workflowConnection.token,
+		projectId: setup.webSocketProjectId,
+		// Pass the resolved namespace/root even when no numeric project id is
+		// available (project path unresolved, or auto-discovery found none): the
+		// REST direct_access/create calls may be namespace- or path-scoped, but the
+		// socket must still route inside the selected namespace. Dropping them with
+		// the project left the socket scope-less and could route/fail outside it.
+		namespaceId: setup.restNamespaceId,
+		rootNamespaceId: setup.restNamespaceId,
+		selectedModelIdentifier: setup.selectedModelIdentifier,
+		workflowDefinition,
+		serviceEndpoint: workflowConnection.serviceEndpoint,
+		extraHeaders: workflowConnection.headers,
+		originBaseUrl: baseUrl,
+		webSocketFactory: options.webSocketFactory,
+	});
+	if (providerSessionState) {
+		// `stop` closes over this attempt's workflow id: a restart creates a new one, and a
+		// later session-dispose must stop the workflow this socket belongs to.
+		providerSessionState.active = {
+			workflowId,
+			startPayload,
+			ws,
+			stop: () => {
+				void stopGitLabDuoWorkflow(fetchImpl, baseUrl, apiKey, workflowId);
+			},
+		};
+	}
+	return ws;
+}
+
+/**
+ * Spends one fresh-workflow restart on a recoverable socket result and clears the flag the socket
+ * raised for it. False when the result is not recoverable or its restarts are spent.
+ */
+function spendGitLabDuoWorkflowRestart(
+	result: GitLabDuoWorkflowSocketResult,
+	restarts: Partial<Record<GitLabDuoWorkflowSocketResult, number>>,
+	state: GitLabDuoWorkflowStreamState,
+	workflowId: string,
+): boolean {
+	const limit = GITLAB_DUO_WORKFLOW_RESTART_LIMITS[result];
+	const spent = restarts[result] ?? 0;
+	if (limit === undefined || spent >= limit) return false;
+	const restart = spent + 1;
+	restarts[result] = restart;
+	switch (result) {
+		// A silent half-open socket (no frame within the idle window) leaves the
+		// remote workflow stuck. Same-id reconnect is NOT recoverable on an inline
+		// flow: a second connection re-compiles the flow from the live `flowConfig`
+		// and the LangGraph checkpoint replay rejects the rebuilt graph topology
+		// (server-side FAILED, agent never runs — verified live). So recover the
+		// same way step_limit does: stop the dead workflow and create a FRESH one
+		// (status CREATED → START branch, no checkpoint replay), then reopen the
+		// socket. The accumulated conversation replays through the goal transcript.
+		// Bounded to a single retry so a persistently dead endpoint can't loop on quota.
+		case "timeout":
+			traceGitLabDuoWorkflow("websocket.idle_restart", { workflowId });
+			break;
+		// The server caps each workflow at a fixed step (graph-recursion) limit.
+		// A long but healthy veyyon tool-call loop legitimately overruns it; that is
+		// not a real failure. Stop the exhausted run and create a FRESH workflow
+		// (a new id resets the step budget — unlike the timeout case, resending on
+		// the same id would not), then reopen the socket. The conversation so far
+		// (assistant text + tool results accumulated in `context`) replays through
+		// the goal envelope, so the new workflow continues where it left off; the
+		// checkpoint dedupe drops any re-sent ui_chat_log entries. Bounded so a
+		// task that perpetually overruns degrades to a graceful stop, not a quota
+		// sink.
+		case "step_limit":
+			state.stepLimitRequested = false;
+			traceGitLabDuoWorkflow("websocket.step_limit_restart", { workflowId, restart });
+			break;
+		// The server emitted a fresh tool-call boundary whose `ui_chat_log` total did
+		// not advance past the previous boundary of this workflow — the server-side
+		// turn stopped progressing (captured live: total pinned while the model
+		// repeated one tool call). Recover exactly like step_limit: stop the stalled
+		// workflow and create a FRESH one (a new id with no checkpoint replay), then
+		// reopen the socket. The conversation replays through the goal transcript,
+		// rebuilt from the agent loop's intact `context.messages`, so no in-flight
+		// tool result is lost. Bounded so a persistently stalling endpoint degrades to
+		// a surfaced result instead of looping on quota.
+		case "stalled":
+			state.stalledRequested = false;
+			traceGitLabDuoWorkflow("websocket.stall_restart", { workflowId, restart });
+			break;
+		// The server returned its de-identified catch-all FAILED — a wrapper over a
+		// transient upstream fault (model 5xx, AgentStuckError, …). Retry on a FRESH
+		// workflow exactly like step_limit (same-id reconnect is broken on inline
+		// flows): the conversation replays through the goal transcript. Bounded low
+		// so a deterministic failure surfaces instead of looping on quota.
+		case "retryable_error":
+			state.retryableErrorRequested = false;
+			// Clear the stashed message: it only surfaces if the retry also fails.
+			state.output.errorMessage = undefined;
+			traceGitLabDuoWorkflow("websocket.generic_error_retry", { workflowId, retry: restart });
+			break;
+	}
+	return true;
+}
+
+/**
+ * Emits the error a retryable error or a stall ends on once its restarts are spent. The socket held
+ * the error back expecting a restart, so without it the run would stop silently.
+ */
+function surfaceExhaustedGitLabDuoWorkflowRestart(
+	state: GitLabDuoWorkflowStreamState,
+	result: GitLabDuoWorkflowSocketResult,
+): void {
+	if (state.stream.done || (result !== "retryable_error" && result !== "stalled")) return;
+	state.output.stopReason = "error";
+	if (result === "retryable_error") {
+		// An oversized goal that exhausted its retry is almost certainly failing on
+		// the byte size, not a transient fault — surface it as a context-overflow so
+		// the session auto-compacts instead of hard-failing.
+		if (state.goalOverflowMessage) state.output.errorMessage = state.goalOverflowMessage;
+	} else {
+		state.output.errorMessage =
+			state.goalOverflowMessage ?? state.output.errorMessage ?? GITLAB_DUO_WORKFLOW_STALL_ERROR_MESSAGE;
+	}
+	state.stream.push({ type: "error", reason: "error", error: state.output });
 }
 
 async function fetchGitLabDuoWorkflowAvailableModels(
