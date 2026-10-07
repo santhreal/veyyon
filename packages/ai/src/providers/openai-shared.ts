@@ -1555,12 +1555,10 @@ function adaptResponsesReplayItemsForModel(
 /**
  * Whether a request to this model offers freeform custom tools (the OpenAI custom-tool grammar variant for
  * `apply_patch`). The generated catalog and Codex discovery set `model.applyPatchToolType` for the models that
- * accept them.
+ * accept them. An Azure request sends every tool as a `function` tool, so it offers none.
  */
-export function supportsFreeformApplyPatch(
-	model: Model<"openai-responses" | "azure-openai-responses" | "openai-codex-responses">,
-): boolean {
-	return model.applyPatchToolType === "freeform";
+export function supportsFreeformApplyPatch(model: Pick<Model, "api" | "applyPatchToolType">): boolean {
+	return model.api !== "azure-openai-responses" && model.applyPatchToolType === "freeform";
 }
 
 export interface BuildResponsesInputOptions<TApi extends Api> {
@@ -1571,9 +1569,9 @@ export interface BuildResponsesInputOptions<TApi extends Api> {
 	/**
 	 * Whether the request's tools include freeform custom tools. When false, a custom tool call and its output are
 	 * sent as a `function_call` and a `function_call_output`. Pass the answer the request's tool converter used, so
-	 * the input never carries a call kind its tools do not offer.
+	 * the input never carries a call kind its tools do not offer. Defaults to `supportsFreeformApplyPatch(model)`.
 	 */
-	supportsCustomToolCalls: boolean;
+	supportsCustomToolCalls?: boolean;
 	systemRole?: "system" | "developer";
 	nativeHistory?: {
 		replay: boolean;
@@ -1582,6 +1580,12 @@ export interface BuildResponsesInputOptions<TApi extends Api> {
 	includeThinkingSignatures?: boolean;
 	developerStringContent?: boolean;
 	supportsDeveloperRole?: boolean;
+	/**
+	 * Has no effect: `buildResponsesInput` repairs every input it builds. The server-compaction encoder in
+	 * `openai-compaction.ts` sets it, and `scripts/the-codex-compaction-route-is-locked.test.ts` pins that file's
+	 * bytes.
+	 */
+	repairOrphanOutputs?: true;
 	/** Preserve assistant message item IDs from text signatures during fallback replay. */
 	preserveAssistantMessageIds?: boolean;
 }
@@ -1615,7 +1619,7 @@ class ResponsesInputBuilder<TApi extends Api> {
 		this.#options = options;
 		this.#acceptsImages = options.model.input.includes("image");
 		this.#supportsImageDetailOriginal = options.supportsImageDetailOriginal;
-		this.#supportsCustomToolCalls = options.supportsCustomToolCalls;
+		this.#supportsCustomToolCalls = options.supportsCustomToolCalls ?? supportsFreeformApplyPatch(options.model);
 		this.#customToolWireNameMap = this.#supportsCustomToolCalls
 			? undefined
 			: buildCustomToolWireNameMap(options.context.tools);
