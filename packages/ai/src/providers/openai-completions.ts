@@ -17,6 +17,7 @@ import type {
 	AssistantMessage,
 	CacheRetention,
 	Context,
+	ImageContent,
 	Message,
 	MessageAttribution,
 	Model,
@@ -266,34 +267,32 @@ export function isOpenAICompletionsProgressChunk(chunk: unknown): boolean {
 	if (!chunk || typeof chunk !== "object") return false;
 	const record = chunk as {
 		usage?: unknown;
-		choices?: ReadonlyArray<{
-			finish_reason?: unknown;
-			usage?: unknown;
-			delta?: {
-				content?: unknown;
-				tool_calls?: unknown;
-				reasoning?: unknown;
-				reasoning_content?: unknown;
-				reasoning_text?: unknown;
-				refusal?: unknown;
-			};
-		}>;
+		choices?: ReadonlyArray<{ finish_reason?: unknown; usage?: unknown; delta?: OpenAICompletionsProgressDelta }>;
 	};
 	if (record.usage) return true;
 	const choice = Array.isArray(record.choices) ? record.choices[0] : undefined;
 	if (!choice) return false;
-	if (choice.finish_reason) return true;
-	if (choice.usage) return true;
-	const delta = choice.delta;
-	if (!delta) return false;
+	if (choice.finish_reason || choice.usage) return true;
+	return choice.delta ? isOpenAICompletionsProgressDelta(choice.delta) : false;
+}
+
+interface OpenAICompletionsProgressDelta {
+	content?: unknown;
+	tool_calls?: unknown;
+	reasoning?: unknown;
+	reasoning_content?: unknown;
+	reasoning_text?: unknown;
+	refusal?: unknown;
+}
+
+function isOpenAICompletionsProgressDelta(delta: OpenAICompletionsProgressDelta): boolean {
 	const content = delta.content;
 	if (typeof content === "string" ? content.length > 0 : Array.isArray(content) && content.length > 0) return true;
 	if (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0) return true;
 	if (typeof delta.reasoning === "string" && delta.reasoning.length > 0) return true;
 	if (typeof delta.reasoning_content === "string" && delta.reasoning_content.length > 0) return true;
 	if (typeof delta.reasoning_text === "string" && delta.reasoning_text.length > 0) return true;
-	if (typeof delta.refusal === "string" && delta.refusal.length > 0) return true;
-	return false;
+	return typeof delta.refusal === "string" && delta.refusal.length > 0;
 }
 
 export interface OpenAICompletionsOptions extends StreamOptions {
@@ -393,151 +392,171 @@ interface ConnectOpenAICompletionsStreamArgs {
 	onRequestDump: (dump: RawHttpRequestDump, wireBodyJson: string) => void;
 }
 
-async function connectOpenAICompletionsStream(args: ConnectOpenAICompletionsStreamArgs): Promise<{
-	openaiHandle: OpenAIStreamHandle<ChatCompletionChunk>;
-	disableStrictTools: boolean;
-}> {
-	let appliedStrictTools = false;
-	const requestReasoningEffortFallbacks = new Map<string, OpenAIReasoningEffortFallback>();
-	const attemptedReasoningEffortFallbacks = new Set<string>();
-	let activeReasoningEffortFallbackKey: string | undefined;
-	let activeRequestParams: OpenAICompletionsParams | undefined;
-	let currentDisableStrictTools = args.disableStrictTools;
-	// With no session the rejected `tool_choice` form is remembered for this call only, which is
-	// still what lets the one retry leave it out.
-	const toolChoiceState = args.providerSessionState ?? createOpenAIToolChoiceState();
+/**
+ * Serializes a request body. A caller's `onPayload` receives a copy and may return a replacement; the
+ * result carries the params that actually went on the wire, which the fallback classifiers read.
+ */
+async function serializeOpenAICompletionsRequest(
+	params: OpenAICompletionsParams,
+	model: Model<"openai-completions">,
+	onPayload: OpenAICompletionsOptions["onPayload"],
+): Promise<{ body: string; wireParams: OpenAICompletionsParams }> {
+	const bodyJson = JSON.stringify(params);
+	if (!onPayload) return { body: bodyJson, wireParams: params };
+	const attemptParams = JSON.parse(bodyJson) as OpenAICompletionsParams;
+	const replacementPayload = await onPayload(attemptParams, model);
+	const wireParams =
+		replacementPayload !== undefined && replacementPayload !== attemptParams
+			? (replacementPayload as OpenAICompletionsParams)
+			: attemptParams;
+	return { body: JSON.stringify(wireParams), wireParams };
+}
 
-	const createCompletionsStream = async (toolStrictModeOverride?: ToolStrictModeOverride, captureOnly = false) => {
-		const effectiveToolStrictModeOverride = currentDisableStrictTools ? "none" : toolStrictModeOverride;
+async function postOpenAICompletionsRequest(
+	args: ConnectOpenAICompletionsStreamArgs,
+	prepareInit: () => Promise<RequestInit>,
+): Promise<OpenAIStreamHandle<ChatCompletionChunk>> {
+	const headers = { ...args.headers };
+	let requestTimeout: NodeJS.Timeout | undefined;
+	if (args.requestTimeoutMs !== undefined) {
+		requestTimeout = setTimeout(
+			() => args.abortTracker.abortLocally(args.firstEventTimeoutAbortError),
+			args.requestTimeoutMs,
+		);
+		headers["X-Stainless-Timeout"] = Math.floor(args.requestTimeoutMs / 1000).toString();
+	}
+	try {
+		return await postOpenAIStream<ChatCompletionChunk>({
+			url: args.completionsUrl,
+			headers,
+			body: undefined,
+			signal: args.requestSignal,
+			fetch: args.options?.fetch,
+			prepareInit,
+			maxRetryDelayMs: args.options?.maxRetryDelayMs,
+			onSseEvent: args.rawSseObserver,
+		});
+	} finally {
+		clearTimeout(requestTimeout);
+	}
+}
+
+/**
+ * Opens a Chat Completions stream and retries once per recognized rejection: a reasoning effort the
+ * host refuses, a `tool_choice` form it refuses, or strict tool schemas it cannot compile. Each
+ * recovery is remembered on the provider session so later turns send the accepted form first.
+ */
+class OpenAICompletionsConnection {
+	readonly #args: ConnectOpenAICompletionsStreamArgs;
+	readonly #toolChoiceState: OpenAIToolChoiceState;
+	readonly #reasoningEffortFallbacks = new Map<string, OpenAIReasoningEffortFallback>();
+	#disableStrictTools: boolean;
+	#appliedStrictTools = false;
+	#reasoningEffortFallbackKey: string | undefined;
+	#requestParams: OpenAICompletionsParams | undefined;
+
+	constructor(args: ConnectOpenAICompletionsStreamArgs) {
+		this.#args = args;
+		this.#disableStrictTools = args.disableStrictTools;
+		// With no session the rejected `tool_choice` form is remembered for this call only, which is
+		// still what lets the one retry leave it out.
+		this.#toolChoiceState = args.providerSessionState ?? createOpenAIToolChoiceState();
+	}
+
+	async open(): Promise<OpenAIStreamHandle<ChatCompletionChunk>> {
+		const args = this.#args;
+		if (args.requestSignal.aborted) await this.#attempt(true);
+		try {
+			return await callWithCopilotModelRetry(() => this.#attempt(), {
+				provider: args.model.provider,
+				signal: args.requestSignal,
+			});
+		} catch (error) {
+			return await this.#recover(error);
+		}
+	}
+
+	async #attempt(captureOnly = false): Promise<OpenAIStreamHandle<ChatCompletionChunk>> {
+		const args = this.#args;
 		const { params, strictToolsApplied } = buildParams(
 			args.model,
 			args.context,
 			args.options,
-			effectiveToolStrictModeOverride,
-			toolChoiceState,
+			this.#disableStrictTools ? "none" : undefined,
+			this.#toolChoiceState,
 			args.strictToolsScope,
 		);
-		appliedStrictTools = strictToolsApplied;
-		const reasoningEffortFallbackKey = createOpenAIReasoningEffortFallbackKey(
-			"chat-completions",
-			args.trimmedBaseUrl,
-			params.model,
-		);
-		const requestReasoningEffortFallback = requestReasoningEffortFallbacks.has(reasoningEffortFallbackKey)
-			? requestReasoningEffortFallbacks.get(reasoningEffortFallbackKey)
-			: getOpenAIReasoningEffortFallback(args.providerSessionState, reasoningEffortFallbackKey);
-		if (requestReasoningEffortFallback !== undefined) {
-			applyOpenAIReasoningEffortFallback(params, requestReasoningEffortFallback);
+		this.#appliedStrictTools = strictToolsApplied;
+		const fallbackKey = createOpenAIReasoningEffortFallbackKey("chat-completions", args.trimmedBaseUrl, params.model);
+		const reasoningEffortFallback = this.#reasoningEffortFallbacks.has(fallbackKey)
+			? this.#reasoningEffortFallbacks.get(fallbackKey)
+			: getOpenAIReasoningEffortFallback(args.providerSessionState, fallbackKey);
+		if (reasoningEffortFallback !== undefined) {
+			applyOpenAIReasoningEffortFallback(params, reasoningEffortFallback);
 		}
-		activeReasoningEffortFallbackKey = reasoningEffortFallbackKey;
+		this.#reasoningEffortFallbackKey = fallbackKey;
 		const prepareRequest = async (): Promise<RequestInit> => {
-			const bodyJson = JSON.stringify(params);
-			let wireParams = params;
-			if (args.options?.onPayload) {
-				const attemptParams = JSON.parse(bodyJson) as OpenAICompletionsParams;
-				const replacementPayload = await args.options.onPayload(attemptParams, args.model);
-				wireParams =
-					replacementPayload !== undefined && replacementPayload !== attemptParams
-						? (replacementPayload as OpenAICompletionsParams)
-						: attemptParams;
-			}
-			activeRequestParams = wireParams;
-			const body = wireParams === params ? bodyJson : JSON.stringify(wireParams);
-			const rawRequestDump: RawHttpRequestDump = {
-				provider: args.model.provider,
-				api: args.outputApi,
-				model: args.model.id,
-				method: "POST",
-				url: args.completionsUrl,
-				headers: args.requestHeaders,
-			};
-			args.onRequestDump(rawRequestDump, body);
+			const { body, wireParams } = await serializeOpenAICompletionsRequest(
+				params,
+				args.model,
+				args.options?.onPayload,
+			);
+			this.#requestParams = wireParams;
+			args.onRequestDump(
+				{
+					provider: args.model.provider,
+					api: args.outputApi,
+					model: args.model.id,
+					method: "POST",
+					url: args.completionsUrl,
+					headers: args.requestHeaders,
+				},
+				body,
+			);
 			return { body };
 		};
 		if (captureOnly) {
 			await prepareRequest();
 			throw new AIError.RequestAbortError();
 		}
-		let requestTimeout: NodeJS.Timeout | undefined;
-		if (args.requestTimeoutMs !== undefined) {
-			requestTimeout = setTimeout(
-				() => args.abortTracker.abortLocally(args.firstEventTimeoutAbortError),
-				args.requestTimeoutMs,
-			);
-		}
-		try {
-			const headersWithTimeout = { ...args.headers };
-			if (args.requestTimeoutMs !== undefined) {
-				headersWithTimeout["X-Stainless-Timeout"] = Math.floor(args.requestTimeoutMs / 1000).toString();
-			}
-			return await postOpenAIStream<ChatCompletionChunk>({
-				url: args.completionsUrl,
-				headers: headersWithTimeout,
-				body: undefined,
-				signal: args.requestSignal,
-				fetch: args.options?.fetch,
-				prepareInit: prepareRequest,
-				maxRetryDelayMs: args.options?.maxRetryDelayMs,
-				onSseEvent: args.rawSseObserver,
-			});
-		} finally {
-			clearTimeout(requestTimeout);
-		}
-	};
+		return await postOpenAICompletionsRequest(args, prepareRequest);
+	}
 
-	if (args.requestSignal.aborted) await createCompletionsStream(undefined, true);
-	let openaiHandle: OpenAIStreamHandle<ChatCompletionChunk>;
-	try {
-		openaiHandle = await callWithCopilotModelRetry(() => createCompletionsStream(), {
-			provider: args.model.provider,
-			signal: args.requestSignal,
-		});
-	} catch (error) {
-		const capturedErrorResponse = error instanceof OpenAIHttpError ? error.captured : undefined;
+	async #recover(error: unknown): Promise<OpenAIStreamHandle<ChatCompletionChunk>> {
+		const args = this.#args;
+		const captured = error instanceof OpenAIHttpError ? error.captured : undefined;
+		const fallbackKey = this.#reasoningEffortFallbackKey;
+		const requestParams = this.#requestParams;
+		const aborted = args.requestSignal.aborted;
 		const reasoningEffortFallback =
-			activeReasoningEffortFallbackKey && activeRequestParams && !args.requestSignal.aborted
-				? resolveOpenAIReasoningEffortFallback(error, capturedErrorResponse, activeRequestParams, {
+			fallbackKey && requestParams && !aborted
+				? resolveOpenAIReasoningEffortFallback(error, captured, requestParams, {
 						explicitDisable: args.options?.disableReasoning === true && args.options.reasoning === undefined,
 					})
 				: undefined;
-		if (reasoningEffortFallback !== undefined && activeReasoningEffortFallbackKey) {
-			const retryMarker = `${activeReasoningEffortFallbackKey}:${String(reasoningEffortFallback)}`;
-			if (attemptedReasoningEffortFallbacks.has(retryMarker)) throw error;
-			attemptedReasoningEffortFallbacks.add(retryMarker);
-			requestReasoningEffortFallbacks.set(activeReasoningEffortFallbackKey, reasoningEffortFallback);
-			openaiHandle = await createCompletionsStream();
-			rememberOpenAIReasoningEffortFallback(
-				args.providerSessionState,
-				activeReasoningEffortFallbackKey,
-				reasoningEffortFallback,
-			);
-		} else if (
-			!args.requestSignal.aborted &&
-			isToolChoiceRejection(error, capturedErrorResponse, activeRequestParams?.tool_choice)
-		) {
+		if (reasoningEffortFallback !== undefined && fallbackKey) {
+			this.#reasoningEffortFallbacks.set(fallbackKey, reasoningEffortFallback);
+			const handle = await this.#attempt();
+			rememberOpenAIReasoningEffortFallback(args.providerSessionState, fallbackKey, reasoningEffortFallback);
+			return handle;
+		}
+		if (!aborted && isToolChoiceRejection(error, captured, requestParams?.tool_choice)) {
 			// The endpoint takes the request but not the `tool_choice` form it named. Retry once
 			// without that form and remember it for this model, so the session pays one request.
 			// The retry sends no such form, so its own failure cannot land here again.
-			rejectToolChoiceForScope(toolChoiceState, args.strictToolsScope, activeRequestParams?.tool_choice);
-			openaiHandle = await createCompletionsStream();
-		} else if (
-			isOpenRouterAnthropicModel(args.model) &&
-			!currentDisableStrictTools &&
-			isCompiledGrammarTooLargeStrictError(error, capturedErrorResponse)
-		) {
-			disableStrictToolsForScope(args.providerSessionState, args.strictToolsScope);
-			currentDisableStrictTools = true;
-			openaiHandle = await createCompletionsStream("none");
-		} else {
-			if (!shouldRetryWithoutStrictTools(error, capturedErrorResponse, appliedStrictTools, args.context.tools)) {
-				throw error;
-			}
-			disableStrictToolsForScope(args.providerSessionState, args.strictToolsScope);
-			currentDisableStrictTools = true;
-			openaiHandle = await createCompletionsStream("none");
+			rejectToolChoiceForScope(this.#toolChoiceState, args.strictToolsScope, requestParams?.tool_choice);
+			return await this.#attempt();
 		}
+		const strictToolsRejected =
+			(isOpenRouterAnthropicModel(args.model) &&
+				!this.#disableStrictTools &&
+				isCompiledGrammarTooLargeStrictError(error, captured)) ||
+			shouldRetryWithoutStrictTools(error, captured, this.#appliedStrictTools, args.context.tools);
+		if (!strictToolsRejected) throw error;
+		disableStrictToolsForScope(args.providerSessionState, args.strictToolsScope);
+		this.#disableStrictTools = true;
+		return await this.#attempt();
 	}
-	return { openaiHandle, disableStrictTools: currentDisableStrictTools };
 }
 
 /**
@@ -731,7 +750,7 @@ async function runOpenAICompletionsAttempt(
 			? `${trimmedBaseUrl}/chat/completions?${new URLSearchParams(query)}`
 			: `${trimmedBaseUrl}/chat/completions`;
 
-		const { openaiHandle } = await connectOpenAICompletionsStream({
+		const openaiHandle = await new OpenAICompletionsConnection({
 			model,
 			context,
 			options,
@@ -752,7 +771,7 @@ async function runOpenAICompletionsAttempt(
 				rawRequestDump = dump;
 				wireBodyJson = wireBody;
 			},
-		});
+		}).open();
 		await notifyProviderResponse(options, openaiHandle.response, model, openaiHandle.requestId);
 		if (copilotPremiumRequests !== undefined) {
 			output.usage.premiumRequests = copilotPremiumRequests;
@@ -875,71 +894,51 @@ function dropOpenRouterKimiForcedToolReasoning(
 	}
 }
 
-function buildParams(
-	model: Model<"openai-completions">,
-	context: Context,
+/** Copies the sampling options a caller set onto the request. A host accepts at most four stop sequences. */
+function applyOpenAICompletionsSampling(
+	params: OpenAICompletionsParams,
 	options: OpenAICompletionsOptions | undefined,
-	toolStrictModeOverride: ToolStrictModeOverride,
-	toolChoiceState: OpenAIToolChoiceState,
-	toolChoiceScope: OpenAIStrictToolsScope,
-): {
-	params: OpenAICompletionsParams;
-	toolStrictMode: AppliedToolStrictMode;
-	strictToolsApplied: boolean;
-} {
-	const initialPolicy = resolveOpenAICompatForRequest(model, options);
-	const initialCompat = initialPolicy.compat as ResolvedOpenAICompat;
-
-	const requestModelId = resolveOpenAICompletionsModelId(model, options);
-	const params: OpenAICompletionsParams = {
-		model: requestModelId,
-		messages: [],
-		stream: true,
-	};
-	let toolStrictMode: AppliedToolStrictMode = "none";
-	let strictToolsApplied = false;
-
-	if (initialCompat.supportsUsageInStreaming !== false) {
-		params.stream_options = { include_usage: true };
-	}
-
-	if (initialCompat.supportsStore) {
-		params.store = false;
-	}
-
-	if (options?.temperature !== undefined) {
+): void {
+	if (!options) return;
+	if (options.temperature !== undefined) {
 		params.temperature = options.temperature;
 	}
-	if (options?.topP !== undefined) {
+	if (options.topP !== undefined) {
 		params.top_p = options.topP;
 	}
-	if (options?.topK !== undefined) {
+	if (options.topK !== undefined) {
 		params.top_k = options.topK;
 	}
-	if (options?.minP !== undefined) {
+	if (options.minP !== undefined) {
 		params.min_p = options.minP;
 	}
-	if (options?.presencePenalty !== undefined) {
+	if (options.presencePenalty !== undefined) {
 		params.presence_penalty = options.presencePenalty;
 	}
-	if (options?.repetitionPenalty !== undefined) {
+	if (options.repetitionPenalty !== undefined) {
 		params.repetition_penalty = options.repetitionPenalty;
 	}
-	if (options?.stopSequences?.length) {
+	if (options.stopSequences?.length) {
 		const seqs = options.stopSequences;
 		params.stop = seqs.length === 1 ? seqs[0] : seqs.slice(0, 4);
 	}
-	if (options?.frequencyPenalty !== undefined) {
+	if (options.frequencyPenalty !== undefined) {
 		params.frequency_penalty = options.frequencyPenalty;
 	}
-	applyOpenAIServiceTier(params, options?.serviceTier, model);
+}
 
+function applyOpenAICompletionsTools(
+	params: OpenAICompletionsParams,
+	context: Context,
+	compat: ResolvedOpenAICompat,
+	toolStrictModeOverride: ToolStrictModeOverride,
+): { toolStrictMode: AppliedToolStrictMode; strictToolsApplied: boolean } {
 	if (context.tools?.length) {
-		const builtTools = convertTools(context.tools, initialCompat, toolStrictModeOverride);
+		const builtTools = convertTools(context.tools, compat, toolStrictModeOverride);
 		params.tools = builtTools.tools;
-		toolStrictMode = builtTools.toolStrictMode;
-		strictToolsApplied = builtTools.strictToolsApplied;
-	} else if (context.tools === undefined && hasToolHistory(context.messages)) {
+		return { toolStrictMode: builtTools.toolStrictMode, strictToolsApplied: builtTools.strictToolsApplied };
+	}
+	if (context.tools === undefined && hasToolHistory(context.messages)) {
 		// Anthropic (via LiteLLM/proxy) requires the `tools` param when the conversation
 		// contains tool_calls/tool_results, even when no tools are offered this turn.
 		// Only inject the sentinel when the caller passed `context.tools = undefined`
@@ -949,25 +948,37 @@ function buildParams(
 		// so LiteLLM → Bedrock never sees an empty `toolConfig` block.
 		params.tools = [];
 	}
+	return { toolStrictMode: "none", strictToolsApplied: false };
+}
 
-	if (options?.toolChoice && initialCompat.supportsToolChoice) {
-		params.tool_choice = mapToOpenAICompletionsToolChoice(options.toolChoice);
+/** Sets `tool_choice` to the form this host accepts for the caller's choice. */
+function applyOpenAICompletionsToolChoice(
+	params: OpenAICompletionsParams,
+	toolChoice: ToolChoice | undefined,
+	compat: ResolvedOpenAICompat,
+): void {
+	if (toolChoice && compat.supportsToolChoice) {
+		params.tool_choice = mapToOpenAICompletionsToolChoice(toolChoice);
 	}
-	if (
-		typeof params.tool_choice === "object" &&
-		params.tool_choice !== null &&
-		!initialCompat.supportsNamedToolChoice
-	) {
+	if (typeof params.tool_choice === "object" && params.tool_choice !== null && !compat.supportsNamedToolChoice) {
 		params.tool_choice = "required";
 	}
-	if (isForcedToolChoice(params.tool_choice) && !initialCompat.supportsForcedToolChoice) {
+	if (isForcedToolChoice(params.tool_choice) && !compat.supportsForcedToolChoice) {
 		// Some thinking-required OpenAI-compatible models reject forced
 		// `tool_choice` while still accepting tools with the default auto
 		// selector. Keep the tool available and let the model choose it.
 		params.tool_choice = "auto";
 	}
+}
 
-	if (params.tool_choice === "none" && (!Array.isArray(params.tools) || params.tools.length === 0)) {
+/** Removes a `tool_choice` the request cannot send as built. */
+function dropUnsendableToolChoice(
+	params: OpenAICompletionsParams,
+	toolChoiceState: OpenAIToolChoiceState,
+	toolChoiceScope: OpenAIStrictToolsScope,
+): void {
+	const offeredTools = Array.isArray(params.tools) ? params.tools : [];
+	if (params.tool_choice === "none" && offeredTools.length === 0) {
 		// `tool_choice: "none"` with no tools to gate is redundant and also
 		// trips LiteLLM → Bedrock: the proxy serializes the directive into a
 		// `toolConfig` block, and Bedrock requires `toolConfig.tools` to be
@@ -985,8 +996,7 @@ function buildParams(
 			: undefined;
 	if (
 		forcedToolName !== undefined &&
-		(!Array.isArray(params.tools) ||
-			!params.tools.some(tool => tool.type === "function" && tool.function.name === forcedToolName))
+		!offeredTools.some(tool => tool.type === "function" && tool.function.name === forcedToolName)
 	) {
 		// A forced named tool_choice is only valid when the same request offers
 		// that function in `tools`. Active-tool filtering normally enforces this
@@ -999,6 +1009,68 @@ function buildParams(
 		// out is `auto`, and the reasoning policy below reads the choice that is actually sent.
 		delete params.tool_choice;
 	}
+}
+
+function applyOpenAICompletionsOutputTokens(
+	params: OpenAICompletionsParams,
+	model: Model<"openai-completions">,
+	compat: ResolvedOpenAICompat,
+	options: OpenAICompletionsOptions | undefined,
+): void {
+	const outputToken = resolveOpenAIOutputTokenParam({
+		field: compat.maxTokensField,
+		maxTokens: options?.maxTokens,
+		maxTokensExplicit: options?.maxTokensExplicit ?? options?.maxTokens !== undefined,
+		modelMaxTokens: model.maxTokens,
+		omitMaxOutputTokens: model.omitMaxOutputTokens ?? false,
+		routedUpstreamSelfCaps: compat.routedUpstreamSelfCaps,
+		alwaysSendMaxTokens: compat.alwaysSendMaxTokens,
+		providerOutputClamp: resolveZaiReasoningOutputClamp(model, compat),
+	});
+	if (outputToken?.field === "max_tokens") {
+		params.max_tokens = outputToken.value;
+	} else if (outputToken?.field === "max_completion_tokens") {
+		params.max_completion_tokens = outputToken.value;
+	}
+}
+
+function buildParams(
+	model: Model<"openai-completions">,
+	context: Context,
+	options: OpenAICompletionsOptions | undefined,
+	toolStrictModeOverride: ToolStrictModeOverride,
+	toolChoiceState: OpenAIToolChoiceState,
+	toolChoiceScope: OpenAIStrictToolsScope,
+): {
+	params: OpenAICompletionsParams;
+	toolStrictMode: AppliedToolStrictMode;
+	strictToolsApplied: boolean;
+} {
+	const initialPolicy = resolveOpenAICompatForRequest(model, options);
+	const initialCompat = initialPolicy.compat as ResolvedOpenAICompat;
+
+	const params: OpenAICompletionsParams = {
+		model: resolveOpenAICompletionsModelId(model, options),
+		messages: [],
+		stream: true,
+	};
+	if (initialCompat.supportsUsageInStreaming !== false) {
+		params.stream_options = { include_usage: true };
+	}
+	if (initialCompat.supportsStore) {
+		params.store = false;
+	}
+	applyOpenAICompletionsSampling(params, options);
+	applyOpenAIServiceTier(params, options?.serviceTier, model);
+
+	const { toolStrictMode, strictToolsApplied } = applyOpenAICompletionsTools(
+		params,
+		context,
+		initialCompat,
+		toolStrictModeOverride,
+	);
+	applyOpenAICompletionsToolChoice(params, options?.toolChoice, initialCompat);
+	dropUnsendableToolChoice(params, toolChoiceState, toolChoiceScope);
 
 	const finalPolicy = resolveOpenAICompatPolicy(model, {
 		endpoint: "chat-completions",
@@ -1010,23 +1082,7 @@ function buildParams(
 	const messages = convertMessages(model, context, compat);
 	maybeAddAnthropicCacheControl(compat, messages, resolveCacheRetention(options?.cacheRetention));
 	params.messages = messages;
-	const outputToken = resolveOpenAIOutputTokenParam({
-		field: compat.maxTokensField,
-		maxTokens: options?.maxTokens,
-		maxTokensExplicit: options?.maxTokensExplicit ?? options?.maxTokens !== undefined,
-		modelMaxTokens: model.maxTokens,
-		omitMaxOutputTokens: model.omitMaxOutputTokens ?? false,
-		routedUpstreamSelfCaps: compat.routedUpstreamSelfCaps,
-		alwaysSendMaxTokens: compat.alwaysSendMaxTokens,
-		providerOutputClamp: resolveZaiReasoningOutputClamp(model, compat),
-	});
-	if (outputToken) {
-		if (outputToken.field === "max_tokens") {
-			params.max_tokens = outputToken.value;
-		} else if (outputToken.field === "max_completion_tokens") {
-			params.max_completion_tokens = outputToken.value;
-		}
-	}
+	applyOpenAICompletionsOutputTokens(params, model, compat, options);
 	applyChatCompletionsToolStream(params, model, compat);
 
 	applyChatCompletionsCompatPolicy(params, finalPolicy);
@@ -1108,31 +1164,31 @@ function maybeAddAnthropicCacheControl(
 	// Anthropic-style caching requires cache_control on a text part. Add a breakpoint
 	// on the last user/assistant message (walking backwards until we find text content).
 	for (let i = messages.length - 1; i >= 0; i--) {
-		const msg = messages[i];
-		if (msg.role !== "user" && msg.role !== "assistant" && msg.role !== "developer") continue;
+		if (placeAnthropicCacheBreakpoint(messages[i], cacheControl)) return;
+	}
+}
 
-		const content = msg.content;
-		if (typeof content === "string") {
-			if (content.trim().length === 0) continue;
-			msg.content = [
-				Object.assign({ type: "text" as const, text: content }, { cache_control: { ...cacheControl } }),
-			];
-			return;
-		}
-
-		if (!Array.isArray(content)) continue;
-
-		// Find last non-empty text part and add cache_control. Empty assistant
-		// content is valid for tool-call replay, but Anthropic/OpenRouter reject
-		// empty text blocks once cache_control turns it into structured content.
-		for (let j = content.length - 1; j >= 0; j--) {
-			const part = content[j];
-			if (part?.type === "text" && part.text.trim().length > 0) {
-				Object.assign(part, { cache_control: { ...cacheControl } });
-				return;
-			}
+/** Puts `cacheControl` on the last non-empty text of a user, assistant or developer message. */
+function placeAnthropicCacheBreakpoint(msg: ChatCompletionMessageParam, cacheControl: CacheControlEphemeral): boolean {
+	if (msg.role !== "user" && msg.role !== "assistant" && msg.role !== "developer") return false;
+	const content = msg.content;
+	if (typeof content === "string") {
+		if (content.trim().length === 0) return false;
+		msg.content = [Object.assign({ type: "text" as const, text: content }, { cache_control: { ...cacheControl } })];
+		return true;
+	}
+	if (!Array.isArray(content)) return false;
+	// Find last non-empty text part and add cache_control. Empty assistant
+	// content is valid for tool-call replay, but Anthropic/OpenRouter reject
+	// empty text blocks once cache_control turns it into structured content.
+	for (let j = content.length - 1; j >= 0; j--) {
+		const part = content[j];
+		if (part?.type === "text" && part.text.trim().length > 0) {
+			Object.assign(part, { cache_control: { ...cacheControl } });
+			return true;
 		}
 	}
+	return false;
 }
 
 function normalizeOpenAIToolCallId(id: string, compat: ResolvedOpenAICompat): string {
@@ -1179,17 +1235,35 @@ function convertOpenAIUserOrDeveloperMessage(
 		if (text.trim().length === 0) return null;
 		return { role, content: text };
 	}
-	const supportsImages = model.input.includes("image") && !isDashscopeCompatibleModeTextOnlyQwen(model);
+	const content = convertOpenAIUserContentParts(
+		msg.content,
+		model.input.includes("image") && !isDashscopeCompatibleModeTextOnlyQwen(model),
+	);
+	if (content.length === 0) return null;
+	if (msg.role === "developer" && role === "developer" && !msg.content.some(item => item.type === "image")) {
+		return {
+			role: "developer",
+			content: content
+				.filter((item): item is ChatCompletionContentPartText => item.type === "text")
+				.map(item => item.text)
+				.join("\n"),
+		};
+	}
+	return { role: "user", content };
+}
+
+/** Drops blank text, and replaces images a text-only model cannot read with one placeholder after the rest. */
+function convertOpenAIUserContentParts(
+	items: readonly (TextContent | ImageContent)[],
+	supportsImages: boolean,
+): ChatCompletionContentPart[] {
 	const content: ChatCompletionContentPart[] = [];
 	let omittedImages = false;
-	for (const item of msg.content) {
+	for (const item of items) {
 		if (item.type === "text") {
 			const text = item.text.toWellFormed();
 			if (text.trim().length === 0) continue;
-			content.push({
-				type: "text",
-				text,
-			} satisfies ChatCompletionContentPartText);
+			content.push({ type: "text", text } satisfies ChatCompletionContentPartText);
 		} else if (supportsImages) {
 			content.push({
 				type: "image_url",
@@ -1203,22 +1277,9 @@ function convertOpenAIUserOrDeveloperMessage(
 		}
 	}
 	if (omittedImages) {
-		content.push({
-			type: "text",
-			text: NON_VISION_IMAGE_PLACEHOLDER,
-		} satisfies ChatCompletionContentPartText);
+		content.push({ type: "text", text: NON_VISION_IMAGE_PLACEHOLDER } satisfies ChatCompletionContentPartText);
 	}
-	if (content.length === 0) return null;
-	if (msg.role === "developer" && role === "developer" && !msg.content.some(item => item.type === "image")) {
-		return {
-			role: "developer",
-			content: content
-				.filter((item): item is ChatCompletionContentPartText => item.type === "text")
-				.map(item => item.text)
-				.join("\n"),
-		};
-	}
-	return { role: "user", content };
+	return content;
 }
 
 function buildOpenAIAssistantContent(nonEmptyTextBlocks: TextContent[]): string | null {
@@ -1246,118 +1307,128 @@ function applyOpenAIAssistantThinking(
 				: thinkingText;
 		return;
 	}
-	if (compat.requiresReasoningContentForToolCalls) {
-		const signature = nonEmptyThinkingBlocks[0].thinkingSignature;
-		const wireField =
-			compat.allowsSyntheticReasoningContentForToolCalls &&
-			(signature === "reasoning_content" || signature === "reasoning" || signature === "reasoning_text")
-				? signature
-				: signature === "reasoning_content" || signature === "reasoning" || signature === "reasoning_text"
-					? (compat.reasoningContentField ?? "reasoning_content")
-					: undefined;
-		if (wireField) {
-			assistantMsg[wireField] = nonEmptyThinkingBlocks.map(b => b.thinking).join("\n");
-		}
-	} else if (compat.thinkingFormat === "zai" && model.reasoning) {
-		const reasoningField = compat.reasoningContentField ?? "reasoning_content";
-		assistantMsg[reasoningField] = nonEmptyThinkingBlocks.map(b => b.thinking).join("\n");
-	} else if (compat.replayReasoningContent) {
-		const signature = nonEmptyThinkingBlocks[0].thinkingSignature;
-		const reasoningField: OpenAICompletionsReasoningField =
-			signature === "reasoning_content" || signature === "reasoning" || signature === "reasoning_text"
-				? signature
-				: (compat.reasoningContentField ?? "reasoning_content");
-		assistantMsg[reasoningField] = nonEmptyThinkingBlocks.map(b => b.thinking).join("\n");
-	}
-
-	if (compat.requiresReasoningContentForToolCalls) {
-		const streamedReasoningField = nonEmptyThinkingBlocks[0]?.thinkingSignature;
-		const reasoningField =
-			compat.allowsSyntheticReasoningContentForToolCalls &&
-			(streamedReasoningField === "reasoning_content" ||
-				streamedReasoningField === "reasoning" ||
-				streamedReasoningField === "reasoning_text")
-				? streamedReasoningField
-				: (compat.reasoningContentField ?? "reasoning_content");
-		const reasoningContent = assistantMsg[reasoningField];
-		if (!reasoningContent) {
-			const reasoning = assistantMsg.reasoning;
-			const reasoningText = assistantMsg.reasoning_text;
-			if (reasoning && reasoningField !== "reasoning") {
-				assistantMsg[reasoningField] = reasoning;
-			} else if (reasoningText && reasoningField !== "reasoning_text") {
-				assistantMsg[reasoningField] = reasoningText;
-			} else {
-				assistantMsg[reasoningField] = nonEmptyThinkingBlocks.map(b => b.thinking).join("\n");
-			}
-		}
-	}
+	const reasoningField = resolveOpenAIReplayedReasoningField(
+		nonEmptyThinkingBlocks[0].thinkingSignature,
+		model,
+		compat,
+	);
+	if (reasoningField) assistantMsg[reasoningField] = nonEmptyThinkingBlocks.map(b => b.thinking).join("\n");
 }
 
+/**
+ * The wire field that replays an assistant turn's thinking, or undefined when the endpoint takes none.
+ * The field the turn streamed its reasoning on is reused where the endpoint accepts it.
+ */
+function resolveOpenAIReplayedReasoningField(
+	signature: string | undefined,
+	model: Model<"openai-completions">,
+	compat: ResolvedOpenAICompat,
+): OpenAICompletionsReasoningField | undefined {
+	const configuredField = compat.reasoningContentField ?? "reasoning_content";
+	const streamed = signature === "reasoning_content" || signature === "reasoning" || signature === "reasoning_text";
+	if (compat.requiresReasoningContentForToolCalls) {
+		return streamed && compat.allowsSyntheticReasoningContentForToolCalls ? signature : configuredField;
+	}
+	if (compat.thinkingFormat === "zai" && model.reasoning) return configuredField;
+	if (compat.replayReasoningContent) return streamed ? signature : configuredField;
+	return undefined;
+}
+
+/**
+ * Fills the reasoning field an endpoint requires on a turn that replayed none. An endpoint that rejects
+ * synthetic reasoning receives the turn's streamed reasoning, else an empty string; one that accepts it
+ * receives "." on a tool-calling turn. Returns whether the turn carries a reasoning field.
+ */
 function applyOpenAIAssistantReasoningTiers(
 	assistantMsg: OpenAICompletionsAssistantMessageParam,
 	allThinkingBlocks: ThinkingContent[],
 	toolCallsLength: number,
 	compat: ResolvedOpenAICompat,
 ): boolean {
-	const canUseSyntheticReasoningContent =
-		compat.requiresReasoningContentForToolCalls &&
-		compat.allowsSyntheticReasoningContentForToolCalls &&
-		(compat.thinkingFormat === "openai" || compat.thinkingFormat === "openrouter" || compat.thinkingFormat === "zai");
-	const needsReasoningOnAllTurns = compat.requiresReasoningContentForAllAssistantTurns;
-	const needsReasoningField = needsReasoningOnAllTurns || toolCallsLength > 0;
-	let hasReasoningField =
+	if (
 		assistantMsg.reasoning_content !== undefined ||
 		assistantMsg.reasoning !== undefined ||
-		assistantMsg.reasoning_text !== undefined;
-
-	if (
-		needsReasoningField &&
-		!hasReasoningField &&
-		compat.requiresReasoningContentForToolCalls &&
-		!compat.allowsSyntheticReasoningContentForToolCalls
+		assistantMsg.reasoning_text !== undefined
 	) {
-		if (allThinkingBlocks.length > 0) {
-			const signature = allThinkingBlocks[0].thinkingSignature;
-			if (signature === "reasoning_content" || signature === "reasoning" || signature === "reasoning_text") {
-				const reasoningField = compat.reasoningContentField ?? "reasoning_content";
-				assistantMsg[reasoningField] = allThinkingBlocks.map(b => b.thinking).join("\n");
-				hasReasoningField = true;
-			}
-		}
+		return true;
 	}
-
+	if (!compat.requiresReasoningContentForToolCalls) return false;
+	const reasoningField = compat.reasoningContentField ?? "reasoning_content";
+	if (!compat.allowsSyntheticReasoningContentForToolCalls) {
+		if (toolCallsLength === 0 && !compat.requiresReasoningContentForAllAssistantTurns) return false;
+		const signature = allThinkingBlocks[0]?.thinkingSignature;
+		const streamed = signature === "reasoning_content" || signature === "reasoning" || signature === "reasoning_text";
+		assistantMsg[reasoningField] = streamed ? allThinkingBlocks.map(b => b.thinking).join("\n") : "";
+		return true;
+	}
+	if (toolCallsLength === 0) return false;
 	if (
-		needsReasoningField &&
-		!hasReasoningField &&
-		compat.requiresReasoningContentForToolCalls &&
-		!compat.allowsSyntheticReasoningContentForToolCalls
+		compat.thinkingFormat !== "openai" &&
+		compat.thinkingFormat !== "openrouter" &&
+		compat.thinkingFormat !== "zai"
 	) {
-		const reasoningField = compat.reasoningContentField ?? "reasoning_content";
-		assistantMsg[reasoningField] = "";
-		hasReasoningField = true;
+		return false;
+	}
+	assistantMsg[reasoningField] = ".";
+	return true;
+}
+
+/**
+ * Maps the tool call ids an assistant turn recorded to the ids sent on the wire, so each tool result
+ * replays against the id its call went out with. A call whose id normalizes to nothing gets a generated one.
+ */
+class OpenAIToolCallIds {
+	readonly #model: Model<"openai-completions">;
+	readonly #compat: ResolvedOpenAICompat;
+	readonly #assigned = new Map<string, string[]>();
+	#generated = 0;
+
+	constructor(model: Model<"openai-completions">, compat: ResolvedOpenAICompat) {
+		this.#model = model;
+		this.#compat = compat;
 	}
 
-	if (toolCallsLength > 0 && canUseSyntheticReasoningContent && !hasReasoningField) {
-		const reasoningField = compat.reasoningContentField ?? "reasoning_content";
-		assistantMsg[reasoningField] = ".";
-		hasReasoningField = true;
+	/** The wire id for a tool call, queued for the result that answers it. */
+	assign(callId: string, seed: string): string {
+		const wireId = this.#ensure(callId, seed);
+		const queue = this.#assigned.get(callId);
+		if (queue) queue.push(wireId);
+		else this.#assigned.set(callId, [wireId]);
+		return wireId;
 	}
-	return hasReasoningField;
+
+	/** The wire id for a tool result: the next one its call was assigned, else a fresh one. */
+	resolve(callId: string, seed: string): string {
+		const queue = this.#assigned.get(callId);
+		const assigned = queue?.shift();
+		if (queue?.length === 0) this.#assigned.delete(callId);
+		return assigned ?? this.#ensure(callId, seed);
+	}
+
+	#ensure(rawId: string, seed: string): string {
+		const normalized = normalizeOpenAIToolCallId(rawId, this.#compat);
+		if (normalized.trim().length > 0) return normalized;
+		this.#generated += 1;
+		const hash = Bun.hash(`${this.#model.provider}:${this.#model.id}:${seed}:${this.#generated}`).toString(36);
+		return `call_${hash}`;
+	}
 }
 
 function applyOpenAIAssistantToolCalls(
 	assistantMsg: OpenAICompletionsAssistantMessageParam,
 	toolCalls: ToolCall[],
 	compat: ResolvedOpenAICompat,
-	ensureToolCallId: (rawId: string, seed: string) => string,
-	rememberToolCallId: (originalId: string, normalizedId: string) => void,
+	toolCallIds: OpenAIToolCallIds,
 	msgIndex: number,
 ): void {
 	if (toolCalls.length === 0) return;
+	const reasoningDetails: unknown[] = [];
 	assistantMsg.tool_calls = toolCalls.map((tc, toolCallIndex) => {
-		const toolCallId = ensureToolCallId(tc.id, `${msgIndex}:${toolCallIndex}:${tc.name}`);
-		rememberToolCallId(tc.id, toolCallId);
+		if (tc.thoughtSignature) {
+			const detail = tryParseJson(tc.thoughtSignature);
+			if (detail) reasoningDetails.push(detail);
+		}
+		const toolCallId = toolCallIds.assign(tc.id, `${msgIndex}:${toolCallIndex}:${tc.name}`);
 		return {
 			id: normalizeMistralToolId(toolCallId, compat.requiresMistralToolIds),
 			type: "function" as const,
@@ -1367,38 +1438,52 @@ function applyOpenAIAssistantToolCalls(
 			},
 		};
 	});
-	const reasoningDetails = toolCalls
-		.filter(tc => tc.thoughtSignature)
-		.map(tc => tryParseJson(tc.thoughtSignature!))
-		.filter(Boolean);
-	if (reasoningDetails.length > 0) {
-		assistantMsg.reasoning_details = reasoningDetails;
+	if (reasoningDetails.length > 0) assistantMsg.reasoning_details = reasoningDetails;
+}
+
+interface OpenAIAssistantContentParts {
+	nonEmptyText: TextContent[];
+	thinking: ThinkingContent[];
+	nonEmptyThinking: ThinkingContent[];
+	toolCalls: ToolCall[];
+}
+
+function partitionOpenAIAssistantContent(content: AssistantMessage["content"]): OpenAIAssistantContentParts {
+	const parts: OpenAIAssistantContentParts = { nonEmptyText: [], thinking: [], nonEmptyThinking: [], toolCalls: [] };
+	for (const block of content) {
+		if (block.type === "text") {
+			if (block.text && block.text.trim().length > 0) parts.nonEmptyText.push(block);
+		} else if (block.type === "thinking") {
+			parts.thinking.push(block);
+			if (block.thinking && block.thinking.trim().length > 0) parts.nonEmptyThinking.push(block);
+		} else if (block.type === "toolCall") {
+			parts.toolCalls.push(block);
+		}
 	}
+	return parts;
 }
 
 function convertOpenAIAssistantMessage(
 	msg: AssistantMessage,
 	model: Model<"openai-completions">,
 	compat: ResolvedOpenAICompat,
-	ensureToolCallId: (rawId: string, seed: string) => string,
-	rememberToolCallId: (originalId: string, normalizedId: string) => void,
+	toolCallIds: OpenAIToolCallIds,
 	msgIndex: number,
 ): OpenAICompletionsAssistantMessageParam | null {
 	const assistantMsg: OpenAICompletionsAssistantMessageParam = {
 		role: "assistant",
 		content: null,
 	};
-	const textBlocks = msg.content.filter(b => b.type === "text") as TextContent[];
-	const nonEmptyTextBlocks = textBlocks.filter(b => b.text && b.text.trim().length > 0);
-	assistantMsg.content = buildOpenAIAssistantContent(nonEmptyTextBlocks);
-
-	const thinkingBlocks = msg.content.filter(b => b.type === "thinking") as ThinkingContent[];
-	const nonEmptyThinkingBlocks = thinkingBlocks.filter(b => b.thinking && b.thinking.trim().length > 0);
-	applyOpenAIAssistantThinking(assistantMsg, nonEmptyThinkingBlocks, model, compat);
-
-	const toolCalls = msg.content.filter(b => b.type === "toolCall") as ToolCall[];
-	const hasReasoningField = applyOpenAIAssistantReasoningTiers(assistantMsg, thinkingBlocks, toolCalls.length, compat);
-	applyOpenAIAssistantToolCalls(assistantMsg, toolCalls, compat, ensureToolCallId, rememberToolCallId, msgIndex);
+	const parts = partitionOpenAIAssistantContent(msg.content);
+	assistantMsg.content = buildOpenAIAssistantContent(parts.nonEmptyText);
+	applyOpenAIAssistantThinking(assistantMsg, parts.nonEmptyThinking, model, compat);
+	const hasReasoningField = applyOpenAIAssistantReasoningTiers(
+		assistantMsg,
+		parts.thinking,
+		parts.toolCalls.length,
+		compat,
+	);
+	applyOpenAIAssistantToolCalls(assistantMsg, parts.toolCalls, compat, toolCallIds, msgIndex);
 
 	if (assistantMsg.content === null && (hasReasoningField || assistantMsg.tool_calls)) {
 		assistantMsg.content = "";
@@ -1414,82 +1499,70 @@ function convertOpenAIAssistantMessage(
 	return assistantMsg;
 }
 
+/**
+ * Converts the run of tool results that starts at `startIndex`. Images a vision model can read follow the
+ * run in one user message, since the tool role takes text only.
+ */
 function convertOpenAIToolResultsBatch(
 	startIndex: number,
 	transformedMessages: Message[],
 	model: Model<"openai-completions">,
 	compat: ResolvedOpenAICompat,
-	ensureToolCallId: (rawId: string, seed: string) => string,
-	consumeToolCallId: (originalId: string) => string | null,
+	toolCallIds: OpenAIToolCallIds,
 	params: ChatCompletionMessageParam[],
-): { nextIndex: number; newLastRole: string } {
-	const imageBlocks: Array<{ type: "image_url"; image_url: { url: string } }> = [];
+): { nextIndex: number; endsOnToolResult: boolean } {
+	const supportsImages = model.input.includes("image") && !isDashscopeCompatibleModeTextOnlyQwen(model);
+	const imageBlocks: OpenAIToolResultImagePart[] = [];
 	let j = startIndex;
-
 	for (; j < transformedMessages.length && transformedMessages[j].role === "toolResult"; j++) {
 		const toolMsg = transformedMessages[j] as ToolResultMessage;
-		const textResult = toolMsg.content
-			.filter(c => c.type === "text")
-			.map(c => (c as TextContent).text)
-			.join("\n");
-		const supportsImages = model.input.includes("image") && !isDashscopeCompatibleModeTextOnlyQwen(model);
-		const hasImages = toolMsg.content.some(c => c.type === "image");
-		const omittedImages = hasImages && !supportsImages;
-		const hasText = textResult.length > 0;
-		const remappedToolCallId = consumeToolCallId(toolMsg.toolCallId);
-		const resolvedToolCallId =
-			remappedToolCallId ?? ensureToolCallId(toolMsg.toolCallId, `${j}:${toolMsg.toolName ?? "tool"}`);
-		const toolResultContent = omittedImages
-			? joinTextWithImagePlaceholder(textResult, true)
-			: hasText
-				? textResult
-				: hasImages
-					? "(see attached image)"
-					: "";
-		const toolResultMsg: OpenAICompletionsToolMessageParam = {
-			role: "tool",
-			content: toolResultContent.toWellFormed(),
-			tool_call_id: normalizeMistralToolId(resolvedToolCallId, compat.requiresMistralToolIds),
-		};
-		if (compat.requiresToolResultName && toolMsg.toolName) {
-			toolResultMsg.name = toolMsg.toolName;
-		}
-		params.push(toolResultMsg);
+		const toolCallId = toolCallIds.resolve(toolMsg.toolCallId, `${j}:${toolMsg.toolName ?? "tool"}`);
+		params.push(convertOpenAIToolResult(toolMsg, toolCallId, supportsImages ? imageBlocks : undefined, compat));
+	}
+	if (imageBlocks.length === 0) return { nextIndex: j, endsOnToolResult: true };
+	if (compat.requiresAssistantAfterToolResult) {
+		params.push({ role: "assistant", content: "I have processed the tool results." });
+	}
+	params.push({
+		role: "user",
+		content: [{ type: "text", text: "Attached image(s) from tool result:" }, ...imageBlocks],
+	});
+	return { nextIndex: j, endsOnToolResult: false };
+}
 
-		if (hasImages && supportsImages) {
-			for (const block of toolMsg.content) {
-				if (block.type === "image") {
-					imageBlocks.push({
-						type: "image_url",
-						image_url: {
-							url: `data:${block.mimeType};base64,${block.data}`,
-						},
-					});
-				}
-			}
+type OpenAIToolResultImagePart = { type: "image_url"; image_url: { url: string } };
+
+/** Converts one tool result; `imageBlocks`, given when the model reads images, receives its images. */
+function convertOpenAIToolResult(
+	toolMsg: ToolResultMessage,
+	toolCallId: string,
+	imageBlocks: OpenAIToolResultImagePart[] | undefined,
+	compat: ResolvedOpenAICompat,
+): OpenAICompletionsToolMessageParam {
+	let textResult = "";
+	let separator = "";
+	let hasImages = false;
+	for (const block of toolMsg.content) {
+		if (block.type === "text") {
+			textResult += separator + block.text;
+			separator = "\n";
+		} else if (block.type === "image") {
+			hasImages = true;
+			imageBlocks?.push({ type: "image_url", image_url: { url: `data:${block.mimeType};base64,${block.data}` } });
 		}
 	}
-
-	if (imageBlocks.length > 0) {
-		if (compat.requiresAssistantAfterToolResult) {
-			params.push({
-				role: "assistant",
-				content: "I have processed the tool results.",
-			});
-		}
-		params.push({
-			role: "user",
-			content: [
-				{
-					type: "text",
-					text: "Attached image(s) from tool result:",
-				},
-				...imageBlocks,
-			],
-		});
-		return { nextIndex: j, newLastRole: "user" };
+	let toolResultContent = textResult;
+	if (hasImages && !imageBlocks) toolResultContent = joinTextWithImagePlaceholder(textResult, true);
+	else if (hasImages && textResult.length === 0) toolResultContent = "(see attached image)";
+	const toolResultMsg: OpenAICompletionsToolMessageParam = {
+		role: "tool",
+		content: toolResultContent.toWellFormed(),
+		tool_call_id: normalizeMistralToolId(toolCallId, compat.requiresMistralToolIds),
+	};
+	if (compat.requiresToolResultName && toolMsg.toolName) {
+		toolResultMsg.name = toolMsg.toolName;
 	}
-	return { nextIndex: j, newLastRole: "toolResult" };
+	return toolResultMsg;
 }
 
 export function convertMessages(
@@ -1497,107 +1570,44 @@ export function convertMessages(
 	context: Context,
 	compat: ResolvedOpenAICompat,
 ): ChatCompletionMessageParam[] {
-	const params: ChatCompletionMessageParam[] = [];
-
 	const maxNormalizedToolCallIdLength = compat.requiresMistralToolIds
 		? 9
 		: compat.usesOpenAIToolCallIdLimit
 			? 40
 			: undefined;
 	const duplicateToolCallIdSuffixPrefix = compat.requiresMistralToolIds ? "dup" : undefined;
-	const normalizeToolCallId = (id: string): string => normalizeOpenAIToolCallId(id, compat);
 	const transformedMessages = transformMessages(
 		context.messages,
 		model,
-		id => normalizeToolCallId(id),
+		id => normalizeOpenAIToolCallId(id, compat),
 		maxNormalizedToolCallIdLength,
 		duplicateToolCallIdSuffixPrefix,
 		compat,
 	);
-
-	const remappedToolCallIds = new Map<string, string[]>();
-	let generatedToolCallIdCounter = 0;
-
-	const generateFallbackToolCallId = (seed: string): string => {
-		generatedToolCallIdCounter += 1;
-		const hash = Bun.hash(`${model.provider}:${model.id}:${seed}:${generatedToolCallIdCounter}`).toString(36);
-		return `call_${hash}`;
-	};
-
-	const rememberToolCallId = (originalId: string, normalizedId: string): void => {
-		const queue = remappedToolCallIds.get(originalId);
-		if (queue) {
-			queue.push(normalizedId);
-			return;
-		}
-		remappedToolCallIds.set(originalId, [normalizedId]);
-	};
-
-	const consumeToolCallId = (originalId: string): string | null => {
-		const queue = remappedToolCallIds.get(originalId);
-		if (!queue || queue.length === 0) return null;
-		const nextId = queue.shift() ?? null;
-		if (queue.length === 0) remappedToolCallIds.delete(originalId);
-		return nextId;
-	};
-
-	const ensureToolCallId = (rawId: string, seed: string): string => {
-		const normalized = normalizeToolCallId(rawId);
-		if (normalized.trim().length > 0) return normalized;
-		return generateFallbackToolCallId(seed);
-	};
-
-	params.push(...buildOpenAISystemMessageParams(context.systemPrompt, model, compat));
-
-	let lastRole: string | null = null;
-
+	const toolCallIds = new OpenAIToolCallIds(model, compat);
+	const params = buildOpenAISystemMessageParams(context.systemPrompt, model, compat);
+	let afterToolResult = false;
 	for (let i = 0; i < transformedMessages.length; i++) {
 		const msg = transformedMessages[i];
+		if (msg.role === "toolResult") {
+			const batch = convertOpenAIToolResultsBatch(i, transformedMessages, model, compat, toolCallIds, params);
+			i = batch.nextIndex - 1;
+			afterToolResult = batch.endsOnToolResult;
+			continue;
+		}
+		const converted =
+			msg.role === "assistant"
+				? convertOpenAIAssistantMessage(msg, model, compat, toolCallIds, i)
+				: convertOpenAIUserOrDeveloperMessage(msg, model, compat);
 		// A message the converter drops leaves the role sequence as if it were never there: it neither
 		// earns the synthetic assistant turn a tool result needs before the next user turn, nor
 		// consumes it on behalf of the message that follows.
-		if (msg.role === "user" || msg.role === "developer") {
-			const converted = convertOpenAIUserOrDeveloperMessage(msg, model, compat);
-			if (!converted) continue;
-			if (compat.requiresAssistantAfterToolResult && lastRole === "toolResult") {
-				params.push({
-					role: "assistant",
-					content: "I have processed the tool results.",
-				});
-			}
-			params.push(converted);
-		} else if (msg.role === "assistant") {
-			const assistantMsg = convertOpenAIAssistantMessage(
-				msg,
-				model,
-				compat,
-				ensureToolCallId,
-				rememberToolCallId,
-				i,
-			);
-			if (!assistantMsg) continue;
-			params.push(assistantMsg);
-		} else if (msg.role === "toolResult") {
-			const { nextIndex, newLastRole } = convertOpenAIToolResultsBatch(
-				i,
-				transformedMessages,
-				model,
-				compat,
-				ensureToolCallId,
-				consumeToolCallId,
-				params,
-			);
-			i = nextIndex - 1;
-			lastRole = newLastRole;
-			continue;
+		if (!converted) continue;
+		if (afterToolResult && msg.role !== "assistant" && compat.requiresAssistantAfterToolResult) {
+			params.push({ role: "assistant", content: "I have processed the tool results." });
 		}
-
-		lastRole =
-			msg.role === "developer"
-				? model.reasoning && compat.supportsDeveloperRole
-					? "developer"
-					: "system"
-				: msg.role;
+		params.push(converted);
+		afterToolResult = false;
 	}
 
 	return params;
