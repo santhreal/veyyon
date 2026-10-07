@@ -3,7 +3,6 @@ import { toNumber } from "@veyyon/catalog/utils";
 import { isRecord } from "@veyyon/utils/type-guards";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
 import type {
-	UsageAmount,
 	UsageFetchContext,
 	UsageFetchParams,
 	UsageLimit,
@@ -45,72 +44,62 @@ function deriveResetsAt(payload: Record<string, unknown>): number | undefined {
 	return undefined;
 }
 
+const CURSOR_USED_KEYS = ["numRequests", "used", "amountUsed", "usdUsed"];
+const CURSOR_LIMIT_KEYS = ["maxRequestUsage", "limit", "amountLimit", "usdLimit"];
+
+function firstNumber(record: Record<string, unknown>, keys: readonly string[]): number | undefined {
+	for (const key of keys) {
+		const value = toNumber(record[key]);
+		if (value !== undefined) return value;
+	}
+	return undefined;
+}
+
+/** Plan and billing buckets count dollars; every other bucket counts requests. */
+function isCursorUsdBucket(key: string): boolean {
+	if (key === "planUsage") return true;
+	const lower = key.toLowerCase();
+	return lower.includes("usd") || lower.includes("billing") || lower.includes("stripe");
+}
+
+function buildCursorLimit(key: string, used: number, limit: number, window: UsageWindow): UsageLimit {
+	const isUsd = isCursorUsdBucket(key);
+	const remaining = Math.max(0, limit - used);
+	const usedFraction = limit > 0 ? used / limit : 0;
+	return {
+		id: `cursor:${isUsd ? "usd" : "requests"}:${key.toLowerCase().trim()}`,
+		label: isUsd ? `${key} spend` : `${key} requests`,
+		scope: { provider: "cursor", windowId: window.id },
+		window,
+		amount: {
+			used,
+			limit,
+			remaining,
+			usedFraction,
+			remainingFraction: limit > 0 ? remaining / limit : 0,
+			unit: isUsd ? "usd" : "requests",
+		},
+		status: usageStatusFromUsedFraction(usedFraction),
+	};
+}
+
 export function parseCursorUsage(payload: unknown, fetchedAt = Date.now()): UsageReport | null {
 	if (!isRecord(payload)) return null;
-	const limits: UsageLimit[] = [];
 	const resetsAt = deriveResetsAt(payload);
-
 	const window: UsageWindow = {
 		id: "monthly",
 		label: "Monthly",
 		...(resetsAt !== undefined ? { resetsAt } : {}),
 	};
 
+	const limits: UsageLimit[] = [];
 	for (const [key, value] of Object.entries(payload)) {
 		if (!isRecord(value)) continue;
-
-		// used can be: numRequests, used, amountUsed, usdUsed
-		const usedVal =
-			toNumber(value.numRequests) ?? toNumber(value.used) ?? toNumber(value.amountUsed) ?? toNumber(value.usdUsed);
-
-		// limit can be: maxRequestUsage, limit, amountLimit, usdLimit
-		const limitVal =
-			toNumber(value.maxRequestUsage) ??
-			toNumber(value.limit) ??
-			toNumber(value.amountLimit) ??
-			toNumber(value.usdLimit);
-
-		if (usedVal !== undefined && limitVal !== undefined) {
-			const isUsd =
-				key === "planUsage" ||
-				key.toLowerCase().includes("usd") ||
-				key.toLowerCase().includes("billing") ||
-				key.toLowerCase().includes("stripe");
-
-			const unit = isUsd ? "usd" : "requests";
-			const cleanBucket = key.toLowerCase().trim();
-			const limitId = isUsd ? `cursor:usd:${cleanBucket}` : `cursor:requests:${cleanBucket}`;
-
-			const label = isUsd ? `${key} spend` : `${key} requests`;
-
-			const amount: UsageAmount = {
-				used: usedVal,
-				limit: limitVal,
-				remaining: Math.max(0, limitVal - usedVal),
-				usedFraction: limitVal > 0 ? usedVal / limitVal : 0,
-				remainingFraction: limitVal > 0 ? Math.max(0, limitVal - usedVal) / limitVal : 0,
-				unit,
-			};
-
-			const status = usageStatusFromUsedFraction(amount.usedFraction);
-
-			limits.push({
-				id: limitId,
-				label,
-				scope: {
-					provider: "cursor",
-					...(window ? { windowId: window.id } : {}),
-				},
-				...(window ? { window } : {}),
-				amount,
-				status,
-			});
-		}
+		const used = firstNumber(value, CURSOR_USED_KEYS);
+		const limit = firstNumber(value, CURSOR_LIMIT_KEYS);
+		if (used !== undefined && limit !== undefined) limits.push(buildCursorLimit(key, used, limit, window));
 	}
-
-	if (limits.length === 0) {
-		return null;
-	}
+	if (limits.length === 0) return null;
 
 	return {
 		provider: "cursor",
