@@ -261,6 +261,99 @@ function resolveDefaultRankingStrategy(provider: Provider): CredentialRankingStr
 
 const defaultBackoffMs = 60_000;
 
+/** How one OAuth credential attempt checks usage and handles a failed refresh. */
+interface OAuthAttemptOptions {
+	checkUsage: boolean;
+	allowBlocked: boolean;
+	prefetchedUsage?: UsageReport | null;
+	usagePrechecked?: boolean;
+	planRequirement?: OpenAICodexPlanRequirement;
+	enforcePlanRequirement?: boolean;
+	strategy?: CredentialRankingStrategy;
+	rankingContext?: CredentialRankingContext;
+	blockScope?: string;
+	/** When false, a definitive failure of THIS credential returns undefined instead of falling back to the ranked/round-robin selector (target-only resolution). */
+	allowFallback?: boolean;
+	/**
+	 * A DEFINITIVE dead-grant rejection this same call already got from the
+	 * preflight refresh of this credential. Reused instead of replaying the
+	 * token, which could only earn a second identical rejection; the disable
+	 * decision is owned here, so the verdict has to travel rather than the
+	 * request being repeated.
+	 */
+	preflightDefinitiveError?: unknown;
+}
+
+/** What a usage report is checked against before and after an OAuth credential refreshes. */
+interface OAuthUsageGate {
+	provider: Provider;
+	providerKey: string;
+	selection: { credential: OAuthCredential; index: number };
+	blockScope: string | undefined;
+	planRequirement: OpenAICodexPlanRequirement;
+	/** Whether usage is read at all: a usage check was asked for on an unblocked attempt, or a plan is required. */
+	needsUsage: boolean;
+	applyPlanFilter: boolean;
+	/** Present when a reached scoped limit rules the credential out and blocks its row. */
+	limits: { strategy: CredentialRankingStrategy; rankingContext: CredentialRankingContext } | undefined;
+}
+
+/**
+ * The usage checks one attempt runs. The usage report rules the credential out when the plan filter
+ * fails or its scoped limit is reached, which also blocks the row. It is asked once before the
+ * refresh and once after it, since a rotation can land on another account.
+ */
+function buildOAuthUsageGate(
+	provider: Provider,
+	providerKey: string,
+	selection: { credential: OAuthCredential; index: number },
+	modelId: string | undefined,
+	attempt: OAuthAttemptOptions,
+): OAuthUsageGate {
+	const { strategy, rankingContext } = attempt;
+	const planRequirement = attempt.planRequirement ?? resolveOpenAICodexPlanRequirement(provider, modelId);
+	const hasPlanRequirement = planRequirement !== "none";
+	const checkLimits = attempt.checkUsage && !attempt.allowBlocked;
+	return {
+		provider,
+		providerKey,
+		selection,
+		blockScope: attempt.blockScope,
+		planRequirement,
+		needsUsage: checkLimits || hasPlanRequirement,
+		applyPlanFilter: attempt.enforcePlanRequirement ?? hasPlanRequirement,
+		limits: checkLimits && strategy && rankingContext ? { strategy, rankingContext } : undefined,
+	};
+}
+
+/** One OAuth credential attempt, as the refresh-failure handling reads it. */
+interface OAuthRefreshAttempt {
+	provider: Provider;
+	providerKey: string;
+	selection: { credential: OAuthCredential; index: number };
+	credentialId: number | undefined;
+	sessionId: string | undefined;
+	options: AuthApiKeyOptions | undefined;
+	allowFallback: boolean;
+}
+
+/** The refreshed tokens, with each account field the refresh did not return kept from `previous`. */
+function mergeRefreshedOAuthCredential(previous: OAuthCredential, fresh: OAuthCredentials): OAuthCredential {
+	return {
+		type: "oauth",
+		access: fresh.access,
+		refresh: fresh.refresh,
+		expires: fresh.expires,
+		accountId: fresh.accountId ?? previous.accountId,
+		email: fresh.email ?? previous.email,
+		projectId: fresh.projectId ?? previous.projectId,
+		enterpriseUrl: fresh.enterpriseUrl ?? previous.enterpriseUrl,
+		apiEndpoint: fresh.apiEndpoint ?? previous.apiEndpoint,
+		orgId: fresh.orgId ?? previous.orgId,
+		orgName: fresh.orgName ?? previous.orgName,
+	};
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // AuthStorage Class
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3466,37 +3559,12 @@ export class AuthStorage {
 		providerKey: string,
 		sessionId: string | undefined,
 		options: AuthApiKeyOptions | undefined,
-		usageOptions: {
-			checkUsage: boolean;
-			allowBlocked: boolean;
-			prefetchedUsage?: UsageReport | null;
-			usagePrechecked?: boolean;
-			planRequirement?: OpenAICodexPlanRequirement;
-			enforcePlanRequirement?: boolean;
-			strategy?: CredentialRankingStrategy;
-			rankingContext?: CredentialRankingContext;
-			blockScope?: string;
-			/** When false, a definitive failure of THIS credential returns undefined instead of falling back to the ranked/round-robin selector (target-only resolution). */
-			allowFallback?: boolean;
-			/**
-			 * A DEFINITIVE dead-grant rejection this same call already got from the
-			 * preflight refresh of this credential. Reused instead of replaying the
-			 * token, which could only earn a second identical rejection; the disable
-			 * decision is owned here, so the verdict has to travel rather than the
-			 * request being repeated.
-			 */
-			preflightDefinitiveError?: unknown;
-		},
+		usageOptions: OAuthAttemptOptions,
 	): Promise<OAuthResolutionResult | undefined> {
 		const {
-			checkUsage,
 			allowBlocked,
 			prefetchedUsage = null,
 			usagePrechecked = false,
-			planRequirement: providedPlanRequirement,
-			enforcePlanRequirement,
-			strategy,
-			rankingContext,
 			blockScope,
 			allowFallback = true,
 			preflightDefinitiveError,
@@ -3514,45 +3582,16 @@ export class AuthStorage {
 		// refresh / persist / CAS-disable addresses the row by this stable id.
 		const credentialId = this.#getStoredCredentials(provider)[selection.index]?.id;
 
-		const planRequirement = providedPlanRequirement ?? resolveOpenAICodexPlanRequirement(provider, options?.modelId);
-		const hasPlanRequirement = planRequirement !== "none";
-		const applyPlanFilter = enforcePlanRequirement ?? hasPlanRequirement;
+		const gate = buildOAuthUsageGate(provider, providerKey, selection, options?.modelId, usageOptions);
 		let usage: UsageReport | null = null;
-		let usageChecked = false;
-		// The usage report rules the credential out when the plan filter fails or its scoped limit is
-		// reached, which also blocks the row. Asked once before the refresh and once after it, since a
-		// rotation can land on another account.
-		const usageRejects = (): boolean => {
-			if (applyPlanFilter && getOpenAICodexPlanEligibility(usage, planRequirement) !== true) return true;
-			if (checkUsage && !allowBlocked && usage && strategy && rankingContext) {
-				const scopedLimits = getScopedUsageLimits(strategy, usage, rankingContext);
-				if (isUsageLimitReached(scopedLimits)) {
-					const resetAtMs = getUsageResetAtMs(scopedLimits, Date.now());
-					this.#blocks.markCredentialBlocked(
-						provider,
-						providerKey,
-						selection.index,
-						resetAtMs ?? Date.now() + defaultBackoffMs,
-						blockScope,
-					);
-					return true;
-				}
-			}
-			return false;
-		};
-
-		if ((checkUsage && !allowBlocked) || hasPlanRequirement) {
-			if (usagePrechecked) {
-				usage = prefetchedUsage;
-				usageChecked = true;
-			} else {
-				usage = await this.#getUsageReport(provider, selection.credential, {
-					...options,
-					timeoutMs: this.#usageRequestTimeoutMs,
-				});
-				usageChecked = true;
-			}
-			if (usageRejects()) return undefined;
+		if (gate.needsUsage) {
+			usage = usagePrechecked
+				? prefetchedUsage
+				: await this.#getUsageReport(provider, selection.credential, {
+						...options,
+						timeoutMs: this.#usageRequestTimeoutMs,
+					});
+			if (this.#usageRulesOutCredential(gate, usage)) return undefined;
 		}
 
 		try {
@@ -3562,155 +3601,175 @@ export class AuthStorage {
 			// verdict and drop into the handling below, which is where disabling
 			// (and the peer-rotation re-read that can still rescue the row) lives.
 			if (preflightDefinitiveError !== undefined) throw preflightDefinitiveError;
-			let result: { newCredentials: OAuthCredentials; apiKey: string } | null;
-			const customProvider = getOAuthProvider(provider);
-			if (customProvider) {
-				const refreshedCredentials = await this.#refresher.refreshOAuthCredential(
-					provider,
-					selection.credential,
-					credentialId,
-					options?.signal,
-				);
-				const apiKey = customProvider.getApiKey
-					? customProvider.getApiKey(refreshedCredentials)
-					: refreshedCredentials.access;
-				result = { newCredentials: refreshedCredentials, apiKey };
-			} else {
-				// Refresh first through the broker-aware single-flighted machinery
-				// so transient failures surface as network errors (5-min temp block)
-				// instead of `getOAuthApiKey`'s "expired" precondition error, which
-				// the definitive-failure regex below would otherwise classify as
-				// auth failure and soft-disable a still-valid credential.
-				const refreshedCredentials = await this.#refresher.refreshOAuthCredential(
-					provider,
-					selection.credential,
-					credentialId,
-					options?.signal,
-				);
-				const oauthCreds: Record<string, OAuthCredentials> = {
-					[provider]: refreshedCredentials,
-				};
-				result = await getOAuthApiKey(provider as OAuthProvider, oauthCreds);
-			}
-			if (!result) return undefined;
-			const updated: OAuthCredential = {
-				type: "oauth",
-				access: result.newCredentials.access,
-				refresh: result.newCredentials.refresh,
-				expires: result.newCredentials.expires,
-				accountId: result.newCredentials.accountId ?? selection.credential.accountId,
-				email: result.newCredentials.email ?? selection.credential.email,
-				projectId: result.newCredentials.projectId ?? selection.credential.projectId,
-				enterpriseUrl: result.newCredentials.enterpriseUrl ?? selection.credential.enterpriseUrl,
-				apiEndpoint: result.newCredentials.apiEndpoint ?? selection.credential.apiEndpoint,
-				orgId: result.newCredentials.orgId ?? selection.credential.orgId,
-				orgName: result.newCredentials.orgName ?? selection.credential.orgName,
-			};
-			if (credentialId !== undefined) {
-				const idx = this.#persistRefreshedCredentialById(provider, credentialId, updated);
-				if (idx !== -1) selection.index = idx;
-			} else {
-				this.#replaceCredentialAt(provider, selection.index, updated);
-			}
-			if ((checkUsage && !allowBlocked) || hasPlanRequirement) {
-				const sameAccount = selection.credential.accountId === updated.accountId;
-				if (!usageChecked || !sameAccount) {
-					usage = await this.#getUsageReport(provider, updated, {
-						...options,
-						timeoutMs: this.#usageRequestTimeoutMs,
-					});
-					usageChecked = true;
-				}
-				if (usageRejects()) return undefined;
-			}
-			this.#recordOAuthBearerCredentialId(provider, result.apiKey, credentialId);
-			this.#recordSessionCredential(provider, sessionId, "oauth", selection.index);
-			return { apiKey: result.apiKey, credential: updated, credentialId };
+			return await this.#refreshOAuthSelection(gate, credentialId, sessionId, options, usage);
 		} catch (error) {
-			const errorMsg = String(error);
-			// Only remove credentials for definitive auth failures
-			// Keep credentials for transient errors (network, 5xx) and block temporarily
-			const isDefinitiveFailure = AIError.isDefinitiveOAuthFailure(errorMsg);
+			return this.#onOAuthRefreshFailure(error, {
+				provider,
+				providerKey,
+				selection,
+				credentialId,
+				sessionId,
+				options,
+				allowFallback,
+			});
+		}
+	}
 
-			logger.warn("OAuth token refresh failed", {
+	/**
+	 * Refreshes the selected credential, persists the refreshed row and checks usage again when the
+	 * refresh rotated onto another account; `usage` is the report read before the refresh.
+	 */
+	async #refreshOAuthSelection(
+		gate: OAuthUsageGate,
+		credentialId: number | undefined,
+		sessionId: string | undefined,
+		options: AuthApiKeyOptions | undefined,
+		usage: UsageReport | null,
+	): Promise<OAuthResolutionResult | undefined> {
+		const { provider, selection } = gate;
+		const result = await this.#refreshOAuthApiKey(provider, selection.credential, credentialId, options?.signal);
+		if (!result) return undefined;
+		const updated = mergeRefreshedOAuthCredential(selection.credential, result.newCredentials);
+		if (credentialId !== undefined) {
+			const idx = this.#persistRefreshedCredentialById(provider, credentialId, updated);
+			if (idx !== -1) selection.index = idx;
+		} else {
+			this.#replaceCredentialAt(provider, selection.index, updated);
+		}
+		if (gate.needsUsage) {
+			const current =
+				selection.credential.accountId === updated.accountId
+					? usage
+					: await this.#getUsageReport(provider, updated, {
+							...options,
+							timeoutMs: this.#usageRequestTimeoutMs,
+						});
+			if (this.#usageRulesOutCredential(gate, current)) return undefined;
+		}
+		this.#recordOAuthBearerCredentialId(provider, result.apiKey, credentialId);
+		this.#recordSessionCredential(provider, sessionId, "oauth", selection.index);
+		return { apiKey: result.apiKey, credential: updated, credentialId };
+	}
+
+	/** Whether `usage` rules the credential out; a reached scoped limit also blocks its row until the reset. */
+	#usageRulesOutCredential(gate: OAuthUsageGate, usage: UsageReport | null): boolean {
+		if (gate.applyPlanFilter && getOpenAICodexPlanEligibility(usage, gate.planRequirement) !== true) return true;
+		if (!gate.limits || !usage) return false;
+		const scopedLimits = getScopedUsageLimits(gate.limits.strategy, usage, gate.limits.rankingContext);
+		if (!isUsageLimitReached(scopedLimits)) return false;
+		const resetAtMs = getUsageResetAtMs(scopedLimits, Date.now());
+		this.#blocks.markCredentialBlocked(
+			gate.provider,
+			gate.providerKey,
+			gate.selection.index,
+			resetAtMs ?? Date.now() + defaultBackoffMs,
+			gate.blockScope,
+		);
+		return true;
+	}
+
+	/** Refreshes the credential and derives the API key a request sends from the refreshed tokens. */
+	async #refreshOAuthApiKey(
+		provider: Provider,
+		credential: OAuthCredential,
+		credentialId: number | undefined,
+		signal: AbortSignal | undefined,
+	): Promise<{ newCredentials: OAuthCredentials; apiKey: string } | null> {
+		const customProvider = getOAuthProvider(provider);
+		// Refresh first through the broker-aware single-flighted machinery so transient failures
+		// surface as network errors (5-min temp block) instead of `getOAuthApiKey`'s "expired"
+		// precondition error, which the definitive-failure regex would otherwise classify as auth
+		// failure and soft-disable a still-valid credential.
+		const refreshed = await this.#refresher.refreshOAuthCredential(provider, credential, credentialId, signal);
+		if (customProvider) {
+			const apiKey = customProvider.getApiKey ? customProvider.getApiKey(refreshed) : refreshed.access;
+			return { newCredentials: refreshed, apiKey };
+		}
+		return getOAuthApiKey(provider as OAuthProvider, { [provider]: refreshed });
+	}
+
+	/**
+	 * Handles a failed refresh of one credential. A transient failure (network, 5xx) blocks the row
+	 * for five minutes and keeps it. A definitive auth failure disables the row and re-resolves onto a
+	 * sibling, unless a peer process rotated the row's token first.
+	 */
+	async #onOAuthRefreshFailure(
+		error: unknown,
+		attempt: OAuthRefreshAttempt,
+	): Promise<OAuthResolutionResult | undefined> {
+		const { provider, providerKey, selection, credentialId, sessionId, options, allowFallback } = attempt;
+		const errorMsg = String(error);
+		const isDefinitiveFailure = AIError.isDefinitiveOAuthFailure(errorMsg);
+
+		logger.warn("OAuth token refresh failed", {
+			provider,
+			index: selection.index,
+			error: errorMsg,
+			isDefinitiveFailure,
+		});
+
+		if (!isDefinitiveFailure) {
+			this.#blocks.markCredentialBlocked(provider, providerKey, selection.index, Date.now() + 5 * 60 * 1000);
+			return undefined;
+		}
+		// The credential at this index may have been rotated by another process between
+		// our in-memory snapshot and the refresh attempt: Anthropic rotates refresh
+		// tokens on every use, so the peer's success leaves our stored token invalid.
+		// Re-read the row from disk before marking it disabled — if the persisted
+		// refresh token has changed, the peer rotation succeeded and we should pick
+		// up the new credential instead of soft-deleting the row that the peer just
+		// updated.
+		if (credentialId !== undefined && this.#rotatedByPeer(provider, credentialId, selection.credential.refresh)) {
+			logger.debug("OAuth refresh race detected; another process rotated token first", {
 				provider,
 				index: selection.index,
-				error: errorMsg,
-				isDefinitiveFailure,
+				credentialId,
 			});
-
-			if (isDefinitiveFailure) {
-				// The credential at this index may have been rotated by another process between
-				// our in-memory snapshot and the refresh attempt: Anthropic rotates refresh
-				// tokens on every use, so the peer's success leaves our stored token invalid.
-				// Re-read the row from disk before marking it disabled — if the persisted
-				// refresh token has changed, the peer rotation succeeded and we should pick
-				// up the new credential instead of soft-deleting the row that the peer just
-				// updated.
-				if (credentialId !== undefined) {
-					const latestRow = this.#store.listAuthCredentials(provider).find(row => row.id === credentialId);
-					const latestCredential = latestRow?.credential;
-					if (latestCredential?.type === "oauth" && latestCredential.refresh !== selection.credential.refresh) {
-						logger.debug("OAuth refresh race detected; another process rotated token first", {
-							provider,
-							index: selection.index,
-							credentialId,
-						});
-						await this.reload();
-						if (allowFallback) return this.#resolveOAuthSelection(provider, sessionId, options);
-					}
-				}
-				// The row is about to be disabled and the request will re-resolve onto a sibling. That is
-				// a move, and it must be announced like the one `rotateSessionCredential` makes: park the
-				// dying account's label NOW, while the row can still be named, and let the resolve that
-				// serves emit the notice. Without this the move made here — the same auth death, found
-				// by the resolver instead of by a rejected request — was the one silent move left.
-				const siblingRemains = this.#getStoredCredentials(provider).some(
-					row => row.credential.type === "oauth" && row.id !== credentialId,
-				);
-				if (credentialId !== undefined && siblingRemains && allowFallback) {
-					this.#pendingFailover.set(provider, {
-						from: { credentialId, label: this.#accountNoticeLabel(provider, credentialId) },
-						cause: authFailureCause(error),
-						at: Date.now(),
-					});
-				}
-				// Permanently disable invalid credentials with an explicit cause for inspection/debugging.
-				// Use a CAS-style disable conditioned on the row still containing the stale credential
-				// we tried to refresh, so a peer rotation that lands between the pre-check above and
-				// this disable doesn't soft-delete the freshly-rotated row.
-				const disabled =
-					credentialId !== undefined
-						? this.#disableCredentialByIdIfMatches(
-								provider,
-								credentialId,
-								selection.credential,
-								`oauth refresh failed: ${errorMsg}`,
-							)
-						: this.#tryDisableCredentialAtIfMatches(
-								provider,
-								selection.index,
-								selection.credential,
-								`oauth refresh failed: ${errorMsg}`,
-							);
-				if (!disabled) {
-					logger.debug("OAuth refresh disable lost CAS; reloading after peer rotation", {
-						provider,
-						index: selection.index,
-					});
-					await this.reload();
-					if (allowFallback) return this.#resolveOAuthSelection(provider, sessionId, options);
-				}
-				if (this.#getCredentialsForProvider(provider).some(credential => credential.type === "oauth")) {
-					if (allowFallback) return this.#resolveOAuthSelection(provider, sessionId, options);
-				}
-			} else {
-				// Block temporarily for transient failures (5 minutes)
-				this.#blocks.markCredentialBlocked(provider, providerKey, selection.index, Date.now() + 5 * 60 * 1000);
-			}
+			await this.reload();
+			if (allowFallback) return this.#resolveOAuthSelection(provider, sessionId, options);
 		}
-
+		// The row is about to be disabled and the request will re-resolve onto a sibling. That is
+		// a move, and it must be announced like the one `rotateSessionCredential` makes: park the
+		// dying account's label NOW, while the row can still be named, and let the resolve that
+		// serves emit the notice. Without this the move made here — the same auth death, found
+		// by the resolver instead of by a rejected request — was the one silent move left.
+		const siblingRemains = this.#getStoredCredentials(provider).some(
+			row => row.credential.type === "oauth" && row.id !== credentialId,
+		);
+		if (credentialId !== undefined && siblingRemains && allowFallback) {
+			this.#pendingFailover.set(provider, {
+				from: { credentialId, label: this.#accountNoticeLabel(provider, credentialId) },
+				cause: authFailureCause(error),
+				at: Date.now(),
+			});
+		}
+		// Permanently disable invalid credentials with an explicit cause for inspection/debugging.
+		// Use a CAS-style disable conditioned on the row still containing the stale credential
+		// we tried to refresh, so a peer rotation that lands between the pre-check above and
+		// this disable doesn't soft-delete the freshly-rotated row.
+		const disableReason = `oauth refresh failed: ${errorMsg}`;
+		const disabled =
+			credentialId !== undefined
+				? this.#disableCredentialByIdIfMatches(provider, credentialId, selection.credential, disableReason)
+				: this.#tryDisableCredentialAtIfMatches(provider, selection.index, selection.credential, disableReason);
+		if (!disabled) {
+			logger.debug("OAuth refresh disable lost CAS; reloading after peer rotation", {
+				provider,
+				index: selection.index,
+			});
+			await this.reload();
+			if (allowFallback) return this.#resolveOAuthSelection(provider, sessionId, options);
+		}
+		if (this.#getCredentialsForProvider(provider).some(credential => credential.type === "oauth") && allowFallback) {
+			return this.#resolveOAuthSelection(provider, sessionId, options);
+		}
 		return undefined;
+	}
+
+	/** Whether the stored row `credentialId` holds an OAuth refresh token other than `refresh`. */
+	#rotatedByPeer(provider: Provider, credentialId: number, refresh: string): boolean {
+		const latest = this.#store.listAuthCredentials(provider).find(row => row.id === credentialId)?.credential;
+		return latest?.type === "oauth" && latest.refresh !== refresh;
 	}
 
 	/**
