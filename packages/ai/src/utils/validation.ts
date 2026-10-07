@@ -691,191 +691,243 @@ function deleteAtSegment(node: unknown, segments: string[], depth: number): unkn
 // ============================================================================
 
 /**
- * Test a JSON-Schema branch during nullable normalization. Kept deliberately
- * small and synchronous so validation does not need to compile legacy schemas
- * into another schema language.
+ * A schema-directed rewrite of one value. Every normalization pass returns
+ * `value` itself when nothing changed, so a caller detects a no-op by identity
+ * and an untouched argument tree costs no allocation.
  */
-function branchMatchesSchema(branch: unknown, value: unknown): boolean {
-	return isJsonSchemaValueValid(branch, value);
+type SchemaValueRewrite<C> = (schema: unknown, value: unknown, context: C) => unknown;
+
+type SchemaUnionRewrite<C> = (branches: unknown[], value: unknown, context: C) => unknown;
+
+const EMPTY_LIST: readonly unknown[] = [];
+
+/**
+ * Applies `rewrite` to each property `properties` declares and `value` holds,
+ * copying `value` at the first change.
+ */
+function rewriteDeclaredProperties<C>(
+	properties: Record<string, unknown>,
+	value: Record<string, unknown>,
+	rewrite: SchemaValueRewrite<C>,
+	context: C,
+): Record<string, unknown> {
+	let next = value;
+	for (const key of Object.keys(properties)) {
+		if (!(key in next)) continue;
+		const current = next[key];
+		const rewritten = rewrite(properties[key], current, context);
+		if (rewritten === current) continue;
+		if (next === value) next = { ...value };
+		next[key] = rewritten;
+	}
+	return next;
 }
 
-function normalizeOptionalNullsForSchema(
-	schema: unknown,
-	value: unknown,
-	isRoot = true,
-): { value: unknown; changed: boolean } {
-	if (value === null || value === undefined) return { value, changed: false };
-	if (schema === null || typeof schema !== "object") return { value, changed: false };
+/**
+ * Applies `rewrite` to each element of `value`: element `i` under
+ * `prefixItems[i]`, every later element under `itemSchema`. Elements past the
+ * prefix are skipped when `itemSchema` is `undefined`. Copies `value` at the
+ * first change.
+ */
+function rewriteArrayItems<C>(
+	prefixItems: readonly unknown[],
+	itemSchema: unknown,
+	value: unknown[],
+	rewrite: SchemaValueRewrite<C>,
+	context: C,
+): unknown[] {
+	let next = value;
+	for (let i = 0; i < value.length; i += 1) {
+		if (i >= prefixItems.length && itemSchema === undefined) break;
+		const rewritten = rewrite(i < prefixItems.length ? prefixItems[i] : itemSchema, value[i], context);
+		if (rewritten === value[i]) continue;
+		if (next === value) next = value.slice();
+		next[i] = rewritten;
+	}
+	return next;
+}
 
+/**
+ * Applies a rewrite through the combinator keywords of `schema`. The first of
+ * the `anyOf` and `oneOf` union rewrites that changes `value` wins; otherwise
+ * each `allOf` branch rewrites the value in turn.
+ */
+function rewriteThroughCombinators<C>(
+	schema: Record<string, unknown>,
+	value: unknown,
+	rewriteUnion: SchemaUnionRewrite<C>,
+	rewrite: SchemaValueRewrite<C>,
+	context: C,
+): unknown {
+	if (Array.isArray(schema.anyOf)) {
+		const rewritten = rewriteUnion(schema.anyOf, value, context);
+		if (rewritten !== value) return rewritten;
+	}
+	if (Array.isArray(schema.oneOf)) {
+		const rewritten = rewriteUnion(schema.oneOf, value, context);
+		if (rewritten !== value) return rewritten;
+	}
+	if (!Array.isArray(schema.allOf)) return value;
+	let next = value;
+	for (const branch of schema.allOf) next = rewrite(branch, next, context);
+	return next;
+}
+
+/**
+ * Strips "no value" placeholders LLMs emit on optional properties (null,
+ * `"null"`, and an empty string the property schema rejects), substitutes the
+ * declared default for a nullish required property, and parses a numeric
+ * string where a number-typed node expects one. `isRoot` marks the argument
+ * object itself.
+ */
+function normalizeOptionalNullsForSchema(schema: unknown, value: unknown, isRoot: boolean): unknown {
+	if (value === null || value === undefined) return value;
+	if (schema === null || typeof schema !== "object") return value;
 	const schemaObject = schema as Record<string, unknown>;
 
-	const normalizeAnyOfLike = (keyword: "anyOf" | "oneOf"): { value: unknown; changed: boolean } => {
-		const branches = schemaObject[keyword];
-		if (!Array.isArray(branches)) return { value, changed: false };
-
-		// If the RAW value already satisfies any branch, the union is met and no
-		// repair is warranted — return it untouched. These passes exist to rescue
-		// values that would otherwise FAIL validation; a value that already passes
-		// must never be mutated. Without this guard, a `string | number` field
-		// (wire `anyOf:[{type:"string"},{type:"number"}]`) receiving the quoted
-		// numeric string "123" would coerce to the number 123 via the number
-		// branch below, even though the string branch already accepts "123"
-		// verbatim — corrupting the argument's type and losing data outright
-		// (e.g. "007" -> 7). The intended coercion target, `number | null`
-		// receiving "123", matches NEITHER branch raw, so this guard leaves it for
-		// the coercion loop, preserving that behavior.
-		for (const branch of branches) {
-			if (branchMatchesSchema(branch, value)) return { value, changed: false };
-		}
-
-		let changedCandidate: { value: unknown; changed: true } | null = null;
-
-		for (const branch of branches) {
-			const normalized = normalizeOptionalNullsForSchema(branch, value, isRoot);
-			if (!normalized.changed) continue;
-
-			if (branchMatchesSchema(branch, normalized.value)) {
-				return normalized;
-			}
-
-			if (!changedCandidate) {
-				changedCandidate = { value: normalized.value, changed: true };
-			}
-		}
-
-		return changedCandidate ?? { value, changed: false };
-	};
-
-	const anyOfNormalization = normalizeAnyOfLike("anyOf");
-	if (anyOfNormalization.changed) return anyOfNormalization;
-
-	const oneOfNormalization = normalizeAnyOfLike("oneOf");
-	if (oneOfNormalization.changed) return oneOfNormalization;
-
-	if (Array.isArray(schemaObject.allOf)) {
-		let changed = false;
-		let nextValue: unknown = value;
-		for (const branch of schemaObject.allOf) {
-			const normalized = normalizeOptionalNullsForSchema(branch, nextValue, isRoot);
-			if (!normalized.changed) continue;
-			nextValue = normalized.value;
-			changed = true;
-		}
-		if (changed) return { value: nextValue, changed: true };
-	}
+	const combined = rewriteThroughCombinators(
+		schemaObject,
+		value,
+		normalizeOptionalNullsInUnion,
+		normalizeOptionalNullsForSchema,
+		isRoot,
+	);
+	if (combined !== value) return combined;
 
 	if (Array.isArray(value)) {
 		const itemSchema = schemaObject.items;
-		if (!isRecord(itemSchema)) {
-			return { value, changed: false };
-		}
-
-		let changed = false;
-		let nextValue = value;
-		for (let i = 0; i < value.length; i += 1) {
-			const normalized = normalizeOptionalNullsForSchema(itemSchema, value[i], false);
-			if (!normalized.changed) continue;
-			if (!changed) {
-				nextValue = value.slice();
-				changed = true;
-			}
-			nextValue[i] = normalized.value;
-		}
-		return { value: changed ? nextValue : value, changed };
+		if (!isRecord(itemSchema)) return value;
+		return rewriteArrayItems(EMPTY_LIST, itemSchema, value, normalizeOptionalNullsForSchema, false);
 	}
 
 	// Coerce string → number/integer when the schema branch declares those types.
 	// This fixes anyOf:[{type:"number"},{type:"null"}] (i.e. Optional<number>) where
 	// the validator reports an "anyOf" error rather than a "type" error.
-	if ((schemaObject.type === "number" || schemaObject.type === "integer") && typeof value === "string") {
-		return tryParseNumberString(value, [schemaObject.type as string]);
+	const type = schemaObject.type;
+	if ((type === "number" || type === "integer") && typeof value === "string") {
+		return tryParseNumberString(value, [type]).value;
 	}
 
-	if (schemaObject.type !== "object") return { value, changed: false };
-	if (typeof value !== "object" || value === null) return { value, changed: false };
-	if (Array.isArray(value)) return { value, changed: false };
-	if (schemaObject.properties === null || typeof schemaObject.properties !== "object") {
-		return { value, changed: false };
+	if (type !== "object" || typeof value !== "object") return value;
+	const properties = schemaObject.properties;
+	if (properties === null || typeof properties !== "object") return value;
+	return normalizeOptionalNullProperties(
+		schemaObject,
+		properties as Record<string, unknown>,
+		value as Record<string, unknown>,
+		isRoot,
+	);
+}
+
+/**
+ * Rewrites `value` under the first union branch whose rewrite that branch
+ * accepts, else under the first branch whose rewrite changed it.
+ *
+ * A value some branch already accepts is returned untouched: these passes
+ * rescue values that would otherwise FAIL validation, and a passing value is
+ * never mutated. Without this guard a `string | number` field (wire
+ * `anyOf:[{type:"string"},{type:"number"}]`) receiving the quoted numeric
+ * string "123" would coerce to the number 123 through the number branch even
+ * though the string branch accepts "123" verbatim, corrupting the argument's
+ * type and losing data outright ("007" -> 7). The intended coercion target,
+ * `number | null` receiving "123", matches NEITHER branch raw, so the guard
+ * leaves it to the rewrite.
+ */
+function normalizeOptionalNullsInUnion(branches: unknown[], value: unknown, isRoot: boolean): unknown {
+	for (const branch of branches) {
+		if (isJsonSchemaValueValid(branch, value)) return value;
 	}
-
-	const properties = schemaObject.properties as Record<string, unknown>;
-	const required = new Set(Array.isArray(schemaObject.required) ? (schemaObject.required as string[]) : []);
-
-	let changed = false;
-	let nextValue = value as Record<string, unknown>;
-
-	for (const [key, propertySchema] of Object.entries(properties)) {
-		if (!(key in nextValue)) continue;
-		const currentValue = nextValue[key];
-		const isNullish = currentValue === null || currentValue === "null";
-		const isInvalidEmptyString =
-			currentValue === "" && !required.has(key) && !branchMatchesSchema(propertySchema, currentValue);
-
-		// Strip null/string "null" from optional fields, and strip empty
-		// strings only when the property schema would reject the explicit value.
-		// LLMs sometimes output these placeholders to mean "no value".
-		if ((isNullish || isInvalidEmptyString) && !required.has(key)) {
-			if (!changed) {
-				nextValue = { ...nextValue };
-				changed = true;
-			}
-			delete nextValue[key];
-			continue;
-		}
-
-		// Substitute the schema-supplied default when a required field arrives
-		// as null/"null". LLMs commonly emit null for "I have nothing to say
-		// here"; if the schema documents a default, honor it instead of
-		// rejecting the whole call. The default is cloned so mutations on the
-		// validated value never bleed back into the schema.
-		if (isNullish && propertySchema && typeof propertySchema === "object") {
-			const propertyObject = propertySchema as Record<string, unknown>;
-			if ("default" in propertyObject) {
-				if (!changed) {
-					nextValue = { ...nextValue };
-					changed = true;
-				}
-				nextValue[key] = structuredCloneJSON(propertyObject.default);
-				continue;
-			}
-		}
-		const normalized = normalizeOptionalNullsForSchema(propertySchema, currentValue, false);
-		if (!normalized.changed) continue;
-
-		if (!changed) {
-			nextValue = { ...nextValue };
-			changed = true;
-		}
-		nextValue[key] = normalized.value;
+	let candidate = value;
+	for (const branch of branches) {
+		const normalized = normalizeOptionalNullsForSchema(branch, value, isRoot);
+		if (normalized === value) continue;
+		if (isJsonSchemaValueValid(branch, normalized)) return normalized;
+		if (candidate === value) candidate = normalized;
 	}
+	return candidate;
+}
 
-	// Strip unknown keys with null/"null" values when the schema forbids extras.
-	// LLMs sometimes hallucinate verbs alongside valid ones (e.g. `split: null`,
-	// `original: null`). Rejecting the entire tool call wastes a turn; treating
-	// these the same as null on known optional fields is a safer fallback. Keys
-	// with non-null unknown values are left intact so genuine schema mistakes
-	// still surface as validation errors.
-	//
-	// At the ROOT level we deliberately keep unknown null-valued keys intact:
-	// Zod-emitted wire schemas always set `additionalProperties: false`, but the
-	// post-validation `preserveUnknownRootFields` pass re-attaches root extras
-	// so callers can observe (and reject) hallucinated fields. Stripping here
-	// would erase the field before that snapshot, hiding the rejection signal.
-	if (!isRoot && schemaObject.additionalProperties === false) {
-		const knownKeys = new Set(Object.keys(properties));
-		for (const key of Object.keys(nextValue)) {
-			if (knownKeys.has(key)) continue;
-			const v = nextValue[key];
-			if (v !== null && v !== "null") continue;
-			if (!changed) {
-				nextValue = { ...nextValue };
-				changed = true;
-			}
-			delete nextValue[key];
-		}
+/** The property rewrite that leaves the property as it is. */
+const PROPERTY_UNCHANGED = Symbol("property unchanged");
+/** The property rewrite that deletes the property. */
+const PROPERTY_OMITTED = Symbol("property omitted");
+
+function normalizeOptionalNullProperties(
+	schema: Record<string, unknown>,
+	properties: Record<string, unknown>,
+	value: Record<string, unknown>,
+	isRoot: boolean,
+): Record<string, unknown> {
+	const required: readonly unknown[] = Array.isArray(schema.required) ? schema.required : EMPTY_LIST;
+	let next = value;
+	for (const key of Object.keys(properties)) {
+		if (!(key in next)) continue;
+		const replacement = optionalNullPropertyReplacement(properties[key], next[key], required, key);
+		if (replacement === PROPERTY_UNCHANGED) continue;
+		if (next === value) next = { ...value };
+		if (replacement === PROPERTY_OMITTED) delete next[key];
+		else next[key] = replacement;
 	}
+	// At the ROOT level unknown null-valued keys stay: Zod-emitted wire schemas
+	// always set `additionalProperties: false`, but the post-validation
+	// `preserveUnknownRootFields` pass re-attaches root extras so callers can
+	// observe (and reject) hallucinated fields. Stripping here would erase the
+	// field before that snapshot, hiding the rejection signal.
+	if (isRoot || schema.additionalProperties !== false) return next;
+	return dropUndeclaredNullKeys(properties, next, value);
+}
 
-	return { value: changed ? nextValue : value, changed };
+/**
+ * What property `key` becomes. LLMs emit null, `"null"` and empty strings to
+ * mean "no value": on an optional property such a placeholder is omitted (an
+ * empty string only when the property schema rejects it), and a nullish
+ * required property takes a clone of its declared default, so the call is not
+ * rejected and later mutations never reach the schema. A default substitution
+ * is a change even when the clone equals the placeholder.
+ */
+function optionalNullPropertyReplacement(
+	propertySchema: unknown,
+	current: unknown,
+	required: readonly unknown[],
+	key: string,
+): unknown {
+	const nullish = current === null || current === "null";
+	if (
+		(nullish || current === "") &&
+		!required.includes(key) &&
+		(nullish || !isJsonSchemaValueValid(propertySchema, current))
+	) {
+		return PROPERTY_OMITTED;
+	}
+	if (nullish && typeof propertySchema === "object" && propertySchema !== null && "default" in propertySchema) {
+		return structuredCloneJSON(propertySchema.default);
+	}
+	const normalized = normalizeOptionalNullsForSchema(propertySchema, current, false);
+	return normalized === current ? PROPERTY_UNCHANGED : normalized;
+}
+
+/**
+ * Strips keys `properties` does not declare whose value is null or `"null"`,
+ * for an object schema that forbids extras. LLMs sometimes hallucinate verbs
+ * alongside valid ones (`split: null`, `original: null`); rejecting the whole
+ * call wastes a turn. Undeclared keys with any other value stay, so a genuine
+ * schema mistake still surfaces as a validation error. `next` is `original`
+ * or its copy.
+ */
+function dropUndeclaredNullKeys(
+	properties: Record<string, unknown>,
+	next: Record<string, unknown>,
+	original: Record<string, unknown>,
+): Record<string, unknown> {
+	let out = next;
+	for (const key of Object.keys(next)) {
+		if (Object.hasOwn(properties, key)) continue;
+		const entry = next[key];
+		if (entry !== null && entry !== "null") continue;
+		if (out === original) out = { ...original };
+		delete out[key];
+	}
+	return out;
 }
 
 function decodeJsonPointerToken(token: string): string {
@@ -894,135 +946,90 @@ function resolveLocalJsonSchemaRef(root: unknown, ref: string): unknown | undefi
 	return current;
 }
 
-function normalizeEnumStringWhitespace(
-	schema: unknown,
-	value: unknown,
-	root: unknown = schema,
-	refs: ReadonlySet<string> = new Set(),
-): { value: unknown; changed: boolean } {
-	if (value === null || value === undefined) return { value, changed: false };
-	if (schema === null || typeof schema !== "object") return { value, changed: false };
+/** The schema a `$ref` resolves against, and the refs already followed on the current path. */
+interface SchemaRefScope {
+	root: unknown;
+	refs: ReadonlySet<string>;
+}
 
+const NO_REFS: ReadonlySet<string> = new Set();
+
+/**
+ * Trims surrounding whitespace from a string the schema accepts only trimmed:
+ * an `enum` member or the `const` value. Follows local `$ref`s, each at most
+ * once per path.
+ */
+function normalizeEnumStringWhitespace(schema: unknown, value: unknown, scope: SchemaRefScope): unknown {
+	if (value === null || value === undefined) return value;
+	if (schema === null || typeof schema !== "object") return value;
 	const schemaObject = schema as Record<string, unknown>;
-	const ref = schemaObject.$ref;
-	if (typeof ref === "string") {
-		if (refs.has(ref)) return { value, changed: false };
-		const resolved = resolveLocalJsonSchemaRef(root, ref);
-		if (resolved === undefined) return { value, changed: false };
-		const nextRefs = new Set(refs);
-		nextRefs.add(ref);
-		return normalizeEnumStringWhitespace(resolved, value, root, nextRefs);
-	}
+	if (typeof schemaObject.$ref === "string") return normalizeEnumStringsThroughRef(schemaObject.$ref, value, scope);
 
-	const branchMatches = (branch: unknown, candidate: unknown): boolean => {
-		if (branch !== null && typeof branch === "object") {
-			const branchRef = (branch as Record<string, unknown>).$ref;
-			if (typeof branchRef === "string" && !refs.has(branchRef)) {
-				const resolved = resolveLocalJsonSchemaRef(root, branchRef);
-				if (resolved !== undefined) return branchMatchesSchema(resolved, candidate);
-			}
-		}
-		return branchMatchesSchema(branch, candidate);
-	};
+	const combined = rewriteThroughCombinators(
+		schemaObject,
+		value,
+		normalizeEnumStringsInUnion,
+		normalizeEnumStringWhitespace,
+		scope,
+	);
+	if (combined !== value) return combined;
 
-	const normalizeAnyOfLike = (keyword: "anyOf" | "oneOf"): { value: unknown; changed: boolean } => {
-		const branches = schemaObject[keyword];
-		if (!Array.isArray(branches)) return { value, changed: false };
-		if (branches.some(branch => branchMatches(branch, value))) return { value, changed: false };
-
-		for (const branch of branches) {
-			const normalized = normalizeEnumStringWhitespace(branch, value, root, refs);
-			if (!normalized.changed) continue;
-			if (branchMatches(branch, normalized.value)) return normalized;
-		}
-		return { value, changed: false };
-	};
-
-	const anyOfNormalization = normalizeAnyOfLike("anyOf");
-	if (anyOfNormalization.changed) return anyOfNormalization;
-
-	const oneOfNormalization = normalizeAnyOfLike("oneOf");
-	if (oneOfNormalization.changed) return oneOfNormalization;
-
-	if (Array.isArray(schemaObject.allOf)) {
-		let changed = false;
-		let nextValue: unknown = value;
-		for (const branch of schemaObject.allOf) {
-			const normalized = normalizeEnumStringWhitespace(branch, nextValue, root, refs);
-			if (!normalized.changed) continue;
-			nextValue = normalized.value;
-			changed = true;
-		}
-		if (changed) return { value: nextValue, changed: true };
-	}
-
-	if (typeof value === "string") {
-		const trimmed = value.trim();
-		if (trimmed !== value) {
-			const enumValues = schemaObject.enum;
-			if (Array.isArray(enumValues) && !enumValues.includes(value) && enumValues.includes(trimmed)) {
-				return { value: trimmed, changed: true };
-			}
-			const constValue = schemaObject.const;
-			if (typeof constValue === "string" && trimmed === constValue) {
-				return { value: trimmed, changed: true };
-			}
-		}
-		return { value, changed: false };
-	}
-
+	if (typeof value === "string") return trimEnumString(schemaObject, value);
 	if (Array.isArray(value)) {
-		let changed = false;
-		let nextValue = value;
-		const prefixItems = schemaObject.prefixItems;
-		if (Array.isArray(prefixItems)) {
-			for (let i = 0; i < value.length && i < prefixItems.length; i += 1) {
-				const itemSchema = prefixItems[i];
-				const normalized = normalizeEnumStringWhitespace(itemSchema, value[i], root, refs);
-				if (!normalized.changed) continue;
-				if (!changed) {
-					nextValue = value.slice();
-					changed = true;
-				}
-				nextValue[i] = normalized.value;
-			}
-		}
-
-		const itemSchema = schemaObject.items;
-		if (isRecord(itemSchema)) {
-			for (let i = 0; i < value.length; i += 1) {
-				if (Array.isArray(prefixItems) && i < prefixItems.length) continue;
-				const normalized = normalizeEnumStringWhitespace(itemSchema, nextValue[i], root, refs);
-				if (!normalized.changed) continue;
-				if (!changed) {
-					nextValue = value.slice();
-					changed = true;
-				}
-				nextValue[i] = normalized.value;
-			}
-		}
-		return { value: changed ? nextValue : value, changed };
+		const prefixItems = Array.isArray(schemaObject.prefixItems) ? schemaObject.prefixItems : EMPTY_LIST;
+		const itemSchema = isRecord(schemaObject.items) ? schemaObject.items : undefined;
+		return rewriteArrayItems(prefixItems, itemSchema, value, normalizeEnumStringWhitespace, scope);
 	}
-
-	if (typeof value !== "object") return { value, changed: false };
+	if (typeof value !== "object") return value;
 	const properties = schemaObject.properties;
-	if (!properties || typeof properties !== "object") return { value, changed: false };
+	if (!properties || typeof properties !== "object") return value;
+	return rewriteDeclaredProperties(
+		properties as Record<string, unknown>,
+		value as Record<string, unknown>,
+		normalizeEnumStringWhitespace,
+		scope,
+	);
+}
 
-	const propsObject = properties as Record<string, unknown>;
-	const valueObject = value as Record<string, unknown>;
-	let changed = false;
-	let nextValue = valueObject;
-	for (const [key, propertySchema] of Object.entries(propsObject)) {
-		if (!(key in nextValue)) continue;
-		const normalized = normalizeEnumStringWhitespace(propertySchema, nextValue[key], root, refs);
-		if (!normalized.changed) continue;
-		if (!changed) {
-			nextValue = { ...nextValue };
-			changed = true;
-		}
-		nextValue[key] = normalized.value;
+function normalizeEnumStringsThroughRef(ref: string, value: unknown, scope: SchemaRefScope): unknown {
+	if (scope.refs.has(ref)) return value;
+	const resolved = resolveLocalJsonSchemaRef(scope.root, ref);
+	if (resolved === undefined) return value;
+	return normalizeEnumStringWhitespace(resolved, value, { root: scope.root, refs: new Set(scope.refs).add(ref) });
+}
+
+/** Rewrites `value` under the first union branch that accepts the rewrite, unless a branch accepts it already. */
+function normalizeEnumStringsInUnion(branches: unknown[], value: unknown, scope: SchemaRefScope): unknown {
+	for (const branch of branches) {
+		if (enumBranchAccepts(branch, value, scope)) return value;
 	}
-	return { value: changed ? nextValue : valueObject, changed };
+	for (const branch of branches) {
+		const normalized = normalizeEnumStringWhitespace(branch, value, scope);
+		if (normalized !== value && enumBranchAccepts(branch, normalized, scope)) return normalized;
+	}
+	return value;
+}
+
+/** Validates `candidate` against `branch`, resolving a `$ref` branch not yet followed on this path. */
+function enumBranchAccepts(branch: unknown, candidate: unknown, scope: SchemaRefScope): boolean {
+	if (branch !== null && typeof branch === "object") {
+		const ref = (branch as Record<string, unknown>).$ref;
+		if (typeof ref === "string" && !scope.refs.has(ref)) {
+			const resolved = resolveLocalJsonSchemaRef(scope.root, ref);
+			if (resolved !== undefined) return isJsonSchemaValueValid(resolved, candidate);
+		}
+	}
+	return isJsonSchemaValueValid(branch, candidate);
+}
+
+function trimEnumString(schema: Record<string, unknown>, value: string): string {
+	const enumValues = schema.enum;
+	const constValue = schema.const;
+	if (!Array.isArray(enumValues) && typeof constValue !== "string") return value;
+	const trimmed = value.trim();
+	if (trimmed === value) return value;
+	if (Array.isArray(enumValues) && !enumValues.includes(value) && enumValues.includes(trimmed)) return trimmed;
+	return trimmed === constValue ? trimmed : value;
 }
 
 // ============================================================================
@@ -1068,27 +1075,18 @@ function trimTrailingLineTerminators(input: string): string {
 }
 
 function trimIdentifierStringLeaf(input: unknown): unknown {
-	if (typeof input === "string") {
-		const trimmed = trimTrailingLineTerminators(input);
-		return trimmed === input ? input : trimmed;
+	if (typeof input === "string") return trimTrailingLineTerminators(input);
+	if (!Array.isArray(input)) return input;
+	let next = input;
+	for (let i = 0; i < input.length; i += 1) {
+		const item = input[i];
+		if (typeof item !== "string") continue;
+		const trimmed = trimTrailingLineTerminators(item);
+		if (trimmed === item) continue;
+		if (next === input) next = input.slice();
+		next[i] = trimmed;
 	}
-	if (Array.isArray(input)) {
-		let changed = false;
-		let next = input;
-		for (let i = 0; i < input.length; i += 1) {
-			const item = input[i];
-			if (typeof item !== "string") continue;
-			const trimmed = trimTrailingLineTerminators(item);
-			if (trimmed === item) continue;
-			if (!changed) {
-				next = input.slice();
-				changed = true;
-			}
-			next[i] = trimmed;
-		}
-		return changed ? next : input;
-	}
-	return input;
+	return next;
 }
 
 /**
@@ -1102,26 +1100,22 @@ function trimIdentifierStringLeaf(input: unknown): unknown {
  */
 const MAX_VALUE_WALK_DEPTH = 64;
 
-type ValueWalk = (value: unknown, depth: number) => { value: unknown; changed: boolean };
+type ValueWalk = (value: unknown, depth: number) => unknown;
 
 /**
  * Applies `walk` to every element of `value` one level deeper, copying the
  * array only once the first element changes so an untouched array is returned
  * by identity. Shared by the two schema-agnostic walks below.
  */
-function walkArrayElements(value: unknown[], depth: number, walk: ValueWalk): { value: unknown; changed: boolean } {
-	let changed = false;
+function walkArrayElements(value: unknown[], depth: number, walk: ValueWalk): unknown[] {
 	let next = value;
 	for (let i = 0; i < value.length; i += 1) {
 		const normalized = walk(value[i], depth + 1);
-		if (!normalized.changed) continue;
-		if (!changed) {
-			next = value.slice();
-			changed = true;
-		}
-		next[i] = normalized.value;
+		if (normalized === value[i]) continue;
+		if (next === value) next = value.slice();
+		next[i] = normalized;
 	}
-	return { value: changed ? next : value, changed };
+	return next;
 }
 
 /**
@@ -1130,32 +1124,23 @@ function walkArrayElements(value: unknown[], depth: number, walk: ValueWalk): { 
  * (schema-agnostic) so it fires uniformly across Zod, ArkType, and plain JSON
  * Schema tools while preserving nested payloads under content-carrying keys.
  */
-function normalizeIdentifierStringWhitespace(value: unknown, depth = 0): { value: unknown; changed: boolean } {
-	if (depth >= MAX_VALUE_WALK_DEPTH) return { value, changed: false };
+function normalizeIdentifierStringWhitespace(value: unknown, depth: number): unknown {
+	if (depth >= MAX_VALUE_WALK_DEPTH) return value;
 	if (Array.isArray(value)) return walkArrayElements(value, depth, normalizeIdentifierStringWhitespace);
-
-	if (value === null || typeof value !== "object") return { value, changed: false };
+	if (value === null || typeof value !== "object") return value;
 
 	const source = value as Record<string, unknown>;
-	let changed = false;
-	let out: Record<string, unknown> = source;
-	for (const [key, entry] of Object.entries(source)) {
-		let nextEntry = entry;
+	let out = source;
+	for (const key of Object.keys(source)) {
 		if (CONTENT_CARRYING_KEYS.has(key)) continue;
-		if (IDENTIFIER_STRING_KEYS.has(key)) {
-			const trimmed = trimIdentifierStringLeaf(entry);
-			if (trimmed !== entry) nextEntry = trimmed;
-		}
-		const nested = normalizeIdentifierStringWhitespace(nextEntry, depth + 1);
-		if (nested.changed) nextEntry = nested.value;
+		const entry = source[key];
+		const leaf = IDENTIFIER_STRING_KEYS.has(key) ? trimIdentifierStringLeaf(entry) : entry;
+		const nextEntry = normalizeIdentifierStringWhitespace(leaf, depth + 1);
 		if (nextEntry === entry) continue;
-		if (!changed) {
-			out = { ...source };
-			changed = true;
-		}
+		if (out === source) out = { ...source };
 		out[key] = nextEntry;
 	}
-	return { value: changed ? out : value, changed };
+	return out;
 }
 
 // ============================================================================
@@ -1207,42 +1192,65 @@ function decodeDoubleEncodedKey(key: string): string | null {
  * differs and does not already exist on the same object — renaming would
  * otherwise clobber a sibling and silently lose data.
  */
-function normalizeDoubleEncodedKeys(value: unknown, depth = 0): { value: unknown; changed: boolean } {
-	if (depth >= MAX_VALUE_WALK_DEPTH) return { value, changed: false };
+function normalizeDoubleEncodedKeys(value: unknown, depth: number): unknown {
+	if (depth >= MAX_VALUE_WALK_DEPTH) return value;
 	if (Array.isArray(value)) return walkArrayElements(value, depth, normalizeDoubleEncodedKeys);
-
-	if (value === null || typeof value !== "object") return { value, changed: false };
+	if (value === null || typeof value !== "object") return value;
 
 	const source = value as Record<string, unknown>;
-	let changed = false;
-	const out: Record<string, unknown> = {};
-	for (const [key, entry] of Object.entries(source)) {
-		const normalizedChild = normalizeDoubleEncodedKeys(entry, depth + 1);
-		const nextChild = normalizedChild.changed ? normalizedChild.value : entry;
-
-		const decodedKey = decodeDoubleEncodedKey(key);
-		// `Object.hasOwn` (not `in`) so a decoded `constructor`/`toString` is not
-		// mistaken for a collision via the prototype chain.
-		const targetKey =
-			decodedKey !== null &&
-			decodedKey !== key &&
-			!Object.hasOwn(source, decodedKey) &&
-			!Object.hasOwn(out, decodedKey)
-				? decodedKey
-				: key;
-
-		if (targetKey !== key || normalizedChild.changed) changed = true;
+	const keys = Object.keys(source);
+	// Built only at the first renamed key or changed child; until then the
+	// result is `source` itself.
+	let out: Record<string, unknown> | undefined;
+	for (let i = 0; i < keys.length; i += 1) {
+		const key = keys[i];
+		const entry = source[key];
+		const child = normalizeDoubleEncodedKeys(entry, depth + 1);
+		const targetKey = decodedKeyTarget(key, source, out);
+		if (out === undefined) {
+			if (targetKey === key && child === entry) continue;
+			out = copyLeadingEntries(source, keys, i);
+		}
 		// `defineProperty` so a decoded `__proto__` key becomes an own property
 		// instead of mutating the result object's prototype.
-		Object.defineProperty(out, targetKey, {
-			value: nextChild,
+		Object.defineProperty(out, targetKey, { value: child, writable: true, enumerable: true, configurable: true });
+	}
+	return out ?? value;
+}
+
+/**
+ * The name `key` takes in the result: its decoded form when that form names no
+ * key of `source` and none already in the result `out`, else `key`. Until `out`
+ * exists the result holds only keys of `source`.
+ */
+function decodedKeyTarget(
+	key: string,
+	source: Record<string, unknown>,
+	out: Record<string, unknown> | undefined,
+): string {
+	const decoded = decodeDoubleEncodedKey(key);
+	// `Object.hasOwn` (not `in`) so a decoded `constructor`/`toString` is not
+	// mistaken for a collision via the prototype chain.
+	if (decoded === null || decoded === key || Object.hasOwn(source, decoded)) return key;
+	return out !== undefined && Object.hasOwn(out, decoded) ? key : decoded;
+}
+
+/** A new object holding the first `count` of `keys` from `source` as own data properties. */
+function copyLeadingEntries(
+	source: Record<string, unknown>,
+	keys: readonly string[],
+	count: number,
+): Record<string, unknown> {
+	const out: Record<string, unknown> = {};
+	for (let i = 0; i < count; i += 1) {
+		Object.defineProperty(out, keys[i], {
+			value: source[keys[i]],
 			writable: true,
 			enumerable: true,
 			configurable: true,
 		});
 	}
-
-	return { value: changed ? out : value, changed };
+	return out;
 }
 
 // ============================================================================
@@ -1260,32 +1268,31 @@ function schemaAcceptsStringAndArray(schema: Record<string, unknown>): boolean {
 	if (Array.isArray(schema.type) && schema.type.includes("string") && schema.type.includes("array")) {
 		return true;
 	}
+	return unionHasStringAndArrayBranches(schema.anyOf) || unionHasStringAndArrayBranches(schema.oneOf);
+}
 
-	for (const key of ["anyOf", "oneOf"] as const) {
-		const branches = schema[key];
-		if (!Array.isArray(branches)) continue;
-		let hasString = false;
-		let hasArray = false;
-		for (const branch of branches) {
-			if (!branch || typeof branch !== "object") continue;
-			const branchType = (branch as Record<string, unknown>).type;
-			if (branchType === "string" || (Array.isArray(branchType) && branchType.includes("string"))) {
-				hasString = true;
-			}
-			if (branchType === "array" || (Array.isArray(branchType) && branchType.includes("array"))) {
-				hasArray = true;
-			}
-			if (hasString && hasArray) return true;
-		}
+function unionHasStringAndArrayBranches(branches: unknown): boolean {
+	if (!Array.isArray(branches)) return false;
+	let hasString = false;
+	let hasArray = false;
+	for (const branch of branches) {
+		if (!branch || typeof branch !== "object") continue;
+		const branchType = (branch as Record<string, unknown>).type;
+		hasString ||= typeDeclares(branchType, "string");
+		hasArray ||= typeDeclares(branchType, "array");
+		if (hasString && hasArray) return true;
 	}
 	return false;
 }
 
+/** Whether a JSON Schema `type` keyword names `name`, alone or in a type list. */
+function typeDeclares(type: unknown, name: string): boolean {
+	return type === name || (Array.isArray(type) && type.includes(name));
+}
+
 function schemaNodeAcceptsArray(schema: unknown): schema is Record<string, unknown> {
 	if (!schema || typeof schema !== "object") return false;
-	const schemaObject = schema as Record<string, unknown>;
-	const schemaType = schemaObject.type;
-	return schemaType === "array" || (Array.isArray(schemaType) && schemaType.includes("array"));
+	return typeDeclares((schema as Record<string, unknown>).type, "array");
 }
 
 function parsedArrayMatchesArrayBranch(schema: Record<string, unknown>, value: unknown[]): boolean {
@@ -1319,75 +1326,47 @@ function parsedArrayMatchesArrayBranch(schema: Record<string, unknown>, value: u
  * against the schema's array branch. Conservative: array-shaped strings like
  * `"[1]"` stay on the string branch when the array branch is `string[]`.
  */
-function normalizeStringEncodedArrayUnions(schema: unknown, value: unknown): { value: unknown; changed: boolean } {
-	if (value === null || value === undefined) return { value, changed: false };
-	if (schema === null || typeof schema !== "object") return { value, changed: false };
-
+function normalizeStringEncodedArrayUnions(schema: unknown, value: unknown): unknown {
+	if (value === null || value === undefined) return value;
+	if (schema === null || typeof schema !== "object") return value;
 	const schemaObject = schema as Record<string, unknown>;
 
-	// Leaf case: this schema node accepts both string and array.
-	if (typeof value === "string" && schemaAcceptsStringAndArray(schemaObject)) {
-		const trimmed = value.trim();
-		if (!trimmed.startsWith("[")) return { value, changed: false };
-		try {
-			const parsed = JSON.parse(trimmed) as unknown;
-			if (Array.isArray(parsed)) {
-				// Unwrap any double-encoded object keys inside the parsed array
-				// before the branch-match check; otherwise an `array<object>`
-				// branch fails to validate and the value silently stays on the
-				// string branch.
-				const candidate = normalizeDoubleEncodedKeys(parsed).value as unknown[];
-				if (parsedArrayMatchesArrayBranch(schemaObject, candidate)) {
-					return { value: candidate, changed: true };
-				}
-			}
-		} catch {
-			// Not valid JSON — leave the string alone for the validator to handle.
-		}
-		return { value, changed: false };
+	if (typeof value === "string") {
+		return schemaAcceptsStringAndArray(schemaObject) ? parseStringEncodedArray(schemaObject, value) : value;
 	}
-
-	// Recurse into array items.
 	if (Array.isArray(value)) {
 		const itemSchema = schemaObject.items;
-		if (!isRecord(itemSchema)) {
-			return { value, changed: false };
-		}
-		let changed = false;
-		let nextValue = value;
-		for (let i = 0; i < value.length; i += 1) {
-			const normalized = normalizeStringEncodedArrayUnions(itemSchema, value[i]);
-			if (!normalized.changed) continue;
-			if (!changed) {
-				nextValue = value.slice();
-				changed = true;
-			}
-			nextValue[i] = normalized.value;
-		}
-		return { value: changed ? nextValue : value, changed };
+		if (!isRecord(itemSchema)) return value;
+		return rewriteArrayItems(EMPTY_LIST, itemSchema, value, normalizeStringEncodedArrayUnions, undefined);
 	}
-
-	// Recurse into object properties.
-	if (schemaObject.type !== "object") return { value, changed: false };
-	if (typeof value !== "object" || value === null) return { value, changed: false };
+	if (schemaObject.type !== "object" || typeof value !== "object") return value;
 	const properties = schemaObject.properties;
-	if (!properties || typeof properties !== "object") return { value, changed: false };
+	if (!properties || typeof properties !== "object") return value;
+	return rewriteDeclaredProperties(
+		properties as Record<string, unknown>,
+		value as Record<string, unknown>,
+		normalizeStringEncodedArrayUnions,
+		undefined,
+	);
+}
 
-	const propsObject = properties as Record<string, unknown>;
-	const valueObject = value as Record<string, unknown>;
-	let changed = false;
-	let nextValue = valueObject;
-	for (const [key, propertySchema] of Object.entries(propsObject)) {
-		if (!(key in nextValue)) continue;
-		const normalized = normalizeStringEncodedArrayUnions(propertySchema, nextValue[key]);
-		if (!normalized.changed) continue;
-		if (!changed) {
-			nextValue = { ...nextValue };
-			changed = true;
-		}
-		nextValue[key] = normalized.value;
+/** The array a JSON-array-shaped `value` encodes, when the array branch of `schema` accepts it; else `value`. */
+function parseStringEncodedArray(schema: Record<string, unknown>, value: string): unknown {
+	const trimmed = value.trim();
+	if (!trimmed.startsWith("[")) return value;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(trimmed);
+	} catch {
+		// Not valid JSON — leave the string alone for the validator to handle.
+		return value;
 	}
-	return { value: changed ? nextValue : valueObject, changed };
+	if (!Array.isArray(parsed)) return value;
+	// Unwrap any double-encoded object keys inside the parsed array before the
+	// branch-match check; otherwise an `array<object>` branch fails to validate
+	// and the value silently stays on the string branch.
+	const candidate = normalizeDoubleEncodedKeys(parsed, 0) as unknown[];
+	return parsedArrayMatchesArrayBranch(schema, candidate) ? candidate : value;
 }
 
 /**
@@ -1421,21 +1400,18 @@ function singleRequiredStringKey(schema: unknown): string | undefined {
  * missing". A present-but-wrong-type value is left alone so its real type error
  * still surfaces.
  */
-function normalizeSingleStringField(schema: unknown, value: unknown): { value: unknown; changed: boolean } {
+function normalizeSingleStringField(schema: unknown, value: unknown): unknown {
 	const key = singleRequiredStringKey(schema);
-	if (key === undefined) return { value, changed: false };
-	if (!isRecord(value)) return { value, changed: false };
-	const record = value as Record<string, unknown>;
-	if (record[key] !== undefined) return { value, changed: false };
-	for (const candidate in record) {
-		if (candidate === key || !Object.hasOwn(record, candidate)) continue;
-		const candidateValue = record[candidate];
+	if (key === undefined || !isRecord(value) || value[key] !== undefined) return value;
+	for (const candidate in value) {
+		if (candidate === key || !Object.hasOwn(value, candidate)) continue;
+		const candidateValue = value[candidate];
 		if (typeof candidateValue !== "string") continue;
-		const next = { ...record, [key]: candidateValue };
+		const next = { ...value, [key]: candidateValue };
 		delete next[candidate];
-		return { value: next, changed: true };
+		return next;
 	}
-	return { value, changed: false };
+	return value;
 }
 
 // ============================================================================
@@ -2056,7 +2032,8 @@ function annotateIssuesWithAcceptedValues(json: unknown, messages: readonly stri
 		.map(line => line.message);
 }
 
-type SchemaNormalizationPass = (json: Record<string, unknown>, value: unknown) => { value: unknown; changed: boolean };
+/** One pre-validation rewrite of the arguments; returns `value` itself when nothing changed. */
+type SchemaNormalizationPass = (json: Record<string, unknown>, value: unknown) => unknown;
 
 /**
  * The schema-directed normalizations that precede every validation attempt,
@@ -2068,26 +2045,26 @@ const SCHEMA_NORMALIZATION_PASSES: readonly SchemaNormalizationPass[] = [
 	// arrives quote-wrapped; left alone it reads as an unrecognized key, gets
 	// dropped by the coercion repair, and re-surfaces as a missing-required
 	// error. Running first means every later pass sees the corrected names.
-	(_json, value) => normalizeDoubleEncodedKeys(value),
+	(_json, value) => normalizeDoubleEncodedKeys(value, 0),
 	// Strip null/string "null" from optional fields, strip optional empty
 	// strings only when their property schema rejects the explicit value, and
 	// substitute defaults. Handles LLM outputting placeholders for "no value"
 	// even when validation would otherwise pass.
-	normalizeOptionalNullsForSchema,
-	normalizeEnumStringWhitespace,
+	(json, value) => normalizeOptionalNullsForSchema(json, value, true),
+	(json, value) => normalizeEnumStringWhitespace(json, value, { root: json, refs: NO_REFS }),
 	// Strip trailing whitespace from string values on well-known
 	// identifier-like property names (paths, URLs, titles). Some models tack
 	// a newline onto a short-identifier arg from stream artifacts; downstream
 	// tools then either fail to stat the target or annotate a "corrected
 	// from" hint the model misreads as tool corruption.
-	(_json, value) => normalizeIdentifierStringWhitespace(value),
+	(_json, value) => normalizeIdentifierStringWhitespace(value, 0),
 	// Then re-shape JSON-stringified arrays whose schema accepts both string
 	// and array (e.g. `paths: string | string[]`). Without this, zod accepts
 	// the literal `'["a","b"]'` as a string and downstream tools treat it as
 	// a single path with embedded glob brackets — silent zero results.
 	normalizeStringEncodedArrayUnions,
 	// The unwrapped arrays can hold identifier strings of their own.
-	(_json, value) => normalizeIdentifierStringWhitespace(value),
+	(_json, value) => normalizeIdentifierStringWhitespace(value, 0),
 	// Single-argument tools (e.g. `edit`): if the model put the lone required
 	// string under a different key, adopt the first string field as that key.
 	normalizeSingleStringField,
@@ -2099,16 +2076,10 @@ const SCHEMA_NORMALIZATION_PASSES: readonly SchemaNormalizationPass[] = [
  * after every issue-driven coercion, because a coercion may unwrap a
  * JSON-string container and expose fields the earlier run could not reach.
  */
-function normalizeArgsForSchema(json: Record<string, unknown>, args: unknown): { value: unknown; changed: boolean } {
+function normalizeArgsForSchema(json: Record<string, unknown>, args: unknown): unknown {
 	let value = args;
-	let changed = false;
-	for (const pass of SCHEMA_NORMALIZATION_PASSES) {
-		const step = pass(json, value);
-		if (!step.changed) continue;
-		value = step.value;
-		changed = true;
-	}
-	return { value, changed };
+	for (const pass of SCHEMA_NORMALIZATION_PASSES) value = pass(json, value);
+	return value;
 }
 
 /**
@@ -2134,9 +2105,8 @@ export function validateToolArguments(tool: Tool, toolCall: ToolCall): ToolCall[
 	const ctx = getValidationContext(tool);
 	const { json } = ctx;
 
-	const normalization = normalizeArgsForSchema(json, originalArgs);
-	let normalizedArgs: unknown = normalization.value;
-	let changed = normalization.changed;
+	let normalizedArgs = normalizeArgsForSchema(json, originalArgs);
+	let changed = normalizedArgs !== originalArgs;
 
 	let result = validateContext(ctx, normalizedArgs);
 	if (result.success) return result.value as ToolCall["arguments"];
@@ -2225,7 +2195,7 @@ function runCoercionPasses(
 		// string[]` descendants and a mislabelled lone string field the initial
 		// run could not reach. Re-run before the unrecognized-key repair on the
 		// next validation pass would delete them.
-		normalizedArgs = normalizeArgsForSchema(json, normalizedArgs).value;
+		normalizedArgs = normalizeArgsForSchema(json, normalizedArgs);
 
 		result = validateContext(ctx, normalizedArgs);
 	}
