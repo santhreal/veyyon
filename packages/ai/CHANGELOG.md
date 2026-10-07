@@ -100,6 +100,7 @@
 - A turn wrapped in empty-completion retries ends with the error an attempt throws before returning its stream, instead of leaving the turn open.
 - The auth broker compares a presented bearer token against every allowed token in constant time, as the auth gateway does, instead of through a set lookup.
 - An auth-broker snapshot request whose store reload fails answers the broker's JSON 500 instead of the server's default error response, and every broker JSON response sends `X-Content-Type-Options: nosniff`.
+- `validateToolArguments` parses a JSON-array string for a string-or-array field inside an `anyOf`, `oneOf` or `allOf` object branch, and for a nullable string-or-array field, into the array, instead of passing the string to the tool.
 
 ## [1.5.4] - 2026-09-24
 

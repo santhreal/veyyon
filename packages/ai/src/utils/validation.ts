@@ -1321,19 +1321,28 @@ function parsedArrayMatchesArrayBranch(schema: Record<string, unknown>, value: u
  * never fires, and downstream tools treat the literal `["a","b"]` as a path
  * (silently producing zero matches or glob parse errors).
  *
- * Walk the schema; when both shapes are accepted AND the incoming value is a
- * JSON-array-shaped string, substitute the parsed array only if it validates
- * against the schema's array branch. Conservative: array-shaped strings like
- * `"[1]"` stay on the string branch when the array branch is `string[]`.
+ * Walk the schema, through `anyOf`, `oneOf` and `allOf`; when both shapes are
+ * accepted AND the incoming value is a JSON-array-shaped string, substitute the
+ * parsed array only if it validates against the schema's array branch.
+ * Conservative: array-shaped strings like `"[1]"` stay on the string branch
+ * when the array branch is `string[]`.
  */
 function normalizeStringEncodedArrayUnions(schema: unknown, value: unknown): unknown {
 	if (value === null || value === undefined) return value;
 	if (schema === null || typeof schema !== "object") return value;
 	const schemaObject = schema as Record<string, unknown>;
 
-	if (typeof value === "string") {
-		return schemaAcceptsStringAndArray(schemaObject) ? parseStringEncodedArray(schemaObject, value) : value;
+	if (typeof value === "string" && schemaAcceptsStringAndArray(schemaObject)) {
+		return parseStringEncodedArray(schemaObject, value);
 	}
+	const combined = rewriteThroughCombinators(
+		schemaObject,
+		value,
+		parseStringEncodedArraysInUnion,
+		normalizeStringEncodedArrayUnions,
+		undefined,
+	);
+	if (combined !== value) return combined;
 	if (Array.isArray(value)) {
 		const itemSchema = schemaObject.items;
 		if (!isRecord(itemSchema)) return value;
@@ -1348,6 +1357,19 @@ function normalizeStringEncodedArrayUnions(schema: unknown, value: unknown): unk
 		normalizeStringEncodedArrayUnions,
 		undefined,
 	);
+}
+
+/**
+ * Rewrites `value` under the first union branch that accepts the rewrite. The
+ * raw value already passes: a JSON-array string is a valid string, so unlike
+ * the other union rewrites a branch accepting `value` does not stop the rewrite.
+ */
+function parseStringEncodedArraysInUnion(branches: unknown[], value: unknown): unknown {
+	for (const branch of branches) {
+		const rewritten = normalizeStringEncodedArrayUnions(branch, value);
+		if (rewritten !== value && isJsonSchemaValueValid(branch, rewritten)) return rewritten;
+	}
+	return value;
 }
 
 /** The array a JSON-array-shaped `value` encodes, when the array branch of `schema` accepts it; else `value`. */
