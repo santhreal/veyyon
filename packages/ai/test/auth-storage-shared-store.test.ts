@@ -181,6 +181,69 @@ describe("shared credential store (PROF-1)", () => {
 		}
 	});
 
+	// An existing store that holds no active login is passed over, not taken as the
+	// winner: stopping there would leave the shared store empty while a later
+	// candidate holds the only login.
+	it("seeds past an existing source that holds no active login", async () => {
+		const legacyDir = path.join(path.dirname(path.dirname(profileDir)), "work", "shared-auth");
+		await fs.mkdir(legacyDir, { recursive: true });
+		const current = await SqliteAuthCredentialStore.open(getAgentDbPath(profileDir));
+		try {
+			const stored = current.replaceAuthCredentialsForProvider("google-antigravity", [oauth("expired")]);
+			current.deleteAuthCredential(stored[0]!.id, "expired");
+		} finally {
+			current.close();
+		}
+		await writeCredential(getAgentDbPath(legacyDir), "google-antigravity", oauth("legacy"));
+
+		await discoverAuthStorage({
+			agentDir: profileDir,
+			storeAgentDir: sharedDir,
+			seedSourceDbPaths: [getAgentDbPath(profileDir), getAgentDbPath(legacyDir)],
+		});
+
+		const shared = await SqliteAuthCredentialStore.open(getAgentDbPath(sharedDir));
+		try {
+			const rows = shared.listAuthCredentials("google-antigravity");
+			expect(rows.map(row => row.credential)).toMatchObject([{ refresh: "refresh-legacy" }]);
+		} finally {
+			shared.close();
+		}
+	});
+
+	it("leaves a seed source that does not exist uncreated", async () => {
+		const missing = path.join(otherProfileDir, "agent.db");
+
+		await discoverAuthStorage({ agentDir: profileDir, storeAgentDir: sharedDir, seedSourceDbPaths: [missing] });
+
+		await expect(fs.access(missing)).rejects.toThrow();
+	});
+
+	it("promotes every credential each provider holds, in the source's order", async () => {
+		const source = await SqliteAuthCredentialStore.open(getAgentDbPath(profileDir));
+		try {
+			source.replaceAuthCredentialsForProvider("google-antigravity", [oauth("first"), oauth("second")]);
+			source.replaceAuthCredentialsForProvider("openai-codex", [oauth("codex")]);
+		} finally {
+			source.close();
+		}
+
+		await discoverAuthStorage({ agentDir: profileDir, storeAgentDir: sharedDir });
+
+		const shared = await SqliteAuthCredentialStore.open(getAgentDbPath(sharedDir));
+		try {
+			expect(shared.listAuthCredentials("google-antigravity").map(row => row.credential)).toMatchObject([
+				{ refresh: "refresh-first" },
+				{ refresh: "refresh-second" },
+			]);
+			expect(shared.listAuthCredentials("openai-codex").map(row => row.credential)).toMatchObject([
+				{ refresh: "refresh-codex" },
+			]);
+		} finally {
+			shared.close();
+		}
+	});
+
 	it("isolation (no storeAgentDir) reads the per-profile store, not the shared one", async () => {
 		await writeCredential(getAgentDbPath(profileDir), "google-antigravity", oauth("profile"));
 

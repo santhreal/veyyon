@@ -110,6 +110,7 @@
 
 ### Fixed
 
+- Broker discovery passes an `auth.broker.token` config value to the config resolver only when that value supplies the token, so its `!command` no longer runs when `VEYYON_AUTH_BROKER_TOKEN` overrides it or no broker URL is configured.
 - A `NO_PROXY` entry naming an IPv6 address, written bare (`2001:db8::1`), bracketed (`[2001:db8::1]`), with a port (`[2001:db8::1]:8443`) or uncompressed, now sends a request to that address around the provider proxy instead of through it.
 - `decontaminateZodInstance` no longer takes a node whose kind is named for an `Object.prototype` member, such as `constructor`, for a Zod instance, and on a rewritten node keeps a key such as `constructor` that it dropped and drops a null `toString` that it kept.
 - A Codex model without the freeform `apply_patch` grammar replays an earlier `apply_patch` call as a `function_call` that matches its `edit` function tool instead of a `custom_tool_call` its tools do not declare, and an Azure Responses turn or compaction does the same whatever the catalog flag says, since every Azure tool is a function tool.
