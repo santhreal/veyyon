@@ -1800,6 +1800,86 @@ function parseResponseReasoningReplayItem(signature: string | undefined): Respon
 	}
 }
 
+const NO_REASONING_ITEMS: readonly (ResponseReasoningItem | undefined)[] = [];
+
+/**
+ * The reasoning item each thinking block's signature replays, in block order, `undefined` for a block whose
+ * signature does not replay. Empty when the turn replays no reasoning: signatures are excluded or the turn errored.
+ */
+function replayReasoningItems(
+	assistantMsg: AssistantMessage,
+	includeThinkingSignatures: boolean,
+): readonly (ResponseReasoningItem | undefined)[] {
+	if (!includeThinkingSignatures || assistantMsg.stopReason === "error") return NO_REASONING_ITEMS;
+	let items: (ResponseReasoningItem | undefined)[] | undefined;
+	for (const block of assistantMsg.content) {
+		if (block.type !== "thinking") continue;
+		items ??= [];
+		items.push(parseResponseReasoningReplayItem(block.thinkingSignature));
+	}
+	return items ?? NO_REASONING_ITEMS;
+}
+
+/**
+ * The `id` a signed text block replays under. Without the matching reasoning item the server rejects replayed
+ * item ids (#4173), so the id is dropped whatever its shape, including a legacy plain-string signature that would
+ * otherwise reach the over-64-char hash and fabricate a `msg_` id.
+ */
+function signedReplayMessageId(signatureId: string, keepId: boolean): string | undefined {
+	if (!keepId) return undefined;
+	return signatureId.length > 64 ? `msg_${Bun.hash(signatureId).toString(36)}` : signatureId;
+}
+
+function textReplayItem(
+	text: string,
+	id: string | undefined,
+	phase: TextSignatureV1["phase"] | undefined,
+): ResponseInput[number] {
+	const messageItem: ResponsesReplayAssistantMessage = {
+		type: "message",
+		role: "assistant",
+		content: [{ type: "output_text", text: text.toWellFormed(), annotations: [] }],
+		status: "completed",
+		...(id ? { id } : {}),
+		...(phase ? { phase } : {}),
+	};
+	return messageItem as ResponseInput[number];
+}
+
+function toolCallReplayItem(
+	block: ToolCall,
+	dropServerItemIds: boolean,
+	knownCallIds: Set<string>,
+	customCallIds: Set<string> | undefined,
+	supportsCustomToolCalls: boolean,
+	customToolWireNameMap: ReadonlyMap<string, string> | undefined,
+): ResponseInput[number] {
+	const normalized = normalizeResponsesToolCallId(block.id, block.customWireName ? "ctc" : "fc");
+	// Every normalized item id is server-issued (`fc_`, `fcr_`, `ctc_`), so the server rejects each one replayed
+	// without its reasoning item or into another model.
+	const itemId = dropServerItemIds ? undefined : normalized.itemId;
+	knownCallIds.add(normalized.callId);
+	if (block.customWireName && supportsCustomToolCalls) {
+		customCallIds?.add(normalized.callId);
+		return {
+			type: "custom_tool_call",
+			...(itemId ? { id: itemId } : {}),
+			call_id: normalized.callId,
+			name: block.customWireName,
+			input: typeof block.arguments?.input === "string" ? block.arguments.input : "",
+		} as ResponseInput[number];
+	}
+	return {
+		type: "function_call",
+		...(itemId ? { id: itemId } : {}),
+		call_id: normalized.callId,
+		name: block.customWireName
+			? resolveReplayCustomToolName(block.customWireName, customToolWireNameMap)
+			: block.name,
+		arguments: stringifyJson(block.arguments) ?? "null",
+	};
+}
+
 export function convertResponsesAssistantMessage<TApi extends Api>(
 	assistantMsg: AssistantMessage,
 	model: Model<TApi>,
@@ -1812,98 +1892,48 @@ export function convertResponsesAssistantMessage<TApi extends Api>(
 	customToolWireNameMap?: ReadonlyMap<string, string>,
 ): ResponseInput {
 	const outputItems: ResponseInput = [];
-	let unsignedTextBlocks = 0;
-	const hasReplayableReasoningItem =
-		includeThinkingSignatures &&
-		assistantMsg.stopReason !== "error" &&
-		assistantMsg.content.some(
-			block => block.type === "thinking" && parseResponseReasoningReplayItem(block.thinkingSignature) !== undefined,
-		);
+	const reasoningItems = replayReasoningItems(assistantMsg, includeThinkingSignatures);
+	const hasReplayableReasoningItem = reasoningItems.some(item => item !== undefined);
 	const isDifferentModel =
 		assistantMsg.model !== model.id && assistantMsg.provider === model.provider && assistantMsg.api === model.api;
+	const dropServerItemIds = !hasReplayableReasoningItem || isDifferentModel;
+	let thinkingBlocks = 0;
+	let unsignedTextBlocks = 0;
 
 	for (const block of assistantMsg.content) {
-		if (block.type === "thinking" && assistantMsg.stopReason !== "error") {
-			if (!includeThinkingSignatures) {
-				continue;
+		switch (block.type) {
+			case "thinking": {
+				const reasoningItem = reasoningItems[thinkingBlocks++];
+				if (reasoningItem) outputItems.push(reasoningItem);
+				break;
 			}
-			const reasoningItem = parseResponseReasoningReplayItem(block.thinkingSignature);
-			if (reasoningItem) outputItems.push(reasoningItem);
-			continue;
-		}
-
-		if (block.type === "text") {
-			const parsedSignature = parseTextSignature(block.textSignature);
-			let msgId = parsedSignature?.id;
-			if (!msgId) {
-				if (hasReplayableReasoningItem) {
+			case "text": {
+				const parsedSignature = parseTextSignature(block.textSignature);
+				let msgId = parsedSignature?.id;
+				if (msgId) {
+					msgId = signedReplayMessageId(msgId, preserveMessageIds || hasReplayableReasoningItem);
+				} else if (hasReplayableReasoningItem) {
 					// Distinct ids per unsigned block: several text blocks in one message
 					// (cross-provider replay downgrades thinking → text) must not share an id.
 					msgId = unsignedTextBlocks === 0 ? `msg_${msgIndex}` : `msg_${msgIndex}_${unsignedTextBlocks}`;
 					unsignedTextBlocks += 1;
 				}
-			} else if (!preserveMessageIds && !hasReplayableReasoningItem) {
-				// Without the matching reasoning item the server rejects replayed
-				// item ids (#4173) — drop them regardless of shape, including
-				// legacy plain-string signatures that would otherwise fall into
-				// the >64-char hash branch and fabricate a bogus msg_ id.
-				msgId = undefined;
-			} else if (msgId.length > 64) {
-				msgId = `msg_${Bun.hash(msgId).toString(36)}`;
+				outputItems.push(textReplayItem(block.text, msgId, parsedSignature?.phase));
+				break;
 			}
-			const messageItem: ResponsesReplayAssistantMessage = {
-				type: "message",
-				role: "assistant",
-				content: [{ type: "output_text", text: block.text.toWellFormed(), annotations: [] }],
-				status: "completed",
-				...(msgId ? { id: msgId } : {}),
-				...(parsedSignature?.phase ? { phase: parsedSignature.phase } : {}),
-			};
-			outputItems.push(messageItem as ResponseInput[number]);
-			continue;
+			case "toolCall":
+				outputItems.push(
+					toolCallReplayItem(
+						block,
+						dropServerItemIds,
+						knownCallIds,
+						customCallIds,
+						supportsCustomToolCalls,
+						customToolWireNameMap,
+					),
+				);
+				break;
 		}
-
-		if (block.type !== "toolCall") {
-			continue;
-		}
-
-		const normalized = normalizeResponsesToolCallId(block.id, block.customWireName ? "ctc" : "fc");
-		let itemId: string | undefined = normalized.itemId;
-		if (
-			!hasReplayableReasoningItem &&
-			(itemId?.startsWith("fc_") || itemId?.startsWith("fcr_") || itemId?.startsWith("ctc_"))
-		) {
-			itemId = undefined;
-		} else if (
-			isDifferentModel &&
-			(itemId?.startsWith("fc_") || itemId?.startsWith("fcr_") || itemId?.startsWith("ctc_"))
-		) {
-			itemId = undefined;
-		}
-		knownCallIds.add(normalized.callId);
-		if (block.customWireName && supportsCustomToolCalls) {
-			const rawInput = typeof block.arguments?.input === "string" ? block.arguments.input : "";
-			customCallIds?.add(normalized.callId);
-			outputItems.push({
-				type: "custom_tool_call",
-				...(itemId ? { id: itemId } : {}),
-				call_id: normalized.callId,
-				name: block.customWireName,
-				input: rawInput,
-			} as ResponseInput[number]);
-			continue;
-		}
-		const functionName =
-			block.customWireName && !supportsCustomToolCalls
-				? resolveReplayCustomToolName(block.customWireName, customToolWireNameMap)
-				: block.name;
-		outputItems.push({
-			type: "function_call",
-			...(itemId ? { id: itemId } : {}),
-			call_id: normalized.callId,
-			name: functionName,
-			arguments: stringifyJson(block.arguments) ?? "null",
-		});
 	}
 
 	return outputItems;
