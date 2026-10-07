@@ -54,6 +54,7 @@
 - `discoverAuthStorage` serves credentials from the shared-store connection it checked for seeding instead of opening the shared database a second time, which takes one open, schema check and close (1.1 ms median of 300) off each launch that uses the shared store.
 - The Hermes and Qwen3 dialects share one in-band scanner, `dialect/json-tool-call-scanner.ts`.
 - The Gemini and Gemma scanners split call arguments through one bracket walk, `dialect/bracket-walk.ts`, and the DeepSeek, Gemini, Harmony, Kimi, pi-native and leaked-reasoning scanners hold a partial tag and stream a fenced reasoning section through shared helpers in `dialect/coercion.ts`; apart from the two stream-end fixes below, the events they emit are unchanged.
+- The auth gateway's OpenAI Responses encoder splits into the response and output-item builders (`providers/openai-responses-server-output.ts`), the SSE stream writer (`providers/openai-responses-server-stream.ts`) and the request parser (`providers/openai-responses-server.ts`), which re-exports the other two; encode time of a 9,614-event stream is unchanged.
 
 ### Fixed
 
@@ -75,6 +76,7 @@
 - An in-band tool call the stream ends inside now ends with the arguments read before the cut in the Anthropic, DeepSeek, GLM, Harmony, Kimi, MiniMax, pi-native and XML dialects, instead of staying open or ending with no arguments.
 - The leaked-reasoning healer ends a tag-closed reasoning section the stream ends inside when no text is held back, instead of leaving it open.
 - A Hermes or Qwen3 reply that ends on a bare `<tool_call>` shows the tag as text instead of dropping it.
+- The auth gateway's streamed `response.output_item.done` frame for a tool call writes only the call-id half of a composite `{call_id}|{item_id}` id, as the `response.output_item.added` frame and the non-streamed response do, instead of the whole id that clients validating `call_id` against `^[a-zA-Z0-9_-]+$` reject.
 
 ## [1.5.4] - 2026-09-24
 
