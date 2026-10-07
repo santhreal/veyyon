@@ -24,36 +24,56 @@ export function normalizeResponsesToolCallId(
 	id: string,
 	itemPrefix: ResponsesToolItemIdPrefix = "fc",
 ): { callId: string; itemId: string } {
-	const [callId, itemId] = id.split("|");
-	if (callId && itemId) {
-		const normalizedCallId = truncateResponseItemId(callId, getIdPrefix(callId, "call"));
-		const normalizedItemId = normalizeResponsesItemId(itemId, itemPrefix);
-		return { callId: normalizedCallId, itemId: normalizedItemId };
+	// `callId|itemId`; text after a second `|` belongs to neither id.
+	const separator = id.indexOf("|");
+	if (separator > 0) {
+		const itemEnd = id.indexOf("|", separator + 1);
+		const itemId = itemEnd === -1 ? id.slice(separator + 1) : id.slice(separator + 1, itemEnd);
+		if (itemId.length > 0) {
+			return {
+				callId: truncateCallId(id.slice(0, separator)),
+				itemId: normalizeResponsesItemId(itemId, itemPrefix),
+			};
+		}
 	}
 	const hash = Bun.hash(id).toString(36);
 	const normalizedCallId = id.startsWith("call_") ? truncateResponseItemId(id, "call") : `call_${hash}`;
 	return { callId: normalizedCallId, itemId: `${itemPrefix}_${hash}` };
 }
 
-function getIdPrefix(id: string, fallback: string): string {
-	const prefix = id.match(/^([a-zA-Z][a-zA-Z0-9]*)_/)?.[1];
-	return prefix || fallback;
+/** Truncate a call id to 64 characters, keeping its own `prefix_` when it has one and `call_` otherwise. */
+function truncateCallId(id: string): string {
+	return id.length <= 64 ? id : truncateResponseItemId(id, idPrefix(id) ?? "call");
 }
 
-function getExplicitIdPrefix(id: string): string | undefined {
-	return id.match(/^([a-zA-Z][a-zA-Z0-9]*)_/)?.[1];
+/** The `prefix` of an id shaped `prefix_rest`, where the prefix is a letter followed by letters and digits. */
+function idPrefix(id: string): string | undefined {
+	const end = id.indexOf("_");
+	if (end <= 0 || !isAsciiLetter(id.charCodeAt(0))) return undefined;
+	for (let index = 1; index < end; index++) {
+		const code = id.charCodeAt(index);
+		if (!isAsciiLetter(code) && (code < 48 || code > 57)) return undefined;
+	}
+	return id.slice(0, end);
+}
+
+function isAsciiLetter(code: number): boolean {
+	return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
 }
 
 function normalizeResponsesItemId(itemId: string, fallbackPrefix: ResponsesToolItemIdPrefix): string {
-	const prefix = getExplicitIdPrefix(itemId);
-	const isAllowedPrefix = prefix
-		? fallbackPrefix === "ctc"
-			? prefix === "ctc"
-			: prefix === "fc" || prefix === "fcr"
-		: false;
-	if (!prefix || !isAllowedPrefix) {
-		return `${fallbackPrefix}_${Bun.hash(itemId).toString(36)}`;
-	}
+	// The prefix ends at the first `_`, so a `ctc_`, `fc_` or `fcr_` start is the whole allowed-prefix test.
+	const prefix =
+		fallbackPrefix === "ctc"
+			? itemId.startsWith("ctc_")
+				? "ctc"
+				: undefined
+			: itemId.startsWith("fc_")
+				? "fc"
+				: itemId.startsWith("fcr_")
+					? "fcr"
+					: undefined;
+	if (!prefix) return `${fallbackPrefix}_${Bun.hash(itemId).toString(36)}`;
 	return truncateResponseItemId(itemId, prefix);
 }
 
@@ -243,7 +263,7 @@ function sanitizeOpenAIResponsesImageGenerationCallForReplay(
 function normalizeReplayedResponsesHistoryCallId(value: string, normalizedValues: Map<string, string>): string {
 	const normalized = normalizedValues.get(value);
 	if (normalized) return normalized;
-	const next = truncateResponseItemId(value, getIdPrefix(value, "call"));
+	const next = truncateCallId(value);
 	normalizedValues.set(value, next);
 	return next;
 }
