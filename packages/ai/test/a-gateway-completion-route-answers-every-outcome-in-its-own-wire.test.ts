@@ -5,7 +5,8 @@
 // with the status the gateway's classifier assigns. The sweep drives every route through a real
 // server and asserts every reachable outcome byte for byte against that route's own `formatError`,
 // so a route that answers in another wire's envelope, swaps a status, drops the classifier, or loses
-// a step fails here. The routes are read from the server's own table, so a new route turns this
+// a step fails here. A request without an accepted bearer never reaches the first step and gets the
+// gateway's plain 401. The routes are read from the server's own table, so a new route turns this
 // suite red until it has a fixture.
 //
 // Not caught: the 499 every step answers once the client has closed its connection, which no client
@@ -198,6 +199,20 @@ describe.each(Object.entries(ROUTES))("completion route %s", (route, fixture) =>
 		const body = fixture.malformed(keyed.id);
 		const res = await post(route, JSON.stringify(body));
 		await expectEnvelope(res, wire, 400, "invalid_request_error", parseFailure(wire, body));
+	});
+
+	it("turns away a request without an accepted bearer before reading it", async () => {
+		for (const authorization of [undefined, "Bearer x", "Basic t"]) {
+			const headers = new Headers({ "Content-Type": "application/json" });
+			if (authorization !== undefined) headers.set("authorization", authorization);
+			const body = JSON.stringify(fixture.request(keyed.id, false));
+			const res = await fetch(`${gateway.url}${route}`, { method: "POST", headers, body });
+			expect({ authorization, status: res.status, body: await res.json() }).toEqual({
+				authorization,
+				status: 401,
+				body: { error: "unauthorized" },
+			});
+		}
 	});
 
 	it("answers a credential lookup that throws with the classifier's verdict", async () => {

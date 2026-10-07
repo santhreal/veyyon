@@ -33,16 +33,9 @@ import * as piNative from "../providers/pi-native-server";
 import { completeSimple, streamSimple } from "../stream";
 import type { Api, AssistantMessage, AssistantMessageEventStream, Context, Model, SimpleStreamOptions } from "../types";
 import { deterministicUuid } from "../utils/deterministic-id";
+import { BearerAllowList, json, resolvePeer } from "../utils/http-server";
 import { parseBind } from "../utils/parse-bind";
-import {
-	captureRequestHeaders,
-	corsHeaders,
-	gatewayResponseHeaders,
-	isAuthorized,
-	json,
-	resolvePeer,
-	withCors,
-} from "./http";
+import { captureRequestHeaders, corsHeaders, gatewayResponseHeaders, withCors } from "./http";
 import type {
 	AuthGatewayServerHandle,
 	AuthGatewayServerOptions,
@@ -772,7 +765,7 @@ function handleModelsList(opts: AuthGatewayBootOptions): Response {
 
 export function startAuthGateway(opts: AuthGatewayBootOptions): AuthGatewayServerHandle {
 	const bind = parseBind(opts.bind ?? DEFAULT_AUTH_GATEWAY_BIND);
-	const tokens = new Set<string>(opts.bearerTokens);
+	const bearer = new BearerAllowList(opts.bearerTokens);
 	const version = opts.version;
 
 	const server = Bun.serve({
@@ -792,7 +785,7 @@ export function startAuthGateway(opts: AuthGatewayBootOptions): AuthGatewayServe
 				if (req.method === "GET" && pathname === "/healthz") {
 					return withCors(json(200, { ok: true, version }), req);
 				}
-				if (!isAuthorized(req, tokens)) {
+				if (!bearer.authorizes(req)) {
 					logger.info("auth-gateway request unauthorized", { method: req.method, path: pathname, peer });
 					return withCors(json(401, { error: "unauthorized" }), req);
 				}

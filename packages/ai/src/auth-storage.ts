@@ -4524,6 +4524,17 @@ export class AuthStorage {
 	}
 
 	/**
+	 * Whether a loaded credential row carries this id. Same row set as
+	 * {@link AuthStorage.exportSnapshot}, without building the redacted entries.
+	 */
+	hasCredentialId(id: number): boolean {
+		for (const entries of this.#data.values()) {
+			if (entries.some(entry => entry.id === id)) return true;
+		}
+		return false;
+	}
+
+	/**
 	 * Refresh the OAuth credential with the given id through a per-credential
 	 * single-flight. Concurrent callers for the same row await the same upstream
 	 * refresh attempt, which is required for providers that rotate refresh tokens

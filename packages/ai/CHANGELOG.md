@@ -5,6 +5,7 @@
 ### Breaking Changes
 
 - `clearAnthropicFastModeFallback` moved from `@veyyon/ai/providers/anthropic` to `@veyyon/ai/providers/anthropic-session-state`, `deriveClaudeDeviceId` to `providers/claude-device-id`, `createOpenAICodexCompactionRequestContext`, `resetOpenAICodexHistoryAfterCompaction`, `getOpenAICodexTransportDetails`, `getOpenAICodexWebSocketDebugStats` and their option and result types from `providers/openai-codex-responses` to `providers/openai-codex/session-state`, `normalizeOpenAIPromptCacheKey` and `normalizeOpenRouterResponsesSessionId` from `providers/openai-shared` to `providers/openai-stable-ids`, and `signaturePolicy`, `sendsSignature`, `elidedSignatureBytes`, `firstRetainedAssistantIndex` and `SignaturePolicy` from `providers/google-shared` to `providers/google-thought-signatures`; the `@veyyon/ai` barrel keeps every name it exported.
+- `@veyyon/ai/auth-gateway/http` no longer exports `json`, `resolvePeer`, `timingSafeEqual` or `isAuthorized`; import them from `@veyyon/ai/auth-gateway` or `@veyyon/ai/utils/http-server`, which also exports `BearerAllowList`.
 
 ### Added
 
@@ -12,6 +13,7 @@
 - `@veyyon/ai/dialect` exports `InbandToolEnd`, the `toolEnd` scan event, whose `unterminated: true` marks a call the stream ended inside; the Kimi and DSML leaked-markup healers drop such a call.
 - `@veyyon/ai/providers/gitlab-duo-workflow` exports `GITLAB_DUO_WORKFLOW_RESTART_LIMITS`, the socket results a GitLab Duo turn restarts on a fresh workflow for and the restarts it may spend on each.
 - `@veyyon/ai/auth-gateway` exports `AUTH_GATEWAY_COMPLETION_PATHS`, every path the gateway answers a completion `POST` on.
+- `@veyyon/ai/auth-broker` exports `AUTH_BROKER_AUTHORIZED_ROUTES`, every broker route that requires a bearer, and `AuthStorage.hasCredentialId(id)` reports whether a loaded credential row has the id.
 
 ### Changed
 
@@ -65,6 +67,8 @@
 - The auth gateway's OpenAI Responses encoder splits into the response and output-item builders (`providers/openai-responses-server-output.ts`), the SSE stream writer (`providers/openai-responses-server-stream.ts`) and the request parser (`providers/openai-responses-server.ts`), which re-exports the other two; encode time of a 9,614-event stream is unchanged.
 - The auth gateway's Chat Completions stream encoder serializes the fields every chunk of a response repeats once per response, cutting the encode of a 19,999-event stream from 11.6 to 8.9 ms (interleaved median of 41) with byte-identical frames across 20,000 generated streams.
 - OpenAI Responses request building records the call ids each native-history replay appends instead of rescanning the whole input after every replay, cutting the build of a 2,000-turn session of incremental snapshots from 67.4 to 3.7 ms and a 1,000-turn session from 17.0 to 1.7 ms (median of five runs) with byte-identical input.
+- The auth broker's credential block and block-clear routes look the row id up among the loaded rows instead of exporting a redacted snapshot of every credential, cutting a request against 400 OAuth credentials from 1.01 to 0.02 ms for an unknown id, from 1.08 to 0.03 ms for a block and from 1.08 to 0.02 ms for a clear (median of 1,500).
+- The auth broker and the auth gateway check bearer tokens through one `BearerAllowList`, which encodes the allowed tokens once per server instead of on every request; a token followed by a non-HTTP whitespace character such as a non-breaking space is turned away instead of trimmed.
 
 ### Fixed
 
@@ -92,6 +96,8 @@
 - An `EventStream` reader answers overlapping `next()` calls in call order, and an event pushed after a reader's `return()` or `throw()` stays queued for the next reader instead of being consumed by the abandoned read.
 - A DeepSeek template token such as `<｜Assistant｜>` is stripped with the whitespace that follows it however the host splits the stream into chunks, instead of leaking the newline after a token that ended one chunk, or deleting the space before a token that began the next.
 - A turn wrapped in empty-completion retries ends with the error an attempt throws before returning its stream, instead of leaving the turn open.
+- The auth broker compares a presented bearer token against every allowed token in constant time, as the auth gateway does, instead of through a set lookup.
+- An auth-broker snapshot request whose store reload fails answers the broker's JSON 500 instead of the server's default error response, and every broker JSON response sends `X-Content-Type-Options: nosniff`.
 
 ## [1.5.4] - 2026-09-24
 

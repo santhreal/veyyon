@@ -1,23 +1,8 @@
 /**
- * Shared HTTP helpers for the auth-gateway routes.
- *
- * Centralized so we share the same JSON shape, auth check,
- * and peer-resolution logic.
+ * HTTP helpers for the auth-gateway routes: response diagnostic headers,
+ * passthrough header capture, prompt-cache identity, and CORS.
  */
-import { timingSafeEqual as nodeTimingSafeEqual } from "node:crypto";
 import type { Api, AssistantMessage, Model } from "../types";
-
-const JSON_HEADERS = {
-	"Content-Type": "application/json",
-	"X-Content-Type-Options": "nosniff",
-} as const;
-
-export function json(status: number, body: unknown, headers?: Record<string, string>): Response {
-	return new Response(JSON.stringify(body) ?? "null", {
-		status,
-		headers: headers ? { ...JSON_HEADERS, ...headers } : JSON_HEADERS,
-	});
-}
 
 /**
  * Diagnostic response headers for translated inference requests, mirroring the
@@ -47,51 +32,6 @@ export function gatewayResponseHeaders(
 		headers["openai-processing-ms"] = elapsed;
 	}
 	return headers;
-}
-
-export function resolvePeer(req: Request): string {
-	const fwd = req.headers.get("x-forwarded-for");
-	if (fwd) return fwd.split(",")[0].trim();
-	return req.headers.get("x-real-ip") ?? "unknown";
-}
-
-/**
- * Constant-time byte comparison. Falls back to a manual XOR accumulator if
- * `node:crypto.timingSafeEqual` isn't available. Always processes every byte
- * of the longer input so length itself doesn't leak via timing.
- */
-export function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
-	if (a.length === b.length && typeof nodeTimingSafeEqual === "function") {
-		return nodeTimingSafeEqual(a, b);
-	}
-	const len = Math.max(a.length, b.length);
-	let diff = a.length ^ b.length;
-	for (let i = 0; i < len; i++) {
-		// Out-of-range reads return undefined → coerce to 0 via `| 0`.
-		const av = (i < a.length ? a[i] : 0) | 0;
-		const bv = (i < b.length ? b[i] : 0) | 0;
-		diff |= av ^ bv;
-	}
-	return diff === 0;
-}
-
-const TOKEN_ENCODER = new TextEncoder();
-
-export function isAuthorized(req: Request, tokens: ReadonlySet<string>): boolean {
-	if (tokens.size === 0) return true;
-	const header = req.headers.get("authorization");
-	if (!header) return false;
-	const match = header.match(/^Bearer\s+(.+)$/i);
-	if (!match) return false;
-	const presented = TOKEN_ENCODER.encode(match[1].trim());
-	// Iterate every allowed token regardless of early hits so the result
-	// timing reflects the full set, not the position of the match.
-	let ok = false;
-	for (const tok of tokens) {
-		const expected = TOKEN_ENCODER.encode(tok);
-		if (timingSafeEqual(presented, expected)) ok = true;
-	}
-	return ok;
 }
 
 /**

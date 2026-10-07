@@ -282,7 +282,7 @@ conversation for no benefit.
 
 The gateway accepts requests in Anthropic, OpenAI-chat and OpenAI-Responses shapes and streams
 them to whichever provider is configured, which means an Anthropic-shaped client can end up on
-a keyed backend. `resolvePromptCacheKey` (`packages/ai/src/auth-gateway/http.ts:183`) reads the
+a keyed backend. `resolvePromptCacheKey` (`packages/ai/src/auth-gateway/http.ts:123`) reads the
 body first, then these allow-listed headers:
 
 ```
@@ -293,7 +293,7 @@ x-session-id
 x-conversation-id
 ```
 
-When none is present, `deriveSessionId` (`packages/ai/src/auth-gateway/server.ts:113`) hashes
+When none is present, `deriveSessionId` (`packages/ai/src/auth-gateway/server.ts:115`) hashes
 the parts that do not change turn to turn: model id, system prompt, tool definitions, and the
 first message. The first message is what scopes the key to one logical conversation, so two
 different chats with the same system prompt do not share a bucket and trample each other's
@@ -302,14 +302,14 @@ prefix-tree entries.
 The resolved value is mirrored into both fields:
 
 ```ts
-// auth-gateway/server.ts:200
+// auth-gateway/server.ts:202
 const promptCacheKey = options.promptCacheKey ?? deriveSessionId(parsed.modelId, parsed.context);
 opts.promptCacheKey = promptCacheKey;
 opts.sessionId = promptCacheKey;
 ```
 
 The same value is also the sticky credential id passed to `storage.getApiKey`
-(`auth-gateway/server.ts:444-453`), so cache affinity and credential affinity cannot drift
+(`auth-gateway/server.ts:487`), so cache affinity and credential affinity cannot drift
 apart.
 
 ### Inbound per-block markers become one per-request retention
