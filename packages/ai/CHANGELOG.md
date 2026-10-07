@@ -82,6 +82,7 @@
 - Responses tool-call id normalization reads an id's prefix by scanning its characters instead of matching a regular expression and splits `callId|itemId` without building an array, cutting the normalization of 2,000 ids from 0.57 to 0.44 ms and `convertCodexResponsesMessages` on a 300-turn transcript from 0.58 to 0.51 ms (median of 201), with identical ids across 400,000 generated ids.
 - The auth gateway's Chat Completions request parser converts messages, decoding options and request options in separate steps and maps every content part through one function; parsed requests and errors are identical across 100,000 generated bodies and parse time is unchanged.
 - `decontaminateZodInstance` rewrites each Zod kind in its own function and copies an object or array only once a value under it changes, so a tool schema with nothing to rewrite is walked without copying any of its objects or arrays; output is identical across 30,000 generated schemas.
+- The Cursor provider applies each interaction-update variant in its own function, selected from a table by variant name; content blocks, events and usage are identical across 30,000 generated update sequences.
 
 ### Fixed
 
