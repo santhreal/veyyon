@@ -110,59 +110,57 @@ function withArkKeyDescription(schema: unknown, description: string | undefined)
 	return { anyOf: [schema], description };
 }
 
+/** ArkType keywords that name a JSON Schema `type`; every other keyword converts to the unconstrained `{}`. */
+const ARK_WIRE_SCALAR_TYPES = new Set(["string", "number", "integer", "boolean", "object"]);
+
 function arkJsonAstToWire(value: unknown): unknown {
-	if (typeof value === "string") {
-		switch (value) {
-			case "string":
-			case "number":
-			case "integer":
-			case "boolean":
-			case "object":
-				return { type: value };
-			case "unknown":
-				return {};
-			default:
-				return {};
-		}
-	}
-
-	if (Array.isArray(value)) {
-		if (value.every(item => isRecord(item) && Object.hasOwn(item, "unit"))) {
-			return { enum: value.map(item => (item as { unit: unknown }).unit) };
-		}
-		return { anyOf: value.map(arkJsonAstToWire) };
-	}
-
+	if (typeof value === "string") return ARK_WIRE_SCALAR_TYPES.has(value) ? { type: value } : {};
+	if (Array.isArray(value)) return arkUnionToWire(value);
 	if (!isRecord(value)) return {};
-
 	if (Object.hasOwn(value, "unit")) return { const: value.unit };
-
 	if (value.proto === "Array" && Object.hasOwn(value, "sequence")) {
 		return { type: "array", items: arkJsonAstToWire(value.sequence) };
 	}
-
-	if (value.domain === "object") {
-		const properties: Record<string, unknown> = {};
-		const required: string[] = [];
-		const addEntry = (entry: unknown, isRequired: boolean): void => {
-			if (!isRecord(entry) || typeof entry.key !== "string" || !("value" in entry)) return;
-			const key = parseArkObjectKey(entry.key);
-			properties[key.name] = withArkKeyDescription(arkJsonAstToWire(entry.value), key.description);
-			if (isRequired) required.push(key.name);
-		};
-		if (Array.isArray(value.required)) {
-			for (const entry of value.required) addEntry(entry, true);
-		}
-		if (Array.isArray(value.optional)) {
-			for (const entry of value.optional) addEntry(entry, false);
-		}
-		const schema: Record<string, unknown> = { type: "object", properties };
-		if (required.length > 0) schema.required = required;
-		return schema;
-	}
-
+	if (value.domain === "object") return arkObjectToWire(value);
 	if (typeof value.domain === "string") return { type: value.domain };
 	return {};
+}
+
+/** A union of `unit` literals converts to an `enum`; any other union converts branch by branch to an `anyOf`. */
+function arkUnionToWire(branches: unknown[]): unknown {
+	if (branches.every(branch => isRecord(branch) && Object.hasOwn(branch, "unit"))) {
+		return { enum: branches.map(branch => (branch as { unit: unknown }).unit) };
+	}
+	return { anyOf: branches.map(arkJsonAstToWire) };
+}
+
+function arkObjectToWire(value: Record<string, unknown>): Record<string, unknown> {
+	const properties: Record<string, unknown> = {};
+	const required: string[] = [];
+	if (Array.isArray(value.required)) addArkObjectEntries(value.required, properties, required);
+	if (Array.isArray(value.optional)) addArkObjectEntries(value.optional, properties, undefined);
+	const schema: Record<string, unknown> = { type: "object", properties };
+	if (required.length > 0) schema.required = required;
+	return schema;
+}
+
+/**
+ * Converts each `{ key, value }` entry into `properties`, moving the comment suffix
+ * {@link parseArkObjectKey} splits off a key into the property's `description`, and appends each
+ * converted name to `required` when one is given.
+ * Entries without a string `key` or a `value` are skipped.
+ */
+function addArkObjectEntries(
+	entries: unknown[],
+	properties: Record<string, unknown>,
+	required: string[] | undefined,
+): void {
+	for (const entry of entries) {
+		if (!isRecord(entry) || typeof entry.key !== "string" || !("value" in entry)) continue;
+		const key = parseArkObjectKey(entry.key);
+		properties[key.name] = withArkKeyDescription(arkJsonAstToWire(entry.value), key.description);
+		required?.push(key.name);
+	}
 }
 
 /** Symbol-stamped caches keyed by schema object identity. */
@@ -261,30 +259,22 @@ function copyNullableScalarConstraints(schema: Record<string, unknown>, scalarVa
 	}
 }
 
+/** The scalar branch of a two-branch `anyOf` that pairs a bare `{ type: "null" }` with one scalar-typed branch. */
+function nullableScalarBranch(variants: unknown[]): (Record<string, unknown> & { type: string }) | undefined {
+	if (variants.length !== 2) return undefined;
+	const [first, second] = variants;
+	if (!isRecord(first) || !isRecord(second)) return undefined;
+	if (isNullVariant(first)) return isScalarVariant(second) ? second : undefined;
+	return isNullVariant(second) && isScalarVariant(first) ? first : undefined;
+}
+
 function rewriteNullableScalarAnyOf(schema: Record<string, unknown>): void {
-	if (hasSchemaDefiningSibling(schema)) return;
-	const variants = schema.anyOf;
-	if (!Array.isArray(variants) || variants.length !== 2) return;
-
-	let scalarVariant: Record<string, unknown> | undefined;
-	let scalarType: string | undefined;
-	let sawNull = false;
-	for (const variant of variants) {
-		if (!isRecord(variant)) return;
-		if (isNullVariant(variant)) {
-			if (sawNull) return;
-			sawNull = true;
-			continue;
-		}
-		if (!isScalarVariant(variant) || scalarVariant) return;
-		scalarVariant = variant;
-		scalarType = variant.type;
-	}
-	if (!sawNull || !scalarVariant || !scalarType) return;
-
+	if (hasSchemaDefiningSibling(schema) || !Array.isArray(schema.anyOf)) return;
+	const scalarVariant = nullableScalarBranch(schema.anyOf);
+	if (!scalarVariant) return;
 	delete schema.anyOf;
 	copyNullableScalarConstraints(schema, scalarVariant);
-	schema.type = [scalarType, "null"];
+	schema.type = [scalarVariant.type, "null"];
 }
 
 /** Keys whose values are a single JSON Schema (not an array or map). */
@@ -307,48 +297,65 @@ const SCHEMA_MAP_KEYS = ["properties", "patternProperties", "$defs", "definition
 /** Keys whose values are an array of schemas. */
 const SCHEMA_ARRAY_KEYS = ["anyOf", "oneOf", "allOf", "prefixItems"] as const;
 
+/**
+ * Calls `visit` on each subschema in a schema-valued position of `obj`: the single-schema keys, then
+ * the entries of each map key in `mapKeys`, then the members of each schema-array key. A
+ * single-schema key holding an array (draft-07 tuple `items`) is passed to `visit` whole.
+ * Data-bearing keys (`default`, `const`, `enum`, `examples`) are never visited.
+ */
+function forEachSubschema(
+	obj: Record<string, unknown>,
+	visit: (schema: unknown) => void,
+	mapKeys: readonly string[] = SCHEMA_MAP_KEYS,
+): void {
+	for (const key of SCHEMA_VALUE_KEYS) {
+		if (Object.hasOwn(obj, key)) visit(obj[key]);
+	}
+	for (const mapKey of mapKeys) {
+		const map = obj[mapKey];
+		if (isRecord(map)) {
+			for (const key in map) visit(map[key]);
+		}
+	}
+	for (const arrayKey of SCHEMA_ARRAY_KEYS) {
+		const array = obj[arrayKey];
+		if (Array.isArray(array)) {
+			for (const child of array) visit(child);
+		}
+	}
+}
+
+/** {@link SCHEMA_MAP_KEYS} without `properties`, which {@link normalizeArkCommentedProperties} walks itself. */
+const ARK_COMMENT_MAP_KEYS = ["patternProperties", "$defs", "definitions"] as const;
+
 function normalizeArkPropertyComments(node: unknown): void {
 	if (Array.isArray(node)) {
 		for (const child of node) normalizeArkPropertyComments(child);
 		return;
 	}
 	if (!isRecord(node)) return;
-	const obj = node as Record<string, unknown>;
+	if (isRecord(node.properties)) normalizeArkCommentedProperties(node, node.properties);
+	forEachSubschema(node, normalizeArkPropertyComments, ARK_COMMENT_MAP_KEYS);
+}
 
-	const properties = obj.properties;
-	if (isRecord(properties)) {
-		const required = Array.isArray(obj.required) ? obj.required : undefined;
-		if (required) {
-			obj.required = required.map(key => (typeof key === "string" ? parseArkObjectKey(key).name : key));
-		}
-		for (const key of Object.keys(properties)) {
-			const parsed = parseArkObjectKey(key);
-			const targetKey = parsed.name;
-			let propertySchema = properties[key];
-			if (parsed.description) {
-				propertySchema = withArkKeyDescription(propertySchema, parsed.description);
-				delete properties[key];
-				properties[targetKey] = propertySchema;
-			}
-			normalizeArkPropertyComments(propertySchema);
-		}
+/**
+ * Strips the comment suffix {@link parseArkObjectKey} splits off from each `required` entry and each
+ * property name of `obj`, moves a non-empty comment into its property's `description`, and walks each
+ * property schema before renaming the next.
+ */
+function normalizeArkCommentedProperties(obj: Record<string, unknown>, properties: Record<string, unknown>): void {
+	if (Array.isArray(obj.required)) {
+		obj.required = obj.required.map(key => (typeof key === "string" ? parseArkObjectKey(key).name : key));
 	}
-
-	for (const key of SCHEMA_VALUE_KEYS) {
-		if (Object.hasOwn(obj, key)) normalizeArkPropertyComments(obj[key]);
-	}
-	for (const mapKey of SCHEMA_MAP_KEYS) {
-		if (mapKey === "properties") continue;
-		const map = obj[mapKey];
-		if (isRecord(map)) {
-			for (const key in map) normalizeArkPropertyComments(map[key]);
+	for (const key of Object.keys(properties)) {
+		const parsed = parseArkObjectKey(key);
+		let propertySchema = properties[key];
+		if (parsed.description) {
+			propertySchema = withArkKeyDescription(propertySchema, parsed.description);
+			delete properties[key];
+			properties[parsed.name] = propertySchema;
 		}
-	}
-	for (const arrayKey of SCHEMA_ARRAY_KEYS) {
-		const array = obj[arrayKey];
-		if (Array.isArray(array)) {
-			for (const child of array) normalizeArkPropertyComments(child);
-		}
+		normalizeArkPropertyComments(propertySchema);
 	}
 }
 
@@ -418,8 +425,9 @@ function inferBareEnumScalarType(obj: Record<string, unknown>): void {
  *     which Gemini/Vertex require),
  *   - branch descriptions are either all absent or all identical,
  * so a union whose branches carry *distinct* per-variant descriptions is left
- * untouched (a flat `enum` has nowhere to keep them). The union root's own
- * description wins when present; otherwise the shared branch description is kept.
+ * untouched (a flat `enum` has nowhere to keep them), as is a union whose shared
+ * branch description differs from the root's own string description. Otherwise
+ * the collapsed node keeps whichever of the two descriptions is present.
  */
 function collapseConstUnionAnyOf(obj: Record<string, unknown>): void {
 	// `hasSchemaDefiningSibling` already rejects a sibling `enum`/`const`/etc.; it
@@ -428,44 +436,66 @@ function collapseConstUnionAnyOf(obj: Record<string, unknown>): void {
 	if (hasSchemaDefiningSibling(obj) || "type" in obj) return;
 	const variants = obj.anyOf;
 	if (!Array.isArray(variants) || variants.length < 2) return;
-
-	const values: unknown[] = [];
-	let branchDescription: string | undefined;
-	let describedCount = 0;
-	for (const variant of variants) {
-		if (!isRecord(variant) || !Object.hasOwn(variant, "const")) return;
-		for (const key in variant) {
-			if (key !== "const" && key !== "description") return; // extra constraints — not a bare const
-		}
-		const desc = variant.description;
-		if (typeof desc === "string") {
-			if (describedCount === 0) branchDescription = desc;
-			else if (desc !== branchDescription) return; // distinct per-variant descriptions — preserve them
-			describedCount++;
-		}
-		values.push(variant.const);
-	}
-	if (describedCount !== 0 && describedCount !== variants.length) return; // mixed described/undescribed
+	const union = readBareConstUnion(variants);
+	if (!union) return;
 	// A shared branch description that disagrees with the union root's own
 	// description would be silently dropped by the collapse — keep the anyOf so
 	// neither annotation is lost. (Equal descriptions, the ArkType case, collapse.)
 	if (
-		describedCount === variants.length &&
+		union.description !== undefined &&
 		typeof obj.description === "string" &&
-		obj.description !== branchDescription
+		obj.description !== union.description
 	) {
 		return;
 	}
 
-	const scalarType = homogeneousEnumScalarType(values);
+	const scalarType = homogeneousEnumScalarType(union.values);
 	if (scalarType === undefined) return; // mixed / non-scalar (incl. null) — leave as anyOf
 
 	delete obj.anyOf;
 	obj.type = scalarType;
-	obj.enum = values;
-	if (typeof obj.description !== "string" && branchDescription !== undefined) {
-		obj.description = branchDescription;
+	obj.enum = union.values;
+	// The check above leaves a string root description equal to the shared one.
+	if (union.description !== undefined) obj.description = union.description;
+}
+
+/** The branch values of a bare-const union and the one description its branches share. */
+interface BareConstUnion {
+	values: unknown[];
+	/** The description every branch carries; `undefined` when no branch carries one. */
+	description: string | undefined;
+}
+
+/** True for a `{ const }` or `{ const, description }` node with no other key. */
+function isBareConstBranch(variant: unknown): variant is Record<string, unknown> {
+	if (!isRecord(variant) || !Object.hasOwn(variant, "const")) return false;
+	for (const key in variant) {
+		if (key !== "const" && key !== "description") return false;
 	}
+	return true;
+}
+
+/**
+ * Reads `variants` as a union of bare const branches whose descriptions are either all absent or all
+ * one string. `undefined` when a branch carries another key, two branch descriptions differ, or only
+ * some branches are described.
+ */
+function readBareConstUnion(variants: unknown[]): BareConstUnion | undefined {
+	const values: unknown[] = [];
+	let description: string | undefined;
+	let described = 0;
+	for (const variant of variants) {
+		if (!isBareConstBranch(variant)) return undefined;
+		const branchDescription = variant.description;
+		if (typeof branchDescription === "string") {
+			if (described === 0) description = branchDescription;
+			else if (branchDescription !== description) return undefined;
+			described++;
+		}
+		values.push(variant.const);
+	}
+	if (described !== 0 && described !== variants.length) return undefined;
+	return { values, description };
 }
 
 function walk(node: unknown, zodCleanup: boolean): void {
@@ -473,39 +503,41 @@ function walk(node: unknown, zodCleanup: boolean): void {
 		for (const child of node) walk(child, zodCleanup);
 		return;
 	}
-	if (!node || typeof node !== "object") return;
-	const obj = node as Record<string, unknown>;
-	rewriteNullableScalarAnyOf(obj);
-	inferBareEnumScalarType(obj);
-	collapseConstUnionAnyOf(obj);
-
+	if (!isRecord(node)) return;
+	rewriteNullableScalarAnyOf(node);
+	inferBareEnumScalarType(node);
+	collapseConstUnionAnyOf(node);
 	if (zodCleanup) {
-		// Drop noise injected for `z.number().int()`.
-		if (hasIntegerType(obj.type)) {
-			if (obj.minimum === SAFE_INTEGER_MIN) delete obj.minimum;
-			if (obj.maximum === SAFE_INTEGER_MAX) delete obj.maximum;
-		}
-
-		// Make defaulted properties non-required.
-		if (Array.isArray(obj.required) && obj.properties && typeof obj.properties === "object") {
-			const properties = obj.properties as Record<string, unknown>;
-			const required = obj.required as string[];
-			const filtered = required.filter(name => {
-				const propertySchema = properties[name];
-				if (!propertySchema || typeof propertySchema !== "object") return true;
-				return !("default" in (propertySchema as Record<string, unknown>));
-			});
-			if (filtered.length !== required.length) {
-				if (filtered.length === 0) {
-					delete obj.required;
-				} else {
-					obj.required = filtered;
-				}
-			}
-		}
+		dropSafeIntegerBounds(node);
+		unrequireDefaultedProperties(node);
 	}
+	for (const k in node) walk(node[k], zodCleanup);
+}
 
-	for (const k in obj) walk(obj[k], zodCleanup);
+/** Drops the safe-integer `minimum` and `maximum` Zod emits for every `z.number().int()`. */
+function dropSafeIntegerBounds(obj: Record<string, unknown>): void {
+	if (!hasIntegerType(obj.type)) return;
+	if (obj.minimum === SAFE_INTEGER_MIN) delete obj.minimum;
+	if (obj.maximum === SAFE_INTEGER_MAX) delete obj.maximum;
+}
+
+/**
+ * Removes each property that declares a `default` from `required`, and drops `required` once it is
+ * empty. JSON Schema treats a defaulted field as optional; Zod keeps it required at the input
+ * boundary and materializes the default.
+ */
+function unrequireDefaultedProperties(obj: Record<string, unknown>): void {
+	const required = obj.required;
+	const properties = obj.properties;
+	if (!Array.isArray(required) || !properties || typeof properties !== "object") return;
+	const schemas = properties as Record<string, unknown>;
+	const filtered = required.filter(name => {
+		const propertySchema = schemas[name];
+		return !propertySchema || typeof propertySchema !== "object" || !("default" in propertySchema);
+	});
+	if (filtered.length === required.length) return;
+	if (filtered.length === 0) delete obj.required;
+	else obj.required = filtered;
 }
 
 /**
@@ -526,30 +558,38 @@ export function normalizeEmptySchemas(node: unknown): void {
 		for (const child of node) normalizeEmptySchemas(child);
 		return;
 	}
-	if (!node || typeof node !== "object") return;
-	const obj = node as Record<string, unknown>;
+	if (!isRecord(node)) return;
+	replaceEmptySubschemas(node);
+	for (const k in node) normalizeEmptySchemas(node[k]);
+}
 
+/** Replaces each `{}` in a schema-valued position of `obj` with `true`. */
+function replaceEmptySubschemas(obj: Record<string, unknown>): void {
 	for (const key of SCHEMA_VALUE_KEYS) {
 		if (Object.hasOwn(obj, key) && isEmptyObject(obj[key])) obj[key] = true;
 	}
 	for (const mapKey of SCHEMA_MAP_KEYS) {
 		const map = obj[mapKey];
-		if (isRecord(map)) {
-			for (const k in map as Record<string, unknown>) {
-				if (isEmptyObject((map as Record<string, unknown>)[k])) (map as Record<string, unknown>)[k] = true;
-			}
-		}
+		if (isRecord(map)) replaceEmptyMapEntries(map);
 	}
-	for (const arrKey of SCHEMA_ARRAY_KEYS) {
-		const arr = obj[arrKey];
-		if (Array.isArray(arr)) {
-			for (let i = 0; i < arr.length; i++) {
-				if (isEmptyObject(arr[i])) arr[i] = true;
-			}
-		}
+	for (const arrayKey of SCHEMA_ARRAY_KEYS) {
+		const array = obj[arrayKey];
+		if (Array.isArray(array)) replaceEmptyArrayMembers(array);
 	}
+}
 
-	for (const k in obj) normalizeEmptySchemas(obj[k]);
+/** Replaces each `{}` entry of a `{ key: Schema }` map with `true`. */
+function replaceEmptyMapEntries(map: Record<string, unknown>): void {
+	for (const key in map) {
+		if (isEmptyObject(map[key])) map[key] = true;
+	}
+}
+
+/** Replaces each `{}` member of a schema array with `true`. */
+function replaceEmptyArrayMembers(array: unknown[]): void {
+	for (let i = 0; i < array.length; i++) {
+		if (isEmptyObject(array[i])) array[i] = true;
+	}
 }
 
 type ZodCoreToJSONSchema = typeof ZodCore.toJSONSchema;
@@ -604,32 +644,17 @@ function closeDeclaredObjects(node: unknown): void {
 		for (const child of node) closeDeclaredObjects(child);
 		return;
 	}
-	if (!node || typeof node !== "object") return;
-	const obj = node as Record<string, unknown>;
-
-	const isObjectType = obj.type === "object" || (Array.isArray(obj.type) && obj.type.includes("object"));
+	if (!isRecord(node)) return;
+	const isObjectType = node.type === "object" || (Array.isArray(node.type) && node.type.includes("object"));
 	if (
 		isObjectType &&
-		obj.properties !== undefined &&
-		!("additionalProperties" in obj) &&
-		!("patternProperties" in obj)
+		node.properties !== undefined &&
+		!("additionalProperties" in node) &&
+		!("patternProperties" in node)
 	) {
-		obj.additionalProperties = false;
+		node.additionalProperties = false;
 	}
-
-	for (const key of SCHEMA_VALUE_KEYS) {
-		if (Object.hasOwn(obj, key)) closeDeclaredObjects(obj[key]);
-	}
-	for (const mapKey of SCHEMA_MAP_KEYS) {
-		const map = obj[mapKey];
-		if (isRecord(map)) {
-			for (const k in map as Record<string, unknown>) closeDeclaredObjects((map as Record<string, unknown>)[k]);
-		}
-	}
-	for (const arrKey of SCHEMA_ARRAY_KEYS) {
-		const arr = obj[arrKey];
-		if (Array.isArray(arr)) for (const child of arr) closeDeclaredObjects(child);
-	}
+	forEachSubschema(node, closeDeclaredObjects);
 }
 
 /** A subschema admitting any JSON value: `{}` or boolean `true` (draft 2020-12 §4.3.1). */
@@ -666,39 +691,30 @@ function pruneArkUndefinedUnionBranches(node: unknown): void {
 		for (const child of node) pruneArkUndefinedUnionBranches(child);
 		return;
 	}
-	if (!node || typeof node !== "object") return;
-	const obj = node as Record<string, unknown>;
+	if (!isRecord(node)) return;
+	pruneUnconstrainedBranches(node, "anyOf");
+	pruneUnconstrainedBranches(node, "oneOf");
+	forEachSubschema(node, pruneArkUndefinedUnionBranches);
+}
 
-	for (const unionKey of ["anyOf", "oneOf"] as const) {
-		const branches = obj[unionKey];
-		if (!Array.isArray(branches)) continue;
-		const concrete = branches.filter(branch => !isUnconstrainedSchema(branch));
-		if (concrete.length === branches.length || concrete.length === 0) continue;
-		const only = concrete.length === 1 ? concrete[0] : undefined;
-		if (only !== undefined && isRecord(only)) {
-			delete obj[unionKey];
-			for (const key in only) {
-				if (!(key in obj)) obj[key] = only[key];
-			}
-		} else {
-			obj[unionKey] = concrete;
+/**
+ * Drops the unconstrained branches of `obj[unionKey]`. A lone remaining record branch is inlined
+ * into `obj` without overriding a key `obj` already has; a union with no unconstrained branch, or
+ * with nothing else, is left as is.
+ */
+function pruneUnconstrainedBranches(obj: Record<string, unknown>, unionKey: "anyOf" | "oneOf"): void {
+	const branches = obj[unionKey];
+	if (!Array.isArray(branches)) return;
+	const concrete = branches.filter(branch => !isUnconstrainedSchema(branch));
+	if (concrete.length === branches.length || concrete.length === 0) return;
+	const only = concrete.length === 1 ? concrete[0] : undefined;
+	if (only !== undefined && isRecord(only)) {
+		delete obj[unionKey];
+		for (const key in only) {
+			if (!(key in obj)) obj[key] = only[key];
 		}
-	}
-
-	for (const key of SCHEMA_VALUE_KEYS) {
-		if (Object.hasOwn(obj, key)) pruneArkUndefinedUnionBranches(obj[key]);
-	}
-	for (const mapKey of SCHEMA_MAP_KEYS) {
-		const map = obj[mapKey];
-		if (isRecord(map)) {
-			for (const key in map as Record<string, unknown>) {
-				pruneArkUndefinedUnionBranches((map as Record<string, unknown>)[key]);
-			}
-		}
-	}
-	for (const arrKey of SCHEMA_ARRAY_KEYS) {
-		const arr = obj[arrKey];
-		if (Array.isArray(arr)) for (const child of arr) pruneArkUndefinedUnionBranches(child);
+	} else {
+		obj[unionKey] = concrete;
 	}
 }
 
