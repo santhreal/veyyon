@@ -3463,9 +3463,11 @@ describe("openai-codex streaming", () => {
 		it(`${"error" in expected ? "fails" : "admits"} a websocket request on ${name}`, async () => {
 			const tempDir = TempDir.createSync("@pi-codex-frame-guard-");
 			setAgentDir(tempDir.path());
-			const fetchMock = vi.fn(async () => {
+			let sseRequests = 0;
+			const fetchImpl: FetchImpl = async () => {
+				sseRequests += 1;
 				throw new Error("SSE fallback should not be called");
-			});
+			};
 			let closeCount = 0;
 			class ScriptedWebSocket extends MockWebSocket {
 				constructor(url: string, options?: { headers?: WsHeaders }) {
@@ -3484,7 +3486,7 @@ describe("openai-codex streaming", () => {
 
 			const model = createCodexTestModel("https://chatgpt.com/backend-api");
 			const result = await streamOpenAICodexResponses(model, createCodexTestContext(), {
-				fetch: fetchMock as FetchImpl,
+				fetch: fetchImpl,
 				apiKey: createCodexTestToken(),
 				sessionId: "ws-frame-guard-session",
 				providerSessionState: new Map<string, ProviderSessionState>(),
@@ -3504,7 +3506,7 @@ describe("openai-codex streaming", () => {
 				expect(text).toBe(expected.text);
 				expect(closeCount).toBe(0);
 			}
-			expect(fetchMock).not.toHaveBeenCalled();
+			expect(sseRequests).toBe(0);
 		});
 	}
 
