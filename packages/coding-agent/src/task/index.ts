@@ -173,42 +173,84 @@ function validateShapeParams(batchEnabled: boolean, params: TaskParams): string 
  */
 function validateSpawnParams(params: TaskParams, batchEnabled: boolean): string | undefined {
 	const hasTask = typeof params.task === "string" && params.task.trim() !== "";
+	if (batchEnabled && params.tasks !== undefined) return validateBatchParams(params, hasTask);
+	if (hasTask) return undefined;
+	return batchEnabled
+		? "Missing `tasks`. Provide a `tasks` array (one spawned agent per item) with a shared `context`."
+		: "Missing `task`. Provide complete, self-contained instructions for the spawned agent.";
+}
+
+/** The batch shape's problem: an empty `tasks`, a top-level `task` beside it, a bad item, or no `context`. */
+function validateBatchParams(params: TaskParams, hasTask: boolean): string | undefined {
 	const tasks = params.tasks;
-	if (batchEnabled && tasks !== undefined) {
-		if (!Array.isArray(tasks) || tasks.length === 0) {
-			return "Missing `tasks`. Provide at least one task item ({ name?, agent?, task }).";
-		}
-		if (hasTask) {
-			return "Top-level `task` is not part of the batch shape. Put the work in `tasks[]` items.";
-		}
-		for (let i = 0; i < tasks.length; i++) {
-			const item = tasks[i];
-			if (!item || typeof item.task !== "string" || item.task.trim() === "") {
-				return `Task ${i + 1}${item?.name ? ` (\`${item.name}\`)` : ""} is missing \`task\`. Every task needs complete, self-contained instructions.`;
-			}
-		}
-		const seen = new Map<string, string>();
-		for (const item of tasks) {
-			const name = item.name?.trim();
-			if (!name) continue;
-			const key = name.toLowerCase();
-			const existing = seen.get(key);
-			if (existing !== undefined) {
-				return `Duplicate task name ${existing === name ? `\`${name}\`` : `\`${existing}\` / \`${name}\``}. Provided names must be unique within a call (case-insensitive).`;
-			}
-			seen.set(key, name);
-		}
-		if (typeof params.context !== "string" || params.context.trim() === "") {
-			return "Missing `context`. Provide the shared background for this batch — goal, constraints, and any contract the tasks share.";
-		}
-		return undefined;
+	if (!Array.isArray(tasks) || tasks.length === 0) {
+		return "Missing `tasks`. Provide at least one task item ({ name?, agent?, task }).";
 	}
-	if (!hasTask) {
-		return batchEnabled
-			? "Missing `tasks`. Provide a `tasks` array (one spawned agent per item) with a shared `context`."
-			: "Missing `task`. Provide complete, self-contained instructions for the spawned agent.";
+	if (hasTask) {
+		return "Top-level `task` is not part of the batch shape. Put the work in `tasks[]` items.";
+	}
+	const itemProblem = batchItemProblem(tasks);
+	if (itemProblem !== undefined) return itemProblem;
+	if (typeof params.context !== "string" || params.context.trim() === "") {
+		return "Missing `context`. Provide the shared background for this batch — goal, constraints, and any contract the tasks share.";
 	}
 	return undefined;
+}
+
+/** The first item without instructions, else the first name another item already took (case-insensitive). */
+function batchItemProblem(tasks: TaskItem[]): string | undefined {
+	for (let i = 0; i < tasks.length; i++) {
+		const item = tasks[i];
+		if (!item || typeof item.task !== "string" || item.task.trim() === "") {
+			return `Task ${i + 1}${item?.name ? ` (\`${item.name}\`)` : ""} is missing \`task\`. Every task needs complete, self-contained instructions.`;
+		}
+	}
+	const seen = new Map<string, string>();
+	for (const item of tasks) {
+		const name = item.name?.trim();
+		if (!name) continue;
+		const key = name.toLowerCase();
+		const existing = seen.get(key);
+		if (existing !== undefined) {
+			return `Duplicate task name ${existing === name ? `\`${name}\`` : `\`${existing}\` / \`${name}\``}. Provided names must be unique within a call (case-insensitive).`;
+		}
+		seen.set(key, name);
+	}
+	return undefined;
+}
+
+/** Approval lines for the flat call shape and the batch's shared `context`. */
+function appendCallApprovalLines(lines: string[], params: Partial<TaskParams>): void {
+	if (typeof params.agent === "string") {
+		lines.push(`Agent: ${truncateForPrompt(params.agent)}`);
+	}
+	if (typeof params.name === "string" && params.name.trim()) {
+		lines.push(`Name: ${truncateForPrompt(params.name)}`);
+	}
+	if (typeof params.task === "string") {
+		lines.push(`Task:\n${truncateForPrompt(params.task)}`);
+	}
+	if (typeof params.context === "string" && params.context.trim()) {
+		lines.push(`Context:\n${truncateForPrompt(params.context)}`);
+	}
+}
+
+/** Approval lines for a batch: the first item in full and a count of the rest. */
+function appendBatchApprovalLines(lines: string[], tasks: readonly Partial<TaskItem>[]): void {
+	const firstTask = tasks[0];
+	if (!firstTask) return;
+	if (typeof firstTask.name === "string" && firstTask.name.trim()) {
+		lines.push(`Name: ${truncateForPrompt(firstTask.name)}`);
+	}
+	if (typeof firstTask.agent === "string" && firstTask.agent.trim()) {
+		lines.push(`Agent: ${truncateForPrompt(firstTask.agent)}`);
+	}
+	if (typeof firstTask.task === "string") {
+		lines.push(`Task:\n${truncateForPrompt(firstTask.task)}`);
+	}
+	if (tasks.length > 1) {
+		lines.push(`+${tasks.length - 1} more task${tasks.length === 2 ? "" : "s"}`);
+	}
 }
 
 /**
@@ -325,34 +367,8 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	readonly formatApprovalDetails = (args: unknown): string[] => {
 		const params = args as Partial<TaskParams>;
 		const lines: string[] = [];
-		if (typeof params.agent === "string") {
-			lines.push(`Agent: ${truncateForPrompt(params.agent)}`);
-		}
-		if (typeof params.name === "string" && params.name.trim()) {
-			lines.push(`Name: ${truncateForPrompt(params.name)}`);
-		}
-		if (typeof params.task === "string") {
-			lines.push(`Task:\n${truncateForPrompt(params.task)}`);
-		}
-		if (typeof params.context === "string" && params.context.trim()) {
-			lines.push(`Context:\n${truncateForPrompt(params.context)}`);
-		}
-		const tasks = Array.isArray(params.tasks) ? params.tasks : [];
-		const firstTask = tasks[0];
-		if (firstTask) {
-			if (typeof firstTask.name === "string" && firstTask.name.trim()) {
-				lines.push(`Name: ${truncateForPrompt(firstTask.name)}`);
-			}
-			if (typeof firstTask.agent === "string" && firstTask.agent.trim()) {
-				lines.push(`Agent: ${truncateForPrompt(firstTask.agent)}`);
-			}
-			if (typeof firstTask.task === "string") {
-				lines.push(`Task:\n${truncateForPrompt(firstTask.task)}`);
-			}
-			if (tasks.length > 1) {
-				lines.push(`+${tasks.length - 1} more task${tasks.length === 2 ? "" : "s"}`);
-			}
-		}
+		appendCallApprovalLines(lines, params);
+		appendBatchApprovalLines(lines, Array.isArray(params.tasks) ? params.tasks : []);
 		return lines;
 	};
 	readonly label = "Task";

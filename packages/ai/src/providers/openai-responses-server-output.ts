@@ -158,6 +158,18 @@ function toolCallItem(part: ToolCall): FunctionCallOutputItem | CustomToolCallOu
 	return functionCallItem(id, wireCallId(part.id), part.name, JSON.stringify(part.arguments ?? {}));
 }
 
+/** An empty assistant message item opened under `signature`'s id and phase. */
+function openMessageItem(signature: MessageSignature | undefined): MessageOutputItem {
+	return {
+		type: "message",
+		id: signature?.id ?? makeMsgId(),
+		role: "assistant",
+		status: "completed",
+		content: [],
+		...(signature?.phase ? { phase: signature.phase } : {}),
+	};
+}
+
 /**
  * Walk the assistant content array and group consecutive TextContent into a
  * single message item; each ThinkingContent / ToolCall is its own item.
@@ -171,14 +183,7 @@ export function buildOutputItems(message: AssistantMessage): OutputItem[] {
 		if (part.type === "text") {
 			const signature = parseTextSignature(part.textSignature);
 			if (!pendingMessage || !sameMessageSignature(pendingMessageSignature, signature)) {
-				pendingMessage = {
-					type: "message",
-					id: signature?.id ?? makeMsgId(),
-					role: "assistant",
-					status: "completed",
-					content: [],
-					...(signature?.phase ? { phase: signature.phase } : {}),
-				};
+				pendingMessage = openMessageItem(signature);
 				pendingMessageSignature = signature;
 				out.push(pendingMessage);
 			}

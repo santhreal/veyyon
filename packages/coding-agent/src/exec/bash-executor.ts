@@ -398,6 +398,27 @@ async function cancelledResult(sink: OutputSink, annotation: string): Promise<Ba
 }
 
 /**
+ * Release a run its `RunStop` ended before the shell answered: abort the shell, then quarantine a
+ * persistent session until the run settles, or drain a one-shot shell in the background.
+ */
+function abandonStoppedRun(
+	sessionKey: string,
+	lease: ShellLease,
+	runPromise: Promise<ShellRunResult>,
+	stop: RunStop,
+): void {
+	const cleanup = stop.abortShell();
+	if (lease.persistent) quarantineShellSession(sessionKey, runPromise, cleanup);
+	else void Promise.allSettled([runPromise, cleanup]);
+}
+
+/** The annotation for a run the shell itself ended: its timeout, else a cancellation. */
+function interruptedRunAnnotation(result: ShellRunResult, timeoutMs: number | undefined): string {
+	if (!result.timedOut) return "Command cancelled";
+	return timeoutMs ? `Command timed out after ${Math.round(timeoutMs / 1000)} seconds` : "Command timed out";
+}
+
+/**
  * When the native minimizer rewrote the output, swap the sink's accumulated raw stream for the minimized
  * text, persist the original as a session artifact, and splice an `artifact://<id>` footer into the visible
  * text so the agent can retrieve the raw bytes losslessly.
@@ -469,13 +490,8 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 		]);
 		if ("stopped" in outcome) {
 			acceptingChunks = false;
-			const cleanup = stop.abortShell();
-			if (lease.persistent) {
-				resetSession = true;
-				quarantineShellSession(sessionKey, runPromise, cleanup);
-			} else {
-				void Promise.allSettled([runPromise, cleanup]);
-			}
+			resetSession = lease.persistent !== undefined;
+			abandonStoppedRun(sessionKey, lease, runPromise, stop);
 			return await cancelledResult(sink, outcome.stopped);
 		}
 		stop.disarmDeadline();
@@ -483,13 +499,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 		if (result.timedOut || result.cancelled) {
 			resetSession = true;
 			if (lease.persistent) quarantineShellSession(sessionKey, runPromise, stop.shellAbort);
-			let annotation = "Command cancelled";
-			if (result.timedOut) {
-				annotation = options?.timeout
-					? `Command timed out after ${Math.round(options.timeout / 1000)} seconds`
-					: "Command timed out";
-			}
-			return await cancelledResult(sink, annotation);
+			return await cancelledResult(sink, interruptedRunAnnotation(result, options?.timeout));
 		}
 		await spliceMinimizedOutput(sink, result.minimized, options?.onMinimizedSave);
 		return {

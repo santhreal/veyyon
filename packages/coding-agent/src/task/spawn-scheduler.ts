@@ -160,14 +160,8 @@ function mergeInlinePayloads(
 		projectAgentsDir ??= payload.details?.projectAgentsDir ?? null;
 		const text = payload.content.find(part => part.type === "text")?.text;
 		if (text) contentParts.push(text);
-		for (const result of payload.details?.results ?? []) {
-			results.push({ ...result, index });
-			if (result.usage) {
-				addUsageTotals(usageTotals, result.usage);
-				hasUsage = true;
-			}
-			if (result.outputPath) outputPaths.push(result.outputPath);
-		}
+		hasUsage =
+			appendSpawnResults(results, usageTotals, outputPaths, payload.details?.results ?? [], index) || hasUsage;
 	}
 	return {
 		contentParts,
@@ -177,6 +171,29 @@ function mergeInlinePayloads(
 		projectAgentsDir,
 		cancelledBeforeStart,
 	};
+}
+
+/**
+ * Append one spawn's results under its call position, adding their usage into `usage` and collecting
+ * their output paths. Returns whether any result reported usage.
+ */
+function appendSpawnResults(
+	results: SingleResult[],
+	usage: Usage,
+	outputPaths: string[],
+	spawnResults: readonly SingleResult[],
+	index: number,
+): boolean {
+	let hasUsage = false;
+	for (const result of spawnResults) {
+		results.push({ ...result, index });
+		if (result.usage) {
+			addUsageTotals(usage, result.usage);
+			hasUsage = true;
+		}
+		if (result.outputPath) outputPaths.push(result.outputPath);
+	}
+	return hasUsage;
 }
 
 /** An inline batch's headline and whether it failed. A cancelled child is not a failure: see `AgentBatchSummary.isError`. */
@@ -565,6 +582,25 @@ export class SpawnScheduler {
 	}
 
 	/**
+	 * Wait for a concurrency permit. An abort while queued settles the row as well, or the batch reads
+	 * "running" forever. A permit this job never acquired is never released: that would let a later spawn
+	 * start past `agent.maxConcurrency`.
+	 */
+	async #admitJob(signal: AbortSignal, progress: AgentProgress, batch: BackgroundBatch): Promise<void> {
+		const admitted = await this.#semaphore()
+			.acquire(signal)
+			.then(
+				() => true,
+				() => false,
+			);
+		if (admitted && !signal.aborted) return;
+		if (admitted) this.#release();
+		progress.status = "aborted";
+		batch.settle(true);
+		throw new Error("Aborted before execution");
+	}
+
+	/**
 	 * Register the background job that runs one spawn to completion and delivers its yield text. A spawn
 	 * that fails or is aborted fails the job; the agent behind it stays reachable.
 	 */
@@ -576,22 +612,8 @@ export class SpawnScheduler {
 			agentId,
 			async ({ signal, reportProgress, markRunning }) => {
 				const startedAt = Date.now();
-				const admitted = await this.#semaphore()
-					.acquire(signal)
-					.then(
-						() => true,
-						() => false,
-					);
+				await this.#admitJob(signal, progress, batch);
 				const acquiredAt = Date.now();
-				if (!admitted || signal.aborted) {
-					// An abort while queued settles the row as well, or the batch reads "running" forever. A
-					// permit this job never acquired is never released: that would let a later spawn start past
-					// `agent.maxConcurrency`.
-					if (admitted) this.#release();
-					progress.status = "aborted";
-					batch.settle(true);
-					throw new Error("Aborted before execution");
-				}
 				let delivery: { text: string; failed: boolean };
 				try {
 					markRunning();

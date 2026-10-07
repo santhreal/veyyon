@@ -31,6 +31,7 @@
 - The JSON Schema meta-validator checks a node by looking each of its keys up in a keyword table instead of probing every known keyword, cutting validation of a 40-tool parameter schema set from 46.6 µs to 33.7 µs with identical verdicts, except that a `NaN` `multipleOf` is now rejected.
 - Stream option mapping resolves each API's options in its own mapper over one shared base instead of one 420-line switch, cutting the mapping of 743,431 model and option combinations from 100.8 ms to 92.1 ms with identical options.
 - The Anthropic and OpenAI-compatible providers split their stream loops, message converters and finalization into per-step helpers; no user-visible change.
+- The Responses gateway opens an assistant message output item in its own function; every output item is unchanged.
 - The Ollama chat stream builds its message, markup healing and stop reason in an `OllamaTurn` and opens its response in `openOllamaResponse`; a 20,000-chunk stream decodes in 20.1 ms instead of 20.2 ms (median of 15), and the events it emits are unchanged.
 - The OpenAI-compatible stream reads a tool call's prior object arguments through the shared `isRecord` guard instead of an inline check; no user-visible change.
 - Provider message replay splits into per-block replay steps and a tool-result pairing pass, cutting its time on a 52,000-message history by 7% for Anthropic targets and 13% for OpenAI Responses targets.
