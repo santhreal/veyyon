@@ -87,6 +87,7 @@
 - A GitLab Duo turn that pauses at a later server-side tool boundary while replaying a buffered checkpoint resumes on the next turn from the frames after that boundary and the frames the socket delivered in between, instead of dropping them; a replay that ends any other way leaves no frames buffered on the session.
 - A GitLab Duo checkpoint that grows an earlier message after a later one emitted text opens a new content block for the earlier message's new text instead of appending it to the later message's block.
 - An `EventStream` reader answers overlapping `next()` calls in call order, and an event pushed after a reader's `return()` or `throw()` stays queued for the next reader instead of being consumed by the abandoned read.
+- A DeepSeek template token such as `<｜Assistant｜>` is stripped with the whitespace that follows it however the host splits the stream into chunks, instead of leaking the newline after a token that ended one chunk, or deleting the space before a token that began the next.
 
 ## [1.5.4] - 2026-09-24
 

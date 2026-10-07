@@ -172,38 +172,26 @@ function mergeStreamingArgumentObjects(
 // user-visible text. Tokens use either fullwidth pipes (｜, U+FF5C) or ASCII pipes.
 // Body is restricted to identifier-like chars (with the DeepSeek tokenizer's `▁`),
 // capped at a sane length to avoid swallowing legitimate angle-bracket text.
-const DEEPSEEK_SPECIAL_TOKEN_REGEX = /<(?:｜|\|)[A-Za-z0-9_.｜|▁]{1,64}(?:｜|\|)>/g;
-const DEEPSEEK_SPECIAL_TOKEN_AT_START_REGEX = /^\s*<(?:｜|\|)[A-Za-z0-9_.｜|▁]{1,64}(?:｜|\|)>/;
+//
+// A token is removed with the whitespace that follows it: the template renders
+// `<｜Assistant｜>\n\n`, and that newline belongs to the marker, not to the answer.
+// The rule depends on nothing but the concatenated text, so the visible result is the
+// same however the host split the stream into chunks.
+const DEEPSEEK_SPECIAL_TOKEN_REGEX = /<(?:｜|\|)[A-Za-z0-9_.｜|▁]{1,64}(?:｜|\|)>\s*/g;
 const DEEPSEEK_SPECIAL_TOKEN_AT_END_REGEX = /<(?:｜|\|)[A-Za-z0-9_.｜|▁]{1,64}(?:｜|\|)>\s*$/;
-const DEEPSEEK_OPEN_DELIMS = ["<｜", "<|"] as const;
 
-function stripDeepseekSpecialTokens(text: string): string {
-	const stripped = text.replace(DEEPSEEK_SPECIAL_TOKEN_REGEX, "");
-	if (stripped === text) return text;
-
-	let normalized = stripped;
-	if (DEEPSEEK_SPECIAL_TOKEN_AT_START_REGEX.test(text)) normalized = normalized.replace(/^\s+/u, "");
-	if (DEEPSEEK_SPECIAL_TOKEN_AT_END_REGEX.test(text)) normalized = normalized.replace(/\s+$/u, "");
-	return normalized;
-}
-
-// Find a trailing partial `<｜...` (or `<|...`) that has not yet been closed by a
-// matching `｜>`/`|>`, so it can be held back until the next chunk arrives. A solo
-// trailing `<` is also held in case it is the start of a new token.
+// The tail of `text` that may still become a special token once the next chunk arrives:
+// everything from the last unclosed `<｜`/`<|`, or a solo trailing `<` that the next chunk
+// may complete into a delimiter. A `<` after a closed token is held too, since the next
+// token can begin right after the last one ends.
 function getTrailingPartialDeepseekToken(text: string): string {
-	let bestIdx = -1;
-	for (const delim of DEEPSEEK_OPEN_DELIMS) {
-		const idx = text.lastIndexOf(delim);
-		if (idx > bestIdx) bestIdx = idx;
+	const open = Math.max(text.lastIndexOf("<｜"), text.lastIndexOf("<|"));
+	if (open !== -1) {
+		const tail = text.slice(open);
+		// Cap the held-back length so a stray `<｜` in normal prose can't grow unboundedly.
+		if (!tail.includes("｜>") && !tail.includes("|>") && tail.length <= 256) return tail;
 	}
-	if (bestIdx === -1) {
-		return text.endsWith("<") ? "<" : "";
-	}
-	const tail = text.slice(bestIdx);
-	if (tail.includes("｜>") || tail.includes("|>")) return "";
-	// Cap the held-back length so a stray `<｜` in normal prose can't grow unboundedly.
-	if (tail.length > 256) return "";
-	return tail;
+	return text.endsWith("<") ? "<" : "";
 }
 
 /** Hosts send reasoning under one of these aliases; the first non-empty one is the chunk's reasoning. */
@@ -329,6 +317,11 @@ export class OpenAICompletionsTurn {
 	 */
 	readonly #reasoningSnapshots = new Map<string, string>();
 	#deepseekHeld = "";
+	/**
+	 * True while the released DeepSeek text ends in a special token, so whitespace at the start of
+	 * the next release still belongs to that token and is dropped with it.
+	 */
+	#afterDeepseekToken = false;
 	/** Set once the host streams native reasoning, after which healed thinking is dropped. */
 	#suppressHealedThinking = false;
 	#sawUsage = false;
@@ -489,10 +482,14 @@ export class OpenAICompletionsTurn {
 		const held = this.#deepseekHeld;
 		if (held.length === 0) return;
 		const trailing = final ? "" : getTrailingPartialDeepseekToken(held);
-		const flushable = held.slice(0, held.length - trailing.length);
+		let flushable = held.slice(0, held.length - trailing.length);
 		this.#deepseekHeld = trailing;
-		const stripped = stripDeepseekSpecialTokens(flushable);
-		if (stripped && (stripped === flushable || stripped.trim().length > 0)) this.#appendText(stripped);
+		if (this.#afterDeepseekToken) {
+			flushable = flushable.trimStart();
+			if (flushable.length === 0) return;
+		}
+		this.#afterDeepseekToken = DEEPSEEK_SPECIAL_TOKEN_AT_END_REGEX.test(flushable);
+		this.#appendText(flushable.replace(DEEPSEEK_SPECIAL_TOKEN_REGEX, ""));
 	}
 
 	#appendText(text: string): void {
