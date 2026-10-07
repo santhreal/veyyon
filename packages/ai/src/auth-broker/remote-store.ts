@@ -46,8 +46,7 @@ const CREDENTIAL_BLOCK_RECONCILE_DELAY_MS = 5 * 60_000;
 const WAIT_THRESHOLD_MS = 1_000;
 const MAX_WAIT_MS = 5_000;
 const BACKGROUND_WAIT_MS = 30_000;
-const BACKGROUND_BACKOFF_INITIAL_MS = 500;
-const BACKGROUND_BACKOFF_MAX_MS = 30_000;
+const BACKGROUND_BACKOFF = { baseMs: 500, maxMs: 30_000, jitter: 0 };
 
 function compareCredentialBlockSnapshots(a: CredentialBlockSnapshot, b: CredentialBlockSnapshot): number {
 	const provider = a.providerKey.localeCompare(b.providerKey);
@@ -102,6 +101,22 @@ function snapshotBlocksChanged(previous: readonly SnapshotEntry[], next: readonl
 		if (previousBlocks && previousBlocks.length > 0) return true;
 	}
 	return false;
+}
+
+/** Key of one credential block in the reconcile map: the credential id, provider key and block scope. */
+function credentialBlockKey(credentialId: number, providerKey: string, blockScope: string): string {
+	return `${credentialId}\0${providerKey}\0${blockScope}`;
+}
+
+/** Every block in `entries` by {@link credentialBlockKey}; a later block under one key replaces an earlier one. */
+function credentialBlocksByKey(entries: readonly SnapshotEntry[]): Map<string, CredentialBlockSnapshot> {
+	const blocks = new Map<string, CredentialBlockSnapshot>();
+	for (const entry of entries) {
+		for (const block of entry.blocks ?? []) {
+			blocks.set(credentialBlockKey(entry.id, block.providerKey, block.blockScope), block);
+		}
+	}
+	return blocks;
 }
 
 function credentialEntryWithBlocks(
@@ -274,23 +289,20 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 			this.#reportStaleSnapshot("snapshot-callback", error, { generation });
 		}
 	}
+
+	/**
+	 * Hold every block that is new or changed against `previous` for reconciliation, and drop the
+	 * reconcile deadline of every block `next` no longer carries.
+	 */
 	#protectNewSnapshotBlocks(previous: readonly SnapshotEntry[], next: readonly SnapshotEntry[], nowMs: number): void {
-		const previousBlocksByKey = new Map<string, string>();
-		for (const entry of previous) {
-			for (const block of entry.blocks ?? []) {
-				previousBlocksByKey.set(
-					`${entry.id}\0${block.providerKey}\0${block.blockScope}`,
-					`${block.blockedUntilMs}\0${block.updatedAtMs ?? ""}`,
-				);
-			}
-		}
+		const previousBlocks = credentialBlocksByKey(previous);
 		const activeKeys = new Set<string>();
 		for (const entry of next) {
 			for (const block of entry.blocks ?? []) {
-				const key = `${entry.id}\0${block.providerKey}\0${block.blockScope}`;
+				const key = credentialBlockKey(entry.id, block.providerKey, block.blockScope);
 				activeKeys.add(key);
-				const signature = `${block.blockedUntilMs}\0${block.updatedAtMs ?? ""}`;
-				if (previousBlocksByKey.get(key) === signature) continue;
+				const before = previousBlocks.get(key);
+				if (before?.blockedUntilMs === block.blockedUntilMs && before.updatedAtMs === block.updatedAtMs) continue;
 				const updatedAtMs = block.updatedAtMs ?? nowMs;
 				this.#credentialBlockReconcileAfter.set(
 					key,
@@ -304,48 +316,47 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 	}
 
 	async #runBackground(): Promise<void> {
-		const backoff = { baseMs: BACKGROUND_BACKOFF_INITIAL_MS, maxMs: BACKGROUND_BACKOFF_MAX_MS, jitter: 0 };
 		let failures = 0;
 		while (!this.#closed && !this.#backgroundAbort.signal.aborted) {
-			if (this.#streamSnapshots && !this.#streamingUnsupported) {
-				try {
-					await this.#consumeSnapshotStream();
-					failures = 0;
-					continue;
-				} catch (error) {
-					if (this.#closed || this.#backgroundAbort.signal.aborted) break;
-					if (error instanceof AIError.AuthBrokerStreamUnsupportedError) {
-						this.#streamingUnsupported = true;
-						logger.debug("auth-broker snapshot stream unsupported; falling back to long-poll");
-						continue;
-					}
-					logger.debug("auth-broker snapshot stream failed; backing off", { error: String(error) });
-					// This sleep rejects for exactly one reason: the background abort fired, meaning shutdown. The
-					// loop re-checks `#closed` and the signal at the top and exits, so there is nothing to report --
-					// and the failure that caused the backoff has already been recorded above.
-					await scheduler
-						.wait(exponentialBackoffDelay(failures++, backoff), { signal: this.#backgroundAbort.signal })
-						.catch(() => {});
-					continue;
-				}
-			}
+			const streaming = this.#streamSnapshots && !this.#streamingUnsupported;
 			try {
-				const result = await this.#client.fetchSnapshot({
-					ifGenerationGt: this.#generation,
-					waitMs: BACKGROUND_WAIT_MS,
-					signal: this.#backgroundAbort.signal,
-				});
-				if (result.status === 200) this.#applySnapshot(result.snapshot, result.generation);
+				await (streaming ? this.#consumeSnapshotStream() : this.#pollSnapshot());
 				failures = 0;
 			} catch (error) {
 				if (this.#closed || this.#backgroundAbort.signal.aborted) break;
-				const backoffMs = exponentialBackoffDelay(failures++, backoff);
-				this.#reportStaleSnapshot("background-sync", error, { backoffMs });
-				// As above: the sleep rejects only on the shutdown abort, which the loop's own checks handle, and
-				// the fetch failure that caused this backoff was just reported.
-				await scheduler.wait(backoffMs, { signal: this.#backgroundAbort.signal }).catch(() => {});
+				if (await this.#backOffAfter(error, streaming, failures)) failures += 1;
 			}
 		}
+	}
+
+	async #pollSnapshot(): Promise<void> {
+		const result = await this.#client.fetchSnapshot({
+			ifGenerationGt: this.#generation,
+			waitMs: BACKGROUND_WAIT_MS,
+			signal: this.#backgroundAbort.signal,
+		});
+		if (result.status === 200) this.#applySnapshot(result.snapshot, result.generation);
+	}
+
+	/**
+	 * Record a failed background sync and sleep through its backoff. Returns `false` without
+	 * sleeping when the broker has no snapshot stream: the stream is latched off and the loop moves
+	 * to long-poll at once.
+	 */
+	async #backOffAfter(error: unknown, streaming: boolean, failures: number): Promise<boolean> {
+		if (streaming && error instanceof AIError.AuthBrokerStreamUnsupportedError) {
+			this.#streamingUnsupported = true;
+			logger.debug("auth-broker snapshot stream unsupported; falling back to long-poll");
+			return false;
+		}
+		const backoffMs = exponentialBackoffDelay(failures, BACKGROUND_BACKOFF);
+		if (streaming) logger.debug("auth-broker snapshot stream failed; backing off", { error: String(error) });
+		else this.#reportStaleSnapshot("background-sync", error, { backoffMs });
+		// The sleep rejects for one reason: the background abort fired, meaning shutdown. The loop
+		// re-checks `#closed` and the signal and exits, and the failure behind this backoff is recorded
+		// above.
+		await scheduler.wait(backoffMs, { signal: this.#backgroundAbort.signal }).catch(() => {});
+		return true;
 	}
 
 	async #consumeSnapshotStream(): Promise<void> {
@@ -459,7 +470,7 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 
 	getCredentialBlockReconcileAfter(credentialId: number, providerKey: string, blockScope: string): number | undefined {
 		if (this.getCredentialBlock(credentialId, providerKey, blockScope) === undefined) return undefined;
-		return this.#credentialBlockReconcileAfter.get(`${credentialId}\0${providerKey}\0${blockScope}`);
+		return this.#credentialBlockReconcileAfter.get(credentialBlockKey(credentialId, providerKey, blockScope));
 	}
 
 	listCredentialBlocks(credentialIds: readonly number[]): StoredCredentialBlock[] {
@@ -489,7 +500,7 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		this.#upsertSnapshotBlock(block);
 		this.#invalidateUsageCache();
 		this.#credentialBlockReconcileAfter.set(
-			`${block.credentialId}\0${block.providerKey}\0${block.blockScope}`,
+			credentialBlockKey(block.credentialId, block.providerKey, block.blockScope),
 			Math.min(block.blockedUntilMs, Date.now() + CREDENTIAL_BLOCK_RECONCILE_DELAY_MS),
 		);
 		const body = toCredentialBlockSnapshot(block);
@@ -1008,6 +1019,17 @@ function normalizeSnapshotEntryBlocks(entry: SnapshotEntry, nowMs: number): Snap
 }
 
 /**
+ * Lower-cased, trimmed identity a usage report is matched against. An empty or
+ * absent field matches nothing.
+ */
+interface UsageIdentity {
+	orgId: string | undefined;
+	accountId: string | undefined;
+	email: string | undefined;
+	projectId: string | undefined;
+}
+
+/**
  * Match a broker-supplied usage report to a specific OAuth credential. The
  * broker returns aggregate reports across all credentials it manages, so we
  * pick the one whose identity (accountId / email / projectId) lines up with
@@ -1017,140 +1039,131 @@ function normalizeSnapshotEntryBlocks(entry: SnapshotEntry, nowMs: number): Snap
  * through to `null` when nothing matches, which `AuthStorage` treats as "no
  * usage data" (ranking proceeds without a usage signal for this credential).
  */
-function matchUsageReport(reports: UsageReport[], provider: Provider, credential: OAuthCredential): UsageReport | null {
-	const all = reports.filter(report => report.provider === provider);
-	if (all.length === 0) return null;
-	// Org precedence, decisive on EITHER side: an org-scoped credential may
-	// only take its own org's report, and an org-less (legacy) credential may
-	// only take org-less reports — the shared email/account would otherwise
-	// hand one subscription the OTHER subscription's pool (e.g. mark healthy
-	// Max exhausted via Team's report, or rank a legacy row on a sibling's
-	// numbers).
-	const orgId = credential.orgId?.trim().toLowerCase();
-	const accountId = credential.accountId?.trim().toLowerCase();
-	const email = credential.email?.trim().toLowerCase();
-	const projectId = credential.projectId?.trim().toLowerCase();
-	if (orgId) {
-		const sameOrg: UsageReport[] = [];
-		let sawReportOrg = false;
-		for (const report of all) {
-			const metaOrg = readMetadataString((report.metadata ?? {}) as Record<string, unknown>, "orgId");
-			if (metaOrg) {
-				sawReportOrg = true;
-				if (metaOrg.toLowerCase() === orgId) sameOrg.push(report);
-			}
-		}
-		// Org-attributed reports exist: the shared org is a GATE, not a match.
-		// Two Team members share the org id while drawing on per-user pools,
-		// so the credential's own base identity must still line up inside the
-		// same-org subset — a lone sibling report is NOT ours. An org-only
-		// credential (no base identifiers) takes the lone same-org report and
-		// treats several as ambiguous. None in our org → "no usage data"
-		// rather than mis-attributing another org's pool.
-		if (sawReportOrg) {
-			if (accountId || email || projectId) {
-				for (const report of sameOrg) {
-					if (reportMatchesIdentity(report, accountId, email, projectId)) return report;
-				}
-				return null;
-			}
-			return sameOrg.length === 1 ? sameOrg[0]! : null;
-		}
-		// No surviving report carries an org at all: presence mismatch is a
-		// non-match too — the sole org-less report may be a legacy sibling
-		// row's pool, and handing it to a scoped credential would rank/block
-		// on the wrong quota. "No usage data" degrades gracefully instead.
-		return null;
-	}
-	const candidates = all.filter(
-		report => !readMetadataString((report.metadata ?? {}) as Record<string, unknown>, "orgId"),
-	);
-	if (candidates.length === 0) return null;
-	if (all.length === 1 && candidates.length === 1) return candidates[0];
-	for (const report of candidates) {
-		if (reportMatchesIdentity(report, accountId, email, projectId)) return report;
-	}
-	return null;
+function matchUsageReport(
+	reports: readonly UsageReport[],
+	provider: Provider,
+	credential: OAuthCredential,
+): UsageReport | null {
+	const index = findIdentityReportIndex(reports, provider, {
+		orgId: credential.orgId?.trim().toLowerCase(),
+		accountId: credential.accountId?.trim().toLowerCase(),
+		email: credential.email?.trim().toLowerCase(),
+		projectId: credential.projectId?.trim().toLowerCase(),
+	});
+	return index === -1 ? null : reports[index]!;
 }
 
-function findMatchingReportIndex(reports: UsageReport[], overlay: UsageReport): number {
-	const all = reports
-		.map((report, index) => ({ report, index }))
-		.filter(candidate => candidate.report.provider === overlay.provider);
-	if (all.length === 0) return -1;
-	const metadata = (overlay.metadata ?? {}) as Record<string, unknown>;
-	// Org precedence — mirror matchUsageReport: an org-attributed overlay may
-	// only merge into a report of the SAME org, and an org-less overlay may
-	// only merge into an org-less report. Within the same org the overlay's
-	// base identity must still match — two Team members' reports share the
-	// org id but must not swallow each other's header ingests.
-	const overlayOrg = readMetadataString(metadata, "orgId")?.toLowerCase();
-	const accountId = readMetadataString(metadata, "accountId")?.toLowerCase();
-	const email = readMetadataString(metadata, "email")?.toLowerCase();
-	const projectId = readMetadataString(metadata, "projectId")?.toLowerCase();
-	if (overlayOrg) {
-		const sameOrg: { report: UsageReport; index: number }[] = [];
-		let sawReportOrg = false;
-		for (const candidate of all) {
-			const candidateOrg = readMetadataString((candidate.report.metadata ?? {}) as Record<string, unknown>, "orgId");
-			if (candidateOrg) {
-				sawReportOrg = true;
-				if (candidateOrg.toLowerCase() === overlayOrg) sameOrg.push(candidate);
-			}
-		}
-		if (sawReportOrg) {
-			if (accountId || email || projectId) {
-				for (const candidate of sameOrg) {
-					if (reportMatchesIdentity(candidate.report, accountId, email, projectId)) return candidate.index;
-				}
-				return -1;
-			}
-			return sameOrg.length === 1 ? sameOrg[0]!.index : -1;
-		}
-		// Presence mismatch — mirror matchUsageReport: an org-scoped overlay
-		// never merges into an org-less report; it becomes its own report row.
-		return -1;
-	}
-	const candidates = all.filter(
-		candidate => !readMetadataString((candidate.report.metadata ?? {}) as Record<string, unknown>, "orgId"),
-	);
-	if (candidates.length === 0) return -1;
-	if (all.length === 1 && candidates.length === 1) return candidates[0]!.index;
-	for (const candidate of candidates) {
-		if (reportMatchesIdentity(candidate.report, accountId, email, projectId)) return candidate.index;
-	}
-	return -1;
+/** Index of the report a usage overlay merges into, by the identity in the overlay's metadata, or -1. */
+function findMatchingReportIndex(reports: readonly UsageReport[], overlay: UsageReport): number {
+	const { metadata } = overlay;
+	return findIdentityReportIndex(reports, overlay.provider, {
+		orgId: readMetadataString(metadata, "orgId")?.toLowerCase(),
+		accountId: readMetadataString(metadata, "accountId")?.toLowerCase(),
+		email: readMetadataString(metadata, "email")?.toLowerCase(),
+		projectId: readMetadataString(metadata, "projectId")?.toLowerCase(),
+	});
 }
 
-function reportMatchesIdentity(
-	report: UsageReport,
-	accountId: string | undefined,
-	email: string | undefined,
-	projectId: string | undefined,
+/**
+ * Org precedence, decisive on EITHER side: an org-scoped identity may only
+ * take its own org's report, and an org-less (legacy) identity may only take
+ * org-less reports. The shared email/account would otherwise hand one
+ * subscription the OTHER subscription's pool (e.g. mark healthy Max exhausted
+ * via Team's report, or rank a legacy row on a sibling's numbers), and a usage
+ * overlay would merge into another subscription's report row.
+ */
+function findIdentityReportIndex(reports: readonly UsageReport[], provider: Provider, identity: UsageIdentity): number {
+	return identity.orgId
+		? findSameOrgReportIndex(reports, provider, identity, identity.orgId)
+		: findOrglessReportIndex(reports, provider, identity);
+}
+
+/**
+ * The shared org is a GATE, not a match. Two Team members share the org id
+ * while drawing on per-user pools, so the identity's own base fields must
+ * still line up inside the same-org reports: a lone sibling report is NOT
+ * ours. An org-only identity (no base fields) takes the lone same-org report
+ * and treats several as ambiguous. No report in the org, including when no
+ * report carries an org at all, is "no usage data" rather than another org's
+ * pool or a legacy sibling row's.
+ */
+function findSameOrgReportIndex(
+	reports: readonly UsageReport[],
+	provider: Provider,
+	identity: UsageIdentity,
+	orgId: string,
+): number {
+	const matchesBaseIdentity = Boolean(identity.accountId || identity.email || identity.projectId);
+	let loneIndex = -1;
+	for (let index = 0; index < reports.length; index += 1) {
+		const report = reports[index]!;
+		if (report.provider !== provider) continue;
+		if (readMetadataString(report.metadata, "orgId")?.toLowerCase() !== orgId) continue;
+		if (matchesBaseIdentity) {
+			if (reportMatchesIdentity(report, identity)) return index;
+			continue;
+		}
+		if (loneIndex !== -1) return -1;
+		loneIndex = index;
+	}
+	return loneIndex;
+}
+
+/** The first org-less report matching the identity, or the provider's only report when it is org-less. */
+function findOrglessReportIndex(reports: readonly UsageReport[], provider: Provider, identity: UsageIdentity): number {
+	let providerReports = 0;
+	let orglessIndex = -1;
+	for (let index = 0; index < reports.length; index += 1) {
+		const report = reports[index]!;
+		if (report.provider !== provider) continue;
+		providerReports += 1;
+		if (readMetadataString(report.metadata, "orgId")) continue;
+		if (reportMatchesIdentity(report, identity)) return index;
+		orglessIndex = index;
+	}
+	return providerReports === 1 ? orglessIndex : -1;
+}
+
+function reportMatchesIdentity(report: UsageReport, identity: UsageIdentity): boolean {
+	const { metadata } = report;
+	const { accountId, email, projectId } = identity;
+	if (
+		accountId &&
+		(metadataMatches(metadata, accountId, "accountId", "account_id") ||
+			limitScopeMatches(report, "accountId", accountId))
+	) {
+		return true;
+	}
+	if (email && metadataMatches(metadata, email, "email")) return true;
+	return Boolean(
+		projectId &&
+			(metadataMatches(metadata, projectId, "projectId", "project_id") ||
+				limitScopeMatches(report, "projectId", projectId)),
+	);
+}
+
+/** Whether the metadata string at `key`, or at `alias` when `key` holds none, lower-cases to `value`. */
+function metadataMatches(
+	metadata: Record<string, unknown> | undefined,
+	value: string,
+	key: string,
+	alias?: string,
 ): boolean {
-	const metadata = (report.metadata ?? {}) as Record<string, unknown>;
-	if (accountId) {
-		const metaAccount = readMetadataString(metadata, "accountId") ?? readMetadataString(metadata, "account_id");
-		if (metaAccount && metaAccount.toLowerCase() === accountId) return true;
-		for (const limit of report.limits) {
-			if (limit.scope.accountId?.toLowerCase() === accountId) return true;
-		}
-	}
-	if (email) {
-		const metaEmail = readMetadataString(metadata, "email");
-		if (metaEmail && metaEmail.toLowerCase() === email) return true;
-	}
-	if (projectId) {
-		const metaProject = readMetadataString(metadata, "projectId") ?? readMetadataString(metadata, "project_id");
-		if (metaProject && metaProject.toLowerCase() === projectId) return true;
-		for (const limit of report.limits) {
-			if (limit.scope.projectId?.toLowerCase() === projectId) return true;
-		}
+	const found =
+		readMetadataString(metadata, key) ?? (alias === undefined ? undefined : readMetadataString(metadata, alias));
+	return found?.toLowerCase() === value;
+}
+
+function limitScopeMatches(report: UsageReport, field: "accountId" | "projectId", value: string): boolean {
+	for (const limit of report.limits) {
+		if (limit.scope[field]?.toLowerCase() === value) return true;
 	}
 	return false;
 }
 
-function readMetadataString(metadata: Record<string, unknown>, key: string): string | undefined {
-	const value = metadata[key];
-	return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+function readMetadataString(metadata: Record<string, unknown> | undefined, key: string): string | undefined {
+	const value = metadata?.[key];
+	if (typeof value !== "string") return undefined;
+	const trimmed = value.trim();
+	return trimmed.length > 0 ? trimmed : undefined;
 }
