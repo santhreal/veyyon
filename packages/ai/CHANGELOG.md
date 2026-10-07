@@ -110,6 +110,7 @@
 
 ### Fixed
 
+- A `NO_PROXY` entry naming an IPv6 address, written bare (`2001:db8::1`), bracketed (`[2001:db8::1]`), with a port (`[2001:db8::1]:8443`) or uncompressed, now sends a request to that address around the provider proxy instead of through it.
 - `decontaminateZodInstance` no longer takes a node whose kind is named for an `Object.prototype` member, such as `constructor`, for a Zod instance, and on a rewritten node keeps a key such as `constructor` that it dropped and drops a null `toString` that it kept.
 - A Codex model without the freeform `apply_patch` grammar replays an earlier `apply_patch` call as a `function_call` that matches its `edit` function tool instead of a `custom_tool_call` its tools do not declare, and an Azure Responses turn or compaction does the same whatever the catalog flag says, since every Azure tool is a function tool.
 - The Codex request transformer repairs unpaired tool calls and outputs through the repair the other Responses providers use, so an unpaired output with no payload folds into an empty note instead of throwing, a null payload is written as empty instead of `null`, and an output with an empty tool name is attributed to `tool`.

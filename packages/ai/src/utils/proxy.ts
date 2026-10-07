@@ -59,16 +59,26 @@ let noProxyRules: { raw: string; rules: NoProxyRule[] } | undefined;
 function parseNoProxyRule(rule: string): NoProxyRule {
 	let host = rule.toLowerCase();
 	let port: string | undefined;
-	if (host.includes("]:") || (!host.includes("]") && host.includes(":"))) {
+	// A bracketed address takes its port after the closing bracket, and a bare IPv6 address has no
+	// port: its colons are all its own.
+	if (host.includes("]:") || (!host.includes("]") && host.includes(":") && !net.isIPv6(host))) {
 		const lastColon = host.lastIndexOf(":");
 		port = host.slice(lastColon + 1) || undefined;
 		host = host.slice(0, lastColon);
 	}
 	// Strip IPv6 brackets
 	host = host.replace(/^\[|\]$/g, "");
+	if (net.isIPv6(host)) host = canonicalIPv6(host);
 	// A leading dot matches the bare domain and its subdomains.
 	const dotted = host.startsWith(".");
 	return { any: rule === "*", port, exact: dotted ? host.slice(1) : host, suffix: dotted ? host : `.${host}` };
+}
+
+/** `address` in the compressed lowercase form a URL's hostname writes it in, without brackets, so
+ *  `2001:0DB8:0::1` names the host `[2001:db8::1]`. */
+function canonicalIPv6(address: string): string {
+	const hostname = URL.parse(`http://[${address}]/`)?.hostname;
+	return hostname ? hostname.slice(1, -1) : address;
 }
 
 function parsedNoProxyRules(raw: string): NoProxyRule[] {
@@ -87,7 +97,9 @@ export function shouldBypassProxy(urlObj: URL): boolean {
 	if (isLocalOrMetadataHost(urlObj.hostname)) return true;
 	const noProxyVal = process.env.NO_PROXY || process.env.no_proxy;
 	if (!noProxyVal) return false;
-	const targetHost = urlObj.hostname.toLowerCase();
+	// A URL writes an IPv6 hostname in brackets and already lowercased; an entry is compared without them.
+	const hostname = urlObj.hostname;
+	const targetHost = hostname.startsWith("[") ? hostname.slice(1, -1) : hostname.toLowerCase();
 	const targetPort = urlObj.port || (urlObj.protocol === "https:" ? "443" : "80");
 	for (const rule of parsedNoProxyRules(noProxyVal)) {
 		if (rule.any) return true;
