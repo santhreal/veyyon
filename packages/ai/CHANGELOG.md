@@ -10,10 +10,12 @@
 
 - `@veyyon/ai/utils/schema/arktype` exports `type`, `scope` and `Type` stand-ins that evaluate the `arktype` package on their first call, construction or property read, plus `loadArktype`, `configureArktype`, which holds a configuration until the first `loadArktype` applies it, and `arktypeRelease`, which reads the installed release from package metadata; every arktype value import in the package goes through it, so a process that configures ArkType and builds no schema evaluates none of arktype's 115 modules.
 - `@veyyon/ai/dialect` exports `InbandToolEnd`, the `toolEnd` scan event, whose `unterminated: true` marks a call the stream ended inside; the Kimi and DSML leaked-markup healers drop such a call.
+- `@veyyon/ai/providers/gitlab-duo-workflow` exports `GITLAB_DUO_WORKFLOW_RESTART_LIMITS`, the socket results a GitLab Duo turn restarts on a fresh workflow for and the restarts it may spend on each.
 
 ### Changed
 
 - GitLab Duo builds the stream options its Anthropic, Responses and Chat Completions routes share once, and Claude usage builds its account-wide 5-hour and 7-day limits in one place for the usage endpoint and the rate-limit headers; requests and limits are unchanged.
+- `GitLabDuoWorkflowStreamState` drops `stepLimitRequested`, `retryableErrorRequested` and `stalledRequested`, which nothing read; the socket result reports the same outcome.
 - `EventStream`'s iterator `return` passes its value to the generator as `undefined` rather than `void`; behavior is unchanged.
 - The in-band tag scanners find a held-back partial tag by comparing in place at the positions holding the tag's first character instead of slicing every candidate prefix on each delta, cutting the leaked-thinking scan of a 60,000-char answer at 24-char deltas from 2.6 ms to 0.4 ms with identical holds across every text and tag over a three-symbol alphabet.
 - The output-loop guard compares a streamed tail's candidate repeats char by char in place instead of slicing both sides of every candidate length on each delta, cutting its cost on a 200,000-char non-looping stream from 228 ms to 26 ms at 12-char deltas with identical verdicts across 200,000 generated tails.

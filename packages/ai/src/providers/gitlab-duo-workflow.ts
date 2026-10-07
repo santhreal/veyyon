@@ -396,15 +396,10 @@ export interface GitLabDuoWorkflowStreamState {
 	checkpointAgentContentByKey?: Record<string, string>;
 	checkpointAgentContentSignatures?: Record<string, true>;
 	pauseRequested?: boolean;
-	stepLimitRequested?: boolean;
-	retryableErrorRequested?: boolean;
 	// Byte length of the server's latest checkpoint seen this socket run; the action
 	// handler compares it against the previous tool-call boundary's length to detect a
 	// stall (a byte-identical checkpoint means the server-side turn did not advance).
 	lastCheckpointContentLength?: number;
-	// Set when a tool-call boundary's checkpoint byte length did not change from the
-	// previous boundary — the socket settles "stalled" so the run restarts fresh.
-	stalledRequested?: boolean;
 	providerSessionState?: GitLabDuoWorkflowProviderSessionState;
 	lastApprovalStatus?: string;
 	// When the rendered goal exceeds the byte budget, this carries an overflow-pattern
@@ -1474,7 +1469,7 @@ async function refuseOversizedGitLabDuoWorkflowGoal(
 }
 
 /** Socket results a request recovers from on a fresh workflow, and the restarts one request may spend on each. */
-const GITLAB_DUO_WORKFLOW_RESTART_LIMITS: Partial<Record<GitLabDuoWorkflowSocketResult, number>> = {
+export const GITLAB_DUO_WORKFLOW_RESTART_LIMITS: Partial<Record<GitLabDuoWorkflowSocketResult, number>> = {
 	timeout: 1,
 	step_limit: GITLAB_DUO_WORKFLOW_MAX_STEP_LIMIT_RESTARTS,
 	stalled: GITLAB_DUO_WORKFLOW_MAX_STALL_RESTARTS,
@@ -1607,8 +1602,8 @@ function openGitLabDuoWorkflowAttempt(
 }
 
 /**
- * Spends one fresh-workflow restart on a recoverable socket result and clears the flag the socket
- * raised for it. False when the result is not recoverable or its restarts are spent.
+ * Spends one fresh-workflow restart on a recoverable socket result. False when the result is not
+ * recoverable or its restarts are spent.
  */
 function spendGitLabDuoWorkflowRestart(
 	result: GitLabDuoWorkflowSocketResult,
@@ -1645,7 +1640,6 @@ function spendGitLabDuoWorkflowRestart(
 		// task that perpetually overruns degrades to a graceful stop, not a quota
 		// sink.
 		case "step_limit":
-			state.stepLimitRequested = false;
 			traceGitLabDuoWorkflow("websocket.step_limit_restart", { workflowId, restart });
 			break;
 		// The server emitted a fresh tool-call boundary whose `ui_chat_log` total did
@@ -1658,7 +1652,6 @@ function spendGitLabDuoWorkflowRestart(
 		// tool result is lost. Bounded so a persistently stalling endpoint degrades to
 		// a surfaced result instead of looping on quota.
 		case "stalled":
-			state.stalledRequested = false;
 			traceGitLabDuoWorkflow("websocket.stall_restart", { workflowId, restart });
 			break;
 		// The server returned its de-identified catch-all FAILED — a wrapper over a
@@ -1667,7 +1660,6 @@ function spendGitLabDuoWorkflowRestart(
 		// flows): the conversation replays through the goal transcript. Bounded low
 		// so a deterministic failure surfaces instead of looping on quota.
 		case "retryable_error":
-			state.retryableErrorRequested = false;
 			// Clear the stashed message: it only surfaces if the retry also fails.
 			state.output.errorMessage = undefined;
 			traceGitLabDuoWorkflow("websocket.generic_error_retry", { workflowId, retry: restart });
@@ -2381,7 +2373,6 @@ async function handleGitLabDuoWorkflowSocketMessage(
 		// (the accumulated context/tool results replay via the goal envelope).
 		if (status === "FAILED" && isGitLabDuoWorkflowStepLimitMessage(message)) {
 			traceGitLabDuoWorkflow("websocket.step_limit", { status });
-			state.stepLimitRequested = true;
 			return "step_limit";
 		}
 		// The DWS catch-all FAILED ("...error processing your request in the Duo Agent
@@ -2392,7 +2383,6 @@ async function handleGitLabDuoWorkflowSocketMessage(
 		// failure degrades to a surfaced error instead of a quota sink.
 		if (status === "FAILED" && isGitLabDuoWorkflowGenericProcessingError(message)) {
 			traceGitLabDuoWorkflow("websocket.generic_error", { status });
-			state.retryableErrorRequested = true;
 			// Stash the real message but do NOT push an error event yet: the loop retries
 			// on a fresh workflow and only surfaces this if retries are exhausted.
 			state.output.errorMessage = message;
@@ -2427,7 +2417,6 @@ async function handleGitLabDuoWorkflowSocketMessage(
 			checkpointLength: state.lastCheckpointContentLength,
 			actionName: action.name,
 		});
-		state.stalledRequested = true;
 		return "stalled";
 	}
 	// Finalize this tool_call as its own assistant message and commit it as the
