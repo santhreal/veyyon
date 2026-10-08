@@ -221,7 +221,7 @@
 - `/usage` groups reports by provider, lists saved resets, collects limit rows and draws each row in single-purpose functions instead of one 180-line function; its output is unchanged across a 20,000-case corpus.
 - `/session` builds its provider, message, token, cost, language-server and MCP sections in single-purpose functions; its output is unchanged across a 20,000-case corpus.
 - `/share` runs the custom share script and the default share in separate steps, `/memory` runs each subcommand in its own method, `/move` checks and creates its target in one step, and `/compact` merges its instructions and mode in one function; no user-visible change.
-- `/mcp` runs its Smithery search, deploy and login steps from `mcp-smithery-commands.ts`, its OAuth login and reauthorization from `mcp-oauth-login.ts`, its list, resource, prompt and notification reports from `mcp-server-reports.ts` and its messages from `mcp-command-output.ts`; its output is unchanged across a 20,000-case corpus.
+- `/mcp` runs its Smithery search, deploy and login steps from `mcp-smithery-commands.ts`, its OAuth login and reauthorization from `mcp-oauth-login.ts`, its list, resource, prompt and notification reports from `mcp-server-reports.ts` and its messages from `mcp-command-output.ts`, and `MCPOAuthFlow.storedCredential` builds the credential row a login stores; its output is unchanged across a 20,000-case corpus.
 
 ### Fixed
 

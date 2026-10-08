@@ -398,6 +398,22 @@ export class MCPOAuthFlow extends OAuthCallbackFlow {
 		return this.config.authorizationUrl;
 	}
 
+	/**
+	 * The credential row `credentials` are stored as, holding the refresh material (token URL, client, resource
+	 * and issuer) so token refresh works for a config that carries no auth block.
+	 */
+	storedCredential(credentials: OAuthCredentials): MCPStoredOAuthCredential {
+		return {
+			type: "oauth",
+			...credentials,
+			tokenUrl: this.config.tokenUrl,
+			clientId: this.#resolvedClientId ?? this.config.clientId,
+			clientSecret: this.#registeredClientSecret ?? this.config.clientSecret,
+			resource: this.#resource,
+			authorizationUrl: this.config.authorizationUrl,
+		};
+	}
+
 	async generateAuthUrl(state: string, redirectUri: string): Promise<{ url: string; instructions?: string }> {
 		if (!this.#resolvedClientId) {
 			await this.#tryRegisterClient(redirectUri);

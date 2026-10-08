@@ -3,8 +3,6 @@
  * flow, its cancellation, the stored credential, and the config entry that
  * points at it.
  */
-import type { AuthStorage } from "@veyyon/ai/auth-storage";
-import type { OAuthCredentials } from "@veyyon/ai/oauth/types";
 import { type Component, Spacer, Text } from "@veyyon/tui";
 import { errorMessage } from "@veyyon/utils";
 import { raceWithTimeout } from "@veyyon/utils/scoped-timeout";
@@ -205,12 +203,7 @@ export async function loginWithMcpOAuth(
 		);
 		const credentials = await cancellation.race(() => flow.login());
 		ctx.present([new Spacer(1), new Text(theme.fg("success", "ok Authorization completed in browser."), 1, 0)]);
-		return await storeOAuthCredential(ctx.session.modelRegistry.authStorage, flow, credentials, {
-			tokenUrl,
-			serverUrl: opts?.serverUrl,
-			clientId: resolvedClientId,
-			clientSecret: resolvedClientSecret,
-		});
+		return await storeOAuthCredential(ctx, flow, flow.storedCredential(credentials), opts?.serverUrl);
 	} catch (error) {
 		// A user-initiated cancel (Esc or the external signal) is a neutral status, not a failure. The flag
 		// decides it rather than the abort reason: the timeout aborts the same signal and has to surface as a
@@ -373,32 +366,20 @@ function presentAuthorizationPrompt(ctx: McpOAuthLoginContext, info: { url: stri
 	ctx.ui.requestRender();
 }
 
-/**
- * Store `credentials` with the refresh material the flow resolved, so token
- * refresh works for configs that carry no auth block at all.
- */
+/** Stores `credential` under the server URL's credential id, or a fresh one when the flow never knew the URL. */
 async function storeOAuthCredential(
-	authStorage: AuthStorage,
+	ctx: McpOAuthLoginContext,
 	flow: MCPOAuthFlow,
-	credentials: OAuthCredentials,
-	request: { tokenUrl: string; serverUrl?: string; clientId?: string; clientSecret?: string },
+	credential: MCPStoredOAuthCredential,
+	serverUrl: string | undefined,
 ): Promise<McpOAuthLoginResult> {
 	// Deterministic per-URL id: every profile resolves its own credential row
 	// under the same key, so shared project configs stay profile-isolated.
 	// Random fallback only for flows that never knew the server URL.
-	const credentialId = request.serverUrl
-		? mcpOAuthCredentialId(request.serverUrl)
+	const credentialId = serverUrl
+		? mcpOAuthCredentialId(serverUrl)
 		: `mcp_oauth_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
-	const oauthCredential: MCPStoredOAuthCredential = {
-		type: "oauth",
-		...credentials,
-		tokenUrl: request.tokenUrl,
-		clientId: flow.resolvedClientId ?? request.clientId,
-		clientSecret: flow.registeredClientSecret ?? request.clientSecret,
-		resource: flow.resource,
-		authorizationUrl: flow.authorizationUrl,
-	};
-	await authStorage.set(credentialId, oauthCredential);
+	await ctx.session.modelRegistry.authStorage.set(credentialId, credential);
 	return { credentialId, clientId: flow.resolvedClientId, resource: flow.resource };
 }
 

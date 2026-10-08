@@ -161,8 +161,10 @@ describe("/mcp auth commands", () => {
 		expect(authStorage.get(oauthFlow.mcpOAuthCredentialId(EXPANDED_SERVER_URL))).toMatchObject({
 			type: "oauth",
 			access: "fresh-access",
+			refresh: "fresh-refresh",
 			tokenUrl: "https://auth.example.com/token",
 			resource: EXPANDED_SERVER_URL,
+			authorizationUrl: "https://auth.example.com/authorize",
 		});
 		expect(authStorage.get(oauthFlow.mcpOAuthCredentialId(RAW_SERVER_URL))).toBeUndefined();
 
