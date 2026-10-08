@@ -178,22 +178,16 @@ export function formatCollabLink(relayUrl: string, roomId: string, key: Uint8Arr
 }
 
 export function parseCollabLink(link: string): ParsedCollabLink | { error: string } {
-	// Lenient input: terminals that open OSC 8 links through strict URL stacks
-	// (macOS Foundation) percent-encode the legacy second `#` to `%23`.
-	let text = link.trim().replace(/%23/gi, "#");
-	// Bare `<roomId>.<key>` (legacy `<roomId>#<key>`) → default relay.
-	const bare = BARE_LINK_RE.exec(text);
-	if (bare) text = `${DEFAULT_RELAY_URL}/r/${bare[1]}.${bare[2]}`;
-	// Scheme-less `host[:port]/r/…` → wss.
-	else if (!text.includes("://")) text = `wss://${text}`;
 	let url: URL;
 	try {
-		url = new URL(text);
+		url = new URL(expandLinkText(link));
 	} catch {
 		return { error: `Invalid collab link: ${link}` };
 	}
-	if ((url.protocol === "http:" || url.protocol === "https:") && url.hash) {
-		const inner = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
+	// `URL.hash` is "" or "#<fragment>".
+	const inner = url.hash.slice(1);
+	const web = url.protocol === "http:" || url.protocol === "https:";
+	if (web && inner) {
 		const parsed = parseCollabLink(inner);
 		if (!("error" in parsed)) return parsed;
 	}
@@ -204,22 +198,39 @@ export function parseCollabLink(link: string): ParsedCollabLink | { error: strin
 		// Non-http(s) deep links may also carry a complete collab link in the
 		// fragment. http(s) links are handled once above so invalid fragments
 		// fall through to direct relay validation instead of double-recursing.
-		const inner = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
-		if (inner && url.protocol !== "http:" && url.protocol !== "https:") return parseCollabLink(inner);
+		if (inner && !web) return parseCollabLink(inner);
 		return { error: "Collab link must contain a /r/<roomId> path" };
 	}
 	const roomId = match[1] as string;
 	// Key rides dot-joined in the path (`/r/<roomId>.<key>`); legacy links
 	// carry it in the fragment (`/r/<roomId>#<key>`).
-	const fragment = match[2] ?? (url.hash.startsWith("#") ? url.hash.slice(1) : url.hash);
-	if (!fragment) {
-		return { error: "Collab link is missing the <key> part" };
-	}
+	const secret = splitRoomSecret(match[2] ?? inner);
+	if ("error" in secret) return secret;
+	return { wsUrl: `${normalized.origin}/r/${roomId}`, roomId, ...secret };
+}
+
+/**
+ * Expands the lenient input forms to a full URL string: `%23` back to `#`
+ * (strict URL stacks such as macOS Foundation percent-encode the legacy second
+ * `#` when opening OSC 8 links), a bare `<roomId>.<key>` (legacy
+ * `<roomId>#<key>`) to the default relay, and a scheme-less
+ * `host[:port]/r/…` to `wss://`.
+ */
+function expandLinkText(link: string): string {
+	const text = link.trim().replace(/%23/gi, "#");
+	const bare = BARE_LINK_RE.exec(text);
+	if (bare) return `${DEFAULT_RELAY_URL}/r/${bare[1]}.${bare[2]}`;
+	return text.includes("://") ? text : `wss://${text}`;
+}
+
+/** Decodes the base64url secret into the room key and, for a full link, the trailing write token. */
+function splitRoomSecret(fragment: string): Pick<ParsedCollabLink, "key" | "writeToken"> | { error: string } {
+	if (!fragment) return { error: "Collab link is missing the <key> part" };
 	const secret = decodeBase64Url(fragment);
 	if (!secret || (secret.byteLength !== ROOM_KEY_BYTES && secret.byteLength !== ROOM_KEY_BYTES + WRITE_TOKEN_BYTES)) {
 		return { error: "Collab link key must be 32 (view) or 48 (full) base64url bytes" };
 	}
 	const key = secret.subarray(0, ROOM_KEY_BYTES);
 	const writeToken = secret.byteLength > ROOM_KEY_BYTES ? secret.subarray(ROOM_KEY_BYTES) : undefined;
-	return { wsUrl: `${normalized.origin}/r/${roomId}`, roomId, key, writeToken };
+	return { key, writeToken };
 }

@@ -26,6 +26,8 @@ import { importRoomKey } from "./codec";
 import { COLLAB_PROTO, encodeBase64Url, parseCollabLink } from "./link";
 import { CollabSocket } from "./socket";
 
+type HostEvent = Extract<HostFrame, { t: "event" }>["event"];
+
 export type ConnectionPhase = "connecting" | "waiting" | "live" | "reconnecting" | "ended";
 
 export interface ActiveTool {
@@ -287,49 +289,18 @@ export class GuestClient {
 	#applyFrame(frame: HostFrame): void {
 		switch (frame.t) {
 			case "welcome":
-				// Reset accumulator: a fresh welcome arriving mid-load (reconnect)
-				// supersedes any partially-streamed snapshot from the prior session.
-				this.#header = frame.header;
-				this.#entries = [];
-				this.#state = frame.state;
-				this.#agents = frame.agents.slice();
-				this.#stream = null;
-				this.#streamDone = false;
-				this.#activeTools = new Map();
-				this.#progress = new Map();
-				this.#lifecycle = new Map();
-				this.#working = frame.state.isStreaming;
-				this.#readOnly = frame.readOnly === true;
-				this.#clearUiRequests();
-				this.#welcomed = true;
-				this.#clearWelcomeTimer();
-				if (frame.entryCount === 0) {
-					this.#clearSnapshotProgressTimer();
-					this.#phase = "live";
-				} else {
-					this.#armSnapshotProgressTimer();
-				}
-				this.#endedReason = null;
+				this.#applyWelcome(frame);
 				break;
-			case "snapshot-chunk": {
+			case "snapshot-chunk":
 				// Stream transcript fragments into the live snapshot. The host
 				// always closes the train with `final: true`; that flip is what
 				// moves the guest from "waiting" to "live".
 				this.#entries = this.#entries.concat(frame.entries);
-				if (frame.final) {
-					this.#clearSnapshotProgressTimer();
-					this.#phase = "live";
-				} else {
-					this.#armSnapshotProgressTimer();
-				}
+				this.#settleSnapshotProgress(frame.final);
 				break;
-			}
 			case "entry":
 				this.#entries = this.#entries.concat([frame.entry]);
-				if (this.#streamDone && frame.entry.type === "message" && frame.entry.message.role === "assistant") {
-					this.#stream = null;
-					this.#streamDone = false;
-				}
+				if (frame.entry.type === "message" && frame.entry.message.role === "assistant") this.#dropFinishedStream();
 				break;
 			case "event":
 				this.#applyEvent(frame.event);
@@ -338,23 +309,14 @@ export class GuestClient {
 				this.#state = frame.state;
 				if (!frame.state.isStreaming) {
 					this.#working = false;
-					if (this.#streamDone) {
-						this.#stream = null;
-						this.#streamDone = false;
-					}
+					this.#dropFinishedStream();
 				}
 				break;
 			case "agents":
 				this.#agents = frame.agents.slice();
 				break;
 			case "bus":
-				if (frame.channel === "task:subagent:progress") {
-					const payload = frame.data as AgentProgressPayload;
-					this.#progress = new Map(this.#progress).set(payload.progress.id, payload);
-				} else if (frame.channel === "task:subagent:lifecycle") {
-					const payload = frame.data as AgentLifecyclePayload;
-					this.#lifecycle = new Map(this.#lifecycle).set(payload.id, payload);
-				}
+				this.#applyBus(frame);
 				break;
 			case "ui-request":
 				if (this.#uiRequest) this.#uiRequestQueue = this.#uiRequestQueue.concat([frame.request]);
@@ -364,19 +326,9 @@ export class GuestClient {
 				if (this.#uiRequest?.reqId === frame.reqId) this.#showNextUiRequest();
 				else this.#uiRequestQueue = this.#uiRequestQueue.filter(request => request.reqId !== frame.reqId);
 				break;
-			case "transcript": {
-				const pending = this.#pendingTranscripts.get(frame.reqId);
-				if (pending) {
-					this.#pendingTranscripts.delete(frame.reqId);
-					clearTimeout(pending.timer);
-					pending.resolve(
-						frame.error !== undefined
-							? { kind: "error", message: frame.error }
-							: { kind: "rows", text: frame.text, newSize: frame.newSize },
-					);
-				}
+			case "transcript":
+				this.#resolveTranscript(frame);
 				break;
-			}
 			case "bye":
 				this.#end(frame.reason);
 				return; // #end already committed
@@ -398,7 +350,70 @@ export class GuestClient {
 		this.#commit();
 	}
 
-	#applyEvent(event: Extract<HostFrame, { t: "event" }>["event"]): void {
+	/**
+	 * Reset the replica to a welcome. A fresh welcome arriving mid-load
+	 * (reconnect) supersedes any partially-streamed snapshot from the prior
+	 * session.
+	 */
+	#applyWelcome(frame: Extract<HostFrame, { t: "welcome" }>): void {
+		this.#header = frame.header;
+		this.#entries = [];
+		this.#state = frame.state;
+		this.#agents = frame.agents.slice();
+		this.#stream = null;
+		this.#streamDone = false;
+		this.#activeTools = new Map();
+		this.#progress = new Map();
+		this.#lifecycle = new Map();
+		this.#working = frame.state.isStreaming;
+		this.#readOnly = frame.readOnly === true;
+		this.#clearUiRequests();
+		this.#welcomed = true;
+		this.#clearWelcomeTimer();
+		this.#settleSnapshotProgress(frame.entryCount === 0);
+		this.#endedReason = null;
+	}
+
+	/** Go live once the snapshot is complete; otherwise re-arm the wait for its next chunk. */
+	#settleSnapshotProgress(complete: boolean): void {
+		if (complete) {
+			this.#clearSnapshotProgressTimer();
+			this.#phase = "live";
+		} else {
+			this.#armSnapshotProgressTimer();
+		}
+	}
+
+	/** Drop a finished streaming ghost; its entry or the idle state replaces it. */
+	#dropFinishedStream(): void {
+		if (!this.#streamDone) return;
+		this.#stream = null;
+		this.#streamDone = false;
+	}
+
+	#applyBus(frame: Extract<HostFrame, { t: "bus" }>): void {
+		if (frame.channel === "task:subagent:progress") {
+			const payload = frame.data as AgentProgressPayload;
+			this.#progress = new Map(this.#progress).set(payload.progress.id, payload);
+		} else if (frame.channel === "task:subagent:lifecycle") {
+			const payload = frame.data as AgentLifecyclePayload;
+			this.#lifecycle = new Map(this.#lifecycle).set(payload.id, payload);
+		}
+	}
+
+	#resolveTranscript(frame: Extract<HostFrame, { t: "transcript" }>): void {
+		const pending = this.#pendingTranscripts.get(frame.reqId);
+		if (!pending) return;
+		this.#pendingTranscripts.delete(frame.reqId);
+		clearTimeout(pending.timer);
+		pending.resolve(
+			frame.error !== undefined
+				? { kind: "error", message: frame.error }
+				: { kind: "rows", text: frame.text, newSize: frame.newSize },
+		);
+	}
+
+	#applyEvent(event: HostEvent): void {
 		switch (event.type) {
 			case "message_start":
 			case "message_update":
@@ -425,21 +440,9 @@ export class GuestClient {
 				this.#activeTools = new Map(this.#activeTools).set(event.toolCallId, tool);
 				break;
 			}
-			case "tool_execution_update": {
-				const existing = this.#activeTools.get(event.toolCallId);
-				const tool: ActiveTool = existing
-					? { ...existing, partialResult: event.partialResult, display: event.display ?? existing.display }
-					: {
-							toolCallId: event.toolCallId,
-							toolName: event.toolName,
-							args: event.args,
-							partialResult: event.partialResult,
-							display: event.display,
-							startedAt: Date.now(),
-						};
-				this.#activeTools = new Map(this.#activeTools).set(event.toolCallId, tool);
+			case "tool_execution_update":
+				this.#updateActiveTool(event);
 				break;
-			}
 			case "tool_execution_end": {
 				const next = new Map(this.#activeTools);
 				next.delete(event.toolCallId);
@@ -463,20 +466,34 @@ export class GuestClient {
 				break;
 			case "auto_compaction_end":
 				if (!event.skipped) {
-					this.#pushNotice(
-						"info",
-						event.aborted
-							? "compaction aborted"
-							: event.errorMessage
-								? `compaction failed: ${event.errorMessage}`
-								: "context compacted",
-					);
+					const outcome = event.aborted
+						? "compaction aborted"
+						: event.errorMessage
+							? `compaction failed: ${event.errorMessage}`
+							: "context compacted";
+					this.#pushNotice("info", outcome);
 				}
 				break;
 			default:
 				// turn_start/turn_end/thinking_level_changed/unknown — ignore
 				break;
 		}
+	}
+
+	/** Record a tool's partial result, starting its entry when the update arrives before its start. */
+	#updateActiveTool(event: Extract<HostEvent, { type: "tool_execution_update" }>): void {
+		const existing = this.#activeTools.get(event.toolCallId);
+		const tool: ActiveTool = existing
+			? { ...existing, partialResult: event.partialResult, display: event.display ?? existing.display }
+			: {
+					toolCallId: event.toolCallId,
+					toolName: event.toolName,
+					args: event.args,
+					partialResult: event.partialResult,
+					display: event.display,
+					startedAt: Date.now(),
+				};
+		this.#activeTools = new Map(this.#activeTools).set(event.toolCallId, tool);
 	}
 
 	#pushNotice(level: Notice["level"], message: string): void {

@@ -67,6 +67,47 @@ function spanClass(attrs: SpanAttributes): string | undefined {
 	);
 }
 
+/** The emblem, or without one the status mark, that opens a status row; "" when the row has neither. */
+function statusRowLead(props: StatusRowProps<string>): string {
+	if (props.emblem) {
+		return element(
+			"span",
+			{
+				class: classes("v-emblem", props.emblem.tone ? TONE_CLASSES[props.emblem.tone] : undefined),
+				"data-emblem": props.emblem.name,
+			},
+			props.emblem.element,
+		);
+	}
+	if (!props.statusMark) return "";
+	return element(
+		"span",
+		{
+			class: classes("v-mark", STATUS_CLASSES[props.statusMark.status]),
+			role: "img",
+			"aria-label": STATUS_LABELS[props.statusMark.status],
+			"data-status": props.statusMark.status,
+		},
+		props.statusMark.element ?? "",
+	);
+}
+
+/** A status row's description span, wrapped in a link when the description carries one. */
+function statusRowDescription(description: NonNullable<StatusRowProps<string>["description"]>): string {
+	const tone = description.tone ? TONE_CLASSES[description.tone] : undefined;
+	const descEl = element(
+		"span",
+		{
+			class: classes("v-description", tone, description.fits ? "v-fits" : undefined),
+			"data-file": description.file,
+			"data-file-line": description.fileLine,
+		},
+		escapeHtml(description.text),
+	);
+	if (!description.link) return descEl;
+	return element("a", { href: description.link, rel: "noopener noreferrer" }, descEl);
+}
+
 export function createHtmlAdapter(options: GuiViewOptions = NO_OPTIONS): ViewAdapter<string> {
 	return {
 		text(str: string): string {
@@ -114,32 +155,7 @@ export function createHtmlAdapter(options: GuiViewOptions = NO_OPTIONS): ViewAda
 			return options.symbols?.[`status:${status}`] ?? escapeHtml(UNICODE_SYMBOLS[`status.${status}`]);
 		},
 		statusRow(props: StatusRowProps<string>): string {
-			const parts: string[] = [];
-			if (props.emblem) {
-				parts.push(
-					element(
-						"span",
-						{
-							class: classes("v-emblem", props.emblem.tone ? TONE_CLASSES[props.emblem.tone] : undefined),
-							"data-emblem": props.emblem.name,
-						},
-						props.emblem.element,
-					),
-				);
-			} else if (props.statusMark) {
-				parts.push(
-					element(
-						"span",
-						{
-							class: classes("v-mark", STATUS_CLASSES[props.statusMark.status]),
-							role: "img",
-							"aria-label": STATUS_LABELS[props.statusMark.status],
-							"data-status": props.statusMark.status,
-						},
-						props.statusMark.element ?? "",
-					),
-				);
-			}
+			const parts: string[] = [statusRowLead(props)];
 
 			parts.push(
 				element(
@@ -149,23 +165,7 @@ export function createHtmlAdapter(options: GuiViewOptions = NO_OPTIONS): ViewAda
 				),
 			);
 
-			if (props.description) {
-				const tone = props.description.tone ? TONE_CLASSES[props.description.tone] : undefined;
-				const descEl = element(
-					"span",
-					{
-						class: classes("v-description", tone, props.description.fits ? "v-fits" : undefined),
-						"data-file": props.description.file,
-						"data-file-line": props.description.fileLine,
-					},
-					escapeHtml(props.description.text),
-				);
-				if (props.description.link) {
-					parts.push(element("a", { href: props.description.link, rel: "noopener noreferrer" }, descEl));
-				} else {
-					parts.push(descEl);
-				}
-			}
+			if (props.description) parts.push(statusRowDescription(props.description));
 
 			if (props.badge) {
 				parts.push(

@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `parseCollabLink` delegates input expansion and secret decoding to two internal helpers; accepted links, parsed fields and error messages are unchanged.
+
 ## [1.5.0] - 2026-09-18
 
 ### Breaking Changes

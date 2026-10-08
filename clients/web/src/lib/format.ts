@@ -60,26 +60,25 @@ export { shortenPath } from "@veyyon/tool-render";
 /** Tolerant text extraction from string | content-block array | message-like objects. */
 export function messageText(m: unknown): string {
 	if (typeof m === "string") return m;
-	if (m === null || m === undefined) return "";
 	if (Array.isArray(m)) {
 		const parts: string[] = [];
 		for (const block of m) {
-			if (typeof block === "string") {
-				parts.push(block);
-				continue;
-			}
-			if (block && typeof block === "object") {
-				const rec = block as Record<string, unknown>;
-				if (typeof rec.text === "string") parts.push(rec.text);
-				else if (typeof rec.thinking === "string") parts.push(rec.thinking);
-			}
+			const text = blockText(block);
+			if (text !== undefined) parts.push(text);
 		}
 		return parts.join("\n");
 	}
-	if (typeof m === "object") {
-		const rec = m as Record<string, unknown>;
-		if (typeof rec.text === "string") return rec.text;
-		if ("content" in rec) return messageText(rec.content);
-	}
-	return "";
+	if (m === null || typeof m !== "object") return "";
+	const rec = m as Record<string, unknown>;
+	if (typeof rec.text === "string") return rec.text;
+	return "content" in rec ? messageText(rec.content) : "";
+}
+
+/** A content block's text: a bare string, or the block's `text` field, else its `thinking` field. */
+function blockText(block: unknown): string | undefined {
+	if (typeof block === "string") return block;
+	if (!block || typeof block !== "object") return undefined;
+	const rec = block as Record<string, unknown>;
+	if (typeof rec.text === "string") return rec.text;
+	return typeof rec.thinking === "string" ? rec.thinking : undefined;
 }

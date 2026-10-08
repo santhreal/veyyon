@@ -16,6 +16,8 @@ import { Markdown } from "./Markdown";
 import { ToolCard } from "./ToolCard";
 import "./transcript.css";
 
+type ToolCallContent = Extract<WireAssistantMessage["content"][number], { type: "toolCall" }>;
+
 export interface TranscriptProps {
 	entries: readonly WireSessionEntry[];
 	stream: WireAssistantMessage | null;
@@ -113,36 +115,17 @@ function AssistantBody({
 				return <ThinkingBlock key={i} text="" redacted />;
 			case "text":
 				return <Markdown key={i} text={block.text} />;
-			case "toolCall": {
-				const act = active.get(block.id);
-				const result = results.get(block.id);
-				const args = act?.args ?? block.arguments;
-				const callDisplay =
-					act && typeof act === "object" && "display" in act
-						? (act.display as ToolExecutionDisplay | undefined)
-						: typeof block === "object" && "display" in block
-							? (block.display as ToolExecutionDisplay | undefined)
-							: undefined;
-				const resultDisplay =
-					result && typeof result === "object" && "display" in result
-						? (result.display as ToolExecutionDisplay | undefined)
-						: undefined;
-				const display = resultDisplay ?? callDisplay;
+			case "toolCall":
 				return (
-					<ToolCard
+					<ToolCallCard
 						key={block.id}
-						toolCallId={block.id}
-						name={block.name}
-						intent={block.intent ?? act?.intent}
-						args={args}
-						result={result}
+						block={block}
+						act={active.get(block.id)}
+						result={results.get(block.id)}
+						pending={pending}
 						host={host}
-						running={!result && (act !== undefined || pending)}
-						partialResult={act?.partialResult}
-						display={display}
 					/>
 				);
-			}
 			default:
 				return null;
 		}
@@ -161,6 +144,48 @@ function AssistantBody({
 				</div>
 			)}
 		</>
+	);
+}
+
+/**
+ * One tool call: arguments and progress from the live tool while it runs, the
+ * paired result once it lands. The result's display wins over the call's.
+ */
+function ToolCallCard({
+	block,
+	act,
+	result,
+	pending,
+	host,
+}: {
+	block: ToolCallContent;
+	act: ActiveTool | undefined;
+	result: WireToolResultMessage | undefined;
+	pending: boolean;
+	host?: ToolRenderHost;
+}): ReactNode {
+	const callDisplay =
+		act && typeof act === "object" && "display" in act
+			? (act.display as ToolExecutionDisplay | undefined)
+			: typeof block === "object" && "display" in block
+				? (block.display as ToolExecutionDisplay | undefined)
+				: undefined;
+	const resultDisplay =
+		result && typeof result === "object" && "display" in result
+			? (result.display as ToolExecutionDisplay | undefined)
+			: undefined;
+	return (
+		<ToolCard
+			toolCallId={block.id}
+			name={block.name}
+			intent={block.intent ?? act?.intent}
+			args={act?.args ?? block.arguments}
+			result={result}
+			host={host}
+			running={!result && (act !== undefined || pending)}
+			partialResult={act?.partialResult}
+			display={resultDisplay ?? callDisplay}
+		/>
 	);
 }
 
@@ -284,22 +309,7 @@ export function Transcript(props: TranscriptProps): ReactNode {
 	}, [entries, stream, activeTools, working]);
 
 	// Active tools not already represented as toolCall blocks in committed rows or the stream ghost.
-	const renderedToolIds = new Set<string>();
-	for (const entry of entries) {
-		if (entry.type !== "message" || entry.message.role !== "assistant") continue;
-		for (const block of entry.message.content) {
-			if (block.type === "toolCall") renderedToolIds.add(block.id);
-		}
-	}
-	if (stream !== null) {
-		for (const block of stream.content) {
-			if (block.type === "toolCall") renderedToolIds.add(block.id);
-		}
-	}
-	const tailTools: ActiveTool[] = [];
-	for (const tool of activeTools.values()) {
-		if (!renderedToolIds.has(tool.toolCallId)) tailTools.push(tool);
-	}
+	const tailTools = useMemo(() => unrenderedTools(entries, stream, activeTools), [entries, stream, activeTools]);
 
 	return (
 		<div
@@ -339,11 +349,7 @@ export function Transcript(props: TranscriptProps): ReactNode {
 							running
 							partialResult={tool.partialResult}
 							host={host}
-							display={
-								typeof tool === "object" && "display" in tool
-									? (tool.display as ToolExecutionDisplay | undefined)
-									: undefined
-							}
+							display={tool.display}
 						/>
 					))}
 				</Row>
@@ -355,4 +361,28 @@ export function Transcript(props: TranscriptProps): ReactNode {
 			)}
 		</div>
 	);
+}
+
+/** Active tools whose call is not yet a toolCall block in a committed assistant entry or the stream ghost. */
+function unrenderedTools(
+	entries: readonly WireSessionEntry[],
+	stream: WireAssistantMessage | null,
+	activeTools: ReadonlyMap<string, ActiveTool>,
+): ActiveTool[] {
+	const tailTools: ActiveTool[] = [];
+	if (activeTools.size === 0) return tailTools;
+	const renderedToolIds = new Set<string>();
+	const addToolCalls = (message: WireAssistantMessage): void => {
+		for (const block of message.content) {
+			if (block.type === "toolCall") renderedToolIds.add(block.id);
+		}
+	};
+	for (const entry of entries) {
+		if (entry.type === "message" && entry.message.role === "assistant") addToolCalls(entry.message);
+	}
+	if (stream !== null) addToolCalls(stream);
+	for (const tool of activeTools.values()) {
+		if (!renderedToolIds.has(tool.toolCallId)) tailTools.push(tool);
+	}
+	return tailTools;
 }
