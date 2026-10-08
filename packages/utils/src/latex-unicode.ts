@@ -1899,7 +1899,8 @@ function renderBareMathInText(text: string): string {
 			i = blockEnd;
 			continue;
 		}
-		const start = bareMathBlockStart(text, begin);
+		// The lead-in never reaches back into text already emitted.
+		const start = Math.max(i, bareMathBlockStart(text, begin));
 		out += renderBareMathLines(text.slice(i, start));
 		out += latexToUnicode(text.slice(start, blockEnd)).replace(NEWLINES, " ");
 		i = blockEnd;

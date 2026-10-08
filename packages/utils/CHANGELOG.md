@@ -101,6 +101,7 @@
 
 ### Fixed
 
+- `renderMathInText` prints the text before a bare `\begin{…}` math block once when the block's `lhs =` or previous-line lead-in reaches back past an earlier block or an unterminated `\begin`, instead of rendering that text a second time (`\begin{matrix}a\end{matrix} = \begin{matrix}b\end{matrix}` printed `aa = b`).
 - `parseJsonlLenient` returns every record after a skipped malformed line instead of throwing `RangeError` when more than about a million records follow it, and parses a 2,000-record file with 500 malformed lines in 367 µs instead of 424 µs.
 - The default profile ignores an inherited `VEYYON_CODING_AGENT_DIR` equal to any profile's agent dir, so `/profile default` or `/resume` of a default-profile session from a named profile no longer runs the default profile in the named profile's agent dir.
 - A veyyon process started by another veyyon process under a different profile drops the variables the parent set from its own `.env` files, recorded in `VEYYON_DOTENV_ORIGIN`, and applies its own profile's `.env` layers instead of running on the parent profile's credentials.
