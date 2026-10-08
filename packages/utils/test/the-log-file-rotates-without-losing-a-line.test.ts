@@ -100,9 +100,10 @@ const FULL_LINE = JSON.stringify({ i: 0, pad: "y".repeat(80) });
 const OTHER_LINE = JSON.stringify({ other: true });
 
 /**
- * Runs `write` with `interleave` executed right after the rotation lists the directory: another
- * writer acting between the scan and the claim, which leaves the scan stale. The race the
- * multi-process test reaches by chance, reached every time.
+ * Runs `write` with `interleave` executed right after the writer next lists the directory: the
+ * rotation's scan, or maintenance's when nothing rotates. Another writer acting between the scan and
+ * what follows it leaves the scan stale. The race the multi-process test reaches by chance, reached
+ * every time.
  */
 function withWriterAfterScan(interleave: () => void, write: () => void): void {
 	const realReaddir = fs.readdirSync;
@@ -112,6 +113,24 @@ function withWriterAfterScan(interleave: () => void, write: () => void): void {
 		interleave();
 		return listing;
 	}) as typeof fs.readdirSync);
+	try {
+		write();
+	} finally {
+		spy.mockRestore();
+	}
+}
+
+/**
+ * Runs `write` with `interleave` executed right after the rotation claims a generation: another
+ * writer acting between the claim and the release of the live name.
+ */
+function withWriterAfterClaim(interleave: () => void, write: () => void): void {
+	const realLink = fs.linkSync;
+	const spy = spyOn(fs, "linkSync").mockImplementation(((...args: Parameters<typeof fs.linkSync>) => {
+		spy.mockRestore();
+		realLink(...args);
+		interleave();
+	}) as typeof fs.linkSync);
 	try {
 		write();
 	} finally {
@@ -270,6 +289,67 @@ describe("rotation", () => {
 			[live]: [OTHER_LINE, JSON.stringify({ i: 1 })],
 		});
 	});
+
+	it("numbers a rotated file above every generation already in the directory", async () => {
+		const dir = tempDir();
+		const log = new RotatingLogFile(dir, { maxBytes: 64, keep: 100, onError: noErrors() });
+		const start = Date.now();
+		const live = logFileName(new Date(start));
+		fs.writeFileSync(path.join(dir, `${live}.5`), `${OTHER_LINE}\n`);
+		log.write(`${FULL_LINE}\n`, new Date(start));
+		log.write(`${JSON.stringify({ i: 1 })}\n`, new Date(start + CHECK_INTERVAL_MS));
+		log.close();
+		await settled(dir);
+
+		expect(Object.fromEntries(readLogFiles(dir))).toEqual({
+			[`${live}.5`]: [OTHER_LINE],
+			[`${live}.6`]: [FULL_LINE],
+			[live]: [JSON.stringify({ i: 1 })],
+		});
+	});
+
+	it("keeps a fresh live file another writer starts after this writer claims a generation", async () => {
+		const dir = tempDir();
+		const log = new RotatingLogFile(dir, { maxBytes: 64, keep: 100, onError: noErrors() });
+		const start = Date.now();
+		const live = logFileName(new Date(start));
+		log.write(`${FULL_LINE}\n`, new Date(start));
+		// The other writer releases the live name and starts a fresh live file, so the name no longer
+		// names the file this writer claimed.
+		withWriterAfterClaim(
+			() => {
+				fs.unlinkSync(path.join(dir, live));
+				fs.writeFileSync(path.join(dir, live), `${OTHER_LINE}\n`);
+			},
+			() => log.write(`${JSON.stringify({ i: 1 })}\n`, new Date(start + CHECK_INTERVAL_MS)),
+		);
+		log.close();
+		await settled(dir);
+
+		expect(Object.fromEntries(readLogFiles(dir))).toEqual({
+			[`${live}.1`]: [FULL_LINE],
+			[live]: [OTHER_LINE, JSON.stringify({ i: 1 })],
+		});
+	});
+
+	it("completes the rotation when another writer releases the live name after the claim", async () => {
+		const dir = tempDir();
+		const log = new RotatingLogFile(dir, { maxBytes: 64, keep: 100, onError: noErrors() });
+		const start = Date.now();
+		const live = logFileName(new Date(start));
+		log.write(`${FULL_LINE}\n`, new Date(start));
+		withWriterAfterClaim(
+			() => fs.unlinkSync(path.join(dir, live)),
+			() => log.write(`${JSON.stringify({ i: 1 })}\n`, new Date(start + CHECK_INTERVAL_MS)),
+		);
+		log.close();
+		await settled(dir);
+
+		expect(Object.fromEntries(readLogFiles(dir))).toEqual({
+			[`${live}.1`]: [FULL_LINE],
+			[live]: [JSON.stringify({ i: 1 })],
+		});
+	});
 });
 
 describe("the day's file", () => {
@@ -393,6 +473,21 @@ describe("compression", () => {
 		await sleep(50);
 		expect(fs.readdirSync(dir)).toEqual([path.basename(live)]);
 	});
+
+	it("never compresses a generation that is already compressed", async () => {
+		const dir = tempDir();
+		const now = new Date();
+		const archive = path.join(dir, `${logFileName(now)}.1.gz`);
+		fs.writeFileSync(archive, zlib.gzipSync("a settled line\n"));
+		const old = new Date(now.getTime() - 10 * SETTLED_MS);
+		fs.utimesSync(archive, old, old);
+		const log = new RotatingLogFile(dir, { onError: noErrors() });
+		log.write("live\n", now);
+		log.close();
+		await settled(dir);
+		expect(fs.readdirSync(dir).sort()).toEqual([logFileName(now), path.basename(archive)].sort());
+		expect(zlib.gunzipSync(fs.readFileSync(archive)).toString("utf8")).toBe("a settled line\n");
+	});
 });
 
 describe("leftovers in the directory", () => {
@@ -424,6 +519,20 @@ describe("leftovers in the directory", () => {
 		log.close();
 		expect(fs.existsSync(abandoned)).toBe(false);
 		expect(fs.existsSync(inFlight)).toBe(true);
+	});
+
+	it("skips a generation another writer deletes while the directory is scanned", () => {
+		const dir = tempDir();
+		const now = new Date();
+		const generation = path.join(dir, `${logFileName(now)}.1`);
+		fs.writeFileSync(generation, "a line\n");
+		const log = new RotatingLogFile(dir, { onError: noErrors() });
+		withWriterAfterScan(
+			() => fs.unlinkSync(generation),
+			() => log.write("line\n", now),
+		);
+		log.close();
+		expect(fs.readdirSync(dir)).toEqual([logFileName(now)]);
 	});
 });
 

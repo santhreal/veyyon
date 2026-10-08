@@ -19,7 +19,7 @@ import type * as StreamPromises from "node:stream/promises";
 import type * as Zlib from "node:zlib";
 import { APP_DIRECTORY_SLUG } from "./app-identity";
 import { atomicWriteFileWith } from "./atomic-write";
-import { isEnoent } from "./fs-error";
+import { isEexist, isEnoent } from "./fs-error";
 import { localCalendarDate } from "./local-time";
 
 /**
@@ -84,10 +84,83 @@ function asError(value: unknown): Error {
 	return value instanceof Error ? value : new Error(String(value));
 }
 
-function errorCode(error: unknown): string | undefined {
-	return typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
-		? error.code
-		: undefined;
+/** A log file in the directory, live or rotated, with the facts pruning and compression read. */
+interface LogGeneration {
+	name: string;
+	mtimeMs: number;
+	compressed: boolean;
+}
+
+/**
+ * `fs.statSync(file)`, or undefined when another writer moved or removed it (`ENOENT`); any other
+ * failure throws. A `try` rather than `throwIfNoEntry: false`: in Bun 1.4 the option costs about
+ * 60 ns on every call, and the file is there on almost every call.
+ */
+function statUnlessMissing(file: string): fs.Stats | undefined {
+	try {
+		return fs.statSync(file);
+	} catch (error) {
+		if (isEnoent(error)) return undefined;
+		throw error;
+	}
+}
+
+/**
+ * Log files in `dir` other than `live`, unsorted. Deletes on the way the audit files an earlier writer
+ * left and the compression temporaries abandoned for {@link ABANDONED_TEMPORARY_MS}. A file another
+ * writer removes during the scan is left out.
+ */
+function scanGenerations(dir: string, live: string, ms: number): LogGeneration[] {
+	// One normalization for the whole listing: `path.join` per entry costs about 150 ns, and these
+	// paths reach only the filesystem, which reads `./x` and `x` as one file.
+	const prefix = path.join(dir, path.sep);
+	const files: LogGeneration[] = [];
+	for (const name of fs.readdirSync(dir)) {
+		if (name === live) continue;
+		if (STALE_AUDIT.test(name)) {
+			fs.rmSync(prefix + name, { force: true });
+			continue;
+		}
+		const match = LOG_ENTRY.exec(name);
+		if (match === null && !COMPRESS_TEMPORARY.test(name)) continue;
+		const stat = statUnlessMissing(prefix + name);
+		if (stat === undefined) continue;
+		if (match !== null) {
+			files.push({ name, mtimeMs: stat.mtimeMs, compressed: match[2] !== undefined });
+		} else if (ms - stat.mtimeMs >= ABANDONED_TEMPORARY_MS) {
+			fs.rmSync(prefix + name, { force: true });
+		}
+	}
+	return files;
+}
+
+/** Highest generation number of the log file `base` in `dir`, 0 when it has none. */
+function highestGeneration(dir: string, base: string): number {
+	const prefix = `${base}.`;
+	let generation = 0;
+	for (const name of fs.readdirSync(dir)) {
+		if (!name.startsWith(prefix)) continue;
+		const match = LOG_ENTRY.exec(name);
+		if (match?.[1] !== undefined) generation = Math.max(generation, Number(match[1]));
+	}
+	return generation;
+}
+
+/**
+ * Completes a rotation once `moved` is a hard link claimed for the live file `target` (inode `ino`).
+ * Undoes the claim when `moved` names another inode, because another writer already moved `ino`;
+ * otherwise unlinks `target` while it still names `ino`.
+ */
+function finishRotation(target: string, moved: string, ino: number): void {
+	if (fs.statSync(moved).ino !== ino) {
+		fs.unlinkSync(moved);
+		return;
+	}
+	try {
+		if (fs.statSync(target).ino === ino) fs.unlinkSync(target);
+	} catch (error) {
+		if (!isEnoent(error)) throw error;
+	}
 }
 
 export class RotatingLogFile {
@@ -143,12 +216,7 @@ export class RotatingLogFile {
 		const target = path.join(this.dir, logFileName(now));
 		try {
 			if (this.#fd >= 0 && target === this.#path) {
-				let stat: fs.Stats | undefined;
-				try {
-					stat = fs.statSync(target);
-				} catch (error) {
-					if (!isEnoent(error)) throw error;
-				}
+				const stat = statUnlessMissing(target);
 				if (stat?.ino === this.#ino) {
 					if (stat.size < this.#maxBytes) return;
 					this.#rotate(target, stat.ino);
@@ -185,66 +253,28 @@ export class RotatingLogFile {
 	 * fresh file. `rename` could not do either: it replaces an existing name.
 	 */
 	#rotate(target: string, ino: number): void {
-		const base = path.basename(target);
-		let generation = 0;
-		for (const name of fs.readdirSync(this.dir)) {
-			if (!name.startsWith(`${base}.`)) continue;
-			const match = LOG_ENTRY.exec(name);
-			if (match?.[1] !== undefined) generation = Math.max(generation, Number(match[1]));
-		}
+		let generation = highestGeneration(this.dir, path.basename(target));
 		for (let attempt = 0; attempt < MAX_ROTATE_ATTEMPTS; attempt++) {
 			generation += 1;
 			const moved = `${target}.${generation}`;
 			try {
 				fs.linkSync(target, moved);
 			} catch (error) {
-				if (errorCode(error) === "EEXIST") continue;
+				if (isEexist(error)) continue;
 				if (isEnoent(error)) return;
 				throw error;
 			}
-			if (fs.statSync(moved).ino !== ino) {
-				fs.unlinkSync(moved);
-				return;
-			}
-			try {
-				if (fs.statSync(target).ino === ino) fs.unlinkSync(target);
-			} catch (error) {
-				if (!isEnoent(error)) throw error;
-			}
+			finishRotation(target, moved, ino);
 			return;
 		}
 	}
 
 	/** Compresses settled generations and deletes all but the newest {@link LogFileOptions.keep} files. */
 	#maintain(ms: number): void {
-		const live = path.basename(this.#path);
-		const files: Array<{ name: string; mtimeMs: number; compressed: boolean }> = [];
-		for (const name of fs.readdirSync(this.dir)) {
-			const file = path.join(this.dir, name);
-			if (STALE_AUDIT.test(name)) {
-				fs.rmSync(file, { force: true });
-				continue;
-			}
-			const match = LOG_ENTRY.exec(name);
-			const temporary = match === null && COMPRESS_TEMPORARY.test(name);
-			if (match === null && !temporary) continue;
-			let mtimeMs: number;
-			try {
-				mtimeMs = fs.statSync(file).mtimeMs;
-			} catch (error) {
-				if (isEnoent(error)) continue;
-				throw error;
-			}
-			if (match === null) {
-				if (ms - mtimeMs >= ABANDONED_TEMPORARY_MS) fs.rmSync(file, { force: true });
-				continue;
-			}
-			files.push({ name, mtimeMs, compressed: match[2] !== undefined });
-		}
+		const files = scanGenerations(this.dir, path.basename(this.#path), ms);
 		files.sort((a, b) => b.mtimeMs - a.mtimeMs || b.name.localeCompare(a.name));
 		let kept = 0;
 		for (const file of files) {
-			if (file.name === live) continue;
 			// The live file counts toward `keep` whatever its mtime says.
 			if (kept + 1 >= this.#keep) {
 				fs.rmSync(path.join(this.dir, file.name), { force: true });
