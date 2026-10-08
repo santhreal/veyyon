@@ -40,6 +40,7 @@
 
 ### Changed
 
+- `visitJsonlBytes` walks the lines before the last newline in one loop and decodes the unterminated tail once after it, cutting a 100,000-line transcript walk with a caller `decode` from 352 to 333 ns per line and with the default parse from 314 to 309 ns, with offsets, items and skips identical across 300,000 generated buffers.
 - The logger's line timestamps, its day file name and the terminal output guard's redirect target read local time through `localTime` instead of a `Date`, and `analyzeTemplate` lists variables in code-unit order instead of `localeCompare` order, so none of them builds ICU's time zone cache or collator; with a POSIX rule string in `TZ`, which ICU does not parse, log timestamps follow the rule.
 - `getSegmenter`, word navigation and the diagram renderer's text measure build their `Intl.Segmenter` on first use instead of when their module loads, so a launch opens no ICU break iterator before it segments text.
 - `@veyyon/utils/yaml-sync` evaluates the `yaml` package on the first settings file edit instead of when the module loads, which keeps 72 modules off a launch that edits no settings file.

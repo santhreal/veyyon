@@ -65,20 +65,23 @@ export interface VisitJsonlBytesOptions<T> {
 	onSkip?: (skip: JsonlByteSkip) => void;
 }
 
-/** Text of one line, with the CR of a CRLF terminator removed. */
-function lineText(bytes: Uint8Array, start: number, end: number): string {
-	let contentEnd = end;
-	while (contentEnd > start && bytes[contentEnd - 1] === CR) contentEnd--;
-	return decoder.decode(bytes.subarray(start, contentEnd));
+/** End of a line's content at or before `end`, past any CR of a CRLF terminator. */
+function contentEnd(bytes: Uint8Array, start: number, end: number): number {
+	let at = end;
+	while (at > start && bytes[at - 1] === CR) at--;
+	return at;
 }
 
-/** Parse one line's text as JSON. `undefined` when it is not JSON, which the caller reports. */
-function decodeJson<T>(text: string): T | undefined {
+/**
+ * One line's text decoded by `custom`, or parsed as JSON without it. `undefined` when it does not
+ * decode, which the caller reports: the offset and length the caller already has are more useful than
+ * the parse error.
+ */
+function decodeText<T>(text: string, custom: ((text: string) => T | undefined) | undefined): T | undefined {
+	if (custom) return custom(text);
 	try {
 		return JSON.parse(text) as T;
 	} catch {
-		// The offset and length the caller already has are more useful than the parse error: the line
-		// is right there in the file at that offset.
 		return undefined;
 	}
 }
@@ -97,9 +100,9 @@ export function decodeJsonlLine<T = unknown>(
 	bytes: Uint8Array,
 	options?: { decode?: (text: string) => T | undefined },
 ): T | undefined {
-	const text = lineText(bytes, 0, bytes.length);
+	const text = decoder.decode(bytes.subarray(0, contentEnd(bytes, 0, bytes.length)));
 	if (text.length === 0) return undefined;
-	return options?.decode ? options.decode(text) : decodeJson<T>(text);
+	return decodeText(text, options?.decode);
 }
 
 /**
@@ -133,66 +136,51 @@ export function visitJsonlBytes<T = unknown>(
 	// this loop runs once per line over files with millions of them.
 	const custom = options?.decode;
 	const onSkip = options?.onSkip;
+	// Every line before the last newline is complete. The bytes after it are a line still being written
+	// or a finished last line with no terminator, and only decoding them tells which.
+	const complete = bytes.lastIndexOf(LF) + 1;
 	let cursor = 0;
-	let read = 0;
 
-	while (cursor < bytes.length) {
-		const newline = bytes.indexOf(LF, cursor);
-		const hasNewline = newline !== -1;
-		const lineEnd = hasNewline ? newline : bytes.length;
+	while (cursor < complete) {
+		const start = cursor;
+		const newline = bytes.indexOf(LF, start);
+		const end = contentEnd(bytes, start, newline);
+		cursor = newline + 1;
+		// A blank line holds no record: nothing is visited and nothing is lost, so nothing is reported.
+		if (end === start) continue;
 
-		// A trailing CR belongs to the line terminator, not to the JSON. The common case is no CR at
-		// all, so it costs one comparison; the loop only runs for the pathological `\r\r\n`.
-		let contentEnd = lineEnd;
-		if (contentEnd > cursor && bytes[contentEnd - 1] === CR) {
-			contentEnd--;
-			while (contentEnd > cursor && bytes[contentEnd - 1] === CR) contentEnd--;
-		}
-
-		if (contentEnd <= cursor) {
-			// Blank line. Nothing to visit and nothing lost, so nothing is reported.
-			if (!hasNewline) break;
-			cursor = newline + 1;
-			read = cursor;
-			continue;
-		}
-
-		// The default parse is written out here rather than reached through the same variable as a
-		// caller's `decode`. Routing both through one variable makes this call site polymorphic, and
-		// that alone cost a steady 4% against the hand-written loop this replaced (353 MB/s against
-		// 370, `scripts/bench-jsonl-bytes.ts`, 400k lines). Two branches with one shape each is parity
-		// on this path and ~6% faster on the caller-decode path the stats parser takes.
-		// `decodeJson` still exists for `decodeJsonlLine`, which is called once per line by a reader
-		// that already split them, so an extra call there is not in a hot loop.
+		// The default parse is written out here rather than reached through `decodeText` or through
+		// the same variable as a caller's `decode`. A per-line call to a function holding a `try`, or one
+		// polymorphic call site for both, each cost a steady 4-7% on this path against the hand-written
+		// loop this replaced (`scripts/bench-jsonl-bytes.ts`).
+		const text = decoder.decode(bytes.subarray(start, end));
 		let item: T | undefined;
 		if (custom === undefined) {
 			try {
-				item = JSON.parse(decoder.decode(bytes.subarray(cursor, contentEnd))) as T;
+				item = JSON.parse(text) as T;
 			} catch {
-				item = undefined;
+				// Not JSON: `item` stays undefined and the line is reported below.
 			}
 		} else {
-			item = custom(decoder.decode(bytes.subarray(cursor, contentEnd)));
+			item = custom(text);
 		}
-
-		if (item !== undefined) {
-			visit(item);
-			read = hasNewline ? newline + 1 : lineEnd;
-		} else if (hasNewline) {
+		if (item === undefined) {
 			// A complete line that could not be used. Skipping keeps the rest of the buffer readable,
 			// which is right, but every total downstream is now computed over fewer records than the
 			// file holds, and nothing else records that.
-			onSkip?.({ offset: cursor, length: contentEnd - cursor });
-			read = newline + 1;
+			onSkip?.({ offset: start, length: end - start });
 		} else {
-			// The tail is a partial line: leave `read` before it so it is re-read whole next time.
-			break;
+			visit(item);
 		}
-
-		cursor = hasNewline ? newline + 1 : lineEnd;
 	}
 
-	return read;
+	// A tail that does not decode, blank or partial, leaves the offset before it so it is re-read whole
+	// once its newline arrives.
+	const tailEnd = contentEnd(bytes, complete, bytes.length);
+	const tail = tailEnd > complete ? decodeText(decoder.decode(bytes.subarray(complete, tailEnd)), custom) : undefined;
+	if (tail === undefined) return complete;
+	visit(tail);
+	return bytes.length;
 }
 
 /** Decoded items from every complete line, plus the offset to resume from. */
