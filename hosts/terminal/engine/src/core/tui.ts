@@ -25,7 +25,7 @@ import * as logger from "@veyyon/utils/logger";
 import { popLoopPhase, pushLoopPhase } from "@veyyon/utils/loop-phase";
 import { LoopWatchdog } from "@veyyon/utils/loop-watchdog";
 import { clampLow } from "@veyyon/utils/math";
-import { parseSgrMouse } from "@veyyon/utils/mouse";
+import { parseSgrMouse, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { stallSampler } from "@veyyon/utils/stall-sampler";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { isConPTYHosted, setAltScreenActive, type Terminal } from "../terminal";
@@ -66,9 +66,21 @@ import {
 	MULTIPLEXER_RESIZE_DEBOUNCE_MS,
 	RESIZE_VIEWPORT_SETTLE_MS,
 } from "./frame-pacing";
-import type { AssembledWindow, FrameTransition, PrefixReconciliation, RenderIntent, WindowPlan } from "./frame-plan";
+import type {
+	AssembledWindow,
+	FrameTransition,
+	PrefixReconciliation,
+	RenderIntent,
+	UpdateGeometry,
+	WindowPlan,
+} from "./frame-plan";
 import { DEFAULT_MAX_INLINE_IMAGES, ImageBudget } from "./image-budget";
-import { footerWantsPointer, pinnedFooterScreenBounds, routeFooterMouse } from "./mouse-routing";
+import {
+	footerWantsPointer,
+	type PinnedFooterBounds,
+	pinnedFooterScreenBounds,
+	routeFooterMouse,
+} from "./mouse-routing";
 import {
 	canAnimateOverlayExit,
 	drawScrollTrack,
@@ -170,6 +182,109 @@ const DEFAULT_RENDER_SCHEDULER: RenderScheduler = {
 		};
 	},
 };
+
+/** Where a freshly rendered root child's live region starts among its `rowCount` rows; undefined when it reports none. */
+function liveRegionLocalStart(child: Component, rowCount: number): number | undefined {
+	const liveRegionStart = getNativeScrollbackLiveRegionStart(child);
+	if (liveRegionStart === undefined) return undefined;
+	return Number.isFinite(liveRegionStart) ? clampLow(Math.trunc(liveRegionStart), 0, rowCount) : rowCount;
+}
+
+/**
+ * Leading rows of a root child's composed `lines` unchanged since the previous compose, given the previous frame's
+ * segment in the same slot. A child's stable-prefix report (`reported`) overrides reference equality, and rows
+ * beyond the previous row count cannot be "unchanged". Undefined when the slot held another child or the segment
+ * moved.
+ */
+function unchangedSegmentRows(
+	previous: FrameSegment | undefined,
+	child: Component,
+	start: number,
+	lines: readonly string[],
+	reported: number | undefined,
+): number | undefined {
+	if (previous === undefined || previous.component !== child || previous.start !== start) return undefined;
+	if (reported !== undefined) {
+		return Number.isFinite(reported)
+			? Math.max(0, Math.min(lines.length, previous.rowCount, Math.trunc(reported)))
+			: 0;
+	}
+	return previous.lines === lines ? lines.length : 0;
+}
+
+/** Frame rows spanned by the last `pinnedChildCount` root children, which scroll isolation pins as the footer. */
+function pinnedFooterRows(segments: readonly FrameSegment[], frameRows: number, pinnedChildCount: number): number {
+	if (pinnedChildCount <= 0 || segments.length < pinnedChildCount) return 0;
+	return frameRows - segments[segments.length - pinnedChildCount]!.start;
+}
+
+/**
+ * A segment may be rewritten in place only when none of it is committed to native scrollback and it holds no live
+ * region, or is live from its first row.
+ */
+function segmentAcceptsDirectWrite(segment: FrameSegment, committedRows: number): boolean {
+	if (segment.start < committedRows) return false;
+	return segment.liveLocalStart === undefined || segment.liveLocalStart === 0;
+}
+
+/** A root child's re-rendered rows, checked to fit its segment and screen position unchanged. */
+interface DirectWrite {
+	segmentIndex: number;
+	segment: FrameSegment;
+	nextLines: readonly string[];
+	/** Frame row the visible window starts at. */
+	windowTop: number;
+	/** Screen row the segment starts at. */
+	screenStart: number;
+	width: number;
+	height: number;
+}
+
+/**
+ * Record that `root` re-renders for a target reached through its direct child `via`; an undefined `via` (the target
+ * is the root) re-renders all of it, recorded as null.
+ */
+function addScopedChild(
+	scoped: Map<Component, Set<Component> | null>,
+	root: Component,
+	via: Component | undefined,
+): void {
+	if (via === undefined) {
+		scoped.set(root, null);
+		return;
+	}
+	const children = scoped.get(root);
+	if (children === undefined) scoped.set(root, new Set([via]));
+	else if (children !== null) children.add(via);
+}
+
+/**
+ * The paint a classified frame takes: an incremental update of the planned window, or a full paint that clears
+ * native scrollback after a divergence, or after a requested replace or geometry rebuild outside a multiplexer.
+ */
+function frameIntent(
+	fullPaint: boolean,
+	divergenceRebuild: boolean,
+	rebuildRequested: boolean,
+	plan: WindowPlan,
+): RenderIntent {
+	if (!fullPaint) return { kind: "update", chunkTo: plan.chunkTo, windowTop: plan.windowTop };
+	return { kind: "fullPaint", clearScrollback: divergenceRebuild || (rebuildRequested && !isMultiplexerSession()) };
+}
+
+/**
+ * Screen position of the frame caret when its row falls in the frame span `[spanTop, spanEnd)` painted from
+ * screen row `screenTop`; null when the caret is absent or outside that span.
+ */
+function screenCaret(
+	cursorPos: { row: number; col: number } | null,
+	spanTop: number,
+	spanEnd: number,
+	screenTop: number,
+): { row: number; col: number } | null {
+	if (cursorPos === null || cursorPos.row < spanTop || cursorPos.row >= spanEnd) return null;
+	return { row: screenTop + (cursorPos.row - spanTop), col: cursorPos.col };
+}
 
 /**
  * A composed frame as the terminal is showing it: the rows, the geometry they were composed at,
@@ -568,43 +683,8 @@ export class TUI extends Container {
 				childLines = previous.lines;
 				liveLocalStart = previous.liveLocalStart;
 			} else {
-				// Feed the engine's committed-row claim (from the previous frame's
-				// emit) before rendering so the child can skip re-deriving blocks
-				// that already live in immutable native scrollback. Reused segments
-				// skip this: they never call render(), so the signal is moot. The
-				// claim is in the previous frame's coordinates and never exceeds
-				// the rows the child actually contributed there — history that
-				// advanced into LATER root children must not read as this child's
-				// own future rows being pre-committed.
-				const prevRows = previous !== undefined && previous.component === child ? previous.rowCount : 0;
-				const prevStart = previous !== undefined && previous.component === child ? previous.start : offset;
-				setNativeScrollbackCommittedRows(child, Math.min(prevRows, Math.max(0, this.#committedRows - prevStart)));
-				// A viewport's worth of committed history stays in the frame so a
-				// shrink can re-show it instead of painting blank rows (see
-				// NativeScrollbackCompaction.setNativeScrollbackRetainRows).
-				setNativeScrollbackRetainRows(child, this.terminal.rows);
-				// Name the children a component-scoped frame requested, or none: the hint
-				// is consumed by this render, so a full frame must clear a stale one.
-				setComponentScopedRenderChildren(
-					child,
-					partialRoots !== null ? (this.#partialComposeChildren.get(child) ?? null) : null,
-				);
-				childLines = child.render(width);
-				// A virtualized child drops rows DURING this render, so the report
-				// is read straight after it. Only rows the engine itself reported
-				// committed can be dropped, so the total is an offset into the
-				// committed prefix and never past it.
-				const childDropped = takeNativeScrollbackDroppedRows(child);
-				// Previous-frame coordinates: the prefix being spliced is the one
-				// the last emit built, so the offset must be the child's start
-				// THERE, not in the frame being composed now.
-				if (childDropped > 0) this.#frameDrops.push(prevStart, childDropped);
-				const liveRegionStart = getNativeScrollbackLiveRegionStart(child);
-				if (liveRegionStart !== undefined) {
-					liveLocalStart = Number.isFinite(liveRegionStart)
-						? clampLow(Math.trunc(liveRegionStart), 0, childLines.length)
-						: childLines.length;
-				}
+				childLines = this.#renderRootChild(child, previous, offset, width);
+				liveLocalStart = liveRegionLocalStart(child, childLines.length);
 				// Consume the stability report unconditionally for implementers:
 				// reading re-bases the component's baseline to the state this
 				// compose is about to ingest (used or not, the current rows are
@@ -623,25 +703,12 @@ export class TUI extends Container {
 				this.#nativeScrollbackLiveRegionStart = offset + liveLocalStart;
 			}
 			if (chainStable) {
-				if (previous !== undefined && previous.component === child && previous.start === offset) {
-					let stableCount = 0;
-					if (reported !== undefined) {
-						// In-place mutator: its report overrides reference equality.
-						// Rows beyond the previous row count cannot be "unchanged".
-						stableCount = Number.isFinite(reported)
-							? Math.max(0, Math.min(childLines.length, previous.rowCount, Math.trunc(reported)))
-							: 0;
-					} else if (previous.lines === childLines) {
-						stableCount = childLines.length;
-					}
-					stableRows += stableCount;
-					// The chain survives only a fully stable segment: identical rows
-					// AND identical row count (a grown/shrunk segment shifts every
-					// row below it).
-					if (stableCount < childLines.length || previous.rowCount !== childLines.length) chainStable = false;
-				} else {
-					chainStable = false;
-				}
+				const stableCount = unchangedSegmentRows(previous, child, offset, childLines, reported);
+				stableRows += stableCount ?? 0;
+				// The chain survives only a fully stable segment: identical rows
+				// AND identical row count (a grown/shrunk segment shifts every
+				// row below it).
+				chainStable = stableCount === childLines.length && previous?.rowCount === childLines.length;
 			}
 			segments[index] = {
 				component: child,
@@ -653,33 +720,72 @@ export class TUI extends Container {
 			offset += childLines.length;
 		}
 		this.#frameSegments = segments;
-		// Scroll isolation's pinned footer rows come from the segment ledger:
-		// the frame span of the last #pinnedFooterChildCount root children.
-		if (this.#pinnedFooterChildCount > 0 && segments.length >= this.#pinnedFooterChildCount) {
-			this.#pinnedFooterRows = offset - segments[segments.length - this.#pinnedFooterChildCount]!.start;
-		} else {
-			this.#pinnedFooterRows = 0;
-		}
+		this.#pinnedFooterRows = pinnedFooterRows(segments, offset, this.#pinnedFooterChildCount);
 
 		const frame = this.#composedFrame;
 		// Defensive clamp: stable rows can never exceed what the previous
 		// compose actually materialized (only reachable if a child render threw
 		// mid-compose on the previous frame).
-		if (stableRows > frame.length) stableRows = frame.length;
-		if (stableRows !== offset || frame.length !== offset) {
-			// Re-ingest every row at/after the stable prefix: truncate, strip
-			// cursor markers, record their positions.
-			frame.length = stableRows;
-			this.#pruneFrameCursorMarkers(stableRows);
-			for (const segment of segments) {
-				const lines = segment.lines;
-				const from = segment.start >= stableRows ? 0 : stableRows - segment.start;
-				for (let i = from; i < lines.length; i++) this.#ingestFrameRow(lines[i]!);
-			}
-		}
+		stableRows = Math.min(stableRows, frame.length);
+		if (stableRows !== offset || frame.length !== offset) this.#reingestFrameFrom(segments, stableRows);
 		this.#renderStablePrefixRows = stableRows;
 		this.#prepared.lowerValidRows(stableRows);
 		return frame;
+	}
+
+	/**
+	 * Render one root child for the frame being composed, feeding it the native scrollback signals first and
+	 * recording the rows it dropped while rendering.
+	 */
+	#renderRootChild(
+		child: Component,
+		previous: FrameSegment | undefined,
+		offset: number,
+		width: number,
+	): readonly string[] {
+		// Feed the engine's committed-row claim (from the previous frame's
+		// emit) before rendering so the child can skip re-deriving blocks
+		// that already live in immutable native scrollback. Reused segments
+		// skip this: they never call render(), so the signal is moot. The
+		// claim is in the previous frame's coordinates and never exceeds
+		// the rows the child actually contributed there — history that
+		// advanced into LATER root children must not read as this child's
+		// own future rows being pre-committed.
+		const sameChild = previous !== undefined && previous.component === child;
+		const prevRows = sameChild ? previous.rowCount : 0;
+		const prevStart = sameChild ? previous.start : offset;
+		setNativeScrollbackCommittedRows(child, Math.min(prevRows, Math.max(0, this.#committedRows - prevStart)));
+		// A viewport's worth of committed history stays in the frame so a
+		// shrink can re-show it instead of painting blank rows (see
+		// NativeScrollbackCompaction.setNativeScrollbackRetainRows).
+		setNativeScrollbackRetainRows(child, this.terminal.rows);
+		// Name the children a component-scoped frame requested, or none: the hint
+		// is consumed by this render, so a full frame must clear a stale one.
+		setComponentScopedRenderChildren(
+			child,
+			this.#partialComposeRoots !== null ? (this.#partialComposeChildren.get(child) ?? null) : null,
+		);
+		const childLines = child.render(width);
+		// A virtualized child drops rows DURING this render, so the report
+		// is read straight after it. Only rows the engine itself reported
+		// committed can be dropped, so the total is an offset into the
+		// committed prefix and never past it.
+		const childDropped = takeNativeScrollbackDroppedRows(child);
+		// Previous-frame coordinates: the prefix being spliced is the one
+		// the last emit built, so the offset must be the child's start
+		// THERE, not in the frame being composed now.
+		if (childDropped > 0) this.#frameDrops.push(prevStart, childDropped);
+		return childLines;
+	}
+
+	/** Re-ingest every row at/after `stableRows`: truncate the composed frame, strip cursor markers, record their positions. */
+	#reingestFrameFrom(segments: readonly FrameSegment[], stableRows: number): void {
+		this.#composedFrame.length = stableRows;
+		this.#pruneFrameCursorMarkers(stableRows);
+		for (const segment of segments) {
+			const lines = segment.lines;
+			for (let i = Math.max(0, stableRows - segment.start); i < lines.length; i++) this.#ingestFrameRow(lines[i]!);
+		}
 	}
 
 	/** Drop cached cursor markers at/after `fromRow` (those rows re-ingest). */
@@ -1702,67 +1808,53 @@ export class TUI extends Container {
 	 */
 	requestDirectWrite(component: Component): void {
 		if (this.#stopped) return;
+		const write = this.#prepareDirectWrite(component);
+		if (write === null) {
+			this.requestComponentRender(component);
+			return;
+		}
+		this.#applyDirectWrite(write);
+	}
+
+	/**
+	 * Render `component`'s root child for a direct write, or null when the frame state makes a direct write unsafe:
+	 * a render is owed or settling, the alternate screen is active, the composed layout is stale, the root's segment
+	 * is committed, live, off screen or changed its row count, or the new rows hold a cursor marker.
+	 */
+	#prepareDirectWrite(component: Component): DirectWrite | null {
+		const width = this.terminal.columns;
+		const height = this.terminal.rows;
 		if (
 			this.#renderRequested ||
 			this.#postFullPaintSettleTimer !== undefined ||
-			this.#postFullPaintSettleUntilMs > 0
+			this.#postFullPaintSettleUntilMs > 0 ||
+			this.#altActive ||
+			!this.#canReuseComposedLayout(width, height)
 		) {
-			this.requestComponentRender(component);
-			return;
+			return null;
 		}
-
-		const width = this.terminal.columns;
-		const height = this.terminal.rows;
-		if (this.#altActive || !this.#canReuseComposedLayout(width, height)) {
-			this.requestComponentRender(component);
-			return;
-		}
-
-		const segments = this.#frameSegments;
 
 		const root = this.#resolveComponentRoot(component);
-		if (root === null) {
-			this.requestComponentRender(component);
-			return;
-		}
-		const segmentIndex = segments.findIndex(segment => segment.component === root);
-		if (segmentIndex === -1) {
-			this.requestComponentRender(component);
-			return;
-		}
-		const segment = segments[segmentIndex]!;
-		const fullyLiveUncommittedSegment = segment.liveLocalStart === 0 && segment.start >= this.#committedRows;
-		if (
-			(segment.liveLocalStart !== undefined && !fullyLiveUncommittedSegment) ||
-			segment.start < this.#committedRows
-		) {
-			this.requestComponentRender(component);
-			return;
-		}
+		if (root === null) return null;
+		const segmentIndex = this.#frameSegments.findIndex(segment => segment.component === root);
+		if (segmentIndex === -1) return null;
+		const segment = this.#frameSegments[segmentIndex]!;
+		if (!segmentAcceptsDirectWrite(segment, this.#committedRows)) return null;
 
 		const windowTop = Math.max(this.#committedRows, this.#composedFrame.length - height, 0);
-		if (windowTop !== this.#windowTopRow) {
-			this.requestComponentRender(component);
-			return;
-		}
+		if (windowTop !== this.#windowTopRow) return null;
 		const screenStart = segment.start - windowTop;
-		if (screenStart < 0 || screenStart + segment.rowCount > height) {
-			this.requestComponentRender(component);
-			return;
-		}
+		if (screenStart < 0 || screenStart + segment.rowCount > height) return null;
 
 		const nextLines = root.render(width);
-		if (nextLines.length !== segment.rowCount) {
-			this.requestComponentRender(component);
-			return;
-		}
-		for (const line of nextLines) {
-			if (line.includes(CURSOR_MARKER)) {
-				this.requestComponentRender(component);
-				return;
-			}
-		}
+		if (nextLines.length !== segment.rowCount) return null;
+		if (nextLines.some(line => line.includes(CURSOR_MARKER))) return null;
+		return { segmentIndex, segment, nextLines, windowTop, screenStart, width, height };
+	}
 
+	/** Splice a prepared direct write into the composed frame and repaint the rows that changed on screen. */
+	#applyDirectWrite(write: DirectWrite): void {
+		const { segmentIndex, segment, nextLines, windowTop, screenStart, width, height } = write;
 		let firstChanged = -1;
 		let lastChanged = -1;
 		const previousWindow = this.#previousWindow;
@@ -1776,7 +1868,7 @@ export class TUI extends Container {
 			if (firstChanged === -1) firstChanged = i;
 			lastChanged = i;
 		}
-		segments[segmentIndex] = { ...segment, lines: nextLines };
+		this.#frameSegments[segmentIndex] = { ...segment, lines: nextLines };
 		this.#prepared.raiseValidRows(segment.start + nextLines.length);
 		this.#renderStablePrefixRows = Math.min(this.#renderStablePrefixRows, segment.start);
 
@@ -1885,15 +1977,7 @@ export class TUI extends Container {
 			// The root's direct child on the target's path, which a root implementing
 			// ComponentScopedRender re-derives in place of its whole child list. A target
 			// that IS the root re-renders all of it.
-			const via = this.#componentRootPaths.get(target)?.[1];
-			const children = scoped.get(root);
-			if (via === undefined) {
-				scoped.set(root, null);
-			} else if (children === undefined) {
-				scoped.set(root, new Set([via]));
-			} else if (children !== null) {
-				children.add(via);
-			}
+			addScopedChild(scoped, root, this.#componentRootPaths.get(target)?.[1]);
 		}
 		// A root queued only to compact renders naming no child, so it re-derives
 		// no block. A target inside it widens the set as above.
@@ -2169,140 +2253,160 @@ export class TUI extends Container {
 		if ((c0 === 3 || c0 === 27) && (matchesKey(data, "ctrl+c") || matchesKey(data, "escape"))) {
 			this.#pacer.holdForInput(this.#renderScheduler.now());
 		}
-		if (this.#inputListeners.size > 0) {
-			let current = data;
-			for (const listener of this.#inputListeners) {
-				const result = listener(current);
-				if (result?.consume) {
-					return;
-				}
-				if (result?.data !== undefined) {
-					current = result.data;
-				}
-			}
-			if (current.length === 0) {
-				return;
-			}
-			data = current;
-		}
-
+		const input = this.#filterInput(data);
 		// Consume terminal cell size responses without blocking unrelated input.
-		if (this.#consumeCellSizeResponse(data)) {
-			return;
-		}
-
-		// Scroll isolation owns every SGR mouse report while wheel tracking is
-		// on and no alt-screen overlay is active: the wheel scrolls the frozen
-		// transcript region, a click in the pinned footer (band or composer)
-		// snaps back to the live tail, and any other report is swallowed so
-		// clicks never leak raw SGR bytes into the focused component.
-		if (this.#wheelTrackingActive && !this.#altActive && data.startsWith("\x1b[<")) {
-			const event = parseSgrMouse(data);
-			if (event) {
-				const target = this.#overlays.pointerTarget();
-				if (
-					target &&
-					event.row >= target.row &&
-					event.row < target.row + target.height &&
-					event.col >= target.col &&
-					event.col < target.col + target.width
-				) {
-					this.#pressCell = null;
-					target.component.routeMouse(event, event.row - target.row + target.lineOffset, event.col - target.col);
-					this.requestRender();
-					return;
-				}
-				if (event.wheel) {
-					this.#pressCell = null;
-					this.#handleIsolationWheel(event.wheel);
-					return;
-				}
-				const { footerTop, footerBottom, footerRowOffset, contentBottom } = pinnedFooterScreenBounds({
-					virtualScrollTop: this.#virtualScrollTop,
-					terminalRows: this.terminal.rows,
-					pinnedFooterRows: this.#pinnedFooterRows,
-					composedFrameRows: this.#composedFrame.length,
-					windowTopRow: this.#windowTopRow,
-				});
-				// A press-then-release in a different cell is a drag, and with the
-				// mouse held by the engine that drag selected nothing. Report it so
-				// the host can name Shift+drag and the copy picker. Tracking mode is
-				// 1000h (press/release only, no motion reports), so the release is
-				// the first and only chance to see the gesture.
-				if (event.leftClick) {
-					this.#pressCell =
-						event.row >= 0 && event.row < footerTop && event.row <= contentBottom
-							? { row: event.row, col: event.col }
-							: null;
-				} else if (event.release) {
-					const press = this.#pressCell;
-					this.#pressCell = null;
-					if (press && (press.row !== event.row || press.col !== event.col)) {
-						this.onSelectionAttempt?.();
-					}
-				}
-				if (
-					event.leftClick &&
-					this.#pinnedFooterRows > 0 &&
-					event.row >= footerTop &&
-					event.row <= footerBottom &&
-					event.row >= 0 &&
-					event.row < this.terminal.rows
-				) {
-					// A click in the pinned footer is routed to the child under it
-					// (MouseRoutable components get frame-local coordinates), so
-					// footer chrome like the status footline can own click targets.
-					if (
-						routeFooterMouse(
-							this.#frameSegments,
-							this.#pinnedFooterRows,
-							this.#pinnedFooterChildCount,
-							event,
-							event.row - footerRowOffset,
-						)
-					) {
-						this.requestRender();
-					}
-					if (this.#virtualScrollTop !== null) {
-						// Chat idiom: engaging the composer returns to the present.
-						this.scrollToLiveTail();
-					}
-				}
-				return;
-			}
-		}
-
-		// Alternate Scroll Mode delivers a wheel tick as a bare cursor-up/down key
-		// (xterm's `alternateScroll`: "the scroll-back and scroll-forw actions send
-		// cursor-up and -down keys"), so this is where the "alt-arrows" transport
-		// reads the wheel. Only the LEGACY forms are taken, and that is the whole
-		// disambiguation: under the kitty keyboard protocol at a level that reports
-		// event types, a key the operator actually pressed arrives as a CSI-u
-		// sequence and never matches here, so the composer keeps its arrows while the
-		// wheel still scrolls. Where the terminal does not speak that protocol the two
-		// are genuinely indistinguishable, and the chosen fallback is that arrows
-		// scroll rather than the gesture meaning different things depending on state.
-		// The cost there is concrete and worth knowing: the composer keeps every other
-		// key, but Up/Down stop moving the caret between the lines of a multi-line
-		// draft. Nothing else is lost, because arrows drive no prompt-history walk in
-		// this host — there is none to rebind.
-		//
-		// A gesture the view cannot honor (already at the oldest row, or already
-		// following the tail) is NOT consumed, so a typed arrow on a fallback
-		// terminal still reaches the focused component instead of vanishing.
-		if (this.#altActive && !this.#altOverlayBorrow && this.#altTranscriptWanted()) {
-			const scroll = LEGACY_CURSOR_SCROLL[data];
-			if (scroll !== undefined && this.scrollByRows(scroll * CURSOR_KEY_SCROLL_ROWS)) {
-				return;
-			}
-		}
+		if (input === null || this.#consumeCellSizeResponse(input)) return;
+		if (this.#consumeIsolationMouse(input) || this.#consumeAltArrowScroll(input)) return;
 
 		// Global debug key handler (Shift+Ctrl+D)
-		if (this.onDebug && matchesKey(data, "shift+ctrl+d")) {
+		if (this.onDebug && matchesKey(input, "shift+ctrl+d")) {
 			this.onDebug();
 			return;
 		}
+		this.#deliverToFocused(input);
+	}
 
+	/** Run the input listeners over `data` in order; null when one consumed it or they reduced it to nothing. */
+	#filterInput(data: string): string | null {
+		if (this.#inputListeners.size === 0) return data;
+		let current = data;
+		for (const listener of this.#inputListeners) {
+			const result = listener(current);
+			if (result?.consume) return null;
+			if (result?.data !== undefined) current = result.data;
+		}
+		return current.length === 0 ? null : current;
+	}
+
+	/**
+	 * Scroll isolation owns every SGR mouse report while wheel tracking is
+	 * on and no alt-screen overlay is active: the wheel scrolls the frozen
+	 * transcript region, a click in the pinned footer (band or composer)
+	 * snaps back to the live tail, and any other report is swallowed so
+	 * clicks never leak raw SGR bytes into the focused component.
+	 */
+	#consumeIsolationMouse(data: string): boolean {
+		if (!this.#wheelTrackingActive || this.#altActive || !data.startsWith("\x1b[<")) return false;
+		const event = parseSgrMouse(data);
+		if (!event) return false;
+		if (this.#routeOverlayMouse(event)) return true;
+		if (event.wheel) {
+			this.#pressCell = null;
+			this.#handleIsolationWheel(event.wheel);
+			return true;
+		}
+		const bounds = pinnedFooterScreenBounds({
+			virtualScrollTop: this.#virtualScrollTop,
+			terminalRows: this.terminal.rows,
+			pinnedFooterRows: this.#pinnedFooterRows,
+			composedFrameRows: this.#composedFrame.length,
+			windowTopRow: this.#windowTopRow,
+		});
+		this.#trackDragGesture(event, bounds);
+		this.#routeFooterClick(event, bounds);
+		return true;
+	}
+
+	/** Route a mouse report inside the topmost interactive overlay to it; false when the report lands outside one. */
+	#routeOverlayMouse(event: SgrMouseEvent): boolean {
+		const target = this.#overlays.pointerTarget();
+		if (
+			!target ||
+			event.row < target.row ||
+			event.row >= target.row + target.height ||
+			event.col < target.col ||
+			event.col >= target.col + target.width
+		) {
+			return false;
+		}
+		this.#pressCell = null;
+		target.component.routeMouse(event, event.row - target.row + target.lineOffset, event.col - target.col);
+		this.requestRender();
+		return true;
+	}
+
+	/**
+	 * A press-then-release in a different cell is a drag, and with the
+	 * mouse held by the engine that drag selected nothing. Report it so
+	 * the host can name Shift+drag and the copy picker. Tracking mode is
+	 * 1000h (press/release only, no motion reports), so the release is
+	 * the first and only chance to see the gesture.
+	 */
+	#trackDragGesture(event: SgrMouseEvent, bounds: PinnedFooterBounds): void {
+		if (event.leftClick) {
+			this.#pressCell =
+				event.row >= 0 && event.row < bounds.footerTop && event.row <= bounds.contentBottom
+					? { row: event.row, col: event.col }
+					: null;
+			return;
+		}
+		if (!event.release) return;
+		const press = this.#pressCell;
+		this.#pressCell = null;
+		if (press && (press.row !== event.row || press.col !== event.col)) {
+			this.onSelectionAttempt?.();
+		}
+	}
+
+	/**
+	 * A click in the pinned footer is routed to the child under it
+	 * (MouseRoutable components get frame-local coordinates), so
+	 * footer chrome like the status footline can own click targets.
+	 */
+	#routeFooterClick(event: SgrMouseEvent, bounds: PinnedFooterBounds): void {
+		const inFooter =
+			event.leftClick &&
+			this.#pinnedFooterRows > 0 &&
+			event.row >= bounds.footerTop &&
+			event.row <= bounds.footerBottom &&
+			event.row >= 0 &&
+			event.row < this.terminal.rows;
+		if (!inFooter) return;
+		if (
+			routeFooterMouse(
+				this.#frameSegments,
+				this.#pinnedFooterRows,
+				this.#pinnedFooterChildCount,
+				event,
+				event.row - bounds.footerRowOffset,
+			)
+		) {
+			this.requestRender();
+		}
+		if (this.#virtualScrollTop !== null) {
+			// Chat idiom: engaging the composer returns to the present.
+			this.scrollToLiveTail();
+		}
+	}
+
+	/**
+	 * Alternate Scroll Mode delivers a wheel tick as a bare cursor-up/down key
+	 * (xterm's `alternateScroll`: "the scroll-back and scroll-forw actions send
+	 * cursor-up and -down keys"), so this is where the "alt-arrows" transport
+	 * reads the wheel. Only the LEGACY forms are taken, and that is the whole
+	 * disambiguation: under the kitty keyboard protocol at a level that reports
+	 * event types, a key the operator actually pressed arrives as a CSI-u
+	 * sequence and never matches here, so the composer keeps its arrows while the
+	 * wheel still scrolls. Where the terminal does not speak that protocol the two
+	 * are genuinely indistinguishable, and the chosen fallback is that arrows
+	 * scroll rather than the gesture meaning different things depending on state.
+	 * The cost there is concrete and worth knowing: the composer keeps every other
+	 * key, but Up/Down stop moving the caret between the lines of a multi-line
+	 * draft. Nothing else is lost, because arrows drive no prompt-history walk in
+	 * this host — there is none to rebind.
+	 *
+	 * A gesture the view cannot honor (already at the oldest row, or already
+	 * following the tail) is NOT consumed, so a typed arrow on a fallback
+	 * terminal still reaches the focused component instead of vanishing.
+	 */
+	#consumeAltArrowScroll(data: string): boolean {
+		if (!this.#altActive || this.#altOverlayBorrow || !this.#altTranscriptWanted()) return false;
+		const scroll = LEGACY_CURSOR_SCROLL[data];
+		return scroll !== undefined && this.scrollByRows(scroll * CURSOR_KEY_SCROLL_ROWS);
+	}
+
+	/** Hand input to the focused component, which decides how to handle it (including Ctrl+C). */
+	#deliverToFocused(data: string): void {
 		// If focused component is an overlay, verify it can still take input (visibility can change
 		// due to terminal resize or the `visible()` callback, and a card that is playing itself out
 		// stops being interactive before it stops being drawn).
@@ -2312,17 +2416,12 @@ export class TUI extends Container {
 			// callback). Hand focus on the same way a close does.
 			this.#restoreFocusAfterOverlay(focusedOverlay.preFocus);
 		}
-
-		// Pass input to focused component (including Ctrl+C)
-		// The focused component can decide how to handle Ctrl+C
-		if (this.#focusedComponent?.handleInput) {
-			// Filter out key release events unless component opts in
-			if (isKeyRelease(data) && !this.#focusedComponent.wantsKeyRelease) {
-				return;
-			}
-			this.#focusedComponent.handleInput(data);
-			this.requestRender();
-		}
+		const focused = this.#focusedComponent;
+		if (!focused?.handleInput) return;
+		// Filter out key release events unless component opts in
+		if (isKeyRelease(data) && !focused.wantsKeyRelease) return;
+		focused.handleInput(data);
+		this.requestRender();
 	}
 
 	#consumeCellSizeResponse(data: string): boolean {
@@ -2360,74 +2459,8 @@ export class TUI extends Container {
 		this.#activity.report();
 		const width = this.terminal.columns;
 		const height = this.terminal.rows;
-
-		// Size any sibling-dependent layout before the children render, while a
-		// measurement of them is still a measurement of THIS frame.
-		if (this.onBeforeCompose) {
-			this.#sizing = true;
-			try {
-				this.onBeforeCompose();
-			} finally {
-				this.#sizing = false;
-				this.#sizingRoots = undefined;
-				this.#partialComposeChildren.clear();
-			}
-		}
-
-		// Consume the component-scoped accumulation: it describes the render
-		// requests made up to this frame, whichever path the frame takes.
-		const componentScopedOnly = this.#pendingRenderComponentsOnly;
-		this.#pendingRenderComponentsOnly = false;
-
-		if (this.#syncAltScreenResidency(width, height)) return;
-
-		// Resize viewport fast path. While a non-multiplexer drag is in flight,
-		// paint only the viewport and skip composing the off-screen history.
-		// Strictly state-isolated: it never consumes #resizeEventPending nor
-		// advances any commit/window/diff field, so the authoritative full paint
-		// the settle timer queues reconciles as if these throwaway frames never
-		// ran. Two render sources reach here mid-drag and BOTH must stay on this
-		// path:
-		//   - the resize callback's own cheap paint after each SIGWINCH;
-		//   - an ordinary (non-forced) render from a live block that keeps
-		//     animating through the drag — a spinner tick, a streamed token, a
-		//     cursor blink — firing requestRender(false)/requestComponentRender.
-		//     #resizeEventPending is still set (the fast path never consumed it),
-		//     so without this branch the ordinary render falls through to the
-		//     geometry-rebuild full paint below, which LEAVES the borrowed
-		//     alternate screen to repaint the whole transcript on the normal
-		//     screen — then the next SIGWINCH re-enters the alt screen and paints
-		//     only the tail, so the block flashes in for one frame and vanishes.
-		// A FORCED render mid-drag (tool finalization, resetDisplay, image
-		// reconciliation) also stays on the fast path: preempting would leave
-		// the borrowed alternate screen and run the geometry-rebuild full paint
-		// on the normal screen — ED3 plus an O(history) replay that visibly
-		// scrolls the whole transcript through the viewport, once per forced
-		// render and once more at settle. The forced intent is not lost: the
-		// fast path consumes neither #forceViewportRepaintOnNextRender nor
-		// #clearScrollbackOnNextRender, and the settle's authoritative
-		// requestRender(true) honors both — same fold-into-the-settle contract
-		// as the multiplexer resize debounce. A visible overlay composites over
-		// the transcript and needs the whole window, so it falls through
-		// (overlay resizes are not on the drag-cost hot path).
-		if (this.#resizeViewportActive && this.#hasEverRendered && this.#overlays.topmostVisible() === undefined) {
-			this.#componentRenderTargets.clear();
-			this.#renderResizeViewport(width, height);
-			return;
-		}
-
-		const rawFrame = this.#composeFrame(width, height, componentScopedOnly);
-		// This runs BEFORE the Ghostty deferral because the drop already happened
-		// inside the render above — an abandoned frame does not give those rows
-		// back, and leaving the indices behind is what makes the next
-		// classification read the shift as a prefix violation.
-		this.#slideCommitsOverDroppedRows();
-		// Ghostty initial-image deferral must run before any render state is
-		// consumed (#resizeEventPending, hardware-cursor state, commit
-		// re-anchoring): the early return abandons this frame and the deferred
-		// render recomposes from scratch, so consuming state here would
-		// misclassify a pending resize as an ordinary diff and corrupt the paint.
-		if (this.#maybeDeferGhosttyInitialImagePaint()) return;
+		const rawFrame = this.#composeForPaint(width, height);
+		if (rawFrame === null) return;
 
 		// Exactness boundary (used by the audit-zone math below). Rows below it
 		// are declared FINAL by the component seam: when they commit, they enter
@@ -2436,13 +2469,6 @@ export class TUI extends Container {
 		// #committedPrefixAuditRows). The whole frame is final when the root
 		// reports no seam (shell semantics).
 		const frameLength = rawFrame.length;
-		// Wheel tracking follows scrollability, and "scrollable" means anything
-		// sits above the window — the frame overflows the viewport, or rows have
-		// already scrolled off onto the tape. A frame test alone released the
-		// mouse on every quiet frame of a virtualized transcript, which is what
-		// let the terminal scroll the composer off screen. Synced after the emit
-		// below.
-		this.#frameScrollable = frameLength > height || this.#scrollTape.scrolledOffRows > 0;
 		const finalBoundary = clampLow(this.#nativeScrollbackLiveRegionStart ?? frameLength, 0, frameLength);
 
 		// 2. Transition state captured before any emitter runs.
@@ -2476,12 +2502,7 @@ export class TUI extends Container {
 		// top), prepare lines, and build the visible window slice.
 		const view = this.#assembleWindow(rawFrame, width, height, plan, hasVisibleOverlay);
 
-		const intent: RenderIntent = fullPaint
-			? {
-					kind: "fullPaint",
-					clearScrollback: divergenceRebuild || ((replaceRequested || geometryRebuild) && !isMultiplexerSession()),
-				}
-			: { kind: "update", chunkTo: plan.chunkTo, windowTop: plan.windowTop };
+		const intent = frameIntent(fullPaint, divergenceRebuild, replaceRequested || geometryRebuild, plan);
 		this.#logRedraw(intent, frameLength, height);
 
 		const imageTransmitBuffer = this.#takeImageTransmits();
@@ -2541,6 +2562,89 @@ export class TUI extends Container {
 	}
 
 	/**
+	 * Run the sizing pass, settle alternate-screen residency and compose this frame's rows for a paint; null when the
+	 * frame ended before that paint (a fullscreen overlay painted, the resize viewport fast path painted, or the
+	 * Ghostty initial-image deferral abandoned the frame).
+	 */
+	#composeForPaint(width: number, height: number): readonly string[] | null {
+		// Size any sibling-dependent layout before the children render, while a
+		// measurement of them is still a measurement of THIS frame.
+		if (this.onBeforeCompose) {
+			this.#sizing = true;
+			try {
+				this.onBeforeCompose();
+			} finally {
+				this.#sizing = false;
+				this.#sizingRoots = undefined;
+				this.#partialComposeChildren.clear();
+			}
+		}
+
+		// Consume the component-scoped accumulation: it describes the render
+		// requests made up to this frame, whichever path the frame takes.
+		const componentScopedOnly = this.#pendingRenderComponentsOnly;
+		this.#pendingRenderComponentsOnly = false;
+
+		if (this.#syncAltScreenResidency(width, height)) return null;
+
+		// Resize viewport fast path. While a non-multiplexer drag is in flight,
+		// paint only the viewport and skip composing the off-screen history.
+		// Strictly state-isolated: it never consumes #resizeEventPending nor
+		// advances any commit/window/diff field, so the authoritative full paint
+		// the settle timer queues reconciles as if these throwaway frames never
+		// ran. Two render sources reach here mid-drag and BOTH must stay on this
+		// path:
+		//   - the resize callback's own cheap paint after each SIGWINCH;
+		//   - an ordinary (non-forced) render from a live block that keeps
+		//     animating through the drag — a spinner tick, a streamed token, a
+		//     cursor blink — firing requestRender(false)/requestComponentRender.
+		//     #resizeEventPending is still set (the fast path never consumed it),
+		//     so without this branch the ordinary render falls through to the
+		//     geometry-rebuild full paint below, which LEAVES the borrowed
+		//     alternate screen to repaint the whole transcript on the normal
+		//     screen — then the next SIGWINCH re-enters the alt screen and paints
+		//     only the tail, so the block flashes in for one frame and vanishes.
+		// A FORCED render mid-drag (tool finalization, resetDisplay, image
+		// reconciliation) also stays on the fast path: preempting would leave
+		// the borrowed alternate screen and run the geometry-rebuild full paint
+		// on the normal screen — ED3 plus an O(history) replay that visibly
+		// scrolls the whole transcript through the viewport, once per forced
+		// render and once more at settle. The forced intent is not lost: the
+		// fast path consumes neither #forceViewportRepaintOnNextRender nor
+		// #clearScrollbackOnNextRender, and the settle's authoritative
+		// requestRender(true) honors both — same fold-into-the-settle contract
+		// as the multiplexer resize debounce. A visible overlay composites over
+		// the transcript and needs the whole window, so it falls through
+		// (overlay resizes are not on the drag-cost hot path).
+		if (this.#resizeViewportActive && this.#hasEverRendered && this.#overlays.topmostVisible() === undefined) {
+			this.#componentRenderTargets.clear();
+			this.#renderResizeViewport(width, height);
+			return null;
+		}
+
+		const rawFrame = this.#composeFrame(width, height, componentScopedOnly);
+		// This runs BEFORE the Ghostty deferral because the drop already happened
+		// inside the render above — an abandoned frame does not give those rows
+		// back, and leaving the indices behind is what makes the next
+		// classification read the shift as a prefix violation.
+		this.#slideCommitsOverDroppedRows();
+		// Ghostty initial-image deferral must run before any render state is
+		// consumed (#resizeEventPending, hardware-cursor state, commit
+		// re-anchoring): the early return abandons this frame and the deferred
+		// render recomposes from scratch, so consuming state here would
+		// misclassify a pending resize as an ordinary diff and corrupt the paint.
+		if (this.#maybeDeferGhosttyInitialImagePaint()) return null;
+
+		// Wheel tracking follows scrollability, and "scrollable" means anything
+		// sits above the window — the frame overflows the viewport, or rows have
+		// already scrolled off onto the tape. A frame test alone released the
+		// mouse on every quiet frame of a virtualized transcript, which is what
+		// let the terminal scroll the composer off screen. Synced after the emit.
+		this.#frameScrollable = rawFrame.length > height || this.#scrollTape.scrolledOffRows > 0;
+		return rawFrame;
+	}
+
+	/**
 	 * Enter, re-mode, or leave the alternate screen for this frame. Returns true
 	 * when a fullscreen overlay borrows the buffer: the modal is painted and the
 	 * frame ends there.
@@ -2589,22 +2693,7 @@ export class TUI extends Container {
 			this.#altPreviousLines = [];
 			this.#altPreviousCursor = undefined;
 		} else if (!wantAlt && this.#altActive) {
-			const enhancementExit = this.#keyboardEnhancementExit();
-			this.terminal.write(`${MOUSE_TRACKING_OFF}${enhancementExit}${ALT_SCREEN_EXIT}`);
-			setAltScreenActive(false);
-			this.#cursor.forget();
-			this.#altActive = false;
-			// Scroll isolation re-arms its wheel/button tracking after the
-			// overlay's full tracking set is torn down.
-			this.#syncWheelTracking();
-			this.#altPreviousLines = [];
-			this.#altPreviousCursor = undefined;
-			// A resize while on the alt buffer reflowed the terminal's saved
-			// normal screen; it no longer matches our accounting, so force the
-			// geometry rebuild path instead of a stale diff.
-			if (width !== this.#altEnterWidth || height !== this.#altEnterHeight) {
-				this.#resizeEventPending = true;
-			}
+			this.#leaveAltScreen(width, height);
 		}
 		this.#altOverlayBorrow = overlayWantsAlt;
 		if (this.#altActive && overlayWantsAlt) {
@@ -2613,6 +2702,26 @@ export class TUI extends Container {
 			return true;
 		}
 		return false;
+	}
+
+	/** Leave the alternate screen for the normal one, at the terminal's current `width` and `height`. */
+	#leaveAltScreen(width: number, height: number): void {
+		const enhancementExit = this.#keyboardEnhancementExit();
+		this.terminal.write(`${MOUSE_TRACKING_OFF}${enhancementExit}${ALT_SCREEN_EXIT}`);
+		setAltScreenActive(false);
+		this.#cursor.forget();
+		this.#altActive = false;
+		// Scroll isolation re-arms its wheel/button tracking after the
+		// overlay's full tracking set is torn down.
+		this.#syncWheelTracking();
+		this.#altPreviousLines = [];
+		this.#altPreviousCursor = undefined;
+		// A resize while on the alt buffer reflowed the terminal's saved
+		// normal screen; it no longer matches our accounting, so force the
+		// geometry rebuild path instead of a stale diff.
+		if (width !== this.#altEnterWidth || height !== this.#altEnterHeight) {
+			this.#resizeEventPending = true;
+		}
 	}
 
 	/**
@@ -2910,7 +3019,6 @@ export class TUI extends Container {
 	): WindowPlan {
 		const { prevWindowTop, geometryChanged } = transition;
 		const frameLength = rawFrame.length;
-		let committedPrefixResliced = false;
 		// Ceiling on what may enter native scrollback: chrome mounted after the
 		// transcript (a HUD, the composer, the status line) rewrites itself every
 		// frame, and a chrome row that reached the committed prefix diverges on
@@ -2920,15 +3028,9 @@ export class TUI extends Container {
 		let windowTop: number;
 		let chunkTo: number;
 		if (fullPaint) {
-			committedPrefixResliced = true;
 			windowTop = Math.max(0, frameLength - height);
 			chunkTo = Math.min(windowTop, historyEnd);
-		} else if (
-			frameLength <= this.#committedRows ||
-			(frameLength - this.#committedRows < height &&
-				(prevWindowTop < this.#committedRows ||
-					this.#frameCursorMarkers.some(marker => marker.row >= this.#committedRows)))
-		) {
+		} else if (this.#reanchorsToTail(frameLength, height, prevWindowTop)) {
 			// Tail re-anchor (a direct terminal may instead take the
 			// divergenceRebuild full paint above when the prefix resynced):
 			// either the frame shrank into the committed prefix, or the live tail
@@ -2966,10 +3068,6 @@ export class TUI extends Container {
 				this.#committedRows = frameLength;
 				this.#committedPrefixAuditRows = Math.min(this.#committedPrefixAuditRows, frameLength);
 			}
-			if (geometryChanged) {
-				committedPrefixResliced = true;
-				this.#committedPrefix = rawFrame.slice(0, this.#committedRows);
-			}
 			chunkTo = this.#committedRows;
 		} else {
 			// Re-anchor to the frame tail, floored at the committed boundary: a
@@ -3000,31 +3098,51 @@ export class TUI extends Container {
 			// are chrome rows, which were never history to begin with.
 			const commitWouldTakeLiveRows = windowTop > historyEnd;
 			chunkTo = hasVisibleOverlay || geometryChanged || commitWouldTakeLiveRows ? this.#committedRows : windowTop;
-			if (geometryChanged) {
-				committedPrefixResliced = true;
-				this.#committedPrefix = rawFrame.slice(0, this.#committedRows);
-			}
 		}
+		// A full paint replays the prefix it commits; a geometry change re-bases it at the new width.
+		const committedPrefixResliced = fullPaint || geometryChanged;
+		if (!fullPaint && geometryChanged) this.#committedPrefix = rawFrame.slice(0, this.#committedRows);
 
-		// Scroll isolation composite: the transcript region shows a frozen
-		// slice anchored at #virtualScrollTop while the pinned footer stays
-		// live at the viewport bottom. Commits freeze (a chunk's scroll would
-		// destroy the frozen view); the backfill runs through the ordinary
-		// seam rewrite on resume. windowTop and the commit accounting keep
-		// tracking the live tail, so resume needs no reconciliation.
-		let virtualScrollSlice = false;
-		if (this.#virtualScrollTop !== null) {
-			const liveTop = this.#scrollSpaceLiveTop(frameLength);
-			if (fullPaint || geometryChanged || hasVisibleOverlay || this.#virtualScrollTop >= liveTop) {
-				// Resume: gestures and full paints invalidate the slice, overlays
-				// take over the window, and walking down to the tail is following.
-				this.#resumeLiveTail();
-			} else {
-				virtualScrollSlice = true;
-				chunkTo = this.#committedRows;
-			}
-		}
+		const virtualScrollSlice = this.#holdVirtualScrollSlice(
+			frameLength,
+			fullPaint || geometryChanged || hasVisibleOverlay,
+		);
+		if (virtualScrollSlice) chunkTo = this.#committedRows;
 		return { windowTop, chunkTo, committedPrefixResliced, virtualScrollSlice };
+	}
+
+	/**
+	 * Whether an incremental frame re-anchors its window to the frame tail without lowering the commit index: the
+	 * frame shrank into the committed prefix, or the live tail below the committed boundary no longer fills the
+	 * viewport while the window already shows committed rows or the focused cursor sits in the tail.
+	 */
+	#reanchorsToTail(frameLength: number, height: number, prevWindowTop: number): boolean {
+		const committed = this.#committedRows;
+		if (frameLength <= committed) return true;
+		if (frameLength - committed >= height) return false;
+		return prevWindowTop < committed || this.#frameCursorMarkers.some(marker => marker.row >= committed);
+	}
+
+	/**
+	 * Scroll isolation composite: the transcript region shows a frozen
+	 * slice anchored at #virtualScrollTop while the pinned footer stays
+	 * live at the viewport bottom. Commits freeze (a chunk's scroll would
+	 * destroy the frozen view); the backfill runs through the ordinary
+	 * seam rewrite on resume. windowTop and the commit accounting keep
+	 * tracking the live tail, so resume needs no reconciliation.
+	 *
+	 * Returns whether this frame shows the frozen slice. A frame that
+	 * `invalidates` it (a full paint or geometry gesture, or a visible
+	 * overlay that takes over the window) and a view walked down to the
+	 * tail resume following instead.
+	 */
+	#holdVirtualScrollSlice(frameLength: number, invalidates: boolean): boolean {
+		if (this.#virtualScrollTop === null) return false;
+		if (invalidates || this.#virtualScrollTop >= this.#scrollSpaceLiveTop(frameLength)) {
+			this.#resumeLiveTail();
+			return false;
+		}
+		return true;
 	}
 
 	/**
@@ -3048,50 +3166,28 @@ export class TUI extends Container {
 		let cursorPos = findVisibleCursorMarker(this.#frameCursorMarkers, windowTop);
 		const frame = this.#prepared.prepare(rawFrame, width);
 		let window: string[] = new Array(height);
+		// Screen row where the pinned footer starts in this window, for overlays
+		// that stay above it. `height` when nothing is pinned or the footer is
+		// below the window's last row.
+		let overlayFooterTop: number;
 		// Screen position of the caret for a resident alt-buffer paint, computed
 		// while the window is assembled because only here is it known which frame
 		// row landed on which screen row. Null means "no visible caret": in a frozen
 		// view the composer's row is still painted (it is the pinned footer), but a
 		// caret whose frame row sits in the frozen history above has no screen row
 		// at all and must not be drawn at a stale one.
-		let altCaret: { row: number; col: number } | null = null;
-		// Screen row where the pinned footer starts in this window, for overlays
-		// that stay above it. `height` when nothing is pinned or the footer is
-		// below the window's last row.
-		let overlayFooterTop = height;
+		let altCaret: { row: number; col: number } | null;
 		if (virtualScrollSlice) {
-			// Frozen transcript rows above, live footer rows below. The region
-			// reads the scroll-space snapshot (tape + this frame's uncommitted
-			// rows), built once when the view froze so nothing that happens
-			// under it can shift a row the reader is looking at. The footer is
-			// always the live frame's last rows, so the composer keeps typing,
-			// spinning, and updating while the history above it holds still.
-			const uncommittedEnd = Math.max(this.#committedRows, frameLength - this.#pinnedFooterRows);
-			this.#scrollSnapshot ??= [...this.#scrollTape.rows, ...frame.slice(this.#committedRows, uncommittedEnd)];
-			const snapshot = this.#scrollSnapshot;
-			const footerRows = Math.min(this.#pinnedFooterRows, height - 1);
-			const regionRows = height - footerRows;
-			overlayFooterTop = regionRows;
-			const viewTop = this.#virtualScrollTop!;
-			for (let r = 0; r < height; r++) {
-				window[r] =
-					r < regionRows
-						? (snapshot[viewTop + r] ?? "")
-						: (frame[frameLength - footerRows + (r - regionRows)] ?? "");
-			}
-			drawScrollTrack(window, regionRows, viewTop, snapshot.length, width);
-			const footerTop = frameLength - footerRows;
-			if (cursorPos !== null && cursorPos.row >= footerTop) {
-				altCaret = { row: regionRows + (cursorPos.row - footerTop), col: cursorPos.col };
-			}
+			overlayFooterTop = this.#fillFrozenWindow(window, frame, frameLength, width, height);
+			// The footer is the frame's last `height - overlayFooterTop` rows, shown from screen row `overlayFooterTop`.
+			altCaret = screenCaret(cursorPos, frameLength - (height - overlayFooterTop), frameLength, overlayFooterTop);
 		} else {
 			for (let r = 0; r < height; r++) window[r] = frame[windowTop + r] ?? "";
-			if (this.#pinnedFooterRows > 0) {
-				overlayFooterTop = Math.min(height, Math.max(0, frameLength - this.#pinnedFooterRows - windowTop));
-			}
-			if (cursorPos !== null && cursorPos.row >= windowTop && cursorPos.row < windowTop + height) {
-				altCaret = { row: cursorPos.row - windowTop, col: cursorPos.col };
-			}
+			overlayFooterTop =
+				this.#pinnedFooterRows > 0
+					? Math.min(height, Math.max(0, frameLength - this.#pinnedFooterRows - windowTop))
+					: height;
+			altCaret = screenCaret(cursorPos, windowTop, windowTop + height, 0);
 		}
 		if (hasVisibleOverlay) {
 			window = this.#overlays.compositeIntoWindow(window, width, height, overlayFooterTop);
@@ -3112,6 +3208,36 @@ export class TUI extends Container {
 			cursorTrackingLineCount,
 			repaintInPlace: hasVisibleOverlay || virtualScrollSlice,
 		};
+	}
+
+	/**
+	 * Fill `window` with the frozen scroll-isolation view: frozen transcript
+	 * rows above, live footer rows below. The region reads the scroll-space
+	 * snapshot (tape + this frame's uncommitted rows), built once when the
+	 * view froze so nothing that happens under it can shift a row the reader
+	 * is looking at. The footer is always the live frame's last rows, so the
+	 * composer keeps typing, spinning, and updating while the history above
+	 * it holds still. Returns the screen row the footer starts at.
+	 */
+	#fillFrozenWindow(
+		window: string[],
+		frame: readonly string[],
+		frameLength: number,
+		width: number,
+		height: number,
+	): number {
+		const uncommittedEnd = Math.max(this.#committedRows, frameLength - this.#pinnedFooterRows);
+		this.#scrollSnapshot ??= [...this.#scrollTape.rows, ...frame.slice(this.#committedRows, uncommittedEnd)];
+		const snapshot = this.#scrollSnapshot;
+		const footerRows = Math.min(this.#pinnedFooterRows, height - 1);
+		const regionRows = height - footerRows;
+		const viewTop = this.#virtualScrollTop!;
+		for (let r = 0; r < height; r++) {
+			window[r] =
+				r < regionRows ? (snapshot[viewTop + r] ?? "") : (frame[frameLength - footerRows + (r - regionRows)] ?? "");
+		}
+		drawScrollTrack(window, regionRows, viewTop, snapshot.length, width);
+		return regionRows;
 	}
 
 	/**
@@ -3661,31 +3787,27 @@ export class TUI extends Container {
 		height: number,
 		purgeSequence: string,
 	): void {
-		const { frame, window, cursorPos, cursorTrackingLineCount } = view;
-		const { chunkTo, windowTop } = plan;
 		const { prevWindowTop, prevHardwareCursorRow } = transition;
 		const forceWindowRewrite =
 			this.#forceViewportRepaintOnNextRender || (transition.geometryChanged && resizeRepaintsInPlace());
-		const repaintVirtualScrollInPlace = view.repaintInPlace;
+		const { chunkTo, windowTop } = plan;
 		const chunkFrom = this.#committedRows;
-		const chunkLength = chunkTo - chunkFrom;
 		const scroll = windowTop - prevWindowTop;
-		const previousWindow = this.#previousWindow;
-		const contentRows = clampLow(frame.length - windowTop, 1, height);
-		const contentBottomRow = windowTop + contentRows - 1;
 		// Terminals clamp the hardware cursor to the viewport on resize; clamp
 		// our tracking to match so relative moves land correctly.
 		const clampedCursor = Math.min(prevHardwareCursorRow, prevWindowTop + height - 1);
-		const currentScreenRow = clampLow(clampedCursor - prevWindowTop, 0, height - 1);
-		const lead = this.#paintBeginSequence + purgeSequence;
-		const finalizeEmit = (buffer: string, cursorFrom: number, committedRows?: number) => {
-			const cursorControl = this.#cursor.controlSequence(cursorPos, cursorTrackingLineCount, cursorFrom);
-			this.terminal.write(buffer + cursorControl.seq + this.#paintEndSequence);
-			if (committedRows !== undefined) this.#committedRows = committedRows;
-			this.#windowTopRow = windowTop;
-			this.#commit(frame, window, width, height, cursorControl);
+		const geometry: UpdateGeometry = {
+			chunkFrom,
+			chunkTo,
+			windowTop,
+			scroll,
+			currentScreenRow: clampLow(clampedCursor - prevWindowTop, 0, height - 1),
+			contentBottomRow: windowTop + clampLow(view.frame.length - windowTop, 1, height) - 1,
+			lead: this.#paintBeginSequence + purgeSequence,
+			width,
+			height,
 		};
-
+		const chunkLength = chunkTo - chunkFrom;
 		// Scroll-append: committing exactly the rows that scroll off the top,
 		// with content untouched since they were painted.
 		if (
@@ -3694,94 +3816,136 @@ export class TUI extends Container {
 			chunkLength === scroll &&
 			scroll < height &&
 			chunkFrom === prevWindowTop &&
-			chunkStillPainted(previousWindow, frame, chunkFrom, chunkLength, height)
+			chunkStillPainted(this.#previousWindow, view.frame, chunkFrom, chunkLength, height)
 		) {
-			// Rows of the shifted window that changed after the shift.
-			const firstChanged = firstChangedRow(window, previousWindow, scroll, height - scroll);
-			const lastChanged = firstChanged === -1 ? -1 : lastChangedRow(window, previousWindow, scroll, height - scroll);
-			const buffer = scrollAppendSequence(
-				lead,
-				window,
-				width,
-				height,
-				scroll,
-				currentScreenRow,
-				firstChanged,
-				lastChanged,
-				this.#imageBudget,
-			);
-			finalizeEmit(buffer, windowTop + (firstChanged === -1 ? height - 1 : lastChanged), chunkTo);
+			this.#emitScrollAppend(view, geometry);
+		} else if (chunkLength === 0) {
+			this.#emitWindowDiff(view, geometry, forceWindowRewrite, purgeSequence);
+		} else {
+			this.#emitSeamRewrite(view, geometry);
+		}
+	}
+
+	/** Scroll-append: `\r\n` the committed chunk off the top, then rewrite the rows that changed after the shift. */
+	#emitScrollAppend(view: AssembledWindow, geometry: UpdateGeometry): void {
+		const { window } = view;
+		const { scroll, height } = geometry;
+		const previousWindow = this.#previousWindow;
+		// Rows of the shifted window that changed after the shift.
+		const firstChanged = firstChangedRow(window, previousWindow, scroll, height - scroll);
+		const lastChanged = firstChanged === -1 ? -1 : lastChangedRow(window, previousWindow, scroll, height - scroll);
+		const buffer = scrollAppendSequence(
+			geometry.lead,
+			window,
+			geometry.width,
+			height,
+			scroll,
+			geometry.currentScreenRow,
+			firstChanged,
+			lastChanged,
+			this.#imageBudget,
+		);
+		const cursorFrom = geometry.windowTop + (firstChanged === -1 ? height - 1 : lastChanged);
+		this.#finishUpdate(view, geometry, buffer, cursorFrom, geometry.chunkTo);
+	}
+
+	/**
+	 * In-window diff: nothing commits. Rewrite in place when the window slid
+	 * without a commit — an overlay visible (composited rows must never enter
+	 * history), a commit-frozen geometry frame, or the window pulling back
+	 * down after a shrink. Overlay cursor-only frames can also leave the
+	 * tracked row behind the physical cursor; a relative partial rewrite from
+	 * that stale origin can CRLF on the bottom row and scroll native history
+	 * without appending to the commit tape, so overlays always take the
+	 * top-clamped full rewrite.
+	 */
+	#emitWindowDiff(
+		view: AssembledWindow,
+		geometry: UpdateGeometry,
+		forceWindowRewrite: boolean,
+		purgeSequence: string,
+	): void {
+		const { window, cursorPos, cursorTrackingLineCount } = view;
+		const { windowTop, contentBottomRow, width, height } = geometry;
+		const previousWindow = this.#previousWindow;
+		const inPlaceRewrite = view.repaintInPlace || geometry.scroll !== 0;
+		const rewriteAll = forceWindowRewrite || inPlaceRewrite;
+		// A full rewrite takes every row, and so does a diff against a
+		// previous window of another height.
+		let firstChanged = rewriteAll || height > 0 ? 0 : -1;
+		let lastChanged = height - 1;
+		if (rewriteAll) {
+			this.#fullRedrawCount += 1;
+		} else if (previousWindow.length === height) {
+			firstChanged = firstChangedRow(window, previousWindow, 0, height);
+			lastChanged = firstChanged === -1 ? -1 : lastChangedRow(window, previousWindow, 0, height);
+		}
+		if (firstChanged === -1) {
+			if (purgeSequence.length > 0) this.terminal.write(purgeSequence);
+			this.#cursor.writePosition(this.terminal, cursorPos, cursorTrackingLineCount);
+			this.#previousWidth = width;
+			this.#previousHeight = height;
 			return;
 		}
-
-		// In-window diff: nothing commits. Rewrite in place when the window slid
-		// without a commit — an overlay visible (composited rows must never enter
-		// history), a commit-frozen geometry frame, or the window pulling back
-		// down after a shrink. Overlay cursor-only frames can also leave the
-		// tracked row behind the physical cursor; a relative partial rewrite from
-		// that stale origin can CRLF on the bottom row and scroll native history
-		// without appending to the commit tape, so overlays always take the
-		// top-clamped full rewrite.
-		const inPlaceRewrite = repaintVirtualScrollInPlace || scroll !== 0;
-		if (chunkLength === 0) {
-			const rewriteAll = forceWindowRewrite || inPlaceRewrite;
-			// A full rewrite takes every row, and so does a diff against a
-			// previous window of another height.
-			let firstChanged = rewriteAll || height > 0 ? 0 : -1;
-			let lastChanged = height - 1;
-			if (rewriteAll) {
-				this.#fullRedrawCount += 1;
-			} else if (previousWindow.length === height) {
-				firstChanged = firstChangedRow(window, previousWindow, 0, height);
-				lastChanged = firstChanged === -1 ? -1 : lastChangedRow(window, previousWindow, 0, height);
-			}
-			if (firstChanged === -1) {
-				if (purgeSequence.length > 0) this.terminal.write(purgeSequence);
-				this.#cursor.writePosition(this.terminal, cursorPos, cursorTrackingLineCount);
-				this.#previousWidth = width;
-				this.#previousHeight = height;
-				return;
-			}
-			let buffer = windowDiffSequence(
-				lead,
-				window,
-				width,
-				height,
-				firstChanged,
-				lastChanged,
-				inPlaceRewrite,
-				currentScreenRow,
-				this.#deccaraFillsEnabled(),
-				this.#imageBudget,
-			);
-			// Never park below real content (a height shrink would scroll live
-			// rows into history and duplicate them per resize step).
-			let cursorFromRow = windowTop + lastChanged;
-			const contentBottomScreenRow = contentBottomRow - windowTop;
-			if (lastChanged > contentBottomScreenRow) {
-				buffer += `\x1b[${lastChanged - contentBottomScreenRow}A`;
-				cursorFromRow = contentBottomRow;
-			}
-			finalizeEmit(buffer, cursorFromRow);
-			return;
-		}
-
-		// Seam rewrite: write the chunk into history, then the whole window.
-		this.#fullRedrawCount += 1;
-		let buffer = seamRewriteSequence(
-			lead,
-			frame,
+		let buffer = windowDiffSequence(
+			geometry.lead,
 			window,
 			width,
 			height,
-			chunkFrom,
-			chunkTo,
-			currentScreenRow,
+			firstChanged,
+			lastChanged,
+			inPlaceRewrite,
+			geometry.currentScreenRow,
+			this.#deccaraFillsEnabled(),
+			this.#imageBudget,
+		);
+		// Never park below real content (a height shrink would scroll live
+		// rows into history and duplicate them per resize step).
+		let cursorFromRow = windowTop + lastChanged;
+		const contentBottomScreenRow = contentBottomRow - windowTop;
+		if (lastChanged > contentBottomScreenRow) {
+			buffer += `\x1b[${lastChanged - contentBottomScreenRow}A`;
+			cursorFromRow = contentBottomRow;
+		}
+		this.#finishUpdate(view, geometry, buffer, cursorFromRow);
+	}
+
+	/** Seam rewrite: write the chunk into history, then the whole window, and park on the last content row. */
+	#emitSeamRewrite(view: AssembledWindow, geometry: UpdateGeometry): void {
+		const { windowTop, contentBottomRow, height } = geometry;
+		this.#fullRedrawCount += 1;
+		let buffer = seamRewriteSequence(
+			geometry.lead,
+			view.frame,
+			view.window,
+			geometry.width,
+			height,
+			geometry.chunkFrom,
+			geometry.chunkTo,
+			geometry.currentScreenRow,
 			this.#imageBudget,
 		);
 		const parkUp = height - 1 - (contentBottomRow - windowTop);
 		if (parkUp > 0) buffer += `\x1b[${parkUp}A`;
-		finalizeEmit(buffer, contentBottomRow, chunkTo);
+		this.#finishUpdate(view, geometry, buffer, contentBottomRow, geometry.chunkTo);
+	}
+
+	/**
+	 * Write one update's bytes with the caret placement and paint-end sequence, advance the commit index when the
+	 * update committed rows, and record the frame as painted.
+	 */
+	#finishUpdate(
+		view: AssembledWindow,
+		geometry: UpdateGeometry,
+		buffer: string,
+		cursorFrom: number,
+		committedRows?: number,
+	): void {
+		const cursorControl = this.#cursor.controlSequence(view.cursorPos, view.cursorTrackingLineCount, cursorFrom);
+		this.terminal.write(buffer + cursorControl.seq + this.#paintEndSequence);
+		if (committedRows !== undefined) this.#committedRows = committedRows;
+		this.#windowTopRow = geometry.windowTop;
+		this.#commit(view.frame, view.window, geometry.width, geometry.height, cursorControl);
 	}
 
 	/** Optional intent log under VEYYON_DEBUG_REDRAW. */

@@ -76,3 +76,23 @@ export interface AssembledWindow {
 	/** The window is an overlay composite or the frozen scroll-isolation view, so an update rewrites it in place. */
 	readonly repaintInPlace: boolean;
 }
+
+/** The positions one incremental update writes relative to, derived from the plan and the previous frame. */
+export interface UpdateGeometry {
+	/** First frame row of the commit chunk: `#committedRows` before the update. */
+	readonly chunkFrom: number;
+	/** End of the commit chunk, `[chunkFrom, chunkTo)`. */
+	readonly chunkTo: number;
+	/** Frame row the window starts at. */
+	readonly windowTop: number;
+	/** Rows the window moved down since the previous frame. */
+	readonly scroll: number;
+	/** Screen row the hardware cursor is on before the update, clamped to the viewport. */
+	readonly currentScreenRow: number;
+	/** Frame row of the last content row inside the window. */
+	readonly contentBottomRow: number;
+	/** Bytes every update opens with: the paint-begin sequence, then the image purge. */
+	readonly lead: string;
+	readonly width: number;
+	readonly height: number;
+}
