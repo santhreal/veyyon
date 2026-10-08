@@ -499,6 +499,35 @@ describe("field fidelity across media, business, and security advisory site decl
 			);
 			expect(result.content).toContain("## About\n\nBitcoin is the first decentralized cryptocurrency.");
 		});
+
+		// CoinGecko writes JSON `null` for a figure it lacks (a new coin's 24h change, an unknown
+		// price or all-time high). Each such figure is omitted, the rest still render, and a blank
+		// category name leaves no empty slot in the list.
+		it.each([
+			["24h change", { current_price: { usd: 2.5 }, price_change_percentage_24h: null }, "**Price:** $2.50\n"],
+			["price", { current_price: { usd: null }, total_volume: { usd: 7 } }, "**24h Volume:** $7\n"],
+			[
+				"all-time high",
+				{ ath: { usd: null }, ath_date: { usd: null }, market_cap: { usd: 9 } },
+				"**Market Cap:** $9\n",
+			],
+		])("omits a null %s and renders the remaining figures", async (_figure, marketData, expected) => {
+			loadPageSpy = spyOn(scraperTypes, "loadPage").mockImplementation(async () => ({
+				content: JSON.stringify({
+					name: "Newcoin",
+					symbol: "new",
+					market_data: marketData,
+					categories: ["", "Meme", ""],
+				}),
+				contentType: "application/json",
+				finalUrl: "https://api.coingecko.com/api/v3/coins/newcoin",
+				ok: true,
+				status: 200,
+			}));
+
+			const result = (await handler("https://www.coingecko.com/en/coins/newcoin", 10)) as scraperTypes.RenderResult;
+			expect(result.content).toBe(`# Newcoin (NEW)\n\n${expected}\n**Categories:** Meme`);
+		});
 	});
 
 	describe("opencorporates business declaration", () => {

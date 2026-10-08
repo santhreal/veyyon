@@ -1,9 +1,9 @@
 import { escapeMarkdownTableCell } from "@veyyon/utils/markdown-table";
 import { markdownLink } from "../../markdown-link";
-import type { BusinessDeclaration } from "../engine/business";
+import type { BusinessContext, BusinessDeclaration } from "../engine/business";
 import { loadJson } from "../engine/declarative";
 import { renderKeyValues } from "../engine/markdown-assembly";
-import { buildResult, formatNumber, isScraperDegrade } from "../types";
+import { buildResult, formatNumber, isScraperDegrade, type ScraperDegrade } from "../types";
 export interface Officer {
 	id: number;
 	name: string;
@@ -99,6 +99,18 @@ export function renderCompanyInfoTable(company: CompanyData): string {
 
 // --- CoinGecko ---
 
+interface CoinGeckoMarket {
+	current_price?: { usd?: number | null };
+	market_cap?: { usd?: number | null };
+	total_volume?: { usd?: number | null };
+	price_change_percentage_24h?: number | null;
+	ath?: { usd?: number | null };
+	ath_date?: { usd?: string | null };
+	circulating_supply?: number | null;
+	total_supply?: number | null;
+	max_supply?: number | null;
+}
+
 interface CoinGeckoResponse {
 	id: string;
 	symbol: string;
@@ -109,17 +121,7 @@ interface CoinGeckoResponse {
 		blockchain_site?: string[];
 		repos_url?: { github?: string[] };
 	};
-	market_data?: {
-		current_price?: { usd?: number };
-		market_cap?: { usd?: number };
-		total_volume?: { usd?: number };
-		price_change_percentage_24h?: number;
-		ath?: { usd?: number };
-		ath_date?: { usd?: string };
-		circulating_supply?: number;
-		total_supply?: number;
-		max_supply?: number;
-	};
+	market_data?: CoinGeckoMarket;
 	categories?: string[];
 	genesis_date?: string;
 }
@@ -130,6 +132,39 @@ function formatCoinGeckoPrice(price: number): string {
 	if (price >= 0.01) return price.toFixed(4);
 	if (price >= 0.0001) return price.toFixed(6);
 	return price.toFixed(8);
+}
+
+/**
+ * The price with its 24h change, market cap, 24h volume and all-time high with its date. CoinGecko
+ * writes `null` for a figure it lacks, as it does for a new coin's 24h change.
+ */
+function renderCoinMarket(market: CoinGeckoMarket): string {
+	const price = market.current_price?.usd;
+	const change = market.price_change_percentage_24h;
+	const changeText = typeof change === "number" ? ` (${change >= 0 ? "+" : ""}${change.toFixed(2)}% 24h)` : "";
+	const ath = market.ath?.usd;
+	const athDate = market.ath_date?.usd;
+	const athDateText = athDate
+		? ` (${new Date(athDate).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })})`
+		: "";
+	return renderKeyValues([
+		["Price", typeof price === "number" ? `$${formatCoinGeckoPrice(price)}${changeText}` : undefined],
+		["Market Cap", market.market_cap?.usd ? `$${formatNumber(market.market_cap.usd)}` : undefined],
+		["24h Volume", market.total_volume?.usd ? `$${formatNumber(market.total_volume.usd)}` : undefined],
+		["All-Time High", typeof ath === "number" ? `$${formatCoinGeckoPrice(ath)}${athDateText}` : undefined],
+	]);
+}
+
+/** The circulating supply against the maximum supply, or else the total supply. */
+function coinSupply(market: CoinGeckoMarket | undefined): string | undefined {
+	if (!market?.circulating_supply) return undefined;
+	const circulating = market.circulating_supply;
+	const text = formatNumber(Math.round(circulating));
+	if (market.max_supply) {
+		const percent = ((circulating / market.max_supply) * 100).toFixed(1);
+		return `${text} / ${formatNumber(Math.round(market.max_supply))} (${percent}%)`;
+	}
+	return market.total_supply ? `${text} / ${formatNumber(Math.round(market.total_supply))} total` : text;
 }
 
 export const coingeckoDeclaration: BusinessDeclaration = {
@@ -152,88 +187,99 @@ export const coingeckoDeclaration: BusinessDeclaration = {
 		if (!coin?.name) return ctx.scraperDegrade("coingecko", "unexpected response shape");
 		const market = coin.market_data;
 		let md = `# ${coin.name} (${coin.symbol.toUpperCase()})\n\n`;
-
-		if (market?.current_price?.usd !== undefined) {
-			md += `**Price:** $${formatCoinGeckoPrice(market.current_price.usd)}`;
-			if (market.price_change_percentage_24h !== undefined) {
-				const change = market.price_change_percentage_24h;
-				const sign = change >= 0 ? "+" : "";
-				md += ` (${sign}${change.toFixed(2)}% 24h)`;
-			}
-			md += "\n";
-		}
-
-		if (market?.market_cap?.usd) {
-			md += `**Market Cap:** $${formatNumber(market.market_cap.usd)}\n`;
-		}
-
-		if (market?.total_volume?.usd) {
-			md += `**24h Volume:** $${formatNumber(market.total_volume.usd)}\n`;
-		}
-
-		if (market?.ath?.usd !== undefined) {
-			md += `**All-Time High:** $${formatCoinGeckoPrice(market.ath.usd)}`;
-			if (market.ath_date?.usd) {
-				const athDate = new Date(market.ath_date.usd).toLocaleDateString("en-US", {
-					year: "numeric",
-					month: "short",
-					day: "numeric",
-				});
-				md += ` (${athDate})`;
-			}
-			md += "\n";
-		}
-
+		if (market) md += renderCoinMarket(market);
 		md += "\n";
 
-		if (market?.circulating_supply) {
-			md += `**Circulating Supply:** ${formatNumber(Math.round(market.circulating_supply))}`;
-			if (market.max_supply) {
-				const percent = ((market.circulating_supply / market.max_supply) * 100).toFixed(1);
-				md += ` / ${formatNumber(Math.round(market.max_supply))} (${percent}%)`;
-			} else if (market.total_supply) {
-				md += ` / ${formatNumber(Math.round(market.total_supply))} total`;
-			}
-			md += "\n";
-		}
+		const links: Array<[label: string, url: string | undefined]> = [
+			["Website", coin.links?.homepage?.[0]],
+			["Explorer", coin.links?.blockchain_site?.[0]],
+			["GitHub", coin.links?.repos_url?.github?.[0]],
+		];
+		md += renderKeyValues([
+			["Circulating Supply", coinSupply(market)],
+			["Launch Date", coin.genesis_date],
+			["Categories", coin.categories?.filter(Boolean).join(", ")],
+			["Links", links.flatMap(([label, url]) => (url ? [markdownLink(label, url)] : [])).join(" · ")],
+		]);
 
-		if (coin.genesis_date) {
-			md += `**Launch Date:** ${coin.genesis_date}\n`;
-		}
-
-		if (coin.categories?.length) {
-			md += `**Categories:** ${coin.categories.join(", ")}\n`;
-		}
-
-		const links: string[] = [];
-		if (coin.links?.homepage?.[0]) {
-			links.push(markdownLink("Website", coin.links.homepage[0]));
-		}
-		if (coin.links?.blockchain_site?.[0]) {
-			links.push(markdownLink("Explorer", coin.links.blockchain_site[0]));
-		}
-		if (coin.links?.repos_url?.github?.[0]) {
-			links.push(markdownLink("GitHub", coin.links.repos_url.github[0]));
-		}
-		if (links.length) {
-			md += `**Links:** ${links.join(" · ")}\n`;
-		}
-
-		if (coin.description?.en) {
-			const desc = coin.description.en
-				.replace(/<[^>]+>/g, "")
-				.replace(/\r\n/g, "\n")
-				.trim();
-			if (desc) {
-				md += `\n## About\n\n${desc}\n`;
-			}
-		}
-
+		const desc = coin.description?.en
+			?.replace(/<[^>]+>/g, "")
+			.replace(/\r\n/g, "\n")
+			.trim();
+		if (desc) md += `\n## About\n\n${desc}\n`;
 		return md;
 	},
 };
 
 // --- OpenCorporates ---
+
+/** A `## title` section of bullet lines, or nothing when there are none. */
+function bulletSection(title: string, lines: string[]): string {
+	return lines.length ? `## ${title}\n\n${lines.map(line => `- ${line}\n`).join("")}\n` : "";
+}
+
+/** The full registered address, or else the parts of the structured one joined. */
+function registeredAddress(company: CompanyData): string {
+	if (company.registered_address_in_full) return company.registered_address_in_full;
+	const addr = company.registered_address;
+	if (!addr) return "";
+	return [addr.street_address, addr.locality, addr.region, addr.postal_code, addr.country].filter(Boolean).join(", ");
+}
+
+function currentOfficerLine(officer: Officer): string {
+	let line = `**${officer.name}**`;
+	if (officer.position) line += ` - ${officer.position}`;
+	if (officer.start_date) line += ` (since ${officer.start_date})`;
+	if (officer.occupation) line += ` [${officer.occupation}]`;
+	if (officer.nationality) line += ` (${officer.nationality})`;
+	return line;
+}
+
+function formerOfficerLine(officer: Officer): string {
+	const head = `**${officer.name}**${officer.position ? ` - ${officer.position}` : ""}`;
+	if (officer.start_date && officer.end_date) return `${head} (${officer.start_date} to ${officer.end_date})`;
+	return officer.end_date ? `${head} (until ${officer.end_date})` : head;
+}
+
+const FORMER_OFFICERS_SHOWN = 10;
+
+/** Current officers in full, then the first {@link FORMER_OFFICERS_SHOWN} former officers and a count of the rest. */
+function renderOfficers(entries: Array<{ officer: Officer }>): string {
+	const officers = entries.map(entry => entry.officer);
+	const current = officers.filter(officer => !officer.inactive && !officer.end_date);
+	const former = officers.filter(officer => officer.inactive || officer.end_date);
+	let md = bulletSection(`Current Officers (${current.length})`, current.map(currentOfficerLine));
+	md += bulletSection(
+		`Former Officers (${former.length})`,
+		former.slice(0, FORMER_OFFICERS_SHOWN).map(formerOfficerLine),
+	);
+	const elided = former.length - FORMER_OFFICERS_SHOWN;
+	if (elided > 0) md += `[…${elided} former officers elided…]\n\n`;
+	return md;
+}
+
+/** The industry codes, identifiers, previous names and alternative names sections. */
+function renderCompanyLists(company: CompanyData): string {
+	const codes = (company.industry_codes ?? []).map(
+		ic =>
+			`**${ic.code}**${ic.description ? `: ${ic.description}` : ""}${ic.code_scheme_name ? ` (${ic.code_scheme_name})` : ""}`,
+	);
+	const identifiers = (company.identifiers ?? []).map(
+		id => `**${id.identifier_system_name || id.identifier_system_code}**: ${id.identifier_uid}`,
+	);
+	const previous = (company.previous_names ?? []).map(
+		pn => `${pn.company_name}${pn.con_date ? ` (until ${pn.con_date})` : ""}`,
+	);
+	const alternative = (company.alternative_names ?? []).map(
+		an => `${an.company_name}${an.type ? ` (${an.type})` : ""}`,
+	);
+	return (
+		bulletSection("Industry Codes", codes) +
+		bulletSection("Identifiers", identifiers) +
+		bulletSection("Previous Names", previous) +
+		bulletSection("Alternative Names", alternative)
+	);
+}
 
 export const opencorporatesDeclaration: BusinessDeclaration = {
 	site: "opencorporates",
@@ -261,117 +307,24 @@ export const opencorporatesDeclaration: BusinessDeclaration = {
 		if (isScraperDegrade(data)) return data;
 		const company = data?.results?.company;
 		if (!company) return ctx.scraperDegrade("opencorporates", "unexpected response shape");
-		let md = `# ${company.name}\n\n`;
-		md += renderCompanyInfoTable(company);
-		md += "\n";
-
-		if (company.registered_address_in_full) {
-			md += `## Registered Address\n\n${company.registered_address_in_full}\n\n`;
-		} else if (company.registered_address) {
-			const addr = company.registered_address;
-			const parts = [addr.street_address, addr.locality, addr.region, addr.postal_code, addr.country].filter(
-				Boolean,
-			);
-			if (parts.length > 0) {
-				md += `## Registered Address\n\n${parts.join(", ")}\n\n`;
-			}
-		}
-
+		let md = `# ${company.name}\n\n${renderCompanyInfoTable(company)}\n`;
+		const address = registeredAddress(company);
+		if (address) md += `## Registered Address\n\n${address}\n\n`;
 		if (company.agent_name) {
-			md += `## Registered Agent\n\n**${company.agent_name}**`;
-			if (company.agent_address) {
-				md += `\n${company.agent_address}`;
-			}
-			md += "\n\n";
+			const agentAddress = company.agent_address ? `\n${company.agent_address}` : "";
+			md += `## Registered Agent\n\n**${company.agent_name}**${agentAddress}\n\n`;
 		}
+		md += renderOfficers(company.officers ?? []);
+		md += renderCompanyLists(company);
 
-		if (company.officers && company.officers.length > 0) {
-			const activeOfficers = company.officers.filter(o => !o.officer.inactive && !o.officer.end_date);
-			const inactiveOfficers = company.officers.filter(o => o.officer.inactive || o.officer.end_date);
-
-			if (activeOfficers.length > 0) {
-				md += `## Current Officers (${activeOfficers.length})\n\n`;
-				for (const { officer } of activeOfficers) {
-					md += `- **${officer.name}**`;
-					if (officer.position) md += ` - ${officer.position}`;
-					if (officer.start_date) md += ` (since ${officer.start_date})`;
-					if (officer.occupation) md += ` [${officer.occupation}]`;
-					if (officer.nationality) md += ` (${officer.nationality})`;
-					md += "\n";
-				}
-				md += "\n";
-			}
-
-			if (inactiveOfficers.length > 0) {
-				md += `## Former Officers (${inactiveOfficers.length})\n\n`;
-				for (const { officer } of inactiveOfficers.slice(0, 10)) {
-					md += `- **${officer.name}**`;
-					if (officer.position) md += ` - ${officer.position}`;
-					if (officer.start_date && officer.end_date) {
-						md += ` (${officer.start_date} to ${officer.end_date})`;
-					} else if (officer.end_date) {
-						md += ` (until ${officer.end_date})`;
-					}
-					md += "\n";
-				}
-				if (inactiveOfficers.length > 10) {
-					md += `\n[…${inactiveOfficers.length - 10} former officers elided…]\n`;
-				}
-				md += "\n";
-			}
-		}
-
-		if (company.industry_codes && company.industry_codes.length > 0) {
-			md += `## Industry Codes\n\n`;
-			for (const ic of company.industry_codes) {
-				md += `- **${ic.code}**`;
-				if (ic.description) md += `: ${ic.description}`;
-				if (ic.code_scheme_name) md += ` (${ic.code_scheme_name})`;
-				md += "\n";
-			}
-			md += "\n";
-		}
-
-		if (company.identifiers && company.identifiers.length > 0) {
-			md += `## Identifiers\n\n`;
-			for (const id of company.identifiers) {
-				md += `- **${id.identifier_system_name || id.identifier_system_code}**: ${id.identifier_uid}\n`;
-			}
-			md += "\n";
-		}
-
-		if (company.previous_names && company.previous_names.length > 0) {
-			md += `## Previous Names\n\n`;
-			for (const pn of company.previous_names) {
-				md += `- ${pn.company_name}`;
-				if (pn.con_date) md += ` (until ${pn.con_date})`;
-				md += "\n";
-			}
-			md += "\n";
-		}
-
-		if (company.alternative_names && company.alternative_names.length > 0) {
-			md += `## Alternative Names\n\n`;
-			for (const an of company.alternative_names) {
-				md += `- ${an.company_name}`;
-				if (an.type) md += ` (${an.type})`;
-				md += "\n";
-			}
-			md += "\n";
-		}
-
+		const source = company.source;
+		const registryLink = source?.url ? ` (${markdownLink("registry", source.url)})` : "";
 		md += "---\n\n";
-		if (company.source?.publisher) {
-			md += `**Source:** ${company.source.publisher}`;
-			if (company.source.url) md += ` (${markdownLink("registry", company.source.url)})`;
-			md += "\n";
-		}
-		if (company.registry_url) {
-			md += `**Official Registry:** ${company.registry_url}\n`;
-		}
-		if (company.retrieved_at) {
-			md += `**Data Retrieved:** ${company.retrieved_at}\n`;
-		}
+		md += renderKeyValues([
+			["Source", source?.publisher ? `${source.publisher}${registryLink}` : undefined],
+			["Official Registry", company.registry_url],
+			["Data Retrieved", company.retrieved_at],
+		]);
 
 		return buildResult(md, {
 			url: ctx.url,
@@ -646,6 +599,90 @@ function formatSearchcodeCodeBlock(
 	return `\n\n\`\`\`${fence}\n${displayLines.join("\n")}\n\`\`\`\n`;
 }
 
+const SEARCHCODE_RESULTS_SHOWN = 10;
+
+/** One search hit: its file heading, metadata and snippet. */
+function renderSearchcodeHit(hit: SearchcodeResult): string {
+	const id = hit.id !== undefined ? String(hit.id) : null;
+	const lineNumbers = parseSearchcodeLineNumbers(hit.lines);
+	const snippetBlock = formatSearchcodeCodeBlock(hit.code, hit.language, lineNumbers);
+	let md = `### ${hit.filename || hit.location || "Result"}\n\n`;
+	md += renderKeyValues([
+		["Repository", hit.repo],
+		["Language", hit.language],
+		["File", hit.filename],
+		["Location", hit.location],
+		["Lines", formatSearchcodeLineNumbers(lineNumbers)],
+		["URL", hit.url || (id ? `https://searchcode.com/codesearch/view/${id}` : null)],
+	]);
+	if (snippetBlock) md += `${snippetBlock}\n`;
+	return `${md}\n`;
+}
+
+/** The page for one searchcode result: its metadata and its snippet. */
+async function fetchSearchcodeResult(id: string, ctx: BusinessContext): Promise<string | ScraperDegrade> {
+	const apiUrl = `https://searchcode.com/api/result/${encodeURIComponent(id)}/`;
+	const data = await loadJson<SearchcodeResult>(ctx, apiUrl, "searchcode");
+	if (isScraperDegrade(data)) return data;
+	if (!data) return ctx.scraperDegrade("searchcode", "unexpected response shape");
+	const lineNumbers = parseSearchcodeLineNumbers(data.lines);
+	const snippetBlock = formatSearchcodeCodeBlock(data.code, data.language, lineNumbers);
+
+	let md = `# ${data.filename || data.location || `Result ${id}`}\n\n`;
+	md += `## Description\n\n`;
+	md += "Code snippet from searchcode.com.\n\n";
+	md += `## Metadata\n\n`;
+	md += renderKeyValues([
+		["Repository", data.repo],
+		["Language", data.language],
+		["File", data.filename],
+		["Location", data.location],
+		["Lines", formatSearchcodeLineNumbers(lineNumbers)],
+		["Result ID", id],
+		["URL", data.url || `https://searchcode.com/codesearch/view/${id}`],
+	]);
+	md += `\n## Snippet`;
+	md += snippetBlock ?? "\n\n_No snippet available._\n";
+	return md;
+}
+
+/** The page number a search URL asks for under `p` or `page`; 0 when absent or not a non-negative integer. */
+function searchcodePage(url: URL): number {
+	const pageRaw = url.searchParams.get("p") ?? url.searchParams.get("page");
+	const pageNumber = pageRaw ? Number.parseInt(pageRaw, 10) : 0;
+	return Number.isFinite(pageNumber) && pageNumber >= 0 ? pageNumber : 0;
+}
+
+/** One page of searchcode results for a query: the query's metadata, then the first hits. */
+async function fetchSearchcodeSearch(query: string, url: URL, ctx: BusinessContext): Promise<string | ScraperDegrade> {
+	const page = searchcodePage(url);
+	const apiUrl = `https://searchcode.com/api/codesearch_I/?q=${encodeURIComponent(query)}&p=${page}`;
+	const data = await loadJson<SearchcodeSearchResponse>(ctx, apiUrl, "searchcode");
+	if (isScraperDegrade(data)) return data;
+	if (!data) return ctx.scraperDegrade("searchcode", "unexpected response shape");
+	const results = Array.isArray(data.results) ? data.results : [];
+	const total = typeof data.total === "number" ? data.total : data.total_results;
+
+	let md = `# Searchcode Results\n\n`;
+	md += `## Description\n\n`;
+	md += `Search results for \`${query}\` on searchcode.com.\n\n`;
+	md += `## Metadata\n\n`;
+	md += renderKeyValues([
+		["Query", `\`${query}\``],
+		["Page", page],
+		["Total Results", typeof total === "number" ? formatNumber(total) : null],
+		["Result Count", results.length],
+		["Next Page", typeof data.nextpage === "number" ? data.nextpage : null],
+	]);
+	md += `\n## Results\n\n`;
+	if (results.length === 0) return `${md}_No results found._\n`;
+	md += results.slice(0, SEARCHCODE_RESULTS_SHOWN).map(renderSearchcodeHit).join("");
+	if (results.length > SEARCHCODE_RESULTS_SHOWN) {
+		md += `\n_Only showing first ${SEARCHCODE_RESULTS_SHOWN} results._\n`;
+	}
+	return md;
+}
+
 export const searchcodeDeclaration: BusinessDeclaration = {
 	site: "searchcode",
 	method: "searchcode",
@@ -665,105 +702,10 @@ export const searchcodeDeclaration: BusinessDeclaration = {
 		return null;
 	},
 	notes: ["Fetched via searchcode API"],
-	fetch: async (match, ctx) => {
-		if (match.kind === "result") {
-			const id = match.id;
-			const apiUrl = `https://searchcode.com/api/result/${encodeURIComponent(id)}/`;
-			const data = await loadJson<SearchcodeResult>(ctx, apiUrl, "searchcode");
-			if (isScraperDegrade(data)) return data;
-			if (!data) return ctx.scraperDegrade("searchcode", "unexpected response shape");
-			const filename = data.filename || data.location || `Result ${id}`;
-			const lineNumbers = parseSearchcodeLineNumbers(data.lines);
-			const formattedLines = formatSearchcodeLineNumbers(lineNumbers);
-			const viewUrl = data.url || `https://searchcode.com/codesearch/view/${id}`;
-			const snippetBlock = formatSearchcodeCodeBlock(data.code, data.language, lineNumbers);
-
-			let md = `# ${filename}\n\n`;
-			md += `## Description\n\n`;
-			md += "Code snippet from searchcode.com.\n\n";
-			md += `## Metadata\n\n`;
-			md += renderKeyValues([
-				["Repository", data.repo],
-				["Language", data.language],
-				["File", data.filename],
-				["Location", data.location],
-				["Lines", formattedLines],
-				["Result ID", id],
-				["URL", viewUrl],
-			]);
-			md += `\n## Snippet`;
-			if (snippetBlock) {
-				md += snippetBlock;
-			} else {
-				md += "\n\n_No snippet available._\n";
-			}
-
-			return md;
-		}
-
-		const query = match.query!;
-		const parsed = match.parsedUrl;
-		const pageRaw = parsed.searchParams.get("p") ?? parsed.searchParams.get("page");
-		const pageNumber = pageRaw ? Number.parseInt(pageRaw, 10) : 0;
-		const page = Number.isFinite(pageNumber) && pageNumber >= 0 ? pageNumber : 0;
-		const apiUrl = `https://searchcode.com/api/codesearch_I/?q=${encodeURIComponent(query)}&p=${page}`;
-		const data = await loadJson<SearchcodeSearchResponse>(ctx, apiUrl, "searchcode");
-		if (isScraperDegrade(data)) return data;
-		if (!data) return ctx.scraperDegrade("searchcode", "unexpected response shape");
-		const results = Array.isArray(data.results) ? data.results : [];
-		const total =
-			typeof data.total === "number"
-				? data.total
-				: typeof data.total_results === "number"
-					? data.total_results
-					: null;
-
-		let md = `# Searchcode Results\n\n`;
-		md += `## Description\n\n`;
-		md += `Search results for \`${query}\` on searchcode.com.\n\n`;
-		md += `## Metadata\n\n`;
-		md += `**Query:** \`${query}\`\n`;
-		md += `**Page:** ${page}\n`;
-		if (total !== null) md += `**Total Results:** ${formatNumber(total)}\n`;
-		md += `**Result Count:** ${results.length}\n`;
-		if (typeof data.nextpage === "number") md += `**Next Page:** ${data.nextpage}\n`;
-
-		md += `\n## Results\n\n`;
-
-		if (results.length === 0) {
-			md += "_No results found._\n";
-		} else {
-			const maxResults = 10;
-			for (const resultItem of results.slice(0, maxResults)) {
-				const id = resultItem.id !== undefined ? String(resultItem.id) : null;
-				const filename = resultItem.filename || resultItem.location || "Result";
-				const lineNumbers = parseSearchcodeLineNumbers(resultItem.lines);
-				const formattedLines = formatSearchcodeLineNumbers(lineNumbers);
-				const viewUrl = resultItem.url || (id ? `https://searchcode.com/codesearch/view/${id}` : null);
-				const snippetBlock = formatSearchcodeCodeBlock(resultItem.code, resultItem.language, lineNumbers);
-
-				md += `### ${filename}\n\n`;
-				if (resultItem.repo) md += `**Repository:** ${resultItem.repo}\n`;
-				if (resultItem.language) md += `**Language:** ${resultItem.language}\n`;
-				if (resultItem.filename) md += `**File:** ${resultItem.filename}\n`;
-				if (resultItem.location) md += `**Location:** ${resultItem.location}\n`;
-				if (formattedLines) md += `**Lines:** ${formattedLines}\n`;
-				if (viewUrl) md += `**URL:** ${viewUrl}\n`;
-
-				if (snippetBlock) {
-					md += `${snippetBlock}\n`;
-				}
-
-				md += "\n";
-			}
-
-			if (results.length > maxResults) {
-				md += `\n_Only showing first ${maxResults} results._\n`;
-			}
-		}
-
-		return md;
-	},
+	fetch: (match, ctx) =>
+		match.kind === "result"
+			? fetchSearchcodeResult(match.id, ctx)
+			: fetchSearchcodeSearch(match.query!, match.parsedUrl, ctx),
 };
 
 export const BUSINESS_DECLARATIONS = [
