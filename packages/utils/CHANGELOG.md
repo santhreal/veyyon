@@ -71,6 +71,7 @@
 - `matchPositions` checks a word boundary by character code instead of a regular expression, cutting a call from 154.5 ns to 135.6 ns, and `fuzzyMatch` counts a repeated token's matching words in its own step, with 200,800 differential checks identical to the previous build.
 - `wrapTextWithAnsi` checks a fitting row's leading indent, its content and its hanging-indent rebuild in separate steps, cutting a fitting 120-cell row from 92.6 ns to 86.6 ns with 375,000 differential checks identical to the previous build.
 - `planDeccaraFills` and `analyzeBgFillLine` scan backgrounds and plan fills in separate steps, cutting a frame's fill plan from 18.1 µs to 16.7 µs and a line's analysis from 308 ns to 265 ns with 240,000 differential checks identical to the previous build.
+- The atomic writers close a temp file or directory handle through one step that reports a write failure over a close failure, and `atomicWriteFileSync` runs the Windows replace fallback in one function, as `atomicWriteFile` does; no user-visible change beyond the fix below.
 
 ### Fixed
 
@@ -82,6 +83,7 @@
 - `extractRetryHint` reads `retry-after: <date>` in an error message as a wait until that instant instead of a wait of the year's number of seconds, and reads `x-ratelimit-reset-ms`, `x-ratelimit-reset` and `x-ratelimit-reset-after` written into a message as it reads those headers; `RETRY_HINT_HEADERS` exports the header forms both readings share.
 - `getLogPath` names the local calendar day's file, the file the logger writes, instead of the UTC day's, so the stderr redirect, the startup log hint and the debug report read the logger's file in a zone off UTC when the two dates differ.
 - `errorMessage` returns the `Object.prototype.toString` tag for a thrown value with no string form, such as a null-prototype object or one whose `toString` throws, instead of throwing a `TypeError` from inside the caller's error handling.
+- `atomicWriteFileSync` removes its staged `.<name>.<pid>.<n>.tmp` file when the Windows replace fallback fails, as `atomicWriteFile` does, instead of leaving it beside the target when the target turned into a directory or moving the target aside, installing the new file or restoring the old one failed.
 
 ## [1.5.5] - 2026-09-25
 
