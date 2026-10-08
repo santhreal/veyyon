@@ -138,12 +138,35 @@ interface FieldGeometry {
 	/** First column of the value area, after the label column. */
 	valueCol: number;
 	/** For a segmented field: each option's column span; for a stepper: the two arrows. */
-	targets: readonly { value: string; col: number; width: number }[];
+	targets: readonly FieldTarget[];
 	/** A text field the input painted, scrolled to its caret; else the form painted it from its first column. */
 	byInput: boolean;
 }
 
+/** A column span of a field's row that a click operates. */
+interface FieldTarget {
+	value: string;
+	col: number;
+	width: number;
+}
+
+type FormSymbols = Record<keyof typeof DEFAULT_SYMBOLS, string>;
+
+/** The layout and paint every field row of one render is drawn against. */
+interface FieldPaint {
+	theme: FormTheme;
+	symbols: FormSymbols;
+	width: number;
+	labelWidth: number;
+	/** First column of the value area, after the label column. */
+	valueCol: number;
+	valueWidth: number;
+}
+
 const DEFAULT_SYMBOLS = { on: "●", off: "○", decrement: "◂", increment: "▸", marker: "▸" } as const;
+const DEFAULT_TOGGLE_LABELS = { on: "on", off: "off" } as const;
+/** The targets of a field a click does not operate by column. */
+const NO_TARGETS: readonly FieldTarget[] = [];
 
 /** Columns between the label column and the value. */
 const LABEL_GAP = 2;
@@ -192,24 +215,22 @@ export class Form implements Component, Focusable, MouseRoutable {
 			live.add(field.id);
 			// A button has no label column, so its label does not widen it.
 			if (field.kind !== "button") this.#labelWidth = Math.max(this.#labelWidth, visibleWidth(field.label));
-			if (field.kind === "text") {
-				let input = this.#inputs.get(field.id);
-				if (!input) {
-					input = new Input();
-					input.prompt = "";
-					this.#inputs.set(field.id, input);
-				}
-				if (input.getValue() !== field.value) input.setValue(field.value);
-			}
+			if (field.kind === "text") this.#syncTextInput(field);
 		}
 		for (const id of this.#inputs.keys()) if (!live.has(id)) this.#inputs.delete(id);
-		if (this.#focusedId !== null && live.has(this.#focusedId)) {
-			this.#syncInputFocus();
-			return;
-		}
-		const first = this.#focusable()[0];
-		this.#focusedId = first ? first.id : null;
+		if (this.#focusedId === null || !live.has(this.#focusedId)) this.#focusedId = this.#focusable()[0]?.id ?? null;
 		this.#syncInputFocus();
+	}
+
+	/** The caret a text field keeps across replacements, created on its first appearance. */
+	#syncTextInput(field: FormTextField): void {
+		let input = this.#inputs.get(field.id);
+		if (!input) {
+			input = new Input();
+			input.prompt = "";
+			this.#inputs.set(field.id, input);
+		}
+		if (input.getValue() !== field.value) input.setValue(field.value);
 	}
 
 	get fields(): readonly FormField[] {
@@ -384,6 +405,10 @@ export class Form implements Component, Focusable, MouseRoutable {
 		const field = this.#fields.find(entry => entry.id === hit.id);
 		if (!field || field.kind === "note") return;
 		this.focus(field.id);
+		this.#click(field, hit, event, col);
+	}
+
+	#click(field: FocusableFormField, hit: FieldGeometry, event: SgrMouseEvent, col: number): void {
 		switch (field.kind) {
 			case "text": {
 				const input = this.#inputs.get(field.id);
@@ -417,134 +442,174 @@ export class Form implements Component, Focusable, MouseRoutable {
 	render(width: number): readonly string[] {
 		this.#syncInputFocus();
 		const theme = this.#theme;
-		const symbols = { ...DEFAULT_SYMBOLS, ...theme.symbols };
-		const lines: string[] = [];
-		const geometry: FieldGeometry[] = [];
 		const labelWidth = Math.min(this.#labelWidth, Math.max(0, width - MARKER_WIDTH - LABEL_GAP - 4));
 		const valueCol = MARKER_WIDTH + labelWidth + LABEL_GAP;
-		const valueWidth = Math.max(1, width - valueCol);
+		const paint: FieldPaint = {
+			theme,
+			symbols: { ...DEFAULT_SYMBOLS, ...theme.symbols },
+			width,
+			labelWidth,
+			valueCol,
+			valueWidth: Math.max(1, width - valueCol),
+		};
+		const lines: string[] = [];
+		const geometry: FieldGeometry[] = [];
 		for (const field of this.#fields) {
-			if (field.kind === "note") {
-				const wrapped = wrapTextWithAnsi(field.text, Math.max(1, width - MARKER_WIDTH));
-				const top = lines.length;
-				for (const row of wrapped) lines.push(padding(MARKER_WIDTH) + theme.muted(row));
-				geometry.push({
-					id: field.id,
-					top,
-					rows: wrapped.length,
-					valueCol: MARKER_WIDTH,
-					targets: [],
-					byInput: false,
-				});
+			if (field.kind !== "note") {
+				geometry.push(this.#renderField(field, paint, lines));
 				continue;
 			}
-			const focused = field.id === this.#focusedId;
-			const marker = focused ? theme.focusedLabel(symbols.marker.padEnd(MARKER_WIDTH)) : padding(MARKER_WIDTH);
-			const label = truncateToWidth(field.label, labelWidth, null, true);
-			const head = `${marker}${focused ? theme.focusedLabel(label) : theme.label(label)}${padding(LABEL_GAP)}`;
-			const targets: { value: string; col: number; width: number }[] = [];
-			let byInput = false;
-			let body: string;
-			switch (field.kind) {
-				case "text": {
-					const input = this.#inputs.get(field.id);
-					if (focused && this.focused && input) {
-						byInput = true;
-						if (field.value.length === 0 && field.placeholder && valueWidth > 1) {
-							// An empty field with the ring shows its caret, then what it
-							// is for: a bare inverse cell on a row named "Goal" is not
-							// a prompt.
-							const caret = input.render(1)[0] ?? "";
-							body = `${caret}${theme.placeholder(truncateToWidth(field.placeholder, valueWidth - 1))}`;
-						} else {
-							body = input.render(valueWidth)[0] ?? "";
-						}
-					} else if (field.value.length > 0) {
-						body = theme.value(truncateToWidth(field.value, valueWidth));
-					} else {
-						body = theme.placeholder(truncateToWidth(field.placeholder ?? "", valueWidth));
-					}
-					break;
-				}
-				case "stepper": {
-					// The value starts at the column; an arrow is drawn only where a
-					// step in that direction exists, so a stepper at its floor has no
-					// empty arrow slot ahead of its value.
-					const shown = field.format ? field.format(field.value) : String(field.value);
-					const parts: string[] = [];
-					let col = valueCol;
-					if (field.value > field.min) {
-						const decrementWidth = visibleWidth(symbols.decrement);
-						targets.push({ value: "-", col, width: decrementWidth });
-						parts.push(theme.control(symbols.decrement), " ");
-						col += decrementWidth + 1;
-					}
-					parts.push(theme.value(shown));
-					col += visibleWidth(shown);
-					if (field.value < field.max) {
-						targets.push({ value: "+", col: col + 1, width: visibleWidth(symbols.increment) });
-						parts.push(" ", theme.control(symbols.increment));
-					}
-					body = truncateToWidth(parts.join(""), valueWidth);
-					break;
-				}
-				case "toggle": {
-					const labels = field.labels ?? { on: "on", off: "off" };
-					const glyph = field.value ? symbols.on : symbols.off;
-					const text = `${glyph} ${field.value ? labels.on : labels.off}`;
-					body = truncateToWidth(field.value ? theme.active(text) : theme.control(text), valueWidth);
-					break;
-				}
-				case "segmented": {
-					// Chips from the column, two cells apart; the chosen one is painted.
-					// A strip wider than the value area is windowed so the chosen chip
-					// is on the row: the chips before the window are one ellipsis.
-					const widths = field.options.map(option => visibleWidth(option.label));
-					const chosen = field.options.findIndex(option => option.value === field.value);
-					let first = 0;
-					const chosenEnd = (): number => {
-						let end = first > 0 ? ELLIPSIS_WIDTH + SEGMENT_GAP : 0;
-						for (let index = first; index <= chosen; index++)
-							end += widths[index]! + (index > first ? SEGMENT_GAP : 0);
-						return end;
-					};
-					while (first < chosen && chosenEnd() > valueWidth) first++;
-					const parts: string[] = [];
-					let col = valueCol;
-					if (first > 0) {
-						parts.push(theme.muted("…"));
-						col += ELLIPSIS_WIDTH + SEGMENT_GAP;
-					}
-					for (let index = first; index < field.options.length; index++) {
-						const option = field.options[index]!;
-						targets.push({ value: option.value, col, width: widths[index]! });
-						parts.push(option.value === field.value ? theme.active(option.label) : theme.control(option.label));
-						col += widths[index]! + SEGMENT_GAP;
-					}
-					body = truncateToWidth(parts.join(padding(SEGMENT_GAP)), valueWidth);
-					break;
-				}
-				case "button": {
-					const text = `[ ${field.label} ]`;
-					const paint = field.disabled ? theme.disabledButton : field.primary ? theme.primaryButton : theme.button;
-					const reason = field.disabled ? `  ${theme.muted(field.disabled)}` : "";
-					body = truncateToWidth(`${paint(text)}${reason}`, Math.max(1, width - MARKER_WIDTH));
-					break;
-				}
-			}
+			const wrapped = wrapTextWithAnsi(field.text, Math.max(1, width - MARKER_WIDTH));
 			const top = lines.length;
-			if (field.kind === "button") {
-				// A button has no label column: the label is the button.
-				lines.push(`${marker}${body}`);
-				geometry.push({ id: field.id, top, rows: 1, valueCol: MARKER_WIDTH, targets, byInput });
-			} else {
-				lines.push(`${head}${body}`);
-				geometry.push({ id: field.id, top, rows: 1, valueCol, targets, byInput });
-			}
+			for (const row of wrapped) lines.push(padding(MARKER_WIDTH) + theme.muted(row));
+			geometry.push({
+				id: field.id,
+				top,
+				rows: wrapped.length,
+				valueCol: MARKER_WIDTH,
+				targets: NO_TARGETS,
+				byInput: false,
+			});
 		}
 		this.#geometry = geometry;
 		return lines;
 	}
+
+	/** Appends one focusable field's row to `lines` and returns where it landed. */
+	#renderField(field: FocusableFormField, paint: FieldPaint, lines: string[]): FieldGeometry {
+		const theme = paint.theme;
+		const focused = field.id === this.#focusedId;
+		const marker = focused ? theme.focusedLabel(paint.symbols.marker.padEnd(MARKER_WIDTH)) : padding(MARKER_WIDTH);
+		const top = lines.length;
+		if (field.kind === "button") {
+			// A button has no label column: the label is the button.
+			lines.push(`${marker}${buttonBody(field, paint)}`);
+			return { id: field.id, top, rows: 1, valueCol: MARKER_WIDTH, targets: NO_TARGETS, byInput: false };
+		}
+		const label = truncateToWidth(field.label, paint.labelWidth, null, true);
+		const head = `${marker}${focused ? theme.focusedLabel(label) : theme.label(label)}${padding(LABEL_GAP)}`;
+		let targets: readonly FieldTarget[] = NO_TARGETS;
+		let byInput = false;
+		let body: string;
+		switch (field.kind) {
+			case "text": {
+				const input = focused && this.focused ? this.#inputs.get(field.id) : undefined;
+				byInput = input !== undefined;
+				body = textBody(field, input, paint);
+				break;
+			}
+			case "stepper": {
+				const arrows: FieldTarget[] = [];
+				body = stepperBody(field, paint, arrows);
+				targets = arrows;
+				break;
+			}
+			case "toggle":
+				body = toggleBody(field, paint);
+				break;
+			case "segmented": {
+				const chips: FieldTarget[] = [];
+				body = segmentedBody(field, paint, chips);
+				targets = chips;
+				break;
+			}
+		}
+		lines.push(`${head}${body}`);
+		return { id: field.id, top, rows: 1, valueCol: paint.valueCol, targets, byInput };
+	}
+}
+
+/**
+ * A text field's value area. The input paints the field with the ring,
+ * scrolled to its caret; any other field shows its value from the first
+ * column, else its placeholder.
+ */
+function textBody(field: FormTextField, input: Input | undefined, paint: FieldPaint): string {
+	const { theme, valueWidth } = paint;
+	if (!input) {
+		if (field.value.length > 0) return theme.value(truncateToWidth(field.value, valueWidth));
+		return theme.placeholder(truncateToWidth(field.placeholder ?? "", valueWidth));
+	}
+	if (field.value.length === 0 && field.placeholder && valueWidth > 1) {
+		// An empty field with the ring shows its caret, then what it is for: a
+		// bare inverse cell on a row named "Goal" is not a prompt.
+		const caret = input.render(1)[0] ?? "";
+		return `${caret}${theme.placeholder(truncateToWidth(field.placeholder, valueWidth - 1))}`;
+	}
+	return input.render(valueWidth)[0] ?? "";
+}
+
+/**
+ * A stepper's value area, pushing each arrow it draws onto `arrows`. The value
+ * starts at the column; an arrow is drawn only where a step in that direction
+ * exists, so a stepper at its floor has no empty arrow slot ahead of its value.
+ */
+function stepperBody(field: FormStepperField, paint: FieldPaint, arrows: FieldTarget[]): string {
+	const { theme, symbols } = paint;
+	const shown = field.format ? field.format(field.value) : String(field.value);
+	const parts: string[] = [];
+	let col = paint.valueCol;
+	if (field.value > field.min) {
+		const decrementWidth = visibleWidth(symbols.decrement);
+		arrows.push({ value: "-", col, width: decrementWidth });
+		parts.push(theme.control(symbols.decrement), " ");
+		col += decrementWidth + 1;
+	}
+	parts.push(theme.value(shown));
+	col += visibleWidth(shown);
+	if (field.value < field.max) {
+		arrows.push({ value: "+", col: col + 1, width: visibleWidth(symbols.increment) });
+		parts.push(" ", theme.control(symbols.increment));
+	}
+	return truncateToWidth(parts.join(""), paint.valueWidth);
+}
+
+function toggleBody(field: FormToggleField, paint: FieldPaint): string {
+	const labels = field.labels ?? DEFAULT_TOGGLE_LABELS;
+	const glyph = field.value ? paint.symbols.on : paint.symbols.off;
+	const text = `${glyph} ${field.value ? labels.on : labels.off}`;
+	return truncateToWidth(field.value ? paint.theme.active(text) : paint.theme.control(text), paint.valueWidth);
+}
+
+/**
+ * A segmented field's chip strip, pushing each chip it draws onto `chips`.
+ * Chips run from the column, two cells apart; the chosen one is painted. A
+ * strip wider than the value area is windowed so the chosen chip is on the
+ * row: the chips before the window are one ellipsis.
+ */
+function segmentedBody(field: FormSegmentedField, paint: FieldPaint, chips: FieldTarget[]): string {
+	const { theme, valueWidth } = paint;
+	const widths = field.options.map(option => visibleWidth(option.label));
+	const chosen = field.options.findIndex(option => option.value === field.value);
+	let first = 0;
+	const chosenEnd = (): number => {
+		let end = first > 0 ? ELLIPSIS_WIDTH + SEGMENT_GAP : 0;
+		for (let index = first; index <= chosen; index++) end += widths[index]! + (index > first ? SEGMENT_GAP : 0);
+		return end;
+	};
+	while (first < chosen && chosenEnd() > valueWidth) first++;
+	const parts: string[] = [];
+	let col = paint.valueCol;
+	if (first > 0) {
+		parts.push(theme.muted("…"));
+		col += ELLIPSIS_WIDTH + SEGMENT_GAP;
+	}
+	for (let index = first; index < field.options.length; index++) {
+		const option = field.options[index]!;
+		chips.push({ value: option.value, col, width: widths[index]! });
+		parts.push(option.value === field.value ? theme.active(option.label) : theme.control(option.label));
+		col += widths[index]! + SEGMENT_GAP;
+	}
+	return truncateToWidth(parts.join(padding(SEGMENT_GAP)), valueWidth);
+}
+
+/** A button, its label bracketed, followed by the reason when it is disabled. */
+function buttonBody(field: FormButtonField, paint: FieldPaint): string {
+	const theme = paint.theme;
+	const text = `[ ${field.label} ]`;
+	const paintButton = field.disabled ? theme.disabledButton : field.primary ? theme.primaryButton : theme.button;
+	const reason = field.disabled ? `  ${theme.muted(field.disabled)}` : "";
+	return truncateToWidth(`${paintButton(text)}${reason}`, Math.max(1, paint.width - MARKER_WIDTH));
 }
 
 function press(field: FormButtonField): void {
