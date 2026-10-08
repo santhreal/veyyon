@@ -10,6 +10,7 @@
 ### Fixed
 
 - The Hugging Face handler omits a model field the API returns as `null` or as an empty list, and renders a single-segment model path such as `huggingface.co/gpt2` with the same fields as an `org/model` path.
+- The GitLab handler decodes percent-encoded path segments before it builds an API URL, and reads a project README from its raw URL instead of the HTML blob page.
 
 ## [1.5.4] - 2026-09-24
 
