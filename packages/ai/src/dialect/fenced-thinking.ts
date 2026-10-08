@@ -50,12 +50,18 @@ export interface FencedThinkingResult {
  * line can be classified ({@link #emitted} tracks how many leading bytes are
  * already emitted). A top-level fence candidate is held until its info
  * disambiguates opener (language token) from closer (prose / bare).
+ *
+ * A top-level line is emitted only once its lead is a terminated run of fewer than three backticks:
+ * no later byte on that line extends the run, so the line stays content until its newline and its
+ * tail is not reclassified on each feed. Each byte is scanned a bounded number of times, however
+ * many feeds a long line arrives in.
  */
 export class FencedThinkingScanner {
-	#buffer = "";
+	/** The current incomplete line; it never contains a newline. */
+	#line = "";
 	/** The fence run that opened the current nested code block, or "" at top level. */
 	#inner = "";
-	/** Bytes of the leading (incomplete) line already returned as thinking. */
+	/** Bytes of {@link #line} already returned as thinking: 0 while held, else the whole line. */
 	#emitted = 0;
 
 	/**
@@ -64,60 +70,80 @@ export class FencedThinkingScanner {
 	 * block (remainder becomes `rest`), otherwise it is unterminated thinking.
 	 */
 	feed(text: string, final: boolean): FencedThinkingResult {
-		this.#buffer += text;
 		let thinking = "";
+		let from = 0;
 		for (;;) {
-			const nl = this.#buffer.indexOf("\n");
+			// The held line has no newline, so only the new bytes are searched.
+			const nl = text.indexOf("\n", from);
 			if (nl === -1) break;
-			const line = this.#buffer.slice(0, nl);
-			if (!this.#inner) {
-				const close = closeRest(line);
-				if (close !== undefined) {
-					// Closer bytes are always held, so #emitted is 0 and nothing leaked.
-					const rest = close + this.#buffer.slice(nl); // keep the newline with the reply
-					this.#reset();
-					return { thinking, closed: true, rest };
-				}
+			const line = this.#line + text.slice(from, nl);
+			const close = this.#inner ? undefined : closeRest(line);
+			if (close !== undefined) {
+				// Closer bytes are always held, so #emitted is 0 and nothing leaked.
+				this.#reset();
+				return { thinking, closed: true, rest: close + text.slice(nl) }; // keep the newline with the reply
 			}
-			// Content line (including an inner-fence open/close).
-			thinking += this.#buffer.slice(this.#emitted, nl + 1);
-			this.#updateInner(line);
-			this.#buffer = this.#buffer.slice(nl + 1);
-			this.#emitted = 0;
+			thinking += this.#endContentLine(line);
+			from = nl + 1;
 		}
 
-		const tail = this.#buffer;
-		if (this.#inner) {
-			// Inside a nested block every byte is thinking content: emit eagerly,
-			// keeping it buffered until the newline classifies the line.
-			thinking += tail.slice(this.#emitted);
-			this.#emitted = tail.length;
+		const pending = from === 0 ? text : text.slice(from);
+		if (this.#inner || this.#emitted > 0) {
+			return { thinking: thinking + this.#emitDecided(pending, final), closed: false, rest: "" };
+		}
+		return this.#feedUndecided(thinking, this.#line + pending, final);
+	}
+
+	/**
+	 * Ends a content line (including an inner-fence open/close): returns its bytes not yet emitted
+	 * with its newline, and toggles nested-fence state.
+	 */
+	#endContentLine(line: string): string {
+		const unemitted = `${line.slice(this.#emitted)}\n`;
+		this.#updateInner(line);
+		this.#line = "";
+		this.#emitted = 0;
+		return unemitted;
+	}
+
+	/**
+	 * Emits `pending` on a line already decided as content: inside a nested block every byte is
+	 * thinking, and a top-level line already emitted cannot become a fence. The line is kept until its
+	 * newline classifies it.
+	 */
+	#emitDecided(pending: string, final: boolean): string {
+		if (final && !this.#inner) {
+			this.#reset();
+		} else {
+			this.#line += pending;
+			this.#emitted = this.#line.length;
+		}
+		return pending;
+	}
+
+	/** Classifies a top-level tail nothing of which is emitted yet: a closer, a held fence candidate, or content. */
+	#feedUndecided(thinking: string, tail: string, final: boolean): FencedThinkingResult {
+		const close = final ? closeRestFinal(tail) : closeRestStreamingTail(tail);
+		if (close !== undefined) {
+			this.#reset();
+			return { thinking, closed: true, rest: close };
+		}
+		if (!final && mustHold(tail)) {
+			this.#line = tail;
 			return { thinking, closed: false, rest: "" };
 		}
-
-		if (final) {
-			const close = closeRestFinal(tail);
-			if (close !== undefined) {
-				this.#reset();
-				return { thinking, closed: true, rest: close };
-			}
-		} else {
-			const close = closeRestStreamingTail(tail);
-			if (close !== undefined) {
-				this.#reset();
-				return { thinking, closed: true, rest: close };
-			}
-			if (mustHold(tail)) return { thinking, closed: false, rest: "" };
-		}
 		// Either final (flush the remainder) or a line that can no longer be a fence.
-		thinking += tail.slice(this.#emitted);
-		if (final) this.#reset();
-		else this.#emitted = tail.length;
-		return { thinking, closed: false, rest: "" };
+		if (final) {
+			this.#reset();
+		} else {
+			this.#line = tail;
+			this.#emitted = tail.length;
+		}
+		return { thinking: thinking + tail, closed: false, rest: "" };
 	}
 
 	#reset(): void {
-		this.#buffer = "";
+		this.#line = "";
 		this.#inner = "";
 		this.#emitted = 0;
 	}
