@@ -136,36 +136,50 @@ export async function loadGitignorePatterns(baseDir: string): Promise<string[]> 
 }
 
 /**
+ * The compiled patterns a walk drops, in order: `.git` always, `node_modules` unless a pattern names it,
+ * the caller's `exclude`, then the `.gitignore` rules the caller loaded.
+ *
+ * Each is compiled once for the whole walk, not once per matched entry: with gitignore rules the list is
+ * large, and per-entry compilation dominated a walk of a big tree.
+ */
+function compileExcludes(patterns: string[], exclude?: string[] | null, gitignored?: string[]): Glob[] {
+	const fixed = patterns.some(p => p.includes("node_modules"))
+		? ALWAYS_IGNORED
+		: ALWAYS_IGNORED.concat(NODE_MODULES_IGNORED);
+	return [...fixed, ...(exclude ?? []), ...(gitignored ?? [])].map(pattern => new Glob(pattern));
+}
+
+/** Throws the reason `signal` was aborted with, or an `AbortError` when that reason is not an `Error`. */
+function throwIfAborted(signal: AbortSignal | undefined): void {
+	if (!signal?.aborted) return;
+	const reason = signal.reason;
+	if (reason instanceof Error) throw reason;
+	throw new DOMException("Aborted", "AbortError");
+}
+
+function matchesAny(globs: Glob[], file: string): boolean {
+	for (const glob of globs) {
+		if (glob.match(file)) return true;
+	}
+	return false;
+}
+
+/**
  * Resolve filesystem paths matching glob patterns with optional exclude filters.
  * Returns paths relative to the provided cwd (or getProjectDir()).
  * Errors and abort/timeouts are surfaced to the caller.
  */
 export async function globPaths(patterns: string | string[], options: GlobPathsOptions = {}): Promise<string[]> {
 	const { cwd, exclude, signal, timeoutMs, dot, onlyFiles = true, gitignore } = options;
-
-	// Build exclude list: always exclude .git, exclude node_modules unless pattern references it
-	const patternArray = Array.isArray(patterns) ? patterns : [patterns];
-	const mentionsNodeModules = patternArray.some(p => p.includes("node_modules"));
-
-	const baseExclude = mentionsNodeModules ? ALWAYS_IGNORED.slice() : ALWAYS_IGNORED.concat(NODE_MODULES_IGNORED);
-	let effectiveExclude = exclude ? baseExclude.concat(exclude) : baseExclude;
-
-	if (gitignore) {
-		const gitignorePatterns = await loadGitignorePatterns(cwd ?? getProjectDir());
-		effectiveExclude = effectiveExclude.concat(gitignorePatterns);
-	}
-
+	const patternArray = [patterns].flat();
 	const base = cwd ?? getProjectDir();
+	const gitignored = gitignore ? await loadGitignorePatterns(base) : undefined;
+	const excludeGlobs = compileExcludes(patternArray, exclude, gitignored);
+	const scanOptions = { cwd: base, dot, onlyFiles, throwErrorOnBrokenSymlink: false };
 	const allResults: string[] = [];
 	// Dedup across patterns: two input patterns can match the same file (e.g.
 	// `**/*.ts` and `src/**`), and a path list must not report a file twice.
 	const seen = new Set<string>();
-
-	// Compile each exclude glob once, not once per matched entry. The exclude set
-	// is fixed for the whole walk, so rebuilding a `Glob` inside the per-entry loop
-	// did O(entries * excludes) compilations — with gitignore enabled the exclude
-	// list is large, so this was the dominant cost on big trees.
-	const excludeGlobs = effectiveExclude.map(pattern => new Glob(pattern));
 
 	// Combine timeout and abort signals; the scoped handle clears its backing
 	// timer once the walk settles instead of leaving it armed like a bare
@@ -175,34 +189,12 @@ export async function globPaths(patterns: string | string[], options: GlobPathsO
 
 	try {
 		for (const pattern of patternArray) {
-			const glob = new Glob(pattern);
-			const scanOptions = {
-				cwd: base,
-				dot,
-				onlyFiles,
-				throwErrorOnBrokenSymlink: false,
-			};
-
-			for await (const entry of glob.scan(scanOptions)) {
-				if (combinedSignal?.aborted) {
-					const reason = combinedSignal.reason;
-					if (reason instanceof Error) throw reason;
-					throw new DOMException("Aborted", "AbortError");
-				}
-
-				const normalized = entry.replace(/\\/g, "/");
-				if (seen.has(normalized)) continue;
-				let excluded = false;
-				for (const excludeGlob of excludeGlobs) {
-					if (excludeGlob.match(normalized)) {
-						excluded = true;
-						break;
-					}
-				}
-				if (!excluded) {
-					seen.add(normalized);
-					allResults.push(normalized);
-				}
+			for await (const entry of new Glob(pattern).scan(scanOptions)) {
+				throwIfAborted(combinedSignal);
+				const normalized = entry.includes("\\") ? entry.replace(/\\/g, "/") : entry;
+				if (seen.has(normalized) || matchesAny(excludeGlobs, normalized)) continue;
+				seen.add(normalized);
+				allResults.push(normalized);
 			}
 		}
 	} finally {
