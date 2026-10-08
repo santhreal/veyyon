@@ -35,6 +35,24 @@ function layoutFrameFor(frames: readonly string[]): string | undefined {
 	return first;
 }
 
+/** A rendered row split into its left padding, its text, and the spaces after the text. */
+interface LoaderRow {
+	leading: string;
+	content: string;
+	trailing: string;
+}
+
+/** Split each row, clamped to `width`, around its text so the spinner and message can be styled in place. */
+function splitRows(source: readonly string[], width: number): LoaderRow[] {
+	const paddingX = getPaddingX(1);
+	return source.map(line => {
+		const clamped = visibleWidth(line) > width ? sliceByColumn(line, 0, width, true) : line;
+		const body = clamped.slice(paddingX);
+		const content = body.trimEnd();
+		return { leading: clamped.slice(0, paddingX), content, trailing: body.slice(content.length) };
+	});
+}
+
 /** Animates a spinner and colorized message while asynchronous work is pending. */
 export class Loader extends Text {
 	// The breathing pixel: the sun's intensity ramp inhaling and exhaling.
@@ -49,7 +67,7 @@ export class Loader extends Text {
 	// The frame the last update requested a repaint for.
 	#requestedFrame: string | undefined;
 	#layoutSource?: readonly string[];
-	#layout?: readonly { leading: string; content: string; trailing: string }[];
+	#layout?: readonly LoaderRow[];
 
 	constructor(
 		ui: TUI,
@@ -70,18 +88,8 @@ export class Loader extends Text {
 	render(width: number): readonly string[] {
 		const source = super.render(width);
 		if (source !== this.#layoutSource) {
-			const paddingX = getPaddingX(1);
 			this.#layoutSource = source;
-			this.#layout = source.map(line => {
-				const clamped = visibleWidth(line) > width ? sliceByColumn(line, 0, width, true) : line;
-				const body = clamped.slice(paddingX);
-				const content = body.trimEnd();
-				return {
-					leading: clamped.slice(0, paddingX),
-					content,
-					trailing: body.slice(content.length),
-				};
-			});
+			this.#layout = splitRows(source, width);
 		}
 
 		const frame = this.#frames[this.#currentFrame];
@@ -90,18 +98,19 @@ export class Loader extends Text {
 		const layout = this.#layout ?? [];
 		for (let i = 0; i < layout.length; i++) {
 			const { leading, content, trailing } = layout[i];
-			if (i === 0 && content.startsWith(marker)) {
-				const remainder = content.slice(marker.length);
-				const separator = remainder.startsWith(" ") ? " " : "";
-				const message = remainder.slice(separator.length);
-				lines.push(
-					`${leading}${this.spinnerColorFn(frame)}${separator}${message ? this.messageColorFn(message) : ""}${trailing}`,
-				);
-			} else {
-				lines.push(`${leading}${content ? this.messageColorFn(content) : ""}${trailing}`);
-			}
+			let body = "";
+			if (i === 0 && content.startsWith(marker)) body = this.#spinnerRow(content.slice(marker.length), frame);
+			else if (content) body = this.messageColorFn(content);
+			lines.push(`${leading}${body}${trailing}`);
 		}
 		return lines;
+	}
+
+	/** The drawn spinner frame, then the message that followed the layout marker on the first row. */
+	#spinnerRow(remainder: string, frame: string): string {
+		const separator = remainder.startsWith(" ") ? " " : "";
+		const message = remainder.slice(separator.length);
+		return `${this.spinnerColorFn(frame)}${separator}${message ? this.messageColorFn(message) : ""}`;
 	}
 
 	start() {

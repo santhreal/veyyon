@@ -185,27 +185,26 @@ export class ScrollView implements Component {
 		this.#clampScrollOffset();
 		const safeWidth = Number.isFinite(width) ? Math.max(0, Math.trunc(width)) : 0;
 		if (this.#height === 0) return [];
-		const showScrollbar = safeWidth > 0 && this.#shouldRenderScrollbar();
 		const contentWidth = this.contentWidth(safeWidth);
-		const thumb = showScrollbar
-			? computeThumbRange(this.#height, this.#totalRows ?? this.#lines.length, this.#scrollOffset)
-			: undefined;
+		const thumb =
+			safeWidth > 0 && this.#shouldRenderScrollbar()
+				? computeThumbRange(this.#height, this.#totalRows ?? this.#lines.length, this.#scrollOffset)
+				: undefined;
+		// A pre-windowed slice (`totalRows` set) starts at the viewport's first row.
+		const firstSource = this.#totalRows === undefined ? this.#scrollOffset : 0;
 		const lines: string[] = [];
 		for (let row = 0; row < this.#height; row++) {
-			const sourceIndex = this.#totalRows === undefined ? this.#scrollOffset + row : row;
-			const source = this.#lines[sourceIndex] ?? "";
+			const source = this.#lines[firstSource + row] ?? "";
 			const truncated = truncateToWidth(replaceTabs(source), contentWidth, this.#ellipsis);
-			if (!showScrollbar) {
-				lines.push(truncated);
-				continue;
-			}
-			const content = `${truncated}${padding(contentWidth - visibleWidth(truncated))}`;
-			const barGlyph = thumb && row >= thumb.start && row < thumb.end ? this.#thumbChar : this.#trackChar;
-			const styledBar =
-				thumb && row >= thumb.start && row < thumb.end ? this.#theme.thumb(barGlyph) : this.#theme.track(barGlyph);
-			lines.push(`${content} ${styledBar}`);
+			lines.push(thumb ? this.#barRow(truncated, contentWidth, row >= thumb.start && row < thumb.end) : truncated);
 		}
 		return lines;
+	}
+
+	/** A content row padded to `contentWidth`, a one-column gap, then this row's scrollbar glyph. */
+	#barRow(truncated: string, contentWidth: number, onThumb: boolean): string {
+		const bar = onThumb ? this.#theme.thumb(this.#thumbChar) : this.#theme.track(this.#trackChar);
+		return `${truncated}${padding(contentWidth - visibleWidth(truncated))} ${bar}`;
 	}
 
 	#clampScrollOffset(): void {

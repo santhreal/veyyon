@@ -118,26 +118,26 @@ function isSgrParamByte(c: number): boolean {
 // the scan treats it as a complete unit and merging stays safe.
 function endsWithIncompleteExtendedColor(params: string): boolean {
 	const t = params.split(";");
-	let i = 0;
-	while (i < t.length) {
-		const tok = t[i];
-		if (tok === "38" || tok === "48" || tok === "58") {
-			const mode = t[i + 1];
-			if (mode === undefined) return true; // introducer with no mode
-			if (mode === "2") {
-				if (i + 4 >= t.length) return true; // missing r/g/b
-				i += 5;
-				continue;
-			}
-			if (mode === "5") {
-				if (i + 2 >= t.length) return true; // missing index
-				i += 3;
-				continue;
-			}
-		}
-		i += 1;
+	for (let i = 0; i < t.length; ) {
+		const span = extendedColorTokens(t, i);
+		if (span < 0) return true;
+		i += span;
 	}
 	return false;
+}
+
+/**
+ * The tokens the code at `t[i]` spans: 5 for `38/48/58;2;r;g;b`, 3 for `38/48/58;5;n`, 1 for any other code, and -1
+ * when the list ends before an extended-color spec does.
+ */
+function extendedColorTokens(t: readonly string[], i: number): number {
+	const tok = t[i];
+	if (tok !== "38" && tok !== "48" && tok !== "58") return 1;
+	const mode = t[i + 1];
+	if (mode === undefined) return -1; // introducer with no mode
+	if (mode === "2") return i + 4 >= t.length ? -1 : 5; // missing r/g/b
+	if (mode === "5") return i + 2 >= t.length ? -1 : 3; // missing index
+	return 1;
 }
 
 /**
@@ -158,8 +158,7 @@ export function coalesceAdjacentSgr(line: string): string {
 			continue;
 		}
 		// Scan a candidate SGR sequence: ESC [ <params> m.
-		let j = i + 2;
-		while (j < n && isSgrParamByte(line.charCodeAt(j))) j++;
+		const j = sgrParamsEnd(line, i + 2);
 		if (j >= n || line.charCodeAt(j) !== CC_M) {
 			// Not an SGR (e.g. cursor move); leave it in the pending region.
 			i = j;
@@ -167,52 +166,81 @@ export function coalesceAdjacentSgr(line: string): string {
 		}
 		// Collect the run of adjacent SGR sequences starting here.
 		const params: string[] = [line.slice(i + 2, j)];
-		let k = j + 1;
-		while (k < n && line.charCodeAt(k) === CC_ESC && line.charCodeAt(k + 1) === CC_BRACKET) {
-			let p = k + 2;
-			while (p < n && isSgrParamByte(line.charCodeAt(p))) p++;
-			if (p >= n || line.charCodeAt(p) !== CC_M) break;
-			params.push(line.slice(k + 2, p));
-			k = p + 1;
-		}
+		const k = collectSgrRun(line, j + 1, params);
 		if (params.length > 1) {
 			out += line.slice(copiedUpto, i);
-			// Emit the merged run, but flush the current group before appending a
-			// list when (a) the previous list ended mid extended-color, so the
-			// next code cannot be absorbed as its missing channel/index, or (b)
-			// the token count would exceed MERGE_TOKEN_CAP. SGR params apply
-			// left-to-right regardless of how they are grouped across adjacent
-			// CSIs, so a capped/guarded split stays behavior-preserving — while a
-			// single unbounded merge would overflow a terminal's CSI parameter
-			// buffer (xterm.js caps at 32 and silently truncates the rest,
-			// corrupting colors). Empty params (`CSI m`) mean a full reset;
-			// normalize to `0` so the merged list stays unambiguous.
-			let group = "";
-			let groupTokens = 0;
-			let groupOpenSafe = true;
-			for (let q = 0; q < params.length; q++) {
-				const norm = params[q]!.length === 0 ? "0" : params[q]!;
-				let tk = 1;
-				for (let z = 0; z < norm.length; z++) {
-					const cc = norm.charCodeAt(z);
-					if (cc === CC_SEMI || cc === CC_COLON) tk++;
-				}
-				if (groupTokens > 0 && (!groupOpenSafe || groupTokens + tk > MERGE_TOKEN_CAP)) {
-					out += `\x1b[${group}m`;
-					group = "";
-					groupTokens = 0;
-				}
-				group += group.length === 0 ? norm : `;${norm}`;
-				groupTokens += tk;
-				groupOpenSafe = !endsWithIncompleteExtendedColor(norm);
-			}
-			if (group.length > 0) out += `\x1b[${group}m`;
+			out += mergedSgr(params);
 			copiedUpto = k;
 		}
 		i = k;
 	}
 	if (copiedUpto === 0) return line;
 	return out + line.slice(copiedUpto);
+}
+
+/** The index of the first byte at or after `from` that is not an SGR parameter byte. */
+function sgrParamsEnd(line: string, from: number): number {
+	let j = from;
+	while (j < line.length && isSgrParamByte(line.charCodeAt(j))) j++;
+	return j;
+}
+
+/**
+ * Append to `params` the parameter list of each SGR sequence that follows byte-adjacently from `from`; returns the
+ * index after the last one.
+ */
+function collectSgrRun(line: string, from: number, params: string[]): number {
+	const n = line.length;
+	let k = from;
+	while (k < n && line.charCodeAt(k) === CC_ESC && line.charCodeAt(k + 1) === CC_BRACKET) {
+		const p = sgrParamsEnd(line, k + 2);
+		if (p >= n || line.charCodeAt(p) !== CC_M) break;
+		params.push(line.slice(k + 2, p));
+		k = p + 1;
+	}
+	return k;
+}
+
+/**
+ * The merged form of a run of SGR parameter lists. The current group is flushed
+ * before a list is appended when (a) the previous list ended mid extended-color,
+ * so the next code cannot be absorbed as its missing channel/index, or (b) the
+ * token count would exceed MERGE_TOKEN_CAP. SGR params apply left-to-right
+ * regardless of how they are grouped across adjacent CSIs, so a capped/guarded
+ * split stays behavior-preserving — while a single unbounded merge would
+ * overflow a terminal's CSI parameter buffer (xterm.js caps at 32 and silently
+ * truncates the rest, corrupting colors). Empty params (`CSI m`) mean a full
+ * reset; normalize to `0` so the merged list stays unambiguous.
+ */
+function mergedSgr(params: readonly string[]): string {
+	let out = "";
+	let group = "";
+	let groupTokens = 0;
+	let groupOpenSafe = true;
+	for (const param of params) {
+		const norm = param.length === 0 ? "0" : param;
+		const tk = sgrTokenCount(norm);
+		if (groupTokens > 0 && (!groupOpenSafe || groupTokens + tk > MERGE_TOKEN_CAP)) {
+			out += `\x1b[${group}m`;
+			group = "";
+			groupTokens = 0;
+		}
+		group += group.length === 0 ? norm : `;${norm}`;
+		groupTokens += tk;
+		groupOpenSafe = !endsWithIncompleteExtendedColor(norm);
+	}
+	if (group.length > 0) out += `\x1b[${group}m`;
+	return out;
+}
+
+/** The parameter tokens in an SGR list: one more than its `;` and `:` separators. */
+function sgrTokenCount(params: string): number {
+	let tokens = 1;
+	for (let z = 0; z < params.length; z++) {
+		const cc = params.charCodeAt(z);
+		if (cc === CC_SEMI || cc === CC_COLON) tokens++;
+	}
+	return tokens;
 }
 
 /** Compare two rows ignoring SGR styling (theme restyles keep alignment). */
@@ -282,30 +310,15 @@ export function findCommittedPrefixResync(
 	const verified = Math.min(prefix.length, Math.max(0, Math.trunc(verifiedTo)));
 	const hardEnd = Math.min(prefix.length, Math.max(verified, Math.trunc(finalTo)));
 	if (hardEnd === 0) return -1;
-	if (frame.length >= hardEnd) {
-		// 1. Hard scan: frozen snapshots whose source just became final. Full
-		// scan, no tolerance — a finalized row that changed must re-anchor.
-		if (firstRowDivergence(frame, prefix, hardEnd, verified) === -1) {
-			// 2. Tail sample over the verified zone (only when the hard scan is
-			// clean): walk up from its end until LOOKBACK rows or SAMPLES
-			// non-blank comparisons.
-			let samples = 0;
-			let mismatches = 0;
-			for (let j = 1; j <= verified && j <= RESYNC_TAIL_LOOKBACK && samples < RESYNC_TAIL_SAMPLES; j++) {
-				const idx = verified - j;
-				const row = frame[idx]!;
-				const old = prefix[idx]!;
-				if (row === old) {
-					if (!isBlankRow(row)) samples++;
-					continue;
-				}
-				if (isBlankRow(row) && isBlankRow(old)) continue;
-				samples++;
-				if (!rowsEquivalent(row, old)) mismatches++;
-			}
-			// No signal (all-blank tail) or at most one edited row: aligned.
-			if (samples === 0 || mismatches <= 1) return -1;
-		}
+	// 1. Hard scan: frozen snapshots whose source just became final. Full
+	// scan, no tolerance — a finalized row that changed must re-anchor.
+	// 2. Tail sample over the verified zone, only when the hard scan is clean.
+	if (
+		frame.length >= hardEnd &&
+		firstRowDivergence(frame, prefix, hardEnd, verified) === -1 &&
+		tailSampleAligned(frame, prefix, verified)
+	) {
+		return -1;
 	}
 	// Misaligned (hard mismatch, tail-sample shift, or the frame no longer
 	// covers the checked zones): re-anchor at the first row whose content
@@ -313,6 +326,28 @@ export function findCommittedPrefixResync(
 	const limit = Math.min(hardEnd, frame.length);
 	const diverged = firstRowDivergence(frame, prefix, limit);
 	return diverged >= 0 ? diverged : limit < hardEnd ? limit : -1;
+}
+
+/**
+ * The tail sample over the verified zone `[0, verified)`: walk up from its end until LOOKBACK rows or SAMPLES
+ * non-blank comparisons. Aligned when the sample has no signal (an all-blank tail) or at most one edited row.
+ */
+function tailSampleAligned(frame: readonly string[], prefix: readonly string[], verified: number): boolean {
+	let samples = 0;
+	let mismatches = 0;
+	for (let j = 1; j <= verified && j <= RESYNC_TAIL_LOOKBACK && samples < RESYNC_TAIL_SAMPLES; j++) {
+		const idx = verified - j;
+		const row = frame[idx]!;
+		const old = prefix[idx]!;
+		if (row === old) {
+			if (!isBlankRow(row)) samples++;
+			continue;
+		}
+		if (isBlankRow(row) && isBlankRow(old)) continue;
+		samples++;
+		if (!rowsEquivalent(row, old)) mismatches++;
+	}
+	return samples === 0 || mismatches <= 1;
 }
 
 /**
@@ -563,6 +598,56 @@ export function prepareLine(raw: string, width: number): string {
 	return truncateToWidth(normalized, width, Ellipsis.Omit);
 }
 
+/**
+ * An oversized row's source fitted to its visible cells: the escapes and characters kept within the code-unit budget,
+ * and the cells they fill.
+ */
+class LineFit {
+	output = "";
+	cells = 0;
+	#width: number;
+	#maxLength: number;
+
+	constructor(width: number, maxLength: number) {
+		this.#width = width;
+		this.#maxLength = maxLength;
+	}
+
+	/** Keep the escape sequence at `start` when it fits; returns the index after it, or -1 when it is unterminated. */
+	escape(raw: string, start: number): number {
+		const end = ansiSequenceEnd(raw, start);
+		if (end < 0) return -1;
+		const sequence = raw.slice(start, end);
+		const visible = ansiSequenceHasVisiblePayload(raw, start);
+		// A zero-width sequence (SGR styling) must leave room for the visible
+		// cells still to come, or a flood of escapes crowds out the text itself.
+		const budget = visible ? this.#maxLength : this.#maxLength - (this.#width - this.cells) * 2;
+		if (this.output.length + sequence.length <= budget) {
+			this.output += sequence;
+			if (visible) {
+				this.cells += visibleWidth(sequence);
+			}
+		}
+		return end;
+	}
+
+	/** Keep the character at `start` when it fits; returns the index after it, or -1 when the row is full. */
+	char(raw: string, start: number): number {
+		const code = raw.charCodeAt(start);
+		const next = code >= 0xd800 && code <= 0xdbff && start + 1 < raw.length ? start + 2 : start + 1;
+		const char = raw.slice(start, next);
+		const charWidth = visibleWidth(char);
+		if (charWidth > 0 && this.cells + charWidth > this.#width) return -1;
+		const length = this.output.length + char.length;
+		if (length > this.#maxLength) return charWidth > 0 ? -1 : next;
+		// A zero-width character must leave two code units for each visible cell still to come.
+		if (charWidth === 0 && length > this.#maxLength - (this.#width - this.cells) * 2) return next;
+		this.output += char;
+		this.cells += charWidth;
+		return next;
+	}
+}
+
 function lineFitSource(raw: string, width: number): string {
 	const safeWidth = Number.isFinite(width) ? Math.max(1, Math.trunc(width)) : 1;
 	const maxSourceLength = Math.min(
@@ -571,75 +656,38 @@ function lineFitSource(raw: string, width: number): string {
 	);
 	if (raw.length <= maxSourceLength) return raw;
 
-	let output = "";
-	let cells = 0;
-	for (let i = 0; i < raw.length && cells < safeWidth; ) {
-		if (raw.charCodeAt(i) === 0x1b) {
-			const end = ansiSequenceEnd(raw, i);
-			if (end < 0) break;
-			const sequence = raw.slice(i, end);
-			const visible = ansiSequenceHasVisiblePayload(raw, i);
-			// A zero-width sequence (SGR styling) must leave room for the visible
-			// cells still to come, or a flood of escapes crowds out the text itself.
-			const budget = visible ? maxSourceLength : maxSourceLength - (safeWidth - cells) * 2;
-			if (output.length + sequence.length <= budget) {
-				output += sequence;
-				if (visible) {
-					cells += visibleWidth(sequence);
-				}
-			}
-			i = end;
-			continue;
-		}
-
-		const code = raw.charCodeAt(i);
-		const next = code >= 0xd800 && code <= 0xdbff && i + 1 < raw.length ? i + 2 : i + 1;
-		const char = raw.slice(i, next);
-		const charWidth = visibleWidth(char);
-		if (charWidth > 0 && cells + charWidth > safeWidth) break;
-		if (output.length + char.length > maxSourceLength) {
-			if (charWidth > 0) break;
-			i = next;
-			continue;
-		}
-		if (charWidth === 0) {
-			const remainingVisibleCells = safeWidth - cells;
-			const reservedCodeUnits = remainingVisibleCells * 2;
-			if (output.length + char.length > maxSourceLength - reservedCodeUnits) {
-				i = next;
-				continue;
-			}
-		}
-		output += char;
-		cells += charWidth;
-		i = next;
+	const fit = new LineFit(safeWidth, maxSourceLength);
+	for (let i = 0; i < raw.length && fit.cells < safeWidth; ) {
+		i = raw.charCodeAt(i) === 0x1b ? fit.escape(raw, i) : fit.char(raw, i);
+		if (i < 0) break;
 	}
-
-	return output + SGR_RESET;
+	return fit.output + SGR_RESET;
 }
 
 function ansiSequenceEnd(line: string, start: number): number {
 	const next = line.charCodeAt(start + 1);
-	if (next === 0x5b) {
-		let i = start + 2;
-		while (i < line.length) {
-			const final = line.charCodeAt(i);
-			if (final >= 0x40 && final <= 0x7e) return i + 1;
-			i++;
-		}
-		return -1;
-	}
-	if (next === 0x5d) {
-		let i = start + 2;
-		while (i < line.length) {
-			const osc = line.charCodeAt(i);
-			if (osc === 0x07) return i + 1;
-			if (osc === 0x1b && line.charCodeAt(i + 1) === 0x5c) return i + 2;
-			i++;
-		}
-		return -1;
-	}
+	if (next === 0x5b) return csiEnd(line, start + 2);
+	if (next === 0x5d) return oscEnd(line, start + 2);
 	return start + 2 <= line.length ? start + 2 : -1;
+}
+
+/** The index after the CSI whose parameters start at `from`: past its final byte in 0x40-0x7E, or -1 when unterminated. */
+function csiEnd(line: string, from: number): number {
+	for (let i = from; i < line.length; i++) {
+		const final = line.charCodeAt(i);
+		if (final >= 0x40 && final <= 0x7e) return i + 1;
+	}
+	return -1;
+}
+
+/** The index after the OSC whose payload starts at `from`: past its BEL or ST (ESC \), or -1 when unterminated. */
+function oscEnd(line: string, from: number): number {
+	for (let i = from; i < line.length; i++) {
+		const osc = line.charCodeAt(i);
+		if (osc === 0x07) return i + 1;
+		if (osc === 0x1b && line.charCodeAt(i + 1) === 0x5c) return i + 2;
+	}
+	return -1;
 }
 
 function ansiSequenceHasVisiblePayload(line: string, start: number): boolean {
@@ -652,15 +700,20 @@ function ansiSequenceHasVisiblePayload(line: string, start: number): boolean {
 	);
 }
 
+/** The index after the zero-width CSI or OSC at `start`, or -1 for any other escape and for an unterminated one. */
+function invisibleEscapeEnd(line: string, start: number): number {
+	if (ansiSequenceHasVisiblePayload(line, start)) return -1;
+	const next = line.charCodeAt(start + 1);
+	if (next !== 0x5b && next !== 0x5d) return -1;
+	return ansiSequenceEnd(line, start);
+}
+
 function ansiAsciiLineWidth(line: string, maxWidth: number): number | undefined {
 	let col = 0;
 	for (let i = 0; i < line.length; ) {
 		const code = line.charCodeAt(i);
 		if (code === 0x1b) {
-			if (ansiSequenceHasVisiblePayload(line, i)) return undefined;
-			const next = line.charCodeAt(i + 1);
-			if (next !== 0x5b && next !== 0x5d) return undefined;
-			const end = ansiSequenceEnd(line, i);
+			const end = invisibleEscapeEnd(line, i);
 			if (end < 0) return undefined;
 			i = end;
 			continue;

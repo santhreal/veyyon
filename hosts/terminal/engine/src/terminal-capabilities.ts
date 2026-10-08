@@ -854,11 +854,17 @@ const MAX_IMAGE_FIT_CELLS = 4096;
  */
 const MAX_SIXEL_PIXELS = 16_777_216;
 
+/** The cell grid an image is drawn into. */
+export interface ImageFit {
+	columns: number;
+	rows: number;
+}
+
 export function calculateImageFit(
 	imageDimensions: ImageDimensions,
 	options: ImageRenderOptions,
 	cellDims: CellDimensions,
-): { columns: number; rows: number } {
+): ImageFit {
 	// Sanitize source dimensions: a malformed/hostile header can report 0 or a
 	// non-finite value, and `0 * Infinity` in the scale math below yields NaN,
 	// which slips past `Math.min` caps. Force finite, >= 1.
@@ -1034,104 +1040,115 @@ export function getImageDimensions(base64Data: string, mimeType: string): ImageD
 	return IMAGE_DIMENSION_PARSERS[mimeType]?.(base64Data) ?? null;
 }
 
-export function renderImage(
-	base64Data: string,
-	imageDimensions: ImageDimensions,
-	options: ImageRenderOptions = {},
-): {
+/** A drawn image: a placement sequence or placeholder rows, the rows it occupies, and a one-time transmit. */
+export interface ImageRenderResult {
 	sequence?: string;
 	lines?: string[];
 	rows: number;
 	transmit?: string;
 	/** Set on the Kitty direct-placement path: what the renderer needs to re-derive the placement. */
 	direct?: KittyDirectPlacement;
-} | null {
-	if (!TERMINAL.imageProtocol) {
+}
+
+export function renderImage(
+	base64Data: string,
+	imageDimensions: ImageDimensions,
+	options: ImageRenderOptions = {},
+): ImageRenderResult | null {
+	const protocol = TERMINAL.imageProtocol;
+	if (!protocol) {
 		return null;
 	}
 
 	const cellDims = getCellDimensions();
 	const fit = calculateImageFit(imageDimensions, options, cellDims);
-
-	if (TERMINAL.imageProtocol === ImageProtocol.Kitty) {
-		if (options.imageId != null) {
-			const placementId = options.placementId ?? options.imageId;
-			const graphics = getKittyGraphics();
-			// Transmit-once (keyed by id). Repaints reuse the stored image, so the
-			// transmit is only emitted when requested.
-			let transmit: string | undefined;
-			if (options.includeTransmit) {
-				transmit = encodeKittyTransmit(base64Data, options.imageId);
-			}
-			// Unicode placeholders render the image as real text cells (which survive
-			// horizontal slicing, reflow and overlaps) instead of a cursor-positioned
-			// `a=p` placement. Falls back to direct placement when disabled or when the
-			// grid exceeds the diacritic table's addressable cell range.
-			if (graphics.unicodePlaceholders && kittyPlaceholdersFit(fit.columns, fit.rows)) {
-				const lines = renderKittyPlaceholderLines({
-					imageId: options.imageId,
-					placementId,
-					columns: fit.columns,
-					rows: fit.rows,
-				});
-				return { lines, rows: fit.rows, transmit };
-			}
-			// Direct placement: re-emit only the tiny `a=p` on repaints.
-			const direct: KittyDirectPlacement = {
-				imageId: options.imageId,
-				placementId,
-				columns: fit.columns,
-				rows: fit.rows,
-				widthPx: Math.max(1, Math.round(imageDimensions.widthPx)),
-				heightPx: Math.max(1, Math.round(imageDimensions.heightPx)),
-			};
-			const sequence = encodeKittyPlacement(direct);
-			return { sequence, rows: fit.rows, transmit, direct };
+	switch (protocol) {
+		case ImageProtocol.Kitty:
+			return renderKittyImage(base64Data, imageDimensions, options, fit);
+		case ImageProtocol.Sixel:
+			return renderSixelImage(base64Data, imageDimensions, fit, cellDims);
+		case ImageProtocol.Iterm2: {
+			const sequence = encodeITerm2(base64Data, {
+				width: fit.columns,
+				height: "auto",
+				preserveAspectRatio: options.preserveAspectRatio ?? true,
+			});
+			return { sequence, rows: fit.rows };
 		}
+		default:
+			return null;
+	}
+}
+
+function renderKittyImage(
+	base64Data: string,
+	imageDimensions: ImageDimensions,
+	options: ImageRenderOptions,
+	fit: ImageFit,
+): ImageRenderResult {
+	if (options.imageId == null) {
 		// No stable id (e.g. no budget): self-contained transmit-and-display.
-		const sequence = encodeKitty(base64Data, {
+		return { sequence: encodeKitty(base64Data, { columns: fit.columns, rows: fit.rows }), rows: fit.rows };
+	}
+	const placementId = options.placementId ?? options.imageId;
+	// Transmit-once (keyed by id). Repaints reuse the stored image, so the
+	// transmit is only emitted when requested.
+	const transmit = options.includeTransmit ? encodeKittyTransmit(base64Data, options.imageId) : undefined;
+	// Unicode placeholders render the image as real text cells (which survive
+	// horizontal slicing, reflow and overlaps) instead of a cursor-positioned
+	// `a=p` placement. Falls back to direct placement when disabled or when the
+	// grid exceeds the diacritic table's addressable cell range.
+	if (getKittyGraphics().unicodePlaceholders && kittyPlaceholdersFit(fit.columns, fit.rows)) {
+		const lines = renderKittyPlaceholderLines({
+			imageId: options.imageId,
+			placementId,
 			columns: fit.columns,
 			rows: fit.rows,
 		});
-		return { sequence, rows: fit.rows };
+		return { lines, rows: fit.rows, transmit };
 	}
+	// Direct placement: re-emit only the tiny `a=p` on repaints.
+	const direct: KittyDirectPlacement = {
+		imageId: options.imageId,
+		placementId,
+		columns: fit.columns,
+		rows: fit.rows,
+		widthPx: Math.max(1, Math.round(imageDimensions.widthPx)),
+		heightPx: Math.max(1, Math.round(imageDimensions.heightPx)),
+	};
+	return { sequence: encodeKittyPlacement(direct), rows: fit.rows, transmit, direct };
+}
 
-	if (TERMINAL.imageProtocol === ImageProtocol.Sixel) {
-		try {
-			const targetWidthPx = Math.max(1, fit.columns * cellDims.widthPx);
-			const targetHeightPx = Math.max(1, fit.rows * cellDims.heightPx);
-			// The pixel bound the cell bound does not give you. `MAX_IMAGE_FIT_CELLS` caps CELLS, and
-			// the SIXEL encoder works in PIXELS: 4096 cells against a 10x20 cell is 40960x81920, and
-			// the native resizes to exactly that and takes it to RGBA, which is a 13 GB allocation
-			// inside Rust. An allocation failure there ABORTS the process, so this cannot be a
-			// try/catch and has to be a refusal before the call. Both the source and the target are
-			// checked, because they fail at different points: a small file whose header claims
-			// gigapixels blows up in `decode()`, before any resize can shrink it.
-			const targetPixels = targetWidthPx * targetHeightPx;
-			const sourcePixels = Math.max(1, imageDimensions.widthPx) * Math.max(1, imageDimensions.heightPx);
-			if (targetPixels > MAX_SIXEL_PIXELS || sourcePixels > MAX_SIXEL_PIXELS) {
-				return null;
-			}
-			const decoded = new Uint8Array(Buffer.from(base64Data, "base64"));
-			const sequence = encodeSixel(decoded, targetWidthPx, targetHeightPx);
-			return { sequence, rows: fit.rows };
-		} catch {
-			// Sixel encoding failed, so this terminal gets no image and the caller falls back to the textual
-			// representation it already uses for terminals with no image protocol at all. Null is that
-			// "cannot draw it here" answer; the reader sees the fallback, which is why it is not also logged.
+function renderSixelImage(
+	base64Data: string,
+	imageDimensions: ImageDimensions,
+	fit: ImageFit,
+	cellDims: CellDimensions,
+): ImageRenderResult | null {
+	try {
+		const targetWidthPx = Math.max(1, fit.columns * cellDims.widthPx);
+		const targetHeightPx = Math.max(1, fit.rows * cellDims.heightPx);
+		// The pixel bound the cell bound does not give you. `MAX_IMAGE_FIT_CELLS` caps CELLS, and
+		// the SIXEL encoder works in PIXELS: 4096 cells against a 10x20 cell is 40960x81920, and
+		// the native resizes to exactly that and takes it to RGBA, which is a 13 GB allocation
+		// inside Rust. An allocation failure there ABORTS the process, so this cannot be a
+		// try/catch and has to be a refusal before the call. Both the source and the target are
+		// checked, because they fail at different points: a small file whose header claims
+		// gigapixels blows up in `decode()`, before any resize can shrink it.
+		const targetPixels = targetWidthPx * targetHeightPx;
+		const sourcePixels = Math.max(1, imageDimensions.widthPx) * Math.max(1, imageDimensions.heightPx);
+		if (targetPixels > MAX_SIXEL_PIXELS || sourcePixels > MAX_SIXEL_PIXELS) {
 			return null;
 		}
-	}
-	if (TERMINAL.imageProtocol === ImageProtocol.Iterm2) {
-		const sequence = encodeITerm2(base64Data, {
-			width: fit.columns,
-			height: "auto",
-			preserveAspectRatio: options.preserveAspectRatio ?? true,
-		});
+		const decoded = new Uint8Array(Buffer.from(base64Data, "base64"));
+		const sequence = encodeSixel(decoded, targetWidthPx, targetHeightPx);
 		return { sequence, rows: fit.rows };
+	} catch {
+		// Sixel encoding failed, so this terminal gets no image and the caller falls back to the textual
+		// representation it already uses for terminals with no image protocol at all. Null is that
+		// "cannot draw it here" answer; the reader sees the fallback, which is why it is not also logged.
+		return null;
 	}
-
-	return null;
 }
 
 // `ImageFallbackReason` is not declared here: the session states the reason to the

@@ -124,47 +124,13 @@ export class Image implements Component {
 			return this.#cachedLines;
 		}
 
-		const cap = this.#options.maxWidthCells;
-		const maxWidth = cap != null && cap > 0 ? Math.min(width - 2, cap) : width - 2;
-
 		let lines: string[];
 		let fallback: ImageFallbackReason | undefined;
 
 		if (hasProtocol && !suppressed) {
-			// Transmit the data once (keyed by id); thereafter renderImage returns
-			// just the placement, so repaints never re-send the base64.
-			const needsTransmit = this.#imageId != null && (this.#budget?.shouldTransmit(this.#imageId) ?? false);
-			const result = renderImage(this.#base64Data, this.#dimensions, {
-				maxWidthCells: maxWidth,
-				maxHeightCells: this.#options.maxHeightCells,
-				imageId: this.#imageId,
-				includeTransmit: needsTransmit,
-			});
-
-			if (result?.transmit && this.#imageId != null && this.#budget !== undefined) {
-				this.#budget.enqueueTransmit(this.#imageId, result.transmit);
-			}
-
-			if (result?.lines) {
-				// Unicode placeholders: the image is already a block of real text-cell
-				// lines (line 0 carries the virtual-placement APC). No cursor moves.
-				lines = result.lines;
-			} else if (result) {
-				// Direct placement: return `rows` lines so TUI accounts for image
-				// height. First (rows-1) lines are empty (TUI clears them); the last
-				// climbs to the image origin, emits the image sequence, and restores
-				// the final-row cursor. The renderer re-derives that line from the
-				// registered geometry when it must rewrite it at a viewport row above
-				// the origin, where the climb would clamp.
-				lines = [];
-				for (let i = 0; i < result.rows - 1; i++) {
-					lines.push(RESERVED_IMAGE_ROW);
-				}
-				const placementLine = encodeDirectPlacementLine(result.rows, result.sequence ?? "");
-				lines.push(placementLine);
-				if (result.direct && this.#budget !== undefined) {
-					this.#budget.recordDirectPlacement(placementLine, result.direct);
-				}
+			const graphic = this.#graphicLines(width);
+			if (graphic) {
+				lines = graphic;
 			} else {
 				fallback = "unsupported-format";
 				lines = this.#fallbackLines(fallback);
@@ -194,6 +160,42 @@ export class Image implements Component {
 	}
 
 	/**
+	 * The picture as terminal graphics, or undefined when this terminal cannot draw it. The data is transmitted once
+	 * (keyed by id); thereafter renderImage returns just the placement, so repaints never re-send the base64.
+	 */
+	#graphicLines(width: number): string[] | undefined {
+		const cap = this.#options.maxWidthCells;
+		const maxWidth = cap != null && cap > 0 ? Math.min(width - 2, cap) : width - 2;
+		const imageId = this.#imageId;
+		const budget = this.#budget;
+		const needsTransmit = imageId != null && (budget?.shouldTransmit(imageId) ?? false);
+		const result = renderImage(this.#base64Data, this.#dimensions, {
+			maxWidthCells: maxWidth,
+			maxHeightCells: this.#options.maxHeightCells,
+			imageId,
+			includeTransmit: needsTransmit,
+		});
+		if (!result) return undefined;
+		if (result.transmit && imageId != null && budget !== undefined) {
+			budget.enqueueTransmit(imageId, result.transmit);
+		}
+		// Unicode placeholders: the image is already a block of real text-cell
+		// lines (line 0 carries the virtual-placement APC). No cursor moves.
+		if (result.lines) return result.lines;
+		// Direct placement: return `rows` lines so TUI accounts for image
+		// height. First (rows-1) lines are empty (TUI clears them); the last
+		// climbs to the image origin, emits the image sequence, and restores
+		// the final-row cursor. The renderer re-derives that line from the
+		// registered geometry when it must rewrite it at a viewport row above
+		// the origin, where the climb would clamp.
+		const placementLine = encodeDirectPlacementLine(result.rows, result.sequence ?? "");
+		if (result.direct && budget !== undefined) {
+			budget.recordDirectPlacement(placementLine, result.direct);
+		}
+		return reservedBlock(result.rows, placementLine);
+	}
+
+	/**
 	 * Text fallback, height-preserving once a graphic has rendered: a demoted
 	 * image must keep occupying the rows its placement used, because those
 	 * rows may already be committed to native scrollback — shrinking the block
@@ -210,12 +212,16 @@ export class Image implements Component {
 				reason,
 			}),
 		);
-		if (this.#renderedGraphicRows <= 1) return [fallback];
-		const lines: string[] = [];
-		for (let i = 0; i < this.#renderedGraphicRows - 1; i++) {
-			lines.push(RESERVED_IMAGE_ROW);
-		}
-		lines.push(fallback);
-		return lines;
+		return reservedBlock(this.#renderedGraphicRows, fallback);
 	}
+}
+
+/** A block of `rows` lines (at least one) ending in `last`, every row above it reserved. */
+function reservedBlock(rows: number, last: string): string[] {
+	const lines: string[] = [];
+	for (let i = 0; i < rows - 1; i++) {
+		lines.push(RESERVED_IMAGE_ROW);
+	}
+	lines.push(last);
+	return lines;
 }

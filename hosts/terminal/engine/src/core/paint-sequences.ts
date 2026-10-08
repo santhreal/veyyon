@@ -7,7 +7,7 @@
  * alt-screen exit and image purge, and leaves the hardware cursor on the row its documentation
  * states, so the caller's cursor placement continues from a known row.
  */
-import { planDeccaraFills } from "@veyyon/utils/deccara";
+import { type DeccaraPlan, planDeccaraFills } from "@veyyon/utils/deccara";
 import { clampLow } from "@veyyon/utils/math";
 import { isConPTYHosted } from "../terminal";
 import { TERMINAL } from "../terminal-capabilities";
@@ -273,6 +273,126 @@ export interface FullPaintReplay {
 }
 
 /**
+ * Map a frame-space caret into paint space: committed-prefix rows keep their index, visible-window
+ * rows land after the prefix, and a caret in neither region (hidden behind the overlay gap) hides.
+ */
+function paintSpaceCursor(
+	cursorPos: { row: number; col: number } | null,
+	chunkTo: number,
+	windowTop: number,
+	height: number,
+): { row: number; col: number } | null {
+	if (cursorPos === null) return null;
+	if (cursorPos.row < chunkTo) return cursorPos;
+	if (cursorPos.row >= windowTop && cursorPos.row < windowTop + height) {
+		return { row: chunkTo + cursorPos.row - windowTop, col: cursorPos.col };
+	}
+	return null;
+}
+
+/** The replay rows and paint-space caret; `lines` is null unless ConPTY truncation rewrote the replay. */
+interface BoundedReplay {
+	readonly lines: string[] | null;
+	readonly cursorPos: { row: number; col: number } | null;
+}
+
+/**
+ * ConPTY hosts bound the replay: merge prefix + window into one array so truncateLargeConptyFrame
+ * can measure the payload and retain only the tail. Gated on the host check — everywhere else the
+ * merge would copy a pointer per committed row (a 50k-row session = 50k-entry array per resize
+ * step / theme change / session replace) just to be returned unchanged.
+ */
+function boundConptyReplay(input: FullPaintInput, cursorPos: { row: number; col: number } | null): BoundedReplay {
+	if (!isConPTYHosted()) return { lines: null, cursorPos };
+	const { frame, window, width, height, chunkTo } = input;
+	const merged = new Array<string>(chunkTo + height);
+	for (let i = 0; i < chunkTo; i++) merged[i] = frame[i] ?? "";
+	for (let screenRow = 0; screenRow < height; screenRow++) {
+		merged[chunkTo + screenRow] = window[screenRow] ?? "";
+	}
+	const paint = truncateLargeConptyFrame(merged, width, height, cursorPos);
+	return paint.lines === merged ? { lines: null, cursorPos } : { lines: paint.lines, cursorPos: paint.cursorPos };
+}
+
+/**
+ * The clear a full paint writes after its lead. With `clearScrollback`, clear native history
+ * without blanking the live viewport first: the replay rewrites every visible row from home,
+ * including blanks, so terminals without DEC 2026 never expose an ED2-cleared frame. Otherwise,
+ * best-effort, push the pre-paint screen into scrollback on terminals that implement kitty's ED 22
+ * (copy-screen-to-scrollback-then-erase), and always follow with ED 2 so the viewport is cleared
+ * regardless; on real kitty, ED 2 over the now-blank screen is a no-op and does not push a second
+ * copy.
+ */
+function fullPaintClear(clearScrollback: boolean): string {
+	if (clearScrollback) return "\x1b[H\x1b[3J";
+	return TERMINAL.supportsScreenToScrollback ? "\x1b[22J\x1b[2J\x1b[H" : "\x1b[2J\x1b[H";
+}
+
+/**
+ * DECCARA fills for the rows that stay visible, `[visibleStart, lineCount)`; null when DECCARA is
+ * off or no row stays visible. History-bound rows are written as full styled strings: their
+ * background must survive in scrollback, which DECCARA cannot reach.
+ */
+function planVisibleFills(
+	input: FullPaintInput,
+	paintLines: string[] | null,
+	lineCount: number,
+	visibleStart: number,
+): DeccaraPlan | null {
+	if (!input.deccara || visibleStart >= lineCount) return null;
+	// Untruncated, the visible slice is exactly the caller's window (visibleStart === chunkTo) —
+	// reuse it rather than copying; planDeccaraFills fills its own `texts` and never mutates input.
+	let visible = input.window;
+	if (paintLines !== null) {
+		visible = new Array<string>(lineCount - visibleStart);
+		for (let k = 0; k < visible.length; k++) visible[k] = paintLines[visibleStart + k] ?? "";
+	}
+	return planDeccaraFills(visible, input.width);
+}
+
+/** One replayed row; a destructive history clear rewrites the whole row, since it avoids ED2. */
+function replayLine(input: FullPaintInput, line: string, screenRow?: number): string {
+	return input.clearScrollback
+		? lineRewriteSequence(line, input.width, screenRow, input.budget)
+		: terminalLine(line, screenRow, input.budget);
+}
+
+/**
+ * The committed prefix then the window, emitted straight from the source arrays (the pre-merge
+ * two-loop form); byte-identical to replaying the merged array.
+ */
+function replaySourceRows(input: FullPaintInput, visibleTexts: string[] | null): string {
+	const { frame, window, height, chunkTo } = input;
+	let buffer = "";
+	for (let i = 0; i < chunkTo; i++) {
+		if (i > 0) buffer += "\r\n";
+		buffer += replayLine(input, frame[i] ?? "");
+	}
+	for (let screenRow = 0; screenRow < height; screenRow++) {
+		if (chunkTo + screenRow > 0) buffer += "\r\n";
+		const line = visibleTexts ? (visibleTexts[screenRow] ?? "") : (window[screenRow] ?? "");
+		buffer += replayLine(input, line, screenRow);
+	}
+	return buffer;
+}
+
+/** The ConPTY-truncated replay; rows from `visibleStart` on are screen rows. */
+function replayTruncatedRows(
+	input: FullPaintInput,
+	paintLines: string[],
+	visibleTexts: string[] | null,
+	visibleStart: number,
+): string {
+	let buffer = "";
+	for (let i = 0; i < paintLines.length; i++) {
+		if (i > 0) buffer += "\r\n";
+		const line = visibleTexts && i >= visibleStart ? visibleTexts[i - visibleStart] : (paintLines[i] ?? "");
+		buffer += replayLine(input, line, i >= visibleStart ? i - visibleStart : undefined);
+	}
+	return buffer;
+}
+
+/**
  * Replay the frame from home: the committed prefix `[0, chunkTo)` followed by the visible window.
  * ED3 (`CSI 3 J`) is written here and only here, when `clearScrollback` asks for it; otherwise the
  * old screen goes to scrollback where the terminal supports kitty's ED 22 and the viewport clears.
@@ -280,107 +400,26 @@ export interface FullPaintReplay {
  * height shrink cannot scroll live rows into scrollback.
  */
 export function fullPaintReplay(input: FullPaintInput): FullPaintReplay {
-	const { frame, window, width, height, cursorPos, chunkTo, windowTop, budget } = input;
-	// Map the frame-space cursor into paint space: committed-prefix rows
-	// keep their index, visible-window rows land after the prefix, and a
-	// cursor in neither region (hidden behind the overlay gap) hides.
-	let paintCursorPos: { row: number; col: number } | null = null;
-	if (cursorPos !== null) {
-		if (cursorPos.row < chunkTo) {
-			paintCursorPos = cursorPos;
-		} else if (cursorPos.row >= windowTop && cursorPos.row < windowTop + height) {
-			paintCursorPos = { row: chunkTo + cursorPos.row - windowTop, col: cursorPos.col };
-		}
-	}
-	// ConPTY hosts bound the replay: merge prefix + window into one array
-	// so truncateLargeConptyFrame can measure the payload and retain only
-	// the tail. Gated on the host check — everywhere else the merge would
-	// copy a pointer per committed row (a 50k-row session = 50k-entry
-	// array per resize step / theme change / session replace) just to be
-	// returned unchanged. `paintLines` stays null unless truncation
-	// actually rewrote the replay.
-	let paintLines: string[] | null = null;
-	let paintLineCount = chunkTo + height;
-	if (isConPTYHosted()) {
-		const merged = new Array<string>(chunkTo + height);
-		for (let i = 0; i < chunkTo; i++) merged[i] = frame[i] ?? "";
-		for (let screenRow = 0; screenRow < height; screenRow++) {
-			merged[chunkTo + screenRow] = window[screenRow] ?? "";
-		}
-		const paint = truncateLargeConptyFrame(merged, width, height, paintCursorPos);
-		if (paint.lines !== merged) {
-			paintLines = paint.lines;
-			paintLineCount = paint.lines.length;
-			paintCursorPos = paint.cursorPos;
-		}
-	}
-	let buffer = input.lead;
-	if (input.clearScrollback) {
-		// Clear native history without blanking the live viewport first. The
-		// replay below rewrites every visible row from home, including blanks,
-		// so terminals without DEC 2026 never expose an ED2-cleared frame.
-		buffer += "\x1b[H\x1b[3J";
-	} else {
-		// Best-effort: push the pre-paint screen into scrollback on
-		// terminals that implement kitty's ED 22
-		// (copy-screen-to-scrollback-then-erase). Always follow with ED 2 so
-		// the viewport is cleared regardless; on real kitty, ED 2 over the
-		// now-blank screen is a no-op and does not push a second copy.
-		if (TERMINAL.supportsScreenToScrollback) buffer += "\x1b[22J";
-		buffer += "\x1b[2J\x1b[H";
-	}
+	const { frame, height, chunkTo, windowTop } = input;
+	const bounded = boundConptyReplay(input, paintSpaceCursor(input.cursorPos, chunkTo, windowTop, height));
+	const paintLines = bounded.lines;
+	const paintLineCount = paintLines === null ? chunkTo + height : paintLines.length;
+	let buffer = input.lead + fullPaintClear(input.clearScrollback);
 	if (input.imageTransmits.length > 0) buffer += input.imageTransmits;
-	// DECCARA fills optimize only the rows that stay visible; history-bound
-	// rows are written as full styled strings (their background must
-	// survive in scrollback, which DECCARA cannot reach).
 	const visibleStart = Math.max(0, paintLineCount - height);
-	let fillSequence = "";
-	let visibleTexts: string[] | null = null;
-	if (input.deccara && visibleStart < paintLineCount) {
-		// Untruncated, the visible slice is exactly the caller's window
-		// (visibleStart === chunkTo) — reuse it rather than copying;
-		// planDeccaraFills fills its own `texts` and never mutates input.
-		let visible = window;
-		if (paintLines !== null) {
-			visible = new Array<string>(paintLineCount - visibleStart);
-			for (let k = 0; k < visible.length; k++) visible[k] = paintLines[visibleStart + k] ?? "";
-		}
-		const plan = planDeccaraFills(visible, width);
-		visibleTexts = plan.texts;
-		fillSequence = plan.sequence;
-	}
-	const formatLine = (line: string, screenRow?: number) =>
-		input.clearScrollback
-			? lineRewriteSequence(line, width, screenRow, budget)
-			: terminalLine(line, screenRow, budget);
-	if (paintLines === null) {
-		// Common path: emit straight from the source arrays (the
-		// pre-merge two-loop form); byte-identical to replaying the
-		// merged array. Destructive history clears deliberately avoid ED2, so
-		// each row must self-clear stale cells left by the previous viewport.
-		for (let i = 0; i < chunkTo; i++) {
-			if (i > 0) buffer += "\r\n";
-			buffer += formatLine(frame[i] ?? "");
-		}
-		for (let screenRow = 0; screenRow < height; screenRow++) {
-			if (chunkTo + screenRow > 0) buffer += "\r\n";
-			const line = visibleTexts ? (visibleTexts[screenRow] ?? "") : (window[screenRow] ?? "");
-			buffer += formatLine(line, screenRow);
-		}
-	} else {
-		for (let i = 0; i < paintLines.length; i++) {
-			if (i > 0) buffer += "\r\n";
-			const line = visibleTexts && i >= visibleStart ? visibleTexts[i - visibleStart] : (paintLines[i] ?? "");
-			buffer += formatLine(line, i >= visibleStart ? i - visibleStart : undefined);
-		}
-	}
-	buffer += fillSequence;
+	const fills = planVisibleFills(input, paintLines, paintLineCount, visibleStart);
+	const visibleTexts = fills?.texts ?? null;
+	buffer +=
+		paintLines === null
+			? replaySourceRows(input, visibleTexts)
+			: replayTruncatedRows(input, paintLines, visibleTexts, visibleStart);
+	if (fills) buffer += fills.sequence;
 	const contentRows = clampLow(frame.length - windowTop, 1, height);
 	const parkUp = height - contentRows;
 	if (parkUp > 0) buffer += `\x1b[${parkUp}A`;
 	return {
 		sequence: buffer,
-		cursorPos: paintCursorPos,
+		cursorPos: bounded.cursorPos,
 		lineCount: paintLineCount,
 		contentBottomRow: Math.max(0, paintLineCount - 1 - parkUp),
 		frameContentBottomRow: windowTop + contentRows - 1,

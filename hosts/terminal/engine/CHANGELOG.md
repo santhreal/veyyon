@@ -14,6 +14,7 @@
 - `TUIOptions.activity` sets the `ActivitySignal` the TUI attaches to between `start()` and `stop()`; the default is `processActivity`.
 - `RenderSignature`, every input besides the text that a `Markdown` render's rows depend on, is exported from `@veyyon/tui/components/markdown`.
 - `TUI.reusedRows(child)`, read inside `onBeforeCompose`, returns the rows a component-scoped frame keeps for a root child it does not re-render, and `undefined` when the frame renders the child or outside the sizing pass.
+- `ImageRenderResult` and `ImageFit`, the types `renderImage` and `calculateImageFit` return, are exported from `@veyyon/tui/terminal-capabilities`.
 
 ### Changed
 
@@ -36,6 +37,7 @@
 - A streaming `Markdown` render checks that its text still extends the frozen prefix by reference against the text the prefix was frozen from before comparing characters, and a `Container` with one child that draws rows returns that child's rows instead of copying them, so rendering each delta of a 1,000,000-character reply costs 49.8 ms in total instead of 70.4 ms and of a 400,000-character reply 14.1 ms instead of 19.0 ms (median of four).
 - The `Markdown` render cache is keyed by the text a component holds and compares the layout on lookup instead of keying on a new string that spells the text and the layout, so a cached message is held once instead of twice: after 135 turns of 3,000-character replies the session holds 18.0 MiB of strings and objects instead of 18.6 MiB, growing 10.4 KiB per turn instead of 15.0 KiB, and serving 100 cached messages to a rebuilt transcript takes 0.033 ms instead of 0.26 ms.
 - A `Loader` whose spinner frames are single same-width grapheme clusters lays its message out against one shared frame, so a spinner tick that changes no message re-wraps nothing and costs 90 ns instead of 1,950 ns, and a streamed 4,000-character turn spends 255 ms of main-thread CPU instead of 264 ms (median of six).
+- `Box.render`, `Container.render`, `ScrollView.render`, `TabBar.render`, `Loader.render`, `Image.render`, `renderImage`, the full-paint replay in `core/paint-sequences.ts`, the Sixel probe's input handler, the `StdinBuffer` sequence splitter, and the SGR coalescing, committed-prefix resync and oversized-row fit in `core/renderer.ts` are split into one function per step; behavior is unchanged.
 
 ### Fixed
 

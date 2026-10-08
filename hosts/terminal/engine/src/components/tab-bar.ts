@@ -52,6 +52,27 @@ export interface TabBarTheme {
 	hoverTab?: (text: string, strength: number) => string;
 }
 
+/** One run of the horizontal bar, measured once when it is built. */
+interface TabChunk {
+	readonly text: string;
+	readonly width: number;
+	/** Index into the tabs when this chunk is a clickable tab button. */
+	readonly tabIndex?: number;
+}
+
+/** The two-column gap between the label, the tabs and the hint; shared because a chunk is never mutated. */
+const GAP_CHUNK: TabChunk = { text: "  ", width: 2 };
+
+function pushChunk(chunks: TabChunk[], text: string, tabIndex?: number): void {
+	chunks.push({ text, width: visibleWidth(text), tabIndex });
+}
+
+function chunksWidth(chunks: readonly TabChunk[]): number {
+	let sum = 0;
+	for (const chunk of chunks) sum += chunk.width;
+	return sum;
+}
+
 /**
  * Horizontal tab bar component.
  *
@@ -193,99 +214,81 @@ export class TabBar implements Component {
 		// line to its right. Report the row as empty instead.
 		if (!(width >= 1)) return [""];
 		const maxWidth = Math.max(1, width);
+		const lines = this.#layoutChunks(this.#fitChunks(maxWidth), maxWidth);
+		return lines.length > 0 ? lines : [""];
+	}
 
-		interface TabChunk {
-			text: string;
-			/** Index into #tabs when this chunk is a clickable tab button. */
-			tabIndex?: number;
+	/** The bar as one run of chunks: label prefix, painted tabs with their gaps, then the hint. */
+	#buildChunks(labels: readonly string[]): TabChunk[] {
+		const chunks: TabChunk[] = [];
+		// Label prefix (omitted when the label is empty)
+		if (this.#label) {
+			pushChunk(chunks, this.#theme.label(`${this.#label}:`));
+			chunks.push(GAP_CHUNK);
 		}
+		for (let i = 0; i < this.#tabs.length; i++) {
+			pushChunk(chunks, this.#paintTab(this.#tabs[i], i, ` ${labels[i]} `), i);
+			if (i < this.#tabs.length - 1) chunks.push(GAP_CHUNK);
+		}
+		// Navigation hint
+		if (this.showHint) {
+			chunks.push(GAP_CHUNK);
+			pushChunk(chunks, this.#theme.hint("(tab to cycle)"));
+		}
+		return chunks;
+	}
 
-		const buildChunks = (labels: readonly string[]): TabChunk[] => {
-			const chunks: TabChunk[] = [];
-			// Label prefix (omitted when the label is empty)
-			if (this.#label) {
-				chunks.push({ text: this.#theme.label(`${this.#label}:`) });
-				chunks.push({ text: "  " });
-			}
-			for (let i = 0; i < this.#tabs.length; i++) {
-				const tab = this.#tabs[i];
-				chunks.push({ text: this.#paintTab(tab, i, ` ${labels[i]} `), tabIndex: i });
-				if (i < this.#tabs.length - 1) {
-					chunks.push({ text: "  " });
-				}
-			}
-			// Navigation hint
-			if (this.showHint) {
-				chunks.push({ text: "  " });
-				chunks.push({ text: this.#theme.hint("(tab to cycle)") });
-			}
-			return chunks;
-		};
-		const totalWidth = (chunks: TabChunk[]): number =>
-			chunks.reduce((sum, chunk) => sum + visibleWidth(chunk.text), 0);
-
+	/**
+	 * The bar's chunks with full labels, or with `short` labels substituted one tab
+	 * at a time, farthest from the active tab first, until the bar fits `maxWidth`.
+	 */
+	#fitChunks(maxWidth: number): TabChunk[] {
 		const labels = this.#tabs.map(tab => tab.label);
-		let chunks = buildChunks(labels);
-
-		if (totalWidth(chunks) > maxWidth) {
-			const collapseOrder = this.#tabs
-				.map((_, index) => index)
-				.filter(index => index !== this.#activeIndex && this.#tabs[index].short !== undefined)
-				.sort((a, b) => Math.abs(b - this.#activeIndex) - Math.abs(a - this.#activeIndex));
-			for (const index of collapseOrder) {
-				labels[index] = this.#tabs[index].short ?? this.#tabs[index].label;
-				chunks = buildChunks(labels);
-				if (totalWidth(chunks) <= maxWidth) break;
-			}
+		let chunks = this.#buildChunks(labels);
+		if (chunksWidth(chunks) <= maxWidth) return chunks;
+		const active = this.#activeIndex;
+		const collapseOrder = this.#tabs
+			.map((_, index) => index)
+			.filter(index => index !== active && this.#tabs[index].short !== undefined)
+			.sort((a, b) => Math.abs(b - active) - Math.abs(a - active));
+		for (const index of collapseOrder) {
+			labels[index] = this.#tabs[index].short ?? this.#tabs[index].label;
+			chunks = this.#buildChunks(labels);
+			if (chunksWidth(chunks) <= maxWidth) break;
 		}
+		return chunks;
+	}
 
+	/**
+	 * Wrap the chunks into rows of at most `maxWidth` columns and record each tab's
+	 * hit zone. A chunk wider than a row takes a row of its own, truncated.
+	 */
+	#layoutChunks(chunks: readonly TabChunk[], maxWidth: number): string[] {
 		this.#hitZones = [];
 		const lines: string[] = [];
 		let currentLine = "";
 		let currentWidth = 0;
-
 		for (const chunk of chunks) {
-			const chunkWidth = visibleWidth(chunk.text);
-			if (chunkWidth <= 0) {
-				continue;
-			}
-
-			if (chunkWidth > maxWidth) {
-				if (currentLine) {
-					lines.push(currentLine);
-					currentLine = "";
-					currentWidth = 0;
-				}
-				if (chunk.tabIndex !== undefined) {
-					this.#hitZones.push({ line: lines.length, start: 0, end: maxWidth, index: chunk.tabIndex });
-				}
-				lines.push(truncateToWidth(chunk.text, maxWidth));
-				continue;
-			}
-
+			const chunkWidth = chunk.width;
+			if (chunkWidth <= 0) continue;
 			if (currentWidth > 0 && currentWidth + chunkWidth > maxWidth) {
 				lines.push(currentLine);
 				currentLine = "";
 				currentWidth = 0;
 			}
-
 			if (chunk.tabIndex !== undefined) {
-				this.#hitZones.push({
-					line: lines.length,
-					start: currentWidth,
-					end: currentWidth + chunkWidth,
-					index: chunk.tabIndex,
-				});
+				const end = Math.min(currentWidth + chunkWidth, maxWidth);
+				this.#hitZones.push({ line: lines.length, start: currentWidth, end, index: chunk.tabIndex });
+			}
+			if (chunkWidth > maxWidth) {
+				lines.push(truncateToWidth(chunk.text, maxWidth));
+				continue;
 			}
 			currentLine += chunk.text;
 			currentWidth += chunkWidth;
 		}
-
-		if (currentLine) {
-			lines.push(currentLine);
-		}
-
-		return lines.length > 0 ? lines : [""];
+		if (currentLine) lines.push(currentLine);
+		return lines;
 	}
 
 	/**
