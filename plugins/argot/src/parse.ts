@@ -157,21 +157,31 @@ function parseMeta(value: unknown, handles: Map<string, string>, source: string)
 			throw new ArgotParseError(`[meta.${name}] must be a table`, source);
 		}
 		const parsed: HandleMeta = {};
-		if (entry.note !== undefined) {
-			if (typeof entry.note !== "string") {
-				throw new ArgotParseError(`[meta.${name}].note must be a string`, source);
-			}
-			parsed.note = entry.note;
+		const note = optionalMetaString(entry, "note", name, source);
+		if (note !== undefined) {
+			parsed.note = note;
 		}
-		if (entry.scope !== undefined) {
-			if (typeof entry.scope !== "string") {
-				throw new ArgotParseError(`[meta.${name}].scope must be a string`, source);
-			}
-			parsed.scope = entry.scope;
+		const scope = optionalMetaString(entry, "scope", name, source);
+		if (scope !== undefined) {
+			parsed.scope = scope;
 		}
 		meta.set(name, parsed);
 	}
 	return meta;
+}
+
+/** The optional string field `field` of `[meta.<name>]`, throwing when it holds anything else. */
+function optionalMetaString(
+	entry: Record<string, unknown>,
+	field: "note" | "scope",
+	name: string,
+	source: string,
+): string | undefined {
+	const value = entry[field];
+	if (value !== undefined && typeof value !== "string") {
+		throw new ArgotParseError(`[meta.${name}].${field} must be a string`, source);
+	}
+	return value;
 }
 
 /** A plain TOML table: a non-null, non-array object. */
