@@ -624,6 +624,15 @@ function capMarkdownNesting(text: string): string {
 	return text.replace(BLOCKQUOTE_CAP, "$1").replace(INDENT_CAP, "$1");
 }
 
+// A quote border (`│ `) takes two cells. A quote too narrow to keep a content
+// cell beside it drops the border and lays its content out at the full width:
+// re-wrapping a deeper quote's bordered rows at one cell splits each of them in
+// two, doubling the row count at every further nesting level.
+const QUOTE_BORDER_CELLS = 2;
+function quoteContentWidth(width: number): number {
+	return width > QUOTE_BORDER_CELLS ? width - QUOTE_BORDER_CELLS : Math.max(1, width);
+}
+
 /** Drop all L2 cache entries. Call on theme change to prevent stale styled output. */
 export function clearRenderCache(): void {
 	renderCache.clear();
@@ -1993,14 +2002,14 @@ export class Markdown implements Component {
 			applyText: (text: string) => text,
 			stylePrefix: "",
 		};
-		const quoteContentWidth = Math.max(1, width - 2);
+		const contentWidth = quoteContentWidth(width);
 		const quoteTokens = token.tokens || [];
 		const renderedQuoteLines: string[] = [];
 		for (let i = 0; i < quoteTokens.length; i++) {
 			this.#renderToken(
 				renderedQuoteLines,
 				quoteTokens[i]!,
-				quoteContentWidth,
+				contentWidth,
 				quoteTokens[i + 1]?.type,
 				quoteInlineStyleContext,
 			);
@@ -2020,7 +2029,8 @@ export class Markdown implements Component {
 
 	/**
 	 * Wrap already-rendered lines in the blockquote border and quote styling.
-	 * `width` is the full content width; the border reserves two cells.
+	 * `width` is the full content width; the border reserves two cells and is
+	 * omitted when no content cell would remain beside it.
 	 */
 	#applyQuoteBorder(renderedLines: string[], width: number): string[] {
 		const quoteStyle = (text: string) => this.#theme.quote(this.#theme.italic(text));
@@ -2032,12 +2042,12 @@ export class Markdown implements Component {
 			const lineWithReappliedStyle = line.replaceAll(SGR_RESET, `${SGR_RESET}${quoteStylePrefix}`);
 			return quoteStyle(lineWithReappliedStyle);
 		};
-		const quoteContentWidth = Math.max(1, width - 2);
+		const contentWidth = quoteContentWidth(width);
+		const border = width > QUOTE_BORDER_CELLS ? this.#theme.quoteBorder(`${this.#theme.symbols.quoteBorder} `) : "";
 		const lines: string[] = [];
 		for (const quoteLine of renderedLines) {
-			const styledLine = applyQuoteStyle(quoteLine);
-			for (const wrappedLine of wrapTextWithAnsi(styledLine, quoteContentWidth)) {
-				lines.push(this.#theme.quoteBorder(`${this.#theme.symbols.quoteBorder} `) + wrappedLine);
+			for (const wrappedLine of wrapTextWithAnsi(applyQuoteStyle(quoteLine), contentWidth)) {
+				lines.push(border + wrappedLine);
 			}
 		}
 		return lines;
