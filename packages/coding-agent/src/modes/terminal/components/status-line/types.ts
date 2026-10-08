@@ -134,6 +134,7 @@ export interface SegmentContext {
 	 */
 	activeMs: number;
 	git: {
+		/** The checkout's branch when the row has a git zone, else null; the path zone reads it to drop a worktree name it duplicates. */
 		branch: string | null;
 		status: GitStatusSummary | null;
 		pr: { number: number; url: string } | null;

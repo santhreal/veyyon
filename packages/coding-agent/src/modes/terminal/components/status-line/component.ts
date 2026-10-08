@@ -737,10 +737,14 @@ export class StatusLineComponent implements Component {
 		return { projectDir, activeRepo: null, effectiveGitCwd: projectDir, worktree: null, repository: null };
 	}
 
-	/** The branch, tree status and PR in `gitCwd`, each looked up only for a zone that shows it. */
+	/**
+	 * The branch, tree status and PR in `gitCwd`, each looked up only for a zone that shows it. The PR
+	 * lookup reads the branch it needs itself, so a row with a PR zone and no git zone hands the path
+	 * zone no branch, and the path keeps a linked worktree's directory name.
+	 */
 	#gitFacts(gitCwd: string, includeGit: boolean, includePr: boolean): SegmentContext["git"] {
 		return {
-			branch: includeGit || includePr ? this.#getCurrentBranch(gitCwd) : null,
+			branch: includeGit ? this.#getCurrentBranch(gitCwd) : null,
 			status: includeGit ? this.#getGitStatus(gitCwd) : null,
 			pr: includePr ? this.#lookupPr(gitCwd) : null,
 		};

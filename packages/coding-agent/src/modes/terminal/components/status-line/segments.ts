@@ -435,7 +435,8 @@ const pathSegment: StatusLineSegment = {
 		const { content, pin } = renderLocation({
 			projectDir,
 			worktree: ctx.worktree,
-			branch: ctx.git.branch,
+			// The worktree directory is dropped only when the git zone prints a branch it duplicates.
+			branch: ctx.options.git?.showBranch === false ? null : ctx.git.branch,
 			activeRepoRelativeRoot: ctx.activeRepo?.relativeRepoRoot ?? null,
 			options: ctx.options.path,
 		});

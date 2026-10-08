@@ -74,6 +74,11 @@ named in the log once. `stripWorkPrefix: false` turns the whole step off.
 A project inside a temporary directory is shown relative to that temporary directory instead,
 with its own icon, regardless of `displayRoots`.
 
+In a linked git worktree the segment shows the primary checkout's name and the worktree
+directory, `monorepo/topic`. The directory is omitted when it equals the branch and the `git`
+segment on the same row prints that branch, so the name appears once. A row with no `git`
+segment, or with `segmentOptions.git.showBranch: false`, keeps the directory.
+
 The launch composer accepts input while the session initializes. Enter submits the
 current text and attachments after initialization completes. Later drafts remain
 editable and are not cleared by the earlier submission. Input buffered before the

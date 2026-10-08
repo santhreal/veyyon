@@ -230,6 +230,7 @@
 
 ### Fixed
 
+- In a linked worktree named after its branch, the status line's `path` segment and the launch card keep the worktree directory (`monorepo/topic`) on a row with a `pr` segment and no `git` segment, or with `segmentOptions.git.showBranch: false`, instead of showing `monorepo` with neither the worktree nor its branch on the row.
 - A TTSR interrupt retries the turn it aborted when the aborted turn settles with a message whose timestamp differs from the partial it streamed, instead of dropping the injection and releasing the resume gate with no continuation.
 - An expanded task card draws an agent's `Output` heading once when the agent returned `{}`, `[]` or an empty JSON value, and when a running agent's live output is one, instead of twice.
 - An agent with several approval cards open at once stays marked as waiting until its last card closes, instead of showing as working once its first card is answered, so the agent dashboard draws it as blocked and the runtime budget excludes the operator's reading time across the whole span, counted once.
