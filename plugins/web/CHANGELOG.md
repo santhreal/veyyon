@@ -14,6 +14,8 @@
 - The GitLab handler decodes percent-encoded path segments before it builds an API URL, and reads a project README from its raw URL instead of the HTML blob page.
 - The docs.rs handler reads rustdoc JSON format 61, lists only public items, resolves an item page by its kind so `macro.make.html` and `fn.make.html` render different items, and degrades when the compressed document exceeds the size cap.
 - The CoinGecko handler renders a coin whose price, 24h change or all-time high the API returns as `null` instead of falling back to a generic fetch, and drops blank category names; the OpenCorporates and Searchcode renderers are split into one function per section with unchanged output.
+- The RFC handler renders the authors, current status, source and DOI from the field names the RFC Editor JSON record uses, instead of a blank author list and no status.
+- The PubMed handler takes its fallback DOI from the `doi:` entry of the electronic location ids, instead of rendering the whole field, `doi:` prefix or PII included, as the DOI.
 
 ## [1.5.4] - 2026-09-24
 

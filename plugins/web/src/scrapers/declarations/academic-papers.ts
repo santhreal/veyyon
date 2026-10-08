@@ -547,6 +547,7 @@ interface PubmedArticle {
 	volume?: string;
 	issue?: string;
 	pages?: string;
+	/** Electronic location ids such as `pii: S0140-6736(20)30183-5. doi: 10.1016/S0140-6736(20)30183-5`. */
 	elocationid?: string;
 	articleids?: Array<{ idtype: string; value: string }>;
 }
@@ -563,7 +564,10 @@ async function loadNcbi(ctx: AcademicPaperContext, url: string, acceptJson: bool
 	return ctx.loadPage(url, { timeout: ctx.timeout, signal: ctx.signal, headers });
 }
 
-/** The last DOI and PMCID among the article ids, the DOI falling back to the electronic location id. */
+/**
+ * The last DOI and PMCID among the article ids, the DOI falling back to the `doi:` entry of
+ * the electronic location ids.
+ */
 function pubmedIdentifiers(article: PubmedArticle): { doi: string; pmcid: string } {
 	let doi = "";
 	let pmcid = "";
@@ -571,7 +575,7 @@ function pubmedIdentifiers(article: PubmedArticle): { doi: string; pmcid: string
 		if (id.idtype === "doi") doi = id.value;
 		if (id.idtype === "pmc") pmcid = id.value;
 	}
-	return { doi: doi || article.elocationid || "", pmcid };
+	return { doi: doi || article.elocationid?.match(/(?:^|\s)doi:\s*(\S+?)\.?(?=\s|$)/)?.[1] || "", pmcid };
 }
 
 function renderPubmedFields(pmid: string, article: PubmedArticle): string {
@@ -662,17 +666,20 @@ export const pubmedDeclaration: AcademicPaperDeclaration = {
 };
 
 // 7. IETF RFC
+/** The record `https://www.rfc-editor.org/rfc/rfcN.json` returns. */
 interface RfcMetadata {
-	doc_id: string;
-	title: string;
-	authors?: Array<{ name: string; affiliation?: string }>;
+	doc_id?: string;
+	title?: string;
+	/** Display names such as `R. Fielding, Ed.`. */
+	authors?: string[];
+	/** The status at publication. */
 	pub_status?: string;
-	current_status?: string;
-	stream?: string;
-	area?: string;
-	wg_acronym?: string;
+	/** The current status. */
+	status?: string;
+	/** The working group or stream the RFC came from. */
+	source?: string;
 	pub_date?: string;
-	page_count?: number;
+	page_count?: string;
 	abstract?: string;
 	keywords?: string[];
 	obsoletes?: string[];
@@ -680,7 +687,8 @@ interface RfcMetadata {
 	updates?: string[];
 	updated_by?: string[];
 	see_also?: string[];
-	errata_url?: string;
+	doi?: string;
+	errata_url?: string | null;
 }
 
 /** The pattern that reads the RFC number from a path on each RFC host. */
@@ -692,25 +700,19 @@ const RFC_PATH_PATTERNS: Record<string, RegExp> = {
 };
 
 function renderRfcHeader(rfcNumber: string, metadata: RfcMetadata): string {
-	let md = `# RFC ${rfcNumber}: ${metadata.title}\n\n`;
+	let md = `# RFC ${rfcNumber}${metadata.title ? `: ${metadata.title}` : ""}\n\n`;
 	md += renderKeyValues([
-		[
-			"Authors",
-			metadata.authors
-				?.map(author => (author.affiliation ? `${author.name} (${author.affiliation})` : author.name))
-				.join(", "),
-		],
+		["Authors", metadata.authors?.join(", ")],
 		["Published", metadata.pub_date],
-		["Status", metadata.current_status],
-		["Stream", metadata.stream],
-		["Area", metadata.area],
-		["Working Group", metadata.wg_acronym],
-		["Pages", metadata.page_count || null],
+		["Status", metadata.status],
+		["Source", metadata.source],
+		["Pages", metadata.page_count],
 		["Obsoletes", metadata.obsoletes?.join(", ")],
 		["Obsoleted by", metadata.obsoleted_by?.join(", ")],
 		["Updates", metadata.updates?.join(", ")],
 		["Updated by", metadata.updated_by?.join(", ")],
 		["Keywords", metadata.keywords?.join(", ")],
+		["DOI", metadata.doi],
 		["Errata", metadata.errata_url],
 	]);
 	md += "\n";

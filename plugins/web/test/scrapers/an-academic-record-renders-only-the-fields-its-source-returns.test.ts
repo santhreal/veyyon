@@ -155,7 +155,7 @@ describe("PubMed", () => {
 	it("renders the identifiers and citation parts the summary has, and the abstract fallback", async () => {
 		serve({
 			"esummary.fcgi": [
-				summary({ title: "T", fulljournalname: "J", pages: "1-2", elocationid: "10.1/x", articleids: [] }),
+				summary({ title: "T", fulljournalname: "J", pages: "1-2", elocationid: "doi: 10.1/x", articleids: [] }),
 			],
 			"rettype=abstract": [failed(404), failed(404)],
 			"rettype=medline": [ok("PMID- 31882512\nMHDA- 2020/01/01 06:00\nMH  - Humans\n")],
@@ -167,6 +167,24 @@ describe("PubMed", () => {
 			"# T\n\n**Journal:** J\n**Citation:** pp 1-2\n**PMID:** 31882512\n**DOI:** 10.1/x\n\n---\n\n## Abstract\n\nNo abstract available.\n\n## MeSH Terms\n\n- Humans",
 		);
 		expect(result.notes).toEqual(["Fetched MeSH terms via NCBI E-utilities"]);
+	});
+
+	it.each([
+		["doi: 10.21873/invivo.11794", "10.21873/invivo.11794"],
+		["pii: S0140-6736(20)30183-5. doi: 10.1016/S0140-6736(20)30183-5", "10.1016/S0140-6736(20)30183-5"],
+		["doi: 10.1016/j.cell.2020.01.001. pii: S0092-8674(20)30001-1", "10.1016/j.cell.2020.01.001"],
+		["pii: e2021", undefined],
+		["", undefined],
+	])("reads the DOI of the electronic location ids %j", async (elocationid, doi) => {
+		serve({
+			"esummary.fcgi": [summary({ title: "T", elocationid, articleids: [{ idtype: "pubmed", value: "31882512" }] })],
+			"rettype=abstract": [ok("Abstract text")],
+		});
+
+		const result = await render("pubmed", PUBMED_URL);
+
+		const fields = result.content.split("\n---\n")[0];
+		expect(fields).toBe(`# T\n\n**PMID:** 31882512\n${doi ? `**DOI:** ${doi}\n` : ""}`);
 	});
 
 	it("retries each E-utilities request once and asks the text endpoints for text", async () => {
@@ -274,6 +292,32 @@ describe("RFC", () => {
 		serve({ "rfc9110.json": [ok({ title: "HTTP Semantics" })], "rfc9110.txt": [failed(404)] });
 
 		expect(isScraperDegrade(await scrape("rfc", RFC_URL))).toBe(true);
+	});
+
+	it("renders a metadata record without a title, errata link or related documents", async () => {
+		serve({
+			"rfc9110.json": [
+				ok({
+					doc_id: "RFC9110",
+					status: "INTERNET STANDARD",
+					authors: [],
+					obsoletes: [],
+					obsoleted_by: [],
+					updates: [],
+					updated_by: [],
+					keywords: [],
+					errata_url: null,
+				}),
+			],
+			"rfc9110.txt": [ok("Body")],
+		});
+
+		const result = await render("rfc", RFC_URL);
+
+		expect(result.content).toBe(
+			"# RFC 9110\n\n**Status:** INTERNET STANDARD\n\n---\n\n## Full Text\n\n```\nBody\n```",
+		);
+		expect(result.notes).toEqual(["Metadata from RFC Editor JSON API"]);
 	});
 });
 

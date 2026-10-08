@@ -417,28 +417,29 @@ MH  - Gene Editing`;
 	});
 
 	it("rfc: parallel fetches metadata JSON and cleans plain text RFC formatting", async () => {
+		// The shape https://www.rfc-editor.org/rfc/rfc9110.json returns: authors are display
+		// strings, `status` is the current status and `pub_status` the one at publication.
 		const rfcJson = {
+			draft: "draft-ietf-httpbis-semantics-19",
 			doc_id: "RFC9110",
 			title: "HTTP Semantics",
-			authors: [
-				{ name: "Roy T. Fielding", affiliation: "Adobe" },
-				{ name: "Mark Nottingham", affiliation: "Fastly" },
-				{ name: "Julian Reschke", affiliation: "greenbytes" },
-			],
-			pub_date: "June 2022",
-			current_status: "PROPOSED STANDARD",
-			stream: "IETF",
-			area: "ART",
-			wg_acronym: "httpbis",
-			page_count: 194,
-			obsoletes: ["RFC7230", "RFC7231", "RFC7232"],
-			obsoleted_by: [],
-			updates: ["RFC2818"],
-			updated_by: [],
-			keywords: ["HTTP", "Semantics", "Hypertext Transfer Protocol"],
-			errata_url: "https://www.rfc-editor.org/errata/rfc9110",
+			authors: ["R. Fielding, Ed.", "M. Nottingham, Ed.", "J. Reschke, Ed."],
+			format: ["XML", "TEXT", "HTML", "PDF"],
+			page_count: "194",
+			pub_status: "PROPOSED STANDARD",
+			status: "INTERNET STANDARD",
+			source: "HTTP",
 			abstract:
 				"Sentinel RFC abstract defining architecture, semantics, and method definitions of HTTP/1.1 and HTTP/2.",
+			pub_date: "June 2022",
+			keywords: ["HTTP", "Semantics", "Hypertext Transfer Protocol"],
+			obsoletes: ["RFC7230", "RFC7231", "RFC7232"],
+			obsoleted_by: [],
+			updates: ["RFC3864"],
+			updated_by: [],
+			see_also: [],
+			doi: "10.17487/RFC9110",
+			errata_url: "https://www.rfc-editor.org/errata/rfc9110",
 		};
 
 		const rfcRawText = `Internet Engineering Task Force (IETF)                      R. Fielding, Ed.
@@ -487,20 +488,24 @@ RFC 9110                     HTTP Semantics                    June 2022
 		expect(result).not.toBeNull();
 		expect(result?.method).toBe("rfc");
 		expect(result?.finalUrl).toBe("https://www.rfc-editor.org/rfc/rfc9110");
-		expect(result?.content).toContain("# RFC 9110: HTTP Semantics");
 		expect(result?.content).toContain(
-			"**Authors:** Roy T. Fielding (Adobe), Mark Nottingham (Fastly), Julian Reschke (greenbytes)",
+			[
+				"# RFC 9110: HTTP Semantics",
+				"",
+				"**Authors:** R. Fielding, Ed., M. Nottingham, Ed., J. Reschke, Ed.",
+				"**Published:** June 2022",
+				"**Status:** INTERNET STANDARD",
+				"**Source:** HTTP",
+				"**Pages:** 194",
+				"**Obsoletes:** RFC7230, RFC7231, RFC7232",
+				"**Updates:** RFC3864",
+				"**Keywords:** HTTP, Semantics, Hypertext Transfer Protocol",
+				"**DOI:** 10.17487/RFC9110",
+				"**Errata:** https://www.rfc-editor.org/errata/rfc9110",
+				"",
+				"## Abstract",
+			].join("\n"),
 		);
-		expect(result?.content).toContain("**Published:** June 2022");
-		expect(result?.content).toContain("**Status:** PROPOSED STANDARD");
-		expect(result?.content).toContain("**Stream:** IETF");
-		expect(result?.content).toContain("**Area:** ART");
-		expect(result?.content).toContain("**Working Group:** httpbis");
-		expect(result?.content).toContain("**Pages:** 194");
-		expect(result?.content).toContain("**Obsoletes:** RFC7230, RFC7231, RFC7232");
-		expect(result?.content).toContain("**Updates:** RFC2818");
-		expect(result?.content).toContain("**Keywords:** HTTP, Semantics, Hypertext Transfer Protocol");
-		expect(result?.content).toContain("**Errata:** https://www.rfc-editor.org/errata/rfc9110");
 		expect(result?.content).toContain(
 			"## Abstract\n\nSentinel RFC abstract defining architecture, semantics, and method definitions of HTTP/1.1 and HTTP/2.",
 		);
