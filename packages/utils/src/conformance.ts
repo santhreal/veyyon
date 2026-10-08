@@ -124,22 +124,25 @@ export function parseConformanceFile(path: string, raw: string): ConformanceFile
 	if (typeof file.function !== "string" || file.function.length === 0) fail(path, "missing function name");
 	if (!Array.isArray(file.vectors) || file.vectors.length === 0) fail(path, "vectors must be a non-empty array");
 	const seen = new Set<string>();
-	for (const [i, v] of file.vectors.entries()) {
-		if (!isRecord(v)) fail(path, `vector #${i} is not an object`);
-		if (typeof v.name !== "string" || v.name.length === 0) fail(path, `vector #${i} has no name`);
-		if (seen.has(v.name)) fail(path, `duplicate vector name "${v.name}"`);
-		seen.add(v.name);
-		if (!Array.isArray(v.input)) fail(path, `vector "${v.name}": input must be an argument array`);
-		const hasExpected = Object.hasOwn(v, "expected");
-		const hasError = Object.hasOwn(v, "expectedError");
-		if (hasExpected === hasError) {
-			fail(path, `vector "${v.name}": exactly one of expected / expectedError is required`);
-		}
-		if (hasError && (typeof v.expectedError !== "string" || v.expectedError.length === 0)) {
-			fail(path, `vector "${v.name}": expectedError must be a non-empty string`);
-		}
-	}
+	for (const [i, v] of file.vectors.entries()) checkVector(path, v, i, seen);
 	return file as ConformanceFile;
+}
+
+/** Validates vector `index` of a file and records its name in `seen`. Every defect is fatal. */
+function checkVector(path: string, v: ConformanceVector, index: number, seen: Set<string>): void {
+	if (!isRecord(v)) fail(path, `vector #${index} is not an object`);
+	if (typeof v.name !== "string" || v.name.length === 0) fail(path, `vector #${index} has no name`);
+	if (seen.has(v.name)) fail(path, `duplicate vector name "${v.name}"`);
+	seen.add(v.name);
+	if (!Array.isArray(v.input)) fail(path, `vector "${v.name}": input must be an argument array`);
+	const hasExpected = Object.hasOwn(v, "expected");
+	const hasError = Object.hasOwn(v, "expectedError");
+	if (hasExpected === hasError) {
+		fail(path, `vector "${v.name}": exactly one of expected / expectedError is required`);
+	}
+	if (hasError && (typeof v.expectedError !== "string" || v.expectedError.length === 0)) {
+		fail(path, `vector "${v.name}": expectedError must be a non-empty string`);
+	}
 }
 
 /** Load every `*.json` vector file in `vectorDir`. An unreadable directory or
@@ -182,41 +185,34 @@ export function runConformance(
 		}
 		for (const vector of file.vectors) {
 			vectors++;
-			let actual: unknown;
-			let threw: Error | undefined;
-			try {
-				actual = fn(...(vector.input as never[]));
-			} catch (error) {
-				threw = new Error(errorMessage(error));
-			}
-			if (vector.expectedError !== undefined) {
-				if (!threw) {
-					failures.push({
-						file: path,
-						vector: vector.name,
-						detail: `expected an error containing ${JSON.stringify(vector.expectedError)}, got value ${canonicalizeConformanceValue(actual)}`,
-					});
-				} else if (!threw.message.includes(vector.expectedError)) {
-					failures.push({
-						file: path,
-						vector: vector.name,
-						detail: `error message ${JSON.stringify(threw.message)} does not contain ${JSON.stringify(vector.expectedError)}`,
-					});
-				}
-				continue;
-			}
-			if (threw) {
-				failures.push({ file: path, vector: vector.name, detail: `unexpected error: ${threw.message}` });
-				continue;
-			}
-			const want = canonicalizeConformanceValue(vector.expected);
-			const got = canonicalizeConformanceValue(actual);
-			if (want !== got) {
-				failures.push({ file: path, vector: vector.name, detail: `expected ${want}\n       got ${got}` });
-			}
+			const detail = vectorFailure(fn, vector);
+			if (detail !== undefined) failures.push({ file: path, vector: vector.name, detail });
 		}
 	}
 	return { files: files.length, vectors, failures };
+}
+
+/** Why `vector` fails when replayed against `fn`, or `undefined` when it passes. */
+function vectorFailure(fn: (...args: never[]) => unknown, vector: ConformanceVector): string | undefined {
+	let actual: unknown;
+	let thrown: string | undefined;
+	try {
+		actual = fn(...(vector.input as never[]));
+	} catch (error) {
+		thrown = errorMessage(error);
+	}
+	if (vector.expectedError !== undefined) {
+		if (thrown === undefined) {
+			return `expected an error containing ${JSON.stringify(vector.expectedError)}, got value ${canonicalizeConformanceValue(actual)}`;
+		}
+		return thrown.includes(vector.expectedError)
+			? undefined
+			: `error message ${JSON.stringify(thrown)} does not contain ${JSON.stringify(vector.expectedError)}`;
+	}
+	if (thrown !== undefined) return `unexpected error: ${thrown}`;
+	const want = canonicalizeConformanceValue(vector.expected);
+	const got = canonicalizeConformanceValue(actual);
+	return want === got ? undefined : `expected ${want}\n       got ${got}`;
 }
 
 /** Run and throw a precise multi-line error unless every vector passes. This
