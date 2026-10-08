@@ -132,18 +132,26 @@ export function anthropicResetDelayMs(headers: Headers, nowMs: number = Date.now
 	let exhaustedMs: number | undefined;
 	let anyMs: number | undefined;
 	for (const { reset, remaining } of ANTHROPIC_RESET_HEADERS) {
-		const raw = headers.get(reset);
-		if (!raw) continue;
-		const atMs = parseResetClockMs(raw.trim());
-		if (atMs === undefined) continue;
-		const delta = atMs - nowMs;
-		if (delta <= 0 || delta > ANTHROPIC_RESET_MAX_HOLD_MS) continue;
+		const delta = resetClockDeltaMs(headers.get(reset), nowMs);
+		if (delta === undefined) continue;
 		if (anyMs === undefined || delta < anyMs) anyMs = delta;
-		if (isExhaustedBucket(headers, remaining)) {
-			if (exhaustedMs === undefined || delta > exhaustedMs) exhaustedMs = delta;
+		if (isExhaustedBucket(headers, remaining) && (exhaustedMs === undefined || delta > exhaustedMs)) {
+			exhaustedMs = delta;
 		}
 	}
 	return exhaustedMs ?? anyMs;
+}
+
+/**
+ * The wait until one reset clock, or `undefined` when the clock is absent, unreadable, already
+ * elapsed, or further out than {@link ANTHROPIC_RESET_MAX_HOLD_MS}.
+ */
+function resetClockDeltaMs(raw: string | null, nowMs: number): number | undefined {
+	if (!raw) return undefined;
+	const atMs = parseResetClockMs(raw.trim());
+	if (atMs === undefined) return undefined;
+	const delta = atMs - nowMs;
+	return delta <= 0 || delta > ANTHROPIC_RESET_MAX_HOLD_MS ? undefined : delta;
 }
 
 /** An RFC 3339 timestamp, or a bare Unix epoch in seconds. */
@@ -217,43 +225,59 @@ export function extractRetryHint(source: Response | Headers | null | undefined, 
 	const headers = source instanceof Headers ? source : (source?.headers ?? undefined);
 	const nowMs = Date.now();
 	if (headers) {
-		for (const header of RETRY_HINT_HEADERS) {
-			const value = headers.get(header.name);
-			if (!value) continue;
-			const ms = header.read(value, nowMs);
-			if (ms !== undefined) return ms;
-		}
-		const anthropicMs = anthropicResetDelayMs(headers, nowMs);
-		if (anthropicMs !== undefined) return anthropicMs;
+		const ms = headerRetryHint(headers, nowMs);
+		if (ms !== undefined) return ms;
 	}
-
 	if (!body) return undefined;
+	return headerTextRetryHint(body, nowMs) ?? quotaResetHint(body) ?? unitDelayHint(body);
+}
+
+/** The first window a response header states: {@link RETRY_HINT_HEADERS} in order, then the Anthropic reset clocks. */
+function headerRetryHint(headers: Headers, nowMs: number): number | undefined {
+	for (const header of RETRY_HINT_HEADERS) {
+		const value = headers.get(header.name);
+		if (!value) continue;
+		const ms = header.read(value, nowMs);
+		if (ms !== undefined) return ms;
+	}
+	return anthropicResetDelayMs(headers, nowMs);
+}
+
+/** The first positive window a {@link RETRY_HINT_HEADERS} entry states when written into the body as text. */
+function headerTextRetryHint(body: string, nowMs: number): number | undefined {
 	for (let i = 0; i < RETRY_HINT_HEADERS.length; i++) {
 		const match = RETRY_HINT_TEXT_PATTERNS[i]!.exec(body);
 		if (!match) continue;
 		const ms = RETRY_HINT_HEADERS[i]!.read(match[1]!, nowMs);
 		if (ms !== undefined && ms > 0) return ms;
 	}
+	return undefined;
+}
 
-	const quotaMatch = QUOTA_RESET_PATTERN.exec(body);
-	if (quotaMatch) {
-		const hours = quotaMatch[1] ? Number.parseInt(quotaMatch[1], 10) : 0;
-		const minutes = quotaMatch[2] ? Number.parseInt(quotaMatch[2], 10) : 0;
-		const seconds = Number.parseFloat(quotaMatch[3]!);
-		if (!Number.isNaN(seconds)) {
-			const totalMs = ((hours * 60 + minutes) * 60 + seconds) * 1000;
-			if (totalMs > 0) return totalMs;
-		}
-	}
-	for (const pattern of [PLEASE_RETRY_PATTERN, RETRY_DELAY_FIELD_PATTERN, TRY_AGAIN_PATTERN]) {
+/** `reset after 1h2m3s` as a positive wait in ms. */
+function quotaResetHint(body: string): number | undefined {
+	const match = QUOTA_RESET_PATTERN.exec(body);
+	if (!match) return undefined;
+	const hours = match[1] ? Number.parseInt(match[1], 10) : 0;
+	const minutes = match[2] ? Number.parseInt(match[2], 10) : 0;
+	const seconds = Number.parseFloat(match[3]!);
+	if (Number.isNaN(seconds)) return undefined;
+	const totalMs = ((hours * 60 + minutes) * 60 + seconds) * 1000;
+	return totalMs > 0 ? totalMs : undefined;
+}
+
+/** Body phrasings that state a number and a unit, in precedence order. */
+const UNIT_DELAY_PATTERNS: readonly RegExp[] = [PLEASE_RETRY_PATTERN, RETRY_DELAY_FIELD_PATTERN, TRY_AGAIN_PATTERN];
+
+/** The first positive wait one of {@link UNIT_DELAY_PATTERNS} states in a unit {@link unitToMs} reads. */
+function unitDelayHint(body: string): number | undefined {
+	for (const pattern of UNIT_DELAY_PATTERNS) {
 		const match = pattern.exec(body);
-		if (match?.[1]) {
-			const value = Number.parseFloat(match[1]);
-			if (Number.isFinite(value) && value > 0) {
-				const unitMs = unitToMs(match[2]!);
-				if (unitMs !== undefined) return value * unitMs;
-			}
-		}
+		if (!match?.[1]) continue;
+		const value = Number.parseFloat(match[1]);
+		if (!Number.isFinite(value) || value <= 0) continue;
+		const unitMs = unitToMs(match[2]!);
+		if (unitMs !== undefined) return value * unitMs;
 	}
 	return undefined;
 }
@@ -370,39 +394,34 @@ export async function fetchWithRetry(
 		...baseInit
 	} = options;
 	const signal = baseInit.signal as AbortSignal | undefined;
+	const policy: RetryPolicy = {
+		maxAttempts,
+		maxDelayMs,
+		defaultDelayMs,
+		shouldRetryResponse,
+		shouldRetryError,
+		signal,
+	};
+	// `timeout` is destructured out of `baseInit`, so forward it to the underlying
+	// fetch on the no-`prepareInit` path too. Without this, callers that pass
+	// `timeout: false` (every streaming provider, to disable Bun's native ~300s
+	// fetch ceiling in favor of their own first-event/idle watchdog) had it
+	// silently dropped, so long-running streams were killed at ~300s (issue #602).
+	// Only forward when the caller actually set `timeout`, so callers that never
+	// set it keep Bun's default ceiling.
+	const fixedInit =
+		prepareInit || !("timeout" in options) ? baseInit : ({ ...baseInit, timeout } as unknown as RequestInit);
 
 	for (let attempt = 0; ; attempt++) {
 		if (signal?.aborted) throw cancellationError();
 		const requestUrl = typeof url === "function" ? url(attempt) : url;
-		// `timeout` is destructured out of `baseInit`, so forward it to the underlying
-		// fetch on the no-`prepareInit` path too. Without this, callers that pass
-		// `timeout: false` (every streaming provider, to disable Bun's native ~300s
-		// fetch ceiling in favor of their own first-event/idle watchdog) had it
-		// silently dropped, so long-running streams were killed at ~300s (issue #602).
-		// Only forward when the caller actually set `timeout`, so callers that never
-		// set it keep Bun's default ceiling.
-		const init = prepareInit
-			? mergeInit(baseInit, await prepareInit(attempt), timeout)
-			: "timeout" in options
-				? ({ ...baseInit, timeout } as unknown as RequestInit)
-				: baseInit;
+		const init = prepareInit ? mergeInit(baseInit, await prepareInit(attempt), timeout) : fixedInit;
 
 		let response: Response;
 		try {
 			response = await fetchImpl(requestUrl, init);
 		} catch (error) {
-			if (signal?.aborted) throw cancellationError();
-			const wrapped = wrapNetworkError(error);
-			// A named HTTP/2 code this module has already ruled deterministic
-			// (`NON_RETRYABLE_HTTP2_ERROR_CODES`) fails the same way on every replay,
-			// and each replay re-sends the whole request body. `NGHTTP2_CANCEL` is the
-			// expensive one: it is usually our own abort arriving through a per-attempt
-			// signal the loop cannot see on `signal`, so the request was re-sent in
-			// full four more times to reach the same answer.
-			if (http2RetryVerdict(wrapped.message) === false) throw wrapped;
-			if (attempt + 1 >= maxAttempts) throw wrapped;
-			if (shouldRetryError && !(await shouldRetryError(wrapped, attempt))) throw wrapped;
-			await scheduler.wait(resolveDefaultDelay(defaultDelayMs, attempt, maxDelayMs), { signal });
+			await backOffAfterTransportFailure(error, attempt, policy);
 			continue;
 		}
 
@@ -415,20 +434,61 @@ export async function fetchWithRetry(
 		// cannot read a body and does not know which API sent it. It is the DEFAULT now, for a caller
 		// that passes no verdict at all.
 		if (response.ok) return response;
-		if (attempt + 1 >= maxAttempts) return response;
-
-		const retryBody = await response.clone().text();
-		const retry = shouldRetryResponse
-			? await shouldRetryResponse(response, retryBody, attempt)
-			: isRetryableStatus(response.status);
-		if (!retry) return response;
-
-		const hint = extractRetryHint(response, retryBody);
-		if (hint !== undefined && hint > maxDelayMs) return response;
-
-		const delayMs = Math.min(hint ?? resolveDefaultDelay(defaultDelayMs, attempt, maxDelayMs), maxDelayMs);
+		const delayMs = await failedResponseDelay(response, attempt, policy);
+		if (delayMs === undefined) return response;
 		await scheduler.wait(delayMs, { signal });
 	}
+}
+
+/** The bounds and verdicts one {@link fetchWithRetry} call applies to every attempt. */
+interface RetryPolicy {
+	readonly maxAttempts: number;
+	readonly maxDelayMs: number;
+	readonly defaultDelayMs: FetchWithRetryOptions["defaultDelayMs"];
+	readonly shouldRetryResponse: FetchWithRetryOptions["shouldRetryResponse"];
+	readonly shouldRetryError: FetchWithRetryOptions["shouldRetryError"];
+	readonly signal: AbortSignal | undefined;
+}
+
+/**
+ * Waits out the backoff before replaying a request whose transport threw. Throws instead when the
+ * failure ends the loop: a cancellation once the caller's signal aborted, otherwise the wrapped error.
+ */
+async function backOffAfterTransportFailure(error: unknown, attempt: number, policy: RetryPolicy): Promise<void> {
+	if (policy.signal?.aborted) throw cancellationError();
+	const wrapped = wrapNetworkError(error);
+	// A named HTTP/2 code this module has already ruled deterministic
+	// (`NON_RETRYABLE_HTTP2_ERROR_CODES`) fails the same way on every replay,
+	// and each replay re-sends the whole request body. `NGHTTP2_CANCEL` is the
+	// expensive one: it is usually our own abort arriving through a per-attempt
+	// signal the loop cannot see on `signal`, so the request was re-sent in
+	// full four more times to reach the same answer.
+	if (http2RetryVerdict(wrapped.message) === false) throw wrapped;
+	if (attempt + 1 >= policy.maxAttempts) throw wrapped;
+	if (policy.shouldRetryError && !(await policy.shouldRetryError(wrapped, attempt))) throw wrapped;
+	await scheduler.wait(resolveDefaultDelay(policy.defaultDelayMs, attempt, policy.maxDelayMs), {
+		signal: policy.signal,
+	});
+}
+
+/**
+ * The wait before replaying a request a non-2xx `response` answered, or `undefined` when `response`
+ * is the answer: the last attempt, a verdict against retrying, or a stated window past `maxDelayMs`.
+ */
+async function failedResponseDelay(
+	response: Response,
+	attempt: number,
+	policy: RetryPolicy,
+): Promise<number | undefined> {
+	if (attempt + 1 >= policy.maxAttempts) return undefined;
+	const retryBody = await response.clone().text();
+	const retry = policy.shouldRetryResponse
+		? await policy.shouldRetryResponse(response, retryBody, attempt)
+		: isRetryableStatus(response.status);
+	if (!retry) return undefined;
+	const hint = extractRetryHint(response, retryBody);
+	if (hint !== undefined && hint > policy.maxDelayMs) return undefined;
+	return Math.min(hint ?? resolveDefaultDelay(policy.defaultDelayMs, attempt, policy.maxDelayMs), policy.maxDelayMs);
 }
 
 function mergeInit(base: RequestInit, overlay: RequestInit, timeout: number | false): RequestInit {

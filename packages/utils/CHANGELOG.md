@@ -73,6 +73,7 @@
 - `planDeccaraFills` and `analyzeBgFillLine` scan backgrounds and plan fills in separate steps, cutting a frame's fill plan from 18.1 µs to 16.7 µs and a line's analysis from 308 ns to 265 ns with 240,000 differential checks identical to the previous build.
 - The atomic writers close a temp file or directory handle through one step that reports a write failure over a close failure, and `atomicWriteFileSync` runs the Windows replace fallback in one function, as `atomicWriteFile` does; no user-visible change beyond the fix below.
 - `Command.parse` builds its parse options, types its flags and maps its positionals in separate steps, and command help builds its arguments and flags sections in separate steps, with 90,000 differential checks of parse results, help output and `run` output identical to the previous build; a 10-flag parse takes 4.6 µs instead of 4.8 µs and a command's help 5.0 µs instead of 6.3 µs.
+- `fetchWithRetry` decides a thrown transport failure and a non-2xx response in separate steps and builds a fixed per-request init once per call instead of once per attempt, and `extractRetryHint` reads headers, header names written into the body, quota resets and unit phrasings in separate steps, with 124,500 differential checks of hints, reset clocks and scripted retry transcripts identical to the previous build; a body that states `try again in 1.2s` is read in 322 ns instead of 359 ns.
 
 ### Fixed
 
