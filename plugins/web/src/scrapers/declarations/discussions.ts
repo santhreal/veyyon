@@ -347,21 +347,28 @@ interface LobstersStory {
 	tags: string[];
 }
 
+/** One entry of the flat, depth-first comment list a story record returns. */
 interface LobstersComment {
 	short_id: string;
+	/** The comment as HTML. */
 	comment: string;
+	/** The comment as its author wrote it, in Markdown. */
+	comment_plain?: string;
 	commenting_user: string;
 	score: number;
 	created_at: string;
-	indent_level: number;
-	comments?: LobstersComment[];
+	/** 0 for a reply to the story, one more for each level of reply below it. */
+	depth: number;
 }
 
 interface LobstersStoryResponse {
 	short_id: string;
 	title: string;
 	url?: string;
+	/** The text post as HTML. */
 	description?: string;
+	/** The text post as its author wrote it, in Markdown. */
+	description_plain?: string;
 	submitter_user: string;
 	score: number;
 	comment_count: number;
@@ -373,17 +380,11 @@ interface LobstersStoryResponse {
 function renderLobstersComments(comments: LobstersComment[], maxDepth = 5): string {
 	let md = "";
 	for (const comment of comments) {
-		if (comment.indent_level >= maxDepth) continue;
-
-		const indent = "  ".repeat(comment.indent_level);
+		if (comment.depth >= maxDepth) continue;
+		const indent = "  ".repeat(comment.depth);
+		const body = (comment.comment_plain ?? "").split("\n").join(`\n${indent}`);
 		md += `${indent}### ${comment.commenting_user} · ${comment.score} points\n\n`;
-		md += `${indent}${comment.comment.split("\n").join(`\n${indent}`)}\n\n`;
-
-		if (comment.comments && comment.comments.length > 0) {
-			md += renderLobstersComments(comment.comments, maxDepth);
-		}
-
-		md += `${indent}---\n\n`;
+		md += `${indent}${body}\n\n${indent}---\n\n`;
 	}
 	return md;
 }
@@ -424,11 +425,8 @@ export const lobstersDeclaration: DiscussionDeclaration = {
 			md += `\n`;
 			md += `*${formatIsoDate(story.created_at)}*\n\n`;
 
-			if (story.description) {
-				md += `---\n\n${story.description}\n\n`;
-			} else if (story.url) {
-				md += `**Link:** ${story.url}\n\n`;
-			}
+			if (story.url) md += `**Link:** ${story.url}\n\n`;
+			if (story.description_plain) md += `---\n\n${story.description_plain}\n\n`;
 
 			// Add comments
 			if (story.comments && story.comments.length > 0) {
@@ -531,8 +529,8 @@ interface LemmyPostResponse {
 interface LemmyComment {
 	id: number;
 	content?: string;
+	/** Ancestry as dot-delimited ids, `0.<root id>.<…>.<own id>`; the next-to-last id is the parent comment. */
 	path?: string;
-	parent_id?: number | null;
 	post_id?: number;
 }
 
@@ -579,8 +577,9 @@ function renderLemmyComments(comments: LemmyCommentView[]): string {
 	const commentIds = new Set(comments.map(view => view.comment.id));
 
 	for (const commentView of comments) {
-		const parentId = commentView.comment.parent_id;
-		const resolvedParent = parentId && commentIds.has(parentId) ? parentId : 0;
+		// A reply to the post has `0` as its next-to-last id, which is no comment's id.
+		const parentId = Number(commentView.comment.path?.split(".").at(-2));
+		const resolvedParent = commentIds.has(parentId) ? parentId : 0;
 		const list = childrenByParent.get(resolvedParent);
 		if (list) {
 			list.push(commentView);
@@ -712,7 +711,10 @@ interface DiscoursePost {
 	created_at?: string;
 	cooked?: string;
 	raw?: string;
+	/** Absent on current releases, which report likes in `actions_summary`. */
 	like_count?: number;
+	/** Per-action totals; the like total is the entry whose id is {@link DISCOURSE_LIKE_ACTION_ID}. */
+	actions_summary?: { id: number; count?: number }[];
 	post_number?: number;
 }
 
@@ -728,7 +730,8 @@ interface DiscourseTopic {
 	created_at?: string;
 	views?: number;
 	like_count?: number;
-	tags?: string[];
+	/** Tag names on older releases, tag records on current ones. */
+	tags?: (string | { name: string })[];
 	category_id?: number;
 	category_slug?: string;
 	category?: { id?: number; name?: string; slug?: string };
@@ -738,6 +741,7 @@ interface DiscourseTopic {
 }
 
 const MAX_DISCOURSE_POSTS = 20;
+const DISCOURSE_LIKE_ACTION_ID = 2;
 
 function parseDiscourseTopicPath(pathname: string): { basePath: string; topicId: string } | null {
 	const match = pathname.match(/^(.*?)(?:\/t\/)(?:[^/]+\/)?(\d+)(?:\.json)?(?:\/|$)/);
@@ -845,7 +849,9 @@ export const discourseDeclaration: DiscussionDeclaration = {
 
 		const categoryLabel = formatDiscourseCategory(topic);
 		if (categoryLabel) md += `**Category:** ${categoryLabel}\n`;
-		if (topic.tags?.length) md += `**Tags:** ${topic.tags.join(", ")}\n`;
+		if (topic.tags?.length) {
+			md += `**Tags:** ${topic.tags.map(tag => (typeof tag === "string" ? tag : tag.name)).join(", ")}\n`;
+		}
 
 		const createdBy = formatDiscourseAuthor(topic.details?.created_by ?? null);
 		if (createdBy !== "unknown" || topic.created_at) {
@@ -868,7 +874,10 @@ export const discourseDeclaration: DiscussionDeclaration = {
 			for (const post of posts.slice(0, MAX_DISCOURSE_POSTS)) {
 				const author = formatDiscourseAuthor({ name: post.name, username: post.username });
 				const date = formatIsoDate(post.created_at);
-				const likes = post.like_count ?? 0;
+				const likes =
+					post.like_count ??
+					post.actions_summary?.find(action => action.id === DISCOURSE_LIKE_ACTION_ID)?.count ??
+					0;
 				const content = await formatDiscoursePostBody(post);
 				const postLabel = post.post_number != null ? `Post ${post.post_number}` : `Post ${post.id}`;
 
@@ -895,8 +904,10 @@ interface DevToArticle {
 	description?: string;
 	published_at?: string;
 	published_timestamp?: string;
-	tags?: string[];
-	tag_list?: string[];
+	/** An array from the single-article endpoint, a comma-separated string from the listing endpoint. */
+	tags?: string[] | string;
+	/** An array from the listing endpoint, a comma-separated string from the single-article endpoint. */
+	tag_list?: string[] | string;
 	reading_time_minutes?: number;
 	public_reactions_count?: number;
 	positive_reactions_count?: number;
@@ -909,8 +920,13 @@ interface DevToArticle {
 	body_html?: string;
 }
 
+function devToTags(article: DevToArticle): string[] {
+	if (Array.isArray(article.tag_list)) return article.tag_list;
+	return Array.isArray(article.tags) ? article.tags : [];
+}
+
 function renderDevToArticleCard(article: DevToArticle, includeAuthor = true): string {
-	const tags = article.tag_list || article.tags || [];
+	const tags = devToTags(article);
 	const reactions = article.positive_reactions_count ?? article.public_reactions_count ?? 0;
 	const readTime = article.reading_time_minutes ? ` · ${article.reading_time_minutes} min read` : "";
 	const reactStr = reactions > 0 ? ` · ${formatNumber(reactions)} reactions` : "";
@@ -1001,7 +1017,7 @@ export const devtoDeclaration: DiscussionDeclaration = {
 			const article = ctx.tryParseJson<DevToArticle>(result.content);
 			if (!article?.title) return null;
 
-			const tags = article.tag_list || article.tags || [];
+			const tags = devToTags(article);
 			const reactions = article.positive_reactions_count ?? article.public_reactions_count ?? 0;
 			const comments = article.comments_count ?? 0;
 			const readTime = article.reading_time_minutes ?? 0;
@@ -1115,11 +1131,11 @@ export const stackOverflowDeclaration: DiscussionDeclaration = {
 
 		const question = qData.items[0];
 
-		let md = `# ${question.title}\n\n`;
+		let md = `# ${decodeHtmlEntities(question.title)}\n\n`;
 		md += `**Score:** ${question.score} · **Answers:** ${question.answer_count}`;
 		md += question.is_answered ? " (Answered)" : "";
 		md += `\n**Tags:** ${question.tags.join(", ")}\n`;
-		md += `**Asked by:** ${question.owner?.display_name || "anonymous"} · ${formatIsoDate(question.creation_date * 1000)}\n\n`;
+		md += `**Asked by:** ${decodeHtmlEntities(question.owner?.display_name || "anonymous")} · ${formatIsoDate(question.creation_date * 1000)}\n\n`;
 		md += `---\n\n## Question\n\n${await htmlToBasicMarkdown(question.body)}\n\n`;
 
 		const aUrl = `https://api.stackexchange.com/2.3/questions/${questionId}/answers?order=desc&sort=votes&site=${site}&filter=withbody`;
@@ -1131,7 +1147,7 @@ export const stackOverflowDeclaration: DiscussionDeclaration = {
 				md += `---\n\n## Answers\n\n`;
 				for (const answer of aData.items.slice(0, 5)) {
 					const accepted = answer.is_accepted ? " (Accepted)" : "";
-					md += `### Score: ${answer.score}${accepted} · by ${answer.owner?.display_name || "anonymous"}\n\n`;
+					md += `### Score: ${answer.score}${accepted} · by ${decodeHtmlEntities(answer.owner?.display_name || "anonymous")}\n\n`;
 					md += `${await htmlToBasicMarkdown(answer.body)}\n\n---\n\n`;
 				}
 			}

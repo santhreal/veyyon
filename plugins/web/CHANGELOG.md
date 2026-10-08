@@ -16,6 +16,11 @@
 - The CoinGecko handler renders a coin whose price, 24h change or all-time high the API returns as `null` instead of falling back to a generic fetch, and drops blank category names; the OpenCorporates and Searchcode renderers are split into one function per section with unchanged output.
 - The RFC handler renders the authors, current status, source and DOI from the field names the RFC Editor JSON record uses, instead of a blank author list and no status.
 - The PubMed handler takes its fallback DOI from the `doi:` entry of the electronic location ids, instead of rendering the whole field, `doi:` prefix or PII included, as the DOI.
+- The Lobsters handler renders the flat comment list the API returns, indented by each comment's depth and as its Markdown source instead of HTML, and shows a link story's description beside its link.
+- The Lemmy handler threads replies by the ancestry in each comment's `path`, instead of listing every reply at the top level.
+- The Discourse handler reads post likes from `actions_summary` and tag names from tag records, as current Discourse releases return them, instead of rendering 0 likes and `[object Object]` tags.
+- The dev.to handler renders an article page, for which the API returns `tag_list` as a comma-separated string, instead of failing on it.
+- The Stack Exchange handler decodes HTML entities in the question title and in author names.
 
 ## [1.5.4] - 2026-09-24
 

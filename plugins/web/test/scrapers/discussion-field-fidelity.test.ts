@@ -301,44 +301,48 @@ describe("discussion field fidelity across all declared discussion sites", () =>
 		const lobstersDecl = DISCUSSION_DECLARATIONS.find(d => d.site === "lobsters")!;
 		const handler = createDiscussionHandler(lobstersDecl, "handleLobsters");
 
-		it("renders story with recursively nested comments up to max depth 5 with proper indentation and separators", async () => {
+		it("renders the flat depth-keyed comment list as Markdown, indented by depth and cut at depth 5", async () => {
 			const storyResponse = {
 				short_id: "xyz123",
 				title: "Announcing Lobsters Rewrite",
+				url: "https://example.com/rewrite",
 				submitter_user: "jcs",
 				score: 120,
-				comment_count: 5,
-				created_at: "2023-05-01T12:00:00.000Z",
+				comment_count: 3,
+				created_at: "2023-05-01T12:00:00.000-05:00",
 				tags: ["programming", "ruby"],
-				description: "Here is the story summary and release notes.",
+				description: "<p>Here is the story summary and <em>release notes</em>.</p>\n",
+				description_plain: "Here is the story summary and *release notes*.",
 				comments: [
 					{
 						short_id: "c1",
 						commenting_user: "alice",
 						score: 15,
-						created_at: "2023-05-01T13:00:00.000Z",
-						indent_level: 1,
-						comment: "Top-level comment on Lobsters.\nSecond paragraph.",
-						comments: [
-							{
-								short_id: "c2",
-								commenting_user: "bob",
-								score: 8,
-								created_at: "2023-05-01T14:00:00.000Z",
-								indent_level: 2,
-								comment: "Reply at depth 2.",
-								comments: [
-									{
-										short_id: "c3",
-										commenting_user: "charlie",
-										score: 3,
-										created_at: "2023-05-01T15:00:00.000Z",
-										indent_level: 5, // At or beyond maxDepth 5 -> skipped
-										comment: "Too deep comment.",
-									},
-								],
-							},
-						],
+						created_at: "2023-05-01T13:00:00.000-05:00",
+						depth: 0,
+						parent_comment: null,
+						comment: "<p>Top-level comment on Lobsters.</p>\n<p>Second paragraph.</p>\n",
+						comment_plain: "Top-level comment on Lobsters.\nSecond paragraph.",
+					},
+					{
+						short_id: "c2",
+						commenting_user: "bob",
+						score: 8,
+						created_at: "2023-05-01T14:00:00.000-05:00",
+						depth: 1,
+						parent_comment: "c1",
+						comment: "<p>Reply at depth 1.</p>\n",
+						comment_plain: "Reply at depth 1.",
+					},
+					{
+						short_id: "c3",
+						commenting_user: "charlie",
+						score: 3,
+						created_at: "2023-05-01T15:00:00.000-05:00",
+						depth: 5,
+						parent_comment: "c2",
+						comment: "<p>Too deep comment.</p>\n",
+						comment_plain: "Too deep comment.",
 					},
 				],
 			};
@@ -361,21 +365,16 @@ describe("discussion field fidelity across all declared discussion sites", () =>
 			expect(result).not.toBeNull();
 			expect(result.method).toBe("lobsters");
 			expect(result.content).toContain("# Announcing Lobsters Rewrite");
-			expect(result.content).toContain("**jcs** · 120 points · 5 comments · [programming, ruby]");
-			expect(result.content).toContain("---\n\nHere is the story summary and release notes.\n\n");
-			expect(result.content).toContain("---\n\n## Comments\n\n");
-
-			// Check indent_level: 1 (2 spaces)
+			expect(result.content).toContain("**jcs** · 120 points · 3 comments · [programming, ruby]");
+			// A link story with a submitter description keeps both.
 			expect(result.content).toContain(
-				"  ### alice · 15 points\n\n  Top-level comment on Lobsters.\n  Second paragraph.\n\n",
+				"**Link:** https://example.com/rewrite\n\n---\n\nHere is the story summary and *release notes*.\n\n",
 			);
-			expect(result.content).toContain("  ---\n\n");
-
-			// Check indent_level: 2 (4 spaces)
-			expect(result.content).toContain("    ### bob · 8 points\n\n    Reply at depth 2.\n\n");
-			expect(result.content).toContain("    ---\n\n");
-
-			// Check depth >= 5 is omitted
+			expect(result.content).toContain(
+				"---\n\n## Comments\n\n### alice · 15 points\n\nTop-level comment on Lobsters.\nSecond paragraph.\n\n---\n\n" +
+					"  ### bob · 8 points\n\n  Reply at depth 1.\n\n  ---",
+			);
+			expect(result.content).not.toContain("<p>");
 			expect(result.content).not.toContain("Too deep comment.");
 		});
 
@@ -438,46 +437,23 @@ describe("discussion field fidelity across all declared discussion sites", () =>
 				},
 			};
 
+			// Lemmy encodes threading only in `comment.path` and lists a reply before its parent.
+			const lemmyComment = (id: number, path: string, content: string, name: string, score: number) => ({
+				comment: { id, path, content, post_id: 500 },
+				creator: { name, actor_id: `https://${name === "user_one" ? "hexbear.net" : "feddit.de"}/u/${name}` },
+				counts: { score },
+			});
 			const commentsData = {
 				comments: [
+					lemmyComment(2, "0.1.2", "Reply to comment 1", "user_two", 10),
+					lemmyComment(1, "0.1", "Root comment 1\nSecond line of comment 1", "user_one", 20),
+					lemmyComment(4, "0.1.2.4", "Reply to the reply", "user_four", 2),
 					{
-						comment: {
-							id: 1,
-							content: "Root comment 1\nSecond line of comment 1",
-							parent_id: null,
-							post_id: 500,
-						},
-						creator: {
-							name: "user_one",
-							actor_id: "https://hexbear.net/u/user_one",
-						},
-						counts: { score: 20 },
-					},
-					{
-						comment: {
-							id: 2,
-							content: "Reply to comment 1",
-							parent_id: 1,
-							post_id: 500,
-						},
-						creator: {
-							name: "user_two",
-							actor_id: "https://feddit.de/u/user_two",
-						},
-						counts: { score: 10 },
-					},
-					{
-						comment: {
-							id: 3,
-							content: "Root comment 2",
-							parent_id: 0,
-							post_id: 500,
-						},
-						creator: {
-							name: "user_three",
-						},
+						comment: { id: 3, path: "0.3", content: "Root comment 2", post_id: 500 },
+						creator: { name: "user_three" },
 						counts: { score: 5 },
 					},
+					lemmyComment(6, "0.5.6", "Reply whose parent is on another page", "user_six", 1),
 				],
 			};
 
@@ -514,16 +490,18 @@ describe("discussion field fidelity across all declared discussion sites", () =>
 			expect(result.content).toContain("---\n\nLet's talk about ActivityPub.\n\n");
 			expect(result.content).toContain("---\n\n## Comments\n\n");
 
-			// Root comment 1
 			expect(result.content).toContain(
-				"- **@user_one@hexbear.net** · 20 points\n  Root comment 1\n  Second line of comment 1",
+				"## Comments\n\n" +
+					"- **@user_one@hexbear.net** · 20 points\n  Root comment 1\n  Second line of comment 1\n" +
+					"  - **@user_two@feddit.de** · 10 points\n    Reply to comment 1\n" +
+					"    - **@user_four@feddit.de** · 2 points\n      Reply to the reply\n",
 			);
-
-			// Nested reply to comment 1 indented with 2 spaces
-			expect(result.content).toContain("  - **@user_two@feddit.de** · 10 points\n    Reply to comment 1");
-
 			// Root comment 2 (no actor_id URL host suffix)
-			expect(result.content).toContain("- **user_three** · 5 points\n  Root comment 2");
+			expect(result.content).toContain("\n- **user_three** · 5 points\n  Root comment 2");
+			// A reply whose parent is not in the fetched page renders at the top level.
+			expect(result.content).toContain(
+				"\n- **@user_six@feddit.de** · 1 points\n  Reply whose parent is on another page",
+			);
 		});
 
 		it("resolves /comment/123 to its post via dual fetch", async () => {
@@ -588,7 +566,10 @@ describe("discussion field fidelity across all declared discussion sites", () =>
 				like_count: 45,
 				created_at: "2023-06-01T10:00:00.000Z",
 				category: { id: 3, name: "Rust", slug: "rust" },
-				tags: ["async", "tokio"],
+				tags: [
+					{ id: 1, name: "async", slug: "async" },
+					{ id: 2, name: "tokio", slug: "tokio" },
+				],
 				details: {
 					created_by: { name: "Jane Doe", username: "janedoe" },
 				},
@@ -601,7 +582,14 @@ describe("discussion field fidelity across all declared discussion sites", () =>
 						username: `user_${i + 1}`,
 						created_at: "2023-06-01T11:00:00.000Z",
 						raw: `Raw markdown post content for post ${i + 1}.`,
-						like_count: 5 + i,
+						// Current releases report likes only as the id 2 entry of actions_summary.
+						actions_summary:
+							i === 1
+								? []
+								: [
+										{ id: 3, count: 99 },
+										{ id: 2, count: 5 + i },
+									],
 					})),
 				},
 			};
@@ -635,6 +623,7 @@ describe("discussion field fidelity across all declared discussion sites", () =>
 			expect(result.content).toContain(
 				"### Post 1 - User 1 (@user_1) - 2023-06-01 - Likes: 5\n\nRaw markdown post content for post 1.\n\n---",
 			);
+			expect(result.content).toContain("### Post 2 - User 2 (@user_2) - 2023-06-01 - Likes: 0\n\n");
 			expect(result.content).toContain(
 				"### Post 20 - User 20 (@user_20) - 2023-06-01 - Likes: 24\n\nRaw markdown post content for post 20.\n\n---",
 			);
@@ -653,6 +642,9 @@ describe("discussion field fidelity across all declared discussion sites", () =>
 							topic_id: 555,
 							username: "helper",
 							raw: "Specific answer in post 987",
+							// Older releases report likes as like_count and tags as names.
+							like_count: 7,
+							created_at: "2019-03-04T00:00:00.000Z",
 						}),
 						contentType: "application/json",
 						finalUrl: url,
@@ -665,6 +657,7 @@ describe("discussion field fidelity across all declared discussion sites", () =>
 						content: JSON.stringify({
 							id: 555,
 							title: "Subpath Forum Topic",
+							tags: ["legacy", "names"],
 							post_stream: {
 								posts: [{ id: 986, post_number: 1, username: "asker", raw: "Question" }],
 							},
@@ -682,6 +675,8 @@ describe("discussion field fidelity across all declared discussion sites", () =>
 			expect(result).not.toBeNull();
 			expect(result.content).toContain("# Subpath Forum Topic");
 			expect(result.content).toContain("Specific answer in post 987");
+			expect(result.content).toContain("**Tags:** legacy, names\n");
+			expect(result.content).toContain("### Post 2 - @helper - 2019-03-04 - Likes: 7\n\n");
 		});
 	});
 
@@ -700,7 +695,9 @@ describe("discussion field fidelity across all declared discussion sites", () =>
 				reading_time_minutes: 8,
 				public_reactions_count: 142,
 				comments_count: 18,
-				tag_list: ["typescript", "webdev", "javascript"],
+				// The single-article endpoint returns tag_list as a string and tags as the array.
+				tag_list: "typescript, webdev, javascript",
+				tags: ["typescript", "webdev", "javascript"],
 				body_markdown: "## Introduction\n\nTypeScript continues to evolve with powerful typing features.",
 			};
 
@@ -739,7 +736,9 @@ describe("discussion field fidelity across all declared discussion sites", () =>
 					reading_time_minutes: 5,
 					public_reactions_count: 85,
 					published_at: "2024-02-01T00:00:00.000Z",
-					tags: ["architecture"],
+					// The listing endpoint returns tag_list as the array and tags as a string.
+					tag_list: ["architecture", "go"],
+					tags: "architecture, go",
 					description: "A guide to clean microservices.",
 				},
 			];
@@ -761,7 +760,7 @@ describe("discussion field fidelity across all declared discussion sites", () =>
 			expect(result.content).toContain("## Recent Articles (1)");
 			expect(result.content).toContain("### Building Microservices");
 			expect(result.content).toContain("5 min read · 85 reactions");
-			expect(result.content).toContain("Tags: #architecture");
+			expect(result.content).toContain("Tags: #architecture, #go\n");
 			expect(result.content).toContain("A guide to clean microservices.");
 		});
 	});
@@ -774,12 +773,12 @@ describe("discussion field fidelity across all declared discussion sites", () =>
 			const qData = {
 				items: [
 					{
-						title: "How to parse JSON in TypeScript?",
+						title: "How to parse &quot;JSON&quot; in TypeScript&#39;s strict mode?",
 						score: 85,
 						answer_count: 7,
 						is_answered: true,
 						tags: ["typescript", "json", "types"],
-						owner: { display_name: "DevUser" },
+						owner: { display_name: "Bj&#246;rn" },
 						creation_date: 1670000000,
 						body: "<p>What is the best way to <code>safely parse</code> JSON?</p>",
 					},
@@ -790,7 +789,8 @@ describe("discussion field fidelity across all declared discussion sites", () =>
 				items: Array.from({ length: 8 }, (_, i) => ({
 					score: 50 - i * 5,
 					is_accepted: i === 0,
-					owner: { display_name: `Answerer_${i + 1}` },
+					// The API entity-encodes display names as it does titles.
+					owner: { display_name: i === 0 ? "Ren&#233;e &amp; Co" : `Answerer_${i + 1}` },
 					creation_date: 1670001000 + i * 3600,
 					body: `<p>Answer explanation number ${i + 1}.</p>`,
 				})),
@@ -825,16 +825,16 @@ describe("discussion field fidelity across all declared discussion sites", () =>
 			expect(result).not.toBeNull();
 			expect(result.method).toBe("stackexchange");
 			expect(result.notes?.[0]).toBe("Fetched via Stack Exchange API (site=stackoverflow)");
-			expect(result.content).toContain("# How to parse JSON in TypeScript?");
+			expect(result.content).toContain(`# How to parse "JSON" in TypeScript's strict mode?\n\n`);
 			expect(result.content).toContain("**Score:** 85 · **Answers:** 7 (Answered)");
 			expect(result.content).toContain("**Tags:** typescript, json, types");
-			expect(result.content).toContain("**Asked by:** DevUser · 2022-12-02");
+			expect(result.content).toContain("**Asked by:** Björn · 2022-12-02");
 			expect(result.content).toContain("---\n\n## Question\n\nWhat is the best way to `safely parse` JSON?\n\n");
 			expect(result.content).toContain("---\n\n## Answers\n\n");
 
 			// Accepted top answer
 			expect(result.content).toContain(
-				"### Score: 50 (Accepted) · by Answerer_1\n\nAnswer explanation number 1.\n\n---",
+				"### Score: 50 (Accepted) · by Renée & Co\n\nAnswer explanation number 1.\n\n---",
 			);
 
 			// 5th answer
