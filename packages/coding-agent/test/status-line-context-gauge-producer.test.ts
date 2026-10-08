@@ -183,6 +183,9 @@ describe("a collab guest's gauge", () => {
 		// on that window would be 255k, denominating to 65% left instead.
 		expect(plain).toContain("70% left");
 		expect(plain).not.toContain("65% left");
+		// The window printed is the host's, not the 200K of the guest's own model.
+		expect(plain).toContain("300K");
+		expect(plain).not.toContain("200K");
 	});
 
 	it("reports the host's own percentage rather than recomputing one", () => {

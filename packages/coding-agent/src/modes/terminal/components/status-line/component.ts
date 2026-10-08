@@ -7,7 +7,14 @@ import { MOTION, type MotionClock, SettleValue } from "@veyyon/utils/motion";
 import { sanitizeStyledStatusText } from "@veyyon/utils/sanitize-status-text";
 import { scopedTimeoutSignal, withScopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
-import type { StatusDataSource, StatusLineState, StatusProviderUsage, StatusRunClock } from "@veyyon/wire/presentation";
+import type {
+	StatusCollabStateOverride,
+	StatusContextBreakdown,
+	StatusDataSource,
+	StatusLineState,
+	StatusProviderUsage,
+	StatusRunClock,
+} from "@veyyon/wire/presentation";
 import { readLaunchFacts, recordLaunchFacts } from "../../../../config/launch-facts";
 import { settings } from "../../../../config/settings-instance";
 import { StatusPresentationProducer } from "../../../../presentation/status-producer";
@@ -682,46 +689,15 @@ export class StatusLineComponent implements Component {
 	): SegmentContext {
 		this.refreshUsageInBackground();
 
-		let contextWindow = 0;
-		let contextLimit = 0;
-		let contextLimitKind: "window" | "compaction" = "window";
-		let contextPercent: number | null = null;
-
-		if (includeContext) {
-			contextWindow = snapshot.context.contextWindow;
-			contextLimit = snapshot.context.contextLimit;
-			contextLimitKind = snapshot.context.contextLimitKind;
-			contextPercent = snapshot.context.contextPercent;
-		}
-
 		const collabStatus = this.#collabStatus ?? snapshot.collab;
 		const collabOverride = collabStatus?.stateOverride;
-		if (
-			collabOverride &&
-			typeof collabOverride === "object" &&
-			"contextUsage" in collabOverride &&
-			collabOverride.contextUsage &&
-			typeof collabOverride.contextUsage === "object"
-		) {
-			const cu = collabOverride.contextUsage as { contextWindow?: number; percent: number | null };
-			contextWindow = cu.contextWindow || contextWindow;
-			contextPercent = cu.percent;
-			contextLimit = contextWindow;
-			contextLimitKind = "window";
-		}
-
+		const gauge = contextGaugeReadings(snapshot, includeContext, collabOverride);
 		if (includeContext) {
-			this.#recordLaunchFacts(contextPercent, contextLimit, collabOverride != null);
+			this.#recordLaunchFacts(gauge.contextPercent, gauge.contextLimit, collabOverride != null);
 		}
 
-		const shouldResolveActiveRepo = gitEnabled() && (includePath || includeGit || includePr);
-		const projectDir = snapshot.facts.cwd ?? getProjectDir();
-		const activeRepoCache = shouldResolveActiveRepo
-			? this.#resolveActiveRepoCache(snapshot)
-			: { projectDir, activeRepo: null, effectiveGitCwd: projectDir, worktree: null, repository: null };
-		const gitBranch = includeGit || includePr ? this.#getCurrentBranch(activeRepoCache.effectiveGitCwd) : null;
-		const gitStatus = includeGit ? this.#getGitStatus(activeRepoCache.effectiveGitCwd) : null;
-		const gitPr = includePr ? this.#lookupPr(activeRepoCache.effectiveGitCwd) : null;
+		const activeRepoCache = this.#locationContext(snapshot, includePath || includeGit || includePr);
+		const gitFacts = this.#gitFacts(activeRepoCache.effectiveGitCwd, includeGit, includePr);
 		return {
 			facts: snapshot.facts,
 			focusedAgentId: this.#focusedAgentId ?? snapshot.focusedAgentId,
@@ -736,22 +712,37 @@ export class StatusLineComponent implements Component {
 			vibeMode: this.#vibeModeStatus ?? snapshot.vibeMode ?? null,
 			collab: collabStatus ?? null,
 			usageStats: snapshot.usageStats,
-			contextPercent,
-			contextWindow,
-			contextLimit,
-			contextLimitKind,
+			contextPercent: gauge.contextPercent,
+			contextWindow: gauge.contextWindow,
+			contextLimit: gauge.contextLimit,
+			contextLimitKind: gauge.contextLimitKind,
 			autoCompactEnabled: this.#autoCompactEnabled,
 			agentCount: this.#agentCount,
 			backgroundSessionCount: this.#backgroundSessionCount,
 			activeMs: this.getActiveMs(),
-			git: {
-				branch: gitBranch,
-				status: gitStatus,
-				pr: gitPr,
-			},
+			git: gitFacts,
 			worktree: activeRepoCache.worktree,
 			account: snapshot.account ?? null,
 			usage: this.#cachedUsage,
+		};
+	}
+
+	/**
+	 * The active repository for a frame whose location or git zones name one. With git off, or
+	 * with no such zone on the row, the project directory stands in for it and nothing is looked up.
+	 */
+	#locationContext(snapshot: StatusLineState, namesRepository: boolean): LocationContext {
+		if (gitEnabled() && namesRepository) return this.#resolveActiveRepoCache(snapshot);
+		const projectDir = snapshot.facts.cwd ?? getProjectDir();
+		return { projectDir, activeRepo: null, effectiveGitCwd: projectDir, worktree: null, repository: null };
+	}
+
+	/** The branch, tree status and PR in `gitCwd`, each looked up only for a zone that shows it. */
+	#gitFacts(gitCwd: string, includeGit: boolean, includePr: boolean): SegmentContext["git"] {
+		return {
+			branch: includeGit || includePr ? this.#getCurrentBranch(gitCwd) : null,
+			status: includeGit ? this.#getGitStatus(gitCwd) : null,
+			pr: includePr ? this.#lookupPr(gitCwd) : null,
 		};
 	}
 
@@ -914,6 +905,42 @@ export class StatusLineComponent implements Component {
 		}
 		return [truncateToWidth(hookLine, width)];
 	}
+}
+
+/** The context gauge's readings for one frame. */
+type ContextGaugeReadings = Omit<StatusContextBreakdown, "usedTokens">;
+
+/**
+ * What the gauge reads this frame: the session's own breakdown when the row shows a gauge,
+ * nothing measured when it does not, and a collab host's usage in place of either when a guest
+ * mirrors one.
+ *
+ * `snapshot.context` is read only when the row shows a gauge: a producer computes the breakdown
+ * on its first read, and a row without a gauge never asks the session for its usage.
+ */
+function contextGaugeReadings(
+	snapshot: StatusLineState,
+	includeContext: boolean,
+	collabOverride: StatusCollabStateOverride | null | undefined,
+): ContextGaugeReadings {
+	let readings: ContextGaugeReadings = {
+		contextWindow: 0,
+		contextLimit: 0,
+		contextLimitKind: "window",
+		contextPercent: null,
+	};
+	if (includeContext) {
+		const { contextWindow, contextLimit, contextLimitKind, contextPercent } = snapshot.context;
+		readings = { contextWindow, contextLimit, contextLimitKind, contextPercent };
+	}
+	const usage =
+		collabOverride && typeof collabOverride === "object" && "contextUsage" in collabOverride
+			? collabOverride.contextUsage
+			: null;
+	if (!usage || typeof usage !== "object") return readings;
+	const cu = usage as { contextWindow?: number; percent: number | null };
+	const contextWindow = cu.contextWindow || readings.contextWindow;
+	return { contextWindow, contextLimit: contextWindow, contextLimitKind: "window", contextPercent: cu.percent };
 }
 
 function gitEnabled(): boolean {

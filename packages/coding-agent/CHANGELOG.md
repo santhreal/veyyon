@@ -13,6 +13,8 @@
 
 ### Changed
 
+- The status line fits its footline in one `QuietRowFit` pass in `status-line/quiet-row.ts` that keeps each half's joined text and width instead of re-joining the halves after every shed, so composing a default footline takes 999 ns instead of 1,454 ns at 160 columns and 9.46 µs instead of 12.15 µs at 60 columns, where it sheds zones (median of nine rounds of 20,000 calls); the drawn row is unchanged.
+- `StatusLineComponent` builds a frame's segment context through `#locationContext`, `#gitFacts` and `contextGaugeReadings`, and `renderLocation` and the `model` segment build their text in per-step functions; the drawn row and the git lookups it starts are unchanged.
 - The emoji, GitHub reference, internal URL and prompt-action autocomplete providers declare their results as `AutocompleteSuggestions`; no user-visible change.
 - The assistant text reveal and the tool argument reveal run on one `RevealFrameClock`; both still tick at 30 frames per second only while text is held back.
 - The stdio, streamable-HTTP and SSE MCP transports answer a server-to-client request through one `answerServerRequest` in `mcp/types`; each answer is unchanged.
