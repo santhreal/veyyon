@@ -215,6 +215,11 @@
 - Structure search resolves its scope, merges overlapping targets, groups matches, renders each file, lays out the result and fits it to the inline budget in single-purpose functions instead of one 280-line closure; no user-visible change.
 - `executeBash` plans the command, joins the CPU budget, leases the persistent shell, arms the abort and deadline, and settles the result in single-purpose steps instead of one 270-line function; a builtin command runs in 0.08 ms and a 20,000-line `seq` in 0.9 ms per call, unchanged.
 - The task card appends every agent, review, finding and nested-call row into one list instead of building and spreading a list per section; its rows are unchanged across a 6,000-card corpus, and drawing that corpus takes 1115 ms instead of 1305 ms.
+- A streamed delta sets the working message once, from the last tool call that states an intent, instead of once per call, and asks no earlier call's tool to derive an intent, so 4,000 deltas over six tool calls set it 340 times instead of 24,000 and a message update takes 4.5 µs instead of 5.3 µs (median of seven).
+- The terminal event controller starts a message, ends a message, settles a tool result and ends a retry in single-purpose steps, and a user message's local-echo signature is defined once in `transcript-composer.ts`; the transcript is unchanged.
+- `/usage` groups reports by provider, lists saved resets, collects limit rows and draws each row in single-purpose functions instead of one 180-line function; its output is unchanged across a 20,000-case corpus.
+- `/session` builds its provider, message, token, cost, language-server and MCP sections in single-purpose functions; its output is unchanged across a 20,000-case corpus.
+- `/share` runs the custom share script and the default share in separate steps, `/memory` runs each subcommand in its own method, `/move` checks and creates its target in one step, and `/compact` merges its instructions and mode in one function; no user-visible change.
 
 ### Fixed
 
