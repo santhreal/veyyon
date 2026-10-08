@@ -72,18 +72,24 @@ function displayReplacer(): (this: unknown, key: string, value: unknown) => unkn
 	// the stack unwind on the way back up.
 	const ancestors: object[] = [];
 	return function replace(this: unknown, _key: string, value: unknown): unknown {
+		if (typeof value === "object" && value !== null) return visitObject(ancestors, this, value);
 		if (typeof value === "bigint") return `${value}n`;
 		if (typeof value === "function") return `[Function: ${value.name || "anonymous"}]`;
 		if (typeof value === "symbol") return value.toString();
-		if (typeof value === "object" && value !== null) {
-			while (ancestors.length > 0 && ancestors[ancestors.length - 1] !== this) ancestors.pop();
-			// A cycle is named rather than thrown on, so the object still renders and
-			// the reader can see exactly where it looped back.
-			if (ancestors.includes(value)) return "[Circular]";
-			ancestors.push(value);
-		}
 		return value;
 	};
+}
+
+/**
+ * Unwind `ancestors` to `holder`, the object holding the key being visited, then
+ * enter `value`. A cycle renders as "[Circular]" instead of throwing, so the rest
+ * of the object still renders and the marker shows where it looped back.
+ */
+function visitObject(ancestors: object[], holder: unknown, value: object): unknown {
+	while (ancestors.length > 0 && ancestors[ancestors.length - 1] !== holder) ancestors.pop();
+	if (ancestors.includes(value)) return "[Circular]";
+	ancestors.push(value);
+	return value;
 }
 
 /** A short type name for a value that could not be rendered, used in the marker below. */
