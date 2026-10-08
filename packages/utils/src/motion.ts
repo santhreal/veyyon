@@ -468,27 +468,71 @@ export function fadeLineTowards(line: string, groundHex: string, strength: numbe
 	const ground = parseHexColor(groundHex);
 	if (ground === null) return line;
 	const channels = [ground.r, ground.g, ground.b];
+	// An `exec` loop rather than `replace` with a callback, which costs about 65 ns more a sequence in
+	// JavaScriptCore. A line with nothing to fade comes back as the same string.
+	let out = "";
+	let copied = 0;
 	SGR.lastIndex = 0;
-	return line.replace(SGR, (whole, params: string) => {
-		if (params === "") return whole;
-		// Even indices are values, odd indices the `;` or `:` between them.
-		const tokens = params.split(/([;:])/);
-		let changed = false;
-		for (let i = 0; i < tokens.length; i += 2) {
-			const code = tokens[i];
-			if ((code !== "38" && code !== "48") || tokens[i + 2] !== "2") continue;
-			const first = i + 4;
-			if (tokens[first + 4] === undefined) break; // truncated triple: leave it alone
-			for (let c = 0; c < 3; c++) {
-				const from = Number(tokens[first + c * 2]);
-				if (!Number.isFinite(from)) continue;
-				tokens[first + c * 2] = String(clampChannel(channels[c]! + (from - channels[c]!) * k));
-				changed = true;
-			}
-			i = first + 4;
-		}
-		return changed ? `\x1b[${tokens.join("")}m` : whole;
-	});
+	for (let match = SGR.exec(line); match !== null; match = SGR.exec(line)) {
+		const params = match[1]!;
+		// `38;2;;;` is the shortest run that holds a triple.
+		if (params.length < 7) continue;
+		const faded = fadeSgrParams(params, channels, k);
+		if (faded === undefined) continue;
+		out += `${line.slice(copied, match.index)}\x1b[${faded}m`;
+		copied = match.index + match[0].length;
+	}
+	return copied === 0 ? line : out + line.slice(copied);
+}
+
+/**
+ * `params` with every `38` and `48` truecolor triple moved toward `channels` by `k`, separators kept,
+ * or undefined when no channel changed.
+ */
+function fadeSgrParams(params: string, channels: readonly number[], k: number): string | undefined {
+	// Without a colon every separator is `;`, and a split on the character is several times cheaper
+	// than the capturing pattern.
+	if (!params.includes(":")) {
+		const values = params.split(";");
+		return fadeTriples(values, 1, channels, k) ? values.join(";") : undefined;
+	}
+	// Even indices are values, odd indices the `;` or `:` between them.
+	const tokens = params.split(/([;:])/);
+	return fadeTriples(tokens, 2, channels, k) ? tokens.join("") : undefined;
+}
+
+/**
+ * Fades in place every truecolor triple among the values `stride` apart in `tokens`. True when a
+ * channel changed.
+ */
+function fadeTriples(tokens: string[], stride: number, channels: readonly number[], k: number): boolean {
+	let changed = false;
+	for (let i = 0; i < tokens.length; i += stride) {
+		const code = tokens[i];
+		if ((code !== "38" && code !== "48") || tokens[i + stride] !== "2") continue;
+		const first = i + 2 * stride;
+		const last = first + 2 * stride;
+		if (tokens[last] === undefined) break; // truncated triple: leave it alone
+		if (fadeTriple(tokens, first, stride, channels, k)) changed = true;
+		i = last;
+	}
+	return changed;
+}
+
+/**
+ * Moves the three channel values from `tokens[first]`, `stride` apart, toward `channels` by `k`. True
+ * when at least one of them was a number.
+ */
+function fadeTriple(tokens: string[], first: number, stride: number, channels: readonly number[], k: number): boolean {
+	let changed = false;
+	for (let c = 0; c < 3; c++) {
+		const at = first + c * stride;
+		const from = Number(tokens[at]);
+		if (!Number.isFinite(from)) continue;
+		tokens[at] = String(clampChannel(channels[c]! + (from - channels[c]!) * k));
+		changed = true;
+	}
+	return changed;
 }
 
 /** Fade a block of rendered lines toward the ground behind it. */

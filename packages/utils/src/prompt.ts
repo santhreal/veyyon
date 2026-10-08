@@ -24,26 +24,23 @@ export interface PromptFormatOptions {
 }
 
 /**
- * Closing XML tag matcher, manual equivalent of `/^<\/([a-z_-]+)>$/`, avoids a
- * RegExp exec (and match array allocation) per `<`-prefixed line. Caller
- * guarantees `s` starts `</`.
+ * Whether `text[s, end)` is a closing XML tag, a manual equivalent of
+ * `/^<\/([a-z_-]+)>$/` that runs no RegExp and copies nothing. The caller
+ * guarantees `text[s]` is `<`.
  */
-function closingTagName(s: string): string | null {
-	const n = s.length;
-	if (n < 4 || s.charCodeAt(n - 1) !== 62 /* > */) return null;
-	for (let j = 2; j < n - 1; j++) {
-		const c = s.charCodeAt(j);
-		if (!((c >= 97 /* a */ && c <= 122) /* z */ || c === 45 /* - */ || c === 95) /* _ */) return null;
+function isClosingTagAt(text: string, s: number, end: number): boolean {
+	if (end - s < 4 || text.charCodeAt(s + 1) !== 47 /* / */ || text.charCodeAt(end - 1) !== 62 /* > */) return false;
+	for (let j = s + 2; j < end - 1; j++) {
+		const c = text.charCodeAt(j);
+		if (!((c >= 97 /* a */ && c <= 122) /* z */ || c === 45 /* - */ || c === 95) /* _ */) return false;
 	}
-	return s.slice(2, n - 1);
+	return true;
 }
 
 // Table row
 const TABLE_ROW = /^\|.*\|$/;
 // Table separator (|---|---|)
 const TABLE_SEP = /^\|[-:\s|]+\|$/;
-// Any non-whitespace char — blank-line check without allocating a trimmed copy
-const NON_BLANK = /\S/;
 
 /**
  * RFC 2119 keywords (plus project aliases NEVER/AVOID) wrapped in markdown bold
@@ -172,129 +169,188 @@ function replaceCommonAsciiSymbolsOutsideHtmlComments(line: string, state: HtmlC
 	return result;
 }
 
-export function format(content: string, options: PromptFormatOptions = {}): string {
-	const {
-		renderPhase = "post-render",
-		replaceAsciiSymbols = false,
-		normalizeRfc2119: shouldNormalizeRfc2119 = false,
-	} = options;
-	const isPreRender = renderPhase === "pre-render";
-	const lines = content.split("\n");
-	const result: string[] = new Array(lines.length);
-	let n = 0; // logical length of `result` (pops are n--)
-	// True while `result[0..n)` is `lines[0..n)` unchanged: no line rewritten, skipped or moved.
-	// When it holds at the end, the output is the input cut after its last kept line, and a cut
-	// shares the input's buffer where a join would build a second copy of the text.
-	let unchanged = true;
-	let inCodeBlock = false;
+/** What `format` rewrites prose lines with, and whether the previous line left an HTML comment open. */
+interface ProseRewrite extends HtmlCommentState {
+	readonly replaceAsciiSymbols: boolean;
+	readonly normalizeRfc2119: boolean;
+}
 
-	const htmlCommentState: HtmlCommentState = { inHtmlComment: false };
+/**
+ * A prose line with indent `s` after the ASCII symbol, table and RFC 2119
+ * rewrites `rewrite` enables. No rewrite changes leading whitespace, so the
+ * rewritten line's indent is `s` as well.
+ */
+function rewriteProse(line: string, s: number, rewrite: ProseRewrite): string {
+	let out = rewrite.replaceAsciiSymbols ? replaceCommonAsciiSymbolsOutsideHtmlComments(line, rewrite) : line;
+	if (out.charCodeAt(s) === 124 /* | */) {
+		const trimmedStart = s === 0 ? out : out.slice(s);
+		if (TABLE_SEP.test(trimmedStart)) out = `${out.slice(0, s)}${compactTableSep(trimmedStart)}`;
+		else if (TABLE_ROW.test(trimmedStart)) out = `${out.slice(0, s)}${compactTableRow(trimmedStart)}`;
+	}
+	return rewrite.normalizeRfc2119 ? normalizeRfc2119(out) : out;
+}
 
-	for (let i = 0; i < lines.length; i++) {
-		const raw = lines[i];
-		// charCode fast paths: only pay for trimEnd when the last char might be
-		// whitespace (<= 0x20 ASCII ws/controls, >= 0x80 unicode ws). Untouched
-		// lines are pushed as the original string — no allocation.
-		const last = raw.charCodeAt(raw.length - 1);
-		let line = last <= 32 || last >= 128 ? raw.trimEnd() : raw;
-		// Locate the first non-whitespace char without allocating a trimStart
-		// copy; `s` is the indent width, `first` the char code there (NaN when
-		// the line is blank).
-		let s = 0;
-		let first = line.charCodeAt(0);
-		while (first === 32 /* space */ || first === 9 /* tab */) first = line.charCodeAt(++s);
+/**
+ * Whether the line `text[s, end)`, from its indent on, closes a block, which
+ * lets a blank line before it go: `body\n\n</tag>` tightens to `body\n</tag>`,
+ * and before rendering, likewise before a Handlebars `{{/block}}`. This is not
+ * nesting-aware: any closing tag at any depth, balanced or not, counts.
+ */
+function closesBlock(text: string, s: number, end: number, isPreRender: boolean): boolean {
+	const first = text.charCodeAt(s);
+	if (first === 60 /* < */) return isClosingTagAt(text, s, end);
+	return isPreRender && first === 123 /* { */ && text.startsWith("{{/", s);
+}
+
+/** Whether the line whose indent ends at `p` with char code `first` there opens or closes a code block. */
+function isFence(text: string, p: number, first: number): boolean {
+	return first === 96 /* ` */ ? text.startsWith("```", p) : first === 126 /* ~ */ && text.startsWith("~~~", p);
+}
+
+/** End of the line `text[start, rawEnd)` once `trimEnd` drops its trailing whitespace. */
+function trimmedEnd(text: string, start: number, rawEnd: number): number {
+	let end = rawEnd;
+	let c = text.charCodeAt(end - 1);
+	// ASCII whitespace: space, and \t through \r.
+	while (end > start && (c === 32 || (c >= 9 && c <= 13))) c = text.charCodeAt(--end - 1);
+	// Possible unicode trailing whitespace — defer to trimEnd for exactness.
+	return end > start && c >= 128 ? start + text.slice(start, end).trimEnd().length : end;
+}
+
+/**
+ * One `format` pass, which reads `content` a line at a time by offset rather
+ * than splitting it. A run of lines kept as they stand stays one slice of
+ * `content`, so the output copies only around a rewritten or dropped line, and
+ * text that loses nothing but trailing blank lines is a slice of the input.
+ *
+ * Blank lines are held until the next line that is not blank. Inside a code
+ * block they are kept, as everything there is. Outside one, a single blank
+ * between two lines of text is kept unless the second closes a block; a run of
+ * two or more goes, as does a blank before any text or at the end.
+ */
+class FormatPass {
+	readonly #content: string;
+	readonly #rewrite: ProseRewrite;
+	readonly #rewrites: boolean;
+	readonly #isPreRender: boolean;
+	#inCodeBlock = false;
+	// Blank lines held since the last kept line, from offset `#blankStart` to the end of the last at `#blankEnd`.
+	#blanks = 0;
+	#blankStart = 0;
+	#blankEnd = 0;
+	// Finished output pieces, joined by newlines. The kept lines after the last piece are the
+	// run `content[#runStart, #runEnd)`, or none while `#runStart` is -1.
+	readonly #parts: string[] = [];
+	#runStart = -1;
+	#runEnd = -2;
+
+	constructor(content: string, options: PromptFormatOptions) {
+		const { renderPhase = "post-render", replaceAsciiSymbols = false, normalizeRfc2119 = false } = options;
+		this.#content = content;
+		this.#rewrite = { replaceAsciiSymbols, normalizeRfc2119, inHtmlComment: false };
+		this.#rewrites = replaceAsciiSymbols || normalizeRfc2119;
+		this.#isPreRender = renderPhase === "pre-render";
+	}
+
+	/** Place the line `content[start, rawEnd)`. */
+	line(start: number, rawEnd: number): void {
+		const content = this.#content;
+		// charCode fast path: only scan back when the last char might be whitespace
+		// (<= 0x20 ASCII ws/controls, >= 0x80 unicode ws). A blank line reads the
+		// newline before it, which also takes the scan.
+		const last = content.charCodeAt(rawEnd - 1);
+		const end = last > 32 && last < 128 ? rawEnd : trimmedEnd(content, start, rawEnd);
+		if (end === start) {
+			if (this.#blanks++ === 0) this.#blankStart = start;
+			this.#blankEnd = rawEnd;
+			return;
+		}
+		// Locate the first non-whitespace char without a trimStart copy.
+		let p = start;
+		let first = content.charCodeAt(p);
+		while (first === 32 /* space */ || first === 9 /* tab */) first = content.charCodeAt(++p);
 		if (first >= 128) {
 			// Possible unicode leading whitespace — defer to trimStart for exactness.
-			s = line.length - line.trimStart().length;
-			first = line.charCodeAt(s);
+			p = end - content.slice(p, end).trimStart().length;
+			first = content.charCodeAt(p);
 		}
-
-		if ((first === 96 /* ` */ || first === 126) /* ~ */ && (line.startsWith("```", s) || line.startsWith("~~~", s))) {
-			inCodeBlock = !inCodeBlock;
-			unchanged &&= n === i && line === raw;
-			result[n++] = line;
-			continue;
-		}
-
-		if (inCodeBlock) {
-			unchanged &&= n === i && line === raw;
-			result[n++] = line;
-			continue;
-		}
-
-		if (replaceAsciiSymbols) {
-			const replaced = replaceCommonAsciiSymbolsOutsideHtmlComments(line, htmlCommentState);
-			if (replaced !== line) {
-				line = replaced;
-				s = 0;
-				first = line.charCodeAt(0);
-				while (first === 32 || first === 9) first = line.charCodeAt(++s);
-				if (first >= 128) {
-					s = line.length - line.trimStart().length;
-					first = line.charCodeAt(s);
-				}
-			}
-		}
-
-		let isClosingLine = false;
-		if (first === 60 /* < */) {
-			const trimmedStart = s === 0 ? line : line.slice(s);
-			// A top-of-line closing tag (`</name>`) lets the blank-pop below tighten
-			// `body\n\n</tag>` to `body\n</tag>`. This is not nesting-aware: the pop
-			// fires for any closing tag (even an unbalanced one) at any depth.
-			if (trimmedStart.charCodeAt(1) === 47 /* / */ && closingTagName(trimmedStart) !== null) {
-				isClosingLine = true;
-			}
-		} else if (first === 124 /* | */) {
-			const trimmedStart = s === 0 ? line : line.slice(s);
-			if (TABLE_SEP.test(trimmedStart)) {
-				line = `${line.slice(0, s)}${compactTableSep(trimmedStart)}`;
-			} else if (TABLE_ROW.test(trimmedStart)) {
-				line = `${line.slice(0, s)}${compactTableRow(trimmedStart)}`;
-			}
-		}
-
-		if (shouldNormalizeRfc2119) {
-			line = normalizeRfc2119(line);
-		}
-
-		if (s >= line.length) {
-			// Blank line (`line` carries no trailing whitespace, so it is "").
-			const next = lines[i + 1];
-			// Strip any run of 2+ consecutive blank lines entirely; preserve a single blank.
-			if (next === undefined || next.length === 0 || !NON_BLANK.test(next)) {
-				while (n > 0 && result[n - 1].length === 0) n--;
-				let j = i + 1;
-				while (j < lines.length && (lines[j].length === 0 || !NON_BLANK.test(lines[j]))) j++;
-				i = j - 1;
-				continue;
-			}
-			if (n === 0 || result[n - 1].length === 0) {
-				continue;
-			}
-		}
-
-		// CLOSING_HBS (`/^\{\{\//`) ⇔ startsWith("{{/") at the indent offset.
-		if (isClosingLine || (isPreRender && first === 123 /* { */ && line.startsWith("{{/", s))) {
-			while (n > 0 && result[n - 1].length === 0) n--;
-		}
-
-		unchanged &&= n === i && line === raw;
-		result[n++] = line;
+		const fence = isFence(content, p, first);
+		if (!fence && !this.#inCodeBlock) return this.#placeProse(start, p, end, first);
+		if (this.#blanks > 0) this.#keepBlanks(false);
+		if (fence) this.#inCodeBlock = !this.#inCodeBlock;
+		this.#keepSpan(start, end);
 	}
 
-	while (n > 0 && result[n - 1].length === 0) n--;
-	// Only blank lines after the last kept one were dropped, so the cut holds nothing more than
-	// that trailing whitespace.
-	if (unchanged) {
-		if (n === lines.length) return content;
-		let end = n - 1;
-		for (let k = 0; k < n; k++) end += lines[k].length;
-		return content.slice(0, Math.max(end, 0));
+	#placeProse(start: number, p: number, end: number, first: number): void {
+		// No rewrite writes `|`, so a line that does not start with one keeps its
+		// text unless a symbol or RFC 2119 rewrite is on.
+		if (this.#rewrites || first === 124 /* | */) {
+			const line = this.#content.slice(start, end);
+			const s = p - start;
+			const out = rewriteProse(line, s, this.#rewrite);
+			if (out !== line) {
+				if (this.#blanks > 0) this.#keepBlanks(closesBlock(out, s, out.length, this.#isPreRender));
+				this.#keepText(out);
+				return;
+			}
+		}
+		if (this.#blanks > 0) this.#keepBlanks(closesBlock(this.#content, p, end, this.#isPreRender));
+		this.#keepSpan(start, end);
 	}
-	result.length = n;
 
-	return result.join("\n");
+	/** Settle the held blank lines before a line that is not blank; `closes` is whether that line closes a block. */
+	#keepBlanks(closes: boolean): void {
+		const count = this.#blanks;
+		this.#blanks = 0;
+		if (this.#inCodeBlock) {
+			const content = this.#content;
+			for (let at = this.#blankStart; at <= this.#blankEnd; ) {
+				const nl = content.indexOf("\n", at);
+				this.#keepSpan(at, at);
+				at = nl + 1;
+			}
+		} else if (count === 1 && !closes && (this.#runStart >= 0 || this.#parts.length > 0)) {
+			this.#keepSpan(this.#blankStart, this.#blankStart);
+		}
+	}
+
+	/** Keep the line `content[start, end)` as it stands. */
+	#keepSpan(start: number, end: number): void {
+		if (start !== this.#runEnd + 1) {
+			this.#flush();
+			this.#runStart = start;
+		}
+		this.#runEnd = end;
+	}
+
+	/** Keep a rewritten line. */
+	#keepText(text: string): void {
+		this.#flush();
+		this.#parts.push(text);
+		this.#runStart = -1;
+		this.#runEnd = -2;
+	}
+
+	#flush(): void {
+		if (this.#runStart >= 0) this.#parts.push(this.#content.slice(this.#runStart, this.#runEnd));
+	}
+
+	/** The kept lines as text. Blank lines still held end the text, so they go. */
+	text(): string {
+		this.#flush();
+		return this.#parts.length === 1 ? this.#parts[0] : this.#parts.join("\n");
+	}
+}
+
+export function format(content: string, options: PromptFormatOptions = {}): string {
+	const pass = new FormatPass(content, options);
+	let start = 0;
+	for (let nl = content.indexOf("\n"); nl !== -1; nl = content.indexOf("\n", start)) {
+		pass.line(start, nl);
+		start = nl + 1;
+	}
+	pass.line(start, content.length);
+	return pass.text();
 }
 
 export interface TemplateContext extends Record<string, unknown> {

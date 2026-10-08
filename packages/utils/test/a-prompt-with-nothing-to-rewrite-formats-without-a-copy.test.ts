@@ -8,16 +8,17 @@
  * template and the interned render result is held by every tool and prompt section that renders
  * it, so each such prompt sat on the heap twice.
  *
- * THE CLASS, NOT THE INCIDENT. Sharing is decided where every line passes through: a line is pushed
- * unchanged at its own index, or the output is joined. The sweep takes every reason `format`
- * rewrites, skips or moves a line, puts it in text that is otherwise unchanged, and requires the
- * rewritten output, so a reason that fails to turn sharing off returns the input instead and goes
- * red. The heap probe formats large distinct texts of each shape that needs no rewrite and requires
- * the heap snapshot to hold each text once; a rewritten text is the control that must be held twice,
- * which proves the probe sees a copy when one is made.
+ * THE CLASS, NOT THE INCIDENT. Sharing is decided where every kept line passes through: a line kept
+ * as it stands, right after the line kept before it, extends one slice of the input, and anything
+ * else starts a new piece of a join. The sweep takes every reason `format` rewrites, skips or moves
+ * a line, puts it in text that is otherwise unchanged, and requires the rewritten output, so a reason
+ * that fails to end the slice returns the input instead and goes red. The heap probe formats large
+ * distinct texts of each shape that needs no rewrite and requires the heap snapshot to hold each text
+ * once; a rewritten text is the control that must be held twice, which proves the probe sees a copy
+ * when one is made.
  *
  * WHAT IT DOES NOT CATCH. A rewrite reason added to `format` later is not enumerated here; it is
- * caught only when it reaches a push without the unchanged check. The probe measures `format`, not
+ * caught only when it keeps its line as a slice of the input. The probe measures `format`, not
  * `render`: `render` interns the result, and the heap snapshot reports no interned string as a string
  * node, so the count cannot tell a shared result from a copied one there. `renderSequence`
  * concatenates its templates, so its output is one new string whichever way `format` returns it.

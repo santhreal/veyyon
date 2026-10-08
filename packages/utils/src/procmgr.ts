@@ -107,72 +107,62 @@ export function resolveBasicShell(): string | undefined {
  * 4. Fallback: sh
  */
 export function getShellConfig(customShellPath?: string): ShellConfig {
-	if (cachedShellConfig) {
-		return cachedShellConfig;
-	}
+	cachedShellConfig ??= buildConfig(resolveShellPath(customShellPath));
+	return cachedShellConfig;
+}
 
+/**
+ * The shell {@link getShellConfig} runs, in its resolution order. Throws when `customShellPath` does not
+ * exist, and on Windows when no bash is found.
+ */
+function resolveShellPath(customShellPath: string | undefined): string {
 	// 1. Check user-specified shell path
 	if (customShellPath) {
-		if (fs.existsSync(customShellPath)) {
-			cachedShellConfig = buildConfig(customShellPath);
-			return cachedShellConfig;
-		}
+		if (fs.existsSync(customShellPath)) return customShellPath;
 		throw new Error(
 			`Custom shell path not found: ${customShellPath}\nPlease update shellPath in ~/.veyyon/agent/settings.json`,
 		);
 	}
 
-	if (process.platform === "win32") {
-		// 2. Try Git Bash in known locations
-		const paths: string[] = [];
-		const programFiles = Bun.env.ProgramFiles;
-		if (programFiles) {
-			paths.push(`${programFiles}\\Git\\bin\\bash.exe`);
-		}
-		const programFilesX86 = Bun.env["ProgramFiles(x86)"];
-		if (programFilesX86) {
-			paths.push(`${programFilesX86}\\Git\\bin\\bash.exe`);
-		}
-
-		for (const path of paths) {
-			if (fs.existsSync(path)) {
-				cachedShellConfig = buildConfig(path);
-				return cachedShellConfig;
-			}
-		}
-
-		// 3. Fallback: search bash.exe on PATH (Cygwin, MSYS2, WSL, etc.)
-		const bashOnPath = $which("bash.exe");
-		if (bashOnPath) {
-			cachedShellConfig = buildConfig(bashOnPath);
-			return cachedShellConfig;
-		}
-
-		throw new Error(
-			`No bash shell found. Options:\n` +
-				`  1. Install Git for Windows: https://git-scm.com/download/win\n` +
-				`  2. Add your bash to PATH (Cygwin, MSYS2, etc.)\n` +
-				`  3. Set shellPath in ~/.veyyon/agent/settings.json\n\n` +
-				`Searched Git Bash in:\n${paths.map(p => `  ${p}`).join("\n")}`,
-		);
-	}
+	if (process.platform === "win32") return resolveWindowsBash();
 
 	// Unix: prefer user's shell from $SHELL if it's bash/zsh and executable
 	const userShell = Bun.env.SHELL;
-	const isValidShell = userShell && (userShell.includes("bash") || userShell.includes("zsh"));
-	if (isValidShell && isExecutable(userShell)) {
-		cachedShellConfig = buildConfig(userShell);
-		return cachedShellConfig;
+	if (userShell && (userShell.includes("bash") || userShell.includes("zsh")) && isExecutable(userShell)) {
+		return userShell;
 	}
 
 	// 4. Fallback: use basic shell
-	const basicShell = resolveBasicShell();
-	if (basicShell) {
-		cachedShellConfig = buildConfig(basicShell);
-		return cachedShellConfig;
+	return resolveBasicShell() ?? "sh";
+}
+
+/** Git Bash in its install locations, then `bash.exe` on PATH. Throws naming the locations searched. */
+function resolveWindowsBash(): string {
+	// 2. Try Git Bash in known locations
+	const paths: string[] = [];
+	const programFiles = Bun.env.ProgramFiles;
+	if (programFiles) {
+		paths.push(`${programFiles}\\Git\\bin\\bash.exe`);
 	}
-	cachedShellConfig = buildConfig("sh");
-	return cachedShellConfig;
+	const programFilesX86 = Bun.env["ProgramFiles(x86)"];
+	if (programFilesX86) {
+		paths.push(`${programFilesX86}\\Git\\bin\\bash.exe`);
+	}
+	for (const candidate of paths) {
+		if (fs.existsSync(candidate)) return candidate;
+	}
+
+	// 3. Fallback: search bash.exe on PATH (Cygwin, MSYS2, WSL, etc.)
+	const bashOnPath = $which("bash.exe");
+	if (bashOnPath) return bashOnPath;
+
+	throw new Error(
+		`No bash shell found. Options:\n` +
+			`  1. Install Git for Windows: https://git-scm.com/download/win\n` +
+			`  2. Add your bash to PATH (Cygwin, MSYS2, etc.)\n` +
+			`  3. Set shellPath in ~/.veyyon/agent/settings.json\n\n` +
+			`Searched Git Bash in:\n${paths.map(p => `  ${p}`).join("\n")}`,
+	);
 }
 
 /**
