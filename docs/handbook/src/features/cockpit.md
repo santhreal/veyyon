@@ -114,7 +114,11 @@ rest: the prompt size the provider reported for the last response, plus an estim
 after it, with the tools, skills and system prompt counted at the size recorded with that response.
 A transcript whose responses recorded no such size is measured as the session mounts. A tree
 committed from another terminal since the last launch keeps the recorded marker until `git status`
-answers, about 130ms in. A project you open for the first time
+answers, about 130ms in. The status line records the configured default model's name and effort on
+every redraw, and the dirty marker on every answer from `git status` in the project directory,
+whichever segments it shows. A row without the `git` segment or following another repository
+records no marker, a failed `git status` keeps the last one, and a collab guest's row records
+nothing. A project you open for the first time
 has no dirty marker. The gauge reads `?` only until a session on this model has left rest once;
 after that a new project starts at the model's
 subtracted reading and the session adds what this project's own context costs, so the bar fills

@@ -460,10 +460,14 @@ export class StatusLineComponent implements Component {
 		return branch === this.#defaultBranch;
 	}
 
-	#getGitStatus(effectiveGitCwd?: string): git.GitStatusSummary | null {
+	/**
+	 * The tree status in `gitCwd`, from the last scan while a newer one runs. A scan of the project
+	 * directory that lands is filed for the next launch's card when `recordsTree` is set, whichever
+	 * zones sit beside the git zone; a failed scan files nothing and keeps the last record.
+	 */
+	#getGitStatus(gitCwd: string, recordsTree: boolean): git.GitStatusSummary | null {
 		if (!gitEnabled()) return null;
 
-		const gitCwd = effectiveGitCwd ?? this.#resolveActiveRepoCache().effectiveGitCwd;
 		if (this.#cachedGitStatusCwd === undefined && gitCwd === getProjectDir()) {
 			this.#cachedGitStatusCwd = gitCwd;
 			this.#cachedGitStatus = readLaunchFacts().gitStatus;
@@ -496,6 +500,9 @@ export class StatusLineComponent implements Component {
 					this.#gitStatusLastFetch = Date.now();
 					this.#gitStatusAnswered = requested;
 					this.#gitStatusInFlightCwd = undefined;
+					if (recordsTree && nextStatus && gitCwd === getProjectDir()) {
+						void recordLaunchFacts({ gitStatus: nextStatus });
+					}
 					if (moved || requested !== this.#gitStatusRequested) this.#onGitStateChange?.();
 				}
 			}
@@ -672,12 +679,6 @@ export class StatusLineComponent implements Component {
 		return { usedTokens, contextWindow };
 	}
 
-	#recordLaunchFacts(contextPercent: number | null, contextLimit: number, isCollabGuest: boolean): void {
-		if (isCollabGuest) return;
-		this.#source.capabilities?.recordLaunchFacts?.(contextPercent, contextLimit);
-		if (this.#cachedGitStatus) void recordLaunchFacts({ gitStatus: this.#cachedGitStatus });
-	}
-
 	#buildSegmentContext(
 		snapshot: StatusLineState,
 		width: number,
@@ -691,13 +692,15 @@ export class StatusLineComponent implements Component {
 
 		const collabStatus = this.#collabStatus ?? snapshot.collab;
 		const collabOverride = collabStatus?.stateOverride;
+		// The model, its effort and, with a gauge on the row, the resting reading are filed for the next
+		// launch's card whichever zones the row shows. A collab guest's row mirrors another session and
+		// files nothing.
+		const recordsLaunch = collabOverride == null;
 		const gauge = contextGaugeReadings(snapshot, includeContext, collabOverride);
-		if (includeContext) {
-			this.#recordLaunchFacts(gauge.contextPercent, gauge.contextLimit, collabOverride != null);
-		}
+		if (recordsLaunch) this.#source.capabilities?.recordLaunchFacts?.(gauge.contextPercent, gauge.contextLimit);
 
 		const activeRepoCache = this.#locationContext(snapshot, includePath || includeGit || includePr);
-		const gitFacts = this.#gitFacts(activeRepoCache.effectiveGitCwd, includeGit, includePr);
+		const gitFacts = this.#gitFacts(activeRepoCache.effectiveGitCwd, includeGit, includePr, recordsLaunch);
 		return {
 			facts: snapshot.facts,
 			focusedAgentId: this.#focusedAgentId ?? snapshot.focusedAgentId,
@@ -742,10 +745,10 @@ export class StatusLineComponent implements Component {
 	 * lookup reads the branch it needs itself, so a row with a PR zone and no git zone hands the path
 	 * zone no branch, and the path keeps a linked worktree's directory name.
 	 */
-	#gitFacts(gitCwd: string, includeGit: boolean, includePr: boolean): SegmentContext["git"] {
+	#gitFacts(gitCwd: string, includeGit: boolean, includePr: boolean, recordsTree: boolean): SegmentContext["git"] {
 		return {
 			branch: includeGit ? this.#getCurrentBranch(gitCwd) : null,
-			status: includeGit ? this.#getGitStatus(gitCwd) : null,
+			status: includeGit ? this.#getGitStatus(gitCwd, recordsTree) : null,
 			pr: includePr ? this.#lookupPr(gitCwd) : null,
 		};
 	}

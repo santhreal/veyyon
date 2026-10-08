@@ -15,6 +15,7 @@
 
 - The status line fits its footline in one `QuietRowFit` pass in `status-line/quiet-row.ts` that keeps each half's joined text and width instead of re-joining the halves after every shed, so composing a default footline takes 999 ns instead of 1,454 ns at 160 columns and 9.46 µs instead of 12.15 µs at 60 columns, where it sheds zones (median of nine rounds of 20,000 calls); the drawn row is unchanged.
 - `StatusLineComponent` builds a frame's segment context through `#locationContext`, `#gitFacts` and `contextGaugeReadings`, and `renderLocation` and the `model` segment build their text in per-step functions; the drawn row and the git lookups it starts are unchanged.
+- The launch-facts recorder compares a recorded entry field by field instead of serializing both copies, so a status-row redraw that changes no recorded fact files in 338 ns instead of 1,119 ns, and a `git status` that finds the recorded tree in 528 ns instead of 1,313 ns (median of seven alternating processes of 450,000 calls).
 - The emoji, GitHub reference, internal URL and prompt-action autocomplete providers declare their results as `AutocompleteSuggestions`; no user-visible change.
 - The assistant text reveal and the tool argument reveal run on one `RevealFrameClock`; both still tick at 30 frames per second only while text is held back.
 - The stdio, streamable-HTTP and SSE MCP transports answer a server-to-client request through one `answerServerRequest` in `mcp/types`; each answer is unchanged.
@@ -231,6 +232,7 @@
 ### Fixed
 
 - In a linked worktree named after its branch, the status line's `path` segment and the launch card keep the worktree directory (`monorepo/topic`) on a row with a `pr` segment and no `git` segment, or with `segmentOptions.git.showBranch: false`, instead of showing `monorepo` with neither the worktree nor its branch on the row.
+- The launch card draws the dirty marker (`*`) and the effort the last launch's status line settled on when that row had no context gauge, instead of drawing a dirty branch clean or an older effort until the session mounted; a row that follows another repository no longer records that repository's tree status under the project.
 - A TTSR interrupt retries the turn it aborted when the aborted turn settles with a message whose timestamp differs from the partial it streamed, instead of dropping the injection and releasing the resume gate with no continuation.
 - An expanded task card draws an agent's `Output` heading once when the agent returned `{}`, `[]` or an empty JSON value, and when a running agent's live output is one, instead of twice.
 - An agent with several approval cards open at once stays marked as waiting until its last card closes, instead of showing as working once its first card is answered, so the agent dashboard draws it as blocked and the runtime budget excludes the operator's reading time across the whole span, counted once.
