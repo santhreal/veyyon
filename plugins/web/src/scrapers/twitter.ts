@@ -38,48 +38,12 @@ export const handleTwitter: SpecialHandler = async (
 	for (const instance of NITTER_INSTANCES) {
 		const nitterUrl = `https://${instance}${parsed.pathname}`;
 		try {
-			const result = await loadPage(nitterUrl, { timeout: Math.min(timeout, 10), signal });
-
-			if (!result.ok) {
-				attempts.push(`${instance}: ${result.status ? `HTTP ${result.status}` : (result.error ?? "no response")}`);
+			const tweet = await readNitterTweet(nitterUrl, timeout, signal);
+			if ("reason" in tweet) {
+				attempts.push(`${instance}: ${tweet.reason}`);
 				continue;
 			}
-			if (result.content.length <= 500) {
-				attempts.push(`${instance}: response too short to be a tweet (${result.content.length} bytes)`);
-				continue;
-			}
-			// Parse the Nitter HTML
-			const { parseHTML } = await import("linkedom");
-			const doc = parseHTML(result.content).document;
-
-			// Extract tweet content
-			const tweetContent = doc.querySelector(".tweet-content")?.textContent?.trim();
-			const fullname = doc.querySelector(".fullname")?.textContent?.trim();
-			const username = doc.querySelector(".username")?.textContent?.trim();
-			const date = doc.querySelector(".tweet-date a")?.textContent?.trim();
-			const stats = doc.querySelector(".tweet-stats")?.textContent?.trim();
-
-			if (!tweetContent) {
-				attempts.push(`${instance}: responded, but the page carried no tweet content`);
-				continue;
-			}
-
-			let md = `# Tweet by ${fullname || "Unknown"} (${username || "@?"})\n\n`;
-			if (date) md += `*${date}*\n\n`;
-			md += `${tweetContent}\n\n`;
-			if (stats) md += `---\n${stats.replace(/\s+/g, " ")}\n`;
-
-			// Check for replies/thread
-			const replies = Array.from(doc.querySelectorAll(".timeline-item .tweet-content")) as HTMLElement[];
-			if (replies.length > 1) {
-				md += `\n---\n\n## Thread/Replies\n\n`;
-				for (const reply of replies.slice(1, 10)) {
-					const replyUser = reply.parentElement?.querySelector(".username")?.textContent?.trim();
-					md += `**${replyUser || "@?"}**: ${reply.textContent?.trim()}\n\n`;
-				}
-			}
-
-			return buildResult(md, {
+			return buildResult(tweet.markdown, {
 				url,
 				finalUrl: nitterUrl,
 				method: "twitter-nitter",
@@ -139,3 +103,47 @@ export const handleTwitter: SpecialHandler = async (
 		notes: [`X.com blocks bots; ${attempts.length} Nitter instance(s) tried, none returned a tweet`],
 	};
 };
+
+/** The tweet one Nitter page renders, or why that instance produced none. */
+async function readNitterTweet(
+	nitterUrl: string,
+	timeout: number,
+	signal: AbortSignal | undefined,
+): Promise<{ markdown: string } | { reason: string }> {
+	const result = await loadPage(nitterUrl, { timeout: Math.min(timeout, 10), signal });
+	if (!result.ok) return { reason: result.status ? `HTTP ${result.status}` : (result.error ?? "no response") };
+	if (result.content.length <= 500) {
+		return { reason: `response too short to be a tweet (${result.content.length} bytes)` };
+	}
+	const markdown = await renderNitterTweet(result.content);
+	return markdown === null ? { reason: "responded, but the page carried no tweet content" } : { markdown };
+}
+
+/** The tweet, its stats and up to nine thread replies from a Nitter page, or `null` when the page has no tweet. */
+async function renderNitterTweet(html: string): Promise<string | null> {
+	const { parseHTML } = await import("linkedom");
+	const doc = parseHTML(html).document;
+
+	const tweetContent = doc.querySelector(".tweet-content")?.textContent?.trim();
+	if (!tweetContent) return null;
+	const fullname = doc.querySelector(".fullname")?.textContent?.trim();
+	const username = doc.querySelector(".username")?.textContent?.trim();
+	const date = doc.querySelector(".tweet-date a")?.textContent?.trim();
+	const stats = doc.querySelector(".tweet-stats")?.textContent?.trim();
+
+	let md = `# Tweet by ${fullname || "Unknown"} (${username || "@?"})\n\n`;
+	if (date) md += `*${date}*\n\n`;
+	md += `${tweetContent}\n\n`;
+	if (stats) md += `---\n${stats.replace(/\s+/g, " ")}\n`;
+
+	// The first `.tweet-content` in the timeline is the tweet itself; the rest are its thread and replies.
+	const replies = Array.from(doc.querySelectorAll(".timeline-item .tweet-content")) as HTMLElement[];
+	if (replies.length > 1) {
+		md += `\n---\n\n## Thread/Replies\n\n`;
+		for (const reply of replies.slice(1, 10)) {
+			const replyUser = reply.parentElement?.querySelector(".username")?.textContent?.trim();
+			md += `**${replyUser || "@?"}**: ${reply.textContent?.trim()}\n\n`;
+		}
+	}
+	return md;
+}

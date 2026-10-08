@@ -61,44 +61,48 @@ export function parseGitHubUrl(url: string): GitHubUrl | null {
 			return { type: section, owner, repo, ref, path: pathParts.join("/") };
 		}
 		case "commit":
-			if (subParts.length > 0 && subParts[0]) {
-				return { type: "commit", owner, repo, ref: subParts[0] };
-			}
-			return { type: "other", owner, repo };
+			return subParts[0] ? { type: "commit", owner, repo, ref: subParts[0] } : { type: "other", owner, repo };
 		case "issues":
-			if (subParts.length > 0 && /^\d+$/.test(subParts[0])) {
-				return { type: "issue", owner, repo, number: parseInt(subParts[0], 10) };
-			}
-			return { type: "issues", owner, repo };
+			return numberedOrListing("issue", "issues", owner, repo, subParts[0]);
 		case "pull":
-			if (subParts.length > 0 && /^\d+$/.test(subParts[0])) {
-				return { type: "pull", owner, repo, number: parseInt(subParts[0], 10) };
-			}
-			return { type: "pulls", owner, repo };
+			return numberedOrListing("pull", "pulls", owner, repo, subParts[0]);
 		case "pulls":
 			return { type: "pulls", owner, repo };
-		case "actions": {
-			// /actions/runs/{runId}                      → run summary + jobs
-			// /actions/runs/{runId}/job/{jobId}          → single job (web URL uses singular "job")
-			// /actions/runs/{runId}/jobs/{jobId}         → single job (API-style plural)
-			if (subParts[0] === "runs" && /^\d+$/.test(subParts[1] ?? "")) {
-				const runId = parseInt(subParts[1], 10);
-				const seg = subParts[2];
-				if ((seg === "job" || seg === "jobs") && /^\d+$/.test(subParts[3] ?? "")) {
-					return { type: "actions-job", owner, repo, runId, jobId: parseInt(subParts[3], 10) };
-				}
-				return { type: "actions-run", owner, repo, runId };
-			}
-			return { type: "other", owner, repo };
-		}
+		case "actions":
+			return parseActionsPath(owner, repo, subParts);
 		case "discussions":
-			if (subParts.length > 0 && /^\d+$/.test(subParts[0])) {
-				return { type: "discussion", owner, repo, number: parseInt(subParts[0], 10) };
-			}
-			return { type: "discussions", owner, repo };
+			return numberedOrListing("discussion", "discussions", owner, repo, subParts[0]);
 		default:
 			return { type: "other", owner, repo };
 	}
+}
+
+/** The numbered `item` when `segment` is a number, otherwise the `listing` it belongs to. */
+function numberedOrListing(
+	item: "issue" | "pull" | "discussion",
+	listing: "issues" | "pulls" | "discussions",
+	owner: string,
+	repo: string,
+	segment: string | undefined,
+): GitHubUrl {
+	if (segment === undefined || !/^\d+$/.test(segment)) return { type: listing, owner, repo };
+	return { type: item, owner, repo, number: parseInt(segment, 10) };
+}
+
+/**
+ * An Actions path after `/actions`:
+ * - `runs/{runId}` → run summary + jobs
+ * - `runs/{runId}/job/{jobId}` → single job (web URL uses singular "job")
+ * - `runs/{runId}/jobs/{jobId}` → single job (API-style plural)
+ */
+function parseActionsPath(owner: string, repo: string, subParts: string[]): GitHubUrl {
+	const [section, run, kind, job] = subParts;
+	if (section !== "runs" || !/^\d+$/.test(run ?? "")) return { type: "other", owner, repo };
+	const runId = parseInt(run, 10);
+	if ((kind === "job" || kind === "jobs") && /^\d+$/.test(job ?? "")) {
+		return { type: "actions-job", owner, repo, runId, jobId: parseInt(job, 10) };
+	}
+	return { type: "actions-run", owner, repo, runId };
 }
 
 /**
@@ -268,60 +272,61 @@ async function renderGitHubCommit(
 	const result = await fetchGitHubApi(`/repos/${gh.owner}/${gh.repo}/commits/${gh.ref}`, timeout, signal);
 	if (!result.ok || !result.data) return { content: "", ok: false };
 
-	const commit = result.data as {
-		sha: string;
-		html_url: string;
-		commit: {
-			author?: { name?: string; date?: string } | null;
-			committer?: { name?: string; date?: string } | null;
-			message: string;
-		};
-		author?: { login: string } | null;
-		committer?: { login: string } | null;
-		parents?: Array<{ sha: string }>;
-		stats?: { total?: number; additions?: number; deletions?: number };
-		files?: GitHubCommitFile[];
-	};
-
-	const message = commit.commit.message ?? "";
-	const [subject, ...bodyLines] = message.split("\n");
-	const authorName = commit.author?.login ? `@${commit.author.login}` : (commit.commit.author?.name ?? "unknown");
-	const authoredAt = commit.commit.author?.date ?? "";
-
-	let md = `# ${subject || commit.sha.slice(0, 7)}\n\n`;
-	md += `**${commit.sha.slice(0, 12)}** · authored by ${authorName}`;
-	if (authoredAt) md += ` · ${authoredAt}`;
-	md += `\n`;
-	if (commit.stats) {
-		const { additions = 0, deletions = 0 } = commit.stats;
-		const fileCount = commit.files?.length ?? 0;
-		md += `${formatCount("file", fileCount)} changed · +${additions} −${deletions}\n`;
-	}
-	if (commit.parents && commit.parents.length > 0) {
-		md += `Parents: ${commit.parents.map(p => p.sha.slice(0, 12)).join(", ")}\n`;
-	}
-
-	const body = bodyLines.join("\n").trim();
-	if (body) {
-		md += `\n${body}\n`;
-	}
+	const commit = result.data as GitHubCommit;
+	const body = commit.commit.message?.split("\n").slice(1).join("\n").trim();
+	let md = formatCommitHeader(commit);
+	if (body) md += `\n${body}\n`;
 
 	const files = commit.files ?? [];
 	if (files.length > 0) {
 		md += `\n---\n\n## Files (${files.length})\n\n`;
-		for (const file of files) {
-			const name = file.previous_filename ? `${file.previous_filename} → ${file.filename}` : file.filename;
-			md += `### ${name}\n\n`;
-			md += `${file.status} · +${file.additions} −${file.deletions}\n\n`;
-			if (file.patch) {
-				md += `\`\`\`diff\n${file.patch}\n\`\`\`\n\n`;
-			} else {
-				md += `*No textual diff (binary or too large).*\n\n`;
-			}
-		}
+		for (const file of files) md += formatCommitFile(file);
 	}
 
 	return { content: md, ok: true };
+}
+
+interface GitHubCommit {
+	sha: string;
+	html_url: string;
+	commit: {
+		author?: { name?: string; date?: string } | null;
+		committer?: { name?: string; date?: string } | null;
+		message: string;
+	};
+	author?: { login: string } | null;
+	committer?: { login: string } | null;
+	parents?: Array<{ sha: string }>;
+	stats?: { total?: number; additions?: number; deletions?: number };
+	files?: GitHubCommitFile[];
+}
+
+/**
+ * The subject (or the short SHA when there is none) as the title, then the SHA and
+ * author line, the change stats and the parents.
+ */
+function formatCommitHeader(commit: GitHubCommit): string {
+	const subject = (commit.commit.message ?? "").split("\n", 1)[0];
+	const authorName = commit.author?.login ? `@${commit.author.login}` : (commit.commit.author?.name ?? "unknown");
+	const authoredAt = commit.commit.author?.date;
+
+	let md = `# ${subject || commit.sha.slice(0, 7)}\n\n`;
+	md += `**${commit.sha.slice(0, 12)}** · authored by ${authorName}${authoredAt ? ` · ${authoredAt}` : ""}\n`;
+	if (commit.stats) {
+		const { additions = 0, deletions = 0 } = commit.stats;
+		md += `${formatCount("file", commit.files?.length ?? 0)} changed · +${additions} −${deletions}\n`;
+	}
+	if (commit.parents && commit.parents.length > 0) {
+		md += `Parents: ${commit.parents.map(p => p.sha.slice(0, 12)).join(", ")}\n`;
+	}
+	return md;
+}
+
+/** One changed file: its name (old → new for a rename), its counts, and its patch or a binary marker. */
+function formatCommitFile(file: GitHubCommitFile): string {
+	const name = file.previous_filename ? `${file.previous_filename} → ${file.filename}` : file.filename;
+	const diff = file.patch ? `\`\`\`diff\n${file.patch}\n\`\`\`` : "*No textual diff (binary or too large).*";
+	return `### ${name}\n\n${file.status} · +${file.additions} −${file.deletions}\n\n${diff}\n\n`;
 }
 
 /**
@@ -389,42 +394,52 @@ async function renderGitHubTree(
 	);
 
 	if (contentsResult.ok && Array.isArray(contentsResult.data)) {
-		const items = contentsResult.data as Array<{
-			name: string;
-			type: "file" | "dir" | "symlink" | "submodule";
-			size?: number;
-			path: string;
-		}>;
-
-		// Sort: directories first, then files, alphabetically
-		items.sort((a, b) => {
-			if (a.type === "dir" && b.type !== "dir") return -1;
-			if (a.type !== "dir" && b.type === "dir") return 1;
-			return a.name.localeCompare(b.name);
-		});
-
-		md += `## Contents\n\n`;
-		md += "```\n";
-		for (const item of items) {
-			const prefix = item.type === "dir" ? "[dir] " : "      ";
-			const size = item.size ? ` (${item.size} bytes)` : "";
-			md += `${prefix}${item.name}${item.type === "file" ? size : ""}\n`;
-		}
-		md += "```\n\n";
-
-		// Look for README in this directory
-		const readmeFile = items.find(item => item.type === "file" && /^readme\.md$/i.test(item.name));
-		if (readmeFile) {
-			const readmePath = dirPath ? `${dirPath}/${readmeFile.name}` : readmeFile.name;
-			const rawUrl = `https://raw.githubusercontent.com/${gh.owner}/${gh.repo}/${ref}/${readmePath}`;
-			const readmeResult = await loadPage(rawUrl, { timeout, signal });
-			if (readmeResult.ok) {
-				md += `---\n\n## README\n\n${readmeResult.content}`;
-			}
-		}
+		const items = contentsResult.data as GitHubContentsItem[];
+		md += formatContentsListing(items);
+		md += await loadDirectoryReadme(gh, ref, dirPath, items, timeout, signal);
 	}
 
 	return { content: md, ok: true };
+}
+
+interface GitHubContentsItem {
+	name: string;
+	type: "file" | "dir" | "symlink" | "submodule";
+	size?: number;
+	path: string;
+}
+
+/** The directory listing, directories first and then by name, with the size of each non-empty file. */
+function formatContentsListing(items: GitHubContentsItem[]): string {
+	items.sort((a, b) => {
+		if (a.type === "dir" && b.type !== "dir") return -1;
+		if (a.type !== "dir" && b.type === "dir") return 1;
+		return a.name.localeCompare(b.name);
+	});
+	let md = "## Contents\n\n```\n";
+	for (const item of items) {
+		const prefix = item.type === "dir" ? "[dir] " : "      ";
+		const size = item.type === "file" && item.size ? ` (${item.size} bytes)` : "";
+		md += `${prefix}${item.name}${size}\n`;
+	}
+	return `${md}\`\`\`\n\n`;
+}
+
+/** The directory's README.md as a section, or empty when it has none or the raw read fails. */
+async function loadDirectoryReadme(
+	gh: GitHubUrl,
+	ref: string,
+	dirPath: string,
+	items: GitHubContentsItem[],
+	timeout: number,
+	signal: AbortSignal | undefined,
+): Promise<string> {
+	const readmeFile = items.find(item => item.type === "file" && /^readme\.md$/i.test(item.name));
+	if (!readmeFile) return "";
+	const readmePath = dirPath ? `${dirPath}/${readmeFile.name}` : readmeFile.name;
+	const rawUrl = `https://raw.githubusercontent.com/${gh.owner}/${gh.repo}/${ref}/${readmePath}`;
+	const readmeResult = await loadPage(rawUrl, { timeout, signal });
+	return readmeResult.ok ? `---\n\n## README\n\n${readmeResult.content}` : "";
 }
 
 /**
@@ -457,37 +472,32 @@ async function renderGitHubRepo(
 	if (repo.license) md += `License: ${repo.license.name}\n`;
 	md += `\n---\n\n`;
 
-	// Fetch file tree
 	const treeResult = await fetchGitHubApi(
 		`/repos/${gh.owner}/${gh.repo}/git/trees/${repo.default_branch}?recursive=1`,
 		timeout,
 		signal,
 	);
 	if (treeResult.ok && treeResult.data) {
-		const tree = (treeResult.data as { tree: Array<{ path: string; type: string }> }).tree;
-		md += `## Files\n\n`;
-		md += "```\n";
-		for (const item of tree.slice(0, 100)) {
-			const prefix = item.type === "tree" ? "[dir] " : "      ";
-			md += `${prefix}${item.path}\n`;
-		}
-		if (tree.length > 100) {
-			md += `[…${tree.length - 100} files elided…]\n`;
-		}
-		md += "```\n\n";
+		md += formatRepoFiles((treeResult.data as { tree: Array<{ path: string; type: string }> }).tree);
 	}
 
-	// Fetch README
 	const readmeResult = await fetchGitHubApi(`/repos/${gh.owner}/${gh.repo}/readme`, timeout, signal);
-	if (readmeResult.ok && readmeResult.data) {
-		const readme = readmeResult.data as { content: string; encoding: string };
-		if (readme.encoding === "base64") {
-			const decoded = Buffer.from(readme.content, "base64").toString("utf-8");
-			md += `## README\n\n${decoded}`;
-		}
+	const readme = readmeResult.ok ? (readmeResult.data as { content: string; encoding: string } | null) : null;
+	if (readme?.encoding === "base64") {
+		md += `## README\n\n${Buffer.from(readme.content, "base64").toString("utf-8")}`;
 	}
 
 	return { content: md, ok: true };
+}
+
+/** The first hundred entries of the recursive tree, directories marked, with the rest counted. */
+function formatRepoFiles(tree: Array<{ path: string; type: string }>): string {
+	let md = "## Files\n\n```\n";
+	for (const item of tree.slice(0, 100)) {
+		md += `${item.type === "tree" ? "[dir] " : "      "}${item.path}\n`;
+	}
+	if (tree.length > 100) md += `[…${tree.length - 100} files elided…]\n`;
+	return `${md}\`\`\`\n\n`;
 }
 
 /** @internal Exported for testing the table-cell escaping in {@link renderActionsSteps}. */
@@ -696,8 +706,27 @@ async function renderGitHubActionsJob(
 	return { content: md, ok: true };
 }
 
+type GitHubApiRenderer = (
+	gh: GitHubUrl,
+	timeout: number,
+	signal?: AbortSignal,
+) => Promise<{ content: string; ok: boolean }>;
+
+/** The result method and REST renderer of each URL type read through the API; a type absent here has no reader. */
+const API_READERS: Partial<Record<GitHubUrl["type"], readonly [method: string, render: GitHubApiRenderer]>> = {
+	tree: ["github-tree", renderGitHubTree],
+	commit: ["github-commit", renderGitHubCommit],
+	issue: ["github-issue", renderGitHubIssue],
+	pull: ["github-pr", renderGitHubIssue],
+	issues: ["github-issues", renderGitHubIssuesList],
+	repo: ["github-repo", renderGitHubRepo],
+	"actions-run": ["github-actions-run", renderGitHubActionsRun],
+	"actions-job": ["github-actions-job", renderGitHubActionsJob],
+};
+
 /**
- * Handle GitHub URLs specially
+ * Handle GitHub URLs specially: a blob as raw text, every type in {@link API_READERS}
+ * through the REST API.
  */
 export const handleGitHub: SpecialHandler = async (
 	url: string,
@@ -708,95 +737,27 @@ export const handleGitHub: SpecialHandler = async (
 	if (!gh) return null;
 
 	const fetchedAt = new Date().toISOString();
-	const notes: string[] = [];
-
-	switch (gh.type) {
-		case "blob": {
-			// Convert to raw URL and fetch
-			const rawUrl = toRawGitHubUrl(gh);
-			notes.push(`Fetched raw: ${rawUrl}`);
-			const result = await loadPage(rawUrl, { timeout, signal });
-			if (result.ok) {
-				return buildResult(result.content, {
-					url,
-					finalUrl: rawUrl,
-					method: "github-raw",
-					fetchedAt,
-					notes,
-					contentType: "text/plain",
-				});
-			}
-			break;
+	if (gh.type === "blob") {
+		const rawUrl = toRawGitHubUrl(gh);
+		const result = await loadPage(rawUrl, { timeout, signal });
+		if (result.ok) {
+			const notes = [`Fetched raw: ${rawUrl}`];
+			return buildResult(result.content, {
+				url,
+				finalUrl: rawUrl,
+				method: "github-raw",
+				fetchedAt,
+				notes,
+				contentType: "text/plain",
+			});
 		}
+	}
 
-		case "tree": {
-			notes.push(`Fetched via GitHub API`);
-			const result = await renderGitHubTree(gh, timeout, signal);
-			if (result.ok) {
-				return buildResult(result.content, { url, method: "github-tree", fetchedAt, notes });
-			}
-			break;
-		}
-
-		case "commit": {
-			notes.push(`Fetched via GitHub API`);
-			const result = await renderGitHubCommit(gh, timeout, signal);
-			if (result.ok) {
-				return buildResult(result.content, { url, method: "github-commit", fetchedAt, notes });
-			}
-			break;
-		}
-
-		case "issue":
-		case "pull": {
-			notes.push(`Fetched via GitHub API`);
-			const result = await renderGitHubIssue(gh, timeout, signal);
-			if (result.ok) {
-				return buildResult(result.content, {
-					url,
-					method: gh.type === "pull" ? "github-pr" : "github-issue",
-					fetchedAt,
-					notes,
-				});
-			}
-			break;
-		}
-
-		case "issues": {
-			notes.push(`Fetched via GitHub API`);
-			const result = await renderGitHubIssuesList(gh, timeout, signal);
-			if (result.ok) {
-				return buildResult(result.content, { url, method: "github-issues", fetchedAt, notes });
-			}
-			break;
-		}
-
-		case "repo": {
-			notes.push(`Fetched via GitHub API`);
-			const result = await renderGitHubRepo(gh, timeout, signal);
-			if (result.ok) {
-				return buildResult(result.content, { url, method: "github-repo", fetchedAt, notes });
-			}
-			break;
-		}
-
-		case "actions-run": {
-			notes.push(`Fetched via GitHub API`);
-			const result = await renderGitHubActionsRun(gh, timeout, signal);
-			if (result.ok) {
-				return buildResult(result.content, { url, method: "github-actions-run", fetchedAt, notes });
-			}
-			break;
-		}
-
-		case "actions-job": {
-			notes.push(`Fetched via GitHub API`);
-			const result = await renderGitHubActionsJob(gh, timeout, signal);
-			if (result.ok) {
-				return buildResult(result.content, { url, method: "github-actions-job", fetchedAt, notes });
-			}
-			break;
-		}
+	const reader = API_READERS[gh.type];
+	if (reader) {
+		const [method, render] = reader;
+		const result = await render(gh, timeout, signal);
+		if (result.ok) return buildResult(result.content, { url, method, fetchedAt, notes: ["Fetched via GitHub API"] });
 	}
 
 	// Matched a GitHub URL but every API path failed: degrade loudly so the

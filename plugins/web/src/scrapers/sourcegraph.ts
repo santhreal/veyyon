@@ -246,55 +246,48 @@ async function renderSearch(
 
 	let md = "# Sourcegraph Search\n\n";
 	md += `**Query:** \`${query}\`\n`;
-	if (typeof resultsData?.matchCount === "number") {
+	if (typeof resultsData.matchCount === "number") {
 		md += `**Matches:** ${resultsData.matchCount}\n`;
 	}
-	if (typeof resultsData?.limitHit === "boolean") {
+	if (typeof resultsData.limitHit === "boolean") {
 		md += `**Limit hit:** ${resultsData.limitHit ? "yes" : "no"}\n`;
 	}
 	md += "\n";
 
-	if (!results || results.length === 0) {
+	if (results.length === 0) {
 		md += "_No results._\n";
 		return { content: md, ok: true };
 	}
 
 	const maxResults = 10;
 	md += "## Results\n\n";
-	for (const result of results.slice(0, maxResults)) {
-		if (isFileMatchResult(result)) {
-			const repoName = result.repository?.name ?? "unknown";
-			const filePath = result.file?.path ?? "unknown";
-			md += `### ${repoName}/${filePath}\n\n`;
-			if (result.repository?.url) md += `**Repository:** ${result.repository.url}\n`;
-			if (result.file?.url) md += `**File:** ${result.file.url}\n`;
-
-			const lineMatches = result.lineMatches ?? [];
-			if (lineMatches.length > 0) {
-				md += "\n```text\n";
-				for (const line of lineMatches.slice(0, 5)) {
-					const preview = (line.preview ?? "").replace(/\n/g, " ").trim();
-					const lineNumber = line.lineNumber ?? 0;
-					md += `L${lineNumber}: ${preview}\n`;
-				}
-				md += "```\n\n";
-			}
-			continue;
-		}
-
-		if (isRepositoryResult(result)) {
-			const name = result.name ?? "unknown";
-			md += `### ${name}\n\n`;
-			if (result.url) md += `**Repository:** ${result.url}\n`;
-			md += "\n";
-		}
-	}
+	for (const result of results.slice(0, maxResults)) md += formatSearchResult(result);
 
 	if (results.length > maxResults) {
 		md += `[…${results.length - maxResults} results elided…]\n`;
 	}
 
 	return { content: md, ok: true };
+}
+
+/** One search hit: a file match with up to five matching lines, or a repository; any other kind renders nothing. */
+function formatSearchResult(result: SearchResultItem): string {
+	if (isRepositoryResult(result)) {
+		return `### ${result.name ?? "unknown"}\n\n${result.url ? `**Repository:** ${result.url}\n` : ""}\n`;
+	}
+	if (!isFileMatchResult(result)) return "";
+
+	let md = `### ${result.repository?.name ?? "unknown"}/${result.file?.path ?? "unknown"}\n\n`;
+	if (result.repository?.url) md += `**Repository:** ${result.repository.url}\n`;
+	if (result.file?.url) md += `**File:** ${result.file.url}\n`;
+
+	const lineMatches = result.lineMatches ?? [];
+	if (lineMatches.length === 0) return md;
+	md += "\n```text\n";
+	for (const line of lineMatches.slice(0, 5)) {
+		md += `L${line.lineNumber ?? 0}: ${(line.preview ?? "").replace(/\n/g, " ").trim()}\n`;
+	}
+	return `${md}\`\`\`\n\n`;
 }
 
 export const handleSourcegraph: SpecialHandler = async (

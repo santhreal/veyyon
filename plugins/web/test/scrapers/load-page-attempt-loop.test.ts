@@ -256,6 +256,100 @@ describe("loadPage keeps rotating user agents for the cases that need it", () =>
 	});
 });
 
+describe("loadPage reads the body it is asked for", () => {
+	function chunked(chunks: string[], status = 200, contentType = "text/plain"): Response {
+		const encoder = new TextEncoder();
+		const stream = new ReadableStream<Uint8Array>({
+			start(controller) {
+				for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+				controller.close();
+			},
+		});
+		return new Response(stream, { status, headers: { "content-type": contentType } });
+	}
+
+	it("returns the bytes read through the chunk that crosses maxBytes, flagged truncated", async () => {
+		patchFetch(() => chunked(["aaaa", "bbbb", "cccc"]));
+
+		const result = await loadPage("https://big.example/page", { timeout: 5, maxBytes: 6 });
+
+		expect({ content: result.content, truncated: result.truncated }).toEqual({
+			content: "aaaabbbb",
+			truncated: true,
+		});
+	});
+
+	it("returns a body of exactly maxBytes whole and not truncated", async () => {
+		patchFetch(() => chunked(["aaaa", "bbbb", "cccc"]));
+
+		const result = await loadPage("https://big.example/page", { timeout: 5, maxBytes: 12 });
+
+		expect({ content: result.content, truncated: result.truncated }).toEqual({
+			content: "aaaabbbbcccc",
+			truncated: false,
+		});
+	});
+
+	it("skips the body of a successful response whose content type the caller declines, and reads it on an error status", async () => {
+		const offered: string[] = [];
+		const skipBodyForContentType = (contentType: string) => {
+			offered.push(contentType);
+			return contentType === "application/pdf";
+		};
+		patchFetch(attempt => chunked(["%PDF"], attempt === 0 ? 200 : 404, "Application/PDF; name=paper.pdf"));
+
+		const skipped = await loadPage("https://papers.example/a.pdf", { timeout: 5, skipBodyForContentType });
+		const failed = await loadPage("https://papers.example/a.pdf", { timeout: 5, skipBodyForContentType });
+
+		expect(skipped).toMatchObject({
+			ok: true,
+			status: 200,
+			content: "",
+			contentType: "application/pdf",
+			bodySkipped: true,
+		});
+		expect(failed).toMatchObject({ ok: false, status: 404, content: "%PDF", contentType: "application/pdf" });
+		expect(failed.bodySkipped).toBeUndefined();
+		expect(offered).toEqual(["application/pdf"]);
+	});
+
+	it("answers a response with no body as a failure carrying its status", async () => {
+		patchFetch(() => new Response(null, { status: 204 }));
+
+		const result = await loadPage("https://empty.example/page", { timeout: 5 });
+
+		expect(result).toMatchObject({ ok: false, status: 204, content: "" });
+	});
+
+	it("answers a second 429 instead of retrying it again", async () => {
+		const attempts = patchFetch(() => html("slow down", 429, { "retry-after": "0" }));
+
+		const result = await loadPage("https://limited.example/page", { timeout: 5 });
+
+		expect(attempts.map(entry => entry.userAgent)).toEqual([CURL_UA, CURL_UA]);
+		expect(result).toMatchObject({ ok: false, status: 429, content: "slow down" });
+	});
+
+	it("sends the caller's method, body and headers, a caller header replacing the default", async () => {
+		const sent: RequestInit[] = [];
+		patchFetch((_attempt, init) => {
+			sent.push(init);
+			return html("ok");
+		});
+
+		await loadPage("https://api.example/graphql", {
+			timeout: 5,
+			method: "POST",
+			body: '{"query":"{}"}',
+			headers: { Accept: "application/json" },
+		});
+
+		expect(sent).toHaveLength(1);
+		expect({ method: sent[0]?.method, body: sent[0]?.body }).toEqual({ method: "POST", body: '{"query":"{}"}' });
+		expect(sent[0]?.headers).toMatchObject({ Accept: "application/json", "User-Agent": CURL_UA });
+	});
+});
+
 describe("loadPage cancellation", () => {
 	/**
 	 * A caller who has already given up gets no request at all. The check is at the
@@ -315,14 +409,16 @@ describe("loadPage cancellation", () => {
 	 * Aborting during the 429 backoff is the same cancellation with a different
 	 * shape. That catch also minted a bare error, so the reason a wait of up to
 	 * ten seconds ended was unrecoverable; it now goes through the one owner like
-	 * every other abort.
+	 * every other abort. The backoff observes the signal, so the call ends without
+	 * sitting out the ten-second Retry-After: the test's two-second bound fails a
+	 * wait that ignores it.
 	 */
-	it("preserves the reason when the caller aborts during a 429 backoff", async () => {
+	it("preserves the reason and ends the backoff when the caller aborts during a 429 backoff", async () => {
 		const controller = new AbortController();
 		const reason = new DOMException("User pressed Escape", "AbortError");
 		const attempts = patchFetch(() => {
 			queueMicrotask(() => controller.abort(reason));
-			return html("", 429, { "retry-after": "5" });
+			return html("", 429, { "retry-after": "10" });
 		});
 
 		const error = await loadPage("https://limited.example/page", {
@@ -334,5 +430,5 @@ describe("loadPage cancellation", () => {
 		expect(isCancellation(error)).toBe(true);
 		expect((error as Error).cause).toBe(reason);
 		expect(attempts).toHaveLength(1);
-	});
+	}, 2_000);
 });

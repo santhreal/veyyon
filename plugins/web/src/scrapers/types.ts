@@ -250,105 +250,31 @@ function decodeBody(bytes: Buffer, contentTypeHeader: string): string {
  * caller's signal aborting means nobody is waiting for the answer.
  */
 export async function loadPage(url: string, options: LoadPageOptions = {}): Promise<LoadPageResult> {
-	const { timeout = 20, headers = {}, maxBytes = MAX_BYTES, signal, method = "GET", body } = options;
+	const { timeout = 20, signal } = options;
 
 	let lastError: string | undefined;
 	let retried429 = false;
 	for (let attempt = 0; attempt < USER_AGENTS.length; attempt++) {
 		throwIfCancelled(signal);
 
-		const userAgent = USER_AGENTS[attempt];
 		// Scoped per attempt so the deadline timer is cleared on settle instead
 		// of staying armed like a bare AbortSignal.timeout; the fence spans the
-		// streamed body read below.
+		// streamed body read.
 		const requestTimeout = scopedTimeoutSignal(timeout * 1000, signal);
 
 		try {
-			const requestInit: RequestInit = {
-				signal: requestTimeout.signal,
-				method,
-				headers: {
-					"User-Agent": userAgent,
-					Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-					"Accept-Language": "en-US,en;q=0.5",
-					"Accept-Encoding": "identity", // Cloudflare Markdown-for-Agents returns corrupted bytes when compression is negotiated
-					...headers,
-				},
-				redirect: "follow",
-			};
-
-			if (body !== undefined) {
-				requestInit.body = body;
-			}
-
-			const response = await fetch(url, requestInit);
-
-			const rawContentType = response.headers.get("content-type") ?? "";
-			const contentType = rawContentType.split(";")[0]?.trim().toLowerCase() ?? "";
-			const finalUrl = response.url;
-
-			if (response.status === 429 && !retried429) {
-				// Rate limited: retry once, honoring a bounded Retry-After. The
-				// wait observes the caller's signal so an Esc during the backoff
-				// does not stall for up to the full delay.
+			const outcome = await loadAttempt(url, USER_AGENTS[attempt], requestTimeout.signal, options, !retried429);
+			if (outcome.kind === "rate-limited") {
 				retried429 = true;
-				const delayMs = parseRetryAfterMs(response.headers.get("retry-after"));
-				void response.body?.cancel().catch(() => {});
-				try {
-					await scheduler.wait(delayMs, { signal });
-				} catch (error) {
-					// `scheduler.wait` rejects when the caller's signal aborts, which is
-					// the case worth naming: `throwIfCancelled` keeps `signal.reason` as the
-					// cause so the user learns WHY the wait ended. Minting a bare
-					// cancellation here threw that reason away, and it also relabelled
-					// any other rejection as a user abort.
-					throwIfCancelled(signal);
-					throw error;
-				}
+				// The wait observes the caller's signal so an Esc during the backoff does not
+				// stall for up to the full delay; its rejection reaches the catch below, where
+				// `throwIfCancelled` attaches `signal.reason`.
+				await scheduler.wait(outcome.delayMs, { signal });
 				attempt--; // Reuse the same user agent for the retry.
 				continue;
 			}
-
-			if (response.ok && options.skipBodyForContentType?.(contentType)) {
-				void response.body?.cancel().catch(() => {});
-				return { content: "", contentType, finalUrl, ok: true, status: response.status, bodySkipped: true };
-			}
-
-			const reader = response.body?.getReader();
-			if (!reader) {
-				return { content: "", contentType, finalUrl, ok: false, status: response.status };
-			}
-
-			const chunks: Uint8Array[] = [];
-			let totalSize = 0;
-			let truncated = false;
-
-			while (true) {
-				const { done, value } = await reader.read();
-				if (done) break;
-
-				chunks.push(value);
-				totalSize += value.length;
-
-				if (totalSize > maxBytes) {
-					truncated = true;
-					// The size cap is reached, `truncated` is set, and the bytes collected so far are returned. A
-					// cancel that fails only means the stream ended on its own; the result is unaffected.
-					void reader.cancel().catch(() => {});
-					break;
-				}
-			}
-
-			const content = decodeBody(Buffer.concat(chunks), rawContentType);
-			if (isBotBlocked(response.status, content) && attempt < USER_AGENTS.length - 1) {
-				continue;
-			}
-
-			if (!response.ok) {
-				return { content, contentType, finalUrl, ok: false, status: response.status, truncated };
-			}
-
-			return { content, contentType, finalUrl, ok: true, status: response.status, truncated };
+			if (outcome.kind === "bot-blocked" && attempt < USER_AGENTS.length - 1) continue;
+			return outcome.result;
 		} catch (error) {
 			// The caller stopping us ends everything, and `signal.reason` travels with
 			// the throw so the layer that reports it can say why.
@@ -370,6 +296,89 @@ export async function loadPage(url: string, options: LoadPageOptions = {}): Prom
 	}
 
 	return { content: "", contentType: "", finalUrl: url, ok: false, error: lastError };
+}
+
+/**
+ * What one {@link loadPage} attempt produced: a 429 to wait out and retry, a
+ * bot block the next user agent may get past, or the page.
+ */
+type LoadAttemptOutcome =
+	| { kind: "rate-limited"; delayMs: number }
+	| { kind: "bot-blocked"; result: LoadPageResult }
+	| { kind: "page"; result: LoadPageResult };
+
+/** Fetch `url` once as `userAgent`, reading the body up to `options.maxBytes`. */
+async function loadAttempt(
+	url: string,
+	userAgent: string,
+	signal: AbortSignal,
+	options: LoadPageOptions,
+	canRetry429: boolean,
+): Promise<LoadAttemptOutcome> {
+	const { headers = {}, maxBytes = MAX_BYTES, method = "GET", body } = options;
+	const requestInit: RequestInit = {
+		signal,
+		method,
+		headers: {
+			"User-Agent": userAgent,
+			Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+			"Accept-Language": "en-US,en;q=0.5",
+			"Accept-Encoding": "identity", // Cloudflare Markdown-for-Agents returns corrupted bytes when compression is negotiated
+			...headers,
+		},
+		redirect: "follow",
+	};
+	if (body !== undefined) requestInit.body = body;
+
+	const response = await fetch(url, requestInit);
+
+	const rawContentType = response.headers.get("content-type") ?? "";
+	const contentType = rawContentType.split(";")[0]?.trim().toLowerCase() ?? "";
+	const finalUrl = response.url;
+	const status = response.status;
+
+	if (status === 429 && canRetry429) {
+		void response.body?.cancel().catch(() => {});
+		return { kind: "rate-limited", delayMs: parseRetryAfterMs(response.headers.get("retry-after")) };
+	}
+
+	if (response.ok && options.skipBodyForContentType?.(contentType)) {
+		void response.body?.cancel().catch(() => {});
+		return { kind: "page", result: { content: "", contentType, finalUrl, ok: true, status, bodySkipped: true } };
+	}
+
+	const reader = response.body?.getReader();
+	if (!reader) {
+		return { kind: "page", result: { content: "", contentType, finalUrl, ok: false, status } };
+	}
+
+	const { bytes, truncated } = await readCappedBody(reader, maxBytes);
+	const content = decodeBody(bytes, rawContentType);
+	const result: LoadPageResult = { content, contentType, finalUrl, ok: response.ok, status, truncated };
+	return { kind: isBotBlocked(status, content) ? "bot-blocked" : "page", result };
+}
+
+/**
+ * Read `reader` to its end or until more than `maxBytes` arrive. Past the cap
+ * the stream is cancelled and the bytes collected so far are returned with
+ * `truncated` set; a cancel that fails only means the stream ended on its own.
+ */
+export async function readCappedBody(
+	reader: Pick<ReadableStreamDefaultReader<Uint8Array>, "read" | "cancel">,
+	maxBytes: number,
+): Promise<{ bytes: Buffer; truncated: boolean }> {
+	const chunks: Uint8Array[] = [];
+	let totalSize = 0;
+	while (true) {
+		const { done, value } = await reader.read();
+		if (done) return { bytes: Buffer.concat(chunks), truncated: false };
+		chunks.push(value);
+		totalSize += value.length;
+		if (totalSize > maxBytes) {
+			void reader.cancel().catch(() => {});
+			return { bytes: Buffer.concat(chunks), truncated: true };
+		}
+	}
 }
 
 /**

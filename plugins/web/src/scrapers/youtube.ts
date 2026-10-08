@@ -13,49 +13,39 @@ interface YouTubeUrl {
 	playlistId?: string;
 }
 
+const VIDEO_ID_RE = /^[a-zA-Z0-9_-]{11}$/;
+
 /**
  * Parse YouTube URL into components
  */
 function parseYouTubeUrl(url: string): YouTubeUrl | null {
-	try {
-		const parsed = tryParseUrl(url);
-		if (!parsed) return null;
-		const hostname = parsed.hostname.replace(/^www\./, "");
+	const parsed = tryParseUrl(url);
+	if (!parsed) return null;
+	const hostname = parsed.hostname.replace(/^www\./, "");
 
-		// youtube.com/watch?v=VIDEO_ID
-		if ((hostname === "youtube.com" || hostname === "m.youtube.com") && parsed.pathname === "/watch") {
-			const videoId = parsed.searchParams.get("v");
-			const playlistId = parsed.searchParams.get("list") || undefined;
-			if (videoId) return { videoId, playlistId };
-		}
+	// youtu.be/VIDEO_ID
+	if (hostname === "youtu.be") return leadingVideoId(parsed.pathname.slice(1));
+	if (hostname !== "youtube.com" && hostname !== "m.youtube.com") return null;
 
-		// youtube.com/v/VIDEO_ID or youtube.com/embed/VIDEO_ID
-		if (hostname === "youtube.com" || hostname === "m.youtube.com") {
-			const match = parsed.pathname.match(/^\/(v|embed)\/([a-zA-Z0-9_-]{11})/);
-			if (match) return { videoId: match[2] };
-		}
+	// youtube.com/watch?v=VIDEO_ID
+	const watchId = parsed.pathname === "/watch" ? parsed.searchParams.get("v") : null;
+	if (watchId) return { videoId: watchId, playlistId: parsed.searchParams.get("list") || undefined };
 
-		// youtu.be/VIDEO_ID
-		if (hostname === "youtu.be") {
-			const videoId = parsed.pathname.slice(1).split("/")[0];
-			if (videoId && /^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
-				return { videoId };
-			}
-		}
+	// youtube.com/v/VIDEO_ID or youtube.com/embed/VIDEO_ID
+	const embedded = /^\/(v|embed)\/([a-zA-Z0-9_-]{11})/.exec(parsed.pathname);
+	if (embedded) return { videoId: embedded[2] };
 
-		// youtube.com/shorts/VIDEO_ID
-		if (hostname === "youtube.com" && parsed.pathname.startsWith("/shorts/")) {
-			const videoId = parsed.pathname.replace("/shorts/", "").split("/")[0];
-			if (videoId && /^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
-				return { videoId };
-			}
-		}
-	} catch {
-		// `new URL` on operator-supplied text: unparseable means not a YouTube
-		// link, which is the `null` below.
+	// youtube.com/shorts/VIDEO_ID
+	if (hostname === "youtube.com" && parsed.pathname.startsWith("/shorts/")) {
+		return leadingVideoId(parsed.pathname.slice("/shorts/".length));
 	}
-
 	return null;
+}
+
+/** The video named by the first segment of `segments` when that segment is a video ID. */
+function leadingVideoId(segments: string): YouTubeUrl | null {
+	const videoId = segments.split("/")[0];
+	return VIDEO_ID_RE.test(videoId) ? { videoId } : null;
 }
 
 /**
@@ -133,6 +123,48 @@ async function downloadSubtitleText(
 	return cleanVttToText(await Bun.file(subFiles[0]).text());
 }
 
+/** Subtitle tracks in order of preference: the first one yt-dlp lists and can download is used. */
+const SUBTITLE_TRACKS = [
+	{
+		listed: "[info] Available subtitles",
+		flag: "--write-sub",
+		source: "manual",
+		note: "Using manual subtitles",
+	},
+	{
+		listed: "[info] Available automatic captions",
+		flag: "--write-auto-sub",
+		source: "auto-generated",
+		note: "Using auto-generated captions",
+	},
+] as const;
+
+/** The fields of yt-dlp's `--dump-json` record the page renders. */
+interface YtDlpMeta {
+	title?: string;
+	channel?: string;
+	uploader?: string;
+	description?: string;
+	duration?: number;
+	upload_date?: string;
+	view_count?: number;
+}
+
+/** Video metadata with every absent field at its empty value; `uploaded` is `YYYY-MM-DD` or empty. */
+interface VideoMeta {
+	title: string;
+	channel: string;
+	description: string;
+	duration: number;
+	uploaded: string;
+	viewCount: number;
+}
+
+interface Transcript {
+	text: string;
+	source: string;
+}
+
 /**
  * Handle YouTube URLs - fetch metadata and transcript
  */
@@ -156,42 +188,8 @@ export const handleYouTube: SpecialHandler = async (
 		const notes: string[] = [];
 		const videoUrl = `https://www.youtube.com/watch?v=${yt.videoId}`;
 
-		// Prefer Parallel extract when it sits in the reader chain and creds exist
-		const fetchPreference = services?.fetchPreference();
-		const storage = services?.credentials;
-		if ((fetchPreference === "auto" || fetchPreference === "parallel") && findParallelApiKey(storage)) {
-			try {
-				const parallelResult = await extractWithParallel(
-					[videoUrl],
-					{
-						objective: "Extract the main content of this YouTube video page",
-						excerpts: true,
-						fullContent: false,
-						signal,
-					},
-					storage,
-				);
-				const firstDocument = parallelResult.results[0];
-				if (firstDocument) {
-					const content = getParallelExtractContent(firstDocument);
-					if (content.trim().length > 100) {
-						return buildResult(content, {
-							url,
-							finalUrl: videoUrl,
-							method: "parallel",
-							fetchedAt,
-							notes: ["Used Parallel extract for YouTube"],
-						});
-					}
-				}
-			} catch (error) {
-				throwIfCancelled(signal);
-				// Parallel extract is the better source when it works (a real transcript rather
-				// than yt-dlp metadata), so its failure changes what the reader gets. yt-dlp
-				// still runs below, which is why this is a note and not a degrade.
-				notes.push(`Parallel extract failed (${errorMessage(error)}); used yt-dlp instead`);
-			}
-		}
+		const extracted = await extractViaParallel(url, videoUrl, fetchedAt, notes, signal, services);
+		if (extracted) return extracted;
 
 		// Ensure yt-dlp is available (auto-download if missing)
 		const ytdlp = services ? await services.ensureTool("yt-dlp", { signal, silent: true }) : null;
@@ -209,104 +207,16 @@ export const handleYouTube: SpecialHandler = async (
 			};
 		}
 
-		const execOptions = {
-			mode: "group" as const,
+		const execOptions: ptree.ExecOptions = {
 			signal,
 			allowNonZero: true,
 			allowAbort: true,
-			stderr: "full" as const,
+			stderr: "full",
 			onSpawnPid: services?.spawnHook(),
 		};
+		const meta = await readVideoMeta(ytdlp, videoUrl, execOptions, notes);
+		const transcript = await readTranscript(ytdlp, yt.videoId, videoUrl, execOptions, notes);
 
-		// Fetch video metadata
-		const metaResult = await ptree.exec(
-			[ytdlp, "--dump-json", "--no-warnings", "--no-playlist", "--skip-download", videoUrl],
-			execOptions,
-		);
-
-		let title = "YouTube Video";
-		let channel = "";
-		let description = "";
-		let duration = 0;
-		let uploadDate = "";
-		let viewCount = 0;
-
-		if (metaResult.ok && metaResult.stdout.trim()) {
-			try {
-				const meta = JSON.parse(metaResult.stdout) as {
-					title?: string;
-					channel?: string;
-					uploader?: string;
-					description?: string;
-					duration?: number;
-					upload_date?: string;
-					view_count?: number;
-				};
-				title = meta.title || title;
-				channel = meta.channel || meta.uploader || "";
-				description = meta.description || "";
-				duration = meta.duration || 0;
-				uploadDate = meta.upload_date || "";
-				viewCount = meta.view_count || 0;
-			} catch (error) {
-				// yt-dlp answered with something that is not the JSON it documents. The result
-				// below is still built, from the fallback title alone, so the reader has to be
-				// told the metadata is missing rather than absent from the video.
-				notes.push(
-					`yt-dlp metadata was not valid JSON (${errorMessage(error)}); title and channel are unavailable`,
-				);
-			}
-		}
-
-		// Format upload date
-		let formattedDate = "";
-		if (uploadDate && uploadDate.length === 8) {
-			formattedDate = `${uploadDate.slice(0, 4)}-${uploadDate.slice(4, 6)}-${uploadDate.slice(6, 8)}`;
-		}
-
-		// Try to fetch subtitles
-		let transcript = "";
-		let transcriptSource = "";
-
-		// First, list available subtitles
-		const listResult = await ptree.exec(
-			[ytdlp, "--list-subs", "--no-warnings", "--no-playlist", "--skip-download", videoUrl],
-			execOptions,
-		);
-
-		const hasManualSubs = listResult.stdout.includes("[info] Available subtitles");
-		const hasAutoSubs = listResult.stdout.includes("[info] Available automatic captions");
-
-		// Create temp directory for subtitle download
-		const tmpDir = os.tmpdir();
-		const tmpBase = path.join(tmpDir, `yt-${yt.videoId}-${Snowflake.next()}`);
-
-		try {
-			// Try manual subtitles first (English preferred)
-			if (hasManualSubs) {
-				const text = await downloadSubtitleText(ytdlp, "--write-sub", tmpBase, videoUrl, execOptions);
-				if (text !== undefined) {
-					transcript = text;
-					transcriptSource = "manual";
-					notes.push("Using manual subtitles");
-				}
-			}
-
-			// Fall back to auto-generated captions
-			if (!transcript && hasAutoSubs) {
-				const text = await downloadSubtitleText(ytdlp, "--write-auto-sub", tmpBase, videoUrl, execOptions);
-				if (text !== undefined) {
-					transcript = text;
-					transcriptSource = "auto-generated";
-					notes.push("Using auto-generated captions");
-				}
-			}
-		} finally {
-			// Cleanup temp files (fire-and-forget with error suppression)
-			Array.fromAsync(new Bun.Glob(`${tmpBase}*`).scan({ absolute: true }))
-				.then(tmpFiles => Promise.all(tmpFiles.map(f => fs.unlink(f).catch(() => {}))))
-				.catch(() => {});
-		}
 		// Only a user-initiated abort is fatal; the per-fetch time budget expiring
 		// just means partial metadata/transcript, which we surface as a note.
 		throwIfCancelled(userSignal);
@@ -314,29 +224,147 @@ export const handleYouTube: SpecialHandler = async (
 			notes.push("Fetch time budget exhausted; metadata/transcript may be incomplete");
 		}
 
-		// Build markdown output
-		let md = `# ${title}\n\n`;
-		if (channel) md += `**Channel:** ${channel}\n`;
-		if (formattedDate) md += `**Uploaded:** ${formattedDate}\n`;
-		if (duration > 0) md += `**Duration:** ${formatMediaDuration(duration)}\n`;
-		if (viewCount > 0) md += `**Views:** ${formatNumber(viewCount)}\n`;
-		md += `**Video ID:** ${yt.videoId}\n\n`;
-
-		if (description) {
-			// Truncate long descriptions
-			const descPreview = truncate(description, 1000);
-			md += `---\n\n## Description\n\n${descPreview}\n\n`;
-		}
-
-		if (transcript) {
-			md += `---\n\n## Transcript (${transcriptSource})\n\n${transcript}\n`;
-		} else {
-			notes.push("No subtitles/captions available");
-			md += `---\n\n*No transcript available for this video.*\n`;
-		}
-
+		const md = renderVideo(meta, yt.videoId, transcript, notes);
 		return buildResult(md, { url, finalUrl: videoUrl, method: "youtube", fetchedAt, notes });
 	} finally {
 		handlerTimeout.cancel();
 	}
 };
+
+/**
+ * The video page through Parallel extract, when Parallel sits in the reader
+ * chain, its key is configured and it answers with real content; otherwise
+ * `null`, and yt-dlp renders the page.
+ */
+async function extractViaParallel(
+	url: string,
+	videoUrl: string,
+	fetchedAt: string,
+	notes: string[],
+	signal: AbortSignal,
+	services: ScrapeServices | undefined,
+): Promise<RenderResult | null> {
+	const fetchPreference = services?.fetchPreference();
+	const storage = services?.credentials;
+	if ((fetchPreference !== "auto" && fetchPreference !== "parallel") || !findParallelApiKey(storage)) return null;
+	try {
+		const parallelResult = await extractWithParallel(
+			[videoUrl],
+			{
+				objective: "Extract the main content of this YouTube video page",
+				excerpts: true,
+				fullContent: false,
+				signal,
+			},
+			storage,
+		);
+		const firstDocument = parallelResult.results[0];
+		const content = firstDocument ? getParallelExtractContent(firstDocument) : "";
+		if (content.trim().length <= 100) return null;
+		return buildResult(content, {
+			url,
+			finalUrl: videoUrl,
+			method: "parallel",
+			fetchedAt,
+			notes: ["Used Parallel extract for YouTube"],
+		});
+	} catch (error) {
+		throwIfCancelled(signal);
+		// Parallel extract is the better source when it works (a real transcript rather
+		// than yt-dlp metadata), so its failure changes what the reader gets. yt-dlp
+		// still runs, which is why this is a note and not a degrade.
+		notes.push(`Parallel extract failed (${errorMessage(error)}); used yt-dlp instead`);
+		return null;
+	}
+}
+
+async function readVideoMeta(
+	ytdlp: string,
+	videoUrl: string,
+	execOptions: ptree.ExecOptions,
+	notes: string[],
+): Promise<VideoMeta> {
+	const result = await ptree.exec(
+		[ytdlp, "--dump-json", "--no-warnings", "--no-playlist", "--skip-download", videoUrl],
+		execOptions,
+	);
+	if (result.ok && result.stdout.trim()) {
+		try {
+			return videoMeta(JSON.parse(result.stdout) as YtDlpMeta);
+		} catch (error) {
+			// yt-dlp answered with something that is not the JSON it documents. The result
+			// is still built, from the fallback title alone, so the reader has to be
+			// told the metadata is missing rather than absent from the video.
+			notes.push(`yt-dlp metadata was not valid JSON (${errorMessage(error)}); title and channel are unavailable`);
+		}
+	}
+	return videoMeta({});
+}
+
+function videoMeta(meta: YtDlpMeta): VideoMeta {
+	const uploadDate = meta.upload_date || "";
+	return {
+		title: meta.title || "YouTube Video",
+		channel: meta.channel || meta.uploader || "",
+		description: meta.description || "",
+		duration: meta.duration || 0,
+		uploaded:
+			uploadDate.length === 8 ? `${uploadDate.slice(0, 4)}-${uploadDate.slice(4, 6)}-${uploadDate.slice(6, 8)}` : "",
+		viewCount: meta.view_count || 0,
+	};
+}
+
+/**
+ * The text of the first track in {@link SUBTITLE_TRACKS} that yt-dlp lists and
+ * downloads with content, or an empty transcript. The downloaded files are
+ * removed afterwards.
+ */
+async function readTranscript(
+	ytdlp: string,
+	videoId: string,
+	videoUrl: string,
+	execOptions: ptree.ExecOptions,
+	notes: string[],
+): Promise<Transcript> {
+	const listResult = await ptree.exec(
+		[ytdlp, "--list-subs", "--no-warnings", "--no-playlist", "--skip-download", videoUrl],
+		execOptions,
+	);
+	const tmpBase = path.join(os.tmpdir(), `yt-${videoId}-${Snowflake.next()}`);
+	try {
+		let transcript: Transcript = { text: "", source: "" };
+		for (const track of SUBTITLE_TRACKS) {
+			if (transcript.text || !listResult.stdout.includes(track.listed)) continue;
+			const text = await downloadSubtitleText(ytdlp, track.flag, tmpBase, videoUrl, execOptions);
+			if (text === undefined) continue;
+			transcript = { text, source: track.source };
+			notes.push(track.note);
+		}
+		return transcript;
+	} finally {
+		// Cleanup temp files (fire-and-forget with error suppression)
+		Array.fromAsync(new Bun.Glob(`${tmpBase}*`).scan({ absolute: true }))
+			.then(tmpFiles => Promise.all(tmpFiles.map(f => fs.unlink(f).catch(() => {}))))
+			.catch(() => {});
+	}
+}
+
+/** The page markdown; a video with no transcript adds a note saying so. */
+function renderVideo(meta: VideoMeta, videoId: string, transcript: Transcript, notes: string[]): string {
+	let md = `# ${meta.title}\n\n`;
+	if (meta.channel) md += `**Channel:** ${meta.channel}\n`;
+	if (meta.uploaded) md += `**Uploaded:** ${meta.uploaded}\n`;
+	if (meta.duration > 0) md += `**Duration:** ${formatMediaDuration(meta.duration)}\n`;
+	if (meta.viewCount > 0) md += `**Views:** ${formatNumber(meta.viewCount)}\n`;
+	md += `**Video ID:** ${videoId}\n\n`;
+
+	if (meta.description) {
+		md += `---\n\n## Description\n\n${truncate(meta.description, 1000)}\n\n`;
+	}
+
+	if (transcript.text) {
+		return `${md}---\n\n## Transcript (${transcript.source})\n\n${transcript.text}\n`;
+	}
+	notes.push("No subtitles/captions available");
+	return `${md}---\n\n*No transcript available for this video.*\n`;
+}
