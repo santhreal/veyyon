@@ -8,6 +8,7 @@
 
 - Two class members that read no instance state are module functions and constants instead of `#private` members, which shrinks the compiled bytecode of their classes; behavior is unchanged.
 - Patch recovery evaluates the `diff` package when it first maps an edit from a stale snapshot onto the current file instead of when the module loads; behavior is unchanged.
+- Boundary repair, block lowering, batch preparation, anchor remapping, header parsing and line streaming run as separate per-step functions; patch output, warnings and errors are unchanged.
 
 ## [1.5.0] - 2026-09-18
 

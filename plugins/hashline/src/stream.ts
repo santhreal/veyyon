@@ -24,50 +24,51 @@ function resolveStreamOptions(options: StreamOptions): ResolvedStreamOptions {
 	};
 }
 
-interface ChunkEmitter {
-	pushLine: (line: string) => string[];
-	flush: () => string | undefined;
-}
+/** Returned by {@link ChunkEmitter.pushLine} when a line completes no chunk, so the common case allocates nothing. */
+const NO_CHUNKS: readonly string[] = [];
 
-function createChunkEmitter(options: ResolvedStreamOptions): ChunkEmitter {
-	let lineNumber = options.startLine;
-	let outLines: string[] = [];
-	let outBytes = 0;
+/** Buffers numbered lines into chunks bounded by a line count and a UTF-8 byte count. */
+class ChunkEmitter {
+	#lineNumber: number;
+	readonly #lines: string[] = [];
+	#bytes = 0;
+	readonly #maxLines: number;
+	readonly #maxBytes: number;
 
-	const flush = (): string | undefined => {
-		if (outLines.length === 0) return undefined;
-		const chunk = outLines.join("\n");
-		outLines = [];
-		outBytes = 0;
+	constructor(options: ResolvedStreamOptions) {
+		this.#lineNumber = options.startLine;
+		this.#maxLines = options.maxChunkLines;
+		this.#maxBytes = options.maxChunkBytes;
+	}
+
+	/** The buffered chunk, emptying the buffer, or `undefined` when nothing is buffered. */
+	flush(): string | undefined {
+		if (this.#lines.length === 0) return undefined;
+		const chunk = this.#lines.join("\n");
+		this.#lines.length = 0;
+		this.#bytes = 0;
 		return chunk;
-	};
+	}
 
-	const pushLine = (line: string): string[] => {
-		const formatted = formatNumberedLine(lineNumber, line);
-		lineNumber++;
-
-		const chunks: string[] = [];
-		const sepBytes = outLines.length === 0 ? 0 : 1;
+	/**
+	 * Number and buffer `text[start, end)` with one trailing `\r` dropped, and
+	 * return the chunks it completed in order: the buffer it would overflow,
+	 * then the buffer it fills to a bound.
+	 */
+	pushLine(text: string, start: number, end: number): readonly string[] {
+		const lineEnd = end > start && text.charCodeAt(end - 1) === 0x0d ? end - 1 : end;
+		const formatted = formatNumberedLine(this.#lineNumber++, text.slice(start, lineEnd));
 		const lineBytes = Buffer.byteLength(formatted, "utf-8");
-		const wouldOverflow =
-			outLines.length >= options.maxChunkLines || outBytes + sepBytes + lineBytes > options.maxChunkBytes;
-
-		if (outLines.length > 0 && wouldOverflow) {
-			const flushed = flush();
-			if (flushed) chunks.push(flushed);
-		}
-
-		outLines.push(formatted);
-		outBytes += (outLines.length === 1 ? 0 : 1) + lineBytes;
-
-		if (outLines.length >= options.maxChunkLines || outBytes >= options.maxChunkBytes) {
-			const flushed = flush();
-			if (flushed) chunks.push(flushed);
-		}
-		return chunks;
-	};
-
-	return { pushLine, flush };
+		const overflowed =
+			this.#lines.length >= this.#maxLines || this.#bytes + 1 + lineBytes > this.#maxBytes
+				? this.flush()
+				: undefined;
+		this.#bytes += (this.#lines.length === 0 ? 0 : 1) + lineBytes;
+		this.#lines.push(formatted);
+		const filled = this.#lines.length >= this.#maxLines || this.#bytes >= this.#maxBytes ? this.flush() : undefined;
+		if (overflowed === undefined) return filled === undefined ? NO_CHUNKS : [filled];
+		return filled === undefined ? [overflowed] : [overflowed, filled];
+	}
 }
 
 function isReadableStream(value: unknown): value is ReadableStream<Uint8Array> {
@@ -99,32 +100,26 @@ export async function* streamHashLines(
 	const resolved = resolveStreamOptions(options);
 	const decoder = new TextDecoder("utf-8");
 	const chunks = isReadableStream(source) ? bytesFromReadableStream(source) : source;
-	const emitter = createChunkEmitter(resolved);
+	const emitter = new ChunkEmitter(resolved);
 
 	let pending = "";
 	let sawAnyLine = false;
 
 	for await (const chunk of chunks) {
 		pending += decoder.decode(chunk, { stream: true });
-		let nl = pending.indexOf("\n");
-		while (nl !== -1) {
-			const raw = pending.slice(0, nl);
-			const line = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
+		let start = 0;
+		for (let nl = pending.indexOf("\n"); nl !== -1; nl = pending.indexOf("\n", start)) {
 			sawAnyLine = true;
-			for (const out of emitter.pushLine(line)) yield out;
-			pending = pending.slice(nl + 1);
-			nl = pending.indexOf("\n");
+			for (const out of emitter.pushLine(pending, start, nl)) yield out;
+			start = nl + 1;
 		}
+		pending = pending.slice(start);
 	}
 
 	pending += decoder.decode();
-	if (pending.length > 0) {
-		sawAnyLine = true;
-		const tail = pending.endsWith("\r") ? pending.slice(0, -1) : pending;
-		for (const out of emitter.pushLine(tail)) yield out;
-	}
-	if (!sawAnyLine) {
-		for (const out of emitter.pushLine("")) yield out;
+	// The unterminated last line, or the one empty line of an empty source.
+	if (pending.length > 0 || !sawAnyLine) {
+		for (const out of emitter.pushLine(pending, 0, pending.length)) yield out;
 	}
 
 	const last = emitter.flush();

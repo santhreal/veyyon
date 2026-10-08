@@ -351,33 +351,47 @@ export class Executor {
 			throw new Error(`line ${lineNum}: ${spec.emptyBodyError ?? "empty payload"}`);
 		}
 		const texts = payloads.map(payload => payload.text);
-		if (target.kind === "replace") {
-			const cursor: Cursor = { kind: "before_anchor", anchor: { ...target.range.start } };
-			for (const text of texts) this.pushInsert(cursor, text, lineNum, "replacement");
-			for (let line = target.range.start.line; line <= target.range.end.line; line++)
-				this.pushDelete({ line }, lineNum);
-		} else if (target.kind === "delete") {
-			for (let line = target.range.start.line; line <= target.range.end.line; line++)
-				this.pushDelete({ line }, lineNum);
-		} else if (target.kind === "block") {
-			this.pushBlock(target.anchor, texts, lineNum);
-		} else if (target.kind === "delete_block") {
-			this.pushBlock(target.anchor, [], lineNum);
-		} else if (target.kind === "insert_after_block") {
-			this.pushBlock(target.anchor, texts, lineNum, "insert_after");
-		} else if (target.kind === "insert_before") {
-			const cursor: Cursor = { kind: "before_anchor", anchor: { ...target.anchor } };
-			for (const text of texts) this.pushInsert(cursor, text, lineNum);
-		} else if (target.kind === "insert_after") {
-			const cursor: Cursor = { kind: "after_anchor", anchor: { ...target.anchor } };
-			for (const text of texts) this.pushInsert(cursor, text, lineNum);
-		} else if (target.kind === "bof") {
-			const cursor: Cursor = { kind: "bof" };
-			for (const text of texts) this.pushInsert(cursor, text, lineNum);
-		} else if (target.kind === "eof") {
-			const cursor: Cursor = { kind: "eof" };
-			for (const text of texts) this.pushInsert(cursor, text, lineNum);
+		switch (target.kind) {
+			case "replace":
+				this.#pushInserts(
+					{ kind: "before_anchor", anchor: { ...target.range.start } },
+					texts,
+					lineNum,
+					"replacement",
+				);
+				this.#pushRangeDelete(target.range, lineNum);
+				break;
+			case "delete":
+				this.#pushRangeDelete(target.range, lineNum);
+				break;
+			case "block":
+				this.pushBlock(target.anchor, texts, lineNum);
+				break;
+			case "delete_block":
+				this.pushBlock(target.anchor, [], lineNum);
+				break;
+			case "insert_after_block":
+				this.pushBlock(target.anchor, texts, lineNum, "insert_after");
+				break;
+			case "insert_before":
+				this.#pushInserts({ kind: "before_anchor", anchor: { ...target.anchor } }, texts, lineNum);
+				break;
+			case "insert_after":
+				this.#pushInserts({ kind: "after_anchor", anchor: { ...target.anchor } }, texts, lineNum);
+				break;
+			case "bof":
+			case "eof":
+				this.#pushInserts({ kind: target.kind }, texts, lineNum);
+				break;
 		}
+	}
+
+	#pushInserts(cursor: Cursor, texts: readonly string[], lineNum: number, mode?: "replacement"): void {
+		for (const text of texts) this.pushInsert(cursor, text, lineNum, mode);
+	}
+
+	#pushRangeDelete(range: ParsedRange, lineNum: number): void {
+		for (let line = range.start.line; line <= range.end.line; line++) this.pushDelete({ line }, lineNum);
 	}
 }
 

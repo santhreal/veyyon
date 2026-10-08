@@ -115,12 +115,7 @@ function normalizeFileHashText(text: string): string {
 	while (true) {
 		const newline = text.indexOf("\n", lineStart);
 		const lineEnd = newline === -1 ? text.length : newline;
-		let cut = lineEnd;
-		while (cut > lineStart) {
-			const code = text.charCodeAt(cut - 1);
-			if (code !== 0x20 && code !== 0x09 && code !== 0x0d) break;
-			cut--;
-		}
+		const cut = trimmedEnd(text, lineStart, lineEnd);
 		if (cut !== lineEnd) {
 			result += text.slice(copied, cut);
 			copied = lineEnd;
@@ -129,6 +124,17 @@ function normalizeFileHashText(text: string): string {
 		lineStart = newline + 1;
 	}
 	return copied === 0 ? text : result + text.slice(copied);
+}
+
+/** Index just past the last character in `[lineStart, lineEnd)` that is not a space, tab or CR. */
+function trimmedEnd(text: string, lineStart: number, lineEnd: number): number {
+	let cut = lineEnd;
+	while (cut > lineStart) {
+		const code = text.charCodeAt(cut - 1);
+		if (code !== 0x20 && code !== 0x09 && code !== 0x0d) break;
+		cut--;
+	}
+	return cut;
 }
 /**
  * Compute the content-derived hash tag carried by a hashline section header.

@@ -231,26 +231,7 @@ export async function writeFileAtomic(targetPath: string, content: string): Prom
 		throw withTargetInMessage(error, target, tempPath);
 	}
 
-	try {
-		await fs.rename(tempPath, target);
-	} catch (error) {
-		// Windows cannot rename onto an existing file; drop it and retry so the
-		// overwrite still happens (POSIX rename already replaces atomically). Any
-		// other failure is real: clean up the temp and report it against the target.
-		const code = (error as NodeJS.ErrnoException).code;
-		if (code === "EEXIST" || code === "EPERM" || code === "EACCES") {
-			try {
-				await fs.rm(target, { force: true });
-				await fs.rename(tempPath, target);
-			} catch (retryError) {
-				await fs.rm(tempPath, { force: true }).catch(() => {});
-				throw withTargetInMessage(retryError, target, tempPath);
-			}
-		} else {
-			await fs.rm(tempPath, { force: true }).catch(() => {});
-			throw withTargetInMessage(error, target, tempPath);
-		}
-	}
+	await renameOntoTarget(tempPath, target);
 
 	// Persist the rename itself by flushing the directory entry. Some platforms
 	// refuse to open a directory for fsync; the rename stands there regardless.
@@ -263,6 +244,32 @@ export async function writeFileAtomic(targetPath: string, content: string): Prom
 		}
 	} catch {
 		// Directory fsync unsupported on this platform.
+	}
+}
+
+/**
+ * Rename the flushed temp file onto `target`. Windows cannot rename onto an
+ * existing file, so on EEXIST/EPERM/EACCES the target is dropped and the
+ * rename retried; POSIX rename already replaces atomically. Any other failure
+ * removes the temp file and is reported against the target.
+ */
+async function renameOntoTarget(tempPath: string, target: string): Promise<void> {
+	try {
+		await fs.rename(tempPath, target);
+		return;
+	} catch (error) {
+		const code = (error as NodeJS.ErrnoException).code;
+		if (code !== "EEXIST" && code !== "EPERM" && code !== "EACCES") {
+			await fs.rm(tempPath, { force: true }).catch(() => {});
+			throw withTargetInMessage(error, target, tempPath);
+		}
+	}
+	try {
+		await fs.rm(target, { force: true });
+		await fs.rename(tempPath, target);
+	} catch (retryError) {
+		await fs.rm(tempPath, { force: true }).catch(() => {});
+		throw withTargetInMessage(retryError, target, tempPath);
 	}
 }
 
