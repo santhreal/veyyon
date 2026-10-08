@@ -32,6 +32,7 @@
 - Split compaction's cut-point search, file-list resolution, result validation, tail tool-result elision, preparation and summarization into one function per step; no user-visible change.
 - `prepareBranchEntries` collects the messages that fit its budget newest first and reverses them once instead of prepending each one, which cut preparing a 50,000-entry branch from 92.2 ms to 7.0 ms (median of nine).
 - Split the telemetry text sanitizer into a class with one method per surface (text, attribute, exception) and the span start, value summary, manual chat record and tool span finish into one function per step; no user-visible change.
+- Split `Agent`'s run loop into one method per step (loop config, Cursor tool-result buffering, tool choice, steering queue state, per-event state, failed-run settlement) and removed its handling of an assistant message left open at the end of a run, which the agent loop never produces; no user-visible change.
 - A GPT-5 turn no longer allocates an abort controller that nothing aborts and an `AbortSignal.any` over it, and `normalizeTools` skips its slot filter when its cache answers the call.
 
 ### Fixed
