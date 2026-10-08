@@ -45,54 +45,64 @@ function parsePngMetadata(header: Uint8Array): ImageMetadata | null {
 	return { mimeType: "image/png", width, height };
 }
 
+/** Kind of each JPEG marker byte: a segment with a length field, a standalone marker, or a start-of-frame segment. */
+const JPEG_SEGMENT = 0;
+const JPEG_STANDALONE = 1;
+const JPEG_FRAME = 2;
+const JPEG_MARKER_KINDS = new Uint8Array(256);
+JPEG_MARKER_KINDS.fill(JPEG_FRAME, 0xc0, 0xd0);
+// DHT, JPG and DAC sit in the start-of-frame range and carry no frame.
+JPEG_MARKER_KINDS[0xc4] = JPEG_SEGMENT;
+JPEG_MARKER_KINDS[0xc8] = JPEG_SEGMENT;
+JPEG_MARKER_KINDS[0xcc] = JPEG_SEGMENT;
+// The restart markers, start and end of image, and TEM carry no length.
+JPEG_MARKER_KINDS.fill(JPEG_STANDALONE, 0xd0, 0xda);
+JPEG_MARKER_KINDS[0x01] = JPEG_STANDALONE;
+
 function parseJpegMetadata(header: Uint8Array): ImageMetadata | null {
 	if (!magicEquals(header, 0, JPEG_MAGIC)) return null;
 	if (header.length < 4) return { mimeType: "image/jpeg" };
 
-	const view = new DataView(header.buffer, header.byteOffset, header.byteLength);
+	const frame = findJpegFrame(header);
+	if (frame < 0 || frame + 7 >= header.length) return { mimeType: "image/jpeg" };
+	// JPEG fields are big-endian. Reading the bytes directly avoids a DataView per parse.
+	return {
+		mimeType: "image/jpeg",
+		width: (header[frame + 5] << 8) | header[frame + 6],
+		height: (header[frame + 3] << 8) | header[frame + 4],
+		channels: header[frame + 7],
+		hasAlpha: false,
+	};
+}
+
+/** Offset of the first start-of-frame segment's length field, or -1 when the header ends first. */
+function findJpegFrame(header: Uint8Array): number {
 	let offset = 2;
 	while (offset + 9 < header.length) {
 		if (header[offset] !== 0xff) {
 			offset += 1;
 			continue;
 		}
-
 		let markerOffset = offset + 1;
 		while (markerOffset < header.length && header[markerOffset] === 0xff) {
 			markerOffset += 1;
 		}
-		if (markerOffset >= header.length) break;
+		// The header ends inside this segment's length field. A standalone marker this close to the
+		// end leaves fewer than 9 bytes to scan, which ends the scan as well.
+		if (markerOffset + 2 >= header.length) return -1;
 
-		const marker = header[markerOffset];
+		const kind = JPEG_MARKER_KINDS[header[markerOffset]];
 		const segmentOffset = markerOffset + 1;
-		if (marker === 0xd8 || marker === 0xd9 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+		if (kind === JPEG_STANDALONE) {
 			offset = segmentOffset;
 			continue;
 		}
-		if (segmentOffset + 1 >= header.length) break;
-
-		const segmentLength = view.getUint16(segmentOffset, false);
-		if (segmentLength < 2) break;
-
-		const isStartOfFrame = marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
-		if (isStartOfFrame) {
-			if (segmentOffset + 7 >= header.length) break;
-			const height = view.getUint16(segmentOffset + 3, false);
-			const width = view.getUint16(segmentOffset + 5, false);
-			const channels = header[segmentOffset + 7];
-			return {
-				mimeType: "image/jpeg",
-				width,
-				height,
-				channels: Number.isFinite(channels) ? channels : undefined,
-				hasAlpha: false,
-			};
-		}
-
+		const segmentLength = (header[segmentOffset] << 8) | header[segmentOffset + 1];
+		if (segmentLength < 2) return -1;
+		if (kind === JPEG_FRAME) return segmentOffset;
 		offset = segmentOffset + segmentLength;
 	}
-
-	return { mimeType: "image/jpeg" };
+	return -1;
 }
 
 function parseGifMetadata(header: Uint8Array): ImageMetadata | null {

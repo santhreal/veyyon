@@ -85,6 +85,8 @@
 - `latexToBlock` parses an environment, a script pair, a `\textcolor` color spec and a command in separate steps, with 100,100 differential checks identical to the previous build; a 10-formula corpus renders in 70.5 µs instead of 85.0 µs.
 - `LoopWatchdog` logs a block and handles an on-time tick in separate steps, with 15,000 differential checks of timer, stack sampler and log line traces identical to the previous build; no user-visible change.
 - `parseProfile` reads the call tree and `summarizeWindow` walks the hottest path in their own steps, reading each node once and dropping the profiler's root and program frames from the end of the walk, with 252,000 differential checks of parsed profiles and window summaries identical to the previous build; no user-visible change.
+- `parseImageMetadata` finds a JPEG's start-of-frame segment through a 256-entry marker table and reads its big-endian fields from the bytes without a `DataView`, with 150,000 differential checks identical to the previous build; a JPEG header with four segments before its frame parses in 56 ns instead of 80 ns.
+- `detectTerminalId` lowercases `TERM_PROGRAM` once and matches it with a `switch` instead of lowercasing it for each emulator name, with 150,000 differential checks identical to the previous build; a Warp environment resolves in 19 ns instead of 21 ns.
 
 ### Fixed
 
