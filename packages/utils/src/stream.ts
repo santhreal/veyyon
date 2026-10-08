@@ -540,26 +540,21 @@ function resumeAfterError(buffer: string, read: number, consumed: number, option
  * ```
  */
 export function parseJsonlLenient<T>(buffer: string, options?: ParseJsonlLenientOptions): T[] {
-	let entries: T[] | undefined;
+	// Each parse between skips is kept whole and joined once at the end: spreading a batch into `push`
+	// passes every record as a call argument, which throws `RangeError` past about a million of them.
+	const batches: unknown[][] = [];
 	let consumed = 0;
 
 	while (buffer.length > 0) {
 		const { values, error, read, done } = Bun.JSONL.parseChunk(buffer);
-		if (values.length > 0) {
-			const ext = values as T[];
-			if (!entries) {
-				entries = ext;
-			} else {
-				entries.push(...ext);
-			}
-		}
+		if (values.length > 0) batches.push(values);
 		const step = error ? resumeAfterError(buffer, read, consumed, options) : read;
 		if (step === 0) break;
 		consumed += step;
 		buffer = buffer.substring(step);
 		if (done && !error) break;
 	}
-	return entries ?? [];
+	return (batches.length === 1 ? batches[0] : batches.flat()) as T[];
 }
 
 /**
