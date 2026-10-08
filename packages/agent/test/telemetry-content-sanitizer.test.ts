@@ -495,4 +495,75 @@ describe("telemetry final text sanitizer", () => {
 		).toBeUndefined();
 		expect(sanitizerCalls).toBe(0);
 	});
+
+	it("keeps a sanitized key bound to the first original key across writes to one span", async () => {
+		const warnings: AgentTelemetryWarning[] = [];
+		const telemetry = telemetryFor({
+			captureMessageContent: "none",
+			textSanitizer: text => (text.startsWith("owner-") ? "owned.key" : text),
+			onTelemetryWarning: warning => warnings.push(warning),
+			onSpanStart: ({ span }) => {
+				span.setAttributes({ "owner-first": "first" });
+				span.setAttributes({ "owner-second": "second" });
+				span.setAttribute("owner-first", "first-again");
+			},
+		});
+		const span = startChatSpan(telemetry, MODEL, { stepNumber: 0, request: {} });
+		await finishChatSpan(telemetry, span, assistant([]), { stepNumber: 0 });
+
+		const readable = exporter.getFinishedSpans()[0] as ReadableSpan;
+		expect(readable.attributes["owned.key"]).toBe("first-again");
+		expect(warnings.map(warning => warning.code)).toEqual(["text_sanitizer_key_collision"]);
+	});
+
+	it("omits a string array attribute whole when the sanitizer throws on one element", async () => {
+		const telemetry = telemetryFor({
+			captureMessageContent: "none",
+			textSanitizer: text => {
+				if (text.includes(RAW_SENTINEL)) throw new Error("sanitizer failed");
+				return text;
+			},
+			onSpanStart: ({ span }) => {
+				span.setAttribute("mixed.list", ["clean", `secret-${RAW_SENTINEL}`]);
+				span.setAttribute("clean.list", ["one", "two"]);
+			},
+		});
+		const span = startChatSpan(telemetry, MODEL, { stepNumber: 0, request: {} });
+		await finishChatSpan(telemetry, span, assistant([]), { stepNumber: 0 });
+
+		const readable = exporter.getFinishedSpans()[0] as ReadableSpan;
+		expect(readable.attributes["mixed.list"]).toBeUndefined();
+		expect(readable.attributes["clean.list"]).toEqual(["one", "two"]);
+	});
+
+	it("records each exception field sanitized and keeps a numeric code", async () => {
+		const telemetry = telemetryFor({
+			captureMessageContent: "none",
+			textSanitizer: replaceSentinel,
+			onSpanEnd: ({ span }) => {
+				span.recordException({
+					code: 42,
+					name: `numeric-name-${RAW_SENTINEL}`,
+					message: `numeric-message-${RAW_SENTINEL}`,
+					stack: `numeric-stack-${RAW_SENTINEL}`,
+				});
+				span.recordException({ code: `string-code-${RAW_SENTINEL}`, message: "string-message" });
+				span.recordException({ name: `name-${RAW_SENTINEL}`, message: "named-message" });
+			},
+		});
+		const span = startChatSpan(telemetry, MODEL, { stepNumber: 0, request: {} });
+		await finishChatSpan(telemetry, span, assistant([]), { stepNumber: 0 });
+
+		const readable = exporter.getFinishedSpans()[0] as ReadableSpan;
+		const exceptions = readable.events.filter(event => event.name === "exception").map(event => event.attributes);
+		expect(exceptions).toEqual([
+			{
+				"exception.type": "42",
+				"exception.message": `numeric-message-${REPLACEMENT}`,
+				"exception.stacktrace": `numeric-stack-${REPLACEMENT}`,
+			},
+			{ "exception.type": `string-code-${REPLACEMENT}`, "exception.message": "string-message" },
+			{ "exception.type": `name-${REPLACEMENT}`, "exception.message": "named-message" },
+		]);
+	});
 });
