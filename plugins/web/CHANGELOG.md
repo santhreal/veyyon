@@ -21,6 +21,7 @@
 - The Discourse handler reads post likes from `actions_summary` and tag names from tag records, as current Discourse releases return them, instead of rendering 0 likes and `[object Object]` tags.
 - The dev.to handler renders an article page, for which the API returns `tag_list` as a comma-separated string, instead of failing on it.
 - The Stack Exchange handler decodes HTML entities in the question title and in author names.
+- The Hacker News handler renders the text of a comment that has replies once instead of twice.
 
 ## [1.5.4] - 2026-09-24
 

@@ -72,52 +72,33 @@ async function fetchHNItems(ids: number[], ctx: DiscussionContext, limit = 20): 
 	return results.filter((item): item is HNItem => item !== null && !item.deleted && !item.dead);
 }
 
-async function renderHNStory(item: HNItem, ctx: DiscussionContext, depth = 0): Promise<string> {
+/** Up to 20 replies to the story and 10 under each of them, the second level indented. */
+async function renderHNComments(kids: number[], ctx: DiscussionContext, depth: number): Promise<string> {
+	const comments = await fetchHNItems(kids, ctx, depth === 0 ? 20 : 10);
+	const indent = "  ".repeat(depth);
 	let output = "";
-
-	if (depth === 0) {
-		output += `# ${item.title}\n\n`;
-		if (item.url) {
-			output += `**URL:** ${item.url}\n\n`;
+	for (const comment of comments) {
+		output += `${indent}**${comment.by}** (${formatHNTimestamp(comment.time ?? 0)})`;
+		if (comment.score !== undefined) output += ` [${comment.score}]`;
+		output += "\n";
+		if (comment.text) {
+			const lines = decodeHNText(comment.text).split("\n");
+			output += `${lines.map(line => `${indent}${line}`).join("\n")}\n\n`;
 		}
-		output += `**Posted by:** ${item.by} | **Score:** ${item.score ?? 0} | **Time:** ${formatHNTimestamp(item.time ?? 0)}`;
-		if (item.descendants) {
-			output += ` | **Comments:** ${item.descendants}`;
-		}
-		output += "\n\n";
+		if (depth === 0 && comment.kids?.length) output += await renderHNComments(comment.kids, ctx, 1);
 	}
-
-	if (item.text) {
-		output += `${decodeHNText(item.text)}\n\n`;
-	}
-
-	if (item.kids && item.kids.length > 0 && depth < 2) {
-		const topComments = item.kids.slice(0, depth === 0 ? 20 : 10);
-		const comments = await fetchHNItems(topComments, ctx, topComments.length);
-
-		if (comments.length > 0) {
-			if (depth === 0) output += "---\n\n## Comments\n\n";
-
-			for (const comment of comments) {
-				const indent = "  ".repeat(depth);
-				output += `${indent}**${comment.by}** (${formatHNTimestamp(comment.time ?? 0)})`;
-				if (comment.score !== undefined) output += ` [${comment.score}]`;
-				output += "\n";
-				if (comment.text) {
-					const text = decodeHNText(comment.text);
-					const lines = text.split("\n");
-					output += `${lines.map(line => `${indent}${line}`).join("\n")}\n\n`;
-				}
-
-				if (comment.kids && comment.kids.length > 0 && depth < 1) {
-					const childOutput = await renderHNStory(comment, ctx, depth + 1);
-					output += childOutput;
-				}
-			}
-		}
-	}
-
 	return output;
+}
+
+async function renderHNStory(item: HNItem, ctx: DiscussionContext): Promise<string> {
+	let output = `# ${item.title}\n\n`;
+	if (item.url) output += `**URL:** ${item.url}\n\n`;
+	output += `**Posted by:** ${item.by} | **Score:** ${item.score ?? 0} | **Time:** ${formatHNTimestamp(item.time ?? 0)}`;
+	if (item.descendants) output += ` | **Comments:** ${item.descendants}`;
+	output += "\n\n";
+	if (item.text) output += `${decodeHNText(item.text)}\n\n`;
+	const comments = item.kids?.length ? await renderHNComments(item.kids, ctx, 0) : "";
+	return comments ? `${output}---\n\n## Comments\n\n${comments}` : output;
 }
 
 async function renderHNListing(ids: number[], ctx: DiscussionContext, title: string): Promise<string> {
@@ -193,7 +174,7 @@ export const hackerNewsDeclaration: DiscussionDeclaration = {
 			const item = await fetchHNItem(itemId, ctx);
 			if (!item) return ctx.scraperDegrade("hackernews", `Failed to fetch item ${match.id}`);
 
-			content = await renderHNStory(item, ctx, 0);
+			content = await renderHNStory(item, ctx);
 			notes.push(`Fetched HN item ${match.id} with top-level comments (depth 2)`);
 		} else {
 			const listingCfg = HN_LISTING_CONFIG[match.kind ?? ""];

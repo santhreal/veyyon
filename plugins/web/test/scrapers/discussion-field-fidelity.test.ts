@@ -241,12 +241,59 @@ describe("discussion field fidelity across all declared discussion sites", () =>
 			expect(result.content).not.toContain("deleted_user");
 			expect(result.content).not.toContain("spammer");
 
-			// Nested comment (depth 1) indented by two spaces
-			expect(result.content).toContain("  **coder** (");
-			expect(result.content).toContain("  Thanks Bob! We focused on speed.");
+			// Nested comment (depth 1) indented by two spaces, directly under its parent's text, which renders once.
+			expect(result.content).toContain(
+				"**bob** (30m ago)\nGreat project! *Loved* the design.\n\n  **coder** (20m ago)\n  Thanks Bob! We focused on speed.\n\n",
+			);
+			expect(result.content.split("Great project!")).toHaveLength(2);
 
 			// Depth 2 comment should not be rendered
 			expect(result.content).not.toContain("Level 3 comment should be omitted");
+		});
+
+		it("renders the first 20 replies to a story and the first 10 replies under each", async () => {
+			const now = Math.floor(Date.now() / 1000);
+			const itemsDb: Record<number, Record<string, unknown>> = {
+				1: {
+					id: 1,
+					type: "story",
+					title: "Busy thread",
+					by: "op",
+					time: now,
+					kids: Array.from({ length: 25 }, (_, i) => 100 + i),
+				},
+			};
+			for (let i = 0; i < 25; i++) {
+				itemsDb[100 + i] = { id: 100 + i, type: "comment", by: `top_${i + 1}`, time: now, text: `top ${i + 1}` };
+				itemsDb[200 + i] = {
+					id: 200 + i,
+					type: "comment",
+					by: `reply_${i + 1}`,
+					time: now,
+					text: `reply ${i + 1}`,
+				};
+			}
+			itemsDb[100].kids = Array.from({ length: 25 }, (_, i) => 200 + i);
+
+			loadPageSpy = spyOn(scraperTypes, "loadPage").mockImplementation(async (url: string) => {
+				const id = Number(url.match(/\/item\/(\d+)\.json/)?.[1]);
+				const item = itemsDb[id];
+				return item
+					? {
+							content: JSON.stringify(item),
+							contentType: "application/json",
+							finalUrl: url,
+							ok: true,
+							status: 200,
+						}
+					: { content: "null", contentType: "application/json", finalUrl: url, ok: false, status: 404 };
+			});
+
+			const result = (await handler("https://news.ycombinator.com/item?id=1", 10)) as scraperTypes.RenderResult;
+			expect(result.content).toContain("**top_20** (");
+			expect(result.content).not.toContain("top_21");
+			expect(result.content).toContain("  **reply_10** (");
+			expect(result.content).not.toContain("reply_11");
 		});
 
 		it("renders front page, newest, and best story listings", async () => {
