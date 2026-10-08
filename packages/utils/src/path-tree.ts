@@ -66,33 +66,38 @@ function addFile(node: PathTreeNode, name: string, key: string): void {
  */
 export function buildPathTree(entries: Iterable<PathTreeInput>): PathTreeNode {
 	const root = createNode();
-	for (const { path: rawPath, isDir, key } of entries) {
-		const normalized = rawPath.replace(/\\/g, "/");
-		const fileKey = key ?? rawPath;
-		if (isUrlLikePath(normalized)) {
-			addFile(root, normalized, fileKey);
-			continue;
-		}
-		const trimmed = normalized.endsWith("/") ? normalized.slice(0, -1) : normalized;
-		if (trimmed.length === 0) continue;
-		const segments = trimmed.split("/");
-		const dirCount = isDir ? segments.length : segments.length - 1;
-		let node = root;
-		for (let i = 0; i < dirCount; i++) {
-			const segment = segments[i]!;
-			let child = node.dirIndex.get(segment);
-			if (!child) {
-				child = createNode();
-				node.dirIndex.set(segment, child);
-				node.subdirs.push({ name: segment, node: child });
-			}
-			node = child;
-		}
-		if (!isDir) {
-			addFile(node, segments[segments.length - 1]!, fileKey);
-		}
-	}
+	for (const entry of entries) addPath(root, entry);
 	return root;
+}
+
+/** Insert one entry under `root`: a URL-like path as a root file leaf, any other path by its segments. */
+function addPath(root: PathTreeNode, { path: rawPath, isDir, key }: PathTreeInput): void {
+	const normalized = rawPath.includes("\\") ? rawPath.replaceAll("\\", "/") : rawPath;
+	const fileKey = key ?? rawPath;
+	if (isUrlLikePath(normalized)) {
+		addFile(root, normalized, fileKey);
+		return;
+	}
+	const trimmed = normalized.endsWith("/") ? normalized.slice(0, -1) : normalized;
+	if (trimmed.length === 0) return;
+	const segments = trimmed.split("/");
+	const dirCount = isDir ? segments.length : segments.length - 1;
+	let node = root;
+	for (let i = 0; i < dirCount; i++) node = childDir(node, segments[i]!);
+	if (!isDir) {
+		addFile(node, segments[segments.length - 1]!, fileKey);
+	}
+}
+
+/** The child directory `name` of `node`, created on first use. */
+function childDir(node: PathTreeNode, name: string): PathTreeNode {
+	let child = node.dirIndex.get(name);
+	if (!child) {
+		child = createNode();
+		node.dirIndex.set(name, child);
+		node.subdirs.push({ name, node: child });
+	}
+	return child;
 }
 
 /**
