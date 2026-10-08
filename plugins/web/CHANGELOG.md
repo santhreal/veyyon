@@ -6,6 +6,7 @@
 
 - The marketplace repository-link reader, key-value renderer and package-registry handler test missing values with optional chains; behavior is unchanged.
 - The page loader, the declarative and academic-paper engines, and the GitHub, Bluesky, YouTube, Twitter and Sourcegraph handlers are split into one function per step; behavior is unchanged.
+- The bioRxiv, Crossref, ORCID, PubMed, RFC and Semantic Scholar handlers are split into one function per step; behavior is unchanged.
 
 ### Fixed
 
