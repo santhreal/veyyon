@@ -9,6 +9,7 @@ import type {
 	AssistantTurnStatus,
 	Context,
 	IncompleteToolCall,
+	InstrumentationLevel,
 	Model,
 	ToolCallStatus,
 	ToolChoice,
@@ -73,7 +74,7 @@ import {
 	structuredCloneJSON,
 } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
-import { agentPauseGate } from "./pause";
+import { type AgentPauseGate, agentPauseGate } from "./pause";
 import { type AgentRunCoverage, type AgentRunSummary, ToolCallBlockedError } from "./run-collector";
 import {
 	type AgentTelemetry,
@@ -108,11 +109,14 @@ import type {
 	AgentTool,
 	AgentToolResult,
 	AgentTurnEndContext,
+	AnyAgentTool,
 	AsideMessage,
 	ConfiguredDialect,
 	SteeringInterruptSource,
 	SteeringQueueState,
 	StreamFn,
+	ToolCallArgumentTransform,
+	ToolCallRepairResult,
 } from "./types";
 import { isSoftToolRequirement } from "./types";
 import { yieldIfDue } from "./utils/yield";
@@ -155,12 +159,6 @@ function hardToolChoiceBlocks(choice: ToolChoice | undefined, requiredTool: stri
 }
 
 /**
- * Cadence (ms) for polling queued steering while an `interruptible` tool is in
- * flight, so a steer cuts the wait short instead of sitting idle until the
- * tool's own window elapses. A cheap synchronous queue check; latency-bounded
- * at one tick.
- */
-/**
  * Abort reason for a turn-wide interruption where only some tool calls caused
  * the abort and sibling placeholders need neutral messages.
  */
@@ -187,6 +185,12 @@ export function createToolScopedAbortReason(
  */
 export const TERMINAL_TOOL_RESULT_ABORT_REASON = Symbol.for("pi-agent-core.terminal-tool-result");
 
+/**
+ * Cadence (ms) for polling queued steering while an `interruptible` tool is in
+ * flight, so a steer cuts the wait short instead of sitting idle until the
+ * tool's own window elapses. A cheap synchronous queue check; latency-bounded
+ * at one tick.
+ */
 const STEERING_INTERRUPT_POLL_MS = 250;
 
 class HarmonyLeakInterruption extends Error {
@@ -319,6 +323,49 @@ function snapshotAssistantMessageEvent(
 	}
 }
 
+function hasSubstantiveToolResultContent(content: AgentToolResult["content"]): boolean {
+	for (const block of content) {
+		if (block.type === "image") return true;
+		if (block.type === "text" && block.text.trim().length > 0) return true;
+	}
+	return false;
+}
+
+/** A `content` block a session can persist, or `undefined` for a block of any other shape. */
+function coerceToolResultBlock(block: unknown): AgentToolResult["content"][number] | undefined {
+	if (!block || typeof block !== "object" || !("type" in block)) return undefined;
+	if (block.type === "text") {
+		return "text" in block && typeof block.text === "string"
+			? { type: "text", text: sanitizeText(block.text) }
+			: undefined;
+	}
+	if (block.type !== "image" || !("data" in block) || typeof block.data !== "string") return undefined;
+	return "mimeType" in block && typeof block.mimeType === "string"
+		? (block as { type: "image"; data: string; mimeType: string })
+		: undefined;
+}
+
+/** The persistable blocks of `rawContent`, followed by a note counting the blocks of any other shape. */
+function coerceToolResultContent(rawContent: readonly unknown[]): {
+	content: AgentToolResult["content"];
+	invalidBlocks: number;
+} {
+	const content: AgentToolResult["content"] = [];
+	let invalidBlocks = 0;
+	for (const block of rawContent) {
+		const coerced = coerceToolResultBlock(block);
+		if (coerced) content.push(coerced);
+		else invalidBlocks++;
+	}
+	if (invalidBlocks > 0) {
+		content.push({
+			type: "text",
+			text: `Tool returned an invalid result: ${formatCount("content block", invalidBlocks)} had an unsupported shape.`,
+		});
+	}
+	return { content, invalidBlocks };
+}
+
 /**
  * Normalize a value coming back from `tool.execute()` (or its streaming partial-update callback)
  * into a structurally valid {@link AgentToolResult}.
@@ -328,27 +375,10 @@ function snapshotAssistantMessageEvent(
  * (missing `content` array → crash on reload). We coerce at the single boundary where untyped
  * results enter the agent loop, so every downstream consumer can rely on the type.
  */
-
-function hasSubstantiveToolResultContent(content: AgentToolResult["content"]): boolean {
-	for (const block of content) {
-		if (block.type === "image") return true;
-		if (block.type === "text" && block.text.trim().length > 0) return true;
-	}
-	return false;
-}
-
 function coerceToolResult(raw: unknown): { result: AgentToolResult<unknown>; malformed: boolean } {
-	const rawObj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
-	const rawContent = rawObj?.content;
+	const rawObj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : undefined;
 	const details = rawObj && "details" in rawObj ? rawObj.details : {};
-	// Tools may flag a non-throwing failure on the result itself (e.g. an
-	// aggregator that catches per-entry errors and synthesizes a combined
-	// result). Preserve the flag so agent-loop can surface it on the wire.
-	const explicitError = Boolean(rawObj && "isError" in rawObj && rawObj.isError);
-	// Tools may flag the result contextually useless (zero matches, elapsed
-	// wait) so compaction can elide it once consumed. Errors are never useless.
-	const useless = Boolean(rawObj && "useless" in rawObj && rawObj.useless);
-
+	const rawContent = rawObj?.content;
 	if (!Array.isArray(rawContent)) {
 		return {
 			result: {
@@ -359,45 +389,21 @@ function coerceToolResult(raw: unknown): { result: AgentToolResult<unknown>; mal
 			malformed: true,
 		};
 	}
-
-	const content: AgentToolResult["content"] = [];
-	let invalidBlocks = 0;
-	for (const block of rawContent) {
-		if (!block || typeof block !== "object" || !("type" in block)) {
-			invalidBlocks++;
-			continue;
-		}
-		if (block.type === "text" && typeof (block as { text?: unknown }).text === "string") {
-			content.push({ type: "text", text: sanitizeText((block as { text: string }).text) });
-		} else if (
-			block.type === "image" &&
-			typeof (block as { data?: unknown }).data === "string" &&
-			typeof (block as { mimeType?: unknown }).mimeType === "string"
-		) {
-			content.push(block as { type: "image"; data: string; mimeType: string });
-		} else {
-			invalidBlocks++;
-		}
-	}
-	if (invalidBlocks > 0) {
-		content.push({
-			type: "text",
-			text: `Tool returned an invalid result: ${formatCount("content block", invalidBlocks)} had an unsupported shape.`,
-		});
-	}
-	const isError = explicitError || invalidBlocks > 0;
+	const { content, invalidBlocks } = coerceToolResultContent(rawContent);
+	// Tools may flag a non-throwing failure on the result itself (e.g. an
+	// aggregator that catches per-entry errors and synthesizes a combined
+	// result). Preserve the flag so agent-loop can surface it on the wire.
+	const isError = Boolean(rawObj?.isError) || invalidBlocks > 0;
 	// Anthropic rejects tool_result blocks with is_error: true and empty content.
 	if (isError && !hasSubstantiveToolResultContent(content)) {
 		content.length = 0;
 		content.push({ type: "text", text: EMPTY_ERROR_TOOL_RESULT_TEXT });
 	}
+	// Tools may flag the result contextually useless (zero matches, elapsed
+	// wait) so compaction can elide it once consumed. Errors are never useless.
+	const useless = !isError && Boolean(rawObj?.useless);
 	return {
-		result: {
-			content,
-			details,
-			...(isError ? { isError: true } : {}),
-			...(useless && !isError ? { useless: true } : {}),
-		},
+		result: { content, details, ...(isError ? { isError: true } : {}), ...(useless ? { useless: true } : {}) },
 		malformed: invalidBlocks > 0,
 	};
 }
@@ -1296,66 +1302,84 @@ async function settleTurnToolCalls(
 	message: AssistantMessage,
 ): Promise<ToolResultMessage[]> {
 	const toolCalls = unansweredToolCalls(message, run.context.messages);
-	const runnableStop = message.stopReason === "toolUse" || message.stopReason === "stop";
-	const deadlinePassed = isDeadlineExceeded(run.config.deadline);
-	let hasMoreToolCalls = runnableStop && toolCalls.length > 0 && !deadlinePassed;
-
 	const toolResults: ToolResultMessage[] = [];
-	const requiredTool = state.softRequiredTool;
-	if (requiredTool !== undefined && violatesSoftRequirement(run.config, requiredTool, toolCalls)) {
-		escalateSoftRequirement(run, state, requiredTool, toolCalls, toolResults);
-		hasMoreToolCalls = true;
-	} else if (hasMoreToolCalls) {
-		const executionResult = await executeToolCalls(
-			run.context,
-			message,
-			run.signal,
-			run.stream,
-			run.config,
-			run.telemetry,
-			run.invokeAgentSpan,
-		);
-		for (const result of executionResult.toolResults) appendToolResult(run, toolResults, result);
-	} else if (toolCalls.length > 0) {
-		// Turn ended on a non-runnable reason (`length` truncation) or deadline was exceeded
-		// but left toolCall blocks behind. pair each with a placeholder result.
-		const skipReason = deadlinePassed ? "aborted" : message.stopReason === "length" ? "length" : "skipped";
-		const skipErrMsg = deadlinePassed ? "Deadline exceeded" : undefined;
-		for (const toolCall of toolCalls) {
-			appendToolResult(run, toolResults, createAbortedToolResult(toolCall, run.stream, skipReason, skipErrMsg));
-			recordSkippedTool(run.telemetry, {
-				toolCallId: toolCall.id,
-				toolName: toolCall.name,
-				status: deadlinePassed ? "aborted" : "skipped",
-			});
-		}
-		hasMoreToolCalls = message.stopReason === "length" && !deadlinePassed;
-	}
-
+	let hasMoreToolCalls = await dispatchTurnToolCalls(run, state, message, toolCalls, toolResults);
 	// A tool hook may mark its completed result as terminal (e.g. agent yield).
 	// Stop before the next provider call without changing external/user abort semantics.
 	if (run.signal?.reason === TERMINAL_TOOL_RESULT_ABORT_REASON) {
 		hasMoreToolCalls = false;
 	}
-
-	if (toolCalls.length > 0) {
-		state.pausedTurnContinuations = 0;
-	} else if (
-		!hasMoreToolCalls &&
-		message.stopReason === "stop" &&
-		message.stopDetails?.type === "pause_turn" &&
-		state.pausedTurnContinuations < MAX_PAUSED_TURN_CONTINUATIONS
-	) {
-		// Non-terminal stop: the provider ended the response but not the turn
-		// (e.g. Codex `end_turn: false` on a commentary-only progress update).
-		// Re-sample with the assistant message replayed so the model keeps
-		// working; the next round folds steering/asides in like any other
-		// mid-work turn.
-		state.pausedTurnContinuations++;
-		hasMoreToolCalls = true;
-	}
-	state.hasMoreToolCalls = hasMoreToolCalls;
+	state.hasMoreToolCalls = continuesPausedTurn(state, message, toolCalls.length, hasMoreToolCalls);
 	return toolResults;
+}
+
+/**
+ * Escalates a soft tool requirement the turn violated, runs the turn's tool calls, or pairs each with a placeholder
+ * result, appending to `toolResults`; returns whether the loop samples another turn.
+ */
+async function dispatchTurnToolCalls(
+	run: LoopRun,
+	state: LoopState,
+	message: AssistantMessage,
+	toolCalls: readonly ToolCallContent[],
+	toolResults: ToolResultMessage[],
+): Promise<boolean> {
+	const runnableStop = message.stopReason === "toolUse" || message.stopReason === "stop";
+	const deadlinePassed = isDeadlineExceeded(run.config.deadline);
+	const requiredTool = state.softRequiredTool;
+	if (requiredTool !== undefined && violatesSoftRequirement(run.config, requiredTool, toolCalls)) {
+		escalateSoftRequirement(run, state, requiredTool, toolCalls, toolResults);
+		return true;
+	}
+	if (toolCalls.length === 0) return false;
+	if (runnableStop && !deadlinePassed) {
+		for (const result of await executeToolCalls(run, message)) appendToolResult(run, toolResults, result);
+		return true;
+	}
+	// Turn ended on a non-runnable reason (`length` truncation) or deadline was exceeded
+	// but left toolCall blocks behind. pair each with a placeholder result.
+	const skipReason = deadlinePassed ? "aborted" : message.stopReason === "length" ? "length" : "skipped";
+	const skipErrMsg = deadlinePassed ? "Deadline exceeded" : undefined;
+	const status = deadlinePassed ? "aborted" : "skipped";
+	for (const toolCall of toolCalls) {
+		appendToolResult(run, toolResults, createAbortedToolResult(toolCall, run.stream, skipReason, skipErrMsg));
+		recordSkippedTool(run.telemetry, { toolCallId: toolCall.id, toolName: toolCall.name, status });
+	}
+	// A truncated turn re-samples so the model can retry in smaller calls. A passed deadline ends the run at the turn
+	// boundary in `runTurn`, before any re-sample.
+	return message.stopReason === "length";
+}
+
+/**
+ * Whether the loop samples another turn once the turn's tool calls are settled. A turn with tool calls resets the
+ * paused-turn count. A turn without any that stopped on `pause_turn` is re-sampled, at most
+ * {@link MAX_PAUSED_TURN_CONTINUATIONS} times in a row.
+ */
+function continuesPausedTurn(
+	state: LoopState,
+	message: AssistantMessage,
+	toolCallCount: number,
+	hasMoreToolCalls: boolean,
+): boolean {
+	if (toolCallCount > 0) {
+		state.pausedTurnContinuations = 0;
+		return hasMoreToolCalls;
+	}
+	if (
+		hasMoreToolCalls ||
+		message.stopReason !== "stop" ||
+		message.stopDetails?.type !== "pause_turn" ||
+		state.pausedTurnContinuations >= MAX_PAUSED_TURN_CONTINUATIONS
+	) {
+		return hasMoreToolCalls;
+	}
+	// Non-terminal stop: the provider ended the response but not the turn
+	// (e.g. Codex `end_turn: false` on a commentary-only progress update).
+	// Re-sample with the assistant message replayed so the model keeps
+	// working; the next round folds steering/asides in like any other
+	// mid-work turn.
+	state.pausedTurnContinuations++;
+	return true;
 }
 
 /**
@@ -2295,174 +2319,695 @@ function executedToolCallIds(messages: ReadonlyArray<AgentMessage>): Set<string>
 	return executed;
 }
 
+/** One tool call of a batch, from dispatch to its emitted result. */
+interface ToolCallRecord {
+	readonly toolCall: ToolCallContent;
+	readonly tool: AnyAgentTool | undefined;
+	readonly batchIndex: number;
+	/** The `display` form of the arguments, which every event, span and record reads. Never the `execution` form. */
+	args: Record<string, unknown>;
+	readonly interruptible: boolean;
+	/** Steering and external aborts, plus peer IRC interrupts when the call is interruptible. */
+	readonly signal: AbortSignal;
+	/** The UI was told the call is running, which includes the time it spends in `beforeToolCall` (permission prompts). */
+	started: boolean;
+	/**
+	 * Control crossed into `tool.execute()`. The partial-completion ledger needs this one: a call cut off while
+	 * awaiting approval had no side effects and is safe to retry verbatim, and telling the model to go check state for
+	 * it is a false alarm that costs it a turn.
+	 */
+	entered: boolean;
+	/**
+	 * Instrumentation timing (see captureToolCallMetrics). Undefined until `tool.execute()` is about to run, so a call
+	 * that erred or was skipped before execution records a zero-duration, never-started span rather than a fabricated
+	 * one.
+	 */
+	startedAt: number | undefined;
+	concurrency: "shared" | "exclusive" | undefined;
+	isError: boolean;
+	skipped: boolean;
+	terminalStatus: ToolCallStatus | undefined;
+	/** Set once, when the call's result is emitted. */
+	toolResultMessage: ToolResultMessage | undefined;
+}
+
+/** What running one tool call produced, before it is emitted. */
+interface ToolCallOutcome {
+	result: AgentToolResult<unknown>;
+	isError: boolean;
+	caughtError: unknown;
+	/** `tool.execute()` returned, so the tool ran its side effects in full. */
+	completed: boolean;
+}
+
+/** A tool call whose arguments validated, in the form `tool.execute()` receives. */
+interface ValidatedToolCall {
+	tool: AnyAgentTool;
+	execution: Record<string, unknown>;
+}
+
 /**
- * Execute tool calls from an assistant message.
+ * Whether a call observes peer IRC interrupts. `interruptible` may be declared per call: a tool where only some
+ * operations block (an `irc` wait, a `job` poll) is not interruptible for the rest of them. Resolving it per call
+ * matters beyond latency, because a call whose signal aborted before it started is answered with a "skipped"
+ * placeholder instead of its own result. Under a blanket flag an unrelated interrupt therefore swallowed a
+ * non-blocking call's real result, including the validation error a malformed call was reporting.
+ *
+ * Resolved from raw pre-validation args. A throwing resolver must not take down the whole batch, so it falls back to
+ * the conservative side: an uninterruptible call always keeps its own result.
  */
-async function executeToolCalls(
-	currentContext: AgentContext,
-	assistantMessage: AssistantMessage,
-	signal: AbortSignal | undefined,
-	stream: EventStream<AgentEvent, AgentMessage[]>,
-	config: AgentLoopConfig,
-	telemetry: AgentTelemetry | undefined,
-	invokeAgentSpan: Span | undefined,
-): Promise<{ toolResults: ToolResultMessage[] }> {
-	const tools = currentContext.tools;
-	const {
-		hasSteeringMessages,
-		hasIrcInterrupts,
-		interruptMode = "immediate",
-		getToolContext,
-		transformToolCallArguments,
-		intentTracing,
-		instrumentation,
-		beforeToolCall,
-		afterToolCall,
-	} = config;
-	const instrumentationLevel = instrumentation ?? "off";
-	// Defensive: the outer loop already filters exec-resolved and already-answered
-	// blocks before deciding to invoke `executeToolCalls`, but skip them here too
-	// so the guarantee lives with the code that would re-run the tool.
-	const toolCalls = unansweredToolCalls(assistantMessage, currentContext.messages);
-	const emittedToolResults: ToolResultMessage[] = [];
-	const toolCallInfos = toolCalls.map(call => ({ id: call.id, name: call.name }));
-	const batchId = `${assistantMessage.timestamp ?? Date.now()}_${toolCalls[0]?.id ?? "batch"}`;
-	const shouldInterruptImmediately = interruptMode !== "wait";
-	const steeringAbortController = new AbortController();
-	const ircAbortController = new AbortController();
-	// Interruptible tools observe steering + external + IRC aborts; every other
-	// tool only sees steering + external, so an IRC-only interrupt never kills a
-	// partially side-effecting foreground tool (e.g. `bash`) running alongside a
-	// pure wait (e.g. `job` poll).
-	const nonInterruptibleSignal: AbortSignal = signal
-		? AbortSignal.any([signal, steeringAbortController.signal])
-		: steeringAbortController.signal;
-	const interruptibleSignal: AbortSignal = signal
-		? AbortSignal.any([signal, steeringAbortController.signal, ircAbortController.signal])
-		: AbortSignal.any([steeringAbortController.signal, ircAbortController.signal]);
-	const interruptState: { triggered: boolean; source?: SteeringInterruptSource | "irc" } = { triggered: false };
+function resolveInterruptible(tool: AnyAgentTool | undefined, args: Record<string, unknown>): boolean {
+	const declared = tool?.interruptible;
+	if (typeof declared !== "function") return declared === true;
+	try {
+		return declared(args) === true;
+	} catch (error) {
+		logger.warn("tool interruptible resolver threw; treating the call as uninterruptible", {
+			tool: tool?.name,
+			error: errorMessage(error),
+		});
+		return false;
+	}
+}
 
-	// Dispatch instant: instrumentation measures a call's queue wait as the gap
-	// between this and its execution start, so stamp it once, before scheduling.
-	const dispatchedAt = instrumentationLevel === "off" ? 0 : Date.now();
-	const records = toolCalls.map((toolCall, batchIndex) => {
-		// Tools emitted via OpenAI's custom-tool path (e.g. `apply_patch` on GPT-5)
-		// come back under their wire-level name, which may differ from the
-		// harness-internal `name`. Match on either, preferring `name` for
-		// determinism if both somehow collide.
-		const tool =
-			tools?.find(t => t.name === toolCall.name) ??
-			tools?.find(t => t.customWireName !== undefined && t.customWireName === toolCall.name);
-		// `interruptible` may be declared per call: a tool where only some
-		// operations block (an `irc` wait, a `job` poll) is not interruptible for
-		// the rest of them. Resolving it per call matters beyond latency, because
-		// a call whose signal aborted before it started is answered below with a
-		// "skipped" placeholder instead of its own result. Under a blanket flag an
-		// unrelated interrupt therefore swallowed a non-blocking call's real
-		// result, including the validation error a malformed call was reporting.
-		const declaredInterruptible = tool?.interruptible;
-		let interruptible: boolean;
-		if (typeof declaredInterruptible === "function") {
-			// Resolved from raw pre-validation args; a throwing resolver must not
-			// take down the whole batch, so fall back to the conservative side —
-			// an uninterruptible call always keeps its own result.
-			try {
-				interruptible = declaredInterruptible(toolCall.arguments as Record<string, unknown>) === true;
-			} catch (error) {
-				interruptible = false;
-				logger.warn("tool interruptible resolver threw; treating the call as uninterruptible", {
-					tool: tool?.name,
-					error: errorMessage(error),
-				});
-			}
-		} else {
-			interruptible = declaredInterruptible === true;
-		}
-		return {
-			toolCall,
-			tool,
-			batchIndex,
-			args: toolCall.arguments as Record<string, unknown>,
-			interruptible,
-			signal: interruptible ? interruptibleSignal : nonInterruptibleSignal,
-			started: false,
-			// `started` means the UI was told the call is running, which includes the
-			// time it spends in `beforeToolCall` (permission prompts). `entered` means
-			// control actually crossed into `tool.execute()`. The partial-completion
-			// ledger needs the second one: a call cut off while awaiting approval had
-			// no side effects and is safe to retry verbatim, and telling the model to
-			// go check state for it is a false alarm that costs it a turn.
-			entered: false,
-			// Instrumentation timing (see captureToolCallMetrics). `startedAt` stays
-			// undefined until `tool.execute()` is about to run, so a call that erred
-			// or was skipped before execution records a zero-duration, never-started
-			// span rather than a fabricated one.
-			startedAt: undefined as number | undefined,
-			concurrency: undefined as "shared" | "exclusive" | undefined,
-			result: undefined as AgentToolResult<unknown> | undefined,
-			isError: false,
-			skipped: false,
-			terminalStatus: undefined as ToolCallStatus | undefined,
-			toolResultMessage: undefined as ToolResultMessage | undefined,
-			resultEmitted: false,
-		};
-	});
+/**
+ * Whether a call may run beside its neighbours. Resolved from raw pre-validation args. A throwing resolver must not
+ * take down the whole batch, so it falls back to the safe (serial) mode.
+ */
+function resolveConcurrency(tool: AnyAgentTool | undefined, args: Record<string, unknown>): "shared" | "exclusive" {
+	const mode = tool?.concurrency;
+	if (typeof mode !== "function") return mode ?? "shared";
+	try {
+		return mode(args);
+	} catch (error) {
+		logger.warn("tool concurrency resolver threw; running the call serially", {
+			tool: tool?.name,
+			error: errorMessage(error),
+		});
+		return "exclusive";
+	}
+}
 
-	const checkSteering = async (): Promise<void> => {
-		// `signal` (external/user abort) is checked separately from the internal
-		// abort controllers: once the run is externally aborted it is unwinding
-		// and the interrupt would be redundant.
-		if (!shouldInterruptImmediately || signal?.aborted) {
-			return;
-		}
-		// Mid-batch steering detection must be non-consuming. If a direct
-		// integration only provides getSteeringMessages(), the queue drains at the
-		// injection boundary below; polling it here would strand or drop messages.
-		let steeringQueued = false;
-		let steeringSource: SteeringInterruptSource | undefined;
-		if (hasSteeringMessages) {
-			const queuedState = await hasSteeringMessages();
-			if (typeof queuedState === "boolean") {
-				steeringQueued = queuedState;
-				steeringSource = queuedState ? "user" : undefined;
-			} else {
-				const state: SteeringQueueState = queuedState;
-				steeringQueued = state.queued;
-				steeringSource = state.source ?? (state.queued ? "unknown" : undefined);
-			}
-		}
-		if (steeringQueued) {
-			// Queued steering upgrades an in-flight IRC interrupt: it aborts the
-			// shared signal so foreground tools stop as they do for a user Esc.
-			// Idempotent — a second steer poll after the abort is a no-op.
-			if (!steeringAbortController.signal.aborted) {
-				interruptState.triggered = true;
-				interruptState.source = steeringSource ?? "unknown";
-				steeringAbortController.abort();
-			}
-			return;
-		}
-		// IRC only fires once: a peer interrupt already recorded on interruptState
-		// must not re-abort, and (unlike steering above) never re-consume a queue.
-		if (interruptState.triggered) return;
-		if (hasIrcInterrupts && (await hasIrcInterrupts())) {
-			// Peer IRC only aborts interruptible waits: a foreground bash / write
-			// mid-execution keeps running so we never leave partial side effects.
-			interruptState.triggered = true;
-			interruptState.source = "irc";
-			ircAbortController.abort();
-		}
+/** The intent label a tool's own resolver derives from the stripped arguments, if it has one. */
+function derivedIntent(
+	tool: AnyAgentTool | undefined,
+	toolName: string,
+	args: Record<string, unknown>,
+): string | undefined {
+	if (typeof tool?.intent !== "function") return undefined;
+	try {
+		return tool.intent(args as never)?.trim() || undefined;
+	} catch (error) {
+		// Must never break tool execution, but a throwing intent resolver is a broken tool feature — surface it.
+		logger.warn("tool intent resolver threw; using the default intent label", {
+			tool: toolName,
+			error: errorMessage(error),
+		});
+		return undefined;
+	}
+}
+
+/** The error text for arguments `repairToolCallArguments` could not repair, followed by its hints. */
+function unrepairableArgumentsText(outcome: ToolCallRepairResult): string {
+	const hints =
+		outcome.hints.length > 0 ? `\n\n[Tool argument repair]\n${outcome.hints.map(h => `- ${h}`).join("\n")}` : "";
+	return `${outcome.reason ?? "Tool arguments could not be repaired."}${hints}`;
+}
+
+/** The source a queued-steering poll reports, or `undefined` when nothing is queued. */
+function queuedSteeringSource(queued: boolean | SteeringQueueState): SteeringInterruptSource | undefined {
+	if (typeof queued === "boolean") return queued ? "user" : undefined;
+	return queued.queued ? (queued.source ?? "unknown") : undefined;
+}
+
+/**
+ * A call's line in the batch ledger. `entered`, not `started`, separates "cut off inside the tool" from "cut off
+ * while waiting for approval": only the first can have applied side effects.
+ */
+function ledgerEntry(record: ToolCallRecord): ToolBatchCallEntry {
+	const cutShort = record.skipped || !record.toolResultMessage;
+	return {
+		toolCallId: record.toolCall.id,
+		toolName: record.toolCall.name,
+		outcome: cutShort ? (record.entered ? "interrupted" : "dropped") : record.isError ? "failed" : "ok",
 	};
+}
 
-	const emitToolResult = (
-		record: (typeof records)[number],
-		result: AgentToolResult<unknown>,
-		isError: boolean,
-	): void => {
-		if (record.resultEmitted) return;
+/** The tool calls of one assistant message: their scheduling, their interrupts, and the result each one emits. */
+class ToolBatch {
+	readonly #context: AgentContext;
+	/** The tools the batch was dispatched against; a tool registered mid-batch does not answer a call. */
+	readonly #tools: AgentContext["tools"];
+	readonly #assistantMessage: AssistantMessage;
+	readonly #signal: AbortSignal | undefined;
+	readonly #stream: EventStream<AgentEvent, AgentMessage[]>;
+	readonly #config: AgentLoopConfig;
+	readonly #telemetry: AgentTelemetry | undefined;
+	readonly #invokeAgentSpan: Span | undefined;
+	readonly #instrumentation: InstrumentationLevel;
+	readonly #interruptImmediately: boolean;
+	readonly #toolCallInfos: Array<{ id: string; name: string }>;
+	readonly #batchId: string;
+	readonly #steeringAbort = new AbortController();
+	readonly #ircAbort = new AbortController();
+	/** Instrumentation measures a call's queue wait as the gap between this and its execution start. */
+	readonly #dispatchedAt: number;
+	readonly #records: ToolCallRecord[];
+	readonly #emitted: ToolResultMessage[] = [];
+	/** What interrupted the batch; `undefined` until steering or a peer IRC interrupt does. */
+	#interruptSource: SteeringInterruptSource | "irc" | undefined;
+
+	constructor(run: LoopRun, assistantMessage: AssistantMessage) {
+		this.#context = run.context;
+		this.#tools = run.context.tools;
+		this.#assistantMessage = assistantMessage;
+		this.#signal = run.signal;
+		this.#stream = run.stream;
+		this.#config = run.config;
+		this.#telemetry = run.telemetry;
+		this.#invokeAgentSpan = run.invokeAgentSpan;
+		this.#instrumentation = run.config.instrumentation ?? "off";
+		this.#interruptImmediately = run.config.interruptMode !== "wait";
+		// Defensive: the outer loop already filters exec-resolved and already-answered blocks before deciding to
+		// invoke `executeToolCalls`, but skip them here too so the guarantee lives with the code that would re-run
+		// the tool.
+		const toolCalls = unansweredToolCalls(assistantMessage, run.context.messages);
+		this.#toolCallInfos = toolCalls.map(call => ({ id: call.id, name: call.name }));
+		this.#batchId = `${assistantMessage.timestamp ?? Date.now()}_${toolCalls[0]?.id ?? "batch"}`;
+		// Interruptible tools observe steering + external + IRC aborts; every other tool only sees steering +
+		// external, so an IRC-only interrupt never kills a partially side-effecting foreground tool (e.g. `bash`)
+		// running alongside a pure wait (e.g. `job` poll).
+		const steering = this.#steeringAbort.signal;
+		const irc = this.#ircAbort.signal;
+		const nonInterruptibleSignal = run.signal ? AbortSignal.any([run.signal, steering]) : steering;
+		const interruptibleSignal = AbortSignal.any(run.signal ? [run.signal, steering, irc] : [steering, irc]);
+		// Stamped once, before scheduling.
+		this.#dispatchedAt = this.#instrumentation === "off" ? 0 : Date.now();
+		this.#records = toolCalls.map((toolCall, batchIndex) => {
+			const args = toolCall.arguments as Record<string, unknown>;
+			// Tools emitted via OpenAI's custom-tool path (e.g. `apply_patch` on GPT-5) come back under their
+			// wire-level name, which may differ from the harness-internal `name`. Match on either, preferring `name`
+			// for determinism if both somehow collide.
+			const tool =
+				this.#tools?.find(t => t.name === toolCall.name) ??
+				this.#tools?.find(t => t.customWireName !== undefined && t.customWireName === toolCall.name);
+			const interruptible = resolveInterruptible(tool, args);
+			return {
+				toolCall,
+				tool,
+				batchIndex,
+				args,
+				interruptible,
+				signal: interruptible ? interruptibleSignal : nonInterruptibleSignal,
+				started: false,
+				entered: false,
+				startedAt: undefined,
+				concurrency: undefined,
+				isError: false,
+				skipped: false,
+				terminalStatus: undefined,
+				toolResultMessage: undefined,
+			};
+		});
+	}
+
+	/**
+	 * Starts every call and returns one task per call. A shared call runs beside its neighbours; an exclusive call
+	 * waits for every call before it and holds back every call after it.
+	 */
+	schedule(): Promise<void>[] {
+		let lastExclusive: Promise<void> = Promise.resolve();
+		let sharedTasks: Promise<void>[] = [];
+		const tasks: Promise<void>[] = [];
+		for (const record of this.#records) {
+			const concurrency = resolveConcurrency(record.tool, record.args);
+			record.concurrency = concurrency;
+			const start = concurrency === "exclusive" ? Promise.all([lastExclusive, ...sharedTasks]) : lastExclusive;
+			const task = start.then(() => this.#runTool(record));
+			tasks.push(task);
+			if (concurrency === "exclusive") {
+				lastExclusive = task;
+				sharedTasks = [];
+			} else {
+				sharedTasks.push(task);
+			}
+		}
+		return tasks;
+	}
+
+	/** Whether queued steering and IRC are polled while the batch runs. */
+	watchesSteering(): boolean {
+		return (
+			this.#interruptImmediately &&
+			(this.#config.hasSteeringMessages !== undefined || this.#config.hasIrcInterrupts !== undefined) &&
+			this.#records.some(record => record.interruptible)
+		);
+	}
+
+	/**
+	 * Interrupts the batch when steering is queued or a peer IRC interrupt is pending. Idempotent: a poll after the
+	 * interrupt changes nothing.
+	 */
+	async checkSteering(): Promise<void> {
+		// `signal` (external/user abort) is checked separately from the internal abort controllers: once the run is
+		// externally aborted it is unwinding and the interrupt would be redundant.
+		if (!this.#interruptImmediately || this.#signal?.aborted) return;
+		// Mid-batch steering detection must be non-consuming. If a direct integration only provides
+		// getSteeringMessages(), the queue drains at the injection boundary; polling it here would strand or drop
+		// messages.
+		const { hasSteeringMessages, hasIrcInterrupts } = this.#config;
+		const steeringSource = hasSteeringMessages ? queuedSteeringSource(await hasSteeringMessages()) : undefined;
+		if (steeringSource !== undefined) {
+			// Queued steering upgrades an in-flight IRC interrupt: it aborts the shared signal so foreground tools stop
+			// as they do for a user Esc. Idempotent — a second steer poll after the abort is a no-op.
+			if (!this.#steeringAbort.signal.aborted) {
+				this.#interruptSource = steeringSource;
+				this.#steeringAbort.abort();
+			}
+			return;
+		}
+		// IRC only fires once: a peer interrupt already recorded must not re-abort, and (unlike steering above) never
+		// re-consume a queue.
+		if (this.#interruptSource !== undefined) return;
+		if (hasIrcInterrupts && (await hasIrcInterrupts())) {
+			// Peer IRC only aborts interruptible waits: a foreground bash / write mid-execution keeps running so we
+			// never leave partial side effects.
+			this.#interruptSource = "irc";
+			this.#ircAbort.abort();
+		}
+	}
+
+	/**
+	 * Answers every call that never produced a result, which was skipped before dispatch, and returns the batch's
+	 * results in the order they were emitted.
+	 *
+	 * `record.skipped`, not the presence of a result message, is what says a call was cut short: a call whose
+	 * `tool.execute()` was aborted mid-flight was already answered with a skipped placeholder, so it HAS a result
+	 * message and an `isError` of true. Keying the ledger off the result message reported that call as "ran, failed"
+	 * and then told the model its result is already in the transcript and must not be re-run, which is false twice
+	 * over: nothing usable ran, and the call may have applied part of its side effects.
+	 *
+	 * A batch of more than one call carries the ledger: a one-call batch has no siblings to inventory, so a ledger
+	 * there is a second copy of what the call's own placeholder already says. The side-effect warning does not depend
+	 * on the ledger, because it rides the placeholder text itself (`createSkippedToolResult`'s `entered`).
+	 *
+	 * The ledger rides one placeholder, so it is only built when there is a placeholder left to carry it. A batch in
+	 * which every cut-short call was already answered has nothing to attach it to, and nothing to add: each of those
+	 * placeholders already states its own outcome.
+	 */
+	answerUnresolved(): ToolResultMessage[] {
+		const unresolved = this.#records.filter(record => !record.toolResultMessage);
+		// A call released from the pause gate by the run's own cancel has no interrupt source: nothing is queued, so
+		// its placeholder states the cancel rather than a steering message that does not exist.
+		const source = this.#interruptSource ?? (this.#signal?.aborted ? "cancelled-run" : undefined);
+		const batchLedger =
+			unresolved.length > 0 && this.#records.length > 1
+				? buildToolBatchLedger("interrupted", this.#records.map(ledgerEntry))
+				: undefined;
+		for (const [index, record] of unresolved.entries()) {
+			record.skipped = true;
+			record.terminalStatus = "skipped";
+			recordSkippedTool(this.#telemetry, {
+				toolCallId: record.toolCall.id,
+				toolName: record.toolCall.name,
+				status: "skipped",
+			});
+			const ledger = index === 0 ? batchLedger : undefined;
+			this.#emitToolResult(record, createSkippedToolResult(source, record.entered, ledger), true);
+		}
+		return this.#emitted;
+	}
+
+	async #runTool(record: ToolCallRecord): Promise<void> {
+		if (this.#interruptSource !== undefined) {
+			// No span and no collector orphan record here: `answerUnresolved` is the single path that handles "no
+			// result message was produced", once per record, so any work done here would double-count.
+			record.skipped = true;
+			return;
+		}
+		// Park before starting this call while the process-wide pause gate is engaged. Calls already executing are
+		// unaffected (pausing never aborts); a batch interrupted mid-pause unwinds via the signal checks below.
+		const pauseGate = this.#config.pauseGate ?? agentPauseGate;
+		if (pauseGate.paused && !(await this.#resumedFromPause(record, pauseGate))) return;
+		const call = this.#validatedCall(record, this.#strippedOfIntent(record));
+		if (!call) return;
+		const args = this.#transformedArguments(record, call.execution);
+		if (!args) return;
+		record.args = args.display;
+		if (record.signal.aborted) {
+			this.#answerAbortedBeforeStart(record);
+			return;
+		}
+		await this.#execute(record, call.tool, args);
+	}
+
+	/** False when an abort released the park, which marks the call skipped. */
+	async #resumedFromPause(record: ToolCallRecord, pauseGate: AgentPauseGate): Promise<boolean> {
+		try {
+			await pauseGate.waitUntilResumed(record.signal);
+			return true;
+		} catch (err) {
+			if (!isAbortError(err) && !record.signal.aborted) throw err;
+			record.skipped = true;
+			return false;
+		}
+	}
+
+	/** The call's arguments with the intent field stripped, setting the call's intent from it or from the tool. */
+	#strippedOfIntent(record: ToolCallRecord): Record<string, unknown> {
+		const { toolCall } = record;
+		const args = toolCall.arguments as Record<string, unknown>;
+		if (!this.#config.intentTracing) return args;
+		const { intent, strippedArgs } = extractIntent(args);
+		const label = intent ?? derivedIntent(record.tool, toolCall.name, strippedArgs);
+		if (label) toolCall.intent = label;
+		return strippedArgs;
+	}
+
+	/**
+	 * The tool and the arguments it receives, repaired and validated; `undefined` once the call was answered with the
+	 * error that stopped it. A tool declaring `lenientArgValidation` runs with its arguments as they are.
+	 */
+	#validatedCall(record: ToolCallRecord, stripped: Record<string, unknown>): ValidatedToolCall | undefined {
+		const { tool, toolCall } = record;
+		let args = stripped;
+		try {
+			if (!tool) {
+				throw new AIError.ToolNotFoundError(
+					toolCall.name,
+					this.#tools?.map(t => t.name),
+				);
+			}
+			const repaired = this.#repairedArguments(record, tool, args);
+			if (!repaired) return undefined;
+			args = repaired;
+			return { tool, execution: validateToolArguments(tool, { ...toolCall, arguments: args }) };
+		} catch (validationError) {
+			if (tool?.lenientArgValidation) {
+				const execution = { ...args };
+				delete execution.__parseError;
+				delete execution.__rawJson;
+				return { tool, execution };
+			}
+			record.args = "__parseError" in args ? { __parseError: args.__parseError } : args;
+			this.#emitToolResult(
+				record,
+				{
+					content: [{ type: "text", text: errorMessage(validationError) }],
+					details: { isError: true, error: errorMessage(validationError) },
+				},
+				true,
+			);
+			return undefined;
+		}
+	}
+
+	/**
+	 * The arguments `repairToolCallArguments` returns, stripped of intent again; `undefined` once a call it could not
+	 * repair was answered with its reason and hints.
+	 */
+	#repairedArguments(
+		record: ToolCallRecord,
+		tool: AnyAgentTool,
+		args: Record<string, unknown>,
+	): Record<string, unknown> | undefined {
+		const repair = this.#config.repairToolCallArguments;
+		if (!repair) return args;
+		const outcome = repair(tool, { ...record.toolCall, arguments: args });
+		if (outcome.status === "unrepairable") {
+			record.args = args;
+			const errorText = unrepairableArgumentsText(outcome);
+			this.#emitToolResult(
+				record,
+				{ content: [{ type: "text", text: errorText }], details: { isError: true, error: errorText } },
+				true,
+			);
+			return undefined;
+		}
+		if (!this.#config.intentTracing) return outcome.arguments;
+		const { intent, strippedArgs } = extractIntent(outcome.arguments);
+		if (intent) record.toolCall.intent = intent;
+		return strippedArgs;
+	}
+
+	/**
+	 * The arguments rewritten HERE, before anything else observes them, and split by AUDIENCE; `undefined` once a
+	 * throwing transform was answered with its error.
+	 *
+	 * Two different expansions ride this hook and they disagree about display. A codec handle MUST be expanded before
+	 * a person sees it: `tool_execution_start` is the event a renderer treats as authoritative ("args are final,
+	 * reconcile them"), so leaving it unexpanded overwrote the live preview with `§handle` and left it there. A secret
+	 * placeholder is the exact opposite: its expansion is a live credential, and a rendered card, a stream event, a
+	 * telemetry span and a session file are precisely where it must never land.
+	 *
+	 * One form cannot satisfy both, so the transform returns both and the loop routes them. `execution` goes to
+	 * `tool.execute` and to `beforeToolCall` — the hook that decides whether the call runs, so it must see what would
+	 * actually run, and whose in-place mutations must reach the tool. `display` goes to everything that shows, streams,
+	 * traces or records arguments. A sink added here later inherits `display`, so it is safe without knowing that
+	 * secrets exist.
+	 */
+	#transformedArguments(
+		record: ToolCallRecord,
+		execution: Record<string, unknown>,
+	): ToolCallArgumentTransform | undefined {
+		const transform = this.#config.transformToolCallArguments;
+		if (!transform) return { execution, display: execution };
+		try {
+			const transformed = transform(execution, record.toolCall.name);
+			return { execution: transformed.execution, display: transformed.display };
+		} catch (transformError) {
+			record.args = execution;
+			this.#emitToolResult(
+				record,
+				{
+					content: [{ type: "text", text: errorMessage(transformError) }],
+					details: { isError: true, error: errorMessage(transformError) },
+				},
+				true,
+			);
+			return undefined;
+		}
+	}
+
+	/** Answers a call whose own signal fired before it started with the abort placeholder. */
+	#answerAbortedBeforeStart(record: ToolCallRecord): void {
+		const { toolCall } = record;
+		record.skipped = true;
+		record.terminalStatus = "aborted";
+		recordSkippedTool(this.#telemetry, { toolCallId: toolCall.id, toolName: toolCall.name, status: "aborted" });
+		const source = this.#interruptSource ?? "cancelled-run";
+		this.#emitToolResult(record, createToolSignalAbortedResult(record.signal, source, record.entered), true);
+	}
+
+	/** Runs the call inside its span, emits its result, and polls for steering before the next call starts. */
+	async #execute(record: ToolCallRecord, tool: AnyAgentTool, args: ToolCallArgumentTransform): Promise<void> {
+		const { toolCall } = record;
+		record.started = true;
+		this.#stream.push({
+			type: "tool_execution_start",
+			toolCallId: toolCall.id,
+			toolName: toolCall.name,
+			args: args.display,
+			intent: toolCall.intent,
+		});
+		const toolSpan = startExecuteToolSpan(this.#telemetry, {
+			tool,
+			toolName: toolCall.name,
+			toolCallId: toolCall.id,
+			args: args.display,
+			parent: this.#invokeAgentSpan,
+		});
+		if (toolSpan && toolCall.intent) toolSpan.setAttribute(PiGenAIAttr.ToolCallIntent, toolCall.intent);
+		const outcome: ToolCallOutcome = {
+			result: { content: [], details: {} },
+			isError: false,
+			caughtError: undefined,
+			completed: false,
+		};
+		await runInActiveSpan(toolSpan, async () => {
+			await this.#invoke(record, tool, args, outcome);
+			await this.#applyAfterToolCall(record, outcome);
+		});
+		const status = this.#settle(record, outcome);
+		const firstBlock = outcome.result.content?.[0];
+		finishExecuteToolSpan(this.#telemetry, toolSpan, {
+			result: outcome.result,
+			isError: outcome.isError,
+			status,
+			errorMessage:
+				outcome.caughtError === undefined && outcome.isError && firstBlock?.type === "text"
+					? firstBlock.text
+					: undefined,
+			errorObject: outcome.caughtError,
+			toolCallId: toolCall.id,
+			toolName: toolCall.name,
+		});
+		await this.checkSteering();
+	}
+
+	/** Runs `beforeToolCall` and `tool.execute()`, recording what they produced on `outcome`. */
+	async #invoke(
+		record: ToolCallRecord,
+		tool: AnyAgentTool,
+		args: ToolCallArgumentTransform,
+		outcome: ToolCallOutcome,
+	): Promise<void> {
+		const { toolCall } = record;
+		try {
+			if (this.#answeredAbort(record, outcome)) return;
+			const beforeToolCall = this.#config.beforeToolCall;
+			if (beforeToolCall) {
+				const verdict = await beforeToolCall(
+					{
+						assistantMessage: this.#assistantMessage,
+						toolCall,
+						args: args.execution,
+						context: this.#context,
+					},
+					record.signal,
+				);
+				if (verdict?.block) throw new ToolCallBlockedError(verdict.reason);
+			}
+			if (this.#answeredAbort(record, outcome)) return;
+			const toolContext = this.#config.getToolContext?.({
+				batchId: this.#batchId,
+				index: record.batchIndex,
+				total: this.#records.length,
+				toolCalls: this.#toolCallInfos,
+			});
+			// Execution start instant for instrumentation: set immediately before the tool runs, so `durationMs`
+			// measures the tool body alone and `queuedMs` (start − dispatch) captures the scheduling wait.
+			if (this.#instrumentation !== "off") record.startedAt = Date.now();
+			record.entered = true;
+			const raw = await tool.execute(
+				toolCall.id,
+				args.execution,
+				record.signal,
+				partialResult => this.#pushUpdate(record, args.display, partialResult),
+				toolContext,
+			);
+			outcome.completed = true;
+			const coerced = coerceToolResult(raw);
+			outcome.result = coerced.result;
+			outcome.isError = coerced.malformed || coerced.result.isError === true;
+		} catch (e) {
+			outcome.caughtError = e;
+			outcome.result = { content: [{ type: "text", text: errorMessage(e) }], details: {} };
+			outcome.isError = true;
+		}
+	}
+
+	/** Answers `outcome` with the abort placeholder when the call's signal fired before `tool.execute()`; true when it did. */
+	#answeredAbort(record: ToolCallRecord, outcome: ToolCallOutcome): boolean {
+		if (!record.signal.aborted) return false;
+		const source = this.#interruptSource ?? "cancelled-run";
+		outcome.result = createToolSignalAbortedResult(record.signal, source, record.entered);
+		outcome.isError = true;
+		return true;
+	}
+
+	#pushUpdate(record: ToolCallRecord, display: Record<string, unknown>, partialResult: unknown): void {
+		const update: Extract<AgentEvent, { type: "tool_execution_update" }> = {
+			type: "tool_execution_update",
+			toolCallId: record.toolCall.id,
+			toolName: record.toolCall.name,
+			args: display,
+			partialResult: coerceToolResult(partialResult).result,
+		};
+		// Work the call started can outlive the run: the stream drops anything pushed after `agent_end`, so a
+		// background job's completion goes to the run's owner.
+		if (this.#stream.done) this.#config.onToolUpdateAfterRun?.(update);
+		else this.#stream.push(update);
+	}
+
+	/**
+	 * Lets `afterToolCall` replace the call's result field by field. Skipped for a call its abort cut off before
+	 * `tool.execute()` returned.
+	 */
+	async #applyAfterToolCall(record: ToolCallRecord, outcome: ToolCallOutcome): Promise<void> {
+		const afterToolCall = this.#config.afterToolCall;
+		if (!afterToolCall || (record.signal.aborted && !outcome.completed)) return;
+		try {
+			const after = await afterToolCall(
+				{
+					assistantMessage: this.#assistantMessage,
+					toolCall: record.toolCall,
+					args: record.args,
+					result: outcome.result,
+					isError: outcome.isError,
+					context: this.#context,
+				},
+				record.signal,
+			);
+			if (!after) return;
+			// Re-normalize the post-hook result: `afterToolCall` is untyped user/extension code and may return
+			// malformed `content` (non-array / invalid blocks), which would otherwise be persisted verbatim and corrupt
+			// the session — the same hazard `coerceToolResult` guards on the execute path.
+			const coerced = coerceToolResult({
+				content: after.content ?? outcome.result.content,
+				details: after.details ?? outcome.result.details,
+				isError: after.isError ?? outcome.result.isError,
+				useless: after.useless ?? outcome.result.useless,
+			});
+			outcome.result = coerced.result;
+			outcome.isError = coerced.malformed || (after.isError ?? outcome.isError);
+		} catch (e) {
+			outcome.caughtError = e;
+			outcome.result = { content: [{ type: "text", text: errorMessage(e) }], details: {} };
+			outcome.isError = true;
+		}
+	}
+
+	/** Emits the call's result, or the skipped placeholder for a call its own abort cut off, and returns its status. */
+	#settle(record: ToolCallRecord, outcome: ToolCallOutcome): ToolCallStatus {
+		const abortedDuringExecution = record.signal.aborted && outcome.isError && !outcome.completed;
+		const status: ToolCallStatus = abortedDuringExecution
+			? "aborted"
+			: outcome.caughtError instanceof ToolCallBlockedError
+				? "blocked"
+				: outcome.isError
+					? "error"
+					: "ok";
+		record.terminalStatus = status;
+		if (abortedDuringExecution) {
+			// This tool's own signal fired AND it failed to produce a result: `tool.execute()` never returned (it threw
+			// on the abort), so it was genuinely cut off before producing usable output. Report it as skipped.
+			//
+			// The predicate is `abortedDuringExecution` and nothing more, the same one `status` is derived from. It
+			// used to also require a triggered interrupt, and only a STEERING interrupt sets that. A plain Esc cancels
+			// the run without queuing anything, so it fell through to the branch below and the model received the
+			// thrown `AbortError`'s own message verbatim, which for an abort is the bare word "aborted". The status
+			// field already said "aborted" while the result text said nothing at all, and the interruption an operator
+			// performs most often was the one told least.
+			//
+			// `record.entered` selects WHICH skip this was, and the two call for opposite responses. Cut off before
+			// entering `tool.execute()` (still in `beforeToolCall`, e.g. an approval prompt) means nothing ran and the
+			// call is safe to retry verbatim. Cut off inside it means the tool was already running and may have applied
+			// part of its side effects, so a verbatim retry can double-apply: a half-written file, a `bash` command that
+			// got through some of its work. The batch ledger cannot carry this distinction here, because this result is
+			// emitted while the batch is still running and the ledger is only assembled once every call has settled; a
+			// single-call batch never reaches it at all.
+			record.skipped = true;
+			const source = this.#interruptSource ?? "cancelled-run";
+			this.#emitToolResult(record, createSkippedToolResult(source, record.entered), true);
+		} else {
+			// No interrupt on this signal, or the tool finished before the interrupt landed (`completed`) — even if
+			// the signal aborted around completion. Keep its real result: a completed tool already ran its side
+			// effects, so the model must see what actually happened (a genuine non-zero exit / error result) rather
+			// than a false "skipped" that discards work the tool performed (#4752). A peer-IRC interrupt on the batch
+			// leaves non-interruptible tools' signals untouched — their genuine errors survive here too.
+			const { result, isError } = outcome;
+			this.#emitToolResult(record, result, isError);
+		}
+		return status;
+	}
+
+	/** Emits the call's end events and its result message, once; a second result for the same call is dropped. */
+	#emitToolResult(record: ToolCallRecord, result: AgentToolResult<unknown>, isError: boolean): void {
+		if (record.toolResultMessage) return;
 		const { toolCall } = record;
 		if (!record.started) {
-			stream.push({
+			this.#stream.push({
 				type: "tool_execution_start",
 				toolCallId: toolCall.id,
 				toolName: toolCall.name,
@@ -2470,577 +3015,88 @@ async function executeToolCalls(
 				intent: toolCall.intent,
 			});
 		}
-		stream.push({
+		this.#stream.push({
 			type: "tool_execution_end",
 			toolCallId: toolCall.id,
 			toolName: toolCall.name,
 			result,
 			isError,
 		});
-
 		const endedAt = Date.now();
-		const status: ToolCallStatus = record.terminalStatus ?? (record.skipped ? "skipped" : isError ? "error" : "ok");
-		// Last line of defence on request size. Measure the content that is
-		// actually persisted and replayed, not an uncapped payload the model
-		// never sees.
-		const cappedContent = capToolResultContent(result.content, toolCall.name).content;
-		const metrics =
-			instrumentationLevel === "off"
-				? undefined
-				: captureToolCallMetrics({
-						level: instrumentationLevel,
-						// A call that emitted a result without ever starting execution
-						// (early error / skip) has no real start; treat the end instant as
-						// the start so its duration reads as 0, not a negative span.
-						startedAt: record.startedAt ?? endedAt,
-						endedAt,
-						queuedAt: dispatchedAt,
-						concurrency: record.concurrency,
-						batchId,
-						batchIndex: record.batchIndex,
-						batchSize: toolCalls.length,
-						status,
-						interruptible: record.interruptible,
-						signalAborted: record.signal.aborted,
-						resultContent: cappedContent,
-						useless: result.useless === true,
-						args: record.args,
-						countTokens: estimateTokensFromText,
-					});
-		const toolResultMessage: ToolResultMessage = {
+		// Last line of defence on request size. Measure the content that is actually persisted and replayed, not an
+		// uncapped payload the model never sees.
+		const content = capToolResultContent(result.content, toolCall.name).content;
+		const metrics = this.#metrics(record, result, isError, content, endedAt);
+		const message: ToolResultMessage = {
 			role: "toolResult",
 			toolCallId: toolCall.id,
 			toolName: toolCall.name,
-			content: cappedContent,
+			content,
 			details: result.details,
 			isError,
 			...(result.useless && !isError ? { useless: true } : {}),
 			...(metrics ? { metrics } : {}),
 			timestamp: endedAt,
 		};
-		record.result = result;
 		record.isError = isError;
-		record.toolResultMessage = toolResultMessage;
-		record.resultEmitted = true;
-		emittedToolResults.push(toolResultMessage);
-
-		stream.push({ type: "message_start", message: toolResultMessage });
-		stream.push({ type: "message_end", message: toolResultMessage });
-	};
-
-	const runTool = async (record: (typeof records)[number], index: number): Promise<void> => {
-		if (interruptState.triggered) {
-			// Skip both span emission and the collector orphan record here. The
-			// tail sweep below (after `Promise.allSettled`) is the single path
-			// that handles "no result message was produced" — it calls
-			// `recordSkippedTool` and `emitToolResult` once per record, so any
-			// work we did here would double-count.
-			record.skipped = true;
-			return;
-		}
-		// Park before starting this tool while the process-wide pause gate is
-		// engaged. Tools already executing are unaffected (pausing never aborts);
-		// a batch interrupted mid-pause unwinds via the signal checks below.
-		const pauseGate = config.pauseGate ?? agentPauseGate;
-		if (pauseGate.paused) {
-			try {
-				await pauseGate.waitUntilResumed(record.signal);
-			} catch (err) {
-				if (isAbortError(err) || record.signal.aborted) {
-					record.skipped = true;
-					return;
-				}
-				throw err;
-			}
-		}
-
-		const { toolCall, tool } = record;
-		let argsForExecution = toolCall.arguments as Record<string, unknown>;
-		if (intentTracing) {
-			const { intent, strippedArgs } = extractIntent(toolCall.arguments);
-			argsForExecution = strippedArgs;
-			if (intent) {
-				toolCall.intent = intent;
-			} else if (typeof tool?.intent === "function") {
-				try {
-					const derived = tool.intent(strippedArgs as never)?.trim();
-					if (derived) {
-						toolCall.intent = derived;
-					}
-				} catch (error) {
-					// Must never break tool execution, but a throwing intent
-					// resolver is a broken tool feature — surface it.
-					logger.warn("tool intent resolver threw; using the default intent label", {
-						tool: toolCall.name,
-						error: errorMessage(error),
-					});
-				}
-			}
-		}
-		let effectiveArgs: Record<string, unknown>;
-		try {
-			if (!tool)
-				throw new AIError.ToolNotFoundError(
-					toolCall.name,
-					tools?.map(t => t.name),
-				);
-			if (config.repairToolCallArguments) {
-				const repairOutcome = config.repairToolCallArguments(tool, {
-					...toolCall,
-					arguments: argsForExecution,
-				});
-				if (repairOutcome.status === "unrepairable") {
-					const hintSuffix =
-						repairOutcome.hints.length > 0
-							? `\n\n[Tool argument repair]\n${repairOutcome.hints.map(h => `- ${h}`).join("\n")}`
-							: "";
-					const errorText = `${repairOutcome.reason ?? "Tool arguments could not be repaired."}${hintSuffix}`;
-					record.args = argsForExecution;
-					emitToolResult(
-						record,
-						{
-							content: [{ type: "text" as const, text: errorText }],
-							details: { isError: true, error: errorText },
-						},
-						true,
-					);
-					return;
-				}
-				argsForExecution = repairOutcome.arguments;
-				if (intentTracing) {
-					const { intent, strippedArgs } = extractIntent(argsForExecution);
-					argsForExecution = strippedArgs;
-					if (intent) {
-						toolCall.intent = intent;
-					}
-				}
-			}
-			effectiveArgs = validateToolArguments(tool, { ...toolCall, arguments: argsForExecution });
-		} catch (validationError) {
-			if (tool?.lenientArgValidation) {
-				effectiveArgs = { ...argsForExecution };
-				delete effectiveArgs.__parseError;
-				delete effectiveArgs.__rawJson;
-			} else {
-				if ("__parseError" in argsForExecution) {
-					record.args = {
-						__parseError: argsForExecution.__parseError,
-					};
-				} else {
-					record.args = argsForExecution;
-				}
-				emitToolResult(
-					record,
-					{
-						content: [
-							{
-								type: "text" as const,
-								text: errorMessage(validationError),
-							},
-						],
-						details: {
-							isError: true,
-							error: errorMessage(validationError),
-						},
-					},
-					true,
-				);
-				return;
-			}
-		}
-
-		// Rewrite the arguments HERE, before anything else observes them, and split the
-		// result by AUDIENCE.
-		//
-		// Two different expansions ride this hook and they disagree about display. A
-		// codec handle MUST be expanded before a person sees it: `tool_execution_start`
-		// is the event a renderer treats as authoritative ("args are final, reconcile
-		// them"), so leaving it unexpanded overwrote the live preview with `§handle` and
-		// left it there. A secret placeholder is the exact opposite: its expansion is a
-		// live credential, and a rendered card, a stream event, a telemetry span and a
-		// session file are precisely where it must never land.
-		//
-		// One form cannot satisfy both, so the transform returns both and the loop routes
-		// them. `execution` goes to `tool.execute` and to `beforeToolCall` — the hook that
-		// decides whether the call runs, so it must see what would actually run, and whose
-		// in-place mutations must reach the tool. `display` goes to everything that shows,
-		// streams, traces or records arguments. A sink added here later inherits `display`,
-		// so it is safe without knowing that secrets exist.
-		let displayArgs = effectiveArgs;
-		if (transformToolCallArguments) {
-			try {
-				const transformed = transformToolCallArguments(effectiveArgs, toolCall.name);
-				effectiveArgs = transformed.execution;
-				displayArgs = transformed.display;
-			} catch (transformError) {
-				record.args = effectiveArgs;
-				emitToolResult(
-					record,
-					{
-						content: [{ type: "text" as const, text: errorMessage(transformError) }],
-						details: {
-							isError: true,
-							error: errorMessage(transformError),
-						},
-					},
-					true,
-				);
-				return;
-			}
-		}
-
-		record.args = displayArgs;
-		if (record.signal.aborted) {
-			record.skipped = true;
-			record.terminalStatus = "aborted";
-			recordSkippedTool(telemetry, {
-				toolCallId: toolCall.id,
-				toolName: toolCall.name,
-				status: "aborted",
-			});
-			emitToolResult(
-				record,
-				createToolSignalAbortedResult(
-					record.signal,
-					interruptState.triggered ? interruptState.source : "cancelled-run",
-					record.entered,
-				),
-				true,
-			);
-			return;
-		}
-		record.started = true;
-		stream.push({
-			type: "tool_execution_start",
-			toolCallId: toolCall.id,
-			toolName: toolCall.name,
-			args: displayArgs,
-			intent: toolCall.intent,
-		});
-
-		const toolSpan = startExecuteToolSpan(telemetry, {
-			tool,
-			toolName: toolCall.name,
-			toolCallId: toolCall.id,
-			args: displayArgs,
-			parent: invokeAgentSpan,
-		});
-		if (toolSpan && toolCall.intent) {
-			toolSpan.setAttribute(PiGenAIAttr.ToolCallIntent, toolCall.intent);
-		}
-
-		let result: AgentToolResult<unknown> = { content: [], details: {} };
-		let isError = false;
-		let caughtError: unknown;
-		let completedToolExecution = false;
-
-		await runInActiveSpan(toolSpan, async () => {
-			try {
-				if (!tool)
-					throw new AIError.ToolNotFoundError(
-						toolCall.name,
-						tools?.map(t => t.name),
-					);
-				if (record.signal.aborted) {
-					result = createToolSignalAbortedResult(
-						record.signal,
-						interruptState.triggered ? interruptState.source : "cancelled-run",
-						record.entered,
-					);
-					isError = true;
-					return;
-				}
-
-				if (beforeToolCall) {
-					const beforeResult = await beforeToolCall(
-						{
-							assistantMessage,
-							toolCall,
-							args: effectiveArgs,
-							context: currentContext,
-						},
-						record.signal,
-					);
-					if (beforeResult?.block) {
-						throw new ToolCallBlockedError(beforeResult.reason);
-					}
-				}
-				if (record.signal.aborted) {
-					result = createToolSignalAbortedResult(
-						record.signal,
-						interruptState.triggered ? interruptState.source : "cancelled-run",
-						record.entered,
-					);
-					isError = true;
-					return;
-				}
-				const toolContext = getToolContext
-					? getToolContext({
-							batchId,
-							index,
-							total: toolCalls.length,
-							toolCalls: toolCallInfos,
-						})
-					: undefined;
-				// Execution start instant for instrumentation: set immediately before
-				// the tool runs, so `durationMs` measures the tool body alone and
-				// `queuedMs` (start − dispatch) captures the scheduling wait.
-				if (instrumentationLevel !== "off") record.startedAt = Date.now();
-				record.entered = true;
-				const rawResult = await tool.execute(
-					toolCall.id,
-					effectiveArgs,
-					record.signal,
-					partialResult => {
-						const update: Extract<AgentEvent, { type: "tool_execution_update" }> = {
-							type: "tool_execution_update",
-							toolCallId: toolCall.id,
-							toolName: toolCall.name,
-							args: displayArgs,
-							partialResult: coerceToolResult(partialResult).result,
-						};
-						// Work the call started can outlive the run: the stream drops anything pushed
-						// after `agent_end`, so a background job's completion goes to the run's owner.
-						if (stream.done) config.onToolUpdateAfterRun?.(update);
-						else stream.push(update);
-					},
-					toolContext,
-				);
-				completedToolExecution = true;
-				const coerced = coerceToolResult(rawResult);
-				result = coerced.result;
-				if (coerced.malformed || result.isError) isError = true;
-			} catch (e) {
-				caughtError = e;
-				result = {
-					content: [{ type: "text", text: errorMessage(e) }],
-					details: {},
-				};
-				isError = true;
-			}
-
-			if (afterToolCall && (!record.signal.aborted || completedToolExecution)) {
-				try {
-					const after = await afterToolCall(
-						{
-							assistantMessage,
-							toolCall,
-							args: record.args,
-							result,
-							isError,
-							context: currentContext,
-						},
-						record.signal,
-					);
-					if (after) {
-						// Re-normalize the post-hook result: `afterToolCall` is untyped user/extension
-						// code and may return malformed `content` (non-array / invalid blocks), which
-						// would otherwise be persisted verbatim and corrupt the session — the same
-						// hazard `coerceToolResult` guards on the execute path.
-						const coerced = coerceToolResult({
-							content: after.content ?? result.content,
-							details: after.details ?? result.details,
-							isError: after.isError ?? result.isError,
-							useless: after.useless ?? result.useless,
-						});
-						result = coerced.result;
-						isError = coerced.malformed || (after.isError ?? isError);
-					}
-				} catch (e) {
-					caughtError = e;
-					result = {
-						content: [{ type: "text", text: errorMessage(e) }],
-						details: {},
-					};
-					isError = true;
-				}
-			}
-		});
-
-		const interrupted = interruptState.triggered;
-		const perToolAborted = record.signal.aborted;
-		const abortedDuringExecution = perToolAborted && isError && !completedToolExecution;
-		const status: ToolCallStatus = abortedDuringExecution
-			? "aborted"
-			: caughtError instanceof ToolCallBlockedError
-				? "blocked"
-				: isError
-					? "error"
-					: "ok";
-		record.terminalStatus = status;
-		if (abortedDuringExecution) {
-			// This tool's own signal fired AND it failed to produce a result: `tool.execute()`
-			// never returned (it threw on the abort), so it was genuinely cut off before
-			// producing usable output. Report it as skipped.
-			//
-			// The gate is `abortedDuringExecution` and nothing more, which is the same
-			// predicate `status` above is already derived from. It used to also require
-			// `interruptState.triggered`, and only a STEERING interrupt sets that. A plain
-			// Esc cancels the run without queuing anything, so it fell through to the
-			// branch below and the model received the thrown `AbortError`'s own message
-			// verbatim, which for an abort is the bare word "aborted". The status field
-			// already said "aborted" while the result text said nothing at all, and the
-			// interruption an operator performs most often was the one told least.
-			//
-			// `record.entered` decides WHICH skip this was, and the two call for
-			// opposite responses. Cut off before entering `tool.execute()` (still in
-			// `beforeToolCall`, e.g. an approval prompt) means nothing ran and the
-			// call is safe to retry verbatim. Cut off inside it means the tool was
-			// already running and may have applied part of its side effects, so a
-			// verbatim retry can double-apply: a half-written file, a `bash` command
-			// that got through some of its work. The batch ledger cannot carry this
-			// distinction for us here, because this result is emitted while the
-			// batch is still running and the ledger is only assembled once every
-			// call has settled; a single-call batch never reaches it at all.
-			record.skipped = true;
-			emitToolResult(
-				record,
-				createSkippedToolResult(interrupted ? interruptState.source : "cancelled-run", record.entered),
-				true,
-			);
-		} else {
-			// No interrupt on this signal, or the tool finished before the interrupt landed
-			// (`completedToolExecution`) — even if the signal aborted around completion. Keep
-			// its real result: a completed tool already ran its side effects, so the model must
-			// see what actually happened (a genuine non-zero exit / error result) rather than a
-			// false "skipped" that discards work the tool performed (#4752). A peer-IRC interrupt
-			// on the batch leaves non-interruptible tools' signals untouched — their genuine
-			// errors survive here too.
-			emitToolResult(record, result, isError);
-		}
-
-		const firstTextBlock = result.content?.[0];
-		const errorMessageForSpan =
-			caughtError === undefined && isError && firstTextBlock?.type === "text" ? firstTextBlock.text : undefined;
-		finishExecuteToolSpan(telemetry, toolSpan, {
-			result,
-			isError,
-			status,
-			errorMessage: errorMessageForSpan,
-			errorObject: caughtError,
-			toolCallId: toolCall.id,
-			toolName: toolCall.name,
-		});
-
-		await checkSteering();
-	};
-
-	let lastExclusive: Promise<void> = Promise.resolve();
-	let sharedTasks: Promise<void>[] = [];
-	const tasks: Promise<void>[] = [];
-
-	for (let index = 0; index < records.length; index++) {
-		const record = records[index];
-		const concurrencyMode = record.tool?.concurrency;
-		let concurrency: "shared" | "exclusive";
-		if (typeof concurrencyMode === "function") {
-			// Resolved from raw pre-validation args; a throwing resolver must not
-			// take down the whole batch, so fall back to the safe (serial) mode.
-			try {
-				concurrency = concurrencyMode(record.args);
-			} catch (error) {
-				concurrency = "exclusive";
-				logger.warn("tool concurrency resolver threw; running the call serially", {
-					tool: record.tool?.name,
-					error: errorMessage(error),
-				});
-			}
-		} else {
-			concurrency = concurrencyMode ?? "shared";
-		}
-		record.concurrency = concurrency;
-		const start = concurrency === "exclusive" ? Promise.all([lastExclusive, ...sharedTasks]) : lastExclusive;
-		const task = start.then(() => runTool(record, index));
-		tasks.push(task);
-		if (concurrency === "exclusive") {
-			lastExclusive = task;
-			sharedTasks = [];
-		} else {
-			sharedTasks.push(task);
-		}
+		record.toolResultMessage = message;
+		this.#emitted.push(message);
+		this.#stream.push({ type: "message_start", message });
+		this.#stream.push({ type: "message_end", message });
 	}
 
-	// While an interruptible tool is in flight (e.g. a `job`/`irc` wait
-	// blocking on external work), queued steering or interrupting IRC would
-	// otherwise wait out the tool's own window. Poll only non-consuming queues
-	// and abort the shared tool signal so the boundary dequeue below injects
-	// the message promptly. Gated on immediate-interrupt mode + an
-	// interruptible tool; checkSteering is idempotent (no-op once triggered).
-	const watchSteeringWhileRunning =
-		shouldInterruptImmediately &&
-		(hasSteeringMessages !== undefined || hasIrcInterrupts !== undefined) &&
-		records.some(r => r.interruptible);
-	const steeringWatchTimer = watchSteeringWhileRunning
-		? setInterval(() => void checkSteering(), STEERING_INTERRUPT_POLL_MS)
+	/** The study record `instrumentation` asks for on the call's result message; `undefined` while it is off. */
+	#metrics(
+		record: ToolCallRecord,
+		result: AgentToolResult<unknown>,
+		isError: boolean,
+		content: ToolResultMessage["content"],
+		endedAt: number,
+	): ToolResultMessage["metrics"] {
+		if (this.#instrumentation === "off") return undefined;
+		return captureToolCallMetrics({
+			level: this.#instrumentation,
+			// A call that emitted a result without ever starting execution (early error / skip) has no real start;
+			// treat the end instant as the start so its duration reads as 0, not a negative span.
+			startedAt: record.startedAt ?? endedAt,
+			endedAt,
+			queuedAt: this.#dispatchedAt,
+			concurrency: record.concurrency,
+			batchId: this.#batchId,
+			batchIndex: record.batchIndex,
+			batchSize: this.#records.length,
+			status: record.terminalStatus ?? (record.skipped ? "skipped" : isError ? "error" : "ok"),
+			interruptible: record.interruptible,
+			signalAborted: record.signal.aborted,
+			resultContent: content,
+			useless: result.useless === true,
+			args: record.args,
+			countTokens: estimateTokensFromText,
+		});
+	}
+}
+
+/**
+ * Execute tool calls from an assistant message, returning their results in the order they were emitted.
+ */
+async function executeToolCalls(run: LoopRun, assistantMessage: AssistantMessage): Promise<ToolResultMessage[]> {
+	const batch = new ToolBatch(run, assistantMessage);
+	const tasks = batch.schedule();
+	// While an interruptible tool is in flight (e.g. a `job`/`irc` wait blocking on external work), queued steering or
+	// interrupting IRC would otherwise wait out the tool's own window. Poll only non-consuming queues and abort the
+	// shared tool signal so the boundary dequeue injects the message promptly.
+	const steeringWatch = batch.watchesSteering()
+		? setInterval(() => void batch.checkSteering(), STEERING_INTERRUPT_POLL_MS)
 		: undefined;
 	try {
 		await Promise.allSettled(tasks);
 	} finally {
-		if (steeringWatchTimer !== undefined) clearInterval(steeringWatchTimer);
+		clearInterval(steeringWatch);
 	}
-	// Yield after batch tool execution to let GC and I/O catch up,
-	// especially when tool results are large (e.g. bash output).
+	// Yield after batch tool execution to let GC and I/O catch up, especially when tool results are large (e.g. bash
+	// output).
 	await yieldIfDue();
-
-	// A record with no result message never produced one: it was skipped before
-	// dispatch. `record.skipped`, not the presence of a result message, is what
-	// says a call was cut short: a call whose `tool.execute()` was aborted
-	// mid-flight was already answered above with a skipped placeholder, so it
-	// HAS a result message and an `isError` of true. Keying the ledger off the
-	// result message reported that call as "ran, failed" and then told the
-	// model its result is already in the transcript and must not be re-run,
-	// which is false twice over: nothing usable ran, and the call may have
-	// applied part of its side effects.
-	//
-	// `entered`, not `started`, is what separates "cut off inside the tool"
-	// from "cut off while waiting for approval": only the first can have
-	// applied side effects.
-	//
-	// `records.length > 1` is the noise guard: a one-call batch has no
-	// siblings to inventory, so a ledger there is a second copy of what the
-	// call's own placeholder already says. It stays, and it no longer costs the
-	// side-effect warning, because that warning now rides the placeholder text
-	// itself (`createSkippedToolResult`'s `entered`) rather than only the
-	// ledger.
-	//
-	// The ledger rides one placeholder, so it is only built when there is a
-	// placeholder left to carry it. A batch in which every cut-short call was
-	// already answered above has nothing to attach it to, and nothing to add:
-	// each of those placeholders already states its own outcome.
-	const unresolved = records.filter(record => !record.toolResultMessage);
-	const batchLedger =
-		unresolved.length > 0 && records.length > 1
-			? buildToolBatchLedger(
-					"interrupted",
-					records.map(record => ({
-						toolCallId: record.toolCall.id,
-						toolName: record.toolCall.name,
-						outcome:
-							record.skipped || !record.toolResultMessage
-								? record.entered
-									? ("interrupted" as const)
-									: ("dropped" as const)
-								: record.isError
-									? ("failed" as const)
-									: ("ok" as const),
-					})),
-				)
-			: undefined;
-	let ledgerAttached = false;
-	for (const record of unresolved) {
-		record.skipped = true;
-		record.terminalStatus = "skipped";
-		recordSkippedTool(telemetry, {
-			toolCallId: record.toolCall.id,
-			toolName: record.toolCall.name,
-			status: "skipped",
-		});
-		const ledger = ledgerAttached ? undefined : batchLedger;
-		ledgerAttached = true;
-		emitToolResult(record, createSkippedToolResult(interruptState.source, record.entered, ledger), true);
-	}
-
-	return { toolResults: emittedToolResults };
+	return batch.answerUnresolved();
 }
 
 /**

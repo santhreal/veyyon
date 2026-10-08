@@ -172,6 +172,40 @@ describe("agentLoop with AgentMessage", () => {
 		expect(messages.at(-1)?.role).toBe("assistant");
 	});
 
+	it("restarts the pause_turn cap after a turn that calls a tool", async () => {
+		const echoSchema = type({ value: "string" });
+		const echo: AgentTool<typeof echoSchema, undefined> = {
+			name: "echo",
+			label: "Echo",
+			description: "Echo tool",
+			parameters: echoSchema,
+			async execute(_id, params) {
+				return { content: [{ type: "text", text: params.value }], details: undefined };
+			},
+		};
+		const pause = (): MockResponse => ({
+			content: ["still working"],
+			stopReason: "stop",
+			stopDetails: { type: "pause_turn" },
+		});
+		const context: AgentContext = { systemPrompt: ["You are helpful."], messages: [], tools: [echo] };
+		const mock = createMockModel({
+			responses: [
+				...Array.from({ length: 8 }, pause),
+				{ content: [{ type: "toolCall", id: "echo-1", name: "echo", arguments: { value: "hi" } }] },
+				pause(),
+				{ content: ["All done."] },
+			],
+		});
+		const config: AgentLoopConfig = { model: mock.model, convertToLlm: identityConverter };
+
+		const messages = await agentLoop([createUserMessage("Hello")], context, config, undefined, mock.stream).result();
+
+		// Eight continuations reach the cap; the tool turn restarts it, so the pause after it re-samples once more.
+		expect(mock.calls).toHaveLength(11);
+		expect(messages.at(-1)).toMatchObject({ role: "assistant", content: [{ type: "text", text: "All done." }] });
+	});
+
 	it("retries when harmony leakage reaches the committed assistant message (openai-codex)", async () => {
 		const context: AgentContext = {
 			systemPrompt: ["You are helpful."],
@@ -2869,6 +2903,13 @@ describe("agentLoopContinue with AgentMessage", () => {
 			.join("\n");
 		expect(text).toContain("stop_reason: length");
 		expect(text).toMatch(/split|chunk/i);
+
+		// The truncated turn re-samples, so the model reads the placeholder and answers it.
+		expect(mock.calls).toHaveLength(2);
+		expect(messages.at(-1)).toMatchObject({
+			role: "assistant",
+			content: [{ type: "text", text: "ok, I will split the write into smaller chunks" }],
+		});
 	});
 	it("fills whitespace-only error tool results so Anthropic does not 400", async () => {
 		const toolSchema = type({ value: "string" });

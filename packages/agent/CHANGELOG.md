@@ -27,6 +27,7 @@
 - `estimateTokens` caches both option variants of a message in one record of four numbers instead of a holder object plus an object per variant, which cut the heap and extra memory of an idle resumed 600-turn session from 123,632 KiB to 123,399 KiB and its live objects from 708,261 to 702,908 (median of five).
 - Compaction reads the Codex compaction request context from `@veyyon/ai/providers/openai-codex/session-state` and the remote summarizer reads the Azure deployment map from `@veyyon/ai/providers/azure-deployment-names`, so the compaction engine loads 303 modules instead of 322 and the remote summarizer 100 instead of 225.
 - Split the token estimate's message walk into one function per content body (shared content, file mention, assistant turn, compaction summary); no user-visible change.
+- Split the agent loop's tool-call batch into a `ToolBatch` class with one method per step (scheduling, steering and IRC interrupts, argument repair and validation, execution, result emission) and its tool-result coercion into one function per block and per content list; no user-visible change.
 
 ### Fixed
 
@@ -38,6 +39,7 @@
 - A `tool_execution_update` a tool reports after its run emitted `agent_end` reaches `Agent` subscribers through the new `AgentLoopConfig.onToolUpdateAfterRun` sink instead of being dropped, so a background task card settles when its agents finish instead of animating for the life of the process, which cut timer callbacks in the 20 idle seconds after three turns that each spawned two background agents from 2,301 to 64.
 - A branch summary over session history held on disk reads each message's fields before it redacts them, so navigating the tree with a summary no longer fails with "Branch summary provider text transformation failed." when the history was moved out of memory again while the credential resolved.
 - The turn loop no longer holds every streamed event until the turn ends: it waits on each provider event through one `LoopRace` instead of racing it against a long-lived abort promise, which cut the heap held by a 20,000-delta turn from 4.0 MiB and 120,359 objects to 0.3 MiB and 2,438 objects and the loop's cost per event from 1,160 ns to 877 ns (median of seven).
+- A tool call released from the pause gate by a cancel of the run is answered as skipped because the run was cancelled and never started, instead of as skipped for a pending steering message with advice to retry after a queued message that does not exist.
 
 ## [1.5.4] - 2026-09-24
 
