@@ -128,10 +128,45 @@ function failStatus(status: string): boolean {
 	return status === "MISSING" || status === "NO" || status === "ERROR" || status === "FAIL";
 }
 
+type LogCheck = (category: string, check: string, status: string, detail?: string) => void;
+
+/** Log the integrity check, every required table and column, and the row count of each memory table. */
+function inspectSchema(db: Database, log: LogCheck): void {
+	const integrity = db.query("PRAGMA integrity_check").get() as IntegrityRow;
+	log("db", "integrity_check", integrity.integrity_check === "ok" ? "OK" : "FAIL", integrity.integrity_check);
+
+	for (const table of REQUIRED_TABLES) {
+		log("schema", `table:${table}`, tableExists(db, table) ? "OK" : "MISSING");
+	}
+	for (const table in REQUIRED_COLUMNS) {
+		const columns = REQUIRED_COLUMNS[table];
+		if (!columns || !tableExists(db, table)) continue;
+		const present = tableColumns(db, table);
+		const missing = columns.filter(column => !present.has(column));
+		if (missing.length === 0) log("schema", `columns:${table}`, "OK", `${present.size} columns`);
+		else log("schema", `columns:${table}`, "MISSING", `missing=${missing.join(",")}`);
+	}
+
+	for (const table of ["working_memory", "episodic_memory", "scratchpad", "triples", "annotations"] as const) {
+		const count = safeCount(db, table);
+		log("db", `${table}_count`, count === null ? "MISSING" : String(count));
+	}
+}
+
+function keyFindings(entries: readonly DiagnosticEntry[]): string[] {
+	const findings: string[] = [];
+	for (const entry of entries) {
+		if (entry.status === "MISSING") findings.push(`${entry.check} missing`);
+		else if (entry.status === "FAIL" || entry.status === "ERROR")
+			findings.push(`${entry.check}: ${entry.detail ?? entry.status}`);
+	}
+	return findings;
+}
+
 export function inspectDatabase(options: DiagnosticOptions = {}): DiagnosticSummary {
 	const path = options.dbPath ?? configuredDbPath();
 	const entries: DiagnosticEntry[] = [];
-	const log = (category: string, check: string, status: string, detail = ""): void => {
+	const log: LogCheck = (category, check, status, detail = "") => {
 		entries.push({ ts: toUtcIso(), category, check, status, detail });
 	};
 
@@ -152,50 +187,18 @@ export function inspectDatabase(options: DiagnosticOptions = {}): DiagnosticSumm
 			owned = true;
 		}
 		if (options.initialize !== false) initBeam(db);
-
-		const integrity = db.query("PRAGMA integrity_check").get() as IntegrityRow;
-		log("db", "integrity_check", integrity.integrity_check === "ok" ? "OK" : "FAIL", integrity.integrity_check);
-
-		for (const table of REQUIRED_TABLES) {
-			log("schema", `table:${table}`, tableExists(db, table) ? "OK" : "MISSING");
-		}
-		for (const table in REQUIRED_COLUMNS) {
-			if (!tableExists(db, table)) continue;
-			const columns = REQUIRED_COLUMNS[table];
-			if (!columns) continue;
-			const present = tableColumns(db, table);
-			const missing = columns.filter(column => !present.has(column));
-			log(
-				"schema",
-				`columns:${table}`,
-				missing.length === 0 ? "OK" : "MISSING",
-				missing.length === 0 ? `${present.size} columns` : `missing=${missing.join(",")}`,
-			);
-		}
-
-		for (const table of ["working_memory", "episodic_memory", "scratchpad", "triples", "annotations"] as const) {
-			const count = safeCount(db, table);
-			log("db", `${table}_count`, count === null ? "MISSING" : String(count));
-		}
+		inspectSchema(db, log);
 	} catch (error) {
 		log("db", "open_or_inspect", "ERROR", errorMessage(error));
 	} finally {
 		if (owned) closeQuietly(db);
 	}
 
-	const keyFindings: string[] = [];
-	for (const entry of entries) {
-		if (entry.status === "MISSING") keyFindings.push(`${entry.check} missing`);
-		else if (entry.status === "FAIL" || entry.status === "ERROR") {
-			keyFindings.push(`${entry.check}: ${entry.detail ?? entry.status}`);
-		}
-	}
-
 	return {
 		checks_total: entries.length,
 		checks_passed: entries.filter(entry => passStatus(entry.status) || /^\d+$/.test(entry.status)).length,
 		checks_failed: entries.filter(entry => failStatus(entry.status)).length,
-		key_findings: keyFindings,
+		key_findings: keyFindings(entries),
 		entries,
 		database: path,
 	};

@@ -189,101 +189,75 @@ function hasOwn(options: MnemopiOptions, key: keyof MnemopiOptions): boolean {
 	return Object.hasOwn(options, key);
 }
 
+/** The fields when the caller set at least one of them, so an untouched section falls through to the environment. */
+function anyDefined<T extends object>(fields: T): T | undefined {
+	return Object.values(fields).some(value => value !== undefined) ? fields : undefined;
+}
+
+function resolveEmbeddingOptions(options: MnemopiOptions): ResolvedMnemopiRuntimeOptions["embeddings"] {
+	const nested = options.embeddings === false ? undefined : options.embeddings;
+	const disabled =
+		options.embeddings === false || (hasOwn(options, "noEmbeddings") ? options.noEmbeddings : nested?.disabled);
+	return anyDefined({
+		disabled,
+		model: options.embeddingModel ?? nested?.model,
+		apiUrl: options.embeddingApiUrl ?? nested?.apiUrl,
+		apiKey: options.embeddingApiKey ?? nested?.apiKey,
+		provider: resolveEmbeddingProvider(nested?.provider),
+		maxInputChars: nested?.maxInputChars,
+		sanitizeProviderText: nested?.sanitizeProviderText,
+	});
+}
+
+/**
+ * The flat `llmEnabled` takes precedence over the nested `enabled`. Without either, an endpoint,
+ * key, model, token budget or completion enables the LLM, and with none of them the
+ * `MNEMOPI_LLM_ENABLED` variable applies.
+ */
+function resolveLlmEnabled(
+	options: MnemopiOptions,
+	nested: MnemopiLlmRuntimeOptions | undefined,
+	model: string | Model<Api> | undefined,
+): boolean | undefined {
+	if (hasOwn(options, "llmEnabled")) return options.llmEnabled;
+	if (nested?.enabled !== undefined) return nested.enabled;
+	const configured =
+		nested?.baseUrl !== undefined ||
+		nested?.apiKey !== undefined ||
+		nested?.maxTokens !== undefined ||
+		nested?.complete !== undefined ||
+		model !== undefined ||
+		hasOwn(options, "llmBaseUrl") ||
+		hasOwn(options, "llmApiKey") ||
+		hasOwn(options, "llmModel");
+	return configured ? true : undefined;
+}
+
+function resolveLlmOptions(options: MnemopiOptions): ResolvedMnemopiRuntimeOptions["llm"] {
+	const { llm } = options;
+	if (llm === false) return { enabled: false };
+	if (typeof llm === "function") return { enabled: true, complete: llm };
+	if (isPiAiModel(llm)) return { enabled: true, model: llm };
+	const model = llm?.model ?? options.llmModel;
+	return anyDefined({
+		enabled: resolveLlmEnabled(options, llm, model),
+		baseUrl: options.llmBaseUrl ?? llm?.baseUrl,
+		apiKey: options.llmApiKey ?? llm?.apiKey,
+		model,
+		maxTokens: llm?.maxTokens,
+		complete: llm?.complete,
+		extractionPrompt: llm?.extractionPrompt,
+		consolidationPrompt: llm?.consolidationPrompt,
+		sanitizeProviderText: llm?.sanitizeProviderText,
+	});
+}
+
 function resolveRuntimeOptions(options: MnemopiOptions): ResolvedMnemopiRuntimeOptions | undefined {
-	const nestedEmbeddings =
-		options.embeddings !== false && options.embeddings !== undefined ? options.embeddings : undefined;
-	const embeddingDisabled =
-		options.embeddings === false
-			? true
-			: hasOwn(options, "noEmbeddings")
-				? options.noEmbeddings
-				: nestedEmbeddings?.disabled;
-	const embeddingModel = options.embeddingModel ?? nestedEmbeddings?.model;
-	const embeddingApiUrl = options.embeddingApiUrl ?? nestedEmbeddings?.apiUrl;
-	const embeddingApiKey = options.embeddingApiKey ?? nestedEmbeddings?.apiKey;
-	const embeddingProvider = resolveEmbeddingProvider(nestedEmbeddings?.provider);
-	const embeddingMaxInputChars = nestedEmbeddings?.maxInputChars;
-	const embeddingSanitizeProviderText = nestedEmbeddings?.sanitizeProviderText;
-
-	const embeddings =
-		embeddingDisabled !== undefined ||
-		embeddingModel !== undefined ||
-		embeddingApiUrl !== undefined ||
-		embeddingApiKey !== undefined ||
-		embeddingProvider !== undefined ||
-		embeddingMaxInputChars !== undefined ||
-		embeddingSanitizeProviderText !== undefined
-			? {
-					disabled: embeddingDisabled,
-					model: embeddingModel,
-					apiUrl: embeddingApiUrl,
-					apiKey: embeddingApiKey,
-					provider: embeddingProvider,
-					maxInputChars: embeddingMaxInputChars,
-					sanitizeProviderText: embeddingSanitizeProviderText,
-				}
-			: undefined;
-
-	let llm: ResolvedMnemopiRuntimeOptions["llm"];
-	if (options.llm === false) {
-		llm = { enabled: false };
-	} else if (typeof options.llm === "function") {
-		llm = { enabled: true, complete: options.llm };
-	} else if (isPiAiModel(options.llm)) {
-		llm = { enabled: true, model: options.llm };
-	} else {
-		const nestedLlm = options.llm !== undefined && !isPiAiModel(options.llm) ? options.llm : undefined;
-		const llmModel = nestedLlm?.model ?? options.llmModel;
-		const llmEnabled = hasOwn(options, "llmEnabled")
-			? options.llmEnabled
-			: (nestedLlm?.enabled ??
-					(nestedLlm?.baseUrl !== undefined ||
-						nestedLlm?.apiKey !== undefined ||
-						nestedLlm?.maxTokens !== undefined ||
-						nestedLlm?.complete !== undefined ||
-						llmModel !== undefined ||
-						hasOwn(options, "llmBaseUrl") ||
-						hasOwn(options, "llmApiKey") ||
-						hasOwn(options, "llmModel")))
-				? true
-				: undefined;
-		const llmBaseUrl = options.llmBaseUrl ?? nestedLlm?.baseUrl;
-		const llmApiKey = options.llmApiKey ?? nestedLlm?.apiKey;
-		const llmMaxTokens = nestedLlm?.maxTokens;
-		const llmComplete = nestedLlm?.complete;
-		const llmExtractionPrompt = nestedLlm?.extractionPrompt;
-		const llmConsolidationPrompt = nestedLlm?.consolidationPrompt;
-		const llmSanitizeProviderText = nestedLlm?.sanitizeProviderText;
-		if (
-			llmEnabled !== undefined ||
-			llmBaseUrl !== undefined ||
-			llmApiKey !== undefined ||
-			llmModel !== undefined ||
-			llmMaxTokens !== undefined ||
-			llmComplete !== undefined ||
-			llmExtractionPrompt !== undefined ||
-			llmConsolidationPrompt !== undefined ||
-			llmSanitizeProviderText !== undefined
-		) {
-			llm = {
-				enabled: llmEnabled,
-				baseUrl: llmBaseUrl,
-				apiKey: llmApiKey,
-				model: llmModel,
-				maxTokens: llmMaxTokens,
-				complete: llmComplete,
-				extractionPrompt: llmExtractionPrompt,
-				consolidationPrompt: llmConsolidationPrompt,
-				sanitizeProviderText: llmSanitizeProviderText,
-			};
-		}
-	}
-
-	const debug = options.debug ? true : undefined;
-	if (embeddings === undefined && llm === undefined && debug === undefined) {
-		return undefined;
-	}
-	return { embeddings, llm, debug };
+	return anyDefined({
+		embeddings: resolveEmbeddingOptions(options),
+		llm: resolveLlmOptions(options),
+		debug: options.debug ? true : undefined,
+	});
 }
 
 let defaultInstance: Mnemopi | null = null;
@@ -302,12 +276,31 @@ function resolveDbPath(options: MnemopiOptions, bank: string): string | undefine
 	return configuredDbPath();
 }
 
+type AliasedRememberText = Pick<
+	RememberFacadeOptions,
+	| "extractText"
+	| "extract_text"
+	| "embedText"
+	| "embed_text"
+	| "trustTier"
+	| "trust_tier"
+	| "memoryType"
+	| "memory_type"
+>;
+
+/** The call's options beat the memory's own fields, and within each the camelCase spelling beats snake_case. */
+function aliasedRememberText(
+	options: AliasedRememberText,
+	memory: AliasedRememberText | null,
+	camel: keyof AliasedRememberText,
+	snake: keyof AliasedRememberText,
+): string | undefined {
+	return options[camel] ?? options[snake] ?? memory?.[camel] ?? memory?.[snake] ?? undefined;
+}
+
 function toRememberOptions(input: string | RememberInput, options: RememberFacadeOptions) {
 	const memory = typeof input === "string" ? null : input;
 	const timestamp = normalizeDate(options.timestamp ?? memory?.timestamp);
-	const extractText =
-		options.extractText ?? options.extract_text ?? memory?.extractText ?? memory?.extract_text ?? null;
-	const embedText = options.embedText ?? options.embed_text ?? memory?.embedText ?? memory?.embed_text ?? null;
 	const rememberOptions: FacadeRememberOptions = {
 		source: options.source ?? memory?.source ?? "conversation",
 		importance: options.importance ?? memory?.importance ?? 0.5,
@@ -321,11 +314,11 @@ function toRememberOptions(input: string | RememberInput, options: RememberFacad
 			memory?.extract_entities ??
 			false,
 		extract: options.extract ?? memory?.extract ?? false,
-		extractText: extractText ?? undefined,
-		embedText: embedText ?? undefined,
-		trustTier: options.trustTier ?? options.trust_tier ?? memory?.trustTier ?? memory?.trust_tier ?? undefined,
+		extractText: aliasedRememberText(options, memory, "extractText", "extract_text"),
+		embedText: aliasedRememberText(options, memory, "embedText", "embed_text"),
+		trustTier: aliasedRememberText(options, memory, "trustTier", "trust_tier"),
 		veracity: clampVeracityOrUndefined(options.veracity ?? memory?.veracity),
-		memoryType: options.memoryType ?? options.memory_type ?? memory?.memoryType ?? memory?.memory_type ?? undefined,
+		memoryType: aliasedRememberText(options, memory, "memoryType", "memory_type"),
 	};
 	if (timestamp !== null && timestamp !== undefined) rememberOptions.timestamp = timestamp;
 	return rememberOptions;

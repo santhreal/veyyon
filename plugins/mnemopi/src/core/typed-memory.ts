@@ -281,6 +281,27 @@ function makeTypeMatch(
 	};
 }
 
+/** Base confidence plus a match-length bonus and 0.05 per booster phrase present, capped at 1. */
+function matchConfidence(
+	baseConfidence: number,
+	matchText: string,
+	memoryType: MemoryType,
+	contentLower: string,
+): number {
+	let confidence = baseConfidence;
+	if (matchText.length > 20) {
+		confidence += 0.1;
+	} else if (matchText.length > 10) {
+		confidence += 0.05;
+	}
+	for (const booster of CONFIDENCE_BOOSTERS[memoryType]) {
+		if (contentLower.includes(booster.toLowerCase())) {
+			confidence += 0.05;
+		}
+	}
+	return Math.min(confidence, 1.0);
+}
+
 export function classifyMemory(content: string): TypeMatch {
 	if (content.trim().length === 0) {
 		return makeTypeMatch(MemoryType.UNKNOWN, 0.0, "", "stable");
@@ -295,22 +316,7 @@ export function classifyMemory(content: string): TypeMatch {
 		if (match === null) {
 			continue;
 		}
-
-		let confidence = baseConfidence;
-		const matchText = match[0] ?? "";
-		if (matchText.length > 20) {
-			confidence += 0.1;
-		} else if (matchText.length > 10) {
-			confidence += 0.05;
-		}
-
-		for (const booster of CONFIDENCE_BOOSTERS[memoryType]) {
-			if (contentLower.includes(booster.toLowerCase())) {
-				confidence += 0.05;
-			}
-		}
-
-		confidence = Math.min(confidence, 1.0);
+		const confidence = matchConfidence(baseConfidence, match[0] ?? "", memoryType, contentLower);
 		const score = confidence * (1.0 + 0.1 * MEMORY_TYPE_ORDER.indexOf(memoryType));
 		if (score > bestScore) {
 			bestScore = score;

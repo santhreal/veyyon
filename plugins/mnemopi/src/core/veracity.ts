@@ -191,7 +191,11 @@ export function aggregateVeracity(sourceVeracities: readonly string[] | null | u
 	const valid = sourceVeracities.filter(isVeracity);
 	if (valid.length === 0) return "unknown";
 	const nonUnknown = valid.filter(value => value !== "unknown");
-	const candidates = nonUnknown.length === 0 ? valid : nonUnknown;
+	return pluralityVeracity(nonUnknown.length === 0 ? valid : nonUnknown);
+}
+
+/** The most frequent value, a tie going to the lowest weight. */
+function pluralityVeracity(candidates: readonly Veracity[]): Veracity {
 	const counts = new Map<Veracity, number>();
 	for (const value of candidates) counts.set(value, (counts.get(value) ?? 0) + 1);
 	let max = 0;

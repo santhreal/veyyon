@@ -163,138 +163,155 @@ function deltaDate(reference: Date, num: number, unit: string, direction: 1 | -1
 	return undefined;
 }
 
+function dayDate(value: Date | undefined): ParsedNaturalDate | undefined {
+	return value === undefined ? undefined : [value, "day", tagsForDay(value)];
+}
+
+function relativePeriod(
+	ref: Date,
+	qualifier: "this" | "last" | "next",
+	unit: "week" | "month" | "year",
+): ParsedNaturalDate {
+	const offset = qualifier === "this" ? 0 : qualifier === "last" ? -1 : 1;
+	const tag = `${qualifier}-${unit}`;
+	if (unit === "week") {
+		const d = offset === 0 ? dateOnly(ref) : addDays(ref, offset * 7);
+		return [d, "week", [`week-${isoWeek(d)}-${d.getUTCFullYear()}`, tag]];
+	}
+	if (unit === "month") {
+		const totalMonths = ref.getUTCFullYear() * 12 + ref.getUTCMonth() + offset;
+		const d =
+			offset === 0 ? dateOnly(ref) : (dateUtc(Math.floor(totalMonths / 12), (totalMonths % 12) + 1, 1) as Date);
+		return [d, "month", [`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`, tag]];
+	}
+	const d = offset === 0 ? dateOnly(ref) : (dateUtc(ref.getUTCFullYear() + offset, 1, 1) as Date);
+	return [d, "year", [String(d.getUTCFullYear()), tag]];
+}
+
+/**
+ * The date `num` units before (`-1`) or after (`1`) `ref`. A count too large to land on a representable
+ * date ends the parse with no date rather than trying a later form.
+ */
+function deltaResult(ref: Date, match: RegExpExecArray, direction: 1 | -1): ParsedNaturalDate | null {
+	const num = Number.parseInt(match[1] as string, 10);
+	const unit = match[2] as string;
+	const d = deltaDate(ref, num, unit, direction);
+	if (d === undefined) return null;
+	const tag = direction === -1 ? `${num}-${unit}s-ago` : `in-${num}-${unit}s`;
+	return [d, unit === "day" || unit === "hour" ? "day" : "week", [isoDate(d), tag]];
+}
+
+function offsetDay(ref: Date, days: number, label: string): ParsedNaturalDate {
+	const d = addDays(ref, days);
+	return [d, "day", [isoDate(d), dayName(d), label]];
+}
+
+/** The weekday `parsedDayName` relative to `ref`, in this week when no qualifier was written. */
+function weekdayDate(ref: Date, parsedDayName: string, qualifier?: string): ParsedNaturalDate {
+	const d = resolveRelativeDay(ref, parsedDayName, qualifier ?? "this");
+	const tags = [isoDate(d), `week-${isoWeek(d)}-${d.getUTCFullYear()}`, parsedDayName];
+	if (qualifier !== undefined) tags.push(qualifier);
+	return [d, "day", tags];
+}
+
+/**
+ * One phrase form `parseNlDate` recognizes. `resolve` returns the date, `undefined` to try the next form,
+ * or `null` to end the parse with no date.
+ */
+interface DateForm {
+	pattern: RegExp;
+	/** Match against the text as written instead of its lowercased, trimmed form. */
+	raw?: true;
+	resolve(match: RegExpExecArray, ref: Date): ParsedNaturalDate | null | undefined;
+}
+
+// Forms are tried in order and the first that resolves wins. Compound phrases MUST precede the single
+// words they contain: "day before yesterday" contains "yesterday" and "day after tomorrow" contains
+// "tomorrow", so a bare yesterday/tomorrow form first would shadow them and resolve two days off.
+const DATE_FORMS: readonly DateForm[] = [
+	{
+		pattern: /\b(\d{4})-(\d{2})-(\d{2})\b/,
+		raw: true,
+		resolve: m =>
+			dayDate(
+				dateUtc(
+					Number.parseInt(m[1] as string, 10),
+					Number.parseInt(m[2] as string, 10),
+					Number.parseInt(m[3] as string, 10),
+				),
+			),
+	},
+	{
+		pattern: /\b(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/,
+		raw: true,
+		resolve: m => {
+			const a = Number.parseInt(m[1] as string, 10);
+			const b = Number.parseInt(m[2] as string, 10);
+			const year = Number.parseInt(m[3] as string, 10);
+			const y = year < 100 ? year + 2000 : year;
+			return dayDate(a > 12 ? dateUtc(y, b, a) : dateUtc(y, a, b));
+		},
+	},
+	{
+		pattern:
+			/\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?\b/,
+		resolve: (m, ref) =>
+			dayDate(
+				dateUtc(
+					m[3] === undefined ? ref.getUTCFullYear() : Number.parseInt(m[3], 10),
+					MONTH_MAP[m[1] as string] ?? 1,
+					Number.parseInt(m[2] as string, 10),
+				),
+			),
+	},
+	{
+		pattern: /\btoday\b/,
+		resolve: (_m, ref) => {
+			const d = dateOnly(ref);
+			return [d, "day", [isoDate(d), dayName(d)]];
+		},
+	},
+	{ pattern: /\bday\s+after\s+tomorrow\b/, resolve: (_m, ref) => offsetDay(ref, 2, "day after tomorrow") },
+	{ pattern: /\bday\s+before\s+yesterday\b/, resolve: (_m, ref) => offsetDay(ref, -2, "day before yesterday") },
+	{ pattern: /\byesterday\b/, resolve: (_m, ref) => offsetDay(ref, -1, "yesterday") },
+	{ pattern: /\btomorrow\b/, resolve: (_m, ref) => offsetDay(ref, 1, "tomorrow") },
+	{
+		pattern:
+			/\b(last|this|next)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)\b/,
+		resolve: (m, ref) => weekdayDate(ref, m[2] as string, m[1] as string),
+	},
+	{
+		pattern: /\b(on\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/,
+		resolve: (m, ref) => weekdayDate(ref, m[2] as string),
+	},
+	{
+		pattern: /\b(this|last|next)\s+(week|month|year)\b/,
+		resolve: (m, ref) => relativePeriod(ref, m[1] as "this" | "last" | "next", m[2] as "week" | "month" | "year"),
+	},
+	{
+		pattern: /\b(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+(ago|before|earlier|back)\b/,
+		resolve: (m, ref) => deltaResult(ref, m, -1),
+	},
+	{
+		pattern: /\bin\s+(\d+)\s+(second|minute|hour|day|week|month|year)s?\b/,
+		resolve: (m, ref) => deltaResult(ref, m, 1),
+	},
+	{ pattern: /\b(recently|lately|not long ago)\b/, resolve: (_m, ref) => [dateOnly(ref), "relative", ["recently"]] },
+	{
+		pattern: /\b(a while ago|some time ago|long ago)\b/,
+		resolve: (_m, ref) => [dateOnly(ref), "relative", ["vague"]],
+	},
+];
+
 export function parseNlDate(text: string, reference?: QueryTime): ParsedNaturalDate | null {
 	const ref = parseReference(reference);
 	const textLower = text.toLowerCase().trim();
-
-	let m = /\b(\d{4})-(\d{2})-(\d{2})\b/.exec(text);
-	if (m !== null) {
-		const year = Number.parseInt(m[1] as string, 10);
-		const month = Number.parseInt(m[2] as string, 10);
-		const day = Number.parseInt(m[3] as string, 10);
-		const d = dateUtc(year, month, day);
-		if (d !== undefined) return [d, "day", tagsForDay(d)];
+	for (const form of DATE_FORMS) {
+		const match = form.pattern.exec(form.raw ? text : textLower);
+		if (match === null) continue;
+		const parsed = form.resolve(match, ref);
+		if (parsed !== undefined) return parsed;
 	}
-
-	m = /\b(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/.exec(text);
-	if (m !== null) {
-		const a = Number.parseInt(m[1] as string, 10);
-		const b = Number.parseInt(m[2] as string, 10);
-		let y = Number.parseInt(m[3] as string, 10);
-		if (y < 100) y += 2000;
-		const d = a > 12 ? dateUtc(y, b, a) : dateUtc(y, a, b);
-		if (d !== undefined) return [d, "day", tagsForDay(d)];
-	}
-
-	m =
-		/\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?\b/.exec(
-			textLower,
-		);
-	if (m !== null) {
-		const month = MONTH_MAP[m[1] as string] ?? 1;
-		const day = Number.parseInt(m[2] as string, 10);
-		const year = m[3] === undefined ? ref.getUTCFullYear() : Number.parseInt(m[3], 10);
-		const d = dateUtc(year, month, day);
-		if (d !== undefined) return [d, "day", tagsForDay(d)];
-	}
-
-	if (/\btoday\b/.test(textLower)) {
-		const d = dateOnly(ref);
-		return [d, "day", [isoDate(d), dayName(d)]];
-	}
-
-	// Compound phrases MUST be matched before the single words they contain:
-	// "day before yesterday" contains "yesterday" and "day after tomorrow"
-	// contains "tomorrow", so a bare yesterday/tomorrow check first would shadow
-	// them and resolve two days off. Order is the contract here.
-	if (/\bday\s+after\s+tomorrow\b/.test(textLower)) {
-		const d = addDays(ref, 2);
-		return [d, "day", [isoDate(d), dayName(d), "day after tomorrow"]];
-	}
-
-	if (/\bday\s+before\s+yesterday\b/.test(textLower)) {
-		const d = addDays(ref, -2);
-		return [d, "day", [isoDate(d), dayName(d), "day before yesterday"]];
-	}
-
-	if (/\byesterday\b/.test(textLower)) {
-		const d = addDays(ref, -1);
-		return [d, "day", [isoDate(d), dayName(d), "yesterday"]];
-	}
-
-	if (/\btomorrow\b/.test(textLower)) {
-		const d = addDays(ref, 1);
-		return [d, "day", [isoDate(d), dayName(d), "tomorrow"]];
-	}
-
-	m =
-		/\b(last|this|next)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)\b/.exec(
-			textLower,
-		);
-	if (m !== null) {
-		const qualifier = m[1] as string;
-		const parsedDayName = m[2] as string;
-		const d = resolveRelativeDay(ref, parsedDayName, qualifier);
-		return [d, "day", [isoDate(d), `week-${isoWeek(d)}-${d.getUTCFullYear()}`, parsedDayName, qualifier]];
-	}
-
-	m = /\b(on\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/.exec(textLower);
-	if (m !== null) {
-		const parsedDayName = m[2] as string;
-		const d = resolveRelativeDay(ref, parsedDayName, "this");
-		return [d, "day", [isoDate(d), `week-${isoWeek(d)}-${d.getUTCFullYear()}`, parsedDayName]];
-	}
-
-	m = /\b(this|last|next)\s+(week|month|year)\b/.exec(textLower);
-	if (m !== null) {
-		const qualifier = m[1] as "this" | "last" | "next";
-		const unit = m[2] as "week" | "month" | "year";
-		const offset = qualifier === "this" ? 0 : qualifier === "last" ? -1 : 1;
-		const tag = `${qualifier}-${unit}`;
-		if (unit === "week") {
-			const d = offset === 0 ? dateOnly(ref) : addDays(ref, offset * 7);
-			return [d, "week", [`week-${isoWeek(d)}-${d.getUTCFullYear()}`, tag]];
-		}
-		if (unit === "month") {
-			const totalMonths = ref.getUTCFullYear() * 12 + ref.getUTCMonth() + offset;
-			const year = Math.floor(totalMonths / 12);
-			const month = (totalMonths % 12) + 1;
-			const d = offset === 0 ? dateOnly(ref) : (dateUtc(year, month, 1) as Date);
-			const monthStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
-			return [d, "month", [monthStr, tag]];
-		}
-		if (unit === "year") {
-			const d = offset === 0 ? dateOnly(ref) : (dateUtc(ref.getUTCFullYear() + offset, 1, 1) as Date);
-			return [d, "year", [String(d.getUTCFullYear()), tag]];
-		}
-	}
-
-	m = /\b(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+(ago|before|earlier|back)\b/.exec(textLower);
-	if (m !== null) {
-		const num = Number.parseInt(m[1] as string, 10);
-		const unit = m[2] as string;
-		const d = deltaDate(ref, num, unit, -1);
-		if (d === undefined) return null;
-		return [d, unit === "day" || unit === "hour" ? "day" : "week", [isoDate(d), `${num}-${unit}s-ago`]];
-	}
-
-	m = /\bin\s+(\d+)\s+(second|minute|hour|day|week|month|year)s?\b/.exec(textLower);
-	if (m !== null) {
-		const num = Number.parseInt(m[1] as string, 10);
-		const unit = m[2] as string;
-		const d = deltaDate(ref, num, unit, 1);
-		if (d === undefined) return null;
-		return [d, unit === "day" || unit === "hour" ? "day" : "week", [isoDate(d), `in-${num}-${unit}s`]];
-	}
-
-	if (/\b(recently|lately|not long ago)\b/.test(textLower)) {
-		return [dateOnly(ref), "relative", ["recently"]];
-	}
-
-	if (/\b(a while ago|some time ago|long ago)\b/.test(textLower)) {
-		return [dateOnly(ref), "relative", ["vague"]];
-	}
-
 	return null;
 }
 

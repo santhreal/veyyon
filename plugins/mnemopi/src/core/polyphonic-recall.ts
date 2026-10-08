@@ -7,7 +7,7 @@ import { unicodeWordTokens, WORD_TOKEN_HYPHEN_RE } from "../util/regex";
 import { tableExists } from "../util/sqlite";
 import type { BeamMemoryState, JsonValue, Metadata, RecallResult } from "./beam/types";
 import { EpisodicGraph } from "./episodic-graph";
-import { VeracityConsolidator } from "./veracity-consolidation";
+import { type ConsolidatedFact, VeracityConsolidator } from "./veracity-consolidation";
 
 export type PolyphonicVoice = "vector" | "graph" | "fact" | "temporal";
 
@@ -176,6 +176,28 @@ function looksTemporal(query: string): boolean {
 	);
 }
 
+/** Score each memory `fact` cites with its confidence, keeping a higher score another fact gave it. */
+function recordFactSources(byId: Map<string, VoiceRecallResult>, fact: ConsolidatedFact): void {
+	for (const source of fact.sources) {
+		const memoryId = source.trim();
+		if (memoryId.length === 0) continue;
+		const existing = byId.get(memoryId);
+		if (existing !== undefined && existing.score >= fact.confidence) continue;
+		byId.set(memoryId, {
+			memoryId,
+			score: fact.confidence,
+			voice: "fact",
+			metadata: {
+				fact_id: fact.id ?? "",
+				subject: fact.subject,
+				predicate: fact.predicate,
+				object: fact.object,
+				mentions: fact.mention_count,
+			},
+		});
+	}
+}
+
 export class PolyphonicRecallEngine {
 	readonly dbPath: DatabasePath;
 	readonly db: Database;
@@ -271,30 +293,36 @@ export class PolyphonicRecallEngine {
 	}
 	graphVoice(query: string): VoiceRecallResult[] {
 		if (envDisabled("MNEMOPI_VOICE_GRAPH")) return [];
+		const results = this.#entityGraphResults(query);
+		const seedIds = new Set(results.map(result => result.memoryId));
+		return results.concat(this.#relatedGraphResults(seedIds));
+	}
+	/** The gists that name an entity of `query` as a participant and the facts it is the subject of. */
+	#entityGraphResults(query: string): VoiceRecallResult[] {
 		const results: VoiceRecallResult[] = [];
-		const seedIds = new Set<string>();
 		for (const entity of extractEntities(query)) {
 			for (const gist of this.graph.findGistsByParticipant(entity)) {
-				const memoryId = gist.id.startsWith("gist_") ? gist.id.slice(5) : gist.id;
-				seedIds.add(memoryId);
 				results.push({
-					memoryId,
+					memoryId: gist.id.startsWith("gist_") ? gist.id.slice(5) : gist.id,
 					score: 0.6,
 					voice: "graph",
 					metadata: { entity, gist: gist.text },
 				});
 			}
 			for (const fact of this.graph.findFactsBySubject(entity)) {
-				const memoryId = fact.id.includes("_") ? (fact.id.split("_").at(-1) ?? fact.id) : fact.id;
-				seedIds.add(memoryId);
 				results.push({
-					memoryId,
+					memoryId: fact.id.includes("_") ? (fact.id.split("_").at(-1) ?? fact.id) : fact.id,
 					score: fact.confidence * 0.5,
 					voice: "graph",
 					metadata: { entity, fact: `${fact.subject} ${fact.predicate} ${fact.object}` },
 				});
 			}
 		}
+		return results;
+	}
+	/** The memories two context edges from a seed, each once and none of them a seed. */
+	#relatedGraphResults(seedIds: ReadonlySet<string>): VoiceRecallResult[] {
+		const results: VoiceRecallResult[] = [];
 		const traversed = new Set<string>();
 		for (const seedId of seedIds) {
 			for (const related of this.graph.findRelatedMemories(seedId, 2, "ctx", 0.3)) {
@@ -320,26 +348,7 @@ export class PolyphonicRecallEngine {
 		const byId = new Map<string, VoiceRecallResult>();
 		for (const word of queryWords(query)) {
 			const subject = word[0] === undefined ? word : word[0].toUpperCase() + word.slice(1);
-			for (const fact of this.consolidator.getConsolidatedFacts(subject, 0.5)) {
-				for (const source of fact.sources) {
-					const memoryId = source.trim();
-					if (memoryId.length === 0) continue;
-					const existing = byId.get(memoryId);
-					if (existing !== undefined && existing.score >= fact.confidence) continue;
-					byId.set(memoryId, {
-						memoryId,
-						score: fact.confidence,
-						voice: "fact",
-						metadata: {
-							fact_id: fact.id ?? "",
-							subject: fact.subject,
-							predicate: fact.predicate,
-							object: fact.object,
-							mentions: fact.mention_count,
-						},
-					});
-				}
-			}
+			for (const fact of this.consolidator.getConsolidatedFacts(subject, 0.5)) recordFactSources(byId, fact);
 		}
 		return [...byId.values()].sort((a, b) => b.score - a.score || a.memoryId.localeCompare(b.memoryId));
 	}

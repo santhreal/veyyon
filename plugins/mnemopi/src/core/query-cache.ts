@@ -35,6 +35,21 @@ interface Tier23Entry {
 	readonly results: readonly QueryCacheResult[];
 }
 
+interface CacheMatch {
+	readonly key: string;
+	readonly results: readonly QueryCacheResult[];
+}
+
+interface SemanticMatch extends CacheMatch {
+	readonly cosine: number;
+}
+
+/** Cosine at or above which a cached query is served as the same question (tier 2). */
+const NEAR_DUPLICATE_COSINE = 0.88;
+/** Cosine at or above which a cached query is served when its words also overlap (tier 3). */
+const RELATED_COSINE = 0.78;
+const RELATED_MIN_JACCARD = 0.15;
+
 interface CacheRow {
 	readonly normalized: string;
 	readonly embedding_json: string | null;
@@ -161,64 +176,65 @@ export class QueryCache {
 			return null;
 		}
 
-		const tier1 = this.#tier1.get(normalized);
-		if (tier1 !== undefined) {
-			this.#touchKey(normalized);
-			this.hits += 1;
+		const exact = this.#tier1.get(normalized);
+		if (exact !== undefined) {
 			this.tier1Hits += 1;
-			this.#recordPersistentHit(normalized);
-			return tier1;
+			return this.#hit(normalized, exact);
 		}
 
 		if (embedding !== undefined && embedding !== null && embedding.length !== 0) {
-			let bestScore = 0;
-			let bestKey: string | null = null;
-			for (const [cachedKey, cached] of this.#tier23) {
-				if (this.#isExpired(cachedKey, now)) continue;
-				const cosine = cosineSimilarity(embedding, cached.embedding);
-				if (cosine >= 0.88) {
-					bestScore = cosine;
-					bestKey = cachedKey;
-					break;
-				}
-				if (cosine >= 0.78) {
-					const jaccard = this.jaccardWords(query, cachedKey);
-					if (jaccard >= 0.15 && cosine > bestScore) {
-						bestScore = cosine;
-						bestKey = cachedKey;
-					}
-				}
-			}
-			if (bestKey !== null) {
-				const entry = this.#tier23.get(bestKey);
-				if (entry !== undefined) {
-					this.#touchKey(bestKey);
-					this.hits += 1;
-					if (bestScore >= 0.88) this.tier2Hits += 1;
-					else this.tier3Hits += 1;
-					this.#recordPersistentHit(bestKey);
-					return entry.results;
-				}
+			const semantic = this.#semanticMatch(query, embedding, now);
+			if (semantic !== null) {
+				if (semantic.cosine >= NEAR_DUPLICATE_COSINE) this.tier2Hits += 1;
+				else this.tier3Hits += 1;
+				return this.#hit(semantic.key, semantic.results);
 			}
 		}
 
-		let queryWords: Set<string> | null = null;
-		for (const [cachedKey, results] of this.#tier4) {
-			if (this.#isExpired(cachedKey, now)) continue;
-			queryWords ??= new Set(normalized.split(/\s+/));
-			if (queryWords.size === 0) continue;
-			let overlap = 0;
-			for (const cachedWord of cachedKey.split(/\s+/)) if (queryWords.has(cachedWord)) overlap += 1;
-			if (overlap >= queryWords.size * 0.7 && overlap >= 2) {
-				this.#touchKey(cachedKey);
-				this.hits += 1;
-				this.tier4Hits += 1;
-				this.#recordPersistentHit(cachedKey);
-				return results;
-			}
+		const overlapping = this.#wordOverlapMatch(normalized, now);
+		if (overlapping !== null) {
+			this.tier4Hits += 1;
+			return this.#hit(overlapping.key, overlapping.results);
 		}
 
 		this.misses += 1;
+		return null;
+	}
+
+	#hit(key: string, results: readonly QueryCacheResult[]): readonly QueryCacheResult[] {
+		this.#touchKey(key);
+		this.hits += 1;
+		this.#recordPersistentHit(key);
+		return results;
+	}
+
+	/**
+	 * The first unexpired entry whose embedding reaches {@link NEAR_DUPLICATE_COSINE}, else the closest one
+	 * reaching {@link RELATED_COSINE} whose words overlap the query's by {@link RELATED_MIN_JACCARD}.
+	 */
+	#semanticMatch(query: string, embedding: QueryEmbedding, now: number): SemanticMatch | null {
+		let best: SemanticMatch | null = null;
+		for (const [key, cached] of this.#tier23) {
+			if (this.#isExpired(key, now)) continue;
+			const cosine = cosineSimilarity(embedding, cached.embedding);
+			if (cosine >= NEAR_DUPLICATE_COSINE) return { key, results: cached.results, cosine };
+			if (cosine < RELATED_COSINE || cosine <= (best?.cosine ?? 0)) continue;
+			if (this.jaccardWords(query, key) >= RELATED_MIN_JACCARD) best = { key, results: cached.results, cosine };
+		}
+		return best;
+	}
+
+	/** The first unexpired entry holding at least two of the query's words and 70% of them. */
+	#wordOverlapMatch(normalized: string, now: number): CacheMatch | null {
+		let queryWords: Set<string> | null = null;
+		for (const [key, results] of this.#tier4) {
+			if (this.#isExpired(key, now)) continue;
+			queryWords ??= new Set(normalized.split(/\s+/));
+			if (queryWords.size === 0) continue;
+			let overlap = 0;
+			for (const cachedWord of key.split(/\s+/)) if (queryWords.has(cachedWord)) overlap += 1;
+			if (overlap >= queryWords.size * 0.7 && overlap >= 2) return { key, results };
+		}
 		return null;
 	}
 

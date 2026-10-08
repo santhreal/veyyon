@@ -98,6 +98,29 @@ function isSqlQueryBinding(value: unknown): value is SQLQueryBindings {
 	);
 }
 
+export interface DeltaStats {
+	inserted: number;
+	updated: number;
+	skipped: number;
+	filtered_keys: number;
+}
+type DeltaOutcome = "inserted" | "updated" | "skipped";
+type DeltaColumn = readonly [column: string, value: SQLQueryBindings];
+
+/**
+ * The columns of `row` in `allowed` that hold a SQLite-bindable value. Every other key except `id` is
+ * counted in `stats.filtered_keys`.
+ */
+function deltaColumns(row: Record<string, unknown>, allowed: ReadonlySet<string>, stats: DeltaStats): DeltaColumn[] {
+	const entries: DeltaColumn[] = [];
+	for (const key in row) {
+		const value = row[key];
+		if (allowed.has(key) && isSqlQueryBinding(value)) entries.push([key, value]);
+		else if (key !== "id") stats.filtered_keys++;
+	}
+	return entries;
+}
+
 export class MemoryEvent {
 	readonly eventType: EventType;
 	readonly memoryId: string;
@@ -360,67 +383,43 @@ export class DeltaSync {
 		peerId: string,
 		delta: readonly Record<string, unknown>[],
 		table: DeltaTable = "working_memory",
-	): { inserted: number; updated: number; skipped: number; filtered_keys: number } {
+	): DeltaStats {
 		assertDeltaTable(table);
-		let inserted = 0,
-			updated = 0,
-			skipped = 0,
-			filteredKeys = 0,
-			maxRowid = 0;
+		const stats: DeltaStats = { inserted: 0, updated: 0, skipped: 0, filtered_keys: 0 };
+		let maxRowid = 0;
 		const qname = QUALIFIED_TABLE_NAMES[table];
+		const findRow = this.#db.query(`SELECT 1 FROM ${qname} WHERE id = ?`);
 		for (const row of delta) {
 			const id = row.id;
 			if (typeof id !== "string" || id.length === 0) {
-				skipped++;
+				stats.skipped++;
 				continue;
 			}
-			const remoteRowid = typeof row.rowid === "number" ? row.rowid : 0;
-			if (remoteRowid > maxRowid) maxRowid = remoteRowid;
-			const exists = this.#db.query(`SELECT 1 FROM ${qname} WHERE id = ?`).get(id) !== null;
-			if (exists) {
-				const entries: [string, SQLQueryBindings][] = [];
-				for (const key in row) {
-					const value = row[key];
-					if (DELTA_UPDATABLE_COLUMNS.has(key) && isSqlQueryBinding(value)) {
-						entries.push([key, value]);
-					} else if (key !== "id") {
-						filteredKeys++;
-					}
-				}
-				if (entries.length === 0) {
-					skipped++;
-					continue;
-				}
-				const setSql = entries.map(([key]) => `${key} = ?`).join(", ");
-				const params: SQLQueryBindings[] = [...entries.map(([, value]) => value), id];
-				this.#db.run(`UPDATE ${qname} SET ${setSql} WHERE id = ?`, params);
-				updated++;
-			} else {
-				const entries: [string, SQLQueryBindings][] = [];
-				for (const key in row) {
-					const value = row[key];
-					if (DELTA_INSERTABLE_COLUMNS.has(key) && isSqlQueryBinding(value)) {
-						entries.push([key, value]);
-					} else if (key !== "id") {
-						filteredKeys++;
-					}
-				}
-				if (!entries.some(([key]) => key === "content")) {
-					skipped++;
-					continue;
-				}
-				const columns = entries.map(([key]) => key);
-				const placeholders = sqlPlaceholders(columns.length);
-				const params: SQLQueryBindings[] = entries.map(([, value]) => value);
-				this.#db.run(`INSERT INTO ${qname} (${columns.join(", ")}) VALUES (${placeholders})`, params);
-				inserted++;
-			}
+			if (typeof row.rowid === "number" && row.rowid > maxRowid) maxRowid = row.rowid;
+			const exists = findRow.get(id) !== null;
+			const entries = deltaColumns(row, exists ? DELTA_UPDATABLE_COLUMNS : DELTA_INSERTABLE_COLUMNS, stats);
+			stats[exists ? this.#updateDeltaRow(qname, id, entries) : this.#insertDeltaRow(qname, entries)]++;
 		}
 		this.saveCheckpoint(
 			new SyncCheckpoint({ peerId, lastRowid: maxRowid, lastSyncAt: new Date().toISOString() }),
 			table,
 		);
-		return { inserted, updated, skipped, filtered_keys: filteredKeys };
+		return stats;
+	}
+	#updateDeltaRow(qname: string, id: string, entries: readonly DeltaColumn[]): DeltaOutcome {
+		if (entries.length === 0) return "skipped";
+		const setSql = entries.map(([key]) => `${key} = ?`).join(", ");
+		this.#db.run(`UPDATE ${qname} SET ${setSql} WHERE id = ?`, [...entries.map(([, value]) => value), id]);
+		return "updated";
+	}
+	#insertDeltaRow(qname: string, entries: readonly DeltaColumn[]): DeltaOutcome {
+		if (!entries.some(([key]) => key === "content")) return "skipped";
+		const columns = entries.map(([key]) => key).join(", ");
+		this.#db.run(
+			`INSERT INTO ${qname} (${columns}) VALUES (${sqlPlaceholders(entries.length)})`,
+			entries.map(([, value]) => value),
+		);
+		return "inserted";
 	}
 	syncTo(peerId: string, table: DeltaTable = "working_memory"): { delta: Record<string, unknown>[]; count: number } {
 		const delta = this.computeDelta(peerId, table);
@@ -430,7 +429,7 @@ export class DeltaSync {
 		peerId: string,
 		delta: readonly Record<string, unknown>[],
 		table: DeltaTable = "working_memory",
-	): { stats: { inserted: number; updated: number; skipped: number; filtered_keys: number } } {
+	): { stats: DeltaStats } {
 		return { stats: this.applyDelta(peerId, delta, table) };
 	}
 }

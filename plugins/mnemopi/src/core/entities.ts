@@ -56,49 +56,46 @@ function isPureNumber(entity: string): boolean {
 	return normalized.length > 0 && /^\d+$/.test(normalized);
 }
 
+/**
+ * The entity `match` captured, or undefined when it is shorter than two characters, holds a stopword, is a
+ * number, or is one lowercase word not written after an `@` or `#`.
+ */
+function capturedEntity(text: string, match: RegExpExecArray): string | undefined {
+	const captured = match[1];
+	if (captured === undefined) return undefined;
+	const entity = captured.trim();
+	if (entity.length < 2) return undefined;
+	const words = entity.split(/\s+/).filter(word => word.length > 0);
+	if (words.some(word => ENTITY_EXTRACTION_STOP_WORDS.has(word.toLowerCase()))) return undefined;
+	if (isPureNumber(entity)) return undefined;
+	if (words.length === 1 && /^[a-z]/.test(entity)) {
+		const groupStart = match.index + match[0].indexOf(captured);
+		const prefix = groupStart > 0 ? text[groupStart - 1] : undefined;
+		if (prefix !== "@" && prefix !== "#") return undefined;
+	}
+	return entity;
+}
+
+/** Whether a longer extracted entity contains `entity`. An entity starting with `@` or `#` neither shadows nor is shadowed. */
+function isShadowed(entity: string, all: readonly string[]): boolean {
+	if (/^[@#]/.test(entity)) return false;
+	return all.some(other => other !== entity && other.includes(entity) && !/^[@#]/.test(other));
+}
+
 export function extractEntitiesRegex(text: string): string[] {
 	if (typeof text !== "string" || text.length === 0) return [];
 	if (text.length > REGEX_EXTRACTION_MAX_INPUT_CHARS) return [];
 
 	const entities = new Set<string>();
-	for (const sourcePattern of ENTITY_PATTERNS) {
-		const pattern = new RegExp(sourcePattern.source, sourcePattern.flags);
+	for (const pattern of ENTITY_PATTERNS) {
+		// matchAll iterates a clone of `pattern`, so the shared global regex keeps lastIndex 0.
 		for (const match of text.matchAll(pattern)) {
-			const captured = match[1];
-			if (captured === undefined) continue;
-			const entity = captured.trim();
-			if (entity.length < 2) continue;
-
-			const words = entity.split(/\s+/).filter(word => word.length > 0);
-			if (words.length === 1 && ENTITY_EXTRACTION_STOP_WORDS.has(entity.toLowerCase())) continue;
-			if (words.some(word => ENTITY_EXTRACTION_STOP_WORDS.has(word.toLowerCase()))) continue;
-			if (isPureNumber(entity)) continue;
-
-			const first = entity[0];
-			if (words.length === 1 && first !== undefined && first >= "a" && first <= "z") {
-				const groupStart = match.index + match[0].indexOf(captured);
-				const prefixChar = groupStart > 0 ? text[groupStart - 1] : undefined;
-				if (prefixChar !== "@" && prefixChar !== "#") continue;
-			}
-
-			entities.add(entity);
+			const entity = capturedEntity(text, match);
+			if (entity !== undefined) entities.add(entity);
 		}
 	}
-
-	const result = Array.from(entities).sort();
-	const filtered = new Set<string>();
-	for (const entity of result) {
-		let isSubstring = false;
-		for (const other of result) {
-			if (other === entity || !other.includes(entity)) continue;
-			if (entity.startsWith("@") || entity.startsWith("#")) continue;
-			if (other.startsWith("@") || other.startsWith("#")) continue;
-			isSubstring = true;
-			break;
-		}
-		if (!isSubstring) filtered.add(entity);
-	}
-	return Array.from(filtered).sort();
+	const sorted = Array.from(entities).sort();
+	return sorted.filter(entity => !isShadowed(entity, sorted));
 }
 export type SimilarEntity = readonly [entity: string, score: number];
 

@@ -139,6 +139,45 @@ function migrateRows(db: Database, rows: readonly TripleCandidateRow[]): number 
 	return written;
 }
 
+/** Log what a run would move: the triples total, the rows to migrate and their count per kind. */
+function reportClassification(dbPath: DatabasePath, classified: Classification, log: (line: string) => void): void {
+	log(`Database: ${dbPath}`);
+	log(`  triples rows (total):        ${classified.total}`);
+	log(`  rows-to-migrate (this run):  ${classified.rows.length}`);
+	const counts = kindCounts(classified.rows);
+	for (const kind of Object.keys(counts).sort()) log(`    ${kind.padEnd(14, " ")} ${counts[kind]}`);
+}
+
+/** Copy the database beside itself once; an existing backup is left as it is. */
+function backupBeforeMigrating(dbPath: string, log: (line: string) => void): void {
+	const backupPath = `${dbPath}.pre_e6_backup`;
+	if (existsSync(backupPath)) {
+		log(`Backup already exists at ${backupPath}; leaving as-is.`);
+		return;
+	}
+	copyDatabase(dbPath, backupPath);
+	log(`Backup written to ${backupPath}`);
+}
+
+/** Move the annotation rows under a write lock, classifying them again inside it. */
+function migrateLocked(dbPath: string): number {
+	const db = openDatabase(dbPath);
+	try {
+		db.run("BEGIN IMMEDIATE");
+		try {
+			initAnnotations(db);
+			const written = migrateRows(db, classifyRows(db).rows);
+			db.run("COMMIT");
+			return written;
+		} catch (error) {
+			db.run("ROLLBACK");
+			throw error;
+		}
+	} finally {
+		closeQuietly(db);
+	}
+}
+
 export function migrate(
 	dbPathOrOptions: DatabasePath | MigrationOptions,
 	dryRun = false,
@@ -148,15 +187,13 @@ export function migrate(
 	const options =
 		typeof dbPathOrOptions === "string" ? { dbPath: dbPathOrOptions, dryRun, backup, logFn } : dbPathOrOptions;
 	const dbPath = options.dbPath;
-	const effectiveDryRun = options.dryRun ?? false;
-	const effectiveBackup = options.backup ?? true;
-	const effectiveLog = options.logFn ?? console.log;
+	const log = options.logFn ?? console.log;
 	if (dbPath === ":memory:" || !existsSync(dbPath)) {
-		effectiveLog(`ERROR: database not found: ${dbPath}`);
+		log(`ERROR: database not found: ${dbPath}`);
 		throw new Error(`database not found: ${dbPath}`);
 	}
 
-	let db = openDatabase(dbPath);
+	const db = openDatabase(dbPath);
 	let classified: Classification;
 	try {
 		classified = classifyRows(db);
@@ -164,45 +201,18 @@ export function migrate(
 		closeQuietly(db);
 	}
 
-	effectiveLog(`Database: ${dbPath}`);
-	effectiveLog(`  triples rows (total):        ${classified.total}`);
-	effectiveLog(`  rows-to-migrate (this run):  ${classified.rows.length}`);
-	if (classified.rows.length > 0) {
-		const counts = kindCounts(classified.rows);
-		for (const kind of Object.keys(counts).sort()) effectiveLog(`    ${kind.padEnd(14, " ")} ${counts[kind]}`);
-	}
+	reportClassification(dbPath, classified, log);
 	if (classified.rows.length === 0) {
-		effectiveLog("Nothing to migrate. Schema is already split or no annotation rows exist.");
+		log("Nothing to migrate. Schema is already split or no annotation rows exist.");
 		return 0;
 	}
-	if (effectiveDryRun) {
-		effectiveLog("Dry run: no changes written.");
+	if (options.dryRun ?? false) {
+		log("Dry run: no changes written.");
 		return classified.rows.length;
 	}
-	if (effectiveBackup) {
-		const backupPath = `${dbPath}.pre_e6_backup`;
-		if (existsSync(backupPath)) effectiveLog(`Backup already exists at ${backupPath}; leaving as-is.`);
-		else {
-			copyDatabase(dbPath, backupPath);
-			effectiveLog(`Backup written to ${backupPath}`);
-		}
-	}
+	if (options.backup ?? true) backupBeforeMigrating(dbPath, log);
 
-	db = openDatabase(dbPath);
-	try {
-		db.run("BEGIN IMMEDIATE");
-		try {
-			initAnnotations(db);
-			const lockedClassification = classifyRows(db);
-			const written = migrateRows(db, lockedClassification.rows);
-			db.run("COMMIT");
-			effectiveLog(`Migration complete: ${written} rows moved to annotations table.`);
-			return written;
-		} catch (error) {
-			db.run("ROLLBACK");
-			throw error;
-		}
-	} finally {
-		closeQuietly(db);
-	}
+	const written = migrateLocked(dbPath);
+	log(`Migration complete: ${written} rows moved to annotations table.`);
+	return written;
 }

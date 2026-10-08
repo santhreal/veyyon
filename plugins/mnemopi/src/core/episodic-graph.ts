@@ -358,6 +358,24 @@ export class EpisodicGraph {
 						.all(source, source) as EdgeRow[]);
 		return rows.map(edgeFromRow);
 	}
+	#neighborEdges(memoryId: string, edgeType: string, threshold: number): EdgeRow[] {
+		if (edgeType.length > 0) {
+			return this.db
+				.query(
+					`SELECT source, target, edge_type, weight FROM graph_edges
+					 WHERE (source = ? OR target = ?) AND edge_type = ? AND weight >= ?
+					 ORDER BY weight DESC, id`,
+				)
+				.all(memoryId, memoryId, edgeType, threshold) as EdgeRow[];
+		}
+		return this.db
+			.query(
+				`SELECT source, target, edge_type, weight FROM graph_edges
+				 WHERE (source = ? OR target = ?) AND weight >= ?
+				 ORDER BY weight DESC, id`,
+			)
+			.all(memoryId, memoryId, threshold) as EdgeRow[];
+	}
 	findRelatedMemories(memoryId: string, depth = 2, edgeType = "", minWeight = 0): RelatedMemory[] {
 		const results: RelatedMemory[] = [];
 		let currentLevel = new Set([memoryId]);
@@ -368,33 +386,12 @@ export class EpisodicGraph {
 		for (let hop = 1; hop <= maxDepth; hop++) {
 			const nextLevel = new Set<string>();
 			for (const mem of currentLevel) {
-				const rows =
-					edgeType.length > 0
-						? (this.db
-								.query(
-									`SELECT source, target, edge_type, weight FROM graph_edges
-								 WHERE (source = ? OR target = ?) AND edge_type = ? AND weight >= ?
-								 ORDER BY weight DESC, id`,
-								)
-								.all(mem, mem, edgeType, threshold) as EdgeRow[])
-						: (this.db
-								.query(
-									`SELECT source, target, edge_type, weight FROM graph_edges
-								 WHERE (source = ? OR target = ?) AND weight >= ?
-								 ORDER BY weight DESC, id`,
-								)
-								.all(mem, mem, threshold) as EdgeRow[]);
-				for (const row of rows) {
+				for (const row of this.#neighborEdges(mem, edgeType, threshold)) {
 					const neighbor = row.source === mem ? row.target : row.source;
 					if (seen.has(neighbor)) continue;
 					seen.add(neighbor);
 					nextLevel.add(neighbor);
-					results.push({
-						memoryId: neighbor,
-						edgeType: row.edge_type,
-						weight: row.weight,
-						depth: hop,
-					});
+					results.push({ memoryId: neighbor, edgeType: row.edge_type, weight: row.weight, depth: hop });
 				}
 			}
 			currentLevel = nextLevel;
@@ -450,58 +447,42 @@ export class EpisodicGraph {
 		if (linkExisting) {
 			const sourceTokens = contentTokenSet(content);
 			for (const otherId of previousMemoryIds) {
-				const otherContent = this.#memoryContent(otherId);
-				const lexicalScore = Math.round(jaccardIndex(sourceTokens, contentTokenSet(otherContent)) * 1000) / 1000;
-				let wroteCtxEdge = false;
-				if (lexicalScore >= minLinkScore) {
-					const edge = {
-						source: memoryId,
-						target: otherId,
-						edgeType: "related_to",
-						weight: lexicalScore,
-						timestamp,
-					};
-					this.addEdge(edge);
-					edges.push(edge);
-					const ctxEdge = {
-						source: memoryId,
-						target: otherId,
-						edgeType: "ctx",
-						weight: lexicalScore,
-						timestamp,
-					};
-					this.addEdge(ctxEdge);
-					edges.push(ctxEdge);
-					wroteCtxEdge = true;
-				}
-				const entityScore = this.#entityOverlapScore(memoryId, otherId);
-				if (entityScore > 0) {
-					const edge = {
-						source: memoryId,
-						target: otherId,
-						edgeType: "references",
-						weight: entityScore,
-						timestamp,
-					};
-					this.addEdge(edge);
-					edges.push(edge);
-				}
-				const contextualScore = Math.max(lexicalScore, entityScore, this.#temporalContextScore(memoryId, otherId));
-				if (!wroteCtxEdge && contextualScore >= minLinkScore) {
-					const ctxEdge = {
-						source: memoryId,
-						target: otherId,
-						edgeType: "ctx",
-						weight: contextualScore,
-						timestamp,
-					};
-					this.addEdge(ctxEdge);
-					edges.push(ctxEdge);
-				}
+				edges.push(...this.#linkToMemory(memoryId, otherId, sourceTokens, minLinkScore, timestamp));
 			}
 		}
 
 		return { memoryId, gist, facts, edges };
+	}
+	/**
+	 * Write the edges from `memoryId` to one earlier memory and return them in write order: a
+	 * lexical match writes `related_to` and `ctx`, shared entities write `references`, and without a
+	 * lexical match the strongest of the lexical, entity and temporal scores writes `ctx`.
+	 */
+	#linkToMemory(
+		memoryId: string,
+		otherId: string,
+		sourceTokens: Set<string>,
+		minLinkScore: number,
+		timestamp: string,
+	): GraphEdge[] {
+		const edges: GraphEdge[] = [];
+		const link = (edgeType: string, weight: number): void => {
+			const edge = { source: memoryId, target: otherId, edgeType, weight, timestamp };
+			this.addEdge(edge);
+			edges.push(edge);
+		};
+		const otherTokens = contentTokenSet(this.#memoryContent(otherId));
+		const lexicalScore = Math.round(jaccardIndex(sourceTokens, otherTokens) * 1000) / 1000;
+		const lexicalLink = lexicalScore >= minLinkScore;
+		if (lexicalLink) {
+			link("related_to", lexicalScore);
+			link("ctx", lexicalScore);
+		}
+		const entityScore = this.#entityOverlapScore(memoryId, otherId);
+		if (entityScore > 0) link("references", entityScore);
+		const contextualScore = Math.max(lexicalScore, entityScore, this.#temporalContextScore(memoryId, otherId));
+		if (!lexicalLink && contextualScore >= minLinkScore) link("ctx", contextualScore);
+		return edges;
 	}
 	getStats(): GraphStats {
 		const gists = this.#count("gists");

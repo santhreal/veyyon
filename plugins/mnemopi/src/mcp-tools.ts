@@ -381,6 +381,20 @@ async function withBeam<T>(args: ToolArguments, fn: (beam: BeamMemory, bank: str
 	}
 }
 
+/** Carry out a `mnemopi_validate` action on an existing memory and return its status. */
+function applyValidation(beam: BeamMemory, memoryId: string, action: string, args: ToolArguments): string {
+	switch (action) {
+		case "delete":
+			return beam.forgetWorking(memoryId) ? "validation_delete" : "not_found";
+		case "update":
+			return beam.updateWorking(memoryId, stringArg(args, "new_content"), null) ? "validation_update" : "not_found";
+		case "invalidate":
+			return beam.invalidate(memoryId) ? "validation_invalidate" : "not_found";
+		default:
+			return "validation_attest";
+	}
+}
+
 function serialize(value: unknown): unknown {
 	if (value instanceof Date) return value.toISOString();
 	if (Array.isArray(value)) return value.map(serialize);
@@ -634,17 +648,7 @@ const TOOL_HANDLERS: Record<string, Handler> = {
 		return withBeam(args, (beam, bank) => {
 			const existing = beam.get(memoryId);
 			if (existing === null) return { error: "memory_not_found", memory_id: memoryId, bank };
-			let status: string;
-			if (action === "delete") status = beam.forgetWorking(memoryId) ? "validation_delete" : "not_found";
-			else if (action === "update") {
-				status = beam.updateWorking(memoryId, stringArg(args, "new_content"), null)
-					? "validation_update"
-					: "not_found";
-			} else if (action === "invalidate") {
-				status = beam.invalidate(memoryId) ? "validation_invalidate" : "not_found";
-			} else {
-				status = "validation_attest";
-			}
+			const status = applyValidation(beam, memoryId, action, args);
 			const row: Record<string, unknown> = isRecord(existing) ? existing : {};
 			const authorId = typeof row.author_id === "string" ? row.author_id : null;
 			const previousContent = typeof row.content === "string" ? row.content.slice(0, 200) : null;

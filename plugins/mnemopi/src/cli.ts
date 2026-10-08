@@ -281,31 +281,32 @@ export const cmdScratchpad: CommandHandler = (args, context) => {
 	});
 };
 
+/** Run one `bank` subcommand against `manager`. */
+function runBankCommand(manager: BankManager, args: readonly string[], context: CliContext | undefined): number {
+	const subcmd = args[0];
+	if (subcmd === "list") {
+		out(context, "\nMemory Banks:\n");
+		for (const bank of manager.listBanks()) out(context, `  - ${bank}`);
+		return 0;
+	}
+	if (subcmd !== "create" && subcmd !== "delete") fail(`Unknown bank command: ${subcmd}`);
+	if (args.length < 2) fail(`Usage: mnemopi bank ${subcmd} <name>`);
+	const name = args[1] ?? "";
+	if (subcmd === "create") {
+		manager.createBank(name);
+		out(context, `Created bank: ${name}`);
+		return 0;
+	}
+	if (!manager.deleteBank(name)) fail(`Bank not found: ${name}`, 1);
+	out(context, `Deleted bank: ${name}`);
+	return 0;
+}
+
 export const cmdBank: CommandHandler = (args, context) => {
 	if (args.length === 0) usage("Usage: mnemopi bank <list|create|delete> [name]");
 	const manager = new BankManager(resolveDataDir(context));
-	const subcmd = args[0];
 	try {
-		if (subcmd === "list") {
-			out(context, "\nMemory Banks:\n");
-			for (const bank of manager.listBanks()) out(context, `  - ${bank}`);
-			return 0;
-		}
-		if (subcmd === "create") {
-			if (args.length < 2) fail("Usage: mnemopi bank create <name>");
-			const name = args[1] ?? "";
-			manager.createBank(name);
-			out(context, `Created bank: ${name}`);
-			return 0;
-		}
-		if (subcmd === "delete") {
-			if (args.length < 2) fail("Usage: mnemopi bank delete <name>");
-			const name = args[1] ?? "";
-			if (!manager.deleteBank(name)) fail(`Bank not found: ${name}`, 1);
-			out(context, `Deleted bank: ${name}`);
-			return 0;
-		}
-		fail(`Unknown bank command: ${subcmd}`);
+		return runBankCommand(manager, args, context);
 	} catch (error) {
 		if (error instanceof CliError) throw error;
 		if (error instanceof ValueError) fail(error.message);

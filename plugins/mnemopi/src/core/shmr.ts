@@ -282,37 +282,48 @@ async function resolveItemVectors(items: readonly ShmrItem[]): Promise<Vector[]>
 	return resolved;
 }
 
-export async function clusterBySimilarity(items: readonly ShmrItem[], threshold: number): Promise<ShmrItem[][]> {
-	if (items.length === 0) return [];
-	const vectors = await resolveItemVectors(items);
-	const adjacency: number[][] = Array.from({ length: items.length }, () => []);
-	for (let i = 0; i < items.length; i++) {
-		const leftEmbedding = vectors[i];
-		if (leftEmbedding === undefined) continue;
-		for (let j = i + 1; j < items.length; j++) {
-			const rightEmbedding = vectors[j];
-			if (rightEmbedding === undefined) continue;
-			if (cosineSimilarity(leftEmbedding, rightEmbedding) >= threshold) {
+function similarityAdjacency(vectors: readonly Vector[], threshold: number): number[][] {
+	const adjacency: number[][] = Array.from({ length: vectors.length }, () => []);
+	for (let i = 0; i < vectors.length; i++) {
+		const left = vectors[i];
+		if (left === undefined) continue;
+		for (let j = i + 1; j < vectors.length; j++) {
+			const right = vectors[j];
+			if (right !== undefined && cosineSimilarity(left, right) >= threshold) {
 				adjacency[i]?.push(j);
 				adjacency[j]?.push(i);
 			}
 		}
 	}
+	return adjacency;
+}
+
+/** Mark and return every unvisited node reachable from `start`, in depth-first order. */
+function drainComponent(start: number, adjacency: readonly number[][], visited: Set<number>): number[] {
+	const component: number[] = [];
+	const stack = [start];
+	while (stack.length > 0) {
+		const node = stack.pop();
+		if (node === undefined || visited.has(node)) continue;
+		visited.add(node);
+		component.push(node);
+		for (const next of adjacency[node] ?? []) if (!visited.has(next)) stack.push(next);
+	}
+	return component;
+}
+
+export async function clusterBySimilarity(items: readonly ShmrItem[], threshold: number): Promise<ShmrItem[][]> {
+	if (items.length === 0) return [];
+	const adjacency = similarityAdjacency(await resolveItemVectors(items), threshold);
 	const visited = new Set<number>();
 	const clusters: ShmrItem[][] = [];
 	for (let i = 0; i < items.length; i++) {
 		if (visited.has(i)) continue;
-		const cluster: ShmrItem[] = [];
-		const stack = [i];
-		while (stack.length > 0) {
-			const node = stack.pop();
-			if (node === undefined || visited.has(node)) continue;
-			visited.add(node);
-			const item = items[node];
-			if (item !== undefined) cluster.push(item);
-			for (const next of adjacency[node] ?? []) if (!visited.has(next)) stack.push(next);
-		}
-		clusters.push(cluster);
+		clusters.push(
+			drainComponent(i, adjacency, visited)
+				.map(node => items[node])
+				.filter((item): item is ShmrItem => item !== undefined),
+		);
 	}
 	return clusters;
 }
@@ -367,27 +378,32 @@ function normalizeBelief(value: Record<string, unknown>): Belief {
 	};
 }
 
+function itemTriple(item: ShmrItem): Pick<Belief, "subject" | "predicate" | "object"> {
+	return {
+		subject: item.subject ?? "memory",
+		predicate: item.predicate ?? "contains",
+		object: item.object ?? item.content ?? "",
+	};
+}
+
 function deterministicBeliefs(cluster: readonly ShmrItem[]): Belief[] {
 	const byTriple = new Map<string, { count: number; confidence: number; item: ShmrItem }>();
 	for (const item of cluster) {
-		const subject = item.subject ?? "memory";
-		const predicate = item.predicate ?? "contains";
-		const object = item.object ?? item.content ?? "";
+		const { subject, predicate, object } = itemTriple(item);
 		const key = `${subject}\u0000${predicate}\u0000${object.toLowerCase()}`;
+		const confidence = item.confidence ?? 0.5;
 		const existing = byTriple.get(key);
-		if (existing === undefined) byTriple.set(key, { count: 1, confidence: item.confidence ?? 0.5, item });
+		if (existing === undefined) byTriple.set(key, { count: 1, confidence, item });
 		else {
 			existing.count++;
-			existing.confidence += item.confidence ?? 0.5;
+			existing.confidence += confidence;
 		}
 	}
 	const beliefs: Belief[] = [];
 	for (const value of byTriple.values()) {
 		if (value.count < 2 && cluster.length > 1) continue;
 		beliefs.push({
-			subject: value.item.subject ?? "memory",
-			predicate: value.item.predicate ?? "contains",
-			object: value.item.object ?? value.item.content ?? "",
+			...itemTriple(value.item),
 			confidence: Math.min(
 				0.95,
 				Math.max(0.5, value.confidence / value.count + Math.min(0.2, (value.count - 1) * 0.1)),
@@ -401,9 +417,7 @@ function deterministicBeliefs(cluster: readonly ShmrItem[]): Belief[] {
 	if (first === undefined) return [];
 	return [
 		{
-			subject: first.subject ?? "memory",
-			predicate: first.predicate ?? "contains",
-			object: first.object ?? first.content ?? "",
+			...itemTriple(first),
 			confidence: Math.max(0.5, first.confidence ?? 0.5),
 			action: "create",
 			rationale: "Deterministic representative belief",
@@ -508,6 +522,94 @@ function precomputedVectors(db: Database, memoryIds: readonly (string | undefine
 	return out;
 }
 
+interface HarmonizeCandidate {
+	readonly item: ShmrItem;
+	/** The `episodic_memory` id whose precomputed embedding seeds the item; facts have none. */
+	readonly memoryId?: string;
+}
+
+function factCandidates(db: Database, batchSize: number): HarmonizeCandidate[] {
+	if (!tableExists(db, "facts")) return [];
+	const rows = db
+		.query(
+			"SELECT fact_id, subject, predicate, object, confidence, timestamp FROM facts ORDER BY created_at DESC LIMIT ?",
+		)
+		.all(batchSize) as FactRow[];
+	return rows.map(row => ({
+		item: {
+			fact_id: row.fact_id,
+			subject: row.subject,
+			predicate: row.predicate,
+			object: row.object,
+			confidence: row.confidence ?? 0.5,
+			timestamp: row.timestamp ?? undefined,
+			source: "fact",
+		},
+	}));
+}
+
+function episodicCandidates(db: Database, batchSize: number): HarmonizeCandidate[] {
+	if (!tableExists(db, "episodic_memory")) return [];
+	const rows = db
+		.query("SELECT id, content, importance, created_at FROM episodic_memory ORDER BY created_at DESC LIMIT ?")
+		.all(Math.max(1, Math.floor(batchSize / 2))) as EpisodeRow[];
+	return rows
+		.filter(row => row.content.length > 10)
+		.map(row => ({
+			item: {
+				fact_id: `ep_${row.id}`,
+				subject: "memory",
+				predicate: "contains",
+				object: row.content.slice(0, 300),
+				confidence: row.importance ?? 0.5,
+				timestamp: row.created_at ?? undefined,
+				source: "episodic",
+			},
+			memoryId: row.id,
+		}));
+}
+
+/** Seed each candidate with its stored embedding, then embed the rest so every item carries one vector space. */
+async function embedCandidates(db: Database, candidates: readonly HarmonizeCandidate[]): Promise<ShmrItem[]> {
+	const precomputed = precomputedVectors(
+		db,
+		candidates.map(candidate => candidate.memoryId),
+	);
+	const seeded = candidates.map(({ item, memoryId }) => {
+		const vector = memoryId !== undefined ? precomputed.get(memoryId) : undefined;
+		return vector === undefined ? item : { ...item, embedding: vector };
+	});
+	const itemVectors = await resolveItemVectors(seeded);
+	return seeded.map((item, i) => ({ ...item, embedding: itemVectors[i] }));
+}
+
+/**
+ * Score the cluster's beliefs up to `maxIterations` times, recording each score, and apply the
+ * first set that reaches the harmony threshold.
+ */
+async function harmonizeCluster(
+	db: Database,
+	cluster: readonly ShmrItem[],
+	clusterId: string,
+	maxIterations: number,
+	scores: number[],
+): Promise<{ beliefs: number; contradictions: number }> {
+	for (let iteration = 0; iteration < maxIterations; iteration++) {
+		const beliefs = deterministicBeliefs(cluster);
+		const score = Math.max(
+			await computeHarmonyScore(beliefs, cluster),
+			beliefs.length > 0 ? SHMR_HARMONY_THRESHOLD : 0,
+		);
+		scores.push(score);
+		if (score >= SHMR_HARMONY_THRESHOLD) {
+			applyBeliefs(db, beliefs, cluster, clusterId);
+			const contradictions = beliefs.filter(belief => belief.action === "dampen").length;
+			return { beliefs: beliefs.length - contradictions, contradictions };
+		}
+	}
+	return { beliefs: 0, contradictions: 0 };
+}
+
 export async function harmonize(
 	beam: BeamLike,
 	batchSize = SHMR_BATCH_SIZE,
@@ -517,46 +619,8 @@ export async function harmonize(
 	const started = performance.now();
 	const db = dbOf(beam);
 	initSchema(db);
-	const bare: ShmrItem[] = [];
-	const memoryIds: (string | undefined)[] = [];
-	if (tableExists(db, "facts")) {
-		const rows = db
-			.query(
-				"SELECT fact_id, subject, predicate, object, confidence, timestamp FROM facts ORDER BY created_at DESC LIMIT ?",
-			)
-			.all(batchSize) as FactRow[];
-		for (const row of rows) {
-			bare.push({
-				fact_id: row.fact_id,
-				subject: row.subject,
-				predicate: row.predicate,
-				object: row.object,
-				confidence: row.confidence ?? 0.5,
-				timestamp: row.timestamp ?? undefined,
-				source: "fact",
-			});
-			memoryIds.push(undefined);
-		}
-	}
-	if (tableExists(db, "episodic_memory")) {
-		const rows = db
-			.query("SELECT id, content, importance, created_at FROM episodic_memory ORDER BY created_at DESC LIMIT ?")
-			.all(Math.max(1, Math.floor(batchSize / 2))) as EpisodeRow[];
-		for (const row of rows)
-			if (row.content.length > 10) {
-				bare.push({
-					fact_id: `ep_${row.id}`,
-					subject: "memory",
-					predicate: "contains",
-					object: row.content.slice(0, 300),
-					confidence: row.importance ?? 0.5,
-					timestamp: row.created_at ?? undefined,
-					source: "episodic",
-				});
-				memoryIds.push(row.id);
-			}
-	}
-	if (bare.length < SHMR_MIN_CLUSTER_SIZE)
+	const candidates = [...factCandidates(db, batchSize), ...episodicCandidates(db, batchSize)];
+	if (candidates.length < SHMR_MIN_CLUSTER_SIZE)
 		return {
 			clusters_found: 0,
 			beliefs_generated: 0,
@@ -565,38 +629,18 @@ export async function harmonize(
 			duration_ms: Math.floor(performance.now() - started),
 			status: "insufficient_candidates",
 		};
-	const precomputed = precomputedVectors(db, memoryIds);
-	const seeded: ShmrItem[] = bare.map((item, i) => {
-		const memoryId = memoryIds[i];
-		const vector = memoryId !== undefined ? precomputed.get(memoryId) : undefined;
-		return vector === undefined ? item : { ...item, embedding: vector };
-	});
-	const itemVectors = await resolveItemVectors(seeded);
-	const candidates: ShmrItem[] = seeded.map((item, i) => ({ ...item, embedding: itemVectors[i] }));
-	const clusters = (await clusterBySimilarity(candidates, similarityThreshold)).filter(
+	const items = await embedCandidates(db, candidates);
+	const clusters = (await clusterBySimilarity(items, similarityThreshold)).filter(
 		cluster => cluster.length >= SHMR_MIN_CLUSTER_SIZE,
 	);
 	let totalBeliefs = 0;
 	let totalContradictions = 0;
 	const scores: number[] = [];
-	for (let clusterIndex = 0; clusterIndex < clusters.length; clusterIndex++) {
-		const cluster = clusters[clusterIndex];
-		if (cluster === undefined) continue;
+	for (const [clusterIndex, cluster] of clusters.entries()) {
 		const clusterId = `shmr_${Date.now()}_${clusterIndex}`;
-		for (let iteration = 0; iteration < maxIterations; iteration++) {
-			const beliefs = deterministicBeliefs(cluster);
-			const score = Math.max(
-				await computeHarmonyScore(beliefs, cluster),
-				beliefs.length > 0 ? SHMR_HARMONY_THRESHOLD : 0,
-			);
-			scores.push(score);
-			if (score >= SHMR_HARMONY_THRESHOLD) {
-				applyBeliefs(db, beliefs, cluster, clusterId);
-				totalBeliefs += beliefs.filter(belief => belief.action !== "dampen").length;
-				totalContradictions += beliefs.filter(belief => belief.action === "dampen").length;
-				break;
-			}
-		}
+		const applied = await harmonizeCluster(db, cluster, clusterId, maxIterations, scores);
+		totalBeliefs += applied.beliefs;
+		totalContradictions += applied.contradictions;
 	}
 	let avg = 0;
 	for (const score of scores) avg += score;

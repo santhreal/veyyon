@@ -42,23 +42,30 @@ export function resetHostLlmBackendForTests(): void {
 	hostBackend = null;
 }
 
-function defaultOnlinePayload(payload: unknown, rawPrompt: string): unknown {
+/** Apply the active scope's provider-text sanitizer, failing with a message that excludes the text. */
+export function sanitizeLlmProviderText(text: string): string {
 	const sanitize = getMnemopiRuntimeOptions()?.llm?.sanitizeProviderText;
+	if (sanitize === undefined) return text;
+	try {
+		return sanitize(text);
+	} catch {
+		throw new Error("Mnemopi provider text sanitization failed.");
+	}
+}
+
+/**
+ * A copy of the payload with the placeholder replaced by the raw prompt and every string
+ * sanitized. Records are rebuilt through `Object.fromEntries`, so a `__proto__` key stays an own
+ * field of the copy rather than replacing its prototype.
+ */
+function defaultOnlinePayload(payload: unknown, rawPrompt: string): unknown {
 	const visit = (value: unknown): unknown => {
 		if (typeof value === "string") {
-			const raw = value === MNEMOPI_LLM_ATTEMPT_PLACEHOLDER ? rawPrompt : value;
-			if (sanitize === undefined) return raw;
-			try {
-				return sanitize(raw);
-			} catch {
-				throw new Error("Mnemopi provider text sanitization failed.");
-			}
+			return sanitizeLlmProviderText(value === MNEMOPI_LLM_ATTEMPT_PLACEHOLDER ? rawPrompt : value);
 		}
 		if (Array.isArray(value)) return value.map(visit);
 		if (value === null || typeof value !== "object") return value;
-		const copy: Record<string, unknown> = {};
-		for (const [key, child] of Object.entries(value)) copy[key] = visit(child);
-		return copy;
+		return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, visit(child)]));
 	};
 	return visit(payload);
 }
