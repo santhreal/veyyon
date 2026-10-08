@@ -132,31 +132,37 @@ describe("latex fuzz invariants", () => {
 	// small enough to finish, and the depth that does trip the ceiling costs
 	// seconds of every gate run: 100k-deep is ~6.6s isolated here and timed out at
 	// 97s on a `--parallel=4 --smol` runner, where the guard was linear the whole
-	// time. What separates linear from quadratic is the ratio between D and 2D,
-	// and a ratio is invariant to how loaded the machine is.
+	// time. What separates linear from quadratic is the ratio between D and 4D,
+	// and a ratio is invariant to how loaded the machine is, as long as load
+	// falls on both arms alike.
 	//
 	// Not caught here: a constant-factor blowup that stays linear, and stack
 	// exhaustion past 16k depth, which the sibling test above covers at 20k.
 	it("degrades a nested optional-argument chain in linear time", () => {
-		const cost = (depth: number): number => {
-			const attack = `${"\\sqrt[".repeat(depth)}2${"]{x}".repeat(depth)}`;
-			let best = Number.POSITIVE_INFINITY;
-			for (let sample = 0; sample < 3; sample++) {
-				const started = performance.now();
-				expect(typeof latexToUnicode(attack)).toBe("string");
-				best = Math.min(best, performance.now() - started);
-			}
-			return best;
+		const attack = (depth: number): string => `${"\\sqrt[".repeat(depth)}2${"]{x}".repeat(depth)}`;
+		const time = (input: string): number => {
+			const started = performance.now();
+			expect(typeof latexToUnicode(input)).toBe("string");
+			return performance.now() - started;
 		};
-		// Doubling the depth doubles linear work and quadruples quadratic work; 3
-		// separates the two shapes with room for scheduler noise.
-		// Measured smallest-first and in this order: the first call at any depth pays
-		// JIT tier-up the next does not, and `cost(8_000) / cost(4_000)` evaluates the
-		// large arm first, which charges the warmup to the numerator and hides a
-		// quadratic parser behind a ratio under 2.
-		const small = cost(4_000);
-		const large = cost(8_000);
-		expect(large / small).toBeLessThan(3);
+		const small = attack(2_000);
+		const large = attack(8_000);
+		// The first call at any depth pays JIT tier-up the next does not; one
+		// discarded call per arm keeps that warmup out of both minimums.
+		time(small);
+		time(large);
+		// Samples alternate between the arms, so a load spike from a parallel
+		// worker lands on both instead of skewing whichever arm ran during it.
+		let smallBest = Number.POSITIVE_INFINITY;
+		let largeBest = Number.POSITIVE_INFINITY;
+		for (let sample = 0; sample < 5; sample++) {
+			smallBest = Math.min(smallBest, time(small));
+			largeBest = Math.min(largeBest, time(large));
+		}
+		// Quadrupling the depth quadruples linear work (~4.2 measured) and
+		// multiplies quadratic work by 16 (~16.7 measured with the child parser
+		// seeded at depth 0). 8 sits a factor of two from both.
+		expect(largeBest / smallBest).toBeLessThan(8);
 	}, 30_000);
 
 	it("leaves shallow optional-argument math alone", () => {
