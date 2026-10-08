@@ -95,7 +95,13 @@ function buildModelPath(parts: string[]): string {
 	return parts.map(part => encodeURIComponent(part)).join("/");
 }
 
-function parseOllamaUrl(url: string): { modelRef: string; baseRef: string; pageUrl: string } | null {
+interface OllamaModelRef {
+	modelRef: string;
+	baseRef: string;
+	pageUrl: string;
+}
+
+function parseOllamaUrl(url: string): OllamaModelRef | null {
 	try {
 		const parsed = tryParseUrl(url);
 		if (!parsed) return null;
@@ -159,6 +165,77 @@ function collectParameterSizes(models: OllamaTagModel[], htmlSizes: string[]): s
 	return Array.from(sizes);
 }
 
+interface OllamaModelFacts {
+	baseRef: string;
+	tagRef: string | null;
+	description: string | null;
+	parameterSizes: string[];
+	sizeLine: string | null;
+	tags: string[];
+}
+
+/** The requested tag's size, else the smallest-to-largest span across the model's tags. */
+function ollamaSizeLine(
+	selectedTag: OllamaTagModel | null | undefined,
+	matchingModels: OllamaTagModel[],
+): string | null {
+	if (selectedTag?.size) return formatBytes(selectedTag.size);
+	const sizes = matchingModels.map(model => model.size).filter((size): size is number => typeof size === "number");
+	if (sizes.length === 0) return null;
+	const minSize = Math.min(...sizes);
+	const maxSize = Math.max(...sizes);
+	return minSize === maxSize ? formatBytes(minSize) : `${formatBytes(minSize)} - ${formatBytes(maxSize)}`;
+}
+
+/**
+ * What the tags API and the model page report for one model reference. `html` is empty when the page failed; the
+ * page's tag links stand in for the API's tags only when the API lists none.
+ */
+function collectOllamaFacts(
+	{ modelRef, baseRef }: OllamaModelRef,
+	models: OllamaTagModel[],
+	html: string,
+): OllamaModelFacts {
+	const htmlTags = html ? extractTagsFromHtml(html, baseRef) : [];
+	const baseLower = baseRef.toLowerCase();
+	const matchingModels = models.filter(model => {
+		const name = (model.model ?? model.name ?? "").toLowerCase();
+		return name === baseLower || name.startsWith(`${baseLower}:`);
+	});
+
+	const tagRef = modelRef.includes(":") ? modelRef : null;
+	const selectedTag = tagRef ? matchingModels.find(model => (model.model ?? model.name ?? "") === tagRef) : null;
+	const availableTags = matchingModels.map(model => model.model ?? model.name ?? "").filter(tag => tag.length > 0);
+	const tags = availableTags.length > 0 ? availableTags : htmlTags;
+
+	return {
+		baseRef,
+		tagRef,
+		description: html ? extractMetaDescription(html) : null,
+		parameterSizes: collectParameterSizes(
+			selectedTag ? [selectedTag] : matchingModels,
+			html ? extractParameterSizes(html) : [],
+		),
+		sizeLine: ollamaSizeLine(selectedTag, matchingModels),
+		tags: sortTags(Array.from(new Set(tags))),
+	};
+}
+
+function renderOllamaModel(facts: OllamaModelFacts): string {
+	let md = `# ${facts.baseRef}\n\n`;
+	if (facts.description) md += `${facts.description}\n\n`;
+
+	md += `**Model:** ${facts.baseRef}\n`;
+	if (facts.tagRef) md += `**Tag:** ${facts.tagRef}\n`;
+	if (facts.parameterSizes.length > 0) md += `**Parameters:** ${facts.parameterSizes.join(", ")}\n`;
+	if (facts.sizeLine) {
+		const label = facts.sizeLine.includes(" - ") ? "Size Range" : "Size";
+		md += `**${label}:** ${facts.sizeLine}\n`;
+	}
+	if (facts.tags.length > 0) md += `**Available Tags:** ${formatTagList(facts.tags, 40)}\n`;
+	return md;
+}
+
 export const handleOllama: SpecialHandler = async (
 	url: string,
 	timeout: number,
@@ -167,67 +244,15 @@ export const handleOllama: SpecialHandler = async (
 	try {
 		const parsed = parseOllamaUrl(url);
 		if (!parsed) return null;
-
-		const { modelRef, baseRef, pageUrl } = parsed;
 		const fetchedAt = new Date().toISOString();
 
-		const tagsUrl = "https://ollama.com/api/tags";
 		const [tagsResult, pageResult] = await Promise.all([
-			loadPage(tagsUrl, { timeout, signal, headers: { Accept: "application/json" } }),
-			loadPage(pageUrl, { timeout, signal }),
+			loadPage("https://ollama.com/api/tags", { timeout, signal, headers: { Accept: "application/json" } }),
+			loadPage(parsed.pageUrl, { timeout, signal }),
 		]);
-
 		const tagsData = tagsResult.ok ? tryParseJson<OllamaTagsResponse>(tagsResult.content) : null;
-
 		const html = pageResult.ok ? pageResult.content : "";
-		const description = html ? extractMetaDescription(html) : null;
-		const htmlParameterSizes = html ? extractParameterSizes(html) : [];
-		const htmlTags = html ? extractTagsFromHtml(html, baseRef) : [];
-
-		const baseLower = baseRef.toLowerCase();
-		const models = tagsData?.models ?? [];
-		const matchingModels = models.filter(model => {
-			const name = (model.model ?? model.name ?? "").toLowerCase();
-			return name === baseLower || name.startsWith(`${baseLower}:`);
-		});
-
-		const tagRef = modelRef.includes(":") ? modelRef : null;
-		const selectedTag = tagRef ? matchingModels.find(model => (model.model ?? model.name ?? "") === tagRef) : null;
-
-		const availableTagsRaw = matchingModels
-			.map(model => model.model ?? model.name ?? "")
-			.filter(tag => tag.length > 0);
-		const availableTags = sortTags(Array.from(new Set(availableTagsRaw)));
-
-		const fallbackTags = sortTags(Array.from(new Set(htmlTags)));
-		const tagsToUse = availableTags.length > 0 ? availableTags : fallbackTags;
-
-		const parameterSizes = collectParameterSizes(selectedTag ? [selectedTag] : matchingModels, htmlParameterSizes);
-
-		const sizes = matchingModels.map(model => model.size).filter((size): size is number => typeof size === "number");
-		let sizeLine: string | null = null;
-
-		if (selectedTag?.size) {
-			sizeLine = formatBytes(selectedTag.size);
-		} else if (sizes.length > 0) {
-			const minSize = Math.min(...sizes);
-			const maxSize = Math.max(...sizes);
-			sizeLine = minSize === maxSize ? formatBytes(minSize) : `${formatBytes(minSize)} - ${formatBytes(maxSize)}`;
-		}
-
-		let md = `# ${baseRef}\n\n`;
-		if (description) md += `${description}\n\n`;
-
-		md += `**Model:** ${baseRef}\n`;
-		if (tagRef) md += `**Tag:** ${tagRef}\n`;
-		if (parameterSizes.length > 0) md += `**Parameters:** ${parameterSizes.join(", ")}\n`;
-		if (sizeLine) {
-			const label = sizeLine.includes(" - ") ? "Size Range" : "Size";
-			md += `**${label}:** ${sizeLine}\n`;
-		}
-		if (tagsToUse.length > 0) {
-			md += `**Available Tags:** ${formatTagList(tagsToUse, 40)}\n`;
-		}
+		const md = renderOllamaModel(collectOllamaFacts(parsed, tagsData?.models ?? [], html));
 
 		return buildResult(md, {
 			url,

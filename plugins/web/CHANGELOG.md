@@ -12,6 +12,7 @@
 - The NVD and OSV handlers are split into one function per step, and the Terraform, pub.dev and NVD capped lists share one section renderer; behavior is unchanged.
 - The MDN, Open Library, Read the Docs, W3C, Wikidata and Wikipedia handlers are split into one function per step; behavior is unchanged.
 - The MusicBrainz and Spotify handlers are split into one function per step; behavior is unchanged.
+- The Mastodon and Ollama handlers are split into one function per step; behavior is unchanged.
 
 ### Fixed
 
