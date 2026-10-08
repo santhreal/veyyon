@@ -59,7 +59,6 @@ const LEGACY_OVERSIZED_CONTROLLERS: readonly string[] = [
 	"event-controller.ts",
 	"extension-ui-controller.ts",
 	"input-controller.ts",
-	"mcp-command-controller.ts",
 	"selector-controller.ts",
 ];
 
