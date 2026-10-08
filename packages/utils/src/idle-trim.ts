@@ -179,30 +179,40 @@ export class IdleTrim {
 			this.#quietSinceMs = now;
 			this.#trimmed = false;
 			this.#released = false;
-		} else {
-			if (!this.#released) {
-				this.#released = true;
-				this.#runRelease();
-			}
-			if (!this.#trimmed && now - this.#quietSinceMs >= this.#quietMs) {
-				try {
-					this.#trim();
-				} catch (error) {
-					// The engine offers no trim; sampling for one that can never run is waste.
-					logger.warn("Idle trim failed; sampling stopped", { error: errorMessage(error) });
-					this.stop();
-					return;
-				}
-				this.#trimmed = true;
-				this.#skipWindow = true;
-				logger.debug("Idle trim ran", { quietMs: Math.round(now - this.#quietSinceMs) });
-				this.#runRelease();
-			} else if (this.#trimmed && this.#activity.park(this.#wake)) {
-				this.#parked = true;
-				return;
-			}
+		} else if (!this.#quietWindow(now)) {
+			return;
 		}
 		this.#arm();
+	}
+
+	/**
+	 * Run the release on the first quiet window, then trim once the quiet period has elapsed, or
+	 * park a trimmed process on its activity signal. False when sampling stopped or parked and no
+	 * window is to be armed.
+	 */
+	#quietWindow(now: number): boolean {
+		if (!this.#released) {
+			this.#released = true;
+			this.#runRelease();
+		}
+		if (!this.#trimmed && now - this.#quietSinceMs >= this.#quietMs) {
+			try {
+				this.#trim();
+			} catch (error) {
+				// The engine offers no trim; sampling for one that can never run is waste.
+				logger.warn("Idle trim failed; sampling stopped", { error: errorMessage(error) });
+				this.stop();
+				return false;
+			}
+			this.#trimmed = true;
+			this.#skipWindow = true;
+			logger.debug("Idle trim ran", { quietMs: Math.round(now - this.#quietSinceMs) });
+			this.#runRelease();
+		} else if (this.#trimmed && this.#activity.park(this.#wake)) {
+			this.#parked = true;
+			return false;
+		}
+		return true;
 	}
 
 	#runRelease(): void {

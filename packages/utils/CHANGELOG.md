@@ -81,6 +81,7 @@
 - `stringifyJsonSafe` tracks the object ancestor chain in its own step, with 60,000 differential checks of rendered cycles, shared branches, bigint, function and symbol values identical to the previous build; no user-visible change.
 - `buildPathTree` inserts each path and finds or creates each child directory in separate steps and rewrites backslashes only in a path that has one, with 60,000 differential checks of tree events and grouped listings identical to the previous build; grouping 200 paths takes 57.9 µs instead of 61.1 µs.
 - `syncYamlTextToSettings` applies a mapping entry and a sequence entry through one step, with 15,000 differential checks of written files, including anchored and aliased scalars and BigInt values, identical to the previous build; no user-visible change.
+- `IdleTrim` runs a quiet window's release, trim and park in their own step, with 60,000 differential checks of timer, trim, release and park traces identical to the previous build; no user-visible change.
 
 ### Fixed
 
