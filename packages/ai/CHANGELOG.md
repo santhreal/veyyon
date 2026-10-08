@@ -116,6 +116,7 @@
 - The ` ```thinking ` fence scanner stops reclassifying a reasoning line once its lead rules out a fence, instead of rescanning the whole line on every delta, cutting 100 KB of reasoning in 5-byte deltas from 4.7 to 0.53 ms at 400-byte lines and from 90.3 to 0.58 ms at 20,000-byte lines, with identical output across 400,000 generated streams.
 - `wrapLeakedThinkingStream` relays the inner stream through one `LeakedThinkingRelay` that handles each event kind in its own case; healed streams are unchanged.
 - The Hermes, Qwen3, Kimi, DeepSeek, Gemini and pi-native scanners read a tool call's body through `BlockBody` in `dialect/coercion.ts`, and Gemma through a string-aware reader that walks each delta once, leaving only a suffix that could begin the closer unread between deltas instead of searching the whole body again on every delta, cutting a 320 KB argument streamed in 5-byte deltas from 449–966 ms to 3.1–5.5 ms and an 80 KB pi-native argument from 97.4 to 1.2 ms; every other dialect emits identical events across 44,000 generated scans.
+- The Codex request transformer drops item references and item ids in one pass, and reads the instruction it repeats as the user turn only when every input item is a developer message, instead of scanning for it on every request; request bodies are identical across 60,000 generated requests.
 
 ### Fixed
 
