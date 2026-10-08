@@ -77,6 +77,7 @@
 - `parseConformanceFile` validates each vector in its own step, and `runConformance` replays each vector in its own step and keeps a thrown message as a string instead of wrapping it in a new `Error`, with 61,800 differential checks of parse results, reports and `assertConformance` errors identical to the previous build; replaying a 400-vector corpus takes 552 ns per vector instead of 579 ns.
 - `parseFrontmatter` normalizes array and object keys and reads the `key: value` fallback in separate steps and walks an object's keys without allocating a pair per entry, with 60,000 differential checks of results, thrown errors and fallback values returned by identity identical to the previous build; a 10-line skill header parses in 3.87 µs instead of 4.27 µs.
 - `parseEnvFile` reads each line's entry in its own step, with 60,006 differential checks of parsed records, key order and unreadable-file reports identical to the previous build; no user-visible change.
+- `parseWriteDetails` reads a write's diagnostics in its own step, with 60,000 differential checks of results and the order of every property read identical to the previous build; no user-visible change.
 
 ### Fixed
 
