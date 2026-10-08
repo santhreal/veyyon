@@ -519,6 +519,111 @@ function resultSections(
 	return sections;
 }
 
+/** The file a card is about, what was done to it and where it went. */
+interface CardSubject {
+	rawPath: string;
+	op?: Operation;
+	rename?: string;
+	linkPath?: string;
+}
+
+/**
+ * What the call's own fields state about its file before any payload is parsed: the path, the
+ * operation and the move target, from the top-level fields and then the first `edits` entry.
+ */
+function namedByCall(args: EditViewArgs | undefined): { path?: string; op?: Operation; rename?: string } {
+	const firstEdit = Array.isArray(args?.edits) ? args.edits[0] : undefined;
+	return {
+		path: entryPath(args?.file_path) ?? entryPath(args?.path) ?? entryPath(firstEdit?.path),
+		op: args?.op ?? firstEdit?.op,
+		rename: entryPath(args?.rename) ?? entryPath(firstEdit?.rename) ?? entryPath(firstEdit?.move),
+	};
+}
+
+/**
+ * Whom a call card is about, from whichever of the call's shapes has named the file so far.
+ *
+ * The streamed argument buffer is read for a path before its JSON closes, then the hashline and the
+ * apply-patch payloads.
+ */
+function callSubject(
+	args: EditViewArgs,
+	firstHashline: HashlineEntry | undefined,
+	firstApplyPatch: ApplyPatchEntry | undefined,
+): CardSubject {
+	const named = namedByCall(args);
+	return {
+		rawPath:
+			named.path ??
+			partialJsonString(args.__partialJson, "path") ??
+			firstHashline?.path ??
+			firstApplyPatch?.path ??
+			"",
+		op: named.op ?? firstApplyPatch?.op ?? firstHashline?.op,
+		rename: named.rename ?? firstApplyPatch?.rename ?? firstHashline?.rename,
+	};
+}
+
+/**
+ * Whom a result card is about.
+ *
+ * A move names its source, since the row reads `source → destination`. Otherwise the call's own path
+ * wins over the result's, and a hashline payload is parsed for its first header only when nothing
+ * else named the file.
+ */
+function resultSubject(
+	details: EditToolDetails | EditToolPerFileResult | undefined,
+	args: EditViewArgs | undefined,
+): CardSubject {
+	const named = namedByCall(args);
+	return {
+		rawPath:
+			entryPath(details?.sourcePath) ??
+			named.path ??
+			entryPath(details?.path) ??
+			hashlineSummary(args ?? {})?.[0]?.path ??
+			"",
+		op: named.op ?? details?.op,
+		rename: named.rename ?? entryPath(details?.move),
+		linkPath: details?.path,
+	};
+}
+
+/** What a failed result says went wrong: the text written for a reader, the tool's own, then the body. */
+function resultErrorText(result: ToolViewResult<EditToolDetails | EditToolPerFileResult>): string {
+	const details = result.details;
+	return (
+		(details && "displayErrorText" in details ? details.displayErrorText : undefined) ||
+		(details && "errorText" in details ? details.errorText : undefined) ||
+		extractResultText(result.content)
+	);
+}
+
+/**
+ * The row that heads a result card: its status, the line the change starts at and its counts.
+ *
+ * A settled result states its own change. The preview is passed only while no result exists, and a
+ * failed result states no counts and no line, since nothing it reports was applied.
+ */
+function resultHeader(
+	subject: CardSubject,
+	details: EditToolDetails | EditToolPerFileResult | undefined,
+	preview: DiffResult | DiffError | undefined,
+	isError: boolean,
+	partial: boolean | undefined,
+): StatusRowView {
+	const previewDiff = preview && !("error" in preview) ? preview.diff : undefined;
+	const firstChangedLine =
+		(preview && "firstChangedLine" in preview ? preview.firstChangedLine : undefined) ||
+		(details && !isError ? details.firstChangedLine : undefined);
+	return header({
+		...subject,
+		firstChangedLine,
+		...(isError ? { status: "error" } : partial ? { status: "pending" } : { emblem: "tool.edit" }),
+		meta: statsMeta(isError ? undefined : (details?.diff ?? previewDiff)),
+	});
+}
+
 /** What one file's result says, as the card a single-file edit is and a section of a multi-file one. */
 function singleFileResult(
 	result: ToolViewResult<EditToolDetails | EditToolPerFileResult>,
@@ -527,72 +632,86 @@ function singleFileResult(
 ): ToolView {
 	const details = result.details;
 	const isError = result.isError ?? (details && "isError" in details ? details.isError === true : false);
-	const edits = Array.isArray(args?.edits) ? args.edits : undefined;
-	const firstEdit = edits?.[0];
-	const firstHashline = hashlineSummary(args ?? {})?.[0];
-	const moveSource =
-		details && "sourcePath" in details && typeof details.sourcePath === "string" ? details.sourcePath : undefined;
-	const detailPath = details && "path" in details && typeof details.path === "string" ? details.path : undefined;
-	const rawPath =
-		moveSource ??
-		(typeof args?.file_path === "string"
-			? args.file_path
-			: typeof args?.path === "string"
-				? args.path
-				: (entryPath(firstEdit?.path) ?? detailPath ?? firstHashline?.path ?? ""));
-	const op = args?.op ?? firstEdit?.op ?? details?.op;
-	const rename =
-		(typeof args?.rename === "string" ? args.rename : undefined) ??
-		entryPath(firstEdit?.rename) ??
-		entryPath(firstEdit?.move) ??
-		(details && "move" in details && typeof details.move === "string" ? details.move : undefined);
-	const displayErrorText = isError && details && "displayErrorText" in details ? details.displayErrorText : undefined;
-	const errorText = isError
-		? displayErrorText ||
-			(details && "errorText" in details ? (details.errorText ?? "") : "") ||
-			extractResultText(result.content)
-		: "";
-	const linkPath = details && "path" in details ? details.path : undefined;
+	const subject = resultSubject(details, args);
 
 	// A delete or a move that changed nothing inside the file has no rows to frame.
-	if (!isError && !details?.diff && !details?.diagnostics && (op === "delete" || rename)) {
-		return inlineRow({ op, rename, rawPath, linkPath, pending: false });
+	if (!isError && !details?.diff && !details?.diagnostics && (subject.op === "delete" || subject.rename)) {
+		return inlineRow({ ...subject, pending: false });
 	}
 
 	// A settled result is authoritative: what it reports is what happened. The change computed while
 	// the call streamed is a call-phase artifact -- in a batch it describes only the first file -- so
 	// it is read only while no result exists.
 	const preview = details ? undefined : args?.preview;
-	const previewDiff = preview && !("error" in preview) ? preview.diff : undefined;
-	const firstChangedLine =
-		(preview && "firstChangedLine" in preview ? preview.firstChangedLine : undefined) ||
-		(details && !isError ? details.firstChangedLine : undefined);
-
 	const card: FramedBlockView = {
 		kind: "framedBlock",
 		gutter: true,
-		header: header({
-			op,
-			rawPath,
-			rename,
-			linkPath,
-			firstChangedLine,
-			...(isError ? { status: "error" } : context.partial ? { status: "pending" } : { emblem: "tool.edit" }),
-			meta: statsMeta(isError ? undefined : (details?.diff ?? previewDiff)),
-		}),
+		header: resultHeader(subject, details, preview, isError, context.partial),
 		state: isError ? "error" : context.partial === true ? "pending" : "success",
 		sections: resultSections(details, {
+			...subject,
 			isError,
-			errorText,
-			rawPath,
-			linkPath,
-			op,
-			rename,
+			errorText: isError ? resultErrorText(result) : "",
 			expanded: context.expanded,
 			preview,
 		}),
 	};
 	return card;
+}
+
+/**
+ * An edit spanning several files as ONE card whose sections are the files.
+ *
+ * The terminal used to stack a framed card per file with a blank row between them: a card is what a
+ * tool call produced, and a call that edited four files produced one. Files the call names that have
+ * no result yet are counted as pending.
+ */
+function multiFileResult(perFileResults: EditToolPerFileResult[], totalFiles: number, expanded: boolean): ToolView {
+	const sections: ViewSection[] = [];
+	let added = 0;
+	let removed = 0;
+	let failed = false;
+	for (const file of perFileResults) {
+		const label = shortenPath(file.path);
+		if (file.isError) {
+			failed = true;
+			const text = file.displayErrorText || file.errorText || "";
+			sections.push({ label, ...errorSection(text, file.path, file.path, expanded) });
+			continue;
+		}
+		const stats = getDiffStats(file.diff ?? "");
+		added += stats.added;
+		removed += stats.removed;
+		const section = diffSection(file.diff ?? "", file.path, { expanded, label });
+		sections.push(section ?? { label, lines: [[{ text: "No changes were made.", tone: "dim" }]] });
+		if (file.diagnostics) {
+			const diagnostics = diagnosticsSection(file.diagnostics, expanded);
+			if (diagnostics) sections.push(diagnostics);
+		}
+	}
+	const remaining = Math.max(0, totalFiles - perFileResults.length);
+	if (remaining > 0) {
+		sections.push({
+			lines: [[{ text: `${remaining} more file${remaining > 1 ? "s" : ""} pending…`, tone: "dim" }]],
+		});
+	}
+
+	const meta: ViewLine[] = [
+		[{ text: `${perFileResults.length} file${perFileResults.length === 1 ? "" : "s"}` }],
+		...diffStatsMetaLines(added, removed),
+	];
+	return {
+		kind: "framedBlock",
+		gutter: true,
+		header: {
+			kind: "statusRow",
+			title: "Edit",
+			...(failed ? { status: "error" } : remaining > 0 ? { status: "running" } : { emblem: "tool.edit" }),
+			meta,
+		},
+		state: failed ? "error" : remaining > 0 ? "pending" : "success",
+		sections,
+	};
 }
 
 export const editToolView: Required<ToolViewRenderer<EditViewArgs, EditViewResult>> = {
@@ -606,36 +725,21 @@ export const editToolView: Required<ToolViewRenderer<EditViewArgs, EditViewResul
 	renderCall(args, context: ToolViewContext): ToolView {
 		const hashline = hashlineSummary(args);
 		const applyPatch = applyPatchSummary(args, context.partial === true);
-		const firstApplyPatch = applyPatch?.entries[0];
-		const firstHashline = hashline?.[0];
-		const firstEdit = Array.isArray(args.edits) && args.edits.length > 0 ? args.edits[0] : undefined;
-		const rawPath =
-			typeof args.file_path === "string"
-				? args.file_path
-				: typeof args.path === "string"
-					? args.path
-					: (entryPath(firstEdit?.path) ??
-						partialJsonString(args.__partialJson, "path") ??
-						firstHashline?.path ??
-						firstApplyPatch?.path ??
-						"");
-		const rename =
-			(typeof args.rename === "string" ? args.rename : undefined) ??
-			entryPath(firstEdit?.rename) ??
-			entryPath(firstEdit?.move) ??
-			firstApplyPatch?.rename ??
-			firstHashline?.rename;
-		const op = args.op ?? firstEdit?.op ?? firstApplyPatch?.op ?? firstHashline?.op;
+		const subject = callSubject(args, hashline?.[0], applyPatch?.entries[0]);
 		const fileCount = Array.isArray(args.edits)
 			? countEditFiles(args.edits)
 			: (hashline?.length ?? applyPatch?.entries.length ?? 0);
 
-		const payload = hasCallPayload(args) || firstHashline?.hasLineEdits === true;
-		if (fileCount <= 1 && !applyPatch?.error && (op === "delete" || (rename !== undefined && !payload))) {
-			return inlineRow({ op, rename, rawPath, pending: true });
+		const payload = hasCallPayload(args) || hashline?.[0]?.hasLineEdits === true;
+		if (
+			fileCount <= 1 &&
+			!applyPatch?.error &&
+			(subject.op === "delete" || (subject.rename !== undefined && !payload))
+		) {
+			return inlineRow({ ...subject, pending: true });
 		}
 
-		const sections = callSections(args, rawPath, context.expanded);
+		const sections = callSections(args, subject.rawPath, context.expanded);
 		if (applyPatch?.error) {
 			sections.push({ lines: [[{ text: replaceTabs(applyPatch.error), tone: "error" }]] });
 		}
@@ -643,9 +747,7 @@ export const editToolView: Required<ToolViewRenderer<EditViewArgs, EditViewResul
 			kind: "framedBlock",
 			gutter: true,
 			header: header({
-				op,
-				rawPath,
-				rename,
+				...subject,
 				meta: fileCount > 1 ? [[{ text: `+${fileCount - 1} more`, tone: "dim" }]] : [],
 			}),
 			state: applyPatch?.error ? "error" : "running",
@@ -653,65 +755,13 @@ export const editToolView: Required<ToolViewRenderer<EditViewArgs, EditViewResul
 		};
 	},
 
-	/**
-	 * The card once the tool has answered.
-	 *
-	 * An edit spanning several files is ONE card whose sections are the files, where the terminal
-	 * used to stack a framed card per file with a blank row between them: a card is what a tool call
-	 * produced, and a call that edited four files produced one.
-	 */
+	/** The card once the tool has answered. */
 	renderResult(result, context: ToolViewContext, args): ToolView {
-		const edits = Array.isArray(args?.edits) ? args.edits : undefined;
 		const perFileResults = result.details?.perFileResults;
-		const totalFiles = edits ? countEditFiles(edits) : 0;
+		const totalFiles = Array.isArray(args?.edits) ? countEditFiles(args.edits) : 0;
 		if (!perFileResults || (perFileResults.length <= 1 && totalFiles <= 1)) {
 			return singleFileResult(result, context, args);
 		}
-
-		const sections: ViewSection[] = [];
-		let added = 0;
-		let removed = 0;
-		let failed = false;
-		for (const file of perFileResults) {
-			const label = shortenPath(file.path);
-			if (file.isError) {
-				failed = true;
-				const text = file.displayErrorText || file.errorText || "";
-				sections.push({ label, ...errorSection(text, file.path, file.path, context.expanded) });
-				continue;
-			}
-			const stats = getDiffStats(file.diff ?? "");
-			added += stats.added;
-			removed += stats.removed;
-			const section = diffSection(file.diff ?? "", file.path, { expanded: context.expanded, label });
-			sections.push(section ?? { label, lines: [[{ text: "No changes were made.", tone: "dim" }]] });
-			if (file.diagnostics) {
-				const diagnostics = diagnosticsSection(file.diagnostics, context.expanded);
-				if (diagnostics) sections.push(diagnostics);
-			}
-		}
-		const remaining = Math.max(0, totalFiles - perFileResults.length);
-		if (remaining > 0) {
-			sections.push({
-				lines: [[{ text: `${remaining} more file${remaining > 1 ? "s" : ""} pending…`, tone: "dim" }]],
-			});
-		}
-
-		const meta: ViewLine[] = [
-			[{ text: `${perFileResults.length} file${perFileResults.length === 1 ? "" : "s"}` }],
-			...diffStatsMetaLines(added, removed),
-		];
-		return {
-			kind: "framedBlock",
-			gutter: true,
-			header: {
-				kind: "statusRow",
-				title: "Edit",
-				...(failed ? { status: "error" } : remaining > 0 ? { status: "running" } : { emblem: "tool.edit" }),
-				meta,
-			},
-			state: failed ? "error" : remaining > 0 ? "pending" : "success",
-			sections,
-		};
+		return multiFileResult(perFileResults, totalFiles, context.expanded);
 	},
 };
