@@ -83,6 +83,7 @@
 - `syncYamlTextToSettings` applies a mapping entry and a sequence entry through one step, with 15,000 differential checks of written files, including anchored and aliased scalars and BigInt values, identical to the previous build; no user-visible change.
 - `IdleTrim` runs a quiet window's release, trim and park in their own step, with 60,000 differential checks of timer, trim, release and park traces identical to the previous build; no user-visible change.
 - `latexToBlock` parses an environment, a script pair, a `\textcolor` color spec and a command in separate steps, with 100,100 differential checks identical to the previous build; a 10-formula corpus renders in 70.5 µs instead of 85.0 µs.
+- `LoopWatchdog` logs a block and handles an on-time tick in separate steps, with 15,000 differential checks of timer, stack sampler and log line traces identical to the previous build; no user-visible change.
 
 ### Fixed
 
