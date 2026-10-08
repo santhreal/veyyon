@@ -335,13 +335,17 @@ function inspectLockDirectorySync(lockPath: string): LockObservation | null {
 	} catch {
 		return observe("unsafe", directoryStat, directoryIdentity, infoIdentity);
 	} finally {
-		if (fd !== undefined) {
-			try {
-				fsSync.closeSync(fd);
-			} catch {
-				// The observation is already complete; close errors do not authorize mutation.
-			}
-		}
+		closeObservedInfoSync(fd);
+	}
+}
+
+/** Synchronous twin of `handle?.close().catch(() => {})` for the descriptor an observation read. */
+function closeObservedInfoSync(fd: number | undefined): void {
+	if (fd === undefined) return;
+	try {
+		fsSync.closeSync(fd);
+	} catch {
+		// The observation is already complete; close errors do not authorize mutation.
 	}
 }
 
@@ -728,6 +732,25 @@ function withdrawCandidateSync(lockPath: string, candidatePath: string, expected
 	}
 }
 
+/** Remove a candidate that was never published, and only while it is still the directory this process created. */
+async function discardCandidate(candidatePath: string, expected: LockObservation): Promise<void> {
+	const leftover = await inspectLockDirectory(candidatePath).catch(() => null);
+	if (leftover && sameObservationIdentity(leftover, expected)) {
+		await removeObservedDirectory(candidatePath, leftover).catch(() => {});
+	}
+}
+
+function discardCandidateSync(candidatePath: string, expected: LockObservation): void {
+	try {
+		const leftover = inspectLockDirectorySync(candidatePath);
+		if (leftover && sameObservationIdentity(leftover, expected)) {
+			removeObservedDirectorySync(candidatePath, leftover);
+		}
+	} catch {
+		// A unique failed candidate is never removed without its pinned identity.
+	}
+}
+
 async function tryAcquireLock(lockPath: string): Promise<LockLease | null> {
 	const candidate = await prepareCandidate(lockPath);
 	let published = false;
@@ -753,12 +776,7 @@ async function tryAcquireLock(lockPath: string): Promise<LockLease | null> {
 		}
 		return candidate.lease;
 	} finally {
-		if (!published) {
-			const leftover = await inspectLockDirectory(candidate.path).catch(() => null);
-			if (leftover && sameObservationIdentity(leftover, candidate.observation)) {
-				await removeObservedDirectory(candidate.path, leftover).catch(() => {});
-			}
-		}
+		if (!published) await discardCandidate(candidate.path, candidate.observation);
 	}
 }
 
@@ -787,16 +805,7 @@ function tryAcquireLockSync(lockPath: string): LockLease | null {
 		}
 		return candidate.lease;
 	} finally {
-		if (!published) {
-			try {
-				const leftover = inspectLockDirectorySync(candidate.path);
-				if (leftover && sameObservationIdentity(leftover, candidate.observation)) {
-					removeObservedDirectorySync(candidate.path, leftover);
-				}
-			} catch {
-				// A unique failed candidate is never removed without its pinned identity.
-			}
-		}
+		if (!published) discardCandidateSync(candidate.path, candidate.observation);
 	}
 }
 
