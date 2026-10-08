@@ -21,22 +21,14 @@ export function buildDependencyGraph(def: SwarmDefinition): Map<string, Set<stri
 		deps.set(name, new Set());
 	}
 
-	// Explicit waits_for
 	for (const [name, agent] of def.agents) {
+		// Explicit waits_for
+		const own = deps.get(name)!;
 		for (const dep of agent.waitsFor) {
-			if (deps.has(dep)) {
-				deps.get(name)!.add(dep);
-			}
+			if (deps.has(dep)) own.add(dep);
 		}
-	}
-
-	// reports_to implies the target waits for the reporter
-	for (const [name, agent] of def.agents) {
-		for (const target of agent.reportsTo) {
-			if (deps.has(target)) {
-				deps.get(target)!.add(name);
-			}
-		}
+		// reports_to implies the target waits for the reporter
+		for (const target of agent.reportsTo) deps.get(target)?.add(name);
 	}
 
 	// For pipeline/sequential with no explicit deps, chain by declaration order
@@ -79,19 +71,18 @@ export function detectCycles(deps: Map<string, Set<string>>): string[] | null {
 		if (degree === 0) queue.push(node);
 	}
 
-	const sorted: string[] = [];
-	while (queue.length > 0) {
-		const node = queue.shift()!;
-		sorted.push(node);
-		for (const dependent of forward.get(node) ?? []) {
+	// The queue only grows, so it ends holding every node the walk placed.
+	for (let head = 0; head < queue.length; head++) {
+		for (const dependent of forward.get(queue[head]) ?? []) {
 			const newDegree = inDegree.get(dependent)! - 1;
 			inDegree.set(dependent, newDegree);
 			if (newDegree === 0) queue.push(dependent);
 		}
 	}
 
-	if (sorted.length < deps.size) {
-		return Array.from(deps.keys()).filter(k => !sorted.includes(k));
+	// A node the walk never placed still has an unmet dependency.
+	if (queue.length < deps.size) {
+		return Array.from(deps.keys()).filter(k => inDegree.get(k)! > 0);
 	}
 
 	return null;
@@ -109,30 +100,12 @@ export function buildExecutionWaves(deps: Map<string, Set<string>>): string[][] 
 	const remaining = new Set(deps.keys());
 
 	while (remaining.size > 0) {
-		const wave: string[] = [];
-
-		for (const node of remaining) {
-			const nodeDeps = deps.get(node)!;
-			let ready = true;
-			for (const dep of nodeDeps) {
-				if (!completed.has(dep)) {
-					ready = false;
-					break;
-				}
-			}
-			if (ready) {
-				wave.push(node);
-			}
-		}
-
+		const wave = readyWave(remaining, deps, completed);
 		if (wave.length === 0) {
 			throw new Error(
 				`Deadlock: agents [${Array.from(remaining).join(", ")}] cannot make progress. This indicates a bug in cycle detection.`,
 			);
 		}
-
-		// Sort for deterministic execution order
-		wave.sort();
 
 		for (const node of wave) {
 			remaining.delete(node);
@@ -143,4 +116,24 @@ export function buildExecutionWaves(deps: Map<string, Set<string>>): string[][] 
 	}
 
 	return waves;
+}
+
+/** The nodes of `remaining` whose every dependency is in `completed`, sorted for a deterministic execution order. */
+function readyWave(
+	remaining: ReadonlySet<string>,
+	deps: ReadonlyMap<string, ReadonlySet<string>>,
+	completed: ReadonlySet<string>,
+): string[] {
+	const wave: string[] = [];
+	for (const node of remaining) {
+		let ready = true;
+		for (const dep of deps.get(node)!) {
+			if (!completed.has(dep)) {
+				ready = false;
+				break;
+			}
+		}
+		if (ready) wave.push(node);
+	}
+	return wave.sort();
 }

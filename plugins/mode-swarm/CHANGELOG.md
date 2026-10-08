@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A swarm file whose agent entry has no mapping (`writer:` with no fields) fails with `Agent 'writer' must be a mapping with 'role' and 'task'` instead of a `TypeError` reading `role` of null.
+
+### Changed
+
+- Cycle detection walks its queue by index instead of dequeuing with `Array.shift()`, so a swarm graph is checked in linear time. No user-visible behavior changes.
+
 ## [1.5.0] - 2026-09-18
 
 ### Changed
