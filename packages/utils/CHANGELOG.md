@@ -72,6 +72,7 @@
 - `wrapTextWithAnsi` checks a fitting row's leading indent, its content and its hanging-indent rebuild in separate steps, cutting a fitting 120-cell row from 92.6 ns to 86.6 ns with 375,000 differential checks identical to the previous build.
 - `planDeccaraFills` and `analyzeBgFillLine` scan backgrounds and plan fills in separate steps, cutting a frame's fill plan from 18.1 µs to 16.7 µs and a line's analysis from 308 ns to 265 ns with 240,000 differential checks identical to the previous build.
 - The atomic writers close a temp file or directory handle through one step that reports a write failure over a close failure, and `atomicWriteFileSync` runs the Windows replace fallback in one function, as `atomicWriteFile` does; no user-visible change beyond the fix below.
+- `Command.parse` builds its parse options, types its flags and maps its positionals in separate steps, and command help builds its arguments and flags sections in separate steps, with 90,000 differential checks of parse results, help output and `run` output identical to the previous build; a 10-flag parse takes 4.6 µs instead of 4.8 µs and a command's help 5.0 µs instead of 6.3 µs.
 
 ### Fixed
 
