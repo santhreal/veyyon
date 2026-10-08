@@ -96,6 +96,7 @@
 - `stringConstantsIn` copies a literal's text between escapes as slices and reads each escape's extent and characters in their own steps, and `exportedDeclarationsIn` reads an `export { ... }` clause in its own step, with 300,000 differential checks identical to the previous build, thrown `RangeError`s included; a module of 40 constants with no escapes reads in 5.9 µs instead of 12.2 µs.
 - `readJsonl`, `readSseEvents` and `parseJsonlLenient` read what a stream leaves after its last LF and where parsing resumes after a malformed record in their own steps, and call `Bun.JSONL.parseChunk` without copying its result, with 300,000 differential checks identical to the previous build; no user-visible change.
 - `globPaths` compiles its exclude patterns, checks its abort signal and tests an entry against the excludes in their own steps, and rewrites separators only in an entry that holds a backslash, with 9,000 differential checks of returned paths and thrown errors identical to the previous build; no user-visible change.
+- `repairJson` skips the text between strings and each valid escape in one scan to the next code unit it rewrites, and `classifyJsonPrefix`, comment skipping and string escape decoding run in their own steps, with 1,200,000 differential checks identical to the previous build; repairing a 1.4 KB tool-call body takes 558 ns instead of 621 ns and classifying it takes 978 ns instead of 1,106 ns.
 
 ### Fixed
 
