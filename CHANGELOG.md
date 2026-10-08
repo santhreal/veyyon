@@ -83,6 +83,7 @@
 - Tool result text joining and the web tool display projection use template literals and optional chains; their output is unchanged.
 - The custom tool file-extension list in `discovery/helpers.ts` carries a `not-a-tool-name:` marker, because its `"bash"` names an extension rather than the `bash` tool; no user-visible change.
 - `createAgentSession` reads the caller's telemetry config in two fewer statements; its behavior is unchanged.
+- The `tools.intentTracing` entry in `system-prompt-builder/gate-registry.ts` states the `resolveIntentField` resolver `createAgentSession` passes to the agent; no user-visible change.
 - `/dump` and `/advisor dump raw` write each message role through its own function in `session/session-dump-format.ts`; the transcript is unchanged.
 - The RPC server answers each command through its own entry of `RPC_COMMAND_HANDLERS` in `modes/rpc/rpc-commands.ts`, and builds its extension UI context in `modes/rpc/rpc-ui-context.ts`; every response is unchanged.
 - RPC `set_host_tools` checks that a host tool's `parameters` is an object through `isRecord` from `@veyyon/utils`; the accepted and rejected definitions are unchanged.
