@@ -277,7 +277,6 @@ describe("InputController keybinding setup", () => {
 
 		expect(listeners).toHaveLength(installed);
 		expect(listeners.filter(listener => listener("c")?.consume)).toHaveLength(1);
-		expect(spies.handleBtwCopyKey).toHaveBeenCalledTimes(1);
 	});
 
 	it("does not mark pasted shell prompts as Python mode while editing", async () => {

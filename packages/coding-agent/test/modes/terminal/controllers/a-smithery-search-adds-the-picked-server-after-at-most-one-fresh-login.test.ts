@@ -1,6 +1,7 @@
 /**
  * WHY: the Smithery `/mcp` subcommands moved out of `MCPCommandController` into
- * `McpSmitheryCommands`, and the registry auth retry was rewritten in the move.
+ * `McpSmitheryCommands` (`modes/terminal/controllers/mcp-smithery-commands.ts`),
+ * and the registry auth retry was rewritten in the move.
  * The defect class is a search that logs in on the wrong refusals, retries
  * without a bound, retries with the key it was refused with, or adds a server
  * other than the one picked, under a name or with inputs other than the ones
@@ -120,25 +121,37 @@ let cachedKey: string | undefined;
 /** Every registry search, validation probes included: keyword and the key it carried. */
 let searches: { keyword: string; apiKey: string | undefined }[];
 
+const AUTHORIZE_URL = "https://smithery.example.test/authorize";
+
 function stubKeyFile(initial: string | undefined): void {
 	cachedKey = initial;
 	vi.spyOn(smitheryAuth, "getSmitheryApiKey").mockImplementation(async () => cachedKey);
 	vi.spyOn(smitheryAuth, "saveSmitheryApiKey").mockImplementation(async key => {
 		cachedKey = key;
 	});
+	vi.spyOn(smitheryAuth, "clearSmitheryApiKey").mockImplementation(async () => {
+		const removed = cachedKey !== undefined;
+		cachedKey = undefined;
+		return removed;
+	});
 }
 
-/** A browser login that approves at once with `key`, or fails to start when `key` is undefined. */
-function stubBrowserLogin(key: string | undefined) {
-	vi.spyOn(openModule, "openPath").mockImplementation(() => {});
+/**
+ * A browser login that approves at once with `key`, or fails to start when `key` is undefined. Returns the URLs
+ * the browser was opened on, in order.
+ */
+function stubBrowserLogin(key: string | undefined): string[] {
+	const opened: string[] = [];
+	vi.spyOn(openModule, "openPath").mockImplementation(url => {
+		opened.push(url);
+	});
 	vi.spyOn(smitheryAuth, "pollSmitheryCliAuthSession").mockResolvedValue({ status: "success", apiKey: key });
-	return vi
-		.spyOn(smitheryAuth, "createSmitheryCliAuthSession")
-		.mockImplementation(async () =>
-			key === undefined
-				? Promise.reject(new Error("session refused"))
-				: { sessionId: "session-1", authUrl: "https://smithery.example.test/authorize" },
-		);
+	vi.spyOn(smitheryAuth, "createSmitheryCliAuthSession").mockImplementation(async () =>
+		key === undefined
+			? Promise.reject(new Error("session refused"))
+			: { sessionId: "session-1", authUrl: AUTHORIZE_URL },
+	);
+	return opened;
 }
 
 /** The registry: `search` answers the "redis" keyword; a validation probe ("mcp") accepts every key but "bad-key". */
@@ -224,7 +237,7 @@ describe("a Smithery search adds the picked server after at most one fresh login
 			const loggedInOn: number[] = [];
 			for (let status = 400; status < 600; status++) {
 				stubKeyFile("stale-key");
-				const sessions = stubBrowserLogin("fresh-key");
+				const opened = stubBrowserLogin("fresh-key");
 				stubRegistry(apiKey => {
 					if (apiKey === "stale-key") throw new smitheryRegistry.SmitheryRegistryError("refused", status);
 					return [];
@@ -233,7 +246,8 @@ describe("a Smithery search adds the picked server after at most one fresh login
 
 				await harness.controller.handle("/mcp smithery-search redis");
 
-				if (sessions.mock.calls.length > 0) {
+				if (opened.length > 0) {
+					expect(opened).toEqual([AUTHORIZE_URL]);
 					loggedInOn.push(status);
 					expect(redisSearches()).toEqual(["stale-key", "fresh-key"]);
 					expect(cachedKey).toBe("fresh-key");
@@ -252,7 +266,7 @@ describe("a Smithery search adds the picked server after at most one fresh login
 
 		it("surfaces a refusal that is not a registry status without logging in", async () => {
 			stubKeyFile("stale-key");
-			const sessions = stubBrowserLogin("fresh-key");
+			const opened = stubBrowserLogin("fresh-key");
 			stubRegistry(() => {
 				throw new Error("socket hang up");
 			});
@@ -260,14 +274,14 @@ describe("a Smithery search adds the picked server after at most one fresh login
 
 			await harness.controller.handle("/mcp smithery-search redis");
 
-			expect(sessions).not.toHaveBeenCalled();
+			expect(opened).toEqual([]);
 			expect(redisSearches()).toEqual(["stale-key"]);
 			expect(harness.errors).toEqual(["Smithery search failed: socket hang up"]);
 		});
 
 		it("retries once and surfaces the second refusal", async () => {
 			stubKeyFile("stale-key");
-			const sessions = stubBrowserLogin("fresh-key");
+			const opened = stubBrowserLogin("fresh-key");
 			stubRegistry(() => {
 				throw new smitheryRegistry.SmitheryRegistryError("still refused", 401);
 			});
@@ -275,7 +289,7 @@ describe("a Smithery search adds the picked server after at most one fresh login
 
 			await harness.controller.handle("/mcp smithery-search redis");
 
-			expect(sessions).toHaveBeenCalledTimes(1);
+			expect(opened).toEqual([AUTHORIZE_URL]);
 			expect(redisSearches()).toEqual(["stale-key", "fresh-key"]);
 			expect(harness.errors).toEqual(["Smithery search failed: still refused"]);
 		});
@@ -504,7 +518,7 @@ describe("a Smithery search adds the picked server after at most one fresh login
 			await harness.controller.handle("/mcp smithery-login");
 
 			expect(cachedKey).toBe("fresh-key");
-			expect(harness.transcript()).toContain("https://smithery.example.test/authorize");
+			expect(harness.transcript()).toContain(AUTHORIZE_URL);
 			expect(harness.statuses).toEqual(["Smithery API key saved."]);
 		});
 
@@ -520,17 +534,17 @@ describe("a Smithery search adds the picked server after at most one fresh login
 			expect(harness.statuses).toEqual(["Smithery login cancelled."]);
 		});
 
-		for (const [removed, status] of [
-			[true, "Smithery API key removed."],
-			[false, "No cached Smithery API key found."],
+		for (const [initial, status] of [
+			["cached-key", "Smithery API key removed."],
+			[undefined, "No cached Smithery API key found."],
 		] as const) {
-			it(`reports "${status}" on logout`, async () => {
-				const clear = vi.spyOn(smitheryAuth, "clearSmitheryApiKey").mockResolvedValue(removed);
+			it(`reports "${status}" on logout and leaves no cached key`, async () => {
+				stubKeyFile(initial);
 				const harness = createHarness();
 
 				await harness.controller.handle("/mcp smithery-logout");
 
-				expect(clear).toHaveBeenCalledTimes(1);
+				expect(cachedKey).toBeUndefined();
 				expect(harness.statuses).toEqual([status]);
 			});
 		}

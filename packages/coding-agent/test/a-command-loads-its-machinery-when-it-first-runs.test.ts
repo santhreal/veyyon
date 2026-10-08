@@ -69,6 +69,7 @@ describe("an interactive session's static import graph", () => {
 			"omfg-rule.ts",
 			"session-focus-controller.ts",
 			"streaming-reveal.ts",
+			"tiny-title-download-row.ts",
 			"tool-args-reveal.ts",
 			"transcript-composer.ts",
 			"voice-controller.ts",

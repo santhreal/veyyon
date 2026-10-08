@@ -168,7 +168,8 @@ function streamingMessage(content: AssistantMessage["content"]): AssistantMessag
 }
 
 function createFixture(isAborting: boolean) {
-	const setWorkingMessage = vi.fn();
+	/** Every text the working loader displayed, in order. */
+	const shown: string[] = [];
 	const ctx = {
 		isInitialized: true,
 		init: vi.fn(async () => {}),
@@ -191,11 +192,11 @@ function createFixture(isAborting: boolean) {
 		viewSession: { getToolByName: (name: string) => TOOLS[name], isStreaming: true },
 		sessionManager: { getCwd: () => "/repo" },
 		ensureLoadingAnimation: vi.fn(),
-		setWorkingMessage,
+		setWorkingMessage: (text: string) => shown.push(text),
 		refreshComposerShortcuts: vi.fn(),
 		dismissWelcome: vi.fn(),
 	} as unknown as InteractiveModeContext;
-	return { controller: new EventController(ctx), setWorkingMessage };
+	return { controller: new EventController(ctx), shown };
 }
 
 async function dispatch(controller: EventController, message: AssistantMessage): Promise<void> {
@@ -213,13 +214,14 @@ describe("a streamed tool call shows the intent of the last call that states one
 		const earlier = STATEMENTS[earlierName]!;
 		const later = STATEMENTS[laterName]!;
 		const expected = later.shows("b.ts") ?? earlier.shows("a.ts");
-		const { controller, setWorkingMessage } = createFixture(false);
+		const { controller, shown } = createFixture(false);
 		derivedFor.length = 0;
 		const message = streamingMessage([toolCall("earlier", earlier, "a.ts"), toolCall("later", later, "b.ts")]);
 
 		await dispatch(controller, message);
 
-		expect(setWorkingMessage.mock.calls).toEqual(expected === undefined ? [] : [[`${expected}${interruptHint()}`]]);
+		const display = expected === undefined ? [] : [`${expected}${interruptHint()}`];
+		expect(shown).toEqual(display);
 		// The earlier call is read only when the later one states nothing.
 		const expectedDerivations = [
 			...(later.derives ? ["b.ts"] : []),
@@ -229,11 +231,11 @@ describe("a streamed tool call shows the intent of the last call that states one
 
 		// The same snapshot again changes nothing the loader shows.
 		await dispatch(controller, message);
-		expect(setWorkingMessage).toHaveBeenCalledTimes(expected === undefined ? 0 : 1);
+		expect(shown).toEqual(display);
 	});
 
 	it.each(PAIRS)("%s, then %s, while the session aborts", async (earlierName, laterName) => {
-		const { controller, setWorkingMessage } = createFixture(true);
+		const { controller, shown } = createFixture(true);
 		const message = streamingMessage([
 			toolCall("earlier", STATEMENTS[earlierName]!, "a.ts"),
 			toolCall("later", STATEMENTS[laterName]!, "b.ts"),
@@ -241,20 +243,17 @@ describe("a streamed tool call shows the intent of the last call that states one
 
 		await dispatch(controller, message);
 
-		expect(setWorkingMessage).not.toHaveBeenCalled();
+		expect(shown).toEqual([]);
 	});
 
 	it("follows the last call as a later call starts stating an intent", async () => {
-		const { controller, setWorkingMessage } = createFixture(false);
+		const { controller, shown } = createFixture(false);
 		const first = toolCall("earlier", STATEMENTS["intent field"]!, "a.ts");
 
 		await dispatch(controller, streamingMessage([first]));
 		await dispatch(controller, streamingMessage([first, toolCall("later", STATEMENTS["no intent"]!, "b.ts")]));
 		await dispatch(controller, streamingMessage([first, toolCall("later", STATEMENTS["intent field"]!, "b.ts")]));
 
-		expect(setWorkingMessage.mock.calls).toEqual([
-			[`Reading a.ts${interruptHint()}`],
-			[`Reading b.ts${interruptHint()}`],
-		]);
+		expect(shown).toEqual([`Reading a.ts${interruptHint()}`, `Reading b.ts${interruptHint()}`]);
 	});
 });

@@ -316,7 +316,12 @@ describe("a share's failures before the backend runs", () => {
 		vi.spyOn(customShareModule, "loadCustomShare").mockRejectedValue(
 			new Error("Failed to load share script: share script must export a default function"),
 		);
-		const shareSession = vi.spyOn(shareModule, "shareSession");
+		/** Every default share the backend performed. */
+		const uploads: unknown[] = [];
+		vi.spyOn(shareModule, "shareSession").mockImplementation(async (_sessionManager, options) => {
+			uploads.push(options);
+			return DEFAULT_RESULT;
+		});
 		const errors: string[] = [];
 		const editor = new Text("editor", 0, 0);
 		const editorContainer = new Container();
@@ -331,11 +336,16 @@ describe("a share's failures before the backend runs", () => {
 
 		expect(errors).toEqual(["Failed to load share script: share script must export a default function"]);
 		expect(editorContainer.children).toEqual([editor]);
-		expect(shareSession).not.toHaveBeenCalled();
+		expect(uploads).toEqual([]);
 	});
 
 	it("a custom share whose export fails never runs the script", async () => {
-		const fn = vi.fn(async () => URL_A);
+		/** The HTML path of every run of the share script. */
+		const scriptRuns: string[] = [];
+		const fn = async (htmlPath: string) => {
+			scriptRuns.push(htmlPath);
+			return URL_A;
+		};
 		vi.spyOn(customShareModule, "loadCustomShare").mockResolvedValue({ path: "share.ts", fn });
 		const errors: string[] = [];
 		const editor = new Text("editor", 0, 0);
@@ -357,7 +367,7 @@ describe("a share's failures before the backend runs", () => {
 		await new CommandController(ctx).handleShareCommand();
 
 		expect(errors).toEqual(["Custom share failed: disk full"]);
-		expect(fn).not.toHaveBeenCalled();
+		expect(scriptRuns).toEqual([]);
 		expect(editorContainer.children).toEqual([editor]);
 	});
 });

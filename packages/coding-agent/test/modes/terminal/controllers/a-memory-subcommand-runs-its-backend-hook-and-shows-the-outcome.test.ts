@@ -74,9 +74,37 @@ function shown(run: MemoryRun) {
 	return { statuses: run.statuses, warnings: run.warnings, errors: run.errors, panels: run.panels.length };
 }
 
-/** Each hook call's agent directory, cwd, and whether its session is the one `run` handed the controller. */
-function hookCalls(calls: ReadonlyArray<readonly unknown[]>, run: MemoryRun) {
-	return calls.map(([agentDir, cwd, session]) => [agentDir, cwd, session === run.session]);
+/** The mnemopi hooks a `/memory` action can run. */
+const ACTION_HOOKS = ["clear", "enqueue", "stats", "diagnose"] as const;
+type ActionHook = (typeof ACTION_HOOKS)[number];
+
+interface BackendOperation {
+	hook: ActionHook;
+	agentDir: string;
+	cwd: string;
+	session: unknown;
+}
+
+/**
+ * Replaces every action hook of the mnemopi backend with a fake that records the operation it performed and then
+ * returns the report, or throws the error, `outcomes` sets for that hook.
+ */
+function fakeBackend(outcomes: Partial<Record<ActionHook, string | Error>> = {}): BackendOperation[] {
+	const performed: BackendOperation[] = [];
+	for (const hook of ACTION_HOOKS) {
+		vi.spyOn(mnemopiBackend, hook).mockImplementation(async (agentDir: string, cwd: string, session?: unknown) => {
+			performed.push({ hook, agentDir, cwd, session });
+			const outcome = outcomes[hook];
+			if (outcome instanceof Error) throw outcome;
+			return outcome;
+		});
+	}
+	return performed;
+}
+
+/** Each operation's hook, agent directory, cwd, and whether its session is the one `run` handed the controller. */
+function operations(performed: readonly BackendOperation[], run: MemoryRun) {
+	return performed.map(({ hook, agentDir, cwd, session }) => [hook, agentDir, cwd, session === run.session]);
 }
 
 afterEach(() => {
@@ -103,9 +131,9 @@ describe("a memory subcommand runs its backend hook and shows the outcome", () =
 
 	for (const action of ["clear", "reset"]) {
 		it(`${action} clears the backend, then refreshes the system prompt`, async () => {
-			const clear = vi.spyOn(mnemopiBackend, "clear").mockResolvedValue();
+			const performed = fakeBackend();
 			const run = await runMemory(`/memory ${action}`);
-			expect(hookCalls(clear.mock.calls, run)).toEqual([[AGENT_DIR, CWD, true]]);
+			expect(operations(performed, run)).toEqual([["clear", AGENT_DIR, CWD, true]]);
 			expect(run.refreshed).toEqual(["memory-clear"]);
 			expect(shown(run)).toEqual({
 				statuses: ["Memory data cleared and system prompt refreshed."],
@@ -116,7 +144,7 @@ describe("a memory subcommand runs its backend hook and shows the outcome", () =
 		});
 
 		it(`${action} that fails leaves the system prompt alone`, async () => {
-			vi.spyOn(mnemopiBackend, "clear").mockRejectedValue(new Error("database is locked"));
+			fakeBackend({ clear: new Error("database is locked") });
 			const run = await runMemory(`/memory ${action}`);
 			expect(run.refreshed).toEqual([]);
 			expect(shown(run)).toEqual({
@@ -130,11 +158,9 @@ describe("a memory subcommand runs its backend hook and shows the outcome", () =
 
 	for (const action of ["enqueue", "rebuild"]) {
 		it(`${action} enqueues consolidation`, async () => {
-			const enqueue = vi.spyOn(mnemopiBackend, "enqueue").mockResolvedValue();
-			const clear = vi.spyOn(mnemopiBackend, "clear");
+			const performed = fakeBackend();
 			const run = await runMemory(`/memory ${action}`);
-			expect(hookCalls(enqueue.mock.calls, run)).toEqual([[AGENT_DIR, CWD, true]]);
-			expect(clear).not.toHaveBeenCalled();
+			expect(operations(performed, run)).toEqual([["enqueue", AGENT_DIR, CWD, true]]);
 			expect(shown(run)).toEqual({
 				statuses: ["Memory consolidation enqueued."],
 				warnings: [],
@@ -144,7 +170,7 @@ describe("a memory subcommand runs its backend hook and shows the outcome", () =
 		});
 
 		it(`${action} that fails shows the enqueue error`, async () => {
-			vi.spyOn(mnemopiBackend, "enqueue").mockRejectedValue(new Error("queue full"));
+			fakeBackend({ enqueue: new Error("queue full") });
 			const run = await runMemory(`/memory ${action}`);
 			expect(shown(run)).toEqual({
 				statuses: [],
@@ -156,24 +182,22 @@ describe("a memory subcommand runs its backend hook and shows the outcome", () =
 	}
 
 	const REPORTS = [
-		{ action: "stats", hook: "stats", title: "Memory Stats", other: "diagnose" },
-		{ action: "diagnose", hook: "diagnose", title: "Memory Diagnostics", other: "stats" },
+		{ action: "stats", hook: "stats", title: "Memory Stats" },
+		{ action: "diagnose", hook: "diagnose", title: "Memory Diagnostics" },
 	] as const;
 
-	for (const { action, hook, title, other } of REPORTS) {
+	for (const { action, hook, title } of REPORTS) {
 		it(`${action} shows the backend's ${hook} report as a panel`, async () => {
-			const called = vi.spyOn(mnemopiBackend, hook).mockResolvedValue(`## Bank\n\n${action} body`);
-			const notCalled = vi.spyOn(mnemopiBackend, other);
+			const performed = fakeBackend({ [hook]: `## Bank\n\n${action} body` });
 			const run = await runMemory(`/memory ${action}`);
-			expect(hookCalls(called.mock.calls, run)).toEqual([[AGENT_DIR, CWD, true]]);
-			expect(notCalled).not.toHaveBeenCalled();
+			expect(operations(performed, run)).toEqual([[hook, AGENT_DIR, CWD, true]]);
 			expect(shown(run)).toEqual({ statuses: [], warnings: [], errors: [], panels: 1 });
 			expect(run.panels[0]).toContain(title);
 			expect(run.panels[0]).toContain(`${action} body`);
 		});
 
 		it(`${action} with an empty report warns that the backend has none`, async () => {
-			vi.spyOn(mnemopiBackend, hook).mockResolvedValue(undefined);
+			fakeBackend();
 			const run = await runMemory(`/memory ${action}`);
 			expect(shown(run)).toEqual({
 				statuses: [],
@@ -195,7 +219,7 @@ describe("a memory subcommand runs its backend hook and shows the outcome", () =
 		});
 
 		it(`${action} that throws shows an error naming the action`, async () => {
-			vi.spyOn(mnemopiBackend, hook).mockRejectedValue(new Error("bank unreadable"));
+			fakeBackend({ [hook]: new Error("bank unreadable") });
 			const run = await runMemory(`/memory ${action}`);
 			expect(shown(run)).toEqual({
 				statuses: [],
@@ -217,10 +241,10 @@ describe("a memory subcommand runs its backend hook and shows the outcome", () =
 	});
 
 	it("an action outside the usage line prints usage and runs no hook", async () => {
-		const hooks = (["clear", "enqueue", "stats", "diagnose"] as const).map(hook => vi.spyOn(mnemopiBackend, hook));
+		const performed = fakeBackend();
 		const run = await runMemory("/memory forget");
 		expect(shown(run)).toEqual({ statuses: [], warnings: [], errors: [USAGE], panels: 0 });
-		for (const hook of hooks) expect(hook).not.toHaveBeenCalled();
+		expect(performed).toEqual([]);
 	});
 });
 
@@ -235,12 +259,12 @@ describe("a memory action is read the same however it is written", () => {
 	});
 
 	it("an action in any letter case runs its lowercase form", async () => {
-		const enqueue = vi.spyOn(mnemopiBackend, "enqueue").mockResolvedValue();
+		const performed = fakeBackend();
 		for (const command of ["/memory ENQUEUE", "/memory Rebuild", "/memory   enqueue  extra"]) {
 			const run = await runMemory(command);
 			expect(run.statuses).toEqual(["Memory consolidation enqueued."]);
 		}
-		expect(enqueue).toHaveBeenCalledTimes(3);
+		expect(performed.map(({ hook }) => hook)).toEqual(["enqueue", "enqueue", "enqueue"]);
 	});
 
 	it("every action the usage line lists has a recorded outcome", async () => {

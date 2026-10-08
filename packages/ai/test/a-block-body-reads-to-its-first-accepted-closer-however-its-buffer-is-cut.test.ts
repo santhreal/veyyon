@@ -26,6 +26,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import { BlockBody } from "@veyyon/ai/dialect/coercion";
+import { fuzzSeed, lcg } from "@veyyon/utils/adversarial-strings";
 
 type Accepts = ((before: string) => boolean) | undefined;
 
@@ -51,14 +52,6 @@ const PREDICATES: Record<string, (asked: string[]) => Accepts> = {
 		return fillers % 2 === 0 && before.length > 0;
 	},
 };
-
-function lcg(seed: number): () => number {
-	let state = seed;
-	return () => {
-		state = (state * 1103515245 + 12345) & 0x7fffffff;
-		return state / 0x7fffffff;
-	};
-}
 
 /** The whole input read at once: the first accepted closer ends the body, else the first rejected one, else nothing. */
 function reference(closer: string, input: string, predicate: (asked: string[]) => Accepts): Outcome {
@@ -140,7 +133,7 @@ describe("a block body reads to its first accepted closer however its buffer is 
 	for (const closer of CLOSERS) {
 		for (const [name, predicate] of Object.entries(PREDICATES)) {
 			it(`${JSON.stringify(closer)} with ${name} predicate`, () => {
-				const random = lcg(closer.length * 7919 + name.length);
+				const random = lcg(fuzzSeed(closer.length * 7919 + name.length));
 				const reached = { accepted: 0, fallback: 0, heldAtEnd: 0 };
 				for (let c = 0; c < 400; c++) {
 					const input = randomInput(closer, random);
