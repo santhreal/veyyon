@@ -1,6 +1,6 @@
 import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { markdownLink } from "../../markdown-link";
-import type { DiscussionContext, DiscussionDeclaration } from "../engine/discussion";
+import type { DiscussionContext, DiscussionDeclaration, DiscussionMatch } from "../engine/discussion";
 import { buildResult, decodeHtmlEntities, formatIsoDate, formatNumber, htmlToBasicMarkdown } from "../types";
 
 // =============================================================================
@@ -225,15 +225,47 @@ interface RedditComment {
 	created_utc?: number;
 }
 
-interface RedditChild {
-	kind: string;
-	data: RedditPost | RedditComment;
+interface RedditListing<T> {
+	data?: {
+		children?: { kind: string; data: T }[];
+	};
 }
 
-interface RedditListingData {
-	data?: {
-		children?: RedditChild[];
-	};
+/** A post page: the post as a one-item listing, then its comments. */
+type RedditPostPage = [RedditListing<RedditPost>?, RedditListing<RedditComment>?];
+
+function redditJsonUrl(url: string, search: string): string {
+	const base = url.replace(/\/$/, "");
+	return search ? `${base.replace(search, "")}.json${search}` : `${base}.json`;
+}
+
+function renderRedditPost(page: RedditPostPage): string {
+	const post = page[0]?.data?.children?.[0]?.data;
+	if (!post) return "";
+	let md = `# ${post.title}\n\n`;
+	md += `**r/${post.subreddit}** · u/${post.author} · ${post.score} points · ${post.num_comments} comments\n`;
+	md += `*${formatIsoDate(post.created_utc * 1000)}*\n\n`;
+	if (!post.is_self) md += `**Link:** ${post.url}\n\n`;
+	else if (post.selftext) md += `---\n\n${post.selftext}\n\n`;
+
+	const children = page[1]?.data?.children;
+	if (!children) return md;
+	md += `---\n\n## Top Comments\n\n`;
+	for (const { data: comment } of children.filter(child => child.kind === "t1").slice(0, 10)) {
+		md += `### u/${comment.author} · ${comment.score} points\n\n${comment.body}\n\n---\n\n`;
+	}
+	return md;
+}
+
+function renderRedditListing(listing: RedditListing<RedditPost>): string {
+	const children = listing.data?.children;
+	if (!children) return "";
+	const posts = children.slice(0, 20);
+	let md = `# r/${posts[0]?.data?.subreddit || "Reddit"}\n\n`;
+	for (const { data: post } of posts) {
+		md += `- **${post.title}** (${post.score} pts, ${post.num_comments} comments)\n  by u/${post.author}\n\n`;
+	}
+	return md;
 }
 
 export const redditDeclaration: DiscussionDeclaration = {
@@ -247,62 +279,14 @@ export const redditDeclaration: DiscussionDeclaration = {
 	},
 	notes: ["Fetched via Reddit JSON API"],
 	fetch: async (match, ctx) => {
-		const parsed = match.parsedUrl;
-		let jsonUrl = `${ctx.url.replace(/\/$/, "")}.json`;
-		if (parsed.search) {
-			jsonUrl = `${ctx.url.replace(/\/$/, "").replace(parsed.search, "")}.json${parsed.search}`;
-		}
-
+		const jsonUrl = redditJsonUrl(ctx.url, match.parsedUrl.search);
 		const result = await ctx.loadPage(jsonUrl, { timeout: ctx.timeout, signal: ctx.signal });
 		if (!result.ok) return ctx.scraperDegrade("reddit", ctx.loadFailure(result));
-		const data = ctx.tryParseJson<RedditListingData[] | RedditListingData>(result.content);
+		const data = ctx.tryParseJson<RedditPostPage | RedditListing<RedditPost>>(result.content);
 		if (!data) return ctx.scraperDegrade("reddit", "unexpected response shape");
 
-		let md = "";
-
-		// Handle different Reddit URL types
-		if (Array.isArray(data) && data.length >= 1) {
-			// Post page (with comments)
-			const postData = data[0]?.data?.children?.[0]?.data as RedditPost | undefined;
-			if (postData) {
-				md = `# ${postData.title}\n\n`;
-				md += `**r/${postData.subreddit}** · u/${postData.author} · ${postData.score} points · ${postData.num_comments} comments\n`;
-				md += `*${formatIsoDate(postData.created_utc * 1000)}*\n\n`;
-
-				if (postData.is_self && postData.selftext) {
-					md += `---\n\n${postData.selftext}\n\n`;
-				} else if (!postData.is_self) {
-					md += `**Link:** ${postData.url}\n\n`;
-				}
-
-				// Add comments if available
-				if (data.length >= 2 && data[1]?.data?.children) {
-					md += `---\n\n## Top Comments\n\n`;
-					const comments = data[1].data.children.filter(c => c.kind === "t1").slice(0, 10) as Array<{
-						kind: string;
-						data: RedditComment;
-					}>;
-
-					for (const { data: comment } of comments) {
-						md += `### u/${comment.author} · ${comment.score} points\n\n`;
-						md += `${comment.body}\n\n---\n\n`;
-					}
-				}
-			}
-		} else if (!Array.isArray(data) && data?.data?.children) {
-			// Subreddit or listing page
-			const posts = data.data.children.slice(0, 20) as Array<{ kind: string; data: RedditPost }>;
-			const subreddit = posts[0]?.data?.subreddit;
-
-			md = `# r/${subreddit || "Reddit"}\n\n`;
-			for (const { data: post } of posts) {
-				md += `- **${post.title}** (${post.score} pts, ${post.num_comments} comments)\n`;
-				md += `  by u/${post.author}\n\n`;
-			}
-		}
-
+		const md = Array.isArray(data) ? renderRedditPost(data) : renderRedditListing(data);
 		if (!md) return null;
-
 		return buildResult(md, {
 			url: ctx.url,
 			method: "reddit",
@@ -320,7 +304,10 @@ interface LobstersStory {
 	short_id: string;
 	title: string;
 	url?: string;
+	/** The text post as HTML. */
 	description?: string;
+	/** The text post as its author wrote it, in Markdown. */
+	description_plain?: string;
 	submitter_user: string;
 	score: number;
 	comment_count: number;
@@ -342,19 +329,7 @@ interface LobstersComment {
 	depth: number;
 }
 
-interface LobstersStoryResponse {
-	short_id: string;
-	title: string;
-	url?: string;
-	/** The text post as HTML. */
-	description?: string;
-	/** The text post as its author wrote it, in Markdown. */
-	description_plain?: string;
-	submitter_user: string;
-	score: number;
-	comment_count: number;
-	created_at: string;
-	tags: string[];
+interface LobstersStoryResponse extends LobstersStory {
 	comments: LobstersComment[];
 }
 
@@ -368,6 +343,51 @@ function renderLobstersComments(comments: LobstersComment[], maxDepth = 5): stri
 		md += `${indent}${body}\n\n${indent}---\n\n`;
 	}
 	return md;
+}
+
+function renderLobstersStory(story: LobstersStoryResponse): string {
+	let md = `# ${story.title}\n\n`;
+	md += `**${story.submitter_user}** · ${story.score} points · ${story.comment_count} comments`;
+	if (story.tags?.length > 0) md += ` · [${story.tags.join(", ")}]`;
+	md += `\n*${formatIsoDate(story.created_at)}*\n\n`;
+	if (story.url) md += `**Link:** ${story.url}\n\n`;
+	if (story.description_plain) md += `---\n\n${story.description_plain}\n\n`;
+	if (story.comments?.length > 0) md += `---\n\n## Comments\n\n${renderLobstersComments(story.comments)}`;
+	return md;
+}
+
+function renderLobstersListing(stories: LobstersStory[], title: string): string {
+	let md = `# ${title}\n\n`;
+	for (const story of stories.slice(0, 20)) {
+		md += `- **${story.title}** (${story.score} pts, ${story.comment_count} comments)\n  by ${story.submitter_user}`;
+		if (story.tags?.length > 0) md += ` · [${story.tags.join(", ")}]`;
+		md += "\n";
+		if (story.url) md += `  ${story.url}\n`;
+		md += `  https://lobste.rs/s/${story.short_id}\n\n`;
+	}
+	return md;
+}
+
+/** The JSON feed and heading for the front page, the newest page, or a tag page. */
+function lobstersListing(pathname: string): { jsonUrl: string; title: string } | null {
+	if (pathname === "/") return { jsonUrl: "https://lobste.rs/hottest.json", title: "Lobste.rs Front Page" };
+	if (pathname === "/newest") return { jsonUrl: "https://lobste.rs/newest.json", title: "Lobste.rs Newest" };
+	const tag = pathname.match(/^\/t\/([^/]+)/)?.[1];
+	return tag ? { jsonUrl: `https://lobste.rs/t/${tag}.json`, title: `Lobste.rs Tag: ${tag}` } : null;
+}
+
+async function fetchLobstersRecord<T>(jsonUrl: string, ctx: DiscussionContext, render: (record: T) => string) {
+	const result = await ctx.loadPage(jsonUrl, { timeout: ctx.timeout, signal: ctx.signal });
+	if (!result.ok) return ctx.scraperDegrade("lobsters", ctx.loadFailure(result));
+	const record = ctx.tryParseJson<T>(result.content);
+	if (!record) return ctx.scraperDegrade("lobsters", "unexpected response shape");
+	return buildResult(render(record), {
+		url: ctx.url,
+		finalUrl: jsonUrl,
+		method: "lobsters",
+		fetchedAt: ctx.fetchedAt,
+		notes: ["Fetched via Lobste.rs JSON API"],
+	});
 }
 
 export const lobstersDeclaration: DiscussionDeclaration = {
@@ -386,87 +406,14 @@ export const lobstersDeclaration: DiscussionDeclaration = {
 	},
 	notes: ["Fetched via Lobste.rs JSON API"],
 	fetch: async (match, ctx) => {
-		const parsed = match.parsedUrl;
-		let jsonUrl = "";
-		let md = "";
-
 		if (match.kind === "story") {
-			jsonUrl = `https://lobste.rs/s/${match.id}.json`;
-			const result = await ctx.loadPage(jsonUrl, { timeout: ctx.timeout, signal: ctx.signal });
-			if (!result.ok) return ctx.scraperDegrade("lobsters", ctx.loadFailure(result));
-
-			const story = ctx.tryParseJson<LobstersStoryResponse>(result.content);
-			if (!story) return ctx.scraperDegrade("lobsters", "unexpected response shape");
-
-			md = `# ${story.title}\n\n`;
-			md += `**${story.submitter_user}** · ${story.score} points · ${story.comment_count} comments`;
-			if (story.tags?.length > 0) {
-				md += ` · [${story.tags.join(", ")}]`;
-			}
-			md += `\n`;
-			md += `*${formatIsoDate(story.created_at)}*\n\n`;
-
-			if (story.url) md += `**Link:** ${story.url}\n\n`;
-			if (story.description_plain) md += `---\n\n${story.description_plain}\n\n`;
-
-			// Add comments
-			if (story.comments && story.comments.length > 0) {
-				md += `---\n\n## Comments\n\n`;
-				md += renderLobstersComments(story.comments);
-			}
-		} else if (match.kind === "listing") {
-			if (parsed.pathname === "/") {
-				jsonUrl = "https://lobste.rs/hottest.json";
-			} else if (parsed.pathname === "/newest") {
-				jsonUrl = "https://lobste.rs/newest.json";
-			} else {
-				const tagMatch = parsed.pathname.match(/^\/t\/([^/]+)/);
-				if (tagMatch) {
-					jsonUrl = `https://lobste.rs/t/${tagMatch[1]}.json`;
-				}
-			}
-
-			if (!jsonUrl) return null;
-
-			const result = await ctx.loadPage(jsonUrl, { timeout: ctx.timeout, signal: ctx.signal });
-			if (!result.ok) return ctx.scraperDegrade("lobsters", ctx.loadFailure(result));
-
-			const stories = ctx.tryParseJson<LobstersStory[]>(result.content);
-			if (!stories) return ctx.scraperDegrade("lobsters", "unexpected response shape");
-			const listingStories = stories.slice(0, 20);
-
-			const title =
-				parsed.pathname === "/"
-					? "Lobste.rs Front Page"
-					: parsed.pathname === "/newest"
-						? "Lobste.rs Newest"
-						: `Lobste.rs Tag: ${parsed.pathname.split("/")[2]}`;
-
-			md = `# ${title}\n\n`;
-
-			for (const story of listingStories) {
-				md += `- **${story.title}** (${story.score} pts, ${story.comment_count} comments)\n`;
-				md += `  by ${story.submitter_user}`;
-				if (story.tags?.length > 0) {
-					md += ` · [${story.tags.join(", ")}]`;
-				}
-				md += `\n`;
-				if (story.url) {
-					md += `  ${story.url}\n`;
-				}
-				md += `  https://lobste.rs/s/${story.short_id}\n\n`;
-			}
-		} else {
-			return null;
+			return fetchLobstersRecord(`https://lobste.rs/s/${match.id}.json`, ctx, renderLobstersStory);
 		}
-
-		return buildResult(md, {
-			url: ctx.url,
-			finalUrl: jsonUrl,
-			method: "lobsters",
-			fetchedAt: ctx.fetchedAt,
-			notes: ["Fetched via Lobste.rs JSON API"],
-		});
+		const listing = match.kind === "listing" ? lobstersListing(match.parsedUrl.pathname) : null;
+		if (!listing) return null;
+		return fetchLobstersRecord<LobstersStory[]>(listing.jsonUrl, ctx, stories =>
+			renderLobstersListing(stories, listing.title),
+		);
 	},
 };
 
@@ -597,6 +544,29 @@ function renderLemmyComments(comments: LemmyCommentView[]): string {
 	return renderThread(0, 0).trim();
 }
 
+/** The id of the post a comment URL points into, or `null` when the comment does not resolve. */
+async function lemmyPostIdOfComment(baseUrl: string, commentId: string, ctx: DiscussionContext) {
+	const result = await ctx.loadPage(`${baseUrl}/api/v3/comment?id=${commentId}`, {
+		timeout: ctx.timeout,
+		signal: ctx.signal,
+	});
+	if (!result.ok) return null;
+	return ctx.tryParseJson<LemmyCommentResponse>(result.content)?.comment_view?.comment?.post_id || null;
+}
+
+function renderLemmyPost(postView: LemmyPostView, comments: LemmyCommentView[]): string {
+	const { post, counts } = postView;
+	let md = `# ${post.name}\n\n`;
+	md += `**Community:** ${formatLemmyCommunity(postView.community)} · **Author:** ${formatLemmyAuthor(postView.creator)}`;
+	md += ` · **Score:** ${counts?.score ?? 0} · **Comments:** ${counts?.comments ?? comments.length}\n`;
+	if (post.url) md += `**Link:** ${post.url}\n`;
+	md += "\n";
+	if (post.body) md += `---\n\n${post.body}\n\n`;
+	const threadedComments = comments.length > 0 ? renderLemmyComments(comments) : "";
+	if (threadedComments) md += `---\n\n## Comments\n\n${threadedComments}\n`;
+	return md;
+}
+
 export const lemmyDeclaration: DiscussionDeclaration = {
 	site: "lemmy",
 	method: "lemmy-api",
@@ -612,62 +582,21 @@ export const lemmyDeclaration: DiscussionDeclaration = {
 	notes: ["Fetched via Lemmy API"],
 	fetch: async (match, ctx) => {
 		const baseUrl = match.parsedUrl.origin;
-		let postId = Number.parseInt(match.id, 10);
-
-		if (match.kind === "comment") {
-			const commentUrl = `${baseUrl}/api/v3/comment?id=${postId}`;
-			const commentResult = await ctx.loadPage(commentUrl, { timeout: ctx.timeout, signal: ctx.signal });
-			if (!commentResult.ok) return null;
-
-			const commentData = ctx.tryParseJson<LemmyCommentResponse>(commentResult.content);
-			const commentView = commentData?.comment_view;
-			const commentPostId = commentView?.comment?.post_id;
-			if (!commentPostId) return null;
-			postId = commentPostId;
-		}
-
-		const postUrl = `${baseUrl}/api/v3/post?id=${postId}`;
-		const commentsUrl = `${baseUrl}/api/v3/comment/list?post_id=${postId}`;
+		const postId =
+			match.kind === "comment" ? await lemmyPostIdOfComment(baseUrl, match.id, ctx) : Number.parseInt(match.id, 10);
+		if (postId === null) return null;
 
 		const [postResult, commentsResult] = await Promise.all([
-			ctx.loadPage(postUrl, { timeout: ctx.timeout, signal: ctx.signal }),
-			ctx.loadPage(commentsUrl, { timeout: ctx.timeout, signal: ctx.signal }),
+			ctx.loadPage(`${baseUrl}/api/v3/post?id=${postId}`, { timeout: ctx.timeout, signal: ctx.signal }),
+			ctx.loadPage(`${baseUrl}/api/v3/comment/list?post_id=${postId}`, { timeout: ctx.timeout, signal: ctx.signal }),
 		]);
-
 		if (!postResult.ok || !commentsResult.ok) return null;
 
-		const postData = ctx.tryParseJson<LemmyPostResponse>(postResult.content);
-		const postView = postData?.post_view;
+		const postView = ctx.tryParseJson<LemmyPostResponse>(postResult.content)?.post_view;
 		if (!postView) return null;
+		const comments = ctx.tryParseJson<LemmyCommentListResponse>(commentsResult.content)?.comments ?? [];
 
-		const commentsData = ctx.tryParseJson<LemmyCommentListResponse>(commentsResult.content);
-		const comments = commentsData?.comments ?? [];
-
-		let md = `# ${postView.post.name}\n\n`;
-
-		const communityLabel = formatLemmyCommunity(postView.community);
-		const authorLabel = formatLemmyAuthor(postView.creator);
-		const score = postView.counts?.score ?? 0;
-		const commentCount = postView.counts?.comments ?? comments.length;
-
-		md += `**Community:** ${communityLabel} · **Author:** ${authorLabel} · **Score:** ${score} · **Comments:** ${commentCount}\n`;
-		if (postView.post.url) {
-			md += `**Link:** ${postView.post.url}\n`;
-		}
-		md += "\n";
-
-		if (postView.post.body) {
-			md += `---\n\n${postView.post.body}\n\n`;
-		}
-
-		if (comments.length > 0) {
-			const threadedComments = renderLemmyComments(comments);
-			if (threadedComments) {
-				md += `---\n\n## Comments\n\n${threadedComments}\n`;
-			}
-		}
-
-		return buildResult(md, {
+		return buildResult(renderLemmyPost(postView, comments), {
 			url: ctx.url,
 			method: "lemmy-api",
 			fetchedAt: ctx.fetchedAt,
@@ -763,6 +692,69 @@ async function formatDiscoursePostBody(post: DiscoursePost): Promise<string> {
 	return await htmlToBasicMarkdown(cooked);
 }
 
+const DISCOURSE_TOPIC_COUNTS: [label: string, key: "id" | "posts_count" | "views" | "like_count"][] = [
+	["Topic ID", "id"],
+	["Posts", "posts_count"],
+	["Views", "views"],
+	["Likes", "like_count"],
+];
+
+function renderDiscourseTopicHeader(topic: DiscourseTopic): string {
+	const counts = DISCOURSE_TOPIC_COUNTS.filter(([, key]) => topic[key] != null).map(
+		([label, key]) => `**${label}:** ${topic[key]}`,
+	);
+	let md = counts.length ? `${counts.join(" | ")}\n` : "";
+	const categoryLabel = formatDiscourseCategory(topic);
+	if (categoryLabel) md += `**Category:** ${categoryLabel}\n`;
+	if (topic.tags?.length) {
+		md += `**Tags:** ${topic.tags.map(tag => (typeof tag === "string" ? tag : tag.name)).join(", ")}\n`;
+	}
+	const createdBy = formatDiscourseAuthor(topic.details?.created_by ?? null);
+	if (createdBy !== "unknown" || topic.created_at) {
+		md += `**Created by:** ${createdBy} - ${formatIsoDate(topic.created_at)}\n`;
+	}
+	return md;
+}
+
+async function renderDiscoursePost(post: DiscoursePost): Promise<string> {
+	const author = formatDiscourseAuthor({ name: post.name, username: post.username });
+	const likes =
+		post.like_count ?? post.actions_summary?.find(action => action.id === DISCOURSE_LIKE_ACTION_ID)?.count ?? 0;
+	const content = await formatDiscoursePostBody(post);
+	const heading = `### Post ${post.post_number ?? post.id} - ${author} - ${formatIsoDate(post.created_at)} - Likes: ${likes}`;
+	return `${heading}\n\n${content || "_No content available._"}\n\n---\n\n`;
+}
+
+async function renderDiscourseTopic(topic: DiscourseTopic, title: string, posts: DiscoursePost[]): Promise<string> {
+	let md = `# ${title}\n\n${renderDiscourseTopicHeader(topic)}\n`;
+	const description = topic.excerpt
+		? await htmlToBasicMarkdown(topic.excerpt)
+		: posts.length
+			? await formatDiscoursePostBody(posts[0])
+			: "";
+	if (description) md += `## Description\n\n${description}\n\n`;
+	if (!posts.length) return md;
+	md += "## Posts\n\n";
+	for (const post of posts.slice(0, MAX_DISCOURSE_POSTS)) md += await renderDiscoursePost(post);
+	return md;
+}
+
+/** The topic a URL names and, for a post URL, the post itself, which the topic page may not include. */
+async function resolveDiscourseTopic(
+	match: DiscussionMatch,
+	baseUrl: string,
+	ctx: DiscussionContext,
+): Promise<{ topicId: string; requestedPost: DiscoursePost | null } | null> {
+	if (match.kind === "topic") return { topicId: match.id, requestedPost: null };
+	if (match.kind !== "post") return null;
+	const postResult = await ctx.loadPage(`${baseUrl}/posts/${match.id}.json?include_raw=1`, {
+		timeout: ctx.timeout,
+		signal: ctx.signal,
+	});
+	const post = ctx.tryParseJson<DiscoursePostResponse>(postResult.content);
+	return post?.topic_id ? { topicId: String(post.topic_id), requestedPost: post } : null;
+}
+
 export const discourseDeclaration: DiscussionDeclaration = {
 	site: "discourse",
 	method: "discourse-api",
@@ -781,93 +773,25 @@ export const discourseDeclaration: DiscussionDeclaration = {
 	},
 	notes: ["Fetched via Discourse API"],
 	fetch: async (match, ctx) => {
-		const parsed = match.parsedUrl;
-		const basePath = trimTrailingSlashes(match.subpath ?? "");
-		const baseUrl = `${parsed.origin}${basePath}`;
+		const baseUrl = `${match.parsedUrl.origin}${trimTrailingSlashes(match.subpath ?? "")}`;
+		const target = await resolveDiscourseTopic(match, baseUrl, ctx);
+		if (!target) return null;
 
-		let requestedPost: DiscoursePost | null = null;
-		let topicId = match.kind === "topic" ? match.id : null;
-
-		if (!topicId && match.kind === "post") {
-			const postResult = await ctx.loadPage(`${baseUrl}/posts/${match.id}.json?include_raw=1`, {
-				timeout: ctx.timeout,
-				signal: ctx.signal,
-			});
-
-			const postData = ctx.tryParseJson<DiscoursePostResponse>(postResult.content);
-			if (!postData?.topic_id) return null;
-			topicId = String(postData.topic_id);
-			requestedPost = postData;
-		}
-
-		if (!topicId) return null;
-
-		const topicResult = await ctx.loadPage(`${baseUrl}/t/${topicId}.json?include_raw=1`, {
+		const topicResult = await ctx.loadPage(`${baseUrl}/t/${target.topicId}.json?include_raw=1`, {
 			timeout: ctx.timeout,
 			signal: ctx.signal,
 		});
 		if (!topicResult.ok) return null;
-
 		const topic = ctx.tryParseJson<DiscourseTopic>(topicResult.content);
 		if (!topic) return null;
-
 		const title = topic.title || topic.fancy_title;
 		if (!title) return null;
 
 		const posts: DiscoursePost[] = [...(topic.post_stream?.posts ?? [])];
-		if (requestedPost && !posts.some(post => post.id === requestedPost?.id)) {
-			posts.unshift(requestedPost);
-		}
+		const { requestedPost } = target;
+		if (requestedPost && !posts.some(post => post.id === requestedPost.id)) posts.unshift(requestedPost);
 
-		let md = `# ${title}\n\n`;
-
-		const metaParts: string[] = [];
-		if (topic.id != null) metaParts.push(`**Topic ID:** ${topic.id}`);
-		if (topic.posts_count != null) metaParts.push(`**Posts:** ${topic.posts_count}`);
-		if (topic.views != null) metaParts.push(`**Views:** ${topic.views}`);
-		if (topic.like_count != null) metaParts.push(`**Likes:** ${topic.like_count}`);
-		if (metaParts.length) md += `${metaParts.join(" | ")}\n`;
-
-		const categoryLabel = formatDiscourseCategory(topic);
-		if (categoryLabel) md += `**Category:** ${categoryLabel}\n`;
-		if (topic.tags?.length) {
-			md += `**Tags:** ${topic.tags.map(tag => (typeof tag === "string" ? tag : tag.name)).join(", ")}\n`;
-		}
-
-		const createdBy = formatDiscourseAuthor(topic.details?.created_by ?? null);
-		if (createdBy !== "unknown" || topic.created_at) {
-			md += `**Created by:** ${createdBy} - ${formatIsoDate(topic.created_at)}\n`;
-		}
-
-		md += "\n";
-
-		const description = topic.excerpt
-			? await htmlToBasicMarkdown(topic.excerpt)
-			: posts.length
-				? await formatDiscoursePostBody(posts[0])
-				: "";
-		if (description) {
-			md += `## Description\n\n${description}\n\n`;
-		}
-
-		if (posts.length) {
-			md += "## Posts\n\n";
-			for (const post of posts.slice(0, MAX_DISCOURSE_POSTS)) {
-				const author = formatDiscourseAuthor({ name: post.name, username: post.username });
-				const date = formatIsoDate(post.created_at);
-				const likes =
-					post.like_count ??
-					post.actions_summary?.find(action => action.id === DISCOURSE_LIKE_ACTION_ID)?.count ??
-					0;
-				const content = await formatDiscoursePostBody(post);
-				const postLabel = post.post_number != null ? `Post ${post.post_number}` : `Post ${post.id}`;
-
-				md += `### ${postLabel} - ${author} - ${date} - Likes: ${likes}\n\n`;
-				md += content ? `${content}\n\n---\n\n` : "_No content available._\n\n---\n\n";
-			}
-		}
-
-		return buildResult(md, {
+		return buildResult(await renderDiscourseTopic(topic, title, posts), {
 			url: ctx.url,
 			method: "discourse-api",
 			fetchedAt: ctx.fetchedAt,
@@ -926,6 +850,75 @@ function renderDevToArticleCard(article: DevToArticle, includeAuthor = true): st
 	return md;
 }
 
+interface DevToListing {
+	query: string;
+	heading: string;
+	includeAuthor: boolean;
+}
+
+/** A tag page lists recent articles under their authors; a profile page lists the user's own. */
+function devToListing(pathParts: string[]): DevToListing | null {
+	const [first, second] = pathParts;
+	if (first === "t" && pathParts.length >= 2) {
+		return { query: `tag=${encodeURIComponent(second)}`, heading: `dev.to/t/${second}`, includeAuthor: true };
+	}
+	if (pathParts.length === 1) {
+		return { query: `username=${encodeURIComponent(first)}`, heading: `dev.to/${first}`, includeAuthor: false };
+	}
+	return null;
+}
+
+async function fetchDevToListing(listing: DevToListing, ctx: DiscussionContext) {
+	const result = await ctx.loadPage(`https://dev.to/api/articles?${listing.query}&per_page=20`, {
+		timeout: ctx.timeout,
+		signal: ctx.signal,
+	});
+	if (!result.ok) return ctx.scraperDegrade("devto", ctx.loadFailure(result));
+	const articles = ctx.tryParseJson<DevToArticle[]>(result.content);
+	if (!articles?.length) return null;
+
+	let md = `# ${listing.heading}\n\n## Recent Articles (${articles.length})\n\n`;
+	for (const article of articles) md += renderDevToArticleCard(article, listing.includeAuthor);
+	return buildResult(md, {
+		url: ctx.url,
+		method: "devto",
+		fetchedAt: ctx.fetchedAt,
+		notes: ["Fetched via dev.to API"],
+	});
+}
+
+async function renderDevToArticle(article: DevToArticle, username: string): Promise<string> {
+	const tags = devToTags(article);
+	const reactions = article.positive_reactions_count ?? article.public_reactions_count ?? 0;
+	const comments = article.comments_count ?? 0;
+	const readTime = article.reading_time_minutes ?? 0;
+
+	let md = `# ${article.title}\n\n`;
+	md += `**Author:** ${article.user?.name || "Unknown"} (@${article.user?.username || username})\n`;
+	md += `**Published:** ${formatIsoDate(article.published_at || article.published_timestamp || "")}\n`;
+	if (readTime > 0) md += `**Reading time:** ${readTime} min\n`;
+	if (reactions > 0) md += `**Reactions:** ${formatNumber(reactions)}\n`;
+	if (comments > 0) md += `**Comments:** ${formatNumber(comments)}\n`;
+	if (tags.length > 0) md += `**Tags:** ${tags.map(t => `#${t}`).join(", ")}\n`;
+	md += `\n---\n\n`;
+	if (article.body_markdown) return md + article.body_markdown;
+	return article.body_html ? md + (await htmlToBasicMarkdown(article.body_html)) : md;
+}
+
+async function fetchDevToArticle(username: string, slug: string, ctx: DiscussionContext) {
+	const apiUrl = `https://dev.to/api/articles/${encodeURIComponent(username)}/${encodeURIComponent(slug)}`;
+	const result = await ctx.loadPage(apiUrl, { timeout: ctx.timeout, signal: ctx.signal });
+	if (!result.ok) return ctx.scraperDegrade("devto", ctx.loadFailure(result));
+	const article = ctx.tryParseJson<DevToArticle>(result.content);
+	if (!article?.title) return null;
+	return buildResult(await renderDevToArticle(article, username), {
+		url: ctx.url,
+		method: "devto",
+		fetchedAt: ctx.fetchedAt,
+		notes: ["Fetched via dev.to API"],
+	});
+}
+
 export const devtoDeclaration: DiscussionDeclaration = {
 	site: "devto",
 	method: "devto",
@@ -940,89 +933,9 @@ export const devtoDeclaration: DiscussionDeclaration = {
 	notes: ["Fetched via dev.to API"],
 	fetch: async (match, ctx) => {
 		const pathParts = match.subpath!.split("/");
-		const notes: string[] = [];
-
-		// Tag page: /t/{tag}
-		if (pathParts[0] === "t" && pathParts.length >= 2) {
-			const tag = pathParts[1];
-			const apiUrl = `https://dev.to/api/articles?tag=${encodeURIComponent(tag)}&per_page=20`;
-
-			const result = await ctx.loadPage(apiUrl, { timeout: ctx.timeout, signal: ctx.signal });
-			if (!result.ok) return ctx.scraperDegrade("devto", ctx.loadFailure(result));
-
-			const articles = ctx.tryParseJson<DevToArticle[]>(result.content);
-			if (!articles?.length) return null;
-
-			let md = `# dev.to/t/${tag}\n\n`;
-			md += `## Recent Articles (${articles.length})\n\n`;
-
-			for (const article of articles) {
-				md += renderDevToArticleCard(article, true);
-			}
-
-			notes.push("Fetched via dev.to API");
-			return buildResult(md, { url: ctx.url, method: "devto", fetchedAt: ctx.fetchedAt, notes });
-		}
-
-		// User profile: /{username} (only if single path segment)
-		if (pathParts.length === 1) {
-			const username = pathParts[0];
-			const apiUrl = `https://dev.to/api/articles?username=${encodeURIComponent(username)}&per_page=20`;
-
-			const result = await ctx.loadPage(apiUrl, { timeout: ctx.timeout, signal: ctx.signal });
-			if (!result.ok) return ctx.scraperDegrade("devto", ctx.loadFailure(result));
-
-			const articles = ctx.tryParseJson<DevToArticle[]>(result.content);
-			if (!articles?.length) return null;
-
-			let md = `# dev.to/${username}\n\n`;
-			md += `## Recent Articles (${articles.length})\n\n`;
-
-			for (const article of articles) {
-				md += renderDevToArticleCard(article, false);
-			}
-
-			notes.push("Fetched via dev.to API");
-			return buildResult(md, { url: ctx.url, method: "devto", fetchedAt: ctx.fetchedAt, notes });
-		}
-
-		// Article: /{username}/{slug}
-		if (pathParts.length >= 2) {
-			const username = pathParts[0];
-			const slug = pathParts[1];
-			const apiUrl = `https://dev.to/api/articles/${encodeURIComponent(username)}/${encodeURIComponent(slug)}`;
-
-			const result = await ctx.loadPage(apiUrl, { timeout: ctx.timeout, signal: ctx.signal });
-			if (!result.ok) return ctx.scraperDegrade("devto", ctx.loadFailure(result));
-
-			const article = ctx.tryParseJson<DevToArticle>(result.content);
-			if (!article?.title) return null;
-
-			const tags = devToTags(article);
-			const reactions = article.positive_reactions_count ?? article.public_reactions_count ?? 0;
-			const comments = article.comments_count ?? 0;
-			const readTime = article.reading_time_minutes ?? 0;
-
-			let md = `# ${article.title}\n\n`;
-			md += `**Author:** ${article.user?.name || "Unknown"} (@${article.user?.username || username})\n`;
-			md += `**Published:** ${formatIsoDate(article.published_at || article.published_timestamp || "")}\n`;
-			if (readTime > 0) md += `**Reading time:** ${readTime} min\n`;
-			if (reactions > 0) md += `**Reactions:** ${formatNumber(reactions)}\n`;
-			if (comments > 0) md += `**Comments:** ${formatNumber(comments)}\n`;
-			if (tags.length > 0) md += `**Tags:** ${tags.map(t => `#${t}`).join(", ")}\n`;
-			md += `\n---\n\n`;
-
-			if (article.body_markdown) {
-				md += article.body_markdown;
-			} else if (article.body_html) {
-				md += await htmlToBasicMarkdown(article.body_html);
-			}
-
-			notes.push("Fetched via dev.to API");
-			return buildResult(md, { url: ctx.url, method: "devto", fetchedAt: ctx.fetchedAt, notes });
-		}
-
-		return null;
+		const listing = devToListing(pathParts);
+		if (listing) return fetchDevToListing(listing, ctx);
+		return pathParts.length >= 2 ? fetchDevToArticle(pathParts[0], pathParts[1], ctx) : null;
 	},
 };
 
@@ -1070,6 +983,35 @@ function getStackExchangeSiteParam(hostname: string): string | null {
 	return null;
 }
 
+const STACK_EXCHANGE_QUESTIONS_API = "https://api.stackexchange.com/2.3/questions";
+
+async function renderStackExchangeQuestion(question: SOQuestion): Promise<string> {
+	let md = `# ${decodeHtmlEntities(question.title)}\n\n`;
+	md += `**Score:** ${question.score} · **Answers:** ${question.answer_count}`;
+	md += question.is_answered ? " (Answered)" : "";
+	md += `\n**Tags:** ${question.tags.join(", ")}\n`;
+	md += `**Asked by:** ${decodeHtmlEntities(question.owner?.display_name || "anonymous")} · ${formatIsoDate(question.creation_date * 1000)}\n\n`;
+	md += `---\n\n## Question\n\n${await htmlToBasicMarkdown(question.body)}\n\n`;
+	return md;
+}
+
+/** The five highest-voted answers, or nothing when the answers request fails or returns none. */
+async function fetchStackExchangeAnswers(questionId: string, site: string, ctx: DiscussionContext): Promise<string> {
+	const apiUrl = `${STACK_EXCHANGE_QUESTIONS_API}/${questionId}/answers?order=desc&sort=votes&site=${site}&filter=withbody`;
+	const result = await ctx.loadPage(apiUrl, { timeout: ctx.timeout, signal: ctx.signal });
+	if (!result.ok) return "";
+	const answers = ctx.tryParseJson<{ items: SOAnswer[] }>(result.content)?.items;
+	if (!answers?.length) return "";
+
+	let md = `---\n\n## Answers\n\n`;
+	for (const answer of answers.slice(0, 5)) {
+		const accepted = answer.is_accepted ? " (Accepted)" : "";
+		md += `### Score: ${answer.score}${accepted} · by ${decodeHtmlEntities(answer.owner?.display_name || "anonymous")}\n\n`;
+		md += `${await htmlToBasicMarkdown(answer.body)}\n\n---\n\n`;
+	}
+	return md;
+}
+
 export const stackOverflowDeclaration: DiscussionDeclaration = {
 	site: "stackoverflow",
 	method: "stackexchange",
@@ -1101,39 +1043,14 @@ export const stackOverflowDeclaration: DiscussionDeclaration = {
 	notes: ["Fetched via Stack Exchange API"],
 	fetch: async (match, ctx) => {
 		const site = match.site ?? "stackoverflow";
-		const questionId = match.id;
+		const apiUrl = `${STACK_EXCHANGE_QUESTIONS_API}/${match.id}?order=desc&sort=votes&site=${site}&filter=withbody`;
+		const result = await ctx.loadPage(apiUrl, { timeout: ctx.timeout, signal: ctx.signal });
+		if (!result.ok) return ctx.scraperDegrade("stackoverflow", ctx.loadFailure(result));
+		const questions = ctx.tryParseJson<{ items: SOQuestion[] }>(result.content)?.items;
+		if (!questions?.length) return null;
 
-		const apiUrl = `https://api.stackexchange.com/2.3/questions/${questionId}?order=desc&sort=votes&site=${site}&filter=withbody`;
-		const qResult = await ctx.loadPage(apiUrl, { timeout: ctx.timeout, signal: ctx.signal });
-		if (!qResult.ok) return ctx.scraperDegrade("stackoverflow", ctx.loadFailure(qResult));
-
-		const qData = ctx.tryParseJson<{ items: SOQuestion[] }>(qResult.content);
-		if (!qData?.items?.length) return null;
-
-		const question = qData.items[0];
-
-		let md = `# ${decodeHtmlEntities(question.title)}\n\n`;
-		md += `**Score:** ${question.score} · **Answers:** ${question.answer_count}`;
-		md += question.is_answered ? " (Answered)" : "";
-		md += `\n**Tags:** ${question.tags.join(", ")}\n`;
-		md += `**Asked by:** ${decodeHtmlEntities(question.owner?.display_name || "anonymous")} · ${formatIsoDate(question.creation_date * 1000)}\n\n`;
-		md += `---\n\n## Question\n\n${await htmlToBasicMarkdown(question.body)}\n\n`;
-
-		const aUrl = `https://api.stackexchange.com/2.3/questions/${questionId}/answers?order=desc&sort=votes&site=${site}&filter=withbody`;
-		const aResult = await ctx.loadPage(aUrl, { timeout: ctx.timeout, signal: ctx.signal });
-
-		if (aResult.ok) {
-			const aData = ctx.tryParseJson<{ items: SOAnswer[] }>(aResult.content);
-			if (aData?.items?.length) {
-				md += `---\n\n## Answers\n\n`;
-				for (const answer of aData.items.slice(0, 5)) {
-					const accepted = answer.is_accepted ? " (Accepted)" : "";
-					md += `### Score: ${answer.score}${accepted} · by ${decodeHtmlEntities(answer.owner?.display_name || "anonymous")}\n\n`;
-					md += `${await htmlToBasicMarkdown(answer.body)}\n\n---\n\n`;
-				}
-			}
-		}
-
+		const md =
+			(await renderStackExchangeQuestion(questions[0])) + (await fetchStackExchangeAnswers(match.id, site, ctx));
 		return buildResult(md, {
 			url: ctx.url,
 			method: "stackexchange",
