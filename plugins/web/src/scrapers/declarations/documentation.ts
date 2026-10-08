@@ -10,9 +10,9 @@ import {
 import { parseHTML } from "linkedom";
 import { markdownLink } from "../../markdown-link";
 import { loadJson } from "../engine/declarative";
-import type { DocContext, DocDeclaration } from "../engine/documentation";
+import type { DocContext, DocDeclaration, DocMatch } from "../engine/documentation";
 import { renderDescriptionSection, renderStringList } from "../engine/markdown-assembly";
-import type { RenderResult } from "../types";
+import type { RenderResult, ScraperDegrade } from "../types";
 import { buildResult, htmlToBasicMarkdown, isScraperDegrade } from "../types";
 import { asRecord, renderMarkdownTable, trimmedString } from "../utils";
 
@@ -41,67 +41,51 @@ interface MDNDoc {
 	};
 }
 
+async function renderMDNProse(value: MDNSection["value"]): Promise<string[]> {
+	if (!value.content) return [];
+	const markdown = await htmlToBasicMarkdown(value.content);
+	if (!value.title) return [markdown];
+	return [`${value.isH3 ? "###" : "##"} ${value.title}\n\n${markdown}`];
+}
+
+function renderMDNCodeExample(value: MDNSection["value"]): string[] {
+	const parts: string[] = [];
+	if (value.title) parts.push(`### ${value.title}`);
+	if (value.code) parts.push(`\`\`\`${value.language || ""}\n${value.code}\n\`\`\``);
+	return parts;
+}
+
+async function renderMDNDefinitionList(items: MDNSection["value"]["items"]): Promise<string[]> {
+	const parts: string[] = [];
+	for (const item of items ?? []) {
+		parts.push(`**${item.term}**`, await htmlToBasicMarkdown(item.description));
+	}
+	return parts;
+}
+
+/** One body section as Markdown blocks; empty for a section type the converter does not render. */
+async function renderMDNSection({ type, value }: MDNSection): Promise<string[]> {
+	switch (type) {
+		case "prose":
+			return renderMDNProse(value);
+		case "browser_compatibility":
+			return value.title ? [`## ${value.title}\n\n(See browser compatibility data at MDN)`] : [];
+		case "specifications":
+			return value.title ? [`## ${value.title}\n\n(See specifications at MDN)`] : [];
+		case "code_example":
+			return renderMDNCodeExample(value);
+		case "definition_list":
+			return renderMDNDefinitionList(value.items);
+		case "table":
+			return value.rows?.length ? buildMarkdownTableFromHtmlRows(value.rows) : [];
+		default:
+			return [];
+	}
+}
+
 async function convertMDNBody(sections: MDNSection[]): Promise<string> {
 	const parts: string[] = [];
-
-	for (const section of sections) {
-		const { type, value } = section;
-
-		switch (type) {
-			case "prose":
-				if (value.content) {
-					const markdown = await htmlToBasicMarkdown(value.content);
-					if (value.title) {
-						const level = value.isH3 ? "###" : "##";
-						parts.push(`${level} ${value.title}\n\n${markdown}`);
-					} else {
-						parts.push(markdown);
-					}
-				}
-				break;
-
-			case "browser_compatibility":
-				if (value.title) {
-					parts.push(`## ${value.title}\n\n(See browser compatibility data at MDN)`);
-				}
-				break;
-
-			case "specifications":
-				if (value.title) {
-					parts.push(`## ${value.title}\n\n(See specifications at MDN)`);
-				}
-				break;
-
-			case "code_example":
-				if (value.title) {
-					parts.push(`### ${value.title}`);
-				}
-				if (value.code) {
-					const lang = value.language || "";
-					parts.push(`\`\`\`${lang}\n${value.code}\n\`\`\``);
-				}
-				break;
-
-			case "definition_list":
-				if (value.items) {
-					for (const item of value.items) {
-						parts.push(`**${item.term}**`);
-						const desc = await htmlToBasicMarkdown(item.description);
-						parts.push(desc);
-					}
-				}
-				break;
-
-			case "table":
-				if (value.rows && value.rows.length > 0) {
-					parts.push(...(await buildMarkdownTableFromHtmlRows(value.rows)));
-				}
-				break;
-			default:
-				break;
-		}
-	}
-
+	for (const section of sections) parts.push(...(await renderMDNSection(section)));
 	return parts.join("\n\n");
 }
 
@@ -385,16 +369,165 @@ async function fetchAuthorNames(authorKeys: string[], ctx: DocContext): Promise<
 }
 
 // --- Open Library ---
+const OPEN_LIBRARY_SUBJECT_LIMIT = 20;
+
+interface OpenLibrarySearchResponse {
+	docs?: Array<{
+		title?: string;
+		author_name?: string[];
+		first_publish_year?: number;
+		key?: string;
+	}>;
+}
+
+function openLibraryResult(md: string, ctx: DocContext): RenderResult {
+	return buildResult(md, {
+		url: ctx.url,
+		method: "openlibrary",
+		fetchedAt: ctx.fetchedAt,
+		notes: ["Fetched via Open Library API"],
+	});
+}
+
 function buildOpenLibraryUnavailableResult(isbn: string, sourceLabel: string, ctx: DocContext): RenderResult {
-	return buildResult(
+	return openLibraryResult(
 		`# Open Library Book\n\n**ISBN:** ${isbn}\n\nBook details are currently unavailable ${sourceLabel}.\n`,
-		{
-			url: ctx.url,
-			method: "openlibrary",
-			fetchedAt: ctx.fetchedAt,
-			notes: ["Fetched via Open Library API"],
-		},
+		ctx,
 	);
+}
+
+/** A work or edition record; a failed request or a body that is not JSON degrades. */
+async function loadOpenLibraryRecord<T>(apiUrl: string, ctx: DocContext): Promise<T | ScraperDegrade> {
+	const result = await ctx.loadPage(apiUrl, { timeout: ctx.timeout, signal: ctx.signal });
+	if (!result.ok) return ctx.scraperDegrade("openlibrary", ctx.loadFailure(result));
+	return ctx.tryParseJson<T>(result.content) || ctx.scraperDegrade("openlibrary", "unexpected response shape");
+}
+
+async function renderOpenLibraryAuthors(authorKeys: string[], ctx: DocContext): Promise<string> {
+	const authorNames = await fetchAuthorNames(authorKeys, ctx);
+	return authorNames.length ? `**Authors:** ${authorNames.join(", ")}\n` : "";
+}
+
+function renderOpenLibraryCover(covers: number[] | undefined): string {
+	return covers?.length ? `**Cover:** https://covers.openlibrary.org/b/id/${covers[0]}-L.jpg\n` : "";
+}
+
+/** The description and the first subjects of a work or an edition. */
+function renderOpenLibraryAbout(description: OpenLibraryWork["description"], subjects: string[] | undefined): string {
+	const text = extractOpenLibraryDescription(description);
+	let md = text ? `## Description\n\n${text}\n\n` : "";
+	if (subjects?.length) md += `## Subjects\n\n${subjects.slice(0, OPEN_LIBRARY_SUBJECT_LIMIT).join(", ")}\n`;
+	return md;
+}
+
+async function renderOpenLibraryWork(id: string, ctx: DocContext): Promise<string | ScraperDegrade> {
+	const work = await loadOpenLibraryRecord<OpenLibraryWork>(`https://openlibrary.org/works/${id}.json`, ctx);
+	if (isScraperDegrade(work)) return work;
+	let md = `# ${work.title}\n\n`;
+	if (work.authors?.length)
+		md += await renderOpenLibraryAuthors(
+			work.authors.map(a => a.author.key),
+			ctx,
+		);
+	if (work.first_publish_date) md += `**First Published:** ${work.first_publish_date}\n`;
+	md += renderOpenLibraryCover(work.covers);
+	md += `**Open Library:** https://openlibrary.org/works/${id}\n\n`;
+	return md + renderOpenLibraryAbout(work.description, work.subjects);
+}
+
+/** The publishers, publication date, page count and first ISBN, ISBN-13 before ISBN-10. */
+function renderOpenLibraryEditionFacts(edition: OpenLibraryEdition): string {
+	let md = "";
+	if (edition.publishers?.length) md += `**Publishers:** ${edition.publishers.join(", ")}\n`;
+	if (edition.publish_date) md += `**Published:** ${edition.publish_date}\n`;
+	if (edition.number_of_pages) md += `**Pages:** ${edition.number_of_pages}\n`;
+	const isbns = [...(edition.isbn_13 || []), ...(edition.isbn_10 || [])];
+	if (isbns.length) md += `**ISBN:** ${isbns[0]}\n`;
+	return md;
+}
+
+async function renderOpenLibraryEdition(id: string, ctx: DocContext): Promise<string | ScraperDegrade> {
+	const edition = await loadOpenLibraryRecord<OpenLibraryEdition>(`https://openlibrary.org/books/${id}.json`, ctx);
+	if (isScraperDegrade(edition)) return edition;
+	let md = `# ${edition.title}\n\n`;
+	if (edition.authors?.length)
+		md += await renderOpenLibraryAuthors(
+			edition.authors.map(a => a.key),
+			ctx,
+		);
+	md += renderOpenLibraryEditionFacts(edition);
+	md += renderOpenLibraryCover(edition.covers);
+	md += `**Open Library:** https://openlibrary.org/books/${id}\n`;
+	if (edition.works?.length) {
+		md += `**Work:** https://openlibrary.org/works/${edition.works[0].key.replace("/works/", "")}\n`;
+	}
+	return `${md}\n${renderOpenLibraryAbout(edition.description, edition.subjects)}`;
+}
+
+/** The string `name` of each entry, entries without one dropped. */
+function openLibraryNames(entries: Array<{ name?: string }>): string {
+	return entries
+		.map(entry => entry.name)
+		.filter((name): name is string => typeof name === "string")
+		.join(", ");
+}
+
+function renderOpenLibraryBook(book: OpenLibraryBooksApiResponse[string], isbn: string): string {
+	let md = `# ${book.title}\n\n`;
+	if (book.authors?.length) md += `**Authors:** ${openLibraryNames(book.authors)}\n`;
+	if (book.publishers?.length) md += `**Publishers:** ${openLibraryNames(book.publishers)}\n`;
+	if (book.publish_date) md += `**Published:** ${book.publish_date}\n`;
+	if (book.number_of_pages) md += `**Pages:** ${book.number_of_pages}\n`;
+	md += `**ISBN:** ${isbn}\n`;
+	const cover = book.cover?.large || book.cover?.medium;
+	if (cover) md += `**Cover:** ${cover}\n`;
+	if (book.url) md += `**Open Library:** ${book.url}\n`;
+	md += "\n";
+	if (book.subjects?.length) {
+		md += `## Subjects\n\n${openLibraryNames(book.subjects.slice(0, OPEN_LIBRARY_SUBJECT_LIMIT))}\n`;
+	}
+	return md;
+}
+
+/** The first search hit for an ISBN the books API does not index. */
+async function renderOpenLibrarySearchHit(isbn: string, ctx: DocContext): Promise<string | RenderResult> {
+	const searchUrl = `https://openlibrary.org/search.json?isbn=${encodeURIComponent(isbn)}&limit=1`;
+	const searchResult = await ctx.loadPage(searchUrl, { timeout: ctx.timeout, signal: ctx.signal });
+	if (!searchResult.ok) return buildOpenLibraryUnavailableResult(isbn, "from the Open Library search API", ctx);
+	const doc = ctx.tryParseJson<OpenLibrarySearchResponse>(searchResult.content)?.docs?.[0];
+	if (!doc?.title) return buildOpenLibraryUnavailableResult(isbn, "from Open Library", ctx);
+	let md = `# ${doc.title}\n\n`;
+	if (doc.author_name?.length) md += `**Authors:** ${doc.author_name.join(", ")}\n`;
+	if (doc.first_publish_year) md += `**First Published:** ${doc.first_publish_year}\n`;
+	md += `**ISBN:** ${isbn}\n`;
+	if (doc.key) md += `**Open Library:** https://openlibrary.org${doc.key}\n`;
+	return md;
+}
+
+/** The books API record for an ISBN, retried once; the search API when the books API has no record. */
+async function renderOpenLibraryIsbn(isbn: string, ctx: DocContext): Promise<string | RenderResult> {
+	const apiUrl = `https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`;
+	let result = await ctx.loadPage(apiUrl, { timeout: ctx.timeout, signal: ctx.signal });
+	if (!result.ok) result = await ctx.loadPage(apiUrl, { timeout: ctx.timeout, signal: ctx.signal });
+	if (!result.ok) return buildOpenLibraryUnavailableResult(isbn, "from the Open Library books API", ctx);
+	const book = ctx.tryParseJson<OpenLibraryBooksApiResponse>(result.content)?.[`ISBN:${isbn}`];
+	return book ? renderOpenLibraryBook(book, isbn) : renderOpenLibrarySearchHit(isbn, ctx);
+}
+
+function renderOpenLibraryTopic(
+	match: DocMatch,
+	ctx: DocContext,
+): Promise<string | RenderResult | ScraperDegrade> | null {
+	switch (match.topic) {
+		case "work":
+			return renderOpenLibraryWork(match.id, ctx);
+		case "book":
+			return renderOpenLibraryEdition(match.id, ctx);
+		case "isbn":
+			return renderOpenLibraryIsbn(match.id, ctx);
+		default:
+			return null;
+	}
 }
 
 export const openlibraryDeclaration: DocDeclaration = {
@@ -414,184 +547,78 @@ export const openlibraryDeclaration: DocDeclaration = {
 	},
 	notes: ["Fetched via Open Library API"],
 	fetch: async (match, ctx) => {
-		let md: string | null = null;
-		if (match.topic === "work") {
-			const apiUrl = `https://openlibrary.org/works/${match.id}.json`;
-			const result = await ctx.loadPage(apiUrl, { timeout: ctx.timeout, signal: ctx.signal });
-			if (!result.ok) return ctx.scraperDegrade("openlibrary", ctx.loadFailure(result));
-			const work = ctx.tryParseJson<OpenLibraryWork>(result.content);
-			if (!work) return ctx.scraperDegrade("openlibrary", "unexpected response shape");
-
-			let out = `# ${work.title}\n\n`;
-			if (work.authors?.length) {
-				const authorNames = await fetchAuthorNames(
-					work.authors.map(a => a.author.key),
-					ctx,
-				);
-				if (authorNames.length) {
-					out += `**Authors:** ${authorNames.join(", ")}\n`;
-				}
-			}
-			if (work.first_publish_date) {
-				out += `**First Published:** ${work.first_publish_date}\n`;
-			}
-			if (work.covers?.length) {
-				const coverId = work.covers[0];
-				out += `**Cover:** https://covers.openlibrary.org/b/id/${coverId}-L.jpg\n`;
-			}
-			out += `**Open Library:** https://openlibrary.org/works/${match.id}\n\n`;
-
-			const description = extractOpenLibraryDescription(work.description);
-			if (description) {
-				out += `## Description\n\n${description}\n\n`;
-			}
-			if (work.subjects?.length) {
-				out += `## Subjects\n\n${work.subjects.slice(0, 20).join(", ")}\n`;
-			}
-			md = out;
-		} else if (match.topic === "book") {
-			const apiUrl = `https://openlibrary.org/books/${match.id}.json`;
-			const result = await ctx.loadPage(apiUrl, { timeout: ctx.timeout, signal: ctx.signal });
-			if (!result.ok) return ctx.scraperDegrade("openlibrary", ctx.loadFailure(result));
-			const edition = ctx.tryParseJson<OpenLibraryEdition>(result.content);
-			if (!edition) return ctx.scraperDegrade("openlibrary", "unexpected response shape");
-
-			let out = `# ${edition.title}\n\n`;
-			if (edition.authors?.length) {
-				const authorNames = await fetchAuthorNames(
-					edition.authors.map(a => a.key),
-					ctx,
-				);
-				if (authorNames.length) {
-					out += `**Authors:** ${authorNames.join(", ")}\n`;
-				}
-			}
-			if (edition.publishers?.length) {
-				out += `**Publishers:** ${edition.publishers.join(", ")}\n`;
-			}
-			if (edition.publish_date) {
-				out += `**Published:** ${edition.publish_date}\n`;
-			}
-			if (edition.number_of_pages) {
-				out += `**Pages:** ${edition.number_of_pages}\n`;
-			}
-			const isbns = [...(edition.isbn_13 || []), ...(edition.isbn_10 || [])];
-			if (isbns.length) {
-				out += `**ISBN:** ${isbns[0]}\n`;
-			}
-			if (edition.covers?.length) {
-				const coverId = edition.covers[0];
-				out += `**Cover:** https://covers.openlibrary.org/b/id/${coverId}-L.jpg\n`;
-			}
-			out += `**Open Library:** https://openlibrary.org/books/${match.id}\n`;
-			if (edition.works?.length) {
-				const workKey = edition.works[0].key.replace("/works/", "");
-				out += `**Work:** https://openlibrary.org/works/${workKey}\n`;
-			}
-			out += "\n";
-
-			const description = extractOpenLibraryDescription(edition.description);
-			if (description) {
-				out += `## Description\n\n${description}\n\n`;
-			}
-			if (edition.subjects?.length) {
-				out += `## Subjects\n\n${edition.subjects.slice(0, 20).join(", ")}\n`;
-			}
-			md = out;
-		} else if (match.topic === "isbn") {
-			const apiUrl = `https://openlibrary.org/api/books?bibkeys=ISBN:${match.id}&format=json&jscmd=data`;
-			let result = await ctx.loadPage(apiUrl, { timeout: ctx.timeout, signal: ctx.signal });
-			if (!result.ok) {
-				result = await ctx.loadPage(apiUrl, { timeout: ctx.timeout, signal: ctx.signal });
-			}
-			if (!result.ok) {
-				return buildOpenLibraryUnavailableResult(match.id, "from the Open Library books API", ctx);
-			}
-
-			const data = ctx.tryParseJson<OpenLibraryBooksApiResponse>(result.content);
-			const key = `ISBN:${match.id}`;
-			const book = data?.[key];
-			if (!book) {
-				const searchUrl = `https://openlibrary.org/search.json?isbn=${encodeURIComponent(match.id)}&limit=1`;
-				const searchResult = await ctx.loadPage(searchUrl, { timeout: ctx.timeout, signal: ctx.signal });
-				if (!searchResult.ok) {
-					return buildOpenLibraryUnavailableResult(match.id, "from the Open Library search API", ctx);
-				}
-				const searchData = ctx.tryParseJson<{
-					docs?: Array<{
-						title?: string;
-						author_name?: string[];
-						first_publish_year?: number;
-						key?: string;
-					}>;
-				}>(searchResult.content);
-				const doc = searchData?.docs?.[0];
-				if (!doc?.title) {
-					return buildOpenLibraryUnavailableResult(match.id, "from Open Library", ctx);
-				}
-
-				let fallbackMd = `# ${doc.title}\n\n`;
-				if (doc.author_name?.length) {
-					fallbackMd += `**Authors:** ${doc.author_name.join(", ")}\n`;
-				}
-				if (doc.first_publish_year) {
-					fallbackMd += `**First Published:** ${doc.first_publish_year}\n`;
-				}
-				fallbackMd += `**ISBN:** ${match.id}\n`;
-				if (doc.key) {
-					fallbackMd += `**Open Library:** https://openlibrary.org${doc.key}\n`;
-				}
-				md = fallbackMd;
-			} else {
-				let out = `# ${book.title}\n\n`;
-				if (book.authors?.length) {
-					out += `**Authors:** ${book.authors
-						.map(a => a.name)
-						.filter((n): n is string => typeof n === "string")
-						.join(", ")}\n`;
-				}
-				if (book.publishers?.length) {
-					out += `**Publishers:** ${book.publishers
-						.map(p => p.name)
-						.filter((p): p is string => typeof p === "string")
-						.join(", ")}\n`;
-				}
-				if (book.publish_date) {
-					out += `**Published:** ${book.publish_date}\n`;
-				}
-				if (book.number_of_pages) {
-					out += `**Pages:** ${book.number_of_pages}\n`;
-				}
-				out += `**ISBN:** ${match.id}\n`;
-				if (book.cover?.large || book.cover?.medium) {
-					out += `**Cover:** ${book.cover.large || book.cover.medium}\n`;
-				}
-				if (book.url) {
-					out += `**Open Library:** ${book.url}\n`;
-				}
-				out += "\n";
-				if (book.subjects?.length) {
-					out += `## Subjects\n\n${book.subjects
-						.slice(0, 20)
-						.map(s => s.name)
-						.filter((s): s is string => typeof s === "string")
-						.join(", ")}\n`;
-				}
-				md = out;
-			}
-		}
-
-		if (!md) return null;
-		return buildResult(md, {
-			url: ctx.url,
-			method: "openlibrary",
-			fetchedAt: ctx.fetchedAt,
-			notes: ["Fetched via Open Library API"],
-		});
+		const rendered = await renderOpenLibraryTopic(match, ctx);
+		return typeof rendered === "string" ? openLibraryResult(rendered, ctx) : rendered;
 	},
 };
 
 // --- Read the Docs ---
+interface ReadTheDocsElement {
+	readonly innerHTML: string;
+	readonly textContent: string | null;
+	getAttribute(name: string): string | null;
+	remove(): void;
+	querySelectorAll(selectors: string): Iterable<ReadTheDocsElement>;
+}
+
+interface ReadTheDocsDocument {
+	querySelector(selectors: string): ReadTheDocsElement | null;
+	querySelectorAll(selectors: string): Iterable<ReadTheDocsElement>;
+}
+
+const READ_THE_DOCS_MAIN_SELECTORS = [".document", '[role="main"]', "main", ".rst-content", ".body"];
+const READ_THE_DOCS_CHROME =
+	".headerlink, .viewcode-link, nav, .sidebar, footer, .related, .sphinxsidebar, .toctree-wrapper";
+const MAX_RAW_SOURCE_LENGTH = 1_000_000;
+
+/** The page's content element with the theme's navigation removed; the whole body when no content element matches. */
+function readTheDocsMainContent(root: ReadTheDocsDocument, notes: string[]): ReadTheDocsElement | null {
+	let main: ReadTheDocsElement | null = null;
+	for (const selector of READ_THE_DOCS_MAIN_SELECTORS) {
+		main = root.querySelector(selector);
+		if (main) break;
+	}
+	if (!main) {
+		main = root.querySelector("body");
+		notes.push("Using full body content (no main content div found)");
+	}
+	if (main) for (const element of main.querySelectorAll(READ_THE_DOCS_CHROME)) element.remove();
+	return main;
+}
+
+/** The raw URL behind the first GitHub or GitLab link whose text mentions editing or the source. */
+function readTheDocsSourceUrl(root: ReadTheDocsDocument): string | null {
+	for (const link of root.querySelectorAll('a[href*="github.com"], a[href*="gitlab.com"]')) {
+		const href = link.getAttribute("href");
+		const text = link.textContent?.toLowerCase() || "";
+		if (href && (text.includes("edit") || text.includes("source"))) {
+			return href.replace("/blob/", "/raw/").replace("/edit/", "/raw/");
+		}
+	}
+	return null;
+}
+
+/** The raw source text; empty, with a note saying why, when it is unavailable, empty or too large. */
+async function loadReadTheDocsSource(sourceUrl: string, ctx: DocContext, notes: string[]): Promise<string> {
+	try {
+		const sourceResult = await ctx.loadPage(sourceUrl, { timeout: Math.min(ctx.timeout, 10), signal: ctx.signal });
+		const length = sourceResult.content.length;
+		if (sourceResult.ok && length > 0 && length < MAX_RAW_SOURCE_LENGTH) {
+			notes.push(`Fetched raw source from ${sourceUrl}`);
+			return sourceResult.content;
+		}
+		notes.push(
+			`Raw source at ${sourceUrl} was unusable (${ctx.loadFailure(sourceResult)}); converted the HTML instead`,
+		);
+	} catch (error) {
+		if (isCancellation(error)) throw error;
+		notes.push(
+			`Raw source at ${sourceUrl} could not be fetched (${errorMessage(error)}); converted the HTML instead`,
+		);
+	}
+	return "";
+}
+
 export const readthedocsDeclaration: DocDeclaration = {
 	site: "readthedocs",
 	method: "readthedocs",
@@ -602,80 +629,13 @@ export const readthedocsDeclaration: DocDeclaration = {
 	fetch: async (_match, ctx) => {
 		const notes: string[] = [];
 		const result = await ctx.loadPage(ctx.url, { timeout: ctx.timeout, signal: ctx.signal });
-		if (!result.ok) {
-			return ctx.scraperDegrade("readthedocs", ctx.loadFailure(result));
-		}
+		if (!result.ok) return ctx.scraperDegrade("readthedocs", ctx.loadFailure(result));
 
-		const root = parseHTML(result.content).document;
-
-		let mainContent =
-			root.querySelector(".document") ||
-			root.querySelector('[role="main"]') ||
-			root.querySelector("main") ||
-			root.querySelector(".rst-content") ||
-			root.querySelector(".body");
-
-		if (!mainContent) {
-			mainContent = root.querySelector("body");
-			notes.push("Using full body content (no main content div found)");
-		}
-
-		mainContent
-			?.querySelectorAll(
-				".headerlink, .viewcode-link, nav, .sidebar, footer, .related, .sphinxsidebar, .toctree-wrapper",
-			)
-			.forEach((el: { remove: () => void }) => {
-				el.remove();
-			});
-
-		const editLinks = root.querySelectorAll('a[href*="github.com"], a[href*="gitlab.com"]');
-		let sourceUrl: string | null = null;
-
-		for (const link of editLinks) {
-			const href = link.getAttribute("href");
-			const text = link.textContent?.toLowerCase() || "";
-
-			if (href && (text.includes("edit") || text.includes("source"))) {
-				if (href.includes("github.com")) {
-					sourceUrl = href.replace("/blob/", "/raw/").replace("/edit/", "/raw/");
-				} else if (href.includes("gitlab.com")) {
-					sourceUrl = href.replace("/blob/", "/raw/").replace("/edit/", "/raw/");
-				}
-				break;
-			}
-		}
-
-		let content = "";
-		let rawSource = false;
-
-		if (sourceUrl) {
-			try {
-				const sourceResult = await ctx.loadPage(sourceUrl, {
-					timeout: Math.min(ctx.timeout, 10),
-					signal: ctx.signal,
-				});
-				if (sourceResult.ok && sourceResult.content.length > 0 && sourceResult.content.length < 1_000_000) {
-					content = sourceResult.content;
-					rawSource = true;
-					notes.push(`Fetched raw source from ${sourceUrl}`);
-				} else {
-					notes.push(
-						`Raw source at ${sourceUrl} was unusable (${ctx.loadFailure(sourceResult)}); converted the HTML instead`,
-					);
-				}
-			} catch (error) {
-				if (isCancellation(error)) throw error;
-				notes.push(
-					`Raw source at ${sourceUrl} could not be fetched (${errorMessage(error)}); converted the HTML instead`,
-				);
-			}
-		}
-
-		if (!content && mainContent) {
-			const html = mainContent.innerHTML;
-			content = await htmlToBasicMarkdown(html);
-		}
-
+		const root: ReadTheDocsDocument = parseHTML(result.content).document;
+		const mainContent = readTheDocsMainContent(root, notes);
+		const sourceUrl = readTheDocsSourceUrl(root);
+		const source = sourceUrl ? await loadReadTheDocsSource(sourceUrl, ctx, notes) : "";
+		let content = source || (mainContent ? await htmlToBasicMarkdown(mainContent.innerHTML) : "");
 		if (!content) {
 			content = "No content extracted from Read the Docs page";
 			notes.push("Failed to extract content");
@@ -687,7 +647,7 @@ export const readthedocsDeclaration: DocDeclaration = {
 			method: "readthedocs",
 			fetchedAt: ctx.fetchedAt,
 			notes: notes.length ? notes : ["Fetched via Read the Docs"],
-			contentType: rawSource ? "text/plain" : "text/markdown",
+			contentType: source ? "text/plain" : "text/markdown",
 		});
 	},
 };
@@ -840,16 +800,20 @@ function extractShortname(pathname: string): string | null {
 	return null;
 }
 
-function normalizeStatus(status?: string): { code?: string; label?: string } {
-	if (!status) return {};
+/** Maturity codes keyed by the status phrase; the more specific phrases come first so "recommendation" matches last. */
+const W3C_STATUS_CODES: ReadonlyArray<readonly [phrase: string, code: string]> = [
+	["working draft", "WD"],
+	["candidate recommendation", "CR"],
+	["proposed recommendation", "PR"],
+	["recommendation", "REC"],
+];
+
+/** The status line: the maturity code followed by the full status, or the status alone when no code applies. */
+function w3cStatusLine(status: string | undefined): string {
+	if (!status) return "";
 	const lower = status.toLowerCase();
-
-	if (lower.includes("working draft")) return { code: "WD", label: status };
-	if (lower.includes("candidate recommendation")) return { code: "CR", label: status };
-	if (lower.includes("proposed recommendation")) return { code: "PR", label: status };
-	if (lower.includes("recommendation")) return { code: "REC", label: status };
-
-	return { label: status };
+	const code = W3C_STATUS_CODES.find(([phrase]) => lower.includes(phrase))?.[1];
+	return code ? `**Status:** ${code} (${status})\n` : `**Status:** ${status}\n`;
 }
 
 function extractEditors(editorsPayload: Record<string, unknown> | null): string[] {
@@ -866,6 +830,46 @@ function extractEditors(editorsPayload: Record<string, unknown> | null): string[
 	return names;
 }
 
+/** The editors named at the latest version's editors link; empty when the link is absent or its list is unreadable. */
+async function loadW3cEditors(latest: Record<string, unknown>, ctx: DocContext): Promise<string[]> {
+	const editorsUrl = getJsonString(getJsonRecord(getJsonRecord(latest, "_links"), "editors"), "href");
+	if (!editorsUrl) return [];
+	const editorsResult = await ctx.loadPage(editorsUrl, { timeout: Math.min(ctx.timeout, 10), signal: ctx.signal });
+	if (!editorsResult.ok) return [];
+	try {
+		const editorsPayload = asRecord(JSON.parse(editorsResult.content));
+		return editorsPayload ? extractEditors(editorsPayload) : [];
+	} catch (error) {
+		logger.warn("W3C editors list was not valid JSON; the spec renders without editors", {
+			url: editorsUrl,
+			error: errorMessage(error),
+		});
+		return [];
+	}
+}
+
+interface W3cSpecPage {
+	spec: Record<string, unknown>;
+	latest: Record<string, unknown>;
+	shortname: string;
+	abstract: string | undefined;
+	editors: readonly string[];
+	latestVersionUrl: string | undefined;
+}
+
+function renderW3cSpec(page: W3cSpecPage): string {
+	const shortname = getJsonString(page.spec, "shortname") ?? page.shortname;
+	const historyUrl = getJsonString(getJsonRecord(getJsonRecord(page.spec, "_links"), "version-history"), "href");
+	let md = `# ${getJsonString(page.spec, "title") ?? shortname}\n\n`;
+	if (page.abstract) md += `## Abstract\n\n${page.abstract}\n\n`;
+	md += `## Metadata\n\n**Shortname:** ${shortname}\n`;
+	md += w3cStatusLine(getJsonString(page.latest, "status"));
+	if (page.editors.length) md += `**Editors:** ${page.editors.join(", ")}\n`;
+	if (page.latestVersionUrl) md += `**Latest Version:** ${page.latestVersionUrl}\n`;
+	if (historyUrl) md += `**History:** ${historyUrl}\n`;
+	return md;
+}
+
 // --- W3C Specifications ---
 export const w3cDeclaration: DocDeclaration = {
 	site: "w3c",
@@ -878,84 +882,26 @@ export const w3cDeclaration: DocDeclaration = {
 	},
 	notes: ["Fetched via W3C API"],
 	fetch: async (match, ctx) => {
-		const shortname = match.id;
-		const specUrl = `https://api.w3.org/specifications/${encodeURIComponent(shortname)}`;
-		const latestUrl = `https://api.w3.org/specifications/${encodeURIComponent(shortname)}/versions/latest`;
-
+		const specUrl = `https://api.w3.org/specifications/${encodeURIComponent(match.id)}`;
+		const loadSpecJson = (url: string) =>
+			ctx.loadPage(url, { timeout: ctx.timeout, signal: ctx.signal, headers: { Accept: "application/json" } });
 		const [specResult, latestResult] = await Promise.all([
-			ctx.loadPage(specUrl, {
-				timeout: ctx.timeout,
-				signal: ctx.signal,
-				headers: { Accept: "application/json" },
-			}),
-			ctx.loadPage(latestUrl, {
-				timeout: ctx.timeout,
-				signal: ctx.signal,
-				headers: { Accept: "application/json" },
-			}),
+			loadSpecJson(specUrl),
+			loadSpecJson(`${specUrl}/versions/latest`),
 		]);
-
 		if (!specResult.ok || !latestResult.ok) return null;
 
-		const specPayload = ctx.tryParseJson<Record<string, unknown>>(specResult.content);
-		const latestPayload = ctx.tryParseJson<Record<string, unknown>>(latestResult.content);
-		if (!specPayload || !latestPayload) return null;
+		const spec = ctx.tryParseJson<Record<string, unknown>>(specResult.content);
+		const latest = ctx.tryParseJson<Record<string, unknown>>(latestResult.content);
+		if (!spec || !latest) return null;
 
-		const title = getJsonString(specPayload, "title");
-		const shortnameValue = getJsonString(specPayload, "shortname") ?? shortname;
-		const description = getJsonString(specPayload, "description") ?? getJsonString(specPayload, "abstract");
+		const description = getJsonString(spec, "description") ?? getJsonString(spec, "abstract");
 		const abstract = description ? await htmlToBasicMarkdown(description) : undefined;
-
+		const editors = await loadW3cEditors(latest, ctx);
 		const latestVersionUrl =
-			getJsonString(latestPayload, "uri") ??
-			getJsonString(latestPayload, "shortlink") ??
-			getJsonString(specPayload, "shortlink");
+			getJsonString(latest, "uri") ?? getJsonString(latest, "shortlink") ?? getJsonString(spec, "shortlink");
 
-		const latestStatus = getJsonString(latestPayload, "status");
-		const normalizedStatus = normalizeStatus(latestStatus);
-
-		const specLinks = getJsonRecord(specPayload, "_links");
-		const historyUrl = getJsonString(getJsonRecord(specLinks, "version-history"), "href");
-
-		const latestLinks = getJsonRecord(latestPayload, "_links");
-		const editorsUrl = getJsonString(getJsonRecord(latestLinks, "editors"), "href");
-
-		let editors: string[] = [];
-		if (editorsUrl) {
-			const editorsResult = await ctx.loadPage(editorsUrl, {
-				timeout: Math.min(ctx.timeout, 10),
-				signal: ctx.signal,
-			});
-			if (editorsResult.ok) {
-				try {
-					const editorsPayload = asRecord(JSON.parse(editorsResult.content));
-					editors = editorsPayload ? extractEditors(editorsPayload) : [];
-				} catch (error) {
-					logger.warn("W3C editors list was not valid JSON; the spec renders without editors", {
-						url: editorsUrl,
-						error: errorMessage(error),
-					});
-				}
-			}
-		}
-
-		let md = `# ${title ?? shortnameValue}\n\n`;
-		if (abstract) md += `## Abstract\n\n${abstract}\n\n`;
-
-		md += "## Metadata\n\n";
-		md += `**Shortname:** ${shortnameValue}\n`;
-		if (normalizedStatus.code) {
-			md += `**Status:** ${normalizedStatus.code}`;
-			if (normalizedStatus.label) md += ` (${normalizedStatus.label})`;
-			md += "\n";
-		} else if (normalizedStatus.label) {
-			md += `**Status:** ${normalizedStatus.label}\n`;
-		}
-		if (editors.length) md += `**Editors:** ${editors.join(", ")}\n`;
-		if (latestVersionUrl) md += `**Latest Version:** ${latestVersionUrl}\n`;
-		if (historyUrl) md += `**History:** ${historyUrl}\n`;
-
-		return buildResult(md, {
+		return buildResult(renderW3cSpec({ spec, latest, shortname: match.id, abstract, editors, latestVersionUrl }), {
 			url: ctx.url,
 			finalUrl: latestVersionUrl ?? ctx.url,
 			method: "w3c-api",
@@ -1154,72 +1100,38 @@ function formatWikidataTime(time: string, precision: number): string {
 	return `${absYear}${era}`;
 }
 
+type ClaimFormatter = (value: Record<string, unknown>, entityLabels: ReadonlyMap<string, string>) => string | null;
+
+/** Formatters for the object-valued datatypes, keyed by `datavalue.type`; each returns null for a malformed value. */
+const CLAIM_FORMATTERS: Record<string, ClaimFormatter> = {
+	"wikibase-entityid": (value, entityLabels) =>
+		typeof value.id === "string" ? entityLabels.get(value.id) || value.id : null,
+	time: value =>
+		typeof value.time === "string" && typeof value.precision === "number"
+			? formatWikidataTime(value.time, value.precision)
+			: null,
+	quantity: (value, entityLabels) => {
+		if (typeof value.amount !== "string" || typeof value.unit !== "string") return null;
+		const amount = value.amount.replace(/^\+/, "");
+		const unitId = value.unit.match(/Q\d+$/)?.[0];
+		const unit = unitId ? entityLabels.get(unitId) : undefined;
+		return unit ? `${amount} ${unit}` : amount;
+	},
+	monolingualtext: value => (typeof value.text === "string" ? value.text : null),
+	globecoordinate: value =>
+		typeof value.latitude === "number" && typeof value.longitude === "number"
+			? `${value.latitude.toFixed(4)}, ${value.longitude.toFixed(4)}`
+			: null,
+};
+
 function formatClaimValue(claim: WikidataClaim, entityLabels: ReadonlyMap<string, string>): string | null {
 	const snak = claim.mainsnak;
 	if (snak.snaktype !== "value" || !snak.datavalue) return null;
-
 	const { type, value } = snak.datavalue;
-
-	switch (type) {
-		case "wikibase-entityid": {
-			if (typeof value === "object" && value !== null && "id" in value && typeof value.id === "string") {
-				return entityLabels.get(value.id) || value.id;
-			}
-			return null;
-		}
-		case "string":
-			return typeof value === "string" ? value : null;
-		case "time": {
-			if (
-				typeof value === "object" &&
-				value !== null &&
-				"time" in value &&
-				typeof value.time === "string" &&
-				"precision" in value &&
-				typeof value.precision === "number"
-			) {
-				return formatWikidataTime(value.time, value.precision);
-			}
-			return null;
-		}
-		case "quantity": {
-			if (
-				typeof value === "object" &&
-				value !== null &&
-				"amount" in value &&
-				typeof value.amount === "string" &&
-				"unit" in value &&
-				typeof value.unit === "string"
-			) {
-				const amount = value.amount.replace(/^\+/, "");
-				const unitMatch = value.unit.match(/Q\d+$/);
-				const unit = unitMatch ? entityLabels.get(unitMatch[0]) || "" : "";
-				return unit ? `${amount} ${unit}` : amount;
-			}
-			return null;
-		}
-		case "monolingualtext": {
-			if (typeof value === "object" && value !== null && "text" in value && typeof value.text === "string") {
-				return value.text;
-			}
-			return null;
-		}
-		case "globecoordinate": {
-			if (
-				typeof value === "object" &&
-				value !== null &&
-				"latitude" in value &&
-				typeof value.latitude === "number" &&
-				"longitude" in value &&
-				typeof value.longitude === "number"
-			) {
-				return `${value.latitude.toFixed(4)}, ${value.longitude.toFixed(4)}`;
-			}
-			return null;
-		}
-		default:
-			return null;
-	}
+	if (type === "string") return typeof value === "string" ? value : null;
+	const record = asRecord(value);
+	if (!record || !Object.hasOwn(CLAIM_FORMATTERS, type)) return null;
+	return CLAIM_FORMATTERS[type](record, entityLabels);
 }
 
 const MAX_WIKIDATA_PROPERTIES = 50;
@@ -1297,6 +1209,21 @@ async function renderWikidataProperties(claims: Record<string, WikidataClaim[]>,
 	return `${md}\n`;
 }
 
+const NOTABLE_WIKIPEDIA_SITES = ["enwiki", "dewiki", "frwiki", "eswiki", "jawiki", "zhwiki"];
+
+/** Links to the entity's article in each notable-language Wikipedia that has one; empty when none does. */
+function renderWikipediaLinks(sitelinks: NonNullable<WikidataEntity["sitelinks"]>): string {
+	const links: string[] = [];
+	for (const site of NOTABLE_WIKIPEDIA_SITES) {
+		const sitelink = sitelinks[site];
+		if (!sitelink) continue;
+		const lang = site.replace("wiki", "");
+		const wikiUrl = `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(sitelink.title)}`;
+		links.push(markdownLink(lang.toUpperCase(), wikiUrl));
+	}
+	return links.length > 0 ? `\n## Wikipedia Links\n\n${links.join(" · ")}\n` : "";
+}
+
 // --- Wikidata ---
 export const wikidataDeclaration: DocDeclaration = {
 	site: "wikidata",
@@ -1334,23 +1261,7 @@ export const wikidataDeclaration: DocDeclaration = {
 			md += await renderWikidataProperties(entity.claims, ctx);
 		}
 
-		if (entity.sitelinks) {
-			const notableSites = ["enwiki", "dewiki", "frwiki", "eswiki", "jawiki", "zhwiki"];
-			const links: string[] = [];
-
-			for (const site of notableSites) {
-				const sitelink = entity.sitelinks[site];
-				if (sitelink) {
-					const lang = site.replace("wiki", "");
-					const wikiUrl = `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(sitelink.title)}`;
-					links.push(markdownLink(lang.toUpperCase(), wikiUrl));
-				}
-			}
-
-			if (links.length > 0) {
-				md += `\n## Wikipedia Links\n\n${links.join(" · ")}\n`;
-			}
-		}
+		if (entity.sitelinks) md += renderWikipediaLinks(entity.sitelinks);
 
 		return md;
 	},
@@ -1379,6 +1290,21 @@ function ownHeading(section: WikipediaElement): WikipediaElement | undefined {
 	return undefined;
 }
 
+/** The section's own heading and its own paragraphs over 20 characters, excluding those of nested subsections. */
+function renderWikipediaSection(
+	section: WikipediaElement,
+	heading: WikipediaElement | undefined,
+	headingText: string | undefined,
+): string {
+	let md = heading && headingText ? `${heading.tagName === "H2" ? "##" : "###"} ${headingText}\n\n` : "";
+	for (const paragraph of section.querySelectorAll("p")) {
+		if (paragraph.closest("section") !== section) continue;
+		const text = paragraph.textContent?.trim();
+		if (text && text.length > 20) md += `${text}\n\n`;
+	}
+	return md;
+}
+
 /**
  * The mobile-html sections in document order, each with its own heading and paragraphs. Sections nest, so a
  * paragraph renders once, under the innermost section that holds it, and a subsection of a skipped section is skipped.
@@ -1395,12 +1321,7 @@ function renderWikipediaSections(html: string): string {
 			skipped.add(section);
 			continue;
 		}
-		if (heading && headingText) md += `${heading.tagName === "H2" ? "##" : "###"} ${headingText}\n\n`;
-		for (const paragraph of section.querySelectorAll("p")) {
-			if (paragraph.closest("section") !== section) continue;
-			const text = paragraph.textContent?.trim();
-			if (text && text.length > 20) md += `${text}\n\n`;
-		}
+		md += renderWikipediaSection(section, heading, headingText);
 	}
 	return md;
 }
