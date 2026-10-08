@@ -48,6 +48,25 @@ interface RetryEntryOptions {
 	hardErrorFallback?: boolean;
 }
 
+/** One retry attempt: the failure it answers, and the wait and switches decided for it. */
+interface RetryAttempt {
+	readonly message: AssistantMessage;
+	readonly id: number;
+	/** The failure's text, `Unknown error` when it carried none. */
+	readonly errorMessage: string;
+	/** The retry-after the provider's text asks for, if it states one. */
+	readonly parsedRetryAfterMs: number | undefined;
+	/** Every attempt on the current model is spent; only a model switch can retry. */
+	readonly budgetExhausted: boolean;
+	readonly classifierRefusal: boolean;
+	readonly options: RetryEntryOptions | undefined;
+	delayMs: number;
+	switchedCredential: boolean;
+	switchedModel: boolean;
+	/** Set when a usage limit pinned the wait to credential availability; the retry-after bump then stays off. */
+	usageLimitWaitMs: number | undefined;
+}
+
 /** What {@link RetryRuntime} reads from the session's public surface. */
 export interface RetrySession extends RetryFallbackSession {
 	readonly operatorNotices: OperatorNotices;
@@ -443,17 +462,15 @@ export class RetryRuntime {
 	}
 
 	async #attemptRetry(message: AssistantMessage, options?: RetryEntryOptions): Promise<boolean> {
-		const session = this.#session;
-		const retrySettings = session.settings.getGroup("retry");
+		const retrySettings = this.#session.settings.getGroup("retry");
 		// A backend that runs its own agent loop remotely fails slowly and
 		// expensively, so the global attempt count and backoff are resolved
 		// against the active model before anything below reads them.
-		const retryPolicy = this.#resolvePolicy(retrySettings);
+		const policy = this.#resolvePolicy(retrySettings);
 		// The Fireworks Fast→base degrade is an intrinsic model-selection safety net,
 		// not a retry loop, so it runs even when the user disabled retries: it switches
 		// the model once and lets the base turn proceed.
 		if (!retrySettings.enabled && !options?.fireworksFastFallback) return false;
-		const classifierRefusal = isClassifierRefusal(message);
 
 		const generation = this.#host.promptGeneration();
 		this.#attempt++;
@@ -461,177 +478,48 @@ export class RetryRuntime {
 		// Create the retry gate on the first attempt so waitForRetry() can await it.
 		this.#ensureGate();
 
-		// All attempts on the current model are spent. Don't fail yet: the
-		// fallback chain below gets one last consult. Credential rotation can
-		// consume the entire budget without the fallback branch ever running
-		// (every rotation sets switchedCredential and skips it), so without
-		// this last resort a provider-wide usage cap never fails over to the
-		// configured chain.
-		const retryBudgetExhausted = this.#attempt > retryPolicy.maxRetries;
-
 		const errorMessage = message.errorMessage || "Unknown error";
 		const id = this.#classify(message);
-		const staleOpenAIResponsesReplayError = AIError.is(id, AIError.Flag.StaleResponsesItem);
-		const parsedRetryAfterMs = extractRetryHint(undefined, errorMessage);
-		let delayMs = staleOpenAIResponsesReplayError
-			? 0
-			: calculateRetryBackoffDelayMs(retryPolicy.baseDelayMs, this.#attempt);
-		let switchedCredential = false;
-		let switchedModel = false;
-		// Set when a usage-limit error pinned the wait to credential
-		// availability — suppresses the generic retry-after bump below.
-		let usageLimitWaitMs: number | undefined;
+		const staleReplay = AIError.is(id, AIError.Flag.StaleResponsesItem);
+		const attempt: RetryAttempt = {
+			message,
+			id,
+			errorMessage,
+			parsedRetryAfterMs: extractRetryHint(undefined, errorMessage),
+			// All attempts on the current model are spent. Don't fail yet: the
+			// fallback chain gets one last consult. Credential rotation can
+			// consume the entire budget without the fallback branch ever running
+			// (every rotation sets switchedCredential and skips it), so without
+			// this last resort a provider-wide usage cap never fails over to the
+			// configured chain.
+			budgetExhausted: this.#attempt > policy.maxRetries,
+			classifierRefusal: isClassifierRefusal(message),
+			options,
+			delayMs: staleReplay ? 0 : calculateRetryBackoffDelayMs(policy.baseDelayMs, this.#attempt),
+			switchedCredential: false,
+			switchedModel: false,
+			usageLimitWaitMs: undefined,
+		};
 
-		if (staleOpenAIResponsesReplayError) {
+		if (staleReplay) {
 			this.#host.resetCurrentResponsesProviderSession("stale replay error");
+		} else {
+			const model = this.#session.model;
+			if (!attempt.budgetExhausted && model && AIError.is(id, AIError.Flag.UsageLimit)) {
+				await this.#parkUsageLimit(attempt, model);
+			}
+			if (!attempt.switchedCredential) await this.#switchModel(attempt, retrySettings.modelFallback);
 		}
+		if (await this.#closeUnrecoverable(attempt, policy.maxDelayMs)) return false;
 
-		const model = session.model;
-		if (
-			!retryBudgetExhausted &&
-			model &&
-			!staleOpenAIResponsesReplayError &&
-			AIError.is(id, AIError.Flag.UsageLimit)
-		) {
-			const retryAfterMs =
-				parsedRetryAfterMs ?? calculateRateLimitBackoffMs(parseRateLimitReason(errorMessage), "credential-park");
-			const outcome = await session.modelRegistry.authStorage.markUsageLimitReached(
-				model.provider,
-				session.sessionId,
-				{
-					retryAfterMs,
-					baseUrl: model.baseUrl,
-					modelId: model.id,
-				},
-			);
-			if (outcome.switched) {
-				switchedCredential = true;
-				delayMs = 0;
-			} else if (await this.#host.maybeAutoRedeemCodexReset()) {
-				// A live usage-limit 429 on the active Codex account, with a banked
-				// reset and the opt-in setting on: spend the reset and retry
-				// immediately instead of waiting out the window. Runs after the
-				// free sibling-switch above and before model fallback below.
-				switchedCredential = true;
-				delayMs = 0;
-			} else {
-				// No sibling credential is usable right now. Wait for whichever
-				// comes first: the provider's retry-after window for the current
-				// account, or the earliest moment a temporarily blocked sibling
-				// frees up (e.g. a 60s post-401 block or a 5-min usage-probe
-				// block) — the next attempt's getApiKey re-ranks and picks it up.
-				// Without this, one short-lived sibling block escalates a
-				// recoverable situation into the provider's multi-hour wait and
-				// trips the fail-fast cap below.
-				usageLimitWaitMs = retryAfterMs;
-				if (outcome.retryAtMs !== undefined) {
-					const siblingWaitMs = Math.max(0, outcome.retryAtMs - Date.now()) + SIBLING_UNBLOCK_BUFFER_MS;
-					if (siblingWaitMs < usageLimitWaitMs) {
-						usageLimitWaitMs = siblingWaitMs;
-					}
-				}
-				if (usageLimitWaitMs > delayMs) {
-					delayMs = usageLimitWaitMs;
-				}
-			}
-		}
-
-		const allowModelFallback = options?.allowModelFallback !== false;
-		const activeModel = session.model;
-		const currentSelector = activeModel ? formatRetryFallbackSelector(activeModel, session.thinkingLevel) : undefined;
-		if (!staleOpenAIResponsesReplayError && !switchedCredential && currentSelector) {
-			// A refusal chain stops at the retry budget: the exhausted-attempt
-			// last resort is for provider failures, not classifier decisions.
-			if (allowModelFallback && retrySettings.modelFallback && !(retryBudgetExhausted && classifierRefusal)) {
-				if (!classifierRefusal) {
-					this.#fallback.noteCooldown(currentSelector, parsedRetryAfterMs, errorMessage);
-				}
-				switchedModel = await this.#fallback.tryChain(currentSelector, { pinFallback: classifierRefusal });
-			}
-			// Auto fallback from a Fireworks Fast variant to its base model. Independent
-			// of the role-fallback setting: it's intrinsic to the Fast contract (speed
-			// best-effort, degrade to Standard on failure) and triggers on hard router
-			// errors the generic retry classifier would otherwise reject.
-			if (!switchedModel && allowModelFallback && options?.fireworksFastFallback) {
-				switchedModel = await this.#fallback.tryFireworksFast(currentSelector);
-			}
-			if (switchedModel) {
-				delayMs = 0;
-			} else if (usageLimitWaitMs === undefined && parsedRetryAfterMs && parsedRetryAfterMs > delayMs) {
-				delayMs = parsedRetryAfterMs;
-			}
-		}
-		if (retryBudgetExhausted) {
-			if (!switchedModel) {
-				await this.#host.persistLifecycleErrorMessage(message);
-				// Max retries exceeded and no fallback model to switch to: emit
-				// final failure and reset.
-				await this.#host.emitSessionEvent({
-					type: "auto_retry_end",
-					success: false,
-					attempt: this.#attempt - 1,
-					finalError: message.errorMessage,
-				});
-				this.#pendingRecoveredErrors = [];
-				this.#attempt = 0;
-				this.resolve(); // Resolve so waitForRetry() completes
-				return false;
-			}
-			// The fallback model gets a fresh retry budget — leaving the spent
-			// counter in place would exhaust it again on its first error.
-			this.#attempt = 1;
-		}
-		if (classifierRefusal && !switchedModel) {
-			this.#attempt = 0;
-			this.resolve();
-			return false;
-		}
-		// A fallback switch was the whole reason we entered (Fast→base degrade or
-		// a hard-error chain consult) but it could not happen (e.g. no candidate
-		// has a credential). Don't fall through to backing-off and retrying the
-		// failing model for an error the generic classifier wouldn't retry —
-		// surface it instead.
-		if (
-			(options?.fireworksFastFallback || options?.hardErrorFallback) &&
-			!switchedModel &&
-			!this.#isRetryableError(message)
-		) {
-			this.#attempt = 0;
-			this.resolve();
-			return false;
-		}
-
-		// Fail-fast cap: if the provider asks us to wait longer than
-		// retry.maxDelayMs and we have no fallback credential or model to
-		// switch to, surface the error instead of sleeping. Defends against
-		// 3-hour Anthropic rate-limit windows that would otherwise leave a
-		// agent (or interactive session) silently hung. The original
-		// assistant error message is preserved in agent state so the caller
-		// can act on it.
-		const maxDelayMs = retryPolicy.maxDelayMs;
-		if (maxDelayMs > 0 && delayMs > maxDelayMs && !switchedCredential && !switchedModel) {
-			await this.#host.persistLifecycleErrorMessage(message);
-			const attempt = this.#attempt;
-			this.#attempt = 0;
-			await this.#host.emitSessionEvent({
-				type: "auto_retry_end",
-				success: false,
-				attempt,
-				finalError: `Provider requested ${delayMs}ms wait, exceeds retry.maxDelayMs (${maxDelayMs}ms). Original error: ${errorMessage}`,
-			});
-			this.#pendingRecoveredErrors = [];
-			this.resolve();
-			return false;
-		}
-
-		await this.#recordPendingRecoveredError(message, id, { switchedCredential, switchedModel, delayMs });
+		await this.#recordPendingRecoveredError(message, id, attempt);
 
 		await this.#host.emitSessionEvent({
 			type: "auto_retry_start",
 			attempt: this.#attempt,
-			maxAttempts: retryPolicy.maxRetries,
-			policySource: describeRetryPolicySource(retryPolicy),
-			delayMs,
+			maxAttempts: policy.maxRetries,
+			policySource: describeRetryPolicySource(policy),
+			delayMs: attempt.delayMs,
 			errorMessage,
 			errorId: message.errorId,
 		});
@@ -645,16 +533,16 @@ export class RetryRuntime {
 		this.#maybeInjectThinkingLoopRedirect(id);
 
 		// Wait with exponential backoff (abortable).
-		const waited = await this.#wait(delayMs);
+		const waited = await this.#wait(attempt.delayMs);
 		if (waited === "superseded") return false;
 		if (waited === "cancelled") {
 			// Aborted during sleep - emit end event so UI can clean up
-			const attempt = this.#attempt;
+			const cancelledAttempt = this.#attempt;
 			this.#attempt = 0;
 			await this.#host.emitSessionEvent({
 				type: "auto_retry_end",
 				success: false,
-				attempt,
+				attempt: cancelledAttempt,
 				finalError: "Retry cancelled",
 			});
 			this.#pendingRecoveredErrors = [];
@@ -666,6 +554,151 @@ export class RetryRuntime {
 		this.#host.scheduleAgentContinue({ delayMs: 1, generation });
 
 		return true;
+	}
+
+	/**
+	 * Park the credential a usage-limit failure exhausted and decide the wait: none when a sibling
+	 * credential or a banked Codex reset takes over, else the sooner of the provider's retry-after
+	 * window and the moment a temporarily blocked sibling frees up.
+	 */
+	async #parkUsageLimit(attempt: RetryAttempt, model: Model): Promise<void> {
+		const retryAfterMs =
+			attempt.parsedRetryAfterMs ??
+			calculateRateLimitBackoffMs(parseRateLimitReason(attempt.errorMessage), "credential-park");
+		const outcome = await this.#session.modelRegistry.authStorage.markUsageLimitReached(
+			model.provider,
+			this.#session.sessionId,
+			{
+				retryAfterMs,
+				baseUrl: model.baseUrl,
+				modelId: model.id,
+			},
+		);
+		// A live usage-limit 429 on the active Codex account, with a banked reset and the opt-in
+		// setting on, spends the reset and retries immediately instead of waiting out the window.
+		// It runs after the free sibling switch and before model fallback.
+		if (outcome.switched || (await this.#host.maybeAutoRedeemCodexReset())) {
+			attempt.switchedCredential = true;
+			attempt.delayMs = 0;
+			return;
+		}
+		// No sibling credential is usable right now. Wait for whichever comes first: the provider's
+		// retry-after window for the current account, or the earliest moment a temporarily blocked
+		// sibling frees up (e.g. a 60s post-401 block or a 5-min usage-probe block); the next
+		// attempt's getApiKey re-ranks and picks it up. Without this, one short-lived sibling block
+		// escalates a recoverable situation into the provider's multi-hour wait and trips the
+		// fail-fast cap.
+		let waitMs = retryAfterMs;
+		if (outcome.retryAtMs !== undefined) {
+			const siblingWaitMs = Math.max(0, outcome.retryAtMs - Date.now()) + SIBLING_UNBLOCK_BUFFER_MS;
+			if (siblingWaitMs < waitMs) waitMs = siblingWaitMs;
+		}
+		attempt.usageLimitWaitMs = waitMs;
+		if (waitMs > attempt.delayMs) attempt.delayMs = waitMs;
+	}
+
+	/**
+	 * Try the configured fallback chain, then the Fireworks Fast degrade, and settle the wait: none
+	 * after a switch, else at least the provider's retry-after hint unless a usage limit already
+	 * pinned it.
+	 */
+	async #switchModel(attempt: RetryAttempt, modelFallback: boolean): Promise<void> {
+		const activeModel = this.#session.model;
+		if (!activeModel) return;
+		const currentSelector = formatRetryFallbackSelector(activeModel, this.#session.thinkingLevel);
+		const allowModelFallback = attempt.options?.allowModelFallback !== false;
+		// A refusal chain stops at the retry budget: the exhausted-attempt
+		// last resort is for provider failures, not classifier decisions.
+		if (allowModelFallback && modelFallback && !(attempt.budgetExhausted && attempt.classifierRefusal)) {
+			if (!attempt.classifierRefusal) {
+				this.#fallback.noteCooldown(currentSelector, attempt.parsedRetryAfterMs, attempt.errorMessage);
+			}
+			attempt.switchedModel = await this.#fallback.tryChain(currentSelector, {
+				pinFallback: attempt.classifierRefusal,
+			});
+		}
+		// Auto fallback from a Fireworks Fast variant to its base model. Independent
+		// of the role-fallback setting: it's intrinsic to the Fast contract (speed
+		// best-effort, degrade to Standard on failure) and triggers on hard router
+		// errors the generic retry classifier would otherwise reject.
+		if (!attempt.switchedModel && allowModelFallback && attempt.options?.fireworksFastFallback) {
+			attempt.switchedModel = await this.#fallback.tryFireworksFast(currentSelector);
+		}
+		const retryAfterMs = attempt.parsedRetryAfterMs;
+		if (attempt.switchedModel) {
+			attempt.delayMs = 0;
+		} else if (attempt.usageLimitWaitMs === undefined && retryAfterMs && retryAfterMs > attempt.delayMs) {
+			attempt.delayMs = retryAfterMs;
+		}
+	}
+
+	/**
+	 * End the retry sequence when this attempt cannot retry: the budget is spent with no model to
+	 * switch to, a refusal found no other model, a switch-only recovery could not switch, or the
+	 * provider asks for a wait past `retry.maxDelayMs`. True when the sequence ended. A fallback
+	 * model reached on the spent budget starts a fresh one.
+	 */
+	async #closeUnrecoverable(attempt: RetryAttempt, maxDelayMs: number): Promise<boolean> {
+		const { message, switchedModel } = attempt;
+		if (attempt.budgetExhausted) {
+			if (!switchedModel) {
+				await this.#host.persistLifecycleErrorMessage(message);
+				// Max retries exceeded and no fallback model to switch to: emit
+				// final failure and reset.
+				await this.#host.emitSessionEvent({
+					type: "auto_retry_end",
+					success: false,
+					attempt: this.#attempt - 1,
+					finalError: message.errorMessage,
+				});
+				this.#pendingRecoveredErrors = [];
+				this.#attempt = 0;
+				this.resolve(); // Resolve so waitForRetry() completes
+				return true;
+			}
+			// The fallback model gets a fresh retry budget — leaving the spent
+			// counter in place would exhaust it again on its first error.
+			this.#attempt = 1;
+		}
+		if (attempt.classifierRefusal && !switchedModel) {
+			this.#attempt = 0;
+			this.resolve();
+			return true;
+		}
+		// A fallback switch was the whole reason we entered (Fast→base degrade or
+		// a hard-error chain consult) but it could not happen (e.g. no candidate
+		// has a credential). Don't fall through to backing-off and retrying the
+		// failing model for an error the generic classifier wouldn't retry —
+		// surface it instead.
+		const switchOnly = attempt.options?.fireworksFastFallback || attempt.options?.hardErrorFallback;
+		if (switchOnly && !switchedModel && !this.#isRetryableError(message)) {
+			this.#attempt = 0;
+			this.resolve();
+			return true;
+		}
+		// Fail-fast cap: if the provider asks us to wait longer than
+		// retry.maxDelayMs and we have no fallback credential or model to
+		// switch to, surface the error instead of sleeping. Defends against
+		// 3-hour Anthropic rate-limit windows that would otherwise leave a
+		// agent (or interactive session) silently hung. The original
+		// assistant error message is preserved in agent state so the caller
+		// can act on it.
+		const { delayMs } = attempt;
+		if (maxDelayMs > 0 && delayMs > maxDelayMs && !attempt.switchedCredential && !switchedModel) {
+			await this.#host.persistLifecycleErrorMessage(message);
+			const ended = this.#attempt;
+			this.#attempt = 0;
+			await this.#host.emitSessionEvent({
+				type: "auto_retry_end",
+				success: false,
+				attempt: ended,
+				finalError: `Provider requested ${delayMs}ms wait, exceeds retry.maxDelayMs (${maxDelayMs}ms). Original error: ${attempt.errorMessage}`,
+			});
+			this.#pendingRecoveredErrors = [];
+			this.resolve();
+			return true;
+		}
+		return false;
 	}
 
 	/**
