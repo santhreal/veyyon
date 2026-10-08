@@ -97,6 +97,7 @@
 - `readJsonl`, `readSseEvents` and `parseJsonlLenient` read what a stream leaves after its last LF and where parsing resumes after a malformed record in their own steps, and call `Bun.JSONL.parseChunk` without copying its result, with 300,000 differential checks identical to the previous build; no user-visible change.
 - `globPaths` compiles its exclude patterns, checks its abort signal and tests an entry against the excludes in their own steps, and rewrites separators only in an entry that holds a backslash, with 9,000 differential checks of returned paths and thrown errors identical to the previous build; no user-visible change.
 - `repairJson` skips the text between strings and each valid escape in one scan to the next code unit it rewrites, and `classifyJsonPrefix`, comment skipping and string escape decoding run in their own steps, with 1,200,000 differential checks identical to the previous build; repairing a 1.4 KB tool-call body takes 558 ns instead of 621 ns and classifying it takes 978 ns instead of 1,106 ns.
+- `renderMathInText` copies the text between math delimiters as slices instead of one character at a time, and the xcolor model lookup, raw and optional argument scans, bare math block start and inline `$` closer search run in their own steps, with 1,300,000 differential checks identical to the previous build; a 1.5 KB paragraph with inline and display math renders in 15.9 µs instead of 19.2 µs and 770 bytes of prose with currency dollars in 3.0 µs instead of 5.7 µs.
 
 ### Fixed
 
