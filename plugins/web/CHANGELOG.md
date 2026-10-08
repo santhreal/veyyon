@@ -7,6 +7,10 @@
 - The marketplace repository-link reader, key-value renderer and package-registry handler test missing values with optional chains; behavior is unchanged.
 - The page loader, the declarative and academic-paper engines, and the GitHub, Bluesky, YouTube, Twitter and Sourcegraph handlers are split into one function per step; behavior is unchanged.
 
+### Fixed
+
+- The Hugging Face handler omits a model field the API returns as `null` or as an empty list, and renders a single-segment model path such as `huggingface.co/gpt2` with the same fields as an `org/model` path.
+
 ## [1.5.4] - 2026-09-24
 
 ### Changed
