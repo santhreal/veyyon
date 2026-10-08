@@ -45,16 +45,25 @@ export function contentText(content: unknown, options: ContentTextOptions = {}):
 	if (!Array.isArray(content)) return "";
 	const parts: string[] = [];
 	for (const block of content) {
-		if (!block || typeof block !== "object") continue;
-		const { type, text } = block as { type?: unknown; text?: unknown };
-		if (type === "text") {
-			if (typeof text !== "string") continue;
-			const value = trimBlocks ? text.trim() : text;
-			if (trimBlocks && value.length === 0) continue;
-			parts.push(value);
-		} else if (type === "image" && image !== "drop") {
-			parts.push(image);
-		}
+		const part = blockPart(block, image, trimBlocks);
+		if (part !== undefined) parts.push(part);
 	}
 	return parts.join(separator);
+}
+
+/** The fields of an untrusted block that {@link contentText} reads. */
+interface UntrustedBlock {
+	type?: unknown;
+	text?: unknown;
+}
+
+/** What one block contributes: its text, the image placeholder, or nothing. */
+function blockPart(block: unknown, image: string, trimBlocks: boolean): string | undefined {
+	if (!block || typeof block !== "object") return undefined;
+	const { type, text } = block as UntrustedBlock;
+	if (type === "image") return image === "drop" ? undefined : image;
+	if (type !== "text" || typeof text !== "string") return undefined;
+	if (!trimBlocks) return text;
+	const value = text.trim();
+	return value.length === 0 ? undefined : value;
 }

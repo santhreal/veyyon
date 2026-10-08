@@ -67,6 +67,7 @@
 - While a host is attached to its activity signal, `LoopWatchdog` arms no tick after 10 seconds of ticks without a block or busy CPU, `IdleTrim` arms no window after the window that follows a trim, and `stallSampler` samples once a second, until the host reports work.
 - The `rearmingTimeout` documentation records its measured effect on an idle interactive session of the linux-x64 binary; no user-visible change.
 - `CombinedAutocompleteProvider` builds slash command, argument, `@` reference and path suggestions in separate steps, with 4,251 differential cases identical to the previous build; no user-visible change.
+- `truncateHeadBytes`, `truncateTailBytes`, `utf8ByteLength`, `escapeTerminalText` and `contentText` share or split out their per-mode and per-unit steps, with 6.7 million differential checks identical to the previous build; no user-visible change.
 
 ### Fixed
 
