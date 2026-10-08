@@ -9,7 +9,7 @@ import {
 	renderSimpleList,
 	renderStringList,
 } from "../engine/markdown-assembly";
-import type { PackageRegistryDeclaration } from "../engine/package-registry";
+import type { PackageRegistryContext, PackageRegistryDeclaration } from "../engine/package-registry";
 import type { LocalizedText } from "../types";
 import { buildResult, formatIsoDate, getLocalizedText, htmlToBasicMarkdown, looksLikeHtml } from "../types";
 import { finiteNumber, isRecord, trimmedString } from "../utils";
@@ -95,6 +95,37 @@ const ARTIFACT_HUB_KIND_LABELS: Record<string, string> = {
 	radius: "Radius Recipe",
 };
 
+function renderArtifactHubSummary(pkg: ArtifactHubPackage, kindLabel: string): string {
+	let md = `**Type:** ${kindLabel} · **Version:** ${pkg.version}`;
+	if (pkg.app_version) md += ` · **App Version:** ${pkg.app_version}`;
+	if (pkg.license) md += ` · **License:** ${pkg.license}`;
+	md += "\n";
+	const badges: string[] = [];
+	if (pkg.official) badges.push("Official");
+	if (pkg.signed) badges.push("Signed");
+	if (pkg.stars) badges.push(`${formatNumber(pkg.stars)} stars`);
+	if (badges.length > 0) md += `**${badges.join(" · ")}**\n`;
+	return `${md}\n`;
+}
+
+const ARTIFACT_HUB_SEVERITIES = ["critical", "high", "medium", "low"] as const;
+
+function renderArtifactHubSources(pkg: ArtifactHubPackage): string {
+	const { repository } = pkg;
+	let md = `**Repository:** ${repository.organization_display_name || repository.display_name || repository.name}`;
+	if (repository.url) md += ` (${markdownLink(repository.url, repository.url)})`;
+	md += "\n";
+	if (pkg.home_url) md += `**Homepage:** ${pkg.home_url}\n`;
+	if (pkg.keywords?.length) md += `**Keywords:** ${pkg.keywords.join(", ")}\n`;
+	if (pkg.maintainers?.length) md += `**Maintainers:** ${pkg.maintainers.map(m => m.name).join(", ")}\n`;
+	const security = pkg.security_report_summary;
+	const findings = security
+		? ARTIFACT_HUB_SEVERITIES.filter(level => security[level]).map(level => `${security[level]} ${level}`)
+		: [];
+	if (findings.length > 0) md += `**Security:** ${findings.join(", ")}\n`;
+	return md;
+}
+
 export const artifacthubDeclaration: PackageRegistryDeclaration = {
 	site: "artifacthub",
 	hosts: ["artifacthub.io", "www.artifacthub.io"],
@@ -117,52 +148,11 @@ export const artifacthubDeclaration: PackageRegistryDeclaration = {
 
 		const pkg = ctx.tryParseJson<ArtifactHubPackage>(result.content);
 		if (!pkg) return ctx.scraperDegrade("artifacthub", "unexpected response shape");
-
-		const displayName = pkg.display_name || pkg.name;
 		const kindLabel = ARTIFACT_HUB_KIND_LABELS[kind] || kind.charAt(0).toUpperCase() + kind.slice(1);
 
-		let md = renderHeader(displayName, pkg.description);
-
-		md += `**Type:** ${kindLabel} · **Version:** ${pkg.version}`;
-		if (pkg.app_version) md += ` · **App Version:** ${pkg.app_version}`;
-		if (pkg.license) md += ` · **License:** ${pkg.license}`;
-		md += "\n";
-
-		const badges: string[] = [];
-		if (pkg.official) badges.push("Official");
-		if (pkg.signed) badges.push("Signed");
-		if (pkg.stars) badges.push(`${formatNumber(pkg.stars)} stars`);
-		if (badges.length > 0) {
-			md += `**${badges.join(" · ")}**\n`;
-		}
-		md += "\n";
-
-		const repoDisplay =
-			pkg.repository.organization_display_name || pkg.repository.display_name || pkg.repository.name;
-		md += `**Repository:** ${repoDisplay}`;
-		if (pkg.repository.url) {
-			md += ` (${markdownLink(pkg.repository.url, pkg.repository.url)})`;
-		}
-		md += "\n";
-
-		if (pkg.home_url) md += `**Homepage:** ${pkg.home_url}\n`;
-		if (pkg.keywords?.length) md += `**Keywords:** ${pkg.keywords.join(", ")}\n`;
-		if (pkg.maintainers?.length) {
-			md += `**Maintainers:** ${pkg.maintainers.map(m => m.name).join(", ")}\n`;
-		}
-
-		if (pkg.security_report_summary) {
-			const sec = pkg.security_report_summary;
-			const parts: string[] = [];
-			if (sec.critical) parts.push(`${sec.critical} critical`);
-			if (sec.high) parts.push(`${sec.high} high`);
-			if (sec.medium) parts.push(`${sec.medium} medium`);
-			if (sec.low) parts.push(`${sec.low} low`);
-			if (parts.length > 0) {
-				md += `**Security:** ${parts.join(", ")}\n`;
-			}
-		}
-
+		let md = renderHeader(pkg.display_name || pkg.name, pkg.description);
+		md += renderArtifactHubSummary(pkg, kindLabel);
+		md += renderArtifactHubSources(pkg);
 		md += renderSimpleList("Links", pkg.links, link => markdownLink(link.name, link.url));
 
 		if (pkg.install) {
@@ -333,10 +323,34 @@ interface BrewCask {
 	};
 }
 
-function getBrewInstallCount(analytics?: { install?: { "30d"?: Record<string, number> } }): number | null {
-	if (!analytics?.install?.["30d"]) return null;
-	const counts = Object.values(analytics.install["30d"]);
-	return counts.reduce((sum, n) => sum + n, 0);
+/** The 30-day install count line, or nothing when the API reports no 30-day analytics. */
+function renderBrewInstalls(analytics?: { install?: { "30d"?: Record<string, number> } }): string {
+	const counts = analytics?.install?.["30d"];
+	if (!counts) return "";
+	return `**Installs (30d):** ${formatNumber(Object.values(counts).reduce((sum, n) => sum + n, 0))}\n`;
+}
+
+function renderBrewFormula(formula: BrewFormula): string {
+	let md = renderHeader(formula.full_name || formula.name, formula.desc);
+	md += `**Version:** ${formula.versions?.stable || "unknown"}`;
+	if (formula.license) md += ` · **License:** ${formula.license}`;
+	md += `\n${renderBrewInstalls(formula.analytics)}\n`;
+	md += `\`\`\`bash\nbrew install ${formula.name}\n\`\`\`\n\n`;
+	if (formula.homepage) md += `**Homepage:** ${formula.homepage}\n`;
+	md += renderStringList("Dependencies", formula.dependencies);
+	md += renderStringList("Build Dependencies", formula.build_dependencies);
+	md += renderStringList("Conflicts With", formula.conflicts_with);
+	return md + renderDescriptionSection(formula.caveats, "Caveats");
+}
+
+function renderBrewCask(cask: BrewCask): string {
+	let md = renderHeader(cask.name?.[0] || cask.token, cask.desc);
+	md += `**Version:** ${cask.version || "unknown"}\n`;
+	md += `${renderBrewInstalls(cask.analytics)}\n`;
+	md += `\`\`\`bash\nbrew install --cask ${cask.token}\n\`\`\`\n\n`;
+	if (cask.homepage) md += `**Homepage:** ${cask.homepage}\n`;
+	md += renderStringList("Conflicts With", cask.conflicts_with?.cask);
+	return md + renderDescriptionSection(cask.caveats, "Caveats");
 }
 
 export const brewDeclaration: PackageRegistryDeclaration = {
@@ -361,48 +375,10 @@ export const brewDeclaration: PackageRegistryDeclaration = {
 		const result = await ctx.loadPage(apiUrl, { timeout: ctx.timeout, signal: ctx.signal });
 		if (!result.ok) return ctx.scraperDegrade("brew", ctx.loadFailure(result));
 
-		let md: string;
-
-		if (isFormula) {
-			const formula = ctx.tryParseJson<BrewFormula>(result.content);
-			if (!formula) return ctx.scraperDegrade("brew", "unexpected response shape");
-			md = renderHeader(formula.full_name || formula.name, formula.desc);
-			md += `**Version:** ${formula.versions?.stable || "unknown"}`;
-			if (formula.license) md += ` · **License:** ${formula.license}`;
-			md += "\n";
-
-			const installs = getBrewInstallCount(formula.analytics);
-			if (installs !== null) {
-				md += `**Installs (30d):** ${formatNumber(installs)}\n`;
-			}
-			md += "\n";
-
-			md += `\`\`\`bash\nbrew install ${formula.name}\n\`\`\`\n\n`;
-
-			if (formula.homepage) md += `**Homepage:** ${formula.homepage}\n`;
-			md += renderStringList("Dependencies", formula.dependencies);
-			md += renderStringList("Build Dependencies", formula.build_dependencies);
-			md += renderStringList("Conflicts With", formula.conflicts_with);
-			md += renderDescriptionSection(formula.caveats, "Caveats");
-		} else {
-			const cask = ctx.tryParseJson<BrewCask>(result.content);
-			if (!cask) return ctx.scraperDegrade("brew", "unexpected response shape");
-
-			md = renderHeader(cask.name?.[0] || cask.token, cask.desc);
-			md += `**Version:** ${cask.version || "unknown"}\n`;
-
-			const installs = getBrewInstallCount(cask.analytics);
-			if (installs !== null) {
-				md += `**Installs (30d):** ${formatNumber(installs)}\n`;
-			}
-			md += "\n";
-
-			md += `\`\`\`bash\nbrew install --cask ${cask.token}\n\`\`\`\n\n`;
-
-			if (cask.homepage) md += `**Homepage:** ${cask.homepage}\n`;
-			md += renderStringList("Conflicts With", cask.conflicts_with?.cask);
-			md += renderDescriptionSection(cask.caveats, "Caveats");
-		}
+		const formula = isFormula ? ctx.tryParseJson<BrewFormula>(result.content) : null;
+		const cask = isFormula ? null : ctx.tryParseJson<BrewCask>(result.content);
+		const md = formula ? renderBrewFormula(formula) : cask ? renderBrewCask(cask) : null;
+		if (md === null) return ctx.scraperDegrade("brew", "unexpected response shape");
 		return buildResult(md, {
 			url: ctx.url,
 			method: "brew",
@@ -447,6 +423,84 @@ function extractXmlField(xml: string, fieldName: string): string | null {
 	return match[1].trim();
 }
 
+const CHOCOLATEY_XML_TEXT_FIELDS = [
+	"Title",
+	"Description",
+	"Summary",
+	"Authors",
+	"ProjectUrl",
+	"PackageSourceUrl",
+	"Tags",
+	"Published",
+	"LicenseUrl",
+	"ReleaseNotes",
+	"Dependencies",
+] as const;
+
+function extractXmlCount(xml: string, fieldName: string): number | undefined {
+	const value = extractXmlField(xml, fieldName);
+	return value ? Number.parseInt(value, 10) : undefined;
+}
+
+/** The package an OData response describes: its JSON form, else its Atom XML form, else `null` without an id. */
+function readChocolateyEntry(content: string, ctx: PackageRegistryContext): NuGetODataEntry | null {
+	const jsonEntry = ctx.tryParseJson<NuGetODataResponse>(content)?.d?.results?.[0];
+	if (jsonEntry) return jsonEntry;
+	const id = extractXmlField(content, "Id");
+	if (!id) return null;
+	const entry: NuGetODataEntry = {
+		Id: id,
+		Version: extractXmlField(content, "Version") || "",
+		DownloadCount: extractXmlCount(content, "DownloadCount"),
+		VersionDownloadCount: extractXmlCount(content, "VersionDownloadCount"),
+	};
+	for (const field of CHOCOLATEY_XML_TEXT_FIELDS) entry[field] = extractXmlField(content, field) || undefined;
+	return entry;
+}
+
+function renderChocolateyOverview(pkg: NuGetODataEntry): string {
+	let md = renderHeader(pkg.Title || pkg.Id);
+	if (pkg.Summary) md += `${pkg.Summary}\n\n`;
+	else if (pkg.Description) md += `${pkg.Description.split(/\n\n/)[0]}\n\n`;
+	md += `**Version:** ${pkg.Version}`;
+	if (pkg.Authors) md += ` · **Authors:** ${pkg.Authors}`;
+	md += "\n";
+	if (pkg.DownloadCount !== undefined) {
+		md += `**Total Downloads:** ${formatNumber(pkg.DownloadCount)}`;
+		if (pkg.VersionDownloadCount !== undefined) {
+			md += ` · **Version Downloads:** ${formatNumber(pkg.VersionDownloadCount)}`;
+		}
+		md += "\n";
+	}
+	const published = pkg.Published ? formatIsoDate(pkg.Published) : "";
+	if (published) md += `**Published:** ${published}\n`;
+	return `${md}\n`;
+}
+
+/** `id: version` lines for the `|`-separated dependency list, skipping entries without an id. */
+function renderChocolateyDependencies(dependencies: string | undefined): string {
+	const deps = dependencies?.split("|").filter(d => d.trim().length > 0) ?? [];
+	if (deps.length === 0) return "";
+	let md = "\n## Dependencies\n\n";
+	for (const dep of deps) {
+		const [depId, depVersion] = dep.split(":");
+		if (depId) md += `- ${depId}${depVersion ? `: ${depVersion}` : ""}\n`;
+	}
+	return md;
+}
+
+function renderChocolateyDetails(pkg: NuGetODataEntry): string {
+	let md = "";
+	if (pkg.ProjectUrl) md += `**Project URL:** ${pkg.ProjectUrl}\n`;
+	if (pkg.PackageSourceUrl) md += `**Source:** ${pkg.PackageSourceUrl}\n`;
+	if (pkg.LicenseUrl) md += `**License:** ${pkg.LicenseUrl}\n`;
+	const tags = pkg.Tags?.split(/\s+/).filter(Boolean) ?? [];
+	if (tags.length > 0) md += `**Tags:** ${tags.join(", ")}\n`;
+	if (pkg.Description && pkg.Description !== pkg.Summary) md += `\n## Description\n\n${pkg.Description}\n`;
+	md += renderDescriptionSection(pkg.ReleaseNotes, "Release Notes");
+	return md + renderChocolateyDependencies(pkg.Dependencies);
+}
+
 export const chocolateyDeclaration: PackageRegistryDeclaration = {
 	site: "chocolatey",
 	hosts: ["community.chocolatey.org", "chocolatey.org"],
@@ -471,94 +525,10 @@ export const chocolateyDeclaration: PackageRegistryDeclaration = {
 
 		if (!result.ok) return ctx.scraperDegrade("chocolatey", ctx.loadFailure(result));
 
-		let pkg = (() => {
-			const data = ctx.tryParseJson<NuGetODataResponse>(result.content);
-			return data?.d?.results?.[0] ?? null;
-		})();
+		const pkg = readChocolateyEntry(result.content, ctx);
+		if (!pkg) return ctx.scraperDegrade("chocolatey", "unexpected response shape");
 
-		if (!pkg) {
-			const xmlId = extractXmlField(result.content, "Id");
-			if (!xmlId) return ctx.scraperDegrade("chocolatey", "unexpected response shape");
-
-			pkg = {
-				Id: xmlId,
-				Version: extractXmlField(result.content, "Version") || "",
-				Title: extractXmlField(result.content, "Title") || undefined,
-				Description: extractXmlField(result.content, "Description") || undefined,
-				Summary: extractXmlField(result.content, "Summary") || undefined,
-				Authors: extractXmlField(result.content, "Authors") || undefined,
-				ProjectUrl: extractXmlField(result.content, "ProjectUrl") || undefined,
-				PackageSourceUrl: extractXmlField(result.content, "PackageSourceUrl") || undefined,
-				Tags: extractXmlField(result.content, "Tags") || undefined,
-				DownloadCount: (() => {
-					const value = extractXmlField(result.content, "DownloadCount");
-					return value ? Number.parseInt(value, 10) : undefined;
-				})(),
-				VersionDownloadCount: (() => {
-					const value = extractXmlField(result.content, "VersionDownloadCount");
-					return value ? Number.parseInt(value, 10) : undefined;
-				})(),
-				Published: extractXmlField(result.content, "Published") || undefined,
-				LicenseUrl: extractXmlField(result.content, "LicenseUrl") || undefined,
-				ReleaseNotes: extractXmlField(result.content, "ReleaseNotes") || undefined,
-				Dependencies: extractXmlField(result.content, "Dependencies") || undefined,
-			};
-		}
-
-		let md = renderHeader(pkg.Title || pkg.Id);
-		if (pkg.Summary) {
-			md += `${pkg.Summary}\n\n`;
-		} else if (pkg.Description) {
-			md += `${pkg.Description.split(/\n\n/)[0]}\n\n`;
-		}
-		md += `**Version:** ${pkg.Version}`;
-		if (pkg.Authors) md += ` · **Authors:** ${pkg.Authors}`;
-		md += "\n";
-
-		if (pkg.DownloadCount !== undefined) {
-			md += `**Total Downloads:** ${formatNumber(pkg.DownloadCount)}`;
-			if (pkg.VersionDownloadCount !== undefined) {
-				md += ` · **Version Downloads:** ${formatNumber(pkg.VersionDownloadCount)}`;
-			}
-			md += "\n";
-		}
-
-		if (pkg.Published) {
-			const published = formatIsoDate(pkg.Published);
-			if (published) md += `**Published:** ${published}\n`;
-		}
-		md += "\n";
-
-		if (pkg.ProjectUrl) md += `**Project URL:** ${pkg.ProjectUrl}\n`;
-		if (pkg.PackageSourceUrl) md += `**Source:** ${pkg.PackageSourceUrl}\n`;
-		if (pkg.LicenseUrl) md += `**License:** ${pkg.LicenseUrl}\n`;
-
-		if (pkg.Tags) {
-			const tags = pkg.Tags.split(/\s+/).filter(Boolean);
-			if (tags.length > 0) {
-				md += `**Tags:** ${tags.join(", ")}\n`;
-			}
-		}
-
-		if (pkg.Description && pkg.Description !== pkg.Summary) {
-			md += `\n## Description\n\n${pkg.Description}\n`;
-		}
-		md += renderDescriptionSection(pkg.ReleaseNotes, "Release Notes");
-
-		if (pkg.Dependencies) {
-			const deps = pkg.Dependencies.split("|").filter(d => d.trim().length > 0);
-			if (deps.length > 0) {
-				md += "\n## Dependencies\n\n";
-				for (const dep of deps) {
-					const [depId, depVersion] = dep.split(":");
-					if (depId) {
-						md += `- ${depId}${depVersion ? `: ${depVersion}` : ""}\n`;
-					}
-				}
-			}
-		}
-
-		md += `\n---\n**Install:** \`choco install ${packageName}\`\n`;
+		const md = `${renderChocolateyOverview(pkg)}${renderChocolateyDetails(pkg)}\n---\n**Install:** \`choco install ${packageName}\`\n`;
 
 		return buildResult(md, {
 			url: ctx.url,
@@ -573,74 +543,70 @@ export const chocolateyDeclaration: PackageRegistryDeclaration = {
 // 5. Clojars
 // ============================================================================
 
-function formatClojarsLicenses(licenses: unknown): string[] {
-	if (!Array.isArray(licenses)) return [];
-	const output: string[] = [];
-	for (const license of licenses) {
-		if (typeof license === "string") {
-			const trimmed = license.trim();
-			if (trimmed) output.push(trimmed);
-			continue;
-		}
-		if (isRecord(license)) {
-			const name = trimmedString(license.name);
-			const url = trimmedString(license.url);
-			if (name && url) {
-				output.push(`${name} (${url})`);
-			} else if (name) {
-				output.push(name);
-			} else if (url) {
-				output.push(url);
-			}
-		}
-	}
-	return output;
+/** `name (url)`, or whichever of the two a license record has; a plain string is its own entry. */
+function formatClojarsLicense(license: unknown): string | null {
+	if (!isRecord(license)) return trimmedString(license);
+	const name = trimmedString(license.name);
+	const url = trimmedString(license.url);
+	return name && url ? `${name} (${url})` : (name ?? url);
 }
 
+function formatClojarsLicenses(licenses: unknown): string[] {
+	if (!Array.isArray(licenses)) return [];
+	return licenses.map(formatClojarsLicense).filter(entry => entry !== null);
+}
+
+/** `name: version` for a `[name, version]` pair or a dependency record; a plain string is its own entry. */
+function formatClojarsDependency(dep: unknown): string | null {
+	if (!Array.isArray(dep) && !isRecord(dep)) return trimmedString(dep);
+	const name = Array.isArray(dep)
+		? trimmedString(dep[0])
+		: (trimmedString(dep.name) ?? trimmedString(dep.artifact) ?? trimmedString(dep.jar_name));
+	const version = trimmedString(Array.isArray(dep) ? dep[1] : dep.version);
+	return name && version ? `${name}: ${version}` : name;
+}
+
+/** Dependency lines from a list of entries, or from a `name → version` map. */
 function formatClojarsDependencies(deps: unknown): string[] {
-	const output: string[] = [];
-	if (Array.isArray(deps)) {
-		for (const dep of deps) {
-			if (typeof dep === "string") {
-				const trimmed = dep.trim();
-				if (trimmed) output.push(trimmed);
-				continue;
-			}
-			if (Array.isArray(dep)) {
-				const name = trimmedString(dep[0]);
-				const version = trimmedString(dep[1]);
-				if (name && version) {
-					output.push(`${name}: ${version}`);
-				} else if (name) {
-					output.push(name);
-				}
-				continue;
-			}
-			if (isRecord(dep)) {
-				const name = trimmedString(dep.name) ?? trimmedString(dep.artifact) ?? trimmedString(dep.jar_name);
-				const version = trimmedString(dep.version);
-				if (name && version) {
-					output.push(`${name}: ${version}`);
-				} else if (name) {
-					output.push(name);
-				}
-			}
-		}
-		return output;
-	}
+	if (Array.isArray(deps)) return deps.map(formatClojarsDependency).filter(entry => entry !== null);
+	if (!isRecord(deps)) return [];
+	return Object.entries(deps).flatMap(([name, version]) => {
+		const versionText = trimmedString(version);
+		if (versionText) return [`${name}: ${versionText}`];
+		return name.trim() ? [name] : [];
+	});
+}
 
-	if (isRecord(deps)) {
-		for (const [name, version] of Object.entries(deps)) {
-			const versionText = trimmedString(version);
-			if (versionText) {
-				output.push(`${name}: ${versionText}`);
-			} else if (name.trim()) {
-				output.push(name);
-			}
-		}
-	}
+function renderClojarsArtifact(
+	data: Record<string, unknown>,
+	groupFromUrl: string | null,
+	artifactFromUrl: string,
+): string {
+	const groupName = trimmedString(data.group_name) ?? trimmedString(data.group) ?? groupFromUrl;
+	const artifactName =
+		trimmedString(data.jar_name) ?? trimmedString(data.artifact) ?? trimmedString(data.name) ?? artifactFromUrl;
+	const displayName =
+		groupName && artifactName && groupName !== artifactName
+			? `${groupName}/${artifactName}`
+			: (artifactName ?? groupName ?? "Clojars artifact");
+	let md = renderHeader(displayName, trimmedString(data.description) ?? trimmedString(data.summary));
+	if (groupName) md += `**Group:** ${groupName}\n`;
+	if (artifactName) md += `**Artifact:** ${artifactName}\n`;
+	return md + renderClojarsFacts(data);
+}
 
-	return output;
+function renderClojarsFacts(data: Record<string, unknown>): string {
+	const version = trimmedString(data.latest_version) ?? trimmedString(data.version);
+	const downloads =
+		finiteNumber(data.downloads) ?? finiteNumber(data.downloads_total) ?? finiteNumber(data.total_downloads);
+	const homepage = trimmedString(data.homepage) ?? trimmedString(data.url);
+	const licenses = formatClojarsLicenses(data.licenses);
+	let md = "";
+	if (version) md += `**Latest:** ${version}\n`;
+	if (downloads !== null) md += `**Downloads:** ${formatNumber(downloads)}\n`;
+	if (homepage) md += `**Homepage:** ${homepage}\n`;
+	if (licenses.length > 0) md += `**Licenses:** ${licenses.join(", ")}\n`;
+	return md + renderStringList("Dependencies", formatClojarsDependencies(data.dependencies ?? data.deps));
 }
 
 export const clojarsDeclaration: PackageRegistryDeclaration = {
@@ -677,34 +643,7 @@ export const clojarsDeclaration: PackageRegistryDeclaration = {
 
 		const data = Array.isArray(payload) ? payload[0] : payload;
 		if (!isRecord(data)) return null;
-
-		const groupName = trimmedString(data.group_name) ?? trimmedString(data.group) ?? groupFromUrl;
-		const artifactName =
-			trimmedString(data.jar_name) ?? trimmedString(data.artifact) ?? trimmedString(data.name) ?? artifactFromUrl;
-		const version = trimmedString(data.latest_version) ?? trimmedString(data.version);
-		const description = trimmedString(data.description) ?? trimmedString(data.summary);
-		const downloads =
-			finiteNumber(data.downloads) ??
-			finiteNumber(data.downloads_total) ??
-			finiteNumber(data.total_downloads) ??
-			null;
-		const homepage = trimmedString(data.homepage) ?? trimmedString(data.url);
-		const licenses = formatClojarsLicenses(data.licenses);
-		const dependencies = formatClojarsDependencies(data.dependencies ?? data.deps);
-
-		const displayName =
-			groupName && artifactName && groupName !== artifactName
-				? `${groupName}/${artifactName}`
-				: (artifactName ?? groupName ?? "Clojars artifact");
-
-		let md = renderHeader(displayName, description);
-		if (groupName) md += `**Group:** ${groupName}\n`;
-		if (artifactName) md += `**Artifact:** ${artifactName}\n`;
-		if (version) md += `**Latest:** ${version}\n`;
-		if (downloads !== null) md += `**Downloads:** ${formatNumber(downloads)}\n`;
-		if (homepage) md += `**Homepage:** ${homepage}\n`;
-		if (licenses.length > 0) md += `**Licenses:** ${licenses.join(", ")}\n`;
-		md += renderStringList("Dependencies", dependencies);
+		const md = renderClojarsArtifact(data, groupFromUrl, artifactFromUrl);
 
 		return buildResult(md, {
 			url: ctx.url,
@@ -832,6 +771,36 @@ interface DockerHubTagsResponse {
 	results?: DockerHubTag[];
 }
 
+function renderDockerHubStats(repo: DockerHubRepo): string {
+	const stats: string[] = [];
+	if (repo.pull_count !== undefined) stats.push(`**Pulls:** ${formatNumber(repo.pull_count)}`);
+	if (repo.star_count !== undefined) stats.push(`**Stars:** ${formatNumber(repo.star_count)}`);
+	if (repo.is_official) stats.push("**Official Image**");
+	if (repo.is_automated) stats.push("**Automated Build**");
+	let md = stats.length > 0 ? `${stats.join(" · ")}\n` : "";
+	if (repo.last_updated) md += `**Last Updated:** ${formatIsoDate(repo.last_updated)}\n`;
+	return `${md}\n`;
+}
+
+function renderDockerHubTags(tags: DockerHubTag[]): string {
+	if (tags.length === 0) return "";
+	let md = "## Recent Tags\n\n";
+	md += "| Tag | Size | Architectures | Updated |\n";
+	md += "|-----|------|---------------|--------|\n";
+	for (const tag of tags) {
+		const size = tag.full_size ? formatBytes(tag.full_size) : "-";
+		const archs = escapeMarkdownTableCell(
+			tag.images
+				?.map(img => img.architecture)
+				.filter(Boolean)
+				.join(", ") || "-",
+		);
+		const updated = tag.last_updated ? formatIsoDate(tag.last_updated) : "-";
+		md += `| \`${escapeMarkdownTableCell(tag.name)}\` | ${size} | ${archs} | ${updated} |\n`;
+	}
+	return `${md}\n`;
+}
+
 export const dockerhubDeclaration: PackageRegistryDeclaration = {
 	site: "dockerhub",
 	method: "dockerhub",
@@ -865,48 +834,11 @@ export const dockerhubDeclaration: PackageRegistryDeclaration = {
 		const repo = ctx.tryParseJson<DockerHubRepo>(repoResult.content);
 		if (!repo) return ctx.scraperDegrade("dockerhub", "unexpected response shape");
 
-		let tags: DockerHubTag[] = [];
-		if (tagsResult.ok) {
-			const tagsData = ctx.tryParseJson<DockerHubTagsResponse>(tagsResult.content);
-			if (tagsData?.results) tags = tagsData.results;
-		}
+		const tags = (tagsResult.ok && ctx.tryParseJson<DockerHubTagsResponse>(tagsResult.content)?.results) || [];
 		const fullName = namespace === "library" ? repo.name : `${namespace}/${repo.name}`;
-		let md = renderHeader(fullName, repo.description);
-
-		const stats: string[] = [];
-		if (repo.pull_count !== undefined) stats.push(`**Pulls:** ${formatNumber(repo.pull_count)}`);
-		if (repo.star_count !== undefined) stats.push(`**Stars:** ${formatNumber(repo.star_count)}`);
-		if (repo.is_official) stats.push("**Official Image**");
-		if (repo.is_automated) stats.push("**Automated Build**");
-		if (stats.length > 0) {
-			md += `${stats.join(" · ")}\n`;
-		}
-
-		if (repo.last_updated) {
-			md += `**Last Updated:** ${formatIsoDate(repo.last_updated)}\n`;
-		}
-		md += "\n";
-
+		let md = renderHeader(fullName, repo.description) + renderDockerHubStats(repo);
 		md += `## Quick Start\n\n\`\`\`bash\ndocker pull ${fullName}\n\`\`\`\n\n`;
-
-		if (tags.length > 0) {
-			md += "## Recent Tags\n\n";
-			md += "| Tag | Size | Architectures | Updated |\n";
-			md += "|-----|------|---------------|--------|\n";
-
-			for (const tag of tags) {
-				const size = tag.full_size ? formatBytes(tag.full_size) : "-";
-				const archs = escapeMarkdownTableCell(
-					tag.images
-						?.map(img => img.architecture)
-						.filter(Boolean)
-						.join(", ") || "-",
-				);
-				const updated = tag.last_updated ? formatIsoDate(tag.last_updated) : "-";
-				md += `| \`${escapeMarkdownTableCell(tag.name)}\` | ${size} | ${archs} | ${updated} |\n`;
-			}
-			md += "\n";
-		}
+		md += renderDockerHubTags(tags);
 
 		return buildResult(md, {
 			url: ctx.url,
@@ -1119,6 +1051,44 @@ function collectFirefoxPermissions(file?: AddonFile): string[] {
 	return permissions;
 }
 
+function renderFirefoxAddonStats(data: AddonData): string {
+	let md = "";
+	const authors = (data.authors ?? []).map(author => (author.name ?? "").trim()).filter(Boolean);
+	if (authors.length > 0) md += `**${authors.length > 1 ? "Authors" : "Author"}:** ${authors.join(", ")}\n`;
+	const ratings = data.ratings;
+	if (ratings?.average !== undefined) {
+		md += `**Rating:** ${ratings.average.toFixed(2)}`;
+		if (ratings.count !== undefined) md += ` (${formatNumber(ratings.count)} reviews)`;
+		md += "\n";
+	}
+	const users = data.average_daily_users ?? data.weekly_downloads;
+	if (users !== undefined) md += `**Users:** ${formatNumber(users)}\n`;
+	if (data.current_version?.version) md += `**Version:** ${data.current_version.version}\n`;
+	const categories = normalizeFirefoxCategories(data.categories);
+	if (categories.length > 0) md += `**Categories:** ${categories.join(", ")}\n`;
+	return md;
+}
+
+/** The license as a link, or whichever of its name and URL the API returns. */
+function renderFirefoxAddonLicense(license: AddonLicense | undefined, locale: string): string {
+	const name = getLocalizedText(license?.name, locale) ?? license?.slug;
+	const url = license?.url;
+	const label = name && url ? markdownLink(name, url) : name || url;
+	return label ? `**License:** ${label}\n` : "";
+}
+
+const MAX_FIREFOX_PERMISSIONS = 40;
+
+function renderFirefoxAddonPermissions(permissions: string[]): string {
+	if (permissions.length === 0) return "";
+	let md = `\n## Permissions (${permissions.length})\n\n`;
+	for (const permission of permissions.slice(0, MAX_FIREFOX_PERMISSIONS)) md += `- ${permission}\n`;
+	if (permissions.length > MAX_FIREFOX_PERMISSIONS) {
+		md += `\n[…${permissions.length - MAX_FIREFOX_PERMISSIONS} permissions elided…]\n`;
+	}
+	return md;
+}
+
 export const firefoxAddonsDeclaration: PackageRegistryDeclaration = {
 	site: "firefox-addons",
 	hosts: ["addons.mozilla.org"],
@@ -1142,73 +1112,18 @@ export const firefoxAddonsDeclaration: PackageRegistryDeclaration = {
 
 		const data = ctx.tryParseJson<AddonData>(result.content);
 		if (!data) return ctx.scraperDegrade("firefox-addons", "unexpected response shape");
-		const defaultLocale = data.default_locale || "en-US";
-
-		const name = getLocalizedText(data.name, defaultLocale) ?? slug;
-		const summary = getLocalizedText(data.summary, defaultLocale);
-		const descriptionRaw = getLocalizedText(data.description, defaultLocale);
+		const locale = data.default_locale || "en-US";
+		const descriptionRaw = getLocalizedText(data.description, locale);
 		const description = descriptionRaw ? await htmlToBasicMarkdown(descriptionRaw) : undefined;
-
-		const authors = (data.authors ?? [])
-			.map(author => author.name ?? "")
-			.map(author => author.trim())
-			.filter(Boolean);
-
-		const ratingAverage = data.ratings?.average;
-		const ratingCount = data.ratings?.count;
-		const users = data.average_daily_users ?? data.weekly_downloads;
-		const version = data.current_version?.version;
-		const categories = normalizeFirefoxCategories(data.categories);
-
-		const licenseName =
-			getLocalizedText(data.current_version?.license?.name, defaultLocale) ?? data.current_version?.license?.slug;
-		const licenseUrl = data.current_version?.license?.url;
-
 		const homepage =
-			getLocalizedText(data.homepage?.url, defaultLocale) ??
-			getLocalizedText(data.homepage?.outgoing, defaultLocale);
+			getLocalizedText(data.homepage?.url, locale) ?? getLocalizedText(data.homepage?.outgoing, locale);
 
-		const permissions = collectFirefoxPermissions(data.current_version?.file);
-
-		let md = renderHeader(name, summary);
-
-		if (authors.length > 0) {
-			const label = authors.length > 1 ? "Authors" : "Author";
-			md += `**${label}:** ${authors.join(", ")}\n`;
-		}
-
-		if (ratingAverage !== undefined) {
-			md += `**Rating:** ${ratingAverage.toFixed(2)}`;
-			if (ratingCount !== undefined) {
-				md += ` (${formatNumber(ratingCount)} reviews)`;
-			}
-			md += "\n";
-		}
-
-		if (users !== undefined) md += `**Users:** ${formatNumber(users)}\n`;
-		if (version) md += `**Version:** ${version}\n`;
-		if (categories.length > 0) md += `**Categories:** ${categories.join(", ")}\n`;
-
-		if (licenseName && licenseUrl) {
-			md += `**License:** ${markdownLink(licenseName, licenseUrl)}\n`;
-		} else if (licenseName) {
-			md += `**License:** ${licenseName}\n`;
-		} else if (licenseUrl) {
-			md += `**License:** ${licenseUrl}\n`;
-		}
-
+		let md = renderHeader(getLocalizedText(data.name, locale) ?? slug, getLocalizedText(data.summary, locale));
+		md += renderFirefoxAddonStats(data);
+		md += renderFirefoxAddonLicense(data.current_version?.license, locale);
 		if (homepage) md += `**Homepage:** ${homepage}\n`;
 		md += renderDescriptionSection(description);
-		if (permissions.length > 0) {
-			const count = Math.min(permissions.length, 40);
-			md += `\n## Permissions (${permissions.length})\n\n`;
-			for (let index = 0; index < count; index++) {
-				md += `- ${permissions[index]}\n`;
-			}
-			if (permissions.length > count) {
-				md += `\n[…${permissions.length - count} permissions elided…]\n`;
-			}
-		}
+		md += renderFirefoxAddonPermissions(collectFirefoxPermissions(data.current_version?.file));
 
 		const finalUrl = data.url ?? result.finalUrl ?? ctx.url;
 		return buildResult(md, {
@@ -1343,6 +1258,37 @@ function bestFlathubScreenshotUrl(sizes?: FlathubScreenshotSize[]): string | nul
 	return best.src ?? sizes[0].src ?? null;
 }
 
+function renderFlathubScreenshots(screenshots: FlathubScreenshot[] | undefined): string {
+	if (!screenshots?.length) return "";
+	let md = "\n## Screenshots\n\n";
+	for (const screenshot of screenshots.slice(0, 5)) {
+		const screenshotUrl = bestFlathubScreenshotUrl(screenshot.sizes);
+		if (screenshotUrl) md += `- ${screenshotUrl}${screenshot.caption ? ` - ${screenshot.caption}` : ""}\n`;
+	}
+	return md;
+}
+
+/** The release line, and its description collapsed onto one indented line. */
+async function renderFlathubRelease(release: FlathubRelease): Promise<string> {
+	const date = release.timestamp ? formatIsoDate(Number(release.timestamp) * 1000) : "";
+	let md = `- **${release.version ?? "unknown"}**`;
+	if (date) md += ` (${date})`;
+	if (release.type) md += ` · ${release.type}`;
+	if (release.url) md += ` · ${release.url}`;
+	md += "\n";
+	const description = release.description
+		? (await htmlToBasicMarkdown(release.description)).replace(/\n+/g, " ").trim()
+		: "";
+	return description ? `${md}  - ${description}\n` : md;
+}
+
+async function renderFlathubReleases(releases: FlathubRelease[] | undefined): Promise<string> {
+	if (!releases?.length) return "";
+	let md = "\n## Releases\n\n";
+	for (const release of releases.slice(0, 5)) md += await renderFlathubRelease(release);
+	return md;
+}
+
 export const flathubDeclaration: PackageRegistryDeclaration = {
 	site: "flathub",
 	hosts: ["flathub.org", "www.flathub.org"],
@@ -1366,53 +1312,17 @@ export const flathubDeclaration: PackageRegistryDeclaration = {
 
 		const app = ctx.tryParseJson<FlathubAppStream>(result.content);
 		if (!app) return ctx.scraperDegrade("flathub", "unexpected response shape");
-		const name = app.name ?? app.id ?? appId;
 
-		let md = renderHeader(name, app.summary);
-		md += "## Metadata\n\n";
-		md += `**App ID:** ${app.id ?? appId}\n`;
+		let md = renderHeader(app.name ?? app.id ?? appId, app.summary);
+		md += `## Metadata\n\n**App ID:** ${app.id ?? appId}\n`;
 		if (app.developer_name) md += `**Developer:** ${app.developer_name}\n`;
-
 		const installs = extractFlathubInstalls(app);
 		if (installs !== null) md += `**Installs:** ${formatNumber(installs)}\n`;
-
 		md += renderStringList("Categories", app.categories);
-
-		if (app.description) {
-			const description = await htmlToBasicMarkdown(app.description);
-			md += renderDescriptionSection(description);
-		}
-
-		const permissions = extractFlathubPermissions(app);
-		md += renderStringList("Permissions", permissions);
-
-		if (app.screenshots?.length) {
-			md += "\n## Screenshots\n\n";
-			for (const screenshot of app.screenshots.slice(0, 5)) {
-				const screenshotUrl = bestFlathubScreenshotUrl(screenshot.sizes);
-				if (!screenshotUrl) continue;
-				const caption = screenshot.caption ? ` - ${screenshot.caption}` : "";
-				md += `- ${screenshotUrl}${caption}\n`;
-			}
-		}
-
-		if (app.releases?.length) {
-			md += "\n## Releases\n\n";
-			for (const release of app.releases.slice(0, 5)) {
-				const version = release.version ?? "unknown";
-				let line = `- **${version}**`;
-				const date = release.timestamp ? formatIsoDate(Number(release.timestamp) * 1000) : "";
-				if (date) line += ` (${date})`;
-				if (release.type) line += ` · ${release.type}`;
-				if (release.url) line += ` · ${release.url}`;
-				md += `${line}\n`;
-
-				if (release.description) {
-					const releaseDesc = (await htmlToBasicMarkdown(release.description)).replace(/\n+/g, " ").trim();
-					if (releaseDesc) md += `  - ${releaseDesc}\n`;
-				}
-			}
-		}
+		if (app.description) md += renderDescriptionSection(await htmlToBasicMarkdown(app.description));
+		md += renderStringList("Permissions", extractFlathubPermissions(app));
+		md += renderFlathubScreenshots(app.screenshots);
+		md += await renderFlathubReleases(app.releases);
 
 		return buildResult(md, {
 			url: ctx.url,
@@ -1433,6 +1343,138 @@ interface GoModuleInfo {
 	Time: string;
 }
 
+/** The module path and version a `path[@version[/subpath]]` URL names; no `@` means `latest`. */
+function splitGoModulePath(pathname: string): { modulePath: string; version: string } {
+	const atIndex = pathname.indexOf("@");
+	if (atIndex === -1) return { modulePath: pathname, version: "latest" };
+	const afterAt = pathname.slice(atIndex + 1);
+	const slashIndex = afterAt.indexOf("/");
+	return {
+		modulePath: pathname.slice(0, atIndex),
+		version: slashIndex === -1 ? afterAt : afterAt.slice(0, slashIndex),
+	};
+}
+
+/** The module proxy's record of the version, or `null` when the proxy fails and the page has to supply it. */
+async function fetchGoModuleInfo(
+	modulePath: string,
+	version: string,
+	ctx: PackageRegistryContext,
+): Promise<GoModuleInfo | null> {
+	const moduleUrl = `https://proxy.golang.org/${encodeURIComponent(modulePath)}`;
+	const proxyUrl =
+		version === "latest" ? `${moduleUrl}/@latest` : `${moduleUrl}/@v/${encodeURIComponent(version)}.info`;
+	try {
+		const proxyResult = await ctx.loadPage(proxyUrl, { timeout: ctx.timeout, signal: ctx.signal });
+		return proxyResult.ok ? ctx.tryParseJson<GoModuleInfo>(proxyResult.content) : null;
+	} catch {
+		return null;
+	}
+}
+
+/** An element of a parsed pkg.go.dev page. linkedom exports no element or node-list type, so this states what the readers call. */
+interface GoPageElement {
+	readonly textContent: string | null;
+	readonly innerHTML: string;
+	getAttribute(name: string): string | null;
+	querySelector(selectors: string): GoPageElement | null;
+	querySelectorAll(selectors: string): Iterable<GoPageElement>;
+}
+
+/** A parsed pkg.go.dev page. */
+interface GoPageDocument {
+	querySelector(selectors: string): GoPageElement | null;
+}
+
+/** The proxy's version for `latest`, the requested one otherwise, and the page's version chip without a proxy record. */
+function resolveGoVersion(requested: string, moduleInfo: GoModuleInfo | null, doc: GoPageDocument): string {
+	if (moduleInfo) return requested === "latest" ? moduleInfo.Version : requested;
+	const chip = doc.querySelector(".go-Chip")?.textContent?.trim();
+	return chip?.startsWith("v") ? chip : requested;
+}
+
+function goHeaderLines(doc: GoPageDocument, modulePath: string, version: string): string[] {
+	const href = doc.querySelector(".go-Breadcrumb")?.querySelector("a[href^='/']")?.getAttribute("href");
+	const actualModulePath = href ? href.slice(1).split("@")[0] : modulePath;
+	const license = doc.querySelector("a[data-test-id='UnitHeader-license']")?.textContent?.trim() || "Unknown";
+	const importPath =
+		doc.querySelector("input[data-test-id='UnitHeader-importPath']")?.getAttribute("value") || actualModulePath;
+	return [
+		`# ${importPath}`,
+		"",
+		`**Module:** ${actualModulePath}`,
+		`**Version:** ${version}`,
+		`**License:** ${license}`,
+		"",
+	];
+}
+
+function goSynopsisLines(doc: GoPageDocument): string[] {
+	const synopsis = doc.querySelector(".go-Main-headerContent p")?.textContent?.trim();
+	return synopsis ? ["## Synopsis", "", synopsis, ""] : [];
+}
+
+/** The package overview and the first three documentation paragraphs. */
+async function goDocumentationLines(doc: GoPageDocument): Promise<string[]> {
+	const docSection = doc.querySelector("#section-documentation");
+	if (!docSection) return [];
+	const lines = ["## Documentation", ""];
+	const overview = docSection.querySelector(".go-Message");
+	if (overview) lines.push(await htmlToBasicMarkdown(overview.innerHTML), "");
+	const paragraphs = docSection.querySelector(".Documentation-content")?.querySelectorAll("p") ?? [];
+	const docParts: string[] = [];
+	for (const paragraph of Array.from(paragraphs).slice(0, 3)) {
+		const text = (await htmlToBasicMarkdown(paragraph.innerHTML)).trim();
+		if (text) docParts.push(text);
+	}
+	if (docParts.length > 0) lines.push(docParts.join("\n\n"), "");
+	return lines;
+}
+
+/** A section listing the first `limit` names, noting in `notes` how many past the cap were left out. */
+function goCappedListLines(heading: string, names: string[], limit: number, noun: string, notes: string[]): string[] {
+	const lines = [heading, ""];
+	if (names.length === 0) return lines;
+	lines.push(
+		names
+			.slice(0, limit)
+			.map(name => `- ${name}`)
+			.join("\n"),
+	);
+	if (names.length > limit) {
+		notes.push(`showing ${limit} of ${names.length} ${noun}`);
+		lines.push(`\n[…${names.length - limit} ${noun} elided…]`);
+	}
+	lines.push("");
+	return lines;
+}
+
+function goIndexLines(doc: GoPageDocument, notes: string[]): string[] {
+	const indexList = doc.querySelector("#section-index")?.querySelector(".Documentation-indexList");
+	if (!indexList) return [];
+	const names = Array.from(indexList.querySelectorAll("li"), item => item.querySelector("a")?.textContent?.trim());
+	return goCappedListLines(
+		"## Index",
+		names.filter((name): name is string => Boolean(name)),
+		50,
+		"exports",
+		notes,
+	);
+}
+
+function goImportsLines(doc: GoPageDocument, notes: string[]): string[] {
+	const importsList = doc.querySelector("#section-imports")?.querySelector(".go-Message");
+	if (!importsList) return [];
+	const names = Array.from(importsList.querySelectorAll("a"), link => link.textContent?.trim());
+	return goCappedListLines(
+		"## Imports",
+		names.filter((name): name is string => Boolean(name)),
+		20,
+		"imports",
+		notes,
+	);
+}
+
 export const goPkgDeclaration: PackageRegistryDeclaration = {
 	site: "go-pkg",
 	hosts: ["pkg.go.dev"],
@@ -1442,206 +1484,23 @@ export const goPkgDeclaration: PackageRegistryDeclaration = {
 		return pathname ? { name: pathname, parsedUrl: parsed } : null;
 	},
 	customFetch: async (match, ctx) => {
-		const pathname = match.name;
-		let modulePath: string;
-		let version = "latest";
-
-		const atIndex = pathname.indexOf("@");
-		if (atIndex !== -1) {
-			const beforeAt = pathname.slice(0, atIndex);
-			const afterAt = pathname.slice(atIndex + 1);
-
-			const slashIndex = afterAt.indexOf("/");
-			if (slashIndex !== -1) {
-				version = afterAt.slice(0, slashIndex);
-				modulePath = beforeAt;
-			} else {
-				version = afterAt;
-				modulePath = beforeAt;
-			}
-		} else {
-			modulePath = pathname;
-		}
-
-		const notes: string[] = [];
-		const sections: string[] = [];
-
-		let moduleInfo: GoModuleInfo | null = null;
-		let actualModulePath = modulePath;
-
-		if (version === "latest") {
-			try {
-				const proxyUrl = `https://proxy.golang.org/${encodeURIComponent(modulePath)}/@latest`;
-				const proxyResult = await ctx.loadPage(proxyUrl, { timeout: ctx.timeout, signal: ctx.signal });
-
-				if (proxyResult.ok) {
-					moduleInfo = ctx.tryParseJson<GoModuleInfo>(proxyResult.content);
-					if (moduleInfo) {
-						version = moduleInfo.Version;
-					}
-				}
-			} catch {
-				// Proxy lookup failed, fallback to page
-			}
-		} else {
-			try {
-				const proxyUrl = `https://proxy.golang.org/${encodeURIComponent(modulePath)}/@v/${encodeURIComponent(version)}.info`;
-				const proxyResult = await ctx.loadPage(proxyUrl, { timeout: ctx.timeout, signal: ctx.signal });
-
-				if (proxyResult.ok) {
-					moduleInfo = ctx.tryParseJson<GoModuleInfo>(proxyResult.content);
-				}
-			} catch {
-				// Proxy lookup failed
-			}
-		}
+		const { modulePath, version: requested } = splitGoModulePath(match.name);
+		const moduleInfo = await fetchGoModuleInfo(modulePath, requested, ctx);
 		const pageResult = await ctx.loadPage(ctx.url, { timeout: ctx.timeout, signal: ctx.signal });
 		if (!pageResult.ok) return ctx.scraperDegrade("go-pkg", ctx.loadFailure(pageResult));
 
 		const doc = parseHTML(pageResult.content).document;
+		const notes: string[] = [];
+		const sections = [
+			...goHeaderLines(doc, modulePath, resolveGoVersion(requested, moduleInfo, doc)),
+			...goSynopsisLines(doc),
+			...(await goDocumentationLines(doc)),
+			...goIndexLines(doc, notes),
+			...goImportsLines(doc, notes),
+		];
+		if (moduleInfo) notes.push(`published ${moduleInfo.Time}`);
 
-		const breadcrumb = doc.querySelector(".go-Breadcrumb");
-		if (breadcrumb) {
-			const moduleLink = breadcrumb.querySelector("a[href^='/']");
-			if (moduleLink) {
-				const href = moduleLink.getAttribute("href");
-				if (href) {
-					actualModulePath = href.slice(1).split("@")[0];
-				}
-			}
-		}
-
-		if (!moduleInfo) {
-			const versionBadge = doc.querySelector(".go-Chip");
-			if (versionBadge) {
-				const versionText = versionBadge.textContent?.trim();
-				if (versionText?.startsWith("v")) {
-					version = versionText;
-				}
-			}
-		}
-
-		const licenseLink = doc.querySelector("a[data-test-id='UnitHeader-license']");
-		const license = licenseLink?.textContent?.trim() || "Unknown";
-
-		const importPathInput = doc.querySelector("input[data-test-id='UnitHeader-importPath']");
-		const importPath = importPathInput?.getAttribute("value") || actualModulePath;
-
-		sections.push(`# ${importPath}`);
-		sections.push("");
-		sections.push(`**Module:** ${actualModulePath}`);
-		sections.push(`**Version:** ${version}`);
-		sections.push(`**License:** ${license}`);
-		sections.push("");
-
-		const synopsis = doc.querySelector(".go-Main-headerContent p");
-		if (synopsis) {
-			const synopsisText = synopsis.textContent?.trim();
-			if (synopsisText) {
-				sections.push(`## Synopsis`);
-				sections.push("");
-				sections.push(synopsisText);
-				sections.push("");
-			}
-		}
-
-		const docSection = doc.querySelector("#section-documentation");
-		if (docSection) {
-			sections.push("## Documentation");
-			sections.push("");
-
-			const overview = docSection.querySelector(".go-Message");
-			if (overview) {
-				const overviewMd = await htmlToBasicMarkdown(overview.innerHTML);
-				sections.push(overviewMd);
-				sections.push("");
-			}
-
-			const docContent = docSection.querySelector(".Documentation-content");
-			if (docContent) {
-				const paragraphs = docContent.querySelectorAll("p");
-				const docParts: string[] = [];
-				for (let i = 0; i < Math.min(3, paragraphs.length); i++) {
-					const p = paragraphs[i];
-					const text = (await htmlToBasicMarkdown(p.innerHTML)).trim();
-					if (text) {
-						docParts.push(text);
-					}
-				}
-
-				if (docParts.length > 0) {
-					sections.push(docParts.join("\n\n"));
-					sections.push("");
-				}
-			}
-		}
-
-		const indexSection = doc.querySelector("#section-index");
-		if (indexSection) {
-			const indexList = indexSection.querySelector(".Documentation-indexList");
-			if (indexList) {
-				sections.push("## Index");
-				sections.push("");
-
-				const items = indexList.querySelectorAll("li");
-				const exported: string[] = [];
-
-				for (const item of items) {
-					const link = item.querySelector("a");
-					if (link) {
-						const name = link.textContent?.trim();
-						if (name) {
-							exported.push(`- ${name}`);
-						}
-					}
-				}
-
-				if (exported.length > 0) {
-					sections.push(exported.slice(0, 50).join("\n"));
-					if (exported.length > 50) {
-						notes.push(`showing 50 of ${exported.length} exports`);
-						sections.push(`\n[…${exported.length - 50} exports elided…]`);
-					}
-					sections.push("");
-				}
-			}
-		}
-
-		const importsSection = doc.querySelector("#section-imports");
-		if (importsSection) {
-			const importsList = importsSection.querySelector(".go-Message");
-			if (importsList) {
-				sections.push("## Imports");
-				sections.push("");
-
-				const links = importsList.querySelectorAll("a");
-				const imports: string[] = [];
-
-				for (const link of links) {
-					const imp = link.textContent?.trim();
-					if (imp) {
-						imports.push(`- ${imp}`);
-					}
-				}
-
-				if (imports.length > 0) {
-					sections.push(imports.slice(0, 20).join("\n"));
-					if (imports.length > 20) {
-						notes.push(`showing 20 of ${imports.length} imports`);
-						sections.push(`\n[…${imports.length - 20} imports elided…]`);
-					}
-					sections.push("");
-				}
-			}
-		}
-
-		if (moduleInfo) {
-			notes.push(`published ${moduleInfo.Time}`);
-		}
-
-		const content = sections.join("\n");
-
-		return buildResult(content, {
+		return buildResult(sections.join("\n"), {
 			url: ctx.url,
 			finalUrl: pageResult.finalUrl,
 			method: "go-pkg",
@@ -1769,6 +1628,68 @@ export const hackageDeclaration: PackageRegistryDeclaration = {
 // 13. Hex.pm
 // ============================================================================
 
+interface HexPackage {
+	name: string;
+	meta?: {
+		description?: string;
+		links?: Record<string, string>;
+		licenses?: string[];
+	};
+	releases?: Array<{
+		version: string;
+		inserted_at: string;
+	}>;
+	downloads?: {
+		all?: number;
+		week?: number;
+		day?: number;
+	};
+	latest_version?: string;
+	latest_stable_version?: string;
+}
+
+interface HexRelease {
+	requirements?: Record<string, { app?: string; optional: boolean; requirement: string }>;
+}
+
+function renderHexSummary(data: HexPackage, version: string): string {
+	let md = `# ${data.name}\n\n`;
+	if (data.meta?.description) md += `${data.meta.description}\n\n`;
+	md += `**Latest:** ${version}`;
+	if (data.meta?.licenses?.length) md += ` · **License:** ${data.meta.licenses.join(", ")}`;
+	md += "\n";
+	if (data.downloads?.all) {
+		md += `**Total Downloads:** ${formatNumber(data.downloads.all)}`;
+		if (data.downloads.week) md += ` · **This Week:** ${formatNumber(data.downloads.week)}`;
+		md += "\n";
+	}
+	md += "\n";
+	const links = Object.entries(data.meta?.links ?? {});
+	if (links.length === 0) return md;
+	md += `## Links\n\n`;
+	for (const [key, value] of links) md += `- **${key}:** ${value}\n`;
+	return `${md}\n`;
+}
+
+/** The release's requirements, or nothing when the release request fails or lists none. */
+async function fetchHexDependencies(
+	packageName: string,
+	version: string,
+	ctx: PackageRegistryContext,
+): Promise<string> {
+	const releaseResult = await ctx.loadPage(`https://hex.pm/api/packages/${packageName}/releases/${version}`, {
+		timeout: Math.min(ctx.timeout, 5),
+		signal: ctx.signal,
+	});
+	const requirements = releaseResult.ok
+		? Object.entries(ctx.tryParseJson<HexRelease>(releaseResult.content)?.requirements ?? {})
+		: [];
+	if (requirements.length === 0) return "";
+	let md = `## Dependencies (${version})\n\n`;
+	for (const [dep, info] of requirements) md += `- ${dep}: ${info.requirement}${info.optional ? " (optional)" : ""}\n`;
+	return `${md}\n`;
+}
+
 export const hexDeclaration: PackageRegistryDeclaration = {
 	site: "hex",
 	hosts: ["hex.pm", "www.hex.pm"],
@@ -1781,79 +1702,16 @@ export const hexDeclaration: PackageRegistryDeclaration = {
 
 		if (!result.ok) return ctx.scraperDegrade("hex", ctx.loadFailure(result));
 
-		const data = ctx.tryParseJson<{
-			name: string;
-			meta?: {
-				description?: string;
-				links?: Record<string, string>;
-				licenses?: string[];
-			};
-			releases?: Array<{
-				version: string;
-				inserted_at: string;
-			}>;
-			downloads?: {
-				all?: number;
-				week?: number;
-				day?: number;
-			};
-			latest_version?: string;
-			latest_stable_version?: string;
-		}>(result.content);
+		const data = ctx.tryParseJson<HexPackage>(result.content);
 		if (!data) return ctx.scraperDegrade("hex", "unexpected response shape");
 
-		let md = `# ${data.name}\n\n`;
-		if (data.meta?.description) md += `${data.meta.description}\n\n`;
-
 		const version = data.latest_stable_version || data.latest_version || "unknown";
-		md += `**Latest:** ${version}`;
-		if (data.meta?.licenses?.length) md += ` · **License:** ${data.meta.licenses.join(", ")}`;
-		md += "\n";
-
-		if (data.downloads?.all) {
-			md += `**Total Downloads:** ${formatNumber(data.downloads.all)}`;
-			if (data.downloads.week) md += ` · **This Week:** ${formatNumber(data.downloads.week)}`;
-			md += "\n";
-		}
-		md += "\n";
-
-		if (data.meta?.links && Object.keys(data.meta.links).length > 0) {
-			md += `## Links\n\n`;
-			for (const [key, value] of Object.entries(data.meta.links)) {
-				md += `- **${key}:** ${value}\n`;
-			}
-			md += "\n";
-		}
-
+		let md = renderHexSummary(data, version);
 		if (data.releases?.length) {
-			const releasesUrl = `https://hex.pm/api/packages/${packageName}/releases/${version}`;
-			const releaseResult = await ctx.loadPage(releasesUrl, {
-				timeout: Math.min(ctx.timeout, 5),
-				signal: ctx.signal,
-			});
-
-			if (releaseResult.ok) {
-				const releaseData = ctx.tryParseJson<{
-					requirements?: Record<string, { app?: string; optional: boolean; requirement: string }>;
-				}>(releaseResult.content);
-
-				if (releaseData?.requirements && Object.keys(releaseData.requirements).length > 0) {
-					md += `## Dependencies (${version})\n\n`;
-					for (const [dep, info] of Object.entries(releaseData.requirements)) {
-						const optional = info.optional ? " (optional)" : "";
-						md += `- ${dep}: ${info.requirement}${optional}\n`;
-					}
-					md += "\n";
-				}
-			}
-
-			const recentReleases = data.releases.slice(0, 10);
-			if (recentReleases.length > 0) {
-				md += `## Recent Releases\n\n`;
-				for (const release of recentReleases) {
-					const date = formatIsoDate(release.inserted_at);
-					md += `- **${release.version}** (${date})\n`;
-				}
+			md += await fetchHexDependencies(packageName, version, ctx);
+			md += `## Recent Releases\n\n`;
+			for (const release of data.releases.slice(0, 10)) {
+				md += `- **${release.version}** (${formatIsoDate(release.inserted_at)})\n`;
 			}
 		}
 
@@ -1940,6 +1798,37 @@ function formatJetBrainsBuildCompatibility(update: UpdateData): string | null {
 	return null;
 }
 
+function renderJetBrainsPlugin(plugin: PluginData, pluginId: string): string {
+	let md = `**Plugin ID:** ${pluginId}\n`;
+	const vendorName = plugin.vendor?.name ?? plugin.vendor?.publicName;
+	if (vendorName) md += `**Vendor:** ${vendorName}\n`;
+	if (plugin.downloads !== undefined) md += `**Downloads:** ${formatNumber(plugin.downloads)}\n`;
+	const rating = extractJetBrainsRating(plugin);
+	if (rating.value !== null) {
+		md += `**Rating:** ${rating.value.toFixed(2)}`;
+		if (rating.votes !== null) md += ` (${formatNumber(rating.votes)} votes)`;
+		md += "\n";
+	}
+	const tags = (plugin.tags ?? []).map(tag => tag.name).filter((name): name is string => Boolean(name));
+	if (tags.length > 0) md += `**Tags:** ${tags.join(", ")}\n`;
+	return md;
+}
+
+/** The latest update's version, channel, build range and downloads, then the IDE versions it supports. */
+function renderJetBrainsRelease(update: UpdateData | undefined): string {
+	let md = "";
+	if (update) {
+		md += "\n## Latest Release\n\n";
+		if (update.version) md += `**Version:** ${update.version}\n`;
+		if (update.channel) md += `**Channel:** ${update.channel}\n`;
+		const buildCompatibility = formatJetBrainsBuildCompatibility(update);
+		if (buildCompatibility) md += `**Build Compatibility:** ${buildCompatibility}\n`;
+		if (update.downloads !== undefined) md += `**Release Downloads:** ${formatNumber(update.downloads)}\n`;
+	}
+	const compatibility = Object.entries(update?.compatibleVersions ?? {}).sort(([a], [b]) => a.localeCompare(b));
+	return md + renderSimpleList("IDE Compatibility", compatibility, ([product, version]) => `${product}: ${version}`);
+}
+
 export const jetbrainsMarketplaceDeclaration: PackageRegistryDeclaration = {
 	site: "jetbrains-marketplace",
 	hosts: ["plugins.jetbrains.com"],
@@ -1959,45 +1848,13 @@ export const jetbrainsMarketplaceDeclaration: PackageRegistryDeclaration = {
 
 		const plugin = ctx.tryParseJson<PluginData>(pluginResult.content);
 		const updates = ctx.tryParseJson<UpdateData[]>(updatesResult.content);
-		if (!plugin || !updates) return null;
+		if (!plugin?.name || !updates) return null;
 
-		const update = updates[0];
-		if (!plugin?.name) return null;
-
-		const vendorName = plugin.vendor?.name ?? plugin.vendor?.publicName;
 		const descriptionSource = plugin.description ?? plugin.preview ?? "";
 		const description = descriptionSource ? await htmlToBasicMarkdown(descriptionSource) : "";
-		const tags = (plugin.tags ?? []).map(tag => tag.name).filter((name): name is string => Boolean(name));
-		const rating = extractJetBrainsRating(plugin);
-		const buildCompatibility = update ? formatJetBrainsBuildCompatibility(update) : null;
-
 		let md = renderHeader(plugin.name, description);
-		md += `**Plugin ID:** ${pluginId}\n`;
-		if (vendorName) md += `**Vendor:** ${vendorName}\n`;
-		if (plugin.downloads !== undefined) md += `**Downloads:** ${formatNumber(plugin.downloads)}\n`;
-
-		if (rating.value !== null) {
-			md += `**Rating:** ${rating.value.toFixed(2)}`;
-			if (rating.votes !== null) md += ` (${formatNumber(rating.votes)} votes)`;
-			md += "\n";
-		}
-		if (tags.length > 0) md += `**Tags:** ${tags.join(", ")}\n`;
-
-		if (update) {
-			md += "\n## Latest Release\n\n";
-			if (update.version) md += `**Version:** ${update.version}\n`;
-			if (update.channel) md += `**Channel:** ${update.channel}\n`;
-			if (buildCompatibility) md += `**Build Compatibility:** ${buildCompatibility}\n`;
-			if (update.downloads !== undefined) md += `**Release Downloads:** ${formatNumber(update.downloads)}\n`;
-		}
-
-		const compatibility = update?.compatibleVersions ?? {};
-		const compatibilityEntries = Object.entries(compatibility).sort(([a], [b]) => a.localeCompare(b));
-		md += renderSimpleList(
-			"IDE Compatibility",
-			compatibilityEntries,
-			([product, version]) => `${product}: ${version}`,
-		);
+		md += renderJetBrainsPlugin(plugin, pluginId);
+		md += renderJetBrainsRelease(updates[0]);
 
 		return buildResult(md, {
 			url: ctx.url,
@@ -2279,6 +2136,41 @@ export const metacpanDeclaration: PackageRegistryDeclaration = {
 // 17. NPM
 // ============================================================================
 
+interface NpmPackage {
+	name: string;
+	version: string;
+	description?: string;
+	license?: string | { type: string };
+	homepage?: string;
+	repository?: { url: string } | string;
+	keywords?: string[];
+	maintainers?: Array<{ name: string }>;
+	dependencies?: Record<string, string>;
+	readme?: string;
+}
+
+function renderNpmSummary(pkg: NpmPackage, weeklyDownloads: number | null): string {
+	let md = `# ${pkg.name}\n\n`;
+	if (pkg.description) md += `${pkg.description}\n\n`;
+	md += `**Latest:** ${pkg.version || "unknown"}`;
+	if (pkg.license) {
+		md += ` · **License:** ${typeof pkg.license === "string" ? pkg.license : (pkg.license.type ?? String(pkg.license))}`;
+	}
+	md += "\n";
+	if (weeklyDownloads !== null) md += `**Weekly Downloads:** ${formatNumber(weeklyDownloads)}\n`;
+	return `${md}\n`;
+}
+
+function renderNpmLinks(pkg: NpmPackage): string {
+	let md = "";
+	if (pkg.homepage) md += `**Homepage:** ${pkg.homepage}\n`;
+	const repoUrl = typeof pkg.repository === "string" ? pkg.repository : pkg.repository?.url;
+	if (repoUrl) md += `**Repository:** ${repoUrl.replace(/^git\+/, "").replace(/\.git$/, "")}\n`;
+	if (pkg.keywords?.length) md += `**Keywords:** ${pkg.keywords.join(", ")}\n`;
+	if (pkg.maintainers?.length) md += `**Maintainers:** ${pkg.maintainers.map(m => m.name).join(", ")}\n`;
+	return md;
+}
+
 export const npmDeclaration: PackageRegistryDeclaration = {
 	site: "npm",
 	hosts: ["npmjs.com", "www.npmjs.com"],
@@ -2296,55 +2188,19 @@ export const npmDeclaration: PackageRegistryDeclaration = {
 
 		if (!result.ok) return ctx.scraperDegrade("npm", ctx.loadFailure(result));
 
-		let weeklyDownloads: number | null = null;
-		if (downloadsResult.ok) {
-			const dlData = ctx.tryParseJson<{ downloads?: number }>(downloadsResult.content);
-			if (dlData) weeklyDownloads = dlData.downloads ?? null;
-		}
-
-		const pkg = ctx.tryParseJson<{
-			name: string;
-			version: string;
-			description?: string;
-			license?: string | { type: string };
-			homepage?: string;
-			repository?: { url: string } | string;
-			keywords?: string[];
-			maintainers?: Array<{ name: string }>;
-			dependencies?: Record<string, string>;
-			readme?: string;
-		}>(result.content);
+		const weeklyDownloads =
+			(downloadsResult.ok ? ctx.tryParseJson<{ downloads?: number }>(downloadsResult.content)?.downloads : null) ??
+			null;
+		const pkg = ctx.tryParseJson<NpmPackage>(result.content);
 		if (!pkg) return ctx.scraperDegrade("npm", "unexpected response shape");
 
-		let md = `# ${pkg.name}\n\n`;
-		if (pkg.description) md += `${pkg.description}\n\n`;
-
-		md += `**Latest:** ${pkg.version || "unknown"}`;
-		if (pkg.license) {
-			const license = typeof pkg.license === "string" ? pkg.license : (pkg.license.type ?? String(pkg.license));
-			md += ` · **License:** ${license}`;
-		}
-		md += "\n";
-		if (weeklyDownloads !== null) {
-			md += `**Weekly Downloads:** ${formatNumber(weeklyDownloads)}\n`;
-		}
-		md += "\n";
-
-		if (pkg.homepage) md += `**Homepage:** ${pkg.homepage}\n`;
-		const repoUrl = typeof pkg.repository === "string" ? pkg.repository : pkg.repository?.url;
-		if (repoUrl) md += `**Repository:** ${repoUrl.replace(/^git\+/, "").replace(/\.git$/, "")}\n`;
-		if (pkg.keywords?.length) md += `**Keywords:** ${pkg.keywords.join(", ")}\n`;
-		if (pkg.maintainers?.length) md += `**Maintainers:** ${pkg.maintainers.map(m => m.name).join(", ")}\n`;
-
+		let md = renderNpmSummary(pkg, weeklyDownloads) + renderNpmLinks(pkg);
 		md += renderSimpleList(
 			"Dependencies",
 			pkg.dependencies ? Object.entries(pkg.dependencies) : null,
 			([dep, version]) => `${dep}: ${version}`,
 		);
-
-		if (pkg.readme) {
-			md += `\n---\n\n## README\n\n${pkg.readme}\n`;
-		}
+		if (pkg.readme) md += `\n---\n\n## README\n\n${pkg.readme}\n`;
 
 		return buildResult(md, {
 			url: ctx.url,
@@ -2392,6 +2248,78 @@ interface NuGetRegistrationIndex {
 	items: NuGetRegistrationPage[];
 }
 
+/** A registration page's items, fetching the page when the index only links it. */
+async function nugetPageItems(
+	page: NuGetRegistrationPage,
+	ctx: PackageRegistryContext,
+): Promise<NuGetRegistrationItem[] | undefined> {
+	if (page.items || !page["@id"]) return page.items;
+	const pageResult = await ctx.loadPage(page["@id"], { timeout: Math.min(ctx.timeout, 5), signal: ctx.signal });
+	const fetched = pageResult.ok ? ctx.tryParseJson<NuGetRegistrationPage>(pageResult.content) : null;
+	return fetched ? fetched.items : page.items;
+}
+
+/** The catalog entry of the requested version, searching the registration pages in order. */
+async function findNuGetVersion(
+	pages: NuGetRegistrationPage[],
+	requestedVersion: string,
+	ctx: PackageRegistryContext,
+): Promise<NuGetCatalogEntry | null> {
+	const wanted = requestedVersion.toLowerCase();
+	for (const page of pages) {
+		const items = await nugetPageItems(page, ctx);
+		const found = items?.find(item => item.catalogEntry.version.toLowerCase() === wanted);
+		if (found) return found.catalogEntry;
+	}
+	return null;
+}
+
+async function fetchNuGetTotalDownloads(packageName: string, ctx: PackageRegistryContext): Promise<number | null> {
+	const searchUrl = `https://api.nuget.org/v3/query?q=packageid:${encodeURIComponent(packageName)}&prerelease=true&take=1`;
+	const searchResult = await ctx.loadPage(searchUrl, { timeout: Math.min(ctx.timeout, 5), signal: ctx.signal });
+	if (!searchResult.ok) return null;
+	const searchData = ctx.tryParseJson<{ data?: Array<{ totalDownloads?: number }> }>(searchResult.content);
+	return searchData?.data?.[0]?.totalDownloads ?? null;
+}
+
+function renderNuGetEntry(entry: NuGetCatalogEntry, totalDownloads: number | null): string {
+	let md = `# ${entry.id}\n\n`;
+	if (entry.description) md += `${entry.description}\n\n`;
+	md += `**Version:** ${entry.version}`;
+	if (entry.licenseExpression) md += ` · **License:** ${entry.licenseExpression}`;
+	else if (entry.licenseUrl) md += ` · **License:** ${markdownLink("View", entry.licenseUrl)}`;
+	md += "\n";
+	if (totalDownloads !== null) md += `**Total Downloads:** ${formatNumber(totalDownloads)}\n`;
+	if (entry.authors) md += `**Authors:** ${entry.authors}\n`;
+	if (entry.projectUrl) md += `**Project URL:** ${entry.projectUrl}\n`;
+	if (entry.tags?.length) md += `**Tags:** ${entry.tags.join(", ")}\n`;
+	if (entry.published) md += `**Published:** ${formatIsoDate(entry.published)}\n`;
+	return md;
+}
+
+/** One section per target framework that has dependencies. */
+function renderNuGetDependencies(groups: NuGetCatalogEntry["dependencyGroups"]): string {
+	const withDependencies = groups?.filter(group => group.dependencies?.length) ?? [];
+	if (withDependencies.length === 0) return "";
+	let md = `\n## Dependencies\n\n`;
+	for (const group of withDependencies) {
+		md += `### ${group.targetFramework || "All Frameworks"}\n\n`;
+		for (const dep of group.dependencies ?? []) md += `- ${dep.id} (${dep.range})\n`;
+		md += "\n";
+	}
+	return md;
+}
+
+/** The five newest versions on the latest registration page, newest first, when it holds more than one. */
+function renderNuGetRecentVersions(items: NuGetRegistrationItem[]): string {
+	if (items.length <= 1) return "";
+	let md = `## Recent Versions\n\n`;
+	for (const { catalogEntry } of items.slice(-5).reverse()) {
+		md += `- **${catalogEntry.version}** (${formatIsoDate(catalogEntry.published) || "unknown"})\n`;
+	}
+	return md;
+}
+
 export const nugetDeclaration: PackageRegistryDeclaration = {
 	site: "nuget",
 	hosts: ["nuget.org", "www.nuget.org"],
@@ -2422,96 +2350,15 @@ export const nugetDeclaration: PackageRegistryDeclaration = {
 
 		if (!latestPage.items?.length) return null;
 
-		let targetEntry: NuGetCatalogEntry | null = null;
+		const latestItems = latestPage.items;
+		const targetEntry =
+			(requestedVersion ? await findNuGetVersion(index.items, requestedVersion, ctx) : null) ??
+			latestItems[latestItems.length - 1].catalogEntry;
+		const totalDownloads = await fetchNuGetTotalDownloads(packageName, ctx);
 
-		if (requestedVersion) {
-			for (const page of index.items) {
-				let pageItems = page.items;
-
-				if (!pageItems && page["@id"]) {
-					const pageResult = await ctx.loadPage(page["@id"], {
-						timeout: Math.min(ctx.timeout, 5),
-						signal: ctx.signal,
-					});
-					if (pageResult.ok) {
-						const fetchedPage = ctx.tryParseJson<NuGetRegistrationPage>(pageResult.content);
-						if (fetchedPage) pageItems = fetchedPage.items;
-					}
-				}
-
-				if (pageItems) {
-					const found = pageItems.find(
-						item => item.catalogEntry.version.toLowerCase() === requestedVersion.toLowerCase(),
-					);
-					if (found) {
-						targetEntry = found.catalogEntry;
-						break;
-					}
-				}
-			}
-		}
-
-		if (!targetEntry) {
-			const latestItem = latestPage.items[latestPage.items.length - 1];
-			targetEntry = latestItem.catalogEntry;
-		}
-
-		let totalDownloads: number | null = null;
-		const searchUrl = `https://api.nuget.org/v3/query?q=packageid:${encodeURIComponent(packageName)}&prerelease=true&take=1`;
-		const searchResult = await ctx.loadPage(searchUrl, { timeout: Math.min(ctx.timeout, 5), signal: ctx.signal });
-
-		if (searchResult.ok) {
-			const searchData = ctx.tryParseJson<{ data?: Array<{ totalDownloads?: number }> }>(searchResult.content);
-			if (searchData) totalDownloads = searchData.data?.[0]?.totalDownloads ?? null;
-		}
-
-		let md = `# ${targetEntry.id}\n\n`;
-		if (targetEntry.description) md += `${targetEntry.description}\n\n`;
-
-		md += `**Version:** ${targetEntry.version}`;
-		if (targetEntry.licenseExpression) {
-			md += ` · **License:** ${targetEntry.licenseExpression}`;
-		} else if (targetEntry.licenseUrl) {
-			md += ` · **License:** ${markdownLink("View", targetEntry.licenseUrl)}`;
-		}
-		md += "\n";
-
-		if (totalDownloads !== null) {
-			md += `**Total Downloads:** ${formatNumber(totalDownloads)}\n`;
-		}
-
-		if (targetEntry.authors) md += `**Authors:** ${targetEntry.authors}\n`;
-		if (targetEntry.projectUrl) md += `**Project URL:** ${targetEntry.projectUrl}\n`;
-		if (targetEntry.tags?.length) md += `**Tags:** ${targetEntry.tags.join(", ")}\n`;
-		if (targetEntry.published) {
-			md += `**Published:** ${formatIsoDate(targetEntry.published)}\n`;
-		}
-
-		if (targetEntry.dependencyGroups?.length) {
-			const hasAnyDeps = targetEntry.dependencyGroups.some(g => g.dependencies?.length);
-			if (hasAnyDeps) {
-				md += `\n## Dependencies\n\n`;
-				for (const group of targetEntry.dependencyGroups) {
-					if (!group.dependencies?.length) continue;
-					const framework = group.targetFramework || "All Frameworks";
-					md += `### ${framework}\n\n`;
-					for (const dep of group.dependencies) {
-						md += `- ${dep.id} (${dep.range})\n`;
-					}
-					md += "\n";
-				}
-			}
-		}
-
-		if (latestPage.items && latestPage.items.length > 1) {
-			md += `## Recent Versions\n\n`;
-			const recentVersions = latestPage.items.slice(-5).reverse();
-			for (const item of recentVersions) {
-				const entry = item.catalogEntry;
-				const pubDate = formatIsoDate(entry.published) || "unknown";
-				md += `- **${entry.version}** (${pubDate})\n`;
-			}
-		}
+		let md = renderNuGetEntry(targetEntry, totalDownloads);
+		md += renderNuGetDependencies(targetEntry.dependencyGroups);
+		md += renderNuGetRecentVersions(latestItems);
 
 		return buildResult(md, {
 			url: ctx.url,
@@ -2546,6 +2393,53 @@ interface OpenVsxExtension {
 	files?: OpenVsxFileLinks;
 }
 
+/** The extension README, or `null` when it is unlinked or cannot be fetched; caller cancellation propagates. */
+async function fetchOpenVsxReadme(readmeUrl: string | undefined, ctx: PackageRegistryContext): Promise<string | null> {
+	if (!readmeUrl) return null;
+	try {
+		const readmeResult = await ctx.loadPage(readmeUrl, { timeout: Math.min(ctx.timeout, 10), signal: ctx.signal });
+		if (readmeResult.ok) return readmeResult.content;
+		logger.warn("Open VSX readme could not be fetched; the extension renders without it", {
+			url: readmeUrl,
+			reason: ctx.loadFailure(readmeResult),
+		});
+	} catch (error) {
+		if (isCancellation(error)) throw error;
+		logger.warn("Open VSX readme could not be fetched; the extension renders without it", {
+			url: readmeUrl,
+			error: errorMessage(error),
+		});
+	}
+	return null;
+}
+
+function renderOpenVsxIdentity(
+	data: OpenVsxExtension,
+	namespace: string,
+	extension: string,
+	version: string | undefined,
+): string {
+	let md = renderHeader(data.displayName || data.name || `${namespace}/${extension}`, data.description);
+	md += `**Namespace:** ${data.namespace || namespace}\n`;
+	md += `**Extension:** ${data.name || extension}\n`;
+	md += `**Version:** ${data.version || version || "unknown"}${data.license ? ` | **License:** ${data.license}` : ""}\n`;
+	return md;
+}
+
+function renderOpenVsxStats(data: OpenVsxExtension): string {
+	let md = "";
+	if (typeof data.downloadCount === "number") md += `**Downloads:** ${formatNumber(data.downloadCount)}\n`;
+	if (typeof data.averageRating === "number") {
+		const reviewSuffix = typeof data.reviewCount === "number" ? ` (${data.reviewCount} reviews)` : "";
+		md += `**Rating:** ${data.averageRating}${reviewSuffix}\n`;
+	}
+	const repository = typeof data.repository === "string" ? data.repository : data.repository?.url;
+	if (repository) md += `**Repository:** ${repository.replace(/^git\+/, "").replace(/\.git$/, "")}\n`;
+	if (data.homepage) md += `**Homepage:** ${data.homepage}\n`;
+	if (data.categories?.length) md += `**Categories:** ${data.categories.join(", ")}\n`;
+	return md;
+}
+
 export const openVsxDeclaration: PackageRegistryDeclaration = {
 	site: "open-vsx",
 	hosts: ["open-vsx.org", "www.open-vsx.org"],
@@ -2570,55 +2464,9 @@ export const openVsxDeclaration: PackageRegistryDeclaration = {
 		const data = ctx.tryParseJson<OpenVsxExtension>(result.content);
 		if (!data) return ctx.scraperDegrade("open-vsx", "unexpected response shape");
 
-		let readme: string | null = null;
-		const readmeUrl = data.files?.readme;
-		if (readmeUrl) {
-			try {
-				const readmeResult = await ctx.loadPage(readmeUrl, {
-					timeout: Math.min(ctx.timeout, 10),
-					signal: ctx.signal,
-				});
-				if (readmeResult.ok) readme = readmeResult.content;
-				else
-					logger.warn("Open VSX readme could not be fetched; the extension renders without it", {
-						url: readmeUrl,
-						reason: ctx.loadFailure(readmeResult),
-					});
-			} catch (error) {
-				if (isCancellation(error)) throw error;
-				logger.warn("Open VSX readme could not be fetched; the extension renders without it", {
-					url: readmeUrl,
-					error: errorMessage(error),
-				});
-			}
-		}
-
-		const displayName = data.displayName || data.name || `${namespace}/${extension}`;
-		const displayNamespace = data.namespace || namespace;
-		const displayVersion = data.version || version || "unknown";
-		const downloads = typeof data.downloadCount === "number" ? data.downloadCount : null;
-		const rating = typeof data.averageRating === "number" ? data.averageRating : null;
-		const reviews = typeof data.reviewCount === "number" ? data.reviewCount : null;
-		const repository = typeof data.repository === "string" ? data.repository : data.repository?.url || null;
-
-		let md = renderHeader(displayName, data.description);
-		md += `**Namespace:** ${displayNamespace}\n`;
-		md += `**Extension:** ${data.name || extension}\n`;
-		md += `**Version:** ${displayVersion}${data.license ? ` | **License:** ${data.license}` : ""}\n`;
-
-		if (downloads !== null) {
-			md += `**Downloads:** ${formatNumber(downloads)}\n`;
-		}
-
-		if (rating !== null) {
-			const reviewSuffix = reviews !== null ? ` (${reviews} reviews)` : "";
-			md += `**Rating:** ${rating}${reviewSuffix}\n`;
-		}
-
-		if (repository) md += `**Repository:** ${repository.replace(/^git\+/, "").replace(/\.git$/, "")}\n`;
-		if (data.homepage) md += `**Homepage:** ${data.homepage}\n`;
-		if (data.categories?.length) md += `**Categories:** ${data.categories.join(", ")}\n`;
-		md += renderReadme(readme);
+		const readme = await fetchOpenVsxReadme(data.files?.readme, ctx);
+		const md =
+			renderOpenVsxIdentity(data, namespace, extension, version) + renderOpenVsxStats(data) + renderReadme(readme);
 
 		return buildResult(md, {
 			url: ctx.url,
@@ -2632,6 +2480,103 @@ export const openVsxDeclaration: PackageRegistryDeclaration = {
 // ============================================================================
 // 20. Packagist (PHP)
 // ============================================================================
+
+interface PackagistVersion {
+	name: string;
+	version: string;
+	version_normalized?: string;
+	description?: string;
+	license?: string[];
+	homepage?: string;
+	source?: { url: string; type: string };
+	require?: Record<string, string>;
+	"require-dev"?: Record<string, string>;
+	authors?: Array<{ name: string; email?: string }>;
+	time?: string;
+}
+
+interface PackagistPackage {
+	name: string;
+	description?: string;
+	time?: string;
+	maintainers?: Array<{ name: string; avatar_url?: string }>;
+	versions?: Record<string, PackagistVersion>;
+	type?: string;
+	repository?: string;
+	github_stars?: number;
+	github_watchers?: number;
+	github_forks?: number;
+	github_open_issues?: number;
+	language?: string;
+	dependents?: number;
+	suggesters?: number;
+	downloads?: {
+		total: number;
+		monthly: number;
+		daily: number;
+	};
+	favers?: number;
+}
+
+/** The most recently published release, else `dev-master`, `dev-main` or the first version listed. */
+function pickPackagistLatest(versions: Record<string, PackagistVersion> | undefined): {
+	key: string;
+	version: PackagistVersion | undefined;
+} {
+	if (!versions) return { key: "", version: undefined };
+	let latest: PackagistVersion | undefined;
+	let latestKey = "";
+	for (const [key, ver] of Object.entries(versions)) {
+		if (key === "dev-master" || key === "dev-main" || key.includes("-dev")) continue;
+		if (!latest || (ver.time && latest.time && ver.time > latest.time)) {
+			latest = ver;
+			latestKey = key;
+		}
+	}
+	if (latest) return { key: latestKey, version: latest };
+	const fallback = versions["dev-master"] || versions["dev-main"] || Object.values(versions)[0];
+	return { key: fallback?.version || "", version: fallback };
+}
+
+function renderPackagistSummary(
+	pkg: PackagistPackage,
+	latestKey: string,
+	latest: PackagistVersion | undefined,
+): string {
+	let md = `# ${pkg.name}\n\n`;
+	if (pkg.description) md += `${pkg.description}\n\n`;
+	md += `**Latest:** ${latestKey || "unknown"}`;
+	if (latest?.license?.length) md += ` · **License:** ${latest.license.join(", ")}`;
+	if (pkg.type) md += ` · **Type:** ${pkg.type}`;
+	md += "\n";
+	if (pkg.downloads) {
+		md += `**Downloads:** ${formatNumber(pkg.downloads.total)} total · ${formatNumber(pkg.downloads.monthly)}/month\n`;
+	}
+	if (pkg.favers) md += `**Stars:** ${formatNumber(pkg.favers)}\n`;
+	return `${md}\n`;
+}
+
+function renderPackagistPeople(pkg: PackagistPackage, latest: PackagistVersion | undefined): string {
+	let md = "";
+	if (latest?.authors?.length) {
+		md += `**Authors:** ${latest.authors.map(a => (a.email ? `${a.name} <${a.email}>` : a.name)).join(", ")}\n`;
+	}
+	if (pkg.maintainers?.length) md += `**Maintainers:** ${pkg.maintainers.map(m => m.name).join(", ")}\n`;
+	if (latest?.homepage) md += `**Homepage:** ${latest.homepage}\n`;
+	const sourceUrl = latest?.source?.url;
+	if (pkg.repository) md += `**Repository:** ${pkg.repository}\n`;
+	else if (sourceUrl) md += `**Repository:** ${sourceUrl.replace(/\.git$/, "")}\n`;
+	return md;
+}
+
+function renderPackagistGitHub(pkg: PackagistPackage): string {
+	if (!pkg.github_stars && !pkg.github_forks) return "";
+	const stats: string[] = [];
+	if (pkg.github_stars) stats.push(`${formatNumber(pkg.github_stars)} stars`);
+	if (pkg.github_forks) stats.push(`${formatNumber(pkg.github_forks)} forks`);
+	if (pkg.github_open_issues) stats.push(`${pkg.github_open_issues} open issues`);
+	return `**GitHub:** ${stats.join(" · ")}\n`;
+}
 
 export const packagistDeclaration: PackageRegistryDeclaration = {
 	site: "packagist",
@@ -2649,107 +2594,15 @@ export const packagistDeclaration: PackageRegistryDeclaration = {
 
 		if (!result.ok) return ctx.scraperDegrade("packagist", ctx.loadFailure(result));
 
-		const data = ctx.tryParseJson<{
-			package: {
-				name: string;
-				description?: string;
-				time?: string;
-				maintainers?: Array<{ name: string; avatar_url?: string }>;
-				versions?: Record<
-					string,
-					{
-						name: string;
-						version: string;
-						version_normalized?: string;
-						description?: string;
-						license?: string[];
-						homepage?: string;
-						source?: { url: string; type: string };
-						require?: Record<string, string>;
-						"require-dev"?: Record<string, string>;
-						authors?: Array<{ name: string; email?: string }>;
-						time?: string;
-					}
-				>;
-				type?: string;
-				repository?: string;
-				github_stars?: number;
-				github_watchers?: number;
-				github_forks?: number;
-				github_open_issues?: number;
-				language?: string;
-				dependents?: number;
-				suggesters?: number;
-				downloads?: {
-					total: number;
-					monthly: number;
-					daily: number;
-				};
-				favers?: number;
-			};
-		}>(result.content);
+		const data = ctx.tryParseJson<{ package: PackagistPackage }>(result.content);
 		if (!data) return ctx.scraperDegrade("packagist", "unexpected response shape");
 
 		const pkg = data.package;
 		if (!pkg) return null;
 
-		type VersionInfo = NonNullable<typeof pkg.versions>[string];
-		let latestVersion: VersionInfo | null = null;
-		let latestVersionKey = "";
-
-		if (pkg.versions) {
-			for (const [key, ver] of Object.entries(pkg.versions)) {
-				if (key === "dev-master" || key === "dev-main" || key.includes("-dev")) continue;
-				if (!latestVersion || (ver.time && latestVersion.time && ver.time > latestVersion.time)) {
-					latestVersion = ver;
-					latestVersionKey = key;
-				}
-			}
-			if (!latestVersion) {
-				latestVersion = pkg.versions["dev-master"] || pkg.versions["dev-main"] || Object.values(pkg.versions)[0];
-				latestVersionKey = latestVersion?.version || "";
-			}
-		}
-
-		let md = `# ${pkg.name}\n\n`;
-		if (pkg.description) md += `${pkg.description}\n\n`;
-
-		md += `**Latest:** ${latestVersionKey || "unknown"}`;
-		if (latestVersion?.license?.length) md += ` · **License:** ${latestVersion.license.join(", ")}`;
-		if (pkg.type) md += ` · **Type:** ${pkg.type}`;
-		md += "\n";
-
-		if (pkg.downloads) {
-			md += `**Downloads:** ${formatNumber(pkg.downloads.total)} total · ${formatNumber(pkg.downloads.monthly)}/month\n`;
-		}
-		if (pkg.favers) md += `**Stars:** ${formatNumber(pkg.favers)}\n`;
-		md += "\n";
-
-		if (latestVersion?.authors?.length) {
-			const authorList = latestVersion.authors
-				.map((a: { name: string; email?: string }) => (a.email ? `${a.name} <${a.email}>` : a.name))
-				.join(", ");
-			md += `**Authors:** ${authorList}\n`;
-		}
-
-		if (pkg.maintainers?.length) {
-			md += `**Maintainers:** ${pkg.maintainers.map(m => m.name).join(", ")}\n`;
-		}
-
-		if (latestVersion?.homepage) md += `**Homepage:** ${latestVersion.homepage}\n`;
-		if (pkg.repository) md += `**Repository:** ${pkg.repository}\n`;
-		else if (latestVersion?.source?.url) {
-			const repoUrl = latestVersion.source.url.replace(/\.git$/, "");
-			md += `**Repository:** ${repoUrl}\n`;
-		}
-
-		if (pkg.github_stars || pkg.github_forks) {
-			const stats: string[] = [];
-			if (pkg.github_stars) stats.push(`${formatNumber(pkg.github_stars)} stars`);
-			if (pkg.github_forks) stats.push(`${formatNumber(pkg.github_forks)} forks`);
-			if (pkg.github_open_issues) stats.push(`${pkg.github_open_issues} open issues`);
-			md += `**GitHub:** ${stats.join(" · ")}\n`;
-		}
+		const { key: latestKey, version: latestVersion } = pickPackagistLatest(pkg.versions);
+		let md = renderPackagistSummary(pkg, latestKey, latestVersion);
+		md += renderPackagistPeople(pkg, latestVersion) + renderPackagistGitHub(pkg);
 
 		md += renderSimpleList(
 			"Requirements",
@@ -2775,6 +2628,87 @@ export const packagistDeclaration: PackageRegistryDeclaration = {
 // 21. Pub.dev (Dart/Flutter)
 // ============================================================================
 
+interface PubSpec {
+	description?: string;
+	homepage?: string;
+	repository?: string;
+	documentation?: string;
+	environment?: Record<string, string>;
+	dependencies?: Record<string, unknown>;
+	dev_dependencies?: Record<string, unknown>;
+}
+
+interface PubDevScore {
+	likeCount?: number;
+	grantedPoints?: number;
+	maxPoints?: number;
+	popularityScore?: number;
+}
+
+interface PubDevPackage {
+	name: string;
+	latest: { version: string; pubspec: PubSpec };
+	publisherId?: string;
+	metrics?: { score?: PubDevScore };
+}
+
+function renderPubDevScore(score: PubDevScore | undefined): string {
+	if (!score) return "";
+	let md = "";
+	if (score.likeCount !== undefined) md += `**Likes:** ${formatNumber(score.likeCount)}`;
+	if (score.grantedPoints !== undefined && score.maxPoints !== undefined) {
+		md += ` · **Pub Points:** ${score.grantedPoints}/${score.maxPoints}`;
+	}
+	if (score.popularityScore !== undefined) md += ` · **Popularity:** ${Math.round(score.popularityScore * 100)}%`;
+	return `${md}\n`;
+}
+
+function renderPubDevLinks(pubspec: PubSpec): string {
+	let md = "";
+	if (pubspec.homepage) md += `**Homepage:** ${pubspec.homepage}\n`;
+	if (pubspec.repository) md += `**Repository:** ${pubspec.repository}\n`;
+	if (pubspec.documentation) md += `**Documentation:** ${pubspec.documentation}\n`;
+	const constraints = Object.entries(pubspec.environment ?? {}).map(([key, value]) => `${key}: ${value}`);
+	if (constraints.length > 0) md += `**SDK:** ${constraints.join(", ")}\n`;
+	return `${md}\n`;
+}
+
+const MAX_PUB_DEV_DEPENDENCIES = 20;
+
+/** The first dependencies with their version constraints; a path, git or hosted source shows as `complex`. */
+function renderPubDevDependencies(dependencies: Record<string, unknown> | undefined): string {
+	const deps = Object.keys(dependencies ?? {});
+	if (!dependencies || deps.length === 0) return "";
+	let md = `## Dependencies (${deps.length})\n\n`;
+	for (const dep of deps.slice(0, MAX_PUB_DEV_DEPENDENCIES)) {
+		const constraint = dependencies[dep];
+		const constraintStr =
+			typeof constraint === "string" ? constraint : typeof constraint === "object" ? "complex" : "";
+		md += constraintStr ? `- ${dep}: ${constraintStr}\n` : `- ${dep}\n`;
+	}
+	if (deps.length > MAX_PUB_DEV_DEPENDENCIES) {
+		md += `\n[…${deps.length - MAX_PUB_DEV_DEPENDENCIES} dependencies elided…]\n`;
+	}
+	return `${md}\n`;
+}
+
+/** The README section from the version's page, or nothing when the page fails or the README is under 100 characters. */
+async function fetchPubDevReadme(packageName: string, version: string, ctx: PackageRegistryContext): Promise<string> {
+	const readmeUrl = `https://pub.dev/packages/${encodeURIComponent(packageName)}/versions/${encodeURIComponent(version)}/readme`;
+	try {
+		const readmeResult = await ctx.loadPage(readmeUrl, { timeout: Math.min(ctx.timeout, 10), signal: ctx.signal });
+		if (!readmeResult.ok) return "";
+		const readmeMatch = readmeResult.content.match(
+			/<div[^>]*class="[^"]*markdown-body[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
+		);
+		if (!readmeMatch) return "";
+		const readme = await htmlToBasicMarkdown(readmeMatch[1]);
+		return readme.length > 100 ? `## README\n\n${readme}\n` : "";
+	} catch {
+		return "";
+	}
+}
+
 export const pubDevDeclaration: PackageRegistryDeclaration = {
 	site: "pub-dev",
 	hosts: ["pub.dev", "www.pub.dev"],
@@ -2787,113 +2721,18 @@ export const pubDevDeclaration: PackageRegistryDeclaration = {
 
 		if (!result.ok) return ctx.scraperDegrade("pub-dev", ctx.loadFailure(result));
 
-		const data = ctx.tryParseJson<{
-			name: string;
-			latest: {
-				version: string;
-				pubspec: {
-					description?: string;
-					homepage?: string;
-					repository?: string;
-					documentation?: string;
-					environment?: Record<string, string>;
-					dependencies?: Record<string, unknown>;
-					dev_dependencies?: Record<string, unknown>;
-				};
-			};
-			publisherId?: string;
-			metrics?: {
-				score?: {
-					likeCount?: number;
-					grantedPoints?: number;
-					maxPoints?: number;
-					popularityScore?: number;
-				};
-			};
-		}>(result.content);
+		const data = ctx.tryParseJson<PubDevPackage>(result.content);
 		if (!data) return ctx.scraperDegrade("pub-dev", "unexpected response shape");
 
-		const { name, latest, publisherId, metrics } = data;
-		const pubspec = latest.pubspec;
-
-		let md = `# ${name}\n\n`;
-		if (pubspec.description) md += `${pubspec.description}\n\n`;
-
+		const { latest } = data;
+		let md = `# ${data.name}\n\n`;
+		if (latest.pubspec.description) md += `${latest.pubspec.description}\n\n`;
 		md += `**Latest:** ${latest.version}`;
-		if (publisherId) md += ` · **Publisher:** ${publisherId}`;
-		md += "\n";
-
-		const score = metrics?.score;
-		if (score) {
-			const likes = score.likeCount;
-			const points = score.grantedPoints;
-			const maxPoints = score.maxPoints;
-			const popularity = score.popularityScore;
-
-			if (likes !== undefined) md += `**Likes:** ${formatNumber(likes)}`;
-			if (points !== undefined && maxPoints !== undefined) {
-				md += ` · **Pub Points:** ${points}/${maxPoints}`;
-			}
-			if (popularity !== undefined) {
-				md += ` · **Popularity:** ${Math.round(popularity * 100)}%`;
-			}
-			md += "\n";
-		}
-
-		md += "\n";
-
-		if (pubspec.homepage) md += `**Homepage:** ${pubspec.homepage}\n`;
-		if (pubspec.repository) md += `**Repository:** ${pubspec.repository}\n`;
-		if (pubspec.documentation) md += `**Documentation:** ${pubspec.documentation}\n`;
-
-		if (pubspec.environment) {
-			const constraints: string[] = [];
-			for (const [key, value] of Object.entries(pubspec.environment)) {
-				constraints.push(`${key}: ${value}`);
-			}
-			if (constraints.length > 0) {
-				md += `**SDK:** ${constraints.join(", ")}\n`;
-			}
-		}
-
-		md += "\n";
-
-		if (pubspec.dependencies) {
-			const deps = Object.keys(pubspec.dependencies);
-			if (deps.length > 0) {
-				md += `## Dependencies (${deps.length})\n\n`;
-				for (const dep of deps.slice(0, 20)) {
-					const constraint = pubspec.dependencies[dep];
-					const constraintStr =
-						typeof constraint === "string" ? constraint : typeof constraint === "object" ? "complex" : "";
-					md += `- ${dep}`;
-					if (constraintStr) md += `: ${constraintStr}`;
-					md += "\n";
-				}
-				if (deps.length > 20) {
-					md += `\n[…${deps.length - 20} dependencies elided…]\n`;
-				}
-				md += "\n";
-			}
-		}
-
-		const readmeUrl = `https://pub.dev/packages/${encodeURIComponent(packageName)}/versions/${encodeURIComponent(latest.version)}/readme`;
-		try {
-			const readmeResult = await ctx.loadPage(readmeUrl, { timeout: Math.min(ctx.timeout, 10), signal: ctx.signal });
-			if (readmeResult.ok) {
-				const readmeMatch = readmeResult.content.match(
-					/<div[^>]*class="[^"]*markdown-body[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
-				);
-				if (readmeMatch) {
-					const readme = await htmlToBasicMarkdown(readmeMatch[1]);
-					if (readme.length > 100) {
-						md += `## README\n\n${readme}\n`;
-					}
-				}
-			}
-		} catch {
-			// Continue without README
-		}
+		if (data.publisherId) md += ` · **Publisher:** ${data.publisherId}`;
+		md += `\n${renderPubDevScore(data.metrics?.score)}\n`;
+		md += renderPubDevLinks(latest.pubspec);
+		md += renderPubDevDependencies(latest.pubspec.dependencies);
+		md += await fetchPubDevReadme(packageName, latest.version, ctx);
 
 		return buildResult(md, {
 			url: ctx.url,
@@ -2907,6 +2746,35 @@ export const pubDevDeclaration: PackageRegistryDeclaration = {
 // ============================================================================
 // 22. PyPI (Python)
 // ============================================================================
+
+interface PyPIInfo {
+	name: string;
+	version: string;
+	summary?: string;
+	description?: string;
+	author?: string;
+	author_email?: string;
+	license?: string;
+	home_page?: string;
+	project_urls?: Record<string, string>;
+	requires_python?: string;
+	keywords?: string;
+	classifiers?: string[];
+}
+
+function renderPyPIDetails(info: PyPIInfo): string {
+	let md = "";
+	if (info.author) md += `**Author:** ${info.author}${info.author_email ? ` <${info.author_email}>` : ""}\n`;
+	if (info.requires_python) md += `**Python:** ${info.requires_python}\n`;
+	if (info.home_page) md += `**Homepage:** ${info.home_page}\n`;
+	const projectUrls = Object.entries(info.project_urls ?? {});
+	if (projectUrls.length > 0) {
+		md += "\n**Project URLs:**\n";
+		for (const [label, url] of projectUrls) md += `- ${label}: ${url}\n`;
+	}
+	if (info.keywords) md += `\n**Keywords:** ${info.keywords}\n`;
+	return md;
+}
 
 export const pypiDeclaration: PackageRegistryDeclaration = {
 	site: "pypi",
@@ -2925,27 +2793,12 @@ export const pypiDeclaration: PackageRegistryDeclaration = {
 
 		if (!result.ok) return ctx.scraperDegrade("pypi", ctx.loadFailure(result));
 
-		let weeklyDownloads: number | null = null;
-		if (downloadsResult.ok) {
-			const dlData = ctx.tryParseJson<{ data?: { last_week?: number } }>(downloadsResult.content);
-			if (dlData) weeklyDownloads = dlData.data?.last_week ?? null;
-		}
-
+		const weeklyDownloads =
+			(downloadsResult.ok
+				? ctx.tryParseJson<{ data?: { last_week?: number } }>(downloadsResult.content)?.data?.last_week
+				: null) ?? null;
 		const pkg = ctx.tryParseJson<{
-			info: {
-				name: string;
-				version: string;
-				summary?: string;
-				description?: string;
-				author?: string;
-				author_email?: string;
-				license?: string;
-				home_page?: string;
-				project_urls?: Record<string, string>;
-				requires_python?: string;
-				keywords?: string;
-				classifiers?: string[];
-			};
+			info: PyPIInfo;
 			urls?: Array<{ filename: string; size: number; upload_time: string }>;
 			releases?: Record<string, unknown>;
 			requires_dist?: string[];
@@ -2956,27 +2809,8 @@ export const pypiDeclaration: PackageRegistryDeclaration = {
 		md += `**Latest:** ${info.version}`;
 		if (info.license) md += ` · **License:** ${info.license}`;
 		md += "\n";
-
-		if (weeklyDownloads !== null) {
-			md += `**Weekly Downloads:** ${formatNumber(weeklyDownloads)}\n`;
-		}
-		md += "\n";
-
-		if (info.author) {
-			md += `**Author:** ${info.author}${info.author_email ? ` <${info.author_email}>` : ""}\n`;
-		}
-
-		if (info.requires_python) md += `**Python:** ${info.requires_python}\n`;
-		if (info.home_page) md += `**Homepage:** ${info.home_page}\n`;
-
-		if (info.project_urls && Object.keys(info.project_urls).length > 0) {
-			md += "\n**Project URLs:**\n";
-			for (const [label, url] of Object.entries(info.project_urls)) {
-				md += `- ${label}: ${url}\n`;
-			}
-		}
-
-		if (info.keywords) md += `\n**Keywords:** ${info.keywords}\n`;
+		if (weeklyDownloads !== null) md += `**Weekly Downloads:** ${formatNumber(weeklyDownloads)}\n`;
+		md += `\n${renderPyPIDetails(info)}`;
 
 		md += renderStringList("Dependencies", pkg.requires_dist);
 		md += renderReadme(info.description, "Description");
@@ -3083,6 +2917,83 @@ function prettifyRepologyRepo(repo: string): string {
 		.join(" ");
 }
 
+const REPOLOGY_STATUS_ORDER = [
+	"newest",
+	"unique",
+	"devel",
+	"rolling",
+	"outdated",
+	"legacy",
+	"noscheme",
+	"incorrect",
+	"untrusted",
+	"ignored",
+];
+
+/** A status's rank in the table: its place in `REPOLOGY_STATUS_ORDER`, after every known status when unknown. */
+function repologyStatusRank(status: string): number {
+	const rank = REPOLOGY_STATUS_ORDER.indexOf(status);
+	return rank === -1 ? REPOLOGY_STATUS_ORDER.length : rank;
+}
+
+/** The header: the newest versions (else the first listed), the first summary, the first license list, every category. */
+function renderRepologyOverview(packageName: string, packages: RepologyPackage[]): string {
+	const newestVersions = new Set(
+		packages.filter(pkg => pkg.status === "newest" || pkg.status === "unique").map(pkg => pkg.version),
+	);
+	if (newestVersions.size === 0) newestVersions.add(packages[0].version);
+	const summary = packages.find(pkg => pkg.summary)?.summary;
+	const licenses = packages.find(pkg => pkg.licenses?.length)?.licenses ?? [];
+	const categories = new Set<string>();
+	for (const pkg of packages) {
+		if (pkg.categories) for (const category of pkg.categories) categories.add(category);
+	}
+
+	let md = renderHeader(packageName, summary);
+	md += `**Newest Version:** ${Array.from(newestVersions).join(", ") || "unknown"}\n`;
+	md += `**Repositories:** ${packages.length}\n`;
+	if (licenses.length > 0) md += `**License:** ${licenses.join(", ")}\n`;
+	if (categories.size > 0) md += `**Categories:** ${Array.from(categories).join(", ")}\n`;
+	return `${md}\n`;
+}
+
+function renderRepologyStatusSummary(packages: RepologyPackage[]): string {
+	const counts = new Map<string, number>();
+	for (const pkg of packages) counts.set(pkg.status, (counts.get(pkg.status) ?? 0) + 1);
+	let md = "## Version Status Summary\n\n";
+	for (const status of REPOLOGY_STATUS_ORDER) {
+		const count = counts.get(status);
+		if (count) md += `- ${repologyStatusIndicator(status)} **${status}**: ${count} repos\n`;
+	}
+	return `${md}\n`;
+}
+
+const MAX_REPOLOGY_ROWS = 15;
+
+/** One row per repository, best status first, each repository and subrepository shown once. */
+function renderRepologyTable(packages: RepologyPackage[]): string {
+	const sorted = [...packages].sort(
+		(a, b) => repologyStatusRank(a.status) - repologyStatusRank(b.status) || a.repo.localeCompare(b.repo),
+	);
+	let md = "## Package Versions by Repository\n\n";
+	md += "| Repository | Version | Status |\n";
+	md += "|------------|---------|--------|\n";
+	const shownRepos = new Set<string>();
+	for (const pkg of sorted) {
+		const repoKey = pkg.subrepo ? `${pkg.repo}/${pkg.subrepo}` : pkg.repo;
+		if (shownRepos.has(repoKey)) continue;
+		shownRepos.add(repoKey);
+		const repoName = escapeMarkdownTableCell(prettifyRepologyRepo(pkg.repo));
+		const version = escapeMarkdownTableCell(pkg.origversion || pkg.version);
+		md += `| ${repoName} | \`${version}\` | ${repologyStatusIndicator(pkg.status)} ${pkg.status} |\n`;
+		if (shownRepos.size >= MAX_REPOLOGY_ROWS) break;
+	}
+	if (packages.length > MAX_REPOLOGY_ROWS) {
+		md += `\n[…${packages.length - MAX_REPOLOGY_ROWS} repositories elided…]\n`;
+	}
+	return md;
+}
+
 export const repologyDeclaration: PackageRegistryDeclaration = {
 	site: "repology",
 	hosts: ["repology.org", "www.repology.org"],
@@ -3106,100 +3017,9 @@ export const repologyDeclaration: PackageRegistryDeclaration = {
 		if (!packages) return ctx.scraperDegrade("repology", "unexpected response shape");
 		if (!Array.isArray(packages) || packages.length === 0) return null;
 
-		const newestVersions = new Set<string>();
-		let summary: string | undefined;
-		let licenses: string[] = [];
-		const categories = new Set<string>();
-
-		for (const pkg of packages) {
-			if (pkg.status === "newest" || pkg.status === "unique") {
-				newestVersions.add(pkg.version);
-			}
-			if (!summary && pkg.summary) summary = pkg.summary;
-			if (pkg.licenses?.length && !licenses.length) licenses = pkg.licenses;
-			if (pkg.categories) {
-				for (const cat of pkg.categories) categories.add(cat);
-			}
-		}
-
-		if (newestVersions.size === 0) {
-			const versions = packages.map(p => p.version);
-			if (versions.length > 0) newestVersions.add(versions[0]);
-		}
-
-		const statusCounts: Record<string, number> = {};
-		for (const pkg of packages) {
-			statusCounts[pkg.status] = (statusCounts[pkg.status] || 0) + 1;
-		}
-
-		let md = renderHeader(packageName, summary);
-		md += `**Newest Version:** ${Array.from(newestVersions).join(", ") || "unknown"}\n`;
-		md += `**Repositories:** ${packages.length}\n`;
-		if (licenses.length > 0) md += `**License:** ${licenses.join(", ")}\n`;
-		if (categories.size > 0) md += `**Categories:** ${Array.from(categories).join(", ")}\n`;
-		md += "\n";
-
-		md += "## Version Status Summary\n\n";
-		const statusOrder = [
-			"newest",
-			"unique",
-			"devel",
-			"rolling",
-			"outdated",
-			"legacy",
-			"noscheme",
-			"incorrect",
-			"untrusted",
-			"ignored",
-		];
-		for (const status of statusOrder) {
-			if (statusCounts[status]) {
-				md += `- ${repologyStatusIndicator(status)} **${status}**: ${statusCounts[status]} repos\n`;
-			}
-		}
-		md += "\n";
-
-		const sortedPackages = [...packages].sort((a, b) => {
-			const statusPriority: Record<string, number> = {
-				newest: 0,
-				unique: 1,
-				devel: 2,
-				rolling: 3,
-				outdated: 4,
-				legacy: 5,
-				noscheme: 6,
-				incorrect: 7,
-				untrusted: 8,
-				ignored: 9,
-			};
-			const aPriority = statusPriority[a.status] ?? 10;
-			const bPriority = statusPriority[b.status] ?? 10;
-			if (aPriority !== bPriority) return aPriority - bPriority;
-			return a.repo.localeCompare(b.repo);
-		});
-
-		md += "## Package Versions by Repository\n\n";
-		md += "| Repository | Version | Status |\n";
-		md += "|------------|---------|--------|\n";
-
-		const shownRepos = new Set<string>();
-		let count = 0;
-		for (const pkg of sortedPackages) {
-			const repoKey = pkg.subrepo ? `${pkg.repo}/${pkg.subrepo}` : pkg.repo;
-			if (shownRepos.has(repoKey)) continue;
-			shownRepos.add(repoKey);
-
-			const repoName = escapeMarkdownTableCell(prettifyRepologyRepo(pkg.repo));
-			const version = escapeMarkdownTableCell(pkg.origversion || pkg.version);
-			md += `| ${repoName} | \`${version}\` | ${repologyStatusIndicator(pkg.status)} ${pkg.status} |\n`;
-
-			count++;
-			if (count >= 15) break;
-		}
-
-		if (packages.length > 15) {
-			md += `\n[…${packages.length - 15} repositories elided…]\n`;
-		}
+		let md = renderRepologyOverview(packageName, packages);
+		md += renderRepologyStatusSummary(packages);
+		md += renderRepologyTable(packages);
 
 		md += `\n---\n\n${markdownLink("View on Repology", ctx.url)}\n`;
 
@@ -3398,6 +3218,79 @@ function extractSnapcraftDownloads(
 	return null;
 }
 
+interface SnapcraftChannelSummary {
+	version?: string;
+	architectures: Set<string>;
+}
+
+/** Channel-map entries grouped by channel name: the first version listed, every architecture. */
+function groupSnapcraftChannels(channelMap: SnapcraftChannelMapEntry[]): Map<string, SnapcraftChannelSummary> {
+	const channels = new Map<string, SnapcraftChannelSummary>();
+	for (const entry of channelMap) {
+		const channelName = formatSnapcraftChannelName(entry.channel);
+		if (!channelName) continue;
+		const existing = channels.get(channelName) ?? { architectures: new Set<string>() };
+		if (!existing.version && entry.version) existing.version = entry.version;
+		if (entry.channel?.architecture) existing.architectures.add(entry.channel.architecture);
+		channels.set(channelName, existing);
+	}
+	return channels;
+}
+
+function renderSnapcraftChannels(channels: Map<string, SnapcraftChannelSummary>): string {
+	if (channels.size === 0) return "";
+	let md = "## Channels\n\n";
+	const sortedChannels = Array.from(channels.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+	for (const [channelName, info] of sortedChannels) {
+		const arches = Array.from(info.architectures).sort();
+		const versionSuffix = info.version ? `: ${info.version}` : "";
+		const archSuffix = arches.length > 0 ? ` (${arches.join(", ")})` : "";
+		md += `- ${channelName}${versionSuffix}${archSuffix}\n`;
+	}
+	return `${md}\n`;
+}
+
+interface SnapcraftFacts {
+	name: string;
+	summary?: string;
+	description?: string;
+	publisher: string | null;
+	confinement?: string;
+	base?: string;
+	channelMap: SnapcraftChannelMapEntry[];
+	version?: string;
+	downloads: number | null;
+}
+
+/** Each fact from the nested `snap` object first, then the top level; the version falls back to the channel map. */
+function readSnapcraftFacts(data: SnapcraftResponse, snapName: string): SnapcraftFacts {
+	const snapInfo = data.snap ?? data;
+	const channelMap = data["channel-map"] ?? [];
+	let version = snapInfo.version ?? data.version;
+	if (!version && channelMap.length > 0) version = pickSnapcraftVersionFromChannels(channelMap);
+	return {
+		name: snapInfo.title ?? snapInfo.name ?? data.name ?? snapName,
+		summary: snapInfo.summary ?? data.summary,
+		description: snapInfo.description ?? data.description,
+		publisher: formatSnapcraftPublisher(snapInfo.publisher ?? data.publisher),
+		confinement: snapInfo.confinement ?? data.confinement,
+		base: snapInfo.base ?? data.base,
+		channelMap,
+		version,
+		downloads: extractSnapcraftDownloads(snapInfo, data),
+	};
+}
+
+function renderSnapcraftFacts(facts: SnapcraftFacts): string {
+	let md = `**Version:** ${facts.version ?? "unknown"}`;
+	if (facts.confinement) md += ` · **Confinement:** ${facts.confinement}`;
+	if (facts.base) md += ` · **Base:** ${facts.base}`;
+	md += "\n";
+	if (facts.publisher) md += `**Publisher:** ${facts.publisher}\n`;
+	if (facts.downloads !== null) md += `**Downloads:** ${formatNumber(facts.downloads)}\n`;
+	return `${md}\n`;
+}
+
 export const snapcraftDeclaration: PackageRegistryDeclaration = {
 	site: "snapcraft",
 	hosts: ["snapcraft.io", "www.snapcraft.io"],
@@ -3419,58 +3312,12 @@ export const snapcraftDeclaration: PackageRegistryDeclaration = {
 		const data = ctx.tryParseJson<SnapcraftResponse>(result.content);
 		if (!data) return ctx.scraperDegrade("snapcraft", "unexpected response shape");
 
-		const snapInfo = data.snap ?? data;
-		const name = snapInfo.title ?? snapInfo.name ?? data.name ?? snapName;
-		const summary = snapInfo.summary ?? data.summary;
-		const description = snapInfo.description ?? data.description;
-		const publisher = formatSnapcraftPublisher(snapInfo.publisher ?? data.publisher);
-		const confinement = snapInfo.confinement ?? data.confinement;
-		const base = snapInfo.base ?? data.base;
-
-		const channelMap = data["channel-map"] ?? [];
-		let version = snapInfo.version ?? data.version;
-		if (!version && channelMap.length > 0) {
-			version = pickSnapcraftVersionFromChannels(channelMap);
-		}
-
-		const downloads = extractSnapcraftDownloads(snapInfo, data);
-
-		const channels = new Map<string, { version?: string; architectures: Set<string> }>();
-		for (const entry of channelMap) {
-			const channelName = formatSnapcraftChannelName(entry.channel);
-			if (!channelName) continue;
-			const existing = channels.get(channelName) ?? { architectures: new Set<string>() };
-			if (!existing.version && entry.version) existing.version = entry.version;
-			if (entry.channel?.architecture) existing.architectures.add(entry.channel.architecture);
-			channels.set(channelName, existing);
-		}
-
-		let md = renderHeader(name, summary);
-		md += `**Version:** ${version ?? "unknown"}`;
-		if (confinement) md += ` · **Confinement:** ${confinement}`;
-		if (base) md += ` · **Base:** ${base}`;
-		md += "\n";
-
-		if (publisher) md += `**Publisher:** ${publisher}\n`;
-		if (downloads !== null) md += `**Downloads:** ${formatNumber(downloads)}\n`;
-		md += "\n";
-
-		if (channels.size > 0) {
-			md += "## Channels\n\n";
-			const sortedChannels = Array.from(channels.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-			for (const [channelName, info] of sortedChannels) {
-				const arches = Array.from(info.architectures).sort();
-				const versionSuffix = info.version ? `: ${info.version}` : "";
-				const archSuffix = arches.length > 0 ? ` (${arches.join(", ")})` : "";
-				md += `- ${channelName}${versionSuffix}${archSuffix}\n`;
-			}
-			md += "\n";
-		}
-
-		const descriptionText = description ?? summary;
-		if (descriptionText) {
-			md += `## Description\n\n${descriptionText}\n`;
-		}
+		const facts = readSnapcraftFacts(data, snapName);
+		let md = renderHeader(facts.name, facts.summary);
+		md += renderSnapcraftFacts(facts);
+		md += renderSnapcraftChannels(groupSnapcraftChannels(facts.channelMap));
+		const descriptionText = facts.description ?? facts.summary;
+		if (descriptionText) md += `## Description\n\n${descriptionText}\n`;
 
 		return buildResult(md, {
 			url: ctx.url,
@@ -3485,6 +3332,35 @@ export const snapcraftDeclaration: PackageRegistryDeclaration = {
 // 26. Terraform Registry
 // ============================================================================
 
+interface TerraformModuleInput {
+	name: string;
+	type?: string;
+	description?: string;
+	default?: unknown;
+	required?: boolean;
+}
+
+interface TerraformModuleOutput {
+	name: string;
+	description?: string;
+}
+
+interface TerraformModuleDependency {
+	name: string;
+	source: string;
+	version?: string;
+}
+
+interface TerraformModuleResource {
+	name: string;
+	type: string;
+}
+
+interface TerraformSubmodule {
+	path: string;
+	name: string;
+}
+
 interface TerraformModule {
 	id: string;
 	namespace: string;
@@ -3497,31 +3373,20 @@ interface TerraformModule {
 	downloads: number;
 	verified?: boolean;
 	root?: {
-		inputs?: Array<{
-			name: string;
-			type?: string;
-			description?: string;
-			default?: unknown;
-			required?: boolean;
-		}>;
-		outputs?: Array<{
-			name: string;
-			description?: string;
-		}>;
-		dependencies?: Array<{
-			name: string;
-			source: string;
-			version?: string;
-		}>;
-		resources?: Array<{
-			name: string;
-			type: string;
-		}>;
+		inputs?: TerraformModuleInput[];
+		outputs?: TerraformModuleOutput[];
+		dependencies?: TerraformModuleDependency[];
+		resources?: TerraformModuleResource[];
 	};
-	submodules?: Array<{
-		path: string;
-		name: string;
-	}>;
+	submodules?: TerraformSubmodule[];
+}
+
+interface TerraformProviderDoc {
+	id: string;
+	title: string;
+	path: string;
+	slug: string;
+	category: string;
 }
 
 interface TerraformProvider {
@@ -3536,13 +3401,130 @@ interface TerraformProvider {
 	downloads: number;
 	tier?: string;
 	logo_url?: string;
-	docs?: Array<{
-		id: string;
-		title: string;
-		path: string;
-		slug: string;
-		category: string;
-	}>;
+	docs?: TerraformProviderDoc[];
+}
+
+async function fetchTerraformJson<T>(apiUrl: string, ctx: PackageRegistryContext): Promise<T | null> {
+	const result = await ctx.loadPage(apiUrl, {
+		timeout: ctx.timeout,
+		signal: ctx.signal,
+		headers: { Accept: "application/json" },
+	});
+	if (!result.ok) return null;
+	return ctx.tryParseJson<T>(result.content);
+}
+
+/**
+ * A `heading (n)` section: `preamble`, the first `cap` items, a note counting the rest, a blank line. Empty when
+ * there are no items.
+ */
+function renderTerraformSection<T>(
+	heading: string,
+	items: T[] | undefined,
+	cap: number,
+	noun: string,
+	renderLine: (item: T) => string,
+	preamble = "",
+): string {
+	if (!(items && items.length > 0)) return "";
+	let md = `${heading} (${items.length})\n\n${preamble}`;
+	for (const item of items.slice(0, cap)) md += renderLine(item);
+	if (items.length > cap) md += `\n[…${items.length - cap} ${noun} elided…]\n`;
+	return `${md}\n`;
+}
+
+function renderTerraformProvenance(entry: { published_at?: string; source?: string }): string {
+	let md = "";
+	if (entry.published_at) md += `**Published:** ${new Date(entry.published_at).toLocaleDateString()}\n`;
+	if (entry.source) md += `**Source:** ${entry.source}\n`;
+	return `${md}\n`;
+}
+
+function renderTerraformInputRow(input: TerraformModuleInput): string {
+	const required = (input.required ?? input.default === undefined) ? "Yes" : "No";
+	const inputName = escapeMarkdownTableCell(input.name);
+	const type = escapeMarkdownTableCell(input.type ?? "any");
+	const desc = escapeMarkdownTableCell((input.description ?? "").slice(0, 80));
+	return `| ${inputName} | \`${type}\` | ${required} | ${desc} |\n`;
+}
+
+function renderTerraformModuleContents(mod: TerraformModule): string {
+	const inputsTable = "| Name | Type | Required | Description |\n|------|------|----------|-------------|\n";
+	let md = renderTerraformSection("## Inputs", mod.root?.inputs, 30, "inputs", renderTerraformInputRow, inputsTable);
+	md += renderTerraformSection("## Outputs", mod.root?.outputs, 20, "outputs", output => {
+		const description = output.description ? `: ${output.description.replace(/\n/g, " ").slice(0, 100)}` : "";
+		return `- **${output.name}**${description}\n`;
+	});
+	md += renderTerraformSection("## Dependencies", mod.root?.dependencies, 15, "dependencies", dep => {
+		return `- **${dep.name}**: ${dep.source}${dep.version ? ` (${dep.version})` : ""}\n`;
+	});
+	md += renderTerraformSection("## Resources", mod.root?.resources, 20, "resources", res => {
+		return `- \`${res.type}\` (${res.name})\n`;
+	});
+	md += renderTerraformSection("## Submodules", mod.submodules, 10, "submodules", sub => {
+		return `- **${sub.name}**: \`${sub.path}\`\n`;
+	});
+	return md;
+}
+
+async function fetchTerraformModule(parts: string[], ctx: PackageRegistryContext): Promise<string | null> {
+	const [, namespace, name, provider] = parts;
+	const mod = await fetchTerraformJson<TerraformModule>(
+		`https://registry.terraform.io/v1/modules/${namespace}/${name}/${provider}`,
+		ctx,
+	);
+	if (!mod) return null;
+
+	let md = `# ${mod.namespace}/${mod.name}/${mod.provider}\n\n`;
+	if (mod.description) md += `${mod.description}\n\n`;
+	md += `**Version:** ${mod.version}${mod.verified ? " ✓ Verified" : ""}\n`;
+	md += `**Downloads:** ${formatNumber(mod.downloads)}\n`;
+	md += renderTerraformProvenance(mod);
+	md += `## Usage\n\n\`\`\`hcl\nmodule "${mod.name}" {\n  source  = "${mod.namespace}/${mod.name}/${mod.provider}"\n  version = "${mod.version}"\n}\n\`\`\`\n\n`;
+	return md + renderTerraformModuleContents(mod);
+}
+
+/** Provider documents grouped by category, `other` for a document without one, each group capped at 15 links. */
+function renderTerraformProviderDocs(
+	namespace: string,
+	type: string,
+	docs: TerraformProviderDoc[] | undefined,
+): string {
+	if (!(docs && docs.length > 0)) return "";
+	const categories = new Map<string, TerraformProviderDoc[]>();
+	for (const doc of docs) {
+		const category = doc.category || "other";
+		const group = categories.get(category);
+		if (group) group.push(doc);
+		else categories.set(category, [doc]);
+	}
+	let md = "## Documentation\n\n";
+	for (const [category, group] of categories) {
+		const heading = `### ${category.charAt(0).toUpperCase() + category.slice(1)}`;
+		md += renderTerraformSection(heading, group, 15, "documents", doc => {
+			const docUrl = `https://registry.terraform.io/providers/${namespace}/${type}/latest/docs/${doc.category}/${doc.slug}`;
+			return `- ${markdownLink(doc.title, docUrl)}\n`;
+		});
+	}
+	return md;
+}
+
+async function fetchTerraformProvider(parts: string[], ctx: PackageRegistryContext): Promise<string | null> {
+	const [, namespace, type] = parts;
+	const provider = await fetchTerraformJson<TerraformProvider>(
+		`https://registry.terraform.io/v1/providers/${namespace}/${type}`,
+		ctx,
+	);
+	if (!provider) return null;
+
+	let md = `# ${provider.namespace}/${provider.name}\n\n`;
+	if (provider.description) md += `${provider.description}\n\n`;
+	md += `**Version:** ${provider.version}\n`;
+	if (provider.tier) md += `**Tier:** ${provider.tier}\n`;
+	md += `**Downloads:** ${formatNumber(provider.downloads)}\n`;
+	md += renderTerraformProvenance(provider);
+	md += `## Usage\n\n\`\`\`hcl\nterraform {\n  required_providers {\n    ${provider.name} = {\n      source  = "${provider.namespace}/${provider.name}"\n      version = "~> ${provider.version}"\n    }\n  }\n}\n\nprovider "${provider.name}" {\n  # Configuration options\n}\n\`\`\`\n\n`;
+	return md + renderTerraformProviderDocs(namespace, type, provider.docs);
 }
 
 export const terraformDeclaration: PackageRegistryDeclaration = {
@@ -3565,167 +3547,9 @@ export const terraformDeclaration: PackageRegistryDeclaration = {
 	},
 	customFetch: async (match, ctx) => {
 		const parts = match.name.split("/");
-		const kind = parts[0];
-
-		if (kind === "modules") {
-			const [, namespace, name, provider] = parts;
-			const apiUrl = `https://registry.terraform.io/v1/modules/${namespace}/${name}/${provider}`;
-			const result = await ctx.loadPage(apiUrl, {
-				timeout: ctx.timeout,
-				signal: ctx.signal,
-				headers: { Accept: "application/json" },
-			});
-
-			if (!result.ok) return null;
-
-			const mod = ctx.tryParseJson<TerraformModule>(result.content);
-			if (!mod) return null;
-
-			let md = `# ${mod.namespace}/${mod.name}/${mod.provider}\n\n`;
-
-			if (mod.description) md += `${mod.description}\n\n`;
-
-			md += `**Version:** ${mod.version}`;
-			if (mod.verified) md += " ✓ Verified";
-			md += `\n`;
-			md += `**Downloads:** ${formatNumber(mod.downloads)}\n`;
-			if (mod.published_at) {
-				md += `**Published:** ${new Date(mod.published_at).toLocaleDateString()}\n`;
-			}
-			if (mod.source) {
-				md += `**Source:** ${mod.source}\n`;
-			}
-			md += "\n";
-
-			md += `## Usage\n\n\`\`\`hcl\nmodule "${mod.name}" {\n  source  = "${mod.namespace}/${mod.name}/${mod.provider}"\n  version = "${mod.version}"\n}\n\`\`\`\n\n`;
-
-			const inputs = mod.root?.inputs;
-			if (inputs && inputs.length > 0) {
-				md += `## Inputs (${inputs.length})\n\n`;
-				md += "| Name | Type | Required | Description |\n";
-				md += "|------|------|----------|-------------|\n";
-				for (const input of inputs.slice(0, 30)) {
-					const required = (input.required ?? input.default === undefined) ? "Yes" : "No";
-					const inputName = escapeMarkdownTableCell(input.name);
-					const type = escapeMarkdownTableCell(input.type ?? "any");
-					const desc = escapeMarkdownTableCell((input.description ?? "").slice(0, 80));
-					md += `| ${inputName} | \`${type}\` | ${required} | ${desc} |\n`;
-				}
-				if (inputs.length > 30) {
-					md += `\n[…${inputs.length - 30} inputs elided…]\n`;
-				}
-				md += "\n";
-			}
-
-			const outputs = mod.root?.outputs;
-			if (outputs && outputs.length > 0) {
-				md += `## Outputs (${outputs.length})\n\n`;
-				for (const output of outputs.slice(0, 20)) {
-					md += `- **${output.name}**`;
-					if (output.description) md += `: ${output.description.replace(/\n/g, " ").slice(0, 100)}`;
-					md += "\n";
-				}
-				if (outputs.length > 20) {
-					md += `\n[…${outputs.length - 20} outputs elided…]\n`;
-				}
-				md += "\n";
-			}
-
-			const deps = mod.root?.dependencies;
-			if (deps && deps.length > 0) {
-				md += `## Dependencies (${deps.length})\n\n`;
-				for (const dep of deps.slice(0, 15)) {
-					md += `- **${dep.name}**: ${dep.source}`;
-					if (dep.version) md += ` (${dep.version})`;
-					md += "\n";
-				}
-				if (deps.length > 15) {
-					md += `\n[…${deps.length - 15} dependencies elided…]\n`;
-				}
-				md += "\n";
-			}
-
-			const resources = mod.root?.resources;
-			if (resources && resources.length > 0) {
-				md += `## Resources (${resources.length})\n\n`;
-				for (const res of resources.slice(0, 20)) {
-					md += `- \`${res.type}\` (${res.name})\n`;
-				}
-				if (resources.length > 20) {
-					md += `\n[…${resources.length - 20} resources elided…]\n`;
-				}
-				md += "\n";
-			}
-
-			if (mod.submodules && mod.submodules.length > 0) {
-				md += `## Submodules (${mod.submodules.length})\n\n`;
-				for (const sub of mod.submodules.slice(0, 10)) {
-					md += `- **${sub.name}**: \`${sub.path}\`\n`;
-				}
-				if (mod.submodules.length > 10) {
-					md += `\n[…${mod.submodules.length - 10} submodules elided…]\n`;
-				}
-			}
-
-			return buildResult(md, {
-				url: ctx.url,
-				method: "terraform",
-				fetchedAt: ctx.fetchedAt,
-				notes: ["Fetched via Terraform Registry API"],
-			});
-		}
-
-		const [, namespace, type] = parts;
-		const apiUrl = `https://registry.terraform.io/v1/providers/${namespace}/${type}`;
-		const result = await ctx.loadPage(apiUrl, {
-			timeout: ctx.timeout,
-			signal: ctx.signal,
-			headers: { Accept: "application/json" },
-		});
-
-		if (!result.ok) return null;
-
-		const provider = ctx.tryParseJson<TerraformProvider>(result.content);
-		if (!provider) return null;
-
-		let md = `# ${provider.namespace}/${provider.name}\n\n`;
-
-		if (provider.description) md += `${provider.description}\n\n`;
-
-		md += `**Version:** ${provider.version}\n`;
-		if (provider.tier) md += `**Tier:** ${provider.tier}\n`;
-		md += `**Downloads:** ${formatNumber(provider.downloads)}\n`;
-		if (provider.published_at) {
-			md += `**Published:** ${new Date(provider.published_at).toLocaleDateString()}\n`;
-		}
-		if (provider.source) {
-			md += `**Source:** ${provider.source}\n`;
-		}
-		md += "\n";
-
-		md += `## Usage\n\n\`\`\`hcl\nterraform {\n  required_providers {\n    ${provider.name} = {\n      source  = "${provider.namespace}/${provider.name}"\n      version = "~> ${provider.version}"\n    }\n  }\n}\n\nprovider "${provider.name}" {\n  # Configuration options\n}\n\`\`\`\n\n`;
-
-		if (provider.docs && provider.docs.length > 0) {
-			const categories = new Map<string, typeof provider.docs>();
-			for (const doc of provider.docs) {
-				const cat = doc.category || "other";
-				if (!categories.has(cat)) categories.set(cat, []);
-				categories.get(cat)!.push(doc);
-			}
-
-			md += `## Documentation\n\n`;
-			for (const [category, docs] of categories) {
-				md += `### ${category.charAt(0).toUpperCase() + category.slice(1)} (${docs.length})\n\n`;
-				for (const doc of docs.slice(0, 15)) {
-					md += `- ${markdownLink(doc.title, `https://registry.terraform.io/providers/${namespace}/${type}/latest/docs/${doc.category}/${doc.slug}`)}\n`;
-				}
-				if (docs.length > 15) {
-					md += `\n[…${docs.length - 15} documents elided…]\n`;
-				}
-				md += "\n";
-			}
-		}
-
+		const md =
+			parts[0] === "modules" ? await fetchTerraformModule(parts, ctx) : await fetchTerraformProvider(parts, ctx);
+		if (md === null) return null;
 		return buildResult(md, {
 			url: ctx.url,
 			method: "terraform",
@@ -3802,6 +3626,41 @@ function extractRepoLink(properties: MarketplaceProperty[] | undefined): string 
 	return null;
 }
 
+/** Header, identifier, publisher and version, each falling back to what the `itemName` URL parameter states. */
+function renderMarketplaceIdentity(extension: MarketplaceExtension, itemName: string): string {
+	const [publisherFromUrl, ...nameParts] = itemName.split(".");
+	const extensionName = extension.extensionName ?? nameParts.join(".");
+	const displayName = extension.displayName ?? extensionName ?? itemName;
+	const publisherName = extension.publisher?.publisherName ?? publisherFromUrl;
+	const publisherDisplayName = extension.publisher?.displayName;
+	const publisherLabel =
+		publisherDisplayName && publisherName && publisherDisplayName !== publisherName
+			? `${publisherDisplayName} (${publisherName})`
+			: (publisherDisplayName ?? publisherName);
+	const identifier = publisherName && extensionName ? `${publisherName}.${extensionName}` : itemName;
+	const version = extension.versions?.[0]?.version;
+
+	let md = renderHeader(displayName, extension.shortDescription ?? extension.description);
+	md += `**Identifier:** ${identifier}\n`;
+	if (publisherLabel) md += `**Publisher:** ${publisherLabel}\n`;
+	if (version) md += `**Version:** ${version}\n`;
+	return md;
+}
+
+function renderMarketplaceStats(extension: MarketplaceExtension): string {
+	const statMap = toStatMap(extension.statistics);
+	const installs = statMap.get("install") ?? statMap.get("installs");
+	const ratingLabel = formatRating(statMap.get("averagerating"), statMap.get("ratingcount"));
+	const repoLink = extractRepoLink(extension.versions?.[0]?.properties) ?? extractRepoLink(extension.properties);
+	let md = "";
+	if (installs !== undefined) md += `**Installs:** ${formatNumber(installs)}\n`;
+	if (ratingLabel) md += `**Rating:** ${ratingLabel}\n`;
+	if (extension.categories?.length) md += `**Categories:** ${extension.categories.join(", ")}\n`;
+	if (extension.tags?.length) md += `**Tags:** ${extension.tags.join(", ")}\n`;
+	if (repoLink) md += `**Repository:** ${repoLink}\n`;
+	return md;
+}
+
 export const vscodeMarketplaceDeclaration: PackageRegistryDeclaration = {
 	site: "vscode-marketplace",
 	hosts: ["marketplace.visualstudio.com", "www.marketplace.visualstudio.com"],
@@ -3817,8 +3676,6 @@ export const vscodeMarketplaceDeclaration: PackageRegistryDeclaration = {
 	notes: ["Fetched via VS Code Marketplace API"],
 	customFetch: async (match, ctx) => {
 		const itemName = match.name;
-		const [publisherFromUrl, ...nameParts] = itemName.split(".");
-		const extensionFromUrl = nameParts.join(".");
 		const result = await ctx.loadPage("https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery", {
 			timeout: ctx.timeout,
 			signal: ctx.signal,
@@ -3837,32 +3694,7 @@ export const vscodeMarketplaceDeclaration: PackageRegistryDeclaration = {
 		const extension = data.results?.[0]?.extensions?.[0];
 		if (!extension) return null;
 
-		const extensionName = extension.extensionName ?? extensionFromUrl;
-		const displayName = extension.displayName ?? extensionName ?? itemName;
-		const description = extension.shortDescription ?? extension.description;
-		const publisherName = extension.publisher?.publisherName ?? publisherFromUrl;
-		const publisherDisplayName = extension.publisher?.displayName;
-		const publisherLabel =
-			publisherDisplayName && publisherName && publisherDisplayName !== publisherName
-				? `${publisherDisplayName} (${publisherName})`
-				: (publisherDisplayName ?? publisherName);
-
-		const version = extension.versions?.[0]?.version;
-		const statMap = toStatMap(extension.statistics);
-		const installs = statMap.get("install") ?? statMap.get("installs");
-		const ratingLabel = formatRating(statMap.get("averagerating"), statMap.get("ratingcount"));
-		const repoLink = extractRepoLink(extension.versions?.[0]?.properties) ?? extractRepoLink(extension.properties);
-		const identifier = publisherName && extensionName ? `${publisherName}.${extensionName}` : itemName;
-
-		let md = renderHeader(displayName, description);
-		md += `**Identifier:** ${identifier}\n`;
-		if (publisherLabel) md += `**Publisher:** ${publisherLabel}\n`;
-		if (version) md += `**Version:** ${version}\n`;
-		if (installs !== undefined) md += `**Installs:** ${formatNumber(installs)}\n`;
-		if (ratingLabel) md += `**Rating:** ${ratingLabel}\n`;
-		if (extension.categories?.length) md += `**Categories:** ${extension.categories.join(", ")}\n`;
-		if (extension.tags?.length) md += `**Tags:** ${extension.tags.join(", ")}\n`;
-		if (repoLink) md += `**Repository:** ${repoLink}\n`;
+		const md = renderMarketplaceIdentity(extension, itemName) + renderMarketplaceStats(extension);
 
 		return buildResult(md, {
 			url: ctx.url,
