@@ -48,7 +48,7 @@ import {
 import type { CompactionEntry, SessionEntry, SessionMessageEntry } from "./entries";
 import { KEEP_NOTHING_ENTRY_ID, resolveCompactionBoundaryIndex } from "./entries";
 import { CompactionCancelledError } from "./errors";
-import { LEGACY_REMOTE_PRESERVE_KEYS } from "./legacy-provider-native";
+import { hasLegacyProviderNativeCompaction, LEGACY_REMOTE_PRESERVE_KEYS } from "./legacy-provider-native";
 import { hasLegacyArchive, legacyArchiveSourceText, stripLegacyArchive } from "./legacy-snapcompact-archive";
 import {
 	type ConvertToLlm,
@@ -154,6 +154,36 @@ function addPaths(target: Set<string>, paths: unknown, normalize?: (path: string
 }
 
 /**
+ * Add the lists `entry` records itself to `read` and `modified`. False when it records none, because an
+ * extension wrote it or it holds no lists; otherwise the id of the compaction its lists extend, or true
+ * when they extend none. A compaction written before `base` existed holds its lists in full, and the
+ * chain ends there.
+ */
+function addOwnFileLists(entry: CompactionEntry, read: Set<string>, modified: Set<string>): string | boolean {
+	if (entry.fromExtension || typeof entry.details !== "object" || entry.details === null) return false;
+	const details = entry.details as Record<string, unknown>;
+	if (Array.isArray(details.readFiles) || Array.isArray(details.modifiedFiles)) {
+		addPaths(read, details.readFiles, stripReadSelector);
+		addPaths(modified, details.modifiedFiles);
+		return true;
+	}
+	if (!Array.isArray(details.readFilesAdded) && !Array.isArray(details.modifiedFilesAdded)) return false;
+	addPaths(read, details.readFilesAdded, stripReadSelector);
+	addPaths(modified, details.modifiedFilesAdded);
+	return typeof details.base === "string" ? details.base : true;
+}
+
+/** The compactions on the path before `index`, by id. */
+function compactionsBefore(pathEntries: SessionEntry[], index: number): Map<string, CompactionEntry> {
+	const earlier = new Map<string, CompactionEntry>();
+	for (let i = 0; i < index; i++) {
+		const candidate = pathEntries[i];
+		if (candidate.type === "compaction") earlier.set(candidate.id, candidate as CompactionEntry);
+	}
+	return earlier;
+}
+
+/**
  * The file lists the compaction at `index` records: its own paths and, following `base`, the paths
  * of every compaction it builds on. Undefined when it records none, because an extension wrote it
  * or it holds no lists. A `base` that names no earlier compaction on the path, or that loops, ends
@@ -169,27 +199,12 @@ function resolveCompactionFileLists(pathEntries: SessionEntry[], index: number):
 	let entry: CompactionEntry | undefined = head;
 	while (entry && !visited.has(entry.id)) {
 		visited.add(entry.id);
-		if (entry.fromExtension || typeof entry.details !== "object" || entry.details === null) break;
-		const details = entry.details as Record<string, unknown>;
-		if (Array.isArray(details.readFiles) || Array.isArray(details.modifiedFiles)) {
-			addPaths(read, details.readFiles, stripReadSelector);
-			addPaths(modified, details.modifiedFiles);
-			recorded = true;
-			break;
-		}
-		if (!Array.isArray(details.readFilesAdded) && !Array.isArray(details.modifiedFilesAdded)) break;
-		addPaths(read, details.readFilesAdded, stripReadSelector);
-		addPaths(modified, details.modifiedFilesAdded);
+		const base = addOwnFileLists(entry, read, modified);
+		if (base === false) break;
 		recorded = true;
-		if (typeof details.base !== "string") break;
-		if (!earlier) {
-			earlier = new Map();
-			for (let i = 0; i < index; i++) {
-				const candidate = pathEntries[i];
-				if (candidate.type === "compaction") earlier.set(candidate.id, candidate as CompactionEntry);
-			}
-		}
-		entry = earlier.get(details.base);
+		if (base === true) break;
+		earlier ??= compactionsBefore(pathEntries, index);
+		entry = earlier.get(base);
 	}
 	return recorded ? { id: head.id, read, modified } : undefined;
 }
@@ -251,6 +266,21 @@ function getMessageFromEntry(
 		return createBranchSummaryMessage(entry.summary, entry.fromId, entry.timestamp);
 	}
 	return undefined;
+}
+
+/** The messages the entries in `[startIndex, endIndex)` produce, in order. */
+function messagesInRange(
+	entries: SessionEntry[],
+	startIndex: number,
+	endIndex: number,
+	excludedCustomMessageTypes: ReadonlySet<string> | undefined,
+): AgentMessage[] {
+	const messages: AgentMessage[] = [];
+	for (let i = startIndex; i < endIndex; i++) {
+		const message = getMessageFromEntry(entries[i], excludedCustomMessageTypes);
+		if (message) messages.push(message);
+	}
+	return messages;
 }
 
 /** Result from compact() - SessionManager adds uuid/parentUuid when saving */
@@ -365,13 +395,17 @@ export function compactionContextTokens(providerContextTokens: number, storedCon
 // ============================================================================
 // Cut point detection
 // ============================================================================
-function estimateEntriesTokens(entries: SessionEntry[], startIndex: number, endIndex: number): number {
+/** The estimated tokens of the messages the entries in `[startIndex, endIndex)` produce. */
+function estimateEntriesTokens(
+	entries: SessionEntry[],
+	startIndex: number,
+	endIndex: number,
+	excludedCustomMessageTypes?: ReadonlySet<string>,
+): number {
 	let total = 0;
 	for (let i = startIndex; i < endIndex; i++) {
-		const msg = getMessageFromEntry(entries[i]);
-		if (msg) {
-			total += estimateTokens(msg);
-		}
+		const msg = getMessageFromEntry(entries[i], excludedCustomMessageTypes);
+		if (msg) total += estimateTokens(msg);
 	}
 	return total;
 }
@@ -452,6 +486,82 @@ export interface CutPointResult {
 }
 
 /**
+ * The index of the entry whose tokens, tallied newest first from `endIndex`, bring the tally to
+ * `keepRecentTokens`; -1 when the whole range fits. branch_summary and custom_message entries stay in
+ * the retained tail, so their tokens count toward the recent budget too.
+ */
+function findBudgetCrossing(
+	entries: SessionEntry[],
+	startIndex: number,
+	endIndex: number,
+	keepRecentTokens: number,
+): number {
+	let accumulatedTokens = 0;
+	for (let i = endIndex - 1; i >= startIndex; i--) {
+		const message = getMessageFromEntry(entries[i]);
+		if (!message) continue;
+		accumulatedTokens += estimateTokens(message);
+		if (accumulatedTokens >= keepRecentTokens) return i;
+	}
+	return -1;
+}
+
+/**
+ * Where to keep from once the entry at `crossedIndex` brought the tally over budget: the first valid
+ * cut point at or after it, because the budget says how much recent history to keep and the entry
+ * that reached it belongs on the kept side.
+ */
+function cutIndexAtCrossing(
+	entries: SessionEntry[],
+	cutPoints: readonly number[],
+	crossedIndex: number,
+	startIndex: number,
+	endIndex: number,
+): number {
+	const kept = cutPoints.find(point => point >= crossedIndex);
+	if (kept !== undefined) return kept;
+	// No valid cut point at or after the crossing entry. The budget was blown
+	// inside the newest turn, which one enormous tool result is enough to do:
+	// a result is never a valid cut point, because cutting there would
+	// separate it from the call it answers, so nothing behind it is usable.
+	//
+	// The turn's own start IS a valid cut point, and keeping the newest turn
+	// is now safe: prepareCompaction elides the oversized result inside the
+	// kept tail, so the bulk leaves the context without taking the user's
+	// latest message and the assistant's reasoning with it. Both older
+	// answers were wrong. Keeping from the newest valid point, the assistant
+	// message CARRYING the call, retained the whole result and freed nothing
+	// however often compaction ran: a warning every turn against a full
+	// gauge. Keeping nothing sent the entire newest turn, the most
+	// informative part of the session, to the summarizer, bulk and all.
+	//
+	// No turn start inside the range means the turn's opening was summarized
+	// by an earlier pass, so no cut here keeps call and result together:
+	// keep nothing and let the summary stand in for the whole range.
+	const turnStart = findTurnStartIndex(entries, crossedIndex, startIndex);
+	return turnStart === -1 ? endIndex : turnStart;
+}
+
+/**
+ * Move `cutIndex` back over the non-message entries (bash, settings changes, labels) directly before
+ * it, stopping at a message or a compaction boundary.
+ */
+function includePrecedingNonMessageEntries(
+	entries: SessionEntry[],
+	cutIndex: number,
+	startIndex: number,
+	endIndex: number,
+): number {
+	let index = cutIndex;
+	while (index > startIndex && index < endIndex) {
+		const previous = entries[index - 1];
+		if (previous.type === "compaction" || previous.type === "message") break;
+		index--;
+	}
+	return index;
+}
+
+/**
  * Find the cut point in session entries that keeps approximately `keepRecentTokens`.
  *
  * Algorithm: Walk backwards from newest, accumulating estimated message sizes.
@@ -483,76 +593,13 @@ export function findCutPoint(
 	// boundary. Fall through with `startIndex` rather than returning: the
 	// dead-end guard below turns that into "keep nothing" when the range is over
 	// budget, and leaves it alone when the session is genuinely small.
-
-	// Walk backwards from newest, accumulating estimated message sizes
-	let accumulatedTokens = 0;
-	let cutIndex = cutPoints.length > 0 ? cutPoints[0] : startIndex; // Default: keep from first message (not header)
-	let crossedIndex = -1; // Entry whose tokens first pushed the tally over budget
-
-	for (let i = endIndex - 1; i >= startIndex; i--) {
-		const entry = entries[i];
-		const message = getMessageFromEntry(entry);
-		if (!message) continue;
-
-		// Estimate this message's size. branch_summary and custom_message
-		// entries stay in the retained tail, so their tokens must count
-		// toward the recent budget too.
-		const messageTokens = estimateTokens(message);
-		accumulatedTokens += messageTokens;
-
-		// Check if we've exceeded the budget
-		if (accumulatedTokens >= keepRecentTokens) {
-			crossedIndex = i;
-			// Keep from the crossing entry: the budget says how much recent history
-			// to keep, and the entry that reached it belongs on the kept side.
-			let found = false;
-			for (let c = 0; c < cutPoints.length; c++) {
-				if (cutPoints[c] >= i) {
-					cutIndex = cutPoints[c];
-					found = true;
-					break;
-				}
-			}
-			// No valid cut point at or after the crossing entry. The budget was blown
-			// inside the newest turn, which one enormous tool result is enough to do:
-			// a result is never a valid cut point, because cutting there would
-			// separate it from the call it answers, so nothing behind it is usable.
-			//
-			// The turn's own start IS a valid cut point, and keeping the newest turn
-			// is now safe: prepareCompaction elides the oversized result inside the
-			// kept tail, so the bulk leaves the context without taking the user's
-			// latest message and the assistant's reasoning with it. Both older
-			// answers were wrong. Keeping from the newest valid point, the assistant
-			// message CARRYING the call, retained the whole result and freed nothing
-			// however often compaction ran: a warning every turn against a full
-			// gauge. Keeping nothing sent the entire newest turn, the most
-			// informative part of the session, to the summarizer, bulk and all.
-			//
-			// No turn start inside the range means the turn's opening was summarized
-			// by an earlier pass, so no cut here keeps call and result together:
-			// keep nothing and let the summary stand in for the whole range.
-			if (!found) {
-				const turnStart = findTurnStartIndex(entries, i, startIndex);
-				cutIndex = turnStart === -1 ? endIndex : turnStart;
-			}
-			break;
-		}
-	}
-
-	// Scan backwards from cutIndex to include any non-message entries (bash, settings, etc.)
-	while (cutIndex > startIndex && cutIndex < endIndex) {
-		const prevEntry = entries[cutIndex - 1];
-		// Stop at session header or compaction boundaries
-		if (prevEntry.type === "compaction") {
-			break;
-		}
-		if (prevEntry.type === "message") {
-			// Stop if we hit any message
-			break;
-		}
-		// Include this non-message entry (bash, settings change, etc.)
-		cutIndex--;
-	}
+	const crossedIndex = findBudgetCrossing(entries, startIndex, endIndex, keepRecentTokens);
+	// A range that fits the budget keeps from its first message (not the header).
+	const crossed = crossedIndex !== -1;
+	const budgetCut = crossed
+		? cutIndexAtCrossing(entries, cutPoints, crossedIndex, startIndex, endIndex)
+		: (cutPoints[0] ?? startIndex);
+	let cutIndex = includePrecedingNonMessageEntries(entries, budgetCut, startIndex, endIndex);
 
 	// Dead-end guard: a cut at `startIndex` keeps the ENTIRE range, so there is
 	// nothing to summarize and `prepareCompaction` refuses — at exactly the
@@ -562,17 +609,10 @@ export function findCutPoint(
 	// Cut at the next valid point instead. When there is no next point the whole
 	// range is one unbreakable turn, and the only way to free anything is to
 	// summarize all of it and keep nothing: `endIndex` says exactly that.
-	// `crossedIndex === -1` means the range fits the budget, which is a genuinely
-	// small session and must still be refused.
-	if (cutIndex === startIndex && crossedIndex !== -1) {
-		let nextCutPoint = -1;
-		for (let c = 0; c < cutPoints.length; c++) {
-			if (cutPoints[c] > startIndex) {
-				nextCutPoint = cutPoints[c];
-				break;
-			}
-		}
-		cutIndex = nextCutPoint === -1 ? endIndex : nextCutPoint;
+	// A range that never crossed the budget fits it, which is a genuinely small
+	// session and must still be refused.
+	if (cutIndex === startIndex && crossed) {
+		cutIndex = cutPoints.find(point => point > startIndex) ?? endIndex;
 	}
 
 	// Keeping nothing has no cut entry and splits no turn: everything in the
@@ -1708,10 +1748,6 @@ export interface CompactionPreparationOptions {
 }
 
 /**
- * Validate the complete result immediately before a runtime rewrites history.
- * A malformed extension result must fail before its cut point can discard the
- * live tail.
- *
  * A compaction must leave behind an artifact that stands in for the span it
  * discards, and there are exactly two legal artifacts. A local pass leaves
  * summary text. A server-side pass leaves the compacted window the provider
@@ -1721,42 +1757,53 @@ export interface CompactionPreparationOptions {
  * free to disagree. So an empty summary is checked against the window rather
  * than rejected outright.
  */
-export function assertValidCompactionResult(preparation: CompactionPreparation, result: CompactionResult): void {
-	if (typeof result.summary !== "string" || result.summary.trim().length === 0) {
-		// Not `key in preserveData`: a payload that fails validation cannot be
-		// replayed by any reader, so it is no better than an absent one here.
-		if (!getRemoteCompactionPreserveData(result.preserveData)) {
-			const claimedRemote =
-				result.preserveData !== undefined && REMOTE_COMPACTION_PRESERVE_KEY in result.preserveData;
-			throw new Error(
-				claimedRemote
-					? "Compaction failed: the summary is empty and the server-side compaction window stored beside it is malformed, so nothing replaces the discarded history; history was left unchanged."
-					: "Compaction failed: the generated summary is empty and no server-side compaction window was stored, so nothing replaces the discarded history; history was left unchanged.",
-			);
-		}
-	}
-	// A summary that repeats itself is worse than an empty one, and the emptiness
-	// check above cannot see it. Compaction generates through `completeSimple`,
-	// whose thinking-loop guard re-samples a stalled generation three times and
-	// then deliberately lets it cook with the guard OFF, returning the raw
-	// degenerate text (`resolveWithThinkingLoopCook`). That is right for a live
-	// turn, which is on screen while it happens and can be interrupted, and wrong
-	// here: this text REPLACES the span it claims to describe, so the history
-	// that recorded what actually happened is discarded and every later turn
-	// reads the repeat as its own past. Refuse the rewrite instead; the caller
-	// still holds the history and can compact again.
+function assertCompactionArtifact(result: CompactionResult): void {
+	if (typeof result.summary === "string" && result.summary.trim().length > 0) return;
+	// Not `key in preserveData`: a payload that fails validation cannot be
+	// replayed by any reader, so it is no better than an absent one here.
+	if (getRemoteCompactionPreserveData(result.preserveData)) return;
+	const claimedRemote = result.preserveData !== undefined && REMOTE_COMPACTION_PRESERVE_KEY in result.preserveData;
+	throw new Error(
+		claimedRemote
+			? "Compaction failed: the summary is empty and the server-side compaction window stored beside it is malformed, so nothing replaces the discarded history; history was left unchanged."
+			: "Compaction failed: the generated summary is empty and no server-side compaction window was stored, so nothing replaces the discarded history; history was left unchanged.",
+	);
+}
+
+/**
+ * A summary that repeats itself is worse than an empty one, and the emptiness
+ * check cannot see it. Compaction generates through `completeSimple`, whose
+ * thinking-loop guard re-samples a stalled generation three times and then
+ * deliberately lets it cook with the guard OFF, returning the raw degenerate
+ * text (`resolveWithThinkingLoopCook`). That is right for a live turn, which is
+ * on screen while it happens and can be interrupted, and wrong here: this text
+ * REPLACES the span it claims to describe, so the history that recorded what
+ * actually happened is discarded and every later turn reads the repeat as its
+ * own past. Refuse the rewrite instead; the caller still holds the history and
+ * can compact again.
+ */
+function assertNoDegenerateSummary(result: CompactionResult): void {
 	for (const [field, text] of [
 		["summary", result.summary],
 		["shortSummary", result.shortSummary],
 	] as const) {
-		if (typeof text !== "string") continue;
-		const degeneracy = detectDegenerateRepetition(text);
+		const degeneracy = typeof text === "string" ? detectDegenerateRepetition(text) : undefined;
 		if (degeneracy) {
 			throw new Error(
 				`Compaction failed: the generated ${field} is degenerate (${degeneracy}), so it describes nothing the discarded history held; history was left unchanged.`,
 			);
 		}
 	}
+}
+
+/**
+ * Validate the complete result immediately before a runtime rewrites history.
+ * A malformed extension result must fail before its cut point can discard the
+ * live tail.
+ */
+export function assertValidCompactionResult(preparation: CompactionPreparation, result: CompactionResult): void {
+	assertCompactionArtifact(result);
+	assertNoDegenerateSummary(result);
 	if (result.firstKeptEntryId !== preparation.firstKeptEntryId) {
 		throw new Error(
 			`Compaction failed: firstKeptEntryId ${JSON.stringify(result.firstKeptEntryId)} does not match the safe cut point ${JSON.stringify(preparation.firstKeptEntryId)}; history was left unchanged.`,
@@ -1967,60 +2014,68 @@ function elideTailToolResults(
 ): TailElision[] {
 	if (startIndex >= endIndex) return [];
 
-	let tailTokens = 0;
-	for (let i = startIndex; i < endIndex; i++) {
-		const msg = getMessageFromEntry(entries[i], excludedCustomMessageTypes);
-		if (msg) tailTokens += estimateTokens(msg);
-	}
+	let tailTokens = estimateEntriesTokens(entries, startIndex, endIndex, excludedCustomMessageTypes);
 	if (tailTokens <= budgetTokens) return [];
 
-	const toolCallsById = collectToolCallsById(entries, startIndex);
-	interface Candidate {
-		entry: SessionMessageEntry;
-		message: ToolResultMessage;
-		tokens: number;
+	const elisions: TailElision[] = [];
+	for (const candidate of tailElisionCandidates(entries, startIndex, endIndex)) {
+		if (tailTokens <= budgetTokens) break;
+		tailTokens -= elideTailCandidate(candidate, elisions);
 	}
-	const candidates: Candidate[] = [];
+	return elisions;
+}
+
+interface TailElisionCandidate {
+	entry: SessionMessageEntry;
+	message: ToolResultMessage;
+	tokens: number;
+}
+
+/**
+ * The tool results in `[startIndex, endIndex)` the tail pass may elide, largest first regardless of
+ * recency: the biggest bulk is the lowest information per token and the fastest way back under budget.
+ * Error results, skill reads, results already pruned and results at or under
+ * `TAIL_ELISION_MIN_TOKENS` are never candidates.
+ */
+function tailElisionCandidates(entries: SessionEntry[], startIndex: number, endIndex: number): TailElisionCandidate[] {
+	const toolCallsById = collectToolCallsById(entries, startIndex);
+	const candidates: TailElisionCandidate[] = [];
 	for (let i = startIndex; i < endIndex; i++) {
 		const entry = entries[i];
 		if (entry.type !== "message" || entry.message.role !== "toolResult") continue;
 		const message = entry.message as ToolResultMessage;
-		if (message.isError === true) continue;
-		if (message.prunedAt !== undefined) continue;
+		if (message.isError === true || message.prunedAt !== undefined) continue;
 		if (isSkillReadToolResult({ toolResult: message, toolCall: toolCallsById.get(message.toolCallId) })) continue;
 		const tokens = estimateTokens(message as AgentMessage);
 		if (tokens <= TAIL_ELISION_MIN_TOKENS) continue;
 		candidates.push({ entry: entry as SessionMessageEntry, message, tokens });
 	}
-	// Largest first, regardless of recency: the biggest bulk is the lowest
-	// information per token and the fastest way back under budget.
 	candidates.sort((a, b) => b.tokens - a.tokens);
+	return candidates;
+}
 
-	const elisions: TailElision[] = [];
-	for (const candidate of candidates) {
-		if (tailTokens <= budgetTokens) break;
-		const replacement: ToolResultMessage = {
-			...candidate.message,
-			content: [{ type: "text", text: renderTailElisionMarker(candidate.message.toolName, candidate.tokens) }],
-			prunedAt: Date.now(),
-		};
-		candidate.entry.message = replacement;
-		// Estimate through a scratch twin, never through `replacement` itself:
-		// the persist step re-renders this marker's content with the recovery
-		// pointer, and `estimateTokens` caches by message identity, so a cache
-		// entry primed for the marker object would serve its pre-pointer size
-		// to every later estimate.
-		tailTokens -= Math.max(0, candidate.tokens - estimateTokens({ ...replacement } as AgentMessage));
-		elisions.push({
-			entryId: candidate.entry.id,
-			toolName: candidate.message.toolName,
-			tokens: candidate.tokens,
-			originalText: tailToolResultText(candidate.message),
-			originalMessage: candidate.message,
-			message: replacement,
-		});
-	}
-	return elisions;
+/** Replace the candidate's message with an elision marker, record the elision, and return the tokens it freed. */
+function elideTailCandidate(candidate: TailElisionCandidate, elisions: TailElision[]): number {
+	const replacement: ToolResultMessage = {
+		...candidate.message,
+		content: [{ type: "text", text: renderTailElisionMarker(candidate.message.toolName, candidate.tokens) }],
+		prunedAt: Date.now(),
+	};
+	candidate.entry.message = replacement;
+	elisions.push({
+		entryId: candidate.entry.id,
+		toolName: candidate.message.toolName,
+		tokens: candidate.tokens,
+		originalText: tailToolResultText(candidate.message),
+		originalMessage: candidate.message,
+		message: replacement,
+	});
+	// Estimate through a scratch twin, never through `replacement` itself:
+	// the persist step re-renders this marker's content with the recovery
+	// pointer, and `estimateTokens` caches by message identity, so a cache
+	// entry primed for the marker object would serve its pre-pointer size
+	// to every later estimate.
+	return Math.max(0, candidate.tokens - estimateTokens({ ...replacement } as AgentMessage));
 }
 
 /**
@@ -2085,6 +2140,129 @@ function remoteCompactionChain(
 	};
 }
 
+/** The newest compaction a local pass can build on (-1 for none), and the server-side windows ahead of it. */
+interface CompactionBase {
+	prevCompactionIndex: number;
+	/**
+	 * Server-side entries ahead of that boundary, newest first. The scan walks past them because a local
+	 * pass cannot build on them, and they are exactly the entries a REMOTE pass has to chain rather than
+	 * re-read, so they are picked up on the same walk instead of a second one.
+	 */
+	windowIndices: number[];
+}
+
+function findCompactionBase(pathEntries: SessionEntry[]): CompactionBase {
+	const windowIndices: number[] = [];
+	for (let i = pathEntries.length - 1; i >= 0; i--) {
+		if (pathEntries[i].type !== "compaction") continue;
+		// Skip an entry whose summary a local pass cannot build on: one of the two
+		// dead provider-native keys, or a live OpenAI server-side entry whose
+		// artifact is the window rather than text. Re-expand the original messages
+		// behind it and summarize them locally rather than stranding that span.
+		const entry = pathEntries[i] as CompactionEntry;
+		if (hasReusableSummary(entry.preserveData)) return { prevCompactionIndex: i, windowIndices };
+		if (getRemoteCompactionPreserveData(entry.preserveData)) windowIndices.push(i);
+	}
+	return { prevCompactionIndex: -1, windowIndices };
+}
+
+/**
+ * The configured recent-token floor, capped at the conversation budget the model leaves.
+ *
+ * The configured floor asks to keep a fixed amount of recent history, and on
+ * a model with less usable conversation budget than that it asks for more
+ * than can ever be there. Every compactable range then estimates under the
+ * budget, `findCutPoint` never crosses it, the dead-end guard is skipped
+ * because the range genuinely fits, and `prepareCompaction` returns undefined --
+ * which the manual path spells "Nothing to compact (session too small)"
+ * against a gauge with no room left. That is the reported symptom, and the
+ * floor is what produces it.
+ *
+ * The ceiling is derived, not chosen: it is the space the conversation is
+ * allowed to occupy at all, the compaction trigger minus everything in the
+ * prompt that belongs to no entry. Keeping the whole of that is still a
+ * no-op, but it puts the crossing inside the range, and the dead-end guard
+ * owns the rest. Both figures come from the caller and both are optional,
+ * so an unknown window or an unknown prefix means no ceiling rather than a
+ * guessed one.
+ *
+ * Only when the trigger itself is derived from the window. An operator who
+ * sets an absolute threshold has stated the trigger directly, and it may sit
+ * far under the window, which makes this subtraction arbitrarily small: a
+ * ceiling of a few tokens cuts inside the exchange that just finished and
+ * sends the model a tool result whose call is gone. That is not a smaller
+ * compaction, it is a broken one. A budget of zero or less says the prefix
+ * alone already exceeds the trigger, which no amount of summarizing can fix,
+ * so leave the configured budget alone and let the dead-end guard speak.
+ */
+function capKeepRecentTokens(settings: CompactionSettings, options: CompactionPreparationOptions | undefined): number {
+	const nonMessageTokens = options?.nonMessageTokens;
+	const contextWindow = options?.contextWindow;
+	if (
+		settings.threshold !== AUTO_COMPACTION_THRESHOLD ||
+		nonMessageTokens === undefined ||
+		contextWindow === undefined ||
+		contextWindow <= 0
+	) {
+		return settings.keepRecentTokens;
+	}
+	const conversationBudget = resolveThresholdTokens(contextWindow, settings) - nonMessageTokens;
+	return conversationBudget > 0 ? Math.min(settings.keepRecentTokens, conversationBudget) : settings.keepRecentTokens;
+}
+
+/**
+ * Scale the recent budget by how far the local estimate undershoots what
+ * the provider actually charged for the SAME messages. The system prompt
+ * and the tool schemas are in the provider's prompt count and in no entry,
+ * so leaving them in makes an unrelated harness the multiplier: with the
+ * same conversation, a 20k prefix cut the retained tail from everything to
+ * two thirds, and a 60k prefix to under half. That is not estimate error
+ * and compaction must not treat it as such. Callers that know the figure
+ * pass it; when nobody does, the ratio is only trustworthy if it is not
+ * dominated by content we cannot see, so an unknown prefix means no scaling.
+ */
+function scaleKeepRecentTokens(
+	keepRecentTokens: number,
+	lastUsage: Usage,
+	nonMessageTokens: number | undefined,
+	estimatedTokens: number,
+): number {
+	const promptTokens = calculatePromptTokens(lastUsage);
+	const conversationPromptTokens = promptTokens - (nonMessageTokens ?? 0);
+	// A negative count is not a small conversation, it is proof that the
+	// prefix figure and the provider's prompt count disagree about what is in
+	// the prompt, and the subtraction is where that shows. The scaling below
+	// already ignores it, since a negative ratio is not above 1, so nothing
+	// downstream needs a clamp. What it must not do is stay silent: this runs
+	// every turn and hid the disagreement at the one moment both numbers were
+	// in hand. Warn and carry on rather than throw.
+	if (conversationPromptTokens < 0) {
+		logger.warn("compaction: non-message token estimate exceeds the provider's whole prompt count", {
+			nonMessageTokens,
+			promptTokens,
+			estimatedTokens,
+		});
+	}
+	const ratio = nonMessageTokens !== undefined && estimatedTokens > 0 ? conversationPromptTokens / estimatedTokens : 0;
+	return Number.isFinite(ratio) && ratio > 1 ? Math.max(1, Math.floor(keepRecentTokens / ratio)) : keepRecentTokens;
+}
+
+/**
+ * The id of the first entry a cut at `firstKeptEntryIndex` keeps; undefined when that entry has no id
+ * and the session needs migration. A cut at `boundaryEnd` keeps nothing: the summary replaces the whole
+ * range, which is the only way to free anything when the range is one unbreakable oversized turn. The
+ * rebuild emits a pre-compaction entry only once it has seen `firstKeptEntryId`, so an id that matches
+ * no entry already means "keep nothing" everywhere it is read.
+ */
+function firstKeptEntryIdAt(
+	pathEntries: SessionEntry[],
+	firstKeptEntryIndex: number,
+	boundaryEnd: number,
+): string | undefined {
+	if (firstKeptEntryIndex >= boundaryEnd) return KEEP_NOTHING_ENTRY_ID;
+	return pathEntries[firstKeptEntryIndex]?.id || undefined;
+}
+
 export function prepareCompaction(
 	pathEntries: SessionEntry[],
 	settings: CompactionSettings,
@@ -2094,32 +2272,14 @@ export function prepareCompaction(
 		return undefined;
 	}
 
-	let prevCompactionIndex = -1;
-	// Server-side entries ahead of that boundary, newest first. The scan below
-	// walks past them because a local pass cannot build on them, and they are
-	// exactly the entries a REMOTE pass has to chain rather than re-read, so they
-	// are picked up on the same walk instead of a second one.
-	const windowIndices: number[] = [];
-	for (let i = pathEntries.length - 1; i >= 0; i--) {
-		if (pathEntries[i].type !== "compaction") continue;
-		// Skip an entry whose summary a local pass cannot build on: one of the two
-		// dead provider-native keys, or a live OpenAI server-side entry whose
-		// artifact is the window rather than text. Re-expand the original messages
-		// behind it and summarize them locally rather than stranding that span.
-		const entry = pathEntries[i] as CompactionEntry;
-		if (!hasReusableSummary(entry.preserveData)) {
-			if (getRemoteCompactionPreserveData(entry.preserveData)) windowIndices.push(i);
-			continue;
-		}
-		prevCompactionIndex = i;
-		break;
-	}
+	const { prevCompactionIndex, windowIndices } = findCompactionBase(pathEntries);
+	const prevCompaction = prevCompactionIndex >= 0 ? (pathEntries[prevCompactionIndex] as CompactionEntry) : undefined;
 	// The context a turn sends behind a compaction is its artifact, the entries
 	// it kept, and every entry after it (`buildSessionContext`). The kept entries
 	// sit BEFORE the compaction entry, so a pass that read from just past the
 	// entry summarized them nowhere and kept them nowhere: the next compaction
 	// dropped them from the context for good.
-	const summaryStart = prevCompactionIndex >= 0 ? keptEntriesStart(pathEntries, prevCompactionIndex) : 0;
+	const summaryStart = prevCompaction ? keptEntriesStart(pathEntries, prevCompactionIndex) : 0;
 	// The cut never lands behind any window's kept boundary. Everything in front
 	// of it is that window's span: a server-side pass chains the window, so a
 	// kept tail reaching into the span would hand the model part of it twice, and
@@ -2127,116 +2287,37 @@ export function prepareCompaction(
 	// whole span the window holds. A newer window's boundary sits at or past an
 	// older one's on a branch this pass wrote; an older pass could keep behind it.
 	const windowStarts = windowIndices.map(index => keptEntriesStart(pathEntries, index));
-	let boundaryStart = summaryStart;
-	for (const start of windowStarts) if (start > boundaryStart) boundaryStart = start;
+	const boundaryStart = Math.max(summaryStart, ...windowStarts);
 	const boundaryEnd = pathEntries.length;
 
 	const lastUsage = getLastAssistantUsage(pathEntries);
 	const tokensBefore = lastUsage ? calculateContextTokens(lastUsage) : 0;
-	// The configured floor asks to keep a fixed amount of recent history, and on
-	// a model with less usable conversation budget than that it asks for more
-	// than can ever be there. Every compactable range then estimates under the
-	// budget, `findCutPoint` never crosses it, the dead-end guard is skipped
-	// because the range genuinely fits, and this function returns undefined --
-	// which the manual path spells "Nothing to compact (session too small)"
-	// against a gauge with no room left. That is the reported symptom, and the
-	// floor is what produces it.
-	//
-	// The ceiling is derived, not chosen: it is the space the conversation is
-	// allowed to occupy at all, the compaction trigger minus everything in the
-	// prompt that belongs to no entry. Keeping the whole of that is still a
-	// no-op, but it puts the crossing inside the range, and the dead-end guard
-	// owns the rest. Both figures come from the caller and both are optional,
-	// so an unknown window or an unknown prefix means no ceiling rather than a
-	// guessed one.
-	//
-	// Only when the trigger itself is derived from the window. An operator who
-	// sets an absolute threshold has stated the trigger directly, and it may sit
-	// far under the window, which makes this subtraction arbitrarily small: a
-	// ceiling of a few tokens cuts inside the exchange that just finished and
-	// sends the model a tool result whose call is gone. That is not a smaller
-	// compaction, it is a broken one. A budget of zero or less says the prefix
-	// alone already exceeds the trigger, which no amount of summarizing can fix,
-	// so leave the configured budget alone and let the dead-end guard speak.
-	let keepRecentTokens = settings.keepRecentTokens;
-	const nonMessageTokens = options?.nonMessageTokens;
-	const contextWindow = options?.contextWindow;
-	if (
-		settings.threshold === AUTO_COMPACTION_THRESHOLD &&
-		nonMessageTokens !== undefined &&
-		contextWindow !== undefined &&
-		contextWindow > 0
-	) {
-		const conversationBudget = resolveThresholdTokens(contextWindow, settings) - nonMessageTokens;
-		if (conversationBudget > 0) keepRecentTokens = Math.min(keepRecentTokens, conversationBudget);
-	}
-	if (lastUsage) {
-		const estimatedTokens = estimateEntriesTokens(pathEntries, boundaryStart, boundaryEnd);
-		// Scale the recent budget by how far the local estimate undershoots what
-		// the provider actually charged for the SAME messages. The system prompt
-		// and the tool schemas are in the provider's prompt count and in no entry,
-		// so leaving them in makes an unrelated harness the multiplier: with the
-		// same conversation, a 20k prefix cut the retained tail from everything to
-		// two thirds, and a 60k prefix to under half. That is not estimate error
-		// and compaction must not treat it as such. Callers that know the figure
-		// pass it; when nobody does, the ratio is only trustworthy if it is not
-		// dominated by content we cannot see, so an unknown prefix means no scaling.
-		const conversationPromptTokens = calculatePromptTokens(lastUsage) - (nonMessageTokens ?? 0);
-		// A negative count is not a small conversation, it is proof that the
-		// prefix figure and the provider's prompt count disagree about what is in
-		// the prompt, and the subtraction is where that shows. The scaling below
-		// already ignores it, since a negative ratio is not above 1, so nothing
-		// downstream needs a clamp. What it must not do is stay silent: this runs
-		// every turn and hid the disagreement at the one moment both numbers were
-		// in hand. Warn and carry on rather than throw.
-		if (conversationPromptTokens < 0) {
-			logger.warn("compaction: non-message token estimate exceeds the provider's whole prompt count", {
-				nonMessageTokens,
-				promptTokens: calculatePromptTokens(lastUsage),
-				estimatedTokens,
-			});
-		}
-		const ratio =
-			nonMessageTokens !== undefined && estimatedTokens > 0 ? conversationPromptTokens / estimatedTokens : 0;
-		if (Number.isFinite(ratio) && ratio > 1) {
-			keepRecentTokens = Math.max(1, Math.floor(keepRecentTokens / ratio));
-		}
-	}
+	const cappedKeepRecentTokens = capKeepRecentTokens(settings, options);
+	const keepRecentTokens = lastUsage
+		? scaleKeepRecentTokens(
+				cappedKeepRecentTokens,
+				lastUsage,
+				options?.nonMessageTokens,
+				estimateEntriesTokens(pathEntries, boundaryStart, boundaryEnd),
+			)
+		: cappedKeepRecentTokens;
 
 	// The turn a mid-turn cut splits may have opened behind the newest window,
 	// and the local pass reads back to the summary's kept boundary, so the turn
 	// opening is searched for from there.
 	const cutPoint = findCutPoint(pathEntries, boundaryStart, boundaryEnd, keepRecentTokens, summaryStart);
 
-	// Get ID of first kept entry. A cut at `boundaryEnd` keeps nothing: the
-	// summary replaces the whole range, which is the only way to free anything
-	// when the range is one unbreakable oversized turn. The rebuild emits a
-	// pre-compaction entry only once it has seen `firstKeptEntryId`, so an id
-	// that matches no entry already means "keep nothing" everywhere it is read.
-	const keepsNothing = cutPoint.firstKeptEntryIndex >= boundaryEnd;
-	const firstKeptEntry = keepsNothing ? undefined : pathEntries[cutPoint.firstKeptEntryIndex];
-	if (!keepsNothing && !firstKeptEntry?.id) {
-		return undefined; // Session needs migration
-	}
-	const firstKeptEntryId = keepsNothing ? KEEP_NOTHING_ENTRY_ID : (firstKeptEntry as SessionEntry).id;
+	const firstKeptEntryId = firstKeptEntryIdAt(pathEntries, cutPoint.firstKeptEntryIndex, boundaryEnd);
+	if (firstKeptEntryId === undefined) return undefined; // Session needs migration
 
+	const excluded = options?.excludedCustomMessageTypes;
 	const historyEnd = cutPoint.isSplitTurn ? cutPoint.turnStartIndex : cutPoint.firstKeptEntryIndex;
-
 	// Messages to summarize (will be discarded after summary)
-	const messagesToSummarize: AgentMessage[] = [];
-	for (let i = summaryStart; i < historyEnd; i++) {
-		const msg = getMessageFromEntry(pathEntries[i], options?.excludedCustomMessageTypes);
-		if (msg) messagesToSummarize.push(msg);
-	}
-
+	const messagesToSummarize = messagesInRange(pathEntries, summaryStart, historyEnd, excluded);
 	// Messages for turn prefix summary (if splitting a turn)
-	const turnPrefixMessages: AgentMessage[] = [];
-	if (cutPoint.isSplitTurn) {
-		for (let i = cutPoint.turnStartIndex; i < cutPoint.firstKeptEntryIndex; i++) {
-			const msg = getMessageFromEntry(pathEntries[i], options?.excludedCustomMessageTypes);
-			if (msg) turnPrefixMessages.push(msg);
-		}
-	}
+	const turnPrefixMessages = cutPoint.isSplitTurn
+		? messagesInRange(pathEntries, cutPoint.turnStartIndex, cutPoint.firstKeptEntryIndex, excluded)
+		: [];
 
 	// Nothing to summarize means compaction would be a no-op. Refuse BEFORE
 	// the elision below rewrites anything: a pass that will not happen must
@@ -2256,45 +2337,22 @@ export function prepareCompaction(
 		cutPoint.firstKeptEntryIndex,
 		boundaryEnd,
 		keepRecentTokens,
-		options?.excludedCustomMessageTypes,
+		excluded,
 	);
 
 	// Messages kept after compaction (recent history). Collected AFTER the
 	// elision above so the retained view is the bounded one.
-	const recentMessages: AgentMessage[] = [];
-	for (let i = cutPoint.firstKeptEntryIndex; i < boundaryEnd; i++) {
-		const msg = getMessageFromEntry(pathEntries[i], options?.excludedCustomMessageTypes);
-		if (msg) recentMessages.push(msg);
-	}
+	const recentMessages = messagesInRange(pathEntries, cutPoint.firstKeptEntryIndex, boundaryEnd, excluded);
 
-	// Get previous summary and preserved data for iterative updates
-	let previousSummary: string | undefined;
-	let previousPreserveData: Record<string, unknown> | undefined;
-	if (prevCompactionIndex >= 0) {
-		const prevCompaction = pathEntries[prevCompactionIndex] as CompactionEntry;
-		previousSummary = prevCompaction.summary;
-		previousPreserveData = prevCompaction.preserveData;
-	}
-
-	// Extract file operations from messages and the lists the previous compaction records
-	const fileListBase =
-		prevCompactionIndex >= 0 ? resolveCompactionFileLists(pathEntries, prevCompactionIndex) : undefined;
+	// Extract file operations from messages, the turn prefix a split cut summarizes, and the lists the
+	// previous compaction records
+	const fileListBase = prevCompaction ? resolveCompactionFileLists(pathEntries, prevCompactionIndex) : undefined;
 	const fileOps = extractFileOperations(messagesToSummarize, fileListBase);
-
-	// Also extract file ops from turn prefix if splitting
-	if (cutPoint.isSplitTurn) {
-		extractFileOpsFromMessages(turnPrefixMessages, fileOps);
-	}
+	if (turnPrefixMessages.length > 0) extractFileOpsFromMessages(turnPrefixMessages, fileOps);
 
 	const remoteChain =
 		windowIndices.length > 0
-			? remoteCompactionChain(
-					pathEntries,
-					windowIndices,
-					windowStarts,
-					cutPoint.firstKeptEntryIndex,
-					options?.excludedCustomMessageTypes,
-				)
+			? remoteCompactionChain(pathEntries, windowIndices, windowStarts, cutPoint.firstKeptEntryIndex, excluded)
 			: undefined;
 
 	return {
@@ -2305,8 +2363,9 @@ export function prepareCompaction(
 		tailElisions,
 		isSplitTurn: cutPoint.isSplitTurn,
 		tokensBefore,
-		previousSummary,
-		previousPreserveData,
+		// The previous summary and preserved data, for iterative updates
+		previousSummary: prevCompaction?.summary,
+		previousPreserveData: prevCompaction?.preserveData,
 		remoteChain,
 		fileOps,
 		fileListBase,
@@ -2319,6 +2378,64 @@ export function prepareCompaction(
 // ============================================================================
 
 const TURN_PREFIX_SUMMARIZATION_PROMPT = prompt.render(AGENT_PROMPTS["compaction/compaction-turn-prefix"].text);
+
+/**
+ * `preserveData` without the two dead provider-native keys. A session compacted by one of those
+ * paths carries an opaque payload no local code can replay. It is dropped here so it is never copied
+ * forward; prepareCompaction has already re-expanded the original messages behind it, so the history
+ * is intact and gets summarized.
+ */
+function withoutLegacyRemotePayload(
+	preserveData: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+	if (!preserveData || !hasLegacyProviderNativeCompaction(preserveData)) return preserveData;
+	const carried: Record<string, unknown> = { ...preserveData };
+	for (const key of LEGACY_REMOTE_PRESERVE_KEYS) delete carried[key];
+	return Object.keys(carried).length > 0 ? carried : undefined;
+}
+
+/**
+ * Summarize the span the compaction discards: the history before the cut and, for a split turn, the
+ * prefix of the turn the cut goes through, generated in parallel and merged into one summary. With no
+ * new messages the previous summary stands.
+ */
+async function summarizeDiscardedSpan(
+	preparation: CompactionPreparation,
+	previousSummary: string | undefined,
+	model: Model,
+	reserveTokens: number,
+	apiKey: ApiKey,
+	customInstructions: string | undefined,
+	signal: AbortSignal | undefined,
+	options: SummaryOptions,
+): Promise<GeneratedSummary> {
+	const { messagesToSummarize, turnPrefixMessages, isSplitTurn } = preparation;
+	const summarizeHistory = (): Promise<GeneratedSummary> =>
+		generateSummary(
+			messagesToSummarize,
+			model,
+			reserveTokens,
+			apiKey,
+			signal,
+			customInstructions,
+			previousSummary,
+			options,
+		);
+	if (isSplitTurn && turnPrefixMessages.length > 0) {
+		const [historyResult, turnPrefixResult] = await Promise.all([
+			messagesToSummarize.length > 0 || previousSummary
+				? summarizeHistory()
+				: Promise.resolve<GeneratedSummary>({ summary: "No prior history.", stages: 1 }),
+			generateTurnPrefixSummary(turnPrefixMessages, model, reserveTokens, apiKey, signal, options),
+		]);
+		return {
+			summary: `${historyResult.summary}\n\n---\n\n**Turn Context (split turn):**\n\n${turnPrefixResult}`,
+			stages: historyResult.stages,
+		};
+	}
+	if (messagesToSummarize.length > 0) return summarizeHistory();
+	return { summary: previousSummary || "No prior history.", stages: 1 };
+}
 
 /**
  * Generate summaries for compaction using prepared data.
@@ -2335,17 +2452,7 @@ export async function compact(
 	signal?: AbortSignal,
 	options?: SummaryOptions,
 ): Promise<CompactionResult> {
-	const {
-		firstKeptEntryId,
-		messagesToSummarize,
-		turnPrefixMessages,
-		isSplitTurn,
-		tokensBefore,
-		previousPreserveData,
-		fileOps,
-		fileListBase,
-		settings,
-	} = preparation;
+	const { firstKeptEntryId, tokensBefore, previousPreserveData, fileOps, fileListBase, settings } = preparation;
 
 	const reserveTokens = settings.reserveTokens ?? DEFAULT_RESERVE_TOKENS;
 
@@ -2356,7 +2463,6 @@ export async function compact(
 	// settings own.
 	const summaryOptions: SummaryOptions = { ...options, remoteEndpoint: settings.remoteEndpoint };
 
-	const previousSummaryForCompaction = previousCompactionSummaryText(preparation);
 	// This function is the LOCAL pass and it always produces summary text. It is
 	// what runs whenever server-side compaction does not apply, which is most of
 	// the time.
@@ -2374,78 +2480,28 @@ export async function compact(
 	// deferred: it would pay a model to redo work the provider already did and
 	// leave two accounts of one range free to disagree. What follows only has to
 	// keep some OTHER pass's artifact from riding forward on this entry.
-	let preserveData = previousPreserveData;
-	if (preserveData !== undefined) {
-		const carried: Record<string, unknown> = { ...preserveData };
-		// A session compacted by one of the two dead provider-native paths carries
-		// an opaque payload no local code can replay. Drop it here so it is never
-		// copied forward; prepareCompaction has already re-expanded the original
-		// messages behind it, so the history is intact and gets summarized below.
-		let dropped = false;
-		for (const key of LEGACY_REMOTE_PRESERVE_KEYS) {
-			if (key in carried) {
-				delete carried[key];
-				dropped = true;
-			}
-		}
-		if (dropped) preserveData = Object.keys(carried).length > 0 ? carried : undefined;
-	}
+	//
 	// A prior REMOTE window must not ride this new local entry forward either.
 	// The summary generated below covers the span that window covered, and
 	// replaying the stale window beside it would double that history on every
 	// rebuild. A later remote pass does not come through here at all: it mints
 	// its own entry carrying only a fresh window.
-	preserveData = stripRemoteCompactionPreserveData(preserveData);
+	const preserveData = stripRemoteCompactionPreserveData(withoutLegacyRemotePayload(previousPreserveData));
 
-	// Generate summaries (can be parallel if both needed) and merge into one
-	let summary: string;
-	let summaryStages = 1;
-
-	if (isSplitTurn && turnPrefixMessages.length > 0) {
-		// Generate both summaries in parallel
-		const [historyResult, turnPrefixResult] = await Promise.all([
-			messagesToSummarize.length > 0 || previousSummaryForCompaction
-				? generateSummary(
-						messagesToSummarize,
-						model,
-						reserveTokens,
-						apiKey,
-						signal,
-						customInstructions,
-						previousSummaryForCompaction,
-						summaryOptions,
-					)
-				: Promise.resolve<GeneratedSummary>({ summary: "No prior history.", stages: 1 }),
-			generateTurnPrefixSummary(turnPrefixMessages, model, reserveTokens, apiKey, signal, summaryOptions),
-		]);
-		// Merge into single summary
-		summary = `${historyResult.summary}\n\n---\n\n**Turn Context (split turn):**\n\n${turnPrefixResult}`;
-		summaryStages = historyResult.stages;
-	} else if (messagesToSummarize.length > 0) {
-		// Generate history summary from messages to summarize
-		const historyResult = await generateSummary(
-			messagesToSummarize,
-			model,
-			reserveTokens,
-			apiKey,
-			signal,
-			customInstructions,
-			previousSummaryForCompaction,
-			summaryOptions,
-		);
-		summary = historyResult.summary;
-		summaryStages = historyResult.stages;
-	} else if (previousSummaryForCompaction) {
-		// No new messages to summarize, preserve previous summary
-		summary = previousSummaryForCompaction;
-	} else {
-		// No messages and no previous summary
-		summary = "No prior history.";
-	}
+	const generated = await summarizeDiscardedSpan(
+		preparation,
+		previousCompactionSummaryText(preparation),
+		model,
+		reserveTokens,
+		apiKey,
+		customInstructions,
+		signal,
+		summaryOptions,
+	);
 
 	// Compute file lists and append to summary
 	const { readFiles, modifiedFiles } = computeFileLists(fileOps);
-	summary = upsertFileOperations(summary, readFiles, modifiedFiles, fileOps.read);
+	const summary = upsertFileOperations(generated.summary, readFiles, modifiedFiles, fileOps.read);
 
 	if (!firstKeptEntryId) {
 		throw new Error("First kept entry has no ID - session may need migration");
@@ -2463,7 +2519,7 @@ export async function compact(
 		tokensBefore,
 		details: recordFileLists(readFiles, modifiedFiles, fileListBase),
 		preserveData: finalPreserveData,
-		summaryStages,
+		summaryStages: generated.stages,
 	};
 }
 
