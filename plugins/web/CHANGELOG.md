@@ -25,6 +25,10 @@
 - The dev.to handler renders an article page, for which the API returns `tag_list` as a comma-separated string, instead of failing on it.
 - The Stack Exchange handler decodes HTML entities in the question title and in author names.
 - The Hacker News handler renders the text of a comment that has replies once instead of twice.
+- The Wikidata handler counts only sitelinks to Wikipedia as Wikipedia articles, instead of every Wikiquote, Wikisource and Commons link as well.
+- The Wikidata handler renders a quantity with its unit label, such as `1.96 metre`, and requests the label of every value it shows, instead of the first 50 entity values in claim order.
+- The Wikipedia handler renders each paragraph once, under the innermost section that holds it, and drops the subsections of a skipped section such as See also.
+- The Read the Docs handler reports a converted page as `text/markdown`, instead of `text/html`, or `text/plain` after a failed raw-source fetch.
 
 ## [1.5.4] - 2026-09-24
 

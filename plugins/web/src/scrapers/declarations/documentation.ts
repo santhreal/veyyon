@@ -646,6 +646,7 @@ export const readthedocsDeclaration: DocDeclaration = {
 		}
 
 		let content = "";
+		let rawSource = false;
 
 		if (sourceUrl) {
 			try {
@@ -655,6 +656,7 @@ export const readthedocsDeclaration: DocDeclaration = {
 				});
 				if (sourceResult.ok && sourceResult.content.length > 0 && sourceResult.content.length < 1_000_000) {
 					content = sourceResult.content;
+					rawSource = true;
 					notes.push(`Fetched raw source from ${sourceUrl}`);
 				} else {
 					notes.push(
@@ -685,7 +687,7 @@ export const readthedocsDeclaration: DocDeclaration = {
 			method: "readthedocs",
 			fetchedAt: ctx.fetchedAt,
 			notes: notes.length ? notes : ["Fetched via Read the Docs"],
-			contentType: sourceUrl && content ? "text/plain" : "text/html",
+			contentType: rawSource ? "text/plain" : "text/markdown",
 		});
 	},
 };
@@ -1024,7 +1026,7 @@ interface WikidataEntity {
 	descriptions?: Record<string, { language: string; value: string }>;
 	aliases?: Record<string, Array<{ language: string; value: string }>>;
 	claims?: Record<string, WikidataClaim[]>;
-	sitelinks?: Record<string, { site: string; title: string }>;
+	sitelinks?: Record<string, { site: string; title: string; url?: string }>;
 }
 
 interface WikidataClaim {
@@ -1067,41 +1069,71 @@ function getLocalizedAliases(
 	return langAliases.map(a => a.value);
 }
 
-async function resolveEntityLabels(entityIds: string[], ctx: DocContext): Promise<Record<string, string>> {
-	if (entityIds.length === 0) return {};
+const WIKIDATA_LABEL_BATCH = 50;
 
-	const labels: Record<string, string> = {};
-	const batchSize = 50;
-	for (let i = 0; i < entityIds.length; i += batchSize) {
-		const batch = entityIds.slice(i, i + batchSize);
-		const apiUrl = `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${batch.join("|")}&props=labels&languages=en&format=json`;
-
-		try {
-			const result = await ctx.loadPage(apiUrl, { timeout: Math.min(ctx.timeout, 10), signal: ctx.signal });
-			if (result.ok) {
-				const data = JSON.parse(result.content) as {
-					entities: Record<string, { labels?: Record<string, { value: string }> }>;
-				};
-				for (const [id, entity] of Object.entries(data.entities)) {
-					const label = entity.labels?.en?.value;
-					if (label) labels[id] = label;
-				}
-			} else {
-				logger.warn("Wikidata label lookup failed; those entities render as raw Q-ids", {
-					ids: batch.join("|"),
-					reason: ctx.loadFailure(result),
-				});
-			}
-		} catch (error) {
-			if (isCancellation(error)) throw error;
+/** English labels from one wbgetentities request; empty when the request or its JSON fails. */
+async function loadWikidataLabelBatch(batch: string[], ctx: DocContext): Promise<Array<[string, string]>> {
+	const ids = batch.join("|");
+	const apiUrl = `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${ids}&props=labels&languages=en&format=json`;
+	try {
+		const result = await ctx.loadPage(apiUrl, { timeout: Math.min(ctx.timeout, 10), signal: ctx.signal });
+		if (!result.ok) {
 			logger.warn("Wikidata label lookup failed; those entities render as raw Q-ids", {
-				ids: batch.join("|"),
-				error: errorMessage(error),
+				ids,
+				reason: ctx.loadFailure(result),
 			});
+			return [];
 		}
+		const data = JSON.parse(result.content) as {
+			entities: Record<string, { labels?: Record<string, { value: string }> }>;
+		};
+		const labels: Array<[string, string]> = [];
+		for (const [id, entity] of Object.entries(data.entities)) {
+			const label = entity.labels?.en?.value;
+			if (label) labels.push([id, label]);
+		}
+		return labels;
+	} catch (error) {
+		if (isCancellation(error)) throw error;
+		logger.warn("Wikidata label lookup failed; those entities render as raw Q-ids", {
+			ids,
+			error: errorMessage(error),
+		});
+		return [];
 	}
+}
 
-	return labels;
+/** English labels for `entityIds`, requested in parallel batches; an id whose batch fails has no entry. */
+async function resolveEntityLabels(entityIds: string[], ctx: DocContext): Promise<Map<string, string>> {
+	const batches: string[][] = [];
+	for (let i = 0; i < entityIds.length; i += WIKIDATA_LABEL_BATCH) {
+		batches.push(entityIds.slice(i, i + WIKIDATA_LABEL_BATCH));
+	}
+	const results = await Promise.all(batches.map(batch => loadWikidataLabelBatch(batch, ctx)));
+	return new Map(results.flat());
+}
+
+/** The Q-id a claim renders through a label: an entity value, or the unit of a quantity. */
+function claimEntityId(claim: WikidataClaim): string | undefined {
+	const datavalue = claim.mainsnak.datavalue;
+	const value = datavalue?.value;
+	if (typeof value !== "object" || value === null) return undefined;
+	if (datavalue?.type === "wikibase-entityid" && "id" in value && typeof value.id === "string") return value.id;
+	if (datavalue?.type === "quantity" && "unit" in value && typeof value.unit === "string") {
+		return value.unit.match(/Q\d+$/)?.[0];
+	}
+	return undefined;
+}
+
+const WIKIPEDIA_ARTICLE_URL = /^https:\/\/[^/]+\.wikipedia\.org\//;
+
+/** Sitelinks to a Wikipedia article; the rest point at Wikiquote, Wikisource, Commons and the other sister projects. */
+function countWikipediaSitelinks(sitelinks: NonNullable<WikidataEntity["sitelinks"]>): number {
+	let count = 0;
+	for (const link of Object.values(sitelinks)) {
+		if (link.url && WIKIPEDIA_ARTICLE_URL.test(link.url)) count++;
+	}
+	return count;
 }
 
 function formatWikidataTime(time: string, precision: number): string {
@@ -1122,7 +1154,7 @@ function formatWikidataTime(time: string, precision: number): string {
 	return `${absYear}${era}`;
 }
 
-function formatClaimValue(claim: WikidataClaim, entityLabels: Record<string, string>): string | null {
+function formatClaimValue(claim: WikidataClaim, entityLabels: ReadonlyMap<string, string>): string | null {
 	const snak = claim.mainsnak;
 	if (snak.snaktype !== "value" || !snak.datavalue) return null;
 
@@ -1131,7 +1163,7 @@ function formatClaimValue(claim: WikidataClaim, entityLabels: Record<string, str
 	switch (type) {
 		case "wikibase-entityid": {
 			if (typeof value === "object" && value !== null && "id" in value && typeof value.id === "string") {
-				return entityLabels[value.id] || value.id;
+				return entityLabels.get(value.id) || value.id;
 			}
 			return null;
 		}
@@ -1161,7 +1193,7 @@ function formatClaimValue(claim: WikidataClaim, entityLabels: Record<string, str
 			) {
 				const amount = value.amount.replace(/^\+/, "");
 				const unitMatch = value.unit.match(/Q\d+$/);
-				const unit = unitMatch ? entityLabels[unitMatch[0]] || "" : "";
+				const unit = unitMatch ? entityLabels.get(unitMatch[0]) || "" : "";
 				return unit ? `${amount} ${unit}` : amount;
 			}
 			return null;
@@ -1188,6 +1220,81 @@ function formatClaimValue(claim: WikidataClaim, entityLabels: Record<string, str
 		default:
 			return null;
 	}
+}
+
+const MAX_WIKIDATA_PROPERTIES = 50;
+const MAX_WIKIDATA_VALUES = 10;
+const NO_LABELS: ReadonlyMap<string, string> = new Map();
+
+/** A claim's value before labels are applied, with the Q-id it renders through; null for a value that renders empty. */
+function claimKey(claim: WikidataClaim): string | null {
+	const raw = formatClaimValue(claim, NO_LABELS);
+	return raw ? `${raw}\u0000${claimEntityId(claim) ?? ""}` : null;
+}
+
+/** The claims that render a value, deprecated ones and repeats of an earlier value dropped. */
+function distinctClaims(claims: WikidataClaim[]): WikidataClaim[] {
+	const seen = new Set<string>();
+	const distinct: WikidataClaim[] = [];
+	for (const claim of claims) {
+		if (claim.rank === "deprecated") continue;
+		const key = claimKey(claim);
+		if (key === null || seen.has(key)) continue;
+		seen.add(key);
+		distinct.push(claim);
+	}
+	return distinct;
+}
+
+interface WikidataPropertyRow {
+	heading: string;
+	known: boolean;
+	claims: WikidataClaim[];
+}
+
+/** Properties with a value to render: those in {@link PROPERTY_LABELS} first, each group by its heading. */
+function wikidataPropertyRows(claims: Record<string, WikidataClaim[]>): WikidataPropertyRow[] {
+	const rows: WikidataPropertyRow[] = [];
+	for (const [propId, propertyClaims] of Object.entries(claims)) {
+		const distinct = distinctClaims(propertyClaims);
+		if (distinct.length === 0) continue;
+		const known = Object.hasOwn(PROPERTY_LABELS, propId);
+		rows.push({ heading: `**${known ? PROPERTY_LABELS[propId] : propId}:**`, known, claims: distinct });
+	}
+	return rows.sort((a, b) => Number(b.known) - Number(a.known) || a.heading.localeCompare(b.heading));
+}
+
+/** The Q-ids of the values the shown rows render, so no label is requested for an elided value. */
+function renderedEntityIds(rows: WikidataPropertyRow[]): string[] {
+	const ids = new Set<string>();
+	for (const row of rows) {
+		for (const claim of row.claims.slice(0, MAX_WIKIDATA_VALUES)) {
+			const id = claimEntityId(claim);
+			if (id) ids.add(id);
+		}
+	}
+	return Array.from(ids);
+}
+
+/**
+ * The first {@link MAX_WIKIDATA_PROPERTIES} properties with their first {@link MAX_WIKIDATA_VALUES} values each, entity
+ * values and units by their English labels.
+ */
+async function renderWikidataProperties(claims: Record<string, WikidataClaim[]>, ctx: DocContext): Promise<string> {
+	const rows = wikidataPropertyRows(claims);
+	const shown = rows.slice(0, MAX_WIKIDATA_PROPERTIES);
+	const labels = await resolveEntityLabels(renderedEntityIds(shown), ctx);
+	const lines = shown.map(row => {
+		const values = row.claims.slice(0, MAX_WIKIDATA_VALUES).map(claim => formatClaimValue(claim, labels));
+		const elided = row.claims.length - MAX_WIKIDATA_VALUES;
+		const overflow = elided > 0 ? ` […${elided} values elided…]` : "";
+		return `- ${row.heading} ${values.join(", ")}${overflow}`;
+	});
+	let md = `## Properties\n\n${lines.join("\n")}`;
+	if (rows.length > MAX_WIKIDATA_PROPERTIES) {
+		md += `\n\n[…${rows.length - MAX_WIKIDATA_PROPERTIES} properties elided…]`;
+	}
+	return `${md}\n`;
 }
 
 // --- Wikidata ---
@@ -1218,62 +1325,13 @@ export const wikidataDeclaration: DocDeclaration = {
 		if (description) md += `*${description}*\n\n`;
 		if (aliases.length > 0) md += `**Also known as:** ${aliases.join(", ")}\n\n`;
 
-		const sitelinkCount = entity.sitelinks ? Object.keys(entity.sitelinks).length : 0;
-		if (sitelinkCount > 0) {
-			md += `**Wikipedia articles:** ${formatNumber(sitelinkCount)} languages\n\n`;
+		const wikipediaArticles = entity.sitelinks ? countWikipediaSitelinks(entity.sitelinks) : 0;
+		if (wikipediaArticles > 0) {
+			md += `**Wikipedia articles:** ${formatNumber(wikipediaArticles)} languages\n\n`;
 		}
 
 		if (entity.claims && Object.keys(entity.claims).length > 0) {
-			md += "## Properties\n\n";
-
-			const entityIdsToResolve = new Set<string>();
-			for (const claims of Object.values(entity.claims)) {
-				for (const claim of claims) {
-					if (claim.mainsnak.datavalue?.type === "wikibase-entityid") {
-						const val = claim.mainsnak.datavalue.value;
-						if (typeof val === "object" && val !== null && "id" in val && typeof val.id === "string") {
-							entityIdsToResolve.add(val.id);
-						}
-					}
-				}
-			}
-
-			const entityLabels = await resolveEntityLabels(Array.from(entityIdsToResolve).slice(0, 50), ctx);
-
-			const processedProperties: string[] = [];
-			for (const [propId, claims] of Object.entries(entity.claims)) {
-				const propLabel = PROPERTY_LABELS[propId] || propId;
-				const values: string[] = [];
-
-				for (const claim of claims) {
-					if (claim.rank === "deprecated") continue;
-					const value = formatClaimValue(claim, entityLabels);
-					if (value && !values.includes(value)) {
-						values.push(value);
-					}
-				}
-
-				if (values.length > 0) {
-					const displayValues = values.slice(0, 10);
-					const overflow = values.length > 10 ? ` […${values.length - 10} values elided…]` : "";
-					processedProperties.push(`- **${propLabel}:** ${displayValues.join(", ")}${overflow}`);
-				}
-			}
-
-			processedProperties.sort((a, b) => {
-				const aKnown = Object.values(PROPERTY_LABELS).some(l => a.includes(`**${l}:**`));
-				const bKnown = Object.values(PROPERTY_LABELS).some(l => b.includes(`**${l}:**`));
-				if (aKnown && !bKnown) return -1;
-				if (!aKnown && bKnown) return 1;
-				return a.localeCompare(b);
-			});
-
-			const maxProps = 50;
-			md += processedProperties.slice(0, maxProps).join("\n");
-			if (processedProperties.length > maxProps) {
-				md += `\n\n[…${processedProperties.length - maxProps} properties elided…]`;
-			}
-			md += "\n";
+			md += await renderWikidataProperties(entity.claims, ctx);
 		}
 
 		if (entity.sitelinks) {
@@ -1297,6 +1355,55 @@ export const wikidataDeclaration: DocDeclaration = {
 		return md;
 	},
 };
+
+// --- Wikipedia Helpers & Types ---
+interface WikipediaElement {
+	readonly tagName: string;
+	readonly textContent: string | null;
+	readonly parentElement: WikipediaElement | null;
+	closest(selectors: string): WikipediaElement | null;
+	querySelectorAll(selectors: string): Iterable<WikipediaElement>;
+}
+
+interface WikipediaDocument {
+	querySelectorAll(selectors: string): Iterable<WikipediaElement>;
+}
+
+const WIKIPEDIA_SKIPPED_SECTIONS = new Set(["References", "External links", "See also", "Notes", "Further reading"]);
+
+/** The first heading of `section` itself, not of a subsection nested in it. */
+function ownHeading(section: WikipediaElement): WikipediaElement | undefined {
+	for (const heading of section.querySelectorAll("h2, h3, h4")) {
+		if (heading.closest("section") === section) return heading;
+	}
+	return undefined;
+}
+
+/**
+ * The mobile-html sections in document order, each with its own heading and paragraphs. Sections nest, so a
+ * paragraph renders once, under the innermost section that holds it, and a subsection of a skipped section is skipped.
+ */
+function renderWikipediaSections(html: string): string {
+	const doc: WikipediaDocument = parseHTML(html).document;
+	const skipped = new Set<WikipediaElement>();
+	let md = "";
+	for (const section of doc.querySelectorAll("section")) {
+		const heading = ownHeading(section);
+		const headingText = heading?.textContent?.trim();
+		const parent = section.parentElement?.closest("section");
+		if ((parent && skipped.has(parent)) || (headingText && WIKIPEDIA_SKIPPED_SECTIONS.has(headingText))) {
+			skipped.add(section);
+			continue;
+		}
+		if (heading && headingText) md += `${heading.tagName === "H2" ? "##" : "###"} ${headingText}\n\n`;
+		for (const paragraph of section.querySelectorAll("p")) {
+			if (paragraph.closest("section") !== section) continue;
+			const text = paragraph.textContent?.trim();
+			if (text && text.length > 20) md += `${text}\n\n`;
+		}
+	}
+	return md;
+}
 
 // --- Wikipedia ---
 export const wikipediaDeclaration: DocDeclaration = {
@@ -1333,31 +1440,7 @@ export const wikipediaDeclaration: DocDeclaration = {
 			}
 		}
 
-		if (contentRes.ok) {
-			const doc = parseHTML(contentRes.content).document;
-			const sections = doc.querySelectorAll("section");
-			for (const section of sections) {
-				const heading = section.querySelector("h2, h3, h4");
-				const headingText = heading?.textContent?.trim();
-				if (
-					headingText &&
-					["References", "External links", "See also", "Notes", "Further reading"].includes(headingText)
-				) {
-					continue;
-				}
-				if (headingText) {
-					const level = heading?.tagName === "H2" ? "##" : "###";
-					md += `${level} ${headingText}\n\n`;
-				}
-				const paragraphs = section.querySelectorAll("p");
-				for (const p of paragraphs) {
-					const text = p.textContent?.trim();
-					if (text && text.length > 20) {
-						md += `${text}\n\n`;
-					}
-				}
-			}
-		}
+		if (contentRes.ok) md += renderWikipediaSections(contentRes.content);
 
 		return md || null;
 	},

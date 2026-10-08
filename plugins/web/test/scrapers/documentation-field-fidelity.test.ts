@@ -408,6 +408,7 @@ Permission is hereby granted, free of charge, to any person obtaining a copy.
 			expect(res.content).not.toContain("Related to strip");
 			expect(res.content).not.toContain("Footer to strip");
 			expect(res.content).not.toContain("[source]");
+			expect(res.contentType).toBe("text/markdown");
 		});
 
 		it("fetches raw source from edit links when present", async () => {
@@ -446,6 +447,32 @@ Permission is hereby granted, free of charge, to any person obtaining a copy.
 				"Requests: HTTP for Humans\n========================\n\nRaw reStructuredText from GitHub.",
 			);
 			expect(res.notes).toContain("Fetched raw source from https://github.com/psf/requests/raw/main/docs/index.rst");
+			expect(res.contentType).toBe("text/plain");
+		});
+
+		it("labels the converted page Markdown when the raw source from the edit link is unusable", async () => {
+			loadPageSpy = spyOn(scraperTypes, "loadPage").mockImplementation(async (url: string) => {
+				if (url.includes("requests.readthedocs.io")) {
+					return {
+						ok: true,
+						status: 200,
+						content: `<html><body><div class="document">
+  <a href="https://github.com/psf/requests/blob/main/docs/index.rst">Edit on GitHub</a>
+  <p>Converted paragraph from the rendered page.</p>
+</div></body></html>`,
+						contentType: "text/html",
+						finalUrl: url,
+					} satisfies LoadPageResult;
+				}
+				return { ok: false, status: 404, content: "", contentType: "text/plain", finalUrl: url };
+			});
+
+			const res = asRender(await handler("https://requests.readthedocs.io/en/latest/", 10));
+			expect(res.content).toContain("Converted paragraph from the rendered page.");
+			expect(res.contentType).toBe("text/markdown");
+			expect(res.notes).toEqual([
+				"Raw source at https://github.com/psf/requests/raw/main/docs/index.rst was unusable (HTTP 404); converted the HTML instead",
+			]);
 		});
 	});
 
@@ -610,8 +637,26 @@ Permission is hereby granted, free of charge, to any person obtaining a copy.
 									descriptions: { en: { language: "en", value: "English author and humorist" } },
 									aliases: { en: [{ language: "en", value: "Douglas Noel Adams" }] },
 									sitelinks: {
-										enwiki: { site: "enwiki", title: "Douglas Adams" },
-										frwiki: { site: "frwiki", title: "Douglas Adams" },
+										enwiki: {
+											site: "enwiki",
+											title: "Douglas Adams",
+											url: "https://en.wikipedia.org/wiki/Douglas_Adams",
+										},
+										frwiki: {
+											site: "frwiki",
+											title: "Douglas Adams",
+											url: "https://fr.wikipedia.org/wiki/Douglas_Adams",
+										},
+										enwikiquote: {
+											site: "enwikiquote",
+											title: "Douglas Adams",
+											url: "https://en.wikiquote.org/wiki/Douglas_Adams",
+										},
+										commonswiki: {
+											site: "commonswiki",
+											title: "Category:Douglas Adams",
+											url: "https://commons.wikimedia.org/wiki/Category:Douglas_Adams",
+										},
 									},
 									claims: {
 										P31: [
@@ -666,6 +711,40 @@ Permission is hereby granted, free of charge, to any person obtaining a copy.
 												},
 											},
 										],
+										P2048: [
+											{
+												rank: "normal",
+												mainsnak: {
+													snaktype: "value",
+													property: "P2048",
+													datavalue: {
+														type: "quantity",
+														value: { amount: "+1.96", unit: "http://www.wikidata.org/entity/Q11573" },
+													},
+												},
+											},
+											{
+												rank: "normal",
+												mainsnak: {
+													snaktype: "value",
+													property: "P2048",
+													datavalue: {
+														type: "quantity",
+														value: { amount: "+1.96", unit: "http://www.wikidata.org/entity/Q3710" },
+													},
+												},
+											},
+										],
+										P856: [
+											{
+												rank: "normal",
+												mainsnak: {
+													snaktype: "value",
+													property: "P856",
+													datavalue: { type: "string", value: "https://douglasadams.com" },
+												},
+											},
+										],
 									},
 								},
 							},
@@ -674,15 +753,16 @@ Permission is hereby granted, free of charge, to any person obtaining a copy.
 						finalUrl: url,
 					} satisfies LoadPageResult;
 				}
-				if (url.includes("action=wbgetentities") && url.includes("Q5")) {
+				if (url.includes("action=wbgetentities")) {
+					const labels: Record<string, string> = { Q5: "human", Q11573: "metre", Q3710: "foot" };
+					const ids = new URL(url).searchParams.get("ids")?.split("|") ?? [];
+					const entities = Object.fromEntries(
+						ids.filter(id => labels[id]).map(id => [id, { labels: { en: { value: labels[id] } } }]),
+					);
 					return {
 						ok: true,
 						status: 200,
-						content: JSON.stringify({
-							entities: {
-								Q5: { labels: { en: { value: "human" } } },
-							},
-						}),
+						content: JSON.stringify({ entities }),
 						contentType: "application/json",
 						finalUrl: url,
 					} satisfies LoadPageResult;
@@ -700,10 +780,67 @@ Permission is hereby granted, free of charge, to any person obtaining a copy.
 			expect(res.content).toContain("- **Born:** 11/03/1952");
 			expect(res.content).toContain("- **Coordinates:** 52.2053, 0.1218");
 			expect(res.content).toContain("- **Employees:** 42");
+			expect(res.content).toContain("- **P2048:** 1.96 metre, 1.96 foot");
+			expect(res.content.match(/^- \*\*[^*]+:\*\*/gm)).toEqual([
+				"- **Born:**",
+				"- **Coordinates:**",
+				"- **Employees:**",
+				"- **Instance of:**",
+				"- **Website:**",
+				"- **P2048:**",
+			]);
 			expect(res.content).toContain(
 				"## Wikipedia Links\n\n[EN](https://en.wikipedia.org/wiki/Douglas%20Adams) · [FR](https://fr.wikipedia.org/wiki/Douglas%20Adams)",
 			);
 			expect(res.method).toBe("wikidata");
+		});
+
+		it("requests a label for every value it renders and for no value it elides", async () => {
+			const entityClaim = (property: string, id: string) => ({
+				rank: "normal",
+				mainsnak: { snaktype: "value", property, datavalue: { type: "wikibase-entityid", value: { id } } },
+			});
+			// P9000 holds twelve values, ten of them shown; P9001-P9054 hold one each, and P9001-P9049 are shown.
+			const claims: Record<string, unknown[]> = {
+				P9000: Array.from({ length: 12 }, (_, index) => entityClaim("P9000", `Q${2000 + index}`)),
+			};
+			for (let index = 1; index <= 54; index++) {
+				claims[`P${9000 + index}`] = [entityClaim(`P${9000 + index}`, `Q${1000 + index}`)];
+			}
+			const rendered = [
+				...Array.from({ length: 10 }, (_, index) => `Q${2000 + index}`),
+				...Array.from({ length: 49 }, (_, index) => `Q${1001 + index}`),
+			];
+			const requestedBatches: string[][] = [];
+			loadPageSpy = spyOn(scraperTypes, "loadPage").mockImplementation(async (url: string) => {
+				if (url.includes("Special:EntityData/Q42.json")) {
+					return {
+						ok: true,
+						status: 200,
+						content: JSON.stringify({ entities: { Q42: { id: "Q42", claims } } }),
+						contentType: "application/json",
+						finalUrl: url,
+					} satisfies LoadPageResult;
+				}
+				const ids = new URL(url).searchParams.get("ids")?.split("|") ?? [];
+				requestedBatches.push(ids);
+				const entities = Object.fromEntries(ids.map(id => [id, { labels: { en: { value: `label-${id}` } } }]));
+				return {
+					ok: true,
+					status: 200,
+					content: JSON.stringify({ entities }),
+					contentType: "application/json",
+					finalUrl: url,
+				} satisfies LoadPageResult;
+			});
+
+			const res = asRender(await handler("https://www.wikidata.org/wiki/Q42", 10));
+			for (const id of rendered) expect(res.content).toContain(`label-${id}`);
+			expect(requestedBatches.flat().sort()).toEqual([...rendered].sort());
+			expect(requestedBatches.map(batch => batch.length)).toEqual([50, 9]);
+			expect(res.content).toContain("- **P9000:** label-Q2000,");
+			expect(res.content).toContain("label-Q2009 […2 values elided…]");
+			expect(res.content).toContain("[…5 properties elided…]");
 		});
 	});
 
@@ -769,6 +906,48 @@ Permission is hereby granted, free of charge, to any person obtaining a copy.
 			expect(res.content).not.toContain("## External links");
 			expect(res.content).not.toContain("Links content to strip completely.");
 			expect(res.method).toBe("wikipedia");
+		});
+
+		it("renders each paragraph once, under the innermost section holding it, and skips subsections of a skipped section", async () => {
+			loadPageSpy = spyOn(scraperTypes, "loadPage").mockImplementation(async (url: string) => {
+				if (url.includes("/page/mobile-html/")) {
+					return {
+						ok: true,
+						status: 200,
+						content: `<html><body>
+<section data-mw-section-id="0"><p>Lead paragraph that opens the article body.</p></section>
+<section data-mw-section-id="1"><div class="pcs-edit-section-header"><h2>Career</h2></div>
+  <p>Career overview paragraph of the first section.</p>
+  <section data-mw-section-id="2"><h3>Radio</h3><p>Radio paragraph nested one level down.</p>
+    <section data-mw-section-id="3"><h4>Hitchhiker</h4><p>Hitchhiker paragraph nested two levels down.</p></section>
+  </section>
+</section>
+<section data-mw-section-id="-1"><section data-mw-section-id="6"><h2>Legacy</h2><p>Legacy paragraph inside a heading-less wrapper.</p></section></section>
+<section data-mw-section-id="4"><h2>See also</h2><p>See-also paragraph that must not render.</p>
+  <section data-mw-section-id="5"><h3>Related works</h3><p>Subsection of a skipped section, also dropped.</p></section>
+</section>
+</body></html>`,
+						contentType: "text/html",
+						finalUrl: url,
+					} satisfies LoadPageResult;
+				}
+				return { ok: false, status: 404, content: "", contentType: "text/plain", finalUrl: url };
+			});
+
+			const res = asRender(await handler("https://en.wikipedia.org/wiki/Douglas_Adams", 10));
+			expect(res.content.trim()).toBe(
+				[
+					"Lead paragraph that opens the article body.",
+					"## Career",
+					"Career overview paragraph of the first section.",
+					"### Radio",
+					"Radio paragraph nested one level down.",
+					"### Hitchhiker",
+					"Hitchhiker paragraph nested two levels down.",
+					"## Legacy",
+					"Legacy paragraph inside a heading-less wrapper.",
+				].join("\n\n"),
+			);
 		});
 	});
 });
