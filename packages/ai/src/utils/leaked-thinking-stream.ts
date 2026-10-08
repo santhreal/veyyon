@@ -28,7 +28,7 @@
  * events are forwarded verbatim.
  */
 
-import type { AssistantMessage, TextContent, ThinkingContent, ToolCall } from "../types";
+import type { AssistantMessage, AssistantMessageEvent, TextContent, ThinkingContent, ToolCall } from "../types";
 import {
 	clearStreamingPartialJson,
 	getStreamingPartialJson,
@@ -61,68 +61,93 @@ function syncToolCall(target: StreamingToolCall, source: StreamingToolCall): voi
  */
 export function wrapLeakedThinkingStream(inner: AssistantMessageEventStream): AssistantMessageEventStream {
 	const out = new AssistantMessageEventStream();
-	void (async () => {
+	void new LeakedThinkingRelay(inner, out).run();
+	return out;
+}
+
+/** Consumes the inner stream and feeds each event to one {@link LeakedThinkingProjector}. */
+class LeakedThinkingRelay {
+	readonly #inner: AssistantMessageEventStream;
+	readonly #out: AssistantMessageEventStream;
+	#projector: LeakedThinkingProjector | undefined;
+
+	constructor(inner: AssistantMessageEventStream, out: AssistantMessageEventStream) {
+		this.#inner = inner;
+		this.#out = out;
+	}
+
+	async run(): Promise<void> {
 		try {
-			let projector: LeakedThinkingProjector | undefined;
-			for await (const event of inner) {
-				switch (event.type) {
-					case "start":
-						projector = new LeakedThinkingProjector(out, event.partial);
-						break;
-					case "text_delta": {
-						projector ??= new LeakedThinkingProjector(out, event.partial);
-						const block = event.partial.content[event.contentIndex];
-						projector.text(event.delta, block?.type === "text" ? block.textSignature : undefined);
-						break;
-					}
-					case "thinking_delta": {
-						projector ??= new LeakedThinkingProjector(out, event.partial);
-						const block = event.partial.content[event.contentIndex];
-						projector.thinking(event.delta, block?.type === "thinking" ? block.thinkingSignature : undefined);
-						break;
-					}
-					case "toolcall_start": {
-						projector ??= new LeakedThinkingProjector(out, event.partial);
-						const block = event.partial.content[event.contentIndex];
-						projector.toolStart(event.contentIndex, block?.type === "toolCall" ? block : undefined);
-						break;
-					}
-					case "toolcall_delta": {
-						const block = event.partial.content[event.contentIndex];
-						projector?.toolDelta(event.contentIndex, event.delta, block?.type === "toolCall" ? block : undefined);
-						break;
-					}
-					case "toolcall_end":
-						projector?.toolEnd(event.contentIndex, event.toolCall);
-						break;
-					case "done": {
-						projector ??= new LeakedThinkingProjector(out, event.message);
-						const content = projector.finish(event.message);
-						out.push({ type: "done", reason: event.reason, message: { ...event.message, content } });
-						return;
-					}
-					case "error": {
-						projector ??= new LeakedThinkingProjector(out, event.error);
-						const content = projector.finish(event.error);
-						out.push({ type: "error", reason: event.reason, error: { ...event.error, content } });
-						return;
-					}
-					// text_start/text_end/thinking_start/thinking_end are ignored: the
-					// projector owns block boundaries (matches wrapInbandToolStream).
-				}
+			for await (const event of this.#inner) {
+				if (this.#relay(event)) return;
 			}
 			// Inner ended via end(result) without a terminal event.
-			if (!out.done) {
-				const result = await inner.result();
-				projector ??= new LeakedThinkingProjector(out, result);
-				const content = projector.finish(result);
-				out.end({ ...result, content });
+			if (!this.#out.done) {
+				const result = await this.#inner.result();
+				this.#out.end({ ...result, content: this.#projectorFor(result).finish(result) });
 			}
 		} catch (err) {
-			if (!out.done) out.fail(err);
+			if (!this.#out.done) this.#out.fail(err);
 		}
-	})();
-	return out;
+	}
+
+	#projectorFor(partial: AssistantMessage): LeakedThinkingProjector {
+		this.#projector ??= new LeakedThinkingProjector(this.#out, partial);
+		return this.#projector;
+	}
+
+	/**
+	 * Forwards one inner event and reports whether it ended the stream. `text_start`, `text_end`,
+	 * `thinking_start` and `thinking_end` are dropped: the projector emits its own block boundaries
+	 * (as `wrapInbandToolStream` does).
+	 */
+	#relay(event: AssistantMessageEvent): boolean {
+		switch (event.type) {
+			case "start":
+				this.#projector = new LeakedThinkingProjector(this.#out, event.partial);
+				return false;
+			case "text_delta": {
+				const block = event.partial.content[event.contentIndex];
+				const signature = block?.type === "text" ? block.textSignature : undefined;
+				this.#projectorFor(event.partial).text(event.delta, signature);
+				return false;
+			}
+			case "thinking_delta": {
+				const block = event.partial.content[event.contentIndex];
+				const signature = block?.type === "thinking" ? block.thinkingSignature : undefined;
+				this.#projectorFor(event.partial).thinking(event.delta, signature);
+				return false;
+			}
+			case "toolcall_start": {
+				const block = event.partial.content[event.contentIndex];
+				this.#projectorFor(event.partial).toolStart(
+					event.contentIndex,
+					block?.type === "toolCall" ? block : undefined,
+				);
+				return false;
+			}
+			case "toolcall_delta": {
+				const block = event.partial.content[event.contentIndex];
+				this.#projector?.toolDelta(event.contentIndex, event.delta, block?.type === "toolCall" ? block : undefined);
+				return false;
+			}
+			case "toolcall_end":
+				this.#projector?.toolEnd(event.contentIndex, event.toolCall);
+				return false;
+			case "done": {
+				const content = this.#projectorFor(event.message).finish(event.message);
+				this.#out.push({ type: "done", reason: event.reason, message: { ...event.message, content } });
+				return true;
+			}
+			case "error": {
+				const content = this.#projectorFor(event.error).finish(event.error);
+				this.#out.push({ type: "error", reason: event.reason, error: { ...event.error, content } });
+				return true;
+			}
+			default:
+				return false;
+		}
+	}
 }
 
 type OpenBlock = { index: number } | undefined;

@@ -113,6 +113,7 @@
 - The Cursor provider applies each interaction-update variant in its own function, selected from a table by variant name; content blocks, events and usage are identical across 30,000 generated update sequences.
 - An org-scoped login matches a stored row keyed under its org by one of its base identities without decoding the stored credential's tokens, cutting the check against an account-keyed row from 2.29 to 1.14 µs (median of nine) with identical matches across 300,000 generated credential pairs.
 - Harmony leak detection finds code-fence spans only once a harmony token or marker turns up, and skips a tool call's arguments when no parse boundary is supplied, cutting detection on 8 KB of fenced prose from 6.0 to 2.2 µs and on 100 KB of tool arguments from 92.8 to 1.1 µs, with identical detections across 200,000 generated texts.
+- `wrapLeakedThinkingStream` relays the inner stream through one `LeakedThinkingRelay` that handles each event kind in its own case; healed streams are unchanged.
 
 ### Fixed
 
