@@ -6,11 +6,14 @@
 import type {
 	AssistantMessage,
 	AssistantMessageEvent,
+	AssistantMessageEventStream,
 	AssistantTurnStatus,
 	Context,
 	IncompleteToolCall,
 	InstrumentationLevel,
 	Model,
+	SimpleStreamOptions,
+	Tool,
 	ToolCallStatus,
 	ToolChoice,
 	ToolResultMessage,
@@ -659,48 +662,21 @@ function injectIntentIntoSchema(
 	describeIntent = true,
 ): unknown {
 	if (!isRecord(schema)) return schema;
-	const schemaRecord = schema as Record<string, unknown>;
-	const propertiesValue = schemaRecord.properties;
+	const propertiesValue = schema.properties;
 	const hasOwnProperties = isRecord(propertiesValue);
-
-	// Pure union root (anyOf/oneOf with no own properties): push `i` into each
-	// alternative branch so each closed shape keeps `additionalProperties: false`
-	// honest with intent tracing. Adding a sibling root `properties: { i }` /
-	// `required: [i]` would force every input to satisfy both root *and* a
-	// branch, leaving no satisfiable shape because each branch's
-	// `additionalProperties: false` rejects every other field — and OpenAI
-	// strict sanitization later promotes that sibling to a closed root
-	// `type: "object"` that rejects every non-`i` key outright. allOf is not
-	// alternation (its members are sub-constraints), so we don't recurse into it.
 	if (!hasOwnProperties) {
-		for (const key of INTENT_SCHEMA_UNION_KEYS) {
-			const variants = schemaRecord[key];
-			if (!Array.isArray(variants)) continue;
-			return {
-				...schemaRecord,
-				[key]: variants.map(variant => injectIntentIntoSchema(variant, mode, describeIntent)),
-			};
-		}
+		const union = injectIntentIntoUnionBranches(schema, mode, describeIntent);
+		if (union) return union;
 	}
 
-	const properties = hasOwnProperties ? (propertiesValue as Record<string, unknown>) : {};
-	const requiredValue = schemaRecord.required;
+	const properties = hasOwnProperties ? propertiesValue : {};
+	const requiredValue = schema.required;
 	const required = Array.isArray(requiredValue)
 		? requiredValue.filter((item): item is string => typeof item === "string")
 		: [];
-	if (INTENT_FIELD in properties) {
-		const { [INTENT_FIELD]: intentProp, ...rest } = properties;
-		const needsReorder = Object.keys(properties)[0] !== INTENT_FIELD;
-		const needsRequired = mode === "require" && !required.includes(INTENT_FIELD);
-		if (!needsReorder && !needsRequired) return schema;
-		return {
-			...schemaRecord,
-			...(needsReorder ? { properties: { [INTENT_FIELD]: intentProp, ...rest } } : {}),
-			...(needsRequired ? { required: required.concat(INTENT_FIELD) } : {}),
-		};
-	}
+	if (INTENT_FIELD in properties) return leadWithExistingIntent(schema, properties, required, mode);
 	return {
-		...schemaRecord,
+		...schema,
 		properties: {
 			[INTENT_FIELD]: describeIntent
 				? { type: "string", description: INTENT_FIELD_DESCRIPTION }
@@ -708,6 +684,52 @@ function injectIntentIntoSchema(
 			...properties,
 		},
 		...(mode === "require" ? { required: required.concat(INTENT_FIELD) } : {}),
+	};
+}
+
+/**
+ * A pure union root (anyOf/oneOf with no own properties) with `i` pushed into each alternative branch, so each closed
+ * shape keeps `additionalProperties: false` honest with intent tracing; `undefined` when the root has no union key.
+ *
+ * Adding a sibling root `properties: { i }` / `required: [i]` would force every input to satisfy both root *and* a
+ * branch, leaving no satisfiable shape because each branch's `additionalProperties: false` rejects every other field —
+ * and OpenAI strict sanitization later promotes that sibling to a closed root `type: "object"` that rejects every
+ * non-`i` key outright. allOf is not alternation (its members are sub-constraints), so it is not recursed into.
+ */
+function injectIntentIntoUnionBranches(
+	schema: Record<string, unknown>,
+	mode: "require" | "optional",
+	describeIntent: boolean,
+): Record<string, unknown> | undefined {
+	for (const key of INTENT_SCHEMA_UNION_KEYS) {
+		const variants = schema[key];
+		if (!Array.isArray(variants)) continue;
+		return {
+			...schema,
+			[key]: variants.map(variant => injectIntentIntoSchema(variant, mode, describeIntent)),
+		};
+	}
+	return undefined;
+}
+
+/**
+ * `schema` with its existing `i` property moved first and, under `require`, listed in `required`; `schema` itself
+ * when both already hold.
+ */
+function leadWithExistingIntent(
+	schema: Record<string, unknown>,
+	properties: Record<string, unknown>,
+	required: string[],
+	mode: "require" | "optional",
+): Record<string, unknown> {
+	const needsReorder = Object.keys(properties)[0] !== INTENT_FIELD;
+	const needsRequired = mode === "require" && !required.includes(INTENT_FIELD);
+	if (!needsReorder && !needsRequired) return schema;
+	const { [INTENT_FIELD]: intentProp, ...rest } = properties;
+	return {
+		...schema,
+		...(needsReorder ? { properties: { [INTENT_FIELD]: intentProp, ...rest } } : {}),
+		...(needsRequired ? { required: required.concat(INTENT_FIELD) } : {}),
 	};
 }
 
@@ -751,43 +773,51 @@ export function normalizeTools(
 	pruneDescriptions = false,
 ): Context["tools"] {
 	if (!tools) return tools;
+	injectIntent = injectIntent && Bun.env.VEYYON_NO_INTENT !== "1";
+	const cacheKey = `${injectIntent}|${exampleDialect ?? ""}|${pruneDescriptions}`;
+	const cached = normalizedToolsCache.get(tools);
+	if (cached && cached.key === cacheKey) return cached.result;
 	// Drop null/undefined/non-object slots so a bad registry entry cannot
 	// TypeError mid-map (adversarial / partial tool lists).
 	const valid = tools.filter(
 		(t): t is NonNullable<(typeof tools)[number]> =>
 			t !== null && t !== undefined && typeof t === "object" && typeof (t as { name?: unknown }).name === "string",
 	);
-	injectIntent = injectIntent && Bun.env.VEYYON_NO_INTENT !== "1";
-	const cacheKey = `${injectIntent}|${exampleDialect ?? ""}|${pruneDescriptions}`;
-	const cached = normalizedToolsCache.get(tools);
-	if (cached && cached.key === cacheKey) return cached.result;
-	const result = valid.map(t => {
-		const intentMode = resolveIntentMode(t.intent);
-		const doInjectIntent = injectIntent && intentMode !== "omit";
-		// When the full catalog is rendered into the system prompt, ship the tool
-		// specs without their descriptions (top-level + nested schema annotations)
-		// so they are not duplicated on the wire. Strip the STABLE wire schema (the
-		// memoized `stripSchemaDescriptions` result is reused across requests), then
-		// re-inject `i` (without its hint, which `describeIntent: false` omits) so
-		// intent tracing keeps the field while no descriptions ride the wire.
-		if (pruneDescriptions) {
-			let parameters = stripSchemaDescriptions(toolWireSchema(t)) as TSchema;
-			if (doInjectIntent) parameters = injectIntentIntoSchema(parameters, intentMode, false) as TSchema;
-			return { ...t, parameters, description: "" };
-		}
-		let parameters = toolWireSchema(t) as TSchema;
-		if (doInjectIntent) parameters = injectIntentIntoSchema(parameters, intentMode) as TSchema;
-		const description = t.description ?? "";
-		const examplesBlock = exampleDialect
-			? renderToolExamples({ ...t, parameters }, exampleDialect, doInjectIntent ? INTENT_FIELD : undefined)
-			: "";
-		// Every agent normalizes its own tool list, so an appended examples block would otherwise
-		// leave one copy of each description per live agent.
-		const finalDescription = examplesBlock ? internString(`${description}\n\n${examplesBlock}`) : description;
-		return { ...t, parameters, description: finalDescription };
-	});
+	const result = valid.map(t => normalizeTool(t, injectIntent, exampleDialect, pruneDescriptions));
 	normalizedToolsCache.set(tools, { key: cacheKey, result });
 	return result;
+}
+
+/** One tool as it goes on the wire: its wire schema, with `i` injected per the tool's intent mode, and its description. */
+function normalizeTool(
+	tool: AnyAgentTool,
+	injectIntent: boolean,
+	exampleDialect: Dialect | undefined,
+	pruneDescriptions: boolean,
+): Tool {
+	const intentMode = resolveIntentMode(tool.intent);
+	const doInjectIntent = injectIntent && intentMode !== "omit";
+	// When the full catalog is rendered into the system prompt, ship the tool
+	// specs without their descriptions (top-level + nested schema annotations)
+	// so they are not duplicated on the wire. Strip the STABLE wire schema (the
+	// memoized `stripSchemaDescriptions` result is reused across requests), then
+	// re-inject `i` (without its hint, which `describeIntent: false` omits) so
+	// intent tracing keeps the field while no descriptions ride the wire.
+	if (pruneDescriptions) {
+		let parameters = stripSchemaDescriptions(toolWireSchema(tool)) as TSchema;
+		if (doInjectIntent) parameters = injectIntentIntoSchema(parameters, intentMode, false) as TSchema;
+		return { ...tool, parameters, description: "" };
+	}
+	let parameters = toolWireSchema(tool) as TSchema;
+	if (doInjectIntent) parameters = injectIntentIntoSchema(parameters, intentMode) as TSchema;
+	const description = tool.description ?? "";
+	const examplesBlock = exampleDialect
+		? renderToolExamples({ ...tool, parameters }, exampleDialect, doInjectIntent ? INTENT_FIELD : undefined)
+		: "";
+	// Every agent normalizes its own tool list, so an appended examples block would otherwise
+	// leave one copy of each description per live agent.
+	const finalDescription = examplesBlock ? internString(`${description}\n\n${examplesBlock}`) : description;
+	return { ...tool, parameters, description: finalDescription };
 }
 
 function resolveIntentMode(intent: AgentTool["intent"]): "require" | "optional" | "omit" {
@@ -991,15 +1021,21 @@ async function runLoopBody(input: LoopRun): Promise<void> {
 	}
 }
 
+/**
+ * Steering messages queued before the run started: the user may have typed while waiting. None when the run is
+ * already externally aborted, since dequeuing would strand the messages in a run that is about to die.
+ */
+async function initialSteeringMessages(run: LoopRun): Promise<AgentMessage[]> {
+	if (run.signal?.aborted) return [];
+	return (await run.config.getSteeringMessages?.()) || [];
+}
+
 async function driveLoop(run: LoopRun): Promise<void> {
 	if (endIfDeadlinePassed(run)) return;
 	const state: LoopState = {
 		firstTurn: true,
 		hasMoreToolCalls: true,
-		// Check for steering messages at start (user may have typed while waiting). Skip when the
-		// run is already externally aborted — dequeuing would strand the messages in a run that is
-		// about to die.
-		pendingMessages: run.signal?.aborted ? [] : (await run.config.getSteeringMessages?.()) || [],
+		pendingMessages: await initialSteeringMessages(run),
 		harmonyRetryAttempt: 0,
 		harmonyTruncateResumeCount: 0,
 		pausedTurnContinuations: 0,
@@ -1145,19 +1181,7 @@ function resolveTurnDirective(run: LoopRun, state: LoopState): void {
  */
 async function sampleTurn(run: LoopRun, state: LoopState): Promise<AssistantMessage | undefined> {
 	try {
-		const message = await streamAssistantResponse(
-			run.context,
-			run.config,
-			run.signal,
-			run.stream,
-			run.telemetry,
-			run.invokeAgentSpan,
-			run.stepCounter,
-			run.streamFn,
-			state.harmonyRetryAttempt,
-			state.hostToolChoice,
-			state.forcedToolChoice,
-		);
+		const message = await streamAssistantResponse(run, state);
 		state.harmonyRetryAttempt = 0;
 		state.harmonyTruncateResumeCount = 0;
 		return message;
@@ -1481,495 +1505,516 @@ async function emitHarmonyAudit(
 	);
 }
 
-/**
- * Stream an assistant response from the LLM.
- * This is where AgentMessage[] gets transformed to Message[] for the LLM.
- */
-async function streamAssistantResponse(
-	context: AgentContext,
-	config: AgentLoopConfig,
-	signal: AbortSignal | undefined,
-	stream: EventStream<AgentEvent, AgentMessage[]>,
-	telemetry: AgentTelemetry | undefined,
-	invokeAgentSpan: Span | undefined,
-	stepCounter: StepCounter,
-	streamFn?: StreamFn,
-	harmonyRetryAttempt = 0,
-	hostToolChoice?: ToolChoice,
-	forcedToolChoice?: ToolChoice,
-): Promise<AssistantMessage> {
-	// Re-resolve the model per provider call (like `getReasoning`): mid-run
-	// model switches — context promotion, retry fallback — must apply on the
-	// next call instead of the run silently finishing on the stale model
-	// captured at run start.
-	const model = config.getModel?.() ?? config.model;
+/** The tools an owned in-band dialect rendered into the prompt, and the abort its stream wrapper raises. */
+interface InbandToolCalling {
+	readonly dialect: Dialect;
+	/** The wire tools rendered into the prompt; the stream wrapper re-materializes calls to them as `toolCall` blocks. */
+	readonly tools: NonNullable<Context["tools"]>;
+	/**
+	 * Aborted by the stream wrapper when the model starts fabricating a `<tool_response>`, so the provider stops
+	 * generating the rest of the hallucinated turn. Merged into the provider signal only, so it cancels the request
+	 * without tripping the loop's external-abort handling.
+	 */
+	readonly abort: AbortController;
+}
+
+/** What one provider call sends. */
+interface ProviderTurn {
+	readonly llmContext: Context;
+	/** The in-band dialect that owns tool calling; the provider then receives no native `tools` and no `tool_choice`. */
+	readonly ownedDialect: Dialect | undefined;
+	/** Set when the owned dialect rendered tools into the prompt. */
+	readonly inband: InbandToolCalling | undefined;
+}
+
+/** Build the provider context of one call. This is where AgentMessage[] gets transformed to Message[] for the LLM. */
+async function buildProviderTurn(run: LoopRun, model: Model): Promise<ProviderTurn> {
+	const { context, config } = run;
 	// Apply context transform if configured (AgentMessage[] → AgentMessage[])
-	let messages = context.messages;
-	if (config.transformContext) {
-		messages = await config.transformContext(messages, signal);
-	}
-
+	const messages = config.transformContext
+		? await config.transformContext(context.messages, run.signal)
+		: context.messages;
 	// Convert to LLM-compatible messages (AgentMessage[] → Message[])
-	const llmMessages = await config.convertToLlm(messages);
-	const normalizedMessages = normalizeMessagesForProvider(llmMessages, model);
-
-	const ownedDialect: Dialect | undefined = resolveConfiguredDialect(config.dialect, model);
+	const normalizedMessages = normalizeMessagesForProvider(await config.convertToLlm(messages), model);
+	const ownedDialect = resolveConfiguredDialect(config.dialect, model);
 	const exampleDialect = ownedDialect ?? preferredDialect(model.id);
-	// Owned/in-band dialects carry the catalog in the prompt as text and send no
-	// native `tools`, so description pruning only applies to native tool calling.
+	const intentTracing = !!config.intentTracing;
+	// Owned/in-band dialects carry the catalog in the prompt as text and send no native `tools`, so description pruning
+	// only applies to native tool calling.
 	const pruneToolDescriptions = !!config.pruneToolDescriptions && !ownedDialect;
-	// Build LLM context — append-only mode caches system prompt + tools
-	// AND keeps an append-only message log so prior-turn bytes are stable.
+	// Append-only mode caches system prompt + tools AND keeps an append-only message log so prior-turn bytes are stable.
 	let llmContext: Context;
 	if (config.appendOnlyContext) {
 		config.appendOnlyContext.syncMessages(normalizedMessages);
-		llmContext = config.appendOnlyContext.build(context, {
-			intentTracing: !!config.intentTracing,
-			exampleDialect,
-			pruneToolDescriptions,
-		});
+		llmContext = config.appendOnlyContext.build(context, { intentTracing, exampleDialect, pruneToolDescriptions });
 	} else {
 		llmContext = {
 			systemPrompt: context.systemPrompt,
 			messages: normalizedMessages,
-			tools: normalizeTools(context.tools, !!config.intentTracing, exampleDialect, pruneToolDescriptions),
+			tools: normalizeTools(context.tools, intentTracing, exampleDialect, pruneToolDescriptions),
 		};
 	}
 	if (config.transformProviderContext) {
 		llmContext = await config.transformProviderContext(llmContext, model);
 	}
-
-	// Owned tool calling: take tool calls away from the provider and run them
-	// through the selected in-band prompt dialect. `VEYYON_DIALECT=1` still
-	// force-enables GLM; `VEYYON_DIALECT=<dialect>` force-enables that dialect.
-	let promptToolWireTools: Context["tools"];
-	if (ownedDialect && llmContext.tools && llmContext.tools.length > 0) {
-		promptToolWireTools = llmContext.tools;
-		llmContext = {
+	const tools = llmContext.tools;
+	if (!ownedDialect || !tools || tools.length === 0) return { llmContext, ownedDialect, inband: undefined };
+	// Owned tool calling: take tool calls away from the provider and run them through the selected in-band prompt
+	// dialect. `VEYYON_DIALECT=1` still force-enables GLM; `VEYYON_DIALECT=<dialect>` force-enables that dialect.
+	return {
+		llmContext: {
 			...llmContext,
-			systemPrompt: (llmContext.systemPrompt ?? []).concat(
-				renderInbandToolPrompt(promptToolWireTools, ownedDialect),
-			),
-			messages: encodeInbandToolHistory(llmContext.messages, ownedDialect, promptToolWireTools),
+			systemPrompt: (llmContext.systemPrompt ?? []).concat(renderInbandToolPrompt(tools, ownedDialect)),
+			messages: encodeInbandToolHistory(llmContext.messages, ownedDialect, tools),
 			tools: undefined,
-		};
-	}
-
-	const streamFunction = streamFn || streamSimple;
-
-	const dynamicReasoning = config.getReasoning?.();
-	const dynamicDisableReasoning = config.getDisableReasoning?.();
-	// `getServiceTier` is authoritative when present (replaces the static tier
-	// for both the wire request and telemetry), so callers can scope priority
-	// per model without touching the shared session `serviceTier`.
-	const effectiveServiceTier = config.getServiceTier ? config.getServiceTier(model) : config.serviceTier;
-	const harmonyMitigationEnabled = isHarmonyLeakMitigationTarget(model);
-	const harmonyAbortController = harmonyMitigationEnabled ? new AbortController() : undefined;
-	const requestSignal = harmonyAbortController
-		? signal
-			? AbortSignal.any([signal, harmonyAbortController.signal])
-			: harmonyAbortController.signal
-		: signal;
-	// Owned tool calling: aborted by the stream wrapper when the model starts
-	// fabricating a `<tool_response>`, so the provider stops generating the rest of
-	// the hallucinated turn. Merged into the provider signal ONLY (not
-	// `requestSignal`), so it cancels the request without tripping the loop's
-	// external-abort handling (`abortRace` / `requestSignal.aborted`).
-	const promptToolAbortController = ownedDialect ? new AbortController() : undefined;
-	const providerAbortSignals: AbortSignal[] = [];
-	if (requestSignal) providerAbortSignals.push(requestSignal);
-	if (promptToolAbortController) providerAbortSignals.push(promptToolAbortController.signal);
-	const finalRequestSignal =
-		providerAbortSignals.length === 0
-			? undefined
-			: providerAbortSignals.length === 1
-				? providerAbortSignals[0]!
-				: AbortSignal.any(providerAbortSignals);
-	const requestApiKey = (config.getApiKey ? await config.getApiKey(model) : undefined) ?? config.apiKey;
-	const resolvedApiKey = await resolveApiKeyOnce(requestApiKey, finalRequestSignal);
-	const apiKey = isApiKeyResolver(requestApiKey) ? seedApiKeyResolver(resolvedApiKey, requestApiKey) : requestApiKey;
-
-	// Re-resolve metadata after credential selection so the per-request value
-	// reflects the credential actually used, not the snapshot from AgentLoopConfig construction.
-	const resolvedMetadata = config.metadataResolver ? config.metadataResolver(model.provider) : config.metadata;
-	const effectiveTemperature =
-		harmonyRetryAttempt > 0 && config.temperature !== undefined ? config.temperature + 0.05 : config.temperature;
-	// Owned tool calling sends no native tools, so any tool_choice would error.
-	const effectiveToolChoice = ownedDialect ? undefined : (hostToolChoice ?? forcedToolChoice ?? config.toolChoice);
-	const effectiveReasoning = dynamicReasoning ?? config.reasoning;
-	const effectiveDisableReasoning = dynamicDisableReasoning ?? config.disableReasoning;
-	// `getCwd` is read once per LLM call so a mid-run session move (`/move`) reaches
-	// workspace-scoped provider discovery; falls back to the static `cwd` when unset.
-	const effectiveCwd = config.getCwd?.() ?? config.cwd;
-
-	const chatStepNumber = stepCounter.count;
-	stepCounter.count += 1;
-	const chatSpan = startChatSpan(telemetry, model, {
-		parent: invokeAgentSpan,
-		stepNumber: chatStepNumber,
-		request: {
-			maxTokens: config.maxTokens,
-			temperature: effectiveTemperature,
-			topP: config.topP,
-			topK: config.topK,
-			presencePenalty: config.presencePenalty,
-			serviceTier: effectiveServiceTier,
-			reasoningEffort: typeof effectiveReasoning === "string" ? effectiveReasoning : undefined,
-			toolChoice: effectiveToolChoice,
-			tools: llmContext.tools,
-			systemPrompt: llmContext.systemPrompt,
-			messages: llmContext.messages,
 		},
+		ownedDialect,
+		inband: { dialect: ownedDialect, tools, abort: new AbortController() },
+	};
+}
+
+/**
+ * The options one provider call goes out with. Each per-call value is resolved once per call, so a mid-run reasoning
+ * change, priority scope, credential rotation or session move reaches the next call instead of the run finishing on
+ * the values captured at its start.
+ */
+async function resolveTurnOptions(
+	run: LoopRun,
+	state: LoopState,
+	model: Model,
+	turn: ProviderTurn,
+	onResponse: SimpleStreamOptions["onResponse"],
+): Promise<SimpleStreamOptions> {
+	const { config, signal } = run;
+	const reasoning = config.getReasoning?.() ?? config.reasoning;
+	const disableReasoning = config.getDisableReasoning?.() ?? config.disableReasoning;
+	// `getServiceTier` is authoritative when present (replaces the static tier for both the wire request and
+	// telemetry), so callers can scope priority per model without touching the shared session `serviceTier`.
+	const serviceTier = config.getServiceTier ? config.getServiceTier(model) : config.serviceTier;
+	const inbandSignal = turn.inband?.abort.signal;
+	const providerSignal = signal && inbandSignal ? AbortSignal.any([signal, inbandSignal]) : (signal ?? inbandSignal);
+	const requestApiKey = (config.getApiKey ? await config.getApiKey(model) : undefined) ?? config.apiKey;
+	const resolvedApiKey = await resolveApiKeyOnce(requestApiKey, providerSignal);
+	return {
+		...config,
+		apiKey: isApiKeyResolver(requestApiKey) ? seedApiKeyResolver(resolvedApiKey, requestApiKey) : requestApiKey,
+		// Re-resolved after credential selection so the per-request value reflects the credential actually used, not
+		// the snapshot from AgentLoopConfig construction.
+		metadata: config.metadataResolver ? config.metadataResolver(model.provider) : config.metadata,
+		// Owned tool calling sends no native tools, so any tool_choice would error.
+		toolChoice: turn.ownedDialect ? undefined : (state.hostToolChoice ?? state.forcedToolChoice ?? config.toolChoice),
+		reasoning,
+		disableReasoning,
+		temperature:
+			state.harmonyRetryAttempt > 0 && config.temperature !== undefined
+				? config.temperature + 0.05
+				: config.temperature,
+		serviceTier,
+		// `getCwd` is read once per LLM call so a mid-run session move (`/move`) reaches workspace-scoped provider
+		// discovery; falls back to the static `cwd` when unset.
+		cwd: config.getCwd?.() ?? config.cwd,
+		signal: providerSignal,
+		onResponse,
+	};
+}
+
+/**
+ * Open the provider stream. Under owned tool calling, in-band tool-call text is re-materialized as native `toolCall`
+ * blocks so the rest of the loop executes them unchanged.
+ */
+async function openTurnResponse(
+	run: LoopRun,
+	model: Model,
+	turn: ProviderTurn,
+	options: SimpleStreamOptions,
+): Promise<AssistantMessageEventStream> {
+	const response = await (run.streamFn ?? streamSimple)(model, turn.llmContext, options);
+	const inband = turn.inband;
+	if (!inband) return response;
+	// When the model starts fabricating tool results, the abort callback cancels the provider, unless
+	// `abortOnFabricatedToolResult` is false: the stream then drains and the fabricated continuation is discarded.
+	return wrapInbandToolStream(
+		response,
+		inband.tools,
+		inband.dialect,
+		() => inband.abort.abort(),
+		run.config.abortOnFabricatedToolResult ?? true,
+	);
+}
+
+/** Stream an assistant response from the LLM under a chat span, and commit the message the turn keeps. */
+async function streamAssistantResponse(run: LoopRun, state: LoopState): Promise<AssistantMessage> {
+	const { config, telemetry } = run;
+	// Re-resolve the model per provider call (like `getReasoning`): mid-run model switches — context promotion, retry
+	// fallback — must apply on the next call instead of the run silently finishing on the stale model captured at run
+	// start.
+	const model = config.getModel?.() ?? config.model;
+	const turn = await buildProviderTurn(run, model);
+	// Wrap the user-supplied onResponse so we always observe response headers for telemetry
+	// (`ChatUsageEvent.headers`, gateway auto-detection) without stealing them from the configured hook.
+	let responseHeaders: Readonly<Record<string, string>> | undefined;
+	const userOnResponse = config.onResponse;
+	const options = await resolveTurnOptions(run, state, model, turn, (response, modelInfo) => {
+		responseHeaders = response.headers;
+		return userOnResponse?.(response, modelInfo);
 	});
 
-	// Wrap the user-supplied onResponse so we always observe response headers
-	// for telemetry (`ChatUsageEvent.headers`, gateway auto-detection) without
-	// stealing them from the configured hook.
-	let capturedHeaders: Readonly<Record<string, string>> | undefined;
-	const userOnResponse = config.onResponse;
-	const captureOnResponse: AgentLoopConfig["onResponse"] = (response, modelInfo) => {
-		capturedHeaders = response.headers;
-		return userOnResponse?.(response, modelInfo);
-	};
-
+	const stepNumber = run.stepCounter.count;
+	run.stepCounter.count += 1;
+	const chatSpan = startChatSpan(telemetry, model, {
+		parent: run.invokeAgentSpan,
+		stepNumber,
+		request: {
+			maxTokens: options.maxTokens,
+			temperature: options.temperature,
+			topP: options.topP,
+			topK: options.topK,
+			presencePenalty: options.presencePenalty,
+			serviceTier: options.serviceTier,
+			reasoningEffort: typeof options.reasoning === "string" ? options.reasoning : undefined,
+			toolChoice: options.toolChoice,
+			tools: turn.llmContext.tools,
+			systemPrompt: turn.llmContext.systemPrompt,
+			messages: turn.llmContext.messages,
+		},
+	});
 	const finishChat = async (message: AssistantMessage): Promise<void> => {
 		await finishChatSpan(telemetry, chatSpan, message, {
-			stepNumber: chatStepNumber,
-			serviceTier: effectiveServiceTier,
-			responseHeaders: capturedHeaders,
+			stepNumber,
+			serviceTier: options.serviceTier,
+			responseHeaders,
 			baseUrl: model.baseUrl,
 		});
 	};
 
 	try {
 		return await runInActiveSpan(chatSpan, async () => {
-			// Per-turn instrumentation: stamp the request-start wall-clock at the loop
-			// boundary (same discipline as tool `startedAt`), so the turn's metrics
-			// carry an authoritative request-start the provider's relative ttft/duration
-			// cannot supply. `off` skips the clock read entirely.
-			const turnInstrumentation = config.instrumentation ?? "off";
-			const requestStartedAt = turnInstrumentation === "off" ? 0 : Date.now();
-			let response = await streamFunction(model, llmContext, {
-				...config,
-				apiKey,
-				metadata: resolvedMetadata,
-				toolChoice: effectiveToolChoice,
-				reasoning: effectiveReasoning,
-				disableReasoning: effectiveDisableReasoning,
-				temperature: effectiveTemperature,
-				serviceTier: effectiveServiceTier,
-				cwd: effectiveCwd,
-				signal: finalRequestSignal,
-				onResponse: captureOnResponse,
-			});
-			if (promptToolWireTools && ownedDialect) {
-				// Re-materialize in-band tool-call text as native toolCall content blocks
-				// so the rest of the loop executes them unchanged. When the model starts
-				// fabricating tool results, the abort callback cancels the provider — unless
-				// `abortOnFabricatedToolResult` is false, in which case the stream drains and
-				// the fabricated continuation is discarded without aborting.
-				response = wrapInbandToolStream(
-					response,
-					promptToolWireTools,
-					ownedDialect,
-					() => promptToolAbortController?.abort(),
-					config.abortOnFabricatedToolResult ?? true,
-				);
-			}
-
-			let partialMessage: AssistantMessage | null = null;
-			let addedPartial = false;
-			const completedToolCallIds = new Set<string>();
-			// Both stream endings, the `done`/`error` event and a stream that ends
-			// without one, reject a Harmony leak the same way: discard the committed
-			// partial, then interrupt the turn with what was recovered from the leak.
-			const rejectHarmonyLeak = (message: AssistantMessage): void => {
-				if (!harmonyMitigationEnabled) return;
-				const detection = detectHarmonyLeakInAssistantMessage(message);
-				if (!detection) return;
-				const recovered = recoverHarmonyToolCall(message, detection);
-				const removed = recovered?.removed ?? extractHarmonyRemoved(message, detection);
-				if (addedPartial) {
-					emitDiscardedHarmonyPartial(
-						partialMessage,
-						stream,
-						`Discarded after GPT-5 Harmony protocol leakage (${signalListLabel(detection.signals)})`,
-					);
-					context.messages.pop();
-					addedPartial = false;
-				}
-				throw new HarmonyLeakInterruption(detection, removed, recovered);
-			};
-
-			const responseIterator = response[Symbol.asyncIterator]();
-			const finishAbortedStream = async (): Promise<AssistantMessage> => {
-				try {
-					const cleanup = responseIterator.return?.();
-					// The same reason as the `catch` below, for the ASYNC half of the same call: a provider that
-					// fails to acknowledge the cancellation cannot change the aborted message that is already
-					// being committed, and the user asked for this stream to stop, not for a report about it.
-					if (cleanup) void cleanup.catch(() => {});
-				} catch {
-					// Provider cancellation failures cannot change the committed aborted message.
-				}
-				const aborted = emitAbortedAssistantMessage(
-					partialMessage,
-					addedPartial,
-					completedToolCallIds,
-					context,
-					config,
-					stream,
-					requestSignal,
-				);
-				if (turnInstrumentation !== "off") {
-					// The returned object IS the context/persisted message, so metrics set
-					// here reach the durable record even though the stream events already flushed.
-					aborted.turnMetrics = captureAssistantTurnMetrics({
-						level: turnInstrumentation,
-						startedAt: requestStartedAt,
-						endedAt: aborted.timestamp ?? Date.now(),
-						status: "aborted",
-						ttftMs: aborted.ttft,
-						usage: aborted.usage,
-						upstreamProvider: aborted.upstreamProvider,
-					});
-					aborted.request = captureAssistantTurnRequest({
-						level: turnInstrumentation,
-						temperature: effectiveTemperature,
-						topP: config.topP,
-						topK: config.topK,
-						maxTokens: config.maxTokens,
-						presencePenalty: config.presencePenalty,
-						reasoningEffort: effectiveReasoning,
-						disableReasoning: effectiveDisableReasoning,
-						toolChoice: effectiveToolChoice,
-						serviceTier: effectiveServiceTier,
-					});
-				}
-				await finishChat(aborted);
-				return aborted;
-			};
-			/**
-			 * Applies one event the provider delivered and this loop never processed to the partial and
-			 * the set of closed tool calls, as the stream switch below does, without emitting anything.
-			 * False on a terminal event, which ends what was delivered ahead of the abort.
-			 */
-			const absorbDeliveredEvent = (event: AssistantMessageEvent): boolean => {
-				switch (event.type) {
-					case "done":
-					case "error":
-						return false;
-					case "start":
-						completedToolCallIds.clear();
-						break;
-					case "toolcall_end":
-						completedToolCallIds.add(event.toolCall.id);
-						break;
-				}
-				partialMessage = event.partial;
-				return true;
-			};
-			// The events the provider had delivered and this loop had not read when the abort fired,
-			// taken off the stream by the abort listener below.
-			let deliveredBeforeAbort: AssistantMessageEvent[] | undefined;
-			/**
-			 * Folds the events delivered ahead of the abort into the turn before it is committed:
-			 * `pulled`, the event this pass read and is about to drop, then every event that was
-			 * buffered when the abort fired. An event the provider pushes after the abort is not read.
-			 *
-			 * WHY. Whether a tool call finished is whether the provider delivered its `toolcall_end`
-			 * before the abort, not whether this loop reached that event before it observed the abort.
-			 * A provider pushes a burst of events from one parsed chunk, so an abort raised by an
-			 * earlier event of the burst (a TTSR match on a delta, a streaming-edit stop) fires while
-			 * the call's `toolcall_end` is already buffered. The provider clears the call's
-			 * streaming-JSON marker before it pushes that event, so {@link completedStreamedArguments}
-			 * cannot recover the call either, and the turn dropped a complete call and reported its
-			 * arguments as never finished, depending on microtask order alone.
-			 */
-			const absorbDeliveredEvents = (pulled: AssistantMessageEvent | undefined): void => {
-				if (pulled && !absorbDeliveredEvent(pulled)) return;
-				if (!deliveredBeforeAbort) return;
-				for (const event of deliveredBeforeAbort) {
-					if (!absorbDeliveredEvent(event)) return;
-				}
-			};
-
-			// One race for the whole stream: the abort listener is registered once and settles it once,
-			// and each `iterator.next()` waits on a promise of its own. `Promise.race` against one
-			// long-lived abort promise attached a reaction to that promise per event, and the pending
-			// promise held every event of the stream until the turn ended.
-			let abortRace: LoopRace<typeof ABORTED> | undefined;
-			let detachAbortListener: (() => void) | undefined;
-			if (requestSignal) {
-				if (requestSignal.aborted) {
-					return await finishAbortedStream();
-				}
-				const race = new LoopRace<typeof ABORTED>();
-				const onAbort = () => {
-					deliveredBeforeAbort = response.takeQueued();
-					race.resolve(ABORTED);
-				};
-				requestSignal.addEventListener("abort", onAbort, { once: true });
-				abortRace = race;
-				detachAbortListener = () => requestSignal.removeEventListener("abort", onAbort);
-			}
-
-			try {
-				while (true) {
-					let next: IteratorResult<AssistantMessageEvent>;
-					if (abortRace) {
-						// An abort observed between reads ends the stream without another read: an event
-						// read now could be one the provider pushed after the abort.
-						const result = abortRace.settled ? ABORTED : await abortRace.race(responseIterator.next());
-						if (result === ABORTED) {
-							absorbDeliveredEvents(undefined);
-							return await finishAbortedStream();
-						}
-						next = result;
-					} else {
-						next = await responseIterator.next();
-					}
-					if (next.done) break;
-
-					const event = next.value;
-					if (event.type === "done" || event.type === "error") {
-						let finalMessage = disambiguateToolCallIds(
-							recoverTransientErrorToolTurn(
-								retainCompletedToolCalls(await response.result(), completedToolCallIds),
-								context.tools ?? [],
-							),
-							storedToolCallIds(context.messages, addedPartial),
-						);
-						rejectHarmonyLeak(finalMessage);
-						finalMessage = snapshotAssistantMessage(finalMessage);
-						if (turnInstrumentation !== "off") {
-							const status: AssistantTurnStatus =
-								event.type === "error" || finalMessage.errorMessage ? "error" : "ok";
-							finalMessage.turnMetrics = captureAssistantTurnMetrics({
-								level: turnInstrumentation,
-								startedAt: requestStartedAt,
-								endedAt: finalMessage.timestamp ?? Date.now(),
-								status,
-								ttftMs: finalMessage.ttft,
-								usage: finalMessage.usage,
-								upstreamProvider: finalMessage.upstreamProvider,
-							});
-							finalMessage.request = captureAssistantTurnRequest({
-								level: turnInstrumentation,
-								temperature: effectiveTemperature,
-								topP: config.topP,
-								topK: config.topK,
-								maxTokens: config.maxTokens,
-								presencePenalty: config.presencePenalty,
-								reasoningEffort: effectiveReasoning,
-								disableReasoning: effectiveDisableReasoning,
-								toolChoice: effectiveToolChoice,
-								serviceTier: effectiveServiceTier,
-							});
-						}
-						// Expand inline macros (and any other registered rewrite) on the
-						// finalized message before it reaches the context, the UI, or tool
-						// dispatch — so a single mutation is the source of truth for all three.
-						if (config.transformAssistantMessage) {
-							await config.transformAssistantMessage(finalMessage, requestSignal);
-						}
-						if (addedPartial) {
-							context.messages[context.messages.length - 1] = finalMessage;
-						} else {
-							context.messages.push(finalMessage);
-						}
-						if (!addedPartial) {
-							stream.push({ type: "message_start", message: snapshotAssistantMessage(finalMessage) });
-						}
-						stream.push({ type: "message_end", message: snapshotAssistantMessage(finalMessage) });
-						await finishChat(finalMessage);
-						return finalMessage;
-					}
-					if (requestSignal?.aborted) {
-						absorbDeliveredEvents(event);
-						return await finishAbortedStream();
-					}
-
-					// Yield to the event loop periodically to prevent busy-wait
-					// when the LLM is streaming chunks faster than the loop can rest.
-					await yieldIfDue();
-
-					switch (event.type) {
-						case "start":
-							partialMessage = event.partial;
-							if (addedPartial) {
-								context.messages[context.messages.length - 1] = partialMessage;
-								completedToolCallIds.clear();
-								// `message` and `assistantMessageEvent.partial` intentionally share one
-								// immutable snapshot of the streaming partial: every message_update
-								// consumer treats both as read-only. Delta mode shares tool-call
-								// `arguments` by reference (providers replace, never mutate) so
-								// per-delta cost no longer scales with accumulated argument size.
-								const messageSnapshot = snapshotAssistantMessage(partialMessage, "delta");
-								stream.push({
-									type: "message_update",
-									assistantMessageEvent: snapshotAssistantMessageEvent(event, messageSnapshot),
-									message: messageSnapshot,
-								});
-							} else {
-								context.messages.push(partialMessage);
-								addedPartial = true;
-								stream.push({ type: "message_start", message: snapshotAssistantMessage(partialMessage) });
-							}
-							break;
-
-						case "text_start":
-						case "text_delta":
-						case "text_end":
-						case "thinking_start":
-						case "thinking_delta":
-						case "thinking_end":
-						case "toolcall_start":
-						case "toolcall_delta":
-						case "toolcall_end":
-							if (partialMessage) {
-								if (event.type === "toolcall_end") {
-									completedToolCallIds.add(event.toolCall.id);
-								}
-								partialMessage = event.partial;
-								context.messages[context.messages.length - 1] = partialMessage;
-								config.onAssistantMessageEvent?.(partialMessage, event);
-								// `message` and `assistantMessageEvent.partial` intentionally share one
-								// immutable snapshot of the streaming partial: every message_update
-								// consumer treats both as read-only. Delta mode shares tool-call
-								// `arguments` by reference (providers replace, never mutate) so
-								// per-delta cost no longer scales with accumulated argument size.
-								const messageSnapshot = snapshotAssistantMessage(partialMessage, "delta");
-								stream.push({
-									type: "message_update",
-									assistantMessageEvent: snapshotAssistantMessageEvent(event, messageSnapshot),
-									message: messageSnapshot,
-								});
-							}
-							break;
-					}
-				}
-			} finally {
-				detachAbortListener?.();
-			}
-
-			let trailing = await response.result();
-			rejectHarmonyLeak(trailing);
-			trailing = snapshotAssistantMessage(trailing);
-			if (addedPartial) {
-				context.messages[context.messages.length - 1] = trailing;
-				stream.push({ type: "message_end", message: snapshotAssistantMessage(trailing) });
-			}
-			await finishChat(trailing);
-			return trailing;
+			const reader = new AssistantTurnStream(run, model, options, finishChat);
+			return reader.read(await openTurnResponse(run, model, turn, options));
 		});
 	} catch (err) {
-		failChatSpan(telemetry, chatSpan, {
-			errorObject: err,
-			responseHeaders: capturedHeaders,
-			baseUrl: model.baseUrl,
-		});
+		failChatSpan(telemetry, chatSpan, { errorObject: err, responseHeaders, baseUrl: model.baseUrl });
 		throw err;
+	}
+}
+
+/**
+ * One provider response read into the turn. The partial is committed to the context as it streams. The turn ends on
+ * the provider's terminal event, on a stream that ends without one, or on an abort, and each ending replaces that
+ * partial with the message the turn keeps.
+ */
+class AssistantTurnStream {
+	readonly #run: LoopRun;
+	readonly #options: SimpleStreamOptions;
+	readonly #finishChat: (message: AssistantMessage) => Promise<void>;
+	readonly #harmonyMitigation: boolean;
+	readonly #instrumentation: InstrumentationLevel;
+	/**
+	 * Stamped at the loop boundary, as a tool's `startedAt` is, so the turn's metrics carry an authoritative request
+	 * start the provider's relative ttft and duration cannot supply. `off` skips the clock read.
+	 */
+	readonly #requestStartedAt: number;
+	/** Tool calls whose `toolcall_end` the provider delivered: only these survive an abort or an error. */
+	readonly #completedToolCallIds = new Set<string>();
+	#partial: AssistantMessage | null = null;
+	/** Whether the partial is the context's last message, announced by a `message_start`. */
+	#addedPartial = false;
+	/** The events the provider had delivered and this loop had not read when the abort fired. */
+	#deliveredBeforeAbort: AssistantMessageEvent[] | undefined;
+
+	constructor(
+		run: LoopRun,
+		model: Model,
+		options: SimpleStreamOptions,
+		finishChat: (message: AssistantMessage) => Promise<void>,
+	) {
+		this.#run = run;
+		this.#options = options;
+		this.#finishChat = finishChat;
+		this.#harmonyMitigation = isHarmonyLeakMitigationTarget(model);
+		this.#instrumentation = run.config.instrumentation ?? "off";
+		this.#requestStartedAt = this.#instrumentation === "off" ? 0 : Date.now();
+	}
+
+	/** Read `response` to its end and commit the message the turn keeps. */
+	async read(response: AssistantMessageEventStream): Promise<AssistantMessage> {
+		const iterator = response[Symbol.asyncIterator]();
+		const signal = this.#run.signal;
+		if (signal?.aborted) return await this.#endAborted(iterator);
+		const ended = signal
+			? await this.#consumeRacingAbort(response, iterator, signal)
+			: await this.#consume(response, iterator, undefined);
+		return ended ?? (await this.#commitTrailing(response));
+	}
+
+	/**
+	 * {@link #consume} under an abort race. One race for the whole stream: the abort listener is registered once and
+	 * settles it once, and each `iterator.next()` waits on a promise of its own. `Promise.race` against one long-lived
+	 * abort promise attached a reaction to that promise per event, and the pending promise held every event of the
+	 * stream until the turn ended.
+	 */
+	async #consumeRacingAbort(
+		response: AssistantMessageEventStream,
+		iterator: AsyncIterator<AssistantMessageEvent>,
+		signal: AbortSignal,
+	): Promise<AssistantMessage | undefined> {
+		const race = new LoopRace<typeof ABORTED>();
+		const onAbort = (): void => {
+			this.#deliveredBeforeAbort = response.takeQueued();
+			race.resolve(ABORTED);
+		};
+		signal.addEventListener("abort", onAbort, { once: true });
+		try {
+			return await this.#consume(response, iterator, race);
+		} finally {
+			signal.removeEventListener("abort", onAbort);
+		}
+	}
+
+	/**
+	 * Apply the response's events until it ends. Returns the message an abort or a terminal event committed, or
+	 * `undefined` for a stream that ended without either.
+	 */
+	async #consume(
+		response: AssistantMessageEventStream,
+		iterator: AsyncIterator<AssistantMessageEvent>,
+		race: LoopRace<typeof ABORTED> | undefined,
+	): Promise<AssistantMessage | undefined> {
+		while (true) {
+			// An abort observed between reads ends the stream without another read: an event read now could be one the
+			// provider pushed after the abort.
+			const next = race?.settled ? ABORTED : await (race ? race.race(iterator.next()) : iterator.next());
+			if (next === ABORTED) {
+				this.#absorbDeliveredEvents(undefined);
+				return await this.#endAborted(iterator);
+			}
+			if (next.done) return undefined;
+			const event = next.value;
+			if (event.type === "done" || event.type === "error") return await this.#commitFinal(response, event.type);
+			if (this.#run.signal?.aborted) {
+				this.#absorbDeliveredEvents(event);
+				return await this.#endAborted(iterator);
+			}
+			// Yield to the event loop periodically to prevent busy-wait when the LLM is streaming chunks faster than the
+			// loop can rest.
+			await yieldIfDue();
+			this.#apply(event);
+		}
+	}
+
+	/** Commit one streamed event's partial to the context and announce it on the stream. */
+	#apply(event: AssistantMessageEvent): void {
+		const { context, config, stream } = this.#run;
+		switch (event.type) {
+			case "start":
+				this.#partial = event.partial;
+				if (this.#addedPartial) {
+					context.messages[context.messages.length - 1] = event.partial;
+					this.#completedToolCallIds.clear();
+					this.#publishUpdate(event, event.partial);
+				} else {
+					context.messages.push(event.partial);
+					this.#addedPartial = true;
+					stream.push({ type: "message_start", message: snapshotAssistantMessage(event.partial) });
+				}
+				break;
+
+			case "text_start":
+			case "text_delta":
+			case "text_end":
+			case "thinking_start":
+			case "thinking_delta":
+			case "thinking_end":
+			case "toolcall_start":
+			case "toolcall_delta":
+			case "toolcall_end":
+				if (!this.#partial) break;
+				if (event.type === "toolcall_end") {
+					this.#completedToolCallIds.add(event.toolCall.id);
+				}
+				this.#partial = event.partial;
+				context.messages[context.messages.length - 1] = event.partial;
+				config.onAssistantMessageEvent?.(event.partial, event);
+				this.#publishUpdate(event, event.partial);
+				break;
+		}
+	}
+
+	/**
+	 * Push a `message_update` for `event`. `message` and `assistantMessageEvent.partial` intentionally share one
+	 * immutable snapshot of the streaming partial: every message_update consumer treats both as read-only. Delta mode
+	 * shares tool-call `arguments` by reference (providers replace, never mutate) so per-delta cost no longer scales
+	 * with accumulated argument size.
+	 */
+	#publishUpdate(event: AssistantMessageEvent, partial: AssistantMessage): void {
+		const messageSnapshot = snapshotAssistantMessage(partial, "delta");
+		this.#run.stream.push({
+			type: "message_update",
+			assistantMessageEvent: snapshotAssistantMessageEvent(event, messageSnapshot),
+			message: messageSnapshot,
+		});
+	}
+
+	/** Commit the message the provider's `done` or `error` event finished the turn with. */
+	async #commitFinal(response: AssistantMessageEventStream, eventType: "done" | "error"): Promise<AssistantMessage> {
+		const { context, config, stream } = this.#run;
+		const result = disambiguateToolCallIds(
+			recoverTransientErrorToolTurn(
+				retainCompletedToolCalls(await response.result(), this.#completedToolCallIds),
+				context.tools ?? [],
+			),
+			storedToolCallIds(context.messages, this.#addedPartial),
+		);
+		this.#rejectHarmonyLeak(result);
+		const finalMessage = snapshotAssistantMessage(result);
+		this.#stampInstrumentation(finalMessage, eventType === "error" || finalMessage.errorMessage ? "error" : "ok");
+		// Expand inline macros (and any other registered rewrite) on the finalized message before it reaches the
+		// context, the UI, or tool dispatch — so a single mutation is the source of truth for all three.
+		if (config.transformAssistantMessage) {
+			await config.transformAssistantMessage(finalMessage, this.#run.signal);
+		}
+		if (this.#addedPartial) {
+			context.messages[context.messages.length - 1] = finalMessage;
+		} else {
+			context.messages.push(finalMessage);
+			stream.push({ type: "message_start", message: snapshotAssistantMessage(finalMessage) });
+		}
+		stream.push({ type: "message_end", message: snapshotAssistantMessage(finalMessage) });
+		await this.#finishChat(finalMessage);
+		return finalMessage;
+	}
+
+	/** Commit the result of a stream that ended without a `done` or `error` event. */
+	async #commitTrailing(response: AssistantMessageEventStream): Promise<AssistantMessage> {
+		const result = await response.result();
+		this.#rejectHarmonyLeak(result);
+		const trailing = snapshotAssistantMessage(result);
+		if (this.#addedPartial) {
+			const { context, stream } = this.#run;
+			context.messages[context.messages.length - 1] = trailing;
+			stream.push({ type: "message_end", message: snapshotAssistantMessage(trailing) });
+		}
+		await this.#finishChat(trailing);
+		return trailing;
+	}
+
+	/** Cancel the provider stream and commit the aborted message. */
+	async #endAborted(iterator: AsyncIterator<AssistantMessageEvent>): Promise<AssistantMessage> {
+		try {
+			const cleanup = iterator.return?.();
+			// The same reason as the `catch` below, for the ASYNC half of the same call: a provider that fails to
+			// acknowledge the cancellation cannot change the aborted message that is already being committed, and the
+			// user asked for this stream to stop, not for a report about it.
+			if (cleanup) void cleanup.catch(() => {});
+		} catch {
+			// Provider cancellation failures cannot change the committed aborted message.
+		}
+		const { context, config, stream, signal } = this.#run;
+		const aborted = emitAbortedAssistantMessage(
+			this.#partial,
+			this.#addedPartial,
+			this.#completedToolCallIds,
+			context,
+			config,
+			stream,
+			signal,
+		);
+		// The returned object IS the context/persisted message, so metrics set here reach the durable record even
+		// though the stream events already flushed.
+		this.#stampInstrumentation(aborted, "aborted");
+		await this.#finishChat(aborted);
+		return aborted;
+	}
+
+	/**
+	 * Both stream endings, the `done`/`error` event and a stream that ends without one, reject a Harmony leak the same
+	 * way: discard the committed partial, then interrupt the turn with what was recovered from the leak.
+	 */
+	#rejectHarmonyLeak(message: AssistantMessage): void {
+		if (!this.#harmonyMitigation) return;
+		const detection = detectHarmonyLeakInAssistantMessage(message);
+		if (!detection) return;
+		const recovered = recoverHarmonyToolCall(message, detection);
+		const removed = recovered?.removed ?? extractHarmonyRemoved(message, detection);
+		if (this.#addedPartial) {
+			emitDiscardedHarmonyPartial(
+				this.#partial,
+				this.#run.stream,
+				`Discarded after GPT-5 Harmony protocol leakage (${signalListLabel(detection.signals)})`,
+			);
+			this.#run.context.messages.pop();
+			this.#addedPartial = false;
+		}
+		throw new HarmonyLeakInterruption(detection, removed, recovered);
+	}
+
+	/** Record the turn's metrics and the request it went out with on `message`; nothing at `off`. */
+	#stampInstrumentation(message: AssistantMessage, status: AssistantTurnStatus): void {
+		const level = this.#instrumentation;
+		if (level === "off") return;
+		const options = this.#options;
+		message.turnMetrics = captureAssistantTurnMetrics({
+			level,
+			startedAt: this.#requestStartedAt,
+			endedAt: message.timestamp ?? Date.now(),
+			status,
+			ttftMs: message.ttft,
+			usage: message.usage,
+			upstreamProvider: message.upstreamProvider,
+		});
+		message.request = captureAssistantTurnRequest({
+			level,
+			temperature: options.temperature,
+			topP: options.topP,
+			topK: options.topK,
+			maxTokens: options.maxTokens,
+			presencePenalty: options.presencePenalty,
+			reasoningEffort: options.reasoning,
+			disableReasoning: options.disableReasoning,
+			toolChoice: options.toolChoice,
+			serviceTier: options.serviceTier,
+		});
+	}
+
+	/**
+	 * Applies one event the provider delivered and this loop never processed to the partial and the set of closed tool
+	 * calls, as {@link #apply} does, without emitting anything. False on a terminal event, which ends what was
+	 * delivered ahead of the abort.
+	 */
+	#absorbDeliveredEvent(event: AssistantMessageEvent): boolean {
+		switch (event.type) {
+			case "done":
+			case "error":
+				return false;
+			case "start":
+				this.#completedToolCallIds.clear();
+				break;
+			case "toolcall_end":
+				this.#completedToolCallIds.add(event.toolCall.id);
+				break;
+		}
+		this.#partial = event.partial;
+		return true;
+	}
+
+	/**
+	 * Folds the events delivered ahead of the abort into the turn before it is committed: `pulled`, the event this pass
+	 * read and is about to drop, then every event that was buffered when the abort fired. An event the provider pushes
+	 * after the abort is not read.
+	 *
+	 * WHY. Whether a tool call finished is whether the provider delivered its `toolcall_end` before the abort, not
+	 * whether this loop reached that event before it observed the abort. A provider pushes a burst of events from one
+	 * parsed chunk, so an abort raised by an earlier event of the burst (a TTSR match on a delta, a streaming-edit stop)
+	 * fires while the call's `toolcall_end` is already buffered. The provider clears the call's streaming-JSON marker
+	 * before it pushes that event, so {@link completedStreamedArguments} cannot recover the call either, and the turn
+	 * dropped a complete call and reported its arguments as never finished, depending on microtask order alone.
+	 */
+	#absorbDeliveredEvents(pulled: AssistantMessageEvent | undefined): void {
+		if (pulled && !this.#absorbDeliveredEvent(pulled)) return;
+		if (!this.#deliveredBeforeAbort) return;
+		for (const event of this.#deliveredBeforeAbort) {
+			if (!this.#absorbDeliveredEvent(event)) return;
+		}
 	}
 }
 
@@ -3194,28 +3239,34 @@ function syntheticDetailsFor(
  *   left in the transcript for the model to copy its arguments back from.
  *
  * Returns `undefined` only when the ledger would restate what the transcript
- * already says; see the lone-entry rule at the end.
+ * already says; see {@link transcriptStatesLoneCall}.
  */
 function buildAbortedTurnLedger(
 	cause: ToolBatchLedgerCause,
 	message: AssistantMessage,
 	contextMessages: ReadonlyArray<AgentMessage>,
 ): ToolBatchLedger | undefined {
+	const entries = abortedTurnEntries(message, contextMessages);
+	if (entries.length === 0 || transcriptStatesLoneCall(entries)) return undefined;
+	return buildToolBatchLedger(cause, entries);
+}
+
+/** One ledger entry per tool call the aborted turn holds, then one per call whose arguments never finished. */
+function abortedTurnEntries(
+	message: AssistantMessage,
+	contextMessages: ReadonlyArray<AgentMessage>,
+): ToolBatchCallEntry[] {
 	const entries: ToolBatchCallEntry[] = [];
-	let resolvedOutcomes: Map<string, boolean> | undefined;
+	// Built on the first exec-channel call; no other call reads the transcript's results.
+	let answeredIsError: Map<string, boolean> | undefined;
 	for (const block of message.content) {
 		if (block.type !== "toolCall") continue;
 		if ((block as CursorExecResolvedCarrier)[kCursorExecResolved] !== true) {
 			entries.push({ toolCallId: block.id, toolName: block.name, outcome: "dropped" });
 			continue;
 		}
-		if (!resolvedOutcomes) {
-			resolvedOutcomes = new Map<string, boolean>();
-			for (const prior of contextMessages) {
-				if (prior.role === "toolResult") resolvedOutcomes.set(prior.toolCallId, prior.isError === true);
-			}
-		}
-		const isError = resolvedOutcomes.get(block.id);
+		answeredIsError ??= toolResultErrorFlags(contextMessages);
+		const isError = answeredIsError.get(block.id);
 		entries.push({
 			toolCallId: block.id,
 			toolName: block.name,
@@ -3230,22 +3281,31 @@ function buildAbortedTurnLedger(
 			argumentsIncomplete: true,
 		});
 	}
-	if (entries.length === 0) return undefined;
-	// One call whose story the transcript already tells in full needs no
-	// inventory. That is a lone `dropped` call with complete arguments (its
-	// `toolCall` block survived and it gets its own placeholder result) and a
-	// lone exec-channel call that finished (block plus its real result).
-	//
-	// The other two lone shapes keep the ledger, because nothing else states
-	// them: a call whose arguments never finished has no block at all, and an
-	// exec-channel call still in flight has a block but no result, so "started,
-	// no result recorded" appears nowhere else.
-	const lone = entries.length === 1 ? entries[0] : undefined;
-	if (lone) {
-		if (lone.outcome === "ok" || lone.outcome === "failed") return undefined;
-		if (lone.outcome === "dropped" && lone.argumentsIncomplete !== true) return undefined;
+	return entries;
+}
+
+/** Whether each tool result in `messages` is an error, by tool-call id. */
+function toolResultErrorFlags(messages: ReadonlyArray<AgentMessage>): Map<string, boolean> {
+	const flags = new Map<string, boolean>();
+	for (const message of messages) {
+		if (message.role === "toolResult") flags.set(message.toolCallId, message.isError === true);
 	}
-	return buildToolBatchLedger(cause, entries);
+	return flags;
+}
+
+/**
+ * Whether `entries` is one call whose story the transcript already tells in full, so an inventory would restate it.
+ * That is a lone `dropped` call with complete arguments (its `toolCall` block survived and it gets its own placeholder
+ * result) and a lone exec-channel call that finished (block plus its real result).
+ *
+ * The other two lone shapes keep the ledger, because nothing else states them: a call whose arguments never finished
+ * has no block at all, and an exec-channel call still in flight has a block but no result, so "started, no result
+ * recorded" appears nowhere else.
+ */
+function transcriptStatesLoneCall(entries: readonly ToolBatchCallEntry[]): boolean {
+	if (entries.length !== 1) return false;
+	const { outcome, argumentsIncomplete } = entries[0]!;
+	return outcome === "ok" || outcome === "failed" || (outcome === "dropped" && argumentsIncomplete !== true);
 }
 
 /**

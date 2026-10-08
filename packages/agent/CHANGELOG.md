@@ -28,6 +28,8 @@
 - Compaction reads the Codex compaction request context from `@veyyon/ai/providers/openai-codex/session-state` and the remote summarizer reads the Azure deployment map from `@veyyon/ai/providers/azure-deployment-names`, so the compaction engine loads 303 modules instead of 322 and the remote summarizer 100 instead of 225.
 - Split the token estimate's message walk into one function per content body (shared content, file mention, assistant turn, compaction summary); no user-visible change.
 - Split the agent loop's tool-call batch into a `ToolBatch` class with one method per step (scheduling, steering and IRC interrupts, argument repair and validation, execution, result emission) and its tool-result coercion into one function per block and per content list; no user-visible change.
+- Split the agent loop's assistant-response streaming into an `AssistantTurnStream` class with one method per stream ending (terminal event, trailing result, abort) and its request setup into one function per step (provider context, request options, provider stream), and split intent-schema injection, per-tool normalization and the aborted-turn ledger into one function per case; no user-visible change.
+- A GPT-5 turn no longer allocates an abort controller that nothing aborts and an `AbortSignal.any` over it, and `normalizeTools` skips its slot filter when its cache answers the call.
 
 ### Fixed
 
