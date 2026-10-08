@@ -231,6 +231,7 @@
 
 ### Fixed
 
+- Escape or `abort_retry` that lands while an unreplayable tool batch's continuation is being announced cancels the continuation, instead of the session sleeping out the wait, re-requesting the turn and reporting a recovery that was cancelled.
 - In a linked worktree named after its branch, the status line's `path` segment and the launch card keep the worktree directory (`monorepo/topic`) on a row with a `pr` segment and no `git` segment, or with `segmentOptions.git.showBranch: false`, instead of showing `monorepo` with neither the worktree nor its branch on the row.
 - The launch card draws the dirty marker (`*`) and the effort the last launch's status line settled on when that row had no context gauge, instead of drawing a dirty branch clean or an older effort until the session mounted; a row that follows another repository no longer records that repository's tree status under the project.
 - A TTSR interrupt retries the turn it aborted when the aborted turn settles with a message whose timestamp differs from the partial it streamed, instead of dropping the injection and releasing the resume gate with no continuation.

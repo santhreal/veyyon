@@ -311,14 +311,9 @@ export class RetryRuntime {
 			errorMessage: message.errorMessage || "Unknown error",
 			errorId: message.errorId,
 		});
-		const continueAbortController = new AbortController();
-		this.#abortController?.abort();
-		this.#abortController = continueAbortController;
-		try {
-			await scheduler.wait(delayMs, { signal: continueAbortController.signal });
-		} catch {
-			if (this.#abortController !== continueAbortController) return false;
-			this.#abortController = undefined;
+		const waited = await this.#wait(delayMs);
+		if (waited === "superseded") return false;
+		if (waited === "cancelled") {
 			await this.#host.emitSessionEvent({
 				type: "auto_retry_end",
 				success: false,
@@ -328,9 +323,6 @@ export class RetryRuntime {
 			});
 			this.resolve();
 			return false;
-		}
-		if (this.#abortController === continueAbortController) {
-			this.#abortController = undefined;
 		}
 		// The gate stays live across the wait so the turn reads as retrying, and the
 		// continued turn's own agent_end resolves it. A continuation the scheduler
@@ -653,23 +645,12 @@ export class RetryRuntime {
 		this.#maybeInjectThinkingLoopRedirect(id);
 
 		// Wait with exponential backoff (abortable).
-		const retryAbortController = new AbortController();
-		this.#abortController?.abort();
-		this.#abortController = retryAbortController;
-		// abort() can land before this assignment (same drain as auto_retry_start); the cancel is lost without this.
-		if (!this.#gate) {
-			retryAbortController.abort();
-		}
-		try {
-			await scheduler.wait(delayMs, { signal: retryAbortController.signal });
-		} catch {
-			if (this.#abortController !== retryAbortController) {
-				return false;
-			}
+		const waited = await this.#wait(delayMs);
+		if (waited === "superseded") return false;
+		if (waited === "cancelled") {
 			// Aborted during sleep - emit end event so UI can clean up
 			const attempt = this.#attempt;
 			this.#attempt = 0;
-			this.#abortController = undefined;
 			await this.#host.emitSessionEvent({
 				type: "auto_retry_end",
 				success: false,
@@ -680,14 +661,35 @@ export class RetryRuntime {
 			this.resolve();
 			return false;
 		}
-		if (this.#abortController === retryAbortController) {
-			this.#abortController = undefined;
-		}
 
 		// Retry via continue() outside the agent_end event callback chain.
 		this.#host.scheduleAgentContinue({ delayMs: 1, generation });
 
 		return true;
+	}
+
+	/**
+	 * Sleep out a recovery wait on its own abort controller. `superseded` when a newer wait replaced
+	 * this one, `cancelled` when {@link abort} reached it; the caller reports either.
+	 *
+	 * The wait is announced with `auto_retry_start` before this runs, and the gate it holds is what
+	 * routes escape to {@link abort} during that announcement. A cancel landing there finds no
+	 * controller to abort and only releases the gate, so a released gate cancels the wait here.
+	 */
+	async #wait(delayMs: number): Promise<"elapsed" | "cancelled" | "superseded"> {
+		const controller = new AbortController();
+		this.#abortController?.abort();
+		this.#abortController = controller;
+		if (!this.#gate) controller.abort();
+		try {
+			await scheduler.wait(delayMs, { signal: controller.signal });
+		} catch {
+			if (this.#abortController !== controller) return "superseded";
+			this.#abortController = undefined;
+			return "cancelled";
+		}
+		if (this.#abortController === controller) this.#abortController = undefined;
+		return "elapsed";
 	}
 
 	/**
