@@ -299,9 +299,6 @@ const KITTY_RELEASE_PATTERN = /^\x1b\[[\d:;]*:3[u~ABCDHF]$/;
 const KITTY_REPEAT_PATTERN = /^\x1b\[[\d:;]*:2[u~ABCDHF]$/;
 const KITTY_CSI_U_PATTERN = /^\x1b\[(\d+)(?::(\d*))?(?::(\d+))?(?:;(\d+))?(?::(\d+))?(?:;([\d:]*))?u$/;
 const KITTY_MOD_SHIFT = 1;
-const KITTY_MOD_ALT = 2;
-const KITTY_MOD_CTRL = 4;
-const KITTY_MOD_SUPER = 8;
 const KITTY_MOD_NUM_LOCK = 128;
 const KITTY_LOCK_MASK = 64 + KITTY_MOD_NUM_LOCK; // Caps Lock + Num Lock
 const MODIFY_OTHER_KEYS_PATTERN = /^\x1b\[27;(\d+);(\d+)~$/;
@@ -364,74 +361,86 @@ export function parseKittySequence(data: string): ParsedKittySequence | null {
 }
 
 function hasControlChars(data: string): boolean {
-	return [...data].some(ch => {
-		const code = ch.charCodeAt(0);
-		return code < 32 || code === 0x7f || (code >= 0x80 && code <= 0x9f);
-	});
+	for (let i = 0; i < data.length; i++) {
+		const code = data.charCodeAt(i);
+		if (code < 32 || code === 0x7f || (code >= 0x80 && code <= 0x9f)) return true;
+	}
+	return false;
+}
+
+/**
+ * `data` matched against {@link KITTY_CSI_U_PATTERN}, or null.
+ *
+ * The pattern is anchored `^\x1b\[ ... u$`, so its first two characters and its last are a necessary
+ * condition: three `charCodeAt` calls reject every printable character and every legacy sequence
+ * without running a match with six capture groups. Text entry decodes every keypress through here.
+ */
+function matchKittyCsiU(data: string): RegExpExecArray | null {
+	if (data.charCodeAt(0) !== 0x1b || data.charCodeAt(1) !== 0x5b || data.charCodeAt(data.length - 1) !== 0x75) {
+		return null;
+	}
+	return KITTY_CSI_U_PATTERN.exec(data);
+}
+
+/**
+ * The character `codepoint` stands for, or undefined for a control character, DEL, or a value past
+ * Unicode's range. Undefined is the "not printable input" answer, and the key is then matched as a
+ * binding instead.
+ */
+function printableCodepoint(codepoint: number): string | undefined {
+	if (!Number.isFinite(codepoint) || codepoint < 32 || codepoint === 127 || codepoint > 0x10ffff) return undefined;
+	return String.fromCodePoint(codepoint);
+}
+
+/**
+ * Text of a Kitty text field (`cp:cp…`) with control characters and DEL dropped: "" when nothing
+ * remains, undefined when a codepoint is past Unicode's range, so the key produces no text.
+ */
+function kittyFieldText(field: string | undefined): string | undefined {
+	let text = "";
+	if (!field) return text;
+	for (const value of field.split(":")) {
+		const codepoint = Number.parseInt(value, 10);
+		if (!Number.isFinite(codepoint) || codepoint < 32 || codepoint === 127) continue;
+		if (codepoint > 0x10ffff) return undefined;
+		text += String.fromCodePoint(codepoint);
+	}
+	return text;
+}
+
+/**
+ * Text of a Kitty key event with no text field: a keypad key's character, else the key's own
+ * character, or its shifted key's while Shift is held. Numpad digits produce text only unmodified.
+ */
+function kittyKeyText(codepoint: number, shiftedKey: number | undefined, shifted: boolean): string | undefined {
+	const operatorText = KITTY_KEYPAD_OPERATOR_TEXT[codepoint];
+	if (operatorText) return operatorText;
+	const numpadText = shifted ? undefined : KITTY_NUMPAD_TEXT[codepoint];
+	if (numpadText) return numpadText;
+	const key = shifted && shiftedKey !== undefined ? shiftedKey : codepoint;
+	// Kitty encodes keys with no character (lock, keypad, media and modifier keys, F13 and above) as
+	// private-use codepoints, which are not text.
+	if (key >= 0xe000 && key <= 0xf8ff) return undefined;
+	return printableCodepoint(key);
+}
+
+/** Text a matched Kitty CSI-u event produces, or undefined for a release, a binding or a functional key. */
+function kittyEventText(match: RegExpExecArray): string | undefined {
+	const codepoint = Number.parseInt(match[1] ?? "", 10);
+	if (!Number.isFinite(codepoint) || match[5] === "3") return undefined;
+	const modValue = match[4] ? Number.parseInt(match[4], 10) : 1;
+	const modifier = (Number.isFinite(modValue) ? modValue - 1 : 0) & ~KITTY_LOCK_MASK;
+	// Shift alone, or no modifier, produces text. Alt, Ctrl, Super and every unknown bit make a binding.
+	if (modifier & ~KITTY_MOD_SHIFT) return undefined;
+	const fieldText = kittyFieldText(match[6]);
+	if (fieldText !== "") return fieldText;
+	const shiftedKey = match[2] ? Number.parseInt(match[2], 10) : undefined;
+	return kittyKeyText(codepoint, shiftedKey, modifier === KITTY_MOD_SHIFT);
 }
 
 function decodeKittyPrintable(data: string): string | undefined {
-	const match = data.match(KITTY_CSI_U_PATTERN);
-	if (!match) return undefined;
-
-	const codepoint = Number.parseInt(match[1] ?? "", 10);
-	if (!Number.isFinite(codepoint)) return undefined;
-
-	if (match[5] === "3") return undefined;
-
-	const shiftedKey = match[2] && match[2].length > 0 ? Number.parseInt(match[2], 10) : undefined;
-	const modValue = match[4] ? Number.parseInt(match[4], 10) : 1;
-	const modifier = Number.isFinite(modValue) ? modValue - 1 : 0;
-	const effectiveMod = modifier & ~KITTY_LOCK_MASK;
-	const supportedModifierMask = KITTY_MOD_SHIFT | KITTY_MOD_ALT | KITTY_MOD_CTRL | KITTY_MOD_SUPER;
-
-	if (effectiveMod & ~supportedModifierMask) return undefined;
-	if (effectiveMod & (KITTY_MOD_ALT | KITTY_MOD_CTRL | KITTY_MOD_SUPER)) return undefined;
-
-	const textField = match[6];
-	if (textField && textField.length > 0) {
-		const codepoints = textField
-			.split(":")
-			.filter(Boolean)
-			.map(value => Number.parseInt(value, 10))
-			.filter(value => Number.isFinite(value) && value >= 32 && value !== 127);
-		if (codepoints.length > 0) {
-			try {
-				return String.fromCodePoint(...codepoints);
-			} catch {
-				// A codepoint outside Unicode's range is not text, so this key produces no text: undefined
-				// means "not printable input", exactly as it does for the control keys filtered above, and the
-				// key is then matched as a binding instead.
-				return undefined;
-			}
-		}
-	}
-	const keypadOperatorText = KITTY_KEYPAD_OPERATOR_TEXT[codepoint];
-	if (keypadOperatorText) return keypadOperatorText;
-
-	if (effectiveMod === 0) {
-		const numpadText = KITTY_NUMPAD_TEXT[codepoint];
-		if (numpadText) return numpadText;
-	}
-
-	let effectiveCodepoint = codepoint;
-	if (effectiveMod & KITTY_MOD_SHIFT && typeof shiftedKey === "number") {
-		effectiveCodepoint = shiftedKey;
-	}
-
-	if (effectiveCodepoint >= 0xe000 && effectiveCodepoint <= 0xf8ff) {
-		return undefined;
-	}
-
-	if (!Number.isFinite(effectiveCodepoint) || effectiveCodepoint < 32 || effectiveCodepoint === 127) return undefined;
-
-	try {
-		return String.fromCodePoint(effectiveCodepoint);
-	} catch {
-		// Same as above: an out-of-range codepoint yields no text, and undefined is the "not printable"
-		// answer the caller already handles for every non-text key.
-		return undefined;
-	}
+	const match = matchKittyCsiU(data);
+	return match ? kittyEventText(match) : undefined;
 }
 
 /**
@@ -476,14 +485,7 @@ function decodeModifyOtherKeysPrintable(data: string): string | undefined {
 	if (!parsed) return undefined;
 	const modifier = parsed.modifier & ~KITTY_LOCK_MASK;
 	if ((modifier & ~KITTY_MOD_SHIFT) !== 0) return undefined;
-	if (!Number.isFinite(parsed.codepoint) || parsed.codepoint < 32 || parsed.codepoint === 127) return undefined;
-	try {
-		return String.fromCodePoint(parsed.codepoint);
-	} catch {
-		// Same as the Kitty decoders: no text for an out-of-range codepoint, so the sequence is treated as a
-		// binding rather than as input.
-		return undefined;
-	}
+	return printableCodepoint(parsed.codepoint);
 }
 
 /**
@@ -516,20 +518,11 @@ export function decodePrintableKey(data: string): string | undefined {
  * shifted letters, and modifyOtherKeys sequences) flowing through native normalization.
  */
 function decodeKittyKeypadText(data: string): string | undefined {
-	// Necessary condition for KITTY_CSI_U_PATTERN, which is anchored `^\x1b\[ ... u$`. This runs
-	// ahead of the native parser on EVERY keypress, and the regex has six capture groups, so
-	// without the guard a plain `a` pays for a full match that cannot succeed. Three charCodeAt
-	// calls reject every printable character and every legacy sequence. This is not a second
-	// answer to the same question: the pattern already requires exactly these three characters, so
-	// anything the guard rejects the regex would have rejected too.
-	if (data.charCodeAt(0) !== 0x1b || data.charCodeAt(1) !== 0x5b || data.charCodeAt(data.length - 1) !== 0x75) {
-		return undefined;
-	}
-	const match = data.match(KITTY_CSI_U_PATTERN);
+	const match = matchKittyCsiU(data);
 	if (!match) return undefined;
 	const codepoint = Number.parseInt(match[1] ?? "", 10);
 	if (!(codepoint in KITTY_NUMPAD_TEXT) && !(codepoint in KITTY_KEYPAD_OPERATOR_TEXT)) return undefined;
-	return decodeKittyPrintable(data);
+	return kittyEventText(match);
 }
 
 function matchesKeypadKey(data: string, keyId: KeyId): boolean | undefined {

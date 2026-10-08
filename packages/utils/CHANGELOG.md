@@ -40,6 +40,7 @@
 
 ### Changed
 
+- `extractPrintableText` and `decodePrintableKey` test the `ESC [ … u` frame before running the Kitty CSI-u pattern and scan for control characters without copying the input into an array, cutting a typed character from 13.1 to 2.5 ns and a 4 KB paste from 11.2 to 1.9 µs, with answers identical across 300,000 generated inputs.
 - `visitJsonlBytes` walks the lines before the last newline in one loop and decodes the unterminated tail once after it, cutting a 100,000-line transcript walk with a caller `decode` from 352 to 333 ns per line and with the default parse from 314 to 309 ns, with offsets, items and skips identical across 300,000 generated buffers.
 - The logger's line timestamps, its day file name and the terminal output guard's redirect target read local time through `localTime` instead of a `Date`, and `analyzeTemplate` lists variables in code-unit order instead of `localeCompare` order, so none of them builds ICU's time zone cache or collator; with a POSIX rule string in `TZ`, which ICU does not parse, log timestamps follow the rule.
 - `getSegmenter`, word navigation and the diagram renderer's text measure build their `Intl.Segmenter` on first use instead of when their module loads, so a launch opens no ICU break iterator before it segments text.
