@@ -14,7 +14,7 @@ import type { DocContext, DocDeclaration, DocMatch } from "../engine/documentati
 import { renderDescriptionSection, renderStringList } from "../engine/markdown-assembly";
 import type { RenderResult, ScraperDegrade } from "../types";
 import { buildResult, htmlToBasicMarkdown, isScraperDegrade } from "../types";
-import { asRecord, renderMarkdownTable, trimmedString } from "../utils";
+import { asRecord, isRecord, renderMarkdownTable, trimmedString } from "../utils";
 
 // --- MDN Helpers & Types ---
 interface MDNSection {
@@ -539,10 +539,10 @@ export const openlibraryDeclaration: DocDeclaration = {
 		const path = parsed.pathname;
 		const workMatch = path.match(/^\/works\/(OL\d+W)/i);
 		const editionMatch = path.match(/^\/books\/(OL\d+M)/i);
-		const isbnMatch = path.match(/^\/isbn\/(\d{10}|\d{13})/i);
+		const isbnMatch = path.match(/^\/isbn\/(\d{13}|\d{9}[\dX])(?![\dX])/i);
 		if (workMatch) return { id: workMatch[1], topic: "work", parsedUrl: parsed };
 		if (editionMatch) return { id: editionMatch[1], topic: "book", parsedUrl: parsed };
-		if (isbnMatch) return { id: isbnMatch[1], topic: "isbn", parsedUrl: parsed };
+		if (isbnMatch) return { id: isbnMatch[1].toUpperCase(), topic: "isbn", parsedUrl: parsed };
 		return null;
 	},
 	notes: ["Fetched via Open Library API"],
@@ -1224,6 +1224,19 @@ function renderWikipediaLinks(sitelinks: NonNullable<WikidataEntity["sitelinks"]
 	return links.length > 0 ? `\n## Wikipedia Links\n\n${links.join(" · ")}\n` : "";
 }
 
+/**
+ * The requested item with its id. A merged item's document holds only the item it redirects to, keyed by that item's
+ * id, so a document with one other item resolves to that item.
+ */
+function resolveWikidataEntity(
+	entities: Record<string, WikidataEntity>,
+	qid: string,
+): [id: string, entity: WikidataEntity] | null {
+	if (entities[qid]) return [qid, entities[qid]];
+	const all = Object.entries(entities);
+	return all.length === 1 && isRecord(all[0][1]) ? all[0] : null;
+}
+
 // --- Wikidata ---
 export const wikidataDeclaration: DocDeclaration = {
 	site: "wikidata",
@@ -1236,19 +1249,20 @@ export const wikidataDeclaration: DocDeclaration = {
 	},
 	notes: ["Fetched via Wikidata EntityData API"],
 	fetch: async (match, ctx) => {
-		const qid = match.id;
-		const apiUrl = `https://www.wikidata.org/wiki/Special:EntityData/${qid}.json`;
-		const data = await loadJson<{ entities: Record<string, WikidataEntity> }>(ctx, apiUrl, "wikidata");
+		const apiUrl = `https://www.wikidata.org/wiki/Special:EntityData/${match.id}.json`;
+		const data = await loadJson<{ entities?: Record<string, WikidataEntity> }>(ctx, apiUrl, "wikidata");
 		if (isScraperDegrade(data)) return data;
-		if (!data) return ctx.scraperDegrade("wikidata", "unexpected response shape");
+		if (!isRecord(data.entities)) return ctx.scraperDegrade("wikidata", "unexpected response shape");
 
-		const entity = data.entities[qid];
-		if (!entity) return null;
+		const resolved = resolveWikidataEntity(data.entities, match.id);
+		if (!resolved) return null;
+		const [qid, entity] = resolved;
 		const label = getLocalizedValue(entity.labels, "en") || qid;
 		const description = getLocalizedValue(entity.descriptions, "en");
 		const aliases = getLocalizedAliases(entity.aliases, "en");
 
 		let md = `# ${label} (${qid})\n\n`;
+		if (qid !== match.id) md += `**Redirected from:** ${match.id}\n\n`;
 		if (description) md += `*${description}*\n\n`;
 		if (aliases.length > 0) md += `**Also known as:** ${aliases.join(", ")}\n\n`;
 

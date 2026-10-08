@@ -30,6 +30,8 @@
 - The Wikidata handler renders a quantity with its unit label, such as `1.96 metre`, and requests the label of every value it shows, instead of the first 50 entity values in claim order.
 - The Wikipedia handler renders each paragraph once, under the innermost section that holds it, and drops the subsections of a skipped section such as See also.
 - The Read the Docs handler reports a converted page as `text/markdown`, instead of `text/html`, or `text/plain` after a failed raw-source fetch.
+- The Open Library handler looks up a 13-digit ISBN by all 13 digits, instead of its first 10, and accepts an ISBN-10 whose check digit is `X`.
+- The Wikidata handler renders a merged item as the item it redirects to, with a `Redirected from` line, instead of falling back to a generic fetch.
 
 ## [1.5.4] - 2026-09-24
 

@@ -365,6 +365,39 @@ Permission is hereby granted, free of charge, to any person obtaining a copy.
 			expect(res.content).toContain("**ISBN:** 0330258648");
 			expect(res.content).toContain("## Subjects\n\nSci-Fi");
 		});
+
+		// An ISBN path names a 13-digit ISBN or a 10-digit one whose check digit may be X. The books API is asked for the
+		// whole ISBN, never a 10-digit prefix of a 13-digit one, and a path whose digit run is neither length matches nothing.
+		it("requests the books API with the whole ISBN for every ISBN-10 and ISBN-13 path form", async () => {
+			const requested: string[] = [];
+			loadPageSpy = spyOn(scraperTypes, "loadPage").mockImplementation(async (url: string) => {
+				requested.push(url);
+				return { ok: false, status: 404, content: "", contentType: "text/plain", finalUrl: url };
+			});
+			const cases: Array<[path: string, isbn: string | null]> = [
+				["/isbn/9780140328721", "9780140328721"],
+				["/isbn/9780140328721/", "9780140328721"],
+				["/isbn/9780140328721.json", "9780140328721"],
+				["/isbn/0140328726", "0140328726"],
+				["/isbn/080442957X", "080442957X"],
+				["/isbn/080442957x", "080442957X"],
+				["/isbn/014032872", null],
+				["/isbn/01403287261", null],
+				["/isbn/978014032872", null],
+				["/isbn/97801403287210", null],
+				["/isbn/97801403287X", null],
+			];
+			for (const [path, isbn] of cases) {
+				requested.length = 0;
+				const result = await handler(`https://openlibrary.org${path}`, 10);
+				if (isbn === null) {
+					expect({ path, result, requested }).toEqual({ path, result: null, requested: [] });
+					continue;
+				}
+				const bibkeys = new Set(requested.map(url => new URL(url).searchParams.get("bibkeys")));
+				expect({ path, bibkeys }).toEqual({ path, bibkeys: new Set([`ISBN:${isbn}`]) });
+			}
+		});
 	});
 
 	describe("Read the Docs (readthedocs)", () => {
@@ -841,6 +874,66 @@ Permission is hereby granted, free of charge, to any person obtaining a copy.
 			expect(res.content).toContain("- **P9000:** label-Q2000,");
 			expect(res.content).toContain("label-Q2009 […2 values elided…]");
 			expect(res.content).toContain("[…5 properties elided…]");
+		});
+
+		const entityDocument = (requested: string, entities: unknown) =>
+			spyOn(scraperTypes, "loadPage").mockImplementation(async (url: string) =>
+				url.includes(`Special:EntityData/${requested}.json`)
+					? {
+							ok: true,
+							status: 200,
+							content: JSON.stringify(entities),
+							contentType: "application/json",
+							finalUrl: url,
+						}
+					: { ok: false, status: 404, content: "", contentType: "text/plain", finalUrl: url },
+			);
+		const item = (id: string, label: string) => ({ id, labels: { en: { language: "en", value: label } } });
+
+		// A merged item's EntityData document keys the item it redirects to by that item's own id.
+		it("renders a merged item as the item it redirects to, under that item's id", async () => {
+			loadPageSpy = entityDocument("Q3000037", { entities: { Q1162377: item("Q1162377", "Merge Target") } });
+			const res = asRender(await handler("https://www.wikidata.org/wiki/Q3000037", 10));
+			expect(res.content).toBe("# Merge Target (Q1162377)\n\n**Redirected from:** Q3000037");
+		});
+
+		it("renders the requested item under its own id with no redirect line", async () => {
+			loadPageSpy = entityDocument("Q42", {
+				entities: { Q42: item("Q42", "Douglas Adams"), Q5: item("Q5", "human") },
+			});
+			const res = asRender(await handler("https://www.wikidata.org/wiki/Q42", 10));
+			expect(res.content).toBe("# Douglas Adams (Q42)");
+		});
+
+		it("falls back when no item in the document is the requested one or the one it redirects to", async () => {
+			const documents = [
+				{ entities: { Q1: item("Q1", "One"), Q2: item("Q2", "Two") } },
+				{ entities: { Q1: "not an item" } },
+				{ entities: {} },
+			];
+			for (const body of documents) {
+				loadPageSpy?.mockRestore();
+				loadPageSpy = entityDocument("Q3000037", body);
+				expect({ body, result: await handler("https://www.wikidata.org/wiki/Q3000037", 10) }).toEqual({
+					body,
+					result: null,
+				});
+			}
+		});
+
+		it("degrades on a document without an entities map", async () => {
+			for (const body of [{}, { entities: null }, { entities: "Q42" }, 42]) {
+				loadPageSpy?.mockRestore();
+				loadPageSpy = entityDocument("Q42", body);
+				const result = await handler("https://www.wikidata.org/wiki/Q42", 10);
+				expect({ body, result }).toEqual({
+					body,
+					result: {
+						scraperDegrade: true,
+						note: "wikidata scraper failed (unexpected response shape); fell back to a generic fetch",
+					},
+				});
+			}
 		});
 	});
 
