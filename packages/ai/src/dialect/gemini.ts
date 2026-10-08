@@ -1,7 +1,14 @@
 import { AI_PROMPTS } from "../prompts/registry";
 import type { Message, ToolCall } from "../types";
 import { matchClose, splitTopLevel, topLevelIndexOf } from "./bracket-walk";
-import { mintToolCallId, scanFencedThinking, scanOutsideText, setToolArg, ThinkingSection } from "./coercion";
+import {
+	BlockBody,
+	mintToolCallId,
+	scanFencedThinking,
+	scanOutsideText,
+	setToolArg,
+	ThinkingSection,
+} from "./coercion";
 import { FencedThinkingScanner } from "./fenced-thinking";
 import {
 	assistantTranscriptParts,
@@ -53,6 +60,7 @@ class GeminiInbandScanner implements InbandScanner {
 	readonly #thinking = new ThinkingSection();
 	/** Fence-aware close-matcher while {@link #state} is "thinking"; undefined otherwise. */
 	#fenced: FencedThinkingScanner | undefined;
+	#code = new BlockBody(CODE_FENCE);
 	readonly #parseThinking: boolean;
 
 	constructor(options: InbandScannerOptions = {}) {
@@ -102,6 +110,7 @@ class GeminiInbandScanner implements InbandScanner {
 			this.#state = "thinking";
 			return;
 		}
+		this.#code = new BlockBody(CODE_FENCE);
 		this.#state = "tool";
 	}
 
@@ -114,24 +123,20 @@ class GeminiInbandScanner implements InbandScanner {
 	}
 
 	#consumeTool(final: boolean, events: InbandScanEvent[]): void {
-		const close = this.#buffer.indexOf(CODE_FENCE);
-		if (close === -1) {
+		this.#buffer = this.#code.read(this.#buffer, final);
+		if (!this.#code.closed) {
 			// Inside the fence we emit nothing until it closes; on a truncated
 			// stream the incomplete block is dropped rather than leaked as text.
-			if (final) {
-				this.#buffer = "";
-				this.#state = "outside";
-			}
+			if (final) this.#state = "outside";
 			return;
 		}
-		const body = this.#buffer.slice(0, close);
+		const body = this.#code.text;
 		const rawBlock = `${CODE_OPEN}${body}${CODE_FENCE}`;
 		for (const call of parseGeminiCalls(body)) {
 			const id = mintToolCallId();
 			events.push({ type: "toolStart", id, name: call.name });
 			events.push({ type: "toolEnd", id, name: call.name, arguments: call.arguments, rawBlock });
 		}
-		this.#buffer = this.#buffer.slice(close + CODE_FENCE.length);
 		this.#state = "outside";
 	}
 }

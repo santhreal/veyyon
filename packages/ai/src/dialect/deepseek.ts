@@ -2,6 +2,7 @@ import { parseJsonWithRepair, parseStreamingJson } from "@veyyon/utils/json-pars
 import { AI_PROMPTS } from "../prompts/registry";
 import type { Message, ToolCall } from "../types";
 import {
+	BlockBody,
 	emitTextHoldingPartialTag,
 	mintToolCallId,
 	parseToolArgsText,
@@ -112,6 +113,7 @@ export class DeepSeekInbandScanner implements InbandScanner {
 	#dsmlParamIsString = true;
 	#dsmlParamRaw = "";
 	#rawBlock = "";
+	#args = new BlockBody(DEEPSEEK_TOOL_CALL_END);
 	#stripLeadingWhitespace = false;
 
 	constructor(options: InbandScannerOptions = {}) {
@@ -154,7 +156,7 @@ export class DeepSeekInbandScanner implements InbandScanner {
 				continue;
 			}
 			if (this.#state === "args" || this.#state === "legacyArgs") {
-				if (!this.#consumeArgs(events)) break;
+				if (!this.#consumeArgs(final, events)) break;
 				continue;
 			}
 			if (this.#state === "dsmlSection") {
@@ -286,6 +288,7 @@ export class DeepSeekInbandScanner implements InbandScanner {
 			return true;
 		}
 		this.#startTool(head, events);
+		this.#args = new BlockBody(DEEPSEEK_TOOL_CALL_END);
 		this.#state = "args";
 		return true;
 	}
@@ -302,15 +305,15 @@ export class DeepSeekInbandScanner implements InbandScanner {
 		this.#buffer = this.#buffer.slice(rawName.length);
 		this.#rawBlock += this.#dropOneLineBreak();
 		this.#startTool(name, events);
+		this.#args = new BlockBody(DEEPSEEK_TOOL_CALL_END);
 		this.#state = "legacyArgs";
 		return true;
 	}
 
-	#consumeArgs(events: InbandScanEvent[]): boolean {
-		const end = this.#buffer.indexOf(DEEPSEEK_TOOL_CALL_END);
-		if (end === -1) return false;
-		this.#endArgsCall(this.#buffer.slice(0, end), DEEPSEEK_TOOL_CALL_END, events);
-		this.#buffer = this.#buffer.slice(end + DEEPSEEK_TOOL_CALL_END.length);
+	#consumeArgs(final: boolean, events: InbandScanEvent[]): boolean {
+		this.#buffer = this.#args.read(this.#buffer, final);
+		if (!this.#args.closed) return false;
+		this.#endArgsCall(this.#args.text, DEEPSEEK_TOOL_CALL_END, events);
 		this.#resetTool(this.#inToolSection ? "section" : "outside");
 		return true;
 	}
@@ -341,7 +344,7 @@ export class DeepSeekInbandScanner implements InbandScanner {
 	/** The stream ended inside an announced call: it ends with the arguments read so far. */
 	#endCallAtStreamEnd(events: InbandScanEvent[]): void {
 		if (this.#state === "args" || this.#state === "legacyArgs") {
-			this.#endArgsCall(this.#buffer, undefined, events);
+			this.#endArgsCall(this.#args.text, undefined, events);
 			this.#buffer = "";
 			this.#inToolSection = false;
 			this.#resetTool();

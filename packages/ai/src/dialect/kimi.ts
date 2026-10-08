@@ -2,6 +2,7 @@ import { parseStreamingJson } from "@veyyon/utils/json-parse";
 import { AI_PROMPTS } from "../prompts/registry";
 import type { Message, ToolCall } from "../types";
 import {
+	BlockBody,
 	emitTextHoldingPartialTag,
 	normalizeKimiFunctionName,
 	parseToolArgsText,
@@ -53,6 +54,7 @@ export class KimiInbandScanner implements InbandScanner {
 	#id = "";
 	#name = "";
 	#rawBlock = "";
+	#args = new BlockBody(KIMI_CALL_END);
 	readonly #thinking = new ThinkingSection();
 	readonly #parseThinking: boolean;
 
@@ -93,17 +95,18 @@ export class KimiInbandScanner implements InbandScanner {
 				continue;
 			}
 
-			if (!this.#consumeArgs(events)) break;
+			if (!this.#consumeArgs(final, events)) break;
 		}
 		if (final && this.#state === "thinking") this.#endThinking(events);
 		if (final && this.#state === "args") {
 			// The stream ended inside an announced call: its truncated arguments are auto-closed.
+			const rawArgs = this.#args.text;
 			events.push({
 				type: "toolEnd",
 				id: this.#id,
 				name: this.#name,
-				arguments: recordOrEmpty(parseStreamingJson(this.#buffer)),
-				rawBlock: `${this.#rawBlock}${this.#buffer}`,
+				arguments: recordOrEmpty(parseStreamingJson(rawArgs)),
+				rawBlock: `${this.#rawBlock}${rawArgs}`,
 				unterminated: true,
 			});
 			this.#resetCall();
@@ -190,16 +193,16 @@ export class KimiInbandScanner implements InbandScanner {
 		this.#rawBlock = `${KIMI_CALL_BEGIN}${rawHeader}${KIMI_ARG_BEGIN}`;
 		events.push({ type: "toolStart", id: this.#id, name: this.#name });
 		this.#buffer = this.#buffer.slice(sep + KIMI_ARG_BEGIN.length);
+		this.#args = new BlockBody(KIMI_CALL_END);
 		this.#state = "args";
 		return true;
 	}
 
-	#consumeArgs(events: InbandScanEvent[]): boolean {
-		const end = this.#buffer.indexOf(KIMI_CALL_END);
-		if (end === -1) return false;
+	#consumeArgs(final: boolean, events: InbandScanEvent[]): boolean {
+		this.#buffer = this.#args.read(this.#buffer, final);
+		if (!this.#args.closed) return false;
 
-		this.#endCall(this.#buffer.slice(0, end), events);
-		this.#buffer = this.#buffer.slice(end + KIMI_CALL_END.length);
+		this.#endCall(this.#args.text, events);
 		this.#state = "section";
 		return true;
 	}

@@ -266,6 +266,76 @@ export function scanFencedThinking(
 	return { buffer: result.closed ? result.rest : "", closed };
 }
 
+/**
+ * The body of a block that ends at a literal closer, such as a tool call's arguments, read across stream deltas. The
+ * scanner passes its unread buffer to {@link read} on every step. The closer is searched for in that buffer alone,
+ * and the part proven to precede the closer moves into {@link text}, so the buffer holds at most a closer prefix
+ * between deltas. A string built with `+=` is flattened, a copy of the whole string, on its next read: a body kept in
+ * the buffer and searched on every delta is copied on every delta, O(n·k) for n bytes in k deltas, where this is O(n).
+ */
+export class BlockBody {
+	readonly #closer: string;
+	#text = "";
+	#added = "";
+	#closed = false;
+	/** Offset in {@link text} of the first closer occurrence `accepts` rejected, or -1. */
+	#rejected = -1;
+
+	constructor(closer: string) {
+		this.#closer = closer;
+	}
+
+	/** Whether the block has closed: at its closer, or at the stream's end on the first closer it rejected. */
+	get closed(): boolean {
+		return this.#closed;
+	}
+
+	/** The body read so far; once {@link closed}, everything before the closer. */
+	get text(): string {
+		return this.#text;
+	}
+
+	/** The text the last {@link read} appended to {@link text}. */
+	get added(): string {
+		return this.#added;
+	}
+
+	/**
+	 * Reads the scanner's unread buffer and returns what stays unread: the text after the closer once it arrives,
+	 * otherwise a suffix that could begin the closer, held for the next delta, or nothing when `final` is set. A
+	 * closer occurrence `accepts` rejects, given the body before it, is body text; when the stream ends with no
+	 * accepted closer, the block closes at the first one rejected and the text after it is returned unread.
+	 */
+	read(buffer: string, final: boolean, accepts?: (before: string) => boolean): string {
+		this.#added = "";
+		const closer = this.#closer;
+		let close = buffer.indexOf(closer);
+		while (close !== -1 && accepts !== undefined && !accepts(this.#text + buffer.slice(0, close))) {
+			if (this.#rejected === -1) this.#rejected = this.#text.length + close;
+			close = buffer.indexOf(closer, close + 1);
+		}
+		if (close !== -1) {
+			this.#append(buffer.slice(0, close));
+			this.#closed = true;
+			return buffer.slice(close + closer.length);
+		}
+		if (final && this.#rejected !== -1) {
+			const read = this.#text + buffer;
+			this.#text = read.slice(0, this.#rejected);
+			this.#closed = true;
+			return read.slice(this.#rejected + closer.length);
+		}
+		const keep = final ? buffer.length : buffer.length - partialSuffixOverlap(buffer, closer);
+		this.#append(buffer.slice(0, keep));
+		return buffer.slice(keep);
+	}
+
+	#append(text: string): void {
+		this.#added = text;
+		this.#text += text;
+	}
+}
+
 export function normalizeKimiFunctionName(rawId: string): string {
 	const beforeIndex = rawId.split(":", 1)[0] ?? rawId;
 	const parts = beforeIndex.split(".");

@@ -115,6 +115,7 @@
 - Harmony leak detection finds code-fence spans only once a harmony token or marker turns up, and skips a tool call's arguments when no parse boundary is supplied, cutting detection on 8 KB of fenced prose from 6.0 to 2.2 µs and on 100 KB of tool arguments from 92.8 to 1.1 µs, with identical detections across 200,000 generated texts.
 - The ` ```thinking ` fence scanner stops reclassifying a reasoning line once its lead rules out a fence, instead of rescanning the whole line on every delta, cutting 100 KB of reasoning in 5-byte deltas from 4.7 to 0.53 ms at 400-byte lines and from 90.3 to 0.58 ms at 20,000-byte lines, with identical output across 400,000 generated streams.
 - `wrapLeakedThinkingStream` relays the inner stream through one `LeakedThinkingRelay` that handles each event kind in its own case; healed streams are unchanged.
+- The Hermes, Qwen3, Kimi, DeepSeek, Gemini and pi-native scanners read a tool call's body through `BlockBody` in `dialect/coercion.ts`, and Gemma through a string-aware reader that walks each delta once, leaving only a suffix that could begin the closer unread between deltas instead of searching the whole body again on every delta, cutting a 320 KB argument streamed in 5-byte deltas from 449–966 ms to 3.1–5.5 ms and an 80 KB pi-native argument from 97.4 to 1.2 ms; every other dialect emits identical events across 44,000 generated scans.
 
 ### Fixed
 
@@ -150,6 +151,9 @@
 - The auth broker compares a presented bearer token against every allowed token in constant time, as the auth gateway does, instead of through a set lookup.
 - An auth-broker snapshot request whose store reload fails answers the broker's JSON 500 instead of the server's default error response, and every broker JSON response sends `X-Content-Type-Options: nosniff`.
 - `validateToolArguments` parses a JSON-array string for a string-or-array field inside an `anyOf`, `oneOf` or `allOf` object branch, and for a nullable string-or-array field, into the array, instead of passing the string to the tool.
+- A pi-native string element that contains its call's `</call:NAME>` keeps it as argument text at every chunking, instead of ending the call there when the same delta also opened the body's first element.
+- A pi-native element body the stream ends inside closes at its first rejected `</call:NAME>`, and the text after it is scanned once, instead of being folded into the call's raw block and then scanned again.
+- A scanner from `createInbandScanner` emits nothing on a second `flush()` and scans a reply fed after `flush()` as a new scanner does, instead of DeepSeek re-emitting events on the second flush and Kimi, DeepSeek, Gemini and Gemma carrying state into the next reply; streamed turns flush once and are unchanged.
 
 ## [1.5.4] - 2026-09-24
 
