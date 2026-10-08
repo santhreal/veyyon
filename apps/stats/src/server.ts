@@ -163,22 +163,6 @@ const ensureClientBuild = async () => {
 		const details = output ? `\n${output}` : "";
 		throw new Error(`Failed to build stats client (exit ${buildResult.exitCode})${details}`);
 	}
-
-	const indexHtml = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Veyyon Stats</title>
-    <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-    <div id="root"></div>
-    <script src="index.js" type="module"></script>
-</body>
-</html>`;
-
-	await Bun.write(path.join(STATIC_DIR, "index.html"), indexHtml);
 };
 
 /** One JSON read per stats route; every one takes the `range` query and answers the whole value. */
@@ -213,22 +197,11 @@ async function handleApi(req: Request): Promise<Response> {
 
 	const limitRead = Object.hasOwn(LIMIT_READS, path) ? LIMIT_READS[path] : undefined;
 	if (limitRead) {
-		const limit = url.searchParams.get("limit");
-		const parsedLimit = limit ? parseInt(limit, 10) : undefined;
-		return Response.json(
-			await limitRead(parsedLimit !== undefined && !Number.isNaN(parsedLimit) ? parsedLimit : undefined),
-		);
+		const limit = Number.parseInt(url.searchParams.get("limit") ?? "", 10);
+		return Response.json(await limitRead(Number.isNaN(limit) ? undefined : limit));
 	}
 
-	if (path.startsWith("/api/request/")) {
-		const id = path.split("/").pop();
-		if (!id) return new Response("Bad Request", { status: 400 });
-		const parsedId = parseInt(id, 10);
-		if (Number.isNaN(parsedId)) return new Response("Bad Request", { status: 400 });
-		const details = await getRequestDetails(parsedId);
-		if (!details) return new Response("Not Found", { status: 404 });
-		return Response.json(details);
-	}
+	if (path.startsWith("/api/request/")) return handleRequestDetails(path);
 
 	if (path === "/api/sync") {
 		const result = await syncAllSessions();
@@ -237,6 +210,15 @@ async function handleApi(req: Request): Promise<Response> {
 	}
 
 	return new Response("Not Found", { status: 404 });
+}
+
+/** `GET /api/request/<id>`: the stored request whose id is the last path segment. */
+async function handleRequestDetails(path: string): Promise<Response> {
+	const parsedId = Number.parseInt(path.slice(path.lastIndexOf("/") + 1), 10);
+	if (Number.isNaN(parsedId)) return new Response("Bad Request", { status: 400 });
+	const details = await getRequestDetails(parsedId);
+	if (!details) return new Response("Not Found", { status: 404 });
+	return Response.json(details);
 }
 
 /**

@@ -8,26 +8,15 @@ import { compile } from "@tailwindcss/node";
 async function extractTailwindClasses(dir: string): Promise<Set<string>> {
 	const classes = new Set<string>();
 	const classPattern = /className\s*=\s*["'`]([^"'`]+)["'`]/g;
-
-	async function scanDir(currentDir: string): Promise<void> {
-		const entries = await fs.readdir(currentDir, { withFileTypes: true });
-		for (const entry of entries) {
-			const fullPath = path.join(currentDir, entry.name);
-			if (entry.isDirectory()) {
-				await scanDir(fullPath);
-			} else if (entry.isFile() && /\.(tsx|ts|jsx|js)$/.test(entry.name)) {
-				const content = await Bun.file(fullPath).text();
-				const matches = content.matchAll(classPattern);
-				for (const match of matches) {
-					for (const cls of match[1].split(/\s+/)) {
-						if (cls) classes.add(cls);
-					}
-				}
+	for (const entry of await fs.readdir(dir, { recursive: true, withFileTypes: true })) {
+		if (!entry.isFile() || !/\.(tsx|ts|jsx|js)$/.test(entry.name)) continue;
+		const content = await fs.readFile(path.join(entry.parentPath, entry.name), "utf8");
+		for (const match of content.matchAll(classPattern)) {
+			for (const cls of match[1].split(/\s+/)) {
+				if (cls) classes.add(cls);
 			}
 		}
 	}
-
-	await scanDir(dir);
 	return classes;
 }
 

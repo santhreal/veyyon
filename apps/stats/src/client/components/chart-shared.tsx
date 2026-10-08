@@ -186,6 +186,41 @@ interface ModelKeyedPoint {
 }
 
 /**
+ * Series labels of the `topN` model/provider pairs with the largest summed `rankWeight`, keyed by
+ * `model::provider`, heaviest first. A label is the model name, with the provider appended when two of
+ * the top pairs share that model name.
+ */
+export function topModelLabels<T extends ModelKeyedPoint>(
+	points: readonly T[],
+	topN: number,
+	rankWeight: (point: T) => number,
+): Map<string, string> {
+	const totals = new Map<string, { model: string; provider: string; weight: number }>();
+	for (const point of points) {
+		const key = `${point.model}::${point.provider}`;
+		const existing = totals.get(key);
+		if (existing) {
+			existing.weight += rankWeight(point);
+		} else {
+			totals.set(key, { model: point.model, provider: point.provider, weight: rankWeight(point) });
+		}
+	}
+
+	const topEntries = Array.from(totals.entries())
+		.sort((a, b) => b[1].weight - a[1].weight)
+		.slice(0, topN);
+	const modelCount = new Map<string, number>();
+	for (const [, { model }] of topEntries) {
+		modelCount.set(model, (modelCount.get(model) ?? 0) + 1);
+	}
+	const labelByKey = new Map<string, string>();
+	for (const [key, { model, provider }] of topEntries) {
+		labelByKey.set(key, (modelCount.get(model) ?? 0) > 1 ? `${model} (${provider})` : model);
+	}
+	return labelByKey;
+}
+
+/**
  * Bucket points by day and by top-N model (with an "Other" rollup), producing
  * a ChartSeries. Caller controls how points contribute to ranking and to each
  * day-bucket value via the `rankWeight`/`accumulate`/`bucketToValue` callbacks
@@ -204,40 +239,17 @@ export function buildTopNByModelSeries<T extends ModelKeyedPoint, B>(
 	if (points.length === 0) return { labels: [], datasets: [] };
 	const { topN = 5, rankWeight, initBucket, accumulate, bucketToValue } = opts;
 
-	const totals = new Map<string, { model: string; provider: string; weight: number }>();
-	for (const point of points) {
-		const key = `${point.model}::${point.provider}`;
-		const existing = totals.get(key);
-		if (existing) {
-			existing.weight += rankWeight(point);
-		} else {
-			totals.set(key, { model: point.model, provider: point.provider, weight: rankWeight(point) });
-		}
-	}
-
-	const sorted = Array.from(totals.entries()).sort((a, b) => b[1].weight - a[1].weight);
-	const topEntries = sorted.slice(0, topN);
-	const topKeys = new Set(topEntries.map(([key]) => key));
-
-	const modelCount = new Map<string, number>();
-	for (const [, { model }] of topEntries) {
-		modelCount.set(model, (modelCount.get(model) ?? 0) + 1);
-	}
-	const labelByKey = new Map<string, string>();
-	for (const [key, { model, provider }] of topEntries) {
-		labelByKey.set(key, (modelCount.get(model) ?? 0) > 1 ? `${model} (${provider})` : model);
-	}
+	const labelByKey = topModelLabels(points, topN, rankWeight);
 
 	const allDays = Array.from(new Set(points.map(p => p.timestamp))).sort((a, b) => a - b);
-	const seriesNames = topEntries.map(([key]) => labelByKey.get(key) ?? key);
-	const hasOther = points.some(p => !topKeys.has(`${p.model}::${p.provider}`));
+	const seriesNames = Array.from(labelByKey.values());
+	const hasOther = points.some(p => !labelByKey.has(`${p.model}::${p.provider}`));
 	if (hasOther) seriesNames.push("Other");
 
 	const dayMap = new Map<number, Record<string, B>>();
 	for (const day of allDays) dayMap.set(day, {});
 	for (const point of points) {
-		const key = `${point.model}::${point.provider}`;
-		const label = topKeys.has(key) ? (labelByKey.get(key) ?? point.model) : "Other";
+		const label = labelByKey.get(`${point.model}::${point.provider}`) ?? "Other";
 		const row = dayMap.get(point.timestamp);
 		if (!row) continue;
 		const bucket = row[label] ?? initBucket();

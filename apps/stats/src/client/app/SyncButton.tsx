@@ -6,12 +6,19 @@ import { sync } from "../api";
 
 export interface SyncButtonProps {
 	onSyncStart?: () => void;
-	onSyncComplete?: (result: {
-		success: boolean;
-		data?: { processed: number; files: number; totalMessages: number };
-		error?: string;
-	}) => void;
+	onSyncComplete?: (result: { success: boolean; data?: SyncCounts; error?: string }) => void;
 	className?: string;
+}
+
+type SyncCounts = { processed: number; files: number; totalMessages: number };
+
+/** The counts a sync response reports, each missing or non-numeric one as 0. */
+function syncCounts(data: Partial<Record<keyof SyncCounts, unknown>> | undefined): SyncCounts {
+	return {
+		processed: typeof data?.processed === "number" ? data.processed : 0,
+		files: typeof data?.files === "number" ? data.files : 0,
+		totalMessages: typeof data?.totalMessages === "number" ? data.totalMessages : 0,
+	};
 }
 
 export function SyncButton({ onSyncStart, onSyncComplete, className = "" }: SyncButtonProps) {
@@ -23,33 +30,22 @@ export function SyncButton({ onSyncStart, onSyncComplete, className = "" }: Sync
 
 		setSyncing(true);
 		setStatus(null);
-		if (onSyncStart) {
-			onSyncStart();
-		}
+		onSyncStart?.();
 
 		try {
-			const data = await sync();
-			const result = {
-				processed: typeof data?.processed === "number" ? data.processed : 0,
-				files: typeof data?.files === "number" ? data.files : 0,
-				totalMessages: typeof data?.totalMessages === "number" ? data.totalMessages : 0,
-			};
+			const result = syncCounts(await sync());
 			setStatus({
 				type: "success",
 				message: `Synced: ${formatCount("new request", result.processed)} found.`,
 			});
-			if (onSyncComplete) {
-				onSyncComplete({ success: true, data: result });
-			}
+			onSyncComplete?.({ success: true, data: result });
 		} catch (err) {
 			const errorText = errorMessage(err);
 			setStatus({
 				type: "error",
 				message: `Sync failed: ${errorText}`,
 			});
-			if (onSyncComplete) {
-				onSyncComplete({ success: false, error: errorText });
-			}
+			onSyncComplete?.({ success: false, error: errorText });
 		} finally {
 			setSyncing(false);
 		}
