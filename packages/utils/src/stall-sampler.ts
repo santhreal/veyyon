@@ -120,6 +120,13 @@ export function parseProfile(result: unknown): ParsedProfile | undefined {
 	const timeDeltas = numberArray(result.profile.timeDeltas);
 	if (typeof startTime !== "number" || !samples || !timeDeltas || !Array.isArray(rawNodes)) return undefined;
 	if (samples.length !== timeDeltas.length) return undefined;
+	const nodes = readNodes(rawNodes);
+	if (!nodes) return undefined;
+	return { startUs: startTime, samples, timeDeltas, nodes };
+}
+
+/** The profile's call tree by node id, each node linked to its parent; none when a node is malformed. */
+function readNodes(rawNodes: readonly unknown[]): Map<number, ProfileNode> | undefined {
 	const nodes = new Map<number, ProfileNode>();
 	const parents = new Map<number, number>();
 	for (const raw of rawNodes) {
@@ -132,7 +139,7 @@ export function parseProfile(result: unknown): ParsedProfile | undefined {
 		const node = nodes.get(child);
 		if (node) node.parent = parent;
 	}
-	return { startUs: startTime, samples, timeDeltas, nodes };
+	return nodes;
 }
 
 /**
@@ -168,16 +175,21 @@ export function summarizeWindow(profile: ParsedProfile, fromMs: number, toMs: nu
 		.sort((a, b) => b[1] - a[1])
 		.slice(0, SELF_FRAMES)
 		.map(([frame, samples]) => ({ frame, samples }));
+	return { samples: total, self, stack: hottestPath(profile.nodes, hottest) };
+}
+
+/** The frames from the outermost code frame down to node `id`, keeping the innermost `STACK_FRAMES`. */
+function hottestPath(nodes: ReadonlyMap<number, ProfileNode>, id: number | undefined): string[] {
 	const stack: string[] = [];
-	for (let id = hottest; id !== undefined; id = profile.nodes.get(id)?.parent) {
-		const node = profile.nodes.get(id);
-		if (!node) break;
+	for (let node = id === undefined ? undefined : nodes.get(id); node; ) {
 		stack.push(node.frame);
+		node = node.parent === undefined ? undefined : nodes.get(node.parent);
 	}
-	stack.reverse();
-	// The root and the program node are the profiler's own framing, not code.
-	while (stack.length > 0 && (stack[0] === "(root)" || stack[0] === "(program)")) stack.shift();
-	return { samples: total, self, stack: stack.slice(-STACK_FRAMES) };
+	// Collected innermost first. The root and the program node are the profiler's own framing, not code.
+	while (stack.length > 0 && (stack[stack.length - 1] === "(root)" || stack[stack.length - 1] === "(program)"))
+		stack.pop();
+	if (stack.length > STACK_FRAMES) stack.length = STACK_FRAMES;
+	return stack.reverse();
 }
 
 /**
