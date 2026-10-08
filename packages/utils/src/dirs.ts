@@ -1033,32 +1033,28 @@ export function readLegacyProfileSetupVersion(): LegacyProfileSetupVersion {
 	let unreadable = false;
 	for (const entry of entries) {
 		if (!entry.isDirectory()) continue;
-		let candidate: MainConfigCandidate;
-		try {
-			// Same filename precedence and same read-with-retry as the global config,
-			// so a profile's `config.yml`/`config.yaml` cannot be resolved two ways.
-			candidate = selectMainConfigFile(
-				path.join(profilesRoot, entry.name, "agent"),
-				PROFILE_CONFIG_FILE_KIND,
-			).candidate;
-		} catch {
-			unreadable = true;
-			continue;
-		}
-		if (candidate.kind === "absent") continue;
-		if (candidate.kind === "not-a-map") {
-			unreadable = true;
-			continue;
-		}
-		const value = candidate.record[LEGACY_PROFILE_SETUP_VERSION_KEY];
-		if (value === undefined || value === null) continue;
-		if (typeof value !== "number" || !Number.isFinite(value)) {
-			unreadable = true;
-			continue;
-		}
-		version = version === undefined ? value : Math.max(version, value);
+		const value = readProfileSetupVersion(path.join(profilesRoot, entry.name, "agent"));
+		if (value === "unreadable") unreadable = true;
+		else if (value !== undefined) version = version === undefined ? value : Math.max(version, value);
 	}
 	return { version, unreadable };
+}
+
+/** One profile's `setupVersion`: `undefined` when it records none, `"unreadable"` when its config or the value cannot be understood. */
+function readProfileSetupVersion(agentDir: string): number | "unreadable" | undefined {
+	let candidate: MainConfigCandidate;
+	try {
+		// Same filename precedence and same read-with-retry as the global config,
+		// so a profile's `config.yml`/`config.yaml` cannot be resolved two ways.
+		candidate = selectMainConfigFile(agentDir, PROFILE_CONFIG_FILE_KIND).candidate;
+	} catch {
+		return "unreadable";
+	}
+	if (candidate.kind === "absent") return undefined;
+	if (candidate.kind === "not-a-map") return "unreadable";
+	const value = candidate.record[LEGACY_PROFILE_SETUP_VERSION_KEY];
+	if (value === undefined || value === null) return undefined;
+	return typeof value === "number" && Number.isFinite(value) ? value : "unreadable";
 }
 
 /**
@@ -1378,6 +1374,22 @@ export function getConfigAgentDirName(): string {
 type XdgCategory = "data" | "state" | "cache";
 
 /**
+ * `$<envVar>/veyyon`, or a named profile's directory under it, when the variable holds a usable base
+ * and that directory exists.
+ */
+function existingXdgRoot(envVar: string, profile: string | undefined): string | undefined {
+	const value = process.env[envVar];
+	if (!value || !isUsableXdgBase(envVar, value)) return undefined;
+	try {
+		const appRoot = path.join(value, APP_NAME);
+		const root = profile ? path.join(appRoot, PROFILES_DIR_NAME, profile) : appRoot;
+		return fs.existsSync(root) ? root : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
  * Resolves and caches all veyyon directory paths. On Linux, when XDG environment
  * variables are set, paths are redirected under $XDG_*_HOME/veyyon/. A new
  * instance is created whenever the agent directory changes, which naturally
@@ -1420,28 +1432,9 @@ class DirResolver {
 		let xdgState: string | undefined;
 		let xdgCache: string | undefined;
 		if ((process.platform === "linux" || process.platform === "darwin") && isDefault) {
-			const resolveIf = (envVar: string) => {
-				const value = process.env[envVar];
-				if (!value) return undefined;
-				if (!isUsableXdgBase(envVar, value)) return undefined;
-				try {
-					const appRoot = path.join(value, APP_NAME);
-					if (profile) {
-						const profilePath = path.join(appRoot, PROFILES_DIR_NAME, profile);
-						if (fs.existsSync(profilePath)) {
-							return profilePath;
-						}
-						return undefined;
-					}
-					if (fs.existsSync(appRoot)) {
-						return appRoot;
-					}
-				} catch {}
-				return undefined;
-			};
-			xdgData = resolveIf("XDG_DATA_HOME");
-			xdgState = resolveIf("XDG_STATE_HOME");
-			xdgCache = resolveIf("XDG_CACHE_HOME");
+			xdgData = existingXdgRoot("XDG_DATA_HOME", profile);
+			xdgState = existingXdgRoot("XDG_STATE_HOME", profile);
+			xdgCache = existingXdgRoot("XDG_CACHE_HOME", profile);
 		}
 
 		this.#rootDirs = {
@@ -2512,8 +2505,8 @@ export function getInstallId(): string {
 	} catch (err) {
 		// A missing file is the first run and says nothing. Anything else means the id IS
 		// on disk and unreadable, so a fresh one is generated below and the write almost
-		// certainly fails the same way, leaving a per-process identity (see the tail of
-		// this function). Announce the cause here while the errno is still in hand.
+		// certainly fails the same way, leaving a per-process identity (see `persistInstallId`).
+		// Announce the cause here while the errno is still in hand.
 		if (!isMissingPath(err)) {
 			process.emitWarning(
 				`${filePath} exists but could not be read (${errorMessage(err)}), so this install's identity could not be ` +
@@ -2523,12 +2516,21 @@ export function getInstallId(): string {
 		}
 	}
 
+	cachedInstallId = persistInstallId(filePath, observedInvalid);
+	return cachedInstallId;
+}
+
+/**
+ * Create the install id file with `O_EXCL` and return the id this process uses: the one it wrote,
+ * the one a concurrent first run wrote, or, after a warning, one that was not persisted.
+ */
+function persistInstallId(filePath: string, replaceInvalid: boolean): string {
 	const next = crypto.randomUUID();
 	try {
 		fs.mkdirSync(path.dirname(filePath), { recursive: true });
 		// If we already saw garbage in the file, unlink first so O_EXCL doesn't
 		// trip on it. Ignored if the unlink races against another writer.
-		if (observedInvalid) {
+		if (replaceInvalid) {
 			try {
 				fs.unlinkSync(filePath);
 			} catch {
@@ -2549,10 +2551,7 @@ export function getInstallId(): string {
 		if ((err as NodeJS.ErrnoException).code === "EEXIST") {
 			try {
 				const existing = fs.readFileSync(filePath, "utf8").trim();
-				if (isUuid(existing)) {
-					cachedInstallId = existing;
-					return existing;
-				}
+				if (isUuid(existing)) return existing;
 			} catch {
 				// The winner's file cannot be read back. Falls through to the warning below,
 				// which is the right report: this process ends up with an id of its own.
@@ -2570,7 +2569,6 @@ export function getInstallId(): string {
 		);
 	}
 
-	cachedInstallId = next;
 	return next;
 }
 

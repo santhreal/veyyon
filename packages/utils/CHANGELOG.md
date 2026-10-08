@@ -88,6 +88,7 @@
 - `parseImageMetadata` finds a JPEG's start-of-frame segment through a 256-entry marker table and reads its big-endian fields from the bytes without a `DataView`, with 150,000 differential checks identical to the previous build; a JPEG header with four segments before its frame parses in 56 ns instead of 80 ns.
 - `detectTerminalId` lowercases `TERM_PROGRAM` once and matches it with a `switch` instead of lowercasing it for each emulator name, with 150,000 differential checks identical to the previous build; a Warp environment resolves in 19 ns instead of 21 ns.
 - The file lock discards an unpublished acquisition candidate and closes an inspected owner record in their own steps, with 12,000 differential checks of lock inspections, acquisitions, releases, directory contents and open descriptors identical to the previous build; no user-visible change.
+- `readLegacyProfileSetupVersion` reads each profile's `setupVersion`, the directory resolver resolves each XDG base, and `getInstallId` persists a new id in their own steps, with 4,500 differential checks of legacy versions, resolved directories, install id files and warnings identical to the previous build; no user-visible change.
 
 ### Fixed
 
