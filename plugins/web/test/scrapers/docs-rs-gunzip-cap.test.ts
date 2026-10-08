@@ -10,7 +10,7 @@ describe("docs.rs rustdoc gunzip cap", () => {
 
 	test("rejects payloads whose decompressed size exceeds the cap", () => {
 		// A tiny compressed body expanding past the (test-scaled) cap must throw,
-		// which handleDocsRs converts into a null result instead of parsing.
+		// which handleDocsRs converts into a degrade instead of parsing.
 		const oversized = gzipSync("x".repeat(4096));
 		expect(() => gunzipRustdocJson(oversized, 1024)).toThrow(RangeError);
 	});

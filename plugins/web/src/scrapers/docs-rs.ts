@@ -5,9 +5,9 @@ import { getDocsRsCacheDir, isEnoent, logger, trimTrailingSlashes, truncate, try
 import { AbortError } from "@veyyon/utils/abortable";
 import { scopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
-import { buildResult, MAX_BYTES, scraperDegrade, tryParseUrl } from "./types";
+import { buildResult, isScraperDegrade, MAX_BYTES, readCappedBody, scraperDegrade, tryParseUrl } from "./types";
 
-// --- Rustdoc JSON types (subset we care about) ---
+// --- Rustdoc JSON types (the subset rendered here; format version 61, older layouts where noted) ---
 
 interface RustdocCrate {
 	root: number;
@@ -26,13 +26,18 @@ interface RustdocItem {
 	deprecation: { since: string | null; note: string | null } | null;
 }
 
-interface FunctionData {
+interface FunctionQualifiers {
+	is_const?: boolean;
+	is_async?: boolean;
+	is_unsafe?: boolean;
+}
+
+/** A function; its qualifiers are under `header`, or on the function itself in an older format. */
+interface FunctionData extends FunctionQualifiers {
 	sig: { inputs: [string, RustType][]; output: RustType | null };
 	generics: Generics;
+	header?: FunctionQualifiers;
 	has_body: boolean;
-	is_async: boolean;
-	is_unsafe: boolean;
-	is_const: boolean;
 }
 
 interface Generics {
@@ -42,23 +47,76 @@ interface Generics {
 
 interface GenericParam {
 	name: string;
-	kind: Record<string, unknown>;
+	/** Single-key: `lifetime`, `type` (synthetic for an argument-position `impl Trait`) or `const`. */
+	kind: { lifetime?: unknown; type?: { is_synthetic?: boolean }; const?: unknown };
 }
 
 // Rustdoc type representation — a union encoded as single-key objects
 type RustType = Record<string, unknown>;
 
+/** A path to a type or trait; `name` holds the path in an older format. */
+interface RustPath {
+	path?: string;
+	name?: string;
+	args?: { angle_bracketed?: { args: unknown[] } } | null;
+}
+
+interface BorrowedRef {
+	lifetime: string | null;
+	is_mutable: boolean;
+	type: RustType;
+}
+
+interface ArrayType {
+	type: RustType;
+	len: string;
+}
+
+interface RawPointer {
+	is_mutable: boolean;
+	type: RustType;
+}
+
+interface QualifiedPath {
+	name: string;
+	self_type: RustType;
+	trait: RustPath | RustType | null;
+}
+
+interface DynTrait {
+	traits: Array<{ trait: RustPath | RustType }>;
+	lifetime: string | null;
+}
+
+/** `impl` bounds: a trait, a lifetime (`outlives`), or a `use<..>` capture rendered as `?`. */
+type ImplTraitBounds = Array<{ trait_bound?: { trait: RustPath | RustType }; outlives?: string }>;
+
 // --- URL parsing ---
+
+/** The `inner` kinds of the item each rustdoc page kind (`struct.Foo.html`) shows. */
+const PAGE_ITEM_KINDS: Record<string, readonly string[]> = {
+	struct: ["struct"],
+	enum: ["enum"],
+	union: ["union"],
+	trait: ["trait"],
+	traitalias: ["trait_alias"],
+	fn: ["function"],
+	type: ["type_alias"],
+	constant: ["constant"],
+	static: ["static"],
+	macro: ["macro", "proc_macro"],
+	attr: ["proc_macro"],
+	derive: ["proc_macro"],
+	primitive: ["primitive"],
+};
 
 interface DocsRsTarget {
 	crateName: string;
 	version: string;
-	/** e.g. "serde/de" for a submodule, "serde" for root */
+	/** The module path, crate first: `["serde", "de"]` for a submodule, `["serde"]` for the root. */
 	modulePath: string[];
-	/** e.g. "struct", "trait", "fn", "enum", "macro", "type" */
-	itemKind: string | null;
-	/** e.g. "Serialize" */
-	itemName: string | null;
+	/** The item an item page shows (`struct.Serialize.html`): its page kind and name; null for a module page. */
+	item: { kind: string; name: string } | null;
 }
 
 function parseDocsRsUrl(url: string): DocsRsTarget | null {
@@ -80,209 +138,219 @@ function parseDocsRsUrl(url: string): DocsRsTarget | null {
 
 	// The rest is the module path, possibly ending with an item page
 	const rest = segments.slice(2);
-	let itemKind: string | null = null;
-	let itemName: string | null = null;
+	let item: DocsRsTarget["item"] = null;
 
 	const last = rest[rest.length - 1];
-	// Item pages: struct.Foo.html, trait.Bar.html, fn.baz.html, etc.
-	const itemMatch = last?.match(
-		/^(struct|trait|fn|enum|macro|type|constant|static|attr|derive|union|primitive)\.(.+)\.html$/,
-	);
-	if (itemMatch) {
-		itemKind = itemMatch[1];
-		itemName = itemMatch[2];
+	const itemMatch = last?.match(/^([a-z]+)\.(.+)\.html$/);
+	if (itemMatch && Object.hasOwn(PAGE_ITEM_KINDS, itemMatch[1])) {
+		item = { kind: itemMatch[1], name: itemMatch[2] };
 		rest.pop();
 	} else if (last === "index.html") {
 		rest.pop();
 	}
 
-	return { crateName, version, modulePath: rest, itemKind, itemName };
+	return { crateName, version, modulePath: rest, item };
 }
 
 // --- Type rendering ---
 
-function renderType(ty: RustType | null | undefined, depth = 0): string {
-	if (!ty || depth > 10) return "_";
+/** A rustdoc lifetime carries its apostrophe (`'a`); one without it gains one. */
+function lifetimeText(lifetime: string): string {
+	return lifetime.startsWith("'") ? lifetime : `'${lifetime}`;
+}
 
-	if (typeof ty === "string") return ty;
+function renderGenericArg(arg: unknown, depth: number): string {
+	if (typeof arg !== "object" || arg === null) return "_";
+	const { type, lifetime } = arg as { type?: RustType | null; lifetime?: string };
+	if (type !== undefined) return renderType(type, depth + 1);
+	return lifetime === undefined ? "_" : lifetimeText(lifetime);
+}
 
-	if ("generic" in ty) return ty.generic as string;
-	if ("primitive" in ty) return ty.primitive as string;
-	if ("infer" in ty) return "_";
+function renderPath(path_: RustPath, depth: number): string {
+	const name = path_.path ?? path_.name ?? "_";
+	const args = path_.args?.angle_bracketed?.args;
+	if (!args?.length) return name;
+	return `${name}<${args.map(arg => renderGenericArg(arg, depth)).join(", ")}>`;
+}
 
-	if ("resolved_path" in ty) {
-		const rp = ty.resolved_path as { path: string; args?: { angle_bracketed?: { args: unknown[] } } };
-		const args = rp.args?.angle_bracketed?.args;
-		if (args?.length) {
-			const rendered = args
-				.map((a: unknown) => {
-					if (typeof a === "object" && a !== null && "type" in a)
-						return renderType((a as { type: RustType }).type, depth + 1);
-					if (typeof a === "object" && a !== null && "lifetime" in a)
-						return `'${(a as { lifetime: string }).lifetime}`;
-					return "_";
-				})
-				.join(", ");
-			return `${rp.path}<${rendered}>`;
-		}
-		return rp.path;
-	}
+/** A trait in a bound, a `dyn` type or a qualified path: a bare path, or a type wrapping one in an older format. */
+function renderTraitPath(trait_: RustPath | RustType, depth: number): string {
+	return "resolved_path" in trait_ ? renderType(trait_ as RustType, depth) : renderPath(trait_ as RustPath, depth);
+}
 
-	if ("borrowed_ref" in ty) {
-		const br = ty.borrowed_ref as { lifetime: string | null; is_mutable: boolean; type: RustType };
-		const lt = br.lifetime ? `'${br.lifetime} ` : "";
-		const mutStr = br.is_mutable ? "mut " : "";
-		return `&${lt}${mutStr}${renderType(br.type, depth + 1)}`;
-	}
-
-	if ("tuple" in ty) {
-		const items = (ty.tuple as RustType[]).map(t => renderType(t, depth + 1));
-		return `(${items.join(", ")})`;
-	}
-
-	if ("slice" in ty) return `[${renderType(ty.slice as RustType, depth + 1)}]`;
-
-	if ("array" in ty) {
-		const arr = ty.array as { type: RustType; len: string };
-		return `[${renderType(arr.type, depth + 1)}; ${arr.len}]`;
-	}
-
-	if ("raw_pointer" in ty) {
-		const rp = ty.raw_pointer as { is_mutable: boolean; type: RustType };
-		return `*${rp.is_mutable ? "mut" : "const"} ${renderType(rp.type, depth + 1)}`;
-	}
-
-	if ("qualified_path" in ty) {
-		const qp = ty.qualified_path as { name: string; self_type: RustType; trait_: RustType | null };
+/** How each rustdoc type variant renders, keyed by the variant's single key. */
+const TYPE_RENDERERS: Record<string, (value: unknown, depth: number) => string> = {
+	generic: value => value as string,
+	primitive: value => value as string,
+	resolved_path: (value, depth) => renderPath(value as RustPath, depth),
+	borrowed_ref: (value, depth) =>
+		`${refPrefix(value as BorrowedRef)}${renderType((value as BorrowedRef).type, depth + 1)}`,
+	tuple: (value, depth) => `(${(value as RustType[]).map(t => renderType(t, depth + 1)).join(", ")})`,
+	slice: (value, depth) => `[${renderType(value as RustType, depth + 1)}]`,
+	array: (value, depth) => {
+		const { type, len } = value as ArrayType;
+		return `[${renderType(type, depth + 1)}; ${len}]`;
+	},
+	raw_pointer: (value, depth) => {
+		const { is_mutable, type } = value as RawPointer;
+		return `*${is_mutable ? "mut" : "const"} ${renderType(type, depth + 1)}`;
+	},
+	qualified_path: (value, depth) => {
+		const qp = value as QualifiedPath;
 		const self_ = renderType(qp.self_type, depth + 1);
-		if (qp.trait_) return `<${self_} as ${renderType(qp.trait_, depth + 1)}>::${qp.name}`;
-		return `${self_}::${qp.name}`;
+		return qp.trait ? `<${self_} as ${renderTraitPath(qp.trait, depth + 1)}>::${qp.name}` : `${self_}::${qp.name}`;
+	},
+	impl_trait: (value, depth) => {
+		const bounds = (value as ImplTraitBounds).map(bound => {
+			if (bound.trait_bound) return renderTraitPath(bound.trait_bound.trait, depth + 1);
+			return bound.outlives === undefined ? "?" : lifetimeText(bound.outlives);
+		});
+		return `impl ${bounds.join(" + ")}`;
+	},
+	dyn_trait: (value, depth) => {
+		const { traits, lifetime } = value as DynTrait;
+		const parts = traits.map(t => renderTraitPath(t.trait, depth + 1)).join(" + ");
+		return `dyn ${parts}${lifetime ? ` + ${lifetimeText(lifetime)}` : ""}`;
+	},
+	function_pointer: () => "fn(...)",
+};
+
+function renderType(ty: RustType | string | null | undefined, depth = 0): string {
+	if (!ty || depth > 10) return "_";
+	// `infer` is the one unit variant, serialized as a bare string.
+	if (typeof ty === "string") return ty === "infer" ? "_" : ty;
+	for (const kind in ty) {
+		if (Object.hasOwn(TYPE_RENDERERS, kind)) return TYPE_RENDERERS[kind](ty[kind], depth);
 	}
-
-	if ("impl_trait" in ty) {
-		const bounds = ty.impl_trait as Array<{ trait_bound?: { trait: RustType } }>;
-		const parts = bounds
-			.map(b => (b.trait_bound ? renderType(b.trait_bound.trait as RustType, depth + 1) : "?"))
-			.join(" + ");
-		return `impl ${parts}`;
-	}
-
-	if ("dyn_trait" in ty) {
-		const dt = ty.dyn_trait as { traits: Array<{ trait: RustType }>; lifetime: string | null };
-		const parts = dt.traits.map(t => renderType(t.trait as RustType, depth + 1)).join(" + ");
-		const lt = dt.lifetime ? ` + '${dt.lifetime}` : "";
-		return `dyn ${parts}${lt}`;
-	}
-
-	if ("function_pointer" in ty) return "fn(...)";
-
 	return "_";
 }
 
 function renderGenerics(generics: Generics): string {
-	if (!generics.params.length) return "";
-	const params = generics.params.filter(p => p.kind && !("lifetime" in p.kind)).map(p => p.name);
-	if (!params.length) return "";
-	return `<${params.join(", ")}>`;
+	const params = generics.params
+		.filter(p => p.kind && !("lifetime" in p.kind) && !p.kind.type?.is_synthetic)
+		.map(p => p.name);
+	return params.length ? `<${params.join(", ")}>` : "";
 }
 
 // --- Item rendering ---
 
-function renderFunctionSig(name: string, fn_: FunctionData, generics?: Generics): string {
-	const parts: string[] = [];
-	if (fn_.is_const) parts.push("const");
-	if (fn_.is_async) parts.push("async");
-	if (fn_.is_unsafe) parts.push("unsafe");
-	parts.push("fn");
-
-	const gen = generics ? renderGenerics(generics) : renderGenerics(fn_.generics);
-	const inputs = fn_.sig.inputs
-		.map(([name, ty]) => {
-			if (name === "self") return renderType(ty);
-			return `${name}: ${renderType(ty)}`;
-		})
-		.join(", ");
-
-	const output = fn_.sig.output ? ` -> ${renderType(fn_.sig.output)}` : "";
-	return `${parts.join(" ")} ${name}${gen}(${inputs})${output}`;
+/** The `&`, lifetime and `mut` a reference or reference receiver opens with. */
+function refPrefix({ lifetime, is_mutable }: BorrowedRef): string {
+	return `&${lifetime ? `${lifetimeText(lifetime)} ` : ""}${is_mutable ? "mut " : ""}`;
 }
 
-function renderItemDecl(item: RustdocItem): string | null {
-	const inner = item.inner;
+/** A method's receiver: `self`, `&self` or `&'a mut self`, and `self: Box<Self>` for any other type. */
+function renderReceiver(ty: RustType): string {
+	if (ty.generic === "Self") return "self";
+	const ref = ty.borrowed_ref as BorrowedRef | undefined;
+	return ref?.type.generic === "Self" ? `${refPrefix(ref)}self` : `self: ${renderType(ty)}`;
+}
 
-	if ("function" in inner) {
-		return renderFunctionSig(item.name ?? "?", inner.function as FunctionData);
-	}
+function renderFunctionSig(name: string, fn_: FunctionData): string {
+	const { is_const, is_async, is_unsafe } = fn_.header ?? fn_;
+	const qualifiers = `${is_const ? "const " : ""}${is_async ? "async " : ""}${is_unsafe ? "unsafe " : ""}`;
+	const inputs = fn_.sig.inputs.map(([arg, ty]) =>
+		arg === "self" ? renderReceiver(ty) : `${arg}: ${renderType(ty)}`,
+	);
+	const output = fn_.sig.output ? ` -> ${renderType(fn_.sig.output)}` : "";
+	return `${qualifiers}fn ${name}${renderGenerics(fn_.generics)}(${inputs.join(", ")})${output}`;
+}
 
-	if ("struct" in inner) {
-		const s = inner.struct as { generics: Generics; kind: Record<string, unknown> };
-		return `struct ${item.name}${renderGenerics(s.generics)}`;
-	}
+interface GenericItem {
+	generics: Generics;
+}
 
-	if ("enum" in inner) {
-		const e = inner.enum as { generics: Generics; variants: number[] };
-		return `enum ${item.name}${renderGenerics(e.generics)}`;
-	}
+/** The declaration of each item kind that has one, keyed by the kind's `inner` key. */
+const DECL_RENDERERS: Record<string, (inner: unknown, name: string) => string> = {
+	function: (inner, name) => renderFunctionSig(name, inner as FunctionData),
+	struct: (inner, name) => `struct ${name}${renderGenerics((inner as GenericItem).generics)}`,
+	enum: (inner, name) => `enum ${name}${renderGenerics((inner as GenericItem).generics)}`,
+	union: (inner, name) => `union ${name}${renderGenerics((inner as GenericItem).generics)}`,
+	trait: (inner, name) => {
+		const trait_ = inner as GenericItem & { is_unsafe: boolean };
+		return `${trait_.is_unsafe ? "unsafe " : ""}trait ${name}${renderGenerics(trait_.generics)}`;
+	},
+	type_alias: (inner, name) => {
+		const alias = inner as GenericItem & { type: RustType | null };
+		return `type ${name}${renderGenerics(alias.generics)}${alias.type ? ` = ${renderType(alias.type)}` : ""}`;
+	},
+	// rustdoc gives a declarative macro's source with its patterns stripped.
+	macro: (inner, name) => (typeof inner === "string" && inner ? inner : `macro_rules! ${name}`),
+	constant: (inner, name) => {
+		// The value is under `const`, or on the constant itself in an older format.
+		const constant = inner as { type: RustType; const?: { value: string | null }; value?: string | null };
+		const { value } = constant.const ?? constant;
+		return `const ${name}: ${renderType(constant.type)}${value ? ` = ${value}` : ""}`;
+	},
+};
 
-	if ("trait" in inner) {
-		const t = inner.trait as { generics: Generics; is_auto: boolean; is_unsafe: boolean };
-		const prefix = t.is_unsafe ? "unsafe " : "";
-		return `${prefix}trait ${item.name}${renderGenerics(t.generics)}`;
-	}
-
-	if ("type_alias" in inner) {
-		const ta = inner.type_alias as { generics: Generics; type: RustType | null };
-		const ty = ta.type ? ` = ${renderType(ta.type)}` : "";
-		return `type ${item.name}${renderGenerics(ta.generics)}${ty}`;
-	}
-
-	if ("macro_def" in inner) {
-		return `macro ${item.name}!(...)`;
-	}
-
-	if ("constant" in inner) {
-		const c = inner.constant as { type: RustType; value: string | null };
-		return `const ${item.name}: ${renderType(c.type)}${c.value ? ` = ${c.value}` : ""}`;
-	}
-
-	return null;
+function renderItemDecl(item: RustdocItem, name: string): string | null {
+	const kind = itemKindFromInner(item.inner);
+	return Object.hasOwn(DECL_RENDERERS, kind) ? DECL_RENDERERS[kind](item.inner[kind], name) : null;
 }
 
 function itemKindFromInner(inner: Record<string, unknown>): string {
 	return Object.keys(inner)[0] ?? "unknown";
 }
 
+/** The ids of a module's items; none for an item that is not a module. */
+function moduleItemIds(mod_: RustdocItem): number[] {
+	return (mod_.inner?.module as { items?: number[] } | undefined)?.items ?? [];
+}
+
+/** An item a module exports, under the name the module exports it by. */
+interface ModuleMember {
+	name: string;
+	item: RustdocItem;
+}
+
+/** A `use` item: the name it exports and the id of the item it imports, null for an item outside the crate. */
+interface RustdocUse {
+	name: string;
+	id: number | null;
+	is_glob: boolean;
+}
+
 /**
- * Find an item by name in a module, following `use` re-exports.
+ * A module's public members. A member that is not `pub` (rustdoc writes `default` for a private one) is
+ * left out.
  */
-function findItemInModule(mod_: RustdocItem, name: string, index: Record<string, RustdocItem>): RustdocItem | null {
-	const modData = mod_.inner?.module as { items: number[] } | undefined;
-	if (!modData?.items) return null;
+function moduleMembers(
+	mod_: RustdocItem,
+	index: Record<string, RustdocItem>,
+	expanded = new Set<RustdocItem>([mod_]),
+): ModuleMember[] {
+	return moduleItemIds(mod_).flatMap((id): ModuleMember[] => {
+		const member = index[String(id)];
+		if (member?.visibility !== "public") return [];
+		if ("use" in member.inner) return importedMembers(member.inner.use as RustdocUse, index, expanded);
+		return member.name ? [{ name: member.name, item: member }] : [];
+	});
+}
 
-	for (const id of modData.items) {
-		const item = index[String(id)];
-		if (!item) continue;
-
-		// Direct match
-		if (item.name === name) return item;
-
-		// Re-export: `pub use some::path::Name`
-		if ("use" in item.inner) {
-			const use_ = item.inner.use as { name: string; id: number | null };
-			if (use_.name === name && use_.id != null) {
-				const target = index[String(use_.id)];
-				if (target) return target;
-			}
-		}
-	}
-	return null;
+/**
+ * The members a `pub use` contributes: the item it imports under its exported name, or for a glob the
+ * members of the module it imports, each module expanded once. An import of an item outside the crate's
+ * index contributes none.
+ */
+function importedMembers(
+	use_: RustdocUse,
+	index: Record<string, RustdocItem>,
+	expanded: Set<RustdocItem>,
+): ModuleMember[] {
+	const item = use_.id == null ? undefined : index[String(use_.id)];
+	if (!item) return [];
+	if (!use_.is_glob) return [{ name: use_.name, item }];
+	if (expanded.has(item)) return [];
+	expanded.add(item);
+	return moduleMembers(item, index, expanded);
 }
 
 const DOCS_RS_CACHE_FILENAME = "rustdoc.json";
 
 /** Hard ceiling for decompressed rustdoc JSON: a 50 MB compressed payload can
  *  expand far enough to block the event loop or OOM without a cap. Exceeding it
- *  throws (RangeError), which the fetch path converts to a `null` result. */
+ *  throws (RangeError), which the fetch path converts to a degrade. */
 export const MAX_RUSTDOC_GUNZIP_BYTES = 256 * 1024 * 1024;
 
 /** Decompress a docs.rs rustdoc gzip payload with the output-size cap applied.
@@ -331,60 +399,17 @@ async function writeCachedRustdocCrate(target: DocsRsTarget, json: string): Prom
 	}
 }
 
-// --- Main handler ---
-
-export const handleDocsRs: SpecialHandler = async (
-	url: string,
+/**
+ * Fetch a crate's gzipped rustdoc JSON and cache it. A degrade names an HTTP
+ * failure, a body over {@link MAX_BYTES}, an unreadable payload or one with no
+ * item index; null means the response had no body.
+ */
+async function fetchRustdocCrate(
+	target: DocsRsTarget,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | ScraperDegrade | null> => {
-	const target = parseDocsRsUrl(url);
-	if (!target) return null;
-
-	const cached = await readCachedRustdocCrate(target);
-	if (cached) {
-		const notes = ["Loaded from docs.rs rustdoc JSON cache"];
-		let currentItem = cached.crate.index[String(cached.crate.root)];
-		if (!currentItem) return null;
-
-		const subPath = target.modulePath.slice(1);
-		for (const seg of subPath) {
-			const modData = currentItem.inner?.module as { items: number[] } | undefined;
-			if (!modData?.items) return null;
-
-			const child = modData.items
-				.map(id => cached.crate.index[String(id)])
-				.find(it => it?.name === seg && "module" in (it?.inner ?? {}));
-			if (!child) return null;
-			currentItem = child;
-		}
-
-		if (target.itemName) {
-			const found = findItemInModule(currentItem, target.itemName, cached.crate.index);
-			if (!found) return null;
-
-			return buildResult(renderSingleItem(found, cached.crate.index, cached.crate), {
-				url,
-				method: "docs.rs",
-				fetchedAt: cached.fetchedAt,
-				notes,
-			});
-		}
-
-		return buildResult(renderModule(currentItem, cached.crate.index, cached.crate, target), {
-			url,
-			method: "docs.rs",
-			fetchedAt: cached.fetchedAt,
-			notes,
-		});
-	}
-
-	const fetchedAt = new Date().toISOString();
-	const notes = ["Fetched via docs.rs rustdoc JSON"];
-
-	// Fetch the rustdoc JSON (gzip variant for native Node decompression)
+): Promise<RustdocCrate | ScraperDegrade | null> {
 	const jsonUrl = `https://docs.rs/crate/${target.crateName}/${target.version}/json.gz`;
-
 	let crate_: RustdocCrate | null;
 	// Scoped so the deadline timer is cleared on settle instead of staying
 	// armed like a bare AbortSignal.timeout; the fence spans the streamed read.
@@ -399,191 +424,203 @@ export const handleDocsRs: SpecialHandler = async (
 
 		const reader = response.body?.getReader();
 		if (!reader) return null;
+		const body = await readCappedBody(reader, MAX_BYTES);
+		if (body.truncated) return scraperDegrade("docs.rs", `rustdoc JSON exceeds ${MAX_BYTES} compressed bytes`);
 
-		const chunks: Uint8Array[] = [];
-		let totalSize = 0;
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			chunks.push(value);
-			totalSize += value.length;
-			if (totalSize > MAX_BYTES) {
-				reader.cancel();
-				break;
-			}
-		}
-
-		const compressed = Buffer.concat(chunks);
-		const jsonStr = gunzipRustdocJson(compressed);
+		const jsonStr = gunzipRustdocJson(body.bytes);
 		crate_ = tryParseJson<RustdocCrate>(jsonStr);
-		if (crate_?.index) {
-			await writeCachedRustdocCrate(target, jsonStr);
-		}
+		if (crate_?.index) await writeCachedRustdocCrate(target, jsonStr);
 	} catch (error) {
 		if (signal?.aborted) throw new AbortError(signal);
 		return scraperDegrade("docs.rs", error);
 	} finally {
 		requestTimeout.cancel();
 	}
-	if (!crate_?.index) return scraperDegrade("docs.rs", "rustdoc JSON had no item index");
+	return crate_?.index ? crate_ : scraperDegrade("docs.rs", "rustdoc JSON had no item index");
+}
 
-	const index = crate_.index;
+/** The markdown of the module or item a docs.rs URL names; null when the crate has no such path. */
+function renderTarget(crate_: RustdocCrate, target: DocsRsTarget): string | null {
+	const { index } = crate_;
+	let module_ = index[String(crate_.root)];
+	if (!module_) return null;
 
-	// Find the target module by walking the module path
-	let currentItem = index[String(crate_.root)];
-	if (!currentItem) return null;
-
-	// Walk into submodules (skip first segment which is the crate name itself)
-	const subPath = target.modulePath.slice(1);
-	for (const seg of subPath) {
-		const modData = currentItem.inner?.module as { items: number[] } | undefined;
-		if (!modData?.items) return null;
-
-		const child = modData.items
-			.map(id => index[String(id)])
-			.find(it => it?.name === seg && "module" in (it?.inner ?? {}));
+	// The first module path segment is the crate itself.
+	for (const segment of target.modulePath.slice(1)) {
+		const child = moduleMembers(module_, index).find(m => m.name === segment && "module" in m.item.inner);
 		if (!child) return null;
-		currentItem = child;
+		module_ = child.item;
 	}
 
-	// If looking for a specific item
-	if (target.itemName) {
-		const found = findItemInModule(currentItem, target.itemName, index);
-		if (!found) return null;
+	const page = target.item;
+	if (!page) return renderModule(module_, index, crate_, target);
+	// Namespaces differ by kind: `macro.vec.html` and the `vec` module are two items.
+	const kinds = PAGE_ITEM_KINDS[page.kind];
+	const member = moduleMembers(module_, index).find(
+		m => m.name === page.name && kinds.includes(itemKindFromInner(m.item.inner)),
+	);
+	return member ? renderSingleItem(member, index, crate_) : null;
+}
 
-		return buildResult(renderSingleItem(found, index, crate_), {
-			url,
-			method: "docs.rs",
-			fetchedAt,
-			notes,
-		});
+// --- Main handler ---
+
+export const handleDocsRs: SpecialHandler = async (
+	url: string,
+	timeout: number,
+	signal?: AbortSignal,
+): Promise<RenderResult | ScraperDegrade | null> => {
+	const target = parseDocsRsUrl(url);
+	if (!target) return null;
+
+	const cached = await readCachedRustdocCrate(target);
+	if (cached) {
+		const md = renderTarget(cached.crate, target);
+		const notes = ["Loaded from docs.rs rustdoc JSON cache"];
+		return md === null ? null : buildResult(md, { url, method: "docs.rs", fetchedAt: cached.fetchedAt, notes });
 	}
 
-	// Render the module view
-	return buildResult(renderModule(currentItem, index, crate_, target), {
-		url,
-		method: "docs.rs",
-		fetchedAt,
-		notes,
-	});
+	const fetchedAt = new Date().toISOString();
+	const crate_ = await fetchRustdocCrate(target, timeout, signal);
+	if (crate_ === null || isScraperDegrade(crate_)) return crate_;
+	const md = renderTarget(crate_, target);
+	const notes = ["Fetched via docs.rs rustdoc JSON"];
+	return md === null ? null : buildResult(md, { url, method: "docs.rs", fetchedAt, notes });
 };
 
 // --- Rendering ---
 
 interface RustdocImplData {
-	trait?: { path: string; args?: { angle_bracketed?: { args: unknown[] } } } | null;
+	trait?: RustPath | null;
 	items: number[];
 	is_synthetic?: boolean;
 	blanket_impl?: RustType | null;
 }
 
-function renderImplTrait(trait_: NonNullable<RustdocImplData["trait"]>): string {
-	return renderType({ resolved_path: { path: trait_.path, args: trait_.args } });
+/** A bulleted entry: its code, then the first line of its docs. */
+function docLine(code: string, docs: string | null): string {
+	return `- \`${code}\`${docs ? ` — ${firstLine(docs)}` : ""}`;
 }
 
-function collectInherentMethodLines(implIds: number[], index: Record<string, RustdocItem>): string[] {
-	const methods: string[] = [];
+/** The impl blocks written for a type: neither compiler-synthesized auto-trait impls nor blanket impls. */
+function explicitImpls(implIds: number[], index: Record<string, RustdocItem>): RustdocImplData[] {
+	const impls: RustdocImplData[] = [];
 	for (const implId of implIds) {
 		const impl_ = index[String(implId)];
 		if (!impl_ || !("impl" in impl_.inner)) continue;
-		const implData = impl_.inner.impl as RustdocImplData;
-		if (implData.is_synthetic || implData.trait || implData.blanket_impl) continue;
-		for (const mId of implData.items ?? []) {
-			const method = index[String(mId)];
+		const data = impl_.inner.impl as RustdocImplData;
+		if (!data.is_synthetic && !data.blanket_impl) impls.push(data);
+	}
+	return impls;
+}
+
+function collectInherentMethodLines(impls: RustdocImplData[], index: Record<string, RustdocItem>): string[] {
+	const methods: string[] = [];
+	for (const impl_ of impls) {
+		if (impl_.trait) continue;
+		for (const id of impl_.items ?? []) {
+			const method = index[String(id)];
 			if (!method?.name || !("function" in method.inner)) continue;
-			const fn_ = method.inner.function as FunctionData;
-			const sig = renderFunctionSig(method.name, fn_);
-			methods.push(`- \`${sig}\`${method.docs ? ` — ${firstLine(method.docs)}` : ""}`);
+			methods.push(docLine(renderFunctionSig(method.name, method.inner.function as FunctionData), method.docs));
 		}
 	}
 	return methods;
 }
 
-function collectExplicitTraitImplNames(implIds: number[], index: Record<string, RustdocItem>): string[] {
-	const names: string[] = [];
-	const seen = new Set<string>();
-	for (const implId of implIds) {
-		const impl_ = index[String(implId)];
-		if (!impl_ || !("impl" in impl_.inner)) continue;
-		const implData = impl_.inner.impl as RustdocImplData;
-		if (implData.is_synthetic || implData.blanket_impl || !implData.trait) continue;
-		const name = renderImplTrait(implData.trait);
-		if (!seen.has(name)) {
-			seen.add(name);
-			names.push(name);
+/** A trait's own items: methods without a body and associated types are required, methods with one provided. */
+function renderTraitItems(itemIds: number[], index: Record<string, RustdocItem>): string {
+	const required: string[] = [];
+	const provided: string[] = [];
+	for (const id of itemIds) {
+		const child = index[String(id)];
+		if (!child) continue;
+		if ("function" in child.inner) {
+			const fn_ = child.inner.function as FunctionData;
+			(fn_.has_body ? provided : required).push(docLine(renderFunctionSig(child.name ?? "?", fn_), child.docs));
+		} else if ("assoc_type" in child.inner) {
+			required.push(docLine(`type ${child.name}`, child.docs));
 		}
 	}
-	return names;
+	let md = "";
+	if (required.length) md += `## Required Methods\n\n${required.join("\n")}\n\n`;
+	if (provided.length) md += `## Provided Methods\n\n${provided.join("\n")}\n\n`;
+	return md;
 }
 
-function renderSingleItem(item: RustdocItem, index: Record<string, RustdocItem>, crate_: RustdocCrate): string {
-	let md = "";
-	const decl = renderItemDecl(item);
+/** A struct's, enum's, union's or trait's own items, inherent methods and implemented traits. */
+function renderAssociatedItems(
+	data: { impls?: number[]; items?: number[] } | undefined,
+	index: Record<string, RustdocItem>,
+): string {
+	let md = renderTraitItems(data?.items ?? [], index);
+	const impls = explicitImpls(data?.impls ?? [], index);
+
+	const methods = collectInherentMethodLines(impls, index);
+	if (methods.length) md += `## Methods\n\n${methods.join("\n")}\n\n`;
+
+	const traitImpls = new Set<string>();
+	for (const impl_ of impls) if (impl_.trait) traitImpls.add(renderPath(impl_.trait, 0));
+	if (traitImpls.size) md += `## Trait Implementations\n\n${[...traitImpls].map(t => `- ${t}`).join("\n")}\n\n`;
+	return md;
+}
+
+function renderSingleItem(
+	{ name, item }: ModuleMember,
+	index: Record<string, RustdocItem>,
+	crate_: RustdocCrate,
+): string {
 	const kind = itemKindFromInner(item.inner);
+	let md = `# ${kind.replaceAll("_", " ")} ${name}\n\n`;
+	if (item.deprecation) md += `> **Deprecated**${item.deprecation.note ? `: ${item.deprecation.note}` : ""}\n\n`;
 
-	md += `# ${kind} ${item.name}\n\n`;
-	if (item.deprecation) {
-		const note = item.deprecation.note ? `: ${item.deprecation.note}` : "";
-		md += `> **Deprecated**${note}\n\n`;
-	}
-
+	const decl = renderItemDecl(item, name);
 	if (decl) md += `\`\`\`rust\n${decl}\n\`\`\`\n\n`;
 	if (item.docs) md += `${item.docs}\n\n`;
 
-	// For structs/enums/traits, show their methods and associated items
-	if ("struct" in item.inner || "enum" in item.inner || "trait" in item.inner || "union" in item.inner) {
-		const impls = (item.inner[kind] as { impls?: number[]; items?: number[] })?.impls ?? [];
-		const traitItems = (item.inner[kind] as { items?: number[] })?.items ?? [];
-
-		// Render direct trait items (for traits)
-		if (traitItems.length > 0) {
-			const required: string[] = [];
-			const provided: string[] = [];
-
-			for (const id of traitItems) {
-				const child = index[String(id)];
-				if (!child) continue;
-				if ("function" in child.inner) {
-					const fn_ = child.inner.function as FunctionData;
-					const sig = renderFunctionSig(child.name ?? "?", fn_);
-					const line = `- \`${sig}\`${child.docs ? ` — ${firstLine(child.docs)}` : ""}`;
-					if (fn_.has_body) provided.push(line);
-					else required.push(line);
-				} else if ("assoc_type" in child.inner) {
-					const line = `- \`type ${child.name}\`${child.docs ? ` — ${firstLine(child.docs)}` : ""}`;
-					required.push(line);
-				}
-			}
-
-			if (required.length) md += `## Required Methods\n\n${required.join("\n")}\n\n`;
-			if (provided.length) md += `## Provided Methods\n\n${provided.join("\n")}\n\n`;
-		}
-
-		const methods = collectInherentMethodLines(impls, index);
-		if (methods.length) {
-			md += `## Methods\n\n${methods.join("\n")}\n\n`;
-		}
-
-		const traitImpls = collectExplicitTraitImplNames(impls, index);
-		if (traitImpls.length) {
-			md += `## Trait Implementations\n\n${traitImpls.map(t => `- ${t}`).join("\n")}\n\n`;
-		}
+	if (kind === "struct" || kind === "enum" || kind === "trait" || kind === "union") {
+		md += renderAssociatedItems(item.inner[kind] as { impls?: number[]; items?: number[] } | undefined, index);
 	}
-
-	// For enums, show variants
-	if ("enum" in item.inner) {
-		const variants = (item.inner.enum as { variants: number[] }).variants ?? [];
-		const lines: string[] = [];
-		for (const vId of variants) {
-			const v = index[String(vId)];
-			if (!v?.name) continue;
-			lines.push(`- \`${v.name}\`${v.docs ? ` — ${firstLine(v.docs)}` : ""}`);
-		}
+	if (kind === "enum") {
+		const variants = (item.inner.enum as { variants?: number[] }).variants ?? [];
+		const lines = variants.flatMap(id => {
+			const variant = index[String(id)];
+			return variant?.name ? [docLine(variant.name, variant.docs)] : [];
+		});
 		if (lines.length) md += `## Variants\n\n${lines.join("\n")}\n\n`;
 	}
 
 	if (crate_.crate_version) md += `---\n*${crate_.crate_version}*\n`;
 	return md;
+}
+
+/** The module listing's sections in display order, each the item kind it lists and its heading. */
+const MODULE_SECTIONS: ReadonlyArray<readonly [kind: string, heading: string]> = [
+	["module", "Modules"],
+	["macro", "Macros"],
+	["proc_macro", "Procedural Macros"],
+	["struct", "Structs"],
+	["enum", "Enums"],
+	["union", "Unions"],
+	["trait", "Traits"],
+	["trait_alias", "Trait Aliases"],
+	["function", "Functions"],
+	["type_alias", "Type Aliases"],
+	["constant", "Constants"],
+	["static", "Statics"],
+];
+
+/** A module's members as listing lines grouped by item kind, a function as its signature. */
+function groupModuleItems(members: ModuleMember[]): Map<string, string[]> {
+	const groups = new Map<string, string[]>();
+	for (const { name, item } of members) {
+		const kind = itemKindFromInner(item.inner);
+		const code = kind === "function" ? `\`${renderItemDecl(item, name)}\`` : `**${name}**`;
+		const docs = item.docs ? firstLine(item.docs) : "";
+		const line = `- ${code}${docs ? ` — ${docs}` : ""}`;
+		const group = groups.get(kind);
+		if (group) group.push(line);
+		else groups.set(kind, [line]);
+	}
+	return groups;
 }
 
 function renderModule(
@@ -593,70 +630,12 @@ function renderModule(
 	target: DocsRsTarget,
 ): string {
 	let md = `# ${target.modulePath.join("::")}\n\n`;
-
 	if (mod_.docs) md += `${mod_.docs}\n\n`;
 
-	const modData = mod_.inner?.module as { items: number[] } | undefined;
-	if (!modData?.items) return md;
-
-	// Group items by kind, resolving re-exports
-	const groups: Record<string, Array<{ name: string; docs: string; decl: string | null }>> = {};
-	for (const id of modData.items) {
-		let item = index[String(id)];
-		if (!item) continue;
-
-		// Resolve re-exports
-		let displayName = item.name;
-		if ("use" in item.inner) {
-			const use_ = item.inner.use as { name: string; id: number | null };
-			displayName = use_.name;
-			if (use_.id != null) {
-				const resolved = index[String(use_.id)];
-				if (resolved) item = resolved;
-				else continue;
-			} else continue;
-		}
-
-		if (!displayName) continue;
-		// Skip private/hidden items
-		if (item.visibility === "crate" || (typeof item.visibility === "object" && "restricted" in item.visibility))
-			continue;
-
-		const kind = itemKindFromInner(item.inner);
-		if (!groups[kind]) groups[kind] = [];
-		groups[kind].push({
-			name: displayName,
-			docs: firstLine(item.docs ?? ""),
-			decl: renderItemDecl(item),
-		});
-	}
-
-	const kindOrder = ["module", "macro_def", "struct", "enum", "trait", "function", "type_alias", "constant", "static"];
-	const kindLabels: Record<string, string> = {
-		module: "Modules",
-		macro_def: "Macros",
-		struct: "Structs",
-		enum: "Enums",
-		trait: "Traits",
-		function: "Functions",
-		type_alias: "Type Aliases",
-		constant: "Constants",
-		static: "Statics",
-		union: "Unions",
-	};
-
-	for (const kind of kindOrder) {
-		const items = groups[kind];
-		if (!items?.length) continue;
-		md += `## ${kindLabels[kind] ?? kind}\n\n`;
-		for (const item of items) {
-			if (item.decl && kind === "function") {
-				md += `- \`${item.decl}\`${item.docs ? ` — ${item.docs}` : ""}\n`;
-			} else {
-				md += `- **${item.name}**${item.docs ? ` — ${item.docs}` : ""}\n`;
-			}
-		}
-		md += "\n";
+	const groups = groupModuleItems(moduleMembers(mod_, index));
+	for (const [kind, heading] of MODULE_SECTIONS) {
+		const lines = groups.get(kind);
+		if (lines) md += `## ${heading}\n\n${lines.join("\n")}\n\n`;
 	}
 
 	if (crate_.crate_version) md += `---\n*${crate_.crate_version}*\n`;
@@ -664,6 +643,6 @@ function renderModule(
 }
 
 function firstLine(s: string): string {
-	const line = s.split("\n")[0].trim();
-	return truncate(line, 200, "...");
+	const end = s.indexOf("\n");
+	return truncate((end === -1 ? s : s.slice(0, end)).trim(), 200, "...");
 }
