@@ -90,6 +90,7 @@
 - The file lock discards an unpublished acquisition candidate and closes an inspected owner record in their own steps, with 12,000 differential checks of lock inspections, acquisitions, releases, directory contents and open descriptors identical to the previous build; no user-visible change.
 - `readLegacyProfileSetupVersion` reads each profile's `setupVersion`, the directory resolver resolves each XDG base, and `getInstallId` persists a new id in their own steps, with 4,500 differential checks of legacy versions, resolved directories, install id files and warnings identical to the previous build; no user-visible change.
 - `getEditorConfigFormatting` reads a property line and applies a matching section in their own steps and compiles each section glob once instead of on every lookup, with 99,000 differential checks of resolved formatting identical to the previous build; resolving a file three directories below a rooted `.editorconfig` takes 4.3 µs instead of 5.4 µs.
+- `visibleWidth` counts a row of ASCII, one-cell units, tabs and SGR sequences, measures any other row natively, and reads an OSC 66 span's cells in separate steps, counting tabs once over the text it measures, with 480,000 differential checks under every Hangul compatibility jamo width setting identical to the previous build; a row with an OSC 66 span measures in 481 ns instead of 509 ns and a 180-unit unstyled line in 236 ns instead of 254 ns.
 
 ### Fixed
 
