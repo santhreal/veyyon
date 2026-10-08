@@ -19,6 +19,7 @@ import type { CollabGuestUiResult } from "@veyyon/coding-agent/collab/host";
 import type {
 	ExtensionAskDialogQuestion,
 	ExtensionAskDialogResult,
+	ExtensionAskDialogSubmitResult,
 } from "@veyyon/coding-agent/extensibility/extensions/types";
 import { ExtensionUiController } from "@veyyon/coding-agent/modes/terminal/controllers/extension-ui-controller";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
@@ -95,7 +96,11 @@ const single: ExtensionAskDialogQuestion = {
 };
 const multi: ExtensionAskDialogQuestion = { ...single, id: "m", question: "Pick several?", multi: true };
 
-function submitted(question: ExtensionAskDialogQuestion, selectedOptions: string[], customInput?: string) {
+function submitted(
+	question: ExtensionAskDialogQuestion,
+	selectedOptions: string[],
+	customInput?: string,
+): ExtensionAskDialogSubmitResult {
 	return {
 		kind: "submit",
 		results: [
