@@ -47,7 +47,6 @@ function makeComponent(
 		preset: "custom",
 		leftSegments: [],
 		rightSegments: ["usage"],
-		sessionAccent: false,
 	});
 	return component;
 }
@@ -210,7 +209,6 @@ describe("usage status-line segment", () => {
 			preset: "custom",
 			leftSegments: [],
 			rightSegments: ["usage"],
-			sessionAccent: false,
 		});
 
 		component.refreshUsageInBackground();

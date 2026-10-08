@@ -13,7 +13,10 @@ export type CollabStatus = StatusCollabStatus;
 export interface StatusLineSegmentOptions {
 	model?: {
 		showThinkingLevel?: boolean;
-		/** Quiet zones: a wide gap between the model name and the effort tail. */
+		/**
+		 * Join the effort to the model name as one label (`Model @high`). Absent means true;
+		 * `false` joins them with the dot separator (`Model · high`).
+		 */
 		roomy?: boolean;
 	};
 	path?: {
@@ -39,7 +42,6 @@ export interface StatusLineSettings {
 	rightSegments?: StatusLineSegmentId[];
 	segmentOptions?: StatusLineSegmentOptions;
 	showHookStatus?: boolean;
-	sessionAccent?: boolean;
 	/** Replace the model-segment icon with the thinking-level glyph and drop the
 	 *  " · <level>" suffix, so the thinking level reads as a single compact icon. */
 	compactThinkingLevel?: boolean;

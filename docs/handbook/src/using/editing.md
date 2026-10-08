@@ -1,6 +1,6 @@
 # Editing and repair
 
-Editing reliably is the core of a coding agent, so it is worth understanding how Veyyon does it. The default edit surface is hashline. In practice that means three things work together: numbered lines that come back from `read` and `search`, snapshot tags that identify a known state of a file, and the `edit` tool with its `SWAP`, `DEL`, and `INS` operations.
+The default edit surface is hashline. It consists of three parts: numbered lines that come back from `read` and `search`, snapshot tags that identify a known state of a file, and the `edit` tool with its `SWAP`, `DEL`, and `INS` operations.
 
 For the design behind the edit and repair path, see [The hashline edit engine](../edit/engine.md).
 
@@ -10,7 +10,7 @@ Models often emit slightly wrong tool JSON, or line anchors that have gone stale
 
 ## Write path versus edit path
 
-Veyyon keeps surgical edits and whole-file writes separate on purpose.
+Veyyon keeps surgical edits and whole-file writes separate.
 
 | Path | Applier | Role |
 | --- | --- | --- |
@@ -53,6 +53,6 @@ and confirm that it matches the command or browser scenario that ran.
 
 ## Safety
 
-Edits honor the approval mode, just as `bash` does. A `tools.approval.<tool>: deny` policy keeps the tool in the model's list but rejects every call at dispatch with an error stating the policy. Tools leave the model's list via `<tool>.enabled: false`, harness-profile allowlists, `tools.discoveryMode` (BM25 hiding), extension or agent tool-set overrides, or agent definitions. Plan mode keeps the list and blocks mutations at approval time.
+Edits honor the approval mode, as `bash` does. A `tools.approval.<tool>: deny` policy keeps the tool in the model's list but rejects every call at dispatch with an error stating the policy. Tools leave the model's list via `<tool>.enabled: false`, harness-profile allowlists, `tools.discoveryMode` (BM25 hiding), extension or agent tool-set overrides, or agent definitions. Plan mode keeps the list and blocks mutations at approval time.
 
 Hashline is the primary write path, and `apply_patch` is a compatibility mode. There is no single V4A applier that routes every mutation through a `make_update_patch` envelope.

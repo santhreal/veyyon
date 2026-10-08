@@ -7,6 +7,7 @@ import {
 	createFileOps,
 	DEFAULT_COMPACTION_SETTINGS,
 	getRemoteCompactionPreserveData,
+	KEEP_NOTHING_ENTRY_ID,
 	prepareCompaction,
 	REMOTE_COMPACTION_PRESERVE_KEY,
 	remoteCompactionAttribution,
@@ -132,7 +133,9 @@ function chainedPreparation(provider: string, api: string): CompactionPreparatio
 			parentId: "msg-pre",
 			timestamp: new Date().toISOString(),
 			summary: "",
-			firstKeptEntryId: "msg-pre",
+			// The window replaced everything in front of it, so "pre-window work" is
+			// its span and no turn it kept.
+			firstKeptEntryId: KEEP_NOTHING_ENTRY_ID,
 			tokensBefore: 200_000,
 			preserveData: {
 				[REMOTE_COMPACTION_PRESERVE_KEY]: {

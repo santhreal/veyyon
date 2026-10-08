@@ -1,3 +1,4 @@
+// Subject module: tools/fs/read-conflicts.ts, driven through the read tool.
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";

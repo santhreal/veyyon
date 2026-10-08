@@ -4489,7 +4489,6 @@ describe("GitLab Duo Workflow WebSocket state machine", () => {
 		);
 
 		await expect(streamPromise).resolves.toBe("stalled");
-		expect(state.stalledRequested).toBe(true);
 		// No tool call emitted — the boundary that would loop was suppressed.
 		expect(output.content.some(block => block.type === "toolCall")).toBe(false);
 		expect(closed).toBe(true);
@@ -4573,7 +4572,6 @@ describe("GitLab Duo Workflow WebSocket state machine", () => {
 		);
 
 		await expect(streamPromise).resolves.toBe("action");
-		expect(state.stalledRequested).toBeUndefined();
 		expect(output.content).toContainEqual({
 			type: "toolCall",
 			id: "req-ok-1",

@@ -19,7 +19,6 @@
  *
  * | stage                | cost  |
  * | -------------------- | ----- |
- * | arktype              | 101ms |
  * | @veyyon/utils        |  65ms |
  * | @veyyon/ai           |  54ms |
  * | catalog models       |  36ms |
@@ -29,7 +28,8 @@
  *
  * A stage worth more than about 50ms compiled is a candidate for splitting into
  * its own heavy children; the four monoliths above were split that way already.
- * `arktype` is the floor: one npm module, 89 importers, nothing to split.
+ * `arktype` is not a stage: `../main` evaluates it only through the stand-ins in
+ * `@veyyon/ai/utils/schema/arktype`, when the first schema is built.
  */
 
 export interface WarmupStage {
@@ -39,8 +39,6 @@ export interface WarmupStage {
 }
 
 export const WARMUP_STAGES: readonly WarmupStage[] = [
-	// Schema runtime under every tool, hook and custom command definition.
-	{ name: "arktype", load: () => import("arktype") },
 	{ name: "@veyyon/utils", load: () => import("@veyyon/utils") },
 	// The model catalog: `models.json` is 2.2MB of literal that parses here
 	// rather than inside the provider graph below.

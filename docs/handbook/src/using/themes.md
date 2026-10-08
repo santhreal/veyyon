@@ -1,7 +1,7 @@
 # Themes and identity
 
 Veyyon's interface is built around near-black, near-white, silver structure (`#C6CBD4`), and a single
-**ember** accent (`#F0862E`) — the same tokens the website ships.
+**ember** accent (`#F0862E`), the same tokens the website ships.
 
 ## Bundled themes
 

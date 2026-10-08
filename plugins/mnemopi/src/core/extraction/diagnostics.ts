@@ -95,28 +95,20 @@ export class ExtractionDiagnostics {
 	#totalEmpty = 0;
 	#createdAt = new Date().toISOString();
 
-	#validateTier(tier: string): asserts tier is ExtractionTier {
-		if (!isTier(tier)) {
-			throw new Error(
-				`unknown extraction tier ${JSON.stringify(tier)}; valid tiers: ${EXTRACTION_TIERS.join(", ")}`,
-			);
-		}
-	}
-
 	recordAttempt(tier: ExtractionTier): void {
-		this.#validateTier(tier);
+		validateTier(tier);
 		this.#tierStats[tier].attempts += 1;
 	}
 	recordSuccess(tier: ExtractionTier, _factCount = 0): void {
-		this.#validateTier(tier);
+		validateTier(tier);
 		this.#tierStats[tier].successes += 1;
 	}
 	recordNoOutput(tier: ExtractionTier): void {
-		this.#validateTier(tier);
+		validateTier(tier);
 		this.#tierStats[tier].no_output += 1;
 	}
 	recordFailure(tier: ExtractionTier, exc?: unknown, reason?: string): void {
-		this.#validateTier(tier);
+		validateTier(tier);
 		const stats = this.#tierStats[tier];
 		stats.failures += 1;
 		const sample: ErrorSample = { at: new Date().toISOString(), type: "unspecified", msg: "" };
@@ -181,6 +173,12 @@ export class ExtractionDiagnostics {
 		this.#totalFailures = 0;
 		this.#totalEmpty = 0;
 		this.#createdAt = new Date().toISOString();
+	}
+}
+
+function validateTier(tier: string): asserts tier is ExtractionTier {
+	if (!isTier(tier)) {
+		throw new Error(`unknown extraction tier ${JSON.stringify(tier)}; valid tiers: ${EXTRACTION_TIERS.join(", ")}`);
 	}
 }
 

@@ -6,7 +6,7 @@
  * decides when compaction triggers, how pruning spends its budget, what the
  * post-compaction headroom and retry-fit checks measure, and what the operator's
  * context meter reads, and it is re-walked over the whole stored conversation on
- * every pre-prompt and post-turn check (`#estimateStoredContextTokens`,
+ * every pre-prompt and post-turn check (`ContextAccounting.estimateStoredTokens`,
  * `#estimatePrePromptContextTokens`, BACKLOG P5). That is why the cache exists.
  * But the compaction rewrites edit a stored message IN PLACE: `applyShakeRegion`
  * assigns a placeholder over `message.content` and stamps `prunedAt`,

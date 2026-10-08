@@ -160,7 +160,7 @@ export class SelectList implements Component, MouseRoutable {
 	#filteredItems: ReadonlyArray<SelectItem>;
 	// Each item paired with its precomputed, sanitized filter text. Built once on
 	// first filter (items are immutable), so typing a query does not re-run
-	// `#getFilterText` (string concat + sanitizeSingleLine) for every item on
+	// `getFilterText` (string concat + sanitizeSingleLine) for every item on
 	// every keystroke — the dominant cost when filtering a large candidate list.
 	#searchable?: ReadonlyArray<{ item: SelectItem; text: string }>;
 	#filterQuery = "";
@@ -334,7 +334,7 @@ export class SelectList implements Component, MouseRoutable {
 				const descriptionWidth = Math.max(visibleWidth(description), MIN_DESCRIPTION_WIDTH + 1);
 				widestRow = Math.max(widestRow, primaryColumnWidth + descriptionWidth);
 			} else {
-				widestRow = Math.max(widestRow, visibleWidth(this.#getDisplayValue(item)));
+				widestRow = Math.max(widestRow, visibleWidth(getDisplayValue(item)));
 			}
 		}
 		// Two cells of right margin, the same two `#computeItemLayout` holds back from each row.
@@ -818,7 +818,7 @@ export class SelectList implements Component, MouseRoutable {
 	#getPrimaryColumnWidth(items: ReadonlyArray<SelectItem> = this.#filteredItems): number {
 		const { min, max } = this.#getPrimaryColumnBounds();
 		const widestPrimary = items.reduce((widest, item) => {
-			return Math.max(widest, visibleWidth(this.#getDisplayValue(item)) + PRIMARY_COLUMN_GAP);
+			return Math.max(widest, visibleWidth(getDisplayValue(item)) + PRIMARY_COLUMN_GAP);
 		}, 0);
 
 		return clamp(widestPrimary, min, max);
@@ -837,7 +837,7 @@ export class SelectList implements Component, MouseRoutable {
 	}
 
 	#truncatePrimary(item: SelectItem, isSelected: boolean, maxWidth: number, columnWidth: number): string {
-		const displayValue = this.#getDisplayValue(item);
+		const displayValue = getDisplayValue(item);
 		const truncatedValue = this.layout.truncatePrimary
 			? this.layout.truncatePrimary({
 					text: displayValue,
@@ -849,10 +849,6 @@ export class SelectList implements Component, MouseRoutable {
 			: truncateToWidth(displayValue, maxWidth, Ellipsis.Omit);
 
 		return truncateToWidth(truncatedValue, maxWidth, Ellipsis.Omit);
-	}
-
-	#getDisplayValue(item: SelectItem): string {
-		return sanitizeSingleLine(item.label || item.value);
 	}
 
 	#renderStatusLine(width: number): string {
@@ -926,7 +922,7 @@ export class SelectList implements Component, MouseRoutable {
 			// large-list filter stall instead of logging it as "unknown".
 			pushLoopPhase("ui.select-filter");
 			try {
-				this.#searchable ??= this.items.map(item => ({ item, text: this.#getFilterText(item) }));
+				this.#searchable ??= this.items.map(item => ({ item, text: getFilterText(item) }));
 				this.#filteredItems = fuzzyFilter(this.#searchable, filter, entry => entry.text).map(entry => entry.item);
 			} finally {
 				popLoopPhase();
@@ -938,26 +934,6 @@ export class SelectList implements Component, MouseRoutable {
 		if (notify) {
 			this.#notifySelectionChange();
 		}
-	}
-
-	#getFilterText(item: SelectItem): string {
-		// An explicit filter text replaces the row's visible text outright rather
-		// than adding to it: the point is to EXCLUDE what the row also shows.
-		if (item.filterText !== undefined) return sanitizeSingleLine(item.filterText);
-		// The label and the value are often the SAME string (a version picker's
-		// rows are `{ value: "1.3.0", label: "1.3.0" }`). Concatenating both then
-		// fed the fuzzy matcher "1.3.0 1.3.0", where the query "1.1" matches as a
-		// subsequence across the join — the `1` from the first copy and the `1`
-		// from the second. The result is a filter that keeps rows the user can see
-		// do not match, which reads as a filter that does not work.
-		let text = item.value === item.label ? item.label : `${item.label} ${item.value}`;
-		if (item.description) {
-			text += ` ${item.description}`;
-		}
-		if (item.hint) {
-			text += ` ${item.hint}`;
-		}
-		return sanitizeSingleLine(text);
 	}
 
 	#notifySelectionChange(): void {
@@ -981,4 +957,28 @@ export class SelectList implements Component, MouseRoutable {
 		const item = this.#filteredItems[this.#selectedIndex];
 		return item || null;
 	}
+}
+
+function getDisplayValue(item: SelectItem): string {
+	return sanitizeSingleLine(item.label || item.value);
+}
+
+function getFilterText(item: SelectItem): string {
+	// An explicit filter text replaces the row's visible text outright rather
+	// than adding to it: the point is to EXCLUDE what the row also shows.
+	if (item.filterText !== undefined) return sanitizeSingleLine(item.filterText);
+	// The label and the value are often the SAME string (a version picker's
+	// rows are `{ value: "1.3.0", label: "1.3.0" }`). Concatenating both then
+	// fed the fuzzy matcher "1.3.0 1.3.0", where the query "1.1" matches as a
+	// subsequence across the join — the `1` from the first copy and the `1`
+	// from the second. The result is a filter that keeps rows the user can see
+	// do not match, which reads as a filter that does not work.
+	let text = item.value === item.label ? item.label : `${item.label} ${item.value}`;
+	if (item.description) {
+		text += ` ${item.description}`;
+	}
+	if (item.hint) {
+		text += ` ${item.hint}`;
+	}
+	return sanitizeSingleLine(text);
 }

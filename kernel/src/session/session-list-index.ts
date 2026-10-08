@@ -34,7 +34,7 @@ import type { SessionStorage } from "./session-storage";
  * stale row would resurrect the previous build's rendering of a session and no
  * file change would ever correct it.
  */
-const SESSION_LIST_INDEX_VERSION = 1;
+const SESSION_LIST_INDEX_VERSION = 2;
 
 /** File name of the index, inside the directory whose listing it caches. */
 export const SESSION_LIST_INDEX_FILE = ".session-list-index.json";

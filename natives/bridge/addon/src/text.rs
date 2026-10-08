@@ -25,7 +25,7 @@
 //! line breaks belongs in `veyyon-text`, where it can be tested and fuzzed.
 //! Logic added here is logic no fuzzer can reach.
 
-use napi::{JsString, bindgen_prelude::*};
+use napi::{JsString, bindgen_prelude::*, check_status, sys};
 use napi_derive::napi;
 
 /// Ellipsis strategy for [`truncate_to_width`].
@@ -49,40 +49,93 @@ impl From<Ellipsis> for veyyon_text::Ellipsis {
 	}
 }
 
-/// Wrap a UTF-16 buffer back into the shape napi hands to JavaScript.
+/// A UTF-16 result headed for JavaScript, created in the narrowest encoding
+/// that holds it.
 ///
-/// napi builds the JS string from the whole vector with an explicit length, so
+/// napi builds the JS string from the whole buffer with an explicit length, so
 /// whatever is in it is content. That makes this the mirror of the terminator
-/// strip `veyyon_text` performs on the way in: trim the NUL, never add one.
+/// strip `veyyon_text` performs on the way in: trim the NUL, never add one. The
+/// output once pushed a NUL on the belief that napi wanted a terminated buffer.
+/// It does not, and the terminator reached JavaScript as a character on every
+/// string the text layer returned. See [`veyyon_text::utf16_content_len`],
+/// which owns the rule for both directions.
 ///
-/// This once read `data.push(0)`, on the belief that `Utf16String` wanted a
-/// NUL-terminated buffer. It does not, and the appended terminator reached
-/// JavaScript as a character on every string the text layer returned. See
-/// [`veyyon_text::utf16_content_len`], which owns the rule for both directions.
-fn build_utf16_string(mut data: Vec<u16>) -> Utf16String {
-	data.truncate(veyyon_text::utf16_content_len(&data));
-	Utf16String::from(data)
+/// A result whose code units all fit in Latin-1 is created as a Latin-1 string.
+/// `JavaScriptCore` stores a string created from UTF-16 at two bytes a
+/// character whatever it holds, and every string a renderer builds from one, a
+/// padded row, a styled row, a frame line, inherits that width.
+pub struct JsText(Vec<u16>);
+
+impl JsText {
+	fn new(mut units: Vec<u16>) -> Self {
+		units.truncate(veyyon_text::utf16_content_len(&units));
+		Self(units)
+	}
+}
+
+impl TypeName for JsText {
+	fn type_name() -> &'static str {
+		"String"
+	}
+
+	fn value_type() -> ValueType {
+		ValueType::String
+	}
+}
+
+impl ToNapiValue for JsText {
+	unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> Result<sys::napi_value> {
+		let Self(mut units) = val;
+		if units.iter().any(|&unit| unit > 0xff) {
+			// SAFETY: `env` is the live environment napi passed to this conversion.
+			return unsafe { Utf16String::to_napi_value(env, Utf16String::from(units)) };
+		}
+		let len = units.len();
+		// SAFETY: the view covers exactly the `2 * len` initialized bytes of the
+		// `len` units, any alignment suits `u8`, and `units` is not touched while
+		// the view is alive.
+		let bytes =
+			unsafe { std::slice::from_raw_parts_mut(units.as_mut_ptr().cast::<u8>(), len * 2) };
+		// Narrow in place. Byte `i` is written after unit `i` is read, and every
+		// unit after it sits at bytes `2j..2j + 2`, past each byte written so far.
+		for i in 0..len {
+			bytes[i] = u16::from_ne_bytes([bytes[2 * i], bytes[2 * i + 1]]) as u8;
+		}
+		let mut value = std::ptr::null_mut();
+		check_status!(
+			// SAFETY: `bytes[..len]` holds the Latin-1 text and outlives the call,
+			// which copies it into the new string.
+			unsafe {
+				sys::napi_create_string_latin1(env, bytes.as_ptr().cast(), len as isize, &mut value)
+			},
+			"Failed to create a Latin-1 JavaScript string"
+		)?;
+		Ok(value)
+	}
 }
 
 /// Visible slice of a line after ANSI-aware column selection
 /// (`sliceWithWidth`).
-#[napi(object)]
+#[napi(object, object_from_js = false)]
 pub struct SliceResult {
-	/// UTF-16 slice containing the selected text.
-	pub text:  Utf16String,
+	/// The selected text.
+	#[napi(ts_type = "string")]
+	pub text:  JsText,
 	/// Visible width of the slice in terminal cells.
 	pub width: u32,
 }
 
 /// Before/after segments around an overlay region (`extractSegments`).
-#[napi(object)]
+#[napi(object, object_from_js = false)]
 pub struct ExtractSegmentsResult {
-	/// UTF-16 content before the overlay region.
-	pub before:       Utf16String,
+	/// Content before the overlay region.
+	#[napi(ts_type = "string")]
+	pub before:       JsText,
 	/// Visible width of the `before` segment.
 	pub before_width: u32,
-	/// UTF-16 content after the overlay region.
-	pub after:        Utf16String,
+	/// Content after the overlay region.
+	#[napi(ts_type = "string")]
+	pub after:        JsText,
 	/// Visible width of the `after` segment.
 	pub after_width:  u32,
 }
@@ -98,25 +151,25 @@ pub fn set_hangul_compat_jamo_width_override(value: u8) {
 /// Wrap text to a visible width, preserving ANSI escape codes across line
 /// breaks.
 ///
-/// Returns UTF-16 lines with active SGR codes carried across line boundaries.
-#[napi]
-pub fn wrap_text_with_ansi(text: JsString, width: u32, tab_width: u32) -> Result<Vec<Utf16String>> {
+/// Returns lines with active SGR codes carried across line boundaries.
+#[napi(ts_return_type = "Array<string>")]
+pub fn wrap_text_with_ansi(text: JsString, width: u32, tab_width: u32) -> Result<Vec<JsText>> {
 	let text_u16 = text.into_utf16()?;
 	let lines = veyyon_text::wrap_text_with_ansi(text_u16.as_slice(), width as usize, tab_width);
-	Ok(lines.into_iter().map(build_utf16_string).collect())
+	Ok(lines.into_iter().map(JsText::new).collect())
 }
 
 /// Truncate text to a visible width, preserving ANSI codes.
 ///
 /// Pads with spaces when requested.
-#[napi]
+#[napi(ts_return_type = "string")]
 pub fn truncate_to_width(
 	text: JsString<'_>,
 	max_width: u32,
 	ellipsis_kind: Option<Ellipsis>,
 	pad: Option<bool>,
 	tab_width: u32,
-) -> Result<Either<JsString<'_>, Utf16String>> {
+) -> Result<Either<JsString<'_>, JsText>> {
 	// Keep the original handle so an unchanged line can be returned without
 	// allocating.
 	let original = text;
@@ -134,7 +187,7 @@ pub fn truncate_to_width(
 	// answer: zero output allocation on the common path, which is every row of the
 	// screen that did not need cutting.
 	Ok(match truncated {
-		Some(out) => Either::B(build_utf16_string(out)),
+		Some(out) => Either::B(JsText::new(out)),
 		None => Either::A(original),
 	})
 }
@@ -161,7 +214,7 @@ pub fn slice_with_width(
 	);
 
 	Ok(SliceResult {
-		text:  build_utf16_string(sliced.text),
+		text:  JsText::new(sliced.text),
 		width: crate::utils::clamp_u32(sliced.width as u64),
 	})
 }
@@ -190,9 +243,9 @@ pub fn extract_segments(
 	);
 
 	Ok(ExtractSegmentsResult {
-		before:       build_utf16_string(segments.before),
+		before:       JsText::new(segments.before),
 		before_width: crate::utils::clamp_u32(segments.before_width as u64),
-		after:        build_utf16_string(segments.after),
+		after:        JsText::new(segments.after),
 		after_width:  crate::utils::clamp_u32(segments.after_width as u64),
 	})
 }

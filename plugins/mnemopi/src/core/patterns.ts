@@ -74,13 +74,13 @@ export class MemoryCompressor {
 		const originalSize = utf8Size(content);
 		if (method === "auto") {
 			let [compressed, stats] = this.#dictCompress(content);
-			if (stats.savingsPercent < 5) [compressed, stats] = this.#rleCompress(content);
+			if (stats.savingsPercent < 5) [compressed, stats] = rleCompress(content);
 			return [compressed, stats];
 		}
 
 		if (method === "dict") return this.#dictCompress(content);
-		if (method === "rle") return this.#rleCompress(content);
-		if (method === "semantic") return this.#semanticCompressSingle(content);
+		if (method === "rle") return rleCompress(content);
+		if (method === "semantic") return semanticCompressSingle(content);
 		return [
 			content,
 			new CompressionStats({
@@ -103,39 +103,6 @@ export class MemoryCompressor {
 		const compressedSize = utf8Size(compressed);
 		const ratio = originalSize > 0 ? compressedSize / originalSize : 1.0;
 		return [compressed, new CompressionStats({ originalSize, compressedSize, ratio, method: "dict" })];
-	}
-
-	#rleCompress(content: string): readonly [string, CompressionStats] {
-		const originalSize = utf8Size(content);
-		if (content.length === 0) {
-			return [content, new CompressionStats({ originalSize: 0, compressedSize: 0, ratio: 1.0, method: "rle" })];
-		}
-
-		const compressed: string[] = [];
-		let count = 1;
-		for (let i = 1; i < content.length; i++) {
-			if (content[i] === content[i - 1] && count < 255) {
-				count++;
-			} else {
-				const prev = content[i - 1] ?? "";
-				compressed.push(count > 3 ? `[${prev}*${count}]` : content.slice(i - count, i));
-				count = 1;
-			}
-		}
-		const last = content[content.length - 1] ?? "";
-		compressed.push(count > 3 ? `[${last}*${count}]` : content.slice(content.length - count));
-		const compressedString = compressed.join("");
-		const compressedSize = utf8Size(compressedString);
-		const ratio = originalSize > 0 ? compressedSize / originalSize : 1.0;
-		return [compressedString, new CompressionStats({ originalSize, compressedSize, ratio, method: "rle" })];
-	}
-
-	#semanticCompressSingle(content: string): readonly [string, CompressionStats] {
-		const originalSize = utf8Size(content);
-		const compressed = originalSize > 500 ? `${content.slice(0, 250)} [...] ${content.slice(-100)}` : content;
-		const compressedSize = utf8Size(compressed);
-		const ratio = originalSize > 0 ? compressedSize / originalSize : 1.0;
-		return [compressed, new CompressionStats({ originalSize, compressedSize, ratio, method: "semantic" })];
 	}
 
 	compressBatch(memories: readonly MemoryRecord[], method = "auto"): readonly [MemoryRecord[], CompressionStats] {
@@ -183,6 +150,39 @@ export class MemoryCompressor {
 		}
 		return content;
 	}
+}
+
+function rleCompress(content: string): readonly [string, CompressionStats] {
+	const originalSize = utf8Size(content);
+	if (content.length === 0) {
+		return [content, new CompressionStats({ originalSize: 0, compressedSize: 0, ratio: 1.0, method: "rle" })];
+	}
+
+	const compressed: string[] = [];
+	let count = 1;
+	for (let i = 1; i < content.length; i++) {
+		if (content[i] === content[i - 1] && count < 255) {
+			count++;
+		} else {
+			const prev = content[i - 1] ?? "";
+			compressed.push(count > 3 ? `[${prev}*${count}]` : content.slice(i - count, i));
+			count = 1;
+		}
+	}
+	const last = content[content.length - 1] ?? "";
+	compressed.push(count > 3 ? `[${last}*${count}]` : content.slice(content.length - count));
+	const compressedString = compressed.join("");
+	const compressedSize = utf8Size(compressedString);
+	const ratio = originalSize > 0 ? compressedSize / originalSize : 1.0;
+	return [compressedString, new CompressionStats({ originalSize, compressedSize, ratio, method: "rle" })];
+}
+
+function semanticCompressSingle(content: string): readonly [string, CompressionStats] {
+	const originalSize = utf8Size(content);
+	const compressed = originalSize > 500 ? `${content.slice(0, 250)} [...] ${content.slice(-100)}` : content;
+	const compressedSize = utf8Size(compressed);
+	const ratio = originalSize > 0 ? compressedSize / originalSize : 1.0;
+	return [compressed, new CompressionStats({ originalSize, compressedSize, ratio, method: "semantic" })];
 }
 
 export interface DetectedPatternInit {
@@ -246,6 +246,51 @@ function timestampOf(memory: MemoryRecord): string | undefined {
 
 function isoSample(date: Date): string {
 	return date.toISOString();
+}
+
+function topicWords(text: string): string[] {
+	return Array.from(text.toLowerCase().matchAll(/\b[a-zA-Z]{5,}\b/g), match => match[0]).filter(
+		word => !CONTENT_STOPWORDS.has(word),
+	);
+}
+
+/** Count each unordered pair of distinct topic words that appear in the same memory, once per memory. */
+function topicPairCounts(
+	memories: readonly MemoryRecord[],
+): Map<string, { pair: readonly [string, string]; count: number }> {
+	const pairs = new Map<string, { pair: readonly [string, string]; count: number }>();
+	for (const mem of memories) {
+		const memWords = new Set(topicWords(contentOf(mem)));
+		for (const w1 of memWords) {
+			for (const w2 of memWords) {
+				if (w1 >= w2) continue;
+				const key = `${w1}\u0000${w2}`;
+				const entry = pairs.get(key);
+				if (entry) entry.count += 1;
+				else pairs.set(key, { pair: [w1, w2], count: 1 });
+			}
+		}
+	}
+	return pairs;
+}
+
+/** Up to two `first... -> second...` samples of the adjacent source pair `(s1, s2)`. */
+function sequenceSamples(
+	sortedMems: readonly MemoryRecord[],
+	sources: readonly string[],
+	s1: string,
+	s2: string,
+): string[] {
+	const samples: string[] = [];
+	for (let i = 0; i < sources.length - 1 && samples.length < 2; i++) {
+		if (sources[i] !== s1 || sources[i + 1] !== s2) continue;
+		const first = sortedMems[i];
+		const second = sortedMems[i + 1];
+		if (first !== undefined && second !== undefined) {
+			samples.push(`${contentOf(first).slice(0, 50)}... -> ${contentOf(second).slice(0, 50)}...`);
+		}
+	}
+	return samples;
 }
 
 export class PatternDetector {
@@ -315,79 +360,65 @@ export class PatternDetector {
 		return patterns;
 	}
 	detectContent(memories: readonly MemoryRecord[]): DetectedPattern[] {
+		const patterns = this.#frequentTopics(memories);
+		if (memories.length >= 3) patterns.push(...this.#cooccurringTopics(memories));
+		return patterns;
+	}
+
+	#frequentTopics(memories: readonly MemoryRecord[]): DetectedPattern[] {
 		const patterns: DetectedPattern[] = [];
-		const allText = memories.map(contentOf).join(" ");
-		const words = Array.from(allText.toLowerCase().matchAll(/\b[a-zA-Z]{5,}\b/g), match => match[0]).filter(
-			word => !CONTENT_STOPWORDS.has(word),
-		);
+		const words = topicWords(memories.map(contentOf).join(" "));
 		const wordCounts = new Map<string, number>();
 		for (const word of words) increment(wordCounts, word);
 		const totalWords = words.length;
 		for (const [word, count] of mostCommon(wordCounts, 5)) {
 			const confidence = Math.min(1.0, count / Math.max(3, totalWords * 0.05));
-			if (count >= 2 && confidence >= this.minConfidence) {
-				patterns.push(
-					new DetectedPattern({
-						patternType: "content",
-						description: `Frequent topic: '${word}' appears ${count} times`,
-						confidence,
-						samples: memories
-							.filter(mem => contentOf(mem).toLowerCase().includes(word))
-							.slice(0, 3)
-							.map(contentOf),
-						metadata: { word, count },
-					}),
-				);
-			}
-		}
-
-		if (memories.length >= 3) {
-			const cooccurrence = new Map<string, number>();
-			const pairWords = new Map<string, readonly [string, string]>();
-			for (const mem of memories) {
-				const memWords = new Set(
-					Array.from(
-						contentOf(mem)
-							.toLowerCase()
-							.matchAll(/\b[a-zA-Z]{5,}\b/g),
-						match => match[0],
-					).filter(word => !CONTENT_STOPWORDS.has(word)),
-				);
-				for (const w1 of memWords) {
-					for (const w2 of memWords) {
-						if (w1 >= w2) continue;
-						const key = `${w1}\u0000${w2}`;
-						pairWords.set(key, [w1, w2]);
-						increment(cooccurrence, key);
-					}
-				}
-			}
-			for (const [key, count] of mostCommon(cooccurrence, 3)) {
-				const pair = pairWords.get(key);
-				if (pair === undefined) continue;
-				const [w1, w2] = pair;
-				const confidence = Math.min(1.0, count / memories.length);
-				if (count >= 2 && confidence >= this.minConfidence) {
-					patterns.push(
-						new DetectedPattern({
-							patternType: "content",
-							description: `Co-occurring topics: '${w1}' + '${w2}' appear together ${count} times`,
-							confidence,
-							samples: memories
-								.filter(mem => {
-									const content = contentOf(mem).toLowerCase();
-									return content.includes(w1) && content.includes(w2);
-								})
-								.slice(0, 3)
-								.map(contentOf),
-							metadata: { word1: w1, word2: w2, count },
-						}),
-					);
-				}
-			}
+			if (!(count >= 2 && confidence >= this.minConfidence)) continue;
+			patterns.push(
+				new DetectedPattern({
+					patternType: "content",
+					description: `Frequent topic: '${word}' appears ${count} times`,
+					confidence,
+					samples: memories
+						.filter(mem => contentOf(mem).toLowerCase().includes(word))
+						.slice(0, 3)
+						.map(contentOf),
+					metadata: { word, count },
+				}),
+			);
 		}
 		return patterns;
 	}
+
+	#cooccurringTopics(memories: readonly MemoryRecord[]): DetectedPattern[] {
+		const patterns: DetectedPattern[] = [];
+		const pairCounts = topicPairCounts(memories);
+		const counts = new Map(Array.from(pairCounts, ([key, entry]) => [key, entry.count] as const));
+		for (const [key, count] of mostCommon(counts, 3)) {
+			const pair = pairCounts.get(key)?.pair;
+			if (pair === undefined) continue;
+			const [w1, w2] = pair;
+			const confidence = Math.min(1.0, count / memories.length);
+			if (!(count >= 2 && confidence >= this.minConfidence)) continue;
+			patterns.push(
+				new DetectedPattern({
+					patternType: "content",
+					description: `Co-occurring topics: '${w1}' + '${w2}' appear together ${count} times`,
+					confidence,
+					samples: memories
+						.filter(mem => {
+							const content = contentOf(mem).toLowerCase();
+							return content.includes(w1) && content.includes(w2);
+						})
+						.slice(0, 3)
+						.map(contentOf),
+					metadata: { word1: w1, word2: w2, count },
+				}),
+			);
+		}
+		return patterns;
+	}
+
 	detectSequence(memories: readonly MemoryRecord[]): DetectedPattern[] {
 		const patterns: DetectedPattern[] = [];
 		if (memories.length < 3) return patterns;
@@ -410,28 +441,16 @@ export class PatternDetector {
 			if (pair === undefined) continue;
 			const [s1, s2] = pair;
 			const confidence = Math.min(1.0, count / Math.max(2, sources.length - 1));
-			if (count >= 2 && confidence >= this.minConfidence) {
-				const samples: string[] = [];
-				for (let i = 0; i < sources.length - 1; i++) {
-					if (sources[i] === s1 && sources[i + 1] === s2) {
-						const first = sortedMems[i];
-						const second = sortedMems[i + 1];
-						if (first !== undefined && second !== undefined) {
-							samples.push(`${contentOf(first).slice(0, 50)}... -> ${contentOf(second).slice(0, 50)}...`);
-						}
-						if (samples.length >= 2) break;
-					}
-				}
-				patterns.push(
-					new DetectedPattern({
-						patternType: "sequence",
-						description: `Sequence pattern: '${s1}' often followed by '${s2}' (${count} times)`,
-						confidence,
-						samples,
-						metadata: { source1: s1, source2: s2, count },
-					}),
-				);
-			}
+			if (!(count >= 2 && confidence >= this.minConfidence)) continue;
+			patterns.push(
+				new DetectedPattern({
+					patternType: "sequence",
+					description: `Sequence pattern: '${s1}' often followed by '${s2}' (${count} times)`,
+					confidence,
+					samples: sequenceSamples(sortedMems, sources, s1, s2),
+					metadata: { source1: s1, source2: s2, count },
+				}),
+			);
 		}
 		return patterns;
 	}

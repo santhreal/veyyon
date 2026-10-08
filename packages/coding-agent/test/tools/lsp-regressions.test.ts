@@ -1600,6 +1600,79 @@ describe("lsp regressions", () => {
 		}
 	});
 
+	// A server that lacks `workspace/willRenameFiles` answers JSON-RPC `MethodNotFound` (-32601) in its own
+	// words. The rename preview drops that server silently by the code, whatever the message says, and
+	// reports any other failure as a server note carrying the server's message once, with no second
+	// "LSP error:" prefix from the client.
+	for (const { name, error, notes } of [
+		{
+			name: "drops a server that answers MethodNotFound in words no heuristic matches",
+			error: { code: -32601, message: "Request workspace/willRenameFiles not handled" },
+			notes: [],
+		},
+		{
+			name: "notes any other server failure with the server's message",
+			error: { code: -32603, message: "rename crashed" },
+			notes: ["  Server notes:", "  fake-ts: rename crashed"],
+		},
+	]) {
+		it(`rename_file preview ${name}`, async () => {
+			const tempDir = TempDir.createSync("@veyyon-lsp-rename-file-error-");
+			try {
+				const sourceFile = path.join(tempDir.path(), "old.ts");
+				const destFile = path.join(tempDir.path(), "new.ts");
+				await Bun.write(sourceFile, "export const value = 42;\n");
+
+				installFakeLsp((message, srv) => {
+					if (message.method === "initialize") {
+						srv.send({ jsonrpc: "2.0", id: message.id, result: { capabilities: {} } });
+						srv.send({
+							jsonrpc: "2.0",
+							method: "$/progress",
+							params: { token: "load", value: { kind: "begin" } },
+						});
+						srv.send({ jsonrpc: "2.0", method: "$/progress", params: { token: "load", value: { kind: "end" } } });
+					} else if (message.method === "workspace/willRenameFiles") {
+						srv.send({ jsonrpc: "2.0", id: message.id, error });
+					} else if (message.method === "shutdown") {
+						srv.send({ jsonrpc: "2.0", id: message.id, result: null });
+					} else if (message.method === "exit") {
+						srv.exit(0);
+					}
+				});
+				const server: ServerConfig = {
+					command: "fake-ts",
+					resolvedCommand: process.execPath,
+					fileTypes: ["ts"],
+					rootMarkers: [],
+				};
+				vi.spyOn(lspConfig, "loadConfig").mockReturnValue({
+					servers: { "fake-ts": server },
+					idleTimeoutMs: undefined,
+					missingServers: [],
+				});
+
+				const result = await new LspTool(makeLspSession(tempDir.path())).execute("rename-file-error", {
+					action: "rename_file",
+					file: sourceFile,
+					new_name: destFile,
+					apply: false,
+					timeout: 10,
+				});
+
+				expect(textResult(result).split("\n")).toEqual([
+					"Rename preview: old.ts → new.ts",
+					"  No LSP edits would be applied",
+					...notes,
+				]);
+			} finally {
+				vi.restoreAllMocks();
+				await lspClient.shutdownAll();
+				tempDir.removeSync();
+			}
+		});
+	}
+
 	it("rename_file enumerates every file inside a directory rename", async () => {
 		const tempDir = TempDir.createSync("@veyyon-lsp-rename-dir-");
 		try {

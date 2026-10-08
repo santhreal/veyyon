@@ -1,11 +1,17 @@
 /**
- * The static import graph of a module: every file a Bun process evaluates when
- * it imports that entry, with `await import(...)` treated as a cut.
+ * The static import graph of a module: every file a Bun process loads when it
+ * imports that entry, with `await import(...)` treated as a cut.
  *
  * Evaluation at startup is decided by static reachability — a dynamic import
  * evaluates nothing until it is called — so walking `import` statements answers
  * "does this load when the CLI starts" without running the CLI, and without a
  * loader plugin that would have to re-parse third-party CommonJS.
+ *
+ * A `require("x")` is an edge too, even inside a function body that has not run.
+ * The compiled binary's bundler places a required module in the chunk of the
+ * module that requires it, so the binary loads and parses that code at startup
+ * whether or not the call ever happens; only `await import(...)` moves code into
+ * a chunk of its own.
  */
 import { readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -24,6 +30,11 @@ export interface WorkspacePackage {
 export interface StartupImportGraph {
 	/** Absolute paths of every source file the entry evaluates. */
 	files: ReadonlySet<string>;
+	/**
+	 * Absolute paths of files imported `with { type: "file" }`. The entry holds each one's path, not
+	 * its contents, so none of them is in `files`.
+	 */
+	byPath: ReadonlySet<string>;
 	/** Package names resolved out of the walk: workspace packages and node_modules alike. */
 	packages: ReadonlySet<string>;
 	/** Files whose imports could not be scanned. A non-empty list invalidates the walk. */
@@ -129,13 +140,14 @@ function packageOfNodeModulePath(path: string): string {
 }
 
 /**
- * Walk `entry`'s static imports. `import type` is erased by the transpiler, so a
- * type-only edge never enters the graph — which is the point: it costs nothing
- * at run time.
+ * Walk `entry`'s static imports and `require` calls. `import type` is erased by
+ * the transpiler, so a type-only edge never enters the graph — which is the
+ * point: it costs nothing at run time.
  */
 export function buildStartupImportGraph(repoRoot: string, entry: string): StartupImportGraph {
 	const packages = workspacePackages(repoRoot);
 	const files = new Set<string>();
+	const byPath = new Set<string>();
 	const named = new Set<string>();
 	const unscannable: string[] = [];
 	const unresolved: string[] = [];
@@ -159,8 +171,19 @@ export function buildStartupImportGraph(repoRoot: string, entry: string): Startu
 			unscannable.push(file);
 			return;
 		}
+		// `with { type: "file" }` binds a path to the bundled file; the process reads its bytes only
+		// when code opens that path. The scanner does not report import attributes, so read them here.
+		// A specifier is classified per import form: one imported by path in one statement and by
+		// contents in another is both held by path and walked.
+		const pathTyped = new Set<string>();
+		const contentTyped = new Set<string>();
+		for (const match of source.matchAll(
+			/\b(?:from|import)\s*(["'])([^"']+)\1(\s*with\s*\{\s*type\s*:\s*["']file["']\s*\})?/g,
+		)) {
+			(match[3] ? pathTyped : contentTyped).add(match[2]!);
+		}
 		for (const imported of imports) {
-			if (imported.kind !== "import-statement") continue;
+			if (imported.kind !== "import-statement" && imported.kind !== "require-call") continue;
 			const spec = imported.path;
 			if (spec === "bun" || spec.startsWith("node:") || spec.startsWith("bun:")) continue;
 			let resolved: string | undefined;
@@ -192,12 +215,13 @@ export function buildStartupImportGraph(repoRoot: string, entry: string): Startu
 				named.add(packageOfNodeModulePath(resolved));
 				continue;
 			}
-			visit(resolved);
+			if (pathTyped.has(spec)) byPath.add(resolved);
+			if (!pathTyped.has(spec) || contentTyped.has(spec)) visit(resolved);
 		}
 	};
 
 	visit(entry);
-	return { files, packages: named, unscannable, unresolved };
+	return { files, byPath, packages: named, unscannable, unresolved };
 }
 
 /** The dependencies `packages/coding-agent/package.json` declares. */

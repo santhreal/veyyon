@@ -1,10 +1,10 @@
 import * as path from "node:path";
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
+import { type } from "@veyyon/ai/utils/schema/arktype";
 import { formatHashlineHeader } from "@veyyon/hashline";
 import { type AstReplaceChange, type AstReplaceFileChange, astEdit } from "@veyyon/natives";
-import { $envpos, prompt, truncate, untilAborted } from "@veyyon/utils";
-import { type } from "arktype";
+import { $envpos, lazy, prompt, truncate, untilAborted } from "@veyyon/utils";
 import { canonicalSnapshotKey, getFileSnapshotStore } from "../../edit/file-snapshot-store";
 import { normalizeToLF } from "../../edit/normalize";
 import { toolsPrompts } from "../../prompts/tools/rows";
@@ -26,19 +26,23 @@ import { resolveToolSearchScope } from "./search-scope";
 /** Chars of a changed line kept in the diff preview sent to the model and the display. */
 const DIFF_PREVIEW_MAX_CHARS = 120;
 
-const astEditOpSchema = type({
-	pat: type("string").describe("ast pattern"),
-	out: type("string").describe("replacement template"),
-});
+const astEditOpSchema = lazy(() =>
+	type({
+		pat: type("string").describe("ast pattern"),
+		out: type("string").describe("replacement template"),
+	}),
+);
 
-const astEditSchema = type({
-	ops: astEditOpSchema.array().atLeastLength(1).describe("rewrite ops"),
-	paths: type("string")
-		.describe("file, directory, glob, or internal URL to rewrite")
-		.array()
-		.atLeastLength(1)
-		.describe("files, directories, globs, or internal URLs to rewrite"),
-});
+const astEditSchema = lazy(() =>
+	type({
+		ops: astEditOpSchema.value.array().atLeastLength(1).describe("rewrite ops"),
+		paths: type("string")
+			.describe("file, directory, glob, or internal URL to rewrite")
+			.array()
+			.atLeastLength(1)
+			.describe("files, directories, globs, or internal URLs to rewrite"),
+	}),
+);
 
 interface AstEditCallOptions {
 	rewrites: Record<string, string>;
@@ -159,7 +163,7 @@ export interface AstEditToolDetails {
 	cwd?: string;
 }
 
-type AstEditSchemaInfer = typeof astEditSchema.infer;
+type AstEditSchemaInfer = typeof astEditSchema.value.infer;
 
 /**
  * Filesystem paths an ast_edit call targets, for the cwd boundary
@@ -175,7 +179,7 @@ export function astEditFilesystemTargets(args: unknown, cwd = process.cwd()): st
 	const expanded = expandDelimitedPathEntriesSync(rawEntries, cwd);
 	return expanded.filter(entry => entry.trim().length > 0);
 }
-export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolDetails> {
+export class AstEditTool implements AgentTool<typeof astEditSchema.value, AstEditToolDetails> {
 	readonly name = "ast_edit";
 	readonly approval = (args: unknown) => {
 		const paths = Array.isArray((args as Partial<AstEditSchemaInfer>).paths)
@@ -207,7 +211,9 @@ export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolD
 	readonly label = "AST Edit";
 	readonly summary = "Perform AST-aware code edits (structural refactoring)";
 	readonly description: string;
-	readonly parameters = astEditSchema;
+	get parameters(): typeof astEditSchema.value {
+		return astEditSchema.value;
+	}
 	readonly strict = true;
 
 	readonly examples: readonly ToolExample<AstEditSchemaInfer>[] = [

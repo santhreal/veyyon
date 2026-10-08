@@ -17,10 +17,11 @@ import {
 	getAntigravityUserAgent,
 	getGeminiCliHeaders,
 } from "@veyyon/catalog/wire/gemini-headers";
+import { lazy } from "@veyyon/utils/abortable";
+import { exponentialBackoffDelay } from "@veyyon/utils/backoff";
 import { extractHttpStatusFromError } from "@veyyon/utils/fetch-retry";
 import { readSseJson } from "@veyyon/utils/stream";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
-import { type } from "arktype";
 import * as AIError from "../error";
 import type {
 	Api,
@@ -41,6 +42,7 @@ import { fetchProviderWithRetry } from "../utils/provider-fetch";
 // Refresh is the sole responsibility of AuthStorage (broker-aware, single-flighted);
 // the stream provider trusts the access token threaded through `options.apiKey`.
 import { normalizeSchemaForCCA } from "../utils/schema";
+import { type } from "../utils/schema/arktype";
 import { StreamMarkupHealing, type StreamMarkupHealingEvent } from "../utils/stream-markup-healing";
 import { interleavedThinkingBeta } from "./anthropic";
 import type { Content, FunctionCallingConfigMode, ThinkingConfig, ThinkingLevel } from "./google-shared";
@@ -363,25 +365,28 @@ function shouldInjectAntigravitySystemInstruction(modelId: string): boolean {
 	return normalized.includes("claude") || normalized.includes("gemini-3");
 }
 
-const optionalCredentialString = type("unknown").pipe(raw => {
-	const out = type("string")(raw);
-	return out instanceof type.errors ? undefined : out;
-});
+/** Built on the first credentials read: a session that never uses Gemini CLI builds no validator. */
+const geminiCliCredentialsSchema = lazy(() => {
+	const optionalCredentialString = type("unknown").pipe(raw => {
+		const out = type("string")(raw);
+		return out instanceof type.errors ? undefined : out;
+	});
 
-const innerCredentialsSchema = type({
-	"token?": optionalCredentialString,
-	"projectId?": optionalCredentialString,
-	"project_id?": optionalCredentialString,
-	"refreshToken?": optionalCredentialString,
-	"refresh?": optionalCredentialString,
-	"email?": optionalCredentialString,
-	"expiresAt?": "unknown",
-	"expires?": "unknown",
-});
+	const innerCredentialsSchema = type({
+		"token?": optionalCredentialString,
+		"projectId?": optionalCredentialString,
+		"project_id?": optionalCredentialString,
+		"refreshToken?": optionalCredentialString,
+		"refresh?": optionalCredentialString,
+		"email?": optionalCredentialString,
+		"expiresAt?": "unknown",
+		"expires?": "unknown",
+	});
 
-const geminiCliCredentialsSchema = type("unknown").pipe(raw => {
-	const out = innerCredentialsSchema(raw);
-	return out instanceof type.errors ? {} : out;
+	return type("unknown").pipe(raw => {
+		const out = innerCredentialsSchema(raw);
+		return out instanceof type.errors ? {} : out;
+	});
 });
 
 interface ParsedGeminiCliCredentials {
@@ -416,7 +421,7 @@ export function parseGeminiCliCredentials(apiKeyRaw: string): ParsedGeminiCliCre
 	} catch {
 		throw new AIError.ValidationError(invalidCredentialsMessage);
 	}
-	const parsed = geminiCliCredentialsSchema(rawCredentials);
+	const parsed = geminiCliCredentialsSchema.value(rawCredentials);
 	if (parsed instanceof type.errors) {
 		throw new AIError.ValidationError(invalidCredentialsMessage);
 	}
@@ -882,7 +887,7 @@ class GeminiCliStreamRun {
 				body: plan.bodyJson,
 				signal: watchdog.signal,
 				maxAttempts: isLastEndpoint ? MAX_RETRIES + 1 : 1,
-				defaultDelayMs: attempt => BASE_DELAY_MS * 2 ** attempt,
+				defaultDelayMs: attempt => exponentialBackoffDelay(attempt, { baseMs: BASE_DELAY_MS, jitter: 0 }),
 				maxDelayMs: this.options?.maxRetryDelayMs ?? RATE_LIMIT_BUDGET_MS,
 				fetch: this.options?.fetch,
 				timeout: false,
@@ -921,7 +926,12 @@ class GeminiCliStreamRun {
 	async #resend(plan: CloudCodeAssistPlan, requestUrl: string, emptyAttempt: number): Promise<Response> {
 		const signal = this.options?.signal;
 		try {
-			await scheduler.wait(EMPTY_STREAM_BASE_DELAY_MS * 2 ** (emptyAttempt - 1), { signal });
+			await scheduler.wait(
+				exponentialBackoffDelay(emptyAttempt - 1, { baseMs: EMPTY_STREAM_BASE_DELAY_MS, jitter: 0 }),
+				{
+					signal,
+				},
+			);
 		} catch {
 			throw new AIError.RequestAbortError("Request was aborted");
 		}

@@ -15,14 +15,19 @@
  * exactly that path.
  *
  * Metric (lower is better): total wall-clock to fully reveal one representative
- * large assistant message through the controller's `nextStep` progression,
- * averaged over episodes. `reveal_ms_per_step` is the same work divided by the
- * number of reveal ticks.
+ * large assistant message that arrived at once, through `RevealPacer` steps one
+ * frame apart, averaged over episodes. `reveal_ms_per_step` is the same work
+ * divided by the number of reveal ticks.
  *
  * Run: bun run packages/coding-agent/bench/streaming-throughput.bench.ts
  */
 import type { AssistantMessageView } from "@veyyon/wire/presentation";
-import { BlockUnitCounter, buildDisplayMessage, nextStep } from "../src/modes/terminal/controllers/streaming-reveal";
+import {
+	BlockUnitCounter,
+	buildDisplayMessage,
+	RevealPacer,
+	STREAMING_REVEAL_FRAME_MS,
+} from "../src/modes/terminal/controllers/streaming-reveal";
 
 const HIDE_THINKING = false;
 const PROSE_ONLY = true;
@@ -69,8 +74,8 @@ function textUnits(target: AssistantMessageView, counter: BlockUnitCounter): num
 }
 
 /** Drive one full reveal episode: a fresh counter shared by countOf + sliceOf,
- *  an initial render at revealed = 0 (mirrors `begin`), then the `nextStep`
- *  catch-up loop (mirrors `#tick`). Returns the number of reveal ticks. */
+ *  an initial render at revealed = 0 (mirrors `begin`), then `RevealPacer`
+ *  steps one frame apart (mirrors `#tick`). Returns the number of reveal ticks. */
 function revealEpisode(target: AssistantMessageView): number {
 	const counter = new BlockUnitCounter();
 	const countOf = (index: number, text: string): number => counter.count(index, text);
@@ -78,10 +83,12 @@ function revealEpisode(target: AssistantMessageView): number {
 	buildDisplayMessage(target, 0, HIDE_THINKING, PROSE_ONLY, countOf, sliceOf);
 	let revealed = 0;
 	let ticks = 0;
+	const pacer = new RevealPacer();
 	for (;;) {
 		const total = textUnits(target, counter);
+		pacer.arrive(0, total, revealed);
 		if (revealed >= total) break;
-		revealed = Math.min(total, revealed + nextStep(total - revealed));
+		revealed += pacer.step((ticks + 1) * STREAMING_REVEAL_FRAME_MS, total - revealed);
 		buildDisplayMessage(target, revealed, HIDE_THINKING, PROSE_ONLY, countOf, sliceOf);
 		ticks += 1;
 	}

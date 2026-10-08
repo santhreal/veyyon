@@ -1,4 +1,4 @@
-import { formatCount } from "@veyyon/utils/format";
+import { formatAge, formatCount } from "@veyyon/utils/format";
 import type { ReactNode } from "react";
 import { Badge, Badges, CodeBlock, InvalidArg, Kv, KvGrid, Note, Output, PathText, ResultText, Row } from "../parts";
 import type { ToolDescriptor, ToolRenderProps } from "../types";
@@ -400,18 +400,6 @@ function getDomain(url: string): string {
 	}
 }
 
-function formatAge(seconds: unknown): string {
-	const s = finiteNumber(seconds);
-	if (s === null || s < 0) return "";
-	const m = Math.floor(s / 60);
-	if (m < 60) return `${m}m ago`;
-	const h = Math.floor(m / 60);
-	if (h < 24) return `${h}h ago`;
-	const d = Math.floor(h / 24);
-	if (d < 365) return `${d}d ago`;
-	return `${Math.floor(d / 365)}y ago`;
-}
-
 function WebSearchSummary({ args }: ToolRenderProps): ReactNode {
 	const query = str(args.query);
 	const recency = str(args.recency);
@@ -431,7 +419,7 @@ function SourceRow({ source, index }: { source: Record<string, unknown>; index: 
 	const url = str(source.url) ?? "";
 	const title = str(source.title)?.trim() || url || "Untitled";
 	const domain = url ? getDomain(url) : "";
-	const age = formatAge(source.ageSeconds ?? source.age) || (str(source.publishedDate) ?? "");
+	const age = formatAge(finiteNumber(source.ageSeconds ?? source.age)) || (str(source.publishedDate) ?? "");
 	return (
 		<Row k={String(index + 1)}>
 			{url ? (

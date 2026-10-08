@@ -20,6 +20,7 @@ import { theme } from "@veyyon/coding-agent/theme/theme";
 import type { IrcDetails } from "@veyyon/coding-agent/tools/agent/irc";
 import { type IrcViewArgs, type IrcViewResult, ircToolView } from "@veyyon/coding-agent/tools/agent/irc-view";
 import { formatExpandHint, PREVIEW_LIMITS } from "@veyyon/coding-agent/tools/core/render-utils";
+import { visibleWidth } from "@veyyon/utils/width";
 import type { ToolViewContext, ViewStatus } from "@veyyon/view";
 import * as ircOracle from "../oracles/irc-main-renderer";
 import {
@@ -28,6 +29,7 @@ import {
 	framedView,
 	HOST_COLLAPSED,
 	HOST_EXPANDED,
+	headerRowsAtTheEdge,
 	renderCompLines,
 	useDifferentialTheme,
 	WIDTH,
@@ -234,13 +236,22 @@ describe("irc tool differential", () => {
 			receipts: [{ to: "AuthLoader", outcome: "injected" }],
 			waited: null,
 		});
-		for (const width of [200, WIDTH, 40]) {
+		for (const width of [200, WIDTH]) {
 			// Main coloured the rail with the warning the plate already carries; the view leaves the
 			// edge settled and states the outcome once, on the plate.
 			expect(asMain("warning", viewLines(value, COLLAPSED, SEND_ARGS, width))).toEqual(
 				fitted(oracleLines(value, HOST_COLLAPSED, SEND_ARGS, width)),
 			);
 		}
+		// The view states the direction in a word, a column wider than main's arrow, so at 40 columns
+		// the block clips the view's header one letter before main's. Every row below it is unchanged.
+		const narrow = viewLines(value, COLLAPSED, SEND_ARGS, 40);
+		const drawnNarrow = asMain("warning", narrow);
+		const oracleNarrow = fitted(oracleLines(value, HOST_COLLAPSED, SEND_ARGS, 40));
+		expect(drawnNarrow.slice(1)).toEqual(oracleNarrow.slice(1));
+		const header = headerRowsAtTheEdge(drawnNarrow[0] ?? "", oracleNarrow[0] ?? "", 40);
+		expect(header.drawn).toBe(header.oracle);
+		expect(visibleWidth(narrow[0] ?? "")).toBe(40);
 		const drawn = stripVTControlCharacters(viewLines(value, COLLAPSED, SEND_ARGS, 200).join("\n"));
 		expect(drawn).toContain("no reply");
 		expect(drawn).toContain("No reply yet");

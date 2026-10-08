@@ -94,16 +94,27 @@ export function isKnownApprovalMode(mode: unknown): mode is ApprovalMode {
 }
 
 /**
- * Standing per-tool decisions an operator took at an interactive approval
- * prompt and asked to keep for the rest of the session.
+ * Standing decisions an operator took at an interactive approval prompt and
+ * asked to keep for the rest of the session.
  *
- * Deliberately narrower than the Map behind it: two operations, no iteration,
- * no clear. A session grant is not a policy — `tools.approval` in settings is
- * the policy, and it is written by the operator, never by a dialog.
+ * A key is a tool name, for an answer about every call to that tool, or a
+ * {@link patternGrantKey}, for an answer about the calls whose tool reports one
+ * pattern. Deliberately narrower than the Map behind it: two operations, no
+ * iteration, no clear. A session grant is not a policy — `tools.approval` in
+ * settings is the policy, and it is written by the operator, never by a dialog.
  */
 export interface SessionToolApprovals {
-	get(toolName: string): "allow" | "deny" | undefined;
-	set(toolName: string, decision: "allow" | "deny"): void;
+	get(key: string): "allow" | "deny" | undefined;
+	set(key: string, decision: "allow" | "deny"): void;
+}
+
+/**
+ * The {@link SessionToolApprovals} key for a grant scoped to one pattern of one
+ * tool. The NUL separator cannot occur in a tool name, so no pattern key equals
+ * a tool-wide key and no tool-wide answer is read as a pattern answer.
+ */
+export function patternGrantKey(toolName: string, pattern: string): string {
+	return `${toolName}\u0000${pattern}`;
 }
 
 /**

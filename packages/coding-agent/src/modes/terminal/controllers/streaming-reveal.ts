@@ -6,8 +6,140 @@ import { formatThinkingForDisplay, hasDisplayableThinking } from "../../../utils
 import type { AssistantMessageComponent } from "../components/transcript/assistant-message";
 
 export const STREAMING_REVEAL_FRAME_MS = 1000 / 30;
-export const MIN_STEP = 3;
-export const CATCHUP_FRAMES = 8;
+
+/** An interval at {@link STREAMING_REVEAL_FRAME_MS} that runs while started and holds no process open. */
+export class RevealFrameClock {
+	readonly #tick: () => void;
+	#timer: NodeJS.Timeout | undefined;
+
+	constructor(tick: () => void) {
+		this.#tick = tick;
+	}
+
+	start(): void {
+		if (this.#timer) return;
+		this.#timer = setInterval(this.#tick, STREAMING_REVEAL_FRAME_MS);
+		this.#timer.unref?.();
+	}
+
+	stop(): void {
+		clearInterval(this.#timer);
+		this.#timer = undefined;
+	}
+}
+
+/** Lead the reveal holds behind arrivals until the gap between them is measured, and the window a
+ *  stream's first chunk reveals over, in ms. */
+const INITIAL_LEAD_MS = 250;
+/** Bounds of the lead the reveal holds behind arrivals, in ms. */
+const MIN_LEAD_MS = 150;
+const MAX_LEAD_MS = 600;
+/** Deviations of the gap between arrivals the lead covers beyond the mean gap. */
+const LEAD_DEVIATIONS = 2;
+/** Weight of the newest gap in the mean gap and in its mean deviation. */
+const GAP_WEIGHT = 0.2;
+/** Time constant of the arrival rate average, in ms. */
+const RATE_TIME_CONSTANT_MS = 1000;
+/** Share of the difference between the velocity and the wanted velocity closed on each step. */
+const VELOCITY_GAIN = 0.25;
+/** An arrival after this many ms without one restarts the estimates. */
+const IDLE_MS = 1000;
+/** Longest interval one step makes up for after a late frame, in ms. */
+const MAX_STEP_INTERVAL_MS = 4 * STREAMING_REVEAL_FRAME_MS;
+
+/**
+ * Paces a reveal at the rate units arrive instead of in the bursts they arrive in.
+ *
+ * The reveal trails the arrivals by a lead sized to the gap between them: the mean gap plus
+ * {@link LEAD_DEVIATIONS} mean deviations, within [{@link MIN_LEAD_MS}, {@link MAX_LEAD_MS}]. The
+ * velocity is the measured arrival rate, corrected toward a backlog of one lead of units and moved
+ * {@link VELOCITY_GAIN} of the way toward that target on each step, so a stream that arrives in bursts
+ * reveals at one velocity instead of rushing after each burst and stalling before the next. Fractions
+ * of a unit carry to the next step, so a stream slower than one unit per frame reveals one unit at a
+ * time.
+ * An arrival after {@link IDLE_MS} without one restarts the estimates and reveals its chunk over
+ * {@link INITIAL_LEAD_MS}, starting on the next step.
+ */
+export class RevealPacer {
+	/** Arrival rate, in units per ms. */
+	#rate = 0;
+	/** Mean gap between arrivals in ms; negative until a restart is followed by a second arrival. */
+	#gap = -1;
+	/** Mean deviation of the gap from {@link #gap}, in ms. */
+	#deviation = 0;
+	#lastArrival = Number.NEGATIVE_INFINITY;
+	/** Units arrived so far. */
+	#arrived = 0;
+	#lastStep = 0;
+	/** Reveal velocity in units per ms; negative until the first step after a restart. */
+	#velocity = -1;
+	/** Fraction of a unit owed to the next step. */
+	#carry = 0;
+
+	/**
+	 * Records that `total` units have arrived by `now`, of which `revealed` are shown. A reveal that
+	 * showed every earlier arrival resumes at `now`, so its next step does not make up for the time
+	 * it stood still. A `total` below an earlier one rewinds the count without arriving anything.
+	 */
+	arrive(now: number, total: number, revealed: number): void {
+		if (total <= this.#arrived) {
+			this.#arrived = total;
+			return;
+		}
+		if (revealed >= this.#arrived) this.#lastStep = now;
+		const units = total - this.#arrived;
+		const gap = now - this.#lastArrival;
+		if (gap > IDLE_MS) {
+			this.#rate = units / INITIAL_LEAD_MS;
+			this.#gap = -1;
+			this.#deviation = 0;
+			this.#velocity = -1;
+			// The first unit of a restarted stream shows on the next step.
+			this.#carry = 1;
+		} else {
+			const interval = Math.max(1, gap);
+			this.#rate += (1 - Math.exp(-interval / RATE_TIME_CONSTANT_MS)) * (units / interval - this.#rate);
+			if (this.#gap < 0) {
+				this.#gap = interval;
+				this.#deviation = interval / 2;
+			} else {
+				const error = interval - this.#gap;
+				this.#gap += GAP_WEIGHT * error;
+				this.#deviation += GAP_WEIGHT * (Math.abs(error) - this.#deviation);
+			}
+		}
+		this.#lastArrival = now;
+		this.#arrived = total;
+	}
+
+	/** Sets the arrived count to `total` without arriving anything: the target was re-measured, as
+	 *  when a block is shown or hidden mid-stream. */
+	rebase(total: number): void {
+		this.#arrived = total;
+	}
+
+	/** Units to reveal at `now` out of `backlog` units arrived and not yet shown. */
+	step(now: number, backlog: number): number {
+		const interval = Math.min(MAX_STEP_INTERVAL_MS, Math.max(0, now - this.#lastStep));
+		this.#lastStep = now;
+		if (backlog <= 0) return 0;
+		const lead =
+			this.#gap < 0
+				? INITIAL_LEAD_MS
+				: Math.min(MAX_LEAD_MS, Math.max(MIN_LEAD_MS, this.#gap + LEAD_DEVIATIONS * this.#deviation));
+		// The backlog's distance from one lead of units closes over two leads.
+		const wanted = this.#rate + (backlog - this.#rate * lead) / (2 * lead);
+		this.#velocity = this.#velocity < 0 ? wanted : this.#velocity + VELOCITY_GAIN * (wanted - this.#velocity);
+		const owed = this.#velocity * interval + this.#carry;
+		const units = Math.floor(owed);
+		if (units >= backlog) {
+			this.#carry = 0;
+			return backlog;
+		}
+		this.#carry = owed - units;
+		return units;
+	}
+}
 
 /** The concrete streaming-reveal target is an {@link AssistantMessageComponent}; the
  *  Component intersection is what lets the reveal request component-scoped renders
@@ -32,47 +164,76 @@ function countGraphemes(text: string): number {
 	if (text.length === 0) return 0;
 	const cached = graphemeCountCache.get(text);
 	if (cached !== undefined) return cached;
-	let count = 0;
-	for (const _segment of getSegmenter().segment(text)) {
-		count += 1;
-	}
+	const count = walkGraphemes(text, 0, Number.POSITIVE_INFINITY).count;
 	graphemeCountCache.set(text, count);
 	return count;
 }
 
-/** Count graphemes of `text` from code-unit offset `start`, also reporting the
- *  start offset of the final grapheme (where an append could extend a cluster). */
-function countGraphemesFrom(text: string, start: number): { count: number; tailStart: number } {
-	let count = 0;
-	let tailStart = start;
-	for (const seg of getSegmenter().segment(start === 0 ? text : text.slice(start))) {
-		count += 1;
-		tailStart = start + seg.index;
-	}
-	return { count, tailStart };
+/** Clusters walked by {@link walkGraphemes}: how many, where the last one starts, and where it ends. */
+interface GraphemeWalk {
+	count: number;
+	lastStart: number;
+	end: number;
 }
-/** Segment `text` from code-unit offset `start`, walking up to `clusters`
- *  graphemes. Returns the code-unit END of the final cluster walked, its START
- *  (`lastStart`), and how many clusters were found (`count` may be less than
- *  `clusters` if the suffix is shorter than requested). */
-function segmentFrom(text: string, start: number, clusters: number): { end: number; lastStart: number; count: number } {
+
+/** Whether a cluster boundary falls between code units `at - 1` and `at`: two ASCII units always
+ *  break apart except CR LF. Every unit an earlier character can join onto (a combining mark, a
+ *  joiner, a variation selector) and every Prepend character is outside ASCII. */
+function asciiBoundaryAt(text: string, at: number): boolean {
+	const before = text.charCodeAt(at - 1);
+	const after = text.charCodeAt(at);
+	return before < 0x80 && after < 0x80 && !(before === 0x0d && after === 0x0a);
+}
+
+/**
+ * Walk up to `limit` grapheme clusters of `text` from code-unit offset `start`, which must be a
+ * cluster boundary. A run of ASCII is one cluster per unit and is walked without the segmenter;
+ * the segmenter reads only the stretches around non-ASCII units, each cut at a boundary
+ * {@link asciiBoundaryAt} proves, so every cluster comes out as a segmentation of the whole text
+ * would draw it. Streamed prose is mostly ASCII, and segmenting all of it cost a reveal tick
+ * 0.1ms per 3,000 characters.
+ */
+function walkGraphemes(text: string, start: number, limit: number): GraphemeWalk {
+	const length = text.length;
 	let count = 0;
 	let lastStart = start;
 	let end = start;
-	for (const seg of getSegmenter().segment(start === 0 ? text : text.slice(start))) {
-		count += 1;
-		lastStart = start + seg.index;
-		end = start + seg.index + seg.segment.length;
-		if (count >= clusters) break;
+	let at = start;
+	while (at < length && count < limit) {
+		const unit = text.charCodeAt(at);
+		if (unit < 0x80 && (at + 1 === length || asciiBoundaryAt(text, at + 1))) {
+			count += 1;
+			lastStart = at;
+			at += 1;
+			end = at;
+			continue;
+		}
+		if (unit === 0x0d && text.charCodeAt(at + 1) === 0x0a && (at + 2 === length || asciiBoundaryAt(text, at + 2))) {
+			count += 1;
+			lastStart = at;
+			at += 2;
+			end = at;
+			continue;
+		}
+		let stop = at + 1;
+		while (stop < length && !asciiBoundaryAt(text, stop)) stop += 1;
+		for (const seg of getSegmenter().segment(text.slice(at, stop))) {
+			count += 1;
+			lastStart = at + seg.index;
+			end = lastStart + seg.segment.length;
+			if (count >= limit) return { count, lastStart, end };
+		}
+		at = stop;
 	}
-	return { end, lastStart, count };
+	return { count, lastStart, end };
 }
 
 /** Memoizes per-block grapheme counts across reveal ticks. Streaming blocks only
  *  grow by appending, and an append can only alter the final grapheme cluster of
  *  the previous text, so only the suffix from that cluster needs re-segmenting. */
 export class BlockUnitCounter {
-	#entries = new Map<number, { text: string; count: number; tailStart: number }>();
+	/** `base` is the text this entry extended, verified as its prefix when the entry was stored. */
+	#entries = new Map<number, { text: string; count: number; lastStart: number; base: string | undefined }>();
 	#sliceEntries = new Map<number, { text: string; units: number; end: number; lastStart: number }>();
 
 	count(index: number, text: string): number {
@@ -80,14 +241,14 @@ export class BlockUnitCounter {
 		if (entry !== undefined) {
 			if (entry.text === text) return entry.count;
 			if (entry.count > 0 && text.length > entry.text.length && text.startsWith(entry.text)) {
-				const tail = countGraphemesFrom(text, entry.tailStart);
-				const next = { text, count: entry.count - 1 + tail.count, tailStart: tail.tailStart };
+				const tail = walkGraphemes(text, entry.lastStart, Number.POSITIVE_INFINITY);
+				const next = { text, count: entry.count - 1 + tail.count, lastStart: tail.lastStart, base: entry.text };
 				this.#entries.set(index, next);
 				return next.count;
 			}
 		}
-		const full = countGraphemesFrom(text, 0);
-		this.#entries.set(index, { text, count: full.count, tailStart: full.tailStart });
+		const full = walkGraphemes(text, 0, Number.POSITIVE_INFINITY);
+		this.#entries.set(index, { text, count: full.count, lastStart: full.lastStart, base: undefined });
 		return full.count;
 	}
 
@@ -107,29 +268,31 @@ export class BlockUnitCounter {
 		if (entry !== undefined && entry.text === text && entry.units === units) {
 			return entry.end >= text.length ? text : text.slice(0, entry.end);
 		}
-		if (entry !== undefined && (entry.text === text || text.startsWith(entry.text)) && units >= entry.units) {
+		if (entry !== undefined && units >= entry.units && this.#extends(index, entry.text, text)) {
 			const extra = units - entry.units + 1;
-			const seg = segmentFrom(text, entry.lastStart, extra);
+			const seg = walkGraphemes(text, entry.lastStart, extra);
 			this.#sliceEntries.set(index, { text, units, end: seg.end, lastStart: seg.lastStart });
 			return seg.end >= text.length ? text : text.slice(0, seg.end);
 		}
-		const seg = segmentFrom(text, 0, units);
+		const seg = walkGraphemes(text, 0, units);
 		this.#sliceEntries.set(index, { text, units, end: seg.end, lastStart: seg.lastStart });
 		return seg.end >= text.length ? text : text.slice(0, seg.end);
+	}
+
+	/** Whether `text` begins with `prefix`. A streamed block is counted before it is sliced, so the
+	 *  count's own prefix check usually answers this without comparing the whole text again. */
+	#extends(index: number, prefix: string, text: string): boolean {
+		if (prefix === text) return true;
+		const counted = this.#entries.get(index);
+		if (counted !== undefined && counted.text === text && counted.base === prefix) return true;
+		return text.startsWith(prefix);
 	}
 }
 
 function sliceGraphemes(text: string, units: number): string {
 	if (units <= 0 || text.length === 0) return "";
-	let count = 0;
-	for (const { index, segment } of getSegmenter().segment(text)) {
-		count += 1;
-		if (count >= units) {
-			const end = index + segment.length;
-			return end >= text.length ? text : text.slice(0, end);
-		}
-	}
-	return text;
+	const end = walkGraphemes(text, 0, units).end;
+	return end >= text.length ? text : text.slice(0, end);
 }
 
 export function visibleUnits(message: AssistantMessageView, hideThinking: boolean, proseOnly = true): number {
@@ -198,10 +361,6 @@ export function buildDisplayMessage(
 	return { ...target, segments };
 }
 
-export function nextStep(backlog: number): number {
-	return Math.max(MIN_STEP, Math.ceil(Math.max(0, backlog) / CATCHUP_FRAMES));
-}
-
 export class StreamingRevealController {
 	readonly #getSmoothStreaming: () => boolean;
 	readonly #getHideThinkingBlock: () => boolean;
@@ -209,8 +368,13 @@ export class StreamingRevealController {
 	readonly #requestRender: (component: Component) => void;
 	#target: AssistantMessageView | undefined;
 	#component: StreamingRevealComponent | undefined;
-	#timer: NodeJS.Timeout | undefined;
+	readonly #clock = new RevealFrameClock(() => this.#tick());
 	#revealed = 0;
+	#pacer = new RevealPacer();
+	/** When the newest target was set; the next tick counts any units it added as arriving then. */
+	#arrivedAt = 0;
+	/** The target changed since the component last rendered it. */
+	#pending = false;
 	#hideThinkingBlock = false;
 	#proseOnlyThinking = true;
 	#smoothStreaming = true;
@@ -241,6 +405,8 @@ export class StreamingRevealController {
 		this.#component = component;
 		this.#target = message;
 		this.#revealed = 0;
+		this.#pacer = new RevealPacer();
+		this.#arrivedAt = performance.now();
 		this.#hideThinkingBlock = this.#getHideThinkingBlock();
 		this.#proseOnlyThinking = this.#getProseOnlyThinking();
 		this.#smoothStreaming = this.#getSmoothStreaming();
@@ -271,32 +437,35 @@ export class StreamingRevealController {
 		if (!this.#component) return;
 		if (!this.#smoothStreaming) {
 			const total = this.#visibleUnits(message);
+			this.#pending = false;
 			this.#component.updateContent(this.#build(message, total), { transient: true });
 			return;
 		}
-		const total = this.#visibleUnits(message);
 		if (message.segments.some(block => block.kind === "tool-call")) {
 			// A tool call is a transcript-order boundary: finish any leading
 			// assistant text before EventController renders the separate tool card.
-			this.#revealed = total;
-			this.#stopTimer();
+			this.#revealed = this.#visibleUnits(message);
+			this.#pending = false;
+			this.#clock.stop();
 			this.#component.updateContent(this.#build(message, this.#revealed), {
 				transient: true,
 			});
 			return;
 		}
-		if (this.#revealed > total) {
-			this.#revealed = total;
-		}
-		this.#renderCurrent();
-		this.#syncTimer(total);
+		// The revealed prefix only moves on a tick, so the next tick renders the
+		// new target. Counting, slicing and rendering it here would repeat that
+		// work for every provider delta between two frames.
+		this.#arrivedAt = performance.now();
+		this.#pending = true;
+		this.#clock.start();
 	}
 
 	stop(): void {
-		this.#stopTimer();
+		this.#clock.stop();
 		this.#target = undefined;
 		this.#component = undefined;
 		this.#revealed = 0;
+		this.#pending = false;
 		this.#unitCounter.reset();
 	}
 
@@ -312,6 +481,7 @@ export class StreamingRevealController {
 		// Recalculate visible units — hiding thinking blocks may reduce the total,
 		// and the reveal position may now exceed it.
 		const total = this.#visibleUnits(this.#target);
+		this.#pacer.rebase(total);
 		this.#revealed = Math.min(this.#revealed, total);
 		this.#renderCurrent();
 		this.#syncTimer(total);
@@ -340,29 +510,16 @@ export class StreamingRevealController {
 		// Every controller render is an in-flight streaming snapshot, even when
 		// smooth reveal has temporarily caught up to the current target. The
 		// message_end handler performs the only stable non-transient render.
+		this.#pending = false;
 		this.#component.updateContent(this.#build(this.#target, this.#revealed), { transient: true });
 	}
 
 	#syncTimer(total = this.#target ? this.#visibleUnits(this.#target) : 0): void {
 		if (!this.#target || !this.#component || this.#revealed >= total) {
-			this.#stopTimer();
+			this.#clock.stop();
 			return;
 		}
-		this.#startTimer();
-	}
-
-	#startTimer(): void {
-		if (this.#timer) return;
-		this.#timer = setInterval(() => {
-			this.#tick();
-		}, STREAMING_REVEAL_FRAME_MS);
-		this.#timer.unref?.();
-	}
-
-	#stopTimer(): void {
-		if (!this.#timer) return;
-		clearInterval(this.#timer);
-		this.#timer = undefined;
+		this.#clock.start();
 	}
 
 	#tick(): void {
@@ -373,17 +530,22 @@ export class StreamingRevealController {
 			return;
 		}
 		const total = this.#visibleUnits(target);
-		if (this.#revealed >= total) {
-			this.#stopTimer();
-			return;
+		this.#pacer.arrive(this.#arrivedAt, total, this.#revealed);
+		const backlog = total - this.#revealed;
+		const step = backlog > 0 ? this.#pacer.step(performance.now(), backlog) : 0;
+		// A target that shrank below the revealed prefix shows all of itself.
+		this.#revealed = backlog > 0 ? this.#revealed + step : total;
+		if (step > 0 || this.#pending) {
+			this.#pending = false;
+			component.updateContent(this.#build(target, this.#revealed), {
+				transient: true,
+			});
+			// A target that changed without revealing more is rendered for its
+			// metadata and left to the next paint, as an in-place update would be.
+			if (step > 0) this.#requestRender(component);
 		}
-		this.#revealed = Math.min(total, this.#revealed + nextStep(total - this.#revealed));
-		component.updateContent(this.#build(target, this.#revealed), {
-			transient: true,
-		});
-		this.#requestRender(component);
 		if (this.#revealed >= total) {
-			this.#stopTimer();
+			this.#clock.stop();
 		}
 	}
 }

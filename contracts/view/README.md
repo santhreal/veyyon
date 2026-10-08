@@ -29,25 +29,25 @@ import type {
 
 ## Model
 
-- `ViewStatus` — what the tool reports about its own state: `success`, `done`, `error`, `warning`,
+- `ViewStatus`: what the tool reports about its own state: `success`, `done`, `error`, `warning`,
   `info`, `pending`, `running`, `aborted`. The host picks the glyph and whether `running` animates.
-- `ViewTone` — the role a run of text plays: `title`, `accent`, `output`, `link`, `muted`, `dim`,
+- `ViewTone`: the role a run of text plays: `title`, `accent`, `output`, `link`, `muted`, `dim`,
   `success`, `warning`, `error`, `info`. The host maps a tone to a colour or a class.
-- `ViewSpan` — a run of text with one tone, optionally bold or italic, optionally naming a symbol the
+- `ViewSpan`: a run of text with one tone, optionally bold or italic, optionally holding a symbol the
   host resolves or a link target the host makes reachable.
-- `ViewLine` — the spans of one line, in order.
-- `ViewHiddenCount` — how much a card held back and whether the rest is reachable. The host writes the
+- `ViewLine`: the spans of one line, in order.
+- `ViewHiddenCount`: how much a card omitted and whether the rest is reachable. The host writes the
   sentence and the gesture.
-- `StatusRowView` — a one-line summary: status, title, description, badge, trailing metadata. The host
-  owns the separators.
-- `TextBlockView` — a run of styled spans, wrapped by the host.
-- `HeadedBlockView` — a header row with lines under it, drawn without a frame.
-- `FramedBlockView` — a header and `ViewSection`s the host frames, stating whether its body is a
+- `StatusRowView`: a one-line summary: status, title, description, badge, trailing metadata. The host
+  draws the separators.
+- `TextBlockView`: a run of styled spans, wrapped by the host.
+- `HeadedBlockView`: a header row with lines under it, drawn without a frame.
+- `FramedBlockView`: a header and `ViewSection`s the host frames, stating whether its body is a
   report or fetched data.
-- `NoticeView` — a short notice whose whole body carries one state: a headline, an optional tag, and
+- `NoticeView`: a short notice whose whole body has one state: a headline, an optional tag, and
   lines under it. A span inside one states emphasis, never colour.
-- `ToolViewContext` — whether the reader has expanded the card.
-- `ToolViewRenderer` — `renderCall` and `renderResult`, each taking only the tool's own data.
+- `ToolViewContext`: whether the reader has expanded the card.
+- `ToolViewRenderer`: `renderCall` and `renderResult`, each taking only the tool's own data.
 
 ## Writing a renderer
 
@@ -68,5 +68,5 @@ const renderer: ToolViewRenderer<{ name: string }, { text: string }> = {
 };
 ```
 
-No host type appears in the renderer, which is what lets a gate check it: a renderer that needs a
-theme to answer cannot implement this interface.
+No host type appears in the `ToolViewRenderer` interface, so a renderer that needs a theme cannot
+implement it.

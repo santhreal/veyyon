@@ -5,7 +5,7 @@
  * read card's text is the file's rows without the line numbers the model reads, and an edit's
  * post-edit file is its pre-edit file with its diff applied. Writing both doubles the session file
  * for no information. A codec drops the repeated field from the line the session writes and rebuilds
- * it when the session is loaded, so the entry in memory is the entry the tool returned.
+ * it when the session is loaded, so the entry in memory holds what the tool returned.
  *
  * WHY THE WRITTEN LINE AND NOT THE ENTRY. A result's content is replaced after it is recorded: a
  * prune, a shake and a compaction tail elision each swap it for a notice. A field rebuilt from the
@@ -32,4 +32,11 @@ export interface ToolResultCodec {
 	 * written with. Leaves details that were written whole unchanged.
 	 */
 	restore(details: unknown, content: ToolResultMessage["content"]): void;
+	/**
+	 * Replace, in place, each field {@link slim} would drop from a result a persisting session has
+	 * just recorded with the form {@link restore} builds from `content`, so the entry in memory holds
+	 * the repeated text once, as a loaded entry does. Leaves `details` unchanged when no rebuild
+	 * reproduces a field. A codec without it leaves the recorded result as the tool returned it.
+	 */
+	settle?(details: unknown, content: ToolResultMessage["content"]): void;
 }

@@ -5,7 +5,6 @@
  * tool renderers to ensure a unified TUI experience.
  */
 
-import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentToolResult, ToolCallContext } from "@veyyon/agent-core";
 import type { Ellipsis } from "@veyyon/natives";
@@ -24,7 +23,7 @@ import type { Theme, ThemeColor } from "../../theme/theme";
 import { formatDimensionNote, type ResizedImage } from "../../utils/image-resize";
 import { isPathWithinCwd } from "./path-utils";
 import { TRUNCATE_LENGTHS } from "./render-limits";
-import { shortenPath } from "./shorten-path";
+import { homeDirectory, shortenPath } from "./shorten-path";
 
 export { Ellipsis } from "@veyyon/natives";
 export { replaceTabs } from "@veyyon/utils/tab-width";
@@ -198,7 +197,7 @@ export const PROGRESS_RUN_MIN_LINES = 4;
  * minimizer (`natives/shell/src/minimizer/`), which owns per-tool output
  * semantics for the sealed capture.
  */
-const DIAGNOSTIC_LEAD_TOKENS: ReadonlySet<string> = new Set([
+const DIAGNOSTIC_LEAD_TOKENS: readonly string[] = [
 	"assertion",
 	"err",
 	"error",
@@ -218,7 +217,33 @@ const DIAGNOSTIC_LEAD_TOKENS: ReadonlySet<string> = new Set([
 	"warn",
 	"warning",
 	"warnings",
-]);
+];
+
+/** {@link DIAGNOSTIC_LEAD_TOKENS} by length, so a token is compared with the few of its own length. */
+const DIAGNOSTIC_LEAD_TOKENS_BY_LENGTH: string[][] = [];
+for (const token of DIAGNOSTIC_LEAD_TOKENS) {
+	const sameLength = DIAGNOSTIC_LEAD_TOKENS_BY_LENGTH[token.length];
+	if (sameLength === undefined) DIAGNOSTIC_LEAD_TOKENS_BY_LENGTH[token.length] = [token];
+	else sameLength.push(token);
+}
+
+/**
+ * Whether `text[start, end)`, a run of ASCII letters, is a diagnostic lead token in any case. Compared
+ * in place, because folding a streaming tail's every first word into a new lowercase string cost more
+ * than the rest of its key.
+ */
+function isDiagnosticLead(text: string, start: number, end: number): boolean {
+	const candidates = DIAGNOSTIC_LEAD_TOKENS_BY_LENGTH[end - start];
+	if (candidates === undefined) return false;
+	candidate: for (const token of candidates) {
+		for (let index = 0; index < token.length; index++) {
+			// Setting bit 0x20 folds an ASCII uppercase letter to its lowercase and keeps a lowercase one.
+			if ((text.charCodeAt(start + index) | 0x20) !== token.charCodeAt(index)) continue candidate;
+		}
+		return true;
+	}
+	return false;
+}
 
 /** A collapsed preview row: one verbatim line plus the lines it stands in for. */
 export interface CollapsedOutputRow {
@@ -246,15 +271,52 @@ export interface CollapsedOutputRow {
  * the raw bytes made every colored progress line unshaped, which is to say it
  * collapsed nothing outside a test fixture. The row still carries the ORIGINAL
  * line, colors intact.
+ *
+ * Read by character code rather than by regular expression: a streaming card keys every line of its
+ * tail on every frame, and the five matches and three strings the expression form spent per line
+ * were a fifth of a streaming build card's frame.
  */
 function progressRunKey(line: string): string | undefined {
 	const bare = line.includes("\u001b") ? stripAnsi(line) : line;
-	// `\s` and `trim` strip the same characters, so the first run of non-space is the trimmed line's first token.
-	const token = /\S+/.exec(bare)?.[0];
-	if (token === undefined) return undefined;
-	const shaped = /^[A-Z][A-Za-z]*:?$/.test(token) || /^[a-z]+:$/.test(token) || /^[[(#]/.test(token);
-	if (!shaped || DIAGNOSTIC_LEAD_TOKENS.has(token.replace(/:$/, "").toLowerCase())) return undefined;
-	return token.replace(/\d+/g, "#");
+	const length = bare.length;
+	let start = 0;
+	while (start < length && isRegExpSpace(bare.charCodeAt(start))) start++;
+	if (start === length) return undefined;
+	let end = start + 1;
+	while (end < length && !isRegExpSpace(bare.charCodeAt(end))) end++;
+	const first = bare.charCodeAt(start);
+	// `[`, `(` or `#`: a counter, whose digit runs are what the lines of one run differ in.
+	if (first === 0x5b || first === 0x28 || first === 0x23) return bare.slice(start, end).replace(/\d+/g, "#");
+	// A Capitalized word with an optional colon, or a lowercase word with a required one. Neither holds
+	// a digit, so the token is its own key.
+	const capitalized = first >= 0x41 && first <= 0x5a;
+	if (!capitalized && !(first >= 0x61 && first <= 0x7a)) return undefined;
+	let wordEnd = start + 1;
+	while (wordEnd < end) {
+		const code = bare.charCodeAt(wordEnd);
+		if (!((code >= 0x61 && code <= 0x7a) || (capitalized && code >= 0x41 && code <= 0x5a))) break;
+		wordEnd++;
+	}
+	const colon = wordEnd === end - 1 && bare.charCodeAt(wordEnd) === 0x3a;
+	if (!colon && (wordEnd !== end || !capitalized)) return undefined;
+	if (isDiagnosticLead(bare, start, wordEnd)) return undefined;
+	return bare.slice(start, colon ? end : wordEnd);
+}
+
+/** Whether `\s` matches the UTF-16 code unit `code`: ECMAScript WhiteSpace and LineTerminator. */
+function isRegExpSpace(code: number): boolean {
+	if (code < 0x80) return code === 0x20 || (code >= 0x09 && code <= 0x0d);
+	return (
+		code === 0xa0 ||
+		code === 0x1680 ||
+		(code >= 0x2000 && code <= 0x200a) ||
+		code === 0x2028 ||
+		code === 0x2029 ||
+		code === 0x202f ||
+		code === 0x205f ||
+		code === 0x3000 ||
+		code === 0xfeff
+	);
 }
 
 /**
@@ -284,12 +346,14 @@ export function collapseProgressRuns(
 		let end = index + 1;
 		while (end < lines.length) {
 			const next = lines[end]!;
-			// A blank line never anchors a run: an empty row carries no text to keep,
-			// so counting blanks away would leave a bare `+N earlier` marker.
-			if (next === first) {
-				if (first.trim().length === 0) break;
+			if (key === undefined) {
+				// An unshaped line extends a run only of byte-identical copies, and a blank line never
+				// anchors one: an empty row carries no text to keep, so counting blanks away would leave
+				// a bare `+N earlier` marker.
+				if (next !== first || first.trim().length === 0) break;
 			} else {
-				if (key === undefined) break;
+				// A copy of a keyed line has its key, so the key alone decides a keyed run, and two long
+				// lines that differ only at their ends are not compared character by character.
 				const nextKey = progressRunKey(next);
 				if (nextKey !== key) {
 					carried = true;
@@ -567,14 +631,6 @@ export function getDiffStats(diffText: string): DiffStats {
 	return { added, removed, hunks, lines: lines.length };
 }
 
-export function formatDiffStats(added: number, removed: number, hunks: number, theme: Theme): string {
-	const parts: string[] = [];
-	if (added > 0) parts.push(theme.fg("toolDiffAdded", `+${added}`));
-	if (removed > 0) parts.push(theme.fg("toolDiffRemoved", `-${removed}`));
-	if (hunks > 0) parts.push(theme.fg("dim", formatCount("hunk", hunks)));
-	return parts.join(theme.fg("dim", " / "));
-}
-
 /**
  * ViewLine metadata entries for diff added and removed line counts.
  */
@@ -778,7 +834,7 @@ function embeddedHomeRegex(home: string): RegExp {
  * {@link shortenPath}.
  */
 export function shortenEmbeddedPaths(text: string, homeDir?: string): string {
-	const home = homeDir ?? os.homedir();
+	const home = homeDir ?? homeDirectory();
 	if (!home) return text;
 	// Only a backslash in the home widens the pattern past the home's own text, to match either
 	// separator; without one, a line that does not contain the home has nothing to shorten.

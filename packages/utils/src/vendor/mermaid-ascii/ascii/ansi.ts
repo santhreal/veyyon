@@ -202,14 +202,25 @@ function ansi16Fg(hex: string): string {
 // HTML color output (for browser rendering)
 // ============================================================================
 
-/** Escape characters that would break HTML output. */
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+const HTML_ENTITIES: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
 }
 
-/** Wrap text in a <span> with an inline color style. */
+/**
+ * Escape every character that can end an HTML text node or a quoted attribute value, so one
+ * helper covers both contexts: `&`, `<`, `>`, `"` and `'`.
+ */
+export function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, char => HTML_ENTITIES[char]!)
+}
+
+/** Wrap text in a <span> with an inline color style; the color is escaped as an attribute value. */
 function htmlSpan(hex: string, text: string): string {
-  return `<span style="color:${hex}">${escapeHtml(text)}</span>`
+  return `<span style="color:${escapeHtml(hex)}">${escapeHtml(text)}</span>`
 }
 
 // ============================================================================

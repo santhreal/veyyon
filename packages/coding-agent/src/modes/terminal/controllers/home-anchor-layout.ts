@@ -144,7 +144,9 @@ export class HomeAnchorLayout {
 	 * saturating at the terminal height: slack is `rows - content`, so a content
 	 * height past `rows` carries no more information than "the screen is full".
 	 *
-	 * Exact wherever a fill exists, which is the only place it is read: a
+	 * Exact wherever a fill exists, which is the only place it is read: the rows
+	 * the frame keeps for a root child it does not re-render (`TUI.reusedRows`,
+	 * every child but the streaming transcript on a streamed chunk's frame), then a
 	 * height-only measurement where available, otherwise the same `render(width)`
 	 * call over the same children the compositor concatenates.
 	 *
@@ -164,19 +166,25 @@ export class HomeAnchorLayout {
 	 * which is past `rows`, where the measurement has already saturated.
 	 */
 	#measureContent(width: number): number {
-		const rows = this.port.ui.terminal.rows;
+		const ui = this.port.ui;
+		const rows = ui.terminal.rows;
 		let total = 0;
-		for (const child of this.port.ui.children) {
+		for (const child of ui.children) {
 			if (child === this.bottomFill || child === this.topFill) continue;
-			try {
-				const bounded = (child as Partial<BoundedMeasure>).renderViewportTail;
-				total +=
-					child.measureHeight?.(width) ??
-					(typeof bounded === "function"
-						? bounded.call(child, width, Math.max(0, rows - total)).length
-						: child.render(width).length);
-			} catch {
-				total += 1;
+			const reused = ui.reusedRows(child);
+			if (reused !== undefined) {
+				total += reused;
+			} else {
+				try {
+					const bounded = (child as Partial<BoundedMeasure>).renderViewportTail;
+					total +=
+						child.measureHeight?.(width) ??
+						(typeof bounded === "function"
+							? bounded.call(child, width, Math.max(0, rows - total)).length
+							: child.render(width).length);
+				} catch {
+					total += 1;
+				}
 			}
 			if (total >= rows) return total;
 		}

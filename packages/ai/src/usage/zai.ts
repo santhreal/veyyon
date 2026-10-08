@@ -2,6 +2,7 @@ import { toNumber } from "@veyyon/catalog/utils";
 import { formatCount } from "@veyyon/utils/format";
 import { clamp01 } from "@veyyon/utils/math";
 import { DAY_MS, HOUR_MS, WEEK_MS } from "@veyyon/utils/time";
+import type { Provider } from "../types";
 import type {
 	CredentialRankingStrategy,
 	UsageAmount,
@@ -94,28 +95,16 @@ function parseLimitItem(value: unknown): ZaiUsageLimitItem | null {
 	};
 }
 
-function buildUsageAmount(args: {
-	used: number | undefined;
-	limit: number | undefined;
-	remaining: number | undefined;
-	unit: UsageAmount["unit"];
-	percentage?: number;
-}): UsageAmount {
+function buildUsageAmount(parsed: ZaiUsageLimitItem, unit: UsageAmount["unit"]): UsageAmount {
+	const { currentValue: used, usage: limit, remaining, percentage } = parsed;
 	const usedFraction =
-		args.percentage !== undefined
-			? clamp01(args.percentage / 100)
-			: args.used !== undefined && args.limit !== undefined && args.limit > 0
-				? Math.min(args.used / args.limit, 1)
+		percentage !== undefined
+			? clamp01(percentage / 100)
+			: used !== undefined && limit !== undefined && limit > 0
+				? Math.min(used / limit, 1)
 				: undefined;
 	const remainingFraction = usedFraction !== undefined ? Math.max(1 - usedFraction, 0) : undefined;
-	return {
-		used: args.used,
-		limit: args.limit,
-		remaining: args.remaining,
-		usedFraction,
-		remainingFraction,
-		unit: args.unit,
-	};
+	return { used, limit, remaining, usedFraction, remainingFraction, unit };
 }
 
 // Z.ai omits the status field when the used fraction is unknown (rather than
@@ -172,14 +161,45 @@ function buildZaiWindow(parsed: ZaiUsageLimitItem): UsageWindow {
 }
 
 function isZaiFeatureRequestLimit(parsed: ZaiUsageLimitItem): boolean {
-	const detailCodes =
-		parsed.usageDetails?.map(detail => detail.modelCode).filter((code): code is string => !!code) ?? [];
-	return detailCodes.includes("search-prime") && detailCodes.includes("web-reader") && detailCodes.includes("zread");
+	if (!parsed.usageDetails) return false;
+	const codes = new Set(parsed.usageDetails.map(detail => detail.modelCode));
+	return codes.has("search-prime") && codes.has("web-reader") && codes.has("zread");
 }
 
-function requestQuotaLabel(parsed: ZaiUsageLimitItem): string {
-	if (isZaiFeatureRequestLimit(parsed)) return "ZAI Web Search / Reader / Zread Quota";
-	return "ZAI Request Quota";
+function zaiTokenLimit(parsed: ZaiUsageLimitItem, provider: Provider): UsageLimit {
+	const amount = buildUsageAmount(parsed, "tokens");
+	const window = buildZaiWindow(parsed);
+	return {
+		id: `zai:tokens:${window.id}`,
+		label: `ZAI ${window.label} Token Quota`,
+		scope: { provider, windowId: window.id, shared: true },
+		window,
+		amount,
+		status: getUsageStatus(amount.usedFraction),
+	};
+}
+
+function zaiRequestLimit(parsed: ZaiUsageLimitItem, provider: Provider): UsageLimit {
+	const window = buildZaiWindow(parsed);
+	const amount = buildUsageAmount(parsed, "requests");
+	if (isZaiFeatureRequestLimit(parsed)) {
+		return {
+			id: `zai:features:web-search-reader-zread:${window.id}`,
+			label: "ZAI Web Search / Reader / Zread Quota",
+			scope: { provider, windowId: window.id, shared: false, tier: "web-search-reader-zread" },
+			window,
+			amount,
+			status: getUsageStatus(amount.usedFraction),
+		};
+	}
+	return {
+		id: `zai:requests:${window.id}`,
+		label: "ZAI Request Quota",
+		scope: { provider, windowId: window.id, shared: true },
+		window,
+		amount,
+		status: getUsageStatus(amount.usedFraction),
+	};
 }
 
 function buildModelUsageUrl(baseUrl: string, now: Date): string {
@@ -212,6 +232,49 @@ function rankZaiRequestLimits(report: UsageReport): UsageLimit[] {
 	return ranked;
 }
 
+async function fetchZaiQuota(
+	url: string,
+	headers: Record<string, string>,
+	params: UsageFetchParams,
+	ctx: UsageFetchContext,
+): Promise<ZaiQuotaPayload | null> {
+	let payload: ZaiQuotaPayload | null;
+	try {
+		const response = await ctx.fetch(url, { headers, signal: params.signal });
+		if (!response.ok) {
+			ctx.logger?.warn("ZAI usage fetch failed", { status: response.status, statusText: response.statusText });
+			return null;
+		}
+		payload = (await response.json()) as ZaiQuotaPayload;
+	} catch (error) {
+		ctx.logger?.warn("ZAI usage fetch error", { error: String(error) });
+		return null;
+	}
+	if (payload && payload.success !== true) {
+		ctx.logger?.warn("ZAI usage response invalid", { code: payload.code, message: payload.msg });
+		return null;
+	}
+	return payload;
+}
+
+// The per-model breakdown is optional metadata: any failure leaves the report without it.
+async function fetchZaiModelUsage(
+	baseUrl: string,
+	headers: Record<string, string>,
+	params: UsageFetchParams,
+	ctx: UsageFetchContext,
+): Promise<Record<string, unknown> | undefined> {
+	try {
+		const response = await ctx.fetch(buildModelUsageUrl(baseUrl, new Date()), { headers, signal: params.signal });
+		if (!response.ok) return undefined;
+		const payload = (await response.json()) as unknown;
+		return isRecord(payload) ? payload : undefined;
+	} catch (error) {
+		ctx.logger?.debug("ZAI model usage fetch failed", { error: String(error) });
+		return undefined;
+	}
+}
+
 async function fetchZaiUsage(params: UsageFetchParams, ctx: UsageFetchContext): Promise<UsageReport | null> {
 	if (params.provider !== "zai") return null;
 	const credential = params.credential;
@@ -225,116 +288,31 @@ async function fetchZaiUsage(params: UsageFetchParams, ctx: UsageFetchContext): 
 		"User-Agent": "OpenCode-Status-Plugin/1.0",
 	};
 
-	let payload: ZaiQuotaPayload | null = null;
-	try {
-		const response = await ctx.fetch(url, {
-			headers,
-			signal: params.signal,
-		});
-		if (!response.ok) {
-			ctx.logger?.warn("ZAI usage fetch failed", { status: response.status, statusText: response.statusText });
-			return null;
-		}
-		payload = (await response.json()) as ZaiQuotaPayload;
-	} catch (error) {
-		ctx.logger?.warn("ZAI usage fetch error", { error: String(error) });
-		return null;
-	}
-
+	const payload = await fetchZaiQuota(url, headers, params, ctx);
 	if (!payload) return null;
-	if (payload.success !== true) {
-		ctx.logger?.warn("ZAI usage response invalid", { code: payload.code, message: payload.msg });
-		return null;
-	}
 
-	const limitsPayload = Array.isArray(payload.data?.limits) ? payload.data?.limits : [];
 	const limits: UsageLimit[] = [];
-
-	for (const rawLimit of limitsPayload) {
+	for (const rawLimit of Array.isArray(payload.data?.limits) ? payload.data.limits : []) {
 		const parsed = parseLimitItem(rawLimit);
-		if (!parsed) continue;
-		if (parsed.type === "TOKENS_LIMIT") {
-			const amount = buildUsageAmount({
-				used: parsed.currentValue,
-				limit: parsed.usage,
-				remaining: parsed.remaining,
-				percentage: parsed.percentage,
-				unit: "tokens",
-			});
-			const window = buildZaiWindow(parsed);
-			limits.push({
-				id: `zai:tokens:${window.id}`,
-				label: `ZAI ${window.label} Token Quota`,
-				scope: {
-					provider: params.provider,
-					windowId: window.id,
-					shared: true,
-				},
-				window,
-				amount,
-				status: getUsageStatus(amount.usedFraction),
-			});
-		}
-		if (parsed.type === "TIME_LIMIT") {
-			const window = buildZaiWindow(parsed);
-			const amount = buildUsageAmount({
-				used: parsed.currentValue,
-				limit: parsed.usage,
-				remaining: parsed.remaining,
-				percentage: parsed.percentage,
-				unit: "requests",
-			});
-			const featureLimit = isZaiFeatureRequestLimit(parsed);
-			limits.push({
-				id: featureLimit ? `zai:features:web-search-reader-zread:${window.id}` : `zai:requests:${window.id}`,
-				label: requestQuotaLabel(parsed),
-				scope: {
-					provider: params.provider,
-					windowId: window.id,
-					shared: !featureLimit,
-					...(featureLimit ? { tier: "web-search-reader-zread" } : {}),
-				},
-				window,
-				amount,
-				status: getUsageStatus(amount.usedFraction),
-			});
-		}
+		if (parsed?.type === "TOKENS_LIMIT") limits.push(zaiTokenLimit(parsed, params.provider));
+		else if (parsed?.type === "TIME_LIMIT") limits.push(zaiRequestLimit(parsed, params.provider));
 	}
-
 	if (limits.length === 0) return null;
 
-	const report: UsageReport = {
+	const fetchedAt = Date.now();
+	const modelUsage = await fetchZaiModelUsage(baseUrl, headers, params, ctx);
+	return {
 		provider: params.provider,
-		fetchedAt: Date.now(),
+		fetchedAt,
 		limits,
 		metadata: {
 			endpoint: url,
 			accountId: credential.accountId,
 			email: credential.email,
+			...(modelUsage ? { modelUsage } : {}),
 		},
 		raw: payload,
 	};
-
-	const modelUsageUrl = buildModelUsageUrl(baseUrl, new Date());
-	try {
-		const response = await ctx.fetch(modelUsageUrl, {
-			headers,
-			signal: params.signal,
-		});
-		if (response.ok) {
-			const modelUsagePayload = (await response.json()) as unknown;
-			if (isRecord(modelUsagePayload)) {
-				report.metadata = {
-					...report.metadata,
-					modelUsage: modelUsagePayload,
-				};
-			}
-		}
-	} catch (error) {
-		ctx.logger?.debug("ZAI model usage fetch failed", { error: String(error) });
-	}
-
-	return report;
 }
 
 export const zaiUsageProvider: UsageProvider = {

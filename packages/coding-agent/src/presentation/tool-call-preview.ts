@@ -3,6 +3,11 @@ import { logger } from "@veyyon/utils";
 import { EDIT_MODE_STRATEGIES, type PerFileDiffPreview } from "../edit/streaming";
 import type { EditMode } from "../utils/edit-mode";
 
+/** What a preview notifies when a computed diff preview lands. */
+export interface ToolCallPreviewListener {
+	toolCallPreviewChanged(): void;
+}
+
 export interface ToolCallPreviewOptions {
 	toolName: string;
 	mode?: EditMode;
@@ -10,7 +15,8 @@ export interface ToolCallPreviewOptions {
 	snapshots?: SnapshotStore;
 	fuzzyThreshold?: number;
 	allowFuzzy?: boolean;
-	onChange: () => void;
+	/** An object rather than a callback, so the producer that owns a preview listens without a closure per card. */
+	listener: ToolCallPreviewListener;
 }
 
 export function isEditLikeToolName(toolName: string): boolean {
@@ -62,6 +68,7 @@ export class ToolCallPreview {
 	#abort?: AbortController;
 	#inFlight?: Promise<void>;
 	#dirty = false;
+	#settled = false;
 
 	constructor(
 		args: unknown,
@@ -89,7 +96,7 @@ export class ToolCallPreview {
 
 	update(args: unknown): void {
 		this.#args = args;
-		if (!this.options.mode) return;
+		if (!this.options.mode || this.#settled) return;
 		this.#dirty = true;
 		if (this.#inFlight) return;
 		this.#inFlight = this.#drain().finally(() => {
@@ -107,7 +114,19 @@ export class ToolCallPreview {
 		this.#dirty = false;
 	}
 
+	/**
+	 * The call has its final result, which a card draws in place of the preview: compute nothing
+	 * more. A preview already computed stays readable.
+	 */
+	settle(): void {
+		this.#settled = true;
+		this.stop();
+	}
+
 	async #drain(): Promise<void> {
+		// Start on the next microtask, so a call that gets its result in the same task computes
+		// nothing: a transcript rebuilt from history hands every card its call and then its result.
+		await undefined;
 		while (this.#dirty) {
 			this.#dirty = false;
 			await this.#compute();
@@ -119,6 +138,7 @@ export class ToolCallPreview {
 		if (!mode) return;
 		const strategy = EDIT_MODE_STRATEGIES[mode];
 		if (!strategy || this.#args == null || typeof this.#args !== "object") return;
+		if (mode === "hashline" && !this.options.snapshots) return;
 		const previewArgs = streamedArguments(this.#args);
 		const partialJson = partialJsonOf(previewArgs);
 		let effectiveArgs: unknown;
@@ -140,7 +160,6 @@ export class ToolCallPreview {
 		this.#abort = controller;
 		try {
 			const isStreaming = !this.complete;
-			if (mode === "hashline" && !this.options.snapshots) return;
 			const previews = await strategy.computeDiffPreview(effectiveArgs, {
 				cwd: this.options.cwd,
 				signal: controller.signal,
@@ -151,11 +170,14 @@ export class ToolCallPreview {
 			});
 			if (controller.signal.aborted || !previews) return;
 			this.#previews = isStreaming ? stabilizePreviews(previews) : previews;
-			this.options.onChange();
+			this.options.listener.toolCallPreviewChanged();
 		} catch (error) {
 			if (!controller.signal.aborted) {
 				logger.warn("Edit preview diff failed", { tool: this.options.toolName, error: String(error) });
 			}
+		} finally {
+			// A finished computation has nothing left to abort, and the card holding this preview outlives it.
+			if (this.#abort === controller) this.#abort = undefined;
 		}
 	}
 }

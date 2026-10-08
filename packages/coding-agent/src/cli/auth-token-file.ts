@@ -77,7 +77,7 @@ export class AuthTokenFile {
 		const file = this.path();
 		await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
 		await fs.writeFile(file, token, { mode: 0o600 });
-		await this.#restrict(file);
+		await restrict(file);
 	}
 
 	/**
@@ -97,7 +97,7 @@ export class AuthTokenFile {
 			if ((err as NodeJS.ErrnoException).code === "EEXIST") return false;
 			throw err;
 		}
-		await this.#restrict(file);
+		await restrict(file);
 		return true;
 	}
 
@@ -144,20 +144,20 @@ export class AuthTokenFile {
 			await Bun.sleep(TOKEN_RACE_POLL_MS);
 		}
 	}
+}
 
-	/**
-	 * Narrow the mode after the fact.
-	 *
-	 * The creating call already asked for `0600`, so this only matters where the platform ignored it.
-	 * A failure here is not raised because Windows has no equivalent and the file is already created;
-	 * the mode is stated in the log line each service writes when it loads the token.
-	 */
-	async #restrict(file: string): Promise<void> {
-		try {
-			await fs.chmod(file, 0o600);
-		} catch {
-			// Best-effort (e.g. Windows).
-		}
+/**
+ * Narrow the mode after the fact.
+ *
+ * The creating call already asked for `0600`, so this only matters where the platform ignored it.
+ * A failure here is not raised because Windows has no equivalent and the file is already created;
+ * the mode is stated in the log line each service writes when it loads the token.
+ */
+async function restrict(file: string): Promise<void> {
+	try {
+		await fs.chmod(file, 0o600);
+	} catch {
+		// Best-effort (e.g. Windows).
 	}
 }
 

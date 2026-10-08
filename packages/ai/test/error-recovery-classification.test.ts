@@ -55,6 +55,9 @@ const RETRY_DECISION: Record<string, boolean> = {
 	AuthFailed: false,
 	Grammar: false,
 	FastModeUnsupported: false,
+	// The provider drops the rejected field and retries once itself; a session-level replay would
+	// resend the same field and draw the same 400.
+	ToolChoiceRejected: false,
 	// Deliberate stops. Retrying one overrides a decision already taken.
 	SilentAbort: false,
 	UserInterrupt: false,
@@ -132,6 +135,7 @@ const FRAME_BAIT_TEXT: Record<keyof typeof AIError.Flag, string> = {
 	AuthFailed: "401 Unauthorized: invalid api key",
 	Grammar: "grammar error",
 	FastModeUnsupported: "fast mode is not supported for this model",
+	ToolChoiceRejected: "400 Thinking mode does not support this tool_choice",
 	SilentAbort: "silent abort",
 	UserInterrupt: "user interrupted the request",
 	Abort: "The operation was aborted",
@@ -329,6 +333,7 @@ describe("a stack trace is not evidence about the failure", () => {
 			"MalformedFunctionCall",
 			"ProviderFinishError",
 			"Timeout",
+			"ToolChoiceRejected",
 			"Transient",
 			"UsageLimit",
 		]);

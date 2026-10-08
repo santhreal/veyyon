@@ -17,14 +17,25 @@
 
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
+import { type as arkType } from "@veyyon/ai/utils/schema/arktype";
 import { Ellipsis } from "@veyyon/natives";
-import { clamp, clampLow, collapseWhitespace, formatCount, isCancellation, prompt, untilAborted } from "@veyyon/utils";
+import {
+	clamp,
+	clampLow,
+	collapseWhitespace,
+	formatCount,
+	isCancellation,
+	lazy,
+	prompt,
+	untilAborted,
+} from "@veyyon/utils";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { stripRecommendedSuffix, withRecommendedSuffix } from "@veyyon/wire";
-import { type as arkType } from "arktype";
 import type { ExtensionUISelectItem } from "../../extensibility/extensions";
-import { mediumModalContentWidth } from "../../modes/terminal/components/chrome/modal-shell";
-import { HOOK_EDITOR_TEXT_PAD_COLS } from "../../modes/terminal/components/dialogs/hook-editor";
+import {
+	HOOK_EDITOR_TEXT_PAD_COLS,
+	mediumModalContentWidth,
+} from "../../modes/terminal/components/chrome/modal-geometry";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import { vocalizer } from "../../speech/tts/vocalizer";
 import { type Theme, theme } from "../../theme/theme";
@@ -39,32 +50,32 @@ import { ASK_OTHER_OPTION_LABEL, isReservedAskOptionLabel } from "./ask-option-l
 // Types
 // =============================================================================
 
-const OptionItem = arkType({
-	label: arkType("string").describe("display label"),
-	"description?": arkType("string").describe("optional explanatory text displayed below the label"),
-	"preview?": arkType("string").describe("optional rich preview content for interactive ask dialogs"),
+const askSchema = lazy(() => {
+	const OptionItem = arkType({
+		label: arkType("string").describe("display label"),
+		"description?": arkType("string").describe("optional explanatory text displayed below the label"),
+		"preview?": arkType("string").describe("optional rich preview content for interactive ask dialogs"),
+	});
+	const QuestionItem = arkType({
+		id: arkType("string").describe("question id"),
+		question: arkType("string").describe("question text"),
+		"header?": arkType("string").describe("optional short display chip for rich ask dialogs"),
+		options: OptionItem.array().describe("available options"),
+		"multi?": arkType("boolean").describe("allow multiple selections"),
+		"recommended?": arkType("number").describe("recommended option index"),
+	}).narrow((question, ctx) => {
+		const reserved = question.options.find(option => isReservedAskOptionLabel(option.label));
+		return (
+			reserved === undefined ||
+			ctx.mustBe(`defined with option labels that do not collide with reserved runtime labels: ${reserved.label}`)
+		);
+	});
+	return arkType({
+		questions: QuestionItem.array().atLeastLength(1).describe("questions to ask"),
+	});
 });
 
-const QuestionItem = arkType({
-	id: arkType("string").describe("question id"),
-	question: arkType("string").describe("question text"),
-	"header?": arkType("string").describe("optional short display chip for rich ask dialogs"),
-	options: OptionItem.array().describe("available options"),
-	"multi?": arkType("boolean").describe("allow multiple selections"),
-	"recommended?": arkType("number").describe("recommended option index"),
-}).narrow((question, ctx) => {
-	const reserved = question.options.find(option => isReservedAskOptionLabel(option.label));
-	return (
-		reserved === undefined ||
-		ctx.mustBe(`defined with option labels that do not collide with reserved runtime labels: ${reserved.label}`)
-	);
-});
-
-const askSchema = arkType({
-	questions: QuestionItem.array().atLeastLength(1).describe("questions to ask"),
-});
-
-export type AskToolInput = typeof askSchema.infer;
+export type AskToolInput = typeof askSchema.value.infer;
 
 /** Result for a single question */
 export interface QuestionResult {
@@ -740,16 +751,18 @@ type AskParams = AskToolInput;
  * Allows gathering user preferences, clarifying instructions, and getting decisions
  * on implementation choices as the agent works.
  */
-export class AskTool implements AgentTool<typeof askSchema, AskToolDetails> {
+export class AskTool implements AgentTool<typeof askSchema.value, AskToolDetails> {
 	readonly name = "ask";
 	readonly approval = "read" as const;
 	readonly label = "Ask";
 	readonly summary = "Ask the user a clarifying question";
 	readonly description: string;
-	readonly parameters = askSchema;
+	get parameters(): typeof askSchema.value {
+		return askSchema.value;
+	}
 	readonly strict = true;
 
-	readonly examples: readonly ToolExample<typeof askSchema.infer>[] = [
+	readonly examples: readonly ToolExample<AskToolInput>[] = [
 		{
 			caption: "Single question",
 			call: {

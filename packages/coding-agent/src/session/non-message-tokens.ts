@@ -19,6 +19,7 @@ import { stripSchemaDescriptions, toolWireSchema } from "@veyyon/ai/utils/schema
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { shouldInlineToolDescriptors } from "../config/inline-tool-descriptors-mode";
+import type { ContextUsage } from "../extensibility/extensions/types";
 import type { Skill } from "../extensibility/skills";
 import type { Tool } from "../tools";
 import type { AgentSession } from "./agent-session";
@@ -126,8 +127,8 @@ function prunesToolDescriptions(session: AgentSession): boolean {
  */
 // Non-message inputs (system prompt, tools, skills) change rarely — at most
 // once per turn via setSystemPrompt/setTools — but the per-turn compaction and
-// threshold paths call these helpers several times: getContextBreakdown calls
-// both, and #estimateStoredContextTokens adds a third. Memoize on the identity
+// threshold paths call these helpers several times: the context breakdown calls
+// both, and the stored-context estimate adds a third. Memoize on the identity
 // of the three input arrays so the expensive parts (system-prompt tokenization
 // and the per-tool JSON.stringify(toolWireSchema) inside estimateToolSchemaTokens)
 // run at most once per input change rather than per call. The identity keys are
@@ -139,6 +140,7 @@ interface NonMessageTokenCache {
 	skillsRef: readonly Skill[];
 	prune: boolean;
 	tokens: number | undefined;
+	systemContextTokens: number | undefined;
 	breakdown:
 		| {
 				skillsTokens: number;
@@ -169,7 +171,15 @@ function nonMessageTokenCacheEntry(session: AgentSession): NonMessageTokenCache 
 	) {
 		return entry;
 	}
-	entry = { systemPromptRef, toolsRef, skillsRef, prune, tokens: undefined, breakdown: undefined };
+	entry = {
+		systemPromptRef,
+		toolsRef,
+		skillsRef,
+		prune,
+		tokens: undefined,
+		systemContextTokens: undefined,
+		breakdown: undefined,
+	};
 	nonMessageTokenCache.set(session, entry);
 	return entry;
 }
@@ -183,6 +193,19 @@ export function computeNonMessageTokens(session: AgentSession): number {
 	entry.tokens = tokens;
 	return tokens;
 }
+
+/**
+ * Tokens of the system context: every system-prompt part after the first. Reads no tool schema, so a
+ * caller that needs only this number does not build every tool's ArkType schema to get it.
+ */
+export function computeSystemContextTokens(session: AgentSession): number {
+	const entry = nonMessageTokenCacheEntry(session);
+	if (entry.systemContextTokens !== undefined) return entry.systemContextTokens;
+	const systemContextTokens = countTokens((session.systemPrompt ?? EMPTY_STRING_PARTS).slice(1));
+	entry.systemContextTokens = systemContextTokens;
+	return systemContextTokens;
+}
+
 /**
  * Shared helper for the four non-message token totals used by
  * `computeContextBreakdown` (/context panel). Keep this category split stable:
@@ -200,9 +223,72 @@ export function computeNonMessageBreakdown(session: AgentSession): {
 	const skillsTokens = estimateSkillsTokens(session.skills ?? EMPTY_SKILLS);
 	const toolsTokens = estimateToolSchemaTokens(session.agent?.state?.tools ?? EMPTY_TOOLS, entry.prune);
 	const systemPromptParts = session.systemPrompt ?? EMPTY_STRING_PARTS;
-	const systemContextTokens = countTokens(systemPromptParts.slice(1));
+	const systemContextTokens = computeSystemContextTokens(session);
 	const systemPromptTokens = Math.max(0, countTokens(systemPromptParts[0] ?? "") - skillsTokens);
 	const breakdown = { skillsTokens, toolsTokens, systemContextTokens, systemPromptTokens };
 	entry.breakdown = breakdown;
 	return breakdown;
+}
+
+/**
+ * Top-level sessions whose at-rest reading waits until the session leaves rest, each with the
+ * function that takes it.
+ *
+ * The first non-message reading of a process builds the ArkType schema of every active tool to
+ * estimate the tool half: about 20 ms of a cold launch and 3.4 MiB of heap for the built-in tools,
+ * plus the evaluation of `arktype` itself. `createAgentSession` holds the reading of every top-level
+ * session. The session takes it before its first turn appends a message, and the interactive host
+ * takes it earlier, once the composer's first edit is drawn, so neither a launch nor a session left
+ * idle pays for schemas only a prompt needs. Until then the status row draws the resting gauge the
+ * last launch recorded instead of measuring. Compaction and `/context` read through
+ * {@link computeNonMessageTokens} and {@link computeNonMessageBreakdown}, which always measure.
+ */
+const heldAtRestReadings = new WeakMap<AgentSession, () => void>();
+
+/** Hold `session`'s at-rest reading until {@link takeHeldAtRestReading}, which calls `take`. */
+export function deferAtRestReading(session: AgentSession, take: () => void): void {
+	heldAtRestReadings.set(session, take);
+}
+
+/** Whether `session`'s at-rest reading is still held. */
+export function isAtRestReadingDeferred(session: AgentSession): boolean {
+	return heldAtRestReadings.has(session);
+}
+
+/**
+ * End the hold on `session`'s at-rest reading and take the reading. Returns false, and measures
+ * nothing, when no reading is held: it was taken already, or `session` is a spawned agent.
+ */
+export function takeHeldAtRestReading(session: AgentSession): boolean {
+	const take = heldAtRestReadings.get(session);
+	if (take === undefined) return false;
+	heldAtRestReadings.delete(session);
+	take();
+	return true;
+}
+
+/**
+ * Whether `session` rests with its reading held: the at-rest reading is not taken yet and the session
+ * has no message yet. A reader of the context gauge in this state does not measure, because measuring
+ * builds every active tool's schema: the status row draws the gauge the last launch recorded, and the
+ * slash popup, which a first keystroke opens, states no figure.
+ */
+export function restsWithReadingHeld(session: AgentSession): boolean {
+	return heldAtRestReadings.has(session) && (session.messages?.length ?? 0) === 0;
+}
+
+/**
+ * The context usage a display states for `session`. While the at-rest reading is held, a
+ * session with no message states no figure and a session with messages, such as a resumed one,
+ * states its resting usage (`AgentSession.getRestingContextUsage`), which takes the non-message
+ * size its newest provider response recorded instead of building every tool's schema. A held
+ * session whose responses recorded no such size, and every session whose reading was taken, measure.
+ */
+export function displayedContextUsage(session: AgentSession): ContextUsage | undefined {
+	if (heldAtRestReadings.has(session)) {
+		if ((session.messages?.length ?? 0) === 0) return undefined;
+		const resting = session.getRestingContextUsage();
+		if (resting) return resting;
+	}
+	return session.getContextUsage();
 }

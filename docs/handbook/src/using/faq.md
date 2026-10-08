@@ -34,9 +34,9 @@ Veyyon lists models from a bundled catalog plus live discovery from providers th
 
 ## Workflow
 
-### Why did my edit ask for approval?
+### Why did my edit prompt for approval?
 
-The approval mode sets when Veyyon prompts before a tool runs. In `ask`, every tier prompts, reads included. In `ask-command`, reads and edits run and anything that executes prompts. In `auto`, the default, every tier runs with the per-tool, working-directory, credential and critical-call guards still prompting. In `plan`, exec is blocked outright and write prompts only inside an active plan-mode session. Change mode with `--approval-mode <mode>` (`plan`, `ask`, `ask-command`, `auto`, `yolo`), `--auto-approve` / `--yolo`, or `tools.approvalMode` in `config.yml`. See [Approvals](../features/sandbox.md).
+The approval mode sets when Veyyon prompts before a tool runs. In `ask`, every tier prompts, reads included. In `ask-command`, reads and edits run and anything that executes prompts. In `auto`, the default, every tier runs with the per-tool, working-directory, credential and critical-call checks still prompting. In `plan`, exec is blocked outright and write prompts only inside an active plan-mode session. Change mode with `--approval-mode <mode>` (`plan`, `ask`, `ask-command`, `auto`, `yolo`), `--auto-approve` / `--yolo`, or `tools.approvalMode` in `config.yml`. See [Approvals](../features/sandbox.md).
 
 ### How do I resume a session?
 
@@ -48,7 +48,7 @@ Queued follow-ups live in memory for the lifetime of the running process; they a
 
 ### Why does my output look truncated?
 
-Output is intentionally truncated when it exceeds a tool budget. The truncation should include a next action, such as increasing a limit, using an offset, or narrowing the search. See [Troubleshooting](./troubleshooting.md) for the public path.
+Output is truncated when it exceeds a tool budget. The truncation should include a next action, such as increasing a limit, using an offset, or narrowing the search. See [Troubleshooting](./troubleshooting.md) for the public path.
 
 ## Where to go next
 

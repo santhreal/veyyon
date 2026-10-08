@@ -78,19 +78,21 @@ type OllamaMessage = {
 	tool_name?: string;
 };
 
+type OllamaChunkToolCall = {
+	type?: string;
+	function?: {
+		index?: number;
+		name?: string;
+		arguments?: Record<string, unknown> | string;
+	};
+};
+
 type OllamaChatChunk = {
 	message?: {
 		role?: string;
 		content?: string;
 		thinking?: string;
-		tool_calls?: Array<{
-			type?: string;
-			function?: {
-				index?: number;
-				name?: string;
-				arguments?: Record<string, unknown> | string;
-			};
-		}>;
+		tool_calls?: OllamaChunkToolCall[];
 	};
 	done?: boolean;
 	done_reason?: string;
@@ -410,335 +412,345 @@ function mapDoneReason(doneReason: string | undefined, output: AssistantMessage)
 
 const OLLAMA_RETRY_DELAYS_MS = [2_000, 5_000, 10_000];
 
+/** What a turn's request sent and what an error response said, for the error a failed turn reports. */
+interface OllamaRequestRecord {
+	dump?: RawHttpRequestDump;
+	/** Exact bytes of the last sent request body; materialized into a dump only on the 400/413 path. */
+	bodyJson?: string;
+	errorResponse?: CapturedHttpErrorResponse;
+}
+
+/** Send the chat request and return the streamed response body, recording what was sent in `request`. */
+async function openOllamaResponse(
+	model: Model<"ollama-chat">,
+	context: Context,
+	options: OllamaChatOptions,
+	request: OllamaRequestRecord,
+): Promise<ReadableStream<Uint8Array>> {
+	const apiKey = options.apiKey || getEnvApiKey(model.provider);
+	if (!apiKey) {
+		throw new AIError.MissingApiKeyError(model.provider);
+	}
+	const baseUrl = normalizeOllamaCloudBaseUrl(model.baseUrl);
+	let body = createChatBody(model, context, options);
+	const replacementPayload = await options.onPayload?.(body, model);
+	if (replacementPayload !== undefined) {
+		body = replacementPayload as typeof body;
+	}
+	request.dump = {
+		provider: model.provider,
+		api: model.api,
+		model: model.id,
+		method: "POST",
+		url: `${baseUrl}/api/chat`,
+	};
+	const bodyJson = JSON.stringify(body);
+	request.bodyJson = bodyJson;
+	// Direct callers that bypass `register-builtins` (which installs
+	// the iterator-level watchdog) need a pre-response timer alongside
+	// `timeout: false`; otherwise an Ollama server that accepts the
+	// POST and never streams headers would hang forever (issue #2422).
+	const idleTimeoutMs = options.streamIdleTimeoutMs ?? getOpenAIStreamIdleTimeoutMs();
+	const firstEventTimeoutMs = options.streamFirstEventTimeoutMs ?? getOpenAIStreamFirstEventTimeoutMs(idleTimeoutMs);
+	// Cleared the instant headers arrive (below) so the pre-response timer
+	// never aborts the actively streaming body — an absolute
+	// `AbortSignal.timeout` would (issue #2422).
+	const watchdog = armPreResponseTimeout(options.signal, firstEventTimeoutMs);
+	let response: Response;
+	try {
+		response = await fetchProviderWithRetry(`${baseUrl}/api/chat`, {
+			method: "POST",
+			headers: {
+				...model.headers,
+				...options.headers,
+				Authorization: `Bearer ${apiKey}`,
+				"Content-Type": "application/json",
+			},
+			body: bodyJson,
+			signal: watchdog.signal,
+			defaultDelayMs: OLLAMA_RETRY_DELAYS_MS,
+			maxDelayMs: options.maxRetryDelayMs,
+			retry: OLLAMA_RESPONSE_RETRY_POLICY,
+			fetch: options.fetch,
+			timeout: false,
+		});
+	} finally {
+		watchdog.clear();
+	}
+	if (!response.ok) {
+		request.errorResponse = await captureHttpErrorResponse(response);
+		throw new AIError.OllamaApiError(`HTTP ${response.status} from ${baseUrl}/api/chat`, response.status, {
+			headers: response.headers,
+		});
+	}
+	if (!response.body) {
+		throw new AIError.OllamaApiError("Ollama returned an empty response body", response.status, {
+			headers: response.headers,
+		});
+	}
+	return response.body;
+}
+
+/**
+ * One Ollama turn as it streams: the assistant message it builds, the text, thinking and tool-call
+ * blocks still open, the markup the text channel leaked, and when the first token arrived.
+ */
+class OllamaTurn {
+	readonly output: AssistantMessage;
+	readonly #model: Model<"ollama-chat">;
+	readonly #stream: AssistantMessageEventStream;
+	readonly #startTime = performance.now();
+	#firstTokenTime: number | undefined;
+	#sawDone = false;
+	#thinkingIndex: number | undefined;
+	#textIndex: number | undefined;
+	/** Structured tool calls, open until the `done` line closes them. */
+	readonly #toolIndices = new Set<number>();
+	// `getStreamMarkupHealingPattern` always names a pattern -- "thinking" is the
+	// floor, not an absence -- so the healer is always present here. Ollama heals
+	// inline rather than through the generic wrap because it alone knows whether
+	// the provider also streamed native reasoning (`#suppressHealedThinking`).
+	readonly #healing: StreamMarkupHealing;
+	// Once the provider streams native reasoning (`message.thinking`), drop any
+	// thinking the text-channel healer also recovers so a model that emits both
+	// does not double-count its reasoning.
+	#suppressHealedThinking = false;
+
+	constructor(model: Model<"ollama-chat">, stream: AssistantMessageEventStream) {
+		this.#model = model;
+		this.#stream = stream;
+		this.output = createInitialResponsesAssistantMessage("ollama-chat" as Api, model.provider, model.id);
+		this.#healing = new StreamMarkupHealing({ pattern: getStreamMarkupHealingPattern(model.provider, model.id) });
+	}
+
+	/** Fold one NDJSON line of the response into the message and the event stream. */
+	consume(chunk: OllamaChatChunk): void {
+		const message = chunk.message;
+		if (message?.thinking) {
+			this.#suppressHealedThinking = true;
+			this.#appendThinking(message.thinking);
+		}
+		const structuredCalls = message?.tool_calls?.length ? message.tool_calls : undefined;
+		if (message?.content) {
+			const events = structuredCalls
+				? this.#healing.feedEventsWithoutCalls(message.content)
+				: this.#healing.feedEvents(message.content);
+			for (const event of events) this.#emitHealingEvent(event);
+		}
+		if (structuredCalls) this.#openStructuredCalls(structuredCalls);
+		if (chunk.done) this.#close(chunk);
+	}
+
+	/** End the turn at the end of the response: report it done, or throw when nothing said it was over. */
+	finish(): void {
+		this.#flushHealing();
+		this.#endThinking();
+		this.#endText();
+		this.#settleStopReason();
+		this.#stampTiming();
+		const stopReason = this.output.stopReason;
+		if (stopReason === "error") {
+			this.#stream.push({ type: "error", reason: "error", error: this.output });
+		} else {
+			const reason = stopReason === "length" || stopReason === "toolUse" ? stopReason : "stop";
+			this.#stream.push({ type: "done", reason, message: this.output });
+		}
+		this.#stream.end();
+	}
+
+	/** Report a failed turn: the error the request and response classify, after what streamed so far. */
+	async fail(error: unknown, request: OllamaRequestRecord): Promise<void> {
+		for (const block of this.output.content) {
+			if (block.type === "toolCall") {
+				clearStreamingPartialJson(block);
+			}
+		}
+		const result = await AIError.finalize(error, {
+			api: this.#model.api,
+			provider: this.#model.provider,
+			rawRequestDump: materializeDumpBody(request.dump, request.bodyJson),
+			capturedErrorResponse: request.errorResponse,
+		});
+		AIError.applyFinalizeResult(this.output, result);
+		this.#stampTiming();
+		this.#stream.push({ type: "error", reason: this.output.stopReason, error: this.output });
+		this.#stream.end();
+	}
+
+	/** The `done` line: close every open block, and read the stop reason and usage it reports. */
+	#close(chunk: OllamaChatChunk): void {
+		this.#sawDone = true;
+		this.#flushHealing();
+		this.#endThinking();
+		this.#endText();
+		for (const index of this.#toolIndices) {
+			endToolCallBlock(this.#stream, this.output, index);
+		}
+		this.#toolIndices.clear();
+		this.output.stopReason = mapDoneReason(chunk.done_reason, this.output);
+		this.output.usage.input = chunk.prompt_eval_count ?? 0;
+		this.output.usage.output = chunk.eval_count ?? 0;
+		this.output.usage.totalTokens = this.output.usage.input + this.output.usage.output;
+	}
+
+	/** The stop reason the turn ends on, from what the response said and what it streamed. */
+	#settleStopReason(): void {
+		const output = this.output;
+		// No chunk ever carried `done`, so nothing in the response said the
+		// turn was over and `output.stopReason` is still the seed it was given
+		// before the first line arrived — an empty body reached the session as
+		// a finished answer. A tool call still open at EOF is a partial batch:
+		// its arguments never closed.
+		if (!this.#sawDone) {
+			const stopReason = stopReasonForTerminallessEof(output.content, this.#toolIndices.size === 0);
+			if (stopReason === undefined) {
+				throw new AIError.ProviderResponseError(
+					"Ollama stream ended without a done chunk (connection dropped or response truncated)",
+					{ provider: this.#model.provider, kind: "incomplete-stream" },
+				);
+			}
+			output.stopReason = stopReason;
+		}
+		if (output.stopReason === "length" && !hasVisibleAssistantContent(output)) {
+			output.stopReason = "error";
+			output.errorMessage = EMPTY_OLLAMA_LENGTH_COMPLETION_MESSAGE;
+		}
+		// Tool calls always mean "execute and continue" in the OpenAI/Ollama contract,
+		// whether the provider sent them structured or the healer recovered them from
+		// the text. If the turn produced tool-call blocks but reported a natural `stop`,
+		// promote to `toolUse` so the agent loop runs them (it gates execution on the
+		// stop reason). `length`/`aborted`/`error` are intentionally left untouched.
+		if (output.stopReason === "stop" && output.content.some(block => block.type === "toolCall")) {
+			output.stopReason = "toolUse";
+		}
+	}
+
+	#stampTiming(): void {
+		this.output.duration = performance.now() - this.#startTime;
+		if (this.#firstTokenTime) {
+			this.output.ttft = this.#firstTokenTime - this.#startTime;
+		}
+	}
+
+	/** Emit what the healer recovered from text the stream already passed it, and every call it completed. */
+	#flushHealing(): void {
+		for (const event of this.#healing.flushEvents()) this.#emitHealingEvent(event);
+		for (const call of this.#healing.drainCompleted()) this.#emitHealedToolCall(call);
+	}
+
+	#emitHealingEvent(event: StreamMarkupHealingEvent): void {
+		if (event.type === "text") {
+			this.#appendText(event.text);
+		} else if (event.type === "thinking") {
+			if (!this.#suppressHealedThinking) this.#appendThinking(event.thinking);
+		} else {
+			this.#emitHealedToolCall(event.call);
+		}
+	}
+
+	#endText(): void {
+		if (this.#textIndex === undefined) return;
+		endTextBlock(this.#stream, this.output, this.#textIndex);
+		this.#textIndex = undefined;
+	}
+
+	#endThinking(): void {
+		if (this.#thinkingIndex === undefined) return;
+		endThinkingBlock(this.#stream, this.output, this.#thinkingIndex);
+		this.#thinkingIndex = undefined;
+	}
+
+	#appendText(text: string): void {
+		if (text.length === 0) return;
+		this.#endThinking();
+		if (this.#textIndex === undefined) {
+			this.output.content.push({ type: "text", text: "" });
+			this.#textIndex = this.output.content.length - 1;
+			this.#stream.push({ type: "text_start", contentIndex: this.#textIndex, partial: this.output });
+		}
+		const block = this.output.content[this.#textIndex];
+		if (block?.type === "text") {
+			block.text += text;
+			this.#stream.push({ type: "text_delta", contentIndex: this.#textIndex, delta: text, partial: this.output });
+		}
+		this.#firstTokenTime ??= performance.now();
+	}
+
+	#appendThinking(thinking: string): void {
+		if (thinking.length === 0) return;
+		this.#endText();
+		if (this.#thinkingIndex === undefined) {
+			this.output.content.push({ type: "thinking", thinking: "" });
+			this.#thinkingIndex = this.output.content.length - 1;
+			this.#stream.push({ type: "thinking_start", contentIndex: this.#thinkingIndex, partial: this.output });
+		}
+		const block = this.output.content[this.#thinkingIndex];
+		if (block?.type === "thinking") {
+			block.thinking += thinking;
+			this.#stream.push({
+				type: "thinking_delta",
+				contentIndex: this.#thinkingIndex,
+				delta: thinking,
+				partial: this.output,
+			});
+		}
+		this.#firstTokenTime ??= performance.now();
+	}
+
+	/** Open a tool-call block holding `partialJson` as its arguments so far, and return its index. */
+	#openToolCall(id: string, name: string, partialJson: string): number {
+		const toolCall: InternalToolCallBlock = {
+			type: "toolCall",
+			id,
+			name,
+			arguments: parseStreamingJson<Record<string, unknown>>(partialJson),
+			[kStreamingPartialJson]: partialJson,
+		};
+		this.output.content.push(toolCall);
+		const index = this.output.content.length - 1;
+		this.#stream.push({ type: "toolcall_start", contentIndex: index, partial: this.output });
+		this.#stream.push({ type: "toolcall_delta", contentIndex: index, delta: partialJson, partial: this.output });
+		this.#firstTokenTime ??= performance.now();
+		return index;
+	}
+
+	/** A call the healer recovered from text arrives whole, so it opens and closes at once. */
+	#emitHealedToolCall(call: HealedToolCall): void {
+		this.#endThinking();
+		this.#endText();
+		endToolCallBlock(this.#stream, this.output, this.#openToolCall(call.id, call.name, call.arguments));
+	}
+
+	#openStructuredCalls(calls: readonly OllamaChunkToolCall[]): void {
+		this.#endThinking();
+		this.#endText();
+		for (const call of calls) {
+			const name = call.function?.name ?? "unknown_tool";
+			const rawArgs = call.function?.arguments;
+			const partialJson = typeof rawArgs === "string" ? rawArgs : JSON.stringify(rawArgs ?? {});
+			this.#toolIndices.add(this.#openToolCall(`ollama:${this.output.content.length}:${name}`, name, partialJson));
+		}
+	}
+}
+
 const streamOllamaOnce = (
 	model: Model<"ollama-chat">,
 	context: Context,
 	options: OllamaChatOptions = {},
 ): AssistantMessageEventStream => {
 	const stream = new AssistantMessageEventStream();
+	const turn = new OllamaTurn(model, stream);
 	void (async () => {
-		const startTime = performance.now();
-		let firstTokenTime: number | undefined;
-		let sawDone = false;
-		const output = createInitialResponsesAssistantMessage("ollama-chat" as Api, model.provider, model.id);
-		let rawRequestDump: RawHttpRequestDump | undefined;
-		/** Exact bytes of the last sent request body; materialized into a dump only on the 400/413 path. */
-		let wireBodyJson: string | undefined;
-		let capturedErrorResponse: CapturedHttpErrorResponse | undefined;
-		let activeThinkingIndex: number | undefined;
-		let activeTextIndex: number | undefined;
-		const activeToolIndices = new Set<number>();
-		// `getStreamMarkupHealingPattern` always names a pattern -- "thinking" is the
-		// floor, not an absence -- so the healer is always present here. Ollama heals
-		// inline rather than through the generic wrap because it alone knows whether
-		// the provider also streamed native reasoning (`suppressHealedThinking`).
-		const streamMarkupHealing = new StreamMarkupHealing({
-			pattern: getStreamMarkupHealingPattern(model.provider, model.id),
-		});
-		let healedToolCallEmitted = false;
-		// Once the provider streams native reasoning (`message.thinking`), drop any
-		// thinking the text-channel healer also recovers so a model that emits both
-		// does not double-count its reasoning.
-		let suppressHealedThinking = false;
-		const endActiveTextBlock = (): void => {
-			if (activeTextIndex === undefined) return;
-			endTextBlock(stream, output, activeTextIndex);
-			activeTextIndex = undefined;
-		};
-		const endActiveThinkingBlock = (): void => {
-			if (activeThinkingIndex === undefined) return;
-			endThinkingBlock(stream, output, activeThinkingIndex);
-			activeThinkingIndex = undefined;
-		};
-		const appendVisibleText = (text: string): void => {
-			if (text.length === 0) return;
-			endActiveThinkingBlock();
-			if (activeTextIndex === undefined) {
-				output.content.push({ type: "text", text: "" });
-				activeTextIndex = output.content.length - 1;
-				stream.push({ type: "text_start", contentIndex: activeTextIndex, partial: output });
-			}
-			const block = output.content[activeTextIndex];
-			if (block?.type === "text") {
-				block.text += text;
-				stream.push({
-					type: "text_delta",
-					contentIndex: activeTextIndex,
-					delta: text,
-					partial: output,
-				});
-			}
-			if (!firstTokenTime) firstTokenTime = performance.now();
-		};
-		const appendVisibleThinking = (thinking: string): void => {
-			if (thinking.length === 0) return;
-			endActiveTextBlock();
-			if (activeThinkingIndex === undefined) {
-				output.content.push({ type: "thinking", thinking: "" });
-				activeThinkingIndex = output.content.length - 1;
-				stream.push({ type: "thinking_start", contentIndex: activeThinkingIndex, partial: output });
-			}
-			const block = output.content[activeThinkingIndex];
-			if (block?.type === "thinking") {
-				block.thinking += thinking;
-				stream.push({
-					type: "thinking_delta",
-					contentIndex: activeThinkingIndex,
-					delta: thinking,
-					partial: output,
-				});
-			}
-			if (!firstTokenTime) firstTokenTime = performance.now();
-		};
-		const emitHealedToolCall = (call: HealedToolCall): void => {
-			endActiveThinkingBlock();
-			endActiveTextBlock();
-			const toolCall: InternalToolCallBlock = {
-				type: "toolCall",
-				id: call.id,
-				name: call.name,
-				arguments: parseStreamingJson<Record<string, unknown>>(call.arguments),
-				[kStreamingPartialJson]: call.arguments,
-			};
-			output.content.push(toolCall);
-			const index = output.content.length - 1;
-			stream.push({ type: "toolcall_start", contentIndex: index, partial: output });
-			stream.push({
-				type: "toolcall_delta",
-				contentIndex: index,
-				delta: call.arguments,
-				partial: output,
-			});
-			endToolCallBlock(stream, output, index);
-			healedToolCallEmitted = true;
-			if (!firstTokenTime) firstTokenTime = performance.now();
-		};
-		const emitHealingEvent = (event: StreamMarkupHealingEvent): void => {
-			if (event.type === "text") {
-				appendVisibleText(event.text);
-			} else if (event.type === "thinking") {
-				if (!suppressHealedThinking) appendVisibleThinking(event.thinking);
-			} else {
-				emitHealedToolCall(event.call);
-			}
-		};
-		const drainHealedToolCalls = (): void => {
-			for (const call of streamMarkupHealing.drainCompleted()) emitHealedToolCall(call);
-		};
+		const request: OllamaRequestRecord = {};
 		try {
-			const apiKey = options.apiKey || getEnvApiKey(model.provider);
-			if (!apiKey) {
-				throw new AIError.MissingApiKeyError(model.provider);
+			const body = await openOllamaResponse(model, context, options, request);
+			stream.push({ type: "start", partial: turn.output });
+			for await (const chunk of iterateNdjson(body)) {
+				turn.consume(chunk);
 			}
-			const baseUrl = normalizeOllamaCloudBaseUrl(model.baseUrl);
-			let body = createChatBody(model, context, options);
-			const replacementPayload = await options.onPayload?.(body, model);
-			if (replacementPayload !== undefined) {
-				body = replacementPayload as typeof body;
-			}
-			rawRequestDump = {
-				provider: model.provider,
-				api: model.api,
-				model: model.id,
-				method: "POST",
-				url: `${baseUrl}/api/chat`,
-			};
-			const bodyJson = JSON.stringify(body);
-			wireBodyJson = bodyJson;
-			// Direct callers that bypass `register-builtins` (which installs
-			// the iterator-level watchdog) need a pre-response timer alongside
-			// `timeout: false`; otherwise an Ollama server that accepts the
-			// POST and never streams headers would hang forever (issue #2422).
-			const idleTimeoutMs = options.streamIdleTimeoutMs ?? getOpenAIStreamIdleTimeoutMs();
-			const firstEventTimeoutMs =
-				options.streamFirstEventTimeoutMs ?? getOpenAIStreamFirstEventTimeoutMs(idleTimeoutMs);
-			// Cleared the instant headers arrive (below) so the pre-response timer
-			// never aborts the actively streaming body — an absolute
-			// `AbortSignal.timeout` would (issue #2422).
-			const watchdog = armPreResponseTimeout(options.signal, firstEventTimeoutMs);
-			let response: Response;
-			try {
-				response = await fetchProviderWithRetry(`${baseUrl}/api/chat`, {
-					method: "POST",
-					headers: {
-						...model.headers,
-						...options.headers,
-						Authorization: `Bearer ${apiKey}`,
-						"Content-Type": "application/json",
-					},
-					body: bodyJson,
-					signal: watchdog.signal,
-					defaultDelayMs: OLLAMA_RETRY_DELAYS_MS,
-					maxDelayMs: options.maxRetryDelayMs,
-					retry: OLLAMA_RESPONSE_RETRY_POLICY,
-					fetch: options.fetch,
-					timeout: false,
-				});
-			} finally {
-				watchdog.clear();
-			}
-			if (!response.ok) {
-				capturedErrorResponse = await captureHttpErrorResponse(response);
-				throw new AIError.OllamaApiError(`HTTP ${response.status} from ${baseUrl}/api/chat`, response.status, {
-					headers: response.headers,
-				});
-			}
-			if (!response.body) {
-				throw new AIError.OllamaApiError("Ollama returned an empty response body", response.status, {
-					headers: response.headers,
-				});
-			}
-			stream.push({ type: "start", partial: output });
-			for await (const chunk of iterateNdjson(response.body)) {
-				if (chunk.message?.thinking) {
-					suppressHealedThinking = true;
-					endActiveTextBlock();
-					if (activeThinkingIndex === undefined) {
-						output.content.push({ type: "thinking", thinking: "" });
-						activeThinkingIndex = output.content.length - 1;
-						stream.push({ type: "thinking_start", contentIndex: activeThinkingIndex, partial: output });
-					}
-					const block = output.content[activeThinkingIndex];
-					if (block?.type === "thinking") {
-						block.thinking += chunk.message.thinking;
-						stream.push({
-							type: "thinking_delta",
-							contentIndex: activeThinkingIndex,
-							delta: chunk.message.thinking,
-							partial: output,
-						});
-					}
-					if (!firstTokenTime) {
-						firstTokenTime = performance.now();
-					}
-				}
-				const chunkContent = chunk.message?.content;
-				const structuredCalls = chunk.message?.tool_calls?.length ? chunk.message.tool_calls : undefined;
-				if (chunkContent) {
-					const healingEvents = structuredCalls
-						? streamMarkupHealing.feedEventsWithoutCalls(chunkContent)
-						: streamMarkupHealing.feedEvents(chunkContent);
-					for (const event of healingEvents) {
-						emitHealingEvent(event);
-					}
-				}
-				if (structuredCalls) {
-					endActiveThinkingBlock();
-					endActiveTextBlock();
-					for (const call of structuredCalls) {
-						const name = call.function?.name ?? "unknown_tool";
-						const rawArgs = call.function?.arguments;
-						const partialJson = typeof rawArgs === "string" ? rawArgs : JSON.stringify(rawArgs ?? {});
-						const toolCall: InternalToolCallBlock = {
-							type: "toolCall",
-							id: `ollama:${output.content.length}:${name}`,
-							name,
-							arguments: parseStreamingJson<Record<string, unknown>>(partialJson),
-							[kStreamingPartialJson]: partialJson,
-						};
-						output.content.push(toolCall);
-						const index = output.content.length - 1;
-						activeToolIndices.add(index);
-						stream.push({ type: "toolcall_start", contentIndex: index, partial: output });
-						stream.push({
-							type: "toolcall_delta",
-							contentIndex: index,
-							delta: partialJson,
-							partial: output,
-						});
-						if (!firstTokenTime) {
-							firstTokenTime = performance.now();
-						}
-					}
-				}
-				if (chunk.done) {
-					sawDone = true;
-					for (const event of streamMarkupHealing.flushEvents()) {
-						emitHealingEvent(event);
-					}
-					drainHealedToolCalls();
-					endActiveThinkingBlock();
-					endActiveTextBlock();
-					for (const index of activeToolIndices) {
-						endToolCallBlock(stream, output, index);
-					}
-					activeToolIndices.clear();
-					output.stopReason = mapDoneReason(chunk.done_reason, output);
-					if (healedToolCallEmitted && output.stopReason === "stop") {
-						output.stopReason = "toolUse";
-					}
-					output.usage.input = chunk.prompt_eval_count ?? 0;
-					output.usage.output = chunk.eval_count ?? 0;
-					output.usage.totalTokens = output.usage.input + output.usage.output;
-				}
-			}
-			for (const event of streamMarkupHealing.flushEvents()) {
-				emitHealingEvent(event);
-			}
-			drainHealedToolCalls();
-			if (healedToolCallEmitted && output.stopReason === "stop") {
-				output.stopReason = "toolUse";
-			}
-			endActiveThinkingBlock();
-			endActiveTextBlock();
-			// No chunk ever carried `done`, so nothing in the response said the
-			// turn was over and `output.stopReason` is still the seed it was given
-			// before the first line arrived — an empty body reached the session as
-			// a finished answer. A tool call still open at EOF is a partial batch:
-			// its arguments never closed.
-			if (!sawDone) {
-				const stopReason = stopReasonForTerminallessEof(output.content, activeToolIndices.size === 0);
-				if (stopReason === undefined) {
-					throw new AIError.ProviderResponseError(
-						"Ollama stream ended without a done chunk (connection dropped or response truncated)",
-						{ provider: model.provider, kind: "incomplete-stream" },
-					);
-				}
-				output.stopReason = stopReason;
-			}
-			if (output.stopReason === "length" && !hasVisibleAssistantContent(output)) {
-				output.stopReason = "error";
-				output.errorMessage = EMPTY_OLLAMA_LENGTH_COMPLETION_MESSAGE;
-			}
-			// Tool calls always mean "execute and continue" in the OpenAI/Ollama contract.
-			// If the turn produced tool-call blocks but reported a natural `stop`, promote
-			// to `toolUse` so the agent loop runs them (it gates execution on the stop
-			// reason). `length`/`aborted`/`error` are intentionally left untouched.
-			if (output.stopReason === "stop" && output.content.some(block => block.type === "toolCall")) {
-				output.stopReason = "toolUse";
-			}
-			output.duration = performance.now() - startTime;
-			if (firstTokenTime) {
-				output.ttft = firstTokenTime - startTime;
-			}
-			if (output.stopReason === "error") {
-				stream.push({ type: "error", reason: "error", error: output });
-				stream.end();
-				return;
-			}
-			const doneReason =
-				output.stopReason === "length" ? "length" : output.stopReason === "toolUse" ? "toolUse" : "stop";
-			stream.push({ type: "done", reason: doneReason, message: output });
-			stream.end();
+			turn.finish();
 		} catch (error) {
-			for (const block of output.content) {
-				if (block.type === "toolCall") {
-					clearStreamingPartialJson(block);
-				}
-			}
-			const result = await AIError.finalize(error, {
-				api: model.api,
-				provider: model.provider,
-				rawRequestDump: materializeDumpBody(rawRequestDump, wireBodyJson),
-				capturedErrorResponse,
-			});
-			AIError.applyFinalizeResult(output, result);
-			output.duration = performance.now() - startTime;
-			if (firstTokenTime) {
-				output.ttft = firstTokenTime - startTime;
-			}
-			stream.push({ type: "error", reason: output.stopReason, error: output });
-			stream.end();
+			await turn.fail(error, request);
 		}
 	})();
 	return stream;

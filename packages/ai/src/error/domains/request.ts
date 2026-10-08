@@ -12,7 +12,7 @@
  */
 import { ProviderHttpError } from "../classes";
 import { Flag } from "../flag";
-import type { ErrorDomain } from "./types";
+import type { ErrorDomain, GatewayStructuralRule, GatewayVerdict, GatewayWordingRule } from "./types";
 
 const OVERFLOW_PATTERNS = [
 	/prompt is too long/i, // Anthropic
@@ -86,6 +86,11 @@ const FAST_MODE_SPEED_PARAM_PATTERN = /\bspeed\b/i;
 const FAST_MODE_NOT_SUPPORTED_PATTERN = /not support/i;
 const FAST_MODE_RATE_LIMIT_PATTERN = /rate_limit_error/i;
 const FAST_MODE_ENTITLEMENT_PATTERN = /fast mode/i;
+// A `tool_choice` the endpoint will not take. The two measured wordings: the OpenCode gateways'
+// `only '"auto"' is supported for 'tool_choice'`, and DeepSeek's `Thinking mode does not support
+// this tool_choice`. Both name the field, and both say it is the value, not the request, at fault.
+const TOOL_CHOICE_FIELD_PATTERN = /\btool_choice\b/i;
+const ONLY_SUPPORTED_PATTERN = /\bonly\b.*\bsupported\b/i;
 
 // The phrasings an endpoint uses to reject strict tools without calling it an invalid request:
 // a wire-format complaint, a `strict` value it will not mix, a tool schema it cannot take. These
@@ -140,6 +145,14 @@ export function matchesFastModeEntitlementText(message: string): boolean {
 	return FAST_MODE_RATE_LIMIT_PATTERN.test(message) && FAST_MODE_ENTITLEMENT_PATTERN.test(message);
 }
 
+/** The 400 body: the request named a `tool_choice` value the endpoint or the model does not support. */
+export function matchesToolChoiceRejectionText(message: string): boolean {
+	return (
+		TOOL_CHOICE_FIELD_PATTERN.test(message) &&
+		(FEATURE_NOT_SUPPORTED_PATTERN.test(message) || ONLY_SUPPORTED_PATTERN.test(message))
+	);
+}
+
 export const grammarDomain: ErrorDomain = {
 	id: "grammar",
 	why: "The endpoint rejected the request for carrying strict tools it cannot compile or does not implement.",
@@ -187,6 +200,26 @@ export const fastModeDomain: ErrorDomain = {
 	],
 };
 
+export const toolChoiceDomain: ErrorDomain = {
+	id: "tool-choice",
+	why: "The endpoint rejected the `tool_choice` value the request named, so the request goes out without it.",
+	recovers: [Flag.ToolChoiceRejected],
+	recovery: {
+		transport: { action: "surface" },
+		credential: { action: "surface" },
+		turn: { action: "degrade", capability: "tool-choice" },
+	},
+	rules: [
+		{
+			flags: Flag.ToolChoiceRejected,
+			name: "tool-choice-value-rejected",
+			why: "A 400 naming `tool_choice` as unsupported: a gateway that takes only `auto`, or a thinking model that takes no forced choice. The turn retries without the field and the session remembers the rejected form for that model.",
+			structural: signal => signal.status === 400,
+			text: matchesToolChoiceRejectionText,
+		},
+	],
+};
+
 /**
  * The flags a provider's own status and error code state, with no prose read at all.
  *
@@ -221,4 +254,58 @@ export const providerHttpDomain: ErrorDomain = {
 			flags: link => providerHttpFlags(link as ProviderHttpError),
 		},
 	],
+};
+
+/**
+ * The gateway's answer for a status the failure states.
+ *
+ * 401 and 403 are a refused credential, 429 a throttle, any other 4xx a request the upstream would
+ * not take, and 500 or above the upstream's own failure, each passed on with its status. A number
+ * below 400 states no failure, so it is answered as the upstream failing.
+ */
+function gatewayStatusVerdict(status: number): GatewayVerdict {
+	if (status === 401 || status === 403) return { status, type: "authentication_error" };
+	if (status === 429) return { status, type: "rate_limit_error" };
+	if (status >= 400 && status < 500) return { status, type: "invalid_request_error" };
+	if (status >= 500) return { status, type: "upstream_error" };
+	return { status: 502, type: "upstream_error" };
+}
+
+/**
+ * A status beside `HTTP`, `API error` or `status` (`status_code`, `status-code`), or a `(NNN)` token:
+ * `Google API error (400): …`, `HTTP 429: too many requests`, `status=503`. A bare number is not
+ * read, so `took 200ms` states no status.
+ */
+const GATEWAY_STATED_STATUS_PATTERN =
+	/(?:\bHTTP\b|\bAPI error\b|\bstatus(?:[- _]?code)?\b)\s*[:=]?\s*\(?\s*(\d{3})\b|\((\d{3})\)/i;
+
+/** The status the message states, or `undefined` when it states none between 100 and 599. */
+function gatewayStatedStatus(text: string): number | undefined {
+	const match = GATEWAY_STATED_STATUS_PATTERN.exec(text);
+	const raw = match?.[1] ?? match?.[2];
+	if (raw === undefined) return undefined;
+	const code = Number.parseInt(raw, 10);
+	return code >= 100 && code < 600 ? code : undefined;
+}
+
+export const gatewayStatusFieldRule: GatewayStructuralRule = {
+	name: "gateway-status-field",
+	why: "A numeric `status` on the thrown value is the upstream's own answer, so the gateway passes it on whatever the message says.",
+	answer: signal => (signal.statusField === undefined ? undefined : gatewayStatusVerdict(signal.statusField)),
+};
+
+export const gatewayStatusInMessageRule: GatewayStructuralRule = {
+	name: "gateway-status-in-message",
+	why: "Provider errors state their status inside the message (`Google API error (400): …`, `HTTP 429`, `status=503`), and a stated status outranks the words around it: `GenerateContentRequest` in a Google 400 is not a rate limit.",
+	answer: signal => {
+		const stated = gatewayStatedStatus(signal.text);
+		return stated === undefined ? undefined : gatewayStatusVerdict(stated);
+	},
+};
+
+export const gatewayInvalidRequestWordingRule: GatewayWordingRule = {
+	name: "gateway-invalid-request-wording",
+	why: "An upstream that rejects the request without a status says so in words (`unsupported`, `invalid_request`, `bad request`, `malformed`), and the request is what has to change, so the client receives a 400.",
+	wordings: ["unsupported", "invalid_request", "invalid request", "bad request", "malformed"],
+	verdict: { status: 400, type: "invalid_request_error" },
 };

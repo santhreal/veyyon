@@ -1,5 +1,6 @@
 import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
-import { type } from "arktype";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { lazy } from "@veyyon/utils/abortable";
 import {
 	MEMORY_RETAIN_MAX_BYTES,
 	MEMORY_RETAIN_MAX_ITEM_BYTES,
@@ -12,18 +13,20 @@ import { throwIfAborted } from "../core/tool-errors";
 import { requireMnemopiSessionState } from "./memory-session";
 import { retainToolView } from "./memory-view";
 
-const memoryRetainSchema = type({
-	items: type({
-		content: type("string").atMostLength(MEMORY_RETAIN_MAX_ITEM_BYTES).describe("information to remember"),
-		"context?": type("string").atMostLength(MEMORY_RETAIN_MAX_ITEM_BYTES).describe("source context"),
-	})
-		.array()
-		.atLeastLength(1)
-		.atMostLength(MEMORY_RETAIN_MAX_ITEMS)
-		.describe("memories to retain"),
-});
+const memoryRetainSchema = lazy(() =>
+	type({
+		items: type({
+			content: type("string").atMostLength(MEMORY_RETAIN_MAX_ITEM_BYTES).describe("information to remember"),
+			"context?": type("string").atMostLength(MEMORY_RETAIN_MAX_ITEM_BYTES).describe("source context"),
+		})
+			.array()
+			.atLeastLength(1)
+			.atMostLength(MEMORY_RETAIN_MAX_ITEMS)
+			.describe("memories to retain"),
+	}),
+);
 
-export type MemoryRetainParams = typeof memoryRetainSchema.infer;
+export type MemoryRetainParams = typeof memoryRetainSchema.value.infer;
 
 function assertMemoryRetainLimits(items: ReadonlyArray<{ content: string; context?: string }>): void {
 	if (items.length > MEMORY_RETAIN_MAX_ITEMS) {
@@ -78,12 +81,14 @@ function retainAbortedPartway(
 	);
 }
 
-export class MemoryRetainTool implements AgentTool<typeof memoryRetainSchema> {
+export class MemoryRetainTool implements AgentTool<typeof memoryRetainSchema.value> {
 	readonly name = "retain";
 	readonly approval = "read" as const;
 	readonly label = "Retain";
 	readonly description = toolsPrompts["tools/retain"].text;
-	readonly parameters = memoryRetainSchema;
+	get parameters(): typeof memoryRetainSchema.value {
+		return memoryRetainSchema.value;
+	}
 	readonly strict = true;
 	readonly loadMode = "discoverable";
 	readonly summary = "Store important facts in long-term memory";

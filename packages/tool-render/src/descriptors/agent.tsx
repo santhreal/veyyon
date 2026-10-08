@@ -1,3 +1,4 @@
+import { formatDuration } from "@veyyon/utils/format";
 import { stripRecommendedSuffix } from "@veyyon/wire";
 import type { ReactNode } from "react";
 import { AgentLink, Badge, Badges, InvalidArg, Kv, KvGrid, Note, Output, ResultText, Row, type Tone } from "../parts";
@@ -45,13 +46,6 @@ function taskIdLabel(id: string): string {
 	return id.includes(".") ? id.split(".").join(">") : id;
 }
 
-function fmtDuration(ms: number): string {
-	if (ms < 1000) return `${Math.round(ms)}ms`;
-	const s = ms / 1000;
-	if (s < 60) return `${s < 10 ? s.toFixed(1) : Math.round(s)}s`;
-	return `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
-}
-
 function fmtCount(n: number): string {
 	return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
@@ -90,7 +84,7 @@ function AgentResult({ res, host }: { res: Record<string, unknown>; host?: ToolR
 	const requests = finiteNumber(res.requests);
 	if (requests) stats.push(`${requests} req`);
 	const durationMs = finiteNumber(res.durationMs);
-	if (durationMs != null) stats.push(fmtDuration(durationMs));
+	if (durationMs != null) stats.push(formatDuration(durationMs));
 	const model = str(res.resolvedModel);
 	if (model) stats.push(model);
 
@@ -149,7 +143,7 @@ function AgentProgressRow({ p, host }: { p: Record<string, unknown>; host?: Tool
 	const tokens = finiteNumber(p.tokens);
 	if (tokens) bits.push(`${fmtCount(tokens)} tok`);
 	const durationMs = finiteNumber(p.durationMs);
-	if (durationMs) bits.push(fmtDuration(durationMs));
+	if (durationMs) bits.push(formatDuration(durationMs));
 	return (
 		<Row
 			k={
@@ -194,7 +188,7 @@ function TaskBody({ args, result, host }: ToolRenderProps): ReactNode {
 				{mergeFailed > 0 && <Badge tone="warn">{mergeFailed} merge failed</Badge>}{" "}
 				{failed > 0 && <Badge tone="err">{failed} failed</Badge>}{" "}
 				{aborted > 0 && <Badge tone="err">{aborted} aborted</Badge>}{" "}
-				{total != null && <span className="tv-faint">{fmtDuration(total)}</span>}
+				{total != null && <span className="tv-faint">{formatDuration(total)}</span>}
 			</Row>
 		);
 	}

@@ -25,6 +25,9 @@ import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } f
  * the next publish. Row "keeps a real tree" is the control that stops the repair from
  * being a flatten: a transcript that is legitimately a tree (two windows appending at
  * once) must come back with its siblings intact.
+ * The generated-tree row sweeps parent orders: the loader skips the id lookup for a parent that is
+ * the record in front, and a lookup it does make has to see every record of the file, including
+ * records after the first lookup and records after the one being linked.
  *
  * What it does NOT catch: a file whose HEADER line is the unreadable one, which has no
  * record in front of it to re-link to and is handled by the missing-header path; and the
@@ -116,6 +119,18 @@ function damagedContent(cwd: string, damage: readonly string[]): string {
 	return `${lines.join("\n")}\n`;
 }
 
+/** A deterministic generator, so a failing seed reproduces. */
+function mulberry32(seed: number): () => number {
+	let state = seed >>> 0;
+	return () => {
+		state = (state + 0x6d2b79f5) >>> 0;
+		let t = state;
+		t = Math.imul(t ^ (t >>> 15), t | 1);
+		t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+	};
+}
+
 describe("a broken parent chain costs only the records that cannot be read", () => {
 	let dirOverrides: DirOverridesSnapshot | undefined;
 	let agentRoot: TempDir | undefined;
@@ -184,6 +199,33 @@ describe("a broken parent chain costs only the records that cannot be read", () 
 			"e1",
 			"e1",
 		]);
+	});
+
+	it("keeps every parent the file holds and re-links only the ones it lacks, over generated trees", () => {
+		// Most records hang off the record in front, as a session appends them; the rest name any
+		// record in the file, before or after them, or a parent no line carries. The loader looks up
+		// a parent only when it is not the record in front, so every such lookup has to see the
+		// whole file, including records past the first lookup.
+		const count = 40;
+		for (let seed = 1; seed <= 64; seed++) {
+			const random = mulberry32(seed);
+			const ids = Array.from({ length: count }, (_, i) => `s${seed}-e${i}`);
+			const parents = ids.map((_, i) => {
+				if (i === 0) return HEADER_ID;
+				const roll = random();
+				if (roll < 0.6) return ids[i - 1]!;
+				if (roll < 0.9) return ids[Math.floor(random() * count)]!;
+				return `s${seed}-lost-${i}`;
+			});
+			const lines = [header(HEADER_ID, "/tmp/x"), ...ids.map((id, i) => messageEntry(id, parents[i]!, `text ${i}`))];
+			const { entries } = parseSessionContent(`${lines.map(line => JSON.stringify(line)).join("\n")}\n`);
+			const present = new Set([HEADER_ID, ...ids]);
+			const expected = parents.map((parent, i) => (present.has(parent) ? parent : ids[i - 1]));
+			expect({
+				seed,
+				parents: entries.slice(1).map(entry => ("parentId" in entry ? entry.parentId : undefined)),
+			}).toEqual({ seed, parents: expected });
+		}
 	});
 
 	it("leaves a root record alone, and stays quiet about a whole file", () => {

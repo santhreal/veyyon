@@ -8,7 +8,7 @@ import type { AgentEvent } from "@veyyon/agent-core";
 import type { Usage } from "@veyyon/ai";
 import { emptyUsage } from "@veyyon/catalog/models";
 import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
-import { errorMessage, isRecord, logger, popLoopPhase, pushLoopPhase, truncate } from "@veyyon/utils";
+import { detachedString, errorMessage, isRecord, logger, popLoopPhase, pushLoopPhase, truncate } from "@veyyon/utils";
 import type { StreamDecoder } from "argot";
 import { createAgentStreamDecoder, expandAgentReturn } from "../argot-wire";
 import type { ModelRegistry } from "../config/model-registry";
@@ -309,13 +309,19 @@ export function createAgentRunMonitor(args: RunMonitorArgs): AgentRunMonitor {
 	const outputChunks: string[] = [];
 	const finalOutputChunks: string[] = [];
 	const RECENT_OUTPUT_TAIL_BYTES = 8 * 1024;
+	const RECENT_OUTPUT_LINES = 8;
 	// `recentOutputTail` holds the child's live output ALREADY DECODED for display,
 	// never raw handles. Streamed deltas pass through `streamDecoder` (seam 3 in the
 	// argot integration manual), which buffers a handle split across deltas so the
 	// operator never sees a raw `§handle` in the live preview; `undefined` for an
 	// `off`/unarmed child, which streams straight through.
+	//
+	// The preview reads only the last RECENT_OUTPUT_TAIL_BYTES of it. The buffer is
+	// cut back to that once it holds twice as much, so a delta costs one append,
+	// not a copy of the window.
 	let recentOutputTail = "";
-	let tailLastLineRepresentable = false;
+	/** `progress.recentOutput` is behind `recentOutputTail`; the next snapshot derives it. */
+	let recentOutputStale = false;
 	let streamDecoder: StreamDecoder | undefined;
 	let streamDecoderReady = false;
 	let resolved = false;
@@ -497,7 +503,12 @@ export function createAgentRunMonitor(args: RunMonitorArgs): AgentRunMonitor {
 
 	const emitProgressNow = () => {
 		progress.durationMs = Date.now() - startTime;
-		onProgress?.({ ...progress });
+		// A snapshot outlives the run in its readers: the spawning tool call and the agent HUD keep the
+		// last one. Each tail line is a cut of the streamed text, so it is copied out here, or eight
+		// short lines keep the whole tail buffer alive for every finished agent.
+		syncRecentOutput();
+		const snapshot: AgentProgress = { ...progress, recentOutput: progress.recentOutput.map(detachedString) };
+		onProgress?.(snapshot);
 		const activityGist =
 			progress.lastIntent ?? (progress.currentTool ? `running ${progress.currentTool}` : undefined);
 		if (activityGist) AgentRegistry.global().setActivity(id, activityGist);
@@ -510,7 +521,7 @@ export function createAgentRunMonitor(args: RunMonitorArgs): AgentRunMonitor {
 				parentToolCallId: args.parentToolCallId,
 				detached: args.detached,
 				assignment,
-				progress: { ...progress },
+				progress: { ...snapshot },
 				sessionFile: args.sessionFile,
 			});
 		}
@@ -617,36 +628,32 @@ export function createAgentRunMonitor(args: RunMonitorArgs): AgentRunMonitor {
 		}
 	};
 
-	const updateRecentOutputLines = () => {
-		const lines = recentOutputTail.split("\n");
-		const filtered = lines.filter(line => line.trim());
-		progress.recentOutput = filtered.slice(-8).reverse();
-		// The tail's last raw segment (after its final newline) is "represented"
-		// in recentOutput only when it trims non-empty — an empty/whitespace-only
-		// trailing segment is filtered out, so recentOutput[0] is then the line
-		// before it, not the tail's true last line.
-		tailLastLineRepresentable = lines[lines.length - 1].trim().length > 0;
+	/**
+	 * The preview: the last RECENT_OUTPUT_LINES non-blank lines of the window, newest
+	 * first. Derived when a snapshot is taken, at most once per PROGRESS_COALESCE_MS,
+	 * not once per streamed delta: a delta only appends to the tail.
+	 */
+	const syncRecentOutput = (): void => {
+		if (!recentOutputStale) return;
+		recentOutputStale = false;
+		const window =
+			recentOutputTail.length > RECENT_OUTPUT_TAIL_BYTES
+				? recentOutputTail.slice(-RECENT_OUTPUT_TAIL_BYTES)
+				: recentOutputTail;
+		progress.recentOutput = window
+			.split("\n")
+			.filter(line => line.trim())
+			.slice(-RECENT_OUTPUT_LINES)
+			.reverse();
 	};
 
 	const appendRecentOutputTail = (text: string) => {
 		if (!text) return;
 		recentOutputTail += text;
-		const truncated = recentOutputTail.length > RECENT_OUTPUT_TAIL_BYTES;
-		if (truncated) {
+		if (recentOutputTail.length > 2 * RECENT_OUTPUT_TAIL_BYTES) {
 			recentOutputTail = recentOutputTail.slice(-RECENT_OUTPUT_TAIL_BYTES);
 		}
-		// Fast path: a token without a newline only extends the current last line.
-		// This runs on every text_delta token (hundreds/thousands per second while
-		// streaming), so skip re-splitting the whole (up to 8KB) tail unless the line
-		// structure actually changed. Requires no truncation AND the tail's last line
-		// already represented (trims non-empty) — otherwise boundaries shift and a
-		// full recompute is required. Appending to a non-empty line keeps it non-empty,
-		// so the flag stays valid across consecutive fast-path tokens.
-		if (truncated || text.includes("\n") || !tailLastLineRepresentable || progress.recentOutput.length === 0) {
-			updateRecentOutputLines();
-		} else {
-			progress.recentOutput = [progress.recentOutput[0] + text, ...progress.recentOutput.slice(1)];
-		}
+		recentOutputStale = true;
 	};
 
 	const replaceRecentOutputFromContent = (content: unknown[]) => {
@@ -658,13 +665,9 @@ export function createAgentRunMonitor(args: RunMonitorArgs): AgentRunMonitor {
 		recentOutputTail = "";
 		for (const block of content) {
 			const text = textBlockText(block);
-			if (!text) continue;
-			recentOutputTail += expandChildOutput(text);
-			if (recentOutputTail.length > RECENT_OUTPUT_TAIL_BYTES) {
-				recentOutputTail = recentOutputTail.slice(-RECENT_OUTPUT_TAIL_BYTES);
-			}
+			if (text) appendRecentOutputTail(expandChildOutput(text));
 		}
-		updateRecentOutputLines();
+		recentOutputStale = true;
 	};
 
 	const resetRecentOutput = () => {
@@ -672,7 +675,7 @@ export function createAgentRunMonitor(args: RunMonitorArgs): AgentRunMonitor {
 		streamDecoder = undefined;
 		streamDecoderReady = false;
 		recentOutputTail = "";
-		tailLastLineRepresentable = false;
+		recentOutputStale = false;
 		progress.recentOutput = [];
 	};
 

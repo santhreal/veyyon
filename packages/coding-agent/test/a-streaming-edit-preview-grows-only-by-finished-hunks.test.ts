@@ -3,7 +3,7 @@
  * arguments are still streaming. Three contracts: a free-form payload that is not JSON yet
  * is exposed as `input`, a removal hunk whose additions have not arrived stays hidden until
  * they do, and a tool that is not edit-like never gains preview fields. Stale-key dedupe and
- * abort-on-stop are asserted through the observable `onChange` count. Not covered: the
+ * abort-on-stop are asserted through the observable listener count. Not covered: the
  * file-backed `replace`/`patch`/`hashline` strategies, which have their own suites.
  */
 import { describe, expect, test } from "bun:test";
@@ -19,8 +19,10 @@ function previewFor(
 		toolName,
 		mode,
 		cwd: "/repo",
-		onChange: () => {
-			changes += 1;
+		listener: {
+			toolCallPreviewChanged: () => {
+				changes += 1;
+			},
 		},
 	});
 	return { preview, changes: () => changes };

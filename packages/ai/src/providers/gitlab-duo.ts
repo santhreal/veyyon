@@ -282,6 +282,28 @@ export function streamGitLabDuo(
 			});
 			const reasoningEffort = reasoningSelection.effort;
 
+			const shared = {
+				apiKey: directAccess.token,
+				temperature: options.temperature,
+				topP: options.topP,
+				topK: options.topK,
+				minP: options.minP,
+				presencePenalty: options.presencePenalty,
+				repetitionPenalty: options.repetitionPenalty,
+				maxTokens: options.maxTokens ?? model.maxTokens ?? undefined,
+				signal: options.signal,
+				cacheRetention: options.cacheRetention,
+				headers,
+				maxRetryDelayMs: options.maxRetryDelayMs,
+				metadata: options.metadata,
+				sessionId: options.sessionId,
+				providerSessionState: options.providerSessionState,
+				onPayload: options.onPayload,
+				onResponse: options.onResponse,
+				onSseEvent: options.onSseEvent,
+				fetch: options.fetch,
+				reasoning: reasoningEffort,
+			};
 			const inner =
 				mapping.provider === "anthropic"
 					? streamAnthropic(
@@ -294,31 +316,12 @@ export function streamGitLabDuo(
 							} as ModelSpec<"anthropic-messages">),
 							context,
 							{
-								apiKey: directAccess.token,
+								...shared,
 								isOAuth: true,
-								temperature: options.temperature,
-								topP: options.topP,
-								topK: options.topK,
-								minP: options.minP,
-								presencePenalty: options.presencePenalty,
-								repetitionPenalty: options.repetitionPenalty,
-								maxTokens: options.maxTokens ?? model.maxTokens ?? undefined,
-								signal: options.signal,
-								cacheRetention: options.cacheRetention,
-								headers,
-								maxRetryDelayMs: options.maxRetryDelayMs,
-								metadata: options.metadata,
-								sessionId: options.sessionId,
-								providerSessionState: options.providerSessionState,
-								onPayload: options.onPayload,
-								onResponse: options.onResponse,
-								onSseEvent: options.onSseEvent,
-								fetch: options.fetch,
 								thinkingEnabled: reasoningSelection.enabled,
 								thinkingBudgetTokens: reasoningEffort
 									? resolveThinkingBudget(reasoningEffort, ANTHROPIC_THINKING_BUDGETS, options.thinkingBudgets)
 									: undefined,
-								reasoning: reasoningEffort,
 								toolChoice: mapAnthropicToolChoice(options.toolChoice),
 							},
 						)
@@ -332,29 +335,7 @@ export function streamGitLabDuo(
 									compat: model.compatConfig,
 								} as ModelSpec<"openai-responses">),
 								context,
-								{
-									apiKey: directAccess.token,
-									temperature: options.temperature,
-									topP: options.topP,
-									topK: options.topK,
-									minP: options.minP,
-									presencePenalty: options.presencePenalty,
-									repetitionPenalty: options.repetitionPenalty,
-									maxTokens: options.maxTokens ?? model.maxTokens ?? undefined,
-									signal: options.signal,
-									cacheRetention: options.cacheRetention,
-									headers,
-									maxRetryDelayMs: options.maxRetryDelayMs,
-									metadata: options.metadata,
-									sessionId: options.sessionId,
-									providerSessionState: options.providerSessionState,
-									onPayload: options.onPayload,
-									onResponse: options.onResponse,
-									onSseEvent: options.onSseEvent,
-									fetch: options.fetch,
-									reasoning: reasoningEffort,
-									toolChoice: options.toolChoice,
-								} satisfies OpenAIResponsesOptions,
+								{ ...shared, toolChoice: options.toolChoice } satisfies OpenAIResponsesOptions,
 							)
 						: streamOpenAICompletions(
 								buildModel({
@@ -365,29 +346,7 @@ export function streamGitLabDuo(
 									compat: model.compatConfig,
 								} as ModelSpec<"openai-completions">),
 								context,
-								{
-									apiKey: directAccess.token,
-									temperature: options.temperature,
-									topP: options.topP,
-									topK: options.topK,
-									minP: options.minP,
-									presencePenalty: options.presencePenalty,
-									repetitionPenalty: options.repetitionPenalty,
-									maxTokens: options.maxTokens ?? model.maxTokens ?? undefined,
-									signal: options.signal,
-									cacheRetention: options.cacheRetention,
-									headers,
-									maxRetryDelayMs: options.maxRetryDelayMs,
-									metadata: options.metadata,
-									sessionId: options.sessionId,
-									providerSessionState: options.providerSessionState,
-									onPayload: options.onPayload,
-									onResponse: options.onResponse,
-									onSseEvent: options.onSseEvent,
-									fetch: options.fetch,
-									reasoning: reasoningEffort,
-									toolChoice: options.toolChoice,
-								} satisfies OpenAICompletionsOptions,
+								{ ...shared, toolChoice: options.toolChoice } satisfies OpenAICompletionsOptions,
 							);
 
 			for await (const event of inner) {

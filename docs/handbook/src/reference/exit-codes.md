@@ -15,7 +15,7 @@ Two guarantees hold everywhere:
 
 - A failure is **never** reported as `0`. An unknown or missing child status falls back to `1`, never
   success.
-- A signal death is surfaced as a distinct non-zero code, never swallowed.
+- A signal death is reported as a distinct non-zero code.
 
 The most useful distinction for a script is the one between `1` and `2`. A `1` means the invocation
 was valid and the attempt failed, so a retry may succeed. A `2` means the command line itself was

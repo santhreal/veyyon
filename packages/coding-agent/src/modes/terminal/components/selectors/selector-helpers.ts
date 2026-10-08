@@ -157,19 +157,6 @@ export function handleTabSwitchKey(data: string, switchTab: (direction: 1 | -1) 
 	return false;
 }
 
-/**
- * Pad `lines` with blank rows up to `rows` so a full-screen overlay covers the
- * viewport instead of letting the transcript peek through below it. Copies
- * before padding — the source array may be component-owned and must not be
- * mutated.
- */
-export function padLinesToHeight(lines: readonly string[], rows: number): readonly string[] {
-	if (lines.length >= rows) return lines;
-	const padded = lines.slice();
-	while (padded.length < rows) padded.push("");
-	return padded;
-}
-
 /** Edit a query by code point; ignore non-printable keys and initial whitespace. */
 export function applySearchInput(keyData: string, query: string): string | undefined {
 	if (matchesKey(keyData, "backspace")) {

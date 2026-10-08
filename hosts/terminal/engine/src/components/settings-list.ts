@@ -10,7 +10,7 @@ import { sanitizeSingleLine, wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import type { Component } from "../tui";
 import { HoverController } from "../utils/hover-controller";
 import { formatSearchStatus, handleSearchKeyInput } from "../utils/search-filter";
-import { ScrollView } from "./scroll-view";
+import { ScrollView, type ScrollViewTheme } from "./scroll-view";
 import { filterSettingItems } from "./settings-search";
 
 export interface SettingItem {
@@ -73,6 +73,13 @@ interface SettingSection {
 	name: string;
 	firstItemIndex: number;
 	lastItemIndex: number;
+}
+
+/** The flat layout's scroll window: first row, row count, and the heading pinned above it (-1 when none). */
+interface FlatViewport {
+	start: number;
+	height: number;
+	stickyHeadingIndex: number;
 }
 
 /** Optional behavior overrides for {@link SettingsList}. */
@@ -153,6 +160,11 @@ export class SettingsList implements Component {
 	#sidebarHitCol = 0;
 	/** Column where the always-aligned value gutter starts this frame (-1 when not rendered). */
 	#valueColStart = -1;
+	/** Scrollbar styling for both layouts' scroll views. */
+	#scrollTheme: ScrollViewTheme = {
+		track: text => this.#theme.hint(text),
+		thumb: text => this.#theme.label(text, true, false),
+	};
 	constructor(
 		items: SettingItem[],
 		maxVisible: number,
@@ -576,197 +588,62 @@ export class SettingsList implements Component {
 		// section cursor is the single focus indicator.
 		const isSelected = index === this.#selectedIndex && !this.#sectionFocus;
 		const prefix = isSelected ? this.#theme.cursor : "  ";
-		const prefixWidth = visibleWidth(prefix);
 		const labelTruncated = truncateToWidth(item.label, maxLabelWidth);
 		const labelPadded = labelTruncated + padding(Math.max(0, maxLabelWidth - visibleWidth(labelTruncated)));
 		const separator = "  ";
-		const valueMaxWidth = rowWidth - prefixWidth - maxLabelWidth - visibleWidth(separator) - 2;
-		// The selected boolean/enum row shows ‹ value › so the Left/Right
-		// cycling gesture is discoverable, not a hidden power feature.
-		const cyclable =
-			isSelected && !item.readOnly && !item.submenu && item.values !== undefined && item.values.length > 0;
-		// A row whose value is machine-readable (a millisecond count, a byte size) renders
-		// through its own labeller so the operator reads "5 minutes" instead of "300000".
-		// Mapped at render time from `currentValue` rather than stored beside it, because
-		// a second field would go stale the moment a submenu selection writes the first.
-		const shownValue = item.labelForValue?.(item.currentValue) ?? item.currentValue;
-		const rawValue = cyclable ? `‹ ${shownValue} ›` : String(shownValue ?? "");
-		const valuePlain = truncateToWidth(rawValue, valueMaxWidth, Ellipsis.Omit);
+		const valueMaxWidth = rowWidth - visibleWidth(prefix) - maxLabelWidth - visibleWidth(separator) - 2;
+		const valuePlain = truncateToWidth(this.#rowValue(item, isSelected), valueMaxWidth, Ellipsis.Omit);
 		const band = this.#theme.hovered;
 		const strength = band === undefined ? 0 : this.#hoverStrength(item.id, isSelected);
 		// De-emphasized rows (outside the active section) render as plain text
 		// under one dim wash so inner label/value colors don't fight it.
-		if (dimmed && !isSelected) {
-			const text = this.#theme.hint(
-				truncateToWidth(`  ${labelPadded}${separator}${valuePlain}`, Math.max(0, rowWidth)),
-			);
-			return strength > 0 && band !== undefined ? band(text, strength) : text;
-		}
-		const labelText = this.#theme.label(labelPadded, isSelected, item.changed === true);
-		const valueText = this.#theme.value(valuePlain, isSelected, item.changed === true);
-		const text = truncateToWidth(prefix + labelText + separator + valueText, Math.max(0, rowWidth));
+		const text =
+			dimmed && !isSelected
+				? this.#theme.hint(truncateToWidth(`  ${labelPadded}${separator}${valuePlain}`, Math.max(0, rowWidth)))
+				: truncateToWidth(
+						prefix +
+							this.#theme.label(labelPadded, isSelected, item.changed === true) +
+							separator +
+							this.#theme.value(valuePlain, isSelected, item.changed === true),
+						Math.max(0, rowWidth),
+					);
 		// Pointer hover paints a band behind the whole row, distinct from the
 		// keyboard selection (cursor glyph + accent) which stays where it is.
-		if (strength > 0 && band !== undefined) {
-			return band(text, strength);
-		}
-		return text;
+		return strength > 0 && band !== undefined ? band(text, strength) : text;
+	}
+
+	/**
+	 * The value cell's text, before truncation. The selected boolean/enum row shows
+	 * ‹ value › so the Left/Right cycling gesture is discoverable, not a hidden
+	 * power feature. A row whose value is machine-readable (a millisecond count, a
+	 * byte size) renders through its own labeller so the operator reads "5 minutes"
+	 * instead of "300000". Mapped at render time from `currentValue` rather than
+	 * stored beside it, because a second field would go stale the moment a submenu
+	 * selection writes the first.
+	 */
+	#rowValue(item: SettingItem, isSelected: boolean): string {
+		const cyclable =
+			isSelected && !item.readOnly && !item.submenu && item.values !== undefined && item.values.length > 0;
+		const shownValue = item.labelForValue?.(item.currentValue) ?? item.currentValue;
+		return cyclable ? `‹ ${shownValue} ›` : String(shownValue ?? "");
 	}
 
 	#renderMainList(width: number): string[] {
-		const lines: string[] = [];
-
 		if (this.#items.length === 0) {
-			lines.push(this.#theme.hint(`  ${this.#options.emptyText ?? "No settings available"}`));
-			return lines;
+			return [this.#theme.hint(`  ${this.#options.emptyText ?? "No settings available"}`)];
 		}
-
-		if (this.#filteredItems.length === 0) {
-			if (this.#shouldRenderSearchStatus()) {
-				lines.push(this.#renderSearchStatus(width));
-			}
-			lines.push(this.#theme.hint("  No matching settings"));
-			lines.push("");
-			lines.push(truncateToWidth(this.#theme.hint("  Backspace to edit search · Esc to cancel"), width));
-			return lines;
-		}
+		if (this.#filteredItems.length === 0) return this.#renderNoMatches(width);
 
 		const sections = this.#sections();
 		const splitLines =
 			this.#options.layout !== "flat" && !this.#filterQuery.trim() && sections.length >= 2
 				? this.#renderSplitList(width, sections)
 				: null;
-		if (splitLines) {
-			for (let li = 0; li < splitLines.length; li++) lines.push(splitLines[li]!);
-		} else {
-			// Expand-mode description renders inline, directly under the selected
-			// row inside the viewport (never detached below the padded panel), so
-			// it borrows its rows from the item budget up front.
-			const descMode = this.#options.descriptionMode ?? "reserved";
-			const selectedForDesc = this.#filteredItems[this.#selectedIndex];
-			const inlineDesc: string[] = [];
-			if (
-				descMode === "expand" &&
-				selectedForDesc?.description &&
-				!selectedForDesc.heading &&
-				this.#options.expandedIds?.has(selectedForDesc.id)
-			) {
-				// Reserve 4 columns for the indent ('    ') plus 2 columns for the scrollbar gutter
-				// so text never overflows contentWidth when a scrollbar is present.
-				const descWrapWidth = Math.max(1, width - 4 - 2);
-				const wrappedDesc = wrapTextWithAnsi(selectedForDesc.description, descWrapWidth);
-				const cap = Math.min(8, Math.max(1, this.#maxVisible - 4));
-				for (const line of wrappedDesc.slice(0, cap)) {
-					inlineDesc.push(this.#theme.description(`    ${line}`));
-				}
-			}
-			const computeStart = (vh: number) =>
-				clampLow(this.#selectedIndex - Math.floor(vh / 2), 0, this.#filteredItems.length - vh);
-			let viewportHeight = clamp(this.#maxVisible - inlineDesc.length, 1, this.#filteredItems.length);
-			let startIndex = computeStart(viewportHeight);
-			// Sticky header: once scrolling carries the active section's heading
-			// above the viewport, pin it as a leading row (borrowed from the
-			// scrollable window) so the category a row belongs to is never
-			// ambiguous mid-scroll.
-			let stickyHeadingIndex = this.#lastHeadingIndexBefore(startIndex);
-			if (stickyHeadingIndex >= 0 && viewportHeight > 1) {
-				viewportHeight -= 1;
-				startIndex = computeStart(viewportHeight);
-				stickyHeadingIndex = this.#lastHeadingIndexBefore(startIndex);
-				if (stickyHeadingIndex < 0) {
-					// Recentering brought the heading itself back into view.
-					viewportHeight += 1;
-					startIndex = computeStart(viewportHeight);
-				}
-			}
-			const labelWidths = this.#filteredItems.filter(item => !item.heading).map(item => visibleWidth(item.label));
-			const rawMaxLabel = labelWidths.length > 0 ? Math.max(...labelWidths) : 0;
-			const preOverflow = this.#filteredItems.length > viewportHeight;
-			const preRowWidth = Math.max(0, width - (preOverflow ? 2 : 0));
-			const labelCap = clampLow(preRowWidth - 22, 30, 42);
-			const maxLabelWidth = Math.min(labelCap, rawMaxLabel);
-			// Reserved fold/cursor gutter (2) + label column + separator (2) —
-			// the always-aligned start of the value column for this frame.
-			this.#valueColStart = 2 + maxLabelWidth + 2;
-			const visibleItems = this.#filteredItems.slice(startIndex, startIndex + viewportHeight);
-			const selectedVisiblePos = this.#selectedIndex - startIndex;
-			const descInView =
-				inlineDesc.length > 0 && selectedVisiblePos >= 0 && selectedVisiblePos < visibleItems.length;
-			const scrollHeight = viewportHeight + (descInView ? inlineDesc.length : 0);
-			const itemRowsOverflow = this.#filteredItems.length > scrollHeight;
-			const itemRowWidth = Math.max(0, width - (itemRowsOverflow ? 2 : 0));
-			// In the flat layout the active section's heading row carries the
-			// section-focus cursor (the split layout shows it in the sidebar).
-			const active = sections[this.#activeSectionIndex(sections)];
-			const focusedHeadingIndex = this.#sectionFocus && active?.name ? active.firstItemIndex - 1 : -1;
-			if (stickyHeadingIndex >= 0) {
-				const stickyItem = this.#filteredItems[stickyHeadingIndex]!;
-				lines.push(
-					this.#renderItemRow(
-						stickyItem,
-						stickyHeadingIndex,
-						maxLabelWidth,
-						itemRowWidth,
-						false,
-						stickyHeadingIndex === focusedHeadingIndex,
-					),
-				);
-				this.#hitRows[0] = undefined;
-			}
-			const itemRows = visibleItems.map((item, index) =>
-				this.#renderItemRow(
-					item,
-					startIndex + index,
-					maxLabelWidth,
-					itemRowWidth,
-					false,
-					startIndex + index === focusedHeadingIndex,
-				),
-			);
-			// Splice the expanded description directly under the selected row;
-			// rows below it shift down by the description height in the hit map.
-			if (descInView) {
-				itemRows.splice(selectedVisiblePos + 1, 0, ...inlineDesc);
-			}
-			const hitOffset = stickyHeadingIndex >= 0 ? 1 : 0;
-			visibleItems.forEach((item, index) => {
-				const shift = descInView && index > selectedVisiblePos ? inlineDesc.length : 0;
-				this.#hitRows[index + hitOffset + shift] = item.heading ? undefined : item.id;
-			});
-			const scrollView = new ScrollView(itemRows, {
-				height: scrollHeight,
-				scrollbar: "auto",
-				totalRows: this.#filteredItems.length,
-				theme: {
-					track: text => this.#theme.hint(text),
-					thumb: text => this.#theme.label(text, true, false),
-				},
-			});
-			scrollView.setScrollOffset(startIndex);
-			const scrollLines = scrollView.render(width);
-			for (let li = 0; li < scrollLines.length; li++) lines.push(scrollLines[li]!);
-			// Pad short lists to the full viewport so the panel height is constant.
-			while (lines.length < this.#maxVisible) lines.push("");
-		}
+		const lines = splitLines ?? this.#renderFlatList(width, sections);
 
 		// Description: reserved band (legacy) — expand mode renders inline
 		// under the selected row inside the viewport above.
-		if ((this.#options.descriptionMode ?? "reserved") === "reserved") {
-			lines.push("");
-			const selectedItem = this.#filteredItems[this.#selectedIndex];
-			const descLines: string[] = [];
-			if (selectedItem?.description && !selectedItem.heading) {
-				const wrappedDesc = wrapTextWithAnsi(selectedItem.description, width - 4);
-				for (const line of wrappedDesc.slice(0, 3)) {
-					descLines.push(this.#theme.description(`  ${line}`));
-				}
-				if (wrappedDesc.length > 3) {
-					descLines[2] = truncateToWidth(`${descLines[2]}…`, width);
-				}
-			}
-			while (descLines.length < 3) descLines.push("");
-			for (let li = 0; li < descLines.length; li++) lines.push(descLines[li]!);
-		}
+		if ((this.#options.descriptionMode ?? "reserved") === "reserved") this.#pushReservedDescription(lines, width);
 
 		// External-search mode: the host renders the query; skip the status row.
 		if (this.#options.typeToSearch !== false) {
@@ -782,6 +659,177 @@ export class SettingsList implements Component {
 		}
 
 		return lines;
+	}
+
+	/** The frame for a search that matches nothing: the query, the notice, and how to leave it. */
+	#renderNoMatches(width: number): string[] {
+		const lines: string[] = [];
+		if (this.#shouldRenderSearchStatus()) {
+			lines.push(this.#renderSearchStatus(width));
+		}
+		lines.push(
+			this.#theme.hint("  No matching settings"),
+			"",
+			truncateToWidth(this.#theme.hint("  Backspace to edit search · Esc to cancel"), width),
+		);
+		return lines;
+	}
+
+	/**
+	 * Flat layout: inline heading rows, a sticky heading once its section scrolls
+	 * past the top, and the expanded description spliced under the selected row.
+	 * Records the item hit map and value column for this frame, and pads to the
+	 * full viewport so the panel height is constant.
+	 */
+	#renderFlatList(width: number, sections: SettingSection[]): string[] {
+		const inlineDesc = this.#inlineDescription(width);
+		const { start, height, stickyHeadingIndex } = this.#flatViewport(inlineDesc.length);
+		const total = this.#filteredItems.length;
+		const maxLabelWidth = this.#labelColumnWidth(Math.max(0, width - (total > height ? 2 : 0)));
+		// Reserved fold/cursor gutter (2) + label column + separator (2) —
+		// the always-aligned start of the value column for this frame.
+		this.#valueColStart = 2 + maxLabelWidth + 2;
+		const visibleItems = this.#filteredItems.slice(start, start + height);
+		const selectedVisiblePos = this.#selectedIndex - start;
+		const descRows =
+			inlineDesc.length > 0 && selectedVisiblePos >= 0 && selectedVisiblePos < visibleItems.length
+				? inlineDesc.length
+				: 0;
+		const scrollHeight = height + descRows;
+		const itemRowWidth = Math.max(0, width - (total > scrollHeight ? 2 : 0));
+		// In the flat layout the active section's heading row carries the
+		// section-focus cursor (the split layout shows it in the sidebar).
+		const active = sections[this.#activeSectionIndex(sections)];
+		const focusedHeadingIndex = this.#sectionFocus && active?.name ? active.firstItemIndex - 1 : -1;
+		const lines: string[] = [];
+		if (stickyHeadingIndex >= 0) {
+			lines.push(
+				this.#renderItemRow(
+					this.#filteredItems[stickyHeadingIndex]!,
+					stickyHeadingIndex,
+					maxLabelWidth,
+					itemRowWidth,
+					false,
+					stickyHeadingIndex === focusedHeadingIndex,
+				),
+			);
+			// The pinned heading is not a hit target; `render` cleared the map.
+		}
+		const itemRows = visibleItems.map((item, index) =>
+			this.#renderItemRow(
+				item,
+				start + index,
+				maxLabelWidth,
+				itemRowWidth,
+				false,
+				start + index === focusedHeadingIndex,
+			),
+		);
+		// Splice the expanded description directly under the selected row;
+		// rows below it shift down by the description height in the hit map.
+		if (descRows > 0) {
+			itemRows.splice(selectedVisiblePos + 1, 0, ...inlineDesc);
+		}
+		// Rows already emitted above the window (the pinned heading) offset the hit map.
+		const hitOffset = lines.length;
+		for (let index = 0; index < visibleItems.length; index++) {
+			const item = visibleItems[index]!;
+			const shift = index > selectedVisiblePos ? descRows : 0;
+			this.#hitRows[index + hitOffset + shift] = item.heading ? undefined : item.id;
+		}
+		lines.push(...this.#scrollRows(itemRows, scrollHeight, start, width));
+		while (lines.length < this.#maxVisible) lines.push("");
+		return lines;
+	}
+
+	/**
+	 * Expand-mode description rows for the selected item, empty unless its id is
+	 * expanded. They render inline, directly under the selected row inside the
+	 * viewport (never detached below the padded panel), so they borrow their rows
+	 * from the item budget up front.
+	 */
+	#inlineDescription(width: number): string[] {
+		const selected = this.#filteredItems[this.#selectedIndex];
+		if (
+			(this.#options.descriptionMode ?? "reserved") !== "expand" ||
+			!selected?.description ||
+			selected.heading ||
+			!this.#options.expandedIds?.has(selected.id)
+		) {
+			return [];
+		}
+		// Reserve 4 columns for the indent ('    ') plus 2 columns for the scrollbar gutter
+		// so text never overflows contentWidth when a scrollbar is present.
+		const wrapped = wrapTextWithAnsi(selected.description, Math.max(1, width - 4 - 2));
+		const rows = Math.min(wrapped.length, 8, Math.max(1, this.#maxVisible - 4));
+		const lines: string[] = [];
+		for (let i = 0; i < rows; i++) lines.push(this.#theme.description(`    ${wrapped[i]}`));
+		return lines;
+	}
+
+	/**
+	 * Scroll window for the flat layout, centred on the selection, with `reserved`
+	 * rows held back for the inline description. Once scrolling carries the active
+	 * section's heading above the window, the heading is pinned as a leading row
+	 * borrowed from the window, so the category a row belongs to is never
+	 * ambiguous mid-scroll.
+	 */
+	#flatViewport(reserved: number): FlatViewport {
+		const total = this.#filteredItems.length;
+		const startFor = (height: number) => clampLow(this.#selectedIndex - Math.floor(height / 2), 0, total - height);
+		let height = clamp(this.#maxVisible - reserved, 1, total);
+		let start = startFor(height);
+		let stickyHeadingIndex = this.#lastHeadingIndexBefore(start);
+		if (stickyHeadingIndex >= 0 && height > 1) {
+			height -= 1;
+			start = startFor(height);
+			// The shorter window never starts earlier, so a heading stays pinned;
+			// re-resolve it because the window may have moved past a later one.
+			stickyHeadingIndex = this.#lastHeadingIndexBefore(start);
+		}
+		return { start, height, stickyHeadingIndex };
+	}
+
+	/**
+	 * Label column width for this frame: the widest setting label, capped so the
+	 * value column keeps its share of `rowWidth`. Spans every filtered item, not
+	 * only the visible ones, so the layout stays stable while scrolling.
+	 */
+	#labelColumnWidth(rowWidth: number): number {
+		let widest = 0;
+		for (const item of this.#filteredItems) {
+			if (!item.heading) widest = Math.max(widest, visibleWidth(item.label));
+		}
+		return Math.min(clampLow(rowWidth - 22, 30, 42), widest);
+	}
+
+	/** Window pre-rendered `rows` at `offset`, `height` rows tall, with a scrollbar over the whole filtered list. */
+	#scrollRows(rows: string[], height: number, offset: number, width: number): readonly string[] {
+		const scrollView = new ScrollView(rows, {
+			height,
+			scrollbar: "auto",
+			totalRows: this.#filteredItems.length,
+			theme: this.#scrollTheme,
+		});
+		scrollView.setScrollOffset(offset);
+		return scrollView.render(width);
+	}
+
+	/** The legacy description band: one blank row, then exactly three rows of the selected item's description. */
+	#pushReservedDescription(lines: string[], width: number): void {
+		lines.push("");
+		const first = lines.length;
+		const selected = this.#filteredItems[this.#selectedIndex];
+		if (selected?.description && !selected.heading) {
+			const wrapped = wrapTextWithAnsi(selected.description, width - 4);
+			for (let i = 0; i < Math.min(3, wrapped.length); i++) {
+				lines.push(this.#theme.description(`  ${wrapped[i]}`));
+			}
+			if (wrapped.length > 3) {
+				lines[first + 2] = truncateToWidth(`${lines[first + 2]}…`, width);
+			}
+		}
+		while (lines.length < first + 3) lines.push("");
 	}
 
 	/**
@@ -801,67 +849,13 @@ export class SettingsList implements Component {
 		if (paneWidth < 60) return null;
 
 		const activeIndex = this.#activeSectionIndex(sections);
-		const active = sections[activeIndex];
+		const sidebarRows = this.#sidebarRows(sectionNames, sidebarWidth, activeIndex);
+		const paneRows = this.#paneRows(sections[activeIndex], sidebarWidth, paneWidth);
 
-		const sectionStyle =
-			this.#theme.section ??
-			((text: string, isActive: boolean) =>
-				isActive ? this.#theme.label(text, true, false) : this.#theme.hint(text));
-		const sidebarRows = sectionNames.map((name, i) => {
-			const label = truncateToWidth(name, sidebarWidth - 4, Ellipsis.Omit);
-			// Section focus parks the cursor glyph on the active sidebar entry.
-			const prefix = this.#sectionFocus && i === activeIndex ? this.#theme.cursor : "  ";
-			return `${prefix}${sectionStyle(label, i === activeIndex)}${padding(sidebarWidth - visibleWidth(prefix) - visibleWidth(label))}`;
-		});
-
-		// Right pane: the whole list, continuously scrollable. The active
-		// section's heading row belongs to its dim-exempt range.
-		const activeStart = active.name ? active.firstItemIndex - 1 : active.firstItemIndex;
-		const viewportHeight = Math.min(this.#maxVisible, this.#filteredItems.length);
-		const startRow = clampLow(
-			this.#selectedIndex - Math.floor(viewportHeight / 2),
-			0,
-			this.#filteredItems.length - viewportHeight,
-		);
-		// Label column width spans all items so the layout stays stable across sections.
-		const overflow = this.#filteredItems.length > viewportHeight;
-		const rowWidth = Math.max(0, paneWidth - (overflow ? 2 : 0));
-		const labelWidths = this.#filteredItems.filter(item => !item.heading).map(item => visibleWidth(item.label));
-		const rawMaxLabel = labelWidths.length > 0 ? Math.max(...labelWidths) : 0;
-		const labelCap = clampLow(rowWidth - 22, 30, 42);
-		const maxLabelWidth = Math.min(labelCap, rawMaxLabel);
-		// Sidebar + "│ " separator (2) + reserved fold/cursor gutter (2) + label
-		// column + separator (2) — the always-aligned start of the value column.
-		this.#valueColStart = sidebarWidth + 2 + 2 + maxLabelWidth + 2;
-		const itemRows: string[] = [];
-		for (let r = 0; r < viewportHeight; r++) {
-			const index = startRow + r;
-			const item = this.#filteredItems[index];
-			if (!item) break;
-			const dimmed = index < activeStart || index > active.lastItemIndex;
-			itemRows.push(this.#renderItemRow(item, index, maxLabelWidth, rowWidth, dimmed));
-		}
-		const scrollView = new ScrollView(itemRows, {
-			height: viewportHeight,
-			scrollbar: "auto",
-			totalRows: this.#filteredItems.length,
-			theme: {
-				track: text => this.#theme.hint(text),
-				thumb: text => this.#theme.label(text, true, false),
-			},
-		});
-		scrollView.setScrollOffset(startRow);
-		const paneRows = scrollView.render(paneWidth);
-
-		// Hit maps: sidebar rows resolve to each section's first item; pane rows
-		// to the item they render.
+		// Sidebar rows resolve to each section's first item.
 		this.#sidebarHitCol = sidebarWidth;
 		for (let i = 0; i < sectionNames.length; i++) {
 			this.#sidebarHitRows[i] = this.#filteredItems[sections[i].firstItemIndex]?.id;
-		}
-		for (let r = 0; r < viewportHeight; r++) {
-			const item = this.#filteredItems[startRow + r];
-			if (item && !item.heading) this.#hitRows[r] = item.id;
 		}
 
 		const separator = this.#theme.hint("│ ");
@@ -872,6 +866,46 @@ export class SettingsList implements Component {
 			lines.push(truncateToWidth(left + separator + (paneRows[i] ?? ""), width));
 		}
 		return lines;
+	}
+
+	/** Sidebar entries, each padded to `sidebarWidth`; section focus parks the cursor glyph on the active one. */
+	#sidebarRows(sectionNames: string[], sidebarWidth: number, activeIndex: number): string[] {
+		const sectionStyle =
+			this.#theme.section ??
+			((text: string, isActive: boolean) =>
+				isActive ? this.#theme.label(text, true, false) : this.#theme.hint(text));
+		return sectionNames.map((name, i) => {
+			const label = truncateToWidth(name, sidebarWidth - 4, Ellipsis.Omit);
+			const prefix = this.#sectionFocus && i === activeIndex ? this.#theme.cursor : "  ";
+			return `${prefix}${sectionStyle(label, i === activeIndex)}${padding(sidebarWidth - visibleWidth(prefix) - visibleWidth(label))}`;
+		});
+	}
+
+	/**
+	 * Split layout's right pane: the whole list, continuously scrollable, with
+	 * rows outside `active` dimmed. The active section's heading row belongs to
+	 * its dim-exempt range. Records the pane hit map and value column.
+	 */
+	#paneRows(active: SettingSection, sidebarWidth: number, paneWidth: number): readonly string[] {
+		const total = this.#filteredItems.length;
+		const activeStart = active.name ? active.firstItemIndex - 1 : active.firstItemIndex;
+		const height = Math.min(this.#maxVisible, total);
+		const start = clampLow(this.#selectedIndex - Math.floor(height / 2), 0, total - height);
+		const rowWidth = Math.max(0, paneWidth - (total > height ? 2 : 0));
+		const maxLabelWidth = this.#labelColumnWidth(rowWidth);
+		// Sidebar + "│ " separator (2) + reserved fold/cursor gutter (2) + label
+		// column + separator (2) — the always-aligned start of the value column.
+		this.#valueColStart = sidebarWidth + 2 + 2 + maxLabelWidth + 2;
+		const rows: string[] = [];
+		for (let r = 0; r < height; r++) {
+			const index = start + r;
+			const item = this.#filteredItems[index];
+			if (!item) break;
+			const dimmed = index < activeStart || index > active.lastItemIndex;
+			rows.push(this.#renderItemRow(item, index, maxLabelWidth, rowWidth, dimmed));
+			if (!item.heading) this.#hitRows[r] = item.id;
+		}
+		return this.#scrollRows(rows, height, start, paneWidth);
 	}
 
 	handleInput(data: string): void {
@@ -885,15 +919,7 @@ export class SettingsList implements Component {
 		// Main list input handling
 		const kb = getKeybindings();
 		if (kb.matches(data, "tui.select.cancel")) {
-			if (this.#filterQuery.length > 0) {
-				this.clearSearch();
-				return;
-			}
-			if (this.#sectionFocus) {
-				this.#sectionFocus = false;
-				return;
-			}
-			this.#onCancel();
+			this.#cancel();
 			return;
 		}
 
@@ -904,11 +930,9 @@ export class SettingsList implements Component {
 		if (this.#filteredItems.length === 0) return;
 
 		if (kb.matches(data, "tui.select.up")) {
-			if (this.#sectionFocus) this.#jumpSection(-1);
-			else this.#moveSelection(-1);
+			this.#moveCursor(-1);
 		} else if (kb.matches(data, "tui.select.down")) {
-			if (this.#sectionFocus) this.#jumpSection(1);
-			else this.#moveSelection(1);
+			this.#moveCursor(1);
 		} else if (kb.matches(data, "tui.select.pageDown")) {
 			this.#jumpSection(1);
 		} else if (kb.matches(data, "tui.select.pageUp")) {
@@ -918,6 +942,19 @@ export class SettingsList implements Component {
 			if (this.#sectionFocus) this.#sectionFocus = false;
 			else this.#activateItem();
 		}
+	}
+
+	/** Esc unwinds one layer at a time: the search query, then section focus, then the list itself. */
+	#cancel(): void {
+		if (this.#filterQuery.length > 0) this.clearSearch();
+		else if (this.#sectionFocus) this.#sectionFocus = false;
+		else this.#onCancel();
+	}
+
+	/** Up/Down: whole sections while section focus is on, one selectable row otherwise. */
+	#moveCursor(delta: -1 | 1): void {
+		if (this.#sectionFocus) this.#jumpSection(delta);
+		else this.#moveSelection(delta);
 	}
 
 	#activateItem(): void {

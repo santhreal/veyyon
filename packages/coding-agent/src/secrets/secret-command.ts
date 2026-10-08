@@ -45,9 +45,11 @@ import { padding } from "@veyyon/utils/padding";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { sanitizeSingleLine } from "@veyyon/utils/wrap";
 import type { SecretAuditLog, SecretExpansionRecord } from "./audit";
+import { type ExpiryUrgency, expiryUrgency } from "./expiry";
 import type { MaskedInventory } from "./obfuscator";
 import { MAX_SECRET_NAME_LENGTH } from "./placeholder";
 import { planScopeMove } from "./scope-move";
+import { SECRET_VERB_SPELLINGS, type SecretSubcommand } from "./secret-verbs";
 import {
 	DEFAULT_TTL_MS,
 	describeTimeLeft,
@@ -59,36 +61,7 @@ import {
 	type SecretVault,
 	VAULT_SCOPES,
 	type VaultScope,
-	WARN_AT_FRACTIONS,
-	warningThresholdCrossed,
 } from "./vault";
-
-/**
- * Every subcommand `/secret` understands.
- *
- * There is no verb that opens a screen. Every capability is a word here, so a client with a
- * terminal and a client with none reach the same feature through the same grammar, and a rule
- * proved over this union is proved for both.
- */
-export type SecretSubcommand =
-	| "add"
-	// READING A VALUE OUT OF THE ENVIRONMENT IS ITS OWN COMMAND, not a modifier on `add`. As
-	// `--from-env` it was a flag, and as a plain word after `add` it would have been unreadable: the
-	// line after `add` is the credential, so a leading `from-env` there is either syntax or the first
-	// word of somebody's passphrase and nothing can tell which. A command word is decided before any
-	// value is read, so the collision cannot exist.
-	| "from-env"
-	| "list"
-	| "rm"
-	| "clear"
-	| "rename"
-	| "value"
-	| "scope"
-	| "copy"
-	| "extend"
-	| "log"
-	| "discard"
-	| "help";
 
 /** How many log lines `/secret log` shows when the operator does not say. */
 export const DEFAULT_LOG_LIMIT = 20;
@@ -432,115 +405,6 @@ export const NONINTERACTIVE_SECRET_COMMAND_USAGE = buildUsage([USAGE_ADD_FROM_EN
 export function secretCommandUsage(surface: SecretCommandSurface): string {
 	return surface === "tui" ? SECRET_COMMAND_USAGE : NONINTERACTIVE_SECRET_COMMAND_USAGE;
 }
-
-/**
- * The words `/secret` reserves, and which subcommand each one names.
- *
- * ONE OWNER for every spelling, so the parser, the help text and the completion menu cannot
- * disagree about what is a command and what is a credential. The menu derives its entries from
- * this map rather than listing them again, which is what makes a new subcommand offerable the
- * moment it is parseable.
- *
- * WHY RESERVING WORDS IS SAFE. A stored value is arbitrary bytes chosen by an issuer, so nobody's
- * API token is the literal word `list`, and `add` is what resolves the collision: the masked field
- * reached by `/secret add` accepts any text at all, and `/secret add list` stores the rest of the
- * line verbatim. Reserving EVERY verb is what makes that trade safe: a grammar that reserved only some
- * of them would store the string `list` as a credential and switch protection on, and store
- * `rm TOKEN` for `/secret rm TOKEN`, so the two commands an operator reaches for right after
- * storing something would fill the vault with garbage while the help text advertised them.
- *
- * THE FIRST WORD DECIDES, not the shape of the rest. `/secret log 50` is a malformed `log` and is
- * refused; it is never re-read as a credential that happens to begin with `log`. A grammar that
- * fell back to storing on a shape mismatch would put the silent-storage bug back for exactly the
- * lines an operator gets slightly wrong, which are the ones that need the explanation.
- */
-export const SECRET_VERB_SPELLINGS: Record<string, SecretSubcommand> = {
-	// Ordered as the completion menu is read: storing first, then the edits a stored credential
-	// needs, then the two answers about use, and the repair last.
-	add: "add",
-	// TWO SPELLINGS, like every command below that has a natural twin. `env` is what fingers reach
-	// for; `from-env` is what the old flag was called, so the operator who knew it lands on the
-	// command that replaced it rather than on a refusal.
-	"from-env": "from-env",
-	env: "from-env",
-	list: "list",
-	rm: "rm",
-	remove: "rm",
-	delete: "rm",
-	// EVERY WORD AN OPERATOR REACHES FOR TO EMPTY THE VAULT, reserved together. Before `clear`
-	// existed, none of these was a verb, so the grammar's fallback stored each one AS A CREDENTIAL:
-	// `/secret clear` filed the six-character string "clear" under a generated name, `/secret clear
-	// everything` filed the literal "clear everything", and because the first successful `add` also turns
-	// `secrets.enabled` on, the command an operator typed to empty the vault filled it and switched
-	// the subsystem on. That is the exact failure the note above predicted for a partially reserved
-	// grammar, arriving through the one verb nobody had written yet.
-	clear: "clear",
-	wipe: "clear",
-	purge: "clear",
-	empty: "clear",
-	reset: "clear",
-	rename: "rename",
-	name: "rename",
-	value: "value",
-	replace: "value",
-	scope: "scope",
-	move: "scope",
-	copy: "copy",
-	extend: "extend",
-	renew: "extend",
-	log: "log",
-	audit: "log",
-	// No alias. The verbs above have two natural spellings each; `discard` has no twin, and
-	// inventing one for a destructive-looking repair only widens what a typo can reach.
-	discard: "discard",
-	help: "help",
-};
-
-/**
- * What the terminal says each subcommand is for, and what it takes after the verb.
- *
- * A Record over the union rather than a list, so a subcommand cannot be parseable and unoffered:
- * adding a member to {@link SecretSubcommand} fails to compile until it has a line here. That is
- * the completion menu's completeness expressed as a type instead of as a test nobody updates.
- *
- * THE TERMINAL'S TRUTH, WHICH IS NOT THE DECLARATION'S. `/secret add` takes no name here, because
- * a name parsed off this line would be a credential in plaintext metadata. The declaration in
- * `builtin-declarations.ts` keeps the noninteractive spellings, which is what an ACP client is
- * told it may run.
- */
-const SECRET_TUI_SUBCOMMAND_HELP: Record<SecretSubcommand, { usage: string; description: string }> = {
-	add: { usage: "<value>", description: "Store a credential; the rest of the line is the value" },
-	"from-env": {
-		usage: "<VAR> [<name>]",
-		description: "Store the value of an environment variable, typing nothing",
-	},
-	list: { usage: "", description: "Show active secrets, never their values" },
-	rm: { usage: "<name> [global]", description: "Remove a stored secret" },
-	clear: { usage: "profile", description: "Remove every secret in one vault, naming what it removed" },
-	rename: { usage: "<name> <new-name>", description: "Give a stored secret a different name" },
-	value: { usage: "<name>", description: "Replace a secret's value, keeping its name and lifetime" },
-	scope: { usage: "<name> global", description: "Move a secret to the profile, project or global vault" },
-	copy: { usage: "<name>", description: "Copy #NAME#, the placeholder, never the value" },
-	extend: { usage: "<name> 7d", description: "Give a stored secret a fresh lifetime" },
-	log: { usage: "[<name>] [50]", description: "Show which secrets were used, and where" },
-	discard: { usage: "project", description: "Move a broken vault file aside" },
-	help: { usage: "", description: "Show every form /secret understands" },
-};
-
-/**
- * The terminal completion menu: canonical spellings only, in the order above.
- *
- * Aliases are parsed and not offered. `remove`, `delete`, `renew`, `name`, `replace`, `move` and
- * `audit` and `env` exist so muscle memory lands somewhere, and listing them beside their canonical
- * twins would double a menu whose whole job is to say what the commands are.
- */
-export const SECRET_TUI_SUBCOMMANDS: readonly { name: SecretSubcommand; usage: string; description: string }[] =
-	Object.entries(SECRET_VERB_SPELLINGS)
-		.filter(([word, subcommand]) => word === subcommand)
-		// The VALUE is used as the name, not the key: the filter above has just established they are
-		// the same string, and the value carries the `SecretSubcommand` type a caller needs in order to
-		// push a menu entry back through the parser without a cast.
-		.map(([, subcommand]) => ({ name: subcommand, ...SECRET_TUI_SUBCOMMAND_HELP[subcommand] }));
 
 /**
  * The dash-shaped tokens this grammar still mentions, and it mentions them in order to refuse them.
@@ -2049,55 +1913,4 @@ export function resolveDefaultTtl(setting: string | undefined): number | null {
 				`Fix it in /settings. Until then no default can be applied.`,
 		);
 	}
-}
-
-/** How close an entry is to lapsing. */
-type ExpiryUrgency = "soon" | "halfway";
-
-/**
- * Classify an entry against the warning thresholds. ONE owner, read by everything that has to
- * say "this one is nearly gone".
- *
- * THROUGH `warningThresholdCrossed`, NOT ITS OWN ARITHMETIC. {@link expiryWarnings} used to
- * compare against an inline `0.9` while `WARN_AT_FRACTIONS` said `[0.5, 0.9]`, so there were two
- * owners of "when do we warn" and they disagreed: the halfway warning the setting promised was
- * never raised by anything. The STATUS column in {@link renderSecretList} would have been the
- * third owner, which is why the classification lives here and not at either call site.
- *
- * The LAST fraction in the list is the urgent one, read from the list rather than written here
- * as a literal. That inline `0.9` was the original bug, and repeating it one level down would
- * have re-created it: adding a 0.99 threshold would then have described a secret with minutes
- * left as merely over halfway through its lifetime.
- */
-function expiryUrgency(entry: ScopedVaultEntry, now: number): ExpiryUrgency | null {
-	const crossed = warningThresholdCrossed(entry, now);
-	if (crossed === null) return null;
-	return crossed >= WARN_AT_FRACTIONS[WARN_AT_FRACTIONS.length - 1] ? "soon" : "halfway";
-}
-
-/**
- * Warnings for secrets far enough through their lifetime to be worth mentioning.
- *
- * A sentence per entry, where `/secret list` shows the same classification as a two-word column.
- * Both read {@link expiryUrgency}, so a threshold added to `WARN_AT_FRACTIONS` takes effect in
- * both without a second edit, and neither can call a secret nearly expired while the other
- * calls it healthy.
- *
- * Each line names the remedy, because a warning you cannot act on is noise. Expiry deletes the
- * value, so the action is to extend it before that happens rather than after. The remedy is a
- * command, not a keystroke on a screen: `extend` is a reserved word in a terminal too, so the
- * line this prints is runnable wherever it is read.
- */
-export function expiryWarnings(entries: readonly ScopedVaultEntry[], now: number): string[] {
-	const warnings: string[] = [];
-	for (const entry of entries) {
-		const urgency = expiryUrgency(entry, now);
-		if (urgency === null) continue;
-		const phrase = urgency === "soon" ? "expires soon" : "is over halfway through its lifetime";
-		warnings.push(
-			`#${entry.name}# ${phrase}, ${describeTimeLeft(entry, now)}. ` +
-				`Extend it with /secret extend ${entry.name} 7d, or it will be deleted.`,
-		);
-	}
-	return warnings;
 }

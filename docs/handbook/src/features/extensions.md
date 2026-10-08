@@ -59,7 +59,7 @@ ExtensionRunner.initialize(mode/session/tool registry)
    └─ expose runtime actions (sendMessage, setActiveTools, ...)
 ```
 
-Important constraint from `loader.ts`:
+Constraint from `loader.ts`:
 
 - calling action methods like `pi.sendMessage()` during extension load throws `ExtensionRuntimeNotInitializedError`
 - register first; perform runtime behavior from events/commands/tools
@@ -230,7 +230,7 @@ Cancelable pre-events:
 - `tool_execution_start` / `tool_execution_update` / `tool_execution_end` (observability)
 - `tool_approval_requested` / `tool_approval_resolved` (observability; emitted by `wrapper.ts` only when a tool requires approval and an approval handler is registered)
 
-`tool_result` is middleware-style: handlers run in extension order and each sees prior modifications.
+`tool_result` is middleware-style: handlers run in extension order and each receives prior modifications.
 
 ### Reliability/runtime signals
 
@@ -249,7 +249,7 @@ Cancelable pre-events:
 ### `resources_discover`
 
 `resources_discover` exists in extension types and `ExtensionRunner`.
-Current runtime note: `ExtensionRunner.emitResourcesDiscover(...)` is implemented, but there are no `AgentSession` callsites invoking it in the current codebase.
+`ExtensionRunner.emitResourcesDiscover(...)` is implemented, but no `AgentSession` code path calls it, so a `resources_discover` handler never runs.
 
 ## Tool authoring details
 
@@ -331,7 +331,7 @@ Supported:
 - `terminal.setWidgetComponent(key, factory, options)` puts a component in the same widget slot `setWidget` writes text into
 - `terminal.setEditorComponent(factory)` replaces the live editor
 
-### RPC mode (`rpc-mode.ts`)
+### RPC mode (`rpc-ui-context.ts`)
 
 `ctx.ui` is backed by RPC `extension_ui_request` events:
 

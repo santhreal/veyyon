@@ -60,6 +60,7 @@ import chalk from "chalk";
 import type { CollabGuestLink } from "../../collab/guest";
 import type { CollabHost } from "../../collab/host";
 import { KeybindingsManager } from "../../config/keybindings";
+import { recordLaunchFacts } from "../../config/launch-facts";
 import {
 	isSettingsInitialized,
 	type QuarantinedSettingsFile,
@@ -109,10 +110,12 @@ import type { AgentSession } from "../../session/agent-session";
 import { type ResolvedRoleModel, SHUTDOWN_CONSOLIDATE_BUDGET_MS } from "../../session/agent-session-types";
 import {
 	BackgroundSessions,
-	type InteractiveSessionFactory,
 	type KeptSession,
+	type NextSessionFactory,
+	type SessionHostBindings,
 } from "../../session/background-sessions";
 import { setImageDisplayProbe } from "../../session/image-visibility";
+import { isAtRestReadingDeferred, takeHeldAtRestReading } from "../../session/non-message-tokens";
 import { VibeSessionRegistry } from "../../session/vibe-runtime";
 import { BUILTIN_SLASH_COMMAND_RESERVED_NAMES } from "../../slash-commands/builtin-declarations";
 import { buildTuiBuiltinSlashCommands } from "../../slash-commands/builtin-registry";
@@ -143,7 +146,6 @@ import { getEditorCommand, openInEditor } from "../../utils/external-editor";
 import { getSessionAccentAnsi, getSessionAccentHex } from "../../utils/session-color";
 import { messageHasDisplayableThinking } from "../../utils/thinking-display";
 import { popTerminalTitle, pushTerminalTitle, setSessionTerminalTitle } from "../../utils/title-generator";
-import { recordLaunchFacts } from "../launch-facts";
 import {
 	consumeLoopLimitIteration,
 	createLoopLimitRuntime,
@@ -198,13 +200,9 @@ import { ExtensionUiController } from "./controllers/extension-ui-controller";
 import { GoalModeController } from "./controllers/goal-mode-controller";
 import { HomeAnchorLayout } from "./controllers/home-anchor-layout";
 import { InputController } from "./controllers/input-controller";
-import { MCPCommandController } from "./controllers/mcp-command-controller";
 import { OmfgController } from "./controllers/omfg-controller";
-import { SelectorController } from "./controllers/selector-controller";
+import type { SelectorController } from "./controllers/selector-controller";
 import { SessionFocusController } from "./controllers/session-focus-controller";
-import { SSHCommandController } from "./controllers/ssh-command-controller";
-import { TanCommandController } from "./controllers/tan-command-controller";
-import { TodoCommandController } from "./controllers/todo-command-controller";
 import { TranscriptComposer } from "./controllers/transcript-composer";
 import { VoiceController } from "./controllers/voice-controller";
 import { WelcomeController } from "./controllers/welcome-controller";
@@ -233,6 +231,7 @@ import type {
 	TodoItem,
 	TodoPhase,
 } from "./types";
+import { focusEditorSlot } from "./utils/interactive-context-helpers";
 import { createSelectionAttemptNotice } from "./utils/selection-notice";
 import { UiHelpers } from "./utils/ui-helpers";
 
@@ -295,6 +294,19 @@ export const SUBAGENT_OBSERVER_UI_COALESCE_MS = 100;
  */
 export const ANCHORED_BLOCK_PADDING_X = COMPOSER_INSET_COLS;
 
+/**
+ * What a todo board build reads that no board event delivers. A todo write, an
+ * agent change, the expand toggle and the anchored clock each rebuild the board
+ * themselves; the motion decision, the mount size and the theme change under it
+ * with no event of their own.
+ */
+interface TodoBoardBuildInputs {
+	motion: TodoBoardMotion;
+	columns: number;
+	maxRows: number;
+	theme: Theme;
+}
+
 export class InteractiveMode implements InteractiveModeContext {
 	session: AgentSession;
 	sessionManager: SessionManager;
@@ -306,7 +318,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * Set by the interactive host at startup. Its absence is what makes `/new`
 	 * reset the current session in place instead of handing it off.
 	 */
-	createNextSession?: InteractiveSessionFactory;
+	createNextSession?: NextSessionFactory;
 
 	ui: TUI;
 	readonly presentation: TerminalPresentationDriver;
@@ -369,6 +381,8 @@ export class InteractiveMode implements InteractiveModeContext {
 	#todoSettlePhases: TodoPhase[] | undefined;
 	/** What the last board render measured: whether anything on it is in flight. */
 	#todoBoardLive = false;
+	/** The inputs the last board build read, so a streamed event rebuilds the board only when one moved. */
+	#todoBoardBuiltFor: TodoBoardBuildInputs | undefined;
 	todoPhases: TodoPhase[] = [];
 	hideThinkingBlock = false;
 	#sessionsWithDisplayableThinkingContent = new WeakSet<AgentSession>();
@@ -425,6 +439,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		return this.#transcriptComposer.localEchoSignatures;
 	}
 	#pendingSubmittedInput: SubmittedUserInput | undefined;
+	/** Whether an edit queued the held at-rest reading for the next committed frame. */
+	#atRestReadingQueued = false;
 	lastSigintTime = 0;
 	lastEscapeTime = 0;
 	lastLeftTapTime = 0;
@@ -471,14 +487,16 @@ export class InteractiveMode implements InteractiveModeContext {
 	#planReviewCancel: (() => void) | undefined;
 	readonly lspServers: LspStartupServerInfo[] | undefined = undefined;
 	mcpManager?: MCPManager;
-	readonly #toolUiContextSetter: (uiContext: ExtensionUIContext, hasUI: boolean) => void;
-	readonly #toolNotifierSetter: (notify: HostNotifier) => void;
+	/**
+	 * The host bindings of every session this screen has displayed. A session
+	 * reclaimed from the background was displayed here before, so attaching it
+	 * again finds its bindings without the caller holding them.
+	 */
+	readonly #hostBindings = new WeakMap<AgentSession, SessionHostBindings>();
 
 	readonly #btwController: BtwController;
-	readonly #tanCommandController: TanCommandController;
 	readonly #omfgController: OmfgController;
 	readonly #commandController: CommandController;
-	readonly #todoCommandController: TodoCommandController;
 	readonly #eventController: EventController;
 	get eventController(): EventController {
 		return this.#eventController;
@@ -488,7 +506,13 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 	readonly #extensionUiController: ExtensionUiController;
 	readonly #inputController: InputController;
-	readonly #selectorController: SelectorController;
+	/**
+	 * The selector cards and panels (settings, models, accounts, sessions, dashboards) and the modules
+	 * they draw with load when the first one opens, so an idle session holds none of them. Once loaded, a
+	 * card opens synchronously, as it did before the load was deferred.
+	 */
+	#selectorController: SelectorController | undefined;
+	#selectorLoad: Promise<SelectorController> | undefined;
 	readonly #focusController: SessionFocusController;
 	get viewSession(): AgentSession {
 		return this.#focusController.target ?? this.session;
@@ -622,8 +646,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.keybindings = this.#firstFrame?.keybindings ?? KeybindingsManager.inMemory();
 		this.agent = session.agent;
 		this.#version = version;
-		this.#toolUiContextSetter = setToolUIContext;
-		this.#toolNotifierSetter = setToolNotifier;
+		this.#hostBindings.set(session, { setToolUIContext, setToolNotifier });
 		this.lspServers = lspServers;
 		this.mcpManager = mcpManager;
 		this.#eventBus = eventBus;
@@ -879,13 +902,10 @@ export class InteractiveMode implements InteractiveModeContext {
 			},
 		});
 		this.#btwController = new BtwController(this);
-		this.#tanCommandController = new TanCommandController(this);
 		this.#omfgController = new OmfgController(this);
 		this.#extensionUiController = new ExtensionUiController(this);
 		this.#eventController = new EventController(this);
 		this.#commandController = new CommandController(this);
-		this.#todoCommandController = new TodoCommandController(this);
-		this.#selectorController = new SelectorController(this);
 		this.#inputController = new InputController(this);
 		this.#voiceController = new VoiceController(this);
 		this.#goalMode = new GoalModeController(this, {
@@ -986,18 +1006,6 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.#firstFrame?.keybindings ??
 			logger.time("InteractiveMode.init:keybindings", () => KeybindingsManager.create());
 		this.#refreshComposerShortcuts();
-
-		// Clock heartbeat: once per second WHILE THE MODEL WORKS, refresh the
-		// working line's per-task elapsed and repaint the quiet chrome so the
-		// location line's run clock ticks between agent events. At rest every
-		// on-screen time readout is frozen by design (run clock shows the
-		// completed "Worked for …", the context bar tip is static), so an idle
-		// tick would repaint a byte-identical frame — it does nothing.
-		this.#clockTimer = setInterval(() => {
-			if (!this.loadingAnimation && !this.session.isStreaming) return;
-			this.#workingLoader.refreshTaskClock();
-			this.ui.requestRender();
-		}, 1000);
 
 		// Route SIGINT/SIGTERM/SIGHUP/uncaughtException through the same teardown
 		// the TUI Ctrl+C keypress path performs: persist the in-progress editor
@@ -1381,6 +1389,9 @@ export class InteractiveMode implements InteractiveModeContext {
 		});
 
 		this.#inputController.setupEditorSubmitHandler();
+		// A picker requested before the first frame opens with the rest of the early input, so its
+		// controller is loaded before the queue drains. A failed load is reported by the open itself.
+		if (this.editor.hasEarlyActions()) await this.#selectors().catch(() => undefined);
 		this.#inputController.drainEarlySubmissions();
 	}
 
@@ -1737,6 +1748,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		display?: boolean;
 		streamingBehavior?: "steer" | "followUp";
 	}): SubmittedUserInput {
+		this.takeAtRestReading();
 		const submission: SubmittedUserInput = {
 			text: input.text,
 			images: input.images,
@@ -1941,18 +1953,14 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#todoAutoClearTimer = undefined;
 	}
 
-	#isClosedTodo(task: TodoItem): boolean {
-		return isTerminalTodoStatus(task.status);
-	}
-
 	#hasClosedTodos(phases: TodoPhase[]): boolean {
-		return phases.some(phase => phase.tasks.some(task => this.#isClosedTodo(task)));
+		return phases.some(phase => phase.tasks.some(task => isClosedTodo(task)));
 	}
 
 	#removeClosedTodos(phases: TodoPhase[]): TodoPhase[] {
 		const next: TodoPhase[] = [];
 		for (const phase of phases) {
-			const tasks = phase.tasks.filter(task => !this.#isClosedTodo(task));
+			const tasks = phase.tasks.filter(task => !isClosedTodo(task));
 			if (tasks.length > 0) next.push({ name: phase.name, tasks });
 		}
 		return next;
@@ -2067,10 +2075,35 @@ export class InteractiveMode implements InteractiveModeContext {
 	 */
 	#renderTodoList(): void {
 		this.#buildTodoBoard();
+		this.#todoBoardBuiltFor = {
+			motion: this.#todoMotion(),
+			columns: this.#anchoredColumns(),
+			maxRows: this.#anchoredRowBudget(),
+			theme,
+		};
 		// The board can be the only reason a frame is owed — a task in progress with
 		// no agent running at all — so every path that redraws it re-decides
 		// whether the clock should be ticking.
 		this.#syncAnchoredMotionTimer();
+	}
+
+	/**
+	 * Whether an input the last board build read has moved with no board event to
+	 * report it: the agent starting or stopping, the mount resized, the theme
+	 * swapped. Every motion field is compared, so a field added to
+	 * `TodoBoardMotion` takes part without an edit here.
+	 */
+	#todoBoardInputsMoved(): boolean {
+		const built = this.#todoBoardBuiltFor;
+		if (built === undefined) return true;
+		if (built.theme !== theme) return true;
+		if (built.columns !== this.#anchoredColumns() || built.maxRows !== this.#anchoredRowBudget()) return true;
+		const motion = this.#todoMotion();
+		for (const field in motion) {
+			const key = field as keyof TodoBoardMotion;
+			if (motion[key] !== built.motion[key]) return true;
+		}
+		return false;
 	}
 
 	#buildTodoBoard(): void {
@@ -2781,15 +2814,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#hidePlanReview();
 	}
 
-	#getEditorTerminalPath(): string | null {
-		if (process.platform === "win32") {
-			return null;
-		}
-		return "/dev/tty";
-	}
-
 	async #openEditorTerminalHandle(): Promise<fs.FileHandle | null> {
-		const terminalPath = this.#getEditorTerminalPath();
+		const terminalPath = getEditorTerminalPath();
 		if (!terminalPath) {
 			return null;
 		}
@@ -2810,19 +2836,6 @@ export class InteractiveMode implements InteractiveModeContext {
 			return this.session.getContextUsage({ contextWindow });
 		}
 		return this.session.getContextUsage();
-	}
-
-	#formatKeepContextLabel(contextUsage: ContextUsage | undefined): string {
-		if (!contextUsage) {
-			return "Approve and keep context";
-		}
-		const tokens = formatContextTokenCount(contextUsage.tokens);
-		const contextWindow = formatContextTokenCount(contextUsage.contextWindow);
-		return `Approve and keep context (~${tokens} / ${contextWindow})`;
-	}
-
-	#isKeepContextDisabled(contextUsage: ContextUsage | undefined): boolean {
-		return contextUsage !== undefined && contextUsage.percent > PLAN_KEEP_CONTEXT_DISABLE_THRESHOLD_PERCENT;
 	}
 
 	async #copyPlanToClipboard(content: string): Promise<void> {
@@ -3315,8 +3328,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 
 		const contextUsage = this.#getPlanApprovalContextUsage();
-		const keepContextLabel = this.#formatKeepContextLabel(contextUsage);
-		const keepContextDisabled = this.#isKeepContextDisabled(contextUsage);
+		const keepContextLabel = formatKeepContextLabel(contextUsage);
+		const keepContextDisabled = isKeepContextDisabled(contextUsage);
 
 		// Model-tier slider: let the operator pick which configured role model
 		// (smol/default/slow/…) executes the approved plan. The slider always starts
@@ -3662,7 +3675,7 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	// Extension UI integration
 	setToolUIContext(uiContext: ExtensionUIContext, hasUI: boolean): void {
-		this.#toolUiContextSetter(uiContext, hasUI);
+		this.#displayedBindings().setToolUIContext(uiContext, hasUI);
 	}
 
 	/**
@@ -3673,7 +3686,15 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * reported as absent rather than accepted and dropped.
 	 */
 	setToolNotifier(notify: HostNotifier): void {
-		this.#toolNotifierSetter(notify);
+		this.#displayedBindings().setToolNotifier(notify);
+	}
+
+	#displayedBindings(): SessionHostBindings {
+		const bindings = this.#hostBindings.get(this.session);
+		if (!bindings) {
+			throw new Error(`Session ${this.sessionManager.getSessionId()} was attached without its host bindings`);
+		}
+		return bindings;
 	}
 
 	initializeHookRunner(uiContext: ExtensionUIContext, hasUI: boolean): void {
@@ -3828,13 +3849,38 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 	}
 
+	/**
+	 * Clock heartbeat: once per second WHILE THE MODEL WORKS, refresh the working line's per-task
+	 * elapsed and repaint the quiet chrome so the location line's run clock ticks between agent
+	 * events. At rest every on-screen time readout is frozen (the run clock shows the completed
+	 * "Worked for …", the context bar tip is static), so the first tick that finds the session at
+	 * rest disarms the heartbeat, and the next mount of the working loader arms it again. An idle
+	 * session wakes for no clock at all, and a session whose frame production is frozen never
+	 * re-arms it.
+	 */
+	#armClock(): void {
+		if (this.#frameProductionFrozen) return;
+		this.#clockTimer ??= setInterval(() => {
+			if (!this.loadingAnimation && !this.session.isStreaming) {
+				clearInterval(this.#clockTimer);
+				this.#clockTimer = undefined;
+				return;
+			}
+			this.#workingLoader.refreshTaskClock();
+			this.ui.requestRender();
+		}, 1000);
+	}
+
 	ensureLoadingAnimation(): void {
 		this.#workingLoader.ensure();
+		this.#armClock();
 		// The board's motion is owed by the agent moving, and this is the edge
 		// where it starts. Nothing else on this path touches the anchored
 		// regions, so without it a board that was still when the turn began
-		// stays still until some unrelated event redraws it.
-		this.#renderTodoList();
+		// stays still until some unrelated event redraws it. Every streamed event
+		// lands here as well, and a board none of whose inputs moved would draw
+		// the same rows again once per delta.
+		if (this.#todoBoardInputsMoved()) this.#renderTodoList();
 	}
 
 	/**
@@ -3933,9 +3979,45 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	/** Remove the startup welcome card (and its spacers) — the first real
 	 *  keystroke ends the hero moment. Idempotent; the bottom anchor stays so
-	 *  the composer does not jump until a conversation turn scrolls in. */
+	 *  the composer does not jump until a conversation turn scrolls in. The
+	 *  keystroke also begins the prompt that needs the tool schemas the held
+	 *  at-rest reading builds, so it queues that reading. */
 	dismissWelcome(): void {
 		this.#welcomeController.dismiss();
+		this.#takeAtRestReadingAfterNextFrame();
+	}
+
+	/**
+	 * Take the at-rest reading the launch held, after the frame that draws the current edit. The
+	 * reading builds every active tool's schema, which the prompt the edit begins needs anyway; taking
+	 * it after the frame keeps the build out of the keystroke's echo. A session that is never edited or
+	 * prompted builds no schema.
+	 */
+	#takeAtRestReadingAfterNextFrame(): void {
+		if (this.#atRestReadingQueued || !isAtRestReadingDeferred(this.session)) return;
+		this.#atRestReadingQueued = true;
+		const previous = this.ui.onFrameComposed;
+		let fired = false;
+		const hook = (): void => {
+			if (this.ui.onFrameComposed === hook) this.ui.onFrameComposed = previous;
+			previous?.();
+			if (fired) return;
+			fired = true;
+			setImmediate(() => {
+				this.#atRestReadingQueued = false;
+				this.takeAtRestReading();
+			});
+		};
+		this.ui.onFrameComposed = hook;
+	}
+
+	/**
+	 * Take the session's held at-rest reading now and redraw the gauge it measures; a no-op once taken.
+	 * A submission calls this before the session appends its message, since the reading is at rest only
+	 * before the first one, and redraws the gauge before the turn starts.
+	 */
+	takeAtRestReading(): void {
+		if (takeHeldAtRestReading(this.session)) this.ui.requestRender();
 	}
 
 	queueCompactionMessage(text: string, mode: "steer" | "followUp", images?: ImageContent[]): void {
@@ -4008,8 +4090,9 @@ export class InteractiveMode implements InteractiveModeContext {
 		return this.#commandController.handleShareCommand();
 	}
 
-	handleTodoCommand(args: string): Promise<void> {
-		return this.#todoCommandController.handleTodoCommand(args);
+	async handleTodoCommand(args: string): Promise<void> {
+		const { TodoCommandController } = await import("./controllers/todo-command-controller");
+		await new TodoCommandController(this).handleTodoCommand(args);
 	}
 
 	handleSessionCommand(): Promise<void> {
@@ -4089,7 +4172,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	async showDebugSelector(): Promise<void> {
-		await this.#selectorController.showDebugSelector();
+		await (await this.#selectors()).showDebugSelector();
 	}
 
 	resetObserverRegistry(): void {
@@ -4106,13 +4189,13 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	async handleMCPCommand(text: string): Promise<void> {
-		const controller = new MCPCommandController(this);
-		await controller.handle(text);
+		const { MCPCommandController } = await import("./controllers/mcp-command-controller");
+		await new MCPCommandController(this).handle(text);
 	}
 
 	async handleSSHCommand(text: string): Promise<void> {
-		const controller = new SSHCommandController(this);
-		await controller.handle(text);
+		const { SSHCommandController } = await import("./controllers/ssh-command-controller");
+		await new SSHCommandController(this).handle(text);
 	}
 
 	handleCompactCommand(
@@ -4144,7 +4227,37 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	focusActiveEditorArea(): void {
-		this.#selectorController.focusActiveEditorArea();
+		focusEditorSlot(this);
+	}
+
+	/** The selector controller, imported on first use; a failed import is retried on the next open. */
+	#selectors(): Promise<SelectorController> {
+		if (this.#selectorController) return Promise.resolve(this.#selectorController);
+		this.#selectorLoad ??= import("./controllers/selector-controller").then(
+			module => {
+				this.#selectorController = new module.SelectorController(this);
+				return this.#selectorController;
+			},
+			(error: unknown) => {
+				this.#selectorLoad = undefined;
+				throw error;
+			},
+		);
+		return this.#selectorLoad;
+	}
+
+	/**
+	 * Opens a card for a key or command handler that does not wait on it. Synchronous once the controller
+	 * is loaded, so input typed after the key reaches the card; the first open reports a failed load.
+	 */
+	#openSelector(open: (selectors: SelectorController) => void): void {
+		if (this.#selectorController) {
+			open(this.#selectorController);
+			return;
+		}
+		this.#selectors()
+			.then(open)
+			.catch((error: unknown) => this.showError(`Could not open the panel: ${errorMessage(error)}`));
 	}
 
 	// Selector handling
@@ -4161,23 +4274,23 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	showSettingsSelector(initialItemId?: string): void {
-		this.#selectorController.showSettingsSelector(initialItemId);
+		this.#openSelector(selectors => selectors.showSettingsSelector(initialItemId));
 	}
 
-	showAdvisorConfigure(): Promise<void> {
-		return this.#selectorController.showAdvisorConfigure();
+	async showAdvisorConfigure(): Promise<void> {
+		await (await this.#selectors()).showAdvisorConfigure();
 	}
 
 	showHistorySearch(): void {
-		this.#selectorController.showHistorySearch();
+		this.#openSelector(selectors => selectors.showHistorySearch());
 	}
 
 	showExtensionsDashboard(): void {
-		void this.#selectorController.showExtensionsDashboard();
+		this.#openSelector(selectors => void selectors.showExtensionsDashboard());
 	}
 
 	showAgentsDashboard(options?: { requireContent?: boolean }): void {
-		this.#selectorController.showAgentsDashboard(this.#observerRegistry, options);
+		this.#openSelector(selectors => selectors.showAgentsDashboard(this.#observerRegistry, options));
 	}
 
 	showSecretList(): void {
@@ -4185,11 +4298,11 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	showModelSelector(options?: { temporaryOnly?: boolean }): void {
-		this.#selectorController.showModelSelector(options);
+		this.#openSelector(selectors => selectors.showModelSelector(options));
 	}
 
 	showThinkingSelector(): void {
-		this.#selectorController.showThinkingSelector();
+		this.#openSelector(selectors => selectors.showThinkingSelector());
 	}
 
 	showSubcommandPicker(
@@ -4197,54 +4310,54 @@ export class InteractiveMode implements InteractiveModeContext {
 		subcommands: readonly SubcommandDef[],
 		onSelect: (subcommand: SubcommandDef) => void,
 	): void {
-		this.#selectorController.showSubcommandPicker(commandName, subcommands, onSelect);
+		this.#openSelector(selectors => selectors.showSubcommandPicker(commandName, subcommands, onSelect));
 	}
 
 	showPluginSelector(mode?: "install" | "uninstall"): void {
-		void this.#selectorController.showPluginSelector(mode);
+		this.#openSelector(selectors => void selectors.showPluginSelector(mode));
 	}
 
 	showUserMessageSelector(): void {
-		this.#selectorController.showUserMessageSelector();
+		this.#openSelector(selectors => selectors.showUserMessageSelector());
 	}
 
 	showCopySelector(): void {
-		this.#selectorController.showCopySelector();
+		this.#openSelector(selectors => selectors.showCopySelector());
 	}
 
 	showTreeSelector(): void {
-		this.#selectorController.showTreeSelector();
+		this.#openSelector(selectors => selectors.showTreeSelector());
 	}
 
 	showSessionSelector(): void {
-		this.#selectorController.showSessionSelector();
+		this.#openSelector(selectors => selectors.showSessionSelector());
 	}
 
-	handleResumeSession(sessionPath: string): Promise<void> {
+	async handleResumeSession(sessionPath: string): Promise<void> {
 		this.#btwController.dispose();
 		this.#omfgController.dispose();
 		this.resetObserverRegistry();
-		return this.#selectorController.handleResumeSession(sessionPath);
+		await (await this.#selectors()).handleResumeSession(sessionPath);
 	}
 
-	handleSessionDeleteCommand(): Promise<void> {
-		return this.#selectorController.handleSessionDeleteCommand();
+	async handleSessionDeleteCommand(): Promise<void> {
+		await (await this.#selectors()).handleSessionDeleteCommand();
 	}
 
-	showAccountManager(providerId?: string): Promise<void> {
-		return this.#selectorController.showAccountManager(providerId);
+	async showAccountManager(providerId?: string): Promise<void> {
+		await (await this.#selectors()).showAccountManager(providerId);
 	}
 
-	showLogin(providerId?: string): Promise<void> {
-		return this.#selectorController.showLogin(providerId);
+	async showLogin(providerId?: string): Promise<void> {
+		await (await this.#selectors()).showLogin(providerId);
 	}
 
-	showLogout(providerId?: string): Promise<void> {
-		return this.#selectorController.showLogout(providerId);
+	async showLogout(providerId?: string): Promise<void> {
+		await (await this.#selectors()).showLogout(providerId);
 	}
 
-	showResetUsageSelector(): Promise<void> {
-		return this.#selectorController.showResetUsageSelector();
+	async showResetUsageSelector(): Promise<void> {
+		await (await this.#selectors()).showResetUsageSelector();
 	}
 
 	showProviderSetup(): Promise<void> {
@@ -4307,8 +4420,9 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.onInputCallback(this.startPendingSubmission({ text: requestsPrompts["requests/rephrase"].text.trim() }));
 	}
 
-	handleTanCommand(work: string): Promise<void> {
-		return this.#tanCommandController.start(work);
+	async handleTanCommand(work: string): Promise<void> {
+		const { TanCommandController } = await import("./controllers/tan-command-controller");
+		await new TanCommandController(this).start(work);
 	}
 
 	hasActiveBtw(): boolean {
@@ -4524,6 +4638,11 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * background keeper, so a turn in flight runs to completion instead of
 	 * being aborted.
 	 *
+	 * `bindings` are required for a session this screen has not displayed
+	 * before, and the caller installs this screen's dialogs and extensions
+	 * through them afterwards (`initHooksAndCustomTools`). A session reclaimed
+	 * from the background keeps the bindings and the UI it was displayed with.
+	 *
 	 * Every controller reads `ctx.session` dynamically and none caches its own
 	 * reference, so reassigning the four session-derived fields re-points the
 	 * whole UI at once. The two event subscriptions and the status line are the
@@ -4533,12 +4652,19 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * handed off earlier looks like — so the turn state a missed `agent_start`
 	 * would have armed is armed here instead.
 	 */
-	attachMainSession(next: AgentSession): KeptSession {
+	attachMainSession(next: AgentSession, bindings?: SessionHostBindings): KeptSession {
 		const previous = this.session;
 		// Re-attaching the displayed session hands nothing over, so it must not enter
 		// the background set: that set is what the status line counts, and a visible
 		// conversation counted there reports off-screen spend to someone watching it.
 		if (next === previous) return BackgroundSessions.global().describeAttached(previous);
+		if (!bindings && !this.#hostBindings.has(next)) {
+			throw new Error(`Session ${next.sessionManager.getSessionId()} was attached without its host bindings`);
+		}
+		// Registered before the screen moves: an invalid `session.backgroundLimit` throws here and
+		// leaves the displayed session where it was, instead of detaching it unregistered.
+		const kept = BackgroundSessions.global().keep(previous, previous.settings.get("session.backgroundLimit"));
+		if (bindings) this.#hostBindings.set(next, bindings);
 		this.unsubscribe?.();
 		this.unsubscribe = undefined;
 		this.#goalMode.unsubscribeFromSession();
@@ -4552,6 +4678,30 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.statusProducer.setSession(next);
 		this.statusLine.setSource(this.statusProducer);
 		if (next.isStreaming) void this.#eventController.handleEvent({ type: "agent_start" });
-		return BackgroundSessions.global().keep(previous);
+		return kept;
 	}
+}
+
+function isClosedTodo(task: TodoItem): boolean {
+	return isTerminalTodoStatus(task.status);
+}
+
+function getEditorTerminalPath(): string | null {
+	if (process.platform === "win32") {
+		return null;
+	}
+	return "/dev/tty";
+}
+
+function formatKeepContextLabel(contextUsage: ContextUsage | undefined): string {
+	if (!contextUsage) {
+		return "Approve and keep context";
+	}
+	const tokens = formatContextTokenCount(contextUsage.tokens);
+	const contextWindow = formatContextTokenCount(contextUsage.contextWindow);
+	return `Approve and keep context (~${tokens} / ${contextWindow})`;
+}
+
+function isKeepContextDisabled(contextUsage: ContextUsage | undefined): boolean {
+	return contextUsage !== undefined && contextUsage.percent > PLAN_KEEP_CONTEXT_DISABLE_THRESHOLD_PERCENT;
 }

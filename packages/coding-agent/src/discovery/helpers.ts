@@ -30,6 +30,7 @@ import type { ContextFile } from "./capability/context-file";
 import type { ExtensionModule } from "./capability/extension-module";
 import { invalidate as invalidateFsCache, readDirEntries, readFile } from "./capability/fs";
 import type { Hook } from "./capability/hook";
+import type { Prompt } from "./capability/prompt";
 import { parseRuleConditionAndScope, type Rule, type RuleFrontmatter } from "./capability/rule";
 import type { DiscoveredSkill, SkillFrontmatter } from "./capability/skill";
 import type { SlashCommand } from "./capability/slash-command";
@@ -599,12 +600,15 @@ export async function loadFilesFromDir<T>(
 	// Use native glob for fast scanning with gitignore support
 	let matches: Array<{ path: string }>;
 	try {
+		// The native glob matches a simple pattern such as `*.md` at every depth unless told
+		// otherwise, so the non-recursive default has to reach it.
 		const result = await glob({
 			pattern,
 			path: dir,
 			gitignore: true,
 			hidden: false,
 			fileType: FileType.File,
+			recursive,
 		});
 		matches = result.matches;
 	} catch {
@@ -649,6 +653,136 @@ export async function loadFilesFromDir<T>(
 		}
 	}
 	return { items, warnings };
+}
+
+/** A configuration directory and the scope its files load at. */
+export interface ScopedConfigDir {
+	dir: string;
+	level: "user" | "project";
+}
+
+/** Merge the per-directory results of one capability into one result, in directory order. */
+export function mergeLoadResults<T>(results: readonly LoadResult<T>[]): LoadResult<T> {
+	return { items: results.flatMap(r => r.items), warnings: results.flatMap(r => r.warnings ?? []) };
+}
+
+/** Load `<dir>/commands/*.md` of every directory as slash commands named for their file. */
+export async function loadCommandDirs(
+	dirs: readonly ScopedConfigDir[],
+	provider: string,
+): Promise<LoadResult<SlashCommand>> {
+	const results = await Promise.all(
+		dirs.map(({ dir, level }) =>
+			loadFilesFromDir<SlashCommand>(path.join(dir, "commands"), provider, level, {
+				extensions: ["md"],
+				transform: (name, content, filePath, source) => ({
+					name: name.replace(/\.md$/, ""),
+					path: filePath,
+					content,
+					level,
+					_source: source,
+				}),
+			}),
+		),
+	);
+	return mergeLoadResults(results);
+}
+
+/** Load `<dir>/rules/*.{md,mdc}` of every directory as rules named for their file. */
+export async function loadRuleDirs(dirs: readonly ScopedConfigDir[], provider: string): Promise<LoadResult<Rule>> {
+	const results = await Promise.all(
+		dirs.map(({ dir, level }) =>
+			loadFilesFromDir<Rule>(path.join(dir, "rules"), provider, level, {
+				extensions: ["md", "mdc"],
+				transform: buildRuleFromMarkdown,
+			}),
+		),
+	);
+	return mergeLoadResults(results);
+}
+
+/** Load `<dir>/prompts/*.md` of every directory as prompts named for their file. */
+export async function loadPromptDirs(dirs: readonly ScopedConfigDir[], provider: string): Promise<LoadResult<Prompt>> {
+	const results = await Promise.all(
+		dirs.map(({ dir, level }) =>
+			loadFilesFromDir<Prompt>(path.join(dir, "prompts"), provider, level, {
+				extensions: ["md"],
+				transform: (name, content, filePath, source) => ({
+					name: name.replace(/\.md$/, ""),
+					path: filePath,
+					content,
+					_source: source,
+				}),
+			}),
+		),
+	);
+	return mergeLoadResults(results);
+}
+
+const CUSTOM_TOOL_EXTENSIONS = ["json", "md", "ts", "js", "sh", "bash", "py"]; // not-a-tool-name: file extensions
+
+/**
+ * Load `<dir>/tools` of every directory: one tool per `.json`/`.md` descriptor or executable
+ * script, then one per `<name>/index.ts` sub-directory. A `.json` or `.md` descriptor supplies
+ * its own name and description; any other file is named for itself.
+ */
+export async function loadCustomToolDirs(
+	dirs: readonly ScopedConfigDir[],
+	provider: string,
+): Promise<LoadResult<DiscoveredCustomTool>> {
+	const perDir = await Promise.all(
+		dirs.map(async ({ dir, level }) => {
+			const toolsDir = path.join(dir, "tools");
+			const [files, entries] = await Promise.all([
+				loadFilesFromDir<DiscoveredCustomTool>(toolsDir, provider, level, {
+					extensions: CUSTOM_TOOL_EXTENSIONS,
+					transform: (name, content, filePath, source) => {
+						let toolName: string;
+						let description: unknown;
+						if (name.endsWith(".json")) {
+							const data = tryParseJson<{ name?: string; description?: string }>(content);
+							toolName = data?.name || name.replace(/\.json$/, "");
+							description = data?.description;
+						} else if (name.endsWith(".md")) {
+							const { frontmatter } = parseFrontmatter(content, { source: filePath });
+							toolName = (frontmatter.name as string) || name.replace(/\.md$/, "");
+							description = frontmatter.description;
+						} else {
+							toolName = name.replace(/\.(ts|js|sh|bash|py)$/, "");
+						}
+						return {
+							name: toolName,
+							path: filePath,
+							description:
+								typeof description === "string" && description.trim() ? description : `${toolName} custom tool`,
+							level,
+							_source: source,
+						};
+					},
+				}),
+				readDirEntries(toolsDir),
+			]);
+			const indexPaths = entries
+				.filter(e => !e.name.startsWith(".") && e.isDirectory())
+				.map(e => path.join(toolsDir, e.name, "index.ts"));
+			const indexContents = await Promise.all(indexPaths.map(p => readFile(p)));
+			const items = files.items;
+			for (let i = 0; i < indexPaths.length; i++) {
+				if (indexContents[i] === null) continue;
+				const indexPath = indexPaths[i];
+				const toolName = path.basename(path.dirname(indexPath));
+				items.push({
+					name: toolName,
+					path: indexPath,
+					description: `${toolName} custom tool`,
+					level,
+					_source: createSourceMeta(provider, indexPath, level),
+				});
+			}
+			return { items, warnings: files.warnings };
+		}),
+	);
+	return mergeLoadResults(perDir);
 }
 
 /**

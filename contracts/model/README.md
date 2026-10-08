@@ -22,40 +22,40 @@ Each module is also a subpath: `@veyyon/model/effort`, `/model`, `/message`, `/i
 
 ## Model
 
-- `Model`, `Api`, `Provider`, `KnownApi` — a model row: id, provider, api, cost, context window,
+- `Model`, `Api`, `Provider`, `KnownApi`: a model row: id, provider, api, cost, context window,
   `ThinkingConfig`, `ThinkingBudgets`, `ModelCapabilities` and the compatibility flags.
-- `Effort`, `THINKING_EFFORTS`, `isEffort`, `canonicalizeEfforts` — the user-facing thinking
-  ladder, least to most intensive, listed once and guarded from that list.
-- `THINKING_CONTROL_MODES`, `OPENAI_REASONING_DISABLE_MODES` — thinking transports and reasoning
+- `Effort`, `THINKING_EFFORTS`, `isEffort`, `canonicalizeEfforts`: the user-facing thinking
+  ladder, least to most intensive, listed once and validated against that list.
+- `THINKING_CONTROL_MODES`, `OPENAI_REASONING_DISABLE_MODES`: thinking transports and reasoning
   disable modes, as values so a test can enumerate them.
-- `Usage` — token accounting a provider reports and a host displays.
+- `Usage`: token accounting a provider reports and a host displays.
 
 ## Message
 
-- `UserMessage`, `DeveloperMessage`, `AssistantMessage`, `ToolResultMessage`, `Message` — the
+- `UserMessage`, `DeveloperMessage`, `AssistantMessage`, `ToolResultMessage`, `Message`: the
   conversation envelope a provider consumes and produces.
-- `TextContent`, `ThinkingContent`, `RedactedThinkingContent`, `ImageContent`, `ToolCall` — the
+- `TextContent`, `ThinkingContent`, `RedactedThinkingContent`, `ImageContent`, `ToolCall`: the
   content blocks a message holds.
-- `AssistantMessageEvent` — the streamed event union: `start`, `text_*`, `thinking_*`,
+- `AssistantMessageEvent`: the streamed event union: `start`, `text_*`, `thinking_*`,
   `toolcall_*`, `done`, `error`.
 - `StopReason`, `StopDetails`, `ToolChoice`, `CacheRetention`, `CacheEnforcement`,
   `MessageAttribution`, `EMPTY_ERROR_TOOL_RESULT_TEXT`.
 - `kStreamingPartialJson` with `getStreamingPartialJson`, `setStreamingPartialJson` and
-  `clearStreamingPartialJson` — the symbol a streaming tool-call block carries its raw JSON under.
+  `clearStreamingPartialJson`: the symbol a streaming tool-call block stores its raw JSON under.
 
 ## Instrumentation
 
-- `ToolCallMetrics`, `ToolCallStatus` — the study record attached to a tool result.
-- `AssistantTurnMetrics`, `AssistantTurnStatus`, `AssistantTurnRequest` — the study record
+- `ToolCallMetrics`, `ToolCallStatus`: the study record attached to a tool result.
+- `AssistantTurnMetrics`, `AssistantTurnStatus`, `AssistantTurnRequest`: the study record
   attached to an assistant message.
-- `INSTRUMENTATION_LEVELS`, `InstrumentationLevel` — how much of each record a session keeps.
+- `INSTRUMENTATION_LEVELS`, `InstrumentationLevel`: how much of each record a session keeps.
 
 ## Service tier
 
 - `SERVICE_TIERS`, `ServiceTier`, `isServiceTier`, `OPENAI_WIRE_TIERS`, `ServiceTierFamily`,
-  `ServiceTierByFamily` — the serving-tier vocabulary.
+  `ServiceTierByFamily`: the serving-tier vocabulary.
 - `ProviderWireCapabilities`, `ProviderServiceTierCapability`,
-  `ProviderAnthropicMessagesCapability` — what one provider realizes of that vocabulary.
+  `ProviderAnthropicMessagesCapability`: what one provider realizes of that vocabulary.
 
 ## What stays behind
 

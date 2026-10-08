@@ -22,10 +22,9 @@ import { describe, expect, it } from "bun:test";
 import { execFile } from "node:child_process";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import { chromiumCanLaunch } from "../helpers/chromium-can-launch";
 import { hermeticSpawnEnv } from "../helpers/hermetic-spawn-env";
+import { CHROMIUM_AVAILABLE } from "./browser/chromium";
 
-const CHROMIUM_AVAILABLE = await chromiumCanLaunch();
 const execFileAsync = promisify(execFile);
 const fixture = path.resolve(import.meta.dirname, "../fixtures/browser-run-floats-a-rejection.ts");
 

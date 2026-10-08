@@ -1,15 +1,18 @@
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { lazy } from "@veyyon/utils/abortable";
 import { replaceTabs } from "@veyyon/utils/tab-width";
 import { truncateToWidth } from "@veyyon/utils/width";
-import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";
 import { resolveActiveBranchSession } from "../helpers";
 import { buildExperimentState } from "../state";
 import type { AutoresearchToolFactoryOptions } from "../types";
 
-const updateNotesSchema = type({
-	"body?": type("string").describe("replacement notes body"),
-	"append_idea?": type("string").describe("append as bullet under Ideas instead of replacing body"),
-});
+const updateNotesSchema = lazy(() =>
+	type({
+		"body?": type("string").describe("replacement notes body"),
+		"append_idea?": type("string").describe("append as bullet under Ideas instead of replacing body"),
+	}),
+);
 
 interface UpdateNotesDetails {
 	notes: string;
@@ -17,13 +20,15 @@ interface UpdateNotesDetails {
 
 export function createUpdateNotesTool(
 	options: AutoresearchToolFactoryOptions,
-): ToolDefinition<typeof updateNotesSchema, UpdateNotesDetails> {
+): ToolDefinition<typeof updateNotesSchema.value, UpdateNotesDetails> {
 	return {
 		name: "update_notes",
 		label: "Update Notes",
 		description:
 			"Persist the durable autoresearch playbook (goal, scope notes, hypotheses, ideas backlog) on the active session. Pass `body` to replace the entire notes blob, or `append_idea` to append a single bullet under an `## Ideas` section.",
-		parameters: updateNotesSchema,
+		get parameters() {
+			return updateNotesSchema.value;
+		},
 		defaultInactive: true,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const sessionResult = await resolveActiveBranchSession(ctx.cwd);

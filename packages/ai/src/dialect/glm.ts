@@ -28,6 +28,7 @@ import type {
 	InbandScanEvent,
 	InbandScanner,
 	InbandScannerOptions,
+	InbandToolEnd,
 } from "./types";
 import {
 	ARG_KEY_CLOSE,
@@ -124,7 +125,7 @@ class GLMInbandScanner implements InbandScanner {
 			}
 
 			if (this.#state === "key") {
-				if (!this.#consumeKey(final)) break;
+				if (!this.#consumeKey()) break;
 				continue;
 			}
 
@@ -135,7 +136,7 @@ class GLMInbandScanner implements InbandScanner {
 
 			if (!this.#consumeValue(final, events)) break;
 		}
-		if (final && this.#state === "thinking") this.#endThinking(events);
+		if (final) this.#endAtStreamEnd(events);
 		return events;
 	}
 
@@ -174,9 +175,9 @@ class GLMInbandScanner implements InbandScanner {
 		const delimiter = minFound(newline, key, close);
 		if (delimiter === -1) {
 			if (!final) return false;
+			// A name the stream ended inside: the call it opens ends at stream end.
 			this.#beginCall(this.#buffer, events);
 			this.#buffer = "";
-			this.#endCall(events);
 			return false;
 		}
 
@@ -221,12 +222,9 @@ class GLMInbandScanner implements InbandScanner {
 		return true;
 	}
 
-	#consumeKey(final: boolean): boolean {
+	#consumeKey(): boolean {
 		const close = this.#buffer.indexOf(ARG_KEY_CLOSE);
-		if (close === -1) {
-			if (final) this.#dropCall();
-			return false;
-		}
+		if (close === -1) return false;
 		if (this.#call) {
 			this.#call.key = this.#buffer.slice(0, close).trim();
 			this.#appendCallRaw(this.#buffer.slice(0, close + ARG_KEY_CLOSE.length));
@@ -270,7 +268,6 @@ class GLMInbandScanner implements InbandScanner {
 			const emit = this.#buffer.slice(0, this.#buffer.length - hold);
 			this.#streamValue(emit, events);
 			this.#buffer = this.#buffer.slice(this.#buffer.length - hold);
-			if (final) this.#dropCall();
 			return false;
 		}
 		this.#streamValue(this.#buffer.slice(0, close), events);
@@ -316,21 +313,33 @@ class GLMInbandScanner implements InbandScanner {
 		call.valueRaw = "";
 	}
 
-	#endCall(events: InbandScanEvent[]): void {
+	#endCall(events: InbandScanEvent[], unterminated = false): void {
 		const call = this.#call;
 		if (!call) {
 			this.#state = "outside";
 			return;
 		}
-		events.push({
+		const end: InbandToolEnd = {
 			type: "toolEnd",
 			id: call.id,
 			name: call.name,
 			arguments: call.arguments,
 			rawBlock: call.rawBlock,
-		});
+		};
+		if (unterminated) end.unterminated = true;
+		events.push(end);
 		this.#call = null;
 		this.#state = "outside";
+	}
+
+	/** The stream ended: a reasoning section ends, and an announced call ends with the arguments read so far. */
+	#endAtStreamEnd(events: InbandScanEvent[]): void {
+		if (this.#state === "thinking") this.#endThinking(events);
+		if (this.#state === "outside") return;
+		if (this.#state === "value") this.#endValue();
+		this.#appendCallRaw(this.#buffer);
+		this.#buffer = "";
+		this.#endCall(events, true);
 	}
 
 	#dropCall(): void {

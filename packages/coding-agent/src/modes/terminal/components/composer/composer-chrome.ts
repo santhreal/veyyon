@@ -17,7 +17,6 @@ import type { MouseRoutable, SgrMouseEvent } from "@veyyon/utils/mouse";
 import { estimateTokensFromText } from "@veyyon/utils/tokens";
 import { truncateToWidth } from "@veyyon/utils/width";
 import type { ComposerMode, ComposerState } from "@veyyon/wire/presentation";
-import { isThresholdCompactionDisabled } from "../../../../config/compaction-strategy";
 import { settings } from "../../../../config/settings-instance";
 import { groundHairlineHex, groundTintFgAnsi } from "../../../../theme/ground-tints";
 import { theme } from "../../../../theme/theme-binding";
@@ -539,10 +538,7 @@ export class LaunchComposerFoot implements Component {
 		// The endless-session `∞` is a CONFIGURED fact, not a measured one, so the
 		// row states it now rather than letting it appear beside the gauge a
 		// second later. Same predicate the session mirrors into the live row.
-		const autoCompactEnabled = !isThresholdCompactionDisabled(
-			settings.get("compaction.enabled"),
-			settings.get("compaction.strategy"),
-		);
+		const autoCompactEnabled = settings.get("compaction.enabled");
 		const groups = gatherQuietSegments({
 			width: avail,
 			effectiveSettings,

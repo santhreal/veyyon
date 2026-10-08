@@ -9,10 +9,10 @@ See [Editing and repair](../using/editing.md) and [The hashline edit engine](../
 ## Tool approval tiers
 
 `tools.approvalMode` is one of `plan`, `ask`, `ask-command`, `auto`, or `yolo`.
-`auto` is the default. Older names map onto those: `always-ask` to `ask`, `write`
-and `auto-edit` to `ask-command`. The tiers are read, write, and exec.
+`auto` is the default. Three aliases are accepted: `always-ask` for `ask`, and
+`write` and `auto-edit` for `ask-command`. The tiers are read, write, and exec.
 
-Four guards sit above the mode and no mode lifts them:
+Four checks apply in every mode, and no mode disables them:
 
 - Per-tool overrides in `tools.approval`.
 - The working-directory boundary.
@@ -20,8 +20,9 @@ Four guards sit above the mode and no mode lifts them:
 - `bash-guard.ts`, which forces a prompt on a destructive command such as a
   recursive delete of the home directory. `yolo` does not lift it.
 
-`bashInterceptor.enabled` adds a user-configured layer on top, off by default,
-matching `bashInterceptor.patterns`.
+`bashInterceptor.enabled`, off by default, adds a pattern check on top: a shell
+command that matches `bashInterceptor.patterns` is blocked with a message that
+states the dedicated tool to use instead.
 
 See [Approvals](../features/sandbox.md) and `/settings` -> Interaction ->
 Approvals.
@@ -41,11 +42,11 @@ The agent loop, TUI, session format, MCP, skills, hooks, and extensions operate 
 
 ## Engine modes
 
-Compaction, goal continuation, plan mode, vibe mode, and task agents live in the session and tool layer, not only in prompt text. Goal mode can keep an idle session moving toward a stored objective. Plan mode writes a plan file and holds back mutation until the resolve and approval paths complete.
+Compaction, goal continuation, plan mode, vibe mode, and task agents are implemented in the session and tool layer, not only in prompt text. Goal mode can keep an idle session moving toward a stored objective. Plan mode writes a plan file and holds back mutation until the resolve and approval paths complete.
 
 ## Profiles
 
-Every profile, including `default`, lives at `~/.veyyon/profiles/<name>/agent/`, which holds its settings, sessions, MCP config, skills, and hooks. See [Profiles](../features/profiles.md) and [File locations](../reference/file-locations.md).
+Every profile, including `default`, is stored at `~/.veyyon/profiles/<name>/agent/`, which holds its settings, sessions, MCP config, skills, and hooks. See [Profiles](../features/profiles.md) and [File locations](../reference/file-locations.md).
 
 ## Related
 

@@ -6,11 +6,15 @@
  * Recovery fails closed when the target changed or became ambiguous. The
  * patcher then returns a mismatch with fresh context instead of guessing.
  */
-import * as Diff from "diff";
+import { lazy } from "@veyyon/utils/abortable";
+import type * as Diff from "diff";
 import { applyEdits, collectEditAnchorLines } from "./apply";
 import { RECOVERY_EXTERNAL_WARNING, RECOVERY_LINE_REMAP_WARNING, RECOVERY_SESSION_CHAIN_WARNING } from "./messages";
 import type { SnapshotStore } from "./snapshots";
-import type { Anchor, ApplyResult, Edit } from "./types";
+import type { ApplyResult, Edit } from "./types";
+
+/** The `diff` package, evaluated on the first recovery rather than when the patcher loads. */
+const diffPackage = lazy(() => require("diff") as typeof Diff);
 
 export interface RecoveryArgs {
 	path: string;
@@ -31,7 +35,7 @@ export interface RecoveryResult {
 function buildLineMap(previousText: string, currentText: string): Map<number, number> {
 	const previousLines = previousText.split("\n");
 	const currentLines = currentText.split("\n");
-	const changes = Diff.diffArrays(previousLines, currentLines);
+	const changes = diffPackage.value.diffArrays(previousLines, currentLines);
 	const map = new Map<number, number>();
 	let previousLine = 1;
 	let currentLine = 1;
@@ -171,57 +175,58 @@ interface RemappedEdits {
 function remapEditsToCurrent(previousText: string, currentText: string, edits: readonly Edit[]): RemappedEdits | null {
 	const lineMap = buildLineMap(previousText, currentText);
 	if (!validateRemappedAnchorContext(previousText, currentText, lineMap, edits)) return null;
-	const offsets: number[] = [];
-
-	const mapLine = (line: number): number | null => {
-		const mapped = lineMap.get(line);
-		if (mapped === undefined) return null;
-		offsets.push(mapped - line);
-		return mapped;
-	};
-
-	const mapAnchor = (anchor: Anchor): Anchor | null => {
-		const line = mapLine(anchor.line);
-		return line === null ? null : { line };
-	};
-
+	const remap = new AnchorRemap(lineMap);
 	const remapped: Edit[] = [];
 	for (const edit of edits) {
-		if (edit.kind === "delete") {
-			const anchor = mapAnchor(edit.anchor);
-			if (anchor === null) return null;
-			remapped.push({ ...edit, anchor });
-			continue;
-		}
-		if (edit.kind === "block") {
-			const anchor = mapAnchor(edit.anchor);
-			if (anchor === null) return null;
-			remapped.push({ ...edit, anchor });
-			continue;
-		}
+		const mapped = remap.edit(edit);
+		if (mapped === null) return null;
+		remapped.push(mapped);
+	}
+	const offset = remap.offset;
+	return offset === undefined ? null : { edits: remapped, offset };
+}
 
+/**
+ * Maps edit anchors from the tagged snapshot to the live text. Every mapped
+ * line must move by the same offset; a line with no mapping, or one that moves
+ * by a different offset than the first, fails the edit that names it.
+ */
+class AnchorRemap {
+	readonly #lineMap: Map<number, number>;
+	/** The shift every mapped line moved by, or `undefined` before the first mapping. */
+	offset: number | undefined;
+
+	constructor(lineMap: Map<number, number>) {
+		this.#lineMap = lineMap;
+	}
+
+	/** `edit` with every anchor moved to the live text, or `null` when one cannot move. */
+	edit(edit: Edit): Edit | null {
+		if (edit.kind !== "insert") {
+			const line = this.#line(edit.anchor.line);
+			return line === null ? null : { ...edit, anchor: { line } };
+		}
 		let blockStart = edit.blockStart;
 		if (blockStart !== undefined) {
-			const mappedBlockStart = mapLine(blockStart);
+			const mappedBlockStart = this.#line(blockStart);
 			if (mappedBlockStart === null) return null;
 			blockStart = mappedBlockStart;
 		}
-
 		const cursor = edit.cursor;
 		if (cursor.kind !== "before_anchor" && cursor.kind !== "after_anchor") {
-			remapped.push(blockStart === edit.blockStart ? edit : { ...edit, blockStart });
-			continue;
+			return blockStart === edit.blockStart ? edit : { ...edit, blockStart };
 		}
-
-		const anchor = mapAnchor(cursor.anchor);
-		if (anchor === null) return null;
-		remapped.push({ ...edit, cursor: { kind: cursor.kind, anchor }, blockStart });
+		const line = this.#line(cursor.anchor.line);
+		return line === null ? null : { ...edit, cursor: { kind: cursor.kind, anchor: { line } }, blockStart };
 	}
 
-	if (offsets.length === 0) return null;
-	const firstOffset = offsets[0];
-	if (!offsets.every(offset => offset === firstOffset)) return null;
-	return { edits: remapped, offset: firstOffset };
+	#line(line: number): number | null {
+		const mapped = this.#lineMap.get(line);
+		if (mapped === undefined) return null;
+		const offset = mapped - line;
+		this.offset ??= offset;
+		return offset === this.offset ? mapped : null;
+	}
 }
 
 function replayRemappedAnchorsOnCurrent(

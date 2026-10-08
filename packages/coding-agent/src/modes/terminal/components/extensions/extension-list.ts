@@ -172,9 +172,9 @@ export class ExtensionList implements Component {
 
 						let rowStr: string;
 						if (listItem.type === "master") {
-							rowStr = this.#renderMasterSwitch(listItem, isSelected, rowWidth);
+							rowStr = renderMasterSwitch(listItem, isSelected, rowWidth);
 						} else if (listItem.type === "kind-header") {
-							rowStr = this.#renderKindHeader(listItem, isSelected, rowWidth);
+							rowStr = renderKindHeader(listItem, isSelected, rowWidth);
 						} else {
 							rowStr = this.#renderExtensionRow(listItem.item, isSelected, rowWidth, masterDisabled);
 						}
@@ -190,42 +190,12 @@ export class ExtensionList implements Component {
 		return lines;
 	}
 
-	#renderMasterSwitch(item: ListItem & { type: "master" }, isSelected: boolean, width: number): string {
-		const checkbox = item.enabled
-			? theme.fg("success", theme.checkbox.checked)
-			: theme.fg("dim", theme.checkbox.unchecked);
-		const label = withIcon(theme.icon.package, `Enable ${item.providerName}`);
-		const badge = theme.fg("warning", "(Master Switch)");
-
-		const cursor = isSelected ? theme.fg("accent", theme.nav.cursor) : " ";
-		let line = ` ${cursor} ${checkbox} ${label}  ${badge}`;
-		if (isSelected) {
-			return selectionBand(theme.bold(theme.fg("accent", line)), width);
-		}
-		if (!item.enabled) {
-			line = theme.fg("dim", line);
-		}
-
-		return truncateToWidth(line, width);
-	}
-
-	#renderKindHeader(item: ListItem & { type: "kind-header" }, isSelected: boolean, width: number): string {
-		const countBadge = theme.fg("muted", `(${item.count})`);
-		const cursor = isSelected ? theme.fg("accent", theme.nav.cursor) : " ";
-		const line = ` ${cursor} ${withIcon(item.icon, item.label)} ${countBadge}`;
-		if (isSelected) {
-			return selectionBand(theme.bold(theme.fg("accent", line)), width);
-		}
-
-		return truncateToWidth(theme.fg("muted", line), width);
-	}
-
 	#renderExtensionRow(ext: ExtensionRow, isSelected: boolean, width: number, masterDisabled: boolean): string {
 		// When master is disabled, all items appear dimmed
 		const effectivelyDisabled = masterDisabled || ext.state === "disabled";
 
 		// Status icon
-		const stateIcon = this.#getStateIcon(ext.state, masterDisabled);
+		const stateIcon = getStateIcon(ext.state, masterDisabled);
 
 		// Name
 		let name = ext.displayName;
@@ -244,7 +214,7 @@ export class ExtensionList implements Component {
 		}
 
 		// Pad name
-		const namePadded = this.#padText(name, nameWidth);
+		const namePadded = padText(name, nameWidth);
 		line += namePadded;
 
 		// Trigger hint
@@ -263,55 +233,6 @@ export class ExtensionList implements Component {
 		}
 
 		return truncateToWidth(line, width);
-	}
-
-	#getKindIcon(kind: ExtensionKind): string {
-		switch (kind) {
-			case "extension-module":
-				return theme.icon.extensionTool;
-			case "skill":
-				return theme.icon.extensionSkill;
-			case "tool":
-				return theme.icon.extensionTool;
-			case "slash-command":
-				return theme.icon.extensionSlashCommand;
-			case "mcp":
-				return theme.icon.extensionMcp;
-			case "rule":
-				return theme.icon.extensionRule;
-			case "hook":
-				return theme.icon.extensionHook;
-			case "prompt":
-				return theme.icon.extensionPrompt;
-			case "context-file":
-				return theme.icon.extensionContextFile;
-			case "instruction":
-				return theme.icon.extensionInstruction;
-			default:
-				return theme.format.bullet;
-		}
-	}
-
-	#getStateIcon(state: ExtensionState, masterDisabled: boolean): string {
-		if (masterDisabled) {
-			return theme.fg("dim", theme.status.disabled);
-		}
-		switch (state) {
-			case "active":
-				return theme.fg("success", theme.status.enabled);
-			case "disabled":
-				return theme.fg("dim", theme.status.disabled);
-			case "shadowed":
-				return theme.fg("warning", theme.status.shadowed);
-		}
-	}
-
-	#padText(text: string, targetWidth: number): string {
-		const width = visibleWidth(text);
-		if (width >= targetWidth) {
-			return truncateToWidth(text, targetWidth);
-		}
-		return text + padding(targetWidth - width);
 	}
 
 	#rebuildList(): void {
@@ -374,8 +295,8 @@ export class ExtensionList implements Component {
 			this.#listItems.push({
 				type: "kind-header",
 				kind,
-				label: this.#getKindLabel(kind),
-				icon: this.#getKindIcon(kind),
+				label: getKindLabel(kind),
+				icon: getKindIcon(kind),
 				count: items.length,
 			});
 
@@ -383,12 +304,6 @@ export class ExtensionList implements Component {
 				this.#listItems.push({ type: "extension", item: ext });
 			}
 		}
-	}
-
-	#getKindLabel(kind: ExtensionKind): string {
-		if (kind === "slash-command") return "Commands";
-		if (kind === "context-file") return "Context";
-		return getKindDisplayName(kind);
 	}
 
 	#clampSelection(): void {
@@ -524,4 +439,89 @@ export class ExtensionList implements Component {
 		const ext = this.getSelectedExtension();
 		this.callbacks.onSelectionChange?.(ext);
 	}
+}
+
+function renderMasterSwitch(item: ListItem & { type: "master" }, isSelected: boolean, width: number): string {
+	const checkbox = item.enabled
+		? theme.fg("success", theme.checkbox.checked)
+		: theme.fg("dim", theme.checkbox.unchecked);
+	const label = withIcon(theme.icon.package, `Enable ${item.providerName}`);
+	const badge = theme.fg("warning", "(Master Switch)");
+
+	const cursor = isSelected ? theme.fg("accent", theme.nav.cursor) : " ";
+	let line = ` ${cursor} ${checkbox} ${label}  ${badge}`;
+	if (isSelected) {
+		return selectionBand(theme.bold(theme.fg("accent", line)), width);
+	}
+	if (!item.enabled) {
+		line = theme.fg("dim", line);
+	}
+
+	return truncateToWidth(line, width);
+}
+
+function renderKindHeader(item: ListItem & { type: "kind-header" }, isSelected: boolean, width: number): string {
+	const countBadge = theme.fg("muted", `(${item.count})`);
+	const cursor = isSelected ? theme.fg("accent", theme.nav.cursor) : " ";
+	const line = ` ${cursor} ${withIcon(item.icon, item.label)} ${countBadge}`;
+	if (isSelected) {
+		return selectionBand(theme.bold(theme.fg("accent", line)), width);
+	}
+
+	return truncateToWidth(theme.fg("muted", line), width);
+}
+
+function getKindIcon(kind: ExtensionKind): string {
+	switch (kind) {
+		case "extension-module":
+			return theme.icon.extensionTool;
+		case "skill":
+			return theme.icon.extensionSkill;
+		case "tool":
+			return theme.icon.extensionTool;
+		case "slash-command":
+			return theme.icon.extensionSlashCommand;
+		case "mcp":
+			return theme.icon.extensionMcp;
+		case "rule":
+			return theme.icon.extensionRule;
+		case "hook":
+			return theme.icon.extensionHook;
+		case "prompt":
+			return theme.icon.extensionPrompt;
+		case "context-file":
+			return theme.icon.extensionContextFile;
+		case "instruction":
+			return theme.icon.extensionInstruction;
+		default:
+			return theme.format.bullet;
+	}
+}
+
+function getStateIcon(state: ExtensionState, masterDisabled: boolean): string {
+	if (masterDisabled) {
+		return theme.fg("dim", theme.status.disabled);
+	}
+	switch (state) {
+		case "active":
+			return theme.fg("success", theme.status.enabled);
+		case "disabled":
+			return theme.fg("dim", theme.status.disabled);
+		case "shadowed":
+			return theme.fg("warning", theme.status.shadowed);
+	}
+}
+
+function padText(text: string, targetWidth: number): string {
+	const width = visibleWidth(text);
+	if (width >= targetWidth) {
+		return truncateToWidth(text, targetWidth);
+	}
+	return text + padding(targetWidth - width);
+}
+
+function getKindLabel(kind: ExtensionKind): string {
+	if (kind === "slash-command") return "Commands";
+	if (kind === "context-file") return "Context";
+	return getKindDisplayName(kind);
 }

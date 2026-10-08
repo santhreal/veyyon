@@ -1,6 +1,6 @@
 import { tryParseJson } from "@veyyon/utils";
 import { markdownLink } from "../markdown-link";
-import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import type { LoadPageResult, RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 const API_BASE = "https://public.api.bsky.app/xrpc";
@@ -39,13 +39,32 @@ interface BlueskyPost {
 	repostCount?: number;
 	replyCount?: number;
 	quoteCount?: number;
-	embed?: {
-		$type: string;
-		external?: { uri: string; title?: string; description?: string };
-		images?: Array<{ alt?: string; fullsize?: string; thumb?: string }>;
-		record?: { uri: string; value?: { text?: string }; author?: BlueskyProfile };
-	};
+	embed?: BlueskyEmbedView;
 }
+
+/** The hydrated embed of a post: an external link card, images, or a quoted record. */
+interface BlueskyEmbedView {
+	$type: string;
+	external?: { uri: string; title?: string; description?: string };
+	images?: Array<{ alt?: string; fullsize?: string; thumb?: string }>;
+	record?: { uri: string; value?: { text?: string }; author?: BlueskyProfile };
+}
+
+/** Embed view types that quote another record. */
+const QUOTE_EMBED_TYPES = new Set(["app.bsky.embed.record#view", "app.bsky.embed.recordWithMedia#view"]);
+
+/** Engagement counts in display order, each shown with its icon when non-zero. */
+const POST_STATS = [
+	["❤️", "likeCount"],
+	["🔁", "repostCount"],
+	["💬", "replyCount"],
+	["📝", "quoteCount"],
+] as const;
+
+const BLUESKY_HOSTS = new Set(["bsky.app", "www.bsky.app"]);
+
+/** Replies rendered under a post; the rest are dropped. */
+const MAX_REPLIES = 10;
 
 interface ThreadViewPost {
 	post: BlueskyPost;
@@ -53,17 +72,19 @@ interface ThreadViewPost {
 	replies?: Array<ThreadViewPost | { $type: string }>;
 }
 
+function profileUrl(handle: string): string {
+	return `${API_BASE}/app.bsky.actor.getProfile?actor=${encodeURIComponent(handle)}`;
+}
+
+function loadXrpc(url: string, timeout: number, signal: AbortSignal | undefined): Promise<LoadPageResult> {
+	return loadPage(url, { timeout, headers: { Accept: "application/json" }, signal });
+}
+
 /**
  * Resolve a handle to DID using the profile API
  */
 async function resolveHandle(handle: string, timeout: number, signal?: AbortSignal): Promise<string | null> {
-	const url = `${API_BASE}/app.bsky.actor.getProfile?actor=${encodeURIComponent(handle)}`;
-	const result = await loadPage(url, {
-		timeout,
-		headers: { Accept: "application/json" },
-		signal,
-	});
-
+	const result = await loadXrpc(profileUrl(handle), timeout, signal);
 	if (!result.ok) return null;
 
 	const data = tryParseJson<BlueskyProfile>(result.content);
@@ -71,8 +92,18 @@ async function resolveHandle(handle: string, timeout: number, signal?: AbortSign
 	return data.did;
 }
 
+/** Each line of `text` as a markdown blockquote line. */
+function blockquote(text: string): string {
+	return text
+		.split("\n")
+		.map(line => `> ${line}`)
+		.join("\n");
+}
+
 /**
- * Format a post as markdown
+ * Format a post as markdown: its author, date and text, then its embed. A
+ * quoted post renders as a blockquote without counts; any other post ends
+ * with its non-zero engagement counts.
  */
 function formatPost(post: BlueskyPost, isQuote = false): string {
 	const author = post.author;
@@ -86,63 +117,41 @@ function formatPost(post: BlueskyPost, isQuote = false): string {
 		minute: "2-digit",
 	});
 
-	let md = "";
+	const body = isQuote
+		? `> **${name}** (${handle}) - ${date}\n>\n${blockquote(post.record.text)}\n`
+		: `**${name}** (${handle})\n*${date}*\n\n${post.record.text}\n`;
+	const embed = post.embed ? formatEmbed(post.embed) : "";
+	return body + embed + (isQuote ? "" : formatStats(post));
+}
 
-	if (isQuote) {
-		md += `> **${name}** (${handle}) - ${date}\n>\n`;
-		md += post.record.text
-			.split("\n")
-			.map(line => `> ${line}`)
-			.join("\n");
-		md += "\n";
-	} else {
-		md += `**${name}** (${handle})\n`;
-		md += `*${date}*\n\n`;
-		md += `${post.record.text}\n`;
+function formatEmbed(embed: BlueskyEmbedView): string {
+	if (embed.$type === "app.bsky.embed.external#view" && embed.external) {
+		const ext = embed.external;
+		const description = ext.description ? `\n*${ext.description}*` : "";
+		return `\n📎 ${markdownLink(ext.title || ext.uri, ext.uri)}${description}\n`;
 	}
-
-	// Handle embeds
-	const embed = post.embed;
-	if (embed) {
-		if (embed.$type === "app.bsky.embed.external#view" && embed.external) {
-			const ext = embed.external;
-			md += `\n📎 ${markdownLink(ext.title || ext.uri, ext.uri)}`;
-			if (ext.description) md += `\n*${ext.description}*`;
-			md += "\n";
-		} else if (embed.$type === "app.bsky.embed.images#view" && embed.images) {
-			md += `\n🖼️ ${embed.images.length} image(s)`;
-			for (const img of embed.images) {
-				if (img.alt) md += `\n- Alt: "${img.alt}"`;
-			}
-			md += "\n";
-		} else if (
-			(embed.$type === "app.bsky.embed.record#view" || embed.$type === "app.bsky.embed.recordWithMedia#view") &&
-			embed.record
-		) {
-			const rec = embed.record;
-			if (rec.value?.text && rec.author) {
-				md += "\n**Quoted post:**\n";
-				md += `> **${rec.author.displayName || rec.author.handle}** (@${rec.author.handle})\n`;
-				md += rec.value.text
-					.split("\n")
-					.map(line => `> ${line}`)
-					.join("\n");
-				md += "\n";
-			}
+	if (embed.$type === "app.bsky.embed.images#view" && embed.images) {
+		let md = `\n🖼️ ${embed.images.length} image(s)`;
+		for (const img of embed.images) {
+			if (img.alt) md += `\n- Alt: "${img.alt}"`;
 		}
+		return `${md}\n`;
 	}
-
-	// Stats
-	if (!isQuote) {
-		const stats: string[] = [];
-		if (post.likeCount) stats.push(`❤️ ${formatNumber(post.likeCount)}`);
-		if (post.repostCount) stats.push(`🔁 ${formatNumber(post.repostCount)}`);
-		if (post.replyCount) stats.push(`💬 ${formatNumber(post.replyCount)}`);
-		if (post.quoteCount) stats.push(`📝 ${formatNumber(post.quoteCount)}`);
-		if (stats.length) md += `\n${stats.join(" • ")}\n`;
+	const rec = embed.record;
+	if (QUOTE_EMBED_TYPES.has(embed.$type) && rec?.value?.text && rec.author) {
+		const author = `**${rec.author.displayName || rec.author.handle}** (@${rec.author.handle})`;
+		return `\n**Quoted post:**\n> ${author}\n${blockquote(rec.value.text)}\n`;
 	}
+	return "";
+}
 
-	return md;
+function formatStats(post: BlueskyPost): string {
+	const stats: string[] = [];
+	for (const [icon, key] of POST_STATS) {
+		const count = post[key];
+		if (count) stats.push(`${icon} ${formatNumber(count)}`);
+	}
+	return stats.length > 0 ? `\n${stats.join(" • ")}\n` : "";
 }
 
 /**
@@ -155,113 +164,81 @@ export const handleBluesky: SpecialHandler = async (
 ): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
 		const parsed = tryParseUrl(url);
-		if (!parsed) return null;
-		if (!["bsky.app", "www.bsky.app"].includes(parsed.hostname)) {
-			return null;
-		}
+		if (!parsed || !BLUESKY_HOSTS.has(parsed.hostname)) return null;
+
+		// /profile/{handle} or /profile/{handle}/post/{rkey}; any other path on the host is not a match.
+		const [section, handle, kind, rkey] = parsed.pathname.split("/").filter(Boolean);
+		if (section !== "profile" || !handle) return null;
 
 		const fetchedAt = new Date().toISOString();
-		const pathParts = parsed.pathname.split("/").filter(Boolean);
-
-		// /profile/{handle}
-		if (pathParts[0] === "profile" && pathParts[1]) {
-			const handle = pathParts[1];
-
-			// /profile/{handle}/post/{rkey}
-			if (pathParts[2] === "post" && pathParts[3]) {
-				const rkey = pathParts[3];
-
-				// First resolve handle to DID
-				const did = await resolveHandle(handle, timeout, signal);
-				if (!did) return null;
-
-				// Construct AT URI and fetch thread
-				const atUri = `at://${did}/app.bsky.feed.post/${rkey}`;
-				const threadUrl = `${API_BASE}/app.bsky.feed.getPostThread?uri=${encodeURIComponent(atUri)}&depth=6&parentHeight=3`;
-
-				const result = await loadPage(threadUrl, {
-					timeout,
-					headers: { Accept: "application/json" },
-					signal,
-				});
-
-				if (!result.ok) return scraperDegrade("bluesky", loadFailure(result));
-
-				const data = JSON.parse(result.content) as { thread: ThreadViewPost };
-				const thread = data.thread;
-
-				if (!thread.post) return null;
-
-				let md = `# Bluesky Post\n\n`;
-
-				// Show parent context if exists
-				if (thread.parent && "post" in thread.parent) {
-					md += "**Replying to:**\n";
-					md += formatPost(thread.parent.post, true);
-					md += "\n---\n\n";
-				}
-
-				// Main post
-				md += formatPost(thread.post);
-
-				// Show replies
-				if (thread.replies?.length) {
-					md += "\n---\n\n## Replies\n\n";
-					let replyCount = 0;
-					for (const reply of thread.replies) {
-						if (replyCount >= 10) break;
-						if ("post" in reply) {
-							md += formatPost(reply.post);
-							md += "\n---\n\n";
-							replyCount++;
-						}
-					}
-				}
-
-				return buildResult(md, { url, method: "bluesky-api", fetchedAt, notes: [`AT URI: ${atUri}`] });
-			}
-
-			// Profile only
-			const profileUrl = `${API_BASE}/app.bsky.actor.getProfile?actor=${encodeURIComponent(handle)}`;
-			const result = await loadPage(profileUrl, {
-				timeout,
-				headers: { Accept: "application/json" },
-				signal,
-			});
-
-			if (!result.ok) return scraperDegrade("bluesky", loadFailure(result));
-
-			const profile = JSON.parse(result.content) as BlueskyProfile;
-
-			let md = `# ${profile.displayName || profile.handle}\n\n`;
-			md += `**@${profile.handle}**\n\n`;
-
-			if (profile.description) {
-				md += `${profile.description}\n\n`;
-			}
-
-			md += "---\n\n";
-			md += `- **Followers:** ${formatNumber(profile.followersCount || 0)}\n`;
-			md += `- **Following:** ${formatNumber(profile.followsCount || 0)}\n`;
-			md += `- **Posts:** ${formatNumber(profile.postsCount || 0)}\n`;
-
-			if (profile.createdAt) {
-				const joined = new Date(profile.createdAt).toLocaleDateString("en-US", {
-					year: "numeric",
-					month: "long",
-					day: "numeric",
-				});
-				md += `- **Joined:** ${joined}\n`;
-			}
-
-			md += `\n**DID:** \`${profile.did}\`\n`;
-
-			return buildResult(md, { url, method: "bluesky-api", fetchedAt, notes: ["Fetched via AT Protocol API"] });
-		}
+		if (kind === "post" && rkey) return await renderPostThread(url, handle, rkey, fetchedAt, timeout, signal);
+		return await renderProfile(url, handle, fetchedAt, timeout, signal);
 	} catch (error) {
 		return scraperDegrade("bluesky", error);
 	}
-
-	// Known host but unrecognized path shape: not a match.
-	return null;
 };
+
+/** The post at `rkey` by `handle`, with its parent above it and its first replies below. */
+async function renderPostThread(
+	url: string,
+	handle: string,
+	rkey: string,
+	fetchedAt: string,
+	timeout: number,
+	signal: AbortSignal | undefined,
+): Promise<RenderResult | ScraperDegrade | null> {
+	const did = await resolveHandle(handle, timeout, signal);
+	if (!did) return null;
+
+	const atUri = `at://${did}/app.bsky.feed.post/${rkey}`;
+	const threadUrl = `${API_BASE}/app.bsky.feed.getPostThread?uri=${encodeURIComponent(atUri)}&depth=6&parentHeight=3`;
+	const result = await loadXrpc(threadUrl, timeout, signal);
+	if (!result.ok) return scraperDegrade("bluesky", loadFailure(result));
+
+	const thread = (JSON.parse(result.content) as { thread: ThreadViewPost }).thread;
+	if (!thread.post) return null;
+
+	let md = `# Bluesky Post\n\n`;
+	if (thread.parent && "post" in thread.parent) {
+		md += `**Replying to:**\n${formatPost(thread.parent.post, true)}\n---\n\n`;
+	}
+	md += formatPost(thread.post);
+	if (thread.replies?.length) {
+		md += "\n---\n\n## Replies\n\n";
+		const shown = thread.replies.filter((reply): reply is ThreadViewPost => "post" in reply).slice(0, MAX_REPLIES);
+		for (const reply of shown) md += `${formatPost(reply.post)}\n---\n\n`;
+	}
+
+	return buildResult(md, { url, method: "bluesky-api", fetchedAt, notes: [`AT URI: ${atUri}`] });
+}
+
+async function renderProfile(
+	url: string,
+	handle: string,
+	fetchedAt: string,
+	timeout: number,
+	signal: AbortSignal | undefined,
+): Promise<RenderResult | ScraperDegrade> {
+	const result = await loadXrpc(profileUrl(handle), timeout, signal);
+	if (!result.ok) return scraperDegrade("bluesky", loadFailure(result));
+
+	const profile = JSON.parse(result.content) as BlueskyProfile;
+
+	let md = `# ${profile.displayName || profile.handle}\n\n**@${profile.handle}**\n\n`;
+	if (profile.description) md += `${profile.description}\n\n`;
+	md += "---\n\n";
+	md += `- **Followers:** ${formatNumber(profile.followersCount || 0)}\n`;
+	md += `- **Following:** ${formatNumber(profile.followsCount || 0)}\n`;
+	md += `- **Posts:** ${formatNumber(profile.postsCount || 0)}\n`;
+	if (profile.createdAt) {
+		const joined = new Date(profile.createdAt).toLocaleDateString("en-US", {
+			year: "numeric",
+			month: "long",
+			day: "numeric",
+		});
+		md += `- **Joined:** ${joined}\n`;
+	}
+	md += `\n**DID:** \`${profile.did}\`\n`;
+
+	return buildResult(md, { url, method: "bluesky-api", fetchedAt, notes: ["Fetched via AT Protocol API"] });
+}

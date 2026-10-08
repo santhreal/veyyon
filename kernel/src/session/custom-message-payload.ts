@@ -122,9 +122,6 @@ export function normalizeCustomMessagePayload<T = unknown>(
 }
 
 export function sanitizeRehydratedOpenAIResponsesAssistantMessage(message: AssistantMessage): AssistantMessage {
-	if (message.providerPayload?.type !== "openaiResponsesHistory") {
-		return message;
-	}
 	// Only GitHub Copilot rejects replayed assistant-side native history on a
 	// warmed (resumed) session with HTTP 401 — that is the sole reason this strip
 	// exists. For every other Responses-family provider (OpenAI, OpenAI-Codex,
@@ -134,7 +131,13 @@ export function sanitizeRehydratedOpenAIResponsesAssistantMessage(message: Assis
 	// same-model live turns reuse them for prompt-cache continuity. Stripping them
 	// for all providers is what left resumed sessions compacting tool-call-only
 	// history with no reasoning and no assistant prose.
+	//
+	// The provider is read first: on a message whose entry is on disk (see
+	// ColdEntryPayloads) it is in memory, and `providerPayload` reads the entry back.
 	if (message.provider !== "github-copilot") {
+		return message;
+	}
+	if (message.providerPayload?.type !== "openaiResponsesHistory") {
 		return message;
 	}
 

@@ -112,6 +112,19 @@ export async function handleJsonRpc(request: McpServerJsonRpcRequest): Promise<M
 	return err(id, -32601, `Unknown method: ${method}`);
 }
 
+/** Answer one JSON-RPC line on `output`; a line that is not JSON gets a parse error. */
+async function respondToLine(line: string, output: WritableOutput): Promise<void> {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(line);
+	} catch {
+		output.write(`${JSON.stringify(err(null, -32700, "Parse error"))}\n`);
+		return;
+	}
+	const response = await handleJsonRpc(parsed as McpServerJsonRpcRequest);
+	if (response !== null) output.write(`${JSON.stringify(response)}\n`);
+}
+
 export async function runStdio(
 	input: ReadableStream<Uint8Array> = Bun.stdin.stream(),
 	output: WritableOutput = Bun.stdout,
@@ -128,18 +141,7 @@ export async function runStdio(
 			while (newline >= 0) {
 				const line = buffer.slice(0, newline).trim();
 				buffer = buffer.slice(newline + 1);
-				if (line.length > 0) {
-					let parsed: unknown;
-					try {
-						parsed = JSON.parse(line);
-					} catch {
-						output.write(`${JSON.stringify(err(null, -32700, "Parse error"))}\n`);
-						newline = buffer.indexOf("\n");
-						continue;
-					}
-					const response = await handleJsonRpc(parsed as McpServerJsonRpcRequest);
-					if (response !== null) output.write(`${JSON.stringify(response)}\n`);
-				}
+				if (line.length > 0) await respondToLine(line, output);
 				newline = buffer.indexOf("\n");
 			}
 		}
@@ -157,21 +159,42 @@ export function runMcpServer(
 	return runStdio();
 }
 
-export function main(argv: readonly string[] = Bun.argv.slice(2)): Promise<void> {
-	let transport = "stdio";
-	let port: number | undefined;
-	let bank: string | undefined;
-	let host: string | undefined;
-	for (let i = 0; i < argv.length; i++) {
-		const arg = argv[i];
-		if (arg === "--transport") transport = argv[++i] ?? "stdio";
-		else if (arg === "--port") {
-			const parsed = Number(argv[++i] ?? "");
-			if (Number.isFinite(parsed)) port = parsed;
-		} else if (arg === "--bank") bank = argv[++i] ?? "";
-		else if (arg === "--host") host = argv[++i] ?? "";
+interface ServerArgs {
+	transport: string;
+	port?: number;
+	bank?: string;
+	host?: string;
+}
+
+/** Apply one flag and its value to `args`; false for an argument that is not a known flag. */
+function applyServerFlag(args: ServerArgs, flag: string | undefined, value: string | undefined): boolean {
+	switch (flag) {
+		case "--transport":
+			args.transport = value ?? "stdio";
+			return true;
+		case "--port": {
+			const parsed = Number(value ?? "");
+			if (Number.isFinite(parsed)) args.port = parsed;
+			return true;
+		}
+		case "--bank":
+			args.bank = value ?? "";
+			return true;
+		case "--host":
+			args.host = value ?? "";
+			return true;
+		default:
+			return false;
 	}
-	return runMcpServer(transport, { port, bank, host });
+}
+
+export function main(argv: readonly string[] = Bun.argv.slice(2)): Promise<void> {
+	const args: ServerArgs = { transport: "stdio" };
+	for (let i = 0; i < argv.length; i++) {
+		if (applyServerFlag(args, argv[i], argv[i + 1])) i++;
+	}
+	const { transport, ...options } = args;
+	return runMcpServer(transport, options);
 }
 
 if (import.meta.main) await main();

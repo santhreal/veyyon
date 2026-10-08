@@ -233,13 +233,10 @@ export function computeContextBreakdown(session: AgentSession): ContextBreakdown
 	// owner of where that point is, shared with the status-line gauge, so the panel
 	// and the gauge cannot disagree about whether compaction will fire.
 	//
-	// There is no invented buffer when it will not fire. This used to substitute
-	// `effectiveReserveTokens` whenever the computed buffer came out zero and
-	// `compaction.enabled` was set — so a session with `strategy: "off"` was shown a
-	// labelled "Autocompact buffer" that nothing would ever enforce, and the panel
-	// disagreed with the status line, which correctly denominates against the whole
-	// window in that configuration. A displayed reserve no mechanism honours is the
-	// same class of bug as printing the fire point where the window belongs.
+	// There is no invented buffer when it will not fire. Substituting
+	// `effectiveReserveTokens` for a zero buffer would draw a labelled "Autocompact
+	// buffer" that nothing enforces, and the panel would disagree with the status
+	// line, which denominates against the whole window when compaction is off.
 	let autoCompactBufferTokens = 0;
 	if (contextWindow > 0) {
 		const compactionSettings = session.settings.getGroup("compaction") as CompactionSettings;

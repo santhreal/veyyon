@@ -32,7 +32,7 @@ import { createCodexCompactionContext } from "@veyyon/kernel/session/agent-sessi
 import type { CompactionEntry, SessionEntry } from "@veyyon/kernel/session/session-entries";
 import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
 import { errorMessage, logger } from "@veyyon/utils";
-import { isCompactionStrategyOff, toAgentCompactionSettings } from "../config/compaction-strategy";
+import { toAgentCompactionSettings } from "../config/compaction-strategy";
 import type { ModelRegistry } from "../config/model-registry";
 import type { Settings } from "../config/settings";
 import { shouldDisableReasoning, toReasoningEffort } from "../thinking";
@@ -118,7 +118,6 @@ export async function maintainAdvisorContext(
 	const agent = advisor.agent;
 
 	const compactionSettings = env.settings.getGroup("compaction");
-	if (isCompactionStrategyOff(compactionSettings.strategy as string)) return false;
 	if (!compactionSettings.enabled) return false;
 
 	const advisorModel = agent.state.model;

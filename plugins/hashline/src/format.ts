@@ -97,11 +97,44 @@ export const HL_LINE_BODY_SEP_RE_RAW = regexEscape(HL_LINE_BODY_SEP);
 export const HL_FILE_HASH_EXAMPLES = ["1A2B", "3C4D", "9F3E"] as const;
 /**
  * Normalize text before hashing: trim trailing `[ \t\r]` from every line (and
- * the final line) in a single pass so CRLF endings and display-trimmed lines
- * do not invalidate a tag.
+ * the final line) so CRLF endings and display-trimmed lines do not invalidate a
+ * tag. Text with no `\r`, no space or tab before a newline, and no trailing
+ * space or tab returns unchanged after three substring probes; any other text
+ * is trimmed in one pass over its line ends. Both paths produce the string
+ * `text.replace(/[ \t\r]+(?=\n|$)/g, "")` produces, without the lookahead that
+ * expression evaluates at every space, tab and CR in the file.
  */
 function normalizeFileHashText(text: string): string {
-	return text.replace(/[ \t\r]+(?=\n|$)/g, "");
+	const last = text.charCodeAt(text.length - 1);
+	if (!text.includes(" \n") && !text.includes("\t\n") && !text.includes("\r") && last !== 0x20 && last !== 0x09) {
+		return text;
+	}
+	let result = "";
+	let copied = 0;
+	let lineStart = 0;
+	while (true) {
+		const newline = text.indexOf("\n", lineStart);
+		const lineEnd = newline === -1 ? text.length : newline;
+		const cut = trimmedEnd(text, lineStart, lineEnd);
+		if (cut !== lineEnd) {
+			result += text.slice(copied, cut);
+			copied = lineEnd;
+		}
+		if (newline === -1) break;
+		lineStart = newline + 1;
+	}
+	return copied === 0 ? text : result + text.slice(copied);
+}
+
+/** Index just past the last character in `[lineStart, lineEnd)` that is not a space, tab or CR. */
+function trimmedEnd(text: string, lineStart: number, lineEnd: number): number {
+	let cut = lineEnd;
+	while (cut > lineStart) {
+		const code = text.charCodeAt(cut - 1);
+		if (code !== 0x20 && code !== 0x09 && code !== 0x0d) break;
+		cut--;
+	}
+	return cut;
 }
 /**
  * Compute the content-derived hash tag carried by a hashline section header.

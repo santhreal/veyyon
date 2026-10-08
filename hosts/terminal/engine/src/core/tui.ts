@@ -17,14 +17,16 @@
  */
 import * as fs from "node:fs";
 import { performance } from "node:perf_hooks";
+import { type ActivitySignal, processActivity } from "@veyyon/utils/activity-signal";
 import { getDebugLogPath } from "@veyyon/utils/dirs";
-import { $flag } from "@veyyon/utils/env";
+import { $flag, isBunTestRuntime } from "@veyyon/utils/env";
 import { isKeyRelease, matchesKey } from "@veyyon/utils/keys";
 import * as logger from "@veyyon/utils/logger";
 import { popLoopPhase, pushLoopPhase } from "@veyyon/utils/loop-phase";
 import { LoopWatchdog } from "@veyyon/utils/loop-watchdog";
 import { clampLow } from "@veyyon/utils/math";
 import { parseSgrMouse } from "@veyyon/utils/mouse";
+import { stallSampler } from "@veyyon/utils/stall-sampler";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { isConPTYHosted, setAltScreenActive, type Terminal } from "../terminal";
 import {
@@ -57,6 +59,13 @@ import {
 } from "./component-types";
 import { Container } from "./container";
 import { HardwareCursorTracker, type HardwareCursorUpdate, relativeMoveY } from "./cursor";
+import {
+	CONPTY_POST_FULL_PAINT_SETTLE_MS,
+	FramePacer,
+	GHOSTTY_INITIAL_IMAGE_DELAY_MS,
+	MULTIPLEXER_RESIZE_DEBOUNCE_MS,
+	RESIZE_VIEWPORT_SETTLE_MS,
+} from "./frame-pacing";
 import type { AssembledWindow, FrameTransition, PrefixReconciliation, RenderIntent, WindowPlan } from "./frame-plan";
 import { DEFAULT_MAX_INLINE_IMAGES, ImageBudget } from "./image-budget";
 import { footerWantsPointer, pinnedFooterScreenBounds, routeFooterMouse } from "./mouse-routing";
@@ -90,7 +99,6 @@ import {
 	lineRewriteSequence,
 	PreparedFrameCache,
 	pathToDescendant,
-	prepareLine,
 	prepareLinesArray,
 } from "./renderer";
 import {
@@ -136,6 +144,11 @@ export interface RenderScheduler {
 
 export interface TUIOptions {
 	renderScheduler?: RenderScheduler;
+	/**
+	 * Where the engine reports its keystrokes and frames between start() and stop(), and where its
+	 * loop watchdog parks at rest. Default `processActivity`.
+	 */
+	activity?: ActivitySignal;
 }
 
 export interface TUIStartOptions {
@@ -182,6 +195,7 @@ export interface AdoptedScreen {
 	/** Frame row the visible window starts at. */
 	readonly windowTopRow: number;
 }
+
 /**
  * TUI - Main class for managing terminal UI with differential rendering
  */
@@ -214,88 +228,7 @@ export class TUI extends Container {
 	#renderRequested = false;
 	#renderTimer: RenderTimer | undefined;
 	#renderScheduler: RenderScheduler;
-	#lastRenderAt = 0;
-	/**
-	 * Decayed estimate of what a frame costs, in milliseconds. `#scheduleRender`
-	 * derives the adaptive floor from it to hold the render loop near a 50%
-	 * duty cycle: without one the throttle collapses to zero as soon as
-	 * `elapsed >= MIN_RENDER_INTERVAL_MS`, and a run of slow frames (large
-	 * transcript diffs, huge assistant text wrap, component-tree walks) turns
-	 * the loop into a busy loop at 40-50% CPU (see #4145).
-	 *
-	 * A duty cycle is a property of a window, not of one frame, and reading the
-	 * previous frame alone conflated two different situations. A loop that
-	 * paints slowly on every frame converges here and is held to half the CPU,
-	 * which is what #4145 asked for. A single expensive paint among cheap ones
-	 * moves the estimate by a fraction of itself, so the frame after it still
-	 * arrives at the cadence: a scrolled viewport leaves the diff nothing to
-	 * reuse and costs a full paint, and putting a 66ms floor under the cheap
-	 * diff that followed it is how a session that painted on time 68% of the
-	 * time published at 14.2 fps against a 30 fps capture.
-	 */
-	#frameCostEstimateMs = 0;
-	/**
-	 * Weight of the newest frame in `#frameCostEstimateMs`. At 0.3 a sustained
-	 * change in frame cost is ~90% absorbed within seven frames, so the loop
-	 * reaches its duty-cycle floor inside a quarter second of going slow, while
-	 * an isolated spike lifts the floor by under a third of itself.
-	 */
-	static readonly #FRAME_COST_SMOOTHING = 0.3;
-	static readonly #MIN_RENDER_INTERVAL_MS = 1000 / 30;
-	static readonly #INPUT_RENDER_GRACE_MS = TUI.#MIN_RENDER_INTERVAL_MS;
-	/**
-	 * Cap on the adaptive floor derived from `#frameCostEstimateMs`. Bounds the
-	 * UI responsiveness at ~5 fps under sustained heavy renders — anything
-	 * slower feels dead to the user and no longer justifies further CPU savings.
-	 */
-	static readonly #MAX_ADAPTIVE_RENDER_MS = 200;
-	#inputRenderGraceUntilMs = 0;
-	// Pane-reflow settle window for tmux/screen/zellij. The host process gets
-	// SIGWINCH (and `process.stdout` already reports the new geometry) before
-	// the multiplexer finishes repainting the pane at the new size, and
-	// drag-resize/pane-close animations fire several events in flight. A forced
-	// render on each SIGWINCH races those mid-reflow paints — the multiplexer's
-	// catch-up paint then partially overwrites the TUI output, which the user
-	// sees as a viewport flash or blank screen before the next throttled frame
-	// arrives (issue #2088). Coalescing every SIGWINCH inside this window into
-	// a single forced render lets the multiplexer settle first.
-	static readonly #MULTIPLEXER_RESIZE_DEBOUNCE_MS = 50;
-	// Resize viewport fast path (non-multiplexer). A drag emits a SIGWINCH burst,
-	// and outside a multiplexer the host gets each new geometry atomically. The
-	// authoritative resize paint erases and replays the entire transcript so it
-	// rewraps at the new width — O(history) compose (markdown re-lexes every
-	// block, the per-width cache missing on every distinct drag width) plus an
-	// O(history) write that pushes all of it back through native scrollback. At
-	// drag rates that whole-history pass is recomputed dozens of times a second
-	// and discarded the instant the next event lands. While the drag is in
-	// flight the engine instead composes and paints ONLY the viewport (see
-	// `#renderResizeViewport`): a state-isolated, throwaway frame that never
-	// touches the commit ledger. The authoritative full replay fires once, after
-	// the drag has been quiet for this long. Multiplexer sessions keep their own
-	// debounce (`#armMultiplexerResizeTimer`, see #2088) and never take this path.
-	static readonly #RESIZE_VIEWPORT_SETTLE_MS = 120;
-	// Ghostty can drop Kitty graphics commands sent during its first post-startup
-	// settle window, leaving only Unicode placeholder cells. Hold the first image
-	// paint until that window has passed; later images render normally.
-	static readonly #GHOSTTY_INITIAL_IMAGE_DELAY_MS = 100;
-	// Post-paint settle window for ConPTY hosts. The `sessionReplace` /
-	// `historyRebuild` / `overlayRebuild` intents drive `#emitFullPaint` over
-	// a transcript that overflows the viewport, scroll-pushing everything past
-	// the last `height` rows into native scrollback. Windows Terminal's
-	// viewport-follow logic gets lossy during that burst: spinner/blink-driven
-	// `requestRender(false)` calls firing inside the window each produce another
-	// diff write, and the WT host processes them faster than its viewport
-	// tracker can keep up — the visible tail ends up parked a few rows above
-	// the actual last row until any focus event (Alt+Tab) forces a host repaint.
-	// Coalescing every non-forced render inside this window into a single
-	// trailing render lets the host fully settle the big paint before any
-	// follow-up writes touch the buffer. The first-ever `initial` paint is
-	// deliberately exempt: nothing has been on screen yet, so no drift can
-	// have accumulated, and tests that start the TUI over an over-tall
-	// component depend on the next paint firing without delay. Only armed on
-	// ConPTY hosts (`isConPTYHosted()`); other terminals do not exhibit the
-	// drift and would just see an unnecessary post-paint latency. See #2095.
-	static readonly #CONPTY_POST_FULL_PAINT_SETTLE_MS = 150;
+	#pacer = new FramePacer();
 	#postFullPaintSettleUntilMs = 0;
 	#postFullPaintSettleTimer: RenderTimer | undefined;
 	#sixelProbe = new SixelProbe({
@@ -330,12 +263,11 @@ export class TUI extends Container {
 	// snapshots for strict finalization. The physical record is #scrollTape.
 	#committedPrefix: string[] = [];
 	// Rows the current compose's children dropped out of the front of their own
-	// output (see NativeScrollbackCompaction). Consumed once per frame, right
-	// after compose, to slide the commit coordinates onto the new frame.
-	#frameDroppedRows = 0;
-	// Frame row the drop happened at, in the PREVIOUS frame's coordinates: the
-	// topmost dropping child's start. Undefined when nothing dropped.
-	#frameDroppedAt: number | undefined;
+	// output (see NativeScrollbackCompaction), as flat `[at, rows]` pairs in
+	// child order. `at` is the dropping child's start in the PREVIOUS frame's
+	// coordinates. Consumed once per frame, right after compose, to slide the
+	// commit coordinates onto the new frame.
+	readonly #frameDrops: number[] = [];
 	// Guards the one-shot rehydrating re-render a destructive rebuild takes when
 	// a virtualized root has dropped the history that rebuild is about to erase.
 	#rehydratingDivergence = false;
@@ -505,8 +437,12 @@ export class TUI extends Container {
 	#stopped = false;
 	// Always-on event-loop lag probe. The high default threshold keeps it quiet;
 	// it only logs `ui.loop-blocked` (with the current loop phase) when a frame
-	// budget is genuinely starved. Armed in start(), disarmed in stop().
+	// budget is genuinely starved. Armed in start(), disarmed in stop(). It
+	// parks while the session rests and wakes on the keystrokes and frames this
+	// engine reports to `#activity` between start() and stop().
 	#watchdog: LoopWatchdog;
+	#activity: ActivitySignal;
+	#detachActivity: (() => void) | undefined;
 
 	// Live tail of the last resident alt paint: the composed rows that had not
 	// moved onto the scroll tape yet. Together with the tape this is the whole
@@ -555,6 +491,10 @@ export class TUI extends Container {
 	// once per frame by #doRender.
 	#componentRenderTargets = new Set<Component>();
 	#pendingRenderComponentsOnly = false;
+	// Virtualized roots holding committed rows past the screen they keep, queued
+	// by #publishCommittedRows. A component-scoped frame renders each with an
+	// empty child set (see ComponentScopedRender); consumed with the targets.
+	#compactionRoots = new Set<Component>();
 	// Root children that must re-render during the current compose; null for a
 	// full compose. Non-null only for the duration of a component-scoped
 	// render() call inside #doRender (the scratch set below, reused per frame).
@@ -581,15 +521,20 @@ export class TUI extends Container {
 		this.terminal = terminal;
 		this.#overlays = new OverlayStack(terminal);
 		this.#renderScheduler = options?.renderScheduler ?? DEFAULT_RENDER_SCHEDULER;
+		this.#activity = options?.activity ?? processActivity;
 		if (showHardwareCursor !== undefined) this.#cursor.setShow(showHardwareCursor);
-		this.#watchdog = new LoopWatchdog();
+		// A block's stacks come from the process's sampling profiler. A test process runs many
+		// TUIs and its own profiling, so it keeps the watchdog's timing and phase report only.
+		this.#watchdog = new LoopWatchdog({
+			stacks: isBunTestRuntime() ? undefined : stallSampler,
+			activity: this.#activity,
+		});
 	}
 
 	override render(width: number): readonly string[] {
 		width = Math.max(1, width);
 		this.#nativeScrollbackLiveRegionStart = undefined;
-		this.#frameDroppedRows = 0;
-		this.#frameDroppedAt = undefined;
+		this.#frameDrops.length = 0;
 		const children = this.children;
 		const previousSegments = this.#frameSegments;
 		this.#previousFrameSegments = previousSegments;
@@ -650,13 +595,10 @@ export class TUI extends Container {
 				// committed can be dropped, so the total is an offset into the
 				// committed prefix and never past it.
 				const childDropped = takeNativeScrollbackDroppedRows(child);
-				if (childDropped > 0) {
-					this.#frameDroppedRows += childDropped;
-					// Previous-frame coordinates: the prefix being spliced is the one
-					// the last emit built, so the offset must be the child's start
-					// THERE, not in the frame being composed now.
-					this.#frameDroppedAt = Math.min(this.#frameDroppedAt ?? prevStart, prevStart);
-				}
+				// Previous-frame coordinates: the prefix being spliced is the one
+				// the last emit built, so the offset must be the child's start
+				// THERE, not in the frame being composed now.
+				if (childDropped > 0) this.#frameDrops.push(prevStart, childDropped);
 				const liveRegionStart = getNativeScrollbackLiveRegionStart(child);
 				if (liveRegionStart !== undefined) {
 					liveLocalStart = Number.isFinite(liveRegionStart)
@@ -812,10 +754,19 @@ export class TUI extends Container {
 
 	/**
 	 * Rows on the scroll tape — the engine's mirror of terminal scrollback,
-	 * which is what scroll isolation scrolls back through. Read-only.
+	 * which is what scroll isolation scrolls back through. The tape records
+	 * only while scroll isolation is on. Read-only.
 	 */
 	get scrollTapeRows(): number {
 		return this.#scrollTape.length;
+	}
+
+	/**
+	 * Rows the engine has handed to native scrollback since the last erase,
+	 * whether or not the scroll tape recorded them. Read-only.
+	 */
+	get scrolledOffRows(): number {
+		return this.#scrollTape.scrolledOffRows;
 	}
 
 	/**
@@ -915,6 +866,33 @@ export class TUI extends Container {
 	#layoutSizedChildren = new WeakSet<Component>();
 
 	/**
+	 * Rows the frame about to compose keeps for root child `child` without rendering it, read from
+	 * inside {@link onBeforeCompose}: a component-scoped frame reuses the previous rows of every root
+	 * child outside the subtrees whose repaint was requested, so a sizing pass reads their height here
+	 * instead of rendering them a second time. Undefined when the frame renders `child`, and outside
+	 * the sizing pass.
+	 */
+	reusedRows(child: Component): number | undefined {
+		if (!this.#sizing || this.#layoutSizedChildren.has(child)) return undefined;
+		if (this.#sizingRoots === undefined) {
+			this.#sizingRoots = this.#pendingRenderComponentsOnly
+				? this.#resolvePartialComposeRoots(this.terminal.columns, this.terminal.rows)
+				: null;
+		}
+		const roots = this.#sizingRoots;
+		if (roots === null || roots.has(child)) return undefined;
+		// A resolved frame's segments match the root children index for index.
+		const index = this.children.indexOf(child);
+		return index < 0 ? undefined : this.#frameSegments[index]!.lines.length;
+	}
+
+	// True while onBeforeCompose runs; reusedRows answers only then.
+	#sizing = false;
+	// The root children the frame being sized re-renders, null when it renders every one, undefined
+	// until the sizing pass first asks or after a render request changed the answer.
+	#sizingRoots: Set<Component> | null | undefined;
+
+	/**
 	 * Invoked after every frame commit, once the freshly composed row count is
 	 * readable via {@link composedFrameRows}. Lets a bottom-anchoring owner
 	 * correct its fill against the exact frame instead of a stale estimate; the
@@ -976,15 +954,26 @@ export class TUI extends Container {
 	 * pinned footer (see {@link setPinnedFooterChildCount}) live at the bottom.
 	 * A frozen view resumes following on wheel-down to the tail, on
 	 * {@link scrollToLiveTail} (the host calls it on submit), on resize/full
-	 * paints, and while an overlay is visible. Enabling mid-session writes
-	 * the wheel-tracking mode; disabling restores native terminal scrollback.
+	 * paints, and while an overlay is visible. The scroll tape records only
+	 * while isolation is on, so enabling it after the first paint writes the
+	 * wheel-tracking mode and replays the history, as a display reset does;
+	 * disabling restores native terminal scrollback.
 	 */
 	setScrollIsolation(enabled: boolean): void {
 		if (this.#scrollIsolation === enabled) return;
 		this.#scrollIsolation = enabled;
+		this.#scrollTape.setRecording(enabled);
 		this.#resumeLiveTail();
 		this.#syncWheelTracking();
 		this.#syncAltScroll();
+		if (enabled && this.#hasEverRendered) {
+			// Nothing recorded the rows that scrolled off while isolation was off.
+			// Replay the history the way a display reset does, so the tape records
+			// it on the way and scrolling back reaches the first row again.
+			this.#resizeEventPending = true;
+			this.requestRender(true, { clearScrollback: !isMultiplexerSession() });
+			return;
+		}
 		this.requestRender();
 	}
 
@@ -1393,9 +1382,10 @@ export class TUI extends Container {
 
 	start(options?: TUIStartOptions): void {
 		this.#stopped = false;
+		this.#detachActivity ??= this.#activity.attachHost();
 		this.#watchdog.start();
 		this.#ghosttyInitialImageDelayDone = false;
-		this.#ghosttyImageReadyAtMs = this.#renderScheduler.now() + TUI.#GHOSTTY_INITIAL_IMAGE_DELAY_MS;
+		this.#ghosttyImageReadyAtMs = this.#renderScheduler.now() + GHOSTTY_INITIAL_IMAGE_DELAY_MS;
 		// A DECRQM report for mode 2026 is authoritative: enable synchronized
 		// output when the terminal reports support (upgrading conservatively
 		// defaulted-off hosts like zellij/tmux-master/foot) and disable it when
@@ -1523,6 +1513,8 @@ export class TUI extends Container {
 		// full-screen program a wheel that types arrow keys.
 		this.#syncAltScroll();
 		this.#watchdog.stop();
+		this.#detachActivity?.();
+		this.#detachActivity = undefined;
 		this.#renderTimer?.cancel();
 		this.#renderTimer = undefined;
 		// The request itself, not just its timer: a stopped engine owes no frame,
@@ -1639,6 +1631,7 @@ export class TUI extends Container {
 	requestRender(force = false, options?: RenderRequestOptions): void {
 		// Any non-component-scoped request makes the pending frame a full one.
 		this.#pendingRenderComponentsOnly = false;
+		this.#sizingRoots = undefined;
 		if (force) {
 			// Forced repaints landing inside the multiplexer resize debounce
 			// (e.g. `#finishSixelProbe`, image-budget eviction, a programmatic
@@ -1694,6 +1687,7 @@ export class TUI extends Container {
 			this.#pendingRenderComponentsOnly = true;
 		}
 		this.#componentRenderTargets.add(component);
+		this.#sizingRoots = undefined;
 		this.#requestOrdinaryRender();
 	}
 
@@ -1775,11 +1769,10 @@ export class TUI extends Container {
 		for (let i = 0; i < nextLines.length; i++) {
 			const frameRow = segment.start + i;
 			const raw = nextLines[i]!;
-			const prepared = prepareLine(raw, width);
 			this.#composedFrame[frameRow] = raw;
-			this.#prepared.setRow(frameRow, prepared);
-			if (previousWindow[screenStart + i] === prepared.line) continue;
-			previousWindow[screenStart + i] = prepared.line;
+			const line = this.#prepared.setRow(frameRow, raw, width);
+			if (previousWindow[screenStart + i] === line) continue;
+			previousWindow[screenStart + i] = line;
 			if (firstChanged === -1) firstChanged = i;
 			lastChanged = i;
 		}
@@ -1879,7 +1872,7 @@ export class TUI extends Container {
 	 * reachable from the current root child list.
 	 */
 	#resolvePartialComposeRoots(width: number, height: number): Set<Component> | null {
-		if (this.#componentRenderTargets.size === 0) return null;
+		if (this.#componentRenderTargets.size === 0 && this.#compactionRoots.size === 0) return null;
 		if (!this.#canReuseComposedLayout(width, height)) return null;
 		const roots = this.#partialComposeRootsScratch;
 		roots.clear();
@@ -1901,6 +1894,13 @@ export class TUI extends Container {
 			} else if (children !== null) {
 				children.add(via);
 			}
+		}
+		// A root queued only to compact renders naming no child, so it re-derives
+		// no block. A target inside it widens the set as above.
+		for (const root of this.#compactionRoots) {
+			if (!this.children.includes(root)) continue;
+			roots.add(root);
+			if (!scoped.has(root)) scoped.set(root, new Set());
 		}
 		return roots;
 	}
@@ -1952,7 +1952,7 @@ export class TUI extends Container {
 			const deferredClearScrollback = this.#deferredForcedClearScrollback;
 			this.#deferredForcedClearScrollback = false;
 			this.requestRender(true, { clearScrollback: deferredClearScrollback });
-		}, TUI.#MULTIPLEXER_RESIZE_DEBOUNCE_MS);
+		}, MULTIPLEXER_RESIZE_DEBOUNCE_MS);
 	}
 
 	/**
@@ -1975,7 +1975,7 @@ export class TUI extends Container {
 	 */
 	#armPostFullPaintSettle(): void {
 		if (!isConPTYHosted()) return;
-		const until = this.#renderScheduler.now() + TUI.#CONPTY_POST_FULL_PAINT_SETTLE_MS;
+		const until = this.#renderScheduler.now() + CONPTY_POST_FULL_PAINT_SETTLE_MS;
 		if (until <= this.#postFullPaintSettleUntilMs) return;
 		this.#postFullPaintSettleUntilMs = until;
 		const hadPendingRender = this.#renderRequested || this.#renderTimer !== undefined;
@@ -1993,7 +1993,7 @@ export class TUI extends Container {
 			// caller's render still happens — just deferred to the end of the
 			// window. Subsequent `requestRender(false)` calls during the
 			// settle see this timer and fold into it (existing gate at L1263).
-			this.#schedulePostFullPaintSettle(TUI.#CONPTY_POST_FULL_PAINT_SETTLE_MS);
+			this.#schedulePostFullPaintSettle(CONPTY_POST_FULL_PAINT_SETTLE_MS);
 		}
 	}
 
@@ -2063,21 +2063,7 @@ export class TUI extends Container {
 		if (this.#multiplexerResizeTimer) {
 			return;
 		}
-		const now = this.#renderScheduler.now();
-		const elapsed = now - this.#lastRenderAt;
-		const cadenceDelay = Math.max(0, TUI.#MIN_RENDER_INTERVAL_MS - elapsed);
-		// Adaptive backpressure — target ~50% render duty cycle: the next frame
-		// starts no sooner than `frame_end + estimated_cost`, i.e.
-		// `frame_start + 2 × estimated_cost`. So `elapsed` (which counts from
-		// the last frame's start) must already exceed twice the estimate before
-		// we allow the follow-up render to fire. The estimate is decayed rather
-		// than the previous sample, so a sustained slow loop is held to half the
-		// CPU (#4145) and an isolated expensive paint is not charged to the
-		// cheap frame behind it. Capped so a pathological cost cannot lock the UI.
-		const adaptiveFloor = Math.min(TUI.#MAX_ADAPTIVE_RENDER_MS, this.#frameCostEstimateMs * 2);
-		const adaptiveDelay = Math.max(0, adaptiveFloor - elapsed);
-		const inputGraceDelay = Math.max(0, this.#inputRenderGraceUntilMs - now);
-		const delay = Math.max(cadenceDelay, adaptiveDelay, inputGraceDelay);
+		const delay = this.#pacer.delay(this.#renderScheduler.now());
 		this.#renderTimer = this.#renderScheduler.scheduleRender(() => {
 			this.#renderTimer = undefined;
 			if (this.#stopped || !this.#renderRequested) {
@@ -2092,9 +2078,9 @@ export class TUI extends Container {
 	}
 
 	/**
-	 * Wrap `#doRender()` so every path records the wall-clock frame cost that
-	 * feeds adaptive backpressure. Set `#lastRenderAt` first (some render code
-	 * reads it re-entrantly) and compute the cost once the paint returns.
+	 * Wrap `#doRender()` so every path records the frame cost that feeds the
+	 * pacer's adaptive backpressure. The start is recorded first, because a
+	 * render requested from inside the compose schedules against it.
 	 *
 	 * The phase is what a blocked frame is reported as. A compose walks every
 	 * component, wraps every line of the transcript and diffs the frame, and it
@@ -2104,14 +2090,13 @@ export class TUI extends Container {
 	 */
 	#executeRender(): void {
 		const start = this.#renderScheduler.now();
-		this.#lastRenderAt = start;
+		this.#pacer.frameStarted(start);
 		pushLoopPhase("ui.render");
 		try {
 			this.#doRender();
 		} finally {
 			popLoopPhase();
-			const costMs = this.#renderScheduler.now() - start;
-			this.#frameCostEstimateMs += TUI.#FRAME_COST_SMOOTHING * (costMs - this.#frameCostEstimateMs);
+			this.#pacer.frameEnded(start, this.#renderScheduler.now());
 		}
 	}
 
@@ -2167,6 +2152,7 @@ export class TUI extends Container {
 	 * one.
 	 */
 	#handleInput(data: string): void {
+		this.#activity.report();
 		pushLoopPhase("ui.input");
 		try {
 			this.#dispatchInput(data);
@@ -2181,7 +2167,7 @@ export class TUI extends Container {
 		// key would make idle navigation pay a full frame of latency.
 		const c0 = data.charCodeAt(0);
 		if ((c0 === 3 || c0 === 27) && (matchesKey(data, "ctrl+c") || matchesKey(data, "escape"))) {
-			this.#inputRenderGraceUntilMs = this.#renderScheduler.now() + TUI.#INPUT_RENDER_GRACE_MS;
+			this.#pacer.holdForInput(this.#renderScheduler.now());
 		}
 		if (this.#inputListeners.size > 0) {
 			let current = data;
@@ -2371,12 +2357,22 @@ export class TUI extends Container {
 	 */
 	#doRender(): void {
 		if (this.#stopped) return;
+		this.#activity.report();
 		const width = this.terminal.columns;
 		const height = this.terminal.rows;
 
 		// Size any sibling-dependent layout before the children render, while a
 		// measurement of them is still a measurement of THIS frame.
-		this.onBeforeCompose?.();
+		if (this.onBeforeCompose) {
+			this.#sizing = true;
+			try {
+				this.onBeforeCompose();
+			} finally {
+				this.#sizing = false;
+				this.#sizingRoots = undefined;
+				this.#partialComposeChildren.clear();
+			}
+		}
 
 		// Consume the component-scoped accumulation: it describes the render
 		// requests made up to this frame, whichever path the frame takes.
@@ -2446,7 +2442,7 @@ export class TUI extends Container {
 		// mouse on every quiet frame of a virtualized transcript, which is what
 		// let the terminal scroll the composer off screen. Synced after the emit
 		// below.
-		this.#frameScrollable = frameLength > height || this.#scrollTape.length > 0;
+		this.#frameScrollable = frameLength > height || this.#scrollTape.scrolledOffRows > 0;
 		const finalBoundary = clampLow(this.#nativeScrollbackLiveRegionStart ?? frameLength, 0, frameLength);
 
 		// 2. Transition state captured before any emitter runs.
@@ -2497,7 +2493,12 @@ export class TUI extends Container {
 		// commit/audit/scroll-append planner below does not apply: every frame is a
 		// full viewport rewrite of the window already assembled above.
 		if (this.#altActive) {
-			this.#commitAltFrame(view, plan, frameLength, width, height, prefix.preCommitRows);
+			// A replay frame carries the whole history (#composeFrame rehydrated every
+			// virtualized root for it), so the tape is rebuilt from it: rows that
+			// scrolled off before isolation turned the tape on, or at another width,
+			// are not on it.
+			const replaysHistory = geometryRebuild || (replaceRequested && !resizeRepaintsInPlace());
+			this.#commitAltFrame(view, plan, frameLength, width, height, prefix.preCommitRows, replaysHistory);
 			return;
 		}
 		// `start()` ends in `requestRender(true)`, so the frame that follows an adoption arrives
@@ -2642,6 +2643,7 @@ export class TUI extends Container {
 		// previous segment of every other root child.
 		const partialRoots = componentScopedOnly ? this.#resolvePartialComposeRoots(width, height) : null;
 		this.#componentRenderTargets.clear();
+		this.#compactionRoots.clear();
 		if (partialRoots !== null) {
 			this.#partialComposeRoots = partialRoots;
 			try {
@@ -2658,13 +2660,24 @@ export class TUI extends Container {
 	}
 
 	/**
-	 * Slide the commit coordinates onto the frame a virtualized child just
-	 * compacted. The rows it dropped are rows the engine reported committed
+	 * Slide the commit coordinates onto the frame the dropping children just
+	 * compacted. The rows they dropped are rows the engine reported committed
 	 * and the terminal already holds, so history is unchanged: only the
 	 * indices move.
 	 */
 	#slideCommitsOverDroppedRows(): void {
-		if (this.#frameDroppedRows <= 0) return;
+		const drops = this.#frameDrops;
+		if (drops.length === 0) return;
+		// Pairs arrive in child order, so their offsets ascend. Splicing from the
+		// last pair leaves every earlier pair's offset where the previous frame
+		// put it; one splice at the first offset with the summed count would take
+		// the committed rows of any child between two dropping ones instead.
+		for (let i = drops.length - 2; i >= 0; i -= 2) this.#slideCommitsOver(drops[i]!, drops[i + 1]!);
+		drops.length = 0;
+	}
+
+	/** Remove `rows` committed rows at previous-frame row `dropAt` from the commit coordinates. */
+	#slideCommitsOver(dropAt: number, rows: number): void {
 		// The rows left at the drop site's own offset. A virtualized root is
 		// not necessarily the first child: `home-anchor-layout` mounts a
 		// `topFill` above the transcript whenever a conversation exists, so
@@ -2672,10 +2685,8 @@ export class TUI extends Container {
 		// index 0 would delete the filler's committed rows instead and leave
 		// the prefix misaligned by exactly the header height — which the next
 		// audit reads as a divergence and repairs with a whole-screen rebuild.
-		const at = Math.min(this.#frameDroppedAt ?? 0, this.#committedRows);
-		const dropped = Math.min(this.#frameDroppedRows, Math.max(0, this.#committedRows - at));
-		this.#frameDroppedRows = 0;
-		this.#frameDroppedAt = undefined;
+		const at = Math.min(dropAt, this.#committedRows);
+		const dropped = Math.min(rows, Math.max(0, this.#committedRows - at));
 		if (dropped <= 0) return;
 		this.#committedRows -= dropped;
 		this.#committedPrefixAuditRows =
@@ -3142,7 +3153,9 @@ export class TUI extends Container {
 	 * frame near the viewport height however long the session runs. Here the tape
 	 * is not a mirror of terminal scrollback, it is the only copy — which is why
 	 * the audit is skipped entirely: nothing outside this process can hold us to
-	 * bytes we already painted, so there is no immutability to verify.
+	 * bytes we already painted, so there is no immutability to verify. A frame
+	 * that replays the whole history (`replaysHistory`) rewrites the tape from
+	 * its first row.
 	 */
 	#commitAltFrame(
 		view: AssembledWindow,
@@ -3151,10 +3164,12 @@ export class TUI extends Container {
 		width: number,
 		height: number,
 		preCommitRows: number,
+		replaysHistory: boolean,
 	): void {
 		const { frame, window } = view;
 		const { windowTop, chunkTo } = plan;
-		this.#appendScrollTape(frame, Math.min(preCommitRows, chunkTo), chunkTo);
+		if (replaysHistory) this.#scrollTape.clear();
+		this.#appendScrollTape(frame, replaysHistory ? 0 : Math.min(preCommitRows, chunkTo), chunkTo);
 		this.#committedRows = chunkTo;
 		this.#committedPrefix.length = 0;
 		this.#committedPrefixAuditRows = 0;
@@ -3162,6 +3177,12 @@ export class TUI extends Container {
 		this.#emitAltFrame(window, width, height, view.altCaret ?? undefined);
 		this.#previousWindow = window;
 		this.#previousFrameLength = frameLength;
+		// The geometry this frame was composed at. Left unrecorded, every later
+		// frame reads the resize again and replays the whole history, and a replay
+		// that commits rows requests the compaction frame that replays it again.
+		// Exit to the normal screen compares against #altEnterWidth instead.
+		this.#previousWidth = width;
+		this.#previousHeight = height;
 		// The rows the tape does not hold yet. Kept so exit can replay the whole
 		// transcript (tape + tail) onto the normal screen, since on this surface
 		// the terminal has never seen any of it.
@@ -3169,7 +3190,7 @@ export class TUI extends Container {
 		this.#altTranscriptReplayPending = true;
 		this.#clearScrollbackOnNextRender = false;
 		this.#hasEverRendered = true;
-		this.#publishCommittedRows();
+		this.#publishCommittedRows(replaysHistory ? 0 : preCommitRows);
 	}
 
 	/**
@@ -3230,7 +3251,7 @@ export class TUI extends Container {
 		this.#clearScrollbackOnNextRender = false;
 		this.#hasEverRendered = true;
 		this.#syncWheelTracking();
-		this.#publishCommittedRows();
+		this.#publishCommittedRows(0);
 		if (!firstPaint && rawFrame.length > height) this.#armPostFullPaintSettle();
 	}
 
@@ -3271,7 +3292,7 @@ export class TUI extends Container {
 		} else {
 			this.#committedPrefixAuditRows = Math.min(preAuditRows, this.#committedRows);
 		}
-		this.#publishCommittedRows();
+		this.#publishCommittedRows(preCommitRows);
 	}
 
 	/**
@@ -3338,14 +3359,36 @@ export class TUI extends Container {
 	 * retracted — would otherwise observe a count one frame stale and retract
 	 * rows that just entered immutable native scrollback, stranding an
 	 * orphaned copy above the repainted block.
+	 *
+	 * A virtualized root drops committed rows only while it renders, reading
+	 * the claim the previous frame published. Rows this frame committed past
+	 * `committedBefore` would stay in its frame, with every block that drew
+	 * them, until the root renders again, and a session that goes quiet after
+	 * the paint (a resumed session at rest, the end of a turn) renders nothing.
+	 * So when such a root now holds more committed rows than the screen it
+	 * keeps, a component-scoped frame follows that names none of its children:
+	 * the root drops those rows and re-derives no block. That frame commits
+	 * nothing new and requests no other.
 	 */
-	#publishCommittedRows(): void {
+	#publishCommittedRows(committedBefore: number): void {
+		const grew = this.#committedRows > committedBefore;
 		for (const segment of this.#frameSegments) {
-			setNativeScrollbackCommittedRows(
-				segment.component,
-				Math.min(segment.rowCount, Math.max(0, this.#committedRows - segment.start)),
-			);
+			const claim = Math.min(segment.rowCount, Math.max(0, this.#committedRows - segment.start));
+			setNativeScrollbackCommittedRows(segment.component, claim);
+			if (grew && claim > this.terminal.rows && canPrepareNativeScrollbackReplay(segment.component)) {
+				this.#requestCompaction(segment.component);
+			}
 		}
+	}
+
+	/** Queue a frame in which `root` renders with no child named, so it drops its committed rows. */
+	#requestCompaction(root: Component): void {
+		if (this.#stopped) return;
+		if (!this.#renderRequested && this.#postFullPaintSettleTimer === undefined) {
+			this.#pendingRenderComponentsOnly = true;
+		}
+		this.#compactionRoots.add(root);
+		this.#requestOrdinaryRender();
 	}
 
 	/**
@@ -3389,7 +3432,7 @@ export class TUI extends Container {
 			// matches the gesture-driven reset path.
 			this.#resizeEventPending = true;
 			this.requestRender(true, { clearScrollback: !isMultiplexerSession() });
-		}, TUI.#RESIZE_VIEWPORT_SETTLE_MS);
+		}, RESIZE_VIEWPORT_SETTLE_MS);
 	}
 
 	#requestResizeViewportPaint(): void {

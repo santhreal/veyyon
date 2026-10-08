@@ -31,17 +31,16 @@
  * private, is already covered.
  */
 import { beforeAll, describe, expect, it } from "bun:test";
-import type { ModalSizing } from "@veyyon/coding-agent/modes/terminal/components/chrome/modal-shell";
-import * as modalShell from "@veyyon/coding-agent/modes/terminal/components/chrome/modal-shell";
+import * as modalGeometry from "@veyyon/coding-agent/modes/terminal/components/chrome/modal-geometry";
 import {
 	computeModalDims,
 	MODAL_SIZING_LARGE,
 	MODAL_SIZING_MEDIUM,
+	type ModalSizing,
 	modalNeedsCompactPadding,
-	planModalChrome,
-	renderModalShell,
 	sizingForArea,
-} from "@veyyon/coding-agent/modes/terminal/components/chrome/modal-shell";
+} from "@veyyon/coding-agent/modes/terminal/components/chrome/modal-geometry";
+import { planModalChrome, renderModalShell } from "@veyyon/coding-agent/modes/terminal/components/chrome/modal-shell";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 const WIDTH = 100;
@@ -74,7 +73,7 @@ function bodyRows(rows: number, base: ModalSizing = MODAL_SIZING_LARGE): number 
 
 /** Sizings the module exports, read off the namespace so a new one needs no edit here. */
 function exportedSizings(): [string, ModalSizing][] {
-	const exported = Object.entries(modalShell).filter((entry): entry is [string, ModalSizing] =>
+	const exported = Object.entries(modalGeometry).filter((entry): entry is [string, ModalSizing] =>
 		entry[0].startsWith("MODAL_SIZING_"),
 	);
 	if (exported.length === 0) throw new Error("no exported sizings: the enumeration lost its subject");

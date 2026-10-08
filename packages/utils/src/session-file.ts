@@ -156,3 +156,14 @@ export function isAdvisorTranscriptName(name: string): boolean {
 export function advisorTranscriptSlug(name: string): string {
 	return name === ADVISOR_TRANSCRIPT_FILENAME ? "" : sessionFileStem(name).slice(ADVISOR_TRANSCRIPT_PREFIX.length);
 }
+
+/**
+ * The prefix of an agent transcript whose parent session has no file.
+ *
+ * A spawned agent writes its transcript into its parent's artifacts directory, `<parent stem>/`. A parent
+ * with no session file has no such directory, so the transcript goes to the sessions root instead: the
+ * task tool writes `orphan-task-<id>/<agent>.jsonl`, and a direct in-process run writes
+ * `orphan-task-<agent id>.jsonl`. The session listing reads this prefix to keep those transcripts out of
+ * the list of top-level sessions.
+ */
+export const ORPHAN_AGENT_TRANSCRIPT_PREFIX = "orphan-task-";

@@ -14,15 +14,15 @@ import { hostHasInheritableConsole } from "../../eval/py/spawn-options";
 import { buildMcpChildEnv } from "../child-environment";
 import { isMCPTimeoutEnabled, resolveMCPTimeoutMs } from "../timeout";
 import type {
-	JsonRpcError,
 	JsonRpcMessage,
 	JsonRpcRequest,
 	JsonRpcResponse,
 	MCPRequestOptions,
 	MCPStdioServerConfig,
 	MCPTransport,
+	ServerRequestResponse,
 } from "../types";
-import { toJsonRpcError } from "../types";
+import { answerServerRequest, toJsonRpcError } from "../types";
 import { describeJsonRpcError, isUnattributableError, rejectAllPending } from "../unattributable-error";
 import { terminateMcpServerTree } from "./process-tree";
 import { mcpNotConnectedMessage, mcpTimeoutMessage } from "./transport-failure";
@@ -577,7 +577,9 @@ export class StdioTransport implements MCPTransport {
 
 		// Server-to-client request: has both method and id
 		if ("method" in message && "id" in message && message.id != null) {
-			void this.#handleServerRequest(message as JsonRpcRequest);
+			void answerServerRequest(this.onRequest, message as JsonRpcRequest).then(response =>
+				this.#sendResponse(response),
+			);
 			return;
 		}
 
@@ -604,27 +606,18 @@ export class StdioTransport implements MCPTransport {
 		}
 	}
 
-	async #handleServerRequest(request: JsonRpcRequest): Promise<void> {
-		try {
-			if (!this.onRequest) {
-				this.#sendResponse(request.id, undefined, { code: -32601, message: "Method not found" });
-				return;
-			}
-			const result = await this.onRequest(request.method, request.params);
-			this.#sendResponse(request.id, result);
-		} catch (error) {
-			this.#sendResponse(request.id, undefined, toJsonRpcError(error));
-		}
-	}
-
-	#sendResponse(id: string | number, result?: unknown, error?: JsonRpcError): void {
+	#sendResponse(response: ServerRequestResponse): void {
 		if (!this.#connected || !this.#process?.stdin) return;
-		const response = error
-			? { jsonrpc: "2.0" as const, id, error }
-			: { jsonrpc: "2.0" as const, id, result: result ?? {} };
+		let frame: string;
+		try {
+			frame = JSON.stringify(response);
+		} catch (error) {
+			// A handler result that is not JSON (a cycle, a BigInt) still answers the server.
+			frame = JSON.stringify({ jsonrpc: "2.0", id: response.id, error: toJsonRpcError(error) });
+		}
 		// Silent on failure — a dead subprocess has no use for the response,
 		// and the read loop will close the transport on EOF.
-		writeFrame(this.#process.stdin, `${JSON.stringify(response)}\n`);
+		writeFrame(this.#process.stdin, `${frame}\n`);
 	}
 
 	/**

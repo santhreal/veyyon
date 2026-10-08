@@ -182,14 +182,18 @@ function computeMessageSuffixTokens(entries: readonly SessionEntry[]): number[] 
 	return suffix;
 }
 
-interface SupersedeCandidate {
+/** A tool result chosen for blanking, and the notice written over it. */
+interface PruneVictim {
 	entry: SessionMessageEntry;
 	message: ToolResultMessage;
-	/** Index of the entry within the array the collector walked. */
-	index: number;
 	tokens: number;
 	/** Placeholder text written over the blanked result. */
 	notice: string;
+}
+
+interface SupersedeCandidate extends PruneVictim {
+	/** Index of the entry within the array the collector walked. */
+	index: number;
 }
 
 /**
@@ -215,36 +219,14 @@ function collectSupersededResults(
 		const message = getToolResultMessage(entry);
 		if (!message || message.prunedAt !== undefined) continue;
 		const toolCall = toolCallsById.get(message.toolCallId);
-		if (!toolCall) continue;
-		if (isProtectedToolResult(message, toolCall, protectedTools)) continue;
-		// A result that carries no file content is not a read of the file it names,
-		// in either direction. It must not be blanked to "[Superseded by a newer read
-		// of this file]", which replaces the one fact it carries with a claim about a
-		// read that did not happen; and it must not COUNT as the newer read either,
-		// which is the half that loses data: the group is walked newest first, so such
-		// a result marked the last real read of that path superseded and left the model
-		// a pointer to a read that produced nothing.
-		//
-		// Two members. A placeholder for a call that never reached the tool, and a call
-		// that reached it and failed. The second was unguarded: a read of a path that
-		// errored blanked the earlier successful read of the same path, so the content
-		// left context and only the error string remained. `collectUselessResults` below
-		// already excludes `isError` for this reason.
-		if (toolResultNeverRan(message.details) || message.isError === true) continue;
-		const rawKey = supersedeKey(toolCall.name, toolCall.arguments as Record<string, unknown>);
-		if (rawKey === undefined) continue;
-		const targets: readonly string[] =
-			typeof rawKey === "string" ? [rawKey] : Array.isArray(rawKey) ? rawKey : Array.from(rawKey);
-		if (targets.length === 0) continue;
+		if (!toolCall || isProtectedToolResult(message, toolCall, protectedTools)) continue;
+		const targets = supersedeTargets(message, toolCall, supersedeKey);
+		if (targets === undefined) continue;
 
 		// An earlier read is superseded only when EVERY target it carries is covered
 		// by newer reads. A target is covered if an identical target was read later, or
 		// if a selector-free read of the same base path was read later.
-		const superseded = targets.every(t => {
-			if (seenTargets.has(t)) return true;
-			const sep = t.indexOf("\u0000");
-			return sep >= 0 && seenTargets.has(t.slice(0, sep));
-		});
+		const superseded = targets.every(target => isCoveredTarget(target, seenTargets));
 		for (const t of targets) {
 			seenTargets.add(t);
 		}
@@ -258,6 +240,40 @@ function collectSupersededResults(
 		});
 	}
 	return candidates.reverse();
+}
+
+/** The targets a result's call reads, or `undefined` when the result carries no file content or the call names none. */
+function supersedeTargets(
+	message: ToolResultMessage,
+	toolCall: AgentToolCall,
+	supersedeKey: SupersedeKeyFn,
+): readonly string[] | undefined {
+	// A result that carries no file content is not a read of the file it names,
+	// in either direction. It must not be blanked to "[Superseded by a newer read
+	// of this file]", which replaces the one fact it carries with a claim about a
+	// read that did not happen; and it must not COUNT as the newer read either,
+	// which is the half that loses data: the group is walked newest first, so such
+	// a result marked the last real read of that path superseded and left the model
+	// a pointer to a read that produced nothing.
+	//
+	// Two members. A placeholder for a call that never reached the tool, and a call
+	// that reached it and failed. The second was unguarded: a read of a path that
+	// errored blanked the earlier successful read of the same path, so the content
+	// left context and only the error string remained. `collectUselessResults` below
+	// already excludes `isError` for this reason.
+	if (toolResultNeverRan(message.details) || message.isError === true) return undefined;
+	const rawKey = supersedeKey(toolCall.name, toolCall.arguments as Record<string, unknown>);
+	if (rawKey === undefined) return undefined;
+	const targets: readonly string[] =
+		typeof rawKey === "string" ? [rawKey] : Array.isArray(rawKey) ? rawKey : Array.from(rawKey);
+	return targets.length === 0 ? undefined : targets;
+}
+
+/** Whether a newer read covered `target`: the same target, or a selector-free read of its base path. */
+function isCoveredTarget(target: string, seenTargets: ReadonlySet<string>): boolean {
+	if (seenTargets.has(target)) return true;
+	const sep = target.indexOf("\u0000");
+	return sep >= 0 && seenTargets.has(target.slice(0, sep));
 }
 
 /**
@@ -335,121 +351,160 @@ export function pruneSupersededToolResults(entries: SessionEntry[], config: Supe
 	const boundaryIndex = resolveCompactionBoundaryIndex(entries, config.keepBoundaryId);
 	const live = boundaryIndex === 0 ? entries : entries.slice(boundaryIndex);
 	const toolCallsById = collectToolCallsById(entries, boundaryIndex);
+	const candidates = supersedeCandidates(live, toolCallsById, config);
+	if (candidates.length === 0) return { prunedCount: 0, tokensSaved: 0, prunedEntries: [] };
+
+	// Provider cache is cold (idle exceeds the retention TTL), so re-writing
+	// the sent region costs nothing.
+	const toPrune = cacheIsCold(live, config) ? candidates : cacheAwareVictims(candidates, live, config);
+	if (toPrune.length === 0) return { prunedCount: 0, tokensSaved: 0, prunedEntries: [] };
+	return blankVictims(toPrune, prunedSavings(toPrune));
+}
+
+/** Superseded results, and useless ones when `pruneUseless` is set, in message order. */
+function supersedeCandidates(
+	live: readonly SessionEntry[],
+	toolCallsById: ReadonlyMap<string, AgentToolCall>,
+	config: SupersedePruneConfig,
+): SupersedeCandidate[] {
 	const candidates = config.supersedeKey
 		? collectSupersededResults(live, toolCallsById, config.supersedeKey, config.protectedTools)
 		: [];
-	if (config.pruneUseless) {
-		const exclude = new Set(candidates.map(candidate => candidate.message));
-		const useless = collectUselessResults(live, toolCallsById, config.protectedTools, exclude);
-		for (let ui = 0; ui < useless.length; ui++) candidates.push(useless[ui]!);
-		candidates.sort((a, b) => a.index - b.index);
-	}
-	if (candidates.length === 0) return { prunedCount: 0, tokensSaved: 0, prunedEntries: [] };
+	if (!config.pruneUseless) return candidates;
+	const exclude = new Set(candidates.map(candidate => candidate.message));
+	const useless = collectUselessResults(live, toolCallsById, config.protectedTools, exclude);
+	for (let ui = 0; ui < useless.length; ui++) candidates.push(useless[ui]!);
+	candidates.sort((a, b) => a.index - b.index);
+	return candidates;
+}
 
-	// Every candidate is a message in `live`, so the newest message on the branch
-	// is in `live` too.
-	const now = config.now ?? Date.now();
-	let lastMessageTimestamp: number | undefined;
+/**
+ * Whether the newest message on `live` is at least `idleFlushMs` old. Called with a candidate on `live`, so the
+ * newest message on the branch is on `live` too. A newest message with no timestamp is not idle.
+ */
+function cacheIsCold(live: readonly SessionEntry[], config: SupersedePruneConfig): boolean {
 	for (let i = live.length - 1; i >= 0; i--) {
 		const entry = live[i];
 		if (entry.type !== "message") continue;
 		const timestamp = (entry.message as AgentMessage).timestamp;
-		if (typeof timestamp === "number") lastMessageTimestamp = timestamp;
-		break;
+		if (typeof timestamp !== "number") return false;
+		return (config.now ?? Date.now()) - timestamp >= (config.idleFlushMs ?? DEFAULT_IDLE_FLUSH_MS);
 	}
-	const idle =
-		lastMessageTimestamp !== undefined && now - lastMessageTimestamp >= (config.idleFlushMs ?? DEFAULT_IDLE_FLUSH_MS);
+	return false;
+}
 
-	let toPrune: SupersedeCandidate[];
-	if (idle) {
-		// Provider cache is cold (idle exceeds the retention TTL), so re-writing
-		// the sent region costs nothing.
-		toPrune = candidates;
-	} else {
-		const suffixTokenLimit = config.suffixTokenLimit ?? DEFAULT_SUFFIX_TOKEN_LIMIT;
-		// suffixTokens[i] = estimated tokens of all messages strictly after live[i].
-		const suffixTokens = computeMessageSuffixTokens(live);
-		const cacheWarmSuffixTokens = config.cacheWarmSuffixTokens;
-		const eligible =
-			cacheWarmSuffixTokens === undefined
-				? candidates
-				: candidates.filter(candidate => (suffixTokens[candidate.index] ?? 0) <= cacheWarmSuffixTokens);
-		// The cheap tail: a candidate whose own suffix is small is worth rewriting on
-		// its own, which is the read -> edit -> read loop.
-		const tail = eligible.filter(candidate => suffixTokens[candidate.index] <= suffixTokenLimit);
-		// Deeper than the tail, one victim never pays for the rewrite it forces, but a
-		// batch of them does. Asking the question per candidate is why a long session
-		// reclaimed almost nothing: at 120k of context every candidate outside the last
-		// few thousand tokens failed the test alone, while together they were most of
-		// the dead weight in the window.
-		const batch = chooseWorthwhileSweep(eligible, suffixTokens, config);
-		toPrune = batch.length > tail.length ? batch : tail;
-	}
-	if (toPrune.length === 0) return { prunedCount: 0, tokensSaved: 0, prunedEntries: [] };
+/** The victims worth the cache rewrite they force: the cheap tail, or a deeper batch that pays for itself if larger. */
+function cacheAwareVictims(
+	candidates: SupersedeCandidate[],
+	live: readonly SessionEntry[],
+	config: SupersedePruneConfig,
+): SupersedeCandidate[] {
+	const suffixTokenLimit = config.suffixTokenLimit ?? DEFAULT_SUFFIX_TOKEN_LIMIT;
+	// suffixTokens[i] = estimated tokens of all messages strictly after live[i].
+	const suffixTokens = computeMessageSuffixTokens(live);
+	const cacheWarmSuffixTokens = config.cacheWarmSuffixTokens;
+	const eligible =
+		cacheWarmSuffixTokens === undefined
+			? candidates
+			: candidates.filter(candidate => (suffixTokens[candidate.index] ?? 0) <= cacheWarmSuffixTokens);
+	// The cheap tail: a candidate whose own suffix is small is worth rewriting on
+	// its own, which is the read -> edit -> read loop.
+	const tail = eligible.filter(candidate => suffixTokens[candidate.index] <= suffixTokenLimit);
+	// Deeper than the tail, one victim never pays for the rewrite it forces, but a
+	// batch of them does. Asking the question per candidate is why a long session
+	// reclaimed almost nothing: at 120k of context every candidate outside the last
+	// few thousand tokens failed the test alone, while together they were most of
+	// the dead weight in the window.
+	const batch = chooseWorthwhileSweep(eligible, suffixTokens, config);
+	return batch.length > tail.length ? batch : tail;
+}
 
-	const prunedAt = Date.now();
+function prunedSavings(victims: readonly PruneVictim[]): number {
 	let tokensSaved = 0;
+	for (const victim of victims) tokensSaved += estimatePrunedSavings(victim.tokens, victim.notice);
+	return tokensSaved;
+}
+
+/** Replace each victim's content with its notice, every one stamped with the same `prunedAt`. */
+function blankVictims(victims: readonly PruneVictim[], tokensSaved: number): PruneResult {
+	const prunedAt = Date.now();
 	const prunedEntries: SessionMessageEntry[] = [];
-	for (const candidate of toPrune) {
-		candidate.message.content = [{ type: "text", text: candidate.notice }];
-		candidate.message.prunedAt = prunedAt;
-		tokensSaved += estimatePrunedSavings(candidate.tokens, candidate.notice);
-		prunedEntries.push(candidate.entry);
+	for (const victim of victims) {
+		victim.message.content = [{ type: "text", text: victim.notice }];
+		victim.message.prunedAt = prunedAt;
+		prunedEntries.push(victim.entry);
 	}
-	return { prunedCount: toPrune.length, tokensSaved, prunedEntries };
+	return { prunedCount: prunedEntries.length, tokensSaved, prunedEntries };
 }
 
 export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = DEFAULT_PRUNE_CONFIG): PruneResult {
-	let accumulatedTokens = 0;
-	let tokensSaved = 0;
-
-	const candidates: Array<{ entry: SessionMessageEntry; tokens: number; superseded: boolean; useless: boolean }> = [];
 	// Entries before the compaction boundary are summarized away (never sent), so
 	// nothing below walks them.
 	const boundaryIndex = resolveCompactionBoundaryIndex(entries, config.keepBoundaryId);
 	const live = boundaryIndex === 0 ? entries : entries.slice(boundaryIndex);
 	const toolCallsById = collectToolCallsById(entries, boundaryIndex);
-	const supersededMessages = config.supersedeKey
+	const victims = ageVictims(live, toolCallsById, config, deadResults(live, toolCallsById, config));
+	const tokensSaved = prunedSavings(victims);
+	if (tokensSaved < config.minimumSavings || victims.length === 0) {
+		return { prunedCount: 0, tokensSaved: 0, prunedEntries: [] };
+	}
+	return blankVictims(victims, tokensSaved);
+}
+
+/** The results that are dead weight at any age: superseded by a newer read, or flagged useless by their tool. */
+interface DeadResults {
+	superseded: ReadonlySet<ToolResultMessage> | undefined;
+	useless: ReadonlySet<ToolResultMessage> | undefined;
+}
+
+function deadResults(
+	live: readonly SessionEntry[],
+	toolCallsById: ReadonlyMap<string, AgentToolCall>,
+	config: PruneConfig,
+): DeadResults {
+	const superseded = config.supersedeKey
 		? new Set(
 				collectSupersededResults(live, toolCallsById, config.supersedeKey, config.protectedTools).map(
 					candidate => candidate.message,
 				),
 			)
 		: undefined;
-	const uselessMessages =
+	const useless =
 		config.pruneUseless !== false
 			? new Set(
-					collectUselessResults(live, toolCallsById, config.protectedTools, supersededMessages ?? new Set()).map(
+					collectUselessResults(live, toolCallsById, config.protectedTools, superseded ?? new Set()).map(
 						candidate => candidate.message,
 					),
 				)
 			: undefined;
+	return { superseded, useless };
+}
 
-	const cacheWarmSuffixTokens = config.cacheWarmSuffixTokens;
-	// All-message suffix per index, only when the cache guard is armed.
-	const messageSuffix = cacheWarmSuffixTokens === undefined ? undefined : computeMessageSuffixTokens(live);
-
+/**
+ * The results an age-based prune blanks, newest first: each unprotected result behind the newest `protectTokens` of
+ * output and large enough to pay for its notice, and each dead result, apart from those in the warm cache prefix.
+ */
+function ageVictims(
+	live: readonly SessionEntry[],
+	toolCallsById: ReadonlyMap<string, AgentToolCall>,
+	config: PruneConfig,
+	dead: DeadResults,
+): PruneVictim[] {
+	const warmEnd = warmPrefixEnd(live, config.cacheWarmSuffixTokens);
+	const victims: PruneVictim[] = [];
+	let accumulatedTokens = 0;
 	for (let i = live.length - 1; i >= 0; i--) {
 		const entry = live[i];
 		const message = getToolResultMessage(entry);
 		if (!message) continue;
-
 		const tokens = estimateTokens(message as AgentMessage);
-		const isProtected = isProtectedToolResult(message, toolCallsById.get(message.toolCallId), config.protectedTools);
-
-		if (message.prunedAt !== undefined) {
-			accumulatedTokens += tokens;
-			continue;
-		}
 
 		// Prompt-cache guard: a result whose all-message suffix exceeds the
 		// warm-cache window sits in the already-sent cached prefix — mutating it
 		// re-writes the whole suffix (cacheWrite premium). It is skipped before any
 		// prune decision, so superseded/useless cannot reach a deep, still-cached
 		// copy; compaction/shake reclaim those when they rebuild.
-		const inWarmPrefix =
-			messageSuffix !== undefined && cacheWarmSuffixTokens !== undefined && messageSuffix[i] > cacheWarmSuffixTokens;
-		if (inWarmPrefix) {
+		if (message.prunedAt !== undefined || i < warmEnd) {
 			accumulatedTokens += tokens;
 			continue;
 		}
@@ -457,51 +512,45 @@ export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = 
 		// Superseded and useless results bypass the age-based protect window
 		// (a stale re-read copy, or a result the tool flagged as uninformative,
 		// is dead weight at any age) — but only within the cache-warm tail: the
-		// guard above already excluded deeper, still-cached copies.
-		const superseded = supersededMessages?.has(message) ?? false;
-		const useless = uselessMessages?.has(message) ?? false;
-		const tooSmall = tokens < MIN_PRUNE_TOKENS;
-		if (!superseded && !useless && (accumulatedTokens < config.protectTokens || isProtected || tooSmall)) {
-			accumulatedTokens += tokens;
+		// guard above already excluded deeper, still-cached copies. Dead weight
+		// being pruned away must not consume the protectTokens window of the real
+		// results retained behind it.
+		const notice = deadNotice(message, dead);
+		if (notice !== undefined) {
+			victims.push({ entry: entry as SessionMessageEntry, message, tokens, notice });
 			continue;
 		}
-
-		candidates.push({ entry: entry as SessionMessageEntry, tokens, superseded, useless });
-		// Dead weight being pruned away (superseded/useless) must not consume
-		// the protectTokens window of the real results retained behind it.
-		if (!superseded && !useless) accumulatedTokens += tokens;
+		if (
+			accumulatedTokens >= config.protectTokens &&
+			tokens >= MIN_PRUNE_TOKENS &&
+			!isProtectedToolResult(message, toolCallsById.get(message.toolCallId), config.protectedTools)
+		) {
+			victims.push({ entry: entry as SessionMessageEntry, message, tokens, notice: createPrunedNotice(tokens) });
+		}
+		accumulatedTokens += tokens;
 	}
+	return victims;
+}
 
-	for (const candidate of candidates) {
-		tokensSaved += estimatePrunedSavings(
-			candidate.tokens,
-			candidate.superseded
-				? SUPERSEDED_NOTICE
-				: candidate.useless
-					? USELESS_NOTICE
-					: createPrunedNotice(candidate.tokens),
-		);
+/**
+ * The index the warm cache prefix ends at: each entry before it has more than `limit` tokens of messages after it,
+ * and no entry from it on does, since that suffix only shrinks toward the end. 0 when the cache guard is unarmed.
+ */
+function warmPrefixEnd(live: readonly SessionEntry[], limit: number | undefined): number {
+	if (limit === undefined) return 0;
+	let after = 0;
+	for (let i = live.length - 1; i >= 0; i--) {
+		if (after > limit) return i + 1;
+		const entry = live[i];
+		if (entry.type === "message") after += estimateTokens(entry.message as AgentMessage);
 	}
+	return 0;
+}
 
-	if (tokensSaved < config.minimumSavings || candidates.length === 0) {
-		return { prunedCount: 0, tokensSaved: 0, prunedEntries: [] };
-	}
-
-	const prunedAt = Date.now();
-	const prunedEntries: SessionMessageEntry[] = [];
-	for (const candidate of candidates) {
-		const message = candidate.entry.message as ToolResultMessage;
-		const notice = candidate.superseded
-			? SUPERSEDED_NOTICE
-			: candidate.useless
-				? USELESS_NOTICE
-				: createPrunedNotice(candidate.tokens);
-		message.content = [{ type: "text", text: notice }];
-		message.prunedAt = prunedAt;
-		prunedEntries.push(candidate.entry);
-	}
-
-	return { prunedCount: prunedEntries.length, tokensSaved, prunedEntries };
+/** The notice a dead result is blanked to, superseded before useless; `undefined` for a result that is not dead. */
+function deadNotice(message: ToolResultMessage, dead: DeadResults): string | undefined {
+	if (dead.superseded?.has(message)) return SUPERSEDED_NOTICE;
+	return dead.useless?.has(message) ? USELESS_NOTICE : undefined;
 }
 
 /**

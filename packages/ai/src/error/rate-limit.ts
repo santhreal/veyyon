@@ -16,6 +16,27 @@ const MODEL_CAPACITY_BASE_MS = 45 * 1000; // 45s base
 const MODEL_CAPACITY_JITTER_MS = 30 * 1000; // ±15s
 const SERVER_ERROR_BACKOFF_MS = 20 * 1000; // 20s
 
+/**
+ * What a rate-limit backoff is spent on. The context sets the cost of an `UNKNOWN` reason; every
+ * readable reason costs the same in both.
+ *
+ * - `"credential-park"`: auth storage parks the failing credential until the window passes, and the
+ *   next request rotates to a sibling credential. An unreadable failure is parked as long as a spent
+ *   quota, since a credential whose allowance is gone fails again on every retry inside the window.
+ * - `"selector-suppression"`: the retry fallback chain skips the failing model selector until the
+ *   window passes and retries the next selector. An unreadable failure suppresses the selector for
+ *   five minutes, so a failure the rules cannot read does not remove a model from the chain for the
+ *   whole quota window.
+ */
+export const RATE_LIMIT_BACKOFF_CONTEXTS = ["credential-park", "selector-suppression"] as const;
+export type RateLimitBackoffContext = (typeof RATE_LIMIT_BACKOFF_CONTEXTS)[number];
+
+/** Cost of an `UNKNOWN` reason, per {@link RateLimitBackoffContext}. */
+const UNREADABLE_FAILURE_BACKOFF_MS: Record<RateLimitBackoffContext, number> = {
+	"credential-park": QUOTA_EXHAUSTED_BACKOFF_MS,
+	"selector-suppression": 5 * 60 * 1000,
+};
+
 const ACCOUNT_RATE_LIMIT_PATTERN =
 	/\baccount(?:'s)?\b[^\n]{0,80}\brate.?limit\b|\brate.?limit\b[^\n]{0,80}\baccount\b/i;
 const INSUFFICIENT_BALANCE_PATTERN = /insufficient.?balance/i;
@@ -123,10 +144,11 @@ export function parseRateLimitReason(errorMessage: string): RateLimitReason {
 }
 
 /**
- * Calculate backoff delay in ms for a given rate limit reason.
- * MODEL_CAPACITY gets jitter to prevent thundering herd.
+ * Backoff delay in ms for a rate limit `reason`, spent on `context`.
+ * MODEL_CAPACITY gets jitter to prevent thundering herd. `UNKNOWN` costs what
+ * {@link RateLimitBackoffContext} states for the caller's context.
  */
-export function calculateRateLimitBackoffMs(reason: RateLimitReason): number {
+export function calculateRateLimitBackoffMs(reason: RateLimitReason, context: RateLimitBackoffContext): number {
 	switch (reason) {
 		case "QUOTA_EXHAUSTED":
 			return QUOTA_EXHAUSTED_BACKOFF_MS;
@@ -136,8 +158,8 @@ export function calculateRateLimitBackoffMs(reason: RateLimitReason): number {
 			return MODEL_CAPACITY_BASE_MS + Math.random() * MODEL_CAPACITY_JITTER_MS;
 		case "SERVER_ERROR":
 			return SERVER_ERROR_BACKOFF_MS;
-		default:
-			return QUOTA_EXHAUSTED_BACKOFF_MS; // conservative default
+		case "UNKNOWN":
+			return UNREADABLE_FAILURE_BACKOFF_MS[context];
 	}
 }
 

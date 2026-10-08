@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import { CONFIG_DIR_NAME, errorMessage, isEnoent, isRecord } from "@veyyon/utils";
-import { parse as parseYaml } from "yaml";
-import { BUNDLED_ENV_KEYWORDS, buildEnvSecretPattern } from "./env-keywords";
+import { loadYaml } from "@veyyon/utils/yaml-sync";
+import { buildEnvSecretPattern, bundledEnvKeywords } from "./env-keywords";
 import type { SecretEntry } from "./obfuscator";
 import {
 	canObfuscatePlainValue,
@@ -188,7 +188,7 @@ function refuseUnprotectableEntries(entries: SecretEntry[], paths: { profilePath
  * substring. Passing it in rather than reading a module-level regex is what lets that list be
  * loaded from disk at all.
  */
-export function collectEnvSecrets(pattern: RegExp = BUNDLED_ENV_SECRET_PATTERN): SecretEntry[] {
+export function collectEnvSecrets(pattern: RegExp = bundledEnvSecretPattern()): SecretEntry[] {
 	const entries: SecretEntry[] = [];
 	const seen = new Set<string>();
 	for (const [name, value] of Object.entries(process.env)) {
@@ -207,7 +207,13 @@ export function collectEnvSecrets(pattern: RegExp = BUNDLED_ENV_SECRET_PATTERN):
 	return entries;
 }
 
-const BUNDLED_ENV_SECRET_PATTERN = buildEnvSecretPattern(BUNDLED_ENV_KEYWORDS);
+let bundledPattern: RegExp | undefined;
+
+/** The matcher for the bundled keyword list, built on the first call. */
+function bundledEnvSecretPattern(): RegExp {
+	bundledPattern ??= buildEnvSecretPattern(bundledEnvKeywords());
+	return bundledPattern;
+}
 
 /**
  * Read one `secrets.yml`.
@@ -234,7 +240,7 @@ async function loadSecretsFile(filePath: string): Promise<SecretEntry[]> {
 
 	let raw: unknown;
 	try {
-		raw = parseYaml(text);
+		raw = loadYaml().parse(text);
 	} catch (err) {
 		throw new Error(
 			`Refusing to start: ${filePath} is not valid YAML (${errorMessage(err).split("\n", 1)[0]}). ` +

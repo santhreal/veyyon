@@ -856,7 +856,7 @@ export class CmuxTab {
 
 	async #readGeometry(timeoutMs?: number): Promise<CmuxGeometry> {
 		const result = (await this.#request("browser.eval", { script: GEOMETRY_SCRIPT }, timeoutMs)) as CmuxEvalResult;
-		return this.#normalizeGeometry(result.value);
+		return normalizeGeometry(result.value);
 	}
 
 	elementHandle(selector: string): CmuxElementHandle {
@@ -864,15 +864,15 @@ export class CmuxTab {
 	}
 
 	async elementExists(selector: string): Promise<boolean> {
-		return await this.#selectorExists(this.#selectorSpec(selector));
+		return await this.#selectorExists(selectorSpec(selector));
 	}
 
 	async elementBox(selector: string): Promise<BoundingBox | null> {
-		return await this.#selectorBox(this.#selectorSpec(selector));
+		return await this.#selectorBox(selectorSpec(selector));
 	}
 
 	async evaluateOnSelector<TResult>(selector: string, source: string, args: unknown[]): Promise<TResult> {
-		const spec = this.#selectorSpec(selector);
+		const spec = selectorSpec(selector);
 		const script = `(() => {
 			const spec = ${JSON.stringify(spec)};
 			const source = ${JSON.stringify(source)};
@@ -936,7 +936,7 @@ export class CmuxTab {
 		action: string,
 		args: Record<string, unknown> = {},
 	): Promise<TResult> {
-		const spec = this.#selectorSpec(selector);
+		const spec = selectorSpec(selector);
 		const nativeSelector = this.#nativeSelector(spec);
 		if (nativeSelector && action !== "select" && action !== "uploadFile") {
 			switch (action) {
@@ -1055,7 +1055,7 @@ export class CmuxTab {
 
 	async #waitForSelector(selector: string, timeoutMs: number): Promise<void> {
 		const signal = this.#runContext?.signal;
-		const spec = this.#selectorSpec(selector);
+		const spec = selectorSpec(selector);
 		const nativeSelector = this.#nativeSelector(spec);
 		if (nativeSelector) {
 			await this.#request("browser.wait", { selector: nativeSelector, timeout_ms: timeoutMs }, timeoutMs, signal);
@@ -1103,7 +1103,7 @@ export class CmuxTab {
 
 	async #dragPoint(target: DragTarget): Promise<{ x: number; y: number }> {
 		if (typeof target === "string") {
-			const box = await this.#selectorBox(this.#selectorSpec(target));
+			const box = await this.#selectorBox(selectorSpec(target));
 			if (!box) throw new ToolError(`Drag selector did not resolve to a visible element: ${target}`);
 			return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 		}
@@ -1168,28 +1168,6 @@ export class CmuxTab {
 		return records;
 	}
 
-	#selectorSpec(selector: string): SelectorSpec {
-		const raw = selector;
-		let normalized = selector;
-		if (normalized.startsWith("p-text/")) normalized = `text/${normalized.slice("p-text/".length)}`;
-		else if (normalized.startsWith("p-aria/")) normalized = `aria/${normalized.slice("p-aria/".length)}`;
-		else if (normalized.startsWith("p-xpath/")) normalized = `xpath/${normalized.slice("p-xpath/".length)}`;
-		else if (normalized.startsWith("p-pierce/")) normalized = `pierce/${normalized.slice("p-pierce/".length)}`;
-		const ariaRef = /^(?:aria-ref=|aria-ref\/|ariaref\/)(e\d+)$/.exec(normalized);
-		if (ariaRef) return { kind: "aria-ref", value: ariaRef[1]!, raw };
-		const ref = /^@?e(\d+)$/.exec(normalized);
-		if (ref) return { kind: "ref", value: ref[1]!, raw, ref: `@e${ref[1]}` };
-		const slash = normalized.indexOf("/");
-		if (slash > 0) {
-			const prefix = normalized.slice(0, slash);
-			const value = normalized.slice(slash + 1);
-			if (prefix === "text" || prefix === "aria" || prefix === "xpath" || prefix === "pierce") {
-				return { kind: prefix, value, raw, name: prefix === "aria" ? value : undefined };
-			}
-		}
-		return { kind: "css", value: normalized, raw };
-	}
-
 	#nativeSelector(spec: SelectorSpec): string | undefined {
 		if (spec.kind === "css") return spec.value;
 		if (spec.kind === "ref") return spec.ref;
@@ -1207,25 +1185,47 @@ export class CmuxTab {
 		}
 	}
 
-	#normalizeGeometry(value: unknown): CmuxGeometry {
-		const object = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
-		return {
-			innerWidth: numberFrom(object.innerWidth, DEFAULT_VIEWPORT.width),
-			innerHeight: numberFrom(object.innerHeight, DEFAULT_VIEWPORT.height),
-			dpr: numberFrom(object.dpr, DEFAULT_VIEWPORT.deviceScaleFactor ?? 1),
-			scrollX: numberFrom(object.scrollX, 0),
-			scrollY: numberFrom(object.scrollY, 0),
-			scrollWidth: numberFrom(object.scrollWidth, DEFAULT_VIEWPORT.width),
-			scrollHeight: numberFrom(object.scrollHeight, DEFAULT_VIEWPORT.height),
-		};
-	}
-
 	#requireRunContext(operation: string): RunContext {
 		if (!this.#runContext) {
 			throw new ToolError(`${operation} requires an active cmux browser run`);
 		}
 		return this.#runContext;
 	}
+}
+
+function selectorSpec(selector: string): SelectorSpec {
+	const raw = selector;
+	let normalized = selector;
+	if (normalized.startsWith("p-text/")) normalized = `text/${normalized.slice("p-text/".length)}`;
+	else if (normalized.startsWith("p-aria/")) normalized = `aria/${normalized.slice("p-aria/".length)}`;
+	else if (normalized.startsWith("p-xpath/")) normalized = `xpath/${normalized.slice("p-xpath/".length)}`;
+	else if (normalized.startsWith("p-pierce/")) normalized = `pierce/${normalized.slice("p-pierce/".length)}`;
+	const ariaRef = /^(?:aria-ref=|aria-ref\/|ariaref\/)(e\d+)$/.exec(normalized);
+	if (ariaRef) return { kind: "aria-ref", value: ariaRef[1]!, raw };
+	const ref = /^@?e(\d+)$/.exec(normalized);
+	if (ref) return { kind: "ref", value: ref[1]!, raw, ref: `@e${ref[1]}` };
+	const slash = normalized.indexOf("/");
+	if (slash > 0) {
+		const prefix = normalized.slice(0, slash);
+		const value = normalized.slice(slash + 1);
+		if (prefix === "text" || prefix === "aria" || prefix === "xpath" || prefix === "pierce") {
+			return { kind: prefix, value, raw, name: prefix === "aria" ? value : undefined };
+		}
+	}
+	return { kind: "css", value: normalized, raw };
+}
+
+function normalizeGeometry(value: unknown): CmuxGeometry {
+	const object = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+	return {
+		innerWidth: numberFrom(object.innerWidth, DEFAULT_VIEWPORT.width),
+		innerHeight: numberFrom(object.innerHeight, DEFAULT_VIEWPORT.height),
+		dpr: numberFrom(object.dpr, DEFAULT_VIEWPORT.deviceScaleFactor ?? 1),
+		scrollX: numberFrom(object.scrollX, 0),
+		scrollY: numberFrom(object.scrollY, 0),
+		scrollWidth: numberFrom(object.scrollWidth, DEFAULT_VIEWPORT.width),
+		scrollHeight: numberFrom(object.scrollHeight, DEFAULT_VIEWPORT.height),
+	};
 }
 
 class CmuxResponse {

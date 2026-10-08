@@ -6,6 +6,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { loadArktype } from "@veyyon/ai/utils/schema/arktype";
 import {
 	factoryExportMissingMessage,
 	invalidArtifactFieldMessage,
@@ -14,8 +15,6 @@ import {
 } from "@veyyon/kernel/loader/load-failure";
 import * as typebox from "@veyyon/kernel/registry/typebox";
 import { errorMessage, getAgentDir, getProjectDir, isEnoent, readdirIfPresent, reportFault } from "@veyyon/utils";
-import * as arktype from "arktype";
-import * as zodModule from "zod/v4";
 import { getConfigDirs } from "../../config";
 import { pluginsRootFor } from "../../discovery/helpers";
 import { execCommand, withSessionCpuExec } from "../../exec/exec";
@@ -274,10 +273,11 @@ export async function loadCustomCommands(options: LoadCustomCommandsOptions = {}
 
 	// Shared API object - all commands get the same instance.
 	//
-	// Built WITHOUT `pi` first. That field is the whole package barrel, which re-exports every mode and
-	// every component, and this function runs on every launch to register the two bundled commands --
-	// neither of which uses it, since they import this repository directly. So the barrel is loaded only
-	// when a project actually ships a custom command whose author expects `api.pi`.
+	// Built WITHOUT `pi` and `zod` first. `pi` is the whole package barrel, which re-exports every mode and
+	// every component, `zod` is 80 modules, and this function runs on every launch to register the two
+	// bundled commands -- neither of which uses them, since they import this repository directly. So both
+	// load only when a project ships a custom command whose author expects `api.pi` or `api.zod`. `arktype`
+	// is a getter for the same reason: the package is evaluated when a command first reads it.
 	const bundledApi: BundledCommandAPI = {
 		cwd,
 		exec: (command: string, args: string[], execOptions) =>
@@ -288,8 +288,9 @@ export async function loadCustomCommands(options: LoadCustomCommandsOptions = {}
 				withSessionCpuExec(execOptions, options.adoptSpawnedPid, options.gateSpawn, "a custom command"),
 			),
 		typebox,
-		arktype,
-		zod: zodModule,
+		get arktype() {
+			return loadArktype();
+		},
 	};
 
 	// 1. Load bundled commands first (lowest priority - can be overridden)
@@ -299,9 +300,10 @@ export async function loadCustomCommands(options: LoadCustomCommandsOptions = {}
 	}
 
 	// One object for every author-written command, so a command that mutates the API sees what its
-	// neighbours see. Absent entirely when there are none, which is the case that skips the barrel.
-	const sharedApi: CustomCommandAPI | undefined =
-		paths.length > 0 ? { ...bundledApi, pi: await loadCodingAgentApi() } : undefined;
+	// neighbours see. Absent entirely when there are none, which is the case that skips the barrel and
+	// Zod, which authors read from the barrel.
+	const pi = paths.length > 0 ? await loadCodingAgentApi() : undefined;
+	const sharedApi: CustomCommandAPI | undefined = pi ? { ...bundledApi, pi, zod: pi.zod } : undefined;
 
 	// 2. Load user/project commands (can override bundled)
 	for (const { path: commandPath, source } of paths) {

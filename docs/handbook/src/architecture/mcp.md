@@ -16,7 +16,11 @@ Model Context Protocol (MCP) connects Veyyon to external tools and data as an MC
 | --- | --- |
 | `packages/coding-agent/src/mcp/` | Config load, manager, OAuth, tool wiring |
 | `packages/coding-agent/src/discovery/builtin.ts` | Profile-scoped `mcp.json` / `.mcp.json` discovery |
-| `packages/coding-agent/src/modes/terminal/controllers/mcp-command-controller.ts` | `/mcp` TUI commands |
+| `packages/coding-agent/src/modes/terminal/controllers/mcp-command-controller.ts` | `/mcp` TUI command dispatch, add, remove, enable, test, reconnect and reload |
+| `packages/coding-agent/src/modes/terminal/controllers/mcp-oauth-login.ts` | `/mcp` OAuth browser login, reauthorization and stored client credentials |
+| `packages/coding-agent/src/modes/terminal/controllers/mcp-smithery-commands.ts` | `/mcp smithery-search`, `smithery-login` and `smithery-logout` |
+| `packages/coding-agent/src/modes/terminal/controllers/mcp-server-reports.ts` | `/mcp list`, `resources`, `prompts` and `notifications` reports |
+| `packages/coding-agent/src/modes/terminal/controllers/mcp-command-output.ts` | `/mcp` help text, connection status block and error hints |
 
 Primary config files:
 
@@ -24,7 +28,7 @@ Primary config files:
 
 There is no project scope. A checked-out working tree is untrusted input, so
 `<cwd>/.veyyon/mcp.json`, a repo-root `mcp.json`/`.mcp.json`, and the foreign
-`.cursor/mcp.json` and `.vscode/mcp.json` are no longer read.
+`.cursor/mcp.json` and `.vscode/mcp.json` are not read.
 
 Veyyon also ingests MCP definitions from other tools' USER-level configs
 (`~/.claude`, `~/.codex`, `~/.gemini`, `~/.cursor`) when discovery is enabled.

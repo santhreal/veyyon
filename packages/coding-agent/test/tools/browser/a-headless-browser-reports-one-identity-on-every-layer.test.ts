@@ -35,9 +35,8 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/sdk";
 import { BrowserTool } from "@veyyon/coding-agent/tools/web/browser";
 import { TempDir } from "@veyyon/utils";
-import { chromiumCanLaunch } from "../../helpers/chromium-can-launch";
+import { CHROMIUM_AVAILABLE } from "./chromium";
 
-const CHROMIUM_AVAILABLE = await chromiumCanLaunch();
 const TAB = `identity-${process.pid}`;
 
 const COLLECT = `

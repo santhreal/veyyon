@@ -2,13 +2,14 @@
  * Bordered output container with optional header and sections.
  */
 
+import { Ellipsis } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { ImageProtocol, TERMINAL } from "@veyyon/tui";
 import { SGR_BG_RESET } from "@veyyon/utils/ansi";
 import { clampLow } from "@veyyon/utils/math";
 import { padding } from "@veyyon/utils/padding";
 import { reopenBackgroundAfterResets } from "@veyyon/utils/sgr";
-import { visibleWidth } from "@veyyon/utils/width";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import type { Theme, ThemeColor } from "../../../theme/theme";
 import { getSixelLineMask } from "../../../utils/sixel";
@@ -153,6 +154,10 @@ export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): st
 
 	// ── Layout pass: collect row descriptors before emitting the railed lines. ──
 	const rows: BlockRow[] = [];
+	// A header or a label is one row whatever it holds: an unbroken run in it (a host, a path) cannot
+	// wrap, so the drawn row is clipped at the block's edge rather than drawn past it. The clip adds no
+	// ellipsis: a card that needs its subject shortened asks for `descriptionFits`, and every other
+	// header keeps a prefix of itself.
 	const headerText = [header, headerMeta].filter(Boolean).join(theme.sep.dot);
 	if (headerText) rows.push({ kind: "header", text: headerText });
 
@@ -215,7 +220,7 @@ export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): st
 			lines.push(row.raw);
 			continue;
 		}
-		const line =
+		const drawn =
 			row.kind === "header"
 				? // The header sits ON the rail like every other row. It used to start at
 					// column zero, one glyph left of the body and two cells left of the rail
@@ -234,6 +239,9 @@ export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): st
 							// wrap an inner reset in an outer colour and lose both.
 							onRail(`${contentLeftPadding}${row.text}`)
 						: onRail(border(h.repeat(clampLow(innerWidth, 0, SEPARATOR_CELLS))));
+		// A header or a label is not wrapped, and at a width narrower than the rail and the indent
+		// no row is, so every row is clipped at the edge rather than drawn past it.
+		const line = truncateToWidth(drawn, lineWidth, Ellipsis.Omit);
 		// Unpainted rows are emitted at their own length: with no right border to reach,
 		// padding them would only add trailing spaces to every line of every block, which
 		// the live-tail paint has to strip again and a copied transcript keeps.
@@ -255,7 +263,7 @@ export class CachedOutputBlock {
 
 	/** Render with caching. Returns the cached (shared, caller-immutable) lines if options haven't changed. */
 	render(options: OutputBlockOptions, theme: Theme): readonly string[] {
-		const key = this.#buildKey(options);
+		const key = buildKey(options);
 		if (this.#cache?.key === key) return this.#cache.lines;
 		const lines = renderOutputBlock(options, theme);
 		this.#cache = { key, lines };
@@ -266,26 +274,52 @@ export class CachedOutputBlock {
 	invalidate(): void {
 		this.#cache = undefined;
 	}
+}
 
-	#buildKey(options: OutputBlockOptions): bigint {
-		const h = new Hasher();
-		h.u32(options.width);
-		h.u32(normalizeContentPaddingLeft(options.contentPaddingLeft));
-		h.optional(options.header);
-		h.optional(options.headerMeta);
-		h.optional(options.state);
-		h.optional(options.borderColor);
-		h.bool(options.applyBg ?? true);
-		if (options.sections) {
-			for (const s of options.sections) {
-				h.optional(s.label);
-				h.bool(s.separator ?? false);
-				for (const line of s.lines) {
-					h.str(line);
-				}
+function buildKey(options: OutputBlockOptions): bigint {
+	const h = new Hasher();
+	h.u32(options.width);
+	h.u32(normalizeContentPaddingLeft(options.contentPaddingLeft));
+	h.optional(options.header);
+	h.optional(options.headerMeta);
+	h.optional(options.state);
+	h.optional(options.borderColor);
+	h.bool(options.applyBg ?? true);
+	if (options.sections) {
+		for (const s of options.sections) {
+			h.optional(s.label);
+			h.bool(s.separator ?? false);
+			for (const line of s.lines) {
+				h.str(line);
 			}
 		}
-		return h.digest();
+	}
+	return h.digest();
+}
+
+/**
+ * A self-framing tool component backed by a cached output block. A class rather than an object of
+ * closures, so a drawn card holds its frame in two objects and shares the methods with every other.
+ */
+class FramedBlock implements FramedBlockComponent {
+	// Marked so the tool-execution container treats it as self-framing (renders flush, no extra
+	// padding/background) the same way `markFramedBlockComponent` blocks are treated.
+	readonly [FRAMED_BLOCK_COMPONENT] = true as const;
+	readonly #block = new CachedOutputBlock();
+	readonly #theme: Theme;
+	readonly #build: (width: number) => OutputBlockOptions;
+
+	constructor(theme: Theme, build: (width: number) => OutputBlockOptions) {
+		this.#theme = theme;
+		this.#build = build;
+	}
+
+	render(width: number): readonly string[] {
+		return this.#block.render(this.#build(width), this.#theme);
+	}
+
+	invalidate(): void {
+		this.#block.invalidate();
 	}
 }
 
@@ -296,12 +330,5 @@ export class CachedOutputBlock {
  * look that does not compete with the state-colored framed tools.
  */
 export function framedBlock(theme: Theme, build: (width: number) => OutputBlockOptions): Component {
-	const block = new CachedOutputBlock();
-	// Marked so the tool-execution container treats it as self-framing (renders
-	// flush, no extra padding/background) the same way `markFramedBlockComponent`
-	// blocks are treated.
-	return markFramedBlockComponent({
-		render: (width: number): readonly string[] => block.render(build(width), theme),
-		invalidate: () => block.invalidate(),
-	});
+	return new FramedBlock(theme, build);
 }

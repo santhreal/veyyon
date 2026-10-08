@@ -20,9 +20,10 @@
  */
 
 import { supportsLanguage as nativeSupportsLanguage } from "@veyyon/natives";
-import type { MarkdownTheme } from "@veyyon/tui";
+import type { DefaultTextStyle, MarkdownTheme } from "@veyyon/tui";
 // The slot leaf, not the store: this file only REGISTERS teardown, which is a `Set.add`.
 import { registerSettingsTestResetHook } from "../config/settings-instance";
+import type { ThemeColor } from "./color";
 import { highlightCached } from "./highlight";
 import { resolveMermaidAscii } from "./mermaid-cache";
 // The leaf, not `./theme`: the engine is 144 marginal modules on this graph and this file needs one
@@ -111,6 +112,29 @@ export function getMarkdownTheme(): MarkdownTheme {
 	cachedMarkdownThemeRef = theme;
 	return markdownTheme;
 }
+
+const markdownTextStyles = new Map<string, DefaultTextStyle>();
+
+/**
+ * The prose style of markdown painted in `color`: one object per role for the process.
+ *
+ * `Markdown` keys its module-level render cache on the style's identity. A style literal built at
+ * each construction gives every component a key of its own, so no component reuses rows another
+ * rendered and a rebuilt transcript renders every message again. The closure reads the live `theme`
+ * binding, so a theme switch needs no new object: the key moves with `getMarkdownTheme()`, which is
+ * rebuilt for every theme instance.
+ */
+export function markdownTextStyle(color: ThemeColor, italic = false): DefaultTextStyle {
+	const key = italic ? `${color}\0italic` : color;
+	let style = markdownTextStyles.get(key);
+	if (style === undefined) {
+		const paint = (text: string): string => theme.fg(color, text);
+		style = italic ? { color: paint, italic } : { color: paint };
+		markdownTextStyles.set(key, style);
+	}
+	return style;
+}
+
 /**
  * Put `markdownMermaidRendering` back to what a freshly started process has.
  *

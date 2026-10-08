@@ -68,6 +68,10 @@ export class Text implements Component {
 	}
 
 	invalidate(): void {
+		this.releaseRenderCache();
+	}
+
+	releaseRenderCache(): void {
 		this.#cachedText = undefined;
 		this.#cachedWidth = undefined;
 		this.#cachedLines = undefined;

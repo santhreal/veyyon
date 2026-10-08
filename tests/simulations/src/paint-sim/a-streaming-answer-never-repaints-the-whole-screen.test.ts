@@ -116,7 +116,7 @@ describe("a streaming answer never repaints the whole screen", () => {
 			const off = await paintSim({ ...BASE, scrollbackRebuild: false });
 
 			expect(on.bytes).toBe(off.bytes);
-			expect(on.scrollTapeRows).toBe(off.scrollTapeRows);
+			expect(on.scrolledOffRows).toBe(off.scrolledOffRows);
 		},
 		CASE_TIMEOUT_MS,
 	);

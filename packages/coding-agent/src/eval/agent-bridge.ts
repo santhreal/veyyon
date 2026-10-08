@@ -4,8 +4,8 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { type } from "@veyyon/ai/utils/schema/arktype";
 import { errorMessage, prompt, Snowflake } from "@veyyon/utils";
-import { type } from "arktype";
 import { resolveConfiguredModelPatterns } from "../config/model-resolver";
 import type { LocalProtocolOptions } from "../internal-urls";
 import { registerArtifactsDir } from "../internal-urls/registry-helpers";

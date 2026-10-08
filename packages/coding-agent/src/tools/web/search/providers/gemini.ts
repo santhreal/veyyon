@@ -22,7 +22,7 @@ import {
 	getAntigravityUserAgent,
 	getGeminiCliHeaders,
 } from "@veyyon/catalog/wire/gemini-headers";
-import { fetchWithRetry } from "@veyyon/utils";
+import { exponentialBackoffDelay, fetchWithRetry } from "@veyyon/utils";
 import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import {
 	type ProviderTextTransformResolver,
@@ -414,7 +414,7 @@ async function callGeminiSearch(
 					prepareInit: () => geminiSearchBody(requestBody, resolveTextTransform),
 					fetch: fetchImpl,
 					maxAttempts: isLastEndpoint ? MAX_RETRIES + 1 : 1,
-					defaultDelayMs: attempt => BASE_DELAY_MS * 2 ** attempt,
+					defaultDelayMs: attempt => exponentialBackoffDelay(attempt, { baseMs: BASE_DELAY_MS, jitter: 0 }),
 					maxDelayMs: RATE_LIMIT_BUDGET_MS,
 				});
 
@@ -504,7 +504,7 @@ async function callGeminiDeveloperSearch(
 				prepareInit: () => geminiSearchBody(requestBody, resolveTextTransform),
 				fetch: fetchImpl,
 				maxAttempts: MAX_RETRIES + 1,
-				defaultDelayMs: attempt => BASE_DELAY_MS * 2 ** attempt,
+				defaultDelayMs: attempt => exponentialBackoffDelay(attempt, { baseMs: BASE_DELAY_MS, jitter: 0 }),
 				maxDelayMs: RATE_LIMIT_BUDGET_MS,
 			},
 		);

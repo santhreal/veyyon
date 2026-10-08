@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { AbortError, abortableSource, once, untilAborted } from "../src/abortable";
+import { AbortError, abortableSource, lazy, untilAborted } from "../src/abortable";
 
 function chunkStream(chunks: readonly string[]): ReadableStream<string> {
 	return new ReadableStream<string>({
@@ -97,26 +97,47 @@ describe("untilAborted", () => {
 	});
 });
 
-describe("once", () => {
-	it("calls the function a single time and caches the value", () => {
+describe("lazy", () => {
+	it("builds nothing until the value is read", () => {
 		let calls = 0;
-		const memo = once(() => {
+		lazy(() => {
+			calls += 1;
+			return calls;
+		});
+		expect(calls).toBe(0);
+	});
+
+	it("builds on the first read and returns that value on every later read", () => {
+		let calls = 0;
+		const held = lazy(() => {
 			calls += 1;
 			return { calls };
 		});
-		const first = memo();
-		expect(memo()).toBe(first);
+		const first = held.value;
+		expect(held.value).toBe(first);
 		expect(calls).toBe(1);
 	});
 
-	it("caches falsy results too", () => {
+	it("holds a falsy value without building it again", () => {
 		let calls = 0;
-		const memo = once(() => {
+		const held = lazy(() => {
 			calls += 1;
 			return undefined;
 		});
-		expect(memo()).toBeUndefined();
-		expect(memo()).toBeUndefined();
+		expect(held.value).toBeUndefined();
+		expect(held.value).toBeUndefined();
 		expect(calls).toBe(1);
+	});
+
+	it("builds again after a build that throws", () => {
+		let calls = 0;
+		const held = lazy(() => {
+			calls += 1;
+			if (calls === 1) throw new Error("first build fails");
+			return calls;
+		});
+		expect(() => held.value).toThrow("first build fails");
+		expect(held.value).toBe(2);
+		expect(held.value).toBe(2);
 	});
 });

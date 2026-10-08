@@ -208,7 +208,7 @@ export abstract class OAuthCallbackFlow {
 			// `preferredPort: 0` opts into a random port — read the actual bound
 			// port from the server so both the redirect URI and launch URL point at
 			// a reachable socket, not the sentinel.
-			const actualPort = this.#resolveServerPort(server);
+			const actualPort = resolveServerPort(server);
 			const launchUrl = this.#launchUrlIfSafe(actualPort);
 			if (this.redirectUri) {
 				return { server, redirectUri: this.redirectUri, launchUrl };
@@ -229,28 +229,12 @@ export abstract class OAuthCallbackFlow {
 				);
 			}
 			const server = this.#createServer(0, expectedState);
-			const actualPort = this.#resolveServerPort(server);
+			const actualPort = resolveServerPort(server);
 			const redirectUri = `http://${this.callbackHostname}:${actualPort}${this.callbackPath}`;
 			const launchUrl = this.#launchUrlIfSafe(actualPort);
 			this.ctrl.onProgress?.(`Preferred port ${this.preferredPort} unavailable, using port ${actualPort}`);
 			return { server, redirectUri, launchUrl };
 		}
-	}
-
-	/**
-	 * Read the numeric port a callback server bound to. `Bun.Server.port` is
-	 * declared `number | undefined` because Unix-socket servers have no port,
-	 * but every callback flow uses TCP; a missing port here indicates a
-	 * configuration error rather than a fallback case.
-	 */
-	#resolveServerPort(server: Bun.Server<unknown>): number {
-		const port = server.port;
-		if (typeof port !== "number") {
-			throw new AIError.ConfigurationError(
-				"OAuth callback server bound to a non-TCP endpoint; expected a numeric port. Check `oauth.callbackPort`/`oauth.redirectUri`.",
-			);
-		}
-		return port;
 	}
 
 	/**
@@ -417,6 +401,22 @@ export abstract class OAuthCallbackFlow {
 
 		return settled(callbackPromise);
 	}
+}
+
+/**
+ * Read the numeric port a callback server bound to. `Bun.Server.port` is
+ * declared `number | undefined` because Unix-socket servers have no port,
+ * but every callback flow uses TCP; a missing port here indicates a
+ * configuration error rather than a fallback case.
+ */
+function resolveServerPort(server: Bun.Server<unknown>): number {
+	const port = server.port;
+	if (typeof port !== "number") {
+		throw new AIError.ConfigurationError(
+			"OAuth callback server bound to a non-TCP endpoint; expected a numeric port. Check `oauth.callbackPort`/`oauth.redirectUri`.",
+		);
+	}
+	return port;
 }
 
 /**

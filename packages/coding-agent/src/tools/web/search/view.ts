@@ -19,7 +19,7 @@ import { replaceTabs } from "@veyyon/utils/tab-width";
 import { truncateToWidth } from "@veyyon/utils/width";
 import type { StatusRowView, ToolView, ToolViewRenderer, ViewLine, ViewSection, ViewSpan } from "@veyyon/view";
 import { extractResultText } from "../../core/output-notice";
-import { PREVIEW_LIMITS } from "../../core/render-limits";
+import { PREVIEW_LIMITS, TRUNCATE_LENGTHS } from "../../core/render-limits";
 import {
 	getDomain,
 	heldBack,
@@ -37,7 +37,7 @@ const MAX_COLLAPSED_ITEMS = PREVIEW_LIMITS.COLLAPSED_ITEMS;
 const FALLBACK_PREVIEW_LINES = 6;
 
 /** The columns a query keeps in a row, which is the length a query is a label at rather than a body. */
-const QUERY_LABEL_WIDTH = 80;
+const QUERY_LABEL_WIDTH = TRUNCATE_LENGTHS.CONTENT;
 
 /** The arguments the card reads off a web_search call. */
 export interface WebSearchViewArgs {
@@ -196,7 +196,7 @@ export const webSearchToolView: Required<ToolViewRenderer<WebSearchViewArgs, Web
 			kind: "statusRow",
 			status: "pending",
 			title: "Web Search",
-			description: truncateToWidth(args?.query ?? "", QUERY_LABEL_WIDTH),
+			description: truncateToWidth(replaceTabs(args?.query ?? ""), QUERY_LABEL_WIDTH),
 		};
 	},
 
@@ -234,7 +234,9 @@ export const webSearchToolView: Required<ToolViewRenderer<WebSearchViewArgs, Web
 			// The answer and its sources are what the provider returned, not a verdict on them.
 			contents: "data",
 			sections: [
-				...(queryText ? [{ lines: [metadataLine("Query", truncateToWidth(queryText, QUERY_LABEL_WIDTH))] }] : []),
+				...(queryText
+					? [{ lines: [metadataLine("Query", truncateToWidth(replaceTabs(queryText), QUERY_LABEL_WIDTH))] }]
+					: []),
 				answerSection(answer || rawText, args, context.expanded),
 				sourcesSection(sources, context.expanded),
 				metadataSection(response, providerLabel),

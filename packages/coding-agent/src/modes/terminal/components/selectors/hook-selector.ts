@@ -23,7 +23,7 @@ import { padding } from "@veyyon/utils/padding";
 import { replaceTabs } from "@veyyon/utils/tab-width";
 import { truncateToWidth } from "@veyyon/utils/width";
 import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
-import { getMarkdownTheme } from "../../../../theme/markdown-theme";
+import { getMarkdownTheme, markdownTextStyle } from "../../../../theme/markdown-theme";
 import { type ThemeColor, theme } from "../../../../theme/theme";
 import {
 	matchesAppExternalEditor,
@@ -32,16 +32,14 @@ import {
 	matchesSelectUp,
 } from "../../utils/keybinding-matchers";
 import { CountdownTimer } from "../chrome/countdown-timer";
+import { computeModalDims, MODAL_SIZING_MEDIUM, sizingForArea } from "../chrome/modal-geometry";
 import {
-	computeModalDims,
-	MODAL_SIZING_MEDIUM,
 	type ModalShellGeometry,
 	type ModalShortcut,
 	planModalChrome,
 	pointerMotionEnabled,
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
-	sizingForArea,
 } from "../chrome/modal-shell";
 import { renderSliderLines } from "../chrome/segment-track";
 import { stripInlineMarkdown } from "../dialogs/plan-toc";
@@ -269,9 +267,7 @@ export class HookSelectorComponent extends Container {
 		// confirmation is about) rather than repeating the heading.
 		const bodyTitle = this.#card ? restTitleLines.join("\n") : title;
 		if (bodyTitle.length > 0) {
-			this.#titleComponent = new Markdown(bodyTitle, 1, 0, getMarkdownTheme(), {
-				color: t => theme.fg("accent", t),
-			});
+			this.#titleComponent = new Markdown(bodyTitle, 1, 0, getMarkdownTheme(), markdownTextStyle("accent"));
 			this.addChild(this.#titleComponent);
 			this.addChild(new Spacer(1));
 		}
@@ -364,7 +360,13 @@ export class HookSelectorComponent extends Container {
 				lines.push(`    ${description}`);
 			} else {
 				lines.push(
-					...this.#wrapDescriptionRows(option.description, descRows, descriptionColor, mdTheme, renderWidth),
+					...wrapDescriptionRows(
+						option.description,
+						descRows,
+						descriptionColor,
+						mdTheme,
+						renderWidth ?? this.#lastRenderWidth,
+					),
 				);
 			}
 		}
@@ -389,35 +391,6 @@ export class HookSelectorComponent extends Container {
 		return theme.fg(color, `${glyph} `);
 	}
 
-	/** Wrap an option description into indented rows, truncating to `maxRows`
-	 *  with an ellipsis. Pre-wrapping (rather than emitting one long line that the
-	 *  list re-wraps) lets compact mode bound how much of the highlighted option's
-	 *  detail is shown, so every option label stays on screen on short terminals. */
-	#wrapDescriptionRows(
-		description: string,
-		maxRows: number,
-		color: ThemeColor,
-		mdTheme: MarkdownTheme,
-		renderWidth = this.#lastRenderWidth,
-	): string[] {
-		if (maxRows <= 0) return [];
-		const indent = "    ";
-		const innerWidth = Math.max(1, (renderWidth ?? 80) - 2);
-		const bodyWidth = Math.max(1, innerWidth - indent.length);
-		const colored = renderInlineMarkdown(description, mdTheme, t => theme.fg(color, t));
-		const wrapped = wrapTextWithAnsi(colored, bodyWidth);
-		if (wrapped.length <= maxRows) return wrapped.map(row => indent + row);
-		const kept = wrapped.slice(0, maxRows);
-		kept[maxRows - 1] = truncateToWidth(wrapped.slice(maxRows - 1).join(" "), bodyWidth, Ellipsis.Unicode);
-		return kept.map(row => indent + row);
-	}
-
-	#renderedLineRowCount(line: string, renderWidth: number): number {
-		const normalized = replaceTabs(line);
-		const wrapped = wrapTextWithAnsi(normalized, Math.max(1, renderWidth - 2));
-		return Math.max(1, wrapped.length);
-	}
-
 	#optionRowCount(
 		option: HookSelectorOption,
 		renderWidth: number | undefined,
@@ -428,7 +401,7 @@ export class HookSelectorComponent extends Container {
 		if (renderWidth === undefined) return option.description && descRows !== 0 ? 2 : 1;
 		let rows = 0;
 		for (const line of this.#renderOptionLines(option, isSelected, false, mdTheme, descRows, renderWidth)) {
-			rows += this.#renderedLineRowCount(line, renderWidth);
+			rows += renderedLineRowCount(line, renderWidth);
 		}
 		return rows;
 	}
@@ -901,7 +874,7 @@ export class HookSelectorComponent extends Container {
 		const visibleHead =
 			maxRows === undefined || head.length + tail.length <= maxRows
 				? head
-				: this.#elideHead(head, clampLow(maxRows - tail.length, 0, head.length), contentWidth);
+				: elideHead(head, clampLow(maxRows - tail.length, 0, head.length), contentWidth);
 
 		this.#hitRows = [];
 		for (const [index, option] of tailOptions.entries()) {
@@ -912,15 +885,6 @@ export class HookSelectorComponent extends Container {
 		// to `#maxVisible` around the cursor, so what a clip here can still take is a
 		// row the cursor is not on.
 		return maxRows === undefined ? rows : rows.slice(0, maxRows);
-	}
-
-	/** The first `keep` rows of the title, with the last of them saying what was dropped. */
-	#elideHead(head: string[], keep: number, contentWidth: number): string[] {
-		if (keep <= 0) return [];
-		const dropped = head.length - (keep - 1);
-		if (dropped <= 0) return head.slice(0, keep);
-		const note = `  […${dropped} more line${dropped === 1 ? "" : "s"}…]`;
-		return [...head.slice(0, keep - 1), theme.fg("dim", truncateToWidth(note, contentWidth))];
 	}
 
 	/**
@@ -1014,4 +978,42 @@ export class HookSelectorComponent extends Container {
 		this.#hoverFade = undefined;
 		this.#hoveredIndex = null;
 	}
+}
+
+/** Wrap an option description into indented rows, truncating to `maxRows`
+ *  with an ellipsis. Pre-wrapping (rather than emitting one long line that the
+ *  list re-wraps) lets compact mode bound how much of the highlighted option's
+ *  detail is shown, so every option label stays on screen on short terminals. */
+function wrapDescriptionRows(
+	description: string,
+	maxRows: number,
+	color: ThemeColor,
+	mdTheme: MarkdownTheme,
+	renderWidth: number | undefined,
+): string[] {
+	if (maxRows <= 0) return [];
+	const indent = "    ";
+	const innerWidth = Math.max(1, (renderWidth ?? 80) - 2);
+	const bodyWidth = Math.max(1, innerWidth - indent.length);
+	const colored = renderInlineMarkdown(description, mdTheme, t => theme.fg(color, t));
+	const wrapped = wrapTextWithAnsi(colored, bodyWidth);
+	if (wrapped.length <= maxRows) return wrapped.map(row => indent + row);
+	const kept = wrapped.slice(0, maxRows);
+	kept[maxRows - 1] = truncateToWidth(wrapped.slice(maxRows - 1).join(" "), bodyWidth, Ellipsis.Unicode);
+	return kept.map(row => indent + row);
+}
+
+function renderedLineRowCount(line: string, renderWidth: number): number {
+	const normalized = replaceTabs(line);
+	const wrapped = wrapTextWithAnsi(normalized, Math.max(1, renderWidth - 2));
+	return Math.max(1, wrapped.length);
+}
+
+/** The first `keep` rows of the title, with the last of them saying what was dropped. */
+function elideHead(head: string[], keep: number, contentWidth: number): string[] {
+	if (keep <= 0) return [];
+	const dropped = head.length - (keep - 1);
+	if (dropped <= 0) return head.slice(0, keep);
+	const note = `  […${dropped} more line${dropped === 1 ? "" : "s"}…]`;
+	return [...head.slice(0, keep - 1), theme.fg("dim", truncateToWidth(note, contentWidth))];
 }

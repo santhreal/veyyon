@@ -27,6 +27,20 @@ const DISPLAY_NAME = "Builtin Defaults";
 // Lowest priority: every other rule provider wins a name conflict.
 const PRIORITY = 1;
 
+/** The bundled rules as parsed from their markdown, once per process; see {@link buildBuiltinRules}. */
+let parsedBuiltinRules: readonly Rule[] | undefined;
+
+function parseBuiltinRules(): readonly Rule[] {
+	parsedBuiltinRules ??= BUILTIN_RULE_SOURCES.map(({ name, content, section }) => {
+		const virtualPath = `${BUILTIN_DEFAULTS_PROVIDER_ID}:${section}/${name}.md`;
+		const source = createSourceMeta(BUILTIN_DEFAULTS_PROVIDER_ID, virtualPath, "user");
+		const rule = buildRuleFromMarkdown(name, content, virtualPath, source, { ruleName: name });
+		for (const list of [rule.globs, rule.condition, rule.astCondition, rule.scope]) if (list) Object.freeze(list);
+		return { ...rule, section, experimental: isExperimentalSection(section) };
+	});
+	return parsedBuiltinRules;
+}
+
 /**
  * Every bundled rule, built the way the provider builds it.
  *
@@ -36,14 +50,13 @@ const PRIORITY = 1;
  * experimental flag, so once the sections landed it would have gone on
  * asserting that every bundled rule ships live while the real provider had
  * already stopped shipping one.
+ *
+ * The markdown is parsed once per process. Each call returns new rule and source objects, which
+ * the capability loader marks per load, over the parsed strings and frozen lists, which every
+ * session's rules and every TTSR manager's compiled patterns share.
  */
 export function buildBuiltinRules(): Rule[] {
-	return BUILTIN_RULE_SOURCES.map(({ name, content, section }) => {
-		const virtualPath = `${BUILTIN_DEFAULTS_PROVIDER_ID}:${section}/${name}.md`;
-		const source = createSourceMeta(BUILTIN_DEFAULTS_PROVIDER_ID, virtualPath, "user");
-		const rule = buildRuleFromMarkdown(name, content, virtualPath, source, { ruleName: name });
-		return { ...rule, section, experimental: isExperimentalSection(section) };
-	});
+	return parseBuiltinRules().map(rule => ({ ...rule, _source: { ...rule._source } }));
 }
 
 async function loadRules(_ctx: LoadContext): Promise<LoadResult<Rule>> {

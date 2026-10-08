@@ -5,20 +5,22 @@ import type {
 	AgentToolUpdateCallback,
 	CustomMessage,
 } from "@veyyon/agent-core";
-import { errorMessage, prompt, untilAborted } from "@veyyon/utils";
-import { type } from "arktype";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { errorMessage, lazy, prompt, untilAborted } from "@veyyon/utils";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "..";
 import { ToolError } from "../core/tool-errors";
 import { resolveToolView } from "./resolve-view";
 
-const resolveSchema = type({
-	action: "'apply' | 'discard'",
-	reason: type("string").describe("reason for action"),
-	"extra?": type("Record<string, unknown>").describe("free-form metadata"),
-});
+const resolveSchema = lazy(() =>
+	type({
+		action: "'apply' | 'discard'",
+		reason: type("string").describe("reason for action"),
+		"extra?": type("Record<string, unknown>").describe("free-form metadata"),
+	}),
+);
 
-export type ResolveParams = typeof resolveSchema.infer;
+export type ResolveParams = typeof resolveSchema.value.infer;
 
 export interface ResolveToolDetails {
 	action: "apply" | "discard";
@@ -175,13 +177,15 @@ export async function runResolveInvocation(
 	};
 }
 
-export class ResolveTool implements AgentTool<typeof resolveSchema, ResolveToolDetails> {
+export class ResolveTool implements AgentTool<typeof resolveSchema.value, ResolveToolDetails> {
 	readonly name = "resolve";
 	readonly approval = "read" as const;
 	readonly label = "Resolve";
 	readonly hidden = true;
 	readonly description: string;
-	readonly parameters = resolveSchema;
+	get parameters(): typeof resolveSchema.value {
+		return resolveSchema.value;
+	}
 	readonly strict = true;
 	readonly view = resolveToolView;
 	readonly intent = (args: Partial<ResolveParams>) => {

@@ -11,7 +11,8 @@
  *
  * Three selection paths reach this decision and each is exercised here. They
  * are separate code paths for real reasons (peek vs resolve, api-key vs oauth),
- * which is exactly why a fix applied to one of them is worth nothing.
+ * which is exactly why a fix applied to one of them is worth nothing. The blocks each path
+ * reads are recorded by `auth-storage/credential-blocks.ts`.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";

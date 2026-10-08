@@ -24,3 +24,236 @@ index 19ad1869c46cf57bde4a09dcb6400ab2c83809e1..4f3df3198713856ad76dd49cc378f0f4
                  : l.hash < r.hash ? -1
                      : 1);
      return result;
+diff --git a/out/module.d.ts b/out/module.d.ts
+index 394fe9f6b6682e1f8ec7a78039be6e4d8d7c0b20..e7a67b534d20e6dad9d5e5cc9acef225a537e12a 100644
+--- a/out/module.d.ts
++++ b/out/module.d.ts
+@@ -12,6 +12,7 @@ export interface InternalModule<exports extends InternalResolutions = InternalRe
+     root?: BaseRoot;
+ }
+ export declare const bindModule: (module: InternalModule, $: BaseScope) => InternalModule;
++export declare const defineLazyMember: (module: InternalModule, alias: string, build: () => InternalResolution) => void;
+ type exportSchemaScope<$> = {
+     [k in keyof $]: instantiateRoot<$[k]>;
+ };
+diff --git a/out/module.js b/out/module.js
+index 905252427fcd41c56c0eeb424acd3670c78ac63c..a499e82783c8f83eedf8c2ac4c558769559edce7 100644
+--- a/out/module.js
++++ b/out/module.js
+@@ -6,10 +6,40 @@ export class RootModule extends DynamicBase {
+         return "module";
+     }
+ }
+-export const bindModule = (module, $) => new RootModule(flatMorph(module, (alias, value) => [
+-    alias,
+-    hasArkKind(value, "module") ?
+-        bindModule(value, $)
+-        : $.bindReference(value)
+-]));
++// a member defined this way is built on first read and cached on the module. It is not enumerable,
++// so a scope's export, resolutions and JSON skip it while unread, and its key set does not change
++// when it is read (veyyon patch)
++export const defineLazyMember = (module, alias, build) => {
++    Object.defineProperty(module, alias, {
++        configurable: true,
++        enumerable: false,
++        get() {
++            const value = build();
++            Object.defineProperty(module, alias, { value, enumerable: false });
++            return value;
++        }
++    });
++};
++// a scope's export binds every member before the scope resolves and then compiles them together; a
++// member bound after that, which only a lazy member is, is finalized (compiled) as it is bound
++// (veyyon patch)
++const bindMember = (value, $) => {
++    if (hasArkKind(value, "module"))
++        return bindModule(value, $);
++    const bound = $.bindReference(value);
++    return $.resolved && hasArkKind(bound, "root") ? $.finalize(bound) : bound;
++};
++export const bindModule = (module, $) => {
++    const bound = new RootModule(flatMorph(module, (alias, value) => [
++        alias,
++        bindMember(value, $)
++    ]));
++    // a lazy member stays lazy on the bound module and binds when it is first read (veyyon patch)
++    for (const alias of Object.getOwnPropertyNames(module)) {
++        if (Object.prototype.propertyIsEnumerable.call(module, alias))
++            continue;
++        defineLazyMember(bound, alias, () => bindMember(module[alias], $));
++    }
++    return bound;
++};
+ export const SchemaModule = RootModule;
+diff --git a/out/node.js b/out/node.js
+index 3ef69c277c81b348e2812f9ce538df9ddcf0adbf..b9d7e03a3bc2496871e2a69cf9b97e73351be8ec 100644
+--- a/out/node.js
++++ b/out/node.js
+@@ -13,12 +13,10 @@ export class BaseNode extends Callable {
+     allowsRequiresContext;
+     rootApplyStrategy;
+     contextFreeMorph;
+-    rootApply;
+     referencesById;
+     shallowReferences;
+     flatRefs;
+     flatMorphs;
+-    allows;
+     get shallowMorphs() {
+         return [];
+     }
+@@ -101,11 +99,28 @@ export class BaseNode extends Callable {
+                                 : "optimistic"
+                         : "contextual"
+                 : "contextual";
+-        this.rootApply = this.createRootApply();
+-        this.allows =
++        if (this.rootApplyStrategy === "optimistic")
++            this.contextFreeMorph = this.shallowMorphs[0];
++    }
++    // rootApply and allows are created on first read and cached on the node, so a node that is only
++    // ever traversed as a child of another holds neither closure (veyyon patch)
++    get rootApply() {
++        return this.cacheGetter("rootApply", this.createRootApply());
++    }
++    get allows() {
++        return (this.allows =
+             this.allowsRequiresContext ?
+                 data => this.traverseAllows(data, new Traversal(data, this.$.resolvedConfig))
+-                : data => this.traverseAllows(data);
++                : data => this.traverseAllows(data));
++    }
++    // a scope that compiles its nodes assigns the compiled traversal over allows
++    set allows(allows) {
++        Object.defineProperty(this, "allows", {
++            value: allows,
++            writable: true,
++            enumerable: true,
++            configurable: true
++        });
+     }
+     createRootApply() {
+         switch (this.rootApplyStrategy) {
+@@ -124,7 +139,6 @@ export class BaseNode extends Callable {
+                     return ctx.finalize(onFail);
+                 };
+             case "optimistic":
+-                this.contextFreeMorph = this.shallowMorphs[0];
+                 const clone = this.$.resolvedConfig.clone;
+                 return (data, onFail) => {
+                     if (this.allows(data)) {
+@@ -162,8 +176,11 @@ export class BaseNode extends Callable {
+     precedence = precedenceOfKind(this.kind);
+     precompilation;
+     // defined as an arrow function since it is often detached, e.g. when passing to tRPC
+-    // otherwise, would run into issues with this binding
+-    assert = (data, pipedFromCtx) => this(data, pipedFromCtx, errors => errors.throw());
++    // otherwise, would run into issues with this binding; created on first read and cached
++    // on the node so a node that is never asserted holds no closure (veyyon patch)
++    get assert() {
++        return this.cacheGetter("assert", (data, pipedFromCtx) => this(data, pipedFromCtx, errors => errors.throw()));
++    }
+     traverse(data, pipedFromCtx) {
+         return this(data, pipedFromCtx, null);
+     }
+diff --git a/out/parse.js b/out/parse.js
+index 5cb3da607629a71d328f49bcebb81bd151a1e74a..d41c41669e91c9dc36fd9463f03c94e7e2878ddd 100644
+--- a/out/parse.js
++++ b/out/parse.js
+@@ -129,9 +129,12 @@ export const createNode = ({ id, kind, inner, meta, $, ignoreCache }) => {
+     }
+     if (impl.finalizeInnerJson)
+         innerJson = impl.finalizeInnerJson(innerJson);
+-    let json = { ...innerJson };
++    // a node without meta serializes to its inner JSON, so it shares that object and string rather
++    // than building and holding a second copy of each (veyyon patch)
++    const hasMeta = !isEmptyObject(meta);
++    let json = hasMeta ? { ...innerJson } : innerJson;
+     let metaJson = {};
+-    if (!isEmptyObject(meta)) {
++    if (hasMeta) {
+         metaJson = flatMorph(meta, (k, v) => [
+             k,
+             k === "examples" ? v : defaultValueSerializer(v)
+@@ -140,9 +143,9 @@ export const createNode = ({ id, kind, inner, meta, $, ignoreCache }) => {
+     }
+     innerJson = possiblyCollapse(innerJson, impl.collapsibleKey, false);
+     const innerHash = JSON.stringify({ kind, ...innerJson });
+-    json = possiblyCollapse(json, impl.collapsibleKey, false);
++    json = hasMeta ? possiblyCollapse(json, impl.collapsibleKey, false) : innerJson;
+     const collapsibleJson = possiblyCollapse(json, impl.collapsibleKey, true);
+-    const hash = JSON.stringify({ kind, ...json });
++    const hash = hasMeta ? JSON.stringify({ kind, ...json }) : innerHash;
+     // we have to wait until after reduction to return a cached entry,
+     // since reduction can add impliedSiblings
+     if ($.nodesByHash[hash] && !ignoreCache)
+diff --git a/out/roots/root.js b/out/roots/root.js
+index 2176434a7d04020337a07f88304c6d4590f44b3c..0bd018a82f6989e89a39d5604a4e5391f04a0645 100644
+--- a/out/roots/root.js
++++ b/out/roots/root.js
+@@ -275,9 +275,13 @@ export class BaseRoot extends BaseNode {
+         })), this);
+         return this.$.finalize(result);
+     }
+-    pipe = Object.assign(this._pipe.bind(this), {
+-        try: this.tryPipe.bind(this)
+-    });
++    // created on first read and cached on the node so a root that is never piped holds no bound
++    // functions (veyyon patch)
++    get pipe() {
++        return this.cacheGetter("pipe", Object.assign(this._pipe.bind(this), {
++            try: this.tryPipe.bind(this)
++        }));
++    }
+     to(def) {
+         return this.$.finalize(this.toNode(this.$.parseDefinition(def)));
+     }
+diff --git a/out/roots/union.js b/out/roots/union.js
+index acdf9999973f33608a2c17333143dd517954283a..c5059ff3074ff010ff226bb0b019969ece5866fb 100644
+--- a/out/roots/union.js
++++ b/out/roots/union.js
+@@ -121,6 +121,14 @@ const implementation = implementNode({
+     }
+ });
+ export class UnionNode extends BaseRoot {
++    constructor(attachments, $) {
++        super(attachments, $);
++        // a compiling scope builds the discriminant with the node, because building it adds the
++        // case nodes to referencesById, which a parent copies when it is constructed and the
++        // precompiler binds; a jitless scope never reads it, so it is built on first read (veyyon patch)
++        if (!this.$.resolvedConfig.jitless)
++            this.discriminant;
++    }
+     isBoolean = this.branches.length === 2 &&
+         this.branches[0].hasUnit(false) &&
+         this.branches[1].hasUnit(true);
+@@ -142,8 +150,12 @@ export class UnionNode extends BaseRoot {
+         return branchGroups;
+     }
+     unitBranches = this.branches.filter((n) => n.rawIn.hasKind("unit"));
+-    discriminant = this.discriminate();
+-    discriminantJson = this.discriminant ? discriminantToJson(this.discriminant) : null;
++    get discriminant() {
++        return this.cacheGetter("discriminant", this.discriminate());
++    }
++    get discriminantJson() {
++        return this.cacheGetter("discriminantJson", this.discriminant ? discriminantToJson(this.discriminant) : null);
++    }
+     expression = this.distribute(n => n.nestableExpression, expressBranches);
+     createBranchedOptimisticRootApply() {
+         return (data, onFail) => {
+@@ -209,7 +221,11 @@ export class UnionNode extends BaseRoot {
+         return unset;
+     };
+     compile(js) {
+-        if (!this.discriminant ||
++        // a jitless node compiled by a compiling scope that references it was built without its
++        // discriminant, whose case nodes are then missing from the references the precompiler
++        // bound, so it compiles the branches as a jitless traversal walks them (veyyon patch)
++        if (this.$.resolvedConfig.jitless ||
++            !this.discriminant ||
+             // if we have a union of two units like `boolean`, the
+             // undiscriminated compilation will be just as fast
+             (this.unitBranches.length === this.branches.length &&

@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
+import { scheduler } from "node:timers/promises";
 import type { FetchImpl } from "@veyyon/ai";
 import { extractFacts } from "@veyyon/mnemopi/core/extraction";
 import { type ChatMessage, ExtractionClient } from "@veyyon/mnemopi/core/extraction/client";
@@ -177,12 +178,10 @@ describe("extraction integration", () => {
 	 * the final failed attempt delays the deterministic empty fallback for no work.
 	 */
 	it("uses millisecond-scale rate-limit and fallback backoff delays", async () => {
-		const originalSleep = Bun.sleep;
 		const delays: number[] = [];
-		Bun.sleep = ((ms: number | Date) => {
-			delays.push(Number(ms));
-			return Promise.resolve();
-		}) as typeof Bun.sleep;
+		const wait = spyOn(scheduler, "wait").mockImplementation(async (ms: number) => {
+			delays.push(ms);
+		});
 
 		class RateLimitedClient extends ExtractionClient {
 			override callApi(
@@ -199,7 +198,7 @@ describe("extraction integration", () => {
 			const client = new RateLimitedClient({ model: "primary", apiKey: "sk-test", baseUrl: "http://remote.test" });
 			expect(await client.chat([{ role: "user", content: "Ada prefers deterministic tests." }])).toBe("");
 		} finally {
-			Bun.sleep = originalSleep;
+			wait.mockRestore();
 		}
 
 		expect(delays).toEqual([1000, 2000, 1000, 1000, 2000]);

@@ -1,7 +1,7 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ImageContent, ToolExample } from "@veyyon/ai";
-import { errorMessage, formatCount, logger, prompt, truncate } from "@veyyon/utils";
-import { type } from "arktype";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { errorMessage, formatCount, lazy, logger, prompt, truncate } from "@veyyon/utils";
 import type { ExecutorBackend, ExecutorBackendResult } from "../../eval/backend";
 import { EVAL_TIMEOUT_PAUSE_OP, EVAL_TIMEOUT_RESUME_OP } from "../../eval/bridge-timeout";
 import { IdleTimeout } from "../../eval/idle-timeout";
@@ -94,41 +94,55 @@ export function enabledEvalLanguages(backends: EvalBackendsAllowance): EvalLangu
 	return EVAL_LANGUAGE_ORDER.filter(lang => allowed[lang]);
 }
 
-export const evalCellCommonFields = {
+export const evalCellCommonFields = lazy(() => ({
 	"title?": type("string").describe('short label shown in transcript (e.g. "imports", "load config")'),
 	"timeout?": type("number").describe(describeTimeoutParam("eval", { zeroDisablesNoun: "cell timeout" })),
 	"reset?": type("boolean").describe("wipe this language's kernel before running. Other languages are untouched."),
-};
+}));
 
 /**
  * Per-call input: a single cell. State persists within a language across
  * separate eval calls and across tool calls, so each call is one logical step
  * and later calls reuse what earlier ones defined. This static schema carries
- * the full language union for typing; {@link buildEvalSchema} narrows the wire
+ * the full language union for typing; {@link evalSchemaFor} narrows the wire
  * copy per session so disabled backends are never advertised to the model.
  */
-export const evalSchema = type({
-	language: type("'py' | 'js' | 'rb' | 'jl'").describe(describeLanguageField(EVAL_LANGUAGE_ORDER)),
-	...evalCellCommonFields,
-	code: type("string").describe(describeCodeField(EVAL_LANGUAGE_ORDER)),
-});
-export type EvalToolParams = typeof evalSchema.infer;
+export const evalSchema = lazy(() =>
+	type({
+		language: type("'py' | 'js' | 'rb' | 'jl'").describe(describeLanguageField(EVAL_LANGUAGE_ORDER)),
+		...evalCellCommonFields.value,
+		code: type("string").describe(describeCodeField(EVAL_LANGUAGE_ORDER)),
+	}),
+);
+export type EvalToolParams = typeof evalSchema.value.infer;
 export type EvalCellInput = EvalToolParams;
 
 /**
- * Build a session-scoped copy of the eval schema whose `language` enum and field
- * descriptions advertise only the runtimes enabled for this session. Disabled
- * backends never reach the model: the wire schema, BM25 discovery corpus, and
- * tool description stay in lockstep with {@link resolveEvalBackends}. The static
- * {@link evalSchema} (full union) remains the type-level source of truth.
+ * Session-scoped copies of the eval schema, keyed by the enabled language list. A copy's
+ * `language` enum and field descriptions advertise only the runtimes enabled for that session.
+ * Disabled backends never reach the model: the wire schema, BM25 discovery corpus, and tool
+ * description stay in lockstep with {@link resolveEvalBackends}. The static {@link evalSchema}
+ * (full union) remains the type-level source of truth.
+ *
+ * ArkType registers every node a `type(...)` call builds in a process-global table and never
+ * releases it, so a copy built per session leaks 18 nodes for every session and spawned agent.
+ * The list is a subsequence of {@link EVAL_LANGUAGE_ORDER}, which bounds the cache at one entry per
+ * subset of the four languages.
  */
-function buildEvalSchema(langs: readonly EvalLanguageToken[]): typeof evalSchema {
+const evalSchemaByLanguages = new Map<string, typeof evalSchema.value>();
+
+function evalSchemaFor(langs: readonly EvalLanguageToken[]): typeof evalSchema.value {
+	if (langs.length === 0 || langs.length === EVAL_LANGUAGE_ORDER.length) return evalSchema.value;
+	const key = langs.join(",");
+	const cached = evalSchemaByLanguages.get(key);
+	if (cached) return cached;
 	const schema = type({
 		language: type.enumerated(...langs).describe(describeLanguageField(langs)),
 		code: type("string").describe(describeCodeField(langs)),
-		...evalCellCommonFields,
-	});
-	return schema as unknown as typeof evalSchema;
+		...evalCellCommonFields.value,
+	}) as unknown as typeof evalSchema.value;
+	evalSchemaByLanguages.set(key, schema);
+	return schema;
 }
 
 export type EvalToolResult = {
@@ -361,7 +375,43 @@ function formatEvalInputLanguage(value: string): string {
 	return value;
 }
 
-export class EvalTool implements AgentTool<typeof evalSchema, EvalToolDetails> {
+/** All reuse-chain examples; the `examples` getter filters by enabled languages. */
+const ALL_EXAMPLES: readonly ToolExample<typeof evalSchema.value.infer>[] = [
+	{
+		caption: "First call — set up once",
+		call: {
+			language: "py",
+			title: "imports",
+			code: "import json\nfrom pathlib import Path",
+		},
+	},
+	{
+		caption: "Second call — reuse, do NOT re-import",
+		call: {
+			language: "py",
+			title: "load config",
+			code: "data = json.loads(read('package.json'))\ndisplay(data)",
+		},
+	},
+	{
+		caption: "Ruby first call — set up once",
+		call: {
+			language: "rb",
+			title: "setup",
+			code: "require 'json'\npkg_path = 'package.json'",
+		},
+	},
+	{
+		caption: "Ruby second call — reuse, do NOT re-require",
+		call: {
+			language: "rb",
+			title: "load config",
+			code: "pkg = JSON.parse(read(pkg_path))\ndisplay(pkg.keys.sort)",
+		},
+	},
+];
+
+export class EvalTool implements AgentTool<typeof evalSchema.value, EvalToolDetails> {
 	readonly name = "eval";
 	readonly approval = "exec" as const;
 	readonly view = evalToolView;
@@ -391,58 +441,16 @@ export class EvalTool implements AgentTool<typeof evalSchema, EvalToolDetails> {
 			effectiveDefaultAgent: catalog.defaultAgent,
 		});
 	}
-	/** All reuse-chain examples; the `examples` getter filters by enabled languages. */
-	static readonly #ALL_EXAMPLES: readonly ToolExample<typeof evalSchema.infer>[] = [
-		{
-			caption: "First call — set up once",
-			call: {
-				language: "py",
-				title: "imports",
-				code: "import json\nfrom pathlib import Path",
-			},
-		},
-		{
-			caption: "Second call — reuse, do NOT re-import",
-			call: {
-				language: "py",
-				title: "load config",
-				code: "data = json.loads(read('package.json'))\ndisplay(data)",
-			},
-		},
-		{
-			caption: "Ruby first call — set up once",
-			call: {
-				language: "rb",
-				title: "setup",
-				code: "require 'json'\npkg_path = 'package.json'",
-			},
-		},
-		{
-			caption: "Ruby second call — reuse, do NOT re-require",
-			call: {
-				language: "rb",
-				title: "load config",
-				code: "pkg = JSON.parse(read(pkg_path))\ndisplay(pkg.keys.sort)",
-			},
-		},
-	];
-	get examples(): readonly ToolExample<typeof evalSchema.infer>[] {
+	get examples(): readonly ToolExample<typeof evalSchema.value.infer>[] {
 		const langs = new Set(this.#enabledLanguages());
-		return EvalTool.#ALL_EXAMPLES.filter(ex => "call" in ex && langs.has(ex.call.language as EvalLanguageToken));
+		return ALL_EXAMPLES.filter(ex => "call" in ex && langs.has(ex.call.language as EvalLanguageToken));
 	}
-	get parameters(): typeof evalSchema {
-		const langs = this.#enabledLanguages();
-		if (langs.length === 0 || langs.length === EVAL_LANGUAGE_ORDER.length) return evalSchema;
-		const key = langs.join(",");
-		if (this.#paramsKey !== key) {
-			this.#cachedParams = buildEvalSchema(langs);
-			this.#paramsKey = key;
-		}
-		return this.#cachedParams ?? evalSchema;
+	get parameters(): typeof evalSchema.value {
+		return evalSchemaFor(this.#enabledLanguages());
 	}
 	readonly concurrency = "exclusive";
 	readonly strict = true;
-	readonly intent = (args: Partial<typeof evalSchema.infer>): string | undefined => {
+	readonly intent = (args: Partial<typeof evalSchema.value.infer>): string | undefined => {
 		const title = typeof args.title === "string" ? args.title : undefined;
 		const language = typeof args.language === "string" ? formatEvalInputLanguage(args.language) : "javascript";
 		return title || `running ${language}`;
@@ -450,9 +458,6 @@ export class EvalTool implements AgentTool<typeof evalSchema, EvalToolDetails> {
 
 	readonly #proxyExecutor?: EvalProxyExecutor;
 	readonly #discoveredAgents: readonly AgentDefinition[];
-
-	#paramsKey?: string;
-	#cachedParams?: typeof evalSchema;
 
 	/**
 	 * Languages enabled for this session, in display order. Detached tools (no
@@ -488,9 +493,9 @@ export class EvalTool implements AgentTool<typeof evalSchema, EvalToolDetails> {
 
 	async execute(
 		_toolCallId: string,
-		params: typeof evalSchema.infer,
+		params: typeof evalSchema.value.infer,
 		signal?: AbortSignal,
-		onUpdate?: AgentToolUpdateCallback<EvalToolDetails, typeof evalSchema>,
+		onUpdate?: AgentToolUpdateCallback<EvalToolDetails, typeof evalSchema.value>,
 		_ctx?: AgentToolContext,
 	): Promise<AgentToolResult<EvalToolDetails>> {
 		if (this.#proxyExecutor) {

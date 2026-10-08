@@ -25,7 +25,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { getConfigRootDir, isEnoent } from "@veyyon/utils";
+import { getAgentDir, getConfigRootDir, isEnoent } from "@veyyon/utils";
 
 /**
  * Every on-disk name in the daemon runtime layout, in the one place a rename can be made.
@@ -61,25 +61,40 @@ const NAMES = {
 } as const;
 
 /**
- * The stable key one project directory hashes to.
+ * The stable key one project directory hashes to under one agent dir.
  *
- * Shared by the runtime directory and the Windows pipe name, which is the point: they identified the same
- * project through two copies of this expression, so a change to the hash or the padding would have keyed
- * them apart and left a broker listening on a pipe no client computed.
+ * The runtime directory already sits under the profile's config root, but the Windows pipe name is one
+ * machine-wide namespace: keyed by the project alone, every profile's broker for a project claimed one
+ * pipe, so a second profile's client reached the first profile's broker and failed its token check. The
+ * agent dir is in the key so each profile, and each `VEYYON_CODING_AGENT_DIR` sharing the default
+ * profile's root, gets its own broker: a broker runs what it launches with its own environment, which
+ * holds the credentials its first client's agent dir loaded from `.env`.
  */
-function projectKey(projectDir: string): string {
-	return Bun.hash.wyhash(path.resolve(projectDir)).toString(16).padStart(16, "0");
+function projectKey(projectDir: string, agentDir: string): string {
+	return Bun.hash
+		.wyhash(`${path.resolve(agentDir)}\0${path.resolve(projectDir)}`)
+		.toString(16)
+		.padStart(16, "0");
 }
 
-/** Resolve the private runtime directory shared by veyyon processes in one project directory. */
-export function daemonRuntimeDir(projectDir: string, configRoot: string = getConfigRootDir()): string {
-	return path.join(configRoot, NAMES.brokerRoot, projectKey(projectDir));
+/** Resolve the private runtime directory shared by veyyon processes of one profile in one project directory. */
+export function daemonRuntimeDir(
+	projectDir: string,
+	configRoot: string = getConfigRootDir(),
+	agentDir: string = getAgentDir(),
+): string {
+	return path.join(configRoot, NAMES.brokerRoot, projectKey(projectDir, agentDir));
 }
 
-/** Resolve the Unix socket or Windows named pipe used by one project broker. */
-export function daemonBrokerEndpoint(projectDir: string, runtimeDir: string): string {
+/**
+ * Resolve the Unix socket or Windows named pipe used by the broker of one runtime directory.
+ *
+ * The pipe name reuses the runtime directory's key, so a client and its broker, which both receive the
+ * runtime directory, compute the same pipe.
+ */
+export function daemonBrokerEndpoint(runtimeDir: string): string {
 	if (process.platform === "win32") {
-		return `\\\\.\\pipe\\veyyon-daemon-${projectKey(projectDir)}`;
+		return `\\\\.\\pipe\\veyyon-daemon-${path.basename(runtimeDir)}`;
 	}
 	return path.join(runtimeDir, NAMES.brokerSocket);
 }

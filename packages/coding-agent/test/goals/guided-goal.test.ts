@@ -262,9 +262,9 @@ describe("guided goal setup", () => {
 		expect(result).toEqual({ kind: "question", question: "What is done?", objective: "Ship the feature." });
 	});
 
-	// WHY: the OpenCode gateways reject every non-"auto" tool_choice, so veyyon omits the field
-	// there and the respond tool is offered rather than required. A model that answers in text
-	// instead of calling it is the ordinary case on those hosts, not a malformed reply, and the
+	// WHY: an endpoint that rejects a forced tool_choice gets the request again without it, so the
+	// respond tool is offered rather than required. A model that answers in text instead of calling
+	// it is the ordinary case on those models, not a malformed reply, and the
 	// interview has to continue from it. Turn-level coverage stopped at the tool-call route, so a
 	// regression in the text branch of runGuidedGoalTurn would have surfaced only as a dead
 	// interview on a live gateway. The shapes suite covers the parse; these cover the route.

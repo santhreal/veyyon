@@ -1,7 +1,7 @@
 /**
  * Shared contract between the {@link module-timer} preload and {@link logger}'s
  * timing tree. Kept in its own dependency-free module so the preload can import
- * it without pulling in winston (via logger) and the logger can drain the buffer
+ * it without pulling in the log file writer (via logger) and the logger can drain the buffer
  * without importing the Bun-plugin preload.
  */
 

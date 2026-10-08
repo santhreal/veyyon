@@ -397,6 +397,9 @@ describe("TranscriptContainer", () => {
 		const container = new TranscriptContainer();
 		const block = new VersionedFinalizedBlock(["original"]);
 		container.addChild(block);
+		// The engine keeps a screen of committed rows in the frame; a block inside
+		// it stays assembled, so a post-finalize mutation reaches the frame.
+		container.setNativeScrollbackRetainRows(2);
 
 		expect(container.render(40)).toEqual(["original"]);
 		container.setNativeScrollbackCommittedRows(1);
@@ -558,7 +561,7 @@ describe("TranscriptContainer getRenderStablePrefixRows", () => {
 		expect(container.getRenderStablePrefixRows()).toBe(before);
 	});
 
-	it("lowers the report to a mutated early block's start row", () => {
+	it("lowers the report to the first row a mutated early block changes", () => {
 		const container = new TranscriptContainer();
 		const beta = new Text("beta", 0, 0);
 		container.addChild(new Text("alpha", 0, 0));
@@ -569,9 +572,9 @@ describe("TranscriptContainer getRenderStablePrefixRows", () => {
 
 		beta.setText("beta-edited");
 		container.render(40);
-		// alpha's single row survives; beta's segment (separator + body, start
-		// row 1) and everything below it was re-pushed.
-		expect(container.getRenderStablePrefixRows()).toBe(1);
+		// alpha's row and beta's separator (row 1) survive; beta's body row
+		// (row 2) changed, and everything from it on was re-pushed.
+		expect(container.getRenderStablePrefixRows()).toBe(2);
 	});
 
 	it("accumulates the minimum across renders between reads", () => {
@@ -583,13 +586,13 @@ describe("TranscriptContainer getRenderStablePrefixRows", () => {
 		expect(container.render(40)).toHaveLength(5);
 		container.getRenderStablePrefixRows(); // consume: re-base to the current rows
 
-		// First render after the edit drops the floor to gamma's segment start
-		// (row 3); a second, fully stable render must NOT lift it back — an
+		// First render after the edit drops the floor to gamma's changed body
+		// row (row 4); a second, fully stable render must NOT lift it back — an
 		// out-of-band render between engine frames can only lower the report.
 		gamma.setText("gamma-edited");
 		container.render(40);
 		container.render(40);
-		expect(container.getRenderStablePrefixRows()).toBe(3);
+		expect(container.getRenderStablePrefixRows()).toBe(4);
 	});
 
 	it("reports 0 after a width change", () => {

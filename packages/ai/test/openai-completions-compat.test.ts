@@ -1781,11 +1781,9 @@ describe("kimi model detection via detectCompat", () => {
 		expect(assistant).toBeDefined();
 		expect(assistant?.reasoning_content).toBe("Plan first, then call the tool.");
 		expect(payload.reasoning_effort).toBe("high");
-		// Omitted rather than `"auto"`: the gateway accepts only `"auto"`, and an
-		// absent field is that same request, so the downgrade drops it outright.
-		// What this test is really holding is the second half — that downgrading a
-		// choice the host cannot take never costs the turn its thinking signal.
-		expect(payload.tool_choice).toBeUndefined();
+		// The forced choice this model cannot take is downgraded to `"auto"`, which the gateway
+		// accepts, and the downgrade leaves the turn its thinking signal.
+		expect(payload.tool_choice).toBe("auto");
 	});
 
 	// #1484 follow-up: DeepSeek V4 on opencode-go exhibits the same gateway

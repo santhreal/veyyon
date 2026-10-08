@@ -19,8 +19,8 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { Text } from "@veyyon/tui";
 import { visibleWidth } from "@veyyon/utils/width";
+import { HOOK_EDITOR_TEXT_PAD_COLS } from "../../../../src/modes/terminal/components/chrome/modal-geometry";
 import { boundPromptTitle } from "../../../../src/modes/terminal/components/dialogs/ask-dialog";
-import { HOOK_EDITOR_TEXT_PAD_COLS } from "../../../../src/modes/terminal/components/dialogs/hook-editor";
 
 const originalColumns = process.stdout.columns;
 

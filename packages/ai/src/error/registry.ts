@@ -24,12 +24,48 @@
  * 11. `transport`     Before `timeout`, because a timeout that also carries a transport fault is a
  * 12. `timeout`       repeatable request, while a bare timeout means this model needs a different one.
  * 13. `provider-http` Recovers nothing: it reads a status and a code for the families that own them.
+ *
+ * The auth gateway's answers are assembled here as well, in {@link GATEWAY_RULES}, because a gateway
+ * verdict is one more reading of the same failure and its rules belong to the same families.
  */
-import { authDomain, quotaDomain } from "./domains/account";
+import {
+	authDomain,
+	gatewayAuthRefusalWordingRule,
+	gatewayThrottleWordingRule,
+	gatewayUsageLimitRule,
+	quotaDomain,
+} from "./domains/account";
 import { refusalDomain, timeoutDomain, transportDomain } from "./domains/network";
-import { fastModeDomain, grammarDomain, overflowDomain, providerHttpDomain } from "./domains/request";
-import { contentDomain, interruptDomain, streamDomain, thinkingLoopDomain, toolCallDomain } from "./domains/turn";
-import type { ClassificationRule, ClassRule, ErrorDomain, Recovery, RecoveryStage, Signal } from "./domains/types";
+import {
+	fastModeDomain,
+	gatewayInvalidRequestWordingRule,
+	gatewayStatusFieldRule,
+	gatewayStatusInMessageRule,
+	grammarDomain,
+	overflowDomain,
+	providerHttpDomain,
+	toolChoiceDomain,
+} from "./domains/request";
+import {
+	contentDomain,
+	gatewayCancellationIdentityRule,
+	gatewayCancellationWordingRule,
+	interruptDomain,
+	streamDomain,
+	thinkingLoopDomain,
+	toolCallDomain,
+} from "./domains/turn";
+import type {
+	ClassificationRule,
+	ClassRule,
+	ErrorDomain,
+	GatewayRule,
+	GatewaySignal,
+	GatewayVerdict,
+	Recovery,
+	RecoveryStage,
+	Signal,
+} from "./domains/types";
 import { type Flag, is } from "./flag";
 
 export const ERROR_DOMAINS: readonly ErrorDomain[] = [
@@ -40,6 +76,7 @@ export const ERROR_DOMAINS: readonly ErrorDomain[] = [
 	authDomain,
 	grammarDomain,
 	fastModeDomain,
+	toolChoiceDomain,
 	toolCallDomain,
 	streamDomain,
 	thinkingLoopDomain,
@@ -168,4 +205,62 @@ export function classifyIdentity(link: unknown, trace?: string[]): number {
 		trace?.push(rule.name);
 	}
 	return kinds;
+}
+
+/**
+ * What the auth gateway answers its client, first-match-wins in this order.
+ *
+ * ORDER IS THE POLICY here too, and for a different reason than in {@link ERROR_DOMAINS}: a gateway
+ * sends one status per failure, so where the signal rules accumulate flags these stop at the first
+ * answer. The decisions:
+ *
+ *  1. `gateway-status-field`            A numeric status on the thrown value is the upstream's answer.
+ *  2. `gateway-cancellation-identity`   A cancellation class is the client leaving, whatever status its
+ *                                       message quotes.
+ *  3. `gateway-status-in-message`       A status the message states outranks every word around it.
+ *  4. `gateway-cancellation-wording`
+ *  5. `gateway-throttle-wording`        Both throttle rules precede the refusal wording, because
+ *  6. `gateway-usage-limit`             providers word a throttle as `unauthorized due to rate limit`.
+ *  7. `gateway-auth-refusal-wording`
+ *  8. `gateway-invalid-request-wording`
+ *
+ * A failure no rule answers receives the gateway's default, a 502 `upstream_error`.
+ */
+export const GATEWAY_RULES: readonly GatewayRule[] = [
+	gatewayStatusFieldRule,
+	gatewayCancellationIdentityRule,
+	gatewayStatusInMessageRule,
+	gatewayCancellationWordingRule,
+	gatewayThrottleWordingRule,
+	gatewayUsageLimitRule,
+	gatewayAuthRefusalWordingRule,
+	gatewayInvalidRequestWordingRule,
+];
+
+/** One gateway rule's name and the function that answers for it. */
+interface GatewayAnswer {
+	readonly name: string;
+	readonly answer: (signal: GatewaySignal) => GatewayVerdict | undefined;
+}
+
+/** The gateway rules in order, each wording rule's pattern compiled once from its wordings. */
+const GATEWAY_ANSWERS: readonly GatewayAnswer[] = GATEWAY_RULES.map(rule => {
+	if (!("wordings" in rule)) return { name: rule.name, answer: rule.answer };
+	const pattern = new RegExp(String.raw`\b(?:${rule.wordings.join("|")})\b`, "i");
+	return { name: rule.name, answer: signal => (pattern.test(signal.text) ? rule.verdict : undefined) };
+});
+
+/**
+ * Apply the gateway rules to one failure and return the first answer, or `undefined` when none reads it.
+ *
+ * `trace`, when given, receives the name of the rule that answered, as {@link classifySignal}'s does.
+ */
+export function answerGateway(signal: GatewaySignal, trace?: string[]): GatewayVerdict | undefined {
+	for (const { name, answer } of GATEWAY_ANSWERS) {
+		const verdict = answer(signal);
+		if (verdict === undefined) continue;
+		trace?.push(name);
+		return verdict;
+	}
+	return undefined;
 }

@@ -170,6 +170,16 @@ function sampleErrorResult(_toolName: string): {
 	};
 }
 
+/** `value` with every string inside it followed by a tab and a 500-column run. */
+function withTabbedStrings(value: unknown): unknown {
+	if (typeof value === "string") return `${value}\tafter-tab ${longLine}`;
+	if (Array.isArray(value)) return value.map(withTabbedStrings);
+	if (value !== null && typeof value === "object") {
+		return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, withTabbedStrings(inner)]));
+	}
+	return value;
+}
+
 describe("systematic audit of all tool renderers across widths and paths", () => {
 	beforeAll(async () => {
 		await initTheme();
@@ -203,6 +213,16 @@ describe("systematic audit of all tool renderers across widths and paths", () =>
 							const plainLine = stripAnsi(line);
 							expect(plainLine).not.toContain(home);
 						}
+					}
+				});
+
+				it(`(a2) renders a call whose every string argument carries a tab and a 500-col run at width ${width}`, () => {
+					const args = withTabbedStrings(defaultSampleArgs(toolName)) as Record<string, unknown>;
+					const comp = createToolExecution(toolName, args, {}, undefined, mockUi, getHomeDir(), "call-1b");
+					const frames = comp.render(width);
+					for (const line of frames) {
+						expect(line).not.toContain("\t");
+						expect(Bun.stringWidth(stripAnsi(line))).toBeLessThanOrEqual(width);
 					}
 				});
 

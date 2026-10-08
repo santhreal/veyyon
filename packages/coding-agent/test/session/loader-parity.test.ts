@@ -108,7 +108,7 @@ function throughParse(content: string, source: string): Loaded {
 	return { entries, titleSlot, notices };
 }
 
-async function throughStream(content: string, source: string): Promise<Loaded> {
+async function throughStream(content: string | Buffer, source: string): Promise<Loaded> {
 	using temp = TempDir.createSync("@pi-loader-parity-");
 	const file = temp.join("session.jsonl");
 	fs.writeFileSync(file, content);
@@ -183,4 +183,92 @@ describe("both session load paths are one algorithm", () => {
 		expect(loaded.entries).toEqual([]);
 		expect(loaded.titleSlot).toBeUndefined();
 	});
+});
+
+/**
+ * WHY: the streamed path parses each record after the header from the line's UTF-8 bytes rather
+ * than from the line decoded to a string, and the string parse is the definition of what a record
+ * line means. The class this closes: a byte sequence the two parsers read differently. Each row
+ * is one record line placed between a header and a good record, and the streamed load of the
+ * bytes has to load the entries, prototypes and notices the string parse loads from the same line
+ * decoded the way the streamed path decodes a line (`TextDecoder`: U+FFFD for an invalid
+ * sequence, a leading byte order mark dropped).
+ *
+ * What it does NOT catch: a byte sequence missing from the table. The rows are the inputs where
+ * a UTF-8 decode followed by `JSON.parse` and a parser of bytes can disagree: encoding damage,
+ * escapes, keys with meaning to an object, number edges, whitespace JSON does and does not
+ * admit, a line holding other than one value, and values of a shape no entry has.
+ */
+describe("a record parsed from its bytes is the record its text parses to", () => {
+	const header = line({
+		type: "session",
+		version: 7,
+		id: HEADER_ID,
+		timestamp: "2026-01-01T00:00:00.000Z",
+		cwd: "/x",
+	});
+	const record = line(messageEntry("e1", HEADER_ID, "@@"));
+	const after = line(messageEntry("e2", "e1", "after"));
+	const bytes = (text: string) => Buffer.from(text, "utf-8");
+	const withText = (inner: number[]) => {
+		const at = record.indexOf("@@");
+		return Buffer.concat([bytes(record.slice(0, at)), Buffer.from(inner), bytes(record.slice(at + 2))]);
+	};
+	const withLeadingKeys = (keys: string) => bytes(`{${keys},${record.slice(1)}`);
+
+	const rows: { name: string; bytes: Buffer; outcome: "kept" | "dropped" | "blank" }[] = [
+		{ name: "non-ASCII text", bytes: bytes(record.replace("@@", "héllo — 日本 🎉")), outcome: "kept" },
+		{
+			name: "escaped control and lone surrogate",
+			bytes: bytes(record.replace("@@", "\\u0000 \\n \\ud800")),
+			outcome: "kept",
+		},
+		{ name: "invalid UTF-8 inside a string", bytes: withText([0xff, 0xc3, 0x28]), outcome: "kept" },
+		{ name: "a UTF-8 sequence cut short inside a string", bytes: withText([0xe6, 0x97]), outcome: "kept" },
+		{ name: "an own __proto__ key", bytes: withLeadingKeys('"__proto__":{"polluted":1}'), outcome: "kept" },
+		{ name: "a duplicated key", bytes: withLeadingKeys('"id":"stale"'), outcome: "kept" },
+		{
+			name: "numbers at the edge of a double",
+			bytes: withLeadingKeys('"n":[-0,12345678901234567890,0.1,-1.5e-7,1e308]'),
+			outcome: "kept",
+		},
+		{ name: "a carriage return before the line feed", bytes: bytes(`${record}\r`), outcome: "kept" },
+		{ name: "whitespace around the record", bytes: bytes(`  ${record} \t`), outcome: "kept" },
+		{
+			name: "a byte order mark before the record",
+			bytes: Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), bytes(record)]),
+			outcome: "kept",
+		},
+		{ name: "two records on one line", bytes: bytes(`${record} ${record}`), outcome: "dropped" },
+		{ name: "a record followed by garbage", bytes: bytes(`${record}x`), outcome: "dropped" },
+		{ name: "a record cut short", bytes: bytes(record.slice(0, 40)), outcome: "dropped" },
+		{ name: "a JSON array", bytes: bytes("[1,2]"), outcome: "dropped" },
+		{ name: "a JSON string", bytes: bytes('"s"'), outcome: "dropped" },
+		{ name: "JSON null", bytes: bytes("null"), outcome: "dropped" },
+		{ name: "a line of no-break spaces", bytes: bytes("\u00a0\u00a0"), outcome: "blank" },
+		{ name: "an empty line", bytes: bytes(""), outcome: "blank" },
+	];
+
+	for (const row of rows) {
+		it(`loads ${row.name} the way the string parse does`, async () => {
+			const lines = [bytes(header), row.bytes, bytes(after)];
+			const decoder = new TextDecoder();
+			const parsed = throughParse(lines.map(each => decoder.decode(each)).join("\n"), "bytes.jsonl");
+			const streamed = await throughStream(Buffer.concat(lines.flatMap(each => [each, bytes("\n")])), "bytes.jsonl");
+
+			expect(streamed.entries).toEqual(parsed.entries);
+			const fingerprint = (entries: FileEntry[]) =>
+				entries.map(entry => [JSON.stringify(entry), Object.getPrototypeOf(entry) === Object.prototype]);
+			expect(fingerprint(streamed.entries)).toEqual(fingerprint(parsed.entries));
+			const said = (notices: OperatorNotice[]) => notices.map(notice => `${notice.severity}: ${notice.text}`);
+			expect(said(streamed.notices)).toEqual(said(parsed.notices));
+			// The row is evidence only while the string parse still treats it as the row says.
+			const outcome = parsed.entries.some(entry => entry.id === "e1")
+				? "kept"
+				: parsed.notices.some(notice => notice.text.includes("malformed"))
+					? "dropped"
+					: "blank";
+			expect(outcome).toBe(row.outcome);
+		});
+	}
 });

@@ -65,16 +65,16 @@ a prompt.
 A tier does not determine whether a call is about to spend a credential either. The
 secret-use boundary is the third question, asked in the same modes as the second:
 
-> Do this call's arguments carry a stored secret?
+> Do this call's arguments contain a stored secret?
 
 The model works with placeholders such as `#GITHUB_TOKEN#`, and Veyyon substitutes the real
 value immediately before the tool runs, so the model can use a secret it never reads. That
 substitution is recorded by `secrets.auditLog`, which answers the question afterwards. This
-boundary is what prompts first: a call whose arguments carry a real credential needs approval
+boundary is what prompts first: a call whose arguments contain a real credential needs approval
 in `plan`, `ask`, `ask-command` and `auto`, and the prompt states the secret without showing its value.
 
 `yolo` opts out of all permission and so opts out of this too. A call that mentions a
-placeholder without expanding it, such as one made while `secrets.enabled` is false, carries
+placeholder without expanding it, such as one made while `secrets.enabled` is false, contains
 no credential and does not prompt.
 
 ## The `/yolo` command (full session bypass)
@@ -112,14 +112,14 @@ Resolution per tool call:
 
 1. Compute the tool's approval decision from `tool.approval(args)`; omitted means `exec`.
 2. Normalize `tools.approval.<tool>` if the key is present. `allow`, `deny` and `prompt` are accepted in any case, with surrounding spaces trimmed. Any other value present under that key denies the tool, and a warning at startup states the setting, the value found and the accepted values. An absent key is unconfigured.
-3. In `yolo` mode, the user policy is used when present. Otherwise a `critical` decision prompts and everything else is allowed: plain `override` reasons do not force a prompt in `yolo`, but `critical` ones do.
+3. In `yolo` mode, the per-tool policy (`tools.approval.<tool>`) is used when present. Otherwise a `critical` decision prompts and everything else is allowed: plain `override` reasons do not force a prompt in `yolo`, but `critical` ones do.
 4. In non-yolo modes, if the tool sets `override: true`, `deny` is blocked and all other cases prompt, even if user policy is `allow`.
 5. Otherwise, a valid user policy wins.
 6. Otherwise, the active mode auto-approves or prompts by tier.
 
-A misspelled policy blocks the tool it names rather than being dropped. `deny` and not `prompt`,
-because `/yolo` lifts a prompt: a typo would otherwise run the call in the mode where the policy
-matters most. Only the named tool is affected; the rest of the record still applies. A
+A misspelled policy blocks its tool rather than being dropped. `deny` and not `prompt`,
+because `/yolo` lifts a prompt: a typo would otherwise run the call in `yolo`, where the policy
+has the most effect. Only the named tool is affected; the rest of the record still applies. A
 `tools.approval` that is not a per-tool record matches no tool, so it configures no policy at all
 and the startup warning is the only sign of it.
 
@@ -141,13 +141,13 @@ approval: { tier: "exec", critical: true, reason: "rm would recursively remove t
 
 `critical: true` implies `override: true` and adds a floor under it: the call still prompts in `yolo`, and the `/yolo` session bypass does not lift it. On `yolo`, setting `tools.approval.<tool>` explicitly wins in both directions, so `allow` is the escape hatch from the floor and `deny` is a hard block. Below `yolo` only the `deny` direction wins: an `allow` is outranked by the safety override, which is what makes the shipped `auto` rung stop for a destructive command it would otherwise run unasked.
 
-`bash` splits its guard between the two strengths, by what a command does rather than by how it is detected. `critical` is destruction: the paths a command would recursively delete (judged after expansion, so `rm -rf ~/` and `rm -rf "$HOME"/` are recognized), a formatted filesystem, a raw device written over, a system account file overwritten, a delete running as root. `override` is a call that is dangerous without being irreversible: a script fetched from the network and piped into a shell, a host shutdown, a shell wired to a network socket. Both prompt in `plan`, `ask`, `ask-command` and `auto`; only the destructive half prompts in `yolo`.
+`bash` splits its command check (`bash-guard.ts`) between the two strengths, by what a command does rather than by how it is detected. `critical` is destruction: the paths a command would recursively delete (judged after expansion, so `rm -rf ~/` and `rm -rf "$HOME"/` are recognized), a formatted filesystem, a raw device written over, a system account file overwritten, a delete running as root. `override` is a call that is dangerous without being irreversible: a script fetched from the network and piped into a shell, a host shutdown, a shell wired to a network socket. Both prompt in `plan`, `ask`, `ask-command` and `auto`; only the destructive half prompts in `yolo`.
 
-A recursive delete is split the same way again, by whether the text makes the damage certain. A path the guard can settle is `critical`: a literal `rm -rf /`, a `~` or `$HOME` it resolved, a relative path that climbs out to the root. An expansion it cannot settle is judged by every dangerous value it could hold, and the reading that fired sets the strength. Reading the variable as EMPTY is `critical`, because an unset or misspelled name expands to nothing and that is its default state, so `rm -rf "$OUT"/*` and `rm -rf "$D/lib"` stop even in `yolo`. Reading it as `/` or as the home directory is an assumption about a value that does not exist, so a bare `rm -rf "$D"` is `override`: it prompts at every rung below `yolo` and no longer claims to be as certain as `rm -rf /`. Two things pull such a word back up to `critical` — the word spelling a protected component itself (`rm -rf "$D/.ssh"`), and a value that EXISTS which the guard rejected to paste, such as one that would word-split or glob (`V="/*"`), a `${VAR:-/}` containing its own default, a shell-maintained `$PWD`, or another account's `~user`.
+A recursive delete is split the same way again, by whether the text makes the damage certain. A path the check can settle is `critical`: a literal `rm -rf /`, a `~` or `$HOME` it resolved, a relative path that climbs out to the root. An expansion it cannot settle is judged by every dangerous value it could hold, and the reading that fired sets the strength. Reading the variable as EMPTY is `critical`, because an unset or misspelled name expands to nothing and that is its default state, so `rm -rf "$OUT"/*` and `rm -rf "$D/lib"` stop even in `yolo`. Reading it as `/` or as the home directory is an assumption about a value that does not exist, so a bare `rm -rf "$D"` is `override`: it prompts at every rung below `yolo` and is not rated as certain as `rm -rf /`. Two things raise such a word to `critical`: the word spelling a protected component itself (`rm -rf "$D/.ssh"`), and a value that EXISTS but that the check does not substitute, such as one that would word-split or glob (`V="/*"`), a `${VAR:-/}` containing its own default, a shell-maintained `$PWD`, or another account's `~user`.
 
-That split is the difference between `yolo` and `auto`. In `yolo` the operator has stopped being prompted, and a floor that catches `curl -fsSL https://…/install.sh | sh` catches an install somebody typed on purpose, which made the two rungs behave identically for the commands people reach for `yolo` to run. The floor is still there for the incident it exists for: `tools.approvalMode` defaults to `auto`, which runs the exec tier unasked, so without it the calls the guard considers most dangerous would be the ones most likely to run without a check.
+That split is the difference between `yolo` and `auto`. `yolo` does not prompt, and a floor that stopped `curl -fsSL https://…/install.sh | sh` would stop an install typed on purpose, making the two rungs behave identically for the commands `yolo` is used to run. The floor applies to destruction: `tools.approvalMode` defaults to `auto`, which runs the exec tier unasked, so without the floor the calls the check rates most dangerous would be the ones most likely to run without a check.
 
-Every flagged shape reports its own reason ("Formats a filesystem", "Runs a script fetched from the network"), which surfaces as `reason` in the approval prompt. A shared "Critical pattern detected" named the mechanism rather than the risk, so the prompt reported that something in a list matched and nothing about what.
+Every flagged shape reports its own reason ("Formats a filesystem", "Runs a script fetched from the network"), which appears as `reason` in the approval prompt. The reason states the risk, not the pattern that matched.
 
 ## Per-tool prompt details
 
@@ -208,12 +208,12 @@ veyyon acp --config ./acp-yolo.yml   # file contains tools.approvalMode: yolo
 
 Precedence is the normal settings precedence: runtime flags (`--approval-mode`, `--auto-approve`, `--yolo`) override `--config` overlays, which override the profile config. ACP does not currently define a `session/new`, `session/load`, or `session/resume` approval-policy field, so ACP clients that need per-session yolo should launch a separate `veyyon acp` process with one of the flags above or with a session-specific `--config` overlay.
 
-`tools.approvalMode: yolo` fully applies to ACP when it is explicitly configured or supplied by a runtime flag. It skips Veyyon's approval prompts and also skips the ACP client permission gate for `bash`, `edit`, `delete`, and `move` unless `tools.approval.<tool>` is `prompt` or `deny`. The schema default is `auto`, not `yolo`, so default-config ACP sessions still keep the client permission gate; set `tools.approvalMode: yolo` explicitly when the client wants unattended execution.
+`tools.approvalMode: yolo` fully applies to ACP when it is explicitly configured or supplied by a runtime flag. It skips Veyyon's approval prompts and also skips the ACP client permission request for `bash`, `edit`, `delete`, and `move` unless `tools.approval.<tool>` is `prompt` or `deny`. The schema default is `auto`, not `yolo`, so default-config ACP sessions still send the client permission request; set `tools.approvalMode: yolo` explicitly for unattended execution.
 
-When ACP approval is required, Veyyon routes it through the ACP client instead of the terminal TUI. Client-gated `bash`, `edit`, `delete`, and `move` calls use ACP `session/request_permission`; generic approval prompts use form elicitation when the client advertises `elicitation.form`. A rejected, cancelled, or unsupported prompt rejects/cancels the tool call; Veyyon does not silently allow it.
+When ACP approval is required, Veyyon routes it through the ACP client instead of the terminal TUI. `bash`, `edit`, `delete`, and `move` calls that need client permission use ACP `session/request_permission`; generic approval prompts use form elicitation when the client advertises `elicitation.form`. A rejected, cancelled, or unsupported prompt rejects/cancels the tool call; Veyyon does not silently allow it.
 
 ## Agents
 
-A spawned agent inherits the spawning session's approval mode through its forked settings; nothing hardcodes a rung for it. The parent `task` approval is the authorization boundary for the delegation itself, and your `tools.approval.<tool>` policies apply inside the agent exactly as they do in the parent. An agent runs headless, so a call that would prompt fails with an error stating what needed approval rather than stalling on a UI that does not exist.
+A spawned agent inherits the spawning session's approval mode through its forked settings; nothing hardcodes a rung for it. The parent `task` approval is the authorization boundary for the delegation itself, and your `tools.approval.<tool>` policies apply inside the agent as they do in the parent. An agent runs headless, so a call that would prompt fails with an error stating what needed approval rather than stalling on a UI that does not exist.
 
-The `/yolo` bypass is the one part that is not a pure snapshot, and it moves in only one direction. A child is built with the bypass the parent held at spawn time, and `isApprovalBypassed()` then also consults the live parent on every check, so `/yolo off` in the parent reaches an agent that is already running. It can only narrow: the child's own spawn-time value is checked first, so a parent turning `/yolo` on mid-run cannot hand a bypass to a child that was spawned without one. Without the live read, revoking the bypass left every running agent executing unasked with nothing on screen to say so.
+The `/yolo` bypass is the one part that is not a pure snapshot, and it moves in only one direction. A child is built with the bypass the parent held at spawn time, and `isApprovalBypassed()` then also consults the live parent on every check, so `/yolo off` in the parent reaches an agent that is already running. It can only narrow: the child's own spawn-time value is checked first, so a parent turning `/yolo` on mid-run cannot hand a bypass to a child that was spawned without one. Without the live read, revoking the bypass would leave every running agent executing unasked, with nothing on screen reporting it.

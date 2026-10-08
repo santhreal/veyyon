@@ -221,11 +221,66 @@ describe("the modules that were repointed stay cut", () => {
 	 * were already reached through that file. No consumer gained an edge to a
 	 * subsystem it did not already reach.
 	 */
+	/**
+	 * Re-measured 2026-09-18: `api-key-resolver.ts` 56 -> 57 and `shared-llm.ts` 208 -> 209, each by the
+	 * one module `@veyyon/utils/backoff`, a zero-import leaf holding `exponentialBackoffDelay`.
+	 * `@veyyon/utils/fetch-retry` and the SQLite credential store, already on both reaches, computed
+	 * their retry doubling inline and now take it from that owner. The leaf imports nothing, so no
+	 * consumer gained an edge to a subsystem it did not already reach.
+	 */
+	/**
+	 * Re-measured 2026-09-29: `parser.ts` 120 -> 121, `db.ts` 122 -> 123, `sync-worker.ts` 121 -> 122,
+	 * `api-key-resolver.ts` 57 -> 58 and `shared-llm.ts` 209 -> 210, each by the one module
+	 * `@veyyon/utils/log-file`, the rotating profile log that replaced `winston` and
+	 * `winston-daily-rotate-file`. `@veyyon/utils/logger`, already on every one of these reaches, writes
+	 * through it; its imports are `node:` built-ins, `./app-identity` and `./fs-error`, all already
+	 * reached. The two npm packages it replaced were never counted here, so no consumer gained an edge to
+	 * a subsystem it did not already reach.
+	 */
+	/**
+	 * Re-measured 2026-09-29 again: `parser.ts` 121 -> 122, `db.ts` 123 -> 124, `sync-worker.ts`
+	 * 122 -> 123 and `shared-llm.ts` 210 -> 211, each by the one module `catalog/compat/share.ts`, a
+	 * zero-import leaf holding `shareCompat`. `catalog/build.ts`, already on every one of these reaches,
+	 * returns each model's resolved compat record through it so equal records are held once. The leaf
+	 * imports nothing, so no consumer gained an edge to a subsystem it did not already reach.
+	 */
+	/**
+	 * Re-measured 2026-09-30: `agent/src/proxy.ts` 145 -> 147, `parser.ts` 122 -> 124, `db.ts`
+	 * 124 -> 126 and `sync-worker.ts` 123 -> 125, each by the two modules `utils/prompt-precompiled.ts`
+	 * and `utils/prompt-handlebars.ts`. `utils/prompt.ts`, already on every one of these reaches, reads
+	 * the binary's build-time precompiled templates from the first and loads the Handlebars compiler
+	 * through the second only when a template has no precompiled form. The first imports one type from
+	 * `./prompt-variables` and the second imports only `handlebars/runtime`, so no consumer gained an
+	 * edge to a subsystem it did not already reach.
+	 */
+	/**
+	 * Re-measured 2026-10-03: `agent/src/proxy.ts` 147 -> 148, `parser.ts` 124 -> 125, `db.ts`
+	 * 126 -> 127 and `sync-worker.ts` 125 -> 126, each by the one module `catalog/catalog-spans.ts`, a
+	 * zero-import leaf that finds a provider's and a model's byte range in `models.json` without parsing
+	 * the document. `catalog/models.ts`, already on every one of these reaches, reads one provider's
+	 * span through it. The leaf imports nothing, so no consumer gained an edge to a subsystem it did not
+	 * already reach.
+	 */
+	/**
+	 * Re-measured 2026-10-05: `agent/src/proxy.ts` 148 -> 149, `parser.ts` 125 -> 126, `db.ts`
+	 * 127 -> 128, `sync-worker.ts` 126 -> 127 and `api-key-resolver.ts` 58 -> 59, each by the one module
+	 * `@veyyon/utils/local-time`, which reads the local clock through the C library's `localtime_r` so
+	 * naming a log file builds no ICU time zone cache. `@veyyon/utils/logger` and `@veyyon/utils/log-file`,
+	 * already on every one of these reaches, take the local time from it. Its only import is `bun:ffi`, so
+	 * no consumer gained an edge to a subsystem it did not already reach.
+	 */
+	/**
+	 * Re-measured 2026-10-06: `shared-llm.ts` 211 -> 212 by the one module `ai/dialect/bracket-walk.ts`,
+	 * a zero-import leaf holding the bracket-depth walk that splits call arguments. `dialect/gemini.ts`
+	 * and `dialect/gemma.ts`, already on this reach, each walked brackets inline and now take the walk
+	 * from that owner. The leaf imports nothing, so no consumer gained an edge to a subsystem it did not
+	 * already reach.
+	 */
 	it.each([
-		["agent/src/proxy.ts", 145],
-		["apps/stats/src/parser.ts", 120],
-		["apps/stats/src/db.ts", 122],
-		["apps/stats/src/sync-worker.ts", 121],
+		["agent/src/proxy.ts", 149],
+		["apps/stats/src/parser.ts", 126],
+		["apps/stats/src/db.ts", 128],
+		["apps/stats/src/sync-worker.ts", 127],
 		["plugins/mnemopi/src/core/embeddings.ts", 131],
 		// Re-measured 2026-08-28 at 66, from 127. The file took `trimTrailingSlashes` and
 		// `withScopedTimeoutSignal` from the `@veyyon/utils` entry point, so every module that entry
@@ -236,12 +291,12 @@ describe("the modules that were repointed stay cut", () => {
 		// zero-import leaf that owns the escape constants; `sanitize-text.ts`, already on this reach,
 		// used to spell `"\x1b"` inline and now takes `ESC` from that owner. The leaf adds no edge of
 		// its own, so nothing outside this closure was gained.
-		["coding-agent/src/config/api-key-resolver.ts", 56],
+		["coding-agent/src/config/api-key-resolver.ts", 59],
 		// Re-measured 2026-09-11 at 207, from 205: the two leaves named above. 205 was the three
 		// `@veyyon/model` leaves of 2026-09-04; 202 was one module from the catalog OpenCode discovery
 		// header leaf; 184 was the 2026-07-27 engine-call remeasure; 325 before that was the leak. The
 		// file still takes no name from the barrel.
-		["coding-agent/src/commit/shared-llm.ts", 208],
+		["coding-agent/src/commit/shared-llm.ts", 212],
 		// The agent's hot loop and the `Agent` class. Both STREAM, so both reach the engine whatever
 		// specifier they use; the ceilings are what the other ten names cost when taken from the entry
 		// point. 378 -> 321 and 380 -> 323.

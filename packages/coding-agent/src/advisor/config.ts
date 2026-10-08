@@ -1,14 +1,15 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { type } from "@veyyon/ai/utils/schema/arktype";
 import {
 	errorMessage,
 	isEnoent,
 	isRecord,
+	lazy,
 	logger,
 	quarantineUnparseableFile,
 	syncYamlTextToSettings,
 } from "@veyyon/utils";
-import { type } from "arktype";
 import { YAML } from "bun";
 import { expandAtImports } from "../discovery/at-imports";
 import { BUILTIN_TOOL_NAMES, normalizeToolNames } from "../tools/core/builtin-names";
@@ -40,17 +41,21 @@ export interface DiscoveredAdvisors {
 	sharedInstructions: string | undefined;
 }
 
-const advisorEntrySchema = type({
-	name: "string",
-	"model?": "string",
-	"tools?": "string[]",
-	"instructions?": "string",
-});
+const advisorEntrySchema = lazy(() =>
+	type({
+		name: "string",
+		"model?": "string",
+		"tools?": "string[]",
+		"instructions?": "string",
+	}),
+);
 
-const watchdogYamlSchema = type({
-	"instructions?": "string",
-	"advisors?": advisorEntrySchema.array(),
-});
+const watchdogYamlSchema = lazy(() =>
+	type({
+		"instructions?": "string",
+		"advisors?": advisorEntrySchema.value.array(),
+	}),
+);
 
 /**
  * Normalize an advisor name into a filesystem-/id-safe slug used for its
@@ -141,7 +146,7 @@ export async function discoverAdvisorConfigs(cwd: string, agentDir?: string): Pr
 			logger.warn("Advisor config: expected a YAML mapping", { path: item.path });
 			continue;
 		}
-		const result = watchdogYamlSchema(parsed);
+		const result = watchdogYamlSchema.value(parsed);
 		if (result instanceof type.errors) {
 			logger.warn("Advisor config: invalid schema", { path: item.path, error: result.summary });
 			continue;
@@ -245,7 +250,7 @@ export async function loadWatchdogConfigFile(filePath: string): Promise<Watchdog
 		await quarantineUnparseableFile(filePath, text, new Error("expected a YAML mapping"));
 		return { advisors: [] };
 	}
-	const result = watchdogYamlSchema(parsed);
+	const result = watchdogYamlSchema.value(parsed);
 	if (result instanceof type.errors) {
 		// Schema-invalid is the same hazard as unparseable: the editor shows an
 		// empty doc, and saving it removes the file. Keep the bytes.

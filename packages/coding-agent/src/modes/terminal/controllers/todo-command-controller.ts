@@ -378,7 +378,7 @@ export class TodoCommandController {
 		const initialMarkdown =
 			current.length > 0 ? phasesToMarkdown(current) : "# Todos\n- [ ] (replace this with your tasks)\n";
 
-		const fileHandle = await this.#openTtyHandle();
+		const fileHandle = await openTtyHandle();
 		this.ctx.ui.stop();
 		try {
 			const stdio: [number | "inherit", number | "inherit", number | "inherit"] = fileHandle
@@ -413,19 +413,6 @@ export class TodoCommandController {
 		}
 	}
 
-	async #openTtyHandle(): Promise<fs.FileHandle | null> {
-		const stdinPath = (process.stdin as unknown as { path?: string }).path;
-		const candidate = typeof stdinPath === "string" ? stdinPath : undefined;
-		if (!candidate) return null;
-		try {
-			return await fs.open(candidate, "r+");
-		} catch {
-			// Same as the editor handle: no usable tty means the caller keeps the in-app path, which the
-			// user sees. Null is the "not available" answer, not a swallowed failure to open a real tty.
-			return null;
-		}
-	}
-
 	#commit(nextPhases: TodoPhase[], action: string, opts?: { removed?: boolean }): void {
 		// 1. In-memory + UI state
 		this.ctx.session.setTodoPhases(nextPhases);
@@ -446,5 +433,18 @@ export class TodoCommandController {
 		};
 		this.ctx.agent.appendMessage(message);
 		this.ctx.sessionManager.appendMessage(message);
+	}
+}
+
+async function openTtyHandle(): Promise<fs.FileHandle | null> {
+	const stdinPath = (process.stdin as unknown as { path?: string }).path;
+	const candidate = typeof stdinPath === "string" ? stdinPath : undefined;
+	if (!candidate) return null;
+	try {
+		return await fs.open(candidate, "r+");
+	} catch {
+		// Same as the editor handle: no usable tty means the caller keeps the in-app path, which the
+		// user sees. Null is the "not available" answer, not a swallowed failure to open a real tty.
+		return null;
 	}
 }

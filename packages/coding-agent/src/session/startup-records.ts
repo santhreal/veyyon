@@ -1,18 +1,63 @@
 /**
  * The durable records a session writes about its own start, so a transcript states what the run
- * was configured with rather than leaving a reader to reconstruct it: the system prompt and active
- * tools of a new top-level session, the effective settings of every new session, and the outcome of
- * arming the launch project's argot shorthand.
+ * was configured with rather than leaving a reader to reconstruct it: the starting model, thinking
+ * level and service tier of a new session, the system prompt and active tools of a new top-level
+ * session, the effective settings of every new session, the at-rest reading a top-level session files
+ * for the next launch, and the outcome of arming the launch project's argot shorthand, or of re-arming
+ * the projects a resumed branch loaded.
  */
 
+import type { Model, ServiceTierByFamily } from "@veyyon/ai";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import type { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { logger } from "@veyyon/utils";
 import type { ArgotSession } from "argot";
-import { armArgotAfterStartup, shouldAutoloadArgotAtStartup } from "../argot-cache";
+import {
+	armArgotAfterStartup,
+	collectArgotLoadedRoots,
+	rearmArgotForDecode,
+	shouldAutoloadArgotAtStartup,
+} from "../argot-cache";
+import { measureContextGauge } from "../config/compaction-strategy";
+import { recordRestLaunchFacts } from "../config/launch-facts";
 import type { Settings } from "../config/settings";
 import { ARGOT_HANDLES_BANNER } from "../system-prompt-builder/section-registry";
+import type { AgentSession } from "./agent-session";
+import { computeSystemContextTokens } from "./non-message-tokens";
+import type { StartupModelSelection } from "./startup-model";
 
 type StartRecorder = Pick<SessionManager, "appendSessionInit" | "appendSettingsSnapshot" | "appendCustomMessageEntry">;
+
+/**
+ * Record a new session's starting model, thinking level and service tier, so a resume restores them. An
+ * `auto` thinking selector is not recorded: the first real turn records the concrete effort it resolves.
+ */
+export function recordNewSessionDefaults(
+	sessionManager: Pick<SessionManager, "appendModelChange" | "appendThinkingLevelChange" | "appendServiceTierChange">,
+	model: Model | undefined,
+	modelSelection: Pick<StartupModelSelection, "autoThinking" | "effectiveThinkingLevel">,
+	serviceTierByFamily: ServiceTierByFamily,
+): void {
+	if (model) sessionManager.appendModelChange(`${model.provider}/${model.id}`);
+	if (!modelSelection.autoThinking) sessionManager.appendThinkingLevelChange(modelSelection.effectiveThinkingLevel);
+	if (Object.keys(serviceTierByFamily).length > 0) sessionManager.appendServiceTierChange(serviceTierByFamily);
+}
+
+/**
+ * Re-arm `argot` to decode the handles a resumed branch holds. History keeps the short handles, and the
+ * display and export seams expand them only with their dictionaries loaded. The branch's own
+ * `argot_load` results state the projects the model loaded, so exactly those are re-armed, without
+ * teaching: the model decides again whether to load one.
+ */
+export async function rearmArgotForResume(
+	argot: ArgotSession | undefined,
+	branch: readonly SessionEntry[],
+	settings: Settings,
+): Promise<void> {
+	if (argot === undefined || branch.length === 0) return;
+	const roots = collectArgotLoadedRoots(branch.flatMap(entry => (entry.type === "message" ? [entry.message] : [])));
+	if (roots.length > 0) await rearmArgotForDecode(argot, roots, undefined, settings.get("argot.tokenBudget"));
+}
 
 /** What {@link recordNewSessionStart} reads. */
 export interface NewSessionStartInput {
@@ -41,6 +86,59 @@ export function recordNewSessionStart(input: NewSessionStartInput): void {
 		});
 	}
 	input.sessionManager.appendSettingsSnapshot(input.settings.getEffectiveSnapshot());
+}
+
+/** What a top-level session reads at rest: what the launch card files for the next launch. */
+export interface AtRestLaunchReading {
+	model: AgentSession["state"]["model"];
+	thinkingLevel: string | null;
+	isAutoThinking: boolean;
+	messageCount: number;
+	/** The project's own context weight, subtracted for the model-floor reading. */
+	systemContextTokens: number;
+	contextPercent: number | null;
+	contextLimit: number;
+}
+
+/** Measure the at-rest reading of a top-level session. */
+function measureAtRestLaunch(session: AgentSession, settings: Settings): AtRestLaunchReading {
+	const usage = session.getContextUsage();
+	const gauge = measureContextGauge(
+		usage?.tokens ?? null,
+		usage?.contextWindow ?? session.model?.contextWindow ?? 0,
+		session.autoCompactionEnabled ? settings.getGroup("compaction") : undefined,
+	);
+	return {
+		model: session.state.model,
+		thinkingLevel: session.state.thinkingLevel ?? null,
+		isAutoThinking: session.isAutoThinking,
+		messageCount: session.messages?.length ?? 0,
+		systemContextTokens: computeSystemContextTokens(session),
+		contextPercent: gauge.contextPercent,
+		contextLimit: gauge.contextLimit,
+	};
+}
+
+/**
+ * Measure the at-rest reading of a top-level session and file it for the next launch's card. The
+ * launch card reads the recorded file on every render and repaints when a record lands, so on a cold
+ * launch (no recording from a previous session) the hero's model name and provider and the context
+ * gauge arrive with the reading, and the next launch states them from the first frame. The status row
+ * re-records the same decision on its own renders against the same gauge; a record that changes
+ * nothing does not write.
+ *
+ * `createAgentSession` holds this reading (`deferAtRestReading`) because it builds every tool's
+ * schema, and `takeHeldAtRestReading` calls it when the session leaves rest: before the session's
+ * first turn appends a message, or earlier when the interactive host draws the composer's first edit.
+ *
+ * A spawned agent files nothing, so only a top-level session is held. The card describes the
+ * top-level session a launch opens. A spawned agent can run the default model with its own system
+ * prompt, tools and effort, and filing its reading would hand the next launch a gauge and a rung
+ * measured on a prompt that launch never builds.
+ */
+export function recordAtRestLaunch(session: AgentSession, settings: Settings): void {
+	const atRest = measureAtRestLaunch(session, settings);
+	void recordRestLaunchFacts(atRest, atRest.contextPercent, atRest.contextLimit);
 }
 
 /** What {@link armLaunchArgot} reads. */

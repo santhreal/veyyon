@@ -58,8 +58,8 @@ export interface ExpandAtImportsOptions {
 /**
  * Expand `@path/to/file` references in `content` against `filePath`'s directory.
  *
- * Returns the expanded text. When no imports match, the original string is
- * returned unchanged.
+ * Returns the expanded text. When no import resolves, `content` itself is
+ * returned, so the caller holds no second copy of a file with nothing to inline.
  */
 export async function expandAtImports(
 	content: string,
@@ -81,18 +81,21 @@ async function expand(
 	home: string,
 	visited: Set<string>,
 ): Promise<string> {
-	if (depth >= maxDepth) return content;
+	if (depth >= maxDepth || !content.includes("@")) return content;
 
 	const segments = splitMarkdownSegments(content);
 	const out: string[] = [];
+	let changed = false;
 	for (const segment of segments) {
 		if (segment.kind === "code") {
 			out.push(segment.text);
 			continue;
 		}
-		out.push(await expandTextSegment(segment.text, baseDir, depth, maxDepth, home, visited));
+		const expanded = await expandTextSegment(segment.text, baseDir, depth, maxDepth, home, visited);
+		if (expanded !== segment.text) changed = true;
+		out.push(expanded);
 	}
-	return out.join("");
+	return changed ? out.join("") : content;
 }
 
 async function expandTextSegment(
@@ -104,10 +107,14 @@ async function expandTextSegment(
 	visited: Set<string>,
 ): Promise<string> {
 	const lines = text.split("\n");
+	let changed = false;
 	for (let i = 0; i < lines.length; i++) {
-		lines[i] = await expandLine(lines[i], baseDir, depth, maxDepth, home, visited);
+		const expanded = await expandLine(lines[i], baseDir, depth, maxDepth, home, visited);
+		if (expanded === lines[i]) continue;
+		lines[i] = expanded;
+		changed = true;
 	}
-	return lines.join("\n");
+	return changed ? lines.join("\n") : text;
 }
 
 async function expandLine(
@@ -142,12 +149,15 @@ async function expandLine(
 
 	const parts: string[] = [];
 	let cursor = 0;
+	let resolvedAny = false;
 	for (const m of matches) {
 		parts.push(line.slice(cursor, m.start));
 		const expanded = await resolveAndExpand(m.importPath, baseDir, depth, maxDepth, home, visited);
+		if (expanded !== null) resolvedAny = true;
 		parts.push(expanded ?? line.slice(m.start, m.end));
 		cursor = m.end;
 	}
+	if (!resolvedAny) return line;
 	parts.push(line.slice(cursor));
 	return parts.join("");
 }

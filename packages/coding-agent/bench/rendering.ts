@@ -12,7 +12,8 @@ import { truncateToVisualLines } from "../src/modes/terminal/components/transcri
 import {
 	BlockUnitCounter,
 	buildDisplayMessage,
-	nextStep,
+	RevealPacer,
+	STREAMING_REVEAL_FRAME_MS,
 	visibleUnits,
 } from "../src/modes/terminal/controllers/streaming-reveal";
 import { getEditorTheme, initTheme } from "../src/theme/theme";
@@ -120,7 +121,7 @@ for (const n of REVEAL_CHECKPOINTS) {
 // buildDisplayMessage is O(delta)/tick. The Markdown render (component.render)
 // still re-lexes the growing text each step here (no { transient: true }), so
 // total ms is dominated by the render, not the slice. Total ms to fully reveal
-// an N-grapheme message in nextStep increments.
+// an N-grapheme message that arrived at once, in RevealPacer steps one frame apart.
 console.log("\nstreamingRevealFull (controller-path counter + Markdown render, growing text):");
 try {
 	for (const n of REVEAL_CHECKPOINTS) {
@@ -133,8 +134,10 @@ try {
 		const start = Bun.nanoseconds();
 		let revealed = 0;
 		let steps = 0;
+		const pacer = new RevealPacer();
+		pacer.arrive(0, total, 0);
 		while (revealed < total) {
-			revealed = Math.min(total, revealed + nextStep(total - revealed));
+			revealed += pacer.step((steps + 1) * STREAMING_REVEAL_FRAME_MS, total - revealed);
 			component.updateContent(buildDisplayMessage(full, revealed, false, true, countOf, sliceOf));
 			component.render(WIDTH);
 			steps++;
@@ -173,8 +176,10 @@ try {
 		const start = Bun.nanoseconds();
 		let revealed = 0;
 		let steps = 0;
+		const pacer = new RevealPacer();
+		pacer.arrive(0, total, 0);
 		while (revealed < total) {
-			revealed = Math.min(total, revealed + nextStep(total - revealed));
+			revealed += pacer.step((steps + 1) * STREAMING_REVEAL_FRAME_MS, total - revealed);
 			component.updateContent(buildDisplayMessage(full, revealed, false, true, countOf, sliceOf));
 			component.render(WIDTH);
 			steps++;

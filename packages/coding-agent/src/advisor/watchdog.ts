@@ -15,6 +15,12 @@ export function formatActiveRepoWatchdogPrompt(activeRepoContext: ActiveRepoCont
 		.trim();
 }
 
+/** A project context file the advisor's system prompt renders. */
+export interface AdvisorContextFile {
+	path: string;
+	content: string;
+}
+
 /**
  * Render the project context files (AGENTS.md and the like) into a block for the
  * advisor's system prompt, mirroring how the primary agent receives them. Gives
@@ -22,9 +28,7 @@ export function formatActiveRepoWatchdogPrompt(activeRepoContext: ActiveRepoCont
  * to them instead of advising against project conventions it cannot otherwise
  * see. Returns undefined when there are no context files.
  */
-export function formatAdvisorContextPrompt(
-	contextFiles: ReadonlyArray<{ path: string; content: string }>,
-): string | undefined {
+export function formatAdvisorContextPrompt(contextFiles: readonly AdvisorContextFile[]): string | undefined {
 	if (contextFiles.length === 0) return undefined;
 	return prompt.render(advisorPrompts["advisor/context-files"].text, { contextFiles }).trim() || undefined;
 }

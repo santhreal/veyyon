@@ -30,7 +30,13 @@ export interface DiscoverableTool {
 	serverName?: string;
 	/** MCP only */
 	mcpToolName?: string;
-	schemaKeys: string[];
+	/**
+	 * The tool's top-level parameter names. A descriptor from {@link getDiscoverableTool} reads the
+	 * tool's `parameters` on the first read of this field: a tool builds its ArkType schema on that
+	 * read, ArkType registers every node it builds for the life of the process, and most sessions
+	 * list discoverable tools without ever searching them.
+	 */
+	readonly schemaKeys: string[];
 }
 
 export interface DiscoverableToolServerSummary {
@@ -180,6 +186,7 @@ export function getDiscoverableTool(
 				: undefined;
 	const rawDescription = typeof toolRecord.description === "string" ? toolRecord.description : "";
 	const summary = rawSummary ?? rawDescription.slice(0, 200);
+	let schemaKeys: string[] | undefined;
 	return {
 		name: tool.name,
 		label: typeof toolRecord.label === "string" ? toolRecord.label : tool.name,
@@ -188,14 +195,20 @@ export function getDiscoverableTool(
 		source,
 		serverName: typeof toolRecord.mcpServerName === "string" ? toolRecord.mcpServerName : undefined,
 		mcpToolName: typeof toolRecord.mcpToolName === "string" ? toolRecord.mcpToolName : undefined,
-		schemaKeys:
-			toolRecord.parameters === undefined
-				? []
-				: getSchemaPropertyKeys({
-						name: tool.name,
-						description: rawDescription,
-						parameters: toolRecord.parameters as AiTool["parameters"],
-					}),
+		get schemaKeys(): string[] {
+			if (schemaKeys === undefined) {
+				const parameters = toolRecord.parameters;
+				schemaKeys =
+					parameters === undefined
+						? []
+						: getSchemaPropertyKeys({
+								name: tool.name,
+								description: rawDescription,
+								parameters: parameters as AiTool["parameters"],
+							});
+			}
+			return schemaKeys;
+		},
 	};
 }
 

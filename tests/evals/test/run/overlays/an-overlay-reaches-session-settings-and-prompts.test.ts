@@ -59,7 +59,7 @@ describe("End-to-end overlay propagation on in-process backend", () => {
 		const tempDir = await TempDir.create("@evals-test-config-overlay-");
 		try {
 			const overlayFile = tempDir.join("custom-settings.yml");
-			await fs.writeFile(overlayFile, "argot:\n  enabled: true\nedit:\n  mode: diff\n");
+			await fs.writeFile(overlayFile, "argot:\n  enabled: true\nedit:\n  mode: replace\n");
 
 			const suite = createProbeSuite();
 			const backend = new InProcessBackend();
@@ -109,7 +109,7 @@ describe("End-to-end overlay propagation on in-process backend", () => {
 			const overlaidExtra = overlaidResult?.artifacts?.extra;
 			const overlaidSettings = overlaidExtra?.settings as { get(k: string): unknown } | undefined;
 			expect(overlaidSettings?.get("argot.enabled")).toBe(true);
-			expect(overlaidSettings?.get("edit.mode")).toBe("diff");
+			expect(overlaidSettings?.get("edit.mode")).toBe("replace");
 			// Assert observable difference
 			expect(overlaidSettings?.get("argot.enabled")).not.toEqual(defaultSettings?.get("argot.enabled"));
 			expect(overlaidSettings?.get("edit.mode")).not.toEqual(defaultSettings?.get("edit.mode"));
@@ -346,7 +346,7 @@ describe("End-to-end overlay propagation on in-process backend", () => {
 			await fs.writeFile(cfgA, "argot:\n  enabled: true\n");
 
 			const cfgB = tempDir.join("treatment-beta.yml");
-			await fs.writeFile(cfgB, "edit:\n  mode: diff\n");
+			await fs.writeFile(cfgB, "edit:\n  mode: replace\n");
 
 			const suite = createProbeSuite();
 			const backend = new InProcessBackend();
@@ -393,7 +393,7 @@ describe("End-to-end overlay propagation on in-process backend", () => {
 			expect(settingsAlpha?.get("edit.mode")).toBe("hashline");
 
 			expect(settingsBeta?.get("argot.enabled")).toBe(false);
-			expect(settingsBeta?.get("edit.mode")).toBe("diff");
+			expect(settingsBeta?.get("edit.mode")).toBe("replace");
 		} finally {
 			await tempDir.remove();
 		}

@@ -26,8 +26,14 @@ export interface GoalRuntimeHost {
 
 export interface GoalTurnSnapshot {
 	turnId: string;
+	/** Absent while no goal is accounting, so a turn without one never reads session usage. */
+	accounting?: GoalTurnAccounting;
+}
+
+/** The goal a turn is charged to, and the session usage its next flush measures from. */
+export interface GoalTurnAccounting {
+	goalId: string;
 	baselineUsage: GoalTokenUsage;
-	activeGoalId?: string;
 }
 
 export interface GoalWallClockSnapshot {
@@ -136,9 +142,13 @@ export class GoalRuntime {
 
 	get snapshot(): GoalRuntimeSnapshot {
 		return {
-			turnSnapshot: this.#turnSnapshot
-				? { ...this.#turnSnapshot, baselineUsage: { ...this.#turnSnapshot.baselineUsage } }
-				: undefined,
+			turnSnapshot: this.#turnSnapshot && {
+				turnId: this.#turnSnapshot.turnId,
+				accounting: this.#turnSnapshot.accounting && {
+					goalId: this.#turnSnapshot.accounting.goalId,
+					baselineUsage: { ...this.#turnSnapshot.accounting.baselineUsage },
+				},
+			},
 			wallClock: { ...this.#wallClock },
 			budgetReportedFor: this.#budgetReportedFor,
 		};
@@ -193,15 +203,14 @@ export class GoalRuntime {
 			this.#wallClock = { lastAccountedAt: this.#now(), activeGoalId: goal.id };
 		}
 		if (this.#turnSnapshot) {
-			this.#turnSnapshot.activeGoalId = goal.id;
-			this.#turnSnapshot.baselineUsage = { ...this.#host.getCurrentUsage() };
+			this.#turnSnapshot.accounting = { goalId: goal.id, baselineUsage: { ...this.#host.getCurrentUsage() } };
 		}
 	}
 
 	#clearActiveAccounting(): void {
 		this.#wallClock = { lastAccountedAt: this.#now() };
 		if (this.#turnSnapshot) {
-			this.#turnSnapshot.activeGoalId = undefined;
+			this.#turnSnapshot.accounting = undefined;
 		}
 	}
 
@@ -212,14 +221,18 @@ export class GoalRuntime {
 		this.#finalTokenReconciliation = undefined;
 	}
 
-	onTurnStart(turnId: string, baselineUsage: GoalTokenUsage): void {
-		this.#turnSnapshot = { turnId, baselineUsage: { ...baselineUsage } };
+	onTurnStart(turnId: string): void {
 		const state = this.#host.getState();
-		if (state?.enabled && isAccountingStatus(state.goal)) {
-			this.#turnSnapshot.activeGoalId = state.goal.id;
-			if (this.#wallClock.activeGoalId !== state.goal.id) {
-				this.#wallClock = { lastAccountedAt: this.#now(), activeGoalId: state.goal.id };
-			}
+		if (!state?.enabled || !isAccountingStatus(state.goal)) {
+			this.#turnSnapshot = { turnId };
+			return;
+		}
+		this.#turnSnapshot = {
+			turnId,
+			accounting: { goalId: state.goal.id, baselineUsage: { ...this.#host.getCurrentUsage() } },
+		};
+		if (this.#wallClock.activeGoalId !== state.goal.id) {
+			this.#wallClock = { lastAccountedAt: this.#now(), activeGoalId: state.goal.id };
 		}
 	}
 
@@ -234,13 +247,20 @@ export class GoalRuntime {
 		await this.flushUsage("suppressed");
 	}
 
-	async onAgentEnd(options?: { turnCompleted?: boolean; currentUsage?: GoalTokenUsage }): Promise<void> {
-		await this.#reconcileCompletedGoalTokens(options?.currentUsage);
+	async onAgentEnd(options?: { currentUsage?: GoalTokenUsage }): Promise<void> {
+		// Read once, and only when a goal is charged: the first read on a resumed session tallies
+		// every message the compaction in effect summarized away.
+		const currentUsage =
+			options?.currentUsage ??
+			(this.#finalTokenReconciliation !== undefined || this.#hasAccountingState()
+				? this.#host.getCurrentUsage()
+				: undefined);
+		await this.#reconcileCompletedGoalTokens(currentUsage);
 		if (!this.#hasAccountingState()) {
 			this.#turnSnapshot = undefined;
 			return;
 		}
-		await this.flushUsage("suppressed", options?.currentUsage);
+		await this.flushUsage("suppressed", currentUsage);
 		await this.#recordCompletedTurn();
 		this.#turnSnapshot = undefined;
 	}
@@ -252,7 +272,7 @@ export class GoalRuntime {
 	 * was created, or under a different/paused goal, do not count.
 	 */
 	async #recordCompletedTurn(): Promise<void> {
-		const accountedGoalId = this.#turnSnapshot?.activeGoalId;
+		const accountedGoalId = this.#turnSnapshot?.accounting?.goalId;
 		if (accountedGoalId === undefined) return;
 		await this.#withAccounting(async () => {
 			const state = this.#getStateClone();
@@ -378,12 +398,11 @@ export class GoalRuntime {
 	): Promise<void> {
 		const state = this.#getStateClone();
 		if (!state?.enabled || !isAccountingStatus(state.goal)) return;
-		if (this.#turnSnapshot?.activeGoalId !== state.goal.id && this.#wallClock.activeGoalId !== state.goal.id) return;
+		const turn = this.#turnSnapshot?.accounting;
+		const accounting = turn !== undefined && turn.goalId === state.goal.id ? turn : undefined;
+		if (accounting === undefined && this.#wallClock.activeGoalId !== state.goal.id) return;
 
-		const tokenDelta =
-			this.#turnSnapshot?.activeGoalId === state.goal.id
-				? goalTokenDelta(currentUsage, this.#turnSnapshot.baselineUsage)
-				: 0;
+		const tokenDelta = accounting ? goalTokenDelta(currentUsage, accounting.baselineUsage) : 0;
 		const wallSeconds =
 			this.#wallClock.activeGoalId === state.goal.id
 				? Math.max(0, Math.floor((this.#now() - this.#wallClock.lastAccountedAt) / 1000))
@@ -402,8 +421,8 @@ export class GoalRuntime {
 			state.goal.status = "budget-limited";
 		}
 
-		if (this.#turnSnapshot?.activeGoalId === state.goal.id) {
-			this.#turnSnapshot.baselineUsage = { ...currentUsage };
+		if (accounting) {
+			accounting.baselineUsage = { ...currentUsage };
 		}
 		if (this.#wallClock.activeGoalId === state.goal.id && wallSeconds > 0) {
 			this.#wallClock.lastAccountedAt += wallSeconds * 1000;
@@ -560,10 +579,11 @@ export class GoalRuntime {
 			state.reason = "completed";
 			// The flush above brought the goal up to this instant and rebased the snapshot on it,
 			// so that same usage is the baseline for whatever the rest of this turn spends.
-			if (this.#turnSnapshot?.activeGoalId === state.goal.id) {
+			const accounting = this.#turnSnapshot?.accounting;
+			if (accounting?.goalId === state.goal.id) {
 				this.#finalTokenReconciliation = {
 					goalId: state.goal.id,
-					baselineUsage: { ...this.#turnSnapshot.baselineUsage },
+					baselineUsage: { ...accounting.baselineUsage },
 				};
 			}
 			this.#clearActiveAccounting();

@@ -4,10 +4,13 @@ import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { SessionHeader } from "@veyyon/kernel/session/session-entries";
+import { findMostRecentSession } from "@veyyon/kernel/session/session-listing";
 import { loadEntriesFromFile } from "@veyyon/kernel/session/session-loader";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
+import { readTerminalBreadcrumbEntry } from "@veyyon/kernel/session/session-paths";
 import { getTerminalSessionsDir, setAgentDir } from "@veyyon/utils";
 import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
+import { pathStateSync } from "@veyyon/utils/fs-optional";
 import { getTerminalId } from "@veyyon/utils/ttyid";
 import { makeAssistantMessage } from "./helpers";
 
@@ -191,6 +194,12 @@ describe("SessionManager.continueRecent relocation", () => {
 
 		writeBreadcrumb(cwdA, oldFile);
 		await fsp.rm(cwdA, { recursive: true, force: true });
+
+		// The re-root below is taken only when all three hold. Each is asserted on its own so a
+		// failure names the fact that gave way instead of only reporting the path it produced.
+		expect(await readTerminalBreadcrumbEntry()).toEqual({ cwd: cwdA, sessionFile: oldFile });
+		expect(pathStateSync(cwdA)).toBe("absent");
+		expect(await findMostRecentSession(explicitSessionDir)).toBe(oldFile);
 
 		const resumed = await SessionManager.continueRecent(cwdB, explicitSessionDir);
 		try {

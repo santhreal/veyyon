@@ -4,10 +4,10 @@ import {
 	type RequestBody,
 	transformRequestBody,
 } from "@veyyon/ai/providers/openai-codex/request-transformer";
+import { resetOpenAICodexHistoryAfterCompaction } from "@veyyon/ai/providers/openai-codex/session-state";
 import {
 	buildTransformedCodexRequestBody,
 	convertCodexResponsesMessages,
-	resetOpenAICodexHistoryAfterCompaction,
 	streamOpenAICodexResponses,
 } from "@veyyon/ai/providers/openai-codex-responses";
 import { isOpenAIResponsesProgressEvent } from "@veyyon/ai/providers/openai-shared";
@@ -267,6 +267,7 @@ describe("openai-codex Responses Lite input shaping", () => {
 				content: [
 					{ type: "input_text", text: "look" },
 					{ type: "input_image", detail: "auto", image_url: "data:image/png;base64,AAAA" },
+					{ type: "input_file", file_id: "file_1", detail: "high" },
 				],
 			},
 			{ type: "function_call", call_id: "call_1", name: "shot", arguments: "{}" },
@@ -282,6 +283,8 @@ describe("openai-codex Responses Lite input shaping", () => {
 		const liteMessage = lite.input?.[1]?.content as Array<Record<string, unknown>>;
 		const liteOutput = lite.input?.[3]?.output as Array<Record<string, unknown>>;
 		expect(liteMessage[1]).toEqual({ type: "input_image", image_url: "data:image/png;base64,AAAA" });
+		// Only an image's detail is the server's to choose; every other part goes out as given.
+		expect(liteMessage[2]).toEqual({ type: "input_file", file_id: "file_1", detail: "high" });
 		expect(liteOutput[0]).toEqual({ type: "input_image", image_url: "data:image/png;base64,BBBB" });
 
 		const plain = await transformRequestBody({ model: model.id, input: makeInput() }, model, {});

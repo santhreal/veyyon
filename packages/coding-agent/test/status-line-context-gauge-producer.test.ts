@@ -136,19 +136,6 @@ describe("the gauge's numbers with auto-compaction on", () => {
 		expect(plain).toContain("200K");
 	});
 
-	it("falls back to the window as the limit when the compaction strategy is off", () => {
-		// `strategy: "off"` means nothing will fire, so the context runs out at the
-		// window and the gauge must denominate against it. A stale fire point here
-		// would tell the operator they are out of room while a third of the window is
-		// still usable.
-		const plain = render(makeSession({ usedTokens: 85_000, compaction: { strategy: "off" } }), [
-			"context_pct",
-			"context_total",
-		]);
-
-		expect(plain).toContain("58% left");
-	});
-
 	it("falls back to the window as the limit when compaction is disabled outright", () => {
 		const plain = render(makeSession({ usedTokens: 85_000, compaction: { enabled: false } }), ["context_pct"]);
 

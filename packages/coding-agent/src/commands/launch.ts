@@ -7,6 +7,7 @@ import { APP_NAME } from "@veyyon/utils/dirs";
 import * as logger from "@veyyon/utils/logger";
 import { type Args as ParsedArgs, parseArgs, reportCliUsageError } from "../cli/args";
 import { MODE_VALUES } from "../cli/flag-tables";
+import { shouldPrepaintLaunchCard } from "../cli/launch-card-eligibility";
 import { CLI_THINKING_LEVELS } from "../thinking";
 
 export default class Index extends Command {
@@ -243,18 +244,13 @@ export default class Index extends Command {
 		//
 		// Dynamic because a static import cannot work here: this module's flag
 		// table is what `veyyon --help` loads, and a top-level import would put
-		// the 582-module first-frame paint graph on the help route, which is the
-		// exact cost the comment above exists to keep off it. The specifier is
+		// the first-frame paint graph on the help route. The specifier is
 		// literal, so the graph stays reviewable; only its evaluation is
-		// deferred. `runStartupPrologue` owns its own decision, so a run that
-		// paints no card no-ops, and the runs that skip the paint (`--version`,
-		// `--export`, `--print`, a protocol mode) load `../main` immediately
-		// below regardless, making this module load noise against that.
-		const { runStartupPrologue, shouldPrepaintLaunchCard } = await logger.time(
-			"import:launch-card",
-			() => import("../cli/launch-card"),
-		);
+		// deferred. The card module imports the terminal renderer, so it loads
+		// only for a launch that paints: `--version`, `--export`, `--print` and
+		// the protocol modes go straight to `../main`.
 		if (shouldPrepaintLaunchCard(parsed)) {
+			const { runStartupPrologue } = await logger.time("import:launch-card", () => import("../cli/launch-card"));
 			await logger.time("runStartupPrologue", runStartupPrologue, parsed);
 			// The card is up and its typeahead gate is listening, so the runtime
 			// graph is loaded in stages that hand the loop back between subtrees.

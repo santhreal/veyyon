@@ -1,4 +1,4 @@
-import type { Database, SQLQueryBindings } from "bun:sqlite";
+import type { Database, SQLQueryBindings, Statement } from "bun:sqlite";
 import { batched } from "@veyyon/utils/array";
 import * as logger from "@veyyon/utils/logger";
 import { HOUR_MS } from "@veyyon/utils/time";
@@ -25,6 +25,7 @@ import type {
 	RememberBatchOptions,
 	RememberOptions,
 	TrustTier,
+	Veracity,
 } from "./types";
 
 type Row = Record<string, unknown>;
@@ -360,69 +361,103 @@ export function reconcileEmbeddingModel(beam: BeamMemoryState): void {
 	rebuild(missing);
 }
 
-export function remember(beam: BeamMemoryState, content: string, options: StoreRememberOptions = {}): string {
+type Authorship = { authorId: string | null; authorType: string | null; channelId: string };
+
+/** The author, author type and channel `options` sets, each defaulting to the beam's own. */
+function rememberAuthorship(beam: BeamMemoryState, options: StoreRememberOptions): Authorship {
+	return {
+		authorId: options.authorId ?? options.author_id ?? beam.authorId,
+		authorType: options.authorType ?? options.author_type ?? beam.authorType,
+		channelId: options.channelId ?? options.channel_id ?? beam.channelId,
+	};
+}
+
+interface RememberedFields extends Authorship {
+	source: string;
+	importance: number;
+	timestamp: string;
+	scope: string;
+	veracity: Veracity;
+	trustTier: TrustTier;
+	memoryType: string;
+	validUntil: string | null;
+	metadata: Metadata | null;
+	embedText: string;
+}
+
+function rememberedFields(beam: BeamMemoryState, content: string, options: StoreRememberOptions): RememberedFields {
 	const source = options.source ?? "conversation";
-	const importance = options.importance ?? 0.5;
-	const timestamp = options.timestamp ?? toUtcIso();
-	const scope = options.scope ?? "session";
-	const veracity = clampVeracity(options.veracity, "remember");
-	const trustTier = normalizeTrustTier(options.trustTier, source);
-	const memoryType = options.memoryType ?? "unknown";
-	const validUntil = options.validUntil ?? options.valid_until ?? null;
-	const authorId = options.authorId ?? options.author_id ?? beam.authorId;
-	const authorType = options.authorType ?? options.author_type ?? beam.authorType;
-	const channelId = options.channelId ?? options.channel_id ?? beam.channelId;
-	const metadata = options.metadata ?? null;
-	const embedText = embeddingText(content, options);
+	return {
+		source,
+		importance: options.importance ?? 0.5,
+		timestamp: options.timestamp ?? toUtcIso(),
+		scope: options.scope ?? "session",
+		veracity: clampVeracity(options.veracity, "remember"),
+		trustTier: normalizeTrustTier(options.trustTier, source),
+		memoryType: options.memoryType ?? "unknown",
+		validUntil: options.validUntil ?? options.valid_until ?? null,
+		metadata: options.metadata ?? null,
+		embedText: embeddingText(content, options),
+		...rememberAuthorship(beam, options),
+	};
+}
 
-	const existingId = findDuplicate(beam, content);
-	if (existingId !== null) {
-		beam.db
-			.prepare(`
-				UPDATE working_memory
-				SET importance = MAX(importance, ?), timestamp = ?, source = ?,
-					valid_until = COALESCE(?, valid_until),
-					scope = COALESCE(?, scope),
-					author_id = COALESCE(?, author_id),
-					author_type = COALESCE(?, author_type),
-					channel_id = COALESCE(?, channel_id),
-					memory_type = COALESCE(?, memory_type),
-					veracity = CASE WHEN ? != 'unknown' THEN ? ELSE veracity END,
-					trust_tier = COALESCE(?, trust_tier),
-					embed_text = COALESCE(?, embed_text),
-					consolidated_at = NULL
-				WHERE id = ? AND session_id = ?
-			`)
-			.run(
-				importance,
-				timestamp,
-				source,
-				validUntil,
-				scope,
-				authorId,
-				authorType,
-				channelId,
-				memoryType,
-				veracity,
-				veracity,
-				trustTier,
-				storedEmbeddingText(content, embedText),
-				existingId,
-				beam.sessionId,
-			);
-		emitEvent(beam, "MEMORY_UPDATED", {
-			memoryId: existingId,
-			content,
-			source,
-			importance,
-			metadata: metadata ?? undefined,
-		});
-		if (embedText !== content) scheduleEmbedding(beam, [{ memoryId: existingId, content: embedText }]);
-		invalidateCaches(beam);
-		return existingId;
-	}
+/** Fold a repeat of stored memory `memoryId` into it: raise its importance and take the newer fields. */
+function refreshDuplicateMemory(
+	beam: BeamMemoryState,
+	memoryId: string,
+	content: string,
+	fields: RememberedFields,
+): void {
+	beam.db
+		.prepare(`
+			UPDATE working_memory
+			SET importance = MAX(importance, ?), timestamp = ?, source = ?,
+				valid_until = COALESCE(?, valid_until),
+				scope = COALESCE(?, scope),
+				author_id = COALESCE(?, author_id),
+				author_type = COALESCE(?, author_type),
+				channel_id = COALESCE(?, channel_id),
+				memory_type = COALESCE(?, memory_type),
+				veracity = CASE WHEN ? != 'unknown' THEN ? ELSE veracity END,
+				trust_tier = COALESCE(?, trust_tier),
+				embed_text = COALESCE(?, embed_text),
+				consolidated_at = NULL
+			WHERE id = ? AND session_id = ?
+		`)
+		.run(
+			fields.importance,
+			fields.timestamp,
+			fields.source,
+			fields.validUntil,
+			fields.scope,
+			fields.authorId,
+			fields.authorType,
+			fields.channelId,
+			fields.memoryType,
+			fields.veracity,
+			fields.veracity,
+			fields.trustTier,
+			storedEmbeddingText(content, fields.embedText),
+			memoryId,
+			beam.sessionId,
+		);
+	emitEvent(beam, "MEMORY_UPDATED", {
+		memoryId,
+		content,
+		source: fields.source,
+		importance: fields.importance,
+		metadata: fields.metadata ?? undefined,
+	});
+	if (fields.embedText !== content) scheduleEmbedding(beam, [{ memoryId, content: fields.embedText }]);
+}
 
-	const memoryId = options.memoryId ?? options.memory_id ?? generateId(content, new Date(timestamp));
+function insertRememberedMemory(
+	beam: BeamMemoryState,
+	memoryId: string,
+	content: string,
+	fields: RememberedFields,
+): void {
 	beam.db
 		.prepare(`
 			INSERT INTO working_memory
@@ -433,22 +468,35 @@ export function remember(beam: BeamMemoryState, content: string, options: StoreR
 		.run(
 			memoryId,
 			content,
-			storedEmbeddingText(content, embedText),
-			source,
-			timestamp,
+			storedEmbeddingText(content, fields.embedText),
+			fields.source,
+			fields.timestamp,
 			beam.sessionId,
-			importance,
-			metadataJson(metadata),
-			validUntil,
-			scope,
-			authorId,
-			authorType,
-			channelId,
-			veracity,
-			memoryType,
-			trustTier,
+			fields.importance,
+			metadataJson(fields.metadata),
+			fields.validUntil,
+			fields.scope,
+			fields.authorId,
+			fields.authorType,
+			fields.channelId,
+			fields.veracity,
+			fields.memoryType,
+			fields.trustTier,
 		);
-	addTemporalAnnotations(beam, memoryId, timestamp, source);
+}
+
+export function remember(beam: BeamMemoryState, content: string, options: StoreRememberOptions = {}): string {
+	const fields = rememberedFields(beam, content, options);
+	const existingId = findDuplicate(beam, content);
+	if (existingId !== null) {
+		refreshDuplicateMemory(beam, existingId, content, fields);
+		invalidateCaches(beam);
+		return existingId;
+	}
+
+	const memoryId = options.memoryId ?? options.memory_id ?? generateId(content, new Date(fields.timestamp));
+	insertRememberedMemory(beam, memoryId, content, fields);
+	addTemporalAnnotations(beam, memoryId, fields.timestamp, fields.source);
 	// `extractText` lets a caller decouple "what gets stored" from "what facts are
 	// mined". coding-agent retains full multi-author transcripts but wants
 	// fact/entity heuristics to read only the user-authored turns (issue #3372).
@@ -463,13 +511,66 @@ export function remember(beam: BeamMemoryState, content: string, options: StoreR
 	emitEvent(beam, "MEMORY_ADDED", {
 		memoryId,
 		content,
-		source,
-		importance,
-		metadata: metadata ?? undefined,
+		source: fields.source,
+		importance: fields.importance,
+		metadata: fields.metadata ?? undefined,
 	});
-	scheduleEmbedding(beam, [{ memoryId, content: embedText }]);
+	scheduleEmbedding(beam, [{ memoryId, content: fields.embedText }]);
 	if (options.extract === true) scheduleFactExtraction(beam, memoryId, extractionSource);
 	invalidateCaches(beam);
+	return memoryId;
+}
+
+/** What a batch applies to an item that leaves a field unset. */
+interface BatchDefaults {
+	timestamp: string;
+	forceVeracity: boolean;
+	veracity: Veracity;
+	scope: string;
+	memoryType: string;
+	trustTier: TrustTier;
+}
+
+/** Store one batch item through `statement`, annotate it and announce it. Returns its memory id. */
+function insertBatchItem(
+	beam: BeamMemoryState,
+	statement: Statement,
+	item: RememberBatchItem,
+	defaults: BatchDefaults,
+): string {
+	const timestamp = item.timestamp ?? defaults.timestamp;
+	const memoryId = generateId(item.content, new Date(timestamp));
+	const source = item.source ?? "conversation";
+	const storeItem = item as StoreRememberOptions;
+	const authorship = rememberAuthorship(beam, storeItem);
+	const importance = item.importance ?? 0.5;
+	statement.run(
+		memoryId,
+		item.content,
+		storedEmbeddingText(item.content, embeddingText(item.content, storeItem)),
+		source,
+		timestamp,
+		beam.sessionId,
+		importance,
+		metadataJson(item.metadata ?? null),
+		authorship.authorId,
+		authorship.authorType,
+		authorship.channelId,
+		item.memoryType ?? defaults.memoryType,
+		defaults.forceVeracity || item.veracity === undefined
+			? defaults.veracity
+			: clampVeracity(item.veracity, "rememberBatch"),
+		defaults.trustTier,
+		item.scope ?? defaults.scope,
+	);
+	addTemporalAnnotations(beam, memoryId, timestamp, source);
+	emitEvent(beam, "MEMORY_ADDED", {
+		memoryId,
+		content: item.content,
+		source,
+		importance,
+		metadata: item.metadata ?? undefined,
+	});
 	return memoryId;
 }
 
@@ -478,75 +579,37 @@ export function rememberBatch(
 	items: readonly RememberBatchItem[],
 	options: StoreRememberBatchOptions = {},
 ): string[] {
-	const timestamp = toUtcIso();
-	const ids: string[] = [];
-	const forceVeracity = options.forceVeracity ?? options.force_veracity ?? false;
-	const defaultVeracity = clampVeracity(options.veracity, "remember");
-	const defaultScope = options.scope ?? "session";
-	const trustTier = normalizeTrustTier(options.trustTier ?? "IMPORTED", "imported");
-
-	transaction(beam.db, () => {
+	const defaults: BatchDefaults = {
+		timestamp: toUtcIso(),
+		forceVeracity: options.forceVeracity ?? options.force_veracity ?? false,
+		veracity: clampVeracity(options.veracity, "remember"),
+		scope: options.scope ?? "session",
+		memoryType: options.memoryType ?? "unknown",
+		trustTier: normalizeTrustTier(options.trustTier ?? "IMPORTED", "imported"),
+	};
+	const stored = transaction(beam.db, () => {
 		const statement = beam.db.prepare(`
 			INSERT INTO working_memory
 			(id, content, embed_text, source, timestamp, session_id, importance, metadata_json,
 			 author_id, author_type, channel_id, memory_type, veracity, trust_tier, scope)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`);
-		for (const item of items) {
-			const itemTimestamp = item.timestamp ?? timestamp;
-			const memoryId = generateId(item.content, new Date(itemTimestamp));
-			ids.push(memoryId);
-			const source = item.source ?? "conversation";
-			const storeItem = item as StoreRememberOptions;
-			const embedText = embeddingText(item.content, storeItem);
-			const itemVeracity = forceVeracity
-				? defaultVeracity
-				: item.veracity !== undefined
-					? clampVeracity(item.veracity, "rememberBatch")
-					: defaultVeracity;
-			statement.run(
-				memoryId,
-				item.content,
-				storedEmbeddingText(item.content, embedText),
-				source,
-				itemTimestamp,
-				beam.sessionId,
-				item.importance ?? 0.5,
-				metadataJson(item.metadata ?? null),
-				storeItem.authorId ?? storeItem.author_id ?? beam.authorId,
-				storeItem.authorType ?? storeItem.author_type ?? beam.authorType,
-				storeItem.channelId ?? storeItem.channel_id ?? beam.channelId,
-				item.memoryType ?? options.memoryType ?? "unknown",
-				itemVeracity,
-				trustTier,
-				item.scope ?? defaultScope,
-			);
-			addTemporalAnnotations(beam, memoryId, itemTimestamp, source);
-			emitEvent(beam, "MEMORY_ADDED", {
-				memoryId,
-				content: item.content,
-				source,
-				importance: item.importance ?? 0.5,
-				metadata: item.metadata ?? undefined,
-			});
-		}
+		const rows = items.map(item => ({ item, memoryId: insertBatchItem(beam, statement, item, defaults) }));
 		trimWorkingMemory(beam);
+		return rows;
 	});
 	invalidateCaches(beam);
-	const embeddingItems: { memoryId: string; content: string }[] = [];
-	items.forEach((item, index) => {
-		const id = ids[index];
-		if (id === undefined) return;
-		embeddingItems.push({ memoryId: id, content: embeddingText(item.content, item as StoreRememberOptions) });
-	});
-	scheduleEmbedding(beam, embeddingItems);
-	items.forEach((item, index) => {
-		const id = ids[index];
-		if (id !== undefined && (item.extract === true || options.extract === true)) {
-			scheduleFactExtraction(beam, id, item.content);
-		}
-	});
-	return ids;
+	scheduleEmbedding(
+		beam,
+		stored.map(({ item, memoryId }) => ({
+			memoryId,
+			content: embeddingText(item.content, item as StoreRememberOptions),
+		})),
+	);
+	for (const { item, memoryId } of stored) {
+		if (item.extract === true || options.extract === true) scheduleFactExtraction(beam, memoryId, item.content);
+	}
+	return stored.map(({ memoryId }) => memoryId);
 }
 
 export function getContext(beam: BeamMemoryState, limit = 10): Row[] {
@@ -772,6 +835,175 @@ export function exportToDict(beam: BeamMemoryState): Record<string, unknown> {
 	};
 }
 
+/**
+ * Columns an import writes to both memory tables after `id`, each with the value bound when the exported
+ * row holds no SQLite-bindable value for it. `veracity` is clamped to the vocabulary instead.
+ */
+const MEMORY_IMPORT_COLUMNS: Readonly<Record<string, SQLQueryBindings>> = {
+	content: "",
+	source: null,
+	timestamp: null,
+	session_id: "default",
+	importance: 0.5,
+	metadata_json: "{}",
+	valid_until: null,
+	superseded_by: null,
+	scope: "session",
+	recall_count: 0,
+	last_recalled: null,
+	created_at: null,
+	veracity: "unknown",
+	memory_type: "unknown",
+	author_id: null,
+	author_type: null,
+	channel_id: null,
+	trust_tier: "STATED",
+	event_date: null,
+	event_date_precision: "unknown",
+	temporal_tags: "[]",
+};
+const WORKING_IMPORT_COLUMNS = { ...MEMORY_IMPORT_COLUMNS, consolidated_at: null, embed_text: null };
+const EPISODIC_IMPORT_COLUMNS = { ...MEMORY_IMPORT_COLUMNS, summary_of: "" };
+
+type UpsertTally = { inserted: number; skipped: number; overwritten: number };
+
+function importedItems(value: unknown): Record<string, unknown>[] {
+	return Array.isArray(value) ? value.map(jsonObject) : [];
+}
+
+function importInsertSql(table: string, columns: Readonly<Record<string, SQLQueryBindings>>): string {
+	const names = ["id", ...Object.keys(columns)];
+	return `INSERT INTO ${table} (${names.join(", ")}) VALUES (${names.map(() => "?").join(", ")})`;
+}
+
+/** The values `importInsertSql` binds for one exported row, in its column order. */
+function importedRow(
+	id: string,
+	item: Record<string, unknown>,
+	columns: Readonly<Record<string, SQLQueryBindings>>,
+): SQLQueryBindings[] {
+	const values: SQLQueryBindings[] = [id];
+	for (const [column, fallback] of Object.entries(columns)) {
+		values.push(
+			column === "veracity" ? clampVeracity(item.veracity, "rememberBatch") : sqlBinding(item[column], fallback),
+		);
+	}
+	return values;
+}
+
+/**
+ * Count an exported row as skipped, overwritten or inserted. Returns false when a stored row holds its id
+ * and `force` is off, so the stored row stays.
+ */
+function claimImportedRow(exists: boolean, force: boolean, tally: UpsertTally): boolean {
+	if (exists && !force) {
+		tally.skipped++;
+		return false;
+	}
+	if (exists) tally.overwritten++;
+	else tally.inserted++;
+	return true;
+}
+
+function importWorkingMemory(db: Database, rows: unknown, force: boolean, tally: UpsertTally): void {
+	const check = db.prepare("SELECT 1 FROM working_memory WHERE id = ?");
+	const remove = db.prepare("DELETE FROM working_memory WHERE id = ?");
+	const insert = db.prepare(importInsertSql("working_memory", WORKING_IMPORT_COLUMNS));
+	for (const item of importedItems(rows)) {
+		const id = String(item.id ?? "");
+		if (id.length === 0) continue;
+		const exists = check.get(id) !== null;
+		if (!claimImportedRow(exists, force, tally)) continue;
+		if (exists) remove.run(id);
+		insert.run(...importedRow(id, item, WORKING_IMPORT_COLUMNS));
+	}
+}
+
+/** Import episodic rows, mapping each exported rowid to the rowid its row was stored under. */
+function importEpisodicMemory(db: Database, rows: unknown, force: boolean, tally: UpsertTally): Map<number, number> {
+	const oldToNewRowid = new Map<number, number>();
+	const getRowid = db.prepare("SELECT rowid FROM episodic_memory WHERE id = ?");
+	const remove = db.prepare("DELETE FROM episodic_memory WHERE id = ?");
+	const removeVec = vecAvailable(db) ? db.prepare("DELETE FROM vec_episodes WHERE rowid = ?") : null;
+	const insert = db.prepare(importInsertSql("episodic_memory", EPISODIC_IMPORT_COLUMNS));
+	for (const item of importedItems(rows)) {
+		const id = String(item.id ?? "");
+		if (id.length === 0) continue;
+		const existing = getRowid.get(id) as { rowid: number } | null;
+		if (!claimImportedRow(existing !== null, force, tally)) continue;
+		if (existing !== null) {
+			try {
+				removeVec?.run(existing.rowid);
+			} catch {
+				// sqlite-vec cleanup is best-effort; import correctness takes precedence.
+			}
+			remove.run(id);
+		}
+		insert.run(...importedRow(id, item, EPISODIC_IMPORT_COLUMNS));
+		const oldRowid = Number(item.rowid);
+		const stored = getRowid.get(id) as { rowid: number } | null;
+		if (Number.isFinite(oldRowid) && stored !== null) oldToNewRowid.set(oldRowid, stored.rowid);
+	}
+	return oldToNewRowid;
+}
+
+/** Insert each embedding whose exported rowid maps to an imported episode. Returns how many were inserted. */
+function importEpisodicEmbeddings(db: Database, rows: unknown, oldToNewRowid: Map<number, number>): number {
+	if (!vecAvailable(db)) return 0;
+	let inserted = 0;
+	for (const item of importedItems(rows)) {
+		const mappedRowid = oldToNewRowid.get(Number(item.rowid));
+		const embedding = Array.isArray(item.embedding) ? item.embedding.map(value => Number(value)) : null;
+		if (mappedRowid === undefined || embedding === null || embedding.some(v => !Number.isFinite(v))) continue;
+		try {
+			vecInsert(db, mappedRowid, embedding);
+			inserted++;
+		} catch {
+			// Embedding import is best-effort when sqlite-vec is unavailable or degraded.
+		}
+	}
+	return inserted;
+}
+
+function importScratchpad(db: Database, rows: unknown, tally: ImportStats["scratchpad"]): void {
+	const check = db.prepare("SELECT 1 FROM scratchpad WHERE id = ?");
+	const update = db.prepare(
+		"UPDATE scratchpad SET content = ?, session_id = ?, created_at = ?, updated_at = ? WHERE id = ?",
+	);
+	const insert = db.prepare(
+		"INSERT INTO scratchpad (content, session_id, created_at, updated_at, id) VALUES (?, ?, ?, ?, ?)",
+	);
+	for (const item of importedItems(rows)) {
+		const id = String(item.id ?? "");
+		if (id.length === 0) continue;
+		const exists = check.get(id) !== null;
+		(exists ? update : insert).run(
+			sqlBinding(item.content, ""),
+			sqlBinding(item.session_id, "default"),
+			sqlBinding(item.created_at, null),
+			sqlBinding(item.updated_at, null),
+			id,
+		);
+		tally[exists ? "updated" : "inserted"]++;
+	}
+}
+
+function importConsolidationLog(db: Database, rows: unknown): number {
+	const insert = db.prepare(
+		"INSERT INTO consolidation_log (session_id, items_consolidated, summary_preview, created_at) VALUES (?, ?, ?, ?)",
+	);
+	const items = importedItems(rows);
+	for (const item of items) {
+		insert.run(
+			sqlBinding(item.session_id, "default"),
+			sqlBinding(item.items_consolidated, 0),
+			sqlBinding(item.summary_preview, ""),
+			sqlBinding(item.created_at, null),
+		);
+	}
+	return items.length;
+}
+
 export function importFromDict(beam: BeamMemoryState, data: Record<string, unknown>, force = false): ImportStats {
 	const stats = {
 		working_memory: { inserted: 0, skipped: 0, overwritten: 0 },
@@ -780,193 +1012,13 @@ export function importFromDict(beam: BeamMemoryState, data: Record<string, unkno
 		consolidation_log: { inserted: 0 },
 	} satisfies ImportStats;
 	const db: Database = beam.db;
-	const oldToNewRowid = new Map<number, number>();
 
 	transaction(db, () => {
-		const checkWorking = db.prepare("SELECT 1 FROM working_memory WHERE id = ?");
-		const deleteWorking = db.prepare("DELETE FROM working_memory WHERE id = ?");
-		const insertWorking = db.prepare(`
-			INSERT INTO working_memory
-			(id, content, source, timestamp, session_id, importance, metadata_json,
-			 valid_until, superseded_by, scope, recall_count, last_recalled, created_at,
-			 veracity, consolidated_at, memory_type, embed_text, author_id, author_type, channel_id,
-			 trust_tier, event_date, event_date_precision, temporal_tags)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`);
-
-		for (const raw of Array.isArray(data.working_memory) ? data.working_memory : []) {
-			const item = jsonObject(raw);
-			const id = String(item.id ?? "");
-			if (id.length === 0) continue;
-			const exists = checkWorking.get(id) !== null;
-			if (exists && !force) {
-				stats.working_memory.skipped++;
-				continue;
-			}
-			if (exists) {
-				deleteWorking.run(id);
-				stats.working_memory.overwritten++;
-			} else {
-				stats.working_memory.inserted++;
-			}
-			insertWorking.run(
-				id,
-				sqlBinding(item.content, ""),
-				sqlBinding(item.source, null),
-				sqlBinding(item.timestamp, null),
-				sqlBinding(item.session_id, "default"),
-				sqlBinding(item.importance, 0.5),
-				sqlBinding(item.metadata_json, "{}"),
-				sqlBinding(item.valid_until, null),
-				sqlBinding(item.superseded_by, null),
-				sqlBinding(item.scope, "session"),
-				sqlBinding(item.recall_count, 0),
-				sqlBinding(item.last_recalled, null),
-				sqlBinding(item.created_at, null),
-				clampVeracity(item.veracity, "rememberBatch"),
-				sqlBinding(item.consolidated_at, null),
-				sqlBinding(item.memory_type, "unknown"),
-				sqlBinding(item.embed_text, null),
-				sqlBinding(item.author_id, null),
-				sqlBinding(item.author_type, null),
-				sqlBinding(item.channel_id, null),
-				sqlBinding(item.trust_tier, "STATED"),
-				sqlBinding(item.event_date, null),
-				sqlBinding(item.event_date_precision, "unknown"),
-				sqlBinding(item.temporal_tags, "[]"),
-			);
-		}
-
-		const checkEpisodic = db.prepare("SELECT 1 FROM episodic_memory WHERE id = ?");
-		const getEpisodicRowid = db.prepare("SELECT rowid FROM episodic_memory WHERE id = ?");
-		const deleteEpisodic = db.prepare("DELETE FROM episodic_memory WHERE id = ?");
-		const deleteVec = vecAvailable(db) ? db.prepare("DELETE FROM vec_episodes WHERE rowid = ?") : null;
-		const insertEpisodic = db.prepare(`
-			INSERT INTO episodic_memory
-			(id, content, source, timestamp, session_id, importance, metadata_json,
-			 summary_of, valid_until, superseded_by, scope, recall_count, last_recalled, created_at,
-			 veracity, memory_type, author_id, author_type, channel_id, trust_tier,
-			 event_date, event_date_precision, temporal_tags)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`);
-
-		for (const raw of Array.isArray(data.episodic_memory) ? data.episodic_memory : []) {
-			const item = jsonObject(raw);
-			const id = String(item.id ?? "");
-			if (id.length === 0) continue;
-			const exists = checkEpisodic.get(id) !== null;
-			if (exists && !force) {
-				stats.episodic_memory.skipped++;
-				continue;
-			}
-			if (exists) {
-				const existingRow = getEpisodicRowid.get(id) as { rowid: number } | null;
-				if (existingRow !== null && deleteVec !== null) {
-					try {
-						deleteVec.run(existingRow.rowid);
-					} catch {
-						// sqlite-vec cleanup is best-effort; import correctness takes precedence.
-					}
-				}
-				deleteEpisodic.run(id);
-				stats.episodic_memory.overwritten++;
-			} else {
-				stats.episodic_memory.inserted++;
-			}
-			insertEpisodic.run(
-				id,
-				sqlBinding(item.content, ""),
-				sqlBinding(item.source, null),
-				sqlBinding(item.timestamp, null),
-				sqlBinding(item.session_id, "default"),
-				sqlBinding(item.importance, 0.5),
-				sqlBinding(item.metadata_json, "{}"),
-				sqlBinding(item.summary_of, ""),
-				sqlBinding(item.valid_until, null),
-				sqlBinding(item.superseded_by, null),
-				sqlBinding(item.scope, "session"),
-				sqlBinding(item.recall_count, 0),
-				sqlBinding(item.last_recalled, null),
-				sqlBinding(item.created_at, null),
-				clampVeracity(item.veracity, "rememberBatch"),
-				sqlBinding(item.memory_type, "unknown"),
-				sqlBinding(item.author_id, null),
-				sqlBinding(item.author_type, null),
-				sqlBinding(item.channel_id, null),
-				sqlBinding(item.trust_tier, "STATED"),
-				sqlBinding(item.event_date, null),
-				sqlBinding(item.event_date_precision, "unknown"),
-				sqlBinding(item.temporal_tags, "[]"),
-			);
-			const oldRowid = Number(item.rowid);
-			const newRow = getEpisodicRowid.get(id) as { rowid: number } | null;
-			if (Number.isFinite(oldRowid) && newRow !== null) oldToNewRowid.set(oldRowid, newRow.rowid);
-		}
-
-		for (const raw of Array.isArray(data.episodic_embeddings) ? data.episodic_embeddings : []) {
-			const item = jsonObject(raw);
-			const oldRowid = Number(item.rowid);
-			const mappedRowid = oldToNewRowid.get(oldRowid);
-			const embedding = Array.isArray(item.embedding) ? item.embedding.map(value => Number(value)) : null;
-			if (mappedRowid === undefined || embedding === null || embedding.some(v => !Number.isFinite(v))) {
-				continue;
-			}
-			if (!vecAvailable(db)) continue;
-			try {
-				vecInsert(db, mappedRowid, embedding);
-				stats.episodic_memory.embeddings_inserted++;
-			} catch {
-				// Embedding import is best-effort when sqlite-vec is unavailable or degraded.
-			}
-		}
-
-		const checkScratchpad = db.prepare("SELECT 1 FROM scratchpad WHERE id = ?");
-		const updateScratchpad = db.prepare(
-			"UPDATE scratchpad SET content = ?, session_id = ?, created_at = ?, updated_at = ? WHERE id = ?",
-		);
-		const insertScratchpad = db.prepare(
-			"INSERT INTO scratchpad (id, content, session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-		);
-
-		for (const raw of Array.isArray(data.scratchpad) ? data.scratchpad : []) {
-			const item = jsonObject(raw);
-			const id = String(item.id ?? "");
-			if (id.length === 0) continue;
-			const exists = checkScratchpad.get(id) !== null;
-			if (exists) {
-				updateScratchpad.run(
-					sqlBinding(item.content, ""),
-					sqlBinding(item.session_id, "default"),
-					sqlBinding(item.created_at, null),
-					sqlBinding(item.updated_at, null),
-					id,
-				);
-				stats.scratchpad.updated++;
-			} else {
-				insertScratchpad.run(
-					id,
-					sqlBinding(item.content, ""),
-					sqlBinding(item.session_id, "default"),
-					sqlBinding(item.created_at, null),
-					sqlBinding(item.updated_at, null),
-				);
-				stats.scratchpad.inserted++;
-			}
-		}
-
-		const insertConsolidation = db.prepare(
-			"INSERT INTO consolidation_log (session_id, items_consolidated, summary_preview, created_at) VALUES (?, ?, ?, ?)",
-		);
-		for (const raw of Array.isArray(data.consolidation_log) ? data.consolidation_log : []) {
-			const item = jsonObject(raw);
-			insertConsolidation.run(
-				sqlBinding(item.session_id, "default"),
-				sqlBinding(item.items_consolidated, 0),
-				sqlBinding(item.summary_preview, ""),
-				sqlBinding(item.created_at, null),
-			);
-			stats.consolidation_log.inserted++;
-		}
+		importWorkingMemory(db, data.working_memory, force, stats.working_memory);
+		const oldToNewRowid = importEpisodicMemory(db, data.episodic_memory, force, stats.episodic_memory);
+		stats.episodic_memory.embeddings_inserted = importEpisodicEmbeddings(db, data.episodic_embeddings, oldToNewRowid);
+		importScratchpad(db, data.scratchpad, stats.scratchpad);
+		stats.consolidation_log.inserted = importConsolidationLog(db, data.consolidation_log);
 	});
 	invalidateCaches(beam);
 	return stats;

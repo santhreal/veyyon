@@ -76,10 +76,8 @@ const EAGER_AT_STARTUP = [
 	"diff",
 	"handlebars",
 	"lru-cache",
-	"marked",
 	"smol-toml",
 	"yaml",
-	"zod",
 ];
 
 const graph = buildStartupImportGraph(REPO_ROOT, CLI_ENTRY);
@@ -127,6 +125,9 @@ describe("startup import graph", () => {
 			"react",
 			"react-dom",
 			"turndown",
+			// Reached through the package barrel an extension, custom tool or custom command loads, which
+			// installs Zod's core converter for `zodToWireSchema`; first-party code declares no Zod.
+			"zod",
 		];
 		const leaked = gated.filter(dependency => graph.packages.has(dependency));
 		expect(leaked).toEqual([]);

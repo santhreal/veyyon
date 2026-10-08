@@ -8,8 +8,6 @@
 import { clamp } from "./math";
 import { getSegmenter } from "./width";
 
-const segmenter = getSegmenter();
-
 export type WordNavKind = "whitespace" | "delimiter" | "cjk" | "word" | "other";
 
 const WORD_NAV_RE_WHITESPACE = /^\p{White_Space}$/u;
@@ -69,7 +67,7 @@ export function isWordNavJoiner(grapheme: string): boolean {
 function floorToGraphemeBoundary(text: string, cursor: number): number {
 	if (cursor <= 0) return 0;
 	let prev = 0;
-	for (const { segment } of segmenter.segment(text)) {
+	for (const { segment } of getSegmenter().segment(text)) {
 		const next = prev + segment.length;
 		if (next >= cursor) return next === cursor ? cursor : prev;
 		prev = next;
@@ -88,7 +86,7 @@ export function moveWordLeft(text: string, cursor: number): number {
 	let i = floorToGraphemeBoundary(text, clamp(cursor, 0, len));
 	if (i === 0) return 0;
 
-	const graphemes = [...segmenter.segment(text.slice(0, i))];
+	const graphemes = [...getSegmenter().segment(text.slice(0, i))];
 	if (graphemes.length === 0) return 0;
 
 	// Skip trailing whitespace.
@@ -144,7 +142,7 @@ export function moveWordRight(text: string, cursor: number): number {
 	let i = floorToGraphemeBoundary(text, clamp(cursor, 0, len));
 	if (i === len) return len;
 
-	const iterator = segmenter.segment(text.slice(i))[Symbol.iterator]();
+	const iterator = getSegmenter().segment(text.slice(i))[Symbol.iterator]();
 	let next = iterator.next();
 
 	// Skip leading whitespace.

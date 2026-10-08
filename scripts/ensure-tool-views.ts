@@ -1,19 +1,12 @@
-import * as nodeFs from "node:fs";
 import * as path from "node:path";
+import { TOOL_VIEWS_OUT_FILE, toolViewsStaleness, writeToolViewsBundle } from "../clients/web/scripts/build-tool-views";
 
-const repoRoot = path.join(import.meta.dir, "..");
-
-/** The gitignored bundle, named once so every caller and every message agrees. */
-export const TOOL_VIEWS_GENERATED = path.join(
-	repoRoot,
-	"packages/coding-agent/src/export/html/tool-views.generated.js",
-);
-
-/** The command that produces it, named once for the same reason. */
-export const GENERATE_TOOL_VIEWS_COMMAND = "bun --cwd=clients/web run gen:tool-views";
+/** The command that produces the bundle, named in the failure message. */
+const GENERATE_TOOL_VIEWS_COMMAND = "bun --cwd=clients/web run gen:tool-views";
 
 /**
- * Ensure the generated tool-views bundle exists before any TS suite runs.
+ * Ensure the generated tool-views bundle exists and was built from the current sources before any
+ * TS suite runs.
  *
  * `packages/coding-agent/src/export/html/index.ts` imports
  * `./tool-views.generated.js` with `{ type: "text" }`, which resolves at module
@@ -23,6 +16,11 @@ export const GENERATE_TOOL_VIEWS_COMMAND = "bun --cwd=clients/web run gen:tool-v
  * build step. bun runs no root lifecycle script on `bun install` (neither
  * `prepare` nor `postinstall`), so there is nowhere in install to hang this.
  *
+ * A bundle that exists but predates its sources is as broken as a missing one, only later: the
+ * export viewer calls a global the old bundle never published (`formatToolCallLabel`), and the
+ * exported tree throws a ReferenceError in the browser. The bundle carries a hash of every file it
+ * was built from, so a changed, added or removed input is detected here and rebuilt.
+ *
  * It has to be reachable from two entry points, which is why it lives here
  * rather than inside the test runner. `bun run test` goes through
  * `scripts/ci-test-ts.ts`, but the shortcut a developer actually types is a bare
@@ -30,24 +28,22 @@ export const GENERATE_TOOL_VIEWS_COMMAND = "bun --cwd=clients/web run gen:tool-v
  * that. The second entry point is the `bunfig.toml` preload, which is the one
  * hook a bare `bun test` does honour.
  *
- * Regenerating happens only when the file is absent, so a normal run pays a
- * single `existsSync`.
+ * A current bundle costs one read of it and one of each input it lists; nothing is built.
  */
-export async function ensureToolViewsGenerated(): Promise<void> {
-	if (nodeFs.existsSync(TOOL_VIEWS_GENERATED)) return;
-	process.stdout.write("generating tool-views.generated.js (missing build artifact)\n");
-	const proc = Bun.spawn(["bun", "--cwd=clients/web", "run", "gen:tool-views"], {
-		cwd: repoRoot,
-		stdout: "inherit",
-		stderr: "inherit",
-	});
-	const code = await proc.exited;
-	// Fail closed and name the fix: continuing here means every suite that
-	// imports the bundle dies with a module-resolution error instead.
-	if (code !== 0) {
+export async function ensureToolViewsGenerated(outFile: string = TOOL_VIEWS_OUT_FILE): Promise<void> {
+	const staleness = await toolViewsStaleness(outFile);
+	if (staleness === null) return;
+	process.stdout.write(`generating ${path.basename(outFile)} (${staleness})\n`);
+	try {
+		await writeToolViewsBundle(outFile);
+	} catch (error) {
+		// Fail closed and name the fix: continuing here means every suite that
+		// imports the bundle dies with a module-resolution error, or an export
+		// test runs against a viewer the sources no longer describe.
 		throw new Error(
-			`could not generate ${TOOL_VIEWS_GENERATED} (exit ${code}). ` +
+			`could not generate ${outFile}: ${error instanceof Error ? error.message : String(error)}. ` +
 				`Run \`${GENERATE_TOOL_VIEWS_COMMAND}\` and check that install completed.`,
+			{ cause: error },
 		);
 	}
 }

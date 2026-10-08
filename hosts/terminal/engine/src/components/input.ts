@@ -11,8 +11,6 @@ import { getWordNavKind, moveWordLeft, moveWordRight } from "@veyyon/utils/word-
 import { type Component, CURSOR_MARKER, type Focusable } from "../tui";
 import { firstGrapheme, lastGrapheme } from "../utils/text-layout";
 
-const segmenter = getSegmenter();
-
 interface InputState {
 	value: string;
 	cursor: number;
@@ -32,7 +30,7 @@ export const DEFAULT_MASK_CHAR = "•";
 export function maskValue(value: string, cursor: number, maskChar: string): { value: string; cursor: number } {
 	let masked = "";
 	let maskedCursor = 0;
-	for (const { index } of segmenter.segment(value)) {
+	for (const { index } of getSegmenter().segment(value)) {
 		if (index < cursor) maskedCursor += maskChar.length;
 		masked += maskChar;
 	}
@@ -215,7 +213,7 @@ export class Input implements Component, Focusable, MouseRoutable {
 
 	#insertCharacter(text: string): void {
 		let isWordChunk = true;
-		for (const seg of segmenter.segment(text)) {
+		for (const seg of getSegmenter().segment(text)) {
 			if (getWordNavKind(seg.segment) === "whitespace") {
 				isWordChunk = false;
 				break;
@@ -408,7 +406,7 @@ export class Input implements Component, Focusable, MouseRoutable {
 		const graphemeIndex = Math.floor(wanted / maskWidth);
 		let cursor = this.#value.length;
 		let seen = 0;
-		for (const { index } of segmenter.segment(this.#value)) {
+		for (const { index } of getSegmenter().segment(this.#value)) {
 			if (seen === graphemeIndex) {
 				cursor = index;
 				break;
@@ -442,7 +440,7 @@ export class Input implements Component, Focusable, MouseRoutable {
 		const cursorCols = visibleWidth(displayValue.slice(0, cursorIndex));
 
 		// Width of the grapheme at the cursor, for ensuring it fits in the viewport.
-		const cursorIter = segmenter.segment(displayValue.slice(cursorIndex))[Symbol.iterator]();
+		const cursorIter = getSegmenter().segment(displayValue.slice(cursorIndex))[Symbol.iterator]();
 		const cursorG = cursorIter.next().value?.segment ?? " ";
 		const cursorGWidth = visibleWidth(cursorG);
 

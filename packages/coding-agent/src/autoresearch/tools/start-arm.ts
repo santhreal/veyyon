@@ -1,15 +1,18 @@
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { lazy } from "@veyyon/utils/abortable";
 import { replaceTabs } from "@veyyon/utils/tab-width";
 import { truncateToWidth } from "@veyyon/utils/width";
-import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";
 import { armIndex, enterArm } from "../arm-model";
 import { resolveActiveBranchSession } from "../helpers";
 import type { AutoresearchToolFactoryOptions } from "../types";
 
-const startArmSchema = type({
-	arm: type("string").describe("arm about to be built, `a0` first"),
-	"hypothesis?": type("string").describe("what this arm will change, one line"),
-});
+const startArmSchema = lazy(() =>
+	type({
+		arm: type("string").describe("arm about to be built, `a0` first"),
+		"hypothesis?": type("string").describe("what this arm will change, one line"),
+	}),
+);
 
 interface StartArmDetails {
 	arm: string;
@@ -27,13 +30,15 @@ interface StartArmDetails {
  */
 export function createStartArmTool(
 	options: AutoresearchToolFactoryOptions,
-): ToolDefinition<typeof startArmSchema, StartArmDetails> {
+): ToolDefinition<typeof startArmSchema.value, StartArmDetails> {
 	return {
 		name: "start_arm",
 		label: "Start Arm",
 		description:
 			"Announce the candidate arm you are about to build, before the first edit for it. Switches the session to the model configured for that arm and marks it in flight on the run screen. Call it once per arm, `a0` first, and log that arm's measurement before starting the next.",
-		parameters: startArmSchema,
+		get parameters() {
+			return startArmSchema.value;
+		},
 		defaultInactive: true,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const sessionResult = await resolveActiveBranchSession(ctx.cwd);

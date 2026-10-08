@@ -24,14 +24,14 @@ import type {
 
 ## Model
 
-- `PluginManifest` — the `veyyon` field: a display name, the version, a description, the `tools`
+- `PluginManifest`: the `veyyon` field: a display name, the version, a description, the `tools`
   and `hooks` entry points, the `extensions` and `commands` entry lists, the `features` an installer
   selects and the `settings` the plugin reads.
-- `PluginFeature` — one optional feature: a description, whether it is on by default, and the
+- `PluginFeature`: one optional feature: a description, whether it is on by default, and the
   extension, tool, hook and command entries it adds when selected.
-- `PluginSettingSchema` — one declared setting: a `string`, `number`, `boolean` or `enum`
+- `PluginSettingSchema`: one declared setting: a `string`, `number`, `boolean` or `enum`
   definition with its default, an optional `env` fallback and a `secret` mark that masks the value.
-- `PluginSettingType` — the `type` tag a plugin setting carries.
+- `PluginSettingType`: the `type` tag a plugin setting has.
 
 ## Declaring a plugin
 
@@ -57,7 +57,7 @@ selected at install time or on by default.
 
 ## What stays behind
 
-`PluginSettingSchema` is the shape a plugin manifest carries on disk and is distinct from the
+`PluginSettingSchema` is the shape a plugin manifest holds on disk and is distinct from the
 `SettingDef` vocabulary in `@veyyon/settings`, which a first-party package writes in code. The two
-are separate declarations with separate consumers; folding one into the other changes the manifest
-format and is a later step.
+are separate declarations with separate consumers; merging one into the other changes the manifest
+format.

@@ -39,7 +39,7 @@ export class HistoryStorage {
 	#lastPromptCache: string | null = null;
 
 	private constructor(dbPath: string) {
-		this.#ensureDir(dbPath);
+		ensureDir(dbPath);
 
 		this.#db = new Database(dbPath);
 
@@ -150,12 +150,12 @@ CREATE TRIGGER IF NOT EXISTS history_ai AFTER INSERT ON history BEGIN
 	}
 
 	getRecent(limit: number): HistoryEntry[] {
-		const safeLimit = this.#normalizeLimit(limit);
+		const safeLimit = normalizeLimit(limit);
 		if (safeLimit === 0) return [];
 
 		try {
 			const rows = this.#recentStmt.all(safeLimit) as HistoryRow[];
-			return rows.map(row => this.#toEntry(row));
+			return rows.map(row => toEntry(row));
 		} catch (error) {
 			logger.error("HistoryStorage getRecent failed", { error: String(error) });
 			return [];
@@ -163,10 +163,10 @@ CREATE TRIGGER IF NOT EXISTS history_ai AFTER INSERT ON history BEGIN
 	}
 
 	search(query: string, limit: number): HistoryEntry[] {
-		const safeLimit = this.#normalizeLimit(limit);
+		const safeLimit = normalizeLimit(limit);
 		if (safeLimit === 0) return [];
 
-		const tokens = this.#tokenize(query);
+		const tokens = tokenize(query);
 		if (tokens.length === 0) return [];
 
 		// 1. FTS5 prefix match (token AND, prefix-wildcard per token).
@@ -192,7 +192,7 @@ CREATE TRIGGER IF NOT EXISTS history_ai AFTER INSERT ON history BEGIN
 		}
 
 		if (ftsRows.length === 0) {
-			return subRows.map(row => this.#toEntry(row));
+			return subRows.map(row => toEntry(row));
 		}
 
 		const rowsById = new Map<number, HistoryRow>();
@@ -206,7 +206,7 @@ CREATE TRIGGER IF NOT EXISTS history_ai AFTER INSERT ON history BEGIN
 		return Array.from(rowsById.values())
 			.sort((a, b) => b.created_at - a.created_at || b.id - a.id)
 			.slice(0, safeLimit)
-			.map(row => this.#toEntry(row));
+			.map(row => toEntry(row));
 	}
 
 	/**
@@ -224,11 +224,6 @@ CREATE TRIGGER IF NOT EXISTS history_ai AFTER INSERT ON history BEGIN
 			ids.push(id);
 		}
 		return ids;
-	}
-
-	#ensureDir(dbPath: string): void {
-		const dir = path.dirname(dbPath);
-		fs.mkdirSync(dir, { recursive: true });
 	}
 
 	#historySchemaUsesUnixEpoch(): boolean {
@@ -272,24 +267,6 @@ END;
 		migrate();
 	}
 
-	#normalizeLimit(limit: number): number {
-		if (!Number.isFinite(limit)) return 0;
-		const clamped = Math.max(0, Math.floor(limit));
-		return Math.min(clamped, 1000);
-	}
-
-	/**
-	 * Split on non-alphanumeric runs, mirroring FTS5's `unicode61` tokenizer so
-	 * query tokens align with how stored prompts were indexed. Lowercases for
-	 * stable substring matching.
-	 */
-	#tokenize(query: string): string[] {
-		return query
-			.toLowerCase()
-			.split(NON_ALNUM_RUN_RE)
-			.filter(tok => tok.length > 0);
-	}
-
 	#searchSubstring(tokens: string[], limit: number): HistoryRow[] {
 		const stmt = this.#getSubstringStmt(tokens.length);
 		const params: unknown[] = tokens.map(tok => `%${escapeLike(tok)}%`);
@@ -307,14 +284,37 @@ END;
 		this.#substringStmts.set(tokenCount, stmt);
 		return stmt;
 	}
+}
 
-	#toEntry(row: HistoryRow): HistoryEntry {
-		return {
-			id: row.id,
-			prompt: row.prompt,
-			created_at: row.created_at,
-			cwd: row.cwd ?? undefined,
-			sessionId: row.session_id ?? undefined,
-		};
-	}
+function ensureDir(dbPath: string): void {
+	const dir = path.dirname(dbPath);
+	fs.mkdirSync(dir, { recursive: true });
+}
+
+function normalizeLimit(limit: number): number {
+	if (!Number.isFinite(limit)) return 0;
+	const clamped = Math.max(0, Math.floor(limit));
+	return Math.min(clamped, 1000);
+}
+
+/**
+ * Split on non-alphanumeric runs, mirroring FTS5's `unicode61` tokenizer so
+ * query tokens align with how stored prompts were indexed. Lowercases for
+ * stable substring matching.
+ */
+function tokenize(query: string): string[] {
+	return query
+		.toLowerCase()
+		.split(NON_ALNUM_RUN_RE)
+		.filter(tok => tok.length > 0);
+}
+
+function toEntry(row: HistoryRow): HistoryEntry {
+	return {
+		id: row.id,
+		prompt: row.prompt,
+		created_at: row.created_at,
+		cwd: row.cwd ?? undefined,
+		sessionId: row.session_id ?? undefined,
+	};
 }

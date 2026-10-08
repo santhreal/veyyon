@@ -13,7 +13,7 @@ import {
 	type UnreadableEnvFileReporter,
 } from "./dotenv-parse";
 import * as logger from "./logger";
-import { errorMessage } from "./type-guards";
+import { errorMessage, isRecord } from "./type-guards";
 
 export {
 	isMacosMallocStackLoggingEnvName,
@@ -98,10 +98,61 @@ for (const key of Object.keys(Bun.env)) {
 // Phase one already applied the DIRECTORY-LOCATION keys out of `$HOME/.env` -- that is what let the paths
 // below be resolved with the user's overrides in place -- and deliberately nothing else, so the home layer
 // is read again here for the rest of it.
+const agentDir = getAgentDir();
 const homeEnv = parseEnvFile(path.join(os.homedir(), ".env"));
 const configRootEnv = parseEnvFile(path.join(getConfigRootDir(), ".env"));
-const agentEnv = parseEnvFile(path.join(getAgentDir(), ".env"));
+const agentEnv = parseEnvFile(path.join(agentDir, ".env"));
 const projectEnv = parseEnvFile(path.join(process.cwd(), ".env"));
+
+// A veyyon process records which variables it set from a `.env` file or from its profile's configuration in
+// `VEYYON_DOTENV_ORIGIN`, and every
+// process it starts inherits the record: a `/profile` or `/resume` relaunch, a `veyyon --profile <name>`
+// run from a tool's shell, a subagent. An inherited variable outranks every `.env` layer, so without the
+// record a process under another profile would run on the parent profile's `.env`, credentials included.
+// Under another agent dir the recorded variables are dropped and this process's own layers apply; under
+// the same one they are kept and carried forward. The record holds digests, not values, and a variable
+// whose value no longer matches its digest was set after the file was read and is kept.
+const DOTENV_ORIGIN_ENV_KEY = "VEYYON_DOTENV_ORIGIN";
+
+interface DotenvOrigin {
+	agentDir: string;
+	digests: Record<string, string>;
+}
+
+// `Bun.CryptoHasher` rather than `node:crypto`: the digest runs synchronously at module load, WebCrypto
+// has no synchronous digest, and loading `node:crypto` costs the launch card 3.3ms it otherwise spends
+// on nothing.
+function digestEnvValue(value: string): string {
+	return new Bun.CryptoHasher("sha256").update(value).digest("hex").slice(0, 16);
+}
+
+function readDotenvOrigin(): DotenvOrigin | undefined {
+	const raw = Bun.env[DOTENV_ORIGIN_ENV_KEY];
+	if (!raw) return undefined;
+	try {
+		const parsed: unknown = JSON.parse(raw);
+		if (!isRecord(parsed) || typeof parsed.agentDir !== "string" || !isRecord(parsed.digests)) return undefined;
+		const digests: Record<string, string> = {};
+		for (const [key, digest] of Object.entries(parsed.digests)) {
+			if (typeof digest === "string") digests[key] = digest;
+		}
+		return { agentDir: parsed.agentDir, digests };
+	} catch {
+		return undefined;
+	}
+}
+
+const originDigests: Record<string, string> = {};
+const inheritedOrigin = readDotenvOrigin();
+if (inheritedOrigin) {
+	const sameAgentDir = path.resolve(inheritedOrigin.agentDir) === path.resolve(agentDir);
+	for (const [key, digest] of Object.entries(inheritedOrigin.digests)) {
+		const value = Bun.env[key];
+		if (value === undefined || homeDotenvInjectedKeys.has(key) || digestEnvValue(value) !== digest) continue;
+		if (sameAgentDir) originDigests[key] = digest;
+		else delete Bun.env[key];
+	}
+}
 
 // Highest priority first. A key already in `Bun.env` wins, EXCEPT one that phase one injected from
 // `$HOME/.env`: home is the lowest-priority layer and only happens to have been applied first, so these
@@ -112,8 +163,32 @@ for (const file of [projectEnv, agentEnv, configRootEnv, homeEnv]) {
 		if (isMacosMallocStackLoggingEnvName(key)) continue;
 		if (Bun.env[key] && !homeDotenvInjectedKeys.has(key)) continue;
 		Bun.env[key] = file[key];
+		originDigests[key] = digestEnvValue(file[key]);
 		homeDotenvInjectedKeys.delete(key);
 	}
+}
+for (const key of homeDotenvInjectedKeys) {
+	const value = Bun.env[key];
+	if (value !== undefined) originDigests[key] = digestEnvValue(value);
+}
+function writeDotenvOrigin(): void {
+	if (Object.keys(originDigests).length > 0) {
+		Bun.env[DOTENV_ORIGIN_ENV_KEY] = JSON.stringify({ agentDir, digests: originDigests } satisfies DotenvOrigin);
+	} else {
+		delete Bun.env[DOTENV_ORIGIN_ENV_KEY];
+	}
+}
+writeDotenvOrigin();
+
+/**
+ * Set a variable whose value comes from the active profile's configuration, such as a key read out of
+ * `<agentDir>/mcp.json`, and add it to the `VEYYON_DOTENV_ORIGIN` record. A process started under another
+ * profile drops it the way it drops a `.env` value, so it resolves the variable from its own profile.
+ */
+export function setProfileEnv(key: string, value: string): void {
+	Bun.env[key] = value;
+	originDigests[key] = digestEnvValue(value);
+	writeDotenvOrigin();
 }
 
 // Directory-affecting keys (XDG_*_HOME, and in default mode VEYYON_CODING_AGENT_DIR)

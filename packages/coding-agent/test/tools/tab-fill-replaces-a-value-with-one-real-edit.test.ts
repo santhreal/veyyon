@@ -33,9 +33,7 @@ import type { AddressInfo } from "node:net";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/sdk";
 import { BrowserTool } from "@veyyon/coding-agent/tools/web/browser";
-import { chromiumCanLaunch } from "../helpers/chromium-can-launch";
-
-const CHROMIUM_AVAILABLE = await chromiumCanLaunch();
+import { CHROMIUM_AVAILABLE } from "./browser/chromium";
 
 const PAGE = `<!doctype html><title>fill</title>
 <input id="text" value="old">

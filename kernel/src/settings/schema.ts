@@ -277,9 +277,8 @@ export function describeSettingTypeMismatch(path: string, value: unknown): strin
 			}
 			return mismatch("a model pattern, or a list of them");
 		case "enum": {
-			const values = def.values ?? [];
-			if (typeof value === "string" && values.includes(value)) return undefined;
-			return `${path}: expected one of ${values.join(", ")}, found ${JSON.stringify(value)}`;
+			if (enumMember(path, value) !== undefined) return undefined;
+			return `${path}: expected one of ${(def.values ?? []).join(", ")}, found ${JSON.stringify(value)}`;
 		}
 		case "array":
 			return Array.isArray(value) ? undefined : mismatch("an array");
@@ -322,4 +321,16 @@ export function isUnsetNumberPath(path: SettingPath): boolean {
 /** Get enum values for an enum setting */
 export function getEnumValues(path: SettingPath): readonly string[] | undefined {
 	return declared(path).values;
+}
+
+/**
+ * The member of enum setting `path` that `value` spells, or `undefined` when it spells none.
+ *
+ * A scalar spells the member its string form equals: a hand-edited `syncBacklog: 3` parses to the
+ * number 3 and reads as the member `"3"`. An object, an array and `null` spell nothing.
+ */
+export function enumMember(path: string, value: unknown): string | undefined {
+	if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") return undefined;
+	const text = String(value);
+	return declared(path).values?.includes(text) ? text : undefined;
 }

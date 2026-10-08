@@ -148,10 +148,86 @@ export interface ToolCallMetricsInput {
 	countTokens?: (text: string) => number;
 }
 
-const textEncoder = new TextEncoder();
+type MetricsTier = "rich" | "ultra";
 
-function utf8Bytes(text: string): number {
-	return textEncoder.encode(text).length;
+/** The optional fields of one record type, split by the tier that captures and persists them. */
+interface TierFields<K> {
+	rich: readonly K[];
+	ultra: readonly K[];
+}
+
+/**
+ * Tier of every tool-call field beyond `basic`. The `Record` type covers every non-basic key of
+ * {@link ToolCallMetrics}, so a new field fails to compile until it is assigned a tier here.
+ * Insertion order is the persisted key order.
+ */
+const TOOL_CALL_FIELD_TIERS: Record<
+	Exclude<
+		keyof ToolCallMetrics,
+		"level" | "timeUnit" | "startedAt" | "endedAt" | "durationMs" | "status" | "uselessReason"
+	>,
+	MetricsTier
+> = {
+	queuedMs: "rich",
+	concurrency: "rich",
+	batchId: "rich",
+	batchIndex: "rich",
+	batchSize: "rich",
+	resultBytes: "rich",
+	resultBlocks: "rich",
+	resultImages: "rich",
+	resultTokens: "rich",
+	argsBytes: "ultra",
+	argsHash: "ultra",
+	argsDigest: "ultra",
+	argsDigestAlgorithm: "ultra",
+	interruptible: "ultra",
+	signalAborted: "ultra",
+};
+
+/** Tier of every assistant-turn field beyond `basic`; see {@link TOOL_CALL_FIELD_TIERS}. */
+const ASSISTANT_TURN_FIELD_TIERS: Record<
+	Exclude<keyof AssistantTurnMetrics, "level" | "startedAt" | "endedAt" | "durationMs" | "status" | "ttftMs">,
+	MetricsTier
+> = {
+	outputTokens: "rich",
+	inputTokens: "rich",
+	totalTokens: "rich",
+	generationMs: "rich",
+	outputTokensPerSec: "rich",
+	cacheReadTokens: "ultra",
+	cacheWriteTokens: "ultra",
+	reasoningTokens: "ultra",
+	cacheHitRatio: "ultra",
+	isCacheBust: "ultra",
+	cacheBustDeltaTokens: "ultra",
+	upstreamProvider: "ultra",
+};
+
+function tierFields<K extends string>(tiers: Record<K, MetricsTier>): TierFields<K> {
+	const keys = Object.keys(tiers) as K[];
+	return { rich: keys.filter(key => tiers[key] === "rich"), ultra: keys.filter(key => tiers[key] === "ultra") };
+}
+
+const TOOL_CALL_TIER_FIELDS = tierFields(TOOL_CALL_FIELD_TIERS);
+const ASSISTANT_TURN_TIER_FIELDS = tierFields(ASSISTANT_TURN_FIELD_TIERS);
+
+/** Copies each defined field of `source` that `level` permits onto `target`, in tier order. */
+function copyTierFields<T extends object, K extends keyof T>(
+	target: T,
+	source: T,
+	level: InstrumentationLevel,
+	fields: TierFields<K>,
+): void {
+	if (atLeast(level, "rich")) copyDefinedFields(target, source, fields.rich);
+	if (atLeast(level, "ultra")) copyDefinedFields(target, source, fields.ultra);
+}
+
+function copyDefinedFields<T extends object, K extends keyof T>(target: T, source: T, keys: readonly K[]): void {
+	for (const key of keys) {
+		const value = source[key];
+		if (value !== undefined) target[key] = value;
+	}
 }
 
 /**
@@ -183,68 +259,73 @@ export function captureToolCallMetrics(input: ToolCallMetricsInput): ToolCallMet
 	const { level } = input;
 	if (level === "off") return undefined;
 
-	const durationMs = Math.max(0, input.endedAt - input.startedAt);
 	const metrics: ToolCallMetrics = {
 		level,
 		timeUnit: "ms",
 		startedAt: input.startedAt,
 		endedAt: input.endedAt,
-		durationMs,
+		durationMs: Math.max(0, input.endedAt - input.startedAt),
 		status: input.status,
 	};
 	if (input.useless && input.status === "ok") metrics.uselessReason = "tool-declared";
 
 	if (atLeast(level, "rich")) {
-		if (input.queuedAt !== undefined) {
-			metrics.queuedMs = Math.max(0, input.startedAt - input.queuedAt);
-		}
-		if (input.concurrency !== undefined) metrics.concurrency = input.concurrency;
-		if (input.batchId !== undefined) metrics.batchId = input.batchId;
-		if (input.batchIndex !== undefined) metrics.batchIndex = input.batchIndex;
-		if (input.batchSize !== undefined) metrics.batchSize = input.batchSize;
-
-		const content = input.resultContent ?? [];
-		metrics.resultBlocks = content.length;
-		let bytes = 0;
-		let images = 0;
-		const textParts: string[] = [];
-		for (const block of content) {
-			if (block.type === "text") {
-				bytes += utf8Bytes(block.text);
-				textParts.push(block.text);
-			} else if (block.type === "image") {
-				images += 1;
-			}
-		}
-		metrics.resultBytes = bytes;
-		metrics.resultImages = images;
-		if (input.countTokens && textParts.length > 0) {
-			metrics.resultTokens = input.countTokens(textParts.join("\n"));
-		} else if (input.countTokens) {
-			metrics.resultTokens = 0;
-		}
+		captureToolSchedule(metrics, input);
+		captureToolResultWeight(metrics, input.resultContent ?? [], input.countTokens);
 	}
-
 	if (atLeast(level, "ultra")) {
-		if (input.args !== undefined) {
-			try {
-				const serialized = stableSerialize(input.args);
-				if (typeof serialized === "string") {
-					metrics.argsBytes = utf8Bytes(serialized);
-					metrics.argsHash = legacyArgsHash(serialized);
-					metrics.argsDigest = stableArgsDigest(serialized);
-					metrics.argsDigestAlgorithm = "sha256-128";
-				}
-			} catch {
-				// Hooks may mutate valid model JSON into cyclic or non-JSON values.
-				// Instrumentation must never suppress a completed tool result.
-			}
-		}
+		if (input.args !== undefined) captureArgsFingerprint(metrics, input.args);
 		if (input.interruptible !== undefined) metrics.interruptible = input.interruptible;
 		if (input.signalAborted !== undefined) metrics.signalAborted = input.signalAborted;
 	}
-
 	return metrics;
+}
+
+function captureToolSchedule(metrics: ToolCallMetrics, input: ToolCallMetricsInput): void {
+	if (input.queuedAt !== undefined) metrics.queuedMs = Math.max(0, input.startedAt - input.queuedAt);
+	if (input.concurrency !== undefined) metrics.concurrency = input.concurrency;
+	if (input.batchId !== undefined) metrics.batchId = input.batchId;
+	if (input.batchIndex !== undefined) metrics.batchIndex = input.batchIndex;
+	if (input.batchSize !== undefined) metrics.batchSize = input.batchSize;
+}
+
+/** Block, byte, image and token weight of a tool result. Bytes are counted without encoding the text. */
+function captureToolResultWeight(
+	metrics: ToolCallMetrics,
+	content: readonly (TextContent | ImageContent)[],
+	countTokens: ((text: string) => number) | undefined,
+): void {
+	metrics.resultBlocks = content.length;
+	let bytes = 0;
+	let images = 0;
+	const textParts: string[] | undefined = countTokens ? [] : undefined;
+	for (const block of content) {
+		if (block.type === "text") {
+			bytes += Buffer.byteLength(block.text, "utf8");
+			textParts?.push(block.text);
+		} else if (block.type === "image") {
+			images += 1;
+		}
+	}
+	metrics.resultBytes = bytes;
+	metrics.resultImages = images;
+	if (countTokens && textParts) {
+		metrics.resultTokens = textParts.length > 0 ? countTokens(textParts.join("\n")) : 0;
+	}
+}
+
+function captureArgsFingerprint(metrics: ToolCallMetrics, args: Record<string, unknown>): void {
+	try {
+		const serialized = stableSerialize(args);
+		if (typeof serialized !== "string") return;
+		metrics.argsBytes = Buffer.byteLength(serialized, "utf8");
+		metrics.argsHash = legacyArgsHash(serialized);
+		metrics.argsDigest = stableArgsDigest(serialized);
+		metrics.argsDigestAlgorithm = "sha256-128";
+	} catch {
+		// Hooks may mutate valid model JSON into cyclic or non-JSON values.
+		// Instrumentation must never suppress a completed tool result.
+	}
 }
 
 /**
@@ -274,26 +355,7 @@ export function toolCallMetricsForPersistence(
 	if (metrics.status === "ok" && metrics.uselessReason === "tool-declared") {
 		persisted.uselessReason = "tool-declared";
 	}
-
-	if (detail === "rich" || detail === "ultra") {
-		if (metrics.queuedMs !== undefined) persisted.queuedMs = metrics.queuedMs;
-		if (metrics.concurrency !== undefined) persisted.concurrency = metrics.concurrency;
-		if (metrics.batchId !== undefined) persisted.batchId = metrics.batchId;
-		if (metrics.batchIndex !== undefined) persisted.batchIndex = metrics.batchIndex;
-		if (metrics.batchSize !== undefined) persisted.batchSize = metrics.batchSize;
-		if (metrics.resultBytes !== undefined) persisted.resultBytes = metrics.resultBytes;
-		if (metrics.resultBlocks !== undefined) persisted.resultBlocks = metrics.resultBlocks;
-		if (metrics.resultImages !== undefined) persisted.resultImages = metrics.resultImages;
-		if (metrics.resultTokens !== undefined) persisted.resultTokens = metrics.resultTokens;
-	}
-	if (detail === "ultra") {
-		if (metrics.argsBytes !== undefined) persisted.argsBytes = metrics.argsBytes;
-		if (metrics.argsHash !== undefined) persisted.argsHash = metrics.argsHash;
-		if (metrics.argsDigest !== undefined) persisted.argsDigest = metrics.argsDigest;
-		if (metrics.argsDigestAlgorithm !== undefined) persisted.argsDigestAlgorithm = metrics.argsDigestAlgorithm;
-		if (metrics.interruptible !== undefined) persisted.interruptible = metrics.interruptible;
-		if (metrics.signalAborted !== undefined) persisted.signalAborted = metrics.signalAborted;
-	}
+	copyTierFields(persisted, metrics, detail, TOOL_CALL_TIER_FIELDS);
 	return persisted;
 }
 
@@ -340,43 +402,52 @@ export function captureAssistantTurnMetrics(input: AssistantTurnMetricsInput): A
 			: undefined;
 	if (ttftMs !== undefined) metrics.ttftMs = ttftMs;
 
-	if (atLeast(level, "rich")) {
-		const usage = input.usage;
-		if (usage) {
-			metrics.outputTokens = usage.output;
-			metrics.inputTokens = usage.input;
-			metrics.totalTokens = usage.totalTokens;
-		}
-		const generationMs = ttftMs !== undefined ? Math.max(0, durationMs - ttftMs) : durationMs;
-		metrics.generationMs = generationMs;
-		if (usage && usage.output > 0 && generationMs > 0) {
-			metrics.outputTokensPerSec = usage.output / (generationMs / 1000);
-		}
-	}
-
+	if (atLeast(level, "rich")) captureTurnThroughput(metrics, input.usage, durationMs, ttftMs);
 	if (atLeast(level, "ultra")) {
-		const usage = input.usage;
-		if (usage) {
-			metrics.cacheReadTokens = usage.cacheRead;
-			metrics.cacheWriteTokens = usage.cacheWrite;
-			if (usage.reasoningTokens !== undefined) metrics.reasoningTokens = usage.reasoningTokens;
-			const totalInput = (usage.cacheRead ?? 0) + (usage.input ?? 0);
-			if (totalInput > 0) {
-				metrics.cacheHitRatio = (usage.cacheRead ?? 0) / totalInput;
-			}
-			if (
-				input.previousCacheReadTokens !== undefined &&
-				input.previousCacheReadTokens > 1000 &&
-				(usage.cacheRead ?? 0) < input.previousCacheReadTokens * 0.5
-			) {
-				metrics.isCacheBust = true;
-				metrics.cacheBustDeltaTokens = input.previousCacheReadTokens - (usage.cacheRead ?? 0);
-			}
-		}
+		if (input.usage) captureTurnCache(metrics, input.usage, input.previousCacheReadTokens);
 		if (input.upstreamProvider !== undefined) metrics.upstreamProvider = input.upstreamProvider;
 	}
-
 	return metrics;
+}
+
+function captureTurnThroughput(
+	metrics: AssistantTurnMetrics,
+	usage: Usage | undefined,
+	durationMs: number,
+	ttftMs: number | undefined,
+): void {
+	if (usage) {
+		metrics.outputTokens = usage.output;
+		metrics.inputTokens = usage.input;
+		metrics.totalTokens = usage.totalTokens;
+	}
+	const generationMs = ttftMs !== undefined ? Math.max(0, durationMs - ttftMs) : durationMs;
+	metrics.generationMs = generationMs;
+	if (usage && usage.output > 0 && generationMs > 0) {
+		metrics.outputTokensPerSec = usage.output / (generationMs / 1000);
+	}
+}
+
+/** Cache efficiency of a turn; a bust is a drop below half of a previous read above 1000 tokens. */
+function captureTurnCache(
+	metrics: AssistantTurnMetrics,
+	usage: Usage,
+	previousCacheReadTokens: number | undefined,
+): void {
+	metrics.cacheReadTokens = usage.cacheRead;
+	metrics.cacheWriteTokens = usage.cacheWrite;
+	if (usage.reasoningTokens !== undefined) metrics.reasoningTokens = usage.reasoningTokens;
+	const cacheRead = usage.cacheRead ?? 0;
+	const totalInput = cacheRead + (usage.input ?? 0);
+	if (totalInput > 0) metrics.cacheHitRatio = cacheRead / totalInput;
+	if (
+		previousCacheReadTokens !== undefined &&
+		previousCacheReadTokens > 1000 &&
+		cacheRead < previousCacheReadTokens * 0.5
+	) {
+		metrics.isCacheBust = true;
+		metrics.cacheBustDeltaTokens = previousCacheReadTokens - cacheRead;
+	}
 }
 
 /**
@@ -400,24 +471,7 @@ export function assistantTurnMetricsForPersistence(
 		status: metrics.status,
 	};
 	if (metrics.ttftMs !== undefined) persisted.ttftMs = metrics.ttftMs;
-	if (atLeast(persistedLevel, "rich")) {
-		if (metrics.outputTokens !== undefined) persisted.outputTokens = metrics.outputTokens;
-		if (metrics.inputTokens !== undefined) persisted.inputTokens = metrics.inputTokens;
-		if (metrics.totalTokens !== undefined) persisted.totalTokens = metrics.totalTokens;
-		if (metrics.generationMs !== undefined) persisted.generationMs = metrics.generationMs;
-		if (metrics.outputTokensPerSec !== undefined) persisted.outputTokensPerSec = metrics.outputTokensPerSec;
-	}
-	if (atLeast(persistedLevel, "ultra")) {
-		if (metrics.cacheReadTokens !== undefined) persisted.cacheReadTokens = metrics.cacheReadTokens;
-		if (metrics.cacheWriteTokens !== undefined) persisted.cacheWriteTokens = metrics.cacheWriteTokens;
-		if (metrics.reasoningTokens !== undefined) persisted.reasoningTokens = metrics.reasoningTokens;
-		if (metrics.cacheHitRatio !== undefined) persisted.cacheHitRatio = metrics.cacheHitRatio;
-		if (metrics.isCacheBust !== undefined) persisted.isCacheBust = metrics.isCacheBust;
-		if (metrics.cacheBustDeltaTokens !== undefined) {
-			persisted.cacheBustDeltaTokens = metrics.cacheBustDeltaTokens;
-		}
-		if (metrics.upstreamProvider !== undefined) persisted.upstreamProvider = metrics.upstreamProvider;
-	}
+	copyTierFields(persisted, metrics, persistedLevel, ASSISTANT_TURN_TIER_FIELDS);
 	return persisted;
 }
 

@@ -8,7 +8,12 @@ import { DAY_MS, getModelDbPath } from "@veyyon/utils";
 import type { Api, Model, ModelSpec } from "./types";
 
 // Rows persist ModelSpec JSON (sparse `compat`, never the resolved record);
-// the model manager rebuilds via `buildModel` on load. v11 adds a content
+// the model manager rebuilds via `buildModel` on load. v12 invalidates rows
+// whose sparse `compat` holds a resolved record: the model manager built each
+// models.dev row twice, so the second build read the first build's resolved
+// compat as the row's own declaration, replaced the bundled declaration of the
+// model it enriched, and a merge with a failed discovery kept writing it back.
+// v11 adds a content
 // fingerprint over everything a row states EXCEPT its timestamp, so a snapshot
 // keyed to cache content survives a refresh that re-verifies a catalog and
 // finds it unchanged. v10 invalidated agent gateway
@@ -30,7 +35,7 @@ import type { Api, Model, ModelSpec } from "./types";
 // (222222/8888); v5 invalidated rows predating effort-tier variant collapsing
 // (raw `-low`/`-high`/`-thinking` member ids); v4 dropped the pre-efforts
 // ThinkingConfig shape.
-const CACHE_SCHEMA_VERSION = 11;
+const CACHE_SCHEMA_VERSION = 12;
 
 interface CacheRow {
 	provider_id: string;

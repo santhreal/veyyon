@@ -63,7 +63,11 @@ export function isDirectory(path: string): boolean {
  * cannot be crossed by hiding the import inside a function.
  */
 export function importSpecifiers(file: string): string[] {
-	const source = readFileSync(file, "utf8");
+	return sourceImportSpecifiers(readFileSync(file, "utf8"));
+}
+
+/** Module specifiers `source` declares, in the forms {@link importSpecifiers} covers. */
+export function sourceImportSpecifiers(source: string): string[] {
 	const specifiers: string[] = [];
 	const patterns = [
 		/(?:^|\n)\s*import\s+(?:type\s+)?[^;'"]*?from\s*["']([^"']+)["']/g,

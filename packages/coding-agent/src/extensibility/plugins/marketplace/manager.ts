@@ -250,13 +250,13 @@ export class MarketplaceManager {
 			if (!entry) {
 				throw new Error(marketplaceNotConfiguredMessage(marketplace));
 			}
-			const catalog = await this.#readCatalog(entry);
+			const catalog = await readCatalog(entry);
 			return catalog.plugins;
 		}
 
 		const all: MarketplacePluginEntry[] = [];
 		for (const entry of reg.marketplaces) {
-			const catalog = await this.#readCatalog(entry);
+			const catalog = await readCatalog(entry);
 			for (let pi = 0; pi < catalog.plugins.length; pi++) all.push(catalog.plugins[pi]!);
 		}
 		return all;
@@ -286,7 +286,7 @@ export class MarketplaceManager {
 		}
 
 		// 2. Find plugin in catalog
-		const catalog = await this.#readCatalog(mktEntry);
+		const catalog = await readCatalog(mktEntry);
 		const pluginEntry = catalog.plugins.find(p => p.name === name);
 		if (!pluginEntry) {
 			throw new Error(
@@ -319,7 +319,7 @@ export class MarketplaceManager {
 		// stored at: <marketplacesCacheDir>/<catalogName>/marketplace.json
 		// The marketplace root for local sources should be the actual local path, but we only have
 		// sourceUri. For local sources, use path.resolve of sourceUri; for others use the cache dir.
-		const marketplaceClonePath = this.#resolveMarketplaceRoot(mktEntry);
+		const marketplaceClonePath = resolveMarketplaceRoot(mktEntry);
 
 		// URL-sourced marketplaces only cache marketplace.json, not the full plugin tree.
 		// Relative string sources ("./plugins/foo") cannot be resolved against the cache dir.
@@ -340,10 +340,10 @@ export class MarketplaceManager {
 		let version!: string;
 		let cachePath!: string;
 		try {
-			version = await this.#resolvePluginVersion(pluginEntry, sourcePath);
+			version = await resolvePluginVersion(pluginEntry, sourcePath);
 			cachePath = await cachePlugin(sourcePath, this.#opts.pluginsCacheDir, marketplace, name, version);
-			await this.#writeEmbeddedLspConfig(pluginEntry, cachePath);
-			await this.#writeEmbeddedDapConfig(pluginEntry, cachePath);
+			await writeEmbeddedLspConfig(pluginEntry, cachePath);
+			await writeEmbeddedDapConfig(pluginEntry, cachePath);
 		} finally {
 			// Clean up temp clone dirs created by resolvePluginSource; leave user-supplied local dirs alone
 			if (tempCloneRoot) {
@@ -351,7 +351,7 @@ export class MarketplaceManager {
 			}
 		}
 
-		const packageName = await this.#resolvePluginPackageName(cachePath, name);
+		const packageName = await resolvePluginPackageName(cachePath, name);
 		const previousPackageNames = await this.#resolveInstalledPackageNames(existing ?? [], name);
 
 		// Only now clean up old entries — new cache succeeded, so it is safe to remove old ones.
@@ -406,79 +406,6 @@ export class MarketplaceManager {
 		return installedEntry;
 	}
 
-	async #writeEmbeddedLspConfig(entry: MarketplacePluginEntry, cachePath: string): Promise<void> {
-		const lspServers = entry.lspServers;
-		if (!lspServers) return;
-
-		const targetPath = path.join(cachePath, ".lsp.json");
-		if (typeof lspServers === "string") {
-			const sourcePath = path.resolve(cachePath, lspServers);
-			if (!pathIsWithin(cachePath, sourcePath)) {
-				throw new Error(`Plugin "${entry.name}" lspServers path escapes the plugin directory`);
-			}
-			const content = await Bun.file(sourcePath).text();
-			await Bun.write(targetPath, content);
-			return;
-		}
-
-		await Bun.write(targetPath, `${JSON.stringify({ servers: lspServers }, null, 2)}\n`);
-	}
-
-	async #writeEmbeddedDapConfig(entry: MarketplacePluginEntry, cachePath: string): Promise<void> {
-		const dapAdapters = entry.dapAdapters;
-		if (!dapAdapters) return;
-
-		if (typeof dapAdapters === "string") {
-			const sourcePath = path.resolve(cachePath, dapAdapters);
-			if (!pathIsWithin(cachePath, sourcePath)) {
-				throw new Error(`Plugin "${entry.name}" dapAdapters path escapes the plugin directory`);
-			}
-			const extension = path.extname(sourcePath).toLowerCase();
-			const targetFilename = extension === ".yaml" || extension === ".yml" ? `.dap${extension}` : ".dap.json";
-			const targetPath = path.join(cachePath, targetFilename);
-			const content = await Bun.file(sourcePath).text();
-			await Bun.write(targetPath, content);
-			return;
-		}
-
-		const targetPath = path.join(cachePath, ".dap.json");
-		await Bun.write(targetPath, `${JSON.stringify({ adapters: dapAdapters }, null, 2)}\n`);
-	}
-
-	/**
-	 * Resolve plugin version from multiple sources:
-	 * 1. Catalog entry version (if set)
-	 * 2. Plugin manifest (.claude-plugin/plugin.json or package.json)
-	 * 3. Git SHA from source (truncated to 7 chars)
-	 * 4. Fallback "0.0.0"
-	 */
-	async #resolvePluginVersion(entry: MarketplacePluginEntry, sourcePath: string): Promise<string> {
-		// 1. Catalog entry version
-		if (entry.version) return entry.version;
-
-		// 2. Plugin manifest
-		for (const manifestPath of [
-			path.join(sourcePath, ".claude-plugin", "plugin.json"),
-			path.join(sourcePath, "package.json"),
-		]) {
-			try {
-				const content = await Bun.file(manifestPath).json();
-				if (typeof content?.version === "string" && content.version) {
-					return content.version;
-				}
-			} catch {
-				// Missing or invalid — try next
-			}
-		}
-
-		// 3. Git SHA from source definition
-		if (typeof entry.source === "object" && "sha" in entry.source && entry.source.sha) {
-			return entry.source.sha.slice(0, 7);
-		}
-
-		return "0.0.0";
-	}
-
 	async uninstallPlugin(pluginId: string, scope?: "user" | "project"): Promise<void> {
 		const parsed = parsePluginId(pluginId);
 		if (!parsed) {
@@ -486,7 +413,7 @@ export class MarketplaceManager {
 		}
 
 		const location = await this.#findInstalled(pluginId);
-		const targetScope = MarketplaceManager.#scopeFor(pluginId, location, scope, "remove");
+		const targetScope = scopeFor(pluginId, location, scope, "remove");
 
 		const targetEntries = targetScope === "project" ? location.projectEntries! : location.userEntries!;
 		const targetReg = targetScope === "project" ? location.projectReg : location.userReg;
@@ -559,7 +486,7 @@ export class MarketplaceManager {
 
 	async setPluginEnabled(pluginId: string, enabled: boolean, scope?: "user" | "project"): Promise<void> {
 		const location = await this.#findInstalled(pluginId);
-		const targetScope = MarketplaceManager.#scopeFor(pluginId, location, scope, "modify");
+		const targetScope = scopeFor(pluginId, location, scope, "modify");
 
 		const reg = targetScope === "project" ? location.projectReg : location.userReg;
 		const entries = targetScope === "project" ? location.projectEntries! : location.userEntries!;
@@ -640,7 +567,7 @@ export class MarketplaceManager {
 
 				let catalogVersion: string | undefined;
 				try {
-					const catalog = await this.#readCatalog(mktEntry);
+					const catalog = await readCatalog(mktEntry);
 					catalogVersion = catalog.plugins.find(p => p.name === parsed.name)?.version;
 				} catch {
 					continue;
@@ -673,7 +600,7 @@ export class MarketplaceManager {
 		}
 
 		const location = await this.#findInstalled(pluginId);
-		const resolvedScope = MarketplaceManager.#scopeFor(pluginId, location, scope, "upgrade");
+		const resolvedScope = scopeFor(pluginId, location, scope, "upgrade");
 
 		return this.installPlugin(parsed.name, parsed.marketplace, { force: true, scope: resolvedScope });
 	}
@@ -770,17 +697,6 @@ export class MarketplaceManager {
 		await Bun.write(this.#runtimeLockPath(scope), JSON.stringify(config, null, 2));
 	}
 
-	async #resolvePluginPackageName(installPath: string, fallbackName: string): Promise<string> {
-		try {
-			const pkg: { name?: unknown } = await Bun.file(path.join(installPath, "package.json")).json();
-			const name = typeof pkg.name === "string" && pkg.name.length > 0 ? pkg.name : fallbackName;
-			return assertRuntimePackageName(name);
-		} catch (err) {
-			if (isEnoent(err)) return assertRuntimePackageName(fallbackName);
-			throw err;
-		}
-	}
-
 	#runtimePackagePath(scope: "user" | "project", packageName: string): string {
 		const nodeModules = path.resolve(this.#nodeModulesPath(scope));
 		const linkPath = path.resolve(nodeModules, assertRuntimePackageName(packageName));
@@ -797,7 +713,7 @@ export class MarketplaceManager {
 	): Promise<Set<string>> {
 		const packageNames = new Set<string>();
 		for (const entry of entries) {
-			packageNames.add(await this.#resolvePluginPackageName(entry.installPath, fallbackName));
+			packageNames.add(await resolvePluginPackageName(entry.installPath, fallbackName));
 		}
 		return packageNames;
 	}
@@ -872,74 +788,158 @@ export class MarketplaceManager {
 		}
 		return { userEntries, projectEntries, userReg, projectReg, inUser, inProject };
 	}
+}
 
-	/**
-	 * The one scope `verb` applies to. A plugin installed in both scopes needs an
-	 * explicit `scope`; a plugin in one scope rejects a `scope` naming the other.
-	 */
-	static #scopeFor(
-		pluginId: string,
-		location: InstalledLocation,
-		scope: "user" | "project" | undefined,
-		verb: string,
-	): "user" | "project" {
-		if (location.inUser && location.inProject) {
-			if (!scope) {
-				throw new Error(
-					`Plugin "${pluginId}" is installed in both user and project scope. ` +
-						`Use --scope user or --scope project to specify which to ${verb}.`,
-				);
-			}
-			return scope;
+async function writeEmbeddedLspConfig(entry: MarketplacePluginEntry, cachePath: string): Promise<void> {
+	const lspServers = entry.lspServers;
+	if (!lspServers) return;
+
+	const targetPath = path.join(cachePath, ".lsp.json");
+	if (typeof lspServers === "string") {
+		const sourcePath = path.resolve(cachePath, lspServers);
+		if (!pathIsWithin(cachePath, sourcePath)) {
+			throw new Error(`Plugin "${entry.name}" lspServers path escapes the plugin directory`);
 		}
-		if (location.inProject) {
-			if (scope === "user") throw new Error(`Plugin "${pluginId}" is not installed in user scope`);
-			return "project";
-		}
-		if (scope === "project") throw new Error(`Plugin "${pluginId}" is not installed in project scope`);
-		return "user";
+		const content = await Bun.file(sourcePath).text();
+		await Bun.write(targetPath, content);
+		return;
 	}
 
-	async #readCatalog(entry: MarketplaceRegistryEntry): Promise<MarketplaceCatalog> {
+	await Bun.write(targetPath, `${JSON.stringify({ servers: lspServers }, null, 2)}\n`);
+}
+
+async function writeEmbeddedDapConfig(entry: MarketplacePluginEntry, cachePath: string): Promise<void> {
+	const dapAdapters = entry.dapAdapters;
+	if (!dapAdapters) return;
+
+	if (typeof dapAdapters === "string") {
+		const sourcePath = path.resolve(cachePath, dapAdapters);
+		if (!pathIsWithin(cachePath, sourcePath)) {
+			throw new Error(`Plugin "${entry.name}" dapAdapters path escapes the plugin directory`);
+		}
+		const extension = path.extname(sourcePath).toLowerCase();
+		const targetFilename = extension === ".yaml" || extension === ".yml" ? `.dap${extension}` : ".dap.json";
+		const targetPath = path.join(cachePath, targetFilename);
+		const content = await Bun.file(sourcePath).text();
+		await Bun.write(targetPath, content);
+		return;
+	}
+
+	const targetPath = path.join(cachePath, ".dap.json");
+	await Bun.write(targetPath, `${JSON.stringify({ adapters: dapAdapters }, null, 2)}\n`);
+}
+
+/**
+ * Resolve plugin version from multiple sources:
+ * 1. Catalog entry version (if set)
+ * 2. Plugin manifest (.claude-plugin/plugin.json or package.json)
+ * 3. Git SHA from source (truncated to 7 chars)
+ * 4. Fallback "0.0.0"
+ */
+async function resolvePluginVersion(entry: MarketplacePluginEntry, sourcePath: string): Promise<string> {
+	// 1. Catalog entry version
+	if (entry.version) return entry.version;
+
+	// 2. Plugin manifest
+	for (const manifestPath of [
+		path.join(sourcePath, ".claude-plugin", "plugin.json"),
+		path.join(sourcePath, "package.json"),
+	]) {
 		try {
-			const content = await Bun.file(entry.catalogPath).text();
-			return parseMarketplaceCatalog(content, entry.catalogPath);
-		} catch (err) {
-			if (isEnoent(err)) {
-				// `/marketplace` IS NOT A COMMAND. It is in no slash-command
-				// declaration table and never was, so the remedy named a route that
-				// exists on no surface at all. `veyyon plugin marketplace update` is
-				// the one that runs, and it re-fetches exactly this catalog.
-				throw new Error(
-					`The catalog for marketplace "${entry.name}" is not on disk at ${entry.catalogPath}, so none of ` +
-						`its plugins can be resolved. Fix: run \`veyyon plugin marketplace update ${entry.name}\` to ` +
-						"fetch it again.",
-				);
+			const content = await Bun.file(manifestPath).json();
+			if (typeof content?.version === "string" && content.version) {
+				return content.version;
 			}
-			throw err;
+		} catch {
+			// Missing or invalid — try next
 		}
 	}
 
-	/**
-	 * Compute the marketplace root directory for source resolution.
-	 *
-	 * For local sources: sourceUri IS the local path, so resolve it directly.
-	 * This gives the directory containing `.claude-plugin/marketplace.json`,
-	 * which is what resolvePluginSource expects as `marketplaceClonePath`.
-	 *
-	 * For remote sources (git/github/url): the catalog was cloned into
-	 * `<marketplacesCacheDir>/<name>/`, so the root is the parent of catalogPath.
-	 */
-	#resolveMarketplaceRoot(entry: MarketplaceRegistryEntry): string {
-		if (entry.sourceType === "local") {
-			// expandHome already happened in fetcher; resolve to ensure absolute.
-			const expanded = entry.sourceUri.startsWith("~/")
-				? path.join(os.homedir(), entry.sourceUri.slice(2))
-				: entry.sourceUri;
-			return path.resolve(expanded);
-		}
-		// For git/github/url sources, the catalog lives at <cloneDir>/marketplace.json
-		// under marketplacesCacheDir/<name>/; parent = <marketplacesCacheDir>/<name>/
-		return path.dirname(entry.catalogPath);
+	// 3. Git SHA from source definition
+	if (typeof entry.source === "object" && "sha" in entry.source && entry.source.sha) {
+		return entry.source.sha.slice(0, 7);
 	}
+
+	return "0.0.0";
+}
+
+async function resolvePluginPackageName(installPath: string, fallbackName: string): Promise<string> {
+	try {
+		const pkg: { name?: unknown } = await Bun.file(path.join(installPath, "package.json")).json();
+		const name = typeof pkg.name === "string" && pkg.name.length > 0 ? pkg.name : fallbackName;
+		return assertRuntimePackageName(name);
+	} catch (err) {
+		if (isEnoent(err)) return assertRuntimePackageName(fallbackName);
+		throw err;
+	}
+}
+
+/**
+ * The one scope `verb` applies to. A plugin installed in both scopes needs an
+ * explicit `scope`; a plugin in one scope rejects a `scope` naming the other.
+ */
+function scopeFor(
+	pluginId: string,
+	location: InstalledLocation,
+	scope: "user" | "project" | undefined,
+	verb: string,
+): "user" | "project" {
+	if (location.inUser && location.inProject) {
+		if (!scope) {
+			throw new Error(
+				`Plugin "${pluginId}" is installed in both user and project scope. ` +
+					`Use --scope user or --scope project to specify which to ${verb}.`,
+			);
+		}
+		return scope;
+	}
+	if (location.inProject) {
+		if (scope === "user") throw new Error(`Plugin "${pluginId}" is not installed in user scope`);
+		return "project";
+	}
+	if (scope === "project") throw new Error(`Plugin "${pluginId}" is not installed in project scope`);
+	return "user";
+}
+
+async function readCatalog(entry: MarketplaceRegistryEntry): Promise<MarketplaceCatalog> {
+	try {
+		const content = await Bun.file(entry.catalogPath).text();
+		return parseMarketplaceCatalog(content, entry.catalogPath);
+	} catch (err) {
+		if (isEnoent(err)) {
+			// `/marketplace` IS NOT A COMMAND. It is in no slash-command
+			// declaration table and never was, so the remedy named a route that
+			// exists on no surface at all. `veyyon plugin marketplace update` is
+			// the one that runs, and it re-fetches exactly this catalog.
+			throw new Error(
+				`The catalog for marketplace "${entry.name}" is not on disk at ${entry.catalogPath}, so none of ` +
+					`its plugins can be resolved. Fix: run \`veyyon plugin marketplace update ${entry.name}\` to ` +
+					"fetch it again.",
+			);
+		}
+		throw err;
+	}
+}
+
+/**
+ * Compute the marketplace root directory for source resolution.
+ *
+ * For local sources: sourceUri IS the local path, so resolve it directly.
+ * This gives the directory containing `.claude-plugin/marketplace.json`,
+ * which is what resolvePluginSource expects as `marketplaceClonePath`.
+ *
+ * For remote sources (git/github/url): the catalog was cloned into
+ * `<marketplacesCacheDir>/<name>/`, so the root is the parent of catalogPath.
+ */
+function resolveMarketplaceRoot(entry: MarketplaceRegistryEntry): string {
+	if (entry.sourceType === "local") {
+		// expandHome already happened in fetcher; resolve to ensure absolute.
+		const expanded = entry.sourceUri.startsWith("~/")
+			? path.join(os.homedir(), entry.sourceUri.slice(2))
+			: entry.sourceUri;
+		return path.resolve(expanded);
+	}
+	// For git/github/url sources, the catalog lives at <cloneDir>/marketplace.json
+	// under marketplacesCacheDir/<name>/; parent = <marketplacesCacheDir>/<name>/
+	return path.dirname(entry.catalogPath);
 }

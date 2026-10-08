@@ -62,33 +62,34 @@ describe("WelcomeController", () => {
 		await initTheme(false);
 	});
 
-	/** The hero block is spacer · card · spacer, in that order, and hasHero
-	 * gates the layout's centring margin — both must flip on mount. */
+	/** The hero mounts as one root child that renders spacer · card · spacer,
+	 * and hasHero gates the layout's centring margin — both must flip on mount. */
 	it("mounts the hero as spacer-card-spacer and reports hasHero", () => {
 		const port = makePort();
 		const controller = new WelcomeController(port);
 		expect(controller.hasHero).toBe(false);
 		controller.mountHero(INPUTS);
 		expect(controller.hasHero).toBe(true);
-		expect(port.uiChildren.length).toBe(3);
-		const cardRows = port.uiChildren[1]!.render(80).length;
-		expect(cardRows).toBeGreaterThan(3);
-		expect(port.uiChildren[0]!.render(80)).toEqual([""]);
-		expect(port.uiChildren[2]!.render(80)).toEqual([""]);
+		expect(port.uiChildren.length).toBe(1);
+		const rows = port.uiChildren[0]!.render(80);
+		expect(rows.length).toBeGreaterThan(5);
+		expect(rows[0]).toBe("");
+		expect(rows[rows.length - 1]).toBe("");
 	});
 
-	/** Dismissal must remove every mounted child AND report card + spacers +
-	 * top-margin rows, or the host's same-frame anchor correction is off by
-	 * the difference and the composer visibly jumps. */
-	it("dismisses the hero, removing all children and reporting exact removed rows", () => {
+	/** Dismissal must empty the hero AND report card + spacers + top-margin
+	 * rows, or the host's same-frame anchor correction is off by the
+	 * difference and the composer visibly jumps. The emptied slot stays
+	 * mounted so its next render can report the rows native scrollback holds. */
+	it("dismisses the hero, emptying it and reporting exact removed rows", () => {
 		const port = makePort(4);
 		const controller = new WelcomeController(port);
 		controller.mountHero(INPUTS);
-		const cardRows = port.uiChildren[1]!.render(80).length;
+		const heroRows = port.uiChildren[0]!.render(80).length;
 		controller.dismiss();
 		expect(controller.hasHero).toBe(false);
-		expect(port.uiChildren).toEqual([]);
-		expect(port.dismissed).toEqual([cardRows + 2 + 4]);
+		expect(port.uiChildren.map(child => child.render(80))).toEqual([[]]);
+		expect(port.dismissed).toEqual([heroRows + 4]);
 	});
 
 	/** Idempotence: the first keystroke and a later explicit dismiss can both
@@ -103,8 +104,8 @@ describe("WelcomeController", () => {
 	});
 
 	/** `/welcome` supersedes the home hero: the full card mounts into the
-	 * TRANSCRIPT (spacer · card · spacer), the hero leaves the UI tree first,
-	 * and the anchor is remeasured on this frame. Two suns / blank-screen
+	 * TRANSCRIPT (spacer · card · spacer), the hero empties first, and the
+	 * anchor is remeasured on this frame. Two suns / blank-screen
 	 * regression (2026-07-22). */
 	it("showFull dismisses the hero, mounts into the chat container, and remeasures", () => {
 		const port = makePort();
@@ -112,7 +113,7 @@ describe("WelcomeController", () => {
 		controller.mountHero(INPUTS);
 		controller.showFull(INPUTS);
 		expect(controller.hasHero).toBe(false);
-		expect(port.uiChildren).toEqual([]);
+		expect(port.uiChildren.map(child => child.render(80))).toEqual([[]]);
 		expect(port.dismissed.length).toBe(1);
 		expect(port.chatChildren.length).toBe(3);
 		// The full card renders the sunrise header + menu — taller than the home hero.

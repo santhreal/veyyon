@@ -109,6 +109,28 @@ function AskEditor({ prefill, onSubmit }: AskEditorProps): ReactNode {
 	);
 }
 
+interface AskOptionProps {
+	label: string;
+	description: string | undefined;
+	checked: boolean;
+	/** Checkbox glyphs instead of radio glyphs. */
+	checkbox: boolean;
+	onPick(): void;
+}
+
+function AskOption({ label, description, checked, checkbox, onPick }: AskOptionProps): ReactNode {
+	const marker = checkbox ? (checked ? "☑" : "☐") : checked ? "◉" : "○";
+	return (
+		<button type="button" className={`sh-ask-option${checked ? " sh-ask-option-checked" : ""}`} onClick={onPick}>
+			<span className="sh-ask-option-marker">{marker}</span>
+			<span className="sh-ask-option-copy">
+				<span className="sh-ask-option-label">{label}</span>
+				{description && <span className="sh-ask-option-description">{description}</span>}
+			</span>
+		</button>
+	);
+}
+
 export function Composer({ client, snapshot }: ComposerProps): ReactNode {
 	const [text, setText] = useState("");
 	const taRef = useRef<HTMLTextAreaElement | null>(null);
@@ -148,24 +170,15 @@ export function Composer({ client, snapshot }: ComposerProps): ReactNode {
 					<div className="sh-ask-options">
 						{uiRequest.options.map((option, index) => {
 							const label = typeof option === "string" ? option : option.label;
-							const checked = uiRequest.checkedIndices?.includes(index) ?? false;
 							return (
-								<button
+								<AskOption
 									key={`${uiRequest.reqId}-${index}-${label}`}
-									type="button"
-									className={`sh-ask-option${checked ? " sh-ask-option-checked" : ""}`}
-									onClick={() => client.sendUiResponse(uiRequest.reqId, label)}
-								>
-									<span className="sh-ask-option-marker">
-										{uiRequest.selectionMarker === "checkbox" ? (checked ? "☑" : "☐") : checked ? "◉" : "○"}
-									</span>
-									<span className="sh-ask-option-copy">
-										<span className="sh-ask-option-label">{label}</span>
-										{typeof option !== "string" && option.description && (
-											<span className="sh-ask-option-description">{option.description}</span>
-										)}
-									</span>
-								</button>
+									label={label}
+									description={typeof option === "string" ? undefined : option.description}
+									checked={uiRequest.checkedIndices?.includes(index) ?? false}
+									checkbox={uiRequest.selectionMarker === "checkbox"}
+									onPick={() => client.sendUiResponse(uiRequest.reqId, label)}
+								/>
 							);
 						})}
 					</div>

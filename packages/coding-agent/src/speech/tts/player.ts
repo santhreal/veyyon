@@ -6,7 +6,6 @@
  * process or touching PATH, and a thin runtime wrapper ({@link playAudioFile})
  * that walks the resulting fallback chain.
  */
-import * as fs from "node:fs/promises";
 import { $which, errorMessage, readPipeText } from "@veyyon/utils";
 import { adoptIntoPrimarySessionCpuBudget } from "../../session/cpu-limit";
 import { getToolPath } from "../../utils/tools-manager";
@@ -131,9 +130,4 @@ export async function playAudioFile(filePath: string, options: PlayAudioOptions 
 	}
 
 	throw new Error(`Audio playback failed:\n${failures.join("\n")}`);
-}
-
-/** Best-effort temp-file cleanup used by callers after playback. */
-export async function removeTempFile(filePath: string): Promise<void> {
-	await fs.unlink(filePath).catch(() => {});
 }

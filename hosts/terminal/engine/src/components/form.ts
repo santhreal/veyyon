@@ -293,17 +293,12 @@ export class Form implements Component, Focusable, MouseRoutable {
 					field.onChange(!field.value);
 				return;
 			case "segmented":
-				this.#segmentedKey(field, data);
+				segmentedKey(field, data);
 				return;
 			case "button":
-				if (isEnter(data) || data === " ") this.#press(field);
+				if (isEnter(data) || data === " ") press(field);
 				return;
 		}
-	}
-
-	#press(field: FormButtonField): void {
-		if (field.disabled) return;
-		field.onPress();
 	}
 
 	#textKey(field: FormTextField, data: string): void {
@@ -372,22 +367,6 @@ export class Form implements Component, Focusable, MouseRoutable {
 		if (next !== field.value) field.onChange(next);
 	}
 
-	#segmentedKey(field: FormSegmentedField, data: string): void {
-		const delta = matchesKey(data, "left") ? -1 : matchesKey(data, "right") || data === " " ? 1 : 0;
-		if (delta === 0 || field.options.length === 0) return;
-		const current = field.options.findIndex(option => option.value === field.value);
-		// With nothing chosen, → is the first option and ← the last; the walk
-		// from -1 would otherwise land ← on the second to last.
-		const index =
-			current < 0
-				? delta > 0
-					? 0
-					: field.options.length - 1
-				: (current + delta + field.options.length) % field.options.length;
-		const next = field.options[index]!;
-		if (next.value !== field.value) field.onChange(next.value);
-	}
-
 	/**
 	 * A report in the form's cells. A click on a field's rows puts the ring on
 	 * it and, for the kinds a click can operate, operates it: the caret lands
@@ -430,7 +409,7 @@ export class Form implements Component, Focusable, MouseRoutable {
 				return;
 			}
 			case "button":
-				this.#press(field);
+				press(field);
 				return;
 		}
 	}
@@ -566,6 +545,27 @@ export class Form implements Component, Focusable, MouseRoutable {
 		this.#geometry = geometry;
 		return lines;
 	}
+}
+
+function press(field: FormButtonField): void {
+	if (field.disabled) return;
+	field.onPress();
+}
+
+function segmentedKey(field: FormSegmentedField, data: string): void {
+	const delta = matchesKey(data, "left") ? -1 : matchesKey(data, "right") || data === " " ? 1 : 0;
+	if (delta === 0 || field.options.length === 0) return;
+	const current = field.options.findIndex(option => option.value === field.value);
+	// With nothing chosen, → is the first option and ← the last; the walk
+	// from -1 would otherwise land ← on the second to last.
+	const index =
+		current < 0
+			? delta > 0
+				? 0
+				: field.options.length - 1
+			: (current + delta + field.options.length) % field.options.length;
+	const next = field.options[index]!;
+	if (next.value !== field.value) field.onChange(next.value);
 }
 
 function isEnter(data: string): boolean {

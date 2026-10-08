@@ -70,6 +70,12 @@ import { DEFAULT_PLAN_FILE_URL } from "../../plan-mode/plan-file-url";
 import { resolvePlanFilePath } from "../../plan-mode/plan-path";
 import type { AgentSession } from "../../session/agent-session";
 import type { AgentSessionEvent } from "../../session/agent-session-types";
+import {
+	type BackgroundHandoff,
+	BackgroundSessions,
+	backgroundHandoff,
+	type KeptSession,
+} from "../../session/background-sessions";
 import { isSilentAbort, SKILL_PROMPT_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "../../session/messages";
 import { executeAcpBuiltinSlashCommand } from "../../slash-commands/acp-builtins";
 import { buildAvailableSlashCommands, toAcpAvailableCommands } from "../../slash-commands/available-commands";
@@ -179,11 +185,26 @@ type ManagedSessionRecord = {
 	toolArgsById: Map<string, unknown>;
 	extensionsConfigured: boolean;
 	// Installed inside `#scheduleBootstrapUpdates` (post-race-guard); released
-	// in `#disposeSessionRecord`. Lives independent of any prompt turn.
+	// in `disposeSessionRecord`. Lives independent of any prompt turn.
 	lifetimeUnsubscribe: (() => void) | undefined;
 	closedError: PromptLifecycleError | undefined;
 	promptEventHandlers: Set<Promise<void>>;
 	extensionUserMessageTasks: Set<Promise<void>>;
+	/**
+	 * The handoff that moved this session to the background, while no client
+	 * view shows it. Its turn keeps running and the pending `session/prompt`
+	 * resolves when the turn ends, but no `session/update` is sent until a
+	 * load or resume re-attaches it.
+	 */
+	background: KeptSession | undefined;
+};
+
+/** A session an ACP connection moved to the background. */
+type BackgroundRecord = {
+	record: ManagedSessionRecord;
+	kept: KeptSession;
+	/** Settles once the record is released after its turn ended; a reclaim leaves it nothing to release. */
+	released: Promise<void>;
 };
 
 type ReplayableMessage = {
@@ -463,6 +484,8 @@ export class AcpAgent implements Agent {
 	#initialSession: AgentSession | undefined;
 	#createSession: CreateAcpSession;
 	#sessions = new Map<string, ManagedSessionRecord>();
+	/** Sessions this connection moved to the background, by ACP session id, until reclaimed or ended. */
+	#backgrounded = new Map<string, BackgroundRecord>();
 	#disposePromise: Promise<void> | undefined;
 	#cleanupRegistered = false;
 	#clientCapabilities: ClientCapabilities | undefined;
@@ -539,7 +562,7 @@ export class AcpAgent implements Agent {
 	}
 
 	async newSession(params: NewSessionRequest): Promise<NewSessionResponse> {
-		this.#assertAbsoluteCwd(params.cwd);
+		assertAbsoluteCwd(params.cwd);
 		const record = await this.#createNewSessionRecord(params.cwd, params.mcpServers);
 		const response: NewSessionResponse = {
 			sessionId: record.session.sessionId,
@@ -551,7 +574,7 @@ export class AcpAgent implements Agent {
 	}
 
 	async loadSession(params: LoadSessionRequest): Promise<LoadSessionResponse> {
-		this.#assertAbsoluteCwd(params.cwd);
+		assertAbsoluteCwd(params.cwd);
 		const record = await this.#loadManagedSession(params.sessionId, params.cwd, params.mcpServers);
 		await this.#replaySessionHistory(record);
 		const response: LoadSessionResponse = {
@@ -564,23 +587,23 @@ export class AcpAgent implements Agent {
 
 	async listSessions(params: ListSessionsRequest): Promise<ListSessionsResponse> {
 		if (params.cwd) {
-			this.#assertAbsoluteCwd(params.cwd);
+			assertAbsoluteCwd(params.cwd);
 		}
 		for (const record of this.#sessions.values()) {
 			await record.session.sessionManager.flush();
 		}
-		const sessions = await this.#listStoredSessions(params.cwd ?? undefined);
-		const offset = this.#parseCursor(params.cursor ?? undefined);
+		const sessions = await listStoredSessions(params.cwd ?? undefined);
+		const offset = parseCursor(params.cursor ?? undefined);
 		const paged = sessions.slice(offset, offset + SESSION_PAGE_SIZE);
 		const nextOffset = offset + paged.length;
 		return {
-			sessions: paged.map(session => this.#toSessionInfo(session)),
+			sessions: paged.map(session => toSessionInfo(session)),
 			nextCursor: nextOffset < sessions.length ? String(nextOffset) : undefined,
 		};
 	}
 
 	async resumeSession(params: ResumeSessionRequest): Promise<ResumeSessionResponse> {
-		this.#assertAbsoluteCwd(params.cwd);
+		assertAbsoluteCwd(params.cwd);
 		const record = await this.#loadManagedSession(params.sessionId, params.cwd, params.mcpServers ?? []);
 		const response: ResumeSessionResponse = {
 			configOptions: this.#buildConfigOptions(record.session),
@@ -591,7 +614,7 @@ export class AcpAgent implements Agent {
 	}
 
 	async unstable_forkSession(params: ForkSessionRequest): Promise<ForkSessionResponse> {
-		this.#assertAbsoluteCwd(params.cwd);
+		assertAbsoluteCwd(params.cwd);
 		const record = await this.#forkManagedSession(params);
 		const response: ForkSessionResponse = {
 			sessionId: record.session.sessionId,
@@ -636,7 +659,7 @@ export class AcpAgent implements Agent {
 				await this.#setModelById(record.session, params.value);
 				break;
 			case THINKING_CONFIG_ID:
-				this.#setThinkingLevelById(record.session, params.value);
+				setThinkingLevelById(record.session, params.value);
 				break;
 			default:
 				throw new Error(`Unknown ACP config option: ${params.configId}`);
@@ -696,16 +719,16 @@ export class AcpAgent implements Agent {
 				await previousTurn.promise.catch(() => undefined);
 				await previousTurn.cleanup;
 			}
-			this.#throwIfRecordClosed(record);
+			throwIfRecordClosed(record);
 
-			const converted = this.#convertPromptBlocks(params.prompt);
+			const converted = convertPromptBlocks(params.prompt);
 			const pendingPrompt = Promise.withResolvers<PromptResponse>();
 			record.promptTurn = {
 				cancelRequested: false,
 				settled: false,
 				errorTextDelivery: undefined,
 				cleanup: undefined,
-				usageBaseline: this.#cloneUsageStatistics(record.session.sessionManager.getUsageStatistics()),
+				usageBaseline: cloneUsageStatistics(record.session.sessionManager.getUsageStatistics()),
 				unsubscribe: undefined,
 				resolve: pendingPrompt.resolve,
 				reject: pendingPrompt.reject,
@@ -717,7 +740,7 @@ export class AcpAgent implements Agent {
 			});
 
 			this.#runPromptOrCommand(record, converted.text, converted.images).catch((error: unknown) => {
-				this.#finishPrompt(record, undefined, error);
+				finishPrompt(record, undefined, error);
 			});
 
 			return await pendingPrompt.promise;
@@ -733,7 +756,7 @@ export class AcpAgent implements Agent {
 			release: releaseQueue,
 		};
 		await previousQueue.promise;
-		this.#throwIfRecordClosed(record);
+		throwIfRecordClosed(record);
 		try {
 			return await run();
 		} finally {
@@ -742,16 +765,6 @@ export class AcpAgent implements Agent {
 				record.promptQueue.release = undefined;
 			}
 		}
-	}
-
-	#throwIfRecordClosed(record: ManagedSessionRecord): void {
-		if (record.closedError) {
-			throw record.closedError;
-		}
-	}
-
-	#createPromptLifecycleError(message: string): PromptLifecycleError {
-		return Object.assign(new Error(message), { code: "ACP_SESSION_CLOSED" as const });
 	}
 
 	#trackPromptEvent(record: ManagedSessionRecord, event: AgentSessionEvent): void {
@@ -764,37 +777,8 @@ export class AcpAgent implements Agent {
 		});
 	}
 
-	async #waitForPromptEventHandlers(record: ManagedSessionRecord): Promise<void> {
-		while (record.promptEventHandlers.size > 0) {
-			await Promise.allSettled(Array.from(record.promptEventHandlers));
-		}
-	}
-
-	#trackExtensionUserMessage(record: ManagedSessionRecord, task: Promise<void>): void {
-		const tracked = task.catch((error: unknown) => {
-			logger.warn("ACP extension sendUserMessage failed", { error });
-		});
-		record.extensionUserMessageTasks.add(tracked);
-		void tracked.finally(() => {
-			record.extensionUserMessageTasks.delete(tracked);
-		});
-	}
-
-	async #waitForExtensionUserMessages(
-		record: ManagedSessionRecord,
-		baseline: ReadonlySet<Promise<void>>,
-	): Promise<void> {
-		while (true) {
-			const pending = Array.from(record.extensionUserMessageTasks).filter(task => !baseline.has(task));
-			if (pending.length === 0) {
-				return;
-			}
-			await Promise.allSettled(pending);
-		}
-	}
-
 	async #runPromptOrCommand(record: ManagedSessionRecord, text: string, images: AgentImageContent[]): Promise<void> {
-		const skillResult = await this.#tryRunSkillCommand(record, text);
+		const skillResult = await tryRunSkillCommand(record, text);
 		if (skillResult) {
 			return;
 		}
@@ -827,11 +811,10 @@ export class AcpAgent implements Agent {
 				return;
 			}
 			const promptTurn = record.promptTurn;
-			this.#finishPrompt(record, {
+			finishPrompt(record, {
 				stopReason: "end_turn",
-				usage: this.#buildTurnUsage(
-					promptTurn?.usageBaseline ??
-						this.#cloneUsageStatistics(record.session.sessionManager.getUsageStatistics()),
+				usage: buildTurnUsage(
+					promptTurn?.usageBaseline ?? cloneUsageStatistics(record.session.sessionManager.getUsageStatistics()),
 					record.session.sessionManager.getUsageStatistics(),
 				),
 			});
@@ -846,36 +829,10 @@ export class AcpAgent implements Agent {
 		// subscribed until those scheduled prompts and their event handlers drain;
 		// only then is `false` proof that the slash command was purely local.
 		if (!agentInvoked) {
-			await this.#waitForExtensionUserMessages(record, extensionPromptBaseline);
-			await this.#waitForPromptEventHandlers(record);
-			this.#finishPrompt(record, { stopReason: "end_turn" });
+			await waitForExtensionUserMessages(record, extensionPromptBaseline);
+			await waitForPromptEventHandlers(record);
+			finishPrompt(record, { stopReason: "end_turn" });
 		}
-	}
-
-	async #tryRunSkillCommand(record: ManagedSessionRecord, text: string): Promise<boolean> {
-		if (!record.session.skillsSettings?.enableSkillCommands) {
-			return false;
-		}
-		const parsed = parseSkillInvocation(text);
-		if (!parsed) {
-			return false;
-		}
-		const skill = record.session.skills.find(candidate => candidate.name === parsed.name);
-		if (!skill) {
-			return false;
-		}
-		const built = await buildSkillPromptMessage(skill, parsed.args, "user");
-		await record.session.promptCustomMessage(
-			{
-				customType: SKILL_PROMPT_MESSAGE_TYPE,
-				content: built.message,
-				display: true,
-				details: built.details,
-				attribution: "user",
-			},
-			{ streamingBehavior: "steer" },
-		);
-		return true;
 	}
 
 	async cancel(params: { sessionId: string }): Promise<void> {
@@ -908,9 +865,9 @@ export class AcpAgent implements Agent {
 		promptTurn.unsubscribe?.();
 		const cleanup = this.#runCancelCleanup(record, promptTurn);
 		promptTurn.cleanup = cleanup;
-		this.#finishPrompt(record, {
+		finishPrompt(record, {
 			stopReason: "cancelled",
-			usage: this.#buildTurnUsage(promptTurn.usageBaseline, record.session.sessionManager.getUsageStatistics()),
+			usage: buildTurnUsage(promptTurn.usageBaseline, record.session.sessionManager.getUsageStatistics()),
 		});
 		return cleanup;
 	}
@@ -926,7 +883,7 @@ export class AcpAgent implements Agent {
 		} finally {
 			clearTimeout(timer);
 			// Order matters: clear `cleanup` before evicting the slot so the slot-eviction
-			// branch matches what `#finishPrompt` saw if it ran first.
+			// branch matches what `finishPrompt` saw if it ran first.
 			promptTurn.cleanup = undefined;
 			if (promptTurn.settled && record.promptTurn === promptTurn) {
 				record.promptTurn = undefined;
@@ -946,7 +903,7 @@ export class AcpAgent implements Agent {
 				const sessions = await SessionManager.listAll();
 				const sorted = sessions.sort((l, r) => r.modified.getTime() - l.modified.getTime()).slice(0, limit);
 				return {
-					sessions: sorted.map(s => this.#toSessionInfo(s)),
+					sessions: sorted.map(s => toSessionInfo(s)),
 					total: sessions.length,
 				};
 			}
@@ -984,7 +941,7 @@ export class AcpAgent implements Agent {
 				const limit = typeof params.limit === "number" ? clampLow(params.limit as number, 1, 500) : 100;
 				const sessions = await SessionManager.list(cwd);
 				const sorted = sessions.sort((l, r) => r.modified.getTime() - l.modified.getTime()).slice(0, limit);
-				return { sessions: sorted.map(s => this.#toSessionInfo(s)) };
+				return { sessions: sorted.map(s => toSessionInfo(s)) };
 			}
 			case "_veyyon/usage": {
 				const [firstRecord] = this.#sessions.values();
@@ -1011,6 +968,21 @@ export class AcpAgent implements Agent {
 				}
 				enableProvider(providerId);
 				return { enabled: true };
+			}
+			case "_veyyon/sessions/background": {
+				const sessionId = params.sessionId;
+				if (typeof sessionId !== "string") throw new Error("sessionId required");
+				return { background: this.#moveToBackground(sessionId) ?? null };
+			}
+			case "_veyyon/sessions/background/list":
+				return { sessions: BackgroundSessions.global().list() };
+			case "_veyyon/sessions/background/cancel": {
+				const sessionId = params.sessionId;
+				if (typeof sessionId !== "string") throw new Error("sessionId required");
+				if (!(await BackgroundSessions.global().cancel(sessionId, USER_INTERRUPT_LABEL))) {
+					throw new Error(`No background conversation ${sessionId}`);
+				}
+				return { sessionId };
 			}
 			default:
 				throw new Error(`Unknown ACP ext method: ${method}`);
@@ -1046,19 +1018,22 @@ export class AcpAgent implements Agent {
 		try {
 			await session.sessionManager.ensureOnDisk();
 		} catch (error) {
-			await this.#disposeStandaloneSession(session);
+			await disposeStandaloneSession(session);
 			throw error;
 		}
 		return await this.#registerPreparedSession(session, mcpServers);
 	}
 
 	async #loadManagedSession(sessionId: string, cwd: string, mcpServers: McpServer[]): Promise<ManagedSessionRecord> {
-		const existing = this.#sessions.get(sessionId);
+		const existing = this.#sessions.get(sessionId) ?? this.#reclaimBackgrounded(sessionId, cwd);
 		if (existing) {
-			this.#assertMatchingCwd(existing.session, cwd);
+			assertMatchingCwd(existing.session, cwd);
 			await this.#configureMcpServers(existing, mcpServers);
 			return existing;
 		}
+		// Its turn ended while the claim was being made: wait until its record is
+		// released and its transcript closed, then open it from disk like any stored session.
+		await this.#backgrounded.get(sessionId)?.released;
 
 		const storedSession = await this.#findStoredSession(sessionId, cwd);
 		if (!storedSession) {
@@ -1080,7 +1055,7 @@ export class AcpAgent implements Agent {
 				throw new Error(`ACP session fork failed: ${params.sessionId}`);
 			}
 		} catch (error) {
-			await this.#disposeStandaloneSession(session);
+			await disposeStandaloneSession(session);
 			throw error;
 		}
 		return await this.#registerPreparedSession(session, params.mcpServers ?? []);
@@ -1099,14 +1074,14 @@ export class AcpAgent implements Agent {
 				throw new Error(`ACP session load was cancelled: ${sessionId}`);
 			}
 		} catch (error) {
-			await this.#disposeStandaloneSession(session);
+			await disposeStandaloneSession(session);
 			throw error;
 		}
 		return await this.#registerPreparedSession(session, mcpServers);
 	}
 
 	async #registerPreparedSession(session: AgentSession, mcpServers: McpServer[]): Promise<ManagedSessionRecord> {
-		const record = this.#createManagedSessionRecord(session);
+		const record = createManagedSessionRecord(session);
 		session.setClientBridge(createAcpClientBridge(this.#connection, session.sessionId, this.#clientCapabilities));
 		// `record.lifetimeUnsubscribe` is installed in `#scheduleBootstrapUpdates`
 		// so it shares the bootstrap race guard — see that comment for why.
@@ -1116,26 +1091,9 @@ export class AcpAgent implements Agent {
 			this.#sessions.set(session.sessionId, record);
 			return record;
 		} catch (error) {
-			await this.#disposeSessionRecord(record);
+			await disposeSessionRecord(record);
 			throw error;
 		}
-	}
-
-	#createManagedSessionRecord(session: AgentSession): ManagedSessionRecord {
-		return {
-			session,
-			mcpManager: undefined,
-			promptTurn: undefined,
-			promptQueue: { promise: Promise.resolve(), release: undefined },
-			liveMessageId: undefined,
-			liveMessageProgress: undefined,
-			toolArgsById: new Map(),
-			extensionsConfigured: false,
-			closedError: undefined,
-			promptEventHandlers: new Set(),
-			extensionUserMessageTasks: new Set(),
-			lifetimeUnsubscribe: undefined,
-		};
 	}
 
 	async #handleLifetimeEvent(record: ManagedSessionRecord, event: AgentSessionEvent): Promise<void> {
@@ -1155,17 +1113,62 @@ export class AcpAgent implements Agent {
 	#getSessionRecord(sessionId: string): ManagedSessionRecord {
 		const record = this.#sessions.get(sessionId);
 		if (!record) {
+			if (this.#backgrounded.has(sessionId)) {
+				throw new Error(`ACP session ${sessionId} is running in the background; load or resume it first`);
+			}
 			throw new Error(`Unsupported ACP session: ${sessionId}`);
 		}
 		return record;
 	}
 
-	#assertMatchingCwd(session: AgentSession, cwd: string): void {
-		const expected = path.resolve(cwd);
-		const actual = path.resolve(session.sessionManager.getCwd());
-		if (actual !== expected) {
-			throw new Error(`ACP session ${session.sessionId} is already loaded for ${actual}, not ${expected}`);
-		}
+	/**
+	 * Stop showing `sessionId` to the client and let its running turn finish.
+	 * Resolves `undefined`, moving nothing, when the session is not streaming.
+	 */
+	#moveToBackground(sessionId: string): BackgroundHandoff | undefined {
+		const record = this.#getSessionRecord(sessionId);
+		if (!record.session.isStreaming) return undefined;
+		const limit = record.session.settings.get("session.backgroundLimit");
+		// Registered before the record detaches: an invalid limit throws while the client still drives it.
+		const kept = BackgroundSessions.global().keep(record.session, limit);
+		this.#sessions.delete(sessionId);
+		record.background = kept;
+		record.lifetimeUnsubscribe?.();
+		record.lifetimeUnsubscribe = undefined;
+		this.#backgrounded.set(sessionId, {
+			record,
+			kept,
+			released: kept.settled.then(() => this.#releaseBackgrounded(sessionId, kept)),
+		});
+		return backgroundHandoff(kept, limit);
+	}
+
+	/** The background record for `sessionId`, attached again; `undefined` when none is still running. */
+	#reclaimBackgrounded(sessionId: string, cwd: string): ManagedSessionRecord | undefined {
+		const entry = this.#backgrounded.get(sessionId);
+		if (!entry) return undefined;
+		const { record, kept } = entry;
+		// Checked before the reclaim, so a load for the wrong directory leaves it running in the background.
+		assertMatchingCwd(record.session, cwd);
+		if (!BackgroundSessions.global().reclaim(kept)) return undefined;
+		this.#backgrounded.delete(sessionId);
+		record.background = undefined;
+		this.#sessions.set(sessionId, record);
+		return record;
+	}
+
+	/** Release the record `kept` belongs to once its turn ended, unless a load reclaimed it first. */
+	async #releaseBackgrounded(sessionId: string, kept: KeptSession): Promise<void> {
+		const entry = this.#backgrounded.get(sessionId);
+		if (entry?.kept !== kept) return;
+		this.#backgrounded.delete(sessionId);
+		const { record } = entry;
+		record.closedError ??= createPromptLifecycleError("ACP session ended in the background");
+		// The `agent_end` handler answers the pending prompt with the turn's stop
+		// reason. A stop at disposal can end the turn without one: answer it here.
+		await waitForPromptEventHandlers(record);
+		finishPrompt(record, { stopReason: "cancelled" });
+		await disposeSessionRecord(record);
 	}
 
 	async #resolveForkSourceSessionPath(sessionId: string): Promise<string> {
@@ -1199,7 +1202,7 @@ export class AcpAgent implements Agent {
 			record.toolArgsById.set(event.toolCallId, event.args);
 		}
 
-		this.#prepareLiveAssistantMessage(record, event);
+		prepareLiveAssistantMessage(record, event);
 		const imageDataCache = new Map<string, string>();
 		const resolveImageDataForAcp = (data: string, mimeType: string | undefined): string => {
 			const key = `${mimeType ?? ""}\u0000${data}`;
@@ -1213,13 +1216,18 @@ export class AcpAgent implements Agent {
 			event.type === "message_update" &&
 			event.message.role === "assistant" &&
 			event.assistantMessageEvent.type === "error";
-		for (const notification of mapAgentSessionEventToAcpSessionUpdates(event, record.session.sessionId, {
-			getMessageId: message => this.#getLiveMessageId(record, message),
-			getMessageProgress: message => this.#getLiveMessageProgress(record, message),
-			getToolArgs: toolCallId => record.toolArgsById.get(toolCallId),
-			cwd: record.session.sessionManager.getCwd(),
-			resolveImageData: resolveImageDataForAcp,
-		})) {
+		// A session in the background has no client view: its turn state is kept
+		// current, and delivery resumes from the next event once it is reclaimed.
+		const notifications = record.background
+			? []
+			: mapAgentSessionEventToAcpSessionUpdates(event, record.session.sessionId, {
+					getMessageId: message => getLiveMessageId(record, message),
+					getMessageProgress: message => getLiveMessageProgress(record, message),
+					getToolArgs: toolCallId => record.toolArgsById.get(toolCallId),
+					cwd: record.session.sessionManager.getCwd(),
+					resolveImageData: resolveImageDataForAcp,
+				});
+		for (const notification of notifications) {
 			const delivery = this.#connection.sessionUpdate(notification);
 			if (streamedAssistantError) {
 				// Resolves true only once the error chunk actually reached the
@@ -1236,18 +1244,20 @@ export class AcpAgent implements Agent {
 		if (event.type === "tool_execution_end") {
 			record.toolArgsById.delete(event.toolCallId);
 		}
-		this.#clearLiveAssistantMessageAfterEvent(record, event);
+		clearLiveAssistantMessageAfterEvent(record, event);
 
 		if (event.type === "agent_end") {
-			await this.#flushMissedFinalAssistantText(record, event);
-			await this.#flushUnreportedTurnError(record, event);
-			await this.#emitEndOfTurnUpdates(record);
-			await this.#waitForAcpPromptIdle(record);
+			if (!record.background) {
+				await this.#flushMissedFinalAssistantText(record, event);
+				await this.#flushUnreportedTurnError(record, event);
+				await this.#emitEndOfTurnUpdates(record);
+			}
+			await waitForAcpPromptIdle(record);
 			record.liveMessageId = undefined;
 			record.liveMessageProgress = undefined;
-			this.#finishPrompt(record, {
-				stopReason: this.#resolveStopReason(event, promptTurn.cancelRequested),
-				usage: this.#buildTurnUsage(promptTurn.usageBaseline, record.session.sessionManager.getUsageStatistics()),
+			finishPrompt(record, {
+				stopReason: resolveStopReason(event, promptTurn.cancelRequested),
+				usage: buildTurnUsage(promptTurn.usageBaseline, record.session.sessionManager.getUsageStatistics()),
 			});
 		}
 	}
@@ -1259,7 +1269,7 @@ export class AcpAgent implements Agent {
 	 * `agent_end` is flushed through the session's `#endInFlight` path while the
 	 * assistant `message_end` fan-out can still be parked on extension delivery —
 	 * so `agent_end` can overtake `message_end`. Once the turn finishes,
-	 * `#finishPrompt` unsubscribes and the fallback text emission in
+	 * `finishPrompt` unsubscribes and the fallback text emission in
 	 * `mapAssistantMessageEnd` is lost for good: a client that only received
 	 * `agent_thought_chunk`s stays stuck on the thinking block (#4902). The live
 	 * message progress records whether visible text ever reached the client; if
@@ -1345,117 +1355,6 @@ export class AcpAgent implements Agent {
 		});
 	}
 
-	async #waitForAcpPromptIdle(record: ManagedSessionRecord): Promise<void> {
-		for (let pass = 0; pass < ACP_ASYNC_DELIVERY_DRAIN_MAX_PASSES; pass++) {
-			await record.session.waitForIdle();
-			const delivered = await record.session.drainAsyncJobDeliveriesForAcp({
-				timeoutMs: ACP_ASYNC_DELIVERY_DRAIN_TIMEOUT_MS,
-			});
-			if (!delivered) {
-				return;
-			}
-		}
-
-		await record.session.waitForIdle();
-	}
-
-	#prepareLiveAssistantMessage(record: ManagedSessionRecord, event: AgentSessionEvent): void {
-		if (
-			(event.type === "message_start" || event.type === "message_update" || event.type === "message_end") &&
-			event.message.role === "assistant" &&
-			(event.type === "message_start" || !record.liveMessageId || !record.liveMessageProgress)
-		) {
-			record.liveMessageId = crypto.randomUUID();
-			record.liveMessageProgress = { textEmitted: false, thoughtEmitted: false };
-		}
-	}
-
-	/**
-	 * Reset live-message tracking once the assistant `message_end` is handled.
-	 * The `agent_end` reset happens inside the `agent_end` branch of
-	 * `#handlePromptEvent` — after `#flushMissedFinalAssistantText` — so a
-	 * `message_end` that arrives during the end-of-turn waits maps against the
-	 * real progress instead of resurrecting a fresh one (which would double-emit
-	 * the final answer).
-	 */
-	#clearLiveAssistantMessageAfterEvent(record: ManagedSessionRecord, event: AgentSessionEvent): void {
-		if (event.type === "message_end" && event.message.role === "assistant") {
-			record.liveMessageId = undefined;
-			record.liveMessageProgress = undefined;
-		}
-	}
-
-	#getLiveMessageId(record: ManagedSessionRecord, message: unknown): string | undefined {
-		if (typeof message !== "object" || message === null) {
-			return undefined;
-		}
-		record.liveMessageId ??= crypto.randomUUID();
-		return record.liveMessageId;
-	}
-
-	#getLiveMessageProgress(
-		record: ManagedSessionRecord,
-		message: unknown,
-	): { textEmitted: boolean; thoughtEmitted: boolean } | undefined {
-		if (typeof message !== "object" || message === null) {
-			return undefined;
-		}
-		record.liveMessageProgress ??= { textEmitted: false, thoughtEmitted: false };
-		return record.liveMessageProgress;
-	}
-
-	#finishPrompt(record: ManagedSessionRecord, response?: PromptResponse, error?: unknown): void {
-		const promptTurn = record.promptTurn;
-		if (!promptTurn || promptTurn.settled) {
-			return;
-		}
-		promptTurn.settled = true;
-		promptTurn.unsubscribe?.();
-		// Keep the slot occupied until cancel cleanup finishes — `#runCancelCleanup`
-		// evicts the slot in its finally block once both flags say it's safe.
-		if (!promptTurn.cleanup && record.promptTurn === promptTurn) {
-			record.promptTurn = undefined;
-		}
-		if (error !== undefined) {
-			promptTurn.reject(error);
-			return;
-		}
-		promptTurn.resolve(response ?? { stopReason: "end_turn" });
-	}
-
-	#resolveStopReason(
-		event: Extract<AgentSessionEvent, { type: "agent_end" }>,
-		cancelRequested: boolean,
-	): PromptResponse["stopReason"] {
-		if (cancelRequested) {
-			return "cancelled";
-		}
-		let lastAssistant: AssistantMessage | undefined;
-		for (let mi = event.messages.length - 1; mi >= 0; mi -= 1) {
-			const message = event.messages[mi]!;
-			if (message.role === "assistant") {
-				lastAssistant = message as AssistantMessage;
-				break;
-			}
-		}
-		const reason = lastAssistant?.stopReason;
-		switch (reason) {
-			case "aborted":
-				return "cancelled";
-			case "length":
-				return "max_tokens";
-			case "error": {
-				const errorMessage = lastAssistant?.errorMessage ?? "";
-				if (/content[_ ]?filter|refus(al|ed)/i.test(errorMessage)) {
-					return "refusal";
-				}
-				return "end_turn";
-			}
-			default:
-				return "end_turn";
-		}
-	}
-
 	async #emitCommandOutput(record: ManagedSessionRecord, text: string): Promise<void> {
 		if (!text) {
 			return;
@@ -1468,50 +1367,6 @@ export class AcpAgent implements Agent {
 				messageId: crypto.randomUUID(),
 			},
 		});
-	}
-
-	#assertAbsoluteCwd(cwd: string): void {
-		if (!path.isAbsolute(cwd)) {
-			throw new Error(`ACP cwd must be absolute: ${cwd}`);
-		}
-	}
-
-	#convertPromptBlocks(blocks: PromptRequest["prompt"]): { text: string; images: AgentImageContent[] } {
-		const textParts: string[] = [];
-		const images: AgentImageContent[] = [];
-		for (const block of blocks) {
-			switch (block.type) {
-				case "text":
-					textParts.push(block.text);
-					break;
-				case "image":
-					images.push({ type: "image", data: block.data, mimeType: block.mimeType });
-					break;
-				case "resource":
-					if ("text" in block.resource) {
-						textParts.push(block.resource.text);
-					} else if (typeof block.resource.mimeType === "string" && block.resource.mimeType.startsWith("image/")) {
-						// `embeddedContext: true` covers both text and blob resources, but
-						// blobs aren't directly consumable by the LLM. Route image blobs
-						// to the images array so the user's intent survives; everything
-						// else falls back to the URI placeholder below.
-						images.push({ type: "image", data: block.resource.blob, mimeType: block.resource.mimeType });
-					} else {
-						textParts.push(`[embedded resource: ${block.resource.uri}]`);
-					}
-					break;
-				case "resource_link":
-					textParts.push(block.title ?? block.name ?? block.uri);
-					break;
-				case "audio":
-					textParts.push("[audio omitted]");
-					break;
-			}
-		}
-		return {
-			text: textParts.join("\n\n").trim(),
-			images,
-		};
 	}
 
 	async #pushConfigOptionUpdate(record: ManagedSessionRecord): Promise<void> {
@@ -1529,8 +1384,8 @@ export class AcpAgent implements Agent {
 	}
 
 	#buildConfigOptions(session: AgentSession): SessionConfigOption[] {
-		const currentModeId = this.#getCurrentModeId(session);
-		const modeOptions = this.#getAvailableModes(session).map(mode => ({
+		const currentModeId = getCurrentModeId(session);
+		const modeOptions = getAvailableModes(session).map(mode => ({
 			value: mode.id,
 			name: mode.name,
 			description: mode.description,
@@ -1554,16 +1409,16 @@ export class AcpAgent implements Agent {
 				name: "Model",
 				category: "model",
 				type: "select",
-				currentValue: currentModel ? this.#toModelId(currentModel) : this.#toModelId(models[0]),
+				currentValue: currentModel ? toModelId(currentModel) : toModelId(models[0]),
 				options: models.map(model => ({
-					value: this.#toModelId(model),
+					value: toModelId(model),
 					name: model.name,
 					description: `${model.provider}/${model.id}`,
 				})),
 			});
 		}
 
-		const thinkingOptions = this.#buildThinkingOptions(session);
+		const thinkingOptions = buildThinkingOptions(session);
 		// A model with no controllable effort surface (non-reasoning, or effort
 		// baked into the model id) gets no Thinking option at all: an empty
 		// select would offer choices that all refuse.
@@ -1573,8 +1428,8 @@ export class AcpAgent implements Agent {
 				name: "Thinking",
 				category: "thought_level",
 				type: "select",
-				currentValue: this.#toThinkingConfigValue(
-					session.model?.reasoning ? this.#getConfiguredThinkingLevel(session) : undefined,
+				currentValue: toThinkingConfigValue(
+					session.model?.reasoning ? getConfiguredThinkingLevel(session) : undefined,
 				),
 				options: thinkingOptions,
 			});
@@ -1582,79 +1437,16 @@ export class AcpAgent implements Agent {
 		return configOptions;
 	}
 
-	#buildThinkingOptions(session: AgentSession): Array<{ value: string; name: string; description?: string }> {
-		// The row's declared choices, in cycle order: off/auto only when the row
-		// accepts them, levels exactly as declared. Never the fixed ladder.
-		return configuredThinkingLevelsForModel(session.model).map(level => {
-			const metadata = getConfiguredThinkingLevelMetadata(level);
-			return { value: level, name: metadata.label, description: metadata.description };
-		});
-	}
-	#getConfiguredThinkingLevel(session: AgentSession): string | undefined {
-		const configuredThinkingLevel = (session as { configuredThinkingLevel?: () => string | undefined })
-			.configuredThinkingLevel;
-		return typeof configuredThinkingLevel === "function"
-			? configuredThinkingLevel.call(session)
-			: session.thinkingLevel;
-	}
-
-	#toThinkingConfigValue(value: string | undefined): string {
-		return value && value !== "inherit" ? value : THINKING_OFF;
-	}
-
 	async #setModelById(session: AgentSession, modelId: string): Promise<void> {
-		const model = session.getAvailableModels().find(candidate => this.#toModelId(candidate) === modelId);
+		const model = session.getAvailableModels().find(candidate => toModelId(candidate) === modelId);
 		if (!model) {
 			throw new Error(`Unknown ACP model: ${modelId}`);
 		}
 		await session.setModel(model);
 	}
 
-	#setThinkingLevelById(session: AgentSession, value: string): void {
-		const thinkingLevel = parseConfiguredThinkingLevel(value);
-		if (!thinkingLevel) {
-			throw new Error(`Unknown ACP thinking level: ${value}`);
-		}
-		// A session with no resolved model has no row to narrow against, so the
-		// level is stored and clamped when one arrives. The narrowing helper offers
-		// nothing for a model it cannot read, so the skip is stated here.
-		if (!session.model) {
-			session.setThinkingLevel(thinkingLevel);
-			return;
-		}
-		const choices = configuredThinkingLevelsForModel(session.model);
-		if (!choices.includes(thinkingLevel)) {
-			const accepted = choices.length > 0 ? choices.join(", ") : "none (this model exposes no effort control)";
-			throw new Error(
-				`${session.model?.provider}/${session.model?.id} does not accept thinking level ${value}. Accepted: ${accepted}`,
-			);
-		}
-		session.setThinkingLevel(thinkingLevel);
-	}
-
-	#toModelId(model: Model): string {
-		return `${model.provider}/${model.id}`;
-	}
-
-	#getAvailableModes(session: AgentSession): Array<{ id: string; name: string; description: string }> {
-		const modes = [{ id: ACP_DEFAULT_MODE_ID, name: "Default", description: "Standard ACP headless mode" }];
-		if (session.settings.get("plan.enabled")) {
-			modes.push({
-				id: ACP_PLAN_MODE_ID,
-				name: "Plan",
-				description: "Read-only planning mode that drafts a plan to a markdown file before any code changes",
-			});
-		}
-		void session;
-		return modes;
-	}
-
-	#getCurrentModeId(session: AgentSession): string {
-		return session.getPlanModeState()?.enabled ? ACP_PLAN_MODE_ID : ACP_DEFAULT_MODE_ID;
-	}
-
 	#applyModeChange(session: AgentSession, modeId: string): void {
-		const availableModes = this.#getAvailableModes(session);
+		const availableModes = getAvailableModes(session);
 		if (!availableModes.some(mode => mode.id === modeId)) {
 			throw new Error(`Unsupported ACP mode: ${modeId}`);
 		}
@@ -1755,18 +1547,8 @@ export class AcpAgent implements Agent {
 		});
 	}
 
-	#resolveAcpPlanFilePath(session: AgentSession, planFilePath: string): string {
-		return resolvePlanFilePath(planFilePath, {
-			localProtocol: {
-				getArtifactsDir: () => session.sessionManager.getArtifactsDir(),
-				getSessionId: () => session.sessionManager.getSessionId(),
-			},
-			cwd: session.sessionManager.getCwd(),
-		});
-	}
-
 	async #readAcpPlanFile(session: AgentSession, planFilePath: string): Promise<string | null> {
-		const resolvedPath = this.#resolveAcpPlanFilePath(session, planFilePath);
+		const resolvedPath = resolveAcpPlanFilePath(session, planFilePath);
 		try {
 			return await Bun.file(resolvedPath).text();
 		} catch (error) {
@@ -1780,7 +1562,7 @@ export class AcpAgent implements Agent {
 	/** `local://` URLs of plan files in the session-local root, newest first —
 	 *  the `resolveApprovedPlan` fallback for a dropped `extra.title`. */
 	async #listAcpLocalPlanFiles(session: AgentSession): Promise<string[]> {
-		return listLocalPlanFileUrls(this.#resolveAcpPlanFilePath(session, "local://"));
+		return listLocalPlanFileUrls(resolveAcpPlanFilePath(session, "local://"));
 	}
 
 	/**
@@ -1817,32 +1599,15 @@ export class AcpAgent implements Agent {
 
 	#buildModeState(session: AgentSession): SessionModeState {
 		return {
-			availableModes: this.#getAvailableModes(session),
-			currentModeId: this.#getCurrentModeId(session),
+			availableModes: getAvailableModes(session),
+			currentModeId: getCurrentModeId(session),
 		};
 	}
 
 	#buildCurrentModeUpdate(session: AgentSession): SessionUpdate {
 		return {
 			sessionUpdate: "current_mode_update",
-			currentModeId: this.#getCurrentModeId(session),
-		};
-	}
-
-	async #buildAvailableCommands(session: AgentSession): Promise<AvailableCommand[]> {
-		return toAcpAvailableCommands(await buildAvailableSlashCommands(session));
-	}
-
-	#toSessionInfo(session: StoredSessionInfo): SessionInfo {
-		return {
-			sessionId: session.id,
-			cwd: session.cwd,
-			title: session.title,
-			updatedAt: session.modified.toISOString(),
-			_meta: {
-				messageCount: session.messageCount,
-				size: session.size,
-			},
+			currentModeId: getCurrentModeId(session),
 		};
 	}
 
@@ -1891,7 +1656,7 @@ export class AcpAgent implements Agent {
 			sessionId,
 			update: {
 				sessionUpdate: "available_commands_update",
-				availableCommands: await this.#buildAvailableCommands(record.session),
+				availableCommands: await buildAvailableCommands(record.session),
 			},
 		});
 		await this.#connection.sessionUpdate({
@@ -1909,7 +1674,7 @@ export class AcpAgent implements Agent {
 			sessionId: record.session.sessionId,
 			update: {
 				sessionUpdate: "available_commands_update",
-				availableCommands: await this.#buildAvailableCommands(record.session),
+				availableCommands: await buildAvailableCommands(record.session),
 			},
 		});
 	}
@@ -1959,70 +1724,14 @@ export class AcpAgent implements Agent {
 		});
 	}
 
-	#cloneUsageStatistics(usage: UsageStatistics): UsageStatistics {
-		return {
-			input: usage.input,
-			output: usage.output,
-			cacheRead: usage.cacheRead,
-			cacheWrite: usage.cacheWrite,
-			totalTokens: usage.totalTokens,
-			orchestrationInput: usage.orchestrationInput,
-			orchestrationOutput: usage.orchestrationOutput,
-			orchestrationCacheRead: usage.orchestrationCacheRead,
-			premiumRequests: usage.premiumRequests,
-			cost: usage.cost,
-		};
-	}
-
-	#buildTurnUsage(previous: UsageStatistics, current: UsageStatistics): Usage | undefined {
-		const inputTokens = Math.max(0, current.input - previous.input);
-		const outputTokens = Math.max(0, current.output - previous.output);
-		const cachedReadTokens = Math.max(0, current.cacheRead - previous.cacheRead);
-		const cachedWriteTokens = Math.max(0, current.cacheWrite - previous.cacheWrite);
-		const totalTokens = Math.max(0, current.totalTokens - previous.totalTokens);
-
-		if (totalTokens === 0) {
-			return undefined;
-		}
-
-		const usage: Usage = {
-			inputTokens,
-			outputTokens,
-			totalTokens,
-		};
-		if (cachedReadTokens > 0) {
-			usage.cachedReadTokens = cachedReadTokens;
-		}
-		if (cachedWriteTokens > 0) {
-			usage.cachedWriteTokens = cachedWriteTokens;
-		}
-		return usage;
-	}
-
-	async #listStoredSessions(cwd?: string): Promise<StoredSessionInfo[]> {
-		const sessions = cwd ? await SessionManager.list(cwd) : await SessionManager.listAll();
-		return sessions.sort((left, right) => right.modified.getTime() - left.modified.getTime());
-	}
-
 	async #findStoredSession(sessionId: string, cwd: string): Promise<StoredSessionInfo | undefined> {
-		const sessions = await this.#listStoredSessions(cwd);
+		const sessions = await listStoredSessions(cwd);
 		return sessions.find(session => session.id === sessionId);
 	}
 
 	async #findStoredSessionById(sessionId: string): Promise<StoredSessionInfo | undefined> {
-		const sessions = await this.#listStoredSessions();
+		const sessions = await listStoredSessions();
 		return sessions.find(session => session.id === sessionId);
-	}
-
-	#parseCursor(cursor: string | undefined): number {
-		if (!cursor) {
-			return 0;
-		}
-		const parsed = Number.parseInt(cursor, 10);
-		if (!Number.isFinite(parsed) || parsed < 0) {
-			throw new Error(`Invalid ACP session cursor: ${cursor}`);
-		}
-		return parsed;
 	}
 
 	async #replaySessionHistory(record: ManagedSessionRecord): Promise<void> {
@@ -2058,9 +1767,9 @@ export class AcpAgent implements Agent {
 			message.role === "custom" ||
 			message.role === "hookMessage"
 		) {
-			return this.#wrapReplayContent(
+			return wrapReplayContent(
 				sessionId,
-				this.#extractReplayContent(message.content, undefined),
+				extractReplayContent(message.content, undefined),
 				"user_message_chunk",
 				crypto.randomUUID(),
 			);
@@ -2089,9 +1798,9 @@ export class AcpAgent implements Agent {
 			message.role === "pythonExecution" ||
 			message.role === "compactionSummary"
 		) {
-			return this.#wrapReplayContent(
+			return wrapReplayContent(
 				sessionId,
-				this.#extractReplayContent(message.content, undefined),
+				extractReplayContent(message.content, undefined),
 				"user_message_chunk",
 				crypto.randomUUID(),
 			);
@@ -2143,7 +1852,7 @@ export class AcpAgent implements Agent {
 					typeof toolItem.id === "string" &&
 					typeof toolItem.name === "string"
 				) {
-					const args = this.#buildReplayAssistantToolArgs(toolItem);
+					const args = buildReplayAssistantToolArgs(toolItem);
 					const update = buildToolCallStartUpdate({
 						toolCallId: toolItem.id,
 						toolName: toolItem.name,
@@ -2170,23 +1879,13 @@ export class AcpAgent implements Agent {
 		return notifications;
 	}
 
-	#buildReplayAssistantToolArgs(item: ReplayableToolItem): unknown {
-		if ("arguments" in item) {
-			return normalizeReplayToolArguments(item.arguments).args;
-		}
-		if (item.type === "tool_use" && "input" in item) {
-			return item.input;
-		}
-		return {};
-	}
-
 	#replayToolResult(
 		sessionId: string,
 		cwd: string,
 		message: Required<Pick<ReplayableMessage, "toolCallId" | "toolName">> & ReplayableMessage,
 		options: { includeStart?: boolean; toolArgs?: unknown } = {},
 	): SessionNotification[] {
-		const args = this.#buildReplayToolArgs(message.details);
+		const args = buildReplayToolArgs(message.details);
 		const startEvent: AgentSessionEvent = {
 			type: "tool_execution_start",
 			toolCallId: message.toolCallId,
@@ -2218,58 +1917,6 @@ export class AcpAgent implements Agent {
 		return mapAgentSessionEventToAcpSessionUpdates(startEvent, sessionId, { cwd }).concat(notifications);
 	}
 
-	#buildReplayToolArgs(details: unknown): { path?: string } {
-		if (typeof details !== "object" || details === null || !("path" in details)) {
-			return {};
-		}
-		const value = (details as { path?: unknown }).path;
-		return typeof value === "string" && value.length > 0 ? { path: value } : {};
-	}
-
-	#wrapReplayContent(
-		sessionId: string,
-		content: PromptRequest["prompt"],
-		kind: "agent_message_chunk" | "user_message_chunk",
-		messageId: string,
-	): SessionNotification[] {
-		return content.map(block => ({
-			sessionId,
-			update: {
-				sessionUpdate: kind,
-				content: block,
-				messageId,
-			},
-		}));
-	}
-
-	#extractReplayContent(content: unknown, errorMessage: string | undefined): PromptRequest["prompt"] {
-		const replay: PromptRequest["prompt"] = [];
-		if (Array.isArray(content)) {
-			for (const item of content) {
-				if (typeof item !== "object" || item === null || !("type" in item)) {
-					continue;
-				}
-				if (item.type === "text" && "text" in item && typeof item.text === "string" && item.text.length > 0) {
-					replay.push({ type: "text", text: item.text });
-					continue;
-				}
-				if (
-					item.type === "image" &&
-					"data" in item &&
-					"mimeType" in item &&
-					typeof item.data === "string" &&
-					typeof item.mimeType === "string"
-				) {
-					replay.push({ type: "image", data: item.data, mimeType: item.mimeType });
-				}
-			}
-		}
-		if (replay.length === 0 && errorMessage) {
-			replay.push({ type: "text", text: errorMessage });
-		}
-		return replay;
-	}
-
 	async #configureExtensions(record: ManagedSessionRecord): Promise<void> {
 		if (record.extensionsConfigured) {
 			return;
@@ -2289,7 +1936,7 @@ export class AcpAgent implements Agent {
 					});
 				},
 				sendUserMessage: (content, options) => {
-					this.#trackExtensionUserMessage(record, record.session.sendUserMessage(content, options));
+					trackExtensionUserMessage(record, record.session.sendUserMessage(content, options));
 				},
 				appendEntry: (customType, data) => {
 					record.session.sessionManager.appendCustomEntry(customType, data);
@@ -2404,21 +2051,21 @@ export class AcpAgent implements Agent {
 				type: "stdio",
 				command: server.command,
 				args: server.args,
-				env: this.#toNameValueMap(server.env),
+				env: toNameValueMap(server.env),
 			};
 		}
 		if (server.type === "http") {
 			return {
 				type: "http",
 				url: server.url,
-				headers: this.#toNameValueMap(server.headers),
+				headers: toNameValueMap(server.headers),
 			};
 		}
 		if (server.type === "sse") {
 			return {
 				type: "sse",
 				url: server.url,
-				headers: this.#toNameValueMap(server.headers),
+				headers: toNameValueMap(server.headers),
 			};
 		}
 		// The experimental ACP-channel transport (`type: "acp"`) is not advertised in
@@ -2426,19 +2073,11 @@ export class AcpAgent implements Agent {
 		throw new Error(`Unsupported MCP server transport: ${server.type}`);
 	}
 
-	#toNameValueMap(values: Array<{ name: string; value: string }>): { [name: string]: string } {
-		const mapped: { [name: string]: string } = {};
-		for (const value of values) {
-			mapped[value.name] = value.value;
-		}
-		return mapped;
-	}
-
 	async #closeManagedSession(sessionId: string, record: ManagedSessionRecord): Promise<void> {
-		record.closedError ??= this.#createPromptLifecycleError("ACP session closed before queued prompt could run");
+		record.closedError ??= createPromptLifecycleError("ACP session closed before queued prompt could run");
 		this.#sessions.delete(sessionId);
 		await this.#cancelPromptForClose(record);
-		await this.#disposeSessionRecord(record);
+		await disposeSessionRecord(record);
 	}
 
 	async #cancelPromptForClose(record: ManagedSessionRecord): Promise<void> {
@@ -2454,31 +2093,6 @@ export class AcpAgent implements Agent {
 		}
 	}
 
-	async #disposeSessionRecord(record: ManagedSessionRecord): Promise<void> {
-		record.lifetimeUnsubscribe?.();
-		if (record.mcpManager) {
-			try {
-				await record.mcpManager.disconnectAll();
-			} catch (error) {
-				logger.warn("Failed to disconnect ACP MCP servers", { error });
-			}
-			record.mcpManager = undefined;
-		}
-		try {
-			await record.session.dispose();
-		} catch (error) {
-			logger.warn("Failed to dispose ACP session", { error });
-		}
-	}
-
-	async #disposeStandaloneSession(session: AgentSession): Promise<void> {
-		try {
-			await session.dispose();
-		} catch (error) {
-			logger.warn("Failed to dispose ACP session", { error });
-		}
-	}
-
 	async #disposeAllSessions(): Promise<void> {
 		if (this.#disposePromise) {
 			await this.#disposePromise;
@@ -2491,24 +2105,518 @@ export class AcpAgent implements Agent {
 			await Promise.all(
 				records.map(async ([sessionId, record]) => {
 					try {
-						record.closedError ??= this.#createPromptLifecycleError(
+						record.closedError ??= createPromptLifecycleError(
 							"ACP agent disposed before queued prompt could run",
 						);
 						await this.#cancelPromptForClose(record);
-						await this.#disposeSessionRecord(record);
+						await disposeSessionRecord(record);
 					} catch (error) {
 						logger.warn("Failed to clean up ACP session", { sessionId, error });
 					}
+				}),
+			);
+			// The client that could reclaim them is gone: stop the turns it moved to
+			// the background and wait for each record to be released.
+			await Promise.all(
+				Array.from(this.#backgrounded.values(), async ({ kept, released }) => {
+					await BackgroundSessions.global().cancel(kept.sessionId, USER_INTERRUPT_LABEL);
+					await released;
 				}),
 			);
 
 			const initialSession = this.#initialSession;
 			this.#initialSession = undefined;
 			if (initialSession) {
-				await this.#disposeStandaloneSession(initialSession);
+				await disposeStandaloneSession(initialSession);
 			}
 		})();
 
 		await this.#disposePromise;
+	}
+}
+
+function throwIfRecordClosed(record: ManagedSessionRecord): void {
+	if (record.closedError) {
+		throw record.closedError;
+	}
+}
+
+function createPromptLifecycleError(message: string): PromptLifecycleError {
+	return Object.assign(new Error(message), { code: "ACP_SESSION_CLOSED" as const });
+}
+
+async function waitForPromptEventHandlers(record: ManagedSessionRecord): Promise<void> {
+	while (record.promptEventHandlers.size > 0) {
+		await Promise.allSettled(Array.from(record.promptEventHandlers));
+	}
+}
+
+function trackExtensionUserMessage(record: ManagedSessionRecord, task: Promise<void>): void {
+	const tracked = task.catch((error: unknown) => {
+		logger.warn("ACP extension sendUserMessage failed", { error });
+	});
+	record.extensionUserMessageTasks.add(tracked);
+	void tracked.finally(() => {
+		record.extensionUserMessageTasks.delete(tracked);
+	});
+}
+
+async function waitForExtensionUserMessages(
+	record: ManagedSessionRecord,
+	baseline: ReadonlySet<Promise<void>>,
+): Promise<void> {
+	while (true) {
+		const pending = Array.from(record.extensionUserMessageTasks).filter(task => !baseline.has(task));
+		if (pending.length === 0) {
+			return;
+		}
+		await Promise.allSettled(pending);
+	}
+}
+
+async function tryRunSkillCommand(record: ManagedSessionRecord, text: string): Promise<boolean> {
+	if (!record.session.skillsSettings?.enableSkillCommands) {
+		return false;
+	}
+	const parsed = parseSkillInvocation(text);
+	if (!parsed) {
+		return false;
+	}
+	const skill = record.session.skills.find(candidate => candidate.name === parsed.name);
+	if (!skill) {
+		return false;
+	}
+	const built = await buildSkillPromptMessage(skill, parsed.args, "user");
+	await record.session.promptCustomMessage(
+		{
+			customType: SKILL_PROMPT_MESSAGE_TYPE,
+			content: built.message,
+			display: true,
+			details: built.details,
+			attribution: "user",
+		},
+		{ streamingBehavior: "steer" },
+	);
+	return true;
+}
+
+function createManagedSessionRecord(session: AgentSession): ManagedSessionRecord {
+	return {
+		session,
+		mcpManager: undefined,
+		promptTurn: undefined,
+		promptQueue: { promise: Promise.resolve(), release: undefined },
+		liveMessageId: undefined,
+		liveMessageProgress: undefined,
+		toolArgsById: new Map(),
+		extensionsConfigured: false,
+		closedError: undefined,
+		promptEventHandlers: new Set(),
+		extensionUserMessageTasks: new Set(),
+		lifetimeUnsubscribe: undefined,
+		background: undefined,
+	};
+}
+
+function assertMatchingCwd(session: AgentSession, cwd: string): void {
+	const expected = path.resolve(cwd);
+	const actual = path.resolve(session.sessionManager.getCwd());
+	if (actual !== expected) {
+		throw new Error(`ACP session ${session.sessionId} is already loaded for ${actual}, not ${expected}`);
+	}
+}
+
+async function waitForAcpPromptIdle(record: ManagedSessionRecord): Promise<void> {
+	for (let pass = 0; pass < ACP_ASYNC_DELIVERY_DRAIN_MAX_PASSES; pass++) {
+		await record.session.waitForIdle();
+		const delivered = await record.session.drainAsyncJobDeliveriesForAcp({
+			timeoutMs: ACP_ASYNC_DELIVERY_DRAIN_TIMEOUT_MS,
+		});
+		if (!delivered) {
+			return;
+		}
+	}
+
+	await record.session.waitForIdle();
+}
+
+function prepareLiveAssistantMessage(record: ManagedSessionRecord, event: AgentSessionEvent): void {
+	if (
+		(event.type === "message_start" || event.type === "message_update" || event.type === "message_end") &&
+		event.message.role === "assistant" &&
+		(event.type === "message_start" || !record.liveMessageId || !record.liveMessageProgress)
+	) {
+		record.liveMessageId = crypto.randomUUID();
+		record.liveMessageProgress = { textEmitted: false, thoughtEmitted: false };
+	}
+}
+
+/**
+ * Reset live-message tracking once the assistant `message_end` is handled.
+ * The `agent_end` reset happens inside the `agent_end` branch of
+ * `#handlePromptEvent` — after `#flushMissedFinalAssistantText` — so a
+ * `message_end` that arrives during the end-of-turn waits maps against the
+ * real progress instead of resurrecting a fresh one (which would double-emit
+ * the final answer).
+ */
+function clearLiveAssistantMessageAfterEvent(record: ManagedSessionRecord, event: AgentSessionEvent): void {
+	if (event.type === "message_end" && event.message.role === "assistant") {
+		record.liveMessageId = undefined;
+		record.liveMessageProgress = undefined;
+	}
+}
+
+function getLiveMessageId(record: ManagedSessionRecord, message: unknown): string | undefined {
+	if (typeof message !== "object" || message === null) {
+		return undefined;
+	}
+	record.liveMessageId ??= crypto.randomUUID();
+	return record.liveMessageId;
+}
+
+function getLiveMessageProgress(
+	record: ManagedSessionRecord,
+	message: unknown,
+): { textEmitted: boolean; thoughtEmitted: boolean } | undefined {
+	if (typeof message !== "object" || message === null) {
+		return undefined;
+	}
+	record.liveMessageProgress ??= { textEmitted: false, thoughtEmitted: false };
+	return record.liveMessageProgress;
+}
+
+function finishPrompt(record: ManagedSessionRecord, response?: PromptResponse, error?: unknown): void {
+	const promptTurn = record.promptTurn;
+	if (!promptTurn || promptTurn.settled) {
+		return;
+	}
+	promptTurn.settled = true;
+	promptTurn.unsubscribe?.();
+	// Keep the slot occupied until cancel cleanup finishes — `#runCancelCleanup`
+	// evicts the slot in its finally block once both flags say it's safe.
+	if (!promptTurn.cleanup && record.promptTurn === promptTurn) {
+		record.promptTurn = undefined;
+	}
+	if (error !== undefined) {
+		promptTurn.reject(error);
+		return;
+	}
+	promptTurn.resolve(response ?? { stopReason: "end_turn" });
+}
+
+function resolveStopReason(
+	event: Extract<AgentSessionEvent, { type: "agent_end" }>,
+	cancelRequested: boolean,
+): PromptResponse["stopReason"] {
+	if (cancelRequested) {
+		return "cancelled";
+	}
+	let lastAssistant: AssistantMessage | undefined;
+	for (let mi = event.messages.length - 1; mi >= 0; mi -= 1) {
+		const message = event.messages[mi]!;
+		if (message.role === "assistant") {
+			lastAssistant = message as AssistantMessage;
+			break;
+		}
+	}
+	const reason = lastAssistant?.stopReason;
+	switch (reason) {
+		case "aborted":
+			return "cancelled";
+		case "length":
+			return "max_tokens";
+		case "error": {
+			const errorMessage = lastAssistant?.errorMessage ?? "";
+			if (/content[_ ]?filter|refus(al|ed)/i.test(errorMessage)) {
+				return "refusal";
+			}
+			return "end_turn";
+		}
+		default:
+			return "end_turn";
+	}
+}
+
+function assertAbsoluteCwd(cwd: string): void {
+	if (!path.isAbsolute(cwd)) {
+		throw new Error(`ACP cwd must be absolute: ${cwd}`);
+	}
+}
+
+function convertPromptBlocks(blocks: PromptRequest["prompt"]): { text: string; images: AgentImageContent[] } {
+	const textParts: string[] = [];
+	const images: AgentImageContent[] = [];
+	for (const block of blocks) {
+		switch (block.type) {
+			case "text":
+				textParts.push(block.text);
+				break;
+			case "image":
+				images.push({ type: "image", data: block.data, mimeType: block.mimeType });
+				break;
+			case "resource":
+				if ("text" in block.resource) {
+					textParts.push(block.resource.text);
+				} else if (typeof block.resource.mimeType === "string" && block.resource.mimeType.startsWith("image/")) {
+					// `embeddedContext: true` covers both text and blob resources, but
+					// blobs aren't directly consumable by the LLM. Route image blobs
+					// to the images array so the user's intent survives; everything
+					// else falls back to the URI placeholder below.
+					images.push({ type: "image", data: block.resource.blob, mimeType: block.resource.mimeType });
+				} else {
+					textParts.push(`[embedded resource: ${block.resource.uri}]`);
+				}
+				break;
+			case "resource_link":
+				textParts.push(block.title ?? block.name ?? block.uri);
+				break;
+			case "audio":
+				textParts.push("[audio omitted]");
+				break;
+		}
+	}
+	return {
+		text: textParts.join("\n\n").trim(),
+		images,
+	};
+}
+
+function buildThinkingOptions(session: AgentSession): Array<{ value: string; name: string; description?: string }> {
+	// The row's declared choices, in cycle order: off/auto only when the row
+	// accepts them, levels exactly as declared. Never the fixed ladder.
+	return configuredThinkingLevelsForModel(session.model).map(level => {
+		const metadata = getConfiguredThinkingLevelMetadata(level);
+		return { value: level, name: metadata.label, description: metadata.description };
+	});
+}
+
+function getConfiguredThinkingLevel(session: AgentSession): string | undefined {
+	const configuredThinkingLevel = (session as { configuredThinkingLevel?: () => string | undefined })
+		.configuredThinkingLevel;
+	return typeof configuredThinkingLevel === "function" ? configuredThinkingLevel.call(session) : session.thinkingLevel;
+}
+
+function toThinkingConfigValue(value: string | undefined): string {
+	return value && value !== "inherit" ? value : THINKING_OFF;
+}
+
+function setThinkingLevelById(session: AgentSession, value: string): void {
+	const thinkingLevel = parseConfiguredThinkingLevel(value);
+	if (!thinkingLevel) {
+		throw new Error(`Unknown ACP thinking level: ${value}`);
+	}
+	// A session with no resolved model has no row to narrow against, so the
+	// level is stored and clamped when one arrives. The narrowing helper offers
+	// nothing for a model it cannot read, so the skip is stated here.
+	if (!session.model) {
+		session.setThinkingLevel(thinkingLevel);
+		return;
+	}
+	const choices = configuredThinkingLevelsForModel(session.model);
+	if (!choices.includes(thinkingLevel)) {
+		const accepted = choices.length > 0 ? choices.join(", ") : "none (this model exposes no effort control)";
+		throw new Error(
+			`${session.model?.provider}/${session.model?.id} does not accept thinking level ${value}. Accepted: ${accepted}`,
+		);
+	}
+	session.setThinkingLevel(thinkingLevel);
+}
+
+function toModelId(model: Model): string {
+	return `${model.provider}/${model.id}`;
+}
+
+function getAvailableModes(session: AgentSession): Array<{ id: string; name: string; description: string }> {
+	const modes = [{ id: ACP_DEFAULT_MODE_ID, name: "Default", description: "Standard ACP headless mode" }];
+	if (session.settings.get("plan.enabled")) {
+		modes.push({
+			id: ACP_PLAN_MODE_ID,
+			name: "Plan",
+			description: "Read-only planning mode that drafts a plan to a markdown file before any code changes",
+		});
+	}
+	void session;
+	return modes;
+}
+
+function getCurrentModeId(session: AgentSession): string {
+	return session.getPlanModeState()?.enabled ? ACP_PLAN_MODE_ID : ACP_DEFAULT_MODE_ID;
+}
+
+function resolveAcpPlanFilePath(session: AgentSession, planFilePath: string): string {
+	return resolvePlanFilePath(planFilePath, {
+		localProtocol: {
+			getArtifactsDir: () => session.sessionManager.getArtifactsDir(),
+			getSessionId: () => session.sessionManager.getSessionId(),
+		},
+		cwd: session.sessionManager.getCwd(),
+	});
+}
+
+async function buildAvailableCommands(session: AgentSession): Promise<AvailableCommand[]> {
+	return toAcpAvailableCommands(await buildAvailableSlashCommands(session));
+}
+
+function toSessionInfo(session: StoredSessionInfo): SessionInfo {
+	return {
+		sessionId: session.id,
+		cwd: session.cwd,
+		title: session.title,
+		updatedAt: session.modified.toISOString(),
+		_meta: {
+			messageCount: session.messageCount,
+			size: session.size,
+		},
+	};
+}
+
+function cloneUsageStatistics(usage: UsageStatistics): UsageStatistics {
+	return {
+		input: usage.input,
+		output: usage.output,
+		cacheRead: usage.cacheRead,
+		cacheWrite: usage.cacheWrite,
+		totalTokens: usage.totalTokens,
+		orchestrationInput: usage.orchestrationInput,
+		orchestrationOutput: usage.orchestrationOutput,
+		orchestrationCacheRead: usage.orchestrationCacheRead,
+		premiumRequests: usage.premiumRequests,
+		cost: usage.cost,
+	};
+}
+
+function buildTurnUsage(previous: UsageStatistics, current: UsageStatistics): Usage | undefined {
+	const inputTokens = Math.max(0, current.input - previous.input);
+	const outputTokens = Math.max(0, current.output - previous.output);
+	const cachedReadTokens = Math.max(0, current.cacheRead - previous.cacheRead);
+	const cachedWriteTokens = Math.max(0, current.cacheWrite - previous.cacheWrite);
+	const totalTokens = Math.max(0, current.totalTokens - previous.totalTokens);
+
+	if (totalTokens === 0) {
+		return undefined;
+	}
+
+	const usage: Usage = {
+		inputTokens,
+		outputTokens,
+		totalTokens,
+	};
+	if (cachedReadTokens > 0) {
+		usage.cachedReadTokens = cachedReadTokens;
+	}
+	if (cachedWriteTokens > 0) {
+		usage.cachedWriteTokens = cachedWriteTokens;
+	}
+	return usage;
+}
+
+async function listStoredSessions(cwd?: string): Promise<StoredSessionInfo[]> {
+	const sessions = cwd ? await SessionManager.list(cwd) : await SessionManager.listAll();
+	return sessions.sort((left, right) => right.modified.getTime() - left.modified.getTime());
+}
+
+function parseCursor(cursor: string | undefined): number {
+	if (!cursor) {
+		return 0;
+	}
+	const parsed = Number.parseInt(cursor, 10);
+	if (!Number.isFinite(parsed) || parsed < 0) {
+		throw new Error(`Invalid ACP session cursor: ${cursor}`);
+	}
+	return parsed;
+}
+
+function buildReplayAssistantToolArgs(item: ReplayableToolItem): unknown {
+	if ("arguments" in item) {
+		return normalizeReplayToolArguments(item.arguments).args;
+	}
+	if (item.type === "tool_use" && "input" in item) {
+		return item.input;
+	}
+	return {};
+}
+
+function buildReplayToolArgs(details: unknown): { path?: string } {
+	if (typeof details !== "object" || details === null || !("path" in details)) {
+		return {};
+	}
+	const value = (details as { path?: unknown }).path;
+	return typeof value === "string" && value.length > 0 ? { path: value } : {};
+}
+
+function wrapReplayContent(
+	sessionId: string,
+	content: PromptRequest["prompt"],
+	kind: "agent_message_chunk" | "user_message_chunk",
+	messageId: string,
+): SessionNotification[] {
+	return content.map(block => ({
+		sessionId,
+		update: {
+			sessionUpdate: kind,
+			content: block,
+			messageId,
+		},
+	}));
+}
+
+function extractReplayContent(content: unknown, errorMessage: string | undefined): PromptRequest["prompt"] {
+	const replay: PromptRequest["prompt"] = [];
+	if (Array.isArray(content)) {
+		for (const item of content) {
+			if (typeof item !== "object" || item === null || !("type" in item)) {
+				continue;
+			}
+			if (item.type === "text" && "text" in item && typeof item.text === "string" && item.text.length > 0) {
+				replay.push({ type: "text", text: item.text });
+				continue;
+			}
+			if (
+				item.type === "image" &&
+				"data" in item &&
+				"mimeType" in item &&
+				typeof item.data === "string" &&
+				typeof item.mimeType === "string"
+			) {
+				replay.push({ type: "image", data: item.data, mimeType: item.mimeType });
+			}
+		}
+	}
+	if (replay.length === 0 && errorMessage) {
+		replay.push({ type: "text", text: errorMessage });
+	}
+	return replay;
+}
+
+function toNameValueMap(values: Array<{ name: string; value: string }>): { [name: string]: string } {
+	const mapped: { [name: string]: string } = {};
+	for (const value of values) {
+		mapped[value.name] = value.value;
+	}
+	return mapped;
+}
+
+async function disposeSessionRecord(record: ManagedSessionRecord): Promise<void> {
+	record.lifetimeUnsubscribe?.();
+	if (record.mcpManager) {
+		try {
+			await record.mcpManager.disconnectAll();
+		} catch (error) {
+			logger.warn("Failed to disconnect ACP MCP servers", { error });
+		}
+		record.mcpManager = undefined;
+	}
+	try {
+		await record.session.dispose();
+	} catch (error) {
+		logger.warn("Failed to dispose ACP session", { error });
+	}
+}
+
+async function disposeStandaloneSession(session: AgentSession): Promise<void> {
+	try {
+		await session.dispose();
+	} catch (error) {
+		logger.warn("Failed to dispose ACP session", { error });
 	}
 }

@@ -33,14 +33,12 @@ import { setMcpServerEnabled } from "../../../../mcp/config-writer";
 import { theme } from "../../../../theme/theme";
 import { getTabBarTheme } from "../../shared";
 import { matchesAppInterrupt } from "../../utils/keybinding-matchers";
+import { computeModalDims, MODAL_SIZING_LARGE, sizingForArea } from "../chrome/modal-geometry";
 import {
-	computeModalDims,
-	MODAL_SIZING_LARGE,
 	type ModalShellGeometry,
 	planModalChrome,
 	pointerMotionEnabled,
 	renderModalShell,
-	sizingForArea,
 } from "../chrome/modal-shell";
 import { routeModalChrome } from "../selectors/select-list-mouse-routing";
 import { ExtensionList } from "./extension-list";

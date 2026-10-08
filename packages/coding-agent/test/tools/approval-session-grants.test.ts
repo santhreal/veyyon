@@ -16,6 +16,9 @@
  *    because the wrapper matches the returned label by exact string.
  *  - A session grant that outranks `tools.approval.<tool>: deny` lets a dialog
  *    overwrite a policy the operator wrote by hand.
+ *  - A grant that retires, or is recorded at, a card raised about one call's
+ *    arguments (a critical command, a path outside the working directory, a
+ *    stored credential) authorises a later call nobody was asked about.
  *
  * None of these show up in a type error, so they are pinned here in bytes.
  */
@@ -41,6 +44,48 @@ function execTool(name = "bash"): AgentTool {
 		description: "records that it ran",
 		parameters: type({}),
 		approval: () => ({ tier: "exec" as const }),
+		execute: async () => ({ content: [{ type: "text", text: RAN }] }),
+	} as unknown as AgentTool;
+}
+
+/** A credential the session's redactor knows, so a call carrying it spends a stored secret. */
+const TOKEN = "ghp_sessiongrantcredential1234567890";
+
+/** The session working directory the cwd boundary measures against. */
+const CWD = "/repo-under-test";
+
+/** Context fields that arm the cwd boundary and the secret-use boundary. */
+const BOUNDARY_CONTEXT = {
+	sessionManager: { getCwd: () => CWD, getSessionId: () => "session-under-test" },
+	obfuscateProviderText: (text: string) => text.replaceAll(TOKEN, "#DEPLOY_TOKEN#"),
+};
+
+/**
+ * Arguments that each raise the prompt about THIS call rather than about the
+ * tool name: the three argument-scoped reasons the approval gate resolves. A
+ * fourth such reason in `resolveApprovalGate` needs a row here; nothing makes
+ * this table fail on its own when one is added.
+ */
+const ARGUMENT_SCOPED: Record<string, Record<string, unknown>> = {
+	"a command the bash guard judges critical": { danger: true },
+	"a path outside the working directory": { target: "/elsewhere/notes.txt" },
+	"a stored credential in the arguments": { content: `token=${TOKEN}` },
+};
+
+/**
+ * An exec-tier `bash` that can raise each argument-scoped prompt: `danger`
+ * marks the call critical, `target` is a filesystem path the cwd boundary
+ * measures, and any string argument is read by the secret-use boundary.
+ */
+function argumentScopedTool(): AgentTool {
+	return {
+		name: "bash",
+		label: "bash",
+		summary: "records that it ran",
+		description: "records that it ran",
+		parameters: type({ "danger?": "boolean", "target?": "string", "content?": "string" }),
+		approval: (args: { danger?: boolean }) => ({ tier: "exec" as const, critical: args?.danger === true }),
+		filesystemTargets: (args: { target?: string }) => (typeof args?.target === "string" ? [args.target] : []),
 		execute: async () => ({ content: [{ type: "text", text: RAN }] }),
 	} as unknown as AgentTool;
 }
@@ -92,6 +137,10 @@ interface RunOptions {
 	store?: SessionToolApprovals;
 	/** `tools.approval.<tool>` policies, as they come out of settings. */
 	policies?: Record<string, unknown>;
+	/** The call's arguments; `{}` when omitted. */
+	params?: Record<string, unknown>;
+	/** Extra tool-context fields, for the cwd and secret-use boundaries. */
+	context?: Record<string, unknown>;
 }
 
 interface RunOutcome {
@@ -107,6 +156,7 @@ async function runCall(options: RunOptions = {}): Promise<RunOutcome> {
 	const store = options.store ?? makeStore();
 	const spy = runnerAnswering(options.choice);
 	const context = {
+		...options.context,
 		settings: {
 			get: (path: string) => {
 				if (path === "tools.approvalMode") return "ask";
@@ -119,7 +169,13 @@ async function runCall(options: RunOptions = {}): Promise<RunOutcome> {
 
 	const wrapped = new ExtensionToolWrapper(tool, spy.runner);
 	try {
-		const result = await wrapped.execute("call-1", {} as never, undefined, undefined, context as never);
+		const result = await wrapped.execute(
+			"call-1",
+			(options.params ?? {}) as never,
+			undefined,
+			undefined,
+			context as never,
+		);
 		const first = result.content[0];
 		const text = first && first.type === "text" ? first.text : undefined;
 		return { text, error: undefined, selectCalls: spy.calls, store };
@@ -258,4 +314,69 @@ describe("a session grant against a configured policy", () => {
 		expect(outcome.text).toBeUndefined();
 		expect(outcome.selectCalls).toEqual([]);
 	});
+});
+
+/**
+ * "Approve for session" answers a question about the TOOL NAME. A card raised
+ * about one call's arguments asks something else: whether THIS command, THIS
+ * path or THIS credential may be used. A grant that retired such a card, or
+ * that an answer on such a card recorded, would authorise a later call nobody
+ * was asked about: `bash ls` approved for the session, then `bash rm -rf
+ * $HOME` running without a prompt.
+ */
+describe("a session grant answers for the tool name, never for one call's arguments", () => {
+	/** The control: the same tool and context, with arguments that raise nothing of their own. */
+	it("lets a standing allow run a call whose arguments raise no prompt of their own", async () => {
+		const outcome = await runCall({
+			tool: argumentScopedTool(),
+			context: BOUNDARY_CONTEXT,
+			store: makeStore({ bash: "allow" }),
+		});
+
+		expect(outcome.text).toBe(RAN);
+		expect(outcome.selectCalls).toEqual([]);
+	});
+
+	it.each(Object.entries(ARGUMENT_SCOPED))(
+		"still asks for %s while the store holds allow",
+		async (_reason, params) => {
+			const outcome = await runCall({
+				tool: argumentScopedTool(),
+				context: BOUNDARY_CONTEXT,
+				params,
+				store: makeStore({ bash: "allow" }),
+				choice: "Approve",
+			});
+
+			expect(outcome.error).toBeUndefined();
+			expect(outcome.selectCalls).toHaveLength(1);
+			expect(outcome.text).toBe(RAN);
+		},
+	);
+
+	it.each(Object.entries(ARGUMENT_SCOPED))(
+		"records no grant when the card for %s is answered Approve for session",
+		async (_reason, params) => {
+			const store = makeStore();
+
+			const first = await runCall({
+				tool: argumentScopedTool(),
+				context: BOUNDARY_CONTEXT,
+				params,
+				store,
+				choice: "Approve for session",
+			});
+			expect(first.error).toBeUndefined();
+			expect(first.text).toBe(RAN);
+			expect(store.get("bash")).toBeUndefined();
+
+			const second = await runCall({
+				tool: argumentScopedTool(),
+				context: BOUNDARY_CONTEXT,
+				store,
+				choice: "Approve",
+			});
+			expect(second.selectCalls).toHaveLength(1);
+		},
+	);
 });

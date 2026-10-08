@@ -1,15 +1,20 @@
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { isArkErrors } from "@veyyon/ai/utils/schema";
 import {
 	atomicWriteFileSync,
+	errorMessage,
 	getAgentDir,
 	isEnoent,
+	isRecord,
 	logger,
 	pathStateSync,
 	reportFault,
 	truncate,
 } from "@veyyon/utils";
+import { readJsonSnapshotSync, writeJsonSnapshotSync } from "@veyyon/utils/json-snapshot";
 import type { Type } from "arktype";
 import { JSONC, YAML } from "bun";
 
@@ -181,6 +186,18 @@ export type LoadResult<T> =
 	| { value?: null; error?: unknown; status: "not-found" };
 
 /**
+ * Where a deferred schema's accepted values are kept, and the identity of the validator that
+ * accepted them. A load whose content matches the kept content under the same fingerprint reads the
+ * kept value and never builds the schema.
+ */
+export interface AcceptedValueSnapshot {
+	/** File the last accepted content and its validated value are kept in. */
+	readonly path: () => string;
+	/** Digest that changes whenever what the schema accepts, or what it outputs, changes. */
+	readonly fingerprint: () => string;
+}
+
+/**
  * A schema supplied as a builder instead of a constructed Type, so ConfigFile
  * defers ArkType construction until the config is actually validated (missing
  * files never pay it). Use {@link deferSchema} — a plain thunk is ambiguous
@@ -189,15 +206,62 @@ export type LoadResult<T> =
 export interface DeferredSchema {
 	readonly deferredSchema: true;
 	readonly build: () => Type;
+	readonly accepted?: AcceptedValueSnapshot;
 }
 
-/** Mark a schema builder for lazy construction on first validation. */
-export function deferSchema(build: () => Type): DeferredSchema {
-	return { deferredSchema: true, build };
+/**
+ * Mark a schema builder for lazy construction on first validation. With `accepted`, a value the
+ * schema accepts is kept in a snapshot, so a later process loading the same content skips building.
+ */
+export function deferSchema(build: () => Type, accepted?: AcceptedValueSnapshot): DeferredSchema {
+	return { deferredSchema: true, build, accepted };
 }
 
 function isDeferredSchema(schema: Type | DeferredSchema): schema is DeferredSchema {
 	return typeof schema === "object" && schema !== null && "deferredSchema" in schema;
+}
+
+/**
+ * Snapshot identity of one load: the validator's fingerprint, the path whose extension selects the
+ * parser, and the content. Undefined when the fingerprint cannot be computed, so the load validates.
+ */
+function acceptedSnapshotKey(accepted: AcceptedValueSnapshot, readPath: string, content: string): string | undefined {
+	try {
+		return createHash("sha256")
+			.update(accepted.fingerprint())
+			.update("\0")
+			.update(readPath)
+			.update("\0")
+			.update(content)
+			.digest("hex");
+	} catch (error) {
+		logger.debug("Config snapshot key not computed", { error: errorMessage(error) });
+		return undefined;
+	}
+}
+
+/** The value kept under `key`, or undefined when the snapshot is absent, stale, or damaged. */
+function readAcceptedValue(accepted: AcceptedValueSnapshot, key: string): unknown {
+	try {
+		const kept = readJsonSnapshotSync(accepted.path(), key);
+		return isRecord(kept) && "value" in kept ? kept.value : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * Keep a value the schema accepted. A value JSON does not reproduce exactly (an `undefined`
+ * property, a non-plain object) is not kept, so a snapshot hit returns what validation returned.
+ */
+function keepAcceptedValue(accepted: AcceptedValueSnapshot, key: string, value: unknown): void {
+	try {
+		const envelope = { value };
+		if (!isDeepStrictEqual(JSON.parse(JSON.stringify(envelope)), envelope)) return;
+		writeJsonSnapshotSync(accepted.path(), key, envelope);
+	} catch (error) {
+		logger.debug("Config snapshot not written", { error: errorMessage(error) });
+	}
 }
 
 export class ConfigFile<T> implements IConfigFile<T> {
@@ -207,7 +271,8 @@ export class ConfigFile<T> implements IConfigFile<T> {
 	readonly #schemaSource: Type | DeferredSchema;
 	#resolvedSchema?: Type;
 	#cache?: LoadResult<T>;
-	#auxValidate?: (value: T) => void;
+	/** The file's own checks after the schema, in registration order; a relocated handle shares them. */
+	#validations: readonly { readonly name: string; readonly validate: (value: T) => void }[] = [];
 	/**
 	 * Whether the unreadable-base fault has been reported for this instance.
 	 *
@@ -268,7 +333,7 @@ export class ConfigFile<T> implements IConfigFile<T> {
 	relocate(configPath?: string): ConfigFile<T> {
 		if (!configPath || configPath === this.#basePath) return this;
 		const result = new ConfigFile<T>(this.id, this.#schemaSource, configPath);
-		result.#auxValidate = this.#auxValidate;
+		result.#validations = this.#validations;
 		result.#ensureMigrated();
 		return result;
 	}
@@ -335,15 +400,7 @@ export class ConfigFile<T> implements IConfigFile<T> {
 	}
 
 	withValidation(name: string, validate: (value: T) => void): this {
-		const prev = this.#auxValidate;
-		this.#auxValidate = (value: T) => {
-			prev?.(value);
-			try {
-				validate(value);
-			} catch (error) {
-				throw new ConfigError(this.id, undefined, { err: error, stage: `Validate(${name})` }, this.path());
-			}
-		};
+		this.#validations = [...this.#validations, { name, validate }];
 		return this;
 	}
 
@@ -365,37 +422,49 @@ export class ConfigFile<T> implements IConfigFile<T> {
 		return result;
 	}
 
+	/** Parse `content` by the read path's format and validate it against the schema. */
+	#validateContent(content: string, readPath: string): { value: T } | { error: ConfigError } {
+		let parsed: unknown;
+		if (readPath.endsWith(".json") || readPath.endsWith(".jsonc")) {
+			parsed = JSONC.parse(content);
+		} else if (readPath.endsWith(".yml") || readPath.endsWith(".yaml")) {
+			parsed = YAML.parse(content);
+		} else {
+			throw new Error(`Invalid config file path: ${readPath}`);
+		}
+		const checked = this.schema(parsed);
+		if (!isArkErrors(checked)) return { value: checked as T };
+		const schemaErrors: ConfigSchemaError[] = checked.map(error => ({
+			instancePath: error.path.length === 0 ? "root" : error.path.join("."),
+			message: error.problem,
+		}));
+		return { error: new ConfigError(this.id, schemaErrors, undefined, readPath) };
+	}
+
 	#parseContent(content: string): LoadResult<T> {
 		try {
-			let parsed: unknown;
 			const readPath = this.#resolveReadPath();
-			if (readPath.endsWith(".json") || readPath.endsWith(".jsonc")) {
-				parsed = JSONC.parse(content);
-			} else if (readPath.endsWith(".yml") || readPath.endsWith(".yaml")) {
-				parsed = YAML.parse(content);
-			} else {
-				throw new Error(`Invalid config file path: ${readPath}`);
+			const accepted = isDeferredSchema(this.#schemaSource) ? this.#schemaSource.accepted : undefined;
+			const snapshotKey = accepted ? acceptedSnapshotKey(accepted, readPath, content) : undefined;
+			let value = accepted && snapshotKey ? (readAcceptedValue(accepted, snapshotKey) as T | undefined) : undefined;
+			if (value === undefined) {
+				const validated = this.#validateContent(content, readPath);
+				if ("error" in validated) {
+					logger.warn("Failed to parse config file", { path: this.path(), error: validated.error });
+					return this.#storeCache({ error: validated.error, status: "error" });
+				}
+				value = validated.value;
+				if (accepted && snapshotKey) keepAcceptedValue(accepted, snapshotKey, value);
 			}
-
-			const checked = this.schema(parsed);
-			if (isArkErrors(checked)) {
-				const schemaErrors: ConfigSchemaError[] = checked.map(error => ({
-					instancePath: error.path.length === 0 ? "root" : error.path.join("."),
-					message: error.problem,
-				}));
-				const error = new ConfigError(this.id, schemaErrors, undefined, this.#resolveReadPath());
-				logger.warn("Failed to parse config file", { path: this.path(), error });
-				return this.#storeCache({ error, status: "error" });
-			}
-			const value = checked as T;
-			try {
-				this.#auxValidate?.(value);
-			} catch (error) {
-				const wrapped =
-					error instanceof ConfigError
-						? error
-						: new ConfigError(this.id, undefined, { err: error, stage: "AuxValidate" }, this.#resolveReadPath());
-				return this.#storeCache({ error: wrapped, status: "error" });
+			for (const { name, validate } of this.#validations) {
+				try {
+					validate(value);
+				} catch (error) {
+					return this.#storeCache({
+						error: new ConfigError(this.id, undefined, { err: error, stage: `Validate(${name})` }, readPath),
+						status: "error",
+					});
+				}
 			}
 			return this.#storeCache({ value, status: "ok" });
 		} catch (error) {

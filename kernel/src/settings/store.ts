@@ -36,7 +36,9 @@ import { YAML } from "bun";
 import { UNSET_NUMBER } from "./optional-number";
 import {
 	describeSettingTypeMismatch,
+	enumMember,
 	getDefault,
+	getType,
 	isUnsetNumberPath,
 	type SettingPath,
 	type SettingValue,
@@ -433,6 +435,8 @@ export class SettingsStore {
 
 	/** Dotted-key problems already reported, so each one is said once per process rather than once per read. */
 	#reportedDottedKeyProblems = new Set<string>();
+	/** Enum settings already reported as holding a value outside their declared set, one warning per path. */
+	#reportedInvalidEnums = new Set<SettingPath>();
 
 	/** Pending save (debounced) */
 	#saveTimer?: NodeJS.Timeout;
@@ -471,6 +475,15 @@ export class SettingsStore {
 	 * Returns the merged value from global + project + overrides, or the default.
 	 */
 	get<P extends SettingPath>(path: P): SettingValue<P> {
+		return this.#resolve(path, true);
+	}
+
+	/**
+	 * The effective value of `path`. `memoize` stores a cache miss in {@link #resolvedCache}; a read
+	 * that visits every declared path, such as {@link getEffectiveSnapshot}, passes false so the cache
+	 * holds only the paths a session reads.
+	 */
+	#resolve<P extends SettingPath>(path: P, memoize: boolean): SettingValue<P> {
 		// Global-scoped settings live in ~/.veyyon/config.yml, not the profile
 		// store. Read them live through their binding (never cached) so the UI
 		// always reflects the current global config, and fall back to the schema
@@ -479,9 +492,9 @@ export class SettingsStore {
 		const globalBinding = this.#hooks.globalBinding(path);
 		if (globalBinding) {
 			const override = getByPath(this.#overrides, toSegments(path));
-			if (override !== undefined) return override as SettingValue<P>;
+			if (override !== undefined) return this.#declaredValue(path, override);
 			try {
-				return globalBinding.read() as SettingValue<P>;
+				return this.#declaredValue(path, globalBinding.read());
 			} catch (error) {
 				logger.warn("Settings: global read failed; using default", { path, error: String(error) });
 				return getDefault(path);
@@ -501,14 +514,39 @@ export class SettingsStore {
 		const registered = memoized !== undefined;
 		const segments = memoized ?? path.split(".");
 		const value = getByPath(this.#merged, segments);
-		const resolved =
-			value !== undefined
-				? (this.#hooks.resolveForCwd(path, value, this.#cwd) ?? value)
-				: registered
-					? getDefault(path)
-					: undefined;
-		this.#resolvedCache.set(path, resolved);
+		let resolved: unknown;
+		if (value === undefined) {
+			resolved = registered ? getDefault(path) : undefined;
+		} else {
+			const scoped = this.#hooks.resolveForCwd(path, value, this.#cwd) ?? value;
+			resolved = registered ? this.#declaredValue(path, scoped) : scoped;
+		}
+		if (memoize) this.#resolvedCache.set(path, resolved);
 		return resolved as SettingValue<P>;
+	}
+
+	/**
+	 * `value` as the setting reads it: unchanged, unless `path` is an enum and `value` is not one of
+	 * its members, in which case the declared default, reported once per path.
+	 *
+	 * A value written into a config file by hand reaches here unchecked, and every consumer compares
+	 * it against its own literals, so an out-of-set value takes whichever branch a consumer's `else`
+	 * happens to be. Answering with the default here gives every consumer the value the schema
+	 * declares. The load-time report states the file to edit; this one states the value in use.
+	 */
+	#declaredValue<P extends SettingPath>(path: P, value: unknown): SettingValue<P> {
+		if (getType(path) !== "enum") return value as SettingValue<P>;
+		const member = enumMember(path, value);
+		if (member !== undefined) return member as SettingValue<P>;
+		const fallback = getDefault(path);
+		if (!this.#reportedInvalidEnums.has(path)) {
+			this.#reportedInvalidEnums.add(path);
+			logger.warn("Settings: enum value is not one of its declared values; using the default", {
+				reason: describeSettingTypeMismatch(path, value),
+				default: fallback,
+			});
+		}
+		return fallback;
 	}
 
 	/**
@@ -570,7 +608,7 @@ export class SettingsStore {
 		// mode exists to subscribe, so its refusal would otherwise be announced to an
 		// empty set and never mentioned again, which is the silence this whole path
 		// exists to end.
-		if (this.#reportedSaveFailure) this.#deliverSaveFailure(listener, this.#reportedSaveFailure);
+		if (this.#reportedSaveFailure) deliverSaveFailure(listener, this.#reportedSaveFailure);
 		return () => {
 			this.#saveFailureListeners.delete(listener);
 		};
@@ -661,7 +699,7 @@ export class SettingsStore {
 				}
 				this.#clearGlobalWriteFailure();
 			} else {
-				this.#mutateTree(this.#overrides, toSegments(path), value, isUnset);
+				mutateTree(this.#overrides, toSegments(path), value, isUnset);
 				this.rebuildMerged();
 			}
 			const next = this.get(path);
@@ -677,7 +715,7 @@ export class SettingsStore {
 		// value.
 		this.#stampOwnedMigrationsFor(path);
 		const segments = toSegments(path);
-		this.#mutateTree(this.#global, segments, value, isUnset);
+		mutateTree(this.#global, segments, value, isUnset);
 		if (isUnset) {
 			// Also drop a runtime override for the same path. Both are values this
 			// process owns, and leaving the override in place would make "Default"
@@ -696,14 +734,9 @@ export class SettingsStore {
 		this.#fireEffectiveSettingChanged(path, next, prev);
 	}
 
-	#mutateTree(tree: RawSettings, segments: readonly string[], value: unknown, isUnset: boolean): void {
-		if (isUnset) deleteByPath(tree, segments);
-		else setByPath(tree, segments, value);
-	}
-
 	#applyOverrideMutation(path: SettingPath, value: unknown, isClear: boolean): void {
 		const prev = this.get(path);
-		this.#mutateTree(this.#overrides, toSegments(path), value, isClear);
+		mutateTree(this.#overrides, toSegments(path), value, isClear);
 		this.rebuildMerged();
 		this.#fireEffectiveSettingChanged(path, this.get(path), prev);
 	}
@@ -885,7 +918,7 @@ export class SettingsStore {
 	getEffectiveSnapshot(): Record<string, unknown> {
 		const result: Record<string, unknown> = {};
 		for (const key of indexedSchema().paths.slice().sort()) {
-			result[key] = this.get(key);
+			result[key] = this.#resolve(key, false);
 		}
 		return result;
 	}
@@ -919,7 +952,7 @@ export class SettingsStore {
 
 	async load(): Promise<this> {
 		await this.#loadProfileAndOverlays(false);
-		this.#reportShadowedConfigFiles();
+		reportShadowedConfigFiles();
 		this.#fireAllHooks();
 		return this;
 	}
@@ -927,24 +960,6 @@ export class SettingsStore {
 	async loadReadOnly(): Promise<this> {
 		await this.#loadProfileAndOverlays(true);
 		return this;
-	}
-
-	/**
-	 * Report a config file that exists but is ignored because a higher-precedence
-	 * one exists too.
-	 *
-	 * `dirs` finds these but cannot report them: it sits below the logger, which
-	 * imports it. This is the layer that has somewhere to say it, so it says it
-	 * here rather than letting a whole settings file be silently dead.
-	 */
-	#reportShadowedConfigFiles(): void {
-		for (const shadowed of findShadowedGlobalConfigFiles()) {
-			logger.warn("Global config file is being ignored because a higher-precedence one exists", {
-				ignored: shadowed.ignored,
-				using: shadowed.using,
-				fix: `merge ${path.basename(shadowed.ignored)} into ${path.basename(shadowed.using)} and delete it`,
-			});
-		}
 	}
 
 	/**
@@ -1326,16 +1341,7 @@ export class SettingsStore {
 	#announceSaveFailure(failure: SettingsSaveFailure): void {
 		this.#reportedSaveFailure = failure;
 		for (const listener of this.#saveFailureListeners) {
-			this.#deliverSaveFailure(listener, failure);
-		}
-	}
-
-	/** One listener call, isolated so a listener that throws cannot silence the rest. */
-	#deliverSaveFailure(listener: (failure: SettingsSaveFailure) => void, failure: SettingsSaveFailure): void {
-		try {
-			listener(failure);
-		} catch (listenerError) {
-			logger.warn("Settings: a save-failure listener threw", { error: errorMessage(listenerError) });
+			deliverSaveFailure(listener, failure);
 		}
 	}
 
@@ -1417,5 +1423,37 @@ export class SettingsStore {
 	#fireAllHooks(): void {
 		if (!this.#activateProcessHooks) return;
 		this.#hooks.applyAllHooks(this);
+	}
+}
+
+function mutateTree(tree: RawSettings, segments: readonly string[], value: unknown, isUnset: boolean): void {
+	if (isUnset) deleteByPath(tree, segments);
+	else setByPath(tree, segments, value);
+}
+
+/**
+ * Report a config file that exists but is ignored because a higher-precedence
+ * one exists too.
+ *
+ * `dirs` finds these but cannot report them: it sits below the logger, which
+ * imports it. This is the layer that has somewhere to say it, so it says it
+ * here rather than letting a whole settings file be silently dead.
+ */
+function reportShadowedConfigFiles(): void {
+	for (const shadowed of findShadowedGlobalConfigFiles()) {
+		logger.warn("Global config file is being ignored because a higher-precedence one exists", {
+			ignored: shadowed.ignored,
+			using: shadowed.using,
+			fix: `merge ${path.basename(shadowed.ignored)} into ${path.basename(shadowed.using)} and delete it`,
+		});
+	}
+}
+
+/** One listener call, isolated so a listener that throws cannot silence the rest. */
+function deliverSaveFailure(listener: (failure: SettingsSaveFailure) => void, failure: SettingsSaveFailure): void {
+	try {
+		listener(failure);
+	} catch (listenerError) {
+		logger.warn("Settings: a save-failure listener threw", { error: errorMessage(listenerError) });
 	}
 }

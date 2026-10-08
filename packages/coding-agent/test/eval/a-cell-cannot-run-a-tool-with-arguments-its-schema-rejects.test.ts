@@ -156,7 +156,9 @@ function advertisedLanguages(): string[] {
 	const wire = toolWireSchema({
 		name: "eval",
 		description: "eval",
-		parameters: evalSchema,
+		get parameters() {
+			return evalSchema.value;
+		},
 	});
 	const tokens = new Set<string>();
 	const walk = (node: unknown): void => {

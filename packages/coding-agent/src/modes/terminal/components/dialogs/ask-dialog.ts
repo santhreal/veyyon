@@ -34,9 +34,8 @@ import { ASK_OTHER_OPTION_LABEL } from "../../../../tools/agent/ask-option-label
 import { getTabBarTheme } from "../../shared";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
 import { CountdownTimer } from "../chrome/countdown-timer";
+import { computeModalDims, HOOK_EDITOR_TEXT_PAD_COLS, MODAL_SIZING_LARGE } from "../chrome/modal-geometry";
 import {
-	computeModalDims,
-	MODAL_SIZING_LARGE,
 	type ModalShellGeometry,
 	type ModalShortcut,
 	minModalChromeRows,
@@ -45,7 +44,6 @@ import {
 } from "../chrome/modal-shell";
 import { routeModalChrome } from "../selectors/select-list-mouse-routing";
 import { handleTabSwitchKey, hoverBandAt } from "../selectors/selector-helpers";
-import { HOOK_EDITOR_TEXT_PAD_COLS } from "./hook-editor";
 
 const SUBMIT_OPTION = "Submit";
 
@@ -777,17 +775,13 @@ export class AskDialogComponent implements Component {
 		const rows: QuestionRow[] = question.options.map((option, index) => ({
 			kind: "option",
 			key: `option:${index}`,
-			label: this.#optionLabel(question, option.label, index),
+			label: optionLabel(question, option.label, index),
 			optionIndex: index,
 		}));
 		if (question.allowOther !== false) {
 			rows.push({ kind: "other", key: "other", label: ASK_OTHER_OPTION_LABEL, optionIndex: undefined });
 		}
 		return rows;
-	}
-
-	#optionLabel(question: ExtensionAskDialogQuestion, label: string, index: number): string {
-		return question.recommended === index ? withRecommendedSuffix(label) : label;
 	}
 
 	#activeQuestionState(): { question: ExtensionAskDialogQuestion; state: QuestionState } | undefined {
@@ -964,7 +958,7 @@ export class AskDialogComponent implements Component {
 			const previewWidth = Math.max(PREVIEW_MIN_WIDTH, Math.floor(width * 0.45));
 			const listWidth = Math.max(1, width - previewWidth - SIDE_BY_SIDE_GAP_WIDTH);
 			const list = this.#renderQuestionList(question, state, rowItems, listWidth, maxRows);
-			const previewLines = this.#renderPreviewPane(preview, previewWidth, maxRows);
+			const previewLines = renderPreviewPane(preview, previewWidth, maxRows);
 			const lines: string[] = [];
 			for (let index = 0; index < maxRows; index++) {
 				const left = truncateToWidth(list.lines[index] ?? "", listWidth, Ellipsis.Unicode);
@@ -974,7 +968,7 @@ export class AskDialogComponent implements Component {
 			}
 			return { lines, scrollOffset: list.scrollOffset, indicator: list.indicator };
 		}
-		const previewLines = this.#renderPreviewPane(preview, width, clampLow(Math.floor(maxRows * 0.4), 3, 8));
+		const previewLines = renderPreviewPane(preview, width, clampLow(Math.floor(maxRows * 0.4), 3, 8));
 		const listRows = Math.max(3, maxRows - previewLines.length - 1);
 		const list = this.#renderQuestionList(question, state, rowItems, width, listRows);
 		const lines = [...list.lines, theme.fg("borderAccent", "─".repeat(Math.max(1, width))), ...previewLines];
@@ -1022,7 +1016,7 @@ export class AskDialogComponent implements Component {
 			}
 		}
 		const cursorStart = lineStartByRow[state.cursorIndex] ?? 0;
-		state.scrollOffset = this.#scrollOffsetForCursor(state.scrollOffset, cursorStart, rows, allLines.length);
+		state.scrollOffset = scrollOffsetForCursor(state.scrollOffset, cursorStart, rows, allLines.length);
 		const scrollView = new ScrollView(allLines, {
 			height: rows,
 			scrollbar: "auto",
@@ -1034,19 +1028,10 @@ export class AskDialogComponent implements Component {
 		return {
 			lines: lines.slice(0, rows),
 			scrollOffset: state.scrollOffset,
-			indicator: this.#clipIndicator(state.scrollOffset, rows, allLines.length),
+			indicator: clipIndicator(state.scrollOffset, rows, allLines.length),
 			lineStarts: lineStartByRow,
 			lineCount: allLines.length,
 		};
-	}
-
-	#renderPreviewPane(preview: string, width: number, maxRows: number): string[] {
-		const bodyWidth = Math.max(1, width - 2);
-		const content = renderPreviewContent(preview, bodyWidth);
-		if (content.length <= maxRows) return content;
-		const visibleCount = Math.max(1, maxRows - 1);
-		const hidden = content.length - visibleCount;
-		return [...content.slice(0, visibleCount), theme.fg("dim", `… ${formatMoreLines(hidden)}`)];
 	}
 
 	#renderSubmitBody(width: number, rows: number): RenderedList {
@@ -1086,25 +1071,8 @@ export class AskDialogComponent implements Component {
 		return {
 			lines: lines.slice(0, rows),
 			scrollOffset: this.#submitScrollOffset,
-			indicator: this.#clipIndicator(this.#submitScrollOffset, rows, allLines.length),
+			indicator: clipIndicator(this.#submitScrollOffset, rows, allLines.length),
 		};
-	}
-
-	#scrollOffsetForCursor(currentOffset: number, cursorLine: number, rows: number, totalRows: number): number {
-		if (totalRows <= rows) return 0;
-		let nextOffset = clamp(currentOffset, 0, Math.max(0, totalRows - rows));
-		if (cursorLine < nextOffset) nextOffset = cursorLine;
-		if (cursorLine >= nextOffset + rows) nextOffset = cursorLine - rows + 1;
-		return clamp(nextOffset, 0, Math.max(0, totalRows - rows));
-	}
-
-	#clipIndicator(offset: number, rows: number, totalRows: number): string {
-		const above = offset > 0;
-		const below = offset + rows < totalRows;
-		if (above && below) return "↕";
-		if (above) return "↑";
-		if (below) return "↓";
-		return "";
 	}
 
 	#unansweredCount(): number {
@@ -1186,4 +1154,34 @@ export class AskDialogComponent implements Component {
 		}
 		return results;
 	}
+}
+
+function optionLabel(question: ExtensionAskDialogQuestion, label: string, index: number): string {
+	return question.recommended === index ? withRecommendedSuffix(label) : label;
+}
+
+function renderPreviewPane(preview: string, width: number, maxRows: number): string[] {
+	const bodyWidth = Math.max(1, width - 2);
+	const content = renderPreviewContent(preview, bodyWidth);
+	if (content.length <= maxRows) return content;
+	const visibleCount = Math.max(1, maxRows - 1);
+	const hidden = content.length - visibleCount;
+	return [...content.slice(0, visibleCount), theme.fg("dim", `… ${formatMoreLines(hidden)}`)];
+}
+
+function scrollOffsetForCursor(currentOffset: number, cursorLine: number, rows: number, totalRows: number): number {
+	if (totalRows <= rows) return 0;
+	let nextOffset = clamp(currentOffset, 0, Math.max(0, totalRows - rows));
+	if (cursorLine < nextOffset) nextOffset = cursorLine;
+	if (cursorLine >= nextOffset + rows) nextOffset = cursorLine - rows + 1;
+	return clamp(nextOffset, 0, Math.max(0, totalRows - rows));
+}
+
+function clipIndicator(offset: number, rows: number, totalRows: number): string {
+	const above = offset > 0;
+	const below = offset + rows < totalRows;
+	if (above && below) return "↕";
+	if (above) return "↑";
+	if (below) return "↓";
+	return "";
 }

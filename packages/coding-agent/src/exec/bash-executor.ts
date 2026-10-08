@@ -4,7 +4,13 @@
  * Uses brush-core via native bindings for shell execution.
  */
 import { ExponentialYield } from "@veyyon/agent-core/utils/yield";
-import { type MinimizerOptions, Shell, type ShellRunResult } from "@veyyon/natives";
+import {
+	type MinimizerOptions,
+	type MinimizerResult,
+	Shell,
+	type ShellOptions,
+	type ShellRunResult,
+} from "@veyyon/natives";
 import { isExecutable, type ShellConfig } from "@veyyon/utils/procmgr";
 import { Settings, type ShellMinimizerSettings } from "../config/settings";
 import { sessionCpuLimit } from "../session/cpu-limit";
@@ -154,12 +160,6 @@ function quarantineShellSession(
 		.catch(() => undefined);
 }
 
-function resolveShellCwd(cwd: string | undefined): string | undefined {
-	// Preserve the caller's logical cwd string. Brush uses this value to update `PWD` and its
-	// internal working directory, so realpathing here collapses symlinks before the shell sees them.
-	return cwd;
-}
-
 /** Translate `ShellMinimizerSettings` into native `MinimizerOptions`, or `undefined` when disabled. */
 export function buildMinimizerOptions(group: ShellMinimizerSettings): MinimizerOptions | undefined {
 	if (!group.enabled) return undefined;
@@ -241,28 +241,213 @@ function resolveUserShellConfig(settings: Settings, baseConfig: ShellConfig): Sh
 	};
 }
 
-export async function executeBash(command: string, options?: BashExecutorOptions): Promise<BashResult> {
-	const settings = await Settings.init();
+/** The command line and persistent-shell options one `executeBash` call runs with. */
+interface CommandPlan {
+	command: string;
+	shellOptions: ShellOptions;
+	/** The persistent-session key: one Shell per shell, prefix, snapshot, env, caller key and minimizer. */
+	sessionKey: string;
+}
+
+async function planCommand(
+	settings: Settings,
+	command: string,
+	options: BashExecutorOptions | undefined,
+): Promise<CommandPlan> {
+	const useUserShell = options?.useUserShell === true;
 	const baseShellConfig = settings.getShellConfig();
-	const shellConfig =
-		options?.useUserShell === true ? resolveUserShellConfig(settings, baseShellConfig) : baseShellConfig;
+	const shellConfig = useUserShell ? resolveUserShellConfig(settings, baseShellConfig) : baseShellConfig;
 	const { shell, args, env: shellEnv, prefix } = shellConfig;
 	const bashShell = isBashShell(shell);
 	const snapshotPath = bashShell ? await getOrCreateSnapshot(shell, shellEnv) : null;
-
 	const minimizer = buildMinimizerOptions(settings.getGroup("shellMinimizer"));
-
-	const commandCwd = resolveShellCwd(options?.cwd);
-	const commandEnv = buildNonInteractiveEnv(options?.env);
-
-	// Apply command prefix if configured
 	const prefixedCommand = prefix ? `${prefix} ${command}` : command;
-	const finalCommand =
-		options?.useUserShell === true && !bashShell
-			? buildUserShellCommand(shell, args, prefixedCommand)
-			: prefixedCommand;
+	return {
+		command: useUserShell && !bashShell ? buildUserShellCommand(shell, args, prefixedCommand) : prefixedCommand,
+		shellOptions: { sessionEnv: shellEnv, snapshotPath: snapshotPath ?? undefined, minimizer },
+		sessionKey: buildSessionKey(shell, prefix, snapshotPath, shellEnv, options?.sessionKey, minimizer),
+	};
+}
 
-	// Create output sink for truncation and artifact handling
+/**
+ * Join the session CPU budget: refuse while the watcher reports sustained saturation, and return the
+ * budget name the native shell hands every external command it spawns (see veyyon-shell's spawn observer).
+ */
+async function joinCpuBudget(options: BashExecutorOptions | undefined): Promise<string | undefined> {
+	const cpuLimit = sessionCpuLimit(options?.cpuSessionId ?? options?.sessionKey);
+	// gateSpawn creates the group first: assertMaySpawn is sync and used to skip memory/setup checks until
+	// #group existed, so the first command raced unbounded.
+	if (cpuLimit) await cpuLimit.gateSpawn("a bash command");
+	return options?.cpuBudgetId ?? (cpuLimit && (await cpuLimit.ensureGroup()) ? cpuLimit.budgetName : undefined);
+}
+
+/** The shell a command runs in, and the key's persistent session when the command holds it. */
+interface ShellLease {
+	shell: Shell;
+	persistent: Shell | undefined;
+}
+
+/**
+ * A persistent Shell runs one command at a time (the native session is a mutex-guarded queue and `abort()`
+ * kills every in-flight run on it). When parallel bash calls overlap on the same key, the first one holds the
+ * persistent session; the rest run in isolated one-shot shells, the same path a quarantined session takes.
+ */
+function leaseShell(sessionKey: string, shellOptions: ShellOptions): ShellLease {
+	if (brokenShellSessions.has(sessionKey)) {
+		shellSessions.delete(sessionKey);
+		return { shell: new Shell(shellOptions), persistent: undefined };
+	}
+	if (shellSessionsInUse.has(sessionKey)) return { shell: new Shell(shellOptions), persistent: undefined };
+	let persistent = shellSessions.get(sessionKey);
+	if (!persistent) {
+		persistent = new Shell(shellOptions);
+		shellSessions.set(sessionKey, persistent);
+	}
+	shellSessionsInUse.add(sessionKey);
+	return { shell: persistent, persistent };
+}
+
+/**
+ * Free the persistent session a command held. A reset session (cancel, timeout, error) is dropped. A
+ * per-job `:async:` key is unique to its job, so its Shell is dropped too instead of staying in the
+ * process-global map forever; dropping the only reference SIGKILLs any `nohup`/`&` children (kill-on-drop),
+ * so a Shell with a live background job is retained until its last job exits and still dies with the harness.
+ */
+async function releaseShell(sessionKey: string, lease: ShellLease, reset: boolean, perJob: boolean): Promise<void> {
+	if (!lease.persistent) return;
+	shellSessionsInUse.delete(sessionKey);
+	if (!reset && !perJob) return;
+	shellSessions.delete(sessionKey);
+	if (!reset) await retainShellWithLiveBackgroundJobs(lease.persistent);
+}
+
+/**
+ * The two ways a run ends before its result: the caller's signal and the executor deadline. Either aborts
+ * the run and settles `stopped` with the annotation of the first that fired.
+ */
+class RunStop {
+	readonly controller = new AbortController();
+	/** The explicit timeout veyyon-natives enforces itself through `timeoutMs`. */
+	readonly nativeTimeoutMs: number | undefined;
+	readonly #shell: Shell;
+	readonly #userSignal: AbortSignal | undefined;
+	readonly #stopped = Promise.withResolvers<string>();
+	#timer: NodeJS.Timeout | undefined;
+	#shellAbort: Promise<void> | undefined;
+
+	constructor(shell: Shell, timeoutMs: number | undefined, userSignal: AbortSignal | undefined) {
+		this.#shell = shell;
+		this.#userSignal = userSignal;
+		const deadlineMs = timeoutMs === 0 ? undefined : Math.max(1_000, timeoutMs ?? DEFAULT_BASH_TIMEOUT_MS);
+		this.nativeTimeoutMs = timeoutMs !== undefined && timeoutMs > 0 ? timeoutMs : undefined;
+		userSignal?.addEventListener("abort", this.#onUserAbort, { once: true });
+		if (deadlineMs !== undefined) this.#timer = setTimeout(() => this.#onDeadline(deadlineMs), deadlineMs);
+	}
+
+	get stopped(): Promise<string> {
+		return this.#stopped.promise;
+	}
+
+	/** The shell abort in flight, if one started. */
+	get shellAbort(): Promise<void> | undefined {
+		return this.#shellAbort;
+	}
+
+	/**
+	 * Abort the shell once. An abort that fails means the shell may still be running the command, which is
+	 * the state `quarantineShellSession` exists for: this promise is handed to it, the session is marked
+	 * broken, and it is not reused until the shell settles. Rethrowing here would replace the abort reason the
+	 * caller is about to receive with a teardown error.
+	 */
+	abortShell(): Promise<void> {
+		this.#shellAbort ??= this.#shell.abort().catch(() => undefined);
+		return this.#shellAbort;
+	}
+
+	disarmDeadline(): void {
+		clearTimeout(this.#timer);
+		this.#timer = undefined;
+	}
+
+	dispose(): void {
+		clearTimeout(this.#timer);
+		this.#userSignal?.removeEventListener("abort", this.#onUserAbort);
+	}
+
+	#abortRun(): void {
+		if (!this.controller.signal.aborted) this.controller.abort();
+		void this.abortShell();
+	}
+
+	#onUserAbort = (): void => {
+		this.#abortRun();
+		this.#stopped.resolve("Command cancelled");
+	};
+
+	#onDeadline(deadlineMs: number): void {
+		// Explicit timeouts are already enforced inside veyyon-natives via `timeoutMs`. Do not also abort the
+		// JS AbortSignal here: on Windows, aborting that signal while a piped command is still forwarding output
+		// can terminate the Bun host before the native timeout result resolves.
+		if (this.nativeTimeoutMs === undefined) this.#abortRun();
+		this.#stopped.resolve(`Command timed out after ${Math.round(deadlineMs / 1000)} seconds`);
+	}
+}
+
+async function cancelledResult(sink: OutputSink, annotation: string): Promise<BashResult> {
+	return { exitCode: undefined, cancelled: true, ...(await sink.dump(annotation)) };
+}
+
+/**
+ * Release a run its `RunStop` ended before the shell answered: abort the shell, then quarantine a
+ * persistent session until the run settles, or drain a one-shot shell in the background.
+ */
+function abandonStoppedRun(
+	sessionKey: string,
+	lease: ShellLease,
+	runPromise: Promise<ShellRunResult>,
+	stop: RunStop,
+): void {
+	const cleanup = stop.abortShell();
+	if (lease.persistent) quarantineShellSession(sessionKey, runPromise, cleanup);
+	else void Promise.allSettled([runPromise, cleanup]);
+}
+
+/** The annotation for a run the shell itself ended: its timeout, else a cancellation. */
+function interruptedRunAnnotation(result: ShellRunResult, timeoutMs: number | undefined): string {
+	if (!result.timedOut) return "Command cancelled";
+	return timeoutMs ? `Command timed out after ${Math.round(timeoutMs / 1000)} seconds` : "Command timed out";
+}
+
+/**
+ * When the native minimizer rewrote the output, swap the sink's accumulated raw stream for the minimized
+ * text, persist the original as a session artifact, and splice an `artifact://<id>` footer into the visible
+ * text so the agent can retrieve the raw bytes losslessly.
+ */
+async function spliceMinimizedOutput(
+	sink: OutputSink,
+	minimized: MinimizerResult | undefined,
+	onMinimizedSave: BashExecutorOptions["onMinimizedSave"],
+): Promise<void> {
+	if (!minimized || minimized.text === minimized.originalText) return;
+	sink.replace(minimized.text);
+	if (!onMinimizedSave) return;
+	const artifactId = await onMinimizedSave(minimized.originalText, {
+		filter: minimized.filter,
+		inputBytes: minimized.inputBytes,
+		outputBytes: minimized.outputBytes,
+	});
+	if (!artifactId) return;
+	const sep = minimized.text.endsWith("\n") ? "" : "\n";
+	sink.push(`${sep}[raw output: artifact://${artifactId}]\n`);
+}
+
+type RunOutcome = { result: ShellRunResult } | { stopped: string };
+
+export async function executeBash(command: string, options?: BashExecutorOptions): Promise<BashResult> {
+	const settings = await Settings.init();
+	const plan = await planCommand(settings, command, options);
+	// Output sink for truncation and artifact handling. sink.push() is synchronous: buffer management,
+	// counters and onChunk all run inline, and artifact file writes run asynchronously inside the sink.
 	const sink = new OutputSink({
 		onChunk: options?.onChunk,
 		artifactPath: options?.artifactPath,
@@ -272,243 +457,64 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 		maxColumns: resolveOutputMaxColumns(settings),
 		chunkThrottleMs: options?.onChunk ? (options.chunkThrottleMs ?? 50) : 0,
 	});
+	if (options?.signal?.aborted) return cancelledResult(sink, "Command cancelled");
 
-	// sink.push() is synchronous — buffer management, counters, and onChunk
-	// all run inline. File writes (artifact path) are handled asynchronously
-	// inside the sink. No promise chain needed.
+	const cpuBudgetId = await joinCpuBudget(options);
+	// `RunStop` listens for the abort, and a signal that aborted during the budget join fires no event.
+	// Nothing awaits between this check and that listener.
+	if (options?.signal?.aborted) return cancelledResult(sink, "Command cancelled");
+	const { sessionKey } = plan;
+	const lease = leaseShell(sessionKey, plan.shellOptions);
+	const stop = new RunStop(lease.shell, options?.timeout, options?.signal);
 	let acceptingChunks = true;
-	const enqueueChunk = (chunk: string) => {
-		if (acceptingChunks) sink.push(chunk);
-	};
-
-	if (options?.signal?.aborted) {
-		return {
-			exitCode: undefined,
-			cancelled: true,
-			...(await sink.dump("Command cancelled")),
-		};
-	}
-
-	const shellOptions = {
-		sessionEnv: shellEnv,
-		snapshotPath: snapshotPath ?? undefined,
-		minimizer,
-	};
-	// The session CPU budget: refuse while the watcher reports sustained
-	// saturation, and hand the native shell the budget name so every external
-	// command it spawns joins the group (see veyyon-shell's spawn observer).
-	const cpuLimit = sessionCpuLimit(options?.cpuSessionId ?? options?.sessionKey);
-	if (cpuLimit) {
-		// gateSpawn creates the group first: assertMaySpawn is sync and used
-		// to skip memory/setup checks until #group existed, so the first
-		// command raced unbounded.
-		await cpuLimit.gateSpawn("a bash command");
-	}
-	const cpuBudgetId =
-		options?.cpuBudgetId ?? (cpuLimit && (await cpuLimit.ensureGroup()) ? cpuLimit.budgetName : undefined);
-	const sessionKey = buildSessionKey(shell, prefix, snapshotPath, shellEnv, options?.sessionKey, minimizer);
-	const persistentSessionBroken = brokenShellSessions.has(sessionKey);
-	if (persistentSessionBroken) {
-		shellSessions.delete(sessionKey);
-	}
-
-	// A persistent Shell runs one command at a time (the native session is a
-	// mutex-guarded queue and `abort()` kills every in-flight run on it). When
-	// parallel bash calls overlap on the same key, the first one owns the
-	// persistent session; the rest degrade to isolated one-shot shells — the
-	// same path quarantined sessions take.
-	const sessionBusy = shellSessionsInUse.has(sessionKey);
-	let shellSession = persistentSessionBroken || sessionBusy ? undefined : shellSessions.get(sessionKey);
-	if (!shellSession && !persistentSessionBroken && !sessionBusy) {
-		shellSession = new Shell(shellOptions);
-		shellSessions.set(sessionKey, shellSession);
-	}
-	const executionShell = shellSession ?? new Shell(shellOptions);
-	const ownsPersistentSession = shellSession !== undefined;
-	if (ownsPersistentSession) {
-		shellSessionsInUse.add(sessionKey);
-	}
-	const userSignal = options?.signal;
-	const runAbortController = new AbortController();
-	let abortCleanupPromise: Promise<void> | undefined;
-	const abortShell = (): Promise<void> => {
-		// An abort that fails means the shell may still be running the command, which is exactly the state
-		// `quarantineShellSession` exists for: this promise is handed to it, the session is marked broken, and
-		// it is not reused until the shell settles. Rethrowing here would replace the abort reason the caller
-		// is about to receive with a teardown error.
-		abortCleanupPromise ??= executionShell.abort().catch(() => undefined);
-		return abortCleanupPromise;
-	};
-	const abortCurrentExecution = () => {
-		if (!runAbortController.signal.aborted) {
-			runAbortController.abort();
-		}
-		void abortShell();
-	};
-	const abortDeferred = Promise.withResolvers<"abort">();
-	const abortHandler = () => {
-		abortCurrentExecution();
-		abortDeferred.resolve("abort");
-	};
-	if (userSignal) {
-		userSignal.addEventListener("abort", abortHandler, { once: true });
-	}
-
-	let timeoutTimer: NodeJS.Timeout | undefined;
-	const timeoutDeferred = Promise.withResolvers<"timeout">();
-	const requestedTimeoutMs = options?.timeout;
-	const deadlineTimeoutMs =
-		requestedTimeoutMs === 0 ? undefined : Math.max(1_000, requestedTimeoutMs ?? DEFAULT_BASH_TIMEOUT_MS);
-	const nativeTimeoutMs = requestedTimeoutMs !== undefined && requestedTimeoutMs > 0 ? requestedTimeoutMs : undefined;
-	const nativeOwnsTimeout = nativeTimeoutMs !== undefined;
-	if (deadlineTimeoutMs !== undefined) {
-		timeoutTimer = setTimeout(() => {
-			// Explicit timeouts are already enforced inside veyyon-natives via
-			// `timeoutMs`. Do not also abort the JS AbortSignal here: on Windows,
-			// aborting that signal while a piped command is still forwarding output
-			// can terminate the Bun host before the native timeout result resolves.
-			if (!nativeOwnsTimeout) {
-				abortCurrentExecution();
-			}
-			timeoutDeferred.resolve("timeout");
-		}, deadlineTimeoutMs);
-	}
-
 	let resetSession = false;
-
 	try {
-		const runPromise = executionShell.run(
+		const runPromise = lease.shell.run(
 			{
-				command: finalCommand,
-				cwd: commandCwd,
-				env: commandEnv,
-				timeoutMs: nativeTimeoutMs,
-				signal: runAbortController.signal,
+				command: plan.command,
+				// The caller's logical cwd, unresolved: brush updates `PWD` and its working directory from this
+				// string, so realpathing it would collapse symlinks before the shell sees them.
+				cwd: options?.cwd,
+				env: buildNonInteractiveEnv(options?.env),
+				timeoutMs: stop.nativeTimeoutMs,
+				signal: stop.controller.signal,
 				...(cpuBudgetId ? { cpuBudgetId } : {}),
 			},
 			(err, chunk) => {
-				if (!err) {
-					enqueueChunk(chunk);
-				}
+				if (!err && acceptingChunks) sink.push(chunk);
 			},
 		);
-
-		const ey = new ExponentialYield();
-		const winner = await ey.race<
-			{ kind: "result"; result: ShellRunResult } | { kind: "timeout" } | { kind: "abort" }
-		>([
-			runPromise.then(result => ({ kind: "result" as const, result })),
-			timeoutDeferred.promise.then(kind => ({ kind })),
-			abortDeferred.promise.then(kind => ({ kind })),
+		const outcome = await new ExponentialYield().race<RunOutcome>([
+			runPromise.then(result => ({ result })),
+			stop.stopped.then(stopped => ({ stopped })),
 		]);
-
-		if (winner.kind === "timeout" || winner.kind === "abort") {
+		if ("stopped" in outcome) {
 			acceptingChunks = false;
-			const cleanupPromise = abortShell();
-			if (shellSession) {
-				resetSession = true;
-				quarantineShellSession(sessionKey, runPromise, cleanupPromise);
-			} else {
-				void Promise.allSettled([runPromise, cleanupPromise]);
-			}
-			return {
-				exitCode: undefined,
-				cancelled: true,
-				...(await sink.dump(
-					winner.kind === "timeout" && deadlineTimeoutMs !== undefined
-						? `Command timed out after ${Math.round(deadlineTimeoutMs / 1000)} seconds`
-						: "Command cancelled",
-				)),
-			};
+			resetSession = lease.persistent !== undefined;
+			abandonStoppedRun(sessionKey, lease, runPromise, stop);
+			return await cancelledResult(sink, outcome.stopped);
 		}
-		if (timeoutTimer) {
-			clearTimeout(timeoutTimer);
-			timeoutTimer = undefined;
-		}
-
-		// Handle timeout
-		if (winner.result.timedOut) {
-			const annotation = options?.timeout
-				? `Command timed out after ${Math.round(options.timeout / 1000)} seconds`
-				: "Command timed out";
+		stop.disarmDeadline();
+		const { result } = outcome;
+		if (result.timedOut || result.cancelled) {
 			resetSession = true;
-			if (shellSession) {
-				quarantineShellSession(sessionKey, runPromise, abortCleanupPromise);
-			}
-			return {
-				exitCode: undefined,
-				cancelled: true,
-				...(await sink.dump(annotation)),
-			};
+			if (lease.persistent) quarantineShellSession(sessionKey, runPromise, stop.shellAbort);
+			return await cancelledResult(sink, interruptedRunAnnotation(result, options?.timeout));
 		}
-
-		// Handle cancellation
-		if (winner.result.cancelled) {
-			resetSession = true;
-			if (shellSession) {
-				quarantineShellSession(sessionKey, runPromise, abortCleanupPromise);
-			}
-			return {
-				exitCode: undefined,
-				cancelled: true,
-				...(await sink.dump("Command cancelled")),
-			};
-		}
-
-		// When the native minimizer rewrote the output, swap the sink's accumulated
-		// raw stream for the minimized text, persist the original as a session
-		// artifact, and splice an `artifact://<id>` footer into the visible text so
-		// the agent can retrieve the raw bytes losslessly.
-		const minimized = winner.result.minimized;
-		if (minimized && minimized.text !== minimized.originalText) {
-			sink.replace(minimized.text);
-			if (options?.onMinimizedSave) {
-				const artifactId = await options.onMinimizedSave(minimized.originalText, {
-					filter: minimized.filter,
-					inputBytes: minimized.inputBytes,
-					outputBytes: minimized.outputBytes,
-				});
-				if (artifactId) {
-					const sep = minimized.text.endsWith("\n") ? "" : "\n";
-					sink.push(`${sep}[raw output: artifact://${artifactId}]\n`);
-				}
-			}
-		}
-
-		// Normal completion
+		await spliceMinimizedOutput(sink, result.minimized, options?.onMinimizedSave);
 		return {
-			exitCode: winner.result.exitCode,
-			signal: winner.result.signal,
+			exitCode: result.exitCode,
+			signal: result.signal,
 			cancelled: false,
-			workingDir: winner.result.workingDir,
+			workingDir: result.workingDir,
 			...(await sink.dump()),
 		};
 	} catch (err) {
 		resetSession = true;
 		throw err;
 	} finally {
-		if (timeoutTimer) {
-			clearTimeout(timeoutTimer);
-		}
-		if (userSignal) {
-			userSignal.removeEventListener("abort", abortHandler);
-		}
-		if (ownsPersistentSession) {
-			shellSessionsInUse.delete(sessionKey);
-			if (resetSession || options?.sessionKey?.includes(":async:")) {
-				// `:async:` keys are per-job (jobId is unique), so the Shell would
-				// otherwise stay in the process-global map forever after completion.
-				shellSessions.delete(sessionKey);
-				// Dropping the only reference to a per-call `:async:` Shell SIGKILLs
-				// any `nohup`/`&` children (kill-on-drop). If the command left a live
-				// background job, retain the Shell so the process survives across
-				// turns; it is reaped once its last job exits and still dies with the
-				// harness. Skip on resetSession (cancel/error) — those tear down.
-				if (!resetSession && shellSession) {
-					await retainShellWithLiveBackgroundJobs(shellSession);
-				}
-			}
-		}
+		stop.dispose();
+		await releaseShell(sessionKey, lease, resetSession, options?.sessionKey?.includes(":async:") === true);
 	}
 }
 

@@ -6,6 +6,7 @@ import {
 	type InbandScanEvent,
 	type InbandScannerOptions,
 } from "@veyyon/ai/dialect";
+import { DIALECTS } from "@veyyon/catalog/identity";
 
 function scan(
 	dialect: Dialect,
@@ -224,20 +225,22 @@ describe("every dialect round-trips thinking (no missing thinking element)", () 
 	}
 });
 
+/**
+ * A reasoning section the stream ends inside closes exactly once on flush, for every dialect in the
+ * catalog. The opener is the part of the dialect's own rendered thinking before the text, so a new
+ * dialect arrives covered with no wire bytes written here. Feeding the input whole is the case that
+ * leaves nothing buffered at flush: hermes held its section open there until it moved onto
+ * `dialect/json-tool-call-scanner.ts`.
+ */
 describe("unterminated thinking at stream end", () => {
-	const cases: Array<{ dialect: Dialect; input: string }> = [
-		{ dialect: "deepseek", input: "<think>partial" },
-		{ dialect: "gemini", input: "```thinking\npartial" },
-		{ dialect: "gemma", input: "<|channel>thought\npartial" },
-		{ dialect: "glm", input: "<think>partial" },
-		{ dialect: "kimi", input: "<think>partial" },
-		{ dialect: "qwen3", input: "<think>partial" },
-	];
-
-	for (const { dialect, input } of cases) {
+	const text = "partial";
+	for (const dialect of DIALECTS) {
 		it(`${dialect}: closes the thinking block on flush`, () => {
-			const events = scan(dialect, input);
-			expect(thinkingText(events)).toBe("partial");
+			const rendered = getDialectDefinition(dialect).renderThinking(text);
+			const opener = rendered.slice(0, rendered.indexOf(text));
+			const events = scan(dialect, `${opener}${text}`, { options: { parseThinking: true } });
+			expect(thinkingText(events).trim()).toBe(text);
+			expect(visibleText(events)).toBe("");
 			expect(thinkingBoundaries(events)).toBe(1);
 			expect(thinkingEndCount(events)).toBe(1);
 		});

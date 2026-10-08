@@ -48,7 +48,7 @@ Be specific in the description. A vague description makes the skill less likely 
 
 ## Writing the body
 
-The body of `SKILL.md` is a Markdown document that contains the instructions, context, and workflow for the skill. The body is loaded only after the skill has been selected, so the frontmatter acts as the gate and the body acts as the guide.
+The body of `SKILL.md` is a Markdown document that contains the instructions, context, and workflow for the skill. The body is loaded only after the skill has been selected, so the frontmatter description is what the model selects on and the body is what it follows once selected.
 
 Guidelines for the body:
 

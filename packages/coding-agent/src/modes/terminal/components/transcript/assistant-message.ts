@@ -17,7 +17,8 @@ import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import type { AssistantErrorPresentation, AssistantMessageView, AssistantSegment } from "@veyyon/wire/presentation";
 import chalk from "chalk";
 import type { AssistantThinkingRenderer } from "../../../../extensibility/extensions/types";
-import { getMarkdownTheme } from "../../../../theme/markdown-theme";
+import { TOOL_OUTPUT_IMAGE_THEME } from "../../../../theme/image-theme";
+import { getMarkdownTheme, markdownTextStyle } from "../../../../theme/markdown-theme";
 import { theme } from "../../../../theme/theme";
 import { getPreviewLines, resolveImageOptions, TRUNCATE_LENGTHS } from "../../../../tools/core/render-utils";
 import {
@@ -27,6 +28,7 @@ import {
 } from "../../../../utils/thinking-display";
 import { paintHotTail, shimmerPhase } from "../chrome/follow";
 import { type CacheInvalidation, CacheInvalidationMarkerComponent } from "./cache-invalidation-marker";
+import type { ChatBlockHost } from "./chat-block";
 
 /**
  * Max lines of a turn-ending provider error rendered inline in the transcript.
@@ -41,6 +43,9 @@ const MAX_TRANSCRIPT_ERROR_LINES = 8;
 const CODE_FENCE_LINE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 
 type ThinkingSegment = Extract<AssistantSegment, { kind: "thinking" }>;
+
+/** Shared by every component that has no extension thinking renderer; nothing writes into it. */
+const NO_THINKING_RENDERERS: readonly AssistantThinkingRenderer[] = [];
 
 function resolveThinkingDisplay(segment: ThinkingSegment, proseOnly: boolean): { text: string; visible: boolean } {
 	if (segment.redacted) return { text: "", visible: false };
@@ -64,29 +69,38 @@ function resolveThinkingDisplay(segment: ThinkingSegment, proseOnly: boolean): {
  * ASCII rendering resolves asynchronously, so even a completed fence can
  * re-layout rows that already looked settled. Fence-aware so a mermaid
  * example inside a regular code block never triggers the deferral.
+ *
+ * Runs on the whole streamed text on every delta and every reveal tick, so it
+ * visits only the lines that can be fences: a fence line holds a run of three
+ * backticks or tildes, so the scan jumps between those runs with `indexOf` and
+ * matches {@link CODE_FENCE_LINE} against the one line around each. Prose
+ * between fences is never split, sliced or matched.
  */
 function containsMermaidFence(text: string): boolean {
 	let fence: string | null = null;
-	for (const line of text.split("\n")) {
-		const fenceMatch = CODE_FENCE_LINE.exec(line);
-		if (fence !== null) {
+	let ticks = text.indexOf("```");
+	let tildes = text.indexOf("~~~");
+	let from = 0;
+	while (true) {
+		if (ticks !== -1 && ticks < from) ticks = text.indexOf("```", from);
+		if (tildes !== -1 && tildes < from) tildes = text.indexOf("~~~", from);
+		const at = ticks === -1 ? tildes : tildes === -1 ? ticks : Math.min(ticks, tildes);
+		if (at === -1) return false;
+		const newline = text.indexOf("\n", at);
+		const lineEnd = newline === -1 ? text.length : newline;
+		const fenceMatch = CODE_FENCE_LINE.exec(text.slice(text.lastIndexOf("\n", at) + 1, lineEnd));
+		if (fenceMatch && fence !== null) {
 			// Inside a code block: only a bare matching closing fence ends it.
-			if (
-				fenceMatch &&
-				fenceMatch[2]!.trim() === "" &&
-				fenceMatch[1]![0] === fence[0] &&
-				fenceMatch[1]!.length >= fence.length
-			) {
+			if (fenceMatch[2]!.trim() === "" && fenceMatch[1]![0] === fence[0] && fenceMatch[1]!.length >= fence.length) {
 				fence = null;
 			}
-			continue;
-		}
-		if (fenceMatch) {
+		} else if (fenceMatch) {
 			if (/^mermaid\b/.test(fenceMatch[2]!.trim())) return true;
 			fence = fenceMatch[1]!;
 		}
+		if (newline === -1) return false;
+		from = newline + 1;
 	}
-	return false;
 }
 
 /**
@@ -196,11 +210,16 @@ function lerpHex(from: string, to: string, t: number): string {
  */
 export class AssistantMessageComponent extends Container {
 	#contentContainer: Container;
-	#markerSlot: Container;
+	/** Holds the slim cache-invalidation divider above the content. Created by the first
+	 *  {@link setCacheInvalidation} that has a divider to show; a turn that never shows one holds
+	 *  only the content container. */
+	#markerSlot: Container | undefined;
+	#thinkingRenderers: readonly AssistantThinkingRenderer[];
 	#lastMessage?: AssistantMessageView;
-	#toolImagesByCallId = new Map<string, ImageContent[]>();
-	#convertedKittyImages = new Map<string, ImageContent>();
-	#kittyConversionsInFlight = new Set<string>();
+	/** Created on the first tool result image; a turn that shows none allocates none of the three. */
+	#toolImagesByCallId: Map<string, ImageContent[]> | undefined;
+	#convertedKittyImages: Map<string, ImageContent> | undefined;
+	#kittyConversionsInFlight: Set<string> | undefined;
 	#transcriptBlockFinalized: boolean;
 	/**
 	 * True while any rendered item carries a ` ```mermaid ` fence. Mermaid's
@@ -236,7 +255,9 @@ export class AssistantMessageComponent extends Container {
 	/** Width of the most recent render(); the settled-rows walk reads child
 	 *  renders at exactly this width (L1 cache hits). */
 	#lastRenderWidth = 0;
-	// Fast-path state: reuse Markdown children when message shape is stable during streaming.
+	// Fast-path state: reuse Markdown children when message shape is stable during streaming. A
+	// component holds it only while the block can still stream: a component built from a finished
+	// message captures none until a different message arrives, and sealing the block drops it.
 	#fastPathKey: string | undefined;
 	#fastPathItems:
 		| Array<{ md: Markdown; contentIndex: number; blockType: "text" | "thinking"; lastText: string }>
@@ -282,22 +303,18 @@ export class AssistantMessageComponent extends Container {
 		message?: AssistantMessageView,
 		private hideThinkingBlock = false,
 		private readonly onImageUpdate?: () => void,
-		private readonly thinkingRenderers: readonly AssistantThinkingRenderer[] = [],
+		thinkingRenderers: readonly AssistantThinkingRenderer[] = NO_THINKING_RENDERERS,
 		private readonly imageBudget?: ImageBudget,
 		private proseOnlyThinking = true,
-		/** Scoped repaint of THIS component only (the TUI's requestComponentRender
-		 *  pre-bound to this instance). The shimmer ticker prefers it over the
-		 *  full-tree onImageUpdate so 30fps flow never triggers a whole-transcript
-		 *  walk (issue #4377). Falls back to onImageUpdate when not provided. */
-		private readonly requestSelfRender?: () => void,
+		/** Host that repaints THIS component only (the TUI's requestComponentRender).
+		 *  The shimmer ticker prefers it over the full-tree onImageUpdate so 30fps
+		 *  flow never triggers a whole-transcript walk (issue #4377). Falls back to
+		 *  onImageUpdate when not provided. */
+		private readonly renderHost?: ChatBlockHost,
 	) {
 		super();
 		this.#transcriptBlockFinalized = message !== undefined;
-
-		// Slim cache-invalidation divider, populated above the content when this
-		// turn's request lost the prompt cache (see setCacheInvalidation).
-		this.#markerSlot = new Container();
-		this.addChild(this.#markerSlot);
+		this.#thinkingRenderers = thinkingRenderers.length === 0 ? NO_THINKING_RENDERERS : thinkingRenderers;
 
 		// Container for text/thinking content
 		this.#contentContainer = new Container();
@@ -315,9 +332,20 @@ export class AssistantMessageComponent extends Container {
 	 * block version so the change repaints even after content finalized.
 	 */
 	setCacheInvalidation(info: CacheInvalidation | undefined): void {
-		this.#markerSlot.clear();
-		if (info) {
-			this.#markerSlot.addChild(new CacheInvalidationMarkerComponent(info));
+		let slot = this.#markerSlot;
+		if (info && slot === undefined) {
+			// The divider sits above the content, so the slot goes first.
+			slot = new Container();
+			this.#markerSlot = slot;
+			this.clear();
+			this.addChild(slot);
+			this.addChild(this.#contentContainer);
+		}
+		if (slot !== undefined) {
+			slot.clear();
+			if (info) {
+				slot.addChild(new CacheInvalidationMarkerComponent(info));
+			}
 		}
 		this.#blockVersion++;
 	}
@@ -478,7 +506,8 @@ export class AssistantMessageComponent extends Container {
 
 	#startShimmer(): void {
 		if (this.#shimmerTimer) return;
-		const repaint = this.requestSelfRender ?? this.onImageUpdate;
+		const host = this.renderHost;
+		const repaint = host ? () => host.requestComponentRender(this) : this.onImageUpdate;
 		this.#shimmerTimer = setInterval(() => repaint?.(), SHIMMER_TICK_MS);
 		this.#shimmerTimer.unref?.();
 	}
@@ -521,7 +550,7 @@ export class AssistantMessageComponent extends Container {
 	getTranscriptBlockSettledRows(): number {
 		if (this.#transcriptBlockFinalized || !this.#lastUpdateTransient) return 0;
 		if (this.#containsMermaidSource) return 0;
-		if (this.#markerSlot.children.length > 0) return 0;
+		if (this.#markerSlot !== undefined && this.#markerSlot.children.length > 0) return 0;
 		const items = this.#fastPathItems;
 		const width = this.#lastRenderWidth;
 		if (!items || items.length === 0 || width <= 0) return 0;
@@ -563,12 +592,14 @@ export class AssistantMessageComponent extends Container {
 		// was no thinking pulse to trigger the rebuild path below.
 		this.#trailActive = false;
 		this.#stopShimmer();
-		// If the live pulse was on screen when the block sealed, drop the fast path
-		// and rebuild so the placeholder is removed — finalized blocks never animate.
-		if (this.#thinkingDots) {
-			this.#fastPathKey = undefined;
-			this.#fastPathItems = undefined;
-			if (this.#lastMessage) this.updateContent(this.#lastMessage, { transient: this.#lastUpdateTransient });
+		// A sealed block never streams again, so it drops the fast-path state; a later update (a
+		// pinned error clearing, a late tool image) rebuilds through the teardown path.
+		this.#fastPathKey = undefined;
+		this.#fastPathItems = undefined;
+		// If the live pulse was on screen when the block sealed, rebuild so the placeholder is
+		// removed — finalized blocks never animate.
+		if (this.#thinkingDots && this.#lastMessage) {
+			this.updateContent(this.#lastMessage, { transient: this.#lastUpdateTransient });
 		}
 	}
 
@@ -620,19 +651,24 @@ export class AssistantMessageComponent extends Container {
 	setToolResultImages(toolCallId: string, images: ImageContent[]): void {
 		if (!toolCallId) return;
 		const validImages = images.filter(img => img.type === "image" && img.data && img.mimeType);
-		for (const key of this.#convertedKittyImages.keys()) {
-			if (key.startsWith(`${toolCallId}:`)) {
-				this.#convertedKittyImages.delete(key);
+		if (this.#convertedKittyImages) {
+			for (const key of this.#convertedKittyImages.keys()) {
+				if (key.startsWith(`${toolCallId}:`)) {
+					this.#convertedKittyImages.delete(key);
+				}
 			}
 		}
-		for (const key of this.#kittyConversionsInFlight) {
-			if (key.startsWith(`${toolCallId}:`)) {
-				this.#kittyConversionsInFlight.delete(key);
+		if (this.#kittyConversionsInFlight) {
+			for (const key of this.#kittyConversionsInFlight) {
+				if (key.startsWith(`${toolCallId}:`)) {
+					this.#kittyConversionsInFlight.delete(key);
+				}
 			}
 		}
 		if (validImages.length === 0) {
-			this.#toolImagesByCallId.delete(toolCallId);
+			this.#toolImagesByCallId?.delete(toolCallId);
 		} else {
+			this.#toolImagesByCallId ??= new Map();
 			this.#toolImagesByCallId.set(toolCallId, validImages);
 			this.#convertToolImagesForKitty(toolCallId, validImages);
 		}
@@ -647,30 +683,30 @@ export class AssistantMessageComponent extends Container {
 			const image = images[index];
 			if (!image || image.mimeType === "image/png") continue;
 			const key = `${toolCallId}:${index}`;
-			if (this.#convertedKittyImages.has(key) || this.#kittyConversionsInFlight.has(key)) continue;
-			this.#kittyConversionsInFlight.add(key);
+			if (this.#convertedKittyImages?.has(key) || this.#kittyConversionsInFlight?.has(key)) continue;
+			this.#kittyConversionsInFlight ??= new Set();
+			const inFlight = this.#kittyConversionsInFlight;
+			inFlight.add(key);
 			new Bun.Image(Buffer.from(image.data, "base64"))
 				.png()
 				.toBase64()
 				.then(data => {
-					this.#kittyConversionsInFlight.delete(key);
-					this.#convertedKittyImages.set(key, {
-						type: "image",
-						data,
-						mimeType: "image/png",
-					});
+					inFlight.delete(key);
+					this.#convertedKittyImages ??= new Map();
+					this.#convertedKittyImages.set(key, { type: "image", data, mimeType: "image/png" });
 					if (this.#lastMessage) {
 						this.updateContent(this.#lastMessage, { transient: this.#lastUpdateTransient });
 					}
 					this.onImageUpdate?.();
 				})
 				.catch(() => {
-					this.#kittyConversionsInFlight.delete(key);
+					inFlight.delete(key);
 				});
 		}
 	}
 
 	#renderToolImages(): void {
+		if (!this.#toolImagesByCallId) return;
 		const imageEntries = Array.from(this.#toolImagesByCallId.entries()).flatMap(([toolCallId, images]) =>
 			images.map((image, index) => ({ image, key: `${toolCallId}:${index}` })),
 		);
@@ -680,16 +716,15 @@ export class AssistantMessageComponent extends Container {
 		for (const { image, key } of imageEntries) {
 			const displayImage =
 				TERMINAL.imageProtocol === ImageProtocol.Kitty && image.mimeType !== "image/png"
-					? this.#convertedKittyImages.get(key)
+					? this.#convertedKittyImages?.get(key)
 					: image;
 			if (TERMINAL.imageProtocol && displayImage) {
 				this.#contentContainer.addChild(
-					new Image(
-						displayImage.data,
-						displayImage.mimeType,
-						{ fallbackColor: (text: string) => theme.fg("toolOutput", text) },
-						{ ...resolveImageOptions(), budget: this.imageBudget, imageKey: key },
-					),
+					new Image(displayImage.data, displayImage.mimeType, TOOL_OUTPUT_IMAGE_THEME, {
+						...resolveImageOptions(),
+						budget: this.imageBudget,
+						imageKey: key,
+					}),
 				);
 				continue;
 			}
@@ -704,7 +739,7 @@ export class AssistantMessageComponent extends Container {
 	}
 
 	#appendThinkingExtensions(contentIndex: number, thinkingIndex: number, text: string): void {
-		for (const renderer of this.thinkingRenderers) {
+		for (const renderer of this.#thinkingRenderers) {
 			try {
 				const component = renderer(
 					{
@@ -750,7 +785,7 @@ export class AssistantMessageComponent extends Container {
 		for (const content of message.segments) {
 			if (content.kind === "tool-call") return false;
 		}
-		if (this.#toolImagesByCallId.size > 0) return false;
+		if (this.#toolImagesByCallId !== undefined && this.#toolImagesByCallId.size > 0) return false;
 		const errorPresentation = message.errorPresentation ?? { kind: "none" };
 		if (errorPresentation.kind === "compact-recovered") return false;
 		if (errorPresentation.kind === "full" && !(message.stopReason === "error" && this.#errorPinned)) {
@@ -758,7 +793,7 @@ export class AssistantMessageComponent extends Container {
 		}
 		// Extension stability: if thinking renderers exist and any tracked thinking
 		// block's text changed, extensions may produce a different child count.
-		if (this.thinkingRenderers.length > 0 && this.#fastPathItems) {
+		if (this.#thinkingRenderers.length > 0 && this.#fastPathItems) {
 			for (const item of this.#fastPathItems) {
 				if (item.blockType === "thinking") {
 					const content = message.segments[item.contentIndex];
@@ -845,6 +880,7 @@ export class AssistantMessageComponent extends Container {
 	}
 
 	updateContent(message: AssistantMessageView, opts?: { transient?: boolean }): void {
+		const previous = this.#lastMessage;
 		this.#blockVersion++;
 		this.#lastMessage = message;
 		this.#lastUpdateTransient = opts?.transient === true;
@@ -911,8 +947,12 @@ export class AssistantMessageComponent extends Container {
 		this.#thinkingDots = undefined;
 		this.#thinkingLabel = undefined;
 
-		// Determine if we should capture Markdown instances for next fast path
-		const shouldCapture = this.#canFastPath(message);
+		// Determine if we should capture Markdown instances for next fast path. A block that has
+		// not been finalized is streaming; a finalized one streams only when a different message
+		// follows the one it was built from (an assistant segment after a tool call). Re-rendering
+		// the same message (theme change, pinned error, sealing) captures nothing.
+		const canStream = !this.#transcriptBlockFinalized || (previous !== undefined && previous !== message);
+		const shouldCapture = canStream && this.#canFastPath(message);
 		const captureItems:
 			| Array<{ md: Markdown; contentIndex: number; blockType: "text" | "thinking"; lastText: string }>
 			| undefined = shouldCapture ? [] : undefined;
@@ -937,9 +977,7 @@ export class AssistantMessageComponent extends Container {
 				// style, plain paragraphs fall to the terminal's default foreground
 				// (gray on many setups) and only bold/code/links pop, which makes
 				// sparse-markup answers read as an unstyled gray slab.
-				const md = new Markdown(trimmed, 2, 0, getMarkdownTheme(), {
-					color: (text: string) => theme.fg("text", text),
-				});
+				const md = new Markdown(trimmed, 2, 0, getMarkdownTheme(), markdownTextStyle("text"));
 				md.transientRenderCache = this.#lastUpdateTransient;
 				this.#contentContainer.addChild(md);
 				captureItems?.push({ md, contentIndex: i, blockType: "text", lastText: trimmed });
@@ -974,10 +1012,7 @@ export class AssistantMessageComponent extends Container {
 					this.#contentContainer.addChild(this.#thinkingLabel);
 				}
 				// Thinking traces in thinkingText color, italic
-				const md = new Markdown(thinkingText, 2, 0, getMarkdownTheme(), {
-					color: (text: string) => theme.fg("thinkingText", text),
-					italic: true,
-				});
+				const md = new Markdown(thinkingText, 2, 0, getMarkdownTheme(), markdownTextStyle("thinkingText", true));
 				md.transientRenderCache = this.#lastUpdateTransient;
 				this.#contentContainer.addChild(md);
 				captureItems?.push({ md, contentIndex: i, blockType: "thinking", lastText: thinkingText });

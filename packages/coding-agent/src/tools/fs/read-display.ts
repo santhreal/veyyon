@@ -5,8 +5,8 @@
  * and the card draws the same rows without the numbers, so a result holds the file twice. The
  * session writes the card text only when the result's own text does not rebuild it:
  * {@link readResultCodec} drops it from the written line when a rebuild named by `from` reproduces it
- * exactly, and restores it when the session loads, so the entry in memory is the one the tool
- * returned.
+ * exactly and restores it when the session loads, and settles a result the session records into the
+ * same rebuilt form, so a running session and a loaded one hold the file once.
  */
 import type { ToolResultCodec } from "@veyyon/kernel/registry/tool-result-codec";
 import { isRecord } from "@veyyon/utils/type-guards";
@@ -168,33 +168,45 @@ function encode(display: ResolvedReadDisplay, body: string): ReadDisplayContent 
 }
 
 /**
- * The display `from` names, rebuilt from the result's text; undefined when that text cannot rebuild it.
- * A `rows` display is checked and numbered here and its text is built on first read, so a transcript
- * that draws no read preview holds no second copy of the files it read.
+ * A `rows` display over `body`, the result text tagged `tag`, numbered by `lineNumbers`. Its text is
+ * built on first read, so a transcript that draws no read preview holds no second copy of the files it
+ * read.
  */
+function rowsDisplay(
+	body: string,
+	tag: ReadDisplayContent,
+	lineNumbers: Array<number | null> | undefined,
+): ResolvedReadDisplay {
+	// The result text the rows are read from, until the card text is built from it. A prune that
+	// replaces the result's content leaves this display the only holder of that text, so the getter
+	// releases it once the card text exists.
+	let rows: string | undefined = body;
+	let text = "";
+	const display: ResolvedReadDisplay = {
+		get text() {
+			if (rows !== undefined) {
+				const texts: string[] = [];
+				readRows(rows, texts);
+				text = texts.join("\n");
+				rows = undefined;
+			}
+			return text;
+		},
+		startLine: tag.startLine,
+		...(lineNumbers === undefined ? {} : { lineNumbers }),
+	};
+	rebuiltRows.set(display, { body, tag });
+	return display;
+}
+
+/** The display `from` names, rebuilt from the result's text; undefined when that text cannot rebuild it. */
 function rebuild(display: ReadDisplayContent, content: CodedResultContent): ResolvedReadDisplay | undefined {
 	const body = firstResultText(content);
 	if (body === undefined) return undefined;
 	const { startLine } = display;
 	if (display.from === "rows") {
 		const numbers = readRows(body);
-		if (numbers === undefined) return undefined;
-		const lineNumbers = storedNumbers(numbers, startLine);
-		let text: string | undefined;
-		const rebuilt: ResolvedReadDisplay = {
-			get text() {
-				if (text === undefined) {
-					const texts: string[] = [];
-					readRows(body, texts);
-					text = texts.join("\n");
-				}
-				return text;
-			},
-			startLine,
-			...(lineNumbers === undefined ? {} : { lineNumbers }),
-		};
-		rebuiltRows.set(rebuilt, { body, tag: display });
-		return rebuilt;
+		return numbers === undefined ? undefined : rowsDisplay(body, display, storedNumbers(numbers, startLine));
 	}
 	if (display.from === "prefix" && typeof display.length === "number" && display.length <= body.length) {
 		const text = body.slice(0, display.length);
@@ -219,7 +231,12 @@ export const readResultCodec: ToolResultCodec = {
 		const body = firstResultText(content);
 		if (body === undefined) return details;
 		const loaded = rebuiltRows.get(details.displayContent);
-		if (loaded !== undefined && loaded.body === body) return { ...details, displayContent: loaded.tag };
+		if (loaded !== undefined) {
+			if (loaded.body === body) return { ...details, displayContent: loaded.tag };
+			// The content no longer holds the text the display was rebuilt from (a prune replaced it), so
+			// the tag is never written again and the entry would hold that text for nothing.
+			rebuiltRows.delete(details.displayContent);
+		}
 		if (!isWholeDisplay(details.displayContent)) return details;
 		const displayContent = encode(details.displayContent, body);
 		return displayContent === undefined ? details : { ...details, displayContent };
@@ -228,6 +245,22 @@ export const readResultCodec: ToolResultCodec = {
 		if (!isRecord(details) || !isSlimDisplay(details.displayContent)) return;
 		const rebuilt = rebuild(details.displayContent, content);
 		if (rebuilt !== undefined) details.displayContent = rebuilt;
+	},
+	// A recorded read holds its card text as a load rebuilds it: a `rows` card is built from the
+	// result's text on first draw, which the terminal's grouped reads never do, and a `prefix` card is
+	// a slice of that text, so the entry holds the file once.
+	settle(details, content) {
+		// A display rebuilt by an earlier pass is checked first: reading `text` off it builds the card.
+		if (!isRecord(details) || !isRecord(details.displayContent) || rebuiltRows.has(details.displayContent)) return;
+		const display = details.displayContent;
+		if (!isWholeDisplay(display)) return;
+		const body = firstResultText(content);
+		if (body === undefined) return;
+		const tag = encode(display, body);
+		if (tag === undefined) return;
+		// `encode` checked that the rows number the text as `display.lineNumbers` does.
+		details.displayContent =
+			tag.from === "rows" ? rowsDisplay(body, tag, display.lineNumbers) : (rebuild(tag, content) ?? display);
 	},
 };
 

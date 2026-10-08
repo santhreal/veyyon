@@ -64,7 +64,6 @@ export type JsonTransformFailureCode =
 	| "depth"
 	| "input-bytes"
 	| "input-utf16"
-	| "internal"
 	| "key-collision"
 	| "keys"
 	| "nodes"
@@ -89,238 +88,265 @@ function refuse(code: JsonTransformFailureCode, message: string): never {
 	throw new JsonTransformError(code, message);
 }
 
+/** Whether a container the walk entered has finished, and what it mapped to once it has. */
+interface JsonWalkMemo {
+	done: boolean;
+	result: unknown;
+}
+
+/** A container the walk has entered and not yet finished. */
 interface JsonWalkFrame {
-	original: unknown[] | Record<string, unknown>;
-	kind: "array" | "object";
-	keys: string[];
-	sourceValues: unknown[];
-	mappedKeys: string[];
-	mappedValues: unknown[];
-	prototype: object | null;
-	target: JsonWalkTarget;
+	readonly source: unknown[] | Record<string, unknown>;
+	/** The record's own keys, or `undefined` for an array. */
+	readonly keys: string[] | undefined;
+	readonly values: unknown[];
+	readonly prototype: object | null;
+	readonly depth: number;
+	readonly memo: JsonWalkMemo;
+	/** Copy of `keys`, allocated when the transform first changes a key. */
+	mappedKeys: string[] | undefined;
+	/** Copy of `values`, allocated when a child first maps to a different value. */
+	mappedValues: unknown[] | undefined;
+	/** Index of the next child to visit. */
+	next: number;
 }
 
-interface JsonWalkTarget {
-	frame: JsonWalkFrame | undefined;
-	index: number;
+/** Returned by `#enter` for a container it pushed a frame for. */
+const ENTERED = Symbol("entered");
+
+function isJsonPrimitive(value: unknown): boolean {
+	return (
+		value === null ||
+		value === undefined ||
+		typeof value === "string" ||
+		typeof value === "boolean" ||
+		(typeof value === "number" && Number.isFinite(value))
+	);
 }
 
-type JsonWalkEvent =
-	| { type: "visit"; value: unknown; depth: number; target: JsonWalkTarget }
-	| { type: "key"; key: string; frame: JsonWalkFrame; index: number }
-	| { type: "complete"; frame: JsonWalkFrame };
+/**
+ * One bounded walk. The frame stack prevents call-stack exhaustion, and a frame visits its
+ * children in order from a cursor, so the transform sees each key before its value and the
+ * whole value before the next key. Memo entries reject cycles and map shared DAG nodes once.
+ * A frame copies its keys or values only when the transform changes one, and a container is
+ * rebuilt only when a copy exists.
+ */
+class BoundedJsonWalk {
+	readonly #fn: (s: string) => string;
+	readonly #memo = new WeakMap<object, JsonWalkMemo>();
+	readonly #stack: JsonWalkFrame[] = [];
+	#nodes = 0;
+	#keys = 0;
+	#inputBytes = 0;
+	#outputBytes = 0;
+
+	constructor(fn: (s: string) => string) {
+		this.#fn = fn;
+	}
+
+	run(root: unknown): unknown {
+		const settled = this.#enter(root, 0);
+		if (settled !== ENTERED) return settled;
+		const stack = this.#stack;
+		for (;;) {
+			const frame = stack[stack.length - 1];
+			const index = frame.next;
+			if (index < frame.values.length) {
+				if (frame.keys !== undefined) this.#mapKey(frame, frame.keys, index);
+				const value = this.#enter(frame.values[index], frame.depth + 1);
+				if (value !== ENTERED) settle(frame, value);
+				continue;
+			}
+			stack.pop();
+			const result = finish(frame);
+			if (stack.length === 0) return result;
+			settle(stack[stack.length - 1], result);
+		}
+	}
+
+	/** Map a primitive, or push a frame for a container and return {@link ENTERED}. */
+	#enter(value: unknown, depth: number): unknown {
+		if (typeof value === "object" && value !== null) return this.#enterContainer(value, depth);
+		if (!isJsonPrimitive(value)) {
+			refuse("non-json-value", "Refusing a non-JSON value in secret transformation data.");
+		}
+		if (++this.#nodes > MAX_JSON_TRANSFORM_NODES) {
+			refuse("nodes", "Refusing a JSON transformation above the node limit.");
+		}
+		return typeof value === "string" ? this.#mapString(value) : value;
+	}
+
+	#enterContainer(value: object, depth: number): unknown {
+		if (depth > MAX_JSON_TRANSFORM_DEPTH) {
+			refuse("depth", "Refusing a JSON transformation above the depth limit.");
+		}
+		const memo = this.#memo.get(value);
+		if (memo !== undefined) {
+			if (!memo.done) refuse("cycle", "Refusing a cyclic JSON transformation graph.");
+			return memo.result;
+		}
+		if (++this.#nodes > MAX_JSON_TRANSFORM_NODES) {
+			refuse("nodes", "Refusing a JSON transformation above the node limit.");
+		}
+		const frame = Array.isArray(value) ? this.#openArray(value, depth) : this.#openRecord(value, depth);
+		this.#memo.set(value, frame.memo);
+		this.#stack.push(frame);
+		return ENTERED;
+	}
+
+	#openArray(array: unknown[], depth: number): JsonWalkFrame {
+		if (array.length > MAX_JSON_TRANSFORM_NODES - this.#nodes) {
+			refuse("array-items", "Refusing a JSON transformation above the array-item limit.");
+		}
+		const values: unknown[] = [];
+		for (let index = 0; index < array.length; index++) {
+			const descriptor = Object.getOwnPropertyDescriptor(array, index);
+			if (descriptor !== undefined && !("value" in descriptor)) {
+				refuse("accessor", "Refusing an accessor property in JSON transformation data.");
+			}
+			values.push(descriptor?.value);
+		}
+		return openFrame(array, undefined, values, null, depth);
+	}
+
+	#openRecord(value: object, depth: number): JsonWalkFrame {
+		const prototype = Object.getPrototypeOf(value);
+		if (prototype !== Object.prototype && prototype !== null) {
+			refuse("non-plain-object", "Refusing a non-plain object in JSON transformation data.");
+		}
+		const record = value as Record<string, unknown>;
+		if (
+			Object.getOwnPropertySymbols(record).some(
+				symbol => Object.getOwnPropertyDescriptor(record, symbol)?.enumerable,
+			)
+		) {
+			refuse("symbol-key", "Refusing an enumerable symbol key in JSON transformation data.");
+		}
+		const keys = Object.keys(record);
+		const values: unknown[] = [];
+		for (const key of keys) {
+			if (++this.#keys > MAX_JSON_TRANSFORM_KEYS) {
+				refuse("keys", "Refusing a JSON transformation above the object-key limit.");
+			}
+			const descriptor = Object.getOwnPropertyDescriptor(record, key);
+			if (descriptor === undefined || !("value" in descriptor)) {
+				refuse("accessor", "Refusing an accessor property in JSON transformation data.");
+			}
+			values.push(descriptor.value);
+		}
+		return openFrame(record, keys, values, prototype, depth);
+	}
+
+	#mapKey(frame: JsonWalkFrame, keys: string[], index: number): void {
+		const mapped = this.#mapString(keys[index]);
+		if (mapped === keys[index]) return;
+		frame.mappedKeys ??= keys.slice();
+		frame.mappedKeys[index] = mapped;
+	}
+
+	#mapString(input: string): string {
+		if (!isWellFormedUtf16(input)) {
+			refuse("input-utf16", "Refusing ill-formed UTF-16 in JSON transformation data.");
+		}
+		const inputBytes = utf8ByteLength(input);
+		this.#inputBytes += inputBytes;
+		if (this.#inputBytes > MAX_JSON_TRANSFORM_STRING_BYTES) {
+			refuse("input-bytes", "Refusing a JSON transformation above the cumulative input string-byte limit.");
+		}
+		const output = this.#fn(input);
+		if (output === input) {
+			this.#outputBytes += inputBytes;
+		} else {
+			if (typeof output !== "string" || !isWellFormedUtf16(output)) {
+				refuse("output-text", "Refusing an ill-formed string produced by a JSON transformation.");
+			}
+			this.#outputBytes += utf8ByteLength(output);
+		}
+		if (this.#outputBytes > MAX_JSON_TRANSFORM_STRING_BYTES) {
+			refuse("output-bytes", "Refusing a JSON transformation above the cumulative output string-byte limit.");
+		}
+		return output;
+	}
+}
+
+/** Record what the child at the frame's cursor mapped to, and advance the cursor. */
+function settle(frame: JsonWalkFrame, value: unknown): void {
+	const index = frame.next++;
+	if (value === frame.values[index]) return;
+	frame.mappedValues ??= frame.values.slice();
+	frame.mappedValues[index] = value;
+}
+
+function finish(frame: JsonWalkFrame): unknown {
+	let result: unknown = frame.source;
+	if (frame.keys === undefined) {
+		if (frame.mappedValues !== undefined) result = rebuiltArray(frame, frame.mappedValues);
+	} else if (frame.mappedKeys !== undefined || frame.mappedValues !== undefined) {
+		result = rebuiltRecord(frame, frame.mappedKeys ?? frame.keys, frame.mappedValues ?? frame.values);
+	}
+	frame.memo.done = true;
+	frame.memo.result = result;
+	return result;
+}
+
+function openFrame(
+	source: unknown[] | Record<string, unknown>,
+	keys: string[] | undefined,
+	values: unknown[],
+	prototype: object | null,
+	depth: number,
+): JsonWalkFrame {
+	return {
+		source,
+		keys,
+		values,
+		prototype,
+		depth,
+		memo: { done: false, result: undefined },
+		mappedKeys: undefined,
+		mappedValues: undefined,
+		next: 0,
+	};
+}
+
+/** A copy of the source array with each changed element replaced, so an unchanged hole stays a hole. */
+function rebuiltArray(frame: JsonWalkFrame, mappedValues: unknown[]): unknown[] {
+	const output = (frame.source as unknown[]).slice();
+	for (let index = 0; index < mappedValues.length; index++) {
+		if (mappedValues[index] !== frame.values[index]) output[index] = mappedValues[index];
+	}
+	return output;
+}
+
+/**
+ * A record with the source's prototype and the mapped fields. Two source keys that map to one
+ * key are refused rather than merged; that needs a changed key, since own keys are distinct.
+ * Fields are defined, not assigned, so a mapped `__proto__` key is a field and never a prototype.
+ */
+function rebuiltRecord(frame: JsonWalkFrame, keys: string[], values: unknown[]): Record<string, unknown> {
+	if (frame.mappedKeys !== undefined && new Set(keys).size !== keys.length) {
+		refuse("key-collision", "Refusing to rewrite two JSON object fields as the same protected key.");
+	}
+	const output = Object.create(frame.prototype) as Record<string, unknown>;
+	for (let index = 0; index < keys.length; index++) {
+		Object.defineProperty(output, keys[index], {
+			value: values[index],
+			enumerable: true,
+			configurable: true,
+			writable: true,
+		});
+	}
+	return output;
+}
 
 /**
  * Map every string in bounded JSON, including object keys.
  *
- * The explicit stack prevents call-stack exhaustion. Gray/done memo states reject cycles and map
- * shared DAG nodes once, while completion allocates only containers whose key or value changed.
- * Arrays and plain records are the complete walk domain; typed arrays and class instances are
- * rejected before their properties can be enumerated byte-by-byte.
+ * Returns `value` itself when the transform changes nothing, and otherwise copies only the
+ * containers on the path to a change. Arrays and plain records are the complete walk domain;
+ * typed arrays and class instances are rejected before their properties can be enumerated
+ * byte-by-byte.
  */
 export function mapJsonStrings<T>(value: T, fn: (s: string) => string): T {
-	const memo = new WeakMap<object, { status: "visiting" | "done"; result?: unknown }>();
-	const events: JsonWalkEvent[] = [{ type: "visit", value, depth: 0, target: { frame: undefined, index: 0 } }];
-	let rootResult: unknown;
-	let visitedNodes = 0;
-	let visitedKeys = 0;
-	let inputStringBytes = 0;
-	let outputStringBytes = 0;
-
-	const mapString = (input: string): string => {
-		if (!isWellFormedUtf16(input)) {
-			refuse("input-utf16", "Refusing ill-formed UTF-16 in JSON transformation data.");
-		}
-		inputStringBytes += utf8ByteLength(input);
-		if (inputStringBytes > MAX_JSON_TRANSFORM_STRING_BYTES) {
-			refuse("input-bytes", "Refusing a JSON transformation above the cumulative input string-byte limit.");
-		}
-		const output = fn(input);
-		if (typeof output !== "string" || !isWellFormedUtf16(output)) {
-			refuse("output-text", "Refusing an ill-formed string produced by a JSON transformation.");
-		}
-		outputStringBytes += utf8ByteLength(output);
-		if (outputStringBytes > MAX_JSON_TRANSFORM_STRING_BYTES) {
-			refuse("output-bytes", "Refusing a JSON transformation above the cumulative output string-byte limit.");
-		}
-		return output;
-	};
-
-	const assign = (target: JsonWalkTarget, result: unknown): void => {
-		if (target.frame === undefined) rootResult = result;
-		else target.frame.mappedValues[target.index] = result;
-	};
-
-	while (events.length > 0) {
-		const event = events.pop();
-		if (event === undefined) break;
-		if (event.type === "key") {
-			event.frame.mappedKeys[event.index] = mapString(event.key);
-			continue;
-		}
-		if (event.type === "complete") {
-			const frame = event.frame;
-			let changed = false;
-			if (frame.kind === "array") {
-				for (let index = 0; index < frame.sourceValues.length; index++) {
-					if (frame.mappedValues[index] !== frame.sourceValues[index]) {
-						changed = true;
-						break;
-					}
-				}
-				let result: unknown = frame.original;
-				if (changed) {
-					const output = (frame.original as unknown[]).slice();
-					for (let index = 0; index < frame.sourceValues.length; index++) {
-						if (frame.mappedValues[index] !== frame.sourceValues[index]) {
-							output[index] = frame.mappedValues[index];
-						}
-					}
-					result = output;
-				}
-				assign(frame.target, result);
-				const memoEntry = memo.get(frame.original);
-				if (memoEntry === undefined) refuse("internal", "JSON transformation memo state was lost.");
-				memoEntry.status = "done";
-				memoEntry.result = result;
-				continue;
-			}
-
-			const seenKeys = new Set<string>();
-			for (let index = 0; index < frame.keys.length; index++) {
-				const mappedKey = frame.mappedKeys[index];
-				if (seenKeys.has(mappedKey)) {
-					refuse("key-collision", "Refusing to rewrite two JSON object fields as the same protected key.");
-				}
-				seenKeys.add(mappedKey);
-				if (mappedKey !== frame.keys[index] || frame.mappedValues[index] !== frame.sourceValues[index]) {
-					changed = true;
-				}
-			}
-			let result: unknown = frame.original;
-			if (changed) {
-				const output = Object.create(frame.prototype) as Record<string, unknown>;
-				for (let index = 0; index < frame.keys.length; index++) {
-					Object.defineProperty(output, frame.mappedKeys[index], {
-						value: frame.mappedValues[index],
-						enumerable: true,
-						configurable: true,
-						writable: true,
-					});
-				}
-				result = output;
-			}
-			assign(frame.target, result);
-			const memoEntry = memo.get(frame.original);
-			if (memoEntry === undefined) refuse("internal", "JSON transformation memo state was lost.");
-			memoEntry.status = "done";
-			memoEntry.result = result;
-			continue;
-		}
-
-		const current = event.value;
-		if (typeof current === "string") {
-			if (++visitedNodes > MAX_JSON_TRANSFORM_NODES) {
-				refuse("nodes", "Refusing a JSON transformation above the node limit.");
-			}
-			assign(event.target, mapString(current));
-			continue;
-		}
-		if (
-			current === null ||
-			current === undefined ||
-			typeof current === "boolean" ||
-			(typeof current === "number" && Number.isFinite(current))
-		) {
-			if (++visitedNodes > MAX_JSON_TRANSFORM_NODES) {
-				refuse("nodes", "Refusing a JSON transformation above the node limit.");
-			}
-			assign(event.target, current);
-			continue;
-		}
-		if (typeof current !== "object") {
-			refuse("non-json-value", "Refusing a non-JSON value in secret transformation data.");
-		}
-		if (event.depth > MAX_JSON_TRANSFORM_DEPTH) {
-			refuse("depth", "Refusing a JSON transformation above the depth limit.");
-		}
-		const existingMemo = memo.get(current);
-		if (existingMemo?.status === "visiting") {
-			refuse("cycle", "Refusing a cyclic JSON transformation graph.");
-		}
-		if (existingMemo?.status === "done") {
-			assign(event.target, existingMemo.result);
-			continue;
-		}
-		if (++visitedNodes > MAX_JSON_TRANSFORM_NODES) {
-			refuse("nodes", "Refusing a JSON transformation above the node limit.");
-		}
-
-		const isArray = Array.isArray(current);
-		const prototype = Object.getPrototypeOf(current);
-		if (!isArray && prototype !== Object.prototype && prototype !== null) {
-			refuse("non-plain-object", "Refusing a non-plain object in JSON transformation data.");
-		}
-		const keys: string[] = [];
-		const sourceValues: unknown[] = [];
-		if (isArray) {
-			if (current.length > MAX_JSON_TRANSFORM_NODES - visitedNodes) {
-				refuse("array-items", "Refusing a JSON transformation above the array-item limit.");
-			}
-			for (let index = 0; index < current.length; index++) {
-				const descriptor = Object.getOwnPropertyDescriptor(current, String(index));
-				if (descriptor !== undefined && !("value" in descriptor)) {
-					refuse("accessor", "Refusing an accessor property in JSON transformation data.");
-				}
-				keys.push(String(index));
-				sourceValues.push(descriptor?.value);
-			}
-		} else {
-			const record = current as Record<string, unknown>;
-			if (
-				Object.getOwnPropertySymbols(record).some(
-					symbol => Object.getOwnPropertyDescriptor(record, symbol)?.enumerable,
-				)
-			) {
-				refuse("symbol-key", "Refusing an enumerable symbol key in JSON transformation data.");
-			}
-			for (const key in record) {
-				if (!Object.hasOwn(record, key)) continue;
-				if (++visitedKeys > MAX_JSON_TRANSFORM_KEYS) {
-					refuse("keys", "Refusing a JSON transformation above the object-key limit.");
-				}
-				const descriptor = Object.getOwnPropertyDescriptor(record, key);
-				if (descriptor === undefined || !("value" in descriptor)) {
-					refuse("accessor", "Refusing an accessor property in JSON transformation data.");
-				}
-				keys.push(key);
-				sourceValues.push(descriptor.value);
-			}
-		}
-
-		const frame: JsonWalkFrame = {
-			original: current as unknown[] | Record<string, unknown>,
-			kind: isArray ? "array" : "object",
-			keys,
-			sourceValues,
-			mappedKeys: isArray ? keys : new Array(keys.length),
-			mappedValues: new Array(sourceValues.length),
-			prototype,
-			target: event.target,
-		};
-		memo.set(current, { status: "visiting" });
-		assign(event.target, current);
-		events.push({ type: "complete", frame });
-		for (let index = sourceValues.length - 1; index >= 0; index--) {
-			events.push({
-				type: "visit",
-				value: sourceValues[index],
-				depth: event.depth + 1,
-				target: { frame, index },
-			});
-			if (!isArray) events.push({ type: "key", key: keys[index], frame, index });
-		}
-	}
-
-	return rootResult as T;
+	return new BoundedJsonWalk(fn).run(value) as T;
 }

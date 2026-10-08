@@ -78,23 +78,32 @@ export function createAcademicPaperHandler(decl: AcademicPaperDeclaration, handl
 					return result;
 				}
 
-				const isCustom = typeof result === "string" || Boolean(result.customMarkdown);
 				const content = typeof result === "string" ? result : (result.customMarkdown ?? result.title);
 				const method = typeof decl.method === "function" ? decl.method(match) : decl.method;
-				const noteList = isCustom
-					? typeof decl.notes === "function"
-						? decl.notes(match, typeof result === "string" ? undefined : result)
-						: (decl.notes ?? [`Fetched via ${method} API`])
-					: [`Fetched via ${method} API`];
-
 				return buildResult(content, {
 					url: ctx.url,
 					method,
 					fetchedAt: ctx.fetchedAt,
-					notes: ctx.notes.length > 0 ? ctx.notes : noteList,
+					notes: ctx.notes.length > 0 ? ctx.notes : paperNotes(decl, match, result, method),
 				});
 			},
 		},
 		handlerName,
 	);
+}
+
+/**
+ * The notes of a paper whose fetch recorded none: the declaration's notes for
+ * custom markdown, otherwise the API the metadata came from.
+ */
+function paperNotes(
+	decl: AcademicPaperDeclaration,
+	match: AcademicMatch,
+	result: AcademicPaperMeta | string,
+	method: string,
+): string[] {
+	const fetchedVia = [`Fetched via ${method} API`];
+	if (typeof result !== "string" && !result.customMarkdown) return fetchedVia;
+	if (typeof decl.notes === "function") return decl.notes(match, typeof result === "string" ? undefined : result);
+	return decl.notes ?? fetchedVia;
 }

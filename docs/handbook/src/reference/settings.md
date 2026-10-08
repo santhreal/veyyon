@@ -52,7 +52,7 @@ Two rules cover the corners:
 
 - If a setting is written **both** ways, the nested value wins, the flat key is
   dropped from the file the next time it is written, and a warning states both values.
-- A key this build does not recognize is left exactly as written, whether or not it has
+- A key this build does not recognize is left as written, whether or not it has
   dots in it. That keeps a config usable across versions and alongside other tools.
 
 ## Reading and writing settings
@@ -72,7 +72,7 @@ veyyon config reset steeringMode   # restore a key to its schema default
 veyyon config path                 # print the active agent directory
 ```
 
-For users who want the full first-run animation on normal launches, set `startup.showSplash`:
+To show the full first-run animation on normal launches, set `startup.showSplash`:
 
 ```bash
 veyyon config set startup.showSplash true
@@ -103,12 +103,12 @@ A setting that has been replaced by another is **retired**: it stays readable an
 |---|---|---|
 | boolean | `true`, `false`, `yes`, `no`, `on`, `off`, `1`, `0` | Case-insensitive. Anything else is rejected. |
 | number | Any finite JavaScript number | `Infinity`/`NaN` are rejected. |
-| enum | One of the key's allowed values | Must match exactly; the error lists the valid values. |
+| enum | One of the key's allowed values | Must match an allowed value; the error lists the valid values. |
 | array | A JSON array | e.g. `'["anthropic","openai"]'`. Must parse and be an array. |
 | record | A JSON object | e.g. `'{"bash":"prompt"}'`. Must parse and be a non-array object. |
 | string | Stored as given (trimmed) | Multi-word values are joined with spaces. |
 
-Keys must match a real schema path exactly. There is no shorthand, set `theme.dark`, not `theme`.
+A key must be a full schema path. There is no shorthand: set `theme.dark`, not `theme`.
 
 ### Where writes go
 
@@ -120,13 +120,13 @@ the value and is read-only. Change the owning source instead.
 This prevents an accepted-looking profile edit from remaining hidden until the
 higher layer disappears.
 
-**Default Model** is intentionally profile-owned. If `--model` or another
+**Default Model** is profile-scoped. If `--model` or another
 higher layer selects a different active model, the row shows the active model,
 and the footer description states its source and the saved profile model the
 row edits. Editing the row changes the model used by the next session; it does
 not replace the current session override.
 
-Within one open panel, each category remembers its last selected row. Switch to
+Within one open panel, each category keeps its last selected row. Switch to
 another sidebar category and back to resume where you left off. If a condition
 hides that row, the panel selects the nearest available setting instead.
 
@@ -226,7 +226,7 @@ Array replacement is the most common surprise: the overlay's `disabledProviders`
 
 ## Per-repository settings
 
-A repository cannot carry its own settings: a checked-in `.veyyon/config.yml` is not read, because a working tree is content you may not have written. Two mechanisms cover what project config used to do:
+A repository cannot hold its own settings: a checked-in `.veyyon/config.yml` is not read, because a working tree is content you may not have written. Two mechanisms provide per-repository settings:
 
 - **`--config` overlays** apply a file you choose to one process, so a per-repo launcher or alias can pass the repo's overlay explicitly:
 
@@ -237,7 +237,7 @@ veyyon --config ./base.yml --config ./experiment.yml "try this model"
 
 Overlay paths are resolved relative to the process working directory (and `~` is expanded). Each overlay must parse as a YAML mapping; a missing file, invalid YAML, or a top-level array/scalar is a hard error, it does **not** silently fall back to lower-precedence settings. Keep the overlay file out of commits if it holds anything private.
 
-- **Path-scoped arrays** let one profile config behave differently per directory; see below.
+- **Path-scoped arrays** let one profile config behave differently per directory; see [Path-scoped arrays](#path-scoped-arrays).
 
 ## Path-scoped arrays
 
@@ -273,7 +273,7 @@ Only string values are kept; malformed scoped entries are ignored. Path scoping 
 
 ## Provider and source disabling
 
-`disabledProviders` is a single shared id namespace that gates two different subsystems, before any credential check:
+`disabledProviders` is a single shared id namespace that disables entries in two different subsystems, before any credential check:
 
 | Entry kind | Example ids | Effect |
 |---|---|---|
@@ -303,7 +303,7 @@ Every key below is defined in the settings schema; `veyyon config list` shows th
 
 ### Models
 
-`modelRoles`, `modelTags`, and `cycleOrder` work together. Role values may carry a thinking suffix (`:off`, `:auto`, `:minimal`, `:low`, `:medium`, `:high`, `:xhigh`, `:max`). The same suffix works on `agent.model` and `compaction.model`, so any model slot can run at a chosen effort.
+`modelRoles`, `modelTags`, and `cycleOrder` work together. Role values may include a thinking suffix (`:off`, `:auto`, `:minimal`, `:low`, `:medium`, `:high`, `:xhigh`, `:max`). The same suffix works on `agent.model` and `compaction.model`, so any model slot can run at a chosen effort.
 
 A suffix on a role use overrides the role's stored suffix. For example, if `modelRoles.slow` is `anthropic/claude-opus-5:low`, then `@slow:high` resolves to `anthropic/claude-opus-5:high`, not a double-suffixed model id.
 
@@ -507,7 +507,7 @@ tools:
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
-| `tools.approvalMode` | enum | `auto` | Canonical: `plan` (read auto; write prompts with an active plan-mode session, otherwise write/exec denied), `ask` (nothing auto; every tier prompts, reads included), `ask-command` (read+write auto; exec prompt), `auto` (all tiers auto, with the per-tool, working-directory, credential and critical-call guards still prompting), `yolo` (all tiers auto). Legacy aliases still accepted: `always-ask` → `ask`, `write` and `auto-edit` → `ask-command`. Override per run with `--approval-mode` / `--auto-approve` / `--yolo`. |
+| `tools.approvalMode` | enum | `auto` | Canonical: `plan` (read auto; write prompts with an active plan-mode session, otherwise write/exec denied), `ask` (nothing auto; every tier prompts, reads included), `ask-command` (read+write auto; exec prompt), `auto` (all tiers auto, with the per-tool, working-directory, credential and critical-call checks still prompting), `yolo` (all tiers auto). Legacy aliases still accepted: `always-ask` → `ask`, `write` and `auto-edit` → `ask-command`. Override per run with `--approval-mode` / `--auto-approve` / `--yolo`. |
 | `tools.approval` | record | `{}` | Per-tool policy keyed by tool name; each value is `allow`, `deny`, or `prompt`. Any other value denies that tool and is named in a startup warning. e.g. `veyyon config set tools.approval '{"bash":"prompt"}'`. |
 | `tools.discoveryMode` | enum | `auto` | `auto`, `off`, `mcp-only`, `all`. `all` hides non-essential built-ins and first-party heavyweight tools such as `generate_image` until the discovery search activates them. |
 | `tools.essentialOverride` | array | `[]` | Tool names kept available even when tools are narrowed. |
@@ -529,9 +529,7 @@ the limits and isolation they run under. In `/settings` it is the **Agents** tab
 
 #### Three settings, three different questions
 
-Agents are governed by three settings, and mixing them up is the usual source of
-confusion, so read this table before you change anything. Each one answers a question
-the other two cannot.
+Three settings control agents. Each one answers a question the other two cannot.
 
 | Setting | The question it answers | Default |
 |---|---|---|
@@ -540,12 +538,11 @@ the other two cannot.
 | `agent.agents` | **Which** agents may it use? | `task` only |
 
 Read them top to bottom. `agent.enabled` is the master switch: turn it off and
-there are no agents, the `task` tool is not built, and the other two settings stop
-mattering. Leave it on and `agent.delegation` sets how much the prompt pushes,
+there are no agents, the `task` tool is not built, and the other two settings have
+no effect. Leave it on and `agent.delegation` sets how much the prompt pushes,
 while `agent.agents` sets what there is to push work to.
 
-**Turning delegation down does not forbid delegation.** This is the distinction that
-matters most. `agent.delegation: allowed` means the model still has the `task`
+**Turning delegation down does not forbid delegation.** `agent.delegation: allowed` means the model still has the `task`
 tool and will still spawn an agent when that is the sensible move; the prompt does not request it. The only setting that takes the ability away is `agent.enabled`. If you
 want agents gone, set that one, not this one.
 
@@ -566,11 +563,11 @@ agent:
     mode: none
 ```
 
-Out of the box you get one agent type, the general-purpose worker, and the prompt
+A default install enables one agent type, the general-purpose worker, and the prompt
 encourages fanning work out to it. The bundled specialists (`scout`, `reviewer`,
 `designer`, `librarian`, `sonic`) ship disabled: each one you enable adds its
-description to every request, so you pay for the ones you actually use and nothing
-else. They stay listed while disabled, each with a line saying what it is for, so you
+description to every request, so you pay only for the ones you
+enable. They stay listed while disabled, each with a line stating what it is for, so you
 can see what is available before you turn anything on.
 
 #### Agents on or off
@@ -582,10 +579,8 @@ can see what is available before you turn anything on.
 - `agent.delegation` and `agent.agents` are still stored, still editable, and
   take effect again the moment you turn this back on.
 
-Earlier releases spelled this as `agent.delegation: off`, which made one setting
-answer two questions: whether agents existed, and how hard to push them. An
-existing `delegation: off` is migrated to `enabled: false` with `delegation` left at
-its default, because "off" was how you turned agents off.
+An existing `agent.delegation: off` is migrated to `agent.enabled: false`, and
+`agent.delegation` returns to its default.
 
 #### Delegation
 
@@ -594,22 +589,21 @@ the ability to delegate; for that, see `agent.enabled` above.
 
 | Value | Behavior |
 |---|---|
-| `allowed` | The tool is offered and the prompt does not request it. The model delegates when it judges that delegation helps. |
+| `allowed` | The tool is offered and the prompt does not request it. The model delegates at its own discretion. |
 | `preferred` | The default. The prompt instructs the model to fan substantial work out rather than doing it alone. |
 | `required` | The same, plus a first-turn reminder that delegation is the default here. |
 
 #### What the model is told to delegate
 
-The prompt does not carry a fixed list of delegable work. **The agents you enable are
-the instruction.** That is the whole mechanism, and it is why the Agents table is a
-delegation setting rather than a cosmetic one.
+The prompt does not contain a fixed list of delegable work. **The agents you enable are
+the instruction**, so the Agents table is a delegation setting, not a cosmetic one.
 
 With only the worker enabled, the guidance is about splitting execution across
-parallel workers and keeping bulk reading out of your session's context. Nothing tells
-the model to send research to a `scout` it cannot spawn, and no prompt instructs it to send
-a review to a `reviewer` that does not exist. Enable the `reviewer` and you have said
-reviews are delegable here; the prompt then lists it. Enable the `scout` and bulk
-exploration becomes something it is told to route away from its own context.
+parallel workers and keeping bulk reading out of your session's context. No prompt
+text instructs the model to send research to a `scout` it cannot spawn or a review to a
+`reviewer` that does not exist. Enabling the `reviewer` makes reviews delegable, and the
+prompt then lists it. Enabling the `scout` adds an instruction to route bulk exploration away
+from the model's own context.
 
 This is also the answer to "why did it delegate my audit?". If a specialist for that
 work is enabled, the model has been told the work is delegable. If none is, and it
@@ -628,18 +622,15 @@ resolver reads both. If you disable every agent there is nothing to delegate to,
 the strength you pick has no effect until you enable at least one: the prompt stops
 asking for delegation, the first-turn reminder is not injected, and both agent
 surfaces state it in a line above the table. If `agent.enabled` is off, the same line
-states that instead, because turning agents on would change nothing until you turn
-agents back on. Neither setting is hidden behind the other: you need all three
-while setting up a session, but none pretends the others do not exist.
+states that instead, because enabling an agent changes nothing while agents are off.
+Neither setting is hidden behind the other; all three stay visible.
 
 #### Agents
 
 `agent.agents` holds one row per agent, keyed by agent name. One surface edits it
 rather than hand-written config: the **Agents** row in `/settings` → Agents, which
 lists every discovered agent with the model it resolves to and opens one agent at a
-time to set its state. `/agents` used to carry a second copy of the same table, so the
-same two facts had two homes that had to be kept in step; it is the live picture now
-and configures nothing.
+time to set its state. `/agents` shows the live run and configures nothing.
 
 An agent is either enabled or disabled. There is no third state:
 
@@ -653,18 +644,15 @@ An agent is either enabled or disabled. There is no third state:
 
 Disabling an agent stops **the model** from choosing it. It does not stop **you**.
 
-That distinction is the whole rule, and it is worth stating plainly because an earlier
-version of veyyon got it wrong. There used to be a middle state, shown as "not offered
-but still runs when named", which meant a row could read as off while the agent went on
-running. Nobody could tell what the switch did. Enabled now means the model may pick the
-agent on its own initiative, disabled means it may not, and that is all it means.
+Enabled means the model may pick the agent on its own initiative; disabled means it may
+not. No state lets a row read as off while the agent still runs.
 
 Slash commands are you asking, so they are unaffected. Running `/review` is a request
 for a review, not a suggestion that the model consider reviewing, so `/review` spawns
 its `reviewer` even though `reviewer` ships disabled. A command declares the agents its
-prompt names, and that declaration is granted for that one turn only:
+prompt uses, and that declaration is granted for that one turn only:
 
-| Command | Agent it names | Works with the agent disabled |
+| Command | Agent it uses | Works with the agent disabled |
 |---|---|---|
 | `/review` | `reviewer` | yes |
 
@@ -681,24 +669,23 @@ page inside **Roster**.
 
 #### Which model an agent runs
 
-The first row of **Roster** is **Same Model for All Agents**, and it picks which of two
-chains decides. It is off by default.
+The first row of **Roster** is **Same Model for All Agents**, and it selects which of two
+chains applies. It is off by default.
 
 Off, each agent answers for itself. The first layer that specifies a model wins:
 
 1. the agent's own lane, `agent.agents.<name>.model`, edited on that agent's page.
-2. `agent.modelByDepth.<n>`, for a spawn at exactly that depth.
+2. `agent.modelByDepth.<n>`, for a spawn at that depth.
 3. the agent definition's own `model:` frontmatter, for an agent you wrote.
 4. otherwise the agent inherits the model you are working with.
 
 On, one model answers for every agent: `agent.model`, else the model you are working
 with. Nothing per-agent is read, so the lanes, the depth rows and an agent file's own
-`model:` all stop applying. The agent rows stay listed and go grey, because which agents
-are enabled is still decided there.
+`model:` all stop applying. The agent rows stay listed and go grey, because they still set
+which agents are enabled.
 
 The shared model and its effort appear on screen only while the switch is on. Off, they
-are not shown at all: a greyed row displaying a model nobody runs is the duplication the
-switch exists to end. There is no Agent Model row on the Models tab and none on the
+are not shown at all. There is no Agent Model row on the Models tab and none on the
 Agents tab; one page configures it.
 
 None of the bundled agents pin a model, so on a fresh install every agent runs the
@@ -710,17 +697,17 @@ A configured value that matches no available model does **not** fall through to 
 next layer. The spawn is rejected and the message states the setting to fix, because a
 silent fall-through is indistinguishable from your setting having no effect.
 
-Effort rides the same switch, through `agent.thinkingLevel` when shared and the
-agent's own lane when not. The levels offered are the ones the model in scope actually
+Effort follows the same switch, through `agent.thinkingLevel` when shared and the
+agent's own lane when not. The levels offered are the ones the model in scope
 exposes, so a model that routes effort through separate model ids offers **Inherit**
 alone and states why, rather than listing levels it would reject. A value that matches
 no level (from a hand-written config) is reported with the setting and the accepted
 levels, then ignored. It is never rounded to a neighbouring effort: running at an effort
 you did not choose costs money and would not show up anywhere.
 
-Every surface that shows an agent's model also names the setting that decided it —
-`agent.agents.deep.agents`, `agent.modelByDepth.2`, `agent.model` — so an
-agent running something you did not expect is a question you can answer.
+Every surface that shows an agent's model also shows the setting that selected it
+(`agent.agents.deep.agents`, `agent.modelByDepth.2`, `agent.model`), so an unexpected
+model traces to the setting that selected it.
 
 #### The two views in `/agents`
 
@@ -739,26 +726,24 @@ what each one runs on, is configured in the Agents row of this tab.
 
 `/cockpit` and `/hub` are aliases of `/agents`, as are the `app.agents.hub` and
 `app.session.observe` keys and a double-tap of the left arrow on an empty composer.
-They used to open a separate screen with its own roster, which meant two answers to
-"which agents are running" that could disagree.
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `agent.enabled` | boolean | `true` | The master switch. `false` removes agents entirely: no `task` tool, no delegation guidance. See above. |
 | `agent.delegation` | enum | `preferred` | `allowed`, `preferred`, `required`. How hard the prompt pushes; it never removes the ability to delegate. See above. |
 | `agent.agents` | record | `{}` | One row per agent: `enabled`, `model`, `thinkingLevel`, `maxNestedSpawnDepth`, and a nested `agents` row per level below. Edit in the Roster row of the Agents tab. Ignored while `agent.sharedModel` is on. |
-| `agent.sharedModel` | boolean | `false` | Whether one model and effort answer for every agent. On, `agent.model` and `agent.thinkingLevel` decide and nothing per-agent is read. Off, each agent runs what its own Roster page names. The first row of Roster; it has no row of its own on the tab. |
-| `agent.model` | modelChain | unset | The shared model chain, live only while `agent.sharedModel` is on. Tried in order, written as a comma-separated string or as a YAML list: the later entries are used when a run errors on the one in use. Unset means inherit: agents follow the model you are working with. May carry a `:effort` suffix, and an explicit suffix wins over the agent's own default. A pattern that matches no model rejects the spawn rather than falling through to the next entry. Edit inside Roster. |
-| `agent.modelByDepth` | record | `{}` | One row per spawn depth (`"1"` is a direct child, `"2"` a grandchild), each a chain in the same shape as `agent.model`. Applies only while `agent.sharedModel` is off, and outranks the agent's own frontmatter for a spawn at exactly that depth; other depths are unaffected. A row whose chain matches no model rejects the spawn and states the row. Edit in the Models by Depth row of the Agents tab. |
+| `agent.sharedModel` | boolean | `false` | Whether one model and effort apply to every agent. On, `agent.model` and `agent.thinkingLevel` apply and nothing per-agent is read. Off, each agent runs what its own Roster page sets. The first row of Roster; it has no row of its own on the tab. |
+| `agent.model` | modelChain | unset | The shared model chain, live only while `agent.sharedModel` is on. Tried in order, written as a comma-separated string or as a YAML list: the later entries are used when a run errors on the one in use. Unset means inherit: agents follow the model you are working with. May include a `:effort` suffix, and an explicit suffix wins over the agent's own default. A pattern that matches no model rejects the spawn rather than falling through to the next entry. Edit inside Roster. |
+| `agent.modelByDepth` | record | `{}` | One row per spawn depth (`"1"` is a direct child, `"2"` a grandchild), each a chain in the same shape as `agent.model`. Applies only while `agent.sharedModel` is off, and outranks the agent's own frontmatter for a spawn at that depth; other depths are unaffected. A row whose chain matches no model rejects the spawn and states the row. Edit in the Models by Depth row of the Agents tab. |
 | `agent.thinkingLevel` | string | unset | The shared effort, live only while `agent.sharedModel` is on, picked from the levels the model in scope exposes. Unset or **Inherit** passes the current session's effective effort into the child. It does not request `auto` from the provider. Edit inside Roster. |
 | `agent.batch` | boolean | `true` | Batch shape for the `task` tool: one call, many items. |
 | `agent.maxConcurrency` | number | `32` | Agents running at once. |
 | `agent.maxNestedSpawnDepth` | number | `0` | Nested levels that agents may spawn. Direct children receive no `task` tool at `0`; an agent-specific override may raise the limit. |
 | `agent.maxRuntimeMs` | number | `0` | Hard per-agent wall-clock limit in ms; `0` disables it. |
 | `agent.idleTtlMs` | number | `300000` | How long a finished agent stays live before parking. The default is 5 minutes for every model and provider. Set a positive millisecond value to override it. `0` keeps idle agents live until exit. Parking closes the live session but retains its transcript for revival. |
-| `agent.softRequestBudget` | number | `200` | Requests after which an agent is asked to wrap up; `0` disables the guard. |
+| `agent.softRequestBudget` | number | `200` | Requests after which an agent is asked to wrap up; `0` disables the wrap-up request. |
 | `agent.softRequestBudgetNotice` | boolean | `true` | Inject that wrap-up notice once. |
-| `agent.showResolvedModelBadge` | boolean | `true` | Show each agent's resolved model, and what decided it, on the task widget and the agent surfaces. |
+| `agent.showResolvedModelBadge` | boolean | `true` | Show each agent's resolved model, and the setting that selected it, on the task widget and the agent surfaces. |
 | `agent.enableLsp` | boolean | `false` | Let agents use the `lsp` tool. |
 | `agent.isolation.mode` | enum | `none` | Filesystem isolation backend for agents. See [Safety](../using/safety.md). |
 | `agent.isolation.merge` | enum | `patch` | How isolated changes come back: `patch` or `branch`. |
@@ -805,13 +790,13 @@ lsp:
 | `launch.enabled` | boolean | `true` | Enable the launch tool for shared long-running project processes. |
 | `bash.autoBackground.enabled` | boolean | `true` | Auto-background long-running commands. You can also background the running command yourself with the composer's background key, whatever this is set to. |
 | `bash.autoBackground.thresholdMs` | number | `300000` | Max wall-clock time a bash call runs in the foreground before it is moved to a background job. Frees the model and protects the prompt cache. Fires on elapsed time even while output streams. `0` backgrounds immediately. |
-| `bash.stallDetection.enabled` | boolean | `false` | Watch for a bash call that stops producing output; background it and tell the model it may be stuck so it can cancel a truly hung command. Recommends, never force-kills. |
+| `bash.stallDetection.enabled` | boolean | `false` | Watch for a bash call that stops producing output; background it and send the model a notice that it may be stuck so it can cancel a hung command. Recommends, never force-kills. |
 | `bash.stallDetection.stallMs` | number | `30000` | Idle time (no new output) before a bash call is treated as possibly stuck. Measures quiet output, not total run time. |
 | `eval.py` | boolean | `true` | Python eval backend. `VEYYON_PY=0` disables for the process. |
 | `eval.js` | boolean | `true` | JavaScript eval backend. `VEYYON_JS=0` disables for the process. |
 | `python.kernelMode` | enum | `session` | `session` (persistent kernel) or `per-call`. |
 | `ruby.kernelMode` | enum | `session` | Same choice for Ruby cells: keep one kernel per session, or start and shut down a kernel for each cell. |
-| `julia.kernelMode` | enum | `session` | Same choice for Julia cells. A fresh Julia kernel recompiles, so `per-call` trades startup time for a clean slate. |
+| `julia.kernelMode` | enum | `session` | Same choice for Julia cells. A fresh Julia kernel recompiles, so `per-call` trades startup time for a fresh kernel state. |
 | `python.interpreter` | string | `""` | Path to a Python interpreter; empty = auto-detect. |
 | `lsp.enabled` | boolean | `false` | Start language servers. Opt in; Files → LSP enters the nested switches. `--no-lsp` disables the whole stack for a run. |
 | `lsp.tool` | boolean | `true` | Expose the `lsp` tool to the agent. Independent of injected diagnostics. |
@@ -845,7 +830,7 @@ read:
 | `edit.mode` | enum | `hashline` | `apply_patch`, `hashline`, `patch`, `replace`. |
 | `edit.fuzzyMatch` | boolean | `true` | Allow fuzzy anchor matching. |
 | `edit.fuzzyThreshold` | number | `0.95` | Similarity threshold for fuzzy matching. |
-| `edit.blockAutoGenerated` | boolean | `true` | Refuse to edit generated/lockfile-like files. |
+| `edit.blockAutoGenerated` | boolean | `true` | Reject edits to generated/lockfile-like files. |
 | `edit.streamingAbort` | boolean | `false` | Abort on streaming edit mismatch. |
 | `edit.afterEdit` | enum | `verify` | `verify` runs one check when none followed the last edit, `review` reads back every file the turn changed, `off` neither. |
 | `read.defaultLimit` | number | `300` | Default line count for `read` without a selector; the window also stops at the tool output budget. |
@@ -854,7 +839,7 @@ read:
 | `read.toolResultPreview` | boolean | `false` | Inline preview of tool results. |
 | `readLineNumbers` | boolean | `false` | Show plain line numbers. |
 
-`edit.afterEdit` applies to the main agent; agents are exempt from every value. `verify` continues once when the turn's last successful edit has no later successful `bash`, `eval`, `debug` or `browser` result, and requests that one be run. `review` continues once naming every code file changed since the last user message, and prompts for a correctness, maintainability and cross-file contract pass; a file whose edit has left the context window is listed apart with an instruction to read it first. Documentation, lockfiles, binary files, media, archives and databases are not code files. Repeated calls for the same normalized path count once. A reply that ends with a question to the user defers both, and the window moves with the next user message, so changes made before a question are not reviewed after it. A configuration written before this setting existed carries a `critiqueCodeMutations` boolean under `edit`, which migrates on load: true becomes `review`, false becomes `verify`.
+`edit.afterEdit` applies to the main agent; agents are exempt from every value. `verify` continues once when the turn's last successful edit has no later successful `bash`, `eval`, `debug` or `browser` result, and requests that one be run. `review` continues once, listing every code file changed since the last user message, and prompts for a correctness, maintainability and cross-file contract pass; a file whose edit has left the context window is listed apart with an instruction to read it first. Documentation, lockfiles, binary files, media, archives and databases are not code files. Repeated calls for the same normalized path count once. A reply that ends with a question to the user defers both, and the window moves with the next user message, so changes made before a question are not reviewed after it. An `edit.critiqueCodeMutations` boolean from an earlier version migrates on load: true becomes `review`, false becomes `verify`.
 
 
 ### Automatic tool issue reports
@@ -901,12 +886,12 @@ memory:
 | `compaction.enabled` | boolean | `true` | Automatic conversation compaction. |
 | `compaction.midTurnEnabled` | boolean | `true` | Check thresholds at safe mid-turn tool-loop boundaries before the next provider request. |
 | `compaction.strategy` | enum | `summary` | The sole strategy. It rewrites old history into an in-place LLM summary. Stored legacy values migrate to `summary`; use `/handoff` for an explicit new-session transfer. |
-| `compaction.model` | modelChain | unset | Models for LLM compaction, tried in order, written as a comma-separated string or as a YAML list; unset inherits the model you are working with (`modelRoles.default`). Each may carry a `:effort` suffix, applied on every compaction pass. A candidate that is unauthenticated, or whose window cannot hold the summary, is skipped and the next one runs. |
+| `compaction.model` | modelChain | unset | Models for LLM compaction, tried in order, written as a comma-separated string or as a YAML list; unset inherits the model you are working with (`modelRoles.default`). Each may include a `:effort` suffix, applied on every compaction pass. A candidate that is unauthenticated, or whose window cannot hold the summary, is skipped and the next one runs. |
 | `compaction.modelFallbackStrategy` | enum | `auto` | What to try after `compaction.model` runs out. `auto` stays on models you named: the main model, its same-provider compaction sibling, then each model role. `any-model` goes further, to the largest-window model on any provider you hold credentials for, which can bill an account you were not using for this session. `configured-only` stops at the models you listed and fails with the reason. Compacting on anything but your first choice is reported in the session, once per reason. |
 | `compaction.threshold` | string | `auto` | When auto-compaction triggers, with the unit in the value: `auto` uses `contextWindow - max(15% of contextWindow, reserveTokens)`; `85%` is a percent of the current model's window, so the trigger moves with the model; `170000` is an absolute token amount, the same trigger on every model. An absolute amount larger than the current model's window is honored up to `contextWindow - 1` and you get a one-time warning. Set it in `/settings` -> Model -> Auto-Compaction Threshold. |
 | `compaction.thresholdTokens` | number | `-1` | Retired, replaced by `compaction.threshold`. A value `> 0` in your global config is rewritten to `threshold: <amount>` on load and this key is dropped, so your trigger point does not change. Write an absolute amount as `threshold: 170000`. |
 | `compaction.thresholdPercent` | number | `-1` | Retired, replaced by `compaction.threshold`. A value `> 0` is rewritten to `threshold: <percent>%` on load (the token amount above wins when both are set) and this key is dropped. Write a percent as `threshold: 85%`. |
-| `compaction.remoteEndpoint` | string | unset | Optional summarizer endpoint for the `summary` strategy. It must return summary text, which is stored exactly like a locally generated summary. It is a transport, not a third strategy. |
+| `compaction.remoteEndpoint` | string | unset | Optional summarizer endpoint for the `summary` strategy. It must return summary text, which is stored the same way as a locally generated summary. It is a transport, not a third strategy. |
 | `memory.backend` | enum | `off` | `off`, `local`, `hindsight`, `mnemopi`. Each backend has its own `hindsight.*` / `mnemopi.*` / `memories.*` tuning keys. |
 | `autolearn.enabled` | boolean | `false` | Experimental: after the agent stops, nudge it to capture lessons to memory and create/enhance isolated managed skills under `~/.veyyon/profiles/default/agent/managed-skills`. Enables the `manage_skill` tool (and `learn` when a memory backend is active). |
 | `autolearn.autoContinue` | boolean | `false` | When `autolearn.enabled`, auto-run one capture turn at stop (uses extra tokens). Off = a passive reminder rides your next turn. |
@@ -955,7 +940,7 @@ tui:
 | `images.autoResize` | boolean | `true` | Resize large images for model compatibility. |
 | `images.blockImages` | boolean | `false` | Never send images to providers. |
 | `tui.hyperlinks` | enum | `auto` | `off`, `auto`, `always`. |
-| `tui.scrollIsolation` | boolean | `false` | Mouse wheel scrolls the transcript while the prompt stays pinned at the bottom of the window, with the scroll position drawn on the right edge of the transcript (`/settings` → Appearance → Display, Advanced). Scrolling back reaches the whole session, not just what is on screen. Off by default: turning it on means veyyon holds the mouse to read wheel events, and your terminal's own drag-to-select stops working while it does. With it on you select using shift+drag, or with `/copy`, which picks text or code from the conversation without the mouse. With it off the wheel drives the terminal's native scrollback, the whole window scrolls with it including the prompt, and selection behaves as it does in any other program. |
+| `tui.scrollIsolation` | boolean | `false` | Mouse wheel scrolls the transcript while the prompt stays pinned at the bottom of the window, with the scroll position drawn on the right edge of the transcript (`/settings` → Appearance → Display, Advanced). Scrolling back reaches the whole session, not only what is on screen. Off by default: turning it on means veyyon holds the mouse to read wheel events, and your terminal's own drag-to-select stops working while it does. With it on you select using shift+drag, or with `/copy`, which picks text or code from the conversation without the mouse. With it off the wheel drives the terminal's native scrollback, the whole window scrolls with it including the prompt, and selection behaves as it does in any other program. |
 
 For a custom status line, set `statusLine.preset: custom` and configure `statusLine.leftSegments`, `statusLine.rightSegments`, and `statusLine.segmentOptions`. See the [status line reference](../features/cockpit.md#status-line) for the full list of segment IDs.
 
@@ -1042,13 +1027,13 @@ Two of these have a different name depending on how you reach them: `config set`
 
 ### Every other setting
 
-The sections above are the settings worth explaining at length. For the complete list, see the [settings reference](./settings-reference.md): every setting that appears in `/settings`, with its key, type, default, and what it does, grouped exactly as the tabs are, followed by every key that exists only in a configuration file. That page is generated from the schema, so it cannot fall behind the code; the narrative here is the part written by hand.
+For the complete list, see the [settings reference](./settings-reference.md): every setting that appears in `/settings`, with its key, type, default, and what it does, grouped by tab, followed by every key that exists only in a configuration file. It is generated from the schema.
 
 `veyyon config list` shows the same set with your current values.
 
 ## Legacy migration
 
-`veyyon` migrates older config shapes automatically. None of these require action; they are listed so you know what changes you may see in `config.yml`.
+`veyyon` migrates older config shapes automatically. None of these require action; each one changes what `config.yml` contains after the next write.
 
 ### Startup migration to `config.yml`
 
@@ -1057,7 +1042,7 @@ When `~/.veyyon/profiles/default/agent/config.yml` does not exist, startup build
 1. `~/.veyyon/profiles/default/agent/settings.json` (renamed to `settings.json.bak` after a successful migration).
 2. Settings persisted in `agent.db`.
 
-After `config.yml` exists, these legacy sources are no longer consulted. The generic config loader also performs `.json` -> `.yml` migration for other config files when only the `.json` form is present.
+After `config.yml` exists, these legacy sources are not read. The generic config loader also performs `.json` -> `.yml` migration for other config files when only the `.json` form is present.
 
 ### Field-level migrations
 
@@ -1082,7 +1067,7 @@ Applied whenever raw settings are loaded (profile config, `--config` overlays, a
 | `hindsight.agentName` (nested or flat spelling) | `hindsight.bankId` when no bankId is set and the name is not the product default; the old key is dropped |
 | `providers.parallelFetch` | removed; an emptied `providers:` section is removed with it |
 | `lastChangelogVersion` | moved to a marker file and stripped from `config.yml` |
-| `collapseChangelog` | removed; startup no longer prints release notes, so there is nothing to collapse. Use `startup.updateNotice` to control the one-line notice that replaced it. |
+| `collapseChangelog` | removed; startup does not print release notes. `startup.updateNotice` controls the one-line update notice. |
 
 ## Troubleshooting
 
@@ -1117,6 +1102,6 @@ That is what reset does: it deletes the key from the profile `config.yml` so the
 
 Some settings (model roles, eval backends, tiny-model device/precision, auth broker, PTY) are overridable by env vars or CLI flags for per-machine convenience, and those take precedence over `config.yml`. Unset the variable or drop the flag to let the persisted value win. See [Environment overrides](#environment-overrides) and [Environment variables](./environment-complete.md).
 
-### `veyyon config set <key>` says "Unknown setting"
+### `veyyon config set <key>` prints "Unknown setting"
 
-Keys must match a schema path exactly, with no shorthand. Use `theme.dark`, not `theme`. Run `veyyon config list` to see every valid key.
+A key must be a full schema path; there is no shorthand. Use `theme.dark`, not `theme`. Run `veyyon config list` to see every valid key.

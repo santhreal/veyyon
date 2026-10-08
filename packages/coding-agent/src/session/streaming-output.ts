@@ -1,6 +1,6 @@
 import type { AgentToolUpdateCallback } from "@veyyon/agent-core";
 // Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
-import { capTextBytes, truncateHeadBytes, truncateTailBytes } from "@veyyon/utils/byte-truncate";
+import { capTextBytes, dropFrontBytes, truncateHeadBytes, truncateTailBytes } from "@veyyon/utils/byte-truncate";
 import { clampLow } from "@veyyon/utils/math";
 import { sanitizeText, splitTrailingPartialEscape } from "@veyyon/utils/sanitize-text";
 
@@ -656,14 +656,36 @@ export async function enforceInlineByteCap(text: string, options: InlineByteCapO
 }
 
 // =============================================================================
-// TailBuffer — ring-style tail buffer with lazy joining
+// TailBuffer — the last bytes of a stream, cut by walking characters off its front
 // =============================================================================
 
-const MAX_PENDING = 10;
+/**
+ * Appends concatenated onto the tail before it is joined into the head, which bounds the
+ * concatenation chain a stream of one-byte chunks builds.
+ */
+const MAX_TAIL_APPENDS = 256;
 
+/**
+ * The last `maxBytes` bytes of a stream, never splitting a character.
+ *
+ * `text()` is read after every streamed chunk, so it costs the chunk rather than the window: the kept
+ * text is a substring of `#head` followed by `#tail`, the appends concatenated as they arrived, and a
+ * read returns the two concatenated without copying either. The front is cut by walking characters
+ * off `#head`; when the walk reaches the head's end, the tail is joined onto what the head keeps and
+ * becomes the next head. Joining on every read copied the whole window per chunk, a 50 KB string of
+ * garbage for each line a command printed.
+ */
 export class TailBuffer {
-	#pending: string[] = [];
-	#pos = 0; // byte count of the currently-held tail (after trims)
+	/** The string the kept text starts in, at `#start`. Read by character only here. */
+	#head = "";
+	#start = 0;
+	/** Everything appended since `#head` was joined, concatenated in order and never read by character. */
+	#tail = "";
+	#tailAppends = 0;
+	/** The last UTF-16 unit appended, so a surrogate pair split across two appends counts as one character. */
+	#lastUnit = 0;
+	/** UTF-8 bytes kept: `#head` from `#start`, then `#tail`. */
+	#pos = 0;
 
 	constructor(readonly maxBytes: number) {}
 
@@ -672,74 +694,83 @@ export class TailBuffer {
 
 		const max = this.maxBytes;
 		if (max === 0) {
-			this.#pending.length = 0;
-			this.#pos = 0;
+			this.#clear();
 			return;
 		}
 
-		const n = Buffer.byteLength(text, "utf-8");
+		let n = Buffer.byteLength(text, "utf-8");
+		// The stream's last unit opens a pair this chunk's first unit closes.
+		const opener = this.#lastUnit;
+		const closesPair = (opener & 0xfc00) === 0xd800 && (text.charCodeAt(0) & 0xfc00) === 0xdc00;
+		this.#lastUnit = text.charCodeAt(text.length - 1);
 
-		// If the incoming chunk alone is >= budget, it fully dominates the tail.
+		// If the incoming chunk alone is >= budget, it fully dominates the tail; the first half of a
+		// pair it closes is cut with it, so the pair is kept or dropped whole.
 		if (n >= max) {
-			const { text: t, bytes } = truncateTailBytes(text, max);
-			this.#pending[0] = t;
-			this.#pending.length = 1;
+			const { text: t, bytes } = truncateTailBytes(closesPair ? String.fromCharCode(opener) + text : text, max);
+			this.#clear();
+			this.#head = t;
 			this.#pos = bytes;
 			return;
 		}
 
+		// Each half of a pair split across two appends was counted as a lone surrogate, three bytes;
+		// the pair they make is four.
+		if (closesPair && this.#pos > 0) n -= 2;
 		this.#pos += n;
-
-		if (this.#pending.length === 0) {
-			this.#pending[0] = text;
-			this.#pending.length = 1;
-		} else {
-			this.#pending.push(text);
-			if (this.#pending.length > MAX_PENDING) this.#compact();
-		}
+		this.#tail += text;
+		if (++this.#tailAppends > MAX_TAIL_APPENDS) this.#join();
 
 		// Trim when we exceed 2× budget to amortize cost.
 		if (this.#pos > max * 2) this.#trimTo(max);
 	}
 
 	text(): string {
-		const max = this.maxBytes;
-		this.#trimTo(max);
-		return this.#flush();
+		this.#trimTo(this.maxBytes);
+		return (this.#start === 0 ? this.#head : this.#head.slice(this.#start)) + this.#tail;
 	}
 
 	bytes(): number {
-		const max = this.maxBytes;
-		this.#trimTo(max);
+		this.#trimTo(this.maxBytes);
 		return this.#pos;
 	}
 
 	// -- private ---------------------------------------------------------------
 
-	#compact(): void {
-		this.#pending[0] = this.#pending.join("");
-		this.#pending.length = 1;
+	#clear(): void {
+		this.#head = "";
+		this.#start = 0;
+		this.#tail = "";
+		this.#tailAppends = 0;
+		this.#pos = 0;
 	}
 
-	#flush(): string {
-		if (this.#pending.length === 0) return "";
-		if (this.#pending.length > 1) this.#compact();
-		return this.#pending[0];
+	/** Make what is kept one string, which the next walk reads flat. */
+	#join(): void {
+		this.#head = (this.#start === 0 ? this.#head : this.#head.slice(this.#start)) + this.#tail;
+		this.#start = 0;
+		this.#tail = "";
+		this.#tailAppends = 0;
 	}
 
 	#trimTo(max: number): void {
 		if (max === 0) {
-			this.#pending.length = 0;
-			this.#pos = 0;
+			this.#clear();
 			return;
 		}
 		if (this.#pos <= max) return;
 
-		const joined = this.#flush();
-		const { text, bytes } = truncateTailBytes(joined, max);
-		this.#pos = bytes;
-		this.#pending[0] = text;
-		this.#pending.length = 1;
+		// The head's last unit may be the first half of a pair the tail completes, so while a tail is
+		// held the walk stops short of it, and the tail is joined on before the walk goes further.
+		const head = this.#head;
+		let cut = dropFrontBytes(head, this.#start, this.#tail === "" ? head.length : head.length - 1, this.#pos, max);
+		if (cut.bytes > max) {
+			this.#start = cut.start;
+			this.#join();
+			cut = dropFrontBytes(this.#head, 0, this.#head.length, cut.bytes, max);
+		}
+		this.#start = cut.start;
+		this.#pos = cut.bytes;
 	}
 }
 

@@ -50,7 +50,12 @@ function createContext(options: { terminalProgress?: boolean } = {}) {
 		settings: {
 			get: (path: string) => path === "terminal.showProgress" && options.terminalProgress === true,
 		},
-		statusLine: { invalidate: vi.fn(), markActivityStart: vi.fn(), markActivityEnd: vi.fn() },
+		statusLine: {
+			invalidate: vi.fn(),
+			markActivityStart: vi.fn(),
+			markActivityEnd: vi.fn(),
+			refreshGitStatus: vi.fn(),
+		},
 		pendingTools: new Map<string, unknown>(),
 		settledToolCalls: new Set<string>(),
 		hideThinkingBlock: false,

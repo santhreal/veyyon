@@ -1,6 +1,6 @@
 # launch
 
-> Launch and control long-running project processes shared by every veyyon instance in the same directory.
+> Launch and control long-running project processes shared by every veyyon instance of one profile in the same directory.
 
 ## Source
 - Tool: `packages/coding-agent/src/tools/shell/launch.ts`
@@ -32,7 +32,7 @@ Use `bash` for commands that finish. Async bash remains appropriate for finite c
 | `restart` | Stop and relaunch using the retained launch specification. | `name` |
 | `describe` | Show the retained launch specification and live state. | `name` |
 
-Names are stable and unique within one project directory. A live name must be stopped or restarted; starting a completed name creates a new launch and rotates its prior output log.
+Names are stable and unique within one profile's project directory. Two profiles in the same directory have separate brokers and separate names. A live name must be stopped or restarted; starting a completed name creates a new launch and rotates its prior output log.
 
 ## Starting and readiness
 `application` and `args` are separate fields, so callers do not need shell quoting:
@@ -93,13 +93,13 @@ The broker keeps a 25 MiB current log and one 25 MiB rotated log while it owns a
 All project clients may observe the same managed process. Input is one shared stream: each send operation is serialized, but two clients writing independently still address the same process stdin.
 
 ## Cross-instance lifecycle
-Every veyyon session registers its process in the canonical project scope. The first `launch` call starts a detached broker over a private socket; later `launch` calls from any registered veyyon process connect to the same broker and see the same names, logs, and state.
+Every veyyon session registers its process in the canonical project scope of its profile. The first `launch` call starts a detached broker over a private socket; later `launch` calls from any registered veyyon process of the same profile connect to the same broker and see the same names, logs, and state.
 
-Runtime data lives under `~/.veyyon/profiles/<profile>/run/daemons/<project-hash>/`:
+Runtime data lives under `~/.veyyon/profiles/<profile>/run/daemons/<project-key>/`, where `<project-key>` is a hash of the profile's agent directory and the project directory:
 
 | Path | What it holds |
 | --- | --- |
-| `broker.sock` | The broker's listening socket. On Windows there is no file here: the broker listens on the named pipe `\\.\pipe\veyyon-daemon-<project-hash>` instead. |
+| `broker.sock` | The broker's listening socket. On Windows there is no file here: the broker listens on the named pipe `\\.\pipe\veyyon-daemon-<project-key>` instead. |
 | `broker.token` | The shared secret, mode `0600`. The first client to need it creates it; the broker reads it at startup and rejects a request that does not present it. |
 | `broker.pid` | The lease that elects one broker per project. A process claims the broker role by creating this file exclusively, and a stale file whose PID is dead is reclaimed by the next starter. |
 | `clients/<pid>-<uuid>.json` | One entry per live veyyon process holding the project open. |

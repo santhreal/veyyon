@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { isFastModeUnsupported } from "@veyyon/ai/error";
-import { clearAnthropicFastModeFallback, streamAnthropic } from "@veyyon/ai/providers/anthropic";
+import { streamAnthropic } from "@veyyon/ai/providers/anthropic";
+import { clearAnthropicFastModeFallback } from "@veyyon/ai/providers/anthropic-session-state";
 import type { Context, Model, ProviderSessionState, ServiceTier } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
 

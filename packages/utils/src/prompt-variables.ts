@@ -42,8 +42,8 @@
  * any block that tests it. This is what lets the analysis run over the real
  * templates, which are built almost entirely out of guarded regions.
  */
-import Handlebars from "handlebars";
 import { levenshteinDistance } from "./levenshtein";
+import { DEFAULT_HELPER_NAMES, parseTemplate } from "./prompt-handlebars";
 
 /** How a template refers to a name: printed into the output, or only tested. */
 export type TemplateVariableUse = "interpolated" | "conditional";
@@ -191,9 +191,9 @@ export interface AnalyzeOptions {
 
 /** Collect every context reference in `template`, classified and scope-aware. */
 export function analyzeTemplate(template: string, options: AnalyzeOptions = {}): TemplateVariables {
-	const ast = Handlebars.parse(template) as unknown as Node;
+	const ast = parseTemplate(template) as unknown as Node;
 	const sightings = new Map<string, Sighting[]>();
-	const helperNames = new Set([...Object.keys(Handlebars.helpers), ...(options.helperNames ?? [])]);
+	const helperNames = new Set([...DEFAULT_HELPER_NAMES, ...(options.helperNames ?? [])]);
 
 	function record(path: PathExpressionNode, use: TemplateVariableUse, frame: Frame): void {
 		const root = contextRoot(path);
@@ -280,7 +280,9 @@ export function analyzeTemplate(template: string, options: AnalyzeOptions = {}):
 
 	const required: TemplateVariable[] = [];
 	const optional: TemplateVariable[] = [];
-	for (const [name, list] of Array.from(sightings).sort(([a], [b]) => a.localeCompare(b))) {
+	// Code-unit order, as `paths` below: `localeCompare` builds the ICU collator on its first call,
+	// 0.2 ms and 2.2 MiB of mapped collation data at launch, for names that are identifiers.
+	for (const [name, list] of Array.from(sightings).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
 		const paths = Array.from(new Set(list.map(s => s.path))).sort();
 		const printed = list.filter(s => s.use === "interpolated");
 		const requiredWhen = dedupeGuardSets(printed.map(s => s.guards));

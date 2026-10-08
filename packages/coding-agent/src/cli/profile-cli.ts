@@ -124,9 +124,6 @@ export const PROFILE_PRESETS: Record<string, ProfilePreset> = {
 	},
 };
 
-/** Preset names, for CLI help and `--from` validation. */
-export const PROFILE_PRESET_NAMES = Object.keys(PROFILE_PRESETS);
-
 async function applyPresetSettings(agentDir: string, preset: ProfilePreset): Promise<void> {
 	const { Settings } = await import("../config/settings");
 	const settings = await Settings.loadIsolated({ agentDir });

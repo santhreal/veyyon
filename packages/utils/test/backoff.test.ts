@@ -51,6 +51,54 @@ describe("exponentialBackoffDelay", () => {
 		// jitter 0.5 with random 0 -> capped * 0.5.
 		expect(exponentialBackoffDelay(1, { jitter: 0.5, random: () => 0 })).toBe(1_000);
 	});
+
+	it("ends the doubling at the ceiling and holds it for every later attempt, past 2 ** n overflow", () => {
+		const exact = { baseMs: 250, maxMs: 7_000, jitter: 0 };
+		const sequence = Array.from({ length: 10 }, (_, attempt) => exponentialBackoffDelay(attempt, exact));
+		expect(sequence).toEqual([250, 500, 1_000, 2_000, 4_000, 7_000, 7_000, 7_000, 7_000, 7_000]);
+		// 2 ** 1024 is Infinity; the capped value still holds, so an unbounded attempt counter cannot
+		// turn the wait into Infinity or NaN.
+		expect(exponentialBackoffDelay(1_024, exact)).toBe(7_000);
+		expect(exponentialBackoffDelay(Number.MAX_SAFE_INTEGER, exact)).toBe(7_000);
+	});
+
+	it("keeps every jittered delay inside the ceiling's band for each spread", () => {
+		const maxMs = 7_000;
+		const draws = [0, 0.25, 0.5, 0.999_999];
+		for (let attempt = 0; attempt < 40; attempt++) {
+			for (const r of draws) {
+				const random = () => r;
+				const both = exponentialBackoffDelay(attempt, { baseMs: 250, maxMs, random });
+				expect(both).toBeGreaterThanOrEqual(0);
+				expect(both).toBeLessThan(maxMs * 1.25);
+				const below = exponentialBackoffDelay(attempt, { baseMs: 250, maxMs, jitterSpread: "below", random });
+				expect(below).toBeGreaterThan(0);
+				expect(below).toBeLessThanOrEqual(maxMs);
+			}
+		}
+	});
+
+	it("spreads 'below' jitter only downward, from the capped delay to (1 - jitter) of it", () => {
+		expect(exponentialBackoffDelay(0, { jitterSpread: "below", random: () => 0 })).toBe(1_000);
+		expect(exponentialBackoffDelay(0, { jitterSpread: "below", random: () => 1 })).toBe(750);
+		expect(exponentialBackoffDelay(3, { baseMs: 500, maxMs: 8_000, jitterSpread: "below", random: () => 0 })).toBe(
+			4_000,
+		);
+		expect(exponentialBackoffDelay(9, { baseMs: 500, maxMs: 8_000, jitterSpread: "below", random: () => 0 })).toBe(
+			8_000,
+		);
+		for (let i = 0; i < 200; i++) {
+			const delay = exponentialBackoffDelay(2, { jitterSpread: "below" });
+			expect(delay).toBeGreaterThan(3_000);
+			expect(delay).toBeLessThanOrEqual(4_000);
+		}
+	});
+
+	it("reads a negative attempt as attempt 0 and a non-positive base as no wait", () => {
+		expect(exponentialBackoffDelay(-3, { jitter: 0 })).toBe(1_000);
+		expect(exponentialBackoffDelay(4, { baseMs: 0 })).toBe(0);
+		expect(exponentialBackoffDelay(4, { baseMs: -50, jitter: 0 })).toBe(0);
+	});
 });
 
 // Repo-wide source lock: the reconnect backoff schedule has exactly ONE owner,

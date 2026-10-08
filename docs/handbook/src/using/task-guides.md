@@ -117,7 +117,7 @@ prompting and local scripts; prefer MCP when the capability is a long-lived exte
 Goal: keep decisions, conventions, and alternate explorations available without pasting transcripts by
 hand.
 
-### Memory: carry guidance into new threads
+### Memory: bring guidance into new threads
 
 Cross-session memory is off by default. Turn on a backend with `memory.backend` in `config.yml`:
 
@@ -128,7 +128,7 @@ memory:
 ```
 
 Operate it from the TUI with `/memory` (`/memory stats`, `/memory diagnose`). Keep memory on for repos
-where conventions matter; leave it `off` for throwaway scratch sessions. See [Memory](../features/memory.md).
+with established conventions; leave it `off` for throwaway scratch sessions. See [Memory](../features/memory.md).
 
 ### Branching: explore without losing the main line
 
@@ -162,20 +162,20 @@ for one reminder, up to the configured limit.
 
 Model-facing todo output and the collapsed TUI use the same sanitized, width-bounded, active-first
 projection of at most five items. The complete phases, tasks, and statuses remain in machine state.
-To clear that state intentionally, run `/todo rm` without a task or phase; completing or dropping
+To clear that state, run `/todo rm` without a task or phase; completing or dropping
 items keeps their closed history until it is explicitly removed.
 
 The anchored `Todos` block above the composer is a railed list. Every phase gets one row with its
-tally, so a stage that just closed three tasks does not look like one that has done nothing, and
+tally, so a stage that closed three tasks does not look like one that has done nothing, and
 task rows are drawn for the phase being worked and the few after it. The block is bounded by the
 viewport: it never grows past a third of the terminal's height, it drops finished phases from the
 top before it drops work in flight, and it states how many rows it withheld. Expanding it shows every
-task of the phases it draws, not an unbounded list — an anchored region that outgrows the screen
+task of the phases it draws, not an unbounded list: an anchored region that outgrows the screen
 cannot be scrolled away from.
 
 Each row's glyph is its state, before any colour: `□` waiting, a breathing cell in flight, `▪` done,
-`∎` abandoned. A task a detached agent picked up breathes in that agent's own accent and names
-the agent at the right, which is the same hue its lane carries in the `Agents` block. Light
+`∎` abandoned. A task a detached agent picked up breathes in that agent's own accent and shows
+the agent's name at the right, in the same hue as its lane in the `Agents` block. Light
 travels down the rail while anything on the board is in flight and the rail is flat while nothing
 is, so a board waiting on you is distinguishable from a board being worked. A task closing sweeps a
 strike across its text, exhales its glyph and cools from green to grey; when the last task closes,

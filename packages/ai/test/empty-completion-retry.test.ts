@@ -92,6 +92,52 @@ async function drain(stream: AssistantMessageEventStream): Promise<AssistantMess
 	return events;
 }
 
+/** Reads `stream` to its end or failure: the events it delivered, and what it failed with. */
+async function readToFailure(
+	stream: AssistantMessageEventStream,
+): Promise<{ events: AssistantMessageEvent[]; error: unknown }> {
+	const events: AssistantMessageEvent[] = [];
+	try {
+		for await (const event of stream) events.push(event);
+	} catch (error) {
+		return { events, error };
+	}
+	return { events, error: undefined };
+}
+
+/** An attempt whose only events are `start` and a `done` carrying `message`. */
+function attemptEndingWith(message: AssistantMessage): AssistantMessageEventStream {
+	return streamFromEvents([
+		{ type: "start", partial: message },
+		{ type: "done", reason: message.stopReason, message },
+	] as unknown as AssistantMessageEvent[]);
+}
+
+/**
+ * Stops that are not an empty completion, each differing from one in a single field. The wrapper
+ * delivers each from the first attempt.
+ */
+const DELIVERED_STOPS: Array<{ name: string; message: () => AssistantMessage }> = [
+	{
+		name: "an invisible stop that generated two output tokens",
+		message: () => {
+			const message = assistant();
+			message.usage.output = 2;
+			return message;
+		},
+	},
+	{ name: "a stop whose final message holds text it never streamed", message: () => assistant(["unstreamed"]) },
+	{
+		name: "a stop whose final message holds a tool call it never streamed",
+		message: () => ({ ...assistant(), content: [{ type: "toolCall", id: "call_1", name: "read", arguments: {} }] }),
+	},
+	{
+		name: "a stop that reports an error message",
+		message: () => ({ ...assistant(), errorMessage: "gateway hiccup" }),
+	},
+	{ name: "a length stop with no content", message: () => ({ ...assistant(), stopReason: "length" }) },
+];
+
 describe("withEmptyCompletionRetry", () => {
 	/** Empty successes are retried until a later attempt produces visible content. */
 	it("retries past empty attempts and delivers the first non-empty one", async () => {
@@ -111,9 +157,9 @@ describe("withEmptyCompletionRetry", () => {
 		const result = await stream.result();
 
 		expect(attempts).toBe(MAX_EMPTY_COMPLETION_RETRIES + 1);
-		// Literal 2, not MAX_EMPTY_COMPLETION_RETRIES: two retries is the budget a
-		// user waits through for an empty completion before the turn gives up.
-		expect(waits).toHaveLength(2);
+		// Two retries is the budget a user waits through for an empty completion before the turn gives
+		// up, and the pause doubles from the base before each.
+		expect(waits).toEqual([500, 1_000]);
 		// Discarded attempts' `start` events must not leak — exactly one survives.
 		expect(events.filter(e => e.type === "start")).toHaveLength(1);
 		expect(events.some(e => e.type === "text_delta")).toBe(true);
@@ -240,7 +286,7 @@ describe("withEmptyCompletionRetry", () => {
 		expect(events.some(e => e.type === "thinking_delta")).toBe(true);
 	});
 
-	it("propagates a non-abort backoff failure instead of masking the empty result", async () => {
+	it("propagates a non-abort backoff failure after the events the discarded attempt held", async () => {
 		const stream = withEmptyCompletionRetry(
 			MODEL,
 			CTX,
@@ -252,13 +298,9 @@ describe("withEmptyCompletionRetry", () => {
 			() => emptyAttempt(),
 		);
 
-		let caught: unknown;
-		try {
-			await drain(stream);
-		} catch (error) {
-			caught = error;
-		}
-		expect((caught as Error | undefined)?.message).toBe("wait boom");
+		const { events, error } = await readToFailure(stream);
+		expect(events.map(event => event.type)).toEqual(["start"]);
+		expect((error as Error | undefined)?.message).toBe("wait boom");
 	});
 
 	/** Cancellation while a retry is sleeping rejects with the caller's abort reason. */
@@ -317,6 +359,26 @@ describe("withEmptyCompletionRetry", () => {
 		expect(events.some(e => e.type === "text_delta")).toBe(true);
 	});
 
+	it("delivers the retry when the discarded attempt reports no usage", async () => {
+		let attempts = 0;
+		const stream = withEmptyCompletionRetry(MODEL, CTX, { providerRetryWait: async () => {} }, () => {
+			attempts++;
+			if (attempts > 1) return contentAttempt();
+			const message: Partial<AssistantMessage> = assistant();
+			delete message.usage;
+			return streamFromEvents([
+				{ type: "start", partial: message },
+				{ type: "done", reason: "stop", message },
+			] as unknown as AssistantMessageEvent[]);
+		});
+
+		const result = await stream.result();
+
+		expect(attempts).toBe(2);
+		expect(result.content).toEqual([{ type: "text", text: "hello" }]);
+		expect(result.usage.discarded).toBeUndefined();
+	});
+
 	it("streams content as it arrives without waiting for the terminal event", async () => {
 		let waited = false;
 		const message = assistant(["streamed"]);
@@ -350,5 +412,133 @@ describe("withEmptyCompletionRetry", () => {
 		inner.push({ type: "done", reason: "stop", message } as unknown as AssistantMessageEvent);
 		expect((await iterator.next()).value?.type).toBe("done");
 		expect(waited).toBe(false);
+	});
+
+	it("stops reading the attempt once the caller's stream is closed", async () => {
+		const message = assistant(["streamed"]);
+		const inner = new AssistantMessageEventStream();
+		const released = Promise.withResolvers<void>();
+		const read = inner[Symbol.asyncIterator].bind(inner);
+		inner[Symbol.asyncIterator] = () => {
+			const iterator = read();
+			const leave = iterator.return!.bind(iterator);
+			iterator.return = value => {
+				released.resolve();
+				return leave(value);
+			};
+			return iterator;
+		};
+		const stream = withEmptyCompletionRetry(MODEL, CTX, {}, () => inner);
+		const iterator = stream[Symbol.asyncIterator]();
+		const delta = (text: string) =>
+			({ type: "text_delta", contentIndex: 0, delta: text, partial: message }) as unknown as AssistantMessageEvent;
+
+		inner.push({ type: "start", partial: message } as unknown as AssistantMessageEvent);
+		inner.push(delta("a"));
+		expect((await iterator.next()).value?.type).toBe("start");
+		expect((await iterator.next()).value?.type).toBe("text_delta");
+		stream.fail(new Error("caller left"));
+		inner.push(delta("b"));
+
+		// The attempt's next event finds the caller gone and the wrapper lets go of the attempt; reading on
+		// would leave this wait open until the attempt ends, and it never does here.
+		await released.promise;
+		inner.push(delta("c"));
+		expect(inner.queue.map(event => (event.type === "text_delta" ? event.delta : event.type))).toEqual(["c"]);
+	});
+
+	for (const row of DELIVERED_STOPS) {
+		it(`delivers ${row.name} without asking again`, async () => {
+			let attempts = 0;
+			const stream = withEmptyCompletionRetry(MODEL, CTX, { providerRetryWait: async () => {} }, () => {
+				attempts++;
+				return attemptEndingWith(row.message());
+			});
+
+			const result = await stream.result();
+
+			expect(attempts).toBe(1);
+			expect(result).toEqual(row.message());
+		});
+	}
+
+	it("rejects with the abort reason without waiting when the turn was cancelled during the attempt", async () => {
+		const controller = new AbortController();
+		const reason = new Error("cancelled mid-attempt");
+		let waited = false;
+		let attempts = 0;
+		const stream = withEmptyCompletionRetry(
+			MODEL,
+			CTX,
+			{
+				signal: controller.signal,
+				providerRetryWait: async () => {
+					waited = true;
+				},
+			},
+			() => {
+				attempts++;
+				controller.abort(reason);
+				return emptyAttempt();
+			},
+		);
+
+		await expect(stream.result()).rejects.toBe(reason);
+		expect(waited).toBe(false);
+		expect(attempts).toBe(1);
+	});
+
+	it("does not ask again when the turn is cancelled during a wait that ignores the signal", async () => {
+		const controller = new AbortController();
+		const reason = new Error("cancelled during backoff");
+		let attempts = 0;
+		const stream = withEmptyCompletionRetry(
+			MODEL,
+			CTX,
+			{
+				signal: controller.signal,
+				providerRetryWait: async () => {
+					controller.abort(reason);
+				},
+			},
+			() => {
+				attempts++;
+				return emptyAttempt();
+			},
+		);
+
+		await expect(stream.result()).rejects.toBe(reason);
+		expect(attempts).toBe(1);
+	});
+
+	it("reports the caller's abort reason rather than the error its cancelled wait threw", async () => {
+		const controller = new AbortController();
+		const reason = new Error("caller cancelled");
+		const stream = withEmptyCompletionRetry(
+			MODEL,
+			CTX,
+			{
+				signal: controller.signal,
+				providerRetryWait: async () => {
+					controller.abort(reason);
+					throw new DOMException("The operation was aborted", "AbortError");
+				},
+			},
+			() => emptyAttempt(),
+		);
+
+		await expect(stream.result()).rejects.toBe(reason);
+	});
+
+	it("delivers the events an attempt held before its stream failed, then the failure", async () => {
+		const failure = new Error("socket reset");
+		const inner = streamFromEvents([{ type: "start", partial: assistant() }] as unknown as AssistantMessageEvent[]);
+		inner.fail(failure);
+		const stream = withEmptyCompletionRetry(MODEL, CTX, {}, () => inner);
+
+		const { events, error } = await readToFailure(stream);
+
+		expect(events.map(event => event.type)).toEqual(["start"]);
+		expect(error).toBe(failure);
 	});
 });

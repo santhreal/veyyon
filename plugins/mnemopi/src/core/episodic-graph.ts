@@ -268,12 +268,12 @@ export class EpisodicGraph {
 	extractGist(content: string, memoryId: string): Gist {
 		return {
 			id: `gist_${memoryId}`,
-			text: this.#createSummary(content),
+			text: createSummary(content),
 			timestamp: toUtcIso(),
-			participants: this.#extractParticipants(content),
-			location: this.#extractLocation(content),
-			emotion: this.#extractEmotion(content),
-			timeScope: this.#extractTemporalScope(content),
+			participants: extractParticipants(content),
+			location: extractLocation(content),
+			emotion: extractEmotion(content),
+			timeScope: extractTemporalScope(content),
 		};
 	}
 	extractFacts(content: string, memoryId: string): Fact[] {
@@ -358,6 +358,24 @@ export class EpisodicGraph {
 						.all(source, source) as EdgeRow[]);
 		return rows.map(edgeFromRow);
 	}
+	#neighborEdges(memoryId: string, edgeType: string, threshold: number): EdgeRow[] {
+		if (edgeType.length > 0) {
+			return this.db
+				.query(
+					`SELECT source, target, edge_type, weight FROM graph_edges
+					 WHERE (source = ? OR target = ?) AND edge_type = ? AND weight >= ?
+					 ORDER BY weight DESC, id`,
+				)
+				.all(memoryId, memoryId, edgeType, threshold) as EdgeRow[];
+		}
+		return this.db
+			.query(
+				`SELECT source, target, edge_type, weight FROM graph_edges
+				 WHERE (source = ? OR target = ?) AND weight >= ?
+				 ORDER BY weight DESC, id`,
+			)
+			.all(memoryId, memoryId, threshold) as EdgeRow[];
+	}
 	findRelatedMemories(memoryId: string, depth = 2, edgeType = "", minWeight = 0): RelatedMemory[] {
 		const results: RelatedMemory[] = [];
 		let currentLevel = new Set([memoryId]);
@@ -368,33 +386,12 @@ export class EpisodicGraph {
 		for (let hop = 1; hop <= maxDepth; hop++) {
 			const nextLevel = new Set<string>();
 			for (const mem of currentLevel) {
-				const rows =
-					edgeType.length > 0
-						? (this.db
-								.query(
-									`SELECT source, target, edge_type, weight FROM graph_edges
-								 WHERE (source = ? OR target = ?) AND edge_type = ? AND weight >= ?
-								 ORDER BY weight DESC, id`,
-								)
-								.all(mem, mem, edgeType, threshold) as EdgeRow[])
-						: (this.db
-								.query(
-									`SELECT source, target, edge_type, weight FROM graph_edges
-								 WHERE (source = ? OR target = ?) AND weight >= ?
-								 ORDER BY weight DESC, id`,
-								)
-								.all(mem, mem, threshold) as EdgeRow[]);
-				for (const row of rows) {
+				for (const row of this.#neighborEdges(mem, edgeType, threshold)) {
 					const neighbor = row.source === mem ? row.target : row.source;
 					if (seen.has(neighbor)) continue;
 					seen.add(neighbor);
 					nextLevel.add(neighbor);
-					results.push({
-						memoryId: neighbor,
-						edgeType: row.edge_type,
-						weight: row.weight,
-						depth: hop,
-					});
+					results.push({ memoryId: neighbor, edgeType: row.edge_type, weight: row.weight, depth: hop });
 				}
 			}
 			currentLevel = nextLevel;
@@ -416,7 +413,7 @@ export class EpisodicGraph {
 	scoreMemoryLink(sourceMemoryId: string, targetMemoryId: string): number {
 		const left = this.#memoryFeatures(sourceMemoryId);
 		const right = this.#memoryFeatures(targetMemoryId);
-		return this.#scoreFeatures(left, right);
+		return scoreFeatures(left, right);
 	}
 	ingestMemory(content: string, memoryId: string, options: IngestOptions = {}): IngestResult {
 		const sessionId = options.sessionId ?? "default";
@@ -450,58 +447,42 @@ export class EpisodicGraph {
 		if (linkExisting) {
 			const sourceTokens = contentTokenSet(content);
 			for (const otherId of previousMemoryIds) {
-				const otherContent = this.#memoryContent(otherId);
-				const lexicalScore = Math.round(jaccardIndex(sourceTokens, contentTokenSet(otherContent)) * 1000) / 1000;
-				let wroteCtxEdge = false;
-				if (lexicalScore >= minLinkScore) {
-					const edge = {
-						source: memoryId,
-						target: otherId,
-						edgeType: "related_to",
-						weight: lexicalScore,
-						timestamp,
-					};
-					this.addEdge(edge);
-					edges.push(edge);
-					const ctxEdge = {
-						source: memoryId,
-						target: otherId,
-						edgeType: "ctx",
-						weight: lexicalScore,
-						timestamp,
-					};
-					this.addEdge(ctxEdge);
-					edges.push(ctxEdge);
-					wroteCtxEdge = true;
-				}
-				const entityScore = this.#entityOverlapScore(memoryId, otherId);
-				if (entityScore > 0) {
-					const edge = {
-						source: memoryId,
-						target: otherId,
-						edgeType: "references",
-						weight: entityScore,
-						timestamp,
-					};
-					this.addEdge(edge);
-					edges.push(edge);
-				}
-				const contextualScore = Math.max(lexicalScore, entityScore, this.#temporalContextScore(memoryId, otherId));
-				if (!wroteCtxEdge && contextualScore >= minLinkScore) {
-					const ctxEdge = {
-						source: memoryId,
-						target: otherId,
-						edgeType: "ctx",
-						weight: contextualScore,
-						timestamp,
-					};
-					this.addEdge(ctxEdge);
-					edges.push(ctxEdge);
-				}
+				edges.push(...this.#linkToMemory(memoryId, otherId, sourceTokens, minLinkScore, timestamp));
 			}
 		}
 
 		return { memoryId, gist, facts, edges };
+	}
+	/**
+	 * Write the edges from `memoryId` to one earlier memory and return them in write order: a
+	 * lexical match writes `related_to` and `ctx`, shared entities write `references`, and without a
+	 * lexical match the strongest of the lexical, entity and temporal scores writes `ctx`.
+	 */
+	#linkToMemory(
+		memoryId: string,
+		otherId: string,
+		sourceTokens: Set<string>,
+		minLinkScore: number,
+		timestamp: string,
+	): GraphEdge[] {
+		const edges: GraphEdge[] = [];
+		const link = (edgeType: string, weight: number): void => {
+			const edge = { source: memoryId, target: otherId, edgeType, weight, timestamp };
+			this.addEdge(edge);
+			edges.push(edge);
+		};
+		const otherTokens = contentTokenSet(this.#memoryContent(otherId));
+		const lexicalScore = Math.round(jaccardIndex(sourceTokens, otherTokens) * 1000) / 1000;
+		const lexicalLink = lexicalScore >= minLinkScore;
+		if (lexicalLink) {
+			link("related_to", lexicalScore);
+			link("ctx", lexicalScore);
+		}
+		const entityScore = this.#entityOverlapScore(memoryId, otherId);
+		if (entityScore > 0) link("references", entityScore);
+		const contextualScore = Math.max(lexicalScore, entityScore, this.#temporalContextScore(memoryId, otherId));
+		if (!lexicalLink && contextualScore >= minLinkScore) link("ctx", contextualScore);
+		return edges;
 	}
 	getStats(): GraphStats {
 		const gists = this.#count("gists");
@@ -516,46 +497,6 @@ export class EpisodicGraph {
 	#count(table: "gists" | "facts" | "graph_edges"): number {
 		const row = this.db.query(`SELECT COUNT(*) AS count FROM ${table}`).get() as CountRow;
 		return row.count;
-	}
-
-	#extractParticipants(content: string): string[] {
-		const names = Array.from(content.matchAll(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g), match => match[1] ?? "");
-		const pronouns = Array.from(
-			content.matchAll(/\b(I|you|we|they|he|she|it|me|us|them|him|her)\b/gi),
-			match => match[1] ?? "",
-		);
-		return unique([...names, ...pronouns], 5);
-	}
-
-	#extractTemporalScope(content: string): string | null {
-		for (const [pattern, scope] of TEMPORAL_SCOPE_PATTERNS) {
-			if (pattern.test(content)) return scope;
-		}
-		return null;
-	}
-
-	#extractLocation(content: string): string | null {
-		const properPlace =
-			/\b(?:at|in|from)\s+([A-Z][a-zA-Z\s]+?)(?:\s+(?:yesterday|today|tomorrow|now|last|next|on|at)\b|$)/i.exec(
-				content,
-			);
-		if (properPlace?.[1] !== undefined) return properPlace[1].trim();
-		const genericPlace = /\b(office|home|work|school|hospital|store|restaurant|building|room)\b/i.exec(content);
-		return genericPlace?.[1] ?? null;
-	}
-
-	#extractEmotion(content: string): string | null {
-		const lower = content.toLocaleLowerCase();
-		if (POSITIVE_EMOTIONS.some(word => lower.includes(word))) return "positive";
-		if (NEGATIVE_EMOTIONS.some(word => lower.includes(word))) return "negative";
-		if (NEUTRAL_EMOTIONS.some(word => lower.includes(word))) return "neutral";
-		return null;
-	}
-
-	#createSummary(content: string): string {
-		const firstSentence = content.split(/[.!?]+/, 1)[0]?.trim() ?? "";
-		if (firstSentence.length > 10) return firstSentence.slice(0, 100);
-		return content.slice(0, 100).trim();
 	}
 
 	#knownMemoryIds(exclude: string): string[] {
@@ -630,8 +571,48 @@ export class EpisodicGraph {
 		}
 		return lowerSet(features);
 	}
+}
 
-	#scoreFeatures(left: Set<string>, right: Set<string>): number {
-		return Math.round(overlapScore(left, right) * 1000) / 1000;
+function extractParticipants(content: string): string[] {
+	const names = Array.from(content.matchAll(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g), match => match[1] ?? "");
+	const pronouns = Array.from(
+		content.matchAll(/\b(I|you|we|they|he|she|it|me|us|them|him|her)\b/gi),
+		match => match[1] ?? "",
+	);
+	return unique([...names, ...pronouns], 5);
+}
+
+function extractTemporalScope(content: string): string | null {
+	for (const [pattern, scope] of TEMPORAL_SCOPE_PATTERNS) {
+		if (pattern.test(content)) return scope;
 	}
+	return null;
+}
+
+function extractLocation(content: string): string | null {
+	const properPlace =
+		/\b(?:at|in|from)\s+([A-Z][a-zA-Z\s]+?)(?:\s+(?:yesterday|today|tomorrow|now|last|next|on|at)\b|$)/i.exec(
+			content,
+		);
+	if (properPlace?.[1] !== undefined) return properPlace[1].trim();
+	const genericPlace = /\b(office|home|work|school|hospital|store|restaurant|building|room)\b/i.exec(content);
+	return genericPlace?.[1] ?? null;
+}
+
+function extractEmotion(content: string): string | null {
+	const lower = content.toLocaleLowerCase();
+	if (POSITIVE_EMOTIONS.some(word => lower.includes(word))) return "positive";
+	if (NEGATIVE_EMOTIONS.some(word => lower.includes(word))) return "negative";
+	if (NEUTRAL_EMOTIONS.some(word => lower.includes(word))) return "neutral";
+	return null;
+}
+
+function createSummary(content: string): string {
+	const firstSentence = content.split(/[.!?]+/, 1)[0]?.trim() ?? "";
+	if (firstSentence.length > 10) return firstSentence.slice(0, 100);
+	return content.slice(0, 100).trim();
+}
+
+function scoreFeatures(left: Set<string>, right: Set<string>): number {
+	return Math.round(overlapScore(left, right) * 1000) / 1000;
 }

@@ -36,8 +36,7 @@
     "@bufbuild/protobuf": "catalog:",
     "@veyyon/model": "catalog:",
     "@veyyon/utils": "catalog:",
-    "arktype": "catalog:",
-    "zod": "catalog:"
+    "arktype": "catalog:"
   },
   "devDependencies": {
     "@veyyon/ai": "catalog:",

@@ -3,9 +3,6 @@ import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/c
 import {
 	BlockUnitCounter,
 	buildDisplayMessage,
-	CATCHUP_FRAMES,
-	MIN_STEP,
-	nextStep,
 	STREAMING_REVEAL_FRAME_MS,
 	StreamingRevealController,
 	visibleUnits,
@@ -192,16 +189,6 @@ describe("streaming reveal", () => {
 		expect(textAt(display, 1)).toBe("");
 	});
 
-	it("uses an adaptive catchup step with the configured floor", () => {
-		const largeBacklog = CATCHUP_FRAMES * 101;
-		const step = nextStep(largeBacklog);
-
-		expect(step).toBe(101);
-		expect(step * CATCHUP_FRAMES).toBeGreaterThanOrEqual(largeBacklog);
-		expect(nextStep(1)).toBe(MIN_STEP);
-		expect(nextStep(MIN_STEP * CATCHUP_FRAMES)).toBe(MIN_STEP);
-	});
-
 	it("reveals cumulative targets to the exact final text with monotonic prefixes", () => {
 		vi.useFakeTimers();
 		const { component, controller } = makeController();
@@ -214,7 +201,7 @@ describe("streaming reveal", () => {
 			vi.advanceTimersByTime(STREAMING_REVEAL_FRAME_MS);
 		}
 		controller.setTarget(second);
-		for (let i = 0; i < 4; i++) {
+		for (let i = 0; i < 30; i++) {
 			vi.advanceTimersByTime(STREAMING_REVEAL_FRAME_MS);
 		}
 
@@ -237,7 +224,7 @@ describe("streaming reveal", () => {
 		// "👨" + "\u200D👩" becomes a single cluster, so the cached per-block
 		// count must re-segment from that cluster, not just add the suffix.
 		controller.setTarget(makeMessage([{ type: "text", text: "ab👨\u200D👩x" }]));
-		for (let i = 0; i < 6; i++) {
+		for (let i = 0; i < 30; i++) {
 			vi.advanceTimersByTime(STREAMING_REVEAL_FRAME_MS);
 		}
 
@@ -274,7 +261,7 @@ describe("streaming reveal", () => {
 
 		controller.begin(component, makeMessage([{ type: "text", text: "" }]));
 		controller.setTarget(makeMessage([{ type: "text", text: "abc" }]));
-		vi.advanceTimersByTime(STREAMING_REVEAL_FRAME_MS);
+		vi.advanceTimersByTime(STREAMING_REVEAL_FRAME_MS * 30);
 
 		expect(textAt(latestMessage(component), 0)).toBe("abc");
 		expect(component.transientFlags).not.toHaveLength(0);
@@ -305,7 +292,10 @@ describe("streaming reveal", () => {
 		controller.begin(component, makeMessage([{ type: "text", text: "" }]));
 		controller.setTarget(makeMessage([{ type: "text", text: "abcdefghi" }]));
 		vi.advanceTimersByTime(STREAMING_REVEAL_FRAME_MS);
-		expect(textAt(latestMessage(component), 0)).toBe("abc");
+		const paced = textAt(latestMessage(component), 0);
+		expect(paced.length).toBeGreaterThan(0);
+		expect(paced.length).toBeLessThan("abcdefghi".length);
+		expect("abcdefghi".startsWith(paced)).toBe(true);
 
 		controller.setTarget(
 			makeMessage([

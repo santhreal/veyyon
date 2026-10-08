@@ -150,7 +150,6 @@ describe("AgentSession plan-mode convergence", () => {
 				["read", readTool],
 			]),
 			builtInToolNames: ["ask", "resolve", "read"],
-			advisorTools: [],
 			advisorStreamFn,
 			sideStreamFn,
 		});

@@ -24,20 +24,51 @@
  * was written for. That is what the per-incident suites beside this one pin, message by message. Nor
  * does the subsumption sweep reach a text rule, whose representative sentence cannot be derived from
  * the rule itself.
+ *
+ * THE GATEWAY. The auth gateway answered its client from inline regexes that ran before the registry
+ * read the failure, so a wording the registry classified was decided twice and the two answers could
+ * disagree, and a verdict named no rule. Its answers are now `GATEWAY_RULES` in the registry, each
+ * declared in the family module it answers for. The gateway half of this suite reads the gateway
+ * rules out of every family module's exports, so a rule declared and never assembled is red. It sends
+ * every wording each rule declares, alone and against every wording and structure of every other
+ * rule, through `classifyGatewayError`, so a wording its own rule does not answer, a wording an
+ * earlier rule shadows, and an order change are red. A rule that answers a family the registry
+ * flags (a cancellation, a spent allowance) must answer exactly where the registry sets the flag, so a
+ * rule that re-reads the family's wording instead of its flag is red. It sends every HTTP reason
+ * phrase the platform defines, and requires each answer to name one rule or to be the default, so a
+ * verdict decided outside the rules is red for any wording in that corpus.
+ *
+ * What the gateway half does not catch: a verdict decided outside the rules on a wording that is
+ * neither declared by a rule nor an HTTP reason phrase; a disagreement with the registry on a
+ * spelling of a spent allowance that the agreement corpus does not hold; and whether a wording list
+ * is the right vocabulary for the provider text it answers.
  */
 import { describe, expect, it } from "bun:test";
+import * as fs from "node:fs";
+import { STATUS_CODES } from "node:http";
+import * as path from "node:path";
 import { BUILTIN_API_IDS } from "@veyyon/ai/api-registry";
-import type { Signal } from "@veyyon/ai/error/domains/types";
+import { RequestAbortError } from "@veyyon/ai/error/abort";
+import { LoginCancelledError } from "@veyyon/ai/error/auth";
+import * as accountFamilies from "@veyyon/ai/error/domains/account";
+import * as networkFamilies from "@veyyon/ai/error/domains/network";
+import * as requestFamilies from "@veyyon/ai/error/domains/request";
+import * as turnFamilies from "@veyyon/ai/error/domains/turn";
+import type { GatewayRule, GatewayVerdict, GatewayWordingRule, Signal } from "@veyyon/ai/error/domains/types";
 import {
 	CLASS_RULES,
 	CLASSIFICATION_RULES,
 	classify,
+	classifyIdentity,
 	classifyMessage,
 	create,
 	explain,
 	Flag,
+	isUsageLimit,
 	stringify,
 } from "@veyyon/ai/error/flags";
+import { classifyGatewayError } from "@veyyon/ai/error/gateway";
+import { GATEWAY_RULES } from "@veyyon/ai/error/registry";
 import { STREAM_FRAME_LIMIT_ERROR_NAME } from "@veyyon/utils/stream-frame-limit";
 
 /** Bits that are not failure kinds, or that are set outside the classifier and named where. */
@@ -198,6 +229,7 @@ describe("a classification names the rules that produced it", () => {
 			"strict-tools-rejection",
 			"timeout-with-http2-verdict",
 			"timeout-without-http2-verdict",
+			"tool-choice-value-rejected",
 			"transport-vocabulary",
 			"usage-limit-vocabulary",
 		]);
@@ -323,5 +355,277 @@ describe("a classification names the rules that produced it", () => {
 			}
 		}
 		expect(dead).toEqual([]);
+	});
+});
+
+describe("the auth gateway answers through a named registry rule", () => {
+	/** What the gateway answers a failure no rule reads. */
+	const DEFAULT: GatewayVerdict = { status: 502, type: "upstream_error" };
+	/** A sentence that states no status, no cancellation and no wording any gateway rule reads. */
+	const UNREAD = "the upstream failed";
+
+	/** Every family module under `src/error/domains`, by file name. `types.ts` declares no rule. */
+	const FAMILY_MODULES: Record<string, object> = {
+		"account.ts": accountFamilies,
+		"network.ts": networkFamilies,
+		"request.ts": requestFamilies,
+		"turn.ts": turnFamilies,
+	};
+
+	const isGatewayRule = (value: unknown): value is GatewayRule =>
+		typeof value === "object" &&
+		value !== null &&
+		"name" in value &&
+		"why" in value &&
+		("answer" in value || "wordings" in value);
+	const isWordingRule = (rule: GatewayRule): rule is GatewayWordingRule => "wordings" in rule;
+	const gatewayNames = GATEWAY_RULES.map(rule => rule.name);
+
+	/**
+	 * The gateway's precedence, first-match-wins. The precedence sweep below ranks rules by this list
+	 * rather than by the registry's array, so reordering the registry is red there too and not only in
+	 * the pin.
+	 */
+	const POLICY = [
+		"gateway-status-field",
+		"gateway-cancellation-identity",
+		"gateway-status-in-message",
+		"gateway-cancellation-wording",
+		"gateway-throttle-wording",
+		"gateway-usage-limit",
+		"gateway-auth-refusal-wording",
+		"gateway-invalid-request-wording",
+	];
+	const rank = (name: string): number => POLICY.indexOf(name);
+
+	/**
+	 * The gateway rules that answer from a flag the registry sets, and the registry's reading of that
+	 * flag for one thrown failure. Each rule answers exactly the failures the registry flags, unless an
+	 * earlier rule answered first, so the gateway cannot decide the family a second time and disagree.
+	 * Every other rule is pinned below as reading no registry flag, so a new rule is red until it
+	 * records which it is.
+	 */
+	const REGISTRY_READINGS: Record<string, (failure: Error) => boolean> = {
+		"gateway-cancellation-identity": failure => (classifyIdentity(failure) & Flag.Abort) !== 0,
+		"gateway-usage-limit": failure => isUsageLimit(failure.message),
+	};
+
+	interface Answered {
+		readonly verdict: { readonly status: number; readonly type: string };
+		readonly rules: readonly string[];
+	}
+
+	function answer(failure: unknown): Answered {
+		const rules: string[] = [];
+		const { status, type } = classifyGatewayError(failure, rules);
+		return { verdict: { status, type }, rules };
+	}
+
+	function appended(failure: Error, text: string): Error {
+		failure.message = `${failure.message} ${text}`;
+		return failure;
+	}
+
+	interface Carrier {
+		readonly rule: string;
+		readonly label: string;
+		/** Adds what the rule reads to a failure, leaving what the failure already carries in place. */
+		readonly carry: (failure: Error) => Error;
+		readonly verdict: GatewayVerdict;
+	}
+
+	/**
+	 * How each structural rule is reached, and what it answers. Pinned below against the rule set by
+	 * exact equality, so a new structural rule is red until it records a failure that reaches it.
+	 */
+	const STRUCTURAL_CARRIERS: Record<string, Omit<Carrier, "rule" | "label">> = {
+		"gateway-status-field": {
+			carry: failure => Object.assign(failure, { status: 418 }),
+			verdict: { status: 418, type: "invalid_request_error" },
+		},
+		"gateway-cancellation-identity": {
+			carry: failure => Object.assign(failure, { name: "AbortError" }),
+			verdict: { status: 499, type: "request_aborted" },
+		},
+		"gateway-status-in-message": {
+			carry: failure => {
+				failure.message = `HTTP 503: ${failure.message}`;
+				return failure;
+			},
+			verdict: { status: 503, type: "upstream_error" },
+		},
+		"gateway-usage-limit": {
+			carry: failure => appended(failure, "You have hit your ChatGPT usage limit. Try again in ~158 min."),
+			verdict: { status: 429, type: "rate_limit_error" },
+		},
+	};
+
+	/** Every way a rule is reached: each wording a rule declares, as declared and upper-cased, and each structural carrier. */
+	const carriers: Carrier[] = GATEWAY_RULES.flatMap((rule): Carrier[] => {
+		if (isWordingRule(rule)) {
+			return rule.wordings.flatMap(wording =>
+				[wording, wording.toUpperCase()].map(text => ({
+					rule: rule.name,
+					label: JSON.stringify(text),
+					carry: (failure: Error) => appended(failure, text),
+					verdict: rule.verdict,
+				})),
+			);
+		}
+		const structural = STRUCTURAL_CARRIERS[rule.name];
+		return structural === undefined ? [] : [{ rule: rule.name, label: rule.name, ...structural }];
+	});
+
+	it("assembles every gateway rule a family module declares, so no rule is declared and unread", () => {
+		const files = fs.readdirSync(path.join(import.meta.dirname, "../src/error/domains")).sort();
+		expect(files).toEqual([...Object.keys(FAMILY_MODULES), "types.ts"].sort());
+		const declared = Object.values(FAMILY_MODULES).flatMap(module => Object.values(module).filter(isGatewayRule));
+		expect(declared.filter(rule => !GATEWAY_RULES.includes(rule)).map(rule => rule.name)).toEqual([]);
+		expect(GATEWAY_RULES.filter(rule => !declared.includes(rule)).map(rule => rule.name)).toEqual([]);
+	});
+
+	it("holds exactly the gateway rules recorded here, in the order that is the policy", () => {
+		expect(gatewayNames).toEqual(POLICY);
+	});
+
+	it("answers a family it reads from the registry exactly where the registry sets the family's flag", () => {
+		expect(gatewayNames.filter(name => !(name in REGISTRY_READINGS))).toEqual([
+			"gateway-status-field",
+			"gateway-status-in-message",
+			"gateway-cancellation-wording",
+			"gateway-throttle-wording",
+			"gateway-auth-refusal-wording",
+			"gateway-invalid-request-wording",
+		]);
+		const failures: Error[] = [
+			...carriers.map(carrier => carrier.carry(new Error(UNREAD))),
+			...Object.values(STATUS_CODES).flatMap(phrase => (phrase === undefined ? [] : [new Error(phrase)])),
+			// Spellings of a spent allowance that contain none of the gateway's own wordings.
+			...[
+				"insufficient_quota",
+				"RESOURCE_EXHAUSTED",
+				"You have run out of credits.",
+				"usage_not_included",
+				"Monthly spending limit reached.",
+			].map(text => new Error(text)),
+			new RequestAbortError(),
+			new LoginCancelledError(),
+			Object.assign(new Error(UNREAD), { name: "ToolAbortError" }),
+			Object.assign(new Error(UNREAD), { name: "TimeoutError" }),
+		];
+		const disagreements: string[] = [];
+		for (const failure of failures) {
+			const [answeredBy] = answer(failure).rules;
+			for (const [rule, flagged] of Object.entries(REGISTRY_READINGS)) {
+				if (answeredBy !== undefined && rank(answeredBy) < rank(rule)) continue;
+				if ((answeredBy === rule) !== flagged(failure)) {
+					disagreements.push(`${rule} on ${failure.name} ${JSON.stringify(failure.message)}: ${answeredBy}`);
+				}
+			}
+		}
+		expect(disagreements).toEqual([]);
+		// Each reading holds for some failure in the corpus, so the agreement is not vacuous.
+		for (const flagged of Object.values(REGISTRY_READINGS)) expect(failures.some(flagged)).toBe(true);
+	});
+
+	it("gives every gateway rule a name no other rule in the registry holds, and a reason", () => {
+		const names = [...CLASSIFICATION_RULES, ...CLASS_RULES, ...GATEWAY_RULES].map(rule => rule.name);
+		expect(new Set(names).size).toBe(names.length);
+		for (const rule of GATEWAY_RULES) {
+			expect(rule.name).toMatch(/^gateway(?:-[a-z0-9]+)+$/);
+			expect(rule.why.length).toBeGreaterThan(40);
+		}
+	});
+
+	it("declares each wording once, as lowercase words, so the compiled pattern reads the list and nothing else", () => {
+		const wordings = GATEWAY_RULES.filter(isWordingRule).flatMap(rule => rule.wordings);
+		expect(new Set(wordings).size).toBe(wordings.length);
+		for (const wording of wordings) expect(wording).toMatch(/^[a-z]+(?:[ _-][a-z]+)*$/);
+	});
+
+	it("records how every structural rule is reached", () => {
+		expect(Object.keys(STRUCTURAL_CARRIERS).sort()).toEqual(
+			GATEWAY_RULES.filter(rule => !isWordingRule(rule))
+				.map(rule => rule.name)
+				.sort(),
+		);
+	});
+
+	it("answers every declared wording and every structural carrier through its own rule", () => {
+		const got = carriers.map(carrier => ({ label: carrier.label, ...answer(carrier.carry(new Error(UNREAD))) }));
+		const want = carriers.map(carrier => ({ label: carrier.label, verdict: carrier.verdict, rules: [carrier.rule] }));
+		expect(got).toEqual(want);
+	});
+
+	it("reads a wording only as a whole word", () => {
+		const inside = GATEWAY_RULES.filter(isWordingRule).flatMap(rule =>
+			rule.wordings
+				.filter(wording => answer(new Error(`x${wording}x`)).rules.includes(rule.name))
+				.map(wording => `${rule.name}: ${wording}`),
+		);
+		expect(inside).toEqual([]);
+	});
+
+	it("answers through the first rule that reads a failure, whatever else the failure carries", () => {
+		const wrong: string[] = [];
+		for (const first of carriers) {
+			for (const later of carriers) {
+				if (rank(first.rule) >= rank(later.rule)) continue;
+				for (const failure of [
+					first.carry(later.carry(new Error(UNREAD))),
+					later.carry(first.carry(new Error(UNREAD))),
+				]) {
+					const got = answer(failure);
+					const expected = { verdict: first.verdict, rules: [first.rule] };
+					if (JSON.stringify(got) !== JSON.stringify(expected)) {
+						wrong.push(`${first.label} + ${later.label}: ${JSON.stringify(got)}`);
+					}
+				}
+			}
+		}
+		expect(wrong).toEqual([]);
+	});
+
+	/**
+	 * A verdict decided outside the rules names no rule, and so looks like the default in a trace
+	 * while answering something else. The corpus is every reason phrase the platform's HTTP module
+	 * defines, bare, after its status, and after `HTTP` and its status, in each shape a failure
+	 * arrives as.
+	 */
+	it("names one rule for every answer but the default, across every HTTP reason phrase", () => {
+		const phrases = Object.entries(STATUS_CODES).flatMap(([code, phrase]) =>
+			phrase === undefined ? [] : [phrase, `${code} ${phrase}`, `HTTP ${code} ${phrase}`],
+		);
+		const shapes: ((text: string) => unknown)[] = [
+			text => new Error(text),
+			text => text,
+			text => ({ message: text }),
+		];
+		const unnamed: string[] = [];
+		const reached = new Set<string>();
+		for (const phrase of phrases) {
+			for (const shape of shapes) {
+				const got = answer(shape(phrase));
+				for (const rule of got.rules) reached.add(rule);
+				const named = got.rules.length === 1 && gatewayNames.includes(got.rules[0]);
+				const defaulted =
+					got.rules.length === 0 && got.verdict.status === DEFAULT.status && got.verdict.type === DEFAULT.type;
+				if (!named && !defaulted) unnamed.push(`${JSON.stringify(phrase)}: ${JSON.stringify(got)}`);
+			}
+		}
+		expect(unnamed).toEqual([]);
+		// The corpus reaches these rules, so the sweep is not green for want of an answer to check.
+		expect([...reached].sort()).toEqual([
+			"gateway-auth-refusal-wording",
+			"gateway-invalid-request-wording",
+			"gateway-status-in-message",
+			"gateway-throttle-wording",
+		]);
+	});
+
+	it("answers the default and names no rule for a failure no rule reads", () => {
+		for (const failure of [new Error(UNREAD), UNREAD, { message: UNREAD }, "", undefined, null, {}, 42]) {
+			expect(answer(failure)).toEqual({ verdict: DEFAULT, rules: [] });
+		}
 	});
 });

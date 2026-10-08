@@ -1,6 +1,7 @@
-import { isAbortError } from "@veyyon/utils/abortable";
 import { errorMessage } from "@veyyon/utils/type-guards";
-import { isUsageLimit } from "./flags";
+import type { GatewaySignal, GatewayVerdict } from "./domains/types";
+import { classify, KIND_MASK } from "./flags";
+import { answerGateway, classifyIdentity } from "./registry";
 
 /** A gateway-facing classification of an arbitrary upstream/internal error. */
 export interface GatewayErrorClassification {
@@ -9,90 +10,42 @@ export interface GatewayErrorClassification {
 	message: string;
 }
 
+/** The answer for a failure no gateway rule reads: the upstream failed in a way nothing here names. */
+const UNANSWERED: GatewayVerdict = { status: 502, type: "upstream_error" };
+
 /**
- * Classify an upstream / gateway-internal error into a status code and a
- * format-neutral type. The order is intentional:
+ * Classify an upstream or gateway-internal error into a status code and a format-neutral type.
  *
- *  1. Honour an explicit numeric `status` property on the thrown error.
- *  2. Parse a status code embedded in the message string. Provider errors
- *     virtually always carry one (`Google API error (400): …`, `HTTP 429`,
- *     `status=503`) and the embedded value is authoritative.
- *  3. Fall through to **word-boundaried** substring heuristics. The old
- *     `lower.includes("rate")` test famously matched `GenerateContentRequest`,
- *     surfacing every Google 400 as a 429 `rate_limit_error`. The patterns here
- *     all require boundaries so they don't collide with provider field names.
+ * Every answer is a rule in the registry's `GATEWAY_RULES`, applied in its order: a status the
+ * failure states, a cancellation, then the wording. `trace`, when given, receives the name of the
+ * rule that answered, and stays empty for a failure no rule reads, which is answered 502
+ * `upstream_error`.
+ *
+ * The registry's flags are computed only when a rule reads them, so a failure that states its own
+ * status runs no classification at all.
  */
-export function classifyGatewayError(err: unknown): GatewayErrorClassification {
+export function classifyGatewayError(err: unknown, trace?: string[]): GatewayErrorClassification {
 	const message = errorMessage(err);
-
-	// 1. Custom pi-ai errors may attach a numeric `status` property.
-	const statusProp =
-		typeof err === "object" && err !== null && typeof (err as { status?: unknown }).status === "number"
-			? (err as { status: number }).status | 0
-			: undefined;
-	if (statusProp !== undefined) return bucketStatus(statusProp, message);
-
-	if (isAbortError(err)) return { status: 499, type: "request_aborted", message };
-
-	// 2. Status code embedded in the message. Requires a contextual keyword
-	// (`HTTP`, `API error`, `status`, …) or a leading `(NNN)` token so we
-	// don't trip on incidental three-digit numbers ("took 200ms").
-	const embedded = extractEmbeddedStatus(message);
-	if (embedded !== undefined) return bucketStatus(embedded, message);
-
-	// 3. Word-boundaried substring heuristics.
-	if (/\baborted\b|\babort signal\b/i.test(message)) {
-		return { status: 499, type: "request_aborted", message };
-	}
-	if (
-		// Match rate-limit phrasings before auth wording: some providers
-		// describe throttling as "unauthorized due to rate limit".
-		// Keep boundaries so this does not collide with
-		// `GenerateContentRequest`, `accelerate`, `iterate`, `deprecated`, etc.
-		/\brate[- _]?limit(?:s|ed|ing)?\b|\bquota(?:_exceeded| exceeded)?\b|\btoo[- _]many[- _]requests\b/i.test(
-			message,
-		) ||
-		// Usage-limit phrasings emit no embedded status. Codex friendly text
-		// reads "You have hit your ChatGPT usage limit … Try again in ~158
-		// min."; the central usage-limit classifier already encodes every known
-		// provider variant, so reuse it instead of forking the regex. Without
-		// this branch the classifier falls through to the default
-		// 502/upstream_error, which is what callers saw when their account
-		// hit its cap.
-		isUsageLimit(message)
-	) {
-		return { status: 429, type: "rate_limit_error", message };
-	}
-	if (/\b(?:unauthorized|forbidden)\b/i.test(message)) {
-		return { status: 401, type: "authentication_error", message };
-	}
-	if (/\b(?:unsupported|invalid_request|invalid request|bad request|malformed)\b/i.test(message)) {
-		return { status: 400, type: "invalid_request_error", message };
-	}
-	return { status: 502, type: "upstream_error", message };
+	let identity: number | undefined;
+	let kinds: number | undefined;
+	const signal: GatewaySignal = {
+		text: message,
+		statusField: statusField(err),
+		get identity() {
+			identity ??= classifyIdentity(err);
+			return identity;
+		},
+		get kinds() {
+			kinds ??= classify(message) & KIND_MASK;
+			return kinds;
+		},
+	};
+	const verdict = answerGateway(signal, trace) ?? UNANSWERED;
+	return { status: verdict.status, type: verdict.type, message };
 }
 
-function bucketStatus(status: number, message: string): GatewayErrorClassification {
-	if (status === 401 || status === 403) return { status, type: "authentication_error", message };
-	if (status === 429) return { status, type: "rate_limit_error", message };
-	if (status >= 400 && status < 500) return { status, type: "invalid_request_error", message };
-	if (status >= 500) return { status, type: "upstream_error", message };
-	return { status: 502, type: "upstream_error", message };
-}
-
-/**
- * Pull a status code from common error-message shapes. Returns undefined when
- * no contextual keyword is present, so we never guess at incidental numbers.
- */
-function extractEmbeddedStatus(message: string): number | undefined {
-	// `Google API error (400)`, `OpenAI API error (429): …`, `(503)`
-	// `HTTP 429: too many requests`
-	// `status: 503`, `status_code=429`, `status=400`
-	const re = /(?:\bHTTP\b|\bAPI error\b|\bstatus(?:[- _]?code)?\b)\s*[:=]?\s*\(?\s*(\d{3})\b|\((\d{3})\)/i;
-	const m = message.match(re);
-	if (!m) return undefined;
-	const raw = m[1] ?? m[2];
-	if (!raw) return undefined;
-	const code = Number.parseInt(raw, 10);
-	return Number.isFinite(code) && code >= 100 && code < 600 ? code : undefined;
+/** A numeric `status` field on the thrown value, truncated to an integer. */
+function statusField(err: unknown): number | undefined {
+	if (typeof err !== "object" || err === null || !("status" in err)) return undefined;
+	return typeof err.status === "number" ? err.status | 0 : undefined;
 }

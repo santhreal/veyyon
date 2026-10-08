@@ -49,7 +49,7 @@ function parsedItems(parsed: unknown): Array<Record<string, unknown>> {
 
 describe("task wire schema", () => {
 	it("accepts the flat { name, agent, task } shape", () => {
-		const parsed = taskSchema({ name: "AuthLoader", agent: "scout", task: "map the auth flow" });
+		const parsed = taskSchema.value({ name: "AuthLoader", agent: "scout", task: "map the auth flow" });
 		expect(parsed instanceof type.errors).toBe(false);
 		if (!(parsed instanceof type.errors)) {
 			expect(parsed.name).toBe("AuthLoader");
@@ -59,7 +59,7 @@ describe("task wire schema", () => {
 	});
 
 	it("defaults a missing agent to 'deep'", () => {
-		const parsed = taskSchema({ task: "x" });
+		const parsed = taskSchema.value({ task: "x" });
 		expect(parsed instanceof type.errors).toBe(false);
 		if (!(parsed instanceof type.errors)) {
 			expect(parsed.agent).toBe("deep");
@@ -67,7 +67,12 @@ describe("task wire schema", () => {
 	});
 
 	it("deletes stale caller keys (role, description) instead of rejecting", () => {
-		const parsed = taskSchema({ agent: "task", task: "x", role: "Rust specialist", description: "stale ui label" });
+		const parsed = taskSchema.value({
+			agent: "task",
+			task: "x",
+			role: "Rust specialist",
+			description: "stale ui label",
+		});
 		expect(parsed instanceof type.errors).toBe(false);
 		if (!(parsed instanceof type.errors)) {
 			expect("role" in parsed).toBe(false);

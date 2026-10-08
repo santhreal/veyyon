@@ -64,7 +64,7 @@ describe("an agent blocked on an approval prompt", () => {
 	test("reads as blocked rather than running", () => {
 		registerSub("0-Sub", "reviewer");
 		registerSub("1-Sub", "scout");
-		AgentRegistry.global().setPendingApproval("1-Sub", { toolName: "bash", since: Date.now() });
+		AgentRegistry.global().openApprovalWait("1-Sub", { toolName: "bash", since: Date.now() });
 		const dashboard = new AgentDashboard({ terminalHeight: 40 });
 		try {
 			const working = rowsOf(dashboard, "Kestrel")[0] ?? "";
@@ -86,11 +86,11 @@ describe("an agent blocked on an approval prompt", () => {
 		vi.useFakeTimers();
 		registerSub("0-Sub", "reviewer");
 		const registry = AgentRegistry.global();
-		registry.setPendingApproval("0-Sub", { toolName: "bash", since: Date.now() });
+		const closeWait = registry.openApprovalWait("0-Sub", { toolName: "bash", since: Date.now() });
 		const dashboard = new AgentDashboard({ terminalHeight: 40 });
 		try {
 			expect(rowsOf(dashboard, "Kestrel")[0] ?? "").toContain("blocked");
-			registry.setPendingApproval("0-Sub", undefined);
+			closeWait();
 			// The card coalesces registry events before rebuilding its roster.
 			vi.advanceTimersByTime(1000);
 			const after = rowsOf(dashboard, "Kestrel")[0] ?? "";
@@ -110,7 +110,7 @@ describe("an agent blocked on an approval prompt", () => {
 	test("carries a different leading glyph from a working agent", () => {
 		registerSub("0-Sub", "reviewer");
 		registerSub("1-Sub", "scout");
-		AgentRegistry.global().setPendingApproval("1-Sub", { toolName: "bash", since: Date.now() });
+		AgentRegistry.global().openApprovalWait("1-Sub", { toolName: "bash", since: Date.now() });
 		const dashboard = new AgentDashboard({ terminalHeight: 40 });
 		try {
 			const working = rowsOf(dashboard, "Kestrel")[0] ?? "";

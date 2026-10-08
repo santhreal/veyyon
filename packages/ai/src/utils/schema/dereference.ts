@@ -34,48 +34,48 @@ function resolveLocalRef(ref: string, root: JsonObject): JsonObject | undefined 
  */
 function dereferenceNode(node: unknown, root: JsonObject, visiting: Set<string>): unknown {
 	if (!isRecord(node)) return node;
-	if (Array.isArray(node)) return node.map(item => dereferenceNode(item, root, visiting));
-
 	const ref = node.$ref;
-	if (typeof ref === "string") {
-		// Break circular references
-		if (visiting.has(ref)) return {};
-		const resolved = resolveLocalRef(ref, root);
-		if (!resolved) return node; // External ref — leave as-is
-		visiting.add(ref);
-		const inlined = dereferenceNode(resolved, root, visiting);
-		visiting.delete(ref);
-
-		// Merge sibling keywords (e.g. description, default) from the
-		// referencing node. In draft 2020-12 these are valid alongside $ref.
-		let hasSiblings = false;
-		for (const k in node) {
-			if (k !== "$ref") {
-				hasSiblings = true;
-				break;
-			}
-		}
-		if (!hasSiblings || !isRecord(inlined)) return inlined;
-		const merged: JsonObject = { ...inlined, ...node };
-		delete merged.$ref;
-		return merged;
-	}
+	if (typeof ref === "string") return inlineRef(node, ref, root, visiting);
 
 	const result: JsonObject = {};
 	for (const key in node) {
-		const value = node[key];
 		// Skip $defs/definitions — they get inlined into consumers
 		if (key === "$defs" || key === "definitions") continue;
-
-		if (Array.isArray(value)) {
-			result[key] = value.map(item => dereferenceNode(item, root, visiting));
-		} else if (isRecord(value)) {
-			result[key] = dereferenceNode(value, root, visiting);
-		} else {
-			result[key] = value;
-		}
+		const value = node[key];
+		result[key] = Array.isArray(value)
+			? value.map(item => dereferenceNode(item, root, visiting))
+			: dereferenceNode(value, root, visiting);
 	}
 	return result;
+}
+
+/**
+ * Replaces `node`, whose `$ref` is `ref`, with the dereferenced definition `ref` points at, carrying over the
+ * node's sibling keywords. An external or unresolvable ref leaves `node` as-is; a ref already being inlined
+ * further up becomes `{}`.
+ */
+function inlineRef(node: JsonObject, ref: string, root: JsonObject, visiting: Set<string>): unknown {
+	// Break circular references
+	if (visiting.has(ref)) return {};
+	const resolved = resolveLocalRef(ref, root);
+	if (!resolved) return node; // External ref — leave as-is
+	visiting.add(ref);
+	const inlined = dereferenceNode(resolved, root, visiting);
+	visiting.delete(ref);
+
+	// Merge sibling keywords (e.g. description, default) from the
+	// referencing node. In draft 2020-12 these are valid alongside $ref.
+	let hasSiblings = false;
+	for (const k in node) {
+		if (k !== "$ref") {
+			hasSiblings = true;
+			break;
+		}
+	}
+	if (!hasSiblings || !isRecord(inlined)) return inlined;
+	const merged: JsonObject = { ...inlined, ...node };
+	delete merged.$ref;
+	return merged;
 }
 
 /**

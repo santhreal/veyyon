@@ -3592,7 +3592,9 @@ export function xiaomiModelManagerOptions(
 	// Token-plan keys always use a TP cluster; config?.baseUrl (from catalog)
 	// would incorrectly pin to the standard endpoint (api.xiaomimimo.com).
 	const baseUrl = isTokenPlanKey ? tokenPlanBaseUrls[0] : (config?.baseUrl ?? XIAOMI_STANDARD_BASE_URL);
-	const references = createBundledReferenceMap<"openai-completions">("xiaomi");
+	// Built on the first model a fetch returns: a Token Plan provider's manager reads the standard
+	// provider's bundled models, which a launch whose discovery never lists a model does not need.
+	let references: Map<string, ModelSpec<"openai-completions">> | undefined;
 	const fetchModels = (url: string, hooks: DiscoveryHooks | undefined) =>
 		fetchOpenAICompatibleModels({
 			onFailure: hooks?.onFailure,
@@ -3602,6 +3604,7 @@ export function xiaomiModelManagerOptions(
 			apiKey,
 			filterModel: (_entry, model) => !model.id.includes("-tts") && !model.id.includes("-asr"),
 			mapModel: (entry, defaults) => {
+				references ??= createBundledReferenceMap<"openai-completions">("xiaomi");
 				const reference = references.get(defaults.id);
 				const model = mapWithBundledReference(entry, defaults, reference);
 				return {

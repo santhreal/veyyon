@@ -207,45 +207,10 @@ export class QrCode {
 		bits.append(0, (8 - (bits.length % 8)) % 8); // byte-align
 		for (let pad = 0; bits.length < capacityBits; pad ^= 1) bits.append(PAD_BYTES[pad]!, 8);
 
-		const codewords = QrCode.#interleave(bits.toBytes(), version, ec.table);
+		const codewords = interleave(bits.toBytes(), version, ec.table);
 		const mask = options?.mask ?? -1;
 		if (mask < -1 || mask > 7) throw new Error(`invalid mask ${mask}`);
 		return new QrCode(version, ecLevel, codewords, mask);
-	}
-
-	/** Split into blocks, append Reed-Solomon EC, and interleave per the spec. */
-	static #interleave(data: Uint8Array, version: number, ecTable: number): Uint8Array {
-		const numBlocks = NUM_EC_BLOCKS[ecTable]![version]!;
-		const eccLen = ECC_CODEWORDS_PER_BLOCK[ecTable]![version]!;
-		const rawCodewords = Math.floor(rawDataModules(version) / 8);
-		const numShort = numBlocks - (rawCodewords % numBlocks);
-		const shortLen = Math.floor(rawCodewords / numBlocks);
-		const divisor = rsDivisor(eccLen);
-
-		const blocks: Uint8Array[] = [];
-		const blockLen = shortLen + 1;
-		for (let i = 0, offset = 0; i < numBlocks; i++) {
-			const datLen = shortLen - eccLen + (i < numShort ? 0 : 1);
-			const dat = data.subarray(offset, offset + datLen);
-			offset += datLen;
-			// Every block is padded to the longest block's length so interleaving
-			// stays column-aligned; short blocks leave a zero in the last data slot.
-			const block = new Uint8Array(blockLen);
-			block.set(dat, 0);
-			block.set(rsRemainder(dat, divisor), blockLen - eccLen);
-			blocks.push(block);
-		}
-
-		const result = new Uint8Array(rawCodewords);
-		let w = 0;
-		for (let i = 0; i < blockLen; i++) {
-			for (let b = 0; b < numBlocks; b++) {
-				// Skip the padding column at the data/EC boundary of short blocks.
-				if (i === shortLen - eccLen && b < numShort) continue;
-				result[w++] = blocks[b]![i]!;
-			}
-		}
-		return result;
 	}
 
 	// ── Module placement ──────────────────────────────────────────────────
@@ -407,7 +372,7 @@ export class QrCode {
 					else if (runLen > 5) result++;
 				} else {
 					this.#finderAddHistory(runLen, history);
-					if (!runColor) result += this.#finderCountPatterns(history) * PENALTY_N3;
+					if (!runColor) result += finderCountPatterns(history) * PENALTY_N3;
 					runColor = mods[y]![x]!;
 					runLen = 1;
 				}
@@ -426,7 +391,7 @@ export class QrCode {
 					else if (runLen > 5) result++;
 				} else {
 					this.#finderAddHistory(runLen, history);
-					if (!runColor) result += this.#finderCountPatterns(history) * PENALTY_N3;
+					if (!runColor) result += finderCountPatterns(history) * PENALTY_N3;
 					runColor = mods[y]![x]!;
 					runLen = 1;
 				}
@@ -453,15 +418,6 @@ export class QrCode {
 		return result;
 	}
 
-	#finderCountPatterns(history: readonly number[]): number {
-		const n = history[1]!;
-		const core = n > 0 && history[2] === n && history[3] === n * 3 && history[4] === n && history[5] === n;
-		return (
-			(core && history[0]! >= n * 4 && history[6]! >= n ? 1 : 0) +
-			(core && history[6]! >= n * 4 && history[0]! >= n ? 1 : 0)
-		);
-	}
-
 	#finderAddHistory(runLen: number, history: number[]): void {
 		if (history[0] === 0) runLen += this.size; // light border before the first run
 		history.pop();
@@ -475,8 +431,52 @@ export class QrCode {
 		}
 		runLen += this.size; // light border after the final run
 		this.#finderAddHistory(runLen, history);
-		return this.#finderCountPatterns(history);
+		return finderCountPatterns(history);
 	}
+}
+
+/** Split into blocks, append Reed-Solomon EC, and interleave per the spec. */
+function interleave(data: Uint8Array, version: number, ecTable: number): Uint8Array {
+	const numBlocks = NUM_EC_BLOCKS[ecTable]![version]!;
+	const eccLen = ECC_CODEWORDS_PER_BLOCK[ecTable]![version]!;
+	const rawCodewords = Math.floor(rawDataModules(version) / 8);
+	const numShort = numBlocks - (rawCodewords % numBlocks);
+	const shortLen = Math.floor(rawCodewords / numBlocks);
+	const divisor = rsDivisor(eccLen);
+
+	const blocks: Uint8Array[] = [];
+	const blockLen = shortLen + 1;
+	for (let i = 0, offset = 0; i < numBlocks; i++) {
+		const datLen = shortLen - eccLen + (i < numShort ? 0 : 1);
+		const dat = data.subarray(offset, offset + datLen);
+		offset += datLen;
+		// Every block is padded to the longest block's length so interleaving
+		// stays column-aligned; short blocks leave a zero in the last data slot.
+		const block = new Uint8Array(blockLen);
+		block.set(dat, 0);
+		block.set(rsRemainder(dat, divisor), blockLen - eccLen);
+		blocks.push(block);
+	}
+
+	const result = new Uint8Array(rawCodewords);
+	let w = 0;
+	for (let i = 0; i < blockLen; i++) {
+		for (let b = 0; b < numBlocks; b++) {
+			// Skip the padding column at the data/EC boundary of short blocks.
+			if (i === shortLen - eccLen && b < numShort) continue;
+			result[w++] = blocks[b]![i]!;
+		}
+	}
+	return result;
+}
+
+function finderCountPatterns(history: readonly number[]): number {
+	const n = history[1]!;
+	const core = n > 0 && history[2] === n && history[3] === n * 3 && history[4] === n && history[5] === n;
+	return (
+		(core && history[0]! >= n * 4 && history[6]! >= n ? 1 : 0) +
+		(core && history[6]! >= n * 4 && history[0]! >= n ? 1 : 0)
+	);
 }
 
 /** Append-only MSB-first bit buffer. */

@@ -37,12 +37,6 @@ async function loadStats(): Promise<typeof StatsNs> {
 	return statsMod;
 }
 
-/** Sync access below an await of {@link loadStats}; a live server proves it ran. */
-function requireStats(): typeof StatsNs {
-	if (!statsMod) throw new Error("@veyyon/stats not loaded; await loadStats() first.");
-	return statsMod;
-}
-
 const STATS_DASHBOARD_USAGE = "Usage: /stats [<port>]";
 
 /**
@@ -110,13 +104,6 @@ export async function launchStatsDashboard(args: StatsDashboardArgs): Promise<St
 		url,
 		message: `Synced ${processed} new entries from ${files} files (${total} total)\n${serverLine}`,
 	};
-}
-
-export function stopStatsDashboard(): void {
-	if (!activeStatsServer) return;
-	activeStatsServer.stop();
-	activeStatsServer = undefined;
-	requireStats().closeDb();
 }
 
 /**

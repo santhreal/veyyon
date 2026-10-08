@@ -76,25 +76,11 @@ function convertArray(node: Record<string, unknown>, ctx: Ctx, pad: string): str
 }
 
 function convertObject(node: Record<string, unknown>, ctx: Ctx, pad: string): string {
-	const properties = isRecord(node.properties) ? node.properties : undefined;
 	const additional = node.additionalProperties;
 	const childPad = pad + ctx.indent;
 
 	const body: string[] = [];
-	if (properties) {
-		const required = new Set(
-			Array.isArray(node.required) ? node.required.filter((key): key is string => typeof key === "string") : [],
-		);
-		for (const key in properties) {
-			const value = properties[key];
-			if (ctx.comments && isRecord(value) && typeof value.description === "string" && value.description.length > 0) {
-				emitJsDoc(body, value.description, childPad);
-			}
-			const optional = required.has(key) ? "" : "?";
-			const name = SAFE_KEY.test(key) ? key : JSON.stringify(key);
-			body.push(`${childPad}${name}${optional}: ${convert(value, ctx, childPad)};`);
-		}
-	}
+	if (isRecord(node.properties)) pushPropertyLines(body, node.properties, node.required, ctx, childPad);
 
 	// No named properties: pure record / open / empty object.
 	if (body.length === 0) {
@@ -108,6 +94,28 @@ function convertObject(node: Record<string, unknown>, ctx: Ctx, pad: string): st
 		body.push(`${childPad}[key: string]: ${convert(additional, ctx, childPad)};`);
 	}
 	return `{\n${body.join("\n")}\n${pad}}`;
+}
+
+/** Appends one line per property of `properties`, each preceded by its description as JSDoc when comments are on. */
+function pushPropertyLines(
+	body: string[],
+	properties: Record<string, unknown>,
+	required: unknown,
+	ctx: Ctx,
+	childPad: string,
+): void {
+	const requiredKeys = new Set(
+		Array.isArray(required) ? required.filter((key): key is string => typeof key === "string") : [],
+	);
+	for (const key in properties) {
+		const value = properties[key];
+		if (ctx.comments && isRecord(value) && typeof value.description === "string" && value.description.length > 0) {
+			emitJsDoc(body, value.description, childPad);
+		}
+		const optional = requiredKeys.has(key) ? "" : "?";
+		const name = SAFE_KEY.test(key) ? key : JSON.stringify(key);
+		body.push(`${childPad}${name}${optional}: ${convert(value, ctx, childPad)};`);
+	}
 }
 
 function convertType(type: string, node: Record<string, unknown>, ctx: Ctx, pad: string): string {
@@ -136,30 +144,13 @@ function convert(node: unknown, ctx: Ctx, pad: string): string {
 	if (!isRecord(node)) return "unknown";
 
 	const ref = node.$ref;
-	if (typeof ref === "string") {
-		const match = LOCAL_REF.exec(ref);
-		const resolved = match && ctx.defs ? ctx.defs[match[1]] : undefined;
-		if (isRecord(resolved) && !ctx.seen.has(resolved)) {
-			ctx.seen.add(resolved);
-			const out = convert(resolved, ctx, pad);
-			ctx.seen.delete(resolved);
-			return out;
-		}
-		return ref.slice(ref.lastIndexOf("/") + 1);
-	}
-
+	if (typeof ref === "string") return convertRef(ref, ctx, pad);
 	if ("const" in node) return literal(node.const);
-
 	if (Array.isArray(node.enum)) {
 		return node.enum.length > 0 ? joinUnion(node.enum.map(literal)) : "never";
 	}
-
-	const union = Array.isArray(node.anyOf) ? node.anyOf : Array.isArray(node.oneOf) ? node.oneOf : undefined;
-	if (union) return joinUnion(union.map(variant => convert(variant, ctx, pad)));
-
-	if (Array.isArray(node.allOf)) {
-		return node.allOf.map(variant => convert(variant, ctx, pad)).join(" & ");
-	}
+	const combined = convertCombinator(node, ctx, pad);
+	if (combined !== undefined) return combined;
 
 	const type = node.type;
 	if (Array.isArray(type)) {
@@ -168,6 +159,25 @@ function convert(node: unknown, ctx: Ctx, pad: string): string {
 	if (typeof type === "string") return convertType(type, node, ctx, pad);
 
 	return "unknown";
+}
+
+/** Inlines the local definition `ref` names, or prints its last segment when it is external, missing or recursive. */
+function convertRef(ref: string, ctx: Ctx, pad: string): string {
+	const match = LOCAL_REF.exec(ref);
+	const resolved = match && ctx.defs ? ctx.defs[match[1]] : undefined;
+	if (!isRecord(resolved) || ctx.seen.has(resolved)) return ref.slice(ref.lastIndexOf("/") + 1);
+	ctx.seen.add(resolved);
+	const out = convert(resolved, ctx, pad);
+	ctx.seen.delete(resolved);
+	return out;
+}
+
+/** Renders `anyOf` or `oneOf` as a union and `allOf` as an intersection; undefined when the node has none. */
+function convertCombinator(node: Record<string, unknown>, ctx: Ctx, pad: string): string | undefined {
+	const union = Array.isArray(node.anyOf) ? node.anyOf : Array.isArray(node.oneOf) ? node.oneOf : undefined;
+	if (union) return joinUnion(union.map(variant => convert(variant, ctx, pad)));
+	if (Array.isArray(node.allOf)) return node.allOf.map(variant => convert(variant, ctx, pad)).join(" & ");
+	return undefined;
 }
 
 /** Convert a JSON Schema object into a simplified TypeScript type string. */

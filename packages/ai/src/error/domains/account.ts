@@ -9,7 +9,7 @@
 import { AwsCredentialsError } from "../aws";
 import { Flag } from "../flag";
 import { isOpaqueStatusBody, matchesUsageLimitText, parseRateLimitReason } from "../rate-limit";
-import type { ErrorDomain } from "./types";
+import type { ErrorDomain, GatewayStructuralRule, GatewayVerdict, GatewayWordingRule } from "./types";
 
 export const quotaDomain: ErrorDomain = {
 	id: "quota",
@@ -37,8 +37,44 @@ export const quotaDomain: ErrorDomain = {
 	],
 };
 
-const AUTH_FAILURE_PATTERN =
-	/\b(?:401|403|unauthorized|forbidden|authentication|auth[_ ]?unavailable|no auth available|(?:invalid|no)[_ ]?api[_ ]?key)\b/i;
+/** The gateway's answer for a throttle and for a spent allowance alike. */
+const GATEWAY_RATE_LIMITED: GatewayVerdict = { status: 429, type: "rate_limit_error" };
+
+/** The separators a provider writes between the words of a throttle phrase. */
+const THROTTLE_SEPARATORS = [" ", "-", "_"] as const;
+
+export const gatewayThrottleWordingRule: GatewayWordingRule = {
+	name: "gateway-throttle-wording",
+	why: "A throttle often arrives as prose with no status (`rate limit exceeded`, `too many requests`, `quota`). Each wording is word-bounded, so `GenerateContentRequest`, `iterate`, `deprecated` and `accelerate` do not read as a rate limit.",
+	wordings: [
+		...["", ...THROTTLE_SEPARATORS].flatMap(separator =>
+			["", "s", "ed", "ing"].map(ending => `rate${separator}limit${ending}`),
+		),
+		// `quota` also reads `quota exceeded`. An underscore is a word character, so `quota_exceeded` is
+		// one word to the boundary and is listed on its own.
+		"quota",
+		"quota_exceeded",
+		...THROTTLE_SEPARATORS.flatMap(first => THROTTLE_SEPARATORS.map(second => `too${first}many${second}requests`)),
+	],
+	verdict: GATEWAY_RATE_LIMITED,
+};
+
+export const gatewayUsageLimitRule: GatewayStructuralRule = {
+	name: "gateway-usage-limit",
+	why: "A spent allowance states no status either (`You have hit your ChatGPT usage limit … Try again in ~158 min.`). The quota family already reads every provider's spelling of it, so the gateway answers the family's flag instead of matching the wording again.",
+	answer: signal => ((signal.kinds & Flag.UsageLimit) !== 0 ? GATEWAY_RATE_LIMITED : undefined),
+};
+
+/**
+ * The refusal words: a credential the provider would not accept, in the provider's own word for it.
+ * One list for both readers, the auth family's prose rule and the gateway's refusal rule.
+ */
+const AUTH_REFUSAL_WORDINGS = ["unauthorized", "forbidden"] as const;
+
+const AUTH_FAILURE_PATTERN = new RegExp(
+	String.raw`\b(?:401|403|${AUTH_REFUSAL_WORDINGS.join("|")}|authentication|auth[_ ]?unavailable|no auth available|(?:invalid|no)[_ ]?api[_ ]?key)\b`,
+	"i",
+);
 
 /**
  * The auth refusals a provider states as a CODE rather than as prose.
@@ -174,4 +210,11 @@ export const authDomain: ErrorDomain = {
 			text: text => AUTH_FAILURE_PATTERN.test(text),
 		},
 	],
+};
+
+export const gatewayAuthRefusalWordingRule: GatewayWordingRule = {
+	name: "gateway-auth-refusal-wording",
+	why: "A refusal worded `unauthorized` or `forbidden` with no status is a refused credential, read from the same list as `auth-failure-prose`. The family's other words (`authentication`, `api key`, a bare `401`) are not read by the gateway.",
+	wordings: AUTH_REFUSAL_WORDINGS,
+	verdict: { status: 401, type: "authentication_error" },
 };

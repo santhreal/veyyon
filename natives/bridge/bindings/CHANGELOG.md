@@ -6,11 +6,17 @@
 
 - `CodeHighlighter` highlights a source that grows at its end once per line: `advance(text)` colours whole lines and moves the parser past them, `peek(text)` colours the unfinished last line without moving it, and their output joined is byte-identical to `highlightCode` over the whole source.
 - `highlightCodeBatch(sources, colors)` highlights many independent sources in parallel on the Rayon pool and returns one string per source, in order, each byte-identical to `highlightCode` for that source.
+- `releaseEmbeddedModulePages()` unmaps the clean resident pages of the running executable's `.bun` section on Linux and returns the bytes released; a later read faults the same bytes back in from the page cache, and on other platforms the call returns 0.
+- `releaseFreeHeapPages()` returns the free pages of every glibc malloc arena to the kernel with `malloc_trim(0)` and reports whether any were released; four text searches over a 200,000-match tree leave 266 MiB resident in the worker threads' arenas, and the call drops that to 54 MiB in 11 ms, while on other platforms it returns false.
 
 ### Changed
 
 - `highlightCode` and `CodeHighlighter` match grammar patterns with Oniguruma instead of fancy-regex, which cuts the highlighting time of a resumed session's transcript by 59% with the same colours, and every Oniguruma match and search in the addon, including the `find` builtin's `-name` and `-regex`, stops after 1,000,000 retries instead of Oniguruma's defaults of 10,000,000 per match and no limit per search.
 - The first `highlightCode`, `CodeHighlighter`, `supportsLanguage` or `getSupportedLanguages` call in a process deserializes a syntax set the addon's build script linked instead of linking 78 syntaxes at run time, which cuts that call from 81 ms to under 1 ms.
+- `wrapTextWithAnsi` reads the words of a line as slices of it instead of copying each into its own buffer, which cuts wrapping a line wider than its target by 50 to 66% (a line of 40 to 100 words from 8.6 µs to 3.0 µs) and the first render of a 13,470-entry transcript at 120 columns from 291 ms to 234 ms, with identical rows.
+- `wrapTextWithAnsi`, `truncateToWidth`, `sliceWithWidth` and `extractSegments` return a result whose characters all fit in Latin-1 as a one-byte string instead of a two-byte one, which moves 2.9M characters of a rendered 13,470-entry transcript to one byte each and cuts the heap the render holds from 47.1 MiB to 44.4 MiB.
+- The addon runs its async exports on a Tokio runtime of at most four scheduler workers on every platform instead of napi-rs's default of one per CPU, which cuts an idle `vey` on a 32-thread host from 54 threads to 26 and the anonymous memory the addon's load and first async call add from 3.6 MiB to 3.1 MiB.
+- The first launch of a version inflates the embedded addon archive into one buffer sized from the addon metadata instead of 16 KiB chunks joined by a copy, which cuts that launch on linux-x64 from 575 ms to 485 ms to a ready status line and its peak resident memory from 449 MiB to 305 MiB (median of seven).
 
 ## [1.5.5] - 2026-09-25
 

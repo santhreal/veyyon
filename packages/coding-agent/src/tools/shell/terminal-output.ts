@@ -7,7 +7,22 @@
  */
 
 import { SGR_RESET } from "@veyyon/utils/ansi";
+import type * as XtermModule from "@xterm/headless";
 import type { Terminal as XtermTerminal } from "@xterm/headless";
+
+let xtermTerminalCtor: typeof XtermModule.Terminal | undefined;
+
+/**
+ * The xterm `Terminal` constructor, imported on first use. A session that never replays a PTY
+ * screen does not evaluate `@xterm/headless`.
+ */
+export async function loadXtermTerminal(): Promise<typeof XtermModule.Terminal> {
+	if (!xtermTerminalCtor) {
+		const mod = (await import("@xterm/headless")) as typeof XtermModule & { default?: typeof XtermModule };
+		xtermTerminalCtor = (mod.default ?? mod).Terminal;
+	}
+	return xtermTerminalCtor;
+}
 
 interface TerminalCell {
 	getChars(): string;

@@ -1,6 +1,6 @@
 # Permission model
 
-Every tool the model attempts to run passes through one gate: the approval mode. The
+Every tool the model attempts to run passes one check: the approval mode. The
 approval mode sets whether a tool runs on its own or waits for you to say yes. You
 set it once in config, and you can change it for a single run from the command line.
 
@@ -13,16 +13,16 @@ it as the boundary.
 
 Every tool belongs to one of three tiers, ordered by how much it can change:
 
-- **read** looks but does not touch: `read`, `search`, and directory listing.
+- **read** inspects without modifying: `read`, `search`, and directory listing.
 - **write** changes files: `edit` and `write`.
 - **exec** runs commands: `bash` and anything else that executes a program.
 
-A mode approves whole tiers, not individual tools. That is why the tiers come first: once
-you know which tier a tool is in, the mode determines whether it runs.
+A mode approves whole tiers, not individual tools. The tier of a tool and the mode together
+determine whether it runs.
 
 ## Modes
 
-A mode is a named choice of which tiers run without asking. There are five:
+A mode is a named choice of which tiers run without a prompt. There are five:
 
 | Mode | Auto-approves | Prompts for |
 | --- | --- | --- |
@@ -32,8 +32,8 @@ A mode is a named choice of which tiers run without asking. There are five:
 | `auto` | all tiers | a per-tool policy, the working-directory boundary, credential use, a tool's own flagged calls |
 | `yolo` | all tiers | a blatantly destructive command, and a per-tool `deny` or `prompt` |
 
-The schema default is `auto`. Three older names still work: `always-ask` maps to `ask`, and
-`write` and `auto-edit` both map to `ask-command`.
+The schema default is `auto`. Three aliases are accepted: `always-ask` for `ask`, and
+`write` and `auto-edit` for `ask-command`.
 
 Set the mode in config, or override it for one run:
 
@@ -47,16 +47,16 @@ The launch flags `--yolo` and `--plan-yolo` set `yolo` and a plan-mode variant o
 
 A tier describes what kind of thing a tool does. It does not identify which file the
 tool is about to touch. In `ask-command` and `auto`, the `write` tier is approved, so
-`write` runs without asking whether the target is `src/main.ts` or a file in your home
+`write` runs without a prompt whether the target is `src/main.ts` or a file in your home
 directory.
 
-The working-directory boundary is the second question, asked after the tier:
+The working-directory boundary is a second check, applied after the tier:
 
 > Does this call touch a path outside the session working directory?
 
 If it does, the call requires approval even though its tier would have allowed it. This
 holds in `plan`, `ask`, `ask-command` and `auto`, so the shipped default is inside it. It
-does not hold in `yolo`, which turns off permission entirely.
+does not hold in `yolo`.
 
 Say you launched in `~/projects/api` and the model runs this:
 
@@ -64,23 +64,21 @@ Say you launched in `~/projects/api` and the model runs this:
 $ veyyon --approval-mode ask-command "update the config"
 ```
 
-Writing `~/projects/api/config.yml` runs without asking, because it is inside the
+Writing `~/projects/api/config.yml` runs without a prompt, because it is inside the
 working directory and `write` is an approved tier. Writing `~/.ssh/config` prompts, because
 it is outside, even though the tier is the same.
 
-The check looks at where a path really leads, not at how it is spelled. A path written
+The check resolves where a path leads, not how it is spelled. A path written
 entirely inside the working directory that reaches outside it through a symlink counts
-as outside. A path that cannot be resolved at all also counts as outside, because
-treating an unreadable path as safe is the assumption you least want to be wrong about.
+as outside. A path that cannot be resolved at all also counts as outside.
 
 These tools take part: `read`, `write`, `edit`, `ast_edit`, `search`,
 `inspect_image`, and `set_cwd`.
 
-`set_cwd` is on that list because it changes the working directory itself. If it were
-not bound, you could move the boundary instead of obeying it: re-root to the parent
-directory, and every later write counts as inside. So re-rooting outward prompts, the same
-as writing outward. Re-rooting into a subdirectory does not prompt, because that narrows
-what the session can reach rather than widening it.
+`set_cwd` is on that list because it changes the working directory itself. Without the
+check, re-rooting to the parent directory would make every later write count as inside. So
+re-rooting outward prompts, the same as writing outward. Re-rooting into a subdirectory does
+not prompt, because that narrows what the session can reach rather than widening it.
 
 When no interactive prompt is available, such as a headless or ACP run, a call that
 needs approval fails instead of proceeding. The error states the path that crossed the
@@ -88,18 +86,17 @@ boundary, so you can see why the run stopped.
 
 ## Secrets in arguments
 
-A tier does not tell you whether a call is about to spend a credential either. The
-secret-use boundary is the third question, asked the same way and in the same modes:
+A tier also does not indicate whether a call is about to spend a credential. The
+secret-use boundary is a third check, applied in the same modes:
 
-> Do this call's arguments carry a stored secret?
+> Do this call's arguments contain a stored secret?
 
 Your secrets reach a tool as real values. The model works with placeholders such as
-`#GITHUB_TOKEN#`, and Veyyon substitutes the credential just before the tool runs, so the
-model can use a secret it never reads. That substitution used to be recorded and never
-asked about: `secrets.auditLog` could report afterwards which credential an agent had
-spent, and nothing prompted you first.
+`#GITHUB_TOKEN#`, and Veyyon substitutes the credential immediately before the tool runs, so the
+model can use a secret it never reads. `secrets.auditLog`, on by default, records which
+secret each call used, never its value.
 
-Now a call whose arguments carry a real credential requires approval in `plan`, `ask`,
+A call whose arguments contain a real credential requires approval in `plan`, `ask`,
 `ask-command` and `auto`, even when its tier would have allowed it. The prompt states the
 secret and never shows its value:
 
@@ -109,8 +106,8 @@ Reason: This call uses stored secret: GITHUB_TOKEN. Approving it runs the call w
 real credential.
 ```
 
-As with the working-directory boundary, `yolo` turns permission off entirely and turns
-this off with it. Every other rung keeps it, the shipped `auto` included. A call that
+As with the working-directory boundary, `yolo` skips this check. Every other rung keeps it,
+the shipped `auto` included. A call that
 mentions a placeholder without expanding it, such as one made while `secrets.enabled` is
 false, is not a credential reference and does not prompt.
 
@@ -137,15 +134,15 @@ back to `prompt`, so commands still stop for your approval.
 
 ## Critical bash commands
 
-Within the exec tier, a guard (`packages/coding-agent/src/tools/shell/bash-guard.ts`) forces a prompt in
+Within the exec tier, a check (`packages/coding-agent/src/tools/shell/bash-guard.ts`) forces a prompt in
 `plan`, `ask`, `ask-command` and `auto`, even over a per-tool `allow`. It has two halves.
 
-The first half judges what a command would DELETE, and it judges the paths after expansion rather
-than the command as text. A tilde and `$HOME` are resolved, so `rm -rf ~/` and `rm -rf "$HOME"/`
-are recognized as the home directory. Every target is judged, not just the first, so
+The first half checks what a command would DELETE, and it resolves the paths after expansion
+rather than reading the command as text. A tilde and `$HOME` are resolved, so `rm -rf ~/` and
+`rm -rf "$HOME"/` are recognized as the home directory. Every target is checked, not only the first, so
 `rm -rf tests/ /` is caught. Recursive deletes of the home directory, of any directory containing
 it, of the system directories, and of the directories that hold your credentials all stop for
-approval. So does a recursive delete whose target the guard cannot resolve, such as
+approval. So does a recursive delete whose target the check cannot resolve, such as
 `rm -rf "$dir"/*`: if `$dir` is empty that command starts at the root, and nothing in the command
 text states whether it is.
 
@@ -175,23 +172,18 @@ tools:
     - ~/Documents
 ```
 
-That setting only adds. Nothing in the built-in judgement reads configuration, so no value you
-write there can stop the guard refusing your home directory, the system roots, or your credentials.
-An entry that is not an absolute or `~`-relative path is ignored, because resolving it against a
-guessed working directory would protect somewhere other than what you wrote.
+That setting only adds. The built-in rules read no configuration, so no value written there
+removes the prompt for your home directory, the system roots, or your credentials. An entry that
+is not an absolute or `~`-relative path is ignored.
 
 The first half and the destructive patterns stop for approval in `yolo` too, and the `/yolo` session
-bypass does not lift them. That is the one place `yolo` is not absolute, and it is deliberate:
-without it, the commands the guard considers most destructive would be the ones most likely to run
-in the mode that skips the check. The dangerous patterns are an ordinary prompt instead: every rung
-below `yolo` stops on them, and `yolo` does not, because a rung whose whole promise is that it stops
-asking cannot be asking about an install command the operator typed. To turn the floor off, set
-`tools.approval.bash` to `allow`, which is read as a decision you made on purpose. Setting it to
-`deny` remains a hard block.
+bypass does not lift them. Apart from an explicit per-tool `prompt`, that is the only prompt `yolo`
+shows. The dangerous patterns are an
+ordinary prompt instead: every rung below `yolo` stops on them, and `yolo` does not. To turn the
+floor off in `yolo`, set `tools.approval.bash` to `allow`. Setting it to `deny` remains a hard block.
 
-The guard reasons about what a command will do, and that reasoning can be wrong: a shell function,
-an `eval`, or a script invoked by name defeats any parser. Treat it as a seatbelt, not as
-containment.
+The check parses what a command will do, and a parse can be wrong: a shell function, an `eval`, or
+a script invoked by name defeats any parser. It is not containment.
 
 ## On deny
 

@@ -32,7 +32,7 @@
  * rescanned next open, which is a slow path, not a wrong one.
  */
 import { describe, expect, it } from "bun:test";
-import { getRecentSessions, listSessions, listSessionsReadOnly } from "@veyyon/kernel/session/session-listing";
+import { listSessions, listSessionsReadOnly } from "@veyyon/kernel/session/session-listing";
 import { MemorySessionStorage } from "@veyyon/kernel/session/session-storage";
 
 const DIR = "/sessions/project";
@@ -192,11 +192,26 @@ describe("a session list reuses unchanged rows instead of rescanning", () => {
 	it("does not answer a status request from a row scanned without one", async () => {
 		const storage = new MemorySessionStorage();
 		storage.writeTextSync(`${DIR}/a.jsonl`, session("a", ["user", "hello"], ["assistant", "done"]));
+		await listSessions(DIR, storage);
+		const written = JSON.parse(storage.readTextSync(INDEX) ?? "{}") as {
+			version: number;
+			rows: Record<string, { firstMessage: string; withStatus: boolean; status?: string }>;
+		};
+		const row = written.rows[`${DIR}/a.jsonl`];
+		expect(row?.status).toBe("complete");
+		// Doctored so that serving the row is visible in the result.
+		row.firstMessage = "served from the index";
+		storage.writeTextSync(INDEX, JSON.stringify(written));
+		expect((await listSessions(DIR, storage))[0]?.firstMessage).toBe("served from the index");
 
-		// getRecentSessions skips the tail window, so its row carries no status.
-		await getRecentSessions(DIR, 4, storage);
+		// The row an earlier build's welcome shortlist wrote: same file, scanned without the tail
+		// window, so it holds no status.
+		row.withStatus = false;
+		delete row.status;
+		storage.writeTextSync(INDEX, JSON.stringify(written));
 		const [listed] = await listSessions(DIR, storage);
 
 		expect(listed?.status).toBe("complete");
+		expect(listed?.firstMessage).toBe("hello");
 	});
 });

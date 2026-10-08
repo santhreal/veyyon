@@ -13,6 +13,9 @@
  * window among everything authenticated, is the one that can reach a provider the
  * operator never chose for this session and bill it for a summary, so it moved
  * behind `any-model` and `auto` now stops at models they named.
+ *
+ * Subject: `session/runtime/compaction-runtime.ts` runs the compaction and
+ * `session/runtime/compaction-summarizer.ts` walks the chain, both driven through `AgentSession`.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";

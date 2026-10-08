@@ -14,14 +14,16 @@ import { padding } from "@veyyon/utils/padding";
 import {
 	computeModalDims,
 	MODAL_SIZING_MEDIUM,
-	type ModalShellGeometry,
-	type ModalShortcut,
 	type ModalSizing,
 	modalWidthForContent,
+	sizingForArea,
+} from "../chrome/modal-geometry";
+import {
+	type ModalShellGeometry,
+	type ModalShortcut,
 	pointerMotionEnabled,
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
-	sizingForArea,
 } from "../chrome/modal-shell";
 import { routeModalCardMouse } from "./select-list-mouse-routing";
 

@@ -577,15 +577,16 @@ function migrateEditSettings(raw: RawSettings): void {
 	delete raw["edit.critiqueCodeMutations"];
 }
 
-/** compaction.strategy: collapse every legacy strategy to summary; off also disables compaction. */
+/**
+ * compaction.strategy: collapse every legacy strategy to summary. `off` was a kill switch that won over
+ * `enabled: true`, and `enabled` is now the only off switch, so `off` writes `enabled: false`.
+ */
 function migrateCompactionStrategy(raw: RawSettings): void {
 	const compactionObj = raw.compaction as Record<string, unknown> | undefined;
 	if (!compactionObj) return;
 	if (compactionObj.strategy === "off") {
 		compactionObj.strategy = "summary";
-		if (compactionObj.enabled === undefined) {
-			compactionObj.enabled = false;
-		}
+		compactionObj.enabled = false;
 	} else if (typeof compactionObj.strategy === "string") {
 		const migrated: CompactionStrategySetting | undefined = migrateCompactionStrategyValue(compactionObj.strategy);
 		if (migrated) compactionObj.strategy = migrated;

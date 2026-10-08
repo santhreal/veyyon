@@ -37,7 +37,7 @@ Automatic startup loading is controlled by `argot.autoload` (enabled by default)
 The codec operates under two distinct boundaries:
 
 - **Decoding**: Turning handles back into full text is unconditional. Whenever a dictionary is active, all handles are expanded before text reaches tool execution, transcript storage, or terminal display.
-- **Encoding**: Teaching shorthand syntax to the model is controlled by configuration:
+- **Encoding**: Whether the model receives shorthand instructions is controlled by configuration:
   - Model allowlist (`argot.encode.models`): Shorthand instructions are provided only to explicitly allowed models.
   - Context cutoff (`argot.encode.disableAboveTokens`): Shorthand instructions are omitted once session context exceeds the specified token limit.
 

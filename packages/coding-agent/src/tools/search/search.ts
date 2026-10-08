@@ -6,8 +6,8 @@ import type {
 	ToolTier,
 } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
-import { isRecord, prompt, trimTrailingSlashes } from "@veyyon/utils";
-import { z } from "zod/v4";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { isRecord, lazy, prompt, trimTrailingSlashes } from "@veyyon/utils";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import { resolveFileDisplayMode } from "../../utils/file-display-mode";
 import type { ToolSession } from "..";
@@ -27,38 +27,37 @@ import { executeFileSearch, type FileSearchDetails } from "./file-search";
 import { executeStructureSearch, type StructureSearchDetails } from "./structure-search";
 import { executeTextSearch, type TextSearchDetails, textSearchApproval } from "./text-search";
 
-export const searchSchema = z.strictObject({
-	type: z
-		.enum(["files", "text", "structure"])
-		.describe(
-			"representation to match: files for paths and repository layout, text for syntax-irrelevant content, structure for code syntax and relationships",
-		),
-	input: z
-		.string()
-		.describe(
+/** The representations `search` matches, in the order its `type` field describes them. */
+export const SEARCH_TYPES = ["files", "text", "structure"] as const;
+
+export const searchSchema = lazy(() =>
+	type({
+		"+": "reject",
+		type: type
+			.enumerated(...SEARCH_TYPES)
+			.describe(
+				"representation to match: files for paths and repository layout, text for syntax-irrelevant content, structure for code syntax and relationships",
+			),
+		input: type("string").describe(
 			"type-specific match: path or glob for files, literal or regular expression for text, or one valid code pattern for structure; text and structure scopes belong in path",
 		),
-	path: z
-		.string()
-		.optional()
-		.describe(
+		"path?": type("string").describe(
 			'Scope. text/structure: file, directory, glob, internal URL, or semicolon-delimited set; ssh:// is text-only. files: a directory the globs in input are searched under, so { path: "src", input: "*.ts" } is src/**/*.ts. Omitted -> workspace root (".")',
 		),
-	case: z
-		.boolean()
-		.optional()
-		.describe("text only: case-sensitive matching, on by default; pass false to match case-insensitively"),
-	paths: z
-		.boolean()
-		.optional()
-		.describe("text only: return the matching file paths with per-file counts instead of match lines"),
-	hidden: z.boolean().optional().describe("files only: include hidden files"),
-	gitignore: z.boolean().optional().describe("files or text only: respect gitignore"),
-	limit: z.number().optional().describe("files only: maximum results"),
-	skip: z.number().optional().describe("text or structure only: results to skip for pagination"),
-});
+		"case?": type("boolean").describe(
+			"text only: case-sensitive matching, on by default; pass false to match case-insensitively",
+		),
+		"paths?": type("boolean").describe(
+			"text only: return the matching file paths with per-file counts instead of match lines",
+		),
+		"hidden?": type("boolean").describe("files only: include hidden files"),
+		"gitignore?": type("boolean").describe("files or text only: respect gitignore"),
+		"limit?": type("number").describe("files only: maximum results"),
+		"skip?": type("number").describe("text or structure only: results to skip for pagination"),
+	}),
+);
 
-export type SearchToolInput = z.infer<typeof searchSchema>;
+export type SearchToolInput = typeof searchSchema.value.infer;
 export type SearchType = SearchToolInput["type"];
 
 /**
@@ -221,12 +220,14 @@ function projectToMatchingPaths(result: AgentToolResult<TextSearchDetails>): Age
 	};
 }
 
-export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDetails> {
+export class SearchTool implements AgentTool<typeof searchSchema.value, SearchToolDetails> {
 	readonly name = "search";
 	readonly label = "Search";
 	readonly loadMode = "essential";
 	readonly summary = "Search workspace files, text, or code structure";
-	readonly parameters = searchSchema;
+	get parameters(): typeof searchSchema.value {
+		return searchSchema.value;
+	}
 	readonly strict = true;
 	readonly description: string;
 	readonly filesystemTargets = (args: unknown, cwd = this.session.cwd): string[] => searchFilesystemTargets(args, cwd);

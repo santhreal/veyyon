@@ -3,6 +3,7 @@ Symbol-aware code intelligence from language servers — the accurate path for n
 <operations>
 Position-based — pass `file` + `line` + `symbol` (substring on that line; append `#N` for the Nth match, e.g. `kind#2`):
 - `definition`, `type_definition`, `implementation`, `references`, `hover` — standard LSP lookups
+- `incoming_calls`, `outgoing_calls` — callers / callees with call sites, as resolved by the server (follows re-exports; never a comment or declaration)
 - `rename` — rename the symbol everywhere; **applies by default**, `apply: false` previews; needs `new_name`
 - `code_actions` — quick-fixes/refactors/imports at that position; lists by default (`query` filters by kind, e.g. `quickfix`, `source.organizeImports`), **applies one only with `apply: true` + `query`** (then `query` = action title substring or numeric index)
 
@@ -18,11 +19,11 @@ Servers:
 </operations>
 
 <caution>
-- `line` is 1-indexed. Project-aware `definition`/`references`/`rename` ERROR without `symbol` rather than guess the wrong identifier; a missing match or out-of-range `#N` is an explicit error, never a silent fallback.
+- `line` is 1-indexed. Project-aware `definition`/`references`/`rename`/call lookups ERROR without `symbol` rather than guess the wrong identifier; a missing match or out-of-range `#N` is an explicit error, never a silent fallback.
 </caution>
 
 <critical>
-- Symbol-aware work (rename, references, definition/type/impl, code actions) MUST use `lsp` whenever a server is available — it follows shadowing, re-exports, and cross-file usages that text tools miss.
+- Symbol-aware work (rename, references, callers/callees, definition/type/impl, code actions) MUST use `lsp` whenever a server is available — it follows shadowing, re-exports, and cross-file usages that text tools miss.
 - NEVER do a cross-file rename with `ast_edit`, `sed`, or hand edits when `lsp` `rename`/`rename_file` can — text renames silently drop callsites.
 - Reach for `code_actions` on imports, quick-fixes, and server-known refactors before editing by hand.
 </critical>

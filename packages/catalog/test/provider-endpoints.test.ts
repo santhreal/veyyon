@@ -479,7 +479,7 @@ describe("the hosts have one owner", () => {
 			"ai/src/registry/oauth/google-gemini-cli.ts",
 			"coding-agent/src/tools/web/search/providers/gemini.ts",
 			"coding-agent/src/tools/web/image-gen.ts",
-			"coding-agent/src/session/agent-session.ts",
+			"coding-agent/src/session/runtime/provider-usage.ts",
 			"catalog/src/discovery/gitlab-duo-workflow.ts",
 			"ai/src/providers/gitlab-duo.ts",
 			"ai/src/providers/gitlab-duo-workflow.ts",

@@ -89,8 +89,71 @@ export interface ClassRule {
 	readonly flags: (link: unknown) => number;
 }
 
+/** The error types the auth gateway answers its client with, in the client's wire vocabulary. */
+export type GatewayErrorType =
+	| "authentication_error"
+	| "rate_limit_error"
+	| "invalid_request_error"
+	| "upstream_error"
+	| "request_aborted";
+
+/** What the auth gateway answers its client with, for a failure it could not serve. */
+export interface GatewayVerdict {
+	readonly status: number;
+	readonly type: GatewayErrorType;
+}
+
+/**
+ * Everything a gateway rule may read about one failure.
+ *
+ * `identity` and `kinds` are the registry's own answers, from the identity rules on the thrown value
+ * and the signal rules on its message. A gateway rule that answers for a family reads the family's
+ * flag rather than matching the family's wording a second time.
+ */
+export interface GatewaySignal {
+	/** The thrown value's message, as `errorMessage` renders it. */
+	readonly text: string;
+	/** A numeric `status` field on the thrown value, truncated to an integer; `undefined` when it has none. */
+	readonly statusField: number | undefined;
+	/** The flags the identity rules state about the thrown value itself, not about its causes. */
+	readonly identity: number;
+	/** The flags the signal rules read from `text`. */
+	readonly kinds: number;
+}
+
+/** A gateway rule that answers from a status the failure states, or from a flag the registry set. */
+export interface GatewayStructuralRule {
+	/** What a diagnostic calls this rule, unique across the registry. See {@link ClassificationRule.name}. */
+	readonly name: string;
+	readonly why: string;
+	/** The verdict, or `undefined` when this rule does not answer the failure. */
+	readonly answer: (signal: GatewaySignal) => GatewayVerdict | undefined;
+}
+
+/** A gateway rule that answers from the message's wording. */
+export interface GatewayWordingRule {
+	/** What a diagnostic calls this rule, unique across the registry. See {@link ClassificationRule.name}. */
+	readonly name: string;
+	readonly why: string;
+	/**
+	 * The phrases this rule reads: lowercase words joined by a space, `-` or `_`, each matched
+	 * case-insensitively between word boundaries. The registry compiles the rule's pattern from this
+	 * list, so the list is the whole vocabulary.
+	 */
+	readonly wordings: readonly string[];
+	readonly verdict: GatewayVerdict;
+}
+
+/**
+ * One rule for what the auth gateway answers its client.
+ *
+ * A gateway answers one status per failure, so where the signal rules accumulate flags these are
+ * applied first-match-wins, and their order in `GATEWAY_RULES` is the precedence.
+ */
+export type GatewayRule = GatewayStructuralRule | GatewayWordingRule;
+
 /** A capability a request can be re-sent without, when the provider rejected the request for having it. */
-export type DegradedCapability = "strict-tools" | "fast-mode" | "server-side-items";
+export type DegradedCapability = "strict-tools" | "fast-mode" | "tool-choice" | "server-side-items";
 
 /**
  * What to do about a classified failure.

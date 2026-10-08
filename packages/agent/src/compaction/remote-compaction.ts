@@ -35,10 +35,16 @@
 
 import type { ApiKey, Model } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
-import { createOpenAICodexCompactionRequestContext } from "@veyyon/ai/providers/openai-codex-responses";
-import { resolveServerCompactionTransport } from "@veyyon/ai/providers/openai-compaction";
-import type { CompactionPreparation, CompactionResult, SummaryOptions } from "./compaction";
-import { defaultConvertToLlm } from "./messages";
+import { createOpenAICodexCompactionRequestContext } from "@veyyon/ai/providers/openai-codex/session-state";
+import { resolveServerCompactionTransport } from "@veyyon/ai/providers/server-compaction-transport";
+import type { AgentMessage } from "../types";
+import {
+	type CompactionPreparation,
+	type CompactionResult,
+	previousCompactionSummaryText,
+	type SummaryOptions,
+} from "./compaction";
+import { createCompactionSummaryMessage, defaultConvertToLlm } from "./messages";
 import {
 	chainableRemoteCompactionWindow,
 	REMOTE_COMPACTION_PRESERVE_KEY,
@@ -50,17 +56,19 @@ export type {
 	ServerCompactionRequest,
 	ServerCompactionResult,
 	ServerCompactionTransport,
-} from "@veyyon/ai/providers/openai-compaction";
+} from "@veyyon/ai/providers/server-compaction-transport";
 
 // The capability surface the session layer gates on. Support is data on the
 // model row; resolution lives with the provider implementations in pi-ai.
 // `serverCompactionRouteAbsent` is the reason half: it separates a model that
 // never supported this from one a 404 took it away from, which the session
 // layer must tell apart to know whether a local fallback is worth announcing.
+// Both evaluate the transport on first use.
 export {
 	resolveServerCompactionTransport,
 	serverCompactionRouteAbsent,
-} from "@veyyon/ai/providers/openai-compaction";
+} from "@veyyon/ai/providers/server-compaction-transport";
+
 export * from "./remote-compaction-entry";
 
 /**
@@ -88,27 +96,9 @@ export async function compactWithProvider(
 		);
 	}
 
-	// Chain the previous window when the branch already holds one this host can
-	// read: per the guide, the latest compaction item carries the context, so the
-	// new call compacts [previous window, span since it]. `prepareCompaction`
-	// hands that narrower span over on `remoteChain`; it cannot come from
-	// `previousPreserveData`, because a server-side entry carries no summary a
-	// local pass can build on and the preparation therefore looks straight past
-	// it and re-expands everything behind it. That re-expansion is right for a
-	// local pass and wrong here: sending it would pay for a span the window
-	// already holds and make every compaction larger than the one before it.
-	//
-	// All or nothing. A window from a different provider or api is an opaque
-	// blob only its minting host can decrypt, so it is dropped rather than
-	// chained (see chainableRemoteCompactionWindow) and the full re-expanded
-	// span is sent instead, which is exactly what that span is for.
-	const chain = preparation.remoteChain;
-	const previousWindow = chainableRemoteCompactionWindow(chain?.previousPreserveData, model);
-	const span = previousWindow && chain ? chain : preparation;
+	const { previousWindow, messages } = serverCompactionSpan(preparation, model);
 	const convertToLlm = options?.convertToLlm ?? defaultConvertToLlm;
-	// In a split turn the discarded span is messagesToSummarize followed by
-	// turnPrefixMessages; concatenated they are the chronological window.
-	const llmMessages = convertToLlm(span.messagesToSummarize.concat(span.turnPrefixMessages));
+	const llmMessages = convertToLlm(messages);
 
 	// The operator's compaction instructions used to reach only the local
 	// summary. That summary is gone, so they must ride the provider call or
@@ -169,4 +159,45 @@ export async function compactWithProvider(
 		tokensBefore: preparation.tokensBefore,
 		preserveData: { [REMOTE_COMPACTION_PRESERVE_KEY]: data },
 	};
+}
+
+/**
+ * The previous window and the messages a server-side pass posts: the context
+ * the session model is sent, up to the cut.
+ *
+ * Chain the newest window this host can read, per the guide: the latest
+ * compaction item carries the context, so the new call compacts [previous
+ * window, the entries it kept, every entry since]. `prepareCompaction` hands
+ * that span over on `remoteChain`; it cannot come from the summary fields,
+ * which re-expand everything behind a window because a local pass cannot read
+ * one. That re-expansion is right for a local pass and wrong here: sending it
+ * pays for a span the window already holds, and on a long single-turn run it
+ * outgrows the provider's context so the pass fails with
+ * `context_length_exceeded`.
+ *
+ * A window from a different provider or api is an opaque blob only its minting
+ * host can decrypt, so it is never chained (see chainableRemoteCompactionWindow).
+ * With no window to chain, the context is the previous summary, the entries it
+ * kept, and every entry since: the summary span, previous summary first, so the
+ * window the provider returns replaces that summary rather than dropping it.
+ */
+function serverCompactionSpan(
+	preparation: CompactionPreparation,
+	model: Model,
+): { previousWindow: Array<Record<string, unknown>> | undefined; messages: AgentMessage[] } {
+	const chain = preparation.remoteChain;
+	if (chain) {
+		for (const link of chain.links) {
+			const previousWindow = chainableRemoteCompactionWindow(link.previousPreserveData, model);
+			if (previousWindow) return { previousWindow, messages: chain.messages.slice(link.start) };
+		}
+	}
+	// In a split turn the discarded span is messagesToSummarize followed by
+	// turnPrefixMessages; concatenated they are the chronological window.
+	const span = preparation.messagesToSummarize.concat(preparation.turnPrefixMessages);
+	const previousSummary = previousCompactionSummaryText(preparation);
+	if (previousSummary) {
+		span.unshift(createCompactionSummaryMessage(previousSummary, preparation.tokensBefore, new Date().toISOString()));
+	}
+	return { previousWindow: undefined, messages: span };
 }

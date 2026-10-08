@@ -1,5 +1,5 @@
 import { tryParseJson } from "@veyyon/utils";
-import type { ScraperDegrade, SpecialHandler } from "./types";
+import type { LoadPageResult, ScraperDegrade, SpecialHandler } from "./types";
 import {
 	buildResult,
 	formatNumber,
@@ -95,15 +95,22 @@ async function loadHfResource<T>(
 	const record = tryParseJson<T>(apiResult.content);
 	if (!record) return scraperDegrade("huggingface", "unexpected response shape");
 
-	const readme = readmeResult.ok && readmeResult.content.trim() ? readmeResult.content : "";
-	return { record, finalUrl: apiResult.finalUrl, readme };
+	return { record, finalUrl: apiResult.finalUrl, readme: readmeText(readmeResult) };
 }
+
+/** A README page's text, or empty when it failed to load or holds only whitespace. */
+function readmeText(result: LoadPageResult): string {
+	return result.ok && result.content.trim() ? result.content : "";
+}
+
+/** What a Hub URL path names; a single segment is a model or a user until the model API answers. */
+type HfResourceType = "model" | "dataset" | "space" | "model_or_user";
 
 /**
  * Parse Hugging Face URL and determine type
  */
 function parseHuggingFaceUrl(url: string): {
-	type: "model" | "dataset" | "space" | "model_or_user";
+	type: HfResourceType;
 	id: string; // Full ID (org/name or just name)
 } | null {
 	const parsed = tryParseUrl(url);
@@ -148,198 +155,165 @@ export const handleHuggingFace: SpecialHandler = async (url: string, timeout: nu
 	if (!parsed) return null;
 
 	const fetchedAt = new Date().toISOString();
-	const notes: string[] = [];
-
 	try {
-		switch (parsed.type) {
-			case "model": {
-				const page = await loadHfResource<HfModelData>(
-					`https://huggingface.co/api/models/${parsed.id}`,
-					`https://huggingface.co/${parsed.id}/raw/main/README.md`,
-					timeout,
-					signal,
-				);
-				if (isScraperDegrade(page)) return page;
-				const model = page.record;
-
-				let md = `# ${model.modelId}\n\n`;
-
-				if (model.pipeline_tag) md += `**Task:** ${model.pipeline_tag}\n`;
-				if (model.library_name) md += `**Library:** ${model.library_name}\n`;
-				if (model.downloads !== undefined) md += `**Downloads:** ${formatNumber(model.downloads)}\n`;
-				if (model.likes !== undefined) md += `**Likes:** ${formatNumber(model.likes)}\n`;
-				if (model.private) md += `**Visibility:** Private\n`;
-				if (model.gated) md += `**Access:** Gated\n`;
-
-				if (model.cardData) {
-					if (model.cardData.license) md += `**License:** ${model.cardData.license}\n`;
-					if (model.cardData.language) {
-						const langs = Array.isArray(model.cardData.language)
-							? model.cardData.language.join(", ")
-							: model.cardData.language;
-						md += `**Language:** ${langs}\n`;
-					}
-					if (model.cardData.datasets?.length) {
-						md += `**Datasets:** ${model.cardData.datasets.join(", ")}\n`;
-					}
-					if (model.cardData.metrics?.length) {
-						md += `**Metrics:** ${model.cardData.metrics.join(", ")}\n`;
-					}
-				}
-
-				if (model.tags?.length) {
-					md += `**Tags:** ${model.tags.join(", ")}\n`;
-				}
-
-				md += "\n";
-
-				if (page.readme) {
-					md += `## Model Card\n\n${page.readme}`;
-				}
-
-				return buildResult(md, { url, finalUrl: page.finalUrl, method: "huggingface", fetchedAt, notes });
-			}
-
-			case "dataset": {
-				const page = await loadHfResource<HfDatasetData>(
-					`https://huggingface.co/api/datasets/${parsed.id}`,
-					`https://huggingface.co/datasets/${parsed.id}/raw/main/README.md`,
-					timeout,
-					signal,
-				);
-				if (isScraperDegrade(page)) return page;
-				const dataset = page.record;
-
-				let md = `# ${dataset.id}\n\n`;
-				if (dataset.description) md += `${dataset.description}\n\n`;
-
-				if (dataset.downloads !== undefined) md += `**Downloads:** ${formatNumber(dataset.downloads)}\n`;
-				if (dataset.likes !== undefined) md += `**Likes:** ${formatNumber(dataset.likes)}\n`;
-				if (dataset.private) md += `**Visibility:** Private\n`;
-				if (dataset.gated) md += `**Access:** Gated\n`;
-
-				if (dataset.cardData) {
-					if (dataset.cardData.license) md += `**License:** ${dataset.cardData.license}\n`;
-					if (dataset.cardData.language) {
-						const langs = Array.isArray(dataset.cardData.language)
-							? dataset.cardData.language.join(", ")
-							: dataset.cardData.language;
-						md += `**Language:** ${langs}\n`;
-					}
-					if (dataset.cardData.task_categories?.length) {
-						md += `**Tasks:** ${dataset.cardData.task_categories.join(", ")}\n`;
-					}
-					if (dataset.cardData.size_categories?.length) {
-						md += `**Size:** ${dataset.cardData.size_categories.join(", ")}\n`;
-					}
-				}
-
-				if (dataset.tags?.length) {
-					md += `**Tags:** ${dataset.tags.join(", ")}\n`;
-				}
-
-				md += "\n";
-
-				if (page.readme) {
-					md += `## Dataset Card\n\n${page.readme}`;
-				}
-
-				return buildResult(md, { url, finalUrl: page.finalUrl, method: "huggingface", fetchedAt, notes });
-			}
-
-			case "space": {
-				const page = await loadHfResource<HfSpaceData>(
-					`https://huggingface.co/api/spaces/${parsed.id}`,
-					`https://huggingface.co/spaces/${parsed.id}/raw/main/README.md`,
-					timeout,
-					signal,
-				);
-				if (isScraperDegrade(page)) return page;
-				const space = page.record;
-
-				let md = `# ${space.id}\n\n`;
-				if (space.title) md += `${space.title}\n\n`;
-
-				if (space.author) md += `**Author:** ${space.author}\n`;
-				if (space.sdk) md += `**SDK:** ${space.sdk}\n`;
-				if (space.likes !== undefined) md += `**Likes:** ${formatNumber(space.likes)}\n`;
-				if (space.private) md += `**Visibility:** Private\n`;
-
-				if (space.cardData) {
-					if (space.cardData.license) md += `**License:** ${space.cardData.license}\n`;
-					if (space.cardData.app_file) md += `**App File:** ${space.cardData.app_file}\n`;
-				}
-
-				if (space.tags?.length) {
-					md += `**Tags:** ${space.tags.join(", ")}\n`;
-				}
-
-				md += "\n";
-
-				if (page.readme) {
-					md += `## Space Info\n\n${page.readme}`;
-				}
-
-				return buildResult(md, { url, finalUrl: page.finalUrl, method: "huggingface", fetchedAt, notes });
-			}
-
-			case "model_or_user": {
-				// Try model API first
-				const modelApiUrl = `https://huggingface.co/api/models/${parsed.id}`;
-				const modelResult = await loadPage(modelApiUrl, { timeout, signal });
-
-				if (modelResult.ok) {
-					const model = tryParseJson<HfModelData>(modelResult.content);
-					if (model) {
-						const readmeUrl = `https://huggingface.co/${parsed.id}/raw/main/README.md`;
-						const readmeResult = await loadPage(readmeUrl, { timeout: Math.min(timeout, 5), signal });
-
-						let md = `# ${model.modelId}\n\n`;
-						if (model.pipeline_tag) md += `**Task:** ${model.pipeline_tag}\n`;
-						if (model.library_name) md += `**Library:** ${model.library_name}\n`;
-						if (model.downloads !== undefined) md += `**Downloads:** ${formatNumber(model.downloads)}\n`;
-						if (model.likes !== undefined) md += `**Likes:** ${formatNumber(model.likes)}\n`;
-						if (model.tags?.length) md += `**Tags:** ${model.tags.join(", ")}\n`;
-						md += "\n";
-						if (readmeResult.ok && readmeResult.content.trim()) {
-							md += `## Model Card\n\n${readmeResult.content}`;
-						}
-
-						return buildResult(md, {
-							url,
-							finalUrl: modelResult.finalUrl,
-							method: "huggingface",
-							fetchedAt,
-							notes,
-						});
-					}
-				}
-
-				// Fall back to user API
-				const userApiUrl = `https://huggingface.co/api/users/${parsed.id}`;
-				const userResult = await loadPage(userApiUrl, { timeout, signal });
-				if (!userResult.ok) return scraperDegrade("huggingface", loadFailure(userResult));
-
-				const user = tryParseJson<HfUserData>(userResult.content);
-				if (!user) return scraperDegrade("huggingface", "unexpected response shape");
-
-				let md = `# ${user.user || parsed.id}\n\n`;
-				if (user.fullname) md += `**Name:** ${user.fullname}\n`;
-				if (user.numModels !== undefined) md += `**Models:** ${formatNumber(user.numModels)}\n`;
-				if (user.numDatasets !== undefined) md += `**Datasets:** ${formatNumber(user.numDatasets)}\n`;
-				if (user.numSpaces !== undefined) md += `**Spaces:** ${formatNumber(user.numSpaces)}\n`;
-
-				if (user.orgs?.length) {
-					md += `**Organizations:** ${user.orgs.map(o => o.name).join(", ")}\n`;
-				}
-
-				return buildResult(md, { url, finalUrl: userResult.finalUrl, method: "huggingface", fetchedAt, notes });
-			}
-
-			default:
-				return null;
-		}
+		const page = await loadHfMarkdown(parsed.type, parsed.id, timeout, signal);
+		if (isScraperDegrade(page)) return page;
+		return buildResult(page.markdown, { url, finalUrl: page.finalUrl, method: "huggingface", fetchedAt, notes: [] });
 	} catch (error) {
 		return scraperDegrade("huggingface", error);
 	}
 };
+
+/** A rendered Hub page and the API URL its record came from. */
+interface HfMarkdown {
+	markdown: string;
+	finalUrl: string;
+}
+
+async function loadHfMarkdown(
+	type: HfResourceType,
+	id: string,
+	timeout: number,
+	signal: AbortSignal | undefined,
+): Promise<HfMarkdown | ScraperDegrade> {
+	switch (type) {
+		case "model": {
+			const page = await loadHfResource<HfModelData>(
+				`https://huggingface.co/api/models/${id}`,
+				`https://huggingface.co/${id}/raw/main/README.md`,
+				timeout,
+				signal,
+			);
+			return isScraperDegrade(page)
+				? page
+				: { markdown: renderHfModel(page.record, page.readme), finalUrl: page.finalUrl };
+		}
+		case "dataset": {
+			const page = await loadHfResource<HfDatasetData>(
+				`https://huggingface.co/api/datasets/${id}`,
+				`https://huggingface.co/datasets/${id}/raw/main/README.md`,
+				timeout,
+				signal,
+			);
+			return isScraperDegrade(page)
+				? page
+				: { markdown: renderHfDataset(page.record, page.readme), finalUrl: page.finalUrl };
+		}
+		case "space": {
+			const page = await loadHfResource<HfSpaceData>(
+				`https://huggingface.co/api/spaces/${id}`,
+				`https://huggingface.co/spaces/${id}/raw/main/README.md`,
+				timeout,
+				signal,
+			);
+			return isScraperDegrade(page)
+				? page
+				: { markdown: renderHfSpace(page.record, page.readme), finalUrl: page.finalUrl };
+		}
+		case "model_or_user":
+			return loadHfModelOrUser(id, timeout, signal);
+	}
+}
+
+/**
+ * A single-segment path names a model or a user. The model API is tried
+ * first, and its README is fetched only once the model record parses; any
+ * other answer falls back to the user API.
+ */
+async function loadHfModelOrUser(
+	id: string,
+	timeout: number,
+	signal: AbortSignal | undefined,
+): Promise<HfMarkdown | ScraperDegrade> {
+	const modelResult = await loadPage(`https://huggingface.co/api/models/${id}`, { timeout, signal });
+	const model = modelResult.ok ? tryParseJson<HfModelData>(modelResult.content) : null;
+	if (model) {
+		const readmeResult = await loadPage(`https://huggingface.co/${id}/raw/main/README.md`, {
+			timeout: Math.min(timeout, 5),
+			signal,
+		});
+		return { markdown: renderHfModel(model, readmeText(readmeResult)), finalUrl: modelResult.finalUrl };
+	}
+
+	const userResult = await loadPage(`https://huggingface.co/api/users/${id}`, { timeout, signal });
+	if (!userResult.ok) return scraperDegrade("huggingface", loadFailure(userResult));
+	const user = tryParseJson<HfUserData>(userResult.content);
+	if (!user) return scraperDegrade("huggingface", "unexpected response shape");
+	const fields: HfField[] = [
+		["Name", user.fullname],
+		["Models", user.numModels],
+		["Datasets", user.numDatasets],
+		["Spaces", user.numSpaces],
+		["Organizations", user.orgs?.map(org => org.name)],
+	];
+	return { markdown: hfHeader(user.user || id, undefined, fields), finalUrl: userResult.finalUrl };
+}
+
+function renderHfModel(model: HfModelData, readme: string): string {
+	const card = model.cardData;
+	const fields: HfField[] = [
+		["Task", model.pipeline_tag],
+		["Library", model.library_name],
+		["Downloads", model.downloads],
+		["Likes", model.likes],
+		["Visibility", model.private ? "Private" : undefined],
+		["Access", model.gated ? "Gated" : undefined],
+		["License", card?.license],
+		["Language", card?.language],
+		["Datasets", card?.datasets],
+		["Metrics", card?.metrics],
+		["Tags", model.tags],
+	];
+	return hfHeader(model.modelId, undefined, fields) + (readme ? `## Model Card\n\n${readme}` : "");
+}
+
+function renderHfDataset(dataset: HfDatasetData, readme: string): string {
+	const card = dataset.cardData;
+	const fields: HfField[] = [
+		["Downloads", dataset.downloads],
+		["Likes", dataset.likes],
+		["Visibility", dataset.private ? "Private" : undefined],
+		["Access", dataset.gated ? "Gated" : undefined],
+		["License", card?.license],
+		["Language", card?.language],
+		["Tasks", card?.task_categories],
+		["Size", card?.size_categories],
+		["Tags", dataset.tags],
+	];
+	return hfHeader(dataset.id, dataset.description, fields) + (readme ? `## Dataset Card\n\n${readme}` : "");
+}
+
+function renderHfSpace(space: HfSpaceData, readme: string): string {
+	const card = space.cardData;
+	const fields: HfField[] = [
+		["Author", space.author],
+		["SDK", space.sdk],
+		["Likes", space.likes],
+		["Visibility", space.private ? "Private" : undefined],
+		["License", card?.license],
+		["App File", card?.app_file],
+		["Tags", space.tags],
+	];
+	return hfHeader(space.id, space.title, fields) + (readme ? `## Space Info\n\n${readme}` : "");
+}
+
+/** A record field rendered as one `**label:** value` line when it holds a value. */
+type HfField = readonly [label: string, value: string | number | readonly string[] | undefined];
+
+/**
+ * `# title`, the lead paragraph when there is one, then one `**label:** value`
+ * line per field that holds a value: a count formatted, a list comma-joined.
+ * An empty string or list is skipped, and so is a `null`, which the untyped
+ * API record can carry in any field.
+ */
+function hfHeader(title: string, lead: string | undefined, fields: readonly HfField[]): string {
+	let md = `# ${title}\n\n`;
+	if (lead) md += `${lead}\n\n`;
+	for (const [label, value] of fields) {
+		if (value == null || value === "") continue;
+		if (typeof value === "number") md += `**${label}:** ${formatNumber(value)}\n`;
+		else if (typeof value === "string") md += `**${label}:** ${value}\n`;
+		else if (value.length > 0) md += `**${label}:** ${value.join(", ")}\n`;
+	}
+	return `${md}\n`;
+}

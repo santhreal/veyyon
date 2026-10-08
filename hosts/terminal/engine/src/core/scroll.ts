@@ -66,8 +66,8 @@ const WHEEL_ACCEL_MAX_STREAK = 3;
 export const CURSOR_KEY_SCROLL_ROWS = WHEEL_SCROLL_ROWS;
 
 // The scroll tape: every PREPARED row the engine has painted and let scroll
-// off the window, oldest first — the engine's own mirror of what the
-// terminal's scrollback holds. Scroll isolation reads history from here and
+// off the window while scroll isolation is on, oldest first — the engine's own
+// mirror of what the terminal's scrollback holds. Scroll isolation reads history from here and
 // not from the composed frame, because virtualized roots (the coding agent's
 // TranscriptContainer) DROP committed rows from their render output once the
 // engine reports them committed. That keeps the frame near the viewport height
@@ -85,6 +85,12 @@ export class ScrollTape {
 	// cannot grow without limit; older rows stay reachable through the
 	// terminal's own scrollback, which is what the tape mirrors.
 	#cap = 20_000;
+	// Whether appended rows are kept. Only scroll isolation reads the tape back;
+	// with it off the terminal's own scrollback is the only record anything
+	// reads, and a copy here would hold up to `#cap` painted rows for nothing.
+	#recording = false;
+	// Rows appended since the last clear, kept or not.
+	#scrolledOff = 0;
 
 	get length(): number {
 		return this.#rows.length;
@@ -93,6 +99,24 @@ export class ScrollTape {
 	/** The tape's rows, oldest first. Callers must not mutate the returned array. */
 	get rows(): readonly string[] {
 		return this.#rows;
+	}
+
+	/**
+	 * Rows handed to the terminal's scrollback since the last clear, counted
+	 * whether or not the tape kept them. Not capped.
+	 */
+	get scrolledOffRows(): number {
+		return this.#scrolledOff;
+	}
+
+	/**
+	 * Keep appended rows (`true`) or only count them (`false`, the default).
+	 * Stopping keeps the rows already on the tape; starting records from the
+	 * next append on, so a caller that needs the history before that point
+	 * replays it.
+	 */
+	setRecording(enabled: boolean): void {
+		this.#recording = enabled;
 	}
 
 	/**
@@ -113,6 +137,9 @@ export class ScrollTape {
 	 * that may have dropped it.
 	 */
 	append(rows: readonly string[], from: number, to: number): void {
+		if (to <= from) return;
+		this.#scrolledOff += to - from;
+		if (!this.#recording) return;
 		for (let i = from; i < to; i++) this.#rows.push(rows[i] ?? "");
 		this.#trim();
 	}
@@ -120,6 +147,7 @@ export class ScrollTape {
 	/** Drop every row: a destructive rebuild erased the terminal's scrollback too. */
 	clear(): void {
 		this.#rows.length = 0;
+		this.#scrolledOff = 0;
 	}
 
 	#trim(): void {

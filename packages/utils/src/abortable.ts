@@ -205,20 +205,105 @@ export function untilAborted<T>(
 	return promise;
 }
 
+type LoopOutcome<O> = { readonly ok: true; readonly value: O } | { readonly ok: false; readonly error: unknown };
+
 /**
- * Memoizes a function with no arguments, calling it once and caching the result.
+ * Races each pass of a loop against outcomes that settle once for the life of the loop: an abort, a
+ * process exit, a deadline.
  *
- * @param fn - Function to be called once
- * @returns A function that returns the cached result of `fn`
+ * `Promise.race([pass, longLived])` attaches a reaction to `longLived` on every pass. While
+ * `longLived` is pending it holds every one of those reactions, and each reaction holds the race
+ * promise of its pass and the value that pass settled with. A stream of 20,000 events raced against
+ * one abort promise holds all 20,000 events until that promise settles or becomes unreachable.
+ *
+ * A `LoopRace` receives each long-lived outcome once, through {@link resolve} or {@link reject}, and
+ * each {@link race} waits on a promise of its own that only its pass and the outcome can settle. The
+ * race holds at most the waiter of the latest pass.
+ *
+ * Every {@link race} settles with the value `Promise.race([pass, outcome])` settles with, where
+ * `outcome` is a promise settled at the moment {@link resolve} or {@link reject} runs: the outcome
+ * reaches a waiter one microtask after it settles, the same delay a promise reaction has.
  */
-export function once<T>(fn: () => T): () => T {
-	let store = undefined as { value: T } | undefined;
-	return () => {
-		if (store) {
-			return store.value;
+export class LoopRace<O> {
+	#outcome: LoopOutcome<O> | undefined;
+	#resolveWaiter: ((value: O) => void) | undefined;
+	#rejectWaiter: ((error: unknown) => void) | undefined;
+
+	/** Whether {@link resolve} or {@link reject} has run. */
+	get settled(): boolean {
+		return this.#outcome !== undefined;
+	}
+
+	/** Settles the pending {@link race} and every later one with `value`. Only the first settle applies. */
+	resolve(value: O): void {
+		if (this.#outcome !== undefined) return;
+		const outcome: LoopOutcome<O> = { ok: true, value };
+		this.#outcome = outcome;
+		this.#deliver(outcome);
+	}
+
+	/** Rejects the pending {@link race} and every later one with `error`. Only the first settle applies. */
+	reject(error: unknown): void {
+		if (this.#outcome !== undefined) return;
+		const outcome: LoopOutcome<O> = { ok: false, error };
+		this.#outcome = outcome;
+		this.#deliver(outcome);
+	}
+
+	/**
+	 * Settles with `pass`, or with the loop's outcome when that settles first. A rejection of `pass`
+	 * after the outcome won is handled and dropped, as `Promise.race` drops it.
+	 */
+	race<T>(pass: Promise<T>): Promise<T | O> {
+		const { promise, resolve, reject } = Promise.withResolvers<T | O>();
+		pass.then(resolve, reject);
+		const outcome = this.#outcome;
+		if (outcome === undefined) {
+			this.#resolveWaiter = resolve;
+			this.#rejectWaiter = reject;
+		} else if (outcome.ok) {
+			queueMicrotask(() => resolve(outcome.value));
+		} else {
+			queueMicrotask(() => reject(outcome.error));
 		}
-		const value = fn();
-		store = { value };
-		return value;
+		return promise;
+	}
+
+	#deliver(outcome: LoopOutcome<O>): void {
+		const resolveWaiter = this.#resolveWaiter;
+		const rejectWaiter = this.#rejectWaiter;
+		this.#resolveWaiter = undefined;
+		this.#rejectWaiter = undefined;
+		if (outcome.ok) {
+			if (resolveWaiter) queueMicrotask(() => resolveWaiter(outcome.value));
+		} else if (rejectWaiter) {
+			queueMicrotask(() => rejectWaiter(outcome.error));
+		}
+	}
+}
+
+/** A value built on the first read of {@link Lazy.value} and held from then on. */
+export interface Lazy<T> {
+	readonly value: T;
+}
+
+/**
+ * Defers `build` to the first read of `value`, then returns that result on every later read, including
+ * a falsy one. A `build` that throws builds again on the next read.
+ *
+ * `typeof held.value` states the built value's type, so a caller names a deferred value's type without
+ * building it: `typeof schema.value.infer` for an ArkType schema.
+ */
+export function lazy<T>(build: () => T): Lazy<T> {
+	let pending: (() => T) | undefined = build;
+	let built: T;
+	return {
+		get value(): T {
+			if (pending !== undefined) {
+				built = pending();
+				pending = undefined;
+			}
+			return built;
+		},
 	};
 }

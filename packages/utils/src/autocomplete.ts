@@ -642,7 +642,7 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		}
 
 		// Check for file paths - triggered by Tab or if we detect a path pattern
-		const pathMatch = this.#extractPathPrefix(textBeforeCursor, false);
+		const pathMatch = extractPathPrefix(textBeforeCursor, false);
 
 		if (pathMatch !== null) {
 			const suggestions = await this.#getFileSuggestions(pathMatch);
@@ -683,47 +683,6 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		return applyAutocompleteCompletion(lines, cursorLine, cursorCol, item, prefix);
 	}
 
-	// Extract a path-like prefix from the text before cursor
-	#extractPathPrefix(text: string, forceExtract: boolean = false): string | null {
-		const quotedPrefix = extractQuotedPrefix(text);
-		if (quotedPrefix) {
-			return quotedPrefix;
-		}
-
-		const lastDelimiterIndex = findLastDelimiter(text);
-		const pathPrefix = lastDelimiterIndex === -1 ? text : text.slice(lastDelimiterIndex + 1);
-
-		// For forced extraction (Tab key), always return something
-		if (forceExtract) {
-			return pathPrefix;
-		}
-
-		// Automatic updates complete only unambiguous path syntax. Bare relative
-		// tokens remain available through explicit Tab completion.
-		if (
-			pathPrefix.startsWith("/") ||
-			pathPrefix.startsWith("./") ||
-			pathPrefix.startsWith("../") ||
-			pathPrefix.startsWith("~/")
-		) {
-			return pathPrefix;
-		}
-
-		return null;
-	}
-
-	// Expand home directory (~/) to actual home path
-	#expandHomePath(filePath: string): string {
-		if (filePath.startsWith("~/")) {
-			const expandedPath = path.join(os.homedir(), filePath.slice(2));
-			// Preserve trailing slash if original path had one
-			return filePath.endsWith("/") && !expandedPath.endsWith("/") ? `${expandedPath}/` : expandedPath;
-		} else if (filePath === "~") {
-			return os.homedir();
-		}
-		return filePath;
-	}
-
 	// Resolve `rawPrefix` lexically (no I/O) and report whether it points
 	// somewhere outside `this.#basePath`. Used to skip recursive fuzzy walks
 	// rooted at parent / absolute / home paths — those routinely include
@@ -732,7 +691,7 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		if (rawPrefix.length === 0) return false;
 		let target: string;
 		if (rawPrefix.startsWith("~")) {
-			target = this.#expandHomePath(rawPrefix);
+			target = expandHomePath(rawPrefix);
 		} else if (path.isAbsolute(rawPrefix)) {
 			target = rawPrefix;
 		} else {
@@ -759,7 +718,7 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 
 		let baseDir: string;
 		if (displayBase.startsWith("~/")) {
-			baseDir = this.#expandHomePath(displayBase);
+			baseDir = expandHomePath(displayBase);
 		} else if (displayBase.startsWith("/")) {
 			baseDir = displayBase;
 		} else {
@@ -778,13 +737,6 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		}
 
 		return { baseDir, query, displayBase };
-	}
-
-	#scopedPathForDisplay(displayBase: string, relativePath: string): string {
-		if (displayBase === "/") {
-			return `/${relativePath}`;
-		}
-		return `${displayBase}${relativePath}`;
 	}
 
 	async #getCachedDirEntries(searchDir: string): Promise<fs.Dirent[]> {
@@ -832,12 +784,12 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			expandedPrefix = expandedPrefix.replace(/\\/g, "/");
 
 			// Capture the pre-expansion prefix so root checks can still
-			// detect bare "~" and "~/" after #expandHomePath rewrites them.
+			// detect bare "~" and "~/" after expandHomePath rewrites them.
 			const preExpand = expandedPrefix;
 
 			// Handle home directory expansion
 			if (expandedPrefix.startsWith("~")) {
-				expandedPrefix = this.#expandHomePath(expandedPrefix);
+				expandedPrefix = expandHomePath(expandedPrefix);
 			}
 
 			const isRootPrefix =
@@ -991,7 +943,7 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			for (const { path: entryPath, isDirectory } of topEntries) {
 				const pathWithoutSlash = isDirectory ? entryPath.slice(0, -1) : entryPath;
 				const displayPath = scopedQuery
-					? this.#scopedPathForDisplay(scopedQuery.displayBase, pathWithoutSlash)
+					? scopedPathForDisplay(scopedQuery.displayBase, pathWithoutSlash)
 					: pathWithoutSlash;
 				const entryName = path.basename(pathWithoutSlash);
 				const completionPath = isDirectory ? `${displayPath}/` : displayPath;
@@ -1033,7 +985,7 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		}
 
 		// Force extract path prefix - this will always return something
-		const pathMatch = this.#extractPathPrefix(textBeforeCursor, true);
+		const pathMatch = extractPathPrefix(textBeforeCursor, true);
 		if (pathMatch !== null) {
 			const suggestions = await this.#getFileSuggestions(pathMatch);
 			if (suggestions.length === 0) return null;
@@ -1103,4 +1055,52 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		// sync apply path passes the full text-before-cursor through.
 		return { items: matches, prefix: textBeforeCursor };
 	}
+}
+
+// Extract a path-like prefix from the text before cursor
+function extractPathPrefix(text: string, forceExtract: boolean = false): string | null {
+	const quotedPrefix = extractQuotedPrefix(text);
+	if (quotedPrefix) {
+		return quotedPrefix;
+	}
+
+	const lastDelimiterIndex = findLastDelimiter(text);
+	const pathPrefix = lastDelimiterIndex === -1 ? text : text.slice(lastDelimiterIndex + 1);
+
+	// For forced extraction (Tab key), always return something
+	if (forceExtract) {
+		return pathPrefix;
+	}
+
+	// Automatic updates complete only unambiguous path syntax. Bare relative
+	// tokens remain available through explicit Tab completion.
+	if (
+		pathPrefix.startsWith("/") ||
+		pathPrefix.startsWith("./") ||
+		pathPrefix.startsWith("../") ||
+		pathPrefix.startsWith("~/")
+	) {
+		return pathPrefix;
+	}
+
+	return null;
+}
+
+// Expand home directory (~/) to actual home path
+function expandHomePath(filePath: string): string {
+	if (filePath.startsWith("~/")) {
+		const expandedPath = path.join(os.homedir(), filePath.slice(2));
+		// Preserve trailing slash if original path had one
+		return filePath.endsWith("/") && !expandedPath.endsWith("/") ? `${expandedPath}/` : expandedPath;
+	} else if (filePath === "~") {
+		return os.homedir();
+	}
+	return filePath;
+}
+
+function scopedPathForDisplay(displayBase: string, relativePath: string): string {
+	if (displayBase === "/") {
+		return `/${relativePath}`;
+	}
+	return `${displayBase}${relativePath}`;
 }

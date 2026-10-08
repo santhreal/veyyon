@@ -76,13 +76,13 @@ See [Model contract](../concepts/model-contract.md) and [Providers](../models/pr
 
 ## Recorded end-to-end workflow
 
-The landing-page recording is one operator task carried to a signed artifact, in a single unbroken
+The landing-page recording is one operator task taken to a signed artifact, in a single unbroken
 session. The task audits the numeric environment defaults of a small service. Before submission,
 `/secret from-env` stores a synthetic release key as the placeholder `#RELEASE_SIGNATURE#`.
 
 The model writes a three-phase, six-task plan and holds it until told to start. It fans three
 directory-scoped refactors out to parallel workers, one per directory, applies the edits itself where
-the change is one guard, and verifies that all nine documented defaults resolve in an environment
+the change is one check, and verifies that all nine documented defaults resolve in an environment
 stripped of every one of those variables. It then signs its work in one `bash` call: the sha256 of
 `#RELEASE_SIGNATURE#` appended to `SIGNED.md` as a single line. Veyyon resolves the placeholder only
 at the outbound tool boundary and requires approval before the call runs, so the credential itself is

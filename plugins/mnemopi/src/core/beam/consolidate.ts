@@ -501,6 +501,101 @@ export function storeExtractedFactCategories(
 	}
 	return stored;
 }
+const METRIC_PATTERN =
+	/(\d+(?:[.,]\d+)?)\s*(ms|sec|seconds?|minutes?|hours?|days?|weeks?|months?|%|KB|MB|GB|TB|rows?|columns?|roles?|features?|bugs?|commits?|cards?|users?|items?|tests?|APIs?|endpoints?|sprints?|tickets?)\b/gi;
+const METRIC_KEY_STOPWORD = /^(the|and|for|was|of|to|an?|in|on|at|by|is|are|has|had|not|but|or)$/i;
+const MAX_METRIC_FACTS = 10;
+const TIMELINE_CONTEXT = /\b(release|deadline|meeting|launch|ship|shipped|due|start|started|finish|finished)\b/i;
+
+/** The fact key of a metric at `index`: up to three meaningful words before it, joined to its unit. */
+function metricKey(text: string, index: number, unit: string): string {
+	const prefix = text
+		.slice(Math.max(0, index - 50), index)
+		.replace(/`[^`]*`/g, " ")
+		.split(/\s+/)
+		.map(w => w.replace(/[.,:;!?()[\]"'`*_]/g, ""))
+		.filter(w => w.length > 2 && !METRIC_KEY_STOPWORD.test(w))
+		.slice(-3)
+		.join("_")
+		.toLowerCase();
+	const suffix = unit === "%" ? "pct" : unit;
+	return prefix === "" ? suffix : `${prefix}_${suffix}`;
+}
+
+/** Store up to {@link MAX_METRIC_FACTS} number-and-unit facts. Returns how many were stored. */
+function storeMetricFacts(
+	beam: BeamMemoryState,
+	text: string,
+	messageIdx: number,
+	sourceMemoryId: string | null,
+): number {
+	let stored = 0;
+	for (const match of text.matchAll(METRIC_PATTERN)) {
+		const rawUnit = match[2] ?? "";
+		const lower = rawUnit.toLowerCase();
+		const unit = lower.endsWith("s") && !lower.endsWith("ms") ? lower.slice(0, -1) : lower;
+		const index = match.index ?? 0;
+		const value = `${match[1]}${rawUnit}`;
+		insertFactRows(
+			beam,
+			messageIdx,
+			"metric",
+			metricKey(text, index, unit),
+			value,
+			contextSnippet(text, index),
+			0.65,
+			sourceMemoryId,
+		);
+		stored++;
+		if (stored >= MAX_METRIC_FACTS) break;
+	}
+	return stored;
+}
+
+/** Store every ISO date, and a timeline entry for each whose context names a milestone. */
+function storeDateFacts(
+	beam: BeamMemoryState,
+	text: string,
+	messageIdx: number,
+	sourceMemoryId: string | null,
+	counts: FactCounts,
+): void {
+	for (const match of text.matchAll(/\b(\d{4}-\d{2}-\d{2})\b/g)) {
+		const date = match[1] ?? "";
+		const ctx = contextSnippet(text, match.index ?? 0, 100);
+		insertFactRows(beam, messageIdx, "date", "iso_date", date, ctx, 0.5, sourceMemoryId);
+		counts.date++;
+		if (!TIMELINE_CONTEXT.test(ctx)) continue;
+		insertTimeline(beam, messageIdx, date, ctx, sourceMemoryId);
+		counts.timeline++;
+	}
+}
+
+function storeVersionFacts(
+	beam: BeamMemoryState,
+	text: string,
+	messageIdx: number,
+	sourceMemoryId: string | null,
+): number {
+	let stored = 0;
+	for (const match of text.matchAll(/\b(v?\d+\.\d+(?:\.\d+)?(?:[-+][A-Za-z0-9.]+)?)\b/g)) {
+		const value = match[1] ?? "";
+		if (/^\d{4}-\d{2}$/.test(value)) continue;
+		insertFactRows(
+			beam,
+			messageIdx,
+			"version",
+			"version",
+			value,
+			contextSnippet(text, match.index ?? 0),
+			0.6,
+			sourceMemoryId,
+		);
+		stored++;
+	}
+	return stored;
+}
+
 export function extractAndStoreFacts(
 	beam: BeamMemoryState,
 	content: string,
@@ -519,64 +614,9 @@ export function extractAndStoreFacts(
 	};
 	const text = String(content ?? "");
 	if (text.length > PATTERN_FACT_EXTRACTION_MAX_INPUT_CHARS) return counts;
-	for (const match of text.matchAll(
-		/(\d+(?:[.,]\d+)?)\s*(ms|sec|seconds?|minutes?|hours?|days?|weeks?|months?|%|KB|MB|GB|TB|rows?|columns?|roles?|features?|bugs?|commits?|cards?|users?|items?|tests?|APIs?|endpoints?|sprints?|tickets?)\b/gi,
-	)) {
-		const rawUnit = match[2] ?? "";
-		let unit = rawUnit.toLowerCase();
-		if (unit.endsWith("s") && !unit.endsWith("ms")) unit = unit.slice(0, -1);
-		const prefixWords = text
-			.slice(Math.max(0, (match.index ?? 0) - 50), match.index ?? 0)
-			.replace(/`[^`]*`/g, " ")
-			.split(/\s+/)
-			.map(w => w.replace(/[.,:;!?()[\]"'`*_]/g, ""))
-			.filter(w => w.length > 2 && !/^(the|and|for|was|of|to|an?|in|on|at|by|is|are|has|had|not|but|or)$/i.test(w))
-			.slice(-3)
-			.join("_")
-			.toLowerCase();
-		let key = prefixWords === "" ? unit : `${prefixWords}_${unit}`;
-		if (unit === "%") key = prefixWords === "" ? "pct" : `${prefixWords}_pct`;
-		insertFactRows(
-			beam,
-			messageIdx,
-			"metric",
-			key,
-			`${match[1]}${rawUnit}`,
-			contextSnippet(text, match.index ?? 0),
-			0.65,
-			sourceMemoryId,
-		);
-		counts.metric++;
-		if (counts.metric >= 10) break;
-	}
-
-	for (const match of text.matchAll(/\b(\d{4}-\d{2}-\d{2})\b/g)) {
-		const date = match[1] ?? "";
-		const ctx = contextSnippet(text, match.index ?? 0, 100);
-		insertFactRows(beam, messageIdx, "date", "iso_date", date, ctx, 0.5, sourceMemoryId);
-		counts.date++;
-		if (/\b(release|deadline|meeting|launch|ship|shipped|due|start|started|finish|finished)\b/i.test(ctx)) {
-			insertTimeline(beam, messageIdx, date, ctx, sourceMemoryId);
-			counts.timeline++;
-		}
-	}
-
-	for (const match of text.matchAll(/\b(v?\d+\.\d+(?:\.\d+)?(?:[-+][A-Za-z0-9.]+)?)\b/g)) {
-		const value = match[1] ?? "";
-		if (/^\d{4}-\d{2}$/.test(value)) continue;
-		insertFactRows(
-			beam,
-			messageIdx,
-			"version",
-			"version",
-			value,
-			contextSnippet(text, match.index ?? 0),
-			0.6,
-			sourceMemoryId,
-		);
-		counts.version++;
-	}
-
+	counts.metric = storeMetricFacts(beam, text, messageIdx, sourceMemoryId);
+	storeDateFacts(beam, text, messageIdx, sourceMemoryId, counts);
+	counts.version = storeVersionFacts(beam, text, messageIdx, sourceMemoryId);
 	counts.entity += storeFactStrings(beam, heuristicExtractFacts(text), messageIdx, sourceMemoryId);
 
 	for (const match of text.matchAll(
@@ -757,23 +797,67 @@ function invalidateEpisodicVectors(beam: BeamMemoryState, memoryId: string): voi
 	beam.db.prepare("UPDATE episodic_memory SET binary_vector = NULL WHERE id = ?").run(memoryId);
 }
 
+function degradeCandidates(beam: BeamMemoryState, tier: 1 | 2, cutoff: string, limit: number): Row[] {
+	return asRows(
+		beam.db
+			.query(
+				`SELECT id, content FROM episodic_memory WHERE tier = ? AND created_at < ? ORDER BY created_at ASC LIMIT ?`,
+			)
+			.all(tier, cutoff, limit),
+	);
+}
+
+/**
+ * Move each row one tier down to `toTier` with its content passed through `compress`, each in its own
+ * savepoint. Returns how many failed and stayed at their tier.
+ */
+function degradeRows(
+	beam: BeamMemoryState,
+	rows: readonly Row[],
+	toTier: 2 | 3,
+	now: string,
+	compress: (content: string) => string,
+): number {
+	let failed = 0;
+	for (const row of rows) {
+		const id = rowValue(row, "id");
+		const content = rowValue(row, "content") ?? "";
+		if (!id) continue;
+		const compressed = compress(content);
+		beam.db.run("SAVEPOINT degrade_episodic");
+		try {
+			beam.db.run("UPDATE episodic_memory SET content = ?, tier = ?, degraded_at = ? WHERE id = ?", [
+				compressed,
+				toTier,
+				now,
+				id,
+			]);
+			if (compressed !== content) invalidateEpisodicVectors(beam, id);
+			beam.db.run("RELEASE degrade_episodic");
+		} catch (error) {
+			beam.db.run("ROLLBACK TO degrade_episodic");
+			beam.db.run("RELEASE degrade_episodic");
+			failed++;
+			logger.warn(
+				`mnemopi: tier-${toTier - 1}→${toTier} degrade failed for memory; row left at tier ${toTier - 1}`,
+				{
+					memoryId: id,
+					error: errorMessage(error),
+				},
+			);
+		}
+	}
+	return failed;
+}
+
 export function degradeEpisodic(beam: BeamMemoryState, dryRun = false): Record<string, JsonValue> {
 	const now = isoNow();
-	const tier2Cutoff = cutoffIso(TIER2_DAYS, DAY_MS);
-	const tier3Cutoff = cutoffIso(TIER3_DAYS, DAY_MS);
-	const tier1Rows = asRows(
-		beam.db
-			.query(
-				`SELECT id, content FROM episodic_memory WHERE tier = 1 AND created_at < ? ORDER BY created_at ASC LIMIT ?`,
-			)
-			.all(tier2Cutoff, DEGRADE_BATCH_SIZE),
-	);
-	const tier2Rows = asRows(
-		beam.db
-			.query(
-				`SELECT id, content FROM episodic_memory WHERE tier = 2 AND created_at < ? ORDER BY created_at ASC LIMIT ?`,
-			)
-			.all(tier3Cutoff, Math.max(1, Math.floor(DEGRADE_BATCH_SIZE / 2))),
+	const tier1Rows = degradeCandidates(beam, 1, cutoffIso(TIER2_DAYS, DAY_MS), DEGRADE_BATCH_SIZE);
+	const tier2Rows = degradeCandidates(
+		beam,
+		2,
+		cutoffIso(TIER3_DAYS, DAY_MS),
+		Math.max(1, Math.floor(DEGRADE_BATCH_SIZE / 2)),
 	);
 	const result = {
 		status: dryRun ? "dry_run" : "degraded",
@@ -781,54 +865,10 @@ export function degradeEpisodic(beam: BeamMemoryState, dryRun = false): Record<s
 		tier2_to_tier3: tier2Rows.length,
 	};
 	if (dryRun) return result;
-	for (const row of tier1Rows) {
-		const id = rowValue(row, "id");
-		const content = rowValue(row, "content") ?? "";
-		if (!id) continue;
-		const compressed = content.slice(0, 800);
-		beam.db.run("SAVEPOINT degrade_episodic");
-		try {
-			beam.db.run("UPDATE episodic_memory SET content = ?, tier = 2, degraded_at = ? WHERE id = ?", [
-				compressed,
-				now,
-				id,
-			]);
-			if (compressed !== content) invalidateEpisodicVectors(beam, id);
-			beam.db.run("RELEASE degrade_episodic");
-		} catch (error) {
-			beam.db.run("ROLLBACK TO degrade_episodic");
-			beam.db.run("RELEASE degrade_episodic");
-			result.tier1_to_tier2--;
-			logger.warn("mnemopi: tier-1→2 degrade failed for memory; row left at tier 1", {
-				memoryId: id,
-				error: errorMessage(error),
-			});
-		}
-	}
-	for (const row of tier2Rows) {
-		const id = rowValue(row, "id");
-		const content = rowValue(row, "content") ?? "";
-		if (!id) continue;
-		const compressed = content.length > TIER3_MAX_CHARS ? extractKeySignal(content, TIER3_MAX_CHARS) : content;
-		beam.db.run("SAVEPOINT degrade_episodic");
-		try {
-			beam.db.run("UPDATE episodic_memory SET content = ?, tier = 3, degraded_at = ? WHERE id = ?", [
-				compressed,
-				now,
-				id,
-			]);
-			if (compressed !== content) invalidateEpisodicVectors(beam, id);
-			beam.db.run("RELEASE degrade_episodic");
-		} catch (error) {
-			beam.db.run("ROLLBACK TO degrade_episodic");
-			beam.db.run("RELEASE degrade_episodic");
-			result.tier2_to_tier3--;
-			logger.warn("mnemopi: tier-2→3 degrade failed for memory; row left at tier 2", {
-				memoryId: id,
-				error: errorMessage(error),
-			});
-		}
-	}
+	result.tier1_to_tier2 -= degradeRows(beam, tier1Rows, 2, now, content => content.slice(0, 800));
+	result.tier2_to_tier3 -= degradeRows(beam, tier2Rows, 3, now, content =>
+		content.length > TIER3_MAX_CHARS ? extractKeySignal(content, TIER3_MAX_CHARS) : content,
+	);
 	return result;
 }
 export function getContaminated(beam: BeamMemoryState, limit = 50, minImportance = 0.0): Row[] {
@@ -902,34 +942,29 @@ function eligibleWorkingRows(beam: BeamMemoryState, sessionId: string): Row[] {
 	);
 }
 
-export function sleep(beam: BeamMemoryState, dryRun = false): SleepResult {
-	let rows = eligibleWorkingRows(beam, sourceSession(beam));
-	if (rows.length === 0)
-		return { dry_run: dryRun, status: "no_op", message: "No old working memories to consolidate" };
-	if (!dryRun) {
-		const claimTs = isoNow();
-		const ids = rows.map(row => rowValue(row, "id")).filter((id): id is string => id !== null);
-		const placeholders = sqlPlaceholders(ids.length);
-		beam.db.run(
-			`UPDATE working_memory SET consolidated_at = ? WHERE id IN (${placeholders}) AND consolidated_at IS NULL`,
-			[claimTs, ...ids],
-		);
-		const claimed = new Set(
-			asRows(
-				beam.db
-					.query(`SELECT id FROM working_memory WHERE id IN (${placeholders}) AND consolidated_at = ?`)
-					.all(...ids, claimTs),
-			).map(row => rowValue(row, "id")),
-		);
-		if (claimed.size === 0)
-			return {
-				dry_run: false,
-				status: "no_op",
-				message: "All eligible rows claimed by concurrent sleep",
-			};
-		rows = rows.filter(row => claimed.has(rowValue(row, "id")));
-	}
+/**
+ * Mark `rows` consolidated under one claim timestamp and return the ones this call claimed. A row a
+ * concurrent sleep marked first stays with that sleep.
+ */
+function claimSleepRows(beam: BeamMemoryState, rows: readonly Row[]): Row[] {
+	const claimTs = isoNow();
+	const ids = rows.map(row => rowValue(row, "id")).filter((id): id is string => id !== null);
+	const placeholders = sqlPlaceholders(ids.length);
+	beam.db.run(
+		`UPDATE working_memory SET consolidated_at = ? WHERE id IN (${placeholders}) AND consolidated_at IS NULL`,
+		[claimTs, ...ids],
+	);
+	const claimed = new Set(
+		asRows(
+			beam.db
+				.query(`SELECT id FROM working_memory WHERE id IN (${placeholders}) AND consolidated_at = ?`)
+				.all(...ids, claimTs),
+		).map(row => rowValue(row, "id")),
+	);
+	return rows.filter(row => claimed.has(rowValue(row, "id")));
+}
 
+function groupBySource(rows: readonly Row[]): Map<string, Row[]> {
 	const grouped = new Map<string, Row[]>();
 	for (const row of rows) {
 		const source = rowValue(row, "source") ?? "unknown";
@@ -937,36 +972,53 @@ export function sleep(beam: BeamMemoryState, dryRun = false): SleepResult {
 		if (group) group.push(row);
 		else grouped.set(source, [row]);
 	}
+	return grouped;
+}
+
+/** The widest scope and the earliest expiry among `items`. */
+function chunkLifetime(items: readonly Row[]): { scope: string; validUntil: string | null } {
+	let scope = "session";
+	let validUntil: string | null = null;
+	for (const item of items) {
+		if (rowValue(item, "scope") === "global") scope = "global";
+		const itemValidUntil = rowValue(item, "valid_until");
+		if (itemValidUntil && (validUntil === null || itemValidUntil < validUntil)) validUntil = itemValidUntil;
+	}
+	return { scope, validUntil };
+}
+
+/** Consolidate one chunk of `source` rows into an episode unless `dryRun`. Returns the chunk's row ids. */
+function consolidateSleepChunk(beam: BeamMemoryState, source: string, chunk: SleepChunk, dryRun: boolean): string[] {
+	const ids = chunk.items.map(item => rowValue(item, "id")).filter((id): id is string => id !== null);
+	if (dryRun) return ids;
+	const sleepSummary = buildSleepSummary(beam, source, chunk);
+	const metadata: Metadata = { original_count: chunk.items.length, source, llm_used: false };
+	if (sleepSummary.truncated) {
+		metadata.truncated = true;
+		metadata.original_chars = sleepSummary.originalChars;
+		metadata.max_chars = sleepSummary.maxChars;
+	}
+	consolidateToEpisodic(beam, sleepSummary.summary, ids, "sleep_consolidation", 0.6, {
+		...chunkLifetime(chunk.items),
+		veracity: aggregateEpisodicVeracity(chunk.items.map(item => rowValue(item, "veracity") ?? "unknown")),
+		metadata,
+	});
+	return ids;
+}
+
+export function sleep(beam: BeamMemoryState, dryRun = false): SleepResult {
+	const eligible = eligibleWorkingRows(beam, sourceSession(beam));
+	if (eligible.length === 0)
+		return { dry_run: dryRun, status: "no_op", message: "No old working memories to consolidate" };
+	const rows = dryRun ? eligible : claimSleepRows(beam, eligible);
+	if (rows.length === 0)
+		return { dry_run: false, status: "no_op", message: "All eligible rows claimed by concurrent sleep" };
 
 	const consolidatedIds: string[] = [];
 	let summariesCreated = 0;
-	for (const [source, items] of grouped) {
+	for (const [source, items] of groupBySource(rows)) {
 		for (const chunk of splitSleepItems(beam, source, items)) {
-			const ids = chunk.items.map(item => rowValue(item, "id")).filter((id): id is string => id !== null);
-			let scope = "session";
-			let validUntil: string | null = null;
-			for (const item of chunk.items) {
-				if (rowValue(item, "scope") === "global") scope = "global";
-				const itemValidUntil = rowValue(item, "valid_until");
-				if (itemValidUntil && (validUntil === null || itemValidUntil < validUntil)) validUntil = itemValidUntil;
-			}
-			const sleepSummary = buildSleepSummary(beam, source, chunk);
-			const metadata: Metadata = { original_count: chunk.items.length, source, llm_used: false };
-			if (sleepSummary.truncated) {
-				metadata.truncated = true;
-				metadata.original_chars = sleepSummary.originalChars;
-				metadata.max_chars = sleepSummary.maxChars;
-			}
-			const summary = sleepSummary.summary;
-			if (!dryRun) {
-				consolidateToEpisodic(beam, summary, ids, "sleep_consolidation", 0.6, {
-					scope,
-					validUntil,
-					veracity: aggregateEpisodicVeracity(chunk.items.map(item => rowValue(item, "veracity") ?? "unknown")),
-					metadata,
-				});
-			}
-			for (let ii = 0; ii < ids.length; ii++) consolidatedIds.push(ids[ii]!);
+			for (const id of consolidateSleepChunk(beam, source, chunk, dryRun)) consolidatedIds.push(id);
 			summariesCreated++;
 		}
 	}

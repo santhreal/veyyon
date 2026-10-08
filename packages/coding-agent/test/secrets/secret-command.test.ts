@@ -36,9 +36,9 @@ import {
 	resolveDefaultTtl,
 	runSecretCommand,
 	SECRET_SUBCOMMAND_SHAPES,
-	type SecretSubcommand,
 	secretCommandUsage,
 } from "@veyyon/coding-agent/secrets/secret-command";
+import type { SecretSubcommand } from "@veyyon/coding-agent/secrets/secret-verbs";
 import { DEFAULT_TTL_MS, SecretVault } from "@veyyon/coding-agent/secrets/vault";
 import { parseSlashCommand } from "@veyyon/coding-agent/slash-commands/helpers/parse";
 

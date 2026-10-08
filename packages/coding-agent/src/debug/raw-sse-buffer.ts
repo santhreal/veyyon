@@ -115,6 +115,9 @@ function metadataTransport(response: ProviderResponseMetadata): string | undefin
 	return typeof value === "string" ? value : undefined;
 }
 
+/** Occupies an evicted slot below `#head` until compaction, so the evicted record is collectable. */
+const EVICTED_RECORD: RawSseDebugRecord = Object.freeze({ kind: "response", sequence: 0, timestamp: 0, status: 0 });
+
 export class RawSseDebugBuffer {
 	#records: RawSseDebugRecord[] = [];
 	// Parallel to `#records`: `#recordChars[i]` is the precomputed char count
@@ -221,6 +224,9 @@ export class RawSseDebugBuffer {
 		while (this.#records.length - this.#head > MAX_RAW_SSE_EVENTS || this.#totalChars > MAX_RAW_SSE_CHARS) {
 			if (this.#records.length - this.#head === 0) break;
 			const chars = this.#recordChars[this.#head] ?? 0;
+			// The slot stays in the array until the next compaction; the sentinel drops the
+			// evicted record and its raw lines now, so dead slots add no chars to the budget.
+			this.#records[this.#head] = EVICTED_RECORD;
 			this.#head += 1;
 			this.#totalChars = Math.max(0, this.#totalChars - chars);
 			this.#droppedRecords += 1;

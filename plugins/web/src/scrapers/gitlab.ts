@@ -3,7 +3,6 @@ import {
 	buildResult,
 	formatIsoDate,
 	formatNumber,
-	htmlToBasicMarkdown,
 	loadPage,
 	type RenderResult,
 	type ScraperDegrade,
@@ -13,7 +12,7 @@ import {
 } from "./types";
 
 interface GitLabUrl {
-	namespace: string;
+	/** Project path: `namespace/project`, or deeper for a project in a subgroup. */
 	project: string;
 	type: "repo" | "blob" | "tree" | "issue" | "merge_request";
 	ref?: string;
@@ -21,100 +20,54 @@ interface GitLabUrl {
 	id?: number;
 }
 
+/** The URL type of each numbered `/-/` route. */
+const NUMBERED_ROUTES: Record<string, "issue" | "merge_request"> = {
+	issues: "issue",
+	merge_requests: "merge_request",
+};
+
 /**
- * Parse GitLab URL into structured data
+ * Parse a gitlab.com URL: a two-segment project root, or a project path of any
+ * depth followed by a `/-/blob`, `/-/tree`, `/-/issues` or `/-/merge_requests` route.
  */
 function parseGitLabUrl(url: string): GitLabUrl | null {
 	const parsed = tryParseUrl(url);
-	if (!parsed) return null;
-	if (parsed.hostname !== "gitlab.com") return null;
+	if (parsed?.hostname !== "gitlab.com") return null;
 
-	const segments = parsed.pathname.split("/").filter(Boolean);
-	if (segments.length < 2) return null;
+	// Decoded, since each part is re-encoded into the API request it addresses.
+	const segments = parsed.pathname
+		.split("/")
+		.filter(Boolean)
+		.map(segment => decodeURIComponent(segment));
+	const separator = segments.indexOf("-");
+	if (separator === -1) return segments.length === 2 ? { project: segments.join("/"), type: "repo" } : null;
+	if (separator < 2) return null;
 
-	const [namespace, project, ...rest] = segments;
-
-	// Repo root
-	if (rest.length === 0) {
-		return { namespace, project, type: "repo" };
+	const project = segments.slice(0, separator).join("/");
+	const [route, ref, ...pathParts] = segments.slice(separator + 1);
+	if (route === "blob" && pathParts.length > 0) return { project, type: "blob", ref, path: pathParts.join("/") };
+	if (route === "tree" && ref !== undefined) {
+		return { project, type: "tree", ref, path: pathParts.length > 0 ? pathParts.join("/") : undefined };
 	}
 
-	// Skip - prefix
-	if (rest[0] !== "-") return null;
-
-	const [, type, ...remaining] = rest;
-
-	// File: gitlab.com/{ns}/{proj}/-/blob/{ref}/{path}
-	if (type === "blob" && remaining.length >= 2) {
-		const [ref, ...pathParts] = remaining;
-		return {
-			namespace,
-			project,
-			type: "blob",
-			ref,
-			path: pathParts.join("/"),
-		};
-	}
-
-	// Directory: gitlab.com/{ns}/{proj}/-/tree/{ref}/{path}
-	if (type === "tree" && remaining.length >= 1) {
-		const [ref, ...pathParts] = remaining;
-		return {
-			namespace,
-			project,
-			type: "tree",
-			ref,
-			path: pathParts.length > 0 ? pathParts.join("/") : undefined,
-		};
-	}
-
-	// Issue: gitlab.com/{ns}/{proj}/-/issues/{id}
-	if (type === "issues" && remaining.length === 1) {
-		const id = parseInt(remaining[0], 10);
-		if (Number.isNaN(id)) return null;
-		return { namespace, project, type: "issue", id };
-	}
-
-	// MR: gitlab.com/{ns}/{proj}/-/merge_requests/{id}
-	if (type === "merge_requests" && remaining.length === 1) {
-		const id = parseInt(remaining[0], 10);
-		if (Number.isNaN(id)) return null;
-		return { namespace, project, type: "merge_request", id };
-	}
-
-	return null;
+	const type = Object.hasOwn(NUMBERED_ROUTES, route) ? NUMBERED_ROUTES[route] : undefined;
+	if (!type || ref === undefined || pathParts.length > 0) return null;
+	const id = parseInt(ref, 10);
+	return Number.isNaN(id) ? null : { project, type, id };
 }
 
-/**
- * Get project ID from namespace/project path
- */
-async function getProjectId(gl: GitLabUrl, timeout: number, signal?: AbortSignal): Promise<number | null> {
-	const encodedPath = encodeURIComponent(`${gl.namespace}/${gl.project}`);
-	const apiUrl = `https://gitlab.com/api/v4/projects/${encodedPath}`;
-
-	const result = await loadPage(apiUrl, { timeout, signal });
-	if (!result.ok) return null;
-
-	const data = tryParseJson<{ id: number }>(result.content);
-	if (!data) return null;
-	return data.id;
+/** The REST endpoint of a project; the API takes the URL-encoded project path as its id. */
+function projectApiUrl(gl: GitLabUrl): string {
+	return `https://gitlab.com/api/v4/projects/${encodeURIComponent(gl.project)}`;
 }
 
-/**
- * Render GitLab repository
- */
-async function renderGitLabRepo(
-	gl: GitLabUrl,
-	timeout: number,
-	signal?: AbortSignal,
-): Promise<{ content: string; ok: boolean }> {
-	const encodedPath = encodeURIComponent(`${gl.namespace}/${gl.project}`);
-	const apiUrl = `https://gitlab.com/api/v4/projects/${encodedPath}`;
-
+async function loadJson<T>(apiUrl: string, timeout: number, signal?: AbortSignal): Promise<T | null> {
 	const result = await loadPage(apiUrl, { timeout, signal });
-	if (!result.ok) return { content: "", ok: false };
+	return result.ok ? tryParseJson<T>(result.content) : null;
+}
 
-	const repo = tryParseJson<{
+async function renderGitLabRepo(gl: GitLabUrl, timeout: number, signal?: AbortSignal): Promise<string | null> {
+	const repo = await loadJson<{
 		name: string;
 		description?: string;
 		star_count: number;
@@ -126,176 +79,88 @@ async function renderGitLabRepo(
 		last_activity_at: string;
 		topics?: string[];
 		readme_url?: string;
-	}>(result.content);
-	if (!repo) return { content: "", ok: false };
+	}>(projectApiUrl(gl), timeout, signal);
+	if (!repo) return null;
 
 	let md = `# ${repo.name}\n\n`;
 	if (repo.description) md += `${repo.description}\n\n`;
 	md += `**Stars:** ${formatNumber(repo.star_count)} · **Forks:** ${formatNumber(repo.forks_count)} · **Issues:** ${formatNumber(repo.open_issues_count)}\n`;
 	md += `**Visibility:** ${repo.visibility} · **Default Branch:** ${repo.default_branch}\n`;
-	if (repo.topics && repo.topics.length > 0) {
-		md += `**Topics:** ${repo.topics.join(", ")}\n`;
-	}
+	if (repo.topics && repo.topics.length > 0) md += `**Topics:** ${repo.topics.join(", ")}\n`;
 	md += `**Created:** ${formatIsoDate(repo.created_at)} · **Last Activity:** ${formatIsoDate(repo.last_activity_at)}\n\n`;
 
-	// Try to fetch README
-	if (repo.readme_url) {
-		const readmeResult = await loadPage(repo.readme_url, { timeout, signal });
-		if (readmeResult.ok && readmeResult.content.trim().length > 0) {
-			md += `---\n\n## README\n\n${readmeResult.content}\n`;
-		}
-	}
-
-	return { content: md, ok: true };
+	// `readme_url` is the README's web blob page; its `/-/raw/` twin serves the file itself.
+	const readmeUrl = repo.readme_url?.includes("/-/blob/") ? repo.readme_url.replace("/-/blob/", "/-/raw/") : null;
+	const readme = readmeUrl ? await loadPage(readmeUrl, { timeout, signal }) : null;
+	if (readme?.ok && readme.content.trim().length > 0) md += `---\n\n## README\n\n${readme.content}\n`;
+	return md;
 }
 
-/**
- * Render GitLab file
- */
-async function renderGitLabFile(
-	gl: GitLabUrl,
-	projectId: number,
-	timeout: number,
-	signal?: AbortSignal,
-): Promise<{ content: string; ok: boolean }> {
-	const encodedPath = encodeURIComponent(gl.path!);
-	const apiUrl = `https://gitlab.com/api/v4/projects/${projectId}/repository/files/${encodedPath}/raw?ref=${gl.ref}`;
-
+async function renderGitLabFile(gl: GitLabUrl, timeout: number, signal?: AbortSignal): Promise<string | null> {
+	const filePath = encodeURIComponent(gl.path ?? "");
+	const apiUrl = `${projectApiUrl(gl)}/repository/files/${filePath}/raw?ref=${encodeURIComponent(gl.ref ?? "")}`;
 	const result = await loadPage(apiUrl, { timeout, signal });
-	if (!result.ok) return { content: "", ok: false };
-
-	return { content: result.content, ok: true };
+	return result.ok ? result.content : null;
 }
 
-/**
- * Render GitLab directory tree
- */
-async function renderGitLabTree(
-	gl: GitLabUrl,
-	projectId: number,
-	timeout: number,
-	signal?: AbortSignal,
-): Promise<{ content: string; ok: boolean }> {
-	const apiUrl = `https://gitlab.com/api/v4/projects/${projectId}/repository/tree?ref=${gl.ref}&path=${gl.path || ""}&per_page=100`;
+async function renderGitLabTree(gl: GitLabUrl, timeout: number, signal?: AbortSignal): Promise<string | null> {
+	const query = `ref=${encodeURIComponent(gl.ref ?? "")}&path=${encodeURIComponent(gl.path ?? "")}&per_page=100`;
+	const tree = await loadJson<Array<{ name: string; type: "tree" | "blob" }>>(
+		`${projectApiUrl(gl)}/repository/tree?${query}`,
+		timeout,
+		signal,
+	);
+	if (!tree) return null;
 
-	const result = await loadPage(apiUrl, { timeout, signal });
-	if (!result.ok) return { content: "", ok: false };
-
-	const tree = tryParseJson<
-		Array<{
-			name: string;
-			type: "tree" | "blob";
-			path: string;
-			mode: string;
-		}>
-	>(result.content);
-	if (!tree) return { content: "", ok: false };
-
-	let md = `# Directory: ${gl.path || "/"}\n\n`;
-	md += `**Ref:** ${gl.ref}\n\n`;
-
-	// Separate directories and files
+	let md = `# Directory: ${gl.path || "/"}\n\n**Ref:** ${gl.ref}\n\n`;
 	const dirs = tree.filter(item => item.type === "tree");
 	const files = tree.filter(item => item.type === "blob");
-
-	if (dirs.length > 0) {
-		md += `## Directories (${dirs.length})\n\n`;
-		for (const dir of dirs) {
-			md += `- 📁 ${dir.name}/\n`;
-		}
-		md += `\n`;
-	}
-
-	if (files.length > 0) {
-		md += `## Files (${files.length})\n\n`;
-		for (const file of files) {
-			md += `- 📄 ${file.name}\n`;
-		}
-	}
-
-	return { content: md, ok: true };
+	if (dirs.length > 0) md += `## Directories (${dirs.length})\n\n${dirs.map(dir => `- 📁 ${dir.name}/\n`).join("")}\n`;
+	if (files.length > 0) md += `## Files (${files.length})\n\n${files.map(file => `- 📄 ${file.name}\n`).join("")}`;
+	return md;
 }
 
-/**
- * Render GitLab issue
- */
-async function renderGitLabIssue(
-	gl: GitLabUrl,
-	projectId: number,
-	timeout: number,
-	signal?: AbortSignal,
-): Promise<{ content: string; ok: boolean }> {
-	const apiUrl = `https://gitlab.com/api/v4/projects/${projectId}/issues/${gl.id}`;
+/** The fields an issue and a merge request share. */
+interface GitLabWorkItem {
+	title: string;
+	description?: string | null;
+	state: string;
+	author: { name: string; username: string };
+	created_at: string;
+	updated_at: string;
+	labels: string[];
+	upvotes: number;
+	downvotes: number;
+	user_notes_count: number;
+	assignees?: Array<{ name: string }>;
+}
 
-	const result = await loadPage(apiUrl, { timeout, signal });
-	if (!result.ok) return { content: "", ok: false };
+/** Labels and assignees lines, then the description, which the API returns as markdown. */
+function formatWorkItemTail(item: GitLabWorkItem): string {
+	let md = "";
+	if (item.labels.length > 0) md += `**Labels:** ${item.labels.join(", ")}\n`;
+	if (item.assignees && item.assignees.length > 0) {
+		md += `**Assignees:** ${item.assignees.map(a => a.name).join(", ")}\n`;
+	}
+	return `${md}\n---\n\n## Description\n\n${item.description?.trim() || "*No description*"}`;
+}
 
-	const issue = tryParseJson<{
-		title: string;
-		description?: string;
-		state: string;
-		author: { name: string; username: string };
-		created_at: string;
-		updated_at: string;
-		labels: string[];
-		upvotes: number;
-		downvotes: number;
-		user_notes_count: number;
-		assignees?: Array<{ name: string }>;
-	}>(result.content);
-	if (!issue) return { content: "", ok: false };
+async function renderGitLabIssue(gl: GitLabUrl, timeout: number, signal?: AbortSignal): Promise<string | null> {
+	const issue = await loadJson<GitLabWorkItem>(`${projectApiUrl(gl)}/issues/${gl.id}`, timeout, signal);
+	if (!issue) return null;
 
 	let md = `# Issue #${gl.id}: ${issue.title}\n\n`;
 	md += `**State:** ${issue.state.toUpperCase()} · **Author:** ${issue.author.name} (@${issue.author.username})\n`;
 	md += `**Created:** ${formatIsoDate(issue.created_at)} · **Updated:** ${formatIsoDate(issue.updated_at)}\n`;
 	md += `**Upvotes:** ${issue.upvotes} · **Downvotes:** ${issue.downvotes} · **Comments:** ${issue.user_notes_count}\n`;
-
-	if (issue.labels.length > 0) {
-		md += `**Labels:** ${issue.labels.join(", ")}\n`;
-	}
-
-	if (issue.assignees && issue.assignees.length > 0) {
-		md += `**Assignees:** ${issue.assignees.map(a => a.name).join(", ")}\n`;
-	}
-
-	md += `\n---\n\n## Description\n\n`;
-	md += issue.description ? await htmlToBasicMarkdown(issue.description) : "*No description*";
-
-	return { content: md, ok: true };
+	return md + formatWorkItemTail(issue);
 }
 
-/**
- * Render GitLab merge request
- */
-async function renderGitLabMR(
-	gl: GitLabUrl,
-	projectId: number,
-	timeout: number,
-	signal?: AbortSignal,
-): Promise<{ content: string; ok: boolean }> {
-	const apiUrl = `https://gitlab.com/api/v4/projects/${projectId}/merge_requests/${gl.id}`;
-
-	const result = await loadPage(apiUrl, { timeout, signal });
-	if (!result.ok) return { content: "", ok: false };
-
-	const mr = tryParseJson<{
-		title: string;
-		description?: string;
-		state: string;
-		author: { name: string; username: string };
-		created_at: string;
-		updated_at: string;
-		source_branch: string;
-		target_branch: string;
-		labels: string[];
-		upvotes: number;
-		downvotes: number;
-		user_notes_count: number;
-		assignees?: Array<{ name: string }>;
-		draft: boolean;
-		merge_status: string;
-	}>(result.content);
-	if (!mr) return { content: "", ok: false };
+async function renderGitLabMR(gl: GitLabUrl, timeout: number, signal?: AbortSignal): Promise<string | null> {
+	const mr = await loadJson<
+		GitLabWorkItem & { source_branch: string; target_branch: string; draft: boolean; merge_status: string }
+	>(`${projectApiUrl(gl)}/merge_requests/${gl.id}`, timeout, signal);
+	if (!mr) return null;
 
 	let md = `# MR !${gl.id}: ${mr.title}\n\n`;
 	if (mr.draft) md += `**[DRAFT]** `;
@@ -303,20 +168,29 @@ async function renderGitLabMR(
 	md += `**Branch:** ${mr.source_branch} → ${mr.target_branch}\n`;
 	md += `**Created:** ${formatIsoDate(mr.created_at)} · **Updated:** ${formatIsoDate(mr.updated_at)}\n`;
 	md += `**Merge Status:** ${mr.merge_status} · **Upvotes:** ${mr.upvotes} · **Downvotes:** ${mr.downvotes} · **Comments:** ${mr.user_notes_count}\n`;
-
-	if (mr.labels.length > 0) {
-		md += `**Labels:** ${mr.labels.join(", ")}\n`;
-	}
-
-	if (mr.assignees && mr.assignees.length > 0) {
-		md += `**Assignees:** ${mr.assignees.map(a => a.name).join(", ")}\n`;
-	}
-
-	md += `\n---\n\n## Description\n\n`;
-	md += mr.description ? htmlToBasicMarkdown(mr.description) : "*No description*";
-
-	return { content: md, ok: true };
+	return md + formatWorkItemTail(mr);
 }
+
+interface GitLabReader {
+	method: string;
+	note: string;
+	contentType?: string;
+	render: (gl: GitLabUrl, timeout: number, signal?: AbortSignal) => Promise<string | null>;
+}
+
+/** The result method, note and REST renderer of each GitLab URL type. */
+const READERS: Record<GitLabUrl["type"], GitLabReader> = {
+	repo: { method: "gitlab-repo", note: "Fetched repository via GitLab API", render: renderGitLabRepo },
+	blob: {
+		method: "gitlab-raw",
+		note: "Fetched raw file via GitLab API",
+		contentType: "text/plain",
+		render: renderGitLabFile,
+	},
+	tree: { method: "gitlab-tree", note: "Fetched directory tree via GitLab API", render: renderGitLabTree },
+	issue: { method: "gitlab-issue", note: "Fetched issue via GitLab API", render: renderGitLabIssue },
+	merge_request: { method: "gitlab-mr", note: "Fetched merge request via GitLab API", render: renderGitLabMR },
+};
 
 /**
  * Handle GitLab URLs specially
@@ -330,71 +204,11 @@ export const handleGitLab: SpecialHandler = async (
 	if (!gl) return null;
 
 	const fetchedAt = new Date().toISOString();
-	const notes: string[] = [];
-
-	switch (gl.type) {
-		case "blob": {
-			const projectId = await getProjectId(gl, timeout, signal);
-			if (!projectId) break;
-
-			notes.push(`Fetched raw file via GitLab API`);
-			const result = await renderGitLabFile(gl, projectId, timeout, signal);
-			if (result.ok) {
-				return buildResult(result.content, {
-					url,
-					method: "gitlab-raw",
-					fetchedAt,
-					notes,
-					contentType: "text/plain",
-				});
-			}
-			break;
-		}
-
-		case "tree": {
-			const projectId = await getProjectId(gl, timeout, signal);
-			if (!projectId) break;
-
-			notes.push(`Fetched directory tree via GitLab API`);
-			const result = await renderGitLabTree(gl, projectId, timeout, signal);
-			if (result.ok) {
-				return buildResult(result.content, { url, method: "gitlab-tree", fetchedAt, notes });
-			}
-			break;
-		}
-
-		case "issue": {
-			const projectId = await getProjectId(gl, timeout, signal);
-			if (!projectId) break;
-
-			notes.push(`Fetched issue via GitLab API`);
-			const result = await renderGitLabIssue(gl, projectId, timeout, signal);
-			if (result.ok) {
-				return buildResult(result.content, { url, method: "gitlab-issue", fetchedAt, notes });
-			}
-			break;
-		}
-
-		case "merge_request": {
-			const projectId = await getProjectId(gl, timeout, signal);
-			if (!projectId) break;
-
-			notes.push(`Fetched merge request via GitLab API`);
-			const result = await renderGitLabMR(gl, projectId, timeout, signal);
-			if (result.ok) {
-				return buildResult(result.content, { url, method: "gitlab-mr", fetchedAt, notes });
-			}
-			break;
-		}
-
-		case "repo": {
-			notes.push(`Fetched repository via GitLab API`);
-			const result = await renderGitLabRepo(gl, timeout, signal);
-			if (result.ok) {
-				return buildResult(result.content, { url, method: "gitlab-repo", fetchedAt, notes });
-			}
-			break;
-		}
+	const reader = READERS[gl.type];
+	const content = await reader.render(gl, timeout, signal);
+	if (content !== null) {
+		const { method, note, contentType } = reader;
+		return buildResult(content, { url, method, fetchedAt, notes: [note], contentType });
 	}
 
 	// Matched a GitLab URL but every API path failed: degrade loudly so the

@@ -40,8 +40,8 @@ import {
 	runSecretCommand,
 	SECRET_SUBCOMMAND_SHAPES,
 	type SecretCommandRequest,
-	type SecretSubcommand,
 } from "@veyyon/coding-agent/secrets/secret-command";
+import type { SecretSubcommand } from "@veyyon/coding-agent/secrets/secret-verbs";
 import { resolveVaultLocations, SecretVault, VAULT_SCOPES, type VaultScope } from "@veyyon/coding-agent/secrets/vault";
 
 const NOW = 1_700_000_000_000;

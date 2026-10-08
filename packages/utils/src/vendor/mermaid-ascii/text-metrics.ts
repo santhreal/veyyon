@@ -29,7 +29,9 @@
  */
 export const WIDE_PAD = '\u0000'
 
-const graphemeSegmenter = new Intl.Segmenter()
+// Built on first use: constructing one opens ICU's break iterator, which a
+// process that renders no diagram never needs.
+let graphemeSegmenter: Intl.Segmenter | undefined
 
 /**
  * Display width of a string in terminal columns, summed over grapheme
@@ -47,7 +49,7 @@ export function displayWidth(text: string): number {
   if (ascii) return text.length
 
   let width = 0
-  for (const seg of graphemeSegmenter.segment(text)) {
+  for (const seg of (graphemeSegmenter ??= new Intl.Segmenter()).segment(text)) {
     width += Bun.stringWidth(seg.segment) >= 2 ? 2 : 1
   }
   return width
@@ -61,7 +63,7 @@ export function displayWidth(text: string): number {
  */
 export function toCells(text: string): string[] {
   const cells: string[] = []
-  for (const seg of graphemeSegmenter.segment(text)) {
+  for (const seg of (graphemeSegmenter ??= new Intl.Segmenter()).segment(text)) {
     cells.push(seg.segment)
     if (Bun.stringWidth(seg.segment) >= 2) {
       cells.push(WIDE_PAD)

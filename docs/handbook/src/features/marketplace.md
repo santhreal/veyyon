@@ -15,12 +15,12 @@ The interactive `/marketplace` TUI was removed from Veyyon. Manage marketplaces 
 
 A **marketplace** is a Git repository (or local directory) containing a catalog file at `.veyyon-plugin/marketplace.json` (preferred) or `.claude-plugin/marketplace.json` (Claude Code-compatible fallback). The catalog lists available plugins with their sources, descriptions, and metadata.
 
-A **plugin** is a directory containing Claude/Veyyon plugin content such as skills, commands, agents, hooks, tools, MCP servers, or LSP servers. Extension modules (`package.json` `veyyon.extensions` entry points; legacy `omp`/`pi` keys still accepted) load from marketplace installs just as they do from npm-installed or `veyyon plugin link`ed plugins, because the install symlinks the cached plugin into the runtime `node_modules` tree. Plugins are identified by `name@marketplace` (e.g. `code-review@claude-plugins-official`).
+A **plugin** is a directory containing Claude/Veyyon plugin content such as skills, commands, agents, hooks, tools, MCP servers, or LSP servers. Extension modules (`package.json` `veyyon.extensions` entry points; legacy `omp`/`pi` keys still accepted) load from marketplace installs as they do from npm-installed or `veyyon plugin link`ed plugins, because the install symlinks the cached plugin into the runtime `node_modules` tree. Plugins are identified by `name@marketplace` (e.g. `code-review@claude-plugins-official`).
 
 **Scopes**: marketplace plugins can be installed at two scopes:
 
-- **user** (default) -- available in all projects under the active profile, stored in `~/.veyyon/profiles/<profile>/plugins/installed_plugins.json` (default profile: `profiles/default/plugins/`)
-- **project** -- available only in the active project, stored in the nearest project `.veyyon/plugins/installed_plugins.json`
+- **user** (default): available in all projects under the active profile, stored in `~/.veyyon/profiles/<profile>/plugins/installed_plugins.json` (default profile: `profiles/default/plugins/`)
+- **project**: available only in the active project, stored in the nearest project `.veyyon/plugins/installed_plugins.json`
 
 Enabled project-scoped installs shadow enabled user-scoped installs of the same plugin. A disabled project install does not shadow the user install.
 

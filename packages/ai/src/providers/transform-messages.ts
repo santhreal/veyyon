@@ -151,44 +151,51 @@ function dropLegacyStaleToolNotes(messages: Message[]): Message[] {
 	// scan first and hand back the same array. `content` is the detector for
 	// `providerPayload` too: both come from the same response, so a note in one
 	// is in the other.
-	let hasNote = false;
-	for (const message of messages) {
-		if (message.role !== "assistant") continue;
-		if (message.content.some(block => block.type === "text" && LEGACY_STALE_TOOL_NOTE.test(block.text))) {
-			hasNote = true;
-			break;
-		}
-	}
-	if (!hasNote) return messages;
+	if (!messages.some(hasLegacyStaleToolNote)) return messages;
 
 	const result: Message[] = [];
 	for (const [index, message] of messages.entries()) {
-		if (message.role !== "assistant") {
+		if (!hasLegacyStaleToolNote(message)) {
 			result.push(message);
 			continue;
 		}
-		if (!message.content.some(block => block.type === "text" && LEGACY_STALE_TOOL_NOTE.test(block.text))) {
-			result.push(message);
-			continue;
-		}
-		const priorToolOutputs = precedingToolOutputs(messages, index);
-		const kept = message.content.flatMap((block): AssistantMessage["content"] => {
-			if (block.type !== "text") return [block];
-			const text = stripLegacyStaleToolNote(block.text, priorToolOutputs);
-			if (text === block.text) return [block];
-			// The signature covered the text as generated; the shortened text no
-			// longer matches it, so it must not be replayed as signed.
-			return text === undefined ? [] : [{ ...block, text, textSignature: undefined }];
-		});
-		// An assistant turn holding nothing but the note has no tool call and no
-		// reply left, so replaying it contributes an empty turn.
-		if (kept.length === 0) continue;
-		const providerPayload = message.providerPayload
-			? stripLegacyStaleToolNotesFromPayload(message.providerPayload, priorToolOutputs)
-			: undefined;
-		result.push({ ...message, content: kept, ...(providerPayload ? { providerPayload } : {}) });
+		const stripped = stripLegacyStaleToolNotesFromAssistant(message, precedingToolOutputs(messages, index));
+		if (stripped) result.push(stripped);
 	}
 	return result;
+}
+
+function hasLegacyStaleToolNote(message: Message): message is AssistantMessage {
+	if (message.role !== "assistant") return false;
+	for (const block of message.content) {
+		if (block.type === "text" && LEGACY_STALE_TOOL_NOTE.test(block.text)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/**
+ * The turn with each legacy note stripped from its text and its transport-native payload, or undefined
+ * when nothing but notes remains: such a turn has no tool call and no reply left to replay.
+ */
+function stripLegacyStaleToolNotesFromAssistant(
+	message: AssistantMessage,
+	priorToolOutputs: readonly string[],
+): AssistantMessage | undefined {
+	const kept = message.content.flatMap((block): AssistantMessage["content"] => {
+		if (block.type !== "text") return [block];
+		const text = stripLegacyStaleToolNote(block.text, priorToolOutputs);
+		if (text === block.text) return [block];
+		// The signature covered the text as generated; the shortened text no
+		// longer matches it, so it must not be replayed as signed.
+		return text === undefined ? [] : [{ ...block, text, textSignature: undefined }];
+	});
+	if (kept.length === 0) return undefined;
+	const providerPayload = message.providerPayload
+		? stripLegacyStaleToolNotesFromPayload(message.providerPayload, priorToolOutputs)
+		: undefined;
+	return { ...message, content: kept, ...(providerPayload ? { providerPayload } : {}) };
 }
 
 /**
@@ -225,36 +232,61 @@ function appendSegmentDuplicateSuffix(segment: string, suffix: string, maxLength
 
 type PendingToolResultRewrite = { replacementId: string } | undefined;
 
+/** Whether any tool call id appears on more than one call across the history. */
+function hasRepeatedToolCallId(messages: readonly Message[]): boolean {
+	const seen = new Set<string>();
+	for (const message of messages) {
+		if (message.role !== "assistant") continue;
+		for (const block of message.content) {
+			if (block.type !== "toolCall") continue;
+			if (seen.has(block.id)) return true;
+			seen.add(block.id);
+		}
+	}
+	return false;
+}
+
+/**
+ * Renames every call after the first that reuses a tool call id and routes each tool result to the
+ * call it answers. Returns `messages` itself when no id repeats.
+ */
 function deduplicateToolCallIds(
 	messages: Message[],
 	maxToolCallIdLength = MAX_TOOL_CALL_ID_LENGTH,
 	duplicateSuffixPrefix = "_dup",
 ): Message[] {
-	const seenToolCallIds = new Map<string, number>();
-	const pendingToolResultRewrites = new Map<string, PendingToolResultRewrite[]>();
-
+	if (!hasRepeatedToolCallId(messages)) return messages;
+	const deduplicator = new ToolCallIdDeduplicator(maxToolCallIdLength, duplicateSuffixPrefix);
 	return messages.map(msg => {
-		if (msg.role === "toolResult") {
-			const rewrites = pendingToolResultRewrites.get(msg.toolCallId);
-			if (!rewrites || rewrites.length === 0) return msg;
+		if (msg.role === "toolResult") return deduplicator.routeToolResult(msg);
+		if (msg.role === "assistant") return deduplicator.renameToolCalls(msg);
+		return msg;
+	});
+}
 
-			const rewrite = rewrites.shift();
-			if (rewrites.length === 0) pendingToolResultRewrites.delete(msg.toolCallId);
-			if (rewrite) return { ...msg, toolCallId: rewrite.replacementId };
-			return msg;
-		}
+/** The pass state of {@link deduplicateToolCallIds}, fed the history in order. */
+class ToolCallIdDeduplicator {
+	/** Calls seen per id, which sets the next `_dupN` index, plus every replacement id minted. */
+	readonly #seenToolCallIds = new Map<string, number>();
+	/** Per id, one entry per call still awaiting its result: the replacement id, or undefined to keep it. */
+	readonly #pendingToolResultRewrites = new Map<string, PendingToolResultRewrite[]>();
+	readonly #maxToolCallIdLength: number;
+	readonly #duplicateSuffixPrefix: string;
 
-		if (msg.role !== "assistant") return msg;
+	constructor(maxToolCallIdLength: number, duplicateSuffixPrefix: string) {
+		this.#maxToolCallIdLength = maxToolCallIdLength;
+		this.#duplicateSuffixPrefix = duplicateSuffixPrefix;
+	}
 
-		const enqueueToolResultRewrite = (id: string, rewrite: PendingToolResultRewrite): void => {
-			const rewrites = pendingToolResultRewrites.get(id);
-			if (rewrites) {
-				rewrites.push(rewrite);
-				return;
-			}
-			pendingToolResultRewrites.set(id, [rewrite]);
-		};
+	routeToolResult(msg: ToolResultMessage): ToolResultMessage {
+		const rewrites = this.#pendingToolResultRewrites.get(msg.toolCallId);
+		if (!rewrites || rewrites.length === 0) return msg;
+		const rewrite = rewrites.shift();
+		if (rewrites.length === 0) this.#pendingToolResultRewrites.delete(msg.toolCallId);
+		return rewrite ? { ...msg, toolCallId: rewrite.replacementId } : msg;
+	}
 
+	renameToolCalls(msg: AssistantMessage): AssistantMessage {
 		// Ids this turn has already touched; used to scope the "drop carried-over
 		// pending rewrites" semantics to the FIRST occurrence per turn so multiple
 		// blocks of the same id within one turn still accumulate as duplicates.
@@ -271,41 +303,50 @@ function deduplicateToolCallIds(
 			// route to one of THIS turn's calls. Without this guard the older
 			// `_dup` id would steal the next result.
 			if (!idsTouchedInTurn.has(block.id)) {
-				pendingToolResultRewrites.delete(block.id);
+				this.#pendingToolResultRewrites.delete(block.id);
 				idsTouchedInTurn.add(block.id);
 			}
 
-			const previousCount = seenToolCallIds.get(block.id) ?? 0;
-			if (previousCount === 0) {
-				seenToolCallIds.set(block.id, 1);
-				enqueueToolResultRewrite(block.id, undefined);
-				return block;
-			}
-
-			let duplicateIndex = previousCount;
-			let replacementId = appendDuplicateSuffix(
-				block.id,
-				`${duplicateSuffixPrefix}${duplicateIndex}`,
-				maxToolCallIdLength,
-			);
-			while (seenToolCallIds.has(replacementId)) {
-				duplicateIndex += 1;
-				replacementId = appendDuplicateSuffix(
-					block.id,
-					`${duplicateSuffixPrefix}${duplicateIndex}`,
-					maxToolCallIdLength,
-				);
-			}
-			seenToolCallIds.set(block.id, duplicateIndex + 1);
-			seenToolCallIds.set(replacementId, 1);
-			enqueueToolResultRewrite(block.id, { replacementId });
+			const replacementId = this.#replacementFor(block.id);
+			this.#expectResult(block.id, replacementId === undefined ? undefined : { replacementId });
+			if (replacementId === undefined) return block;
 			contentChanged = true;
 			return { ...block, id: replacementId };
 		});
+		return contentChanged ? { ...msg, content } : msg;
+	}
 
-		if (!contentChanged) return msg;
-		return { ...msg, content };
-	});
+	/** Undefined on an id's first call; afterwards the first free `<id><prefix><n>`, which is then taken. */
+	#replacementFor(id: string): string | undefined {
+		const previousCount = this.#seenToolCallIds.get(id) ?? 0;
+		if (previousCount === 0) {
+			this.#seenToolCallIds.set(id, 1);
+			return undefined;
+		}
+		let duplicateIndex = previousCount;
+		let replacementId = appendDuplicateSuffix(
+			id,
+			`${this.#duplicateSuffixPrefix}${duplicateIndex}`,
+			this.#maxToolCallIdLength,
+		);
+		while (this.#seenToolCallIds.has(replacementId)) {
+			duplicateIndex += 1;
+			replacementId = appendDuplicateSuffix(
+				id,
+				`${this.#duplicateSuffixPrefix}${duplicateIndex}`,
+				this.#maxToolCallIdLength,
+			);
+		}
+		this.#seenToolCallIds.set(id, duplicateIndex + 1);
+		this.#seenToolCallIds.set(replacementId, 1);
+		return replacementId;
+	}
+
+	#expectResult(id: string, rewrite: PendingToolResultRewrite): void {
+		const rewrites = this.#pendingToolResultRewrites.get(id);
+		if (rewrites) rewrites.push(rewrite);
+		else this.#pendingToolResultRewrites.set(id, [rewrite]);
+	}
 }
 
 /**
@@ -523,16 +564,10 @@ function assistantsBeforeHistoryRewrite(messages: readonly Message[]): Set<numbe
 	const indexes = new Set<number>();
 	let latestRewriteAt: number | undefined;
 	for (let index = 0; index < messages.length; index++) {
-		const message = messages[index];
-		if (!message) continue;
-		const rewriteAt =
-			message.role === "user" || message.role === "developer"
-				? message.historyRewriteAt
-				: message.role === "toolResult"
-					? message.prunedAt
-					: undefined;
+		const message = messages[index]!;
+		const rewriteAt = historyRewriteAt(message);
 		if (rewriteAt !== undefined) {
-			latestRewriteAt = latestRewriteAt === undefined ? rewriteAt : Math.max(latestRewriteAt, rewriteAt);
+			latestRewriteAt = Math.max(latestRewriteAt ?? rewriteAt, rewriteAt);
 		} else if (
 			message.role === "assistant" &&
 			latestRewriteAt !== undefined &&
@@ -542,6 +577,12 @@ function assistantsBeforeHistoryRewrite(messages: readonly Message[]): Set<numbe
 		}
 	}
 	return indexes;
+}
+
+/** When a message records a history rewrite: a summary's `historyRewriteAt`, a pruned result's `prunedAt`. */
+function historyRewriteAt(message: Message): number | undefined {
+	if (message.role === "user" || message.role === "developer") return message.historyRewriteAt;
+	return message.role === "toolResult" ? message.prunedAt : undefined;
 }
 
 type AssistantBlock = AssistantMessage["content"][number];

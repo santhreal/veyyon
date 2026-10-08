@@ -44,7 +44,7 @@ function runtime(options: FakeSessionOptions = {}): SlashCommandRuntime {
 			};
 		},
 		settings: {
-			getGroup: () => ({ enabled: true, strategy: "off", threshold: "auto", reserveTokens: 20_000 }),
+			getGroup: () => ({ enabled: false, strategy: "summary", threshold: "auto", reserveTokens: 20_000 }),
 		},
 		getContextUsage: () =>
 			options.usage === undefined

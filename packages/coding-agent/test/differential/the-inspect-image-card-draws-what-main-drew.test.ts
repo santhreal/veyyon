@@ -25,6 +25,7 @@ import {
 	type InspectImageViewResult,
 	inspectImageToolView,
 } from "@veyyon/coding-agent/tools/fs/inspect-image-view";
+import { visibleWidth } from "@veyyon/utils/width";
 import type { ToolViewContext } from "@veyyon/view";
 import * as inspectImageOracle from "../oracles/inspect-image-main-renderer";
 import {
@@ -32,6 +33,7 @@ import {
 	EXPANDED,
 	HOST_COLLAPSED,
 	HOST_EXPANDED,
+	headerRowsAtTheEdge,
 	lineView,
 	renderCompLines,
 	useDifferentialTheme,
@@ -187,10 +189,13 @@ describe("inspect_image tool differential", () => {
 					// at 120 columns and the note saying what was held back.
 					expect(drawn.slice(1).map(onMainsRail)).toEqual(oracle.slice(1));
 					// The header differs by the separator between the row and its metadata alone, which is
-					// pinned in its own cell.
-					expect(stripVTControlCharacters(drawn[0] ?? "").replaceAll(" · ", " ")).toBe(
-						stripVTControlCharacters(oracle[0] ?? "").replaceAll(" · ", " "),
+					// pinned in its own cell. Both arms clip the row at the edge, and the separator moves
+					// the letter the clip falls on, so the rows agree as far as the shorter one goes.
+					const header = headerRowsAtTheEdge(drawn[0] ?? "", oracle[0] ?? "", width, plain =>
+						plain.replaceAll(" · ", " "),
 					);
+					expect(header.drawn).toBe(header.oracle);
+					expect(visibleWidth(drawn[0] ?? "")).toBeLessThanOrEqual(width);
 				}
 			}
 		}

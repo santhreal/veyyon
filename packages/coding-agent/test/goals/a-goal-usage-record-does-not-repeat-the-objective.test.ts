@@ -145,7 +145,7 @@ describe("a goal usage record does not repeat the objective", () => {
 			["pause the completed goal before any usage", () => runtime.pauseGoal(), "goal_paused"],
 			["drop again", () => runtime.dropGoal(), "none"],
 		];
-		runtime.onTurnStart("turn-1", usage(0));
+		runtime.onTurnStart("turn-1");
 
 		const kinds: string[] = [];
 		// The mode a reader resolves is the one the last full record wrote; a usage record keeps it.
@@ -183,7 +183,7 @@ describe("a goal usage record does not repeat the objective", () => {
 		const first = await build({ interactive: true });
 		const runtime = first.session.goalRuntime;
 		await runtime.createGoal({ objective: OBJECTIVE });
-		runtime.onTurnStart("turn-1", usage(0));
+		runtime.onTurnStart("turn-1");
 		for (let turn = 1; turn <= 20; turn++) await runtime.flushUsage("suppressed", usage(turn * 100));
 		await runtime.onAgentEnd({ currentUsage: usage(2_100) });
 		const before = first.session.getGoalModeState()?.goal;
@@ -217,7 +217,7 @@ describe("a goal usage record does not repeat the objective", () => {
 		const { session, sessionManager } = await build();
 		const runtime = session.goalRuntime;
 		await runtime.createGoal({ objective: OBJECTIVE });
-		runtime.onTurnStart("turn-1", usage(0));
+		runtime.onTurnStart("turn-1");
 		await runtime.flushUsage("suppressed", usage(100));
 		const firstUsage = sessionManager.getLeafId();
 		if (!firstUsage) throw new Error("expected a usage record");

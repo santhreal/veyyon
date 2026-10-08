@@ -23,16 +23,8 @@
  * cheap pass-throughs.
  */
 
-import {
-	type Attributes,
-	type AttributeValue,
-	context,
-	type Span,
-	SpanKind,
-	SpanStatusCode,
-	type Tracer,
-	trace,
-} from "@opentelemetry/api";
+import type * as OpenTelemetry from "@opentelemetry/api";
+import type { Attributes, AttributeValue, Exception, Span, Tracer } from "@opentelemetry/api";
 import type { AssistantMessage, Message, Model, ServiceTier, StopReason, ToolChoice, Usage } from "@veyyon/ai";
 // The one runtime name this module needs from `@veyyon/ai`, taken from the module that declares it.
 // The package entry point re-exports the streaming engine, so the barrel spelling would cost 363
@@ -44,6 +36,31 @@ import type { AgentTool } from "./types";
 
 /** Default tracer name. Override via {@link AgentTelemetryConfig.tracerName}. */
 export const DEFAULT_TRACER_NAME = "@veyyon/agent-core";
+
+let openTelemetry: typeof OpenTelemetry | undefined;
+
+/**
+ * The `@opentelemetry/api` module namespace. The first call evaluates the package.
+ *
+ * Evaluating it reads 44 modules. A launch starts no agent loop, so it reaches no tracer before its
+ * first frame, and a static import evaluated the package with the module graph anyway.
+ */
+function loadOpenTelemetry(): typeof OpenTelemetry {
+	// `require`, because `bun build --compile` (Bun 1.4.0) evaluates an `import defer` namespace with the
+	// rest of the graph, and `await import()` cannot answer the synchronous span helpers. Bun resolves
+	// `require` and `import` to the package's one `default` entry, so the bundle holds one copy.
+	openTelemetry ??= require("@opentelemetry/api") as typeof OpenTelemetry;
+	return openTelemetry;
+}
+
+/**
+ * The OTLP values of the two span kinds and the one status this module sets. Each is typed as its enum
+ * member, so a release that renumbered one fails the type check instead of mislabelling a span. Reading
+ * them from the package would evaluate it for a span helper that a disabled telemetry handle returns from.
+ */
+const SPAN_KIND_INTERNAL: OpenTelemetry.SpanKind.INTERNAL = 0;
+const SPAN_KIND_CLIENT: OpenTelemetry.SpanKind.CLIENT = 2;
+const SPAN_STATUS_ERROR: OpenTelemetry.SpanStatusCode.ERROR = 2;
 
 /** Env var matching the OTEL semconv content-capture toggle. */
 const CONTENT_CAPTURE_ENV = "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT";
@@ -415,7 +432,7 @@ export function resolveTelemetry(
 	sessionId: string | undefined,
 ): AgentTelemetry | undefined {
 	if (!config) return undefined;
-	const tracer = config.tracer ?? trace.getTracer(config.tracerName ?? DEFAULT_TRACER_NAME);
+	const tracer = config.tracer ?? loadOpenTelemetry().trace.getTracer(config.tracerName ?? DEFAULT_TRACER_NAME);
 	const contentCapture = resolveContentCapture(config.captureMessageContent);
 	return {
 		config,
@@ -462,18 +479,43 @@ function startSpan(
 	telemetry: AgentTelemetry | undefined,
 	kind: TelemetrySpanKind,
 	name: string,
-	options: {
-		readonly spanKind: SpanKind;
-		readonly model?: Model;
-		readonly parent?: Span;
-		readonly attributes?: Attributes;
-		readonly stepNumber?: number;
-		readonly toolCallId?: string;
-		readonly toolName?: string;
-	},
+	options: SpanStartOptions,
 ): Span | undefined {
 	if (!telemetry) return undefined;
 	const attrCtx = buildTelemetryAttributeContext(telemetry, kind, options);
+	const attrs = spanEnvelopeAttributes(telemetry, kind, attrCtx, options);
+	const textSanitizer = telemetry.config.textSanitizer ? new TelemetryTextSanitizer(telemetry) : undefined;
+	const spanName = textSanitizer ? textSanitizer.sanitizeText(name) || kind : name;
+	const initialAttributes = textSanitizer ? textSanitizer.sanitizeSpanAttributes(attrs) : attrs;
+	const { context, trace } = loadOpenTelemetry();
+	const ctx = options.parent ? trace.setSpan(context.active(), options.parent) : context.active();
+	const rawSpan = telemetry.tracer.startSpan(spanName, { kind: options.spanKind, attributes: initialAttributes }, ctx);
+	const span = textSanitizer ? wrapSpanWithTextSanitizer(telemetry, rawSpan, textSanitizer) : rawSpan;
+	safeOnSpanStart(telemetry, { ...attrCtx, span });
+	return span;
+}
+
+interface SpanStartOptions {
+	readonly spanKind: OpenTelemetry.SpanKind;
+	readonly model?: Model;
+	readonly parent?: Span;
+	readonly attributes?: Attributes;
+	readonly stepNumber?: number;
+	readonly toolCallId?: string;
+	readonly toolName?: string;
+}
+
+/**
+ * The attributes a span starts with: operation, model and provider,
+ * conversation and agent identity, then the configured, resolved and call-site
+ * attributes, each later source overriding the ones before it.
+ */
+function spanEnvelopeAttributes(
+	telemetry: AgentTelemetry,
+	kind: TelemetrySpanKind,
+	attrCtx: TelemetryAttributeContext,
+	options: SpanStartOptions,
+): Attributes {
 	const attrs: Attributes = {};
 	const operation = kindToOperation(kind);
 	if (operation) attrs[GenAIAttr.OperationName] = operation;
@@ -482,31 +524,13 @@ function startSpan(
 		const provider = normalizeProviderName(telemetry, options.model.provider);
 		if (provider) attrs[GenAIAttr.ProviderName] = provider;
 	}
-	if (telemetry.conversationId) {
-		attrs[GenAIAttr.ConversationId] = telemetry.conversationId;
-	}
+	if (telemetry.conversationId) attrs[GenAIAttr.ConversationId] = telemetry.conversationId;
 	if (attrCtx.agent) applyAgentAttributes(attrs, attrCtx.agent);
 	if (telemetry.config.attributes) Object.assign(attrs, telemetry.config.attributes);
 	const dynamicAttributes = resolveDynamicAttributes(telemetry, attrCtx);
 	if (dynamicAttributes) Object.assign(attrs, dynamicAttributes);
 	if (options.attributes) Object.assign(attrs, options.attributes);
-
-	const textSanitizer = telemetry.config.textSanitizer ? createTelemetryTextSanitizer(telemetry) : undefined;
-	const spanName = textSanitizer ? textSanitizer.sanitizeText(name) || kind : name;
-	const initialAttributes = textSanitizer ? textSanitizer.sanitizeSpanAttributes(attrs) : attrs;
-	const ctx = options.parent ? trace.setSpan(context.active(), options.parent) : context.active();
-	const rawSpan = telemetry.tracer.startSpan(spanName, { kind: options.spanKind, attributes: initialAttributes }, ctx);
-	const span = textSanitizer ? wrapSpanWithTextSanitizer(telemetry, rawSpan, textSanitizer) : rawSpan;
-	safeOnSpanStart(telemetry, { ...attrCtx, span });
-	return span;
-}
-
-interface TelemetryTextSanitizer {
-	sanitizeText(text: string): string | undefined;
-	sanitizeSpanAttributes(attributes: Attributes): Attributes;
-	sanitizeException(
-		exception: Parameters<Span["recordException"]>[0],
-	): Parameters<Span["recordException"]>[0] | undefined;
+	return attrs;
 }
 
 /**
@@ -617,110 +641,126 @@ function emitTextSanitizerKeyCollision(telemetry: AgentTelemetry): void {
 	});
 }
 
-function createTelemetryTextSanitizer(telemetry: AgentTelemetry): TelemetryTextSanitizer {
-	const sanitize = telemetry.config.textSanitizer;
-	const dynamicKeyOwners = new Map<string, string>();
+interface SanitizedAttribute {
+	readonly originalKey: string;
+	readonly sanitizedKey: string;
+	readonly value: AttributeValue;
+	readonly fixed: boolean;
+}
 
-	const sanitizeText = (text: string): string | undefined => {
-		if (!sanitize) return text;
+const EXCEPTION_TEXT_FIELDS = ["code", "message", "name", "stack"] as const;
+
+/**
+ * Applies `config.textSanitizer` to span names, attribute keys and values,
+ * statuses and exceptions. A text the sanitizer throws on is omitted with a
+ * `text_sanitizer_failed` warning. A sanitized dynamic key stays bound to the
+ * first original key that produced it for the life of the sanitizer, so two
+ * distinct keys never merge into one attribute.
+ */
+class TelemetryTextSanitizer {
+	readonly #telemetry: AgentTelemetry;
+	readonly #sanitize: ((text: string) => string) | undefined;
+	readonly #dynamicKeyOwners = new Map<string, string>();
+
+	constructor(telemetry: AgentTelemetry) {
+		this.#telemetry = telemetry;
+		this.#sanitize = telemetry.config.textSanitizer;
+	}
+
+	sanitizeText(text: string): string | undefined {
+		if (!this.#sanitize) return text;
 		try {
-			return sanitize(text);
+			return this.#sanitize(text);
 		} catch {
-			emitTextSanitizerFailure(telemetry);
+			emitTextSanitizerFailure(this.#telemetry);
 			return undefined;
 		}
-	};
+	}
 
-	const sanitizeAttributeValue = (value: AttributeValue): AttributeValue | undefined => {
-		if (typeof value === "string") return sanitizeText(value);
-		if (!Array.isArray(value) || value.length === 0 || typeof value[0] !== "string") return value;
-		const sanitized: string[] = [];
-		for (const item of value as string[]) {
-			const text = sanitizeText(item);
-			if (text === undefined) return undefined;
-			sanitized.push(text);
-		}
-		return sanitized;
-	};
-
-	const sanitizeSpanAttributes = (attributes: Attributes): Attributes => {
-		const candidates: Array<{
-			readonly originalKey: string;
-			readonly sanitizedKey: string;
-			readonly value: AttributeValue;
-			readonly fixed: boolean;
-		}> = [];
+	/**
+	 * Sanitize every key and value. Two original keys of one batch that
+	 * sanitize to the same key are both omitted, with one collision warning per
+	 * such key once the batch ends.
+	 */
+	sanitizeSpanAttributes(attributes: Attributes): Attributes {
+		const candidates: SanitizedAttribute[] = [];
 		const keysInBatch = new Map<string, string>();
 		const collidingKeys = new Set<string>();
-
 		for (const [originalKey, value] of Object.entries(attributes)) {
 			if (value == null) continue;
-			const fixed = FIXED_TELEMETRY_ATTRIBUTE_KEYS[originalKey] === true;
-			const sanitizedKey = fixed ? originalKey : sanitizeText(originalKey);
-			if (!sanitizedKey) continue;
-			if (!fixed && FIXED_TELEMETRY_ATTRIBUTE_KEYS[sanitizedKey] === true) {
-				emitTextSanitizerKeyCollision(telemetry);
-				continue;
-			}
-			const previousKey = keysInBatch.get(sanitizedKey);
-			if (previousKey !== undefined && previousKey !== originalKey) {
-				collidingKeys.add(sanitizedKey);
-				continue;
-			}
-			const previousOwner = dynamicKeyOwners.get(sanitizedKey);
-			if (!fixed && previousOwner !== undefined && previousOwner !== originalKey) {
-				emitTextSanitizerKeyCollision(telemetry);
-				continue;
-			}
-			const sanitizedValue = sanitizeAttributeValue(value);
-			if (sanitizedValue === undefined) continue;
-			keysInBatch.set(sanitizedKey, originalKey);
-			candidates.push({ originalKey, sanitizedKey, value: sanitizedValue, fixed });
+			const candidate = this.#sanitizeAttribute(originalKey, value, keysInBatch, collidingKeys);
+			if (candidate) candidates.push(candidate);
 		}
 
 		const sanitizedAttributes: Attributes = {};
 		for (const candidate of candidates) {
 			if (collidingKeys.has(candidate.sanitizedKey)) continue;
 			sanitizedAttributes[candidate.sanitizedKey] = candidate.value;
-			if (!candidate.fixed) dynamicKeyOwners.set(candidate.sanitizedKey, candidate.originalKey);
+			if (!candidate.fixed) this.#dynamicKeyOwners.set(candidate.sanitizedKey, candidate.originalKey);
 		}
-		for (const _key of collidingKeys) emitTextSanitizerKeyCollision(telemetry);
+		for (const _key of collidingKeys) emitTextSanitizerKeyCollision(this.#telemetry);
 		return sanitizedAttributes;
-	};
+	}
 
-	const sanitizeException = (
-		exception: Parameters<Span["recordException"]>[0],
-	): Parameters<Span["recordException"]>[0] | undefined => {
-		if (typeof exception === "string") return sanitizeText(exception);
-		const source = exception as {
-			readonly code?: string | number;
-			readonly message?: string;
-			readonly name?: string;
-			readonly stack?: string;
-		};
+	sanitizeException(exception: Exception): Exception | undefined {
+		if (typeof exception === "string") return this.sanitizeText(exception);
 		const sanitized: { code?: string | number; message?: string; name?: string; stack?: string } = {};
-		if (typeof source.code === "number") {
-			sanitized.code = source.code;
-		} else if (typeof source.code === "string") {
-			const code = sanitizeText(source.code);
-			if (code !== undefined) sanitized.code = code;
+		if (typeof exception.code === "number") sanitized.code = exception.code;
+		for (const field of EXCEPTION_TEXT_FIELDS) {
+			const text = exception[field];
+			if (typeof text !== "string") continue;
+			const clean = this.sanitizeText(text);
+			if (clean !== undefined) sanitized[field] = clean;
 		}
-		if (typeof source.message === "string") {
-			const message = sanitizeText(source.message);
-			if (message !== undefined) sanitized.message = message;
-		}
-		if (typeof source.name === "string") {
-			const name = sanitizeText(source.name);
-			if (name !== undefined) sanitized.name = name;
-		}
-		if (typeof source.stack === "string") {
-			const stack = sanitizeText(source.stack);
-			if (stack !== undefined) sanitized.stack = stack;
-		}
-		return Object.keys(sanitized).length > 0 ? (sanitized as Parameters<Span["recordException"]>[0]) : undefined;
-	};
+		return Object.keys(sanitized).length > 0 ? (sanitized as Exception) : undefined;
+	}
 
-	return { sanitizeText, sanitizeSpanAttributes, sanitizeException };
+	/**
+	 * Sanitize one attribute, or return `undefined` to omit it. A dynamic key
+	 * that sanitizes to a fixed schema key, or to a key a different original key
+	 * already owns, is omitted with a collision warning; a key that collides
+	 * within the batch is recorded in `collidingKeys`.
+	 */
+	#sanitizeAttribute(
+		originalKey: string,
+		value: AttributeValue,
+		keysInBatch: Map<string, string>,
+		collidingKeys: Set<string>,
+	): SanitizedAttribute | undefined {
+		const fixed = FIXED_TELEMETRY_ATTRIBUTE_KEYS[originalKey] === true;
+		const sanitizedKey = fixed ? originalKey : this.sanitizeText(originalKey);
+		if (!sanitizedKey) return undefined;
+		if (!fixed && FIXED_TELEMETRY_ATTRIBUTE_KEYS[sanitizedKey] === true) {
+			emitTextSanitizerKeyCollision(this.#telemetry);
+			return undefined;
+		}
+		const previousKey = keysInBatch.get(sanitizedKey);
+		if (previousKey !== undefined && previousKey !== originalKey) {
+			collidingKeys.add(sanitizedKey);
+			return undefined;
+		}
+		const previousOwner = this.#dynamicKeyOwners.get(sanitizedKey);
+		if (!fixed && previousOwner !== undefined && previousOwner !== originalKey) {
+			emitTextSanitizerKeyCollision(this.#telemetry);
+			return undefined;
+		}
+		const sanitizedValue = this.#sanitizeAttributeValue(value);
+		if (sanitizedValue === undefined) return undefined;
+		keysInBatch.set(sanitizedKey, originalKey);
+		return { originalKey, sanitizedKey, value: sanitizedValue, fixed };
+	}
+
+	#sanitizeAttributeValue(value: AttributeValue): AttributeValue | undefined {
+		if (typeof value === "string") return this.sanitizeText(value);
+		if (!Array.isArray(value) || value.length === 0 || typeof value[0] !== "string") return value;
+		const sanitized: string[] = [];
+		for (const item of value as string[]) {
+			const text = this.sanitizeText(item);
+			if (text === undefined) return undefined;
+			sanitized.push(text);
+		}
+		return sanitized;
+	}
 }
 
 const sanitizedSpanWrappers = new WeakMap<AgentTelemetry, WeakMap<Span, Span>>();
@@ -728,7 +768,7 @@ const sanitizedSpanWrappers = new WeakMap<AgentTelemetry, WeakMap<Span, Span>>()
 function wrapSpanWithTextSanitizer(
 	telemetry: AgentTelemetry,
 	rawSpan: Span,
-	textSanitizer = createTelemetryTextSanitizer(telemetry),
+	textSanitizer = new TelemetryTextSanitizer(telemetry),
 ): Span {
 	let wrappers = sanitizedSpanWrappers.get(telemetry);
 	if (!wrappers) {
@@ -987,7 +1027,7 @@ function safeOnSpanEnd(telemetry: AgentTelemetry | undefined, ctx: TelemetryHook
 export function startInvokeAgentSpan(telemetry: AgentTelemetry | undefined, model: Model): Span | undefined {
 	const agentName = telemetry?.agent ? normalizeAgentIdentity(telemetry, telemetry.agent).name : undefined;
 	const name = agentName ? `invoke_agent ${agentName}` : "invoke_agent";
-	return startSpan(telemetry, "invoke_agent", name, { spanKind: SpanKind.INTERNAL, model });
+	return startSpan(telemetry, "invoke_agent", name, { spanKind: SPAN_KIND_INTERNAL, model });
 }
 
 /** Stamp the final step count on the `invoke_agent` span. */
@@ -1010,7 +1050,7 @@ export function startChatSpan(
 	},
 ): Span | undefined {
 	const span = startSpan(telemetry, "chat", `chat ${model.id}`, {
-		spanKind: SpanKind.CLIENT,
+		spanKind: SPAN_KIND_CLIENT,
 		model,
 		parent: options.parent,
 		stepNumber: options.stepNumber,
@@ -1370,40 +1410,49 @@ function summarizeTelemetryValue(value: unknown, depth = 0, seen?: Set<object>):
 	if (value instanceof Error) {
 		return { name: value.name, message: summarizeTelemetryText(value.message) };
 	}
-	if (Array.isArray(value)) {
-		// Cap array recursion at the same depth as plain-object recursion so
-		// pathological nested-array shapes (or arrays containing themselves)
-		// cannot blow the stack via `summarizeTelemetryValue`.
-		if (depth >= MAX_TELEMETRY_OBJECT_DEPTH) {
-			return { kind: "array", length: value.length };
-		}
-		const ancestors = seen ?? new Set<object>();
-		if (ancestors.has(value)) return "[Circular]";
-		ancestors.add(value);
-		const items = value
-			.slice(0, MAX_TELEMETRY_ARRAY_ITEMS)
-			.map(item => summarizeTelemetryValue(item, depth + 1, ancestors));
-		if (value.length > MAX_TELEMETRY_ARRAY_ITEMS) {
-			items.push({ kind: "truncated", omittedItems: value.length - MAX_TELEMETRY_ARRAY_ITEMS });
-		}
-		ancestors.delete(value);
-		return items;
-	}
+	if (Array.isArray(value)) return summarizeTelemetryArray(value, depth, seen);
 	if (!isPlainTelemetryRecord(value)) return String(value);
+	return summarizeTelemetryRecord(value, depth, seen);
+}
+
+/**
+ * The first `MAX_TELEMETRY_ARRAY_ITEMS` items, summarized, and a truncation
+ * marker for the rest. Array recursion stops at the same depth as plain-object
+ * recursion, so nested arrays or an array containing itself cannot overflow
+ * the stack.
+ */
+function summarizeTelemetryArray(value: readonly unknown[], depth: number, seen: Set<object> | undefined): unknown {
+	if (depth >= MAX_TELEMETRY_OBJECT_DEPTH) return { kind: "array", length: value.length };
+	const ancestors = seen ?? new Set<object>();
+	if (ancestors.has(value)) return "[Circular]";
+	ancestors.add(value);
+	const kept = Math.min(value.length, MAX_TELEMETRY_ARRAY_ITEMS);
+	const items: unknown[] = new Array(kept);
+	for (let index = 0; index < kept; index++)
+		items[index] = summarizeTelemetryValue(value[index], depth + 1, ancestors);
+	if (value.length > kept) items.push({ kind: "truncated", omittedItems: value.length - kept });
+	ancestors.delete(value);
+	return items;
+}
+
+/** The first `MAX_TELEMETRY_OBJECT_KEYS` entries, summarized; past the depth limit, the keys alone. */
+function summarizeTelemetryRecord(
+	value: Record<string, unknown>,
+	depth: number,
+	seen: Set<object> | undefined,
+): unknown {
 	const ancestors = seen ?? new Set<object>();
 	if (ancestors.has(value)) return "[Circular]";
 	const entries = Object.entries(value);
-	if (depth >= MAX_TELEMETRY_OBJECT_DEPTH) {
-		return summarizeTelemetryObjectKeys(entries);
-	}
+	if (depth >= MAX_TELEMETRY_OBJECT_DEPTH) return summarizeTelemetryObjectKeys(entries);
 	ancestors.add(value);
 	const summary: Record<string, unknown> = {};
-	for (const [key, item] of entries.slice(0, MAX_TELEMETRY_OBJECT_KEYS)) {
+	const kept = Math.min(entries.length, MAX_TELEMETRY_OBJECT_KEYS);
+	for (let index = 0; index < kept; index++) {
+		const [key, item] = entries[index];
 		summary[key] = summarizeTelemetryValue(item, depth + 1, ancestors);
 	}
-	if (entries.length > MAX_TELEMETRY_OBJECT_KEYS) {
-		summary.telemetrySummary = { omittedKeys: entries.length - MAX_TELEMETRY_OBJECT_KEYS };
-	}
+	if (entries.length > kept) summary.telemetrySummary = { omittedKeys: entries.length - kept };
 	ancestors.delete(value);
 	return summary;
 }
@@ -1516,10 +1565,10 @@ export function failChatSpan(
 	if (err instanceof Error) {
 		span.recordException(err);
 		span.setAttribute(GenAIAttr.ErrorType, options.errorType ?? err.name ?? "Error");
-		span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+		span.setStatus({ code: SPAN_STATUS_ERROR, message: err.message });
 	} else {
 		span.setAttribute(GenAIAttr.ErrorType, options.errorType ?? "Error");
-		span.setStatus({ code: SpanStatusCode.ERROR, message: String(err) });
+		span.setStatus({ code: SPAN_STATUS_ERROR, message: String(err) });
 	}
 	telemetry?.collector.failChat(span, {
 		errorType: options.errorType ?? (err instanceof Error ? err.name || "Error" : "Error"),
@@ -1842,7 +1891,7 @@ function mapStopReason(reason: StopReason | undefined): string | undefined {
 function applyTerminalStatus(span: Span, stopReason: StopReason | undefined, errorMessage: string | undefined): void {
 	if (stopReason === "error" || stopReason === "aborted") {
 		span.setAttribute(GenAIAttr.ErrorType, stopReason);
-		span.setStatus({ code: SpanStatusCode.ERROR, message: errorMessage ?? stopReason });
+		span.setStatus({ code: SPAN_STATUS_ERROR, message: errorMessage ?? stopReason });
 	}
 }
 
@@ -1876,7 +1925,7 @@ export async function recordManualChatTelemetry(
 	const candidate =
 		options.span ??
 		startSpan(telemetry, "chat", `chat ${options.model.id}`, {
-			spanKind: SpanKind.CLIENT,
+			spanKind: SPAN_KIND_CLIENT,
 			model: options.model,
 			parent: options.parent,
 			stepNumber: options.stepNumber,
@@ -1893,37 +1942,8 @@ export async function recordManualChatTelemetry(
 	if (finishReason) span.setAttribute(GenAIAttr.ResponseFinishReasons, [finishReason]);
 	applyUsageAttributes(span, options.usage);
 	applyGatewayAttributes(span, options.responseHeaders, options.model.baseUrl);
-	if (telemetry) {
-		const applied = applyCostEstimateForUsage(telemetry, span, {
-			model: options.responseModel ?? options.model.id,
-			provider: options.model.provider,
-			serviceTier: options.serviceTier,
-			stepNumber: options.stepNumber,
-			usage: options.usage,
-		});
-		await emitChatUsage(telemetry, span, {
-			model: options.responseModel ?? options.model.id,
-			provider: options.model.provider,
-			serviceTier: options.serviceTier,
-			stepNumber: options.stepNumber,
-			usage: options.usage,
-			applied,
-			headers: options.responseHeaders,
-		});
-	}
-	if (options.responseText) {
-		const responseText = stringifyJsonAttribute(summarizeTelemetryTexts([options.responseText]));
-		if (responseText) span.setAttribute(PiGenAIAttr.ResponseText, responseText);
-	}
-	if (options.responseToolCalls && options.responseToolCalls.length > 0) {
-		const calls = options.responseToolCalls.map(call => ({
-			toolCallId: call.toolCallId,
-			toolName: call.toolName,
-			input: summarizeTelemetryValue(call.input),
-		}));
-		const responseToolCalls = stringifyJsonAttribute(limitTelemetryToolCalls(calls));
-		if (responseToolCalls) span.setAttribute(PiGenAIAttr.ResponseToolCalls, responseToolCalls);
-	}
+	if (telemetry) await recordManualChatUsage(telemetry, span, options);
+	applyManualChatResponse(span, options);
 	applyTerminalStatus(span, options.finishReason, undefined);
 	if (options.endSpan ?? options.span === undefined) {
 		safeOnSpanEnd(telemetry, {
@@ -1937,6 +1957,40 @@ export async function recordManualChatTelemetry(
 		span.end();
 	}
 	return span;
+}
+
+/** Estimate the turn's cost onto `span`, then hand the usage and the estimate to `onChatUsage`. */
+async function recordManualChatUsage(
+	telemetry: AgentTelemetry,
+	span: Span,
+	options: ManualChatTelemetryOptions,
+): Promise<void> {
+	const usage = {
+		model: options.responseModel ?? options.model.id,
+		provider: options.model.provider,
+		serviceTier: options.serviceTier,
+		stepNumber: options.stepNumber,
+		usage: options.usage,
+	};
+	const applied = applyCostEstimateForUsage(telemetry, span, usage);
+	await emitChatUsage(telemetry, span, { ...usage, applied, headers: options.responseHeaders });
+}
+
+/** The response text and tool calls, each summarized to the telemetry caps. */
+function applyManualChatResponse(span: Span, options: ManualChatTelemetryOptions): void {
+	if (options.responseText) {
+		const responseText = stringifyJsonAttribute(summarizeTelemetryTexts([options.responseText]));
+		if (responseText) span.setAttribute(PiGenAIAttr.ResponseText, responseText);
+	}
+	if (options.responseToolCalls && options.responseToolCalls.length > 0) {
+		const calls = options.responseToolCalls.map(call => ({
+			toolCallId: call.toolCallId,
+			toolName: call.toolName,
+			input: summarizeTelemetryValue(call.input),
+		}));
+		const responseToolCalls = stringifyJsonAttribute(limitTelemetryToolCalls(calls));
+		if (responseToolCalls) span.setAttribute(PiGenAIAttr.ResponseToolCalls, responseToolCalls);
+	}
 }
 
 /**
@@ -1961,7 +2015,7 @@ export function startExecuteToolSpan(
 	};
 	if (options.tool?.description) attrs[GenAIAttr.ToolDescription] = options.tool.description;
 	const span = startSpan(telemetry, "execute_tool", `execute_tool ${options.toolName}`, {
-		spanKind: SpanKind.INTERNAL,
+		spanKind: SPAN_KIND_INTERNAL,
 		parent: options.parent,
 		toolCallId: options.toolCallId,
 		toolName: options.toolName,
@@ -2012,30 +2066,40 @@ export function finishExecuteToolSpan(
 		toolName: options.toolName,
 	});
 	const status: ToolStatus = options.status ?? (options.isError ? "error" : "ok");
-	let errorType: string | undefined;
-	// `status` is the source of truth for the wire-level `error.type`. The
-	// underlying `errorObject` (if any) still gets a `recordException` so the
-	// stack trace is preserved, but the attribute reflects the run-level
-	// category (`tool_blocked`, `tool_aborted`, …) instead of the JS class
-	// name. This keeps dashboards groupable on one column.
-	if (status !== "ok") {
-		errorType =
-			status === "error" && options.errorObject instanceof Error
-				? options.errorObject.name || "Error"
-				: STATUS_ERROR_TYPE[status];
-		span.setAttribute(GenAIAttr.ErrorType, errorType);
-		span.setAttribute(EXECUTE_TOOL_STATUS_ATTR, status);
-		const msg =
-			options.errorObject instanceof Error ? options.errorObject.message : (options.errorMessage ?? errorType);
-		span.setStatus({ code: SpanStatusCode.ERROR, message: msg });
-	} else {
-		span.setAttribute(EXECUTE_TOOL_STATUS_ATTR, status);
-	}
+	const errorType = applyToolTerminalStatus(span, status, options.errorObject, options.errorMessage);
 	if (options.errorObject instanceof Error) {
 		span.recordException(options.errorObject);
 	}
 	telemetry?.collector.endTool(span, { status, errorType });
 	span.end();
+}
+
+/**
+ * Write the terminal status and, for a non-ok status, the `error.type`
+ * attribute and an error span status; returns the `error.type` written.
+ * `status` is the source of truth for `error.type`: an `"error"` with a thrown
+ * `Error` takes the error's class name, every other status its run-level
+ * category (`tool_blocked`, `tool_aborted`, …), which keeps dashboards
+ * groupable on one column. The thrown error itself is recorded by the caller
+ * as an exception, which keeps its stack.
+ */
+function applyToolTerminalStatus(
+	span: Span,
+	status: ToolStatus,
+	errorObject: unknown,
+	errorMessage: string | undefined,
+): string | undefined {
+	if (status === "ok") {
+		span.setAttribute(EXECUTE_TOOL_STATUS_ATTR, status);
+		return undefined;
+	}
+	const errorType =
+		status === "error" && errorObject instanceof Error ? errorObject.name || "Error" : STATUS_ERROR_TYPE[status];
+	span.setAttribute(GenAIAttr.ErrorType, errorType);
+	span.setAttribute(EXECUTE_TOOL_STATUS_ATTR, status);
+	const message = errorObject instanceof Error ? errorObject.message : (errorMessage ?? errorType);
+	span.setStatus({ code: SPAN_STATUS_ERROR, message });
+	return errorType;
 }
 
 /** Span attribute carrying the terminal {@link ToolStatus}. */
@@ -2104,7 +2168,7 @@ export function finishInvokeAgentSpan(
 	if (options.errorObject instanceof Error) {
 		span.recordException(options.errorObject);
 		span.setAttribute(GenAIAttr.ErrorType, options.errorObject.name || "Error");
-		span.setStatus({ code: SpanStatusCode.ERROR, message: options.errorObject.message });
+		span.setStatus({ code: SPAN_STATUS_ERROR, message: options.errorObject.message });
 	}
 	span.end();
 	return snapshot;
@@ -2205,6 +2269,7 @@ function applyAggregateAttributes(span: Span, summary: AgentRunSummary, coverage
  */
 export function runInActiveSpan<T>(span: Span | undefined, fn: () => Promise<T>): Promise<T> {
 	if (!span) return fn();
+	const { context, trace } = loadOpenTelemetry();
 	return context.with(trace.setSpan(context.active(), span), fn);
 }
 
@@ -2236,7 +2301,7 @@ export function recordHandoff(
 			: `handoff to ${toAgent.name}`
 		: "handoff";
 	const span = startSpan(telemetry, "handoff", name, {
-		spanKind: SpanKind.INTERNAL,
+		spanKind: SPAN_KIND_INTERNAL,
 		parent: options.parent,
 		attributes: { ...attrs, ...options.attributes },
 	});
@@ -2260,8 +2325,25 @@ export function setSpanAttribute(span: Span | undefined, key: string, value: Att
 	span.setAttribute(key, value);
 }
 
-/** Re-exports so consumers can write hooks without depending on @opentelemetry/api directly. */
-export { type Attributes, type Span, SpanKind, SpanStatusCode, type Tracer, trace };
+/**
+ * A stand-in for the `@opentelemetry/api` export `key`, so a hook written against this module needs no
+ * direct dependency on the package and a launch evaluates none of it. A property read or an `in` check
+ * evaluates the package and answers from the export; other reflection reads the stand-in itself.
+ */
+function deferredExport<K extends "SpanKind" | "SpanStatusCode" | "trace">(key: K): (typeof OpenTelemetry)[K] {
+	const handler: ProxyHandler<object> = {
+		get: (_target, property) => Reflect.get(loadOpenTelemetry()[key], property),
+		has: (_target, property) => Reflect.has(loadOpenTelemetry()[key], property),
+	};
+	return new Proxy({}, handler) as (typeof OpenTelemetry)[K];
+}
+
+export type SpanKind = OpenTelemetry.SpanKind;
+export const SpanKind: typeof OpenTelemetry.SpanKind = deferredExport("SpanKind");
+export type SpanStatusCode = OpenTelemetry.SpanStatusCode;
+export const SpanStatusCode: typeof OpenTelemetry.SpanStatusCode = deferredExport("SpanStatusCode");
+export const trace: typeof OpenTelemetry.trace = deferredExport("trace");
+export type { Attributes, Span, Tracer };
 
 /** Render a span attribute. The shared owner never yields "[object Object]". */
 function safeJson(value: unknown): string {

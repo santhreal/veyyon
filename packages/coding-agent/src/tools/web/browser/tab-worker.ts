@@ -13,14 +13,16 @@ import type {
 	ClickOptions,
 	Dialog,
 	ElementHandle,
-	ElementScreenshotOptions,
 	FileChooser,
 	Frame,
+	HTTPRequest,
 	HTTPResponse,
 	ImageFormat,
+	JSHandle,
 	KeyboardTypeOptions,
 	KeyInput,
 	Page,
+	PuppeteerLifeCycleEvent,
 	SerializedAXNode,
 	Target,
 } from "puppeteer-core";
@@ -31,6 +33,7 @@ import { resolveToCwd } from "../../core/path-utils";
 import { formatScreenshot } from "../../core/render-utils";
 import { ToolAbortError, ToolError, throwIfAborted } from "../../core/tool-errors";
 import {
+	type AriaSnapshotCapture,
 	type AriaSnapshotOptions,
 	captureAriaSnapshot,
 	parseAriaRefSelector,
@@ -38,6 +41,19 @@ import {
 } from "./aria-snapshot";
 import { type ChainedHandle, chainHandle } from "./chained-handle";
 import { PortTransport } from "./connection-relay";
+import {
+	DETACHED_NODE_MESSAGE,
+	type ElementIdentity,
+	focusConnected,
+	type HandleRelocation,
+	leftTheDocument,
+	pointerPoint,
+	RELOCATION_ATTEMPTS,
+	relocateElement,
+	scrollConnected,
+	selectConnected,
+	withRelocation,
+} from "./element-identity";
 import { type CdpNode, collectDateFields, planDateKeys } from "./field-keys";
 import { releaseHandle, releaseHandles } from "./handle-release";
 import { hasTextSelector } from "./has-text";
@@ -58,6 +74,14 @@ import {
 	waitForBrowserRun,
 } from "./run-cancellation";
 import { cloneSafe, RunOutput } from "./run-output";
+import {
+	CAPTURE_HEDGE_MS,
+	CAPTURE_MAX_ATTEMPTS,
+	type CaptureParams,
+	elementClip,
+	hedgeCapture,
+	startCapture,
+} from "./screenshot-capture";
 import { planSelect, readSelectState, type SelectPlan, type SelectState, settleSelection } from "./select-keys";
 import {
 	applyStorageState,
@@ -453,6 +477,17 @@ function asElementHandle(handle: unknown): ElementHandle | null {
 	return handle ? (handle as ElementHandle) : null;
 }
 
+/** How long an aborted `tab.goto` waits for the request of the navigation that aborted it. */
+const NAVIGATION_INTERRUPT_GRACE_MS = 250;
+
+/**
+ * A URL as puppeteer reports a navigation request's: parsed, so equivalent spellings compare equal,
+ * and with its fragment, which `HTTPRequest.url()` appends.
+ */
+function navigationKey(url: string): string {
+	return URL.canParse(url) ? new URL(url).href : url;
+}
+
 /**
  * ElementHandle enriched with the `fill()` the tool docs promise on handles from `tab.id()`/`tab.ref()`/`tab.waitFor()`,
  * with a `click()` and `hover()` that never press what covers the element, and a `type()` at a person's pace.
@@ -470,62 +505,98 @@ interface HandleActions {
 	input(): NaturalInput | null;
 }
 
-/** A handle's own `click`, `hover` and `type`, kept at its first enrichment so a later one wraps puppeteer's, not a wrapper. */
+/** A handle's own pointer and key actions, read before it is enriched, so a wrapper acts through puppeteer and not through another wrapper. */
 interface OwnActions {
 	click(options?: Readonly<ClickOptions>): Promise<void>;
 	hover(): Promise<void>;
+	tap(): Promise<void>;
 	type(text: string, options?: Readonly<KeyboardTypeOptions>): Promise<void>;
 }
 
 const ownActions = new WeakMap<ElementHandle, OwnActions>();
+
+/** `handle`'s own actions, kept at the first read so a later enrichment wraps puppeteer's, not a wrapper. */
+function ownOf(handle: ElementHandle): OwnActions {
+	let own = ownActions.get(handle);
+	if (!own) {
+		own = {
+			click: handle.click.bind(handle),
+			hover: handle.hover.bind(handle),
+			tap: handle.tap.bind(handle),
+			type: handle.type.bind(handle),
+		};
+		ownActions.set(handle, own);
+	}
+	return own;
+}
+
+/**
+ * How each `tab.id()` and ARIA ref handle finds the element that replaced its node when the page
+ * re-rendered it (see `element-identity.ts`). A handle a CSS selector resolved has none.
+ */
+const relocations = new WeakMap<ElementHandle, HandleRelocation>();
+
+/** Run `act` on `handle`, or on the element that replaced its node when `handle` has a relocation ({@link withRelocation}). */
+function onElement<T>(handle: ElementHandle, act: (target: ElementHandle) => Promise<T>): Promise<T> {
+	const relocation = relocations.get(handle);
+	return relocation ? withRelocation(handle, relocation, act) : act(handle);
+}
 
 /**
  * Attach `fill()` to a puppeteer ElementHandle before handing it to user code, route its `click()` and
  * `hover()` through {@link pressUncovered}, and pace its `type()` when natural input is on, each as an
  * action `actions` runs. Puppeteer handles expose `type()` but no `fill()`; the semantics are the
  * selector-based `tab.fill()`'s.
+ *
+ * An id or ARIA ref handle carries a relocation: every action that fails because the page re-rendered
+ * the node runs again on the element that replaced it. Scrolling, focusing or selecting a detached
+ * node succeeds and changes nothing the page shows, so those actions check the node and act on it in
+ * one evaluation (see {@link scrollConnected}). Puppeteer's `type()` and `press()` focus through
+ * `this.focus()`, the wrapped focus.
  */
 function toActionableHandle(handle: ElementHandle, actions: HandleActions): ActionableHandle {
-	const own = ownActions.get(handle) ?? {
-		click: handle.click.bind(handle),
-		hover: handle.hover.bind(handle),
-		type: handle.type.bind(handle),
-	};
-	ownActions.set(handle, own);
+	const own = ownOf(handle);
+	const relocation = relocations.get(handle);
 	const enriched = handle as ActionableHandle;
 	enriched.fill = value =>
 		actions.run("handle.fill()", (signal, timeoutMs) => {
 			const input = actions.input();
-			return fillViaHandle(handle, value, signal, input && { input, withinMs: timeoutMs / 2 });
+			return onElement(handle, target =>
+				fillViaHandle(target, value, signal, input && { input, withinMs: timeoutMs / 2 }),
+			);
 		});
 	// The press gives up before its op's deadline, so the reason it waited (a cover, a disabled control) is reported.
 	enriched.click = options =>
-		actions.run("handle.click()", (signal, timeoutMs) =>
-			pressUncovered(
+		actions.run("handle.click()", (signal, timeoutMs) => {
+			const gesture: Gesture = {
+				kind: "click",
+				button: options?.button,
+				count: options?.count,
+				holdMs: options?.delay,
+			};
+			return pressUncovered(
 				handle,
 				"handle.click()",
-				() => own.click(options),
+				puppeteerPress("click", relocation !== undefined, options),
 				Math.max(1, timeoutMs - PRESS_REPORT_MARGIN_MS),
 				{
 					signal,
-					gesture: {
-						kind: "click",
-						button: options?.button,
-						count: options?.count,
-						holdMs: options?.delay,
-					},
+					gesture,
 					// A fixed offset or a highlighted press is puppeteer's own; a natural press aims for itself.
 					input: options?.offset === undefined && !options?.debugHighlight ? actions.input() : null,
+					relocation,
 				},
-			),
-		);
+			);
+		});
 	enriched.hover = () =>
 		actions.run("handle.hover()", (signal, timeoutMs) =>
-			pressUncovered(handle, "handle.hover()", () => own.hover(), Math.max(1, timeoutMs - PRESS_REPORT_MARGIN_MS), {
-				signal,
-				gesture: { kind: "hover" },
-				input: actions.input(),
-			}),
+			pressUncovered(
+				handle,
+				"handle.hover()",
+				puppeteerPress("hover", relocation !== undefined),
+				Math.max(1, timeoutMs - PRESS_REPORT_MARGIN_MS),
+				{ signal, gesture: { kind: "hover" }, input: actions.input(), relocation },
+			),
 		);
 	enriched.type = (text, options) => {
 		const input = actions.input();
@@ -536,7 +607,42 @@ function toActionableHandle(handle: ElementHandle, actions: HandleActions): Acti
 			await input.type(text, timeoutMs / 2, signal);
 		});
 	};
+	if (!relocation) return enriched;
+	// A tap aims in one evaluation, so a node the page redraws between puppeteer's round trips still
+	// receives it (see pointerPoint). A node in a child frame keeps puppeteer's path, which adds the frame offsets.
+	enriched.tap = () =>
+		withRelocation(handle, relocation, async target => {
+			if (target.frame.parentFrame()) return ownOf(target).tap();
+			const { x, y } = await pointerPoint(target);
+			await target.frame.page().touchscreen.tap(x, y);
+		});
+	enriched.select = (...values) => withRelocation(handle, relocation, target => selectConnected(target, values));
+	enriched.scrollIntoView = () => withRelocation(handle, relocation, scrollConnected);
+	enriched.focus = () => withRelocation(handle, relocation, focusConnected);
 	return enriched;
+}
+
+/**
+ * Puppeteer's press for `kind` on the element a {@link pressUncovered} check passed. A relocating
+ * handle's press aims in one evaluation, so a node the page redraws between puppeteer's round trips
+ * still receives it (see pointerPoint); a node in a child frame keeps puppeteer's path, which adds
+ * the frame offsets.
+ */
+function puppeteerPress(
+	kind: "click" | "hover",
+	relocating: boolean,
+	options?: Readonly<ClickOptions>,
+): (target: ElementHandle) => Promise<void> {
+	return async target => {
+		if (!relocating || target.frame.parentFrame()) {
+			const own = ownOf(target);
+			return kind === "click" ? own.click(options) : own.hover();
+		}
+		const { x, y } = await pointerPoint(target, kind === "click" ? options?.offset : undefined);
+		const mouse = target.frame.page().mouse;
+		if (kind === "click") await mouse.click(x, y, options);
+		else await mouse.move(x, y);
+	};
 }
 
 /** What `fill` does with an element, decided in the page. */
@@ -550,7 +656,9 @@ type FillPlan =
 	| { readonly kind: "keys"; readonly keys: readonly KeyInput[]; readonly value: string }
 	/** An input no key reaches `value` on (a colour, a range too far for keys); the script sets it. */
 	| { readonly kind: "script"; readonly value: string }
-	| { readonly kind: "refuse"; readonly reason: string };
+	| { readonly kind: "refuse"; readonly reason: string }
+	/** The element left its document, so a re-rendered element's replacement takes the fill instead. */
+	| { readonly kind: "detached" };
 
 /** An element as `activeElement` returns it: what took focus in a document or shadow root. */
 interface FocusHolder {
@@ -561,6 +669,7 @@ interface FocusHolder {
 /** The parts of an element `fill` touches, typed here because this package compiles without the DOM lib. */
 interface FillTarget extends FocusHolder {
 	readonly tagName: string;
+	readonly isConnected: boolean;
 	readonly type?: string;
 	readonly disabled?: boolean;
 	readonly readOnly?: boolean;
@@ -597,6 +706,7 @@ interface FillTarget extends FocusHolder {
  */
 function planFill(element: unknown, value: string): FillPlan {
 	const el = element as FillTarget;
+	if (!el.isConnected) return { kind: "detached" };
 	const tag = el.tagName.toLowerCase();
 	const refuse = (reason: string): FillPlan => ({ kind: "refuse", reason });
 	// The insertion goes to whatever holds focus: an element that did not take it (hidden, inert, not
@@ -731,6 +841,7 @@ async function fillViaHandle(
 	typing: FillTyping | null,
 ): Promise<void> {
 	const plan = await untilAborted(signal, () => handle.evaluate(planFill, value));
+	if (plan.kind === "detached") throw new Error(DETACHED_NODE_MESSAGE);
 	if (plan.kind === "refuse") throw new ToolError(`fill: ${plan.reason}`);
 	if (plan.kind === "held") return;
 	if (plan.kind === "insert") {
@@ -884,11 +995,25 @@ function replyError(payload: TabRunErrorPayload): Error {
 	return err;
 }
 
+/** How many nodes an observation considers carry each role and name, keyed `role\nname`. */
+function countIdentities(
+	node: SerializedAXNode,
+	includeAll: boolean,
+	counts: Map<string, number>,
+): Map<string, number> {
+	if (includeAll || isInteractiveNode(node)) {
+		const key = `${node.role}\n${node.name ?? ""}`;
+		counts.set(key, (counts.get(key) ?? 0) + 1);
+	}
+	for (const child of node.children ?? []) countIdentities(child, includeAll, counts);
+	return counts;
+}
+
 async function collectObservationEntries(
 	core: WorkerCore,
 	node: SerializedAXNode,
 	entries: ObservationEntry[],
-	options: { viewportOnly: boolean; includeAll: boolean },
+	options: { viewportOnly: boolean; includeAll: boolean; identities: Map<string, number> },
 ): Promise<void> {
 	if (options.includeAll || isInteractiveNode(node)) {
 		// A node of a popup the page opened (a date or colour picker) belongs to no document of the page:
@@ -917,7 +1042,10 @@ async function collectObservationEntries(
 				if (node.multiline) states.push("multiline");
 				if (node.modal) states.push("modal");
 				if (node.focused) states.push("focused");
-				core.cacheElement(id, handle as ElementHandle);
+				const name = node.name ?? "";
+				// Only a role and name the page held once can name this element's replacement.
+				const unique = options.identities.get(`${node.role}\n${name}`) === 1;
+				core.cacheElement(id, handle as ElementHandle, unique ? { role: node.role, name } : null);
 				entries.push({
 					id,
 					role: node.role,
@@ -1313,97 +1441,130 @@ const SAME_POINT_PX = 0.5;
  * point of the element's own inside its box (the centre when the aimed point is not), rests there, and
  * that point is checked again before the button goes down on it. A point the element has left by then
  * is aimed at afresh, and one it keeps leaving past `timeoutMs` fails the action.
+ *
+ * With `relocation`, which an id or ARIA ref handle carries, an element that leaves the document is
+ * replaced by the element `relocation` resolves, up to {@link RELOCATION_ATTEMPTS} times in a row,
+ * and the press goes on at the point it reached; with no replacement it fails naming the id or ref
+ * as stale.
  */
 async function pressUncovered(
 	handle: ElementHandle,
 	label: string,
-	press: () => Promise<void>,
+	press: (target: ElementHandle) => Promise<void>,
 	timeoutMs: number,
-	options: { readonly signal?: AbortSignal; readonly gesture: Gesture; readonly input: NaturalInput | null },
+	options: {
+		readonly signal?: AbortSignal;
+		readonly gesture: Gesture;
+		readonly input: NaturalInput | null;
+		readonly relocation?: HandleRelocation;
+	},
 ): Promise<void> {
-	const { signal, gesture, input } = options;
+	const { signal, gesture, input, relocation } = options;
 	const spread: PressAim | null = input ? { kind: "spread", ...input.aim() } : null;
 	const started = Date.now();
 	let centred = false;
 	let placed = false;
 	/** The point the pointer went to for this press: the aim that finds it again, and where it is in the top document. */
 	let arrived: { readonly aim: PressAim; readonly at: FramePoint } | null = null;
-	for (;;) {
-		const aim = arrived?.aim ?? spread;
-		const probe = (await untilAborted(signal, () =>
-			handle.evaluate(probePress, gesture.kind === "click", aim),
-		)) as PressProbe;
-		const elapsed = Date.now() - started;
-		if (probe.kind === "detached") {
-			throw new DetachedPressTarget(
-				`${label}: the element left the page before it was pressed, so nothing was pressed.`,
-			);
-		}
-		if (!placed) {
-			placed = true;
-			if (!(await untilAborted(signal, () => handle.isIntersectingViewport({ threshold: 1 })))) {
-				if (!(input && (await input.scrollIntoView(handle, signal)))) {
-					await untilAborted(signal, () => handle.scrollIntoView());
-				}
-				continue;
-			}
-		}
-		let cover = probe.kind === "covered" ? probe.by : null;
-		if (probe.kind === "clear") {
-			// A point clear in the element's own frame can still be covered by the page above that frame.
-			const centre = await untilAborted(signal, () => reachThroughFrames(handle.frame, probe.point));
-			cover = centre.cover;
-			if (centre.cover === null) {
-				if (!input || !aim || !probe.point || !centre.at) {
-					await untilAborted(signal, press);
-					return;
-				}
-				const aimed = probe.aimed;
-				const aimedReach = aimed
-					? await untilAborted(signal, () => reachThroughFrames(handle.frame, aimed))
-					: undefined;
-				const aimedAt = aimedReach?.cover === null ? aimedReach.at : undefined;
-				if (arrived) {
-					const rest = arrived.at;
-					if (aimedAt && Math.hypot(aimedAt.x - rest.x, aimedAt.y - rest.y) <= SAME_POINT_PX) {
-						if (gesture.kind === "click") await untilAborted(signal, () => input.click(gesture, signal));
-						return;
+	let target = handle;
+	/** The element that replaced `handle`, released once the press ends. */
+	let replacement: ElementHandle | null = null;
+	/** Detachments since the last probe that found the element in the document. */
+	let detachments = 0;
+	try {
+		for (;;) {
+			try {
+				const aim = arrived?.aim ?? spread;
+				const probe = (await untilAborted(signal, () =>
+					target.evaluate(probePress, gesture.kind === "click", aim),
+				)) as PressProbe;
+				const elapsed = Date.now() - started;
+				if (probe.kind === "detached") {
+					const fresh = relocation && detachments < RELOCATION_ATTEMPTS ? await relocation.relocate() : null;
+					if (!fresh) {
+						const cause = `${label}: the element left the page before it was pressed, so nothing was pressed.`;
+						throw relocation ? relocation.stale(cause) : new DetachedPressTarget(cause);
 					}
-					if (elapsed >= timeoutMs) {
-						throw new ToolError(
-							`${label}: the element kept moving from under the pointer for ${timeoutMs} ms, so nothing was pressed.`,
-						);
-					}
-					arrived = null;
+					detachments++;
+					await releaseHandle(replacement);
+					replacement = target = fresh;
 					continue;
 				}
-				const next: { readonly aim: PressAim; readonly at: FramePoint } =
-					aimed && aimedAt
-						? { aim: { kind: "at", x: aimed.x, y: aimed.y, strict: true }, at: aimedAt }
-						: { aim: { kind: "at", x: probe.point.x, y: probe.point.y, strict: false }, at: centre.at };
-				await input.moveTo(next.at, probe.size ?? { width: 1, height: 1 }, signal);
-				if (gesture.kind === "click") await input.dwell(signal);
-				arrived = next;
-				continue;
+				detachments = 0;
+				if (!placed) {
+					placed = true;
+					if (!(await untilAborted(signal, () => target.isIntersectingViewport({ threshold: 1 })))) {
+						if (!(input && (await input.scrollIntoView(target, signal, relocation?.relocate)))) {
+							await untilAborted(signal, () => (relocation ? scrollConnected(target) : target.scrollIntoView()));
+						}
+						continue;
+					}
+				}
+				let cover = probe.kind === "covered" ? probe.by : null;
+				if (probe.kind === "clear") {
+					// A point clear in the element's own frame can still be covered by the page above that frame.
+					const centre = await untilAborted(signal, () => reachThroughFrames(target.frame, probe.point));
+					cover = centre.cover;
+					if (centre.cover === null) {
+						if (!input || !aim || !probe.point || !centre.at) {
+							await untilAborted(signal, () => press(target));
+							return;
+						}
+						const aimed = probe.aimed;
+						const aimedReach = aimed
+							? await untilAborted(signal, () => reachThroughFrames(target.frame, aimed))
+							: undefined;
+						const aimedAt = aimedReach?.cover === null ? aimedReach.at : undefined;
+						if (arrived) {
+							const rest = arrived.at;
+							if (aimedAt && Math.hypot(aimedAt.x - rest.x, aimedAt.y - rest.y) <= SAME_POINT_PX) {
+								if (gesture.kind === "click") await untilAborted(signal, () => input.click(gesture, signal));
+								return;
+							}
+							if (elapsed >= timeoutMs) {
+								throw new ToolError(
+									`${label}: the element kept moving from under the pointer for ${timeoutMs} ms, so nothing was pressed.`,
+								);
+							}
+							arrived = null;
+							continue;
+						}
+						const next: { readonly aim: PressAim; readonly at: FramePoint } =
+							aimed && aimedAt
+								? { aim: { kind: "at", x: aimed.x, y: aimed.y, strict: true }, at: aimedAt }
+								: { aim: { kind: "at", x: probe.point.x, y: probe.point.y, strict: false }, at: centre.at };
+						await input.moveTo(next.at, probe.size ?? { width: 1, height: 1 }, signal);
+						if (gesture.kind === "click") await input.dwell(signal);
+						arrived = next;
+						continue;
+					}
+				}
+				if (cover !== null && !centred) {
+					centred = true;
+					arrived = null;
+					if (!(input && (await input.scrollIntoView(target, signal)))) {
+						await untilAborted(signal, () => target.evaluate(centreInView));
+					}
+					continue;
+				}
+				if (cover !== null && elapsed >= Math.min(timeoutMs, COVERED_WAIT_MS)) {
+					throw new ToolError(
+						`${label}: ${cover} covers the point it would press, so nothing was pressed. Dismiss it (tab.press("Escape"), or a click outside it) or act on it instead.`,
+					);
+				}
+				if (probe.kind === "disabled" && elapsed >= timeoutMs) {
+					throw new ToolError(
+						`${label}: the element stayed disabled for ${timeoutMs} ms, so nothing was pressed.`,
+					);
+				}
+				await delay(COVERED_POLL_MS, undefined, { signal });
+			} catch (error) {
+				// A node the page replaced between the probe and the press: the next probe relocates it.
+				if (!relocation || !(await leftTheDocument(target, error))) throw error;
 			}
 		}
-		if (cover !== null && !centred) {
-			centred = true;
-			arrived = null;
-			if (!(input && (await input.scrollIntoView(handle, signal)))) {
-				await untilAborted(signal, () => handle.evaluate(centreInView));
-			}
-			continue;
-		}
-		if (cover !== null && elapsed >= Math.min(timeoutMs, COVERED_WAIT_MS)) {
-			throw new ToolError(
-				`${label}: ${cover} covers the point it would press, so nothing was pressed. Dismiss it (tab.press("Escape"), or a click outside it) or act on it instead.`,
-			);
-		}
-		if (probe.kind === "disabled" && elapsed >= timeoutMs) {
-			throw new ToolError(`${label}: the element stayed disabled for ${timeoutMs} ms, so nothing was pressed.`);
-		}
-		await delay(COVERED_POLL_MS, undefined, { signal });
+	} finally {
+		await releaseHandle(replacement);
 	}
 }
 
@@ -1443,7 +1604,7 @@ async function clickQueryHandlerText(
 					? pressUncovered(
 							target,
 							`tab.click(${JSON.stringify(selector)})`,
-							() => target.click(),
+							element => element.click(),
 							Math.max(1, timeoutMs - (Date.now() - start)),
 							{ signal: clickSignal, gesture: { kind: "click" }, input },
 						)
@@ -1602,7 +1763,13 @@ export class WorkerCore {
 	#browser?: Browser;
 	#page?: Page;
 	#targetId?: string;
-	#elementCache = new Map<number, ElementHandle>();
+	#elementCache = new Map<number, { handle: ElementHandle; identity: ElementIdentity | null }>();
+	/** Handles an id held before a re-render replaced its node; released with the cache. */
+	#retiredHandles: ElementHandle[] = [];
+	/** Role and name of each ref the latest whole-page ARIA snapshot held once; null when it held it more often. */
+	#ariaRefIdentities = new Map<string, ElementIdentity | null>();
+	/** The document the latest whole-page ARIA snapshot read; a ref relocates only while it is the page's. */
+	#ariaSnapshotDocument?: JSHandle;
 	#elementCounter = 0;
 	#active: ActiveRun | null = null;
 	#runtime: JsRuntime | null = null;
@@ -1697,8 +1864,8 @@ export class WorkerCore {
 		return this.#elementCounter;
 	}
 
-	cacheElement(id: number, handle: ElementHandle): void {
-		this.#elementCache.set(id, handle);
+	cacheElement(id: number, handle: ElementHandle, identity: ElementIdentity | null): void {
+		this.#elementCache.set(id, { handle, identity });
 	}
 
 	async #handleMessage(msg: TabWorkerInbound): Promise<void> {
@@ -2335,7 +2502,7 @@ export class WorkerCore {
 					// Default to "load" because dev servers with HMR/WS never reach networkidle.
 					// budgetBound (not the full cell) so a hung navigation fails named and
 					// catchable inside the run instead of dying with the whole cell.
-					await untilAborted(sig, () => page.goto(url, { waitUntil: waitUntil ?? "load", timeout: budgetBound }));
+					await this.#navigate(label, page, url, waitUntil ?? "load", budgetBound, sig);
 				} catch (err) {
 					if (isTimeoutError(err)) {
 						// Abandon the hung navigation NOW — a still-pending load stalls every
@@ -2376,6 +2543,7 @@ export class WorkerCore {
 						try {
 							const capture = await untilAborted(sig, () => captureAriaSnapshot(page, root, opts));
 							this.#snapshotFrames = capture.frames;
+							await this.#recordAriaRefs(page, capture, root === null);
 							return capture.text;
 						} finally {
 							await releaseHandle(root);
@@ -2420,12 +2588,10 @@ export class WorkerCore {
 						const handle = await this.#resolveActionHandle(target, actionOpMs, sig);
 						try {
 							const input = active.input;
-							if (input === null) {
-								await untilAborted(sig, () => handle.type(text, { delay: 0 }));
-							} else {
-								await untilAborted(sig, () => handle.focus());
-								await input.type(text, typingWithin(started), sig);
-							}
+							// Focused in the evaluation that checks the node, so a ref's re-rendered element takes the keys.
+							await untilAborted(sig, () => onElement(handle, focusConnected));
+							if (input === null) await untilAborted(sig, () => page.keyboard.type(text));
+							else await input.type(text, typingWithin(started), sig);
 						} finally {
 							await releaseHandle(handle);
 						}
@@ -2443,7 +2609,9 @@ export class WorkerCore {
 						const handle = await this.#resolveActionHandle(target, actionOpMs, sig, { visible: true });
 						try {
 							const input = active.input;
-							await fillViaHandle(handle, value, sig, input && { input, withinMs: typingWithin(started) });
+							await onElement(handle, element =>
+								fillViaHandle(element, value, sig, input && { input, withinMs: typingWithin(started) }),
+							);
 						} finally {
 							await releaseHandle(handle);
 						}
@@ -2460,7 +2628,7 @@ export class WorkerCore {
 						if (target !== undefined) {
 							const handle = await this.#resolveActionHandle(target, actionOpMs, sig);
 							try {
-								await untilAborted(sig, () => handle.focus());
+								await untilAborted(sig, () => onElement(handle, focusConnected));
 							} finally {
 								await releaseHandle(handle);
 							}
@@ -2545,8 +2713,11 @@ export class WorkerCore {
 						try {
 							// The wheel brings the element near the centre; an instant scroll centres one it cannot.
 							const input = active.input;
-							if (input && (await input.scrollIntoView(handle, sig))) return;
-							await untilAborted(sig, () => handle.evaluate(centreInView));
+							const relocation = relocations.get(handle);
+							await onElement(handle, async element => {
+								if (input && (await input.scrollIntoView(element, sig, relocation?.relocate))) return;
+								await untilAborted(sig, () => scrollConnected(element));
+							});
 						} finally {
 							await releaseHandle(handle);
 						}
@@ -2603,7 +2774,8 @@ export class WorkerCore {
 		)) as SerializedAXNode | null;
 		if (!snapshot) throw new ToolError("Accessibility snapshot unavailable");
 		const entries: ObservationEntry[] = [];
-		await collectObservationEntries(this, snapshot, entries, { includeAll, viewportOnly });
+		const identities = countIdentities(snapshot, includeAll, new Map());
+		await collectObservationEntries(this, snapshot, entries, { includeAll, viewportOnly, identities });
 		const { dpr, ...scroll } = (await untilAborted(options.signal, () =>
 			page.evaluate(() => {
 				const win = globalThis as unknown as {
@@ -2660,7 +2832,7 @@ export class WorkerCore {
 		const explicitPath = opts.save ? resolveToCwd(opts.save, session.cwd) : undefined;
 		const captureType = explicitPath ? imageFormatForPath(explicitPath) : "png";
 		const captureMime = `image/${captureType}` as const;
-		let buffer: Buffer;
+		let params: CaptureParams;
 		if (opts.selector) {
 			const handle = (await untilAborted(signal, () =>
 				page.$(normalizeSelector(opts.selector!)),
@@ -2681,18 +2853,26 @@ export class WorkerCore {
 					),
 					"the capture renders the clipped region whether or not the scroll landed",
 				);
-				// scrollIntoView:false skips the same IntersectionObserver check inside screenshot();
-				// captureBeyondViewport (puppeteer's default) still renders the clipped region.
-				const shotOpts: ElementScreenshotOptions = { type: captureType, scrollIntoView: false };
-				buffer = (await untilAborted(signal, () => handle.screenshot(shotOpts))) as Buffer;
+				// captureBeyondViewport renders the clipped region even where it leaves the viewport.
+				params = {
+					format: captureType,
+					captureBeyondViewport: true,
+					clip: await untilAborted(signal, () => elementClip(page, handle)),
+				};
 			} finally {
 				await releaseHandle(handle);
 			}
 		} else {
-			buffer = (await untilAborted(signal, () => page.screenshot({ type: captureType, fullPage }))) as Buffer;
+			params = { format: captureType, captureBeyondViewport: fullPage };
 		}
+		const data = await hedgeCapture(() => startCapture(page, params), {
+			hedgeAfterMs: CAPTURE_HEDGE_MS,
+			maxAttempts: CAPTURE_MAX_ATTEMPTS,
+			signal,
+		});
+		const buffer = Buffer.from(data, "base64");
 		const resized = await resizeImage(
-			{ type: "image", data: buffer.toBase64(), mimeType: captureMime },
+			{ type: "image", data, mimeType: captureMime },
 			{ maxWidth: 1024, maxHeight: 1024, maxBytes: 150 * 1024, jpegQuality: 70, excludeWebP: session.excludeWebP },
 		);
 		const saveFullRes = !!(explicitPath || session.browserScreenshotDir);
@@ -2736,7 +2916,8 @@ export class WorkerCore {
 	/**
 	 * Press the element `selector` names once nothing covers it ({@link pressUncovered}). A CSS or handler
 	 * selector is resolved again when its element leaves the page before the press, as a re-rendering
-	 * framework replaces it; an `aria-ref` names one snapshot's element and is not.
+	 * framework replaces it; an `aria-ref` press goes on at the single element holding the role and name
+	 * the ref had ({@link HandleRelocation}).
 	 */
 	async #click(
 		selector: string,
@@ -2749,10 +2930,12 @@ export class WorkerCore {
 		if (parseAriaRefSelector(selector) !== null) {
 			const handle = await this.#resolveAriaRef(selector);
 			try {
-				await pressUncovered(handle, label, () => handle.click(), pressMs, {
+				const relocation = relocations.get(handle);
+				await pressUncovered(handle, label, puppeteerPress("click", relocation !== undefined), pressMs, {
 					signal,
 					gesture: { kind: "click" },
 					input,
+					relocation,
 				});
 			} finally {
 				await releaseHandle(handle);
@@ -2769,7 +2952,7 @@ export class WorkerCore {
 			const remaining = Math.max(1, pressMs - (Date.now() - started));
 			const handle = await this.#resolveActionHandle(selector, remaining, signal, { visible: true });
 			try {
-				await pressUncovered(handle, label, () => handle.click(), remaining, {
+				await pressUncovered(handle, label, element => element.click(), remaining, {
 					signal,
 					gesture: { kind: "click" },
 					input,
@@ -2916,7 +3099,7 @@ export class WorkerCore {
 					await pressUncovered(
 						option,
 						"tab.select()",
-						() => option.click(),
+						element => element.click(),
 						Math.max(1, timeoutMs - PRESS_REPORT_MARGIN_MS),
 						{ signal, gesture: { kind: "click" }, input },
 					);
@@ -2996,7 +3179,7 @@ export class WorkerCore {
 			}
 			const remaining = Math.max(1, timeoutMs - PRESS_REPORT_MARGIN_MS - (Date.now() - started));
 			const chooser = markHandled(page.waitForFileChooser({ timeout: remaining, signal }));
-			await pressUncovered(handle, label, () => handle.click(), remaining, {
+			await pressUncovered(handle, label, element => element.click(), remaining, {
 				signal,
 				gesture: { kind: "click" },
 				input,
@@ -3049,6 +3232,66 @@ export class WorkerCore {
 		);
 	}
 
+	/**
+	 * `page.goto(url)`, sent again once when another main-frame navigation aborted it. Chromium
+	 * cancels a pending navigation when a newer one starts in the same frame, as one the page starts
+	 * from a click handler (a script redirect, a meta refresh, a reload, a form submission) does, and
+	 * `page.goto` reports that as `net::ERR_ABORTED`, the same error as a URL that answers with a
+	 * download or with no content. A main-frame navigation request to another URL separates the two:
+	 * a download sends none, so it is never sent twice. That request is reported after the abort, so
+	 * an abort waits up to {@link NAVIGATION_INTERRUPT_GRACE_MS} for it.
+	 */
+	async #navigate(
+		label: string,
+		page: Page,
+		url: string,
+		waitUntil: PuppeteerLifeCycleEvent,
+		timeout: number,
+		signal: AbortSignal,
+	): Promise<void> {
+		const own = navigationKey(url);
+		let interrupter: string | undefined;
+		let noticed: (() => void) | undefined;
+		const onRequest = (request: HTTPRequest): void => {
+			if (interrupter !== undefined || !request.isNavigationRequest() || request.frame() !== page.mainFrame())
+				return;
+			if (request.redirectChain().length !== 0 || navigationKey(request.url()) === own) return;
+			interrupter = request.url();
+			noticed?.();
+		};
+		page.on("request", onRequest);
+		try {
+			for (let attempt = 1; ; attempt++) {
+				interrupter = undefined;
+				try {
+					await untilAborted(signal, () => page.goto(url, { waitUntil, timeout }));
+					return;
+				} catch (err) {
+					if (!errorMessage(err).includes("net::ERR_ABORTED")) throw err;
+					if (interrupter === undefined) {
+						const { promise, resolve } = Promise.withResolvers<void>();
+						noticed = resolve;
+						const grace = setTimeout(resolve, NAVIGATION_INTERRUPT_GRACE_MS);
+						try {
+							await untilAborted(signal, () => promise);
+						} finally {
+							clearTimeout(grace);
+							noticed = undefined;
+						}
+						if (interrupter === undefined) throw err;
+					}
+					if (attempt === 2) {
+						throw new ToolError(
+							`${label} was aborted twice by other navigations, the last to ${interrupter}; wait for the page to settle (tab.waitForNavigation()) and retry`,
+						);
+					}
+				}
+			}
+		} finally {
+			page.off("request", onRequest);
+		}
+	}
+
 	async #waitForUrl(pattern: string | RegExp, timeout: number, signal: AbortSignal): Promise<string> {
 		const page = this.#requirePage();
 		const isRegex = pattern instanceof RegExp;
@@ -3084,32 +3327,102 @@ export class WorkerCore {
 		return (await untilAborted(signal, () => page.waitForResponse(predicate, { timeout, signal }))) as HTTPResponse;
 	}
 
+	/**
+	 * The element behind an observe id. A node the page re-rendered out of the document is replaced
+	 * by the single element holding its role and name (see `element-identity.ts`); a node whose
+	 * document a navigation replaced, or one with no single replacement, makes every id stale. The
+	 * handle's relocation is registered for the actions that act on it.
+	 */
 	async #resolveCachedHandle(id: number): Promise<ElementHandle> {
-		const handle = this.#elementCache.get(id);
-		if (!handle) throw new ToolError(`Unknown element id ${id}. Run tab.observe() to refresh the element list.`);
-		try {
-			const isConnected = (await handle.evaluate(el => el.isConnected)) as boolean;
-			if (!isConnected) {
-				this.#clearElementCache();
-				throw new ToolError(`Element id ${id} is stale. Run tab.observe() again.`);
-			}
-		} catch (err) {
-			if (err instanceof ToolError) throw err;
+		const entry = this.#elementCache.get(id);
+		if (!entry) throw new ToolError(`Unknown element id ${id}. Run tab.observe() to refresh the element list.`);
+		const page = this.#requirePage();
+		const { identity } = entry;
+		const relocation: HandleRelocation = {
+			relocate: () => (identity ? relocateElement(page, identity) : Promise.resolve(null)),
+			stale: cause =>
+				new ToolError(
+					`Element id ${id} is stale (${cause})${identity ? `, and no single element with role ${JSON.stringify(identity.role)} and name ${JSON.stringify(identity.name)} replaced it` : ""}. Run tab.observe() again.`,
+				),
+		};
+		const connected = await optionalResult(
+			entry.handle.evaluate(el => el.isConnected),
+			"a node whose document was replaced cannot be evaluated, and that makes it stale",
+		);
+		if (connected === undefined) {
 			this.#clearElementCache();
-			throw new ToolError(`Element id ${id} is stale. Run tab.observe() again.`);
+			throw new ToolError(`Element id ${id} is stale (the page navigated). Run tab.observe() again.`);
 		}
-		return handle;
+		if (!connected) {
+			const fresh = await relocation.relocate();
+			if (!fresh) {
+				this.#clearElementCache();
+				throw relocation.stale("the page re-rendered it");
+			}
+			// A handle an earlier tab.id() returned stays usable: its actions relocate on their own.
+			this.#retiredHandles.push(entry.handle);
+			entry.handle = fresh;
+		}
+		relocations.set(entry.handle, relocation);
+		return entry.handle;
 	}
 
+	/**
+	 * The element behind an ARIA ref of the latest snapshot. A ref whose element the page re-rendered
+	 * resolves to the single element holding the role and name the ref had, as long as the document
+	 * the snapshot read is still the page's. The handle's relocation is registered for the actions
+	 * that act on it.
+	 */
 	async #resolveAriaRef(id: string): Promise<ElementHandle> {
 		const ref = parseAriaRefSelector(id) ?? id.trim();
-		const handle = await resolveAriaRefHandle(this.#requirePage(), ref, this.#snapshotFrames);
+		const page = this.#requirePage();
+		const identity = this.#ariaRefIdentities.get(ref) ?? null;
+		const snapshotDocument = this.#ariaSnapshotDocument;
+		const relocation: HandleRelocation = {
+			relocate: async () => {
+				if (!identity || !snapshotDocument) return null;
+				const sameDocument = await optionalResult(
+					snapshotDocument.evaluate(() => true),
+					"a document a navigation replaced cannot be evaluated, and its refs name nothing on the next page",
+				);
+				return sameDocument === true ? relocateElement(page, identity) : null;
+			},
+			stale: cause =>
+				new ToolError(
+					`ARIA ref ${JSON.stringify(ref)} is stale (${cause})${identity ? `, and no single element with role ${JSON.stringify(identity.role)} and name ${JSON.stringify(identity.name)} replaced it` : ""}. Run tab.ariaSnapshot() to refresh refs.`,
+				),
+		};
+		const handle = (await resolveAriaRefHandle(page, ref, this.#snapshotFrames)) ?? (await relocation.relocate());
 		if (!handle) {
 			throw new ToolError(
 				`Unknown ARIA ref ${JSON.stringify(ref)}. Run tab.ariaSnapshot() to refresh refs (they renumber each snapshot).`,
 			);
 		}
+		relocations.set(handle, relocation);
 		return handle;
+	}
+
+	/**
+	 * Keep the ref identities of a snapshot: each ref's role and name when the snapshot held that
+	 * pair once, and the document it read. A snapshot of a subtree keeps none, since a pair unique
+	 * in the subtree can belong to another element elsewhere in the page.
+	 */
+	async #recordAriaRefs(page: Page, capture: AriaSnapshotCapture, wholePage: boolean): Promise<void> {
+		const identities = new Map<string, ElementIdentity | null>();
+		if (wholePage) {
+			const counts = new Map<string, number>();
+			for (const [, role, name] of capture.refs) {
+				const key = `${role}\n${name}`;
+				counts.set(key, (counts.get(key) ?? 0) + 1);
+			}
+			for (const [ref, role, name] of capture.refs) {
+				identities.set(ref, counts.get(`${role}\n${name}`) === 1 ? { role, name } : null);
+			}
+		}
+		this.#ariaRefIdentities = identities;
+		const previous = this.#ariaSnapshotDocument;
+		this.#ariaSnapshotDocument = wholePage ? await page.evaluateHandle("document") : undefined;
+		void releaseHandle(previous);
 	}
 
 	/**
@@ -3130,15 +3443,14 @@ export class WorkerCore {
 			(opts?.visible ? locator.setVisibility("visible") : locator).waitHandle({ signal: sig }),
 		)) as ElementHandle;
 	}
+
 	#clearElementCache(): void {
-		if (this.#elementCache.size === 0) {
-			this.#elementCounter = 0;
-			return;
-		}
-		const handles = Array.from(this.#elementCache.values());
-		this.#elementCache.clear();
 		this.#elementCounter = 0;
-		for (const handle of handles) void releaseHandle(handle);
+		if (this.#elementCache.size === 0 && this.#retiredHandles.length === 0) return;
+		const released = [...Array.from(this.#elementCache.values(), entry => entry.handle), ...this.#retiredHandles];
+		this.#elementCache.clear();
+		this.#retiredHandles = [];
+		void releaseHandles(released);
 	}
 
 	/** Best-effort `Page.stopLoading` so an abandoned navigation cannot stall later ops. */
@@ -3160,6 +3472,8 @@ export class WorkerCore {
 	async #close(): Promise<void> {
 		this.#unsub();
 		this.#clearElementCache();
+		void releaseHandle(this.#ariaSnapshotDocument);
+		this.#ariaSnapshotDocument = undefined;
 		const page = this.#page;
 		if (this.#dialogHandler && page && !page.isClosed()) page.off("dialog", this.#dialogHandler);
 		// The worker is shutting down and reports `closed` below regardless: a page that will not close is either

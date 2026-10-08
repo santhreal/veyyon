@@ -17,8 +17,6 @@ import { promisify } from "node:util";
 import { gunzip } from "node:zlib";
 import { Glob } from "bun";
 
-const docsEmbed = process.env.VEYYON_DOCS_EMBED ?? "";
-
 const gunzipAsync = promisify(gunzip);
 
 export interface DocsIndex {
@@ -73,6 +71,11 @@ function readDocsFromDisk(): DocsIndex {
 let index: DocsIndex | undefined;
 function getIndex(): DocsIndex {
 	if (index !== undefined) return index;
+	// The build replaces this read with the payload literal. JSC materializes a function's string
+	// constants on its first call and a module's top-level constants when the module loads, so the
+	// literal reaches the heap only once a `veyyon://` URL is resolved. Linking the module's chunk still
+	// pages in part of it, which is why `./veyyon-protocol` imports this module on first use.
+	const docsEmbed = process.env.VEYYON_DOCS_EMBED ?? "";
 	// Empty placeholder → dev tree / source checkout: read docs from disk.
 	if (docsEmbed.length === 0) {
 		index = readDocsFromDisk();

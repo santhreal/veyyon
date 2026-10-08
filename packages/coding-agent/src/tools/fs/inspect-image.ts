@@ -4,8 +4,8 @@ import type { Api, ImageContent, Model, ToolExample } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { completeSimple } from "@veyyon/ai/stream";
 import "@veyyon/ai/usage/defaults";
-import { prompt } from "@veyyon/utils";
-import { type } from "arktype";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { lazy, prompt } from "@veyyon/utils";
 import { extractTextContent } from "../../commit/utils";
 
 import { expandRoleAlias, getModelMatchPreferences, resolveModelFromString } from "../../config/model-resolver";
@@ -22,13 +22,15 @@ import { ToolError } from "../core/tool-errors";
 import type { ToolSession } from "../index";
 import { inspectImageToolView } from "./inspect-image-view";
 
-const inspectImageSchema = type({
-	path: type("string").describe("image file path, Image #N label, or attachment://N URI"),
-	question: type("string").describe("question about image"),
-	"+": "reject",
-});
+const inspectImageSchema = lazy(() =>
+	type({
+		path: type("string").describe("image file path, Image #N label, or attachment://N URI"),
+		question: type("string").describe("question about image"),
+		"+": "reject",
+	}),
+);
 
-export type InspectImageParams = typeof inspectImageSchema.infer;
+export type InspectImageParams = typeof inspectImageSchema.value.infer;
 
 interface ImageAttachmentReference {
 	index: number;
@@ -101,7 +103,7 @@ export interface InspectImageToolDetails {
 	mimeType: string;
 }
 
-export class InspectImageTool implements AgentTool<typeof inspectImageSchema, InspectImageToolDetails> {
+export class InspectImageTool implements AgentTool<typeof inspectImageSchema.value, InspectImageToolDetails> {
 	readonly name = "inspect_image";
 	readonly approval = "read" as const;
 	// `inspect_image` reads a file by path like `read`, so it joins the cwd
@@ -111,11 +113,13 @@ export class InspectImageTool implements AgentTool<typeof inspectImageSchema, In
 	readonly loadMode = "discoverable";
 	readonly summary = "Describe or analyze an image file";
 	readonly description: string;
-	readonly parameters = inspectImageSchema;
+	get parameters(): typeof inspectImageSchema.value {
+		return inspectImageSchema.value;
+	}
 	readonly strict = false;
 	readonly view = inspectImageToolView;
 
-	readonly examples: readonly ToolExample<typeof inspectImageSchema.infer>[] = [
+	readonly examples: readonly ToolExample<typeof inspectImageSchema.value.infer>[] = [
 		{
 			caption: "OCR with strict formatting",
 			call: {

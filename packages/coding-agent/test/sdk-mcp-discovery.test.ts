@@ -49,6 +49,11 @@ function createReasoningModel(): Model<"openai-responses"> {
 
 const oldSessionMtime = new Date("2000-01-01T00:00:00.000Z");
 
+/**
+ * `SessionToolDiscovery` in `session/tool-discovery.ts`, driven through `createAgentSession`: the discovery
+ * mode a session starts in, the `search_tool_bm25` registration it implies, the MCP tools it selects by
+ * default, and the guidance the system prompt carries for each mode.
+ */
 describe("createAgentSession MCP discovery prompt gating", () => {
 	let tempDir: string;
 	let registryDir: string;

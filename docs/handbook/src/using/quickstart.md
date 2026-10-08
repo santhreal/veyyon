@@ -11,7 +11,7 @@ which vey
 vey --version
 ```
 
-If it is missing, the one-command installer wires up your PATH, shell completions, and the `vey` alias:
+If it is missing, the one-command installer sets up your PATH, shell completions, and the `vey` alias:
 
 ```shell
 curl -fsSL https://get.veyyon.dev | sh

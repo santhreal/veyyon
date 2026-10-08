@@ -13,9 +13,10 @@
  */
 import { instrumentedCompleteSimple, resolveTelemetry } from "@veyyon/agent-core";
 import type { Api, Model, Tool } from "@veyyon/ai";
+import { type } from "@veyyon/ai/utils/schema/arktype";
 import { Effort } from "@veyyon/catalog/effort";
 import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
-import { type } from "arktype";
+import { lazy } from "@veyyon/utils";
 import { extractTextContent, extractToolCall, parseJsonPayload } from "../commit/utils";
 
 import {
@@ -43,12 +44,14 @@ const TIER_TO_PATTERN: Record<CompletionTier, string> = {
 	slow: "@slow",
 };
 
-const completionArgsSchema = type({
-	prompt: "string>0",
-	"model?": "'smol'|'default'|'slow'",
-	"system?": "string",
-	"schema?": "Record<string,unknown>",
-});
+const completionArgsSchema = lazy(() =>
+	type({
+		prompt: "string>0",
+		"model?": "'smol'|'default'|'slow'",
+		"system?": "string",
+		"schema?": "Record<string,unknown>",
+	}),
+);
 
 export interface EvalCompletionBridgeOptions extends EvalBridgeOptions {}
 
@@ -149,7 +152,7 @@ export async function runEvalCompletion(
 	args: unknown,
 	options: EvalCompletionBridgeOptions,
 ): Promise<EvalCompletionResult> {
-	const parsed = completionArgsSchema(args);
+	const parsed = completionArgsSchema.value(args);
 	if (parsed instanceof type.errors) {
 		throw new ToolError(`completion() received invalid arguments: ${parsed.summary}`);
 	}

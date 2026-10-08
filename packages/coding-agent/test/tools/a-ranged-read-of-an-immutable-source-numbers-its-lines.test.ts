@@ -20,6 +20,7 @@
  * be edited (that is a handler decision, pinned by the handler suites), or a future read path that
  * builds its own display mode without going through `resolveFileDisplayMode`.
  */
+// Subject module: tools/fs/read-in-memory.ts, driven through the read tool.
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";

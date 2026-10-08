@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Line } from "react-chartjs-2";
 import { getModelDashboardStats } from "../api";
-import { CHART_THEMES, MODEL_COLORS } from "../components/chart-shared";
+import { CHART_THEMES, MODEL_COLORS, topModelLabels } from "../components/chart-shared";
 import {
 	DetailChartEmpty,
 	detailChartPlugins,
@@ -169,53 +169,22 @@ function buildModelPreferenceSeries(
 } {
 	if (points.length === 0) return { data: [], series: [] };
 
-	const totals = new Map<string, { model: string; provider: string; total: number }>();
-	for (const point of points) {
-		const key = `${point.model}::${point.provider}`;
-		const existing = totals.get(key);
-		if (existing) {
-			existing.total += point.requests;
-		} else {
-			totals.set(key, {
-				model: point.model,
-				provider: point.provider,
-				total: point.requests,
-			});
-		}
-	}
-
-	const sorted = Array.from(totals.entries())
-		.map(([key, value]) => ({ key, ...value }))
-		.sort((a, b) => b.total - a.total);
-	const topEntries = sorted.slice(0, topN);
-	const topKeys = new Set(topEntries.map(entry => entry.key));
-
-	const topModelCounts = new Map<string, number>();
-	for (const entry of topEntries) {
-		topModelCounts.set(entry.model, (topModelCounts.get(entry.model) ?? 0) + 1);
-	}
-
-	const labelByKey = new Map<string, string>();
-	for (const entry of topEntries) {
-		const showProvider = (topModelCounts.get(entry.model) ?? 0) > 1;
-		labelByKey.set(entry.key, showProvider ? `${entry.model} (${entry.provider})` : entry.model);
-	}
+	const labelByKey = topModelLabels(points, topN, point => point.requests);
 
 	const dataMap = new Map<number, Record<string, number>>();
 
 	for (const point of points) {
-		const key = `${point.model}::${point.provider}`;
+		const seriesLabel = labelByKey.get(`${point.model}::${point.provider}`) ?? "Other";
 		const bucket = dataMap.get(point.timestamp) ?? {
 			timestamp: point.timestamp,
 			total: 0,
 		};
 		bucket.total += point.requests;
-		const seriesLabel = topKeys.has(key) ? (labelByKey.get(key) ?? point.model) : "Other";
 		bucket[seriesLabel] = (bucket[seriesLabel] ?? 0) + point.requests;
 		dataMap.set(point.timestamp, bucket);
 	}
 
-	const series = topEntries.map(entry => labelByKey.get(entry.key) ?? entry.model);
+	const series = Array.from(labelByKey.values());
 	if (Array.from(dataMap.values()).some(row => (row.Other ?? 0) > 0)) {
 		series.push("Other");
 	}

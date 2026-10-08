@@ -44,10 +44,11 @@ import type { Api, Model } from "../src/types";
 /**
  * The version the current writer stamps on a row. Bumping
  * `CACHE_SCHEMA_VERSION` retires cached records whose persisted contract has
- * changed. v11 adds the row-content fingerprint consumed by static-registry
- * snapshots; v10 retired gateway rows with assumed limits.
+ * changed. v12 retired rows whose sparse compat held a resolved record; v11
+ * adds the row-content fingerprint consumed by static-registry snapshots; v10
+ * retired gateway rows with assumed limits.
  */
-const EXPECTED_CACHE_VERSION = 11;
+const EXPECTED_CACHE_VERSION = 12;
 
 const TTL_MS = 24 * 60 * 60 * 1000;
 

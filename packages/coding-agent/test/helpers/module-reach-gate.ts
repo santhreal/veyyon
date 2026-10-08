@@ -1,9 +1,12 @@
+import * as fs from "node:fs";
 import * as path from "node:path";
 import {
 	createModuleReachCache,
+	dynamicImportSpecifiersIn,
 	type ModuleReachResolution,
 	moduleReach,
 	moduleReachCount,
+	resolveModuleSpecifier,
 } from "@veyyon/utils/module-reach";
 import { workspaceModuleReachResolution } from "@veyyon/utils/module-reach-workspace";
 
@@ -70,4 +73,32 @@ export function reachedNames(relative: string): string[] {
 	return [...moduleReach(path.join(SRC, relative), RESOLUTION, CACHE)]
 		.map(file => path.relative(PACKAGES, file))
 		.sort();
+}
+
+/** The tool dispatch table and every per-domain manifest beside it. */
+export function toolTables(): string[] {
+	const tools = path.join(SRC, "tools");
+	const manifests = fs
+		.readdirSync(tools, { withFileTypes: true })
+		.filter(entry => entry.isDirectory())
+		.map(entry => path.join(tools, entry.name, "manifest.ts"))
+		.filter(file => fs.existsSync(file));
+	return [path.join(tools, "index.ts"), ...manifests];
+}
+
+/**
+ * Every module a tool table loads through `await import(...)`, resolved, and the specifiers that resolve
+ * to nothing. A session builds its tools from these, so a gate on what a launch evaluates sweeps them.
+ */
+export function lazyToolModules(): { modules: string[]; unresolved: string[] } {
+	const modules = new Set<string>();
+	const unresolved: string[] = [];
+	for (const table of toolTables()) {
+		for (const specifier of dynamicImportSpecifiersIn(fs.readFileSync(table, "utf8"))) {
+			const resolved = resolveModuleSpecifier(table, specifier, RESOLUTION);
+			if (resolved === undefined) unresolved.push(`${path.relative(SRC, table)}: ${specifier}`);
+			else modules.add(resolved);
+		}
+	}
+	return { modules: [...modules].sort(), unresolved };
 }

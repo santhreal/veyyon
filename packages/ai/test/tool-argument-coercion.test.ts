@@ -1419,32 +1419,37 @@ describe("Tool argument coercion", () => {
 		expect(result).toEqual({ note: null, tags: [] });
 	});
 
-	it("clones the substituted default so per-call mutations stay local", () => {
-		const tool: Tool = {
-			name: "t-defaulted-isolation",
-			description: "",
-			parameters: z.object({
-				tags: z.array(z.string()).default([]),
-			}),
-		};
+	const DEFAULTED_TAGS: Record<string, Tool["parameters"]> = {
+		Zod: z.object({ tags: z.array(z.string()).default([]) }),
+		"JSON Schema": {
+			type: "object",
+			properties: { tags: { type: "array", items: { type: "string" }, default: [] } },
+			required: ["tags"],
+		} as unknown as Tool["parameters"],
+	};
 
-		const first = validateToolArguments(tool, {
-			type: "toolCall",
-			id: "call-iso-1",
-			name: "t-defaulted-isolation",
-			arguments: { tags: null },
-		}) as { tags: string[] };
-		first.tags.push("leak");
+	for (const [style, parameters] of Object.entries(DEFAULTED_TAGS)) {
+		it(`clones the substituted default so per-call mutations stay local (${style})`, () => {
+			const tool: Tool = { name: "t-defaulted-isolation", description: "", parameters };
 
-		const second = validateToolArguments(tool, {
-			type: "toolCall",
-			id: "call-iso-2",
-			name: "t-defaulted-isolation",
-			arguments: { tags: null },
-		}) as { tags: string[] };
+			const first = validateToolArguments(tool, {
+				type: "toolCall",
+				id: "call-iso-1",
+				name: "t-defaulted-isolation",
+				arguments: { tags: null },
+			}) as { tags: string[] };
+			first.tags.push("leak");
 
-		expect(second.tags).toEqual([]);
-	});
+			const second = validateToolArguments(tool, {
+				type: "toolCall",
+				id: "call-iso-2",
+				name: "t-defaulted-isolation",
+				arguments: { tags: null },
+			}) as { tags: string[] };
+
+			expect(second.tags).toEqual([]);
+		});
+	}
 
 	it("strips null from optional properties without defaults", () => {
 		const tool: Tool = {

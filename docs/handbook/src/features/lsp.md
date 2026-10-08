@@ -1,6 +1,6 @@
 # LSP configuration in Veyyon
 
-This guide explains how to configure language servers for the Veyyon coding agent.
+Veyyon starts language servers from built-in definitions and from `lsp.json`, `lsp.yaml`, or `lsp.yml` config files.
 
 Source of truth in code:
 
@@ -36,7 +36,7 @@ Each location accepts `.json`, `.yaml`, and `.yml` variants, including hidden-fi
 - User-wide preferences → `~/.veyyon/profiles/default/agent/lsp.json`
 - Project-specific overrides → `<project>/.veyyon/lsp.json`
 
-> **Note:** Auto-detection is skipped only when at least one config file contributes server overrides. A config file that only sets `idleTimeoutMs` still lets Veyyon auto-detect built-in servers. When server overrides exist, Veyyon merges them with defaults and then loads servers that have matching `rootMarkers`, an available binary, and are not explicitly `disabled`.
+Auto-detection is skipped only when at least one config file contributes server overrides. A config file that only sets `idleTimeoutMs` still lets Veyyon auto-detect built-in servers. When server overrides exist, Veyyon merges them with defaults and then loads servers that have matching `rootMarkers`, an available binary, and are not explicitly `disabled`.
 
 ## File shape
 

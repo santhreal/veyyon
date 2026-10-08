@@ -410,36 +410,6 @@
         return p;
       }
 
-      function formatToolCall(name, args) {
-        switch (name) {
-          case 'read':
-            // The line selector rides on the path itself (`src/app.ts:50-200`); `limit` is the
-            // directory entry cap, never a line window.
-            return `[read: ${shortenPath(String(args.path || args.file_path || ''))}]`;
-          case 'write':
-            return `[write: ${shortenPath(String(args.path || args.file_path || ''))}]`;
-          case 'edit':
-            return `[edit: ${shortenPath(String(args.path || args.file_path || ''))}]`;
-          case 'bash': {
-            const rawCmd = String(args.command || '');
-            const cmd = rawCmd.replace(/[\n\t]/g, ' ').trim().slice(0, 50);
-            return `[bash: ${cmd}${rawCmd.length > 50 ? '...' : ''}]`;
-          }
-          case 'search': {
-            const type = String(args.type || '?');
-            const input = String(args.input || '');
-            const scope = args.path ? ` in ${shortenPath(String(args.path))}` : '';
-            return `[search:${type} ${input}${scope}]`;
-          }
-          case 'ls':
-            return `[ls: ${shortenPath(String(args.path || '.'))}]`;
-          default: {
-            const argsStr = JSON.stringify(args).slice(0, 40);
-            return `[${name}: ${argsStr}${JSON.stringify(args).length > 40 ? '...' : ''}]`;
-          }
-        }
-      }
-
       // Escapes the five characters that change meaning in markup, in both text
       // and attribute position. The earlier `div.textContent` round-trip escaped
       // only `&`, `<` and `>`: the serializer quotes an attribute value it writes
@@ -509,9 +479,11 @@
             if (msg.role === 'toolResult') {
               const toolCall = msg.toolCallId ? toolCallMap.get(msg.toolCallId) : null;
               if (toolCall) {
-                return labelHtml + `<span class="tree-role-tool">${escapeHtml(formatToolCall(toolCall.name, toolCall.arguments))}</span>`;
+                // `formatToolCallLabel` is published by the tool-views bundle, the same function the
+                // terminal's session tree calls, so a call reads the same in both trees.
+                return labelHtml + `<span class="tree-role-tool">${escapeHtml(formatToolCallLabel(toolCall.name, toolCall.arguments, shortenPath))}</span>`;
               }
-              return labelHtml + `<span class="tree-role-tool">[${msg.toolName || 'tool'}]</span>`;
+              return labelHtml + `<span class="tree-role-tool">[${escapeHtml(msg.toolName || 'tool')}]</span>`;
             }
             if (msg.role === 'bashExecution') {
               const cmd = truncate(normalize(msg.command || ''));

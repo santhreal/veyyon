@@ -8,9 +8,9 @@
 import { scopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import { readSseEvents } from "@veyyon/utils/stream";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
-import { type } from "arktype";
 import type { AuthCredential } from "../auth-storage";
 import { AuthBrokerError, AuthBrokerStreamUnsupportedError } from "../error/classes";
+import { type } from "../utils/schema/arktype";
 import { formatGenerationTag, parseGenerationTag } from "./generation-tag";
 import type {
 	CredentialBlockRequest,
@@ -79,9 +79,6 @@ export class AuthBrokerClient {
 	}
 
 	async fetchSnapshot(opts: FetchSnapshotOptions = {}): Promise<FetchSnapshotResult> {
-		return this.#fetchSnapshotResult(opts);
-	}
-	async #fetchSnapshotResult(opts: FetchSnapshotOptions): Promise<FetchSnapshotResult> {
 		const query = new URLSearchParams();
 		if (opts.waitMs !== undefined) query.set("wait", String(opts.waitMs));
 		const path = `/v1/snapshot${query.size > 0 ? `?${query.toString()}` : ""}`;
@@ -99,15 +96,12 @@ export class AuthBrokerClient {
 		if (response.status === 304) {
 			return { status: 304, generation: etagGeneration ?? opts.ifGenerationGt ?? 0 };
 		}
-		const raw = this.#parseJson(response.text, response.status);
-		const validated = wireSchemas().snapshotResponseSchema(raw);
-		if (validated instanceof type.errors) {
-			throw new AuthBrokerError("Auth broker response failed schema validation", {
-				status: response.status,
-				body: validated.summary,
-			});
-		}
-		const snapshot = validated as SnapshotResponse;
+		const snapshot = validateWire<SnapshotResponse>(
+			wireSchemas().snapshotResponseSchema,
+			parseJson(response.text, response.status),
+			"Auth broker response failed schema validation",
+			response.status,
+		);
 		return { status: 200, snapshot, generation: etagGeneration ?? snapshot.generation };
 	}
 
@@ -121,17 +115,41 @@ export class AuthBrokerClient {
 	 * to long-polling for the remainder of its lifetime.
 	 */
 	async *openSnapshotStream(opts: { signal?: AbortSignal } = {}): AsyncGenerator<SnapshotStreamEvent> {
-		const url = `${this.#baseUrl}/v1/snapshot/stream`;
-		const headers: Record<string, string> = {
-			Accept: "text/event-stream",
-			Authorization: `Bearer ${this.#token}`,
-		};
-		if (opts.signal?.aborted) {
-			throw new AuthBrokerError("Auth broker request aborted", { cause: opts.signal.reason });
+		const stream = await this.#openSnapshotStreamBody(opts.signal);
+		let sawFirstEvent = false;
+		for await (const sse of readSseEvents(stream.body, opts.signal)) {
+			if (sse.event === null && sse.data === "") continue; // keepalive comment frames
+			const event = parseStreamEvent(sse.data);
+			if (!sawFirstEvent && event.kind !== "snapshot") {
+				throw new AuthBrokerError("Auth broker stream did not start with snapshot", { body: sse.data });
+			}
+			sawFirstEvent = true;
+			yield event;
+		}
+		if (!opts.signal?.aborted) {
+			throw new AuthBrokerError(
+				sawFirstEvent
+					? "Auth broker stream ended unexpectedly"
+					: "Auth broker stream ended before initial snapshot",
+				{ status: stream.status },
+			);
+		}
+	}
+
+	/** The body of an accepted `GET /v1/snapshot/stream`, or the error naming why the broker refused it. */
+	async #openSnapshotStreamBody(
+		signal: AbortSignal | undefined,
+	): Promise<{ body: ReadableStream<Uint8Array>; status: number }> {
+		if (signal?.aborted) {
+			throw new AuthBrokerError("Auth broker request aborted", { cause: signal.reason });
 		}
 		// No timeout: this connection is intentionally long-lived. Caller's signal
 		// is the only cancel path.
-		const response = await this.#fetch(url, { method: "GET", headers, signal: opts.signal });
+		const response = await this.#fetch(`${this.#baseUrl}/v1/snapshot/stream`, {
+			method: "GET",
+			headers: { Accept: "text/event-stream", Authorization: `Bearer ${this.#token}` },
+			signal,
+		});
 		if (response.status === 404) {
 			// Drain the body so the socket can be reused; tiny payload. Nobody reads it, so a drain that fails
 			// costs one connection and has no bearing on the unsupported-stream error thrown next.
@@ -160,42 +178,7 @@ export class AuthBrokerClient {
 				body: contentType ?? "",
 			});
 		}
-
-		let sawFirstEvent = false;
-		for await (const sse of readSseEvents(response.body, opts.signal)) {
-			if (sse.event === null && sse.data === "") continue; // keepalive comment frames
-			let parsed: unknown;
-			try {
-				parsed = JSON.parse(sse.data);
-			} catch (err) {
-				throw new AuthBrokerError("Auth broker stream returned malformed JSON", {
-					body: sse.data,
-					cause: err,
-				});
-			}
-			const validated = wireSchemas().snapshotStreamEventSchema(parsed);
-			if (validated instanceof type.errors) {
-				throw new AuthBrokerError("Auth broker stream event failed schema validation", {
-					body: validated.summary,
-				});
-			}
-			const event = validated as SnapshotStreamEvent;
-			if (!sawFirstEvent) {
-				sawFirstEvent = true;
-				if (event.kind !== "snapshot") {
-					throw new AuthBrokerError("Auth broker stream did not start with snapshot", { body: sse.data });
-				}
-			}
-			yield event;
-		}
-		if (!opts.signal?.aborted) {
-			throw new AuthBrokerError(
-				sawFirstEvent
-					? "Auth broker stream ended unexpectedly"
-					: "Auth broker stream ended before initial snapshot",
-				{ status: response.status },
-			);
-		}
+		return { body: response.body, status: response.status };
 	}
 
 	fetchUsage(signal?: AbortSignal): Promise<UsageResponse> {
@@ -268,27 +251,12 @@ export class AuthBrokerClient {
 		opts: { schema: (input: unknown) => unknown; auth?: boolean; body?: unknown; signal?: AbortSignal },
 	): Promise<t> {
 		const response = await this.#fetchRaw(method, path, opts);
-		const raw = this.#parseJson(response.text, response.status);
-		const validated = opts.schema(raw);
-		if (validated instanceof type.errors) {
-			throw new AuthBrokerError("Auth broker response failed schema validation", {
-				status: response.status,
-				body: validated.summary,
-			});
-		}
-		return validated as t;
-	}
-
-	#parseJson(text: string, status: number): unknown {
-		try {
-			return text.length === 0 ? null : JSON.parse(text);
-		} catch (parseError) {
-			throw new AuthBrokerError("Auth broker returned malformed JSON", {
-				status,
-				body: text,
-				cause: parseError,
-			});
-		}
+		return validateWire<t>(
+			opts.schema,
+			parseJson(response.text, response.status),
+			"Auth broker response failed schema validation",
+			response.status,
+		);
 	}
 
 	async #fetchRaw(
@@ -301,14 +269,12 @@ export class AuthBrokerClient {
 			headers?: Record<string, string>;
 			timeoutMs?: number;
 		},
-	): Promise<{ status: number; headers: Headers; text: string }> {
-		const auth = opts.auth ?? true;
-		const url = `${this.#baseUrl}${path}`;
-		const headers: Record<string, string> = { Accept: "application/json", ...(opts.headers ?? {}) };
-		if (auth) headers.Authorization = `Bearer ${this.#token}`;
-		let payload: string | undefined;
+	): Promise<BrokerResponse> {
+		const headers: Record<string, string> = { Accept: "application/json", ...opts.headers };
+		if (opts.auth ?? true) headers.Authorization = `Bearer ${this.#token}`;
+		let body: string | undefined;
 		if (opts.body !== undefined) {
-			payload = JSON.stringify(opts.body);
+			body = JSON.stringify(opts.body);
 			headers["Content-Type"] = "application/json";
 		}
 
@@ -318,45 +284,92 @@ export class AuthBrokerClient {
 			throw new AuthBrokerError("Auth broker request aborted", { cause: opts.signal.reason });
 		}
 
+		const url = `${this.#baseUrl}${path}`;
+		const timeoutMs = opts.timeoutMs ?? this.#timeoutMs;
 		let lastError: unknown;
 		for (let attempt = 0; attempt <= this.#maxRetries; attempt += 1) {
-			// Per-attempt deadline. The scoped handle clears its timer on settle
-			// (a bare AbortSignal.timeout stays armed), and the fence spans the
-			// body read — a stalled stream is only interrupted by the armed signal.
-			const requestTimeout = scopedTimeoutSignal(opts.timeoutMs ?? this.#timeoutMs, opts.signal);
 			try {
-				const response = await this.#fetch(url, {
-					method,
-					headers,
-					body: payload,
-					signal: requestTimeout.signal,
-				});
-				if (!response.ok && response.status !== 304) {
-					const text = await response.text();
-					throw new AuthBrokerError(`Auth broker request failed: ${response.status} ${response.statusText}`, {
-						status: response.status,
-						body: text,
-					});
-				}
-				const text = await response.text();
-				return { status: response.status, headers: response.headers, text };
+				return await this.#attempt(url, { method, headers, body }, timeoutMs, opts.signal);
 			} catch (error) {
-				lastError = error;
 				// Caller-driven abort wins over retry — the caller said stop.
 				if (opts.signal?.aborted) {
 					throw new AuthBrokerError("Auth broker request aborted", { cause: opts.signal.reason });
 				}
-				if (error instanceof AuthBrokerError && error.status !== undefined) {
-					// HTTP errors (4xx/5xx) don't retry — caller knows what to do.
-					throw error;
-				}
-				if (attempt >= this.#maxRetries) break;
-			} finally {
-				requestTimeout.cancel();
+				// HTTP errors (4xx/5xx) don't retry — caller knows what to do.
+				if (error instanceof AuthBrokerError && error.status !== undefined) throw error;
+				lastError = error;
 			}
 		}
 		throw new AuthBrokerError(`Auth broker request failed after ${this.#maxRetries + 1} attempt(s)`, {
 			cause: lastError,
+		});
+	}
+
+	/** One request under its own deadline; a status other than 2xx or 304 throws with the status and body. */
+	async #attempt(
+		url: string,
+		init: { method: string; headers: Record<string, string>; body: string | undefined },
+		timeoutMs: number,
+		signal: AbortSignal | undefined,
+	): Promise<BrokerResponse> {
+		// The scoped handle clears its timer on settle (a bare AbortSignal.timeout
+		// stays armed), and the fence spans the body read — a stalled stream is
+		// only interrupted by the armed signal.
+		const requestTimeout = scopedTimeoutSignal(timeoutMs, signal);
+		try {
+			const response = await this.#fetch(url, { ...init, signal: requestTimeout.signal });
+			const text = await response.text();
+			if (!response.ok && response.status !== 304) {
+				throw new AuthBrokerError(`Auth broker request failed: ${response.status} ${response.statusText}`, {
+					status: response.status,
+					body: text,
+				});
+			}
+			return { status: response.status, headers: response.headers, text };
+		} finally {
+			requestTimeout.cancel();
+		}
+	}
+}
+
+interface BrokerResponse {
+	status: number;
+	headers: Headers;
+	text: string;
+}
+
+/** `raw` checked against `schema`, or an {@link AuthBrokerError} carrying the schema's summary of what failed. */
+function validateWire<T>(schema: (input: unknown) => unknown, raw: unknown, message: string, status?: number): T {
+	const validated = schema(raw);
+	if (validated instanceof type.errors) {
+		throw new AuthBrokerError(message, { status, body: validated.summary });
+	}
+	return validated as T;
+}
+
+/** One SSE `data` payload of the snapshot stream, parsed and validated. */
+function parseStreamEvent(data: string): SnapshotStreamEvent {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(data);
+	} catch (err) {
+		throw new AuthBrokerError("Auth broker stream returned malformed JSON", { body: data, cause: err });
+	}
+	return validateWire<SnapshotStreamEvent>(
+		wireSchemas().snapshotStreamEventSchema,
+		parsed,
+		"Auth broker stream event failed schema validation",
+	);
+}
+
+function parseJson(text: string, status: number): unknown {
+	try {
+		return text.length === 0 ? null : JSON.parse(text);
+	} catch (parseError) {
+		throw new AuthBrokerError("Auth broker returned malformed JSON", {
+			status,
+			body: text,
+			cause: parseError,
 		});
 	}
 }

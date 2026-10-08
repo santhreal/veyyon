@@ -1,4 +1,7 @@
 import { HookEditorComponent, HookInputComponent, HookSelectorComponent } from "./modes/terminal/components";
+// The barrel hands out Zod (`zod` and `z` below), so it installs the converter `zodToWireSchema`
+// uses for a schema that has no `toJSONSchema` method of its own (`zod/mini`).
+import "@veyyon/ai/utils/schema/zod-core";
 
 // Core session management
 

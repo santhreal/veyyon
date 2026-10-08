@@ -155,7 +155,7 @@ function accountOnly(providers?: { live?: string; configured?: string }): {
 	line: () => string;
 } {
 	const component = new StatusLineComponent(new StatusPresentationProducer(makeSession(providers)));
-	component.updateSettings({ preset: "custom", leftSegments: ["account"], rightSegments: [], sessionAccent: false });
+	component.updateSettings({ preset: "custom", leftSegments: ["account"], rightSegments: [] });
 	return { component, line: () => stripVTControlCharacters(component.renderQuietLine(120) ?? "") };
 }
 
@@ -289,7 +289,7 @@ describe("the footline names the account that is spending", () => {
 		const ids = await storeAccounts("preset@example.com", "preset.other@example.com");
 		authStorage?.selectProviderCredential("anthropic", ids[0]!, { sessionId: SESSION_ID });
 		const component = new StatusLineComponent(new StatusPresentationProducer(makeSession()));
-		component.updateSettings({ preset: "default", sessionAccent: false });
+		component.updateSettings({ preset: "default" });
 
 		expect(stripVTControlCharacters(component.renderQuietLine(200) ?? "")).toContain("as preset@example.com");
 	});

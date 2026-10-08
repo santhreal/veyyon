@@ -12,6 +12,7 @@ import { errorMessage, isRecord, ptree, readJsonl } from "@veyyon/utils";
 import type { FileSink } from "bun";
 import type { BashResult } from "../../exec/bash-executor";
 import type { AgentSessionEvent, SessionStats } from "../../session/agent-session-types";
+import type { BackgroundConversation } from "../../session/background-sessions";
 import { primarySessionCpuAdoption } from "../../session/cpu-limit";
 import type {
 	RpcAgentEventFrame,
@@ -32,6 +33,7 @@ import type {
 	RpcHostToolResult,
 	RpcHostToolUpdate,
 	RpcResponse,
+	RpcSessionChange,
 	RpcSessionState,
 } from "./rpc-types";
 
@@ -317,7 +319,7 @@ export class RpcClient {
 		);
 
 		// Timeout to prevent hanging forever
-		const readyTimeout = this.#startTimeout(30000, () => {
+		const readyTimeout = startTimeout(30000, () => {
 			if (readySettled) return;
 			readySettled = true;
 			readyReject(new Error(`Timeout waiting for agent to become ready. Stderr: ${child.peekStderr()}`));
@@ -439,12 +441,6 @@ export class RpcClient {
 		return this.#process?.peekStderr() ?? "";
 	}
 
-	#startTimeout(timeoutMs: number, onTimeout: () => void): NodeJS.Timeout {
-		const timer = setTimeout(onTimeout, timeoutMs);
-		timer.unref();
-		return timer;
-	}
-
 	// =========================================================================
 	// Command Methods
 	// =========================================================================
@@ -487,13 +483,26 @@ export class RpcClient {
 	}
 
 	/**
-	 * Start a new session, optionally with parent tracking.
-	 * @param parentSession - Optional parent session path for lineage tracking
-	 * @returns Object with `cancelled: true` if an extension cancelled the new session
+	 * Start a new session, optionally with a parent session for lineage tracking.
+	 * Can be cancelled by a `session_before_switch` extension event handler.
+	 * With `background: true`, a session that is streaming keeps its turn running
+	 * in the background and the client attaches to a new session; `background` in
+	 * the result describes that handoff.
 	 */
-	async newSession(parentSession?: string): Promise<{ cancelled: boolean }> {
-		const response = await this.#send({ type: "new_session", parentSession });
-		return this.#getData(response);
+	async newSession(parentSession?: string, options?: { background?: boolean }): Promise<RpcSessionChange> {
+		const response = await this.#send({ type: "new_session", parentSession, background: options?.background });
+		return getData(response);
+	}
+
+	/** The conversations running in the background of this process. */
+	async getBackgroundSessions(): Promise<BackgroundConversation[]> {
+		const response = await this.#send({ type: "get_background_sessions" });
+		return getData<{ sessions: BackgroundConversation[] }>(response).sessions;
+	}
+
+	/** Stop the background conversation with `sessionId` and wait until it is disposed. */
+	async cancelBackgroundSession(sessionId: string): Promise<void> {
+		await this.#send({ type: "cancel_background_session", sessionId });
 	}
 
 	/**
@@ -501,7 +510,7 @@ export class RpcClient {
 	 */
 	async getState(): Promise<RpcSessionState> {
 		const response = await this.#send({ type: "get_state" });
-		return this.#getData(response);
+		return getData(response);
 	}
 
 	/**
@@ -510,7 +519,7 @@ export class RpcClient {
 	 */
 	async setAgentSubscription(level: RpcAgentSubscriptionLevel): Promise<RpcAgentSubscriptionLevel> {
 		const response = await this.#send({ type: "set_subagent_subscription", level });
-		return this.#getData<{ level: RpcAgentSubscriptionLevel }>(response).level;
+		return getData<{ level: RpcAgentSubscriptionLevel }>(response).level;
 	}
 
 	/**
@@ -518,7 +527,7 @@ export class RpcClient {
 	 */
 	async getAgents(): Promise<RpcAgentSnapshot[]> {
 		const response = await this.#send({ type: "get_subagents" });
-		return this.#getData<{ agents: RpcAgentSnapshot[] }>(response).agents;
+		return getData<{ agents: RpcAgentSnapshot[] }>(response).agents;
 	}
 
 	/**
@@ -535,7 +544,7 @@ export class RpcClient {
 			sessionFile: selector.sessionFile,
 			fromByte: selector.fromByte,
 		});
-		return this.#getData<RpcAgentMessagesResult>(response);
+		return getData<RpcAgentMessagesResult>(response);
 	}
 
 	/**
@@ -543,7 +552,7 @@ export class RpcClient {
 	 */
 	async setModel(provider: string, modelId: string): Promise<{ provider: string; id: string }> {
 		const response = await this.#send({ type: "set_model", provider, modelId });
-		return this.#getData(response);
+		return getData(response);
 	}
 
 	/**
@@ -555,7 +564,7 @@ export class RpcClient {
 		isScoped: boolean;
 	} | null> {
 		const response = await this.#send({ type: "cycle_model" });
-		return this.#getData(response);
+		return getData(response);
 	}
 
 	/**
@@ -563,7 +572,7 @@ export class RpcClient {
 	 */
 	async getAvailableModels(): Promise<ModelInfo[]> {
 		const response = await this.#send({ type: "get_available_models" });
-		return this.#getData<{ models: ModelInfo[] }>(response).models;
+		return getData<{ models: ModelInfo[] }>(response).models;
 	}
 
 	/**
@@ -571,7 +580,7 @@ export class RpcClient {
 	 */
 	async getAvailableCommands(): Promise<RpcAvailableSlashCommand[]> {
 		const response = await this.#send({ type: "get_available_commands" });
-		return this.#getData<{ commands: RpcAvailableSlashCommand[] }>(response).commands;
+		return getData<{ commands: RpcAvailableSlashCommand[] }>(response).commands;
 	}
 
 	/**
@@ -586,7 +595,7 @@ export class RpcClient {
 	 */
 	async cycleThinkingLevel(): Promise<{ level: ThinkingLevel } | null> {
 		const response = await this.#send({ type: "cycle_thinking_level" });
-		return this.#getData(response);
+		return getData(response);
 	}
 
 	/**
@@ -608,7 +617,7 @@ export class RpcClient {
 	 */
 	async compact(customInstructions?: string): Promise<CompactionResult> {
 		const response = await this.#send({ type: "compact", customInstructions });
-		return this.#getData(response);
+		return getData(response);
 	}
 
 	/**
@@ -637,7 +646,7 @@ export class RpcClient {
 	 */
 	async bash(command: string): Promise<BashResult> {
 		const response = await this.#send({ type: "bash", command });
-		return this.#getData(response);
+		return getData(response);
 	}
 
 	/**
@@ -652,7 +661,7 @@ export class RpcClient {
 	 */
 	async getSessionStats(): Promise<SessionStats> {
 		const response = await this.#send({ type: "get_session_stats" });
-		return this.#getData(response);
+		return getData(response);
 	}
 
 	/**
@@ -660,7 +669,7 @@ export class RpcClient {
 	 */
 	async handoff(customInstructions?: string): Promise<RpcHandoffResult | null> {
 		const response = await this.#send({ type: "handoff", customInstructions });
-		return this.#getData(response);
+		return getData(response);
 	}
 
 	/**
@@ -668,16 +677,19 @@ export class RpcClient {
 	 */
 	async exportHtml(outputPath?: string): Promise<{ path: string }> {
 		const response = await this.#send({ type: "export_html", outputPath });
-		return this.#getData(response);
+		return getData(response);
 	}
 
 	/**
-	 * Switch to a different session file.
-	 * @returns Object with `cancelled: true` if an extension cancelled the switch
+	 * Switch to a different session file. A conversation running in the
+	 * background that writes `sessionPath` is re-attached live, and the session
+	 * the client was driving moves to the background; `background` in the result
+	 * describes that handoff.
+	 * Can be cancelled by a `session_before_switch` extension event handler.
 	 */
-	async switchSession(sessionPath: string): Promise<{ cancelled: boolean }> {
+	async switchSession(sessionPath: string): Promise<RpcSessionChange> {
 		const response = await this.#send({ type: "switch_session", sessionPath });
-		return this.#getData(response);
+		return getData(response);
 	}
 
 	/**
@@ -686,7 +698,7 @@ export class RpcClient {
 	 */
 	async branch(entryId: string): Promise<{ text: string; cancelled: boolean }> {
 		const response = await this.#send({ type: "branch", entryId });
-		return this.#getData(response);
+		return getData(response);
 	}
 
 	/**
@@ -694,7 +706,7 @@ export class RpcClient {
 	 */
 	async getBranchMessages(): Promise<Array<{ entryId: string; text: string }>> {
 		const response = await this.#send({ type: "get_branch_messages" });
-		return this.#getData<{ messages: Array<{ entryId: string; text: string }> }>(response).messages;
+		return getData<{ messages: Array<{ entryId: string; text: string }> }>(response).messages;
 	}
 
 	/**
@@ -702,7 +714,7 @@ export class RpcClient {
 	 */
 	async getLastAssistantText(): Promise<string | null> {
 		const response = await this.#send({ type: "get_last_assistant_text" });
-		return this.#getData<{ text: string | null }>(response).text;
+		return getData<{ text: string | null }>(response).text;
 	}
 
 	/**
@@ -710,7 +722,7 @@ export class RpcClient {
 	 */
 	async getMessages(): Promise<AgentMessage[]> {
 		const response = await this.#send({ type: "get_messages" });
-		return this.#getData<{ messages: AgentMessage[] }>(response).messages;
+		return getData<{ messages: AgentMessage[] }>(response).messages;
 	}
 
 	/**
@@ -718,7 +730,7 @@ export class RpcClient {
 	 */
 	async getLoginProviders(): Promise<Array<{ id: string; name: string; available: boolean; authenticated: boolean }>> {
 		const response = await this.#send({ type: "get_login_providers" });
-		return this.#getData<{
+		return getData<{
 			providers: Array<{ id: string; name: string; available: boolean; authenticated: boolean }>;
 		}>(response).providers;
 	}
@@ -774,7 +786,7 @@ export class RpcClient {
 		if (listener) this.#extensionUiListeners.add(listener);
 		try {
 			const response = await this.#send({ type: "login", providerId }, 600_000);
-			return this.#getData<{ providerId: string }>(response);
+			return getData<{ providerId: string }>(response);
 		} finally {
 			if (listener) this.#extensionUiListeners.delete(listener);
 		}
@@ -797,7 +809,7 @@ export class RpcClient {
 			hidden: tool.hidden,
 		}));
 		const response = await this.#send({ type: "set_host_tools", tools: definitions });
-		return this.#getData<{ toolNames: string[] }>(response).toolNames;
+		return getData<{ toolNames: string[] }>(response).toolNames;
 	}
 
 	// =========================================================================
@@ -820,7 +832,7 @@ export class RpcClient {
 			}
 		});
 
-		const timeoutId = this.#startTimeout(timeout, () => {
+		const timeoutId = startTimeout(timeout, () => {
 			if (settled) return;
 			settled = true;
 			unsubscribe();
@@ -846,7 +858,7 @@ export class RpcClient {
 			}
 		});
 
-		const timeoutId = this.#startTimeout(timeout, () => {
+		const timeoutId = startTimeout(timeout, () => {
 			if (settled) return;
 			settled = true;
 			unsubscribe();
@@ -947,7 +959,7 @@ export class RpcClient {
 		const fullCommand = { ...command, id } as RpcCommand;
 		const { promise, resolve, reject } = Promise.withResolvers<RpcResponse>();
 		let settled = false;
-		const timeoutId = this.#startTimeout(timeoutMs, () => {
+		const timeoutId = startTimeout(timeoutMs, () => {
 			if (settled) return;
 			this.#pendingRequests.delete(id);
 			settled = true;
@@ -1052,15 +1064,21 @@ export class RpcClient {
 			});
 		}
 	}
+}
 
-	#getData<T>(response: RpcResponse): T {
-		if (!response.success) {
-			const errorResponse = response as Extract<RpcResponse, { success: false }>;
-			throw new Error(errorResponse.error);
-		}
-		// Type assertion: we trust response.data matches T based on the command sent.
-		// This is safe because each public method specifies the correct T for its command.
-		const successResponse = response as Extract<RpcResponse, { success: true; data: unknown }>;
-		return successResponse.data as T;
+function startTimeout(timeoutMs: number, onTimeout: () => void): NodeJS.Timeout {
+	const timer = setTimeout(onTimeout, timeoutMs);
+	timer.unref();
+	return timer;
+}
+
+function getData<T>(response: RpcResponse): T {
+	if (!response.success) {
+		const errorResponse = response as Extract<RpcResponse, { success: false }>;
+		throw new Error(errorResponse.error);
 	}
+	// Type assertion: we trust response.data matches T based on the command sent.
+	// This is safe because each public method specifies the correct T for its command.
+	const successResponse = response as Extract<RpcResponse, { success: true; data: unknown }>;
+	return successResponse.data as T;
 }

@@ -20,6 +20,7 @@ import { secretProtectionUnavailableMessage } from "../session/factory-notices";
 import { collectEnvSecrets, loadSecrets } from ".";
 import { buildExpansionRecord, SecretAuditLog, secretAuditPath } from "./audit";
 import { buildEnvSecretPattern, loadEnvSecretKeywords } from "./env-keywords";
+import { expiryWarnings } from "./expiry";
 import { SECRET_SPEND_NOTICE_SOURCE } from "./notices";
 import {
 	deobfuscateToolArguments,
@@ -31,7 +32,6 @@ import {
 } from "./obfuscator";
 import { isSecretPlaceholder, PLACEHOLDER_RE } from "./placeholder";
 import { describeSecretRejection } from "./policy";
-import { expiryWarnings } from "./secret-command";
 import { secretSpendMarker } from "./spend-marker";
 import { resolveVaultLocations, type ScopedVaultEntry, SecretVault, vaultPathFor } from "./vault";
 import { loadOrCreateVaultKey } from "./vault-crypto";

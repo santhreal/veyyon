@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
-import { type DatabasePath, openDatabase } from "../db";
+import { type DatabasePath, openDatabase, rollbackQuietly } from "../db";
 import { toUtcIso } from "../util/datetime";
 import { parseStoredStringList } from "../util/sqlite";
 import {
@@ -99,6 +99,15 @@ function sqliteInTransaction(db: Database): boolean {
 	return txDb.inTransaction === true || txDb.in_transaction === true || (txDb[TX_DEPTH] ?? 0) > 0;
 }
 
+const TRANSACTION_ALREADY_OPEN = /within a transaction|transaction.*active|cannot start/i;
+
+function adjustTxDepth(db: Database, delta: 1 | -1): void {
+	const txDb = db as TxDatabase;
+	const depth = (txDb[TX_DEPTH] ?? 0) + delta;
+	if (depth > 0) txDb[TX_DEPTH] = depth;
+	else delete txDb[TX_DEPTH];
+}
+
 export function computeFactId(subject: string, predicate: string, object: string): string {
 	for (const [name, value] of [
 		["subject", subject],
@@ -172,33 +181,17 @@ export class VeracityConsolidator {
 		try {
 			conn.exec("BEGIN IMMEDIATE");
 			started = true;
-			(conn as TxDatabase)[TX_DEPTH] = ((conn as TxDatabase)[TX_DEPTH] ?? 0) + 1;
+			adjustTxDepth(conn, 1);
 			const result = body();
 			conn.exec("COMMIT");
 			return result;
 		} catch (error) {
-			if (
-				!started &&
-				error instanceof Error &&
-				/within a transaction|transaction.*active|cannot start/i.test(error.message)
-			) {
-				return body();
-			}
-			if (started) {
-				try {
-					conn.exec("ROLLBACK");
-				} catch {
-					// Preserve original error.
-				}
-			}
+			// BEGIN failing because a transaction is already open means the caller holds one: run inside it.
+			if (!started && error instanceof Error && TRANSACTION_ALREADY_OPEN.test(error.message)) return body();
+			if (started) rollbackQuietly(conn);
 			throw error;
 		} finally {
-			if (started) {
-				const txDb = conn as TxDatabase;
-				const depth = (txDb[TX_DEPTH] ?? 1) - 1;
-				if (depth > 0) txDb[TX_DEPTH] = depth;
-				else delete txDb[TX_DEPTH];
-			}
+			if (started) adjustTxDepth(conn, -1);
 		}
 	}
 

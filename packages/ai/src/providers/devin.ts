@@ -32,6 +32,7 @@ import {
 	ChatToolCallSchema,
 	CompletionConfigurationSchema,
 	ConversationalPlannerMode,
+	type ImageData,
 	ImageDataSchema,
 	MetadataSchema,
 	type ModelUsageStats,
@@ -40,6 +41,7 @@ import {
 import { calculateCost, discardAttemptUsage } from "@veyyon/catalog/models";
 import { DEVIN_CASCADE_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import { isAbortError } from "@veyyon/utils/abortable";
+import { exponentialBackoffDelay } from "@veyyon/utils/backoff";
 import { tryParseJson } from "@veyyon/utils/json";
 import { parseStreamingJson, parseStreamingJsonThrottled } from "@veyyon/utils/json-parse";
 import * as logger from "@veyyon/utils/logger";
@@ -50,6 +52,8 @@ import type {
 	Api,
 	AssistantMessage,
 	Context,
+	DeveloperMessage,
+	ImageContent,
 	Message,
 	Model,
 	StreamFunction,
@@ -58,9 +62,19 @@ import type {
 	ThinkingContent,
 	Tool,
 	ToolCall,
+	ToolResultMessage,
 	Usage,
+	UserMessage,
 } from "../types";
 import { clearStreamingPartialJson, setStreamingPartialJson } from "../utils/block-symbols";
+import {
+	CONNECT_COMPRESSED_FLAG,
+	CONNECT_END_STREAM_FLAG,
+	ConnectFrameReader,
+	type ConnectRead,
+	frameConnectMessage,
+	MAX_CONNECT_FRAME_PAYLOAD,
+} from "../utils/connect-frames";
 import { deterministicUuid } from "../utils/deterministic-id";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { toolWireSchema } from "../utils/schema/wire";
@@ -110,19 +124,6 @@ const DEVIN_RETRY_MAX_DELAY_MS = 90_000;
 const CHAT_MESSAGE_PATH = "/exa.api_server_pb.ApiServerService/GetChatMessage";
 const DEVIN_AUTH_PATH = "/exa.auth_pb.AuthService/GetUserJwt";
 const DEVIN_DEFAULT_STOP_PATTERNS = ["<|user|>", "<|bot|>", "<|context_request|>", "<|endoftext|>", "<|end_of_turn|>"];
-
-/** Connect streaming framing: flag byte bit 0x01 = gzip payload, 0x02 = end-of-stream JSON trailers. */
-const CONNECT_COMPRESSED_FLAG = 0x01;
-const CONNECT_END_STREAM_FLAG = 0x02;
-/**
- * Hard upper bound on a single Connect frame payload. The 4-byte length prefix
- * is otherwise attacker-controlled (up to `2**32 - 1`), so a malicious or buggy
- * peer could force {@link streamDevin}'s reader to buffer gigabytes via
- * `Buffer.concat` before the idle-timeout wrapper aborts. Well above any
- * legitimate Cascade response but tight enough that a corrupt length prefix
- * fails fast instead of consuming memory.
- */
-const MAX_CONNECT_FRAME_PAYLOAD = 16 * 1024 * 1024;
 
 export const streamDevin: StreamFunction<"devin-agent"> = (
 	model: Model<"devin-agent">,
@@ -241,11 +242,7 @@ async function postDevinChatRequest(
 	wireMetadata.apiKey = resolvedApiKey;
 	wireMetadata.userJwt = resolvedUserJwt;
 	request.metadata = wireMetadata;
-	const gz = gzipSync(toBinary(GetChatMessageRequestSchema, request));
-	const frame = Buffer.alloc(5 + gz.length);
-	frame[0] = CONNECT_COMPRESSED_FLAG;
-	frame.writeUInt32BE(gz.length, 1);
-	frame.set(gz, 5);
+	const frame = frameConnectMessage(gzipSync(toBinary(GetChatMessageRequestSchema, request)), CONNECT_COMPRESSED_FLAG);
 
 	const response = await fetchImpl(chatBaseUrl + CHAT_MESSAGE_PATH, {
 		method: "POST",
@@ -283,8 +280,7 @@ async function postDevinChatRequest(
  * each to `onMessage` synchronously, so a read holding many frames costs no promise per frame.
  *
  * The end-of-stream frame is not a message: its JSON trailers either carry an error, which is
- * thrown, or nothing. A read is appended to the unconsumed tail only when a frame straddles two
- * reads, so a read holding whole frames is sliced in place rather than copied.
+ * thrown, or nothing.
  */
 async function readConnectMessages(
 	body: ReadableStream<Uint8Array>,
@@ -292,40 +288,33 @@ async function readConnectMessages(
 	onMessage: (payload: Uint8Array) => void,
 ): Promise<void> {
 	const reader = body.getReader();
-	let pending: Buffer = Buffer.alloc(0);
+	const frames = new ConnectFrameReader();
 	for (;;) {
 		const { done, value } = await reader.read();
-		if (value && value.length > 0) {
-			pending =
-				pending.length === 0
-					? Buffer.from(value.buffer, value.byteOffset, value.byteLength)
-					: Buffer.concat([pending, value]);
-		}
+		if (value) frames.push(value);
 
-		while (pending.length >= 5) {
-			const flag = pending[0];
-			const len = pending.readUInt32BE(1);
-			if (len > MAX_CONNECT_FRAME_PAYLOAD) {
-				throw new AIError.ProviderResponseError(
-					`Devin Connect frame length ${len} exceeds ${MAX_CONNECT_FRAME_PAYLOAD}-byte cap`,
-					{ provider: model.provider, kind: "envelope" },
-				);
-			}
-			if (pending.length < 5 + len) break;
-			const payload = pending.subarray(5, 5 + len);
-			pending = pending.subarray(5 + len);
-			const raw = flag & CONNECT_COMPRESSED_FLAG ? gunzipSync(payload) : payload;
-
-			if (flag & CONNECT_END_STREAM_FLAG) {
-				const trailerError = readConnectTrailerError(raw.toString("utf8").trim());
-				if (trailerError) throw devinTrailerFailure(trailerError);
-				continue;
-			}
-			onMessage(raw);
+		for (let read = frames.next(); read; read = frames.next()) {
+			const payload = devinFramePayload(read, model);
+			if (payload) onMessage(payload);
 		}
 
 		if (done) return;
 	}
+}
+
+/** The message payload of one Connect frame, or `undefined` for an end-of-stream frame with no error. */
+function devinFramePayload(read: ConnectRead, model: Model<"devin-agent">): Buffer | undefined {
+	if (read.kind === "oversized") {
+		throw new AIError.ProviderResponseError(
+			`Devin Connect frame length ${read.length} exceeds ${MAX_CONNECT_FRAME_PAYLOAD}-byte cap`,
+			{ provider: model.provider, kind: "envelope" },
+		);
+	}
+	const raw = read.flags & CONNECT_COMPRESSED_FLAG ? gunzipSync(read.payload) : read.payload;
+	if (!(read.flags & CONNECT_END_STREAM_FLAG)) return raw;
+	const trailerError = readConnectTrailerError(raw.toString("utf8").trim());
+	if (trailerError) throw devinTrailerFailure(trailerError);
+	return undefined;
 }
 
 /** A tool call being streamed: its content block, where it sits, and the argument text so far. */
@@ -699,94 +688,77 @@ function buildDevinChatRequest(
 
 /** Map veyyon `Message` history onto Cascade `ChatMessagePrompt`s (USER / SYSTEM / TOOL channels). */
 function buildChatMessagePrompts(messages: Message[], cascadeId: string): ChatMessagePrompt[] {
-	const prompts: ChatMessagePrompt[] = [];
 	// messageId seeds are `cascadeId\0index\0role[...]` — prompt text is excluded
 	// so ids stay stable across content edits / history rebuilds.
-	for (const [index, msg] of messages.entries()) {
+	return messages.map((msg, index) => {
 		if (msg.role === "user" || msg.role === "developer") {
-			let promptText = "";
-			const images = [];
-			if (typeof msg.content === "string") {
-				promptText = msg.content;
-			} else {
-				for (const part of msg.content) {
-					if (part.type === "text") {
-						promptText += part.text;
-					} else if (part.type === "image") {
-						images.push(create(ImageDataSchema, { base64Data: part.data, mimeType: part.mimeType }));
-					}
-				}
-			}
-			prompts.push(
-				create(ChatMessagePromptSchema, {
-					messageId: deterministicUuid(`${cascadeId}\0${index}\0${msg.role}`),
-					source: ChatMessageSource.USER,
-					prompt: promptText,
-					images,
-				}),
-			);
-		} else if (msg.role === "assistant") {
-			let promptText = "";
-			let thinkingText = "";
-			let signature = "";
-			const toolCalls: ChatToolCall[] = [];
-			for (const part of msg.content) {
-				if (part.type === "text") {
-					promptText += part.text;
-				} else if (part.type === "thinking") {
-					thinkingText += part.thinking;
-					if (!signature && part.thinkingSignature) signature = part.thinkingSignature;
-				} else if (part.type === "toolCall") {
-					toolCalls.push(
-						create(ChatToolCallSchema, {
-							id: part.id,
-							name: part.name,
-							argumentsJson: JSON.stringify(part.arguments),
-						}),
-					);
-				}
-			}
-			prompts.push(
-				create(ChatMessagePromptSchema, {
-					messageId: msg.responseId ?? `bot-${deterministicUuid(`${cascadeId}\0${index}\0assistant`)}`,
-					source: ChatMessageSource.SYSTEM,
-					prompt: promptText,
-					thinking: thinkingText,
-					signature,
-					signatureType: "",
-					toolCalls,
-				}),
-			);
-		} else {
-			let resultText = "";
-			const images = [];
-			for (const part of msg.content) {
-				if (part.type === "text") {
-					resultText += part.text;
-				} else if (part.type === "image") {
-					images.push(create(ImageDataSchema, { base64Data: part.data, mimeType: part.mimeType }));
-				}
-			}
-			prompts.push(
-				create(ChatMessagePromptSchema, {
-					messageId: deterministicUuid(`${cascadeId}\0${index}\0tool\0${msg.toolCallId}`),
-					source: ChatMessageSource.TOOL,
-					toolCallId: msg.toolCallId,
-					toolResultIsError: msg.isError,
-					prompt: resultText,
-					images,
-				}),
+			return userPrompt(msg, deterministicUuid(`${cascadeId}\0${index}\0${msg.role}`));
+		}
+		if (msg.role === "assistant") {
+			return assistantPrompt(msg, msg.responseId ?? `bot-${deterministicUuid(`${cascadeId}\0${index}\0assistant`)}`);
+		}
+		return toolResultPrompt(msg, deterministicUuid(`${cascadeId}\0${index}\0tool\0${msg.toolCallId}`));
+	});
+}
+
+/** The text parts of a user turn or a tool result joined in order, and its images. */
+function promptTextAndImages(content: string | (TextContent | ImageContent)[]): { text: string; images: ImageData[] } {
+	if (typeof content === "string") return { text: content, images: [] };
+	let text = "";
+	const images: ImageData[] = [];
+	for (const part of content) {
+		if (part.type === "text") text += part.text;
+		else if (part.type === "image")
+			images.push(create(ImageDataSchema, { base64Data: part.data, mimeType: part.mimeType }));
+	}
+	return { text, images };
+}
+
+function userPrompt(msg: UserMessage | DeveloperMessage, messageId: string): ChatMessagePrompt {
+	const { text, images } = promptTextAndImages(msg.content);
+	return create(ChatMessagePromptSchema, { messageId, source: ChatMessageSource.USER, prompt: text, images });
+}
+
+function assistantPrompt(msg: AssistantMessage, messageId: string): ChatMessagePrompt {
+	let promptText = "";
+	let thinkingText = "";
+	let signature = "";
+	const toolCalls: ChatToolCall[] = [];
+	for (const part of msg.content) {
+		if (part.type === "text") {
+			promptText += part.text;
+		} else if (part.type === "thinking") {
+			thinkingText += part.thinking;
+			if (!signature && part.thinkingSignature) signature = part.thinkingSignature;
+		} else if (part.type === "toolCall") {
+			toolCalls.push(
+				create(ChatToolCallSchema, { id: part.id, name: part.name, argumentsJson: JSON.stringify(part.arguments) }),
 			);
 		}
 	}
-	return prompts;
+	return create(ChatMessagePromptSchema, {
+		messageId,
+		source: ChatMessageSource.SYSTEM,
+		prompt: promptText,
+		thinking: thinkingText,
+		signature,
+		signatureType: "",
+		toolCalls,
+	});
 }
 
-/**
- * Parse a Connect end-of-stream JSON trailer and return a human-readable error
- * string when it carries `{ error: { code, message } }`, else `null`. The trailer
- * is untrusted server output, so the shape is checked with guards rather than asserted.
- */
+function toolResultPrompt(msg: ToolResultMessage, messageId: string): ChatMessagePrompt {
+	const { text, images } = promptTextAndImages(msg.content);
+	return create(ChatMessagePromptSchema, {
+		messageId,
+		source: ChatMessageSource.TOOL,
+		toolCallId: msg.toolCallId,
+		toolResultIsError: msg.isError,
+		prompt: text,
+		images,
+	});
+}
+
 /**
  * A stream-level failure Cascade reports in its Connect end-stream trailer.
  *
@@ -809,6 +781,10 @@ interface DevinTrailerError {
 	readonly text: string;
 }
 
+/**
+ * Reads the Connect end-of-stream JSON trailer, or `null` when it carries no `{ error: { code,
+ * message } }`. The trailer is untrusted server output, so its shape is checked with guards.
+ */
 function readConnectTrailerError(text: string): DevinTrailerError | null {
 	if (text.length === 0) return null;
 	const parsed = tryParseJson(text);
@@ -879,7 +855,11 @@ function devinRetryDelayMs(
 		const waitMs = statedResetMs + 1_000;
 		return waitMs > DEVIN_RETRY_MAX_DELAY_MS ? undefined : waitMs;
 	}
-	return Math.min(DEVIN_RETRY_BASE_DELAY_MS * 2 ** state.attempt, DEVIN_RETRY_MAX_DELAY_MS);
+	return exponentialBackoffDelay(state.attempt, {
+		baseMs: DEVIN_RETRY_BASE_DELAY_MS,
+		maxMs: DEVIN_RETRY_MAX_DELAY_MS,
+		jitter: 0,
+	});
 }
 
 /**

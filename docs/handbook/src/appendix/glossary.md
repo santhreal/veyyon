@@ -32,7 +32,7 @@ A concise vocabulary of the primitives that shape Veyyon's runtime behavior.
 
 - **repair**: Schema-based coercion of malformed tool-call arguments before validation; ambiguous cases return an error tool result (no dispatch). See [Repair](../repair/overview.md).
 
-- **repair cascade**: The ordered set of sound transforms the repair engine applies to a tool call (parse leniency, alias/typo key repair, strict unknown-key rejection, ambiguity guard). The engine returns a status (`clean` / `repaired` / `unrepairable`), the coerced arguments, and coaching hints; an unrepairable call returns an error tool result without dispatch.
+- **repair cascade**: The ordered set of sound transforms the repair engine applies to a tool call (parse leniency, alias/typo key repair, strict unknown-key rejection, ambiguity check). The engine returns a status (`clean` / `repaired` / `unrepairable`), the coerced arguments, and coaching hints; an unrepairable call returns an error tool result without dispatch.
 
 - **rollout**: The append-only JSONL log of a session's entries. Each entry contains an `id` and a `parentId`. Branching moves the in-memory leaf; the next appended entry's `parentId` (and an optional `branch_summary` entry) records the move without rewriting history.
 

@@ -234,6 +234,11 @@ export class StartupModelSelection {
 		return this.#thinkingSource;
 	}
 
+	/** The thinking selector the session starts with: `auto`, else the concrete level. */
+	get sessionThinkingLevel(): ConfiguredThinkingLevel | undefined {
+		return this.#autoThinking ? AUTO_THINKING : this.#effectiveThinkingLevel;
+	}
+
 	/** Run the second pass, after extension providers registered. */
 	async completeAfterExtensions(): Promise<void> {
 		this.#reclaimSessionModel();

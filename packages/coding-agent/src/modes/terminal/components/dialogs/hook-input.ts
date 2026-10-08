@@ -7,22 +7,23 @@ import { Container, Input, Markdown, Spacer, type TUI } from "@veyyon/tui";
 import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
-import { getMarkdownTheme } from "../../../../theme/markdown-theme";
-import { theme } from "../../../../theme/theme";
+import { getMarkdownTheme, markdownTextStyle } from "../../../../theme/markdown-theme";
 import { matchesAppInterrupt } from "../../utils/keybinding-matchers";
 import { CountdownTimer } from "../chrome/countdown-timer";
 import {
-	CARD_BODY_COL_INSET,
 	computeModalDims,
 	MODAL_SIZING_MEDIUM,
-	type ModalShellGeometry,
-	type ModalShortcut,
 	type ModalSizing,
 	modalWidthForContent,
+	sizingForArea,
+} from "../chrome/modal-geometry";
+import {
+	CARD_BODY_COL_INSET,
+	type ModalShellGeometry,
+	type ModalShortcut,
 	modalWidthForTitle,
 	planModalChrome,
 	renderModalShell,
-	sizingForArea,
 } from "../chrome/modal-shell";
 import { routeModalChrome } from "../selectors/select-list-mouse-routing";
 
@@ -86,9 +87,7 @@ export class HookInputComponent extends Container {
 		this.#cardTitle = firstTitleLine;
 		const bodyTitle = restTitleLines.join("\n");
 		if (bodyTitle.length > 0) {
-			this.#titleComponent = new Markdown(bodyTitle, 1, 0, getMarkdownTheme(), {
-				color: t => theme.fg("accent", t),
-			});
+			this.#titleComponent = new Markdown(bodyTitle, 1, 0, getMarkdownTheme(), markdownTextStyle("accent"));
 			this.addChild(this.#titleComponent);
 			this.addChild(new Spacer(1));
 		}

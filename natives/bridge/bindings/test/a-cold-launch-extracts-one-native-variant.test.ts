@@ -32,7 +32,9 @@
  *
  * MUTATIONS CHECKED. Re-injecting the original defect (`files: bundle.files` at the extraction call)
  * fails 2 cases; a plan that leaves the selected variant in `remaining` fails 5; a plan that drops
- * the unselected variants entirely fails 7; a fallback that extracts nothing fails 1.
+ * the unselected variants entirely fails 7; a fallback that extracts nothing fails 1. Treating the
+ * inflate size bound as a limit (`maxOutputLength`) fails 1; truncating the inflated archive to the
+ * bound fails 2.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -269,6 +271,36 @@ describe("the bytes a cold launch writes", () => {
 
 			expect(second).toEqual([]);
 			expect(fs.statSync(first[0] ?? "").mtimeMs).toBe(stampedAt);
+		});
+	});
+
+	// The extractor inflates into one buffer sized from the metadata. The bound is a hint, not a
+	// limit: an archive that outgrows it (a sibling variant in the same archive, a file with no
+	// recorded size, a body that ends one byte past a block) must still yield the selected file
+	// byte for byte. Bodies span the default 16 KiB gunzip chunk so the single-chunk case is real.
+	const PATTERNED = (length: number): Buffer => Buffer.from(Array.from({ length }, (_, i) => (i * 31 + 7) & 0xff));
+	it.each([
+		{ name: "a selected file far larger than one default chunk", selected: 70_001, sibling: 0, sized: true },
+		{ name: "a body that fills its last block exactly", selected: 64 * 1024, sibling: 0, sized: true },
+		{ name: "a sibling that makes the archive outgrow the bound", selected: 1_000, sibling: 200_000, sized: true },
+		{ name: "a file with no recorded size", selected: 40_000, sibling: 0, sized: false },
+	])("extracts $name byte for byte", ({ selected, sibling, sized }) => {
+		const modern = PATTERNED(selected);
+		const baseline = PATTERNED(sibling).reverse();
+		const target = addonFile("modern", sized ? modern.length : undefined);
+		const entries = [{ filename: target.filename, content: modern }];
+		if (sibling > 0) entries.push({ filename: addonFile("baseline").filename, content: baseline });
+
+		withScratch(dir => {
+			const archivePath = path.join(dir, "embedded-addons.tar.gz");
+			const targetDir = path.join(dir, "natives");
+			fs.mkdirSync(targetDir);
+			fs.writeFileSync(archivePath, tarGz(entries));
+
+			const written = extractEmbeddedAddonArchive({ archivePath, files: [target], targetDir });
+
+			expect(written).toEqual([path.join(targetDir, target.filename)]);
+			expect(fs.readFileSync(path.join(targetDir, target.filename)).equals(modern)).toBe(true);
 		});
 	});
 });

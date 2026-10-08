@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
+import { scheduler } from "node:timers/promises";
 import type { ApiKeyResolver, FetchImpl } from "@veyyon/ai";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { embed, resetEmbeddingProviderForTests } from "@veyyon/mnemopi/core/embeddings";
@@ -325,8 +326,7 @@ describe("attempt-time Mnemopi provider payloads", () => {
 			client.sanitizeProviderText = active;
 			return "direct-key";
 		};
-		const originalSleep = Bun.sleep;
-		Bun.sleep = (() => Promise.resolve()) as typeof Bun.sleep;
+		const wait = spyOn(scheduler, "wait").mockResolvedValue(undefined);
 		const fetchMock: FetchImpl = async (_input, init) => {
 			bodies.push(JSON.parse(String(init?.body)) as unknown);
 			if (bodies.length === 1) {
@@ -349,7 +349,7 @@ describe("attempt-time Mnemopi provider payloads", () => {
 		try {
 			await client.chat(messages);
 		} finally {
-			Bun.sleep = originalSleep;
+			wait.mockRestore();
 		}
 
 		expect(bodies.length).toBeGreaterThanOrEqual(2);

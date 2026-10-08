@@ -43,9 +43,9 @@ When a profile `<name>` is active, native Veyyon paths resolve under:
 ~/.veyyon/profiles/<name>/agent/
 ```
 
-That resolution is uniform across settings, sessions, blobs, slash commands, sticky rules, prompts, hooks, tools, extensions, skills, MCP, keybindings, theme, the profile `AGENTS.md`, `RULES.md`, and `PROMPT_SECTIONS/`. Operational state (logs, plugins, caches, worktrees) resolves under the profile root `~/.veyyon/profiles/<name>/` the same way. A profile never reads another profile's tree at runtime.
+That resolution is uniform across settings, sessions, blobs, slash commands, sticky rules, prompts, hooks, tools, extensions, skills, MCP, keybindings, theme, the profile `AGENTS.md`, `RULES.md`, and `PROMPT_SECTIONS/`. Operational state (logs, plugins, caches, worktrees, `launch` processes) resolves under the profile root `~/.veyyon/profiles/<name>/` the same way. A profile reads another profile's tree only to find the owner of a session id passed to `--resume`, `--fork` or `/resume`, and never writes to it.
 
-**Provider credentials are the one exception:** by default they live in a machine-wide store (`~/.veyyon/shared-auth/agent.db`) that every profile reads, so you sign in once. Set `profileSharing: false` in the global `~/.veyyon/config.yml` (or toggle it on the **Global** tab of `/settings`) to give each profile its own private credential store instead. See [Signing in › Credentials are shared across profiles](../using/authentication.md#credentials-are-shared-across-profiles).
+**Provider credentials are the one exception:** by default they are stored in a machine-wide store (`~/.veyyon/shared-auth/agent.db`) that every profile reads, so you sign in once. Set `profileSharing: false` in the global `~/.veyyon/config.yml` (or toggle it on the **Global** tab of `/settings`) to give each profile its own private credential store instead. See [Signing in › Credentials are shared across profiles](../using/authentication.md#credentials-are-shared-across-profiles).
 
 **Keybindings:** each profile defines `agent/keybindings.*`. New profiles seeded with `veyyon profile new --from default` copy the default profile's keybindings once. On first launch of an older named profile that has no keybindings file, Veyyon performs the same one-time seed and logs it. There is no live merge from the default profile after that.
 
@@ -59,7 +59,9 @@ Project-level dirs (`<cwd>/.veyyon`, `.claude`, etc.) are **not** profile-scoped
 - **Env:** `VEYYON_PROFILE=<name>`.
 - **TUI:** `/profile <name>` ends the current conversation and relaunches Veyyon on that profile (a fresh session: profiles are chosen at process start, so there is no hot-swap). Bare `/profile` (or `/profiles`) opens the profile picker described below.
 - **Shell alias:** `veyyon --profile work --alias mywork` installs a managed block in your shell rc (see `cli/profile-alias.ts`).
-- **Resume:** `veyyon --resume <id>` (also `-r`, `--session`, `--continue <id>`, or a transcript path) activates the profile whose `sessions/` holds that session. An explicit `--profile` takes precedence. `--fork`, `--no-session` and `--session-dir` keep the profile the launch resolved otherwise.
+- **Resume and fork:** `veyyon --resume <id>` (also `-r`, `--session`, `--continue <id>`, or a transcript path) and `veyyon --fork <id>` activate the profile whose `sessions/` holds that session, including a spawned agent's transcript nested inside a session's directory. An explicit `--profile` naming another profile forks the session into that profile and leaves the source unchanged: at its recorded working directory for `--resume`, at the launch directory for `--fork`. `/resume <id>` for another profile's session relaunches on that profile. Bare `--continue` picks from the active profile's sessions only. `--no-session` and `--session-dir` keep the profile the launch resolved otherwise.
+
+A Veyyon process started by another one under a different profile (a `/profile` or `/resume` relaunch, or `veyyon --profile <name>` run from a tool's shell) reads its own profile's `.env` files and drops the variables the parent set from its own. It also drops `EXA_API_KEY` when the parent read it out of an Exa server in its profile's `mcp.json`. The parent records those variables, as digests, in `VEYYON_DOTENV_ORIGIN`. A variable exported in the shell, or changed after the parent read its `.env` files, is inherited unchanged.
 
 ## TUI profile commands
 
@@ -82,7 +84,7 @@ Choosing **Create new profile** or **Rename** in the picker prefills the compose
 
 ## Profile names and renaming
 
-A profile's directory name (`~/.veyyon/profiles/<name>`) is its stable identity and never changes. Each profile can additionally carry a **display name**, the `profile.displayName` setting, stored in that profile's own `config.yml`:
+A profile's directory name (`~/.veyyon/profiles/<name>`) is its stable identity and never changes. Each profile can also have a **display name**, the `profile.displayName` setting, stored in that profile's own `config.yml`:
 
 - **Settings:** `/settings` › Interaction › Profile › Profile Name.
 - **TUI:** `/profile rename to <new>` renames the active profile; `/profile <name> rename to <new>` (or `/profile rename <name> to <new>`) renames another one. The default profile is renamable too. The profile picker's **Rename** action prefills this command for you.
@@ -129,17 +131,17 @@ $ veyyon profile list --json
 
 A profile whose directory does not exist yet reports `"bytes": 0` with `"bytesComplete": true`: there is nothing there, which is a measurement rather than a failure.
 
-In the TUI, `/profile new <name>` (or `/profile create <name>`) opens a picker listing every carry-over item (AGENTS.md, settings, MCP servers, SSH targets, skills, commands, tools, prompts, themes, extensions, keybindings), each individually toggleable (all selected by default). The new profile is seeded from the **active** profile with exactly the chosen items. Deleting is available too: `/profile rm <name>` (or the picker's **Delete** action) removes a profile after a confirmation, and rejects the active and default profiles. See [TUI profile commands](#tui-profile-commands) for the full verb list.
+In the TUI, `/profile new <name>` (or `/profile create <name>`) opens a picker listing every carry-over item (AGENTS.md, settings, MCP servers, SSH targets, skills, commands, tools, prompts, themes, extensions, keybindings), each individually toggleable (all selected by default). The new profile is seeded from the **active** profile with only the chosen items. Deleting is available too: `/profile rm <name>` (or the picker's **Delete** action) removes a profile after a confirmation, and rejects the active and default profiles. See [TUI profile commands](#tui-profile-commands) for the full verb list.
 
-The instruction row copies only `AGENTS.md`. A profile switch never carries `RULES.md`; change it through settings or copy it manually when that is your intent.
+The instruction row copies only `AGENTS.md`. A profile switch never copies `RULES.md`; change it through settings or copy the file by hand.
 
 You can still create a profile implicitly by running `veyyon --profile <name>` once; use `profile new` when you want seeding without launching the TUI.
 
 ## Onboarding import
 
-On the first interactive run of a profile that has not completed setup, the setup wizard scans the machine for user-level config written for other tools (skills and `CLAUDE.md`/`AGENTS.md` from Claude Code, Codex, Cursor, and similar) and offers each item for import into the active profile. Imports **copy**: skills land in the profile's `skills/`, instruction files append to the profile's `AGENTS.md` under a source marker (re-imports are idempotent). The scan runs no matter how `discovery.importForeignConfig` is set, because importing is how foreign config comes in by default: ambient loading of the originals stays off unless you turn that setting on.
+On the first interactive run of a profile that has not completed setup, the setup wizard scans the machine for user-level config written for other tools (skills and `CLAUDE.md`/`AGENTS.md` from Claude Code, Codex, Cursor, and similar) and offers each item for import into the active profile. Imports **copy**: skills land in the profile's `skills/`, instruction files append to the profile's `AGENTS.md` under a source marker (re-imports are idempotent). The scan runs whatever the value of `discovery.importForeignConfig`, because importing is the default route for foreign config: ambient loading of the originals stays off unless you turn that setting on.
 
-Do not document inline `[profiles.<name>]` tables or standalone `<name>.config.yml` files as shipped; settings use `config.yml` under the active agent dir.
+Settings are read from `config.yml` under the active agent dir. Inline `[profiles.<name>]` tables and standalone `<name>.config.yml` files are not read.
 
 ## Model policies and roles (per profile)
 

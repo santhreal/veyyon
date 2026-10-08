@@ -9,9 +9,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { AgentTool } from "@veyyon/agent-core";
-import { isRecord } from "@veyyon/utils";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { isRecord, lazy } from "@veyyon/utils";
 import type { TextBlockView, ViewSpan, ViewTone } from "@veyyon/view";
-import { type } from "arktype";
 import { subprocessToolRegistry } from "../../task/subprocess-tool-registry";
 import type { ReviewFinding } from "../../task/types";
 import type { ThemeColor } from "../../theme/theme";
@@ -80,15 +80,17 @@ export function findingTitle(title: string): string {
 }
 
 // report_finding schema
-const ReportFindingParams = type({
-	title: type("string").describe("prefixed imperative title"),
-	body: type("string").describe("problem explanation"),
-	priority: type("'P0' | 'P1' | 'P2' | 'P3'").describe("priority 0-3"),
-	confidence: type("number >= 0 & number <= 1").describe("confidence score"),
-	file_path: type("string").describe("file path"),
-	line_start: type("number").describe("start line"),
-	line_end: type("number").describe("end line"),
-});
+const ReportFindingParams = lazy(() =>
+	type({
+		title: type("string").describe("prefixed imperative title"),
+		body: type("string").describe("problem explanation"),
+		priority: type("'P0' | 'P1' | 'P2' | 'P3'").describe("priority 0-3"),
+		confidence: type("number >= 0 & number <= 1").describe("confidence score"),
+		file_path: type("string").describe("file path"),
+		line_start: type("number").describe("start line"),
+		line_end: type("number").describe("end line"),
+	}),
+);
 
 interface ReportFindingDetails {
 	title: string;
@@ -160,12 +162,14 @@ export function normalizeReportFindings(value: unknown): ReportFindingDetails[] 
 	return findings;
 }
 
-export const reportFindingTool: AgentTool<typeof ReportFindingParams, ReportFindingDetails> = {
+export const reportFindingTool: AgentTool<typeof ReportFindingParams.value, ReportFindingDetails> = {
 	name: "report_finding",
 	label: "Report Finding",
 	approval: "read",
 	description: "Report a code review finding. Use this for each issue found. Call yield when done.",
-	parameters: ReportFindingParams,
+	get parameters() {
+		return ReportFindingParams.value;
+	},
 	intent: "omit",
 	async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
 		const { title, body, priority, confidence, file_path, line_start, line_end } = params;

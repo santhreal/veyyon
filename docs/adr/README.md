@@ -13,3 +13,4 @@ add a new ADR that supersedes it.
 | [0001](0001-fork-from-oh-my-pi.md) | Fork oh-my-pi rather than build from scratch | accepted |
 | [0002](0002-typescript-bun-not-rust.md) | Keep the product in TypeScript + Bun; Rust for hot paths only | accepted |
 | [0003](0003-reset-versioning-to-1.0.0.md) | Reset veyyon's release line to 1.0.0 above the fork point | accepted |
+| [0004](0004-idle-collector-timer-follows-the-bun-pin.md) | Fix Bun's idle collector timer through the runtime pin, not in process | accepted |

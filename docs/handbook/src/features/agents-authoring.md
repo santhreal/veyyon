@@ -14,7 +14,7 @@ $ $EDITOR ~/.veyyon/subagents/accessibility-reviewer.md
 
 `~/.veyyon/subagents/*.md` is the only place veyyon reads user-authored agents from.
 Every profile reads that directory, so an agent is written once. Whether a profile
-may spawn it is a separate answer, `agent.agents.<name>.enabled`, stored per
+may spawn it is a separate setting, `agent.agents.<name>.enabled`, stored per
 profile.
 
 There is no project-level directory. A definition supplied by a repository could
@@ -51,8 +51,8 @@ else is optional.
 | `description` | What the role covers. This is the text the model routes on, so state the work, not the job title. |
 | `tools` | The tools this agent may call, as a list or a comma-separated string. Omitted grants the default set. `yield` is added if you list any tools at all. |
 | `spawns` | Which agents this one may spawn: a list, or `*` for any. Omitted means none. |
-| `model` | The model this agent runs when its roster row names none. A list is a fallback chain. |
-| `thinkingLevel` | The effort it runs at when its roster row names none: `off`, `minimal`, `low`, `medium`, `high`, `max`, `auto`, or `inherit`. `thinking` is accepted as a synonym. |
+| `model` | The model this agent runs when its roster row sets none. A list is a fallback chain. |
+| `thinkingLevel` | The effort it runs at when its roster row sets none: `off`, `minimal`, `low`, `medium`, `high`, `max`, `auto`, or `inherit`. `thinking` is accepted as a synonym. |
 | `blocking` | `true` runs the agent to completion before the parent continues. |
 | `autoloadSkills` | Skills loaded into the agent's context at spawn. |
 | `readSummarize` | `false` makes its `read` tool return verbatim file content instead of structural summaries. |
@@ -61,19 +61,19 @@ else is optional.
 A two-word key is read in either spelling: `thinkingLevel` and `thinking-level` reach
 the same field, and so do `autoloadSkills` and `readSummarize`. An underscore does
 not, so `thinking_level` is ignored. The bundled definitions use the dashed form, so
-an unpacked agent reads `thinking-level: medium` where the table above says
+an unpacked agent reads `thinking-level: medium` where the table uses
 `thinkingLevel`.
 
-A name in `tools` that matches no built-in tool and carries no `mcp__` or extension
+A name in `tools` that matches no built-in tool and has no `mcp__` or extension
 namespace is reported at startup. The tool grants nothing and its guidance is left
 out of the system prompt, so a typo reads as an agent that chose to do nothing.
 
 ## The body is the system prompt
 
 Everything after the frontmatter is the agent's system prompt, rendered with
-Handlebars. Write it as instructions to the worker: what it owns, what it must not
-touch, what it returns. The worker sees this instead of the main assistant's prompt,
-not in addition to it, so state the constraints that matter for the lane.
+Handlebars. Write it as instructions to the worker: which files it may change, what it
+must not touch, what it returns. The worker receives this instead of the main assistant's
+prompt, not in addition to it, so state the constraints that apply to the lane.
 
 ## Enable it
 
@@ -107,8 +107,9 @@ A definition that keeps a bundled agent's `name` replaces that agent: a file in
 ## Check the result
 
 Open **`/settings` → Agents → Roster**. The agent is listed there with its state,
-the model it resolves to, and which setting decided. An agent that is discovered but
-not enabled is listed and refused when named, with the setting to change.
+the model it resolves to, and which setting selected that model. An agent that is
+discovered but not enabled is listed, and a spawn request for it is rejected with the
+setting to change.
 
-A file that is skipped says why on startup: a missing `name` or `description`, a
-file that cannot be read, or a tool name that matches nothing.
+A skipped file is reported at startup with the reason: a missing `name` or
+`description`, a file that cannot be read, or a tool name that matches nothing.

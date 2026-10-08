@@ -935,7 +935,7 @@ export const CONTEXT_SETTINGS = {
 			group: "Hindsight",
 			label: "Hindsight Bank ID",
 			description:
-				"Base memory bank name. Unset uses `veyyon`. Hindsight Bank Prefix is prepended when set, and Hindsight Scoping sets whether the project name is appended (per-project) or carried as a `project:` tag instead (per-project-tagged).",
+				"Base memory bank name. Unset uses `veyyon` in the default profile and `veyyon-<profile>` in a named one, so profiles keep separate memories; set the same value in two profiles to share one bank. Hindsight Bank Prefix is prepended when set, and Hindsight Scoping sets whether the project name is appended (per-project) or carried as a `project:` tag instead (per-project-tagged).",
 			condition: "hindsightActive",
 		},
 	},

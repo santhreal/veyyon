@@ -80,6 +80,15 @@ describe("collapseProgressRuns", () => {
 		]);
 	});
 
+	test("keys a word with its colon apart from the bare word", () => {
+		const bare = ["Running a", "Running b", "Running c", "Running d"];
+		const colon = ["Running: a", "Running: b", "Running: c", "Running: d"];
+		expect(collapseProgressRuns([...bare, ...colon])).toEqual([
+			{ text: "Running d", hidden: 3 },
+			{ text: "Running: d", hidden: 3 },
+		]);
+	});
+
 	test("shares one key across a counter's digits", () => {
 		expect(
 			collapseProgressRuns(["[1/47] Building x", "[2/47] Building y", "[3/47] Building z", "[4/47] Building w"]),
@@ -126,6 +135,63 @@ describe("collapseProgressRuns", () => {
 	test("never anchors a run on blank lines", () => {
 		const blanks = ["", "", "", "", ""];
 		expect(collapseProgressRuns(blanks)).toEqual(blanks.map(text => ({ text, hidden: 0 })));
+	});
+
+	// The shape rule, token by token: a Capitalized word with an optional trailing colon, a lowercase
+	// word with a required one, or a counter, and never a severity word in any case. The key is read
+	// character by character, so each row is a boundary of that scan: a digit or a hyphen inside a
+	// word, a colon short of the end, a capital inside a lowercase word, a letter outside ASCII, and
+	// severity words next to words one letter longer or shorter.
+	test.each([
+		["Compiling", true],
+		["Running:", true],
+		["CMAKE", true],
+		["remote:", true],
+		["(1/3)", true],
+		["#12", true],
+		["Erro", true],
+		["Errorx", true],
+		["remote", false],
+		["Compiling2", false],
+		["Re-run", false],
+		["Abc:def", false],
+		["aBc:", false],
+		["Über", false],
+		["Error:", false],
+		["WARNING:", false],
+		["Warnings", false],
+		["FAILED", false],
+		["Panicked:", false],
+		["note:", false],
+	])("collapses a run led by %p: %p", (token, collapses) => {
+		const lines = Array.from({ length: PROGRESS_RUN_MIN_LINES }, (_, i) =>
+			token.startsWith("(") ? `(${i}/3) item` : `${token} item-${i}`,
+		);
+		const rows = collapseProgressRuns(lines);
+		expect(rows).toEqual(
+			collapses
+				? [{ text: lines[lines.length - 1]!, hidden: lines.length - 1 }]
+				: lines.map(text => ({ text, hidden: 0 })),
+		);
+	});
+
+	test("ends the first token at every UTF-16 unit `\\s` matches and at no other", () => {
+		// Every unit, so the space set the key scans for is the engine's `\s`, Unicode separators included.
+		const mismatched: number[] = [];
+		for (let unit = 0; unit <= 0xffff; unit++) {
+			const c = String.fromCharCode(unit);
+			const space = /\s/.test(c);
+			// After the token a space ends it at `Compiling`; any other unit joins it to a digit, which no
+			// word holds. Before the token a space is skipped.
+			const inside = Array.from({ length: PROGRESS_RUN_MIN_LINES }, (_, i) => `Compiling${c}x${i}`);
+			const collapsedInside = collapseProgressRuns(inside).length === 1;
+			const collapsedLeading =
+				!space ||
+				collapseProgressRuns(Array.from({ length: PROGRESS_RUN_MIN_LINES }, (_, i) => `${c}Compiling x${i}`))
+					.length === 1;
+			if (collapsedInside !== space || !collapsedLeading) mismatched.push(unit);
+		}
+		expect(mismatched).toEqual([]);
 	});
 });
 

@@ -1,57 +1,28 @@
 /**
  * Centralized logger for Veyyon.
  *
- * Default: rotating `~/.veyyon/profiles/<name>/logs/veyyon.<DATE>.log`, no console output (writing
- * to stdout/stderr would corrupt the TUI). Long-running headless services
- * (the auth broker, etc.) call {@link setTransports} to swap in a console
- * transport so a process supervisor (pm2, journald, k8s) captures the logs.
+ * Default: `~/.veyyon/profiles/<name>/logs/veyyon.<DATE>.log` through {@link RotatingLogFile}, no
+ * console output (writing to stdout/stderr would corrupt the TUI). Long-running headless services
+ * (the auth broker, etc.) call {@link setTransports} to write to stdout instead, so a process
+ * supervisor (pm2, journald, k8s) captures the logs.
  *
- * Each entry includes `process.pid` so concurrent veyyon instances stay
- * traceable.
+ * Each entry is one JSON line: `timestamp` (local time with its UTC offset), `level`, `pid`,
+ * `message`, then the context's own fields. `pid` keeps concurrent veyyon instances traceable.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
-import * as fs from "node:fs";
 import { isPromise } from "node:util/types";
-import type * as winston from "winston";
-import type DailyRotateFile from "winston-daily-rotate-file";
 import { getLogsDir } from "./dirs";
+import { localTime } from "./local-time";
+import { RotatingLogFile } from "./log-file";
 import { drainModuleLoadEvents } from "./timing-buffer";
 import { errorMessage } from "./type-guards";
 
-/**
- * `winston` and `winston-daily-rotate-file` are resolved on first use, not
- * imported at module scope.
- *
- * Every entry point reaches this module: `dirs.ts` pulls it through
- * `file-lock.ts`, so `veyyon --version` and the interactive launch card both
- * evaluate whatever this module's imports evaluate. Those two packages cost
- * about 6.6ms of module evaluation between them, which was paid before the
- * first frame reached the terminal even though nothing had logged yet.
- *
- * A static import cannot express that: it evaluates the graph whether or not a
- * line is ever written. `await import()` cannot either, because every log
- * method here is synchronous and callers depend on that. `require` is the only
- * form that is both deferred and synchronous, and the specifier is literal, so
- * the bundler still resolves both packages into the compiled binary.
- */
-let winstonLib: typeof winston | undefined;
-function w(): typeof winston {
-	winstonLib ??= require("winston") as typeof winston;
-	return winstonLib;
-}
+type LogLevel = "error" | "warn" | "info" | "debug";
 
-let rotateFile: typeof DailyRotateFile | undefined;
-function rotateFileCtor(): typeof DailyRotateFile {
-	rotateFile ??= require("winston-daily-rotate-file") as typeof DailyRotateFile;
-	return rotateFile;
-}
-
-/** Ensure a logs directory exists; return the resolved path. */
-function ensureDir(dir: string): string {
-	if (!fs.existsSync(dir)) {
-		fs.mkdirSync(dir, { recursive: true });
-	}
-	return dir;
+/** One destination for formatted lines. */
+interface LogSink {
+	write(line: string, now: Date): void;
+	close(): void;
 }
 
 /**
@@ -76,42 +47,61 @@ function jsonReplacer(_key: string, value: unknown): unknown {
 	return value;
 }
 
-/** Custom format that includes pid and flattens metadata; built on first use. */
-let logFormat: winston.Logform.Format | undefined;
+function pad2(value: number): string {
+	return value < 10 ? `0${value}` : String(value);
+}
 
-function getLogFormat(): winston.Logform.Format {
-	const wf = w().format;
-	logFormat ??= wf.combine(
-		wf.timestamp({ format: "YYYY-MM-DDTHH:mm:ss.SSSZ" }),
-		wf.printf(({ timestamp, level, message, ...meta }) => {
-			const entry: Record<string, unknown> = {
-				timestamp,
-				level,
-				pid: process.pid,
-				message,
-			};
-			// Flatten metadata into entry
-			for (const [key, value] of Object.entries(meta)) {
-				if (key !== "level" && key !== "timestamp" && key !== "message") {
-					entry[key] = value;
-				}
-			}
-			return JSON.stringify(entry, jsonReplacer);
-		}),
+/** `YYYY-MM-DDTHH:mm:ss.SSS±HH:MM` in local time. */
+function localTimestamp(date: Date): string {
+	const {
+		year,
+		month,
+		day,
+		hours,
+		minutes,
+		seconds,
+		milliseconds: ms,
+		offsetMinutes: offset,
+	} = localTime(date.getTime());
+	const absolute = Math.abs(offset);
+	return (
+		`${year}-${pad2(month)}-${pad2(day)}` +
+		`T${pad2(hours)}:${pad2(minutes)}:${pad2(seconds)}` +
+		`.${ms < 10 ? `00${ms}` : ms < 100 ? `0${ms}` : ms}` +
+		`${offset < 0 ? "-" : "+"}${pad2(Math.floor(absolute / 60))}:${pad2(absolute % 60)}`
 	);
-	return logFormat;
 }
 
 /**
- * The directory the live file transport writes to, so a later move is noticed.
+ * One log line, newline included. A context's own fields follow the fixed ones, except `level`,
+ * `timestamp` and `message`, which the line sets; a truthy context `message` is appended to the
+ * line's message after a space.
+ */
+function formatLine(level: LogLevel, message: string, context: Record<string, unknown> | undefined, now: Date): string {
+	const entry: Record<string, unknown> = {
+		timestamp: localTimestamp(now),
+		level,
+		pid: process.pid,
+		message: context?.message ? `${message} ${String(context.message)}` : message,
+	};
+	if (context) {
+		for (const key of Object.keys(context)) {
+			if (key !== "level" && key !== "timestamp" && key !== "message") entry[key] = context[key];
+		}
+	}
+	return `${JSON.stringify(entry, jsonReplacer)}\n`;
+}
+
+/**
+ * The directory the live file sink writes to, so a later move is noticed.
  *
- * `undefined` while no file transport exists, and set to an explicit directory when
+ * `undefined` while no file sink exists, and set to an explicit directory when
  * {@link setTransports} was given one (that caller chose the path and owns it).
  */
-let fileTransportDir: string | undefined;
+let fileSinkDir: string | undefined;
 
-/** Whether the live file transport follows {@link getLogsDir} rather than a fixed path. */
-let fileTransportFollowsDirs = false;
+/** Whether the live file sink follows {@link getLogsDir} rather than a fixed path. */
+let fileSinkFollowsDirs = false;
 
 /**
  * A destination the rebind already failed on, so it is neither retried nor re-announced.
@@ -123,103 +113,115 @@ let fileTransportFollowsDirs = false;
  */
 let failedRebindTarget: string | undefined;
 
-/** Build a rotating file transport, materializing the target directory lazily. */
-function makeFileTransport(dir?: string): winston.transport {
-	fileTransportFollowsDirs = dir === undefined;
-	fileTransportDir = ensureDir(dir ?? getLogsDir());
-	const transport = new (rotateFileCtor())({
-		dirname: fileTransportDir,
-		filename: "veyyon.%DATE%.log",
-		datePattern: "YYYY-MM-DD",
-		maxSize: "10m",
-		maxFiles: 5,
-		zippedArchive: true,
-	});
-	// A transport is an EventEmitter, and an `error` with no listener is an UNCAUGHT
-	// exception. Everything about a log destination can go wrong after the transport is
-	// built and while the stream is opening: the directory is removed, the disk fills, the
-	// volume is unmounted. None of that is a reason to take the process down — the log line
-	// is the least important thing happening at that moment. Announced once per transport,
-	// through `process.emitWarning` because the logger is the thing that just failed and a
+/** Build the rotating file sink, creating its directory now so an unusable one fails here. */
+function makeFileSink(dir?: string): LogSink {
+	const target = dir ?? getLogsDir();
+	// Everything about a log destination can go wrong after the sink is built: the directory is
+	// removed, the disk fills, the volume is unmounted. None of that is a reason to take the process
+	// down, and the log line is the least important thing happening at that moment. Announced once
+	// per sink through `process.emitWarning`, because the logger is the thing that just failed and a
 	// per-line report would be its own flood.
 	let announced = false;
-	const onError = (error: Error): void => {
-		if (announced) return;
-		announced = true;
-		process.emitWarning(`Log output to "${fileTransportDir}" failed: ${error.message}`, {
-			code: "VEYYON_LOG_WRITE_FAILED",
-		});
-	};
-	transport.on("error", onError);
-	// The transport itself is not enough. `winston-daily-rotate-file` forwards `new`,
-	// `rotate` and `logRemoved` from its underlying rotator and NOT `error`, so a failure
-	// to open the file reaches an emitter nobody is listening to and takes the process
-	// down. Reaching for `logStream` is deliberate for that reason, and it is guarded so a
-	// future version that stops exposing it degrades to the handler above rather than
-	// throwing here.
-	const logStream = (
-		transport as unknown as { logStream?: { on?: (event: string, listener: (error: Error) => void) => void } }
-	).logStream;
-	logStream?.on?.("error", onError);
-	return transport;
+	const sink = new RotatingLogFile(target, {
+		onError: error => {
+			if (announced) return;
+			announced = true;
+			process.emitWarning(`Log output to "${target}" failed: ${error.message}`, {
+				code: "VEYYON_LOG_WRITE_FAILED",
+			});
+		},
+	});
+	fileSinkFollowsDirs = dir === undefined;
+	fileSinkDir = target;
+	return sink;
+}
+
+/** Writes each line to stdout, looked up at the time of the write. */
+const consoleSink: LogSink = {
+	write(line) {
+		process.stdout.write(line);
+	},
+	close() {},
+};
+
+/**
+ * Desired transport configuration, applied when the sinks are built.
+ * Default: file ON (TUI-safe), console OFF.
+ */
+let transportOpts: { console?: boolean; file?: boolean | string } = { file: true };
+
+/** The active sinks, or `undefined` until the first log emission builds them. */
+let sinks: LogSink[] | undefined;
+
+function buildSinks(opts: { console?: boolean; file?: boolean | string }): LogSink[] {
+	const built: LogSink[] = [];
+	// Cleared first so turning the file sink OFF cannot leave the previous
+	// directory recorded, which would make a later move look like a rebind is due.
+	fileSinkDir = undefined;
+	fileSinkFollowsDirs = false;
+	failedRebindTarget = undefined;
+	if (opts.file) built.push(makeFileSink(typeof opts.file === "string" ? opts.file : undefined));
+	if (opts.console) built.push(consoleSink);
+	return built;
+}
+
+function closeSinks(active: LogSink[]): void {
+	for (const sink of active) {
+		try {
+			sink.close();
+		} catch {}
+	}
 }
 
 /**
- * Rebind the file transport when the config root has moved under it.
+ * Rebind the file sink when the config root has moved under it.
  *
- * The transport resolves its directory ONCE, when the logger is first built, and the
- * logger is built on the first log emission, which lands somewhere inside whatever the
- * process happened to be doing. A process that moves the config root afterwards kept
- * writing to the OLD directory forever. Two ways that hurts, both silent:
+ * The sink resolves its directory ONCE, when it is built, and it is built on the first log
+ * emission, which lands somewhere inside whatever the process happened to be doing. A process that
+ * moved the config root afterwards kept writing to the OLD directory forever. Two ways that hurts,
+ * both silent:
  *
  *  - The lines are not where the operator looks for them. `veyyon logs` and every doc
  *    name the CURRENT config root, and the file there simply has no entries.
- *  - If the old directory has been deleted meanwhile, the open stream keeps writing to
+ *  - If the old directory has been deleted meanwhile, the open descriptor keeps writing to
  *    an unlinked file and the lines are gone. The emit helpers swallow logging failures
  *    by design, so there is nothing to notice.
  *
- * It is also what left 130 `~/.veyyon-*-<id>` directories in a real home directory, each
- * holding only `logs/` and a cache file. `file-stream-rotator` calls `mkDirForFile` before
- * every `createWriteStream`, so any stream open RECREATES the directory tree: a suite
- * isolated the config root, logged a line, removed its temp root, and the still-bound
- * transport put the tree back on its next open. An already-open stream does not do this
- * (probed: 200 writes after `rm -rf`, nothing came back), which is why the leftovers all
- * carry a `logs/` and nothing else.
+ * A sink still bound under a removed temp root also recreates that root when it reopens its file,
+ * which is what left 130 `~/.veyyon-*-<id>` directories in a real home directory, each holding only
+ * `logs/` and a cache file.
  *
  * Checking on emit rather than being told about the move keeps the dependency one-way:
  * `dirs.ts` resolves every path in the process and must not import the logger.
  * `getLogsDir` is a cached lookup, so the cost is a map read per emission.
  */
-function rebindFileTransportIfMoved(logger: winston.Logger): void {
-	if (!fileTransportFollowsDirs || fileTransportDir === undefined) return;
+function rebindFileSinkIfMoved(active: LogSink[]): LogSink[] {
+	if (!fileSinkFollowsDirs || fileSinkDir === undefined) return active;
 	let current: string;
 	try {
 		current = getLogsDir();
 	} catch {
 		// An unusable HOME is reported by the code that resolves paths for real work,
 		// not by a log line's side effect. Keep writing where we already are.
-		return;
+		return active;
 	}
-	if (current === fileTransportDir) return;
+	if (current === fileSinkDir) return active;
 	// A destination that already failed is not retried, and not re-announced. The check
 	// runs on EVERY emission, so without this a single unwritable destination produces one
-	// failed `mkdir` and one warning per log line: the first version of this emitted 4626
-	// of them in one test run. Once is informative, 4626 is the same absorbed failure in
-	// a louder costume.
-	if (current === failedRebindTarget) return;
-	// BUILD FIRST, then swap. Clearing first and building second means a failed build
+	// failed `mkdir` and one warning per log line.
+	if (current === failedRebindTarget) return active;
+	// BUILD FIRST, then swap. Closing first and building second means a failed build
 	// (an unwritable directory, a guard refusing the path) leaves the logger with no
-	// transports at all, and since the emit helpers swallow their own failures the
-	// process would go quiet for the rest of its life while winston printed "Attempt to
-	// write logs with no transports" on every line. Keeping the working transport bound
-	// is strictly better than that, and the failure is announced rather than absorbed.
-	const previous = { dir: fileTransportDir, follows: fileTransportFollowsDirs };
-	let rebuilt: winston.transport[];
+	// sinks at all, and since the emit helpers swallow their own failures the process
+	// would go quiet for the rest of its life. Keeping the working sink bound is strictly
+	// better than that, and the failure is announced rather than absorbed.
+	const previous = { dir: fileSinkDir, follows: fileSinkFollowsDirs };
+	let rebuilt: LogSink[];
 	try {
-		rebuilt = buildTransports(transportOpts);
+		rebuilt = buildSinks(transportOpts);
 	} catch (error) {
-		fileTransportDir = previous.dir;
-		fileTransportFollowsDirs = previous.follows;
+		fileSinkDir = previous.dir;
+		fileSinkFollowsDirs = previous.follows;
 		failedRebindTarget = current;
 		// `process.emitWarning` rather than a log line: the logger is the thing that just
 		// failed, so logging the failure is not available. Same reasoning as the XDG
@@ -229,69 +231,11 @@ function rebindFileTransportIfMoved(logger: winston.Logger): void {
 				`veyyon is still writing to "${previous.dir}".`,
 			{ code: "VEYYON_LOG_REBIND_FAILED" },
 		);
-		return;
+		return active;
 	}
-	failedRebindTarget = undefined;
-	for (const transport of logger.transports) closeTransport(transport);
-	logger.clear();
-	for (const transport of rebuilt) logger.add(transport);
-	logger.silent = rebuilt.length === 0;
-}
-
-function closeTransport(transport: unknown): void {
-	if (transport && typeof transport === "object" && "close" in transport) {
-		const closeFn = transport.close;
-		if (typeof closeFn === "function") {
-			try {
-				closeFn.call(transport);
-			} catch {}
-		}
-	}
-}
-
-function makeConsoleTransport(): winston.transport {
-	return new (w().transports.Console)({ format: getLogFormat() });
-}
-
-/**
- * Desired transport configuration, applied when the winston logger is built.
- * Default: file ON (TUI-safe), console OFF.
- */
-let transportOpts: { console?: boolean; file?: boolean | string } = { file: true };
-
-/** The winston logger instance, created lazily on first log emission. */
-let winstonLogger: winston.Logger | undefined;
-
-function buildTransports(opts: { console?: boolean; file?: boolean | string }): winston.transport[] {
-	const transports: winston.transport[] = [];
-	// Cleared first so turning the file transport OFF cannot leave the previous
-	// directory recorded, which would make a later move look like a rebind is due.
-	fileTransportDir = undefined;
-	fileTransportFollowsDirs = false;
-	failedRebindTarget = undefined;
-	if (opts.file) transports.push(makeFileTransport(typeof opts.file === "string" ? opts.file : undefined));
-	if (opts.console) transports.push(makeConsoleTransport());
-	return transports;
-}
-
-function getWinstonLogger(): winston.Logger {
-	if (!winstonLogger) {
-		const transports = buildTransports(transportOpts);
-		winstonLogger = w().createLogger({
-			level: "debug",
-			format: getLogFormat(),
-			transports,
-			// A transport-less winston logger console.warns "Attempt to write logs
-			// with no transports" on every emit; mark it silent instead so disabling
-			// all transports is a clean no-op.
-			silent: transports.length === 0,
-			// Don't exit on error - logging failures shouldn't crash the app
-			exitOnError: false,
-		});
-		return winstonLogger;
-	}
-	rebindFileTransportIfMoved(winstonLogger);
-	return winstonLogger;
+	closeSinks(active);
+	sinks = rebuilt;
+	return rebuilt;
 }
 
 /**
@@ -301,13 +245,23 @@ function getWinstonLogger(): winston.Logger {
  */
 export function setTransports(opts: { console?: boolean; file?: boolean | string }): void {
 	transportOpts = opts;
-	if (!winstonLogger) return; // applied lazily when the logger is first built
-	for (const transport of winstonLogger.transports) closeTransport(transport);
-	winstonLogger.clear();
-	const transports = buildTransports(opts);
-	for (const transport of transports) winstonLogger.add(transport);
-	// Keep the logger silent when nothing is attached so winston doesn't warn on emit.
-	winstonLogger.silent = transports.length === 0;
+	if (!sinks) return; // applied when the first log emission builds the sinks
+	closeSinks(sinks);
+	sinks = [];
+	sinks = buildSinks(opts);
+}
+
+function emit(level: LogLevel, message: string, context: Record<string, unknown> | undefined): void {
+	try {
+		sinks ??= buildSinks(transportOpts);
+		const active = rebindFileSinkIfMoved(sinks);
+		if (active.length === 0) return;
+		const now = new Date();
+		const line = formatLine(level, message, context, now);
+		for (const sink of active) sink.write(line, now);
+	} catch {
+		// Silently ignore logging failures
+	}
 }
 
 /**
@@ -316,11 +270,7 @@ export function setTransports(opts: { console?: boolean; file?: boolean | string
  * @param context - The context to log.
  */
 export function error(message: string, context?: Record<string, unknown>): void {
-	try {
-		getWinstonLogger().error(message, context);
-	} catch {
-		// Silently ignore logging failures
-	}
+	emit("error", message, context);
 }
 
 /**
@@ -329,11 +279,7 @@ export function error(message: string, context?: Record<string, unknown>): void 
  * @param context - The context to log.
  */
 export function warn(message: string, context?: Record<string, unknown>): void {
-	try {
-		getWinstonLogger().warn(message, context);
-	} catch {
-		// Silently ignore logging failures
-	}
+	emit("warn", message, context);
 }
 
 /**
@@ -342,11 +288,7 @@ export function warn(message: string, context?: Record<string, unknown>): void {
  * @param context - The context to log.
  */
 export function info(message: string, context?: Record<string, unknown>): void {
-	try {
-		getWinstonLogger().info(message, context);
-	} catch {
-		// Silently ignore logging failures
-	}
+	emit("info", message, context);
 }
 
 /**
@@ -355,15 +297,11 @@ export function info(message: string, context?: Record<string, unknown>): void {
  * @param context - The context to log.
  */
 export function debug(message: string, context?: Record<string, unknown>): void {
-	try {
-		getWinstonLogger().debug(message, context);
-	} catch {
-		// Silently ignore logging failures
-	}
+	emit("debug", message, context);
 }
 
 // The marker itself lives in `./startup-marker`, which imports nothing but `node:fs`
-// so the CLI bootstrap can use it without pulling this winston-backed module in.
+// so the CLI bootstrap can use it without pulling this module's file sink in.
 // Re-exported here because callers reach it as `logger.startupMarker`.
 export { startupMarker } from "./startup-marker";
 

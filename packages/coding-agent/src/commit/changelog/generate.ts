@@ -1,9 +1,9 @@
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, ApiKey, AssistantMessage, Model } from "@veyyon/ai";
+import { type } from "@veyyon/ai/utils/schema/arktype";
 import { validateToolCall } from "@veyyon/ai/utils/validation";
 import { prompt } from "@veyyon/utils";
 import { isRecord } from "@veyyon/utils/type-guards";
-import { type } from "arktype";
 import { commitPrompts } from "../../prompts/commit/rows";
 import { toReasoningEffort } from "../../thinking";
 import { completeCommitSimple, type ResolveObfuscateProviderText } from "../shared-llm";

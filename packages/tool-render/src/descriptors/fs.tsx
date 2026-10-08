@@ -1,6 +1,7 @@
 import { formatCount } from "@veyyon/utils/format";
 import {
 	countLines,
+	editInputPaths,
 	parseReadArgs,
 	parseReadDetails,
 	parseWriteArgs,
@@ -134,39 +135,6 @@ function WriteBody({ args, result }: ToolRenderProps): ReactNode {
 // edit / apply_patch
 // ============================================================================
 
-/** Path from a hashline `[path#TAG]` / `[path]` header line, or null. */
-function headerPath(line: string): string | null {
-	const trimmed = line.trimEnd();
-	if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return null;
-	let body = trimmed.slice(1, -1).trim();
-	const hash = /#[0-9a-fA-F]{4}$/.exec(body);
-	if (hash) body = body.slice(0, hash.index);
-	if (body.length >= 2) {
-		const first = body[0];
-		if ((first === '"' || first === "'") && first === body[body.length - 1]) body = body.slice(1, -1);
-	}
-	return body.length > 0 ? body : null;
-}
-
-const APPLY_PATCH_HEADER_RE = /^\*{3} (?:Update|Add|Delete) File:\s*(.+)$/;
-
-/** File paths named by hashline or apply_patch section headers, in order. */
-function inputPaths(input: string): string[] {
-	const stripped = input.startsWith("\uFEFF") ? input.slice(1) : input;
-	const paths: string[] = [];
-	for (const rawLine of stripped.split("\n")) {
-		const line = rawLine.replace(/\r$/, "");
-		const fromHashline = headerPath(line);
-		if (fromHashline) {
-			paths.push(fromHashline);
-			continue;
-		}
-		const fromApplyPatch = APPLY_PATCH_HEADER_RE.exec(line.trim());
-		if (fromApplyPatch) paths.push(fromApplyPatch[1].trim());
-	}
-	return paths;
-}
-
 const OP_HEADER_RE = /^(?:replace|insert|delete)\b/;
 
 function countOps(input: string): number {
@@ -223,7 +191,7 @@ function fileEntry(d: Record<string, unknown>): FileEntry {
 
 function EditSummary({ args, result }: ToolRenderProps): ReactNode {
 	const input = str(args.input) ?? str(args._input);
-	const paths = input ? inputPaths(input) : [];
+	const paths = input ? editInputPaths(input) : [];
 	const argPath = str(args.file_path) ?? str(args.path);
 	if (paths.length === 0 && argPath) paths.push(argPath);
 	if (paths.length === 0 && Array.isArray(args.edits)) {
@@ -321,7 +289,7 @@ function EditBody({ args, result }: ToolRenderProps): ReactNode {
 	if (details && Array.isArray(details.perFileResults)) {
 		for (const f of details.perFileResults) if (isRecord(f)) perFile.push(fileEntry(f));
 	}
-	const fallbackPath = str(args.file_path) ?? str(args.path) ?? (input ? (inputPaths(input)[0] ?? null) : null);
+	const fallbackPath = str(args.file_path) ?? str(args.path) ?? (input ? (editInputPaths(input)[0] ?? null) : null);
 
 	let outcome: ReactNode;
 	if (perFile.length > 0) {

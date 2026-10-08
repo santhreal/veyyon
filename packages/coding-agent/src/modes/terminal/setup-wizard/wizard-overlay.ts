@@ -291,7 +291,7 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		// the terminal's own background shows through. A hardcoded ground overrides
 		// the user's terminal theme and reads as a slab pasted over it on every
 		// terminal that is not itself pure black.
-		return this.#fitToScreen(lines, safeWidth, height).map(line => `${line}${SGR_RESET}`);
+		return fitToScreen(lines, safeWidth, height).map(line => `${line}${SGR_RESET}`);
 	}
 
 	/**
@@ -437,7 +437,7 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		// list and every wrapped description simply ended mid-row with nothing to
 		// say more existed — the "you can't see all of it" report.
 		const rendered = this.#activeScene?.render(contentWidth, maxBodyLines) ?? [];
-		const body = this.#clipBody(rendered, maxBodyLines);
+		const body = clipBody(rendered, maxBodyLines);
 		const lines = header.concat(body.map(line => indentLine(line, width, marginX)));
 		while (lines.length + footer.length < height) {
 			lines.push("");
@@ -453,7 +453,7 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 	 * the first chip row is the frame height minus the number of chip rows, and a
 	 * chip's screen column is the scene margin plus its offset within the row.
 	 * Anything past the visible height is dropped rather than recorded: those
-	 * rows are about to be cut by `#fitToScreen`, and a rect for a row nobody can
+	 * rows are about to be cut by `fitToScreen`, and a rect for a row nobody can
 	 * see is a click target on empty terminal.
 	 *
 	 * Both halves of the chip filter are meant: only one of them can fail today,
@@ -479,29 +479,6 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 				});
 			}
 		}
-	}
-
-	/**
-	 * Fit a scene's rows into its budget, replacing the last kept row with a
-	 * count when rows are dropped, so an overrun is visible instead of a frame
-	 * that just stops. A budget of one row cannot hold both content and a
-	 * notice, so it shows the notice: knowing rows are hidden matters more than
-	 * one arbitrary row of them.
-	 */
-	#clipBody(lines: readonly string[], budget: number): string[] {
-		if (budget <= 0) return [];
-		if (lines.length <= budget) return lines.slice();
-		const hidden = lines.length - budget + 1;
-		const notice = theme.fg("warning", `↓ ${hidden} more ${hidden === 1 ? "row" : "rows"} below`);
-		return lines.slice(0, budget - 1).concat(notice);
-	}
-
-	#fitToScreen(lines: string[], width: number, height: number): string[] {
-		const fitted = lines.slice(0, height).map(line => padLineToWidth(line, width));
-		while (fitted.length < height) {
-			fitted.push(padding(width));
-		}
-		return fitted;
 	}
 
 	#startTimer(): void {
@@ -619,4 +596,27 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		this.#stopTimer();
 		this.#done.resolve();
 	}
+}
+
+/**
+ * Fit a scene's rows into its budget, replacing the last kept row with a
+ * count when rows are dropped, so an overrun is visible instead of a frame
+ * that just stops. A budget of one row cannot hold both content and a
+ * notice, so it shows the notice: knowing rows are hidden matters more than
+ * one arbitrary row of them.
+ */
+function clipBody(lines: readonly string[], budget: number): string[] {
+	if (budget <= 0) return [];
+	if (lines.length <= budget) return lines.slice();
+	const hidden = lines.length - budget + 1;
+	const notice = theme.fg("warning", `↓ ${hidden} more ${hidden === 1 ? "row" : "rows"} below`);
+	return lines.slice(0, budget - 1).concat(notice);
+}
+
+function fitToScreen(lines: string[], width: number, height: number): string[] {
+	const fitted = lines.slice(0, height).map(line => padLineToWidth(line, width));
+	while (fitted.length < height) {
+		fitted.push(padding(width));
+	}
+	return fitted;
 }

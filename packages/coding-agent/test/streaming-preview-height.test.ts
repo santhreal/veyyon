@@ -414,13 +414,12 @@ describe("streaming tool call preview height (bounded across renderers)", () => 
 	}
 
 	/**
-	 * The preview hangs on a rail at `COMPOSER_INSET_COLS`, inside the transcript rail, and
-	 * the row it sits on is padded to the full width by the container. It used to be a box
-	 * band spanning that same width: the band belongs to the container now and the block
-	 * hugs its own ink, so what still has to hold is that the preview starts two columns in
-	 * rather than at column 0 (it did, once, which put it left of every other block on
-	 * screen; see `transcript-one-left-rail.test.ts` for the rail itself) and that the row
-	 * under it is a full rectangle for the transcript to paint on.
+	 * The preview hangs on a rail at `COMPOSER_INSET_COLS`, inside the transcript rail. It
+	 * used to be a box band spanning the full width; the block hugs its own ink now, and the
+	 * container paints no background, so the row ends where its ink ends. What still has to
+	 * hold is that the preview starts two columns in rather than at column 0 (it did, once,
+	 * which put it left of every other block on screen; see `transcript-one-left-rail.test.ts`
+	 * for the rail itself) and that no row is padded out toward the render width.
 	 */
 	test("inline tool previews hang on a rail at the transcript inset", () => {
 		const width = 80;
@@ -432,7 +431,7 @@ describe("streaming tool call preview height (bounded across renderers)", () => 
 		expect(railed.length).toBeGreaterThan(0);
 		for (const row of railed) {
 			expect(row.indexOf(rail)).toBe(COMPOSER_INSET_COLS);
-			expect(visibleWidth(row)).toBe(width);
+			expect(visibleWidth(row), JSON.stringify(row)).toBeLessThan(width / 2);
 		}
 		const box = activeTheme.boxSharp;
 		for (const glyph of [box.topLeft, box.topRight, box.bottomLeft, box.vertical]) {

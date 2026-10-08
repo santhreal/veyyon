@@ -10,8 +10,8 @@
 
 import * as path from "node:path";
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
-import { errorMessage, prompt } from "@veyyon/utils";
-import { type } from "arktype";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { errorMessage, lazy, prompt } from "@veyyon/utils";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "..";
 import { resolveToCwd } from "../core/path-utils";
@@ -19,11 +19,13 @@ import { ToolError, toolFailure } from "../core/tool-errors";
 import { SET_CWD_TOOL_NAME } from "./reroot-hint";
 import { setCwdToolView } from "./set-cwd-view";
 
-const setCwdSchema = type({
-	path: type("string").describe("Absolute (preferred) or session-relative directory to become the new session cwd"),
-});
+const setCwdSchema = lazy(() =>
+	type({
+		path: type("string").describe("Absolute (preferred) or session-relative directory to become the new session cwd"),
+	}),
+);
 
-export type SetCwdToolInput = typeof setCwdSchema.infer;
+export type SetCwdToolInput = typeof setCwdSchema.value.infer;
 
 /**
  * The directory this call would re-root the session to, so the cwd boundary
@@ -116,7 +118,7 @@ async function describeRuleChange(previous: string, cwd: string): Promise<RuleCh
 	return change;
 }
 
-export class SetCwdTool implements AgentTool<typeof setCwdSchema, SetCwdToolDetails> {
+export class SetCwdTool implements AgentTool<typeof setCwdSchema.value, SetCwdToolDetails> {
 	readonly name = SET_CWD_TOOL_NAME;
 	readonly label = "SetCwd";
 	// Gate the Argot paragraph on `argot.enabled`: the `argot_load` tool is only
@@ -124,7 +126,9 @@ export class SetCwdTool implements AgentTool<typeof setCwdSchema, SetCwdToolDeta
 	// would advertise a tool absent from the toolset. Rendered in the constructor
 	// because a field initializer cannot see `#session` yet.
 	readonly description: string;
-	readonly parameters = setCwdSchema;
+	get parameters(): typeof setCwdSchema.value {
+		return setCwdSchema.value;
+	}
 	readonly strict = true;
 	readonly approval = "write" as const;
 	// Discoverable, not essential: most sessions never re-root, and an unannotated

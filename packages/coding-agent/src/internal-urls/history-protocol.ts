@@ -84,7 +84,7 @@ export class HistoryProtocolHandler implements ProtocolHandler {
 		const visible = registry.list().filter(ref => ref.kind !== "advisor");
 
 		if (!agentId) {
-			const content = await this.#renderIndex(visible);
+			const content = await renderIndex(visible);
 			return {
 				url: url.href,
 				content,
@@ -104,7 +104,7 @@ export class HistoryProtocolHandler implements ProtocolHandler {
 		if (!ref) {
 			// Registry miss — the agent may have been unregistered or lost on resume.
 			// Serve its transcript straight from disk if the session file persists.
-			const disk = await this.#resolveFromDisk(agentId);
+			const disk = await resolveFromDisk(agentId);
 			if (disk) return { ...disk, url: url.href };
 
 			// AMBIGUOUS is not UNKNOWN, and saying the wrong one sends the operator
@@ -140,7 +140,7 @@ export class HistoryProtocolHandler implements ProtocolHandler {
 		} else {
 			// No live session and no retained sessionFile — try the disk scan before
 			// giving up, in case the transcript lingers under an artifacts dir.
-			const disk = await this.#resolveFromDisk(ref.id);
+			const disk = await resolveFromDisk(ref.id);
 			if (disk) return { ...disk, url: url.href };
 			throw new Error(`Agent ${ref.id} has no transcript: session is gone and no session file was retained`);
 		}
@@ -154,64 +154,6 @@ export class HistoryProtocolHandler implements ProtocolHandler {
 			sourcePath: ref.sessionFile ?? undefined,
 			notes,
 		};
-	}
-
-	/**
-	 * Load a transcript for `agentId` from an on-disk `.jsonl` session file,
-	 * matched case-insensitively. Returns `undefined` when no file is found.
-	 */
-	async #resolveFromDisk(agentId: string): Promise<InternalResource | undefined> {
-		const files = await sessionFilesFromDisk();
-		const lower = agentId.toLowerCase();
-		let matchedId: string | undefined;
-		let sessionFile: string | undefined;
-		for (const [id, file] of files) {
-			if (id === agentId || id.toLowerCase() === lower) {
-				matchedId = id;
-				sessionFile = file;
-				if (id === agentId) break;
-			}
-		}
-		if (!matchedId || !sessionFile) return undefined;
-		const messages = await loadSessionMessagesReadOnly(sessionFile);
-		const content = formatSessionHistoryMarkdown(messages, { title: `${matchedId} (on disk)` });
-		return {
-			url: "",
-			content,
-			contentType: "text/markdown",
-			size: Buffer.byteLength(content, "utf-8"),
-			sourcePath: sessionFile,
-			notes: ["Source: session file (read-only, unregistered)"],
-		};
-	}
-
-	async #renderIndex(refs: AgentRef[]): Promise<string> {
-		const entries: IndexEntry[] = refs.map(ref => ({
-			id: ref.id,
-			status: ref.status,
-			kind: ref.kind,
-			parent: ref.parentId ?? "—",
-			lastActivity: formatAgo(ref.lastActivity),
-		}));
-		// Merge on-disk transcripts for agents absent from the registry.
-		const registered = new Set(refs.map(ref => ref.id));
-		const disk = await sessionFilesFromDisk();
-		for (const id of disk.keys()) {
-			if (registered.has(id)) continue;
-			entries.push({ id, status: "on disk", kind: "—", parent: "—", lastActivity: "—" });
-		}
-
-		const lines: string[] = ["# Agents", ""];
-		if (entries.length === 0) {
-			lines.push("No agents registered.");
-			return `${lines.join("\n")}\n`;
-		}
-		lines.push("| id | status | kind | parent | last activity |", "|---|---|---|---|---|");
-		for (const entry of entries) {
-			lines.push(`| ${entry.id} | ${entry.status} | ${entry.kind} | ${entry.parent} | ${entry.lastActivity} |`);
-		}
-		lines.push("", "Read a transcript with `read history://<id>`.");
-		return `${lines.join("\n")}\n`;
 	}
 
 	/**
@@ -242,4 +184,62 @@ export class HistoryProtocolHandler implements ProtocolHandler {
 		}
 		return completions;
 	}
+}
+
+/**
+ * Load a transcript for `agentId` from an on-disk `.jsonl` session file,
+ * matched case-insensitively. Returns `undefined` when no file is found.
+ */
+async function resolveFromDisk(agentId: string): Promise<InternalResource | undefined> {
+	const files = await sessionFilesFromDisk();
+	const lower = agentId.toLowerCase();
+	let matchedId: string | undefined;
+	let sessionFile: string | undefined;
+	for (const [id, file] of files) {
+		if (id === agentId || id.toLowerCase() === lower) {
+			matchedId = id;
+			sessionFile = file;
+			if (id === agentId) break;
+		}
+	}
+	if (!matchedId || !sessionFile) return undefined;
+	const messages = await loadSessionMessagesReadOnly(sessionFile);
+	const content = formatSessionHistoryMarkdown(messages, { title: `${matchedId} (on disk)` });
+	return {
+		url: "",
+		content,
+		contentType: "text/markdown",
+		size: Buffer.byteLength(content, "utf-8"),
+		sourcePath: sessionFile,
+		notes: ["Source: session file (read-only, unregistered)"],
+	};
+}
+
+async function renderIndex(refs: AgentRef[]): Promise<string> {
+	const entries: IndexEntry[] = refs.map(ref => ({
+		id: ref.id,
+		status: ref.status,
+		kind: ref.kind,
+		parent: ref.parentId ?? "—",
+		lastActivity: formatAgo(ref.lastActivity),
+	}));
+	// Merge on-disk transcripts for agents absent from the registry.
+	const registered = new Set(refs.map(ref => ref.id));
+	const disk = await sessionFilesFromDisk();
+	for (const id of disk.keys()) {
+		if (registered.has(id)) continue;
+		entries.push({ id, status: "on disk", kind: "—", parent: "—", lastActivity: "—" });
+	}
+
+	const lines: string[] = ["# Agents", ""];
+	if (entries.length === 0) {
+		lines.push("No agents registered.");
+		return `${lines.join("\n")}\n`;
+	}
+	lines.push("| id | status | kind | parent | last activity |", "|---|---|---|---|---|");
+	for (const entry of entries) {
+		lines.push(`| ${entry.id} | ${entry.status} | ${entry.kind} | ${entry.parent} | ${entry.lastActivity} |`);
+	}
+	lines.push("", "Read a transcript with `read history://<id>`.");
+	return `${lines.join("\n")}\n`;
 }

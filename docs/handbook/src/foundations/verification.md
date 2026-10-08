@@ -5,9 +5,9 @@ Product behavior is covered by tests that assert concrete outcomes, not only non
 ## Examples of what tests check
 
 - **Hashline edit path**: round-trip: generated patches apply to the intended content; mismatches fail with the expected error surface.
-- **Tool-call repair**: unit and conformance cases in `packages/coding-agent/test/edit/schema-repair.test.ts` (clean / repaired / unrepairable, alias ambiguity, strict `additionalProperties`).
+- **Tool-call repair**: unit and conformance cases in `packages/coding-agent/test/edit/schema-repair.test.ts` (already valid / repaired / unrepairable, alias ambiguity, strict `additionalProperties`).
 - **Tool-output bounds**: truncation limits behave as configured and remain visible to the model.
-- **Architecture gates**: layering, import cycles, and module-reach checks in `packages/coding-agent/test/architecture/`.
+- **Architecture checks**: layering, import cycles, and module-reach checks in `packages/coding-agent/test/architecture/`.
 
 ## Recording terminal proofs
 
@@ -33,7 +33,7 @@ animation as WebP at 33 ms per frame; a GIF is the same clip in an older contain
 proves the same thing. Both arms of a pair are the same class, produced by one driver
 run, and attached to the pull request body.
 
-The recorder refuses to publish a clip whose cadence is not the one it captured. Three
+The recorder rejects a clip whose cadence is not the one it captured. Three
 criteria come from `--expect-ms`:
 
 ```text
@@ -84,11 +84,11 @@ socket, then deletes that child on exit. Scratch parents outside the output
 directory are rejected. X11 capture requires `xdpyinfo` and rejects an already
 responsive display before allocating session scratch.
 
-The chrome — rounded corners, the shadow, the translucent window over the backdrop — is drawn after the take by `proof/compose-chrome.sh`, not by a compositor during it. The backdrop does not move, so blending it under the window every frame recomputes one static picture thousands of times, and it cost the capture: with picom's blur on, `ffmpeg` could grab only 69 of 360 frames, and opacity alone still cost a third. `xwallpaper` puts the backdrop in the capture for free as a root pixmap; the pass replaces the square-cornered inset with the same pixels rounded, blended and shadowed.
+The chrome (rounded corners, the shadow, the translucent window over the backdrop) is drawn after the take by `proof/compose-chrome.sh`, not by a compositor during it. The backdrop does not move, so blending it under the window every frame recomputes one static picture thousands of times, and it cost the capture: with picom's blur on, `ffmpeg` could grab only 69 of 360 frames, and opacity alone still cost a third. `xwallpaper` puts the backdrop in the capture for free as a root pixmap; the pass replaces the square-cornered inset with the same pixels rounded, blended and shadowed.
 
 `SCENE_CHROME=live` runs a compositor during the capture instead, for comparison. It is not the default and a take recorded that way is slower.
 
-The pass is cosmetic. It cannot recover a frame the capture never drew, so a take that stuttered while it was recorded still stutters after it, and the motion gate runs on the composited file that ships.
+The pass is cosmetic. It cannot recover a frame the capture never drew, so a take that stuttered while it was recorded still stutters after it, and `proof/motion-gate.sh` runs on the composited file that ships.
 
 Preview a scene without replacing tracked proof assets:
 
@@ -98,9 +98,9 @@ PUBLISH=0 DEMO_SERVER=x11 \
   bash scripts/demos/record-hd-demo.sh demo-hd
 ```
 
-The recorder keeps rehearsal output in the temporary directory it prints. Inspect the video and named frames there. Set `PUBLISH=1` only for a complete take whose frame guards all passed.
+The recorder keeps rehearsal output in the temporary directory it prints. Inspect the video and named frames there. Set `PUBLISH=1` only for a complete take in which every string the scene waits for arrived.
 
-The scene's task prompt is static at `proof/prompts/demo-hd.md`. The scene stores the secret, submits that prompt once, and sends no phase-by-phase operator prompts; every later turn is the model's own. A take is published only when every named frame guard passed, so a scene whose model does not reach a guarded surface produces a rehearsal and nothing else.
+The scene's task prompt is static at `proof/prompts/demo-hd.md`. The scene stores the secret, submits that prompt once, and sends no further prompts; every later turn is the model's own. A take is published only when every string the scene waits for arrived, so a take in which the model does not reach a surface the scene waits for produces a rehearsal and nothing else.
 
 Record on the machine that serves the weights. The endpoint must be a loopback address, or the
 recorder will not start; `ALLOW_REMOTE_MODEL=1` records against another host and reports it. A
@@ -114,7 +114,7 @@ bun scripts/verify-scene.ts --all
 ```
 
 Every string the scene waits for must be produced by the submitted prompt, the product's own
-source, the sandbox seed, or a line the scene types. A guard nothing produces does not fail fast:
+source, the sandbox seed, or a line the scene types. A string nothing produces does not fail fast:
 it waits out its timeout, marks the shot missed, and the publish step leaves the previous take's
 frame under that name. A needle that comes from somewhere else is declared in the scene:
 
@@ -129,7 +129,7 @@ recorded on.
 Every binary the run will use is resolved before the first frame: `docker`, `bun` for the scene
 check, and `ffmpeg` and `python3` for the publish chain. ImageMagick answers to `magick` on 7 and
 `convert` on 6, and either is accepted. Bun is looked for at `~/.bun/bin/bun` when it is not on
-`PATH`, because a recording is driven over ssh and a non-login shell there does not carry the
+`PATH`, because a recording is driven over ssh and a non-login shell there does not include the
 installer's entry. A publish tool first called after the recording is a take lost to a `PATH`
 difference, which is why a rehearsal needs only `docker`.
 
@@ -154,7 +154,7 @@ The archived take remains at capture speed. The landing-page cut keeps the plan,
 ### Settings differentials
 
 A settings change proves with two frames of the settings screen recorded from the
-same scene, one with the setting at its default and one with the operator's value.
+same scene, one with the setting at its default and one with the value under test.
 `SCENE_SETTINGS` appends config-file lines to the seeded home before the session
 starts, so each arm is seeded rather than toggled by a keybinding that may not land:
 
@@ -205,7 +205,7 @@ about lanes in a frame where no agent is running.
 ### Zooming into a detail
 
 A 2560-wide capture published at 1920 loses a small detail to the downsample. A row
-whose subject is one block of text names the mark to hold on, and the stage eases into
+whose subject is one block of text states the mark to hold on, and the stage eases into
 the region and back out:
 
 ```sh
@@ -226,10 +226,10 @@ crop_width` on the hold. A missing rect on `zoom-in` means "measure it".
 
 The zoom ceiling still defaults to the capture width over the published width so a
 1.33x hold is a crop. The hero's 2x secret hold is a tighter crop scaled back to
-1920x1080 — a camera move of the one capture path, not a second recorder. The
+1920x1080: a camera move of the one capture path, not a second recorder. The
 stage runs on the take, before the cut, and keeps every frame and the recorded
-rate, so the cadence gate still measures the capture's own cadence. A scene asks
-for one by writing the cue file, or by setting `ZOOM_ARGS` in
+rate, so the cadence check still measures the capture's own cadence. A scene requests
+one by writing the cue file, or by setting `ZOOM_ARGS` in
 `scripts/demos/record-hd-demo.sh`.
 
 `--self-check` records a synthetic clip whose moving region is known and asserts the

@@ -48,4 +48,4 @@ Engineering detail: [`docs/handbook/src/reference/keybindings-config.md`](../ref
 
 Remap keys by editing `keybindings.yml`; `/hotkeys` shows the current bindings.
 
-There is no Vim or modal editing mode; the composer uses the bindings above.
+There is no Vim or modal editing mode; the composer uses the configured bindings.

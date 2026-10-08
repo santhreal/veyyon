@@ -32,19 +32,25 @@ const IS_COMPILED_BINARY = isCompiledBinary();
 // from current package exports inside a Bun build plugin: no generated source
 // or duplicate key list exists on disk. Runtime extension loading stays lazy —
 // the virtual module is evaluated only when an extension requests a host
-// package — but the compiler still sees every possible edge at build time.
+// package, and a key's export record is built only when an extension imports
+// that key — but the compiler still sees every possible edge at build time.
 const BUNDLED_VIRTUAL_SCHEME = "veyyon-legacy-pi-bundled:";
 const BUNDLED_VIRTUAL_NAMESPACE = "veyyon-legacy-pi-bundled";
 const BUNDLED_MODULES_GLOBAL = "__veyyonLegacyPiBundledModules";
 const TYPEBOX_BUNDLED_MODULE_KEY = "typebox";
 
-type BundledModules = Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+type BundledModule = Readonly<Record<string, unknown>>;
+type BundledModuleLoaders = Readonly<Record<string, () => BundledModule>>;
 
-let bundledModulesPromise: Promise<BundledModules> | null = null;
+let bundledModuleLoadersPromise: Promise<BundledModuleLoaders> | null = null;
+
+/** Export records built so far, by key; the synthetic module source reads them through `globalThis`. */
+const bundledModules: Record<string, BundledModule> = {};
 
 /**
- * Lazy-load the build-supplied host modules and stash them on `globalThis` for
- * the synthetic module source emitted by `synthesizeBundledModuleSource`.
+ * Lazy-load the build-supplied table of host module loaders and stash the
+ * export records for the synthetic module source emitted by
+ * `synthesizeBundledModuleSource` on `globalThis`.
  *
  * `globalThis` is the bridge: each `veyyon-legacy-pi-bundled:<key>` source string
  * becomes a separate ES module and cannot close over this file's lexical scope.
@@ -52,17 +58,17 @@ let bundledModulesPromise: Promise<BundledModules> | null = null;
  * never execute it; binary builds resolve the literal through the in-memory
  * plugin in `scripts/legacy-pi-virtual-module.ts`.
  */
-function ensureBundledModulesLoaded(): Promise<BundledModules> {
+function ensureBundledModuleLoaders(): Promise<BundledModuleLoaders> {
 	if (!IS_COMPILED_BINARY) {
 		return Promise.reject(new Error("veyyon:legacy-pi-shim: bundled modules are only available in compiled mode"));
 	}
-	if (!bundledModulesPromise) {
-		bundledModulesPromise = import("veyyon-legacy-pi-modules").then(module => {
-			Reflect.set(globalThis, BUNDLED_MODULES_GLOBAL, module.BUNDLED_PI_MODULES);
+	if (!bundledModuleLoadersPromise) {
+		bundledModuleLoadersPromise = import("veyyon-legacy-pi-modules").then(module => {
+			Reflect.set(globalThis, BUNDLED_MODULES_GLOBAL, bundledModules);
 			return module.BUNDLED_PI_MODULES;
 		});
 	}
-	return bundledModulesPromise;
+	return bundledModuleLoadersPromise;
 }
 
 function bundledModuleVirtualSpecifier(moduleKey: string): string {
@@ -77,7 +83,10 @@ function isBundledVirtualSpecifier(value: string): boolean {
  * Build a synthetic ES module for one live bundled namespace. Every export
  * reads through the global bridge; no bunfs path or copied package is involved.
  */
-function synthesizeBundledModuleSourceFromModules(moduleKey: string, modules: BundledModules): string {
+function synthesizeBundledModuleSourceFromModules(
+	moduleKey: string,
+	modules: Readonly<Record<string, BundledModule>>,
+): string {
 	const mod = modules[moduleKey];
 	if (!mod) {
 		throw new Error(`veyyon:legacy-pi-shim: no bundled module registered for ${moduleKey}`);
@@ -105,14 +114,17 @@ function synthesizeBundledModuleSourceFromModules(moduleKey: string, modules: Bu
  * `veyyon-legacy-pi-bundled:<key>` import.
  */
 async function synthesizeBundledModuleSource(moduleKey: string): Promise<string> {
-	const modules = await ensureBundledModulesLoaded();
-	return synthesizeBundledModuleSourceFromModules(moduleKey, modules);
+	const loaders = await ensureBundledModuleLoaders();
+	if (!Object.hasOwn(bundledModules, moduleKey) && Object.hasOwn(loaders, moduleKey)) {
+		bundledModules[moduleKey] = loaders[moduleKey]!();
+	}
+	return synthesizeBundledModuleSourceFromModules(moduleKey, bundledModules);
 }
 
 /** Test seam for the virtual module's named/default export forwarding. */
 export function __synthesizeLegacyPiBundledSourceWithModules(
 	moduleKey: string,
-	modules: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
+	modules: Readonly<Record<string, BundledModule>>,
 ): string {
 	return synthesizeBundledModuleSourceFromModules(moduleKey, modules);
 }
@@ -334,54 +346,37 @@ const TYPEBOX_SHIM_PATH = __resolveTypeBoxShimPath(
 	packageShimPath(KERNEL_TYPEBOX_SHIM_SPECIFIER) ?? "",
 );
 
-// Legacy extensions historically imported `Type` (and `Static`/`TSchema`) from
-// the package root of `@(scope)/pi-ai`. pi-ai 15.1.0 removed the runtime `Type`
-// export (see `packages/ai/CHANGELOG.md`), so the bare canonical specifier no
-// longer satisfies those imports. The override below redirects only the bare
-// pi-ai package root onto a sibling shim that re-exports the canonical surface
-// plus the borrowed `Type` runtime from the Zod-backed TypeBox shim. Subpath
-// imports such as `@veyyon/ai/oauth` continue to resolve directly
-// against the bundled pi-ai package.
-const LEGACY_PI_AI_SHIM_PATH = IS_COMPILED_BINARY
-	? bundledModuleVirtualSpecifier(`${CANONICAL_PI_SCOPE}/pi-ai`)
-	: (packageShimPath(KERNEL_PI_AI_SHIM_SPECIFIER) ?? "");
+// The package roots a compat shim serves instead of the canonical barrel, each
+// because the barrel dropped a surface legacy extensions import:
+// - `@veyyon/ai`: pi-ai 15.1.0 removed the runtime `Type` export (see
+//   `packages/ai/CHANGELOG.md`); the shim re-exports the canonical surface plus
+//   the borrowed `Type` runtime from the Zod-backed TypeBox shim.
+// - `@veyyon/coding-agent`: the package's own `./src/index.ts` cannot be an
+//   extra `bun --compile` entrypoint beside the CLI entry without breaking
+//   binary startup (issue #1474 follow-up); the sibling shim's distinct file
+//   path avoids the collision while re-exporting the package surface.
+// - `@veyyon/tui`: the string, escape and input primitives moved to
+//   `@veyyon/utils`, which broke every extension published against the old
+//   barrel (`visibleWidth` from `@earendil-works/pi-tui`, `Key` from
+//   plannotator) at import time; the shim re-exports the renderer plus every
+//   module the barrel dropped.
+// Subpath imports such as `@veyyon/ai/oauth` resolve against the package. The
+// compiled binary's build table keys each of these roots under the same name
+// and imports the shim there (`collectBundledPiEntries`), so in compiled mode a
+// shimmed root maps to its bundled key like every other key.
+const AI_ROOT = `${CANONICAL_PI_SCOPE}/ai`;
+const CODING_AGENT_ROOT = `${CANONICAL_PI_SCOPE}/coding-agent`;
+const TUI_ROOT = `${CANONICAL_PI_SCOPE}/tui`;
 
-// The coding-agent's own `./src/index.ts` cannot be listed as an extra
-// `bun --compile` entrypoint alongside the CLI entry without breaking binary
-// startup (issue #1474 follow-up). In compiled-binary mode the legacy
-// `@(scope)/pi-coding-agent` root therefore resolves through the bundled
-// module shim; in dev / source-link / installed-package mode it points at the
-// sibling source shim whose distinct file path avoids the #1474 collision
-// while still re-exporting the canonical package surface.
-const LEGACY_PI_CODING_AGENT_SHIM_PATH = IS_COMPILED_BINARY
-	? bundledModuleVirtualSpecifier(`${CANONICAL_PI_SCOPE}/pi-coding-agent`)
-	: sourceShimPath("legacy-pi-coding-agent-shim.ts");
-
-// `@veyyon/tui` stopped re-exporting the string, escape and input primitives when
-// they moved to `@veyyon/utils`, which breaks every extension published against
-// the old barrel (`visibleWidth` from `@earendil-works/pi-tui`, `Key` from
-// plannotator) at import time rather than at call time. The bare tui root
-// therefore resolves to a sibling shim that re-exports the renderer plus every
-// module the barrel dropped. Subpath imports such as `@veyyon/tui/terminal`
-// continue to resolve directly against the bundled tui package.
-const LEGACY_PI_TUI_SHIM_PATH = IS_COMPILED_BINARY
-	? bundledModuleVirtualSpecifier(`${CANONICAL_PI_SCOPE}/pi-tui`)
-	: sourceShimPath("legacy-pi-tui-shim.ts");
-
-// Package-root overrides. Shim entries (`pi-ai`, `pi-coding-agent`) always
-// replace the canonical surface so the legacy `Type` runtime and the legacy
-// helpers stay reachable. The bundled host packages (`agent-core`,
-// `natives`, `tui`, `utils`) are added only in compiled-binary mode
-// to route extensions onto the in-process module instance — in dev /
-// source-link / installed-package mode the canonical specifier resolves
-// cleanly through `Bun.resolveSync` and hardcoding a source-tree path would
-// miss installs where the bundled packages live at `node_modules/@veyyon/*`.
-//
-// Compiled-binary entries are `veyyon-legacy-pi-bundled:<key>` specifiers handed
-// to the synthetic onLoad in `installLegacyPiSpecifierShim()` — bunfs paths
-// are unusable on Bun 1.3.14+ (issue #3423). Filesystem-shaped overrides are
-// still validated against on-disk presence so a missing dev-mode shim falls
-// through to `getResolvedSpecifier`.
+// Overrides are keyed by canonical specifier: a lookup folds the legacy `pi-`
+// basename first (`canonicalizePiPackageSpecifier`), so `@earendil-works/pi-ai`
+// and `@veyyon/ai` reach one entry. In dev / source-link / installed-package
+// mode only the shimmed roots are overridden, because every other canonical
+// specifier resolves through `Bun.resolveSync` and a source-tree path would miss
+// installs where the packages live at `node_modules/@veyyon/*`. In compiled
+// mode every build-table key is overridden with a `veyyon-legacy-pi-bundled:<key>`
+// specifier served by the synthetic onLoad in `installLegacyPiSpecifierShim()`,
+// because bunfs paths are unusable on Bun 1.3.14+ (issue #3423).
 
 /**
  * Drop overrides whose filesystem targets are missing so they can fall
@@ -407,41 +402,42 @@ export function __validateLegacyPiPackageRootOverrides(
 }
 
 /**
- * Compute the override map keyed by every canonical specifier the host serves
- * directly: the pi-ai / pi-coding-agent roots (compat shims that re-attach
- * legacy helpers) plus, in compiled mode, every build-supplied module key.
- * Subpath coverage stops `@(scope)/pi-ai/oauth` and friends from falling
- * through to the extension's absent peer install when bunfs walks fail.
+ * Compute the override map, keyed by canonical specifier. Dev mode maps the
+ * shimmed roots to their source shims. Compiled mode maps the shimmed roots and
+ * every build-supplied module key to its virtual specifier; the roots are seeded
+ * so they resolve before the table loads. Subpath coverage stops
+ * `@(scope)/pi-ai/oauth` and friends from falling through to the extension's
+ * absent peer install when bunfs walks fail.
  */
 export function __buildLegacyPiPackageRootOverrides(
 	isCompiled: boolean,
 	bundledModuleKeys: Iterable<string> = [],
 ): Record<string, string> {
-	// Key each shim on BOTH naming eras (see VEYYON_PACKAGE_NAMES). A legacy
-	// alias like `@earendil-works/pi-ai` canonicalizes to `@veyyon/pi-ai`,
-	// but a plugin published against the post-rename canonical scope imports
-	// `@veyyon/ai` directly — `remapLegacyPiSpecifier` canonicalizes the scope
-	// yet preserves the basename, so `ai`/`coding-agent` never fold onto the
-	// `pi-*` keys. Without the canonical-basename entries those imports fall
-	// through to the real `@veyyon/ai`, which no longer exports the legacy
-	// `Type`/`StringEnum`/catalog surface (SyntaxError at extension load).
-	const candidates: Record<string, string> = {
-		[`${CANONICAL_PI_SCOPE}/pi-ai`]: LEGACY_PI_AI_SHIM_PATH,
-		[`${CANONICAL_PI_SCOPE}/ai`]: LEGACY_PI_AI_SHIM_PATH,
-		[`${CANONICAL_PI_SCOPE}/pi-coding-agent`]: LEGACY_PI_CODING_AGENT_SHIM_PATH,
-		[`${CANONICAL_PI_SCOPE}/coding-agent`]: LEGACY_PI_CODING_AGENT_SHIM_PATH,
-		[`${CANONICAL_PI_SCOPE}/pi-tui`]: LEGACY_PI_TUI_SHIM_PATH,
-		[`${CANONICAL_PI_SCOPE}/tui`]: LEGACY_PI_TUI_SHIM_PATH,
-	};
-	if (isCompiled) {
-		for (const key of bundledModuleKeys) {
-			// Shim-bearing roots already map to their compat surfaces; TypeBox
-			// has a dedicated TYPEBOX_SHIM_PATH route.
-			if (key in candidates || key === TYPEBOX_BUNDLED_MODULE_KEY) continue;
-			candidates[key] = bundledModuleVirtualSpecifier(key);
-		}
+	if (!isCompiled) {
+		return __validateLegacyPiPackageRootOverrides({
+			[AI_ROOT]: packageShimPath(KERNEL_PI_AI_SHIM_SPECIFIER) ?? "",
+			[CODING_AGENT_ROOT]: sourceShimPath("legacy-pi-coding-agent-shim.ts"),
+			[TUI_ROOT]: sourceShimPath("legacy-pi-tui-shim.ts"),
+		});
 	}
-	return __validateLegacyPiPackageRootOverrides(candidates);
+	const overrides: Record<string, string> = {};
+	for (const key of [AI_ROOT, CODING_AGENT_ROOT, TUI_ROOT, ...bundledModuleKeys]) {
+		// TypeBox has a dedicated TYPEBOX_SHIM_PATH route.
+		if (key !== TYPEBOX_BUNDLED_MODULE_KEY) overrides[key] = bundledModuleVirtualSpecifier(key);
+	}
+	return overrides;
+}
+
+/**
+ * The override serving a remapped `@veyyon/*` specifier, looked up under its
+ * canonical package name, or `undefined` when the specifier resolves through
+ * the filesystem.
+ */
+export function __legacyPiOverrideFor(
+	remappedSpecifier: string,
+	overrides: Readonly<Record<string, string>>,
+): string | undefined {
+	return overrides[canonicalizePiPackageSpecifier(remappedSpecifier)];
 }
 
 // Seeded with compat roots at module init; first compiled extension load adds
@@ -455,8 +451,8 @@ function ensureLegacyPiOverridesReady(): Promise<void> {
 		return Promise.resolve();
 	}
 	if (!legacyPiOverridesReadyPromise) {
-		legacyPiOverridesReadyPromise = ensureBundledModulesLoaded().then(modules => {
-			legacyPiPackageRootOverrides = __buildLegacyPiPackageRootOverrides(true, Object.keys(modules));
+		legacyPiOverridesReadyPromise = ensureBundledModuleLoaders().then(loaders => {
+			legacyPiPackageRootOverrides = __buildLegacyPiPackageRootOverrides(true, Object.keys(loaders));
 		});
 	}
 	return legacyPiOverridesReadyPromise;
@@ -485,6 +481,11 @@ function remapLegacyPiSpecifier(specifier: string): string | null {
  */
 export function __remapLegacyPiSpecifier(specifier: string): string | null {
 	return remapLegacyPiSpecifier(specifier);
+}
+
+/** Test seam: the scopes and package basenames a legacy pi specifier may name. */
+export function __legacyPiSpecifierSpace(): { scopes: readonly string[]; packages: readonly string[] } {
+	return { scopes: VEYYON_SCOPE_ALIASES, packages: VEYYON_PACKAGE_NAMES };
 }
 
 function getResolvedSpecifier(specifier: string): string {
@@ -538,7 +539,7 @@ function canonicalizePiPackageSpecifier(specifier: string): string {
  * specifiers.
  */
 function resolveCanonicalPiSpecifier(remappedSpecifier: string): string {
-	const override = legacyPiPackageRootOverrides[remappedSpecifier];
+	const override = __legacyPiOverrideFor(remappedSpecifier, legacyPiPackageRootOverrides);
 	if (override) {
 		return override;
 	}

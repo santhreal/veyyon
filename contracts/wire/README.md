@@ -21,15 +21,14 @@ import { COLLAB_PROTO, DEFAULT_RELAY_URL, ENVELOPE_HEADER_LENGTH } from "@veyyon
 
 ## Projection model
 
-Host implementations project full internal data structures into `Wire*` shapes before serializing:
+A host projects its internal structures into `Wire*` shapes before it serializes a frame, and types each frame against the `HostFrame` union:
 
 ```ts
-import {
-  toWireAgentEvent,
-  toWireModel,
-  toWireSessionEntry,
-  toWireSessionHeader,
-} from "@veyyon/coding-agent/collab/protocol";
+import type { HostFrame, WireSessionEntry } from "@veyyon/wire";
+
+function entryFrame(entry: WireSessionEntry): HostFrame {
+  return { t: "entry", entry };
+}
 ```
 
 Transport shapes omit provider internal payloads, telemetry fields (`contextSnapshot`, `turnMetrics`), and internal configuration details not required for client rendering.

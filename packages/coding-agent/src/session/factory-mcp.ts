@@ -1,6 +1,6 @@
 import type { AuthStorage } from "@veyyon/ai/auth-storage";
 import { AgentStorage } from "@veyyon/kernel/session/agent-storage";
-import { $env, errorMessage, logger, postmortem } from "@veyyon/utils";
+import { $env, errorMessage, logger, postmortem, setProfileEnv } from "@veyyon/utils";
 import type { Settings } from "../config/settings";
 import { isMCPToolName } from "../discovery/tool-index";
 import type { LoadedCustomCommand } from "../extensibility/custom-commands";
@@ -8,6 +8,7 @@ import type { CustomTool } from "../extensibility/custom-tools/types";
 import {
 	discoverAndLoadMCPTools,
 	type MCPDiscoverOptions,
+	type MCPGetPromptResult,
 	type MCPLoadResult,
 	MCPManager,
 	MCPToolCache,
@@ -19,6 +20,7 @@ import type { EventBus } from "../utils/event-bus";
 import type { AgentSession } from "./agent-session";
 import { sessionCpuExecHooks } from "./cpu-limit";
 import type { McpNotificationEntry } from "./factory-notices";
+import { type CreateAgentSessionOptions, isInProcessChildSession } from "./factory-options";
 
 export type DeferredMCPActivation = {
 	mcpDiscoveryEnabled: boolean;
@@ -82,7 +84,7 @@ export function logMCPLoadErrors(errors: MCPLoadResult["errors"]): void {
 
 export function applyMCPEnvironment(result: { exaApiKeys: string[] }): void {
 	if (result.exaApiKeys.length > 0 && !$env.EXA_API_KEY) {
-		Bun.env.EXA_API_KEY = result.exaApiKeys[0];
+		setProfileEnv("EXA_API_KEY", result.exaApiKeys[0]);
 	}
 }
 
@@ -100,6 +102,28 @@ export function clipMCPServerInstructions(instructions: Map<string, string>): Ma
 		);
 	}
 	return clipped;
+}
+
+/** `key=value` command arguments as prompt arguments. An argument with no key before its `=` is dropped. */
+function promptArguments(args: string[]): Record<string, string> {
+	const promptArgs: Record<string, string> = {};
+	for (const arg of args) {
+		const eqIdx = arg.indexOf("=");
+		if (eqIdx > 0) promptArgs[arg.slice(0, eqIdx)] = arg.slice(eqIdx + 1);
+	}
+	return promptArgs;
+}
+
+/** The text and resource-text parts of a prompt's messages, in order, separated by a blank line. */
+function promptResultText(result: MCPGetPromptResult): string {
+	const parts: string[] = [];
+	for (const message of result.messages) {
+		for (const item of Array.isArray(message.content) ? message.content : [message.content]) {
+			if (item.type === "text") parts.push(item.text);
+			else if (item.type === "resource" && item.resource.text) parts.push(item.resource.text);
+		}
+	}
+	return parts.join("\n\n");
 }
 
 /**
@@ -121,28 +145,8 @@ export function buildMCPPromptCommands(manager: MCPManager): LoadedCustomCommand
 					name: commandName,
 					description: prompt.description ?? `MCP prompt from ${serverName}`,
 					async execute(args: string[]) {
-						const promptArgs: Record<string, string> = {};
-						for (const arg of args) {
-							const eqIdx = arg.indexOf("=");
-							if (eqIdx > 0) {
-								promptArgs[arg.slice(0, eqIdx)] = arg.slice(eqIdx + 1);
-							}
-						}
-						const result = await manager.executePrompt(serverName, prompt.name, promptArgs);
-						if (!result) return "";
-						const parts: string[] = [];
-						for (const msg of result.messages) {
-							const contentItems = Array.isArray(msg.content) ? msg.content : [msg.content];
-							for (const item of contentItems) {
-								if (item.type === "text") {
-									parts.push(item.text);
-								} else if (item.type === "resource") {
-									const resource = item.resource;
-									if (resource.text) parts.push(resource.text);
-								}
-							}
-						}
-						return parts.join("\n\n");
+						const result = await manager.executePrompt(serverName, prompt.name, promptArguments(args));
+						return result ? promptResultText(result) : "";
 					},
 				},
 			});
@@ -227,6 +231,65 @@ export async function startSessionMCP(inputs: SessionMCPStartupInputs): Promise<
 		logger.error("MCP tool load failed", { path, error });
 	}
 	return { manager: result.manager, tools: result.tools.map(loaded => loaded.tool) };
+}
+
+/** What {@link openSessionMCP} reads. */
+export interface SessionMCPInputs extends Omit<SessionMCPStartupInputs, "deferred" | "hasUI"> {
+	/**
+	 * `mcpManager` is the manager of the session that created this one, used as given; `enableMCP: false`
+	 * turns MCP off; `toolNames` are the requested tools, whose MCP members are pending while a deferred
+	 * discovery connects. A top-level session installs its manager as the process-wide one; a spawned
+	 * agent already has its parent's.
+	 */
+	options: Pick<CreateAgentSessionOptions, "mcpManager" | "enableMCP" | "hasUI" | "toolNames" | "parentTaskPrefix">;
+	/** The MCP tool selection the restored session recorded, pending the same way. */
+	restoredSelectedToolNames: readonly string[];
+}
+
+/** A session's MCP manager and what its startup produced. */
+export interface SessionMCP {
+	/** The handed-down manager, or one startup created. Undefined when MCP is off. */
+	readonly manager: MCPManager | undefined;
+	/** The manager startup created, which routes its change callbacks to the session. */
+	readonly createdManager: MCPManager | undefined;
+	/** Tools connected before the session exists. */
+	readonly tools: CustomTool[];
+	/** Whether discovery connects once the session exists. */
+	readonly deferred: boolean;
+	/** The MCP tool names registered as pending until a deferred discovery connects. */
+	readonly pendingToolNames: string[];
+	readonly startDeferred: StartDeferredMCPDiscovery | undefined;
+	/** Reads the manager's per-server instructions as the prompt renders them. */
+	readonly serverInstructions: (() => Map<string, string>) | undefined;
+}
+
+/**
+ * The session's MCP manager: the handed-down one, else one created here. A session with a UI
+ * creates its manager now and connects its servers once the session exists, so no server delays
+ * first paint; any other session connects them now.
+ */
+export async function openSessionMCP(inputs: SessionMCPInputs): Promise<SessionMCP> {
+	const { options } = inputs;
+	let manager = options.mcpManager;
+	let started: SessionMCPStartup | undefined;
+	const hasUI = options.hasUI === true;
+	const create = (options.enableMCP ?? true) && !manager;
+	const deferred = create && hasUI;
+	if (create) {
+		started = await startSessionMCP({ ...inputs, hasUI, deferred });
+		manager = started.manager;
+	}
+	if (manager && !isInProcessChildSession(options)) MCPManager.setInstance(manager);
+	const instructionsOf = manager;
+	return {
+		manager,
+		createdManager: started?.manager,
+		tools: started?.tools ?? [],
+		deferred,
+		pendingToolNames: deferred ? collectPendingMCPToolNames(options.toolNames, inputs.restoredSelectedToolNames) : [],
+		startDeferred: started?.startDeferred,
+		serverInstructions: instructionsOf && (() => clipMCPServerInstructions(instructionsOf.getServerInstructions())),
+	};
 }
 
 async function connectDeferredMCP(

@@ -136,7 +136,7 @@ describe("goal runtime", () => {
 			state: { enabled: true, mode: "active", goal: createGoal() },
 		});
 
-		harness.runtime.onTurnStart("turn-1", createUsage());
+		harness.runtime.onTurnStart("turn-1");
 		harness.advance(2_500);
 		harness.setUsage(createUsage({ input: 1 }));
 		await harness.runtime.flushUsage("suppressed");
@@ -164,13 +164,13 @@ describe("goal runtime", () => {
 		});
 		expect(harness.getState()?.goal.turnsCompleted).toBe(0);
 
-		harness.runtime.onTurnStart("turn-1", createUsage());
+		harness.runtime.onTurnStart("turn-1");
 		harness.setUsage(createUsage({ output: 10 }));
 		await harness.runtime.onAgentEnd({ currentUsage: createUsage({ output: 10 }) });
 		expect(harness.getState()?.goal.turnsCompleted).toBe(1);
 		expect(harness.getState()?.goal.tokensUsed).toBe(10);
 
-		harness.runtime.onTurnStart("turn-2", createUsage({ output: 10 }));
+		harness.runtime.onTurnStart("turn-2");
 		harness.setUsage(createUsage({ output: 25 }));
 		await harness.runtime.onAgentEnd({ currentUsage: createUsage({ output: 25 }) });
 		expect(harness.getState()?.goal.turnsCompleted).toBe(2);
@@ -187,7 +187,7 @@ describe("goal runtime", () => {
 		const harness = createHarness({
 			state: { enabled: true, mode: "active", goal: createGoal() },
 		});
-		harness.runtime.onTurnStart("turn-1", createUsage());
+		harness.runtime.onTurnStart("turn-1");
 
 		// tool_execution_end: the result message carrying the agent's usage is not in state yet.
 		harness.setUsage(createUsage({ output: 10 }));
@@ -211,7 +211,7 @@ describe("goal runtime", () => {
 		const harness = createHarness({
 			state: { enabled: true, mode: "active", goal: createGoal() },
 		});
-		harness.runtime.onTurnStart("turn-1", createUsage());
+		harness.runtime.onTurnStart("turn-1");
 
 		// The assistant tokens for the batch that called `goal complete`.
 		harness.setUsage(createUsage({ output: 40 }));
@@ -229,7 +229,7 @@ describe("goal runtime", () => {
 		const harness = createHarness({
 			state: { enabled: true, mode: "active", goal: createGoal() },
 		});
-		harness.runtime.onTurnStart("turn-1", createUsage());
+		harness.runtime.onTurnStart("turn-1");
 		harness.setUsage(createUsage({ output: 40 }));
 		await harness.runtime.completeGoalFromTool();
 
@@ -242,13 +242,13 @@ describe("goal runtime", () => {
 		const harness = createHarness({
 			state: { enabled: true, mode: "active", goal: createGoal() },
 		});
-		harness.runtime.onTurnStart("turn-1", createUsage());
+		harness.runtime.onTurnStart("turn-1");
 		harness.setUsage(createUsage({ output: 40 }));
 		await harness.runtime.completeGoalFromTool();
 		harness.setUsage(createUsage({ output: 140 }));
 		await harness.runtime.onAgentEnd({ currentUsage: createUsage({ output: 140 }) });
 
-		harness.runtime.onTurnStart("turn-2", createUsage({ output: 140 }));
+		harness.runtime.onTurnStart("turn-2");
 		harness.setUsage(createUsage({ output: 500 }));
 		await harness.runtime.onAgentEnd({ currentUsage: createUsage({ output: 500 }) });
 		expect(harness.getState()?.goal.tokensUsed).toBe(140);
@@ -259,7 +259,7 @@ describe("goal runtime", () => {
 		const harness = createHarness({
 			state: { enabled: true, mode: "active", goal: createGoal({ tokenBudget: 100 }) },
 		});
-		harness.runtime.onTurnStart("turn-1", createUsage());
+		harness.runtime.onTurnStart("turn-1");
 		harness.setUsage(createUsage({ output: 40 }));
 		await harness.runtime.completeGoalFromTool();
 
@@ -274,7 +274,7 @@ describe("goal runtime", () => {
 		const harness = createHarness({
 			state: { enabled: false, mode: "active", goal: createGoal({ status: "paused" }) },
 		});
-		harness.runtime.onTurnStart("turn-1", createUsage());
+		harness.runtime.onTurnStart("turn-1");
 		await harness.runtime.onAgentEnd({ currentUsage: createUsage({ output: 10 }) });
 		expect(harness.getState()?.goal.turnsCompleted).toBe(0);
 	});
@@ -293,7 +293,7 @@ describe("goal runtime", () => {
 			state: { enabled: true, mode: "active", goal: createGoal() },
 		});
 
-		harness.runtime.onTurnStart("turn-1", createUsage());
+		harness.runtime.onTurnStart("turn-1");
 		harness.advance(2_500);
 		// Flush wall-clock time without any token usage changes.
 		await harness.runtime.flushUsage("suppressed");
@@ -308,7 +308,7 @@ describe("goal runtime", () => {
 			state: { enabled: true, mode: "active", goal: createGoal() },
 		});
 
-		harness.runtime.onTurnStart("turn-1", createUsage());
+		harness.runtime.onTurnStart("turn-1");
 		harness.advance(2_500);
 		await harness.runtime.onTaskAborted({ reason: "internal" });
 
@@ -328,7 +328,7 @@ describe("goal runtime", () => {
 			state: { enabled: true, mode: "active", goal },
 		});
 
-		harness.runtime.onTurnStart("turn-1", createUsage());
+		harness.runtime.onTurnStart("turn-1");
 		harness.setState(undefined);
 		harness.advance(10_000);
 		harness.setState({ enabled: true, mode: "active", goal });
@@ -348,7 +348,7 @@ describe("goal runtime", () => {
 			state: { enabled: true, mode: "active", goal },
 		});
 
-		harness.runtime.onTurnStart("turn-1", createUsage());
+		harness.runtime.onTurnStart("turn-1");
 		harness.setState(undefined);
 		harness.runtime.clearAccounting();
 		harness.advance(10_000);
@@ -371,7 +371,7 @@ describe("goal runtime", () => {
 			},
 		});
 
-		harness.runtime.onTurnStart("turn-1", createUsage());
+		harness.runtime.onTurnStart("turn-1");
 		harness.setUsage({ input: 2 });
 		await harness.runtime.flushUsage("allowed");
 		expect(harness.getState()?.goal.status).toBe("budget-limited");
@@ -402,7 +402,7 @@ describe("goal runtime", () => {
 			state: { enabled: true, mode: "active", goal: createGoal() },
 		});
 
-		harness.runtime.onTurnStart("turn-1", createUsage());
+		harness.runtime.onTurnStart("turn-1");
 		harness.advance(1_000);
 		harness.setUsage({ output: 4 });
 		await harness.runtime.onTaskAborted({ reason: "interrupted" });
@@ -483,7 +483,7 @@ describe("goal runtime", () => {
 				goal: createGoal({ tokenBudget: 10 }),
 			},
 		});
-		harness.runtime.onTurnStart("turn-1", createUsage());
+		harness.runtime.onTurnStart("turn-1");
 		harness.setUsage({ input: 20 });
 
 		await harness.runtime.flushUsage("allowed");
@@ -588,7 +588,7 @@ describe("goal runtime", () => {
 			},
 		});
 
-		harness.runtime.onTurnStart("turn-1", createUsage());
+		harness.runtime.onTurnStart("turn-1");
 		harness.advance(1_000);
 		harness.setUsage({ input: 12 });
 
@@ -636,7 +636,7 @@ describe("goal runtime", () => {
 		expect(remainingTokens(created.goal)).toBeNull();
 		expect(renderGoalPrompt("active", created.goal)).toContain("unbounded");
 
-		harness.runtime.onTurnStart("turn-1", createUsage());
+		harness.runtime.onTurnStart("turn-1");
 		harness.setUsage(createUsage({ output: 5_000_000 }));
 		await harness.runtime.flushUsage("allowed");
 

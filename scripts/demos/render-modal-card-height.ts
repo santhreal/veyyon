@@ -16,8 +16,8 @@
  *
  *     bun scripts/demos/render-modal-card-height.ts --variant before|after [--theme titanium] [--width 100]
  */
+import { MODAL_SIZING_MEDIUM } from "../../packages/coding-agent/src/modes/terminal/components/chrome/modal-geometry";
 import {
-	MODAL_SIZING_MEDIUM,
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
 } from "../../packages/coding-agent/src/modes/terminal/components/chrome/modal-shell";

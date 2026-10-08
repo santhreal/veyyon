@@ -6,8 +6,8 @@
  */
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { AuthStorage } from "@veyyon/ai";
-import { formatCount, prompt, truncate } from "@veyyon/utils";
-import { type } from "arktype";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { formatCount, lazy, prompt, truncate } from "@veyyon/utils";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../../config/settings-instance";
 import type { CustomTool, CustomToolContext } from "../../../extensibility/custom-tools/types";
@@ -49,16 +49,18 @@ async function discoverAuthStorage(): Promise<AuthStorage> {
 }
 
 /** Web search tool parameters schema */
-export const webSearchSchema = type({
-	query: "string",
-	recency: "'day' | 'week' | 'month' | 'year'?",
-	limit: "number?",
-	max_tokens: "number?",
-	temperature: "number?",
-	num_search_results: "number?",
-});
+export const webSearchSchema = lazy(() =>
+	type({
+		query: "string",
+		recency: "'day' | 'week' | 'month' | 'year'?",
+		limit: "number?",
+		max_tokens: "number?",
+		temperature: "number?",
+		num_search_results: "number?",
+	}),
+);
 
-export type SearchToolParams = typeof webSearchSchema.infer;
+export type SearchToolParams = typeof webSearchSchema.value.infer;
 
 export interface SearchQueryParams extends SearchToolParams {
 	provider?: SearchProviderId | "auto";
@@ -301,12 +303,14 @@ export async function runSearchQuery(
  *
  * Supports the configured web-search provider chain with automatic fallback.
  */
-export class WebSearchTool implements AgentTool<typeof webSearchSchema, SearchRenderDetails> {
+export class WebSearchTool implements AgentTool<typeof webSearchSchema.value, SearchRenderDetails> {
 	readonly name = "web_search";
 	readonly approval = "read" as const;
 	readonly label = "Web Search";
 	readonly description: string;
-	readonly parameters = webSearchSchema;
+	get parameters(): typeof webSearchSchema.value {
+		return webSearchSchema.value;
+	}
 	readonly strict = true;
 	readonly loadMode = "discoverable";
 	readonly summary = "Search the web for up-to-date information";
@@ -337,11 +341,13 @@ export class WebSearchTool implements AgentTool<typeof webSearchSchema, SearchRe
 }
 
 /** Web search tool as CustomTool, which is the shape that carries a card. */
-export const webSearchCustomTool: CustomTool<typeof webSearchSchema, SearchRenderDetails> = {
+export const webSearchCustomTool: CustomTool<typeof webSearchSchema.value, SearchRenderDetails> = {
 	name: "web_search",
 	label: "Web Search",
 	description: prompt.render(toolsPrompts["tools/web-search"].text),
-	parameters: webSearchSchema,
+	get parameters() {
+		return webSearchSchema.value;
+	},
 
 	approval: "read",
 	async execute(

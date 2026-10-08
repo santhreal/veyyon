@@ -107,7 +107,7 @@ describe("a dry run", () => {
 			const prompts = tempDir.join("good.prompts.yml");
 			await fs.writeFile(prompts, "tools/bash: |\n  Custom bash instructions\n");
 			const config = tempDir.join("good.yml");
-			await fs.writeFile(config, "edit:\n  mode: diff\n");
+			await fs.writeFile(config, "edit:\n  mode: replace\n");
 			const stdout = capture("stdout");
 
 			const code = await main([

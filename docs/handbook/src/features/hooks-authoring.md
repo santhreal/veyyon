@@ -5,7 +5,7 @@ description: Use when creating a new veyyon hook. Covers HookAPI, event catalog,
 
 # Authoring Hooks
 
-Hooks are event-driven interceptors that run alongside the agent loop. They are best used for cross-cutting concerns: safety policy, secret redaction, context pruning, audit logging. A hook module registers handlers via `pi.on(event, handler)` and can block tool execution, override tool output, or rewrite the message context before each LLM call.
+Hooks are event-driven interceptors that run alongside the agent loop. Use them for cross-cutting concerns: safety policy, secret redaction, context pruning, audit logging. A hook module registers handlers via `pi.on(event, handler)` and can block tool execution, override tool output, or rewrite the message context before each LLM call.
 
 > **Relationship to extensions:** A hook module is an extension module discovered from a `hooks/` directory. The extension loader imports it and the extension runner drives its handlers, so the factory receives the runner's `ExtensionAPI`; `HookAPI` types the event and registration surface a hook module uses. `ExtensionAPI` adds extension-only events. Use `ExtensionAPI` for new work; `HookAPI` types an existing hook module.
 
@@ -101,7 +101,7 @@ Contract:
 
 ## Post-tool override contract
 
-Return `{ content, details, isError }` from a `tool_result` handler to patch what the LLM sees:
+Return `{ content, details, isError }` from a `tool_result` handler to patch what the LLM receives:
 
 ```ts
 veyyon.on("tool_result", async (event, ctx) => {
@@ -257,7 +257,7 @@ export default function contextFilter(veyyon: HookAPI): void {
 
 Pass `{ promptStyle: true }` as the fourth argument when Enter should submit and Shift+Enter should insert a newline. The default hook editor behavior keeps Enter as newline and submits on the `app.message.followUp` chord (`Ctrl+Q` or `Ctrl+Enter`).
 
-`ctx.hasUI` is `false` in headless/print/agent mode, always guard interactive calls.
+`ctx.hasUI` is `false` in headless/print/agent mode; check it before every interactive call.
 
 ## Further reading
 

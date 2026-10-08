@@ -1,3 +1,8 @@
+/**
+ * A failed turn is retried, recovered or ended by the retry ladder.
+ *
+ * Subject: `session/runtime/retry-runtime.ts`, driven through `AgentSession`.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { scheduler } from "node:timers/promises";

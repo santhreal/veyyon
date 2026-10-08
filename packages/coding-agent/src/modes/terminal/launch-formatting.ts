@@ -2,8 +2,8 @@
  * Formatting helpers for the launch card and status line before session resolution.
  */
 
+import { type LaunchFacts, readLaunchFacts } from "../../config/launch-facts";
 import { settings } from "../../config/settings-instance";
-import { type LaunchFacts, readLaunchFacts } from "../launch-facts";
 
 /**
  * What the card prints for the model before a catalog exists to name it.

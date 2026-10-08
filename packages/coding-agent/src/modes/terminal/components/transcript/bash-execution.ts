@@ -97,11 +97,11 @@ export class BashExecutionComponent extends Container {
 		if (this.#outputLines.length > 0 && incomingLines.length > 0) {
 			const lastIndex = this.#outputLines.length - 1;
 			const mergedLines = [`${this.#outputLines[lastIndex]}${incomingLines[0]}`, ...incomingLines.slice(1)];
-			const clampedMergedLines = this.#clampLinesPreservingSixel(mergedLines);
+			const clampedMergedLines = clampLinesPreservingSixel(mergedLines);
 			this.#outputLines[lastIndex] = clampedMergedLines[0] ?? "";
 			this.#outputLines.push(...clampedMergedLines.slice(1));
 		} else {
-			this.#outputLines.push(...this.#clampLinesPreservingSixel(incomingLines));
+			this.#outputLines.push(...clampLinesPreservingSixel(incomingLines));
 		}
 
 		// Cap stored lines during streaming to avoid unbounded memory growth, and remember how many went, so the
@@ -192,18 +192,9 @@ export class BashExecutionComponent extends Container {
 		}
 	}
 
-	#clampLinesPreservingSixel(lines: string[]): string[] {
-		if (lines.length === 0) return [];
-		const sixelLineMask = getSixelLineMask(lines);
-		if (!sixelLineMask.some(Boolean)) {
-			return lines.map(line => clampExecutionDisplayLine(line));
-		}
-		return lines.map((line, index) => (sixelLineMask[index] ? line : clampExecutionDisplayLine(line)));
-	}
-
 	#setOutput(output: string): void {
 		const clean = sanitizeWithOptionalSixelPassthrough(output, sanitizeText);
-		this.#outputLines = clean ? this.#clampLinesPreservingSixel(clean.split("\n")) : [];
+		this.#outputLines = clean ? clampLinesPreservingSixel(clean.split("\n")) : [];
 		// The authoritative output replaces whatever streaming kept, so nothing is missing any more.
 		this.#droppedLineCount = 0;
 	}
@@ -221,4 +212,13 @@ export class BashExecutionComponent extends Container {
 	getCommand(): string {
 		return this.command;
 	}
+}
+
+function clampLinesPreservingSixel(lines: string[]): string[] {
+	if (lines.length === 0) return [];
+	const sixelLineMask = getSixelLineMask(lines);
+	if (!sixelLineMask.some(Boolean)) {
+		return lines.map(line => clampExecutionDisplayLine(line));
+	}
+	return lines.map((line, index) => (sixelLineMask[index] ? line : clampExecutionDisplayLine(line)));
 }

@@ -55,6 +55,45 @@ describe("Tool argument whitespace normalization", () => {
 		expect(result).toEqual({ op: "init", view: "summary" });
 	});
 
+	it("trims an enum string under a union whose branch is a local JSON Schema ref", () => {
+		const tool: Tool = {
+			name: "todo",
+			description: "",
+			parameters: {
+				type: "object",
+				properties: { op: { anyOf: [{ $ref: "#/$defs/Op" }, { type: "null" }] } },
+				required: ["op"],
+				$defs: { Op: { enum: ["init", "done"] } },
+			},
+		};
+
+		const result = validateToolArguments(tool, {
+			type: "toolCall",
+			id: "call-union-ref-enum",
+			name: "todo",
+			arguments: { op: " done\n" },
+		});
+
+		expect(result).toEqual({ op: "done" });
+	});
+
+	it("keeps the whitespace of a string a free-string union branch accepts", () => {
+		const tool: Tool = {
+			name: "label",
+			description: "",
+			parameters: z.object({ mode: z.union([z.string(), z.enum(["fast", "slow"])]) }),
+		};
+
+		const result = validateToolArguments(tool, {
+			type: "toolCall",
+			id: "call-union-free-string",
+			name: "label",
+			arguments: { mode: " fast\n" },
+		});
+
+		expect(result).toEqual({ mode: " fast\n" });
+	});
+
 	it("trims enum strings inside tuple prefix items", () => {
 		const tool: Tool = {
 			name: "tuple-op",

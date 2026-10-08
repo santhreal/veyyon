@@ -1394,8 +1394,8 @@ describe("AgentSession handoff", () => {
 		expect(previousSessionText).toContain('"text":"seed"');
 	});
 
-	it("does not run auto maintenance when strategy is off", async () => {
-		session.settings.override("compaction.strategy", "off" as never);
+	it("does not run auto maintenance when compaction is disabled", async () => {
+		session.settings.override("compaction.enabled", false);
 		session.settings.set("compaction.thresholdPercent", 1);
 		session.settings.set("contextPromotion.enabled", false);
 
@@ -1432,13 +1432,14 @@ describe("AgentSession handoff", () => {
 		expect(events.filter(event => event.type === "auto_compaction_end")).toHaveLength(0);
 	});
 
-	it("restores default strategy when enabling auto-compaction from off strategy", () => {
-		session.settings.set("compaction.enabled", true);
-		session.settings.override("compaction.strategy", "off" as never);
+	it("turns auto-compaction back on through the enabled switch", () => {
+		// The fixture pins `compaction.enabled` as a runtime override, which would shadow the write.
+		session.settings.clearOverride("compaction.enabled");
+		session.settings.set("compaction.enabled", false);
 
 		expect(session.autoCompactionEnabled).toBe(false);
 		session.setAutoCompactionEnabled(true);
-		expect(session.settings.get("compaction.strategy")).toBe("summary");
+		expect(session.settings.get("compaction.enabled")).toBe(true);
 		expect(session.autoCompactionEnabled).toBe(true);
 	});
 

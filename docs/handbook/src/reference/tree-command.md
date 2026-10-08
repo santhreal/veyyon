@@ -23,7 +23,7 @@ Primary implementation:
 
 ## How to open it
 
-Any of the following opens the same selector:
+Each of these opens the same selector:
 
 - `/tree`
 - configured keybinding for the `app.session.tree` action
@@ -120,7 +120,7 @@ Assistant messages that contain **only tool calls** (no text) are hidden by defa
 - All tokens must match (AND semantics)
 - Searchable text includes label, role, and type-specific content (message text, branch summary text, custom type, tool command snippets, etc.)
 
-## Selection outcomes (important)
+## Selection outcomes
 
 `navigateTree` computes new leaf behavior from selected entry type:
 
@@ -235,7 +235,7 @@ Effect: a `branch_summary` entry is appended at the target position before conti
 2. press `Alt+A` (all)
 3. search for `model`, `thinking`, `custom`, or labels
 
-Effect: inspect full internal timeline, not just conversational nodes.
+Effect: inspect the full internal timeline, not only conversational nodes.
 
 ### Bookmark pivot points for later jumps
 

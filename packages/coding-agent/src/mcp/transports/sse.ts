@@ -2,15 +2,15 @@ import * as AIError from "@veyyon/ai/error";
 import { isAbortError, logger, readSseEvents, Snowflake } from "@veyyon/utils";
 import { createMCPTimeout, getNeverAbortSignal, resolveMCPTimeoutMs } from "../timeout";
 import type {
-	JsonRpcError,
 	JsonRpcMessage,
 	JsonRpcRequest,
 	JsonRpcResponse,
 	MCPRequestOptions,
 	MCPSseServerConfig,
 	MCPTransport,
+	ServerRequestResponse,
 } from "../types";
-import { toJsonRpcError } from "../types";
+import { answerServerRequest } from "../types";
 import { describeJsonRpcError, isUnattributableError, rejectAllPending } from "../unattributable-error";
 import { rebuildMCPToolCallParamsForAttempt } from "./http";
 import { mcpHttpFailureMessage } from "./http-failure";
@@ -221,7 +221,9 @@ export class LegacySseTransport implements MCPTransport {
 			}
 		}
 		if ("method" in message && "id" in message && message.id != null) {
-			void this.#handleServerRequest(message as JsonRpcRequest);
+			void answerServerRequest(this.onRequest, message as JsonRpcRequest).then(body =>
+				this.#sendServerResponse(body),
+			);
 			return;
 		}
 		if ("method" in message && !("id" in message)) {
@@ -365,19 +367,6 @@ export class LegacySseTransport implements MCPTransport {
 		return response;
 	}
 
-	async #handleServerRequest(request: JsonRpcRequest): Promise<void> {
-		if (!this.onRequest) {
-			await this.#sendServerResponse(request.id, undefined, { code: -32601, message: "Method not found" });
-			return;
-		}
-		try {
-			const result = await this.onRequest(request.method, request.params);
-			await this.#sendServerResponse(request.id, result);
-		} catch (error) {
-			await this.#sendServerResponse(request.id, undefined, toJsonRpcError(error));
-		}
-	}
-
 	/**
 	 * POST a JSON-RPC response back to the server.
 	 *
@@ -385,23 +374,20 @@ export class LegacySseTransport implements MCPTransport {
 	 * reply leaves the server waiting on an answer we computed and discarded, so
 	 * the undelivered reply is reported rather than swallowed (Law 10).
 	 */
-	async #sendServerResponse(id: string | number, result?: unknown, error?: JsonRpcError): Promise<void> {
+	async #sendServerResponse(body: ServerRequestResponse): Promise<void> {
 		if (!this.#connected) return;
 		const timeout = resolveMCPTimeoutMs(this.#config.timeout);
 		const operation = createMCPTimeout(timeout);
 		try {
-			const response = await this.#postJson(
-				error ? { jsonrpc: "2.0" as const, id, error } : { jsonrpc: "2.0" as const, id, result: result ?? {} },
-				operation.signal,
-			);
+			const response = await this.#postJson(body, operation.signal);
 			operation.clear();
 			await response.body?.cancel();
 		} catch (sendError) {
 			operation.clear();
 			reportUndeliveredServerResponse({
 				url: this.#config.url,
-				requestId: id,
-				kind: error ? "error" : "result",
+				requestId: body.id,
+				kind: body.error ? "error" : "result",
 				cause: sendError,
 			});
 		}

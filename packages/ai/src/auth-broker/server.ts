@@ -12,9 +12,11 @@
 import * as logger from "@veyyon/utils/logger";
 import { clampLow } from "@veyyon/utils/math";
 import { errorMessage } from "@veyyon/utils/type-guards";
-import { type Type, type } from "arktype";
+import type { Type } from "arktype";
 import type { AuthStorage, StoredCredentialBlock } from "../auth-storage";
+import { BearerAllowList, json, resolvePeer } from "../utils/http-server";
 import { parseBind } from "../utils/parse-bind";
+import { type } from "../utils/schema/arktype";
 import { formatGenerationTag, parseGenerationTag } from "./generation-tag";
 import { AuthBrokerRefresher, type AuthBrokerRefresherSchedule } from "./refresher";
 import type {
@@ -72,24 +74,8 @@ export interface AuthBrokerServerHandle {
 	close(): Promise<void>;
 }
 
-function json(status: number, body: unknown, headers?: Record<string, string>): Response {
-	return new Response(JSON.stringify(body), {
-		status,
-		headers: { "Content-Type": "application/json", ...(headers ?? {}) },
-	});
-}
-
 function empty(status: number, headers?: Record<string, string>): Response {
 	return new Response(null, { status, headers });
-}
-
-function isAuthorized(req: Request, tokens: ReadonlySet<string>): boolean {
-	if (tokens.size === 0) return true;
-	const header = req.headers.get("authorization");
-	if (!header) return false;
-	const match = header.match(/^Bearer\s+(.+)$/i);
-	if (!match) return false;
-	return tokens.has(match[1].trim());
 }
 
 /**
@@ -124,10 +110,8 @@ async function parseBody<t>(
 	return { ok: true, data: result };
 }
 
-const REFRESH_ROUTE = /^\/v1\/credential\/(\d+)\/refresh$/;
-const DISABLE_ROUTE = /^\/v1\/credential\/(\d+)\/disable$/;
-const BLOCK_ROUTE = /^\/v1\/credential\/(\d+)\/block$/;
-const BLOCKS_ROUTE = /^\/v1\/credential\/(\d+)\/blocks$/;
+/** `/v1/credential/:id/<action>`: the row id and the action name. */
+const CREDENTIAL_ROUTE = /^\/v1\/credential\/(\d+)\/([a-z]+)$/;
 
 const MAX_SNAPSHOT_WAIT_MS = 30_000;
 const DISABLED_NEXT_SWEEP_IN_MS = Number.MAX_SAFE_INTEGER;
@@ -534,13 +518,254 @@ function serveSnapshotStream(
 	});
 }
 
+/** What every route handler reads, built once per server. */
+interface BrokerContext {
+	storage: AuthStorage;
+	refresher: AuthBrokerRefresher | undefined;
+	gate: GenerationGate;
+	bearer: BearerAllowList;
+	version: string | undefined;
+	streamKeepaliveMs: number;
+}
+
+/** One broker request: the request, its parsed URL, and the client address for logs. */
+interface BrokerRequest {
+	req: Request;
+	url: URL;
+	peer: string;
+}
+
+type BrokerHandler = (ctx: BrokerContext, request: BrokerRequest) => Promise<Response> | Response;
+type CredentialHandler = (ctx: BrokerContext, request: BrokerRequest, id: number) => Promise<Response> | Response;
+
+/**
+ * A credential write that threw: 404 when the row is gone, else 500, with the
+ * failure logged under `event`.
+ */
+function credentialWriteFailed(event: string, id: number, peer: string, error: unknown): Response {
+	const message = errorMessage(error);
+	logger.warn(event, { id, peer, error: message });
+	return json(message.includes("No credential with id") ? 404 : 500, { error: message });
+}
+
+/** A logged 404 when no loaded row carries `id`; undefined when one does. */
+function unknownCredential(storage: AuthStorage, id: number, peer: string, event: string): Response | undefined {
+	if (storage.hasCredentialId(id)) return undefined;
+	logger.info(event, { id, peer });
+	return json(404, { error: `No credential with id=${id}` });
+}
+
+async function serveUsage({ storage }: BrokerContext, { req, peer }: BrokerRequest): Promise<Response> {
+	try {
+		// AuthStorage caches usage reports internally with a 5-minute per-credential
+		// TTL (USAGE_REPORT_TTL_MS) so back-to-back widget polls re-use the
+		// last fetch instead of hitting provider endpoints repeatedly.
+		// `req.signal` propagates HTTP-client disconnects all the way to the
+		// per-caller cancel without touching the shared upstream fetch.
+		const reports = (await storage.fetchUsageReports?.({ signal: req.signal })) ?? [];
+		// Drop the `raw` field — it's the provider-specific upstream body,
+		// large and unstable. Everything UI-relevant lives in `limits` and
+		// `metadata`.
+		const trimmed = reports.map(({ raw: _raw, ...rest }) => rest);
+		logger.info("auth-broker usage served", { peer, reports: trimmed.length });
+		return json(200, { generatedAt: Date.now(), reports: trimmed });
+	} catch (error) {
+		const message = errorMessage(error);
+		logger.warn("auth-broker usage fetch failed", { peer, error: message });
+		return json(502, { error: message });
+	}
+}
+
+function markUsageStale({ storage }: BrokerContext, { peer }: BrokerRequest): Response {
+	try {
+		storage.invalidateUsageCache?.();
+		logger.info("auth-broker usage cache invalidated", { peer });
+		return json(200, { ok: true });
+	} catch (error) {
+		const message = errorMessage(error);
+		logger.warn("auth-broker usage cache invalidation failed", { peer, error: message });
+		return json(500, { error: message });
+	}
+}
+
+async function uploadCredential({ storage }: BrokerContext, { req, peer }: BrokerRequest): Promise<Response> {
+	const parsed = await parseBody(req, wireSchemas().credentialUploadRequestSchema);
+	if (!parsed.ok) return parsed.response;
+	const { provider, credential } = parsed.data;
+	try {
+		const entries = storage.upsertCredential(provider, credential);
+		const identity =
+			credential.type === "oauth"
+				? (credential.email ?? credential.accountId ?? credential.projectId ?? "(no identity)")
+				: "(api key)";
+		logger.info("auth-broker credential upserted", {
+			provider,
+			type: credential.type,
+			identity,
+			peer,
+			providerTotal: entries.length,
+		});
+		const response: CredentialUploadResponse = { entries };
+		return json(200, response);
+	} catch (error) {
+		const message = errorMessage(error);
+		logger.warn("auth-broker upload failed", { provider, peer, error: message });
+		return json(500, { error: message });
+	}
+}
+
+async function refreshCredential(
+	{ storage }: BrokerContext,
+	{ req, peer }: BrokerRequest,
+	id: number,
+): Promise<Response> {
+	try {
+		const entry = await storage.refreshCredentialById(id, req.signal);
+		const body: CredentialRefreshResponse = { entry };
+		logger.info("auth-broker credential refreshed", {
+			id,
+			provider: entry.provider,
+			peer,
+			expires: entry.credential.type === "oauth" ? entry.credential.expires : undefined,
+		});
+		return json(200, body);
+	} catch (error) {
+		return credentialWriteFailed("auth-broker refresh failed", id, peer, error);
+	}
+}
+
+async function disableCredential(
+	{ storage }: BrokerContext,
+	{ req, peer }: BrokerRequest,
+	id: number,
+): Promise<Response> {
+	const parsed = await parseBody(req, wireSchemas().credentialDisableRequestSchema, { allowEmpty: true });
+	if (!parsed.ok) return parsed.response;
+	const cause = parsed.data.cause && parsed.data.cause.length > 0 ? parsed.data.cause : "disabled via auth-broker";
+	if (!storage.disableCredentialById(id, cause)) {
+		logger.info("auth-broker disable miss", { id, peer, cause });
+		return json(404, { error: `No credential with id=${id}` });
+	}
+	logger.info("auth-broker credential disabled", { id, peer, cause });
+	const response: CredentialDisableResponse = { ok: true };
+	return json(200, response);
+}
+
+async function blockCredential(
+	{ storage }: BrokerContext,
+	{ req, peer }: BrokerRequest,
+	id: number,
+): Promise<Response> {
+	const parsed = await parseBody(req, wireSchemas().credentialBlockRequestSchema);
+	if (!parsed.ok) return parsed.response;
+	const unknown = unknownCredential(storage, id, peer, "auth-broker credential block miss");
+	if (unknown) return unknown;
+	const block: StoredCredentialBlock = {
+		credentialId: id,
+		providerKey: parsed.data.providerKey,
+		blockScope: parsed.data.blockScope,
+		blockedUntilMs: parsed.data.blockedUntilMs,
+	};
+	try {
+		storage.upsertCredentialBlock(block);
+		logger.info("auth-broker credential block upserted", {
+			id,
+			peer,
+			providerKey: block.providerKey,
+			blockScope: block.blockScope,
+			blockedUntilMs: block.blockedUntilMs,
+		});
+		const response: CredentialBlockResponse = { ok: true };
+		return json(200, response);
+	} catch (error) {
+		return credentialWriteFailed("auth-broker credential block upsert failed", id, peer, error);
+	}
+}
+
+function deleteCredentialBlocks({ storage }: BrokerContext, { peer }: BrokerRequest, id: number): Response {
+	const unknown = unknownCredential(storage, id, peer, "auth-broker credential blocks delete miss");
+	if (unknown) return unknown;
+	try {
+		storage.deleteCredentialBlocks(id);
+		logger.info("auth-broker credential blocks deleted", { id, peer });
+		const response: CredentialBlocksDeleteResponse = { ok: true };
+		return json(200, response);
+	} catch (error) {
+		return credentialWriteFailed("auth-broker credential blocks delete failed", id, peer, error);
+	}
+}
+
+/** Routes that require a bearer, keyed `METHOD /path`. */
+const ROUTES: Record<string, BrokerHandler> = {
+	"GET /v1/snapshot/stream": (ctx, { req, peer }) =>
+		serveSnapshotStream(req, ctx.storage, ctx.refresher, peer, ctx.streamKeepaliveMs),
+	"GET /v1/snapshot": (ctx, { req, url, peer }) => serveSnapshot(req, url, ctx.storage, ctx.gate, ctx.refresher, peer),
+	"GET /v1/usage": serveUsage,
+	"POST /v1/usage/stale": markUsageStale,
+	"POST /v1/credential": uploadCredential,
+};
+
+/** Routes under `/v1/credential/:id/<action>` that require a bearer, keyed `METHOD action`. */
+const CREDENTIAL_ROUTES: Record<string, CredentialHandler> = {
+	"POST refresh": refreshCredential,
+	"POST disable": disableCredential,
+	"POST block": blockCredential,
+	"DELETE blocks": deleteCredentialBlocks,
+};
+
+/**
+ * Every broker route that requires a bearer, as `METHOD /path`, with `:id`
+ * standing for a credential row id. `GET /v1/healthz` is the one route outside it.
+ */
+export const AUTH_BROKER_AUTHORIZED_ROUTES: readonly string[] = [
+	...Object.keys(ROUTES),
+	...Object.keys(CREDENTIAL_ROUTES).map(key => {
+		const [method, action] = key.split(" ");
+		return `${method} /v1/credential/:id/${action}`;
+	}),
+];
+
+function dispatch(ctx: BrokerContext, request: BrokerRequest): Promise<Response> | Response {
+	const { req, peer } = request;
+	const pathname = request.url.pathname;
+	if (req.method === "GET" && pathname === "/v1/healthz") {
+		const body: HealthzResponse = { ok: true, version: ctx.version };
+		return json(200, body);
+	}
+	if (!ctx.bearer.authorizes(req)) {
+		logger.info("auth-broker request unauthorized", { method: req.method, path: pathname, peer });
+		return json(401, { error: "unauthorized" });
+	}
+	const route: BrokerHandler | undefined = ROUTES[`${req.method} ${pathname}`];
+	if (route) return route(ctx, request);
+	const credential = CREDENTIAL_ROUTE.exec(pathname);
+	const credentialRoute: CredentialHandler | undefined = credential
+		? CREDENTIAL_ROUTES[`${req.method} ${credential[2]}`]
+		: undefined;
+	if (credential && credentialRoute) return credentialRoute(ctx, request, Number.parseInt(credential[1], 10));
+	return json(404, { error: `No route: ${req.method} ${pathname}` });
+}
+
+/** Answer one request. A handler that throws answers a logged JSON 500. */
+async function handleBrokerRequest(ctx: BrokerContext, req: Request): Promise<Response> {
+	const url = new URL(req.url);
+	const request: BrokerRequest = { req, url, peer: resolvePeer(req) };
+	try {
+		return await dispatch(ctx, request);
+	} catch (error) {
+		logger.error("auth-broker handler crashed", {
+			method: req.method,
+			path: url.pathname,
+			peer: request.peer,
+			error: String(error),
+		});
+		return json(500, { error: "internal error" });
+	}
+}
+
 /** Boot the broker. Caller owns lifecycle; `handle.close()` to stop. */
 export function startAuthBroker(opts: AuthBrokerServerOptions): AuthBrokerServerHandle {
 	const bind = parseBind(opts.bind ?? DEFAULT_AUTH_BROKER_BIND);
-	const tokens = new Set<string>(opts.bearerTokens);
-	const version = opts.version;
-	const streamKeepaliveMs = opts.streamKeepaliveMs ?? DEFAULT_STREAM_KEEPALIVE_MS;
-
 	const refresher = opts.disableRefresher
 		? undefined
 		: new AuthBrokerRefresher({
@@ -549,186 +774,20 @@ export function startAuthBroker(opts: AuthBrokerServerOptions): AuthBrokerServer
 				refreshIntervalMs: opts.refreshIntervalMs ?? DEFAULT_REFRESH_INTERVAL_MS,
 			});
 	refresher?.start();
-	const generationGate = new GenerationGate(opts.storage);
+	const ctx: BrokerContext = {
+		storage: opts.storage,
+		refresher,
+		gate: new GenerationGate(opts.storage),
+		bearer: new BearerAllowList(opts.bearerTokens),
+		version: opts.version,
+		streamKeepaliveMs: opts.streamKeepaliveMs ?? DEFAULT_STREAM_KEEPALIVE_MS,
+	};
 
 	const server = Bun.serve({
 		hostname: bind.hostname,
 		port: bind.port,
 		idleTimeout: DEFAULT_SERVER_IDLE_TIMEOUT_S,
-		fetch: async (req): Promise<Response> => {
-			const url = new URL(req.url);
-			const pathname = url.pathname;
-			const peer =
-				req.headers.get("x-forwarded-for")?.split(",")[0].trim() || req.headers.get("x-real-ip") || "unknown";
-			try {
-				if (req.method === "GET" && pathname === "/v1/healthz") {
-					const body: HealthzResponse = { ok: true, version };
-					return json(200, body);
-				}
-				if (!isAuthorized(req, tokens)) {
-					logger.info("auth-broker request unauthorized", { method: req.method, path: pathname, peer });
-					return json(401, { error: "unauthorized" });
-				}
-				if (req.method === "GET" && pathname === "/v1/snapshot/stream") {
-					return serveSnapshotStream(req, opts.storage, refresher, peer, streamKeepaliveMs);
-				}
-				if (req.method === "GET" && pathname === "/v1/snapshot") {
-					return serveSnapshot(req, url, opts.storage, generationGate, refresher, peer);
-				}
-				if (req.method === "GET" && pathname === "/v1/usage") {
-					try {
-						// AuthStorage caches usage reports internally with a 5-minute per-credential
-						// TTL (USAGE_REPORT_TTL_MS) so back-to-back widget polls re-use the
-						// last fetch instead of hitting provider endpoints repeatedly.
-						// `req.signal` propagates HTTP-client disconnects all the way to the
-						// per-caller cancel without touching the shared upstream fetch.
-						const reports = (await opts.storage.fetchUsageReports?.({ signal: req.signal })) ?? [];
-						// Drop the `raw` field — it's the provider-specific upstream body,
-						// large and unstable. Everything UI-relevant lives in `limits` and
-						// `metadata`.
-						const trimmed = reports.map(({ raw: _raw, ...rest }) => rest);
-						logger.info("auth-broker usage served", { peer, reports: trimmed.length });
-						return json(200, { generatedAt: Date.now(), reports: trimmed });
-					} catch (error) {
-						const message = errorMessage(error);
-						logger.warn("auth-broker usage fetch failed", { peer, error: message });
-						return json(502, { error: message });
-					}
-				}
-				if (req.method === "POST" && pathname === "/v1/usage/stale") {
-					try {
-						opts.storage.invalidateUsageCache?.();
-						logger.info("auth-broker usage cache invalidated", { peer });
-						return json(200, { ok: true });
-					} catch (error) {
-						const message = errorMessage(error);
-						logger.warn("auth-broker usage cache invalidation failed", { peer, error: message });
-						return json(500, { error: message });
-					}
-				}
-				const refreshMatch = req.method === "POST" ? pathname.match(REFRESH_ROUTE) : null;
-				if (refreshMatch) {
-					const id = Number.parseInt(refreshMatch[1], 10);
-					try {
-						const entry = await opts.storage.refreshCredentialById(id, req.signal);
-						const body: CredentialRefreshResponse = { entry };
-						logger.info("auth-broker credential refreshed", {
-							id,
-							provider: entry.provider,
-							peer,
-							expires: entry.credential.type === "oauth" ? entry.credential.expires : undefined,
-						});
-						return json(200, body);
-					} catch (error) {
-						const message = errorMessage(error);
-						logger.warn("auth-broker refresh failed", { id, peer, error: message });
-						const status = message.includes("No credential with id") ? 404 : 500;
-						return json(status, { error: message });
-					}
-				}
-				const disableMatch = req.method === "POST" ? pathname.match(DISABLE_ROUTE) : null;
-				if (disableMatch) {
-					const id = Number.parseInt(disableMatch[1], 10);
-					const parsed = await parseBody(req, wireSchemas().credentialDisableRequestSchema, { allowEmpty: true });
-					if (!parsed.ok) return parsed.response;
-					const cause =
-						parsed.data.cause && parsed.data.cause.length > 0 ? parsed.data.cause : "disabled via auth-broker";
-					const ok = opts.storage.disableCredentialById(id, cause);
-					if (!ok) {
-						logger.info("auth-broker disable miss", { id, peer, cause });
-						return json(404, { error: `No credential with id=${id}` });
-					}
-					logger.info("auth-broker credential disabled", { id, peer, cause });
-					const response: CredentialDisableResponse = { ok: true };
-					return json(200, response);
-				}
-				const blockMatch = req.method === "POST" ? pathname.match(BLOCK_ROUTE) : null;
-				if (blockMatch) {
-					const id = Number.parseInt(blockMatch[1], 10);
-					const parsed = await parseBody(req, wireSchemas().credentialBlockRequestSchema);
-					if (!parsed.ok) return parsed.response;
-					const block: StoredCredentialBlock = {
-						credentialId: id,
-						providerKey: parsed.data.providerKey,
-						blockScope: parsed.data.blockScope,
-						blockedUntilMs: parsed.data.blockedUntilMs,
-					};
-					if (!opts.storage.exportSnapshot().credentials.some(entry => entry.id === id)) {
-						logger.info("auth-broker credential block miss", { id, peer });
-						return json(404, { error: `No credential with id=${id}` });
-					}
-					try {
-						opts.storage.upsertCredentialBlock(block);
-						const response: CredentialBlockResponse = { ok: true };
-						logger.info("auth-broker credential block upserted", {
-							id,
-							peer,
-							providerKey: block.providerKey,
-							blockScope: block.blockScope,
-							blockedUntilMs: block.blockedUntilMs,
-						});
-						return json(200, response);
-					} catch (error) {
-						const message = errorMessage(error);
-						logger.warn("auth-broker credential block upsert failed", { id, peer, error: message });
-						const status = message.includes("No credential with id") ? 404 : 500;
-						return json(status, { error: message });
-					}
-				}
-				const blocksDeleteMatch = req.method === "DELETE" ? pathname.match(BLOCKS_ROUTE) : null;
-				if (blocksDeleteMatch) {
-					const id = Number.parseInt(blocksDeleteMatch[1], 10);
-					if (!opts.storage.exportSnapshot().credentials.some(entry => entry.id === id)) {
-						logger.info("auth-broker credential blocks delete miss", { id, peer });
-						return json(404, { error: `No credential with id=${id}` });
-					}
-					try {
-						opts.storage.deleteCredentialBlocks(id);
-						const response: CredentialBlocksDeleteResponse = { ok: true };
-						logger.info("auth-broker credential blocks deleted", { id, peer });
-						return json(200, response);
-					} catch (error) {
-						const message = errorMessage(error);
-						logger.warn("auth-broker credential blocks delete failed", { id, peer, error: message });
-						const status = message.includes("No credential with id") ? 404 : 500;
-						return json(status, { error: message });
-					}
-				}
-				if (req.method === "POST" && pathname === "/v1/credential") {
-					const parsed = await parseBody(req, wireSchemas().credentialUploadRequestSchema);
-					if (!parsed.ok) return parsed.response;
-					const { provider, credential } = parsed.data;
-					try {
-						const entries = opts.storage.upsertCredential(provider, credential);
-						const identity =
-							credential.type === "oauth"
-								? (credential.email ?? credential.accountId ?? credential.projectId ?? "(no identity)")
-								: "(api key)";
-						logger.info("auth-broker credential upserted", {
-							provider,
-							type: credential.type,
-							identity,
-							peer,
-							providerTotal: entries.length,
-						});
-						const response: CredentialUploadResponse = { entries };
-						return json(200, response);
-					} catch (error) {
-						const message = errorMessage(error);
-						logger.warn("auth-broker upload failed", { provider, peer, error: message });
-						return json(500, { error: message });
-					}
-				}
-				return json(404, { error: `No route: ${req.method} ${pathname}` });
-			} catch (error) {
-				logger.error("auth-broker handler crashed", {
-					method: req.method,
-					path: pathname,
-					error: String(error),
-				});
-				return json(500, { error: "internal error" });
-			}
-		},
+		fetch: req => handleBrokerRequest(ctx, req),
 	});
 
 	const boundHost = server.hostname ?? bind.hostname;
@@ -739,7 +798,7 @@ export function startAuthBroker(opts: AuthBrokerServerOptions): AuthBrokerServer
 		hostname: boundHost,
 		close: async () => {
 			refresher?.stop();
-			generationGate.close();
+			ctx.gate.close();
 			server.stop(true);
 		},
 	};

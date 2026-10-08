@@ -1,7 +1,7 @@
 import { tryParseJson } from "@veyyon/utils";
 import { throwIfCancelled } from "../abort";
 import { markdownLink } from "../markdown-link";
-import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import type { LoadPageResult, RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import {
 	buildResult,
 	formatNumber,
@@ -101,66 +101,54 @@ function formatDate(isoDate: string): string {
 	}
 }
 
+function renderMastodonPoll(poll: NonNullable<MastodonStatus["poll"]>): string {
+	let md = "**Poll:**\n";
+	for (const option of poll.options) {
+		const pct = poll.votes_count > 0 ? ((option.votes_count / poll.votes_count) * 100).toFixed(1) : "0";
+		md += `- ${option.title} (${pct}%, ${option.votes_count} votes)\n`;
+	}
+	return `${md}Total: ${poll.votes_count} votes${poll.expired ? " (closed)" : ""}\n\n`;
+}
+
+function renderMastodonAttachments(attachments: MastodonMediaAttachment[]): string {
+	let md = "**Attachments:**\n";
+	for (const media of attachments) {
+		const desc = media.description ? ` - ${media.description}` : "";
+		md += `- ${markdownLink(media.type, media.url)}${desc}\n`;
+	}
+	return `${md}\n`;
+}
+
+/** The author line: handle, bot marker, date, and the visibility when it is not public. */
+function renderMastodonByline(status: MastodonStatus): string {
+	const { account } = status;
+	const bot = account.bot ? " 🤖" : "";
+	const visibility = status.visibility !== "public" ? ` · ${status.visibility}` : "";
+	return `**@${account.acct}**${bot} · ${formatDate(status.created_at)}${visibility}\n\n`;
+}
+
 /**
  * Format a status/post as markdown
  */
 async function formatStatus(status: MastodonStatus, isReblog = false): Promise<string> {
 	// Handle reblogs (boosts)
 	if (status.reblog && !isReblog) {
-		let md = `🔁 **${status.account.display_name || status.account.username}** boosted:\n\n`;
-		md += await formatStatus(status.reblog, true);
-		return md;
+		const booster = status.account.display_name || status.account.username;
+		return `🔁 **${booster}** boosted:\n\n${await formatStatus(status.reblog, true)}`;
 	}
 
 	const account = status.account;
-	let md = "";
+	let md = isReblog ? "" : `# Post by ${account.display_name || account.username}\n\n`;
+	md += renderMastodonByline(status);
+	if (status.spoiler_text) md += `> ⚠️ **CW:** ${status.spoiler_text}\n\n`;
+	md += `${await htmlToBasicMarkdown(status.content)}\n\n`;
+	if (status.poll) md += renderMastodonPoll(status.poll);
+	if (status.media_attachments.length > 0) md += renderMastodonAttachments(status.media_attachments);
 
-	if (!isReblog) {
-		md += `# Post by ${account.display_name || account.username}\n\n`;
-	}
-
-	md += `**@${account.acct}**`;
-	if (account.bot) md += " 🤖";
-	md += ` · ${formatDate(status.created_at)}`;
-	if (status.visibility !== "public") md += ` · ${status.visibility}`;
-	md += "\n\n";
-
-	// Content warning / spoiler
-	if (status.spoiler_text) {
-		md += `> ⚠️ **CW:** ${status.spoiler_text}\n\n`;
-	}
-
-	// Main content (convert HTML to markdown)
-	const content = await htmlToBasicMarkdown(status.content);
-	md += `${content}\n\n`;
-
-	// Poll
-	if (status.poll) {
-		md += "**Poll:**\n";
-		for (const option of status.poll.options) {
-			const pct =
-				status.poll.votes_count > 0 ? ((option.votes_count / status.poll.votes_count) * 100).toFixed(1) : "0";
-			md += `- ${option.title} (${pct}%, ${option.votes_count} votes)\n`;
-		}
-		md += `Total: ${status.poll.votes_count} votes${status.poll.expired ? " (closed)" : ""}\n\n`;
-	}
-
-	// Media attachments
-	if (status.media_attachments.length > 0) {
-		md += "**Attachments:**\n";
-		for (const media of status.media_attachments) {
-			const desc = media.description ? ` - ${media.description}` : "";
-			md += `- ${markdownLink(media.type, media.url)}${desc}\n`;
-		}
-		md += "\n";
-	}
-
-	// Stats
 	md += `---\n`;
 	md += `💬 ${formatNumber(status.replies_count)} replies · `;
 	md += `🔁 ${formatNumber(status.reblogs_count)} boosts · `;
 	md += `⭐ ${formatNumber(status.favourites_count)} favorites\n`;
-
 	return md;
 }
 
@@ -202,6 +190,70 @@ async function formatAccount(account: MastodonAccount): Promise<string> {
 	return md;
 }
 
+interface MastodonRequest {
+	url: string;
+	instance: string;
+	timeout: number;
+	signal?: AbortSignal;
+	fetchedAt: string;
+}
+
+function loadMastodonJson(apiUrl: string, request: MastodonRequest) {
+	return loadPage(apiUrl, {
+		timeout: request.timeout,
+		headers: { Accept: "application/json" },
+		signal: request.signal,
+	});
+}
+
+function mastodonResult(md: string, finalUrl: string | undefined, request: MastodonRequest): RenderResult {
+	return buildResult(md, {
+		url: request.url,
+		finalUrl: finalUrl || request.url,
+		method: "mastodon",
+		fetchedAt: request.fetchedAt,
+		notes: [`Fetched via Mastodon API (${request.instance})`],
+	});
+}
+
+async function renderMastodonPost(statusId: string, request: MastodonRequest): Promise<RenderResult | ScraperDegrade> {
+	const result = await loadMastodonJson(`https://${request.instance}/api/v1/statuses/${statusId}`, request);
+	if (!result.ok) return scraperDegrade("mastodon", loadFailure(result));
+	const status = tryParseJson<MastodonStatus>(result.content);
+	if (!status) return scraperDegrade("mastodon", "unexpected status response shape");
+	return mastodonResult(await formatStatus(status), status.url, request);
+}
+
+/** Markdown for the account's recent posts; empty when the statuses request failed or listed none. */
+async function renderMastodonRecentPosts(statusesResult: LoadPageResult): Promise<string> {
+	if (!statusesResult.ok) return "";
+	const statuses = tryParseJson<MastodonStatus[]>(statusesResult.content);
+	if (!statuses || !(statuses.length > 0)) return "";
+	let md = "\n---\n\n## Recent Posts\n\n";
+	for (const status of statuses.slice(0, 5)) {
+		md += `### ${formatDate(status.created_at)}\n\n`;
+		md += `${await htmlToBasicMarkdown(status.content)}\n\n`;
+		md += `💬 ${status.replies_count} · 🔁 ${status.reblogs_count} · ⭐ ${status.favourites_count}\n\n`;
+	}
+	return md;
+}
+
+async function renderMastodonProfile(
+	username: string,
+	request: MastodonRequest,
+): Promise<RenderResult | ScraperDegrade> {
+	const lookupUrl = `https://${request.instance}/api/v1/accounts/lookup?acct=${encodeURIComponent(username)}`;
+	const result = await loadMastodonJson(lookupUrl, request);
+	if (!result.ok) return scraperDegrade("mastodon", loadFailure(result));
+	const account = tryParseJson<MastodonAccount>(result.content);
+	if (!account) return scraperDegrade("mastodon", "unexpected account response shape");
+	// The five most recent posts, replies excluded, load before the account renders.
+	const statusesUrl = `https://${request.instance}/api/v1/accounts/${account.id}/statuses?limit=5&exclude_replies=true`;
+	const statusesResult = await loadMastodonJson(statusesUrl, request);
+	const md = await formatAccount(account);
+	return mastodonResult(md + (await renderMastodonRecentPosts(statusesResult)), account.url, request);
+}
+
 /**
  * Handle Mastodon/Fediverse URLs
  */
@@ -217,91 +269,20 @@ export const handleMastodon: SpecialHandler = async (
 		// Check for @user/postid or @user pattern
 		const postMatch = parsed.pathname.match(/^\/@([^/]+)\/(\d+)$/);
 		const profileMatch = parsed.pathname.match(/^\/@([^/]+)$/);
-
 		if (!postMatch && !profileMatch) return null;
 
 		// Verify this is a Mastodon instance
-		if (!(await isMastodonInstance(parsed.hostname, timeout, signal))) {
-			return null;
-		}
+		if (!(await isMastodonInstance(parsed.hostname, timeout, signal))) return null;
 
-		const fetchedAt = new Date().toISOString();
-		const instance = parsed.hostname;
-
-		if (postMatch) {
-			// Fetch status/post
-			const [, , statusId] = postMatch;
-			const apiUrl = `https://${instance}/api/v1/statuses/${statusId}`;
-
-			const result = await loadPage(apiUrl, {
-				timeout,
-				headers: { Accept: "application/json" },
-				signal,
-			});
-
-			if (!result.ok) return scraperDegrade("mastodon", loadFailure(result));
-
-			const status = tryParseJson<MastodonStatus>(result.content);
-			if (!status) return scraperDegrade("mastodon", "unexpected status response shape");
-
-			const md = await formatStatus(status);
-
-			return buildResult(md, {
-				url,
-				finalUrl: status.url || url,
-				method: "mastodon",
-				fetchedAt,
-				notes: [`Fetched via Mastodon API (${instance})`],
-			});
-		}
-
-		if (profileMatch) {
-			// Fetch account by username lookup
-			const [, username] = profileMatch;
-			const lookupUrl = `https://${instance}/api/v1/accounts/lookup?acct=${encodeURIComponent(username)}`;
-
-			const result = await loadPage(lookupUrl, {
-				timeout,
-				headers: { Accept: "application/json" },
-				signal,
-			});
-
-			if (!result.ok) return scraperDegrade("mastodon", loadFailure(result));
-
-			const account = tryParseJson<MastodonAccount>(result.content);
-			if (!account) return scraperDegrade("mastodon", "unexpected account response shape");
-
-			// Fetch recent statuses
-			const statusesUrl = `https://${instance}/api/v1/accounts/${account.id}/statuses?limit=5&exclude_replies=true`;
-			const statusesResult = await loadPage(statusesUrl, {
-				timeout,
-				headers: { Accept: "application/json" },
-				signal,
-			});
-
-			let md = await formatAccount(account);
-
-			if (statusesResult.ok) {
-				const statuses = tryParseJson<MastodonStatus[]>(statusesResult.content);
-				if (statuses && statuses.length > 0) {
-					md += "\n---\n\n## Recent Posts\n\n";
-					for (const status of statuses.slice(0, 5)) {
-						md += `### ${formatDate(status.created_at)}\n\n`;
-						const content = await htmlToBasicMarkdown(status.content);
-						md += `${content}\n\n`;
-						md += `💬 ${status.replies_count} · 🔁 ${status.reblogs_count} · ⭐ ${status.favourites_count}\n\n`;
-					}
-				}
-			}
-
-			return buildResult(md, {
-				url,
-				finalUrl: account.url || url,
-				method: "mastodon",
-				fetchedAt,
-				notes: [`Fetched via Mastodon API (${instance})`],
-			});
-		}
+		const request: MastodonRequest = {
+			url,
+			instance: parsed.hostname,
+			timeout,
+			signal,
+			fetchedAt: new Date().toISOString(),
+		};
+		if (postMatch) return await renderMastodonPost(postMatch[2], request);
+		if (profileMatch) return await renderMastodonProfile(profileMatch[1], request);
 	} catch (error) {
 		// Reached only after the instance probe confirmed a Mastodon server, so
 		// a throw here is a real scrape failure, not a non-match.

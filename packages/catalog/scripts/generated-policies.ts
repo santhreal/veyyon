@@ -14,7 +14,6 @@ import {
 	parseKnownModel,
 	semverEqual,
 } from "../src/identity/classify";
-import { isMimoModelIdOrName } from "../src/identity/family";
 import { getLongestModelLikeIdSegment } from "../src/identity/id";
 import { buildModelReferenceIndex, resolveModelReference } from "../src/identity/reference";
 import { resolveModelThinking } from "../src/model-thinking";
@@ -26,6 +25,9 @@ import { isVariantCollapsedSpec } from "../src/variant-collapse";
 import { buildCanonicalModelIndex, buildCanonicalReferenceData } from "./equivalence";
 
 const CLOUDFLARE_AI_GATEWAY_BASE_URL = "https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/anthropic";
+
+/** The bundled providers that serve the OpenCode gateways. */
+const OPENCODE_GATEWAY_PROVIDERS: ReadonlySet<string> = new Set(["opencode", "opencode-go", "opencode-zen"]);
 
 /**
  * Static fallback model injected when Cloudflare AI Gateway discovery
@@ -284,12 +286,6 @@ function applyGeneratedModelPolicy(model: ModelSpec<Api>): void {
 			};
 		}
 	}
-	if (model.api === "openai-completions" && model.provider === "opencode-go" && isMimoModelIdOrName(model.id)) {
-		model.compat = {
-			...(model.compat ?? {}),
-			supportsToolChoice: false,
-		};
-	}
 	if (model.api === "openai-completions" && model.provider === "opencode-go" && model.id === "kimi-k2.7-code") {
 		model.compat = {
 			...(model.compat ?? {}),
@@ -303,11 +299,18 @@ function applyGeneratedModelPolicy(model: ModelSpec<Api>): void {
 	) {
 		model.compat = {
 			...(model.compat ?? {}),
-			supportsToolChoice: false,
 			maxTokensField: "max_tokens",
 			reasoningContentField: "reasoning_content",
 			requiresReasoningContentForToolCalls: true,
 		};
+	}
+	const openCodeCompat = OPENCODE_GATEWAY_PROVIDERS.has(model.provider) ? model.compat : undefined;
+	if (openCodeCompat && "supportsToolChoice" in openCodeCompat && openCodeCompat.supportsToolChoice === false) {
+		// The OpenCode gateways take a `tool_choice` pin for some models and reject it for others,
+		// with no signal in the id. The provider drops a rejected form after one 400 and remembers it
+		// per model, so a static `false` only costs the models that accept a pin. Rows carried from an
+		// older snapshot still hold one.
+		delete openCodeCompat.supportsToolChoice;
 	}
 	const parsedModel = parseKnownModel(model.id);
 	// Codex discovery declares `apply_patch_tool_type` per SKU, and on that

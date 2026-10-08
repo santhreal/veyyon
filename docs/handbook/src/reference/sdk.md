@@ -113,13 +113,13 @@ Typically you must provide only what you want to control:
 - **Usually provide explicitly** in embedders:
   - `sessionManager` (if you need in-memory or custom location)
   - `authStorage` + `modelRegistry` (if you own credential/model lifecycle)
-  - `model` or `modelPattern` (if deterministic model selection matters)
+  - `model` or `modelPattern` (for deterministic model selection)
   - `settings` (if you need isolated/test config)
 
 For a multi-tenant, test, or otherwise isolated SDK host, set `globalConfigRoot` to a private
 directory so the session cannot read or write the host user's cross-profile secret vault or vault
 key. The override affects vault/key resolution only; `agentDir` continues to control profile-local
-configuration. When omitted, `globalConfigRoot` defaults to `getGlobalConfigRootDir()` exactly as it
+configuration. When omitted, `globalConfigRoot` defaults to `getGlobalConfigRootDir()` as it
 does for the CLI.
 
 ```ts
@@ -326,7 +326,7 @@ symptom is a tool that is no longer there.
 
 A few strings in the package share a spelling with a tool while naming something else, such as the
 `"task"` agent id, the `"write"` approval tier, and the `agent.output: "yield"` setting value.
-Those stay literals and carry a `// not-a-tool-name:` comment saying which they are. The test
+Those stay literals and have a `// not-a-tool-name:` comment saying which they are. The test
 `test/tools/tool-name-literals-have-one-owner.test.ts` reads the selection sites and fails on any
 unmarked tool-name literal.
 
@@ -408,7 +408,7 @@ Use `setToolUIContext(...)` only if your embedder provides UI capabilities that 
   - `options.hasUI === true` (interactive TUI), **and**
   - the `lsp.lazy` setting is disabled (it defaults to `true`).
 
-  With `lsp.lazy` enabled, the default, no language servers are launched at startup at all; each server cold-starts on first use, i.e. when the agent invokes the `lsp` tool or an edit/write touches a file whose extension matches the server's `fileTypes`. Print / script / RPC / ACP invocations (`hasUI=false`) skip the warmup regardless of the setting: they don't render the warmup status indicator and typically finish before the language servers would stabilize, so warming them just spends CPU parsing big `initialize` responses concurrently with the LLM stream consumer and jitters perceived latency. Tools that actually need an LSP server still spin one up on demand through `getOrCreateClient()`, only the _startup_ warmup is skipped. The returned `lspServers` field in `CreateAgentSessionResult` is still populated for UI sessions in lazy mode, recognized servers are discovered (no processes spawned) and reported with status `"available"` so the welcome screen and `/status` can list them; it is `undefined` only when `enableLsp === false` or `hasUI === false`.
+  With `lsp.lazy` enabled, the default, no language servers are launched at startup; each server cold-starts on first use, i.e. when the agent invokes the `lsp` tool or an edit/write touches a file whose extension matches the server's `fileTypes`. Print / script / RPC / ACP invocations (`hasUI=false`) skip the warmup regardless of the setting: they don't render the warmup status indicator and typically finish before the language servers would stabilize, so warming them spends CPU parsing big `initialize` responses concurrently with the LLM stream consumer and jitters perceived latency. Tools that need an LSP server still start one on demand through `getOrCreateClient()`, only the _startup_ warmup is skipped. The returned `lspServers` field in `CreateAgentSessionResult` is still populated for UI sessions in lazy mode, recognized servers are discovered (no processes spawned) and reported with status `"available"` so the welcome screen and `/status` can list them; it is `undefined` only when `enableLsp === false` or `hasUI === false`.
 
 ## Minimal controlled embed example
 

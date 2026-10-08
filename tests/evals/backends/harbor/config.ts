@@ -133,6 +133,9 @@ export const FORWARD_ENV_DENYLIST = new Set([
 	"VEYYON_CODING_AGENT_DIR",
 	"VEYYON_CONFIG_DIR",
 	"VEYYON_PROFILE",
+	// Describes which host `.env` values the host process loaded. The container runs under another agent
+	// dir, so a forwarded record would make its veyyon drop a forwarded credential of the same value.
+	"VEYYON_DOTENV_ORIGIN",
 	"VEYYON_PACKAGE_DIR",
 	"VEYYON_SESSION_FILE",
 	"VEYYON_ARTIFACTS_DIR",

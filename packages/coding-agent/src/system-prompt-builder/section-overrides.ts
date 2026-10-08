@@ -181,7 +181,7 @@ async function readOverrideFile(readFile: (file: string) => Promise<string>, fil
 }
 
 /**
- * Fold discovered files into an override map for `assembleDefaultTemplate`.
+ * Fold discovered files into an override map for `defaultTemplatePieces`.
  *
  * Precedence is per section and mode: one file wins each `<section>:<mode>`
  * pair. Replace and append files compose because replacement supplies the body
@@ -233,14 +233,6 @@ export function applySectionOverrides(
 		resolved[key] = `${body}\n\n${addition}${trailing}`;
 	}
 	return resolved;
-}
-
-/** Discover and fold in one call against the complete statement assembly. */
-export async function loadPromptSectionOverrides(
-	options: LoadSectionOverridesOptions,
-	assembled: DefaultTemplateSections,
-): Promise<Partial<DefaultTemplateSections>> {
-	return applySectionOverrides(await loadSectionOverrideFiles(options), assembled);
 }
 
 /** Thin adapters: every judgement about failure lives at the call site above. */

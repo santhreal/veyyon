@@ -14,7 +14,7 @@
 import { parseXYChart } from '../xychart/parser'
 import type { XYChart } from '../xychart/types'
 import type { AsciiConfig, AsciiTheme, ColorMode, CharRole, Canvas, RoleCanvas } from './types'
-import { colorizeText } from './ansi'
+import { colorizeText, escapeHtml } from './ansi'
 import { getSeriesColor, CHART_ACCENT_FALLBACK } from '../xychart/colors'
 import { displayWidth, toCells, WIDE_PAD } from '../text-metrics'
 
@@ -782,6 +782,10 @@ function colorizeRow(
 ): string {
   if (mode === 'none') return chars.join('')
 
+  // Uncolored text still reaches HTML output, where it is escaped like a span's text.
+  const emit = (text: string, color: string | null): string =>
+    color ? colorizeText(text, color, mode) : mode === 'html' ? escapeHtml(text) : text
+
   let result = ''
   let currentColor: string | null = null
   let buffer = ''
@@ -792,7 +796,7 @@ function colorizeRow(
     if (char === ' ') {
       // Flush buffer before whitespace
       if (buffer.length > 0) {
-        result += currentColor ? colorizeText(buffer, currentColor, mode) : buffer
+        result += emit(buffer, currentColor)
         buffer = ''
         currentColor = null
       }
@@ -810,7 +814,7 @@ function colorizeRow(
     } else {
       // Flush previous group
       if (buffer.length > 0) {
-        result += currentColor ? colorizeText(buffer, currentColor, mode) : buffer
+        result += emit(buffer, currentColor)
       }
       buffer = char
       currentColor = color
@@ -819,7 +823,7 @@ function colorizeRow(
 
   // Flush remaining
   if (buffer.length > 0) {
-    result += currentColor ? colorizeText(buffer, currentColor, mode) : buffer
+    result += emit(buffer, currentColor)
   }
 
   return result

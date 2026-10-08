@@ -111,7 +111,7 @@ The older names still work: `always-ask` maps to `ask`, and `write` and `auto-ed
 
 ## Where to go next
 
-A few surfaces are worth trying early:
+Surfaces to try first:
 
 - **A multi-file change.** Ask for a refactor across modules. Hashline edits batch the paths together.
 - **The session tree.** `/tree` jumps back to an earlier message and branches from it inside the same session file.

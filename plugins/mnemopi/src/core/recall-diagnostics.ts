@@ -58,14 +58,8 @@ export class RecallDiagnostics {
 		this.#createdAt = new Date().toISOString();
 	}
 
-	static #validateTier(tier: string): asserts tier is RecallTier {
-		if (!isRecallTier(tier)) {
-			throw new Error(`unknown recall tier ${JSON.stringify(tier)}; valid tiers: ${JSON.stringify(RECALL_TIERS)}`);
-		}
-	}
-
 	recordTierHits(tier: RecallTier | string, hitCount: number): void {
-		RecallDiagnostics.#validateTier(tier);
+		validateTier(tier);
 		if (hitCount < 0) throw new Error(`hit_count must be >= 0, got ${hitCount}`);
 		const stats = this.#tierStats[tier];
 		if (hitCount > 0) stats.callsWithHits++;
@@ -118,6 +112,12 @@ export class RecallDiagnostics {
 		this.#callsUsingEmFallback = 0;
 		this.#callsTrulyEmpty = 0;
 		this.#createdAt = new Date().toISOString();
+	}
+}
+
+function validateTier(tier: string): asserts tier is RecallTier {
+	if (!isRecallTier(tier)) {
+		throw new Error(`unknown recall tier ${JSON.stringify(tier)}; valid tiers: ${JSON.stringify(RECALL_TIERS)}`);
 	}
 }
 

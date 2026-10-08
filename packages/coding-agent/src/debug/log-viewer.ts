@@ -690,7 +690,7 @@ export class DebugLogViewerComponent implements Component {
 			...visibleBodyLines,
 			divider(this.#lastRenderWidth, theme),
 			row(this.#statusText(), this.#lastRenderWidth, theme),
-			row(theme.fg("dim", this.#controlsText()), this.#lastRenderWidth, theme),
+			row(theme.fg("dim", controlsText()), this.#lastRenderWidth, theme),
 			bottomBorder(this.#lastRenderWidth, theme),
 		];
 	}
@@ -699,10 +699,6 @@ export class DebugLogViewerComponent implements Component {
 		const selected = this.#model.getSelectedCount();
 		const expanded = this.#model.expandedCount;
 		return `${theme.fg("muted", "showing")} ${theme.fg("accent", `${this.#model.visibleLogCount}/${this.#model.logCount}`)}  ${theme.fg("muted", "selected")} ${theme.fg(selected > 0 ? "accent" : "muted", String(selected))}  ${theme.fg("muted", "expanded")} ${theme.fg(expanded > 0 ? "accent" : "muted", String(expanded))}`;
-	}
-
-	#controlsText(): string {
-		return "Esc close · Ctrl+C copy · up/down/wheel move · click toggle · Shift+up/down select · left/right collapse/expand · Ctrl+A all · Ctrl+O older · Ctrl+P pid";
 	}
 
 	#filterText(): string {
@@ -959,4 +955,8 @@ export class DebugLogViewerComponent implements Component {
 			this.#onError?.(`Failed to copy logs: ${message}`);
 		}
 	}
+}
+
+function controlsText(): string {
+	return "Esc close · Ctrl+C copy · up/down/wheel move · click toggle · Shift+up/down select · left/right collapse/expand · Ctrl+A all · Ctrl+O older · Ctrl+P pid";
 }

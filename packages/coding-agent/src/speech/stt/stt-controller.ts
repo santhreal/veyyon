@@ -160,7 +160,7 @@ export class STTController {
 		if (!(await this.#ensureDeps(options))) return;
 		// Live transcription needs a recorder that can pipe PCM; the Windows
 		// PowerShell mci fallback records to a file, so it stays single-shot.
-		if (this.#recorderCanStream()) {
+		if (recorderCanStream()) {
 			await this.#startStreaming(editor, options);
 			return;
 		}
@@ -173,13 +173,6 @@ export class STTController {
 			return;
 		}
 		await this.#stopBatch(editor, options);
-	}
-
-	// ── Live streaming ──────────────────────────────────────────────
-
-	#recorderCanStream(): boolean {
-		const recorder = detectRecorder();
-		return recorder !== null && recorder.tool !== "powershell";
 	}
 
 	/** Segment text gets a leading space once a prior segment is committed, so
@@ -422,4 +415,10 @@ export class STTController {
 		this.#state = "idle";
 		this.#resolvedModelKey = null;
 	}
+}
+
+// ── Live streaming ──────────────────────────────────────────────
+function recorderCanStream(): boolean {
+	const recorder = detectRecorder();
+	return recorder !== null && recorder.tool !== "powershell";
 }

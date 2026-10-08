@@ -25,6 +25,20 @@ class Probe implements Component {
 	}
 }
 
+/** Leaf whose rows name the width they were rendered at, one array per width. */
+class WidthProbe implements Component {
+	#byWidth = new Map<number, string[]>();
+
+	render(width: number): readonly string[] {
+		let lines = this.#byWidth.get(width);
+		if (lines === undefined) {
+			lines = [`width ${width}`];
+			this.#byWidth.set(width, lines);
+		}
+		return lines;
+	}
+}
+
 function plain(lines: readonly string[]): string[] {
 	return lines.map(line => stripVTControlCharacters(line).trimEnd());
 }
@@ -126,15 +140,38 @@ describe("Container render memoization", () => {
 		expect(b.renderCount).toBe(3);
 	});
 
-	it("misses the memo on width change", () => {
-		const container = new Container();
-		container.addChild(new Probe(["constant-row"]));
+	it("serves the rows its children render at the new width on a width change", () => {
+		// A child's array is proof of its rows only at the width it was rendered at, so a width
+		// change must reach every child, whether one child holds the rows or several share them.
+		for (const siblings of [0, 1]) {
+			const container = new Container();
+			const sized = new WidthProbe();
+			container.addChild(sized);
+			for (let i = 0; i < siblings; i++) container.addChild(new Probe(["sibling"]));
 
-		const narrow = container.render(40);
-		const wide = container.render(60);
-		expect(wide).not.toBe(narrow);
-		// Stable at the new width.
-		expect(container.render(60)).toBe(wide);
+			const narrow = container.render(40);
+			const wide = container.render(60);
+			expect(wide).not.toBe(narrow);
+			expect(plain(wide)).toEqual(["width 60", ...Array.from({ length: siblings }, () => "sibling")]);
+			// Stable at the new width.
+			expect(container.render(60)).toBe(wide);
+		}
+	});
+
+	it("hands a sole child's rows on by reference, beside children that render nothing", () => {
+		// A parent memoizes on the array a container returns, so a body that settles into the same
+		// array keeps every container above it on its memo. Copying the rows into a new array on
+		// each render rebuilt the whole block for every streamed frame.
+		const container = new Container();
+		const body = new Probe(["first row", "second row"]);
+		container.addChild(new Probe([]));
+		container.addChild(body);
+		container.addChild(new Probe([]));
+
+		const rows = container.render(40);
+		expect(rows).toBe(body.render(40));
+		body.setLines(["first row", "second row", "third row"]);
+		expect(container.render(40)).toBe(body.render(40));
 	});
 });
 

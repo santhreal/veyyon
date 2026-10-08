@@ -1,6 +1,7 @@
 /**
  * CPU and heap profiling wrappers for debug reports.
  */
+import { stallSampler } from "@veyyon/utils/stall-sampler";
 
 export interface CpuProfile {
 	data: string;
@@ -125,27 +126,36 @@ export async function startCpuProfile(): Promise<ProfilerSession> {
 		// without it.
 	}
 
+	// JSC has one sampling profiler per process and the loop watchdog's sampler holds it; stopping
+	// a profile from a second session stops it for both. Take it for the length of this report.
+	const giveBack = await stallSampler.borrow();
 	const { Session } = await import("node:inspector/promises");
 	const session = new Session();
-	session.connect();
-
-	await session.post("Profiler.enable");
-	// Default CDP interval is 1ms, which mis-attributes await-resumption samples
-	// to the line after `await` (one sparse sample inherits the entire wait). 100µs
-	// scatters samples enough to keep CPU vs. async-wait attribution honest.
-	await session.post("Profiler.setSamplingInterval", { interval: 100 });
-	await session.post("Profiler.start");
+	try {
+		session.connect();
+		await session.post("Profiler.enable");
+		// Default CDP interval is 1ms, which mis-attributes await-resumption samples
+		// to the line after `await` (one sparse sample inherits the entire wait). 100µs
+		// scatters samples enough to keep CPU vs. async-wait attribution honest.
+		await session.post("Profiler.setSamplingInterval", { interval: 100 });
+		await session.post("Profiler.start");
+	} catch (error) {
+		session.disconnect();
+		giveBack();
+		throw error;
+	}
 
 	return {
 		async stop(): Promise<CpuProfile> {
-			const result = await session.post("Profiler.stop");
-			await session.post("Profiler.disable");
-			session.disconnect();
-
-			const data = JSON.stringify(result.profile, null, 2);
-			const markdown = formatProfileAsMarkdown(data);
-
-			return { data, markdown };
+			try {
+				const result = await session.post("Profiler.stop");
+				await session.post("Profiler.disable");
+				const data = JSON.stringify(result.profile, null, 2);
+				return { data, markdown: formatProfileAsMarkdown(data) };
+			} finally {
+				session.disconnect();
+				giveBack();
+			}
 		},
 	};
 }

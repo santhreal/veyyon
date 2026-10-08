@@ -113,11 +113,6 @@ export class MCPAuthRequiredError extends Error {
 	}
 }
 
-/** True for the error this module throws, without importing the manager. */
-export function isMcpAuthRequiredError(error: unknown): error is MCPAuthRequiredError {
-	return error instanceof MCPAuthRequiredError;
-}
-
 /**
  * A configured MCP value names an environment variable that is unset or empty.
  *

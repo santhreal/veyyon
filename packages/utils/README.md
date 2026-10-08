@@ -2,7 +2,7 @@
 
 Shared utilities for [veyyon](https://github.com/santhreal/veyyon) packages.
 
-## Notable modules
+## Modules
 
 | Module | Purpose |
 | --- | --- |
@@ -14,8 +14,8 @@ Shared utilities for [veyyon](https://github.com/santhreal/veyyon) packages.
 | `postmortem` | Cleanup callbacks on exit, signals, and fatal exceptions |
 | `which` | `$which()` binary lookup with caching |
 | `fetch-retry` | `fetch` with retry/backoff policies |
-| `fs-error` | Errno guards (`isEnoent` and friends) |
-| `env` / `worker-host` | Environment plumbing and side-effect-free worker-host entry contract (`workerHostEntry`) |
+| `fs-error` | Errno predicates (`isEnoent` and related checks) |
+| `env` / `worker-host` | Environment helpers and side-effect-free worker-host entry contract (`workerHostEntry`) |
 | `abortable` / `async` | AbortSignal-aware stream/promise helpers |
 | `peek-file` | Read the first N bytes of a file with pooled buffers |
 | `frontmatter`, `glob`, `mime`, `temp`, `format`, `color`, `snowflake`, `tab-spacing`, `path-tree`, `sanitize-text` | Smaller single-purpose helpers |

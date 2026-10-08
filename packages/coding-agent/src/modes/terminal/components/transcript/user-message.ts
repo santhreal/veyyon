@@ -1,4 +1,4 @@
-import { Container, Markdown } from "@veyyon/tui";
+import { Container, type DefaultTextStyle, Markdown } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils";
 import { SGR_FG_RESET } from "@veyyon/utils/ansi";
 import type { UserMessageView } from "@veyyon/wire/presentation";
@@ -6,6 +6,52 @@ import { getMarkdownTheme } from "../../../../theme/markdown-theme";
 import { theme } from "../../../../theme/theme";
 import { highlightMagicKeywords } from "../../../keywords/magic-keywords";
 import { imageReferenceHyperlink, renderPlaceholders } from "../../image-reference-markers";
+
+/**
+ * The prose style of a message whose image references link nowhere: one per message kind for the
+ * process. `Markdown` keys its module-level render cache on the style's identity, so a style built per
+ * message gives each message an entry of its own that no other ever reads, and a rebuilt transcript
+ * renders every message again (see `markdownTextStyle`).
+ */
+const sharedTextStyles = new Map<boolean, DefaultTextStyle>();
+
+function messageTextStyle(synthetic: boolean, imageLinks: UserMessageView["imageLinks"]): DefaultTextStyle {
+	if (imageLinks?.some(link => link !== undefined)) return { color: messageColor(synthetic, imageLinks) };
+	let style = sharedTextStyles.get(synthetic);
+	if (style === undefined) {
+		style = { color: messageColor(synthetic, undefined) };
+		sharedTextStyles.set(synthetic, style);
+	}
+	return style;
+}
+
+/**
+ * The message's prose colour. It reads the live `theme` binding on every call, so a style shared
+ * across messages paints in the theme active when it draws.
+ */
+function messageColor(synthetic: boolean, imageLinks: UserMessageView["imageLinks"]): (value: string) => string {
+	// Paint the magic keywords ("ultrathink"/"orchestratez"/"workflowz") inside the rendered
+	// bubble too — matching the live editor glow. The Markdown component routes code spans and
+	// fenced blocks through its own code styling (never `color`), so those are already excluded;
+	// `highlightMagicKeywords` additionally restores the bubble's own foreground after each
+	// painted keyword so the gradient never bleeds into the rest of the line.
+	const baseText = synthetic
+		? (value: string) => theme.fg("dim", value)
+		: (value: string) =>
+				theme.fg(
+					"userMessageText",
+					highlightMagicKeywords(value, theme.getFgAnsi("userMessageText") || SGR_FG_RESET),
+				);
+	const imageLabel = (value: string) => theme.fg("accent", `\x1b[1m\x1b[4m${value}\x1b[24m\x1b[22m`);
+	return (value: string) =>
+		renderPlaceholders(value, {
+			renderText: baseText,
+			renderReference: (label, kind, index) =>
+				kind === "image"
+					? imageReferenceHyperlink(label, index, imageLinks, imageLabel)
+					: theme.fg("accent", `\x1b[1m${label}\x1b[22m`),
+		});
+}
 
 /**
  * Component that renders a user message
@@ -48,30 +94,16 @@ export class UserMessageComponent extends Container {
 
 	constructor({ text, synthetic = false, imageLinks }: UserMessageView) {
 		super();
-		// Paint the magic keywords ("ultrathink"/"orchestratez"/"workflowz") inside the rendered
-		// bubble too — matching the live editor glow. The Markdown component routes code spans and
-		// fenced blocks through its own code styling (never `color`), so those are already excluded;
-		// `highlightMagicKeywords` additionally restores the bubble's own foreground after each
-		// painted keyword so the gradient never bleeds into the rest of the line.
-		const keywordReset = theme.getFgAnsi("userMessageText") || SGR_FG_RESET;
-		const baseText = synthetic
-			? (value: string) => theme.fg("dim", value)
-			: (value: string) => theme.fg("userMessageText", highlightMagicKeywords(value, keywordReset));
-		const imageLabel = (value: string) => theme.fg("accent", `\x1b[1m\x1b[4m${value}\x1b[24m\x1b[22m`);
-		const color = (value: string) =>
-			renderPlaceholders(value, {
-				renderText: baseText,
-				renderReference: (label, kind, index) =>
-					kind === "image"
-						? imageReferenceHyperlink(label, index, imageLinks, imageLabel)
-						: theme.fg("accent", `\x1b[1m${label}\x1b[22m`),
-			});
 		// paddingX 0: the render gutter (` › `) owns the horizontal inset.
-		const md = new Markdown(text, 0, 1, getMarkdownTheme(), {
-			color,
-		});
+		const md = new Markdown(text, 0, 1, getMarkdownTheme(), messageTextStyle(synthetic, imageLinks));
 		md.setIgnoreTight(true);
 		this.addChild(md);
+	}
+
+	override releaseRenderCache(): void {
+		this.#zoneSource = undefined;
+		this.#zoneLines = undefined;
+		super.releaseRenderCache();
 	}
 
 	override render(width: number): readonly string[] {

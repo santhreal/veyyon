@@ -23,9 +23,26 @@ export function createBundledReferenceMap<TApi extends Api>(
 	return references;
 }
 
+/**
+ * Resolve a discovered model id to its bundled spec: the provider's own reference first, then the
+ * best reference any bundled provider holds. The cross-provider index builds every bundled provider's
+ * models, so it is built on the first id `providerRefs` misses, not when the resolver is created: a
+ * model manager's options are created for providers that never run a discovery.
+ */
 export function createReferenceResolver<TApi extends Api>(
 	providerRefs: Map<string, ModelSpec<TApi>>,
 ): (modelId: string) => ModelSpec<TApi> | undefined {
+	let globalRefs: Map<string, Model<Api>> | undefined;
+	return (modelId: string) => {
+		const providerRef = providerRefs.get(modelId);
+		if (providerRef) return providerRef;
+		globalRefs ??= buildGlobalReferences();
+		const globalRef = globalRefs.get(modelId);
+		return globalRef ? toModelSpec(globalRef as Model<TApi>) : undefined;
+	};
+}
+
+function buildGlobalReferences(): Map<string, Model<Api>> {
 	const globalRefs = new Map<string, Model<Api>>();
 	for (const provider of getBundledProviders()) {
 		for (const model of getBundledModels(provider as Parameters<typeof getBundledModels>[0])) {
@@ -49,10 +66,5 @@ export function createReferenceResolver<TApi extends Api>(
 			}
 		}
 	}
-	return (modelId: string) => {
-		const providerRef = providerRefs.get(modelId);
-		if (providerRef) return providerRef;
-		const globalRef = globalRefs.get(modelId);
-		return globalRef ? toModelSpec(globalRef as Model<TApi>) : undefined;
-	};
+	return globalRefs;
 }

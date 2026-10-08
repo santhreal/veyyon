@@ -493,7 +493,7 @@ describe("mutation failure capture and fallback distinctions", () => {
 
 		expect(block.status).toBe("succeeded");
 		// Unregistered tool has no specialized ToolViewDefinition
-		expect(toolViewDefinitions["unregistered_custom_tool"]).toBeUndefined();
+		expect(toolViewDefinitions.unregistered_custom_tool).toBeUndefined();
 		expect(block.display?.generic).toBeDefined();
 	});
 

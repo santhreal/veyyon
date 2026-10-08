@@ -3,10 +3,14 @@
  * deliberately permissive (allows extra keys) so providers can attach extra
  * keys without rejection; only `input` is required.
  */
-import { type } from "arktype";
 
-export const hashlineEditParamsSchema = type({
-	input: "string",
-});
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { lazy } from "@veyyon/utils/abortable";
 
-export type HashlineParams = typeof hashlineEditParamsSchema.infer;
+export const hashlineEditParamsSchema = lazy(() =>
+	type({
+		input: "string",
+	}),
+);
+
+export type HashlineParams = typeof hashlineEditParamsSchema.value.infer;

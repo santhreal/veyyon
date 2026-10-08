@@ -13,7 +13,7 @@ Settings are YAML mappings. Persistent settings live in `config.yml`; custom mod
 | Machine-global | `~/.veyyon/config.yml` | The few keys shared by every profile (`defaultProfile`, `profileSharing`, auth-broker keys). |
 | CLI overlay | any file passed with `--config <file>` | Process-local, repeatable, never persisted. |
 
-A repository cannot carry settings: a checked-in `.veyyon/config.yml` is not read. When one
+A repository cannot hold settings: a checked-in `.veyyon/config.yml` is not read. When one
 repository needs different behavior, pass an overlay (`--config ./repo.yml`) or use a path-scoped
 `enabledModels` / `disabledProviders` entry in your profile config.
 
@@ -32,14 +32,14 @@ $ veyyon config set compaction.strategy summary
 $ veyyon config path                     # print the active agent directory
 ```
 
-`/settings` does the same inside a live session. Keys must match a schema path exactly
+`/settings` does the same inside a live session. A key must be a full schema path
 (`theme.dark`, not `theme`).
 
 ### Session Working Directory (`session.workdir` vs `set_cwd`)
 
 - **Persistent Profile Default (`session.workdir`)**: Configures the default working directory for a profile across all future sessions. Set interactively via `/settings` (Interaction › Profile) or in `~/.veyyon/profiles/<profile>/agent/config.yml`.
 - **Ephemeral Session Re-root (`set_cwd` tool / `/cwd`)**: Re-roots the active session's working directory temporarily. It never writes `session.workdir`.
-- **What a re-root costs**: the system prompt includes the working directory and that project's context files and workspace tree, so a re-root rebuilds it. That rebuild invalidates the provider's prefix prompt cache, and the next request re-reads the whole context as fresh input. It is done anyway because the alternative is worse: a frozen header tells the model it is working in the directory it just left, so it follows the previous project's `AGENTS.md` and resolves relative paths against a directory it has moved out of. Moving is worth paying for; being lied to about where you are is not. The rebuild happens once per move, in every mode, and a re-root to the directory already in force does nothing at all.
+- **What a re-root costs**: the system prompt includes the working directory and that project's context files and workspace tree, so a re-root rebuilds it. That rebuild invalidates the provider's prefix prompt cache, and the next request re-reads the whole context as fresh input. Without the rebuild, the header would state the directory the session left, and the model would follow the previous project's `AGENTS.md` and resolve relative paths against the old directory. The rebuild happens once per move, in every mode, and a re-root to the directory already in force does nothing at all.
 ### Your comments and formatting survive a save
 
 `config.yml` is yours to edit by hand, and veyyon writes to the same file when you change a
@@ -100,7 +100,7 @@ app.interrupt: ctrl+x
 Copying a profile follows the same rule. `veyyon profile new <new> --from <old>` copies the
 old profile's `config.yml` and removes one key from the copy, `profile.displayName`, so the new
 profile does not claim the old one's name. Everything else in the file, comments included,
-arrives exactly as you wrote it.
+arrives as you wrote it.
 
 ### When a settings file has a syntax error
 
@@ -146,9 +146,8 @@ Could not save your settings after 3 attempts, so this change will not survive a
 Check that the file and its directory are writable, then change the setting again.
 ```
 
-The setting still applies to the session you are in, which is why the message matters: the UI
-shows the new value, and without it your only clue would be the setting reverting the next
-time you launch. Veyyon retries first and reports only when the retries have not worked, so a
+The setting still applies to the session you are in, and the UI shows the new value, so without
+the message the only sign of the failure is the setting reverting the next time you launch. Veyyon retries first and reports only when the retries have not worked, so a
 brief clash with another veyyon writing at the same moment stays quiet. Fix the permissions
 and change the setting again, and nothing further is reported.
 
@@ -187,7 +186,7 @@ compaction:
 
 | Goal | What to set |
 | --- | --- |
-| When Veyyon asks before acting | `tools.approvalMode`: `plan`, `ask`, `ask-command`, `auto` (default), `yolo`; legacy `always-ask`/`write`/`auto-edit` accepted |
+| When Veyyon prompts before acting | `tools.approvalMode`: `plan`, `ask`, `ask-command`, `auto` (default), `yolo`; legacy `always-ask`/`write`/`auto-edit` accepted |
 | Per-tool policy | `tools.approval`: map a tool to `allow` / `deny` / `prompt` |
 | Advisor review pass | `advisor.enabled` + `modelRoles.advisor` |
 
@@ -200,9 +199,9 @@ tools:
 ```
 
 Per run, `--approval-mode <mode>` and `--auto-approve` / `--yolo` override the mode. There is no
-OS shell sandbox. The mode is the main boundary, and three guards sit on top of it: the
+OS shell sandbox. The mode is the main boundary, and three checks apply on top of it: the
 working-directory boundary, the secret-use boundary, and the destructive-command floor in the bash
-guard. The first two hold on every rung except `yolo`, the shipped `auto` included. The floor holds
+tool's command check. The first two hold on every rung except `yolo`, the shipped `auto` included. The floor holds
 on `yolo` as well, and only `tools.approval.bash: allow` lifts it. See
 [Approvals](../features/sandbox.md) and [Safety](./safety.md).
 
@@ -246,7 +245,7 @@ A project accumulates long strings that recur in its work: file paths, import
 roots, canonical build commands. Argot lets the model write a short handle in
 their place. The handle is `§` followed by a name, for example `§dbconn`. veyyon
 expands every handle back to its full text before anything outside the model's
-own history sees it, so tools receive the real string and the display shows the
+own history reads it, so tools receive the real string and the display shows the
 real string. The short handle is what stays in the conversation, which is where
 the token saving comes from.
 
@@ -259,8 +258,8 @@ argot:
 
 The default is `false`. You do not write or commit any dictionary. When Argot is
 on and the model is allowed to write shorthand (see the next section), veyyon
-loads the folder you started the session in, and the system prompt teaches the
-model the notation and gives it two tools, `argot_load` and `argot_unload`, so it
+loads the folder you started the session in, and the system prompt describes the
+notation to the model and gives it two tools, `argot_load` and `argot_unload`, so it
 can load further projects itself. You can turn the startup load off and leave
 every load to the agent, described under
 [Choose when a project is loaded](#choose-when-a-project-is-loaded) below.
@@ -271,9 +270,9 @@ git tracks, or a walk of the tree for a `.argot` project), proposes handles for
 the strings that would save the most tokens, and keeps the result in a local
 cache under its own config directory. In a monorepo the agent loads the one
 package it works in, not the repo root. Loading reads a project tree and writes
-the cache, so in the approval-gated autonomy modes veyyon prompts before running
-it and shows the resolved root; unloading never needs approval, because it only
-teaches less and every handle already written keeps expanding.
+the cache, so it is a write-tier call: the modes that prompt for writes (`ask`, and
+`plan` during a plan-mode session) prompt before running it and show the resolved root; unloading never needs approval, because it only
+removes handles from the prompt and every handle already written keeps expanding.
 
 Nothing is written to the working tree, so there is no file for a pull request
 to pick up. Each cache entry is immutable and named by the content it was built
@@ -283,8 +282,8 @@ new tree; the old entry is never rewritten. Nothing depends on a handle keeping
 its name across states, because veyyon expands every handle before it reaches the
 saved transcript, so an entry never has to agree with an older one. Once a
 project is loaded, veyyon lists its handles in the system prompt, and the model
-writes them from then on. A session where nothing is ever loaded simply writes
-full strings, exactly as if Argot were off.
+writes them from then on. A session where nothing is ever loaded writes
+full strings, the same as with Argot off.
 
 ### You never see a handle
 
@@ -308,7 +307,7 @@ conversation the model rereads. You are reading an expanded copy; the model is
 reading the handles. A handle is only ever expanded for display, so nothing you
 see depends on the dictionary still being loaded.
 
-One detail is worth knowing if you watch closely. While a handle is arriving,
+While a handle is arriving,
 veyyon holds back the last few characters rather than showing you a partial
 `§co` that is about to become something else. The text catches up on the next
 chunk. You may notice a word appearing a fraction later; you will not see a
@@ -334,7 +333,7 @@ for one you are still measuring. Expansion never depends on this list: a handle
 already written expands whatever model is active, so switching models never
 leaves a raw handle behind.
 
-The two settings under `encode` are the two that decide whether a model is taught
+The two settings under `encode` are the two that control whether a model is taught
 to write shorthand: this list, and the context cutoff described below. Everything
 else about Argot sits directly under `argot`, because it sets whether the
 feature runs, when a dictionary is built, how large it is, and what an agent
@@ -366,22 +365,22 @@ argot:
 The default is `true`, so the project you launched in is ready without the model
 spending a turn on it. Set it to `false` when you want every load to be a
 deliberate act by the agent: a session then starts with no dictionary, and stays
-that way until the model calls `argot_load`. That is the setting to reach for on
-a machine where the first walk of a very large repository is expensive enough
-that you would rather pay it only when shorthand is actually wanted.
+that way until the model calls `argot_load`. Use it on a
+machine where the first walk of a very large repository is expensive enough
+that you would rather pay it only when shorthand is wanted.
 
 Turning it off changes when a dictionary is built, never whether a handle
 expands. The startup load runs in the background, so a session never waits on it
-either way; when it finishes it refreshes the system prompt to teach the handles,
+either way; when it finishes it refreshes the system prompt to list the handles,
 which is the same thing `argot_load` does.
 
 ### Size the dictionary
 
 The generated dictionary is packed under a token budget: handles are added in
 value order until the next one would breach it, so the budget sets how many
-strings earn shorthand. A larger budget teaches more handles, which gives the
+strings earn shorthand. A larger budget lists more handles, which gives the
 model more chances to save tokens in its writing, but it also makes the notation
-preamble longer every turn. A smaller budget keeps the preamble cheap and teaches
+preamble longer every turn. A smaller budget keeps the preamble cheap and lists
 only the most central strings. Set it with `argot.tokenBudget`:
 
 ```yaml
@@ -447,8 +446,8 @@ This setting only trades tokens; it never changes what the agents agree on. Ever
 agent expands its own output before it reaches a tool, the saved transcript, a
 prompt it hands to a child, or the result it returns to a parent, so a handle
 never crosses between a parent and a child in either direction. An agent that
-starts with no shorthand is already correct: it simply writes in full. That is why
-`off` is a safe default and the other two are optimizations.
+starts with no shorthand writes in full, so `off` is a safe default and the other two
+are optimizations.
 
 The generated cache is per project and local to your machine. To rebuild it from
 scratch, delete the project's cache directory under veyyon's config root; the

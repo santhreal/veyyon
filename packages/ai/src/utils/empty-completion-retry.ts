@@ -27,9 +27,15 @@
  */
 import { scheduler } from "node:timers/promises";
 import { discardAttemptUsage } from "@veyyon/catalog/models";
-import type { Api, AssistantMessage, AssistantMessageEvent, Context, Model } from "../types";
+import { exponentialBackoffDelay } from "@veyyon/utils/backoff";
+import type { Api, AssistantMessage, AssistantMessageEvent, Context, Model, Usage } from "../types";
 import { AssistantMessageEventStream } from "./event-stream";
-import { isPreResponseStallMessage, openStallLadderBudget, PRE_RESPONSE_STALL_ATTEMPTS } from "./first-event-budget";
+import {
+	type FirstEventBudget,
+	isPreResponseStallMessage,
+	openStallLadderBudget,
+	PRE_RESPONSE_STALL_ATTEMPTS,
+} from "./first-event-budget";
 
 export const MAX_EMPTY_COMPLETION_RETRIES = 2;
 export const EMPTY_COMPLETION_BASE_DELAY_MS = 500;
@@ -95,6 +101,184 @@ export interface TurnRetryPolicy {
 	providerRetriesStalls?: boolean;
 }
 
+/** The event an attempt ends on. */
+type TerminalEvent = Extract<AssistantMessageEvent, { type: "done" | "error" }>;
+
+/** What an attempt left once its stream stopped without settling the caller's stream. */
+interface AttemptRead {
+	inner: AssistantMessageEventStream;
+	/** Events before the first meaningful one, held back so an empty attempt can be discarded unseen. */
+	held: AssistantMessageEvent[];
+	/** True once the attempt forwarded content; replaying the request would duplicate it. */
+	committed: boolean;
+	/** The attempt's done or error event; absent when its stream ended without one. */
+	terminal: TerminalEvent | undefined;
+}
+
+function release(outer: AssistantMessageEventStream, held: AssistantMessageEvent[]): void {
+	for (const event of held) outer.push(event);
+	held.length = 0;
+}
+
+/**
+ * Forwards one attempt's events to `outer`, holding back every event before the first meaningful one so an
+ * empty attempt can be discarded unseen. Returns undefined when the attempt settled `outer`: the caller's
+ * stream closed, or the attempt's stream threw.
+ */
+async function forwardAttempt(
+	inner: AssistantMessageEventStream,
+	outer: AssistantMessageEventStream,
+): Promise<AttemptRead | undefined> {
+	const held: AssistantMessageEvent[] = [];
+	let committed = false;
+	try {
+		for await (const event of inner) {
+			if (event.type === "done" || event.type === "error") return { inner, held, committed, terminal: event };
+			if (!committed) {
+				if (!isMeaningfulCompletionEvent(event)) {
+					held.push(event);
+					continue;
+				}
+				committed = true;
+				release(outer, held);
+			}
+			outer.push(event);
+			if (outer.done) return undefined;
+		}
+	} catch (error) {
+		release(outer, held);
+		outer.fail(error);
+		return undefined;
+	}
+	return { inner, held, committed, terminal: undefined };
+}
+
+/**
+ * One turn's retries: the attempts it re-issues, the pause before each, and the spend each discarded
+ * attempt billed. Empty completions and pre-response stalls draw on separate allowances, so a stall never
+ * consumes the retries an empty completion gets, or the reverse.
+ */
+class TurnRetries<TApi extends Api> {
+	#emptyRetries = 0;
+	#stallRetries = 0;
+	readonly #discardedUsages: Usage[] = [];
+	readonly #outer: AssistantMessageEventStream;
+	readonly #model: Model<TApi>;
+	readonly #options: EmptyCompletionRetryOptions | undefined;
+	readonly #nextAttempt: () => AssistantMessageEventStream;
+	readonly #providerRetriesStalls: boolean;
+	readonly #stallBudget: FirstEventBudget;
+
+	constructor(
+		outer: AssistantMessageEventStream,
+		model: Model<TApi>,
+		options: EmptyCompletionRetryOptions | undefined,
+		nextAttempt: () => AssistantMessageEventStream,
+		policy: TurnRetryPolicy | undefined,
+	) {
+		this.#outer = outer;
+		this.#model = model;
+		this.#options = options;
+		this.#nextAttempt = nextAttempt;
+		this.#providerRetriesStalls = policy?.providerRetriesStalls === true;
+		// The declared first-event timeout is one attempt's deadline; the whole
+		// pre-first-event phase is that deadline times the stall allowance, so a
+		// retry can never push a turn past a multiple of the caller's own number.
+		this.#stallBudget = openStallLadderBudget(options?.streamFirstEventTimeoutMs);
+	}
+
+	async run(): Promise<void> {
+		while (true) {
+			const read = await forwardAttempt(this.#nextAttempt(), this.#outer);
+			if (read === undefined) return;
+			const { terminal } = read;
+			if (read.committed || terminal === undefined || !this.#retryable(terminal)) return this.#deliver(read);
+			if (!(await this.#backOff(terminal, read.held))) return;
+		}
+	}
+
+	/** Whether an uncommitted attempt that ended on `terminal` delivered nothing and has a retry left. */
+	#retryable(terminal: TerminalEvent): boolean {
+		if (terminal.type === "done") {
+			// Retry only a genuinely degenerate completion: a normal stop that
+			// produced no visible content and reported no generated content tokens.
+			// Some providers count the terminal EOS as one output token, so a
+			// one-token invisible stop is still the same empty-completion failure.
+			const message = terminal.message;
+			return (
+				message.stopReason === "stop" &&
+				!message.errorMessage &&
+				(message.usage?.output ?? 0) <= 1 &&
+				!hasVisibleAssistantContent(message) &&
+				this.#emptyRetries < MAX_EMPTY_COMPLETION_RETRIES
+			);
+		}
+		// A turn that never reached its first event is the other way a turn
+		// delivers nothing, and the one a provider without its own ladder
+		// used to surface unretried.
+		const failure = terminal.error;
+		return (
+			!this.#providerRetriesStalls &&
+			failure.stopReason !== "aborted" &&
+			this.#options?.signal?.aborted !== true &&
+			isPreResponseStallMessage(failure.errorMessage ?? "") &&
+			this.#stallRetries < PRE_RESPONSE_STALL_ATTEMPTS - 1 &&
+			!this.#stallBudget.spent()
+		);
+	}
+
+	/**
+	 * Waits out the pause before the next attempt and books the discarded one. False when the wait failed,
+	 * which settles the turn.
+	 */
+	async #backOff(terminal: TerminalEvent, held: AssistantMessageEvent[]): Promise<boolean> {
+		const stalled = terminal.type === "error";
+		// A stalled attempt already spent the whole first-event deadline;
+		// the backoff that paces an empty completion adds nothing to it.
+		const delayMs = stalled
+			? 0
+			: exponentialBackoffDelay(this.#emptyRetries, { baseMs: EMPTY_COMPLETION_BASE_DELAY_MS, jitter: 0 });
+		const signal = this.#options?.signal;
+		try {
+			signal?.throwIfAborted();
+			const wait = this.#options?.providerRetryWait;
+			if (wait) await wait(delayMs, signal);
+			else await scheduler.wait(delayMs, { signal });
+			signal?.throwIfAborted();
+		} catch (waitError) {
+			// Backoff is part of the operation: cancellation must reject it,
+			// never turn the stale empty attempt into a successful result.
+			release(this.#outer, held);
+			this.#outer.fail(signal?.aborted ? signal.reason : waitError);
+			return false;
+		}
+		// The held `start` from this discarded attempt is dropped, but the
+		// prompt it billed is not: keep its usage for the delivered message.
+		// A stall bills nothing, so it usually carries none.
+		const discarded = stalled ? terminal.error : terminal.message;
+		if (discarded.usage) this.#discardedUsages.push(discarded.usage);
+		if (stalled) this.#stallRetries++;
+		else this.#emptyRetries++;
+		return true;
+	}
+
+	/** Hands the caller the attempt that ends the turn, carrying every discarded attempt's spend onto it. */
+	async #deliver({ inner, held, terminal }: AttemptRead): Promise<void> {
+		release(this.#outer, held);
+		if (terminal) {
+			this.#carrySpend(terminal.type === "done" ? terminal.message : terminal.error);
+			this.#outer.push(terminal);
+		} else if (!this.#outer.done) {
+			this.#outer.end(this.#carrySpend(await inner.result()));
+		}
+	}
+
+	#carrySpend(delivered: AssistantMessage): AssistantMessage {
+		for (const spent of this.#discardedUsages) discardAttemptUsage(this.#model, spent, delivered.usage);
+		return delivered;
+	}
+}
+
 /**
  * Wrap a single-attempt provider stream with bounded retries for a turn that
  * delivered nothing: an empty completion, or a pre-response stall.
@@ -104,6 +288,9 @@ export interface TurnRetryPolicy {
  * A discarded attempt's spend is not stale metadata: the provider billed the
  * whole prompt (cache write included) for the empty answer it returned, so each
  * abandoned attempt's usage is carried onto the message finally delivered.
+ *
+ * Anything the retries throw, an `attempt` that throws before returning its
+ * stream included, fails the returned stream instead of leaving it open.
  */
 export function withEmptyCompletionRetry<TApi extends Api, O extends EmptyCompletionRetryOptions>(
 	model: Model<TApi>,
@@ -113,125 +300,7 @@ export function withEmptyCompletionRetry<TApi extends Api, O extends EmptyComple
 	policy?: TurnRetryPolicy,
 ): AssistantMessageEventStream {
 	const outer = new AssistantMessageEventStream();
-	const signal = options?.signal;
-	const discardedUsages: AssistantMessage["usage"][] = [];
-	const carrySpend = (delivered: AssistantMessage): AssistantMessage => {
-		for (const spent of discardedUsages) discardAttemptUsage(model, spent, delivered.usage);
-		discardedUsages.length = 0;
-		return delivered;
-	};
-	// The declared first-event timeout is one attempt's deadline; the whole
-	// pre-first-event phase is that deadline times the stall allowance, so a
-	// retry can never push a turn past a multiple of the caller's own number.
-	const stallBudget = openStallLadderBudget(options?.streamFirstEventTimeoutMs);
-	let stallAttempt = 0;
-	let emptyAttempt = 0;
-	void (async () => {
-		while (true) {
-			const inner = attempt(model, context, options);
-			const buffered: AssistantMessageEvent[] = [];
-			let committed = false;
-			let terminal: AssistantMessageEvent | undefined;
-			const flush = (): void => {
-				for (const event of buffered) outer.push(event);
-				buffered.length = 0;
-			};
-			try {
-				for await (const event of inner) {
-					if (event.type === "done" || event.type === "error") {
-						terminal = event;
-						break;
-					}
-					// Buffer pre-content events (start/*_start) so an empty attempt can
-					// be discarded; commit the moment real content streams.
-					if (!committed && !isMeaningfulCompletionEvent(event)) {
-						buffered.push(event);
-						continue;
-					}
-					committed = true;
-					flush();
-					outer.push(event);
-					if (outer.done) return;
-				}
-			} catch (error) {
-				flush();
-				outer.fail(error);
-				return;
-			}
-
-			// Retry only a genuinely degenerate completion: a normal stop that
-			// produced no visible content and reported no generated content tokens.
-			// Some providers count the terminal EOS as one output token, so a
-			// one-token invisible stop is still the same empty-completion failure.
-			const message = terminal?.type === "done" ? terminal.message : undefined;
-			const isRetryableEmpty =
-				!committed &&
-				message !== undefined &&
-				message.stopReason === "stop" &&
-				!message.errorMessage &&
-				(message.usage?.output ?? 0) <= 1 &&
-				!hasVisibleAssistantContent(message) &&
-				emptyAttempt < MAX_EMPTY_COMPLETION_RETRIES;
-
-			// A turn that never reached its first event is the other way a turn
-			// delivers nothing, and the one a provider without its own ladder
-			// used to surface unretried. Only an uncommitted attempt qualifies:
-			// once a delta is out, replaying the request would duplicate it.
-			const failure = terminal?.type === "error" ? terminal.error : undefined;
-			const isRetryableStall =
-				!committed &&
-				policy?.providerRetriesStalls !== true &&
-				failure !== undefined &&
-				failure.stopReason !== "aborted" &&
-				signal?.aborted !== true &&
-				isPreResponseStallMessage(failure.errorMessage ?? "") &&
-				stallAttempt < PRE_RESPONSE_STALL_ATTEMPTS - 1 &&
-				!stallBudget.spent();
-
-			if (isRetryableEmpty || isRetryableStall) {
-				// A stalled attempt already spent the whole first-event deadline;
-				// the backoff that paces an empty completion adds nothing to it.
-				const delayMs = isRetryableStall ? 0 : EMPTY_COMPLETION_BASE_DELAY_MS * 2 ** emptyAttempt;
-				try {
-					signal?.throwIfAborted();
-					if (options?.providerRetryWait) await options.providerRetryWait(delayMs, signal);
-					else await scheduler.wait(delayMs, { signal });
-					signal?.throwIfAborted();
-				} catch (waitError) {
-					// Backoff is part of the operation: cancellation must reject it,
-					// never turn the stale empty attempt into a successful result.
-					flush();
-					outer.fail(signal?.aborted ? signal.reason : waitError);
-					return;
-				}
-				// The buffered `start` from this discarded attempt is dropped, but
-				// the prompt it billed is not: keep its usage for the delivered
-				// message. A stall bills nothing, so it usually carries none.
-				const discardedUsage = isRetryableStall ? failure?.usage : message?.usage;
-				if (discardedUsage) discardedUsages.push(discardedUsage);
-				// The two ladders are separate budgets: a stall must not consume
-				// the allowance an empty completion gets, or vice versa.
-				if (isRetryableStall) stallAttempt++;
-				else emptyAttempt++;
-				continue;
-			}
-
-			flush();
-			if (terminal) {
-				// A failed turn has no message to carry spend onto (the caller sees a
-				// thrown error), so only a terminal event takes it.
-				if (terminal.type === "done") carrySpend(terminal.message);
-				else if (terminal.type === "error") carrySpend(terminal.error);
-				outer.push(terminal);
-			} else if (!outer.done) {
-				try {
-					outer.end(carrySpend(await inner.result()));
-				} catch (error) {
-					outer.fail(error);
-				}
-			}
-			return;
-		}
-	})();
+	const retries = new TurnRetries(outer, model, options, () => attempt(model, context, options), policy);
+	void retries.run().catch(error => outer.fail(error));
 	return outer;
 }

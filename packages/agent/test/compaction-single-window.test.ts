@@ -6,6 +6,7 @@ import {
 	type CompactionPreparation,
 	createFileOps,
 	DEFAULT_COMPACTION_SETTINGS,
+	KEEP_NOTHING_ENTRY_ID,
 	prepareCompaction,
 	REMOTE_COMPACTION_PRESERVE_KEY,
 	type SessionEntry,
@@ -204,7 +205,9 @@ describe("a remote compaction entry is not a reusable prior summary", () => {
 	/**
 	 * The over-reach guard. An ordinary local compaction still gets adopted: its
 	 * summary is real, so re-expanding behind it would throw away a summary
-	 * veyyon paid for and re-summarize the same span every single pass.
+	 * veyyon paid for and re-summarize the same span every single pass. The
+	 * entry keeps nothing, so "pre-compaction work" is the span it summarized
+	 * rather than a turn it kept, which the next pass must read.
 	 */
 	test("an ordinary local compaction entry stays reusable", () => {
 		const entries: SessionEntry[] = [
@@ -212,6 +215,7 @@ describe("a remote compaction entry is not a reusable prior summary", () => {
 			makeCompactionEntry({
 				id: "compaction-local",
 				summary: "## Goal\nShip the release script fix.",
+				firstKeptEntryId: KEEP_NOTHING_ENTRY_ID,
 			}),
 			makeMessageEntry("msg-2", "compaction-local", "post-compaction work"),
 		];

@@ -98,7 +98,12 @@ function createFixture(streamingMessage?: AssistantMessage) {
 		init: vi.fn(async () => {}),
 		ui: { requestRender: vi.fn(), requestComponentRender: vi.fn() },
 		settings: { get: vi.fn(() => false) },
-		statusLine: { invalidate: vi.fn(), markActivityStart: vi.fn(), markActivityEnd: vi.fn() },
+		statusLine: {
+			invalidate: vi.fn(),
+			markActivityStart: vi.fn(),
+			markActivityEnd: vi.fn(),
+			refreshGitStatus: vi.fn(),
+		},
 		updatePendingMessagesDisplay: vi.fn(),
 		ensureLoadingAnimation: vi.fn(),
 		statusContainer,

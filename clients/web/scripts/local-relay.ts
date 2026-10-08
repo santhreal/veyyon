@@ -86,13 +86,7 @@ export function startLocalRelay(port = 0): LocalRelay {
 				const room = rooms.get(ws.data.roomId);
 				if (!room) return;
 				if (ws.data.role === "host") {
-					const envelope = unpackEnvelope(message);
-					if (!envelope) return;
-					if (envelope.peerId === 0) {
-						for (const guest of room.guests.values()) guest.send(message);
-					} else {
-						room.guests.get(envelope.peerId)?.send(message);
-					}
+					routeHostFrame(room, message);
 					return;
 				}
 				if (message.byteLength < 4) return;
@@ -107,12 +101,7 @@ export function startLocalRelay(port = 0): LocalRelay {
 					// Rejected second host: the live room is not ours to tear down.
 					if (room.host !== ws) return;
 					rooms.delete(roomId);
-					const closure = JSON.stringify({ t: "room-closed" });
-					for (const guest of room.guests.values()) {
-						guest.send(closure);
-						guest.close(4001, RELAY_FATAL_CLOSE_REASONS[4001] as string);
-					}
-					room.guests.clear();
+					closeRoomGuests(room);
 					return;
 				}
 				if (room.guests.delete(peerId)) {
@@ -126,11 +115,7 @@ export function startLocalRelay(port = 0): LocalRelay {
 		url: `ws://localhost:${server.port}`,
 		stop(): void {
 			for (const room of rooms.values()) {
-				const closure = JSON.stringify({ t: "room-closed" });
-				for (const guest of room.guests.values()) {
-					guest.send(closure);
-					guest.close(4001, RELAY_FATAL_CLOSE_REASONS[4001] as string);
-				}
+				closeRoomGuests(room);
 				room.host.close(1001, "relay shutting down");
 			}
 			rooms.clear();
@@ -138,6 +123,28 @@ export function startLocalRelay(port = 0): LocalRelay {
 		},
 	};
 }
+
+/** Delivers a host frame to the guest its envelope addresses, or to every guest when it addresses peer 0. */
+function routeHostFrame(room: Room, message: Buffer): void {
+	const envelope = unpackEnvelope(message);
+	if (!envelope) return;
+	if (envelope.peerId !== 0) {
+		room.guests.get(envelope.peerId)?.send(message);
+		return;
+	}
+	for (const guest of room.guests.values()) guest.send(message);
+}
+
+/** Sends every guest `room-closed`, closes it with 4001, and empties the guest map. */
+function closeRoomGuests(room: Room): void {
+	const closure = JSON.stringify({ t: "room-closed" });
+	for (const guest of room.guests.values()) {
+		guest.send(closure);
+		guest.close(4001, RELAY_FATAL_CLOSE_REASONS[4001] as string);
+	}
+	room.guests.clear();
+}
+
 function parsePort(argv: readonly string[]): number {
 	let raw: string | undefined;
 	for (let i = 0; i < argv.length; i++) {

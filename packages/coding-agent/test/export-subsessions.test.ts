@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { removeWithRetries } from "@veyyon/utils";
-import { collectSubSessions } from "../src/export/html";
+import { collectSubSessions } from "../src/export/session-data";
 
 /**
  * Contract: a session at `<dir>/<name>.jsonl` embeds agent transcripts from

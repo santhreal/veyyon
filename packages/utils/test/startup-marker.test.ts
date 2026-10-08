@@ -16,7 +16,7 @@
  * reached the descriptor a hung process still flushes.
  *
  * The function also existed TWICE, in `logger.ts` and in `cli.ts`, the second copy documented
- * as deliberate: the CLI bootstrap must not pull in the winston-backed logger module, so
+ * as deliberate: the CLI bootstrap must not pull in the logger module, so
  * `veyyon --version` does not load a logging stack. That constraint is real, so the function
  * now lives in a module whose only dependency is `node:fs` and both import it, which is why
  * this suite also asserts what the module is allowed to import.
@@ -119,7 +119,7 @@ describe("the write itself", () => {
 describe("the module itself", () => {
 	/**
 	 * The reason it is a module of its own. `cli.ts` kept a copy specifically so the `--version`
-	 * path would not import the winston-backed logger; a shared owner only honours that if it
+	 * path would not import the logger; a shared owner only honours that if it
 	 * stays free of everything but `node:fs`. An import added here is what would silently pull a
 	 * logging stack back into the bootstrap.
 	 */

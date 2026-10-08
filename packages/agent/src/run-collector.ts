@@ -313,106 +313,10 @@ export class AgentRunCollector {
 	}
 
 	#buildSummary(stepCount: number): AgentRunSummary {
-		const byStopReason: Record<string, number> = {};
-		let chatLatency = 0;
-		let inputTokens = 0;
-		let outputTokens = 0;
-		let cachedInputTokens = 0;
-		let cacheWriteTokens = 0;
-		let reasoningOutputTokens = 0;
-		let totalTokens = 0;
-		let estimatedUsd = 0;
-		const unavailableReasons = new Set<string>();
-		const errorsByType: Record<string, number> = {};
-
-		for (const chat of this.#chats) {
-			chatLatency += chat.latencyMs;
-			inputTokens += chat.inputTokens;
-			outputTokens += chat.outputTokens;
-			cachedInputTokens += chat.cachedInputTokens;
-			cacheWriteTokens += chat.cacheWriteTokens;
-			reasoningOutputTokens += chat.reasoningOutputTokens;
-			totalTokens += chat.totalTokens;
-			if (chat.stopReason) byStopReason[chat.stopReason] = (byStopReason[chat.stopReason] ?? 0) + 1;
-			if (chat.costUsd != null) estimatedUsd += chat.costUsd;
-			if (chat.costUnavailableReason) unavailableReasons.add(chat.costUnavailableReason);
-			if (chat.errorType) errorsByType[chat.errorType] = (errorsByType[chat.errorType] ?? 0) + 1;
-		}
-
-		const byName: Record<string, ToolCounters> = {};
-		const counts: Record<ToolStatus, number> = {
-			ok: 0,
-			error: 0,
-			skipped: 0,
-			blocked: 0,
-			timeout: 0,
-			aborted: 0,
-		};
-		let toolLatency = 0;
-		for (const tool of this.#tools) {
-			counts[tool.status] += 1;
-			toolLatency += tool.latencyMs;
-			const existing = byName[tool.toolName] ?? {
-				total: 0,
-				ok: 0,
-				error: 0,
-				skipped: 0,
-				blocked: 0,
-				timeout: 0,
-				aborted: 0,
-				totalLatencyMs: 0,
-			};
-			byName[tool.toolName] = {
-				total: existing.total + 1,
-				ok: existing.ok + (tool.status === "ok" ? 1 : 0),
-				error: existing.error + (tool.status === "error" ? 1 : 0),
-				skipped: existing.skipped + (tool.status === "skipped" ? 1 : 0),
-				blocked: existing.blocked + (tool.status === "blocked" ? 1 : 0),
-				timeout: existing.timeout + (tool.status === "timeout" ? 1 : 0),
-				aborted: existing.aborted + (tool.status === "aborted" ? 1 : 0),
-				totalLatencyMs: existing.totalLatencyMs + tool.latencyMs,
-			};
-			if (tool.errorType) errorsByType[tool.errorType] = (errorsByType[tool.errorType] ?? 0) + 1;
-		}
-
-		let errorTotal = 0;
-		for (const v of Object.values(errorsByType)) errorTotal += v;
-
-		return {
-			chats: {
-				total: this.#chats.length,
-				byStopReason: sortedRecord(byStopReason),
-				totalLatencyMs: chatLatency,
-			},
-			tools: {
-				total: this.#tools.length,
-				ok: counts.ok,
-				error: counts.error,
-				skipped: counts.skipped,
-				blocked: counts.blocked,
-				timeout: counts.timeout,
-				aborted: counts.aborted,
-				totalLatencyMs: toolLatency,
-				byName: sortedRecord(byName),
-			},
-			usage: {
-				inputTokens,
-				outputTokens,
-				cachedInputTokens,
-				cacheWriteTokens,
-				reasoningOutputTokens,
-				totalTokens,
-			},
-			cost: {
-				estimatedUsd,
-				unavailableReasons: Array.from(unavailableReasons).sort(),
-			},
-			errors: {
-				total: errorTotal,
-				byType: sortedRecord(errorsByType),
-			},
-			stepCount,
-		};
+		const tally = new RunSummaryTally();
+		for (const chat of this.#chats) tally.addChat(chat);
+		for (const tool of this.#tools) tally.addTool(tool);
+		return tally.summary(stepCount);
 	}
 
 	#buildCoverage(): AgentRunCoverage {
@@ -432,6 +336,139 @@ export class AgentRunCollector {
 	}
 }
 
+type ToolTally = { -readonly [K in keyof ToolCounters]: ToolCounters[K] };
+type UsageTally = { -readonly [K in keyof AgentRunSummary["usage"]]: number };
+
+const NO_TOOL_COUNTERS: ToolCounters = Object.freeze({
+	total: 0,
+	ok: 0,
+	error: 0,
+	skipped: 0,
+	blocked: 0,
+	timeout: 0,
+	aborted: 0,
+	totalLatencyMs: 0,
+});
+
+/**
+ * Running totals an {@link AgentRunSummary} is built from: the buffered records of one run, or the summaries of
+ * several. Keyed tallies are Maps, so a tool, stop reason or error type named like an `Object.prototype` member
+ * (`__proto__`, `constructor`) is counted under its own name.
+ */
+class RunSummaryTally {
+	#chatTotal = 0;
+	#chatLatencyMs = 0;
+	readonly #byStopReason = new Map<string, number>();
+	readonly #tools: ToolTally = { ...NO_TOOL_COUNTERS };
+	readonly #byName = new Map<string, ToolTally>();
+	readonly #usage: UsageTally = {
+		inputTokens: 0,
+		outputTokens: 0,
+		cachedInputTokens: 0,
+		cacheWriteTokens: 0,
+		reasoningOutputTokens: 0,
+		totalTokens: 0,
+	};
+	#estimatedUsd = 0;
+	readonly #unavailableReasons = new Set<string>();
+	readonly #errorsByType = new Map<string, number>();
+	#errorsTotal = 0;
+
+	addChat(chat: ChatRecord): void {
+		this.#chatTotal += 1;
+		this.#chatLatencyMs += chat.latencyMs;
+		this.#addUsage(chat);
+		if (chat.stopReason) this.#byStopReason.set(chat.stopReason, (this.#byStopReason.get(chat.stopReason) ?? 0) + 1);
+		if (chat.costUsd != null) this.#estimatedUsd += chat.costUsd;
+		if (chat.costUnavailableReason) this.#unavailableReasons.add(chat.costUnavailableReason);
+		if (chat.errorType) this.#countError(chat.errorType);
+	}
+
+	addTool(tool: ToolRecord): void {
+		countToolRecord(this.#tools, tool);
+		countToolRecord(this.#nameTally(tool.toolName), tool);
+		if (tool.errorType) this.#countError(tool.errorType);
+	}
+
+	addSummary(summary: AgentRunSummary): void {
+		this.#chatTotal += summary.chats.total;
+		this.#chatLatencyMs += summary.chats.totalLatencyMs;
+		for (const [reason, count] of Object.entries(summary.chats.byStopReason)) {
+			this.#byStopReason.set(reason, (this.#byStopReason.get(reason) ?? 0) + count);
+		}
+		addToolCounters(this.#tools, summary.tools);
+		for (const [name, counters] of Object.entries(summary.tools.byName)) {
+			addToolCounters(this.#nameTally(name), counters);
+		}
+		this.#addUsage(summary.usage);
+		this.#estimatedUsd += summary.cost.estimatedUsd;
+		for (const reason of summary.cost.unavailableReasons) this.#unavailableReasons.add(reason);
+		for (const [type, count] of Object.entries(summary.errors.byType)) {
+			this.#errorsByType.set(type, (this.#errorsByType.get(type) ?? 0) + count);
+		}
+		this.#errorsTotal += summary.errors.total;
+	}
+
+	summary(stepCount: number): AgentRunSummary {
+		return {
+			chats: {
+				total: this.#chatTotal,
+				byStopReason: sortedRecord(this.#byStopReason),
+				totalLatencyMs: this.#chatLatencyMs,
+			},
+			tools: { ...this.#tools, byName: sortedRecord(this.#byName) },
+			usage: { ...this.#usage },
+			cost: {
+				estimatedUsd: this.#estimatedUsd,
+				unavailableReasons: Array.from(this.#unavailableReasons).sort(),
+			},
+			errors: { total: this.#errorsTotal, byType: sortedRecord(this.#errorsByType) },
+			stepCount,
+		};
+	}
+
+	#addUsage(usage: AgentRunSummary["usage"]): void {
+		const total = this.#usage;
+		total.inputTokens += usage.inputTokens;
+		total.outputTokens += usage.outputTokens;
+		total.cachedInputTokens += usage.cachedInputTokens;
+		total.cacheWriteTokens += usage.cacheWriteTokens;
+		total.reasoningOutputTokens += usage.reasoningOutputTokens;
+		total.totalTokens += usage.totalTokens;
+	}
+
+	#nameTally(name: string): ToolTally {
+		let tally = this.#byName.get(name);
+		if (tally === undefined) {
+			tally = { ...NO_TOOL_COUNTERS };
+			this.#byName.set(name, tally);
+		}
+		return tally;
+	}
+
+	#countError(type: string): void {
+		this.#errorsByType.set(type, (this.#errorsByType.get(type) ?? 0) + 1);
+		this.#errorsTotal += 1;
+	}
+}
+
+function countToolRecord(tally: ToolTally, tool: ToolRecord): void {
+	tally.total += 1;
+	tally[tool.status] += 1;
+	tally.totalLatencyMs += tool.latencyMs;
+}
+
+function addToolCounters(tally: ToolTally, counters: ToolCounters): void {
+	tally.total += counters.total;
+	tally.ok += counters.ok;
+	tally.error += counters.error;
+	tally.skipped += counters.skipped;
+	tally.blocked += counters.blocked;
+	tally.timeout += counters.timeout;
+	tally.aborted += counters.aborted;
+	tally.totalLatencyMs += counters.totalLatencyMs;
+}
+
 /**
  * Fold multiple per-run summaries into one. Pure aggregation — useful when a
  * caller (verify pass, benchmark harness) drives the agent loop N times and
@@ -445,101 +482,13 @@ export class AgentRunCollector {
 export function aggregateAgentRunSummaries(summaries: readonly AgentRunSummary[]): AgentRunSummary {
 	if (summaries.length === 0) return EMPTY_SUMMARY;
 	if (summaries.length === 1) return summaries[0];
-
-	let chatTotal = 0;
-	let chatLatency = 0;
-	const byStopReason: Record<string, number> = {};
-
-	let toolTotal = 0;
-	let toolOk = 0;
-	let toolError = 0;
-	let toolSkipped = 0;
-	let toolBlocked = 0;
-	let toolTimeout = 0;
-	let toolAborted = 0;
-	let toolLatency = 0;
-	const byName: Record<string, ToolCounters> = {};
-
-	let inputTokens = 0;
-	let outputTokens = 0;
-	let cachedInputTokens = 0;
-	let cacheWriteTokens = 0;
-	let reasoningOutputTokens = 0;
-	let totalTokens = 0;
-
-	let estimatedUsd = 0;
-	const unavailableReasons = new Set<string>();
-
-	const errorsByType: Record<string, number> = {};
-	let errorsTotal = 0;
+	const tally = new RunSummaryTally();
 	let stepCount = 0;
-
-	for (const s of summaries) {
-		chatTotal += s.chats.total;
-		chatLatency += s.chats.totalLatencyMs;
-		for (const [reason, count] of Object.entries(s.chats.byStopReason)) {
-			byStopReason[reason] = (byStopReason[reason] ?? 0) + count;
-		}
-
-		toolTotal += s.tools.total;
-		toolOk += s.tools.ok;
-		toolError += s.tools.error;
-		toolSkipped += s.tools.skipped;
-		toolBlocked += s.tools.blocked;
-		toolTimeout += s.tools.timeout;
-		toolAborted += s.tools.aborted;
-		toolLatency += s.tools.totalLatencyMs;
-		for (const [name, counters] of Object.entries(s.tools.byName)) {
-			const existing = byName[name];
-			byName[name] = existing
-				? {
-						total: existing.total + counters.total,
-						ok: existing.ok + counters.ok,
-						error: existing.error + counters.error,
-						skipped: existing.skipped + counters.skipped,
-						blocked: existing.blocked + counters.blocked,
-						timeout: existing.timeout + counters.timeout,
-						aborted: existing.aborted + counters.aborted,
-						totalLatencyMs: existing.totalLatencyMs + counters.totalLatencyMs,
-					}
-				: counters;
-		}
-
-		inputTokens += s.usage.inputTokens;
-		outputTokens += s.usage.outputTokens;
-		cachedInputTokens += s.usage.cachedInputTokens;
-		cacheWriteTokens += s.usage.cacheWriteTokens;
-		reasoningOutputTokens += s.usage.reasoningOutputTokens;
-		totalTokens += s.usage.totalTokens;
-
-		estimatedUsd += s.cost.estimatedUsd;
-		for (const r of s.cost.unavailableReasons) unavailableReasons.add(r);
-
-		for (const [type, count] of Object.entries(s.errors.byType)) {
-			errorsByType[type] = (errorsByType[type] ?? 0) + count;
-		}
-		errorsTotal += s.errors.total;
-		stepCount += s.stepCount;
+	for (const summary of summaries) {
+		tally.addSummary(summary);
+		stepCount += summary.stepCount;
 	}
-
-	return {
-		chats: { total: chatTotal, byStopReason: sortedRecord(byStopReason), totalLatencyMs: chatLatency },
-		tools: {
-			total: toolTotal,
-			ok: toolOk,
-			error: toolError,
-			skipped: toolSkipped,
-			blocked: toolBlocked,
-			timeout: toolTimeout,
-			aborted: toolAborted,
-			totalLatencyMs: toolLatency,
-			byName: sortedRecord(byName),
-		},
-		usage: { inputTokens, outputTokens, cachedInputTokens, cacheWriteTokens, reasoningOutputTokens, totalTokens },
-		cost: { estimatedUsd, unavailableReasons: Array.from(unavailableReasons).sort() },
-		errors: { total: errorsTotal, byType: sortedRecord(errorsByType) },
-		stepCount,
-	};
+	return tally.summary(stepCount);
 }
 
 /** Union-merge multiple coverage values, preserving the sorted+deduped invariant. */
@@ -623,9 +572,10 @@ export class ToolCallBlockedError extends Error {
 	}
 }
 
-/** Return a new object whose own keys are listed in ascending order. */
-function sortedRecord<V>(record: Record<string, V>): Record<string, V> {
-	const out: Record<string, V> = {};
-	for (const key of Object.keys(record).sort()) out[key] = record[key];
-	return out;
+/**
+ * `counts` as an object whose own keys are in ascending order. `Object.fromEntries` defines each key, so a
+ * `__proto__` key stays an own key instead of replacing the prototype.
+ */
+function sortedRecord<V>(counts: ReadonlyMap<string, V>): Record<string, V> {
+	return Object.fromEntries([...counts].sort(([a], [b]) => (a < b ? -1 : 1)));
 }

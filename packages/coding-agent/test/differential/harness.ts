@@ -32,6 +32,7 @@
  */
 
 import { afterAll, beforeAll } from "bun:test";
+import { stripVTControlCharacters } from "node:util";
 import type { RenderResultOptions } from "@veyyon/agent-core";
 import { createSessionRuntime } from "@veyyon/coding-agent/autoresearch/state";
 import type { AutoresearchToolFactoryOptions } from "@veyyon/coding-agent/autoresearch/types";
@@ -39,6 +40,7 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import type { ExtensionAPI } from "@veyyon/coding-agent/extensibility/extensions";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { type AnsiPolicy, type Component, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
+import { visibleWidth } from "@veyyon/utils/width";
 import type {
 	FramedBlockView,
 	LineToolView,
@@ -210,6 +212,31 @@ export function renderCompLines(comp: Component, width = WIDTH): string[] {
 
 export function renderCompText(comp: Component, width = WIDTH): string {
 	return trimLines(comp.render(width)).join("\n").trimEnd();
+}
+
+/**
+ * Two header rows as plain text, cut to what both arms show when either reaches the block's edge.
+ *
+ * A header is one row and the block clips it at the width it is drawn at. Where the arms word the row
+ * differently (a separator, a direction in words where main drew an arrow), `normalize` maps both to
+ * one wording, and the clip then falls at a different letter of that shared text in each arm: the
+ * rows agree as far as the shorter one goes. Rows that neither arm clipped are returned whole, so a
+ * row that drops text it had room for still differs.
+ */
+export function headerRowsAtTheEdge(
+	drawn: string,
+	oracle: string,
+	width: number,
+	normalize: (plain: string) => string = plain => plain,
+): { drawn: string; oracle: string } {
+	const drawnPlain = stripVTControlCharacters(drawn);
+	const oraclePlain = stripVTControlCharacters(oracle);
+	const clipped = visibleWidth(drawnPlain) >= width || visibleWidth(oraclePlain) >= width;
+	const drawnText = normalize(drawnPlain);
+	const oracleText = normalize(oraclePlain);
+	if (!clipped) return { drawn: drawnText, oracle: oracleText };
+	const shown = Math.min(drawnText.length, oracleText.length);
+	return { drawn: drawnText.slice(0, shown), oracle: oracleText.slice(0, shown) };
 }
 
 /**

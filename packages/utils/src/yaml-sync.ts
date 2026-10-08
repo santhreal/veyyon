@@ -1,5 +1,23 @@
-import * as YAML from "yaml";
+import type * as YAML from "yaml";
 import { isRecord } from "./type-guards";
+
+let yamlPackage: typeof YAML | undefined;
+
+/**
+ * The `yaml` module namespace, for every reader in the workspace. The first call evaluates the package.
+ *
+ * Evaluating `yaml` reads 72 modules, 281 KiB of source. Its readers edit a settings file in place (this
+ * module) and parse the secret declarations, which a session reads only while secret obfuscation is on. A
+ * launch does neither before its first frame, and a static import evaluated the package with the module
+ * graph anyway. A type-only import of `"yaml"` evaluates nothing and stays.
+ */
+export function loadYaml(): typeof YAML {
+	// `require`, because `bun build --compile` (Bun 1.4.0) evaluates an `import defer` namespace with the
+	// rest of the graph, and `await import()` cannot answer the synchronous callers. Bun resolves `require`
+	// and `import` to the package's one `node` entry, so the bundle holds one copy.
+	yamlPackage ??= require("yaml") as typeof YAML;
+	return yamlPackage;
+}
 
 /** A step in a path into the document: a mapping key, or an index into a sequence. */
 type YamlPathStep = string | number;
@@ -59,10 +77,11 @@ export function syncYamlTextToSettings(
  */
 function renameRootKeys(doc: YAML.Document.Parsed | YAML.Document, renames: Readonly<Record<string, string>>): void {
 	const root = doc.contents;
-	if (!YAML.isMap(root)) return;
-	const present = new Set(root.items.flatMap(item => (YAML.isScalar(item.key) ? [String(item.key.value)] : [])));
+	const { isMap, isScalar } = loadYaml();
+	if (!isMap(root)) return;
+	const present = new Set(root.items.flatMap(item => (isScalar(item.key) ? [String(item.key.value)] : [])));
 	for (const item of root.items) {
-		if (!YAML.isScalar(item.key)) continue;
+		if (!isScalar(item.key)) continue;
 		const from = String(item.key.value);
 		const renamed = renames[from];
 		if (renamed === undefined || present.has(renamed)) continue;
@@ -85,15 +104,16 @@ function renameRootKeys(doc: YAML.Document.Parsed | YAML.Document, renames: Read
  * fallback that clobbers).
  */
 function parseEditableDocument(text: string): YAML.Document.Parsed | YAML.Document {
-	if (text.trim() === "") return new YAML.Document({});
-	const doc = YAML.parseDocument(text);
+	const yaml = loadYaml();
+	if (text.trim() === "") return new yaml.Document({});
+	const doc = yaml.parseDocument(text);
 	if (doc.errors.length > 0) {
 		const first = doc.errors[0];
 		throw new Error(`refusing to write over a config file that does not parse: ${first?.message ?? "parse error"}`);
 	}
 	// A file whose root is not a mapping (a bare scalar, a sequence) cannot carry settings.
 	// Same reasoning as above: report it rather than overwrite it.
-	if (doc.contents !== null && !YAML.isMap(doc.contents)) {
+	if (doc.contents !== null && !yaml.isMap(doc.contents)) {
 		throw new Error("refusing to write over a config file whose root is not a YAML mapping");
 	}
 	// A comments-only file parses to null contents; `setIn` creates the root mapping on
@@ -188,11 +208,12 @@ function deleteKeepingComment(
 	key: string,
 ): void {
 	const parent = basePath.length === 0 ? doc.contents : doc.getIn(basePath, true);
-	if (!YAML.isMap(parent)) {
+	const { isMap, isScalar } = loadYaml();
+	if (!isMap(parent)) {
 		doc.deleteIn(basePath.concat([key]));
 		return;
 	}
-	const index = parent.items.findIndex(item => YAML.isScalar(item.key) && item.key.value === key);
+	const index = parent.items.findIndex(item => isScalar(item.key) && item.key.value === key);
 	const doomed = index === -1 ? undefined : parent.items[index];
 	const orphaned = doomed?.key && typeof doomed.key === "object" ? getCommentBefore(doomed.key) : undefined;
 	doc.deleteIn(basePath.concat([key]));

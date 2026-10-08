@@ -608,7 +608,6 @@ export function statusLineSettingsFromConfig(): StatusLineSettings {
 		rightSegments: settings.get("statusLine.rightSegments"),
 		showHookStatus: settings.get("statusLine.showHookStatus"),
 		segmentOptions: settings.get("statusLine.segmentOptions"),
-		sessionAccent: settings.get("statusLine.sessionAccent"),
 		compactThinkingLevel: settings.get("statusLine.compactThinkingLevel"),
 	};
 }
@@ -649,7 +648,8 @@ export function gatherQuietSegments(input: QuietGatherInput): QuietGroups {
 	const includeContext = hasContextSegment(leftCfg) || hasContextSegment(rightCfg);
 	const includeGit = gitEnabled && (hasGitSegment(leftCfg) || hasGitSegment(rightCfg));
 	const includePr = gitEnabled && (hasPrSegment(leftCfg) || hasPrSegment(rightCfg));
-	// The footline reads at a glance, so the model-effort gap is roomy. The
+	// The footline joins the model and its effort as one label (`Model @high`) unless
+	// `segmentOptions.model.roomy: false` asks for the dot separator instead. The
 	// per-kind git counts and the token-text context gauge that the other
 	// options here used to switch between are gone: nothing could reach
 	// them, because this is the only place a segment is ever rendered.
@@ -681,7 +681,10 @@ export function gatherQuietSegments(input: QuietGatherInput): QuietGroups {
 			...effectiveSettings.segmentOptions?.path,
 			maxLength: pathBudget,
 		},
-		model: { ...effectiveSettings.segmentOptions?.model, roomy: true },
+		model: {
+			...effectiveSettings.segmentOptions?.model,
+			roomy: effectiveSettings.segmentOptions?.model?.roomy ?? true,
+		},
 	};
 	const ctx = buildContext({ width, options: quietOptions, includePath, includeContext, includeGit, includePr });
 	const LOCATION_IDS: Record<string, true> = { path: true, git: true, pr: true };

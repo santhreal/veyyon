@@ -231,7 +231,7 @@ export class AppendOnlyContextManager {
 		for (let i = this.#lastSyncCount; i < normalizedMessages.length; i++) {
 			const msg = normalizedMessages[i];
 			this.log.append(msg);
-			this.#messageDigests.push(this.#messageDigest(msg));
+			this.#messageDigests.push(messageDigest(msg));
 		}
 		this.#lastSyncCount = normalizedMessages.length;
 	}
@@ -277,37 +277,37 @@ export class AppendOnlyContextManager {
 	#longestStablePrefix(normalizedMessages: readonly unknown[]): number {
 		const bound = Math.min(this.#lastSyncCount, normalizedMessages.length);
 		for (let i = 0; i < bound; i++) {
-			if (this.#messageDigest(normalizedMessages[i]) !== this.#messageDigests[i]) {
+			if (messageDigest(normalizedMessages[i]) !== this.#messageDigests[i]) {
 				return i;
 			}
 		}
 		return bound;
 	}
+}
 
-	/** Deterministic digest over every field the provider may serialize — role,
-	 * content, provider-native replay payloads, tool calls (both `toolCalls` and
-	 * OpenAI-wire `tool_calls`), tool-result ids/names/error flags (both internal
-	 * camelCase and wire snake_case), and assistant `id` — so an in-place rewrite
-	 * of *any* of these fields is visible to {@link #longestStablePrefix}. */
-	#messageDigest(msg: unknown): number {
-		if (!msg || typeof msg !== "object") return 0;
-		const m = msg as Record<string, unknown>;
-		const payload = JSON.stringify({
-			r: m.role ?? null,
-			c: m.content ?? null,
-			pp: m.providerPayload ?? null,
-			tc: m.toolCalls ?? m.tool_calls ?? null,
-			tcid: m.toolCallId ?? m.tool_call_id ?? null,
-			tn: m.toolName ?? m.name ?? null,
-			err: m.isError ?? null,
-			id: m.id ?? null,
-		});
-		let hash = 0;
-		for (let j = 0; j < payload.length; j++) {
-			hash = ((hash << 5) - hash + payload.charCodeAt(j)) | 0;
-		}
-		return hash >>> 0;
+/** Deterministic digest over every field the provider may serialize — role,
+ * content, provider-native replay payloads, tool calls (both `toolCalls` and
+ * OpenAI-wire `tool_calls`), tool-result ids/names/error flags (both internal
+ * camelCase and wire snake_case), and assistant `id` — so an in-place rewrite
+ * of *any* of these fields is visible to {@link #longestStablePrefix}. */
+function messageDigest(msg: unknown): number {
+	if (!msg || typeof msg !== "object") return 0;
+	const m = msg as Record<string, unknown>;
+	const payload = JSON.stringify({
+		r: m.role ?? null,
+		c: m.content ?? null,
+		pp: m.providerPayload ?? null,
+		tc: m.toolCalls ?? m.tool_calls ?? null,
+		tcid: m.toolCallId ?? m.tool_call_id ?? null,
+		tn: m.toolName ?? m.name ?? null,
+		err: m.isError ?? null,
+		id: m.id ?? null,
+	});
+	let hash = 0;
+	for (let j = 0; j < payload.length; j++) {
+		hash = ((hash << 5) - hash + payload.charCodeAt(j)) | 0;
 	}
+	return hash >>> 0;
 }
 
 // ---------------------------------------------------------------------------

@@ -13,11 +13,11 @@
  * evaluation. So a new schema anywhere under `@veyyon/ai`, `@veyyon/catalog`, the theme layer or
  * the config layer turns this suite RED without anyone remembering to add a case.
  *
- * WHAT IT DOES NOT CATCH. The three modules in HOLDERS still reach arktype, and they are pinned
- * by exact equality so a fourth cannot join them quietly -- but a new arktype importer that sits
- * on none of the probed graphs is invisible here. The task tool's dynamic parameter schemas are
- * the reason the list is not empty: a tool's `parameters` must be a schema a provider can render
- * as JSON Schema, and that tool's wire format is owned elsewhere.
+ * WHAT IT DOES NOT CATCH. A new arktype importer that sits on none of the probed graphs is invisible
+ * here. `test/architecture/a-launch-evaluates-arktype-only-when-a-schema-is-built.test.ts` loads every
+ * launch and tool module in one process and covers that. The task, `irc` and `review` tools reached
+ * arktype on import until their schemas moved behind `@veyyon/ai/utils/schema/arktype`, whose stand-ins
+ * evaluate the library on the first schema built, so they are probed here as clean.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -44,17 +44,17 @@ const CLEAN = [
 	"packages/catalog/src/provider-models/index.ts",
 	"packages/coding-agent/src/theme/theme.ts",
 	"packages/coding-agent/src/config/config-file.ts",
-] as const;
-
-/** Modules that still reach it, and are allowed to. */
-const HOLDERS = [
 	"packages/coding-agent/src/task/types.ts",
 	"packages/coding-agent/src/tools/agent/irc.ts",
 	"packages/coding-agent/src/tools/agent/review.ts",
 ] as const;
 
-async function arktypeIsEvaluatedAfterImporting(moduleFile: string): Promise<boolean> {
-	const code = `await import(${JSON.stringify(`./${moduleFile}`)});
+/** The module arktype's values are imported from; its stand-ins evaluate the library on first use. */
+const DEFERRED_MODULE = "packages/ai/src/utils/schema/arktype.ts";
+
+async function arktypeIsEvaluatedAfterImporting(moduleFile: string, use = ""): Promise<boolean> {
+	const code = `const loaded = await import(${JSON.stringify(`./${moduleFile}`)});
+${use}
 const started = performance.now();
 await import("arktype");
 console.log(performance.now() - started);`;
@@ -74,25 +74,11 @@ describe("a launch does not load a schema library it will not use", () => {
 	}
 
 	/**
-	 * The other direction, so the exemption list cannot describe a state that no longer exists:
-	 * a holder that stops reaching arktype must be moved out of HOLDERS rather than left there
-	 * as a false claim about where the cost lives.
+	 * The probe's other direction, so the suite cannot pass because every import answers fast: the
+	 * deferred module evaluates nothing until a schema is built, and building one evaluates arktype.
 	 */
-	for (const moduleFile of HOLDERS) {
-		it(`still reaches arktype through ${moduleFile}`, async () => {
-			expect(await arktypeIsEvaluatedAfterImporting(moduleFile)).toBe(true);
-		}, 60_000);
-	}
-
-	/**
-	 * Pinned by exact equality rather than by a count, so adding a fourth holder is a decision
-	 * someone records here instead of a line that slips in beside three others.
-	 */
-	it("keeps the exemption list to the modules whose wire format is owned elsewhere", () => {
-		expect([...HOLDERS]).toEqual([
-			"packages/coding-agent/src/task/types.ts",
-			"packages/coding-agent/src/tools/agent/irc.ts",
-			"packages/coding-agent/src/tools/agent/review.ts",
-		]);
-	});
+	it("sees arktype evaluated once the deferred module builds a schema", async () => {
+		expect(await arktypeIsEvaluatedAfterImporting(DEFERRED_MODULE)).toBe(false);
+		expect(await arktypeIsEvaluatedAfterImporting(DEFERRED_MODULE, 'loaded.type("string");')).toBe(true);
+	}, 60_000);
 });

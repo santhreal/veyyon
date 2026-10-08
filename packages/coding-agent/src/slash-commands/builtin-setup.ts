@@ -10,7 +10,6 @@ import {
 	resolveModelFromString,
 } from "../config/model-resolver";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../discovery/helpers.js";
-import { PluginManager } from "../extensibility/plugins";
 import { formatProviderName } from "../session/account-format";
 import {
 	type AccountRow,
@@ -33,10 +32,7 @@ import {
 	accountRoleAnnotations,
 	renderAccountStatus,
 } from "./helpers/account-status";
-import { handleMcpAcp } from "./helpers/mcp";
 import { commandConsumed, errorMessage, parseSubcommand, usage } from "./helpers/parse";
-import { interactiveSecretPort, runSecretCommandForSurface } from "./helpers/secret";
-import { handleSshAcp } from "./helpers/ssh";
 import { buildUsageReportText } from "./helpers/usage-report";
 import type { ProfileCommandPort } from "./profile-command";
 import type { TuiSlashCommandHostContext, TuiSlashCommandRuntime } from "./types";
@@ -705,6 +701,7 @@ export const SETUP_HANDLERS = {
 		handle: async (command, runtime) => {
 			// Let failures cross the ACP boundary. Print mode can then exit unsuccessfully and RPC
 			// can return a failed response instead of emitting error prose followed by success.
+			const { runSecretCommandForSurface } = await import("./helpers/secret");
 			const outcome = await runSecretCommandForSurface(command.args ?? "", {
 				session: runtime.session,
 				sessionManager: runtime.sessionManager,
@@ -730,6 +727,7 @@ export const SETUP_HANDLERS = {
 			const ctx = runtime.ctx;
 			ctx.editor.setText("");
 			try {
+				const { interactiveSecretPort, runSecretCommandForSurface } = await import("./helpers/secret");
 				const outcome = await runSecretCommandForSurface(command.args ?? "", interactiveSecretPort(ctx));
 				if (!outcome.cancelled) ctx.showStatus(outcome.message);
 			} catch (error) {
@@ -772,14 +770,15 @@ export const SETUP_HANDLERS = {
 		},
 	},
 	mcp: {
-		handle: handleMcpAcp,
+		// `/mcp`, `/ssh`, `/plugins` and `/secret` load their handlers on first run, not with the registry.
+		handle: async (command, runtime) => (await import("./helpers/mcp")).handleMcpAcp(command, runtime),
 		handleTui: async (command, runtime) => {
 			runtime.ctx.editor.setText("");
 			await runtime.ctx.handleMCPCommand(command.text);
 		},
 	},
 	ssh: {
-		handle: handleSshAcp,
+		handle: async (command, runtime) => (await import("./helpers/ssh")).handleSshAcp(command, runtime),
 		handleTui: async (command, runtime) => {
 			runtime.ctx.editor.setText("");
 			await runtime.ctx.handleSSHCommand(command.text);
@@ -788,7 +787,7 @@ export const SETUP_HANDLERS = {
 	profile: {
 		handleTui: async (command, runtime) => {
 			runtime.ctx.editor.setText("");
-			const [{ parseProfileCommand, runProfileSlashCommand }, { resolveVeyyonCommand }] = await Promise.all([
+			const [{ parseProfileCommand, runProfileSlashCommand }, { veyyonRelaunchArgv }] = await Promise.all([
 				import("./profile-command"),
 				import("../task/veyyon-command"),
 			]);
@@ -798,14 +797,7 @@ export const SETUP_HANDLERS = {
 				showError: message => ctx.showError(message),
 				setEditorText: text => ctx.editor.setText(text),
 				askDialog: questions => ctx.showAskDialog(questions),
-				requestRelaunch: env => {
-					const veyyon = resolveVeyyonCommand();
-					const argv =
-						veyyon.shell && process.platform === "win32"
-							? ["cmd.exe", "/c", veyyon.cmd, ...veyyon.args]
-							: [veyyon.cmd, ...veyyon.args];
-					ctx.requestRelaunch({ argv, env });
-				},
+				requestRelaunch: env => ctx.requestRelaunch({ argv: veyyonRelaunchArgv([]), env }),
 				requestShutdown: () => {
 					void ctx.shutdown();
 				},
@@ -820,6 +812,7 @@ export const SETUP_HANDLERS = {
 	},
 	plugins: {
 		handle: async (_command, runtime) => {
+			const { PluginManager } = await import("../extensibility/plugins");
 			const npmManager = new PluginManager();
 			const npmPlugins = await npmManager.list();
 			if (npmPlugins.length === 0) {
@@ -836,6 +829,7 @@ export const SETUP_HANDLERS = {
 		handleTui: async (_command, runtime) => {
 			runtime.ctx.editor.setText("");
 			try {
+				const { PluginManager } = await import("../extensibility/plugins");
 				const npm = new PluginManager();
 				const npmPlugins = await npm.list();
 				if (npmPlugins.length === 0) {

@@ -11,8 +11,8 @@ import * as fs from "node:fs";
  * these markers exist to diagnose.
  *
  * This is its own module, importing nothing but `node:fs`, because the CLI
- * bootstrap needs the marker while staying out of the winston-backed logger's
- * import graph: `veyyon --version` must not load a logging stack. `logger.ts` and
+ * bootstrap needs the marker while staying out of the logger's import graph:
+ * `veyyon --version` must not load a logging stack. `logger.ts` and
  * `cli.ts` each had their own copy for that reason, one of them documenting the
  * other. A module with a single node builtin as its dependency satisfies both the
  * import-graph constraint and having one definition.

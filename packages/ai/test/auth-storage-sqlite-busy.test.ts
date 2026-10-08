@@ -14,6 +14,7 @@ import { execFile } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { scheduler } from "node:timers/promises";
 import { isSqliteBusyError, SqliteAuthCredentialStore } from "@veyyon/ai/auth-storage";
 import { removeWithRetries } from "../../utils/src/temp";
 
@@ -179,12 +180,12 @@ describe("SqliteAuthCredentialStore.open SQLITE_BUSY handling", () => {
 			throw makeBusyError("SQLITE_BUSY_RECOVERY", 261);
 		});
 		// Skip the sleep so the test doesn't take 700ms+ of real time.
-		const sleepSpy = vi.spyOn(Bun, "sleep").mockResolvedValue(undefined);
+		const waitSpy = vi.spyOn(scheduler, "wait").mockResolvedValue(undefined);
 
 		await expect(SqliteAuthCredentialStore.open(dbPath)).rejects.toThrow(dbPath);
-		// open uses `maxAttempts = 4`, so the loop sleeps between attempts 0..2
-		// (three times) then throws after attempt 3 without sleeping again.
-		expect(sleepSpy).toHaveBeenCalledTimes(3);
+		// open uses `maxAttempts = 4`, so the loop waits between attempts 0..2
+		// (three times, doubling from 100ms) then throws after attempt 3 without waiting again.
+		expect(waitSpy.mock.calls.map(call => call[0])).toEqual([100, 200, 400]);
 		// Reference realRun so the TS unused-binding lint stays quiet without
 		// suppressing the actual error path above.
 		expect(typeof realRun).toBe("function");

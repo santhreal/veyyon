@@ -18,28 +18,15 @@ import {
 	semverGte,
 } from "./classify";
 
-/** Bounded process-lifetime cache memo helper. */
-function memo<T>(fn: (modelId: string) => T): (modelId: string) => T {
-	const cache = new Map<string, T>();
-	return (modelId: string) => {
-		if (cache.has(modelId)) {
-			return cache.get(modelId) as T;
-		}
-		const result = fn(modelId);
-		cache.set(modelId, result);
-		return result;
-	};
-}
-
 /** Kimi family ids in any namespace form (`moonshotai/kimi-*`, `kimi-k2.6`, `vendor/kimi.x`). */
-export const isKimiModelId = memo((modelId: string): boolean => {
+export const isKimiModelId = (modelId: string): boolean => {
 	return modelId.includes("moonshotai/kimi") || /(^|\/)kimi[-.]/i.test(modelId);
-});
+};
 
 /** Kimi K2.6 specifically, including router ids that spell the version `k2p6`. */
-export const isKimiK26ModelId = memo((modelId: string): boolean => {
+export const isKimiK26ModelId = (modelId: string): boolean => {
 	return /(^|\/)kimi-k2(?:\.6|p6)(?:[-:]|$)/i.test(modelId);
-});
+};
 
 /**
  * Claude ids in any namespace form: bare (`claude-*`), path-namespaced
@@ -49,34 +36,34 @@ export const isKimiK26ModelId = memo((modelId: string): boolean => {
  * classifies kinds enumerated in its regex, so any dotted profile whose kind
  * (e.g. `haiku`) is not enumerated would otherwise slip past this fallback.
  */
-export const isClaudeModelId = memo((modelId: string): boolean => {
+export const isClaudeModelId = (modelId: string): boolean => {
 	return /(^|[/.])claude[-.]/i.test(modelId);
-});
+};
 
 /** `anthropic/`-namespaced ids (aggregator catalogs like OpenRouter). */
-export const isAnthropicNamespacedModelId = memo((modelId: string): boolean => {
+export const isAnthropicNamespacedModelId = (modelId: string): boolean => {
 	return /(^|\/)anthropic\//i.test(modelId);
-});
+};
 
 /** Qwen family ids (substring match — Qwen SKUs have no stable prefix shape). */
-export const isQwenModelId = memo((modelId: string): boolean => {
+export const isQwenModelId = (modelId: string): boolean => {
 	return modelId.toLowerCase().includes("qwen");
-});
+};
 
 /** Gemma open-weights family (`gemma-3-27b-it`, `google/gemma-4-E2B-it`, `gemma2-9b`). */
-export const isGemmaModelId = memo((modelId: string): boolean => {
+export const isGemmaModelId = (modelId: string): boolean => {
 	return /(^|\/)gemma[-.]?\d/i.test(modelId);
-});
+};
 
 /** DeepSeek family by id or display name (proxies often rename the id but keep the name). */
-export const isDeepseekModelIdOrName = memo((value: string): boolean => {
+export const isDeepseekModelIdOrName = (value: string): boolean => {
 	return value.toLowerCase().includes("deepseek");
-});
+};
 
 /** Xiaomi MiMo family by id or display name. */
-export const isMimoModelIdOrName = memo((value: string): boolean => {
+export const isMimoModelIdOrName = (value: string): boolean => {
 	return value.toLowerCase().includes("mimo");
-});
+};
 
 /**
  * OpenAI o-series (o1/o3/o4, incl. -mini/-pro/-preview, dated snapshots, and
@@ -86,10 +73,10 @@ export const isMimoModelIdOrName = memo((value: string): boolean => {
  * hides the thinking surface entirely. Used by the catalog generator to force
  * the flag back on.
  */
-export const isOpenAIOSeriesModelId = memo((modelId: string): boolean => {
+export const isOpenAIOSeriesModelId = (modelId: string): boolean => {
 	const bare = bareModelId(modelId).trim().toLowerCase();
 	return /^o[134](-|$)/.test(bare);
-});
+};
 
 const GROK_EFFORT_CAPABLE_PREFIXES = [
 	"grok-3-mini",
@@ -107,11 +94,11 @@ const GROK_EFFORT_CAPABLE_PREFIXES = [
  * (e.g. `grok-4.20-0309-reasoning`) think natively but reject the param, so
  * callers must omit reasoning effort for them.
  */
-export const isGrokReasoningEffortCapable = memo((modelId: string): boolean => {
+export const isGrokReasoningEffortCapable = (modelId: string): boolean => {
 	const bare = bareModelId(modelId).trim().toLowerCase();
 	if (!bare) return false;
 	return GROK_EFFORT_CAPABLE_PREFIXES.some(prefix => bare.startsWith(prefix));
-});
+};
 
 /**
  * MiniMax M2-generation family (M2, M2.1, M2.5, M2.7, including `-highspeed`/
@@ -122,20 +109,20 @@ export const isGrokReasoningEffortCapable = memo((modelId: string): boolean => {
  * `minimal` to `none` (Fireworks) or expects the full 5-tier scale must
  * clamp instead. Excludes M1, M3, MiniMax-Text-01, music, hailuo, voice ids.
  */
-export const isMinimaxM2FamilyModelId = memo((modelId: string): boolean => {
+export const isMinimaxM2FamilyModelId = (modelId: string): boolean => {
 	const lower = modelId.toLowerCase();
 	if (!lower.includes("minimax")) return false;
 	// Boundary-delimited `m2` token followed by zero or more digits (dotless
 	// variants like `m21`/`m25`/`m27`) and an optional dotted minor version.
 	return /(?:^|[/.-])m2\d*(?:[.-]\d+)?(?:[-.:_]|$)/i.test(lower);
-});
+};
 
 /** MiniMax M3 family ids in bundled/default and aggregator namespace forms. */
-export const isMinimaxM3FamilyModelId = memo((modelId: string): boolean => {
+export const isMinimaxM3FamilyModelId = (modelId: string): boolean => {
 	const lower = modelId.toLowerCase();
 	if (!lower.includes("minimax")) return false;
 	return /(?:^|[/._-])(?:minimax[/._-])?m3(?:[-.:_]|$)/i.test(lower);
-});
+};
 
 /**
  * OpenAI gpt-oss family (`gpt-oss-20b`, `gpt-oss-120b`, `gpt-oss:120b`,
@@ -143,25 +130,25 @@ export const isMinimaxM3FamilyModelId = memo((modelId: string): boolean => {
  * `low|medium|high` for `reasoning_effort` and rejects `minimal`, `xhigh`,
  * and `none`.
  */
-export const isOpenAIGptOssModelId = memo((modelId: string): boolean => {
+export const isOpenAIGptOssModelId = (modelId: string): boolean => {
 	return /(^|\/)gpt-oss[-:]/i.test(modelId);
-});
+};
 
 /** OpenAI model ids (gpt-*, chatgpt-*, o1/o3/o4 SKUs, codex-*, or openai/*). */
-export const isOpenAIModelId = memo((modelId: string): boolean => {
+export const isOpenAIModelId = (modelId: string): boolean => {
 	return (
 		/(^|\/)(?:gpt|chatgpt|codex)[-.]/i.test(modelId) ||
 		/(^|\/)o[134](?:[-.]|$)/i.test(modelId) ||
 		modelId.toLowerCase().includes("openai/")
 	);
-});
+};
 
 /** OpenAI models at or above the gpt-5.4 wire generation, keyed off the parsed version. */
-const isOpenAIWireGen54Plus = memo((modelId: string): boolean => {
+const isOpenAIWireGen54Plus = (modelId: string): boolean => {
 	const parsed = parseOpenAIModel(bareModelId(modelId));
 	if (!parsed) return false;
 	return semverGte(parsed.version, "5.4");
-});
+};
 
 /**
  * OpenAI model generations old enough to reject `prompt_cache_breakpoint`
@@ -173,11 +160,11 @@ const isOpenAIWireGen54Plus = memo((modelId: string): boolean => {
  * the turn with `prompt_cache_breakpoint is not supported on this model`.
  * Callers gate on the endpoint as well; see `resolveOpenAIPromptCachePolicy`.
  */
-export const supportsOpenAIPromptCacheBreakpoints = memo((modelId: string): boolean => {
+export const supportsOpenAIPromptCacheBreakpoints = (modelId: string): boolean => {
 	const parsed = parseOpenAIModel(bareModelId(modelId));
 	if (!parsed) return false;
 	return semverGte(parsed.version, "5.6");
-});
+};
 
 /**
  * OpenAI Codex models that honor `reasoning.context: "all_turns"` (full
@@ -200,9 +187,9 @@ export const supportsAllTurnsReasoningContext = isOpenAIWireGen54Plus;
  * that has other evidence about such a model — a catalog transport flag, say —
  * needs to tell the two apart before it trusts a floor's refusal.
  */
-export const statesOpenAIWireGeneration = memo((modelId: string): boolean => {
+export const statesOpenAIWireGeneration = (modelId: string): boolean => {
 	return parseOpenAIModel(bareModelId(modelId)) !== null;
-});
+};
 
 /**
  * OpenAI Codex models that accept `reasoning.summary`. Shares the gpt-5.4 wire
@@ -221,7 +208,7 @@ export const supportsCodexReasoningSummary = isOpenAIWireGen54Plus;
  * keeps newly-bumped integers (`glm-5.3`, `glm-6`, …) covered without a per-id
  * allowlist.
  */
-export const isReasoningGlmModelId = memo((modelId: string): boolean => {
+export const isReasoningGlmModelId = (modelId: string): boolean => {
 	const glm = parseGlmModel(bareModelId(modelId));
 	if (!glm || glm.vision) {
 		return false;
@@ -230,10 +217,10 @@ export const isReasoningGlmModelId = memo((modelId: string): boolean => {
 		return false;
 	}
 	return semverGte(glm.version, "4.5");
-});
+};
 
 /** GLM-5.2+ coding SKUs accept `reasoning_effort` in addition to binary thinking. */
-export const isGlm52ReasoningEffortModelId = memo((modelId: string): boolean => {
+export const isGlm52ReasoningEffortModelId = (modelId: string): boolean => {
 	const glm = parseGlmModel(bareModelId(modelId));
 	if (!glm || glm.vision) {
 		return false;
@@ -242,12 +229,12 @@ export const isGlm52ReasoningEffortModelId = memo((modelId: string): boolean => 
 		return false;
 	}
 	return semverGte(glm.version, "5.2");
-});
+};
 
 /** GLM vision SKUs — the `v` that attaches to the version (`glm-4v`, `glm-4.5v`). */
-export const isGlmVisionModelId = memo((modelId: string): boolean => {
+export const isGlmVisionModelId = (modelId: string): boolean => {
 	return parseGlmModel(bareModelId(modelId))?.vision === true;
-});
+};
 
 /**
  * Coarse vendor-lineage token for "are two models the same family?" checks
@@ -260,7 +247,7 @@ export const isGlmVisionModelId = memo((modelId: string): boolean => {
  * Vendor-only by design: a model's kind/variant (opus vs sonnet, codex vs base) is
  * collapsed onto the single vendor token; use {@link parseKnownModel} for finer breakdowns.
  */
-export const modelFamilyToken = memo((modelId: string): string => {
+export const modelFamilyToken = (modelId: string): string => {
 	const parsed = parseKnownModel(modelId);
 	if (parsed.family !== "unknown") return parsed.family;
 	if (isClaudeModelId(modelId) || isAnthropicNamespacedModelId(modelId)) return "anthropic";
@@ -274,7 +261,7 @@ export const modelFamilyToken = memo((modelId: string): string => {
 	if (isGemmaModelId(modelId)) return "gemma";
 	if (parseGlmModel(bareModelId(modelId))) return "glm";
 	return "";
-});
+};
 
 /**
  * Adaptive thinking `display` is supported starting with Claude Opus 4.7+,
@@ -283,10 +270,10 @@ export const modelFamilyToken = memo((modelId: string): string => {
  * and dashed version forms both match while bare dated ids
  * (`claude-opus-4-20250514` = Opus 4.0) stay excluded.
  */
-export const supportsAdaptiveThinkingDisplay = memo((modelId: string): boolean => {
+export const supportsAdaptiveThinkingDisplay = (modelId: string): boolean => {
 	const parsed = parseAnthropicModel(bareModelId(modelId));
 	return parsed !== null && isAnthropicAdaptiveGenAtLeast(parsed, "4.7");
-});
+};
 
 /**
  * The API verifies each thinking block's signature against the bytes that
@@ -296,10 +283,10 @@ export const supportsAdaptiveThinkingDisplay = memo((modelId: string): boolean =
  * compare rather than a fixed id list.
  * @see https://platform.claude.com/docs/en/build-with-claude/preserved-thinking
  */
-export const enforcesThinkingPrefixBinding = memo((modelId: string): boolean => {
+export const enforcesThinkingPrefixBinding = (modelId: string): boolean => {
 	const parsed = parseAnthropicModel(bareModelId(modelId));
 	return parsed !== null && semverGte(parsed.version, "5.1");
-});
+};
 
 /**
  * Returns true for Anthropic models with Opus 4.7+, Sonnet 5+, and Fable/Mythos 5+
@@ -307,10 +294,10 @@ export const enforcesThinkingPrefixBinding = memo((modelId: string): boolean => 
  * - Sampling parameters (temperature/top_p/top_k) return 400 error
  * - Thinking content is omitted by default (needs display: "summarized")
  */
-export const hasOpus47ApiRestrictions = memo((modelId: string): boolean => {
+export const hasOpus47ApiRestrictions = (modelId: string): boolean => {
 	const parsed = parseAnthropicModel(bareModelId(modelId));
 	return parsed !== null && isAnthropicAdaptiveGenAtLeast(parsed, "4.7");
-});
+};
 
 /**
  * Mid-conversation `role: "system"` messages (system instructions appended at
@@ -319,15 +306,15 @@ export const hasOpus47ApiRestrictions = memo((modelId: string): boolean => {
  * Earlier Claude models reject the role.
  * @see https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages
  */
-export const supportsMidConversationSystemMessages = memo((modelId: string): boolean => {
+export const supportsMidConversationSystemMessages = (modelId: string): boolean => {
 	const parsed = parseAnthropicModel(bareModelId(modelId));
 	return parsed !== null && isAnthropicAdaptiveGenAtLeast(parsed, "4.8");
-});
+};
 
-export const isAnthropicFableOrMythosModel = memo((modelId: string): boolean => {
+export const isAnthropicFableOrMythosModel = (modelId: string): boolean => {
 	const parsed = parseAnthropicModel(bareModelId(modelId));
 	return parsed !== null && isFableOrMythos(parsed.kind);
-});
+};
 
 /** Thinking-variant token location inside a model id. */
 export interface ThinkingVariantToken {
@@ -363,9 +350,9 @@ export function findThinkingVariantToken(modelId: string): ThinkingVariantToken 
  * token exists or nothing would remain. Callers MUST verify the result names
  * a live model.
  */
-export const stripThinkingVariantToken = memo((modelId: string): string | undefined => {
+export const stripThinkingVariantToken = (modelId: string): string | undefined => {
 	const token = findThinkingVariantToken(modelId);
 	if (!token) return undefined;
 	const stripped = modelId.slice(0, token.index) + modelId.slice(token.index + token.length);
 	return stripped.length > 0 ? stripped : undefined;
-});
+};

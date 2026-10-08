@@ -21,11 +21,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets";
-import {
-	NONINTERACTIVE_SECRET_COMMAND_USAGE,
-	SECRET_COMMAND_USAGE,
-	type SecretSubcommand,
-} from "@veyyon/coding-agent/secrets/secret-command";
+import { NONINTERACTIVE_SECRET_COMMAND_USAGE, SECRET_COMMAND_USAGE } from "@veyyon/coding-agent/secrets/secret-command";
+import type { SecretSubcommand } from "@veyyon/coding-agent/secrets/secret-verbs";
 import { resolveVaultLocations, SecretVault } from "@veyyon/coding-agent/secrets/vault";
 import { executeBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/builtin-registry";
 import { maskedPromptTitle, runSecretCommandForSurface } from "@veyyon/coding-agent/slash-commands/helpers/secret";

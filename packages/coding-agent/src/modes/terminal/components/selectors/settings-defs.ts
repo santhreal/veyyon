@@ -12,7 +12,6 @@ import { TERMINAL } from "@veyyon/tui";
 import { resolveEffort, withLegacyDefaultEffort } from "../../../../config/effort-resolver";
 import { Settings } from "../../../../config/settings";
 import {
-	getDefault,
 	getEnumValues,
 	getPathsForTab,
 	getType,
@@ -518,12 +517,4 @@ export function getSettingsForTab(tab: SettingTab): SettingDef[] {
 /** Get a setting definition by path */
 export function getSettingDef(path: SettingPath): SettingDef | undefined {
 	return getAllSettingDefs().find(def => def.path === path);
-}
-
-/** Get default value for display */
-export function getDisplayDefault(path: SettingPath): string {
-	const value = getDefault(path);
-	if (value === undefined) return "";
-	if (typeof value === "boolean") return value ? "true" : "false";
-	return String(value);
 }

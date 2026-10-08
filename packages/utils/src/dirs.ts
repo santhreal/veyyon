@@ -29,6 +29,7 @@ import { atomicWriteFileSync } from "./atomic-write";
 import { AGENT_DIR_ENV_KEYS, CONFIG_DIR_ENV_KEYS, PROFILE_ENV_KEYS, SANDBOX_MARKER_ENV_KEY } from "./dir-env-keys";
 import { withFileLockSync } from "./file-lock";
 import { isMissingPath } from "./fs-error";
+import { logFileName } from "./log-file";
 import { isUuid } from "./regex";
 import { bareVersion } from "./semver";
 import { sleepSync } from "./sleep";
@@ -1121,12 +1122,24 @@ export function resolveStartupProfile(): string | undefined {
 	return resolveGlobalDefaultProfile();
 }
 
-function getProfileAgentDir(profile: string): string {
-	return path.join(getProfileConfigRoot(profile), "agent");
-}
-
-function isProfileDerivedAgentDir(profile: string | undefined, agentDirEnv: string | undefined): boolean {
-	return profile !== undefined && agentDirEnv === getProfileAgentDir(profile);
+/**
+ * Whether `agentDirEnv` is some profile's derived agent dir
+ * (`<configRoot>/profiles/<name>/agent`), which `setProfile` exports to
+ * children. Any profile counts, not only the one being resolved: a child
+ * relaunched into the default profile (`/profile default`, `/resume` of a
+ * default-profile session) inherits the parent profile's value, and honoring it
+ * would run the default profile inside the parent's agent dir. An unresolvable
+ * home leaves the value honored, as before, so module load stays non-throwing.
+ */
+function isProfileDerivedAgentDir(agentDirEnv: string | undefined): boolean {
+	if (agentDirEnv === undefined || path.basename(agentDirEnv) !== "agent") return false;
+	let profilesRoot: string;
+	try {
+		profilesRoot = path.join(getBaseConfigRoot(), PROFILES_DIR_NAME);
+	} catch {
+		return false;
+	}
+	return path.dirname(path.dirname(path.resolve(agentDirEnv))) === path.resolve(profilesRoot);
 }
 // =============================================================================
 // Project directory
@@ -1444,25 +1457,9 @@ class DirResolver {
 		};
 	}
 
-	/**
-	 * Cache key for a resolved subdirectory.
-	 *
-	 * The category is part of the key because it is part of the answer. Under XDG
-	 * the three categories are three different roots (`~/.local/share/veyyon`,
-	 * `~/.local/state/veyyon`, `~/.cache/veyyon`), so keying on the name alone
-	 * meant the first caller to ask for a given name decided the root for every
-	 * later caller, whatever category they asked for. Nothing collides today, and
-	 * that is exactly why it needed fixing before something did: the symptom would
-	 * be data written under one root and read back from another, on XDG machines
-	 * only, with no error anywhere.
-	 */
-	static #cacheKey(subdir: string, xdg?: XdgCategory): string {
-		return `${xdg ?? ""}\0${subdir}`;
-	}
-
 	/** Config-root subdirectory, with optional XDG override. */
 	rootSubdir(subdir: string, xdg?: XdgCategory): string {
-		const key = DirResolver.#cacheKey(subdir, xdg);
+		const key = cacheKey(subdir, xdg);
 		const cached = this.#rootCache.get(key);
 		if (cached) return cached;
 		const base = xdg ? this.#rootDirs[xdg] : this.configRoot;
@@ -1474,7 +1471,7 @@ class DirResolver {
 	/** Agent subdirectory, with optional XDG override. */
 	agentSubdir(userAgentDir: string | undefined, subdir: string, xdg?: XdgCategory): string {
 		if (!userAgentDir || userAgentDir === this.agentDir) {
-			const key = DirResolver.#cacheKey(subdir, xdg);
+			const key = cacheKey(subdir, xdg);
 			const cached = this.#agentCache.get(key);
 			if (cached) return cached;
 			const base = xdg ? this.#agentDirs[xdg] : this.agentDir;
@@ -1487,15 +1484,32 @@ class DirResolver {
 }
 
 /**
- * Decide which `VEYYON_CODING_AGENT_DIR` value to capture as the pre-profile
- * baseline. A value equal to a profile's derived agent dir is profile-derived
- * (propagated by a parent's `setProfile`), so it must NOT be snapshotted as the
- * default-mode baseline — otherwise default mode would resolve to the profile's
- * agent dir. Returns `undefined` in that case so reset falls back to the
- * standard `~/.veyyon/agent`.
+ * Cache key for a resolved subdirectory.
+ *
+ * The category is part of the key because it is part of the answer. Under XDG
+ * the three categories are three different roots (`~/.local/share/veyyon`,
+ * `~/.local/state/veyyon`, `~/.cache/veyyon`), so keying on the name alone
+ * meant the first caller to ask for a given name decided the root for every
+ * later caller, whatever category they asked for. Nothing collides today, and
+ * that is exactly why it needed fixing before something did: the symptom would
+ * be data written under one root and read back from another, on XDG machines
+ * only, with no error anywhere.
  */
-function resolvePreProfileAgentDir(profile: string | undefined, agentDirEnv: string | undefined): string | undefined {
-	return isProfileDerivedAgentDir(profile, agentDirEnv) ? undefined : agentDirEnv;
+function cacheKey(subdir: string, xdg?: XdgCategory): string {
+	return `${xdg ?? ""}\0${subdir}`;
+}
+
+/**
+ * Decide which `VEYYON_CODING_AGENT_DIR` value to capture as the pre-profile
+ * baseline. A value equal to any profile's derived agent dir is profile-derived
+ * (propagated by a parent's `setProfile`), so it must NOT be snapshotted as the
+ * default-mode baseline — otherwise default mode would resolve to that profile's
+ * agent dir. Returns `undefined` in that case so reset falls back to the
+ * default profile's agent dir.
+ */
+function resolvePreProfileAgentDir(): string | undefined {
+	const agentDirEnv = readAgentDirEnv();
+	return isProfileDerivedAgentDir(agentDirEnv) ? undefined : agentDirEnv;
 }
 
 let activeProfile = resolveStartupProfileSafe();
@@ -1508,7 +1522,7 @@ let activeProfile = resolveStartupProfileSafe();
  * {@link refreshDirsFromEnv} so both apply identical logic.
  */
 function resolveActiveAgentDirOverride(): string | undefined {
-	return activeProfile ? undefined : resolvePreProfileAgentDir(undefined, readAgentDirEnv());
+	return activeProfile ? undefined : resolvePreProfileAgentDir();
 }
 
 // Non-CLI entry points (SDK/library imports) never pass through the CLI's
@@ -1542,7 +1556,7 @@ let dirs = new DirResolver({
  * — and refreshed on `setAgentDir`, since that call is the user explicitly
  * redefining the baseline.
  */
-let preProfileAgentDirEnv: string | undefined = resolvePreProfileAgentDir(activeProfile, readAgentDirEnv());
+let preProfileAgentDirEnv: string | undefined = resolvePreProfileAgentDir();
 // Anchor home for the resolver. Captured at module load to stay stable across
 // test mocks of `os.homedir()`. `getPluginsDir(home)` compares against this so
 // production callers (`home === RESOLVER_HOME`) hit the XDG-aware resolver while
@@ -1715,7 +1729,7 @@ export function setAgentDir(dir: string): void {
  * no business clearing it.
  */
 export function __resetProfileSnapshotForTests(): void {
-	preProfileAgentDirEnv = resolvePreProfileAgentDir(activeProfile, readAgentDirEnv());
+	preProfileAgentDirEnv = resolvePreProfileAgentDir();
 }
 
 /**
@@ -1739,7 +1753,7 @@ export function setProfile(profile: string | undefined): void {
 		// explicit override. Subsequent profile switches keep the original
 		// snapshot — the "pre-profile" baseline is the state before profiles
 		// entered the picture, not the state between two activations.
-		preProfileAgentDirEnv = resolvePreProfileAgentDir(undefined, readAgentDirEnv());
+		preProfileAgentDirEnv = resolvePreProfileAgentDir();
 	}
 	activeProfile = next;
 	if (activeProfile) {
@@ -2030,7 +2044,7 @@ export function getLogsDir(): string {
 
 /** Get the path to a dated log file (~/.veyyon/profiles/<name>/logs/veyyon.YYYY-MM-DD.log). */
 export function getLogPath(date = new Date()): string {
-	return path.join(getLogsDir(), `${APP_NAME}.${date.toISOString().slice(0, 10)}.log`);
+	return path.join(getLogsDir(), logFileName(date));
 }
 
 /**
@@ -2355,6 +2369,15 @@ export function getDocumentConversionCacheDir(agentDir?: string): string {
 /** Get the sessions directory (agent `sessions/`). */
 export function getSessionsDir(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "sessions", "data");
+}
+
+/**
+ * The sessions directory of the named profile (`undefined` or `"default"` for the default one),
+ * resolved as a process running that profile resolves {@link getSessionsDir}: under the profile's
+ * `$XDG_DATA_HOME` directory once it exists, else `<agentDir>/sessions`.
+ */
+export function getProfileSessionsDir(profile: string | undefined): string {
+	return new DirResolver({ profile }).agentSubdir(undefined, "sessions", "data");
 }
 
 /** Get the content-addressed blob store directory (agent `blobs/`). */

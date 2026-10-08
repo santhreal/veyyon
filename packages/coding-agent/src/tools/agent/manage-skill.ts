@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
-import { type } from "arktype";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { lazy } from "@veyyon/utils/abortable";
 import {
 	deleteManagedSkill,
 	getManagedSkillsDir,
@@ -11,36 +12,40 @@ import { isNameClaimedByAuthoredSkill } from "../../extensibility/skills";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "..";
 
-const manageSkillSchema = type({
-	action: "'create' | 'update' | 'delete'",
-	name: type("string").describe("kebab-case skill name"),
-	"description?": type("string").describe(
-		"one-line description of when to use the skill (required for create/update)",
+const manageSkillSchema = lazy(() =>
+	type({
+		action: "'create' | 'update' | 'delete'",
+		name: type("string").describe("kebab-case skill name"),
+		"description?": type("string").describe(
+			"one-line description of when to use the skill (required for create/update)",
+		),
+		"body?": type("string").describe("the SKILL.md body in markdown, no frontmatter (required for create/update)"),
+	}).narrow(
+		(p, ctx) =>
+			p.action === "delete" ||
+			(p.description !== undefined && p.body !== undefined) ||
+			// Enforce the action/field contract at validation time rather than only in
+			// execute. Kept as a cross-field narrow (not a discriminated union) so the
+			// wire schema stays a single root object — strict structured-output mode and
+			// the Anthropic tool-schema builder both require that.
+			ctx.mustBe('used with both "description" and "body" for "create" and "update"'),
 	),
-	"body?": type("string").describe("the SKILL.md body in markdown, no frontmatter (required for create/update)"),
-}).narrow(
-	(p, ctx) =>
-		p.action === "delete" ||
-		(p.description !== undefined && p.body !== undefined) ||
-		// Enforce the action/field contract at validation time rather than only in
-		// execute. Kept as a cross-field narrow (not a discriminated union) so the
-		// wire schema stays a single root object — strict structured-output mode and
-		// the Anthropic tool-schema builder both require that.
-		ctx.mustBe('used with both "description" and "body" for "create" and "update"'),
 );
 
-export type ManageSkillParams = typeof manageSkillSchema.infer;
+export type ManageSkillParams = typeof manageSkillSchema.value.infer;
 
 /**
  * Direct create/update/delete of isolated managed skills. Gated behind
  * `autolearn.enabled`; backend-independent (the skill side is standalone).
  */
-export class ManageSkillTool implements AgentTool<typeof manageSkillSchema> {
+export class ManageSkillTool implements AgentTool<typeof manageSkillSchema.value> {
 	readonly name = "manage_skill";
 	readonly approval = "write" as const;
 	readonly label = "Manage Skill";
 	readonly description = toolsPrompts["tools/manage-skill"].text;
-	readonly parameters = manageSkillSchema;
+	get parameters(): typeof manageSkillSchema.value {
+		return manageSkillSchema.value;
+	}
 	readonly strict = true;
 	readonly loadMode = "essential" as const;
 	readonly summary = "Create, update, or delete an isolated managed skill";

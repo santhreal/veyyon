@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { normalizeAnthropicToolSchema } from "@veyyon/ai/providers/anthropic";
 import type { Tool } from "@veyyon/ai/types";
 import {
@@ -13,7 +14,11 @@ import {
 	toolWireSchema,
 	zodToWireSchema,
 } from "@veyyon/ai/utils/schema";
+// `wire.ts` holds no Zod value; the barrels install Zod's core converter for their callers. This file
+// imports subpaths only, so it installs the converter the way a barrel does.
+import "@veyyon/ai/utils/schema/zod-core";
 import { type } from "arktype";
+import * as zm from "zod/mini";
 import { z } from "zod/v4";
 
 describe("isZodSchema", () => {
@@ -91,6 +96,61 @@ describe("zodToWireSchema — empty-schema normalization", () => {
 		const name = (wire.properties as Record<string, unknown>).name as Record<string, unknown>;
 		expect(name.type).toBe("string");
 		expect(name.additionalProperties).toBeUndefined();
+	});
+});
+
+// A `zod/mini` schema passes `isZodSchema` (it carries `_zod` and `.parse`) but has no
+// `toJSONSchema` method, so conversion must go through Zod's core converter rather than the
+// classic instance method: the wire of a mini schema equals the wire of its classic twin.
+describe("zodToWireSchema — every Zod flavor", () => {
+	const twins: ReadonlyArray<[string, unknown, unknown]> = [
+		[
+			"object with optional and enum fields",
+			z.object({ name: z.string(), limit: z.number().optional(), mode: z.enum(["a", "b"]) }),
+			zm.object({ name: zm.string(), limit: zm.optional(zm.number()), mode: zm.enum(["a", "b"]) }),
+		],
+		[
+			"array of records",
+			z.object({ rows: z.array(z.record(z.string(), z.unknown())) }),
+			zm.object({ rows: zm.array(zm.record(zm.string(), zm.unknown())) }),
+		],
+		["nullable scalar", z.object({ skip: z.number().nullable() }), zm.object({ skip: zm.nullable(zm.number()) })],
+	];
+
+	for (const [shape, classic, mini] of twins) {
+		it(`converts a zod/mini ${shape} to its classic twin's wire`, () => {
+			expect(isZodSchema(mini)).toBe(true);
+			expect(zodToWireSchema(mini as z.ZodType)).toEqual(zodToWireSchema(classic as z.ZodType));
+		});
+	}
+});
+
+// The barrels install the converter and `wire.ts` never loads Zod, so the compiled CLI holds no Zod
+// copy at startup. A process that imports the schema subpath and no barrel converts a classic schema
+// through the schema's own `toJSONSchema`, to the same wire, and rejects a mini schema by naming the
+// import that installs the converter.
+describe("zodToWireSchema — in a process that loaded no barrel", () => {
+	it("converts a classic schema to the converter's wire and rejects a mini schema", () => {
+		const script = `
+			import { zodToWireSchema } from "@veyyon/ai/utils/schema";
+			import { z } from "zod/v4";
+			import * as zm from "zod/mini";
+			const classic = zodToWireSchema(z.object({ name: z.string(), limit: z.number().optional() }));
+			let mini;
+			try {
+				zodToWireSchema(zm.object({ name: zm.string() }));
+				mini = "converted";
+			} catch (error) {
+				mini = error.message;
+			}
+			console.log(JSON.stringify({ classic, mini }));
+		`;
+		const run = spawnSync(process.execPath, ["-e", script], { cwd: import.meta.dirname, encoding: "utf8" });
+		expect(run.stderr).toBe("");
+		expect(JSON.parse(run.stdout)).toEqual({
+			classic: zodToWireSchema(z.object({ name: z.string(), limit: z.number().optional() })),
+			mini: "Cannot convert a Zod schema that has no toJSONSchema method (zod/mini): Zod's core converter is not installed. Import @veyyon/ai or @veyyon/ai/utils/schema/zod-core before converting it.",
+		});
 	});
 });
 

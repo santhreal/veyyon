@@ -59,6 +59,8 @@ function makeHarness(options: {
 		markLayoutSized: (component: Component) => {
 			state.layoutSized.push(component);
 		},
+		// Every frame here is a full one, which renders every root child.
+		reusedRows: () => undefined,
 	} as unknown as TUI;
 	const port: HomeAnchorPort = {
 		ui,

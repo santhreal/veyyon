@@ -11,7 +11,7 @@
  * cycle to worry about: the config half imports nothing from here.
  */
 
-import type { FetchImpl } from "@veyyon/ai";
+import type { Api, FetchImpl, Model } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { ProviderHttpError } from "@veyyon/ai/error";
 import { completeSimple } from "@veyyon/ai/stream";
@@ -19,7 +19,13 @@ import { assistantText } from "@veyyon/ai/utils/message-text";
 import { withScopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import { forceLocalLlm, hostLlmModel, hostLlmProvider } from "../config";
 import { safeForLog } from "./extraction/diagnostics";
-import { type CompleteOptions, callHostLlm, getHostLlmBackend, MNEMOPI_LLM_ATTEMPT_PLACEHOLDER } from "./llm-backends";
+import {
+	type CompleteOptions,
+	callHostLlm,
+	getHostLlmBackend,
+	MNEMOPI_LLM_ATTEMPT_PLACEHOLDER,
+	sanitizeLlmProviderText,
+} from "./llm-backends";
 import {
 	activeCustomCompletion,
 	activePiAiModel,
@@ -38,6 +44,7 @@ import {
 import {
 	getMnemopiRuntimeOptions,
 	type MnemopiLlmCompleteOptions,
+	type MnemopiLlmCompletion,
 	type MnemopiLlmPayloadHook,
 } from "./runtime-options";
 
@@ -49,14 +56,19 @@ export interface RemoteLlmOptions {
 	onPayload?: MnemopiLlmPayloadHook;
 }
 
-function sanitizeLlmProviderText(text: string): string {
-	const sanitize = getMnemopiRuntimeOptions()?.llm?.sanitizeProviderText;
-	if (sanitize === undefined) return text;
-	try {
-		return sanitize(text);
-	} catch {
-		throw new Error("Mnemopi provider text sanitization failed.");
+/** Replace the placeholder with the projected prompt and sanitize every other string, in place, at any depth. */
+function projectPayload(value: unknown, providerPrompt: () => string): unknown {
+	if (typeof value === "string") {
+		return value === MNEMOPI_LLM_ATTEMPT_PLACEHOLDER ? providerPrompt() : sanitizeLlmProviderText(value);
 	}
+	if (Array.isArray(value)) {
+		for (let index = 0; index < value.length; index += 1) value[index] = projectPayload(value[index], providerPrompt);
+		return value;
+	}
+	if (value === null || typeof value !== "object") return value;
+	const mutable = value as Record<string, unknown>;
+	for (const [key, child] of Object.entries(mutable)) mutable[key] = projectPayload(child, providerPrompt);
+	return mutable;
 }
 
 /**
@@ -67,24 +79,7 @@ function sanitizeLlmProviderText(text: string): string {
 function createAttemptPayloadHook(buildPrompt: () => string): MnemopiLlmPayloadHook {
 	return payload => {
 		let providerPrompt: string | undefined;
-		const visit = (value: unknown): unknown => {
-			if (typeof value === "string") {
-				if (value === MNEMOPI_LLM_ATTEMPT_PLACEHOLDER) {
-					providerPrompt ??= buildPrompt();
-					return providerPrompt;
-				}
-				return sanitizeLlmProviderText(value);
-			}
-			if (Array.isArray(value)) {
-				for (let index = 0; index < value.length; index += 1) value[index] = visit(value[index]);
-				return value;
-			}
-			if (value === null || typeof value !== "object") return value;
-			const mutable = value as Record<string, unknown>;
-			for (const [key, child] of Object.entries(mutable)) mutable[key] = visit(child);
-			return mutable;
-		};
-		return visit(payload);
+		return projectPayload(payload, () => (providerPrompt ??= buildPrompt()));
 	};
 }
 
@@ -128,46 +123,39 @@ function configuredCompletionRequiresAttemptHook(): boolean {
 	);
 }
 
-export async function callConfiguredCompletion(
+async function callCustomCompletion(
+	completion: MnemopiLlmCompletion,
 	prompt: string,
-	temperature: number,
-	opts: MnemopiLlmCompleteOptions = {},
+	commonOptions: MnemopiLlmCompleteOptions,
+	onPayloadOverride: MnemopiLlmPayloadHook | undefined,
 ): Promise<string | null> {
-	const completion = activeCustomCompletion();
-	const commonOptions = {
-		maxTokens: opts.maxTokens ?? llmMaxTokens(),
-		temperature,
-		timeout: opts.timeout,
-		provider: opts.provider,
-		model: opts.model,
-		fetch: opts.fetch,
-	};
-	if (completion !== undefined) {
-		if (!configuredCompletionRequiresAttemptHook()) {
-			const raw = await completion(prompt, commonOptions);
-			return typeof raw === "string" ? raw : null;
-		}
-		if (completion.supportsAttemptPayload !== true) {
-			throw new Error("Online Mnemopi completion does not support attempt-time payload sanitization.");
-		}
-
-		const hook = opts.onPayload ?? createAttemptPayloadHook(() => sanitizeLlmProviderText(prompt));
-		let applied = false;
-		const onPayload: MnemopiLlmPayloadHook = async payload => {
-			applied = true;
-			return await hook(payload);
-		};
-		const raw = await completion(MNEMOPI_LLM_ATTEMPT_PLACEHOLDER, { ...commonOptions, onPayload });
-		if (!applied) {
-			throw new Error("Online Mnemopi completion did not apply its attempt-time payload hook.");
-		}
+	if (!configuredCompletionRequiresAttemptHook()) {
+		const raw = await completion(prompt, commonOptions);
 		return typeof raw === "string" ? raw : null;
 	}
-
-	const model = activePiAiModel();
-	if (model === undefined) {
-		return null;
+	if (completion.supportsAttemptPayload !== true) {
+		throw new Error("Online Mnemopi completion does not support attempt-time payload sanitization.");
 	}
+
+	const hook = onPayloadOverride ?? createAttemptPayloadHook(() => sanitizeLlmProviderText(prompt));
+	let applied = false;
+	const onPayload: MnemopiLlmPayloadHook = async payload => {
+		applied = true;
+		return await hook(payload);
+	};
+	const raw = await completion(MNEMOPI_LLM_ATTEMPT_PLACEHOLDER, { ...commonOptions, onPayload });
+	if (!applied) {
+		throw new Error("Online Mnemopi completion did not apply its attempt-time payload hook.");
+	}
+	return typeof raw === "string" ? raw : null;
+}
+
+async function callPiAiModel(
+	model: Model<Api>,
+	prompt: string,
+	temperature: number,
+	opts: MnemopiLlmCompleteOptions,
+): Promise<string | null> {
 	const needsAttemptHook = configuredCompletionRequiresAttemptHook() || opts.onPayload !== undefined;
 	let physicalAttempts = 0;
 	const hook = opts.onPayload ?? createAttemptPayloadHook(() => sanitizeLlmProviderText(prompt));
@@ -193,6 +181,27 @@ export async function callConfiguredCompletion(
 		throw new Error("Mnemopi SDK completion did not expose a physical attempt payload.");
 	}
 	return assistantText(message).trim() || null;
+}
+
+export async function callConfiguredCompletion(
+	prompt: string,
+	temperature: number,
+	opts: MnemopiLlmCompleteOptions = {},
+): Promise<string | null> {
+	const completion = activeCustomCompletion();
+	if (completion !== undefined) {
+		const commonOptions = {
+			maxTokens: opts.maxTokens ?? llmMaxTokens(),
+			temperature,
+			timeout: opts.timeout,
+			provider: opts.provider,
+			model: opts.model,
+			fetch: opts.fetch,
+		};
+		return await callCustomCompletion(completion, prompt, commonOptions, opts.onPayload);
+	}
+	const model = activePiAiModel();
+	return model === undefined ? null : await callPiAiModel(model, prompt, temperature, opts);
 }
 
 async function tryHostLlm(

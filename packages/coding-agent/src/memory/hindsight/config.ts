@@ -55,7 +55,7 @@ export interface HindsightConfig {
 
 const VALID_RETAIN_MODES: HindsightConfig["retainMode"][] = ["full-session", "last-turn"];
 const VALID_BUDGETS: HindsightConfig["recallBudget"][] = ["low", "mid", "high"];
-const VALID_SCOPINGS: HindsightScoping[] = ["global", "per-project", "per-project-tagged"];
+export const VALID_SCOPINGS: readonly HindsightScoping[] = ["global", "per-project", "per-project-tagged"];
 
 const DEFAULT_PREAMBLE =
 	"Relevant memories from past conversations (prioritize recent when conflicting). " +

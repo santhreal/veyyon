@@ -15,21 +15,24 @@ export interface VectorIndexRow<TId> {
 	vector: readonly number[] | null | undefined;
 }
 
+/** Sum of squared components, or 0 when any component is not finite. */
+function finiteNormSquared(vector: readonly number[]): number {
+	let normSq = 0;
+	for (let i = 0; i < vector.length; i += 1) {
+		const value = vector[i] ?? 0;
+		if (!Number.isFinite(value)) return 0;
+		normSq += value * value;
+	}
+	return normSq;
+}
+
 export function buildExactVectorIndex<TId>(rows: readonly VectorIndexRow<TId>[]): ExactVectorIndex<TId> {
 	const valid: Array<{ id: TId; vector: readonly number[]; norm: number }> = [];
 	let dimensions = 0;
 	for (const row of rows) {
 		const vector = row.vector;
 		if (!vector || vector.length === 0) continue;
-		let normSq = 0;
-		for (let i = 0; i < vector.length; i += 1) {
-			const value = vector[i] ?? 0;
-			if (!Number.isFinite(value)) {
-				normSq = 0;
-				break;
-			}
-			normSq += value * value;
-		}
+		const normSq = finiteNormSquared(vector);
 		if (normSq <= 0) continue;
 		valid.push({ id: row.id, vector, norm: Math.sqrt(normSq) });
 		if (vector.length > dimensions) dimensions = vector.length;
@@ -60,11 +63,7 @@ export function searchExactVectorIndex<TId>(
 	const k = Math.max(0, Math.trunc(limit));
 	if (k === 0 || index.count === 0 || index.dimensions === 0 || query.length === 0) return [];
 
-	let queryNormSq = 0;
-	for (const value of query) {
-		if (!Number.isFinite(value)) return [];
-		queryNormSq += value * value;
-	}
+	const queryNormSq = finiteNormSquared(query);
 	if (queryNormSq <= 0) return [];
 	const queryNorm = Math.sqrt(queryNormSq);
 	const queryDimensions = Math.min(query.length, index.dimensions);

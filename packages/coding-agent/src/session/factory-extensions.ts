@@ -7,7 +7,7 @@
 import type { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 import { errorMessage, getAgentDir, getProjectDir, logger, prefetch, raceWithTimeout } from "@veyyon/utils";
 import { type DiscoveredAdvisors, discoverAdvisorConfigs } from "../advisor/config";
-import { discoverWatchdogFiles, formatActiveRepoWatchdogPrompt, formatAdvisorContextPrompt } from "../advisor/watchdog";
+import { discoverWatchdogFiles, formatActiveRepoWatchdogPrompt } from "../advisor/watchdog";
 import type { ModelRegistry } from "../config/model-registry";
 import { loadPromptTemplates as loadPromptTemplatesInternal, type PromptTemplate } from "../config/prompt-templates";
 import type { Settings, SkillsSettings } from "../config/settings";
@@ -352,7 +352,7 @@ export function projectAdvisorScope(inputs: {
 		: inputs.watchdogFiles;
 	return {
 		advisorWatchdogPrompt: watchdogPrompts.length > 0 ? watchdogPrompts.join("\n\n") : undefined,
-		advisorContextPrompt: formatAdvisorContextPrompt(inputs.contextFiles),
+		advisorContextFiles: inputs.contextFiles,
 		advisorSharedInstructions: inputs.advisors.sharedInstructions,
 		advisorConfigs: inputs.advisors.advisors,
 	};

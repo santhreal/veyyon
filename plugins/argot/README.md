@@ -151,8 +151,8 @@ Cache entries are stored at `<cacheDir>/<cacheId>/<contentSig>.dict` using atomi
 | `AgentDict.promptFragment()` | Formats active handles for inclusion in the system prompt. |
 | `AgentDict.expand(text)` | Restores handles in text to their full expansions. |
 | `shouldEncode(gate, input)` | Evaluates model and token constraints to determine if shorthand should be taught for the current turn. |
-| `ArgotGate` / `ArgotGateInput` | Configuration and turn input types for encoding gates. |
-| `EMPTY_GATE` | Gate configuration with encoding disabled. |
+| `ArgotGate` / `ArgotGateInput` | Configuration and turn input types for the encoding check. |
+| `EMPTY_GATE` | `ArgotGate` configuration with encoding disabled. |
 | `modelAllowed(entry, activeModel)` | Matches model identifiers against allowlist patterns. |
 | `modelIdSegment(id)` | Extracts the model name from a provider-qualified identifier. |
 | `generateDictFromRepo(files, options?)` | Generates a vocabulary from repository file paths and contents. |
@@ -175,7 +175,7 @@ Cache entries are stored at `<cacheDir>/<cacheId>/<contentSig>.dict` using atomi
 
 ## Controlling model encoding
 
-Use `shouldEncode` to gate teaching shorthand to the model while keeping decoding active:
+Use `shouldEncode` to control whether shorthand is taught to the model while decoding stays active:
 
 ```ts
 import { type ArgotGate, ArgotSession, shouldEncode } from "argot";

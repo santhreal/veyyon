@@ -117,7 +117,7 @@ full, so the transcript still shows you every line.
 
 ## Flow
 
-1. `EvalTool.execute()` in `packages/coding-agent/src/tools/shell/eval.ts` receives `params` already validated by the arktype schema (`evalSchema`, or the session-scoped copy from `buildEvalSchema()`): no string parsing step, and exactly one cell per call.
+1. `EvalTool.execute()` in `packages/coding-agent/src/tools/shell/eval.ts` receives `params` already validated by the arktype schema (`evalSchema`, or the copy `evalSchemaFor()` returns for the session's enabled languages, built once per language set per process): no string parsing step, and exactly one cell per call.
 2. `execute()` maps `params.language` to an `EvalLanguage` (`"py"` → `"python"`, `"js"` → `"js"`, `"rb"` → `"ruby"`, `"jl"` → `"julia"`) and calls `resolveBackend(session, language)`:
    - `python` is gated on `resolveEvalBackends(session).python` (the `eval.py` setting, overridden by the `VEYYON_PY` env flag) and `pythonBackend.isAvailable(session)`.
    - `js` is gated on `resolveEvalBackends(session).js` (the `eval.js` setting, overridden by the `VEYYON_JS` env flag).

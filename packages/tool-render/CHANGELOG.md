@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Job, task and eval durations and `web_search` source ages in the HTML export and web transcript print through `formatDuration` and `formatAge` from `@veyyon/utils`, so `65000` reads `1m5s` and an age of 30 seconds reads `just now`, as in the terminal.
+
+### Changed
+
+- The edit card reads its target paths through `editInputPaths` from `@veyyon/utils/fs-tool-args`; rendered output is unchanged.
+
 ## [1.5.0] - 2026-09-18
 
 ### Breaking Changes

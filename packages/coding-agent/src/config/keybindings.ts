@@ -445,7 +445,7 @@ export class KeybindingsManager extends TuiKeybindingsManager {
 	 */
 	reload(): void {
 		if (!this.#configPath) return;
-		const { config: profileConfig } = KeybindingsManager.#loadFromFile(this.#configPath);
+		const { config: profileConfig } = loadFromFile(this.#configPath);
 		this.setUserBindings(profileConfig);
 	}
 
@@ -486,16 +486,13 @@ export class KeybindingsManager extends TuiKeybindingsManager {
 		const keys = this.getKeys(keybinding);
 		return formatKeyHints(keys.length === 0 ? [] : keys);
 	}
+}
 
-	/**
-	 * Load user bindings from a file, migrating old names if needed.
-	 */
-	static #loadFromFile(
-		filePath: string,
-		writeBackPath?: string,
-	): { config: KeybindingsConfig; persistedPath: string } {
-		return loadKeybindingsConfig(filePath, writeBackPath);
-	}
+/**
+ * Load user bindings from a file, migrating old names if needed.
+ */
+function loadFromFile(filePath: string, writeBackPath?: string): { config: KeybindingsConfig; persistedPath: string } {
+	return loadKeybindingsConfig(filePath, writeBackPath);
 }
 
 /**

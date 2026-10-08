@@ -29,6 +29,15 @@ import { isRecord } from "./utils";
 const MODELS_DEV_API_URL = "https://models.dev/api.json";
 /** Matches the per-provider model cache TTL so both refresh on the same clock. */
 const PAYLOAD_TTL_MS = 2 * HOUR_MS;
+/**
+ * How long the parsed payload stays in memory after its last use.
+ *
+ * A startup or refresh burst resolves every descriptor-covered provider within
+ * seconds and shares one parse. Past the burst the payload is several MiB of
+ * objects that only the next stale provider cache reads again, and
+ * `models-dev.json` holds the same bytes for that read.
+ */
+const PAYLOAD_HOLD_MS = 30_000;
 
 interface PayloadCache {
 	fetchedAt: number;
@@ -38,6 +47,19 @@ interface PayloadCache {
 
 let memoryCache: PayloadCache | null = null;
 let inflight: Promise<unknown> | null = null;
+let releaseTimer: NodeJS.Timeout | undefined;
+
+/** Memoize `cache` for {@link PAYLOAD_HOLD_MS} past this use, and return its payload. */
+function remember(cache: PayloadCache): unknown {
+	memoryCache = cache;
+	clearTimeout(releaseTimer);
+	releaseTimer = setTimeout(() => {
+		memoryCache = null;
+		releaseTimer = undefined;
+	}, PAYLOAD_HOLD_MS);
+	releaseTimer.unref();
+	return cache.payload;
+}
 
 function payloadCachePath(dbPath?: string): string {
 	return path.join(path.dirname(dbPath ?? getModelDbPath()), "models-dev.json");
@@ -76,19 +98,22 @@ const FAILURE_BACKOFF_MS = 5 * 60 * 1000;
 /**
  * Drop every piece of process-global overlay state.
  *
- * `memoryCache`, `inflight` and `failureBackoffUntil` outlive any single
- * caller by design: they are what stops 100+ descriptor-covered providers
- * each re-reading the disk file and re-attempting a 15s fetch on one offline
- * session start. Nothing could clear them, so the state also outlived a test
- * file, and whichever file ran first decided what the next one observed. That
- * is how `serves the stale disk payload through the backoff window` passed on
- * its own and failed in the suite: an earlier file had already populated the
- * memo, so the first fetch returned it and made no network attempt at all.
+ * `memoryCache`, `inflight`, `releaseTimer` and `failureBackoffUntil` outlive
+ * any single caller by design: they are what stops 100+ descriptor-covered
+ * providers each re-reading the disk file and re-attempting a 15s fetch on one
+ * offline session start. Nothing could clear them, so the state also outlived
+ * a test file, and whichever file ran first decided what the next one
+ * observed. That is how `serves the stale disk payload through the backoff
+ * window` passed on its own and failed in the suite: an earlier file had
+ * already populated the memo, so the first fetch returned it and made no
+ * network attempt at all.
  *
  * A suite-order-dependent test guards nothing, so the state that causes it
  * gets an owner rather than the assertion getting loosened.
  */
 export function resetModelsDevOverlayState(): void {
+	clearTimeout(releaseTimer);
+	releaseTimer = undefined;
 	memoryCache = null;
 	inflight = null;
 	failureBackoffUntil = 0;
@@ -96,8 +121,9 @@ export function resetModelsDevOverlayState(): void {
 
 async function fetchPayload(hooks?: DiscoveryHooks, dbPath?: string): Promise<unknown> {
 	const now = Date.now();
-	if (memoryCache && now - memoryCache.fetchedAt < PAYLOAD_TTL_MS) return memoryCache.payload;
-	if (now < failureBackoffUntil) return memoryCache?.payload ?? null;
+	if (memoryCache && (now - memoryCache.fetchedAt < PAYLOAD_TTL_MS || now < failureBackoffUntil)) {
+		return remember(memoryCache);
+	}
 	if (inflight) return inflight;
 	inflight = fetchPayloadUncached(hooks, dbPath).finally(() => {
 		inflight = null;
@@ -107,12 +133,11 @@ async function fetchPayload(hooks?: DiscoveryHooks, dbPath?: string): Promise<un
 
 async function fetchPayloadUncached(hooks?: DiscoveryHooks, dbPath?: string): Promise<unknown> {
 	const now = Date.now();
-	if (memoryCache && now - memoryCache.fetchedAt < PAYLOAD_TTL_MS) return memoryCache.payload;
+	// A released memo reads back from disk, which holds the payload it held.
 	const disk = memoryCache ?? (await readDiskCache(dbPath));
-	if (disk && now - disk.fetchedAt < PAYLOAD_TTL_MS) {
-		memoryCache = disk;
-		return disk.payload;
-	}
+	if (disk && now - disk.fetchedAt < PAYLOAD_TTL_MS) return remember(disk);
+	// Inside the failure backoff a stale payload is served with no network attempt.
+	if (now < failureBackoffUntil) return disk ? remember(disk) : null;
 
 	// Stale or absent: conditional refetch. A 304 (or any failure) keeps the
 	// stale payload — stale models.dev data beats none, and the row-level
@@ -134,34 +159,29 @@ async function fetchPayloadUncached(hooks?: DiscoveryHooks, dbPath?: string): Pr
 			});
 		} catch (error) {
 			report(hooks, "request", errorMessage(error));
-			if (disk) memoryCache = disk;
 			failureBackoffUntil = Date.now() + FAILURE_BACKOFF_MS;
-			return disk?.payload ?? null;
+			return disk ? remember(disk) : null;
 		}
 		if (response.status === 304 && disk) {
 			const renewed = { ...disk, fetchedAt: now };
-			memoryCache = renewed;
 			void writeDiskCache(renewed, dbPath);
-			return disk.payload;
+			return remember(renewed);
 		}
 		if (!response.ok) {
 			report(hooks, "status", `HTTP ${response.status} ${response.statusText}`.trim());
-			if (disk) memoryCache = disk;
 			failureBackoffUntil = Date.now() + FAILURE_BACKOFF_MS;
-			return disk?.payload ?? null;
+			return disk ? remember(disk) : null;
 		}
 		try {
 			const payload: unknown = await response.json();
 			const etag = response.headers.get("etag") ?? undefined;
 			const fresh: PayloadCache = { fetchedAt: now, etag, payload };
-			memoryCache = fresh;
 			void writeDiskCache(fresh, dbPath);
-			return payload;
+			return remember(fresh);
 		} catch (error) {
 			report(hooks, "body", errorMessage(error));
-			if (disk) memoryCache = disk;
 			failureBackoffUntil = Date.now() + FAILURE_BACKOFF_MS;
-			return disk?.payload ?? null;
+			return disk ? remember(disk) : null;
 		}
 	} finally {
 		timeout.cancel();

@@ -202,10 +202,10 @@ export const ALLOWLIST: ReadonlyArray<AllowlistEntry> = [
 			"`realBash` is `REAL_BASH`, which is `Bun.env.SHELL` when it names bash and otherwise the literal `/bin/bash`, guarded by an `existsSync` that returns early. It runs the operator's bash with `--noprofile --norc` against a snapshot file the test wrote, which is the point: a snapshot of a login shell cannot be taken with a fake shell.",
 	},
 	{
-		file: "packages/coding-agent/test/helpers/chromium-can-launch.ts",
+		file: "packages/coding-agent/test/tools/browser/chromium.ts",
 		rule: "unresolved-spawn-target",
 		reason:
-			"`executable` is whatever `ensureChromiumExecutable()` resolved, and the spawn is a `--version` probe whose only purpose is deciding whether a real-browser suite skips: CI hosts hold the downloaded Chromium but lack the system libraries to exec it. A probe that must ask the real binary cannot be written against a literal path, and every real-browser suite asks through this one helper.",
+			"`executable` is whatever `ensureChromiumExecutable()` resolved, and the spawn is a `--version` probe whose only purpose is deciding whether to skip: CI hosts hold the downloaded Chromium but lack the system libraries to exec it. Every suite that launches Chromium imports `CHROMIUM_AVAILABLE` from this module rather than probing on its own. A probe that must ask the real binary cannot be written against a literal path.",
 	},
 	{
 		file: "packages/coding-agent/test/core/python-runner-integration.test.ts",
@@ -218,6 +218,12 @@ export const ALLOWLIST: ReadonlyArray<AllowlistEntry> = [
 		rule: "unresolved-spawn-target",
 		reason:
 			"`launch.command` is what `sandboxedLaunch` returns for a host without Landlock: the `python3` that `$which` resolved, running the backend's own `landlock-exec.py --no-rules` launcher over `process.execPath` and an agent script the test wrote into its temp directory. The suite's subject is that launch line, so the spawn runs what `sandboxedLaunch` built rather than a literal; the child runs in the temp cwd, writes only its own child's pid there, and reads no config root.",
+	},
+	{
+		file: "packages/coding-agent/test/cli/startup/an-exiting-timing-run-prints-its-tree-on-the-terminal.test.ts",
+		rule: "unresolved-spawn-target",
+		reason:
+			"`wrapper.command` is `script`, the util-linux and BSD pty wrapper `ptyWrapper` in `scripts/bench-startup.ts` returns on every platform, and its arguments `exec` `process.execPath` on the repository's `cli.ts`. The suite needs a real terminal because the defect is the launch card's stderr routing, which only engages on a tty. The child runs with `HOME`, `VEYYON_CONFIG_DIR` and every XDG root under a `mkdtemp` directory inside `.captures/`, provider access denied by `denyHostProviderAccess`, and the directory removed in a `finally`; the installed binary is never named.",
 	},
 	// The four below are all `bare-config-dir-name`, and they have one shape between them:
 	// the config-dir NAME is the SUBJECT, not the isolation. Each one assigns a name, asks a

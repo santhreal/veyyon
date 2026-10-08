@@ -1,5 +1,5 @@
+import { resolveServerCompactionTransport } from "@veyyon/agent-core/compaction/remote-compaction";
 import type { Api, Model } from "@veyyon/ai";
-import { resolveServerCompactionTransport } from "@veyyon/ai/providers/openai-compaction";
 import type {
 	BranchSummaryView,
 	CompactionKind,

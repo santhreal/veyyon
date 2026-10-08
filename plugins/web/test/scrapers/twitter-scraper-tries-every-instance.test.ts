@@ -194,6 +194,55 @@ describe("handleTwitter, when an instance fails", () => {
 	});
 });
 
+describe("handleTwitter, when a mirror serves the tweet", () => {
+	/** A served page: rendering is pinned on the bytes, so the page is padded past the 500-byte floor. */
+	function serve(body: string) {
+		return withLoadPage(async (url: string) => ({
+			ok: true,
+			content: `<html><body><!-- ${"x".repeat(600)} -->${body}</body></html>`,
+			contentType: "text/html",
+			finalUrl: url,
+			status: 200,
+		}));
+	}
+
+	it("renders the author, date, collapsed stats and the first nine thread replies", async () => {
+		const replies = Array.from({ length: 10 }, (_, i) => {
+			const user = i === 0 ? "" : `<div class="username">@r${i + 1}</div>`;
+			return `<div class="timeline-item">${user}<div class="tweet-content"> reply ${i + 1} </div></div>`;
+		}).join("");
+		const handleTwitter = serve(
+			`<div class="timeline-item"><div class="fullname">Ada Lovelace</div><div class="username">@ada</div>` +
+				`<div class="tweet-date"><a>Jul 25, 2026</a></div><div class="tweet-content"> The engine weaves. </div></div>` +
+				`<div class="tweet-stats">  3 replies\n\t 5   likes </div>${replies}`,
+		);
+
+		const result = await handleTwitter("https://x.com/ada/status/1", 10);
+
+		const thread = Array.from({ length: 9 }, (_, i) => `**${i === 0 ? "@?" : `@r${i + 1}`}**: reply ${i + 1}`);
+		expect(result?.content).toBe(
+			[
+				"# Tweet by Ada Lovelace (@ada)",
+				"*Jul 25, 2026*",
+				"The engine weaves.",
+				"---\n3 replies 5 likes",
+				"---",
+				"## Thread/Replies",
+				...thread,
+			].join("\n\n"),
+		);
+	});
+
+	it("falls back to Unknown and @? and omits the date, stats and the thread of a lone tweet", async () => {
+		const handleTwitter = serve(`<div class="timeline-item"><div class="tweet-content">Only the text.</div></div>`);
+
+		const result = await handleTwitter("https://x.com/ada/status/1", 10);
+
+		expect(result?.content).toBe("# Tweet by Unknown (@?)\n\nOnly the text.");
+		expect(result?.notes).toEqual(["Via Nitter: nitter.privacyredirect.com"]);
+	});
+});
+
 describe("handleTwitter, when the work is cancelled", () => {
 	it("propagates a user abort instead of returning the blocked message", async () => {
 		// The blocked message is a terminal answer: `handleSpecialUrls` treats it as a

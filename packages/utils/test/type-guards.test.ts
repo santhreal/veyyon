@@ -65,6 +65,18 @@ describe("toError / errorMessage", () => {
 	it("errorMessage keeps a whitespace-only message rather than substituting the name", () => {
 		expect(errorMessage(new Error(" "))).toBe(" ");
 	});
+
+	/** Callers run this inside a catch, so a throw here replaces the failure being
+	 * reported with "Cannot convert object to primitive value". */
+	it("errorMessage reports the object tag for a value with no string form", () => {
+		expect(errorMessage(Object.create(null))).toBe("[object Object]");
+		const hostile = {
+			toString() {
+				throw new Error("no string form");
+			},
+		};
+		expect(errorMessage(hostile)).toBe("[object Object]");
+	});
 });
 
 describe("getStringProperty / getNonBlankStringProperty", () => {
@@ -333,9 +345,7 @@ const NEGATED_INLINE_ISRECORD = [
 // remove the entry. Shrink-only.
 const NEGATED_ISRECORD_INLINE_GRANDFATHERED = new Set([
 	"coding-agent/src/modes/acp/acp-event-mapper.ts",
-	"coding-agent/src/modes/terminal/components/selectors/model-hub.ts",
 	"coding-agent/src/modes/terminal/controllers/omfg-rule.ts",
-	"coding-agent/src/modes/rpc/rpc-mode.ts",
 ]);
 
 function hasNegatedInlineIsRecord(text: string): boolean {

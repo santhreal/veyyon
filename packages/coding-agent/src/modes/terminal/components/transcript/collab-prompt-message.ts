@@ -1,6 +1,6 @@
 import { Container, Markdown, Text } from "@veyyon/tui";
 import type { CollabPromptCustomDisplay } from "@veyyon/wire/presentation";
-import { getMarkdownTheme } from "../../../../theme/markdown-theme";
+import { getMarkdownTheme, markdownTextStyle } from "../../../../theme/markdown-theme";
 import { theme } from "../../../../theme/theme";
 
 /**
@@ -16,9 +16,7 @@ export class CollabPromptMessageComponent extends Container {
 		authorText.setIgnoreTight(true);
 		this.addChild(authorText);
 
-		const md = new Markdown(message.text, 1, 1, getMarkdownTheme(), {
-			color: (value: string) => theme.fg("userMessageText", value),
-		});
+		const md = new Markdown(message.text, 1, 1, getMarkdownTheme(), markdownTextStyle("userMessageText"));
 		md.setIgnoreTight(true);
 		this.addChild(md);
 	}

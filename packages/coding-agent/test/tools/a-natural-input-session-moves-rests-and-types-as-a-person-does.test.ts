@@ -29,9 +29,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/sdk";
 import { BrowserTool } from "@veyyon/coding-agent/tools/web/browser";
 import { NATURAL_INPUT } from "@veyyon/coding-agent/tools/web/browser/natural-input";
-import { chromiumCanLaunch } from "../helpers/chromium-can-launch";
-
-const CHROMIUM_AVAILABLE = await chromiumCanLaunch();
+import { CHROMIUM_AVAILABLE } from "./browser/chromium";
 
 /** How much later than its range an event may land on a loaded machine: a protocol round trip, a timer. */
 const LATE_MS = 150;

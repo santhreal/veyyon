@@ -2,7 +2,7 @@
 
 You point Veyyon at an external program (a database bridge, a browser driver, a hosted API) and its
 tools show up in the session, ready for the model to call. The Model Context Protocol (MCP) is the
-standard that makes this work. Veyyon speaks it as a client: it connects out to MCP servers and
+protocol between the two. Veyyon is an MCP client: it connects out to MCP servers and
 consumes their tools and data. It is not itself an MCP server binary. To embed Veyyon in an editor,
 use ACP (`veyyon acp`); to drive it from your own process, use the SDK.
 

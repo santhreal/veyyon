@@ -24,9 +24,7 @@
  * with the same error `import("../main")` would have raised.
  *
  * The list is ordered by what each stage costs, heaviest subtrees split out, so
- * no single blocking chunk is long enough to be felt. `arktype` is the floor at
- * ~40ms in a compiled binary: it is one npm module with 89 importers here, and
- * it cannot be split further from the outside.
+ * no single blocking chunk is long enough to be felt.
  */
 
 import * as logger from "@veyyon/utils/logger";

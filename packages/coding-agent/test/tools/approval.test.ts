@@ -513,7 +513,19 @@ describe("tool-owned dynamic approval declarations", () => {
 			"source ./local-script.sh",
 			"tee /var/log/app.log",
 		]) {
-			expect(bashApproval(command)).toBe("exec");
+			// Not flagged means a plain exec decision: no reason, override or critical.
+			// A session-grant pattern may ride along and is not a flag.
+			const decision = bashApproval(command);
+			const flags =
+				typeof decision === "string"
+					? { tier: decision }
+					: {
+							tier: decision.tier,
+							reason: decision.reason,
+							override: decision.override,
+							critical: decision.critical,
+						};
+			expect(flags).toEqual({ tier: "exec" });
 		}
 	});
 

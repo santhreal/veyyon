@@ -16,12 +16,12 @@ import { makeToolSession } from "../helpers/tool-session";
 
 describe("task schema (single-spawn)", () => {
 	it("accepts {agent, task}", () => {
-		const parsed = taskSchema({ agent: "explore", task: "Map the auth module." });
+		const parsed = taskSchema.value({ agent: "explore", task: "Map the auth module." });
 		expect(parsed instanceof type.errors).toBe(false);
 	});
 
 	it("defaults agent to `deep` when omitted", () => {
-		const parsed = taskSchema({ task: "Map the auth module." });
+		const parsed = taskSchema.value({ task: "Map the auth module." });
 		expect(parsed instanceof type.errors).toBe(false);
 		if (!(parsed instanceof type.errors)) {
 			expect(parsed.agent).toBe("deep");
@@ -29,12 +29,12 @@ describe("task schema (single-spawn)", () => {
 	});
 
 	it("requires task", () => {
-		const parsed = taskSchema({ agent: "explore" });
+		const parsed = taskSchema.value({ agent: "explore" });
 		expect(parsed instanceof type.errors).toBe(true);
 	});
 
 	it("strips tasks/context/schema from the single-spawn schema", () => {
-		const parsed = taskSchema({
+		const parsed = taskSchema.value({
 			agent: "explore",
 			task: "Map the auth module.",
 			context: "shared background",

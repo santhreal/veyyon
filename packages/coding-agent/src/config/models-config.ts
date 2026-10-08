@@ -2,11 +2,14 @@
  * Custom model/provider config file handle and validation.
  */
 
+import * as path from "node:path";
 import type { Api, ModelSpec } from "@veyyon/ai/types";
 import { baseUrlSchemeError } from "@veyyon/catalog/hosts";
+import { getModelDbPath } from "@veyyon/utils";
 import { ConfigFile, deferSchema } from "./config-file";
 import {
 	type ModelsConfig,
+	modelsConfigSchemaFingerprint,
 	modelsConfigSchemas,
 	type ProviderAuthMode,
 	type ProviderDiscovery,
@@ -159,7 +162,10 @@ export function validateProviderConfiguration(
 
 export const ModelsConfigFile = new ConfigFile<ModelsConfig>(
 	"models",
-	deferSchema(() => modelsConfigSchemas().ModelsConfigSchema),
+	deferSchema(() => modelsConfigSchemas().ModelsConfigSchema, {
+		path: () => path.join(path.dirname(getModelDbPath()), "accepted-models-config.json"),
+		fingerprint: () => modelsConfigSchemaFingerprint(),
+	}),
 ).withValidation("models", config => {
 	const providers = config.providers ?? {};
 	for (const providerName in providers) {

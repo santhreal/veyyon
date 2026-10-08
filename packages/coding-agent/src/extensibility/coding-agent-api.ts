@@ -23,11 +23,13 @@
  * cannot participate in the cycle at all.
  */
 
-import { once } from "@veyyon/utils";
+import { lazy } from "@veyyon/utils";
 import type * as PiIndex from "../index";
 
 /** The package's public surface, as an extension author sees it through `api.pi`. */
 export type CodingAgentApi = typeof PiIndex;
+
+const codingAgentApi = lazy(() => import("../index"));
 
 /**
  * The package namespace, imported on first use and reused afterwards.
@@ -35,4 +37,6 @@ export type CodingAgentApi = typeof PiIndex;
  * Callers are async already; await this where the API object is built, not at module scope, or the
  * eager-barrel problem comes straight back.
  */
-export const loadCodingAgentApi: () => Promise<CodingAgentApi> = once(() => import("../index"));
+export function loadCodingAgentApi(): Promise<CodingAgentApi> {
+	return codingAgentApi.value;
+}

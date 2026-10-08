@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test";
+import { convertMessages } from "@veyyon/ai/providers/google-shared";
 import {
-	convertMessages,
 	elidedSignatureBytes,
 	firstRetainedAssistantIndex,
 	sendsSignature,
 	signaturePolicy,
-} from "@veyyon/ai/providers/google-shared";
+} from "@veyyon/ai/providers/google-thought-signatures";
 import type { AssistantMessage, Message, Model, ToolCall } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
 

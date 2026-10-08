@@ -1,22 +1,20 @@
 /**
- * The file transport follows the config root when it moves.
+ * The file sink follows the config root when it moves.
  *
- * The transport resolves its directory once, when the logger is built, and the logger
- * is built on the FIRST log emission — somewhere inside whatever the process happened
- * to be doing. A process that moved the config root afterwards kept writing to the OLD
- * directory forever: the operator finds an empty log file at the location every doc
- * names, and if the old directory has since been deleted the open stream writes to an
- * unlinked file and the lines are gone. The emit helpers swallow logging failures, so
- * nothing reports either case.
+ * The sink resolves its directory once, when it is built, and it is built on the FIRST log
+ * emission — somewhere inside whatever the process happened to be doing. A process that moved the
+ * config root afterwards kept writing to the OLD directory forever: the operator finds an empty log
+ * file at the location every doc names, and if the old directory has since been deleted the open
+ * descriptor writes to an unlinked file and the lines are gone. The emit helpers swallow logging
+ * failures, so nothing reports either case.
  *
  * It is also what left 130 `~/.veyyon-<suite>-<id>` directories in a real home directory,
- * each holding only `logs/` and a cache file: `file-stream-rotator` calls `mkDirForFile`
- * before every `createWriteStream`, so a stream open recreates the whole tree, and a
- * transport still bound under a removed temp root put it back.
+ * each holding only `logs/` and a cache file: a sink recreates its directory when it reopens the
+ * day's file, and a sink still bound under a removed temp root put the tree back.
  *
- * So these assertions are about the directory on disk rather than the transport object:
+ * So these assertions are about the directory on disk rather than the sink object:
  * where the bytes land, and that the abandoned directory stays abandoned. Asserting only
- * the new location is not enough — a rebind that DROPPED the transport instead of
+ * the new location is not enough — a rebind that DROPPED the sink instead of
  * replacing it would satisfy that and lose every log line in the process.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
@@ -50,10 +48,8 @@ function logFileCount(logsDir: string): number {
 /**
  * Wait for a log file to appear, briefly.
  *
- * The file transport writes asynchronously, so asserting immediately after an emit
- * races the stream open. Polling with a deadline keeps the assertion about WHERE the
- * bytes land instead of about how fast the stream opens, and a timeout still fails the
- * test rather than passing on an empty directory.
+ * Polling with a deadline keeps the assertion about WHERE the bytes land, and a timeout still
+ * fails the test rather than passing on an empty directory.
  */
 async function waitForLogFile(logsDir: string, timeoutMs = 2000): Promise<number> {
 	const deadline = Date.now() + timeoutMs;
@@ -161,12 +157,11 @@ describe("a rebind that cannot succeed", () => {
 	/**
 	 * The rebuild has to happen BEFORE the swap.
 	 *
-	 * Clearing the transports first and building second means an unwritable destination
-	 * leaves the logger with NO transports, and because the emit helpers swallow their
-	 * own failures the process then goes quiet for the rest of its life while winston
-	 * prints "Attempt to write logs with no transports" on every single line. That is
+	 * Clearing the sinks first and building second means an unwritable destination
+	 * leaves the logger with NO sinks, and because the emit helpers swallow their
+	 * own failures the process then goes quiet for the rest of its life. That is
 	 * the worse outcome by far: a temporary problem with one directory turns into losing
-	 * all logging. Keeping the working transport bound and announcing the failure is the
+	 * all logging. Keeping the working sink bound and announcing the failure is the
 	 * loud fallback; going silent is the banned one.
 	 */
 	it("keeps writing to the previous directory and says so", async () => {
@@ -244,20 +239,15 @@ describe("a rebind that cannot succeed", () => {
 	});
 });
 
-describe("a log destination that fails after the transport was built", () => {
+describe("a log destination that fails after the sink was built", () => {
 	/**
 	 * A log line must never take the process down.
 	 *
-	 * A transport is an EventEmitter and an `error` with no listener is an UNCAUGHT
-	 * exception, and `winston-daily-rotate-file` forwards `new`, `rotate` and `logRemoved`
-	 * from its underlying rotator but NOT `error`. So a destination that goes wrong while
-	 * the stream is opening — the directory removed, the disk full, the volume unmounted —
-	 * crashed whatever was running. This was not theoretical: the rebind made it reachable
-	 * in ordinary use, and `keybindings-migration` started dying on an `ENOENT` for a temp
-	 * logs directory its own cleanup had just removed.
-	 *
-	 * The listener is attached to the rotator's stream as well as the transport for exactly
-	 * that gap, and this is the test that fails if either half is dropped.
+	 * A destination can go wrong while the sink is live — the directory removed, the disk full,
+	 * the volume unmounted — and the rebind makes that reachable in ordinary use:
+	 * `keybindings-migration` started dying on an `ENOENT` for a temp logs directory its own
+	 * cleanup had just removed, when the previous sink raised that failure as an unhandled
+	 * `error` event.
 	 */
 	it("does not throw out of the emit path", async () => {
 		const vanishing = makeRoot("vanishing");
@@ -266,10 +256,9 @@ describe("a log destination that fails after the transport was built", () => {
 		logger.info("logger-rebind: before the directory vanishes");
 		expect(await waitForLogFile(logsDir)).toBeGreaterThan(0);
 
-		// Remove the whole tree while the transport is live, then keep logging. The rotator
-		// re-creates the directory on its next open, so this is not the same as the unwritable
-		// case above: here the open can succeed or fail depending on timing, and neither
-		// outcome may reach the caller as a throw.
+		// Remove the whole tree while the sink is live, then keep logging. The sink re-creates
+		// the directory on its next check, so this is not the same as the unwritable case
+		// above; either outcome of the reopen must stay inside the logger.
 		rmSync(vanishing.absolute, { force: true, recursive: true });
 
 		expect(() => {

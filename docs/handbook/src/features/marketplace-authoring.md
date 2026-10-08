@@ -190,7 +190,7 @@ Declares the plugin as an npm package. `version` is optional:
 }
 ```
 
-> Note: npm plugin sources are declared in the schema but installation support is not yet fully implemented. Use Git-based sources for plugins that need to work today.
+The schema accepts npm plugin sources, but installing one fails with `npm plugin sources are not yet supported. Use git-based sources instead.` Use a Git-based source.
 
 ## Plugin structure
 
@@ -208,7 +208,7 @@ my-plugin/
   README.md                ← recommended: description + usage
 ```
 
-> Note: extension modules declared via `package.json` `veyyon.extensions` (legacy `omp`/`pi`) load from marketplace installs exactly as they do from npm-installed or `veyyon plugin link`ed plugins: the install symlinks the cached plugin into the runtime `node_modules` tree that the extension loader enumerates.
+Extension modules declared via `package.json` `veyyon.extensions` (legacy `omp`/`pi`) load from marketplace installs as they do from npm-installed or `veyyon plugin link`ed plugins: the install symlinks the cached plugin into the runtime `node_modules` tree that the extension loader enumerates.
 
 ## Install command
 

@@ -50,8 +50,6 @@ function sanitizeLoadedText(text: string): string {
 	return replaceTabs(text.replace(/\r\n?/g, "\n")).replace(/[\x00-\x09\x0b-\x1f]/g, "");
 }
 
-const segmenter = getSegmenter();
-
 /**
  * Represents a chunk of text for word-wrap layout.
  * Tracks both the text content and its position in the original line.
@@ -94,7 +92,7 @@ export function wordWrapLine(line: string, maxWidth: number): TextChunk[] {
 	let inWhitespace = false;
 	let charIndex = 0;
 
-	for (const seg of segmenter.segment(line)) {
+	for (const seg of getSegmenter().segment(line)) {
 		const grapheme = seg.segment;
 		const graphemeIsWhitespace = getWordNavKind(grapheme) === "whitespace";
 
@@ -138,7 +136,7 @@ export function wordWrapLine(line: string, maxWidth: number): TextChunk[] {
 		let prefix = "";
 		let prefixWidth = 0;
 		let len = 0;
-		for (const seg of segmenter.segment(text)) {
+		for (const seg of getSegmenter().segment(text)) {
 			const grapheme = seg.segment;
 			const graphemeWidth = visibleWidth(grapheme);
 			if (prefixWidth + graphemeWidth > availableWidth) break;
@@ -150,7 +148,7 @@ export function wordWrapLine(line: string, maxWidth: number): TextChunk[] {
 		return { text: prefix, len };
 	}
 	function hasWideGrapheme(text: string): boolean {
-		for (const seg of segmenter.segment(text)) {
+		for (const seg of getSegmenter().segment(text)) {
 			if (visibleWidth(seg.segment) > 1) return true;
 		}
 		return false;
@@ -208,7 +206,7 @@ export function wordWrapLine(line: string, maxWidth: number): TextChunk[] {
 			let tokenChunkWidth = 0;
 			let tokenChunkStart = token.startIndex + consumedPrefixLen;
 			let tokenCharIndex = token.startIndex + consumedPrefixLen;
-			for (const seg of segmenter.segment(remainingText)) {
+			for (const seg of getSegmenter().segment(remainingText)) {
 				const grapheme = seg.segment;
 				const graphemeWidth = visibleWidth(grapheme);
 				if (tokenChunkWidth + graphemeWidth > maxWidth && tokenChunk) {
@@ -311,7 +309,7 @@ export function wordWrapLine(line: string, maxWidth: number): TextChunk[] {
 export function maxSegmentVisualCol(text: string, isLastSegment: boolean): number {
 	let total = 0;
 	let lastWidth = 0;
-	for (const seg of segmenter.segment(text)) {
+	for (const seg of getSegmenter().segment(text)) {
 		lastWidth = visibleWidth(seg.segment);
 		total += lastWidth;
 	}
@@ -693,26 +691,41 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	}
 
 	/**
-	 * Add a prompt to history for up/down arrow navigation.
-	 * Called after successful submission.
+	 * Add a prompt to history for up/down arrow navigation and record it in the
+	 * history database. Called after successful submission.
 	 */
 	addToHistory(text: string): void {
-		const trimmed = text.trim();
-		if (!trimmed) return;
-		// Don't add consecutive duplicates
-		if (this.#history.length > 0 && this.#history[0] === trimmed) return;
-		this.#history.unshift(trimmed);
-		// Limit history size
-		if (this.#history.length > 100) {
-			this.#history.pop();
-		}
-
+		const trimmed = this.#pushHistory(text);
+		if (trimmed === undefined) return;
 		const stor = this.#historyStorage;
 		if (stor) {
 			stor.add(trimmed, getProjectDir()).catch(error => {
 				logger.error("HistoryStorage add failed", { error: String(error) });
 			});
 		}
+	}
+
+	/**
+	 * Add a prompt to history for up/down arrow navigation without recording it
+	 * in the history database. For prompts replayed from a session transcript:
+	 * the database recorded each one when it was submitted.
+	 */
+	seedHistory(text: string): void {
+		this.#pushHistory(text);
+	}
+
+	/** Put `text` at the head of the navigation ring; the trimmed prompt, or undefined when nothing was added. */
+	#pushHistory(text: string): string | undefined {
+		const trimmed = text.trim();
+		if (!trimmed) return undefined;
+		// Don't add consecutive duplicates
+		if (this.#history.length > 0 && this.#history[0] === trimmed) return undefined;
+		this.#history.unshift(trimmed);
+		// Limit history size
+		if (this.#history.length > 100) {
+			this.#history.pop();
+		}
+		return trimmed;
 	}
 
 	#isEditorEmpty(): boolean {
@@ -884,24 +897,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 			text: `${beforePrefix}${replacementPad}${clampedReplacement.text}${marker}`,
 			width: visibleWidth(beforePrefix) + replacedSpanWidth,
 		};
-	}
-
-	#renderTerminalCursorMarker(text: string, marker: string, maxWidth: number): string {
-		if (!marker) return text;
-		if (visibleWidth(text) < maxWidth) {
-			return text + marker;
-		}
-
-		let insertAt = text.length;
-		let offset = 0;
-		for (const seg of segmenter.segment(text)) {
-			if (visibleWidth(seg.segment) > 0) {
-				insertAt = offset;
-			}
-			offset += seg.segment.length;
-		}
-
-		return `${text.slice(0, insertAt)}${marker}${text.slice(insertAt)}`;
 	}
 
 	#getPageScrollStep(totalVisualLines: number): number {
@@ -1102,7 +1097,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	#renderZeroWidthCursorRow(gutterText: string, showPromptGutter: boolean, marker: string): string {
 		const budget = visibleWidth(gutterText);
 		if (this.#useTerminalCursor) {
-			return this.#renderTerminalCursorMarker(gutterText, marker, budget);
+			return renderTerminalCursorMarker(gutterText, marker, budget);
 		}
 		const replacement = this.cursorOverride
 			? { text: this.cursorOverride, width: this.cursorOverrideWidth ?? 1 }
@@ -1134,7 +1129,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		}
 		if (after.length === 0 && !paint.borderVisible && width >= paint.contentWidth) {
 			return {
-				text: this.#renderTerminalCursorMarker(before, marker, paint.contentWidth),
+				text: renderTerminalCursorMarker(before, marker, paint.contentWidth),
 				width,
 				decorated: false,
 				overflow: 0,
@@ -1616,7 +1611,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		const token = this.#atomicTokenAt(line, col);
 		if (token) col = token.start;
 		if (col > 0 && col < line.length) {
-			for (const part of segmenter.segment(line)) {
+			for (const part of getSegmenter().segment(line)) {
 				if (part.index + part.segment.length > col) {
 					col = part.index;
 					break;
@@ -1866,7 +1861,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 				}
 			}
 		} else {
-			for (const seg of segmenter.segment(char)) {
+			for (const seg of getSegmenter().segment(char)) {
 				if (getWordNavKind(seg.segment) === "whitespace") {
 					isWordChunk = false;
 					break;
@@ -1957,7 +1952,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 					this.#tryTriggerAutocomplete();
 				}
 				// Check if we're typing an internal URL scheme (e.g. local://, skill://)
-				else if (this.#textTriggersUrlAutocomplete(textBeforeCursor)) {
+				else if (textTriggersUrlAutocomplete(textBeforeCursor)) {
 					this.#tryTriggerAutocomplete();
 				}
 			}
@@ -1967,7 +1962,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	}
 
 	#handlePaste(pastedText: string): void {
-		let filteredText = this.#sanitizePastedText(pastedText);
+		let filteredText = sanitizePastedText(pastedText);
 
 		// If pasting a file path (starts with /, ~, or .) and the character before
 		// the cursor is a word character, prepend a space for better readability.
@@ -2016,32 +2011,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		});
 	}
 
-	/** Normalize raw pasted text: decode tmux re-encoded control bytes (both extended-keys formats),
-	 *  normalize CRLF and
-	 *  NFC (macOS NFD filename drag-drops), expand tabs, and strip control characters except newline. */
-	#sanitizePastedText(pastedText: string): string {
-		// Decode tmux's re-encoded control bytes (both extended-keys formats) back to
-		// their literal byte so the per-char filter below preserves newlines instead of
-		// stripping ESC and leaking the printable tail into the editor. See the decoder.
-		const decodedText = decodeReencodedPasteControls(pastedText);
-
-		// Clean the pasted text. NFC-normalize so macOS Finder drag-drops of
-		// Korean filenames (which arrive as NFD: e.g. `ᄒ`+`ᅪ` instead of `화`)
-		// land in the buffer as the same precomposed syllables a terminal
-		// renders — without this, cursor column accounting drifts by
-		// `(NFD cells − NFC cells)` and the visible glyph desyncs from the
-		// hardware cursor.
-		const cleanText = decodedText.replace(/\r\n?/g, "\n").normalize("NFC");
-
-		// Convert tabs to spaces (4 spaces per tab).
-		const tabExpandedText = cleanText.replace(/\t/g, "   ");
-
-		// Strip control characters except newline (tabs already expanded above, CRs already
-		// normalized). Single regex pass instead of split/filter/join to avoid allocating a
-		// per-code-unit array for large pastes.
-		return tabExpandedText.replace(/[\x00-\x09\x0B-\x1F]/g, "");
-	}
-
 	/** Store `content` in the paste buffer and insert a collapsed `[Paste #N]` marker that expands
 	 *  back to `content` on submit. `lineCount` is the content's line count. */
 	#storePasteMarker(content: string, lineCount: number): void {
@@ -2067,7 +2036,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 			this.#isInSlashAutocompleteContext() ||
 			textBeforeCursor.match(/(?:^|[\s])@[^\s]*$/) ||
 			textBeforeCursor.match(/#[^\s#]*$/) ||
-			this.#textTriggersUrlAutocomplete(textBeforeCursor)
+			textTriggersUrlAutocomplete(textBeforeCursor)
 		) {
 			this.#tryTriggerAutocomplete();
 		}
@@ -2928,18 +2897,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		return this.#isInSubmittedSlashCommandContext() && /^\/\S+ $/.test(textBeforeCursor);
 	}
 
-	// Autocomplete methods
-	/**
-	 * Whether the text ending at the cursor looks like a `scheme://` URL token.
-	 * Generic by design: any scheme triggers a suggestion fetch and the active
-	 * provider decides whether it has candidates (returning none is a no-op).
-	 * MUST stay in sync with the token grammar in coding-agent's
-	 * `internal-url-autocomplete.ts`.
-	 */
-	#textTriggersUrlAutocomplete(textBeforeCursor: string): boolean {
-		return /(?:^|[\s"'`(<=])[a-z][a-z0-9+.-]*:\/{1,2}[^\s"'`()<>]*$/i.test(textBeforeCursor);
-	}
-
 	async #tryTriggerAutocomplete(explicitTab: boolean = false): Promise<void> {
 		if (!this.#autocompleteProvider) return;
 		// Check if we should trigger file completion on Tab
@@ -3280,4 +3237,60 @@ export class Editor implements Component, Focusable, MouseRoutable {
 
 		return null;
 	}
+}
+
+function renderTerminalCursorMarker(text: string, marker: string, maxWidth: number): string {
+	if (!marker) return text;
+	if (visibleWidth(text) < maxWidth) {
+		return text + marker;
+	}
+
+	let insertAt = text.length;
+	let offset = 0;
+	for (const seg of getSegmenter().segment(text)) {
+		if (visibleWidth(seg.segment) > 0) {
+			insertAt = offset;
+		}
+		offset += seg.segment.length;
+	}
+
+	return `${text.slice(0, insertAt)}${marker}${text.slice(insertAt)}`;
+}
+
+/** Normalize raw pasted text: decode tmux re-encoded control bytes (both extended-keys formats),
+ *  normalize CRLF and
+ *  NFC (macOS NFD filename drag-drops), expand tabs, and strip control characters except newline. */
+function sanitizePastedText(pastedText: string): string {
+	// Decode tmux's re-encoded control bytes (both extended-keys formats) back to
+	// their literal byte so the per-char filter below preserves newlines instead of
+	// stripping ESC and leaking the printable tail into the editor. See the decoder.
+	const decodedText = decodeReencodedPasteControls(pastedText);
+
+	// Clean the pasted text. NFC-normalize so macOS Finder drag-drops of
+	// Korean filenames (which arrive as NFD: e.g. `ᄒ`+`ᅪ` instead of `화`)
+	// land in the buffer as the same precomposed syllables a terminal
+	// renders — without this, cursor column accounting drifts by
+	// `(NFD cells − NFC cells)` and the visible glyph desyncs from the
+	// hardware cursor.
+	const cleanText = decodedText.replace(/\r\n?/g, "\n").normalize("NFC");
+
+	// Convert tabs to spaces (4 spaces per tab).
+	const tabExpandedText = cleanText.replace(/\t/g, "   ");
+
+	// Strip control characters except newline (tabs already expanded above, CRs already
+	// normalized). Single regex pass instead of split/filter/join to avoid allocating a
+	// per-code-unit array for large pastes.
+	return tabExpandedText.replace(/[\x00-\x09\x0B-\x1F]/g, "");
+}
+
+// Autocomplete methods
+/**
+ * Whether the text ending at the cursor looks like a `scheme://` URL token.
+ * Generic by design: any scheme triggers a suggestion fetch and the active
+ * provider decides whether it has candidates (returning none is a no-op).
+ * MUST stay in sync with the token grammar in coding-agent's
+ * `internal-url-autocomplete.ts`.
+ */
+function textTriggersUrlAutocomplete(textBeforeCursor: string): boolean {
+	return /(?:^|[\s"'`(<=])[a-z][a-z0-9+.-]*:\/{1,2}[^\s"'`()<>]*$/i.test(textBeforeCursor);
 }

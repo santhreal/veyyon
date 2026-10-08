@@ -59,7 +59,7 @@ pub enum Ellipsis {
 /// Call this on every buffer that comes in from JavaScript. `truncate_to_width`
 /// used to strip the terminator with a loop written inline, which left one
 /// entry point that knew about the NUL and four that did not, and the four were
-/// the ones with the bug. `build_utf16_string` performs the mirror step on the
+/// the ones with the bug. `JsText::new` performs the mirror step on the
 /// way back out, over [`utf16_content_len`], so both directions read the same
 /// rule.
 fn utf16_content(buffer: &[u16]) -> &[u16] {
@@ -69,7 +69,7 @@ fn utf16_content(buffer: &[u16]) -> &[u16] {
 /// Length of `buffer` with any trailing NUL terminator excluded.
 ///
 /// The one owner of "where does the content end", so that the inbound direction
-/// ([`utf16_content`]) and the outbound direction (`build_utf16_string` in
+/// ([`utf16_content`]) and the outbound direction (`JsText::new` in
 /// `veyyon-natives`) cannot disagree. They did disagree: the outbound side was
 /// written believing napi wanted a NUL-terminated buffer and so it APPENDED a
 /// terminator, but napi passes the vector to `napi_create_string_utf16` with an
@@ -1006,48 +1006,53 @@ fn trim_end_spaces_in_place(line: &mut Vec<u16>) {
 	}
 }
 
-fn split_into_tokens_with_ansi(line: &[u16]) -> SmallVec<[Vec<u16>; 4]> {
-	let mut tokens = SmallVec::<[Vec<u16>; 4]>::new();
-	let mut current = Vec::<u16>::new();
-	let mut pending_ansi = SmallVec::<[u16; 32]>::new();
-	let mut in_whitespace = false;
-	let mut i = 0usize;
+/// The words and space runs of one line, as slices of it.
+///
+/// A token is a maximal run of spaces or of non-spaces. The escape sequences
+/// between two characters belong to the token of the character after them, and
+/// a trailing run to the last token, so the tokens partition the line: joined,
+/// they are the line. Borrowing the slices keeps a wrap from allocating a
+/// buffer per word.
+struct AnsiTokens<'a> {
+	line: &'a [u16],
+	at:   usize,
+}
 
-	while i < line.len() {
-		if line[i] == ESC
-			&& let Some(seq_len) = ansi_seq_len_u16(line, i)
-		{
-			pending_ansi.extend_from_slice(&line[i..i + seq_len]);
-			i += seq_len;
-			continue;
+impl<'a> Iterator for AnsiTokens<'a> {
+	type Item = &'a [u16];
+
+	fn next(&mut self) -> Option<&'a [u16]> {
+		let line = self.line;
+		let start = self.at;
+		if start >= line.len() {
+			return None;
 		}
-
-		let ch = line[i];
-		let char_is_space = ch == b' ' as u16;
-		if char_is_space != in_whitespace && !current.is_empty() {
-			tokens.push(current);
-			current = Vec::new();
+		let mut spaces: Option<bool> = None;
+		let mut last_char_end = start;
+		let mut end = line.len();
+		let mut i = start;
+		while i < line.len() {
+			if line[i] == ESC
+				&& let Some(seq_len) = ansi_seq_len_u16(line, i)
+			{
+				i += seq_len;
+				continue;
+			}
+			let is_space = line[i] == b' ' as u16;
+			match spaces {
+				None => spaces = Some(is_space),
+				Some(run) if run != is_space => {
+					end = last_char_end;
+					break;
+				},
+				Some(_) => {},
+			}
+			i += 1;
+			last_char_end = i;
 		}
-
-		if !pending_ansi.is_empty() {
-			current.extend_from_slice(&pending_ansi);
-			pending_ansi.clear();
-		}
-
-		in_whitespace = char_is_space;
-		current.push(ch);
-		i += 1;
+		self.at = end;
+		Some(&line[start..end])
 	}
-
-	if !pending_ansi.is_empty() {
-		current.extend_from_slice(&pending_ansi);
-	}
-
-	if !current.is_empty() {
-		tokens.push(current);
-	}
-
-	tokens
 }
 
 /// Break a single token that is wider than the target width across lines.
@@ -1169,19 +1174,21 @@ fn wrap_single_line(line: &[u16], width: usize, tab_width: usize) -> SmallVec<[V
 		return smallvec![Vec::new()];
 	}
 
-	if visible_width_u16(line, tab_width) <= width {
+	if !visible_width_u16_up_to(line, width, tab_width).1 {
 		return smallvec![line.to_vec()];
 	}
 
-	let tokens = split_into_tokens_with_ansi(line);
 	let mut wrapped = SmallVec::<[Vec<u16>; 4]>::new();
-	let mut current_line = Vec::<u16>::new();
+	// A row holds at most `width` cells plus its codes; sizing it once spares
+	// the doublings a row built from empty would take.
+	let row_capacity = line.len().min(width.saturating_add(32));
+	let mut current_line = Vec::<u16>::with_capacity(row_capacity);
 	let mut current_width = 0usize;
 	let mut state = AnsiState::new();
 
-	for token in tokens {
-		let token_width = visible_width_u16(&token, tab_width);
-		let is_whitespace = token_is_whitespace(&token);
+	for token in (AnsiTokens { line, at: 0 }) {
+		let token_width = visible_width_u16(token, tab_width);
+		let is_whitespace = token_is_whitespace(token);
 
 		if token_width > width && !is_whitespace {
 			if !current_line.is_empty() {
@@ -1191,7 +1198,7 @@ fn wrap_single_line(line: &[u16], width: usize, tab_width: usize) -> SmallVec<[V
 				current_width = 0;
 			}
 
-			let mut broken = break_long_word(&token, width, tab_width, &mut state);
+			let mut broken = break_long_word(token, width, tab_width, &mut state);
 			if let Some(last) = broken.pop() {
 				wrapped.extend(broken);
 				current_line = last;
@@ -1207,20 +1214,20 @@ fn wrap_single_line(line: &[u16], width: usize, tab_width: usize) -> SmallVec<[V
 			write_line_end_reset(&state, &mut line_to_wrap);
 			wrapped.push(line_to_wrap);
 
-			current_line = Vec::new();
+			current_line = Vec::with_capacity(row_capacity);
 			write_active_codes(&state, &mut current_line);
 			if is_whitespace {
 				current_width = 0;
 			} else {
-				current_line.extend_from_slice(&token);
+				current_line.extend_from_slice(token);
 				current_width = token_width;
 			}
 		} else {
-			current_line.extend_from_slice(&token);
+			current_line.extend_from_slice(token);
 			current_width += token_width;
 		}
 
-		update_state_from_text(&token, &mut state);
+		update_state_from_text(token, &mut state);
 	}
 
 	if !current_line.is_empty() {
@@ -1327,33 +1334,39 @@ fn wrap_text_with_ansi_impl(text: &[u16], width: usize, tab_width: usize) -> Wra
 			let hangs =
 				indent > 0 && content_at < line.len() && indent + HANGING_INDENT_MIN_TEXT <= width;
 
-			let mut line_with_prefix: Vec<u16> = Vec::new();
-			if !result.is_empty() {
-				write_active_codes(&state, &mut line_with_prefix);
-			}
-			if hangs {
-				// The indent's own spaces are dropped and re-added per row; the
-				// sequences between them are copied so the content keeps its style.
-				let mut at = 0usize;
-				while at < content_at {
-					let escaped = escape_run_len(&line[at..], tab_width);
-					if escaped == 0 {
-						at += 1;
-						continue;
-					}
-					line_with_prefix.extend_from_slice(&line[at..at + escaped]);
-					at += escaped;
+			// A row that neither hangs nor reopens carried codes wraps in place.
+			let carries_codes = !result.is_empty() && !state.is_empty();
+			let line_with_prefix: Vec<u16>;
+			let input: &[u16] = if hangs || carries_codes {
+				let mut prefixed = Vec::with_capacity(line.len() + 32);
+				if carries_codes {
+					state.write_restore_u16(&mut prefixed);
 				}
-				line_with_prefix.extend_from_slice(&line[content_at..]);
+				if hangs {
+					// The indent's own spaces are dropped and re-added per row; the
+					// sequences between them are copied so the content keeps its style.
+					let mut at = 0usize;
+					while at < content_at {
+						let escaped = escape_run_len(&line[at..], tab_width);
+						if escaped == 0 {
+							at += 1;
+							continue;
+						}
+						prefixed.extend_from_slice(&line[at..at + escaped]);
+						at += escaped;
+					}
+					prefixed.extend_from_slice(&line[content_at..]);
+				} else {
+					prefixed.extend_from_slice(line);
+				}
+				line_with_prefix = prefixed;
+				&line_with_prefix
 			} else {
-				line_with_prefix.extend_from_slice(line);
-			}
+				line
+			};
 
-			let wrapped = wrap_single_line(
-				&line_with_prefix,
-				if hangs { width - indent } else { width },
-				tab_width,
-			);
+			let wrapped =
+				wrap_single_line(input, if hangs { width - indent } else { width }, tab_width);
 			if hangs {
 				// The indent leads the row, ahead of any codes: a row styled after its
 				// indent comes back byte-identical when it needed no wrap, and the
@@ -2987,5 +3000,112 @@ mod tests {
 		let data = to_u16("aaaaaaaaaa\x1b\u{1}bbbbbbbbbb");
 		let lines = wrap_text_with_ansi_impl(&data, 4, DEFAULT_TAB_WIDTH);
 		assert!(!lines.is_empty());
+	}
+
+	/// A line splits into the tokens a wrap breaks between.
+	///
+	/// WHY THIS SUITE EXISTS. `wrap_single_line` measures, places and carries
+	/// style one token at a time, so the token boundaries decide every break.
+	/// The tokens are borrowed slices of the line, and this suite pins the
+	/// grouping they must have: they partition the line in order, each is a
+	/// maximal run of spaces or of non-spaces, and a run of escape sequences
+	/// belongs to the token of the character after it, or to the last token
+	/// when no character follows it.
+	///
+	/// It enumerates every line of one to four pieces drawn from words, spaces,
+	/// a tab, SGR and OSC 66 sequences, a lone ESC and multi-unit graphemes. It
+	/// does not check how a token is measured or where a row breaks.
+	mod a_line_splits_into_the_tokens_a_wrap_breaks_between {
+		use super::*;
+
+		const PIECES: [&str; 11] = [
+			"a",
+			"bc",
+			" ",
+			"  ",
+			"\t",
+			"\u{1b}[1m",
+			"\u{1b}[22m",
+			"\u{1b}]66;s=2;x\u{7}",
+			"\u{1b}",
+			"\u{6f22}",
+			"e\u{301}\u{1f642}",
+		];
+
+		/// For each unit of `line`: whether it is a space, when it is a
+		/// character, or `None` inside an escape sequence.
+		fn character_spaces(line: &[u16]) -> Vec<Option<bool>> {
+			let mut kinds = vec![None; line.len()];
+			let mut i = 0usize;
+			while i < line.len() {
+				if line[i] == ESC
+					&& let Some(len) = ansi_seq_len_u16(line, i)
+				{
+					i += len;
+					continue;
+				}
+				kinds[i] = Some(line[i] == b' ' as u16);
+				i += 1;
+			}
+			kinds
+		}
+
+		fn check(text: &str) {
+			let line = to_u16(text);
+			let tokens: Vec<&[u16]> = AnsiTokens { line: &line, at: 0 }.collect();
+			assert_eq!(tokens.concat(), line, "{text:?}: the tokens do not rebuild the line");
+
+			let kinds = character_spaces(&line);
+			if kinds.iter().all(Option::is_none) {
+				assert_eq!(tokens.len(), 1, "{text:?}: a line of escapes is one token");
+				return;
+			}
+
+			let mut start = 0usize;
+			let mut previous_run: Option<bool> = None;
+			for (index, token) in tokens.iter().enumerate() {
+				let end = start + token.len();
+				let characters: Vec<bool> = kinds[start..end].iter().filter_map(|&kind| kind).collect();
+				let Some(&run) = characters.first() else {
+					panic!("{text:?}: token {index} holds no character");
+				};
+				assert!(
+					characters.iter().all(|&space| space == run),
+					"{text:?}: token {index} mixes spaces and non-spaces"
+				);
+				assert_ne!(
+					previous_run,
+					Some(run),
+					"{text:?}: token {index} continues the run before it"
+				);
+				if index + 1 < tokens.len() {
+					assert!(
+						kinds[end - 1].is_some(),
+						"{text:?}: token {index} ends in an escape that belongs to the next token"
+					);
+				}
+				previous_run = Some(run);
+				start = end;
+			}
+		}
+
+		#[test]
+		fn every_line_of_up_to_four_pieces() {
+			let mut lines = vec![String::new()];
+			for _ in 0..4 {
+				lines = lines
+					.iter()
+					.flat_map(|line| PIECES.iter().map(move |piece| format!("{line}{piece}")))
+					.collect();
+				for line in &lines {
+					check(line);
+				}
+			}
+		}
+
+		#[test]
+		fn an_empty_line_has_no_tokens() {
+			assert_eq!(AnsiTokens { line: &[], at: 0 }.count(), 0);
+		}
 	}
 }

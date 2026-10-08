@@ -1,10 +1,13 @@
 /**
- * The extensions a session starts with, and the custom TypeScript commands discovered beside them.
+ * The extensions a session starts with, the custom TypeScript commands discovered beside them, the
+ * prompt templates and file slash commands the session offers, and the report of skills that failed to
+ * load.
  */
 
 import type { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
-import { errorMessage, logger } from "@veyyon/utils";
+import { errorMessage, logger, prefetch } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
+import type { PromptTemplate } from "../config/prompt-templates";
 import type { Settings } from "../config/settings";
 import { type CustomCommandsLoadResult, loadCustomCommands } from "../extensibility/custom-commands";
 import {
@@ -14,9 +17,16 @@ import {
 	loadExtensions,
 } from "../extensibility/extensions";
 import { loadBuiltinExtension } from "../extensibility/extensions/loader";
+import type { SkillWarning } from "../extensibility/skills";
+import type { FileSlashCommand } from "../extensibility/slash-commands";
 import type { EventBus } from "../utils/event-bus";
 import type { SessionCpuExecHooks } from "./cpu-limit";
-import { discoverSessionExtensionPaths, reportExtensionLoadFailures } from "./factory-extensions";
+import {
+	discoverPromptTemplates,
+	discoverSessionExtensionPaths,
+	discoverSlashCommands,
+	reportExtensionLoadFailures,
+} from "./factory-extensions";
 import type { CreateAgentSessionOptions } from "./factory-options";
 
 /** What {@link loadStartupExtensions} and {@link loadStartupCustomCommands} read. */
@@ -169,4 +179,40 @@ export async function loadStartupCustomCommands(
 		input.operatorNotices.error("commands", `${path}: ${error}`);
 	}
 	return result;
+}
+
+/** Report each skill that failed to load on the operator channel. */
+export function reportSkillWarnings(operatorNotices: OperatorNotices, warnings: readonly SkillWarning[]): void {
+	for (const warning of warnings) {
+		operatorNotices.warn("skills", `${warning.skillPath}: ${warning.message}`);
+	}
+}
+
+/** The prompt templates and file slash commands a session offers, each discovery started and prefetched. */
+export interface CommandInputDiscovery {
+	readonly promptTemplates: Promise<PromptTemplate[]>;
+	readonly slashCommands: Promise<FileSlashCommand[]>;
+}
+
+/**
+ * Start discovering the prompt templates and slash commands of `cwd`. An input the caller supplied is
+ * used as given: `undefined` means discover it, and `[]` means resolved to nothing on purpose.
+ */
+export function discoverCommandInputs(
+	cwd: string,
+	agentDir: string,
+	supplied: Pick<CreateAgentSessionOptions, "promptTemplates" | "slashCommands">,
+): CommandInputDiscovery {
+	return {
+		promptTemplates: prefetch(
+			supplied.promptTemplates !== undefined
+				? Promise.resolve(supplied.promptTemplates)
+				: logger.time("discoverPromptTemplates", discoverPromptTemplates, cwd, agentDir),
+		),
+		slashCommands: prefetch(
+			supplied.slashCommands !== undefined
+				? Promise.resolve(supplied.slashCommands)
+				: logger.time("discoverSlashCommands", discoverSlashCommands, cwd, agentDir),
+		),
+	};
 }

@@ -8,7 +8,8 @@
 	"patchedDependencies": {
 		"@ark/schema@0.56.2": "patches/@ark%2Fschema@0.56.2.patch",
 		"puppeteer-core@25.3.0": "patches/puppeteer-core@25.3.0.patch",
-		"@agentclientprotocol/sdk@1.2.1": "patches/@agentclientprotocol%2Fsdk@1.2.1.patch"
+		"@agentclientprotocol/sdk@1.2.1": "patches/@agentclientprotocol%2Fsdk@1.2.1.patch",
+		"arktype@2.2.3": "patches/arktype@2.2.3.patch"
 	},
 	"workspaces": {
 		"packages": [
@@ -109,8 +110,6 @@
 			"typescript": "^7.0.2",
 			"vite": "^8.1.4",
 			"vite-plugin-solid": "^2.11.12",
-			"winston": "^3.19.0",
-			"winston-daily-rotate-file": "^5.0.0",
 			"yaml": "^2.9.0",
 			"zod": "^4",
 			"@veyyon/stats": "1.5.5",

@@ -23,7 +23,13 @@
  * conversation through every combination of the two knobs that decide whether
  * a rebuild is destructive (`tui.scrollbackRebuild`) and whether the transcript
  * is virtualized at all, and asserts history survives in all of them, plus the
- * genuine-divergence path where the rebuild MUST erase and replay.
+ * genuine-divergence path where the rebuild MUST erase and replay. A replay can
+ * also land between the paint that committed rows and the frame that drops
+ * them: the transcript had dropped nothing, so the replay preparation returned
+ * without marking the frame as a replay, and that frame dropped the committed
+ * rows the replay was about to erase. A session replace then left 35 of 600
+ * transcript rows in the terminal. The race runs for each replay gesture on the
+ * normal screen and on the alternate-screen tape.
  *
  * WHAT IT DOES NOT CATCH. It runs one width and one height, and it drives
  * finalized blocks rather than a live streaming markdown block, so the
@@ -200,7 +206,7 @@ describe("a virtualized transcript never loses history to a rebuild", () => {
 			const off = await conversation({ rebuild: false, virtualized: true });
 
 			expect(on.history()).toEqual(off.history());
-			expect(on.tui.scrollTapeRows).toBe(off.tui.scrollTapeRows);
+			expect(on.tui.scrolledOffRows).toBe(off.tui.scrolledOffRows);
 		},
 		CASE_TIMEOUT_MS,
 	);
@@ -248,4 +254,85 @@ describe("a virtualized transcript never loses history to a rebuild", () => {
 		},
 		CASE_TIMEOUT_MS,
 	);
+});
+
+/** A transcript that runs `gesture` once the first frame that composed it has finished. */
+class RacingTranscript extends TranscriptContainer {
+	#gesture: (() => void) | undefined;
+	constructor(gesture: () => void) {
+		super();
+		this.#gesture = gesture;
+	}
+	override render(width: number): readonly string[] {
+		const gesture = this.#gesture;
+		this.#gesture = undefined;
+		// A microtask runs once the frame returns, after the engine published the rows it committed
+		// and before the frame that drops them.
+		if (gesture !== undefined) queueMicrotask(gesture);
+		return super.render(width);
+	}
+}
+
+describe("a replay that lands before the transcript drops the rows the last paint committed", () => {
+	// The first paint of a long transcript commits most of it and publishes that claim; the
+	// transcript drops those rows on its next render. A replay requested in between rehydrates
+	// nothing, because nothing is dropped yet, and must still keep every row in its frame: it
+	// erases native history (or the alternate-screen tape) and replays exactly that frame.
+	const gestures = {
+		"a session replace": (tui: TUI) => tui.requestRender(true, { clearScrollback: true }),
+		"a display reset": (tui: TUI) => tui.resetDisplay(),
+	} as const;
+	const surfaces = ["normal", "alternate"] as const;
+	type Surface = (typeof surfaces)[number];
+
+	/** Paint a long transcript, run `gesture` (if any) in the race window, and report what history kept. */
+	async function paint(surface: Surface, gesture?: (tui: TUI) => void): Promise<{ tape: number; missing: number[] }> {
+		const term = new VirtualTerminal(WIDTH, HEIGHT, 5_000);
+		const tui = new TUI(term, true);
+		if (surface === "alternate") {
+			tui.setScrollTransport("alt-arrows");
+			tui.setScrollIsolation(true);
+		}
+		const transcript = new RacingTranscript(() => gesture?.(tui));
+		for (let turn = 0; turn < TURNS * 4; turn++) {
+			transcript.addChild(new Block([`> turn ${turn}`, "", `  reply body for turn ${turn}`, ""]));
+		}
+		tui.addChild(transcript);
+		tui.addChild(new Composer());
+		tui.setPinnedFooterChildCount(1);
+		tui.start();
+		try {
+			await settleFrames(term, tui);
+			const history = term
+				.getScrollBuffer()
+				.map(row => Bun.stripANSI(row).trimEnd())
+				.filter(row => row.length > 0);
+			const missing = Array.from({ length: TURNS * 4 }, (_, turn) => turn).filter(
+				turn => !history.some(row => row.endsWith(`reply body for turn ${turn}`)),
+			);
+			return { tape: tui.scrollTapeRows, missing };
+		} finally {
+			tui.stop();
+		}
+	}
+
+	for (const [name, gesture] of Object.entries(gestures)) {
+		for (const surface of surfaces) {
+			it(
+				`keeps every turn after ${name} on the ${surface} screen`,
+				async () => {
+					const raced = await paint(surface, gesture);
+					const quiet = await paint(surface);
+					if (surface === "alternate") {
+						// The tape is the only copy the reader scrolls on this surface: the race costs it
+						// no row the same transcript's tape holds with nothing in the race window.
+						expect({ tape: raced.tape, nonEmpty: raced.tape > 0 }).toEqual({ tape: quiet.tape, nonEmpty: true });
+					} else {
+						expect(raced.missing).toEqual([]);
+					}
+				},
+				CASE_TIMEOUT_MS,
+			);
+		}
+	}
 });

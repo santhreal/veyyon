@@ -159,6 +159,38 @@ describe("a config load failure", () => {
 		expect(message).toEndWith(`Fix: edit ${file}, or delete it to fall back to the defaults.`);
 	});
 
+	/**
+	 * A relocated handle reads another file than the one it was relocated from, so every stage must
+	 * name the file the relocated handle read. The file's own checks (`withValidation`) named the
+	 * ORIGINAL handle's path, because the check closed over the handle it was registered on and
+	 * `relocate` copied the closure: a models config rejected under a profile named the default path.
+	 */
+	for (const [stage, content] of [
+		["Schema", JSON.stringify({ providers: { p: { transport: "bogus" } } })],
+		["Unexpected", "providers: { unterminated: ["],
+		["Validate(probe)", JSON.stringify({ providers: { p: { transport: "pi-native" } } })],
+	] as const) {
+		it(`names the file a relocated handle read for a ${stage} failure`, () => {
+			const original = path.join(dir, "original.yml");
+			fs.writeFileSync(file, content);
+			const relocated = new ConfigFile(
+				"probe",
+				deferSchema(() => SCHEMA),
+				original,
+			)
+				.withValidation("probe", () => {
+					throw new Error("the file's own check refused it");
+				})
+				.relocate(file);
+
+			const error = relocated.tryLoad().error as Error | undefined;
+
+			expect(error?.message).toStartWith(`Failed to load config file probe (${file}), ${stage} error:`);
+			expect(error?.message).toEndWith(`Fix: edit ${file}, or delete it to fall back to the defaults.`);
+			expect(error?.message).not.toContain(original);
+		});
+	}
+
 	/** A file that loads must produce no error, so the bounds above cannot be passing by refusing everything. */
 	it("loads a valid file", () => {
 		fs.writeFileSync(file, JSON.stringify({ providers: { p: { transport: "pi-native" } } }));

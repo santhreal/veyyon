@@ -1,6 +1,7 @@
 // UI Components barrel export
 
 export * from "./chrome/countdown-timer";
+export * from "./chrome/modal-geometry";
 export * from "./chrome/segment-track";
 export * from "./chrome/tiny-title-download-progress";
 export * from "./composer/composer-loader";

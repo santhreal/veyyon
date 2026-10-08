@@ -1,6 +1,6 @@
 import { errorMessage, logger } from "@veyyon/utils";
-import xterm, { type Terminal as XtermTerminal } from "@xterm/headless";
-import { readTerminalRows } from "../tools/shell/terminal-output";
+import type { Terminal as XtermTerminal } from "@xterm/headless";
+import { loadXtermTerminal, readTerminalRows } from "../tools/shell/terminal-output";
 import { DAEMON_PTY_COLUMNS, DAEMON_PTY_ROWS } from "./protocol";
 
 const VIRTUAL_SCROLLBACK_ROWS = 4_096;
@@ -24,7 +24,8 @@ export async function renderTerminalOutput(
 ): Promise<string[] | undefined> {
 	if (!output) return [];
 	const maxRows = Math.max(1, Math.floor(options.maxRows));
-	const terminal = new xterm.Terminal({
+	const Terminal = await loadXtermTerminal();
+	const terminal = new Terminal({
 		cols: DAEMON_PTY_COLUMNS,
 		rows: DAEMON_PTY_ROWS,
 		scrollback: Math.max(VIRTUAL_SCROLLBACK_ROWS, maxRows),

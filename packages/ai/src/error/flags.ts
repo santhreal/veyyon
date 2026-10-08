@@ -40,7 +40,11 @@ export {
 	STREAM_READ_ERROR_PATTERN,
 	TRANSIENT_TRANSPORT_PATTERN,
 } from "./domains/network";
-export { matchesCompiledGrammarTooLargeText, matchesStrictToolsRejectionText } from "./domains/request";
+export {
+	matchesCompiledGrammarTooLargeText,
+	matchesStrictToolsRejectionText,
+	matchesToolChoiceRejectionText,
+} from "./domains/request";
 export type { ClassificationRule, ClassRule, ErrorDomain, Recovery, RecoveryStage, Signal } from "./domains/types";
 export * from "./flag";
 export {

@@ -50,17 +50,6 @@ export class TtsrNotificationComponent extends TranscriptNoteComponent {
 		return this.#expanded;
 	}
 
-	/**
-	 * How this block names the expand gesture, or `""` when nothing is bound to it.
-	 *
-	 * Read at rebuild time rather than at construction, because a rebind takes
-	 * effect on the next render and this block outlives one: it merges later rules
-	 * into itself through {@link addRules} while it is still the transcript tail.
-	 */
-	#expandHint(): string {
-		return actionKeyHint("app.tools.expand");
-	}
-
 	#rebuild(): void {
 		this.setNote(this.#rules.length === 1 ? this.#single(this.#rules[0]!) : this.#multi());
 	}
@@ -81,7 +70,7 @@ export class TtsrNotificationComponent extends TranscriptNoteComponent {
 		}
 
 		const rows = [theme.italic(theme.fg("text", displayText))];
-		const hint = this.#expandHint();
+		const hint = expandHint();
 		if (truncated && hint) rows.push(theme.italic(theme.fg("muted", `(${hint} to expand)`)));
 		return { tone: "warning", headline, rows };
 	}
@@ -110,7 +99,7 @@ export class TtsrNotificationComponent extends TranscriptNoteComponent {
 		}
 
 		const hidden = this.#rules.length - visible.length;
-		const hint = this.#expandHint();
+		const hint = expandHint();
 		// The COUNT is stated whether or not there is a key to name: a block that hides
 		// four rules silently reads as a block with one rule in it.
 		if (hidden > 0) {
@@ -120,4 +109,15 @@ export class TtsrNotificationComponent extends TranscriptNoteComponent {
 		}
 		return { tone: "warning", headline, rows };
 	}
+}
+
+/**
+ * How this block names the expand gesture, or `""` when nothing is bound to it.
+ *
+ * Read at rebuild time rather than at construction, because a rebind takes
+ * effect on the next render and this block outlives one: it merges later rules
+ * into itself through {@link addRules} while it is still the transcript tail.
+ */
+function expandHint(): string {
+	return actionKeyHint("app.tools.expand");
 }

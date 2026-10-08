@@ -4,8 +4,9 @@
  * The model reads completed jobs in the tool result's content text, where each job's resultText
  * appears inside fenced code blocks and its errorText appears after an Error prefix. When the
  * content text holds either field verbatim, {@link jobResultCodec} drops the text from the written
- * line and records its span in the content text (`resultSpan`, `errorSpan`), restoring it when the
- * session loads.
+ * line and records its span in the content text (`resultSpan`, `errorSpan`), restoring it as a slice
+ * of that text when the session loads; a result the session records holds the same slice, so the
+ * entry holds the text once.
  */
 import type { ToolResultCodec } from "@veyyon/kernel/registry/tool-result-codec";
 import { isRecord } from "@veyyon/utils/type-guards";
@@ -31,14 +32,23 @@ function jobTextSpan(body: string, text: string, jobId: unknown): ResultTextSpan
 	return (heading === -1 ? undefined : resultTextSpan(body, text, heading)) ?? resultTextSpan(body, text);
 }
 
-function slimJob(job: unknown, body: string): unknown {
-	if (!isRecord(job)) return job;
-	let slimmed: Record<string, unknown> | undefined;
+/** Each coded field of `job` whose text `body` holds verbatim, with its span field and that text's span. */
+function* heldTexts(
+	job: Record<string, unknown>,
+	body: string,
+): Generator<[field: (typeof CODED_FIELDS)[number][0], spanField: string, span: ResultTextSpan]> {
 	for (const [field, spanField] of CODED_FIELDS) {
 		const text = job[field];
 		if (typeof text !== "string" || text.length < MIN_CODED_TEXT) continue;
 		const span = jobTextSpan(body, text, job.id);
-		if (span === undefined) continue;
+		if (span !== undefined) yield [field, spanField, span];
+	}
+}
+
+function slimJob(job: unknown, body: string): unknown {
+	if (!isRecord(job)) return job;
+	let slimmed: Record<string, unknown> | undefined;
+	for (const [field, spanField, span] of heldTexts(job, body)) {
 		slimmed ??= { ...job };
 		delete slimmed[field];
 		slimmed[spanField] = span;
@@ -72,6 +82,16 @@ export const jobResultCodec: ToolResultCodec = {
 				job[field] = text;
 				delete job[spanField];
 			}
+		}
+	},
+	// A recorded job's text the content text holds verbatim becomes a slice of that text, as a load
+	// rebuilds it, so the entry holds the text once.
+	settle(details, content) {
+		const body = firstResultText(content);
+		if (!isRecord(details) || !Array.isArray(details.jobs) || body === undefined) return;
+		for (const job of details.jobs) {
+			if (!isRecord(job)) continue;
+			for (const [field, , [start, end]] of heldTexts(job, body)) job[field] = body.slice(start, end);
 		}
 	},
 };

@@ -16,9 +16,16 @@ export type ToolTier = "read" | "write" | "exec";
  * authoritative in both directions, so `allow` is the escape hatch and `deny`
  * is still a hard block.
  *
+ * `pattern` is the scope a session grant for this call covers, shown on the
+ * approval card and compared by string equality with the pattern a later call
+ * reports. It is never evaluated as a glob, so a grant covers exactly the calls
+ * whose tool derives the same string. It is read only on a plain decision: a call
+ * marked `override` or `critical` is judged on its own arguments and no grant
+ * dismisses it.
+ *
  * Omitted approvals are treated as "exec" by callers that enforce approvals.
  */
 export type ToolApprovalDecision =
 	| ToolTier
-	| { tier: ToolTier; reason?: string; override?: boolean; critical?: boolean };
+	| { tier: ToolTier; reason?: string; override?: boolean; critical?: boolean; pattern?: string };
 export type ToolApproval = ToolApprovalDecision | ((args: unknown) => ToolApprovalDecision);

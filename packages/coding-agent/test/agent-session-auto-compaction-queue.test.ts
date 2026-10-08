@@ -30,6 +30,9 @@ function getRuntimeSignals(): string[] {
 /**
  * Regression test: auto-compaction completion should resume the agent loop when
  * there are queued agent-level messages (follow-up/steering/custom).
+ *
+ * Subject: `session/runtime/compaction-recovery.ts`, which schedules the continuation after a
+ * compaction, driven through `AgentSession`.
  */
 describe("AgentSession auto-compaction queue resume", () => {
 	let tempDir: TempDir;

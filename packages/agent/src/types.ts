@@ -291,6 +291,17 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	onBeforeYield?: () => Promise<void> | void;
 
 	/**
+	 * Receives a `tool_execution_update` a tool reports after this run's event stream ended.
+	 *
+	 * A tool can return while work it started keeps running: a background `task` reports its
+	 * agents' progress, and finally their completion, through the same update callback long after
+	 * the call returned and the run emitted `agent_end`. The run's stream drops events pushed after
+	 * `agent_end`, so without this sink that completion reaches no listener and the call's card
+	 * stays running for the life of the process.
+	 */
+	onToolUpdateAfterRun?: (event: Extract<AgentEvent, { type: "tool_execution_update" }>) => void;
+
+	/**
 	 * Provides tool execution context, resolved per tool call.
 	 * Use for late-bound UI or session state access.
 	 */

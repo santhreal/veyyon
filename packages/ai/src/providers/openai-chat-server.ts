@@ -2,16 +2,20 @@ import { randomUUID } from "node:crypto";
 import { isEffort } from "@veyyon/catalog/effort";
 import { emptyUsage } from "@veyyon/catalog/models";
 import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
-import { type } from "arktype";
 import { resolvePromptCacheKey } from "../auth-gateway/http";
 /**
  * Parsed inbound OpenAI chat-completions request, ready to feed into pi-ai
  * `stream(model, context, options)`.
  */
-import type { AuthGatewayStreamControl, AuthGatewayParsedRequest as ParsedRequest } from "../auth-gateway/types";
+import type {
+	AuthGatewayStreamControl,
+	FrameSink,
+	AuthGatewayParsedRequest as ParsedRequest,
+} from "../auth-gateway/types";
 import * as AIError from "../error";
 import type {
 	AssistantMessage,
+	AssistantMessageEvent,
 	AssistantMessageEventStream,
 	Context,
 	ImageContent,
@@ -24,6 +28,7 @@ import type {
 	TSchema,
 } from "../types";
 import { isServiceTier } from "../types";
+import { type } from "../utils/schema/arktype";
 import {
 	type OpenAIChatContentPart,
 	type OpenAIChatMessage,
@@ -35,6 +40,8 @@ import {
 
 export type { ParsedRequest };
 
+type RequestBody = typeof openaiChatRequestSchema.infer;
+
 // ---------------------------------------------------------------------------
 // parseRequest
 // ---------------------------------------------------------------------------
@@ -45,13 +52,40 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 	// land on `options.headers` automatically). We consult `headers` here too
 	// for `resolvePromptCacheKey` to pull a cache identity out of inbound
 	// vendor-neutral headers when the body doesn't carry one.
-	const parsed = openaiChatRequestSchema(body);
-	if (parsed instanceof type.errors) {
-		throw new AIError.ValidationError(`openai-chat: ${parsed.summary}`);
+	const data = openaiChatRequestSchema(body);
+	if (data instanceof type.errors) {
+		throw new AIError.ValidationError(`openai-chat: ${data.summary}`);
 	}
-	const data = parsed;
 
-	const now = Date.now();
+	const { systemPrompt, messages } = convertMessages(data.messages as OpenAIChatMessage[], data.model, Date.now());
+	const tools = data.tools ? buildTools(data.tools as OpenAIChatTool[]) : undefined;
+	const context: Context = {
+		messages,
+		...(systemPrompt !== undefined ? { systemPrompt: [systemPrompt] } : {}),
+		...(tools ? { tools } : {}),
+	};
+
+	const options: ParsedRequest["options"] = {};
+	applyGenerationOptions(data, options);
+	applyRequestOptions(data, resolvePromptCacheKey(body, headers), options);
+
+	return {
+		modelId: data.model,
+		context,
+		stream: data.stream === true,
+		options,
+	};
+}
+
+/**
+ * Converts the wire messages to canonical messages. Every non-empty `system` message joins one
+ * system prompt, separated by a blank line; `systemPrompt` is undefined when there is none.
+ */
+function convertMessages(
+	wire: readonly OpenAIChatMessage[],
+	modelId: string,
+	now: number,
+): { systemPrompt: string | undefined; messages: Message[] } {
 	const systemParts: string[] = [];
 	const messages: Message[] = [];
 	// Map of `tool_call_id` → function name, populated as we walk assistant
@@ -61,7 +95,7 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 	// client did send a wire `name` we still prefer that (forward-compat).
 	const toolNamesById = new Map<string, string>();
 
-	for (const m of data.messages as OpenAIChatMessage[]) {
+	for (const m of wire) {
 		switch (m.role) {
 			case "system": {
 				const text = stringifyContent(m.content);
@@ -74,24 +108,18 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 			case "user":
 				messages.push({ role: "user", content: parseUserLikeContent(m.content), timestamp: now });
 				break;
-			case "assistant":
-				if (m.tool_calls) {
-					for (const raw of m.tool_calls) {
-						if (raw.type !== undefined && raw.type !== "function") continue;
-						const fn = (raw as { function?: { name?: string } }).function;
-						if (raw.id && fn?.name) toolNamesById.set(raw.id, fn.name);
-					}
-				}
-				messages.push(
-					buildAssistantMessage(
-						(m.content ?? undefined) as string | OpenAIChatContentPart[] | undefined,
-						m.tool_calls,
-						(m as { reasoning_content?: string | null }).reasoning_content ?? undefined,
-						data.model,
-						now,
-					),
+			case "assistant": {
+				const message = buildAssistantMessage(
+					(m.content ?? undefined) as string | OpenAIChatContentPart[] | undefined,
+					m.tool_calls,
+					(m as { reasoning_content?: string | null }).reasoning_content ?? undefined,
+					modelId,
+					now,
 				);
+				recordToolCallNames(message, toolNamesById);
+				messages.push(message);
 				break;
+			}
 			case "tool": {
 				// Prefer the wire `name` when present; otherwise back-resolve from
 				// the assistant `tool_calls` map. Falls through to "" only when no
@@ -112,62 +140,54 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 		}
 	}
 
-	const tools = data.tools ? buildTools(data.tools as OpenAIChatTool[]) : undefined;
+	return { systemPrompt: systemParts.length > 0 ? systemParts.join("\n\n") : undefined, messages };
+}
 
-	const context: Context = {
-		messages,
-		...(systemParts.length > 0 ? { systemPrompt: [systemParts.join("\n\n")] } : {}),
-		...(tools ? { tools } : {}),
-	};
+/** Maps the id of each tool call `message` makes to the call's name, skipping a call missing either. */
+function recordToolCallNames(message: AssistantMessage, toolNamesById: Map<string, string>): void {
+	for (const part of message.content) {
+		if (part.type === "toolCall" && part.id && part.name) toolNamesById.set(part.id, part.name);
+	}
+}
 
+/** Copies the request's decoding controls onto `options`, setting only the fields the request names. */
+function applyGenerationOptions(data: RequestBody, options: ParsedRequest["options"]): void {
 	// Prefer max_completion_tokens (newer) over max_tokens.
 	const maxOutputTokens = data.max_completion_tokens ?? data.max_tokens;
-	const stopSequences = normalizeStop(data.stop);
-	// Schema accepts the Anthropic-style {type:'tool', name} variant that the SDK
-	// union doesn't model; the normalizer collapses it to a plain name lookup.
-	const toolChoice = normalizeToolChoice(data.tool_choice as Parameters<typeof normalizeToolChoice>[0]);
-	const includeStreamingUsage = data.stream_options?.include_usage === true;
-
-	// `includeStreamingUsage` is the one genuinely-opaque flag — the streaming
-	// encoder reads it later off `options.extra`. Everything else now lives on
-	// a typed field; `extra` stays undefined when only typed values are set.
-	const extra: Record<string, unknown> = {};
-	let hasExtra = false;
-	if (includeStreamingUsage) {
-		extra.includeStreamingUsage = true;
-		hasExtra = true;
-	}
-
-	const options: ParsedRequest["options"] = {};
 	if (maxOutputTokens !== undefined) options.maxOutputTokens = maxOutputTokens;
 	if (data.temperature !== undefined) options.temperature = data.temperature;
 	if (data.top_p !== undefined) options.topP = data.top_p;
+	const stopSequences = normalizeStop(data.stop);
 	if (stopSequences) options.stopSequences = stopSequences;
+	// Schema accepts the Anthropic-style {type:'tool', name} variant that the SDK
+	// union doesn't model; the normalizer collapses it to a plain name lookup.
+	const toolChoice = normalizeToolChoice(data.tool_choice as OpenAIChatToolChoice | undefined);
 	if (toolChoice !== undefined) options.toolChoice = toolChoice;
 	if (data.presence_penalty !== undefined) options.presencePenalty = data.presence_penalty;
 	if (data.frequency_penalty !== undefined) options.frequencyPenalty = data.frequency_penalty;
 	if (data.seed !== undefined) options.seed = data.seed;
 	if (data.logit_bias !== undefined) options.logitBias = data.logit_bias;
+}
+
+/**
+ * Copies the request's identity, output-shape and routing fields onto `options`, setting only the
+ * fields the request names. An effort or service tier outside the known set is dropped.
+ */
+function applyRequestOptions(
+	data: RequestBody,
+	promptCacheKey: string | undefined,
+	options: ParsedRequest["options"],
+): void {
 	if (data.user !== undefined) options.user = data.user;
 	if (data.response_format !== undefined) options.responseFormat = data.response_format;
 	if (data.parallel_tool_calls !== undefined) options.parallelToolCalls = data.parallel_tool_calls;
-	if (data.reasoning_effort !== undefined && isEffort(data.reasoning_effort)) {
-		options.reasoning = data.reasoning_effort;
-	}
-	if (data.service_tier !== undefined && isServiceTier(data.service_tier)) {
-		options.serviceTier = data.service_tier;
-	}
+	if (isEffort(data.reasoning_effort)) options.reasoning = data.reasoning_effort;
+	if (isServiceTier(data.service_tier)) options.serviceTier = data.service_tier;
 	if (data.metadata !== undefined) options.metadata = data.metadata;
-	const cacheKey = resolvePromptCacheKey(body, headers);
-	if (cacheKey !== undefined) options.promptCacheKey = cacheKey;
-	if (hasExtra) options.extra = extra;
-
-	return {
-		modelId: data.model,
-		context,
-		stream: data.stream === true,
-		options,
-	};
+	if (promptCacheKey !== undefined) options.promptCacheKey = promptCacheKey;
+	// `includeStreamingUsage` is the one opaque flag: the streaming encoder reads it
+	// later off `options.extra`, which stays undefined when the request does not set it.
+	if (data.stream_options?.include_usage === true) options.extra = { includeStreamingUsage: true };
 }
 
 function stringifyContent(content: string | OpenAIChatContentPart[] | undefined): string {
@@ -187,25 +207,26 @@ function parseUserLikeContent(
 	if (typeof content === "string") return content;
 	const parts: (TextContent | ImageContent)[] = [];
 	for (const part of content) {
-		if (part.type === "text") {
-			parts.push({ type: "text", text: part.text });
-			continue;
-		}
-		if (part.type !== "image_url") continue;
-		// input_audio / file / refusal / unknown-type parts are accepted by the
-		// schema for forward-compat but dropped here — pi-ai's canonical user
-		// content only models text and image today.
-		const url = typeof part.image_url === "string" ? part.image_url : part.image_url.url;
-		const decoded = decodeDataUri(url);
-		if (decoded) {
-			parts.push({ type: "image", data: decoded.data, mimeType: decoded.mimeType });
-		} else {
-			// No image fetcher available in the gateway; surface as a text placeholder so
-			// downstream providers still receive a coherent message.
-			parts.push({ type: "text", text: `[image: ${url}]` });
-		}
+		const block = contentPartBlock(part);
+		if (block) parts.push(block);
 	}
 	return parts;
+}
+
+/**
+ * The canonical block for one wire content part: a text part as text, an image part as an image when
+ * its URL is a data URI, and as a `[image: <url>]` text placeholder otherwise, since the gateway has
+ * no image fetcher. Every other part type is accepted by the schema for forward compatibility and
+ * has no canonical block, because canonical content models only text and images.
+ */
+function contentPartBlock(part: OpenAIChatContentPart): TextContent | ImageContent | undefined {
+	if (part.type === "text") return { type: "text", text: part.text };
+	if (part.type !== "image_url") return undefined;
+	const url = typeof part.image_url === "string" ? part.image_url : part.image_url.url;
+	const decoded = decodeDataUri(url);
+	return decoded
+		? { type: "image", data: decoded.data, mimeType: decoded.mimeType }
+		: { type: "text", text: `[image: ${url}]` };
 }
 
 function decodeDataUri(url: string): { data: string; mimeType: string } | undefined {
@@ -242,18 +263,7 @@ function buildAssistantMessage(
 			// union here so the custom-tool variant doesn't trip TS.
 			if (raw.type !== undefined && raw.type !== "function") continue;
 			const fn = (raw as { function: { name: string; arguments: string } }).function;
-			const argsStr = fn.arguments;
-			let args: Record<string, unknown> = {};
-			if (argsStr.length > 0) {
-				try {
-					const v: unknown = JSON.parse(argsStr);
-					args = isRecord(v) ? (v as Record<string, unknown>) : { __raw: argsStr };
-				} catch {
-					args = { __raw: argsStr };
-				}
-			}
-			const call: ToolCall = { type: "toolCall", id: raw.id, name: fn.name, arguments: args };
-			parts.push(call);
+			parts.push({ type: "toolCall", id: raw.id, name: fn.name, arguments: parseToolCallArguments(fn.arguments) });
 		}
 	}
 	return {
@@ -266,6 +276,20 @@ function buildAssistantMessage(
 		stopReason: "stop",
 		timestamp: now,
 	};
+}
+
+/**
+ * Parses a replayed call's JSON arguments. Empty text is no arguments; text that is not a JSON object
+ * is kept whole under `__raw`, so the call reaches the provider with what the client sent.
+ */
+function parseToolCallArguments(text: string): Record<string, unknown> {
+	if (text.length === 0) return {};
+	try {
+		const value: unknown = JSON.parse(text);
+		return isRecord(value) ? value : { __raw: text };
+	} catch {
+		return { __raw: text };
+	}
 }
 
 /**
@@ -285,26 +309,7 @@ function pushToolResultMessages(
 ): void {
 	const textParts: TextContent[] = [];
 	const imageParts: ImageContent[] = [];
-
-	if (typeof content === "string") {
-		if (content.length > 0) textParts.push({ type: "text", text: content });
-	} else if (Array.isArray(content)) {
-		for (const part of content) {
-			if (part.type === "text") {
-				textParts.push({ type: "text", text: part.text });
-				continue;
-			}
-			if (part.type !== "image_url") continue;
-			const url = typeof part.image_url === "string" ? part.image_url : part.image_url.url;
-			const decoded = decodeDataUri(url);
-			if (decoded) {
-				imageParts.push({ type: "image", data: decoded.data, mimeType: decoded.mimeType });
-			} else {
-				// No fetcher available; degrade gracefully to a text placeholder.
-				textParts.push({ type: "text", text: `[image: ${url}]` });
-			}
-		}
-	}
+	collectToolResultBlocks(content, textParts, imageParts);
 
 	const toolMsg: ToolResultMessage = {
 		role: "toolResult",
@@ -324,6 +329,24 @@ function pushToolResultMessages(
 			content: imageParts,
 			timestamp: now,
 		});
+	}
+}
+
+/** Sorts a tool result's wire content into its text blocks and its image blocks, in wire order. */
+function collectToolResultBlocks(
+	content: string | OpenAIChatContentPart[] | undefined | null,
+	textParts: TextContent[],
+	imageParts: ImageContent[],
+): void {
+	if (typeof content === "string") {
+		textParts.push({ type: "text", text: content });
+		return;
+	}
+	if (!Array.isArray(content)) return;
+	for (const part of content) {
+		const block = contentPartBlock(part);
+		if (block?.type === "image") imageParts.push(block);
+		else if (block) textParts.push(block);
 	}
 }
 
@@ -484,6 +507,170 @@ function makeId(): string {
 // encodeStream (SSE)
 // ---------------------------------------------------------------------------
 
+/** The id and name a tool call's start chunk sent. */
+interface SentToolCall {
+	id: string;
+	name: string;
+}
+
+/**
+ * The SSE frames for one streamed chat completion. {@link write} writes the role chunk and every
+ * event's frames through the terminal one; {@link fail} reports a stream that threw.
+ *
+ * Tool calls take `tool_calls` indexes in the order they start, independent of their content index.
+ */
+class ChatCompletionStreamWriter {
+	readonly #sink: FrameSink;
+	readonly #id = makeId();
+	readonly #created = Math.floor(Date.now() / 1000);
+	readonly #model: string;
+	readonly #includeUsage: boolean;
+	/** Content index -> `tool_calls` index on the wire. */
+	readonly #wireIndexByContentIndex = new Map<number, number>();
+	/** Per wire index, what its start chunk sent, to correct an id or name that arrives later. */
+	readonly #sentToolCalls: SentToolCall[] = [];
+	/** Every chunk frame up to its delta: the fields each chunk of one response repeats, serialized once. */
+	readonly #chunkHead: string;
+	/** Every chunk frame after its finish reason. */
+	readonly #chunkTail: string;
+
+	constructor(sink: FrameSink, model: string, includeUsage: boolean) {
+		this.#sink = sink;
+		this.#model = model;
+		this.#includeUsage = includeUsage;
+		this.#chunkHead = `data: {"id":${JSON.stringify(this.#id)},"object":"chat.completion.chunk","created":${this.#created},"model":${JSON.stringify(model)},"system_fingerprint":null,"choices":[{"index":0,"delta":`;
+		this.#chunkTail = `,"logprobs":null}]${includeUsage ? ',"usage":null' : ""}}\n\n`;
+	}
+
+	/**
+	 * Writes the response through its last frame. True when the response is complete: a `done` or
+	 * `error` event ended it, or the stream ended without one and finished as a normal stop. False
+	 * when the sink was cancelled first.
+	 */
+	async write(events: AssistantMessageEventStream): Promise<boolean> {
+		this.#emitChunk({ role: "assistant" }, null);
+		for await (const event of events) {
+			if (this.#sink.cancelled) return false;
+			if (this.#apply(event)) return true;
+		}
+		if (this.#sink.cancelled) return false;
+		this.#finish("stop", undefined);
+		return true;
+	}
+
+	fail(error: unknown): void {
+		this.#emitError(errorMessage(error));
+	}
+
+	/** Writes the frames `event` produces. True once the event ended the response. */
+	#apply(event: AssistantMessageEvent): boolean {
+		switch (event.type) {
+			case "text_delta":
+				if (event.delta.length > 0) this.#emitChunk({ content: event.delta }, null);
+				return false;
+			case "thinking_delta":
+				// DeepSeek-style / o-series reasoning channel. Clients that don't
+				// understand it ignore the unknown delta key.
+				if (event.delta.length > 0) this.#emitChunk({ reasoning_content: event.delta }, null);
+				return false;
+			case "toolcall_start":
+				this.#toolCallStart(event.partial, event.contentIndex);
+				return false;
+			case "toolcall_delta":
+				this.#toolCallDelta(event.contentIndex, event.delta);
+				return false;
+			case "toolcall_end":
+				this.#toolCallEnd(event.contentIndex, event.toolCall);
+				return false;
+			case "done":
+				this.#finish(event.reason, event.message);
+				return true;
+			case "error":
+				this.#emitError(event.error.errorMessage ?? "stream error");
+				return true;
+			// Drop start / *_start and text/thinking *_end — chat-completions
+			// wire only surfaces deltas and the terminal finish_reason.
+			default:
+				return false;
+		}
+	}
+
+	#toolCallStart(partial: AssistantMessage, contentIndex: number): void {
+		const index = this.#sentToolCalls.length;
+		this.#wireIndexByContentIndex.set(contentIndex, index);
+		const part = partial.content[contentIndex];
+		const call = part?.type === "toolCall" ? part : undefined;
+		const sent: SentToolCall = { id: call?.id ?? "", name: call?.name ?? "" };
+		this.#sentToolCalls.push(sent);
+		this.#emitChunk(
+			{ tool_calls: [{ index, id: sent.id, type: "function", function: { name: sent.name, arguments: "" } }] },
+			null,
+		);
+	}
+
+	#toolCallDelta(contentIndex: number, delta: string): void {
+		const index = this.#wireIndexByContentIndex.get(contentIndex);
+		if (index === undefined) return;
+		this.#emitChunk({ tool_calls: [{ index, function: { arguments: delta } }] }, null);
+	}
+
+	/**
+	 * Upstream completions providers can receive the real id/name in a later chunk than
+	 * toolcall_start. Emit a corrective chunk only when the streamed value was empty: accumulating
+	 * clients concatenate string fields, so "" + value is the only safe correction.
+	 */
+	#toolCallEnd(contentIndex: number, call: ToolCall): void {
+		const index = this.#wireIndexByContentIndex.get(contentIndex);
+		if (index === undefined) return;
+		const sent = this.#sentToolCalls[index];
+		const id = sent.id === "" && call.id !== "" ? call.id : undefined;
+		const name = sent.name === "" && call.name !== "" ? call.name : undefined;
+		if (id === undefined && name === undefined) return;
+		const correction = {
+			index,
+			...(id !== undefined ? { id } : {}),
+			...(name !== undefined ? { function: { name } } : {}),
+		};
+		this.#emitChunk({ tool_calls: [correction] }, null);
+	}
+
+	/** The finish chunk, the usage chunk when the client asked for one, then `[DONE]`. */
+	#finish(reason: StopReason, message: AssistantMessage | undefined): void {
+		this.#emitChunk({}, mapFinishReason(reason, this.#sentToolCalls.length > 0));
+		if (message && this.#includeUsage) {
+			this.#emit({
+				id: this.#id,
+				object: "chat.completion.chunk",
+				created: this.#created,
+				model: this.#model,
+				system_fingerprint: null,
+				choices: [],
+				usage: buildUsage(message),
+			});
+		}
+		this.#sink.enqueue("data: [DONE]\n\n");
+	}
+
+	#emitError(message: string): void {
+		this.#emit({ error: { message, type: "upstream_error" } });
+	}
+
+	/** A `chat.completion.chunk` frame carrying `delta`. */
+	#emitChunk(delta: Record<string, unknown>, finishReason: string | null): void {
+		this.#send(
+			`${this.#chunkHead}${JSON.stringify(delta)},"finish_reason":${JSON.stringify(finishReason)}${this.#chunkTail}`,
+		);
+	}
+
+	#emit(payload: unknown): void {
+		this.#send(`data: ${JSON.stringify(payload)}\n\n`);
+	}
+
+	#send(frame: string): void {
+		if (!this.#sink.cancelled) this.#sink.enqueue(frame);
+	}
+}
+
 export function encodeStream(
 	events: AssistantMessageEventStream,
 	requestedModelId: string,
@@ -491,8 +678,6 @@ export function encodeStream(
 	control?: AuthGatewayStreamControl,
 ): ReadableStream<Uint8Array> {
 	const encoder = new TextEncoder();
-	const id = makeId();
-	const created = Math.floor(Date.now() / 1000);
 	const includeUsage = options?.extra?.includeStreamingUsage === true;
 	let cancelled = control?.signal?.aborted === true;
 	const markCancelled = () => {
@@ -500,175 +685,24 @@ export function encodeStream(
 	};
 	control?.signal?.addEventListener("abort", markCancelled, { once: true });
 
-	const baseChunk = (delta: Record<string, unknown>, finishReason: string | null) => ({
-		id,
-		object: "chat.completion.chunk",
-		created,
-		model: requestedModelId,
-		system_fingerprint: null,
-		choices: [{ index: 0, delta, finish_reason: finishReason, logprobs: null }],
-		...(includeUsage ? { usage: null } : {}),
-	});
-
-	const writeSse = (controller: ReadableStreamDefaultController<Uint8Array>, payload: unknown): void => {
-		if (!cancelled) controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
-	};
-
-	const writeUsage = (controller: ReadableStreamDefaultController<Uint8Array>, message: AssistantMessage): void => {
-		writeSse(controller, {
-			id,
-			object: "chat.completion.chunk",
-			created,
-			model: requestedModelId,
-			system_fingerprint: null,
-			choices: [],
-			usage: buildUsage(message),
-		});
-	};
-
 	return new ReadableStream<Uint8Array>({
 		async start(controller) {
-			// contentIndex (from pi-ai events) -> tool_calls index on the wire.
-			const toolIndexByContentIndex = new Map<number, number>();
-			// wire index -> id/name emitted on the start chunk, to detect late-arriving
-			// upstream id/name that needs a corrective chunk before the finish.
-			const sentToolMeta = new Map<number, { id: string; name: string }>();
-			let nextToolIndex = 0;
-			let hasToolCalls = false;
-			let finishReason: string = "stop";
-
+			const sink: FrameSink = {
+				get cancelled() {
+					return cancelled;
+				},
+				enqueue: frame => controller.enqueue(encoder.encode(frame)),
+			};
+			const writer = new ChatCompletionStreamWriter(sink, requestedModelId, includeUsage);
 			try {
 				if (cancelled) {
 					controller.close();
 					return;
 				}
-				// Initial role chunk.
-				writeSse(controller, baseChunk({ role: "assistant" }, null));
-
-				for await (const event of events) {
-					if (cancelled) return;
-					switch (event.type) {
-						case "text_delta":
-							if (event.delta.length > 0) {
-								writeSse(controller, baseChunk({ content: event.delta }, null));
-							}
-							break;
-
-						case "thinking_delta":
-							// DeepSeek-style / o-series reasoning channel. Clients that don't
-							// understand it ignore the unknown delta key.
-							if (event.delta.length > 0) {
-								writeSse(controller, baseChunk({ reasoning_content: event.delta }, null));
-							}
-							break;
-
-						case "toolcall_start": {
-							hasToolCalls = true;
-							const idx = nextToolIndex++;
-							toolIndexByContentIndex.set(event.contentIndex, idx);
-							const partial = event.partial.content[event.contentIndex];
-							const call = partial && partial.type === "toolCall" ? partial : undefined;
-							sentToolMeta.set(idx, { id: call?.id ?? "", name: call?.name ?? "" });
-							writeSse(
-								controller,
-								baseChunk(
-									{
-										tool_calls: [
-											{
-												index: idx,
-												id: call?.id ?? "",
-												type: "function",
-												function: { name: call?.name ?? "", arguments: "" },
-											},
-										],
-									},
-									null,
-								),
-							);
-							break;
-						}
-
-						case "toolcall_delta": {
-							const idx = toolIndexByContentIndex.get(event.contentIndex);
-							if (idx === undefined) break;
-							writeSse(
-								controller,
-								baseChunk({ tool_calls: [{ index: idx, function: { arguments: event.delta } }] }, null),
-							);
-							break;
-						}
-
-						case "toolcall_end": {
-							const idx = toolIndexByContentIndex.get(event.contentIndex);
-							if (idx === undefined) break;
-							const sent = sentToolMeta.get(idx);
-							if (sent === undefined) break;
-							// Upstream completions providers can receive the real id/name in a
-							// later chunk than toolcall_start. Emit a corrective chunk only when
-							// the streamed value was empty: accumulating clients concatenate
-							// string fields, so "" + value is the only safe correction.
-							const correctId = sent.id === "" && event.toolCall.id !== "" ? event.toolCall.id : undefined;
-							const correctName =
-								sent.name === "" && event.toolCall.name !== "" ? event.toolCall.name : undefined;
-							if (correctId !== undefined || correctName !== undefined) {
-								writeSse(
-									controller,
-									baseChunk(
-										{
-											tool_calls: [
-												{
-													index: idx,
-													...(correctId !== undefined ? { id: correctId } : {}),
-													...(correctName !== undefined ? { function: { name: correctName } } : {}),
-												},
-											],
-										},
-										null,
-									),
-								);
-							}
-							break;
-						}
-
-						case "done":
-							finishReason =
-								event.reason === "toolUse"
-									? "tool_calls"
-									: event.reason === "length"
-										? "length"
-										: hasToolCalls
-											? "tool_calls"
-											: "stop";
-							writeSse(controller, baseChunk({}, finishReason));
-							if (includeUsage) writeUsage(controller, event.message);
-							controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-							controller.close();
-							return;
-
-						case "error": {
-							const msg = event.error.errorMessage ?? "stream error";
-							writeSse(controller, { error: { message: msg, type: "upstream_error" } });
-							controller.close();
-							return;
-						}
-
-						// Drop start / *_start and text/thinking *_end — chat-completions
-						// wire only surfaces deltas and the terminal finish_reason.
-						default:
-							break;
-					}
-				}
-
-				// Stream ended without a terminal `done` (defensive). Close gracefully.
-				if (!cancelled) {
-					writeSse(controller, baseChunk({}, hasToolCalls ? "tool_calls" : "stop"));
-					controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-					controller.close();
-				}
+				if (await writer.write(events)) controller.close();
 			} catch (err) {
 				if (!cancelled) {
-					const msg = errorMessage(err);
-					writeSse(controller, { error: { message: msg, type: "upstream_error" } });
+					writer.fail(err);
 					controller.close();
 				}
 			} finally {

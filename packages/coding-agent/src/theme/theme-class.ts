@@ -383,33 +383,12 @@ export class Theme {
 		return this.getColorHex("accent");
 	}
 
-	#styleSequence(style: TextStyle): string {
-		let seq = "";
-		if (style.bold === true) seq += "\x1b[1m";
-		if (style.dim === true) seq += "\x1b[2m";
-		if (style.italic === true) seq += "\x1b[3m";
-		if (style.underline === true) seq += "\x1b[4m";
-		if (style.inverse === true) seq += "\x1b[7m";
-		if (style.strikethrough === true) seq += "\x1b[9m";
-		return seq;
-	}
-
-	#styleCloseSequence(style: TextStyle): string {
-		let seq = "";
-		if (style.bold === true || style.dim === true) seq += "\x1b[22m";
-		if (style.italic === true) seq += "\x1b[23m";
-		if (style.underline === true) seq += "\x1b[24m";
-		if (style.inverse === true) seq += "\x1b[27m";
-		if (style.strikethrough === true) seq += "\x1b[29m";
-		return seq;
-	}
-
 	fg(color: ThemeColor, text: string): string {
 		const ansi = this.#fgColors[color];
 		if (ansi === undefined) throw new Error(`Unknown theme color: ${color}`);
 		const style = this.#styles?.[color];
-		const styleOpen = style && attributesEnabled() ? this.#styleSequence(style) : "";
-		const styleClose = style && attributesEnabled() ? this.#styleCloseSequence(style) : "";
+		const styleOpen = style && attributesEnabled() ? styleSequence(style) : "";
+		const styleClose = style && attributesEnabled() ? styleCloseSequence(style) : "";
 		if (!colorEnabled()) {
 			return styleOpen ? `${styleOpen}${text}${styleClose}` : text;
 		}
@@ -895,4 +874,25 @@ export class Theme {
 			snapshot.styles,
 		);
 	}
+}
+
+function styleSequence(style: TextStyle): string {
+	let seq = "";
+	if (style.bold === true) seq += "\x1b[1m";
+	if (style.dim === true) seq += "\x1b[2m";
+	if (style.italic === true) seq += "\x1b[3m";
+	if (style.underline === true) seq += "\x1b[4m";
+	if (style.inverse === true) seq += "\x1b[7m";
+	if (style.strikethrough === true) seq += "\x1b[9m";
+	return seq;
+}
+
+function styleCloseSequence(style: TextStyle): string {
+	let seq = "";
+	if (style.bold === true || style.dim === true) seq += "\x1b[22m";
+	if (style.italic === true) seq += "\x1b[23m";
+	if (style.underline === true) seq += "\x1b[24m";
+	if (style.inverse === true) seq += "\x1b[27m";
+	if (style.strikethrough === true) seq += "\x1b[29m";
+	return seq;
 }

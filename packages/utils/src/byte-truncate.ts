@@ -94,6 +94,47 @@ export function truncateTailBytes(data: string | Uint8Array, maxBytes: number): 
 	return truncateBytesWindowed(data, maxBytes, "tail");
 }
 
+/** Where the text a {@link dropFrontBytes} walk keeps starts, and its UTF-8 length. */
+export interface FrontByteCut {
+	/** Index of the first UTF-16 unit kept. */
+	start: number;
+	/** UTF-8 length of the kept text. */
+	bytes: number;
+}
+
+/**
+ * Walk whole characters off the front of `text`, from index `start`, while `bytes` exceeds
+ * `maxBytes`, never splitting a character and never dropping one that starts at or past index
+ * `end`. `bytes` is the UTF-8 length of what is kept: `text` from `start`, and whatever the caller
+ * holds after it. The walk costs the characters it drops, where {@link truncateTailBytes} encodes and
+ * decodes the whole window. A lone surrogate counts the three bytes of the U+FFFD it encodes to, and
+ * a high surrogate pairs with the unit after it, so a caller whose text continues past the end of
+ * `text` passes an `end` short of its last unit, which that continuation could complete.
+ */
+export function dropFrontBytes(
+	text: string,
+	start: number,
+	end: number,
+	bytes: number,
+	maxBytes: number,
+): FrontByteCut {
+	while (bytes > maxBytes && start < end) {
+		const unit = text.charCodeAt(start);
+		if (unit < 0x80) {
+			bytes -= 1;
+		} else if (unit < 0x800) {
+			bytes -= 2;
+		} else if (unit >= 0xd800 && unit < 0xdc00 && (text.charCodeAt(start + 1) & 0xfc00) === 0xdc00) {
+			bytes -= 4;
+			start++;
+		} else {
+			bytes -= 3;
+		}
+		start++;
+	}
+	return { start, bytes };
+}
+
 /**
  * Truncate to a byte limit keeping the head, never splitting a UTF-8 sequence.
  */

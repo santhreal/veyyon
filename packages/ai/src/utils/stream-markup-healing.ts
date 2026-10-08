@@ -106,8 +106,8 @@ export class StreamMarkupHealing {
 	feedEvents(text: string): StreamMarkupHealingEvent[] {
 		if (text.length === 0) return [];
 		this.#markSectionClosed(text);
-		if (!this.#toolScanner) return this.#convertScannerEvents(this.#thinkingScanner.feed(text));
-		return this.#convertScannerEvents(this.#healThinking(this.#toolScanner.feed(text)));
+		if (!this.#toolScanner) return convertScannerEvents(this.#thinkingScanner.feed(text));
+		return convertScannerEvents(this.#healThinking(this.#toolScanner.feed(text)));
 	}
 
 	/**
@@ -137,16 +137,16 @@ export class StreamMarkupHealing {
 	}
 
 	/**
-	 * Flush held-back stream-end fragments as ordered events. Partial tool-call
-	 * sections/envelopes are dropped by the delegated scanners; unterminated
-	 * thinking blocks are emitted as thinking, matching the previous MiniMax parser
-	 * behavior.
+	 * Flush held-back stream-end fragments as ordered events. A tool call the stream ended inside is
+	 * dropped: the delegated scanner ends it `unterminated`, and a leaked envelope that never closed is
+	 * not a call to run. Unterminated thinking blocks are emitted as thinking, matching the previous
+	 * MiniMax parser behavior.
 	 */
 	flushEvents(): StreamMarkupHealingEvent[] {
 		const tail = this.#toolScanner ? this.#healThinking(this.#toolScanner.flush()) : [];
 		const flushed = this.#thinkingScanner.flush();
 		for (let fi = 0; fi < flushed.length; fi++) tail.push(flushed[fi]!);
-		return this.#convertScannerEvents(tail);
+		return convertScannerEvents(tail);
 	}
 
 	/** Flush held-back text only. Reconstructed calls are retained for {@link drainCompleted}. */
@@ -192,36 +192,37 @@ export class StreamMarkupHealing {
 		}
 		return out;
 	}
+}
 
-	#convertScannerEvents(events: readonly InbandScanEvent[]): StreamMarkupHealingEvent[] {
-		const out: StreamMarkupHealingEvent[] = [];
-		for (const event of events) {
-			switch (event.type) {
-				case "text":
-					out.push({ type: "text", text: event.text });
-					break;
-				case "thinkingDelta":
-					if (event.delta.length > 0) out.push({ type: "thinking", thinking: event.delta });
-					break;
-				case "toolEnd":
-					out.push({
-						type: "toolCall",
-						call: {
-							id: generateHealedToolCallId(),
-							name: event.name,
-							arguments: JSON.stringify(event.arguments),
-						},
-					});
-					break;
-				case "thinkingStart":
-				case "thinkingEnd":
-				case "toolStart":
-				case "toolArgDelta":
-					break;
-			}
+function convertScannerEvents(events: readonly InbandScanEvent[]): StreamMarkupHealingEvent[] {
+	const out: StreamMarkupHealingEvent[] = [];
+	for (const event of events) {
+		switch (event.type) {
+			case "text":
+				out.push({ type: "text", text: event.text });
+				break;
+			case "thinkingDelta":
+				if (event.delta.length > 0) out.push({ type: "thinking", thinking: event.delta });
+				break;
+			case "toolEnd":
+				if (event.unterminated) break;
+				out.push({
+					type: "toolCall",
+					call: {
+						id: generateHealedToolCallId(),
+						name: event.name,
+						arguments: JSON.stringify(event.arguments),
+					},
+				});
+				break;
+			case "thinkingStart":
+			case "thinkingEnd":
+			case "toolStart":
+			case "toolArgDelta":
+				break;
 		}
-		return out;
 	}
+	return out;
 }
 
 function generateHealedToolCallId(): string {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import type { SessionManager } from "@veyyon/kernel/session/session-manager";
-import type { SessionData } from "../src/export/html";
+import type { SessionData } from "../src/export/session-data";
 import {
 	buildShareSnapshot,
 	normalizeShareServerUrl,

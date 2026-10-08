@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import type { GuestClient } from "../../lib/client";
 import { fmtCost, fmtDuration, fmtTokens } from "../../lib/format";
-import { decideTranscriptPoll } from "../../lib/transcript-poll";
+import { TranscriptPoller } from "../../lib/transcript-poller";
 import type { TranscriptProps } from "../transcript/Transcript";
 import { Transcript } from "../transcript/Transcript";
 
@@ -48,61 +48,13 @@ export function AgentDrawer(props: {
 		setFetchError(null);
 		setDroppedRows(0);
 		if (!agent.hasSessionFile) return;
-		let disposed = false;
-		let inFlight = false;
-		let cursor = 0;
-		let carry = "";
-		let acc: readonly WireSessionEntry[] = [];
-		let timer: Timer | null = null;
-		const stopPolling = () => {
-			if (timer !== null) {
-				clearInterval(timer);
-				timer = null;
-			}
-		};
-		const poll = async (): Promise<void> => {
-			if (disposed || inFlight) return;
-			inFlight = true;
-			try {
-				const reply = await client.fetchTranscript(agent.id, cursor);
-				if (disposed) return;
-				const decision = decideTranscriptPoll(reply, carry);
-				switch (decision.action) {
-					case "retry":
-						return; // timeout/transient → keep polling from the same cursor
-					case "stop":
-						stopPolling();
-						setFetchError(decision.message);
-						return;
-					case "advance":
-						cursor = decision.newSize;
-						carry = decision.carry;
-						if (decision.skipped.length > 0) {
-							// Loud on purpose. Dropping a row silently renders a transcript
-							// with a hole in it that reads as "the agent said nothing here".
-							for (const skip of decision.skipped) {
-								console.warn(`transcript row dropped at offset ${skip.offset}: ${skip.snippet}`);
-							}
-							setDroppedRows(n => n + decision.skipped.length);
-						}
-						if (decision.fresh.length > 0) {
-							acc = acc.concat(decision.fresh);
-							setEntries(acc);
-						}
-						return;
-				}
-			} finally {
-				inFlight = false;
-			}
-		};
-		void poll();
-		timer = setInterval(() => {
-			void poll();
-		}, POLL_MS);
-		return () => {
-			disposed = true;
-			stopPolling();
-		};
+		const poller = new TranscriptPoller(client, agent.id, {
+			entries: setEntries,
+			error: setFetchError,
+			dropped: count => setDroppedRows(n => n + count),
+		});
+		poller.start(POLL_MS);
+		return () => poller.stop();
 	}, [agent.id, agent.hasSessionFile, client]);
 
 	const sendChat = () => {
@@ -112,14 +64,9 @@ export function AgentDrawer(props: {
 		setDraft("");
 	};
 
-	const p = progress?.progress;
 	// Live resolved model when the agent is running, else the model recorded on
 	// the snapshot at launch so parked/idle agents still show what they ran on.
-	const model = p?.resolvedModel ?? agent.model;
-	const ctxPct =
-		p?.contextTokens !== undefined && p.contextWindow
-			? Math.min(100, (p.contextTokens / p.contextWindow) * 100)
-			: null;
+	const model = progress?.progress.resolvedModel ?? agent.model;
 
 	return (
 		<aside className="ag-drawer" role="dialog" aria-label={agent.displayName}>
@@ -130,57 +77,13 @@ export function AgentDrawer(props: {
 					{model ? <span className="ag-chip ag-chip--model">{model}</span> : null}
 				</div>
 				<div className="ag-drawer-actions">
-					{agent.status === "running" && !readOnly ? (
-						<button
-							type="button"
-							className="ag-btn ag-btn--danger"
-							onClick={() => client.sendAgentCmd("kill", agent.id)}
-						>
-							<OctagonX size={13} aria-hidden />
-							kill
-						</button>
-					) : null}
-					{(agent.status === "parked" || agent.status === "aborted") && !readOnly ? (
-						<button type="button" className="ag-btn" onClick={() => client.sendAgentCmd("revive", agent.id)}>
-							<RotateCcw size={13} aria-hidden />
-							revive
-						</button>
-					) : null}
+					{readOnly ? null : <AgentLifecycleButton agent={agent} client={client} />}
 					<button type="button" className="ag-iconbtn" aria-label="close" onClick={onClose}>
 						<X size={15} aria-hidden />
 					</button>
 				</div>
 			</header>
-			{p ? (
-				<div className="ag-stats">
-					<span className="ag-stat">
-						<span className="ag-stat-label">tok</span>
-						<span className="ag-stat-value">{fmtTokens(p.tokens)}</span>
-					</span>
-					{ctxPct !== null ? (
-						<span className="ag-stat" title={`context ${fmtTokens(p.contextTokens ?? 0)}`}>
-							<span className="ag-stat-label">ctx</span>
-							<span className="ag-gauge">
-								<span
-									className={ctxPct > 80 ? "ag-gauge-fill ag-gauge-fill--warn" : "ag-gauge-fill"}
-									style={{ width: `${ctxPct}%` }}
-								/>
-							</span>
-						</span>
-					) : null}
-					<span className="ag-stat">
-						<span className="ag-stat-label">cost</span>
-						<span className="ag-stat-value">{fmtCost(p.cost)}</span>
-					</span>
-					<span className="ag-stat">
-						<span className="ag-stat-label">tools</span>
-						<span className="ag-stat-value">{p.toolCount}</span>
-					</span>
-					<span className="ag-stat">
-						<span className="ag-stat-value">{fmtDuration(p.durationMs)}</span>
-					</span>
-				</div>
-			) : null}
+			{progress ? <AgentStats progress={progress.progress} /> : null}
 			<div className="ag-drawer-body">
 				{agent.hasSessionFile ? (
 					<>
@@ -193,17 +96,7 @@ export function AgentDrawer(props: {
 							working={agent.status === "running" && fetchError === null}
 							host={host}
 						/>
-						{fetchError !== null ? (
-							<div className="ag-fetch-error" role="alert">
-								transcript unavailable: {fetchError}
-							</div>
-						) : null}
-						{droppedRows > 0 ? (
-							<div className="ag-transcript-dropped" role="status">
-								{droppedRows} unreadable {droppedRows === 1 ? "row" : "rows"} skipped: this transcript is
-								incomplete
-							</div>
-						) : null}
+						<TranscriptHealth fetchError={fetchError} droppedRows={droppedRows} />
 					</>
 				) : (
 					<div className="ag-empty">no transcript available</div>
@@ -229,5 +122,84 @@ export function AgentDrawer(props: {
 				</form>
 			)}
 		</aside>
+	);
+}
+
+/** Kill for a running agent, revive for a parked or aborted one, nothing otherwise. */
+function AgentLifecycleButton(props: { agent: AgentSnapshot; client: GuestClient }): ReactNode {
+	const { agent, client } = props;
+	if (agent.status === "running") {
+		return (
+			<button type="button" className="ag-btn ag-btn--danger" onClick={() => client.sendAgentCmd("kill", agent.id)}>
+				<OctagonX size={13} aria-hidden />
+				kill
+			</button>
+		);
+	}
+	if (agent.status === "parked" || agent.status === "aborted") {
+		return (
+			<button type="button" className="ag-btn" onClick={() => client.sendAgentCmd("revive", agent.id)}>
+				<RotateCcw size={13} aria-hidden />
+				revive
+			</button>
+		);
+	}
+	return null;
+}
+
+function AgentStats(props: { progress: AgentProgressPayload["progress"] }): ReactNode {
+	const p = props.progress;
+	const ctxPct =
+		p.contextTokens !== undefined && p.contextWindow
+			? Math.min(100, (p.contextTokens / p.contextWindow) * 100)
+			: null;
+	return (
+		<div className="ag-stats">
+			<span className="ag-stat">
+				<span className="ag-stat-label">tok</span>
+				<span className="ag-stat-value">{fmtTokens(p.tokens)}</span>
+			</span>
+			{ctxPct !== null ? (
+				<span className="ag-stat" title={`context ${fmtTokens(p.contextTokens ?? 0)}`}>
+					<span className="ag-stat-label">ctx</span>
+					<span className="ag-gauge">
+						<span
+							className={ctxPct > 80 ? "ag-gauge-fill ag-gauge-fill--warn" : "ag-gauge-fill"}
+							style={{ width: `${ctxPct}%` }}
+						/>
+					</span>
+				</span>
+			) : null}
+			<span className="ag-stat">
+				<span className="ag-stat-label">cost</span>
+				<span className="ag-stat-value">{fmtCost(p.cost)}</span>
+			</span>
+			<span className="ag-stat">
+				<span className="ag-stat-label">tools</span>
+				<span className="ag-stat-value">{p.toolCount}</span>
+			</span>
+			<span className="ag-stat">
+				<span className="ag-stat-value">{fmtDuration(p.durationMs)}</span>
+			</span>
+		</div>
+	);
+}
+
+/** The terminal fetch error and the count of unreadable rows, each shown only when present. */
+function TranscriptHealth(props: { fetchError: string | null; droppedRows: number }): ReactNode {
+	const { fetchError, droppedRows } = props;
+	return (
+		<>
+			{fetchError !== null ? (
+				<div className="ag-fetch-error" role="alert">
+					transcript unavailable: {fetchError}
+				</div>
+			) : null}
+			{droppedRows > 0 ? (
+				<div className="ag-transcript-dropped" role="status">
+					{droppedRows} unreadable {droppedRows === 1 ? "row" : "rows"} skipped: this transcript is incomplete
+				</div>
+			) : null}
+		</>
 	);
 }

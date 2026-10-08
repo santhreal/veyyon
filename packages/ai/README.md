@@ -47,7 +47,7 @@ Unified LLM API with automatic model discovery, provider configuration, token an
 ## Supported Providers
 
 - **OpenAI**
-- **OpenAI Codex** (ChatGPT Plus/Pro subscription, requires OAuth, see below)
+- **OpenAI Codex** (ChatGPT Plus/Pro subscription, requires OAuth, see [OAuth Providers](#oauth-providers))
 - **Anthropic**
 - **Google**
 - **Vertex AI** (Gemini via Vertex AI)
@@ -80,9 +80,9 @@ Unified LLM API with automatic model discovery, provider configuration, token an
 - **Ollama Cloud** (hosted native Ollama API; requires `OLLAMA_CLOUD_API_KEY`)
 - **llama.cpp** (local OpenAI and Anthropic compatible inference server)
 - **vLLM** (OpenAI-compatible server; `VLLM_API_KEY` for secured deployments)
-- **GitHub Copilot** (requires OAuth, see below)
-- **Google Gemini CLI** (requires OAuth, see below)
-- **Antigravity** (requires OAuth, see below)
+- **GitHub Copilot** (requires OAuth, see [OAuth Providers](#oauth-providers))
+- **Google Gemini CLI** (requires OAuth, see [OAuth Providers](#oauth-providers))
+- **Antigravity** (requires OAuth, see [OAuth Providers](#oauth-providers))
 - **Any OpenAI-compatible API**: LM Studio, custom proxies, etc.
 
 ## Installation
@@ -352,7 +352,7 @@ for await (const event of s) {
 }
 ```
 
-**Important notes about partial tool arguments:**
+**Partial tool arguments:**
 
 - During `toolcall_delta` events, `arguments` contains the best-effort parse of partial JSON
 - Fields may be missing or incomplete - always check for existence before use
@@ -661,7 +661,7 @@ All providers accept the base `StreamOptions` (in addition to provider-specific 
 - `headers`: Extra request headers merged on top of model-defined headers
 - `sessionId`: Provider-specific session identifier (prompt caching/routing)
 - `signal`: Abort in-flight requests
-- `onPayload`: Callback invoked with the provider request payload just before sending
+- `onPayload`: Callback invoked with the provider request payload immediately before sending
 
 Example:
 
@@ -895,7 +895,7 @@ This enables flexible workflows where you can:
 
 ## Context Serialization
 
-The `Context` object can be easily serialized and deserialized using standard JSON methods, making it simple to persist conversations, implement chat history, or transfer contexts between services:
+The `Context` object serializes and deserializes with standard JSON methods, so you can persist conversations, implement chat history, or transfer contexts between services:
 
 ```typescript
 import { Context, complete } from "@veyyon/ai";
@@ -1223,10 +1223,10 @@ const response = await complete(
 
 ### Quota Reporting
 
-Eleven providers report how much of a subscription's quota you have used, and `AuthStorage` surfaces
-those numbers. Each provider reports differently, so each has a backend that knows how to ask.
+Eleven providers report how much of a subscription's quota you have used, and `AuthStorage` reports
+those numbers. Each provider reports differently, so each has its own backend that queries it.
 
-You do not wire this up when you import the package normally:
+No setup is needed when you import the package normally:
 
 ```ts
 import { AuthStorage } from "@veyyon/ai";

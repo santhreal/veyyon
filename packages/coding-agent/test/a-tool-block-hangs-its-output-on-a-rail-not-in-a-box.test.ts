@@ -428,18 +428,19 @@ describe("a tool block hangs its output on a rail, not in a box", () => {
 
 	/**
 	 * A real `ToolExecutionComponent` prints the block inside its OWN frame: a blank
-	 * row above and below, a two-column gutter on the left, and every row padded out
-	 * to the render width so the transcript has a rectangle to paint on. That frame
-	 * belongs to the component and predates the rail, so it is asserted here instead
-	 * of being stripped in silence -- and the rail has to be found at column 2, which
-	 * is what these arms got wrong while the block underneath them was correct.
+	 * row above and below and a two-column gutter on the left. The frame paints no
+	 * background, so no row is padded past its ink: the blank rows are empty and every
+	 * row fits the render width. That frame belongs to the component and predates the
+	 * rail, so it is asserted here instead of being stripped in silence -- and the rail
+	 * has to be found at column 2, which is what these arms got wrong while the block
+	 * underneath them was correct.
 	 */
 	function componentFrame(lines: readonly string[]): { railed: string[]; ink: string[] } {
 		const rows = plain(lines);
 		expect(rows.length, "a block the component printed with no frame").toBeGreaterThan(2);
-		expect([...new Set(rows.map(visibleWidth))], "every row padded to the render width").toEqual([120]);
-		expect(rows[0]?.trim(), "a blank row above").toBe("");
-		expect(rows.at(-1)?.trim(), "a blank row below").toBe("");
+		for (const row of rows) expect(visibleWidth(row), JSON.stringify(row)).toBeLessThanOrEqual(120);
+		expect(rows[0], "an empty row above").toBe("");
+		expect(rows.at(-1), "an empty row below").toBe("");
 		const ink = rows.filter(row => row.trim().length > 0);
 		for (const row of ink) expect(row, JSON.stringify(row)).toStartWith("  ");
 		return { railed: ink.filter(row => row.startsWith(`  ${rail()} `)), ink };
@@ -492,9 +493,9 @@ describe("a tool block hangs its output on a rail, not in a box", () => {
 			for (const glyph of boxGlyphs()) {
 				for (const line of plain(lines)) expect(line, `${glyph} in ${JSON.stringify(line)}`).not.toContain(glyph);
 			}
-			// The block hugs its own ink. The padding to the render width is the
-			// component's rectangle; the block inside it stops less than halfway across.
-			for (const row of ink) expect(visibleWidth(row.trimEnd()), JSON.stringify(row.trimEnd())).toBeLessThan(60);
+			// The block hugs its own ink: no row is padded toward the render width, and
+			// every row stops less than halfway across.
+			for (const row of ink) expect(visibleWidth(row), JSON.stringify(row)).toBeLessThan(60);
 		},
 	);
 });

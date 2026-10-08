@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { resolveSpawnCwd } from "@veyyon/coding-agent/task";
+import { resolveSpawnCwd } from "@veyyon/coding-agent/task/spawn-run";
 import { TempDir } from "@veyyon/utils";
 
 const tempDirs: TempDir[] = [];

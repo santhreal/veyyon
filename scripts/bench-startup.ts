@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { Process } from "@veyyon/natives";
-import { AnsiStripper } from "@veyyon/utils";
+import { AnsiStripper, DIR_OVERRIDE_ENV_KEYS } from "@veyyon/utils";
 import { parseDocument } from "yaml";
 import { AUTONOMY_LABEL } from "../packages/coding-agent/src/tools/core/approval-modes";
 import { computeDigest, median, recordSettledStartup } from "./record-settled-startup";
@@ -16,6 +16,41 @@ const ONBOARDED_CONFIG = "onboardingVersion: 1\nstartup:\n  checkUpdate: false\n
 const ARM_GROUPS = ["version", "help", "ready", "frame", "replay"] as const;
 const OPTIONAL_ARM_GROUPS = ["settled", "responsive"] as const;
 type ArmGroup = (typeof ARM_GROUPS)[number] | (typeof OPTIONAL_ARM_GROUPS)[number];
+
+/** Every arm the bench reports, in report order; memory arms appear only under `--memory`. */
+const TIMED_ARMS = [
+	"version",
+	"help",
+	"ready:load",
+	"ready:boot",
+	"ready",
+	"first-frame",
+	"composer",
+	"editable",
+	"statusrow",
+	"replay",
+	"replay:composer",
+	"replay:editable",
+	"replay:statusrow",
+	"settled:first-byte",
+	"settled:editable",
+	"settled:editable-frame",
+	"settled:stable-tail",
+	"responsive:input",
+	"responsive:input-before-metadata",
+	"responsive:input-after-metadata",
+	"responsive:worst-input",
+] as const;
+const MEMORY_ARMS = [
+	"settled:main-peak-rss-kb",
+	"settled:main-steady-rss-kb",
+	"settled:tree-peak-rss-kb",
+	"settled:tree-steady-rss-kb",
+	"responsive:main-peak-rss-kb",
+	"responsive:main-steady-rss-kb",
+	"responsive:tree-peak-rss-kb",
+	"responsive:tree-steady-rss-kb",
+] as const;
 
 interface Options {
 	runs: number;
@@ -37,9 +72,11 @@ interface Options {
 	probeCount: number;
 	memory: boolean;
 	memoryIntervalMs: number;
+	/** `--max <arm>=<value>`: the run fails when an arm's median exceeds its ceiling or the arm has no samples. */
+	ceilings: Map<string, number>;
 }
 
-interface Sample {
+export interface Sample {
 	arm: string;
 	ms: number;
 }
@@ -57,6 +94,7 @@ function parseArgs(argv: string[]): Options {
 		probeCount: 40,
 		memory: false,
 		memoryIntervalMs: 25,
+		ceilings: new Map(),
 	};
 	for (let i = 0; i < argv.length; i++) {
 		const arg = argv[i];
@@ -79,7 +117,10 @@ function parseArgs(argv: string[]): Options {
 		else if (arg === "--probe-count") options.probeCount = Number(argv[++i]);
 		else if (arg === "--memory") options.memory = true;
 		else if (arg === "--memory-interval-ms") options.memoryIntervalMs = Number(argv[++i]);
-		else throw new Error(`unknown argument: ${arg}`);
+		else if (arg === "--max") {
+			const [arm, value] = parseCeiling(argv[++i]);
+			options.ceilings.set(arm, value);
+		} else throw new Error(`unknown argument: ${arg}`);
 	}
 	const positiveInts: Record<string, number> = {
 		runs: options.runs,
@@ -117,6 +158,40 @@ function parseArmGroups(raw: string | undefined): Set<ArmGroup> {
 			throw new Error(`--only got unknown arm group ${JSON.stringify(name)}; known: ${known.join(", ")}`);
 	}
 	return new Set(names as ArmGroup[]);
+}
+
+function parseCeiling(raw: string | undefined): [string, number] {
+	const separator = raw?.lastIndexOf("=") ?? -1;
+	const arm = raw?.slice(0, separator) ?? "";
+	const value = Number(raw?.slice(separator + 1));
+	const known: readonly string[] = [...TIMED_ARMS, ...MEMORY_ARMS];
+	if (separator < 1 || !known.includes(arm)) {
+		throw new Error(
+			`--max takes <arm>=<value> with a reported arm; got ${JSON.stringify(raw)}; arms: ${known.join(", ")}`,
+		);
+	}
+	if (!Number.isFinite(value) || value <= 0) {
+		throw new Error(`--max ${arm} needs a positive number; got ${JSON.stringify(raw?.slice(separator + 1))}`);
+	}
+	return [arm, value];
+}
+
+export interface CeilingVerdict {
+	arm: string;
+	ceiling: number;
+	/** Median of the arm's samples; undefined when the run produced none. */
+	median?: number;
+	passed: boolean;
+}
+
+/** Hold each arm's median to its ceiling. An arm that produced no samples fails: its ceiling went unchecked. */
+export function checkCeilings(samples: readonly Sample[], ceilings: ReadonlyMap<string, number>): CeilingVerdict[] {
+	return [...ceilings].map(([arm, ceiling]) => {
+		const values = samples.filter(sample => sample.arm === arm).map(sample => sample.ms);
+		if (values.length === 0) return { arm, ceiling, passed: false };
+		const armMedian = median(values);
+		return { arm, ceiling, median: armMedian, passed: armMedian <= ceiling };
+	});
 }
 
 export function ptyWrapper(
@@ -163,6 +238,17 @@ async function killProcessTree(pid: number | undefined, target: Process | null):
 	}
 }
 
+/**
+ * The caller's environment without the keys that relocate veyyon's directories. A bench started from a
+ * veyyon session inherits `VEYYON_CODING_AGENT_DIR`, and the measured process then loads the caller's
+ * profile, model roles and credentials instead of the seeded home.
+ */
+export function inheritedEnvironment(): NodeJS.ProcessEnv {
+	const env = { ...process.env };
+	for (const key of DIR_OVERRIDE_ENV_KEYS) delete env[key];
+	return env;
+}
+
 export async function recordFrame(
 	command: string,
 	args: string[],
@@ -177,7 +263,7 @@ export async function recordFrame(
 	const child = spawn(command, args, {
 		cwd,
 		stdio: ["pipe", "pipe", "pipe"],
-		env: { ...process.env, ...env },
+		env: { ...inheritedEnvironment(), ...env },
 	});
 	child.once("spawn", () => {
 		processState.target = child.pid === undefined ? null : Process.fromPid(child.pid);
@@ -248,7 +334,7 @@ export async function timeRun(
 	const child = spawn(command, args, {
 		cwd,
 		stdio: ["ignore", "pipe", "pipe"],
-		env: { ...process.env, ...env },
+		env: { ...inheritedEnvironment(), ...env },
 	});
 	child.once("spawn", () => {
 		processState.target = child.pid === undefined ? null : Process.fromPid(child.pid);
@@ -367,7 +453,7 @@ export async function extractInstalledNatives(
 	try {
 		await execFileAsync(command, [...prefix, "grep", "veyyon-native-self-test", probe], {
 			cwd,
-			env: { ...process.env, HOME: installed, VEYYON_PROFILE: "" },
+			env: { ...inheritedEnvironment(), HOME: installed, VEYYON_PROFILE: "" },
 		});
 	} catch (err) {
 		process.stderr.write(`seed: native addon probe failed, the launch arms will extract instead: ${String(err)}\n`);
@@ -547,42 +633,8 @@ async function main(): Promise<void> {
 		throw new Error("Benchmark executable changed during measurement; discard these samples and rebuild the target");
 	}
 
-	const memoryArms = options.memory
-		? [
-				"settled:main-peak-rss-kb",
-				"settled:main-steady-rss-kb",
-				"settled:tree-peak-rss-kb",
-				"settled:tree-steady-rss-kb",
-				"responsive:main-peak-rss-kb",
-				"responsive:main-steady-rss-kb",
-				"responsive:tree-peak-rss-kb",
-				"responsive:tree-steady-rss-kb",
-			]
-		: [];
-	const arms = [
-		"version",
-		"help",
-		"ready:load",
-		"ready:boot",
-		"ready",
-		"first-frame",
-		"composer",
-		"editable",
-		"statusrow",
-		"replay",
-		"replay:composer",
-		"replay:editable",
-		"replay:statusrow",
-		"settled:first-byte",
-		"settled:editable",
-		"settled:editable-frame",
-		"settled:stable-tail",
-		"responsive:input",
-		"responsive:input-before-metadata",
-		"responsive:input-after-metadata",
-		"responsive:worst-input",
-		...memoryArms,
-	];
+	const arms = [...TIMED_ARMS, ...(options.memory ? MEMORY_ARMS : [])];
+	const verdicts = checkCeilings(samples, options.ceilings);
 	const lines = [
 		`veyyon startup — ${options.bin ? `binary ${options.bin}` : "bun source"}, ${options.cold ? "cold" : "warm"} home, ${options.runs} run(s)`,
 		...arms.map(arm =>
@@ -591,8 +643,14 @@ async function main(): Promise<void> {
 				samples.filter(sample => sample.arm === arm).map(sample => sample.ms),
 			),
 		),
+		...verdicts.map(
+			verdict =>
+				`ceiling ${verdict.arm} ${verdict.median === undefined ? "no samples" : `median ${verdict.median.toFixed(1)}`} ` +
+				`vs ${verdict.ceiling} -> ${verdict.passed ? "ok" : "EXCEEDED"}`,
+		),
 	];
 	process.stdout.write(`${lines.join("\n")}\n`);
+	if (verdicts.some(verdict => !verdict.passed)) process.exitCode = 1;
 
 	if (options.json) {
 		await fs.writeFile(
@@ -621,6 +679,7 @@ async function main(): Promise<void> {
 						: undefined,
 					memory: options.memory ? { sampleIntervalMs: options.memoryIntervalMs } : undefined,
 					samples,
+					ceilings: verdicts.length > 0 ? verdicts : undefined,
 				},
 				null,
 				2,

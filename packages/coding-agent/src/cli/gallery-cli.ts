@@ -9,7 +9,7 @@
  */
 import type { AgentTool } from "@veyyon/agent-core";
 import type { TUI } from "@veyyon/tui";
-import { clampLow, errorMessage, getProjectDir } from "@veyyon/utils";
+import { clampLow, errorMessage, getProjectDir, stripAnsi } from "@veyyon/utils";
 import chalk from "chalk";
 import { Settings } from "../config/settings";
 import { ToolExecutionComponent } from "../modes/terminal/components/transcript/tool-execution";
@@ -138,7 +138,25 @@ export async function renderGalleryState(
 	if (fixture.renderState) {
 		return await fixture.renderState(state, width, expanded);
 	}
+	const component = await buildGalleryCard(name, fixture, state, expanded);
+	const lines = component.render(width);
+	component.stopAnimation();
+	return lines;
+}
 
+/**
+ * The tool card a gallery state draws, driven to that state with its edit preview
+ * settled. A fixture that draws through `renderState` has no card and is rejected.
+ */
+export async function buildGalleryCard(
+	name: string,
+	fixture: GalleryFixture,
+	state: GalleryState,
+	expanded = false,
+): Promise<ToolExecutionComponent> {
+	if (fixture.renderState) {
+		throw new Error(`Gallery fixture '${name}' draws through renderState and has no tool card`);
+	}
 	// A non-customRendered fixture may borrow another tool's built-in renderer
 	// (e.g. `edit_delete` → `edit`): drive the component under that real tool
 	// name so the sample exercises the exact production branch, not the
@@ -181,10 +199,7 @@ export async function renderGalleryState(
 	// board part-written. Stopped FIRST for a terminal state; a streaming or
 	// in-progress state keeps its live frame, which is what those states are for.
 	if (state === "success" || state === "error") component.stopAnimation();
-
-	const lines = component.render(width);
-	component.stopAnimation();
-	return lines;
+	return component;
 }
 
 function resolveWidth(requested: number | undefined): number {
@@ -266,6 +281,15 @@ export async function renderGalleryForThemes(
 }
 
 /**
+ * Renderer-registry tools plus fixture-only tools (no dedicated renderer, e.g.
+ * `report_tool_issue` / custom extension tools), so the gallery covers the
+ * generic fallback and custom-tool branches too. Sorted.
+ */
+export function galleryToolNames(): string[] {
+	return Array.from(new Set(Object.keys(toolRenderers).concat(Object.keys(galleryFixtures)))).sort();
+}
+
+/**
  * Render the gallery. Iterates the renderer registry (or a single tool),
  * printing each requested lifecycle state under a labeled section.
  */
@@ -283,10 +307,7 @@ export async function runGalleryCommand(args: GalleryCommandArgs): Promise<void>
 	const expanded = args.expanded ?? false;
 	const states = args.states && args.states.length > 0 ? args.states : GALLERY_STATES.slice();
 
-	// Renderer-registry tools plus fixture-only tools (no dedicated renderer,
-	// e.g. `report_tool_issue` / custom extension tools) so the gallery covers
-	// the generic fallback + custom-tool branches too.
-	const allNames = Array.from(new Set(Object.keys(toolRenderers).concat(Object.keys(galleryFixtures)))).sort();
+	const allNames = galleryToolNames();
 	const names = args.tool ? allNames.filter(name => name === args.tool) : allNames;
 	if (args.tool && names.length === 0) {
 		process.stderr.write(`Unknown tool '${args.tool}'. Known tools: ${allNames.join(", ")}\n`);
@@ -309,7 +330,7 @@ export async function runGalleryCommand(args: GalleryCommandArgs): Promise<void>
 		}
 		for (const { theme: themeName, sections } of rendered) {
 			const lines = [`# theme: ${themeName}`, ...sections.flatMap(section => section.lines), ""];
-			process.stdout.write(`${lines.map(line => (plain ? Bun.stripANSI(line) : line)).join("\n")}\n`);
+			process.stdout.write(`${lines.map(line => (plain ? stripAnsi(line) : line)).join("\n")}\n`);
 		}
 		return;
 	}
@@ -320,6 +341,6 @@ export async function runGalleryCommand(args: GalleryCommandArgs): Promise<void>
 	lines.push("");
 	// --plain forces it, but a piped/redirected stdout (chalk detects non-TTY
 	// and NO_COLOR) also degrades to plain text instead of escape soup.
-	const text = lines.map(line => (plain ? Bun.stripANSI(line) : line)).join("\n");
+	const text = lines.map(line => (plain ? stripAnsi(line) : line)).join("\n");
 	process.stdout.write(`${text}\n`);
 }

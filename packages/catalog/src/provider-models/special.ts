@@ -1,4 +1,4 @@
-import { once } from "@veyyon/utils/abortable";
+import { lazy } from "@veyyon/utils/abortable";
 import { fetchCodexModels } from "../discovery/codex";
 import type { DevinModelDiscoveryOptions } from "../discovery/devin";
 import { buildGitLabDuoWorkflowFallbackModel, fetchGitLabDuoWorkflowModels } from "../discovery/gitlab-duo-workflow";
@@ -65,7 +65,7 @@ export function cursorModelManagerOptions(config: CursorModelManagerConfig = {})
 		...(apiKey
 			? {
 					fetchDynamicModels: async hooks => {
-						const { fetchCursorUsableModels } = await cursorDiscovery();
+						const { fetchCursorUsableModels } = await cursorDiscovery.value;
 						return fetchCursorUsableModels({ apiKey, baseUrl, clientVersion, onFailure: hooks?.onFailure });
 					},
 				}
@@ -73,7 +73,7 @@ export function cursorModelManagerOptions(config: CursorModelManagerConfig = {})
 	};
 }
 
-const cursorDiscovery = once(() => import("../discovery/cursor"));
+const cursorDiscovery = lazy(() => import("../discovery/cursor"));
 
 // ---------------------------------------------------------------------------
 // GitLab Duo Workflow
@@ -161,7 +161,7 @@ export function devinModelManagerOptions(config: DevinModelManagerConfig = {}): 
 		...(apiKey
 			? {
 					fetchDynamicModels: async hooks => {
-						const { fetchDevinModels } = await devinDiscovery();
+						const { fetchDevinModels } = await devinDiscovery.value;
 						return fetchDevinModels({ apiKey, baseUrl, fetch, onFailure: hooks?.onFailure });
 					},
 				}
@@ -169,7 +169,7 @@ export function devinModelManagerOptions(config: DevinModelManagerConfig = {}): 
 	};
 }
 
-const devinDiscovery = once(() => import("../discovery/devin"));
+const devinDiscovery = lazy(() => import("../discovery/devin"));
 // ---------------------------------------------------------------------------
 // Zai
 // ---------------------------------------------------------------------------

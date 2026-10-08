@@ -1027,6 +1027,27 @@ function writeEmbeddedAddonFile(targetPath, content) {
 	}
 }
 
+const TAR_BLOCK_BYTES = 512;
+const TAR_RECORD_BYTES = 10240;
+
+/**
+ * Upper bound of the tar stream that holds `files`: a header block and the
+ * block-padded body per entry, plus the two end-of-archive blocks and the
+ * padding to the next record. Passed to gunzip as its output chunk size, the
+ * archive inflates into one buffer instead of 16 KiB chunks joined by a second
+ * copy: for the 148 MB linux-x64 addon that drops ~9,000 chunk allocations and
+ * a 148 MB concat from the first launch of a version. An archive larger than
+ * the bound still inflates correctly, as several chunks.
+ */
+function embeddedAddonTarBound(files) {
+	let bound = 2 * TAR_BLOCK_BYTES + TAR_RECORD_BYTES;
+	for (const file of files) {
+		if (typeof file.size !== "number") return undefined;
+		bound += TAR_BLOCK_BYTES + Math.ceil(file.size / TAR_BLOCK_BYTES) * TAR_BLOCK_BYTES;
+	}
+	return bound;
+}
+
 export function extractEmbeddedAddonArchive({ archivePath, files, targetDir }) {
 	const pending = new Map();
 	for (const file of files) {
@@ -1040,7 +1061,9 @@ export function extractEmbeddedAddonArchive({ archivePath, files, targetDir }) {
 	}
 	if (pending.size === 0) return [];
 
-	const archive = requireRuntime("node:zlib").gunzipSync(fs.readFileSync(archivePath));
+	const archive = requireRuntime("node:zlib").gunzipSync(fs.readFileSync(archivePath), {
+		chunkSize: embeddedAddonTarBound(files),
+	});
 	const writtenPaths = [];
 	let offset = 0;
 

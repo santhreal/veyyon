@@ -81,6 +81,12 @@ const initializeRunnerForTest = (runner: ExtensionRunner | undefined): void => {
 	);
 };
 
+/**
+ * `CredentialDisabledRelay` in `session/startup-credential-relay.ts`, driven through `createAgentSession`:
+ * the session subscribes to its auth store before the first key lookup, holds an event raised before the
+ * extension runner exists and replays it once the runner attaches, routes handler errors to `onError`, and
+ * unsubscribes on disposal and on a startup that throws.
+ */
 describe("createAgentSession credential_disabled subscription", () => {
 	const tempDirs: string[] = [];
 

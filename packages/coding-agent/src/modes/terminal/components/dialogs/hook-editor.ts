@@ -20,13 +20,11 @@ import { actionKeyHint } from "../../utils/key-hint";
 import { matchesAppExternalEditor, matchesAppFollowUp, matchesAppInterrupt } from "../../utils/keybinding-matchers";
 import {
 	computeModalDims,
+	HOOK_EDITOR_TEXT_PAD_COLS,
 	MODAL_SIZING_MEDIUM,
-	type ModalShellGeometry,
-	type ModalShortcut,
-	planModalChrome,
-	renderModalShell,
 	sizingForArea,
-} from "../chrome/modal-shell";
+} from "../chrome/modal-geometry";
+import { type ModalShellGeometry, type ModalShortcut, planModalChrome, renderModalShell } from "../chrome/modal-shell";
 import { routeModalChrome } from "../selectors/select-list-mouse-routing";
 
 export interface HookEditorOptions {
@@ -43,16 +41,6 @@ export interface HookEditorOptions {
 	/** Card presentation only: repaint request for chip hover paints. */
 	onRequestRender?: () => void;
 }
-
-/**
- * Columns of padding on EACH side of the editor's title and hint rows in the
- * embedded presentation.
- *
- * Exported because a caller that pre-wraps or pre-truncates the title has to
- * know the width it will actually be rendered at, and the only other way to
- * know is to guess.
- */
-export const HOOK_EDITOR_TEXT_PAD_COLS = 1;
 
 export class HookEditorComponent extends Container {
 	#editor: Editor;

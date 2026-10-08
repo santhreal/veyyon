@@ -7,7 +7,7 @@ Compaction and branch summaries are the two mechanisms that keep long sessions u
 
 Both are persisted as session entries and converted into agent-attributed developer context when rebuilding LLM input.
 
-## Key implementation files
+## Implementation files
 
 - `packages/agent/src/compaction/compaction.ts` (context-full summarization and handoff generation)
 - `packages/agent/src/compaction/legacy-snapcompact-archive.ts` (reads archives left by the removed image-archive engine so old sessions keep loading)
@@ -26,7 +26,7 @@ Compaction and branch summaries are distinct session entry types, not assistant 
 
 - `CompactionEntry`
   - `type: "compaction"`
-  - `summary`, optional `shortSummary` (display only, and no longer produced by `compact()`: see
+  - `summary`, optional `shortSummary` (display only, and not produced by `compact()`: see
     "Short summary" below)
   - `firstKeptEntryId` (compaction boundary)
   - `tokensBefore`
@@ -53,13 +53,13 @@ templates:
 `branchSummary` becomes an agent-attributed **developer** message.
 
 `compactionSummary` becomes an agent-attributed **user** message. The role is the trust boundary: a
-compaction summary is model-generated history, so putting it in the user channel means it cannot
+compaction summary is model-generated history, so putting it in the `user` role means it cannot
 outrank a live developer message that contradicts it. Any image attachments follow the summary text
-in the same message, which is also why the user slot is the safe one: every provider accepts images
+in the same message, which is also why the `user` role is the safe one: every provider accepts images
 there.
 
 The compaction template wraps the summary in its own `<summary>` delimiters, so the untrusted region
-has an explicit start and end. Exactly one wrapper is ever emitted: a legacy or model-authored
+has an explicit start and end. One wrapper only is emitted: a legacy or model-authored
 `<summary …>` wrapper persisted inside the summary text is stripped first
 (`withoutSummaryPresentationTags`), and embedded or sibling `<summary>` elements that are not one
 enclosing wrapper are left alone as content. The branch template uses no delimiters.
@@ -115,7 +115,7 @@ What the LLM sees:
 
 ### Overflow/incomplete recovery vs threshold/idle maintenance
 
-The automatic paths are intentionally different:
+The automatic paths differ:
 
 - **Overflow recovery**
   - Trigger: current-model assistant error is detected as context overflow and the error is not older than the latest compaction.
@@ -156,22 +156,19 @@ alone is bigger. User messages, assistant text, tool calls, and error results ar
 
 The summary prompt does not state any of that. Its opening line requests "a structured
 handoff summary for another LLM to resume the task", which describes a cold restart that compaction
-does not perform. This is inherited from upstream, whose engine keeps the same recent tail, so the
-mismatch is upstream's rather than a fork difference. It is recorded here because a summarizer told
-it is writing for a fresh reader will restate turns that are still in context. Changing the prompt
-is an operator decision, not a fix to apply locally.
+does not perform. The prompt matches upstream oh-my-pi, whose engine keeps the same recent tail. A summarizer
+instructed to write for a fresh reader restates turns that are still in context.
 
-`/handoff` is a separate, explicit operation that starts a new session. Nothing carries over except
+`/handoff` is a separate, explicit operation that starts a new session. Nothing transfers except
 its generated transfer document. Automatic compaction never selects or schedules a handoff.
 
 ### Legacy compaction strategies
 
-Earlier versions offered `snap`, `handoff`, and other strategy values. They now
-migrate to `summary`. Legacy `off` also sets `compaction.enabled: false`.
+Stored `snap`, `handoff`, and other retired strategy values migrate to `summary`. Legacy `off` also sets `compaction.enabled: false`.
 
-Sessions compacted by the old engine still open without loss. The removed engine always stored the full plaintext source alongside its image frames, so a legacy archive degrades gracefully:
+Sessions compacted by the old engine still open without loss. The removed engine always stored the full plaintext source alongside its image frames, so a legacy archive still loads:
 
-- On each context rebuild, `legacyArchiveSourceText` (in `packages/agent/src/compaction/legacy-snapcompact-archive.ts`) reads the archived source from `CompactionEntry.preserveData.snapcompact` and re-attaches it as a single recovered text block on the compaction summary. The old image frames are never rehydrated, which also removes the oversized-payload hazard they carried.
+- On each context rebuild, `legacyArchiveSourceText` (in `packages/agent/src/compaction/legacy-snapcompact-archive.ts`) reads the archived source from `CompactionEntry.preserveData.snapcompact` and re-attaches it as a single recovered text block on the compaction summary. The old image frames are never rehydrated, so their oversized payload is never sent.
 - The next compaction over such a session drains that recovered source into the fresh LLM summary and drops the legacy archive from `preserveData`, so the session converges to a plain summarized history.
 
 ### Display transcript
@@ -186,7 +183,7 @@ and resume read the file, and a divergent prefix cold-misses the provider prompt
 rewritten from the earliest pruned entry on; the lines before it are copied as they are:
 
 1. **Stale-result pass** (`#pruneStaleToolResults` → `pruneSupersededToolResults`) runs first, before
-   any threshold gating, so it fires even with `compaction.enabled` off. It is skipped entirely when
+   any threshold check, so it fires even with `compaction.enabled` off. It is skipped entirely when
    both `compaction.supersedeReads` and `compaction.dropUseless` are false.
 2. **Threshold prune** (`#pruneToolOutputs` → `pruneToolOutputs`) runs only on the threshold path,
    after the `compaction.enabled` / strategy check and after error turns are skipped, and only once
@@ -212,7 +209,7 @@ Pruned tool results are replaced with:
 
 ### Superseded-read elision
 
-Gated by `compaction.supersedeReads` (default on). When it is on, the stale-result pass keys every
+Controlled by `compaction.supersedeReads` (default on). When it is on, the stale-result pass keys every
 `read` result by `readToolSupersedeKey` (path plus selector grammar; a selector-free read supersedes
 range reads of the same base path, URL-scheme paths are exempt), and every result but the newest in
 a key group is blanked to the exact placeholder `[Superseded by a newer read of this file]`
@@ -229,7 +226,7 @@ compaction's `firstKeptEntryId` are summarized away and are never rewritten.
 
 Tools can flag a finished result as contextually useless, a search with zero matches, a `job` poll that timed out with everything still running, an empty `irc` inbox drain. The flag originates on the tool result (`AgentToolResult.useless`, set via `ToolResultBuilder.useless()` or directly on the returned object), is copied by the agent loop onto the persisted `ToolResultMessage` (never together with `isError`, errors always win), and is consumed in three places:
 
-- **Per-turn stale-result pass** (`pruneSupersededToolResults`, gated by `compaction.dropUseless`, default on): flagged results are blanked to the exact placeholder `[Uneventful result elided]` (`USELESS_NOTICE`) with the same cache-aware timing as superseded reads: only when the suffix after the candidate is small (≤ ~8k tokens) or the session has idled past the provider prompt-cache lifetime. Results smaller than the notice itself are never blanked (no savings), and protected tools are exempt.
+- **Per-turn stale-result pass** (`pruneSupersededToolResults`, controlled by `compaction.dropUseless`, default on): flagged results are blanked to the exact placeholder `[Uneventful result elided]` (`USELESS_NOTICE`) with the same cache-aware timing as superseded reads: only when the suffix after the candidate is small (≤ ~8k tokens) or the session has idled past the provider prompt-cache lifetime. Results smaller than the notice itself are never blanked (no savings), and protected tools are exempt.
 - **Threshold prune** (`pruneToolOutputs`): flagged results bypass the protect-recent window, same as superseded reads, and receive `USELESS_NOTICE` instead of the token-count placeholder.
 - **Summary serialization**: `serializeConversation` drops the whole tool call/result pair from summarizer input: the source region is discarded after summarization anyway, so the exclusion costs no cache.
 
@@ -340,10 +337,10 @@ and clears it when a compaction is committed.
 
 ### Short summary
 
-`CompactionEntry.shortSummary` is a display-only, pull-request-style line. `compact()` no longer
-generates one: a second model request per compaction, spent on text the model never reads, is not
-worth the input cost. Every reader stays, because compaction hooks still set the field and sessions
-written before the change still carry it.
+`CompactionEntry.shortSummary` is a display-only, pull-request-style line. `compact()` does not
+generate one, since that would be a second model request per compaction for text the model never
+reads. Compaction hooks may set the field, and older session files contain it, so every reader of it
+remains.
 
 Its one display consumer is the session-listing title fallback (`title: header.title ?? shortSummary`
 in `kernel/src/session/session-listing.ts`), which veyyon reaches only when its own
@@ -429,17 +426,28 @@ file-operations.md (Write)
 </files>
 ```
 
-Legacy `<read-files>`/`<modified-files>` tags from summaries written by earlier versions are stripped (alongside `<files>`) before re-appending, so old summaries self-heal on the next compaction.
+Legacy `<read-files>`/`<modified-files>` tags from summaries written by earlier versions are stripped (alongside `<files>`) before re-appending, so old summaries lose those tags on the next compaction.
 
 ### Persist and reload
 
 After summary generation (or a hook-provided summary), agent session:
 
 1. Appends a `CompactionEntry` with `appendCompaction(...)`.
-2. Rebuilds display context from the active leaf via `buildDisplaySessionContext()`.
-3. Replaces live agent messages with rebuilt context.
-4. Synchronizes active todo phases from the rebuilt branch and closes provider sessions whose history was rewritten.
-5. Emits `session_compact` hook event.
+2. Calls `sessionManager.coolCompactedHistory()`, which moves the payloads of entries before the keep boundary out of memory.
+3. Rebuilds display context from the active leaf via `buildDisplaySessionContext()`.
+4. Replaces live agent messages with rebuilt context.
+5. Synchronizes active todo phases from the rebuilt branch and closes provider sessions whose history was rewritten.
+6. Emits `session_compact` hook event.
+
+#### Compacted history in memory
+
+An entry the live context cannot reach keeps `type`, `id`, `parentId`, `timestamp` and every small field in memory. Each string field of 256 characters or more, and each object field, is replaced by an accessor that reads the entry's line back from the session file on first use and restores it through the load pipeline: blob references are resolved and tool-result codecs rebuild their dropped fields. Entries whose line is under 1 KiB stay in memory.
+
+The live context is the active branch from the newest compaction's keep boundary on, plus every compaction, model, thinking-level, service-tier, TTSR, MCP-selection and mode entry on the branch, which each context build reads. Entries on other branches move out of memory as well.
+
+The session reads those lines through a handle opened on the file object it loaded. A republish by this session or another process, a rename, or an unlink leaves that object readable, so recorded offsets stay valid. After a tail republish that keeps the file's prefix, the entries still out of memory move to a handle on the new file and the old handle closes. A handle closes when the last entry reading through it is read back, or when the entries holding it are garbage collected.
+
+The session moves payloads out of memory after a load, after each publish of the session file, and after a compaction. It skips the pass while an in-place update is pending, while a publish is in flight, or while the file holds lines of another writer. Windows opens no handle, so every entry stays in memory there.
 
 ## Branch summarization pipeline
 
@@ -573,7 +581,7 @@ From `settings-schema.ts`:
 - `compaction.midTurnEnabled` = `true`
 - `compaction.remoteEndpoint` = `undefined`
 - `compaction.threshold` = `auto`; the one trigger setting, with its unit in the value. `auto` is `contextWindow - max(15% of contextWindow, reserveTokens)`. `85%` is a percent of the current model's window. `170000` is an absolute token amount, model-independent: compaction runs once context exceeds that many tokens whatever the current model's window is, and when the amount is larger than that window it is honored up to `contextWindow - 1` with a one-time warning (never silently reinterpreted). Resolution and migration logic for retired keys is defined in `packages/agent/src/compaction/threshold.ts`.
-- `compaction.thresholdTokens` = `-1` and `compaction.thresholdPercent` = `-1`; retired. The global config is rewritten on load (`#migrateRawSettings`): a positive amount becomes `threshold: <amount>`, a positive percent becomes `threshold: <percent>%` (the amount wins when both are set), and both keys are dropped, so the ambiguity leaves the file without moving the trigger. Config sources that are never rewritten — project files, `--config` overlays — are folded in at read time by `withLegacyCompactionThreshold` with the same precedence, and the session reports which retired key supplied the value.
+- `compaction.thresholdTokens` = `-1` and `compaction.thresholdPercent` = `-1`; retired. The global config is rewritten on load (`#migrateRawSettings`): a positive amount becomes `threshold: <amount>`, a positive percent becomes `threshold: <percent>%` (the amount wins when both are set), and both keys are dropped, so the ambiguity leaves the file without moving the trigger. Config sources that are never rewritten (`--config` overlays and non-persisting instances) are folded in at read time by `withLegacyCompactionThreshold` with the same precedence, and the session reports which retired key supplied the value.
 - `compaction.idleEnabled` = `false`
 - `compaction.idleThresholdTokens` = `200000`
 - `compaction.idleTimeoutSeconds` = `300`

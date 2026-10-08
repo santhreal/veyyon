@@ -123,11 +123,16 @@ describe("the kernel names no tool and no host", () => {
 		// which names a directory and a file shape and no tool, host or mode. Then the result codec
 		// contribution (`registry/tool-result-codec`) and its tool-name-keyed table
 		// (`session/tool-result-codecs`), which is how the spine slims and restores a tool result's
-		// details without naming the tool.
-		expect(kernelFiles.length).toBe(65);
+		// details without naming the tool. Then `session/session-entry-index`, the id and label index the
+		// loader builds over a file's entries, and `session/session-cold-payloads`, which keeps a
+		// compacted entry's payload in the session file until a reader asks for it; both name a file
+		// shape and no tool, host or mode. Then `session/session-load-cooling`, which moves compacted
+		// history to disk while a large session file streams in; it names the compaction entry shapes
+		// and the session modules beside it, and no tool, host or mode.
+		expect(kernelFiles.length).toBe(68);
 		expect(concernCounts.registry).toBe(8);
 		expect(concernCounts.loader).toBe(12);
-		expect(concernCounts.session).toBe(41);
+		expect(concernCounts.session).toBe(44);
 		expect(concernCounts.settings).toBe(4);
 		expect(concernCounts.registry).toBeGreaterThan(0);
 		expect(concernCounts.loader).toBeGreaterThan(0);

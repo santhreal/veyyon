@@ -6,6 +6,6 @@
  * checks a 751-message chat-completions request in 2.1 ms against 42 µs compiled. The gateway loads
  * these schemas only when it serves, so their compile cost is off the launch path.
  */
-import { scope } from "arktype";
+import { scope } from "../utils/schema/arktype";
 
 export const { type } = scope({}, { jitless: false });

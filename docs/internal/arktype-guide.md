@@ -1,8 +1,8 @@
 # ArkType Guide (for migrating Zod → ArkType in this repo)
 
 Pinned to **arktype 2.2.3** (root `package.json` catalog entry; packages consume `"arktype": "catalog:"`).
-Originally verified against the installed `.d.ts` and runtime. Author types with
-`import { type } from "arktype"`.
+Originally verified against the installed `.d.ts` and runtime. Shipped source authors types with
+`import { type } from "@veyyon/ai/utils/schema/arktype"`; see "Importing arktype values" below.
 
 > **Scope rule (READ FIRST).** Zod stays supported at the **external boundary**: `Tool.parameters`
 > accepts Zod *or* ArkType *or* JSON Schema, and the public `pi.zod` extension API + the Zod-backed
@@ -18,6 +18,26 @@ Originally verified against the installed `.d.ts` and runtime. Author types with
 
 So an ArkType `Type` is a function. NEVER detect it via `$`/`_arktype`/`__arktype` markers, those
 don't exist. `isArkSchema`, `arkToWireSchema`, `isZodSchema`, `zodToWireSchema` all remain exported.
+
+## Importing arktype values
+Evaluating the `arktype` package costs 115 modules, about 30 ms of a compiled binary's launch and
+6 MiB of heap. Shipped source imports the values it calls (`type`, `scope`, `Type`) from
+`@veyyon/ai/utils/schema/arktype`. Each export there is a stand-in: a call, a `new` or a property read
+evaluates `arktype` and forwards to the real value, so `type({...})`, `type.enumerated(...)` and
+`x instanceof type.errors` behave as they do on the package's exports. A type-only import from
+`"arktype"` (`import type { Type } from "arktype"`) evaluates nothing and stays.
+
+Key a cache on the ArkType release with `arktypeRelease()` from the same module. It reads the
+package metadata and evaluates no ArkType module. `globalThis.$ark` does not exist until `arktype` or
+`arktype/config` evaluates, so a key read from `$ark.version` differs between a process that built a
+schema and one that did not.
+
+Build schemas inside a `lazy()` thunk or at the point of use, never at module scope: a module-scope
+`type(...)` call evaluates `arktype` with the module graph and undoes the deferral.
+`scripts/arktype-values-load-through-the-deferred-module.test.ts` fails on a value import of
+`arktype` in shipped source, and
+`packages/coding-agent/test/architecture/a-launch-evaluates-arktype-only-when-a-schema-is-built.test.ts`
+fails when loading every launch and tool module evaluates it.
 
 ## Core translation table (Zod → ArkType)
 | Zod | ArkType |
@@ -65,7 +85,7 @@ don't exist. `isArkSchema`, `arkToWireSchema`, `isZodSchema`, `zodToWireSchema` 
 ## Validating with a schema (replacing `.parse` / `.safeParse`)
 ArkType `Type` is **invoked** to validate; failure returns an `ArkErrors` instance:
 ```ts
-import { type } from "arktype";
+import { type } from "@veyyon/ai/utils/schema/arktype";
 const out = schema(value);
 if (out instanceof type.errors) {
   // out.summary -> human message; out.map(e => `${e.path}: ${e.message}`)
@@ -76,6 +96,9 @@ if (out instanceof type.errors) {
 - `.parse(x)` → `const out = schema(x); if (out instanceof type.errors) throw new Error(out.summary); use out;`
 - `.safeParse(x).success` → `!(schema(x) instanceof type.errors)`
 - NEVER use `.allows()` for tool validation: it skips morphs/defaults/narrows.
+- A module that does not otherwise need `arktype`'s value tests the result with `isArkErrors(out)`
+  from `@veyyon/ai/utils/schema` instead of `instanceof type.errors`. The `instanceof` test reads
+  `type.errors`, which evaluates `arktype` the first time it runs.
 - `.infer` (output) and `.inferIn` (input) are inference-only properties (no runtime value).
 
 ## Advanced
@@ -83,7 +106,7 @@ if (out instanceof type.errors) {
 ### Scopes (reusable aliases / mutually-referential schemas)
 Replace a cluster of cross-referencing Zod schemas with a scope, then `.export()` to a module:
 ```ts
-import { scope } from "arktype";
+import { scope } from "@veyyon/ai/utils/schema/arktype";
 const myScope = scope({
   inner: { id: "string" },
   outer: { inner: "inner", tags: "string[]" },
@@ -93,11 +116,14 @@ const m = myScope.export();        // Module, m.outer, m.inner are Type instance
 Use `.export()`, NOT `.compile()` (that method does not exist on a Scope).
 
 ### Compiled and interpreted validators
-The CLI entry configures ArkType jitless in `runCli` (`packages/coding-agent/src/cli.ts`) before any
-command loads a schema, so a schema built from the default `type` validates by interpreted traversal
-and compiles no validator code. In the compiled binary this cuts `import("arktype")` from 47 ms to
-25 ms and `createAgentSession` from 125 ms to 104 ms. `veyyon --smoke-test` fails when `arktype`
-evaluates before that call, which happens when a static import from `cli.ts` reaches it.
+The CLI entry configures ArkType jitless in `runCli` (`packages/coding-agent/src/cli.ts`) through
+`configureArktype({ jitless: true })` before any command builds a schema, so a schema built from the
+default `type` validates by interpreted traversal and compiles no validator code. In the compiled binary
+this cuts the evaluation of `arktype` from 47 ms to 25 ms and `createAgentSession` from 125 ms to
+104 ms. `configureArktype` evaluates nothing: it holds the configuration until the first `loadArktype`,
+which applies it and then evaluates the package, so a launch that builds no schema evaluates none of
+the 32 modules of `arktype/config`. `veyyon --smoke-test` fails when `arktype` evaluates before that
+call, which happens when a module that `cli.ts` reaches statically builds a schema while it evaluates.
 
 Interpreted traversal costs little on a small value (a tool call's arguments: 3.4 µs against 3.1 µs)
 and a lot on a large one (a 751-message chat-completions request: 2.1 ms against 42 µs). A schema that
@@ -147,11 +173,11 @@ is a candidate to **stay on Zod** (external-boundary exception), note it in your
   also need `.describe()`.
 
 ## When you finish a file
-- Replace `import { z } from "zod/v4"` with `import { type } from "arktype"` (keep `z` only if still used).
+- Replace `import { z } from "zod/v4"` with `import { type } from "@veyyon/ai/utils/schema/arktype"` (keep `z` only if still used).
 - Preserve every `.describe()` string and field optionality EXACTLY.
 - Convert every `.parse`/`.safeParse` call site in the file.
 - Do NOT run build/test/lint/format: the orchestrator runs gates once at the end.
 - Report: files changed, any `.strict`→`"+"`, `.refine`→`.narrow`, `.catch`→morph, and any file you
   intentionally left on Zod (with the reason).
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `eb21778f28` on 2026-10-03.*

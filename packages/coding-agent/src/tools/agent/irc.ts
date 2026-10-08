@@ -11,8 +11,8 @@
 
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
-import { errorMessage, formatDuration, prompt } from "@veyyon/utils";
-import { type } from "arktype";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { errorMessage, formatDuration, lazy, prompt } from "@veyyon/utils";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { AgentRegistry } from "../../registry/agent-registry";
 import { IrcBus, type IrcDeliveryReceipt, type IrcMessage } from "../../task/irc-bus";
@@ -26,18 +26,20 @@ import { isIrcEnabled } from "./irc-enabled";
 
 export { isIrcEnabled };
 
-const ircSchema = type({
-	op: type("'send' | 'wait' | 'inbox' | 'list'").describe("irc operation"),
-	"to?": type("string").describe('send: recipient agent id or "all"'),
-	"message?": type("string").describe("send: message body"),
-	"replyTo?": type("string").describe("send: message id being answered"),
-	"await?": type("boolean").describe('send: wait for the recipient\'s reply (invalid with to:"all")'),
-	"from?": type("string").describe("wait: only accept a message from this agent id"),
-	"timeoutMs?": type("number").describe("wait: timeout in milliseconds (0 waits indefinitely)"),
-	"peek?": type("boolean").describe("inbox: list messages without consuming them"),
-});
+const ircSchema = lazy(() =>
+	type({
+		op: type("'send' | 'wait' | 'inbox' | 'list'").describe("irc operation"),
+		"to?": type("string").describe('send: recipient agent id or "all"'),
+		"message?": type("string").describe("send: message body"),
+		"replyTo?": type("string").describe("send: message id being answered"),
+		"await?": type("boolean").describe('send: wait for the recipient\'s reply (invalid with to:"all")'),
+		"from?": type("string").describe("wait: only accept a message from this agent id"),
+		"timeoutMs?": type("number").describe("wait: timeout in milliseconds (0 waits indefinitely)"),
+		"peek?": type("boolean").describe("inbox: list messages without consuming them"),
+	}),
+);
 
-export type IrcParams = typeof ircSchema.infer;
+export type IrcParams = typeof ircSchema.value.infer;
 
 interface IrcPeerInfo {
 	id: string;
@@ -66,13 +68,15 @@ function formatIncoming(msg: IrcMessage): string {
 	return `[${msg.id}] ${msg.from}${replyTag}: ${msg.body}`;
 }
 
-export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
+export class IrcTool implements AgentTool<typeof ircSchema.value, IrcDetails> {
 	readonly name = "irc";
 	readonly approval = "read" as const;
 	readonly label = "IRC";
 	readonly summary = "Send and receive messages between agents";
 	readonly description: string;
-	readonly parameters = ircSchema;
+	get parameters(): typeof ircSchema.value {
+		return ircSchema.value;
+	}
 	readonly strict = true;
 	// Only the ops that block observe an interrupt. `list`, `inbox`, a
 	// fire-and-forget `send` and a `send` the tool rejects all return at once,
@@ -83,7 +87,7 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 	readonly interruptible = (args: Partial<IrcParams>): boolean =>
 		args.op === "wait" || (args.op === "send" && args.await === true);
 
-	readonly examples: readonly ToolExample<typeof ircSchema.infer>[] = [
+	readonly examples: readonly ToolExample<typeof ircSchema.value.infer>[] = [
 		{
 			caption: "Fire-and-forget DM — same send wakes idle/parked peers",
 			call: {
@@ -131,65 +135,16 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 
 		switch (params.op) {
 			case "list":
-				return this.#executeList(registry, senderId);
+				return executeList(registry, senderId);
 			case "send":
 				return this.#executeSend(registry, senderId, params, signal);
 			case "wait":
 				return this.#executeWait(registry, senderId, params, signal);
 			case "inbox":
-				return this.#executeInbox(registry, senderId, params);
+				return executeInbox(registry, senderId, params);
 			default:
 				return errorResult("Unknown irc op.", { op: params.op });
 		}
-	}
-
-	#executeList(registry: AgentRegistry, senderId: string): AgentToolResult<IrcDetails> {
-		const bus = IrcBus.global();
-		// ONE call, and the registry owns what it means. This is the roster the
-		// MODEL reads, and the ids it hands back are the ids the model then
-		// messages, so an unfiltered list is not a display bug: it is how a
-		// spawned agent from a conversation the operator closed gets woken to answer a
-		// question about work it never did.
-		//
-		// `listAddressableBy` is built on the same `canAddress` decision that the
-		// send below consults, so the roster can no longer offer a peer the send
-		// would refuse, or withhold one it would accept. It replaces a hand-rolled
-		// pair of filters that restated the caller, advisor and scope rules a
-		// second time; two spellings of one rule is how the drift starts. Parked
-		// peers are listed because messaging one revives it, which is supported.
-		const peers = registry.listAddressableBy(senderId).map(ref => ({
-			id: ref.id,
-			displayName: ref.displayName,
-			kind: ref.kind,
-			status: ref.status,
-			parentId: ref.parentId,
-			unread: bus.unreadCount(ref.id),
-			lastActivity: ref.lastActivity,
-			activity: ref.activity,
-		}));
-		const lines: string[] = [];
-		if (peers.length === 0) {
-			lines.push("No other agents.");
-		} else {
-			lines.push(`${peers.length} peer(s):`);
-			for (const peer of peers) {
-				const extras = [
-					peer.activity || undefined,
-					peer.unread > 0 ? `unread ${peer.unread}` : undefined,
-					peer.parentId ? `parent ${peer.parentId}` : undefined,
-					`active ${formatDuration(Date.now() - peer.lastActivity)} ago`,
-				].filter(Boolean);
-				lines.push(`- ${peer.id} [${peer.displayName} · ${peer.kind} · ${peer.status}] — ${extras.join(", ")}`);
-			}
-			if (peers.some(peer => peer.status === "parked")) {
-				lines.push("");
-				lines.push("Parked agents are revived automatically when you message them.");
-			}
-		}
-		return {
-			content: [{ type: "text", text: lines.join("\n") }],
-			details: { op: "list", from: senderId, peers },
-		};
 	}
 
 	async #executeSend(
@@ -411,36 +366,83 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 		}
 	}
 
-	#executeInbox(registry: AgentRegistry, senderId: string, params: IrcParams): AgentToolResult<IrcDetails> {
-		const busMessages = IrcBus.global().inbox(senderId, { peek: params.peek });
-		const session = registry.get(senderId)?.session;
-		const pendingMessages =
-			typeof session?.drainPendingIrcInboxMessages === "function"
-				? session.drainPendingIrcInboxMessages(senderId)
-				: [];
-		const messages = busMessages.concat(pendingMessages).sort((a, b) => a.ts - b.ts);
-		if (messages.length === 0) {
-			return {
-				content: [{ type: "text", text: "Inbox empty." }],
-				details: { op: "inbox", from: senderId, inbox: [] },
-				// An empty inbox drain carries no information once consumed.
-				useless: true,
-			};
-		}
-		const header = params.peek ? `${messages.length} unread message(s):` : `${messages.length} message(s):`;
-		const lines = [header, ...messages.map(msg => `- ${formatIncoming(msg)}`)];
-		return {
-			content: [{ type: "text", text: lines.join("\n") }],
-			details: { op: "inbox", from: senderId, inbox: messages },
-		};
-	}
-
 	#resolveTimeoutMs(params: IrcParams): number {
 		if (params.timeoutMs !== undefined) {
 			return normalizeIrcTimeoutMs(params.timeoutMs);
 		}
 		return normalizeIrcTimeoutMs(this.session.settings.get("irc.timeoutMs"));
 	}
+}
+
+function executeList(registry: AgentRegistry, senderId: string): AgentToolResult<IrcDetails> {
+	const bus = IrcBus.global();
+	// ONE call, and the registry owns what it means. This is the roster the
+	// MODEL reads, and the ids it hands back are the ids the model then
+	// messages, so an unfiltered list is not a display bug: it is how a
+	// spawned agent from a conversation the operator closed gets woken to answer a
+	// question about work it never did.
+	//
+	// `listAddressableBy` is built on the same `canAddress` decision that the
+	// send below consults, so the roster can no longer offer a peer the send
+	// would refuse, or withhold one it would accept. It replaces a hand-rolled
+	// pair of filters that restated the caller, advisor and scope rules a
+	// second time; two spellings of one rule is how the drift starts. Parked
+	// peers are listed because messaging one revives it, which is supported.
+	const peers = registry.listAddressableBy(senderId).map(ref => ({
+		id: ref.id,
+		displayName: ref.displayName,
+		kind: ref.kind,
+		status: ref.status,
+		parentId: ref.parentId,
+		unread: bus.unreadCount(ref.id),
+		lastActivity: ref.lastActivity,
+		activity: ref.activity,
+	}));
+	const lines: string[] = [];
+	if (peers.length === 0) {
+		lines.push("No other agents.");
+	} else {
+		lines.push(`${peers.length} peer(s):`);
+		for (const peer of peers) {
+			const extras = [
+				peer.activity || undefined,
+				peer.unread > 0 ? `unread ${peer.unread}` : undefined,
+				peer.parentId ? `parent ${peer.parentId}` : undefined,
+				`active ${formatDuration(Date.now() - peer.lastActivity)} ago`,
+			].filter(Boolean);
+			lines.push(`- ${peer.id} [${peer.displayName} · ${peer.kind} · ${peer.status}] — ${extras.join(", ")}`);
+		}
+		if (peers.some(peer => peer.status === "parked")) {
+			lines.push("");
+			lines.push("Parked agents are revived automatically when you message them.");
+		}
+	}
+	return {
+		content: [{ type: "text", text: lines.join("\n") }],
+		details: { op: "list", from: senderId, peers },
+	};
+}
+
+function executeInbox(registry: AgentRegistry, senderId: string, params: IrcParams): AgentToolResult<IrcDetails> {
+	const busMessages = IrcBus.global().inbox(senderId, { peek: params.peek });
+	const session = registry.get(senderId)?.session;
+	const pendingMessages =
+		typeof session?.drainPendingIrcInboxMessages === "function" ? session.drainPendingIrcInboxMessages(senderId) : [];
+	const messages = busMessages.concat(pendingMessages).sort((a, b) => a.ts - b.ts);
+	if (messages.length === 0) {
+		return {
+			content: [{ type: "text", text: "Inbox empty." }],
+			details: { op: "inbox", from: senderId, inbox: [] },
+			// An empty inbox drain carries no information once consumed.
+			useless: true,
+		};
+	}
+	const header = params.peek ? `${messages.length} unread message(s):` : `${messages.length} message(s):`;
+	const lines = [header, ...messages.map(msg => `- ${formatIncoming(msg)}`)];
+	return {
+		content: [{ type: "text", text: lines.join("\n") }],
+		details: { op: "inbox", from: senderId, inbox: messages },
+	};
 }
 
 function errorResult(text: string, details: IrcDetails): AgentToolResult<IrcDetails> {

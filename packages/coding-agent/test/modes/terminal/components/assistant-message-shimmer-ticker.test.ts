@@ -1,8 +1,9 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
+import type { ChatBlockHost } from "@veyyon/coding-agent/modes/terminal/components/transcript/chat-block";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
-import { TERMINAL } from "@veyyon/tui";
+import { type Component, TERMINAL } from "@veyyon/tui";
 import type { AssistantMessageView, AssistantSegment } from "@veyyon/wire/presentation";
 
 // WHY THIS SUITE EXISTS
@@ -18,8 +19,8 @@ import type { AssistantMessageView, AssistantSegment } from "@veyyon/wire/presen
 // The bug this suite LOCKS OUT is a performance regression, not a visual one: the
 // naive ticker repainted through the full-tree onImageUpdate callback, which walks
 // the entire transcript every frame (issue #4377, 5-15% CPU at 30fps). The ticker
-// MUST repaint through the SCOPED requestSelfRender callback (the TUI's
-// requestComponentRender pre-bound to this one component) so a continuous 30fps
+// MUST repaint through the SCOPED render host (the TUI's requestComponentRender,
+// called with this one component) so a continuous 30fps
 // flow costs one row, never the whole tree. It must also start ONLY while a
 // streaming text partial is live, never after the block seals (finalize/dispose)
 // and never when the newest content is a tool call (the text segment is frozen).
@@ -72,6 +73,17 @@ async function waitForTicks(count: () => number, target: number, deadlineMs = 2_
 	}
 }
 
+/** A scoped render host that records the component each repaint names. */
+function recordingHost(): ChatBlockHost & { readonly targets: Component[] } {
+	const targets: Component[] = [];
+	return {
+		targets,
+		requestComponentRender: component => {
+			targets.push(component);
+		},
+	};
+}
+
 beforeAll(async () => {
 	await initTheme(false);
 	trueColorHandle.trueColor = true;
@@ -93,7 +105,7 @@ afterEach(() => {
 describe("AssistantMessageComponent streaming shimmer ticker", () => {
 	it("repaints through the SCOPED callback, never the full-tree one, while streaming (issue #4377)", async () => {
 		let fullTreeCalls = 0;
-		let scopedCalls = 0;
+		const host = recordingHost();
 		const component = new AssistantMessageComponent(
 			undefined,
 			false,
@@ -103,9 +115,7 @@ describe("AssistantMessageComponent streaming shimmer ticker", () => {
 			[],
 			undefined,
 			true,
-			() => {
-				scopedCalls++;
-			},
+			host,
 		);
 
 		// A live streaming text partial: transient, newest content is text.
@@ -113,40 +123,38 @@ describe("AssistantMessageComponent streaming shimmer ticker", () => {
 		// Render arms the trail; the ticker was started by updateContent.
 		component.render(W);
 
-		const scopedBefore = scopedCalls;
-		await waitForTicks(() => scopedCalls - scopedBefore, 2);
+		const scopedBefore = host.targets.length;
+		await waitForTicks(() => host.targets.length - scopedBefore, 2);
 
-		// The ticker fired repeatedly, and every one of those repaints was scoped.
-		expect(scopedCalls - scopedBefore).toBeGreaterThanOrEqual(2);
+		// The ticker fired repeatedly, and every one of those repaints was scoped to this component.
+		expect(host.targets.length - scopedBefore).toBeGreaterThanOrEqual(2);
+		expect(host.targets.every(target => target === component)).toBe(true);
 		expect(fullTreeCalls).toBe(0);
 
 		component.dispose();
 	});
 
 	it("stops ticking the instant the block is finalized (no repaints after seal)", async () => {
-		let scopedCalls = 0;
-		const component = new AssistantMessageComponent(undefined, false, undefined, [], undefined, true, () => {
-			scopedCalls++;
-		});
+		const host = recordingHost();
+		const component = new AssistantMessageComponent(undefined, false, undefined, [], undefined, true, host);
+		const scoped = () => host.targets.length;
 
 		component.updateContent(msg([{ type: "text", text: "streaming answer" }]), { transient: true });
-		await waitForTicks(() => scopedCalls, 1);
+		await waitForTicks(scoped, 1);
 
 		component.markTranscriptBlockFinalized();
-		const frozenAt = scopedCalls;
+		const frozenAt = scoped();
 		await sleep(120);
 
 		// Sealed: the ticker is cleared, so the scoped count never grows again.
-		expect(scopedCalls).toBe(frozenAt);
+		expect(scoped()).toBe(frozenAt);
 
 		component.dispose();
 	});
 
 	it("does not tick for a transient update whose newest content is a tool call", async () => {
-		let scopedCalls = 0;
-		const component = new AssistantMessageComponent(undefined, false, undefined, [], undefined, true, () => {
-			scopedCalls++;
-		});
+		const host = recordingHost();
+		const component = new AssistantMessageComponent(undefined, false, undefined, [], undefined, true, host);
 
 		// The text segment is frozen once a tool call renders below it: no glow, no ticker.
 		component.updateContent(
@@ -158,39 +166,36 @@ describe("AssistantMessageComponent streaming shimmer ticker", () => {
 		);
 		await sleep(100);
 
-		expect(scopedCalls).toBe(0);
+		expect(host.targets.length).toBe(0);
 
 		component.dispose();
 	});
 
 	it("does not tick for a non-transient (finalized) update", async () => {
-		let scopedCalls = 0;
-		const component = new AssistantMessageComponent(undefined, false, undefined, [], undefined, true, () => {
-			scopedCalls++;
-		});
+		const host = recordingHost();
+		const component = new AssistantMessageComponent(undefined, false, undefined, [], undefined, true, host);
 
 		// A persisted turn render (no transient flag) is not a live stream: no ticker.
 		component.updateContent(msg([{ type: "text", text: "final answer" }]));
 		await sleep(100);
 
-		expect(scopedCalls).toBe(0);
+		expect(host.targets.length).toBe(0);
 
 		component.dispose();
 	});
 
 	it("clears the ticker on dispose so it cannot outlive the component", async () => {
-		let scopedCalls = 0;
-		const component = new AssistantMessageComponent(undefined, false, undefined, [], undefined, true, () => {
-			scopedCalls++;
-		});
+		const host = recordingHost();
+		const component = new AssistantMessageComponent(undefined, false, undefined, [], undefined, true, host);
+		const scoped = () => host.targets.length;
 
 		component.updateContent(msg([{ type: "text", text: "streaming" }]), { transient: true });
-		await waitForTicks(() => scopedCalls, 1);
+		await waitForTicks(scoped, 1);
 
 		component.dispose();
-		const afterDispose = scopedCalls;
+		const afterDispose = scoped();
 		await sleep(120);
 
-		expect(scopedCalls).toBe(afterDispose);
+		expect(scoped()).toBe(afterDispose);
 	});
 });

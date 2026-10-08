@@ -177,6 +177,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `session.newKeepsBackground` | /new Keeps The Old Session | boolean | `false` | What /new does while a response is still streaming. On: the old conversation keeps running in the background and the screen attaches to a new one; the status line counts background conversations. Off: the old turn is stopped and its provider stream closed before the new session starts. Takes effect at the next start. |
+| `session.backgroundLimit` | Background Session Limit | number | `3` | Most conversations this process keeps running in the background at once (1-20), whether /new, an RPC new_session with background, or the ACP _veyyon/sessions/background method moved them there. A handoff past the limit stops the oldest background conversation and closes its provider stream. |
 
 ### Approvals
 
@@ -372,7 +373,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `hindsight.apiUrl` | Hindsight API URL | string | `http://localhost:8888` | Hindsight server URL (Cloud or self-hosted). |
-| `hindsight.bankId` | Hindsight Bank ID | string | _(unset)_ | Base memory bank name. Unset uses `veyyon`. Hindsight Bank Prefix is prepended when set, and Hindsight Scoping sets whether the project name is appended (per-project) or carried as a `project:` tag instead (per-project-tagged). |
+| `hindsight.bankId` | Hindsight Bank ID | string | _(unset)_ | Base memory bank name. Unset uses `veyyon` in the default profile and `veyyon-\<profile>` in a named one, so profiles keep separate memories; set the same value in two profiles to share one bank. Hindsight Bank Prefix is prepended when set, and Hindsight Scoping sets whether the project name is appended (per-project) or carried as a `project:` tag instead (per-project-tagged). |
 | `hindsight.scoping` | Hindsight Scoping | enum | `per-project-tagged` | global = one shared bank; per-project = isolated bank per cwd; per-project-tagged = shared bank with project tags so global + project memories merge on recall. Values: `global`, `per-project`, `per-project-tagged`. |
 | `hindsight.autoRecall` | Hindsight Auto Recall | boolean | `true` | Recall memories on the first turn of each session. |
 | `hindsight.autoRetain` | Hindsight Auto Retain | boolean | `true` | Retain transcript every N turns and at session boundaries. |
@@ -807,7 +808,7 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `compaction.thresholdPercent` | number | `-1` | Retired: use `compaction.threshold` instead. |
 | `compaction.thresholdTokens` | number | `-1` | Retired: use `compaction.threshold` instead. |
 | `cycleOrder` | array | `["smol","slow"]` |  |
-| `defaultThinkingLevel` | enum | `high` | Values: `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, `auto`. Retired: use `defaultEffort` instead. |
+| `defaultThinkingLevel` | enum | `high` | Values: `off`, `auto`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Retired: use `defaultEffort` instead. |
 | `dev.autoqaPush.token` | string | _(unset)_ |  |
 | `disabledExtensions` | array | `[]` |  |
 | `disabledProviders` | array | `[]` |  |

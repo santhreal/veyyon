@@ -1,19 +1,21 @@
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import * as modalShell from "@veyyon/coding-agent/modes/terminal/components/chrome/modal-shell";
 import {
 	computeModalDims,
-	fitTipLine,
-	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
 	MODAL_SIZING_MEDIUM,
 	MODAL_SIZING_SETTINGS,
+	sizingForArea,
+} from "@veyyon/coding-agent/modes/terminal/components/chrome/modal-geometry";
+import * as modalShell from "@veyyon/coding-agent/modes/terminal/components/chrome/modal-shell";
+import {
+	fitTipLine,
+	hitTestModalChrome,
 	type ModalShortcut,
 	minModalChromeRows,
 	renderModalShell,
 	renderModalShortcuts,
 	SETTINGS_BROWSE_SHORTCUTS,
-	sizingForArea,
 } from "@veyyon/coding-agent/modes/terminal/components/chrome/modal-shell";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 

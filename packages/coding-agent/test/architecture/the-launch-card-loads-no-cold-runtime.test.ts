@@ -27,17 +27,30 @@
 
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
+import { isBuiltin } from "node:module";
 import * as path from "node:path";
 import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 import { PACKAGES, reachedNames } from "../helpers/module-reach-gate";
 
-/** Every platform specifier the modules on `entry`'s static graph import, sorted and deduplicated. */
+/**
+ * Every platform specifier the modules on `entry`'s static graph import, sorted and deduplicated.
+ *
+ * A Node builtin written without its prefix is the same runtime as the prefixed form, so `events` is
+ * reported as `node:events`: `import { spawn } from "child_process"` loads what `node:child_process`
+ * loads, and a prefix test alone let it onto the card path unseen. `bun` stays as written; it is the
+ * `Bun` global, resident before any module runs.
+ */
 function platformSpecifiersOn(entry: string): string[] {
 	const found = new Set<string>();
 	for (const relative of reachedNames(entry)) {
 		const source = fs.readFileSync(path.join(PACKAGES, relative), "utf8");
 		for (const specifier of moduleSpecifiersIn(source)) {
-			if (specifier.startsWith("node:") || specifier.startsWith("bun:")) found.add(specifier);
+			if (!isBuiltin(specifier)) continue;
+			found.add(
+				specifier === "bun" || specifier.startsWith("bun:") || specifier.startsWith("node:")
+					? specifier
+					: `node:${specifier}`,
+			);
 		}
 	}
 	return [...found].sort();
@@ -55,11 +68,16 @@ function platformSpecifiersOn(entry: string): string[] {
  * and `node:timers/promises` is the process manager's sleep. `node:module` (free) is the handle the
  * natives loader defers `node:child_process` and `node:zlib` behind. `bun:ffi` (0.15ms) and
  * `bun:sqlite` (0.19ms) are lazy handles that cost nothing until something calls through them.
+ * `bun` is the `Bun` global, which the bundler reads in place of a module. `node:events` (0.02ms
+ * measured in a compiled binary, against 3ms for `node:tty` and `node:os` together) is resident
+ * before the entry runs, and the terminal's stdin buffer is an emitter.
  */
 const ADMITTED_ON_THE_CARD_PATH = [
+	"bun",
 	"bun:ffi",
 	"bun:sqlite",
 	"node:async_hooks",
+	"node:events",
 	"node:fs",
 	"node:fs/promises",
 	"node:module",

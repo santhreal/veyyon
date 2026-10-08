@@ -34,8 +34,8 @@ import {
 	type SecretCommandRequest,
 	type SecretCommandSurface,
 	type SecretSlot,
-	type SecretSubcommand,
 } from "@veyyon/coding-agent/secrets/secret-command";
+import type { SecretSubcommand } from "@veyyon/coding-agent/secrets/secret-verbs";
 
 const COMMANDS = Object.keys(SECRET_SUBCOMMAND_SHAPES) as SecretSubcommand[];
 

@@ -71,11 +71,6 @@ export function clearVeyyonExtensionCliRoots(): void {
 	injectedCliRoots = [];
 }
 
-/** Inspect currently-injected CLI roots (read-only). Exposed for diagnostics + tests. */
-export function getInjectedVeyyonExtensionCliRoots(): readonly VeyyonExtensionRoot[] {
-	return injectedCliRoots.map(({ path: p, level }) => ({ path: p, level, name: path.basename(p) }));
-}
-
 /**
  * The `extensions` setting, read from the settings store.
  *

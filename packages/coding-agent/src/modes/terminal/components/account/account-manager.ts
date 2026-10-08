@@ -35,15 +35,13 @@ import type { AccountInventory, AccountRow } from "../../../../session/account-i
 import { accountsForProvider, selectedButRotated } from "../../../../session/account-inventory";
 import { theme } from "../../../../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
+import { computeModalDims, MODAL_SIZING_LARGE, sizingForArea } from "../chrome/modal-geometry";
 import {
-	computeModalDims,
-	MODAL_SIZING_LARGE,
 	type ModalShellGeometry,
 	type ModalShortcut,
 	planModalChrome,
 	pointerMotionEnabled,
 	renderModalShell,
-	sizingForArea,
 } from "../chrome/modal-shell";
 import { fit } from "../chrome/overlay-box";
 import { routeModalChrome } from "../selectors/select-list-mouse-routing";
@@ -503,25 +501,15 @@ export class AccountManagerComponent implements Component {
 				return;
 			case "c": {
 				const blocked = this.#selectedRow();
-				if (blocked && this.#rowIsBlocked(blocked)) this.#callbacks.onClearRateLimitBlock(blocked);
+				if (blocked && rowIsBlocked(blocked)) this.#callbacks.onClearRateLimitBlock(blocked);
 				return;
 			}
 		}
 	}
 
-	/**
-	 * Whether one row is holding a rate-limit block right now.
-	 *
-	 * `> Date.now()` and not merely "present": a block that has already run out is a row that is
-	 * usable, and offering to lift it would be offering to do nothing.
-	 */
-	#rowIsBlocked(row: AccountRow): boolean {
-		return row.blockedUntilMs !== undefined && row.blockedUntilMs > Date.now();
-	}
-
 	#selectedRowIsBlocked(): boolean {
 		const row = this.#selectedRow();
-		return row !== undefined && this.#rowIsBlocked(row);
+		return row !== undefined && rowIsBlocked(row);
 	}
 
 	/** Arrows move within the focused pane; either way an armed logout disarms. */
@@ -815,37 +803,6 @@ export class AccountManagerComponent implements Component {
 		return lines;
 	}
 
-	/**
-	 * The body pane, as text plus the credential each line belongs to.
-	 *
-	 * Built unstyled-then-styled in one pass so the line index that carries a credential id is
-	 * the same index the click router and the selection band use.
-	 */
-
-	/**
-	 * Wrap a warning across up to three body lines instead of truncating it.
-	 *
-	 * These notes are the ONE place a user learns what to do: a torn-down login's cause names the
-	 * remedy (`invalid_grant` means re-login, a 400 from the provider does not), and truncating it to
-	 * `oauth refresh failed:…` leaves exactly the half that says nothing. Bounded at three lines so a
-	 * pathological upstream body cannot push the account list off the card, with an ellipsis marking
-	 * that something was dropped rather than pretending the text ended.
-	 */
-	#wrapNote(text: string, indent: string, width: number): string[] {
-		// Hanging indent: the content is wrapped at the REMAINING width and every line, continuation
-		// included, carries the indent. Wrapping the already-indented string instead let continuation
-		// lines start at column 0, so a three-line warning stepped left of its own first line.
-		const inner = Math.max(8, width - indent.length);
-		const wrapped = wrapTextWithAnsi(text, inner).map(part => `${indent}${part}`);
-		if (wrapped.length <= NOTE_MAX_LINES) return wrapped;
-		const kept = wrapped.slice(0, NOTE_MAX_LINES);
-		const last = truncateToWidth(kept[NOTE_MAX_LINES - 1] ?? "", Math.max(1, width - 1));
-		// `truncateToWidth` appends its own ellipsis when it clips, so adding one unconditionally
-		// produced `…`-`…` on any note long enough to need both.
-		kept[NOTE_MAX_LINES - 1] = last.endsWith("…") ? last : `${last}…`;
-		return kept;
-	}
-
 	#buildBodyLines(width: number, nowMs: number): BodyLine[] {
 		const entry = this.#activeEntry();
 		if (!entry) return [{ text: theme.fg("muted", "No providers available") }];
@@ -854,7 +811,7 @@ export class AccountManagerComponent implements Component {
 		// the fact at its END is the one a user is looking for. Truncated, the recording read
 		// `Anthropic · 3 accounts · 1 needs attenti…`, which cuts the only clause that says something
 		// is wrong.
-		const lines: BodyLine[] = this.#wrapNote(providerHeaderLine(entry.label, rows), "", width).map(wrapped => ({
+		const lines: BodyLine[] = wrapNote(providerHeaderLine(entry.label, rows), "", width).map(wrapped => ({
 			text: theme.bold(wrapped),
 		}));
 		// The scope, stated once per provider, because the choice below is not what a user
@@ -871,7 +828,7 @@ export class AccountManagerComponent implements Component {
 		// an ordinary setting in the active profile's `agent/config.yml`, so another profile can have
 		// it the other way. One line saying "shared by every profile · balancing on" read as though
 		// the toggle travelled with the accounts, which is the opposite of true.
-		for (const wrapped of this.#wrapNote(
+		for (const wrapped of wrapNote(
 			`accounts shared by every profile and session on this machine · quota load balancing ${
 				this.#loadBalancing ? "on" : "off"
 			} for this profile`,
@@ -885,7 +842,7 @@ export class AccountManagerComponent implements Component {
 		const group = this.#inventory.providers.find(candidate => candidate.provider === this.#activeProviderId);
 		if (group) {
 			for (const note of providerDisabledNote(group)) {
-				for (const wrapped of this.#wrapNote(note, "  ", width)) {
+				for (const wrapped of wrapNote(note, "  ", width)) {
 					lines.push({ text: theme.fg("warning", wrapped) });
 				}
 			}
@@ -895,7 +852,7 @@ export class AccountManagerComponent implements Component {
 		const divergence = selectedButRotated(this.#inventory, this.#activeProviderId);
 		if (divergence) {
 			for (const line of divergenceLines(divergence, nowMs)) {
-				for (const wrapped of this.#wrapNote(line, "  ", width)) {
+				for (const wrapped of wrapNote(line, "  ", width)) {
 					lines.push({ text: theme.fg("warning", wrapped) });
 				}
 			}
@@ -939,7 +896,7 @@ export class AccountManagerComponent implements Component {
 			for (const notice of accountNoticeLines(row, nowMs)) {
 				// Wrapped for the same reason as the provider note: a failed row's upstream reason is
 				// the remedy, and its useful half is at the END of the string.
-				for (const wrapped of this.#wrapNote(notice, "       ", width)) {
+				for (const wrapped of wrapNote(notice, "       ", width)) {
 					lines.push({ text: theme.fg("error", wrapped), target });
 				}
 			}
@@ -948,7 +905,7 @@ export class AccountManagerComponent implements Component {
 				// width it truncated to `log out of Groq cr…`, which loses both which credential is
 				// about to go and that `esc` backs out. A confirmation prompt missing its escape is a
 				// worse defect than a clipped label.
-				for (const wrapped of this.#wrapNote(
+				for (const wrapped of wrapNote(
 					`press x again to log out of ${head.label} · esc cancels`,
 					"       ",
 					width,
@@ -960,7 +917,7 @@ export class AccountManagerComponent implements Component {
 		}
 
 		if (rows.length === 0) {
-			for (const wrapped of this.#wrapNote("No accounts stored for this provider yet.", "  ", width)) {
+			for (const wrapped of wrapNote("No accounts stored for this provider yet.", "  ", width)) {
 				lines.push({ text: theme.fg("muted", wrapped) });
 			}
 			lines.push({ text: "" });
@@ -1141,4 +1098,45 @@ export class AccountManagerComponent implements Component {
 		this.#contentRowStart = shell.geometry?.bodyRowStart ?? 0;
 		return shell.lines;
 	}
+}
+
+/**
+ * Whether one row is holding a rate-limit block right now.
+ *
+ * `> Date.now()` and not merely "present": a block that has already run out is a row that is
+ * usable, and offering to lift it would be offering to do nothing.
+ */
+function rowIsBlocked(row: AccountRow): boolean {
+	return row.blockedUntilMs !== undefined && row.blockedUntilMs > Date.now();
+}
+
+/**
+ * The body pane, as text plus the credential each line belongs to.
+ *
+ * Built unstyled-then-styled in one pass so the line index that carries a credential id is
+ * the same index the click router and the selection band use.
+ */
+
+/**
+ * Wrap a warning across up to three body lines instead of truncating it.
+ *
+ * These notes are the ONE place a user learns what to do: a torn-down login's cause names the
+ * remedy (`invalid_grant` means re-login, a 400 from the provider does not), and truncating it to
+ * `oauth refresh failed:…` leaves exactly the half that says nothing. Bounded at three lines so a
+ * pathological upstream body cannot push the account list off the card, with an ellipsis marking
+ * that something was dropped rather than pretending the text ended.
+ */
+function wrapNote(text: string, indent: string, width: number): string[] {
+	// Hanging indent: the content is wrapped at the REMAINING width and every line, continuation
+	// included, carries the indent. Wrapping the already-indented string instead let continuation
+	// lines start at column 0, so a three-line warning stepped left of its own first line.
+	const inner = Math.max(8, width - indent.length);
+	const wrapped = wrapTextWithAnsi(text, inner).map(part => `${indent}${part}`);
+	if (wrapped.length <= NOTE_MAX_LINES) return wrapped;
+	const kept = wrapped.slice(0, NOTE_MAX_LINES);
+	const last = truncateToWidth(kept[NOTE_MAX_LINES - 1] ?? "", Math.max(1, width - 1));
+	// `truncateToWidth` appends its own ellipsis when it clips, so adding one unconditionally
+	// produced `…`-`…` on any note long enough to need both.
+	kept[NOTE_MAX_LINES - 1] = last.endsWith("…") ? last : `${last}…`;
+	return kept;
 }

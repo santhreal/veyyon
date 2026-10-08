@@ -1,7 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import { ProviderHttpError } from "@veyyon/ai/error";
 import { isUsageLimit } from "@veyyon/ai/error/flags";
-import { calculateRateLimitBackoffMs, parseRateLimitReason } from "@veyyon/ai/error/rate-limit";
+import {
+	calculateRateLimitBackoffMs,
+	parseRateLimitReason,
+	RATE_LIMIT_BACKOFF_CONTEXTS,
+	type RateLimitReason,
+} from "@veyyon/ai/error/rate-limit";
 
 describe("parseRateLimitReason", () => {
 	/**
@@ -280,10 +285,34 @@ describe("isUsageLimit, over a status and a body", () => {
 
 describe("calculateRateLimitBackoffMs", () => {
 	it("returns 45–75s range for MODEL_CAPACITY_EXHAUSTED (jitter)", () => {
-		for (let i = 0; i < 20; i++) {
-			const ms = calculateRateLimitBackoffMs("MODEL_CAPACITY_EXHAUSTED");
-			expect(ms).toBeGreaterThanOrEqual(45_000);
-			expect(ms).toBeLessThanOrEqual(75_000);
+		for (const context of RATE_LIMIT_BACKOFF_CONTEXTS) {
+			for (let i = 0; i < 20; i++) {
+				const ms = calculateRateLimitBackoffMs("MODEL_CAPACITY_EXHAUSTED", context);
+				expect(ms).toBeGreaterThanOrEqual(45_000);
+				expect(ms).toBeLessThanOrEqual(75_000);
+			}
+		}
+	});
+
+	/**
+	 * One function answers what an unreadable failure costs, and the caller's context is its
+	 * argument. Pinned by exact equality over every declared context, so a new context is a red
+	 * suite until its cost is recorded here.
+	 */
+	it("prices an unreadable failure by the caller's context", () => {
+		const costs = Object.fromEntries(
+			RATE_LIMIT_BACKOFF_CONTEXTS.map(context => [context, calculateRateLimitBackoffMs("UNKNOWN", context)]),
+		);
+		expect(costs).toEqual({ "credential-park": 30 * 60_000, "selector-suppression": 5 * 60_000 });
+	});
+
+	it("prices every readable reason the same in every context", () => {
+		const readable: RateLimitReason[] = ["QUOTA_EXHAUSTED", "RATE_LIMIT_EXCEEDED", "SERVER_ERROR"];
+		for (const reason of readable) {
+			const costs = new Set(
+				RATE_LIMIT_BACKOFF_CONTEXTS.map(context => calculateRateLimitBackoffMs(reason, context)),
+			);
+			expect(costs.size).toBe(1);
 		}
 	});
 });

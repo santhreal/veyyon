@@ -61,6 +61,12 @@ export interface ResolvedApproval {
 	 * routine prompt from a floor it must not lift.
 	 */
 	critical?: boolean;
+	/**
+	 * The scope a session grant for this call covers, as the tool reported it.
+	 * Present only on a plain `prompt`: an `override` or `critical` decision is
+	 * about its own arguments, and no earlier answer can have been about them.
+	 */
+	pattern?: string;
 }
 
 /**
@@ -188,11 +194,16 @@ function normalizeDecision(value: unknown): Omit<ResolvedApproval, "policy"> {
 		// also beat a per-tool allow, and requiring both flags at every call site
 		// is a way to eventually forget one.
 		const critical = record.critical === true;
+		const override = critical || record.override === true;
+		// Kept on an `override` decision too: `resolveApprovalInner` returns an
+		// override without it, which is the one place the pattern is dropped.
+		const pattern = typeof record.pattern === "string" && record.pattern.length > 0 ? record.pattern : undefined;
 		return {
 			tier,
-			override: critical || record.override === true,
+			override,
 			...(critical ? { critical: true } : {}),
 			...(reason ? { reason } : {}),
+			...(pattern ? { pattern } : {}),
 		};
 	}
 
@@ -358,6 +369,7 @@ function resolveApprovalInner(
 		tier: decision.tier,
 		override: false,
 		...(decision.reason ? { reason: decision.reason } : {}),
+		...(decision.pattern ? { pattern: decision.pattern } : {}),
 	};
 }
 
@@ -398,8 +410,8 @@ export function requiresApproval(
 	mode: ApprovalMode,
 	userConfig: Record<string, unknown> = {},
 	options?: ApprovalResolutionOptions,
-): { required: boolean; reason?: string; critical?: boolean } {
-	const { policy, reason, critical } = resolveApproval(tool, args, mode, userConfig, options);
+): { required: boolean; reason?: string; critical?: boolean; pattern?: string } {
+	const { policy, reason, critical, pattern } = resolveApproval(tool, args, mode, userConfig, options);
 
 	if (policy === "deny") {
 		const detail =
@@ -409,7 +421,7 @@ export function requiresApproval(
 		throw new Error(detail);
 	}
 
-	if (policy === "prompt") return { required: true, reason, critical };
+	if (policy === "prompt") return { required: true, reason, critical, ...(pattern ? { pattern } : {}) };
 	return { required: false };
 }
 

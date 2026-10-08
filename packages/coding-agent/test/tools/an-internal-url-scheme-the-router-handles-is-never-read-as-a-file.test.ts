@@ -32,6 +32,7 @@
  * behind a setting or a platform check, is invisible here and would need the
  * condition driven both ways.
  */
+// Subject module: tools/fs/read-internal-url.ts, driven through the read tool.
 import { afterEach, describe, expect, it } from "bun:test";
 import { InternalUrlRouter } from "@veyyon/coding-agent/internal-urls/router";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";

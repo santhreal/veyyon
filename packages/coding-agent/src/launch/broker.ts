@@ -8,6 +8,7 @@ import {
 	clamp,
 	clampLow,
 	errorMessage,
+	exponentialBackoffDelay,
 	isEexist,
 	isEnoent,
 	isProcessAlive,
@@ -368,7 +369,7 @@ class DaemonBroker {
 	) {
 		this.#projectDir = projectDir;
 		this.#runtimeDir = runtimeDir;
-		this.#endpoint = daemonBrokerEndpoint(projectDir, runtimeDir);
+		this.#endpoint = daemonBrokerEndpoint(runtimeDir);
 		this.#token = token;
 		this.#idleGraceMs = Number.isFinite(idleGraceMs) && idleGraceMs >= 0 ? idleGraceMs : DEFAULT_IDLE_GRACE_MS;
 		this.#cleanupWaitMs =
@@ -619,7 +620,7 @@ class DaemonBroker {
 		syncReadyPending(record);
 		record.readinessBuffer = "";
 		record.outputOffset = 0;
-		this.#persist(record);
+		persist(record);
 		try {
 			if (record.spec.detached) await this.#launchDetached(record, generation);
 			else if (record.spec.pty) await this.#launchPty(record, generation);
@@ -684,7 +685,7 @@ class DaemonBroker {
 				const pid = Number.parseInt((await fs.readFile(pidPath, "utf8")).trim(), 10);
 				if (Number.isSafeInteger(pid) && pid > 0) {
 					record.snapshot.pid = pid;
-					this.#persist(record);
+					persist(record);
 					return;
 				}
 			} catch (error) {
@@ -707,7 +708,7 @@ class DaemonBroker {
 		record.process = process;
 		record.input = process.stdin;
 		record.snapshot.pid = process.pid;
-		this.#persist(record);
+		persist(record);
 		const stdout = this.#drain(record, generation, process.stdout);
 		const stderr = this.#drain(record, generation, process.stderr);
 		void Promise.all([stdout, stderr, process.exited])
@@ -727,7 +728,7 @@ class DaemonBroker {
 			});
 			record.process = process;
 			record.snapshot.pid = process.pid;
-			this.#persist(record);
+			persist(record);
 			process.unref();
 			void process.exited
 				.then(exitCode => this.#settle(record, generation, exitCode))
@@ -836,7 +837,7 @@ class DaemonBroker {
 		if (!record.logReady || !record.portReady) return;
 		record.snapshot.state = "ready";
 		record.snapshot.readyAt = Date.now();
-		this.#persist(record);
+		persist(record);
 	}
 
 	async #onPtyExit(record: ManagedDaemon, generation: number, result: PtyRunResult): Promise<void> {
@@ -913,11 +914,15 @@ class DaemonBroker {
 			record.consecutiveFailures = uptime >= 30_000 ? 0 : record.consecutiveFailures + 1;
 			record.snapshot.restartCount++;
 			record.snapshot.state = "restarting";
-			const delay = Math.min(1_000 * 2 ** Math.min(record.consecutiveFailures, 5), RESTART_MAX_DELAY_MS);
+			const delay = exponentialBackoffDelay(record.consecutiveFailures, {
+				baseMs: 1_000,
+				maxMs: RESTART_MAX_DELAY_MS,
+				jitter: 0,
+			});
 			record.log?.append(
 				`\n[daemon exited${exitCode === undefined ? "" : ` with code ${exitCode}`}; restarting in ${delay}ms]\n`,
 			);
-			this.#persist(record);
+			persist(record);
 			record.restartTimer = setTimeout(() => {
 				record.restartTimer = undefined;
 				void this.#launch(record);
@@ -933,7 +938,7 @@ class DaemonBroker {
 		record.log = undefined;
 		this.#queueCompletion(record);
 		record.snapshot.state = failed && !record.stopRequested ? "failed" : "exited";
-		this.#persist(record);
+		persist(record);
 		this.#scheduleCleanup(record);
 		// A persistent daemon is what held the broker up past the last client; once
 		// it ends there is nothing left to hold it, so the idle reaper is re-armed
@@ -1100,7 +1105,7 @@ class DaemonBroker {
 			record.snapshot.exitReason = `${termination.reason}; the pending restart is cancelled`;
 			record.snapshot.state = "exited";
 			record.snapshot.exitedAt = Date.now();
-			this.#persist(record);
+			persist(record);
 			await record.log?.close();
 			record.log = undefined;
 			// No completion is queued here. `#settle` already queued one for this
@@ -1112,7 +1117,7 @@ class DaemonBroker {
 			return;
 		}
 		record.snapshot.state = "stopping";
-		this.#persist(record);
+		persist(record);
 		const processRef = record.snapshot.pid === undefined ? null : processHandle(record.snapshot.pid);
 		if (processRef) await processRef.terminate({ group: true, gracefulMs: timeoutMs, timeoutMs: timeoutMs + 1_000 });
 		else record.pty?.kill();
@@ -1170,18 +1175,6 @@ class DaemonBroker {
 		if (record) return record;
 		const names = Array.from(this.#records.keys());
 		throw new Error(`Unknown daemon ${name}${names.length ? `. Available: ${names.join(", ")}` : ""}`);
-	}
-
-	#persist(record: ManagedDaemon): void {
-		const metaPath = managedDaemonMetaPath(record.dir);
-		record.persistQueue = record.persistQueue
-			.then(() => atomicWriteFile(metaPath, JSON.stringify({ daemon: record.snapshot, spec: record.spec })))
-			.catch(error => {
-				logger.warn("Failed to persist daemon metadata", {
-					name: record.snapshot.name,
-					error: errorMessage(error),
-				});
-			});
 	}
 
 	/**
@@ -1321,7 +1314,7 @@ class DaemonBroker {
 				if (terminalState(snapshot.state)) {
 					this.#scheduleCleanup(record);
 				}
-				this.#persist(record);
+				persist(record);
 			} catch (error) {
 				logger.warn("Failed to recover daemon record", {
 					name: entry.name,
@@ -1374,6 +1367,18 @@ class DaemonBroker {
 			})();
 		}, this.#idleGraceMs);
 	}
+}
+
+function persist(record: ManagedDaemon): void {
+	const metaPath = managedDaemonMetaPath(record.dir);
+	record.persistQueue = record.persistQueue
+		.then(() => atomicWriteFile(metaPath, JSON.stringify({ daemon: record.snapshot, spec: record.spec })))
+		.catch(error => {
+			logger.warn("Failed to persist daemon metadata", {
+				name: record.snapshot.name,
+				error: errorMessage(error),
+			});
+		});
 }
 
 /** Start the detached per-project daemon broker selected by the CLI worker host. */

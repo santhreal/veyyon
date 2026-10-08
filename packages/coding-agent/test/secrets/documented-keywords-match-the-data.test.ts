@@ -20,7 +20,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { BUNDLED_ENV_KEYWORDS } from "@veyyon/coding-agent/secrets/env-keywords";
+import { bundledEnvKeywords } from "@veyyon/coding-agent/secrets/env-keywords";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../../..");
 const HANDBOOK_PAGE = path.join(REPO_ROOT, "docs/handbook/src/features/secrets.md");
@@ -51,7 +51,7 @@ describe("the handbook's keyword sentence", () => {
 	it("lists every bundled keyword, in order", () => {
 		const documented = documentedKeywords(HANDBOOK_PAGE, "Veyyon treats an environment variable as secret when");
 
-		expect(documented).toEqual([...BUNDLED_ENV_KEYWORDS]);
+		expect(documented).toEqual([...bundledEnvKeywords()]);
 	});
 
 	/** The sentence exists at all, so a rename cannot turn this suite into a no-op. */
@@ -79,7 +79,7 @@ describe("the reference page's keyword list", () => {
 	it("lists every bundled keyword, in order", () => {
 		const documented = documentedKeywords(REFERENCE_PAGE, "whose names match a keyword from");
 
-		expect(documented).toEqual([...BUNDLED_ENV_KEYWORDS]);
+		expect(documented).toEqual([...bundledEnvKeywords()]);
 	});
 });
 
@@ -110,7 +110,7 @@ describe("the worked examples in the handbook table", () => {
 	 */
 	it("classify the way the pattern does", async () => {
 		const { buildEnvSecretPattern } = await import("@veyyon/coding-agent/secrets/env-keywords");
-		const pattern = buildEnvSecretPattern([...BUNDLED_ENV_KEYWORDS]);
+		const pattern = buildEnvSecretPattern([...bundledEnvKeywords()]);
 
 		const detected = ["DEPLOY_TOKEN", "API_KEY", "KEY_FILE", "GPG_PASSPHRASE", "APIKEY", "PRIVKEY"];
 		const notDetected = ["TOKENIZER", "SECRETIVE_THING", "AUTHORIZED_USER", "PASSTHROUGH", "PWD"];

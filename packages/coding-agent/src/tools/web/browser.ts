@@ -1,8 +1,8 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
-import { errorMessage, isCancellation, logger, prompt, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
-import { type } from "arktype";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { errorMessage, isCancellation, lazy, logger, prompt, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "../../sdk";
 import { enforceInlineByteCap } from "../../session/streaming-output";
@@ -79,43 +79,47 @@ const reportedChallenges = new WeakMap<TabSession, string>();
 const CMUX_REFUSAL =
 	"profile and visible need the headless browser; the cmux browser pane is already visible and keeps cmux's own session. Turn the browser.cmux setting off, or set VEYYON_BROWSER_CMUX=0, to open tabs in the headless browser.";
 
-const appSchema = type({
-	"path?": type("string").describe("binary path to spawn"),
-	"cdp_url?": type("string").describe("existing cdp endpoint"),
-	"args?": type("string[]").describe("extra cli args"),
-	"target?": type("string").describe("substring to pick a window"),
-});
+const appSchema = lazy(() =>
+	type({
+		"path?": type("string").describe("binary path to spawn"),
+		"cdp_url?": type("string").describe("existing cdp endpoint"),
+		"args?": type("string[]").describe("extra cli args"),
+		"target?": type("string").describe("substring to pick a window"),
+	}),
+);
 
-const browserSchema = type({
-	action: type("'open' | 'close' | 'run' | 'save_state'").describe("operation"),
-	"name?": type("string").describe("tab id (default 'main')"),
-	"url?": type("string").describe("url to open"),
-	"context?": type("string").describe("isolated context: tabs naming the same one share cookies and storage"),
-	"storage_state?": type("string").describe(
-		"state file of cookies and localStorage: open loads it, save_state writes it",
-	),
-	"profile?": type("string").describe("persistent profile: its cookies, storage and cache outlive the session"),
-	"visible?": type("boolean").describe(
-		"true moves the tab to a browser window, false back to headless; its session goes along",
-	),
-	"app?": appSchema,
-	"viewport?": {
-		width: "number",
-		height: "number",
-		"scale?": "number",
-	},
-	"wait_until?": type("'load' | 'domcontentloaded' | 'networkidle0' | 'networkidle2'").describe(
-		"navigation wait condition",
-	),
-	"dialogs?": type("'accept' | 'dismiss'").describe("auto-handle dialogs"),
-	"code?": type("string").describe("js body to run in tab"),
-	"timeout?": type("number").describe(describeTimeoutParam("browser")),
-	"all?": type("boolean").describe("close every tab"),
-	"kill?": type("boolean").describe("also kill spawned-app browsers"),
-});
+const browserSchema = lazy(() =>
+	type({
+		action: type("'open' | 'close' | 'run' | 'save_state'").describe("operation"),
+		"name?": type("string").describe("tab id (default 'main')"),
+		"url?": type("string").describe("url to open"),
+		"context?": type("string").describe("isolated context: tabs naming the same one share cookies and storage"),
+		"storage_state?": type("string").describe(
+			"state file of cookies and localStorage: open loads it, save_state writes it",
+		),
+		"profile?": type("string").describe("persistent profile: its cookies, storage and cache outlive the session"),
+		"visible?": type("boolean").describe(
+			"true moves the tab to a browser window, false back to headless; its session goes along",
+		),
+		"app?": appSchema.value,
+		"viewport?": {
+			width: "number",
+			height: "number",
+			"scale?": "number",
+		},
+		"wait_until?": type("'load' | 'domcontentloaded' | 'networkidle0' | 'networkidle2'").describe(
+			"navigation wait condition",
+		),
+		"dialogs?": type("'accept' | 'dismiss'").describe("auto-handle dialogs"),
+		"code?": type("string").describe("js body to run in tab"),
+		"timeout?": type("number").describe(describeTimeoutParam("browser")),
+		"all?": type("boolean").describe("close every tab"),
+		"kill?": type("boolean").describe("also kill spawned-app browsers"),
+	}),
+);
 
 /** Input schema for the browser tool. */
-export type BrowserParams = typeof browserSchema.infer;
+export type BrowserParams = typeof browserSchema.value.infer;
 
 /** Details describing a browser tool execution result (for renderers + transcript). */
 export interface BrowserToolDetails {
@@ -179,7 +183,7 @@ function resolveBrowserKind(
  * - `run`   → execute JS code against an existing tab with `page`/`browser`/`tab` helpers in scope.
  * - `save_state` → write a tab's context cookies and localStorage to a state file.
  */
-export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolDetails> {
+export class BrowserTool implements AgentTool<typeof browserSchema.value, BrowserToolDetails> {
 	readonly name = "browser";
 	readonly approval = "exec" as const;
 	readonly formatApprovalDetails = (args: unknown): string[] => {
@@ -210,7 +214,9 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 	readonly label = "Browser";
 	readonly loadMode = "discoverable";
 	readonly summary = "Control a headless browser to navigate and interact with web pages";
-	readonly parameters = browserSchema;
+	get parameters(): typeof browserSchema.value {
+		return browserSchema.value;
+	}
 	readonly strict = true;
 	/**
 	 * Every action reads or moves one shared tab table, and `run` writes to a
@@ -220,7 +226,7 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 	 */
 	readonly concurrency = "exclusive";
 
-	readonly examples: readonly ToolExample<typeof browserSchema.infer>[] = [
+	readonly examples: readonly ToolExample<typeof browserSchema.value.infer>[] = [
 		{
 			caption: "Open a tab",
 			call: { action: "open", name: "docs", url: "https://example.com" },
@@ -331,7 +337,7 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 					result = await this.#open(name, params, details, timeoutMs, signal);
 					break;
 				case "close":
-					result = await this.#close(name, params, details, signal);
+					result = await close(name, params, details, signal);
 					break;
 				case "run":
 					result = await this.#run(name, params, details, timeoutMs, signal);
@@ -602,23 +608,6 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 		return `Page:\n${snapshot}`;
 	}
 
-	async #close(
-		name: string,
-		params: BrowserParams,
-		details: BrowserToolDetails,
-		signal?: AbortSignal,
-	): Promise<AgentToolResult<BrowserToolDetails>> {
-		const kill = !!params.kill;
-		if (params.all) {
-			const count = await untilAborted(signal, () => releaseAllTabs({ kill }));
-			details.result = `Closed ${count} tab(s)`;
-			return toolResult(details).text(details.result).done();
-		}
-		const closed = await untilAborted(signal, () => releaseTab(name, { kill }));
-		details.result = closed ? `Closed tab ${JSON.stringify(name)}` : `No tab named ${JSON.stringify(name)}`;
-		return toolResult(details).text(details.result).done();
-	}
-
 	async #saveState(
 		name: string,
 		params: BrowserParams,
@@ -647,7 +636,7 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 			signal,
 			session: this.session,
 		});
-		const saved = savedStateSchema(run.returnValue);
+		const saved = savedStateSchema.value(run.returnValue);
 		if (saved instanceof type.errors) {
 			throw new ToolError(`save_state wrote ${file} but could not count what it wrote: ${saved.summary}`);
 		}
@@ -752,13 +741,30 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 	}
 }
 
+async function close(
+	name: string,
+	params: BrowserParams,
+	details: BrowserToolDetails,
+	signal?: AbortSignal,
+): Promise<AgentToolResult<BrowserToolDetails>> {
+	const kill = !!params.kill;
+	if (params.all) {
+		const count = await untilAborted(signal, () => releaseAllTabs({ kill }));
+		details.result = `Closed ${count} tab(s)`;
+		return toolResult(details).text(details.result).done();
+	}
+	const closed = await untilAborted(signal, () => releaseTab(name, { kill }));
+	details.result = closed ? `Closed tab ${JSON.stringify(name)}` : `No tab named ${JSON.stringify(name)}`;
+	return toolResult(details).text(details.result).done();
+}
+
 /** Persist over-cap browser run output as a session artifact; mirrors the bash minimizer's save path. */
 function saveBrowserOutputArtifact(session: ToolSession, fullText: string): Promise<string | undefined> {
 	return saveOutputArtifact(session, "browser-original", fullText);
 }
 
 /** What the `save_state` run returns: counts, never the cookies themselves, which stay out of the transcript. */
-const savedStateSchema = type({ cookies: "number", origins: "string[]" });
+const savedStateSchema = lazy(() => type({ cookies: "number", origins: "string[]" }));
 
 function describeStateCounts(cookies: number, origins: readonly string[]): string {
 	const counted = `${cookies} cookie${cookies === 1 ? "" : "s"}`;

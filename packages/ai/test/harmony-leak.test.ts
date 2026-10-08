@@ -159,6 +159,13 @@ describe("detectHarmonyLeak — tool_arg T-gate", () => {
 		// Every fired signal carries the `T` co-signal the gate requires.
 		expect(detection!.signals.every(s => s.classes.includes("T"))).toBe(true);
 	});
+
+	it("trips when the marker starts exactly at the parse boundary, and not one byte before it", () => {
+		const markerStart = embedded.indexOf("to=functions.");
+		const atBoundary = detectHarmonyLeak(embedded, "tool_arg", { parsedEnd: markerStart });
+		expect(atBoundary?.signals.map(s => [s.start, s.classes.at(-1)])).toEqual([[markerStart, "T"]]);
+		expect(detectHarmonyLeak(embedded, "tool_arg", { parsedEnd: markerStart + 1 })).toBeUndefined();
+	});
 });
 
 describe("recoverHarmonyToolCall — edit DSL", () => {

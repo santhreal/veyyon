@@ -24,9 +24,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/sdk";
 import { BrowserTool, OPEN_SNAPSHOT_MAX_CHARS } from "@veyyon/coding-agent/tools/web/browser";
 import { browserToolView } from "@veyyon/coding-agent/tools/web/browser/view";
-import { chromiumCanLaunch } from "../helpers/chromium-can-launch";
-
-const CHROMIUM_AVAILABLE = await chromiumCanLaunch();
+import { CHROMIUM_AVAILABLE } from "./browser/chromium";
 
 const SMALL = `<!doctype html><title>Sign in</title><h1>Sign in to continue</h1>
 <label>User <input id="user"></label><button id="go">Submit</button><a href="/help">Help</a>

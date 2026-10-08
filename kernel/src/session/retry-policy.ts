@@ -24,7 +24,7 @@
  * settings, so a backend nobody has characterized behaves exactly as before.
  */
 
-import { isRecord } from "@veyyon/utils";
+import { exponentialBackoffDelay, isRecord } from "@veyyon/utils";
 
 /** The resolved, fully-populated policy the retry loop runs under. */
 export interface RetryPolicy {
@@ -60,9 +60,12 @@ export const RETRY_BACKOFF_JITTER_RATIO = 0.25;
  * can treat `baseDelayMs * (1 - RATIO)` as a floor.
  */
 export function calculateRetryBackoffDelayMs(baseDelayMs: number, attempt: number): number {
-	const cappedDelayMs = Math.min(Math.max(0, baseDelayMs) * 2 ** Math.max(0, attempt - 1), RETRY_BACKOFF_MAX_DELAY_MS);
-	const jitter = 1 - Math.random() * RETRY_BACKOFF_JITTER_RATIO;
-	return cappedDelayMs * jitter;
+	return exponentialBackoffDelay(attempt - 1, {
+		baseMs: baseDelayMs,
+		maxMs: RETRY_BACKOFF_MAX_DELAY_MS,
+		jitter: RETRY_BACKOFF_JITTER_RATIO,
+		jitterSpread: "below",
+	});
 }
 
 /**

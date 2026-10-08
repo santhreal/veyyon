@@ -21,7 +21,7 @@ import { describe, expect, it } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, Model } from "@veyyon/ai";
 import { type GeneratedProvider, getBundledModels, getBundledProviders } from "@veyyon/catalog/models";
-import { rpcThinkingLevelRefusal } from "@veyyon/coding-agent/modes/rpc/rpc-mode";
+import { rpcThinkingLevelRefusal } from "@veyyon/coding-agent/modes/rpc/rpc-commands";
 import { CONFIGURED_THINKING_LEVELS, configuredThinkingLevelsForModel } from "@veyyon/coding-agent/thinking";
 
 const ALL_LEVELS: readonly ThinkingLevel[] = Object.values(ThinkingLevel);

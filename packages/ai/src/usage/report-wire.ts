@@ -14,8 +14,8 @@
  * where the broker's `/v1/usage` response embeds them. Two copies of one vocabulary disagree
  * by a field eventually, and the field that goes missing is the one a report needed.
  */
-import { once } from "@veyyon/utils/abortable";
-import { type } from "arktype";
+import { lazy } from "@veyyon/utils/abortable";
+import { type } from "../utils/schema/arktype";
 
 /**
  * The nine schemas a usage report is validated against, built once per process.
@@ -23,7 +23,7 @@ import { type } from "arktype";
  * Memoized because arktype's evaluation is the expensive part and the schemas are immutable;
  * the broker validates a response per request and must not rebuild them each time.
  */
-export const usageWireSchemas = once(() => {
+export const usageWireSchemas = lazy(() => {
 	const unit = type("'percent' | 'tokens' | 'requests' | 'usd' | 'minutes' | 'bytes' | 'unknown'");
 	const status = type("'ok' | 'warning' | 'exhausted' | 'unknown'");
 

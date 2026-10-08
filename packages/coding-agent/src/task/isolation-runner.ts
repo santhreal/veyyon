@@ -22,7 +22,6 @@ import * as path from "node:path";
 import type * as natives from "@veyyon/natives";
 import { errorMessage, logger } from "@veyyon/utils";
 import type { ToolSession } from "../tools";
-import { generateCommitMessage } from "../utils/commit-message-generator";
 import * as git from "../utils/git";
 import type { ExecutorOptions } from "./executor";
 import { runSubprocess } from "./executor";
@@ -84,14 +83,19 @@ export function makeIsolationCommitMessage(session: ToolSession): BuildCommitMes
 		const registry = session.modelRegistry;
 		const settings = session.settings;
 		const sessionId = session.getSessionId?.() ?? undefined;
-		return async (diff: string) =>
-			generateCommitMessage(
+		// The generator, its model helper and the commit prompt table load on the first AI commit: a
+		// session that registers the task tool and never commits an isolated agent's changes with a
+		// model-written message never evaluates them.
+		return async (diff: string) => {
+			const { generateCommitMessage } = await import("../utils/commit-message-generator");
+			return generateCommitMessage(
 				diff,
 				registry,
 				settings,
 				() => text => session.obfuscateProviderText?.(text) ?? text,
 				sessionId,
 			);
+		};
 	};
 }
 

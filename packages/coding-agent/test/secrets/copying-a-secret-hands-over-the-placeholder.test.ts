@@ -28,11 +28,8 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	runSecretCommand,
-	type SecretCommandRequest,
-	type SecretSubcommand,
-} from "@veyyon/coding-agent/secrets/secret-command";
+import { runSecretCommand, type SecretCommandRequest } from "@veyyon/coding-agent/secrets/secret-command";
+import type { SecretSubcommand } from "@veyyon/coding-agent/secrets/secret-verbs";
 import { SecretVault, type VaultScope } from "@veyyon/coding-agent/secrets/vault";
 
 /** Long enough to clear the vault's obfuscatable-length floor, and distinctive enough to grep for. */

@@ -56,8 +56,6 @@ interface Classified {
 	invoke: (session: AgentSession) => unknown;
 }
 
-const USAGE = { input: 10, output: 5, cacheRead: 0, cacheWrite: 0 };
-
 /**
  * Every method `GoalRuntime` exposes, and what it does to an active goal. Adding a method to the
  * runtime without adding a row here fails the roster test below.
@@ -65,7 +63,7 @@ const USAGE = { input: 10, output: 5, cacheRead: 0, cacheWrite: 0 };
 const RUNTIME_PATHS: Record<string, Classified> = {
 	snapshot: { fate: "keeps driving", invoke: session => session.goalRuntime.snapshot },
 	clearAccounting: { fate: "keeps driving", invoke: session => session.goalRuntime.clearAccounting() },
-	onTurnStart: { fate: "keeps driving", invoke: session => session.goalRuntime.onTurnStart("turn-1", USAGE) },
+	onTurnStart: { fate: "keeps driving", invoke: session => session.goalRuntime.onTurnStart("turn-1") },
 	onToolCompleted: { fate: "keeps driving", invoke: session => session.goalRuntime.onToolCompleted("read") },
 	onGoalToolCompleted: { fate: "keeps driving", invoke: session => session.goalRuntime.onGoalToolCompleted() },
 	onAgentEnd: { fate: "keeps driving", invoke: session => session.goalRuntime.onAgentEnd() },

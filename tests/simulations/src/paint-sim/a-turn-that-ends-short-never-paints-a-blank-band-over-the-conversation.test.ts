@@ -127,7 +127,7 @@ describe("a turn that ends short never paints a blank band over the conversation
 
 				// The session must actually have scrolled, or the arm is asking its
 				// question of a screen that never had history to lose.
-				expect(report.scrollTapeRows).toBeGreaterThan(0);
+				expect(report.scrolledOffRows).toBeGreaterThan(0);
 
 				// The band, against the blank run the painted history itself carries
 				// (block separators are one row, so the floor is 1).
@@ -191,7 +191,7 @@ describe("a turn that ends short never paints a blank band over the conversation
 
 				// Nothing has scrolled: the screen is not full, so the fill is what
 				// puts the conversation on the bottom edge, and it must be there.
-				expect(report.scrollTapeRows).toBe(0);
+				expect(report.scrolledOffRows).toBe(0);
 				expect(report.topFillRows).toBeGreaterThan(0);
 				// The composer is the last thing on screen, on the bottom row.
 				const lastPainted = report.viewport.reduce((last, row, i) => (row.trim().length > 0 ? i : last), -1);

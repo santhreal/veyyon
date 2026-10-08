@@ -1,8 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
 	compactionStrategyToEngineAction,
-	isCompactionStrategyOff,
-	isThresholdCompactionDisabled,
 	migrateCompactionStrategyValue,
 	normalizeCompactionStrategy,
 	resolveCompactionEngineAction,
@@ -10,10 +8,9 @@ import {
 } from "../../src/config/compaction-strategy";
 
 /**
- * Every persisted strategy token now selects the same in-place summary engine
- * action. The raw `off` token remains a separate migration-era kill switch:
- * normalization erases it, while the enablement predicates deliberately inspect
- * it before normalization.
+ * Every persisted strategy token selects the same in-place summary engine action. `off` is no
+ * longer a run-time state: the settings migration turns it into `compaction.enabled: false`, so
+ * normalization folds it into `summary` like every other token.
  */
 
 describe("compactionStrategyToEngineAction", () => {
@@ -30,34 +27,9 @@ describe("resolveCompactionEngineAction normalizes before mapping", () => {
 	});
 });
 
-describe("normalize does not preserve the 'off' kill switch", () => {
-	it("folds 'off' into summary, so the disable check must read the raw token", () => {
-		// This is the load-bearing contract: normalize erases "off", so the disable
-		// gates below read the raw strategy instead of the normalized enum.
+describe("normalize folds the retired 'off' token", () => {
+	it("maps 'off' to summary, because `compaction.enabled` is the only off switch", () => {
 		expect(normalizeCompactionStrategy("off")).toBe("summary");
-	});
-});
-
-describe("isCompactionStrategyOff", () => {
-	it("is true only for the exact 'off' token", () => {
-		expect(isCompactionStrategyOff("off")).toBe(true);
-		expect(isCompactionStrategyOff("summary")).toBe(false);
-		expect(isCompactionStrategyOff("handoff")).toBe(false);
-		expect(isCompactionStrategyOff(undefined)).toBe(false);
-	});
-});
-
-describe("isThresholdCompactionDisabled", () => {
-	it("is disabled when the feature is off OR the strategy is 'off'", () => {
-		expect(isThresholdCompactionDisabled(false, "summary")).toBe(true);
-		expect(isThresholdCompactionDisabled(true, "off")).toBe(true);
-		expect(isThresholdCompactionDisabled(false, "off")).toBe(true);
-	});
-
-	it("is enabled when the feature is on and the strategy is not 'off'", () => {
-		expect(isThresholdCompactionDisabled(true, "summary")).toBe(false);
-		expect(isThresholdCompactionDisabled(true, "handoff")).toBe(false);
-		expect(isThresholdCompactionDisabled(true, undefined)).toBe(false);
 	});
 });
 

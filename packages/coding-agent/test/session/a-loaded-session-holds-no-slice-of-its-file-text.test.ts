@@ -13,19 +13,27 @@
  * bounds the string bytes the open leaves live by the texts it holds, with room for the entries' own
  * small strings and none for a second copy of the file.
  *
+ * The string bytes are measured in a fresh process (`fixtures/loaded-session-string-growth.ts`): in the
+ * process a suite shares, strings other files left behind die or stay alive in the window and move the
+ * delta by megabytes both ways.
+ *
  * DOES NOT CATCH: a slice of a text smaller than the room the bound leaves, which keeps its text
  * alive but costs less than the bound can see; and a retained copy that is not a string, such as a
  * buffer of the file's bytes, which the string count does not read.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import * as fs from "node:fs";
-import { SessionManager } from "@veyyon/kernel/session/session-manager";
+import { execFile } from "node:child_process";
+import * as path from "node:path";
+import { promisify } from "node:util";
 import { TempDir } from "@veyyon/utils";
-import { createAssistantMessage } from "../helpers/agent-session-setup";
-import { liveStringBytes } from "../helpers/live-string-bytes";
+import type { OpenGrowth } from "../fixtures/loaded-session-string-growth";
+import { hermeticSpawnEnv } from "../helpers/hermetic-spawn-env";
 
-/** A heap snapshot walks the whole process heap; in a shared suite process that takes seconds. */
-const SNAPSHOT_ROW_TIMEOUT_MS = 60_000;
+const run = promisify(execFile);
+const FIXTURE = path.join(import.meta.dirname, "..", "fixtures", "loaded-session-string-growth.ts");
+
+/** A fresh process loads the modules and takes two heap snapshots of its own heap. */
+const MEASURED_ROW_TIMEOUT_MS = 60_000;
 
 /** The file size at and above which the loader reads a session file in chunks rather than whole. */
 const STREAM_LOAD_BYTES = 8 * 1024 * 1024;
@@ -35,11 +43,6 @@ const ROWS = [
 	{ path: "the whole-file read", streaming: false, texts: 24, chars: 150_000 },
 	{ path: "the streaming read", streaming: true, texts: 48, chars: 200_000 },
 ];
-
-/** `chars` characters distinct per `seed`, so the loader's string pool shares none of them. */
-function text(seed: number, chars: number): string {
-	return `text ${seed}: `.padEnd(chars, `abcdefghij${seed}`);
-}
 
 describe("a loaded session holds no slice of its file text", () => {
 	let root: TempDir;
@@ -52,38 +55,34 @@ describe("a loaded session holds no slice of its file text", () => {
 		await root.remove();
 	});
 
-	/** A session file of one assistant message per text: a file is written once it holds a reply. */
-	async function record(texts: readonly string[]): Promise<string> {
-		const manager = SessionManager.create(root.path(), root.join("sessions"));
-		for (const content of texts) manager.appendMessage(createAssistantMessage(content));
-		await manager.flush();
-		return manager.getSessionFile() as string;
+	async function openInFreshProcess(texts: number, chars: number): Promise<OpenGrowth> {
+		const { env, cleanup } = hermeticSpawnEnv();
+		try {
+			const { stdout, stderr } = await run(process.execPath, [FIXTURE, root.path(), String(texts), String(chars)], {
+				env,
+				timeout: MEASURED_ROW_TIMEOUT_MS - 5_000,
+				killSignal: "SIGKILL",
+			});
+			expect(stderr).toBe("");
+			return JSON.parse(stdout) as OpenGrowth;
+		} finally {
+			cleanup();
+		}
 	}
 
 	for (const row of ROWS) {
 		it(
 			`on ${row.path}`,
 			async () => {
-				const texts = Array.from({ length: row.texts }, (_, seed) => text(seed, row.chars));
-				const textBytes = texts.length * row.chars;
-				const file = await record(texts);
-				const size = fs.statSync(file).size;
-				expect(size >= STREAM_LOAD_BYTES).toBe(row.streaming);
-				// A throwaway open of a small session loads every module the measured open reaches.
-				await SessionManager.open(await record([text(-1, 100)]));
-
-				const before = liveStringBytes();
-				const manager = await SessionManager.open(file);
-				const grown = liveStringBytes() - before;
-
-				expect(manager.getEntries().length).toBe(texts.length);
+				const growth = await openInFreshProcess(row.texts, row.chars);
+				expect(growth.size >= STREAM_LOAD_BYTES).toBe(row.streaming);
+				expect(growth.entries).toBe(row.texts);
 				// The measurement sees the loaded texts, so a bound it passes is not a count that missed them.
-				// Half, since strings an earlier file in the same process left behind can die in the window.
-				expect(grown).toBeGreaterThan(textBytes / 2);
+				expect(growth.grown).toBeGreaterThan(growth.textBytes / 2);
 				// The texts once, and less than another copy of the file on top.
-				expect(grown).toBeLessThan(textBytes + size / 2);
+				expect(growth.grown).toBeLessThan(growth.textBytes + growth.size / 2);
 			},
-			SNAPSHOT_ROW_TIMEOUT_MS,
+			MEASURED_ROW_TIMEOUT_MS,
 		);
 	}
 });

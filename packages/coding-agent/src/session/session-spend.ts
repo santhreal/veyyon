@@ -17,6 +17,7 @@
 
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { Usage } from "@veyyon/ai";
+import { readColdEntry } from "@veyyon/kernel/session/session-cold-payloads";
 import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { TOOL } from "../tools/core/builtin-names";
 import type { SessionSpend } from "./agent-session-types";
@@ -81,10 +82,20 @@ export function addMessageSpend(spend: SessionSpend, message: AgentMessage): voi
 	}
 }
 
+/**
+ * Add the message entries of `branch` from `from` to `to`. An assistant message and a `task` result
+ * spend what their large fields hold, which a cold entry reads back from the session file: read
+ * through {@link readColdEntry}, the tally leaves the summarized history on disk.
+ */
 function addEntrySpend(spend: SessionSpend, branch: readonly SessionEntry[], from: number, to: number): void {
 	for (let index = from; index < to; index++) {
 		const entry = branch[index];
-		if (entry.type === "message") addMessageSpend(spend, entry.message);
+		if (entry.type !== "message") continue;
+		const { message } = entry;
+		if (message.role === "assistant" || (message.role === "toolResult" && message.toolName === TOOL.task)) {
+			const restored = readColdEntry(entry);
+			addMessageSpend(spend, restored?.type === "message" ? restored.message : message);
+		} else addMessageSpend(spend, message);
 	}
 }
 

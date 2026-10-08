@@ -12,7 +12,7 @@ import type { SessionEntry, SessionHeader } from "@veyyon/kernel/session/session
 import { mapJsonStrings } from "../json-transform";
 import { obfuscateToolArguments, type SecretObfuscator } from "../secrets/obfuscator";
 import type { OutputMeta } from "../tools/core/output-meta";
-import type { SessionData, SubSession } from "./html";
+import type { SessionData, SubSession } from "./session-data";
 
 /** Serialized display metadata is separate from provider message fields. */
 interface ExportDisplayMetadata {

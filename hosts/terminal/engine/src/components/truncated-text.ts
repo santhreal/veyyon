@@ -19,6 +19,10 @@ export class TruncatedText implements Component {
 	}
 
 	invalidate(): void {
+		this.releaseRenderCache();
+	}
+
+	releaseRenderCache(): void {
 		this.#cachedWidth = -1;
 		this.#cachedLines = undefined;
 	}

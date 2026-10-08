@@ -43,7 +43,7 @@ engine is TypeScript in `@veyyon/hashline`, with native helpers for block resolu
   model instead of a half-written file.
 - **Model slots.** The interactive model (`/model`), the agent model, and the
   compaction model are separate settings. Named roles pin a model to a kind of work.
-- **Approvals.** `tools.approvalMode` gates the read, write, and exec tiers. There is
+- **Approvals.** `tools.approvalMode` controls the read, write, and exec tiers. There is
   no operating-system sandbox: no Landlock, no seccomp, no Seatbelt, no bubblewrap.
   Approvals are the control point.
 - **Engine modes.** Plan mode, goal mode, vibe mode, compaction, and task agents

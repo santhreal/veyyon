@@ -11,6 +11,7 @@ import type { FileEntry } from "@veyyon/kernel/session/session-entries";
 import type { BashResult } from "../../exec/bash-executor";
 import type { ContextUsage } from "../../extensibility/extensions/types";
 import type { AgentSessionEvent, SessionStats } from "../../session/agent-session-types";
+import type { BackgroundConversation, BackgroundHandoff } from "../../session/background-sessions";
 import type { AvailableSlashCommandSource } from "../../slash-commands/available-commands";
 import type { AgentEventPayload, AgentLifecyclePayload, AgentProgress, AgentProgressPayload } from "../../task";
 import type { TodoPhase } from "../../tools/agent/todo";
@@ -26,7 +27,7 @@ export type RpcCommand =
 	| { id?: string; type: "follow_up"; message: string; images?: ImageContent[] }
 	| { id?: string; type: "abort" }
 	| { id?: string; type: "abort_and_prompt"; message: string; images?: ImageContent[] }
-	| { id?: string; type: "new_session"; parentSession?: string }
+	| { id?: string; type: "new_session"; parentSession?: string; background?: boolean }
 
 	// State
 	| { id?: string; type: "get_state" }
@@ -73,6 +74,10 @@ export type RpcCommand =
 	| { id?: string; type: "get_last_assistant_text" }
 	| { id?: string; type: "set_session_name"; name: string }
 	| { id?: string; type: "handoff"; customInstructions?: string }
+
+	// Background conversations
+	| { id?: string; type: "get_background_sessions" }
+	| { id?: string; type: "cancel_background_session"; sessionId: string }
 
 	// Messages
 	| { id?: string; type: "get_messages" }
@@ -131,6 +136,19 @@ export interface RpcHandoffResult {
 	savedPath?: string;
 }
 
+/** Result of `new_session` and `switch_session`. */
+export interface RpcSessionChange {
+	/** True when an extension cancelled the change. */
+	cancelled: boolean;
+	/**
+	 * Present when the session the client was driving moved to the background
+	 * instead of being reset: `new_session` with `background: true` on a
+	 * streaming session, or `switch_session` to a conversation running in the
+	 * background, which re-attaches it.
+	 */
+	background?: BackgroundHandoff;
+}
+
 export type RpcAgentSubscriptionLevel = "off" | "progress" | "events";
 
 export interface RpcAgentSnapshot {
@@ -169,7 +187,7 @@ export type RpcResponse =
 	| { id?: string; type: "response"; command: "follow_up"; success: true }
 	| { id?: string; type: "response"; command: "abort"; success: true }
 	| { id?: string; type: "response"; command: "abort_and_prompt"; success: true }
-	| { id?: string; type: "response"; command: "new_session"; success: true; data: { cancelled: boolean } }
+	| { id?: string; type: "response"; command: "new_session"; success: true; data: RpcSessionChange }
 
 	// State
 	| { id?: string; type: "response"; command: "get_state"; success: true; data: RpcSessionState }
@@ -258,7 +276,7 @@ export type RpcResponse =
 	// Session
 	| { id?: string; type: "response"; command: "get_session_stats"; success: true; data: SessionStats }
 	| { id?: string; type: "response"; command: "export_html"; success: true; data: { path: string } }
-	| { id?: string; type: "response"; command: "switch_session"; success: true; data: { cancelled: boolean } }
+	| { id?: string; type: "response"; command: "switch_session"; success: true; data: RpcSessionChange }
 	| { id?: string; type: "response"; command: "branch"; success: true; data: { text: string; cancelled: boolean } }
 	| {
 			id?: string;
@@ -276,6 +294,22 @@ export type RpcResponse =
 	  }
 	| { id?: string; type: "response"; command: "set_session_name"; success: true }
 	| { id?: string; type: "response"; command: "handoff"; success: true; data: RpcHandoffResult | null }
+
+	// Background conversations
+	| {
+			id?: string;
+			type: "response";
+			command: "get_background_sessions";
+			success: true;
+			data: { sessions: BackgroundConversation[] };
+	  }
+	| {
+			id?: string;
+			type: "response";
+			command: "cancel_background_session";
+			success: true;
+			data: { sessionId: string };
+	  }
 
 	// Messages
 	| { id?: string; type: "response"; command: "get_messages"; success: true; data: { messages: AgentMessage[] } }

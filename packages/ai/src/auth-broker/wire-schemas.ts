@@ -16,9 +16,10 @@
  * ArkType types costs ~18ms, which only broker request/response paths ever
  * need — the boot path must not pay it.
  */
-import { type Type, type } from "arktype";
+import type { Type } from "arktype";
 import { REMOTE_REFRESH_SENTINEL } from "../auth-storage";
 import { usageWireSchemas } from "../usage/report-wire";
+import { type } from "../utils/schema/arktype";
 import type {
 	CredentialBlockRequest,
 	CredentialBlockResponse,
@@ -190,7 +191,7 @@ function buildWireSchemas() {
 	// The report vocabulary has one owner. This file restated all nine schemas, identically,
 	// beside the copy `usage.ts` declared at module scope: the broker's response embeds a
 	// report, it is not a second definition of what a report is.
-	const usage = usageWireSchemas();
+	const usage = usageWireSchemas.value;
 
 	/**
 	 * Broker `/v1/usage` response. Reports are full UsageReports minus the

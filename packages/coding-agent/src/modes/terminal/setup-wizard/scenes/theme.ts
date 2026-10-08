@@ -160,7 +160,7 @@ class ThemeSceneController implements SetupSceneController {
 		this.#originalColorBlindMode = host.ctx.settings.get("colorBlindMode");
 		this.#symbolPreset = this.#originalSymbolPreset;
 		this.#colorBlindMode = this.#originalColorBlindMode;
-		this.#selectList = this.#createSelectList(this.#curatedItems(), this.#currentCuratedIndex());
+		this.#selectList = this.#createSelectList(this.#curatedItems(), currentCuratedIndex());
 	}
 
 	/**
@@ -306,18 +306,10 @@ class ThemeSceneController implements SetupSceneController {
 			// that used to live here now runs from `onUnmount` for every way out.
 			if (this.#mode !== "all") return;
 			this.#mode = "curated";
-			this.#selectList = this.#createSelectList(this.#curatedItems(), this.#currentCuratedIndex());
+			this.#selectList = this.#createSelectList(this.#curatedItems(), currentCuratedIndex());
 			this.host.requestRender();
 		};
 		return list;
-	}
-
-	/** The row for the theme already in force, found by value rather than index. */
-	#currentCuratedIndex(): number {
-		const current = getCurrentThemeName();
-		const value = current === undefined ? "auto" : `theme:${current}`;
-		const index = THEME_ITEMS.findIndex(item => item.value === value);
-		return index >= 0 ? index : 0;
 	}
 
 	#previewByIndex(index: number): void {
@@ -371,7 +363,7 @@ class ThemeSceneController implements SetupSceneController {
 		this.host.requestRender();
 
 		try {
-			await this.#applyPreviewPresentation(this.#symbolPreset, this.#colorBlindMode);
+			await applyPreviewPresentation(this.#symbolPreset, this.#colorBlindMode);
 		} catch (error) {
 			this.#message = theme.fg("error", `Could not preview that: ${errorMessage(error)}`);
 		}
@@ -457,7 +449,7 @@ class ThemeSceneController implements SetupSceneController {
 		this.#committed = true;
 		this.host.ctx.settings.set("colorBlindMode", this.#colorBlindMode);
 		this.host.ctx.settings.set("symbolPreset", this.#symbolPreset);
-		await this.#applyPreviewPresentation(this.#symbolPreset, this.#colorBlindMode);
+		await applyPreviewPresentation(this.#symbolPreset, this.#colorBlindMode);
 
 		if (value === "auto") {
 			this.host.ctx.settings.set("theme.dark", "titanium");
@@ -465,7 +457,7 @@ class ThemeSceneController implements SetupSceneController {
 			enableAutoTheme();
 			return;
 		}
-		const themeName = this.#themeNameFromValue(value);
+		const themeName = themeNameFromValue(value);
 		if (!themeName) return;
 		if (isLightTheme(themeName)) {
 			this.host.ctx.settings.set("theme.light", themeName);
@@ -494,12 +486,12 @@ class ThemeSceneController implements SetupSceneController {
 
 		let result: { success: boolean; error?: string } = { success: true };
 		if (value === "auto") {
-			await this.#applyPreviewPresentation(this.#symbolPreset, this.#colorBlindMode);
+			await applyPreviewPresentation(this.#symbolPreset, this.#colorBlindMode);
 			enableAutoTheme({ ephemeral: true });
 		} else {
-			const themeName = this.#themeNameFromValue(value);
+			const themeName = themeNameFromValue(value);
 			if (themeName) {
-				await this.#applyPreviewPresentation(this.#symbolPreset, this.#colorBlindMode);
+				await applyPreviewPresentation(this.#symbolPreset, this.#colorBlindMode);
 				result = await previewTheme(themeName);
 			}
 		}
@@ -509,11 +501,6 @@ class ThemeSceneController implements SetupSceneController {
 		}
 		this.host.ctx.ui.invalidate();
 		this.host.requestRender();
-	}
-
-	async #applyPreviewPresentation(symbolPreset: SymbolPreset, colorBlindMode: boolean): Promise<void> {
-		await setSymbolPreset(symbolPreset);
-		await setColorBlindMode(colorBlindMode);
 	}
 
 	/**
@@ -530,7 +517,7 @@ class ThemeSceneController implements SetupSceneController {
 	 */
 	#restorePreview(): Promise<void> {
 		this.#previewSettled = this.#previewSettled.then(async () => {
-			await this.#applyPreviewPresentation(this.#originalSymbolPreset, this.#originalColorBlindMode);
+			await applyPreviewPresentation(this.#originalSymbolPreset, this.#originalColorBlindMode);
 			if (this.#originalTheme) {
 				await previewTheme(this.#originalTheme);
 			} else {
@@ -541,10 +528,23 @@ class ThemeSceneController implements SetupSceneController {
 		});
 		return this.#previewSettled;
 	}
+}
 
-	#themeNameFromValue(value: string): string | undefined {
-		return value.startsWith("theme:") ? value.slice("theme:".length) : undefined;
-	}
+/** The row for the theme already in force, found by value rather than index. */
+function currentCuratedIndex(): number {
+	const current = getCurrentThemeName();
+	const value = current === undefined ? "auto" : `theme:${current}`;
+	const index = THEME_ITEMS.findIndex(item => item.value === value);
+	return index >= 0 ? index : 0;
+}
+
+async function applyPreviewPresentation(symbolPreset: SymbolPreset, colorBlindMode: boolean): Promise<void> {
+	await setSymbolPreset(symbolPreset);
+	await setColorBlindMode(colorBlindMode);
+}
+
+function themeNameFromValue(value: string): string | undefined {
+	return value.startsWith("theme:") ? value.slice("theme:".length) : undefined;
 }
 
 export const themeSetupScene: SetupScene = {

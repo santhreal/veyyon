@@ -38,6 +38,41 @@ describe("partialSuffixOverlap", () => {
 		expect(partialSuffixOverlap("", "<x>")).toBe(0);
 		expect(partialSuffixOverlap("abc", "")).toBe(0);
 	});
+
+	// Every string over a three-symbol alphabet up to a bound, checked against the definition: the longest
+	// proper prefix of the tag that the text ends with. The alphabet repeats the tag's first character inside
+	// the tag ("<<a"), across the text, and right at the scan bound, which is where a scan that skips a
+	// candidate start, starts one position late, or returns a shorter overlap before a longer one goes wrong.
+	it("agrees with the definition for every text and tag over a small alphabet", () => {
+		const words = (maxLength: number): string[] => {
+			const out = [""];
+			for (let at = 0; out[at] !== undefined && out[at].length < maxLength; at++) {
+				for (const symbol of ["<", "a", "/"]) out.push(out[at] + symbol);
+			}
+			return out;
+		};
+		const definition = (text: string, tag: string): number => {
+			for (let k = Math.min(text.length, tag.length - 1); k > 0; k--) {
+				if (text.endsWith(tag.slice(0, k))) return k;
+			}
+			return 0;
+		};
+		const texts = words(6);
+		const mismatches: string[] = [];
+		for (const tag of words(5)) {
+			for (const text of texts) {
+				const got = partialSuffixOverlap(text, tag);
+				if (got !== definition(text, tag))
+					mismatches.push(`${JSON.stringify(text)} ${JSON.stringify(tag)} -> ${got}`);
+			}
+		}
+		expect(mismatches).toEqual([]);
+	});
+
+	it("compares UTF-16 code units, so a lone high surrogate holds the start of an astral tag", () => {
+		expect(partialSuffixOverlap("x\uD83D", "\uD83D\uDE00>")).toBe(1);
+		expect(partialSuffixOverlap("x\uD83D\uDE00", "\uD83D\uDE00>")).toBe(2);
+	});
 });
 
 describe("partialSuffixOverlapAny", () => {

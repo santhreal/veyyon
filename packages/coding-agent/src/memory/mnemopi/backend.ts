@@ -646,11 +646,6 @@ function getMnemopiSessionStateFromParent(options: MemoryBackendStartOptions): M
 	return parent?.aliasOf ?? parent;
 }
 
-export function getMnemopiDbDirForTests(session: AgentSession): string | undefined {
-	const state = getMnemopiSessionState(session);
-	return state ? path.dirname(state.config.dbPath) : undefined;
-}
-
 /**
  * Best-effort removal of a SQLite DB file and its WAL/SHM sidecars.
  *

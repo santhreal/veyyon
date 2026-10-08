@@ -3,7 +3,8 @@ type PendingInput = {
 	resolve: (value: string) => void;
 	reject: (error: Error) => void;
 };
-type ClaimedInput = {
+/** A held `/login <value>` input slot: its pending value, and the release that rejects it. */
+export type OAuthManualInputClaim = {
 	promise: Promise<string>;
 	clear: (reason?: string) => void;
 };
@@ -16,7 +17,7 @@ export class OAuthManualInputManager {
 			this.clear("Manual OAuth input superseded by a new login");
 		}
 
-		const pending = this.#createPending(providerId);
+		const pending = createPending(providerId);
 		this.#pending = pending;
 		return pending.promise;
 	}
@@ -26,9 +27,9 @@ export class OAuthManualInputManager {
 		return this.waitForInput(providerId);
 	}
 
-	tryClaimInput(providerId: string): ClaimedInput | undefined {
+	tryClaimInput(providerId: string): OAuthManualInputClaim | undefined {
 		if (this.#pending) return undefined;
-		const pending = this.#createPending(providerId);
+		const pending = createPending(providerId);
 		this.#pending = pending;
 		return {
 			promise: pending.promise,
@@ -61,9 +62,9 @@ export class OAuthManualInputManager {
 	get pendingProviderId(): string | undefined {
 		return this.#pending?.providerId;
 	}
+}
 
-	#createPending(providerId: string): PendingInput & { promise: Promise<string> } {
-		const { promise, resolve, reject } = Promise.withResolvers<string>();
-		return { providerId, resolve, reject, promise };
-	}
+function createPending(providerId: string): PendingInput & { promise: Promise<string> } {
+	const { promise, resolve, reject } = Promise.withResolvers<string>();
+	return { providerId, resolve, reject, promise };
 }

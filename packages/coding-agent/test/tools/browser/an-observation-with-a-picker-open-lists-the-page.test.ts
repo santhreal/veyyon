@@ -16,9 +16,8 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/sdk";
 import { BrowserTool } from "@veyyon/coding-agent/tools/web/browser";
-import { chromiumCanLaunch } from "../../helpers/chromium-can-launch";
+import { CHROMIUM_AVAILABLE } from "./chromium";
 
-const CHROMIUM_AVAILABLE = await chromiumCanLaunch();
 const PICKER_TYPES = ["date", "datetime-local", "month", "week", "time", "color"] as const;
 
 let tool: BrowserTool;

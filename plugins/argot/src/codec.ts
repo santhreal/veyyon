@@ -49,15 +49,7 @@ export function unionVocabularies(vocabs: Vocabulary[]): Vocabulary {
 				`cannot combine vocabularies with different sigils: "${sigil}" and "${vocab.sigil}"`,
 			);
 		}
-		for (const [name, expansion] of vocab.handles) {
-			const existing = handles.get(name);
-			if (existing !== undefined && existing !== expansion) {
-				throw new ArgotConflictError(
-					`handle "${name}" is defined twice with different expansions: "${existing}" and "${expansion}"`,
-				);
-			}
-			handles.set(name, expansion);
-		}
+		mergeHandles(handles, vocab.handles);
 		for (const [name, entry] of vocab.meta) {
 			if (!meta.has(name)) {
 				meta.set(name, entry);
@@ -66,6 +58,19 @@ export function unionVocabularies(vocabs: Vocabulary[]): Vocabulary {
 	}
 
 	return { version: SUPPORTED_VERSION, sigil: sigil ?? DEFAULT_SIGIL, handles, meta };
+}
+
+/** Add every handle of `incoming` to `handles`, throwing on a name already bound to a different expansion. */
+function mergeHandles(handles: Map<string, string>, incoming: ReadonlyMap<string, string>): void {
+	for (const [name, expansion] of incoming) {
+		const existing = handles.get(name);
+		if (existing !== undefined && existing !== expansion) {
+			throw new ArgotConflictError(
+				`handle "${name}" is defined twice with different expansions: "${existing}" and "${expansion}"`,
+			);
+		}
+		handles.set(name, expansion);
+	}
 }
 
 /** Escape a string for literal use inside a RegExp. */

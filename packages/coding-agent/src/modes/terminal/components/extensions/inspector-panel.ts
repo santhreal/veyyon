@@ -78,7 +78,7 @@ export class InspectorPanel implements Component {
 		lines.push("");
 
 		// Kind badge
-		lines.push(theme.fg("muted", "Type: ") + this.#getKindBadge(ext.kind));
+		lines.push(theme.fg("muted", "Type: ") + getKindBadge(ext.kind));
 		lines.push("");
 
 		// Description (wrapped)
@@ -113,7 +113,7 @@ export class InspectorPanel implements Component {
 
 		// Status badge
 		lines.push(theme.fg("muted", "Status:"));
-		lines.push(`  ${this.#getStatusBadge(ext.state, ext.disabledReason, ext.shadowedBy)}`);
+		lines.push(`  ${getStatusBadge(ext.state, ext.disabledReason, ext.shadowedBy)}`);
 		lines.push("");
 
 		// Preview section (routed based on kind)
@@ -132,16 +132,16 @@ export class InspectorPanel implements Component {
 				content = this.#renderFilePreview(ext.raw, width);
 				break;
 			case "tool":
-				content = this.#renderToolArgs(ext.raw, width);
+				content = renderToolArgs(ext.raw, width);
 				break;
 			case "skill":
-				content = this.#renderSkillContent(ext.raw, width);
+				content = renderSkillContent(ext.raw, width);
 				break;
 			case "mcp":
-				content = this.#renderMcpDetails(ext.raw, width);
+				content = renderMcpDetails(ext.raw, width);
 				break;
 			default:
-				content = this.#renderDefaultPreview(ext, width);
+				content = renderDefaultPreview(ext, width);
 				break;
 		}
 
@@ -157,7 +157,7 @@ export class InspectorPanel implements Component {
 		lines.push(theme.fg("muted", "Preview:"));
 		lines.push(theme.fg("dim", theme.boxSharp.horizontal.repeat(Math.min(width - 2, 40))));
 
-		const content = this.#getContextFileContent(raw);
+		const content = getContextFileContent(raw);
 		if (!content) {
 			lines.push(theme.fg("dim", "  (no content)"));
 			lines.push("");
@@ -166,7 +166,7 @@ export class InspectorPanel implements Component {
 
 		const fileLines = content.split("\n");
 		for (const line of fileLines.slice(0, 20)) {
-			const highlighted = this.#highlightMarkdown(line);
+			const highlighted = highlightMarkdown(line);
 			lines.push(truncateToWidth(highlighted, width - 2));
 		}
 
@@ -177,194 +177,194 @@ export class InspectorPanel implements Component {
 		lines.push("");
 		return lines;
 	}
+}
 
-	#getContextFileContent(raw: unknown): string | null {
-		if (raw && typeof raw === "object" && "content" in raw) {
-			const content = (raw as { content?: unknown }).content;
-			return typeof content === "string" ? content : null;
-		}
-		return null;
+function getContextFileContent(raw: unknown): string | null {
+	if (raw && typeof raw === "object" && "content" in raw) {
+		const content = (raw as { content?: unknown }).content;
+		return typeof content === "string" ? content : null;
+	}
+	return null;
+}
+
+function highlightMarkdown(line: string): string {
+	// Basic markdown syntax highlighting
+	let highlighted = line;
+
+	// Headers
+	if (/^#{1,6}\s/.test(highlighted)) {
+		highlighted = theme.bold(theme.fg("accent", highlighted));
+	}
+	// Code blocks
+	else if (/^```/.test(highlighted)) {
+		highlighted = theme.fg("dim", highlighted);
+	}
+	// Lists
+	else if (/^[\s]*[-*+]\s/.test(highlighted)) {
+		highlighted = highlighted.replace(/^([\s]*[-*+]\s)/, theme.fg("accent", "$1"));
+	}
+	// Numbered lists
+	else if (/^[\s]*\d+\.\s/.test(highlighted)) {
+		highlighted = highlighted.replace(/^([\s]*\d+\.\s)/, theme.fg("accent", "$1"));
 	}
 
-	#highlightMarkdown(line: string): string {
-		// Basic markdown syntax highlighting
-		let highlighted = line;
+	return highlighted;
+}
 
-		// Headers
-		if (/^#{1,6}\s/.test(highlighted)) {
-			highlighted = theme.bold(theme.fg("accent", highlighted));
-		}
-		// Code blocks
-		else if (/^```/.test(highlighted)) {
-			highlighted = theme.fg("dim", highlighted);
-		}
-		// Lists
-		else if (/^[\s]*[-*+]\s/.test(highlighted)) {
-			highlighted = highlighted.replace(/^([\s]*[-*+]\s)/, theme.fg("accent", "$1"));
-		}
-		// Numbered lists
-		else if (/^[\s]*\d+\.\s/.test(highlighted)) {
-			highlighted = highlighted.replace(/^([\s]*\d+\.\s)/, theme.fg("accent", "$1"));
-		}
+function renderToolArgs(raw: unknown, width: number): string[] {
+	const lines: string[] = [];
+	lines.push(theme.fg("muted", "Arguments:"));
+	lines.push(theme.fg("dim", theme.boxSharp.horizontal.repeat(Math.min(width - 2, 40))));
 
-		return highlighted;
+	try {
+		const tool = (raw ?? {}) as ToolDefView;
+		const wire = (s: unknown): JsonSchemaView | undefined =>
+			(isZodSchema(s) ? zodToWireSchema(s) : s) as JsonSchemaView | undefined;
+		const paramSchema = wire(tool.parameters);
+		const inputSchema = wire(tool.inputSchema);
+		const params = paramSchema?.properties || inputSchema?.properties || {};
+
+		if (Object.keys(params).length === 0) {
+			lines.push(theme.fg("dim", "  (no arguments)"));
+		} else {
+			const required = new Set(paramSchema?.required || inputSchema?.required || []);
+
+			for (const [name, spec] of Object.entries(params)) {
+				const param = (spec ?? {}) as ParamSpecView;
+				const type = param.type || "any";
+				const isRequired = required.has(name);
+				const defaultVal = param.default !== undefined ? `Default: ${param.default}` : null;
+
+				const nameCol = theme.fg("accent", name.padEnd(12));
+				const typeCol = theme.fg("muted", type.padEnd(10));
+				const reqCol = isRequired
+					? theme.fg("warning", "Required")
+					: defaultVal
+						? theme.fg("dim", defaultVal)
+						: theme.fg("dim", "Optional");
+
+				lines.push(`  ${nameCol} ${typeCol} ${reqCol}`);
+			}
+		}
+	} catch (err) {
+		lines.push(...unreadableRows("tool definition", err));
 	}
 
-	#renderToolArgs(raw: unknown, width: number): string[] {
-		const lines: string[] = [];
-		lines.push(theme.fg("muted", "Arguments:"));
+	lines.push("");
+	return lines;
+}
+
+function renderSkillContent(raw: unknown, width: number): string[] {
+	const lines: string[] = [];
+	lines.push(theme.fg("muted", "Instruction:"));
+	lines.push(theme.fg("dim", theme.boxSharp.horizontal.repeat(Math.min(width - 2, 40))));
+
+	try {
+		const skill = (raw ?? {}) as SkillView;
+		const instruction = skill.prompt || skill.instruction || skill.content || "";
+
+		if (!instruction) {
+			lines.push(theme.fg("dim", "  (no instruction text)"));
+		} else {
+			const instructionLines = instruction.split("\n").slice(0, 15);
+			for (const line of instructionLines) {
+				lines.push(truncateToWidth(line, width - 2));
+			}
+
+			if (instruction.split("\n").length > 15) {
+				lines.push(theme.fg("dim", "(truncated at line 15)"));
+			}
+		}
+	} catch (err) {
+		lines.push(...unreadableRows("skill content", err));
+	}
+
+	lines.push("");
+	return lines;
+}
+
+function renderMcpDetails(raw: unknown, width: number): string[] {
+	const lines: string[] = [];
+	lines.push(theme.fg("muted", "Connection:"));
+	lines.push(theme.fg("dim", theme.boxSharp.horizontal.repeat(Math.min(width - 2, 40))));
+
+	try {
+		const mcp = (raw ?? {}) as McpConfigView;
+		const transport = mcp.transport || mcp.type || "unknown";
+		const command = mcp.command || mcp.cmd || "";
+		const args = mcp.args || mcp.arguments || [];
+
+		lines.push(`  ${theme.fg("muted", "Transport:")}  ${theme.fg("accent", transport)}`);
+
+		if (command) {
+			lines.push(`  ${theme.fg("muted", "Command:")}    ${theme.fg("success", command)}`);
+		}
+
+		if (Array.isArray(args) && args.length > 0) {
+			lines.push(`  ${theme.fg("muted", "Args:")}       ${theme.fg("dim", args.join(" "))}`);
+		}
+
+		// Environment variables if present
+		if (mcp.env && typeof mcp.env === "object") {
+			const envCount = Object.keys(mcp.env).length;
+			if (envCount > 0) {
+				lines.push(`  ${theme.fg("muted", "Env vars:")}   ${theme.fg("dim", `${envCount} defined`)}`);
+			}
+		}
+	} catch (err) {
+		lines.push(...unreadableRows("MCP configuration", err));
+	}
+
+	lines.push("");
+	return lines;
+}
+
+function renderDefaultPreview(ext: ExtensionRow, width: number): string[] {
+	const lines: string[] = [];
+
+	// Show trigger pattern if present
+	if (ext.trigger) {
+		lines.push(theme.fg("muted", "Trigger:"));
 		lines.push(theme.fg("dim", theme.boxSharp.horizontal.repeat(Math.min(width - 2, 40))));
-
-		try {
-			const tool = (raw ?? {}) as ToolDefView;
-			const wire = (s: unknown): JsonSchemaView | undefined =>
-				(isZodSchema(s) ? zodToWireSchema(s) : s) as JsonSchemaView | undefined;
-			const paramSchema = wire(tool.parameters);
-			const inputSchema = wire(tool.inputSchema);
-			const params = paramSchema?.properties || inputSchema?.properties || {};
-
-			if (Object.keys(params).length === 0) {
-				lines.push(theme.fg("dim", "  (no arguments)"));
-			} else {
-				const required = new Set(paramSchema?.required || inputSchema?.required || []);
-
-				for (const [name, spec] of Object.entries(params)) {
-					const param = (spec ?? {}) as ParamSpecView;
-					const type = param.type || "any";
-					const isRequired = required.has(name);
-					const defaultVal = param.default !== undefined ? `Default: ${param.default}` : null;
-
-					const nameCol = theme.fg("accent", name.padEnd(12));
-					const typeCol = theme.fg("muted", type.padEnd(10));
-					const reqCol = isRequired
-						? theme.fg("warning", "Required")
-						: defaultVal
-							? theme.fg("dim", defaultVal)
-							: theme.fg("dim", "Optional");
-
-					lines.push(`  ${nameCol} ${typeCol} ${reqCol}`);
-				}
-			}
-		} catch (err) {
-			lines.push(...unreadableRows("tool definition", err));
-		}
-
+		lines.push(`  ${theme.fg("accent", ext.trigger)}`);
 		lines.push("");
-		return lines;
 	}
 
-	#renderSkillContent(raw: unknown, width: number): string[] {
-		const lines: string[] = [];
-		lines.push(theme.fg("muted", "Instruction:"));
-		lines.push(theme.fg("dim", theme.boxSharp.horizontal.repeat(Math.min(width - 2, 40))));
+	return lines;
+}
 
-		try {
-			const skill = (raw ?? {}) as SkillView;
-			const instruction = skill.prompt || skill.instruction || skill.content || "";
+function getKindBadge(kind: string): string {
+	const kindColors: Record<string, ThemeColor> = {
+		"extension-module": "accent",
+		skill: "accent",
+		rule: "success",
+		tool: "warning",
+		mcp: "accent",
+		prompt: "muted",
+		hook: "warning",
+		"context-file": "dim",
+		instruction: "muted",
+		"slash-command": "accent",
+	};
 
-			if (!instruction) {
-				lines.push(theme.fg("dim", "  (no instruction text)"));
-			} else {
-				const instructionLines = instruction.split("\n").slice(0, 15);
-				for (const line of instructionLines) {
-					lines.push(truncateToWidth(line, width - 2));
-				}
+	const color = kindColors[kind] || "muted";
+	return theme.fg(color, kind);
+}
 
-				if (instruction.split("\n").length > 15) {
-					lines.push(theme.fg("dim", "(truncated at line 15)"));
-				}
-			}
-		} catch (err) {
-			lines.push(...unreadableRows("skill content", err));
+function getStatusBadge(state: ExtensionState, reason?: string, shadowedBy?: string): string {
+	switch (state) {
+		case "active":
+			return theme.fg("success", `${theme.status.enabled} Active`);
+		case "disabled": {
+			const reasonText =
+				reason === "provider-disabled"
+					? "provider disabled"
+					: reason === "item-disabled"
+						? "manually disabled"
+						: "unknown";
+			return theme.fg("dim", `${theme.status.disabled} Disabled (${reasonText})`);
 		}
-
-		lines.push("");
-		return lines;
-	}
-
-	#renderMcpDetails(raw: unknown, width: number): string[] {
-		const lines: string[] = [];
-		lines.push(theme.fg("muted", "Connection:"));
-		lines.push(theme.fg("dim", theme.boxSharp.horizontal.repeat(Math.min(width - 2, 40))));
-
-		try {
-			const mcp = (raw ?? {}) as McpConfigView;
-			const transport = mcp.transport || mcp.type || "unknown";
-			const command = mcp.command || mcp.cmd || "";
-			const args = mcp.args || mcp.arguments || [];
-
-			lines.push(`  ${theme.fg("muted", "Transport:")}  ${theme.fg("accent", transport)}`);
-
-			if (command) {
-				lines.push(`  ${theme.fg("muted", "Command:")}    ${theme.fg("success", command)}`);
-			}
-
-			if (Array.isArray(args) && args.length > 0) {
-				lines.push(`  ${theme.fg("muted", "Args:")}       ${theme.fg("dim", args.join(" "))}`);
-			}
-
-			// Environment variables if present
-			if (mcp.env && typeof mcp.env === "object") {
-				const envCount = Object.keys(mcp.env).length;
-				if (envCount > 0) {
-					lines.push(`  ${theme.fg("muted", "Env vars:")}   ${theme.fg("dim", `${envCount} defined`)}`);
-				}
-			}
-		} catch (err) {
-			lines.push(...unreadableRows("MCP configuration", err));
-		}
-
-		lines.push("");
-		return lines;
-	}
-
-	#renderDefaultPreview(ext: ExtensionRow, width: number): string[] {
-		const lines: string[] = [];
-
-		// Show trigger pattern if present
-		if (ext.trigger) {
-			lines.push(theme.fg("muted", "Trigger:"));
-			lines.push(theme.fg("dim", theme.boxSharp.horizontal.repeat(Math.min(width - 2, 40))));
-			lines.push(`  ${theme.fg("accent", ext.trigger)}`);
-			lines.push("");
-		}
-
-		return lines;
-	}
-
-	#getKindBadge(kind: string): string {
-		const kindColors: Record<string, ThemeColor> = {
-			"extension-module": "accent",
-			skill: "accent",
-			rule: "success",
-			tool: "warning",
-			mcp: "accent",
-			prompt: "muted",
-			hook: "warning",
-			"context-file": "dim",
-			instruction: "muted",
-			"slash-command": "accent",
-		};
-
-		const color = kindColors[kind] || "muted";
-		return theme.fg(color, kind);
-	}
-
-	#getStatusBadge(state: ExtensionState, reason?: string, shadowedBy?: string): string {
-		switch (state) {
-			case "active":
-				return theme.fg("success", `${theme.status.enabled} Active`);
-			case "disabled": {
-				const reasonText =
-					reason === "provider-disabled"
-						? "provider disabled"
-						: reason === "item-disabled"
-							? "manually disabled"
-							: "unknown";
-				return theme.fg("dim", `${theme.status.disabled} Disabled (${reasonText})`);
-			}
-			case "shadowed":
-				return theme.fg("warning", `${theme.status.shadowed} Shadowed${shadowedBy ? ` by ${shadowedBy}` : ""}`);
-		}
+		case "shadowed":
+			return theme.fg("warning", `${theme.status.shadowed} Shadowed${shadowedBy ? ` by ${shadowedBy}` : ""}`);
 	}
 }

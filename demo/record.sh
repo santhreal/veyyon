@@ -25,9 +25,10 @@ mkdir -p "${WORK_BASE}"
 WORK="$(mktemp -d "${WORK_BASE}/veyyon-demo.XXXXXX")"
 trap 'rm -rf "${WORK}"' EXIT
 
-RECORDER_IMAGE="veyyon-proof-recorder:bun1.4.0"
+# shellcheck source=proof/docker/recorder-image.sh
+source proof/docker/recorder-image.sh
 if ! docker image inspect "${RECORDER_IMAGE}" >/dev/null 2>&1; then
-	docker build -t "${RECORDER_IMAGE}" -f proof/docker/Dockerfile.recorder proof/docker
+	bash proof/docker/build-recorder.sh
 fi
 
 SIGNING_NUMBER="$(printf '%04d-%04d-%04d' $((RANDOM % 10000)) $((RANDOM % 10000)) $((RANDOM % 10000)))"

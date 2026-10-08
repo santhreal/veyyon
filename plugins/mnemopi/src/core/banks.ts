@@ -35,7 +35,7 @@ export class BankManager {
 	}
 
 	createBank(name: string): string {
-		this.#validateName(name);
+		validateName(name);
 		const bankDir = join(this.banksDir, name);
 		if (existsSync(bankDir)) throw new ValueError(`Bank '${name}' already exists`);
 		mkdirSync(bankDir, { recursive: true });
@@ -45,7 +45,7 @@ export class BankManager {
 		return dbPath;
 	}
 	deleteBank(name: string, force = false): boolean {
-		this.#validateName(name);
+		validateName(name);
 		if (name === "default") {
 			if (!force) throw new ValueError("Cannot delete 'default' bank without force=True");
 			// The default bank's DB lives at dataDir/mnemopi.db (the exact path
@@ -81,7 +81,7 @@ export class BankManager {
 	}
 	getBankDbPath(name: string): string {
 		if (name.length === 0 || name === "default") return join(this.dataDir, DEFAULT_DB_FILENAME);
-		this.#validateName(name);
+		validateName(name);
 		return join(this.banksDir, name, DEFAULT_DB_FILENAME);
 	}
 	renameBank(oldName: string, newName: string): string {
@@ -92,8 +92,8 @@ export class BankManager {
 		// `renameBank("../../somedir", "captured")` move an out-of-tree directory
 		// into the bank store. The name charset (validateName) rejects `/` and `.`,
 		// so this closes the traversal boundary that newName already had.
-		this.#validateName(oldName);
-		this.#validateName(newName);
+		validateName(oldName);
+		validateName(newName);
 		const oldDir = join(this.banksDir, oldName);
 		const newDir = join(this.banksDir, newName);
 		if (!existsSync(oldDir)) throw new ValueError(`Bank '${oldName}' does not exist`);
@@ -107,20 +107,21 @@ export class BankManager {
 		const size = present ? statSync(dbPath).size : 0;
 		return { name, exists: present, db_path: dbPath, dbSizeBytes: size, db_size_bytes: size };
 	}
-	#validateName(name: string): void {
-		if (name.length === 0) throw new ValueError("Bank name cannot be empty");
-		if (name === "default") return;
-		if (name.length > 64) throw new ValueError(`Bank name '${name}' exceeds 64 characters`);
-		for (let i = 0; i < name.length; i++) {
-			const code = name.charCodeAt(i);
-			const ok =
-				(code >= 48 && code <= 57) ||
-				(code >= 65 && code <= 90) ||
-				(code >= 97 && code <= 122) ||
-				code === 45 ||
-				code === 95;
-			if (!ok) throw new ValueError(`Invalid bank name '${name}'. Use alphanumeric, hyphens, underscores only.`);
-		}
+}
+
+function validateName(name: string): void {
+	if (name.length === 0) throw new ValueError("Bank name cannot be empty");
+	if (name === "default") return;
+	if (name.length > 64) throw new ValueError(`Bank name '${name}' exceeds 64 characters`);
+	for (let i = 0; i < name.length; i++) {
+		const code = name.charCodeAt(i);
+		const ok =
+			(code >= 48 && code <= 57) ||
+			(code >= 65 && code <= 90) ||
+			(code >= 97 && code <= 122) ||
+			code === 45 ||
+			code === 95;
+		if (!ok) throw new ValueError(`Invalid bank name '${name}'. Use alphanumeric, hyphens, underscores only.`);
 	}
 }
 

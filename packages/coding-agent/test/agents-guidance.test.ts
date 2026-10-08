@@ -189,17 +189,17 @@ describe("managed AGENTS.md seeding surfaces genuine write failures loudly (no s
 	// has no way to know why their AGENTS.md never appeared. A genuine error must
 	// warn; EEXIST must not. These pin both halves so the swallow can't come back.
 
-	// Capture the real logger output by routing it to a console transport and
+	// Capture the real logger output by routing it to the console sink and
 	// intercepting the process streams for the duration of one call. This tests
-	// the actual winston emission end to end (not a spy on a binding), then puts
+	// the actual log emission end to end (not a spy on a binding), then puts
 	// the streams back exactly as they were.
 	//
 	// The restore turns BOTH transports off rather than re-enabling the file one.
-	// The file transport is a winston DailyRotateFile rooted at the real profile's
-	// logs directory, so switching it back on inside a test run opens a write
-	// stream on the developer's own `~/.veyyon/profiles/<profile>/logs` — which is
-	// exactly what the real-data tripwire refuses. Nothing after the capture reads
-	// the log file, so off is both correct and the only safe restore.
+	// The file sink is rooted at the real profile's logs directory, so switching it
+	// back on inside a test run opens a file in the developer's own
+	// `~/.veyyon/profiles/<profile>/logs` — which is exactly what the real-data
+	// tripwire refuses. Nothing after the capture reads the log file, so off is both
+	// correct and the only safe restore.
 	async function captureLoggerOutput(run: () => Promise<void>): Promise<string> {
 		const chunks: string[] = [];
 		const origOut = process.stdout.write.bind(process.stdout);

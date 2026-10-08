@@ -29,7 +29,7 @@ Then in veyyon:
 
 See [docs/handbook/src/using/custom-tools.md](../../../../docs/handbook/src/using/custom-tools.md) for full documentation.
 
-### Key Points
+### Notes
 
 **Factory pattern:**
 

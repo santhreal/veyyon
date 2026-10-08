@@ -1,18 +1,16 @@
 # Compaction and project memory
 
-A long session eventually fills the context window. The simple fix, dropping the oldest messages, loses
-the decisions and constraints the model still needs. Compaction is the better fix: instead of
-truncating old history, it compresses it into a summary and keeps working. At any moment a long session
-holds three records: the goal (when enabled), the recent transcript verbatim, and the compacted history
-behind it.
+A long session eventually fills the context window. Compaction compresses old history into a summary
+instead of truncating it, so the decisions and constraints in that history stay available to the model.
+At any moment a long session holds three records: the goal (when enabled), the recent transcript
+verbatim, and the compacted history behind it.
 
 ## Context compaction
 
 Primary compaction knobs (settings → Models → Compaction, or `config.yml`):
 
 - **Threshold** (`compaction.threshold`): when auto-compaction runs. The unit is
-  part of the value, so one setting covers all three ways you might want to say
-  it:
+  part of the value:
   - `auto` (the default) triggers at the model's context window minus the
     reserve, so it adapts to whatever model you are on.
   - `85%` is a percent of the current model's window, so the trigger moves with
@@ -27,7 +25,7 @@ Primary compaction knobs (settings → Models → Compaction, or `config.yml`):
   history into an in-place LLM summary on the current branch.
 - **Model** (`compaction.model`): the models that perform LLM compaction, tried
   in order. Unset uses your interactive model. See [Fallback models](#fallback-models)
-  below and [Models, roles, and profiles](../using/roles-and-profiles.md).
+  and [Models, roles, and profiles](../using/roles-and-profiles.md).
 
 `/compact <focus>` steers a run with an "Additional focus:" directive. The most
 recent user, assistant, and tool messages stay verbatim up to
@@ -36,12 +34,10 @@ recent user, assistant, and tool messages stay verbatim up to
 Use `/handoff <focus>` when you explicitly want a new session. Handoff is not a
 compaction strategy, and automatic maintenance never selects it.
 
-Compaction and handoff both write a machine-owned continuity record separate
-from generated prose. It preserves the active objective, the original user
-contract, goal and todo state, pending blockers, changed paths, verification
-evidence, and checkpoint state. Handoff writes that record into the replacement
-session before the next turn. Reopening either session restores exact state
-instead of relying on generated prose to repeat every field.
+Compaction and handoff both append a `<files>` block that lists the files read and
+modified. The block is generated from the session messages, not by the model, so it
+is identical whichever model wrote the summary. Handoff also writes the todo list into
+the replacement session as a persisted todo entry, so reopening that session restores it.
 
 Stored legacy strategy names such as `handoff`, `snap`, `soft`, and `remote`
 migrate to `summary`. A legacy `off` value also disables compaction.
@@ -57,7 +53,7 @@ compaction:
 
 Compaction tries the first entry. If you are not signed in to it, or its context window cannot
 hold the history being summarized, veyyon moves on to the second, then the third. A single model
-is still written the way you would expect (`model: anthropic/claude-sonnet-4-5`). In `/settings`,
+is written as a plain value (`model: anthropic/claude-sonnet-4-5`). In `/settings`,
 the compaction model row is the same list: add a fallback, and press Enter on any entry to move it
 up.
 
@@ -77,14 +73,14 @@ You see that once per distinct reason, not once per compaction.
 - `any-model` keeps going past those to the largest context window you have credentials for,
   whichever provider that is. Compaction almost never fails, at the cost of summarizing on a
   provider you did not choose for this session and being billed for it there.
-- `configured-only` stops at the models you listed. Compaction fails with the reason instead, which
-  is what you want when the summary quality matters more than the session continuing.
+- `configured-only` stops at the models you listed. Compaction fails with the reason instead. Use it
+  when summary quality takes priority over the session continuing.
 
 With `compaction.model` unset, `configured-only` means your interactive model and nothing else.
 
 Compaction fires unattended, so `any-model` is the one setting here that can spend money on an
 account you were not using: a session on one provider can summarize on another provider's key and
-report that provider's billing error as a compaction failure. That is why it is not the default.
+report that provider's billing error as a compaction failure.
 
 ## Shake and duplicate elision
 
@@ -93,18 +89,18 @@ content out of the live context and leaves a short placeholder in its place. Who
 results and large fenced or XML blocks are replaced with a marker such as
 `[shaken ~1200 tokens; recover: artifact://42 (region 3)]`. The full text is saved as a
 session artifact first, so you can always read it back with `read artifact://42`. Nothing is
-lost, it just stops being resent on every turn. Run it on demand with `/shake`.
+lost; the content is no longer resent on every turn. Run it on demand with `/shake`.
 
 Shake also removes redundancy. When you read the same unchanged file twice, or run the same
 command twice and get the same output, every copy but the newest contains no new information.
-Shake finds each earlier tool result whose tool, arguments, and output exactly match a later
+Shake finds each earlier tool result whose tool, arguments, and output are identical to a later
 one, and elides the earlier copies through the same artifact path. The newest copy stays in
 place. This runs even for recent results that the size-based pass would otherwise keep, because
 a duplicate is redundant however recent it is. Results from a protected tool (such as `skill`),
 error results, and results already elided are never deduplicated.
 
 The match is exact. If a command's output changes between runs, both runs are kept, because the
-later one is genuinely new information rather than a repeat.
+later one is new information rather than a repeat.
 
 Duplicate elision runs on its own before in-place compaction. Whenever automatic
 maintenance runs because context crossed the threshold or overflowed, it first
@@ -120,4 +116,4 @@ from the active memory backend so summaries retain project facts. See [Memory](.
 
 ## Goals
 
-Goal cards and budgets: `/goal`, `/guided-goal`, and the `goal` tool. Structure: [Goal state and long sessions](./goal-state.md). Operator surface: [Plan mode and goals](../features/plan-mode.md).
+Goal cards and budgets: `/goal`, `/guided-goal`, and the `goal` tool. Structure: [Goal state and long sessions](./goal-state.md). Commands: [Plan mode and goals](../features/plan-mode.md).

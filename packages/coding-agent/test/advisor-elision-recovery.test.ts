@@ -204,7 +204,6 @@ describe("advisor compaction closes out tail elisions", () => {
 			sessionManager,
 			settings,
 			modelRegistry,
-			advisorTools: [],
 			advisorStreamFn,
 		});
 		expect(session.setAdvisorEnabled(true)).toBe(true);

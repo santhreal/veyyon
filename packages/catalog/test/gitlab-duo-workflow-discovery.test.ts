@@ -43,7 +43,7 @@ function createMockFetch(options: {
 	graphqlProjects?: Record<string, unknown>;
 	groups?: unknown[];
 	groupsById?: Record<string, unknown>;
-	models?: Record<string, AvailableModelsPayload>;
+	models?: Record<string, unknown>;
 }): { fetch: FetchImpl; calls: MockCall[] } {
 	const calls: MockCall[] = [];
 	const fetch = (async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
@@ -500,6 +500,60 @@ describe("GitLab Duo Workflow discovery", () => {
 		});
 		expect(models?.[0]?.gitlabDuoWorkflowRootNamespaceId).toBe("root");
 	});
+
+	// The availability answer is parsed field by field: a value of the wrong shape reads as absent rather
+	// than failing the whole answer, and an answer that is not an object lists no models.
+	const malformedAnswers: ReadonlyArray<[string, unknown, Array<[id: string, name: string]> | null]> = [
+		[
+			"a selectableModels that is not an array falls back to the default model",
+			{
+				defaultModel: { name: "Default Model", ref: "default_ref" },
+				selectableModels: { name: "Not A List", ref: "not_a_list" },
+				pinnedModel: null,
+			},
+			[["default_ref", "Default Model"]],
+		],
+		[
+			"a selectable entry that is not a record or has no non-blank string ref is dropped",
+			{
+				defaultModel: null,
+				selectableModels: [
+					{ name: "Kept", ref: "kept_ref" },
+					[{ name: "Nested", ref: "nested_ref" }],
+					"string_ref",
+					{ name: "Numeric", ref: 5 },
+					{ name: "Blank", ref: "   " },
+					null,
+				],
+				pinnedModel: null,
+			},
+			[["kept_ref", "Kept"]],
+		],
+		[
+			"a name that is not a string reads as the ref",
+			{ selectableModels: [{ name: 7, ref: "named_by_ref" }] },
+			[["named_by_ref", "named_by_ref"]],
+		],
+		[
+			"a pinnedModel that is an array pins nothing",
+			{
+				pinnedModel: [{ name: "Pinned", ref: "pinned_ref" }],
+				selectableModels: [{ name: "Selectable", ref: "selectable_ref" }],
+			},
+			[["selectable_ref", "Selectable"]],
+		],
+		["an answer that is an array lists no models", [{ name: "Listed", ref: "listed_ref" }], null],
+		["an answer that is a string lists no models", "claude_sonnet_4_6", null],
+	];
+	for (const [behavior, answer, expected] of malformedAnswers) {
+		it(behavior, async () => {
+			const { fetch } = createMockFetch({ models: { root: answer } });
+
+			const models = await fetchGitLabDuoWorkflowModels({ apiKey: TEST_TOKEN, namespaceId: "root", fetch });
+
+			expect(models?.map(model => [model.id, model.name]) ?? null).toEqual(expected);
+		});
+	}
 
 	it("matches contextWindow to the model ref family with a 200k default fallback", () => {
 		expect(buildGitLabDuoWorkflowModelSpec({ name: "Opus", ref: "claude_opus_4_8" }).contextWindow).toBe(1_000_000);

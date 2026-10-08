@@ -31,7 +31,11 @@ describe("AgentStorage skips unreadable credentials loudly", () => {
 	async function openStorage(): Promise<{ storage: AgentStorage; dbPath: string }> {
 		tempDir = TempDir.createSync("@veyyon-agent-storage-cred-");
 		const dbPath = path.join(tempDir.path(), "agent.db");
-		return { storage: await AgentStorage.open(dbPath), dbPath };
+		const storage = await AgentStorage.open(dbPath);
+		// The credential tables are created by the first credential call, and `insertRaw` writes into them
+		// from a second connection.
+		expect(storage.hasAuthCredentials()).toBe(false);
+		return { storage, dbPath };
 	}
 
 	/** Write a row straight into the table, bypassing the writer's validation. */

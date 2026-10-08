@@ -75,7 +75,7 @@ describe("an interrupted or terminal agent settles to terminal display state", (
 		});
 
 		// 1. Agent pauses at an approval prompt
-		registry.setPendingApproval("0-Sub", { toolName: "bash", since: Date.now() });
+		registry.openApprovalWait("0-Sub", { toolName: "bash", since: Date.now() });
 		const dashboardWhileBlocked = new AgentDashboard({ terminalHeight: 40 });
 		try {
 			const blockedRow = rowsOf(dashboardWhileBlocked, "Kestrel")[0] ?? "";
@@ -197,7 +197,7 @@ describe("an interrupted or terminal agent settles to terminal display state", (
 				session: null,
 				status: s.status,
 			});
-			if (s.blocked) registry.setPendingApproval(s.id, { toolName: "bash", since: Date.now() });
+			if (s.blocked) registry.openApprovalWait(s.id, { toolName: "bash", since: Date.now() });
 			if (s.waiting) registry.setWaitingOnPeer(s.id, true);
 		}
 
@@ -251,7 +251,7 @@ describe("an interrupted or terminal agent settles to terminal display state", (
 		}
 
 		// 2. Blocked on approval
-		registry.setPendingApproval("0-Sub", { toolName: "bash", since: Date.now() });
+		registry.openApprovalWait("0-Sub", { toolName: "bash", since: Date.now() });
 		const viewerBlocked = makeViewer();
 		try {
 			const lines = viewerBlocked.render(80);

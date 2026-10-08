@@ -13,7 +13,7 @@
  * owner, both thresholds, and the fact that a warning names the action that prevents the loss.
  */
 import { describe, expect, it } from "bun:test";
-import { expiryWarnings } from "@veyyon/coding-agent/secrets/secret-command";
+import { expiryWarnings } from "@veyyon/coding-agent/secrets/expiry";
 import { type ScopedVaultEntry, WARN_AT_FRACTIONS } from "@veyyon/coding-agent/secrets/vault";
 
 const DAY = 24 * 60 * 60 * 1000;

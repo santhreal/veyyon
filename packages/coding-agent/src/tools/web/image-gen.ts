@@ -5,6 +5,7 @@ import type { ApiKey, FetchImpl, Model } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import { ProviderHttpError } from "@veyyon/ai/error";
+import { type } from "@veyyon/ai/utils/schema/arktype";
 import {
 	ANTIGRAVITY_ENDPOINTS,
 	ANTIGRAVITY_PRIMARY_ENDPOINT,
@@ -21,6 +22,7 @@ import { getAntigravityUserAgent } from "@veyyon/catalog/wire/gemini-headers";
 import {
 	$env,
 	isEnoent,
+	lazy,
 	parseImageMetadata,
 	prompt,
 	readSseJson,
@@ -28,7 +30,6 @@ import {
 	trimTrailingSlashes,
 	untilAborted,
 } from "@veyyon/utils";
-import { type } from "arktype";
 import packageJson from "../../../package.json" with { type: "json" };
 import { isAuthenticated } from "../../config/auth-state";
 import type { ModelRegistry } from "../../config/model-registry";
@@ -69,32 +70,36 @@ const XAI_IMAGE_ASPECT_RATIOS = [...COMMON_IMAGE_ASPECT_RATIOS, "3:2", "2:3"] as
 const COMMON_IMAGE_ASPECT_RATIO_SET = new Set<string>(COMMON_IMAGE_ASPECT_RATIOS);
 const IMAGE_PROVIDER_PREFERENCES = new Set<string>(["auto", "antigravity", "gemini", "openai", "openrouter", "xai"]);
 
-const responseModalitySchema = type('"IMAGE" | "TEXT"');
+const responseModalitySchema = lazy(() => type('"IMAGE" | "TEXT"'));
 
-const aspectRatioSchema = type.enumerated(...XAI_IMAGE_ASPECT_RATIOS).describe("aspect ratio");
-const imageSizeSchema = type('"1024x1024" | "1536x1024" | "1024x1536"').describe("image size");
+const aspectRatioSchema = lazy(() => type.enumerated(...XAI_IMAGE_ASPECT_RATIOS).describe("aspect ratio"));
+const imageSizeSchema = lazy(() => type('"1024x1024" | "1536x1024" | "1024x1536"').describe("image size"));
 
-const inputImageSchema = type({
-	"path?": type("string").describe("input image path"),
-	"data?": type("string").describe("base64 image data"),
-	"mime_type?": type("string").describe("mime type"),
-});
+const inputImageSchema = lazy(() =>
+	type({
+		"path?": type("string").describe("input image path"),
+		"data?": type("string").describe("base64 image data"),
+		"mime_type?": type("string").describe("mime type"),
+	}),
+);
 
-export const imageGenSchema = type({
-	subject: type("string").describe("main subject"),
-	"action?": type("string").describe("what subject is doing"),
-	"scene?": type("string").describe("location or environment"),
-	"composition?": type("string").describe("camera angle and framing"),
-	"lighting?": type("string").describe("lighting setup"),
-	"style?": type("string").describe("artistic style"),
-	"text?": type("string").describe("text to render"),
-	"changes?": type("string[]").describe("edits to make"),
-	"aspect_ratio?": aspectRatioSchema,
-	"image_size?": imageSizeSchema,
-	"input?": inputImageSchema.array().describe("input images"),
-});
-export type ImageGenParams = typeof imageGenSchema.infer;
-export type GeminiResponseModality = typeof responseModalitySchema.infer;
+export const imageGenSchema = lazy(() =>
+	type({
+		subject: type("string").describe("main subject"),
+		"action?": type("string").describe("what subject is doing"),
+		"scene?": type("string").describe("location or environment"),
+		"composition?": type("string").describe("camera angle and framing"),
+		"lighting?": type("string").describe("lighting setup"),
+		"style?": type("string").describe("artistic style"),
+		"text?": type("string").describe("text to render"),
+		"changes?": type("string[]").describe("edits to make"),
+		"aspect_ratio?": aspectRatioSchema.value,
+		"image_size?": imageSizeSchema.value,
+		"input?": inputImageSchema.value.array().describe("input images"),
+	}),
+);
+export type ImageGenParams = typeof imageGenSchema.value.infer;
+export type GeminiResponseModality = typeof responseModalitySchema.value.infer;
 
 /**
  * Assembles a structured prompt from the provided parameters.
@@ -1107,7 +1112,7 @@ async function parseAntigravitySseForImage(response: Response, signal?: AbortSig
 	return { images, text: textParts, usage };
 }
 
-export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails> & {
+export const imageGenTool: CustomTool<typeof imageGenSchema.value, ImageGenToolDetails> & {
 	readonly loadMode: "discoverable";
 } = {
 	name: "generate_image",
@@ -1116,7 +1121,9 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 	approval: "write",
 	loadMode: "discoverable",
 	description: prompt.render(toolsPrompts["tools/image-gen"].text),
-	parameters: imageGenSchema,
+	get parameters() {
+		return imageGenSchema.value;
+	},
 	async execute(_toolCallId, params, _onUpdate, ctx, signal) {
 		return untilAborted(signal, async () => {
 			const sessionId = ctx.sessionManager.getSessionId();
@@ -1624,13 +1631,13 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 export async function getImageGenTools(
 	_modelRegistry?: ModelRegistry,
 	_activeModel?: Model,
-): Promise<Array<CustomTool<typeof imageGenSchema, ImageGenToolDetails>>> {
+): Promise<Array<CustomTool<typeof imageGenSchema.value, ImageGenToolDetails>>> {
 	return [imageGenTool];
 }
 
 export async function getImageGenToolsWithRegistry(
 	_modelRegistry: ModelRegistry,
 	_activeModel?: Model,
-): Promise<Array<CustomTool<typeof imageGenSchema, ImageGenToolDetails>>> {
+): Promise<Array<CustomTool<typeof imageGenSchema.value, ImageGenToolDetails>>> {
 	return [imageGenTool];
 }

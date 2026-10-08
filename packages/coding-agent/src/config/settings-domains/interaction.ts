@@ -479,6 +479,27 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
+	"session.backgroundLimit": {
+		type: "number",
+		default: 3,
+		ui: {
+			tab: "interaction",
+			group: "Session",
+			label: "Background Session Limit",
+			description:
+				"Most conversations this process keeps running in the background at once (1-20), whether /new, an RPC new_session with background, or the ACP _veyyon/sessions/background method moved them there. A handoff past the limit stops the oldest background conversation and closes its provider stream.",
+			min: 1,
+			max: 20,
+			options: [
+				{ value: "1", label: "1 conversation" },
+				{ value: "2", label: "2 conversations" },
+				{ value: "3", label: "3 conversations" },
+				{ value: "5", label: "5 conversations" },
+				{ value: "10", label: "10 conversations" },
+			],
+		},
+	},
+
 	"share.serverUrl": {
 		type: "string",
 		default: DEFAULT_SHARE_URL,

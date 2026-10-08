@@ -3,11 +3,11 @@
  * after compaction".
  *
  * After a plan is approved, the executor session delivers the plan reference
- * (`plan-mode-reference`) exactly once, then marks `#planReferenceSent = true`.
- * When auto-compaction later fires, it replaces the conversation history —
- * dropping the delivered reference — but never clears that flag, so
- * `#buildPlanReferenceMessage()` short-circuits to `null` forever and the
- * executor permanently loses the plan it was working on.
+ * (`plan-mode-reference`) exactly once and marks it sent in
+ * `session/runtime/plan-mode-runtime.ts`. Auto-compaction replaces the
+ * conversation history and drops the delivered reference; a sent mark that
+ * compaction does not clear makes `buildReferenceMessage()` return `null` from
+ * then on, and the executor loses the plan it was working on.
  *
  * Contract: the auto-continuation turn that runs immediately after compaction
  * MUST carry the approved plan reference again (re-read from disk).

@@ -1,25 +1,28 @@
+import { type } from "@veyyon/ai/utils/schema/arktype";
 import type { ptree } from "@veyyon/utils";
-import { type } from "arktype";
+import { lazy } from "@veyyon/utils/abortable";
 import { describeTimeoutParam } from "../tools/core/tool-timeouts";
 
 // =============================================================================
 // Tool Schema
 // =============================================================================
 
-export const lspSchema = type({
-	action:
-		"'diagnostics' | 'definition' | 'references' | 'hover' | 'symbols' | 'rename' | 'rename_file' | 'code_actions' | 'type_definition' | 'implementation' | 'status' | 'reload' | 'capabilities' | 'request'",
-	file: "string?",
-	line: "number?",
-	symbol: "string?",
-	query: "string?",
-	new_name: "string?",
-	apply: "boolean?",
-	"timeout?": type("number").describe(describeTimeoutParam("lsp")),
-	payload: "string?",
-});
+export const lspSchema = lazy(() =>
+	type({
+		action:
+			"'diagnostics' | 'definition' | 'references' | 'hover' | 'symbols' | 'rename' | 'rename_file' | 'code_actions' | 'type_definition' | 'implementation' | 'incoming_calls' | 'outgoing_calls' | 'status' | 'reload' | 'capabilities' | 'request'",
+		file: "string?",
+		line: "number?",
+		symbol: "string?",
+		query: "string?",
+		new_name: "string?",
+		apply: "boolean?",
+		"timeout?": type("number").describe(describeTimeoutParam("lsp")),
+		payload: "string?",
+	}),
+);
 
-export type LspParams = typeof lspSchema.infer;
+export type LspParams = typeof lspSchema.value.infer;
 
 export interface LspToolDetails {
 	serverName?: string;
@@ -255,6 +258,33 @@ export interface SymbolInformation {
 	deprecated?: boolean;
 	location: Location;
 	containerName?: string;
+}
+
+// =============================================================================
+// Call Hierarchy
+// =============================================================================
+
+export interface CallHierarchyItem {
+	name: string;
+	kind: SymbolKind;
+	tags?: number[];
+	detail?: string;
+	uri: string;
+	range: Range;
+	selectionRange: Range;
+	data?: unknown;
+}
+
+/** A function that calls the prepared item; `fromRanges` are the call sites, in `from.uri`. */
+export interface CallHierarchyIncomingCall {
+	from: CallHierarchyItem;
+	fromRanges: Range[];
+}
+
+/** A function the prepared item calls; `fromRanges` are the call sites, in the prepared item's file. */
+export interface CallHierarchyOutgoingCall {
+	to: CallHierarchyItem;
+	fromRanges: Range[];
 }
 
 // =============================================================================

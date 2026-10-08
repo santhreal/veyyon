@@ -41,8 +41,8 @@ import { clearFirstFrameRecording, recordFirstFrame } from "../src/cli/first-fra
 import { type FirstFrameRecording, recordingPath } from "../src/cli/first-frame-replay";
 import { runStartupPrologue } from "../src/cli/launch-card";
 import { type StartupPrologue, takeStartupPrologue } from "../src/cli/prologue-handoff";
+import { resetLaunchFactsForTest } from "../src/config/launch-facts";
 import { resetSettingsForTest, Settings } from "../src/config/settings";
-import { resetLaunchFactsForTest } from "../src/modes/launch-facts";
 import { CURRENT_SETUP_VERSION } from "../src/modes/setup-version";
 import { type FirstFrame, paintFirstFrame, takeFirstFrame } from "../src/modes/terminal/first-frame";
 import * as ttyInputFlush from "../src/modes/terminal/tty-input-flush";

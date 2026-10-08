@@ -316,7 +316,7 @@ describe("the advisor configure overlay is mounted, not announced as gone", () =
 				modelRegistry: { getAvailable: () => [] },
 				scopedModels: [],
 				agent: { state: { model: undefined } },
-				getAdvisorAvailableToolNames: () => ["read", "grep", "glob"],
+				getAdvisorAvailableToolNames: async () => ["read", "grep", "glob"],
 			},
 			ui: {
 				showOverlay: (component: unknown, options: Record<string, unknown>) => {

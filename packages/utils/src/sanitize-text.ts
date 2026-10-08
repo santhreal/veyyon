@@ -32,6 +32,11 @@ function sanitizeWellFormedText(text: string): string {
 	CONTROL_RE.lastIndex = 0;
 	if (CONTROL_RE.exec(text) === null) return text;
 
+	// The one `Bun.stripANSI` call in shipped source. Every tool result passes through here. On 15 KB
+	// to 380 KB of styled output the portable `stripAnsi` in `./strip-ansi` measured 1.2 to 1.8 times
+	// slower, and `node:util` `stripVTControlCharacters` 13 times slower with DCS payloads left in.
+	// Every other caller uses `stripAnsi`, which `scripts/one-owner-calls-bun-strip-ansi.test.ts`
+	// enforces.
 	const stripped = text.indexOf(ESC_CHAR) === -1 ? text : Bun.stripANSI(text);
 	CONTROL_RE.lastIndex = 0;
 	return stripped.replace(CONTROL_RE, "");

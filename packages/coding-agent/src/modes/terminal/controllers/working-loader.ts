@@ -288,14 +288,6 @@ export class WorkingLoaderController {
 		this.refreshTaskClock();
 	}
 
-	#accentCacheKeyEquals(a: WorkingMessageAccentCacheKey, b: WorkingMessageAccentCacheKey): boolean {
-		return (
-			a.sessionName === b.sessionName &&
-			a.accentSurfaceLuminance === b.accentSurfaceLuminance &&
-			a.sessionAccentEnabled === b.sessionAccentEnabled
-		);
-	}
-
 	#buildAccentCacheKey(): WorkingMessageAccentCacheKey {
 		const sessionAccentEnabled = !isSettingsInitialized() || settings.get("statusLine.sessionAccent") !== false;
 		return {
@@ -317,7 +309,7 @@ export class WorkingLoaderController {
 
 	#accent(): WorkingMessageAccent | undefined {
 		const key = this.#buildAccentCacheKey();
-		if (this.#accentCacheHasValue && this.#accentCacheKey && this.#accentCacheKeyEquals(key, this.#accentCacheKey)) {
+		if (this.#accentCacheHasValue && this.#accentCacheKey && accentCacheKeyEquals(key, this.#accentCacheKey)) {
 			return this.#accentCacheValue;
 		}
 		if (!key.sessionAccentEnabled || !key.sessionName) {
@@ -328,4 +320,12 @@ export class WorkingLoaderController {
 		const dim = getSessionAccentAnsi(adjustHsv(hex, { s: 0.55, v: 0.65 }));
 		return this.#cacheAccent(key, main && dim ? { main, dim } : undefined);
 	}
+}
+
+function accentCacheKeyEquals(a: WorkingMessageAccentCacheKey, b: WorkingMessageAccentCacheKey): boolean {
+	return (
+		a.sessionName === b.sessionName &&
+		a.accentSurfaceLuminance === b.accentSurfaceLuminance &&
+		a.sessionAccentEnabled === b.sessionAccentEnabled
+	);
 }

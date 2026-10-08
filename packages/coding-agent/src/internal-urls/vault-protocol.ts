@@ -759,10 +759,6 @@ export class VaultProtocolHandler implements ProtocolHandler {
 		return path.resolve(root);
 	}
 
-	#vaultCliArg(ref: VaultReference): string[] {
-		return ref.forwardVault && ref.vault ? [`vault=${ref.vault}`] : [];
-	}
-
 	async #listVaults(
 		parsed: Extract<ParsedVaultUrl, { kind: "list-vaults" }>,
 		context?: ResolveContext,
@@ -791,7 +787,7 @@ export class VaultProtocolHandler implements ProtocolHandler {
 		const cacheKey = parsed.ref.active ? "_" : (parsed.ref.vault ?? "_");
 		let cliInfo = cachedVaultInfo.get(cacheKey);
 		if (cliInfo === undefined) {
-			const result = await this.#spawn(["vault", "info", ...this.#vaultCliArg(parsed.ref)], context);
+			const result = await this.#spawn(["vault", "info", ...vaultCliArg(parsed.ref)], context);
 			assertCliSuccess("vault info", result);
 			cliInfo = result.stdout.trim();
 			cachedVaultInfo.set(cacheKey, cliInfo);
@@ -930,7 +926,7 @@ export class VaultProtocolHandler implements ProtocolHandler {
 		context?: ResolveContext,
 	): Promise<InternalResource> {
 		const invocation = buildObsidianCliInvocation(parsed);
-		const args = invocation.args.concat(this.#vaultCliArg(parsed.ref));
+		const args = invocation.args.concat(vaultCliArg(parsed.ref));
 		const result = await this.#spawn(args, context);
 		assertCliSuccess(invocation.opLabel, result);
 		return {
@@ -941,4 +937,8 @@ export class VaultProtocolHandler implements ProtocolHandler {
 			immutable: true,
 		};
 	}
+}
+
+function vaultCliArg(ref: VaultReference): string[] {
+	return ref.forwardVault && ref.vault ? [`vault=${ref.vault}`] : [];
 }

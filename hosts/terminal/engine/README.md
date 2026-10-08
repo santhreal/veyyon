@@ -514,7 +514,7 @@ The TUI uses three rendering strategies:
 2. **Width Changed or Change Above Viewport**: Clear screen and full re-render
 3. **Normal Update**: Move cursor to first changed line, clear to end, render changed lines
 
-Updates use **synchronized output** (`\x1b[?2026h` ... `\x1b[?2026l`) for atomic screen updates unless `VEYYON_NO_SYNC_OUTPUT=1` is set. The opt-out disables the DEC 2026 framing sequences; paint writes continue to guard terminal autowrap to avoid cursor positioning artifacts.
+Updates use **synchronized output** (`\x1b[?2026h` ... `\x1b[?2026l`) for atomic screen updates unless `VEYYON_NO_SYNC_OUTPUT=1` is set. The opt-out disables the DEC 2026 framing sequences; paint writes continue to control terminal autowrap to avoid cursor positioning artifacts.
 
 ## Terminal Interface
 
@@ -641,7 +641,7 @@ class MyComponent implements Component {
 `visibleWidth()`, `truncateToWidth()`, and `wrapTextWithAnsi()` correctly handle ANSI escape codes:
 
 - `visibleWidth()` ignores ANSI codes when calculating width (via `Bun.stringWidth`)
-- `truncateToWidth()` preserves ANSI codes and properly closes them when truncating
+- `truncateToWidth()` preserves ANSI codes and closes them when truncating
 - `wrapTextWithAnsi()` preserves ANSI codes while word-wrapping and trimming line ends
 
 ```typescript

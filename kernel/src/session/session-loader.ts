@@ -1,19 +1,24 @@
+import * as fs from "node:fs";
 import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { isEnoent } from "@veyyon/utils/fs-error";
 // Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
 import * as logger from "@veyyon/utils/logger";
-import { readLines } from "@veyyon/utils/stream";
+import { StreamFrameLimitError, streamFrameCeiling } from "@veyyon/utils/stream";
 import {
 	BlobStore,
 	blobsDirForSessionDir,
 	isBlobRef,
 	isTextBlobRef,
 	resolveImageData,
+	resolveImageDataSync,
 	resolveImageDataUrl,
+	resolveImageDataUrlSync,
 	resolveTextBlobRef,
+	resolveTextBlobRefSync,
 } from "./blob-store";
 import type { OperatorNotices } from "./operator-notices";
+import { coldFieldsOf } from "./session-cold-payloads";
 import { buildSessionContext } from "./session-context";
 import {
 	type FileEntry,
@@ -23,9 +28,16 @@ import {
 	type SessionTitleSlotEntry,
 } from "./session-entries";
 import { checkSessionEntryShape } from "./session-entry-shape";
+import { LoadCooling, type LoadedColdHistory } from "./session-load-cooling";
 import { migrateToCurrentVersion } from "./session-migrations";
 import { isImageBlock, isImageDataPayload } from "./session-persistence";
-import { FileSessionStorage, type SessionStorage, type SessionStorageStat } from "./session-storage";
+import {
+	FileSessionStorage,
+	fileObjectIdentity,
+	type PinnedSessionReader,
+	type SessionStorage,
+	type SessionStorageStat,
+} from "./session-storage";
 import {
 	parseTitleSlotFromContent,
 	parseTitleSlotLine,
@@ -34,11 +46,18 @@ import {
 } from "./session-title-slot";
 import { restoreToolResultEntries } from "./tool-result-codecs";
 
-const STREAM_LOAD_THRESHOLD_BYTES = 8 * 1024 * 1024;
+/** Size at which a load reads the file in a stream of reads instead of as one string. */
+export const STREAM_LOAD_THRESHOLD_BYTES = 8 * 1024 * 1024;
 
 export interface SessionLoadOptions {
 	source?: string;
 	operatorNotices?: OperatorNotices;
+	/**
+	 * Move compacted history to disk while a streamed file loads (see {@link LoadCooling}). The
+	 * result's `cold` holds the store the moved entries read back through and the usage totals.
+	 * A file read as one string loads whole.
+	 */
+	coolCompactedHistory?: boolean;
 }
 
 interface SessionRecordIssue {
@@ -139,15 +158,23 @@ function emitDroppedRecordNotice(options: SessionLoadOptions, issues: readonly S
  */
 function stitchOrphanedEntries(entries: readonly FileEntry[]): number {
 	if (entries.length < 2) return 0;
-	const ids = new Set<string>();
-	for (const entry of entries) ids.add(entry.id);
+	// Every id in the file, built at the first parent that is not the record in front, which a
+	// file appended turn by turn never has.
+	let ids: Set<string> | undefined;
 	let stitched = 0;
 	for (let i = 1; i < entries.length; i++) {
 		const entry = entries[i];
 		if (!("parentId" in entry)) continue;
-		if (entry.parentId === null || entry.parentId === undefined) continue;
-		if (ids.has(entry.parentId)) continue;
-		entry.parentId = entries[i - 1].id;
+		const parentId = entry.parentId;
+		if (parentId === null || parentId === undefined) continue;
+		const previous = entries[i - 1].id;
+		if (parentId === previous) continue;
+		if (ids === undefined) {
+			ids = new Set<string>();
+			for (const each of entries) ids.add(each.id);
+		}
+		if (ids.has(parentId)) continue;
+		entry.parentId = previous;
 		stitched += 1;
 	}
 	return stitched;
@@ -184,6 +211,7 @@ class SessionRecordLoop {
 	readonly #streaming: boolean;
 	readonly #logSource: string | undefined;
 	readonly #notices: SessionLoadOptions;
+	readonly #cooling: LoadCooling | undefined;
 	#line = 1;
 	#byteOffset = 1;
 	/** Bytes of the title slot line, newline included, when the file starts with one. */
@@ -195,10 +223,16 @@ class SessionRecordLoop {
 	#end = 0;
 	#stitched = 0;
 
-	constructor(options: { streaming: boolean; logSource: string | undefined; notices: SessionLoadOptions }) {
+	constructor(options: {
+		streaming: boolean;
+		logSource: string | undefined;
+		notices: SessionLoadOptions;
+		cooling?: LoadCooling;
+	}) {
 		this.#streaming = options.streaming;
 		this.#logSource = options.logSource;
 		this.#notices = options.notices;
+		this.#cooling = options.cooling;
 	}
 
 	/** Advance past a line the caller consumed itself. */
@@ -233,12 +267,38 @@ class SessionRecordLoop {
 			this.skip(byteLength);
 			return;
 		}
+		this.#take(value, text, byteLength);
+	}
 
+	/**
+	 * {@link push} for the line held in `bytes[start, end)`, parsed from the bytes. A line decoded
+	 * to a string first is a copy of the line that stays allocated until the next collection: opening
+	 * a 312 MB, 108,163-entry session peaked at a median 318 MiB resident in 667 ms that way, and at
+	 * 256 MiB in 598 ms parsing the bytes.
+	 * A line the byte parse does not take as exactly one JSON value, and the header record, whose
+	 * text the layout keeps, go through {@link push}, which skips a blank line and records and logs a
+	 * malformed one.
+	 */
+	pushBytes(bytes: Buffer, start: number, end: number): void {
+		if (this.entries.length > 0) {
+			// `JSON.parse` takes only a string; `Bun.JSONL` is the one parser of UTF-8 bytes.
+			const parsed = Bun.JSONL.parseChunk(bytes, start, end);
+			if (parsed.done && parsed.values.length === 1) {
+				this.#take(parsed.values[0], undefined, end - start);
+				return;
+			}
+		}
+		this.push(decodeLine(bytes, start, end), end - start);
+	}
+
+	/** Keep the parsed `value` of a line when it has an entry's shape. `text` is the line, for the header. */
+	#take(value: unknown, text: string | undefined, byteLength: number): void {
 		const shape = checkSessionEntryShape(value);
 		if (shape.ok) {
 			if (this.entries.length === 0) this.#headerLine = text;
 			else this.#offsets.push(this.#byteOffset - 1);
 			this.entries.push(value as FileEntry);
+			this.#cooling?.add(value as FileEntry, this.#byteOffset - 1, byteLength);
 			this.#end = this.#byteOffset + byteLength;
 		} else {
 			this.#issues.push({ line: this.#line, byteOffset: this.#byteOffset, problem: shape.problem });
@@ -291,6 +351,8 @@ export interface ParsedSessionContent {
 	entries: FileEntry[];
 	titleSlot: SessionTitleUpdate | undefined;
 	layout: SessionRecordLayout | undefined;
+	/** What a load asked to {@link SessionLoadOptions.coolCompactedHistory} moved to disk. */
+	cold?: LoadedColdHistory;
 }
 
 /** Parse session JSONL while stripping and folding the optional fixed title slot. */
@@ -302,42 +364,142 @@ export function parseSessionContent(content: string, context: SessionLoadOptions
 	return { entries: foldTitleSlot(loop.finish(), slot), titleSlot: slot, layout: loop.layout() };
 }
 
+/**
+ * How many bytes one read of a streamed session file asks for. Each read is split into lines and
+ * parsed before the next one is issued, so this is the most file text the load holds at once
+ * beyond the one line that spans two reads.
+ */
+const STREAM_READ_BYTES = 1 << 20;
+
+const LINE_FEED = 0x0a;
+
+/**
+ * The text of `bytes[start, end)`, decoded the way `TextDecoder.decode` decodes it: invalid
+ * sequences become U+FFFD and a leading UTF-8 byte order mark is dropped.
+ */
+function decodeLine(bytes: Buffer, start: number, end: number): string {
+	if (end - start >= 3 && bytes[start] === 0xef && bytes[start + 1] === 0xbb && bytes[start + 2] === 0xbf) start += 3;
+	return bytes.toString("utf-8", start, end);
+}
+
+/**
+ * Hand each line of the file open at `handle` to `onLine` as the window `bytes[start, end)`,
+ * reading {@link STREAM_READ_BYTES} at a time. The window is valid only during the call. A line is
+ * the bytes before a line feed, or the bytes after the last one when the file does not end with
+ * one; an empty line is a line. A line longer than the stream frame bound fails with
+ * `StreamFrameLimitError`, as every line reader does.
+ *
+ * Each read is split synchronously: an async iterator over lines cost one promise per line, and
+ * with a `TextDecoder` per line it took 97 ms of a 139 ms load of an 85.6 MB, 27,602-line session.
+ */
+async function forEachFileLine(
+	handle: fs.promises.FileHandle,
+	onLine: (bytes: Buffer, start: number, end: number) => void,
+): Promise<void> {
+	const limit = streamFrameCeiling();
+	let buffer = Buffer.allocUnsafe(STREAM_READ_BYTES);
+	// Bytes of a line that started in an earlier read, kept at the front of `buffer`.
+	let carried = 0;
+	for (;;) {
+		if (carried === buffer.length) {
+			const grown = Buffer.allocUnsafe(buffer.length * 2);
+			buffer.copy(grown, 0, 0, carried);
+			buffer = grown;
+		}
+		const { bytesRead } = await handle.read(buffer, carried, buffer.length - carried, null);
+		const filled = buffer.subarray(0, carried + bytesRead);
+		let start = 0;
+		for (let end = filled.indexOf(LINE_FEED, carried); end !== -1; end = filled.indexOf(LINE_FEED, start)) {
+			if (end - start > limit) throw new StreamFrameLimitError("line", end - start, limit);
+			onLine(filled, start, end);
+			start = end + 1;
+		}
+		carried = filled.length - start;
+		if (carried > limit) throw new StreamFrameLimitError("line", carried, limit);
+		if (bytesRead === 0) {
+			if (carried > 0) onLine(filled, start, filled.length);
+			return;
+		}
+		filled.copyWithin(0, start);
+	}
+}
+
+/**
+ * The cooling a load of the file open at `handle` runs, or `undefined` when `storage` cannot keep
+ * a handle on that object: the path names another object by now, or the backend pins nothing.
+ */
+async function loadCoolingFor(
+	handle: fs.promises.FileHandle,
+	filePath: string,
+	storage: SessionStorage,
+): Promise<LoadCooling | undefined> {
+	if (storage.openPinnedReaderSync === undefined) return undefined;
+	const identity = fileObjectIdentity(await handle.stat());
+	let reader: PinnedSessionReader | undefined;
+	try {
+		reader = storage.openPinnedReaderSync(filePath);
+	} catch {
+		return undefined;
+	}
+	if (reader === undefined) return undefined;
+	if (reader.identity !== identity) {
+		reader.close();
+		return undefined;
+	}
+	// Resolved now: a cold entry reads back after the process may have changed its directory.
+	const blobs = new BlobStore(blobsDirForSessionDir(path.dirname(path.resolve(filePath))));
+	return new LoadCooling(reader, line => restoreColdLine(line, blobs));
+}
+
 /** Exported for testing — the ≥8MiB streaming path (works on any file size). */
 export async function loadEntriesFromFileStream(
 	filePath: string,
 	options: SessionLoadOptions = {},
+	storage: SessionStorage = new FileSessionStorage(),
 ): Promise<ParsedSessionContent> {
-	let titleSlot: SessionTitleUpdate | undefined;
-	const loop = new SessionRecordLoop({
-		streaming: true,
-		logSource: filePath,
-		notices: { ...options, source: options.source ?? filePath },
-	});
-	const decoder = new TextDecoder();
-	let first = true;
-
+	let handle: fs.promises.FileHandle;
 	try {
-		for await (const lineBytes of readLines(Bun.file(filePath).stream())) {
-			const text = decoder.decode(lineBytes);
-			if (first) {
-				first = false;
-				// The slot is a fixed-size first line, not a record, so it never reaches the
-				// shape check; the cursor still has to step over its bytes.
-				const slot = parseTitleSlotLine(text.trim());
-				if (slot) {
-					titleSlot = titleUpdateFromSlot(slot);
-					loop.skipTitleSlot(lineBytes.byteLength);
-					continue;
-				}
-			}
-			loop.push(text, lineBytes.byteLength);
-		}
+		handle = await fs.promises.open(filePath, "r");
 	} catch (err) {
 		if (isEnoent(err)) return { entries: [], titleSlot: undefined, layout: undefined };
 		throw err;
 	}
-
-	return { entries: foldTitleSlot(loop.finish(), titleSlot), titleSlot, layout: loop.layout() };
+	let cooling: LoadCooling | undefined;
+	try {
+		cooling = options.coolCompactedHistory ? await loadCoolingFor(handle, filePath, storage) : undefined;
+		let titleSlot: SessionTitleUpdate | undefined;
+		const loop = new SessionRecordLoop({
+			streaming: true,
+			logSource: filePath,
+			notices: { ...options, source: options.source ?? filePath },
+			cooling,
+		});
+		let first = true;
+		await forEachFileLine(handle, (bytes, start, end) => {
+			if (first) {
+				first = false;
+				// The slot is a fixed-size first line, not a record, so it never reaches the
+				// shape check; the cursor still has to step over its bytes.
+				const text = decodeLine(bytes, start, end);
+				const slot = parseTitleSlotLine(text.trim());
+				if (slot) {
+					titleSlot = titleUpdateFromSlot(slot);
+					loop.skipTitleSlot(end - start);
+					return;
+				}
+				loop.push(text, end - start);
+				return;
+			}
+			loop.pushBytes(bytes, start, end);
+		});
+		const entries = foldTitleSlot(loop.finish(), titleSlot);
+		const cold = cooling?.finish();
+		cooling = undefined;
+		return { entries, titleSlot, layout: loop.layout(), cold };
+	} finally {
+		cooling?.finish();
+		await handle.close();
+	}
 }
 
 /** Read only the fixed-size head window to detect a physical title slot. */
@@ -380,6 +542,8 @@ export interface SessionFileLayout {
 export interface LoadedSessionFile {
 	entries: FileEntry[];
 	layout: SessionFileLayout | undefined;
+	/** What a load asked to {@link SessionLoadOptions.coolCompactedHistory} moved to disk. */
+	cold?: LoadedColdHistory;
 }
 
 /** Exported for testing */
@@ -403,7 +567,7 @@ export async function loadSessionFile(
 		before = storage.statSync(filePath);
 		loaded =
 			storage instanceof FileSessionStorage && before.size >= STREAM_LOAD_THRESHOLD_BYTES
-				? await loadEntriesFromFileStream(filePath, { ...options, source: options.source ?? filePath })
+				? await loadEntriesFromFileStream(filePath, { ...options, source: options.source ?? filePath }, storage)
 				: parseSessionContent(await storage.readText(filePath), { ...options, source: options.source ?? filePath });
 	} catch (err) {
 		if (isEnoent(err)) return { entries: [], layout: undefined };
@@ -420,7 +584,7 @@ export async function loadSessionFile(
 		throw new CorruptSessionFileError(filePath, "the first readable record is not a session header");
 	}
 
-	return { entries, layout: verifiedLayout(storage, filePath, before, loaded.layout) };
+	return { entries, layout: verifiedLayout(storage, filePath, before, loaded.layout), cold: loaded.cold };
 }
 
 /**
@@ -477,21 +641,32 @@ type BlobSite =
 	| { kind: "text-item"; owner: unknown[]; index: number };
 
 /**
- * Strings shorter than this stay unpooled. On a 372.7 MiB session of 107,918 entries, pooling from
- * 64 characters took the loaded heap from 608.7 MiB to 397.9 MiB; from 256 characters it reached
- * only 474.5 MiB, and from 8 characters it saved 17 MiB more than 64 for 105 ms more of the walk.
+ * Strings shorter than this are pooled per key, not by text. On a 372.7 MiB session of 107,918
+ * entries, pooling every string from 64 characters took the loaded heap from 608.7 MiB to
+ * 397.9 MiB; from 256 characters it reached only 474.5 MiB, and from 8 characters it saved 17 MiB
+ * more than 64 for 105 ms more of the walk, most of it spent inserting ids and timestamps no other
+ * string repeats.
  */
 const MIN_POOLED_LENGTH = 64;
+
+/**
+ * Distinct short strings one key pools before the load stops pooling that key. A key whose values
+ * come from a small set (`role`, `type`, `api`, `provider`, `model`, `stopReason`, a tool name)
+ * stays under it for a whole session; a key holding ids or timestamps reaches it within the first
+ * entries and costs one lookup per string after that.
+ */
+export const MAX_SHORT_VALUES_PER_KEY = 256;
 
 /**
  * One copy of each repeated string in the entries one load restores.
  *
  * A session file writes a text once for every place it occurs: a file read twice, an eval cell's
  * code beside the call that ran it, a card's text beside the result's own, each compaction's file
- * list. `JSON.parse` gives every occurrence its own string. Strings are immutable, so pointing each
- * occurrence at the first leaves the entries equal and lets the copies be collected. The load empties
- * the pool before it returns: JavaScriptCore kept the first load's pool reachable after that load
- * returned, which held every distinct pooled string of a session the caller had already released.
+ * list, and the role, api, provider and model of every message. `JSON.parse` gives every occurrence
+ * its own string. Strings are immutable, so pointing each occurrence at the first leaves the entries
+ * equal and lets the copies be collected. The load empties the pool before it returns:
+ * JavaScriptCore kept the first load's pool reachable after that load returned, which held every
+ * distinct pooled string of a session the caller had already released.
  *
  * A field a result codec rebuilds is not pooled: the rebuild is the result's content string or a
  * slice of it, and that content is pooled. Pooling the rebuilt fields of a 372.7 MiB session written
@@ -499,20 +674,62 @@ const MIN_POOLED_LENGTH = 64;
  */
 class StringPool {
 	readonly #strings = new Map<string, string>();
+	/**
+	 * The short strings pooled under each key, or `null` for a key that held more than
+	 * {@link MAX_SHORT_VALUES_PER_KEY} distinct ones; `undefined` when the pool keeps short strings
+	 * as they are.
+	 */
+	readonly #shortByKey: Map<string, Map<string, string> | null> | undefined;
 
-	/** The pooled string equal to `value`, pooling `value` when it is the first of its text. */
-	intern(value: string): string {
-		if (value.length < MIN_POOLED_LENGTH) return value;
+	/**
+	 * `pooledShort` pools strings shorter than {@link MIN_POOLED_LENGTH}: a load of a whole session
+	 * repeats them across entries, and the read-back of one entry does not.
+	 */
+	constructor(pooledShort: boolean) {
+		this.#shortByKey = pooledShort ? new Map() : undefined;
+	}
+
+	/**
+	 * The earlier pooled string equal to `value`, or undefined when `value` stays where it is: it is
+	 * the first of its text, which the pool now holds, or a string the pool does not pool. A string
+	 * shorter than {@link MIN_POOLED_LENGTH} is pooled with the strings under the same `key`, and a
+	 * string of one character, which the engine holds once already, is not pooled. A caller writes
+	 * only a returned string back, so the walk stores nothing for an id, a timestamp or the first
+	 * copy of a text.
+	 */
+	intern(value: string, key?: string): string | undefined {
+		if (value.length < MIN_POOLED_LENGTH) {
+			const byKey = this.#shortByKey;
+			return value.length < 2 || key === undefined || byKey === undefined
+				? undefined
+				: internShort(byKey, value, key);
+		}
 		const known = this.#strings.get(value);
 		if (known !== undefined) return known;
 		this.#strings.set(value, value);
-		return value;
+		return undefined;
 	}
 
 	/** Drop every pooled string, so a pool the engine keeps reachable holds no text. */
 	clear(): void {
 		this.#strings.clear();
+		this.#shortByKey?.clear();
 	}
+}
+
+/** {@link StringPool.intern} for a string shorter than {@link MIN_POOLED_LENGTH} under `key`. */
+function internShort(byKey: Map<string, Map<string, string> | null>, value: string, key: string): string | undefined {
+	let values = byKey.get(key);
+	if (values === null) return undefined;
+	if (values === undefined) {
+		values = new Map();
+		byKey.set(key, values);
+	}
+	const known = values.get(value);
+	if (known !== undefined) return known;
+	if (values.size >= MAX_SHORT_VALUES_PER_KEY) byKey.set(key, null);
+	else values.set(value, value);
+	return undefined;
 }
 
 /** What the one walk over the loaded entries gathers. */
@@ -545,10 +762,11 @@ function scanEntryValue(value: unknown, scan: EntryScan, key?: string): void {
 			// the string by value and cannot rewrite the slot it lives in.
 			if (typeof item === "string") {
 				if (isTextBlobRef(item)) scan.sites.push({ kind: "text-item", owner: value, index });
-				else value[index] = scan.strings.intern(item);
-				continue;
-			}
-			scanEntryValue(item, scan, key);
+				else {
+					const pooled = scan.strings.intern(item, key);
+					if (pooled !== undefined) value[index] = pooled;
+				}
+			} else if (typeof item === "object" && item !== null) scanEntryValue(item, scan, key);
 		}
 		return;
 	}
@@ -564,10 +782,37 @@ function scanEntryValue(value: unknown, scan: EntryScan, key?: string): void {
 		// string value at an arbitrary key; restore the full content in place.
 		if (typeof item === "string") {
 			if (isTextBlobRef(item)) scan.sites.push({ kind: "text", owner: target, key: childKey });
-			else target[childKey] = scan.strings.intern(item);
+			else {
+				const pooled = scan.strings.intern(item, childKey);
+				if (pooled !== undefined) target[childKey] = pooled;
+			}
+		} else if (typeof item === "object" && item !== null) scanEntryValue(item, scan, childKey);
+	}
+}
+
+/**
+ * {@link scanEntryValue} over a cold entry or a cold message stand-in: every resident string is
+ * pooled, and the fields in `cold` stay on disk. A cold field is restored when its entry reads the
+ * line back, through {@link restoreColdLine}. `cold` lists its keys in the target's key order, so
+ * one cursor marks each cold key as the walk reaches it.
+ */
+function scanResidentValues(target: Record<string, unknown>, cold: readonly string[], scan: EntryScan): void {
+	let moved = 0;
+	for (const key of Object.keys(target)) {
+		if (key === cold[moved]) {
+			moved += 1;
 			continue;
 		}
-		scanEntryValue(item, scan, childKey);
+		const item = target[key];
+		if (typeof item === "string") {
+			const pooled = scan.strings.intern(item, key);
+			if (pooled !== undefined) target[key] = pooled;
+			continue;
+		}
+		if (typeof item !== "object" || item === null) continue;
+		const nested = coldFieldsOf(item);
+		if (nested === undefined) scanEntryValue(item, scan, key);
+		else scanResidentValues(item as Record<string, unknown>, nested, scan);
 	}
 }
 
@@ -583,44 +828,79 @@ function scanEntryValue(value: unknown, scan: EntryScan, key?: string): void {
  */
 const BLOB_READ_CONCURRENCY = 8;
 
+/** The reference `site` holds, or `undefined` when its slot no longer holds a string. */
+function siteReference(site: BlobSite): string | undefined {
+	switch (site.kind) {
+		case "image-data":
+			return site.owner.data;
+		case "image-url":
+			return site.owner.image_url;
+		case "text": {
+			const reference = site.owner[site.key];
+			return typeof reference === "string" ? reference : undefined;
+		}
+		case "text-item": {
+			const reference = site.owner[site.index];
+			return typeof reference === "string" ? reference : undefined;
+		}
+	}
+}
+
+/** Write what `reference` resolved to back into its slot. */
+function settleBlobSite(
+	site: BlobSite,
+	reference: string,
+	resolved: string,
+	lost: LostPayloads,
+	strings: StringPool,
+): void {
+	// Each resolver returns the reference unchanged when the blob is gone, and it is
+	// only called on a value that IS a reference, so an unchanged value is a loss.
+	if (resolved === reference) lost.count += 1;
+	const value = strings.intern(resolved) ?? resolved;
+	switch (site.kind) {
+		case "image-data":
+			site.owner.data = value;
+			return;
+		case "image-url":
+			site.owner.image_url = value;
+			return;
+		case "text":
+			site.owner[site.key] = value;
+			return;
+		case "text-item":
+			site.owner[site.index] = value;
+			return;
+	}
+}
+
 async function resolveBlobSite(
 	site: BlobSite,
 	blobStore: BlobStore,
 	lost: LostPayloads,
 	strings: StringPool,
 ): Promise<void> {
-	// Each resolver returns the reference unchanged when the blob is gone, and it is
-	// only called on a value that IS a reference, so an unchanged value is a loss.
-	switch (site.kind) {
-		case "image-data": {
-			const resolved = await resolveImageData(blobStore, site.owner.data);
-			if (resolved === site.owner.data) lost.count += 1;
-			site.owner.data = strings.intern(resolved);
-			return;
-		}
-		case "image-url": {
-			const resolved = await resolveImageDataUrl(blobStore, site.owner.image_url);
-			if (resolved === site.owner.image_url) lost.count += 1;
-			site.owner.image_url = strings.intern(resolved);
-			return;
-		}
-		case "text": {
-			const reference = site.owner[site.key];
-			if (typeof reference !== "string") return;
-			const resolved = await resolveTextBlobRef(blobStore, reference);
-			if (resolved === reference) lost.count += 1;
-			site.owner[site.key] = strings.intern(resolved);
-			return;
-		}
-		case "text-item": {
-			const reference = site.owner[site.index];
-			if (typeof reference !== "string") return;
-			const resolved = await resolveTextBlobRef(blobStore, reference);
-			if (resolved === reference) lost.count += 1;
-			site.owner[site.index] = strings.intern(resolved);
-			return;
-		}
-	}
+	const reference = siteReference(site);
+	if (reference === undefined) return;
+	const resolved =
+		site.kind === "image-data"
+			? await resolveImageData(blobStore, reference)
+			: site.kind === "image-url"
+				? await resolveImageDataUrl(blobStore, reference)
+				: await resolveTextBlobRef(blobStore, reference);
+	settleBlobSite(site, reference, resolved, lost, strings);
+}
+
+function resolveBlobSiteSync(site: BlobSite, blobStore: BlobStore, lost: LostPayloads, strings: StringPool): void {
+	const reference = siteReference(site);
+	if (reference === undefined) return;
+	const resolved =
+		site.kind === "image-data"
+			? resolveImageDataSync(blobStore, reference)
+			: site.kind === "image-url"
+				? resolveImageDataUrlSync(blobStore, reference)
+				: resolveTextBlobRefSync(blobStore, reference);
+	settleBlobSite(site, reference, resolved, lost, strings);
 }
 
 async function resolveBlobSites(scan: EntryScan, blobStore: BlobStore, lost: LostPayloads): Promise<void> {
@@ -669,8 +949,12 @@ export interface BlobResolutionOptions {
  * Restore what persistence moved out of each entry: every externalized payload the blob store still
  * holds, then every tool-result field a codec dropped, which a codec rebuilds from that restored
  * content. Every parsed or blob-restored string of 64 characters or more ends up sharing one copy
- * with each equal string in `entries`. Reports the payloads the blob store does not hold and returns
- * how many references stayed references.
+ * with each equal string in `entries`, and so does every shorter parsed string of two characters or
+ * more under a key holding at most 256 distinct ones. Reports the payloads the blob store does not
+ * hold and returns how many references stayed references.
+ *
+ * A field of a cold entry (see {@link coldFieldsOf}) is left on disk: its payloads are restored
+ * when the entry reads its line back, and a missing one is logged then.
  *
  * Two phases for the blobs: collect every reference in the session synchronously, then read them
  * through one bounded pool. The cap is session-wide rather than per-entry, so a transcript of a
@@ -682,10 +966,18 @@ export async function resolveBlobRefsInEntries(
 	options?: BlobResolutionOptions,
 ): Promise<number> {
 	const lost: LostPayloads = { count: 0 };
-	const scan: EntryScan = { sites: [], strings: new StringPool() };
+	const scan: EntryScan = { sites: [], strings: new StringPool(true) };
+	let hasCold = false;
 	try {
 		for (const entry of entries) {
-			if (entry.type !== "session") scanEntryValue(entry, scan);
+			if (entry.type === "session") continue;
+			const cold = coldFieldsOf(entry);
+			if (cold === undefined) {
+				scanEntryValue(entry, scan);
+			} else {
+				hasCold = true;
+				scanResidentValues(entry as unknown as Record<string, unknown>, cold, scan);
+			}
 		}
 		await resolveBlobSites(scan, blobStore, lost);
 	} finally {
@@ -694,12 +986,37 @@ export async function resolveBlobRefsInEntries(
 		scan.sites.length = 0;
 		scan.strings.clear();
 	}
-	restoreToolResultEntries(entries);
+	restoreToolResultEntries(hasCold ? entries.filter(entry => coldFieldsOf(entry) === undefined) : entries);
 	if (lost.count > 0) {
 		logger.warn("Session payloads missing from the blob store", { source: options?.source, lost: lost.count });
 		if (options) emitLostPayloadNotice(options, lost.count);
 	}
 	return lost.count;
+}
+
+/**
+ * Restore one entry read back from its session line without awaiting: the externalized payloads
+ * and codec-dropped fields {@link resolveBlobRefsInEntries} restores on load. Returns how many
+ * references the blob store could not answer; the blob store logs each of them.
+ */
+export function restoreEntryPayloadsSync(entry: FileEntry, blobStore: BlobStore): number {
+	const lost: LostPayloads = { count: 0 };
+	const scan: EntryScan = { sites: [], strings: new StringPool(false) };
+	scanEntryValue(entry, scan);
+	for (const site of scan.sites) resolveBlobSiteSync(site, blobStore, lost, scan.strings);
+	restoreToolResultEntries([entry]);
+	return lost.count;
+}
+
+/**
+ * Parse a session line and restore what persistence moved out of it, as a load does. The range a
+ * cold entry reads may run to the next entry's line, so it may hold a blank line after its own.
+ */
+export function restoreColdLine(line: string, blobs: BlobStore): SessionEntry {
+	const end = line.indexOf("\n");
+	const entry = JSON.parse(end === -1 ? line : line.slice(0, end)) as SessionEntry;
+	restoreEntryPayloadsSync(entry, blobs);
+	return entry;
 }
 
 /**

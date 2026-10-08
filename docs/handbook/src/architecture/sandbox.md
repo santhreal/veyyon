@@ -1,6 +1,6 @@
 # Approvals
 
-Approvals decide when a tool or shell command runs on its own and when Veyyon pauses for the user.
+Approvals control when a tool or shell command runs without a prompt and when Veyyon pauses for the user.
 There is no OS-level command sandbox: Veyyon does not confine commands with Landlock, seccomp,
 Seatbelt, or bubblewrap. The boundary is policy the agent loop enforces before dispatch.
 
@@ -9,18 +9,18 @@ Seatbelt, or bubblewrap. The boundary is policy the agent loop enforces before d
 - Map the **approval mode** (`tools.approvalMode`) to a per-tier decision (read / write / exec) for
   `bash`, `edit`, `write`, and related tools.
 - Apply per-tool overrides (`tools.approval` → `allow` / `deny` / `prompt`) on top of the mode.
-- Apply the two argument-level boundaries the tier cannot see: a filesystem target outside the session working directory, and a call whose arguments carry a stored credential. Both prompt on every rung except `yolo`, the shipped `auto` included.
+- Apply the two argument-level boundaries the tier cannot see: a filesystem target outside the session working directory, and a call whose arguments contain a stored credential. Both prompt on every rung except `yolo`, the shipped `auto` included.
 - Force a prompt for hard-coded flagged bash patterns. The destructive ones (recursive deletion of the home directory or a system directory, fork bombs, disk destruction, writes to the system account files) prompt on every rung, `yolo` included: that is a floor rather than an ordinary prompt, and only an explicit `tools.approval.bash: allow` lifts it, while `deny` remains a hard block. The merely dangerous ones (`curl | sh`, `reboot`, `nc -e`) prompt on every rung below `yolo`.
-- Surface the approval prompt in the TUI before a gated command or edit runs.
+- Show the approval prompt in the TUI before a command or edit that requires approval runs.
 
 ## Public boundary
 
 `tools.approvalMode` in `config.yml` and the launch flags (`--approval-mode`, `--auto-approve` /
 `--yolo`, `--plan-yolo`) resolve to a decision applied to the `bash`, `edit`, and `write` tools, with
-plan-mode guards on top. Commands run **in-process** after policy resolution, there is no standalone
+plan-mode checks on top. Commands run **in-process** after policy resolution, there is no standalone
 exec-server process in the shipped product.
 
-## Key concepts
+## Concepts
 
 | Concept | Meaning |
 | --- | --- |

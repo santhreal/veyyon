@@ -55,40 +55,40 @@ import { pathExists, TempDir } from "@veyyon/utils";
  * session IS deleted.
  *
  * MEASURED (mutation matrix, each mutant applied alone to
- * `packages/coding-agent/src/session/session-manager.ts`, rows numbered in file
- * order):
+ * `kernel/src/session/session-manager.ts`, rows numbered in file order):
  * - M1 `#fileBody()` drops the `#foreignLines` loop (the pre-fix body): rows 1, 2,
  *   3, 8, 10 red.
  * - M2 `#refreshForeignLines()` returns before reading: rows 1, 2, 3, 6, 8, 10, 13
  *   red.
  * - M3 the refresh keeps every line instead of only ids that were never ours:
  *   rows 1, 2, 3, 4, 5, 7, 8, 9, 10 red.
- * - M4 `#recordEntry` stops claiming the appended id: rows 2, 5, 7, 9, 10 red.
- * - M5 the title-change push stops claiming its id: row 7 red.
- * - M6 `#forgetForeignWriter()` clears without reseeding from what we hold:
- *   rows 1, 2, 3, 4, 8 red.
- * - M7 `#forgetForeignWriter()` keeps the previous file's foreign tail: row 8 red.
- * - M8 the append path stops probing whether the file was replaced: rows 9, 10 red.
- * - M9 the probe compares size instead of identity: row 9 red. Row 10 stays green
+ * - M4 `#isOwnId()` answers false for every id, so what this manager loaded,
+ *   appended or titled reads back as a stranger's line: rows 1, 2, 3, 9, 10, 11,
+ *   12 red.
+ * - M5 `#isOwnId()` answers true for every id, so no line is ever foreign: rows 1,
+ *   2, 3, 6, 8, 10, 12, 13, 15 red.
+ * - M6 `#forgetForeignWriter()` keeps the previous file's foreign tail: row 8 red.
+ * - M7 the append path stops probing whether the file was replaced: rows 9, 10 red.
+ * - M8 the probe compares size instead of identity: row 9 red. Row 10 stays green
  *   there because the other window also appended a line of its own before
  *   republishing, so the length changed and size was enough; row 9 is the case the
  *   product actually hits, a republish of exactly the history it loaded.
- * - M10 the deferred merge does not take the rewrite fence, so an append landing
+ * - M9 the deferred merge does not take the rewrite fence, so an append landing
  *   before it runs falls to the synchronous rewrite: row 10 red.
- * - M11 the title-change fast path stops probing for replacement (the pre-fix
+ * - M10 the title-change fast path stops probing for replacement (the pre-fix
  *   body): row 11 red. It is its own mutant because that path appends through the
  *   writer handle and patches the slot by path, so the title still changes and
  *   only the entry recording it is lost, which rows 9 and 10 cannot see.
- * - M12 `#refreshForeignLinesSync()` returns before reading: row 12 red.
- * - M13 `FileSessionStorage.readTextSync` answers nothing, which is what a backend
+ * - M11 `#refreshForeignLinesSync()` returns before reading: row 12 red.
+ * - M12 `FileSessionStorage.readTextSync` answers nothing, which is what a backend
  *   that cannot read without yielding looks like: row 12 red. The manager degrades
  *   to the previous behaviour there rather than blocking, so this mutant proves the
  *   row is measuring the READ and not merely the call.
- * - M14 the draft-only drop deletes without asking whether the file holds a line
+ * - M13 the draft-only drop deletes without asking whether the file holds a line
  *   that was never ours: row 13 red, and row 14 stays green under it, which is what
  *   says the guard narrows the delete rather than breaking it.
- * - M15 the `/move` cleanup deletes without asking: row 15 red.
- * - M16 `holdsForeignEntries()` answers from what it already knew instead of
+ * - M14 the `/move` cleanup deletes without asking: row 15 red.
+ * - M15 `holdsForeignEntries()` answers from what it already knew instead of
  *   re-reading: rows 13 and 15 red. Both deletes run on the way out, after the last
  *   publish, so the only knowledge that can be current is a fresh read.
  *
@@ -100,9 +100,10 @@ import { pathExists, TempDir } from "@veyyon/utils";
  *   last atomic publish learned about. Row 12 runs on real files, which is where
  *   the product runs.
  * - Resurrection of an entry deliberately dropped from a file that keeps its
- *   name. `#idsEverSeen` holds ids we no longer carry for exactly that reason,
- *   but no product path drops an entry and republishes the same file today (a
- *   fork and a branch both write a new one), so no row can red on it.
+ *   name. An id is ours while the entry list holds it, and the list only grows
+ *   while one file is current, so no product path drops an entry and
+ *   republishes the same file today (a fork and a branch both write a new one),
+ *   and no row can red on it.
  * - The one-warning latch. `OperatorNotices` collapses identical notices on its
  *   own, so row 6 proves the warning is raised and names the file, not that
  *   `#reportedForeignWriter` is what keeps it single.

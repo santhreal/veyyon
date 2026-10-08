@@ -133,10 +133,132 @@ const CODE_ACTIONS = (uri: string) => [
 
 const CODE_ACTION_LIST = ["  0: [quickfix] Add return type (preferred)", "  1: [action] Organize imports"].join("\n");
 
+/** A call hierarchy item named `name`, declared at `selection` in the file `uri` names. */
+function callItem(name: string, uri: string, selection: Range) {
+	return { name, kind: 12, uri, range: selection, selectionRange: selection };
+}
+
+const CALLER = range(3, 0, 5);
+const GREET_BODY_CALL = range(1, 8, 12);
+const GREET_ITEM_ROW = "greet (Function) at src/app.ts:1:17";
+
+/** A file under the fixture that does not exist, so a call site read from it has no source line. */
+const MISSING_URI = ({ dir }: Fixture) => fileToUri(path.join(dir, "src", "lib.ts"));
+
 const CASES: Readonly<Record<FileBoundAction, readonly ActionCase[]>> = {
 	definition: locationCases("definition", "textDocument/definition"),
 	type_definition: locationCases("type definition", "textDocument/typeDefinition"),
 	implementation: locationCases("implementation", "textDocument/implementation"),
+	incoming_calls: [
+		{
+			name: "lists each caller with its call sites, a repeated site once",
+			params: { line: 1, symbol: "greet" },
+			answers: ({ uri }) => ({
+				"textDocument/prepareCallHierarchy": { result: [callItem("greet", uri, GREET_DECLARATION)] },
+				"callHierarchy/incomingCalls": {
+					result: [{ from: callItem("main", uri, CALLER), fromRanges: [GREET_CALL, GREET_CALL] }],
+				},
+			}),
+			text: [
+				`Found 1 caller(s) of ${GREET_ITEM_ROW}:`,
+				"  main (Function) at src/app.ts:4:1",
+				'    4:1: greet("a");',
+			].join("\n"),
+			after: ({ uri }, server) => {
+				expect(requestsFor(server, "callHierarchy/incomingCalls")).toEqual([
+					expect.objectContaining({ params: { item: callItem("greet", uri, GREET_DECLARATION) } }),
+				]);
+			},
+		},
+		{
+			name: "asks for the callers of every item the server prepared",
+			params: { line: 1, symbol: "greet" },
+			answers: fixture => ({
+				"textDocument/prepareCallHierarchy": {
+					result: [
+						callItem("greet", fixture.uri, GREET_DECLARATION),
+						callItem("greet", MISSING_URI(fixture), GREET_DECLARATION),
+					],
+				},
+				"callHierarchy/incomingCalls": {
+					result: [{ from: callItem("main", fixture.uri, CALLER), fromRanges: [GREET_CALL] }],
+				},
+			}),
+			text: [
+				`Found 1 caller(s) of ${GREET_ITEM_ROW}:`,
+				"  main (Function) at src/app.ts:4:1",
+				'    4:1: greet("a");',
+				"",
+				"Found 1 caller(s) of greet (Function) at src/lib.ts:1:17:",
+				"  main (Function) at src/app.ts:4:1",
+				'    4:1: greet("a");',
+			].join("\n"),
+		},
+		{
+			name: "reports a position with no callable symbol as a useless lookup",
+			params: { line: 1, symbol: "greet" },
+			answers: () => ({ "textDocument/prepareCallHierarchy": { result: null } }),
+			text: "No callable symbol at this position",
+			useless: true,
+			after: (_fixture, server) => {
+				expect(requestsFor(server, "callHierarchy/incomingCalls")).toEqual([]);
+			},
+		},
+		{
+			name: "reports a symbol nothing calls as a useless lookup",
+			params: { line: 1, symbol: "greet" },
+			answers: ({ uri }) => ({
+				"textDocument/prepareCallHierarchy": { result: [callItem("greet", uri, GREET_DECLARATION)] },
+				"callHierarchy/incomingCalls": { result: [] },
+			}),
+			text: `No callers of ${GREET_ITEM_ROW}`,
+			useless: true,
+		},
+	],
+	outgoing_calls: [
+		{
+			name: "lists each callee with its call sites read from the calling file",
+			params: { line: 1, symbol: "greet" },
+			answers: fixture => ({
+				"textDocument/prepareCallHierarchy": { result: [callItem("greet", fixture.uri, GREET_DECLARATION)] },
+				"callHierarchy/outgoingCalls": {
+					result: [{ to: callItem("echo", MISSING_URI(fixture), range(0, 0, 4)), fromRanges: [GREET_BODY_CALL] }],
+				},
+			}),
+			text: [
+				`Found 1 callee(s) from ${GREET_ITEM_ROW}:`,
+				"  echo (Function) at src/lib.ts:1:1",
+				"    2:9: return name;",
+			].join("\n"),
+		},
+		{
+			name: "states a call site in a file that no longer exists as its position",
+			params: { line: 1, symbol: "greet" },
+			answers: fixture => ({
+				"textDocument/prepareCallHierarchy": {
+					result: [callItem("greet", MISSING_URI(fixture), GREET_DECLARATION)],
+				},
+				"callHierarchy/outgoingCalls": {
+					result: [{ to: callItem("echo", fixture.uri, range(0, 0, 4)), fromRanges: [GREET_BODY_CALL] }],
+				},
+			}),
+			text: [
+				"Found 1 callee(s) from greet (Function) at src/lib.ts:1:17:",
+				"  echo (Function) at src/app.ts:1:1",
+				"    2:9",
+			].join("\n"),
+		},
+		{
+			name: "reports a symbol that calls nothing as a useless lookup",
+			params: { line: 1, symbol: "greet" },
+			answers: ({ uri }) => ({
+				"textDocument/prepareCallHierarchy": { result: [callItem("greet", uri, GREET_DECLARATION)] },
+				"callHierarchy/outgoingCalls": { result: null },
+			}),
+			text: `No callees from ${GREET_ITEM_ROW}`,
+			useless: true,
+		},
+	],
 	references: [
 		{
 			name: "lists every reference with the line either side",
@@ -448,7 +570,7 @@ function textOf(result: AgentToolResult<LspToolDetails>): string {
 
 /** Every action the schema declares, so a new one arrives uncovered and fails the sweep. */
 function declaredActions(): string[] {
-	return [...new Set(lspSchema.get("action").expression.match(/[a-z_]+/g) ?? [])];
+	return [...new Set(lspSchema.value.get("action").expression.match(/[a-z_]+/g) ?? [])];
 }
 
 describe("a file-bound lsp action", () => {
@@ -508,7 +630,7 @@ describe("a file-bound lsp action", () => {
 			await lspClient.shutdownAll();
 			vi.restoreAllMocks();
 		}
-		expect(required.sort()).toEqual(["definition", "references", "rename"]);
+		expect(required.sort()).toEqual(["definition", "incoming_calls", "outgoing_calls", "references", "rename"]);
 	});
 
 	it("rejects a rename with no new name before asking the server", async () => {
@@ -533,8 +655,7 @@ describe("a file-bound lsp action", () => {
 		const params: LspParams = { action: "hover", file: target.file, line: 4, symbol: "greet", timeout: 10 };
 		const result = await new LspTool(makeToolSession({ cwd: target.dir })).execute("lsp-hover", params);
 
-		expect(textOf(result)).toStartWith("LSP error: ");
-		expect(textOf(result)).toContain("hover crashed");
+		expect(textOf(result)).toBe("LSP error: hover crashed");
 		expect(result.details).toEqual({ serverName: SERVER_NAME, action: "hover", success: false, request: params });
 	});
 

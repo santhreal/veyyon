@@ -38,6 +38,16 @@ export async function buildDocsIndexPayload(): Promise<DocsIndexPayload> {
 	};
 }
 
+/**
+ * The `define` entries of the release builds whose values are payloads rather than flags. Each one
+ * replaces a `process.env` read with a string literal of hundreds of kilobytes, so a module that reads
+ * one costs its literal in whatever chunk links it. `compile-binary.ts` and `bundle-dist.ts` spread
+ * this map into their `define`, and the launch-graph gate enumerates it.
+ */
+export async function buildPayloadDefines(): Promise<Record<string, string>> {
+	return { "process.env.VEYYON_DOCS_EMBED": JSON.stringify((await buildDocsIndexPayload()).payload) };
+}
+
 /** Decode a populated docs embed payload into filenames and index-aligned Markdown bodies. */
 export function decodeDocsIndexPayload(embed: string): DecodedDocsIndexPayload | null {
 	const newline = embed.indexOf("\n");

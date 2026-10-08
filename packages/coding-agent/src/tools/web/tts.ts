@@ -7,7 +7,8 @@ import type { AgentToolResult } from "@veyyon/agent-core";
 import type { ApiKey } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { ProviderHttpError } from "@veyyon/ai/error";
-import { type } from "arktype";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { lazy } from "@veyyon/utils/abortable";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../config/settings-instance";
 import type { CustomTool, CustomToolContext } from "../../extensibility/custom-tools/types";
@@ -27,7 +28,6 @@ import { missingXAICredentialsMessage, resolveXAIHttpCredentials, veyyonXAIUserA
 const DEFAULT_XAI_VOICE_ID = "eve" as const;
 const DEFAULT_XAI_SAMPLE_RATE = 24_000;
 const DEFAULT_XAI_BIT_RATE = 128_000;
-const XAI_MAX_TEXT_LENGTH = 15_000;
 
 // Built-in voices per xAI Tier-1 docs (2026-05-16). xAI also accepts custom voice IDs,
 // so the schema does NOT enum-restrict voice_id; this constant only drives the description.
@@ -39,16 +39,18 @@ const formatVoiceList = (): string =>
 type TtsCodec = "mp3" | "wav";
 type TtsBackend = "local" | "xai";
 
-const ttsSchema = type({
-	text: "1 <= string <= 15000",
-	voice_id: "string = 'eve'",
-	language: "string = 'en'",
-	output_path: "string",
-	sample_rate: "number.integer?",
-	bit_rate: "number.integer?",
-});
+const ttsSchema = lazy(() =>
+	type({
+		text: "1 <= string <= 15000",
+		voice_id: "string = 'eve'",
+		language: "string = 'en'",
+		output_path: "string",
+		sample_rate: "number.integer?",
+		bit_rate: "number.integer?",
+	}),
+);
 
-type TtsSchemaType = typeof ttsSchema.infer;
+type TtsSchemaType = typeof ttsSchema.value.infer;
 
 interface TtsToolDetails {
 	bytes: number;
@@ -258,7 +260,7 @@ async function synthesizeLocal(
 	};
 }
 
-export const ttsTool: CustomTool<typeof ttsSchema, TtsToolDetails> = {
+export const ttsTool: CustomTool<typeof ttsSchema.value, TtsToolDetails> = {
 	name: "tts",
 	label: "Speech Generation",
 	strict: false,
@@ -269,8 +271,10 @@ export const ttsTool: CustomTool<typeof ttsSchema, TtsToolDetails> = {
 		`xai = xAI Grok Voice cloud (built-in voices: ${formatVoiceList()}; custom voice IDs accepted; MP3 or WAV). ` +
 		"auto prefers local, but routes an .mp3 request to xAI when credentials exist (only the cloud path emits MP3); " +
 		"otherwise an .mp3 path is written as a sibling .wav. xAI codec is inferred from the output_path suffix. " +
-		`Max ${XAI_MAX_TEXT_LENGTH.toLocaleString("en-US")} characters.`,
-	parameters: ttsSchema,
+		"Max 15,000 characters.",
+	get parameters() {
+		return ttsSchema.value;
+	},
 	async execute(
 		_toolCallId: string,
 		params: TtsSchemaType,

@@ -20,20 +20,8 @@
  * handler. `BuiltinExtensionAPI` has no `pi`, so the type check rejects the direct form of that.
  */
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { execFile } from "node:child_process";
-import * as path from "node:path";
-import { promisify } from "node:util";
 import { TempDir } from "@veyyon/utils";
-import { hermeticSpawnEnv } from "../helpers/hermetic-spawn-env";
-
-const run = promisify(execFile);
-const FIXTURE = path.join(import.meta.dirname, "..", "fixtures", "session-package-barrel.ts");
-
-interface Report {
-	barrelLoaded: boolean;
-	commands: string[];
-	authorPi: string | null;
-}
+import { createSessionInFreshProcess } from "../helpers/fresh-session-report";
 
 let scratch: TempDir;
 beforeEach(() => {
@@ -43,23 +31,8 @@ afterEach(() => {
 	scratch.removeSync();
 });
 
-async function createSessionInFreshProcess(author: boolean): Promise<Report> {
-	const { env, cleanup } = hermeticSpawnEnv();
-	try {
-		const { stdout, stderr } = await run(
-			process.execPath,
-			[FIXTURE, scratch.join(author ? "author" : "builtin"), ...(author ? ["author"] : [])],
-			{ env, timeout: 30_000, killSignal: "SIGKILL" },
-		);
-		expect(stderr).toBe("");
-		return JSON.parse(stdout) as Report;
-	} finally {
-		cleanup();
-	}
-}
-
 it("binds the product's own extensions without evaluating the package barrel", async () => {
-	const report = await createSessionInFreshProcess(false);
+	const report = await createSessionInFreshProcess(scratch.join("builtin"), false);
 
 	expect(report.barrelLoaded).toBe(false);
 	expect(report.commands).toContain("autoresearch");
@@ -68,8 +41,8 @@ it("binds the product's own extensions without evaluating the package barrel", a
 
 it("hands an author's inline extension the package namespace as api.pi", async () => {
 	const [builtinOnly, withAuthor] = await Promise.all([
-		createSessionInFreshProcess(false),
-		createSessionInFreshProcess(true),
+		createSessionInFreshProcess(scratch.join("builtin"), false),
+		createSessionInFreshProcess(scratch.join("author"), true),
 	]);
 
 	expect(withAuthor.barrelLoaded).toBe(true);

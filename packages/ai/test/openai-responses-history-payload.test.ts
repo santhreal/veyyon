@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { convertCodexResponsesMessages, streamOpenAICodexResponses } from "@veyyon/ai/providers/openai-codex-responses";
 import { type OpenAIResponsesOptions, streamOpenAIResponses } from "@veyyon/ai/providers/openai-responses";
-import { buildResponsesInput } from "@veyyon/ai/providers/openai-shared";
+import { buildResponsesInput, supportsFreeformApplyPatch } from "@veyyon/ai/providers/openai-shared";
 import type { Context, Model, ModelSpec, ProviderSessionState, Tool } from "@veyyon/ai/types";
 import { createOpenAIResponsesHistoryPayload, truncateResponseItemId } from "@veyyon/ai/utils";
 import { buildModel } from "@veyyon/catalog/build";
@@ -416,11 +416,13 @@ describe("OpenAI responses history payload", () => {
 			expect(outputIds).toEqual(new Set(["call_middle"]));
 		};
 
+		const openaiModel = getOpenAIReasoningModel("openai", "gpt-5-mini");
 		const openaiItems = buildResponsesInput({
-			model: getOpenAIReasoningModel("openai", "gpt-5-mini"),
+			model: openaiModel,
 			context: makeContext("openai"),
 			strictResponsesPairing: true,
 			supportsImageDetailOriginal: true,
+			supportsCustomToolCalls: supportsFreeformApplyPatch(openaiModel),
 			nativeHistory: { replay: true, filterReasoning: false },
 		});
 		assertWireOrder(openaiItems);
@@ -476,6 +478,7 @@ describe("OpenAI responses history payload", () => {
 			context,
 			strictResponsesPairing: false,
 			supportsImageDetailOriginal: issue5002XaiOAuthModel.compat.supportsImageDetailOriginal,
+			supportsCustomToolCalls: supportsFreeformApplyPatch(issue5002XaiOAuthModel),
 			nativeHistory: { replay: true, filterReasoning: issue5002XaiOAuthModel.compat.filterReasoningHistory },
 		});
 		expect(findResponsesInputItemByCallId(xaiInput, "function_call", "call_apply")).toEqual({
@@ -498,6 +501,7 @@ describe("OpenAI responses history payload", () => {
 			context,
 			strictResponsesPairing: false,
 			supportsImageDetailOriginal: openaiModel.compat.supportsImageDetailOriginal,
+			supportsCustomToolCalls: supportsFreeformApplyPatch(openaiModel),
 			nativeHistory: { replay: true, filterReasoning: openaiModel.compat.filterReasoningHistory },
 		});
 		expect(findResponsesInputItemByCallId(openaiInput, "custom_tool_call", "call_apply")).toEqual({
@@ -553,6 +557,7 @@ describe("OpenAI responses history payload", () => {
 			context: xaiContext,
 			strictResponsesPairing: false,
 			supportsImageDetailOriginal: issue5002XaiOAuthModel.compat.supportsImageDetailOriginal,
+			supportsCustomToolCalls: supportsFreeformApplyPatch(issue5002XaiOAuthModel),
 			nativeHistory: { replay: true, filterReasoning: issue5002XaiOAuthModel.compat.filterReasoningHistory },
 		});
 		expect(findResponsesInputItemByCallId(xaiInput, "function_call", "call_native_apply")).toEqual({
@@ -591,6 +596,7 @@ describe("OpenAI responses history payload", () => {
 			context: openaiContext,
 			strictResponsesPairing: false,
 			supportsImageDetailOriginal: openaiModel.compat.supportsImageDetailOriginal,
+			supportsCustomToolCalls: supportsFreeformApplyPatch(openaiModel),
 			nativeHistory: { replay: true, filterReasoning: openaiModel.compat.filterReasoningHistory },
 		});
 		expect(findResponsesInputItemByCallId(openaiInput, "custom_tool_call", "call_native_apply")).toEqual({

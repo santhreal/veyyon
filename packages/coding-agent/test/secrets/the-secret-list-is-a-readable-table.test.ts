@@ -34,8 +34,8 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { expiryWarnings } from "@veyyon/coding-agent/secrets/expiry";
 import {
-	expiryWarnings,
 	NONINTERACTIVE_SECRET_COMMAND_USAGE,
 	parseSecretCommand,
 	renderSecretList,

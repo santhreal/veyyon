@@ -30,7 +30,7 @@ class, and the structure a stylesheet lays out arrives as data attributes: `data
 
 A symbol, emblem or notice mark key draws the glyph `UNICODE_SYMBOLS` in `@veyyon/view` holds for
 it, the same table the terminal's plain preset and the HTML export draw from. An embedder overrides
-a glyph through `GuiViewOptions.symbols`, keyed by the symbol and emblem names a tool states and by
+a glyph through `GuiViewOptions.symbols`, keyed by the symbol and emblem identifiers a tool states and by
 `status:<name>` for the mark a status draws. A key in neither table draws the span's own text, no
 emblem and no notice mark; the key itself is never text.
 Only own properties of the symbol table are resolved; inherited names fall through to the shared table.
@@ -40,7 +40,7 @@ Symbol values from `GuiViewOptions.symbols` are inserted as markup; glyphs from 
 
 - `ViewTailWindow.viewport` and `reserve` describe a terminal's remaining screen. A document
   scrolls, so this host honours the tool's own `max` and ignores those two.
-- `ViewSection.clip` marks the row and leaves the cut to the stylesheet, which is the only party
-  that knows the width.
+- `ViewSection.clip` marks the row and leaves the cut to the stylesheet, which is the only layer
+  that has the width.
 - `ViewSpan.captured` keeps the words another program wrote and drops every control sequence, since
   there is no screen to replay them onto.

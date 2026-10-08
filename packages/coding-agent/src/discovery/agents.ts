@@ -19,10 +19,13 @@ import { type DiscoveredSkill, skillCapability } from "./capability/skill";
 import { type SlashCommand, slashCommandCapability } from "./capability/slash-command";
 import type { LoadContext, LoadResult } from "./capability/types";
 import {
-	buildRuleFromMarkdown,
 	createSourceMeta,
-	loadFilesFromDir,
+	loadCommandDirs,
+	loadPromptDirs,
+	loadRuleDirs,
+	mergeLoadResults,
 	readContextFile,
+	type ScopedConfigDir,
 	scanSkillsFromDir,
 } from "./helpers";
 
@@ -36,6 +39,11 @@ function getUserPathCandidates(ctx: LoadContext, ...segments: string[]): string[
 	return AGENT_DIR_CANDIDATES.map(baseDir => path.join(ctx.home, baseDir, ...segments));
 }
 
+/** ~/.agent and ~/.agents, both at user scope. */
+function userConfigDirs(ctx: LoadContext): ScopedConfigDir[] {
+	return getUserPathCandidates(ctx).map(dir => ({ dir, level: "user" }));
+}
+
 // Skills
 async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>> {
 	const results = await Promise.all(
@@ -43,11 +51,7 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>
 			scanSkillsFromDir({ dir, providerId: PROVIDER_ID, level: "user" }),
 		),
 	);
-
-	return {
-		items: results.flatMap(r => r.items),
-		warnings: results.flatMap(r => r.warnings ?? []),
-	};
+	return mergeLoadResults(results);
 }
 
 registerProvider<DiscoveredSkill>(skillCapability.id, {
@@ -58,91 +62,28 @@ registerProvider<DiscoveredSkill>(skillCapability.id, {
 	load: loadSkills,
 });
 
-// Rules
-async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
-	const results = await Promise.all(
-		getUserPathCandidates(ctx, "rules").map(dir =>
-			loadFilesFromDir<Rule>(dir, PROVIDER_ID, "user", {
-				extensions: ["md", "mdc"],
-				transform: (name, content, filePath, source) =>
-					buildRuleFromMarkdown(name, content, filePath, source, { stripNamePattern: /\.(md|mdc)$/ }),
-			}),
-		),
-	);
-
-	return {
-		items: results.flatMap(r => r.items),
-		warnings: results.flatMap(r => r.warnings ?? []),
-	};
-}
-
 registerProvider<Rule>(ruleCapability.id, {
 	id: PROVIDER_ID,
 	displayName: DISPLAY_NAME,
 	description: "Load rules from ~/.agent/rules and ~/.agents/rules",
 	priority: PRIORITY,
-	load: loadRules,
+	load: ctx => loadRuleDirs(userConfigDirs(ctx), PROVIDER_ID),
 });
-
-// Prompts
-async function loadPrompts(ctx: LoadContext): Promise<LoadResult<Prompt>> {
-	const results = await Promise.all(
-		getUserPathCandidates(ctx, "prompts").map(dir =>
-			loadFilesFromDir<Prompt>(dir, PROVIDER_ID, "user", {
-				extensions: ["md"],
-				transform: (name, content, filePath, source) => ({
-					name: name.replace(/\.md$/, ""),
-					path: filePath,
-					content,
-					_source: source,
-				}),
-			}),
-		),
-	);
-
-	return {
-		items: results.flatMap(r => r.items),
-		warnings: results.flatMap(r => r.warnings ?? []),
-	};
-}
 
 registerProvider<Prompt>(promptCapability.id, {
 	id: PROVIDER_ID,
 	displayName: DISPLAY_NAME,
 	description: "Load prompts from ~/.agent/prompts and ~/.agents/prompts",
 	priority: PRIORITY,
-	load: loadPrompts,
+	load: ctx => loadPromptDirs(userConfigDirs(ctx), PROVIDER_ID),
 });
-
-// Slash Commands
-async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashCommand>> {
-	const results = await Promise.all(
-		getUserPathCandidates(ctx, "commands").map(dir =>
-			loadFilesFromDir<SlashCommand>(dir, PROVIDER_ID, "user", {
-				extensions: ["md"],
-				transform: (name, content, filePath, source) => ({
-					name: name.replace(/\.md$/, ""),
-					path: filePath,
-					content,
-					level: "user",
-					_source: source,
-				}),
-			}),
-		),
-	);
-
-	return {
-		items: results.flatMap(r => r.items),
-		warnings: results.flatMap(r => r.warnings ?? []),
-	};
-}
 
 registerProvider<SlashCommand>(slashCommandCapability.id, {
 	id: PROVIDER_ID,
 	displayName: DISPLAY_NAME,
 	description: "Load commands from ~/.agent/commands and ~/.agents/commands",
 	priority: PRIORITY,
-	load: loadSlashCommands,
+	load: ctx => loadCommandDirs(userConfigDirs(ctx), PROVIDER_ID),
 });
 
 /**

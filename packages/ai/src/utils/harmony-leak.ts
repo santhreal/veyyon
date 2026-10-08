@@ -29,7 +29,9 @@ const BODY_CASCADE_RE = /to=functions\.\w+\s+code\b[\s\S]{0,200}?to=functions\./
 // Fake-result framing (`R`): marker followed within 80 chars by Cell N: framing.
 const FAKE_RESULT_RE = /to=functions\.\w+[\s\S]{0,80}?code_output\s*\nCell\s+\d+:/;
 
-const FENCE_RE = /^\s*(?:```+|~~~+)/;
+// A fence opener at a line start. Sticky, so `lastIndex` anchors it at the line start; the leading run
+// excludes `\n`, which keeps the match inside the line it starts.
+const FENCE_LINE_RE = /[^\S\n]*(?:```+|~~~+)/y;
 
 // Non-Latin scripts seen in the corpus: CJK + ext, Cyrillic, Thai, Georgian,
 // Armenian, Kannada, Telugu, Devanagari, Arabic, Malayalam.
@@ -63,6 +65,7 @@ const RECOVERY_REGISTRY: Record<string, RecoveryConfig> = {
 	},
 };
 
+/** Co-signal classes in reporting order. `markerClasses` appends them in this order. */
 const SIGNAL_ORDER = ["M", "C", "G", "S", "B", "R", "T"] as const;
 
 export type HarmonySignalClass = "H" | (typeof SIGNAL_ORDER)[number];
@@ -154,36 +157,24 @@ export function detectHarmonyLeak(
 		toolCallId?: string;
 	} = {},
 ): HarmonyDetection | undefined {
-	const fences = computeFenceRanges(text);
+	// `tool_arg` trips only on `T`, and `T` needs a parse boundary: without one the scan cannot report.
+	if (surface === "tool_arg" && options.parsedEnd === undefined) return undefined;
+	const fences = new FenceIndex(text);
 	const signals: HarmonySignal[] = [];
 
 	for (const match of text.matchAll(HARMONY_RE)) {
-		const start = match.index ?? 0;
-		if (isInsideFence(fences, start)) continue;
-		signals.push(makeSignal(["H"], start, start + match[0].length, match[0]));
+		const start = match.index;
+		if (fences.covers(start)) continue;
+		signals.push({ classes: ["H"], start, end: start + match[0].length, text: match[0] });
 	}
 
 	for (const match of text.matchAll(MARKER_RE)) {
-		const start = match.index ?? 0;
-		if (isInsideFence(fences, start)) continue;
+		const start = match.index;
+		if (fences.covers(start)) continue;
 		const end = start + match[0].length;
-		const classes: HarmonySignalClass[] = ["M"];
-
-		const adjacent = text.slice(Math.max(0, start - 64), Math.min(text.length, end + 16));
-		const near = text.slice(Math.max(0, start - 16), Math.min(text.length, end + 16));
-		const forward = text.slice(start, Math.min(text.length, start + 240));
-
-		if (CHANNEL_WORD_RE.test(adjacent)) classes.push("C");
-		if (GLITCH_RE.test(near)) classes.push("G");
-		if (hasScriptMismatchNear(text, start, end)) classes.push("S");
-		if (BODY_CASCADE_RE.test(forward)) classes.push("B");
-		if (FAKE_RESULT_RE.test(forward)) classes.push("R");
-		if (options.parsedEnd !== undefined && start >= options.parsedEnd) classes.push("T");
-
+		const classes = markerClasses(text, start, end, options.parsedEnd);
 		// `M` alone never trips: legitimate documentation/tests carry it.
-		if (classes.length > 1) {
-			signals.push(makeSignal(classes, start, end, match[0]));
-		}
+		if (classes.length > 1) signals.push({ classes, start, end, text: match[0] });
 	}
 
 	if (signals.length === 0) return undefined;
@@ -218,27 +209,44 @@ export function detectHarmonyLeakInAssistantMessage(
 	toolArgParseEnd?: (toolCall: ToolCall) => number | undefined,
 ): HarmonyDetection | undefined {
 	for (let i = 0; i < message.content.length; i++) {
-		const block = message.content[i];
-		if (block.type === "text") {
-			const d = detectHarmonyLeak(block.text, "assistant_text", { contentIndex: i });
-			if (d) return d;
-		} else if (block.type === "thinking") {
-			const d = detectHarmonyLeak(block.thinking, "assistant_thinking", { contentIndex: i });
-			if (d) return d;
-		} else if (block.type === "toolCall") {
-			const argText = getToolArgumentText(block);
-			if (argText !== undefined) {
-				const d = detectHarmonyLeak(argText, "tool_arg", {
-					contentIndex: i,
-					toolName: block.name,
-					toolCallId: block.id,
-					parsedEnd: toolArgParseEnd?.(block),
-				});
-				if (d) return d;
-			}
-		}
+		const detection = detectBlockLeak(message.content[i], i, toolArgParseEnd);
+		if (detection) return detection;
 	}
 	return undefined;
+}
+
+function detectBlockLeak(
+	block: AssistantMessage["content"][number],
+	contentIndex: number,
+	toolArgParseEnd: ((toolCall: ToolCall) => number | undefined) | undefined,
+): HarmonyDetection | undefined {
+	switch (block.type) {
+		case "text":
+			return detectHarmonyLeak(block.text, "assistant_text", { contentIndex });
+		case "thinking":
+			return detectHarmonyLeak(block.thinking, "assistant_thinking", { contentIndex });
+		case "toolCall":
+			return detectToolArgLeak(block, contentIndex, toolArgParseEnd);
+		default:
+			return undefined;
+	}
+}
+
+/** No parse-end resolver means no `T` co-signal, so the argument text is never built or scanned. */
+function detectToolArgLeak(
+	toolCall: ToolCall,
+	contentIndex: number,
+	toolArgParseEnd: ((toolCall: ToolCall) => number | undefined) | undefined,
+): HarmonyDetection | undefined {
+	if (!toolArgParseEnd) return undefined;
+	const argText = getToolArgumentText(toolCall);
+	if (argText === undefined) return undefined;
+	return detectHarmonyLeak(argText, "tool_arg", {
+		contentIndex,
+		toolName: toolCall.name,
+		toolCallId: toolCall.id,
+		parsedEnd: toolArgParseEnd(toolCall),
+	});
 }
 
 /**
@@ -333,51 +341,69 @@ export function createHarmonyAuditEvent(params: {
 
 // ─── internals ──────────────────────────────────────────────────────────────
 
-function makeSignal(classes: HarmonySignalClass[], start: number, end: number, text: string): HarmonySignal {
-	if (classes[0] === "H") return { classes: ["H"], start, end, text };
-	const sorted: HarmonySignalClass[] = [];
-	for (const cls of SIGNAL_ORDER) {
-		if (classes.includes(cls)) sorted.push(cls);
-	}
-	return { classes: sorted, start, end, text };
+/** The marker at `[start, end)` and every co-signal around it, in {@link SIGNAL_ORDER}. */
+function markerClasses(text: string, start: number, end: number, parsedEnd: number | undefined): HarmonySignalClass[] {
+	const classes: HarmonySignalClass[] = ["M"];
+	const adjacent = text.slice(Math.max(0, start - 64), Math.min(text.length, end + 16));
+	const near = text.slice(Math.max(0, start - 16), Math.min(text.length, end + 16));
+	const forward = text.slice(start, Math.min(text.length, start + 240));
+	if (CHANNEL_WORD_RE.test(adjacent)) classes.push("C");
+	if (GLITCH_RE.test(near)) classes.push("G");
+	if (hasScriptMismatchNear(text, start, end)) classes.push("S");
+	if (BODY_CASCADE_RE.test(forward)) classes.push("B");
+	if (FAKE_RESULT_RE.test(forward)) classes.push("R");
+	if (parsedEnd !== undefined && start >= parsedEnd) classes.push("T");
+	return classes;
 }
 
 /**
- * Precompute fenced-code-block ranges once per text. Each range is a
- * [start, end) span of bytes inside any ```/~~~ fence. O(n) once instead of
- * O(n) per detected match.
+ * Fenced-code-block spans of one text, computed on the first lookup. A text with no harmony token and
+ * no marker never pays for the line scan.
+ */
+class FenceIndex {
+	#text: string;
+	#ranges: Array<[number, number]> | undefined;
+
+	constructor(text: string) {
+		this.#text = text;
+	}
+
+	/** Whether `position` falls inside a ```/~~~ fence. */
+	covers(position: number): boolean {
+		this.#ranges ??= computeFenceRanges(this.#text);
+		for (const [start, end] of this.#ranges) {
+			if (position >= start && position < end) return true;
+			if (start > position) break;
+		}
+		return false;
+	}
+}
+
+/**
+ * Each range is a [start, end) span inside a ```/~~~ fence; an unclosed fence runs to the end of the
+ * text.
  */
 function computeFenceRanges(text: string): Array<[number, number]> {
 	const ranges: Array<[number, number]> = [];
-	let inFence = false;
-	let fenceStart = 0;
+	let fenceStart = -1;
 	let lineStart = 0;
 	while (lineStart <= text.length) {
 		const newline = text.indexOf("\n", lineStart);
 		const lineEnd = newline === -1 ? text.length : newline;
-		const line = text.slice(lineStart, lineEnd);
-		if (FENCE_RE.test(line)) {
-			if (inFence) {
-				ranges.push([fenceStart, lineEnd]);
-				inFence = false;
-			} else {
+		FENCE_LINE_RE.lastIndex = lineStart;
+		if (FENCE_LINE_RE.test(text)) {
+			if (fenceStart === -1) {
 				fenceStart = lineStart;
-				inFence = true;
+			} else {
+				ranges.push([fenceStart, lineEnd]);
+				fenceStart = -1;
 			}
 		}
 		if (newline === -1) break;
 		lineStart = newline + 1;
 	}
-	if (inFence) ranges.push([fenceStart, text.length]);
+	if (fenceStart !== -1) ranges.push([fenceStart, text.length]);
 	return ranges;
-}
-
-function isInsideFence(ranges: Array<[number, number]>, position: number): boolean {
-	for (const [start, end] of ranges) {
-		if (position >= start && position < end) return true;
-		if (start > position) break;
-	}
-	return false;
 }
 
 function hasScriptMismatchNear(text: string, start: number, end: number): boolean {

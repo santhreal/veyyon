@@ -19,9 +19,10 @@ import type {
 	ToolTier,
 } from "@veyyon/agent-core";
 import type { Static } from "@veyyon/ai";
-import { formatCount, prompt } from "@veyyon/utils";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { formatCount, lazy, prompt } from "@veyyon/utils";
 import type { ToolViewRenderer } from "@veyyon/view";
-import { type } from "arktype";
+import type { type as arktype } from "arktype";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import { MAIN_AGENT_ID } from "../../registry/agent-registry";
 import {
@@ -37,29 +38,37 @@ import { createVibeToolView } from "./vibe-view";
 
 export const VIBE_TOOL_NAMES = ["vibe_spawn", "vibe_send", "vibe_wait", "vibe_kill", "vibe_list"] as const;
 
-const vibeSpawnSchema = type({
-	cli: type("'fast' | 'good'").describe(
-		"worker flavor: fast = low-latency model for mechanical work; good = strong model for hard work",
-	),
-	"name?": type("string <= 48").describe("optional session name; generated when omitted"),
-	prompt: type("string > 0").describe("first instruction; the worker starts with no other context"),
-});
+const vibeSpawnSchema = lazy(() =>
+	type({
+		cli: type("'fast' | 'good'").describe(
+			"worker flavor: fast = low-latency model for mechanical work; good = strong model for hard work",
+		),
+		"name?": type("string <= 48").describe("optional session name; generated when omitted"),
+		prompt: type("string > 0").describe("first instruction; the worker starts with no other context"),
+	}),
+);
 
-const vibeSendSchema = type({
-	session: type("string > 0").describe("session id from vibe_spawn / vibe_list"),
-	message: type("string > 0").describe("message for the session; steers mid-turn, else runs as its next turn"),
-});
+const vibeSendSchema = lazy(() =>
+	type({
+		session: type("string > 0").describe("session id from vibe_spawn / vibe_list"),
+		message: type("string > 0").describe("message for the session; steers mid-turn, else runs as its next turn"),
+	}),
+);
 
-const vibeWaitSchema = type({
-	"sessions?": type("string[]").describe("session ids to watch; omit to watch every session with a turn in flight"),
-	"timeout?": type("number > 0").describe("max seconds to wait (default 30)"),
-});
+const vibeWaitSchema = lazy(() =>
+	type({
+		"sessions?": type("string[]").describe("session ids to watch; omit to watch every session with a turn in flight"),
+		"timeout?": type("number > 0").describe("max seconds to wait (default 30)"),
+	}),
+);
 
-const vibeKillSchema = type({
-	session: type("string > 0").describe("session id to terminate"),
-});
+const vibeKillSchema = lazy(() =>
+	type({
+		session: type("string > 0").describe("session id to terminate"),
+	}),
+);
 
-const vibeListSchema = type({});
+const vibeListSchema = lazy(() => type({}));
 
 export type VibeOp = "spawn" | "send" | "wait" | "kill" | "list";
 
@@ -88,7 +97,7 @@ function textResult(text: string, details: VibeToolDetails): AgentToolResult<Vib
 	return { content: [{ type: "text", text }], details };
 }
 
-abstract class BaseVibeTool<TSchema extends type.Any> implements AgentTool<TSchema, VibeToolDetails> {
+abstract class BaseVibeTool<TSchema extends arktype.Any> implements AgentTool<TSchema, VibeToolDetails> {
 	readonly strict = true;
 	readonly description: string;
 	readonly view: ToolViewRenderer<Static<TSchema>, AgentToolResult<VibeToolDetails, TSchema>>;
@@ -116,7 +125,7 @@ abstract class BaseVibeTool<TSchema extends type.Any> implements AgentTool<TSche
 	): Promise<AgentToolResult<VibeToolDetails, TSchema>>;
 }
 
-export class VibeSpawnTool extends BaseVibeTool<typeof vibeSpawnSchema> {
+export class VibeSpawnTool extends BaseVibeTool<typeof vibeSpawnSchema.value> {
 	constructor(session: ToolSession) {
 		super(
 			session,
@@ -124,13 +133,16 @@ export class VibeSpawnTool extends BaseVibeTool<typeof vibeSpawnSchema> {
 			"Vibe Spawn",
 			"Start a persistent fast/good worker session",
 			"exec",
-			vibeSpawnSchema,
+			vibeSpawnSchema.value,
 			"spawn",
 			"tools/vibe-spawn",
 		);
 	}
 
-	async execute(_toolCallId: string, params: typeof vibeSpawnSchema.infer): Promise<AgentToolResult<VibeToolDetails>> {
+	async execute(
+		_toolCallId: string,
+		params: typeof vibeSpawnSchema.value.infer,
+	): Promise<AgentToolResult<VibeToolDetails>> {
 		const { id, jobId } = await VibeSessionRegistry.global().spawn(this.session, params);
 		return textResult(
 			`Spawned ${params.cli} session \`${id}\` (turn job \`${jobId}\`). The turn result will be delivered when it finishes — keep directing other sessions meanwhile. Continue this one with vibe_send \`${id}\`.`,
@@ -139,7 +151,7 @@ export class VibeSpawnTool extends BaseVibeTool<typeof vibeSpawnSchema> {
 	}
 }
 
-export class VibeSendTool extends BaseVibeTool<typeof vibeSendSchema> {
+export class VibeSendTool extends BaseVibeTool<typeof vibeSendSchema.value> {
 	constructor(session: ToolSession) {
 		super(
 			session,
@@ -147,13 +159,16 @@ export class VibeSendTool extends BaseVibeTool<typeof vibeSendSchema> {
 			"Vibe Send",
 			"Message a worker session (steer or next turn)",
 			"exec",
-			vibeSendSchema,
+			vibeSendSchema.value,
 			"send",
 			"tools/vibe-send",
 		);
 	}
 
-	async execute(_toolCallId: string, params: typeof vibeSendSchema.infer): Promise<AgentToolResult<VibeToolDetails>> {
+	async execute(
+		_toolCallId: string,
+		params: typeof vibeSendSchema.value.infer,
+	): Promise<AgentToolResult<VibeToolDetails>> {
 		const outcome = await VibeSessionRegistry.global().send(this.session, params);
 		const ack =
 			outcome.mode === "turn"
@@ -167,7 +182,7 @@ export class VibeSendTool extends BaseVibeTool<typeof vibeSendSchema> {
 
 const WAIT_PROGRESS_INTERVAL_MS = 500;
 
-export class VibeWaitTool extends BaseVibeTool<typeof vibeWaitSchema> {
+export class VibeWaitTool extends BaseVibeTool<typeof vibeWaitSchema.value> {
 	readonly interruptible = true;
 
 	constructor(session: ToolSession) {
@@ -177,7 +192,7 @@ export class VibeWaitTool extends BaseVibeTool<typeof vibeWaitSchema> {
 			"Vibe Wait",
 			"Block until a worker session finishes its turn",
 			"read",
-			vibeWaitSchema,
+			vibeWaitSchema.value,
 			"wait",
 			"tools/vibe-wait",
 		);
@@ -185,7 +200,7 @@ export class VibeWaitTool extends BaseVibeTool<typeof vibeWaitSchema> {
 
 	async execute(
 		_toolCallId: string,
-		params: typeof vibeWaitSchema.infer,
+		params: typeof vibeWaitSchema.value.infer,
 		signal?: AbortSignal,
 		onUpdate?: AgentToolUpdateCallback<VibeToolDetails>,
 	): Promise<AgentToolResult<VibeToolDetails>> {
@@ -239,7 +254,7 @@ export class VibeWaitTool extends BaseVibeTool<typeof vibeWaitSchema> {
 	}
 }
 
-export class VibeKillTool extends BaseVibeTool<typeof vibeKillSchema> {
+export class VibeKillTool extends BaseVibeTool<typeof vibeKillSchema.value> {
 	constructor(session: ToolSession) {
 		super(
 			session,
@@ -247,13 +262,16 @@ export class VibeKillTool extends BaseVibeTool<typeof vibeKillSchema> {
 			"Vibe Kill",
 			"Terminate a worker session",
 			"read",
-			vibeKillSchema,
+			vibeKillSchema.value,
 			"kill",
 			"tools/vibe-kill",
 		);
 	}
 
-	async execute(_toolCallId: string, params: typeof vibeKillSchema.infer): Promise<AgentToolResult<VibeToolDetails>> {
+	async execute(
+		_toolCallId: string,
+		params: typeof vibeKillSchema.value.infer,
+	): Promise<AgentToolResult<VibeToolDetails>> {
 		const outcome = await VibeSessionRegistry.global().kill(this.session, params.session);
 		const cancelNote = outcome.cancelledTurn ? " Its in-flight turn was cancelled." : "";
 		return textResult(
@@ -267,7 +285,7 @@ export class VibeKillTool extends BaseVibeTool<typeof vibeKillSchema> {
 	}
 }
 
-export class VibeListTool extends BaseVibeTool<typeof vibeListSchema> {
+export class VibeListTool extends BaseVibeTool<typeof vibeListSchema.value> {
 	constructor(session: ToolSession) {
 		super(
 			session,
@@ -275,7 +293,7 @@ export class VibeListTool extends BaseVibeTool<typeof vibeListSchema> {
 			"Vibe List",
 			"List worker sessions and their states",
 			"read",
-			vibeListSchema,
+			vibeListSchema.value,
 			"list",
 			"tools/vibe-list",
 		);

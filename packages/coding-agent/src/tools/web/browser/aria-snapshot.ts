@@ -25,23 +25,52 @@ export interface AriaSnapshotOptions {
  * nor changes what they return. The `_ariaRef` markers the snapshot writes are that
  * world's expandos, which only {@link resolveAriaRefHandle}, running there too, reads.
  */
-function buildEvaluator(params: string, call: string): (...args: unknown[]) => unknown {
+function buildEvaluator(params: string, result: string): (...args: unknown[]) => unknown {
 	return new Function(
 		...params.split(",").map(p => p.trim()),
-		`var module = { exports: {} };\n${ariaBundle}\nreturn module.exports.${call};`,
+		`var module = { exports: {} };\n${ariaBundle}\nreturn ${result};`,
 	) as unknown as (...args: unknown[]) => unknown;
 }
 
 // Handles (root) must stay top-level args: Puppeteer only unwraps JSHandles
 // passed positionally to page.evaluate, never ones nested inside an object.
-const evaluateAriaSnapshot = buildEvaluator("root, request", "ariaSnapshot(root, request)");
-const evaluateResolveRef = buildEvaluator("ref", "resolveAriaRef(ref)");
+// After the snapshot, every element carrying an `_ariaRef` expando reports its
+// ref, role and name, walking open shadow roots as the snapshot does.
+const evaluateAriaSnapshot = buildEvaluator(
+	"root, request",
+	`(function () {
+	var text = module.exports.ariaSnapshot(root, request);
+	var refs = [];
+	var walk = function (scope) {
+		var all = scope.querySelectorAll("*");
+		for (var i = 0; i < all.length; i++) {
+			var marker = all[i]._ariaRef;
+			if (marker) refs.push([marker.ref, marker.role, marker.name]);
+			if (all[i].shadowRoot) walk(all[i].shadowRoot);
+		}
+	};
+	walk(document);
+	return { text: text, refs: refs };
+})()`,
+);
+const evaluateResolveRef = buildEvaluator("ref", "module.exports.resolveAriaRef(ref)");
 
-/** A snapshot's text and the frames its frame refs point into. */
-export interface AriaCapture {
+/** A ref the page holds, as its ref, role and accessible name. */
+export type AriaRefIdentity = [ref: string, role: string, name: string];
+
+/** What the page-side evaluator returns for one frame. */
+interface FrameCapture {
+	text: string;
+	refs: AriaRefIdentity[];
+}
+
+/** A snapshot's text, the frames its frame refs point into, and the role and name of each main-frame ref. */
+export interface AriaSnapshotCapture {
 	readonly text: string;
 	/** `f1` for the frame whose refs read `f1e…`, one per iframe the snapshot followed. */
 	readonly frames: ReadonlyMap<string, Frame>;
+	/** Every `[ref=eN]` of the main frame. A frame ref has none: its element is relocated by nothing. */
+	readonly refs: readonly AriaRefIdentity[];
 }
 
 /** How many iframes deep a snapshot follows. */
@@ -66,10 +95,11 @@ export async function captureAriaSnapshot(
 	page: Page,
 	root: ElementHandle | null,
 	options: AriaSnapshotOptions = {},
-): Promise<AriaCapture> {
+): Promise<AriaSnapshotCapture> {
 	const frames = new Map<string, Frame>();
-	const text = await snapshotFrame(page.mainFrame(), root, "", options, frames, FRAME_DEPTH_MAX);
-	return { text, frames };
+	const refs: AriaRefIdentity[] = [];
+	const text = await snapshotFrame(page.mainFrame(), root, "", options, frames, FRAME_DEPTH_MAX, refs);
+	return { text, frames, refs };
 }
 
 async function snapshotFrame(
@@ -79,11 +109,16 @@ async function snapshotFrame(
 	options: AriaSnapshotOptions,
 	frames: Map<string, Frame>,
 	depthLeft: number,
+	refs: AriaRefIdentity[] | null,
 ): Promise<string> {
 	const request = { depth: options.depth, boxes: options.boxes, refPrefix };
-	const yaml = compactSnapshot(
-		(await frame.evaluate(evaluateAriaSnapshot as never, root as never, request as never)) as string,
-	);
+	const capture = (await frame.evaluate(
+		evaluateAriaSnapshot as never,
+		root as never,
+		request as never,
+	)) as FrameCapture;
+	if (refs) refs.push(...capture.refs);
+	const yaml = compactSnapshot(capture.text);
 	if (depthLeft === 0 || !yaml.includes("- iframe")) return yaml;
 	const lines: string[] = [];
 	for (const line of yaml.split("\n")) {
@@ -95,7 +130,7 @@ async function snapshotFrame(
 		const prefix = `f${frames.size + 1}`;
 		frames.set(prefix, child);
 		// A frame that navigates or goes away while it is read keeps its line and loses its content.
-		const inner = await snapshotFrame(child, null, prefix, options, frames, depthLeft - 1).catch(() => "");
+		const inner = await snapshotFrame(child, null, prefix, options, frames, depthLeft - 1, null).catch(() => "");
 		if (inner.trim() === "") continue;
 		if (!line.endsWith(":")) lines[lines.length - 1] = `${line}:`;
 		for (const innerLine of inner.split("\n")) if (innerLine.trim() !== "") lines.push(`${iframe[1]}  ${innerLine}`);

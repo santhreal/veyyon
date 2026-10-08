@@ -5,6 +5,7 @@ import type { AgentToolResult } from "@veyyon/agent-core";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import {
+	SEARCH_TYPES,
 	SearchTool,
 	type SearchToolDetails,
 	type SearchToolInput,
@@ -141,10 +142,12 @@ describe("one search tool dispatches every workspace search mode", () => {
 	// field set out of the schema at run time and drives every (mode, field) pair: a new field
 	// with no sample value, or a mode that starts accepting one it did not, goes red here.
 	it("accepts exactly the fields its mode owns, across every field the schema declares", async () => {
-		const declaredFields = Object.keys(searchSchema.shape).filter(name => name !== "type" && name !== "input");
+		const declaredFields = searchSchema.value.props
+			.map(prop => String(prop.key))
+			.filter(name => name !== "type" && name !== "input");
 		expect(declaredFields.slice().sort()).toEqual(Object.keys(FIELD_SAMPLES).sort());
 
-		for (const type of searchSchema.shape.type.options) {
+		for (const type of SEARCH_TYPES) {
 			for (const field of declaredFields) {
 				const params = { type, input: MODE_INPUTS[type], [field]: FIELD_SAMPLES[field] } as SearchToolInput;
 				const call = tool.execute(`search-sweep-${type}-${field}`, params);

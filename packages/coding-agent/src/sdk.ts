@@ -1,18 +1,14 @@
 import { setImmediate as yieldToEventLoop } from "node:timers/promises";
-import {
-	Agent,
-	type AgentEvent,
-	type AgentMessage,
-	type AgentTelemetryConfig,
-	type AgentTool,
-	AppendOnlyContextManager,
-	filterProviderReplayMessages,
-} from "@veyyon/agent-core";
-import type { Context, CredentialDisabledEvent, Message, Model, SimpleStreamOptions } from "@veyyon/ai";
+import { Agent, type AgentTool, AppendOnlyContextManager, type StreamFn } from "@veyyon/agent-core";
+import type { Model, ServiceTierByFamily } from "@veyyon/ai";
+import type { AuthStorage } from "@veyyon/ai/auth-storage";
+import type { Dialect } from "@veyyon/ai/dialect";
 import { abortDetached } from "@veyyon/kernel/session/detached-abort";
 import { createInterruptedTurnAbortMessage } from "@veyyon/kernel/session/exit-diagnostics";
 import { OperatorNotices, stderrNoticeSink } from "@veyyon/kernel/session/operator-notices";
 import { disposeOwnedResources } from "@veyyon/kernel/session/owned-resources";
+import type { SessionContext } from "@veyyon/kernel/session/session-context";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { optionalNumber } from "@veyyon/kernel/settings/optional-number";
 import { attachNativeNoticeSink } from "@veyyon/natives/loader-state";
@@ -24,62 +20,58 @@ import {
 	getProjectDir,
 	logger,
 	postmortem,
-	prefetch,
 	Snowflake,
 } from "@veyyon/utils";
 import { type ArgotGate, shouldEncode } from "argot/policy";
 import { renderPreamble } from "argot/preamble";
-import { collectArgotLoadedRoots, createArgotSession, rearmArgotForDecode } from "./argot-cache";
-import { buildArgotGate, expandToolArguments } from "./argot-wire";
+import type { ArgotSession } from "argot/session";
+import { createArgotSession } from "./argot-cache";
+import { buildArgotGate } from "./argot-wire";
 import { AsyncJobManager } from "./async";
 import { AutoLearnController, buildAutoLearnInstructions } from "./autolearn/controller";
 import { shouldEnableAppendOnlyContext } from "./config/append-only-context-mode";
-import { measureContextGauge } from "./config/compaction-strategy";
 import { resolveDialect } from "./config/dialect-format";
 import { shouldInlineToolDescriptors } from "./config/inline-tool-descriptors-mode";
 import { ModelRegistry } from "./config/model-registry";
+import { openaiWebsocketPreference } from "./config/openai-websockets-mode";
+import type { PromptTemplate } from "./config/prompt-templates";
 import { buildServiceTierByFamily } from "./config/service-tier";
 import { Settings } from "./config/settings";
 import { CursorExecHandlers } from "./cursor";
 import { initializeWithSettings } from "./discovery";
-import { setActiveRules } from "./discovery/capability/rule";
-import { bucketRules } from "./discovery/capability/rule-buckets";
-import { countToolsForAutoDiscovery, resolveEffectiveToolDiscoveryMode } from "./discovery/mode";
-import {
-	collectDiscoverableTools,
-	filterBySource,
-	isMCPToolName,
-	selectDiscoverableToolNamesByServer,
-} from "./discovery/tool-index";
+import { type Rule, setActiveRules } from "./discovery/capability/rule";
+import { bucketRules, type RuleBuckets } from "./discovery/capability/rule-buckets";
 import { TtsrManager } from "./export/ttsr";
-import type { CustomTool } from "./extensibility/custom-tools/types";
+import type { LoadedCustomCommand } from "./extensibility/custom-commands/types";
+import type { CustomTool, CustomToolContext } from "./extensibility/custom-tools/types";
 import {
 	type BuiltinExtensionFactory,
 	ExtensionRunner,
 	ExtensionToolWrapper,
 	type ExtensionUIContext,
+	type LoadExtensionsResult,
+	type RegisteredTool,
 	wrapRegisteredTools,
 } from "./extensibility/extensions";
 import { type Skill, setActiveSkills } from "./extensibility/skills";
-import { LocalProtocolHandler } from "./internal-urls";
+import type { FileSlashCommand } from "./extensibility/slash-commands";
+import { LocalProtocolHandler, type LocalProtocolOptions } from "./internal-urls";
 import { describeLegacyPromptFile, findLegacyPromptFiles } from "./legacy-system-prompt-files";
-import { MCPManager } from "./mcp";
+import type { MCPManager } from "./mcp";
+import { holdSessionMcpManager, type McpManagerRelease } from "./mcp/manager-lease";
 import { createSessionMemoryRuntimeContext, resolveMemoryBackend } from "./memory/backend";
-import { recordRestLaunchFacts } from "./modes/launch-facts";
 import { AgentLifecycleManager } from "./registry/agent-lifecycle";
-import { AgentRegistry, MAIN_AGENT_ID, mainAgentIdFor } from "./registry/agent-registry";
+import { AgentRegistry } from "./registry/agent-registry";
 import { resolveHarnessProfileForModel, resolvePromptSectionOrderForModel } from "./registry/model-profile";
 import { attachSecretsNoticeSink } from "./secrets/notices";
-import { SecretRequestLeases } from "./secrets/request-leases";
 import { SessionSecretRuntime } from "./secrets/session-runtime";
 import { AgentSession } from "./session/agent-session";
 import { discoverAuthStorage } from "./session/auth-broker-config";
-import { sessionCpuExecHooks } from "./session/cpu-limit";
-import { convertToLlm, LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "./session/messages";
-import { computeNonMessageBreakdown } from "./session/non-message-tokens";
+import { type SessionCpuExecHooks, sessionCpuExecHooks } from "./session/cpu-limit";
+import { LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "./session/messages";
 import { createSettingsAwareStreamFn } from "./session/settings-stream-fn";
 import { StartupModelSelection } from "./session/startup-model";
-import { wrapSteeringForModel } from "./session/steering-envelope";
+import { orderSessionDisposal } from "./session/top-level-sessions";
 import { closeAllConnections } from "./ssh/connection-manager";
 import { unmountAll } from "./ssh/sshfs-mount";
 import {
@@ -92,9 +84,10 @@ import { renderSecretInventory } from "./system-prompt-builder/secret-inventory"
 import { delegationStrength } from "./task/agent-settings";
 import { AgentOutputManager } from "./task/output-manager";
 import { wrapStreamFnWithProviderConcurrency } from "./task/provider-concurrency";
-import { AUTO_THINKING, shouldDisableReasoning, toReasoningEffort } from "./thinking";
+import { shouldDisableReasoning, toReasoningEffort } from "./thinking";
 import {
 	BUILTIN_TOOLS,
+	type ContextFileEntry,
 	computeEssentialBuiltinNames,
 	createTools,
 	type DeferredDiagnosticsEntry,
@@ -106,13 +99,14 @@ import { createVibeModeTools } from "./tools/agent/manifest";
 import { normalizeToolNames, TOOL } from "./tools/core/builtin-names";
 import { ToolContextStore } from "./tools/core/context";
 import {
+	type InitialActiveToolNames,
 	resolveDiscoveryAllForceActive,
 	resolveInitialActiveToolNames,
 	resolveRequestedToolNames,
 } from "./tools/core/loading";
 import { wrapToolWithMetaNotice } from "./tools/core/output-meta";
 import { createRepairToolCallArgumentsHook } from "./tools/core/repair/agent-hook";
-import { renderSearchToolBm25Description, SearchToolBm25Tool } from "./tools/search/search-tool-bm25";
+import { renderSearchToolBm25Description } from "./tools/search/search-tool-bm25";
 import { isImageProviderPreference, setPreferredImageProvider } from "./tools/web/image-gen";
 import {
 	isSearchProviderId,
@@ -120,7 +114,9 @@ import {
 	setExcludedSearchProviders,
 	setPreferredSearchProvider,
 } from "./tools/web/search";
+import type { ActiveRepoContext } from "./utils/active-repo-context";
 import { EventBus } from "./utils/event-bus";
+import type { WorkspaceTree } from "./workspace-tree";
 
 // Types
 
@@ -153,8 +149,6 @@ export {
 	type ToolSession,
 };
 
-// Helper Functions
-
 // Discovery Functions
 
 /**
@@ -179,28 +173,17 @@ export {
  */
 export { discoverAuthStorage };
 
-// API Key Helpers
-
-// System Prompt
-
 // Internal Helpers
 
-import type { AsyncResultEntry, SecretRuntimeLease } from "./session/agent-session-types";
-import { createOwnedAsyncJobManager } from "./session/async-jobs";
+import type { AsyncResultEntry, ProjectAdvisorScope } from "./session/agent-session-types";
+import { createOwnedAsyncJobManager, sessionAsyncJobManager } from "./session/async-jobs";
 import {
 	discoverProjectInputs,
-	discoverPromptTemplates,
-	discoverSlashCommands,
+	type ProjectInputDiscovery,
 	projectAdvisorScope,
 	workspaceTreeWithinDeadline,
 } from "./session/factory-extensions";
-import {
-	clipMCPServerInstructions,
-	collectPendingMCPToolNames,
-	type StartDeferredMCPDiscovery,
-	startSessionMCP,
-	wireReactiveMCPManager,
-} from "./session/factory-mcp";
+import { openSessionMCP, type SessionMCP, wireReactiveMCPManager } from "./session/factory-mcp";
 import {
 	buildAsyncResultBatchMessage,
 	buildLateDiagnosticsBatchMessage,
@@ -216,25 +199,49 @@ import {
 import {
 	assembleToolRegistry,
 	createCustomToolsExtension,
-	customToolToDefinition,
-	isCustomTool,
-	isLegacyBuiltinToolDefinition,
 	loadSessionCustomTools,
+	registerSdkCustomTools,
 } from "./session/factory-tools";
+import { deferAtRestReading } from "./session/non-message-tokens";
 import {
 	applySystemPromptOverride,
 	composeAppendPrompt,
+	type DiscoveredProjectInputs,
 	ProjectPromptInputs,
 	promptDiscoverableTools,
 } from "./session/prompt-inputs";
-import { prewarmCodexTransport, startLspServers } from "./session/startup-background";
+import { deferMemoryStartup, prewarmCodexTransport, startLspServers } from "./session/startup-background";
+import { CredentialDisabledRelay } from "./session/startup-credential-relay";
 import {
 	adoptStartupExtensionProviders,
+	type CommandInputDiscovery,
+	discoverCommandInputs,
 	loadStartupCustomCommands,
 	loadStartupExtensions,
+	reportSkillWarnings,
 } from "./session/startup-extensions";
-import { armLaunchArgot, recordNewSessionStart } from "./session/startup-records";
-import { buildAdvisorTools, createSessionToolSession } from "./session/tool-session";
+import {
+	type AgentIdentity,
+	type ProviderPromptCache,
+	resolveAgentIdentity,
+	resolveProviderPromptCache,
+} from "./session/startup-identity";
+import {
+	armLaunchArgot,
+	rearmArgotForResume,
+	recordAtRestLaunch,
+	recordNewSessionDefaults,
+	recordNewSessionStart,
+} from "./session/startup-records";
+import {
+	createLeasedStreamFn,
+	createRequestHooks,
+	createToolArgumentTransform,
+	type SessionRequestHooks,
+	sessionTelemetry,
+} from "./session/startup-request-hooks";
+import { SessionToolDiscovery } from "./session/tool-discovery";
+import { buildAdvisorTools, createSessionToolSession, type SessionToolSession } from "./session/tool-session";
 
 let sshCleanupRegistered = false;
 
@@ -251,6 +258,1347 @@ function registerSshCleanup(): void {
 	if (sshCleanupRegistered) return;
 	sshCleanupRegistered = true;
 	postmortem.register("ssh-cleanup", cleanupSshResources);
+}
+
+/** Apply the web search, excluded web search and image provider preferences in `settings`. */
+function applyProviderPreferences(settings: Settings): void {
+	const excludedWebSearchProviders = settings.get("providers.webSearchExclude");
+	if (Array.isArray(excludedWebSearchProviders)) {
+		setExcludedSearchProviders(excludedWebSearchProviders.filter(isSearchProviderId));
+	}
+	const webSearchProvider = settings.get("providers.webSearch");
+	if (typeof webSearchProvider === "string" && isSearchProviderPreference(webSearchProvider)) {
+		setPreferredSearchProvider(webSearchProvider);
+	}
+	const imageProvider = settings.get("providers.image");
+	if (isImageProviderPreference(imageProvider)) setPreferredImageProvider(imageProvider);
+}
+
+/**
+ * The agent's dialect resolver, run with the active model on every request, so a switch to a
+ * `supportsTools: false` model stops sending the native `tools` parameter its endpoint rejects with a
+ * 400. `warn` receives one message per model that `tools.format` moves onto a text dialect for that reason.
+ */
+function createDialectResolver(
+	settings: Settings,
+	warn: (message: string) => void,
+): (requestModel: Model) => Dialect | undefined {
+	const warnedModels = new Set<string>();
+	return requestModel => {
+		const dialect = resolveDialect(settings.get("tools.format"), requestModel);
+		if (dialect === undefined || requestModel.supportsTools !== false) return dialect;
+		const modelKey = `${requestModel.provider}/${requestModel.id}`;
+		if (!warnedModels.has(modelKey)) {
+			warnedModels.add(modelKey);
+			warn(
+				`${modelKey} is cataloged as non-tool-calling; tools are delivered through the "${dialect}" text dialect instead of the native tools parameter.`,
+			);
+		}
+		return dialect;
+	};
+}
+
+/**
+ * Report the prompt size the model saw each turn: its input plus cached-prompt tokens, output excluded,
+ * read from the assistant message's usage.
+ */
+function onTurnPromptTokens(agent: Agent, report: (tokens: number) => void): void {
+	agent.subscribe(event => {
+		if (event.type !== "turn_end" || !("usage" in event.message) || !event.message.usage) return;
+		const { usage } = event.message;
+		report(usage.input + usage.cacheRead + usage.cacheWrite);
+	});
+}
+
+/**
+ * One {@link createAgentSession} call, as the steps it runs in order. Each step reads what the steps
+ * before it set. A resource a step acquires is released by {@link SessionStartup.abandon} when a later
+ * step throws before the session takes it over, and by the session's disposal once it has.
+ */
+class SessionStartup {
+	readonly #options: CreateAgentSessionOptions;
+	readonly #cwd: string;
+	readonly #agentDir: string;
+	readonly #globalConfigRoot: string;
+	readonly #eventBus: EventBus;
+	readonly #modelRegistry: ModelRegistry;
+	readonly #authStorage: AuthStorage;
+	readonly #credentialDisabled: CredentialDisabledRelay;
+	readonly #evalKernelOwnerId = `agent-session:${Snowflake.next()}`;
+	readonly #isSpawned: boolean;
+	readonly #taskDepth: number;
+	readonly #enableLsp: boolean;
+
+	// Released by `abandon` while no session owns them.
+	/** Detach the sinks routing secrets conditions and filesystem and native faults to the operator channel. */
+	readonly #noticeSinks: Array<() => void> = [];
+	/** The auth store startup created. */
+	readonly #createdAuthStorage: AuthStorage | undefined;
+	#createdSessionManager: SessionManager | undefined;
+	#createdMcpManager: MCPManager | undefined;
+	#releaseMcpManager: McpManagerRelease | undefined;
+	#asyncJobManager: AsyncJobManager | undefined;
+	#registered = false;
+	#session: AgentSession | undefined;
+	#agent: Agent | undefined;
+
+	// Set by a step of `run` before any reader runs.
+	#settings!: Settings;
+	#projectInputs!: ProjectInputDiscovery;
+	#commandInputs!: CommandInputDiscovery;
+	#operatorNotices!: OperatorNotices;
+	#sessionManager!: SessionManager;
+	#providerSessionId!: string;
+	#providerPromptCache!: ProviderPromptCache;
+	#secretRuntime!: SessionSecretRuntime;
+	#argot: ArgotSession | undefined;
+	#argotEnabled = false;
+	#argotGate!: ArgotGate;
+	/**
+	 * The prompt tokens the model last saw, refreshed each turn so the encode cutoff tracks the growing
+	 * context. 0 until the first response, which keeps encoding on for a small starting context.
+	 */
+	#argotContextTokens = 0;
+	#restoredBranch!: SessionEntry[];
+	#restoredContext!: SessionContext;
+	#hasExistingSession = false;
+	#hasServiceTierEntry = false;
+	#modelSelection!: StartupModelSelection;
+	#skills!: Skill[];
+	#rules!: Rule[];
+	#ruleBuckets!: RuleBuckets;
+	#ttsrManager!: TtsrManager;
+	#contextFiles!: ContextFileEntry[];
+	#activeRepoContext!: ActiveRepoContext | null;
+	#advisorScope!: ProjectAdvisorScope;
+	#agentRegistry!: AgentRegistry;
+	#identity!: AgentIdentity;
+	#tools!: SessionToolSession;
+	#scopedAsyncJobManager: AsyncJobManager | undefined;
+	#localProtocolOptions!: LocalProtocolOptions;
+	#builtinTools!: Tool[];
+	/** The built-ins `createTools` built, by provenance: a custom tool sharing a name is not one. */
+	#builtInToolNames!: string[];
+	#mcp!: SessionMCP;
+	#cpuExec!: SessionCpuExecHooks;
+	#extensionsResult!: LoadExtensionsResult;
+	#customCommands!: LoadedCustomCommand[];
+	#extensionRunner!: ExtensionRunner;
+	#toolContextStore!: ToolContextStore;
+	#registeredTools!: RegisteredTool[];
+	#sdkTools!: RegisteredTool[];
+	#toolRegistry!: Map<string, Tool>;
+	#builtInRegistryToolNames!: Set<string>;
+	#toolDiscovery!: SessionToolDiscovery;
+	#cursorExecHandlers!: CursorExecHandlers;
+	#promptInputs!: ProjectPromptInputs;
+	#requestedToolNames!: Set<string>;
+	#discoveryDefaultServers!: Set<string>;
+	#initialTools!: InitialActiveToolNames;
+	#preferWebsockets: boolean | undefined;
+	#serviceTierByFamily!: ServiceTierByFamily;
+	/**
+	 * The settings-aware stream wrapper the agent, the advisor and side requests (`/btw`, `/omfg`, IRC
+	 * auto-replies, handoff) share, so OpenRouter sticky routing, antigravity endpoint routing, in-flight
+	 * caps and the loop guard hold for every provider call. The per-provider concurrency limiter holds a
+	 * slot per LLM HTTP request, not per spawned agent lifecycle, which prevents the nested-spawn
+	 * deadlock from issue #3749.
+	 */
+	#sideStreamFn!: StreamFn;
+
+	/**
+	 * Whether a model receives its tool descriptors inline in the prompt rather than in the provider
+	 * schema. One per-model reading drives both prompt placement and schema pruning: a session can
+	 * switch model families, and `auto` chooses different representations for Gemini and native OpenAI
+	 * models.
+	 */
+	readonly #inlineToolDescriptors = (requestModel: Model): boolean =>
+		shouldInlineToolDescriptors(this.#settings.get("inlineToolDescriptors"), requestModel.id);
+
+	/** Resolve the model registry and the auth store it pins. */
+	static async begin(options: CreateAgentSessionOptions): Promise<SessionStartup> {
+		const cwd = options.cwd ?? getProjectDir();
+		const agentDir = options.agentDir ?? getAgentDir();
+		// The auth store is the model registry's: `ModelRegistry.getApiKey()` routes refresh failures
+		// through that instance, so a divergent store handed to the bridge, the MCP manager or the
+		// session would miss credential_disabled events.
+		const modelRegistry =
+			options.modelRegistry ??
+			new ModelRegistry(options.authStorage ?? (await logger.time("discoverModels", discoverAuthStorage, agentDir)));
+		if (options.authStorage && options.authStorage !== modelRegistry.authStorage) {
+			throw new Error(
+				"options.authStorage and options.modelRegistry.authStorage must be the same instance when both are provided",
+			);
+		}
+		return new SessionStartup(options, cwd, agentDir, modelRegistry);
+	}
+
+	private constructor(
+		options: CreateAgentSessionOptions,
+		cwd: string,
+		agentDir: string,
+		modelRegistry: ModelRegistry,
+	) {
+		this.#options = options;
+		this.#cwd = cwd;
+		this.#agentDir = agentDir;
+		this.#globalConfigRoot = options.globalConfigRoot ?? getGlobalConfigRootDir();
+		this.#eventBus = options.eventBus ?? new EventBus();
+		this.#modelRegistry = modelRegistry;
+		this.#authStorage = modelRegistry.authStorage;
+		this.#createdAuthStorage = !options.authStorage && !options.modelRegistry ? this.#authStorage : undefined;
+		this.#credentialDisabled = new CredentialDisabledRelay(this.#authStorage);
+		this.#isSpawned = isSubagentSession(options);
+		this.#taskDepth = options.taskDepth ?? 0;
+		this.#enableLsp = options.enableLsp ?? true;
+	}
+
+	async run(): Promise<CreateAgentSessionResult> {
+		await this.#openChannels();
+		this.#createArgot();
+		await this.#restoreTranscript();
+		await this.#beginModelSelection();
+		const workspaceTree = await this.#loadProjectInputs();
+		this.#createToolSession(workspaceTree);
+		this.#installProtocolState();
+		await this.#loadTools();
+		await this.#completeModelSelection();
+		await this.#createExtensionRunner();
+		await this.#assembleTools();
+		this.#createPromptInputs();
+		this.#resolveInitialTools();
+		this.#registerAgent();
+		const prompt = await this.#buildInitialSystemPrompt();
+		const promptTemplates = await this.#commandInputs.promptTemplates;
+		this.#tools.toolSession.promptTemplates = promptTemplates;
+		const slashCommands = await this.#commandInputs.slashCommands;
+		const hooks = createRequestHooks(this.#secretRuntime, this.#extensionRunner);
+		const agent = this.#createAgent(prompt, hooks);
+		const session = this.#createSession(agent, hooks, promptTemplates, slashCommands);
+		this.#recordSessionStart(session);
+		this.#attachSession(session);
+		const lspServers = await this.#startBackgroundWork(session);
+		return {
+			session,
+			extensionsResult: this.#extensionsResult,
+			setToolUIContext: (uiContext: ExtensionUIContext, hasUI: boolean) => {
+				this.#toolContextStore.setUIContext(uiContext, hasUI);
+			},
+			setToolNotifier: this.#tools.setNotifier,
+			mcpManager: this.#mcp.manager,
+			modelFallbackMessage: this.#modelSelection.fallbackMessage,
+			lspServers,
+			eventBus: this.#eventBus,
+		};
+	}
+
+	/**
+	 * Release what startup acquired after a step threw. The subscription and the sinks are released
+	 * first, so none keeps pointing at a session that never started; each release is idempotent with
+	 * the dispose path.
+	 */
+	async abandon(): Promise<void> {
+		this.#credentialDisabled.dispose();
+		this.#detachNoticeSinks();
+		try {
+			if (this.#session) await this.#session.dispose();
+			else await this.#releaseUnstarted();
+		} catch (cleanupError) {
+			logger.warn("Failed to clean up createAgentSession resources after startup error", {
+				error: errorMessage(cleanupError),
+			});
+		}
+	}
+
+	/** Release what no session took over. */
+	async #releaseUnstarted(): Promise<void> {
+		if (this.#registered) this.#unregisterUnlessParked();
+		const jobs = this.#asyncJobManager;
+		if (jobs) {
+			if (AsyncJobManager.instance() === jobs) AsyncJobManager.setInstance(undefined);
+			await jobs.dispose({ timeoutMs: 3_000 });
+		}
+		await disposeOwnedResources("eval-kernel-owner", this.#evalKernelOwnerId);
+		// A manager startup created is disconnected when no release holds it.
+		if (this.#releaseMcpManager) await this.#releaseMcpManager();
+		else await this.#createdMcpManager?.disconnectAll();
+		await this.#createdSessionManager?.close();
+		this.#createdAuthStorage?.close();
+	}
+
+	#detachNoticeSinks(): void {
+		for (const detach of this.#noticeSinks.splice(0)) detach();
+	}
+
+	/**
+	 * Forget the agent ref on teardown, unless the agent is being parked or already is. Parking disposes
+	 * the session but keeps the ref addressable (history://, revive); only process teardown or an
+	 * explicit kill unregisters.
+	 */
+	#unregisterUnlessParked(): void {
+		const id = this.#identity.id;
+		if (this.#agentRegistry.get(id)?.status === "parked") return;
+		if (AgentLifecycleManager.global().isParking(id)) return;
+		this.#agentRegistry.unregister(id);
+	}
+
+	/**
+	 * Load settings, start every project-input discovery, and open the session file, the operator
+	 * channel and the secret runtime.
+	 *
+	 * Each discovery is awaited at its consumer, so the scans overlap model resolution, secret loading,
+	 * the session-context build, tool creation, MCP discovery and extension discovery. A spawned agent
+	 * inherits its parent's resolved values through the options.
+	 */
+	async #openChannels(): Promise<void> {
+		const options = this.#options;
+		const cwd = this.#cwd;
+		const agentDir = this.#agentDir;
+		const settings = await (options.settings ??
+			options.settingsManager ??
+			logger.time("settings", Settings.init, { cwd, agentDir }));
+		this.#settings = settings;
+		logger.time("initializeWithSettings", initializeWithSettings, settings);
+		if (!options.modelRegistry) {
+			this.#modelRegistry.refreshInBackground();
+		}
+		// A caller that filtered its context files down to nothing turns discovery off.
+		if (options.contextFiles?.length === 0) {
+			logger.warn("Context file discovery disabled: caller supplied an empty resolved list", { cwd, agentDir });
+		}
+		this.#projectInputs = discoverProjectInputs(cwd, agentDir, settings, options);
+		this.#commandInputs = discoverCommandInputs(cwd, agentDir, options);
+		applyProviderPreferences(settings);
+		// The operator-visible channel for non-fatal startup and runtime problems. It exists before the
+		// session manager, so load-time recovery notices use the same surface as secrets and filesystem
+		// faults. The default is stderr rather than dropping warnings.
+		this.#operatorNotices = options.operatorNotices ?? new OperatorNotices(stderrNoticeSink);
+		this.#openSessionManager();
+		await this.#attachNoticeSinks();
+		// Startup is the only load that may start without a vault; every later reload throws, because
+		// its caller is about to expand a live placeholder.
+		this.#secretRuntime = await SessionSecretRuntime.load(
+			{
+				settings,
+				globalConfigRoot: this.#globalConfigRoot,
+				agentDir,
+				operatorNotices: this.#operatorNotices,
+				getCwd: () => this.#sessionManager.getCwd(),
+			},
+			cwd,
+		);
+	}
+
+	#openSessionManager(): void {
+		const options = this.#options;
+		const instrumentation = this.#settings.get("session.instrumentation");
+		const sessionManager =
+			options.sessionManager ??
+			logger.time("sessionManager", () =>
+				SessionManager.create(
+					this.#cwd,
+					SessionManager.getDefaultSessionDir(this.#cwd, this.#agentDir),
+					undefined,
+					{
+						operatorNotices: this.#operatorNotices,
+						instrumentation,
+					},
+				),
+			);
+		if (!options.sessionManager) this.#createdSessionManager = sessionManager;
+		this.#sessionManager = sessionManager;
+		// A caller-supplied manager was constructed before this SDK surface existed. Attach the selected
+		// session's channel now so a later setSessionFile or load recovery is still visible.
+		sessionManager.setOperatorNotices(this.#operatorNotices);
+		sessionManager.setInstrumentationLevel(this.#settings.get("session.instrumentation"));
+		this.#providerSessionId = options.providerSessionId ?? sessionManager.getSessionId();
+		this.#providerPromptCache = resolveProviderPromptCache(
+			options,
+			sessionManager.getHeader()?.providerPromptCacheKey,
+		);
+	}
+
+	/**
+	 * Route conditions raised below this layer to the operator channel. Key and vault conditions come
+	 * from deep inside the secrets subsystem and cannot be returned (see secrets/notices.ts). The
+	 * `@veyyon/utils` helpers are free functions with no per-session channel, so without the fault sink
+	 * an agents directory that exists and cannot be listed reported "no agents" and logged the reason to
+	 * a file. The native loader runs before any session exists and inside the interactive UI, where a raw
+	 * terminal write lands between frames; its notices wait in the loader until this sink attaches.
+	 *
+	 * Each registration is identity-bound, so overlapping sessions all receive process-global
+	 * conditions, and each is detached on dispose and on a startup failure: every sink closes over
+	 * `operatorNotices` and would otherwise outlive the session it reports to.
+	 */
+	async #attachNoticeSinks(): Promise<void> {
+		const operatorNotices = this.#operatorNotices;
+		this.#noticeSinks.push(attachSecretsNoticeSink(message => operatorNotices.warn("secrets", message)));
+		for (const legacyFile of await findLegacyPromptFiles({ cwd: this.#cwd, agentDir: this.#agentDir })) {
+			operatorNotices.warn("system-prompt", describeLegacyPromptFile(legacyFile));
+		}
+		this.#noticeSinks.push(
+			attachFaultSink(fault => operatorNotices.warn(fault.source, fault.text)),
+			attachNativeNoticeSink(text => operatorNotices.warn("natives", text)),
+		);
+	}
+
+	/**
+	 * The Argot per-project shorthand codec (experimental). The launch project's dictionary loads at
+	 * startup; further projects load through the `argot_load` tool. The dictionary is a local cache under
+	 * the config root, never committed. The system prompt teaches the notation and the loaded handles.
+	 * Expansion runs at the same two seams as secret deobfuscation, tool-call arguments before execution
+	 * and assistant content before display, so the short handle stays in history and everything outside
+	 * history reads full text.
+	 *
+	 * A spawned agent follows `argot.agents`: `off` gets no codec, `fresh` an empty session that loads its
+	 * task's project itself, `inherit` a fork of the parent's codec. The encode gate selects which models
+	 * may write shorthand and an optional context-size cutoff; decoding is unconditional and lossless.
+	 */
+	#createArgot(): void {
+		const settings = this.#settings;
+		this.#argotEnabled = settings.get("argot.enabled") === true;
+		this.#argot = createArgotSession({
+			enabled: this.#argotEnabled,
+			isSpawned: this.#isSpawned,
+			agentMode: settings.get("argot.agents"),
+			parentArgot: this.#options.parentArgot,
+		});
+		this.#argotGate = buildArgotGate(
+			this.#argotEnabled,
+			settings.get("argot.encode.models") ?? [],
+			settings.get("argot.encode.disableAboveTokens"),
+		);
+	}
+
+	/**
+	 * Read the session's branch and context. An abnormal process exit after a non-terminal message tail
+	 * is durable evidence that the old process cannot finish that turn, so the partial transcript is
+	 * kept and one terminal aborted assistant record is appended before the runtime context is rebuilt.
+	 * The helper is idempotent once that record exists.
+	 */
+	async #restoreTranscript(): Promise<void> {
+		const sessionManager = this.#sessionManager;
+		let branch = logger.time("getSessionBranch", () => sessionManager.getBranch());
+		const interruptedTurnAbort = createInterruptedTurnAbortMessage(branch);
+		if (interruptedTurnAbort) {
+			sessionManager.appendMessage(interruptedTurnAbort);
+			branch = logger.time("getRecoveredSessionBranch", () => sessionManager.getBranch());
+		}
+		this.#restoredBranch = branch;
+		this.#restoredContext = logger.time("loadSessionContext", () => sessionManager.buildSessionContext());
+		await rearmArgotForResume(this.#argot, branch, this.#settings);
+		this.#hasExistingSession = branch.length > 0;
+		this.#hasServiceTierEntry = branch.some(entry => entry.type === "service_tier_change");
+	}
+
+	/**
+	 * The first model pass: the session's last model, else the settings default. Extension providers
+	 * register later, and {@link completeModelSelection} runs the second pass.
+	 */
+	async #beginModelSelection(): Promise<void> {
+		this.#modelSelection = await StartupModelSelection.begin({
+			options: this.#options,
+			settings: this.#settings,
+			modelRegistry: this.#modelRegistry,
+			sessionManager: this.#sessionManager,
+			existingSession: this.#restoredContext,
+			hasExistingSession: this.#hasExistingSession,
+			hasThinkingEntry: this.#restoredBranch.some(entry => entry.type === "thinking_level_change"),
+		});
+	}
+
+	/**
+	 * Await the skills, rules and context files, registering the TTSR rules. Returns the workspace tree
+	 * when its scan finished within the startup deadline: the scan is slow on large repositories, so past
+	 * the deadline the tool session gets none and the system prompt races the same promise again while
+	 * the scan warms its caches.
+	 */
+	async #loadProjectInputs(): Promise<WorkspaceTree | undefined> {
+		const projectInputs = this.#projectInputs;
+		const discovered = await projectInputs.skills;
+		this.#skills = discovered.skills;
+		reportSkillWarnings(this.#operatorNotices, discovered.warnings);
+		// `getCwd` is live, not `cwd`: a rule with a `pathScope` compares the match against the CURRENT
+		// working directory, and `set_cwd` moves it mid-session.
+		const ttsrSettings = this.#settings.getGroup("ttsr");
+		const ttsrManager = new TtsrManager(ttsrSettings, { getCwd: () => this.#sessionManager.getCwd() });
+		this.#ttsrManager = ttsrManager;
+		this.#rules = await projectInputs.rules;
+		this.#ruleBuckets = bucketRules(this.#rules, ttsrManager, ttsrSettings);
+		const { injectedTtsrRules } = this.#restoredContext;
+		if (injectedTtsrRules.length > 0) ttsrManager.restoreInjected(injectedTtsrRules);
+		const [contextFiles, workspaceTree, activeRepoContext, watchdogFiles, advisors] = await Promise.all([
+			projectInputs.contextFiles,
+			workspaceTreeWithinDeadline(projectInputs),
+			projectInputs.activeRepoContext,
+			projectInputs.watchdogFiles,
+			projectInputs.advisors,
+		]);
+		this.#contextFiles = contextFiles;
+		this.#activeRepoContext = activeRepoContext;
+		// The advisor reads the same project context files (AGENTS.md and the rest) the primary agent's
+		// system prompt carries, so the read-only reviewer judges against them.
+		this.#advisorScope = projectAdvisorScope({ watchdogFiles, activeRepoContext, contextFiles, advisors });
+		return workspaceTree;
+	}
+
+	#createToolSession(workspaceTree: WorkspaceTree | undefined): void {
+		const options = this.#options;
+		const sessionManager = this.#sessionManager;
+		this.#asyncJobManager = createOwnedAsyncJobManager({
+			options,
+			settings: this.#settings,
+			sessionManager,
+			target: () => this.#session,
+		});
+		this.#scopedAsyncJobManager = sessionAsyncJobManager(this.#asyncJobManager, options);
+		this.#agentRegistry = options.agentRegistry ?? AgentRegistry.global();
+		this.#identity = resolveAgentIdentity(options, this.#isSpawned, sessionManager.getSessionId?.());
+		this.#tools = createSessionToolSession({
+			options,
+			sessionManager,
+			session: () => this.#session,
+			agent: () => this.#agent,
+			startupModel: () => this.#modelSelection.model,
+			hasExplicitModel: this.#modelSelection.hasExplicitModel,
+			obfuscateProviderText: text => this.#secretRuntime.obfuscateText(text),
+			isSpawned: this.#isSpawned,
+			agentId: this.#identity.id,
+			evalKernelOwnerId: this.#evalKernelOwnerId,
+			fields: {
+				enableLsp: this.#enableLsp,
+				contextFiles: this.#contextFiles,
+				workspaceTree,
+				skills: this.#skills,
+				rules: this.#rules,
+				eventBus: this.#eventBus,
+				agentRegistry: this.#agentRegistry,
+				settings: this.#settings,
+				authStorage: this.#authStorage,
+				modelRegistry: this.#modelRegistry,
+				asyncJobManager: this.#scopedAsyncJobManager,
+			},
+		});
+	}
+
+	/**
+	 * Install the process-wide internal URL state and the tool session's artifact resolution. A top-level
+	 * session installs the active snapshots; a spawned agent inherits them. Artifact and agent-output URLs
+	 * resolve through `AgentRegistry.global()`: the protocol handlers walk each ref's
+	 * `sessionManager.getArtifactsDir()`, which is the parent's directory for a spawned agent (it adopts
+	 * the parent's ArtifactManager), so one lookup reaches every artifact.
+	 */
+	#installProtocolState(): void {
+		const options = this.#options;
+		const toolSession = this.#tools.toolSession;
+		const getArtifactsDir = () => this.#sessionManager.getArtifactsDir();
+		if (!isInProcessChildSession(options)) this.#publishTopLevelState();
+		this.#localProtocolOptions = options.localProtocolOptions ?? {
+			getArtifactsDir,
+			getSessionId: () => this.#sessionManager.getSessionId?.() ?? null,
+		};
+		if (options.localProtocolOptions) {
+			LocalProtocolHandler.setOverride(options.localProtocolOptions);
+		}
+		toolSession.getArtifactsDir = getArtifactsDir;
+		toolSession.localProtocolOptions = this.#localProtocolOptions;
+		toolSession.agentOutputManager = new AgentOutputManager(
+			getArtifactsDir,
+			options.parentTaskPrefix ? { parentPrefix: options.parentTaskPrefix } : undefined,
+		);
+	}
+
+	#publishTopLevelState(): void {
+		setActiveSkills(this.#skills);
+		// TTSR rules are registered with the manager and bucketed out before rulebook and always-apply,
+		// so they are listed too: without them a TTSR-only rule (a triggered builtin) has no `rule://`
+		// address and `rule://` reports "Available: none".
+		const { rulebookRules, alwaysApplyRules } = this.#ruleBuckets;
+		setActiveRules(rulebookRules.concat(alwaysApplyRules, this.#ttsrManager.getRules()));
+		// The first top-level session's manager stays the process-wide fallback. A later one runs its own
+		// jobs and never replaces it, so its disposal cannot take the first session's jobs down (issue #1923).
+		const jobs = this.#asyncJobManager;
+		if (jobs && !AsyncJobManager.instance()) AsyncJobManager.setInstance(jobs);
+	}
+
+	/**
+	 * Build the built-in tools, open MCP, load the custom tools and the extensions, and register the
+	 * extension providers. Every process a custom tool, custom command or extension spawns through
+	 * `exec` joins the session's CPU budget group; the hooks resolve the limiter lazily, so it may be
+	 * created after the tools load.
+	 */
+	async #loadTools(): Promise<void> {
+		const options = this.#options;
+		const toolSession = this.#tools.toolSession;
+		this.#builtinTools = await logger.time("createAllTools", createTools, toolSession, options.toolNames);
+		const mcp = await openSessionMCP({
+			cwd: this.#cwd,
+			agentDir: this.#agentDir,
+			settings: this.#settings,
+			authStorage: this.#authStorage,
+			eventBus: this.#eventBus,
+			options,
+			restoredSelectedToolNames: this.#restoredContext.selectedMCPToolNames,
+		});
+		this.#mcp = mcp;
+		this.#createdMcpManager = mcp.createdManager;
+		toolSession.mcpManager = mcp.manager;
+		this.#builtInToolNames = this.#builtinTools.map(tool => tool.name);
+		this.#cpuExec = sessionCpuExecHooks(() => toolSession.getSessionId?.() ?? null);
+		const sessionCustomTools = await loadSessionCustomTools({
+			options,
+			settings: this.#settings,
+			modelRegistry: this.#modelRegistry,
+			model: this.#modelSelection.model,
+			cwd: this.#cwd,
+			agentDir: this.#agentDir,
+			builtInToolNames: this.#builtInToolNames,
+			toolSession,
+			cpuExec: this.#cpuExec,
+			operatorNotices: this.#operatorNotices,
+		});
+		// A spawned agent receives the path list, not the loaded tools, and binds them under its own
+		// `CustomToolAPI` without the filesystem scan.
+		toolSession.customToolPaths = sessionCustomTools.paths;
+		await this.#loadExtensions(mcp.tools.concat(sessionCustomTools.tools));
+	}
+
+	async #loadExtensions(customTools: CustomTool[]): Promise<void> {
+		const builtins: BuiltinExtensionFactory[] = [(await import("./autoresearch")).createAutoresearchExtension];
+		if (customTools.length > 0) {
+			builtins.push(createCustomToolsExtension(customTools, text => this.#secretRuntime.obfuscateText(text)));
+		}
+		const extensions = await loadStartupExtensions(
+			{
+				options: this.#options,
+				cwd: this.#cwd,
+				agentDir: this.#agentDir,
+				settings: this.#settings,
+				eventBus: this.#eventBus,
+				cpuExec: this.#cpuExec,
+				operatorNotices: this.#operatorNotices,
+			},
+			builtins,
+		);
+		this.#extensionsResult = extensions.result;
+		// A spawned agent receives the source paths, not the loaded instances, and rebuilds its own
+		// session-scoped extensions.
+		const toolSession = this.#tools.toolSession;
+		toolSession.extensionPaths = extensions.paths;
+		toolSession.namedExtensionPaths = extensions.namedPaths;
+		await adoptStartupExtensionProviders(this.#modelRegistry, extensions.result);
+	}
+
+	/**
+	 * The second model pass, with every provider registered: reclaim the session's model, resolve
+	 * deferred `--model` patterns, fall back to the first authenticated model, and refresh the chosen
+	 * model's metadata. A first-turn user tail has no assistant metadata to copy, so the final model
+	 * terminates the interrupted turn before the agent consumes the restored context.
+	 */
+	async #completeModelSelection(): Promise<void> {
+		await this.#modelSelection.completeAfterExtensions();
+		const model = this.#modelSelection.model;
+		if (!model) return;
+		const selectedModelAbort = createInterruptedTurnAbortMessage(this.#restoredBranch, {
+			api: model.api,
+			provider: model.provider,
+			model: model.id,
+		});
+		if (!selectedModelAbort) return;
+		const sessionManager = this.#sessionManager;
+		sessionManager.appendMessage(selectedModelAbort);
+		this.#restoredContext = logger.time("loadRecoveredUserTailContext", () => sessionManager.buildSessionContext());
+	}
+
+	/**
+	 * Load the custom commands and create the extension runner and the tool context store.
+	 *
+	 * The runner exists even with no extension loaded: the `ExtensionToolWrapper` installed over every
+	 * tool is the only place the per-tool approval check runs, so a conditional runner would drop
+	 * approval for a session without extensions and contradict a non-yolo `tools.approvalMode` without
+	 * feedback.
+	 */
+	async #createExtensionRunner(): Promise<void> {
+		const cwd = this.#cwd;
+		const agentDir = this.#agentDir;
+		const customCommands = await loadStartupCustomCommands({
+			options: this.#options,
+			cwd,
+			agentDir,
+			cpuExec: this.#cpuExec,
+			operatorNotices: this.#operatorNotices,
+		});
+		this.#customCommands = customCommands.commands;
+		const extensionRunner = new ExtensionRunner(
+			this.#extensionsResult.extensions,
+			this.#extensionsResult.runtime,
+			cwd,
+			this.#sessionManager,
+			this.#modelRegistry,
+			() => (this.#session ? createSessionMemoryRuntimeContext(this.#session, agentDir, cwd) : undefined),
+			this.#settings,
+			this.#localProtocolOptions,
+		);
+		this.#extensionRunner = extensionRunner;
+		this.#credentialDisabled.attach(extensionRunner);
+		this.#toolContextStore = new ToolContextStore(() => this.#toolExecutionContext());
+		// The agent loop resolves the context of a call the model makes. A call an eval snippet or a
+		// browser page makes reaches the same approval-wrapped tools directly, so it reads the same
+		// context or it arrives with no policy at all.
+		this.#tools.toolSession.getToolContext = toolCall => this.#toolContextStore.getContext(toolCall);
+	}
+
+	/**
+	 * The session state every tool execution context is built from, read per build so a mid-session
+	 * `/yolo` toggle applies to the next tool call.
+	 */
+	#toolExecutionContext(): CustomToolContext {
+		const session = this.#session;
+		const agent = this.#agent;
+		if (!session || !agent) {
+			throw new Error("A tool execution context was requested before the session was constructed.");
+		}
+		return {
+			sessionManager: this.#sessionManager,
+			modelRegistry: this.#modelRegistry,
+			model: agent.state.model,
+			isIdle: () => !session.isStreaming,
+			hasQueuedMessages: () => session.queuedMessageCount > 0,
+			abort: () => {
+				abortDetached(session, "sdk.agentControl.abort", USER_INTERRUPT_LABEL);
+			},
+			settings: this.#settings,
+			obfuscateProviderText: text => this.#secretRuntime.obfuscateText(text),
+			localProtocolOptions: this.#localProtocolOptions,
+			autoApprove: this.#options.autoApprove ?? false,
+			bypassAllApprovals: session.isApprovalBypassed(),
+			sessionApprovals: session.sessionToolApprovals(),
+		};
+	}
+
+	/**
+	 * Assemble the tool registry and resolve the discovery mode. Extension, SDK-custom, image
+	 * generation, TTS and startup (non-deferred) MCP tools are wrapped here with the large-output
+	 * artifact spill that `createTools` applies to built-ins; the wrap is idempotent.
+	 */
+	async #assembleTools(): Promise<void> {
+		const extensionRunner = this.#extensionRunner;
+		const toolSession = this.#tools.toolSession;
+		this.#registeredTools = extensionRunner.getAllRegisteredTools();
+		this.#sdkTools = registerSdkCustomTools(this.#options.customTools, text =>
+			this.#secretRuntime.obfuscateText(text),
+		);
+		const extensionTools: Tool[] = wrapRegisteredTools(
+			this.#registeredTools.concat(this.#sdkTools),
+			extensionRunner,
+		).map(wrapToolWithMetaNotice);
+		const { tools, builtInNames } = await assembleToolRegistry({
+			builtinTools: this.#builtinTools,
+			extensionTools,
+			pendingMCPToolNames: this.#mcp.pendingToolNames,
+			extensionRunner,
+			settings: this.#settings,
+			toolSession,
+		});
+		this.#toolRegistry = tools;
+		this.#builtInRegistryToolNames = builtInNames;
+		this.#toolDiscovery = new SessionToolDiscovery({
+			tools,
+			builtInNames,
+			settings: this.#settings,
+			toolSession,
+			extensionRunner,
+		});
+		this.#cursorExecHandlers = new CursorExecHandlers({
+			cwd: this.#cwd,
+			tools,
+			getToolContext: () => this.#toolContextStore.getContext(),
+			emitEvent: event => this.#agent?.emitExternalEvent(event),
+		});
+	}
+
+	/** The `ssh` tool rebuilt for the live working directory, or null when the session did not request it. */
+	async #reloadSshTool(): Promise<AgentTool | null> {
+		if (!this.#requestedToolNames.has(TOOL.ssh)) return null;
+		const { loadSshTool } = await import("./tools/shell/ssh");
+		const sshTool = (await loadSshTool({
+			...this.#tools.toolSession,
+			cwd: this.#sessionManager.getCwd(),
+		})) as unknown as AgentTool | null;
+		if (!sshTool) return null;
+		return new ExtensionToolWrapper(wrapToolWithMetaNotice(sshTool), this.#extensionRunner) as AgentTool;
+	}
+
+	#createPromptInputs(): void {
+		const settings = this.#settings;
+		const { rulebookRules, alwaysApplyRules } = this.#ruleBuckets;
+		this.#promptInputs = new ProjectPromptInputs({
+			initial: {
+				cwd: this.#cwd,
+				contextFiles: this.#contextFiles,
+				workspaceTree: this.#projectInputs.workspaceTree,
+				activeRepoContext: this.#activeRepoContext,
+				nonProjectCwd: this.#projectInputs.nonProjectCwd,
+				skills: this.#skills,
+				rulebookRules,
+				alwaysApplyRules,
+			},
+			getCwd: () => this.#sessionManager.getCwd(),
+			discover: liveCwd => discoverProjectInputs(liveCwd, this.#agentDir, settings, this.#options),
+			ttsrManager: this.#ttsrManager,
+			ttsrOptions: () => settings.getGroup("ttsr"),
+			onChange: next => this.#applyProjectInputs(next),
+		});
+	}
+
+	/** Move the tool session, the session and the process-wide snapshots onto a new working directory's inputs. */
+	#applyProjectInputs(next: DiscoveredProjectInputs): void {
+		const toolSession = this.#tools.toolSession;
+		toolSession.contextFiles = next.contextFiles;
+		toolSession.workspaceTree = next.workspaceTree;
+		toolSession.skills = next.skills;
+		toolSession.rules = next.rules;
+		if (this.#session) {
+			this.#session.replaceSkills(next.skills);
+			this.#session.replaceProjectAdvisorScope(projectAdvisorScope(next));
+		}
+		reportSkillWarnings(this.#operatorNotices, next.skillWarnings);
+		this.#ttsrManager.reportUnknownToolScopes(this.#toolRegistry.keys());
+		if (!isInProcessChildSession(this.#options)) {
+			setActiveSkills(next.skills);
+			setActiveRules([
+				...next.buckets.rulebookRules,
+				...next.buckets.alwaysApplyRules,
+				...this.#ttsrManager.getRules(),
+			]);
+		}
+	}
+
+	/**
+	 * The system prompt for `toolNames` over `tools`. Every settings-fed gate is re-read from the one
+	 * resolver the inspection path (`veyyon prompt`) also calls, so a setting flipped mid-session changes
+	 * the next rebuild, and the project inputs follow the live working directory.
+	 */
+	async #rebuildSystemPrompt(toolNames: string[], tools: Map<string, AgentTool>): Promise<BuildSystemPromptResult> {
+		const options = this.#options;
+		const settings = this.#settings;
+		const toolDiscovery = this.#toolDiscovery;
+		await this.#promptInputs.refresh();
+		this.#toolContextStore.setToolNames(toolNames);
+		const discoverable = promptDiscoverableTools({
+			tools,
+			activeToolNames: toolNames,
+			mcpDiscoveryEnabled: toolDiscovery.enabled,
+			discoveryMode: toolDiscovery.mode,
+			builtInToolNames: this.#builtInRegistryToolNames,
+		});
+		const promptTools = buildSystemPromptToolMetadata(tools, {
+			search_tool_bm25: { description: renderSearchToolBm25Description(discoverable.tools) },
+		});
+		const gateInputs = resolveGateInputs(settings, {
+			tools,
+			model: this.#tools.activeModel(),
+			taskDepth: this.#taskDepth,
+		});
+		const memoryBackend = await resolveMemoryBackend(settings);
+		const appendPrompt = composeAppendPrompt({
+			memoryInstructions: await memoryBackend.buildDeveloperInstructions(this.#agentDir, settings, this.#session),
+			// Guidance follows the auto-learn built-ins `createTools` built, by provenance: a spawned agent
+			// that filtered them out, a mid-session enable that never built them, and a same-named custom
+			// tool while auto-learn is off all get none.
+			autoLearnInstructions: buildAutoLearnInstructions({
+				manageSkill: this.#builtInToolNames.includes(TOOL.manage_skill),
+				learn: this.#builtInToolNames.includes(TOOL.learn),
+			}),
+			// A UI session defers MCP discovery, so this is empty until the background connect completes;
+			// the rebuild `refreshMCPTools` triggers afterwards adds the connected servers' instructions.
+			serverInstructions: this.#mcp.manager?.getServerInstructions(),
+			appendSystemPrompt: options.appendSystemPrompt,
+		});
+		const defaultPrompt = await buildSystemPromptInternal({
+			...gateInputs,
+			...this.#promptInputs.promptOptions(),
+			// The tree is scanned when the project is discovered, so this flag hides a scanned tree but
+			// cannot scan one; `gate-registry.ts` records that placement.
+			includeWorkspaceTree: settings.get("includeWorkspaceTree") ?? false,
+			// A spawned agent gets no personality whatever the setting: a fact about this caller, not
+			// about the configuration.
+			personality: this.#identity.kind === "sub" ? "none" : gateInputs.personality,
+			agentDir: this.#agentDir,
+			operatorNotices: this.#operatorNotices,
+			resolvedCustomPrompt: options.customSystemPrompt,
+			tools: promptTools,
+			toolNames,
+			resolvedAppendSystemPrompt: appendPrompt,
+			skillsSettings: settings.getGroup("skills"),
+			mcpDiscoveryMode: discoverable.searchable,
+			mcpDiscoveryServerSummaries: discoverable.serverSummaries,
+			secretsEnabled: this.#secretRuntime.obfuscator?.hasSecrets() === true,
+			// Read inside the build, never snapshotted: `namedSecretNames()` expires stale entries while
+			// answering, which drops a credential that lapsed mid-session, and the live obfuscator drops
+			// one `/secret rm` revoked. Undefined (protection off, or an empty vault) emits no section.
+			secretInventory: renderSecretInventory(this.#secretRuntime.obfuscator?.namedSecretNames()),
+			...this.#argotPromptSections(),
+			memoryRootEnabled: memoryBackend.id === "local",
+			model: this.#tools.activeModelString(),
+			sectionOrder: resolvePromptSectionOrderForModel(settings, this.#tools.activeModel()),
+		});
+		return applySystemPromptOverride(defaultPrompt, options.systemPrompt);
+	}
+
+	/**
+	 * The shorthand sections a rebuild teaches. Teaching follows the encode policy: the active model is
+	 * on the allowlist and the context is under the cutoff. While encoding is on, the prompt carries the
+	 * notation preamble, which also instructs the model to load its project through `argot_load`; the
+	 * handle table joins once a project is loaded. Handles already in history expand at the seams
+	 * whatever this returns.
+	 */
+	#argotPromptSections(): { argotPreamble?: string; argotHandles?: string } {
+		const argot = this.#argot;
+		const model = this.#tools.activeModelString();
+		if (!this.#argotEnabled || !argot || model === undefined) return {};
+		if (!shouldEncode(this.#argotGate, { model, contextTokens: this.#argotContextTokens })) return {};
+		return {
+			argotPreamble: renderPreamble({ tools: true }),
+			argotHandles: argot.loaded ? argot.promptFragment() : undefined,
+		};
+	}
+
+	/**
+	 * Resolve the active tool set the session starts with. The registry is complete here, MCP and
+	 * extension tools included, so a rule scoped to a tool that does not exist is reported against the
+	 * whole registry rather than the active set: scoping a rule to an inactive tool is legitimate, and a
+	 * rule naming no tool is a typo that would never fire.
+	 *
+	 * `resolveInitialActiveToolNames` (`tools/core/loading/policy.ts`) runs the stages that turn these
+	 * inputs into the active set. `explicitToolNames` is the raw `options.toolNames`, not the list
+	 * `resolveRequestedToolNames` widened: the yield and auto-learn names it adds are activations, not
+	 * requests, and must not exempt a tool from discovery-all hiding. Custom and extension-registered
+	 * tools are always included whatever the `toolNames` filter.
+	 */
+	#resolveInitialTools(): void {
+		const options = this.#options;
+		const settings = this.#settings;
+		const toolRegistry = this.#toolRegistry;
+		const toolDiscovery = this.#toolDiscovery;
+		const hasRegistryTool = (name: string): boolean => toolRegistry.has(name);
+		const requestedToolNames = resolveRequestedToolNames({
+			toolNames: options.toolNames,
+			requireYieldTool: options.requireYieldTool === true,
+			builtInToolNames: this.#builtInToolNames,
+			registryToolNames: Array.from(toolRegistry.keys()),
+			hasRegistryTool,
+		});
+		this.#requestedToolNames = new Set(requestedToolNames);
+		this.#ttsrManager.reportUnknownToolScopes(toolRegistry.keys());
+		this.#discoveryDefaultServers = new Set(
+			(settings.get("mcp.discoveryDefaultServers") ?? []).map(serverName => serverName.trim()).filter(Boolean),
+		);
+		const registered = this.#registeredTools.map(tool => tool.definition);
+		this.#initialTools = resolveInitialActiveToolNames({
+			explicitToolNames: options.toolNames ? normalizeToolNames(options.toolNames) : undefined,
+			requestedToolNames,
+			goalEnabled: settings.get("goal.enabled"),
+			defaultInactiveToolNames: new Set(registered.filter(tool => tool.defaultInactive).map(tool => tool.name)),
+			hasRegistryTool,
+			mcpDiscoveryEnabled: toolDiscovery.enabled,
+			discoveryDefaultServerToolNames: toolDiscovery.defaultServerToolNames(this.#discoveryDefaultServers),
+			persistedSelectedMCPToolNames: this.#restoredContext.selectedMCPToolNames,
+			hasPersistedMCPToolSelection: this.#restoredContext.hasPersistedMCPToolSelection,
+			alwaysIncludeToolNames: [
+				...this.#sdkTools.map(tool => tool.definition.name),
+				...registered.filter(tool => !tool.defaultInactive).map(tool => tool.name),
+			],
+			effectiveDiscoveryMode: toolDiscovery.mode,
+			loadModeOf: name => toolRegistry.get(name)?.loadMode,
+			essentialToolNames: computeEssentialBuiltinNames(settings),
+			forceActiveToolNames: resolveDiscoveryAllForceActive({
+				todoEager: settings.get("todo.eager"),
+				todoEnabled: settings.get("todo.enabled"),
+				hasTodoTool: toolRegistry.has(TOOL.todo),
+				delegationStrength: delegationStrength(settings),
+				hasTaskTool: toolRegistry.has(TOOL.task),
+			}),
+			harnessToolAllowlist: resolveHarnessProfileForModel(settings, this.#modelSelection.model)?.tools,
+		});
+	}
+
+	/**
+	 * Register the agent in the agent registry before the session exists, so tool routing and IRC
+	 * discovery resolve it at once; {@link attachSession} attaches the session later. The scope is the
+	 * conversation the agent belongs to: a spawned agent inherits its parent's, so only a root session
+	 * states one, its session id, which exists before the transcript is first written and survives a
+	 * `/move` that rewrites the path.
+	 */
+	#registerAgent(): void {
+		const sessionManager = this.#sessionManager;
+		const { id, displayName, kind } = this.#identity;
+		const parentId = this.#options.parentAgentId;
+		this.#agentRegistry.register({
+			id,
+			displayName,
+			kind,
+			parentId,
+			session: null,
+			sessionFile: sessionManager.getSessionFile() ?? null,
+			scope: parentId ? undefined : (sessionManager.getSessionId?.() ?? undefined),
+			status: "running",
+			model: this.#tools.activeModelString(),
+		});
+		this.#registered = true;
+	}
+
+	/** Build the starting system prompt, letting pending input and rendering run on either side of it. */
+	async #buildInitialSystemPrompt(): Promise<BuildSystemPromptResult> {
+		const { initialToolNames } = this.#initialTools;
+		this.#tools.setActiveToolNames(initialToolNames);
+		await yieldToEventLoop();
+		const prompt = await logger.time("buildSystemPrompt", () =>
+			this.#rebuildSystemPrompt(initialToolNames, this.#toolRegistry),
+		);
+		await yieldToEventLoop();
+		return prompt;
+	}
+
+	/** Construct the agent, seeded with the restored history or recording a new session's defaults. */
+	#createAgent(prompt: BuildSystemPromptResult, hooks: SessionRequestHooks): Agent {
+		const options = this.#options;
+		const settings = this.#settings;
+		const sessionManager = this.#sessionManager;
+		const { model, effectiveThinkingLevel } = this.#modelSelection;
+		const toolRegistry = this.#toolRegistry;
+		this.#preferWebsockets = openaiWebsocketPreference(settings.get("providers.openaiWebsockets"));
+		this.#serviceTierByFamily = this.#initialServiceTierByFamily();
+		this.#sideStreamFn = wrapStreamFnWithProviderConcurrency(settings, createSettingsAwareStreamFn(settings));
+		const agent: Agent = new Agent({
+			initialState: {
+				systemPrompt: prompt.systemPrompt,
+				model,
+				thinkingLevel: toReasoningEffort(effectiveThinkingLevel),
+				disableReasoning: shouldDisableReasoning(effectiveThinkingLevel),
+				tools: this.#initialTools.initialToolNames
+					.map(name => toolRegistry.get(name))
+					.filter((tool): tool is AgentTool => tool !== undefined),
+			},
+			cwd: this.#cwd,
+			// Live cwd: `/move` updates the session manager (and the process cwd) without reconstructing
+			// the agent, so a static cwd would strand GitLab Duo Agent namespace and project discovery on
+			// the original repository's git remote.
+			cwdResolver: () => sessionManager.getCwd(),
+			convertToLlm: hooks.convertToLlm,
+			onPayload: hooks.onPayload,
+			onResponse: hooks.onResponse,
+			sessionId: this.#providerSessionId,
+			promptCacheKey: this.#providerPromptCache.key,
+			deadline: options.deadline,
+			transformContext: hooks.transformContext,
+			transformProviderContext: hooks.transformProviderContext,
+			steeringMode: settings.get("steeringMode") ?? "one-at-a-time",
+			followUpMode: settings.get("followUpMode") ?? "one-at-a-time",
+			interruptMode: settings.get("interruptMode") ?? "immediate",
+			thinkingBudgets: settings.getGroup("thinkingBudgets"),
+			// Unset is exactly UNSET_NUMBER, read through its one owner, so a configured negative presence
+			// or repetition penalty (both providers accept them) reaches the request.
+			temperature: optionalNumber(settings.get("temperature")),
+			topP: optionalNumber(settings.get("topP")),
+			topK: optionalNumber(settings.get("topK")),
+			minP: optionalNumber(settings.get("minP")),
+			presencePenalty: optionalNumber(settings.get("presencePenalty")),
+			repetitionPenalty: optionalNumber(settings.get("repetitionPenalty")),
+			hideThinkingSummary: settings.get("omitThinking"),
+			kimiApiFormat: settings.get("providers.kimiApiFormat") ?? "anthropic",
+			preferWebsockets: this.#preferWebsockets,
+			getToolContext: toolCall => this.#toolContextStore.getContext(toolCall),
+			getApiKey: requestModel => this.#modelRegistry.resolver(requestModel, agent.sessionId),
+			streamFn: createLeasedStreamFn(hooks.requestLeases, this.#sideStreamFn, options.onFirstChatDispatch),
+			cursorExecHandlers: this.#cursorExecHandlers,
+			transformToolCallArguments: createToolArgumentTransform({
+				settings,
+				secretRuntime: this.#secretRuntime,
+				requestLeases: hooks.requestLeases,
+				argot: this.#argot,
+				sessionId: () => agent.sessionId,
+			}),
+			repairToolCallArguments: createRepairToolCallArgumentsHook(settings, () => agent.state.model),
+			// Resolvers, not values: `tools.intentTracing` and descriptor placement are live prompt gates,
+			// so the provider schemas follow the rebuilt prompt on a settings change or a model-family
+			// switch. A prompt explaining an intent field the schemas do not carry is worse than one that
+			// omits it.
+			intentTracing: () => resolveIntentField(settings) !== undefined,
+			instrumentation: settings.get("session.instrumentation"),
+			pruneToolDescriptions: this.#inlineToolDescriptors,
+			dialect: createDialectResolver(settings, message =>
+				this.#session?.emitNotice("warning", message, "tools.format"),
+			),
+			abortOnFabricatedToolResult: settings.get("tools.abortOnFabricatedResult"),
+			getToolChoice: () => this.#session?.nextToolChoiceDirective(),
+			telemetry: sessionTelemetry(options.telemetry, this.#secretRuntime),
+			appendOnlyContext:
+				model && shouldEnableAppendOnlyContext(settings.get("provider.appendOnlyContext"), model)
+					? new AppendOnlyContextManager()
+					: undefined,
+		});
+		this.#agent = agent;
+		// The argot encode cutoff reads the context size the model last saw.
+		if (this.#argotEnabled && this.#argotGate.disableAboveTokens > 0) {
+			onTurnPromptTokens(agent, tokens => {
+				this.#argotContextTokens = tokens;
+			});
+		}
+		if (this.#hasExistingSession) {
+			agent.replaceMessages(this.#restoredContext.messages);
+		} else {
+			recordNewSessionDefaults(sessionManager, model, this.#modelSelection, this.#serviceTierByFamily);
+		}
+		return agent;
+	}
+
+	/** The service tier a resumed session recorded, else the settings tiers. */
+	#initialServiceTierByFamily(): ServiceTierByFamily {
+		if (this.#hasServiceTierEntry) return this.#restoredContext.serviceTier ?? {};
+		const settings = this.#settings;
+		return buildServiceTierByFamily(
+			settings.get("tier.openai"),
+			settings.get("tier.anthropic"),
+			settings.get("tier.google"),
+		);
+	}
+
+	#createSession(
+		agent: Agent,
+		hooks: SessionRequestHooks,
+		promptTemplates: PromptTemplate[],
+		slashCommands: FileSlashCommand[],
+	): AgentSession {
+		const options = this.#options;
+		const settings = this.#settings;
+		const secretRuntime = this.#secretRuntime;
+		const toolSession = this.#tools.toolSession;
+		const mcp = this.#mcp;
+		if (mcp.manager)
+			this.#releaseMcpManager = holdSessionMcpManager(mcp.manager, options.mcpManager, this.#isSpawned);
+		const session = new AgentSession({
+			...this.#advisorScope,
+			agent,
+			pruneToolDescriptions: this.#inlineToolDescriptors,
+			thinkingLevel: this.#modelSelection.sessionThinkingLevel,
+			thinkingSource: this.#modelSelection.thinkingSource,
+			prewalk: options.prewalk,
+			planYolo: options.planYolo,
+			serviceTierByFamily: this.#serviceTierByFamily,
+			sessionManager: this.#sessionManager,
+			settings,
+			autoApprove: options.autoApprove,
+			bypassAllApprovals: options.bypassAllApprovals,
+			parentApprovalBypassed: options.parentApprovalBypassed,
+			evalKernelOwnerId: this.#evalKernelOwnerId,
+			// Defined only for a top-level session. AgentSession disposes only the manager it owns; a
+			// spawned agent runs on its parent's and MUST NOT tear it down.
+			ownedAsyncJobManager: this.#asyncJobManager,
+			asyncJobManager: this.#scopedAsyncJobManager,
+			scopedModels: options.scopedModels,
+			promptTemplates,
+			slashCommands,
+			extensionRunner: this.#extensionRunner,
+			customCommands: this.#customCommands,
+			skills: this.#skills,
+			operatorNotices: this.#operatorNotices,
+			skillsSettings: settings.getGroup("skills"),
+			modelRegistry: this.#modelRegistry,
+			toolRegistry: this.#toolRegistry,
+			createVibeTools: this.#isSpawned ? undefined : () => createVibeModeTools(toolSession),
+			// A spawned agent shares this process with its parent and its siblings, so its re-root may not
+			// move the process working directory or any other process-global project state. See
+			// `AgentSession.rescopeToCwd`.
+			isSpawned: this.#isSpawned,
+			builtInToolNames: this.#builtInRegistryToolNames,
+			transformContext: hooks.transformContext,
+			transformProviderContext: hooks.transformProviderContext,
+			onPayload: hooks.onPayload,
+			onResponse: hooks.onResponse,
+			sideStreamFn: this.#sideStreamFn,
+			preferWebsockets: this.#preferWebsockets,
+			convertToLlm: hooks.convertToLlm,
+			rebuildSystemPrompt: (toolNames, tools) => this.#rebuildSystemPrompt(toolNames, tools),
+			reloadSshTool: () => this.#reloadSshTool(),
+			requestedToolNames: this.#requestedToolNames,
+			setActiveToolNames: this.#tools.setActiveToolNames,
+			getMcpServerInstructions: mcp.serverInstructions,
+			releaseMcpManager: this.#releaseMcpManager,
+			mcpDiscoveryEnabled: this.#toolDiscovery.enabled,
+			initialSelectedMCPToolNames: this.#initialTools.initialSelectedMCPToolNames,
+			defaultSelectedMCPToolNames: this.#initialTools.defaultSelectedMCPToolNames,
+			persistInitialMCPToolSelection: !this.#hasExistingSession,
+			defaultSelectedMCPServerNames: Array.from(this.#discoveryDefaultServers),
+			ttsrManager: this.#ttsrManager,
+			obfuscator: secretRuntime.obfuscator,
+			secretRuntime: secretRuntime.lease,
+			leaseSecretRuntime: () => secretRuntime.acquire(),
+			resolveSecretRuntimeLeaseForContext: context => hooks.requestLeases.forContext(context),
+			refreshSecretRuntime: runtimeCwd => secretRuntime.refresh(runtimeCwd),
+			argot: this.#argot,
+			agentId: this.#identity.id,
+			agentKind: this.#identity.kind,
+			providerSessionId: options.providerSessionId,
+			providerPromptCacheKeySource: this.#providerPromptCache.source,
+			parentEvalSessionId: options.parentEvalSessionId,
+			loadAdvisorTools: () => buildAdvisorTools(this.#tools.advisorToolSession),
+			titleSystemPrompt: options.titleSystemPrompt,
+		});
+		this.#session = session;
+		return session;
+	}
+
+	/**
+	 * Record the session's start: the secret runtime's session, the launch card reading of a top-level
+	 * session, the launch project's shorthand, and a new session's start entries. The launch card reading
+	 * builds every tool's schema, so the session takes it when it leaves rest; a spawned agent records
+	 * none.
+	 */
+	#recordSessionStart(session: AgentSession): void {
+		const settings = this.#settings;
+		const isMainAgent = this.#identity.kind === "main";
+		this.#secretRuntime.attachSession(session);
+		if (isMainAgent) deferAtRestReading(session, () => recordAtRestLaunch(session, settings));
+		armLaunchArgot({
+			argot: this.#argot,
+			enabled: this.#argotEnabled,
+			settings,
+			cwd: this.#cwd,
+			sessionManager: this.#sessionManager,
+			refreshPrompt: () => session.refreshBaseSystemPrompt("argot-arm"),
+		});
+		if (!this.#hasExistingSession) {
+			recordNewSessionStart({
+				sessionManager: this.#sessionManager,
+				settings,
+				isMainAgent,
+				systemPrompt: session.agent.state.systemPrompt,
+				activeToolNames: session.getActiveToolNames(),
+			});
+		}
+	}
+
+	/** Register the session's yield queues, attach it to its registry ref, and order its disposal. */
+	#attachSession(session: AgentSession): void {
+		const jobs = this.#asyncJobManager;
+		if (jobs) {
+			session.yieldQueue.register<AsyncResultEntry>("async-result", {
+				isStale: entry => jobs.isDeliverySuppressed(entry.jobId),
+				build: buildAsyncResultBatchMessage,
+			});
+		}
+		session.yieldQueue.register<McpNotificationEntry>("mcp-notification", {
+			build: buildMcpNotificationBatchMessage,
+		});
+		session.yieldQueue.register<DeferredDiagnosticsEntry>(LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE, {
+			isStale: entry => entry.isStale(),
+			build: buildLateDiagnosticsBatchMessage,
+		});
+		// Attach the live session to the pre-registered ref so peers can route IRC messages here, with
+		// the session file refreshed in case it did not exist at registration. Every agent's turns keep
+		// its roster row current, the driving session's included, so the Agent Control Center does not
+		// age a mid-turn session from process start. The status is left alone: the bus routes an incoming
+		// message by it, and flipping the operator's own session to idle between turns would change how a
+		// peer reaches it.
+		const agentId = this.#identity.id;
+		this.#agentRegistry.attachSession(agentId, session, this.#sessionManager.getSessionFile() ?? null);
+		session.subscribe(event => {
+			if (event.type === "agent_start" || event.type === "agent_end") {
+				this.#agentRegistry.noteTurn(agentId);
+			}
+		});
+		orderSessionDisposal(session, {
+			topLevel: this.#identity.kind === "main",
+			finalize: () => this.#finalize(),
+		});
+	}
+
+	/**
+	 * Flush the secret audit log, then release what the session's startup attached. The expansion log
+	 * queues its appends so a tool call never blocks on a write, and quitting the TUI ends the process
+	 * rather than waiting for pending work, so an exit that does not flush loses the last records
+	 * silently: the last credential an agent used is the one an incident asks about. Left attached, a
+	 * notice sink keeps a disposed `OperatorNotices` reachable and posts later faults into a channel
+	 * nothing renders, one more per session in a process that opens sessions in sequence.
+	 */
+	async #finalize(): Promise<void> {
+		try {
+			await this.#secretRuntime.flushAuditLog();
+		} finally {
+			this.#detachNoticeSinks();
+			this.#unregisterUnlessParked();
+			this.#credentialDisabled.dispose();
+		}
+	}
+
+	/**
+	 * Start the work that runs beside the session: the Codex transport prewarm, language server warmup,
+	 * memory hydration, auto-learn, and MCP change routing and deferred discovery. Returns the language
+	 * servers the session lists.
+	 */
+	async #startBackgroundWork(session: AgentSession): Promise<CreateAgentSessionResult["lspServers"]> {
+		const options = this.#options;
+		const settings = this.#settings;
+		prewarmCodexTransport({
+			model: this.#modelSelection.model,
+			modelRegistry: this.#modelRegistry,
+			sessionId: this.#providerSessionId,
+			preferWebsockets: this.#preferWebsockets,
+			providerSessionState: session.providerSessionState,
+		});
+		// A print or script invocation (no UI) lists no language servers: it draws no warmup status and
+		// usually finishes before a server stabilizes. The lsp barrel is imported lazily because it pulls
+		// the client and config machinery, which stays off the boot path.
+		const lspServers =
+			this.#enableLsp && options.hasUI
+				? startLspServers(await import("./lsp"), { cwd: this.#cwd, settings, eventBus: this.#eventBus })
+				: undefined;
+		await yieldToEventLoop();
+		deferMemoryStartup({
+			session,
+			settings,
+			modelRegistry: this.#modelRegistry,
+			agentDir: this.#agentDir,
+			taskDepth: this.#taskDepth,
+			options,
+		});
+		// Auto-learn is a session-start decision, matching the tools: `createTools` builds the `learn`
+		// and `manage_skill` registry once, so a controller installed while disabled would let a
+		// mid-session enable nudge toward tools the session never built. The fire-time re-check in
+		// `#onAgentEnd` handles a mid-session disable. The listener retains the controller.
+		if (settings.get("autolearn.enabled") && this.#taskDepth === 0) {
+			new AutoLearnController({ session, settings });
+		}
+		this.#startMCP(session);
+		return lspServers;
+	}
+
+	/**
+	 * Route a created MCP manager's changes to the session for reactive tool updates, and connect a
+	 * deferred manager's servers. A manager handed down by a parent keeps the parent's callbacks.
+	 */
+	#startMCP(session: AgentSession): void {
+		const mcp = this.#mcp;
+		const toolDiscovery = this.#toolDiscovery;
+		if (this.#createdMcpManager) {
+			wireReactiveMCPManager({
+				manager: this.#createdMcpManager,
+				session,
+				settings: this.#settings,
+				refreshTools: tools => toolDiscovery.refreshMCPTools(session, tools, mcp.deferred),
+			});
+		}
+		mcp.startDeferred?.(
+			session,
+			{
+				mcpDiscoveryEnabled: toolDiscovery.enabled,
+				explicitlyRequestedMCPToolNames: this.#initialTools.explicitlyRequestedMCPToolNames,
+				activateAllMCPTools: !toolDiscovery.enabled,
+			},
+			(liveSession, tools) => toolDiscovery.enableForMCPTools(liveSession, tools),
+		);
+	}
 }
 
 // Factory
@@ -287,1470 +1635,12 @@ function registerSshCleanup(): void {
  * ```
  */
 export async function createAgentSession(options: CreateAgentSessionOptions = {}): Promise<CreateAgentSessionResult> {
-	const cwd = options.cwd ?? getProjectDir();
-	const agentDir = options.agentDir ?? getAgentDir();
-	const globalConfigRoot = options.globalConfigRoot ?? getGlobalConfigRootDir();
-	const eventBus = options.eventBus ?? new EventBus();
-
 	registerSshCleanup();
-
-	// Pin authStorage to modelRegistry.authStorage: ModelRegistry.getApiKey() routes refresh
-	// failures through that instance, so any divergent storage handed to the bridge / mcpManager
-	// / session would silently miss credential_disabled events.
-	const modelRegistry =
-		options.modelRegistry ??
-		new ModelRegistry(options.authStorage ?? (await logger.time("discoverModels", discoverAuthStorage, agentDir)));
-	// Track whether we internally created the authStorage so we can close it
-	// if construction fails before the session takes ownership.
-	const ownsAuthStorage = !options.authStorage && !options.modelRegistry;
-	const authStorage = modelRegistry.authStorage;
-	if (options.authStorage && options.authStorage !== authStorage) {
-		throw new Error(
-			"options.authStorage and options.modelRegistry.authStorage must be the same instance when both are provided",
-		);
-	}
-	// Subscribe before any getApiKey() call so startup model probes can't fire a
-	// credential_disabled event past us. An embedder's constructor handler makes the
-	// listener set non-empty from construction, which defeats AuthStorage's no-listener
-	// buffer — so we can't rely on it to catch startup events for the extension runner.
-	const startupCredentialDisabledEvents: CredentialDisabledEvent[] = [];
-	let credentialDisabledTarget: ExtensionRunner | undefined;
-	const unsubscribeCredentialDisabled: (() => void) | undefined = authStorage.onCredentialDisabled(event => {
-		if (credentialDisabledTarget) {
-			// Discard the result: handler errors are already isolated onto runner.onError
-			// listeners. The catch is for the runner itself failing, which nothing here
-			// awaits, so without it the rejection reaches the process-level handler and
-			// takes the whole session down over a notification.
-			void credentialDisabledTarget.emitCredentialDisabled(event).catch(error => {
-				logger.warn("Failed to deliver a credential-disabled event to extensions", {
-					error: errorMessage(error),
-				});
-			});
-		} else {
-			startupCredentialDisabledEvents.push(event);
-		}
-	});
-	let detachFaultSink: (() => void) | undefined;
-	let detachSecretsNoticeSink: (() => void) | undefined;
-	let sessionManager!: SessionManager;
-	let agent!: Agent;
-	let session!: AgentSession;
-	let hasSession = false;
-	let hasRegistered = false;
-	let asyncJobManager: AsyncJobManager | undefined;
-	let unregisterUnlessParked = (): void => {};
-	const evalKernelOwnerId = `agent-session:${Snowflake.next()}`;
-	let mcpManager: MCPManager | undefined = options.mcpManager;
+	const startup = await SessionStartup.begin(options);
 	try {
-		const settings = await (options.settings ??
-			options.settingsManager ??
-			logger.time("settings", Settings.init, { cwd, agentDir }));
-		logger.time("initializeWithSettings", initializeWithSettings, settings);
-		if (!options.modelRegistry) {
-			modelRegistry.refreshInBackground();
-		}
-		// Start every project-input discovery now and await each at its consumer, so the scans
-		// overlap model resolution, secret loading, session-context build, tool creation, MCP
-		// discovery and extension discovery. Spawned agents inherit the parent's resolved values
-		// via options. A caller that filtered its context files down to nothing turns discovery off.
-		if (options.contextFiles?.length === 0) {
-			logger.warn("Context file discovery disabled: caller supplied an empty resolved list", { cwd, agentDir });
-		}
-		const projectInputs = discoverProjectInputs(cwd, agentDir, settings, options);
-		// Presence, not truthiness, for the same reason as `discoverProjectInputs`: `undefined`
-		// means discover, `[]` means resolved to nothing on purpose.
-		const promptTemplatesPromise = prefetch(
-			options.promptTemplates !== undefined
-				? Promise.resolve(options.promptTemplates)
-				: logger.time("discoverPromptTemplates", discoverPromptTemplates, cwd, agentDir),
-		);
-		const slashCommandsPromise = prefetch(
-			options.slashCommands !== undefined
-				? Promise.resolve(options.slashCommands)
-				: logger.time("discoverSlashCommands", discoverSlashCommands, cwd, agentDir),
-		);
-
-		// Initialize provider preferences from settings
-		const excludedWebSearchProviders = settings.get("providers.webSearchExclude");
-		if (Array.isArray(excludedWebSearchProviders)) {
-			setExcludedSearchProviders(excludedWebSearchProviders.filter(isSearchProviderId));
-		}
-
-		const webSearchProvider = settings.get("providers.webSearch");
-		if (typeof webSearchProvider === "string" && isSearchProviderPreference(webSearchProvider)) {
-			setPreferredSearchProvider(webSearchProvider);
-		}
-
-		const imageProvider = settings.get("providers.image");
-		if (isImageProviderPreference(imageProvider)) {
-			setPreferredImageProvider(imageProvider);
-		}
-
-		// The operator-visible channel for non-fatal startup and runtime problems. Construct it
-		// before the session manager so load-time recovery notices use the same surface as secrets
-		// and filesystem faults. Default to stderr rather than dropping warnings.
-		const operatorNotices = options.operatorNotices ?? new OperatorNotices(stderrNoticeSink);
-
-		sessionManager =
-			options.sessionManager ??
-			logger.time("sessionManager", () =>
-				SessionManager.create(cwd, SessionManager.getDefaultSessionDir(cwd, agentDir), undefined, {
-					operatorNotices,
-					instrumentation: settings.get("session.instrumentation"),
-				}),
-			);
-		// A caller-supplied manager was constructed before this SDK surface existed. Attach the
-		// selected session's channel now so later setSessionFile/load recovery is still visible.
-		sessionManager.setOperatorNotices(operatorNotices);
-		sessionManager.setInstrumentationLevel(settings.get("session.instrumentation"));
-		const providerSessionId = options.providerSessionId ?? sessionManager.getSessionId();
-		const forkCacheShapeChanged =
-			options.model !== undefined ||
-			options.modelPattern !== undefined ||
-			options.thinkingLevel !== undefined ||
-			options.systemPrompt !== undefined ||
-			options.customSystemPrompt !== undefined ||
-			options.appendSystemPrompt !== undefined ||
-			options.toolNames !== undefined ||
-			options.customTools !== undefined;
-		const inheritedPromptCacheKey = forkCacheShapeChanged
-			? undefined
-			: sessionManager.getHeader()?.providerPromptCacheKey;
-		const providerPromptCacheKey = options.providerPromptCacheKey ?? inheritedPromptCacheKey;
-		const providerPromptCacheKeySource =
-			options.providerPromptCacheKey !== undefined
-				? (options.providerPromptCacheKeySource ?? "explicit")
-				: providerPromptCacheKey !== undefined
-					? "fork"
-					: undefined;
-
-		// Key and vault conditions are raised from deep inside the secrets subsystem
-		// and cannot be returned. See secrets/notices.ts for why this is a sink.
-		// Each registration is identity-bound: overlapping sessions all receive process-global
-		// conditions, and disposing this session removes only its own notice surface.
-		detachSecretsNoticeSink = attachSecretsNoticeSink(message => operatorNotices.warn("secrets", message));
-		for (const legacyFile of await findLegacyPromptFiles({ cwd, agentDir })) {
-			operatorNotices.warn("system-prompt", describeLegacyPromptFile(legacyFile));
-		}
-
-		// Give `@veyyon/utils` somewhere to put a filesystem fault. Those helpers are free functions a
-		// layer below this one, so they cannot reach a per-session channel and had nothing but
-		// `logger.warn`, which is file-only: a agents directory that exists and cannot be listed
-		// reported "no agents" to the operator and the reason to a file nobody opens. Attached here
-		// rather than in each mode because every mode wants it and forgetting it is silent.
-		//
-		// Detached on dispose, and on the startup-failure path below, by the handle this returns. The
-		// sink closes over `operatorNotices`, so leaving it attached outlives the session it reports to.
-		//
-		// The native loader reports the same way and for the same reason: it runs before any session
-		// exists and inside the interactive UI, so a raw terminal write lands between frames and moves
-		// the composer. Its notices wait in the loader until this sink attaches, and share its detach.
-		const detachMachineFaults = attachFaultSink(fault => operatorNotices.warn(fault.source, fault.text));
-		const detachNativeNotices = attachNativeNoticeSink(text => operatorNotices.warn("natives", text));
-		detachFaultSink = () => {
-			detachMachineFaults();
-			detachNativeNotices();
-		};
-
-		// Startup is the only load that may start without a vault; every later reload throws,
-		// because its caller is about to expand a live placeholder.
-		const secretRuntime = await SessionSecretRuntime.load(
-			{ settings, globalConfigRoot, agentDir, operatorNotices, getCwd: () => sessionManager.getCwd() },
-			cwd,
-		);
-
-		// Argot per-project shorthand codec (experimental). The launch project's
-		// dictionary auto-loads at startup (the adoption loop: works out of the
-		// box); additional projects are agent-driven through the argot_load tool.
-		// The dictionary lives in a local cache under the config root, never
-		// committed. The notation and the load-yourself instruction are taught
-		// through the system prompt (see argotPreamble below), the loaded handles
-		// through promptFragment. Expansion runs at the same two seams as secret
-		// deobfuscation — tool-call arguments before execution and assistant
-		// content before display — so the cheap handle stays in history (the
-		// token win) while everything outside history sees full text.
-		const argotEnabled = settings.get("argot.enabled") === true;
-		// A spawned agent (task-spawned child) follows the `argot.agents` policy instead
-		// of always starting empty: `off` gets no codec, `fresh` gets its own empty
-		// session and loads its task's project itself, `inherit` forks the parent's
-		// codec. Correctness never rests on this (the boundary rule expands every
-		// emitted seam); the policy trades tokens.
-		const sessionIsSpawned = isSubagentSession(options);
-		const argot = createArgotSession({
-			enabled: argotEnabled,
-			isSpawned: sessionIsSpawned,
-			agentMode: settings.get("argot.agents"),
-			parentArgot: options.parentArgot,
-		});
-		// Encode gate: which models may WRITE shorthand and an optional context-size
-		// cutoff. Decoding (argot.expand at the tool-arg and display seams) is
-		// unconditional and lossless whatever this holds; the gate governs only
-		// whether the notation preamble is taught this turn. The policy itself lives
-		// in the argot SDK (shouldEncode) so every harness gates the same way.
-		const argotGate: ArgotGate = buildArgotGate(
-			argotEnabled,
-			settings.get("argot.encode.models") ?? [],
-			settings.get("argot.encode.disableAboveTokens"),
-		);
-		// Live context size (prompt tokens the model last saw), refreshed each turn
-		// from usage so the cutoff tracks the growing context. 0 until the first
-		// response, which keeps encoding on for a small starting context.
-		let argotContextTokens = 0;
-
-		// An abnormal process exit after a non-terminal message tail is durable
-		// evidence that the old process can no longer finish that turn. Preserve the
-		// partial transcript and append one terminal aborted assistant record before
-		// rebuilding runtime context. The helper is idempotent once that record exists.
-		let existingBranch = logger.time("getSessionBranch", () => sessionManager.getBranch());
-		const interruptedTurnAbort = createInterruptedTurnAbortMessage(existingBranch);
-		if (interruptedTurnAbort) {
-			sessionManager.appendMessage(interruptedTurnAbort);
-			existingBranch = logger.time("getRecoveredSessionBranch", () => sessionManager.getBranch());
-		}
-		let existingSession = logger.time("loadSessionContext", () => sessionManager.buildSessionContext());
-		// Decode-only re-arm on resume. Persisted history keeps cheap handles (the
-		// token win), so a resumed branch can hold `§handle` tokens from argot_load
-		// calls in earlier sessions; the display/export seams can only expand them
-		// with those dictionaries loaded. The branch's own argot_load tool results
-		// name the exact projects the model chose, so resume re-arms those roots
-		// with teach:false — no walking, no guessing, and teaching stays
-		// agent-driven (the model re-decides by calling argot_load again).
-		if (argot !== undefined && existingBranch.length > 0) {
-			const argotRoots = collectArgotLoadedRoots(
-				existingBranch.flatMap(entry => (entry.type === "message" ? [entry.message] : [])),
-			);
-			if (argotRoots.length > 0) {
-				await rearmArgotForDecode(argot, argotRoots, undefined, settings.get("argot.tokenBudget"));
-			}
-		}
-		const hasExistingSession = existingBranch.length > 0;
-		const hasThinkingEntry = existingBranch.some(entry => entry.type === "thinking_level_change");
-		const hasServiceTierEntry = existingBranch.some(entry => entry.type === "service_tier_change");
-
-		// The first model pass: the session's last model, else the settings default. Extension
-		// providers register below, and `completeAfterExtensions` runs the second pass.
-		const modelSelection = await StartupModelSelection.begin({
-			options,
-			settings,
-			modelRegistry,
-			sessionManager,
-			existingSession,
-			hasExistingSession,
-			hasThinkingEntry,
-		});
-		let model = modelSelection.model;
-		const hasExplicitModel = modelSelection.hasExplicitModel;
-		const taskDepth = options.taskDepth ?? 0;
-
-		const discovered = await projectInputs.skills;
-		const skills: Skill[] = discovered.skills;
-		// Straight into the operator channel. These used to be collected into
-		// `AgentSession.skillWarnings`, a getter no production code read, so a skill that failed to
-		// load was discarded in silence and the channel looked live from the outside.
-		for (const warning of discovered.warnings) {
-			operatorNotices.warn("skills", `${warning.skillPath}: ${warning.message}`);
-		}
-
-		// `getCwd` is a live getter, not `cwd`: a rule with a `pathScope` compares the match
-		// against the CURRENT working directory, and `set_cwd` moves it mid-session.
-		const ttsrSettings = settings.getGroup("ttsr");
-		const ttsrManager = new TtsrManager(ttsrSettings, { getCwd: () => sessionManager.getCwd() });
-		const allRules = await projectInputs.rules;
-		const { rulebookRules, alwaysApplyRules } = bucketRules(allRules, ttsrManager, ttsrSettings);
-		if (existingSession.injectedTtsrRules.length > 0) {
-			ttsrManager.restoreInjected(existingSession.injectedTtsrRules);
-		}
-
-		// Context files are needed before tool creation. The workspace tree scan is slow on large
-		// repos and startup must not block on it: past its deadline ToolSession gets `undefined`,
-		// and the system prompt races the same promise again while the scan warms its caches.
-		const [contextFiles, resolvedWorkspaceTree, activeRepoContext, watchdogFiles, discoveredAdvisors] =
-			await Promise.all([
-				projectInputs.contextFiles,
-				workspaceTreeWithinDeadline(projectInputs),
-				projectInputs.activeRepoContext,
-				projectInputs.watchdogFiles,
-				projectInputs.advisors,
-			]);
-
-		const enableLsp = options.enableLsp ?? true;
-		asyncJobManager = createOwnedAsyncJobManager({ options, settings, sessionManager, target: () => session });
-
-		const scopedAsyncJobManager =
-			asyncJobManager ?? (isInProcessChildSession(options) ? AsyncJobManager.instance() : undefined);
-
-		const agentRegistry = options.agentRegistry ?? AgentRegistry.global();
-		// A driving agent is named for the conversation it starts, so two live
-		// top-level sessions in one process cannot collide on one key. Falls back
-		// to the bare alias only when there is no conversation id to name yet,
-		// which is the pre-existing behavior and cannot produce a second main.
-		const conversationId = sessionManager.getSessionId?.();
-		const resolvedAgentId =
-			options.agentId ??
-			options.parentTaskPrefix ??
-			(!sessionIsSpawned && conversationId ? mainAgentIdFor(conversationId) : MAIN_AGENT_ID);
-		const resolvedAgentDisplayName = options.agentDisplayName ?? (sessionIsSpawned ? "sub" : "main");
-		const agentKind = sessionIsSpawned ? ("sub" as const) : ("main" as const);
-		/**
-		 * Forget the agent ref on teardown — unless the agent is being parked (or is
-		 * already parked). Parking disposes the session but keeps the ref addressable
-		 * (history://, revive); only process teardown / explicit kill unregisters.
-		 */
-		unregisterUnlessParked = (): void => {
-			if (agentRegistry.get(resolvedAgentId)?.status === "parked") return;
-			if (AgentLifecycleManager.global().isParking(resolvedAgentId)) return;
-			agentRegistry.unregister(resolvedAgentId);
-		};
-		const {
-			toolSession,
-			advisorToolSession,
-			setActiveToolNames,
-			setNotifier: setToolNotifier,
-			activeModelString: getActiveModelString,
-		} = createSessionToolSession({
-			options,
-			sessionManager,
-			session: () => session,
-			agent: () => agent,
-			startupModel: () => model,
-			hasExplicitModel,
-			obfuscateProviderText: text => secretRuntime.obfuscateText(text),
-			isSpawned: sessionIsSpawned,
-			agentId: resolvedAgentId,
-			evalKernelOwnerId,
-			fields: {
-				enableLsp,
-				contextFiles,
-				workspaceTree: resolvedWorkspaceTree,
-				skills,
-				rules: allRules,
-				eventBus,
-				agentRegistry,
-				settings,
-				authStorage,
-				modelRegistry,
-				// Spawned agents inherit the singleton (the parent's manager) so their bash/task
-				// completions still flow into the spawning conversation's yieldQueue.
-				// Secondary in-process top-level sessions (no parentTaskPrefix, no
-				// constructed manager because the singleton was already installed) leave
-				// this undefined so tools and session job snapshots refuse async work
-				// instead of silently routing into the owning session (issue #1923).
-				asyncJobManager: scopedAsyncJobManager,
-			},
-		});
-
-		// Wire process-wide internal URL singletons owned by their real classes.
-		// Top-level sessions install the active snapshots; spawned agents inherit them.
-		// Artifact and agent-output URLs resolve via `AgentRegistry.global()` —
-		// the protocol handlers walk each ref's `sessionManager.getArtifactsDir()`,
-		// which collapses to the parent's dir for spawned agents (they adopt the
-		// parent's ArtifactManager) so one lookup hits everything.
-		const getArtifactsDir = () => sessionManager.getArtifactsDir();
-		if (!isInProcessChildSession(options)) {
-			setActiveSkills(skills);
-			// Include TTSR rules so `rule://<name>` can resolve them too. They are
-			// registered with the manager and bucketed out before rulebook/always,
-			// so without this a TTSR-only rule (e.g. a triggered builtin) is not
-			// addressable and `rule://` reports "Available: none".
-			setActiveRules(rulebookRules.concat(alwaysApplyRules, ttsrManager.getRules()));
-			if (asyncJobManager) AsyncJobManager.setInstance(asyncJobManager);
-		}
-		const localProtocolOptions = options.localProtocolOptions ?? {
-			getArtifactsDir,
-			getSessionId: () => sessionManager.getSessionId?.() ?? null,
-		};
-		if (options.localProtocolOptions) {
-			LocalProtocolHandler.setOverride(options.localProtocolOptions);
-		}
-		toolSession.getArtifactsDir = getArtifactsDir;
-		toolSession.localProtocolOptions = localProtocolOptions;
-		toolSession.agentOutputManager = new AgentOutputManager(
-			getArtifactsDir,
-			options.parentTaskPrefix ? { parentPrefix: options.parentTaskPrefix } : undefined,
-		);
-
-		// Create built-in tools (already wrapped with meta notice formatting)
-		const builtinTools = await logger.time("createAllTools", createTools, toolSession, options.toolNames);
-
-		// Discover MCP tools from .mcp.json files
-		mcpManager = options.mcpManager;
-		const enableMCP = options.enableMCP ?? true;
-		const deferMCPDiscoveryForUI = enableMCP && !mcpManager && options.hasUI === true;
-		const customTools: CustomTool[] = [];
-		let startDeferredMCPDiscovery: StartDeferredMCPDiscovery | undefined;
-		if (enableMCP && !mcpManager) {
-			const mcp = await startSessionMCP({
-				cwd,
-				agentDir,
-				settings,
-				authStorage,
-				eventBus,
-				hasUI: options.hasUI === true,
-				deferred: deferMCPDiscoveryForUI,
-			});
-			mcpManager = mcp.manager;
-			customTools.push(...mcp.tools);
-			startDeferredMCPDiscovery = mcp.startDeferred;
-		}
-		toolSession.mcpManager = mcpManager;
-		// Only top-level sessions own the global MCPManager. Spawned agents already
-		// receive the parent's manager via `options.mcpManager`, and reassigning
-		// the singleton to the same value is a no-op — keep the gate explicit
-		// to mirror the AsyncJobManager ownership rule.
-		if (mcpManager && !isInProcessChildSession(options)) MCPManager.setInstance(mcpManager);
-
-		const builtInToolNames = builtinTools.map(t => t.name);
-		// Session CPU budget: every process a custom tool, custom command, or
-		// extension spawns through `exec` joins this session's budget group. The
-		// closure resolves the limiter lazily, so registration order (limiter
-		// created in the AgentSession constructor, tools loaded before it) is
-		// irrelevant.
-		const cpuExec = sessionCpuExecHooks(() => toolSession.getSessionId?.() ?? null);
-		const sessionCustomTools = await loadSessionCustomTools({
-			options,
-			settings,
-			modelRegistry,
-			model,
-			cwd,
-			agentDir,
-			builtInToolNames,
-			toolSession,
-			cpuExec,
-			operatorNotices,
-		});
-		customTools.push(...sessionCustomTools.tools);
-		// Forward the path list (NOT the loaded tools) to spawned agents so they
-		// re-bind under their own `CustomToolAPI` while skipping the FS scan.
-		toolSession.customToolPaths = sessionCustomTools.paths;
-
-		const builtins: BuiltinExtensionFactory[] = [(await import("./autoresearch")).createAutoresearchExtension];
-		if (customTools.length > 0) {
-			builtins.push(createCustomToolsExtension(customTools, text => secretRuntime.obfuscateText(text)));
-		}
-
-		const extensions = await loadStartupExtensions(
-			{ options, cwd, agentDir, settings, eventBus, cpuExec, operatorNotices },
-			builtins,
-		);
-		const extensionsResult = extensions.result;
-		// Forward the source-path list (NOT the loaded instances) so spawned agents
-		// rebuild their own session-scoped extensions.
-		toolSession.extensionPaths = extensions.paths;
-		toolSession.namedExtensionPaths = extensions.namedPaths;
-
-		await adoptStartupExtensionProviders(modelRegistry, extensionsResult);
-
-		// Every provider is registered now: reclaim the session's model, resolve deferred
-		// `--model` patterns, fall back to the first authenticated model, and refresh the
-		// chosen model's metadata.
-		await modelSelection.completeAfterExtensions();
-		model = modelSelection.model;
-
-		// A first-turn user tail has no assistant metadata to copy. Once startup
-		// has selected its final model, use that model to terminate the
-		// interrupted turn before the live agent consumes the restored context.
-		if (model) {
-			const selectedModelAbort = createInterruptedTurnAbortMessage(existingBranch, {
-				api: model.api,
-				provider: model.provider,
-				model: model.id,
-			});
-			if (selectedModelAbort) {
-				sessionManager.appendMessage(selectedModelAbort);
-				existingBranch = logger.time("getRecoveredUserTailBranch", () => sessionManager.getBranch());
-				existingSession = logger.time("loadRecoveredUserTailContext", () => sessionManager.buildSessionContext());
-			}
-		}
-
-		const customCommandsResult = await loadStartupCustomCommands({
-			options,
-			cwd,
-			agentDir,
-			cpuExec,
-			operatorNotices,
-		});
-
-		// The runner is created unconditionally — even with zero extensions loaded — because the
-		// `ExtensionToolWrapper` installed below is the only place the per-tool approval gate runs.
-		// A conditional runner means the approval system silently disappears for users with no
-		// extensions, contradicting non-yolo `tools.approvalMode` settings without feedback.
-		// (The builtin autoresearch extension is unconditionally loaded above, so this scenario
-		// is unreachable; unconditional runner construction keeps that invariant explicit and
-		// prevents future optional extensions from silently re-opening the hole.)
-		const extensionRunner: ExtensionRunner = new ExtensionRunner(
-			extensionsResult.extensions,
-			extensionsResult.runtime,
-			cwd,
-			sessionManager,
-			modelRegistry,
-			() => (hasSession ? createSessionMemoryRuntimeContext(session, agentDir, cwd) : undefined),
-			settings,
-			localProtocolOptions,
-		);
-
-		credentialDisabledTarget = extensionRunner;
-		for (const event of startupCredentialDisabledEvents.splice(0)) {
-			// Same containment as the live path above: nothing awaits this drain.
-			void extensionRunner.emitCredentialDisabled(event).catch(error => {
-				logger.warn("Failed to deliver a buffered credential-disabled event to extensions", {
-					error: errorMessage(error),
-				});
-			});
-		}
-
-		const getSessionContext = () => ({
-			sessionManager,
-			modelRegistry,
-			model: agent.state.model,
-			isIdle: () => !session.isStreaming,
-			hasQueuedMessages: () => session.queuedMessageCount > 0,
-			abort: () => {
-				abortDetached(session, "sdk.agentControl.abort", USER_INTERRUPT_LABEL);
-			},
-			settings,
-			obfuscateProviderText: (text: string) => secretRuntime.obfuscateText(text),
-			localProtocolOptions,
-			autoApprove: options.autoApprove ?? false,
-			// Live read so a mid-session `/yolo` toggle takes effect on the next
-			// tool call (getSessionContext runs per tool-execution context build).
-			bypassAllApprovals: session.isApprovalBypassed(),
-			sessionApprovals: session.sessionToolApprovals(),
-		});
-		const toolContextStore = new ToolContextStore(getSessionContext);
-		// Tool calls the model makes go through the agent loop, which resolves the
-		// context itself. Calls an eval snippet or a browser page makes reach the
-		// same approval-wrapped tools directly, so they need the same context or
-		// they arrive with no policy at all.
-		toolSession.getToolContext = toolCall => toolContextStore.getContext(toolCall);
-
-		const registeredTools = extensionRunner.getAllRegisteredTools();
-		const sdkCustomTools = options.customTools?.filter(tool => !isLegacyBuiltinToolDefinition(tool)) ?? [];
-		const allCustomTools = [
-			...registeredTools,
-			...sdkCustomTools.map(tool => {
-				const definition = isCustomTool(tool)
-					? customToolToDefinition(tool, text => secretRuntime.obfuscateText(text))
-					: tool;
-				return { definition, extensionPath: "<sdk>" };
-			}),
-		];
-		// `wrapToolWithMetaNotice` runs the centralized large-output → artifact spill.
-		// Built-in tools get it in `createTools`; extension, SDK-custom, image-gen,
-		// TTS, and startup (non-deferred) MCP tools all funnel through here, so apply
-		// it once at this adapter boundary (idempotent — a no-op if already wrapped).
-		const wrappedExtensionTools: Tool[] = wrapRegisteredTools(allCustomTools, extensionRunner).map(
-			wrapToolWithMetaNotice,
-		);
-
-		const { tools: toolRegistry, builtInNames: builtInRegistryToolNames } = await assembleToolRegistry({
-			builtinTools,
-			extensionTools: wrappedExtensionTools,
-			pendingMCPToolNames:
-				deferMCPDiscoveryForUI && mcpManager
-					? collectPendingMCPToolNames(options.toolNames, existingSession.selectedMCPToolNames)
-					: [],
-			extensionRunner,
-			settings,
-			toolSession,
-		});
-
-		// `let`: the deferred MCP discovery closure upgrades these when the real
-		// MCP tool count pushes `auto` past its threshold; `rebuildSystemPrompt`
-		// below reads the live bindings.
-		let effectiveDiscoveryMode = resolveEffectiveToolDiscoveryMode(
-			settings,
-			countToolsForAutoDiscovery(toolRegistry.keys()),
-		);
-		if (effectiveDiscoveryMode !== "off" && !toolRegistry.has(TOOL.search_tool_bm25)) {
-			const searchTool: Tool = new SearchToolBm25Tool(toolSession);
-			toolRegistry.set(
-				searchTool.name,
-				new ExtensionToolWrapper(wrapToolWithMetaNotice(searchTool), extensionRunner) as Tool,
-			);
-			builtInRegistryToolNames.add(searchTool.name);
-		}
-		let mcpDiscoveryEnabled = effectiveDiscoveryMode !== "off"; // back-compat: true when any discovery active
-
-		async function enableDeferredMCPDiscoveryForTools(
-			liveSession: AgentSession,
-			mcpTools: CustomTool[],
-		): Promise<boolean> {
-			if (mcpDiscoveryEnabled) return true;
-			const nonMCPToolNames = Array.from(toolRegistry.keys()).filter(name => !isMCPToolName(name));
-			const projectedMode = resolveEffectiveToolDiscoveryMode(
-				settings,
-				countToolsForAutoDiscovery(nonMCPToolNames.concat(mcpTools.map(tool => tool.name))),
-			);
-			if (projectedMode === "off") return false;
-
-			effectiveDiscoveryMode = projectedMode;
-			mcpDiscoveryEnabled = true;
-			liveSession.enableMCPDiscovery();
-			if (!toolRegistry.has(TOOL.search_tool_bm25)) {
-				const searchTool: Tool = new SearchToolBm25Tool(toolSession);
-				toolRegistry.set(
-					searchTool.name,
-					new ExtensionToolWrapper(wrapToolWithMetaNotice(searchTool), extensionRunner) as Tool,
-				);
-			}
-			if (!liveSession.getActiveToolNames().includes(TOOL.search_tool_bm25)) {
-				await liveSession.setActiveToolsByName(liveSession.getActiveToolNames().concat([TOOL.search_tool_bm25]));
-			}
-			return true;
-		}
-
-		const reloadSshTool = async (): Promise<AgentTool | null> => {
-			if (!requestedToolNameSet.has(TOOL.ssh)) return null;
-			const { loadSshTool } = await import("./tools/shell/ssh");
-			const sshTool = (await loadSshTool({
-				...toolSession,
-				cwd: sessionManager.getCwd(),
-			})) as unknown as AgentTool | null;
-			if (!sshTool) return null;
-			const wrapped = wrapToolWithMetaNotice(sshTool);
-			return new ExtensionToolWrapper(wrapped, extensionRunner) as AgentTool;
-		};
-
-		let cursorEventEmitter: ((event: AgentEvent) => void) | undefined;
-		const cursorExecHandlers = new CursorExecHandlers({
-			cwd,
-			tools: toolRegistry,
-			getToolContext: () => toolContextStore.getContext(),
-			emitEvent: event => cursorEventEmitter?.(event),
-		});
-
-		// Keep prompt placement and provider-schema pruning on one per-model
-		// decision. A session can switch model families, and `auto` deliberately
-		// chooses different representations for Gemini and native OpenAI models.
-		const inlineToolDescriptorsForModel = (requestModel: Model): boolean =>
-			shouldInlineToolDescriptors(settings.get("inlineToolDescriptors"), requestModel.id);
-		// A RESOLVER, not a captured constant, and that is the whole reason
-		// `tools.intentTracing` is a live prompt gate. Read once here, every later
-		// `rebuildSystemPrompt` re-read the session-start value, so flipping the setting
-		// mid-session changed the settings UI and nothing else: the prompt kept its old
-		// text and the tool schemas kept their old shape, with nothing to say so. The two
-		// reads have to move together -- a prompt explaining an intent field the schemas
-		// do not carry is worse than one that omits it -- which is why the agent option
-		// below takes the same resolver rather than a value.
-		const intentTracingEnabled = () => resolveIntentField(settings) !== undefined;
-		const promptInputs = new ProjectPromptInputs({
-			initial: {
-				cwd,
-				contextFiles,
-				workspaceTree: projectInputs.workspaceTree,
-				activeRepoContext,
-				nonProjectCwd: projectInputs.nonProjectCwd,
-				skills,
-				rulebookRules,
-				alwaysApplyRules,
-			},
-			getCwd: () => sessionManager.getCwd(),
-			discover: liveCwd => discoverProjectInputs(liveCwd, agentDir, settings, options),
-			ttsrManager,
-			ttsrOptions: () => settings.getGroup("ttsr"),
-			onChange: next => {
-				toolSession.contextFiles = next.contextFiles;
-				toolSession.workspaceTree = next.workspaceTree;
-				toolSession.skills = next.skills;
-				toolSession.rules = next.rules;
-				if (hasSession) {
-					session.replaceSkills(next.skills);
-					session.replaceProjectAdvisorScope(projectAdvisorScope(next));
-				}
-				for (const warning of next.skillWarnings) {
-					operatorNotices.warn("skills", `${warning.skillPath}: ${warning.message}`);
-				}
-				ttsrManager.reportUnknownToolScopes(toolRegistry.keys());
-				if (!isInProcessChildSession(options)) {
-					setActiveSkills(next.skills);
-					setActiveRules([
-						...next.buckets.rulebookRules,
-						...next.buckets.alwaysApplyRules,
-						...ttsrManager.getRules(),
-					]);
-				}
-			},
-		});
-		const rebuildSystemPrompt = async (
-			toolNames: string[],
-			tools: Map<string, AgentTool>,
-		): Promise<BuildSystemPromptResult> => {
-			await promptInputs.refresh();
-			toolContextStore.setToolNames(toolNames);
-			const discoverable = promptDiscoverableTools({
-				tools,
-				activeToolNames: toolNames,
-				mcpDiscoveryEnabled,
-				discoveryMode: effectiveDiscoveryMode,
-				builtInToolNames: builtInRegistryToolNames,
-			});
-			const promptTools = buildSystemPromptToolMetadata(tools, {
-				search_tool_bm25: { description: renderSearchToolBm25Description(discoverable.tools) },
-			});
-			// Ask the live task tool which agents this session may spawn, rather than
-			// re-running discovery here: it already filtered its discovered set
-			// through `agent.agents`, and the prompt must describe exactly the
-			// agents the tool will accept. Absent when delegation is off.
-			// Every settings-fed prompt gate, from the ONE resolver the inspection path
-			// (`veyyon prompt`) also calls. These twelve reads used to live here and nowhere else,
-			// which is how the inspection path came to render a prompt no session sends.
-			// `system-prompt-builder/gate-inputs.ts` says what each read is and why.
-			const gateInputs = resolveGateInputs(settings, {
-				tools,
-				model: agent?.state.model ?? model,
-				taskDepth: options.taskDepth ?? 0,
-			});
-			const memoryBackend = await resolveMemoryBackend(settings);
-			// For UI sessions MCP discovery is deferred, so `getServerInstructions()` is
-			// empty until the background connect completes; the rebuild that
-			// `refreshMCPTools` triggers post-discovery then picks up the now-connected
-			// servers' instructions, so they join the prompt for the rest of the session.
-			const appendPrompt = composeAppendPrompt({
-				memoryInstructions: await memoryBackend.buildDeveloperInstructions(agentDir, settings, session),
-				// Drive guidance off the auto-learn BUILTINS that createTools actually built
-				// (provenance, not just an active name): `builtInToolNames` excludes a
-				// custom/extension tool that merely shares the name, and reflects the
-				// session-start build — so a spawned agent that filtered them out, a mid-session
-				// enable that never built them, or a same-named custom tool while auto-learn
-				// is off all get no guidance.
-				autoLearnInstructions: buildAutoLearnInstructions({
-					manageSkill: builtInToolNames.includes(TOOL.manage_skill),
-					learn: builtInToolNames.includes(TOOL.learn),
-				}),
-				serverInstructions: mcpManager?.getServerInstructions(),
-				appendSystemPrompt: options.appendSystemPrompt,
-			});
-			// Gate teaching by the encode policy: the active model must be on the
-			// allowlist and the context under the cutoff. When encoding is on, the
-			// prompt always carries the notation preamble (which also tells the model
-			// to load its project itself through argot_load); the concrete handle
-			// table is added once the model has loaded one. Decoding is unaffected —
-			// handles already in history still expand at the seams whatever this holds.
-			const argotActiveModel = getActiveModelString();
-			const argotCanEncode =
-				argotEnabled &&
-				argot !== undefined &&
-				argotActiveModel !== undefined &&
-				shouldEncode(argotGate, { model: argotActiveModel, contextTokens: argotContextTokens });
-			const defaultPrompt = await buildSystemPromptInternal({
-				...gateInputs,
-				...promptInputs.promptOptions(),
-				// The tree is scanned when the project is discovered, so this flag hides a
-				// scanned tree but cannot scan one; `gate-registry.ts` records that placement.
-				// Descriptor placement stays live in `gateInputs`: the same active-model policy
-				// also drives provider-schema pruning below, so a model switch cannot retain
-				// the previous model family's more expensive representation.
-				includeWorkspaceTree: settings.get("includeWorkspaceTree") ?? false,
-				// A spawned agent gets no personality regardless of the setting. That is a fact about
-				// this caller, not about the configuration, so it does not belong in the resolver.
-				personality: agentKind === "sub" ? "none" : gateInputs.personality,
-				agentDir,
-				resolvedCustomPrompt: options.customSystemPrompt,
-				tools: promptTools,
-				toolNames,
-				resolvedAppendSystemPrompt: appendPrompt,
-				skillsSettings: settings.getGroup("skills"),
-				mcpDiscoveryMode: discoverable.searchable,
-				mcpDiscoveryServerSummaries: discoverable.serverSummaries,
-				secretsEnabled: secretRuntime.obfuscator?.hasSecrets() === true,
-				// Read LATE, inside the build, never snapshotted when the runtime was
-				// constructed. `namedSecretNames()` expires stale entries while answering, so
-				// asking it here is what drops a credential that lapsed mid-session out of the
-				// prompt, and reading the runtime's live obfuscator is what drops one that
-				// `/secret rm` revoked. Undefined (protection off, or an empty vault) emits no
-				// section at all.
-				secretInventory: renderSecretInventory(secretRuntime.obfuscator?.namedSecretNames()),
-				argotPreamble: argotCanEncode ? renderPreamble({ tools: true }) : undefined,
-				argotHandles: argotCanEncode && argot.loaded ? argot.promptFragment() : undefined,
-				memoryRootEnabled: memoryBackend.id === "local",
-				model: getActiveModelString(),
-				sectionOrder: resolvePromptSectionOrderForModel(settings, agent?.state.model ?? model),
-			});
-			return applySystemPromptOverride(defaultPrompt, options.systemPrompt);
-		};
-
-		const normalizedRequested = resolveRequestedToolNames({
-			toolNames: options.toolNames,
-			requireYieldTool: options.requireYieldTool === true,
-			builtInToolNames,
-			registryToolNames: Array.from(toolRegistry.keys()),
-			hasRegistryTool: name => toolRegistry.has(name),
-		});
-		const requestedToolNameSet = new Set(normalizedRequested);
-		// The registry is complete here, MCP and extension tools included, which is the first point where
-		// "this rule is scoped to a tool that does not exist" is answerable. Checked against the whole
-		// registry rather than the active set: scoping a rule to a tool the user has not activated is
-		// legitimate, and a rule that names no tool at all is a typo that would otherwise never fire.
-		ttsrManager.reportUnknownToolScopes(toolRegistry.keys());
-		// Effective discovery mode is resolved after the full registry exists so auto mode can count MCP/extension tools.
-		const defaultInactiveToolNames = new Set(
-			registeredTools.filter(tool => tool.definition.defaultInactive).map(tool => tool.definition.name),
-		);
-		const discoveryDefaultServers = new Set(
-			(settings.get("mcp.discoveryDefaultServers") ?? []).map(serverName => serverName.trim()).filter(Boolean),
-		);
-		const discoveryDefaultServerToolNames = mcpDiscoveryEnabled
-			? selectDiscoverableToolNamesByServer(
-					filterBySource(collectDiscoverableTools(toolRegistry.values()), "mcp"),
-					discoveryDefaultServers,
-				)
-			: [];
-		// Custom tools and extension-registered tools are always included regardless of toolNames filter
-		const alwaysInclude: string[] = [
-			...sdkCustomTools.map(t => (isCustomTool(t) ? t.name : t.name)),
-			...registeredTools.filter(t => !t.definition.defaultInactive).map(t => t.definition.name),
-		];
-		// Everything above is INPUT GATHERING. The six stages that turn it into an active set —
-		// ensuring `goal`, dropping `defaultInactive`, merging the MCP selection, appending
-		// `alwaysInclude`, hiding discoverables under `all`, and applying the harness allowlist —
-		// live in `resolveInitialActiveToolNames` (`tools/loading/policy.ts`).
-		// `explicitToolNames` is the RAW `options.toolNames`, NOT the list `resolveRequestedToolNames`
-		// widened: the yield / auto-learn names it forces in are activations, not user requests, and
-		// must not exempt a tool from discovery-all hiding.
-		const {
-			initialToolNames,
-			initialSelectedMCPToolNames,
-			defaultSelectedMCPToolNames,
-			explicitlyRequestedMCPToolNames,
-		} = resolveInitialActiveToolNames({
-			explicitToolNames: options.toolNames ? normalizeToolNames(options.toolNames) : undefined,
-			requestedToolNames: normalizedRequested,
-			goalEnabled: settings.get("goal.enabled"),
-			defaultInactiveToolNames,
-			hasRegistryTool: name => toolRegistry.has(name),
-			mcpDiscoveryEnabled,
-			discoveryDefaultServerToolNames,
-			persistedSelectedMCPToolNames: existingSession.selectedMCPToolNames,
-			hasPersistedMCPToolSelection: existingSession.hasPersistedMCPToolSelection,
-			alwaysIncludeToolNames: alwaysInclude,
-			effectiveDiscoveryMode,
-			loadModeOf: name => toolRegistry.get(name)?.loadMode,
-			essentialToolNames: computeEssentialBuiltinNames(settings),
-			forceActiveToolNames: resolveDiscoveryAllForceActive({
-				todoEager: settings.get("todo.eager"),
-				todoEnabled: settings.get("todo.enabled"),
-				hasTodoTool: toolRegistry.has(TOOL.todo),
-				delegationStrength: delegationStrength(settings),
-				hasTaskTool: toolRegistry.has(TOOL.task),
-			}),
-			harnessToolAllowlist: resolveHarnessProfileForModel(settings, model)?.tools,
-		});
-
-		// Pre-register in the global agent registry before session construction so
-		// tool routing and IRC discovery can resolve this agent immediately. The
-		// session reference is attached after construction below.
-		agentRegistry.register({
-			id: resolvedAgentId,
-			displayName: resolvedAgentDisplayName,
-			kind: agentKind,
-			parentId: options.parentAgentId,
-			session: null,
-			sessionFile: sessionManager.getSessionFile() ?? null,
-			// The conversation this agent belongs to. A spawned agent inherits its
-			// parent's, so only a root session states one: its session id, which
-			// exists before the transcript has ever been written and survives a
-			// `/move` that rewrites the path.
-			scope: options.parentAgentId ? undefined : (sessionManager.getSessionId?.() ?? undefined),
-			status: "running",
-			model: getActiveModelString(),
-		});
-		hasRegistered = true;
-
-		setActiveToolNames(initialToolNames);
-		// Let pending input and rendering run between tool construction and prompt assembly.
-		await yieldToEventLoop();
-		const { systemPrompt } = await logger.time(
-			"buildSystemPrompt",
-			rebuildSystemPrompt,
-			initialToolNames,
-			toolRegistry,
-		);
-		await yieldToEventLoop();
-
-		const promptTemplates = await promptTemplatesPromise;
-		toolSession.promptTemplates = promptTemplates;
-
-		const slashCommands = await slashCommandsPromise;
-
-		const requestLeases = new SecretRequestLeases(secretRuntime);
-
-		// Acquire before the first async extension hook. The returned arrays and
-		// context retain this exact authority through provider serialization.
-		const transformContext = async (messages: AgentMessage[], _signal?: AbortSignal) => {
-			const lease = await requestLeases.admit(messages);
-			const withContext = await extensionRunner.emitContext(messages);
-			const transformed = wrapSteeringForModel(withContext);
-			requestLeases.bind(withContext, lease);
-			requestLeases.bind(transformed, lease);
-			return transformed;
-		};
-
-		// No image policy here. Conversion sees one model per session, while the
-		// main turn, a side request, compaction and an advisor each dispatch
-		// their own; the policy resolves in AgentSession's provider-context hook,
-		// which knows the model the request is actually going to.
-		const convertToLlmFinal = (messages: AgentMessage[]): Message[] =>
-			requestLeases.redactMessages(messages, filterProviderReplayMessages(convertToLlm(messages)));
-
-		const transformProviderContext = async (
-			context: Context,
-			_transformModel: Model,
-			requestLease?: SecretRuntimeLease,
-		): Promise<Context> => requestLeases.redactContext(context, requestLease);
-
-		// Raw extension hook. The leased stream wrapper performs the final
-		// redaction after this await with the request's immutable runtime.
-		const onPayload = async (payload: unknown, _model?: Model) =>
-			(await extensionRunner.emitBeforeProviderRequest(payload)) ?? payload;
-		const onResponse: SimpleStreamOptions["onResponse"] = async (response, model) => {
-			await extensionRunner.emitAfterProviderResponse(response, model);
-		};
-
-		const setToolUIContext = (uiContext: ExtensionUIContext, hasUI: boolean) => {
-			toolContextStore.setUIContext(uiContext, hasUI);
-		};
-
-		const initialTools = initialToolNames
-			.map(name => toolRegistry.get(name))
-			.filter((tool): tool is AgentTool => tool !== undefined);
-
-		// Fall back to the schema default ("auto"), matching command-controller.ts.
-		// The old "off" fallback disagreed with both the schema and that sibling, so
-		// a resolved-undefined value would have silently disabled websockets here
-		// while the command controller kept them on.
-		const openaiWebsocketSetting = settings.get("providers.openaiWebsockets") ?? "auto";
-		const preferOpenAICodexWebsockets =
-			openaiWebsocketSetting === "on" ? true : openaiWebsocketSetting === "off" ? false : undefined;
-		const initialServiceTierByFamily = hasServiceTierEntry
-			? (existingSession.serviceTier ?? {})
-			: buildServiceTierByFamily(
-					settings.get("tier.openai"),
-					settings.get("tier.anthropic"),
-					settings.get("tier.google"),
-				);
-
-		// One-shot launch-latency marker: fired the first time the loop dispatches
-		// a chat request to the provider transport. See onFirstChatDispatch.
-		let notifyFirstChatDispatch = options.onFirstChatDispatch;
-		// Shared, settings-aware stream wrapper used by the main agent, advisor,
-		// and side-channel requests (`/btw`, `/omfg`, IRC auto-replies, handoff).
-		// Keeps OpenRouter sticky-routing variants, antigravity endpoint routing,
-		// in-flight caps, and the loop guard consistent across every provider call
-		// the session drives. Wrapped in a per-provider concurrency limiter so
-		// each LLM HTTP request — not the whole spawned agent lifecycle — holds the
-		// slot, preventing the nested-spawn deadlock from issue #3749.
-		const settingsAwareStreamFn = wrapStreamFnWithProviderConcurrency(
-			settings,
-			createSettingsAwareStreamFn(settings),
-		);
-		const callerTelemetryTextSanitizer = options.telemetry?.textSanitizer;
-		const telemetry: AgentTelemetryConfig = {
-			...(options.telemetry ?? {}),
-			textSanitizer: text =>
-				secretRuntime.obfuscateText(callerTelemetryTextSanitizer ? callerTelemetryTextSanitizer(text) : text),
-		};
-		// One warning per model when auto tool-format reroutes a non-tool-calling
-		// model onto an in-band text dialect — the operator must see the degrade.
-		const notifiedDialectFallbackModels = new Set<string>();
-		agent = new Agent({
-			initialState: {
-				systemPrompt,
-				model,
-				thinkingLevel: toReasoningEffort(modelSelection.effectiveThinkingLevel),
-				disableReasoning: shouldDisableReasoning(modelSelection.effectiveThinkingLevel),
-				tools: initialTools,
-			},
-			cwd,
-			// Live cwd: `/move` updates SessionManager (and process cwd) without
-			// reconstructing the Agent, so a static cwd would strand GitLab Duo Agent
-			// namespace/project discovery on the original repo's git remote. Re-read it
-			// per turn from the SessionManager.
-			cwdResolver: () => sessionManager.getCwd(),
-			convertToLlm: convertToLlmFinal,
-			onPayload,
-			onResponse,
-			sessionId: providerSessionId,
-			promptCacheKey: providerPromptCacheKey,
-			deadline: options.deadline,
-			transformContext,
-			transformProviderContext,
-			steeringMode: settings.get("steeringMode") ?? "one-at-a-time",
-			followUpMode: settings.get("followUpMode") ?? "one-at-a-time",
-			interruptMode: settings.get("interruptMode") ?? "immediate",
-			thinkingBudgets: settings.getGroup("thinkingBudgets"),
-			// Unset is exactly UNSET_NUMBER, read through its one owner. The previous
-			// `>= 0` test also discarded every legitimate negative value, so a
-			// configured negative presence/repetition penalty (both providers accept
-			// them) silently never reached the request.
-			temperature: optionalNumber(settings.get("temperature")),
-			topP: optionalNumber(settings.get("topP")),
-			topK: optionalNumber(settings.get("topK")),
-			minP: optionalNumber(settings.get("minP")),
-			presencePenalty: optionalNumber(settings.get("presencePenalty")),
-			repetitionPenalty: optionalNumber(settings.get("repetitionPenalty")),
-			hideThinkingSummary: settings.get("omitThinking"),
-			kimiApiFormat: settings.get("providers.kimiApiFormat") ?? "anthropic",
-			preferWebsockets: preferOpenAICodexWebsockets,
-			getToolContext: tc => toolContextStore.getContext(tc),
-			getApiKey: requestModel => modelRegistry.resolver(requestModel, agent.sessionId),
-			streamFn: async (streamModel, context, streamOptions) => {
-				if (notifyFirstChatDispatch) {
-					const cb = notifyFirstChatDispatch;
-					notifyFirstChatDispatch = undefined;
-					try {
-						cb();
-					} catch (err) {
-						logger.warn("onFirstChatDispatch hook threw", {
-							error: errorMessage(err),
-						});
-					}
-				}
-				const runtime = requestLeases.requestLease(context);
-				const optionsForRequest = streamOptions ?? {};
-				const requestOnPayload = optionsForRequest.onPayload;
-				const leasedOnPayload =
-					runtime.hasRedactions || requestOnPayload
-						? async (payload: unknown, payloadModel?: Model) => {
-								const replacement = requestOnPayload
-									? await requestOnPayload(payload, payloadModel)
-									: undefined;
-								return runtime.obfuscatePayload(replacement ?? payload);
-							}
-						: undefined;
-				return settingsAwareStreamFn(streamModel, context, {
-					...optionsForRequest,
-					onPayload: leasedOnPayload,
-				});
-			},
-			cursorExecHandlers,
-			transformToolCallArguments: (args, toolName) => {
-				// `display` is what an operator reads and what the session records;
-				// `execution` is what the tool runs with. They diverge on exactly one thing
-				// below, and that divergence is the point of the split.
-				let display = args;
-				const maxTimeout = settings.get("tools.maxTimeout");
-				if (maxTimeout > 0 && typeof display.timeout === "number") {
-					display = {
-						...display,
-						timeout: Math.min(display.timeout, maxTimeout),
-					};
-				}
-				// `execution` is `display` itself unless a secret expanded.
-				let execution = secretRuntime.deobfuscateForExecution(
-					requestLeases.mainRequest,
-					display,
-					toolName,
-					agent.sessionId,
-				);
-				// BOTH. A codec handle is opaque to a person, so an unexpanded display is the
-				// bug rather than the protection — the opposite of a secret. When no secret
-				// expanded, `execution` is still the same object as `display` and one walk
-				// serves both.
-				if (argot?.loaded) {
-					const expandedDisplay = expandToolArguments(argot, display);
-					execution = execution === display ? expandedDisplay : expandToolArguments(argot, execution);
-					display = expandedDisplay;
-				}
-				return { execution, display };
-			},
-			repairToolCallArguments: createRepairToolCallArgumentsHook(settings, () => agent.state.model),
-			// The RESOLVERS keep provider schemas synchronized with the rebuilt
-			// prompt on settings changes and model-family switches.
-			intentTracing: intentTracingEnabled,
-			instrumentation: settings.get("session.instrumentation"),
-			pruneToolDescriptions: inlineToolDescriptorsForModel,
-			// Re-resolved with the active model on every request so mid-session
-			// model switches pick the right tool-calling shape (a switch to a
-			// `supportsTools: false` model must stop sending a native `tools`
-			// param the endpoint rejects with a 400).
-			dialect: requestModel => {
-				const dialect = resolveDialect(settings.get("tools.format"), requestModel);
-				if (dialect !== undefined && requestModel.supportsTools === false) {
-					const modelKey = `${requestModel.provider}/${requestModel.id}`;
-					if (!notifiedDialectFallbackModels.has(modelKey)) {
-						notifiedDialectFallbackModels.add(modelKey);
-						session?.emitNotice(
-							"warning",
-							`${modelKey} is cataloged as non-tool-calling; tools are delivered through the "${dialect}" text dialect instead of the native tools parameter.`,
-							"tools.format",
-						);
-					}
-				}
-				return dialect;
-			},
-			abortOnFabricatedToolResult: settings.get("tools.abortOnFabricatedResult"),
-			getToolChoice: () => session?.nextToolChoiceDirective(),
-			telemetry,
-			appendOnlyContext: model
-				? shouldEnableAppendOnlyContext(settings.get("provider.appendOnlyContext"), model)
-					? new AppendOnlyContextManager()
-					: undefined
-				: undefined,
-		});
-
-		cursorEventEmitter = event => agent.emitExternalEvent(event);
-
-		// Track the live context size for the argot encode cutoff. The prompt the
-		// model saw this turn is its input plus cached-prompt tokens; output is
-		// excluded. Read from the assistant message's usage so no re-estimation is
-		// needed. Next turn's system-prompt rebuild reads this to decide whether to
-		// keep teaching shorthand (see argotGate / shouldEncode below).
-		if (argotEnabled && argotGate.disableAboveTokens > 0) {
-			agent.subscribe(event => {
-				if (event.type !== "turn_end") return;
-				const usage = (event.message as { usage?: { input?: number; cacheRead?: number; cacheWrite?: number } })
-					.usage;
-				if (usage) {
-					argotContextTokens = (usage.input ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
-				}
-			});
-		}
-
-		// Restore messages if session has existing data
-		if (hasExistingSession) {
-			agent.replaceMessages(existingSession.messages);
-		} else {
-			// Save initial model, thinking level, and service tier for new sessions so they can be restored on resume.
-			if (model) {
-				sessionManager.appendModelChange(`${model.provider}/${model.id}`);
-			}
-			if (!modelSelection.autoThinking) {
-				// Do not write the `auto` selector before the first turn resolves; auto
-				// classification persists its concrete effort once a real user turn runs.
-				sessionManager.appendThinkingLevelChange(modelSelection.effectiveThinkingLevel);
-			}
-			if (Object.keys(initialServiceTierByFamily).length > 0) {
-				sessionManager.appendServiceTierChange(initialServiceTierByFamily);
-			}
-		}
-
-		const advisorTools = await buildAdvisorTools(advisorToolSession);
-
-		// Owned only when this session created the manager; spawned agents receive a
-		// parent's manager via `options.mcpManager` and MUST NOT disconnect it.
-		const ownedMcpManager = options.mcpManager ? undefined : mcpManager;
-		session = new AgentSession({
-			// The advisor gets the same project context files (AGENTS.md, etc.) the primary agent
-			// gets in its system prompt, so the read-only reviewer judges against them.
-			...projectAdvisorScope({ watchdogFiles, activeRepoContext, contextFiles, advisors: discoveredAdvisors }),
-			agent,
-			pruneToolDescriptions: inlineToolDescriptorsForModel,
-			thinkingLevel: modelSelection.autoThinking ? AUTO_THINKING : modelSelection.effectiveThinkingLevel,
-			thinkingSource: modelSelection.thinkingSource,
-			prewalk: options.prewalk,
-			planYolo: options.planYolo,
-			serviceTierByFamily: initialServiceTierByFamily,
-			sessionManager,
-			settings,
-			autoApprove: options.autoApprove,
-			bypassAllApprovals: options.bypassAllApprovals,
-			parentApprovalBypassed: options.parentApprovalBypassed,
-			evalKernelOwnerId,
-			// Defined only for top-level sessions (creation is gated above).
-			// AgentSession uses this to decide whether it may dispose the global
-			// AsyncJobManager on teardown; spawned agents inherit the parent's and
-			// **MUST NOT** tear it down.
-			ownedAsyncJobManager: asyncJobManager,
-			asyncJobManager: scopedAsyncJobManager,
-			scopedModels: options.scopedModels,
-			promptTemplates,
-			slashCommands,
-			extensionRunner,
-			customCommands: customCommandsResult.commands,
-			skills,
-			operatorNotices,
-			skillsSettings: settings.getGroup("skills"),
-			modelRegistry,
-			toolRegistry,
-			createVibeTools: sessionIsSpawned ? undefined : () => createVibeModeTools(toolSession),
-			// A spawned agent shares this process with its parent and its siblings, so its
-			// re-root may not move the process working directory or any other
-			// process-global project state. See `AgentSession.rescopeToCwd`.
-			isSpawned: sessionIsSpawned,
-			builtInToolNames: builtInRegistryToolNames,
-			transformContext,
-			transformProviderContext,
-			onPayload,
-			onResponse,
-			sideStreamFn: settingsAwareStreamFn,
-			preferWebsockets: preferOpenAICodexWebsockets,
-			convertToLlm: convertToLlmFinal,
-			rebuildSystemPrompt,
-			reloadSshTool,
-			requestedToolNames: requestedToolNameSet,
-			setActiveToolNames,
-			getMcpServerInstructions: mcpManager
-				? () => clipMCPServerInstructions(mcpManager!.getServerInstructions())
-				: undefined,
-			disconnectOwnedMcpManager: ownedMcpManager ? () => ownedMcpManager.disconnectAll() : undefined,
-			mcpDiscoveryEnabled,
-			initialSelectedMCPToolNames,
-			defaultSelectedMCPToolNames,
-			persistInitialMCPToolSelection: !hasExistingSession,
-			defaultSelectedMCPServerNames: Array.from(discoveryDefaultServers),
-			ttsrManager,
-			obfuscator: secretRuntime.obfuscator,
-			secretRuntime: secretRuntime.lease,
-			leaseSecretRuntime: () => secretRuntime.acquire(),
-			resolveSecretRuntimeLeaseForContext: context => requestLeases.forContext(context),
-			refreshSecretRuntime: runtimeCwd => secretRuntime.refresh(runtimeCwd),
-			argot,
-			agentId: resolvedAgentId,
-			agentKind,
-			providerSessionId: options.providerSessionId,
-			providerPromptCacheKeySource,
-			parentEvalSessionId: options.parentEvalSessionId,
-			advisorTools,
-			titleSystemPrompt: options.titleSystemPrompt,
-		});
-		hasSession = true;
-		secretRuntime.attachSession(session);
-		// Record the at-rest launch facts the moment they exist, not when the
-		// status row first renders. The launch card reads the file on every
-		// render and repaints when a record lands, so on a cold launch — no
-		// recording from a previous session — the hero's model name and provider
-		// and the context gauge arrive with the session rather than with the
-		// mounted row, and the next launch states them from the first frame.
-		// The row re-records the same decision on its own renders against the
-		// same gauge; a record that changes nothing does not write.
-		const atRestUsage = session.getContextUsage();
-		const atRest = measureContextGauge(
-			atRestUsage?.tokens ?? null,
-			atRestUsage?.contextWindow ?? session.model?.contextWindow ?? 0,
-			session.autoCompactionEnabled ? settings.getGroup("compaction") : undefined,
-		);
-		void recordRestLaunchFacts(
-			{
-				model: session.state.model,
-				thinkingLevel: session.state.thinkingLevel ?? null,
-				isAutoThinking: session.isAutoThinking,
-				messageCount: session.messages?.length ?? 0,
-				systemContextTokens: computeNonMessageBreakdown(session).systemContextTokens,
-			},
-			atRest.contextPercent,
-			atRest.contextLimit,
-		);
-
-		armLaunchArgot({
-			argot,
-			enabled: argotEnabled,
-			settings,
-			cwd,
-			sessionManager,
-			refreshPrompt: () => session.refreshBaseSystemPrompt("argot-arm"),
-		});
-		if (!hasExistingSession) {
-			recordNewSessionStart({
-				sessionManager,
-				settings,
-				isMainAgent: agentKind === "main",
-				systemPrompt: session.agent.state.systemPrompt,
-				activeToolNames: session.getActiveToolNames(),
-			});
-		}
-
-		if (asyncJobManager) {
-			const managedJobs = asyncJobManager;
-			session.yieldQueue.register<AsyncResultEntry>("async-result", {
-				isStale: entry => managedJobs.isDeliverySuppressed(entry.jobId),
-				build: buildAsyncResultBatchMessage,
-			});
-		}
-		session.yieldQueue.register<McpNotificationEntry>("mcp-notification", {
-			build: buildMcpNotificationBatchMessage,
-		});
-		session.yieldQueue.register<DeferredDiagnosticsEntry>(LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE, {
-			isStale: entry => entry.isStale(),
-			build: buildLateDiagnosticsBatchMessage,
-		});
-
-		// Attach the live session to the pre-registered ref so peers can route IRC
-		// messages here. Refresh sessionFile in case it was unavailable at pre-register
-		// time. The dispose wrapper below unregisters on teardown (unless parked).
-		agentRegistry.attachSession(resolvedAgentId, session, sessionManager.getSessionFile() ?? null);
-		// Keep the driving session's own ref alive in the roster. Only spawned agents
-		// were ever wired to the registry (`task/executor.ts` on agent_start /
-		// agent_end, `persisted-revive.ts` for a revived one), so the main agent's
-		// row was whatever registration wrote and nothing after it: the Agent
-		// Control Center aged it from process start and printed "1d ago" against a
-		// session that was mid-turn. The status is deliberately left alone — the
-		// bus routes an incoming message by it, and flipping the operator's own
-		// session to idle between turns would change how a peer reaches them.
-		session.subscribe(event => {
-			if (event.type === "agent_start" || event.type === "agent_end") {
-				agentRegistry.noteTurn(resolvedAgentId);
-			}
-		});
-		{
-			const originalDispose = session.dispose.bind(session);
-			let disposeCall: Promise<void> | undefined;
-			session.dispose = options => {
-				if (!disposeCall) {
-					disposeCall = (async () => {
-						try {
-							// Reject new session work (eval starts) the moment disposal
-							// begins — the lifecycle await below opens an async gap before
-							// AgentSession.dispose() would otherwise set its guards.
-							session.beginDispose();
-							if (agentKind === "main") {
-								// Top-level teardown owns the global agent lifecycle: park timers,
-								// adopted spawned agent sessions, revivers. Tear it down while shared
-								// resources (kernels, MCP, LSP) are still live. Spawned agent disposal
-								// must NOT touch the global lifecycle.
-								await AgentLifecycleManager.global().dispose();
-							}
-							await originalDispose(options);
-						} finally {
-							// The expansion log queues its appends so a tool call is never blocked by a
-							// write, which means an exit that does not wait for the queue loses whichever
-							// records were still in it, and loses them silently. Flushed here rather than
-							// left to the event loop because quitting the TUI ends the process rather than
-							// waiting for pending work: the last credential an agent used is exactly the
-							// one an incident asks about.
-							try {
-								await secretRuntime.flushAuditLog();
-							} finally {
-								// Stop routing machine faults into this session's notices. Left attached, the sink
-								// keeps a disposed `OperatorNotices` reachable and posts later faults into a channel
-								// nothing renders, and in a process that opens sessions in sequence the count grows
-								// by one per session forever.
-								detachFaultSink?.();
-								detachSecretsNoticeSink?.();
-								unregisterUnlessParked();
-								unsubscribeCredentialDisabled?.();
-							}
-						}
-					})();
-				}
-				return disposeCall;
-			};
-		}
-
-		prewarmCodexTransport({
-			model,
-			modelRegistry,
-			sessionId: providerSessionId,
-			preferWebsockets: preferOpenAICodexWebsockets,
-			providerSessionState: session.providerSessionState,
-		});
-
-		// Print/script invocations (`hasUI=false`) list no language servers: they draw no warmup
-		// status and usually finish before a server stabilizes, so warming one only spends CPU on
-		// `initialize` responses beside the stream consumer. The lsp barrel is imported lazily
-		// because it pulls the client and config machinery, which stays off the boot path.
-		const lspServers: CreateAgentSessionResult["lspServers"] =
-			enableLsp && options.hasUI ? startLspServers(await import("./lsp"), { cwd, settings, eventBus }) : undefined;
-
-		const startMemoryBackend = async () => {
-			const memoryBackend = await resolveMemoryBackend(settings);
-			await memoryBackend.start({
-				session,
-				settings,
-				modelRegistry,
-				agentDir,
-				taskDepth,
-				parentHindsightSessionState: options.parentHindsightSessionState,
-				parentMnemopiSessionState: options.parentMnemopiSessionState,
-			});
-		};
-
-		// The memory backend's start is HYDRATION, not boot: it opens a database and installs this
-		// session's state, and no frame reads either. It used to be awaited here for an auto-learn
-		// session, which put both in front of the first frame so that a tool call minutes later would
-		// find the state already installed. `deferStartupWork` keeps that guarantee at the only place
-		// that needs it — a turn awaits it before running, and every tool call and spawned agent spawn is
-		// inside a turn — while the frame paints without it. A session with auto-learn off already ran
-		// this unawaited.
-		//
-		// The controller is installed only when `autolearn.enabled` and only for a top-level session,
-		// to match the tools: `createTools` builds the `learn`/`manage_skill` registry ONCE at session
-		// start and no settings change rebuilds it, so installing the controller while disabled would
-		// let a mid-session enable fire a nudge pointing at tools the session never built. Activation
-		// is a session-start decision for BOTH; the fire-time re-check in `#onAgentEnd` still handles a
-		// mid-session DISABLE. The subscription lives for the session's lifetime; the reference is
-		// intentionally discarded (the listener retains it).
-		await yieldToEventLoop();
-		session.deferStartupWork(
-			logger.time("startMemoryStartupTask", startMemoryBackend).catch(error => {
-				logger.warn("memory backend startup failed", { error: errorMessage(error) });
-			}),
-		);
-		if (settings.get("autolearn.enabled") && taskDepth === 0) {
-			new AutoLearnController({ session, settings });
-		}
-
-		// Wire MCP manager callbacks to session for reactive tool updates.
-		// Skip when reusing a parent's manager — the parent owns the callbacks.
-		if (mcpManager && !options.mcpManager) {
-			wireReactiveMCPManager({
-				manager: mcpManager,
-				session,
-				settings,
-				refreshTools: async tools => {
-					let activateAll = deferMCPDiscoveryForUI && !mcpDiscoveryEnabled;
-					if (activateAll && (await enableDeferredMCPDiscoveryForTools(session, tools))) {
-						activateAll = false;
-					}
-					await session.refreshMCPTools(tools, activateAll ? { activateAll: true } : undefined);
-				},
-			});
-		}
-
-		startDeferredMCPDiscovery?.(
-			session,
-			{
-				mcpDiscoveryEnabled,
-				explicitlyRequestedMCPToolNames,
-				activateAllMCPTools: !mcpDiscoveryEnabled,
-			},
-			enableDeferredMCPDiscoveryForTools,
-		);
-
-		return {
-			session,
-			extensionsResult,
-			setToolUIContext,
-			setToolNotifier,
-			mcpManager,
-			modelFallbackMessage: modelSelection.fallbackMessage,
-			lspServers,
-			eventBus,
-		};
+		return await startup.run();
 	} catch (error) {
-		// Release the subscription if the throw happened after install but before the
-		// dispose-wrap took ownership. Idempotent with dispose() — Set.delete is a no-op
-		// for already-removed listeners.
-		unsubscribeCredentialDisabled?.();
-		// Same reason as the dispose path: the sink was attached near the top of this function, so a
-		// throw anywhere after it would otherwise leave a sink pointing at notices for a session that
-		// never started. Idempotent, so the `session.dispose()` below detaching again is harmless.
-		detachFaultSink?.();
-		detachSecretsNoticeSink?.();
-		try {
-			if (hasSession) {
-				await session.dispose();
-			} else {
-				if (hasRegistered) unregisterUnlessParked();
-				if (asyncJobManager) {
-					if (AsyncJobManager.instance() === asyncJobManager) {
-						AsyncJobManager.setInstance(undefined);
-					}
-					await asyncJobManager.dispose({ timeoutMs: 3_000 });
-				}
-				if (evalKernelOwnerId) {
-					await disposeOwnedResources("eval-kernel-owner", evalKernelOwnerId);
-				}
-				if (mcpManager && mcpManager !== options.mcpManager) {
-					await mcpManager.disconnectAll();
-				}
-				if (!options.sessionManager) await sessionManager?.close();
-				if (ownsAuthStorage) authStorage.close();
-			}
-		} catch (cleanupError) {
-			logger.warn("Failed to clean up createAgentSession resources after startup error", {
-				error: errorMessage(cleanupError),
-			});
-		}
+		await startup.abandon();
 		throw error;
 	}
 }

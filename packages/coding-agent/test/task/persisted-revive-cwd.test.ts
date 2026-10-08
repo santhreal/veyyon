@@ -8,6 +8,7 @@ import { MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { createPersistedAgentReviverFactory } from "@veyyon/coding-agent/task/persisted-revive";
+import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { getProjectAgentDir, Snowflake, TempDir } from "@veyyon/utils";
 import { useIsolatedConfigRoot } from "../helpers/isolated-agent-dir";
@@ -84,6 +85,7 @@ it("reopens a reusable persisted reviver at the child's latest cwd, and at no pr
 			authStorage,
 			modelRegistry,
 			settings: parentSettings,
+			eventBus: new EventBus(),
 			enableLsp: false,
 		});
 		const revive = await factory({

@@ -261,7 +261,7 @@ disabledExtensions:
 
 The derived name is the filename stem (or directory name for `index.ts`-style entries): `/path/to/my-ext.ts` → `my-ext`.
 
-## Important constraints
+## Constraints
 
 - **Do not call runtime actions during load.** Methods like `pi.sendMessage()` throw `ExtensionRuntimeNotInitializedError` if called synchronously during module evaluation (before a session is active). Register handlers/tools/commands during load; perform runtime actions only from event handlers, tools, or commands.
 - **`tool_call` errors are fail-closed.** If a `tool_call` handler throws, the tool is blocked.

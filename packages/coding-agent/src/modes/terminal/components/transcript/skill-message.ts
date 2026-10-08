@@ -3,7 +3,7 @@ import { Box, Container, Markdown, Spacer, Text } from "@veyyon/tui";
 import { collapseWhitespace } from "@veyyon/utils";
 import type { SkillPromptCustomDisplay } from "@veyyon/wire/presentation";
 import { withIcon } from "../../../../theme/icon-label";
-import { getMarkdownTheme } from "../../../../theme/markdown-theme";
+import { getMarkdownTheme, markdownTextStyle } from "../../../../theme/markdown-theme";
 import { theme } from "../../../../theme/theme";
 import { shortenPath } from "../../../../tools/core/render-utils";
 import { fileHyperlink } from "../../draw/hyperlink";
@@ -78,9 +78,7 @@ export class SkillMessageComponent extends Container {
 		this.#box.addChild(new Text(theme.fg("muted", "prompt"), 0, 0));
 		this.#box.addChild(new Spacer(1));
 
-		this.#contentComponent = new Markdown(text, 0, 0, getMarkdownTheme(), {
-			color: (value: string) => theme.fg("customMessageText", value),
-		});
+		this.#contentComponent = new Markdown(text, 0, 0, getMarkdownTheme(), markdownTextStyle("customMessageText"));
 		this.#box.addChild(this.#contentComponent);
 	}
 

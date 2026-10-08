@@ -298,7 +298,7 @@ export class WelcomeComponent implements Component {
 		// let the low bound (7) win in that degenerate case, which would draw the sun
 		// taller than the budget and break the layout.
 		const sunH = Math.min(Math.max(7, Math.round((sunW * 0.6) / 2.1) + 2), sunRowBudget);
-		const sun = this.#currentLogoFrame(sunW, sunH);
+		const sun = currentLogoFrame(sunW, sunH);
 		const sunPad = padding(Math.max(0, Math.floor((termWidth - sunW) / 2)));
 		for (const row of sun) lines.push(sunPad + row);
 		lines.push("");
@@ -329,10 +329,7 @@ export class WelcomeComponent implements Component {
 	#menuRow(label: string, shortcut: string, width: number): string {
 		const used = visibleWidth(label) + visibleWidth(shortcut);
 		const gap = Math.max(2, width - used);
-		return this.#fitToWidth(
-			`${theme.bold(theme.fg("accent", label))}${padding(gap)}${theme.fg("dim", shortcut)}`,
-			width,
-		);
+		return fitToWidth(`${theme.bold(theme.fg("accent", label))}${padding(gap)}${theme.fg("dim", shortcut)}`, width);
 	}
 
 	/** Recent-session row: bullet + name, relative time flush right (name truncates first). */
@@ -341,7 +338,7 @@ export class WelcomeComponent implements Component {
 		const time = ` ${session.timeAgo}`;
 		const budget = Math.max(1, width - visibleWidth(bullet) - visibleWidth(time));
 		const name = visibleWidth(session.name) > budget ? truncateToWidth(session.name, budget) : session.name;
-		return this.#fitToWidth(`${theme.fg("dim", bullet)}${theme.fg("muted", name)}${theme.fg("dim", time)}`, width);
+		return fitToWidth(`${theme.fg("dim", bullet)}${theme.fg("muted", name)}${theme.fg("dim", time)}`, width);
 	}
 
 	#renderTip(boxWidth: number): string[] {
@@ -368,16 +365,16 @@ export class WelcomeComponent implements Component {
 		const pad = padding(Math.max(0, Math.floor((termWidth - blockWidth) / 2)));
 		return ["", ...tipLines.map(line => pad + line)];
 	}
+}
 
-	/** Fit string to exact width with ANSI-aware truncation/padding. */
-	#fitToWidth(str: string, width: number): string {
-		return truncateToWidth(str, width, Ellipsis.Unicode, true);
-	}
+/** Fit string to exact width with ANSI-aware truncation/padding. */
+function fitToWidth(str: string, width: number): string {
+	return truncateToWidth(str, width, Ellipsis.Unicode, true);
+}
 
-	/** The sun mark for the card: a steady ember disc at its resting size. */
-	#currentLogoFrame(sunW: number, sunH: number): readonly string[] {
-		return sunMark(sunW, sunH, { trueColor: TERMINAL.trueColor, time: 0.6 });
-	}
+/** The sun mark for the card: a steady ember disc at its resting size. */
+function currentLogoFrame(sunW: number, sunH: number): readonly string[] {
+	return sunMark(sunW, sunH, { trueColor: TERMINAL.trueColor, time: 0.6 });
 }
 
 /** Retained for API/compat and tests — the old box-drawing wordmark. */

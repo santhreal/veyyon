@@ -3,7 +3,7 @@ import type { AgentToolContext } from "@veyyon/agent-core";
 import { validateToolArguments } from "@veyyon/ai/utils/validation";
 import { type BashInterceptorRule, DEFAULT_BASH_INTERCEPTOR_RULES } from "@veyyon/coding-agent/config/settings-schema";
 import { normalizeToolName } from "@veyyon/coding-agent/tools/core/builtin-names";
-import { searchSchema } from "@veyyon/coding-agent/tools/search/search";
+import { SEARCH_TYPES } from "@veyyon/coding-agent/tools/search/search";
 import { BashTool, type BashToolInput } from "@veyyon/coding-agent/tools/shell/bash";
 import { checkBashInterception, UNIFIED_SEARCH_REDIRECTS } from "@veyyon/coding-agent/tools/shell/bash-interceptor";
 import { useIsolatedGlobalSettings } from "../helpers/isolated-global-settings";
@@ -70,12 +70,10 @@ describe("BashTool interception", () => {
 // field the ablation-era search facade took and the shipped `search` tool does
 // not. A message naming a field the schema rejects costs a refused call, and the
 // old suite pinned the retired word, so it went red on the cutover instead of
-// catching it. These cases read the accepted vocabulary out of `searchSchema`
+// catching it. These cases read the accepted vocabulary out of `SEARCH_TYPES`
 // and sweep every entry of the retired-primitive table, so adding a redirect in
 // a vocabulary the tool does not take fails here. Not covered: whether the
 // patterns match the right commands, which the rule-specific describes below do.
-const SEARCH_TYPES: string[] = searchSchema.shape.type.options;
-
 describe("default unified-search redirects", () => {
 	it.each([
 		["grep -R needle src", "text"],

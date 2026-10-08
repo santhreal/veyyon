@@ -363,18 +363,23 @@ describe("verification evidence ledger", () => {
 							),
 					),
 			).toBe(true);
+			// The reminder steers the model; it is hidden from the transcript and billed to the agent,
+			// both in the live context and in the entry a resume rebuilds that context from.
 			expect(
-				agent.state.messages.some(
-					message => message.role === "custom" && message.customType === VERIFICATION_EVIDENCE_REMINDER_TYPE,
-				),
-			).toBe(true);
+				agent.state.messages
+					.filter(
+						message => message.role === "custom" && message.customType === VERIFICATION_EVIDENCE_REMINDER_TYPE,
+					)
+					.map(message => (message.role === "custom" ? [message.display, message.attribution] : [])),
+			).toEqual([[false, "agent"]]);
 			expect(
 				sessionManager
 					.getBranch()
-					.some(
+					.filter(
 						entry => entry.type === "custom_message" && entry.customType === VERIFICATION_EVIDENCE_REMINDER_TYPE,
-					),
-			).toBe(true);
+					)
+					.map(entry => (entry.type === "custom_message" ? [entry.display, entry.attribution] : [])),
+			).toEqual([[false, "agent"]]);
 
 			const secondCandidate = assistantFinal("Second finish.");
 			agent.emitExternalEvent({ type: "message_end", message: secondCandidate });

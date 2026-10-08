@@ -78,7 +78,7 @@ The session's MCP servers, approval mode and settings come from the active profi
 | `model` | `provider/model`, chosen from the models the session lists. |
 | `thinking` | A thinking level the current model accepts, or `off`. |
 
-The response and a `config_option_update` carry the resolved option set.
+The response and a `config_option_update` contain the resolved option set.
 
 ### Prompting
 
@@ -103,9 +103,28 @@ Custom methods are prefixed `_veyyon/`; the older `_omp/` prefix is accepted and
 | `_veyyon/usage` | | Provider usage reports for the active session. |
 | `_veyyon/extensions` | `cwd` | The loaded extensions, minus `disabledExtensions`. |
 | `_veyyon/extensions/toggle` | `providerId`, `enabled` | Enables or disables a discovery provider for this process. |
+| `_veyyon/sessions/background` | `sessionId` (required) | Moves a streaming session to the background; `background` is the handoff, or `null` when no turn is streaming. |
+| `_veyyon/sessions/background/list` | | The conversations running in the background, as `sessions`. |
+| `_veyyon/sessions/background/cancel` | `sessionId` (required) | Aborts that background conversation's turn and waits until it is disposed. |
 | `speech.models.list` | | The on-device speech model catalog. |
 
 An unknown method fails with `Unknown ACP ext method`.
+
+### Background sessions
+
+`_veyyon/sessions/background` stops `session/update` notifications for the session while its turn
+keeps running. The pending `session/prompt` resolves when the turn ends, with the turn's own stop
+reason. `session/prompt`, `session/cancel` and the config methods fail for the session, and
+`session/close` leaves it running. `session/load` or `session/resume` with the same `cwd`
+re-attaches the live session; notifications resume from the next event, and `session/load` first
+replays the history written so far.
+
+The handoff is `{ sessionId, sessionFile, streaming, displaced, message }`. `streaming` is true: only
+a session with a streaming turn moves. `displaced` lists the session ids of older conversations
+stopped to stay within `session.backgroundLimit`. Each listed conversation
+is `{ sessionId, sessionFile, title, detachedAt, streaming, stopping }`. A background conversation
+ends when its turn and its background jobs finish. Closing the connection stops the conversations
+it moved to the background.
 
 ## Exit
 

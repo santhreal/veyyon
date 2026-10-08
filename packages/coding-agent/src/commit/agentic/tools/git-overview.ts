@@ -1,4 +1,4 @@
-import { type } from "arktype";
+import { type } from "@veyyon/ai/utils/schema/arktype";
 import type { CustomTool } from "../../../extensibility/custom-tools/types";
 import * as git from "../../../utils/git";
 import { extractScopeCandidates } from "../../analysis/scope";

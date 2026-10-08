@@ -7,9 +7,18 @@ import type {
 	AgentToolUpdateCallback,
 	ToolTier,
 } from "@veyyon/agent-core";
+import { type } from "@veyyon/ai/utils/schema/arktype";
 import { BARE_LITERAL_VALUE_RE, formatHashlineHeader } from "@veyyon/hashline";
-import { atomicWriteFileWith, errorMessage, isEnoent, isRecord, prompt, untilAborted, urlScheme } from "@veyyon/utils";
-import { type } from "arktype";
+import {
+	atomicWriteFileWith,
+	errorMessage,
+	isEnoent,
+	isRecord,
+	lazy,
+	prompt,
+	untilAborted,
+	urlScheme,
+} from "@veyyon/utils";
 
 import { allLineNumbers, canonicalSnapshotKey, getFileSnapshotStore } from "../../edit/file-snapshot-store";
 import { normalizeToLF } from "../../edit/normalize";
@@ -151,12 +160,14 @@ function parseBulkDirectives(content: string): Map<number, string> | null {
 	return map;
 }
 
-const writeSchema = type({
-	path: type("string").describe("file path"),
-	content: type("string").describe("file content"),
-});
+const writeSchema = lazy(() =>
+	type({
+		path: type("string").describe("file path"),
+		content: type("string").describe("file content"),
+	}),
+);
 
-export type WriteToolInput = typeof writeSchema.infer;
+export type WriteToolInput = typeof writeSchema.value.infer;
 
 /** Details returned by the write tool for TUI rendering */
 export interface WriteToolDetails {
@@ -416,7 +427,7 @@ export function writeFilesystemTargets(args: unknown): string[] {
  *
  * Creates or overwrites files with optional LSP formatting and diagnostics.
  */
-export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails> {
+export class WriteTool implements AgentTool<typeof writeSchema.value, WriteToolDetails> {
 	readonly name = "write";
 	readonly approval = (args: unknown): ToolTier => {
 		const rawPath = (args as Partial<WriteParams>).path;
@@ -450,7 +461,9 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 	readonly filesystemTargets = (args: unknown): string[] => writeFilesystemTargets(args);
 	readonly label = "Write";
 	readonly description: string;
-	readonly parameters = writeSchema;
+	get parameters(): typeof writeSchema.value {
+		return writeSchema.value;
+	}
 	readonly strict = true;
 	readonly concurrency = "exclusive";
 	readonly loadMode = "essential";
@@ -615,82 +628,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 			}),
 			isSqliteFile,
 		);
-	}
-
-	async #writeSqliteRow(
-		displayPath: string,
-		content: string,
-		resolvedSqlitePath: ResolvedSqliteWritePath,
-	): Promise<AgentToolResult<WriteToolDetails>> {
-		let db: Database | null = null;
-		try {
-			if (!resolvedSqlitePath.exists) {
-				throw new ToolError(`SQLite database '${displayPath}' not found`);
-			}
-
-			db = new Database(resolvedSqlitePath.absolutePath, { create: false, strict: true });
-			db.run("PRAGMA busy_timeout = 3000");
-
-			const trimmedContent = content.trim();
-			let resultText: string;
-			if (trimmedContent.length === 0) {
-				if (!resolvedSqlitePath.key) {
-					throw new ToolError("SQLite deletes require a row key in the path");
-				}
-
-				const lookup = resolveTableRowLookup(db, resolvedSqlitePath.table);
-				const deleted =
-					lookup.kind === "pk"
-						? deleteRowByKey(db, resolvedSqlitePath.table, lookup, resolvedSqlitePath.key)
-						: deleteRowByRowId(db, resolvedSqlitePath.table, resolvedSqlitePath.key);
-				resultText =
-					deleted > 0
-						? `Deleted row '${resolvedSqlitePath.key}' from ${resolvedSqlitePath.table}`
-						: `No row deleted from ${resolvedSqlitePath.table} for key '${resolvedSqlitePath.key}'`;
-			} else {
-				let parsedContent: unknown;
-				try {
-					parsedContent = Bun.JSON5.parse(content);
-				} catch (error) {
-					throw new ToolError(`SQLite write content must be valid JSON5: ${errorMessage(error)}`);
-				}
-
-				if (!isRecord(parsedContent)) {
-					throw new ToolError("SQLite write content must be a JSON object");
-				}
-
-				if (resolvedSqlitePath.key) {
-					const lookup = resolveTableRowLookup(db, resolvedSqlitePath.table);
-					const updated =
-						lookup.kind === "pk"
-							? updateRowByKey(db, resolvedSqlitePath.table, lookup, resolvedSqlitePath.key, parsedContent)
-							: updateRowByRowId(db, resolvedSqlitePath.table, resolvedSqlitePath.key, parsedContent);
-					resultText =
-						updated > 0
-							? `Updated row '${resolvedSqlitePath.key}' in ${resolvedSqlitePath.table}`
-							: `No row updated in ${resolvedSqlitePath.table} for key '${resolvedSqlitePath.key}'`;
-				} else {
-					insertRow(db, resolvedSqlitePath.table, parsedContent);
-					resultText = `Inserted row into ${resolvedSqlitePath.table}`;
-				}
-			}
-
-			invalidateFsScanAfterWrite(resolvedSqlitePath.absolutePath);
-			return toolResult<WriteToolDetails>({ resolvedPath: resolvedSqlitePath.absolutePath })
-				.text(resultText)
-				.sourcePath(resolvedSqlitePath.absolutePath)
-				.done();
-		} catch (error) {
-			if (isEnoent(error)) {
-				throw new ToolError(`SQLite database '${displayPath}' not found`);
-			}
-			if (error instanceof ToolError) {
-				throw error;
-			}
-			throw toolFailure(error);
-		} finally {
-			db?.close();
-		}
 	}
 
 	/**
@@ -1045,7 +982,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 				enforcePlanModeWrite(this.session, resolvedSqlitePath.sqlitePath, { op: "update" });
 
 				emitWriteProgress(onUpdate, content, path, resolvedSqlitePath.absolutePath);
-				return this.#writeSqliteRow(path, content, resolvedSqlitePath);
+				return writeSqliteRow(path, content, resolvedSqlitePath);
 			}
 
 			enforcePlanModeWrite(this.session, path, { op: "create" });
@@ -1125,5 +1062,81 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		const resultText = header ? `${header}\n${writeLine}` : writeLine;
 		const fullResultText = madeExecutable ? `${resultText}\n${EXECUTABLE_NOTICE}` : resultText;
 		return { resultText: fullResultText, madeExecutable: madeExecutable || undefined };
+	}
+}
+
+async function writeSqliteRow(
+	displayPath: string,
+	content: string,
+	resolvedSqlitePath: ResolvedSqliteWritePath,
+): Promise<AgentToolResult<WriteToolDetails>> {
+	let db: Database | null = null;
+	try {
+		if (!resolvedSqlitePath.exists) {
+			throw new ToolError(`SQLite database '${displayPath}' not found`);
+		}
+
+		db = new Database(resolvedSqlitePath.absolutePath, { create: false, strict: true });
+		db.run("PRAGMA busy_timeout = 3000");
+
+		const trimmedContent = content.trim();
+		let resultText: string;
+		if (trimmedContent.length === 0) {
+			if (!resolvedSqlitePath.key) {
+				throw new ToolError("SQLite deletes require a row key in the path");
+			}
+
+			const lookup = resolveTableRowLookup(db, resolvedSqlitePath.table);
+			const deleted =
+				lookup.kind === "pk"
+					? deleteRowByKey(db, resolvedSqlitePath.table, lookup, resolvedSqlitePath.key)
+					: deleteRowByRowId(db, resolvedSqlitePath.table, resolvedSqlitePath.key);
+			resultText =
+				deleted > 0
+					? `Deleted row '${resolvedSqlitePath.key}' from ${resolvedSqlitePath.table}`
+					: `No row deleted from ${resolvedSqlitePath.table} for key '${resolvedSqlitePath.key}'`;
+		} else {
+			let parsedContent: unknown;
+			try {
+				parsedContent = Bun.JSON5.parse(content);
+			} catch (error) {
+				throw new ToolError(`SQLite write content must be valid JSON5: ${errorMessage(error)}`);
+			}
+
+			if (!isRecord(parsedContent)) {
+				throw new ToolError("SQLite write content must be a JSON object");
+			}
+
+			if (resolvedSqlitePath.key) {
+				const lookup = resolveTableRowLookup(db, resolvedSqlitePath.table);
+				const updated =
+					lookup.kind === "pk"
+						? updateRowByKey(db, resolvedSqlitePath.table, lookup, resolvedSqlitePath.key, parsedContent)
+						: updateRowByRowId(db, resolvedSqlitePath.table, resolvedSqlitePath.key, parsedContent);
+				resultText =
+					updated > 0
+						? `Updated row '${resolvedSqlitePath.key}' in ${resolvedSqlitePath.table}`
+						: `No row updated in ${resolvedSqlitePath.table} for key '${resolvedSqlitePath.key}'`;
+			} else {
+				insertRow(db, resolvedSqlitePath.table, parsedContent);
+				resultText = `Inserted row into ${resolvedSqlitePath.table}`;
+			}
+		}
+
+		invalidateFsScanAfterWrite(resolvedSqlitePath.absolutePath);
+		return toolResult<WriteToolDetails>({ resolvedPath: resolvedSqlitePath.absolutePath })
+			.text(resultText)
+			.sourcePath(resolvedSqlitePath.absolutePath)
+			.done();
+	} catch (error) {
+		if (isEnoent(error)) {
+			throw new ToolError(`SQLite database '${displayPath}' not found`);
+		}
+		if (error instanceof ToolError) {
+			throw error;
+		}
+		throw toolFailure(error);
+	} finally {
+		db?.close();
 	}
 }

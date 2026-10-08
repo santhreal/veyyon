@@ -9,7 +9,7 @@ import type {
 	AgentToolUpdateCallback,
 	ToolApprovalDecision,
 } from "@veyyon/agent-core";
-
+import { type } from "@veyyon/ai/utils/schema/arktype";
 import {
 	clamp,
 	DAY_MS,
@@ -19,13 +19,13 @@ import {
 	hashPath,
 	isDateOnly,
 	isEnoent,
+	lazy,
 	nonEmptyTrimmed,
 	prompt,
 	removeTempPath,
 	untilAborted,
 	WEEK_MS,
 } from "@veyyon/utils";
-import { type } from "arktype";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import * as git from "../../utils/git";
 import type { ToolSession } from "..";
@@ -212,34 +212,36 @@ const GITHUB_READONLY_OPS: ReadonlySet<string> = new Set([
 	"run_watch",
 ]);
 
-const githubSchema = type({
-	op: type(
-		"'repo_view' | 'pr_create' | 'pr_checkout' | 'pr_push' | 'search_issues' | 'search_prs' | 'search_code' | 'search_commits' | 'search_repos' | 'run_watch'",
-	).describe("github operation"),
-	"repo?": type("string").describe("owner/repo"),
-	"branch?": type("string").describe("branch"),
-	"pr?": type("string | string[]").describe("pr number, url, or branch"),
-	"force?": type("boolean").describe("reset existing local branch"),
-	"forceWithLease?": type("boolean").describe("force-with-lease push"),
-	"title?": type("string").describe("pr title"),
-	"body?": type("string").describe("pr body markdown"),
-	"base?": type("string").describe("pr base branch"),
-	"head?": type("string").describe("pr head branch"),
-	"draft?": type("boolean").describe("open pr as draft"),
-	"fill?": type("boolean").describe("auto-fill pr title/body from commits"),
-	"reviewer?": type("string[]").describe("reviewers"),
-	"assignee?": type("string[]").describe("assignees"),
-	"label?": type("string[]").describe("labels"),
-	"query?": type("string").describe("search query"),
-	"since?": type("string").describe("lower-bound date filter"),
-	"until?": type("string").describe("upper-bound date filter"),
-	"dateField?": type("'created' | 'updated'").describe("date field"),
-	"limit?": type("number").describe("max results"),
-	"run?": type("string").describe("actions run id or url"),
-	"tail?": type("number").describe("log lines per failed job"),
-});
+const githubSchema = lazy(() =>
+	type({
+		op: type(
+			"'repo_view' | 'pr_create' | 'pr_checkout' | 'pr_push' | 'search_issues' | 'search_prs' | 'search_code' | 'search_commits' | 'search_repos' | 'run_watch'",
+		).describe("github operation"),
+		"repo?": type("string").describe("owner/repo"),
+		"branch?": type("string").describe("branch"),
+		"pr?": type("string | string[]").describe("pr number, url, or branch"),
+		"force?": type("boolean").describe("reset existing local branch"),
+		"forceWithLease?": type("boolean").describe("force-with-lease push"),
+		"title?": type("string").describe("pr title"),
+		"body?": type("string").describe("pr body markdown"),
+		"base?": type("string").describe("pr base branch"),
+		"head?": type("string").describe("pr head branch"),
+		"draft?": type("boolean").describe("open pr as draft"),
+		"fill?": type("boolean").describe("auto-fill pr title/body from commits"),
+		"reviewer?": type("string[]").describe("reviewers"),
+		"assignee?": type("string[]").describe("assignees"),
+		"label?": type("string[]").describe("labels"),
+		"query?": type("string").describe("search query"),
+		"since?": type("string").describe("lower-bound date filter"),
+		"until?": type("string").describe("upper-bound date filter"),
+		"dateField?": type("'created' | 'updated'").describe("date field"),
+		"limit?": type("number").describe("max results"),
+		"run?": type("string").describe("actions run id or url"),
+		"tail?": type("number").describe("log lines per failed job"),
+	}),
+);
 
-type GithubInput = typeof githubSchema.infer;
+type GithubInput = typeof githubSchema.value.infer;
 
 export interface GhToolDetails {
 	meta?: OutputMeta;
@@ -1900,7 +1902,7 @@ function buildTextResult(
  */
 export const MUTATING_GITHUB_OPS: ReadonlySet<string> = new Set(["pr_create", "pr_checkout", "pr_push"]);
 
-export class GithubTool implements AgentTool<typeof githubSchema, GhToolDetails> {
+export class GithubTool implements AgentTool<typeof githubSchema.value, GhToolDetails> {
 	readonly name = "github";
 	readonly approval = (args: unknown): ToolApprovalDecision => {
 		const rawOp = (args as Partial<GithubInput>).op;
@@ -1911,7 +1913,9 @@ export class GithubTool implements AgentTool<typeof githubSchema, GhToolDetails>
 	readonly loadMode = "discoverable";
 	readonly label = "GitHub";
 	readonly description = prompt.render(toolsPrompts["tools/github"].text);
-	readonly parameters = githubSchema;
+	get parameters(): typeof githubSchema.value {
+		return githubSchema.value;
+	}
 	readonly strict = true;
 
 	constructor(private readonly session: ToolSession) {}

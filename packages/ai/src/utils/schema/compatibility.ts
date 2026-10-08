@@ -60,9 +60,8 @@ const NON_SCHEMA_CONTAINER_ARRAY_KEYS: Record<string, true> = {
 };
 const NON_SCHEMA_CONTAINER_OBJECT_KEYS: Record<string, true> = { const: true, default: true, example: true };
 
-interface TraversalState {
-	path: string;
-}
+/** Appends the violations of the schema node at `path` to `violations`. */
+type SchemaNodeAudit = (node: JsonObject, path: string, violations: SchemaCompatibilityViolation[]) => void;
 
 function createViolation(
 	path: string,
@@ -81,7 +80,7 @@ function createViolation(
 }
 
 /**
- * Recursively visit every schema node in a JSON Schema tree.
+ * Recursively visit every schema node in a JSON Schema tree, auditing each with `audit`.
  *
  * The walker is *structural*, not type-aware: it knows which keywords contain
  * nested schemas vs. plain values, so it descends into `properties.*`,
@@ -90,51 +89,65 @@ function createViolation(
  */
 function walkSchema(
 	value: unknown,
-	state: TraversalState,
-	visitNode: (node: JsonObject, state: TraversalState) => void,
+	path: string,
+	audit: SchemaNodeAudit,
+	violations: SchemaCompatibilityViolation[],
 ): void {
 	if (Array.isArray(value)) {
-		for (let index = 0; index < value.length; index++) {
-			walkSchema(value[index], { path: `${state.path}[${index}]` }, visitNode);
-		}
+		walkSchemaArray(value, path, audit, violations);
 		return;
 	}
+	if (!isRecord(value)) return;
+	audit(value, path, violations);
+	for (const key in value) walkSchemaKeyword(key, value[key], path, audit, violations);
+}
 
-	if (!isRecord(value)) {
+/** Walks each member of `values`, at `path[index]`. */
+function walkSchemaArray(
+	values: readonly unknown[],
+	path: string,
+	audit: SchemaNodeAudit,
+	violations: SchemaCompatibilityViolation[],
+): void {
+	for (let index = 0; index < values.length; index++) {
+		walkSchema(values[index], `${path}[${index}]`, audit, violations);
+	}
+}
+
+/** Walks the subschemas held by keyword `key`, with value `entry`, of the node at `path`. */
+function walkSchemaKeyword(
+	key: string,
+	entry: unknown,
+	path: string,
+	audit: SchemaNodeAudit,
+	violations: SchemaCompatibilityViolation[],
+): void {
+	// Schema-map keywords: value is `{ name: schema, … }`. Recurse into each
+	// entry's schema rather than the map object itself.
+	if (SCHEMA_MAP_KEYWORDS.has(key)) {
+		if (!isRecord(entry)) return;
+		for (const name in entry) walkSchema(entry[name], `${path}.${key}.${name}`, audit, violations);
 		return;
 	}
+	// Non-schema container keywords — values are not schemas, do not descend.
+	if (key in NON_SCHEMA_CONTAINER_ARRAY_KEYS || key in NON_SCHEMA_CONTAINER_OBJECT_KEYS) return;
+	// Array-of-schemas keywords (e.g. `allOf`, `anyOf`, `oneOf`, `prefixItems`).
+	if (Array.isArray(entry)) walkSchemaArray(entry, `${path}.${key}`, audit, violations);
+	else if (isRecord(entry)) walkSchema(entry, `${path}.${key}`, audit, violations);
+}
 
-	visitNode(value, state);
-
-	for (const key in value) {
-		// Schema-map keywords: value is `{ name: schema, … }`. Recurse into each
-		// entry's schema rather than the map object itself.
-		const entry = value[key];
-		if (SCHEMA_MAP_KEYWORDS.has(key)) {
-			if (isRecord(entry)) {
-				for (const name in entry) {
-					const child = entry[name];
-					walkSchema(child, { path: `${state.path}.${key}.${name}` }, visitNode);
-				}
-			}
-			continue;
-		}
-		// Non-schema container keywords — values are not schemas, do not descend.
-
-		if (key in NON_SCHEMA_CONTAINER_ARRAY_KEYS || key in NON_SCHEMA_CONTAINER_OBJECT_KEYS) {
-			continue;
-		}
-		// Array-of-schemas keywords (e.g. `allOf`, `anyOf`, `oneOf`, `prefixItems`).
-
-		if (Array.isArray(entry)) {
-			for (let index = 0; index < entry.length; index++) {
-				walkSchema(entry[index], { path: `${state.path}.${key}[${index}]` }, visitNode);
-			}
-			continue;
-		}
-
-		if (isRecord(entry)) {
-			walkSchema(entry, { path: `${state.path}.${key}` }, visitNode);
+/** Appends one violation per key of `node` found in `forbidden`, in key order, reading `${message} "<key>"`. */
+function appendForbiddenKeys(
+	node: JsonObject,
+	path: string,
+	forbidden: Record<string, true>,
+	rule: string,
+	message: string,
+	violations: SchemaCompatibilityViolation[],
+): void {
+	for (const key in node) {
+		if (key in forbidden) {
+			violations.push(createViolation(`${path}.${key}`, rule, `${message} "${key}"`, key, node[key]));
 		}
 	}
 }
@@ -150,50 +163,44 @@ function walkSchema(
  *     properties not in `properties` are also rejected — strict mode demands
  *     a closed object shape.
  */
-function validateStrictNode(node: JsonObject, state: TraversalState): SchemaCompatibilityViolation[] {
-	const violations: SchemaCompatibilityViolation[] = [];
-
-	for (const key in node) {
-		const value = node[key];
-		if (!(key in STRICT_FORBIDDEN_KEYS)) {
-			continue;
-		}
-
-		violations.push(
-			createViolation(
-				`${state.path}.${key}`,
-				"strict-forbidden-key",
-				`Strict schema contains forbidden key "${key}"`,
-				key,
-				value,
-			),
-		);
-	}
+function appendStrictViolations(node: JsonObject, path: string, violations: SchemaCompatibilityViolation[]): void {
+	appendForbiddenKeys(
+		node,
+		path,
+		STRICT_FORBIDDEN_KEYS,
+		"strict-forbidden-key",
+		"Strict schema contains forbidden key",
+		violations,
+	);
 	// Rule 2: node must declare at least one concrete shape descriptor.
-
-	const hasCombinator = COMBINATOR_KEYS.some(key => Array.isArray(node[key]));
-	const hasRef = typeof node.$ref === "string";
-	const hasNot = isRecord(node.not);
-	if (node.type === undefined && !hasCombinator && !hasRef && !hasNot) {
+	if (
+		node.type === undefined &&
+		!COMBINATOR_KEYS.some(key => Array.isArray(node[key])) &&
+		typeof node.$ref !== "string" &&
+		!isRecord(node.not)
+	) {
 		violations.push(
 			createViolation(
-				state.path,
+				path,
 				"strict-unrepresentable-node",
 				"Strict schema node must declare type, combinator, $ref, or not",
 			),
 		);
 	}
 	// Rules 3a-3d apply only to object-shaped nodes.
+	if (node.type === "object" || isRecord(node.properties)) appendStrictObjectViolations(node, path, violations);
+}
 
-	const isObjectNode = node.type === "object" || isRecord(node.properties);
-	if (!isObjectNode) {
-		return violations;
-	}
-
+/** Rules 3a-3d of the strict audit, for an object-shaped node. */
+function appendStrictObjectViolations(
+	node: JsonObject,
+	path: string,
+	violations: SchemaCompatibilityViolation[],
+): void {
 	if (node.additionalProperties !== false) {
 		violations.push(
 			createViolation(
-				`${state.path}.additionalProperties`,
+				`${path}.additionalProperties`,
 				"strict-object-additional-properties",
 				"Strict object schema must set additionalProperties to false",
 				"additionalProperties",
@@ -202,33 +209,30 @@ function validateStrictNode(node: JsonObject, state: TraversalState): SchemaComp
 		);
 	}
 	// 3b: `properties` must exist and be an object — without it strict mode has nothing to validate.
-
 	if (!isRecord(node.properties)) {
 		violations.push(
 			createViolation(
-				`${state.path}.properties`,
+				`${path}.properties`,
 				"strict-object-properties",
 				"Strict object schema must provide an object-valued properties map",
 				"properties",
 				node.properties,
 			),
 		);
-		return violations;
+		return;
 	}
 
+	// 3c: every property in `properties` must be required.
 	const propertyNames = Object.keys(node.properties);
 	const requiredValues = Array.isArray(node.required)
 		? node.required.filter((entry): entry is string => typeof entry === "string")
 		: [];
 	const requiredSet = new Set(requiredValues);
-
 	for (const propertyName of propertyNames) {
-		if (requiredSet.has(propertyName)) {
-			continue;
-		}
+		if (requiredSet.has(propertyName)) continue;
 		violations.push(
 			createViolation(
-				`${state.path}.required`,
+				`${path}.required`,
 				"strict-object-required",
 				`Strict object schema must require property "${propertyName}"`,
 				"required",
@@ -237,15 +241,12 @@ function validateStrictNode(node: JsonObject, state: TraversalState): SchemaComp
 		);
 	}
 	// 3d: any property declared in `required` but missing from `properties` is unrepresentable.
-
 	const propertyNameSet = new Set(propertyNames);
 	for (const requiredKey of requiredValues) {
-		if (propertyNameSet.has(requiredKey)) {
-			continue;
-		}
+		if (propertyNameSet.has(requiredKey)) continue;
 		violations.push(
 			createViolation(
-				`${state.path}.required`,
+				`${path}.required`,
 				"strict-object-required-extra",
 				`Strict object schema requires non-existent property "${requiredKey}"`,
 				"required",
@@ -253,33 +254,21 @@ function validateStrictNode(node: JsonObject, state: TraversalState): SchemaComp
 			),
 		);
 	}
-
-	return violations;
 }
 
-function validateGoogleNode(node: JsonObject, state: TraversalState): SchemaCompatibilityViolation[] {
-	const violations: SchemaCompatibilityViolation[] = [];
-
-	for (const key in node) {
-		const value = node[key];
-		if (!(key in GOOGLE_FORBIDDEN_KEYS)) {
-			continue;
-		}
-		violations.push(
-			createViolation(
-				`${state.path}.${key}`,
-				"google-forbidden-key",
-				`Google schema contains unsupported key "${key}"`,
-				key,
-				value,
-			),
-		);
-	}
-
+function appendGoogleViolations(node: JsonObject, path: string, violations: SchemaCompatibilityViolation[]): void {
+	appendForbiddenKeys(
+		node,
+		path,
+		GOOGLE_FORBIDDEN_KEYS,
+		"google-forbidden-key",
+		"Google schema contains unsupported key",
+		violations,
+	);
 	if (Array.isArray(node.type)) {
 		violations.push(
 			createViolation(
-				`${state.path}.type`,
+				`${path}.type`,
 				"google-type-array",
 				"Google schema type must be a scalar string, not an array",
 				"type",
@@ -287,32 +276,26 @@ function validateGoogleNode(node: JsonObject, state: TraversalState): SchemaComp
 			),
 		);
 	}
-
-	return violations;
 }
 
-function validateCloudCodeAssistNode(node: JsonObject, state: TraversalState): SchemaCompatibilityViolation[] {
-	const violations: SchemaCompatibilityViolation[] = [];
-
-	for (const key in node) {
-		const value = node[key];
-		if (key in CCA_FORBIDDEN_KEYS) {
-			violations.push(
-				createViolation(
-					`${state.path}.${key}`,
-					"cca-forbidden-key",
-					`Cloud Code Assist schema contains unsupported key "${key}"`,
-					key,
-					value,
-				),
-			);
-		}
-	}
+function appendCloudCodeAssistViolations(
+	node: JsonObject,
+	path: string,
+	violations: SchemaCompatibilityViolation[],
+): void {
+	appendForbiddenKeys(
+		node,
+		path,
+		CCA_FORBIDDEN_KEYS,
+		"cca-forbidden-key",
+		"Cloud Code Assist schema contains unsupported key",
+		violations,
+	);
 
 	if (Array.isArray(node.type)) {
 		violations.push(
 			createViolation(
-				`${state.path}.type`,
+				`${path}.type`,
 				"cca-type-array",
 				"Cloud Code Assist schema forbids array-valued type",
 				"type",
@@ -324,7 +307,7 @@ function validateCloudCodeAssistNode(node: JsonObject, state: TraversalState): S
 	if (node.type === "null") {
 		violations.push(
 			createViolation(
-				`${state.path}.type`,
+				`${path}.type`,
 				"cca-null-type",
 				'Cloud Code Assist schema forbids type: "null"',
 				"type",
@@ -336,7 +319,7 @@ function validateCloudCodeAssistNode(node: JsonObject, state: TraversalState): S
 	if (Object.hasOwn(node, "nullable")) {
 		violations.push(
 			createViolation(
-				`${state.path}.nullable`,
+				`${path}.nullable`,
 				"cca-nullable-key",
 				"Cloud Code Assist schema forbids nullable keyword",
 				"nullable",
@@ -349,7 +332,7 @@ function validateCloudCodeAssistNode(node: JsonObject, state: TraversalState): S
 		if (Array.isArray(node[key])) {
 			violations.push(
 				createViolation(
-					`${state.path}.${key}`,
+					`${path}.${key}`,
 					"cca-combiner",
 					`Cloud Code Assist schema forbids ${key}`,
 					key,
@@ -358,21 +341,6 @@ function validateCloudCodeAssistNode(node: JsonObject, state: TraversalState): S
 			);
 		}
 	}
-
-	return violations;
-}
-
-function validateCloudCodeAssistSchema(schema: unknown): SchemaCompatibilityViolation[] {
-	if (isValidJsonSchema(schema)) {
-		return [];
-	}
-	return [
-		createViolation(
-			"root",
-			"cca-meta-schema-validation",
-			"Cloud Code Assist schema is not a structurally valid JSON Schema",
-		),
-	];
 }
 
 export function validateSchemaCompatibility(
@@ -382,29 +350,24 @@ export function validateSchemaCompatibility(
 	const violations: SchemaCompatibilityViolation[] = [];
 
 	switch (provider) {
-		case "openai-strict": {
-			walkSchema(schema, { path: "root" }, (node, state) => {
-				const strictV = validateStrictNode(node, state);
-				for (let vi = 0; vi < strictV.length; vi++) violations.push(strictV[vi]!);
-			});
+		case "openai-strict":
+			walkSchema(schema, "root", appendStrictViolations, violations);
 			break;
-		}
-		case "google": {
-			walkSchema(schema, { path: "root" }, (node, state) => {
-				const googleV = validateGoogleNode(node, state);
-				for (let vi = 0; vi < googleV.length; vi++) violations.push(googleV[vi]!);
-			});
+		case "google":
+			walkSchema(schema, "root", appendGoogleViolations, violations);
 			break;
-		}
-		case "cloud-code-assist-claude": {
-			walkSchema(schema, { path: "root" }, (node, state) => {
-				const ccaV = validateCloudCodeAssistNode(node, state);
-				for (let vi = 0; vi < ccaV.length; vi++) violations.push(ccaV[vi]!);
-			});
-			const ccaSchemaV = validateCloudCodeAssistSchema(schema);
-			for (let vi = 0; vi < ccaSchemaV.length; vi++) violations.push(ccaSchemaV[vi]!);
+		case "cloud-code-assist-claude":
+			walkSchema(schema, "root", appendCloudCodeAssistViolations, violations);
+			if (!isValidJsonSchema(schema)) {
+				violations.push(
+					createViolation(
+						"root",
+						"cca-meta-schema-validation",
+						"Cloud Code Assist schema is not a structurally valid JSON Schema",
+					),
+				);
+			}
 			break;
-		}
 	}
 
 	return {

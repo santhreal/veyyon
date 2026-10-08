@@ -39,6 +39,7 @@ import {
 import { AssistantMessageComponent } from "./assistant-message";
 import { BashExecutionComponent } from "./bash-execution";
 import { detectCacheInvalidation, usesExplicitPromptCache } from "./cache-invalidation-marker";
+import type { ChatBlockHost } from "./chat-block";
 import { BranchSummaryMessageComponent, CompactionSummaryMessageComponent } from "./compaction-summary-message";
 import { CustomMessageComponent, createSpecializedCustomComponent } from "./custom-message";
 import { EvalExecutionComponent } from "./eval-execution";
@@ -119,6 +120,12 @@ export class ChatTranscriptBuilder {
 	#todoSnapshot: ToolExecutionComponent | null = null;
 	#expandables: Array<{ setExpanded(expanded: boolean): void }> = [];
 	#expanded = false;
+	/** One repaint callback and one scoped-repaint host for every assistant component this builder
+	 *  creates; both read `deps` at call time. */
+	readonly #requestRender = (): void => this.deps.requestRender();
+	readonly #renderHost: ChatBlockHost = {
+		requestComponentRender: component => this.deps.ui.requestComponentRender(component),
+	};
 
 	constructor(private readonly deps: ChatTranscriptBuilderDeps) {
 		this.#expanded = deps.initialExpanded ?? false;
@@ -496,16 +503,15 @@ export class ChatTranscriptBuilder {
 		const hideThinkingBlock = this.deps.hideThinkingBlock?.() ?? false;
 		const proseOnlyThinking = this.deps.proseOnlyThinking ? this.deps.proseOnlyThinking() : true;
 		const thinkingRenderers = this.deps.getThinkingRenderers?.() ?? (this.deps.getMessageRenderer ? undefined : []);
-		const assistantComponent: AssistantMessageComponent = new AssistantMessageComponent(
+		return new AssistantMessageComponent(
 			toAssistantMessageView(message, { retryAttempt }),
 			hideThinkingBlock,
-			() => this.deps.requestRender(),
+			this.#requestRender,
 			thinkingRenderers,
 			this.deps.ui.imageBudget,
 			proseOnlyThinking,
-			() => this.deps.ui.requestComponentRender(assistantComponent),
+			this.#renderHost,
 		);
-		return assistantComponent;
 	}
 
 	#appendAssistantMessage(message: Extract<AgentMessage, { role: "assistant" }>, cacheMissExplained: boolean): void {

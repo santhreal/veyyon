@@ -224,10 +224,6 @@ const SPAWN_SITES: Record<string, SpawnSiteEntry> = {
 		wired: false,
 		reason: "self-update; a maintenance command, and capping the updater could leave a half-written install",
 	},
-	"packages/coding-agent/src/cli/claude-trace-cli.ts": {
-		wired: false,
-		reason: "trace inspection CLI; drives no agent session",
-	},
 	"packages/coding-agent/src/cli/shell-cli.ts": {
 		wired: false,
 		reason: "the operator's own interactive shell (veyyon shell), typed at by a human, not agent-spawned compute",

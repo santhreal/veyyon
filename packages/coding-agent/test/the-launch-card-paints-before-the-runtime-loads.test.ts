@@ -23,7 +23,8 @@
 
 import { describe, expect, test } from "bun:test";
 import { parseArgs } from "../src/cli/args";
-import { runStartupPrologue, shouldPrepaintLaunchCard } from "../src/cli/launch-card";
+import { runStartupPrologue } from "../src/cli/launch-card";
+import { shouldPrepaintLaunchCard } from "../src/cli/launch-card-eligibility";
 import { takeStartupPrologue } from "../src/cli/prologue-handoff";
 
 /** Swap the TTY flags for one case; both are read as plain properties. */

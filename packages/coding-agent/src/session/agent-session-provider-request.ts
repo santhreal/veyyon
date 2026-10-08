@@ -6,7 +6,7 @@
 
 import type { AuthStorage } from "@veyyon/ai/auth-storage";
 import * as AIError from "@veyyon/ai/error";
-import { deriveClaudeDeviceId } from "@veyyon/ai/providers/anthropic";
+import { deriveClaudeDeviceId } from "@veyyon/ai/providers/claude-device-id";
 import { getInstallId } from "@veyyon/utils";
 import { isProviderPayloadOversize, transformProviderPayload } from "../provider-boundary";
 import type { SecretObfuscator } from "../secrets/obfuscator";

@@ -151,7 +151,6 @@ describe("the status row keeps its configured settings through the settings card
 
 		expect(settings.get("statusLine.sessionAccent")).toBe(false);
 		const flipped = rows(statusLine);
-		expect(flipped.live.sessionAccent).toBe(false);
 		expect(flipped.live.segmentOptions.time).toEqual(TIME_OPTIONS);
 		expect(flipped.live).toEqual(flipped.configured);
 

@@ -1,7 +1,12 @@
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { isRecord } from "@veyyon/utils/type-guards";
 import { extractionPromptOverride, hostLlmModel, hostLlmProvider } from "../config";
-import { extractionDiagnostics, safeForLog } from "./extraction/diagnostics";
+import {
+	type ExtractionDiagnostics,
+	type ExtractionTier,
+	extractionDiagnostics,
+	safeForLog,
+} from "./extraction/diagnostics";
 import { callHostLlm } from "./llm-backends";
 import type { RemoteLlmOptions } from "./local-llm";
 // The questions come statically, the CALLS come on demand. Asking whether an LLM is configured, and
@@ -113,36 +118,31 @@ interface FactArrayOptions {
 	joinFields?: boolean;
 }
 
+/** The text of one extracted item: the string itself, or its first non-blank field (every one when `joinFields`). */
+function factItemText(item: unknown, options: FactArrayOptions): string | null {
+	if (typeof item === "string") return item.trim();
+	if (!isRecord(item)) return null;
+	const parts: string[] = [];
+	for (const key of options.fields) {
+		const candidate = item[key];
+		const trimmed = typeof candidate === "string" ? candidate.trim() : "";
+		if (trimmed === "") continue;
+		parts.push(trimmed);
+		if (options.joinFields !== true) break;
+	}
+	return parts.length > 0 ? parts.join(" ") : null;
+}
+
 function normalizeFactArray(items: unknown, options: FactArrayOptions): string[] {
 	if (!Array.isArray(items)) {
 		return [];
 	}
 	const out: string[] = [];
 	for (const item of items) {
-		let text: string | null = null;
-		if (typeof item === "string") {
-			text = item.trim();
-		} else if (isRecord(item)) {
-			const parts: string[] = [];
-			for (const key of options.fields) {
-				const candidate = item[key];
-				if (typeof candidate === "string") {
-					const trimmed = candidate.trim();
-					if (trimmed !== "") {
-						parts.push(trimmed);
-						if (options.joinFields !== true) break;
-					}
-				}
-			}
-			text = parts.length > 0 ? parts.join(" ") : null;
-		}
-		if (text !== null && text !== "") {
-			const normalized = normalizeFact(text);
-			if (normalized !== "") {
-				out.push(normalized);
-				if (out.length >= STRUCTURED_CATEGORY_LIMIT) break;
-			}
-		}
+		const normalized = normalizeFact(factItemText(item, options) ?? "");
+		if (normalized === "") continue;
+		out.push(normalized);
+		if (out.length >= STRUCTURED_CATEGORY_LIMIT) break;
 	}
 	return out;
 }
@@ -204,6 +204,46 @@ export function countExtractedFactCategories(extracted: ExtractedFactCategories)
 	);
 }
 
+/**
+ * Categories from extractor output that opens as a JSON object. Undefined when it parses to a non-object,
+ * or fails to parse and quotes no string of ten or more characters, so the line parser reads it instead.
+ */
+function parseJsonCategories(rawClean: string, raw: string): ExtractedFactCategories | undefined {
+	try {
+		const parsed: unknown = JSON.parse(rawClean);
+		if (!isRecord(parsed)) return undefined;
+		return {
+			facts: normalizeFactArray(parsed.facts, { fields: FACT_TEXT_FIELD_KEYS }),
+			instructions: normalizeFactArray(parsed.instructions, { fields: INSTRUCTION_TEXT_FIELD_KEYS }),
+			preferences: normalizeFactArray(parsed.preferences, { fields: PREFERENCE_TEXT_FIELD_KEYS }),
+			timelines: normalizeFactArray(parsed.timelines, { fields: TIMELINE_TEXT_FIELD_KEYS, joinFields: true }),
+			kg: normalizeKgArray(parsed.kg),
+		};
+	} catch {
+		const matches = [...raw.matchAll(/"([^"]{10,})"/g)].map(m => m[1]).filter((v): v is string => v !== undefined);
+		if (matches.length === 0) return undefined;
+		return {
+			...emptyFactCategories(),
+			facts: matches
+				.map(normalizeFact)
+				.filter(f => f !== "")
+				.slice(0, FLAT_FACT_LIMIT),
+		};
+	}
+}
+
+/** One fact per line longer than ten characters once list markers are stripped. */
+function parseLineFacts(raw: string): string[] {
+	const cleaned: string[] = [];
+	for (const line of raw.split("\n")) {
+		const fact = line.replace(/^[\s\d.\-*]+/, "").trim();
+		const normalized = fact.length > 10 ? normalizeFact(fact) : "";
+		if (normalized !== "") cleaned.push(normalized);
+		if (cleaned.length >= FLAT_FACT_LIMIT) break;
+	}
+	return cleaned;
+}
+
 /** Parse extractor output without discarding MEMORIA categories or KG triples. */
 export function parseExtractedFactCategories(rawOutput: string | null | undefined): ExtractedFactCategories {
 	if (rawOutput === null || rawOutput === undefined) {
@@ -214,43 +254,8 @@ export function parseExtractedFactCategories(rawOutput: string | null | undefine
 		return emptyFactCategories();
 	}
 	const rawClean = stripFence(raw);
-	if (rawClean.startsWith("{")) {
-		try {
-			const parsed: unknown = JSON.parse(rawClean);
-			if (isRecord(parsed)) {
-				return {
-					facts: normalizeFactArray(parsed.facts, { fields: FACT_TEXT_FIELD_KEYS }),
-					instructions: normalizeFactArray(parsed.instructions, { fields: INSTRUCTION_TEXT_FIELD_KEYS }),
-					preferences: normalizeFactArray(parsed.preferences, { fields: PREFERENCE_TEXT_FIELD_KEYS }),
-					timelines: normalizeFactArray(parsed.timelines, { fields: TIMELINE_TEXT_FIELD_KEYS, joinFields: true }),
-					kg: normalizeKgArray(parsed.kg),
-				};
-			}
-		} catch {
-			const matches = [...raw.matchAll(/"([^"]{10,})"/g)].map(m => m[1]).filter((v): v is string => v !== undefined);
-			if (matches.length > 0) {
-				return {
-					...emptyFactCategories(),
-					facts: matches
-						.map(normalizeFact)
-						.filter(f => f !== "")
-						.slice(0, FLAT_FACT_LIMIT),
-				};
-			}
-		}
-	}
-	const cleaned: string[] = [];
-	for (const line of raw.split("\n")) {
-		const fact = line.replace(/^[\s\d.\-*]+/, "").trim();
-		if (fact.length > 10) {
-			const normalized = normalizeFact(fact);
-			if (normalized !== "") {
-				cleaned.push(normalized);
-			}
-		}
-		if (cleaned.length >= FLAT_FACT_LIMIT) break;
-	}
-	return { ...emptyFactCategories(), facts: cleaned };
+	const fromJson = rawClean.startsWith("{") ? parseJsonCategories(rawClean, raw) : undefined;
+	return fromJson ?? { ...emptyFactCategories(), facts: parseLineFacts(raw) };
 }
 
 /** Parse extractor output into the legacy flat string fact list. */
@@ -362,6 +367,82 @@ function patternFallback(
 	return emptyFactCategories();
 }
 
+/** The categories in `raw`, counted as a successful `tier` call; null when it holds none. */
+function acceptedExtraction(
+	diag: ExtractionDiagnostics,
+	tier: ExtractionTier,
+	raw: string,
+): ExtractedFactCategories | null {
+	const extracted = parseExtractedFactCategories(raw);
+	const count = countExtractedFactCategories(extracted);
+	if (count === 0) return null;
+	diag.recordSuccess(tier, count);
+	diag.recordCall({ succeeded: true });
+	return extracted;
+}
+
+async function extractWithConfiguredCompletion(
+	prompt: string,
+	text: string,
+	diag: ExtractionDiagnostics,
+): Promise<ExtractedFactCategories> {
+	diag.recordAttempt("host");
+	try {
+		const raw = await (await llmClient()).callConfiguredCompletion(prompt, 0, { maxTokens: llmMaxTokens() });
+		const extracted = typeof raw === "string" && raw.trim() !== "" ? acceptedExtraction(diag, "host", raw) : null;
+		if (extracted !== null) return extracted;
+		diag.recordNoOutput("host");
+	} catch (exc) {
+		diag.recordFailure("host", exc, "configured_completion_raised");
+		diag.recordCall({ succeeded: false });
+		console.warn(`extractFacts: configured completion raised: ${safeForLog(exc)}`);
+		return emptyFactCategories();
+	}
+	return patternFallback(text, diag);
+}
+
+/** Extraction through the host LLM adapter; undefined when no host backend handles the call. */
+async function extractWithHost(
+	prompt: string,
+	text: string,
+	diag: ExtractionDiagnostics,
+): Promise<ExtractedFactCategories | undefined> {
+	try {
+		const [attempted, hostText] = await tryHostExtraction(prompt);
+		if (!attempted) return undefined;
+		diag.recordAttempt("host");
+		const extracted = hostText === null ? null : acceptedExtraction(diag, "host", hostText);
+		if (extracted !== null) return extracted;
+		diag.recordNoOutput("host");
+		return patternFallback(text, diag);
+	} catch (exc) {
+		diag.recordAttempt("host");
+		diag.recordFailure("host", exc, "host_adapter_raised");
+		diag.recordCall({ succeeded: false });
+		console.warn(`extractFacts: host LLM adapter raised: ${safeForLog(exc)}`);
+		return emptyFactCategories();
+	}
+}
+
+async function extractWithRemote(
+	prompt: string,
+	text: string,
+	options: RemoteLlmOptions,
+	diag: ExtractionDiagnostics,
+): Promise<ExtractedFactCategories> {
+	diag.recordAttempt("remote");
+	try {
+		const raw = await (await llmClient()).callRemoteLlm(prompt, 0, options);
+		const extracted = raw === null ? null : acceptedExtraction(diag, "remote", cleanOutput(raw));
+		if (extracted !== null) return extracted;
+		diag.recordNoOutput("remote");
+	} catch (exc) {
+		diag.recordFailure("remote", exc, "remote_call_raised");
+		console.warn(`extractFacts: remote LLM raised: ${safeForLog(exc)}`);
+	}
+	return patternFallback(text, diag);
+}
+
 /** Extract fact categories from text using configured, host, local, or remote LLMs. */
 export async function extractFactCategories(
 	text: string | null | undefined,
@@ -377,76 +458,11 @@ export async function extractFactCategories(
 	// or a local on-device model). Mirrors consolidation's precedence: when a
 	// complete() fn is wired, it is the chosen path. Extraction is deterministic
 	// (temperature 0) so re-ingesting the same content does not create near-dupes.
-	if (configuredLlmWillHandleCall()) {
-		diag.recordAttempt("host");
-		try {
-			const raw = await (await llmClient()).callConfiguredCompletion(prompt, 0, { maxTokens: llmMaxTokens() });
-			if (typeof raw === "string" && raw.trim() !== "") {
-				const extracted = parseExtractedFactCategories(raw);
-				const count = countExtractedFactCategories(extracted);
-				if (count > 0) {
-					diag.recordSuccess("host", count);
-					diag.recordCall({ succeeded: true });
-					return extracted;
-				}
-			}
-			diag.recordNoOutput("host");
-		} catch (exc) {
-			diag.recordFailure("host", exc, "configured_completion_raised");
-			diag.recordCall({ succeeded: false });
-			console.warn(`extractFacts: configured completion raised: ${safeForLog(exc)}`);
-			return emptyFactCategories();
-		}
-		return patternFallback(text, diag);
-	}
-
-	try {
-		const [attempted, hostText] = await tryHostExtraction(prompt);
-		if (attempted) {
-			diag.recordAttempt("host");
-			if (hostText !== null) {
-				const extracted = parseExtractedFactCategories(hostText);
-				const count = countExtractedFactCategories(extracted);
-				if (count > 0) {
-					diag.recordSuccess("host", count);
-					diag.recordCall({ succeeded: true });
-					return extracted;
-				}
-			}
-			diag.recordNoOutput("host");
-			return patternFallback(text, diag);
-		}
-	} catch (exc) {
-		diag.recordAttempt("host");
-		diag.recordFailure("host", exc, "host_adapter_raised");
-		diag.recordCall({ succeeded: false });
-		console.warn(`extractFacts: host LLM adapter raised: ${safeForLog(exc)}`);
-		return emptyFactCategories();
-	}
-
-	if (!llmAvailable()) {
-		return patternFallback(text, diag, "llm_unavailable_at_call_site");
-	}
-
-	diag.recordAttempt("remote");
-	try {
-		const raw = await (await llmClient()).callRemoteLlm(prompt, 0, options);
-		if (raw !== null) {
-			const extracted = parseExtractedFactCategories(cleanOutput(raw));
-			const count = countExtractedFactCategories(extracted);
-			if (count > 0) {
-				diag.recordSuccess("remote", count);
-				diag.recordCall({ succeeded: true });
-				return extracted;
-			}
-		}
-		diag.recordNoOutput("remote");
-	} catch (exc) {
-		diag.recordFailure("remote", exc, "remote_call_raised");
-		console.warn(`extractFacts: remote LLM raised: ${safeForLog(exc)}`);
-	}
-
-	return patternFallback(text, diag);
+	if (configuredLlmWillHandleCall()) return extractWithConfiguredCompletion(prompt, text, diag);
+	const fromHost = await extractWithHost(prompt, text, diag);
+	if (fromHost !== undefined) return fromHost;
+	if (!llmAvailable()) return patternFallback(text, diag, "llm_unavailable_at_call_site");
+	return extractWithRemote(prompt, text, options, diag);
 }
 
 /** Extract legacy flat fact strings from text. */

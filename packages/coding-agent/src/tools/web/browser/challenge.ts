@@ -11,7 +11,8 @@
  * so a row that is a special case of another comes before it.
  */
 
-import { type } from "arktype";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { lazy } from "@veyyon/utils";
 
 /** `interstitial` clears on its own; `interactive` needs a person; `block` refuses the browser. */
 export type ChallengeKind = "interstitial" | "interactive" | "block";
@@ -464,20 +465,22 @@ try {
 } catch {}
 return { ...read, frames: [...frames, ...read.frames] };`;
 
-const pageSignalsSchema = type({
-	url: "string",
-	title: "string",
-	text: "string",
-	textLength: "number",
-	markers: "string[]",
-	scripts: "string[]",
-	frames: "string[]",
-	visibleFrames: "string[]",
-	documentId: "string",
-});
+const pageSignalsSchema = lazy(() =>
+	type({
+		url: "string",
+		title: "string",
+		text: "string",
+		textLength: "number",
+		markers: "string[]",
+		scripts: "string[]",
+		frames: "string[]",
+		visibleFrames: "string[]",
+		documentId: "string",
+	}),
+);
 
 /** The signals a probe run returned, or undefined when the page gave none or something else. */
 export function parsePageSignals(value: unknown): PageSignals | undefined {
-	const parsed = pageSignalsSchema(value);
+	const parsed = pageSignalsSchema.value(value);
 	return parsed instanceof type.errors ? undefined : parsed;
 }

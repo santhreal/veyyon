@@ -644,9 +644,7 @@ export function extractCandidates(text: string): string[] {
 		// the "declaration after a blank line" shape. Passing `""` there would read
 		// as a blank predecessor and mint a bogus candidate from the opening line of
 		// every file, including one-line prose.
-		for (const structure of lineStructureCandidates(rawLine, line, index === 0 ? undefined : lines[index - 1])) {
-			out.push(structure);
-		}
+		out.push(...lineStructureCandidates(rawLine, line, index === 0 ? undefined : lines[index - 1]));
 		const rawTokens = line.split(/\s+/);
 		// A whole command-like line: multiple words that reference something
 		// structured, worth encoding as one unit. Prose sentences are excluded, and
@@ -834,35 +832,42 @@ function buildMnemonicNames(allExpansions: Iterable<string>, reserved: Iterable<
 	// indentation depth of `return` shares one stem), so this was the common path,
 	// not the rare one.
 	for (const expansion of deferred.sort()) {
-		const hash = fnv1a(expansion, 0x811c9dc5).toString(36) + fnv1a(expansion, 0x9e3779b1).toString(36);
-		let name: string | undefined;
-		// Grow the suffix, shrinking the stem to pay for it, so the total never
-		// exceeds the budget. Longer suffixes are tried before giving up the stem
-		// entirely, which keeps names as readable as the budget allows.
-		for (let suffixLength = 1; suffixLength < MAX_NAME_LENGTH && name === undefined; suffixLength++) {
-			const stem = nameStem(expansion).slice(0, MAX_NAME_LENGTH - suffixLength);
-			for (let start = 0; start + suffixLength <= hash.length; start++) {
-				const candidate = `${stem}${hash.slice(start, start + suffixLength)}`;
-				if (!used.has(candidate)) {
-					name = candidate;
-					break;
-				}
-			}
-		}
-		// Exhausting every in-budget candidate means the short space is genuinely
-		// full. Spending a longer name is still better than minting a duplicate,
-		// which would bind one name to two expansions and corrupt every decode.
-		if (name === undefined) {
-			let overflow = 0;
-			do {
-				overflow++;
-				name = `${nameStem(expansion).slice(0, 1)}${overflow.toString(36)}`;
-			} while (used.has(name));
-		}
+		const name = disambiguatedName(expansion, used);
 		names.set(expansion, name);
 		used.add(name);
 	}
 	return names;
+}
+
+/**
+ * `expansion`'s stem plus a short hash suffix, with the stem truncated so the
+ * whole name stays inside {@link MAX_NAME_LENGTH}, choosing the first such name
+ * not in `used`.
+ */
+function disambiguatedName(expansion: string, used: ReadonlySet<string>): string {
+	const fullStem = nameStem(expansion);
+	const hash = fnv1a(expansion, 0x811c9dc5).toString(36) + fnv1a(expansion, 0x9e3779b1).toString(36);
+	// Grow the suffix, shrinking the stem to pay for it, so the total never
+	// exceeds the budget. Longer suffixes are tried before giving up the stem
+	// entirely, which keeps names as readable as the budget allows.
+	for (let suffixLength = 1; suffixLength < MAX_NAME_LENGTH; suffixLength++) {
+		const stem = fullStem.slice(0, MAX_NAME_LENGTH - suffixLength);
+		for (let start = 0; start + suffixLength <= hash.length; start++) {
+			const candidate = `${stem}${hash.slice(start, start + suffixLength)}`;
+			if (!used.has(candidate)) {
+				return candidate;
+			}
+		}
+	}
+	// Exhausting every in-budget candidate means the short space is genuinely
+	// full. Spending a longer name is still better than minting a duplicate,
+	// which would bind one name to two expansions and corrupt every decode.
+	const initial = fullStem.slice(0, 1);
+	let overflow = 1;
+	while (used.has(`${initial}${overflow.toString(36)}`)) {
+		overflow++;
+	}
+	return `${initial}${overflow.toString(36)}`;
 }
 
 /** Escape a string for a TOML basic (double-quoted) string. */
@@ -917,7 +922,6 @@ interface Candidate {
 	frequency: number;
 	/** Number of distinct samples the string appeared in (centrality). */
 	documentFrequency: number;
-	firstSeen: number;
 }
 
 /** One repository file for {@link generateDictFromRepo}. */
@@ -947,134 +951,18 @@ export interface RepoFile {
  * shorthand to propose.
  */
 export function generateDict(corpus: string | string[], options: GenerateOptions = {}): GeneratedDict {
-	const tokenBudget = options.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
-	// When regenerating monotonically, the pinned vocabulary's sigil is
-	// authoritative: the cache was written with it and every frozen handle keys on
-	// it, so an option that disagreed would split the marker.
+	const settings = resolveGenerateOptions(options);
+	const { sigil, countTokens } = settings;
 	const pinnedEntries: Array<[string, string]> = options.pinned ? Array.from(options.pinned.handles) : [];
-	const hasPinned = pinnedEntries.length > 0;
-	const sigil = hasPinned && options.pinned ? options.pinned.sigil : (options.sigil ?? DEFAULT_SIGIL);
 	const pinnedNames = new Set<string>();
 	const pinnedExpansions = new Set<string>();
 	for (const [name, expansion] of pinnedEntries) {
 		pinnedNames.add(name);
 		pinnedExpansions.add(expansion);
 	}
-	const minFrequency = options.minFrequency ?? 2;
-	const minExpansionLength = options.minExpansionLength ?? 8;
-	const naming = options.naming ?? "mnemonic";
-	const countTokens = options.countTokens ?? estimateTokens;
-	const extract = options.extract ?? extractCandidates;
-	const toolCallStructureShare = options.toolCallStructureShare ?? DEFAULT_TOOL_CALL_STRUCTURE_SHARE;
-	const samples = typeof corpus === "string" ? [corpus] : corpus;
 
-	// Count distinct candidate expansions, preserving first-seen order so the
-	// result is deterministic when scores tie. Each sample contributes at most one
-	// to a string's document frequency no matter how many times it repeats inside
-	// that sample, so a single high-repetition file cannot dominate the ranking;
-	// raw occurrences are tallied separately for reporting and the damped
-	// within-sample bonus (see scoringFrequency).
-	const seen = new Map<string, Candidate>();
-	let ordinal = 0;
-	for (const sample of samples) {
-		const seenInSample = new Set<string>();
-		for (const rawExpansion of extract(sample)) {
-			const expansion = rawExpansion;
-			// The character floor is a proxy for "long enough to be worth a handle",
-			// and it is the wrong proxy for line structure: `\n\tif` is four
-			// characters and three tokens, so it clears the only test that matters
-			// (the `perUse` token comparison below) while failing this one. Structure
-			// is therefore admitted here and judged on tokens alone.
-			if (!isLineStructure(expansion) && expansion.length < minExpansionLength) {
-				continue;
-			}
-			if (expansion.includes(sigil)) {
-				continue; // an expansion may never contain the sigil
-			}
-			if (utf8.encode(expansion).length > MAX_EXPANSION_BYTES) {
-				continue;
-			}
-			const firstInSample = !seenInSample.has(expansion);
-			if (firstInSample) {
-				seenInSample.add(expansion);
-			}
-			const existing = seen.get(expansion);
-			if (existing) {
-				existing.frequency += 1;
-				if (firstInSample) {
-					existing.documentFrequency += 1;
-				}
-			} else {
-				seen.set(expansion, { expansion, frequency: 1, documentFrequency: 1, firstSeen: ordinal++ });
-			}
-		}
-	}
-
-	const candidatesConsidered = seen.size;
-
-	// Score each candidate by the output tokens it would remove. The handle's own
-	// token cost depends on its length; a numeric handle is a couple of tokens, a
-	// mnemonic a few, so score against the naming scheme's typical handle.
-	const scored: Array<{ candidate: Candidate; savedTokens: number; handleTokens: number }> = [];
-	let numericProbe = 0;
-	for (const candidate of seen.values()) {
-		if (candidate.frequency < minFrequency) {
-			continue;
-		}
-		if (pinnedExpansions.has(candidate.expansion)) {
-			continue; // already has a frozen handle; never propose a second one
-		}
-		// Approximate the handle length for scoring; exact names are assigned later.
-		// Content naming produces a longer name, so score it against its real name.
-		const probeName =
-			naming === "numeric"
-				? String(++numericProbe)
-				: naming === "content"
-					? contentName(candidate.expansion)
-					: "abcd";
-		const handleTokens = countTokens(sigil + probeName);
-		const expansionTokens = emittedTokenCost(candidate.expansion, countTokens, toolCallStructureShare);
-		const perUse = expansionTokens - handleTokens;
-		if (perUse <= 0) {
-			continue; // the handle is not shorter than what it replaces
-		}
-		// Value is driven by centrality (document frequency), not raw occurrences,
-		// so a string repeated inside one asset file cannot buy budget a model would
-		// never spend on it. See scoringFrequency.
-		//
-		// Line structure is scored on RAW occurrences instead, because for it the
-		// within-file repetition is the entire signal rather than noise. The damping
-		// above exists to stop one asset file dominating, but code structure
-		// legitimately repeats many times inside every source file, and damping it
-		// logarithmically is what kept the highest-value handles out of the
-		// dictionary. The asset-file risk that damping guards against is met here by
-		// requiring the pattern in at least two distinct files, so a single
-		// thousand-row fixture still cannot buy a handle nothing types.
-		let value: number;
-		if (isLineStructure(candidate.expansion)) {
-			if (candidate.documentFrequency < 2) {
-				continue;
-			}
-			value = candidate.frequency;
-		} else {
-			value = scoringFrequency(candidate.frequency, candidate.documentFrequency);
-		}
-		scored.push({ candidate, savedTokens: perUse * value, handleTokens });
-	}
-
-	// Highest savings first; tie-break by density, then stable by first-seen so
-	// generation is deterministic.
-	scored.sort((a, b) => {
-		if (b.savedTokens !== a.savedTokens) {
-			return b.savedTokens - a.savedTokens;
-		}
-		const densityA = a.savedTokens / Math.max(1, countTokens(a.candidate.expansion));
-		const densityB = b.savedTokens / Math.max(1, countTokens(b.candidate.expansion));
-		if (densityB !== densityA) {
-			return densityB - densityA;
-		}
-		return a.candidate.firstSeen - b.candidate.firstSeen;
-	});
+	const seen = countCandidates(typeof corpus === "string" ? [corpus] : corpus, settings);
+	const scored = rankCandidates(seen, pinnedExpansions, settings);
 
 	// Fill the dictionary highest value first, stopping before the budget breaks.
 	const headerTokens = countTokens(
@@ -1082,128 +970,20 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 			? `version = ${SUPPORTED_VERSION}\nsigil = "${sigil}"\n\n[handles]\n`
 			: `version = ${SUPPORTED_VERSION}\n\n[handles]\n`,
 	);
-	// New handle names must avoid every pinned name (monotonic: a pinned name is
-	// frozen to its expansion and can never be reused for something else).
-	const taken = new Set<string>(pinnedNames);
-	let dictTokens = headerTokens;
+	const nameHandle = newHandleNamer(settings.naming, scored, pinnedNames);
+	const pinnedHandles = retainPinned(pinnedEntries, seen, settings);
+	const baseTokens = pinnedHandles.reduce((sum, h) => sum + h.dictTokens, headerTokens);
 
-	// Precompute mnemonic names for the whole candidate set up front, so each name
-	// is a pure function of the set (not of which entries the budget happens to fit
-	// this run) and stays byte-identical across independent generators of the same
-	// cache entry. Names avoid every pinned name. Only used when naming is mnemonic;
-	// numeric/content assign per-entry below.
-	const mnemonicNames =
-		naming === "mnemonic"
-			? buildMnemonicNames(
-					scored.map(entry => entry.candidate.expansion),
-					pinnedNames,
-				)
-			: undefined;
-
-	// Frozen base: retain every pinned binding verbatim, scored by its frequency in
-	// the current corpus (0 if the string no longer appears). Always counted toward
-	// dictTokens, even past the budget — dropping a taught handle would break any
-	// text that already used it.
-	const pinnedHandles: GeneratedHandle[] = [];
-	for (const [name, expansion] of pinnedEntries) {
-		const candidate = seen.get(expansion);
-		const frequency = candidate?.frequency ?? 0;
-		const documentFrequency = candidate?.documentFrequency ?? 0;
-		const perUse = countTokens(expansion) - countTokens(sigil + name);
-		const entryTokens = countTokens(`${name} = "${expansion}"`);
-		dictTokens += entryTokens;
-		pinnedHandles.push({
-			name,
-			expansion,
-			frequency,
-			documentFrequency,
-			savedTokens: Math.max(0, perUse) * scoringFrequency(frequency, documentFrequency),
-			dictTokens: entryTokens,
-		});
-	}
-
-	// Continue numeric naming past the largest pinned number so a new handle never
-	// collides with a frozen one.
-	let numeric = 0;
-	if (naming === "numeric") {
-		for (const name of pinnedNames) {
-			const n = Number(name);
-			if (Number.isInteger(n) && n > numeric) {
-				numeric = n;
-			}
-		}
-	}
-
-	// New handles fill the remaining budget. maxHandles caps the TOTAL, and pinned
-	// entries are never dropped to satisfy it, so new additions get whatever room
-	// is left under the cap.
-	//
-	// Two stages, because the coverage rule needs to know what is ACHIEVABLE
-	// before it can take a fraction of it. Stage one admits every candidate that
-	// fits the budget and yields a valid, unused name; stage two keeps the
-	// shortest prefix of that list reaching `savingsCoverage` of its total
-	// savings. Measuring coverage against every scored candidate instead would
-	// make the target unreachable on a large corpus -- the ranked tail sums to
-	// more than the budget can ever hold -- so the rule would silently do nothing
-	// exactly where the tail is longest, which is the opposite of the intent.
-	const feasible: GeneratedHandle[] = [];
-	let feasibleTokens = 0;
-	for (const entry of scored) {
-		if (options.maxHandles !== undefined && pinnedHandles.length + feasible.length >= options.maxHandles) {
-			break;
-		}
-		const name =
-			naming === "numeric"
-				? String(++numeric)
-				: naming === "content"
-					? contentName(entry.candidate.expansion)
-					: (mnemonicNames?.get(entry.candidate.expansion) ?? nameStem(entry.candidate.expansion));
-		// Names are generated, so they always match the handle grammar; assert it
-		// to fail loud rather than emit a dict the loader would reject.
-		if (!HANDLE_NAME_RE.test(name)) {
-			continue;
-		}
-		// A content name is a hash, so on the rare chance two distinct expansions
-		// collide, skip the second rather than overwrite the first: losing a handle
-		// costs a little compression, reusing a name would mis-expand.
-		if (taken.has(name)) {
-			continue;
-		}
-		const entryTokens = countTokens(`${name} = "${entry.candidate.expansion}"`);
-		if (dictTokens + feasibleTokens + entryTokens > tokenBudget) {
-			continue; // does not fit; a smaller later entry still might
-		}
-		taken.add(name);
-		feasibleTokens += entryTokens;
-		feasible.push({
-			name,
-			expansion: entry.candidate.expansion,
-			frequency: entry.candidate.frequency,
-			documentFrequency: entry.candidate.documentFrequency,
-			savedTokens: entry.savedTokens,
-			dictTokens: entryTokens,
-		});
-	}
-
-	const coverage = options.savingsCoverage ?? DEFAULT_SAVINGS_COVERAGE;
+	// New handles fill the remaining budget in two stages, because the coverage
+	// rule needs to know what is ACHIEVABLE before it can take a fraction of it.
+	// Measuring coverage against every scored candidate instead would make the
+	// target unreachable on a large corpus -- the ranked tail sums to more than
+	// the budget can ever hold -- so the rule would silently do nothing exactly
+	// where the tail is longest, which is the opposite of the intent.
+	const feasible = feasibleHandles(scored, nameHandle, pinnedHandles, baseTokens, settings);
 	const pinnedSavings = pinnedHandles.reduce((sum, h) => sum + h.savedTokens, 0);
-	const achievableSavings = pinnedSavings + feasible.reduce((sum, h) => sum + h.savedTokens, 0);
-	const savingsTarget = coverage >= 1 ? Number.POSITIVE_INFINITY : achievableSavings * coverage;
-	const chosenNew: GeneratedHandle[] = [];
-	let selectedSavings = pinnedSavings;
-	for (const handle of feasible) {
-		// The cut is a PREFIX, so `break` rather than `continue`: the list is ranked,
-		// and once the target is met every remaining handle is worth less than the
-		// one that met it. Reaching past the cut for a cheaper entry would admit a
-		// strictly worse handle.
-		if (selectedSavings >= savingsTarget) {
-			taken.delete(handle.name);
-			continue;
-		}
-		selectedSavings += handle.savedTokens;
-		dictTokens += handle.dictTokens;
-		chosenNew.push(handle);
-	}
+	const chosenNew = coveragePrefix(feasible, pinnedSavings, settings.savingsCoverage);
+	const dictTokens = chosenNew.reduce((sum, h) => sum + h.dictTokens, baseTokens);
 
 	// Present pinned and new together, highest savings first. Order is cosmetic
 	// (the loader keys on names, not position); a deterministic sort keeps
@@ -1241,9 +1021,288 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 		dictTokens: carriedPerTurn,
 		estimatedSavings,
 		breakEvenTurns,
-		tokenBudget,
-		candidatesConsidered,
+		tokenBudget: settings.tokenBudget,
+		candidatesConsidered: seen.size,
 	};
+}
+
+/** The options of one {@link generateDict} call with every default applied. */
+interface ResolvedGenerateOptions {
+	tokenBudget: number;
+	sigil: string;
+	minFrequency: number;
+	minExpansionLength: number;
+	maxHandles: number | undefined;
+	savingsCoverage: number;
+	naming: HandleNaming;
+	countTokens: (text: string) => number;
+	extract: (text: string) => Iterable<string>;
+	toolCallStructureShare: number;
+}
+
+function resolveGenerateOptions(options: GenerateOptions): ResolvedGenerateOptions {
+	return {
+		tokenBudget: options.tokenBudget ?? DEFAULT_TOKEN_BUDGET,
+		// When regenerating monotonically, the pinned vocabulary's sigil is
+		// authoritative: the cache was written with it and every frozen handle keys
+		// on it, so an option that disagreed would split the marker.
+		sigil:
+			options.pinned && options.pinned.handles.size > 0 ? options.pinned.sigil : (options.sigil ?? DEFAULT_SIGIL),
+		minFrequency: options.minFrequency ?? 2,
+		minExpansionLength: options.minExpansionLength ?? 8,
+		maxHandles: options.maxHandles,
+		savingsCoverage: options.savingsCoverage ?? DEFAULT_SAVINGS_COVERAGE,
+		naming: options.naming ?? "mnemonic",
+		countTokens: options.countTokens ?? estimateTokens,
+		extract: options.extract ?? extractCandidates,
+		toolCallStructureShare: options.toolCallStructureShare ?? DEFAULT_TOOL_CALL_STRUCTURE_SHARE,
+	};
+}
+
+/**
+ * Count distinct candidate expansions, preserving first-seen order so the
+ * result is deterministic when scores tie. Each sample contributes at most one
+ * to a string's document frequency no matter how many times it repeats inside
+ * that sample, so a single high-repetition file cannot dominate the ranking;
+ * raw occurrences are tallied separately for reporting and the damped
+ * within-sample bonus (see scoringFrequency).
+ */
+function countCandidates(samples: readonly string[], settings: ResolvedGenerateOptions): Map<string, Candidate> {
+	const seen = new Map<string, Candidate>();
+	for (const sample of samples) {
+		const seenInSample = new Set<string>();
+		for (const expansion of settings.extract(sample)) {
+			if (!isAdmissibleExpansion(expansion, settings)) {
+				continue;
+			}
+			const firstInSample = !seenInSample.has(expansion);
+			seenInSample.add(expansion);
+			const existing = seen.get(expansion);
+			if (!existing) {
+				seen.set(expansion, { expansion, frequency: 1, documentFrequency: 1 });
+				continue;
+			}
+			existing.frequency += 1;
+			if (firstInSample) {
+				existing.documentFrequency += 1;
+			}
+		}
+	}
+	return seen;
+}
+
+/** Whether an extracted string may become an expansion: long enough, free of the sigil, and within {@link MAX_EXPANSION_BYTES}. */
+function isAdmissibleExpansion(expansion: string, settings: ResolvedGenerateOptions): boolean {
+	// The character floor is a proxy for "long enough to be worth a handle",
+	// and it is the wrong proxy for line structure: `\n\tif` is four
+	// characters and three tokens, so it clears the only test that matters
+	// (the `perUse` token comparison in candidateSavings) while failing this one.
+	// Structure is therefore admitted here and judged on tokens alone.
+	if (!isLineStructure(expansion) && expansion.length < settings.minExpansionLength) {
+		return false;
+	}
+	// An expansion may never contain the sigil.
+	return !expansion.includes(settings.sigil) && utf8.encode(expansion).length <= MAX_EXPANSION_BYTES;
+}
+
+interface ScoredCandidate {
+	candidate: Candidate;
+	savedTokens: number;
+}
+
+/**
+ * Score each candidate by the output tokens it would remove, highest savings
+ * first; tie-break by density, then stable by first-seen so generation is
+ * deterministic. The handle's own token cost depends on its length; a numeric
+ * handle is a couple of tokens, a mnemonic a few, so score against the naming
+ * scheme's typical handle.
+ */
+function rankCandidates(
+	seen: ReadonlyMap<string, Candidate>,
+	pinnedExpansions: ReadonlySet<string>,
+	settings: ResolvedGenerateOptions,
+): ScoredCandidate[] {
+	const { naming, countTokens } = settings;
+	const scored: ScoredCandidate[] = [];
+	let numericProbe = 0;
+	for (const candidate of seen.values()) {
+		// A pinned expansion already has a frozen handle; never propose a second one.
+		if (candidate.frequency < settings.minFrequency || pinnedExpansions.has(candidate.expansion)) {
+			continue;
+		}
+		// Approximate the handle length for scoring; exact names are assigned later.
+		// Content naming produces a longer name, so score it against its real name.
+		const probeName =
+			naming === "numeric"
+				? String(++numericProbe)
+				: naming === "content"
+					? contentName(candidate.expansion)
+					: "abcd";
+		const savedTokens = candidateSavings(candidate, countTokens(settings.sigil + probeName), settings);
+		if (savedTokens !== undefined) {
+			scored.push({ candidate, savedTokens });
+		}
+	}
+	return scored.sort((a, b) => {
+		if (b.savedTokens !== a.savedTokens) {
+			return b.savedTokens - a.savedTokens;
+		}
+		const densityA = a.savedTokens / Math.max(1, countTokens(a.candidate.expansion));
+		const densityB = b.savedTokens / Math.max(1, countTokens(b.candidate.expansion));
+		// Equal density keeps first-seen order: `seen` iterates in insertion order
+		// and `Array.prototype.sort` is stable.
+		return densityB - densityA;
+	});
+}
+
+/** The output tokens a handle costing `handleTokens` removes across the corpus, or `undefined` when it would not pay. */
+function candidateSavings(
+	candidate: Candidate,
+	handleTokens: number,
+	settings: ResolvedGenerateOptions,
+): number | undefined {
+	const perUse =
+		emittedTokenCost(candidate.expansion, settings.countTokens, settings.toolCallStructureShare) - handleTokens;
+	if (perUse <= 0) {
+		return undefined; // the handle is not shorter than what it replaces
+	}
+	// Value is driven by centrality (document frequency), not raw occurrences,
+	// so a string repeated inside one asset file cannot buy budget a model would
+	// never spend on it. See scoringFrequency.
+	if (!isLineStructure(candidate.expansion)) {
+		return perUse * scoringFrequency(candidate.frequency, candidate.documentFrequency);
+	}
+	// Line structure is scored on RAW occurrences instead, because for it the
+	// within-file repetition is the entire signal rather than noise. The damping
+	// above exists to stop one asset file dominating, but code structure
+	// legitimately repeats many times inside every source file, and damping it
+	// logarithmically is what kept the highest-value handles out of the
+	// dictionary. The asset-file risk that damping guards against is met here by
+	// requiring the pattern in at least two distinct files, so a single
+	// thousand-row fixture still cannot buy a handle nothing types.
+	return candidate.documentFrequency < 2 ? undefined : perUse * candidate.frequency;
+}
+
+/** The name generator for new handles under `naming`, never returning a name in `pinnedNames`. */
+function newHandleNamer(
+	naming: HandleNaming,
+	scored: readonly ScoredCandidate[],
+	pinnedNames: ReadonlySet<string>,
+): (expansion: string) => string {
+	if (naming === "content") {
+		return contentName;
+	}
+	if (naming === "numeric") {
+		// Continue past the largest pinned number so a new handle never collides
+		// with a frozen one.
+		let numeric = 0;
+		for (const name of pinnedNames) {
+			const n = Number(name);
+			if (Number.isInteger(n) && n > numeric) {
+				numeric = n;
+			}
+		}
+		return () => String(++numeric);
+	}
+	// Precompute mnemonic names for the whole candidate set up front, so each name
+	// is a pure function of the set (not of which entries the budget happens to fit
+	// this run) and stays byte-identical across independent generators of the same
+	// cache entry.
+	const mnemonicNames = buildMnemonicNames(
+		scored.map(entry => entry.candidate.expansion),
+		pinnedNames,
+	);
+	return expansion => mnemonicNames.get(expansion) ?? nameStem(expansion);
+}
+
+/**
+ * The frozen base: every pinned binding verbatim, scored by its frequency in the
+ * current corpus (0 if the string no longer appears). Its tokens always count
+ * toward the dictionary, even past the budget: dropping a taught handle would
+ * break any text that already used it.
+ */
+function retainPinned(
+	pinnedEntries: ReadonlyArray<[string, string]>,
+	seen: ReadonlyMap<string, Candidate>,
+	settings: ResolvedGenerateOptions,
+): GeneratedHandle[] {
+	const { countTokens, sigil } = settings;
+	return pinnedEntries.map(([name, expansion]) => {
+		const candidate = seen.get(expansion);
+		const frequency = candidate?.frequency ?? 0;
+		const documentFrequency = candidate?.documentFrequency ?? 0;
+		const perUse = countTokens(expansion) - countTokens(sigil + name);
+		return {
+			name,
+			expansion,
+			frequency,
+			documentFrequency,
+			savedTokens: Math.max(0, perUse) * scoringFrequency(frequency, documentFrequency),
+			dictTokens: countTokens(`${name} = "${expansion}"`),
+		};
+	});
+}
+
+/**
+ * Stage one of filling the budget: every ranked candidate that fits the tokens
+ * left after `baseTokens` and yields a valid name no other handle holds.
+ * `maxHandles` caps the TOTAL, and pinned entries are never dropped to satisfy
+ * it, so new additions get whatever room is left under the cap.
+ */
+function feasibleHandles(
+	scored: readonly ScoredCandidate[],
+	nameHandle: (expansion: string) => string,
+	pinnedHandles: readonly GeneratedHandle[],
+	baseTokens: number,
+	settings: ResolvedGenerateOptions,
+): GeneratedHandle[] {
+	const taken = new Set(pinnedHandles.map(handle => handle.name));
+	const feasible: GeneratedHandle[] = [];
+	let feasibleTokens = 0;
+	for (const { candidate, savedTokens } of scored) {
+		if (settings.maxHandles !== undefined && pinnedHandles.length + feasible.length >= settings.maxHandles) {
+			break;
+		}
+		const { expansion, frequency, documentFrequency } = candidate;
+		const name = nameHandle(expansion);
+		// A generated name always matches the handle grammar; one that does not is
+		// skipped rather than emitted into a dict the loader would reject. A content
+		// name is a hash, so on the rare chance two distinct expansions collide, the
+		// second is skipped rather than overwriting the first: losing a handle costs
+		// a little compression, reusing a name would mis-expand.
+		if (!HANDLE_NAME_RE.test(name) || taken.has(name)) {
+			continue;
+		}
+		const entryTokens = settings.countTokens(`${name} = "${expansion}"`);
+		if (baseTokens + feasibleTokens + entryTokens > settings.tokenBudget) {
+			continue; // does not fit; a smaller later entry still might
+		}
+		taken.add(name);
+		feasibleTokens += entryTokens;
+		feasible.push({ name, expansion, frequency, documentFrequency, savedTokens, dictTokens: entryTokens });
+	}
+	return feasible;
+}
+
+/**
+ * Stage two: the shortest prefix of `feasible` whose savings, added to
+ * `pinnedSavings`, reach `coverage` of everything achievable. The cut is a
+ * PREFIX: the list is ranked, so once the target is met every remaining handle
+ * is worth less than the one that met it, and reaching past the cut for a
+ * cheaper entry would admit a strictly worse handle.
+ */
+function coveragePrefix(feasible: GeneratedHandle[], pinnedSavings: number, coverage: number): GeneratedHandle[] {
+	const achievable = pinnedSavings + feasible.reduce((sum, h) => sum + h.savedTokens, 0);
+	const target = coverage >= 1 ? Number.POSITIVE_INFINITY : achievable * coverage;
+	let selected = pinnedSavings;
+	let end = 0;
+	for (; end < feasible.length; end++) {
+		if (selected >= target) {
+			break;
+		}
+		selected += feasible[end]!.savedTokens;
+	}
+	return feasible.slice(0, end);
 }
 
 /**

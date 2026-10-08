@@ -1,11 +1,24 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type { AutocompleteItem } from "@veyyon/utils/autocomplete";
-import buckets from "../data/emojis.json" with { type: "json" };
+import emojisAsset from "../data/emojis.json" with { type: "file" };
 
 // Bucket layout: `{ "<first-char>": [["<name>", "<emoji>"], ...] }`, with each
 // bucket pre-sorted by name. Built offline by scripts/build-emojis.py
 // so the runtime never has to allocate sorted arrays or filter flag sequences.
 type Entry = readonly [name: string, char: string];
-const BUCKETS = buckets as unknown as Readonly<Record<string, readonly Entry[]>>;
+type Buckets = Readonly<Record<string, readonly Entry[]>>;
+
+// A file import resolves to a path: absolute in a source checkout and under
+// `/$bunfs/` in a compiled binary. The table is parsed on the first `:name`
+// lookup, so a session that never completes a shortcode never holds it.
+const emojisPath = path.resolve(import.meta.dirname, emojisAsset as unknown as string);
+let buckets: Buckets | undefined;
+
+function emojiBuckets(): Buckets {
+	buckets ??= JSON.parse(fs.readFileSync(emojisPath, "utf8")) as Buckets;
+	return buckets;
+}
 
 // Western text emoticons (`:D`, `;)`, `<3`, …) sit outside the `:name:`
 // shortcode grammar, so they live in a hand-maintained table here rather than
@@ -70,7 +83,7 @@ function lowerBound(arr: readonly Entry[], target: string): number {
 }
 
 function lookupExact(name: string): string | undefined {
-	const bucket = BUCKETS[name[0] ?? ""];
+	const bucket = emojiBuckets()[name[0] ?? ""];
 	if (!bucket) return undefined;
 	const i = lowerBound(bucket, name);
 	const hit = bucket[i];
@@ -148,7 +161,7 @@ export function getEmojiSuggestions(textBeforeCursor: string): { items: Autocomp
 		items.push({ value: char, label: `${char}  ${pattern}` });
 	}
 
-	const bucket = BUCKETS[trigger.query[0]!];
+	const bucket = emojiBuckets()[trigger.query[0]!];
 	if (bucket) {
 		for (let i = lowerBound(bucket, trigger.query); i < bucket.length && items.length < MAX_SUGGESTIONS; i++) {
 			const [name, char] = bucket[i]!;

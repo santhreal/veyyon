@@ -94,6 +94,22 @@ describe("generic agent-arg / env passthrough", () => {
 		expect(forwarded.SOME_FLAG).toBe("1");
 		expect(forwarded.OTHER).toBe("two words");
 	});
+
+	it("keeps the host's .env origin record out of the container, beside a forwarded credential", () => {
+		// The container's veyyon runs under another agent dir. With the record forwarded it would drop
+		// every forwarded value whose digest the record holds, the explicit credential included.
+		const saved = process.env.VEYYON_DOTENV_ORIGIN;
+		process.env.VEYYON_DOTENV_ORIGIN = JSON.stringify({ agentDir: "/host/agent", digests: { KEY: "0" } });
+		try {
+			const cfg = parseArgs(["--model", "anthropic/claude-opus-4-8", "--env", "ANTHROPIC_API_KEY=sk-test"]);
+			const forwarded = collectForwardEnv(cfg);
+			expect(forwarded.VEYYON_DOTENV_ORIGIN).toBeUndefined();
+			expect(forwarded.ANTHROPIC_API_KEY).toBe("sk-test");
+		} finally {
+			if (saved === undefined) delete process.env.VEYYON_DOTENV_ORIGIN;
+			else process.env.VEYYON_DOTENV_ORIGIN = saved;
+		}
+	});
 });
 
 describe("install modes", () => {

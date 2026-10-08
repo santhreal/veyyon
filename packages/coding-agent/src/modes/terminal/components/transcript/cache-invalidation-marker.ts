@@ -147,6 +147,10 @@ export class CacheInvalidationMarkerComponent implements Component {
 	constructor(private readonly info: CacheInvalidation) {}
 
 	invalidate(): void {
+		this.releaseRenderCache();
+	}
+
+	releaseRenderCache(): void {
 		this.#cache = undefined;
 	}
 

@@ -20,7 +20,7 @@ agent:
 ```
 
 Each agent runs the model and effort set on its own page in the roster. An agent
-that names neither runs the profile's default model at medium effort. Changing the
+with neither set runs the profile's default model at medium effort. Changing the
 model you are talking to moves that session and nothing else.
 
 Veyyon also ships five specialists (`scout`, `reviewer`, `designer`, `librarian`,
@@ -36,7 +36,7 @@ them.
 
 | Value | What happens |
 | --- | --- |
-| `allowed` | The tool is there; the model judges when it helps, and the prompt does not request it. |
+| `allowed` | The tool is available; the model delegates when it chooses to, and the prompt does not request it. |
 | `preferred` | The default. The prompt instructs the model to fan substantial work out instead of doing it alone. |
 | `required` | The same, plus a first-turn reminder that delegation is the default here. |
 
@@ -106,8 +106,7 @@ it.
 
 A definition that lists a tool veyyon does not recognize is reported at startup
 rather than ignored. The tool grants nothing, and the guidance for it is left out
-of the agent's system prompt, so a typo used to read as an agent that simply
-chose to do nothing.
+of the agent's system prompt.
 
 A row has two states:
 
@@ -129,9 +128,9 @@ Two scopes choose an agent's model and effort, and **Agents → Same Model for A
 Agents** selects which one is in force. They are exclusive, not layered: the rows of the
 scope that is off are not drawn.
 
-Off, the default, each agent decides. Open **Agents → Roster**, press Enter on an
+Off, the default, each agent uses its own settings. Open **Agents → Roster**, press Enter on an
 agent, and set the model and the effort on that agent's own page. The first of these
-that names a model wins:
+that sets a model wins:
 
 1. that agent's lane, `agent.agents.<name>.model`, and for a nested spawn the
    `agents` level under it that governs that depth
@@ -171,13 +170,13 @@ model of its own follows it. A temporary pick, role cycling and plan mode move t
 live session model only, so an agent never changes model because of a keystroke
 aimed at the main assistant.
 
-`agent.modelByDepth` bound a chain to a spawn depth rather than to an agent and no
-longer applies. A config still holding it is reported once, naming the roster page that
+`agent.modelByDepth` bound a chain to a spawn depth rather than to an agent and has
+no effect. A config that still contains it is reported once, with the roster page that
 replaces it.
 
 ### Fallback models
 
-Every one of those places takes a list, not just one model:
+Every one of those places takes a list of models:
 
 ```yaml
 agent:
@@ -204,12 +203,12 @@ agent:
 
 Write it whichever way suits the file. `compaction.model` takes a chain the same two ways.
 
-A chain only covers errors at run time. A model pattern that matches nothing is still a
-configuration mistake, so veyyon will not spawn the agent and states the setting, rather than
-quietly running it on the next entry: a typo must not silently downgrade the agent you spawn.
+A chain only covers errors at run time. A model pattern that matches nothing is a
+configuration mistake, so veyyon does not spawn the agent and states the setting rather
+than running it on the next entry in the chain.
 
 In the `Agents` block above the composer, an agent that fell back is marked with `↓` before its
-model badge, so you can tell a deliberate model from a retried one at a glance.
+model badge, which distinguishes a fallback model from the configured one.
 
 Effort is chosen from a list: `off`, `minimal` through `max`, `auto`, or `Inherit`.
 `Inherit` on an agent's own page means the default effort; on a nested page it means the
@@ -253,9 +252,8 @@ Light travels down the rail while agents are working. The head crosses the whole
 so the cycle belongs to the block rather than the row. Where `display.transitions` is
 off, the block is still.
 
-There is no elapsed clock and no context gauge. Total age ranks agents by seniority,
-which nothing acts on, and a parent does not use a agent's remaining
-window. `/agents` carries the roster with the numbers.
+There is no elapsed clock and no context gauge. `/agents` shows the roster with
+those numbers.
 
 Narrow the terminal and the model badge comes off first, then the label shortens to
 what is left. Nothing wraps: the block draws no row it cannot fit, and draws nothing
@@ -352,15 +350,15 @@ An agent's working directory is its own. If an agent calls `set_cwd`, only that
 agent moves: its tool paths resolve against the new directory and its system prompt
 is rebuilt for it, while your session and every other agent stay where they were.
 
-That matters because agents run inside the same process you do. The main session
-also moves the process working directory when it re-roots, so that a command you run
-and a relative path you write agree with the project you have open. An agent doing
-the same would move the ground under everyone else, and the symptom would be a command
-running in the wrong repository with nothing on screen to explain it.
+Agents run inside the same process as your session. The main session also moves the
+process working directory when it re-roots, so that a command you run and a relative
+path you write agree with the project you have open. An agent does not move the process
+working directory, so its `set_cwd` cannot make another session's command run in the
+wrong repository.
 
-The trade is that an agent working elsewhere does not pick up that project's
-settings, capabilities or plugins, because those are read once for the process. Give a
-agent a task in another project only when the work is self-contained, and re-root
+An agent working elsewhere does not pick up that project's settings, capabilities or
+plugins, because those are read once for the process. Give an agent a task in another
+project only when the work is self-contained, and re-root
 your own session instead when you want that project's configuration to apply.
 
 The full key list is in the [settings reference](../reference/settings.md#agents).

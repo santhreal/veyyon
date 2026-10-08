@@ -78,9 +78,11 @@ const RECORDING_MAX_AGE_MS = 24 * 60 * 60 * 1000;
  * terminal group decides colour depth, glyph support and the capability probe's answers. Recorded
  * by value and compared exactly, so an unset variable and an empty one are different states.
  *
- * A variable absent from this list can still change the frame through a FILE, and the file's mtime
- * catches it. What this list has to cover is the input that reaches the frame without touching
- * disk at all.
+ * A variable absent from this list can still change the frame through a FILE: the global
+ * `config.yml` `defaultProfile`, the settings, the launch facts. No file is stat'd here. Such a
+ * change is the stale-recording case the module header covers: the replayed rows describe their
+ * bytes, the real card is diffed against them, and a disagreement drops the recording. What this
+ * list has to cover is the input that changes what the SAME rows compose to without touching disk.
  */
 export const RECORDED_ENV_KEYS: readonly string[] = [
 	"COLORFGBG",

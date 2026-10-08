@@ -200,32 +200,22 @@ function schemaNeedsDraft202012UpgradeImpl(value: unknown, epoch: number): boole
 		if (!once(value, epoch)) return false;
 		return value.some(entry => schemaNeedsDraft202012UpgradeImpl(entry, epoch));
 	}
-	if (!isRecord(value)) return false;
-	if (!once(value, epoch)) return false;
-
+	if (!isRecord(value) || !once(value, epoch)) return false;
 	for (const key in value) {
-		const entry = value[key];
-		if (key === "$schema") {
-			if (typeof entry === "string" && entry in DRAFT_07_SCHEMA_URIS) return true;
-			continue;
-		}
-		if (key === "definitions" || key === "dependencies" || key === "additionalItems" || key === "nullable") {
-			return true;
-		}
-		if (key === "$ref") {
-			if (typeof entry === "string" && entry.startsWith("#/definitions/")) return true;
-			continue;
-		}
-		if (key === "items" && Array.isArray(entry)) return true;
-		if (key === "$defs" || key in SCHEMA_MAP_KEYS) {
-			if (schemaMapNeedsDraft202012Upgrade(entry, epoch)) return true;
-			continue;
-		}
-		if (key in NON_SCHEMA_VALUE_KEYS) continue;
-		if (schemaNeedsDraft202012UpgradeImpl(entry, epoch)) return true;
+		if (keywordNeedsDraft202012Upgrade(key, value[key], epoch)) return true;
 	}
-
 	return false;
+}
+
+/** True when keyword `key` with value `entry` is a draft-07 form, or holds a subschema that contains one. */
+function keywordNeedsDraft202012Upgrade(key: string, entry: unknown, epoch: number): boolean {
+	if (key === "$schema") return typeof entry === "string" && entry in DRAFT_07_SCHEMA_URIS;
+	if (key === "definitions" || key === "dependencies" || key === "additionalItems" || key === "nullable") return true;
+	if (key === "$ref") return typeof entry === "string" && entry.startsWith("#/definitions/");
+	if (key === "items" && Array.isArray(entry)) return true;
+	if (key === "$defs" || key in SCHEMA_MAP_KEYS) return schemaMapNeedsDraft202012Upgrade(entry, epoch);
+	if (key in NON_SCHEMA_VALUE_KEYS) return false;
+	return schemaNeedsDraft202012UpgradeImpl(entry, epoch);
 }
 
 /**
@@ -235,16 +225,7 @@ function schemaNeedsDraft202012UpgradeImpl(value: unknown, epoch: number): boole
  * resolve to a (later-populated) reference rather than infinite-looping.
  */
 function upgradeJsonSchemaTo202012Impl(value: unknown, cache: WeakMap<object, unknown>): unknown {
-	if (Array.isArray(value)) {
-		const cached = cache.get(value);
-		if (cached !== undefined) return cached;
-		const result: unknown[] = [];
-		cache.set(value, result);
-		for (const entry of value) {
-			result.push(upgradeJsonSchemaTo202012Impl(entry, cache));
-		}
-		return result;
-	}
+	if (Array.isArray(value)) return upgradeSchemaArray(value, cache);
 	if (!isRecord(value)) return value;
 
 	const cached = cache.get(value);
@@ -253,72 +234,94 @@ function upgradeJsonSchemaTo202012Impl(value: unknown, cache: WeakMap<object, un
 	const result: JsonObject = {};
 	// Seed cache before recursion so back-edges in cyclic graphs resolve.
 	cache.set(value, result);
-	for (const key in value) {
-		const entry = value[key];
-		// `definitions` is the draft-07 name; merge under the canonical `$defs`.
-		// `$defs` may appear pre-upgraded — still walk entries to upgrade their bodies.
-		if (key === "definitions" || key === "$defs") {
-			if (isRecord(entry)) mergeSchemaMap(result, "$defs", entry, cache);
-			continue;
-		}
-		// Recurse into each entry; the map shape itself is preserved.
-		if (key in SCHEMA_MAP_KEYS) {
-			copySchemaMap(result, key, entry, cache);
-			continue;
-		}
-		// JSON-Schema *value* keywords — copy verbatim.
-		if (key in NON_SCHEMA_VALUE_KEYS) {
-			result[key] = entry;
-			continue;
-		}
-		// Draft-07-only keywords with no draft 2020-12 spelling — drop entirely.
-		// `items` arrays are handled below via `prefixItems` conversion.
-		if (key === "dependencies" || key === "additionalItems" || key === "nullable") {
-			continue;
-		}
-		// Rewrite `$schema` URI to the 2020-12 form; non-draft-07 URIs pass through.
-		if (key === "$schema") {
-			result.$schema =
-				typeof entry === "string" && entry in DRAFT_07_SCHEMA_URIS ? JSON_SCHEMA_DRAFT_2020_12_URI : entry;
-			continue;
-		}
-		// `#/definitions/Foo` → `#/$defs/Foo`.
-		if (key === "$ref" && typeof entry === "string") {
-			result.$ref = convertRef(entry);
-			continue;
-		}
-		// Array-valued `items` is the draft-07 tuple form — handled after the loop.
-		if (key === "items" && Array.isArray(entry)) {
-			continue;
-		}
-		result[key] = upgradeJsonSchemaTo202012Impl(entry, cache);
-	}
-
-	// Draft-07 tuple form: `items: [a, b]` (+ optional `additionalItems`) becomes
-	// draft 2020-12 `prefixItems: [a, b]` (+ optional `items` for the rest).
-	if (Array.isArray(value.items)) {
-		const convertedItems = upgradeJsonSchemaTo202012Impl(value.items, cache) as unknown[];
-		result.prefixItems = mergePrefixItems(result.prefixItems, convertedItems);
-		if (value.additionalItems !== undefined && value.additionalItems !== true) {
-			result.items = upgradeJsonSchemaTo202012Impl(value.additionalItems, cache);
-		} else {
-			// `additionalItems: true` (or absent) in draft-07 == no `items` in 2020-12.
-			delete result.items;
-		}
-	}
-
+	for (const key in value) upgradeKeyword(result, key, value[key], cache);
+	if (Array.isArray(value.items)) convertTupleItems(value, value.items, result, cache);
 	convertDependencies(value, result, cache);
+	if (value.nullable !== true) return result;
 
 	// OpenAPI 3.0 `nullable: true` → 2020-12 nullability. `makeNullable` may
 	// return a fresh wrapper object, in which case update the cache so callers
 	// referring to the same input see the wrapper instead of the inner result.
-	if (value.nullable === true) {
-		const nullable = makeNullable(result);
-		if (nullable !== result) cache.set(value, nullable);
-		return nullable;
-	}
+	const nullable = makeNullable(result);
+	if (nullable !== result) cache.set(value, nullable);
+	return nullable;
+}
 
+/** Upgrades each member of a schema array into a new array, seeded in `cache` before recursion like an object. */
+function upgradeSchemaArray(value: unknown[], cache: WeakMap<object, unknown>): unknown {
+	const cached = cache.get(value);
+	if (cached !== undefined) return cached;
+	const result: unknown[] = [];
+	cache.set(value, result);
+	for (const entry of value) {
+		result.push(upgradeJsonSchemaTo202012Impl(entry, cache));
+	}
 	return result;
+}
+
+/**
+ * Writes the draft 2020-12 form of keyword `key` with value `entry` into `result`. Tuple `items`,
+ * `dependencies` and `nullable` are converted after every keyword is written, by
+ * {@link convertTupleItems}, {@link convertDependencies} and {@link makeNullable}.
+ */
+function upgradeKeyword(result: JsonObject, key: string, entry: unknown, cache: WeakMap<object, unknown>): void {
+	// `definitions` is the draft-07 name; merge under the canonical `$defs`.
+	// `$defs` may appear pre-upgraded — still walk entries to upgrade their bodies.
+	if (key === "definitions" || key === "$defs") {
+		if (isRecord(entry)) mergeSchemaMap(result, "$defs", entry, cache);
+		return;
+	}
+	// Recurse into each entry; the map shape itself is preserved.
+	if (key in SCHEMA_MAP_KEYS) {
+		copySchemaMap(result, key, entry, cache);
+		return;
+	}
+	// JSON-Schema *value* keywords — copy verbatim.
+	if (key in NON_SCHEMA_VALUE_KEYS) {
+		result[key] = entry;
+		return;
+	}
+	// Draft-07-only keywords with no draft 2020-12 spelling, and the draft-07 tuple
+	// form of `items` — converted after every keyword is written.
+	if (
+		key === "dependencies" ||
+		key === "additionalItems" ||
+		key === "nullable" ||
+		(key === "items" && Array.isArray(entry))
+	) {
+		return;
+	}
+	// Rewrite `$schema` URI to the 2020-12 form; non-draft-07 URIs pass through.
+	if (key === "$schema") {
+		result.$schema =
+			typeof entry === "string" && entry in DRAFT_07_SCHEMA_URIS ? JSON_SCHEMA_DRAFT_2020_12_URI : entry;
+		return;
+	}
+	// `#/definitions/Foo` → `#/$defs/Foo`.
+	if (key === "$ref" && typeof entry === "string") {
+		result.$ref = convertRef(entry);
+		return;
+	}
+	result[key] = upgradeJsonSchemaTo202012Impl(entry, cache);
+}
+
+/**
+ * Rewrites the draft-07 tuple form `items: [a, b]` of `source` as draft 2020-12 `prefixItems: [a, b]`,
+ * merged into any `prefixItems` already in `result`. A schema-valued `additionalItems` becomes `items`;
+ * `additionalItems: true`, or none, adds no `items`. `result` holds no `items` on entry, since the
+ * keyword pass skips an array-valued `items`.
+ */
+function convertTupleItems(
+	source: JsonObject,
+	items: unknown[],
+	result: JsonObject,
+	cache: WeakMap<object, unknown>,
+): void {
+	const convertedItems = upgradeJsonSchemaTo202012Impl(items, cache) as unknown[];
+	result.prefixItems = mergePrefixItems(result.prefixItems, convertedItems);
+	if (source.additionalItems !== undefined && source.additionalItems !== true) {
+		result.items = upgradeJsonSchemaTo202012Impl(source.additionalItems, cache);
+	}
 }
 
 /** Pre-check entrypoint. Exposed so callers can decide whether to take the upgrade path at all. */

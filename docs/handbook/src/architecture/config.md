@@ -103,7 +103,7 @@ Project-level bases:
 - `<cwd>/.codex`
 - `<cwd>/.gemini`
 
-The project bases exist in the generic helper, but capability discovery no longer uses them: a checked-out working tree is untrusted input, so a repository contributes context files (`AGENTS.md` / `CLAUDE.md`) and nothing else. The remaining caller of the project bases is `TITLE_SYSTEM.md` discovery (see [Session title prompt override](#session-title-prompt-override)).
+The project bases exist in the generic helper, but capability discovery does not use them: a checked-out working tree is untrusted input, so a repository contributes context files (`AGENTS.md` / `CLAUDE.md`) and nothing else. The remaining caller of the project bases is `TITLE_SYSTEM.md` discovery (see [Session title prompt override](#session-title-prompt-override)).
 
 `CONFIG_DIR_NAME` is `.veyyon` (`packages/utils/src/dirs.ts`).
 
@@ -111,13 +111,13 @@ The project bases exist in the generic helper, but capability discovery no longe
 
 A named profile (`veyyon --profile <name>`, `/profile <name>` in the TUI, or `VEYYON_PROFILE`) selects which profile agent dir is active. The default profile is `~/.veyyon/profiles/default/agent/`; profile `<name>` is `~/.veyyon/profiles/<name>/agent/`. Paths written in this document as `~/.veyyon/profiles/default/agent/...` mean the **active** profile's agent directory.
 
-The relocation is uniform across the native provider (`builtin.ts`) and the generic `config.ts` helpers. It covers slash commands, sticky rules, prompts, instructions, hooks, tools, extensions, settings, skills, MCP, the top-level `RULES.md` and `AGENTS.md` files, `PROMPT_SECTIONS/`, and runtime state (sessions, blobs, `agent.db`). A profile sees only its own Veyyon config, never the default profile's `~/.veyyon/profiles/default/agent`.
+The relocation is uniform across the native provider (`builtin.ts`) and the generic `config.ts` helpers. It covers slash commands, sticky rules, prompts, instructions, hooks, tools, extensions, settings, skills, MCP, the top-level `RULES.md` and `AGENTS.md` files, `PROMPT_SECTIONS/`, and runtime state (sessions, blobs, `agent.db`). A profile reads only its own Veyyon config, never the default profile's `~/.veyyon/profiles/default/agent`.
 
 Keybindings get a one-time seed rather than a live merge: a new named profile copies the default profile's `~/.veyyon/profiles/default/agent/keybindings.*` once (at `profile new`, or on first launch of an older profile that has no keybindings file). After that the profile's own file is the only one read, later edits to the default profile's keybindings do not flow into other profiles.
 
 The other source bases are not profile-scoped and load identically under every profile: the external-tool bases (`~/.claude`, `~/.codex`, `~/.gemini`) belong to those tools. Throughout this document, read `~/.veyyon/profiles/default/agent` as shorthand for the active profile's agent directory.
 
-## Important constraint
+## `.pi` exclusion
 
 The generic helpers in `src/config.ts` do **not** include `.pi` in source discovery order.
 
@@ -213,7 +213,7 @@ On startup, if `config.yml` is missing:
 Field-level migrations in `CodingAgentSettingsHooks.migrate` (`src/config/settings.ts`):
 
 - `queueMode` -> `steeringMode`
-- `ask.timeout` milliseconds -> seconds when the old value looks like ms (`> 1000`). The threshold is a guess, because nothing on disk records which format a file uses, so the rewrite is logged with both values. Every other migration here is a fixed point; this one is not, which is why `packages/coding-agent/test/settings-migration-idempotence.test.ts` pins the property.
+- `ask.timeout` milliseconds -> seconds when the old value looks like ms (`> 1000`). The threshold is a heuristic, because nothing on disk records which format a file uses, so the rewrite is logged with both values. Every other migration here is a fixed point; this one is not, which is why `packages/coding-agent/test/settings-migration-idempotence.test.ts` pins the property.
 - Legacy flat `theme: "..."` -> `theme.dark/theme.light` structure
 
 ---
@@ -260,7 +260,7 @@ Relevant keys:
 
 ## 6) Native `.veyyon` provider behavior (`packages/coding-agent/src/discovery/builtin.ts`)
 
-Native provider (`id: native`) reads native config from one place: the active profile's agent directory, `~/.veyyon/profiles/<name>/agent/...`. The provider's config-dir helper resolves HOME only. `<cwd>/.veyyon` used to be pushed at level `"project"`, and six capabilities read it through that one helper (slash commands, rules, prompts, instructions, hooks, tools) plus extension modules and settings; that is gone, because one line in a cloned repo configured the agent. The only thing a repository still contributes is the context-file walk.
+Native provider (`id: native`) reads native config from one place: the active profile's agent directory, `~/.veyyon/profiles/<name>/agent/...`. The provider's config-dir helper resolves HOME only. `<cwd>/.veyyon` is not read, because one line in a cloned repo would configure the agent. The only thing a repository contributes is the context-file walk.
 
 ### Directory admission rules
 
@@ -326,7 +326,7 @@ Generate a session name using lowercase `<type>:<primary-objective>`.
 ## Extensions subsystem
 
 - `discoverAndLoadExtensions()` resolves extension modules from extension-module capability plus explicit paths.
-- Current implementation intentionally keeps only capability items with `_source.provider === "native"` before loading.
+- The implementation keeps only capability items with `_source.provider === "native"` before loading.
 
 ---
 
@@ -345,11 +345,11 @@ The settings layers deep-merge in a fixed order (profile, then `--config` overla
 
 ---
 
-## 9) Legacy/compatibility behaviors still present
+## 9) Compatibility behaviors
 
 - `ConfigFile` JSON -> YAML migration for YAML-targeted files.
 - Settings migration from `settings.json` and `agent.db` to `config.yml`.
 - Settings key migrations include `queueMode`, `ask.timeout`, flat `theme`, `task.isolation.enabled`, legacy `task.isolation.mode` values, the whole `task.*` group plus `modelRoles.task` moving to `agent.*`, removed edit modes, `statusLine.plan_mode`, `memories.enabled`, and hindsight scoping/name fields.
-- The removed per-source skill toggles (`skills.enableCodexUser`, `skills.enableClaudeUser`, `skills.enableClaudeProject`, `skills.enablePiUser`, `skills.enablePiProject`, `skills.enableAgentsUser`, `skills.enableAgentsProject`) and `skills.customDirectories` are no longer read. Skills load only from the active profile. A stale key in an old `config.yml` is ignored, not an error.
+- The removed per-source skill toggles (`skills.enableCodexUser`, `skills.enableClaudeUser`, `skills.enableClaudeProject`, `skills.enablePiUser`, `skills.enablePiProject`, `skills.enableAgentsUser`, `skills.enableAgentsProject`) and `skills.customDirectories` are not read. Skills load only from the active profile. A stale key in an old `config.yml` is ignored, not an error.
 
 If these compatibility paths are removed in code, update this document immediately; several runtime behaviors still depend on them today.

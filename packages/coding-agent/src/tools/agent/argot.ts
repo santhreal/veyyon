@@ -20,20 +20,23 @@
  */
 
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { lazy } from "@veyyon/utils/abortable";
 import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL, type ArgotSession } from "argot";
-import { type } from "arktype";
 import { type ArgotLoadResult, loadArgotFolder, unloadArgotFolder } from "../../argot-cache";
 import type { ToolSession } from "..";
 import { resolveToCwd } from "../core/path-utils";
 import { ToolError, toolFailure } from "../core/tool-errors";
 
-const folderSchema = type({
-	folder_path: type("string").describe(
-		"Absolute (preferred) or session-relative path to the folder to load. Argot resolves it to the nearest project it belongs to (its .git or .argot marker), never a parent that contains many projects.",
-	),
-});
+const folderSchema = lazy(() =>
+	type({
+		folder_path: type("string").describe(
+			"Absolute (preferred) or session-relative path to the folder to load. Argot resolves it to the nearest project it belongs to (its .git or .argot marker), never a parent that contains many projects.",
+		),
+	}),
+);
 
-export type ArgotFolderInput = typeof folderSchema.infer;
+export type ArgotFolderInput = typeof folderSchema.value.infer;
 
 export interface ArgotLoadDetails {
 	/** The work-unit root the folder resolved to. */
@@ -62,7 +65,7 @@ function requireArgot(session: ToolSession): ArgotSession {
 	return argot;
 }
 
-export class ArgotLoadTool implements AgentTool<typeof folderSchema, ArgotLoadDetails> {
+export class ArgotLoadTool implements AgentTool<typeof folderSchema.value, ArgotLoadDetails> {
 	readonly name = ARGOT_LOAD_TOOL;
 	readonly label = "ArgotLoad";
 	// Write-tier per argot's SPEC approval contract: loading reads a project tree
@@ -78,7 +81,9 @@ export class ArgotLoadTool implements AgentTool<typeof folderSchema, ArgotLoadDe
 	};
 	readonly description =
 		"Load a folder's Argot shorthand so you can write its long paths and identifiers as short `§handle` tokens. Resolves the folder to its own project (nearest .git or .argot), reads or builds that project's dictionary, and teaches you its handles. Load the narrowest folder that is your work unit, not a parent holding many projects. Every handle expands losslessly, so this only saves tokens.";
-	readonly parameters = folderSchema;
+	get parameters(): typeof folderSchema.value {
+		return folderSchema.value;
+	}
 	readonly strict = true;
 	// Always active (not discoverable): loading is the canonical arming flow, and
 	// the notation preamble instructs the model to call this tool — you must never
@@ -149,13 +154,15 @@ export class ArgotLoadTool implements AgentTool<typeof folderSchema, ArgotLoadDe
 	}
 }
 
-export class ArgotUnloadTool implements AgentTool<typeof folderSchema, ArgotUnloadDetails> {
+export class ArgotUnloadTool implements AgentTool<typeof folderSchema.value, ArgotUnloadDetails> {
 	readonly name = ARGOT_UNLOAD_TOOL;
 	readonly label = "ArgotUnload";
 	readonly approval = "read" as const;
 	readonly description =
 		"Stop teaching a folder's Argot shorthand: you are no longer shown its handles, so you write its paths in full again. Handles you already wrote keep expanding, so this is always safe. Use it when you are done with a folder loaded earlier and want to keep the taught handle table small.";
-	readonly parameters = folderSchema;
+	get parameters(): typeof folderSchema.value {
+		return folderSchema.value;
+	}
 	readonly strict = true;
 	readonly summary = "Stop being taught a folder's Argot shorthand; handles already written keep expanding";
 	readonly #session: ToolSession;

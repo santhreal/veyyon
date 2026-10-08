@@ -101,11 +101,21 @@ function bindCachesTo(highlightTheme: Theme): void {
  * A rebuilt transcript draws every card in one frame, and each card highlights its sources one after
  * another on the render thread: a resumed session with 24,169 of them spent half of its 14.2 s first
  * frame there. The rebuild has every card's sources before the frame, so it highlights them together,
- * in parallel, and each draw finds its rows here. An entry leaves on its first read for the exact
- * cache, and a prefetch replaces the entries of the last one, so a source no card drew is held until
- * the next prefetch and no longer.
+ * in parallel, and each draw finds its rows here.
+ *
+ * An entry holds as many reads as the prefetch had requests for its source, and leaves for the exact
+ * cache on the last of them. The exact cache holds 256 sources and a frame draws thousands, so a
+ * source that several cards draw, such as a command run again, was evicted from it between the first
+ * card and the next, and highlighted again one at a time. A prefetch replaces the entries of the last
+ * one, so a source no card drew is held until the next prefetch and no longer.
  */
-const prefetched = new Map<string, string>();
+const prefetched = new Map<string, PrefetchedRows>();
+
+interface PrefetchedRows {
+	rows: string;
+	/** Draws the prefetch expects that have not read the rows yet. */
+	reads: number;
+}
 
 /** A source a draw will highlight, and the language it will name for it. */
 export interface HighlightRequest {
@@ -121,19 +131,25 @@ function supportedLanguage(lang: string | undefined): string | undefined {
 /**
  * Highlight every source of `requests` that no cache holds yet, in one native call that spreads
  * them across threads, so the `highlightCode` calls that draw them find their rows ready. The rows
- * are byte-identical to the ones `highlightCode` computes itself.
+ * are byte-identical to the ones `highlightCode` computes itself. A source the exact cache holds is
+ * held here too, so the draws of this frame find it after the cache has evicted it.
  */
 export function prefetchHighlights(requests: readonly HighlightRequest[], highlightTheme: Theme = theme): void {
 	bindCachesTo(highlightTheme);
 	prefetched.clear();
 	const keys: string[] = [];
 	const sources: HighlightSource[] = [];
-	const seen = new Set<string>();
 	for (const request of requests) {
 		const lang = supportedLanguage(request.lang);
 		const key = highlightCacheKey(request.code, lang);
-		if (seen.has(key) || highlightCache.has(key)) continue;
-		seen.add(key);
+		const entry = prefetched.get(key);
+		if (entry !== undefined) {
+			entry.reads++;
+			continue;
+		}
+		const cached = highlightCache.peek(key);
+		prefetched.set(key, { rows: cached ?? "", reads: 1 });
+		if (cached !== undefined) continue;
 		keys.push(key);
 		sources.push({ code: request.code, lang });
 	}
@@ -143,19 +159,20 @@ export function prefetchHighlights(requests: readonly HighlightRequest[], highli
 		highlighted = nativeHighlightCodeBatch(sources, getHighlightColors(highlightTheme));
 	} catch (error) {
 		// The draws highlight these one at a time instead, and report a language that fails there.
+		for (const key of keys) prefetched.delete(key);
 		logger.warn("Code could not be highlighted ahead of drawing", { error: errorMessage(error) });
 		return;
 	}
-	for (let index = 0; index < keys.length; index++) prefetched.set(keys[index]!, highlighted[index]!);
+	for (let index = 0; index < keys.length; index++) prefetched.get(keys[index]!)!.rows = highlighted[index]!;
 }
 
 /** The prefetched rows under `key`, moved to the exact cache so a redraw finds them there. */
 function takePrefetched(key: string): string | undefined {
-	const rows = prefetched.get(key);
-	if (rows === undefined) return undefined;
-	prefetched.delete(key);
-	highlightCache.set(key, rows);
-	return rows;
+	const entry = prefetched.get(key);
+	if (entry === undefined) return undefined;
+	if (--entry.reads === 0) prefetched.delete(key);
+	highlightCache.set(key, entry.rows);
+	return entry.rows;
 }
 
 function highlightCacheKey(code: string, validLang: string | undefined): string {
@@ -165,7 +182,7 @@ function highlightCacheKey(code: string, validLang: string | undefined): string 
 export function highlightCached(code: string, validLang: string | undefined, highlightTheme: Theme): string | null {
 	bindCachesTo(highlightTheme);
 	const key = highlightCacheKey(code, validLang);
-	const hit = highlightCache.get(key) ?? takePrefetched(key);
+	const hit = takePrefetched(key) ?? highlightCache.get(key);
 	if (hit !== undefined) {
 		return hit;
 	}
@@ -280,7 +297,7 @@ function highlightRows(code: string, validLang: string | undefined, highlightThe
 		}
 	}
 	const key = highlightCacheKey(code, validLang);
-	const hit = highlightCache.get(key) ?? takePrefetched(key);
+	const hit = takePrefetched(key) ?? highlightCache.get(key);
 	if (hit !== undefined) {
 		const rows = hit.split("\n");
 		return rows.length === countNewlines(code) + 1 ? rows : undefined;

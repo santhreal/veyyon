@@ -250,6 +250,39 @@ describe("a turn that never reached its first event", () => {
 		expect(attempts).toBe(1);
 	});
 
+	it("re-issues a stalled attempt without the empty-completion pause", async () => {
+		const waits: number[] = [];
+		let attempts = 0;
+		await drain(
+			withEmptyCompletionRetry(MODEL, CONTEXT, { providerRetryWait: async ms => void waits.push(ms) }, () => {
+				attempts++;
+				return attempts === 1 ? stalledAttempt() : contentAttempt();
+			}),
+		);
+
+		// The stall already spent its first-event deadline; a pause on top only delays the turn.
+		expect(waits).toEqual([0]);
+	});
+
+	it("does not retry a stall that ended as an abort", async () => {
+		let attempts = 0;
+		await drain(
+			withEmptyCompletionRetry(MODEL, CONTEXT, { providerRetryWait: async () => {} }, () => {
+				attempts++;
+				const failure = assistant({
+					stopReason: "aborted",
+					errorMessage: "stream timed out while waiting for the first event",
+				});
+				return streamFromEvents([
+					{ type: "start", partial: failure },
+					{ type: "error", reason: "aborted", error: failure },
+				] as unknown as AssistantMessageEvent[]);
+			}),
+		);
+
+		expect(attempts).toBe(1);
+	});
+
 	it("bounds the whole pre-first-event phase by the declared deadline", async () => {
 		let attempts = 0;
 		// The declared number is one attempt's deadline; the phase is a bounded

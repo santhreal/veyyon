@@ -1,7 +1,7 @@
 import { hsvToRgb } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";
 import { settings } from "../../../config/settings";
-import { STTController, type SttState } from "../../../speech/stt";
+import type { STTController, SttState } from "../../../speech/stt";
 import { vocalizer } from "../../../speech/tts/vocalizer";
 import { theme } from "../../../theme/theme";
 import type { InteractiveModeContext } from "../types";
@@ -51,7 +51,11 @@ export class VoiceController {
 			this.#context.showWarning("Speech-to-text is disabled. Enable it in settings: stt.enabled");
 			return;
 		}
-		this.#stt ??= new STTController();
+		if (!this.#stt) {
+			// The recorder, downloader and ASR client load on the first recording, not with the composer.
+			const stt = await import("../../../speech/stt");
+			this.#stt ??= new stt.STTController();
+		}
 		await this.#stt.toggle(this.#context.editor, {
 			showWarning: (msg: string) => this.#context.showWarning(msg),
 			showStatus: (msg: string) => this.#context.showStatus(msg),

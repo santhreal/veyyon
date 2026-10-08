@@ -10,7 +10,7 @@ bot, and a client for Parallel's extract API.
 
 `specialHandlers` is the ordered list the dispatcher walks. A handler returns a `RenderResult` for a
 URL it claims, `null` for one it declines, and a `ScraperDegrade` when it claims a URL and cannot
-scrape it, which tells the caller to fall back to a generic fetch and states why.
+scrape it, which directs the caller to fall back to a generic fetch and states why.
 
 ```ts
 import { specialHandlers } from "@veyyon/web/scrapers";
@@ -21,7 +21,7 @@ for (const handler of specialHandlers) {
 }
 ```
 
-Four handlers need something the process around them owns: a credential store, a document
+Four handlers need something the process around them provides: a credential store, a document
 converter, a managed external binary, and the configured fetch provider. Pass a `ScrapeServices`
 object as the fourth argument to supply them; a handler that needs one and is given nothing reports
 that rather than reaching for a global.

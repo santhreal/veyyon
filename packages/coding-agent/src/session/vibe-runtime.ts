@@ -529,7 +529,7 @@ export class VibeSessionRegistry {
 	async kill(session: ToolSession, id: string): Promise<VibeKillOutcome> {
 		const owner = session.getAgentId?.() ?? MAIN_AGENT_ID;
 		const record = this.#record(owner, id);
-		return this.#killRecord(record, session.asyncJobManager);
+		return killRecord(record, session.asyncJobManager);
 	}
 
 	/** Kill every session belonging to `owner` (vibe-mode exit / teardown). Returns the number killed. */
@@ -537,117 +537,10 @@ export class VibeSessionRegistry {
 		let killed = 0;
 		for (const record of this.#records.values()) {
 			if (record.ownerId !== owner || record.state === "dead") continue;
-			await this.#killRecord(record, manager);
+			await killRecord(record, manager);
 			killed++;
 		}
 		return killed;
-	}
-
-	async #killRecord(record: VibeRecord, manager: AsyncJobManager | undefined): Promise<VibeKillOutcome> {
-		record.killed = true;
-		record.queue.length = 0;
-		let cancelledTurn = false;
-		if (record.turn && manager) {
-			cancelledTurn = manager.cancel(record.turn.jobId, { ownerId: record.ownerId });
-		}
-		record.state = "dead";
-		record.lastActivityAt = Date.now();
-		record.lastActivity = "killed";
-		try {
-			await AgentLifecycleManager.global().release(record.id);
-		} catch (error) {
-			logger.warn("vibe: failed to release worker session", {
-				id: record.id,
-				error: errorMessage(error),
-			});
-		}
-		return { id: record.id, cancelledTurn };
-	}
-
-	/** Build the ExecutorOptions for a first spawn, mirroring the `task`/eval-bridge plumbing. */
-	async #buildSpawnOptions(
-		session: ToolSession,
-		record: VibeRecord,
-		message: string,
-		signal: AbortSignal,
-		onProgress: (progress: AgentProgress) => void,
-	): Promise<ExecutorOptions> {
-		const sessionFile = session.getSessionFile();
-		const sessionArtifactsDir = sessionFile ? sessionFile.slice(0, -6) : null;
-		const artifactsDir = sessionArtifactsDir ?? path.join(os.tmpdir(), `veyyon-vibe-${Snowflake.next()}`);
-		await fs.mkdir(artifactsDir, { recursive: true });
-		if (!sessionArtifactsDir) registerArtifactsDir(artifactsDir);
-		const localProtocolOptions: LocalProtocolOptions = session.localProtocolOptions ?? {
-			getArtifactsDir: session.getArtifactsDir ?? (() => null),
-			getSessionId: session.getSessionId ?? (() => null),
-		};
-		return {
-			cwd: session.cwd,
-			agent: record.agent,
-			task: message,
-			assignment: message,
-			description: `vibe ${record.cli} session`,
-			index: 0,
-			id: record.id,
-			taskDepth: session.taskDepth ?? 0,
-			detached: true,
-			modelOverride: record.modelOverride,
-			parentActiveModelPattern: session.getActiveModelString?.(),
-			parentThinkingLevel: session.getActiveThinkingLevel?.(),
-			thinkingLevel: record.thinkingLevel,
-			sessionFile,
-			persistArtifacts: Boolean(sessionFile),
-			artifactsDir,
-			enableLsp: (session.enableLsp ?? true) && session.settings.get("agent.enableLsp"),
-			signal,
-			eventBus: session.eventBus,
-			onProgress,
-			authStorage: session.authStorage,
-			modelRegistry: session.modelRegistry,
-			settings: session.settings,
-			mcpManager: session.mcpManager ?? mcpManagerInstance(),
-			contextFiles: inheritContextFiles({
-				parentContextFiles: session.contextFiles,
-				parentCwd: session.cwd,
-				spawnCwd: session.cwd,
-				agentName: record.agent.name,
-			}),
-			skills: inheritResolvedCollection({
-				items: session.skills,
-				kind: "skills",
-				parentCwd: session.cwd,
-				spawnCwd: session.cwd,
-				agentName: record.agent.name,
-			}),
-			workspaceTree: session.workspaceTree,
-			promptTemplates: inheritResolvedCollection({
-				items: session.promptTemplates,
-				kind: "promptTemplates",
-				parentCwd: session.cwd,
-				spawnCwd: session.cwd,
-				agentName: record.agent.name,
-			}),
-			rules: inheritResolvedCollection({
-				items: session.rules,
-				kind: "rules",
-				parentCwd: session.cwd,
-				spawnCwd: session.cwd,
-				agentName: record.agent.name,
-			}),
-			preloadedExtensionPaths: session.extensionPaths,
-			preloadedNamedExtensionPaths: session.namedExtensionPaths,
-			preloadedCustomToolPaths: session.customToolPaths,
-			localProtocolOptions,
-			parentArtifactManager: session.getArtifactManager?.() ?? undefined,
-			parentHindsightSessionState: session.getHindsightSessionState?.(),
-			parentMnemopiSessionState: session.getMnemopiSessionState?.(),
-			parentTelemetry: session.getTelemetry?.(),
-			parentEvalSessionId: session.getEvalSessionId?.() ?? undefined,
-			parentAgentId: session.getAgentId?.() ?? MAIN_AGENT_ID,
-			parentSessionId: session.getSessionId?.() ?? undefined,
-			parentServiceTier: session.getServiceTierByFamily ? (session.getServiceTierByFamily() ?? null) : undefined,
-			keepAlive: true,
-		};
 	}
 
 	/** Register one background job that runs a single worker turn and self-delivers its result. */
@@ -692,7 +585,7 @@ export class VibeSessionRegistry {
 				record.lastActivityAt = Date.now();
 				try {
 					const result = options.first
-						? await runSubprocess(await this.#buildSpawnOptions(session, record, message, signal, onProgress))
+						? await runSubprocess(await buildSpawnOptions(session, record, message, signal, onProgress))
 						: await runSubagentFollowUpTurn({
 								id: record.id,
 								agent: record.agent,
@@ -818,4 +711,111 @@ export class VibeSessionRegistry {
 		if (failed) throw new VibeTurnError(text);
 		return text;
 	}
+}
+
+async function killRecord(record: VibeRecord, manager: AsyncJobManager | undefined): Promise<VibeKillOutcome> {
+	record.killed = true;
+	record.queue.length = 0;
+	let cancelledTurn = false;
+	if (record.turn && manager) {
+		cancelledTurn = manager.cancel(record.turn.jobId, { ownerId: record.ownerId });
+	}
+	record.state = "dead";
+	record.lastActivityAt = Date.now();
+	record.lastActivity = "killed";
+	try {
+		await AgentLifecycleManager.global().release(record.id);
+	} catch (error) {
+		logger.warn("vibe: failed to release worker session", {
+			id: record.id,
+			error: errorMessage(error),
+		});
+	}
+	return { id: record.id, cancelledTurn };
+}
+
+/** Build the ExecutorOptions for a first spawn, mirroring the `task`/eval-bridge plumbing. */
+async function buildSpawnOptions(
+	session: ToolSession,
+	record: VibeRecord,
+	message: string,
+	signal: AbortSignal,
+	onProgress: (progress: AgentProgress) => void,
+): Promise<ExecutorOptions> {
+	const sessionFile = session.getSessionFile();
+	const sessionArtifactsDir = sessionFile ? sessionFile.slice(0, -6) : null;
+	const artifactsDir = sessionArtifactsDir ?? path.join(os.tmpdir(), `veyyon-vibe-${Snowflake.next()}`);
+	await fs.mkdir(artifactsDir, { recursive: true });
+	if (!sessionArtifactsDir) registerArtifactsDir(artifactsDir);
+	const localProtocolOptions: LocalProtocolOptions = session.localProtocolOptions ?? {
+		getArtifactsDir: session.getArtifactsDir ?? (() => null),
+		getSessionId: session.getSessionId ?? (() => null),
+	};
+	return {
+		cwd: session.cwd,
+		agent: record.agent,
+		task: message,
+		assignment: message,
+		description: `vibe ${record.cli} session`,
+		index: 0,
+		id: record.id,
+		taskDepth: session.taskDepth ?? 0,
+		detached: true,
+		modelOverride: record.modelOverride,
+		parentActiveModelPattern: session.getActiveModelString?.(),
+		parentThinkingLevel: session.getActiveThinkingLevel?.(),
+		thinkingLevel: record.thinkingLevel,
+		sessionFile,
+		persistArtifacts: Boolean(sessionFile),
+		artifactsDir,
+		enableLsp: (session.enableLsp ?? true) && session.settings.get("agent.enableLsp"),
+		signal,
+		eventBus: session.eventBus,
+		onProgress,
+		authStorage: session.authStorage,
+		modelRegistry: session.modelRegistry,
+		settings: session.settings,
+		mcpManager: session.mcpManager ?? mcpManagerInstance(),
+		contextFiles: inheritContextFiles({
+			parentContextFiles: session.contextFiles,
+			parentCwd: session.cwd,
+			spawnCwd: session.cwd,
+			agentName: record.agent.name,
+		}),
+		skills: inheritResolvedCollection({
+			items: session.skills,
+			kind: "skills",
+			parentCwd: session.cwd,
+			spawnCwd: session.cwd,
+			agentName: record.agent.name,
+		}),
+		workspaceTree: session.workspaceTree,
+		promptTemplates: inheritResolvedCollection({
+			items: session.promptTemplates,
+			kind: "promptTemplates",
+			parentCwd: session.cwd,
+			spawnCwd: session.cwd,
+			agentName: record.agent.name,
+		}),
+		rules: inheritResolvedCollection({
+			items: session.rules,
+			kind: "rules",
+			parentCwd: session.cwd,
+			spawnCwd: session.cwd,
+			agentName: record.agent.name,
+		}),
+		preloadedExtensionPaths: session.extensionPaths,
+		preloadedNamedExtensionPaths: session.namedExtensionPaths,
+		preloadedCustomToolPaths: session.customToolPaths,
+		localProtocolOptions,
+		parentArtifactManager: session.getArtifactManager?.() ?? undefined,
+		parentHindsightSessionState: session.getHindsightSessionState?.(),
+		parentMnemopiSessionState: session.getMnemopiSessionState?.(),
+		parentTelemetry: session.getTelemetry?.(),
+		parentEvalSessionId: session.getEvalSessionId?.() ?? undefined,
+		parentAgentId: session.getAgentId?.() ?? MAIN_AGENT_ID,
+		parentSessionId: session.getSessionId?.() ?? undefined,
+		parentServiceTier: session.getServiceTierByFamily ? (session.getServiceTierByFamily() ?? null) : undefined,
+		keepAlive: true,
+	};
 }

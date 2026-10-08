@@ -5,7 +5,7 @@ endpoint exposes model choice, provide the key, and Veyyon calls that API direct
 a local server (Ollama, LM Studio), a direct provider API (OpenAI, Anthropic, Google), or any
 OpenAI-compatible gateway.
 
-The contract between the harness and the model. For copy-paste provider setup, see
+For copy-paste provider setup, see
 [Configuring providers](../using/configuring-providers.md). For model switching, see
 [Models and providers](../using/models.md).
 
@@ -16,7 +16,7 @@ A BYOK (bring-your-own-key) run needs three facts:
 | Fact | What it is | Where it is defined |
 | --- | --- | --- |
 | **Endpoint** | Base URL and API kind | A built-in provider, or a custom provider under `providers:` in `~/.veyyon/profiles/default/agent/models.yml` |
-| **Model** | The model id the endpoint understands | Pinned with `--model` / `/model`, or discovered from the provider |
+| **Model** | The model id the endpoint accepts | Pinned with `--model` / `/model`, or discovered from the provider |
 | **Key** | Credential the endpoint accepts | A provider environment variable, `/login`, or a `models.yml` `apiKey` |
 
 For BYOK providers, Veyyon calls the configured endpoint with your credentials (no hosted proxy required).
@@ -50,7 +50,7 @@ These behaviors remain constant across endpoints:
 - The workflow: read, edit, verify, stop when the work is done.
 - Tool dispatch, argument handling, and edit verification through the **hashline** edit engine
   (with `apply_patch` / `patch` / `replace` available via `edit.mode`).
-- Approval modes (`tools.approvalMode`) that gate which tool tiers run without asking.
+- Approval modes (`tools.approvalMode`) that select which tool tiers run without a prompt.
 - Context compaction, goal cards, session branching, and rollout persistence.
 - Per-model prompt order and tool-form selection once a model (or API kind) is known.
 
@@ -65,7 +65,7 @@ Veyyon adapts to that surface through the provider's `api` kind:
 - Chat-Completions-style endpoints (`api: openai-completions`) talk `/chat/completions`.
 - Responses-style and native provider endpoints use their own request shape.
 - Model ids come from the provider's discovery endpoint when discovery runs. There is no hardcoded
-  allowlist for BYOK providers, and discovery returns an error; it does not invent an empty catalog on failure.
+  allowlist for BYOK providers, and a failed discovery returns an error rather than an empty catalog.
 
 Everything beyond the built-in catalog is data in `models.yml`, see
 [Providers](../models/providers.md) and [`docs/handbook/src/reference/providers.md`](../reference/providers.md).
@@ -120,7 +120,7 @@ If something fails, ask which side is responsible:
 
 - Config rejected at load, malformed `models.yml`, missing key → harness / your config.
 - HTTP 401 / 429 / empty model list → provider or key.
-- Patch applied but tests red → harness did its job; the change still needs work.
+- Patch applied but tests red → the harness applied the patch; the change still needs work.
 - Approval or critical-pattern denial → permission model, not the model provider.
 
 ## Provider data at load time
@@ -134,7 +134,7 @@ For BYOK providers, model and provider entries are data in `models.yml`:
 - Provider availability requires the id not be in `disabledProviders` **and** the provider be keyless or
   have resolvable credentials.
 
-Malformed provider data fails at load. Silent fallback to a weaker provider is treated as a bug.
+Malformed provider data fails at load and reports the error.
 
 ## Per-role models
 
@@ -148,7 +148,7 @@ With **Same Model for All Agents** off, the first of these sets the model: that 
 `agent.agents`, then the agent definition's own `model:`, otherwise the `default` model role.
 With it on, `agent.model` sets it for every agent and the rows above are not read. There is no
 silent blend, and a configured value that matches no available model rejects the spawn instead of
-quietly handing the decision to the next layer. `/agents` shows the resolved model and which
+falling through to the next layer. `/agents` shows the resolved model and which
 setting applied.
 See [Settings: Agents](../reference/settings.md#agents) and
 [Models, roles, and profiles](../using/roles-and-profiles.md).
@@ -156,9 +156,9 @@ See [Settings: Agents](../reference/settings.md#agents) and
 ## Automation note
 
 For non-interactive runs, pass the prompt and pick an approval mode that matches your trust
-boundary. A headless run has no terminal to answer a prompt on, so a rung that prompts turns the
-gated tool call into an error rather than a pause: the default `auto` runs every tier while the
-working-directory, credential and critical-command guards still stop the calls they cover.
+boundary. A headless run has no terminal to answer a prompt on, so under a rung that prompts, a
+tool call that needs approval fails with an error instead of pausing. The default `auto` runs every
+tier, while the working-directory, credential and critical-command checks still stop the calls they cover.
 
 ```console
 $ veyyon --print "run the unit tests and fix failures"

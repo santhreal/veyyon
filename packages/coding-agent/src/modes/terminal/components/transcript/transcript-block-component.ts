@@ -201,7 +201,7 @@ export class TranscriptBlockComponent extends Container implements Component {
 					thinkingRenderers,
 					this.#options.tui.imageBudget,
 					proseOnly,
-					() => this.#options.tui.requestComponentRender(assistantComp),
+					this.#options.tui,
 				);
 				if (block.streaming) {
 					assistantComp.updateContent(block, { transient: true });

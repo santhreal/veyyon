@@ -45,13 +45,13 @@ const models = await fetchOpenAICompatibleModels({
 });
 ```
 
-The `stage` tells you where to look. `request` means the request never completed, so check DNS, the
+The `stage` states where the failure occurred. `request` means the request never completed, so check DNS, the
 firewall, and the base URL. `status` means the endpoint answered and refused, so check credentials.
 `body` means something in front of the endpoint answered instead, usually an HTML error page. `payload`
 means the JSON parsed and held no model list, so the endpoint is probably not OpenAI-compatible.
 `base-url` means nothing was requested because the configured URL is unusable.
 
-Without `onFailure` you still get `null`, exactly as before. Nothing is thrown for a discovery failure.
+Without `onFailure` the result is `null`. Nothing is thrown for a discovery failure.
 
 The `DiscoveryFailure` shape is shared across discovery readers (`fetchOpenAICompatibleModels`, `fetchCodexModels`, `fetchCursorUsableModels`, `fetchDevinModels`, `fetchGeminiModels`, `fetchAntigravityDiscoveryModels`, `fetchGitLabDuoWorkflowModels`).
 

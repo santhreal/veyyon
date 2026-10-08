@@ -1,17 +1,17 @@
 # Feature flags
 
-Veyyon gates optional behavior in two places: `features.*` keys in the settings schema, and
-per-plugin feature gates managed with the **plugin** subcommand.
+Optional behavior is switched in two places: `features.*` keys in the settings schema, and
+per-plugin features managed with the **plugin** subcommand.
 
 ## Settings-schema flags (`features.*`)
 
-Registered flags live in `config.yml` under dotted `features.*` keys and appear in
+Registered flags are stored in `config.yml` under dotted `features.*` keys and appear in
 **Settings › Interaction** in the TUI. Unknown keys are preserved verbatim (they may belong to a
 newer build or another tool); only schema-declared keys are type-checked.
 
 | Key | Default | Effect |
 | --- | --- | --- |
-| `features.unexpectedStopDetection` | off | Use a small model to detect when the assistant says it will continue but stops without tool calls, and automatically prompt it to continue. |
+| `features.unexpectedStopDetection` | off | Use a small model to detect when the assistant states it will continue but stops without tool calls, and automatically prompt it to continue. |
 
 ```yaml
 features:
@@ -24,7 +24,7 @@ Per-run override: put the same YAML in a file and load it as an overlay:
 $ veyyon --config ./flag-overlay.yml "long refactor; keep going until done"
 ```
 
-## Plugin feature gates
+## Plugin features
 
 Plugins can declare named features that you toggle per plugin:
 

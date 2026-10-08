@@ -45,7 +45,7 @@ export function createPackageRegistryHandler(decl: PackageRegistryDeclaration, h
 						};
 					}
 				}
-				if (!match || !match.name) return null;
+				if (!match?.name) return null;
 				return match;
 			},
 			fetch: (match, ctx) => decl.customFetch(match, ctx),

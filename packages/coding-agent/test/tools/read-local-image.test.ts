@@ -7,6 +7,7 @@
  * outside the local root is rejected by the same realpath guard the router uses
  * (the fast path must not become a containment bypass).
  */
+// Subject module: tools/fs/read-media.ts, driven through the read tool.
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";

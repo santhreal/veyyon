@@ -132,9 +132,12 @@ describe("a session file stores a job result once", () => {
 	});
 
 	async function record(results: readonly ToolResultMessage<JobToolDetails>[]): Promise<SessionManager> {
+		const returned = results.map(result => JSON.stringify(result.details));
 		const manager = SessionManager.create(root.path(), root.join("sessions"));
 		manager.appendMessage(assistantCalling(results.map(r => r.toolCallId)));
 		for (const result of results) manager.appendMessage(result);
+		// Recording settles each result in place: the details the session holds read as the tool returned them.
+		expect(results.map(result => JSON.stringify(result.details))).toEqual(returned);
 		await manager.flush();
 		return manager;
 	}

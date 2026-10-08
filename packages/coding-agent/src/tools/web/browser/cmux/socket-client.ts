@@ -167,7 +167,7 @@ export class CmuxSocketClient {
 					await this.connect();
 					const request = JSON.stringify({ id: randomUUID(), method: job.method, params: job.params });
 					const line = await this.#sendLine(request, job.timeoutMs);
-					job.resolve(this.#parseResponse(line));
+					job.resolve(parseResponse(line));
 				} catch (err) {
 					job.reject(err instanceof Error ? err : new ToolError(String(err)));
 				} finally {
@@ -243,29 +243,6 @@ export class CmuxSocketClient {
 		}
 	}
 
-	#parseResponse(line: string): Record<string, unknown> {
-		if (line.startsWith("ERROR:")) {
-			throw new ToolError(line);
-		}
-		let payload: unknown;
-		try {
-			payload = JSON.parse(line);
-		} catch (err) {
-			throw new ToolError(`Invalid cmux socket JSON response: ${errorMessage(err)}`);
-		}
-		if (!payload || typeof payload !== "object") {
-			throw new ToolError("Invalid cmux socket response: expected object");
-		}
-		const response = payload as { ok?: unknown; result?: unknown; error?: CmuxErrorPayload };
-		if (response.ok === true) {
-			return (response.result ?? {}) as Record<string, unknown>;
-		}
-		if (response.ok === false) {
-			throw new ToolError(formatCmuxError(response.error));
-		}
-		throw new ToolError("Invalid cmux socket response: missing ok flag");
-	}
-
 	#handleSocketFailure(err: Error): void {
 		if (this.#disposed) return;
 		this.#connected = false;
@@ -305,4 +282,27 @@ export class CmuxSocketClient {
 			job.reject(err);
 		}
 	}
+}
+
+function parseResponse(line: string): Record<string, unknown> {
+	if (line.startsWith("ERROR:")) {
+		throw new ToolError(line);
+	}
+	let payload: unknown;
+	try {
+		payload = JSON.parse(line);
+	} catch (err) {
+		throw new ToolError(`Invalid cmux socket JSON response: ${errorMessage(err)}`);
+	}
+	if (!payload || typeof payload !== "object") {
+		throw new ToolError("Invalid cmux socket response: expected object");
+	}
+	const response = payload as { ok?: unknown; result?: unknown; error?: CmuxErrorPayload };
+	if (response.ok === true) {
+		return (response.result ?? {}) as Record<string, unknown>;
+	}
+	if (response.ok === false) {
+		throw new ToolError(formatCmuxError(response.error));
+	}
+	throw new ToolError("Invalid cmux socket response: missing ok flag");
 }

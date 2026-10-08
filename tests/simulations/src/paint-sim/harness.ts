@@ -98,7 +98,7 @@ export interface PaintReport {
 	/** Turns whose text is no longer anywhere in the terminal's buffer. */
 	lostTurns: number[];
 	/** Rows the engine believes it has handed to native scrollback. */
-	scrollTapeRows: number;
+	scrolledOffRows: number;
 	/**
 	 * Whole-screen rewrites THIS scenario's script entitles the stream to,
 	 * counted from the script rather than from the engine, so a test comparing
@@ -387,7 +387,7 @@ export async function paintSim(shape: PaintShape): Promise<PaintReport> {
 		erases: paints.erases() - erasesAtOpen,
 		bytes: paints.bytes() - bytesAtOpen,
 		lostTurns,
-		scrollTapeRows: tui.scrollTapeRows,
+		scrolledOffRows: tui.scrolledOffRows,
 		slideRewrites,
 		viewport,
 		blankBand: blankRun(viewport),

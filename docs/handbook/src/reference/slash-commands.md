@@ -22,17 +22,16 @@ A message that merely begins with a filesystem path is prose, not a command, and
 /etc/hosts is broken
 ```
 
-The separator decides. A command name is one segment of letters, digits, underscores and hyphens
+The separator selects the reading. A command name is one segment of letters, digits, underscores and hyphens
 starting with a letter, so anything holding a slash is a path.
 
 ## Every argument is a plain word
 
-No slash command takes an option. Nothing is spelled with a dash, so there is nothing to look up
-and nothing to get in the wrong order. A word means something for one of two reasons: the POSITION
+No slash command takes an option. Nothing is spelled with a dash. A word means something for one of two reasons: the POSITION
 it sits in, or a CLOSED SET or SHAPE it belongs to.
 
 Plenty of commands take a single argument, listed with them in the tables below. These are the ones
-with a grammar to state, and each used to spell part of it with dashes:
+with a grammar:
 
 ```text
 /mcp add <name> [http|sse] [url <url>] [token <token>] [run <command...>]
@@ -45,16 +44,15 @@ with a grammar to state, and each used to spell part of it with dashes:
 
 `/secret` has its own grammar and its own page: see [Secrets](../features/secrets.md).
 
-Position covers every required word, so `/mcp remove project` removes a server actually named
-`project`. Where meaning is taken from a word's shape instead, the sets provably cannot overlap: on
+Position covers every required word, so `/mcp remove project` removes a server named
+`project`. Where meaning is taken from a word's shape instead, the sets cannot overlap: on
 `/ssh add` a port is digits and nothing else the command reads is, and `user` and `key` are the only
-two keywords, each taking the word after it. A word the command cannot use is rejected rather than
-ignored, because a word that is silently dropped looks like a setting that was applied.
+two keywords, each taking the word after it. A word the command cannot use is rejected, not ignored.
 
 ### A spelling that was an option
 
-Each of these commands remembers the option spellings it used to have, and rejects them, stating the
-plain word that replaced each one:
+Each of these commands rejects its former option spellings and states the plain word that
+replaced each one:
 
 ```text
 /ssh add box example.com --port 2222
@@ -63,16 +61,15 @@ Usage: /ssh add <name> <host> [user <user>] [<port>] [key <keyPath>]
 ```
 
 The plain word gets the same answer as the dashed one. `/stats port 8080` is rejected the way
-`/stats --port 8080` is, and `/mcp add srv project` the way `/mcp add srv --scope project` is,
-because the operator who types the word an older grammar taught is asking the same question either
-way and wants the same answer. Which words those are is read from the same table the refusal text
-comes from, so the two spellings cannot drift apart.
+`/stats --port 8080` is, and `/mcp add srv project` the way `/mcp add srv --scope project` is.
+The set of those words is read from the same table as the rejection text, so the two spellings
+cannot drift apart.
 
-A word that never was an option is rejected more briefly, since there is no replacement to name:
+A word that never was an option is rejected more briefly, since there is no replacement to state:
 `Unknown argument: <word>`, or `Invalid port: <word>` where a port was the only thing the command
 reads.
 
-`/mcp smithery-search` is the exception, and it is one on purpose: its trailing words are search
+`/mcp smithery-search` is the exception: its trailing words are search
 terms, arbitrary text with no closed set, so a plain `project` there is a keyword to search for and
 is searched for. Only the dashed spellings are rejected.
 
@@ -81,7 +78,7 @@ is searched for. Only the dashed spellings are rejected.
 Some commands take a subcommand: `/account status`, `/account manager`, `/usage reset`. Typing the
 command on its own opens a picker listing every subcommand it has, with what each one does. Move
 with the up and down arrows, click a row, press enter to run it, or press escape to close and run
-nothing. Choosing a row runs exactly what typing that subcommand runs. When the list is longer than
+nothing. Choosing a row runs the same command as typing that subcommand. When the list is longer than
 the picker, type to filter it; escape clears the filter before it closes the picker. The picker
 widens to show every usage and description whole; on a terminal too narrow for that, the usage
 column narrows first and a usage that still does not fit is cut after a whole word.
@@ -132,7 +129,7 @@ act on a bare invocation: `/yolo`, `/fast`, and `/browser` flip a switch, `/goal
 | `/guided-goal` | Guided goal wizard |
 | `/loop` | Loop mode controls |
 | `/prewalk [model]` | Arm the prewalk switch for this session: the agent moves to the cheap model at its next edit or write, once the todo list exists. The target comes from the argument or `prewalk.cheapModel`; with neither, the command fails naming the setting |
-| `/secret` | Store a credential the agent uses by placeholder and never sees. A command comes first on every surface and every argument after it is a plain word: `/secret add <value>` stores it in a terminal, `/secret add` alone opens a hidden field, `/secret from-env <VAR>` reads it out of the environment, and the name is prompted afterwards, with Enter accepting the generated one. The commands are `add`, `from-env`, `list`, `rm`, `clear`, `rename`, `value`, `scope`, `copy`, `extend`, `log`, `discard`, `help`; a first word that is none of them is rejected and nothing is stored. See [Secrets](../features/secrets.md) |
+| `/secret` | Store a credential the agent uses by placeholder and never receives. A command comes first on every surface and every argument after it is a plain word: `/secret add <value>` stores it in a terminal, `/secret add` alone opens a hidden field, `/secret from-env <VAR>` reads it out of the environment, and the name is prompted afterwards, with Enter accepting the generated one. The commands are `add`, `from-env`, `list`, `rm`, `clear`, `rename`, `value`, `scope`, `copy`, `extend`, `log`, `discard`, `help`; a first word that is none of them is rejected and nothing is stored. See [Secrets](../features/secrets.md) |
 | `/settings`, `/setup` | Settings UI; `/setup` opens first-run provider sign-in |
 | `/providers`, `/account manager` | Open the account manager: every stored account per provider, with its email, plan, health, and usage. See [Authentication](../using/authentication.md) |
 | `/account status` | Show which account each provider is serving this session with. A bare `/account` opens the picker |

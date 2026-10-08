@@ -79,9 +79,9 @@ These color the "cool arc" of the design language: session identity segments use
 
 ### `composerBg` (optional)
 
-The tonal ground painted under the composer's input rows and the padding rows above and below them (the "quiet card"). The padding rows carry the same ground so the card has a visible body rather than a single tinted line.
+The tonal ground painted under the composer's input rows and the padding rows above and below them (the "quiet card"). The padding rows use the same ground so the card has a visible body rather than a single tinted line.
 
-A theme that omits `composerBg` gets an unpainted composer: the input area renders directly on the terminal's own background. Inheriting `statusLineBg` here used to render the composer band as a gray slab on mismatched terminals, so the default is no paint. A theme that wants a painted composer card must set `composerBg` explicitly, and an explicit value is painted.
+A theme that omits `composerBg` gets an unpainted composer: the input area renders directly on the terminal's own background. The composer does not inherit `statusLineBg`. A theme with a painted composer card must set `composerBg` explicitly, and an explicit value is painted.
 
 ### `export` section (optional)
 
@@ -352,7 +352,7 @@ Use this workflow:
 1. Start interactive mode (watcher enabled from startup).
 2. Open settings and preview theme values (live `previewTheme`).
 3. For custom theme files, edit the JSON while running and confirm auto-reload on save.
-4. Exercise critical surfaces:
+4. Exercise these surfaces:
    - markdown rendering
    - tool blocks (pending/success/error)
    - diff rendering (added/removed/context)

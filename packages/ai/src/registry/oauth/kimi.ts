@@ -182,6 +182,28 @@ function parseTokenPayload(payload: TokenResponse, refreshTokenFallback?: string
 	};
 }
 
+// The wait before the next poll after a non-token response; throws when the device flow cannot continue.
+function nextPollWaitMs(payload: TokenResponse, status: number, waitMs: number): number {
+	switch (payload.error) {
+		case "authorization_pending":
+			return waitMs;
+		case "slow_down": {
+			const slowedMs = waitMs + 5000;
+			const retryAfterMs = typeof payload.interval === "number" ? payload.interval * 1000 : undefined;
+			return retryAfterMs && retryAfterMs > slowedMs ? retryAfterMs : slowedMs;
+		}
+		case "expired_token":
+			throw new AIError.OAuthError("Kimi device authorization expired", { kind: "validation", provider: "kimi" });
+		case "access_denied":
+			throw new AIError.OAuthError("Kimi device authorization denied", { kind: "validation", provider: "kimi" });
+	}
+	const description = payload.error_description ? `: ${payload.error_description}` : "";
+	throw new AIError.OAuthError(`Kimi device flow failed: ${payload.error ?? status}${description}`, {
+		kind: "polling",
+		provider: "kimi",
+	});
+}
+
 async function pollForToken(
 	deviceCode: string,
 	intervalMs: number,
@@ -213,40 +235,8 @@ async function pollForToken(
 		if (response.ok && payload.access_token) {
 			return parseTokenPayload(payload);
 		}
-
-		const error = payload.error;
-		if (error === "authorization_pending") {
-			await scheduler.wait(waitMs, { signal });
-			continue;
-		}
-
-		if (error === "slow_down") {
-			waitMs += 5000;
-			const retryAfter = typeof payload.interval === "number" ? payload.interval * 1000 : undefined;
-			if (retryAfter && retryAfter > waitMs) waitMs = retryAfter;
-			await scheduler.wait(waitMs, { signal });
-			continue;
-		}
-
-		if (error === "expired_token") {
-			throw new AIError.OAuthError("Kimi device authorization expired", {
-				kind: "validation",
-				provider: "kimi",
-			});
-		}
-
-		if (error === "access_denied") {
-			throw new AIError.OAuthError("Kimi device authorization denied", {
-				kind: "validation",
-				provider: "kimi",
-			});
-		}
-
-		const description = payload.error_description ? `: ${payload.error_description}` : "";
-		throw new AIError.OAuthError(`Kimi device flow failed: ${error ?? response.status}${description}`, {
-			kind: "polling",
-			provider: "kimi",
-		});
+		waitMs = nextPollWaitMs(payload, response.status, waitMs);
+		await scheduler.wait(waitMs, { signal });
 	}
 
 	throw new AIError.OAuthError("Kimi device flow timed out", {

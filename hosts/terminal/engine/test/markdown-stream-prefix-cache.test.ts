@@ -90,4 +90,48 @@ describe("Markdown streaming prefix render cache", () => {
 
 		expect(streamingLines).toEqual(renderCold(prefix, defaultMarkdownTheme));
 	});
+
+	it("serves frozen rows only while their text still leads the transcript, through rewinds, edits and resizes", () => {
+		// The frozen rows are reused when the text they were rendered for is the frozen prefix, the
+		// prefix it was cut to extend, or found to lead it. A reuse decided wrong paints rows of text
+		// that is no longer there. The sequence mixes appends with the ways a transcript stops
+		// extending the one the rows were cut from: a rewind, an edit inside a frozen block, a
+		// different width, and a fresh start.
+		const blocks = [
+			"Paragraph about the render loop.\n\n",
+			"```ts\nconst frozen = 1;\n```\n\n",
+			"- first item\n- second item\n\n",
+			"## A heading\n\n",
+			"> quoted line\n\n",
+			"Words without a blank line after them ",
+		];
+		let state = 0x2f6b9c1d;
+		const next = (): number => {
+			state ^= state << 13;
+			state ^= state >>> 17;
+			state ^= state << 5;
+			return (state >>> 0) / 0x100000000;
+		};
+		const md = new Markdown("", 0, 0, defaultMarkdownTheme);
+		md.transientRenderCache = true;
+		let text = "";
+		let width = WIDTH;
+		const diverged: { step: number; text: string; width: number }[] = [];
+		for (let step = 0; step < 400 && diverged.length === 0; step++) {
+			const roll = next();
+			if (roll < 0.6) text += blocks[Math.floor(next() * blocks.length)]!;
+			else if (roll < 0.75) text = text.slice(0, Math.floor(next() * text.length));
+			else if (roll < 0.87 && text.length > 0) {
+				const at = Math.floor(next() * (text.length / 2));
+				text = `${text.slice(0, at)}Z${text.slice(at + 1)}`;
+			} else if (roll < 0.97) width = [WIDTH, 40, 100][Math.floor(next() * 3)]!;
+			else text = "";
+			md.setText(text);
+			const streamed = [...md.render(width)];
+			clearRenderCache();
+			const cold = new Markdown(text, 0, 0, defaultMarkdownTheme).render(width);
+			if (JSON.stringify(streamed) !== JSON.stringify(cold)) diverged.push({ step, text, width });
+		}
+		expect(diverged).toEqual([]);
+	});
 });

@@ -14,10 +14,10 @@
  * offers when you type a symbol name, pulls the settings store, the theme, the session and its
  * whole graph onto the boot path, and the only symptom is that startup got slower.
  *
- * WHAT THE NUMBERS ARE. `cli.ts` reaches 34 modules. `main.ts`, one dynamic import away, reaches
- * 1461, and `sdk.ts` reaches 1361. So the lazy boundary is not decorative: it is holding back more
- * than forty times its own weight, and the assertions below say that in both directions, as a
- * ceiling on the entry and as a named list of what must stay off it.
+ * WHAT THE NUMBERS ARE. `cli.ts` reaches 39 modules. `main.ts`, one dynamic import away, reaches
+ * 1468, and `sdk.ts` reaches 1421. So the lazy boundary is not decorative: it holds back more than a
+ * thousand modules the entry never parses, and the assertions below say that in both directions, as
+ * a ceiling on the entry and as a named list of what must stay off it.
  *
  * WHY A NAMED LIST AND NOT ONLY A CEILING. A ceiling catches the big regression and says nothing
  * about which edge caused it. The named absences point at the fix: if `config/settings.ts` appears
@@ -70,8 +70,20 @@ import { PACKAGES, reach, reachedNames } from "../helpers/module-reach-gate";
  * `await import(...)` deletes the feature. The pair reaches `node:fs`, `node:os` and `node:path`
  * and one type-only import of `@veyyon/tui/tui`, which erases, so the edge cannot grow into the
  * package the way a value import would.
+ *
+ * 38 from 2026-09-29: `@veyyon/utils/log-file`, the rotating profile log that replaced `winston` and
+ * `winston-daily-rotate-file`. `@veyyon/utils/logger` is on this path and writes through it. Its
+ * imports are `node:fs`, `node:path`, a type-only `node:zlib`, `./app-identity` and `./fs-error`, all
+ * already here, so the edge cannot grow. The count sees one module more; the process loads 29 npm
+ * modules fewer, since the walk never counted `winston`, which the logger imported on this same path.
+ *
+ * 39 from 2026-10-04: `@veyyon/utils/local-time`, the local date and clock time read from the C
+ * library's `localtime_r` (and `GetLocalTime` on Windows). The logger stamps its lines and names its
+ * day file through it instead of through a `Date`, whose first local-time read builds the engine's
+ * ICU time zone cache: 2.2 ms and 1.9 MiB of anonymous memory on the path to the first frame. Its one
+ * import is `bun:ffi`, a runtime builtin the walk does not count, so the edge cannot grow.
  */
-const BOOT_CEILING = 37;
+const BOOT_CEILING = 39;
 
 /** The same measurement as a floor, so a broken walk fails instead of passing quietly. */
 const BOOT_FLOOR = 25;
@@ -177,16 +189,17 @@ describe("the boot path stays thin", () => {
 	/**
 	 * The contrast that makes the boundary worth guarding.
 	 *
-	 * `main.ts` is ONE `await import` away from `cli.ts` and reaches more than a thousand modules.
-	 * If that ratio ever collapsed it would mean either that the boot path had grown or that the
-	 * lazy boundary had stopped separating anything, and both are worth failing on.
+	 * `main.ts` is ONE `await import` away from `cli.ts` and reaches more than a thousand modules
+	 * that `cli.ts` does not. If that count ever collapsed it would mean either that the boot path had
+	 * absorbed the runtime or that the lazy boundary had stopped separating anything, and both are
+	 * worth failing on. It is a count of modules held back rather than a ratio, so a runtime graph
+	 * that sheds modules it never needed at launch does not read as a collapse.
 	 */
-	it("holds back more than forty times its own weight", () => {
-		const bootCost = reach("cli.ts");
-		const afterCost = reach("main.ts");
+	it("holds back more than a thousand modules behind one dynamic import", () => {
+		const bootNames = new Set(boot);
+		const heldBack = reachedNames("main.ts").filter(name => !bootNames.has(name));
 
-		expect(afterCost).toBeGreaterThan(1000);
-		expect(afterCost / bootCost).toBeGreaterThan(40);
+		expect(heldBack.length).toBeGreaterThan(1000);
 	});
 });
 

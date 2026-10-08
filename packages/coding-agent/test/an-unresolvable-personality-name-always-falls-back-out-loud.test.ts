@@ -96,7 +96,12 @@ describe("an unresolvable personality name falls back to the default and says so
 	it("still prefers a real spec over the fallback, so the guard did not disable resolution", async () => {
 		const cwd = projectWith("default", "Project tone.");
 		const resolved = await resolvePersonality("default", { cwd });
-		expect(resolved).toEqual({ name: "default", text: "Project tone." });
+		expect(resolved).toEqual({
+			name: "default",
+			text: "Project tone.",
+			tier: "project",
+			path: path.join(cwd, ".veyyon", "personalities", "default.md"),
+		});
 	});
 
 	it("falls back to a project default override rather than the built-in when the name is inherited", async () => {

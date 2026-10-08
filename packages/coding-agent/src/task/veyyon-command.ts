@@ -33,3 +33,14 @@ export function resolveVeyyonCommand(): VeyyonCommand {
 
 	return { cmd: DEFAULT_CMD, args: [], shell: DEFAULT_SHELL };
 }
+
+/**
+ * The argv that relaunches veyyon with `args` after this process exits: the command
+ * {@link resolveVeyyonCommand} resolves, run through `cmd.exe` on Windows when it needs a shell.
+ */
+export function veyyonRelaunchArgv(args: readonly string[]): string[] {
+	const veyyon = resolveVeyyonCommand();
+	return veyyon.shell && process.platform === "win32"
+		? ["cmd.exe", "/c", veyyon.cmd, ...veyyon.args, ...args]
+		: [veyyon.cmd, ...veyyon.args, ...args];
+}

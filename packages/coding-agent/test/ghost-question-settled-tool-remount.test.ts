@@ -280,7 +280,12 @@ function createFixture(opts: { isStreaming?: boolean; messages?: AgentMessage[] 
 		pendingTools: new Map(),
 		settledToolCalls: new Set<string>(),
 		ui: { requestRender: vi.fn(), requestComponentRender: vi.fn() },
-		statusLine: { invalidate: vi.fn(), markActivityStart: vi.fn(), markActivityEnd: vi.fn() },
+		statusLine: {
+			invalidate: vi.fn(),
+			markActivityStart: vi.fn(),
+			markActivityEnd: vi.fn(),
+			refreshGitStatus: vi.fn(),
+		},
 		statusContainer: { disposeChildren: vi.fn(), addChild: vi.fn() },
 		updateEditorBorderColor: vi.fn(),
 		settings: { get: () => false },

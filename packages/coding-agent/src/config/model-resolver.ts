@@ -491,7 +491,7 @@ export interface ModelMatchPreferences {
 
 export type ModelLookupRegistry = Pick<ModelRegistry, "getAvailable">;
 type CliModelRegistry = Pick<ModelRegistry, "getAll"> &
-	Partial<Pick<ModelRegistry, "hasConfiguredAuth" | "getAvailable" | "getError">>;
+	Partial<Pick<ModelRegistry, "hasConfiguredAuth" | "getAvailable" | "getError" | "getProviderModels">>;
 
 interface ModelPreferenceContext {
 	modelUsageRank: Map<string, number>;
@@ -1708,6 +1708,46 @@ export interface ResolveCliModelResult {
 }
 
 /**
+ * The exact `provider/id` reference a CLI selector names, looked up among that
+ * provider's models alone.
+ *
+ * {@link resolveCliModel} answers such a reference before any rule that reads
+ * another provider's models, and {@link resolveProviderModelReference} reads
+ * only models whose provider equals the named one ignoring case, so a hit here
+ * is the model the whole-catalog path returns. A miss returns undefined and the
+ * caller runs that path unchanged, which owns every error, fuzzy match and
+ * role alias. Undefined as well when the registry cannot list one provider.
+ */
+function resolveNamedProviderReference(
+	cliProvider: string | undefined,
+	cliModel: string,
+	modelRegistry: CliModelRegistry,
+): Model<Api> | undefined {
+	if (!modelRegistry.getProviderModels) return undefined;
+	const trimmedModel = cliModel.trim();
+	if (cliProvider) {
+		const models = modelRegistry.getProviderModels(cliProvider);
+		// The whole-catalog path names the provider as its LAST model in catalog order spells it.
+		const provider = models.at(-1)?.provider;
+		if (provider === undefined) return undefined;
+		const prefix = `${provider}/`;
+		const pattern = cliModel.toLowerCase().startsWith(prefix.toLowerCase())
+			? cliModel.substring(prefix.length)
+			: trimmedModel;
+		const idPart = splitThinkingSuffix(pattern, -1, MAX_THINKING_SUFFIX_OPTIONS).base;
+		if (idPart === "" || idPart === DEFAULT_MODEL_ROLE_ALIAS) return undefined;
+		return resolveProviderModelReference(provider, pattern, models);
+	}
+	if (modelRoleAliasPrefixLength(cliModel) !== undefined) return undefined;
+	const slashIndex = trimmedModel.indexOf("/");
+	if (slashIndex === -1) return undefined;
+	const provider = trimmedModel.substring(0, slashIndex).trim();
+	const modelId = trimmedModel.substring(slashIndex + 1).trim();
+	if (!provider || !modelId) return undefined;
+	return resolveProviderModelReference(provider, modelId, modelRegistry.getProviderModels(provider));
+}
+
+/**
  * Resolve a single model from CLI flags.
  */
 export function resolveCliModel(options: {
@@ -1729,6 +1769,17 @@ export function resolveCliModel(options: {
 
 	if (!cliModel) {
 		return { model: undefined, selector: undefined, warning: undefined, error: undefined };
+	}
+
+	const named = resolveNamedProviderReference(cliProvider, cliModel, modelRegistry);
+	if (named) {
+		return {
+			model: named,
+			selector: formatModelString(named),
+			warning: undefined,
+			thinkingLevel: undefined,
+			error: undefined,
+		};
 	}
 
 	const availableModels = modelRegistry.getAll();

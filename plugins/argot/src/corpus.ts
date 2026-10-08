@@ -185,24 +185,16 @@ export async function gatherRepoFiles(
 			files.push({ path: rel });
 			continue;
 		}
-		let content: string | undefined;
-		try {
-			const buffer = await readFile(join(root, rel));
-			const slice = buffer.subarray(0, MAX_FILE_CONTENT_BYTES);
-			if (!slice.includes(0)) {
-				content = slice.toString("utf8");
-				scannedBytes += slice.byteLength;
-			}
-		} catch {
-			// Unreadable file (permissions, race, symlink to nowhere): fall back to
-			// path-only for this entry. The path still contributes a candidate, but the
-			// content signal is lost, so count it and surface the total below rather
-			// than swallow it. A NUL-byte (binary) file is NOT counted here: it is
-			// intentionally path-only, not a failure.
-			content = undefined;
+		const slice = await readScannedPrefix(join(root, rel));
+		if (slice === null) {
 			unreadable++;
 		}
-		files.push(content === undefined ? { path: rel } : { path: rel, content });
+		if (!slice) {
+			files.push({ path: rel });
+			continue;
+		}
+		scannedBytes += slice.byteLength;
+		files.push({ path: rel, content: slice.toString("utf8") });
 	}
 
 	if (budgetHit && onNotice !== undefined) {
@@ -226,6 +218,24 @@ export async function gatherRepoFiles(
 }
 
 /**
+ * The first {@link MAX_FILE_CONTENT_BYTES} of one file, `undefined` for a binary
+ * (NUL-bearing) file, or `null` when the read fails.
+ */
+async function readScannedPrefix(path: string): Promise<Buffer | undefined | null> {
+	try {
+		const slice = (await readFile(path)).subarray(0, MAX_FILE_CONTENT_BYTES);
+		return slice.includes(0) ? undefined : slice;
+	} catch {
+		// Unreadable file (permissions, race, symlink to nowhere): the caller falls
+		// back to path-only for this entry. The path still contributes a candidate,
+		// but the content signal is lost, so the caller counts it and surfaces the
+		// total rather than swallowing it. A NUL-byte (binary) file is NOT a failure:
+		// it is intentionally path-only.
+		return null;
+	}
+}
+
+/**
  * List a project's files by walking the tree, for a project with no git index
  * (opted in with a bare `.argot` marker). Bounded by {@link WALK_FILE_CAP} and
  * ignoring VCS, dependency, and build-output directories ({@link WALK_IGNORE_NAMES})
@@ -245,33 +255,9 @@ export async function walkProjectTree(root: string, onNotice?: (notice: CorpusNo
 	let capHit = false;
 	while (stack.length > 0 && out.length < WALK_FILE_CAP) {
 		const rel = stack.pop() as string;
-		let entries: Dirent[];
-		try {
-			entries = await readdir(join(root, rel), { withFileTypes: true });
-		} catch {
-			const isRoot = rel === "";
-			onNotice?.({
-				code: "unreadable-directory-skipped",
-				message: isRoot
-					? `argot: project root ${root} could not be read during dict generation; the listing is empty`
-					: `argot: directory ${rel} could not be read during dict generation; its subtree is omitted`,
-				data: { path: isRoot ? root : rel, isRoot },
-			});
-			continue;
-		}
-		for (const entry of entries) {
-			if (out.length >= WALK_FILE_CAP) {
-				capHit = true;
-				break;
-			}
-			if (entry.name.startsWith(".") && entry.name !== ".argot") continue;
-			if (WALK_IGNORE_NAMES.has(entry.name)) continue;
-			const childRel = rel === "" ? entry.name : `${rel}/${entry.name}`;
-			if (entry.isDirectory()) {
-				stack.push(childRel);
-			} else if (entry.isFile()) {
-				out.push(childRel);
-			}
+		const entries = await readWalkedDirectory(root, rel, onNotice);
+		if (entries !== undefined && enqueueEntries(entries, rel, out, stack)) {
+			capHit = true;
 		}
 	}
 	// The while loop can also stop with directories still queued once the cap is
@@ -284,4 +270,51 @@ export async function walkProjectTree(root: string, onNotice?: (notice: CorpusNo
 		});
 	}
 	return out;
+}
+
+/**
+ * One directory's entries, or `undefined` after reporting it through `onNotice`
+ * when it cannot be read.
+ */
+async function readWalkedDirectory(
+	root: string,
+	rel: string,
+	onNotice: ((notice: CorpusNotice) => void) | undefined,
+): Promise<Dirent[] | undefined> {
+	try {
+		return await readdir(join(root, rel), { withFileTypes: true });
+	} catch {
+		const isRoot = rel === "";
+		onNotice?.({
+			code: "unreadable-directory-skipped",
+			message: isRoot
+				? `argot: project root ${root} could not be read during dict generation; the listing is empty`
+				: `argot: directory ${rel} could not be read during dict generation; its subtree is omitted`,
+			data: { path: isRoot ? root : rel, isRoot },
+		});
+		return undefined;
+	}
+}
+
+/**
+ * Push the files of one directory listing onto `out` and its subdirectories onto
+ * `stack`, skipping dotfiles other than `.argot` and {@link WALK_IGNORE_NAMES}.
+ * `true` when {@link WALK_FILE_CAP} cut the listing short.
+ */
+function enqueueEntries(entries: readonly Dirent[], rel: string, out: string[], stack: string[]): boolean {
+	for (const entry of entries) {
+		if (out.length >= WALK_FILE_CAP) {
+			return true;
+		}
+		if ((entry.name.startsWith(".") && entry.name !== ".argot") || WALK_IGNORE_NAMES.has(entry.name)) {
+			continue;
+		}
+		const childRel = rel === "" ? entry.name : `${rel}/${entry.name}`;
+		if (entry.isDirectory()) {
+			stack.push(childRel);
+		} else if (entry.isFile()) {
+			out.push(childRel);
+		}
+	}
+	return false;
 }

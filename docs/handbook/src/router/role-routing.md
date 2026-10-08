@@ -14,7 +14,7 @@ Veyyon is provider-agnostic: roles are not hard-coded provider assumptions.
   Edit roles under Settings → Model → Roles and agent policy under Settings → Agents. See
   [Compaction & project memory](../context/compaction-memory.md) and
   [Models, roles, and profiles](../using/roles-and-profiles.md).
-- **Plan / goal modes** alter prompts and tool gating (`/plan`, `/goal`). The **advisor watchdog**
+- **Plan / goal modes** alter prompts and tool availability (`/plan`, `/goal`). The **advisor watchdog**
   (`advisor.enabled` and related settings, in `packages/coding-agent/src/advisor/`) is a background
   continuous-review mechanism rather than a mode you invoke; `/advisor` reports and configures it.
   See `docs/handbook/src/features/advisor.md`.
@@ -23,7 +23,7 @@ Veyyon is provider-agnostic: roles are not hard-coded provider assumptions.
   `send` is fire-and-forget with delivery receipts; the bus wakes an idle recipient with a real turn,
   revives a parked one, or injects a non-interrupting aside into a busy one, the shipped analogue of
   wake-now-vs-defer message routing. `wait` (or `send await:true`) observes the recipient's reply as a
-  real turn. Gated by `isIrcEnabled`: available to every agent and to a top-level session that can
+  real turn. Controlled by `isIrcEnabled`: available to every agent and to a top-level session that can
   still spawn agents.
 
 ## No fixed role pipeline

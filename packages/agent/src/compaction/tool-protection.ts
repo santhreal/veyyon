@@ -29,6 +29,17 @@ const SKILL_INTERNAL_URL_PREFIX = "skill://";
  */
 export function collectToolCallsById(entries: readonly SessionEntry[], from = 0): Map<string, AgentToolCall> {
 	const toolCalls = new Map<string, AgentToolCall>();
+	const unresolved = collectTailToolCalls(entries, from, toolCalls);
+	if (unresolved !== undefined) resolveCallsBefore(entries, from, unresolved, toolCalls);
+	return toolCalls;
+}
+
+/** Records every tool call at or after `from`, and returns the ids of results there whose call is not among them. */
+function collectTailToolCalls(
+	entries: readonly SessionEntry[],
+	from: number,
+	toolCalls: Map<string, AgentToolCall>,
+): Set<string> | undefined {
 	let unresolved: Set<string> | undefined;
 	for (let i = from; i < entries.length; i++) {
 		const entry = entries[i];
@@ -45,7 +56,17 @@ export function collectToolCallsById(entries: readonly SessionEntry[], from = 0)
 			unresolved.add(message.toolCallId);
 		}
 	}
-	for (let i = Math.min(from, entries.length) - 1; i >= 0 && unresolved !== undefined && unresolved.size > 0; i--) {
+	return unresolved;
+}
+
+/** Walks back from `from` for the calls named in `unresolved`, and stops once every one is found. */
+function resolveCallsBefore(
+	entries: readonly SessionEntry[],
+	from: number,
+	unresolved: Set<string>,
+	toolCalls: Map<string, AgentToolCall>,
+): void {
+	for (let i = Math.min(from, entries.length) - 1; i >= 0 && unresolved.size > 0; i--) {
 		const entry = entries[i];
 		if (entry.type !== "message") continue;
 		const message = entry.message;
@@ -54,7 +75,6 @@ export function collectToolCallsById(entries: readonly SessionEntry[], from = 0)
 			if (block.type === "toolCall" && unresolved.delete(block.id)) toolCalls.set(block.id, block);
 		}
 	}
-	return toolCalls;
 }
 
 /**

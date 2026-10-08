@@ -6,7 +6,7 @@
  * touched by each lever configuration.
  */
 
-import { firstRetainedAssistantIndex } from "@veyyon/ai/providers/google-shared";
+import { firstRetainedAssistantIndex } from "@veyyon/ai/providers/google-thought-signatures";
 import { artifactFooter, formatMiddleElisionMarker } from "@veyyon/coding-agent/session/streaming-output";
 
 import type { TranscriptRecord } from "./prefix-mass";

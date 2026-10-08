@@ -3,16 +3,20 @@ import * as path from "node:path";
 import type { Message } from "@veyyon/ai";
 import {
 	DAY_MS,
-	getAgentDir as getDefaultAgentDir,
+	detachedString,
+	getProfileSessionsDir,
+	getSessionsDir,
 	HOUR_MS,
 	isEnoent,
 	listProfiles,
 	logger,
 	parseJsonlLenient,
+	pathIsWithin,
 	toError,
 } from "@veyyon/utils";
 import { contentText } from "@veyyon/utils/content-text";
 import {
+	ORPHAN_AGENT_TRANSCRIPT_PREFIX,
 	SESSION_BACKUP_EXTENSION,
 	SESSION_FILE_EXTENSION,
 	sessionBackupPrimaryName,
@@ -20,7 +24,7 @@ import {
 } from "@veyyon/utils/session-file";
 import { SessionListIndex } from "./session-list-index";
 import { computeDefaultSessionDir } from "./session-paths";
-import { FileSessionStorage, type SessionStorage } from "./session-storage";
+import { FileSessionStorage, type SessionStorage, type SessionStorageStat } from "./session-storage";
 
 /**
  * Coarse lifecycle status of a session, derived from its last persisted message.
@@ -55,7 +59,9 @@ export interface SessionInfo {
 	messageCount: number;
 	/** File size in bytes on disk; used for compact list rendering. */
 	size: number;
+	/** The first user message, or another role's first message when the window holds none, cut to 4096 characters. */
 	firstMessage: string;
+	/** Message text of the scanned window in file order, cut to 4096 characters. */
 	allMessagesText: string;
 	/**
 	 * Coarse lifecycle status from the session's last persisted message. Optional:
@@ -64,9 +70,24 @@ export interface SessionInfo {
 	status?: SessionStatus;
 }
 
-export interface ResolvedSessionMatch {
-	session: SessionInfo;
-	scope: "local" | "global";
+/**
+ * Where {@link resolveResumableSession} found a session. `local` is the launch directory's own
+ * bucket, `global` another project in the active profile, and `profile` a session another profile
+ * wrote, named by `profile`. A session belongs to the profile that wrote it: a caller that holds a
+ * `profile` match continues it in that profile or forks it, never writes it in place.
+ */
+export type ResolvedSessionMatch =
+	| { session: SessionInfo; scope: "local" | "global" }
+	| { session: SessionInfo; scope: "profile"; profile: string };
+
+/**
+ * The profile, other than the active one, whose sessions directory holds `filePath`, or undefined
+ * when the file is in the active profile or in no profile at all.
+ */
+export function foreignSessionFileProfile(filePath: string): string | undefined {
+	const file = path.resolve(filePath);
+	if (pathIsWithin(getSessionsDir(), file)) return undefined;
+	return listProfiles().find(profile => pathIsWithin(getProfileSessionsDir(profile.name), file))?.name;
 }
 
 /** Lightweight metadata for a recent session, used in welcome/picker UI. */
@@ -92,6 +113,17 @@ const SESSION_LIST_ESCALATED_PREFIX_BYTES = 1_048_576;
  * it the status falls back to `unknown` rather than misreporting.
  */
 const SESSION_LIST_SUFFIX_BYTES = 32_768;
+/**
+ * Characters of message text a listed session holds in `firstMessage` and in
+ * `allMessagesText`.
+ *
+ * The session picker searches this text and finds prompts past it through
+ * `history.db`. The bound applies to both scan windows: an escalated scan reads
+ * up to {@link SESSION_LIST_ESCALATED_PREFIX_BYTES} to find the first user
+ * message, and without the bound its row held every message in that window, in
+ * memory and in the directory's list index.
+ */
+const SESSION_LIST_TEXT_CHARS = 4096;
 const SESSION_LIST_PARALLEL_THRESHOLD = 64;
 const SESSION_LIST_MAX_WORKERS = 16;
 
@@ -373,12 +405,14 @@ function getSessionListWorkerCount(fileCount: number): number {
 function walkListEntries(entries: Record<string, unknown>[]): {
 	parsedMessageCount: number;
 	firstMessage: string;
+	/** Message texts in file order, stopped once they reach {@link SESSION_LIST_TEXT_CHARS}. */
 	allMessages: string[];
 	shortSummary: string | undefined;
 } {
 	let parsedMessageCount = 0;
 	let firstMessage = "";
 	const allMessages: string[] = [];
+	let textChars = 0;
 	let shortSummary: string | undefined;
 	for (let i = 1; i < entries.length; i++) {
 		const entry = entries[i] as { type?: string; message?: Message; shortSummary?: string };
@@ -387,10 +421,14 @@ function walkListEntries(entries: Record<string, unknown>[]): {
 		}
 		if (entry.type === "message" && entry.message) {
 			parsedMessageCount++;
+			if (textChars >= SESSION_LIST_TEXT_CHARS && firstMessage) continue;
 			if (entry.message.role === "user" || entry.message.role === "assistant") {
 				const textContent = contentText(entry.message.content, { separator: " " });
 				if (textContent) {
-					allMessages.push(textContent);
+					if (textChars < SESSION_LIST_TEXT_CHARS) {
+						allMessages.push(textContent);
+						textChars += textContent.length + 1;
+					}
 					if (!firstMessage && entry.message.role === "user") {
 						firstMessage = textContent;
 					}
@@ -399,6 +437,20 @@ function walkListEntries(entries: Record<string, unknown>[]): {
 		}
 	}
 	return { parsedMessageCount, firstMessage, allMessages, shortSummary };
+}
+
+/**
+ * `text` cut to {@link SESSION_LIST_TEXT_CHARS} without splitting a surrogate pair.
+ *
+ * A cut string is copied out with `detachedString`. A JSC substring references its
+ * whole parent, so a `slice` of the joined scan text would keep that text alive for
+ * as long as the row holding it.
+ */
+function boundListText(text: string): string {
+	if (text.length <= SESSION_LIST_TEXT_CHARS) return text;
+	const last = text.charCodeAt(SESSION_LIST_TEXT_CHARS - 1);
+	const end = last >= 0xd800 && last <= 0xdbff ? SESSION_LIST_TEXT_CHARS - 1 : SESSION_LIST_TEXT_CHARS;
+	return detachedString(text.slice(0, end));
 }
 
 /**
@@ -475,17 +527,17 @@ async function scanSessionFile(
 	storage: SessionStorage,
 	withStatus: boolean,
 	index?: SessionListIndex,
+	stat?: SessionStorageStat,
 ): Promise<SessionInfo | undefined> {
 	try {
-		const stat = storage.statSync(file);
-		const cached = index?.get(file, stat.size, stat.mtime.getTime(), withStatus);
+		const { size, mtime } = stat ?? storage.statSync(file);
+		const cached = index?.get(file, size, mtime.getTime(), withStatus);
 		if (cached) return cached;
 		const [content, suffix] = await storage.readTextSlices(
 			file,
 			SESSION_LIST_PREFIX_BYTES,
 			withStatus ? SESSION_LIST_SUFFIX_BYTES : 0,
 		);
-		const { size, mtime } = stat;
 		const entries = parseJsonlLenient<Record<string, unknown>>(content);
 		const header = parseSessionListHeader(content, entries);
 		if (!header) {
@@ -513,7 +565,7 @@ async function scanSessionFile(
 			walked = walkListEntries(parseJsonlLenient<Record<string, unknown>>(wide));
 		}
 		const { parsedMessageCount, allMessages, shortSummary } = walked;
-		const firstMessage = walked.firstMessage || (extractFirstDisplayMessageFromPrefix(scanned) ?? "");
+		const firstMessage = boundListText(walked.firstMessage || (extractFirstDisplayMessageFromPrefix(scanned) ?? ""));
 		const messageCount = Math.max(parsedMessageCount, countMessageMarkers(scanned));
 		const info: SessionInfo = {
 			path: file,
@@ -526,7 +578,7 @@ async function scanSessionFile(
 			messageCount,
 			size,
 			firstMessage: firstMessage || "(no messages)",
-			allMessagesText: allMessages.length > 0 ? allMessages.join(" ") : firstMessage,
+			allMessagesText: allMessages.length > 0 ? boundListText(allMessages.join(" ")) : firstMessage,
 			status: withStatus ? deriveSessionStatus(suffix) : undefined,
 		};
 		index?.set(info, mtime.getTime(), withStatus);
@@ -552,13 +604,12 @@ async function collectSessionsFromFileStride(
 	storage: SessionStorage,
 	startIndex: number,
 	stride: number,
-	withStatus: boolean,
 	index?: SessionListIndex,
 ): Promise<SessionInfo[]> {
 	const sessions: SessionInfo[] = [];
 
 	for (let i = startIndex; i < files.length; i += stride) {
-		const session = await scanSessionFile(files[i], storage, withStatus, index);
+		const session = await scanSessionFile(files[i], storage, true, index);
 		if (session) sessions.push(session);
 	}
 
@@ -566,8 +617,8 @@ async function collectSessionsFromFileStride(
 }
 
 /**
- * Scan every file, reusing the directory's index for files that have not
- * changed since it was written.
+ * Scan every file with its status, reusing the directory's index for files
+ * that have not changed since it was written.
  *
  * `indexDir` is the directory the index belongs to. Omitting it scans every
  * file, which is what a caller listing an ad-hoc set of paths — one with no
@@ -581,7 +632,6 @@ async function collectSessionsFromFileStride(
 async function collectSessionsFromFiles(
 	files: string[],
 	storage: SessionStorage,
-	withStatus: boolean,
 	indexDir?: string,
 	persistIndex = true,
 ): Promise<SessionInfo[]> {
@@ -589,11 +639,11 @@ async function collectSessionsFromFiles(
 	const workerCount = getSessionListWorkerCount(files.length);
 	const sessions =
 		workerCount === 1
-			? await collectSessionsFromFileStride(files, storage, 0, 1, withStatus, index)
+			? await collectSessionsFromFileStride(files, storage, 0, 1, index)
 			: (
 					await Promise.all(
 						Array.from({ length: workerCount }, (_, workerIndex) =>
-							collectSessionsFromFileStride(files, storage, workerIndex, workerCount, withStatus, index),
+							collectSessionsFromFileStride(files, storage, workerIndex, workerCount, index),
 						),
 					)
 				).flat();
@@ -604,6 +654,63 @@ async function collectSessionsFromFiles(
 	}
 	sessions.sort(compareSessionsByRecency);
 	return sessions;
+}
+
+/** A session file and the stat its place in the recency order is read from. */
+interface StatedSessionFile {
+	file: string;
+	stat: SessionStorageStat;
+	/** The order's first key: {@link compareSessionsByRecency} compares this value. */
+	modifiedMs: number;
+}
+
+/**
+ * The first `limit` sessions `accept` admits, in {@link compareSessionsByRecency}
+ * order, without a tail window.
+ *
+ * The order's first key is the file mtime, which a stat answers, so files are
+ * scanned newest first and the walk stops once `limit` sessions are found. Files
+ * sharing one mtime are scanned together, because the keys that order them, the
+ * header timestamp and the path, come from the scan. The result equals the
+ * prefix of the full listing. The directory's list index is not opened: reading
+ * and parsing it costs more than the few files the walk reads, and holds a row
+ * for every session in the directory.
+ */
+async function collectNewestSessions(
+	files: string[],
+	storage: SessionStorage,
+	limit: number,
+	accept?: (info: SessionInfo) => boolean,
+): Promise<SessionInfo[]> {
+	const stated: StatedSessionFile[] = [];
+	for (const file of files) {
+		try {
+			const stat = storage.statSync(file);
+			stated.push({ file, stat, modifiedMs: finiteTime(stat.mtime, 0) });
+		} catch (error) {
+			if (!isEnoent(error)) recordUnreadableSession(file, toError(error).message);
+		}
+	}
+	stated.sort((a, b) => b.modifiedMs - a.modifiedMs);
+
+	const newest: SessionInfo[] = [];
+	let start = 0;
+	while (start < stated.length && newest.length < limit) {
+		let end = start + 1;
+		while (end < stated.length && stated[end].modifiedMs === stated[start].modifiedMs) end++;
+		const tied: SessionInfo[] = [];
+		for (let i = start; i < end; i++) {
+			const info = await scanSessionFile(stated[i].file, storage, false, undefined, stated[i].stat);
+			if (info && (!accept || accept(info))) tied.push(info);
+		}
+		tied.sort(compareSessionsByRecency);
+		for (const info of tied) {
+			if (newest.length === limit) break;
+			newest.push(info);
+		}
+		start = end;
+	}
+	return newest;
 }
 
 /**
@@ -732,15 +839,15 @@ export async function recoverOrphanedBackups(sessionDir: string, storage: Sessio
 async function scanSessionDir(
 	sessionDir: string,
 	storage: SessionStorage,
-	withStatus: boolean,
-	// Also decides whether the list index is written back: both are writes to the
-	// directory, and `listSessionsReadOnly` promises to make neither.
-	mayMutateDir = true,
+	// Whether orphaned backups are promoted. `listSessionsReadOnly` promises no
+	// write to the directory, so it passes false here and withholds the index
+	// write from `collect`.
+	mayMutateDir: boolean,
+	collect: (files: string[]) => Promise<SessionInfo[]>,
 ): Promise<SessionInfo[]> {
 	try {
 		if (mayMutateDir) await recoverOrphanedBackups(sessionDir, storage);
-		const files = storage.listFilesSync(sessionDir, `*${SESSION_FILE_EXTENSION}`);
-		return await collectSessionsFromFiles(files, storage, withStatus, sessionDir, mayMutateDir);
+		return await collect(storage.listFilesSync(sessionDir, `*${SESSION_FILE_EXTENSION}`));
 	} catch (error) {
 		// The whole-directory version of the same rule, and the worse one: this path
 		// turns "your sessions are unreadable" into "you have no sessions", which is
@@ -758,18 +865,37 @@ async function scanSessionDir(
  * file's lifecycle {@link SessionStatus}.
  */
 export function listSessions(sessionDir: string, storage: SessionStorage): Promise<SessionInfo[]> {
-	return scanSessionDir(sessionDir, storage, true, true);
+	return scanSessionDir(sessionDir, storage, true, files => collectSessionsFromFiles(files, storage, sessionDir));
 }
 
 /**
  * List sessions without repairing orphaned backups or mutating the directory.
  */
 export function listSessionsReadOnly(sessionDir: string, storage: SessionStorage): Promise<SessionInfo[]> {
-	return scanSessionDir(sessionDir, storage, true, false);
+	return scanSessionDir(sessionDir, storage, false, files =>
+		collectSessionsFromFiles(files, storage, sessionDir, false),
+	);
+}
+
+/**
+ * Whether `file` is a top-level session rather than an agent's transcript.
+ *
+ * A top-level session is `<sessions root>/<project bucket>/<file>.jsonl`. A spawned agent's transcript
+ * sits one level deeper, in its parent's artifacts directory `<project bucket>/<parent stem>/`, or, when
+ * the parent had no file, under the sessions root with {@link ORPHAN_AGENT_TRANSCRIPT_PREFIX}: as
+ * `orphan-task-<id>.jsonl` beside the buckets or inside an `orphan-task-<id>/` directory at bucket depth.
+ */
+function isTopLevelSessionFile(sessionsRoot: string, file: string): boolean {
+	const segments = path.relative(sessionsRoot, file).split(path.sep);
+	return segments.length === 2 && !segments[0].startsWith(ORPHAN_AGENT_TRANSCRIPT_PREFIX);
 }
 
 /**
  * List all sessions across all project directories (newest first).
+ *
+ * Agent transcripts are left out: they are written with the same header as the session that spawned
+ * them and are reached through that session, so listing them put every agent a session ever ran into
+ * the picker as a session of its own.
  *
  * An absent sessions root is an empty list and nothing more: that is what a fresh install looks
  * like. Any other failure to scan it is REPORTED, because this list is what the session picker and
@@ -777,8 +903,12 @@ export function listSessionsReadOnly(sessionDir: string, storage: SessionStorage
  * gone. The empty list is still returned, since a picker that cannot list is more useful empty than
  * crashed, and the log is what tells you the difference.
  */
-export async function listAllSessions(storage: SessionStorage = new FileSessionStorage()): Promise<SessionInfo[]> {
-	const sessionsRoot = path.join(getDefaultAgentDir(), "sessions");
+export function listAllSessions(storage: SessionStorage = new FileSessionStorage()): Promise<SessionInfo[]> {
+	return scanSessionsRoot(storage, false);
+}
+
+async function scanSessionsRoot(storage: SessionStorage, includeAgentTranscripts: boolean): Promise<SessionInfo[]> {
+	const sessionsRoot = getSessionsDir();
 	try {
 		// Backups are indexed records too. Recover every project bucket before
 		// enumerating primaries, so a crash during an indexed/backend rewrite is
@@ -787,8 +917,11 @@ export async function listAllSessions(storage: SessionStorage = new FileSessionS
 		const backupDirs = new Set(backups.map(backup => path.dirname(backup)));
 		await Promise.all(Array.from(backupDirs, sessionDir => recoverOrphanedBackups(sessionDir, storage)));
 
-		const files = storage.listFilesRecursiveSync(sessionsRoot, `*${SESSION_FILE_EXTENSION}`);
-		return await collectSessionsFromFiles(files, storage, true, sessionsRoot);
+		const transcripts = storage.listFilesRecursiveSync(sessionsRoot, `*${SESSION_FILE_EXTENSION}`);
+		const files = includeAgentTranscripts
+			? transcripts
+			: transcripts.filter(file => isTopLevelSessionFile(sessionsRoot, file));
+		return await collectSessionsFromFiles(files, storage, sessionsRoot);
 	} catch (err) {
 		if (isEnoent(err)) return [];
 		logger.warn("Sessions directory could not be scanned; no sessions can be listed or resumed from it", {
@@ -804,8 +937,8 @@ export async function findMostRecentSession(
 	sessionDir: string,
 	storage: SessionStorage = new FileSessionStorage(),
 ): Promise<string | null> {
-	const sessions = await scanSessionDir(sessionDir, storage, false);
-	return sessions[0]?.path ?? null;
+	const [newest] = await scanSessionDir(sessionDir, storage, true, files => collectNewestSessions(files, storage, 1));
+	return newest?.path ?? null;
 }
 
 /** True when a session has neither a title nor any user message — nothing a
@@ -825,14 +958,14 @@ export async function getRecentSessions(
 	limit = 4,
 	storage: SessionStorage = new FileSessionStorage(),
 ): Promise<RecentSessionInfo[]> {
-	const sessions = await scanSessionDir(sessionDir, storage, false);
-	const recent: RecentSessionInfo[] = [];
-	for (const info of sessions) {
-		if (recent.length >= limit) break;
-		if (isBlankSession(info)) continue;
-		recent.push({ path: info.path, name: sessionDisplayName(info), timeAgo: formatTimeAgo(info.modified) });
-	}
-	return recent;
+	const sessions = await scanSessionDir(sessionDir, storage, true, files =>
+		collectNewestSessions(files, storage, limit, info => !isBlankSession(info)),
+	);
+	return sessions.map(info => ({
+		path: info.path,
+		name: sessionDisplayName(info),
+		timeAgo: formatTimeAgo(info.modified),
+	}));
 }
 
 function sessionMatchesResumeArg(session: SessionInfo, sessionArg: string): boolean {
@@ -872,26 +1005,26 @@ export async function resolveResumableSession(
 		return undefined;
 	}
 
-	const globalSessions = await listAllSessions(storage);
+	// An explicit id may name an agent's transcript, which the picker's list leaves out.
+	const globalSessions = await scanSessionsRoot(storage, true);
 	const globalMatch = globalSessions.find(session => sessionMatchesResumeArg(session, sessionArg));
 	if (globalMatch) {
 		return { session: globalMatch, scope: "global" };
 	}
 
-	const foreignMatch = await findSessionInOtherProfiles(sessionArg, storage);
-	return foreignMatch ? { session: foreignMatch, scope: "global" } : undefined;
+	return await findSessionInOtherProfiles(sessionArg, storage);
 }
 
 /**
- * The session an id names in a profile other than the active one.
+ * The session an id names in a profile other than the active one, with that profile's name.
  *
  * A session id is globally unique, and the line printed on the way out —
- * `veyyon --resume <id>` — carries nothing about which profile wrote it. Every
- * lookup above stops at the active profile's own sessions root, so that line
- * resolved only when the operator happened to relaunch under the same profile
- * and otherwise reported the session as not found, with the file sitting on disk
- * one directory over. The session is resumed where it lives; only the settings
- * come from the profile that is running.
+ * `veyyon --resume <id>` — carries nothing about which profile wrote it. The
+ * launch activates the owning profile before this runs, so a match here means
+ * the caller pinned another profile (`--profile`, or a running session's
+ * `/resume`). The match is returned tagged with its owner rather than as a
+ * global one, so the caller forks it or relaunches into the owner and never
+ * writes one profile's transcript under another profile's settings.
  *
  * Reached only after the active profile has missed on an explicit id, so the
  * cost of scanning every profile is paid on the path that would otherwise fail.
@@ -899,10 +1032,10 @@ export async function resolveResumableSession(
 async function findSessionInOtherProfiles(
 	sessionArg: string,
 	storage: SessionStorage,
-): Promise<SessionInfo | undefined> {
-	const activeRoot = path.resolve(path.join(getDefaultAgentDir(), "sessions"));
+): Promise<ResolvedSessionMatch | undefined> {
+	const activeRoot = path.resolve(getSessionsDir());
 	for (const profile of listProfiles()) {
-		const sessionsRoot = path.resolve(path.join(profile.agentDir, "sessions"));
+		const sessionsRoot = path.resolve(getProfileSessionsDir(profile.name));
 		if (sessionsRoot === activeRoot) continue;
 		let files: string[];
 		try {
@@ -921,9 +1054,9 @@ async function findSessionInOtherProfiles(
 		// files and is keyed by their size and mtime; it is the same user's cache,
 		// and the alternative is re-reading every one of another profile's sessions
 		// on every id that misses here.
-		const sessions = await collectSessionsFromFiles(files, storage, true, sessionsRoot);
+		const sessions = await collectSessionsFromFiles(files, storage, sessionsRoot);
 		const match = sessions.find(session => sessionMatchesResumeArg(session, sessionArg));
-		if (match) return match;
+		if (match) return { session: match, scope: "profile", profile: profile.name };
 	}
 	return undefined;
 }

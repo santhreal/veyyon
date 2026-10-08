@@ -1,11 +1,12 @@
 import type { Api, ApiKey, AssistantMessage, Context, Model, SimpleStreamOptions } from "@veyyon/ai";
 import { completeSimple } from "@veyyon/ai/stream";
-import { validateToolCall } from "@veyyon/ai/utils/validation";
-import { isRecord } from "@veyyon/utils/type-guards";
 // The owners, not the barrel. `type` is `@veyyon/ai`'s re-export of arktype, so
 // naming arktype is naming the same module; `validateToolCall` is one function
 // over a tool list. Together they were costing the whole streaming stack.
-import { type as t } from "arktype";
+import { type as t } from "@veyyon/ai/utils/schema/arktype";
+import { validateToolCall } from "@veyyon/ai/utils/validation";
+import { lazy } from "@veyyon/utils/abortable";
+import { isRecord } from "@veyyon/utils/type-guards";
 import type { ChangelogCategory, ConventionalAnalysis } from "./types";
 import { extractTextContent, extractToolCall, normalizeAnalysis, parseJsonPayload } from "./utils";
 
@@ -52,33 +53,35 @@ export async function completeCommitSimple(
 	return completeSimple(model, context, { ...requestOptions, apiKey: attemptApiKey });
 }
 
-const changelogCategoryLiteral = t(
-	"'Added' | 'Changed' | 'Fixed' | 'Deprecated' | 'Removed' | 'Security' | 'Breaking Changes'",
-);
-
 /**
  * Shared arktype schema for the `create_conventional_analysis` tool used by
  * both the single-pass analysis call and the map-reduce reduce phase. Schemas
  * are identical across phases — only the surrounding tool `description`
- * differs to reflect the input the phase is summarizing.
+ * differs to reflect the input the phase is summarizing. Built on the first
+ * commit analysis: ArkType registers every node it builds for the life of the
+ * process, and a session that never generates a commit message reads none.
  */
-const detailItem = t({
-	text: "string",
-	"changelog_category?": changelogCategoryLiteral,
-	"user_visible?": "boolean",
-});
-
-export const conventionalAnalysisParameters = t({
-	type: "'feat' | 'fix' | 'refactor' | 'docs' | 'test' | 'chore' | 'style' | 'perf' | 'build' | 'ci' | 'revert'",
-	scope: t("string").or("null"),
-	details: detailItem.array(),
-	issue_refs: "string[]",
+const conventionalAnalysisParameters = lazy(() => {
+	const changelogCategoryLiteral = t(
+		"'Added' | 'Changed' | 'Fixed' | 'Deprecated' | 'Removed' | 'Security' | 'Breaking Changes'",
+	);
+	const detailItem = t({
+		text: "string",
+		"changelog_category?": changelogCategoryLiteral,
+		"user_visible?": "boolean",
+	});
+	return t({
+		type: "'feat' | 'fix' | 'refactor' | 'docs' | 'test' | 'chore' | 'style' | 'perf' | 'build' | 'ci' | 'revert'",
+		scope: t("string").or("null"),
+		details: detailItem.array(),
+		issue_refs: "string[]",
+	});
 });
 
 export interface ConventionalAnalysisTool {
-	name: "create_conventional_analysis";
-	description: string;
-	parameters: typeof conventionalAnalysisParameters;
+	readonly name: "create_conventional_analysis";
+	readonly description: string;
+	readonly parameters: typeof conventionalAnalysisParameters.value;
 }
 
 /**
@@ -89,7 +92,9 @@ export function createConventionalAnalysisTool(description: string): Conventiona
 	return {
 		name: "create_conventional_analysis",
 		description,
-		parameters: conventionalAnalysisParameters,
+		get parameters() {
+			return conventionalAnalysisParameters.value;
+		},
 	};
 }
 

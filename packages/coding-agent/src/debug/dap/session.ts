@@ -77,7 +77,7 @@ interface DapSession {
 	functionBreakpoints: DapFunctionBreakpointRecord[];
 	instructionBreakpoints: DapInstructionBreakpoint[];
 	dataBreakpoints: DapDataBreakpoint[];
-	/** Serializes breakpoint mutations — see #serializeBreakpointMutation. */
+	/** Serializes breakpoint mutations — see serializeBreakpointMutation. */
 	breakpointMutationQueue: Promise<void>;
 	/** Recent output chunks; trimmed from the front when over MAX_BUFFERED_OUTPUT_BYTES. */
 	outputChunks: string[];
@@ -329,19 +329,11 @@ export class DapSessionManager {
 		const client = await DapClient.spawn({ adapter: options.adapter, cwd: options.cwd });
 		const session = this.#registerSession(client, options.adapter, options.cwd, program);
 		try {
-			session.capabilities = await client.initialize(
-				this.#buildInitializeArguments(options.adapter),
-				signal,
-				timeoutMs,
-			);
+			session.capabilities = await client.initialize(buildInitializeArguments(options.adapter), signal, timeoutMs);
 			session.needsConfigurationDone = session.capabilities.supportsConfigurationDoneRequest === true;
 			// Subscribe to stop events BEFORE starting so we don't miss
 			// stopOnEntry events that arrive before we start listening.
-			const initialStopPromise = this.#prepareStopOutcome(
-				session,
-				signal,
-				Math.min(timeoutMs, STOP_CAPTURE_TIMEOUT_MS),
-			);
+			const initialStopPromise = prepareStopOutcome(session, signal, Math.min(timeoutMs, STOP_CAPTURE_TIMEOUT_MS));
 			// DAP spec: many adapters do not respond to launch/attach until after
 			// configurationDone. Fire the request, complete the config handshake,
 			// then await the response.
@@ -355,7 +347,7 @@ export class DapSessionManager {
 			// rejection arriving before that code awaits would surface as an unhandled rejection.
 			startPromise.catch(() => {});
 			try {
-				await this.#completeConfigurationHandshake(session, signal, timeoutMs);
+				await completeConfigurationHandshake(session, signal, timeoutMs);
 			} catch (error) {
 				await throwPreferredDapStartError(command, startFailure, error);
 			}
@@ -379,26 +371,6 @@ export class DapSessionManager {
 			if (mapped) throw mapped;
 			throw error;
 		}
-	}
-
-	/**
-	 * Serialize breakpoint mutations per session: every mutator does a
-	 * read-modify-write of session state around an await, and the adapter-side
-	 * set*Breakpoints request replaces the whole list — concurrent mutations
-	 * would silently drop each other's breakpoints on both sides.
-	 */
-	#serializeBreakpointMutation<T>(session: DapSession, mutate: () => Promise<T>, signal?: AbortSignal): Promise<T> {
-		const run = session.breakpointMutationQueue.then(() => {
-			// A mutation can sit behind several queued 30s predecessors; honor a
-			// caller abort at dequeue instead of running a request nobody awaits.
-			if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new Error("Aborted");
-			return mutate();
-		});
-		session.breakpointMutationQueue = run.then(
-			() => undefined,
-			() => undefined,
-		);
-		return run;
 	}
 
 	/**
@@ -428,7 +400,7 @@ export class DapSessionManager {
 		if (next.length === 0) {
 			session.breakpoints.delete(sourcePath);
 		} else {
-			session.breakpoints.set(sourcePath, this.#mapSourceBreakpoints(next, response?.breakpoints));
+			session.breakpoints.set(sourcePath, mapSourceBreakpoints(next, response?.breakpoints));
 		}
 		return {
 			snapshot: buildSummary(session),
@@ -445,7 +417,7 @@ export class DapSessionManager {
 		timeoutMs: number = 30_000,
 	) {
 		const session = this.#touchActiveSession();
-		return this.#serializeBreakpointMutation(
+		return serializeBreakpointMutation(
 			session,
 			() => {
 				const sourcePath = normalizePath(file);
@@ -460,7 +432,7 @@ export class DapSessionManager {
 
 	async removeBreakpoint(file: string, line: number, signal?: AbortSignal, timeoutMs: number = 30_000) {
 		const session = this.#touchActiveSession();
-		return this.#serializeBreakpointMutation(
+		return serializeBreakpointMutation(
 			session,
 			() => {
 				const sourcePath = normalizePath(file);
@@ -489,13 +461,13 @@ export class DapSessionManager {
 			signal,
 			timeoutMs,
 		);
-		session.functionBreakpoints = this.#mapFunctionBreakpoints(next, response?.breakpoints);
+		session.functionBreakpoints = mapFunctionBreakpoints(next, response?.breakpoints);
 		return { snapshot: buildSummary(session), breakpoints: session.functionBreakpoints };
 	}
 
 	async setFunctionBreakpoint(name: string, condition?: string, signal?: AbortSignal, timeoutMs: number = 30_000) {
 		const session = this.#touchActiveSession();
-		return this.#serializeBreakpointMutation(
+		return serializeBreakpointMutation(
 			session,
 			() => {
 				const next = session.functionBreakpoints.filter(entry => entry.name !== name);
@@ -509,7 +481,7 @@ export class DapSessionManager {
 
 	async removeFunctionBreakpoint(name: string, signal?: AbortSignal, timeoutMs: number = 30_000) {
 		const session = this.#touchActiveSession();
-		return this.#serializeBreakpointMutation(
+		return serializeBreakpointMutation(
 			session,
 			() =>
 				this.#replaceFunctionBreakpoints(
@@ -538,7 +510,7 @@ export class DapSessionManager {
 		session.instructionBreakpoints = next;
 		return {
 			snapshot: buildSummary(session),
-			breakpoints: this.#mapInstructionBreakpoints(next, response?.breakpoints),
+			breakpoints: mapInstructionBreakpoints(next, response?.breakpoints),
 		};
 	}
 
@@ -551,7 +523,7 @@ export class DapSessionManager {
 		timeoutMs: number = 30_000,
 	) {
 		const session = this.#touchActiveSession();
-		return this.#serializeBreakpointMutation(
+		return serializeBreakpointMutation(
 			session,
 			() => {
 				const next = session.instructionBreakpoints.filter(
@@ -578,7 +550,7 @@ export class DapSessionManager {
 		timeoutMs: number = 30_000,
 	) {
 		const session = this.#touchActiveSession();
-		return this.#serializeBreakpointMutation(
+		return serializeBreakpointMutation(
 			session,
 			() => {
 				const next = session.instructionBreakpoints.filter(entry => {
@@ -634,7 +606,7 @@ export class DapSessionManager {
 		session.dataBreakpoints = next;
 		return {
 			snapshot: buildSummary(session),
-			breakpoints: this.#mapDataBreakpoints(next, response?.breakpoints),
+			breakpoints: mapDataBreakpoints(next, response?.breakpoints),
 		};
 	}
 
@@ -647,7 +619,7 @@ export class DapSessionManager {
 		timeoutMs: number = 30_000,
 	) {
 		const session = this.#touchActiveSession();
-		return this.#serializeBreakpointMutation(
+		return serializeBreakpointMutation(
 			session,
 			() => {
 				const next = session.dataBreakpoints.filter(entry => entry.dataId !== dataId);
@@ -661,7 +633,7 @@ export class DapSessionManager {
 
 	async removeDataBreakpoint(dataId: string, signal?: AbortSignal, timeoutMs: number = 30_000) {
 		const session = this.#touchActiveSession();
-		return this.#serializeBreakpointMutation(
+		return serializeBreakpointMutation(
 			session,
 			() =>
 				this.#replaceDataBreakpoints(
@@ -803,13 +775,13 @@ export class DapSessionManager {
 
 	async continue(signal?: AbortSignal, timeoutMs: number = 30_000): Promise<DapContinueOutcome> {
 		const session = this.#touchActiveSession();
-		const threadId = await this.#resolveThreadId(session, signal, timeoutMs);
+		const threadId = await resolveThreadId(session, signal, timeoutMs);
 		// Reset state and subscribe BEFORE sending continue to avoid missing
 		// events that arrive in the same buffer as the response.
 		session.stop = {};
 		session.lastStackFrames = [];
 		session.status = "running";
-		const outcomePromise = this.#prepareStopOutcome(session, signal, timeoutMs);
+		const outcomePromise = prepareStopOutcome(session, signal, timeoutMs);
 		await this.#sendRequestWithConfig<DapContinueResponse>(
 			session,
 			"continue",
@@ -828,7 +800,7 @@ export class DapSessionManager {
 		if (isStopped()) {
 			return buildSummary(session);
 		}
-		const threadId = await this.#resolveThreadId(session, signal, timeoutMs);
+		const threadId = await resolveThreadId(session, signal, timeoutMs);
 		// Subscribe BEFORE sending pause: the stopped event can arrive in the
 		// same chunk as the response and would otherwise be dispatched before
 		// the waiter subscribes, burning the whole timeout.
@@ -882,7 +854,7 @@ export class DapSessionManager {
 		timeoutMs: number = 30_000,
 	): Promise<{ snapshot: DapSessionSummary; stackFrames: DapStackFrame[]; totalFrames?: number }> {
 		const session = this.#touchActiveSession();
-		const threadId = await this.#resolveThreadId(session, signal, timeoutMs);
+		const threadId = await resolveThreadId(session, signal, timeoutMs);
 		const response = await this.#sendRequestWithConfig<DapStackTraceResponse>(
 			session,
 			"stackTrace",
@@ -894,7 +866,7 @@ export class DapSessionManager {
 			timeoutMs,
 		);
 		session.lastStackFrames = response?.stackFrames ?? [];
-		this.#applyTopFrame(session, session.lastStackFrames[0]);
+		applyTopFrame(session, session.lastStackFrames[0]);
 		return {
 			snapshot: buildSummary(session),
 			stackFrames: session.lastStackFrames,
@@ -1107,7 +1079,7 @@ export class DapSessionManager {
 			session.status = session.configurationDoneSent ? session.status : "configuring";
 		});
 		client.onEvent("stopped", body => {
-			this.#handleStoppedEvent(session, body as DapStoppedEventBody);
+			handleStoppedEvent(session, body as DapStoppedEventBody);
 		});
 		client.onEvent("continued", body => {
 			const continued = body as { threadId?: number } | undefined;
@@ -1133,74 +1105,6 @@ export class DapSessionManager {
 		return session;
 	}
 
-	#buildInitializeArguments(adapter: DapResolvedAdapter): DapInitializeArguments {
-		return {
-			clientID: "veyyon",
-			clientName: "Veyyon",
-			adapterID: adapter.name,
-			locale: "en-US",
-			linesStartAt1: true,
-			columnsStartAt1: true,
-			pathFormat: "path",
-			supportsRunInTerminalRequest: true,
-			supportsStartDebuggingRequest: true,
-			supportsMemoryReferences: true,
-			supportsVariableType: true,
-			supportsInvalidatedEvent: true,
-		};
-	}
-
-	/**
-	 * Wait for the adapter's `initialized` event (if not already received),
-	 * then send `configurationDone`. Many adapters block the `launch`/`attach`
-	 * response until this handshake completes.
-	 */
-	async #completeConfigurationHandshake(
-		session: DapSession,
-		signal?: AbortSignal,
-		timeoutMs: number = 30_000,
-	): Promise<void> {
-		if (!session.needsConfigurationDone || session.configurationDoneSent) {
-			return;
-		}
-		// Wait for the initialized event if we haven't seen it yet.
-		if (!session.initializedSeen) {
-			try {
-				await untilAborted(signal, session.client.waitForEvent("initialized", undefined, signal, timeoutMs));
-			} catch {
-				// Adapter may not send initialized (e.g. it already terminated).
-				// Proceed anyway — the launch/attach response will surface any real error.
-				return;
-			}
-		}
-		await session.client.sendRequest("configurationDone", {}, signal, timeoutMs);
-		session.configurationDoneSent = true;
-		if (session.status === "configuring") {
-			session.status = "running";
-		}
-	}
-
-	#handleStoppedEvent(session: DapSession, stopped: DapStoppedEventBody): void {
-		session.status = "stopped";
-		session.stop = {
-			threadId: stopped.threadId,
-			reason: stopped.reason,
-			description: stopped.description,
-			text: stopped.text,
-		};
-		session.lastStackFrames = [];
-	}
-
-	#applyTopFrame(session: DapSession, frame: DapStackFrame | undefined): void {
-		if (!frame) return;
-		session.stop.frameId = frame.id;
-		session.stop.frameName = frame.name;
-		session.stop.instructionPointerReference = frame.instructionPointerReference;
-		session.stop.source = frame.source;
-		session.stop.line = frame.line;
-		session.stop.column = frame.column;
-	}
-
 	/**
 	 * Fetch the top stack frame from the adapter and apply it to the session's
 	 * stop location. Called outside the event dispatch loop to avoid deadlocking
@@ -1216,7 +1120,7 @@ export class DapSessionManager {
 				timeoutMs,
 			);
 			session.lastStackFrames = response?.stackFrames ?? [];
-			this.#applyTopFrame(session, session.lastStackFrames[0]);
+			applyTopFrame(session, session.lastStackFrames[0]);
 		} catch (error) {
 			logger.debug("Failed to capture stopped frame", {
 				sessionId: session.id,
@@ -1227,35 +1131,15 @@ export class DapSessionManager {
 
 	async #step(command: "stepIn" | "stepOut" | "next", signal?: AbortSignal, timeoutMs: number = 30_000) {
 		const session = this.#touchActiveSession();
-		const threadId = await this.#resolveThreadId(session, signal, timeoutMs);
+		const threadId = await resolveThreadId(session, signal, timeoutMs);
 		// Reset state and subscribe BEFORE sending the step command to avoid
 		// missing events that arrive in the same buffer as the response.
 		session.stop = {};
 		session.lastStackFrames = [];
 		session.status = "running";
-		const outcomePromise = this.#prepareStopOutcome(session, signal, timeoutMs);
+		const outcomePromise = prepareStopOutcome(session, signal, timeoutMs);
 		await this.#sendRequestWithConfig(session, command, { threadId } satisfies DapStepArguments, signal, timeoutMs);
 		return this.#awaitStopOutcome(session, outcomePromise, signal, timeoutMs);
-	}
-
-	/**
-	 * Create a promise that resolves when the session stops, terminates, or exits.
-	 * MUST be called before the command that triggers the event.
-	 */
-	#prepareStopOutcome(session: DapSession, signal?: AbortSignal, timeoutMs: number = 30_000): Promise<unknown> {
-		const promises = [
-			session.client.waitForEvent("stopped", undefined, signal, timeoutMs),
-			session.client.waitForEvent("terminated", undefined, signal, timeoutMs),
-			session.client.waitForEvent("exited", undefined, signal, timeoutMs),
-		];
-		// Promise.race leaves the losing waiters pending; their timeouts would
-		// otherwise surface as unhandled rejections once they fire.
-		for (const p of promises) {
-			p.catch(() => {});
-		}
-		const outcome = Promise.race(promises);
-		outcome.catch(() => {});
-		return outcome;
 	}
 
 	/**
@@ -1283,22 +1167,6 @@ export class DapSessionManager {
 		}
 	}
 
-	async #resolveThreadId(session: DapSession, signal?: AbortSignal, timeoutMs: number = 30_000): Promise<number> {
-		if (session.stop.threadId !== undefined) {
-			return session.stop.threadId;
-		}
-		if (session.threads.length > 0) {
-			return session.threads[0].id;
-		}
-		const response = await session.client.sendRequest<DapThreadsResponse>("threads", undefined, signal, timeoutMs);
-		session.threads = response?.threads ?? [];
-		const threadId = session.threads[0]?.id;
-		if (threadId === undefined) {
-			throw new Error("Debugger reported no threads.");
-		}
-		return threadId;
-	}
-
 	async #sendRequestWithConfig<TBody>(
 		session: DapSession,
 		command: string,
@@ -1306,81 +1174,10 @@ export class DapSessionManager {
 		signal?: AbortSignal,
 		timeoutMs: number = 30_000,
 	): Promise<TBody> {
-		await this.#ensureConfigurationDone(session, signal, timeoutMs);
+		await ensureConfigurationDone(session, signal, timeoutMs);
 		const body = await session.client.sendRequest<TBody>(command, args, signal, timeoutMs);
 		session.lastUsedAt = Date.now();
 		return body;
-	}
-
-	async #ensureConfigurationDone(
-		session: DapSession,
-		signal?: AbortSignal,
-		timeoutMs: number = 30_000,
-	): Promise<void> {
-		if (!session.needsConfigurationDone || session.configurationDoneSent) {
-			return;
-		}
-		await session.client.sendRequest("configurationDone", {}, signal, timeoutMs);
-		session.configurationDoneSent = true;
-		if (session.status === "configuring") {
-			session.status = "running";
-		}
-	}
-
-	#mapSourceBreakpoints(
-		input: DapBreakpointRecord[],
-		responseBreakpoints: DapBreakpoint[] | undefined,
-	): DapBreakpointRecord[] {
-		return input.map((entry, index) => ({
-			line: entry.line,
-			condition: entry.condition,
-			id: responseBreakpoints?.[index]?.id,
-			verified: responseBreakpoints?.[index]?.verified ?? false,
-			message: responseBreakpoints?.[index]?.message,
-		}));
-	}
-
-	#mapFunctionBreakpoints(
-		input: DapFunctionBreakpointRecord[],
-		responseBreakpoints: DapBreakpoint[] | undefined,
-	): DapFunctionBreakpointRecord[] {
-		return input.map((entry, index) => ({
-			name: entry.name,
-			condition: entry.condition,
-			id: responseBreakpoints?.[index]?.id,
-			verified: responseBreakpoints?.[index]?.verified ?? false,
-			message: responseBreakpoints?.[index]?.message,
-		}));
-	}
-
-	#mapInstructionBreakpoints(
-		input: DapInstructionBreakpoint[],
-		responseBreakpoints: DapBreakpoint[] | undefined,
-	): DapInstructionBreakpointRecord[] {
-		return input.map((entry, index) => ({
-			instructionReference: responseBreakpoints?.[index]?.instructionReference ?? entry.instructionReference,
-			offset: responseBreakpoints?.[index]?.offset ?? entry.offset,
-			condition: entry.condition,
-			hitCondition: entry.hitCondition,
-			id: responseBreakpoints?.[index]?.id,
-			verified: responseBreakpoints?.[index]?.verified ?? false,
-			message: responseBreakpoints?.[index]?.message,
-		}));
-	}
-
-	#mapDataBreakpoints(
-		input: DapDataBreakpoint[],
-		responseBreakpoints: DapBreakpoint[] | undefined,
-	): DapDataBreakpointRecord[] {
-		return input.map((entry, index) => ({
-			dataId: entry.dataId,
-			accessType: entry.accessType,
-			condition: entry.condition,
-			hitCondition: entry.hitCondition,
-			id: responseBreakpoints?.[index]?.id,
-			verified: responseBreakpoints?.[index]?.verified ?? false,
-			message: responseBreakpoints?.[index]?.message,
-		}));
 	}
 
 	#touchActiveSession(): DapSession {
@@ -1425,6 +1222,205 @@ export class DapSessionManager {
 			});
 		});
 	}
+}
+
+/**
+ * Serialize breakpoint mutations per session: every mutator does a
+ * read-modify-write of session state around an await, and the adapter-side
+ * set*Breakpoints request replaces the whole list — concurrent mutations
+ * would silently drop each other's breakpoints on both sides.
+ */
+function serializeBreakpointMutation<T>(
+	session: DapSession,
+	mutate: () => Promise<T>,
+	signal?: AbortSignal,
+): Promise<T> {
+	const run = session.breakpointMutationQueue.then(() => {
+		// A mutation can sit behind several queued 30s predecessors; honor a
+		// caller abort at dequeue instead of running a request nobody awaits.
+		if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new Error("Aborted");
+		return mutate();
+	});
+	session.breakpointMutationQueue = run.then(
+		() => undefined,
+		() => undefined,
+	);
+	return run;
+}
+
+function buildInitializeArguments(adapter: DapResolvedAdapter): DapInitializeArguments {
+	return {
+		clientID: "veyyon",
+		clientName: "Veyyon",
+		adapterID: adapter.name,
+		locale: "en-US",
+		linesStartAt1: true,
+		columnsStartAt1: true,
+		pathFormat: "path",
+		supportsRunInTerminalRequest: true,
+		supportsStartDebuggingRequest: true,
+		supportsMemoryReferences: true,
+		supportsVariableType: true,
+		supportsInvalidatedEvent: true,
+	};
+}
+
+/**
+ * Wait for the adapter's `initialized` event (if not already received),
+ * then send `configurationDone`. Many adapters block the `launch`/`attach`
+ * response until this handshake completes.
+ */
+async function completeConfigurationHandshake(
+	session: DapSession,
+	signal?: AbortSignal,
+	timeoutMs: number = 30_000,
+): Promise<void> {
+	if (!session.needsConfigurationDone || session.configurationDoneSent) {
+		return;
+	}
+	// Wait for the initialized event if we haven't seen it yet.
+	if (!session.initializedSeen) {
+		try {
+			await untilAborted(signal, session.client.waitForEvent("initialized", undefined, signal, timeoutMs));
+		} catch {
+			// Adapter may not send initialized (e.g. it already terminated).
+			// Proceed anyway — the launch/attach response will surface any real error.
+			return;
+		}
+	}
+	await session.client.sendRequest("configurationDone", {}, signal, timeoutMs);
+	session.configurationDoneSent = true;
+	if (session.status === "configuring") {
+		session.status = "running";
+	}
+}
+
+function handleStoppedEvent(session: DapSession, stopped: DapStoppedEventBody): void {
+	session.status = "stopped";
+	session.stop = {
+		threadId: stopped.threadId,
+		reason: stopped.reason,
+		description: stopped.description,
+		text: stopped.text,
+	};
+	session.lastStackFrames = [];
+}
+
+function applyTopFrame(session: DapSession, frame: DapStackFrame | undefined): void {
+	if (!frame) return;
+	session.stop.frameId = frame.id;
+	session.stop.frameName = frame.name;
+	session.stop.instructionPointerReference = frame.instructionPointerReference;
+	session.stop.source = frame.source;
+	session.stop.line = frame.line;
+	session.stop.column = frame.column;
+}
+
+/**
+ * Create a promise that resolves when the session stops, terminates, or exits.
+ * MUST be called before the command that triggers the event.
+ */
+function prepareStopOutcome(session: DapSession, signal?: AbortSignal, timeoutMs: number = 30_000): Promise<unknown> {
+	const promises = [
+		session.client.waitForEvent("stopped", undefined, signal, timeoutMs),
+		session.client.waitForEvent("terminated", undefined, signal, timeoutMs),
+		session.client.waitForEvent("exited", undefined, signal, timeoutMs),
+	];
+	// Promise.race leaves the losing waiters pending; their timeouts would
+	// otherwise surface as unhandled rejections once they fire.
+	for (const p of promises) {
+		p.catch(() => {});
+	}
+	const outcome = Promise.race(promises);
+	outcome.catch(() => {});
+	return outcome;
+}
+
+async function resolveThreadId(session: DapSession, signal?: AbortSignal, timeoutMs: number = 30_000): Promise<number> {
+	if (session.stop.threadId !== undefined) {
+		return session.stop.threadId;
+	}
+	if (session.threads.length > 0) {
+		return session.threads[0].id;
+	}
+	const response = await session.client.sendRequest<DapThreadsResponse>("threads", undefined, signal, timeoutMs);
+	session.threads = response?.threads ?? [];
+	const threadId = session.threads[0]?.id;
+	if (threadId === undefined) {
+		throw new Error("Debugger reported no threads.");
+	}
+	return threadId;
+}
+
+async function ensureConfigurationDone(
+	session: DapSession,
+	signal?: AbortSignal,
+	timeoutMs: number = 30_000,
+): Promise<void> {
+	if (!session.needsConfigurationDone || session.configurationDoneSent) {
+		return;
+	}
+	await session.client.sendRequest("configurationDone", {}, signal, timeoutMs);
+	session.configurationDoneSent = true;
+	if (session.status === "configuring") {
+		session.status = "running";
+	}
+}
+
+function mapSourceBreakpoints(
+	input: DapBreakpointRecord[],
+	responseBreakpoints: DapBreakpoint[] | undefined,
+): DapBreakpointRecord[] {
+	return input.map((entry, index) => ({
+		line: entry.line,
+		condition: entry.condition,
+		id: responseBreakpoints?.[index]?.id,
+		verified: responseBreakpoints?.[index]?.verified ?? false,
+		message: responseBreakpoints?.[index]?.message,
+	}));
+}
+
+function mapFunctionBreakpoints(
+	input: DapFunctionBreakpointRecord[],
+	responseBreakpoints: DapBreakpoint[] | undefined,
+): DapFunctionBreakpointRecord[] {
+	return input.map((entry, index) => ({
+		name: entry.name,
+		condition: entry.condition,
+		id: responseBreakpoints?.[index]?.id,
+		verified: responseBreakpoints?.[index]?.verified ?? false,
+		message: responseBreakpoints?.[index]?.message,
+	}));
+}
+
+function mapInstructionBreakpoints(
+	input: DapInstructionBreakpoint[],
+	responseBreakpoints: DapBreakpoint[] | undefined,
+): DapInstructionBreakpointRecord[] {
+	return input.map((entry, index) => ({
+		instructionReference: responseBreakpoints?.[index]?.instructionReference ?? entry.instructionReference,
+		offset: responseBreakpoints?.[index]?.offset ?? entry.offset,
+		condition: entry.condition,
+		hitCondition: entry.hitCondition,
+		id: responseBreakpoints?.[index]?.id,
+		verified: responseBreakpoints?.[index]?.verified ?? false,
+		message: responseBreakpoints?.[index]?.message,
+	}));
+}
+
+function mapDataBreakpoints(
+	input: DapDataBreakpoint[],
+	responseBreakpoints: DapBreakpoint[] | undefined,
+): DapDataBreakpointRecord[] {
+	return input.map((entry, index) => ({
+		dataId: entry.dataId,
+		accessType: entry.accessType,
+		condition: entry.condition,
+		hitCondition: entry.hitCondition,
+		id: responseBreakpoints?.[index]?.id,
+		verified: responseBreakpoints?.[index]?.verified ?? false,
+		message: responseBreakpoints?.[index]?.message,
+	}));
 }
 
 export const dapSessionManager = new DapSessionManager();

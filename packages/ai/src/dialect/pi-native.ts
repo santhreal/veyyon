@@ -1,8 +1,10 @@
 import { AI_PROMPTS } from "../prompts/registry";
 import type { ToolCall } from "../types";
 import {
+	BlockBody,
 	buildArgShapes,
 	coerceValue,
+	emitTextHoldingPartialTag,
 	getArrayItemSchema,
 	getObjectProperties,
 	getOwnArg,
@@ -10,7 +12,6 @@ import {
 	isObjectSchema,
 	isStringOnlySchema,
 	mintToolCallId,
-	partialSuffixOverlapAny,
 	scanThinkingText,
 	setToolArg,
 	ThinkingSection,
@@ -23,6 +24,7 @@ import type {
 	InbandScanEvent,
 	InbandScanner,
 	InbandScannerOptions,
+	InbandToolEnd,
 } from "./types";
 import { THINK_CLOSE, THINK_OPEN } from "./wire-tags";
 
@@ -37,6 +39,8 @@ import { THINK_CLOSE, THINK_OPEN } from "./wire-tags";
  */
 const PI_CALL_OPEN = "<call:";
 const PI_CALL_CLOSE_PREFIX = "</call:";
+const OUTSIDE_TAGS = [PI_CALL_OPEN] as const;
+const OUTSIDE_TAGS_THINK = [PI_CALL_OPEN, THINK_OPEN] as const;
 
 type State = "outside" | "thinking" | "opentag" | "body";
 
@@ -46,13 +50,17 @@ interface OpenCall {
 	closer: string;
 	shape: ToolArgShape | undefined;
 	attrs: Record<string, unknown>;
-	rawBlock: string;
-	body: string;
+	/** The opening tag, which starts the call's raw block. */
+	openTag: string;
+	body: BlockBody;
 	/** "unknown" until the first non-whitespace body content decides the shape. */
 	bodyMode: "unknown" | "inline" | "elements";
 	/** Target parameter the inline body fills; deltas stream against it. */
 	inlineKey: string | null;
+	/** Characters of the inline value streamed as arg deltas. */
 	streamedInline: number;
+	/** The inline value's text not yet streamed, a held trailing newline; undefined until streaming starts. */
+	inlinePending: string | undefined;
 }
 
 class PiNativeInbandScanner implements InbandScanner {
@@ -62,6 +70,8 @@ class PiNativeInbandScanner implements InbandScanner {
 	readonly #thinking = new ThinkingSection();
 	#parseThinking: boolean;
 	#shapes: Map<string, ToolArgShape>;
+	/** {@link closerEndsBody} for the open call, made once so a body read allocates no predicate. */
+	readonly #acceptsCloser = (before: string): boolean => closerEndsBody(this.#call!, before);
 
 	constructor(options: InbandScannerOptions = {}) {
 		this.#parseThinking = options.parseThinking === true;
@@ -81,7 +91,9 @@ class PiNativeInbandScanner implements InbandScanner {
 	#consume(final: boolean): InbandScanEvent[] {
 		const events: InbandScanEvent[] = [];
 		let progressed = true;
-		while (progressed && this.#buffer.length > 0) {
+		// The body state hands its text to the call's BlockBody, so the stream can end with the buffer empty inside a
+		// body, which a closer the body already rejected may still close.
+		while (progressed && (this.#buffer.length > 0 || (final && this.#state === "body"))) {
 			progressed = false;
 			if (this.#state === "outside") progressed = this.#consumeOutside(final, events);
 			else if (this.#state === "thinking") progressed = this.#consumeThinking(final, events);
@@ -90,8 +102,8 @@ class PiNativeInbandScanner implements InbandScanner {
 		}
 		if (final) {
 			if (this.#state === "thinking") this.#endThinking(events);
-			// An unterminated call at end of stream is dropped (mirrors GLM/hermes).
-			this.#call = null;
+			// The stream ended inside an announced call: it ends with the body read so far.
+			if (this.#call) this.#endCall(this.#call, events, true);
 			this.#state = "outside";
 			this.#buffer = "";
 		}
@@ -99,15 +111,12 @@ class PiNativeInbandScanner implements InbandScanner {
 	}
 
 	#consumeOutside(final: boolean, events: InbandScanEvent[]): boolean {
-		const holdTags = this.#parseThinking ? [PI_CALL_OPEN, THINK_OPEN] : [PI_CALL_OPEN];
 		const call = this.#buffer.indexOf(PI_CALL_OPEN);
 		const think = this.#parseThinking ? this.#buffer.indexOf(THINK_OPEN) : -1;
 		const start = call === -1 ? think : think === -1 ? call : Math.min(call, think);
 		if (start === -1) {
-			const hold = final ? 0 : partialSuffixOverlapAny(this.#buffer, holdTags);
-			const emit = this.#buffer.slice(0, this.#buffer.length - hold);
-			if (emit.length > 0) events.push({ type: "text", text: emit });
-			this.#buffer = this.#buffer.slice(this.#buffer.length - hold);
+			const tags = this.#parseThinking ? OUTSIDE_TAGS_THINK : OUTSIDE_TAGS;
+			this.#buffer = emitTextHoldingPartialTag(this.#buffer, tags, final, events);
 			return false;
 		}
 		if (start > 0) events.push({ type: "text", text: this.#buffer.slice(0, start) });
@@ -165,51 +174,44 @@ class PiNativeInbandScanner implements InbandScanner {
 			this.#state = "outside";
 			return true;
 		}
+		const closer = `${PI_CALL_CLOSE_PREFIX}${parsed.name}>`;
 		this.#call = {
 			id,
 			name: parsed.name,
-			closer: `${PI_CALL_CLOSE_PREFIX}${parsed.name}>`,
+			closer,
 			shape,
 			attrs,
-			rawBlock: tag,
-			body: "",
+			openTag: tag,
+			body: new BlockBody(closer),
 			bodyMode: "unknown",
 			inlineKey: inlineBodyKey(shape, attrs),
 			streamedInline: 0,
+			inlinePending: undefined,
 		};
 		this.#state = "body";
 		return true;
 	}
 
-	/** Accumulate the call body verbatim up to the call's own named closer. */
+	/** Read the call body verbatim up to the call's own named closer. */
 	#consumeBody(final: boolean, events: InbandScanEvent[]): boolean {
 		const call = this.#call;
 		if (!call) {
 			this.#state = "outside";
 			return true;
 		}
-		// Search the whole accumulated body: in element form the closer text may
-		// legitimately appear inside a string-typed child element, so a candidate
-		// closer only counts when everything before it parses as closed elements.
-		const combined = call.body + this.#buffer;
-		let close = combined.indexOf(call.closer);
-		if (call.bodyMode === "elements") {
-			while (close !== -1 && !elementsBodyClean(combined.slice(0, close))) {
-				close = combined.indexOf(call.closer, close + 1);
-			}
-			if (close === -1 && final) close = combined.indexOf(call.closer);
-		}
-		if (close === -1) {
-			const hold = final ? 0 : partialSuffixOverlapAny(combined, [call.closer]);
-			const keep = Math.max(call.body.length, combined.length - hold);
-			this.#appendBody(call, combined.slice(call.body.length, keep), events);
-			this.#buffer = combined.slice(keep);
-			return false;
-		}
-		this.#appendBody(call, combined.slice(call.body.length, close), events);
-		this.#buffer = combined.slice(close + call.closer.length);
-		call.rawBlock += call.closer;
-		const args = finalizeCall(call);
+		// Once the body is known to be inline, its first closer ends it; until then a closer is checked against the
+		// body's form, since in element form the closer text may sit inside a string-typed child element.
+		const accepts = call.bodyMode === "inline" ? undefined : this.#acceptsCloser;
+		this.#buffer = call.body.read(this.#buffer, final, accepts);
+		appendBody(call, events);
+		if (!call.body.closed) return false;
+		this.#endCall(call, events);
+		return true;
+	}
+
+	#endCall(call: OpenCall, events: InbandScanEvent[], unterminated = false): void {
+		const body = call.body.text;
+		const args = finalizeCall(call, body);
 		if (call.bodyMode === "inline" && call.inlineKey !== null) {
 			// Flush the delta the trailing-newline holdback kept out of the stream.
 			const value = typeof args[call.inlineKey] === "string" ? (args[call.inlineKey] as string) : "";
@@ -218,44 +220,78 @@ class PiNativeInbandScanner implements InbandScanner {
 				events.push({ type: "toolArgDelta", id: call.id, name: call.name, key: call.inlineKey, delta: tail });
 			}
 		}
-		events.push({ type: "toolEnd", id: call.id, name: call.name, arguments: args, rawBlock: call.rawBlock });
+		const end: InbandToolEnd = {
+			type: "toolEnd",
+			id: call.id,
+			name: call.name,
+			arguments: args,
+			rawBlock: unterminated ? `${call.openTag}${body}` : `${call.openTag}${body}${call.closer}`,
+		};
+		if (unterminated) end.unterminated = true;
+		events.push(end);
 		this.#call = null;
 		this.#state = "outside";
-		return true;
 	}
+}
 
-	#appendBody(call: OpenCall, chunk: string, events: InbandScanEvent[]): void {
-		if (chunk.length === 0) return;
-		call.body += chunk;
-		call.rawBlock += chunk;
-		if (call.bodyMode === "unknown") {
-			const probe = call.body.replace(/^[\s]*/, "");
-			if (probe.length === 0) return;
-			// Element form when the body's first non-whitespace content is a child
-			// tag; otherwise the verbatim inline body (spec "Element form vs inline
-			// body"). `<` followed by a name char is the child-tag signature.
-			if (probe[0] === "<") {
-				if (probe.length < 2) return;
-				call.bodyMode = /[A-Za-z_]/.test(probe[1]!) ? "elements" : "inline";
-			} else {
-				call.bodyMode = "inline";
-			}
-		}
-		if (call.bodyMode === "inline" && call.inlineKey !== null) {
-			// Stream the verbatim body as arg deltas against the inline target
-			// parameter, holding back the block-delimiter newlines: the leading
-			// one is skipped, and a trailing one stays unstreamed until the next
-			// chunk proves it is interior (the closer's newline is not value).
-			let text = call.body;
-			if (text.startsWith("\n")) text = text.slice(1);
-			const streamEnd = text.endsWith("\n") ? text.length - 1 : text.length;
-			const delta = text.slice(call.streamedInline, streamEnd);
-			if (delta.length > 0) {
-				call.streamedInline = streamEnd;
-				events.push({ type: "toolArgDelta", id: call.id, name: call.name, key: call.inlineKey, delta });
-			}
-		}
+/**
+ * Whether a closer occurrence ends the body before it. The body's form is settled from that text first, so a closer
+ * that arrives in the same delta as the body's first child tag is checked as element form too; in element form the
+ * closer counts only when everything before it parses as closed elements.
+ */
+function closerEndsBody(call: OpenCall, before: string): boolean {
+	settleBodyMode(call, before);
+	return call.bodyMode !== "elements" || elementsBodyClean(before);
+}
+
+/**
+ * Decide an undecided body's form from its text: element form when its first non-whitespace content is a child tag,
+ * otherwise the verbatim inline body (spec "Element form vs inline body"). `<` followed by a name char is the
+ * child-tag signature. The body stays undecided while it holds only whitespace, or whitespace and a lone `<`.
+ */
+function settleBodyMode(call: OpenCall, text: string): void {
+	if (call.bodyMode !== "unknown") return;
+	const probe = text.replace(/^[\s]*/, "");
+	if (probe.length === 0) return;
+	if (probe[0] === "<") {
+		if (probe.length < 2) return;
+		call.bodyMode = /[A-Za-z_]/.test(probe[1]!) ? "elements" : "inline";
+	} else {
+		call.bodyMode = "inline";
 	}
+}
+
+/** Settle the body's form from what the last read added, and stream an inline body's new text as arg deltas. */
+function appendBody(call: OpenCall, events: InbandScanEvent[]): void {
+	const added = call.body.added;
+	if (added.length === 0) return;
+	settleBodyMode(call, call.body.text);
+	if (call.bodyMode !== "inline" || call.inlineKey === null) return;
+	// Stream the verbatim body as arg deltas against the inline target
+	// parameter, holding back the block-delimiter newlines: the leading
+	// one is skipped, and a trailing one stays unstreamed until the next
+	// chunk proves it is interior (the closer's newline is not value).
+	let pending: string;
+	if (call.inlinePending === undefined) {
+		// The body was undecided until now, so it holds what arrived before this read too.
+		const text = call.body.text;
+		pending = text.startsWith("\n") ? text.slice(1) : text;
+	} else {
+		pending = call.inlinePending + added;
+	}
+	const streamEnd = pending.endsWith("\n") ? pending.length - 1 : pending.length;
+	if (streamEnd > 0) {
+		events.push({
+			type: "toolArgDelta",
+			id: call.id,
+			name: call.name,
+			key: call.inlineKey,
+			delta: pending.slice(0, streamEnd),
+		});
+		call.streamedInline += streamEnd;
+		pending = pending.slice(streamEnd);
+	}
+	call.inlinePending = pending;
 }
 
 /** Index of the unquoted `>` ending an open tag, or -1 while incomplete. */
@@ -373,15 +409,15 @@ function stripBlockNewlines(text: string): string {
 	return out;
 }
 
-function finalizeCall(call: OpenCall): Record<string, unknown> {
+function finalizeCall(call: OpenCall, body: string): Record<string, unknown> {
 	const args: Record<string, unknown> = { ...call.attrs };
 	if (call.bodyMode === "elements") {
-		const members = parseMembers(call.body, call.shape?.properties);
+		const members = parseMembers(body, call.shape?.properties);
 		for (const key of Object.keys(members)) setToolArg(args, key, getOwnArg(members, key));
 		return args;
 	}
 	// Inline body (or an all-whitespace body, which contributes nothing).
-	const value = stripBlockNewlines(call.body);
+	const value = stripBlockNewlines(body);
 	if (call.bodyMode === "unknown" || (call.bodyMode === "inline" && value.length === 0 && call.inlineKey === null)) {
 		return args;
 	}

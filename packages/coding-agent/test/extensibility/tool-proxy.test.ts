@@ -16,6 +16,10 @@ import { applyToolProxy } from "@veyyon/kernel/registry/tool-proxy";
  *   - the getter is live: it reads the tool at access time, so a later mutation of
  *     the tool is visible through the wrapper;
  *   - forwarded properties are enumerable.
+ *   - the accessors are shared across wrappers, so each wrapper reads its own tool
+ *     (two wrappers of two tools with the same key read different values), a
+ *     non-registered symbol key forwards like a string key, an object inheriting
+ *     from a wrapper reads that wrapper's tool, and a wrapper forwards one tool.
  */
 
 class FakeTool {
@@ -80,5 +84,38 @@ describe("applyToolProxy", () => {
 		const descriptor = Object.getOwnPropertyDescriptor(wrapper, "a");
 		expect(descriptor?.enumerable).toBe(true);
 		expect(descriptor?.configurable).toBe(true);
+	});
+
+	it("reads each wrapper's own tool when wrappers of different tools share a key", () => {
+		const marker = Symbol("marker");
+		const first = { name: "first", [marker]: 1, identity: FakeTool.prototype.identity };
+		const second = { name: "second", [marker]: 2, identity: FakeTool.prototype.identity };
+		const firstWrapper: Record<PropertyKey, unknown> = {};
+		const secondWrapper: Record<PropertyKey, unknown> = {};
+		applyToolProxy(first, firstWrapper);
+		applyToolProxy(second, secondWrapper);
+		expect([firstWrapper.name, secondWrapper.name]).toEqual(["first", "second"]);
+		expect([firstWrapper[marker], secondWrapper[marker]]).toEqual([1, 2]);
+		expect((firstWrapper.identity as () => unknown)()).toBe(first);
+		expect((secondWrapper.identity as () => unknown)()).toBe(second);
+	});
+
+	it("reads the wrapper's tool through an object that inherits from the wrapper", () => {
+		const tool = new FakeTool();
+		const wrapper: Record<string, unknown> = {};
+		applyToolProxy(tool, wrapper);
+		const derived = Object.create(wrapper) as Record<string, unknown>;
+		expect(derived.value).toBe(42);
+		expect((derived.identity as () => unknown)()).toBe(tool);
+	});
+
+	it("rejects a second tool for a wrapper that already forwards one", () => {
+		const tool = { a: 1 };
+		const wrapper: Record<string, unknown> = {};
+		applyToolProxy(tool, wrapper);
+		applyToolProxy(tool, wrapper);
+		expect(() => applyToolProxy({ b: 2 }, wrapper)).toThrow("already forwards to another tool");
+		expect(wrapper.a).toBe(1);
+		expect(Object.getOwnPropertyDescriptor(wrapper, "b")).toBeUndefined();
 	});
 });

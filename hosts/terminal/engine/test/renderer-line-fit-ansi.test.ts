@@ -11,7 +11,7 @@ describe("prepareLine ANSI preservation", () => {
 
 		const prepared = prepareLine(longStyledLine, 80);
 		// The prepared line must retain the ANSI styling sequences (\x1b[31;1m) rather than having stripped them
-		expect(prepared.line).toContain("\x1b[31;1m");
-		expect(prepared.line).toContain("\x1b[0m");
+		expect(prepared).toContain("\x1b[31;1m");
+		expect(prepared).toContain("\x1b[0m");
 	});
 });

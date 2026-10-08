@@ -4,10 +4,9 @@ import { streamSimple } from "@veyyon/ai";
 import {
 	getOpenAICodexTransportDetails,
 	getOpenAICodexWebSocketDebugStats,
-	prewarmOpenAICodexResponses,
 	resetOpenAICodexHistoryAfterCompaction,
-	streamOpenAICodexResponses,
-} from "@veyyon/ai/providers/openai-codex-responses";
+} from "@veyyon/ai/providers/openai-codex/session-state";
+import { prewarmOpenAICodexResponses, streamOpenAICodexResponses } from "@veyyon/ai/providers/openai-codex-responses";
 import type {
 	CodexCompactionRequestContext,
 	Context,
@@ -3375,6 +3374,141 @@ describe("openai-codex streaming", () => {
 		expect(secondText).toBe("Second answer");
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
+
+	// A reused websocket can carry frames of a response other than the one this
+	// request is reading. Once a frame's `response.id` locks the request onto its
+	// response, a frame of another response, or a `sequence_number` below one the
+	// response already sent, ends the request with a transport error rather than
+	// joining it; frames before the lock, and repeated sequence numbers, are
+	// admitted. Not covered here: the trailing frame of the previous response,
+	// which the test above drops.
+	const ownText = "own answer";
+	const foreignText = "foreign answer";
+	const messageAdded = {
+		type: "response.output_item.added",
+		item: { type: "message", id: "msg_own", role: "assistant", status: "in_progress", content: [] },
+	};
+	const partAdded = { type: "response.content_part.added", part: { type: "output_text", text: "" } };
+	const messageDone = (text: string) => ({
+		type: "response.output_item.done",
+		item: {
+			type: "message",
+			id: "msg_own",
+			role: "assistant",
+			status: "completed",
+			content: [{ type: "output_text", text }],
+		},
+	});
+	const completed = (id: string) => ({
+		type: "response.completed",
+		response: { id, status: "completed", usage: DEFAULT_USAGE },
+	});
+	const frameGuardCases: Array<{
+		name: string;
+		frames: Array<Record<string, unknown>>;
+		expected: { text: string } | { error: string };
+	}> = [
+		{
+			name: "a lifecycle frame of another response after the lock",
+			frames: [
+				{ type: "response.created", response: { id: "resp_own" } },
+				messageAdded,
+				partAdded,
+				{ type: "response.output_text.delta", delta: ownText },
+				{ type: "response.in_progress", response: { id: "resp_foreign" } },
+				{ type: "response.output_text.delta", delta: foreignText },
+				messageDone(`${ownText}${foreignText}`),
+				completed("resp_foreign"),
+			],
+			expected: { error: "websocket frame for response resp_foreign interleaved into active response resp_own" },
+		},
+		{
+			name: "a sequence number below one the locked response already sent",
+			frames: [
+				{ type: "response.created", response: { id: "resp_own" }, sequence_number: 1 },
+				{ ...messageAdded, sequence_number: 2 },
+				{ ...partAdded, sequence_number: 3 },
+				{ type: "response.output_text.delta", delta: ownText, sequence_number: 4 },
+				{ type: "response.output_text.delta", delta: foreignText, sequence_number: 3 },
+				{ ...messageDone(`${ownText}${foreignText}`), sequence_number: 5 },
+				{ ...completed("resp_own"), sequence_number: 6 },
+			],
+			expected: { error: "websocket sequence_number 3 regressed below 4 within response resp_own" },
+		},
+		{
+			name: "a repeated sequence number within the locked response",
+			frames: [
+				{ type: "response.created", response: { id: "resp_own" }, sequence_number: 1 },
+				{ ...messageAdded, sequence_number: 2 },
+				{ ...partAdded, sequence_number: 2 },
+				{ type: "response.output_text.delta", delta: ownText, sequence_number: 3 },
+				{ ...messageDone(ownText), sequence_number: 4 },
+				{ ...completed("resp_own"), sequence_number: 5 },
+			],
+			expected: { text: ownText },
+		},
+		{
+			name: "a sequence number that falls before any frame locked the response",
+			frames: [
+				{ ...messageAdded, sequence_number: 5 },
+				{ ...partAdded, sequence_number: 2 },
+				{ type: "response.output_text.delta", delta: ownText, sequence_number: 3 },
+				{ ...messageDone(ownText), sequence_number: 4 },
+				{ ...completed("resp_own"), sequence_number: 5 },
+			],
+			expected: { text: ownText },
+		},
+	];
+	for (const { name, frames, expected } of frameGuardCases) {
+		it(`${"error" in expected ? "fails" : "admits"} a websocket request on ${name}`, async () => {
+			const tempDir = TempDir.createSync("@pi-codex-frame-guard-");
+			setAgentDir(tempDir.path());
+			let sseRequests = 0;
+			const fetchImpl: FetchImpl = async () => {
+				sseRequests += 1;
+				throw new Error("SSE fallback should not be called");
+			};
+			let closeCount = 0;
+			class ScriptedWebSocket extends MockWebSocket {
+				constructor(url: string, options?: { headers?: WsHeaders }) {
+					super(url, options);
+					this.scheduleOpen();
+				}
+				send(): void {
+					for (const frame of frames) this.sendJson(frame);
+				}
+				close(): void {
+					closeCount += 1;
+					super.close();
+				}
+			}
+			global.WebSocket = ScriptedWebSocket as unknown as typeof WebSocket;
+
+			const model = createCodexTestModel("https://chatgpt.com/backend-api");
+			const result = await streamOpenAICodexResponses(model, createCodexTestContext(), {
+				fetch: fetchImpl,
+				apiKey: createCodexTestToken(),
+				sessionId: "ws-frame-guard-session",
+				providerSessionState: new Map<string, ProviderSessionState>(),
+			}).result();
+
+			const text = result.content
+				.filter((block): block is { type: "text"; text: string } => block.type === "text")
+				.map(block => block.text)
+				.join("");
+			expect(text).not.toContain(foreignText);
+			if ("error" in expected) {
+				expect(result.stopReason).toBe("error");
+				expect(result.errorMessage).toContain(expected.error);
+				expect(closeCount).toBeGreaterThan(0);
+			} else {
+				expect(result.stopReason).toBe("stop");
+				expect(text).toBe(expected.text);
+				expect(closeCount).toBe(0);
+			}
+			expect(sseRequests).toBe(0);
+		});
+	}
 
 	it("applies onPayload to the final chained websocket frame", async () => {
 		const tempDir = TempDir.createSync("@pi-codex-ws-payload-hook-");

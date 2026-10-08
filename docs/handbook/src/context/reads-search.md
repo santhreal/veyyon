@@ -1,35 +1,34 @@
 # Bounded reads and search
 
 Three tools give the agent controlled access to your files: `read`, `search`, and
-`write`. They are always available; there is no `experimental_tools` or `backends.toml` gate
-to turn them on.
+`write`. They are always available and need no `experimental_tools` or `backends.toml` entry.
 
-The point of these tools is bounds. An unbounded `cat`, `find`, or `grep -r` in the shell
+These tools bound their output. An unbounded `cat`, `find`, or `grep -r` in the shell
 can dump enough text to fill the whole context window. These tools apply line, byte, and
-result caps instead, and they surface truncation rather than dropping output silently. This
-page documents each tool's parameters and the limits it enforces. The implementations live
-under `packages/coding-agent/src/tools/` (`fs/read.ts`, `search/search.ts`, `fs/write.ts`).
+result caps instead, and they report truncation rather than dropping output silently. The
+implementations are under `packages/coding-agent/src/tools/` (`fs/read.ts`,
+`search/search.ts`, `fs/write.ts`).
 
 ## The `read` tool (`tools/fs/read.ts`)
 
 `read` takes a single `path` string (no separate `offset`/`limit` arguments) and bounds every read
 to a budget:
 
-- **One parameter, inline selectors.** `read {path}`, where `path` can carry a line-range selector
+- **One parameter, inline selectors.** `read {path}`, where `path` can include a line-range selector
   appended after a colon: `src/foo.ts:50-200` (inclusive range), `src/foo.ts:50` / `:50-` (from line 50
   on), `src/foo.ts:50+150` (150 lines from line 50), or `src/foo.ts:5-16,960-973` (multiple ranges in
   one call). `:raw` reads verbatim with no anchors or line prefixes.
 - **Dual budget, whichever is hit first:** a line cap and a byte cap. The line cap is
-  `read.defaultLimit` (300) when the call names no line count, the requested count when it does, and
-  `DEFAULT_MAX_LINES` (3000) at the ceiling. The byte cap is `tools.artifactSpillThreshold` (50 KB),
-  the same budget every other tool result carries; a call that names a line count raises it to hold
-  those lines, at about 512 bytes a line. So a file that is short in lines but huge in bytes
-  (minified JS, a data blob) is bounded by bytes, and a file of many short lines by lines. `read` is
-  bounded rather than spilled to an artifact: a paged window with a continuation selector is more use
-  than a truncated one with a link.
+  `read.defaultLimit` (300) when the call specifies no line count, the requested count when it does,
+  and `DEFAULT_MAX_LINES` (3000) at the ceiling. The byte cap is `tools.artifactSpillThreshold`
+  (50 KB), the same budget that applies to every other tool result; a call that specifies a line count
+  raises it to hold those lines, at about 512 bytes a line. So a file that is short in lines but huge
+  in bytes (minified JS, a data blob) is bounded by bytes, and a file of many short lines by lines.
+  `read` is bounded rather than spilled to an artifact, and returns a paged window with a
+  continuation selector.
 - **Structural summaries for parseable code.** A read with no selector on a parseable source file
   returns declarations with bodies elided (`…`), and the footer states the recovery selector so the model
-  re-issues only the ranges it actually needs instead of re-reading the whole file. The summary takes
+  re-issues only the ranges it needs instead of re-reading the whole file. The summary takes
   the same byte budget as a file window, and lines wider than `tools.outputMaxColumns` are clipped, so
   a declaration-dense file (generated protobuf bindings, a large `.d.ts`) returns a bounded window
   with the line that continues it rather than the whole projection.
@@ -41,7 +40,7 @@ to a budget:
   notebooks (editable cell text), images, URLs (reader-mode by default), and internal URI schemes
   (`memory://`, `skill://`, `artifact://`, `mcp://`, `ssh://`, and others).
 
-Text reading is intentionally separate from image inspection. By default, `read` decodes image
+Text reading is separate from image inspection. By default, `read` decodes image
 files (PNG, JPEG, GIF, WEBP) inline for direct visual analysis. When `inspect_image.enabled` is set,
 `read` returns image metadata instead and the model inspects the image by calling `inspect_image`
 with a question.
@@ -54,30 +53,29 @@ local operations remain available.
 
 ## `@path` mentions (`utils/file-mentions.ts`)
 
-A `@path` token in a prompt auto-reads the file or lists the directory it names, and the result is
-bounded by `tools.artifactSpillThreshold`, the same budget a tool result carries, because the
-mention stays in the transcript and is billed on every later request. A capped mention states the
-lines it showed and the selector that pages the rest. A file over 5 MB, a binary file, or an image
-over 25 MB is not read: the message carries the path and the reason.
+A `@path` token in a prompt auto-reads the file or lists the directory it points to, and the result
+is bounded by `tools.artifactSpillThreshold`, the same budget that applies to a tool result, because
+the mention stays in the transcript and is billed on every later request. A capped mention states
+the lines it showed and the selector that pages the rest. A file over 5 MB, a binary file, or an
+image over 25 MB is not read: the message states the path and the reason.
 
 `tools.artifactSpillThreshold` bounds every model-visible result. `read` applies it directly to a
 file window, a structural summary, a directory listing, an archive listing, a notebook or converted
 document, a URL body, a PDF image-member list and an `agent://<id>/<field>` extraction, and states
-what it carried and how to reach the rest. An extraction takes no line selector, so it is cut by
-bytes and the notice names its full size and the URL that pages it. A selector-free structural
+what it included and how to reach the rest. An extraction takes no line selector, so it is cut by
+bytes and the notice states its full size and the URL that pages it. A selector-free structural
 summary also stops at `read.defaultLimit` lines, the bound a selector-free file window already
-follows, and the notice names which of the two stopped it. Every other tool passes the shared spill
+follows, and the notice states which of the two stopped it. Every other tool passes the shared spill
 layer: output over the threshold is written to an artifact and the result keeps a head and tail
 window no larger than the threshold, sized by `tools.artifactHeadBytes` and
-`tools.artifactTailBytes` in the ratio they name, plus the `artifact://` id that reads the full text
+`tools.artifactTailBytes` in the ratio they set, plus the `artifact://` id that reads the full text
 back.
 
-A directory read that names no `depth` lists the top level: every entry, up to 100, with each
-subdirectory's direct-child count beside it, and a footer naming `depth: 2` for the recursive
-listing. Orientation is what a selector-free listing is for, and the recursive one costs 8,163
-tokens for `packages/coding-agent/src` against 962 for its top level. A directory wider than 100
-entries states how many it held back and names `depth: 1` for the flat listing of all of them.
-`depth` and `limit` are honored in full when named.
+A directory read that specifies no `depth` lists the top level: every entry, up to 100, with each
+subdirectory's direct-child count beside it, and a footer that suggests `depth: 2` for the recursive
+listing. The recursive listing of `packages/coding-agent/src` costs 8,163 tokens against 962 for its
+top level. A directory wider than 100 entries states how many it held back and suggests `depth: 1`
+for the flat listing of all of them. `depth` and `limit` are honored in full when set.
 
 ## The `search` tool (`tools/search/search.ts`)
 
@@ -108,16 +106,16 @@ Options are strictly validated per `type`; cross-type fields are rejected with a
   - **`case` (default `true`)** toggles case sensitivity.
   - **`gitignore` (default `true`)** respects `.gitignore`.
   - **`paths`** returns the matching file paths with per-file match counts in place of match lines, the shape `rg -l` produces.
-  - **`skip`** pages past already-returned files; results are paginated at `20` files per call (`DEFAULT_FILE_LIMIT`) with an internal cap of `2000` matches. Context lines around matches are governed by `search.contextBefore` (default `1`) and `search.contextAfter` (default `1`). A single-file scope returns at most `200` matches (`SINGLE_FILE_MATCHES`) and a multi-file scope at most `20` per file (`MULTI_FILE_PER_FILE_MATCHES`). A file whose match list was clipped is named as such, and only for a file the current page displays; `skip` pages files rather than matches, so passing it reaches nothing past a per-file cap. The `2000`-match ceiling is the one limit that leaves files unopened, so only it marks the file total a floor.
+  - **`skip`** pages past already-returned files; results are paginated at `20` files per call (`DEFAULT_FILE_LIMIT`) with an internal cap of `2000` matches. Context lines around matches are governed by `search.contextBefore` (default `1`) and `search.contextAfter` (default `1`). A single-file scope returns at most `200` matches (`SINGLE_FILE_MATCHES`) and a multi-file scope at most `20` per file (`MULTI_FILE_PER_FILE_MATCHES`). A file whose match list was clipped is marked as clipped, and only for a file the current page displays; `skip` pages files rather than matches, so passing it reaches nothing past a per-file cap. The `2000`-match ceiling is the one limit that leaves files unopened, so only it marks the file total a floor.
 - **`type: "structure"`** accepts `path` and `skip`:
   - **`path`** scopes the search (file, directory, glob, local or materialized internal URL, or semicolon-delimited list). `ssh://` is not supported; inspect remote code with `read` before structural matching.
   - **`skip`** specifies match offset for pagination (default limit `50` matches).
   - Metavariable syntax supports `$NAME` (single node), `$_` (anonymous node), `$$$NAME` (multi-node sequence), and `$$$` (anonymous sequence). Each match lists its bindings on a `meta:` line; a value over 60 bytes (`META_VALUE_MAX_BYTES`) or containing a newline renders as `KEY=…`, because the binding is a range inside the match the result has already printed line by line.
-  - A capped result states how many matches were found and returned, and names the `skip` value that continues them. `limit` is a file-search field and a structure search rejects it.
+  - A capped result states how many matches were found and returned, and states the `skip` value that continues them. `limit` is a file-search field and a structure search rejects it.
 
 ### Unified result contract and settings
 
-Results return formatted text plus structured details `{ type, result, meta }` corresponding to the search type (`FileSearchDetails`, `TextSearchDetails`, or `StructureSearchDetails`). `meta` carries the limit and truncation record the output layer reads to append the notice and to skip re-spilling an already-spilled result.
+Results return formatted text plus structured details `{ type, result, meta }` corresponding to the search type (`FileSearchDetails`, `TextSearchDetails`, or `StructureSearchDetails`). `meta` contains the limit and truncation record the output layer reads to append the notice and to skip re-spilling an already-spilled result.
 
 Broad grouped multi-file text searches use progressive disclosure when the full formatted match set exceeds the session's discovery budget (scaled from an 8 KiB search-specific ceiling through the turn curve to ~2 KiB at turn 0). The full pre-disclosure output is saved to an artifact before compacting. The inline result emits up to two representative matches per file, total match and file counts, warnings, and an `artifact://<id>` recovery footer. Explicit single-file searches and line-range queries keep detailed output without compacting. Only the visible representative lines emitted with snapshot tags are recorded as seen for anchored editing; un-emitted matches remain unseen. If artifact storage is unavailable, broad searches fall back to generic turn-scaled head truncation.
 
@@ -136,9 +134,9 @@ shares infrastructure with the edit engine rather than touching the filesystem d
   behavior rather than bypassing it.
 - **Exclusive concurrency.** The tool declares `concurrency: "exclusive"`, so nothing else can create or
   change the target file mid-call.
-- **Steers to `edit` for surgery.** The tool description tells the model to prefer `edit` for a
-  surgical change to an existing file, keeping `write` from becoming a "re-emit the whole file" habit
-  that burns tokens.
+- **Steers to `edit` for surgery.** The tool description instructs the model to prefer `edit` for a
+  surgical change to an existing file, which keeps `write` from becoming a "re-emit the whole file"
+  habit that burns tokens.
 
 ## Sanitizing exec output for the model
 
@@ -146,22 +144,20 @@ Bash/exec tool output is sanitized before it reaches the model, via `sanitizeTex
 (`packages/utils/src/sanitize-text.ts`), used from `session/streaming-output.ts` and the interactive PTY
 capture path (`tools/shell/bash-interactive.ts`):
 
-- **ANSI stripping is Bun-native, not a hand-rolled parser.** `sanitizeText()` calls Bun's built-in
+- **ANSI stripping uses `Bun.stripANSI()`.** `sanitizeText()` calls Bun's built-in
   `Bun.stripANSI()` when an ESC byte is present, then strips C0/C1 control bytes and DEL with a single
-  regex pass. The function is a TypeScript replacement for a former Rust native
-  (`natives/bridge/addon/src/text.rs::sanitize_text`, noted in the current source comment), there is no
-  live Rust ECMA-48 grammar walker in this path today.
+  regex pass. Lone surrogates are removed before either step.
 - **Keep `\n` and `\t`, drop the rest.** The control regex covers C0 (excluding tab/newline), `\r`,
   DEL, and the C1 range; `\n` and `\t` are the two explicit exclusions.
 - **Model-facing only.** Sanitizing happens on the text that becomes tool output for the model. The TUI
-  renders exec output from its own delta stream and keeps its colors, so the operator's view is
-  untouched.
-- **Zero-cost when clean.** Well-formed input with no control/ANSI bytes returns the original string
-  reference after one regex probe; only output that actually carries escapes pays for `Bun.stripANSI()`.
+  renders exec output from its own delta stream and keeps its colors, so the terminal display is
+  unchanged.
+- **No copy for plain input.** Well-formed input with no control/ANSI bytes returns the original string
+  reference after one regex probe; only output that contains escapes pays for `Bun.stripANSI()`.
 
 ## Tool text per request
 
-Every request carries the name, description and JSON schema of every active tool. At the defaults
+Every request contains the name, description and JSON schema of every active tool. At the defaults
 that is 17 tools and about 14,000 tokens, paid on each request rather than once per session. The
 largest entries are `edit`, `eval`, `read`, `launch` and `bash`.
 
@@ -173,17 +169,12 @@ needs it, so the setting trades a fixed per-request cost for an occasional one.
 `tools.essentialOverride` sets which tools stay visible.
 
 A discovery search activates every match scoring at least half the best one. A weaker match is
-returned in `also_matched`, and a query naming it activates it. Rank order alone activated the whole
-tail: "keep track of what is left to do" activated `todo`, `set_cwd`, `task` and `web_search`, and
-an activated tool's schema is carried by every later request of the session.
+returned in `also_matched`, and a query that states its name activates it. An activated tool's
+schema is included in every later request of the session.
 
-Discovery ranks a tool on its full description and its one-line summary together. Ranking on the
-summary alone left 96 to 99 percent of each tool's text out of the corpus, so `launch` scored zero
-for "tail the output of a server" and `eval` scored zero for "evaluate javascript". A compound word
+Discovery ranks a tool on its full description and its one-line summary together. A compound word
 is indexed whole and in parts, so `sqlite` reaches `SQLite` and `java script` reaches `JavaScript`.
 
-## Why these are grouped with context
+## Related
 
-A read that bounds and a search that bounds its output are both about keeping the working context
-*small and relevant*. Long trajectories degrade when context fills with raw file dumps; these tools plus
-[compaction & project memory](./compaction-memory.md) are how a long task stays coherent.
+- [Compaction and project memory](./compaction-memory.md)

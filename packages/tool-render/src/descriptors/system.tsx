@@ -1,3 +1,4 @@
+import { formatDuration } from "@veyyon/utils/format";
 import { classifyGithubCheckRun } from "@veyyon/utils/github-check-run";
 import { stripTaskResultEnvelope } from "@veyyon/wire/task-result";
 import type { ReactNode } from "react";
@@ -480,14 +481,6 @@ function jobStatusTone(status: string): Tone | undefined {
 
 const JOB_STATUS_ORDER: Record<string, number> = { running: 0, failed: 1, cancelled: 2, completed: 3 };
 
-function formatJobDuration(ms: number): string {
-	if (ms < 1000) return `${Math.round(ms)}ms`;
-	const s = ms / 1000;
-	if (s < 60) return `${s.toFixed(1)}s`;
-	const m = Math.floor(s / 60);
-	return `${m}m ${Math.round(s % 60)}s`;
-}
-
 function JobRow({ job }: { job: JobSnapshotLike }): ReactNode {
 	const tone = jobStatusTone(job.status);
 	const label = normalizeWs(job.label) || "(no label)";
@@ -499,7 +492,7 @@ function JobRow({ job }: { job: JobSnapshotLike }): ReactNode {
 			{job.type && <Badge tone={tone}>{job.type}</Badge>}
 			{showId && <span className="tv-path"> {job.id}</span>}
 			<span> {truncate(label, 80)}</span>
-			{job.durationMs > 0 && <span className="tv-faint"> {formatJobDuration(job.durationMs)}</span>}
+			{job.durationMs > 0 && <span className="tv-faint"> {formatDuration(job.durationMs)}</span>}
 			{preview && <span className={job.errorText ? "tv-err-text" : "tv-faint"}> — {preview}</span>}
 		</Row>
 	);
@@ -1177,8 +1170,7 @@ function EvalBody({ name, args, result }: ToolRenderProps): ReactNode {
 					titleParts.push(...cell.attrs);
 					if (dc) {
 						if (dc.durationMs !== null) {
-							const ms = dc.durationMs;
-							titleParts.push(ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`);
+							titleParts.push(formatDuration(dc.durationMs));
 						}
 						if (dc.status === "error")
 							titleParts.push(dc.exitCode !== null ? `error (exit ${dc.exitCode})` : "error");

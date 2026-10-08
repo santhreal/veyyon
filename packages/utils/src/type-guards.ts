@@ -21,11 +21,18 @@ export function toError(value: unknown): Error {
  * message is empty: `throw new TypeError()` used to yield `""`, and a caller
  * splicing that into a sentence produced text that trailed off after the colon
  * and told the reader nothing. Anything else reports its string form, so a thrown
- * string, number, or object still says something.
+ * string, number, or object still says something. A value with no string form,
+ * such as a null-prototype object or one whose `toString` throws, reports its
+ * `Object.prototype.toString` tag instead of throwing from inside the caller's
+ * error handling.
  */
 export function errorMessage(value: unknown): string {
-	if (!(value instanceof Error)) return String(value);
-	return value.message || value.name;
+	if (value instanceof Error) return value.message || value.name;
+	try {
+		return String(value);
+	} catch {
+		return Object.prototype.toString.call(value);
+	}
 }
 
 /**

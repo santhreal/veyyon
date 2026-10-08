@@ -83,7 +83,7 @@ export function projectToolDisplay(params: ToolExecutionBuildParams): ToolExecut
 
 	// Avoid duplicating generic raw output if raw result is present
 	let generic = display.generic;
-	if (generic && generic.outputText && params.result) {
+	if (generic?.outputText && params.result) {
 		generic = {
 			...generic,
 			outputText: undefined,

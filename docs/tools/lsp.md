@@ -24,7 +24,7 @@
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `action` | string enum | Yes | One of `diagnostics`, `definition`, `references`, `hover`, `symbols`, `rename`, `rename_file`, `code_actions`, `type_definition`, `implementation`, `status`, `reload`, `capabilities`, `request`. |
+| `action` | string enum | Yes | One of `diagnostics`, `definition`, `references`, `hover`, `symbols`, `rename`, `rename_file`, `code_actions`, `type_definition`, `implementation`, `incoming_calls`, `outgoing_calls`, `status`, `reload`, `capabilities`, `request`. |
 | `file` | string | No | File path; for `diagnostics` also a glob; for workspace forms use `"*"`; for `rename_file` this is the source path. |
 | `line` | number | No | 1-indexed line number for position-based actions. Defaults to `1` on the single-file action path. |
 | `symbol` | string | No | Substring used to resolve the column on `line`. Supports `name#N` occurrence selectors; `N` is 1-indexed and defaults to `1`. Required when `line` is given for `definition`/`references`/`rename` against project-aware servers. |
@@ -101,6 +101,25 @@ Same as `definition`, but sends `textDocument/typeDefinition` and reports `type 
 
 ### `implementation`
 Same as `definition`, but sends `textDocument/implementation` and reports `implementation(s)`.
+
+### `incoming_calls`
+**Inputs**
+- Required: `file`.
+- Optional: `line`, `symbol`, `timeout`.
+
+**Execution**
+- Sends `textDocument/prepareCallHierarchy` with `{ textDocument, position }`, then `callHierarchy/incomingCalls` with `{ item }` for each item the server prepared.
+- Requires `symbol` when `line` is given on project-aware servers.
+- Waits for project load before the request.
+- Reads each call site's source line from the caller's file, each file once. A call site listed twice at one position is listed once.
+
+**Output text**
+- `No callable symbol at this position` when the server prepares no item.
+- Per item: `Found N caller(s) of <name> (<kind>) at file:line:col:`, then one row per caller, `<name> (<kind>) at file:line:col`, and under it one `line:col: <source>` row per call site. An item with no callers reads `No callers of <name> (<kind>) at file:line:col`.
+- Items are separated by a blank line. A result where no item has a caller is marked useless.
+
+### `outgoing_calls`
+Same as `incoming_calls`, but sends `callHierarchy/outgoingCalls`, lists the functions the item calls as `Found N callee(s) from <name> (<kind>) at file:line:col:`, and reads the call sites from the prepared item's file.
 
 ### `references`
 **Inputs**

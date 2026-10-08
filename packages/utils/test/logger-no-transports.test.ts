@@ -5,13 +5,10 @@ import * as path from "node:path";
 import { logger } from "@veyyon/utils";
 
 /**
- * Regression: `setTransports({ file: false, console: false })` left the shared
- * winston singleton with zero transports but not marked `silent`, so the next
- * emit hit winston's internal guard and `console.error`'d
- * "[winston] Attempt to write logs with no transports, which can increase
- * memory usage: …". Because the logger is a process-wide singleton, a single
- * test file that disabled transports poisoned every later file's log emits with
- * that warning. Disabling all transports must instead be a clean no-op.
+ * `setTransports({ file: false, console: false })` turns logging off: an emit writes no file line,
+ * nothing to stdout or stderr, and throws nothing. The logger is a process-wide singleton, so a
+ * test file that disabled transports and left a warning or a stray line behind poisoned every later
+ * file's output. Re-enabling a transport resumes writing.
  */
 
 let tempDir: string;
@@ -36,46 +33,50 @@ afterAll(() => {
 });
 
 describe("logger with no transports", () => {
-	it("does not warn on emit when every transport is disabled", () => {
-		// Ensure the singleton exists, then drop all transports at runtime.
+	it("writes nowhere when every transport is disabled", () => {
+		// Ensure the sinks exist, then drop all of them at runtime.
 		logger.setTransports({ file: tempDir, console: false });
 		logger.info("no-transports-warmup");
 		logger.setTransports({ file: false, console: false });
 
+		const stdoutSpy = spyOn(process.stdout, "write");
+		const stderrSpy = spyOn(process.stderr, "write");
 		const errorSpy = spyOn(console, "error");
+		let calls: unknown[][] = [];
 		try {
-			logger.warn("OAuth token refresh failed", {
+			logger.warn("no-transports-disabled-fixture", {
 				provider: "unit-oauth-select",
 				index: 1,
 				error: "Error: invalid_grant",
 				isDefinitiveFailure: true,
 			});
 		} finally {
+			calls = [...stdoutSpy.mock.calls, ...stderrSpy.mock.calls, ...errorSpy.mock.calls];
+			stdoutSpy.mockRestore();
+			stderrSpy.mockRestore();
 			errorSpy.mockRestore();
 		}
 
-		const noTransportWarnings = errorSpy.mock.calls.filter(args =>
-			args.some(a => typeof a === "string" && a.includes("Attempt to write logs with no transports")),
-		);
-		expect(noTransportWarnings).toEqual([]);
+		expect(calls).toEqual([]);
+		const written = fs
+			.readdirSync(tempDir)
+			.filter(n => n.startsWith("veyyon.") && n.endsWith(".log"))
+			.map(f => fs.readFileSync(path.join(tempDir, f), "utf8"))
+			.join("");
+		expect(written).toContain("no-transports-warmup");
+		expect(written).not.toContain("no-transports-disabled-fixture");
 	});
 
-	it("resumes writing once a transport is re-enabled", async () => {
+	it("resumes writing once a transport is re-enabled", () => {
 		logger.setTransports({ file: false, console: false });
-		// Re-attaching a transport must clear the silent flag set above.
 		logger.setTransports({ file: tempDir, console: false });
 		logger.warn("no-transports-resume-fixture");
-
-		let found = false;
-		for (let i = 0; i < 40 && !found; i++) {
-			for (const f of fs.readdirSync(tempDir).filter(n => n.startsWith("veyyon.") && n.endsWith(".log"))) {
-				if (fs.readFileSync(path.join(tempDir, f), "utf8").includes("no-transports-resume-fixture")) {
-					found = true;
-					break;
-				}
-			}
-			if (!found) await Bun.sleep(25);
-		}
-		expect(found).toBe(true);
+		// The file sink writes each line synchronously, so the line is on disk when the call returns.
+		const written = fs
+			.readdirSync(tempDir)
+			.filter(n => n.startsWith("veyyon.") && n.endsWith(".log"))
+			.map(f => fs.readFileSync(path.join(tempDir, f), "utf8"))
+			.join("");
+		expect(written).toContain("no-transports-resume-fixture");
 	});
 });

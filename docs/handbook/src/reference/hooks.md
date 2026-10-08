@@ -10,7 +10,7 @@ A hook is an extension module registered under the `hooks` capability. It is loa
 - tools are wrapped by `ExtensionToolWrapper`
 - context transforms and lifecycle emissions go through `ExtensionRunner`
 
-## Key files
+## Files
 
 - `src/extensibility/hooks/types.ts`: hook context, event types, and result contracts
 - `src/extensibility/hooks/index.ts`: type exports
@@ -136,7 +136,7 @@ The approval policy (`tools.approvalMode`, `tools.approval.<tool>`) is checked b
 ### 2) Pre-execution: `tool_call`
 
 - if any handler returns `{ block: true }`, execution stops and the returned `reason` becomes the thrown error text
-- if a handler throws or times out, the call is blocked with a reason that names the extension path
+- if a handler throws or times out, the call is blocked with a reason that states the extension path
 
 ### 3) Tool execution
 
@@ -182,7 +182,7 @@ For `hooks`, capability key is `${type}:${tool}:${name}`. Shadowed duplicates fr
 
 Inside `ExtensionRunner`, handlers run in load order, then in registration order within a module.
 
-- `tool_call`: the first `{ block: true }` short-circuits; a handler that throws or does not answer within the handler timeout blocks the call with a reason that names the extension path
+- `tool_call`: the first `{ block: true }` short-circuits; a handler that throws or does not answer within the handler timeout blocks the call with a reason that states the extension path
 - `tool_result`: each handler receives the event as modified by the handlers before it; the last value set for `content`, `details` and `isError` wins
 
 Command conflicts: a name two extensions register is reported once per session to the operator channel, and the later registration wins. A name that collides with a built-in command is reported the same way.
@@ -227,7 +227,7 @@ Hook status text set via `ctx.ui.setStatus(key, text)` is:
 
 `ExtensionRunner` catches a handler error for most events and emits it to error listeners (`extensionPath`, `event`, `error`), then continues.
 
-`emitToolCall(...)` is stricter: a handler that throws or times out blocks the tool call, with a reason that names the extension path.
+`emitToolCall(...)` is stricter: a handler that throws or times out blocks the tool call, with a reason that states the extension path.
 
 ## Realistic API examples
 

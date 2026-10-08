@@ -16,10 +16,12 @@
  *   ("Request timed out.").
  * - Caller aborts throw an `Error` with message "Request was aborted.".
  * - Retries: connection errors and 408/409/429/5xx (or `x-should-retry: true`)
- *   are retried up to `maxRetries` times, honoring `retry-after-ms` /
- *   `retry-after` up to `maxRetryDelayMs` (a longer hint surfaces the refusal
- *   instead of sleeping on it), otherwise exponential backoff (0.5s * 2^n,
- *   capped at 8s, with up to 25% jitter).
+ *   are retried up to `maxRetries` times, honoring the server-directed wait
+ *   {@link getRetryAfterMsFromHeaders} reads (`retry-after-ms`, `retry-after`,
+ *   `x-ratelimit-reset[-ms]`, then Anthropic's per-bucket reset clocks) up to
+ *   `maxRetryDelayMs` (a longer hint surfaces the refusal instead of sleeping on
+ *   it), otherwise exponential backoff (0.5s * 2^n, capped at 8s, shortened by
+ *   up to 25% jitter).
  */
 import { scheduler } from "node:timers/promises";
 import * as AIError from "../error";
@@ -28,16 +30,18 @@ import { AnthropicApiError, AnthropicConnectionError, AnthropicConnectionTimeout
 export { AnthropicApiError, AnthropicConnectionError, AnthropicConnectionTimeoutError };
 
 import { ANTHROPIC_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
+import { exponentialBackoffDelay } from "@veyyon/utils/backoff";
 import { DEFAULT_MAX_DELAY_MS } from "@veyyon/utils/fetch-retry";
 import type { FetchImpl } from "../types";
+import { getRetryAfterMsFromHeaders } from "../utils/retry-after";
 import type { MessageCreateParamsStreaming } from "./anthropic-wire";
 
 /** Default pre-response timeout, matching the SDK's 10-minute default. */
 const DEFAULT_TIMEOUT_MS = 600_000;
 /** Default retry budget, matching the SDK's default. */
 const DEFAULT_MAX_RETRIES = 2;
-const INITIAL_RETRY_DELAY_S = 0.5;
-const MAX_RETRY_DELAY_S = 8;
+const INITIAL_RETRY_DELAY_MS = 500;
+const MAX_RETRY_DELAY_MS = 8_000;
 
 /** Per-request options accepted by {@link AnthropicMessages.create}. */
 export interface AnthropicRequestOptions {
@@ -107,28 +111,23 @@ function createAbortError(): Error {
  */
 const ANTHROPIC_RESPONSE_RETRY_POLICY: AIError.ResponseRetryPolicy = { api: "anthropic", alsoRetry: [409] };
 
-/** Server-suggested delay (`retry-after-ms`, then `retry-after` seconds or HTTP date). */
+/**
+ * Server-directed wait for an Anthropic response, read by the shared
+ * {@link getRetryAfterMsFromHeaders}: `retry-after-ms`, `retry-after`, the
+ * `x-ratelimit-reset` pair, and the per-bucket `anthropic-ratelimit-*-reset`
+ * clocks when no direct answer is present.
+ */
 export function retryDelayFromHeaders(headers: Headers | undefined): number | undefined {
-	if (!headers) return undefined;
-	const retryAfterMs = headers.get("retry-after-ms");
-	if (retryAfterMs) {
-		const ms = Number.parseFloat(retryAfterMs);
-		if (Number.isFinite(ms) && ms >= 0) return ms;
-	}
-	const retryAfter = headers.get("retry-after");
-	if (retryAfter) {
-		const seconds = Number.parseFloat(retryAfter);
-		if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
-		const dateMs = Date.parse(retryAfter) - Date.now();
-		if (Number.isFinite(dateMs) && dateMs >= 0) return dateMs;
-	}
-	return undefined;
+	return getRetryAfterMsFromHeaders(headers);
 }
 
+/** Backoff for a zero-based retry `attempt`: 0.5s doubled per attempt, capped at 8s, shortened by up to 25%. */
 export function calculateAnthropicRetryDelayMs(attempt: number): number {
-	const sleepSeconds = Math.min(INITIAL_RETRY_DELAY_S * 2 ** attempt, MAX_RETRY_DELAY_S);
-	const jitter = 1 - Math.random() * 0.25;
-	return sleepSeconds * jitter * 1000;
+	return exponentialBackoffDelay(attempt, {
+		baseMs: INITIAL_RETRY_DELAY_MS,
+		maxMs: MAX_RETRY_DELAY_MS,
+		jitterSpread: "below",
+	});
 }
 
 function hasHeaderCaseInsensitive(headers: Record<string, string>, lowerName: string): boolean {
@@ -241,7 +240,7 @@ export class AnthropicMessagesClient implements AnthropicMessagesClientLike {
 			} catch (error) {
 				if (callerSignal?.aborted) throw createAbortError();
 				if (attempt < maxRetries) {
-					await this.#backoff(attempt, undefined, callerSignal);
+					await backoff(attempt, undefined, callerSignal);
 					continue;
 				}
 				if (error instanceof AIError.AnthropicConnectionTimeoutError) throw error;
@@ -264,7 +263,7 @@ export class AnthropicMessagesClient implements AnthropicMessagesClientLike {
 					// Cancelling a body no one will read. The error that matters is raised around this line, and a stream
 					// that refuses to cancel -- usually because it already ended -- changes nothing about it.
 					await response.body?.cancel().catch(() => {});
-					await this.#backoff(attempt, response.headers, callerSignal);
+					await backoff(attempt, response.headers, callerSignal);
 					continue;
 				}
 			}
@@ -304,17 +303,17 @@ export class AnthropicMessagesClient implements AnthropicMessagesClientLike {
 			callerSignal?.removeEventListener("abort", onAbort);
 		}
 	}
+}
 
-	async #backoff(
-		attempt: number,
-		responseHeaders: Headers | undefined,
-		signal: AbortSignal | undefined,
-	): Promise<void> {
-		const delayMs = retryDelayFromHeaders(responseHeaders) ?? calculateAnthropicRetryDelayMs(attempt);
-		try {
-			await scheduler.wait(delayMs, { signal });
-		} catch {
-			throw createAbortError();
-		}
+async function backoff(
+	attempt: number,
+	responseHeaders: Headers | undefined,
+	signal: AbortSignal | undefined,
+): Promise<void> {
+	const delayMs = retryDelayFromHeaders(responseHeaders) ?? calculateAnthropicRetryDelayMs(attempt);
+	try {
+		await scheduler.wait(delayMs, { signal });
+	} catch {
+		throw createAbortError();
 	}
 }

@@ -1022,16 +1022,6 @@ export function statementById(id: string): PromptStatementEntry | undefined {
 }
 
 /**
- * Every template variable the statements depend on, deduplicated.
- *
- * This is what replaces regexing `system-prompt.md` to find out what the prompt gates on. A
- * reader, and a test, can ask the registry.
- */
-export const STATEMENT_CONDITION_VARIABLES: readonly string[] = [
-	...new Set(PROMPT_STATEMENTS.flatMap(statement => conditionVariables(statement.condition))),
-];
-
-/**
  * The context variables a condition reads.
  *
  * This function takes the full condition union so every condition form stays
@@ -1096,39 +1086,51 @@ function isTruthy(value: unknown): boolean {
 }
 
 /**
- * Assemble one static section's template text from its statements.
+ * One static section as the templates it is written from, in order: its banner, then the text of
+ * each statement whose condition holds, or that statement's override.
  *
  * Statement files carry their own trailing newline and are concatenated without
- * an added separator. `assembleDefaultTemplate` owns separators between sections.
+ * an added separator. `defaultTemplatePieces` owns separators between sections.
  *
  * The section registry owns banner names and `renderBanner` owns their bytes.
- * `assembleSection` prepends that banner once. Statement files and body-only
- * operator replacements therefore never contain banners. `conventions` has no
+ * The banner comes first, once. Statement files and body-only operator
+ * replacements therefore never contain banners. `conventions` has no
  * registered name and remains the bannerless preamble.
  *
- * The result is template text, not rendered text. Statement modules may contain
- * Handlebars for wording-level variation. `buildSystemPrompt` renders and
- * formats the complete assembled document once, so statement boundaries cannot
- * change normalization behavior.
+ * Each entry is template text, not rendered text. Statement modules may contain
+ * Handlebars for wording-level variation. `buildSystemPrompt` renders the whole
+ * sequence with `prompt.renderSequence`, which renders what the joined text
+ * renders, and formats the result once, so statement boundaries cannot change
+ * normalization behavior.
  */
-export function assembleSection(
+export function sectionTemplates(
 	section: string,
 	context: StatementContext,
 	overrides: StatementOverrides = {},
-): string {
-	let out = sectionBanner(section);
+): string[] {
+	const banner = sectionBanner(section);
+	const templates = banner === "" ? [] : [banner];
 	for (const statement of statementsOf(section)) {
 		if (!conditionHolds(statement.condition, context)) continue;
 		// `Object.hasOwn`, not a truthiness check: `""` is a legitimate override meaning "keep the
 		// statement present and say nothing", and it is distinct from `null`, which ablates the row.
 		if (!Object.hasOwn(overrides, statement.id)) {
-			out += statement.text;
+			templates.push(statement.text);
 			continue;
 		}
 		const replacement = overrides[statement.id];
-		if (replacement !== null) out += replacement;
+		if (replacement !== null) templates.push(replacement);
 	}
-	return out;
+	return templates;
+}
+
+/** One static section's template text: its {@link sectionTemplates}, joined. */
+export function assembleSection(
+	section: string,
+	context: StatementContext,
+	overrides: StatementOverrides = {},
+): string {
+	return sectionTemplates(section, context, overrides).join("");
 }
 
 /**

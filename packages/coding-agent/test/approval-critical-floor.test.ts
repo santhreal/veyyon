@@ -230,7 +230,17 @@ describe("the bash tool's own decisions", () => {
 		const { makeToolSession } = await import("./helpers/tool-session");
 		const bash = new BashTool(makeToolSession());
 
-		expect(bash.approval({ command: "rm -rf /mnt/photos" })).toBe("exec");
+		const decision = bash.approval({ command: "rm -rf /mnt/photos" });
+		const flags =
+			typeof decision === "string"
+				? { tier: decision }
+				: {
+						tier: decision.tier,
+						reason: decision.reason,
+						override: decision.override,
+						critical: decision.critical,
+					};
+		expect(flags).toEqual({ tier: "exec" });
 	});
 
 	/**

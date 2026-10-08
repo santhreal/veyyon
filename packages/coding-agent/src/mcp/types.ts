@@ -464,3 +464,24 @@ export function toJsonRpcError(error: unknown): JsonRpcError {
 	}
 	return { code: -32603, message: "Internal error" };
 }
+
+/** A response to a server-to-client request, whose id the transport always read. */
+export type ServerRequestResponse = JsonRpcResponse & Pick<JsonRpcRequest, "id">;
+
+/**
+ * The JSON-RPC response a transport sends for a server-to-client request.
+ *
+ * A transport with no `onRequest` handler answers "Method not found", a handler that throws answers with
+ * {@link toJsonRpcError} of the thrown value, and a handler that returns nothing answers an empty result.
+ */
+export async function answerServerRequest(
+	onRequest: MCPTransport["onRequest"],
+	request: JsonRpcRequest,
+): Promise<ServerRequestResponse> {
+	if (!onRequest) return { jsonrpc: "2.0", id: request.id, error: { code: -32601, message: "Method not found" } };
+	try {
+		return { jsonrpc: "2.0", id: request.id, result: (await onRequest(request.method, request.params)) ?? {} };
+	} catch (error) {
+		return { jsonrpc: "2.0", id: request.id, error: toJsonRpcError(error) };
+	}
+}

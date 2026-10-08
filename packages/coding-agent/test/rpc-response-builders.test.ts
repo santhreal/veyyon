@@ -3,7 +3,7 @@ import {
 	rpcErrorResponse,
 	rpcSuccessResponse,
 	rpcUnknownCommandResponse,
-} from "@veyyon/coding-agent/modes/rpc/rpc-mode";
+} from "@veyyon/coding-agent/modes/rpc/rpc-commands";
 import type { RpcSessionState } from "@veyyon/coding-agent/modes/rpc/rpc-types";
 
 /**

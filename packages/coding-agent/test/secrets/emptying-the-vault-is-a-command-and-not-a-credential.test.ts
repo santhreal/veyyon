@@ -25,13 +25,8 @@
  */
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import {
-	parseSecretCommand,
-	runSecretCommand,
-	SECRET_SUBCOMMAND_SHAPES,
-	SECRET_TUI_SUBCOMMANDS,
-	SECRET_VERB_SPELLINGS,
-} from "../../src/secrets/secret-command";
+import { parseSecretCommand, runSecretCommand, SECRET_SUBCOMMAND_SHAPES } from "../../src/secrets/secret-command";
+import { SECRET_TUI_SUBCOMMANDS, SECRET_VERB_SPELLINGS } from "../../src/secrets/secret-verbs";
 import { resolveVaultLocations, SecretVault } from "../../src/secrets/vault";
 import { useTrackedTempDirFactory } from "../helpers/tracked-temp-dir";
 

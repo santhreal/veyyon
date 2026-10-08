@@ -2,7 +2,7 @@
 
 The auth broker and auth gateway are two cooperating HTTP services that move OAuth refresh tokens and provider access tokens off developer laptops and into a single broker host.
 
-- **`veyyon auth-broker serve`** holds the canonical SQLite credential vault, performs OAuth refreshes, and exposes a small REST API (`/v1/snapshot`, `/v1/snapshot/stream`, `/v1/credential/:id/refresh`, `/v1/credential/:id/disable`, `/v1/credential`, `/v1/usage`, `/v1/healthz`).
+- **`veyyon auth-broker serve`** holds the canonical SQLite credential vault, performs OAuth refreshes, and exposes a small REST API (`/v1/snapshot`, `/v1/snapshot/stream`, `/v1/credential`, `/v1/credential/:id/refresh`, `/v1/credential/:id/disable`, `/v1/credential/:id/block`, `/v1/credential/:id/blocks`, `/v1/usage`, `/v1/usage/stale`, `/v1/healthz`).
 - **`veyyon auth-gateway serve`** is a forward-proxy. It accepts OpenAI Chat Completions, Anthropic Messages, OpenAI Responses, and pi-native stream requests, resolves the broker-backed credential, and dispatches through `pi-ai` provider logic. Clients (containerised veyyon, llm-git, the macOS usage widget, …) never see the access token.
 
 Transport security between operator, broker, and gateway is delegated to the operator (Tailscale / Wireguard / reverse proxy + TLS). Every endpoint except `/v1/healthz` (broker) and `/healthz` (gateway) requires a bearer token.
@@ -56,9 +56,9 @@ veyyon auth-broker migrate   --from-local [--include-oauth] [--include-env] [--d
 veyyon auth-broker status    [--json]
 ```
 
-- `serve` opens the local SQLite store at `getAgentDbPath()` and binds an HTTP listener (default `127.0.0.1:8765`). On startup a token is ensured at `<config-dir>/auth-broker.token` (mode `0600`, `0700` parent dir). The background refresher refreshes any OAuth credential whose `expires - Date.now() < refreshSkewMs` (default 5 min) every `refreshIntervalMs` (default 60 s).
+- `serve` opens the active SQLite credential store at `getActiveAuthDbPath()` (the machine-wide shared store when profile sharing is on, otherwise the profile's `agent.db`) and binds an HTTP listener (default `127.0.0.1:8765`). On startup a token is ensured at `<config-dir>/auth-broker.token` (mode `0600`, `0700` parent dir). The background refresher refreshes any OAuth credential whose `expires - Date.now() < refreshSkewMs` (default 5 min) every `refreshIntervalMs` (default 60 s).
 - `token` prints the cached bearer or generates a new one. `--regenerate` rotates it.
-- `login [<provider>]` runs the per-provider OAuth flow locally, when no provider is supplied, it falls back to an interactive numbered picker. With `--via=user@host` it shells out `ssh -L <callback-port>:127.0.0.1:<callback-port> user@host veyyon auth-broker login <provider>` so the OAuth callback hits the local browser but the credential is written on the broker host (`--via` requires `<provider>`). Built-in callback ports: `anthropic:54545`, `openai-codex:1455`, `google-gemini-cli:8085`, `google-antigravity:51121`, `gitlab-duo:8080`. The OAuth dance is driven in-process via `AuthStorage.login()`, there is no longer a `pi-ai` bin to spawn.
+- `login [<provider>]` runs the per-provider OAuth flow locally, when no provider is supplied, it falls back to an interactive numbered picker. With `--via=user@host` it shells out `ssh -L <callback-port>:127.0.0.1:<callback-port> user@host veyyon auth-broker login <provider>` so the OAuth callback hits the local browser but the credential is written on the broker host (`--via` requires `<provider>`). Callback ports come from each provider registry entry's `callbackPort`: `anthropic:54545`, `openai-codex:1455`, `google-gemini-cli:8085`, `google-antigravity:51121`, `gitlab-duo:8080`, `gitlab-duo-agent:8080`, `devin:59653`. The OAuth dance is driven in-process via `AuthStorage.login()`, there is no longer a `pi-ai` bin to spawn.
 - `logout [<provider>]` deletes every credential row for `<provider>`. With no argument it shows an interactive numbered picker of currently-stored providers.
 - `list` enumerates every registered OAuth provider id/name (the union of built-ins + `registerOAuthProvider` custom providers). `--json` emits a machine-readable array.
 - `import <file|dir>` imports CLIProxyAPI-style JSON credentials into the local SQLite store. Maps `type` field → veyyon provider (`claude → anthropic`, `codex → openai-codex`, `gemini → google-gemini-cli`, `antigravity → google-antigravity`, `gemini-cli → google-gemini-cli`).
@@ -67,23 +67,26 @@ veyyon auth-broker status    [--json]
 
 ### Endpoints
 
-| Method | Path                         | Auth   | Purpose                                                 |
-| ------ | ---------------------------- | ------ | ------------------------------------------------------- |
-| `GET`  | `/v1/healthz`                | none   | Liveness + version                                      |
-| `GET`  | `/v1/snapshot`               | bearer | Redacted snapshot (refresh tokens replaced by sentinel) |
-| `GET`  | `/v1/snapshot/stream`        | bearer | SSE snapshot stream with delta events and keepalives    |
-| `POST` | `/v1/credential`             | bearer | Upsert one OAuth or API-key credential                  |
-| `POST` | `/v1/credential/:id/refresh` | bearer | Force-refresh one OAuth credential                      |
-| `POST` | `/v1/credential/:id/disable` | bearer | Disable one credential with a recorded cause            |
-| `GET`  | `/v1/usage`                  | bearer | Aggregate `UsageReport[]` across credentials            |
+| Method   | Path                         | Auth   | Purpose                                                 |
+| -------- | ---------------------------- | ------ | ------------------------------------------------------- |
+| `GET`    | `/v1/healthz`                | none   | Liveness + version                                      |
+| `GET`    | `/v1/snapshot`               | bearer | Redacted snapshot (refresh tokens replaced by sentinel) |
+| `GET`    | `/v1/snapshot/stream`        | bearer | SSE snapshot stream with delta events and keepalives    |
+| `POST`   | `/v1/credential`             | bearer | Upsert one OAuth or API-key credential                  |
+| `POST`   | `/v1/credential/:id/refresh` | bearer | Force-refresh one OAuth credential                      |
+| `POST`   | `/v1/credential/:id/disable` | bearer | Disable one credential with a recorded cause            |
+| `POST`   | `/v1/credential/:id/block`   | bearer | Upsert a usage block (provider key, scope, until)       |
+| `DELETE` | `/v1/credential/:id/blocks`  | bearer | Delete every usage block on one credential              |
+| `GET`    | `/v1/usage`                  | bearer | Aggregate `UsageReport[]` across credentials            |
+| `POST`   | `/v1/usage/stale`            | bearer | Invalidate the broker's usage-report cache              |
 
-Requests use `Authorization: Bearer <token>`. The server compares against an in-memory token allow-list; the gateway’s implementation uses a timing-safe comparison.
+Requests use `Authorization: Bearer <token>`. Both the broker and the gateway compare the presented token against an in-memory allow-list with a timing-safe comparison (`BearerAllowList`, `packages/ai/src/utils/http-server.ts`).
 
 ### Background refresher
 
-`AuthBrokerRefresher` iterates active OAuth credentials at `refreshIntervalMs` cadence and refreshes any within `refreshSkewMs` of expiry. Refreshes are single-flighted per credential id so a slow refresh cannot be retriggered. The refresher distinguishes:
+`AuthBrokerRefresher` iterates active OAuth credentials at `refreshIntervalMs` cadence and refreshes any within `refreshSkewMs` of expiry. Refreshes are single-flighted per credential id inside `AuthStorage`, so a manual `POST /v1/credential/:id/refresh` and a background sweep share one upstream attempt. Failures are classified by `isDefinitiveOAuthFailure`:
 
-- **definitive failures** (`invalid_grant`, `invalid_token`, `revoked`, unauthorized refresh-token, 401/403 not from a network blip): credentials are passed to `AuthStorage.disableCredentialById(id, cause)` so the next snapshot pull surfaces a clean delete on the client;
+- **definitive failures** (`invalid_grant`, `invalid_token`, `revoked`, unauthorized refresh-token, 401/403 not from a network blip): `AuthStorage.refreshCredentialById` disables the row with a compare-and-set, only when no peer refresh or login rotated it first, so the next snapshot pull surfaces a clean delete on the client;
 - **transient failures** (timeout / ECONNREFUSED / fetch failed): left in place for the next sweep.
 
 ## auth-gateway
@@ -128,7 +131,7 @@ Two layers cache the aggregate provider-usage report. Both are intentional and s
 
 `AuthStorage` caches each credential’s `UsageReport` in the broker’s SQLite store at a **5-minute per-credential TTL with ±25 % jitter**. Anthropic and OpenAI rate-limit `/usage` aggressively per source IP, and a synchronized 5-credential fan-out trips 429s every cycle; the jitter decorrelates refresh times within a few cycles. On fetch failure the store keeps the **last-good** report for up to 24 h with a short jittered re-poll window, so a transient upstream blip never blanks out the widget.
 
-Constants: `USAGE_REPORT_TTL_MS = 5 * 60_000`, `USAGE_LAST_GOOD_RETENTION_MS = 24 * 60 * 60_000` (`packages/ai/src/auth-storage.ts`).
+Constants: `USAGE_REPORT_TTL_MS = 5 * 60_000` (`packages/ai/src/auth-credential-rows.ts`), `USAGE_LAST_GOOD_RETENTION_MS = 24 * 60 * 60_000` (`packages/ai/src/auth-storage/usage-cache.ts`).
 
 ### Client-side single-flight (`RemoteAuthCredentialStore`)
 
@@ -142,7 +145,7 @@ The 15 s client window deliberately sits below the broker’s 5 min server cache
 
 ## Client snapshot cache
 
-`discoverAuthStorage()` persists the broker snapshot to `~/.veyyon/cache/auth-broker-snapshot.enc` after the initial `/v1/snapshot` fetch and after later broker-sourced full snapshots. The file is AES-256-GCM encrypted with `SHA-256(VEYYON_AUTH_BROKER_TOKEN)` and authenticated with the broker URL as additional data, so changing either the token or URL makes the cache unreadable. The file is written atomically with mode `0600`.
+`discoverAuthStorage()` persists the broker snapshot to `<config-dir>/cache/auth-broker-snapshot.enc` after the initial `/v1/snapshot` fetch, before the background sync starts, and after later broker-sourced full snapshots. The file is AES-256-GCM encrypted with `SHA-256(<broker bearer token>)` and authenticated with the broker URL as additional data, so changing either the token or URL makes the cache unreadable. The file is written atomically with mode `0600`.
 
 Freshness is anchored to the broker-stamped `snapshot.generatedAt`, not local write time. Default TTL is 1 h (`VEYYON_AUTH_BROKER_SNAPSHOT_TTL_MS`); `0` disables the cache and restores the old always-fetch boot path. When the cached snapshot is still fresh, `veyyon` boots from it and skips the blocking `/v1/snapshot` query. `RemoteAuthCredentialStore` still starts its normal SSE / long-poll background sync immediately, so deleted or rotated credentials reconcile after startup, and expired OAuth access tokens still refresh through `POST /v1/credential/:id/refresh`.
 
@@ -150,7 +153,7 @@ If the broker is down at boot and a fresh cache exists, startup now succeeds fro
 
 ## Operator opt-in
 
-The broker is **off** unless `VEYYON_AUTH_BROKER_URL` (or `auth.broker.url` in `config.yml`) is set. When set, `discoverAuthStorage` in `packages/coding-agent/src/sdk.ts` swaps the local SQLite credential store for `RemoteAuthCredentialStore` and every API call resolves credentials through the broker.
+The broker is **off** unless `VEYYON_AUTH_BROKER_URL` (or `auth.broker.url` in `config.yml`) is set. When set, `discoverAuthStorage` (`packages/coding-agent/src/session/auth-broker-config.ts`, delegating to `packages/ai/src/auth-broker/discover.ts`) swaps the local SQLite credential store for `RemoteAuthCredentialStore` and every API call resolves credentials through the broker.
 
 ### Environment variables
 
@@ -159,13 +162,15 @@ The broker is **off** unless `VEYYON_AUTH_BROKER_URL` (or `auth.broker.url` in `
 | `VEYYON_AUTH_BROKER_URL`   | Base URL of the remote auth-broker (e.g. `https://broker.tailnet:8765`). Selecting this puts the client in broker mode, local SQLite is bypassed. | Any time the veyyon client should resolve credentials through a broker (and required by `veyyon auth-gateway serve`).           |
 | `VEYYON_AUTH_BROKER_TOKEN` | Bearer token used for every broker endpoint except `/v1/healthz`.                                                                                  | When `VEYYON_AUTH_BROKER_URL` is set and no token is available from `auth.broker.token` or `<config-dir>/auth-broker.token`. |
 | `VEYYON_AUTH_BROKER_SNAPSHOT_TTL_MS` | Freshness window for the encrypted local snapshot cache. Default `3600000` (1 h); `0` disables cache reads and writes. | Optional in broker mode. |
-| `VEYYON_AUTH_BROKER_SNAPSHOT_CACHE`  | Path override for the encrypted local snapshot cache. Default `~/.veyyon/cache/auth-broker-snapshot.enc` (or XDG cache equivalent). | Optional in broker mode. |
+| `VEYYON_AUTH_BROKER_SNAPSHOT_CACHE`  | Path override for the encrypted local snapshot cache. Default `<config-dir>/cache/auth-broker-snapshot.enc` (or the XDG cache equivalent). | Optional in broker mode. |
 
 Resolution order in `resolveAuthBrokerConfig()`:
 
-1. `VEYYON_AUTH_BROKER_URL` env (else `auth.broker.url` from `config.yml`, resolved through `resolveConfigValue`);
-2. `VEYYON_AUTH_BROKER_TOKEN` env (else `auth.broker.token` from `config.yml`, else `<config-dir>/auth-broker.token`);
+1. `VEYYON_AUTH_BROKER_URL` env (else `auth.broker.url` from the profile's `config.yml`, else from the global `~/.veyyon/config.yml`, resolved through `resolveConfigValue`);
+2. `VEYYON_AUTH_BROKER_TOKEN` env (else `auth.broker.token` from the profile's, then the global, `config.yml`, else `<config-dir>/auth-broker.token`);
 3. URL set but no token resolvable → hard error pointing at the token file path.
+
+Only the config value that supplies a key is resolved: a value an env var overrides, and the token when no URL is configured, are never passed to `resolveConfigValue`, so their `!command` does not run. A config value that resolves to an empty string counts as unset.
 
 The gateway has no dedicated env vars, it inherits `VEYYON_AUTH_BROKER_*` because it is itself a broker client.
 
@@ -183,7 +188,7 @@ The gateway has no dedicated env vars, it inherits `VEYYON_AUTH_BROKER_*` becaus
 | `<config-dir>/auth-broker.token`  | `veyyon auth-broker serve` (created at first start)     | `0600` in a `0700` parent dir |
 | `<config-dir>/auth-gateway.token` | `veyyon auth-gateway serve` (skipped under `--no-auth`) | `0600` in a `0700` parent dir |
 
-`<config-dir>` resolves to `~/.veyyon/` (respecting `VEYYON_CONFIG_DIR`).
+`<config-dir>` resolves to the active profile's root, `~/.veyyon/profiles/<profile>/` (respecting `VEYYON_CONFIG_DIR`).
 
 ## Interaction with the local API-key resolution order
 
@@ -197,4 +202,4 @@ The broker only owns OAuth credentials and provider-API-key credentials that wer
 - [`../handbook/src/reference/models-yml.md`](../handbook/src/reference/models-yml.md): provider auth resolution order; the broker plugs in at layers 2–3 (stored credentials).
 - [`../handbook/src/reference/environment-complete.md`](../handbook/src/reference/environment-complete.md): full env reference including `VEYYON_AUTH_BROKER_URL` / `VEYYON_AUTH_BROKER_TOKEN`.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `87608618e8` on 2026-10-07.*

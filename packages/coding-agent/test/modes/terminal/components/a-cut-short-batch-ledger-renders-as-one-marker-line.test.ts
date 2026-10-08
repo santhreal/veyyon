@@ -53,7 +53,7 @@ function makeUiHelpers(): { helpers: UiHelpers; chatContainer: Container } {
 		getUserMessageText: (message: AgentMessage) =>
 			message.role === "user" && typeof message.content === "string" ? message.content : "",
 		viewSession: { sessionManager: { putBlobSync: () => "blob://unused" } },
-		editor: { addToHistory: () => {} },
+		editor: { seedHistory: () => {} },
 		ui: { requestRender: () => {} },
 	} as unknown as InteractiveModeContext;
 	return { helpers: new UiHelpers(ctx), chatContainer };

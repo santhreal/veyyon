@@ -70,7 +70,7 @@ The room secret is dot-joined in newly generated links because RFC 3986 forbids 
 
 ## End-to-end encryption
 
-Every session payload (entries, events, state, prompts) is sealed with AES-256-GCM before it touches the socket. The relay sees only:
+Every session payload (entries, events, state, prompts) is sealed with AES-256-GCM before it touches the socket. The relay receives only:
 
 - room ids and connection counts,
 - opaque ciphertext frames and their sizes,
@@ -85,9 +85,9 @@ Two trust levels, enforced by the link itself, the host verifies the 16-byte wri
 Guests with a full link can:
 
 - read the entire session (including the back-transcript at join time),
-- prompt the agent (rendered with their name badge on every participant's transcript; the LLM sees the prompt text verbatim: names are display-only),
+- prompt the agent (rendered with their name badge on every participant's transcript; the LLM receives the prompt text verbatim, and the badge is display-only),
 - interrupt the agent (Esc),
-- use the agent dashboard against the host's agents: live roster and progress, chat (steers the host's agent), kill, and transcript viewing (fetched from the host on demand). A guest reads a transcript rather than taking over a session, because the sessions live on the host.
+- use the agent dashboard against the host's agents: live roster and progress, chat (steers the host's agent), kill, and transcript viewing (fetched from the host on demand). A guest reads a transcript rather than taking over a session, because the sessions run on the host.
 
 Guests with a view-only link can read everything live, back-transcript, streaming text, tool cards, agent transcripts, but the host rejects prompting, interrupting, and agent control from them.
 

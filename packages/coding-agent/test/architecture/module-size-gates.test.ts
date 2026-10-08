@@ -9,11 +9,16 @@
  * a recorded reason, not a target. Two of them are far above the 800-line figure
  * the plan asked for, and that is stated rather than hidden:
  *
- * `core/tui.ts` is 3757 lines. MEASURED 2026-09-26, after the escape sequences
- * each paint emits moved to `core/paint-sequences.ts` and the records one frame
- * phase hands the next moved to `core/frame-plan.ts`; it was 3790 before them,
- * up from 3612 at the split with upstream edits to the pre-split monolith. The
- * sibling modules were carved out of a 5415-line
+ * `core/tui.ts` is 3800 lines. MEASURED 2026-10-04, after the frame throttle
+ * and the terminal hosts' settle windows moved to `core/frame-pacing.ts`; it
+ * was 3821 at 2026-09-30, after the queue of
+ * virtualized roots a component-scoped frame compacts and the switch that
+ * records the scroll tape only while scroll isolation reads it; it was 3757 at
+ * 2026-09-26, after the escape sequences each paint emits moved to
+ * `core/paint-sequences.ts` and the records one frame phase hands the next
+ * moved to `core/frame-plan.ts`, 3790 before them, and 3612 at the split with
+ * upstream edits to the pre-split monolith. The sibling modules were carved out
+ * of a 5415-line
  * file, and what remains is the `TUI` class itself: one object holding about
  * sixty private fields that the compose, paint, scroll-isolation, cursor,
  * overlay and input paths all mutate within a single frame. Splitting it
@@ -42,14 +47,16 @@ import { isDirectory, lineCount, repoPath, repoRelative, typeScriptFiles } from 
  * MEASURED 2026-08-27, with headroom of roughly ten percent so an ordinary edit
  * does not fail the gate and a new subsystem does. The keys are full paths so a
  * reader can find the module, and so the repository's "a shipped module arrives
- * with a test that names it" gate counts these as named.
+ * with a test that names it" gate counts these as named. `core/component-types.ts`
+ * RE-MEASURED 2026-09-30 at 328, after `Component.releaseRenderCache()` and the
+ * empty child set of a compacting frame joined the contract it declares.
  */
 const CORE_CEILINGS: Record<string, number> = {
-	"core/tui.ts": 3800,
+	"core/tui.ts": 3860,
 	"core/renderer.ts": 700,
 	"core/overlay.ts": 560,
 	"core/image-budget.ts": 330,
-	"core/component-types.ts": 320,
+	"core/component-types.ts": 360,
 	"core/terminal-session.ts": 300,
 	"core/cursor.ts": 230,
 	"core/scroll.ts": 200,
@@ -57,6 +64,7 @@ const CORE_CEILINGS: Record<string, number> = {
 	"core/mouse-routing.ts": 150,
 	"core/paint-sequences.ts": 430,
 	"core/frame-plan.ts": 90,
+	"core/frame-pacing.ts": 150,
 };
 
 /** Ceiling for every module in the presentation layer, which is new and has no legacy. */

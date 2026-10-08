@@ -106,6 +106,19 @@ export interface SixelProbeHost {
 	onSixelDiscovered(): void;
 }
 
+/** Primary device attributes reply: `CSI ? attrs c`. */
+const DA1_REPLY = /\x1b\[\?([0-9;]+)c/u;
+/** XTSMGRAPHICS reply for item 2 (Sixel geometry): `CSI ? 2 ; status ; values S`. */
+const GRAPHICS_REPLY = /\x1b\[\?2;(\d+);([0-9;]+)S/u;
+
+/** One reply located in the probe buffer: its span and its first parameter group. */
+interface ProbeReply {
+	index: number;
+	end: number;
+	params: string;
+	isDa: boolean;
+}
+
 /**
  * A terminal that reports Sixel support through neither env nor termcap is
  * asked directly: primary device attributes (`CSI c`, attribute 4) and the
@@ -157,70 +170,61 @@ export class SixelProbe {
 		let passthrough = "";
 		let probeOutcome: boolean | null = null;
 
-		while (this.#buffer.length > 0) {
-			const daMatch = this.#buffer.match(/\x1b\[\?([0-9;]+)c/u);
-			const graphicsMatch = this.#buffer.match(/\x1b\[\?2;(\d+);([0-9;]+)S/u);
-
-			if (!daMatch && !graphicsMatch) break;
-
-			const daIndex = daMatch?.index ?? Number.POSITIVE_INFINITY;
-			const graphicsIndex = graphicsMatch?.index ?? Number.POSITIVE_INFINITY;
-			const useDa = daIndex <= graphicsIndex;
-			const match = useDa ? daMatch : graphicsMatch;
-			if (!match || match.index === undefined) break;
-
-			passthrough += this.#buffer.slice(0, match.index);
-			this.#buffer = this.#buffer.slice(match.index + match[0].length);
-
-			if (useDa && this.#pendingDa) {
-				this.#pendingDa = false;
-				const attributes = (match[1] ?? "")
-					.split(";")
-					.map(value => Number.parseInt(value, 10))
-					.filter(value => Number.isFinite(value));
-				const hasSixelAttribute = attributes.includes(4);
-				if (hasSixelAttribute) {
-					this.#pendingGraphics = false;
-					probeOutcome = true;
-				} else if (!this.#pendingGraphics) {
-					probeOutcome = false;
-				}
-			} else if (!useDa && this.#pendingGraphics) {
-				this.#pendingGraphics = false;
-				const status = Number.parseInt(match[1] ?? "", 10);
-				const supportsSixel = !Number.isNaN(status) && status !== 0;
-				if (supportsSixel) {
-					this.#pendingDa = false;
-					probeOutcome = true;
-				} else if (!this.#pendingDa) {
-					probeOutcome = false;
-				}
-			}
+		for (let reply = this.#nextReply(); reply !== null; reply = this.#nextReply()) {
+			passthrough += this.#buffer.slice(0, reply.index);
+			this.#buffer = this.#buffer.slice(reply.end);
+			const outcome = reply.isDa ? this.#applyDa(reply.params) : this.#applyGraphics(reply.params);
+			if (outcome !== null) probeOutcome = outcome;
 		}
 
-		if (this.#pendingDa || this.#pendingGraphics) {
-			const partialStart = this.#partialStart(this.#buffer);
-			if (partialStart >= 0) {
-				passthrough += this.#buffer.slice(0, partialStart);
-				this.#buffer = this.#buffer.slice(partialStart);
-			} else {
-				passthrough += this.#buffer;
-				this.#buffer = "";
-			}
-		} else {
-			passthrough += this.#buffer;
-			this.#buffer = "";
-		}
-
+		passthrough += this.#releaseUnmatched();
 		if (probeOutcome !== null) {
 			this.#finish(probeOutcome);
 		}
+		return passthrough.length === 0 ? { consume: true } : { data: passthrough };
+	}
 
-		if (passthrough.length === 0) {
-			return { consume: true };
+	/** The earliest DA1 or XTSMGRAPHICS reply in the buffer; DA1 wins a tie. */
+	#nextReply(): ProbeReply | null {
+		const daMatch = this.#buffer.match(DA1_REPLY);
+		const graphicsMatch = this.#buffer.match(GRAPHICS_REPLY);
+		const daIndex = daMatch?.index ?? Number.POSITIVE_INFINITY;
+		const graphicsIndex = graphicsMatch?.index ?? Number.POSITIVE_INFINITY;
+		const isDa = daIndex <= graphicsIndex;
+		const match = isDa ? daMatch : graphicsMatch;
+		if (!match || match.index === undefined) return null;
+		return { index: match.index, end: match.index + match[0].length, params: match[1] ?? "", isDa };
+	}
+
+	/** A DA1 reply: attribute 4 is Sixel. Returns the probe outcome once it is known. */
+	#applyDa(params: string): boolean | null {
+		if (!this.#pendingDa) return null;
+		this.#pendingDa = false;
+		if (params.split(";").some(value => Number.parseInt(value, 10) === 4)) {
+			this.#pendingGraphics = false;
+			return true;
 		}
+		return this.#pendingGraphics ? null : false;
+	}
 
-		return { data: passthrough };
+	/** An XTSMGRAPHICS reply: a nonzero status is Sixel. Returns the probe outcome once it is known. */
+	#applyGraphics(params: string): boolean | null {
+		if (!this.#pendingGraphics) return null;
+		this.#pendingGraphics = false;
+		const status = Number.parseInt(params, 10);
+		if (!Number.isNaN(status) && status !== 0) {
+			this.#pendingDa = false;
+			return true;
+		}
+		return this.#pendingDa ? null : false;
+	}
+
+	/** Bytes outside a reply pass through; while a reply is pending, a partial reply prefix stays buffered. */
+	#releaseUnmatched(): string {
+		const keepFrom = this.#pendingDa || this.#pendingGraphics ? this.#partialStart(this.#buffer) : -1;
+		const released = keepFrom >= 0 ? this.#buffer.slice(0, keepFrom) : this.#buffer;
+		this.#buffer = keepFrom >= 0 ? this.#buffer.slice(keepFrom) : "";
+		return released;
 	}
 
 	#partialStart(buffer: string): number {

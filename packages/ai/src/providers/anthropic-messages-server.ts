@@ -2,7 +2,6 @@ import { Effort } from "@veyyon/catalog/effort";
 import { emptyUsage } from "@veyyon/catalog/models";
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
-import { type } from "arktype";
 import { captureRequestHeaders, resolvePromptCacheKey } from "../auth-gateway/http";
 import * as AIError from "../error";
 import type {
@@ -18,6 +17,7 @@ import type {
 	ToolResultMessage,
 	UserMessage,
 } from "../types";
+import { type } from "../utils/schema/arktype";
 import {
 	type AnthropicAssistantContentBlock,
 	type AnthropicMessage,
@@ -378,7 +378,7 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 	}
 	const cacheKey = resolvePromptCacheKey(body, headers);
 	if (cacheKey !== undefined) options.promptCacheKey = cacheKey;
-	// Allow-listed header capture. The gateway's `handleFormatEndpoint`
+	// Allow-listed header capture. The gateway's `serveFormatRequest`
 	// already merges its own pre-capture under whatever the parser sets, but
 	// we populate here too so direct callers of `parseRequest` (tests, custom
 	// wrappers) see the same surface. `anthropic-version` is the most

@@ -25,8 +25,8 @@ import { $which, errorMessage, isRecord, logger, trimTrailingSlashes } from "@ve
 import { DEFAULT_SHARE_URL, sealBytes } from "@veyyon/wire";
 import { $ } from "bun";
 import type { SecretObfuscator } from "../secrets/obfuscator";
-import { buildSessionData, type SessionData } from "./html";
 import { redactSessionDataForShare } from "./redact-snapshot";
+import { buildSessionData, type SessionData } from "./session-data";
 
 export { DEFAULT_SHARE_URL };
 

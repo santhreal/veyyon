@@ -87,7 +87,7 @@ describe("the source keeps no top-level read of the registry", () => {
 	 * What counts as a read is the whole difficulty, and the first version of this
 	 * check got it wrong in the direction that costs a refactor: it flagged any
 	 * top-level declaration whose LINE mentioned the registry, so
-	 * `const names = once(() => BANNERED_SECTIONS.map(...))` failed even though the
+	 * `const names = lazy(() => BANNERED_SECTIONS.map(...))` failed even though the
 	 * mention is inside a callback that has not run yet. A deferred read is the fix,
 	 * not a violation of it, and a check that forbids the honest spelling pushes the
 	 * next person back toward the eager one.
@@ -125,8 +125,8 @@ describe("the source keeps no top-level read of the registry", () => {
 			"let ids = [...BANNERED_SECTIONS];",
 		].join("\n");
 		const deferred = [
-			"const names = once(() => BANNERED_SECTIONS.map(s => s.id));",
-			"export const table = once(function () { return bannerTable(BANNERED_TEMPLATE_SECTIONS); });",
+			"const names = lazy(() => BANNERED_SECTIONS.map(s => s.id));",
+			"export const table = lazy(function () { return bannerTable(BANNERED_TEMPLATE_SECTIONS); });",
 			"const ids = () => BANNERED_SECTIONS.map(s => s.id);",
 		].join("\n");
 

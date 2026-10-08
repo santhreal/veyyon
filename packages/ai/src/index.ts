@@ -3,8 +3,11 @@
 // consumer of `AuthStorage` from this package already arrives. Without it the registry refuses to
 // answer rather than reporting no usage for everything -- see `usage/registry.ts`.
 import "./usage/defaults";
+// The barrel hands out Zod (`z` below), so it installs the converter `zodToWireSchema` uses for a
+// schema that has no `toJSONSchema` method of its own (`zod/mini`).
+import "./utils/schema/zod-core";
 
-export { type Type, type } from "arktype";
+export type { Type } from "arktype";
 export { type ZodType, z } from "zod/v4";
 export * from "./api-registry";
 export type * from "./auth-broker";
@@ -18,7 +21,9 @@ export * from "./instrumentation";
 export * from "./provider-details";
 export * from "./providers/anthropic";
 export * from "./providers/anthropic-client";
+export * from "./providers/anthropic-session-state";
 export * from "./providers/azure-openai-responses";
+export * from "./providers/claude-device-id";
 export type * from "./providers/cursor";
 export * from "./providers/gitlab-duo";
 export * from "./providers/gitlab-duo-workflow";
@@ -28,6 +33,7 @@ export type * from "./providers/google-vertex";
 export * from "./providers/kimi";
 export * from "./providers/mock";
 export * from "./providers/ollama";
+export * from "./providers/openai-codex/session-state";
 export * from "./providers/openai-codex-responses";
 export * from "./providers/openai-completions";
 export * from "./providers/openai-responses";
@@ -56,6 +62,7 @@ export * from "./utils/opencode-headers";
 export * from "./utils/openrouter-headers";
 export * from "./utils/retry";
 export * from "./utils/schema";
+export { type } from "./utils/schema/arktype";
 export * from "./utils/thinking-loop";
 export * from "./utils/tool-call-loop-guard";
 export * from "./utils/validation";

@@ -6,6 +6,8 @@ import { errorMessage } from "@veyyon/utils/type-guards";
 
 const contentCache = new Map<string, string | null>();
 const dirCache = new Map<string, fs.Dirent[]>();
+/** Lookups of {@link findRepoRoot}, keyed by the resolved start directory; a concurrent call shares one. */
+const repoRootCache = new Map<string, Promise<string | null>>();
 
 function resolvePath(filePath: string): string {
 	return path.resolve(filePath);
@@ -80,9 +82,25 @@ export async function readDirEntries(dirPath: string): Promise<fs.Dirent[]> {
 	}
 }
 
-export async function readDir(dirPath: string): Promise<string[]> {
-	const entries = await readDirEntries(dirPath);
-	return entries.map(entry => entry.name);
+/**
+ * The type of the entry `name` inside `dir`, read without following a symlink as a directory listing
+ * reports it, or null when there is none. A directory that exists but cannot be searched is logged
+ * and holds no entry, as a listing that fails holds none.
+ */
+async function entryStats(dir: string, name: string): Promise<fs.Stats | null> {
+	const entryPath = path.join(dir, name);
+	try {
+		return await fs.promises.lstat(entryPath);
+	} catch (err) {
+		if (!isMissingPath(err)) {
+			logger.warn("Directory entry exists but could not be inspected; skipped during discovery", {
+				path: entryPath,
+				code: isFsError(err) ? err.code : undefined,
+				error: errorMessage(err),
+			});
+		}
+		return null;
+	}
 }
 
 export async function walkUp(
@@ -94,8 +112,7 @@ export async function walkUp(
 	let current = resolvePath(startDir);
 
 	while (true) {
-		const entries = await readDirEntries(current);
-		const entry = entries.find(e => e.name === name);
+		const entry = await entryStats(current, name);
 		if (entry) {
 			if (file && entry.isFile()) return path.join(current, name);
 			if (dir && entry.isDirectory()) return path.join(current, name);
@@ -109,15 +126,23 @@ export async function walkUp(
 /**
  * Walk up from startDir looking for a `.git` entry (file or directory).
  * Returns the directory containing `.git` (the repo root), or null if not in a git repo.
- * Results are based on the cached readDirEntries, so repeated calls are cheap.
+ * Each ancestor is checked for `.git` alone, so no ancestor is listed, and the result is cached
+ * per start directory until {@link invalidate} or {@link clearCache}.
  */
-export async function findRepoRoot(startDir: string): Promise<string | null> {
-	let current = resolvePath(startDir);
+export function findRepoRoot(startDir: string): Promise<string | null> {
+	const start = resolvePath(startDir);
+	let root = repoRootCache.get(start);
+	if (!root) {
+		root = lookUpRepoRoot(start);
+		repoRootCache.set(start, root);
+	}
+	return root;
+}
+
+async function lookUpRepoRoot(start: string): Promise<string | null> {
+	let current = start;
 	while (true) {
-		const entries = await readDirEntries(current);
-		if (entries.some(e => e.name === ".git")) {
-			return current;
-		}
+		if (await entryStats(current, ".git")) return current;
 		const parent = path.dirname(current);
 		if (parent === current) return null;
 		current = parent;
@@ -134,12 +159,14 @@ export function cacheStats(): { content: number; dir: number } {
 export function clearCache(): void {
 	contentCache.clear();
 	dirCache.clear();
+	repoRootCache.clear();
 }
 
 export function invalidate(filePath: string): void {
 	const abs = resolvePath(filePath);
 	contentCache.delete(abs);
 	dirCache.delete(abs);
+	repoRootCache.clear();
 	const parent = path.dirname(abs);
 	if (parent !== abs) {
 		dirCache.delete(parent);

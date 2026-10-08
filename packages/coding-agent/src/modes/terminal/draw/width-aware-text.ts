@@ -46,6 +46,14 @@ export class WidthAwareText implements Component {
 		this.#inner.invalidate();
 	}
 
+	/** Drop the formatted text with the rows drawn from it; the next render formats it again. */
+	releaseRenderCache(): void {
+		this.#cachedContentWidth = -1;
+		this.#cachedText = undefined;
+		this.#inner.setText("");
+		this.#inner.releaseRenderCache();
+	}
+
 	render(width: number): readonly string[] {
 		const paddingX = this.#ignoreTight ? this.#paddingX : getPaddingX(this.#paddingX);
 		const contentWidth = Math.max(1, width - paddingX * 2);

@@ -1,6 +1,7 @@
 import * as path from "node:path";
-import { buildDocsIndexPayload } from "./generate-docs-index";
+import { buildPayloadDefines } from "./generate-docs-index";
 import { createLegacyPiVirtualModulePlugin } from "./legacy-pi-virtual-module";
+import { createPrecompiledPromptPlugin } from "./precompiled-prompts";
 
 /** Native runtime dependencies always resolved from the on-demand install instead of embedded into compiled binaries. */
 export const COMPILED_EXTERNAL_DEPENDENCIES: readonly string[] = Object.freeze(["fastembed", "onnxruntime-node"]);
@@ -122,7 +123,7 @@ export async function compileCodingAgent(options: CodingAgentCompileOptions): Pr
 			define: {
 				"process.env.VEYYON_COMPILED": JSON.stringify("true"),
 				"process.env.VEYYON_TINY_TRANSFORMERS_VERSION": JSON.stringify(options.transformersVersion),
-				"process.env.VEYYON_DOCS_EMBED": JSON.stringify((await buildDocsIndexPayload()).payload),
+				...(await buildPayloadDefines()),
 			},
 			// Whitespace and syntax minification are startup latency, not disk
 			// hygiene. Bun's standalone loader links the whole bytecode blob
@@ -161,9 +162,11 @@ export async function compileCodingAgent(options: CodingAgentCompileOptions): Pr
 			format: "esm",
 			...((options.bytecode ?? Bun.env.VEYYON_BUILD_BYTECODE !== "0") ? { bytecode: true } : {}),
 			plugins: [
-				await createLegacyPiVirtualModulePlugin(),
+				// mupdf is replaced by the stub below, so the export pass leaves it unbundled.
+				await createLegacyPiVirtualModulePlugin([...COMPILED_EXTERNAL_DEPENDENCIES, "mupdf"]),
 				createMupdfStubPlugin(),
 				createYargsImportMetaResolvePatchPlugin(),
+				createPrecompiledPromptPlugin(),
 			],
 			compile: {
 				...(options.target ? { target: options.target } : {}),

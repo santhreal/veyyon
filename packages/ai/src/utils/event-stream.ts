@@ -1,10 +1,16 @@
 import * as AIError from "../error";
 import type { AssistantMessage, AssistantMessageEvent } from "../types";
 
+/** A reader parked on the stream until the next event, the end, or a failure arrives. */
+interface StreamWaiter<T> {
+	resolve: (value: IteratorResult<T, undefined>) => void;
+	reject: (err: unknown) => void;
+}
+
 // Generic event stream class for async iteration
 export class EventStream<T, R = T> implements AsyncIterable<T> {
 	queue: T[] = [];
-	waiting: Array<{ resolve: (value: IteratorResult<T, undefined>) => void; reject: (err: unknown) => void }> = [];
+	waiting: StreamWaiter<T>[] = [];
 	done = false;
 	/** True once finalResultPromise has been resolved or rejected. */
 	resultSettled = false;
@@ -45,13 +51,7 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
 			this.resolveFinalResult(this.extractResult(event));
 		}
 
-		// Deliver to waiting consumer or queue it
-		const waiter = this.waiting.shift();
-		if (waiter) {
-			waiter.resolve({ value: event, done: false });
-		} else {
-			this.queue.push(event);
-		}
+		this.deliver(event);
 	}
 
 	deliver(event: T): void {
@@ -61,6 +61,16 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
 		} else {
 			this.queue.push(event);
 		}
+	}
+
+	/**
+	 * Removes and returns the events pushed and not yet read, oldest first. A reader that stops
+	 * reading early uses this to account for the events the producer delivered before it stopped.
+	 */
+	takeQueued(): T[] {
+		const queued = this.queue;
+		this.queue = [];
+		return queued;
 	}
 
 	end(result?: R): void {
@@ -80,18 +90,11 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
 				}),
 			);
 		}
-		// Notify all waiting consumers that we're done
-		while (this.waiting.length > 0) {
-			const waiter = this.waiting.shift()!;
-			waiter.resolve({ value: undefined, done: true });
-		}
+		this.endWaiting();
 	}
 
 	endWaiting(): void {
-		while (this.waiting.length > 0) {
-			const waiter = this.waiting.shift()!;
-			waiter.resolve({ value: undefined, done: true });
-		}
+		while (this.waiting.length > 0) this.waiting.shift()!.resolve({ value: undefined, done: true });
 	}
 
 	fail(err: unknown): void {
@@ -101,59 +104,85 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
 		this.#error = err;
 		this.resultSettled = true;
 		this.rejectFinalResult(err);
-		while (this.waiting.length > 0) {
-			const waiter = this.waiting.shift()!;
-			waiter.reject(err);
-		}
+		while (this.waiting.length > 0) this.waiting.shift()!.reject(err);
 	}
 
+	/**
+	 * Reads the stream's events in order. Each read is answered once, and one reader's overlapping `next()`
+	 * calls are answered in call order. A reader waits on the stream at most once at a time, so parked readers
+	 * take events in the order they parked. `return()` and `throw()` take the reader off the stream at once and
+	 * answer every read it still owes; an event pushed afterwards stays queued for another reader.
+	 */
 	[Symbol.asyncIterator](): AsyncIterableIterator<T> {
-		let currentWaiter: {
-			resolve: (value: IteratorResult<T, undefined>) => void;
-			reject: (err: unknown) => void;
-		} | null = null;
+		// Reads asked for and not yet answered, oldest first. Only the oldest waits on the stream.
+		const owed: PromiseWithResolvers<IteratorResult<T, undefined>>[] = [];
+		let finished = false;
 
-		const gen = async function* (this: EventStream<T, R>) {
-			while (true) {
-				if (this.queue.length > 0) {
-					yield this.queue.shift()!;
-				} else if (this.#failed) {
-					throw this.#error;
-				} else if (this.done) {
-					return;
-				} else {
-					const { promise, resolve, reject } = Promise.withResolvers<IteratorResult<T, undefined>>();
-					currentWaiter = { resolve, reject };
-					this.waiting.push(currentWaiter);
-					let result: IteratorResult<T, undefined>;
-					try {
-						result = await promise;
-					} finally {
-						const idx = this.waiting.indexOf(currentWaiter);
-						if (idx !== -1) {
-							this.waiting.splice(idx, 1);
-						}
-						currentWaiter = null;
-					}
-					if (result.done) return;
-					yield result.value;
-				}
+		// Answers `read` from the stream's state; false when it has to wait for the next event. next() takes a
+		// queued event itself, and push() hands an event to a parked reader instead of queueing it, so an
+		// unfinished reader reaches this only while the queue is empty.
+		const answer = (read: PromiseWithResolvers<IteratorResult<T, undefined>>): boolean => {
+			if (finished) {
+				read.resolve({ value: undefined, done: true });
+			} else if (this.#failed) {
+				finished = true;
+				read.reject(this.#error);
+			} else if (this.done) {
+				read.resolve({ value: undefined, done: true });
+			} else {
+				return false;
 			}
-		}.call(this);
+			return true;
+		};
+		const serve = (): void => {
+			while (owed.length > 0) {
+				if (!answer(owed[0])) {
+					this.waiting.push(parked);
+					return;
+				}
+				owed.shift();
+			}
+		};
+		// The stream shifts this out of `waiting` before it settles it.
+		const parked: StreamWaiter<T> = {
+			resolve: result => {
+				if (result.done) finished = true;
+				owed.shift()!.resolve(result);
+				serve();
+			},
+			reject: err => {
+				finished = true;
+				owed.shift()!.reject(err);
+				serve();
+			},
+		};
+		// Takes the reader off the stream for good; serve() then answers every read it still owes as done.
+		const finish = (): void => {
+			finished = true;
+			const index = this.waiting.indexOf(parked);
+			if (index !== -1) this.waiting.splice(index, 1);
+		};
 
 		const iterator: AsyncIterableIterator<T> = {
-			next: (...args) => gen.next(...args),
-			return: async (value?: unknown) => {
-				if (currentWaiter) {
-					currentWaiter.resolve({ value: undefined, done: true });
+			next: () => {
+				if (!finished && this.queue.length > 0) {
+					return Promise.resolve({ value: this.queue.shift()!, done: false });
 				}
-				return gen.return(value as void);
+				const read = Promise.withResolvers<IteratorResult<T, undefined>>();
+				owed.push(read);
+				if (owed.length === 1) serve();
+				return read.promise;
 			},
-			throw: async (err?: unknown) => {
-				if (currentWaiter) {
-					currentWaiter.reject(err);
-				}
-				return gen.throw(err);
+			return: (value?: unknown) => {
+				finish();
+				serve();
+				return Promise.resolve({ value: value as undefined, done: true });
+			},
+			throw: (err?: unknown) => {
+				finish();
+				owed.shift()?.reject(err);
+				serve();
+				return Promise.reject(err);
 			},
 			[Symbol.asyncIterator]() {
 				return this;
@@ -202,39 +231,16 @@ export class AssistantMessageEventStream extends EventStream<AssistantMessageEve
 
 	override push(event: AssistantMessageEvent): void {
 		if (this.done) return;
-
 		if (event.type === "error" && event.error.stopReason === "error") {
 			AIError.classifyMessage(event.error);
 		}
-
-		// Completion resolves the final result and still emits the terminal event.
-		if (this.isComplete(event)) {
-			this.done = true;
-			this.resultSettled = true;
-			this.resolveFinalResult(this.extractResult(event));
-		}
-
-		this.deliver(event);
+		super.push(event);
 	}
 
 	override end(result?: AssistantMessage): void {
-		this.done = true;
-		if (result !== undefined) {
-			if (result.stopReason === "error") {
-				AIError.classifyMessage(result);
-			}
-			this.resultSettled = true;
-			this.resolveFinalResult(result);
-		} else if (!this.resultSettled) {
-			// Mirror the base class: a result-less end() must not leave
-			// result() pending forever, and it is an incomplete stream.
-			this.resultSettled = true;
-			this.rejectFinalResult(
-				new AIError.ProviderResponseError("Stream ended without a final result", {
-					kind: "incomplete-stream",
-				}),
-			);
+		if (result?.stopReason === "error") {
+			AIError.classifyMessage(result);
 		}
-		this.endWaiting();
+		super.end(result);
 	}
 }

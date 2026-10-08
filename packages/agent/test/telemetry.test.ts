@@ -714,6 +714,48 @@ describe("invoke_agent lifecycle and aggregates", () => {
 		expect(invokeSpan?.attributes[PiGenAIAggregateAttr.ErrorsCount]).toBe(3);
 	});
 
+	/**
+	 * A finished tool span lands in the run-level error taxonomy under the
+	 * `error.type` its span carries: the thrown error's class for an `error`
+	 * with a thrown `Error`, the status category for every other non-ok status.
+	 */
+	it("classifies every finished non-ok tool span in aggregate errors", () => {
+		const telemetry = telemetryFor({});
+		const root = startInvokeAgentSpan(telemetry, MODEL);
+		const finishes: ReadonlyArray<{
+			readonly isError: boolean;
+			readonly status?: "blocked" | "timeout" | "aborted" | "skipped";
+			readonly errorObject?: Error;
+		}> = [
+			{ isError: false },
+			{ isError: true, errorObject: new TypeError("bad arg") },
+			{ isError: true },
+			{ isError: true, status: "blocked" },
+			{ isError: true, status: "timeout" },
+			{ isError: true, status: "aborted" },
+			{ isError: true, status: "skipped" },
+		];
+		for (const [index, finish] of finishes.entries()) {
+			const toolCallId = `tc-${index}`;
+			const span = startExecuteToolSpan(telemetry, { tool: undefined, toolName: "shell", toolCallId, args: {} });
+			finishExecuteToolSpan(telemetry, span, { ...finish, toolCallId, toolName: "shell" });
+		}
+
+		const snapshot = finishInvokeAgentSpan(telemetry, root, { stepCount: 0 });
+
+		expect(snapshot?.summary.errors).toEqual({
+			total: 6,
+			byType: {
+				TypeError: 1,
+				tool_aborted: 1,
+				tool_blocked: 1,
+				tool_error: 1,
+				tool_skipped: 1,
+				tool_timeout: 1,
+			},
+		});
+	});
+
 	it("applies a renamed agent name from normalizeAgentName", () => {
 		const telemetry = telemetryFor({
 			agent: { id: "a1", name: "planner" },
@@ -734,6 +776,22 @@ describe("invoke_agent lifecycle and aggregates", () => {
 			.find(s => s.attributes[GenAIAttr.OperationName] === GenAIOperation.InvokeAgent);
 		expect(invokeSpan?.status.code).toBe(SpanStatusCode.ERROR);
 		expect(invokeSpan?.attributes[GenAIAttr.ErrorType]).toBe("RangeError");
+	});
+});
+
+describe("span attribute precedence", () => {
+	it("lets resolved attributes override configured ones and call-site attributes override both", () => {
+		const telemetry = telemetryFor({
+			attributes: { "only.config": "config", "config.vs.resolved": "config", [GenAIAttr.ToolName]: "config" },
+			resolveAttributes: () => ({ "config.vs.resolved": "resolved", [GenAIAttr.ToolName]: "resolved" }),
+		});
+		const span = startExecuteToolSpan(telemetry, { tool: undefined, toolName: "read", toolCallId: "tc-p", args: {} });
+		finishExecuteToolSpan(telemetry, span, { isError: false, toolCallId: "tc-p", toolName: "read" });
+
+		const attrs = onlySpan().attributes;
+		expect(attrs["only.config"]).toBe("config");
+		expect(attrs["config.vs.resolved"]).toBe("resolved");
+		expect(attrs[GenAIAttr.ToolName]).toBe("read");
 	});
 });
 
@@ -894,6 +952,19 @@ describe("summary-capture value shaping", () => {
 		expect(shaped.list[64]).toEqual({ kind: "truncated", omittedItems: 6 });
 		expect(shaped.wide.telemetrySummary).toEqual({ omittedKeys: 3 });
 		expect(shaped.circle.self).toBe("[Circular]");
+	});
+
+	it("collapses an array nested past the object depth into its length", async () => {
+		const message = assistant([{ type: "toolCall", id: "c-2", name: "run", arguments: { nested: [[[["deep"]]]] } }], {
+			stopReason: "toolUse",
+		});
+		const telemetry = telemetryFor({ captureMessageContent: "summary" });
+		const span = startChatSpan(telemetry, MODEL, { stepNumber: 0, request: {} });
+		await finishChatSpan(telemetry, span, message, { stepNumber: 0 });
+		const shaped = JSON.parse(onlySpan().attributes[PiGenAIAttr.ResponseToolCalls] as string)[0].input;
+		// `nested` sits at depth 1 and its array children at 2 and 3; depth 3 is
+		// the cap, so the innermost array collapses to its length.
+		expect(shaped.nested).toEqual([[{ kind: "array", length: 1 }]]);
 	});
 });
 

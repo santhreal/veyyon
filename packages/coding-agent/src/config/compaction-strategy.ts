@@ -37,16 +37,6 @@ export function resolveCompactionEngineAction(rawStrategy: string | undefined): 
 	return compactionStrategyToEngineAction(normalizeCompactionStrategy(rawStrategy));
 }
 
-/** Whether compaction is disabled via legacy `off` strategy. */
-export function isCompactionStrategyOff(strategy: string | undefined): boolean {
-	return strategy === "off";
-}
-
-/** Whether threshold/overflow auto-compaction is disabled (idle has its own gate). */
-export function isThresholdCompactionDisabled(enabled: boolean, strategy: string | undefined): boolean {
-	return !enabled || strategy === "off";
-}
-
 /** Which number a context gauge is measuring against. */
 export type ContextLimitKind = "window" | "compaction";
 
@@ -61,14 +51,10 @@ export interface ResolvedContextLimit {
  * When the context runs out: the auto-compaction fire point, or the model window
  * when nothing will fire. The ONE owner of that question.
  *
- * It had three answers. The status line asked
- * `enabled && !isCompactionStrategyOff(strategy)`, the `/context` panel hand-rolled
- * `enabled && strategy !== "off"`, and `AgentSession.autoCompactionEnabled` used the
- * canonical `isThresholdCompactionDisabled` — three spellings of one predicate, so the
- * two surfaces could disagree about whether a fire point exists at all, and a fourth
- * caller would have spelled it a fourth way. They agree today only by luck; a change
- * to what counts as "off" would have had to be made in three places and would have
- * been made in one.
+ * The status line and the `/context` panel both answer through here, so they cannot
+ * disagree about whether a fire point exists.
+ * Auto-compaction is off exactly when `enabled` is false: a stored `strategy: off`
+ * migrates to `summary` with `enabled: false`, and the store rejects `off` as a value.
  *
  * `tokens` is always inside the window, which is the invariant callers rely on when
  * they render `window - tokens` as a buffer. `resolveThresholdTokens` guarantees it
@@ -80,7 +66,7 @@ export interface ResolvedContextLimit {
  */
 export function resolveContextLimit(contextWindow: number, settings: CoreCompactionSettings): ResolvedContextLimit {
 	if (!Number.isFinite(contextWindow) || contextWindow <= 0) return { tokens: 0, kind: "window" };
-	if (isThresholdCompactionDisabled(settings.enabled, settings.strategy)) {
+	if (!settings.enabled) {
 		return { tokens: contextWindow, kind: "window" };
 	}
 	const threshold = resolveThresholdTokens(contextWindow, settings);

@@ -429,7 +429,7 @@ export class ExaProvider extends SearchProvider {
 	readonly label = "Exa";
 
 	isAvailable(authStorage: AuthStorage): boolean {
-		if (!this.#settingsAllowSearch()) return false;
+		if (!settingsAllowSearch()) return false;
 		return !!getEnvApiKey("exa") || authStorage.hasAuth("exa");
 	}
 
@@ -441,18 +441,7 @@ export class ExaProvider extends SearchProvider {
 	 * keeps priority over the public fallback.
 	 */
 	isExplicitlyAvailable(_authStorage: AuthStorage): boolean {
-		return this.#settingsAllowSearch();
-	}
-
-	#settingsAllowSearch(): boolean {
-		try {
-			if (settings.get("exa.enabled") === false || settings.get("exa.enableSearch") === false) {
-				return false;
-			}
-		} catch {
-			// Settings may be unavailable before CLI initialization; assume not disabled.
-		}
-		return true;
+		return settingsAllowSearch();
 	}
 
 	search(params: SearchParams): Promise<SearchResponse> {
@@ -466,4 +455,15 @@ export class ExaProvider extends SearchProvider {
 			resolveProviderTextTransform: params.resolveProviderTextTransform,
 		});
 	}
+}
+
+function settingsAllowSearch(): boolean {
+	try {
+		if (settings.get("exa.enabled") === false || settings.get("exa.enableSearch") === false) {
+			return false;
+		}
+	} catch {
+		// Settings may be unavailable before CLI initialization; assume not disabled.
+	}
+	return true;
 }

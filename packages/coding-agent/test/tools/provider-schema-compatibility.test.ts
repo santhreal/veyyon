@@ -46,7 +46,8 @@ function assertCanonicalSearchSchema(schema: Record<string, unknown>, provider: 
 	expect(required?.slice(0, 2), provider).toEqual(["type", "input"]);
 	const properties = schema.properties as Record<string, Record<string, unknown>>;
 	expect(Object.keys(properties).slice(0, 2), provider).toEqual(["type", "input"]);
-	expect(properties.type?.enum, provider).toEqual(["files", "text", "structure"]);
+	// ArkType emits an enum's members sorted, whatever order `SEARCH_TYPES` lists them in.
+	expect(properties.type?.enum, provider).toEqual(["files", "structure", "text"]);
 	expect(properties.input?.type, provider).toBe("string");
 }
 

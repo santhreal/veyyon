@@ -1,10 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
-import {
-	parseSecretCommand,
-	SECRET_TUI_SUBCOMMANDS,
-	type SecretSubcommand,
-} from "@veyyon/coding-agent/secrets/secret-command";
+import { parseSecretCommand } from "@veyyon/coding-agent/secrets/secret-command";
+import { SECRET_TUI_SUBCOMMANDS, type SecretSubcommand } from "@veyyon/coding-agent/secrets/secret-verbs";
 import { buildTuiBuiltinSlashCommands } from "@veyyon/coding-agent/slash-commands/builtin-registry";
 import type { TuiSlashCommandRuntime } from "@veyyon/coding-agent/slash-commands/types";
 

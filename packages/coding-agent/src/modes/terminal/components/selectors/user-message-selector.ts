@@ -7,14 +7,12 @@ import { padding } from "@veyyon/utils/padding";
 import { truncateToWidth } from "@veyyon/utils/width";
 import { theme } from "../../../../theme/theme";
 import { matchesSelectCancel } from "../../utils/keybinding-matchers";
+import { computeModalDims, MODAL_SIZING_MEDIUM, sizingForArea } from "../chrome/modal-geometry";
 import {
-	computeModalDims,
-	MODAL_SIZING_MEDIUM,
 	type ModalShellGeometry,
 	type ModalShortcut,
 	pointerMotionEnabled,
 	renderModalShell,
-	sizingForArea,
 } from "../chrome/modal-shell";
 import { handleListNavigationKey, routeModalCardMouse } from "./select-list-mouse-routing";
 import { applySearchInput, hoverBandAt } from "./selector-helpers";

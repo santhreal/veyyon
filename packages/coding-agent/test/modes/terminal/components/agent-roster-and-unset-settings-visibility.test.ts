@@ -5,7 +5,7 @@ import {
 	computeModalDims,
 	MODAL_SIZING_SETTINGS,
 	sizingForArea,
-} from "@veyyon/coding-agent/modes/terminal/components/chrome/modal-shell";
+} from "@veyyon/coding-agent/modes/terminal/components/chrome/modal-geometry";
 import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-selector";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 

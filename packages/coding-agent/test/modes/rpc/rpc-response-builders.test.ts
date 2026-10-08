@@ -3,7 +3,7 @@ import {
 	rpcErrorResponse,
 	rpcSuccessResponse,
 	rpcUnknownCommandResponse,
-} from "@veyyon/coding-agent/modes/rpc/rpc-mode";
+} from "@veyyon/coding-agent/modes/rpc/rpc-commands";
 
 /**
  * Product-owned RPC response builders: exact id/command/success/error fields.

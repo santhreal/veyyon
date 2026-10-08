@@ -16,15 +16,13 @@ import {
 	matchesSelectPageUp,
 	matchesSelectUp,
 } from "../../utils/keybinding-matchers";
+import { computeModalDims, MODAL_SIZING_MEDIUM, sizingForArea } from "../chrome/modal-geometry";
 import {
 	CARD_BODY_COL_INSET,
-	computeModalDims,
-	MODAL_SIZING_MEDIUM,
 	type ModalShellGeometry,
 	pointerMotionEnabled,
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
-	sizingForArea,
 } from "../chrome/modal-shell";
 import { routeModalChrome } from "../selectors/select-list-mouse-routing";
 import { centeredWindow, hoverBandAt, renderScrollableList, selectionBand } from "../selectors/selector-helpers";

@@ -21,7 +21,7 @@ The `model` segment shows the model you are working with, then two things that a
 
 - The **thinking effort** joins the model label as one unit (`Sonnet 4.5 @high` in the quiet footline, `Sonnet 4.5 · high` elsewhere), in the model's own color. It is how much reasoning the model does per turn. Change it with `/effort` (its alias is `/thinking`), or set a per-model default under Settings → Model → Default Effort.
   The effort picker has a **Default** row followed by only the active model's valid variants. Choose Default to clear the session override and return to the saved per-model effort or the model default.
-- The **priority tier** follows the effort as its own chip, named and in the warning color (`⚡ priority`, or just `priority` when your symbol preset has no icon). It is how your requests are queued and served, not how deeply the model thinks. Toggle it with `/fast`, or set it per provider family under Settings → Model → Service Tier.
+- The **priority tier** follows the effort as its own chip, named and in the warning color (`⚡ priority`, or `priority` alone when your symbol preset has no icon). It is how your requests are queued and served, not how deeply the model thinks. Toggle it with `/fast`, or set it per provider family under Settings → Model → Service Tier.
 
 The `git` segment shows the current branch, and appends the multi-step operation you are part-way through when there is one:
 
@@ -40,7 +40,12 @@ A rebase detaches HEAD, so without the suffix the segment could only say `detach
 
 The `pr` segment is skipped while any of these operations is in progress. A branch being rebased does not yet point where it is going to end up, so a pull request looked up against it would describe a state that is about to be replaced.
 
-The `profile` segment shows the active profile name (`work`, `rec`, a client sandbox), so you always know which profile's config, sessions, and keys are live. It hides itself on the built-in `default` profile, so an unconfigured status line stays clean. Every built-in preset places it, so switching profiles is visible without any configuration.
+The `git` segment appends the dirty marker (`*`) when the working tree has staged, unstaged or
+untracked changes. `git status` runs when a turn ends, after a `!` or `%` command and when HEAD
+changes, and otherwise at most once every 10 seconds. A file a tool writes during a turn sets the
+marker within 10 seconds.
+
+The `profile` segment shows the active profile name (`work`, `rec`, a client sandbox), so the status line states which profile's config, sessions, and keys are live. It is hidden on the built-in `default` profile, so an unconfigured status line shows no profile segment. Every built-in preset places it, so switching profiles is visible without any configuration.
 
 The `path` segment shows the working directory, shortened in three steps: a workspace root is
 stripped off the front, the home directory collapses to `~`, and what is left is clipped to a
@@ -67,7 +72,7 @@ replaces the defaults rather than adding to them; without it the defaults are `~
 named in the log once. `stripWorkPrefix: false` turns the whole step off.
 
 A project inside a temporary directory is shown relative to that temporary directory instead,
-with its own icon, whatever `displayRoots` says.
+with its own icon, regardless of `displayRoots`.
 
 The launch composer accepts input while the session initializes. Enter submits the
 current text and attachments after initialization completes. Later drafts remain
@@ -95,10 +100,18 @@ screen, so the card mixes the composer hairline, the composer outline and the tr
 of the background this terminal reported last time. A reply that contradicts the record takes
 effect on the next frame. Each of the three maps holds its 24 most recently written entries.
 
-Each recorded fact is replaced by a measured one as the session mounts. A tree committed from
-another terminal since the last launch keeps the recorded marker until `git status` answers, about
-130ms in. A project you open for the first time has no dirty marker. The gauge reads `?` only
-until this model has idled somewhere once; after that a new project starts at the model's
+Each recorded fact is replaced by a measured one as the session mounts, except the gauge. The gauge
+states the recorded reading until the session leaves rest: the measurement, which builds every
+active tool's schema, runs once the frame that draws the first keystroke in the composer is
+committed, or when a prompt is submitted. A session closed without a keystroke builds no tool schema
+and files no new reading. A resumed session states its gauge from the transcript until it leaves
+rest: the prompt size the provider reported for the last response, plus an estimate of the messages
+after it, with the tools, skills and system prompt counted at the size recorded with that response.
+A transcript whose responses recorded no such size is measured as the session mounts. A tree
+committed from another terminal since the last launch keeps the recorded marker until `git status`
+answers, about 130ms in. A project you open for the first time
+has no dirty marker. The gauge reads `?` only until a session on this model has left rest once;
+after that a new project starts at the model's
 subtracted reading and the session adds what this project's own context costs, so the bar fills
 rather than empties when the session lands. Configuring a different model resets it to `?` again,
 because a reading is a fraction of the window it was taken against. A model you have never run
@@ -109,11 +122,9 @@ session rather than with the card, as does a detached HEAD with no operation to 
 
 `/secret list` states what is live where you are working: the credentials the vault holds here, and
 a count of the values being masked that nothing can name, with the environment variable or
-`secrets.yml` path each came from. The status row does not carry a count. It reported one that
-nothing else in the product agreed with, and a number a reader cannot reconcile with `/secret list`
-is worse than no number.
+`secrets.yml` path each came from. The status row shows no masked-value count.
 
-The `context_pct` segment answers one question: how much room is left before the context runs out. "Runs out" means whichever comes first, auto-compaction firing or the model's window filling, so with auto-compaction on the segment measures against the compaction trigger, not the window. The window itself is what `context_total` prints.
+The `context_pct` segment shows how much room is left before the context runs out. "Runs out" means whichever comes first, auto-compaction firing or the model's window filling, so with auto-compaction on the segment measures against the compaction trigger, not the window. `context_total` prints the window itself.
 
 In the composer's quiet footline the segment renders as an 8-cell bar with a labelled percentage: `▰▰▰▰▰▰▱▱ 76% left ∞`. The bar drains, one cell per eighth of the room remaining, so the bar and the number always agree. Filled cells take the usage hue (silver, then gold, ember, and red as room runs out). While the model is running, the last remaining cell pulses between filled and empty, faster once you are past 90 percent used; at rest the bar never moves, so an idle screen is still. A session-accent `∞` after the bar means auto-compaction is on, so the session continues past the trigger.
 
@@ -132,7 +143,7 @@ Two run clocks tick alongside the segments, both measuring model runtime, never 
 | `/agents` | Agent dashboard: the live roster (agent type, status, activity; Enter opens one agent's session) and the Comms stream of agent-to-agent messages |
 | `/jobs` | List background async tool jobs |
 
-`/cockpit` and `/hub` are aliases of `/agents`, as is the `app.agents.hub` keybinding and a double-tap of the left arrow on an empty composer. They used to open a separate screen with its own roster and its own drill-in, which meant "which agents are running" had two answers that could disagree with each other. They all open the one card now.
+`/cockpit` and `/hub` are aliases of `/agents`, as is the `app.agents.hub` keybinding and a double-tap of the left arrow on an empty composer. They all open the same roster card.
 
 ### One conversation at a time
 
@@ -140,12 +151,35 @@ A process runs more than one conversation at a time. `/new` stops the previous o
 unless `session.newKeepsBackground` is on, and an ACP client keeps every
 open session in the same process. Changing `session.newKeepsBackground` takes
 effect on the next launch; the running session keeps the value it started with
-([#928](https://github.com/santhreal/veyyon/issues/928)).
+([#928](https://github.com/santhreal/veyyon/issues/928)). An RPC client moves a streaming session to
+the background with `new_session` and `background: true`, and an ACP client with
+`_veyyon/sessions/background`; see [The RPC surface](../reference/rpc.md#background-conversations)
+and [The ACP server](../reference/acp.md#background-sessions).
+
+At most `session.backgroundLimit` conversations (default 3, range 1-20) run in the
+background at once. A handoff past the limit stops the oldest background conversation,
+closes its provider stream, flushes its transcript, and names it in the handoff message.
+
+Each conversation runs background jobs of its own. After `/new`, the new session
+runs background bash, the `job` tool and daemon exit watches, and a job reports to
+the conversation that started it, including a job started by one of its agents.
+
+A background conversation ends when its turn is over and no background job it owns
+is still running. It then writes its `session_exit` record, releases its browser
+tabs, eval kernels and advisor, stops the agents it spawned and leaves the roster.
+MCP servers stay connected while any conversation that uses them is running; the
+last one to end disconnects them. At exit, a background conversation still running
+after 5 seconds is stopped the same way.
 
 The card is scoped to the conversation on screen: the roster, the Comms stream and
 the transcripts it opens are that conversation's. A conversation this process is
 still running off-screen is counted by the status line's background chip and has no
 card of its own.
+
+`/resume` marks each off-screen conversation `running`. Enter re-attaches it with its
+turn still streaming. `ctrl+x` stops the selected one in place: its turn is aborted,
+its provider stream closed, its background jobs cancelled and its transcript
+flushed, and the row stays in the list for a later resume.
 
 ### The Live roster
 

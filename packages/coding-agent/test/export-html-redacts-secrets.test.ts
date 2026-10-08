@@ -19,7 +19,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { removeWithRetries } from "@veyyon/utils";
-import { exportFromFile, type SessionData } from "../src/export/html";
+import { exportFromFile } from "../src/export/html";
+import type { SessionData } from "../src/export/session-data";
 import { SecretObfuscator } from "../src/secrets/obfuscator";
 
 const SECRET = "sk-live-EXPORTLEAK-0123456789";

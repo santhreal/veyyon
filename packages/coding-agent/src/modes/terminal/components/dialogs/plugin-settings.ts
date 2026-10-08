@@ -142,7 +142,7 @@ export class PluginListComponent extends MouseRoutedSubmenu {
 			return;
 		}
 
-		const items: SelectItem[] = entries.map(entry => this.#renderItem(entry));
+		const items: SelectItem[] = entries.map(entry => renderItem(entry));
 
 		// Marketplace plugin ids (`name@marketplace`) routinely run past the
 		// SelectList default primary column (32 chars). Widen the bound so the
@@ -164,48 +164,6 @@ export class PluginListComponent extends MouseRoutedSubmenu {
 		this.addChild(this.#selectList);
 	}
 
-	#renderItem(entry: PluginListEntry): SelectItem {
-		const kindBadge = theme.fg("dim", entry.kind === "npm" ? "[npm]" : "[marketplace]");
-
-		if (entry.kind === "npm") {
-			const p = entry.plugin;
-			const status = p.enabled
-				? theme.fg("success", theme.status.enabled)
-				: theme.fg("muted", theme.status.disabled);
-			const featureCount = p.manifest.features ? Object.keys(p.manifest.features).length : 0;
-			const enabledCount = p.enabledFeatures?.length ?? featureCount;
-
-			let details = `${kindBadge} ${theme.sep.dot} v${p.version}`;
-			if (featureCount > 0) {
-				details += ` ${theme.sep.dot} ${enabledCount}/${featureCount} features`;
-			}
-
-			return {
-				value: entryValue(entry),
-				label: `${status} ${p.name}`,
-				description: details,
-			};
-		}
-
-		const summary = entry.plugin;
-		const enabled = marketplaceEnabled(summary);
-		const status = enabled ? theme.fg("success", theme.status.enabled) : theme.fg("muted", theme.status.disabled);
-		const scopeTag = theme.fg("dim", `[${summary.scope}]`);
-		const shadowMarker = summary.shadowedBy ? ` ${theme.fg("warning", theme.status.shadowed)}` : "";
-		const version = summary.entries[0]?.version ?? "?";
-
-		let details = `${kindBadge} ${scopeTag} ${theme.sep.dot} v${version}`;
-		if (summary.shadowedBy) {
-			details += ` ${theme.sep.dot} shadowed by ${summary.shadowedBy}`;
-		}
-
-		return {
-			value: entryValue(entry),
-			label: `${status} ${summary.id}${shadowMarker}`,
-			description: details,
-		};
-	}
-
 	mouseTarget(): TrackedMouseTarget {
 		return this.#selectList;
 	}
@@ -217,6 +175,46 @@ export class PluginListComponent extends MouseRoutedSubmenu {
 	handleInput(data: string): void {
 		this.#selectList.handleInput(data);
 	}
+}
+
+function renderItem(entry: PluginListEntry): SelectItem {
+	const kindBadge = theme.fg("dim", entry.kind === "npm" ? "[npm]" : "[marketplace]");
+
+	if (entry.kind === "npm") {
+		const p = entry.plugin;
+		const status = p.enabled ? theme.fg("success", theme.status.enabled) : theme.fg("muted", theme.status.disabled);
+		const featureCount = p.manifest.features ? Object.keys(p.manifest.features).length : 0;
+		const enabledCount = p.enabledFeatures?.length ?? featureCount;
+
+		let details = `${kindBadge} ${theme.sep.dot} v${p.version}`;
+		if (featureCount > 0) {
+			details += ` ${theme.sep.dot} ${enabledCount}/${featureCount} features`;
+		}
+
+		return {
+			value: entryValue(entry),
+			label: `${status} ${p.name}`,
+			description: details,
+		};
+	}
+
+	const summary = entry.plugin;
+	const enabled = marketplaceEnabled(summary);
+	const status = enabled ? theme.fg("success", theme.status.enabled) : theme.fg("muted", theme.status.disabled);
+	const scopeTag = theme.fg("dim", `[${summary.scope}]`);
+	const shadowMarker = summary.shadowedBy ? ` ${theme.fg("warning", theme.status.shadowed)}` : "";
+	const version = summary.entries[0]?.version ?? "?";
+
+	let details = `${kindBadge} ${scopeTag} ${theme.sep.dot} v${version}`;
+	if (summary.shadowedBy) {
+		details += ` ${theme.sep.dot} shadowed by ${summary.shadowedBy}`;
+	}
+
+	return {
+		value: entryValue(entry),
+		label: `${status} ${summary.id}${shadowMarker}`,
+		description: details,
+	};
 }
 
 // =============================================================================

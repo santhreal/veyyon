@@ -55,7 +55,7 @@ import {
 	truncateToWidth,
 } from "../tools/core/render-utils";
 import { appendAgentStats, STATS_DOT, sanitizeRecentOutput, span } from "./agent-stats";
-import { classifyAgentOutcome } from "./outcome";
+import { type AgentOutcomeKind, classifyAgentOutcome } from "./outcome";
 import { repairDoubleEncodedJsonString, repairTaskParams } from "./repair-args";
 import { DEFAULT_SPAWN_AGENT } from "./spawn-policy";
 import { YIELD_TOOL_NAME } from "./subprocess-tool-registry";
@@ -114,6 +114,18 @@ function pushDotSpan(target: ViewSpan[], text: string, tone: ViewTone): void {
 
 /** The two columns a section's own body sits in, under the line that names it. */
 const INSET: ViewSpan = { text: "  " };
+
+/** The mark a warning row opens with. */
+const WARNING_MARK: ViewSpan = { text: "", symbol: "status.warning", tone: "warning" };
+
+/** The mark a detail hanging off the row above it opens with: the tool an agent runs, the recovery it waits on. */
+const HOOK: ViewSpan = { text: "", symbol: "tree.hook", tone: "dim" };
+
+/** What every agent row in one card is drawn with. */
+interface CardOptions {
+	readonly expanded: boolean;
+	readonly showResolvedModelBadge: boolean;
+}
 
 /** The mark an agent's state carries, which the host animates when the state is one that moves. */
 function statusOf(status: AgentProgress["status"]): ViewStatus {
@@ -210,30 +222,27 @@ function normalizeYieldData(value: unknown): YieldItem[] {
 	for (const item of items) {
 		if (item === null || typeof item !== "object") continue;
 		const record = item as Record<string, unknown>;
-		const typeValue = record.type;
-		let type: YieldItem["type"];
-		if (typeof typeValue === "string") {
-			type = typeValue;
-		} else if (Array.isArray(typeValue)) {
-			const labels: string[] = [];
-			let allLabels = true;
-			for (const label of typeValue) {
-				if (typeof label !== "string") {
-					allLabels = false;
-					break;
-				}
-				labels.push(label);
-			}
-			if (allLabels) type = labels;
-		}
+		const status = record.status;
 		normalized.push({
 			data: record.data,
-			type,
-			status: record.status === "aborted" ? "aborted" : record.status === "success" ? "success" : undefined,
+			type: yieldItemType(record.type),
+			status: status === "aborted" || status === "success" ? status : undefined,
 			useLastTurn: record.useLastTurn === true ? true : undefined,
 		});
 	}
 	return normalized;
+}
+
+/** A yield record's label: a string, or a list of strings copied out of the record; anything else is no label. */
+function yieldItemType(value: unknown): YieldItem["type"] {
+	if (typeof value === "string") return value;
+	if (!Array.isArray(value)) return undefined;
+	const labels: string[] = [];
+	for (const label of value) {
+		if (typeof label !== "string") return undefined;
+		labels.push(label);
+	}
+	return labels;
 }
 
 function formatYieldPreview(item: YieldItem): string {
@@ -252,7 +261,8 @@ const YIELD_PREVIEW_WIDTH = 70;
 /** Yield sections a collapsed card names, newest last. */
 const COLLAPSED_YIELD_LIMIT = 3;
 
-function yieldSectionRows(value: unknown, place: NodePlace, expanded: boolean): TaskRow[] {
+/** The yield sections an agent filed, newest last. Returns whether it drew any. */
+function appendYieldSections(rows: TaskRow[], value: unknown, place: NodePlace, expanded: boolean): boolean {
 	const typedItems: Array<{ item: YieldItem; labels: string[] }> = [];
 	for (const item of normalizeYieldData(value)) {
 		const labels = getYieldLabels(item.type);
@@ -260,7 +270,6 @@ function yieldSectionRows(value: unknown, place: NodePlace, expanded: boolean): 
 		typedItems.push({ item, labels });
 	}
 	const displayCount = expanded ? typedItems.length : COLLAPSED_YIELD_LIMIT;
-	const rows: TaskRow[] = [];
 	for (const { item, labels } of typedItems.slice(-displayCount)) {
 		const terminal = !Array.isArray(item.type);
 		const label = `${terminal ? "yield" : "yield+"}[${labels.join(", ")}]`;
@@ -269,8 +278,9 @@ function yieldSectionRows(value: unknown, place: NodePlace, expanded: boolean): 
 	if (typedItems.length > displayCount) {
 		rows.push(detailRow(place, [span(formatMoreItems(typedItems.length - displayCount, "yield"), "dim")]));
 	}
-	return rows;
+	return typedItems.length > 0;
 }
+
 /** Columns one line of an agent's output may spend before it is cut. */
 const OUTPUT_LINE_WIDTH = 70;
 
@@ -292,60 +302,74 @@ function appendTruncatedLines(target: TaskRow[], lines: readonly string[], place
  * The warning an agent that never called `yield` carries opens the section, because it is the reason
  * the output below it is whatever the process happened to print.
  */
-
-function outputRows(
+function appendOutput(
+	rows: TaskRow[],
 	output: string,
 	place: NodePlace,
 	expanded: boolean,
-	maxCollapsed = 3,
-	maxExpanded = 10,
+	maxLines: number,
 	warning?: string,
-): TaskRow[] {
-	const rows: TaskRow[] = [];
+): void {
 	const trimmedOutput = sanitizeText(output).trimEnd();
-	if (!trimmedOutput && !warning) return rows;
-
-	const inset = warning ? [INSET] : [];
 	if (warning) {
-		rows.push(detailRow(place, [span("Output", "dim")]));
 		rows.push(
+			detailRow(place, [span("Output", "dim")]),
 			detailRow(place, [
 				INSET,
-				{ text: "", symbol: "status.warning", tone: "warning" },
+				WARNING_MARK,
 				span(" "),
 				span(truncateToWidth(sanitizeText(warning), OUTPUT_WARNING_WIDTH), "dim"),
 			]),
 		);
-		if (!trimmedOutput) return rows;
 	}
-
-	if (trimmedOutput.startsWith("{") || trimmedOutput.startsWith("[")) {
-		try {
-			const parsed = JSON.parse(trimmedOutput);
-			// Collapsed: the same one-line summary the arguments of a call get.
-			if (!expanded) {
-				rows.push(detailRow(place, [...inset, span(formatOutputInline(parsed), "dim")]));
-				return rows;
-			}
-			if (!warning) rows.push(detailRow(place, [span("Output", "dim")]));
-			const tree = jsonTreeViewLines(parsed, {
-				maxDepth: JSON_TREE_DEPTH,
-				maxLines: JSON_TREE_LINES,
-				maxScalarLen: OUTPUT_LINE_WIDTH,
-			});
-			if (tree.lines.length > 0) {
-				for (const line of tree.lines) rows.push(detailRow(place, [INSET, ...line]));
-				if (tree.truncated) rows.push(detailRow(place, [INSET, span("…", "dim")]));
-				return rows;
-			}
-		} catch {
-			// Not JSON after all: fall through to the raw output below.
-		}
+	if (!trimmedOutput) return;
+	const headed = Boolean(warning);
+	if (
+		(trimmedOutput.startsWith("{") || trimmedOutput.startsWith("[")) &&
+		appendJsonOutput(rows, trimmedOutput, place, expanded, headed)
+	) {
+		return;
 	}
+	if (!headed) rows.push(detailRow(place, [span("Output", "dim")]));
+	appendTruncatedLines(rows, trimmedOutput.split("\n"), place, maxLines);
+}
 
-	if (!warning) rows.push(detailRow(place, [span("Output", "dim")]));
-	appendTruncatedLines(rows, trimmedOutput.split("\n"), place, expanded ? maxExpanded : maxCollapsed);
-	return rows;
+/**
+ * A returned JSON value: one summary line when collapsed, a tree when expanded.
+ *
+ * Returns false, drawing nothing, when the text is not JSON or is a value with no tree to draw such as
+ * `{}`, so the caller prints the text as lines under the one `Output` heading. `headed` is whether
+ * that heading is already drawn above, in which case the summary line sits in its inset.
+ */
+function appendJsonOutput(
+	rows: TaskRow[],
+	text: string,
+	place: NodePlace,
+	expanded: boolean,
+	headed: boolean,
+): boolean {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(text);
+	} catch {
+		return false;
+	}
+	// Collapsed: the same one-line summary the arguments of a call get.
+	if (!expanded) {
+		const summary = span(formatOutputInline(parsed), "dim");
+		rows.push(detailRow(place, headed ? [INSET, summary] : [summary]));
+		return true;
+	}
+	const tree = jsonTreeViewLines(parsed, {
+		maxDepth: JSON_TREE_DEPTH,
+		maxLines: JSON_TREE_LINES,
+		maxScalarLen: OUTPUT_LINE_WIDTH,
+	});
+	if (tree.lines.length === 0) return false;
+	if (!headed) rows.push(detailRow(place, [span("Output", "dim")]));
+	for (const line of tree.lines) rows.push(detailRow(place, [INSET, ...line]));
+	if (tree.truncated) rows.push(detailRow(place, [INSET, span("…", "dim")]));
+	return true;
 }
 
 /** Levels of a returned JSON value an expanded card walks, and the lines it may spend on them. */
@@ -356,13 +380,12 @@ const JSON_TREE_LINES = 24;
 const ASSIGNMENT_ROWS = 20;
 
 /** The brief an agent was given, which an expanded card shows under its row. */
-function assignmentRows(task: string | undefined, place: NodePlace, expanded: boolean): TaskRow[] {
-	if (!task || !expanded) return [];
+function appendAssignment(rows: TaskRow[], task: string | undefined, place: NodePlace, expanded: boolean): void {
+	if (!task || !expanded) return;
 	const trimmed = sanitizeText(task).trim();
-	if (!trimmed) return [];
-	const rows: TaskRow[] = [detailRow(place, [span("Task", "dim")])];
+	if (!trimmed) return;
+	rows.push(detailRow(place, [span("Task", "dim")]));
 	appendTruncatedLines(rows, trimmed.split("\n"), place, ASSIGNMENT_ROWS);
-	return rows;
 }
 
 function formatScalarInline(value: unknown, maxLen: number): string {
@@ -434,10 +457,9 @@ function agentHeaderLabel(args: Partial<TaskParams> | undefined): string | undef
 }
 
 /** The agent type a row names, when it is not the generic worker. */
-function agentTypeBadge(agent: string | undefined): ViewSpan[] {
+function pushAgentTypeBadge(line: ViewSpan[], agent: string | undefined): void {
 	const trimmed = agent?.trim();
-	if (!trimmed || trimmed === DEFAULT_SPAWN_AGENT) return [];
-	return [span(" "), { text: trimmed, badge: true, tone: "dim" }];
+	if (trimmed && trimmed !== DEFAULT_SPAWN_AGENT) line.push(span(" "), { text: trimmed, badge: true, tone: "dim" });
 }
 
 /** Columns an agent's brief may spend on the row that names it. */
@@ -446,7 +468,7 @@ const BRIEF_WIDTH = 64;
 function callEntryRow(idLabel: string, brief: string, agent?: string, isolated?: boolean): TaskRow {
 	const line: ViewSpan[] = [span("•", "dim"), span(" "), { text: idLabel, tone: "accent", bold: true }];
 	if (brief) line.push(span(": "), span(previewLine(brief, BRIEF_WIDTH), "muted"));
-	line.push(...agentTypeBadge(agent));
+	pushAgentTypeBadge(line, agent);
 	if (isolated) line.push(span(" [isolated]", "dim"));
 	return openRow(TOP, line);
 }
@@ -518,190 +540,201 @@ const SLOW_TOOL_MS = 5000;
  * A live or queued agent keeps the same mark a finished one has rather than a spinner: an async
  * spawn stays queued while real work runs, so a moving glyph reads as a call the turn is waiting on.
  */
-function progressRows(
+function appendProgress(
+	rows: TaskRow[],
 	progress: AgentProgress,
 	place: NodePlace,
-	expanded: boolean,
-	showResolvedModelBadge: boolean,
+	card: CardOptions,
 	frozen: boolean,
 	seen: WeakSet<object> | undefined,
 	nestedDepth: number,
-): TaskRow[] {
-	const rows: TaskRow[] = [];
-	const iconTone: ViewTone =
-		progress.status === "completed"
-			? "success"
-			: progress.status === "failed" || progress.status === "aborted"
-				? "error"
-				: "accent";
+): void {
+	const running = progress.status === "running";
+	rows.push(openRow(place, progressHeadline(progress, frozen, card.showResolvedModelBadge)));
+	appendAssignment(rows, progress.assignment ?? progress.task, place, card.expanded);
+	if (running) appendProgressTool(rows, progress, place);
+	appendRecovery(rows, progress, place);
 
+	// A finished reviewer states its verdict from the yield sections it assembled, falling back to
+	// the older `report_finding` side channel.
+	const review = progress.status === "completed" ? extractReviewDetails(progress.extractedToolData) : undefined;
+	if (review) {
+		appendReview(rows, review.summary, review.findings, place, card.expanded);
+		return;
+	}
+	if (progress.extractedToolData) appendLiveSections(rows, progress.extractedToolData, place, card.expanded);
+	// The nested tree: the sub-calls this agent finished plus the one it is inside, so deep progress
+	// reaches the reader without waiting for this agent's own turn to end.
+	const finished = (progress.extractedToolData?.task as TaskToolDetails[] | undefined) ?? [];
+	const inflight = progress.inflightTaskDetails;
+	if (finished.length > 0 || inflight) {
+		const snapshots = inflight ? [...finished, inflight] : finished;
+		appendNestedTree(rows, snapshots, place.depth + 1, card, frozen, seen, nestedDepth);
+	}
+	if (card.expanded && running) {
+		appendOutput(rows, liveOutput(progress.recentOutput), place, true, LIVE_OUTPUT_ROWS);
+	}
+}
+
+/**
+ * The row that opens a live or queued agent: its mark, id, description, type and badge, then for a
+ * running one its brief when it has no description, and its counts once it runs or completes.
+ */
+function progressHeadline(progress: AgentProgress, frozen: boolean, showResolvedModelBadge: boolean): ViewSpan[] {
+	const running = progress.status === "running";
 	const trimmedDescription = progress.description?.trim();
 	const description = trimmedDescription ? previewLine(sanitizeText(trimmedDescription), BRIEF_WIDTH) : undefined;
-	const displayId = formatTaskId(progress.id);
-	const line: ViewSpan[] = [];
+	const line = progressTitleSpans(progress, description, frozen);
+	pushAgentTypeBadge(line, progress.agent);
+	const badge = progressBadge(progress);
+	if (badge) line.push(span(" "), badge);
+	if (running && !description) {
+		line.push(
+			span(" "),
+			span(previewLine(sanitizeText(progress.assignment ?? progress.task), TOOL_DETAIL_WIDTH), "muted"),
+		);
+	}
+	if (running || progress.status === "completed") {
+		appendAgentStats(line, {
+			toolCount: progress.toolCount,
+			requests: progress.requests,
+			tokens: progress.tokens,
+			contextTokens: progress.contextTokens,
+			contextWindow: progress.contextWindow,
+			cost: progress.cost,
+			resolvedModel: progress.resolvedModel,
+			showResolvedModelBadge,
+		});
+	}
+	return line;
+}
+
+/** An agent's id, bold and followed by its description when it has one. */
+function pushTitle(line: ViewSpan[], id: string, description: string | undefined, tone: ViewTone): void {
+	const text = formatTaskId(id);
+	if (description) line.push({ text, tone, bold: true, agentId: id }, span(`: ${description}`, tone));
+	else line.push({ text, tone, agentId: id });
+}
+
+/** The mark, id and description that open a live or queued agent's row. */
+function progressTitleSpans(progress: AgentProgress, description: string | undefined, frozen: boolean): ViewSpan[] {
 	if (progress.status === "running" || progress.status === "pending") {
 		const tone: ViewTone = frozen ? "dim" : "accent";
-		line.push({ text: "", symbol: "status.done", tone }, span(" "));
-		line.push(
+		const text = formatTaskId(progress.id);
+		const line: ViewSpan[] = [
+			{ text: "", symbol: "status.done", tone },
+			span(" "),
 			description === undefined
-				? { text: displayId, tone, agentId: progress.id }
-				: { text: displayId, tone, bold: true, agentId: progress.id },
-		);
+				? { text, tone, agentId: progress.id }
+				: { text, tone, bold: true, agentId: progress.id },
+		];
 		if (description) line.push(span(":", tone), span(" "), span(description, tone));
-	} else if (progress.status === "completed") {
-		// A finished row settles from the accent to the card's own body text: completion reads as a
-		// colour change rather than as a new mark, mark included.
-		line.push({ text: "", symbol: "status.done", tone: "text" }, span(" "));
-		if (description)
-			line.push(
-				{ text: displayId, tone: "text", bold: true, agentId: progress.id },
-				span(`: ${description}`, "text"),
-			);
-		else line.push({ text: displayId, tone: "text", agentId: progress.id });
-	} else {
-		line.push({ text: "", status: statusOf(progress.status), tone: iconTone }, span(" "));
-		if (description)
-			line.push(
-				{ text: displayId, tone: "accent", bold: true, agentId: progress.id },
-				span(`: ${description}`, "accent"),
-			);
-		else line.push({ text: displayId, tone: "accent", agentId: progress.id });
+		return line;
 	}
-	line.push(...agentTypeBadge(progress.agent));
+	// A finished row settles from the accent to the card's own body text: completion reads as a
+	// colour change rather than as a new mark, mark included.
+	const completed = progress.status === "completed";
+	const line: ViewSpan[] = [
+		completed
+			? { text: "", symbol: "status.done", tone: "text" }
+			: { text: "", status: statusOf(progress.status), tone: "error" },
+		span(" "),
+	];
+	pushTitle(line, progress.id, description, completed ? "text" : "accent");
+	return line;
+}
 
-	// A recovery badge says the child is sleeping between attempts rather than progressing. It wins
-	// over the plain running mark, because waiting is the operationally meaningful state.
+/**
+ * The badge a live agent's row carries, if any.
+ *
+ * A recovery badge says the child is sleeping between attempts rather than progressing. It wins over
+ * the plain running mark, because waiting is the operationally meaningful state. Once a recovery gave
+ * up, the badge names the recovery and never a cause: `retryFailure` is set from any unsuccessful
+ * recovery, and the row under it already says which one.
+ */
+function progressBadge(progress: AgentProgress): ViewSpan | undefined {
 	if (progress.retryState && progress.status === "running") {
-		line.push(span(" "), {
+		return {
 			text: progress.retryState.mode === "continue" ? "continuing" : "retrying",
 			badge: true,
 			tone: "warning",
-		});
-	} else if (progress.retryFailure && (progress.status === "failed" || progress.status === "aborted")) {
-		// The badge names the recovery that gave up and never a cause: `retryFailure` is set from any
-		// unsuccessful recovery, and the row under it already says which one.
-		line.push(span(" "), {
+		};
+	}
+	if (progress.status !== "failed" && progress.status !== "aborted") return undefined;
+	if (progress.retryFailure) {
+		return {
 			text: progress.retryFailure.mode === "continue" ? "continuation gave up" : "retries gave up",
 			badge: true,
 			tone: "error",
-		});
-	} else if (progress.status === "failed" || progress.status === "aborted") {
-		line.push(span(" "), { text: progress.status === "failed" ? "failed" : "aborted", badge: true, tone: iconTone });
+		};
 	}
+	return { text: progress.status, badge: true, tone: "error" };
+}
 
-	if (progress.status === "running") {
-		if (!description) {
-			line.push(
-				span(" "),
-				span(previewLine(sanitizeText(progress.assignment ?? progress.task), TOOL_DETAIL_WIDTH), "muted"),
-			);
-		}
-		appendAgentStats(line, { ...progress, showResolvedModelBadge });
-	} else if (progress.status === "completed") {
-		appendAgentStats(line, { ...progress, showResolvedModelBadge });
-	}
+/**
+ * The tool a running agent is inside, with how long it has run once that is slow; between tools, the
+ * last one that finished.
+ */
+function appendProgressTool(rows: TaskRow[], progress: AgentProgress, place: NodePlace): void {
+	const current = progress.currentTool;
+	if (!current && progress.recentTools.length === 0) return;
+	const recent = progress.recentTools[0];
+	const line: ViewSpan[] = [
+		HOOK,
+		span(" "),
+		current ? span(sanitizeText(current), "muted") : span(sanitizeText(recent.tool), "dim"),
+	];
+	const detail = progress.lastIntent ?? (current ? progress.currentToolArgs : recent.args);
+	if (detail) line.push(span(": "), span(previewLine(sanitizeText(detail), TOOL_DETAIL_WIDTH), "dim"));
+	const elapsed = current && progress.currentToolStartMs ? Date.now() - progress.currentToolStartMs : 0;
+	if (elapsed > SLOW_TOOL_MS) line.push(STATS_DOT, span(formatDuration(elapsed), "warning"));
+	rows.push(detailRow(place, line));
+}
 
-	rows.push(openRow(place, line));
-	rows.push(...assignmentRows(progress.assignment ?? progress.task, place, expanded));
-
-	if (progress.status === "running") {
-		if (progress.currentTool) {
-			const toolLine: ViewSpan[] = [
-				{ text: "", symbol: "tree.hook", tone: "dim" },
-				span(" "),
-				span(sanitizeText(progress.currentTool), "muted"),
-			];
-			const toolDetail = progress.lastIntent ?? progress.currentToolArgs;
-			if (toolDetail)
-				toolLine.push(span(": "), span(previewLine(sanitizeText(toolDetail), TOOL_DETAIL_WIDTH), "dim"));
-			if (progress.currentToolStartMs) {
-				const elapsed = Date.now() - progress.currentToolStartMs;
-				if (elapsed > SLOW_TOOL_MS) toolLine.push(STATS_DOT, span(formatDuration(elapsed), "warning"));
-			}
-			rows.push(detailRow(place, toolLine));
-		} else if (progress.recentTools.length > 0) {
-			// Idle between tools: the row names the last one that finished.
-			const recent = progress.recentTools[0];
-			const toolLine: ViewSpan[] = [
-				{ text: "", symbol: "tree.hook", tone: "dim" },
-				span(" "),
-				span(sanitizeText(recent.tool), "dim"),
-			];
-			const toolDetail = progress.lastIntent ?? recent.args;
-			if (toolDetail)
-				toolLine.push(span(": "), span(previewLine(sanitizeText(toolDetail), TOOL_DETAIL_WIDTH), "dim"));
-			rows.push(detailRow(place, toolLine));
-		}
-	}
-
-	// Why the agent is paused and roughly how long until the next attempt. Without it the card spins
-	// while a child sleeps out a three-hour provider rate limit.
-	if (progress.retryState && progress.status === "running") {
-		const remainingMs = Math.max(0, progress.retryState.startedAtMs + progress.retryState.delayMs - Date.now());
+/**
+ * Why the agent is paused and roughly how long until the next attempt, or the recovery that gave up.
+ * Without it the card spins while a child sleeps out a three-hour provider rate limit.
+ */
+function appendRecovery(rows: TaskRow[], progress: AgentProgress, place: NodePlace): void {
+	const { retryState, retryFailure } = progress;
+	if (retryState && progress.status === "running") {
+		const remainingMs = Math.max(0, retryState.startedAtMs + retryState.delayMs - Date.now());
 		const waitLabel = remainingMs > 0 ? `in ${formatDuration(remainingMs)}` : "now";
 		// A continuation is not a retry: the batch cannot be resent, so the child carries the turn
 		// forward instead, and saying "retrying" named the one thing that did not happen.
-		const verb = progress.retryState.mode === "continue" ? "continuing" : "retrying";
-		const summary = `${verb} ${progress.retryState.attempt}/${progress.retryState.maxAttempts} ${waitLabel}: ${previewLine(
-			sanitizeText(progress.retryState.errorMessage),
-			RETRY_MESSAGE_WIDTH,
-		)}`;
-		rows.push(
-			detailRow(place, [{ text: "", symbol: "tree.hook", tone: "dim" }, span(" "), span(summary, "warning")]),
-		);
-	} else if (progress.retryFailure && progress.status !== "running") {
-		const gaveUp = progress.retryFailure.mode === "continue" ? "continuation" : "auto-retry";
-		const summary = `${gaveUp} gave up after ${formatCount("attempt", progress.retryFailure.attempt)}: ${previewLine(
-			sanitizeText(progress.retryFailure.errorMessage),
-			OUTPUT_WARNING_WIDTH,
-		)}`;
-		rows.push(detailRow(place, [{ text: "", symbol: "tree.hook", tone: "dim" }, span(" "), span(summary, "error")]));
+		const verb = retryState.mode === "continue" ? "continuing" : "retrying";
+		const message = previewLine(sanitizeText(retryState.errorMessage), RETRY_MESSAGE_WIDTH);
+		const summary = `${verb} ${retryState.attempt}/${retryState.maxAttempts} ${waitLabel}: ${message}`;
+		rows.push(detailRow(place, [HOOK, span(" "), span(summary, "warning")]));
+		return;
 	}
+	if (!retryFailure || progress.status === "running") return;
+	const gaveUp = retryFailure.mode === "continue" ? "continuation" : "auto-retry";
+	const message = previewLine(sanitizeText(retryFailure.errorMessage), OUTPUT_WARNING_WIDTH);
+	const summary = `${gaveUp} gave up after ${formatCount("attempt", retryFailure.attempt)}: ${message}`;
+	rows.push(detailRow(place, [HOOK, span(" "), span(summary, "error")]));
+}
 
-	if (progress.extractedToolData) {
-		// A finished reviewer states its verdict from the yield sections it assembled, falling back to
-		// the older `report_finding` side channel.
-		if (progress.status === "completed") {
-			const review = extractReviewDetails(progress.extractedToolData);
-			if (review) {
-				rows.push(...reviewRows(review.summary, review.findings, place, expanded));
-				return rows;
-			}
-		}
-
-		for (const toolName in progress.extractedToolData) {
-			const dataArray = progress.extractedToolData[toolName];
-			if (toolName === YIELD_TOOL_NAME) {
-				rows.push(...yieldSectionRows(dataArray, place, expanded));
-				continue;
-			}
-			if (toolName === "report_finding") {
-				const findings = normalizeReportFindings(dataArray);
-				if (findings.length === 0) continue;
-				rows.push(detailRow(place, findingSummarySpans(findings)));
-				rows.push(...findingRows(findings, place, expanded));
-			}
-			// Nested task data has its own tree below, which also merges in the in-flight snapshot.
+/**
+ * The yield sections and filed findings of an agent that has not settled into a review verdict.
+ * Nested task data has its own tree, which also merges in the in-flight snapshot.
+ */
+function appendLiveSections(
+	rows: TaskRow[],
+	data: Record<string, unknown[]>,
+	place: NodePlace,
+	expanded: boolean,
+): void {
+	for (const toolName in data) {
+		if (toolName === YIELD_TOOL_NAME) {
+			appendYieldSections(rows, data[toolName], place, expanded);
+		} else if (toolName === "report_finding") {
+			const findings = normalizeReportFindings(data[toolName]);
+			if (findings.length === 0) continue;
+			rows.push(detailRow(place, findingSummarySpans(findings)));
+			appendFindings(rows, findings, place, expanded);
 		}
 	}
-
-	// The nested tree: sub-calls this agent finished plus the one it is inside, so deep progress
-	// reaches the reader without waiting for this agent's own turn to end.
-	const completedTaskCalls = (progress.extractedToolData?.task as TaskToolDetails[] | undefined) ?? [];
-	const inflight = progress.inflightTaskDetails;
-	if (completedTaskCalls.length > 0 || inflight) {
-		const snapshots = inflight ? [...completedTaskCalls, inflight] : completedTaskCalls;
-		rows.push(
-			...nestedTreeRows(snapshots, place.depth + 1, expanded, showResolvedModelBadge, frozen, seen, nestedDepth),
-		);
-	}
-
-	if (expanded && progress.status === "running") {
-		const output = liveOutput(progress.recentOutput);
-		rows.push(...outputRows(output, place, expanded, 2, LIVE_OUTPUT_ROWS));
-	}
-
-	return rows;
 }
 
 /** Columns a retry's own error message may spend. */
@@ -723,13 +756,13 @@ function liveOutput(recentOutput: readonly string[] | undefined): string {
 }
 
 /** A reviewer's verdict, its explanation and the findings it filed. */
-function reviewRows(
+function appendReview(
+	rows: TaskRow[],
 	summary: SubmitReviewDetails,
 	findings: ReportFindingDetails[],
 	place: NodePlace,
 	expanded: boolean,
-): TaskRow[] {
-	const rows: TaskRow[] = [];
+): void {
 	const correct = summary.overall_correctness === "correct";
 	const verdictTone: ViewTone = correct ? "success" : "error";
 	rows.push(
@@ -760,8 +793,7 @@ function reviewRows(
 	}
 
 	rows.push(detailRow(place, findingSummarySpans(findings)));
-	if (findings.length > 0) rows.push(...findingRows(findings, place, expanded));
-	return rows;
+	if (findings.length > 0) appendFindings(rows, findings, place, expanded);
 }
 
 /** Columns a collapsed review explanation may spend. */
@@ -771,8 +803,7 @@ const EXPLANATION_WIDTH = 100;
 const COLLAPSED_FINDING_LIMIT = 3;
 
 /** One node per finding, under the agent that filed it. */
-function findingRows(findings: ReportFindingDetails[], place: NodePlace, expanded: boolean): TaskRow[] {
-	const rows: TaskRow[] = [];
+function appendFindings(rows: TaskRow[], findings: ReportFindingDetails[], place: NodePlace, expanded: boolean): void {
 	const sorted = expanded
 		? findings
 		: [...findings].sort((a, b) => getPriorityInfo(a.priority).ord - getPriorityInfo(b.priority).ord);
@@ -801,64 +832,98 @@ function findingRows(findings: ReportFindingDetails[], place: NodePlace, expande
 	if (!expanded && findings.length > COLLAPSED_FINDING_LIMIT) {
 		rows.push(detailRow(place, [span(formatMoreItems(findings.length - COLLAPSED_FINDING_LIMIT, "finding"), "dim")]));
 	}
-	return rows;
 }
 
 /** One finished agent: how it ended, what it spent, and what it returned. */
-function resultRows(
+function appendResult(
+	rows: TaskRow[],
 	result: SingleResult,
 	place: NodePlace,
-	expanded: boolean,
-	showResolvedModelBadge: boolean,
+	card: CardOptions,
 	seen: WeakSet<object> | undefined,
 	nestedDepth: number,
-): TaskRow[] {
-	const rows: TaskRow[] = [];
+): void {
 	const { warning: missingYieldWarning, rest: outputWithoutWarning } = extractMissingYieldWarning(result.output);
 	// The same classification the wire uses, so a row cannot read as done while the tool result is
 	// marked an error, or the reverse.
-	const outcome = classifyAgentOutcome(result);
-	const aborted = outcome.kind === "aborted";
-	const mergeFailed = outcome.kind === "merge-failed";
-	const success = outcome.kind === "completed";
-	const needsWarning = Boolean(missingYieldWarning) && success;
-	const tone: ViewTone = needsWarning ? "warning" : success ? "success" : mergeFailed ? "warning" : "error";
-	const statusText = aborted
-		? "aborted"
-		: needsWarning
-			? "warning"
-			: success
-				? "done"
-				: mergeFailed
-					? "merge failed"
-					: "failed";
+	const kind = classifyAgentOutcome(result).kind;
+	const look = RESULT_LOOKS[kind === "completed" && missingYieldWarning ? "unyielded" : kind];
+	rows.push(openRow(place, resultHeadline(result, look, card.showResolvedModelBadge)));
+	appendAssignment(rows, result.assignment ?? result.task, place, card.expanded);
+	if (kind === "aborted" && result.abortReason) {
+		rows.push(
+			detailRow(place, [
+				{ text: "", symbol: "status.aborted", tone: "error" },
+				span(" "),
+				span(previewLine(sanitizeText(result.abortReason), OUTPUT_WARNING_WIDTH), "dim"),
+			]),
+		);
+	}
+	if (appendVerdict(rows, result.extractedToolData, place, card.expanded)) return;
+	if (!appendYieldSections(rows, result.extractedToolData?.[YIELD_TOOL_NAME], place, card.expanded)) {
+		const maxLines = card.expanded ? SETTLED_OUTPUT_ROWS : 3;
+		appendOutput(rows, outputWithoutWarning, place, card.expanded, maxLines, missingYieldWarning);
+	} else if (missingYieldWarning) {
+		rows.push(
+			detailRow(place, [
+				WARNING_MARK,
+				span(" "),
+				span(truncateToWidth(sanitizeText(missingYieldWarning), OUTPUT_WARNING_WIDTH), "dim"),
+			]),
+		);
+	}
+	// Review data is drawn above, and every other tool's data is drawn by the block that owns it.
+	const nested = result.extractedToolData?.task as TaskToolDetails[] | undefined;
+	if (nested && nested.length > 0) appendNestedTree(rows, nested, place.depth + 1, card, undefined, seen, nestedDepth);
+	appendSettlement(rows, result, kind, look, place);
+}
 
+/** How a finished agent's row reads: the mark that opens it, its badge, and the tones of both. */
+interface ResultLook {
+	readonly mark: ViewSpan;
+	readonly badge: string;
+	readonly tone: ViewTone;
+	readonly titleTone: ViewTone;
+}
+
+/** Each way an agent can settle, plus a completed agent that never called `yield`, which reads as a warning. */
+const RESULT_LOOKS: Record<AgentOutcomeKind | "unyielded", ResultLook> = {
+	aborted: {
+		mark: { text: "", status: "aborted", tone: "error" },
+		badge: "aborted",
+		tone: "error",
+		titleTone: "accent",
+	},
+	failed: {
+		mark: { text: "", symbol: "status.error", tone: "error" },
+		badge: "failed",
+		tone: "error",
+		titleTone: "accent",
+	},
+	"merge-failed": {
+		mark: { text: "", symbol: "status.error", tone: "warning" },
+		badge: "merge failed",
+		tone: "warning",
+		titleTone: "accent",
+	},
+	unyielded: { mark: WARNING_MARK, badge: "warning", tone: "warning", titleTone: "accent" },
+	// Settled: the mark and the title take the card's body text, like the row they open.
+	completed: {
+		mark: { text: "", symbol: "status.done", tone: "text" },
+		badge: "done",
+		tone: "success",
+		titleTone: "text",
+	},
+};
+
+/** The row that opens a finished agent: its mark, id, description, badge, counts and runtime. */
+function resultHeadline(result: SingleResult, look: ResultLook, showResolvedModelBadge: boolean): ViewSpan[] {
 	const trimmedDescription = result.description ? sanitizeText(result.description).trim() : undefined;
 	const description = trimmedDescription ? previewLine(trimmedDescription, BRIEF_WIDTH) : undefined;
-	const displayId = formatTaskId(result.id);
-	const settled = success && !needsWarning;
-	const titleTone: ViewTone = settled ? "text" : "accent";
-	const line: ViewSpan[] = [
-		aborted
-			? { text: "", status: "aborted", tone }
-			: needsWarning
-				? { text: "", symbol: "status.warning", tone }
-				: success
-					? // Settled: the mark takes the card's body text, like the row it opens.
-						{ text: "", symbol: "status.done", tone: "text" }
-					: { text: "", symbol: "status.error", tone },
-		span(" "),
-	];
-	if (description) {
-		line.push(
-			{ text: displayId, tone: titleTone, bold: true, agentId: result.id },
-			span(`: ${description}`, titleTone),
-		);
-	} else {
-		line.push({ text: displayId, tone: titleTone, agentId: result.id });
-	}
-	line.push(...agentTypeBadge(result.agent));
-	line.push(span(" "), { text: statusText, badge: true, tone });
+	const line: ViewSpan[] = [look.mark, span(" ")];
+	pushTitle(line, result.id, description, look.titleTone);
+	pushAgentTypeBadge(line, result.agent);
+	line.push(span(" "), { text: look.badge, badge: true, tone: look.tone });
 	appendAgentStats(line, {
 		tokens: result.tokens,
 		requests: result.requests,
@@ -870,109 +935,57 @@ function resultRows(
 	});
 	line.push(STATS_DOT, span(formatDuration(result.durationMs), "dim"));
 	if (result.truncated) line.push(span(" "), span("[truncated]", "warning"));
-	rows.push(openRow(place, line));
+	return line;
+}
 
-	rows.push(...assignmentRows(result.assignment ?? result.task, place, expanded));
-
-	if (aborted && result.abortReason) {
-		rows.push(
-			detailRow(place, [
-				{ text: "", symbol: "status.aborted", tone: "error" },
-				span(" "),
-				span(previewLine(sanitizeText(result.abortReason), OUTPUT_WARNING_WIDTH), "dim"),
-			]),
-		);
-	}
-
-	// A review verdict, preferring the incremental yield sections and falling back to the older
-	// `report_finding` side channel. `normalizeYieldData` guards a slot that is not an array.
-	const review = extractReviewDetails(result.extractedToolData);
+/**
+ * A reviewer's verdict, preferring the incremental yield sections and falling back to the older
+ * `report_finding` side channel; findings filed with no verdict say the verdict is missing.
+ * Returns false, drawing nothing, when the agent filed neither. `normalizeYieldData` guards a slot
+ * that is not an array.
+ */
+function appendVerdict(
+	rows: TaskRow[],
+	data: Record<string, unknown[]> | undefined,
+	place: NodePlace,
+	expanded: boolean,
+): boolean {
+	const review = extractReviewDetails(data);
 	if (review) {
-		rows.push(...reviewRows(review.summary, review.findings, place, expanded));
-		return rows;
+		appendReview(rows, review.summary, review.findings, place, expanded);
+		return true;
 	}
-	const reportFindingData = normalizeReportFindings(result.extractedToolData?.report_finding);
-	if (reportFindingData.length > 0) {
-		const completeData = normalizeYieldData(result.extractedToolData?.yield);
-		rows.push(
-			detailRow(place, [
-				{ text: "", symbol: "status.warning", tone: "warning" },
-				span(" "),
-				span(
-					completeData.length > 0
-						? "Review verdict missing expected fields"
-						: "Review incomplete (yield not called)",
-					"dim",
-				),
-			]),
-		);
-		rows.push(detailRow(place, findingSummarySpans(reportFindingData)));
-		rows.push(...findingRows(reportFindingData, place, expanded));
-		return rows;
+	const findings = normalizeReportFindings(data?.report_finding);
+	if (findings.length === 0) return false;
+	const missing =
+		normalizeYieldData(data?.yield).length > 0
+			? "Review verdict missing expected fields"
+			: "Review incomplete (yield not called)";
+	rows.push(
+		detailRow(place, [WARNING_MARK, span(" "), span(missing, "dim")]),
+		detailRow(place, findingSummarySpans(findings)),
+	);
+	appendFindings(rows, findings, place, expanded);
+	return true;
+}
+
+/** Where an isolated agent's work went, and the error an agent that did not complete ended on. */
+function appendSettlement(
+	rows: TaskRow[],
+	result: SingleResult,
+	kind: AgentOutcomeKind,
+	look: ResultLook,
+	place: NodePlace,
+): void {
+	const aborted = kind === "aborted";
+	if (!aborted && result.exitCode === 0) {
+		if (result.patchPath) rows.push(detailRow(place, [span(`Patch: ${result.patchPath}`, "dim")]));
+		else if (result.branchName) rows.push(detailRow(place, [span(`Branch: ${result.branchName}`, "dim")]));
 	}
-
-	let hasYieldSections = false;
-	const nestedRows: TaskRow[] = [];
-	if (result.extractedToolData) {
-		for (const toolName in result.extractedToolData) {
-			const dataArray = result.extractedToolData[toolName];
-			if (toolName === YIELD_TOOL_NAME) {
-				const yieldRows = yieldSectionRows(dataArray, place, expanded);
-				if (yieldRows.length > 0) {
-					hasYieldSections = true;
-					rows.push(...yieldRows);
-				}
-				continue;
-			}
-			// Review data is drawn above, and every other tool's data is drawn by the block that owns it.
-			if (toolName === "report_finding") continue;
-			if (toolName === "task" && (dataArray as unknown[]).length > 0) {
-				nestedRows.push(
-					...nestedTreeRows(
-						dataArray as TaskToolDetails[],
-						place.depth + 1,
-						expanded,
-						showResolvedModelBadge,
-						undefined,
-						seen,
-						nestedDepth,
-					),
-				);
-			}
-		}
+	// A set error never classifies as completed, and an abort's reason is already drawn under its row.
+	if (result.error && (!aborted || result.error !== result.abortReason)) {
+		rows.push(detailRow(place, [span(previewLine(sanitizeText(result.error), OUTPUT_LINE_WIDTH), look.tone)]));
 	}
-
-	if (hasYieldSections && missingYieldWarning) {
-		rows.push(
-			detailRow(place, [
-				{ text: "", symbol: "status.warning", tone: "warning" },
-				span(" "),
-				span(truncateToWidth(sanitizeText(missingYieldWarning), OUTPUT_WARNING_WIDTH), "dim"),
-			]),
-		);
-	}
-
-	if (!hasYieldSections) {
-		rows.push(...outputRows(outputWithoutWarning, place, expanded, 3, SETTLED_OUTPUT_ROWS, missingYieldWarning));
-	}
-
-	rows.push(...nestedRows);
-
-	if (result.patchPath && !aborted && result.exitCode === 0) {
-		rows.push(detailRow(place, [span(`Patch: ${result.patchPath}`, "dim")]));
-	} else if (result.branchName && !aborted && result.exitCode === 0) {
-		rows.push(detailRow(place, [span(`Branch: ${result.branchName}`, "dim")]));
-	}
-
-	if (result.error && (!success || mergeFailed) && (!aborted || result.error !== result.abortReason)) {
-		rows.push(
-			detailRow(place, [
-				span(previewLine(sanitizeText(result.error), OUTPUT_LINE_WIDTH), mergeFailed ? "warning" : "error"),
-			]),
-		);
-	}
-
-	return rows;
 }
 
 /** Output rows an expanded settled agent shows. */
@@ -1063,59 +1076,69 @@ function guardRow(depth: number, text: string): TaskRow {
 }
 
 /** Nested agents, finished or in flight, as one tree under the agent that spawned them. */
-function nestedTreeRows(
+function appendNestedTree(
+	rows: TaskRow[],
 	detailsList: TaskToolDetails[],
 	depth: number,
-	expanded: boolean,
-	showResolvedModelBadge: boolean,
+	card: CardOptions,
 	// Undefined excludes live progress from completed-result snapshots.
 	frozen: boolean | undefined,
 	seen: WeakSet<object> = new WeakSet<object>(),
 	nestedDepth = 0,
-): TaskRow[] {
-	const rows: TaskRow[] = [];
+): void {
 	for (const details of detailsList) {
 		if (seen.has(details)) {
 			rows.push(guardRow(depth, "… nested task progress already shown"));
-			continue;
-		}
-		if (nestedDepth >= MAX_NESTED_TASK_RENDER_DEPTH) {
+		} else if (nestedDepth >= MAX_NESTED_TASK_RENDER_DEPTH) {
 			rows.push(guardRow(depth, "… nested task depth limit reached"));
-			continue;
-		}
-		seen.add(details);
-		if (details.results && details.results.length > 0) {
-			const ordered = orderResultsForDisplay(details.results);
-			const visible = expanded ? ordered : selectCollapsedResults(ordered);
-			const hiddenCount = ordered.length - visible.length;
-			visible.forEach((result, index) => {
-				const last = hiddenCount === 0 && index === visible.length - 1;
-				rows.push(...resultRows(result, { depth, last }, expanded, showResolvedModelBadge, seen, nestedDepth + 1));
-			});
-			if (hiddenCount > 0) {
-				rows.push(openRow({ depth, last: true }, [span(formatMoreItems(hiddenCount, "agent"), "dim")]));
-			}
+		} else {
+			seen.add(details);
+			appendNestedCall(rows, details, depth, card, frozen, seen, nestedDepth + 1);
 			seen.delete(details);
-			continue;
 		}
-		const inflight = details.progress;
-		if (frozen !== undefined && inflight && inflight.length > 0) {
-			const ordered = orderProgressForDisplay(inflight);
-			const visible = expanded ? ordered : ordered.slice(Math.max(0, ordered.length - COLLAPSED_AGENT_LIMIT));
-			const hiddenCount = ordered.length - visible.length;
-			visible.forEach((prog, index) => {
-				const last = hiddenCount === 0 && index === visible.length - 1;
-				rows.push(
-					...progressRows(prog, { depth, last }, expanded, showResolvedModelBadge, frozen, seen, nestedDepth + 1),
-				);
-			});
-			if (hiddenCount > 0) {
-				rows.push(openRow({ depth, last: true }, [span(formatMoreItems(hiddenCount, "agent"), "dim")]));
-			}
-		}
-		seen.delete(details);
 	}
-	return rows;
+}
+
+/** One nested call's agents: its results once it has any, else its live progress unless `frozen` is undefined. */
+function appendNestedCall(
+	rows: TaskRow[],
+	details: TaskToolDetails,
+	depth: number,
+	card: CardOptions,
+	frozen: boolean | undefined,
+	seen: WeakSet<object>,
+	nestedDepth: number,
+): void {
+	if (details.results && details.results.length > 0) {
+		const ordered = orderResultsForDisplay(details.results);
+		const visible = card.expanded ? ordered : selectCollapsedResults(ordered);
+		appendSiblings(rows, visible, ordered.length, depth, (result, place) =>
+			appendResult(rows, result, place, card, seen, nestedDepth),
+		);
+		return;
+	}
+	const inflight = details.progress;
+	if (frozen === undefined || !inflight || inflight.length === 0) return;
+	const ordered = orderProgressForDisplay(inflight);
+	const visible = card.expanded ? ordered : ordered.slice(Math.max(0, ordered.length - COLLAPSED_AGENT_LIMIT));
+	appendSiblings(rows, visible, ordered.length, depth, (progress, place) =>
+		appendProgress(rows, progress, place, card, frozen, seen, nestedDepth),
+	);
+}
+
+/** The visible agents of a nested call as sibling nodes, closed by a count of the ones folded away. */
+function appendSiblings<T>(
+	rows: TaskRow[],
+	visible: readonly T[],
+	total: number,
+	depth: number,
+	appendAgent: (agent: T, place: NodePlace) => void,
+): void {
+	const hiddenCount = total - visible.length;
+	for (let index = 0; index < visible.length; index++) {
+		appendAgent(visible[index], { depth, last: hiddenCount === 0 && index === visible.length - 1 });
+	}
+	if (hiddenCount > 0) rows.push(openRow({ depth, last: true }, [span(formatMoreItems(hiddenCount, "agent"), "dim")]));
 }
 
 /** The rows of the card's body as the tree section that carries them. */
@@ -1128,20 +1151,22 @@ function treeSection(rows: readonly TaskRow[]): ViewSection {
 	return { separator: true, lines: rows.map(row => row.spans as ViewLine), tree };
 }
 
-/** The row that heads the card, by what the call is doing rather than by how it ended. */
-function header(
-	status: ViewStatus | undefined,
-	emblem: string | undefined,
-	...meta: (string | undefined)[]
-): StatusRowView {
+/**
+ * The row that heads the card, by what the call is doing rather than by how it ended.
+ *
+ * A call in flight keeps the dispatch mark rather than a spinner: an async spawn returns at once, so
+ * "running" means delegated rather than blocking. A call that succeeded takes the done mark, and any
+ * other state is drawn as that state.
+ */
+function header(state: ViewStatus, ...meta: (string | undefined)[]): StatusRowView {
 	const entries = meta.filter((entry): entry is string => entry !== undefined).map(entry => [span(entry)]);
-	return {
-		kind: "statusRow",
-		...(status === undefined ? {} : { status }),
-		...(emblem === undefined ? {} : { emblem }),
-		title: "Task",
-		...(entries.length === 0 ? {} : { meta: entries }),
-	};
+	const mark: Pick<StatusRowView, "status" | "emblem"> =
+		state === "running"
+			? { emblem: "tool.task" }
+			: state === "success"
+				? { emblem: "status.done" }
+				: { status: state };
+	return { kind: "statusRow", ...mark, title: "Task", ...(entries.length === 0 ? {} : { meta: entries }) };
 }
 
 /**
@@ -1167,7 +1192,7 @@ function renderCall(rawArgs: unknown, context: ToolViewContext): FramedBlockView
 	const isolated = "isolated" in args && args.isolated === true;
 	return {
 		kind: "framedBlock",
-		header: header(undefined, "tool.task", agentHeaderLabel(args), isolated ? "isolated" : undefined),
+		header: header("running", agentHeaderLabel(args), isolated ? "isolated" : undefined),
 		state: "pending",
 		sections,
 	};
@@ -1176,155 +1201,154 @@ function renderCall(rawArgs: unknown, context: ToolViewContext): FramedBlockView
 /** The card once the call has spawned something, live or settled. */
 function renderResult(result: TaskViewResult, context: ToolViewContext, rawArgs?: unknown): FramedBlockView {
 	const args = rawArgs as TaskParams | undefined;
-	const expanded = context.expanded === true;
-	const partial = context.partial === true;
-	const frozen = context.frozen === true;
-	const showResolvedModelBadge = context.showResolvedModel === true;
 	const fallbackText = extractResultText(result.content);
 	const details = result.details;
-	const agentLabel = agentHeaderLabel(args);
-	if (!details) {
-		const errored = result.isError === true;
-		const sections: ViewSection[] = [];
-		appendMarkdownBriefSections(sections, args);
-		if (fallbackText)
-			sections.push({
-				separator: true,
-				lines: [[span(replaceTabs(shortenEmbeddedPaths(fallbackText)), errored ? "error" : "dim")]],
-				clip: true,
-			});
-		return {
-			kind: "framedBlock",
-			header: errored ? header("error", undefined, agentLabel) : header(undefined, "status.done", agentLabel),
-			state: errored ? "error" : "success",
-			sections,
-		};
-	}
+	if (!details) return detaillessCard(result, args, fallbackText);
 
-	// One pass over the results derives the header's counts and the footer's totals both: the card
-	// repaints on every frame while agents are live, and this used to be seven passes a tick.
-	let abortedCount = 0;
-	let failCount = 0;
-	let mergeFailedCount = 0;
-	let successCount = 0;
-	let requestTotal = 0;
-	const hasResults = Boolean(details.results && details.results.length > 0);
-	if (hasResults) {
-		for (const r of details.results) {
-			requestTotal += r.requests ?? 0;
-			switch (classifyAgentOutcome(r).kind) {
-				case "aborted":
-					abortedCount++;
-					break;
-				case "failed":
-					failCount++;
-					break;
-				case "merge-failed":
-					mergeFailedCount++;
-					break;
-				default:
-					successCount++;
-			}
-		}
-	}
-	const isError = abortedCount > 0 || failCount > 0;
-	const mergeFailed = mergeFailedCount > 0;
+	const card: CardOptions = {
+		expanded: context.expanded === true,
+		showResolvedModelBadge: context.showResolvedModel === true,
+	};
+	const frozen = context.frozen === true;
+	const settled = details.results !== undefined && details.results.length > 0;
+	const tally = tallyResults(settled ? details.results : []);
 	const refused = details.warning !== undefined;
-	const agentCount = hasResults ? details.results.length : (details.progress?.length ?? 0);
+	const state = cardState(context.partial === true, refused, tally.counts);
 	// The header's fact is the spawn count alone; each row carries its own agent badge, so a joined
 	// list of types here would repeat them. Before anything spawns it falls back to the call's type.
-	const countLabel = agentCount > 0 ? `${agentCount} ${agentCount === 1 ? "agent" : "agents"}` : undefined;
-	const state: ViewStatus = partial
-		? "running"
-		: refused
-			? "warning"
-			: isError
-				? "error"
-				: mergeFailed
-					? "warning"
-					: "success";
-	// While agents are in flight the header keeps the dispatch mark rather than a spinner: an async
-	// spawn returns at once, so "running" means delegated rather than blocking.
-	const headerRow =
-		state === "running"
-			? header(undefined, "tool.task", countLabel ?? agentLabel)
-			: state === "success"
-				? header(undefined, "status.done", countLabel ?? agentLabel)
-				: header(state, undefined, countLabel ?? agentLabel);
-
-	const rows: TaskRow[] = [];
-	// Result rows win once any exist; a spawn with no result of its own — a mixed call's async half —
-	// keeps its live row below them.
-	const showProgress = Boolean(details.progress && details.progress.length > 0) && details.results.length === 0;
-	if (showProgress && details.progress) {
-		const ordered = orderProgressForDisplay(details.progress);
-		// Folding from the top keeps the live edge: finished rows sort first, so a collapsed card
-		// stands one summary row in for them and keeps the agents still working.
-		const visible = expanded ? ordered : ordered.slice(Math.max(0, ordered.length - COLLAPSED_AGENT_LIMIT));
-		if (visible.length < ordered.length) {
-			rows.push(openRow(TOP, hiddenProgressSpans(ordered.slice(0, ordered.length - visible.length))));
-		}
-		for (const progress of visible) {
-			rows.push(...progressRows(progress, TOP, expanded, showResolvedModelBadge, frozen, undefined, 0));
-		}
-	} else if (details.results && details.results.length > 0) {
-		const ordered = orderResultsForDisplay(details.results);
-		const visible = expanded ? ordered : selectCollapsedResults(ordered);
-		for (const res of visible) rows.push(...resultRows(res, TOP, expanded, showResolvedModelBadge, undefined, 0));
-		if (visible.length < ordered.length) {
-			rows.push(openRow(TOP, [span(formatMoreItems(ordered.length - visible.length, "agent"), "dim")]));
-		}
-
-		// A mixed call: an async spawn never lands in `results`, since its payload arrives through a
-		// job, so its row stays beside the finalized ones — live while it runs, settled once it lands.
-		const supplemental = details.progress
-			? orderProgressForDisplay(details.progress.filter(p => !details.results.some(res => res.id === p.id)))
-			: [];
-		for (const progress of supplemental) {
-			rows.push(...progressRows(progress, TOP, expanded, showResolvedModelBadge, frozen, undefined, 0));
-		}
-
-		const summary: ViewSpan[] = [{ text: "", symbol: "format.bracketLeft", tone: "dim" }];
-		const parts: ViewSpan[] = [];
-		if (abortedCount > 0) pushDotSpan(parts, `${abortedCount} aborted`, "error");
-		if (successCount > 0) pushDotSpan(parts, `${successCount} succeeded`, "success");
-		if (mergeFailedCount > 0) pushDotSpan(parts, `${mergeFailedCount} merge failed`, "warning");
-		if (failCount > 0) pushDotSpan(parts, `${failCount} failed`, "error");
-		if (requestTotal > 0) pushDotSpan(parts, `${formatNumber(requestTotal)} req`, "dim");
-		pushDotSpan(parts, formatDuration(details.totalDurationMs), "dim");
-		summary.push(...parts, { text: "", symbol: "format.bracketRight", tone: "dim" });
-		rows.push(openRow(TOP, summary));
-	}
-
+	const agentCount = settled ? details.results.length : (details.progress?.length ?? 0);
+	const headerRow = header(state, agentCount > 0 ? formatCount("agent", agentCount) : agentHeaderLabel(args));
+	const rows = settled
+		? settledAgentRows(details, card, frozen, tally)
+		: liveAgentRows(details.progress ?? [], card, frozen);
 	const sections: ViewSection[] = [];
 	appendMarkdownBriefSections(sections, args);
-
 	if (rows.length === 0) {
 		const text = fallbackText.trim() ? replaceTabs(shortenEmbeddedPaths(fallbackText)) : "No results";
 		sections.push({ separator: true, lines: [[span(text, refused ? "warning" : "dim")]], clip: true });
-		return { kind: "framedBlock", header: headerRow, state, sections };
+	} else {
+		rows.push(...notificationRows(fallbackText));
+		sections.push(treeSection(rows));
 	}
+	return { kind: "framedBlock", header: headerRow, state, sections };
+}
 
-	// A summary the tool wrote for the model — the patches it applied, a notification — is the one
-	// part of the text result the card repeats, because nothing above it says whether the work landed.
-	if (fallbackText.trim()) {
-		const summaryLines = fallbackText.split("\n");
-		const markerIndex = summaryLines.findIndex(
-			line =>
-				line.includes("<system-notification>") ||
-				line.startsWith("Applied patches:") ||
-				line.startsWith("No changes to apply."),
-		);
-		if (markerIndex >= 0) {
-			for (const line of summaryLines.slice(markerIndex)) {
-				if (!line.trim()) continue;
-				rows.push(openRow(TOP, [span(replaceTabs(shortenEmbeddedPaths(line)), "dim")]));
-			}
+/** A result with no details: the brief, then the text the tool returned, drawn as an error when it is one. */
+function detaillessCard(result: TaskViewResult, args: TaskParams | undefined, text: string): FramedBlockView {
+	const state: ViewStatus = result.isError === true ? "error" : "success";
+	const sections: ViewSection[] = [];
+	appendMarkdownBriefSections(sections, args);
+	if (text) {
+		sections.push({
+			separator: true,
+			lines: [[span(replaceTabs(shortenEmbeddedPaths(text)), state === "error" ? "error" : "dim")]],
+			clip: true,
+		});
+	}
+	return { kind: "framedBlock", header: header(state, agentHeaderLabel(args)), state, sections };
+}
+
+/** How a batch's finished agents settled, and the requests they spent between them. */
+interface ResultTally {
+	readonly counts: Record<AgentOutcomeKind, number>;
+	readonly requests: number;
+}
+
+/**
+ * One pass over the results derives the header's state and the footer's totals both: the card
+ * repaints on every frame while agents are live.
+ */
+function tallyResults(results: readonly SingleResult[]): ResultTally {
+	const counts: Record<AgentOutcomeKind, number> = { completed: 0, "merge-failed": 0, failed: 0, aborted: 0 };
+	let requests = 0;
+	for (const result of results) {
+		requests += result.requests ?? 0;
+		counts[classifyAgentOutcome(result).kind]++;
+	}
+	return { counts, requests };
+}
+
+/** The card's state: running while partial, then a refused spawn, a failed agent, a failed merge, else success. */
+function cardState(partial: boolean, refused: boolean, counts: Record<AgentOutcomeKind, number>): ViewStatus {
+	if (partial) return "running";
+	if (refused) return "warning";
+	if (counts.aborted > 0 || counts.failed > 0) return "error";
+	return counts["merge-failed"] > 0 ? "warning" : "success";
+}
+
+/**
+ * A call's live agents. Folding from the top keeps the live edge: finished rows sort first, so a
+ * collapsed card stands one summary row in for them and keeps the agents still working.
+ */
+function liveAgentRows(progress: readonly AgentProgress[], card: CardOptions, frozen: boolean): TaskRow[] {
+	const ordered = orderProgressForDisplay(progress);
+	const visible = card.expanded ? ordered : ordered.slice(Math.max(0, ordered.length - COLLAPSED_AGENT_LIMIT));
+	const rows: TaskRow[] = [];
+	if (visible.length < ordered.length) {
+		rows.push(openRow(TOP, hiddenProgressSpans(ordered.slice(0, ordered.length - visible.length))));
+	}
+	for (const agent of visible) appendProgress(rows, agent, TOP, card, frozen, undefined, 0);
+	return rows;
+}
+
+/**
+ * A call's finished agents, then the batch's totals.
+ *
+ * A mixed call's async spawn never lands in `results`, since its payload arrives through a job, so
+ * its row stays beside the finalized ones: live while it runs, settled once it lands.
+ */
+function settledAgentRows(details: TaskToolDetails, card: CardOptions, frozen: boolean, tally: ResultTally): TaskRow[] {
+	const ordered = orderResultsForDisplay(details.results);
+	const visible = card.expanded ? ordered : selectCollapsedResults(ordered);
+	const rows: TaskRow[] = [];
+	for (const result of visible) appendResult(rows, result, TOP, card, undefined, 0);
+	if (visible.length < ordered.length) {
+		rows.push(openRow(TOP, [span(formatMoreItems(ordered.length - visible.length, "agent"), "dim")]));
+	}
+	if (details.progress) {
+		const finished = new Set(details.results.map(result => result.id));
+		for (const agent of orderProgressForDisplay(details.progress.filter(entry => !finished.has(entry.id)))) {
+			appendProgress(rows, agent, TOP, card, frozen, undefined, 0);
 		}
 	}
+	rows.push(openRow(TOP, totalsSpans(tally, details.totalDurationMs)));
+	return rows;
+}
 
-	sections.push(treeSection(rows));
-	return { kind: "framedBlock", header: headerRow, state, sections };
+/** The batch's totals between brackets: how its agents settled, the requests they spent, and its runtime. */
+function totalsSpans({ counts, requests }: ResultTally, durationMs: number): ViewSpan[] {
+	const parts: ViewSpan[] = [];
+	if (counts.aborted > 0) pushDotSpan(parts, `${counts.aborted} aborted`, "error");
+	if (counts.completed > 0) pushDotSpan(parts, `${counts.completed} succeeded`, "success");
+	if (counts["merge-failed"] > 0) pushDotSpan(parts, `${counts["merge-failed"]} merge failed`, "warning");
+	if (counts.failed > 0) pushDotSpan(parts, `${counts.failed} failed`, "error");
+	if (requests > 0) pushDotSpan(parts, `${formatNumber(requests)} req`, "dim");
+	pushDotSpan(parts, formatDuration(durationMs), "dim");
+	return [
+		{ text: "", symbol: "format.bracketLeft", tone: "dim" },
+		...parts,
+		{ text: "", symbol: "format.bracketRight", tone: "dim" },
+	];
+}
+
+/**
+ * A summary the tool wrote for the model — the patches it applied, a notification — is the one part
+ * of the text result the card repeats, because nothing above it says whether the work landed.
+ */
+function notificationRows(text: string): TaskRow[] {
+	const lines = text.split("\n");
+	const markerIndex = lines.findIndex(
+		line =>
+			line.includes("<system-notification>") ||
+			line.startsWith("Applied patches:") ||
+			line.startsWith("No changes to apply."),
+	);
+	if (markerIndex < 0) return [];
+	const rows: TaskRow[] = [];
+	for (const line of lines.slice(markerIndex)) {
+		if (line.trim()) rows.push(openRow(TOP, [span(replaceTabs(shortenEmbeddedPaths(line)), "dim")]));
+	}
+	return rows;
 }
 
 /**

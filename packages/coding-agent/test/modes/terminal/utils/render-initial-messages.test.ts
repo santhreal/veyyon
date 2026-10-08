@@ -162,7 +162,7 @@ function makeRenderCtx(transcript: SessionContext): { ctx: InteractiveModeContex
 		toolOutputExpanded: false,
 		hideThinkingBlock: false,
 		focusedAgentId: undefined,
-		editor: { addToHistory: vi.fn() },
+		editor: { seedHistory: vi.fn() },
 		viewSession: {
 			buildTranscriptSessionContext: () => transcript,
 			getToolByName: () => undefined,

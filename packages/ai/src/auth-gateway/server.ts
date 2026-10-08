@@ -21,7 +21,7 @@
 import { Effort } from "@veyyon/catalog/effort";
 import { extractRetryHint } from "@veyyon/utils/fetch-retry";
 import * as logger from "@veyyon/utils/logger";
-import { errorMessage } from "@veyyon/utils/type-guards";
+import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
 import type { ApiKeyResolver } from "../auth-retry";
 import type { AuthStorage } from "../auth-storage";
 import * as AIError from "../error";
@@ -31,21 +31,15 @@ import * as openaiChat from "../providers/openai-chat-server";
 import * as openaiResponses from "../providers/openai-responses-server";
 import * as piNative from "../providers/pi-native-server";
 import { completeSimple, streamSimple } from "../stream";
-import type { Api, AssistantMessageEventStream, Context, Model, SimpleStreamOptions } from "../types";
+import type { Api, AssistantMessage, AssistantMessageEventStream, Context, Model, SimpleStreamOptions } from "../types";
 import { deterministicUuid } from "../utils/deterministic-id";
+import { BearerAllowList, json, resolvePeer } from "../utils/http-server";
 import { parseBind } from "../utils/parse-bind";
-import {
-	captureRequestHeaders,
-	corsHeaders,
-	gatewayResponseHeaders,
-	isAuthorized,
-	json,
-	resolvePeer,
-	withCors,
-} from "./http";
+import { captureRequestHeaders, corsHeaders, gatewayResponseHeaders, withCors } from "./http";
 import type {
 	AuthGatewayServerHandle,
 	AuthGatewayServerOptions,
+	AuthGatewayStreamControl,
 	AuthGatewayFormatModule as FormatModule,
 	AuthGatewayParsedRequest as ParsedFormatRequest,
 } from "./types";
@@ -71,11 +65,20 @@ export interface AuthGatewayBootOptions extends AuthGatewayServerOptions {
 // `parseBind` lives in ../utils/parse-bind so the gateway and broker can't
 // drift on accepted inputs (e.g. empty hostname, IPv6 brackets).
 
-const FORMAT_ROUTES: Record<string, { module: FormatModule; label: string }> = {
-	"/v1/chat/completions": { module: openaiChat, label: "openai-chat" },
-	"/v1/messages": { module: anthropicMessages, label: "anthropic-messages" },
-	"/v1/responses": { module: openaiResponses, label: "openai-responses" },
+/** A completion route: serves one `POST` path from request body to answer. */
+type CompletionHandler = (bootOpts: AuthGatewayBootOptions, req: Request, peer: string) => Promise<Response>;
+
+const COMPLETION_ROUTES: Record<string, CompletionHandler> = {
+	"/v1/chat/completions": (bootOpts, req, peer) => serveFormatRequest(openaiChat, "openai-chat", bootOpts, req, peer),
+	"/v1/messages": (bootOpts, req, peer) =>
+		serveFormatRequest(anthropicMessages, "anthropic-messages", bootOpts, req, peer),
+	"/v1/responses": (bootOpts, req, peer) =>
+		serveFormatRequest(openaiResponses, "openai-responses", bootOpts, req, peer),
+	"/v1/pi/stream": servePiNativeRequest,
 };
+
+/** Every path a completion route answers `POST` on. */
+export const AUTH_GATEWAY_COMPLETION_PATHS: readonly string[] = Object.keys(COMPLETION_ROUTES);
 
 // (passthrough fast-path removed — it bypassed pi-ai provider logic, in
 // particular the Anthropic Claude-Code OAuth system-prompt prefix injection.
@@ -359,10 +362,6 @@ function buildGatewayApiKeyResolver(
 	};
 }
 
-function clientClosedResponse(route: { module: FormatModule }): Response {
-	return route.module.formatError(499, "request_aborted", "client closed request");
-}
-
 function mirrorRequestAbort(req: Request): AbortController {
 	const controller = new AbortController();
 	if (req.signal.aborted) {
@@ -382,42 +381,232 @@ function abortOnClientClose(controller: AbortController): (reason?: unknown) => 
 	};
 }
 
-// (handlePassthrough removed — see note above.)
+/**
+ * The wire a completion route answers in: its error envelope, and how it encodes a finished turn
+ * and a streamed one. Every foreign format module is one; {@link PI_NATIVE_WIRE} is pi-native's.
+ */
+interface GatewayWire<O> {
+	formatError(status: number, type: string, message: string): Response;
+	encodeResponse(message: AssistantMessage, requestedModelId: string): unknown;
+	encodeStream(
+		events: AssistantMessageEventStream,
+		requestedModelId: string,
+		options: O,
+		control: AuthGatewayStreamControl,
+	): ReadableStream<Uint8Array>;
+}
 
-async function handleFormatEndpoint(
-	route: { module: FormatModule; label: string },
+/** A parsed completion request: the fields the shared path reads and the options its wire encodes with. */
+interface CompletionRequest<O> {
+	modelId: string;
+	context: Context;
+	stream: boolean;
+	options: O;
+}
+
+/** Pi-native's wire: the canonical message is the body, the canonical events are the stream. */
+const PI_NATIVE_WIRE: GatewayWire<SimpleStreamOptions> = {
+	formatError: piNative.formatError,
+	encodeResponse: message => ({ message }),
+	encodeStream: piNative.encodeStream,
+};
+
+/** Headers of every streamed answer, after the identity headers. */
+const EVENT_STREAM_HEADERS = {
+	"Content-Type": "text/event-stream; charset=utf-8",
+	"Cache-Control": "no-cache",
+	Connection: "keep-alive",
+	// Disable proxy buffering (nginx and ingress controllers honor this).
+	// Without it the SSE stream gets held until the buffer flushes, which
+	// stalls the long-thinking-budget calls we exist to support.
+	"X-Accel-Buffering": "no",
+} as const;
+
+/**
+ * One completion request in flight: its id and start time, the abort mirrored from the client
+ * connection, and the wire every answer is written in. A step that ends the request returns its
+ * `Response`; once the client has closed its connection, that answer is a 499.
+ */
+class GatewayExchange<O> {
+	readonly requestId = crypto.randomUUID();
+	readonly startedAt = performance.now();
+	readonly #controller: AbortController;
+	readonly #wire: GatewayWire<O>;
+	readonly #label: string;
+	readonly #peer: string;
+
+	constructor(wire: GatewayWire<O>, label: string, peer: string, req: Request) {
+		this.#wire = wire;
+		this.#label = label;
+		this.#peer = peer;
+		this.#controller = mirrorRequestAbort(req);
+	}
+
+	get signal(): AbortSignal {
+		return this.#controller.signal;
+	}
+
+	/** An error in this wire's envelope. */
+	reject(status: number, type: string, message: string): Response {
+		return this.#wire.formatError(status, type, message);
+	}
+
+	/** The answer to a client that closed its connection. */
+	closed(): Response {
+		return this.reject(499, "request_aborted", "client closed request");
+	}
+
+	/** The answer to a request its wire's parser rejected with `error`. */
+	malformed(error: unknown): Response {
+		return this.signal.aborted ? this.closed() : this.reject(400, "invalid_request_error", errorMessage(error));
+	}
+
+	/** The request body parsed as JSON, or the answer that ends the request. */
+	async readBody(req: Request): Promise<{ body: unknown } | Response> {
+		if (this.signal.aborted) return this.closed();
+		let body: unknown;
+		try {
+			body = await req.json();
+		} catch (error) {
+			if (this.signal.aborted) return this.closed();
+			return this.reject(400, "invalid_request_error", `Invalid JSON body: ${String(error)}`);
+		}
+		return this.signal.aborted ? this.closed() : { body };
+	}
+
+	/**
+	 * The session's credential, wrapped in the resolver `streamSimple` retries auth failures through,
+	 * or the answer that ends the request. pi-ai's `stream()` does not consult `AuthStorage`, so the
+	 * gateway resolves the credential itself; for an OAuth provider it is the access token, refreshed
+	 * through the broker override on `AuthStorage` when needed.
+	 */
+	async apiKey(storage: AuthStorage, model: Model<Api>, sessionId: string): Promise<ApiKeyResolver | Response> {
+		const { signal } = this;
+		let apiKey: string | undefined;
+		try {
+			apiKey = await storage.getApiKey(model.provider, sessionId, { modelId: model.id, signal });
+		} catch (error) {
+			if (signal.aborted) return this.closed();
+			const classified = classifyGatewayError(error);
+			logger.warn("auth-gateway getApiKey threw", {
+				provider: model.provider,
+				peer: this.#peer,
+				error: classified.message,
+			});
+			return this.reject(classified.status, classified.type, classified.message);
+		}
+		if (signal.aborted) return this.closed();
+		if (!apiKey) {
+			return this.reject(401, "authentication_error", `No credential available for provider ${model.provider}`);
+		}
+		return buildGatewayApiKeyResolver(storage, model, sessionId, apiKey, signal, this.#label, this.#peer);
+	}
+
+	/** Run the turn and answer with the finished message or, when the client asked for one, an event stream. */
+	async complete(model: Model<Api>, request: CompletionRequest<O>, options: SimpleStreamOptions): Promise<Response> {
+		logger.info("auth-gateway request", {
+			requestId: this.requestId,
+			format: this.#label,
+			model: request.modelId,
+			resolvedProvider: model.provider,
+			resolvedModel: model.id,
+			stream: request.stream,
+			peer: this.#peer,
+		});
+		return request.stream ? this.#stream(model, request, options) : this.#finish(model, request, options);
+	}
+
+	async #finish(model: Model<Api>, request: CompletionRequest<O>, options: SimpleStreamOptions): Promise<Response> {
+		const { signal } = this;
+		try {
+			if (signal.aborted) return this.closed();
+			const message = await completeSimple(model, request.context, options);
+			if (message.stopReason === "aborted" || message.stopReason === "error") {
+				return this.#failedTurn(message.stopReason, message.errorMessage);
+			}
+			return json(
+				200,
+				this.#wire.encodeResponse(message, request.modelId),
+				gatewayResponseHeaders(model, { requestId: this.requestId, message, startedAt: this.startedAt }),
+			);
+		} catch (error) {
+			if (signal.aborted) return this.closed();
+			const classified = classifyGatewayError(error);
+			logger.warn("auth-gateway non-streaming aborted", {
+				format: this.#label,
+				error: classified.message,
+				peer: this.#peer,
+			});
+			return this.reject(classified.status, classified.type, classified.message);
+		}
+	}
+
+	/** A turn the provider ended as failed: 499 when it was aborted, the classifier's verdict otherwise. */
+	#failedTurn(reason: "aborted" | "error", providerMessage: string | undefined): Response {
+		const message = providerMessage ?? (reason === "aborted" ? "Request was aborted" : "Upstream request failed");
+		logger.warn("auth-gateway non-streaming failed", {
+			format: this.#label,
+			reason,
+			error: message,
+			peer: this.#peer,
+		});
+		if (reason === "aborted") return this.reject(499, "request_aborted", message);
+		const classified = classifyGatewayError(message);
+		return this.reject(classified.status, classified.type, message);
+	}
+
+	#stream(model: Model<Api>, request: CompletionRequest<O>, options: SimpleStreamOptions): Response {
+		const { signal } = this;
+		let events: AssistantMessageEventStream;
+		try {
+			if (signal.aborted) return this.closed();
+			events = streamSimple(model, request.context, options);
+		} catch (error) {
+			const classified = classifyGatewayError(error);
+			logger.warn("auth-gateway streamSimple threw", {
+				format: this.#label,
+				error: classified.message,
+				peer: this.#peer,
+			});
+			return this.reject(classified.status, classified.type, classified.message);
+		}
+		if (signal.aborted) return this.closed();
+		const body = this.#wire.encodeStream(events, request.modelId, request.options, {
+			signal,
+			onCancel: abortOnClientClose(this.#controller),
+		});
+		return new Response(body, {
+			status: 200,
+			headers: { ...gatewayResponseHeaders(model, { requestId: this.requestId }), ...EVENT_STREAM_HEADERS },
+		});
+	}
+}
+
+/**
+ * A foreign wire format (OpenAI chat-completions, Anthropic messages, OpenAI Responses): the
+ * request is translated into a pi-ai `Context` and the turn back into the same wire.
+ */
+async function serveFormatRequest(
+	module: FormatModule,
+	label: string,
 	bootOpts: AuthGatewayBootOptions,
 	req: Request,
 	peer: string,
 ): Promise<Response> {
-	const startedAt = performance.now();
-	const requestId = crypto.randomUUID();
-	const controller = mirrorRequestAbort(req);
-	if (controller.signal.aborted) return clientClosedResponse(route);
-
-	let body: unknown;
-	try {
-		body = await req.json();
-	} catch (error) {
-		if (controller.signal.aborted) return clientClosedResponse(route);
-		return route.module.formatError(400, "invalid_request_error", `Invalid JSON body: ${String(error)}`);
-	}
-	if (controller.signal.aborted) return clientClosedResponse(route);
+	const exchange = new GatewayExchange(module, label, peer, req);
+	const read = await exchange.readBody(req);
+	if (read instanceof Response) return read;
 
 	// All three supported wire formats put the model id on a top-level `model`
 	// field. Read it without running the full strict schema so the route can
 	// produce a coherent error envelope when the model id is missing.
-	const modelId =
-		typeof body === "object" && body !== null && typeof (body as { model?: unknown }).model === "string"
-			? (body as { model: string }).model
-			: undefined;
+	const modelId = isRecord(read.body) && typeof read.body.model === "string" ? read.body.model : undefined;
 	if (!modelId) {
-		return route.module.formatError(400, "invalid_request_error", "Missing top-level `model` field");
+		return exchange.reject(400, "invalid_request_error", "Missing top-level `model` field");
 	}
-
 	const model = bootOpts.resolveModel(modelId);
 	if (!model) {
-		return route.module.formatError(404, "invalid_request_error", `Unknown model: ${modelId}`);
+		return exchange.reject(404, "invalid_request_error", `Unknown model: ${modelId}`);
 	}
 
 	// Parse the wire-format request BEFORE resolving the credential so we
@@ -428,21 +617,16 @@ async function handleFormatEndpoint(
 	// credential it last handed out to that session).
 	let parsed: ParsedFormatRequest;
 	try {
-		parsed = route.module.parseRequest(body, req.headers);
+		parsed = module.parseRequest(read.body, req.headers);
 	} catch (error) {
-		if (controller.signal.aborted) return clientClosedResponse(route);
-		const message = errorMessage(error);
-		return route.module.formatError(400, "invalid_request_error", message);
+		return exchange.malformed(error);
 	}
 	// Merge gateway-captured passthrough headers under the parser's own
 	// captures. Parsers that set `options.headers` themselves win (they may
 	// have stripped or normalized values); the gateway's allow-list fills in
 	// anything they didn't touch.
-	{
-		const captured = captureRequestHeaders(req.headers);
-		parsed.options.headers = { ...captured, ...(parsed.options.headers ?? {}) };
-	}
-	if (controller.signal.aborted) return clientClosedResponse(route);
+	parsed.options.headers = { ...captureRequestHeaders(req.headers), ...(parsed.options.headers ?? {}) };
+	if (exchange.signal.aborted) return exchange.closed();
 
 	// Sticky credential id: honour the client's `prompt_cache_key` when
 	// supplied (so external session ids align), otherwise derive from
@@ -451,117 +635,11 @@ async function handleFormatEndpoint(
 	const sessionId = parsed.options.promptCacheKey ?? deriveSessionId(parsed.modelId, parsed.context);
 	parsed.options.promptCacheKey ??= sessionId;
 
-	// pi-ai's stream() does NOT consult AuthStorage — the caller (us) is
-	// expected to resolve the credential and pass it as `options.apiKey`.
-	// For OAuth providers this returns the access token (refreshed via the
-	// broker override on AuthStorage when needed).
-	let apiKey: string | undefined;
-	try {
-		apiKey = await bootOpts.storage.getApiKey(model.provider, sessionId, {
-			modelId: model.id,
-			signal: controller.signal,
-		});
-	} catch (error) {
-		if (controller.signal.aborted) return clientClosedResponse(route);
-		const classified = classifyGatewayError(error);
-		logger.warn("auth-gateway getApiKey threw", { provider: model.provider, peer, error: classified.message });
-		return route.module.formatError(classified.status, classified.type, classified.message);
-	}
-	if (controller.signal.aborted) return clientClosedResponse(route);
-	if (!apiKey) {
-		return route.module.formatError(
-			401,
-			"authentication_error",
-			`No credential available for provider ${model.provider}`,
-		);
-	}
-
-	const streamOpts = buildStreamOptions(parsed, model.api, controller.signal);
-	streamOpts.apiKey = buildGatewayApiKeyResolver(
-		bootOpts.storage,
-		model,
-		sessionId,
-		apiKey,
-		controller.signal,
-		route.label,
-		peer,
-	);
-
-	logger.info("auth-gateway request", {
-		requestId,
-		format: route.label,
-		model: parsed.modelId,
-		resolvedProvider: model.provider,
-		resolvedModel: model.id,
-		stream: parsed.stream,
-		peer,
-	});
-
-	if (!parsed.stream) {
-		try {
-			if (controller.signal.aborted) return clientClosedResponse(route);
-			const message = await completeSimple(model, parsed.context, streamOpts);
-			if (message.stopReason === "aborted" || message.stopReason === "error") {
-				const errorMessage =
-					message.errorMessage ??
-					(message.stopReason === "aborted" ? "Request was aborted" : "Upstream request failed");
-				logger.warn("auth-gateway non-streaming failed", {
-					format: route.label,
-					reason: message.stopReason,
-					error: errorMessage,
-					peer,
-				});
-				if (message.stopReason === "aborted") {
-					return route.module.formatError(499, "request_aborted", errorMessage);
-				}
-				const classified = classifyGatewayError(errorMessage);
-				return route.module.formatError(classified.status, classified.type, errorMessage);
-			}
-			return json(
-				200,
-				route.module.encodeResponse(message, parsed.modelId),
-				gatewayResponseHeaders(model, { requestId, message, startedAt }),
-			);
-		} catch (error) {
-			if (controller.signal.aborted) return clientClosedResponse(route);
-			const classified = classifyGatewayError(error);
-			logger.warn("auth-gateway non-streaming aborted", {
-				format: route.label,
-				error: classified.message,
-				peer,
-			});
-			return route.module.formatError(classified.status, classified.type, classified.message);
-		}
-	}
-
-	let events: AssistantMessageEventStream;
-	try {
-		if (controller.signal.aborted) return clientClosedResponse(route);
-		events = streamSimple(model, parsed.context, streamOpts);
-	} catch (error) {
-		const classified = classifyGatewayError(error);
-		logger.warn("auth-gateway streamSimple threw", { format: route.label, error: classified.message, peer });
-		return route.module.formatError(classified.status, classified.type, classified.message);
-	}
-	if (controller.signal.aborted) return clientClosedResponse(route);
-
-	const sseStream = route.module.encodeStream(events, parsed.modelId, parsed.options, {
-		signal: controller.signal,
-		onCancel: abortOnClientClose(controller),
-	});
-	return new Response(sseStream, {
-		status: 200,
-		headers: {
-			...gatewayResponseHeaders(model, { requestId }),
-			"Content-Type": "text/event-stream; charset=utf-8",
-			"Cache-Control": "no-cache",
-			Connection: "keep-alive",
-			// Disable proxy buffering (nginx and ingress controllers honor this).
-			// Without it the SSE stream gets held until the buffer flushes, which
-			// stalls the long-thinking-budget calls we exist to support.
-			"X-Accel-Buffering": "no",
-		},
-	});
+	const apiKey = await exchange.apiKey(bootOpts.storage, model, sessionId);
+	if (apiKey instanceof Response) return apiKey;
+	const options = buildStreamOptions(parsed, model.api, exchange.signal);
+	options.apiKey = apiKey;
+	return exchange.complete(model, parsed, options);
 }
 
 /**
@@ -578,34 +656,20 @@ async function handleFormatEndpoint(
  * `parseRequest`/`encodeResponse`/`encodeStream` differ from the format-endpoint
  * path.
  */
-async function handlePiNative(bootOpts: AuthGatewayBootOptions, req: Request, peer: string): Promise<Response> {
-	const startedAt = performance.now();
-	const requestId = crypto.randomUUID();
-	const controller = mirrorRequestAbort(req);
-	const aborted = (): Response => piNative.formatError(499, "request_aborted", "client closed request");
-	if (controller.signal.aborted) return aborted();
-
-	let body: unknown;
-	try {
-		body = await req.json();
-	} catch (error) {
-		if (controller.signal.aborted) return aborted();
-		return piNative.formatError(400, "invalid_request_error", `Invalid JSON body: ${String(error)}`);
-	}
-	if (controller.signal.aborted) return aborted();
+async function servePiNativeRequest(bootOpts: AuthGatewayBootOptions, req: Request, peer: string): Promise<Response> {
+	const exchange = new GatewayExchange(PI_NATIVE_WIRE, "pi-native", peer, req);
+	const read = await exchange.readBody(req);
+	if (read instanceof Response) return read;
 
 	let parsed: piNative.PiNativeParsedRequest;
 	try {
-		parsed = piNative.parseRequest(body, req.headers);
+		parsed = piNative.parseRequest(read.body, req.headers);
 	} catch (error) {
-		if (controller.signal.aborted) return aborted();
-		const message = errorMessage(error);
-		return piNative.formatError(400, "invalid_request_error", message);
+		return exchange.malformed(error);
 	}
-
 	const model = bootOpts.resolveModel(parsed.modelId);
 	if (!model) {
-		return piNative.formatError(404, "invalid_request_error", `Unknown model: ${parsed.modelId}`);
+		return exchange.reject(404, "invalid_request_error", `Unknown model: ${parsed.modelId}`);
 	}
 	// Pi-native already parsed `streamOpts.sessionId` (when set by the
 	// client); fall back to the derived key so credential-stickiness lines
@@ -615,121 +679,39 @@ async function handlePiNative(bootOpts: AuthGatewayBootOptions, req: Request, pe
 	const sessionId = parsed.options.sessionId ?? deriveSessionId(parsed.modelId, parsed.context);
 	parsed.options.sessionId ??= sessionId;
 
-	let apiKey: string | undefined;
-	try {
-		apiKey = await bootOpts.storage.getApiKey(model.provider, sessionId, {
-			modelId: model.id,
-			signal: controller.signal,
-		});
-	} catch (error) {
-		if (controller.signal.aborted) return aborted();
-		const classified = classifyGatewayError(error);
-		logger.warn("auth-gateway getApiKey threw", { provider: model.provider, peer, error: classified.message });
-		return piNative.formatError(classified.status, classified.type, classified.message);
-	}
-	if (controller.signal.aborted) return aborted();
-	if (!apiKey) {
-		return piNative.formatError(
-			401,
-			"authentication_error",
-			`No credential available for provider ${model.provider}`,
-		);
-	}
+	const apiKey = await exchange.apiKey(bootOpts.storage, model, sessionId);
+	if (apiKey instanceof Response) return apiKey;
+	const options = piNativeStreamOptions(parsed.options, model.api, req.headers, exchange.signal);
+	options.apiKey = apiKey;
+	return exchange.complete(model, parsed, options);
+}
 
-	// Build the SimpleStreamOptions actually handed to `streamSimple`. We
-	// trust the client's options (already allow-listed by `parseRequest`) and
-	// only inject server-controlled fields. The codex sampling strip mirrors
-	// `buildStreamOptions` — Codex rejects every one with a 400 (#3117).
-	const streamOpts: SimpleStreamOptions = { ...parsed.options, apiKey, signal: controller.signal };
-	streamOpts.apiKey = buildGatewayApiKeyResolver(
-		bootOpts.storage,
-		model,
-		sessionId,
-		apiKey,
-		controller.signal,
-		"pi-native",
-		peer,
-	);
-	if (model.api === "openai-codex-responses") {
-		delete streamOpts.temperature;
-		delete streamOpts.topP;
-		delete streamOpts.topK;
-		delete streamOpts.minP;
-		delete streamOpts.stopSequences;
-		delete streamOpts.presencePenalty;
-		delete streamOpts.frequencyPenalty;
-		delete streamOpts.repetitionPenalty;
+/**
+ * The options a pi-native request hands to `streamSimple`. The client's options are trusted
+ * (`parseRequest` already allow-listed them) and only server-controlled fields are injected. The
+ * codex sampling strip mirrors `buildStreamOptions`: Codex rejects every one with a 400 (#3117).
+ */
+function piNativeStreamOptions(
+	client: SimpleStreamOptions,
+	api: Api,
+	headers: Headers,
+	signal: AbortSignal,
+): SimpleStreamOptions {
+	const options: SimpleStreamOptions = { ...client, signal };
+	if (api === "openai-codex-responses") {
+		delete options.temperature;
+		delete options.topP;
+		delete options.topK;
+		delete options.minP;
+		delete options.stopSequences;
+		delete options.presencePenalty;
+		delete options.frequencyPenalty;
+		delete options.repetitionPenalty;
 	}
 	// Merge gateway-captured passthrough headers under the client's own
 	// headers — the client's values win when they collide.
-	const captured = captureRequestHeaders(req.headers);
-	streamOpts.headers = { ...captured, ...(streamOpts.headers ?? {}) };
-	streamOpts.sessionId ??= sessionId;
-
-	logger.info("auth-gateway request", {
-		requestId,
-		format: "pi-native",
-		model: parsed.modelId,
-		resolvedProvider: model.provider,
-		resolvedModel: model.id,
-		stream: parsed.stream,
-		peer,
-	});
-
-	if (!parsed.stream) {
-		try {
-			if (controller.signal.aborted) return aborted();
-			const message = await completeSimple(model, parsed.context, streamOpts);
-			if (message.stopReason === "aborted" || message.stopReason === "error") {
-				const errorMessage =
-					message.errorMessage ??
-					(message.stopReason === "aborted" ? "Request was aborted" : "Upstream request failed");
-				logger.warn("auth-gateway non-streaming failed", {
-					format: "pi-native",
-					reason: message.stopReason,
-					error: errorMessage,
-					peer,
-				});
-				if (message.stopReason === "aborted") {
-					return piNative.formatError(499, "request_aborted", errorMessage);
-				}
-				const classified = classifyGatewayError(errorMessage);
-				return piNative.formatError(classified.status, classified.type, errorMessage);
-			}
-			return json(200, { message }, gatewayResponseHeaders(model, { requestId, message, startedAt }));
-		} catch (error) {
-			if (controller.signal.aborted) return aborted();
-			const classified = classifyGatewayError(error);
-			logger.warn("auth-gateway non-streaming aborted", { format: "pi-native", error: classified.message, peer });
-			return piNative.formatError(classified.status, classified.type, classified.message);
-		}
-	}
-
-	let events: AssistantMessageEventStream;
-	try {
-		if (controller.signal.aborted) return aborted();
-		events = streamSimple(model, parsed.context, streamOpts);
-	} catch (error) {
-		const classified = classifyGatewayError(error);
-		logger.warn("auth-gateway streamSimple threw", { format: "pi-native", error: classified.message, peer });
-		return piNative.formatError(classified.status, classified.type, classified.message);
-	}
-	if (controller.signal.aborted) return aborted();
-
-	const sseStream = piNative.encodeStream(events, parsed.modelId, parsed.options, {
-		signal: controller.signal,
-		onCancel: abortOnClientClose(controller),
-	});
-	return new Response(sseStream, {
-		status: 200,
-		headers: {
-			...gatewayResponseHeaders(model, { requestId }),
-			"Content-Type": "text/event-stream; charset=utf-8",
-			"Cache-Control": "no-cache",
-			Connection: "keep-alive",
-			"X-Accel-Buffering": "no",
-		},
-	});
+	options.headers = { ...captureRequestHeaders(headers), ...(options.headers ?? {}) };
+	return options;
 }
 
 /**
@@ -783,7 +765,7 @@ function handleModelsList(opts: AuthGatewayBootOptions): Response {
 
 export function startAuthGateway(opts: AuthGatewayBootOptions): AuthGatewayServerHandle {
 	const bind = parseBind(opts.bind ?? DEFAULT_AUTH_GATEWAY_BIND);
-	const tokens = new Set<string>(opts.bearerTokens);
+	const bearer = new BearerAllowList(opts.bearerTokens);
 	const version = opts.version;
 
 	const server = Bun.serve({
@@ -803,7 +785,7 @@ export function startAuthGateway(opts: AuthGatewayBootOptions): AuthGatewayServe
 				if (req.method === "GET" && pathname === "/healthz") {
 					return withCors(json(200, { ok: true, version }), req);
 				}
-				if (!isAuthorized(req, tokens)) {
+				if (!bearer.authorizes(req)) {
 					logger.info("auth-gateway request unauthorized", { method: req.method, path: pathname, peer });
 					return withCors(json(401, { error: "unauthorized" }), req);
 				}
@@ -822,16 +804,10 @@ export function startAuthGateway(opts: AuthGatewayBootOptions): AuthGatewayServe
 					return withCors(await handleCredentialsCheck(opts.storage, req.signal), req);
 				}
 
-				// Provider-format dispatch.
-				const formatRoute = FORMAT_ROUTES[pathname];
-				if (formatRoute && req.method === "POST") {
-					return withCors(await handleFormatEndpoint(formatRoute, opts, req, peer), req);
-				}
-
-				// Pi-native fast path. Same auth + provider plumbing as the
-				// foreign-wire routes, just without the wire-format translation.
-				if (req.method === "POST" && pathname === "/v1/pi/stream") {
-					return withCors(await handlePiNative(opts, req, peer), req);
+				// Completion routes: the foreign wire formats and the pi-native fast path.
+				const completion = COMPLETION_ROUTES[pathname];
+				if (completion && req.method === "POST") {
+					return withCors(await completion(opts, req, peer), req);
 				}
 
 				// Model catalog.

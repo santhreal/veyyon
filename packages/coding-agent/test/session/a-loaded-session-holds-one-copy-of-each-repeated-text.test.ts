@@ -7,8 +7,14 @@ import {
 	externalizeImageDataUrlSync,
 	externalizeTextSync,
 } from "@veyyon/kernel/session/blob-store";
-import type { FileEntry } from "@veyyon/kernel/session/session-entries";
-import { loadEntriesFromFile, resolveBlobRefsInEntries } from "@veyyon/kernel/session/session-loader";
+import { coldFieldsOf } from "@veyyon/kernel/session/session-cold-payloads";
+import { CURRENT_SESSION_VERSION } from "@veyyon/kernel/session/session-entries";
+import {
+	loadEntriesFromFile,
+	loadEntriesFromFileStream,
+	MAX_SHORT_VALUES_PER_KEY,
+	resolveBlobRefsInEntries,
+} from "@veyyon/kernel/session/session-loader";
 import { TempDir } from "@veyyon/utils";
 
 /**
@@ -27,12 +33,21 @@ import { TempDir } from "@veyyon/utils";
  * back its own text, so a pool that answers with the wrong string fails, and each row checks the
  * written file, so a blob write that fell back to inline text cannot turn a blob row into a parsed one.
  *
+ * A string under the 64-character floor is the role, api, provider or model every message repeats,
+ * and is shared with the equal strings under the same key: both parsed places get the same two
+ * loads, counting the cells under the field's key, with a text longer than the strings the engine's
+ * own parse shares, so an unpooled load reaches N. A key that holds more distinct short strings
+ * than the pool's bound stops pooling, which the bound row proves by loading every value twice.
+ * A compacted entry that a streamed load moves to disk keeps its message's short strings in memory
+ * on a stand-in, which the walk reaches through its own path: the cold row loads it that way, and
+ * proves the entries it counts were moved.
+ *
  * What it does NOT catch: a new slot kind added to the load walk without a row here, since the
- * walk's slot kinds are a private union no test can enumerate; strings under the 64-character floor,
- * which stay unpooled; a field a result codec rebuilds after the walk, which is the result's content
- * or a slice of it and is left unpooled; and the pool or the blob sites outliving the load, since
- * whether JavaScriptCore keeps a finished load's scan reachable depends on its JIT state, which no
- * row can force.
+ * walk's slot kinds are a private union no test can enumerate; an equal short string under two
+ * different keys, which each key pools on its own; a field a result codec rebuilds after the walk,
+ * which is the result's content or a slice of it and is left unpooled; and the pool or the blob sites
+ * outliving the load, since whether JavaScriptCore keeps a finished load's scan reachable depends on
+ * its JIT state, which no row can force.
  */
 
 const COPIES = 16;
@@ -131,6 +146,43 @@ const SLOTS: Record<string, { payload: (seed: number) => string; slot: Slot }> =
 	},
 };
 
+/** Under the 64-character floor of pooling by text, and longer than any string the engine's parse shares. */
+const SHORT_CHARS = 40;
+
+/** `SHORT_CHARS` of text whose head is `seed`. */
+function shortText(seed: number): string {
+	return `model ${seed}:`.padEnd(SHORT_CHARS, "abcdefghijklmnopqrstuvwxyz");
+}
+
+/** A slot for a short string, and the key its string cells are counted under. */
+const SHORT_SLOTS: Record<string, { key: string; slot: Slot }> = {
+	"a short string at a key": {
+		key: "model",
+		slot: {
+			externalized: false,
+			message: text => ({
+				role: "assistant",
+				content: [],
+				api: "anthropic-messages",
+				provider: "anthropic",
+				model: text,
+				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 },
+				stopReason: "stop",
+				timestamp: 0,
+			}),
+			read: message => message.model,
+		},
+	},
+	"a short string in an array": {
+		key: "content",
+		slot: {
+			externalized: false,
+			message: text => ({ role: "user", content: [text], timestamp: 0 }),
+			read: firstContent,
+		},
+	},
+};
+
 /** Write one entry per text into a session file under `dir`. */
 function writeSession(dir: string, store: BlobStore, slot: Slot, texts: readonly string[]): string {
 	const file = path.join(dir, "session.jsonl");
@@ -164,8 +216,8 @@ function writeSession(dir: string, store: BlobStore, slot: Slot, texts: readonly
 const NODE_FIELDS = 4;
 const EDGE_FIELDS = 4;
 
-/** What a heap snapshot starts its walk from: each entry list under a property name no other object has. */
-const snapshotRoots: Record<string, FileEntry[]> = {};
+/** What a heap snapshot starts its walk from: each root list under a property name no other object has. */
+const snapshotRoots: Record<string, readonly object[]> = {};
 let snapshots = 0;
 
 /**
@@ -175,51 +227,61 @@ let snapshots = 0;
  */
 const SNAPSHOT_ROW_TIMEOUT_MS = 60_000;
 
+/** A string cell the loaded entries reach: its size, and the property key the walk reached it under. */
+interface StringCell {
+	size: number;
+	/** The key of the property edge into the cell, or into the array holding it. */
+	key: string | undefined;
+}
+
+/** A cell `TEXT_CHARS` or longer, which no field here holds but a payload. */
+const isPayload = (cell: StringCell): boolean => cell.size >= TEXT_CHARS;
+
 /**
- * How many distinct string cells of `TEXT_CHARS` or more `entries` reaches. Slots sharing one
- * string reach one cell and each copy is another, so this counts copies rather than bytes, and no
+ * How many distinct string cells `roots` reaches that `counted` selects. Slots sharing one string
+ * reach one cell and each copy is another, so this counts copies rather than bytes, and no
  * collection timing moves it. The walk follows property and index edges only, so it never leaves the
  * entries for a structure, a prototype or a scope. `Bun.generateHeapSnapshot` because the V8-format
  * snapshot `node:v8` offers is Bun's translation of these cells, without their class indices.
  */
-function payloadCellsReached(entries: FileEntry[]): number {
+function stringCellsReached(roots: readonly object[], counted: (cell: StringCell) => boolean): number {
 	const marker = `loadedSessionEntries${++snapshots}`;
-	snapshotRoots[marker] = entries;
+	snapshotRoots[marker] = roots;
 	try {
 		const snapshot = Bun.generateHeapSnapshot();
 		const string = snapshot.nodeClassNames.indexOf("string");
-		const payloads = new Set<number>();
+		const sizes = new Map<number, number>();
 		for (let at = 0; at < snapshot.nodes.length; at += NODE_FIELDS) {
-			if (snapshot.nodes[at + 2] === string && snapshot.nodes[at + 1]! >= TEXT_CHARS) {
-				payloads.add(snapshot.nodes[at]!);
-			}
+			if (snapshot.nodes[at + 2] === string) sizes.set(snapshot.nodes[at]!, snapshot.nodes[at + 1]!);
 		}
 
 		const property = snapshot.edgeTypes.indexOf("Property");
 		const index = snapshot.edgeTypes.indexOf("Index");
-		const children = new Map<number, number[]>();
+		const children = new Map<number, { to: number; key: string | undefined }[]>();
 		const roots: number[] = [];
 		for (let at = 0; at < snapshot.edges.length; at += EDGE_FIELDS) {
 			const type = snapshot.edges[at + 2];
 			if (type !== property && type !== index) continue;
 			const from = snapshot.edges[at]!;
 			const to = snapshot.edges[at + 1]!;
-			if (type === property && snapshot.edgeNames[snapshot.edges[at + 3]!] === marker) roots.push(to);
+			const key = type === property ? snapshot.edgeNames[snapshot.edges[at + 3]!] : undefined;
+			if (key === marker) roots.push(to);
 			const list = children.get(from);
-			if (list) list.push(to);
-			else children.set(from, [to]);
+			if (list) list.push({ to, key });
+			else children.set(from, [{ to, key }]);
 		}
 		expect(roots).toHaveLength(1);
 
 		const seen = new Set(roots);
-		const pending = [...roots];
+		const pending: { id: number; key: string | undefined }[] = roots.map(id => ({ id, key: undefined }));
 		let reached = 0;
-		for (let id = pending.pop(); id !== undefined; id = pending.pop()) {
-			if (payloads.has(id)) reached++;
-			for (const child of children.get(id) ?? []) {
-				if (seen.has(child)) continue;
-				seen.add(child);
-				pending.push(child);
+		for (let node = pending.pop(); node !== undefined; node = pending.pop()) {
+			const size = sizes.get(node.id);
+			if (size !== undefined && counted({ size, key: node.key })) reached++;
+			for (const child of children.get(node.id) ?? []) {
+				if (seen.has(child.to)) continue;
+				seen.add(child.to);
+				pending.push({ id: child.to, key: child.key ?? node.key });
 			}
 		}
 		return reached;
@@ -229,14 +291,14 @@ function payloadCellsReached(entries: FileEntry[]): number {
 }
 
 interface Loaded {
-	/** Distinct payload string cells the loaded entries reach. */
+	/** Distinct counted string cells the loaded entries reach. */
 	cells: number;
 	/** Whether each loaded entry reads back its own text, in file order. */
 	matches: boolean[];
 }
 
-/** Load a session of one entry per text the way a session opens one. */
-async function load(slot: Slot, texts: readonly string[]): Promise<Loaded> {
+/** Load a session of one entry per text the way a session opens one, counting the cells `counted` selects. */
+async function load(slot: Slot, texts: readonly string[], counted: (cell: StringCell) => boolean): Promise<Loaded> {
 	const dir = TempDir.createSync("@pi-string-pool-");
 	try {
 		const store = new BlobStore(path.join(dir.path(), "blobs"));
@@ -244,9 +306,86 @@ async function load(slot: Slot, texts: readonly string[]): Promise<Loaded> {
 		expect(await resolveBlobRefsInEntries(entries, store)).toBe(0);
 		const messages = entries.slice(1) as unknown as { message: Record<string, unknown> }[];
 		return {
-			cells: payloadCellsReached(entries),
+			cells: stringCellsReached(entries, counted),
 			matches: messages.map((entry, index) => slot.read(entry.message) === texts[index]),
 		};
+	} finally {
+		await dir.remove();
+	}
+}
+
+/**
+ * Load a session of one tool result per text, `text` its tool name, ahead of a compaction that
+ * summarized every one, the way a streamed open loads it: each result moves to disk as the load
+ * reads the compaction, and its message stand-in keeps the tool name in memory. Counts the cells
+ * the stand-ins reach under `toolName`; a cold entry's `message` getter returns its stand-in
+ * without reading the line back.
+ */
+async function loadCold(texts: readonly string[]): Promise<Loaded & { cold: boolean[] }> {
+	const dir = TempDir.createSync("@pi-string-pool-cold-");
+	try {
+		const file = path.join(dir.path(), "session.jsonl");
+		const timestamp = "2026-01-01T00:00:00.000Z";
+		const lines: object[] = [
+			{
+				type: "session",
+				version: CURRENT_SESSION_VERSION,
+				id: "019f0000-0000-7000-8000-000000000001",
+				timestamp,
+				cwd: dir.path(),
+			},
+		];
+		texts.forEach((text, index) => {
+			lines.push({
+				type: "message",
+				id: `e${index}`,
+				parentId: index === 0 ? null : `e${index - 1}`,
+				timestamp,
+				message: {
+					role: "toolResult",
+					toolCallId: `call-${index}`,
+					toolName: text,
+					content: [{ type: "text", text: textPayload(index) }],
+					isError: false,
+					timestamp: 0,
+				},
+			});
+		});
+		const kept = `e${texts.length}`;
+		lines.push(
+			{
+				type: "message",
+				id: kept,
+				parentId: `e${texts.length - 1}`,
+				timestamp,
+				message: { role: "user", content: "kept", timestamp: 0 },
+			},
+			{
+				type: "compaction",
+				id: `e${texts.length + 1}`,
+				parentId: kept,
+				timestamp,
+				summary: "summary",
+				firstKeptEntryId: kept,
+				tokensBefore: 1,
+			},
+		);
+		fs.writeFileSync(file, `${lines.map(line => JSON.stringify(line)).join("\n")}\n`);
+		const { entries } = await loadEntriesFromFileStream(file, { coolCompactedHistory: true });
+		expect(await resolveBlobRefsInEntries(entries, new BlobStore(path.join(dir.path(), "blobs")))).toBe(0);
+		const messages = (entries.slice(1, 1 + texts.length) as unknown as { message: Record<string, unknown> }[]).map(
+			entry => entry.message,
+		);
+		const loaded = {
+			cells: stringCellsReached(messages, cell => cell.key === "toolName"),
+			matches: messages.map((message, index) => message.toolName === texts[index]),
+			cold: messages.map(message => coldFieldsOf(message) !== undefined),
+		};
+		// Reading each content back closes the handle the cold entries hold on the file before it is removed.
+		expect(messages.map(message => (firstContent(message) as { text: string }).text)).toEqual(
+			texts.map((_, index) => textPayload(index)),
+		);
+		return loaded;
 	} finally {
 		await dir.remove();
 	}
@@ -261,10 +400,12 @@ describe("a loaded session", () => {
 				const repeated = await load(
 					slot,
 					Array.from({ length: COPIES }, () => one),
+					isPayload,
 				);
 				const distinct = await load(
 					slot,
 					Array.from({ length: COPIES }, (_, index) => payload(index + 1)),
+					isPayload,
 				);
 
 				const allMatch = Array.from({ length: COPIES }, () => true);
@@ -278,4 +419,70 @@ describe("a loaded session", () => {
 			SNAPSHOT_ROW_TIMEOUT_MS,
 		);
 	}
+
+	for (const [name, { key, slot }] of Object.entries(SHORT_SLOTS)) {
+		const underKey = (cell: StringCell): boolean => cell.key === key;
+		it(
+			`holds one copy of a short string repeated in ${name}`,
+			async () => {
+				const repeated = await load(
+					slot,
+					Array.from({ length: COPIES }, () => shortText(0)),
+					underKey,
+				);
+				const distinct = await load(
+					slot,
+					Array.from({ length: COPIES }, (_, index) => shortText(index + 1)),
+					underKey,
+				);
+
+				const allMatch = Array.from({ length: COPIES }, () => true);
+				expect(repeated.matches).toEqual(allMatch);
+				expect(distinct.matches).toEqual(allMatch);
+				expect(distinct.cells).toBe(COPIES);
+				expect(repeated.cells).toBe(1);
+			},
+			SNAPSHOT_ROW_TIMEOUT_MS,
+		);
+	}
+
+	it(
+		"holds one copy of a short string repeated in a compacted entry's message the load moved to disk",
+		async () => {
+			const repeated = await loadCold(Array.from({ length: COPIES }, () => shortText(0)));
+			const distinct = await loadCold(Array.from({ length: COPIES }, (_, index) => shortText(index + 1)));
+
+			const allTrue = Array.from({ length: COPIES }, () => true);
+			expect(repeated.cold).toEqual(allTrue);
+			expect(distinct.cold).toEqual(allTrue);
+			expect(repeated.matches).toEqual(allTrue);
+			expect(distinct.matches).toEqual(allTrue);
+			expect(distinct.cells).toBe(COPIES);
+			expect(repeated.cells).toBe(1);
+		},
+		SNAPSHOT_ROW_TIMEOUT_MS,
+	);
+
+	it(
+		"stops pooling the short strings of a key that holds more distinct ones than the bound",
+		async () => {
+			const { key, slot } = SHORT_SLOTS["a short string at a key"]!;
+			const underKey = (cell: StringCell): boolean => cell.key === key;
+			const twice = (distinct: number): string[] => {
+				const values = Array.from({ length: distinct }, (_, index) => shortText(index));
+				return [...values, ...values];
+			};
+			const atBound = await load(slot, twice(MAX_SHORT_VALUES_PER_KEY), underKey);
+			const pastBound = await load(slot, twice(MAX_SHORT_VALUES_PER_KEY + 1), underKey);
+
+			const allMatch = (distinct: number): boolean[] => Array.from({ length: 2 * distinct }, () => true);
+			expect(atBound.matches).toEqual(allMatch(MAX_SHORT_VALUES_PER_KEY));
+			expect(pastBound.matches).toEqual(allMatch(MAX_SHORT_VALUES_PER_KEY + 1));
+			// Every value up to the bound is held once...
+			expect(atBound.cells).toBe(MAX_SHORT_VALUES_PER_KEY);
+			// ...and past it the key's repeats keep their own copies instead of growing the pool.
+			expect(pastBound.cells).toBeGreaterThan(MAX_SHORT_VALUES_PER_KEY + 1);
+		},
+		SNAPSHOT_ROW_TIMEOUT_MS,
+	);
 });

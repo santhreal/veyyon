@@ -62,7 +62,7 @@ describe("Concurrent in-process trials overlay and settings isolation", () => {
 		try {
 			// Arm A files
 			const configA = tempDir.join("arm-a.yml");
-			await fs.writeFile(configA, "argot:\n  enabled: true\nedit:\n  mode: diff\n");
+			await fs.writeFile(configA, "argot:\n  enabled: true\nedit:\n  mode: replace\n");
 			const promptA = tempDir.join("arm-a.prompts.yml");
 			const authorityTextA = "OVERLAY_A_DISTINCT_AUTHORITY_TEXT_12345";
 			await fs.writeFile(promptA, `session/user-instruction-authority: |\n  ${authorityTextA}\n`);
@@ -119,7 +119,7 @@ describe("Concurrent in-process trials overlay and settings isolation", () => {
 			// 1. Verify Trial A received overlay A settings and prompt
 			const settingsA = artifactsA?.extra?.settings as { get(k: string): unknown } | undefined;
 			expect(settingsA?.get("argot.enabled")).toBe(true);
-			expect(settingsA?.get("edit.mode")).toBe("diff");
+			expect(settingsA?.get("edit.mode")).toBe("replace");
 
 			const systemPromptA = (artifactsA?.extra?.systemPrompt as string[] | undefined)?.join("\n") ?? "";
 			expect(systemPromptA).toContain(authorityTextA);

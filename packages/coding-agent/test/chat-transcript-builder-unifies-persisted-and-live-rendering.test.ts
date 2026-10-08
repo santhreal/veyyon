@@ -60,7 +60,7 @@ function fixture() {
 		effectiveHideThinkingBlock: false,
 		proseOnlyThinking: false,
 		lastAssistantUsage: undefined,
-		editor: { addToHistory: vi.fn() },
+		editor: { seedHistory: vi.fn() },
 		viewSession: {
 			sessionManager: { getCwd: () => "/repo", putBlobSync: () => "fixture-blob" },
 			getToolByName: () => undefined,

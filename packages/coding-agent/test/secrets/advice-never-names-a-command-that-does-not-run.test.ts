@@ -28,13 +28,11 @@
  * loader are covered by the suites that drive a broken vault end to end.
  */
 import { describe, expect, it } from "bun:test";
+import { expiryWarnings } from "@veyyon/coding-agent/secrets/expiry";
 import { describeSecretExpiry } from "@veyyon/coding-agent/secrets/obfuscator";
 import type { SecretCommandSurface } from "@veyyon/coding-agent/secrets/secret-command";
-import {
-	expiryWarnings,
-	parseSecretCommand,
-	SECRET_TUI_SUBCOMMANDS,
-} from "@veyyon/coding-agent/secrets/secret-command";
+import { parseSecretCommand } from "@veyyon/coding-agent/secrets/secret-command";
+import { SECRET_TUI_SUBCOMMANDS } from "@veyyon/coding-agent/secrets/secret-verbs";
 import type { ScopedVaultEntry } from "@veyyon/coding-agent/secrets/vault";
 import { generateSecretName } from "@veyyon/coding-agent/secrets/vault";
 

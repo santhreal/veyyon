@@ -26,12 +26,6 @@ export function asyncToolState(details: unknown): string | undefined {
 	return (details as AsyncToolDetails | undefined)?.async?.state;
 }
 
-/** Whether the tool reported work that has finished, either way. */
-export function isFinalAsyncToolState(details: unknown): boolean {
-	const state = asyncToolState(details);
-	return state === "completed" || state === "failed";
-}
-
 /**
  * Whether this result belongs to an agent still running in the background.
  *

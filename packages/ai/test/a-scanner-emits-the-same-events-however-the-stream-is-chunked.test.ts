@@ -11,13 +11,14 @@
  *
  * CLASS CLOSED. Every dialect in `DIALECTS` (read from the catalog at run time, so a new dialect
  * arrives covered) yields the same visible text, the same thinking, the same tool calls and the
- * same event sequence at every chunking of a reply that carries all three.
+ * same event sequence at every chunking of a reply that carries all three. A `toolStart` names the
+ * tool its `toolEnd` names at every chunking: the terminal host binds a tool card to the name it
+ * first receives, so a call announced as `r` while the stream is inside the name `read` would
+ * render as a different tool. Hermes did that until it moved onto the qwen3 scanner in
+ * `dialect/json-tool-call-scanner.ts`.
  *
  * NOT CAUGHT. A hold that is too long (text delayed but still emitted) is invisible here; only the
- * final stream is compared. Timing of intermediate `text` events is asserted nowhere. A `toolStart`
- * name is compared as a prefix of its `toolEnd` name rather than exactly: hermes announces a call
- * as soon as a partial body yields a name, so per character it starts `r` and ends `read`, which
- * `inband-tool-lifecycle.test.ts` states as the contract.
+ * final stream is compared. Timing of intermediate `text` events is asserted nowhere.
  */
 import { describe, expect, it } from "bun:test";
 import type { Context, ToolCall } from "@veyyon/ai";
@@ -76,25 +77,17 @@ function coalesced(events: readonly InbandScanEvent[]): InbandScanEvent[] {
 	return out;
 }
 
-/**
- * Tool-call ids are minted per scanner, so they are compared by position, not by value, and a
- * `toolStart` name is checked against its `toolEnd` separately (see the header).
- */
+/** Tool-call ids are minted per scanner, so they are compared by position, not by value. */
 function comparable(events: readonly InbandScanEvent[]): unknown[] {
-	return events.map(event => {
-		if (event.type === "toolStart") return { type: event.type, id: "<id>" };
-		return "id" in event ? { ...event, id: "<id>" } : event;
-	});
+	return events.map(event => ("id" in event ? { ...event, id: "<id>" } : event));
 }
 
-function expectStartsPrefixTheirEnds(events: readonly InbandScanEvent[]): void {
+function expectStartsNameTheirEnds(events: readonly InbandScanEvent[]): void {
 	const ends = new Map<string, string>();
 	for (const event of events) if (event.type === "toolEnd") ends.set(event.id, event.name);
 	for (const event of events) {
 		if (event.type !== "toolStart") continue;
-		const end = ends.get(event.id);
-		expect(end, `toolStart ${event.id} has no toolEnd`).toBeDefined();
-		expect(end!.startsWith(event.name), `${event.name} is not a prefix of ${end}`).toBe(true);
+		expect(ends.get(event.id), `toolStart ${event.id} (${event.name})`).toBe(event.name);
 	}
 }
 
@@ -111,7 +104,7 @@ describe("a scanner emits the same events however the stream is chunked", () => 
 			const whole = comparable(wholeEvents);
 			expect(comparable(perCharEvents)).toEqual(whole);
 			expect(comparable(tripleEvents)).toEqual(whole);
-			for (const events of [wholeEvents, perCharEvents, tripleEvents]) expectStartsPrefixTheirEnds(events);
+			for (const events of [wholeEvents, perCharEvents, tripleEvents]) expectStartsNameTheirEnds(events);
 
 			const ends = wholeEvents.filter((event): event is Extract<InbandScanEvent, { type: "toolEnd" }> => {
 				return event.type === "toolEnd";

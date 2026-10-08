@@ -10,10 +10,10 @@ import {
 	withSectionBanner,
 } from "./section-registry";
 import {
-	assembleSection,
 	STATEMENT_SECTIONS,
 	type StatementContext,
 	type StatementOverrides,
+	sectionTemplates,
 } from "./statement-registry";
 
 const SYSTEM_SECTION_BANNERS = bannerTable(SYSTEM_PROMPT_SECTIONS);
@@ -31,6 +31,9 @@ const DEFAULT_TEMPLATE_SOURCE = sessionPrompts["session/system-prompt"].text;
 
 /** Complete static section map, derived from the registry's section-id union. */
 export type DefaultTemplateSections = Record<TemplateSectionKey, string>;
+
+/** Every static section as the templates it is written from ({@link sectionTemplates}). */
+export type DefaultTemplateSectionTemplates = Record<TemplateSectionKey, readonly string[]>;
 
 /** Canonical section order, derived from the section registry. */
 export const DEFAULT_TEMPLATE_SECTION_ORDER = TEMPLATE_SECTION_CAMEL_KEYS;
@@ -52,32 +55,69 @@ function assertModularDefaultTemplate(source: string): void {
 assertModularDefaultTemplate(DEFAULT_TEMPLATE_SOURCE);
 
 /**
- * Fill the zero-prose outer template with the complete modular section body.
+ * The complete modular section body as the templates it is written from: each section's
+ * templates, or its override where one is given, in canonical order, with one newline between
+ * adjacent sections. `buildSystemPrompt` renders them with `prompt.renderSequence`.
  *
  * Requiring every section removes the old fallback to prose copied into the
  * template. A missing statement section is already rejected by the statement
  * registry, and TypeScript rejects an incomplete section map here.
  */
+export function defaultTemplatePieces(
+	sections: DefaultTemplateSectionTemplates,
+	overrides: Partial<DefaultTemplateSections> = {},
+): string[] {
+	const pieces: string[] = [];
+	for (const [index, key] of DEFAULT_TEMPLATE_SECTION_ORDER.entries()) {
+		if (index > 0) pieces.push("\n");
+		const override = overrides[key];
+		if (override === undefined) pieces.push(...sections[key]);
+		else pieces.push(override);
+	}
+	return pieces;
+}
+
+/** The complete modular section body as one template: the {@link defaultTemplatePieces} of `sections`, joined. */
 export function assembleDefaultTemplate(sections: DefaultTemplateSections): string {
-	return DEFAULT_TEMPLATE_SECTION_ORDER.map(key => sections[key]).join("\n");
+	return defaultTemplatePieces(sectionsAsTemplates(sections)).join("");
 }
 
 /**
- * Assemble every default-template section from statement modules.
+ * Every default-template section as the templates it is written from, from statement modules.
  *
- * The result is still Handlebars template text. The caller composes the complete
- * document and renders it once, so formatting and variable expansion remain
+ * Each entry is still Handlebars template text. The caller renders the complete
+ * sequence as one document, so formatting and variable expansion remain
  * document-wide rather than varying with statement boundaries.
  */
+export function assembleStatementSectionTemplates(
+	context: StatementContext,
+	statementOverrides: StatementOverrides = {},
+): DefaultTemplateSectionTemplates {
+	const entries = STATEMENT_SECTIONS.map(section => {
+		const key = kebabToCamel(section) as TemplateSectionKey;
+		return [key, sectionTemplates(section, context, statementOverrides)] as const;
+	});
+	return Object.fromEntries(entries) as unknown as DefaultTemplateSectionTemplates;
+}
+
+/** Every default-template section's template text: its {@link assembleStatementSectionTemplates}, joined. */
 export function assembleStatementSections(
 	context: StatementContext,
 	statementOverrides: StatementOverrides = {},
 ): DefaultTemplateSections {
-	const entries = STATEMENT_SECTIONS.map(section => {
-		const key = kebabToCamel(section) as TemplateSectionKey;
-		return [key, assembleSection(section, context, statementOverrides)] as const;
-	});
-	return Object.fromEntries(entries) as unknown as DefaultTemplateSections;
+	return joinSectionTemplates(assembleStatementSectionTemplates(context, statementOverrides));
+}
+
+/** Each section's templates joined into its template text. */
+export function joinSectionTemplates(sections: DefaultTemplateSectionTemplates): DefaultTemplateSections {
+	const joined = Object.entries(sections).map(([key, templates]) => [key, templates.join("")] as const);
+	return Object.fromEntries(joined) as unknown as DefaultTemplateSections;
+}
+
+/** Each section's template text as a one-template sequence. */
+function sectionsAsTemplates(sections: DefaultTemplateSections): DefaultTemplateSectionTemplates {
+	const wrapped = Object.entries(sections).map(([key, text]) => [key, [text]] as const);
+	return Object.fromEntries(wrapped) as unknown as DefaultTemplateSectionTemplates;
 }
 
 /**

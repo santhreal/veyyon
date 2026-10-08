@@ -1,4 +1,5 @@
 import { type MermaidAsciiRenderOptions, renderMermaidAsciiSafe } from "@veyyon/utils/mermaid-ascii";
+import { LRUCache } from "lru-cache/raw";
 
 /**
  * Options controlling how fenced Mermaid source is resolved to terminal ASCII.
@@ -17,10 +18,23 @@ export interface MermaidResolveOptions extends MermaidAsciiRenderOptions {
 	maxWidth?: number;
 }
 
+/** A render that failed, held so a malformed diagram is not parsed again on every frame. */
+const FAILED = Symbol("mermaid render failed");
+
+/**
+ * UTF-16 code units of source and ASCII the cache holds, least recently used first out. A streamed
+ * diagram resolves once per frame on the fence received so far and every frame is a new source, so
+ * without a bound the renders of every frame of every diagram stayed for the life of the session.
+ */
+const CACHE_MAX_UNITS = 512 * 1024;
+
 // Memoizes rendered ASCII (and failures) keyed on the render options + the
 // layout-direction variant + source. Width selection happens per call against
 // the cached renders, so a terminal resize re-decides without re-rendering.
-const cache = new Map<string, string | null>();
+const cache = new LRUCache<string, string | typeof FAILED>({
+	maxSize: CACHE_MAX_UNITS,
+	sizeCalculation: (ascii, key) => key.length + (ascii === FAILED ? 0 : ascii.length),
+});
 
 /** Widest rendered row in display columns (ANSI- and CJK-aware). */
 function asciiDisplayWidth(ascii: string): number {
@@ -40,10 +54,10 @@ function renderVariant(
 ): string | null {
 	const key = `${baseKey}\x00${direction ?? ""}\x00${source}`;
 	const cached = cache.get(key);
-	if (cached !== undefined) return cached;
+	if (cached !== undefined) return cached === FAILED ? null : cached;
 
 	const ascii = renderMermaidAsciiSafe(source, direction ? { ...baseOptions, direction } : baseOptions);
-	cache.set(key, ascii);
+	cache.set(key, ascii ?? FAILED);
 	return ascii;
 }
 

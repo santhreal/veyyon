@@ -745,10 +745,9 @@ describe(`a second compaction chains instead of re-reading the span (${BANNER})`
 	function chained(calls: Captured[], previous: Record<string, unknown> | undefined): Promise<unknown> {
 		const prep = preparation();
 		prep.remoteChain = {
-			previousPreserveData: previous,
-			messagesToSummarize: [{ role: "user", content: "since the window", timestamp: Date.now() }],
-			turnPrefixMessages: [],
-		} as CompactionPreparation["remoteChain"];
+			links: previous ? [{ previousPreserveData: previous, start: 0 }] : [],
+			messages: [{ role: "user", content: "since the window", timestamp: Date.now() }],
+		};
 		return compactWithProvider(prep, codexModel(), codexToken(), "sys", undefined, {
 			sessionId: "s",
 			codexCompaction: {

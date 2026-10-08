@@ -110,6 +110,14 @@ describe("an unreachable auth broker is never reported as an empty credential se
 
 			await expect(discoverAuthStorage(discoverOptions())).rejects.toThrow();
 		});
+
+		test("a 304 to the first, unconditional request raises naming the broker", async () => {
+			// A 304 carries no snapshot. Accepting it would start the store with
+			// nothing in it, which reads exactly like a user with no logins.
+			mockFetch(() => new Response(null, { status: 304, statusText: "Not Modified" }));
+
+			await expect(discoverAuthStorage(discoverOptions())).rejects.toThrow(/broker.*no initial snapshot/i);
+		});
 	});
 
 	describe("the broker answers but has nothing", () => {

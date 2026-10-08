@@ -46,10 +46,10 @@ import { setTuiTight } from "@veyyon/utils/tight-mode";
 import { clearFirstFrameRecording, recordFirstFrame } from "../../cli/first-frame-recorder";
 import { takeReplayedFirstFrame } from "../../cli/first-frame-replay";
 import { KeybindingsManager } from "../../config/keybindings";
+import { onLaunchFactsRecorded, readLaunchFacts } from "../../config/launch-facts";
 import { settings } from "../../config/settings-instance";
 import { applyGroundPaint, setDetectedTerminalGround } from "../../theme/ground-tints";
 import { getEditorTheme, theme } from "../../theme/theme";
-import { onLaunchFactsRecorded, readLaunchFacts } from "../launch-facts";
 import {
 	applyComposerChrome,
 	computeEditorMaxHeight,

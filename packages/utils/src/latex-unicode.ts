@@ -1281,6 +1281,17 @@ const EXTENSIBLE_ARROWS: ReadonlyMap<string, string> = new Map(
 /** Renders one `\name` command, reading its arguments from `parser`. */
 type CommandRenderer = (parser: LatexParser, style: FontStyle | null, name: string) => string;
 
+/**
+ * Nesting cap. `latexToUnicode` runs on model-authored output, so a deeply
+ * nested payload (`{{{…}}}`, `\frac{a}\frac{a}…`, `x^{x^{…}}`) would recurse
+ * through parse↔#group and #command↔#argument until the JS stack overflows —
+ * a trivial DoS. Past this depth the parser consumes input as literal text
+ * without recursing: it still advances `#i` (no hang) and unwinds one frame
+ * per close brace, so output degrades to raw text instead of crashing. Real
+ * math nests only a handful deep; this bound is far below the JS stack limit.
+ */
+const MAX_DEPTH = 500;
+
 class LatexParser {
 	#s: string;
 	#i = 0;
@@ -1288,16 +1299,6 @@ class LatexParser {
 	#background: string | null = null;
 	/** Current recursion depth (nested groups + arguments). */
 	#depth = 0;
-	/**
-	 * Nesting cap. `latexToUnicode` runs on model-authored output, so a deeply
-	 * nested payload (`{{{…}}}`, `\frac{a}\frac{a}…`, `x^{x^{…}}`) would recurse
-	 * through parse↔#group and #command↔#argument until the JS stack overflows —
-	 * a trivial DoS. Past this depth the parser consumes input as literal text
-	 * without recursing: it still advances `#i` (no hang) and unwinds one frame
-	 * per close brace, so output degrades to raw text instead of crashing. Real
-	 * math nests only a handful deep; this bound is far below the JS stack limit.
-	 */
-	static readonly #MAX_DEPTH = 500;
 
 	/**
 	 * Every command with a rendering of its own, by name. The first renderer
@@ -1399,7 +1400,7 @@ class LatexParser {
 		// parser on the extracted `[…]` source. Seeding it with the parent's depth
 		// keeps the guard cumulative across that boundary; a fresh 0 here would let a
 		// nested-optional-arg chain recurse without limit and blow the JS stack (the
-		// exact DoS `#MAX_DEPTH` exists to stop) while re-scanning O(n^2).
+		// exact DoS `MAX_DEPTH` exists to stop) while re-scanning O(n^2).
 		this.#depth = startDepth;
 	}
 
@@ -1421,7 +1422,7 @@ class LatexParser {
 
 	/** Parse a run until end-of-input, or until `}` when `stopAtBrace`. */
 	parse(style: FontStyle | null, stopAtBrace: boolean): string {
-		if (this.#depth >= LatexParser.#MAX_DEPTH) return this.#literalRun(stopAtBrace);
+		if (this.#depth >= MAX_DEPTH) return this.#literalRun(stopAtBrace);
 		this.#depth++;
 		let out = "";
 		while (this.#i < this.#s.length) {
@@ -1573,7 +1574,7 @@ class LatexParser {
 		// Depth guard: `#command`/`#script` args recurse through here (e.g.
 		// `\frac{a}\frac{a}…`, bare-script chains) without going through `parse`,
 		// so bound this path too. Past the cap, consume the argument literally.
-		if (this.#depth >= LatexParser.#MAX_DEPTH) {
+		if (this.#depth >= MAX_DEPTH) {
 			if (c === "{") {
 				this.#i++;
 				const inner = this.#literalRun(true);
@@ -1649,14 +1650,10 @@ class LatexParser {
 		return sup ? toSuperscript(arg.text, arg.group) : toSubscript(arg.text, arg.group);
 	}
 
-	#wrapFrac(arg: Argument): string {
-		return arg.group && codePointLength(arg.text) > 1 ? `(${arg.text})` : arg.text;
-	}
-
 	#fraction(num: Argument, den: Argument): string {
 		const vulgar = VULGAR.get(`${num.text}/${den.text}`);
 		if (vulgar) return vulgar;
-		return `${this.#wrapFrac(num)}/${this.#wrapFrac(den)}`;
+		return `${wrapFrac(num)}/${wrapFrac(den)}`;
 	}
 
 	/** `\overset{script}{base}` and `\underset{script}{base}`: the script argument precedes the base. */
@@ -1704,7 +1701,7 @@ class LatexParser {
 	#optionalArgument(style: FontStyle | null): Argument | null {
 		const source = this.#optionalRawArgument();
 		if (source === null) return null;
-		if (this.#depth >= LatexParser.#MAX_DEPTH) {
+		if (this.#depth >= MAX_DEPTH) {
 			return { text: source, group: true };
 		}
 		return { text: new LatexParser(source, this.#depth).parse(style, false), group: true };
@@ -1795,6 +1792,10 @@ class LatexParser {
 		if (c === undefined) return "";
 		return /[A-Za-z0-9\\]/.test(c) ? " " : "";
 	}
+}
+
+function wrapFrac(arg: Argument): string {
+	return arg.group && codePointLength(arg.text) > 1 ? `(${arg.text})` : arg.text;
 }
 
 // ---------------------------------------------------------------------------

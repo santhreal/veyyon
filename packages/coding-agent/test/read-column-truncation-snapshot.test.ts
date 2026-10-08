@@ -9,6 +9,7 @@
  * `tools.outputMaxColumns` failed with a permanent hash-mismatch loop
  * (`Section is bound to #XYZ, but the current file hashes to #ABC`).
  */
+// Subject module: tools/fs/read-lines.ts, driven through the read tool.
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";

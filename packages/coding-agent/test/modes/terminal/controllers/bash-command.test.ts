@@ -46,6 +46,7 @@ describe("bash shortcut command", () => {
 			ui: { requestRender: vi.fn(), requestComponentRender: vi.fn() },
 			present: vi.fn(),
 			showError: vi.fn(),
+			statusLine: { refreshGitStatus: vi.fn() },
 			// Required members of the context. Omitting them used to be tolerated by
 			// `?.()` calls in the controller, which meant production silently skipped
 			// the composer refresh and the welcome dismissal whenever either was
@@ -97,6 +98,7 @@ function shortcutContext(
 		ui: { requestRender: vi.fn(), requestComponentRender: vi.fn() },
 		present: (block: ShortcutBlock) => presented.push(block),
 		showError: (message: string) => errors.push(message),
+		statusLine: { refreshGitStatus: vi.fn() },
 		refreshComposerShortcuts: vi.fn(),
 		dismissWelcome: vi.fn(),
 	} as unknown as InteractiveModeContext;

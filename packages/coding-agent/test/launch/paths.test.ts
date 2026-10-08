@@ -14,16 +14,19 @@ import {
 	managedDaemonProcessLeasePath,
 	managedDaemonsRoot,
 } from "@veyyon/coding-agent/launch/paths";
+import { getAgentDir, getConfigRootDir } from "@veyyon/utils";
 
 /**
- * These derive the per-project daemon runtime directory and broker endpoint. Both keys
- * are a wyhash of the RESOLVED project path, and that identity must be stable: every
- * veyyon process in one project directory has to compute the same path or a launching
- * client and a running daemon would talk past each other (the client would spawn a
- * second daemon at a different socket). They had no tests. These pin the derivation so
- * a change to the hashing or the path layout, which would silently orphan running
- * daemons, cannot slip through, and cover the platform split (Unix socket vs Windows
- * named pipe) including that the pipe key still tracks the runtime-dir key.
+ * These derive the per-project daemon runtime directory and broker endpoint. The key is a wyhash of
+ * the RESOLVED agent dir and project path, and that identity must be stable: every veyyon process of
+ * one profile in one project directory has to compute the same path or a launching client and a
+ * running daemon would talk past each other (the client would spawn a second daemon at a different
+ * socket). Processes of different profiles must compute different paths: a broker runs what it
+ * launches with its own environment, the credentials its first client's profile loaded, so a broker
+ * shared across profiles runs one profile's processes on another's credentials. These pin the
+ * derivation so a change to the hashing or the path layout, which would silently orphan running
+ * daemons, cannot slip through, and cover the platform split (Unix socket vs Windows named pipe)
+ * including that the pipe key still tracks the runtime-dir key.
  *
  * The suites below the endpoint one cover the rest of the layout, which used to be spelled
  * inline by whoever needed it. `broker.token` was declared twice, once in `client.ts` (which
@@ -49,51 +52,72 @@ function withPlatform(value: NodeJS.Platform, run: () => void): void {
 	run();
 }
 
+const AGENT = "/cfg/profiles/default/agent";
+
 describe("daemonRuntimeDir", () => {
 	it("places the daemon dir under <configRoot>/run/daemons/<16-hex key>", () => {
-		const dir = daemonRuntimeDir("/home/x/proj", "/cfg");
+		const dir = daemonRuntimeDir("/home/x/proj", "/cfg", AGENT);
 		const key = dir.split("/").pop() ?? "";
-		expect(dir).toBe("/cfg/run/daemons/0f63cb695d3d99fc");
+		expect(dir).toBe("/cfg/run/daemons/cd9a6ba9987f3bd0");
 		expect(key).toMatch(/^[0-9a-f]{16}$/);
 	});
 
-	it("normalizes the project path so a trailing slash yields the same key", () => {
-		expect(daemonRuntimeDir("/home/x/proj/", "/cfg")).toBe(daemonRuntimeDir("/home/x/proj", "/cfg"));
+	it("normalizes the project path and agent dir so a trailing slash yields the same key", () => {
+		expect(daemonRuntimeDir("/home/x/proj/", "/cfg", `${AGENT}/`)).toBe(
+			daemonRuntimeDir("/home/x/proj", "/cfg", AGENT),
+		);
 	});
 
 	it("gives different projects different keys", () => {
-		expect(daemonRuntimeDir("/home/x/proj", "/cfg")).not.toBe(daemonRuntimeDir("/home/x/other", "/cfg"));
+		expect(daemonRuntimeDir("/home/x/proj", "/cfg", AGENT)).not.toBe(
+			daemonRuntimeDir("/home/x/other", "/cfg", AGENT),
+		);
+	});
+
+	it("gives each profile in one project its own key", () => {
+		const keys = new Set(
+			["/cfg/profiles/default/agent", "/cfg/profiles/work/agent", "/cfg/profiles/oss/agent"].map(agentDir =>
+				daemonRuntimeDir("/home/x/proj", "/cfg", agentDir),
+			),
+		);
+		expect(keys.size).toBe(3);
+	});
+
+	it("keys the default runtime dir by the running profile's agent dir", () => {
+		expect(daemonRuntimeDir("/home/x/proj")).toBe(
+			daemonRuntimeDir("/home/x/proj", getConfigRootDir(), getAgentDir()),
+		);
+		expect(daemonRuntimeDir("/home/x/proj")).not.toBe(
+			daemonRuntimeDir("/home/x/proj", getConfigRootDir(), path.join(getAgentDir(), "other")),
+		);
 	});
 });
 
 describe("daemonBrokerEndpoint", () => {
 	it("uses a broker.sock inside the runtime dir on non-Windows platforms", () => {
 		withPlatform("linux", () => {
-			expect(daemonBrokerEndpoint("/home/x/proj", "/cfg/run/daemons/0f63cb695d3d99fc")).toBe(
-				"/cfg/run/daemons/0f63cb695d3d99fc/broker.sock",
-			);
-		});
-	});
-
-	it("uses a named pipe keyed by the project path on Windows, ignoring the runtime dir", () => {
-		withPlatform("win32", () => {
-			// The pipe key matches the runtime-dir key so client and daemon agree, and the
-			// runtime-dir argument is irrelevant in the pipe namespace.
-			expect(daemonBrokerEndpoint("/home/x/proj", "C:\\ignored")).toBe(
-				"\\\\.\\pipe\\veyyon-daemon-0f63cb695d3d99fc",
+			expect(daemonBrokerEndpoint("/cfg/run/daemons/cd9a6ba9987f3bd0")).toBe(
+				"/cfg/run/daemons/cd9a6ba9987f3bd0/broker.sock",
 			);
 		});
 	});
 
 	/**
-	 * The pipe name and the runtime directory identify the same project through what used to be two
-	 * copies of the hash expression. A drift between them keys a broker to a pipe no client computes,
-	 * so this asserts the shared key rather than trusting that both copies were edited together.
+	 * A client and its broker both receive the runtime directory, so a pipe keyed by it is one both
+	 * compute. A pipe keyed by the project alone put every profile's broker on one pipe.
 	 */
 	it("reuses the runtime-dir key verbatim in the Windows pipe name", () => {
-		const key = daemonRuntimeDir("/home/x/proj", "/cfg").split("/").pop() ?? "";
+		const runtimeDir = daemonRuntimeDir("/home/x/proj", "/cfg", AGENT);
 		withPlatform("win32", () => {
-			expect(daemonBrokerEndpoint("/home/x/proj", "/cfg")).toBe(`\\\\.\\pipe\\veyyon-daemon-${key}`);
+			expect(daemonBrokerEndpoint(runtimeDir)).toBe("\\\\.\\pipe\\veyyon-daemon-cd9a6ba9987f3bd0");
+		});
+	});
+
+	it("gives each profile in one project its own Windows pipe", () => {
+		withPlatform("win32", () => {
+			expect(daemonBrokerEndpoint(daemonRuntimeDir("/home/x/proj", "/cfg", "/cfg/profiles/work/agent"))).not.toBe(
+				daemonBrokerEndpoint(daemonRuntimeDir("/home/x/proj", "/cfg", "/cfg/profiles/oss/agent")),
+			);
 		});
 	});
 });

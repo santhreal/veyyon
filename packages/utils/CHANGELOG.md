@@ -4,13 +4,49 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- `once` is removed; `lazy(build)` returns a `Lazy<T>` whose `value` getter calls `build` on the first read and returns that result afterwards, and `typeof held.value` states the built type without building it.
+- `StallStackSource` requires `park()`, which `LoopWatchdog` calls when it parks.
+
 ### Added
 
 - `getBrowserProfilesDir()` returns the persistent browser profiles directory under the agent directory.
+- The `@veyyon/utils` barrel re-exports every export of `@veyyon/utils/abortable`, which adds `cancellationError` and `abortableSource` to it.
+- `LoopRace` races each pass of a loop against an outcome that settles once for the loop's life, such as an abort, and settles as `Promise.race([pass, outcome])` would without attaching a reaction per pass to the pending outcome, so the race holds no pass the loop moved past.
+- `@veyyon/utils/idle-trim` exports `BUSY_CPU_RATIO`, the share of wall time over which `IdleTrim` and `LoopWatchdog` count a window's process CPU as busy.
+- `@veyyon/utils/rearming-timeout` exports `rearmingTimeout`, a schedule for a callback that arms its own next run, which re-arms one `setTimeout` with `refresh()` instead of creating a timeout per call.
+- `@veyyon/utils/byte-truncate` exports `dropFrontBytes`, which walks whole characters off the front of a string while a byte count exceeds a budget and returns the index the kept text starts at and its UTF-8 length, without encoding the string.
+- `@veyyon/utils/activity-signal` exports `ActivitySignal` and the process-wide `processActivity`: a host attaches with `attachHost()` and calls `report()` on its work, and a sampler that found the process quiet calls `park(wake)` to arm no timer until the next report.
+- `LoopWatchdog` accepts `parkAfterMs` (default 10,000) and `activity`, and `IdleTrim` accepts `activity`.
+- `IdleTrim` accepts `release`, which runs on the first quiet sampling window after a busy one and again after each trim; a `release` that throws is not called again and the trim continues.
+- `@veyyon/utils/tool-call-label` exports `formatToolCallLabel`, the one-line session-tree label for a tool call, with each identifier cut to 40 code points and every line break in a path or free-text argument printed as a space.
+- `@veyyon/utils/prompt` exports `precompileTemplate`, which returns a template's Handlebars precompiled specification and variable analysis, and `@veyyon/utils/prompt-precompiled` holds the templates a build registered, which `compile` and `analyzePromptTemplate` revive instead of parsing.
+- `@veyyon/utils/prompt` exports `renderSequence(templates, context, options)`, which returns what `render` returns for the joined templates and renders each precompiled template on its own when no boundary changes the bytes, so the joined text is not parsed.
 - `@veyyon/utils/session-file` exports `sessionFileMatchesResumeArgument`, which reports whether a transcript filename answers a `--resume` id or prefix.
+- `getProfileSessionsDir` returns a named profile's sessions directory as a process running that profile resolves it, under `$XDG_DATA_HOME` when that profile's XDG directory exists.
+- `setProfileEnv` sets an environment variable read out of the active profile's configuration and records it so a process started under another profile drops it.
+- `@veyyon/utils/session-file` exports `ORPHAN_AGENT_TRANSCRIPT_PREFIX`, the prefix of an agent transcript written under the sessions root when its parent session has no file.
+- `@veyyon/utils/stall-sampler` exports `stallSampler`, which keeps JavaScriptCore's sampling profiler running, at a 10 ms interval while the loop watchdog reports busy ticks and at 100 ms after 10 seconds without one, and returns the functions sampled between two `performance.now()` readings, and `borrow()`, which lends the profiler to another caller; `LoopWatchdog` takes it as `stacks` and follows each `ui.loop-blocked` line with a `ui.loop-blocked.stack` line naming the functions that held the loop.
+- `@veyyon/utils/fs-tool-args` exports `editInputPaths`, which reads the file paths from hashline or `apply_patch` section headers.
+- `exponentialBackoffDelay` accepts `jitterSpread: "below"`, which only shortens the wait so `maxMs` is the longest delay.
+- `internString` returns the engine's shared copy of a string, which is collected with its last holder.
+- `detachedString` returns a string's characters in a buffer of their own, so a slice, split piece or regex capture stored past the text it was cut from no longer keeps that text alive.
+- `@veyyon/utils/idle-trim` exports `IdleTrim`, which calls `trimEngine()` once the process has spent 30 seconds with each 5-second window under 5% CPU, and again only after a busier window.
+- `@veyyon/utils/idle-trim` exports `trimEngine`, the trim `IdleTrim` runs when no `trim` is given, which calls `Bun.shrink()` and then returns the free pages of the C allocator's arenas with `releaseFreeHeapPages()`, so a session that read four 8 MiB web pages settles at 216 MiB RSS instead of 504 MiB.
+- `@veyyon/utils/log-file` exports `RotatingLogFile`, which appends each line to the profile's day file in one `write(2)`, moves a full file to the next free numbered generation, gzips a generation no writer has appended to for 3 seconds and keeps the newest five files, and `logFileName`, the day file's name for a local date.
+- `@veyyon/utils/yaml-sync` exports `loadYaml`, which returns the `yaml` module namespace and evaluates the package on its first call.
+- `@veyyon/utils/local-time` exports `localTime`, an instant's local date, clock time and UTC offset, read from the C library's `localtime_r` on Linux and macOS and from a `Date` on Windows or while `process.env.TZ` differs from its launch value, and `localCalendarDate`, the instant's local `YYYY-MM-DD`.
 
 ### Changed
 
+- The logger's line timestamps, its day file name and the terminal output guard's redirect target read local time through `localTime` instead of a `Date`, and `analyzeTemplate` lists variables in code-unit order instead of `localeCompare` order, so none of them builds ICU's time zone cache or collator; with a POSIX rule string in `TZ`, which ICU does not parse, log timestamps follow the rule.
+- `getSegmenter`, word navigation and the diagram renderer's text measure build their `Intl.Segmenter` on first use instead of when their module loads, so a launch opens no ICU break iterator before it segments text.
+- `@veyyon/utils/yaml-sync` evaluates the `yaml` package on the first settings file edit instead of when the module loads, which keeps 72 modules off a launch that edits no settings file.
+- Six class members that read no instance state are module functions and constants instead of `#private` members, which shrinks the compiled bytecode of their classes; behavior is unchanged.
+- `@veyyon/utils/json-snapshot` frames each snapshot with a layout version, payload byte length and CRC-32 instead of a SHA-256 digest, and rejects snapshots framed by the previous layout.
+- `utf8ByteLength` measures a whole string, or a range longer than 64 code units, with `Buffer.byteLength`, and `isWellFormedUtf16` answers with `String.prototype.isWellFormed`, instead of looping over code units, cutting a 3 KB ASCII string from 11.1 µs to 28 ns and from 1.3 µs to 4.5 ns with identical answers.
+- `wrapTextWithAnsi` returns a fitting row holding one-cell punctuation, arrows, box drawing, geometric shapes, dingbats or Latin-1, or a leading indent after an SGR sequence, without calling the native wrapper, cutting such a row from about 620 ns to 70 ns and a 13,470-entry transcript's first frame from 197.3 ms to 190.7 ms with rows identical to the native wrapper's across 300,000 generated lines.
 - `matchesKey` and `parseKey` look up their memoized answers by protocol mode and input instead of a concatenated key string, and `KeybindingsManager.matches` reuses each parsed key's canonical id, cutting a memoized key test from 70.4 ns to 17.3 ns with identical answers.
 - `latexToBlock` parses each display-math fragment with one handler per construct (fractions, radicals, `\left…\right`, big operators, colors, environments, scripts, delimiters) and scans command names by character code, rendering 150,018 differential cases byte-identically about 6% faster.
 - `prompt.render` reuses a template's variable analysis across renders instead of re-parsing the template on every call, rendering the spawned-agent system prompt in about 7 µs instead of about 100 µs.
@@ -18,11 +54,29 @@
 - `replaceTabs` returns a line with no tab without running the replacement, cutting 1.83M transcript lines from 55.2 ms to 40.6 ms.
 - `latexToUnicode` dispatches a command through one name-keyed table and scans command names by character code, rendering a 12-formula corpus in 11.4 µs instead of 24.2 µs with 305,251 differential cases byte-identical.
 - `visibleWidth` counts a row of printable ASCII, tabs and SGR sequences in its own scan instead of the escape-stripping measure, cutting a styled prose row from 299 ns to 62 ns and a colored 13,362-entry transcript render from 288 ms to 270 ms with identical widths.
+- `visibleWidth` also counts one-cell characters past ASCII (gutter bars, box drawing, ellipses, arrows, Latin-1) in its own scan, cutting a gutter row from 242 ns to 57 ns and a 13,470-entry transcript render from 268 ms to 239 ms with identical widths.
+- `reopenBackgroundAfterResets` reads a row once instead of three times, re-opening an output block's ground in 40 ns instead of 102 ns on a highlighted row and 70 ns instead of 214 ns on a row with resets, and inserts a ground that is itself a reset once after each reset instead of twice.
+- `prompt.render` returns the shared copy of its result, so equal renders of a template hold one buffer.
+- `@veyyon/utils/env` fingerprints a `.env` value with `Bun.CryptoHasher` instead of `node:crypto`, so the launch card path loads no `node:crypto`; a compiled binary that imports the module starts in 11.9 ms instead of 12.5 ms and peaks at 33,468 KiB RSS instead of 34,812 KiB (median of 31).
+- The logger writes the profile log through `RotatingLogFile` instead of `winston` and `winston-daily-rotate-file`, with the same line format, 10 MiB size limit and five-file retention, and deletes the `-audit.json` files `winston-daily-rotate-file` left in the logs directory; 29 packages leave the install, the compiled binary shrinks by 2.1 MiB, and an idle interactive session holds 91.4 MiB of heap and extra memory instead of 93.4 MiB, 569,868 objects instead of 584,359, and 320 MiB RSS after a full GC instead of 322.5 MiB (median of six).
+- `RotatingLogFile` writes a gzipped generation through `atomicWriteFileWith`, staged as the hidden `.<file>.gz.<pid>.<n>.tmp` sibling, and deletes one that a process which exited mid-copy left for a minute.
+- `stallSampler` checks inspector profile payloads with the shared `isRecord`; no user-visible change.
+- `@veyyon/utils/prompt` loads the Handlebars parser and compiler through `@veyyon/utils/prompt-handlebars` on the first template no build precompiled, so a process that renders only precompiled templates evaluates the Handlebars runtime alone.
+- `prompt.format` returns text it rewrites no line of as a cut of its input, without the blank lines at its end, instead of a joined copy; creating an idle main session copies 188,952 fewer characters (347,436 bytes over 65 calls), and a prompt with no mustache holds one buffer for its template and its render.
+- `LoopWatchdog` and `IdleTrim` re-arm one timeout per `start()` through `rearmingTimeout` instead of creating a timeout, a handle object and two closures on every tick.
+- While a host is attached to its activity signal, `LoopWatchdog` arms no tick after 10 seconds of ticks without a block or busy CPU, `IdleTrim` arms no window after the window that follows a trim, and `stallSampler` samples once a second, until the host reports work.
+- The `rearmingTimeout` documentation records its measured effect on an idle interactive session of the linux-x64 binary; no user-visible change.
 
 ### Fixed
 
+- The default profile ignores an inherited `VEYYON_CODING_AGENT_DIR` equal to any profile's agent dir, so `/profile default` or `/resume` of a default-profile session from a named profile no longer runs the default profile in the named profile's agent dir.
+- A veyyon process started by another veyyon process under a different profile drops the variables the parent set from its own `.env` files, recorded in `VEYYON_DOTENV_ORIGIN`, and applies its own profile's `.env` layers instead of running on the parent profile's credentials.
 - `@veyyon/utils/stderr-guard` loads `node:util` on the first routed console call rather than at import, keeping it off the launch card path; no user-visible change.
 - `latexToUnicode` and `latexToBlock` render a command, environment, color or delimiter named after an `Object.prototype` member (`\toString`, `\constructor`, `\begin{__proto__}`) as an unknown name instead of throwing, printing a function body, or laying it out as a fraction, big operator or matrix.
+- Mermaid `colorMode: "html"` output escapes `"` and `'` in diagram text and in each span's color attribute, and escapes uncolored xychart text.
+- `extractRetryHint` reads `retry-after: <date>` in an error message as a wait until that instant instead of a wait of the year's number of seconds, and reads `x-ratelimit-reset-ms`, `x-ratelimit-reset` and `x-ratelimit-reset-after` written into a message as it reads those headers; `RETRY_HINT_HEADERS` exports the header forms both readings share.
+- `getLogPath` names the local calendar day's file, the file the logger writes, instead of the UTC day's, so the stderr redirect, the startup log hint and the debug report read the logger's file in a zone off UTC when the two dates differ.
+- `errorMessage` returns the `Object.prototype.toString` tag for a thrown value with no string form, such as a null-prototype object or one whose `toString` throws, instead of throwing a `TypeError` from inside the caller's error handling.
 
 ## [1.5.5] - 2026-09-25
 

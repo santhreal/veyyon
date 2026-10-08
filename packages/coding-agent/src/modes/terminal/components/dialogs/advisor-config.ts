@@ -317,18 +317,6 @@ export class AdvisorConfigOverlayComponent implements Component {
 		if (this.#doc.advisors.length === 0) this.#doc.advisors.push({ name: "default" });
 	}
 
-	#isBareDefaultDoc(doc: WatchdogConfigDoc): boolean {
-		if (doc.advisors.length !== 1 || doc.instructions?.trim()) return false;
-		const advisor = doc.advisors[0];
-		if (!advisor) return false;
-		return (
-			advisor.name === "default" &&
-			!advisor.model?.trim() &&
-			advisor.tools === undefined &&
-			!advisor.instructions?.trim()
-		);
-	}
-
 	#advisorSummary(advisor: AdvisorConfig): string {
 		const model = advisor.model?.trim() || this.#defaultModelLabel || "advisor role default";
 		const tools = formatAdvisorTools(advisor.tools, "no tools");
@@ -392,7 +380,7 @@ export class AdvisorConfigOverlayComponent implements Component {
 		}
 		if (value === "save") {
 			try {
-				await this.#cb.save(this.#scope, this.#isBareDefaultDoc(this.#doc) ? { advisors: [] } : this.#doc);
+				await this.#cb.save(this.#scope, isBareDefaultDoc(this.#doc) ? { advisors: [] } : this.#doc);
 			} catch (err) {
 				// A failed write leaves the edit on screen and still dirty. Clearing the flag
 				// here would report a save that did not happen, and the scope switch and Close
@@ -622,4 +610,16 @@ export class AdvisorConfigOverlayComponent implements Component {
 			{ keys: "esc", label: "back" },
 		]);
 	}
+}
+
+function isBareDefaultDoc(doc: WatchdogConfigDoc): boolean {
+	if (doc.advisors.length !== 1 || doc.instructions?.trim()) return false;
+	const advisor = doc.advisors[0];
+	if (!advisor) return false;
+	return (
+		advisor.name === "default" &&
+		!advisor.model?.trim() &&
+		advisor.tools === undefined &&
+		!advisor.instructions?.trim()
+	);
 }

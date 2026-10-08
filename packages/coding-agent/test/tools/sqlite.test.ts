@@ -1,3 +1,4 @@
+// Subject module: tools/fs/read-containers.ts, driven through the read tool.
 import { Database } from "bun:sqlite";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";

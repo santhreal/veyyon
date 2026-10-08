@@ -28,7 +28,7 @@ import type { MCPManager } from "../../mcp";
 import type { PlanApprovalDetails } from "../../plan-mode/approved-plan";
 import type { StatusPresentationProducer } from "../../presentation/status-producer";
 import type { AgentSession } from "../../session/agent-session";
-import type { InteractiveSessionFactory, KeptSession } from "../../session/background-sessions";
+import type { KeptSession, NextSessionFactory, SessionHostBindings } from "../../session/background-sessions";
 import type { SubcommandDef } from "../../slash-commands/types";
 import type { Theme } from "../../theme/theme";
 import type { LspStartupServerInfo } from "../../tools";
@@ -132,9 +132,13 @@ export interface InteractiveModeContext {
 	 * turn. Absent in a host that cannot create a second session, which makes
 	 * `/new` reset the current session in place as it always has.
 	 */
-	createNextSession?: InteractiveSessionFactory;
-	/** Display `next` and hand the session being displayed to the background keeper. */
-	attachMainSession(next: AgentSession): KeptSession;
+	createNextSession?: NextSessionFactory;
+	/**
+	 * Display `next` and hand the session being displayed to the background
+	 * keeper. `bindings` are required for a session this screen has not
+	 * displayed before.
+	 */
+	attachMainSession(next: AgentSession, bindings?: SessionHostBindings): KeptSession;
 	/** Clear loader, transient HUD/pending containers, streaming state, and pending tools. */
 	clearTransientSessionUi(): void;
 	settings: Settings;
@@ -309,7 +313,10 @@ export interface InteractiveModeContext {
 	updatePendingMessagesDisplay(): void;
 	/** Recompute the composer's contextual shortcut chips from current draft/busy/queue state and repaint. */
 	refreshComposerShortcuts(): void;
-	/** Remove the startup welcome card; the first real keystroke ends the hero moment. Idempotent. */
+	/**
+	 * The first real keystroke: remove the startup welcome card, and take the at-rest reading the
+	 * launch held once the frame that draws the edit is committed. Idempotent.
+	 */
 	dismissWelcome(): void;
 	queueCompactionMessage(text: string, mode: "steer" | "followUp", images?: ImageContent[]): void;
 	flushCompactionQueue(options?: { willRetry?: boolean }): Promise<void>;

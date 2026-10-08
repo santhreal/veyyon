@@ -117,6 +117,12 @@ export interface AuthGatewayStreamControl {
 	onCancel?: (reason?: unknown) => void;
 }
 
+/** Where a stream encoder's SSE frames go. `cancelled` silences every frame but the terminal one. */
+export interface FrameSink {
+	readonly cancelled: boolean;
+	enqueue(frame: string): void;
+}
+
 export interface AuthGatewayFormatModule {
 	parseRequest(body: unknown, headers?: Headers): AuthGatewayParsedRequest;
 	encodeResponse(message: AssistantMessage, requestedModelId: string): Record<string, unknown>;

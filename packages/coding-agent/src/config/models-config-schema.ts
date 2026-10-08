@@ -1,27 +1,19 @@
+import { createHash } from "node:crypto";
+import { arktypeRelease, scope } from "@veyyon/ai/utils/schema/arktype";
 import { THINKING_EFFORTS } from "@veyyon/catalog/effort";
-import { scope, type Traversal, type Type } from "arktype";
-
-/**
- * Rejects the first key in `keys` whose value is the empty string, in list
- * order, with the message `<key> a non-empty string`. A key that is absent or
- * holds a non-string is left to the object schema.
- */
-function rejectEmptyStrings<T extends object>(value: T, ctx: Traversal, keys: readonly (keyof T & string)[]): boolean {
-	for (const key of keys) {
-		const field: unknown = value[key];
-		if (typeof field === "string" && field.length === 0) return ctx.mustBe(`${key} a non-empty string`);
-	}
-	return true;
-}
-
-const MODEL_DEFINITION_NON_EMPTY_KEYS = ["id", "name", "baseUrl", "contextPromotionTarget", "compactionModel"] as const;
-const MODEL_OVERRIDE_NON_EMPTY_KEYS = ["name", "contextPromotionTarget", "compactionModel"] as const;
-const PROVIDER_CONFIG_NON_EMPTY_KEYS = ["baseUrl", "apiKey"] as const;
+import type { AnthropicCompat, CursorCompat, DevinCompat, OpenAICompat } from "@veyyon/catalog/types";
+import { VERSION } from "@veyyon/utils/dirs";
+import type { Traversal, Type } from "arktype";
 
 // Schema construction is deferred behind modelsConfigSchemas(): even with the
 // jitless scope below (~65% cheaper than default ArkType codegen), building
 // this schema graph costs ~19ms of import time, yet it is only needed when a
 // models config file actually loads. Built once on first use.
+//
+// Everything the schemas accept and output is defined inside this function, so
+// its source text, with the effort ladder it reads, identifies the validator:
+// `modelsConfigSchemaFingerprint` hashes it, and a models config accepted under
+// one fingerprint is served from its snapshot until either one changes.
 function buildModelsConfigSchemas() {
 	// Config schemas validate at most a handful of times per process (on config
 	// load), so the eager JIT codegen ArkType runs at definition time is pure
@@ -29,6 +21,33 @@ function buildModelsConfigSchemas() {
 	// interpreted traversal — ~65% cheaper to construct, validation correctness
 	// unchanged. (No `name`: duplicate module instances would collide.)
 	const { type } = scope({}, { jitless: true });
+
+	/**
+	 * Rejects the first key in `keys` whose value is the empty string, in list
+	 * order, with the message `<key> a non-empty string`. A key that is absent or
+	 * holds a non-string is left to the object schema.
+	 */
+	function rejectEmptyStrings<T extends object>(
+		value: T,
+		ctx: Traversal,
+		keys: readonly (keyof T & string)[],
+	): boolean {
+		for (const key of keys) {
+			const field: unknown = value[key];
+			if (typeof field === "string" && field.length === 0) return ctx.mustBe(`${key} a non-empty string`);
+		}
+		return true;
+	}
+
+	const MODEL_DEFINITION_NON_EMPTY_KEYS = [
+		"id",
+		"name",
+		"baseUrl",
+		"contextPromotionTarget",
+		"compactionModel",
+	] as const;
+	const MODEL_OVERRIDE_NON_EMPTY_KEYS = ["name", "contextPromotionTarget", "compactionModel"] as const;
+	const PROVIDER_CONFIG_NON_EMPTY_KEYS = ["baseUrl", "apiKey"] as const;
 
 	const OpenRouterRoutingSchema = type({
 		"only?": "string[]",
@@ -56,32 +75,53 @@ function buildModelsConfigSchemas() {
 		"max?": "string",
 	});
 
+	// One entry per key of the compat contracts in `@veyyon/model` that
+	// `CompatConfigOf` names (`OpenAICompat`, `AnthropicCompat`, `DevinCompat`,
+	// `CursorCompat`), typed as the contracts type them. `applyCompatOverrides`
+	// copies any key the resolved record declares, so a contract key missing
+	// here is still overridable but not validated: `thinkingKeep: "last"` went
+	// to Moonshot verbatim as `thinking.keep`. `a-compat-override-is-validated-
+	// for-every-key-the-record-accepts.test.ts` sweeps the resolved records and
+	// fails on a key declared in neither this table nor its host-derived list.
 	const OpenAICompatFields = {
 		"supportsStore?": "boolean",
 		"supportsDeveloperRole?": "boolean",
 		"supportsMultipleSystemMessages?": "boolean",
 		"supportsReasoningEffort?": "boolean",
 		"reasoningEffortMap?": ReasoningEffortMapSchema,
-		"maxTokensField?": '"max_completion_tokens" | "max_tokens"',
 		"supportsUsageInStreaming?": "boolean",
+		"enableGeminiThinkingLoopGuard?": "boolean",
+		"maxTokensField?": '"max_completion_tokens" | "max_tokens"',
 		"requiresToolResultName?": "boolean",
 		"requiresMistralToolIds?": "boolean",
 		"requiresAssistantAfterToolResult?": "boolean",
 		"requiresThinkingAsText?": "boolean",
+		"thinkingFormat?": '"openai" | "openrouter" | "zai" | "qwen" | "qwen-chat-template"',
+		"reasoningDisableMode?":
+			'"omit" | "lowest-effort" | "openrouter-enabled-false" | "zai-thinking-disabled" | "qwen-enable-thinking-false" | "qwen-template-false"',
+		"omitReasoningEffort?": "boolean",
+		"includeEncryptedReasoning?": "boolean",
+		"filterReasoningHistory?": "boolean",
+		"thinkingKeep?": '"all" | false',
 		"reasoningContentField?": '"reasoning_content" | "reasoning" | "reasoning_text"',
 		"requiresReasoningContentForToolCalls?": "boolean",
+		"requiresReasoningContentForAllAssistantTurns?": "boolean",
 		"allowsSyntheticReasoningContentForToolCalls?": "boolean",
+		"replayReasoningContent?": "boolean",
+		"qwenPreserveThinking?": "boolean",
 		"requiresAssistantContentForToolCalls?": "boolean",
 		"supportsToolChoice?": "boolean",
 		"supportsForcedToolChoice?": "boolean",
+		"supportsNamedToolChoice?": "boolean",
 		"disableReasoningOnForcedToolChoice?": "boolean",
 		"disableReasoningOnToolChoice?": "boolean",
-		"thinkingFormat?": '"openai" | "openrouter" | "zai" | "qwen" | "qwen-chat-template"',
 		"openRouterRouting?": OpenRouterRoutingSchema,
 		"vercelGatewayRouting?": VercelGatewayRoutingSchema,
 		"extraBody?": { "[string]": "unknown" },
+		"promptCacheSessionHeader?": '"x-grok-conv-id"',
 		"cacheControlFormat?": '"anthropic"',
 		"supportsStrictMode?": "boolean",
+		"toolSchemaFlavor?": '"moonshot-mfjs" | "none"',
 		"toolStrictMode?": '"all_strict" | "none"',
 		"streamIdleTimeoutMs?": "number >= 0",
 		"supportsLongPromptCacheRetention?": "boolean",
@@ -89,10 +129,26 @@ function buildModelsConfigSchemas() {
 		"alwaysSendMaxTokens?": "boolean",
 		"strictResponsesPairing?": "boolean",
 		"supportsImageDetailOriginal?": "boolean",
+		"reasoningDeltasMayBeCumulative?": "boolean",
 		"supportsServerCompaction?": "boolean",
+		"stripDeepseekSpecialTokens?": "boolean",
+		"streamMarkupHealingPattern?": '"kimi" | "dsml" | "thinking"',
+		"emptyLengthFinishIsContextError?": "boolean",
+		"usesOpenAIToolCallIdLimit?": "boolean",
 		// anthropic-messages compat flags (same `compat` slot, per-api interpretation)
+		"disableStrictTools?": "boolean",
+		"disableAdaptiveThinking?": "boolean",
+		"supportsEagerToolInputStreaming?": "boolean",
+		"supportsLongCacheRetention?": "boolean",
+		"supportsMidConversationSystem?": "boolean",
+		"supportsSamplingParams?": "boolean",
 		"requiresToolResultId?": "boolean",
 		"replayUnsignedThinking?": "boolean",
+		"replayDemotedPriorReasoning?": "boolean",
+		"requiresThinkingEnabled?": "boolean",
+		"escapeBuiltinToolNames?": "boolean",
+		// devin-agent and cursor-agent compat flag
+		"trustExplicitThinkingOnly?": "boolean",
 	} as const;
 
 	const OpenAICompatFieldsSchema = type(OpenAICompatFields);
@@ -297,57 +353,26 @@ export interface ModelCost {
 	cacheRead?: number;
 	cacheWrite?: number;
 }
-export interface OpenAICompatOverride {
-	supportsStore?: boolean;
-	supportsDeveloperRole?: boolean;
-	supportsMultipleSystemMessages?: boolean;
-	supportsReasoningEffort?: boolean;
-	reasoningEffortMap?: {
-		minimal?: string;
-		low?: string;
-		medium?: string;
-		high?: string;
-		xhigh?: string;
-		max?: string;
+/**
+ * What a models-config `compat` block may say: every key of the compat
+ * contracts `CompatConfigOf` names, typed by the contracts. `reasoningEffortMap`
+ * is restated because the schema keys it by level name, which is a string
+ * literal and not the `Effort` enum member the contract keys it by.
+ */
+export type OpenAICompatOverride = Omit<OpenAICompat, "reasoningEffortMap" | "whenThinking"> &
+	AnthropicCompat &
+	DevinCompat &
+	CursorCompat & {
+		reasoningEffortMap?: {
+			minimal?: string;
+			low?: string;
+			medium?: string;
+			high?: string;
+			xhigh?: string;
+			max?: string;
+		};
+		whenThinking?: OpenAICompatOverride;
 	};
-	maxTokensField?: "max_completion_tokens" | "max_tokens";
-	supportsUsageInStreaming?: boolean;
-	requiresToolResultName?: boolean;
-	requiresMistralToolIds?: boolean;
-	requiresAssistantAfterToolResult?: boolean;
-	requiresThinkingAsText?: boolean;
-	reasoningContentField?: "reasoning_content" | "reasoning" | "reasoning_text";
-	requiresReasoningContentForToolCalls?: boolean;
-	allowsSyntheticReasoningContentForToolCalls?: boolean;
-	requiresAssistantContentForToolCalls?: boolean;
-	supportsToolChoice?: boolean;
-	supportsForcedToolChoice?: boolean;
-	disableReasoningOnForcedToolChoice?: boolean;
-	disableReasoningOnToolChoice?: boolean;
-	thinkingFormat?: "openai" | "openrouter" | "zai" | "qwen" | "qwen-chat-template";
-	openRouterRouting?: {
-		only?: string[];
-		order?: string[];
-	};
-	vercelGatewayRouting?: {
-		only?: string[];
-		order?: string[];
-	};
-	extraBody?: Record<string, unknown>;
-	cacheControlFormat?: "anthropic";
-	supportsStrictMode?: boolean;
-	toolStrictMode?: "all_strict" | "none";
-	streamIdleTimeoutMs?: number;
-	supportsLongPromptCacheRetention?: boolean;
-	supportsReasoningParams?: boolean;
-	alwaysSendMaxTokens?: boolean;
-	strictResponsesPairing?: boolean;
-	supportsImageDetailOriginal?: boolean;
-	supportsServerCompaction?: boolean;
-	requiresToolResultId?: boolean;
-	replayUnsignedThinking?: boolean;
-	whenThinking?: OpenAICompatOverride;
-}
 
 export interface ModelDefinition {
 	id: string;
@@ -433,4 +458,24 @@ let schemasCache: ModelsConfigSchemas | undefined;
 export function modelsConfigSchemas(): ModelsConfigSchemas {
 	schemasCache ??= buildModelsConfigSchemas();
 	return schemasCache;
+}
+
+let schemaFingerprint: string | undefined;
+
+/**
+ * Identity of the models-config validator without building it: a digest of the product version,
+ * the ArkType release (read from its package metadata, evaluating no ArkType module), the effort
+ * ladder the thinking pipe orders by, and the builder's source text.
+ */
+export function modelsConfigSchemaFingerprint(): string {
+	schemaFingerprint ??= createHash("sha256")
+		.update(VERSION)
+		.update("\0")
+		.update(arktypeRelease())
+		.update("\0")
+		.update(THINKING_EFFORTS.join(","))
+		.update("\0")
+		.update(buildModelsConfigSchemas.toString())
+		.digest("hex");
+	return schemaFingerprint;
 }

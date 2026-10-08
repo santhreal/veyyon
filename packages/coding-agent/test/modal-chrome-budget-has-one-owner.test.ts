@@ -40,10 +40,12 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	computeModalDims,
 	MODAL_SIZING_LARGE,
+	sizingForArea,
+} from "@veyyon/coding-agent/modes/terminal/components/chrome/modal-geometry";
+import {
 	minModalChromeRows,
 	planModalChrome,
 	renderModalShell,
-	sizingForArea,
 } from "@veyyon/coding-agent/modes/terminal/components/chrome/modal-shell";
 import { ModelHubComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/model-hub";
 import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/session-selector";

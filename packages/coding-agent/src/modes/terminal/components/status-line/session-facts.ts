@@ -21,10 +21,10 @@
  * cannot grow a second one.
  */
 import type { ModelFact, SessionFacts, StatusModelFact } from "@veyyon/wire/presentation";
+import { readLaunchFacts } from "../../../../config/launch-facts";
 import { settings } from "../../../../config/settings-instance";
 import { AUTO_THINKING } from "../../../../thinking/constants";
 import { isKnownApprovalMode } from "../../../../tools/core/approval-modes";
-import { readLaunchFacts } from "../../../launch-facts";
 import { launchModelLabel } from "../../launch-formatting";
 import type { LocationContext } from "./location-context";
 import type { SegmentContext, StatusLineSegmentOptions } from "./types";

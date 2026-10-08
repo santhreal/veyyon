@@ -50,11 +50,13 @@ import { z } from "zod/v4";
 const AI_SRC = path.resolve(import.meta.dir, "../src");
 const OWNER_REL = "dialect/wire-tags.ts";
 
-/** Every module that used to declare part of this vocabulary, and must now import it. */
+/**
+ * Every module that used to declare part of this vocabulary, and must now import it. The hermes and
+ * qwen3 scanners that held copies are now one module, `dialect/json-tool-call-scanner.ts`.
+ */
 const FORMER_DECLARERS: readonly string[] = [
 	"dialect/glm.ts",
-	"dialect/hermes.ts",
-	"dialect/qwen3.ts",
+	"dialect/json-tool-call-scanner.ts",
 	"dialect/rendering.ts",
 	"dialect/thinking.ts",
 	"dialect/owned-stream.ts",

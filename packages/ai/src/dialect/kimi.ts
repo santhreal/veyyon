@@ -1,9 +1,13 @@
+import { parseStreamingJson } from "@veyyon/utils/json-parse";
 import { AI_PROMPTS } from "../prompts/registry";
 import type { Message, ToolCall } from "../types";
 import {
+	BlockBody,
+	emitTextHoldingPartialTag,
 	normalizeKimiFunctionName,
 	parseToolArgsText,
 	partialSuffixOverlapAny,
+	recordOrEmpty,
 	scanThinkingText,
 	ThinkingSection,
 } from "./coercion";
@@ -50,6 +54,7 @@ export class KimiInbandScanner implements InbandScanner {
 	#id = "";
 	#name = "";
 	#rawBlock = "";
+	#args = new BlockBody(KIMI_CALL_END);
 	readonly #thinking = new ThinkingSection();
 	readonly #parseThinking: boolean;
 
@@ -93,6 +98,21 @@ export class KimiInbandScanner implements InbandScanner {
 			if (!this.#consumeArgs(final, events)) break;
 		}
 		if (final && this.#state === "thinking") this.#endThinking(events);
+		if (final && this.#state === "args") {
+			// The stream ended inside an announced call: its truncated arguments are auto-closed.
+			const rawArgs = this.#args.text;
+			events.push({
+				type: "toolEnd",
+				id: this.#id,
+				name: this.#name,
+				arguments: recordOrEmpty(parseStreamingJson(rawArgs)),
+				rawBlock: `${this.#rawBlock}${rawArgs}`,
+				unterminated: true,
+			});
+			this.#resetCall();
+			this.#buffer = "";
+			this.#state = "outside";
+		}
 		return events;
 	}
 
@@ -103,10 +123,7 @@ export class KimiInbandScanner implements InbandScanner {
 		if (thinkStart !== -1 && (start === -1 || thinkStart < start)) start = thinkStart;
 		if (start === -1) {
 			const tags = this.#parseThinking ? TOKENS_THINK : TOKENS;
-			const hold = final ? 0 : partialSuffixOverlapAny(this.#buffer, tags);
-			const emitEnd = this.#buffer.length - hold;
-			if (emitEnd > 0) events.push({ type: "text", text: this.#buffer.slice(0, emitEnd) });
-			this.#buffer = this.#buffer.slice(emitEnd);
+			this.#buffer = emitTextHoldingPartialTag(this.#buffer, tags, final, events);
 			return false;
 		}
 
@@ -176,34 +193,29 @@ export class KimiInbandScanner implements InbandScanner {
 		this.#rawBlock = `${KIMI_CALL_BEGIN}${rawHeader}${KIMI_ARG_BEGIN}`;
 		events.push({ type: "toolStart", id: this.#id, name: this.#name });
 		this.#buffer = this.#buffer.slice(sep + KIMI_ARG_BEGIN.length);
+		this.#args = new BlockBody(KIMI_CALL_END);
 		this.#state = "args";
 		return true;
 	}
 
 	#consumeArgs(final: boolean, events: InbandScanEvent[]): boolean {
-		const end = this.#buffer.indexOf(KIMI_CALL_END);
-		if (end === -1) {
-			if (final) this.#dropBufferedCall();
-			return false;
-		}
+		this.#buffer = this.#args.read(this.#buffer, final);
+		if (!this.#args.closed) return false;
 
-		const rawArgsBlock = this.#buffer.slice(0, end);
-		const rawArgs = rawArgsBlock.trim();
-		events.push({
-			type: "toolEnd",
-			id: this.#id,
-			name: this.#name,
-			arguments: this.#parseArgs(rawArgs),
-			rawBlock: `${this.#rawBlock}${rawArgsBlock}${KIMI_CALL_END}`,
-		});
-		this.#buffer = this.#buffer.slice(end + KIMI_CALL_END.length);
-		this.#resetCall();
+		this.#endCall(this.#args.text, events);
 		this.#state = "section";
 		return true;
 	}
 
-	#parseArgs(rawArgs: string): Record<string, unknown> {
-		return parseToolArgsText(rawArgs, { source: "kimi", tool: this.#name });
+	#endCall(rawArgs: string, events: InbandScanEvent[]): void {
+		events.push({
+			type: "toolEnd",
+			id: this.#id,
+			name: this.#name,
+			arguments: parseToolArgsText(rawArgs.trim(), { source: "kimi", tool: this.#name }),
+			rawBlock: `${this.#rawBlock}${rawArgs}${KIMI_CALL_END}`,
+		});
+		this.#resetCall();
 	}
 
 	#nextTokenIndex(): number {

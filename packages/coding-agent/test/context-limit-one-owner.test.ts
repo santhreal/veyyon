@@ -2,16 +2,14 @@
  * Where the context runs out has ONE owner, and both surfaces that print it use it.
  *
  * WHY THIS SUITE EXISTS. Three places answered "will auto-compaction fire, and at what token
- * count", each with its own spelling of the predicate: the status line asked
- * `enabled && !isCompactionStrategyOff(strategy)`, the `/context` panel hand-rolled
- * `enabled && strategy !== "off"`, and `AgentSession.autoCompactionEnabled` used the canonical
- * `isThresholdCompactionDisabled`. They agreed only by luck. A change to what counts as "off"
+ * count", each with its own spelling of the predicate: the status line, the `/context` panel and
+ * `AgentSession.autoCompactionEnabled`. They agreed only by luck. A change to what counts as "off"
  * would have had to land in three files and would have landed in one, and the two user-facing
  * surfaces would then have disagreed about whether a fire point exists at all.
  *
  * `resolveContextLimit` is that owner now. These tests pin its answer directly, and pin the
  * `/context` panel's auto-compaction buffer — which is derived from it — including the case that
- * exposed the divergence: with `strategy: "off"` the panel used to substitute
+ * exposed the divergence: with compaction off the panel used to substitute
  * `effectiveReserveTokens` and label it "Autocompact buffer", showing the operator a reserve that
  * nothing would enforce while the status line correctly denominated against the whole window.
  *
@@ -49,14 +47,6 @@ describe("resolveContextLimit", () => {
 		// Nothing will fire, so the context runs out at the window. A stale fire point
 		// here understates the room by the whole reserve.
 		expect(resolveContextLimit(WINDOW, compaction({ enabled: false }))).toEqual({
-			tokens: WINDOW,
-			kind: "window",
-		});
-	});
-
-	it("returns the window for the legacy off strategy, which is the spelling that diverged", () => {
-		// `strategy: "off"` is the case the three callers spelled three ways.
-		expect(resolveContextLimit(WINDOW, compaction({ strategy: "off" as never }))).toEqual({
 			tokens: WINDOW,
 			kind: "window",
 		});
@@ -132,18 +122,11 @@ describe("the /context panel's auto-compaction buffer", () => {
 		expect(breakdown.autoCompactBufferTokens).toBe(30_000);
 	});
 
-	it("is zero when the strategy is off, instead of an invented reserve", () => {
-		// THE bug this suite was written for. The panel used to see a zero buffer, note
-		// that `compaction.enabled` was still set, and substitute `effectiveReserveTokens`
-		// — drawing a labelled "Autocompact buffer" band for a mechanism that will never
-		// run, and disagreeing with the status line, which denominates against the whole
-		// window in this exact configuration.
-		const breakdown = computeContextBreakdown(panelSession(compaction({ strategy: "off" as never })));
-
-		expect(breakdown.autoCompactBufferTokens).toBe(0);
-	});
-
-	it("is zero when compaction is disabled outright", () => {
+	it("is zero when compaction is disabled, instead of an invented reserve", () => {
+		// THE bug this suite was written for. The panel used to see a zero buffer and
+		// substitute `effectiveReserveTokens` — drawing a labelled "Autocompact buffer"
+		// band for a mechanism that will never run, and disagreeing with the status line,
+		// which denominates against the whole window in this exact configuration.
 		const breakdown = computeContextBreakdown(panelSession(compaction({ enabled: false })));
 
 		expect(breakdown.autoCompactBufferTokens).toBe(0);
@@ -152,7 +135,7 @@ describe("the /context panel's auto-compaction buffer", () => {
 	it("counts the whole window as usable when nothing will fire", () => {
 		// The consequence for the operator: with compaction off, free space is the
 		// window minus what is used, with nothing withheld.
-		const breakdown = computeContextBreakdown(panelSession(compaction({ strategy: "off" as never })));
+		const breakdown = computeContextBreakdown(panelSession(compaction({ enabled: false })));
 
 		expect(breakdown.freeTokens).toBe(WINDOW - breakdown.usedTokens);
 	});

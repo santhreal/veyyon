@@ -8,16 +8,19 @@
  * the `patch` mode.
  */
 
-import { type } from "arktype";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { lazy } from "@veyyon/utils/abortable";
 import { parseApplyPatch, parseApplyPatchStreaming } from "../apply-patch/parser";
 import { ApplyPatchError } from "../diff";
 import type { PatchEditEntry } from "./patch";
 
-export const applyPatchSchema = type({
-	input: "string",
-});
+export const applyPatchSchema = lazy(() =>
+	type({
+		input: "string",
+	}),
+);
 
-export type ApplyPatchParams = typeof applyPatchSchema.infer;
+export type ApplyPatchParams = typeof applyPatchSchema.value.infer;
 
 export type ApplyPatchEntry = PatchEditEntry & { path: string };
 

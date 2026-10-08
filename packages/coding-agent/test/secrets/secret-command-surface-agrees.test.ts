@@ -33,13 +33,15 @@ import {
 	parseSecretCommand,
 	runSecretCommand,
 	SECRET_COMMAND_USAGE,
-	SECRET_TUI_SUBCOMMANDS,
-	SECRET_VERB_SPELLINGS,
 	type SecretCommandRequest,
 	type SecretCommandResult,
 	type SecretCommandSurface,
-	type SecretSubcommand,
 } from "@veyyon/coding-agent/secrets/secret-command";
+import {
+	SECRET_TUI_SUBCOMMANDS,
+	SECRET_VERB_SPELLINGS,
+	type SecretSubcommand,
+} from "@veyyon/coding-agent/secrets/secret-verbs";
 import { SecretVault } from "@veyyon/coding-agent/secrets/vault";
 import { BUILTIN_SLASH_COMMAND_DECLARATIONS } from "@veyyon/coding-agent/slash-commands/builtin-declarations";
 import { ACP_BUILTIN_SLASH_COMMANDS } from "@veyyon/coding-agent/slash-commands/text-mode-builtins";

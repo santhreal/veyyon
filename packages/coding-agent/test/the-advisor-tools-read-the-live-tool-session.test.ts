@@ -42,10 +42,10 @@ interface Launched {
 
 const tempDirs: TempDir[] = [];
 const authStorages: AuthStorage[] = [];
-const launched: Launched[] = [];
+const results: CreateAgentSessionResult[] = [];
 
 afterEach(async () => {
-	for (const { result } of launched.splice(0)) await result.session.dispose();
+	for (const result of results.splice(0)) await result.session.dispose();
 	for (const authStorage of authStorages.splice(0)) authStorage.close();
 	for (const tempDir of tempDirs.splice(0)) await tempDir.remove();
 });
@@ -86,15 +86,16 @@ async function launch(): Promise<Launched> {
 			enableMCP: false,
 			enableLsp: false,
 		});
+		results.push(result);
+		// The advisor's tool pool is built on its first review or tool listing, not at startup.
+		await result.session.getAdvisorAvailableToolNames();
 	} finally {
 		readFactory.mockRestore();
 	}
 	const advisor = sessions.find(session => session.getAgentId?.() === "advisor");
 	const primary = sessions.find(session => session.getAgentId?.() !== "advisor");
 	if (!primary || !advisor) throw new Error("createAgentSession built no read tool for the primary or the advisor.");
-	const entry = { result, primary, advisor };
-	launched.push(entry);
-	return entry;
+	return { result, primary, advisor };
 }
 
 // The keys are enumerated at run time and have no static type to index by.

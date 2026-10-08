@@ -138,7 +138,12 @@ interface CallOutcome {
  * change to how a spawn inherits permission moves these assertions rather than leaving
  * them asserting a literal this file wrote.
  */
-async function callAsAgent(agentId: string, rung: string, tool: AgentTool = makeTool()): Promise<CallOutcome> {
+async function callAsAgent(
+	agentId: string,
+	rung: string,
+	tool: AgentTool = makeTool(),
+	extraContext: Record<string, unknown> = {},
+): Promise<CallOutcome> {
 	const settings = createSubagentSettings(Settings.isolated({ "tools.approvalMode": rung }));
 	// The child's own runner, wired exactly as `runSubprocess` wires it: named, then
 	// handed whatever surface the ROOT resolves to.
@@ -147,6 +152,7 @@ async function callAsAgent(agentId: string, rung: string, tool: AgentTool = make
 	const context = {
 		settings,
 		sessionManager: { getCwd: () => CWD, getSessionId: () => `${agentId}-session` },
+		...extraContext,
 	} as unknown as Parameters<AgentTool["execute"]>[4];
 
 	const wrapped = new ExtensionToolWrapper(tool, runner);
@@ -372,6 +378,102 @@ describe("an agent's approval request reaches the root session", () => {
 
 		expect(rootCards.at(-1)?.body).not.toContain("Requested by");
 	});
+
+	/**
+	 * STATE 4d: an agent is marked waiting for as long as ANY card of its own is open.
+	 *
+	 * The waiting mark used to be one slot written when a call began asking and cleared
+	 * when its card was answered. A batch raises one card per call, and the first answer
+	 * cleared the slot the later calls had written, so the agent sat at its second card
+	 * marked as working: the dashboard showed it busy and `agent.maxRuntimeMs` charged it
+	 * the operator's reading time, which is the abort the mark exists to prevent.
+	 *
+	 * Sampled from inside each card, the only window where the claim is checkable. The
+	 * gap: two different agents never share a mark, so nothing here crosses agents.
+	 */
+	describe("an agent with several cards", () => {
+		/** The tool named by the agent's waiting mark, read at the moment each card is drawn. */
+		function markAtEachCard(agentId: string, answer: (body: string) => Promise<string>) {
+			const marks: (string | undefined)[] = [];
+			const ui = {
+				select: async (body: string) => {
+					marks.push(AgentRegistry.global().get(agentId)?.pendingApproval?.toolName);
+					return answer(body);
+				},
+			} as unknown as ExtensionUIContext;
+			return { ui, marks };
+		}
+
+		function registerWorker(ui: ExtensionUIContext): void {
+			registerAgent("Main", { runner: makeRunner(ui) });
+			registerAgent("Worker", { parentId: "Main" });
+		}
+
+		it("stays marked at the second card of a batch after the first card is answered", async () => {
+			const { ui, marks } = markAtEachCard("Worker", async () => "Approve");
+			registerWorker(ui);
+
+			const outcomes = await Promise.all([callAsAgent("Worker", "ask"), callAsAgent("Worker", "ask")]);
+
+			expect(outcomes.map(outcome => outcome.text)).toEqual([RAN, RAN]);
+			expect(marks).toEqual(["bash", "bash"]);
+			expect(AgentRegistry.global().get("Worker")?.pendingApproval).toBeUndefined();
+		});
+
+		it("stays marked while another tool's card is still open", async () => {
+			const bashAnswer = Promise.withResolvers<string>();
+			const writeAnswer = Promise.withResolvers<string>();
+			const { ui, marks } = markAtEachCard("Worker", body =>
+				body.includes("**Tool:** `bash`") ? bashAnswer.promise : writeAnswer.promise,
+			);
+			registerWorker(ui);
+			const mark = () => AgentRegistry.global().get("Worker")?.pendingApproval?.toolName;
+
+			const bash = callAsAgent("Worker", "ask", makeTool("bash"));
+			const write = callAsAgent("Worker", "ask", makeTool("write"));
+			while (marks.length < 2) await Promise.resolve();
+			bashAnswer.resolve("Approve");
+			expect((await bash).text).toBe(RAN);
+
+			expect(mark()).toBe("write");
+
+			writeAnswer.resolve("Approve");
+			expect((await write).text).toBe(RAN);
+			expect(mark()).toBeUndefined();
+		});
+
+		it("leaves no mark after a session answer dismisses the calls queued behind the card", async () => {
+			const { ui, marks } = markAtEachCard("Worker", async () => "Approve for session");
+			registerWorker(ui);
+			const sessionApprovals = new Map<string, "allow" | "deny">();
+
+			const outcomes = await Promise.all(
+				[0, 1, 2].map(() => callAsAgent("Worker", "ask", makeTool(), { sessionApprovals })),
+			);
+
+			expect(outcomes.map(outcome => outcome.text)).toEqual([RAN, RAN, RAN]);
+			expect(marks).toEqual(["bash"]);
+			expect(AgentRegistry.global().get("Worker")?.pendingApproval).toBeUndefined();
+		});
+
+		it("leaves no mark after a session denial refuses the calls queued behind the card", async () => {
+			const { ui, marks } = markAtEachCard("Worker", async () => "Deny for session");
+			registerWorker(ui);
+			const sessionApprovals = new Map<string, "allow" | "deny">();
+
+			const outcomes = await Promise.all(
+				[0, 1, 2].map(() => callAsAgent("Worker", "ask", makeTool(), { sessionApprovals })),
+			);
+
+			expect(outcomes.map(outcome => outcome.error?.message)).toEqual([
+				"Tool call denied by user: bash",
+				"Tool call denied for this session: bash",
+				"Tool call denied for this session: bash",
+			]);
+			expect(marks).toEqual(["bash"]);
+			expect(AgentRegistry.global().get("Worker")?.pendingApproval).toBeUndefined();
+		});
+	});
 });
 
 /**
@@ -499,9 +601,9 @@ describe("agent.maxRuntimeMs excludes time spent waiting on the operator", () =>
 		const registry = AgentRegistry.global();
 		return createMockSession(async ({ emit }) => {
 			for (let n = 0; n < prompts; n++) {
-				registry.setPendingApproval(id, { toolName: "bash", since: Date.now() });
+				const closeWait = registry.openApprovalWait(id, { toolName: "bash", since: Date.now() });
 				await delay(WAIT_MS / prompts);
-				registry.setPendingApproval(id, undefined);
+				closeWait();
 			}
 			emit(yieldSuccessEvent({ ok: true }, "tool-yield"));
 		});

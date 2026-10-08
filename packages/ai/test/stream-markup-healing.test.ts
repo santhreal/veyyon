@@ -547,6 +547,16 @@ describe("StreamMarkupHealing thinking pattern", () => {
 describe("Kimi K2 leaked markup healing", () => {
 	const model = kimiModel();
 
+	it("drops a call the stream ends inside instead of synthesizing it", () => {
+		const healing = new StreamMarkupHealing({ pattern: "kimi" });
+		const cut =
+			"<|tool_calls_section_begin|><|tool_call_begin|>functions.bash:0<|tool_call_argument_begin|>" +
+			'{"command":"rm -rf build';
+		for (const chunk of [...cut]) healing.feed(chunk);
+		expect(healing.flushPending()).toBe("");
+		expect(healing.drainCompleted()).toEqual([]);
+	});
+
 	it("strips a complete section emitted in a single chunk and synthesizes the tool call", async () => {
 		const leaked =
 			"<|tool_calls_section_begin|>" +

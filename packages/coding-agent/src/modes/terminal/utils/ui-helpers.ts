@@ -115,7 +115,7 @@ export class UiHelpers {
 					ctx.viewSession.sessionManager.putBlobSync.bind(ctx.viewSession.sessionManager),
 				),
 			onPopulateHistory: text => {
-				ctx.editor.addToHistory(text);
+				ctx.editor.seedHistory(text);
 			},
 			onInheritDisplaceableTodo: component => {
 				ctx.eventController?.inheritDisplaceableTodo(component);

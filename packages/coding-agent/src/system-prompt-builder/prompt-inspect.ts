@@ -119,7 +119,7 @@ export interface InspectedStatement {
 	 *     section bytes = banner + sum of statement bytes + separator
 	 *
 	 * The banner belongs to the section assembler rather than to any statement,
-	 * and `assembleDefaultTemplate` owns the one newline between adjacent static
+	 * and `defaultTemplatePieces` owns the one newline between adjacent static
 	 * sections. `prompt-inspect.test.ts` pins the residual so a change in either
 	 * convention cannot silently make the reported parts stop reconciling.
 	 *

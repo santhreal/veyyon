@@ -1,7 +1,8 @@
 /**
- * The tool-name-keyed table of result codecs the domains contributed, and the two passes that apply
+ * The tool-name-keyed table of result codecs the domains contributed, and the three passes that apply
  * it: {@link slimToolResultEntry} on the line a session writes, {@link restoreToolResultEntries} on
- * the entries a session loads.
+ * the entries a session loads, and {@link settleToolResultMessage} on a result a persisting session
+ * records.
  *
  * The table is filled where the tool domains are assembled, from each manifest's `resultCodecs`,
  * which a host imports before it opens a session. A load that runs with no codec registered leaves a
@@ -63,4 +64,14 @@ export function restoreToolResultEntries(entries: readonly FileEntry[]): void {
 		const coded = codedResult(entry);
 		coded?.codec.restore(coded.message.details, coded.message.content);
 	}
+}
+
+/**
+ * Settle a tool result a persisting session records, before its line is written: its tool's codec
+ * replaces in place, in `message.details`, what the line drops with the form a load rebuilds, so the
+ * entry the session holds while it runs contains the repeated text once.
+ */
+export function settleToolResultMessage(message: ToolResultMessage): void {
+	if (message.details === undefined) return;
+	codecs.get(message.toolName)?.settle?.(message.details, message.content);
 }

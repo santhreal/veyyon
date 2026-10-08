@@ -279,6 +279,16 @@ describe("profile directories", () => {
 		expect(getAgentDir()).toBe(veyyonDir);
 	});
 
+	it("honors a custom agent dir outside profiles/ even when it is named agent", () => {
+		// Only `<configRoot>/profiles/<name>/agent` is profile-derived; any other path is the
+		// caller's explicit override and default mode keeps it.
+		setProfile(undefined);
+		const customDir = path.join(tempRoot, "profiles", "work", "agent");
+		process.env.VEYYON_CODING_AGENT_DIR = customDir;
+		__resetDirsFromEnvForTests();
+		expect(getAgentDir()).toBe(customDir);
+	});
+
 	it("rejects Windows reserved device names case-insensitively", () => {
 		for (const name of ["CON", "con", "PRN", "AUX", "NUL", "COM0", "COM9", "lpt1", "LPT9", "CON.txt", "com1.bak"]) {
 			expect(() => setProfile(name)).toThrow("Windows reserved device name");

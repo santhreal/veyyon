@@ -131,12 +131,12 @@ function buildOpMeta(args: GithubViewArgs): string[] {
 		case "search_prs":
 		case "search_code":
 		case "search_commits": {
-			if (args.query) meta.push(truncateToWidth(args.query, TRUNCATE_LENGTHS.CONTENT));
+			if (args.query) meta.push(truncateToWidth(replaceTabs(args.query), TRUNCATE_LENGTHS.CONTENT));
 			if (args.repo) meta.push(args.repo);
 			break;
 		}
 		case "search_repos": {
-			if (args.query) meta.push(truncateToWidth(args.query, TRUNCATE_LENGTHS.CONTENT));
+			if (args.query) meta.push(truncateToWidth(replaceTabs(args.query), TRUNCATE_LENGTHS.CONTENT));
 			break;
 		}
 		case "repo_view": {

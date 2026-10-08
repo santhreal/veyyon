@@ -15,7 +15,7 @@
 import { isAbortError } from "@veyyon/utils/abortable";
 import { Flag } from "../flag";
 import { PROVIDER_FINISH_ERROR_PATTERN } from "../provider";
-import type { ErrorDomain } from "./types";
+import type { ErrorDomain, GatewayStructuralRule, GatewayVerdict, GatewayWordingRule } from "./types";
 
 const MALFORMED_FUNCTION_CALL_PATTERN = /\bmalformed.?function.?call\b/i;
 const STALE_RESPONSE_ITEM_PATTERNS = [/\bItem with id ['"][^'"]+['"] not found\.?/i, /previous[ _]?response/i] as const;
@@ -153,4 +153,20 @@ export const interruptDomain: ErrorDomain = {
 			flags: () => Flag.Abort,
 		},
 	],
+};
+
+/** The gateway's answer for a client that left: 499, nginx's status for a closed client request, which no standard status covers. */
+const GATEWAY_REQUEST_ABORTED: GatewayVerdict = { status: 499, type: "request_aborted" };
+
+export const gatewayCancellationIdentityRule: GatewayStructuralRule = {
+	name: "gateway-cancellation-identity",
+	why: "A thrown value `abort-by-error-name` reads as a cancellation is the client leaving rather than the upstream failing, whatever status its message quotes.",
+	answer: signal => ((signal.identity & Flag.Abort) !== 0 ? GATEWAY_REQUEST_ABORTED : undefined),
+};
+
+export const gatewayCancellationWordingRule: GatewayWordingRule = {
+	name: "gateway-cancellation-wording",
+	why: "A cancellation that arrives as prose with no abort class (`request aborted by caller`) is the client leaving too. The registry reads a cancellation only from its identity, so this wording is read by the gateway alone.",
+	wordings: ["aborted", "abort signal"],
+	verdict: GATEWAY_REQUEST_ABORTED,
 };

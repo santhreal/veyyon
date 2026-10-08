@@ -1,30 +1,34 @@
 import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
-import { clampLow } from "@veyyon/utils";
-import { type } from "arktype";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { clampLow, lazy } from "@veyyon/utils";
 import { MNEMOPI_MEMORY_EDIT_OPERATIONS } from "../../memory/mnemopi/verbs";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "..";
 import { throwIfAborted } from "../core/tool-errors";
 import { requireMnemopiSessionState } from "./memory-session";
 
-const memoryEditSchema = type({
-	// Derived from the store's own list, so a verb cannot be offered to the model without a branch that
-	// applies it. `type.enumerated` takes the values; the union spelling had to be kept in step by hand.
-	op: type.enumerated(...MNEMOPI_MEMORY_EDIT_OPERATIONS).describe("memory edit operation"),
-	id: type("string").describe("memory id from recall output"),
-	"content?": type("string").describe("replacement content for update"),
-	"importance?": type("number").describe("replacement importance for update (0–1)"),
-	"replacement_id?": type("string").describe("replacement memory id for invalidate"),
-});
+const memoryEditSchema = lazy(() =>
+	type({
+		// Derived from the store's own list, so a verb cannot be offered to the model without a branch that
+		// applies it. `type.enumerated` takes the values; the union spelling had to be kept in step by hand.
+		op: type.enumerated(...MNEMOPI_MEMORY_EDIT_OPERATIONS).describe("memory edit operation"),
+		id: type("string").describe("memory id from recall output"),
+		"content?": type("string").describe("replacement content for update"),
+		"importance?": type("number").describe("replacement importance for update (0–1)"),
+		"replacement_id?": type("string").describe("replacement memory id for invalidate"),
+	}),
+);
 
-export type MemoryEditParams = typeof memoryEditSchema.infer;
+export type MemoryEditParams = typeof memoryEditSchema.value.infer;
 
-export class MemoryEditTool implements AgentTool<typeof memoryEditSchema> {
+export class MemoryEditTool implements AgentTool<typeof memoryEditSchema.value> {
 	readonly name = "memory_edit";
 	readonly approval = "read" as const;
 	readonly label = "Memory Edit";
 	readonly description = toolsPrompts["tools/memory-edit"].text;
-	readonly parameters = memoryEditSchema;
+	get parameters(): typeof memoryEditSchema.value {
+		return memoryEditSchema.value;
+	}
 	readonly strict = true;
 	readonly loadMode = "discoverable";
 	readonly summary = "Update, forget, or invalidate Mnemopi memories";

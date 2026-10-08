@@ -6,13 +6,12 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { ImageContent, Model, TextContent, TSchema } from "@veyyon/ai";
+import { Type } from "@veyyon/ai/utils/schema/arktype";
 import { factoryExportMissingMessage, moduleImportFailedMessage } from "@veyyon/kernel/loader/load-failure";
 import { type ManifestHolder, manifestFromPackageJson } from "@veyyon/kernel/loader/manifest-key";
 import * as TypeBox from "@veyyon/kernel/registry/typebox";
 import { errorMessage, getAgentDir, hasFsCode, isEacces, isEnoent, logger, reportFault } from "@veyyon/utils";
 import type { KeyId } from "@veyyon/utils/keys";
-import { Type } from "arktype";
-import * as zodModule from "zod/v4";
 import {
 	canonicalProjectRoot,
 	describeProjectExecutable,
@@ -141,7 +140,6 @@ class BoundExtensionAPI implements BuiltinExtensionAPI {
 	readonly logger = logger;
 	readonly typebox = TypeBox;
 	readonly arktype = Type;
-	readonly zod = zodModule;
 
 	constructor(
 		private readonly extension: LoadedExtension,
@@ -281,8 +279,13 @@ class BoundExtensionAPI implements BuiltinExtensionAPI {
 	}
 }
 
-/** The API an author's extension is bound to: {@link BoundExtensionAPI} plus the package namespace as `pi`. */
+/**
+ * The API an author's extension is bound to: {@link BoundExtensionAPI} plus the package namespace as `pi`
+ * and Zod, read from that namespace so an extension-free process never evaluates Zod.
+ */
 class ConcreteExtensionAPI extends BoundExtensionAPI implements ExtensionAPI {
+	readonly zod: ExtensionAPI["zod"];
+
 	constructor(
 		public readonly pi: CodingAgentApi,
 		extension: LoadedExtension,
@@ -293,6 +296,7 @@ class ConcreteExtensionAPI extends BoundExtensionAPI implements ExtensionAPI {
 		gateSpawn?: (what: string) => Promise<void>,
 	) {
 		super(extension, runtime, cwd, events, adoptSpawnedPid, gateSpawn);
+		this.zod = pi.zod;
 	}
 }
 

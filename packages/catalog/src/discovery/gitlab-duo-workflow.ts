@@ -2,7 +2,6 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
-import { z } from "zod/v4";
 import { GITLAB_SAAS_URL } from "../provider-endpoints";
 import type { FetchImpl, ModelSpec } from "../types";
 import { discoveryFetch, isRecord } from "../utils";
@@ -56,21 +55,6 @@ const ProjectRootNamespaceQuery = `query veyyon_gitlabDuoWorkflowProjectRootName
     }
   }
 }`;
-
-const modelRefSchema = z
-	.object({
-		name: z.string().optional().catch(undefined),
-		ref: z.string().optional().catch(undefined),
-	})
-	.loose();
-
-const aiChatAvailableModelsSchema = z
-	.object({
-		defaultModel: z.unknown().nullable().optional(),
-		selectableModels: z.array(z.unknown()).nullable().optional().catch([]),
-		pinnedModel: z.unknown().nullable().optional(),
-	})
-	.loose();
 
 type GitLabDuoWorkflowCandidateSource = "override" | "project" | "remote" | "group";
 
@@ -631,34 +615,32 @@ async function postGraphQL(
 	return result?.payload ?? null;
 }
 
+/** The availability record a GraphQL answer holds; a `selectableModels` that is not an array reads as none. */
 function parseAvailability(value: unknown): GitLabDuoWorkflowAvailability | null {
-	const parsed = aiChatAvailableModelsSchema.safeParse(value);
-	if (!parsed.success) {
+	if (!isRecord(value)) {
 		return null;
 	}
+	const selectableModels = Array.isArray(value.selectableModels) ? value.selectableModels : [];
 	return {
-		defaultModel: parseModelRef(parsed.data.defaultModel),
-		selectableModels: (parsed.data.selectableModels ?? []).flatMap(model => {
+		defaultModel: parseModelRef(value.defaultModel),
+		selectableModels: selectableModels.flatMap(model => {
 			const parsedModel = parseModelRef(model);
 			return parsedModel ? [parsedModel] : [];
 		}),
-		pinnedModel: parseModelRef(parsed.data.pinnedModel),
+		pinnedModel: parseModelRef(value.pinnedModel),
 	};
 }
 
+/** A model reference whose `ref` is a non-blank string; a `name` that is not one falls back to the ref. */
 function parseModelRef(value: unknown): GitLabDuoWorkflowModelRef | null {
-	if (value === null || value === undefined) {
+	if (!isRecord(value)) {
 		return null;
 	}
-	const parsed = modelRefSchema.safeParse(value);
-	if (!parsed.success) {
-		return null;
-	}
-	const ref = normalizeIdentifier(parsed.data.ref);
+	const ref = typeof value.ref === "string" ? normalizeIdentifier(value.ref) : null;
 	if (!ref) {
 		return null;
 	}
-	const name = normalizeIdentifier(parsed.data.name) ?? ref;
+	const name = (typeof value.name === "string" ? normalizeIdentifier(value.name) : null) ?? ref;
 	return { name, ref };
 }
 

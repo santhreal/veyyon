@@ -14,14 +14,12 @@ import { truncateToWidth } from "@veyyon/utils/width";
 import type { ModelRegistry } from "../../../../config/model-registry";
 import type { Settings } from "../../../../config/settings";
 import { theme } from "../../../../theme/theme";
+import { computeModalDims, MODAL_SIZING_MEDIUM, sizingForArea } from "../chrome/modal-geometry";
 import {
-	computeModalDims,
-	MODAL_SIZING_MEDIUM,
 	type ModalShellGeometry,
 	planModalChrome,
 	pointerMotionEnabled,
 	renderModalShell,
-	sizingForArea,
 } from "../chrome/modal-shell";
 import {
 	buildBrowserItems,

@@ -51,8 +51,10 @@ export interface TtsrHarness {
 	generation: number;
 	/** Feed one prose delta through the runtime; true when it aborted the turn. */
 	delta(text: string, event?: Partial<AssistantMessageEvent>): Promise<boolean>;
-	/** Feed one tool-argument delta, so a match buckets against `toolCallId`. */
-	toolDelta(text: string, toolCallId: string, toolName?: string): Promise<boolean>;
+	/** Feed one tool-argument delta, so a match buckets against `toolCallId`. `args` are the call's arguments so far. */
+	toolDelta(text: string, toolCallId: string, toolName?: string, args?: Record<string, unknown>): Promise<boolean>;
+	/** Feed the `toolcall_end` that completes `toolCallId` with its final `args`. */
+	toolEnd(toolCallId: string, toolName: string, args: Record<string, unknown>): Promise<boolean>;
 	/** Run whatever the runtime deferred to a post-prompt task, if anything. */
 	drain(): Promise<void>;
 }
@@ -130,11 +132,22 @@ export function ttsrHarness(rules: readonly Rule[], options: TtsrHarnessOptions 
 			const assistantEvent = { type: "text_delta", delta: text, contentIndex: 0, ...event } as AssistantMessageEvent;
 			return runtime.observeStreamDelta(pushAssistantMessage(messages), assistantEvent);
 		},
-		toolDelta: (text, toolCallId, toolName = "read") => {
+		toolDelta: (text, toolCallId, toolName = "read", args = {}) => {
 			const message = pushAssistantMessage(messages, [
-				{ type: "toolCall", id: toolCallId, name: toolName, arguments: {} },
+				{ type: "toolCall", id: toolCallId, name: toolName, arguments: args },
 			]);
 			const assistantEvent = { type: "toolcall_delta", delta: text, contentIndex: 0 } as AssistantMessageEvent;
+			return runtime.observeStreamDelta(message, assistantEvent);
+		},
+		toolEnd: (toolCallId, toolName, args) => {
+			const toolCall = { type: "toolCall", id: toolCallId, name: toolName, arguments: args } as const;
+			const message = pushAssistantMessage(messages, [toolCall]);
+			const assistantEvent = {
+				type: "toolcall_end",
+				contentIndex: 0,
+				toolCall,
+				partial: message,
+			} as AssistantMessageEvent;
 			return runtime.observeStreamDelta(message, assistantEvent);
 		},
 		drain: async () => {

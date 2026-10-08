@@ -25,6 +25,7 @@ import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
 import {
+	SEARCH_TYPES,
 	type SearchToolInput,
 	type SearchType,
 	searchSchema,
@@ -33,7 +34,7 @@ import {
 import { MULTI_FILE_PER_FILE_MATCHES } from "@veyyon/coding-agent/tools/search/text-search";
 import { removeWithRetries } from "@veyyon/utils";
 
-const SCHEMA_FIELDS = Object.keys(searchSchema.shape);
+const SCHEMA_FIELDS = searchSchema.value.props.map(prop => String(prop.key));
 
 /** One call per search type that reaches a limit or pagination notice. */
 const SCENARIOS: Record<SearchType, { callId: string; args: Record<string, unknown> }> = {
@@ -99,7 +100,7 @@ describe("a search result never advises a field the tool rejects", () => {
 	it("covers every search type the tool declares", () => {
 		const declared = Object.keys(TYPE_FIELDS).sort();
 		expect(Object.keys(SCENARIOS).sort()).toEqual(declared);
-		const declaredOptions: string[] = [...searchSchema.shape.type.options];
+		const declaredOptions: string[] = [...SEARCH_TYPES];
 		expect(declaredOptions.sort()).toEqual(declared);
 	});
 
@@ -114,7 +115,7 @@ describe("a search result never advises a field the tool rejects", () => {
 				// would otherwise pass with nothing to check.
 				expect(assigned.length).toBeGreaterThan(0);
 				for (const field of assigned) {
-					expect(TYPE_FIELDS[type].has(field as keyof typeof searchSchema.shape)).toBe(true);
+					expect(TYPE_FIELDS[type].has(field as keyof SearchToolInput)).toBe(true);
 				}
 			}
 		});

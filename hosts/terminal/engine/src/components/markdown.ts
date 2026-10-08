@@ -537,16 +537,29 @@ markdownParser.use({ extensions: [customHrExtension, mathBlockExtension, mathEnv
 // render of a fresh component. This module-level cache survives across
 // component lifetimes and eliminates redundant marked.lexer + highlightCode
 // (Rust FFI) work for content/layout combinations already seen this session.
+//
+// The key is the text the component holds, by reference, and the entry holds
+// the signature its rows were laid out under. A key that spells the text and the
+// signature together is a new string the length of the text: one copy of every
+// cached message, 2.9 KiB of the 10.2 KiB of strings a 3,000-character turn of an
+// interactive session kept. One text keeps one entry, the rows of its most recent
+// render.
 
-const RENDER_CACHE_MAX = 256; // sane cap: ~256 distinct message × width combos
+const RENDER_CACHE_MAX = 256; // sane cap: ~256 distinct message texts
 const RENDER_CACHE_MAX_SIZE = 512 * 1024;
 const RENDER_CACHE_MAX_ENTRY_SIZE = 32 * 1024;
 const EMPTY_RENDER_LINES: readonly string[] = [];
-const renderCache = new LRUCache<string, readonly string[]>({
+
+/** The rows one text rendered to, with the width, padding, theme and capabilities they were laid out under. */
+interface RenderCacheEntry extends RenderSignature {
+	lines: readonly string[];
+}
+
+const renderCache = new LRUCache<string, RenderCacheEntry>({
 	max: RENDER_CACHE_MAX,
 	maxSize: RENDER_CACHE_MAX_SIZE,
 	maxEntrySize: RENDER_CACHE_MAX_ENTRY_SIZE,
-	sizeCalculation: renderedLinesCacheSize,
+	sizeCalculation: entry => renderedLinesCacheSize(entry.lines),
 });
 
 function renderedLinesCacheSize(lines: readonly string[]): number {
@@ -567,6 +580,16 @@ const HAS_REF_DEF = /^ {0,3}\[(?:\\.|[^\]\\])+\]:/m;
 // scanned span forces a full lex.
 function canStreamLex(text: string): boolean {
 	return !HAS_REF_DEF.test(text) && !text.includes("\r");
+}
+
+// A copy of `text` in storage of its own. A slice shares the buffer of the string
+// it was cut from, and so does every token marked cuts from that slice. A streamed
+// text is a new buffer on every frame, so tail tokens frozen on one frame after
+// another each held that frame's whole text: 76 MiB for one 206,000-character
+// answer. A structured clone is rebuilt from serialized bytes, so it cannot share
+// the source buffer, and it keeps the content exact (lone surrogates included).
+function unsharedCopy(text: string): string {
+	return structuredClone(text);
 }
 
 // Untrusted model output can over-nest markdown structure: a blockquote nests
@@ -952,7 +975,8 @@ function codespanSwatch(code: string, glyph: string): string {
 	return colorSwatch(match[1], glyph);
 }
 
-interface RenderSignature {
+/** Every input besides the text that the rows of a render depend on. */
+export interface RenderSignature {
 	width: number;
 	paddingX: number;
 	paddingY: number;
@@ -1052,6 +1076,10 @@ export class Markdown implements Component {
 	// re-deriving the same string knows the prefix still is one without comparing
 	// the whole transcript again.
 	#streamPrefixSource?: string;
+	// The frozen prefix the current one was cut to extend, proven a prefix of the text both were
+	// cut from. A row cache or an exposure recorded against it is therefore a prefix of the
+	// current frozen text without comparing the transcript again.
+	#streamPrefixBase?: string;
 	// Leading whole lines of #text that need no render normalization, so a frame
 	// scans only what arrived after them (see #normalizeForRender).
 	#normalizedCleanHead?: string;
@@ -1112,10 +1140,7 @@ export class Markdown implements Component {
 			// Blank replacement: render() early-returns before #lexTokens can see
 			// the non-append edit, so drop the frozen stream state here or it
 			// outlives the content it indexed.
-			this.#streamPrefixText = undefined;
-			this.#streamPrefixTokens = undefined;
-			this.#streamPrefixLineCache = undefined;
-			this.#streamPrefixSource = undefined;
+			this.#dropFrozenPrefix();
 			this.#settledExposedText = undefined;
 		}
 		this.invalidate();
@@ -1127,6 +1152,31 @@ export class Markdown implements Component {
 		this.#cachedWidth = undefined;
 		this.#cachedLines = undefined;
 	}
+
+	releaseRenderCache(): void {
+		this.invalidate();
+		this.#dropDerivedState();
+	}
+
+	// The frozen stream prefix: its text, its tokens, its rendered rows and the
+	// text it was cut from.
+	#dropFrozenPrefix(): void {
+		this.#streamPrefixText = undefined;
+		this.#streamPrefixTokens = undefined;
+		this.#streamPrefixLineCache = undefined;
+		this.#streamPrefixSource = undefined;
+		this.#streamPrefixBase = undefined;
+	}
+
+	// Every field derived from #text that the next render rebuilds: a full lex
+	// re-freezes the stable prefix, and the row caches refill as rows render.
+	#dropDerivedState(): void {
+		this.#dropFrozenPrefix();
+		this.#normalizedCleanHead = undefined;
+		this.#streamingDiffLineCache = undefined;
+		this.#openFenceRowCache = undefined;
+	}
+
 	get transientRenderCache(): boolean {
 		return this.#transientRenderCache;
 	}
@@ -1135,8 +1185,10 @@ export class Markdown implements Component {
 		const next = value === true;
 		if (this.#transientRenderCache === next) return;
 		this.#transientRenderCache = next;
-		// The rows are only read while streaming; a sealed block would hold them for nothing.
-		if (!next) this.#openFenceRowCache = undefined;
+		// The derived state serves the frames of a growing text and holds strings
+		// cut from those frames. A sealed block renders from its final text, so it
+		// keeps what one render of that text keeps and nothing from the stream.
+		if (!next) this.#dropDerivedState();
 		this.invalidate();
 	}
 
@@ -1198,7 +1250,9 @@ export class Markdown implements Component {
 		) {
 			const tail = text.slice(prefix.length);
 			if (canStreamLex(tail)) {
-				const tailTokens = markdownParser.lexer(tail);
+				// The tail is lexed from a copy so the tokens frozen out of it hold the
+				// tail alone, not the whole frame's text (see unsharedCopy).
+				const tailTokens = markdownParser.lexer(unsharedCopy(tail));
 				const tokens = [...prefixTokens, ...tailTokens];
 				this.#freezeStablePrefix(text, tokens, { preserveExisting: true });
 				// `text` extends the prefix, proven just above, and the freeze only
@@ -1213,10 +1267,7 @@ export class Markdown implements Component {
 			this.#freezeStablePrefix(text, tokens, { preserveExisting: false });
 			if (this.#streamPrefixText !== undefined) this.#streamPrefixSource = text;
 		} else {
-			this.#streamPrefixText = undefined;
-			this.#streamPrefixTokens = undefined;
-			this.#streamPrefixLineCache = undefined;
-			this.#streamPrefixSource = undefined;
+			this.#dropFrozenPrefix();
 		}
 		return tokens;
 	}
@@ -1262,17 +1313,13 @@ export class Markdown implements Component {
 				if (existingText === undefined || frozenEnd > existingText.length) {
 					this.#streamPrefixText = text.slice(0, frozenEnd);
 					this.#streamPrefixTokens = tokens.slice(0, frozenCount);
+					this.#streamPrefixBase = existingText;
 				}
 				return;
 			}
 		}
 
-		if (!opts.preserveExisting) {
-			this.#streamPrefixText = undefined;
-			this.#streamPrefixTokens = undefined;
-			this.#streamPrefixLineCache = undefined;
-			this.#streamPrefixSource = undefined;
-		}
+		if (!opts.preserveExisting) this.#dropFrozenPrefix();
 	}
 
 	render(width: number): readonly string[] {
@@ -1287,6 +1334,9 @@ export class Markdown implements Component {
 		// Recomputed below by the streaming path; every other path (cache-served,
 		// empty text, non-streaming full render) exposes no settled rows.
 		this.#lastRenderSettledRows = 0;
+		// A render outside streaming reports no settled rows, which ends the exposed
+		// lineage the same way a rewind does, so its text is no longer needed.
+		if (!this.transientRenderCache) this.#settledExposedText = undefined;
 
 		// Calculate available width for content (subtract horizontal padding)
 		const paddingX = this.#ignoreTight ? this.#paddingX : getPaddingX(this.#paddingX);
@@ -1300,35 +1350,35 @@ export class Markdown implements Component {
 			return EMPTY_RENDER_LINES;
 		}
 
-		// Replace tabs with 3 spaces for consistent rendering, then bound structural
-		// nesting depth so pathological model output can't overflow or hang the lexer.
-		const normalizedText = this.#normalizeForRender(this.#text);
 		const signature = this.#renderSignature(width, paddingX);
 
 		// L2: module-level LRU — survives component disposal/recreation across
-		// session-tree navigations. Key encodes every dimension that affects the
-		// render output so different configurations never collide.
-		// Encode terminal capability state and theme/style function output samples
-		// so that capability shifts (image protocol changes, hyperlink toggle) or
-		// caller-supplied theme/bgColor functions that mutate their output without
-		// changing object identity invalidate the cache entry.
+		// session-tree navigations. Keyed by the raw text, which render
+		// normalization below is a function of, and served only under a signature
+		// equal in every dimension that affects the rows.
+		// The signature encodes terminal capability state and theme/style function
+		// output samples so that capability shifts (image protocol changes,
+		// hyperlink toggle) or caller-supplied theme/bgColor functions that mutate
+		// their output without changing object identity miss the cache entry.
 		// bgColor probe uses \x01 (single non-printable byte): chalk/ANSI wrappers
 		// pass arbitrary bytes through verbatim, so this is safe and minimizes the
 		// risk of clashing with a function that returns text verbatim.
 		// theme.heading is used as the representative theme probe — it's required
 		// by MarkdownTheme and is one of the most styling-sensitive entries.
-		let cacheKey: string | undefined;
 		if (!this.transientRenderCache) {
-			cacheKey = this.#renderCacheKey(normalizedText, signature);
-			const cached = renderCache.get(cacheKey);
-			if (cached !== undefined) {
+			const cached = renderCache.get(this.#text);
+			if (cached !== undefined && sameRenderSignature(cached, signature)) {
 				// Populate L1 so subsequent calls from this instance are O(1) map lookup.
 				this.#cachedText = this.#text;
 				this.#cachedWidth = width;
-				this.#cachedLines = cached;
-				return cached;
+				this.#cachedLines = cached.lines;
+				return cached.lines;
 			}
 		}
+
+		// Replace tabs with 3 spaces for consistent rendering, then bound structural
+		// nesting depth so pathological model output can't overflow or hang the lexer.
+		const normalizedText = this.#normalizeForRender(this.#text);
 
 		// Parse markdown to HTML-like tokens
 		const tokens = this.#lexTokens(normalizedText);
@@ -1356,10 +1406,10 @@ export class Markdown implements Component {
 		this.#cachedWidth = width;
 		this.#cachedLines = result;
 
-		// Update L2 module-level LRU so future instances with the same key skip
-		// the marked.lexer + highlightCode (Rust FFI) work entirely.
-		if (cacheKey !== undefined) {
-			renderCache.set(cacheKey, result);
+		// Update L2 module-level LRU so future instances with the same text and
+		// signature skip the marked.lexer + highlightCode (Rust FFI) work entirely.
+		if (!this.transientRenderCache) {
+			renderCache.set(this.#text, { ...signature, lines: result });
 		}
 
 		return result;
@@ -1381,10 +1431,6 @@ export class Markdown implements Component {
 			bgColorProbe,
 			headingProbe,
 		};
-	}
-
-	#renderCacheKey(normalizedText: string, signature: RenderSignature): string {
-		return `${normalizedText}\x00${signature.width}\x00${signature.paddingX}\x00${signature.paddingY}\x00${signature.codeBlockIndent}\x00${signature.themeId}\x00${signature.defaultTextStyleId}\x00${signature.imageProtocol}\x00${signature.hyperlinks ? 1 : 0}\x00${signature.textSizing ? 1 : 0}\x00${signature.bgColorProbe}\x00${signature.headingProbe}`;
 	}
 
 	#renderStreamingContentLines(
@@ -1410,7 +1456,7 @@ export class Markdown implements Component {
 		// that accumulator back into the cache copied every settled row twice per
 		// frame, and `push(...rows)` puts one argument on the stack per row,
 		// which a long transcript is eventually large enough to overflow.
-		const reusablePrefix = this.#matchingStreamPrefixLineCache(normalizedText, frozenText, signature);
+		const reusablePrefix = this.#matchingStreamPrefixLineCache(frozenText, signature);
 		let frozenLines: readonly string[];
 		if (reusablePrefix && reusablePrefix.tokenCount === frozenTokenCount) {
 			frozenLines = reusablePrefix.lines;
@@ -1441,7 +1487,12 @@ export class Markdown implements Component {
 		// the rewritten lineage.
 		if (frozenLines.length > 0) {
 			const exposed = this.#settledExposedText;
-			if (exposed === undefined || exposed === frozenText || frozenText.startsWith(exposed)) {
+			if (
+				exposed === undefined ||
+				exposed === frozenText ||
+				exposed === this.#streamPrefixBase ||
+				frozenText.startsWith(exposed)
+			) {
 				this.#settledExposedText = frozenText;
 				this.#lastRenderSettledRows = signature.paddingY + frozenLines.length;
 			} else {
@@ -1456,26 +1507,19 @@ export class Markdown implements Component {
 		return frozenLines.slice();
 	}
 
-	// `frozenText` is already known to be a prefix of `normalizedText`. When the
-	// entry was written for that same string — the common case, since the frozen
-	// text is reused by reference while nothing new freezes — both prefix
-	// questions are already answered and comparing the transcript again answers
-	// nothing.
-	#matchingStreamPrefixLineCache(
-		normalizedText: string,
-		frozenText: string,
-		signature: RenderSignature,
-	): StreamPrefixLineCache | undefined {
+	// `frozenText` is already known to be a prefix of `normalizedText`, so an entry
+	// whose text is a prefix of `frozenText` is a prefix of both. When the entry
+	// was written for that same string — the common case, since the frozen text is
+	// reused by reference while nothing new freezes — or for the prefix the frozen
+	// text was cut to extend, which is the case on the frame a new block freezes,
+	// that is already proven and comparing the transcript again answers nothing.
+	#matchingStreamPrefixLineCache(frozenText: string, signature: RenderSignature): StreamPrefixLineCache | undefined {
 		const cache = this.#streamPrefixLineCache;
-		if (!cache) return undefined;
-		if (
-			(cache.text !== frozenText &&
-				(!normalizedText.startsWith(cache.text) || !frozenText.startsWith(cache.text))) ||
-			!sameRenderSignature(cache, signature)
-		) {
-			return undefined;
+		if (!cache || !sameRenderSignature(cache, signature)) return undefined;
+		if (cache.text === frozenText || cache.text === this.#streamPrefixBase || frozenText.startsWith(cache.text)) {
+			return cache;
 		}
-		return cache;
+		return undefined;
 	}
 
 	#renderContentLines(
@@ -1501,9 +1545,10 @@ export class Markdown implements Component {
 	}
 
 	/**
-	 * Wrap each line to `contentWidth` and append its rows to `out`, each padded to the full width
-	 * with margins and background. `state` carries from one call to the next, so rows laid out in
-	 * several calls match rows laid out in one.
+	 * Wrap each line to `contentWidth` and append its rows to `out`: the left margin, then the row.
+	 * A painted row (a background style) is padded to the full width so the fill reaches the edge;
+	 * an unpainted row ends at its ink. `state` carries from one call to the next, so rows laid out
+	 * in several calls match rows laid out in one.
 	 */
 	#layoutRows(
 		lines: readonly string[],
@@ -1536,7 +1581,7 @@ export class Markdown implements Component {
 					continue;
 				}
 				state.afterOsc66 = false;
-				out.push(applyLineBackground(margin + row + margin, signature.width, bgFn));
+				out.push(bgFn ? applyLineBackground(margin + row + margin, signature.width, bgFn) : margin + row);
 			}
 		}
 	}
@@ -1617,7 +1662,7 @@ export class Markdown implements Component {
 		// The line still streaming is plain until its newline arrives, unless the fence has closed.
 		const lastLine = text.slice(stableEnd);
 		const lastRows =
-			highlightDiff && this.#codeTokenHasClosingFence(token)
+			highlightDiff && codeTokenHasClosingFence(token)
 				? highlightDiff(lastLine, lang)
 				: [this.#theme.codeBlock(lastLine)];
 		this.#layoutRows(
@@ -1656,7 +1701,7 @@ export class Markdown implements Component {
 		}
 
 		if (canStreamDiff) {
-			const closedFence = this.#codeTokenHasClosingFence(token);
+			const closedFence = codeTokenHasClosingFence(token);
 			const lineEnd = tokenText.lastIndexOf("\n");
 			if (closedFence || lineEnd >= 0) {
 				const completedText = closedFence ? tokenText : tokenText.slice(0, lineEnd);
@@ -1676,37 +1721,6 @@ export class Markdown implements Component {
 			bodyLines.push(`${codeIndent}${this.#theme.codeBlock(codeLine)}`);
 		}
 		return bodyLines;
-	}
-
-	#codeTokenHasClosingFence(token: Token): boolean {
-		const raw = "raw" in token && typeof token.raw === "string" ? token.raw : "";
-		const firstLineEnd = raw.indexOf("\n");
-		if (firstLineEnd < 0) return false;
-		const openingLine = raw.slice(0, firstLineEnd);
-		const openingTrimmed = openingLine.trimStart();
-		const openingIndent = openingLine.length - openingTrimmed.length;
-		if (openingIndent > 3) return false;
-		const fenceChar = openingTrimmed.charAt(0);
-		if (fenceChar !== "`" && fenceChar !== "~") return false;
-		let fenceLength = 0;
-		while (openingTrimmed.charAt(fenceLength) === fenceChar) fenceLength++;
-		if (fenceLength < 3) return false;
-
-		let lineStart = firstLineEnd + 1;
-		while (lineStart <= raw.length) {
-			const lineEnd = raw.indexOf("\n", lineStart);
-			const line = lineEnd >= 0 ? raw.slice(lineStart, lineEnd) : raw.slice(lineStart);
-			const trimmed = line.trimStart();
-			const indent = line.length - trimmed.length;
-			let closingLength = 0;
-			while (trimmed.charAt(closingLength) === fenceChar) closingLength++;
-			if (indent <= 3 && closingLength >= fenceLength && trimmed.slice(closingLength).trim().length === 0) {
-				return true;
-			}
-			if (lineEnd < 0) break;
-			lineStart = lineEnd + 1;
-		}
-		return false;
 	}
 
 	#highlightStreamingDiffLines(completedText: string, lang: string | undefined): readonly string[] {
@@ -1743,7 +1757,8 @@ export class Markdown implements Component {
 	}
 
 	#renderEmptyPaddingLines(signature: RenderSignature): string[] {
-		const emptyLine = applyLineBackground("", signature.width, this.#defaultTextStyle?.bgColor);
+		const bgFn = this.#defaultTextStyle?.bgColor;
+		const emptyLine = bgFn ? applyLineBackground("", signature.width, bgFn) : "";
 		const emptyLines: string[] = [];
 		for (let i = 0; i < signature.paddingY; i++) {
 			emptyLines.push(emptyLine);
@@ -1795,15 +1810,8 @@ export class Markdown implements Component {
 			return this.#defaultStylePrefix;
 		}
 
-		this.#defaultStylePrefix = this.#getStylePrefix(text => this.#applyDefaultStyle(text));
+		this.#defaultStylePrefix = getStylePrefix(text => this.#applyDefaultStyle(text));
 		return this.#defaultStylePrefix;
-	}
-
-	#getStylePrefix(styleFn: (text: string) => string): string {
-		const sentinel = "\u0000";
-		const styled = styleFn(sentinel);
-		const sentinelIndex = styled.indexOf(sentinel);
-		return sentinelIndex >= 0 ? styled.slice(0, sentinelIndex) : "";
 	}
 
 	#getDefaultInlineStyleContext(): InlineStyleContext {
@@ -2016,7 +2024,7 @@ export class Markdown implements Component {
 	 */
 	#applyQuoteBorder(renderedLines: string[], width: number): string[] {
 		const quoteStyle = (text: string) => this.#theme.quote(this.#theme.italic(text));
-		const quoteStylePrefix = this.#getStylePrefix(quoteStyle);
+		const quoteStylePrefix = getStylePrefix(quoteStyle);
 		const applyQuoteStyle = (line: string): string => {
 			if (!quoteStylePrefix) {
 				return quoteStyle(line);
@@ -2231,36 +2239,6 @@ export class Markdown implements Component {
 	}
 
 	/**
-	 * Get the visible width of the longest word in a string.
-	 */
-	#getLongestWordWidth(text: string, maxWidth?: number): number {
-		const words = text.split(/\s+/).filter(word => word.length > 0);
-		let longest = 0;
-		for (const word of words) {
-			longest = Math.max(longest, visibleWidth(word));
-		}
-		if (maxWidth === undefined) {
-			return longest;
-		}
-		return Math.min(longest, maxWidth);
-	}
-
-	#terminalLineWidths(text: string): number[] {
-		return splitTerminalLines(text).map(line => visibleWidth(line));
-	}
-
-	/**
-	 * Wrap a table cell to fit into a column.
-	 *
-	 * Delegates to wrapTextWithAnsi() so ANSI codes + long tokens are handled
-	 * consistently with the rest of the renderer.
-	 */
-	#wrapCellText(text: string, maxWidth: number): string[] {
-		const cellWidth = Math.max(1, maxWidth);
-		return splitTerminalLines(text).flatMap(line => wrapTextWithAnsi(line, cellWidth));
-	}
-
-	/**
 	 * Render a table with width-aware cell wrapping.
 	 * Cells that don't fit are wrapped to multiple lines.
 	 */
@@ -2298,9 +2276,9 @@ export class Markdown implements Component {
 		const inspectCells = (rowCells: typeof token.header) => {
 			for (let i = 0; i < rowCells.length; i++) {
 				const text = this.#renderInlineTokens(rowCells[i]?.tokens || [], styleContext);
-				const lineWidths = this.#terminalLineWidths(text);
+				const lineWidths = terminalLineWidths(text);
 				naturalWidths[i] = Math.max(naturalWidths[i] || 0, ...lineWidths, 0);
-				minWordWidths[i] = Math.max(minWordWidths[i] || 1, this.#getLongestWordWidth(text, maxUnbrokenWordWidth));
+				minWordWidths[i] = Math.max(minWordWidths[i] || 1, getLongestWordWidth(text, maxUnbrokenWordWidth));
 			}
 		};
 		inspectCells(token.header);
@@ -2388,7 +2366,7 @@ export class Markdown implements Component {
 			`${left}${h}${columnWidths.map(w => h.repeat(w)).join(`${h}${mid}${h}`)}${h}${right}`;
 		const renderRowCells = (cells: typeof token.header, isHeader: boolean): string[] => {
 			const cellLines = cells.map((cell, i) =>
-				this.#wrapCellText(this.#renderInlineTokens(cell.tokens || [], styleContext), columnWidths[i]),
+				wrapCellText(this.#renderInlineTokens(cell.tokens || [], styleContext), columnWidths[i]),
 			);
 			const maxLines = Math.max(...cellLines.map(c => c.length));
 			const out: string[] = [];
@@ -2423,6 +2401,74 @@ export class Markdown implements Component {
 		}
 		return lines;
 	}
+}
+
+function codeTokenHasClosingFence(token: Token): boolean {
+	const raw = "raw" in token && typeof token.raw === "string" ? token.raw : "";
+	const firstLineEnd = raw.indexOf("\n");
+	if (firstLineEnd < 0) return false;
+	const openingLine = raw.slice(0, firstLineEnd);
+	const openingTrimmed = openingLine.trimStart();
+	const openingIndent = openingLine.length - openingTrimmed.length;
+	if (openingIndent > 3) return false;
+	const fenceChar = openingTrimmed.charAt(0);
+	if (fenceChar !== "`" && fenceChar !== "~") return false;
+	let fenceLength = 0;
+	while (openingTrimmed.charAt(fenceLength) === fenceChar) fenceLength++;
+	if (fenceLength < 3) return false;
+
+	let lineStart = firstLineEnd + 1;
+	while (lineStart <= raw.length) {
+		const lineEnd = raw.indexOf("\n", lineStart);
+		const line = lineEnd >= 0 ? raw.slice(lineStart, lineEnd) : raw.slice(lineStart);
+		const trimmed = line.trimStart();
+		const indent = line.length - trimmed.length;
+		let closingLength = 0;
+		while (trimmed.charAt(closingLength) === fenceChar) closingLength++;
+		if (indent <= 3 && closingLength >= fenceLength && trimmed.slice(closingLength).trim().length === 0) {
+			return true;
+		}
+		if (lineEnd < 0) break;
+		lineStart = lineEnd + 1;
+	}
+	return false;
+}
+
+function getStylePrefix(styleFn: (text: string) => string): string {
+	const sentinel = "\u0000";
+	const styled = styleFn(sentinel);
+	const sentinelIndex = styled.indexOf(sentinel);
+	return sentinelIndex >= 0 ? styled.slice(0, sentinelIndex) : "";
+}
+
+/**
+ * Get the visible width of the longest word in a string.
+ */
+function getLongestWordWidth(text: string, maxWidth?: number): number {
+	const words = text.split(/\s+/).filter(word => word.length > 0);
+	let longest = 0;
+	for (const word of words) {
+		longest = Math.max(longest, visibleWidth(word));
+	}
+	if (maxWidth === undefined) {
+		return longest;
+	}
+	return Math.min(longest, maxWidth);
+}
+
+function terminalLineWidths(text: string): number[] {
+	return splitTerminalLines(text).map(line => visibleWidth(line));
+}
+
+/**
+ * Wrap a table cell to fit into a column.
+ *
+ * Delegates to wrapTextWithAnsi() so ANSI codes + long tokens are handled
+ * consistently with the rest of the renderer.
+ */
+function wrapCellText(text: string, maxWidth: number): string[] {
+	const cellWidth = Math.max(1, maxWidth);
+	return splitTerminalLines(text).flatMap(line => wrapTextWithAnsi(line, cellWidth));
 }
 
 /**

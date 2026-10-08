@@ -11,6 +11,37 @@ export type SimilarityFn = (textA: string, textB: string) => number;
 export function jaccardSimilarity(textA: string, textB: string): number {
 	return jaccardWordSimilarity(textA, textB);
 }
+function maxSimilarity(content: string, selected: readonly MmrResult[], similarityFn: SimilarityFn): number {
+	let max = 0.0;
+	for (const selectedResult of selected) {
+		const similarity = similarityFn(content, selectedResult.content ?? "");
+		if (similarity > max) max = similarity;
+	}
+	return max;
+}
+
+/** Index of the candidate with the highest MMR score; the first wins a tie. */
+function bestMmrIndex(
+	remaining: readonly MmrResult[],
+	selected: readonly MmrResult[],
+	lambdaParam: number,
+	similarityFn: SimilarityFn,
+): number {
+	let bestIdx = 0;
+	let bestScore = Number.NEGATIVE_INFINITY;
+	for (let idx = 0; idx < remaining.length; idx += 1) {
+		const candidate = remaining[idx];
+		if (candidate === undefined) continue;
+		const similarity = maxSimilarity(candidate.content ?? "", selected, similarityFn);
+		const mmrScore = lambdaParam * (candidate.score ?? 0) - (1.0 - lambdaParam) * similarity;
+		if (mmrScore > bestScore) {
+			bestScore = mmrScore;
+			bestIdx = idx;
+		}
+	}
+	return bestIdx;
+}
+
 export function mmrRerank<T extends MmrResult>(
 	results: readonly T[],
 	lambdaParam = 0.7,
@@ -29,29 +60,7 @@ export function mmrRerank<T extends MmrResult>(
 	const remaining = sortedResults.slice(1);
 
 	while (remaining.length > 0 && selected.length < limit) {
-		let bestIdx = 0;
-		let bestScore = Number.NEGATIVE_INFINITY;
-
-		for (let idx = 0; idx < remaining.length; idx += 1) {
-			const candidate = remaining[idx];
-			if (candidate === undefined) continue;
-
-			let maxSimilarity = 0.0;
-			const candidateContent = candidate.content ?? "";
-			for (const selectedResult of selected) {
-				const similarity = similarityFn(candidateContent, selectedResult.content ?? "");
-				if (similarity > maxSimilarity) maxSimilarity = similarity;
-			}
-
-			const relevance = candidate.score ?? 0;
-			const mmrScore = lambdaParam * relevance - (1.0 - lambdaParam) * maxSimilarity;
-			if (mmrScore > bestScore) {
-				bestScore = mmrScore;
-				bestIdx = idx;
-			}
-		}
-
-		const chosen = remaining.splice(bestIdx, 1)[0];
+		const chosen = remaining.splice(bestMmrIndex(remaining, selected, lambdaParam, similarityFn), 1)[0];
 		if (chosen !== undefined) selected.push(chosen);
 	}
 

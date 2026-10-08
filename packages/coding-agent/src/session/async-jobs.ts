@@ -53,15 +53,16 @@ export interface OwnedAsyncJobsInput {
 /**
  * A new AsyncJobManager when this session owns one, else undefined.
  *
- * Only the first top-level session in a process owns one. A spawned agent shares its parent's
- * through `AsyncJobManager.instance()`, and a second top-level session started in-process (the
- * agent-creation architect) shares the live singleton: its own manager would be disposed with it
- * and take the owning session's `task` and `bash` async paths down (issue #1923), or sit orphaned
- * with nothing routed to it. A job that finishes before the session exists, or whose delivery was
+ * Every top-level session owns one, and its `onJobComplete` delivers to that session and no other.
+ * A second top-level session in the same process (the foreground session after a `/new` handoff,
+ * the agent-creation architect) therefore runs background work of its own, and a job it starts
+ * reports to it rather than to the session that happened to be built first. A spawned agent owns
+ * none: it runs its jobs on the manager of the session that spawned it, so their results reach
+ * that conversation. A job that finishes before the session exists, or whose delivery was
  * suppressed while its output was formatted, is not delivered.
  */
 export function createOwnedAsyncJobManager(input: OwnedAsyncJobsInput): AsyncJobManager | undefined {
-	if (isInProcessChildSession(input.options) || AsyncJobManager.instance()) return undefined;
+	if (isInProcessChildSession(input.options)) return undefined;
 	const manager: AsyncJobManager = new AsyncJobManager({
 		maxRunningJobs: Math.min(100, Math.max(1, input.settings.get("async.maxJobs") ?? 100)),
 		onJobComplete: async (jobId, result, job) => {
@@ -73,4 +74,18 @@ export function createOwnedAsyncJobManager(input: OwnedAsyncJobsInput): AsyncJob
 		},
 	});
 	return manager;
+}
+
+/**
+ * The manager a session runs its jobs on: the one it owns, else, for a spawned agent, the one its
+ * spawner handed over, so a result reaches the conversation that spawned it. The process-wide
+ * instance is the fallback for an SDK caller that passes a parent prefix and no manager.
+ */
+export function sessionAsyncJobManager(
+	owned: AsyncJobManager | undefined,
+	options: Pick<CreateAgentSessionOptions, "parentTaskPrefix" | "asyncJobManager">,
+): AsyncJobManager | undefined {
+	if (owned) return owned;
+	if (!isInProcessChildSession(options)) return undefined;
+	return options.asyncJobManager ?? AsyncJobManager.instance();
 }

@@ -12,7 +12,7 @@ import type { HostView } from "@veyyon/kernel/registry/host-view";
 import { Box, type Component, Container, Markdown, Spacer, TERMINAL, Text } from "@veyyon/tui";
 import type { CustomBlock, HookBlock } from "@veyyon/wire/presentation";
 import { groundHairlineHex, groundTintFgAnsi } from "../../../../theme/ground-tints";
-import { getMarkdownTheme } from "../../../../theme/markdown-theme";
+import { getMarkdownTheme, markdownTextStyle } from "../../../../theme/markdown-theme";
 import { type Theme, type ThemeColor, theme } from "../../../../theme/theme";
 import { reportRendererFailure } from "./renderer-failure";
 
@@ -149,11 +149,7 @@ export function renderFramedMessage<M extends FramedMessage>(opts: RebuildFrameO
 		}
 	}
 
-	opts.box.addChild(
-		new Markdown(text, 0, 0, getMarkdownTheme(), {
-			color: (value: string) => theme.fg("customMessageText", value),
-		}),
-	);
+	opts.box.addChild(new Markdown(text, 0, 0, getMarkdownTheme(), markdownTextStyle("customMessageText")));
 
 	return undefined;
 }

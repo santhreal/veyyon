@@ -12,7 +12,6 @@ import {
 	claudeCodeSystemInstruction,
 	claudeCodeVersion,
 	claudeToolPrefix,
-	deriveClaudeDeviceId,
 	generateClaudeCloakingUserId,
 	isClaudeCloakingUserId,
 	mapStainlessArch,
@@ -20,6 +19,7 @@ import {
 	streamAnthropic,
 	stripClaudeToolPrefix,
 } from "@veyyon/ai/providers/anthropic";
+import { deriveClaudeDeviceId } from "@veyyon/ai/providers/claude-device-id";
 import { getEnvApiKey, streamSimple } from "@veyyon/ai/stream";
 import type { AssistantMessage, Context, Model, ModelSpec, TJsonSchema, TokenTaskBudget, Tool } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";

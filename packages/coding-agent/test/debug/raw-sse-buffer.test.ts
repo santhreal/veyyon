@@ -5,6 +5,7 @@ import {
 	formatRawSseIsoTime,
 	formatRawSseResponseComment,
 	RawSseDebugBuffer,
+	type RawSseDebugSnapshot,
 	rawSseRecordLines,
 	resolveRawSseDebugBuffer,
 } from "@veyyon/coding-agent/debug/raw-sse-buffer";
@@ -171,6 +172,80 @@ describe("RawSseDebugBuffer", () => {
 		expect(dataLines[0]).toBe(6);
 		expect(dataLines.at(-1)).toBe(1_005);
 		expect(dataLines.every((n, idx) => n === 6 + idx)).toBe(true);
+	});
+});
+
+/**
+ * WHY: eviction advanced the window's head index and left the evicted record in its array slot until
+ * the next compaction, which runs only once the dead prefix outgrows the live window. Every evicted
+ * record and its raw lines stayed reachable, so the buffer held up to twice its char budget.
+ *
+ * Class closed: an evicted record reachable from the buffer, for both eviction triggers (the event
+ * count and the char budget), each driven to a state where the dead prefix has not been compacted.
+ * Not caught: retention outside the record array, such as a subscriber that keeps a snapshot.
+ */
+describe("a raw SSE buffer holds no record it evicted", () => {
+	/** Records `count` events of `line(i)` and returns a weak reference to each event's raw lines. */
+	function record(buffer: RawSseDebugBuffer, count: number, line: (i: number) => string): WeakRef<string[]>[] {
+		const refs: WeakRef<string[]>[] = [];
+		for (let i = 0; i < count; i++) {
+			const raw = [line(i)];
+			refs.push(new WeakRef(raw));
+			buffer.recordEvent({ event: null, data: "{}", raw }, model);
+		}
+		return refs;
+	}
+
+	async function nextTurn(): Promise<void> {
+		const { promise, resolve } = Promise.withResolvers<void>();
+		setImmediate(resolve);
+		await promise;
+	}
+
+	/**
+	 * Collects until no evicted target is reachable, at most 16 times, then snapshots the buffer. The
+	 * snapshot after the loop keeps the buffer itself reachable during every collection; a buffer
+	 * collected with its records would pass vacuously. JSC scans the native stack conservatively, so a
+	 * stale slot can keep one object alive for a few turns; a retention by the buffer never clears, so
+	 * the bound only ends the wait.
+	 */
+	async function collect(
+		buffer: RawSseDebugBuffer,
+		evicted: WeakRef<string[]>[],
+	): Promise<{ alive: number; snapshot: RawSseDebugSnapshot }> {
+		let alive = evicted.length;
+		for (let attempt = 0; attempt < 16 && alive > 0; attempt++) {
+			await nextTurn();
+			Bun.gc(true);
+			alive = evicted.filter(ref => ref.deref() !== undefined).length;
+		}
+		return { alive, snapshot: buffer.snapshot() };
+	}
+
+	it("releases records evicted by the event count before the window compacts", async () => {
+		const buffer = new RawSseDebugBuffer();
+		// 300 evictions leave a dead prefix of 300 below 1000 live records: no compaction yet.
+		const evicted = record(buffer, 300, i => `data: old ${i}`);
+		record(buffer, 1_000, i => `data: new ${i}`);
+
+		const { alive, snapshot } = await collect(buffer, evicted);
+		expect(alive).toBe(0);
+		expect(snapshot.droppedRecords).toBe(300);
+		expect(rawSseRecordLines(snapshot.records[0])).toEqual(["data: new 0"]);
+	});
+
+	it("releases records evicted by the char budget before the window compacts", async () => {
+		const buffer = new RawSseDebugBuffer();
+		// 64_000 chars per record: 8 fill the budget, 8 more evict the first 8, and a dead prefix of 8
+		// does not exceed the 8 live records, so no compaction runs.
+		const wide = (tag: string) => (i: number) => `data: ${tag} ${i}`.padEnd(63_998, "x");
+		const evicted = record(buffer, 8, wide("old"));
+		record(buffer, 8, wide("new"));
+
+		const { alive, snapshot } = await collect(buffer, evicted);
+		expect(alive).toBe(0);
+		expect(snapshot.droppedRecords).toBe(8);
+		expect(snapshot.records).toHaveLength(8);
 	});
 });
 

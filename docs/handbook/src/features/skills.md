@@ -1,6 +1,6 @@
 # Skills
 
-A skill is a folder of instructions you drop into your profile, and the agent picks it up on its own. Use one to teach Veyyon a repeated task: how your project runs its tests, the steps of a release, the shape of a code review. Skills live on disk, not in the binary, so you add or change one by editing a file, with no rebuild.
+A skill is a folder of instructions you drop into your profile, and the agent loads it automatically. Use one to give Veyyon instructions for a repeated task: how your project runs its tests, the steps of a release, the shape of a code review. Skills are files on disk, not part of the binary, so you add or change one by editing a file, with no rebuild.
 
 For general information on Veyyon extension capabilities, see [Tools, skills, and extension data](../using/extending.md).
 
@@ -31,7 +31,7 @@ Because foreign skills never load on their own, you bring one into Veyyon by
 importing it. The onboarding import scan finds user-level skills and instruction
 files that other AI tools (Claude, Codex, Gemini, Cursor, and similar) left on
 disk, and copies the ones you pick into the active profile's `skills` directory.
-The copy is profile-owned from then on, so it loads like any other profile skill
+The copy belongs to the profile from then on, so it loads like any other profile skill
 and is not affected by the original tool.
 
 A separate setting, `discovery.importForeignConfig`, governs whether Veyyon
@@ -49,12 +49,12 @@ discovery:
 ```
 
 The setting does not change skill loading: foreign skills are never loaded
-ambiently whether it is on or off. It also does not gate the import scan. The
+ambiently whether it is on or off. It also does not affect the import scan. The
 onboarding scan always finds and offers foreign files for import, because
-importing copies a file into your profile, which is how foreign config comes in
-by default now that ambient loading is off.
+importing copies a file into your profile, which is the default route for foreign
+config.
 
-Veyyon's own instructions load in four layers, and only these four:
+Veyyon's instructions load from these four layers and no others:
 
 1. The compiled system prompt.
 2. The global `~/.veyyon/AGENTS.md`, which applies to every profile.
@@ -78,7 +78,7 @@ but it never contradicts, loosens, or forbids what a broader one allows, because
 project file is content checked into a repository you may not have written. Within
 the project layer the file closest to your working directory is the most specific
 one. See
-[instruction layers](#instruction-layers) below for how to split rules between
+[instruction layers](#instruction-layers) for how to split rules between
 the global and per-profile files.
 
 ## Instruction layers

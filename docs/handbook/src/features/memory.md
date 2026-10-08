@@ -1,9 +1,9 @@
 # Memory
 
-By default, each session starts fresh: Veyyon holds no record of your last one. Turn memory on and it
-carries durable project context forward, so a fact it learned yesterday is available today. Memory is
-off by default. To use it, you pick a backend, which is the store that holds what Veyyon remembers, in
-`config.yml` or `/settings`.
+By default, each session starts fresh: Veyyon holds no record of your last one. With memory on,
+durable project context persists across sessions, so a fact recorded in one session is available in
+the next. Memory is off by default. To use it, pick a backend, which is the store for recorded
+memories, in `config.yml` or `/settings`.
 
 ## Backends
 
@@ -31,7 +31,7 @@ With `memory.backend: mnemopi`, Veyyon:
 3. **Retains** completed turns on a configurable interval (`mnemopi.retainEveryNTurns`, default 4).
 4. Supplies **pre-compaction context** from the memory backend when compaction runs.
 
-Key settings: `mnemopi.scoping`, `mnemopi.recallLimit`, `mnemopi.autoRecall`, `mnemopi.autoRetain`,
+Settings: `mnemopi.scoping`, `mnemopi.recallLimit`, `mnemopi.autoRecall`, `mnemopi.autoRetain`,
 `mnemopi.polyphonicRecall`, `mnemopi.noEmbeddings`. See
 [`docs/internal/mnemosyne-memory-backend.md`](../../../internal/mnemosyne-memory-backend.md).
 
@@ -61,7 +61,7 @@ these primary fields:
 with `/compact`. Use `/handoff` only when you explicitly want a new session. See
 [Compaction and project memory](../context/compaction-memory.md).
 
-## What the model sees
+## What the model receives
 
 Recalled or summarized memory is **background context**, not instructions. Current user messages,
 tool output, and repo state win on conflict. The agent should cite memory paths when memory changes
@@ -71,18 +71,17 @@ It arrives in two places. The guidance that stays the same all session is part o
 Anything that changes while you work, the memories recalled for your current question and the mental
 models when they reload, arrives as a message next to your prompt instead.
 
-That split is about cost, not ordering. The provider caches the system prompt as the prefix of every
-request; changing it mid-session throws that cache away and the next request re-reads the whole
-conversation at the uncached rate. A recalled memory in the prompt made every recall cost a full
-re-read. The model reads the same text either way.
+The split reduces cost. The provider caches the system prompt as the prefix of every request;
+changing it mid-session discards that cache, and the next request re-reads the whole conversation
+at the uncached rate. The model receives the same text either way.
 
 A block is sent once. A reload that finds the same memories sends nothing, so your context does not
-grow by a copy of your memories every turn. `/memory view` shows both halves, so what you read there
-is what the model gets.
+grow by a copy of your memories every turn. `/memory view` shows both halves: the text the model
+receives.
 
 ## Configuration
 
 Use `/memory` or `/settings` (Memory group), or set keys under `memory.*`, `mnemopi.*`,
 `hindsight.*`, or `memories.*` depending on the active backend.
 
-The active backend, its settings, and its stored data (mnemopi SQLite path, local Markdown artifacts, hindsight bank id) are scoped to the active profile (`VEYYON_PROFILE`). Profiles do not share memory stores.
+The active backend, its settings, and its stored data are scoped to the active profile. Mnemopi and local memory write under the profile's own memories directory. A Hindsight bank id left unset is `veyyon` in the default profile and `veyyon-<profile>` in a named one, so profiles that share a Hindsight server keep separate banks. Set the same `hindsight.bankId` in two profiles to share one bank.

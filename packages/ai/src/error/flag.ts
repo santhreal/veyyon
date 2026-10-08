@@ -26,6 +26,8 @@ export const Flag = {
 	Grammar: 0x1000_0000,
 	/** Anthropic model/account does not support fast mode / the `speed` parameter. */
 	FastModeUnsupported: 0x2000_0000,
+	/** The endpoint rejected the `tool_choice` the request named (400): a forced or `none` choice it does not take. */
+	ToolChoiceRejected: 0x0000_4000,
 	/**
 	 * The peer named a transport failure a replay reproduces: an HTTP/2 code from
 	 * `NON_RETRYABLE_HTTP2_ERROR_CODES` (`NGHTTP2_CANCEL` — our own abort — `FLOW_CONTROL_ERROR`,

@@ -224,9 +224,22 @@ describe("pi-native scanner: streaming", () => {
 		expect(calls(events)).toHaveLength(1);
 	});
 
-	it("drops an unterminated call at flush instead of emitting a half call", () => {
-		const events = feed("<call:edit>\nnever closed");
-		expect(calls(events)).toHaveLength(0);
+	it("ends a call the stream ended inside, marked unterminated, with the body read so far", () => {
+		for (const chunked of [false, true]) {
+			const events = feed("<call:edit>\nnever closed", { chunked });
+			const starts = events.flatMap(e => (e.type === "toolStart" ? [e.id] : []));
+			expect(starts).toHaveLength(1);
+			expect(calls(events)).toEqual([
+				{
+					type: "toolEnd",
+					id: starts[0]!,
+					name: "edit",
+					arguments: { input: "never closed" },
+					rawBlock: "<call:edit>\nnever closed",
+					unterminated: true,
+				},
+			]);
+		}
 	});
 
 	it("passes stray text that merely resembles a call opener through as text", () => {

@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import { errorMessage, getModelDbPath, logger } from "@veyyon/utils";
 import { readJsonSnapshotSync, writeJsonSnapshotSync } from "@veyyon/utils/json-snapshot";
+import { shareCompat } from "./compat/share";
 import type { EnrichedRegistrySnapshotStore } from "./models";
 import type { Api, Model } from "./types";
 import { isRecord } from "./utils";
@@ -26,7 +27,12 @@ export function createEnrichedRegistrySnapshotStore(dbPath?: string): EnrichedRe
 				const registry = new Map<string, Map<string, Model<Api>>>();
 				for (const [provider, models] of Object.entries(parsed)) {
 					if (!isRecord(models)) return null;
-					registry.set(provider, new Map(Object.entries(models) as Array<[string, Model<Api>]>));
+					const restored = new Map<string, Model<Api>>();
+					for (const [id, model] of Object.entries(models) as Array<[string, Model<Api>]>) {
+						model.compat = shareCompat(model.compat);
+						restored.set(id, model);
+					}
+					registry.set(provider, restored);
 				}
 				return registry;
 			} catch {

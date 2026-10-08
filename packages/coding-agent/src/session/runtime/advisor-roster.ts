@@ -37,6 +37,7 @@ import {
 	AdviseTool,
 	type AdvisorAgent,
 	type AdvisorConfig,
+	type AdvisorContextFile,
 	AdvisorEmissionGuard,
 	type AdvisorMessageDetails,
 	type AdvisorNote,
@@ -49,6 +50,7 @@ import {
 	buildAdvisorQuarantineSourceText,
 	deriveAdvisorTelemetry,
 	formatAdvisorBatchContent,
+	formatAdvisorContextPrompt,
 	getOrCreateAdvisorProviderSessionId,
 	isAdvisorInterruptImmuneTurnActive,
 	isAdvisorProductEnabled,
@@ -194,9 +196,21 @@ export class AdvisorRoster {
 	#autoResumeSuppressed = false;
 	#primaryTurnsCompleted = 0;
 	#interruptImmuneTurnStart: number | undefined;
-	readonly #tools: AgentTool[] | undefined;
+	/** Builds the tools advisors choose from; undefined gives advisors no tools beyond `advise`. */
+	readonly #loadTools: (() => Promise<AgentTool[]>) | undefined;
+	/**
+	 * The tools advisors choose from, built by {@link #loadTools} on the first advisor turn or tool
+	 * listing and shared by every advisor this roster starts afterwards. Cleared when the build
+	 * fails, so the next turn builds again.
+	 */
+	#tools: Promise<AgentTool[]> | undefined;
 	#watchdogPrompt: string | undefined;
 	#sharedInstructions: string | undefined;
+	#contextFiles: readonly AdvisorContextFile[] | undefined;
+	/**
+	 * {@link #contextFiles} rendered for the advisor's system prompt, on the first advisor start: a
+	 * session with no advisor never holds a second copy of its context files.
+	 */
 	#contextPrompt: string | undefined;
 	/** Configured advisor roster from WATCHDOG.yml; undefined/empty → single legacy advisor. */
 	#configs: AdvisorConfig[] | undefined;
@@ -209,11 +223,15 @@ export class AdvisorRoster {
 	 *  used as the open barrier for the next build so two writers never share a file. */
 	#recorderClosed: Promise<void> = Promise.resolve();
 
-	constructor(host: AdvisorRosterHost, tools: AgentTool[] | undefined, scope: ProjectAdvisorScope) {
+	constructor(
+		host: AdvisorRosterHost,
+		loadTools: (() => Promise<AgentTool[]>) | undefined,
+		scope: ProjectAdvisorScope,
+	) {
 		this.#host = host;
-		this.#tools = tools;
+		this.#loadTools = loadTools;
 		this.#watchdogPrompt = scope.advisorWatchdogPrompt;
-		this.#contextPrompt = scope.advisorContextPrompt;
+		this.#contextFiles = scope.advisorContextFiles;
 		this.#sharedInstructions = scope.advisorSharedInstructions;
 		this.#configs = scope.advisorConfigs;
 	}
@@ -268,14 +286,25 @@ export class AdvisorRoster {
 	replaceProjectScope(scope: ProjectAdvisorScope): void {
 		this.stop();
 		this.#watchdogPrompt = scope.advisorWatchdogPrompt;
-		this.#contextPrompt = scope.advisorContextPrompt;
+		this.#contextFiles = scope.advisorContextFiles;
+		this.#contextPrompt = undefined;
 		this.#sharedInstructions = scope.advisorSharedInstructions;
 		this.#configs = scope.advisorConfigs;
 		this.enableFromSettings();
 	}
 
-	availableToolNames(): string[] {
-		return (this.#tools ?? []).map(tool => tool.name);
+	/** The names of the tools advisors choose from, building them if no advisor has yet. */
+	async availableToolNames(): Promise<string[]> {
+		return (await this.#toolPool()).map(tool => tool.name);
+	}
+
+	#toolPool(): Promise<AgentTool[]> {
+		if (this.#loadTools === undefined) return Promise.resolve([]);
+		this.#tools ??= this.#loadTools().catch(error => {
+			this.#tools = undefined;
+			throw error;
+		});
+		return this.#tools;
 	}
 
 	firstAgent(): Agent | undefined {
@@ -411,7 +440,7 @@ export class AdvisorRoster {
 			a.runtime.reset();
 			a.adviseTool.resetDeliveredNotes();
 			a.emissionGuard.reset();
-			this.#attachRecorderFeed(a);
+			attachRecorderFeed(a);
 		}
 		this.#primaryTurnsCompleted = 0;
 		this.#interruptImmuneTurnStart = undefined;
@@ -595,7 +624,7 @@ export class AdvisorRoster {
 
 		for (const descriptor of descriptors) {
 			const advisor = this.#instantiate(descriptor, advisorServiceTierResolver);
-			this.#attachRecorderFeed(advisor);
+			attachRecorderFeed(advisor);
 			if (seedToCurrent) advisor.runtime.seedTo(host.agent.state.messages.length);
 			this.#advisors.push(advisor);
 		}
@@ -628,19 +657,35 @@ export class AdvisorRoster {
 		// `#watchdogPrompt` already carries WATCHDOG.md + YAML shared
 		// instructions; `config.instructions` adds this advisor's specialization.
 		const systemPrompt = [advisorPrompts["advisor/system"].text];
+		if (this.#contextFiles) this.#contextPrompt ??= formatAdvisorContextPrompt(this.#contextFiles);
 		if (this.#contextPrompt) systemPrompt.push(this.#contextPrompt);
 		if (this.#watchdogPrompt) systemPrompt.push(this.#watchdogPrompt);
 		if (this.#sharedInstructions) systemPrompt.push(this.#sharedInstructions);
 		if (config.instructions?.trim()) systemPrompt.push(config.instructions.trim());
 
 		const names = config.tools === undefined ? ADVISOR_DEFAULT_TOOL_NAMES : new Set(config.tools);
-		const tools = (this.#tools ?? []).filter(t => names.has(t.name));
-		const availableAdvisorToolNames = new Set<string>();
-		availableAdvisorToolNames.add(adviseTool.name);
-		for (const tool of tools) {
-			availableAdvisorToolNames.add(tool.name);
-			if (tool.customWireName !== undefined) availableAdvisorToolNames.add(tool.customWireName);
-		}
+		const availableAdvisorToolNames = new Set<string>([adviseTool.name]);
+		// The configured tools join the advisor before its first request rather than at start: the
+		// pool they come from constructs every built-in tool and loads its module, which a session
+		// whose advisor never reviews a turn does not need.
+		let toolsAttached: Promise<void> | undefined;
+		const attachTools = (): Promise<void> => {
+			toolsAttached ??= this.#toolPool().then(
+				pool => {
+					const tools = pool.filter(t => names.has(t.name));
+					for (const tool of tools) {
+						availableAdvisorToolNames.add(tool.name);
+						if (tool.customWireName !== undefined) availableAdvisorToolNames.add(tool.customWireName);
+					}
+					advisorAgent.setTools([adviseTool, ...tools]);
+				},
+				error => {
+					toolsAttached = undefined;
+					throw error;
+				},
+			);
+			return toolsAttached;
+		};
 		let quarantinedAdvisorOutput: string | undefined;
 		let currentAdvisorInput = "";
 
@@ -704,7 +749,7 @@ export class AdvisorRoster {
 				systemPrompt,
 				model: advisorModel,
 				thinkingLevel: toReasoningEffort(advisorThinkingLevel),
-				tools: [adviseTool, ...tools],
+				tools: [adviseTool],
 			},
 			appendOnlyContext,
 			sessionId: advisorProviderSessionId,
@@ -739,6 +784,7 @@ export class AdvisorRoster {
 
 		const advisorAgentFacade: AdvisorAgent = {
 			prompt: async input => {
+				await attachTools();
 				let quarantined: string | undefined;
 				try {
 					quarantinedAdvisorOutput = undefined;
@@ -842,15 +888,6 @@ export class AdvisorRoster {
 		return advisorRef;
 	}
 
-	/** Subscribe the advisor agent's finalized messages into the transcript recorder.
-	 *  Idempotent-by-replacement: callers detach the prior feed first. Kept separate
-	 *  so the re-prime path can mute the feed across an abort-driven reset. */
-	#attachRecorderFeed(advisor: ActiveAdvisor): void {
-		advisor.agentUnsubscribe = advisor.agent.subscribe(event => {
-			if (event.type === "message_end") advisor.recorder.record(event.message);
-		});
-	}
-
 	// ------------------------------------------------------------ delivery
 
 	/**
@@ -912,6 +949,15 @@ export class AdvisorRoster {
 			.steerAdvice(formatAdvisorBatchContent(notes), details)
 			.catch(err => logger.debug("advisor delivery failed", { err: errorMessage(err) }));
 	}
+}
+
+/** Subscribe the advisor agent's finalized messages into the transcript recorder.
+ *  Idempotent-by-replacement: callers detach the prior feed first. Kept separate
+ *  so the re-prime path can mute the feed across an abort-driven reset. */
+function attachRecorderFeed(advisor: ActiveAdvisor): void {
+	advisor.agentUnsubscribe = advisor.agent.subscribe(event => {
+		if (event.type === "message_end") advisor.recorder.record(event.message);
+	});
 }
 
 /** A visible advisor card carrying `notes`, as the aside batch and a preserved note both record it. */

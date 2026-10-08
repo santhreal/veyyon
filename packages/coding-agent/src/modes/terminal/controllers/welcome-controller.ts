@@ -1,4 +1,10 @@
-import { type Container, Spacer, type TUI } from "@veyyon/tui";
+import {
+	Container,
+	type NativeScrollbackCommittedRows,
+	type NativeScrollbackCompaction,
+	Spacer,
+	type TUI,
+} from "@veyyon/tui";
 import { type RecentSession, WelcomeComponent } from "../components/dialogs/welcome";
 
 /** Data the welcome hero renders. The controller never reaches into the
@@ -32,22 +38,67 @@ export interface WelcomeLayoutPort {
 }
 
 /**
+ * The startup hero's place in the root tree: spacer, card, spacer.
+ *
+ * Dismissal empties the slot. The rows the engine already committed to native
+ * scrollback leave the frame through the drop report of
+ * `NativeScrollbackCompaction`, so the engine moves its commit index past rows
+ * the terminal still holds. A resumed session renders its transcript under the
+ * card, which scrolls the card into history before the first keystroke
+ * dismisses it. Without the report the card's rows vanish from the front of the
+ * committed prefix, the engine reads that as diverged history, and it erases
+ * native scrollback and replays the whole transcript, rendering every block of
+ * the session again.
+ */
+class HeroSlot extends Container implements NativeScrollbackCommittedRows, NativeScrollbackCompaction {
+	// Rows of the previous frame's render the engine holds as committed, fed before each render.
+	#committedRows = 0;
+	// Rows the last render returned.
+	#renderedRows = 0;
+	// Committed rows dropped since the engine last read the count.
+	#droppedRows = 0;
+
+	setNativeScrollbackCommittedRows(rows: number): void {
+		this.#committedRows = rows;
+	}
+
+	takeNativeScrollbackDroppedRows(): number {
+		const rows = this.#droppedRows;
+		this.#droppedRows = 0;
+		return rows;
+	}
+
+	/** The slot's height, without the drop a render records. */
+	measureHeight(width: number): number {
+		return super.render(width).length;
+	}
+
+	override render(width: number): readonly string[] {
+		const lines = super.render(width);
+		// The committed rows are the leading rows of the card, so an emptied slot drops
+		// exactly those. Rows still on screen were never committed and repaint as an
+		// ordinary change.
+		if (lines.length === 0) this.#droppedRows += Math.min(this.#committedRows, this.#renderedRows);
+		this.#renderedRows = lines.length;
+		return lines;
+	}
+}
+
+/**
  * Owns the startup welcome hero and the full `/welcome` card: mounting and
  * dismissal. Extracted from interactive-mode (ARCH-2) so the god-file keeps
  * only orchestration and the layout math it owns.
  */
 export class WelcomeController {
-	#component: WelcomeComponent | undefined;
-	/** The hero card's surrounding spacers, kept so dismissal removes the
-	 *  whole block and leaves no blank rows behind. */
-	#spacers: Spacer[] = [];
+	/** The hero card and its surrounding spacers, emptied on dismissal so no blank rows stay behind. */
+	#slot: HeroSlot | undefined;
 
 	constructor(private readonly port: WelcomeLayoutPort) {}
 
 	/** True while the startup hero is mounted — the layout gives it a share
 	 * of the home-screen slack as top margin while this holds. */
 	get hasHero(): boolean {
-		return this.#component !== undefined;
+		return this.#slot !== undefined;
 	}
 
 	/** Mount the startup hero (spacer · card · spacer) at the top of the UI
@@ -62,30 +113,31 @@ export class WelcomeController {
 			adopted.setModel(inputs.modelName, inputs.providerName);
 			adopted.setRecentSessions(inputs.recentSessions);
 		}
-		this.#component =
+		const card =
 			adopted ?? new WelcomeComponent(inputs.version, inputs.modelName, inputs.providerName, inputs.recentSessions);
-		this.#spacers = [new Spacer(1), new Spacer(1)];
-		this.port.ui.addChild(this.#spacers[0] as Spacer);
-		this.port.ui.addChild(this.#component);
-		this.port.ui.addChild(this.#spacers[1] as Spacer);
+		const slot = new HeroSlot();
+		slot.addChild(new Spacer(1));
+		slot.addChild(card);
+		slot.addChild(new Spacer(1));
+		this.#slot = slot;
+		this.port.ui.addChild(slot);
 	}
 
-	/** Remove the startup hero (and its spacers) — the first real keystroke
-	 * ends the hero moment. Idempotent. Reports the removed row count
-	 * (card + spacers + the host's top margin) so the host can keep the
-	 * composer pinned to the viewport bottom on this very frame. */
+	/** Empty the startup hero's slot — the first real keystroke ends the hero
+	 * moment. Idempotent. Reports the removed row count (card + spacers + the
+	 * host's top margin) so the host can keep the composer pinned to the
+	 * viewport bottom on this very frame. The emptied slot stays mounted: its
+	 * next render reports the card rows native scrollback already holds. */
 	dismiss(): void {
-		const welcome = this.#component;
-		if (!welcome) return;
-		this.#component = undefined;
+		const slot = this.#slot;
+		if (!slot) return;
+		this.#slot = undefined;
 		const width = this.port.ui.terminal.columns;
 		// The host's anchor measures via the last composed frame, which still
 		// includes the card — report the removed rows explicitly so the fill
 		// math corrects on this frame, not the next.
-		const removedRows = welcome.render(width).length + this.#spacers.length + this.port.topFillRows(width);
-		for (const spacer of this.#spacers) this.port.ui.removeChild(spacer);
-		this.#spacers = [];
-		this.port.ui.removeChild(welcome);
+		const removedRows = slot.measureHeight(width) + this.port.topFillRows(width);
+		slot.clear();
 		this.port.onHeroDismissed(removedRows);
 	}
 

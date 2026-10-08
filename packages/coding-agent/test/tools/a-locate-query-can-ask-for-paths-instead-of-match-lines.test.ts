@@ -21,7 +21,7 @@ import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
-import { SearchTool, type SearchToolDetails, searchSchema } from "@veyyon/coding-agent/tools/search/search";
+import { SEARCH_TYPES, SearchTool, type SearchToolDetails } from "@veyyon/coding-agent/tools/search/search";
 import { MULTI_FILE_PER_FILE_MATCHES, type TextSearchDetails } from "@veyyon/coding-agent/tools/search/text-search";
 import { removeWithRetries } from "@veyyon/utils";
 import { makeToolSession } from "../helpers/tool-session";
@@ -199,7 +199,7 @@ describe("a locate query can ask for paths instead of match lines", () => {
 	});
 
 	it("accepts the field for text search and rejects it for every other type", async () => {
-		const types = searchSchema.shape.type.options;
+		const types = SEARCH_TYPES;
 		expect(types.length).toBeGreaterThan(1);
 		await withWorkspace("paths-types-", async dir => {
 			await seedWorkspace(dir);

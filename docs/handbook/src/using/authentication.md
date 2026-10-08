@@ -59,8 +59,8 @@ Give an account a name and every surface uses it:
 ```
 
 The name belongs to the account, not to the stored token, so it survives a token refresh and a later
-re-login to the same account. An account you never named shows its email instead, and Veyyon tells
-you how to set one.
+re-login to the same account. An account you never named shows its email instead, and Veyyon prints
+how to set one.
 
 ## Which account am I using?
 
@@ -68,7 +68,7 @@ you how to set one.
 /account
 ```
 
-This reports one line per provider your session has actually routed to, with the account it is using
+This reports one line per provider your session has routed to, with the account it is using
 and that account's remaining quota. A provider you hold credentials for but have not used this
 session is not listed.
 

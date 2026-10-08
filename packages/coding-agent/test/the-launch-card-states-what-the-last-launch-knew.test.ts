@@ -31,8 +31,6 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 import { ThinkingLevel } from "@veyyon/agent-core/thinking";
-import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { settings } from "@veyyon/coding-agent/config/settings-instance";
 import {
 	type LaunchFacts,
 	type LaunchFactsUpdate,
@@ -41,7 +39,9 @@ import {
 	recordLaunchFacts,
 	recordRestLaunchFacts,
 	resetLaunchFactsForTest,
-} from "@veyyon/coding-agent/modes/launch-facts";
+} from "@veyyon/coding-agent/config/launch-facts";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { settings } from "@veyyon/coding-agent/config/settings-instance";
 import { LaunchComposerFoot } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
 import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/components/status-line/component";
 import {

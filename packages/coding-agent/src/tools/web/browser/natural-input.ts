@@ -14,6 +14,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import { clampLow, untilAborted } from "@veyyon/utils";
 import { bestEffort } from "@veyyon/utils/discarded-fault";
 import type { ElementHandle, KeyInput, MouseButton, Page } from "puppeteer-core";
+import { DETACHED_NODE_MESSAGE, RELOCATION_ATTEMPTS } from "./element-identity";
+import { releaseHandles } from "./handle-release";
 
 /** A point in the page's top-level viewport, in CSS pixels. */
 export interface ViewportPoint {
@@ -309,8 +311,8 @@ interface ScrollMeasure {
 	readonly visible: boolean;
 }
 
-/** Measure an element against its document's viewport. Serialized into the page. */
-function measureScroll(element: unknown): ScrollMeasure {
+/** Measure an element against its document's viewport; null for an element that left its document. Serialized into the page. */
+function measureScroll(element: unknown): ScrollMeasure | null {
 	interface Box {
 		readonly left: number;
 		readonly top: number;
@@ -328,9 +330,11 @@ function measureScroll(element: unknown): ScrollMeasure {
 		readonly clientHeight: number;
 	}
 	const el = element as {
+		readonly isConnected: boolean;
 		getBoundingClientRect(): Box;
 		readonly ownerDocument: { readonly scrollingElement: Scroller | null; readonly documentElement: Scroller };
 	};
+	if (!el.isConnected) return null;
 	const box = el.getBoundingClientRect();
 	const root = el.ownerDocument.scrollingElement ?? el.ownerDocument.documentElement;
 	const width = root.clientWidth;
@@ -504,11 +508,38 @@ export class NaturalInput {
 	 * for an element inside a frame, whose document the wheel does not reach from here, and for one the
 	 * wheel did not bring in (a scroller of its own, a page that ignores the wheel), which the caller
 	 * scrolls instantly.
+	 *
+	 * An element that leaves the document while the wheel turns is measured again on the element
+	 * `relocate` returns, up to {@link RELOCATION_ATTEMPTS} times in a row; without `relocate`, or with
+	 * no replacement, the scroll fails with puppeteer's detached-node message.
 	 */
-	async scrollIntoView(element: ElementHandle, signal?: AbortSignal): Promise<boolean> {
+	async scrollIntoView(
+		element: ElementHandle,
+		signal?: AbortSignal,
+		relocate?: () => Promise<ElementHandle | null>,
+	): Promise<boolean> {
 		if (element.frame.parentFrame() !== null) return false;
-		const measure = async (): Promise<ScrollNeed> =>
-			scrollNeedOf(await untilAborted(signal, () => element.evaluate(measureScroll)));
+		let current = element;
+		const replacements: ElementHandle[] = [];
+		const measure = async (): Promise<ScrollNeed> => {
+			for (let attempt = 0; ; attempt++) {
+				const measured = await untilAborted(signal, () => current.evaluate(measureScroll));
+				if (measured) return scrollNeedOf(measured);
+				const fresh = relocate && attempt < RELOCATION_ATTEMPTS ? await relocate() : null;
+				if (!fresh) throw new Error(DETACHED_NODE_MESSAGE);
+				replacements.push(fresh);
+				current = fresh;
+			}
+		};
+		try {
+			return await this.#wheelIntoView(measure, signal);
+		} finally {
+			await releaseHandles(replacements);
+		}
+	}
+
+	/** Turn the wheel until `measure` reports the element near the viewport's centre ({@link scrollIntoView}). */
+	async #wheelIntoView(measure: () => Promise<ScrollNeed>, signal?: AbortSignal): Promise<boolean> {
 		let need = await measure();
 		if (scrolledIn(need)) return true;
 		// The wheel turns where the pointer is, and a page that has seen no pointer has it at its corner.

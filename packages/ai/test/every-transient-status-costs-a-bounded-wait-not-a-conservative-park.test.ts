@@ -25,14 +25,16 @@
  * WHAT THIS DOES NOT CATCH. It sweeps statuses, not prose: a transient phrase
  * ("upstream connect error") that reaches `parseRateLimitReason` with no number
  * still returns `UNKNOWN`, which is the deliberate answer for a body the rules
- * cannot read. Nor does it fix the two owners of what `UNKNOWN` costs —
- * `calculateRateLimitBackoffMs` says thirty minutes and the selector-cooldown
- * call site overrides it to five; both are still reachable and are recorded here
- * as the bound, not endorsed.
+ * cannot read. What `UNKNOWN` costs per caller context is pinned in
+ * `an-unreadable-failure-costs-what-its-caller-context-states.test.ts`.
  */
 import { describe, expect, it } from "bun:test";
 import { TRANSIENT_TRANSPORT_PATTERN } from "@veyyon/ai/error/domains/network";
-import { calculateRateLimitBackoffMs, parseRateLimitReason } from "@veyyon/ai/error/rate-limit";
+import {
+	calculateRateLimitBackoffMs,
+	parseRateLimitReason,
+	RATE_LIMIT_BACKOFF_CONTEXTS,
+} from "@veyyon/ai/error/rate-limit";
 
 /**
  * The statuses the transport classifier calls transient, read off the pattern that owns them.
@@ -85,7 +87,9 @@ describe("every transient status costs a bounded wait, not a conservative park",
 			const reason = parseRateLimitReason(`HTTP ${status}: upstream failure`);
 
 			expect(reason).not.toBe(UNREADABLE);
-			expect(calculateRateLimitBackoffMs(reason)).toBeLessThanOrEqual(BOUND_MS);
+			for (const context of RATE_LIMIT_BACKOFF_CONTEXTS) {
+				expect(calculateRateLimitBackoffMs(reason, context)).toBeLessThanOrEqual(BOUND_MS);
+			}
 		});
 	}
 

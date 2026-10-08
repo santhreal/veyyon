@@ -66,7 +66,7 @@ Cursor behavior uses `CURSOR_MARKER` (not `getCursorPosition`). Focused componen
 
 Your `render(width)` output must be terminal-safe:
 
-1. **Do not intentionally exceed `width` on any line**. The renderer truncates overwide non-image lines as a last-resort guard, but components should still return width-safe output.
+1. **Do not exceed `width` on any line**. The renderer truncates overwide non-image lines as a last-resort fallback, but components should still return width-safe output.
 2. **Measure visual width**, not string length: use `visibleWidth()`.
 3. **Truncate/wrap ANSI-aware text** with `truncateToWidth()` / `wrapTextWithAnsi()`.
 4. **Sanitize tabs/content** from external sources using `replaceTabs()` (and higher-level sanitizers in coding-agent render paths).
@@ -192,7 +192,7 @@ The `view` alternative returns host-independent `ToolView` values; see
 - `dispose()` is optional at type level but should be implemented when you own timers, subprocesses, watchers, sockets, or overlays.
 - `Container.dispose()` and `Box.dispose()` dispose their children; `clear()` and `removeChild()` only detach them.
 - Tool cards dispose replaced renderer components and retain reused component instances. Disposing a card also stops its animation clocks and detaches its presentation subscription.
-- `done(...)` should be called exactly once from your component flow.
+- `done(...)` should be called only once from your component flow.
 - For cancellable long-running UI, pair `CancellableLoader` with `AbortSignal` and call `done(...)` from `onAbort`.
 
 Example cancellation pattern:
@@ -282,7 +282,7 @@ export default function extension(pi: ExtensionAPI): void {
 }
 ```
 
-## Key implementation files
+## Implementation files
 
 - `hosts/terminal/engine/src/core/tui.ts`: terminal rendering, focus, overlays, and input dispatch.
 - `packages/utils/src/width.ts`: width/truncation/sanitization primitives.

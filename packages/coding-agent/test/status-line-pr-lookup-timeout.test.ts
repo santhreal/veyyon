@@ -42,7 +42,6 @@ const gitSegmentSettings: StatusLineSettings = {
 	preset: "custom",
 	leftSegments: ["pr"],
 	rightSegments: ["session_name"],
-	sessionAccent: false,
 };
 
 function makeSession() {

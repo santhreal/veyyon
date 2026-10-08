@@ -1,6 +1,6 @@
-import { DEFAULT_TAB_WIDTH, sanitizeText } from "@veyyon/utils";
+import { DEFAULT_TAB_WIDTH, lazy, sanitizeText } from "@veyyon/utils";
 import { SGR_INTENSITY_RESET } from "@veyyon/utils/ansi";
-import * as Diff from "diff";
+import type * as Diff from "diff";
 import { type HighlightRequest, highlightCode } from "../../../../theme/highlight";
 import { theme } from "../../../../theme/theme-binding";
 import { type CodeFrameMarker, formatCodeFrameLine, replaceTabs } from "../../../../tools/core/render-utils";
@@ -8,6 +8,9 @@ import { getLanguageFromPath } from "../../../../utils/lang-from-path";
 
 /** SGR dim on / normal intensity — additive, preserves fg/bg colors. */
 const DIM = "\x1b[2m";
+
+/** The `diff` package, evaluated on the first rendered word diff rather than with the transcript renderer. */
+const diffPackage = lazy(() => require("diff") as typeof Diff);
 
 /**
  * Visualize leading whitespace (indentation) with dim glyphs.
@@ -57,7 +60,7 @@ function parseDiffLine(line: string): ParsedDiffLine {
  * Strips leading whitespace from inverse to avoid highlighting indentation.
  */
 function renderIntraLineDiff(oldContent: string, newContent: string): { removedLine: string; addedLine: string } {
-	const wordDiff = Diff.diffWords(oldContent, newContent);
+	const wordDiff = diffPackage.value.diffWords(oldContent, newContent);
 
 	let removedLine = "";
 	let addedLine = "";

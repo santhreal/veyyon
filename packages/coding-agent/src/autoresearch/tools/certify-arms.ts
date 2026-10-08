@@ -1,7 +1,7 @@
-import { formatCount } from "@veyyon/utils";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { formatCount, lazy } from "@veyyon/utils";
 import { replaceTabs } from "@veyyon/utils/tab-width";
 import { truncateToWidth } from "@veyyon/utils/width";
-import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";
 import { resolveActiveBranchSession } from "../helpers";
 import type { RunRow } from "../storage";
@@ -19,27 +19,29 @@ import {
 } from "../swarm";
 import type { AutoresearchToolFactoryOptions } from "../types";
 
-const certifyArmsSchema = type({
-	arms: type({
-		arm: type("string").describe("arm label, matching the one passed to run_experiment"),
-		hypothesis: type("string").describe("what this arm claims to do"),
-		diff: type("string").describe("unified diff of the arm's change"),
-		modified_paths: type("string[]").describe("paths the arm touched"),
-		"metric?": type("number").describe("measured primary metric, once run_experiment has reported it"),
-		"cold_metric?": type("number").describe("cost a fresh checkout pays, when the harness reports one"),
-	})
-		.array()
-		.describe("candidate arms to triage"),
-	"verdicts?": type({
-		arm: type("string").describe("arm that was reviewed"),
-		certified_by: type("string").describe("reviewer that produced this verdict"),
-		flagged: type("boolean").describe("true when the reviewer judged the arm to be gaming the metric"),
-		"reason?": type("string").describe("why the arm was flagged"),
-	})
-		.array()
-		.describe("review outcomes; supply on the second call to pick a winner"),
-	"baseline_cold_metric?": type("number").describe("the baseline's cold metric, to detect relocated work"),
-});
+const certifyArmsSchema = lazy(() =>
+	type({
+		arms: type({
+			arm: type("string").describe("arm label, matching the one passed to run_experiment"),
+			hypothesis: type("string").describe("what this arm claims to do"),
+			diff: type("string").describe("unified diff of the arm's change"),
+			modified_paths: type("string[]").describe("paths the arm touched"),
+			"metric?": type("number").describe("measured primary metric, once run_experiment has reported it"),
+			"cold_metric?": type("number").describe("cost a fresh checkout pays, when the harness reports one"),
+		})
+			.array()
+			.describe("candidate arms to triage"),
+		"verdicts?": type({
+			arm: type("string").describe("arm that was reviewed"),
+			certified_by: type("string").describe("reviewer that produced this verdict"),
+			flagged: type("boolean").describe("true when the reviewer judged the arm to be gaming the metric"),
+			"reason?": type("string").describe("why the arm was flagged"),
+		})
+			.array()
+			.describe("review outcomes; supply on the second call to pick a winner"),
+		"baseline_cold_metric?": type("number").describe("the baseline's cold metric, to detect relocated work"),
+	}),
+);
 
 interface CertifyArmsDetails {
 	survivors: number;
@@ -50,13 +52,15 @@ interface CertifyArmsDetails {
 
 export function createCertifyArmsTool(
 	options: AutoresearchToolFactoryOptions,
-): ToolDefinition<typeof certifyArmsSchema, CertifyArmsDetails> {
+): ToolDefinition<typeof certifyArmsSchema.value, CertifyArmsDetails> {
 	return {
 		name: "certify_arms",
 		label: "Certify Arms",
 		description:
 			"Triage the candidate arms of one breadth iteration and assign cross-review. Call once with `arms` to get rejections and review assignments; review the arms you are assigned, then call again with `verdicts` to get the winner. Arms whose diff is unreadable, out of scope, empty, or a duplicate are rejected before measurement counts.",
-		parameters: certifyArmsSchema,
+		get parameters() {
+			return certifyArmsSchema.value;
+		},
 		defaultInactive: true,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const sessionResult = await resolveActiveBranchSession(ctx.cwd);

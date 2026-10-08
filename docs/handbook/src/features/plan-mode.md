@@ -74,9 +74,9 @@ Mutual exclusion: plan mode, goal mode, and vibe mode cannot run together; the T
 to enter one while another is active.
 
 Permissions: `vibe_spawn` and `vibe_send` are `exec`-level tool calls, so starting a worker or handing
-it a new instruction is gated by the session approval mode exactly like running a command (`vibe_wait`,
-`vibe_kill`, and `vibe_list` are read-level). Each worker then runs headless with the full tool set
-(edit, write, bash, ...) and executes autonomously, a detached agent has no UI to confirm prompts
+it a new instruction requires approval under the session approval mode, the same as running a command
+(`vibe_wait`, `vibe_kill`, and `vibe_list` are read-level). Each worker then runs headless with the full tool set
+(edit, write, bash, ...) and executes autonomously; a detached agent has no UI to confirm prompts
 against, so approving the spawn is the authorization boundary. Your `tools.approval` allow/deny policies
 still apply inside every worker, so path and command denials you have configured are enforced there too.
 Workers are killed when you leave vibe mode, so none outlive the director that drives them.

@@ -239,7 +239,7 @@ setInterval(() => {}, 1000);
 			// gone" would pass instantly on a file that never existed.
 			const socketRemoved = await waitUntil(
 				() =>
-					Bun.file(daemonBrokerEndpoint(projectDir, runtimeDir))
+					Bun.file(daemonBrokerEndpoint(runtimeDir))
 						.exists()
 						.then(exists => !exists),
 				5_000,

@@ -216,6 +216,26 @@ const noOpUIContext: ExtensionUIContext = {
 	setToolsExpanded: () => {},
 };
 
+const RESERVED_SHORTCUTS: Record<string, true> = {
+	"ctrl+c": true,
+	"ctrl+d": true,
+	"ctrl+z": true,
+	"ctrl+k": true,
+	"ctrl+p": true,
+	"ctrl+l": true,
+	"ctrl+o": true,
+	"ctrl+t": true,
+	"ctrl+g": true,
+	"alt+m": true,
+	// Default chord for `app.message.followUp` (Windows Terminal can't deliver Ctrl+Enter; #1903).
+	"ctrl+q": true,
+	"shift+tab": true,
+	"shift+ctrl+p": true,
+	"alt+enter": true,
+	escape: true,
+	enter: true,
+};
+
 export class ExtensionRunner {
 	#uiContext: ExtensionUIContext;
 	/**
@@ -426,33 +446,13 @@ export class ExtensionRunner {
 		this.runtime.flagValues.set(name, value);
 	}
 
-	static readonly #RESERVED_SHORTCUTS: Record<string, true> = {
-		"ctrl+c": true,
-		"ctrl+d": true,
-		"ctrl+z": true,
-		"ctrl+k": true,
-		"ctrl+p": true,
-		"ctrl+l": true,
-		"ctrl+o": true,
-		"ctrl+t": true,
-		"ctrl+g": true,
-		"alt+m": true,
-		// Default chord for `app.message.followUp` (Windows Terminal can't deliver Ctrl+Enter; #1903).
-		"ctrl+q": true,
-		"shift+tab": true,
-		"shift+ctrl+p": true,
-		"alt+enter": true,
-		escape: true,
-		enter: true,
-	};
-
 	getShortcuts(): Map<KeyId, ExtensionShortcut> {
 		const allShortcuts = new Map<KeyId, ExtensionShortcut>();
 		for (const ext of this.extensions) {
 			for (const [key, shortcut] of ext.shortcuts) {
 				const normalizedKey = key.toLowerCase() as KeyId;
 
-				if (ExtensionRunner.#RESERVED_SHORTCUTS[normalizedKey]) {
+				if (RESERVED_SHORTCUTS[normalizedKey]) {
 					logger.warn(
 						`The extension at ${shortcut.extensionPath} binds ${key}, which veyyon reserves, so that ` +
 							"binding is inactive and the built-in still runs. " +
@@ -617,17 +617,6 @@ export class ExtensionRunner {
 		};
 	}
 
-	#isSessionBeforeEvent(event: RunnerEmitEvent): event is SessionBeforeEvent {
-		return (
-			event.type === "session_before_switch" ||
-			event.type === "session_before_branch" ||
-			event.type === "session_before_compact" ||
-			event.type === "session_before_tree"
-		);
-	}
-	#isSessionShutdownEvent(event: RunnerEmitEvent): event is Extract<RunnerEmitEvent, { type: "session_shutdown" }> {
-		return event.type === "session_shutdown";
-	}
 	async #runHandlerWithTimeout<TEvent extends { type: string }, TResult>(
 		handler: (event: TEvent, ctx: ExtensionContext) => Promise<TResult | undefined> | TResult | undefined,
 		event: TEvent,
@@ -676,7 +665,7 @@ export class ExtensionRunner {
 		let ctx: ExtensionContext | undefined;
 		let result: SessionBeforeEventResult | SessionCompactingResult | SessionStopEventResult | undefined;
 
-		if (this.#isSessionShutdownEvent(event)) {
+		if (isSessionShutdownEvent(event)) {
 			const timeoutMs = handlerTimeoutForEvent(event.type);
 			const promises: Promise<unknown>[] = [];
 			for (const ext of this.extensions) {
@@ -705,7 +694,7 @@ export class ExtensionRunner {
 					handlerTimeoutForEvent(event.type),
 				);
 
-				if (this.#isSessionBeforeEvent(event) && handlerResult) {
+				if (isSessionBeforeEvent(event) && handlerResult) {
 					result = handlerResult as SessionBeforeEventResult;
 					if (result.cancel) {
 						return result as RunnerEmitResult<TEvent>;
@@ -1115,4 +1104,19 @@ export class ExtensionRunner {
 
 		return undefined;
 	}
+}
+
+function isSessionBeforeEvent(event: RunnerEmitEvent): event is SessionBeforeEvent {
+	return (
+		event.type === "session_before_switch" ||
+		event.type === "session_before_branch" ||
+		event.type === "session_before_compact" ||
+		event.type === "session_before_tree"
+	);
+}
+
+function isSessionShutdownEvent(
+	event: RunnerEmitEvent,
+): event is Extract<RunnerEmitEvent, { type: "session_shutdown" }> {
+	return event.type === "session_shutdown";
 }

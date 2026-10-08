@@ -33,7 +33,7 @@ import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { cwdEscapingTargets, searchPathFilesystemTargets } from "@veyyon/coding-agent/tools/core/cwd-boundary";
 import { parseApprovalPathList } from "@veyyon/coding-agent/tools/core/path-utils";
-import { SearchTool, searchSchema } from "@veyyon/coding-agent/tools/search/search";
+import { SEARCH_TYPES, SearchTool } from "@veyyon/coding-agent/tools/search/search";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { Snowflake } from "@veyyon/utils";
 
@@ -232,8 +232,8 @@ describe("JSON-encoded and delimited search paths enforce cwd boundary", () => {
 			expect(searchTool.approval({ type: "structure", input: "call($$$)", path: sshPath })).toBe("read");
 		});
 
-		it("sweeps all searchSchema discriminators for JSON array support", () => {
-			const discriminators = searchSchema.shape.type.options;
+		it("sweeps all search type discriminators for JSON array support", () => {
+			const discriminators = SEARCH_TYPES;
 			expect(discriminators).toEqual(["files", "text", "structure"]);
 
 			for (const type of discriminators) {

@@ -27,7 +27,7 @@ as `commit`, `grep`, and `models`.
 | --- | --- | --- |
 | Sessions | JSONL trees, resume, fork, compact | [Sessions](../using/sessions.md) |
 | Edit | Hashline patches (default) | [Edit engine](../edit/engine.md) |
-| Approvals | Approval-mode gating on tool tiers | [Approvals](./sandbox.md) |
+| Approvals | Approval-mode checks on tool tiers | [Approvals](./sandbox.md) |
 | Config | Layered `config.yml`, profiles | [Config](./config.md) |
 | MCP | External tool servers | [MCP](./mcp.md) |
 | Providers | Model registry + auth | [Providers](../reference/providers.md) |

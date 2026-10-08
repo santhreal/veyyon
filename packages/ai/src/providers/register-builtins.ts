@@ -25,6 +25,7 @@ import {
 	getStreamIdleTimeoutOverrideMs,
 	iterateWithIdleTimeout,
 } from "../utils/idle-iterator";
+import type * as OpenAICodexResponses from "./openai-codex-responses";
 
 // ---------------------------------------------------------------------------
 // Lazy provider module shape
@@ -350,9 +351,16 @@ export const streamGoogleGeminiCli = createLazyStream(
 export const streamGoogleVertex = createLazyStream("google-vertex", () =>
 	import("./google-vertex").then(module => ({ stream: module.streamGoogleVertex })),
 );
+/**
+ * The ChatGPT Codex client, loaded on its first use. The lazy stream below and the session's background
+ * websocket prewarm load the same module through this one specifier.
+ */
+export function loadOpenAICodexResponses(): Promise<typeof OpenAICodexResponses> {
+	return import("./openai-codex-responses");
+}
 export const streamOpenAICodexResponses = createLazyStream(
 	"openai-codex-responses",
-	() => import("./openai-codex-responses").then(module => ({ stream: module.streamOpenAICodexResponses })),
+	() => loadOpenAICodexResponses().then(module => ({ stream: module.streamOpenAICodexResponses })),
 	PROVIDER_HANDLED_STREAM_TIMEOUTS,
 );
 export const streamOpenAICompletions = createLazyStream(
@@ -382,4 +390,11 @@ export const streamOllama = createLazyStream(
 );
 export const streamBedrock = createLazyStream("bedrock-converse-stream", () =>
 	import("./amazon-bedrock").then(module => ({ stream: module.streamBedrock })),
+);
+// GitLab Duo Workflow bounds its own first event (`openBoundedFirstEventBudget`) and owns the
+// WebSocket that carries the remote agent's tool actions, so the wrapper adds no watchdog of its own.
+export const streamGitLabDuoWorkflow = createLazyStream(
+	"gitlab-duo-agent",
+	() => import("./gitlab-duo-workflow").then(module => ({ stream: module.streamGitLabDuoWorkflow })),
+	PROVIDER_HANDLED_STREAM_TIMEOUTS,
 );

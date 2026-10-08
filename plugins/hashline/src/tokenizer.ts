@@ -290,23 +290,21 @@ function scanMoveDest(line: string, index: number, end: number): string | null {
 	if (cursor >= end) return null;
 	const first = line.charCodeAt(cursor);
 	if (first === 34 /* " */ || first === 39 /* ' */) {
-		const quote = line[cursor];
-		let next = cursor + 1;
-		while (next < end) {
-			const ch = line[next];
-			if (ch === "\\" && next + 1 < end) {
-				next += 2;
-				continue;
-			}
-			if (ch === quote) {
-				const after = skipWhitespace(line, next + 1, end);
-				return after === end ? unquotePath(line.slice(cursor, next + 1)) : null;
-			}
-			next++;
-		}
-		return null;
+		const close = closingQuoteIndex(line, cursor + 1, end, line[cursor]);
+		if (close < 0) return null;
+		return skipWhitespace(line, close + 1, end) === end ? unquotePath(line.slice(cursor, close + 1)) : null;
 	}
 	return unquotePath(line.slice(cursor, end).trim());
+}
+
+/** Index of the first unescaped `quote` in `[from, end)`, or -1; a backslash skips the character after it. */
+function closingQuoteIndex(line: string, from: number, end: number, quote: string): number {
+	for (let next = from; next < end; next++) {
+		const ch = line[next];
+		if (ch === "\\" && next + 1 < end) next++;
+		else if (ch === quote) return next;
+	}
+	return -1;
 }
 
 function scanAnchorOp(
@@ -409,18 +407,13 @@ function tryParseHeader(line: string): { path: string; fileHash?: string } | nul
 	let pathEnd = bodyEnd;
 	let fileHash: string | undefined;
 	const trailingHashStart = bodyEnd - HL_FILE_HASH_LENGTH - 1;
-	if (trailingHashStart >= FILE_PREFIX_LENGTH && line.charCodeAt(trailingHashStart) === CHAR_HASH) {
-		let allHex = true;
-		for (let probe = trailingHashStart + 1; probe < bodyEnd; probe++) {
-			if (!isHexDigitCode(line.charCodeAt(probe))) {
-				allHex = false;
-				break;
-			}
-		}
-		if (allHex) {
-			pathEnd = trailingHashStart;
-			fileHash = line.slice(trailingHashStart + 1, bodyEnd).toUpperCase();
-		}
+	if (
+		trailingHashStart >= FILE_PREFIX_LENGTH &&
+		line.charCodeAt(trailingHashStart) === CHAR_HASH &&
+		isHexSpan(line, trailingHashStart + 1, bodyEnd)
+	) {
+		pathEnd = trailingHashStart;
+		fileHash = line.slice(trailingHashStart + 1, bodyEnd).toUpperCase();
 	}
 
 	// The hashline header grammar uses `#` as the path/tag separator and
@@ -430,13 +423,20 @@ function tryParseHeader(line: string): { path: string; fileHash?: string } | nul
 	// line-suffixed tags (`#1A2B:42`) — means the header is malformed.
 	// Surface the focused diagnostic instead of silently mis-routing the
 	// edit or reporting a missing tag downstream.
-	for (let i = FILE_PREFIX_LENGTH; i < pathEnd; i++) {
-		if (line.charCodeAt(i) === CHAR_HASH) return null;
-	}
+	const strayHash = line.indexOf("#", FILE_PREFIX_LENGTH);
+	if (strayHash !== -1 && strayHash < pathEnd) return null;
 
 	if (pathEnd === FILE_PREFIX_LENGTH) return null;
 	const path = line.slice(FILE_PREFIX_LENGTH, pathEnd);
 	return fileHash !== undefined ? { path, fileHash } : { path };
+}
+
+/** True when every character in `[from, to)` is a hex digit. */
+function isHexSpan(line: string, from: number, to: number): boolean {
+	for (let i = from; i < to; i++) {
+		if (!isHexDigitCode(line.charCodeAt(i))) return false;
+	}
+	return true;
 }
 
 interface TokenBase {

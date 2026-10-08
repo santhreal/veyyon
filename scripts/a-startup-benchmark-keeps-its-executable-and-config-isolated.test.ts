@@ -3,6 +3,13 @@
  * plausible timings for identical code. Exercise copied config and the benchmark
  * process against in-place and atomic executable replacement. This does not prove
  * startup performance or detect a replacement restored before the final digest.
+ *
+ * A bench started from a veyyon session inherited `VEYYON_CODING_AGENT_DIR`, so every
+ * measured launch loaded the caller's profile: its model roles, its credentials and the
+ * network discovery an unresolvable role triggers, while the seeded home went unread.
+ * The directory-override sweep covers every spawn site the version and frame arms reach
+ * (the natives probe, `timeRun`, `recordFrame`). It does not cover the settled and
+ * responsive arms, which build their child environment from nothing.
  */
 import { afterEach, expect, test } from "bun:test";
 import { execFile } from "node:child_process";
@@ -10,6 +17,7 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
+import { DIR_OVERRIDE_ENV_KEYS } from "@veyyon/utils";
 import { parseDocument } from "yaml";
 import { disableBenchmarkUpdates } from "./bench-startup";
 
@@ -106,3 +114,49 @@ if (process.argv.includes('--version')) {
 	},
 	30_000,
 );
+
+test("launches every measured child without the caller's directory overrides", async () => {
+	const directory = await scratch();
+	const binary = path.join(directory, "study-cli");
+	const record = path.join(directory, "launches.jsonl");
+	const inherited: Record<string, string> = {
+		VEYYON_CODING_AGENT_DIR: path.join(directory, "caller-agent"),
+		VEYYON_PROFILE: "caller",
+		VEYYON_CONFIG_DIR: ".veyyon-caller",
+	};
+	// A new override key turns this red until it has an inherited value to leak.
+	expect(Object.keys(inherited).sort()).toEqual([...DIR_OVERRIDE_ENV_KEYS].sort());
+	await writeFile(
+		binary,
+		`#!${process.execPath}
+import * as fs from 'node:fs';
+const env = ${JSON.stringify(DIR_OVERRIDE_ENV_KEYS)}.map(key => process.env[key] ?? null);
+fs.appendFileSync(${JSON.stringify(record)}, JSON.stringify({ arg: process.argv[2] ?? null, env }) + '\\n');
+process.stdout.write('study 1.0.0\\n');
+`,
+		{ mode: 0o755 },
+	);
+	await exec(
+		process.execPath,
+		[
+			"scripts/bench-startup.ts",
+			"--only",
+			"version,frame",
+			"--runs",
+			"1",
+			"--bin",
+			binary,
+			"--scratch",
+			path.join(directory, "run"),
+		],
+		{ cwd: root, timeout: 25_000, env: { ...process.env, HOME: directory, ...inherited } },
+	);
+	const launches: Array<{ arg: string | null; env: Array<string | null> }> = (await readFile(record, "utf8"))
+		.trim()
+		.split("\n")
+		.map(line => JSON.parse(line));
+	expect(launches.map(launch => launch.arg)).toEqual(["grep", "--version", null]);
+	// The bench seeds `VEYYON_PROFILE` as the default profile; every other override is absent.
+	const seeded = DIR_OVERRIDE_ENV_KEYS.map(key => (key === "VEYYON_PROFILE" ? "" : null));
+	for (const launch of launches) expect(launch.env).toEqual(seeded);
+}, 30_000);

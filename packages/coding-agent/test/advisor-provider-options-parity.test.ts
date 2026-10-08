@@ -90,7 +90,6 @@ describe("AgentSession advisor provider-options parity", () => {
 			sessionManager,
 			settings: settings(),
 			modelRegistry,
-			advisorTools: [],
 			advisorStreamFn,
 			preferWebsockets: true,
 		});
@@ -180,7 +179,6 @@ describe("AgentSession advisor provider-options parity", () => {
 			sessionManager,
 			settings: settings(),
 			modelRegistry,
-			advisorTools: [],
 			advisorStreamFn: captureStreamFn,
 			onPayload,
 			onResponse,
@@ -239,7 +237,6 @@ describe("AgentSession advisor provider-options parity", () => {
 			sessionManager,
 			settings: settings(),
 			modelRegistry,
-			advisorTools: [],
 		});
 		session.settings.setModelRole("advisor", "anthropic/claude-sonnet-4-5");
 		expect(session.setAdvisorEnabled(true)).toBe(true);

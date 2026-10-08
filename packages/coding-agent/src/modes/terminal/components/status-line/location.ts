@@ -183,13 +183,32 @@ function scratchRoots(): readonly string[] {
 	return [...roots];
 }
 
-export function classifyProjectDir(pwd: string): { scratch: boolean; relative: string | null } {
-	for (const root of scratchRoots()) {
+/** Whether a directory sits under a scratch root, and its path below that root. */
+export interface ProjectDirClass {
+	readonly scratch: boolean;
+	readonly relative: string | null;
+}
+
+/**
+ * One slot, for the reason {@link displayRootCache} has one: each scratch root costs two `realpath`
+ * calls inside `pathIsWithin`, so the four roots of a Linux host are eight syscalls a frame. Keyed on
+ * the root list as well as the directory, because the list is read from the environment per call.
+ */
+let scratchClassCache: { pwd: string; key: string; result: ProjectDirClass } | null = null;
+
+export function classifyProjectDir(pwd: string): ProjectDirClass {
+	const roots = scratchRoots();
+	const key = roots.join("\u0000");
+	if (scratchClassCache?.pwd === pwd && scratchClassCache.key === key) return scratchClassCache.result;
+	let result: ProjectDirClass = { scratch: false, relative: null };
+	for (const root of roots) {
 		if (pathIsWithin(root, pwd)) {
-			return { scratch: true, relative: relativePathWithinRoot(root, pwd) };
+			result = { scratch: true, relative: relativePathWithinRoot(root, pwd) };
+			break;
 		}
 	}
-	return { scratch: false, relative: null };
+	scratchClassCache = { pwd, key, result };
+	return result;
 }
 
 /** Cells the path is clipped to when the caller states no limit of its own. */

@@ -25,29 +25,47 @@
  * however many secrets were added afterwards.
  *
  * WHAT IS ASSERTED. The first half is behavior: after a disable and after a move, expansion is gone
- * and every redaction closure on the lease still hides the value. The second half locks the
- * unification at the source level, because most of the twelve seams are private and reachable only
- * through a live provider request. A structural assertion is what keeps a fourteenth copy of the
- * wrong expression from appearing next to the twelve that were removed.
+ * and every redaction closure on the lease still hides the value. The second half sweeps every
+ * member of `SessionSecrets`, the one owner of the session's outbound redaction: each outbound
+ * member is driven with a lease whose two authorities hold DIFFERENT values, so a member that
+ * reached for the expansion authority to redact leaves the redaction authority's value in the
+ * clear. The sweep enumerates the class at run time and fails on a member nobody classified.
+ *
+ * WHAT IT DOES NOT CATCH. A call site in `AgentSession` that redacts through
+ * `secrets.expansionObfuscator` directly instead of an outbound member. The getter is named for
+ * the direction it serves so that such a call reads as wrong in review.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import {
+	type CompactionPreparation,
+	createFileOps,
+	DEFAULT_COMPACTION_SETTINGS,
+	LEGACY_ARCHIVE_KEY,
+} from "@veyyon/agent-core/compaction";
+import type { Message } from "@veyyon/ai";
 import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession, type ExtensionFactory } from "@veyyon/coding-agent/sdk";
-import { deobfuscateToolArguments, SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
+import {
+	deobfuscateToolArguments,
+	obfuscateMessages,
+	obfuscateProviderContext,
+	SecretObfuscator,
+} from "@veyyon/coding-agent/secrets/obfuscator";
 import { SecretVault } from "@veyyon/coding-agent/secrets/vault";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { obfuscateProviderPayload } from "@veyyon/coding-agent/session/agent-session-provider-request";
 import type { SecretRuntimeLease } from "@veyyon/coding-agent/session/agent-session-types";
+import { SessionSecrets, type SessionSecretsHost } from "@veyyon/coding-agent/session/runtime/session-secrets";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { getProjectDir, setProjectDir, TempDir } from "@veyyon/utils";
 import { useIsolatedConfigRoot } from "../helpers/isolated-agent-dir";
 
 const A_VALUE = "redaction-outlives-project-a-value-13579";
 const B_VALUE = "redaction-outlives-project-b-value-97531";
-const AGENT_SESSION_SOURCE = path.resolve(import.meta.dir, "../../src/session/agent-session.ts");
 const getConfigRoot = useIsolatedConfigRoot();
 
 let registryRoot: TempDir;
@@ -314,70 +332,116 @@ describe("a lease whose expansion authority has been revoked", () => {
 });
 
 describe("no outbound seam reads the expansion authority", () => {
-	/**
-	 * The structural lock, which is what a ONE PLACE fix needs to stay fixed.
-	 *
-	 * Most of the twelve seams are private and run only inside a live provider request, so a
-	 * behavioral test cannot reach them without standing up a provider per seam. What can be pinned
-	 * exactly is that the wrong expression is gone: `#obfuscator` is the expansion authority, so any
-	 * REDACTION-direction use of it is the bug. Deobfuscation is the opposite direction and is
-	 * supposed to read `#obfuscator`, so the patterns below name only outbound shapes.
-	 */
-	const source = (): Promise<string> => fs.readFile(AGENT_SESSION_SOURCE, "utf8");
+	const host: SessionSecretsHost = {
+		sessionId: () => "session-secrets-sweep",
+		cwd: () => "/repo",
+		awaitScopeTransitionReady: async () => undefined,
+		queueRefresh: async () => undefined,
+		refreshSystemPrompt: async () => undefined,
+	};
 
-	/** Every line that redacts through `#obfuscator`, trimmed, so a failure prints lines not a file. */
-	async function outboundExpansionAuthorityLines(): Promise<string[]> {
-		const patterns = [
-			"this.#obfuscator?.obfuscate(",
-			"obfuscateProviderContext(this.#obfuscator",
-			"obfuscateMessages(this.#obfuscator",
-			"obfuscator: this.#obfuscator,",
-		];
-		return (await source())
-			.split("\n")
-			.map(line => line.trim())
-			.filter(line => patterns.some(pattern => line.includes(pattern)));
+	/** Expansion knows only A, redaction knows only B: the two directions are told apart by value. */
+	function splitLease(expansion: SecretObfuscator | undefined): SecretRuntimeLease {
+		const redaction = new SecretObfuscator([{ type: "plain", origin: "config", content: B_VALUE, name: "B_TOKEN" }]);
+		return {
+			revision: 1,
+			cwd: "/repo",
+			expansionObfuscator: expansion,
+			redactionObfuscator: redaction,
+			hasRedactions: true,
+			obfuscateText: text => redaction.obfuscate(text),
+			obfuscateMessages: messages => obfuscateMessages(redaction, messages),
+			obfuscateContext: context => obfuscateProviderContext(redaction, context),
+			obfuscatePayload: payload => obfuscateProviderPayload(payload, redaction),
+			isFreshForExpansion: () => true,
+			ensureFreshForExpansion: async () => undefined,
+			assertFreshForExpansion: () => undefined,
+		};
 	}
 
-	/**
-	 * An exact allowlist rather than plain absence, because the owners contain the fallback.
-	 *
-	 * Each owner ends in `... : <the raw obfuscator>` for the case where no runtime lease has been
-	 * installed at all, which is a session constructed without secret support rather than one whose
-	 * expansion was revoked. Those four lines are the whole legitimate population. Anything else
-	 * matching is a thirteenth seam reading the expansion authority to redact, which is the bug.
-	 */
-	it("reads the expansion authority only inside the four owner fallbacks", async () => {
-		expect(await outboundExpansionAuthorityLines()).toEqual([
-			": obfuscateProviderContext(this.#obfuscator, shaped);",
-			"return this.#secretRuntime?.obfuscateText(text) ?? this.#obfuscator?.obfuscate(text) ?? text;",
-			"return runtime ? runtime.obfuscateContext(context) : obfuscateProviderContext(this.#obfuscator, context);",
-			"return this.#obfuscator ? obfuscateMessages(this.#obfuscator, messages) : messages;",
-		]);
+	const TEXT = `a=${A_VALUE} b=${B_VALUE}`;
+	const userMessage = (text: string): Message => ({ role: "user", content: text, timestamp: 1 });
+	const preparation: CompactionPreparation = {
+		firstKeptEntryId: "entry-1",
+		messagesToSummarize: [],
+		turnPrefixMessages: [],
+		recentMessages: [],
+		isSplitTurn: false,
+		tokensBefore: 0,
+		previousSummary: TEXT,
+		previousPreserveData: { [LEGACY_ARCHIVE_KEY]: { text: TEXT } },
+		fileOps: createFileOps(),
+		settings: DEFAULT_COMPACTION_SETTINGS,
+	};
+
+	/** Every outbound member, driven with {@link TEXT} and serialized to the bytes it would send. */
+	const OUTBOUND: Record<string, (secrets: SessionSecrets) => string> = {
+		obfuscateProviderText: secrets => secrets.obfuscateProviderText(TEXT),
+		snapshotProviderTextRedactor: secrets => secrets.snapshotProviderTextRedactor()(TEXT),
+		obfuscateContext: secrets => JSON.stringify(secrets.obfuscateContext({ messages: [userMessage(TEXT)] })),
+		obfuscateMessages: secrets => JSON.stringify(secrets.obfuscateMessages([userMessage(TEXT)])),
+		obfuscateTextForProvider: secrets => secrets.obfuscateTextForProvider(TEXT) ?? "",
+		obfuscatePreparationForProvider: secrets => JSON.stringify(secrets.obfuscatePreparationForProvider(preparation)),
+		providerRedactor: secrets => secrets.providerRedactor?.obfuscate(TEXT) ?? TEXT,
+		hasProviderRedactions: secrets => (secrets.hasProviderRedactions ? "" : TEXT),
+	};
+	/** Members that read the expansion authority on purpose: they turn a placeholder back into a value. */
+	const EXPANSION = [
+		"awaitRefreshForRender",
+		"contentCarriesLivePlaceholder",
+		"deobfuscateSessionContextForDisplay",
+		"displayExpander",
+		"expandForDiskComparison",
+		"expandForDisplay",
+		"expansionObfuscator",
+		"messagesCarryLivePlaceholder",
+		"providerTextReadyForDelta",
+		// Re-redacts text that `expandForDiskComparison` expanded, so it pairs with that authority.
+		"redactForLog",
+	];
+	const LIFECYCLE = ["install", "lease", "refresh"];
+
+	it("classifies every member of the owner", () => {
+		const members = Object.getOwnPropertyNames(SessionSecrets.prototype).filter(name => name !== "constructor");
+		expect(members.sort()).toEqual([...Object.keys(OUTBOUND), ...EXPANSION, ...LIFECYCLE].sort());
 	});
 
-	/** The advisor must never hold a snapshot again; it is the one consumer that outlives every refresh. */
-	it("hands the advisor no snapshot of the obfuscator", async () => {
-		const lines = await outboundExpansionAuthorityLines();
-		expect(lines.filter(line => line.includes("obfuscator: this.#obfuscator,"))).toEqual([]);
+	it("redacts through the redaction authority on every outbound member", () => {
+		const secrets = new SessionSecrets(
+			{
+				secretRuntime: splitLease(
+					new SecretObfuscator([{ type: "plain", origin: "config", content: A_VALUE, name: "A_TOKEN" }]),
+				),
+			},
+			host,
+		);
+		for (const [name, drive] of Object.entries(OUTBOUND)) {
+			const outbound = drive(secrets);
+			expect({ name, leaked: outbound.includes(B_VALUE) }).toEqual({ name, leaked: false });
+			// The discriminator: only the expansion authority knows A_VALUE.
+			if (name !== "hasProviderRedactions") {
+				expect({ name, expansionRead: !outbound.includes(A_VALUE) }).toEqual({ name, expansionRead: false });
+			}
+		}
 	});
 
-	/**
-	 * The owners have to exist, or the assertions above pass by deleting redaction outright.
-	 *
-	 * This is the half that makes the absence meaningful: the outbound helpers are named, present,
-	 * and read the runtime lease first.
-	 */
-	it("routes outbound redaction through the named owners", async () => {
-		const text = await source();
-		expect(text).toContain("#hasProviderRedactions");
-		expect(text).toContain("#obfuscateContextForProvider");
-		expect(text).toContain("#obfuscateMessagesForProvider");
-		// PUBLIC, not `#private`: `/share`, the speech enhancer and the auto-title generator all need
-		// to hold the live redactor, and every one of them was reaching for `session.obfuscator`
-		// (the expansion authority) because there was nothing public to reach for instead.
-		expect(text).toContain("get providerRedactor(): SecretObfuscator | undefined {");
-		expect(text).toContain("return this.#secretRuntime?.redactionObfuscator ?? this.#obfuscator;");
+	it("keeps redacting on every outbound member once expansion is revoked", () => {
+		const secrets = new SessionSecrets({ secretRuntime: splitLease(undefined) }, host);
+		expect(secrets.expansionObfuscator).toBeUndefined();
+		for (const [name, drive] of Object.entries(OUTBOUND)) {
+			expect({ name, leaked: drive(secrets).includes(B_VALUE) }).toEqual({ name, leaked: false });
+		}
+	});
+
+	/** A session built without runtime support redacts through the one obfuscator it was given. */
+	it("redacts through the configured obfuscator when no lease was ever installed", () => {
+		const secrets = new SessionSecrets(
+			{ obfuscator: new SecretObfuscator([{ type: "plain", origin: "config", content: B_VALUE, name: "B_TOKEN" }]) },
+			host,
+		);
+		for (const [name, drive] of Object.entries(OUTBOUND)) {
+			expect({ name, leaked: drive(secrets).includes(B_VALUE) }).toEqual({ name, leaked: false });
+		}
 	});
 
 	/**

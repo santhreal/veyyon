@@ -1,25 +1,29 @@
 import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
-import { logger, untilAborted } from "@veyyon/utils";
-import { type } from "arktype";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { lazy, logger, untilAborted } from "@veyyon/utils";
 import { ensureBankExists } from "../../memory/hindsight/bank";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "..";
 import { requireMnemopiSessionState } from "./memory-session";
 import { reflectToolView } from "./memory-view";
 
-const memoryReflectSchema = type({
-	query: type("string").describe("question to answer"),
-	"context?": type("string").describe("optional context"),
-});
+const memoryReflectSchema = lazy(() =>
+	type({
+		query: type("string").describe("question to answer"),
+		"context?": type("string").describe("optional context"),
+	}),
+);
 
-export type MemoryReflectParams = typeof memoryReflectSchema.infer;
+export type MemoryReflectParams = typeof memoryReflectSchema.value.infer;
 
-export class MemoryReflectTool implements AgentTool<typeof memoryReflectSchema> {
+export class MemoryReflectTool implements AgentTool<typeof memoryReflectSchema.value> {
 	readonly name = "reflect";
 	readonly approval = "read" as const;
 	readonly label = "Reflect";
 	readonly description = toolsPrompts["tools/reflect"].text;
-	readonly parameters = memoryReflectSchema;
+	get parameters(): typeof memoryReflectSchema.value {
+		return memoryReflectSchema.value;
+	}
 	readonly strict = true;
 	readonly loadMode = "discoverable";
 	readonly summary = "Synthesize an answer from long-term memory";

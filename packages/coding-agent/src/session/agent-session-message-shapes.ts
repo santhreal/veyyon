@@ -44,6 +44,35 @@ export function sanitizeAssistantForReparentedHistory(message: AssistantMessage)
 	return { ...message, content, providerPayload: undefined };
 }
 
+const NON_WHITESPACE_RE = /\S/;
+
+/**
+ * Whether an assistant turn stopped with nothing a turn can use: no tool call and no text beyond
+ * whitespace. A "stop" that only reasons does not answer the user and gives the agent loop no tool
+ * call to run. An orphaned toolUse stop (no tool_use block) corrupts Anthropic history: a later
+ * tool_result has nothing to anchor to, and thinking alone cannot anchor one.
+ */
+export function isEmptyAssistantStop(assistantMessage: AssistantMessage): boolean {
+	const { stopReason } = assistantMessage;
+	if (stopReason !== "stop" && stopReason !== "toolUse") return false;
+	for (const content of assistantMessage.content) {
+		if (content.type === "toolCall") return false;
+		if (content.type === "text" && NON_WHITESPACE_RE.test(content.text)) return false;
+	}
+	return true;
+}
+
+/** Whether two assistant messages are the same turn: one object, or one timestamp, route and stop. */
+export function isSameAssistantMessage(left: AssistantMessage, right: AssistantMessage): boolean {
+	return (
+		left === right ||
+		(left.timestamp === right.timestamp &&
+			left.provider === right.provider &&
+			left.model === right.model &&
+			left.stopReason === right.stopReason)
+	);
+}
+
 export function textFromContent(content: unknown): string {
 	if (typeof content === "string") return content.trim();
 	if (!Array.isArray(content)) return "";

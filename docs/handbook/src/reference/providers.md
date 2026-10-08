@@ -146,7 +146,7 @@ Each provider has one or more environment variables that supply a key when no st
 
 OAuth-backed providers such as `anthropic`, `github-copilot`, `cursor`, `ollama-cloud`, `qwen-portal`, `kimi-code`, `nous-research`, `xai-oauth`, `wafer-serverless`, `google-gemini-cli`, and `google-antigravity` are normally reached through `/login` rather than an environment variable. Nous Portal stores a durable refresh token and mints short-lived inference access tokens for requests and model discovery; `NOUS_API_KEY` remains available for explicit headless use.
 
-Command Code uses `https://api.commandcode.ai/provider/v1`, defaults to `claude-sonnet-4-6`, and issues keys at [Command Code Provider](https://commandcode.ai/studio/provider). Its `/models` endpoint answers without a key, so the bundled catalog carries every model it serves; prices, reasoning efforts and output ceilings come from the deployment contract, because the endpoint publishes none of them. Nous Research uses `https://inference-api.nousresearch.com/v1` and defaults to the tool-capable `anthropic/claude-sonnet-4.6`; authenticated discovery adds the current tool-capable chat catalog and excludes embedding, media-generation, and non-tool rows. Nous accepts either sign-in: `/login nous-research` runs the Portal device flow, and `/login nous-research-api-key` takes a key pasted from the Portal. Both store one credential under `nous-research`, so the model list and the account card show a single Nous account either way.
+Command Code uses `https://api.commandcode.ai/provider/v1`, defaults to `claude-sonnet-4-6`, and issues keys at [Command Code Provider](https://commandcode.ai/studio/provider). Its `/models` endpoint answers without a key, so the bundled catalog includes every model it serves; prices, reasoning efforts and output ceilings come from the deployment contract, because the endpoint publishes none of them. Nous Research uses `https://inference-api.nousresearch.com/v1` and defaults to the tool-capable `anthropic/claude-sonnet-4.6`; authenticated discovery adds the current tool-capable chat catalog and excludes embedding, media-generation, and non-tool rows. Nous accepts either sign-in: `/login nous-research` runs the Portal device flow, and `/login nous-research-api-key` takes a key pasted from the Portal. Both store one credential under `nous-research`, so the model list and the account card show a single Nous account either way.
 
 ### `.env` discovery and precedence
 
@@ -162,7 +162,7 @@ Both `<agentDir>` and `<configRoot>` follow the active profile, so `--profile wo
 
 A variable already present in the process environment is never overwritten by a `.env` file. Among the files, a value set in `<cwd>/.env` wins over `<agentDir>/.env`, which wins over `<configRoot>/.env`, which wins over `~/.env`. So a shell-exported `OPENAI_API_KEY` beats every `.env` file, and a project's `<cwd>/.env` beats your home `~/.env`.
 
-The order does not depend on which part of `veyyon` runs first. `~/.env` is applied before anything resolves a directory, because a `VEYYON_CODING_AGENT_DIR` or `XDG_CONFIG_HOME` set there determines where the other two files even are; the remaining layers are applied once those directories are known, and they override the values `~/.env` contributed. Whichever module a program imports, it sees the same result.
+The order does not depend on which part of `veyyon` runs first. `~/.env` is applied before anything resolves a directory, because a `VEYYON_CODING_AGENT_DIR` or `XDG_CONFIG_HOME` set there determines where the other two files are; the remaining layers are applied once those directories are known, and they override the values `~/.env` contributed. Whichever module a program imports, it reads the same result.
 
 Project-local `.env` is the simplest way to make one repository use a project-specific gateway, key, or local endpoint:
 
@@ -172,7 +172,7 @@ OPENROUTER_API_KEY=sk-or-...
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 ```
 
-`.env` parsing is intentionally minimal:
+`.env` parsing is minimal:
 
 - blank lines and lines starting with `#` are ignored;
 - keys must match `[A-Za-z_][A-Za-z0-9_]*` (shell-identifier shape): other names are dropped;
@@ -209,7 +209,7 @@ disabledProviders:
   - groq
 ```
 
-Provider IDs are matched exactly. Disable `google` to hide the Google Gemini API provider; the OAuth-backed Google providers `google-gemini-cli` and `google-antigravity` are separate IDs and must be disabled individually. Disable `ollama`, `llama.cpp`, or `lm-studio` to stop local discovery for that engine.
+Provider IDs are matched verbatim. Disable `google` to hide the Google Gemini API provider; the OAuth-backed Google providers `google-gemini-cli` and `google-antigravity` are separate IDs and must be disabled individually. Disable `ollama`, `llama.cpp`, or `lm-studio` to stop local discovery for that engine.
 
 `disabledProviders` applies uniformly to:
 
@@ -223,13 +223,13 @@ Disabling a provider does not delete its stored credentials, re-enable it by rem
 
 ## Per-project provider control
 
-A repository cannot carry settings: `<project>/.veyyon/config.yml` is not read. When one repository must allow or hide a different provider set than your profile default, use a path-scoped entry (below) or pass a `--config` overlay for that run:
+A repository cannot hold settings: `<project>/.veyyon/config.yml` is not read. When one repository must allow or hide a different provider set than your profile default, use a path-scoped entry (below) or pass a `--config` overlay for that run:
 
 ```console
 $ veyyon --config ./no-openai.yml
 ```
 
-Settings arrays are **replaced** wholesale by the higher-precedence layer, not merged or appended. If the profile file disables three providers and an overlay disables one, that process sees only the overlay list. If you want an overlay to *add* to the profile set, repeat the profile IDs in the overlay. See [Settings](./settings.md) for the full precedence chain, including `--config` overlays and runtime overrides.
+Settings arrays are **replaced** wholesale by the higher-precedence layer, not merged or appended. If the profile file disables three providers and an overlay disables one, that process reads only the overlay list. If you want an overlay to *add* to the profile set, repeat the profile IDs in the overlay. See [Settings](./settings.md) for the full precedence chain, including `--config` overlays and runtime overrides.
 
 ## Path-scoped `disabledProviders`
 
@@ -264,7 +264,7 @@ Path scopes are resolved **after** the settings merge. Because a higher-preceden
 
 ## Provider IDs vs discovery provider IDs
 
-`disabledProviders` uses a **single shared ID namespace** that gates two different subsystems:
+`disabledProviders` uses a **single shared ID namespace** that controls two different subsystems:
 
 - **Model providers**: the backends on this page (`anthropic`, `openai`, `ollama`, a custom `models.yml` ID, …). Disabling one removes its models from selection.
 - **Discovery providers**: sources of context files, MCP servers, commands, skills, hooks, tools, prompts, and settings. Disabling one stops that source from contributing capability items.
@@ -325,7 +325,7 @@ providers:
 
 For the full schema, all allowed `api` values, discovery `type`s, model overrides, and equivalence settings, see [Model and Provider Configuration](./models-yml.md).
 
-To disable a custom provider, list its ID exactly:
+To disable a custom provider, list its ID verbatim:
 
 ```yaml
 disabledProviders:
@@ -335,11 +335,11 @@ disabledProviders:
 
 ## Troubleshooting
 
-**A provider's models are not selectable.** Confirm the provider has credentials (`/login <provider>`, an exported environment variable, or a `models.yml` `apiKey`) and that its ID is not in the effective `disabledProviders` list. Remember the rule: not disabled **and** (keyless **or** has credentials). Keyless local engines only appear once the engine is actually running and responding.
+**A provider's models are not selectable.** Confirm the provider has credentials (`/login <provider>`, an exported environment variable, or a `models.yml` `apiKey`) and that its ID is not in the effective `disabledProviders` list. The rule: not disabled **and** (keyless **or** has credentials). Keyless local engines appear only once the engine is running and responding.
 
 **The wrong key is being used (a stale key from `.env`).** Resolution favors runtime `--api-key`, then a `models.yml` config key, then stored credentials, then environment/`.env`. An already-set process environment variable also beats every `.env` file, and `<cwd>/.env` beats `~/.env`. If an unexpected key wins, check for an exported shell variable and the four `.env` files in precedence order, and clear the one that should not apply.
 
-**A provider still appears even though I disabled it.** `disabledProviders` arrays are replaced, not merged: a `--config` overlay array fully overrides the profile one. Verify the *effective* list for the directory you are in (path-scoped entries only apply at or under their configured path), and confirm the ID is spelled exactly. Use `veyyon config get disabledProviders` to inspect the merged value (see [Settings](./settings.md)).
+**A provider still appears even though I disabled it.** `disabledProviders` arrays are replaced, not merged: a `--config` overlay array fully overrides the profile one. Verify the *effective* list for the directory you are in (path-scoped entries only apply at or under their configured path), and confirm the ID spelling. Use `veyyon config get disabledProviders` to inspect the merged value (see [Settings](./settings.md)).
 
 **A discovery provider name had no effect on models (or vice-versa).** The ID namespace is shared. `gemini`, `codex`, `claude`, `native`, and `agents` are discovery-source IDs; the Google model backend is `google`. Make sure you are disabling the right kind of provider.
 

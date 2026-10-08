@@ -1,3 +1,4 @@
+import { scheduler } from "node:timers/promises";
 import type { ApiKey, FetchImpl } from "@veyyon/ai";
 // The owner, not the barrel: `withAuth` is the only runtime name this file wants
 // from `@veyyon/ai`, and the barrel brings the streaming engine, the provider
@@ -5,6 +6,7 @@ import type { ApiKey, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import * as AIError from "@veyyon/ai/error";
 import { OPENROUTER_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
+import { exponentialBackoffDelay } from "@veyyon/utils/backoff";
 import { withScopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import { isRecord } from "@veyyon/utils/type-guards";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
@@ -102,28 +104,9 @@ export class ExtractionClient {
 				// then sibling rotation) when `apiKey` is a resolver; the 429
 				// backoff loop stays inside the attempt so rate-limit retries
 				// reuse the already-resolved key.
-				const result = await withAuth(this.apiKey, async key => {
-					let rateLimitError: unknown = null;
-					for (let attempt = 0; attempt < 3; attempt += 1) {
-						try {
-							return await this.callApi(model, messages, temperature, maxTokens, key);
-						} catch (exc) {
-							const flags = AIError.classify(exc);
-							if (AIError.is(flags, AIError.Flag.UsageLimit) || AIError.is(flags, AIError.Flag.Transient)) {
-								rateLimitError = exc;
-								if (attempt + 1 < 3) {
-									await Bun.sleep(
-										Math.min(RATE_LIMIT_BACKOFF_MAX_MS, RATE_LIMIT_BACKOFF_BASE_MS * 2 ** attempt),
-									);
-									continue;
-								}
-								break;
-							}
-							throw exc;
-						}
-					}
-					throw rateLimitError;
-				});
+				const result = await withAuth(this.apiKey, key =>
+					this.#callWithBackoff(model, messages, temperature, maxTokens, key),
+				);
 				if (result === "") {
 					diag.recordNoOutput("cloud");
 				}
@@ -131,11 +114,41 @@ export class ExtractionClient {
 			} catch (exc) {
 				lastError = exc;
 			}
-			if (modelIndex + 1 < models.length) await Bun.sleep(FALLBACK_MODEL_DELAY_MS);
+			if (modelIndex + 1 < models.length) await scheduler.wait(FALLBACK_MODEL_DELAY_MS);
 		}
 
 		diag.recordFailure("cloud", lastError, "all_models_failed");
 		return "";
+	}
+
+	/** Call one model, retrying a usage-limit or transient failure for up to three attempts with exponential backoff. */
+	async #callWithBackoff(
+		model: string,
+		messages: readonly ChatMessage[],
+		temperature: number,
+		maxTokens: number,
+		key: string,
+	): Promise<string> {
+		let rateLimitError: unknown = null;
+		for (let attempt = 0; attempt < 3; attempt += 1) {
+			try {
+				return await this.callApi(model, messages, temperature, maxTokens, key);
+			} catch (exc) {
+				const flags = AIError.classify(exc);
+				if (!AIError.is(flags, AIError.Flag.UsageLimit) && !AIError.is(flags, AIError.Flag.Transient)) throw exc;
+				rateLimitError = exc;
+				if (attempt + 1 < 3) {
+					await scheduler.wait(
+						exponentialBackoffDelay(attempt, {
+							baseMs: RATE_LIMIT_BACKOFF_BASE_MS,
+							maxMs: RATE_LIMIT_BACKOFF_MAX_MS,
+							jitter: 0,
+						}),
+					);
+				}
+			}
+		}
+		throw rateLimitError;
 	}
 
 	async callApi(
@@ -170,15 +183,7 @@ export class ExtractionClient {
 	}
 
 	async extractFacts(messages: readonly ChatMessage[]): Promise<ExtractedFact[]> {
-		let conversationText = "";
-		for (let i = 0; i < messages.length; i += 1) {
-			const msg = messages[i];
-			if (msg === undefined) continue;
-			const content = msg.content.trim();
-			if (content !== "") {
-				conversationText += `[${i}] [${msg.role || "unknown"}]: ${content}\n`;
-			}
-		}
+		const conversationText = conversationTranscript(messages);
 		if (conversationText.trim() === "") {
 			return [];
 		}
@@ -204,36 +209,50 @@ export class ExtractionClient {
 			return [];
 		}
 
+		let facts: ExtractedFact[] | "no_facts_in_response" | "invalid_facts_response";
 		try {
-			const jsonStart = response.indexOf("[");
-			const jsonEnd = response.lastIndexOf("]") + 1;
-			if (jsonStart >= 0 && jsonEnd > jsonStart) {
-				const facts = JSON.parse(response.slice(jsonStart, jsonEnd)) as unknown;
-				if (Array.isArray(facts)) {
-					// EVERY ENTRY HAS TO BE AN OBJECT, and the array being an array is not enough.
-					// A model that returns `[{"subject":"Ada"},null,"not a fact",[]]` produced valid
-					// JSON and invalid facts, and the cast below asserted the element type without
-					// anyone having checked it, so the nulls and strings reached storage and failed
-					// there instead: a decoding fault reported as a database fault, one layer away
-					// from the provider that caused it. Refused as a whole rather than filtered,
-					// because a response this malformed is not a response some of whose facts can be
-					// trusted (Law 10: fail closed, do not quietly keep the parts that parsed).
-					if (facts.every(fact => isRecord(fact))) {
-						diag.recordSuccess("cloud", facts.length);
-						diag.recordCall({ succeeded: true });
-						return facts as ExtractedFact[];
-					}
-					diag.recordFailure("cloud", undefined, "invalid_facts_response");
-					diag.recordCall({ succeeded: false, allEmpty: true });
-					return [];
-				}
-			}
-			diag.recordFailure("cloud", undefined, "no_facts_in_response");
-			diag.recordCall({ succeeded: false, allEmpty: true });
+			facts = factsInResponse(response);
 		} catch (exc) {
 			diag.recordFailure("cloud", exc, "json_parse_failed");
 			diag.recordCall({ succeeded: false });
+			return [];
 		}
-		return [];
+		if (typeof facts === "string") {
+			diag.recordFailure("cloud", undefined, facts);
+			diag.recordCall({ succeeded: false, allEmpty: true });
+			return [];
+		}
+		diag.recordSuccess("cloud", facts.length);
+		diag.recordCall({ succeeded: true });
+		return facts;
 	}
+}
+
+function conversationTranscript(messages: readonly ChatMessage[]): string {
+	let text = "";
+	for (let i = 0; i < messages.length; i += 1) {
+		const msg = messages[i];
+		if (msg === undefined) continue;
+		const content = msg.content.trim();
+		if (content !== "") text += `[${i}] [${msg.role || "unknown"}]: ${content}\n`;
+	}
+	return text;
+}
+
+/**
+ * The facts array between the response's first `[` and last `]`; throws when that span is not JSON.
+ *
+ * Every entry has to be an object, and the array being an array is not enough. A model that
+ * returns `[{"subject":"Ada"},null,"not a fact",[]]` produced valid JSON and invalid facts; without
+ * the check the nulls and strings reached storage and failed there, a decoding fault reported as a
+ * database fault. The response is rejected as a whole rather than filtered, because a response
+ * this malformed is not one whose remaining facts can be trusted.
+ */
+function factsInResponse(response: string): ExtractedFact[] | "no_facts_in_response" | "invalid_facts_response" {
+	const jsonStart = response.indexOf("[");
+	const jsonEnd = response.lastIndexOf("]") + 1;
+	if (jsonStart < 0 || jsonEnd <= jsonStart) return "no_facts_in_response";
+	const facts = JSON.parse(response.slice(jsonStart, jsonEnd)) as unknown;
+	if (!Array.isArray(facts)) return "no_facts_in_response";
+	return facts.every(fact => isRecord(fact)) ? (facts as ExtractedFact[]) : "invalid_facts_response";
 }

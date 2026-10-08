@@ -1,7 +1,7 @@
 # Project trust
 
-A repository can carry code that veyyon loads at startup: a plugin registry at
-`.veyyon/plugins/installed_plugins.json`, and extension or hook files it names.
+A repository can contain code that veyyon loads at startup: a plugin registry at
+`.veyyon/plugins/installed_plugins.json`, and extension or hook files it lists.
 That code runs before tool approval applies. Opening a directory does not approve
 it. Until you decide, it is withheld.
 
@@ -13,7 +13,7 @@ it. Until you decide, it is withheld.
 | an extension or hook file inside the project | module top-level code and its factory, at import |
 
 A file outside the project root is not affected. Profile extensions, installed
-plugins and paths you set in `extensions:` load as before — a configured path is
+plugins and paths you set in `extensions:` load as before: a configured path is
 your own instruction and loads even when stored inside the project, which is
 where an extension is written while you are developing it. Settings come from
 your profile and your home directory, so a repository cannot add itself to that
@@ -30,8 +30,8 @@ veyyon trust path/to/file.ts   # decide one named file
 ```
 
 Inside a session, `/trust` reports, and `/trust approve`, `/trust deny` and
-`/trust forget` decide. `/trust approve <path>` approves one file by name, which
-is how you answer a refusal that states a file the discovery scan does not list.
+`/trust forget` set the decision. `/trust approve <path>` approves one file by name, which
+is how you answer a rejection that states a file the discovery scan does not list.
 
 ## What a decision records
 

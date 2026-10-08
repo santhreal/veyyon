@@ -52,7 +52,7 @@ proof/record.sh --width 1440 proof/scenes/late-diagnostics.sh
 
 | Tool | Purpose |
 | --- | --- |
-| `bash` | Shell commands, gated by the approval mode |
+| `bash` | Shell commands, subject to the approval mode |
 | `ssh` | Remote commands via configured hosts |
 | `eval` | JS/Python/Julia/Ruby eval cells (when enabled) |
 | `debug` | Debugger integration |
@@ -61,7 +61,7 @@ proof/record.sh --width 1440 proof/scenes/late-diagnostics.sh
 
 ### Long-running and stuck commands
 
-Two settings decide when a foreground `bash` call is moved to a background job. Auto-background is on by default; stall detection is off. Both hand the command to the `job` tool so its result still arrives later. You set them per profile in `/settings`, under Shell.
+Two settings control when a foreground `bash` call is moved to a background job. Auto-background is on by default; stall detection is off. Both hand the command to the `job` tool so its result still arrives later. You set them per profile in `/settings`, under Shell.
 
 **Bash Auto-Background** caps how long a command holds the model in the foreground. Once a call runs longer than "Auto-Background After" (`bash.autoBackground.thresholdMs`, default 5 minutes), it moves to the background and the model keeps working. This fires on elapsed time even while the command is still printing: a test suite that takes forty minutes should not hold the model, and a long foreground command would otherwise outlast the prompt cache. Set the value to "Immediately" to background every command up front, or turn **Bash Auto-Background** off to let a command hold the foreground until it finishes or times out.
 
@@ -82,7 +82,7 @@ Turn on **Bash Stall Detection** to catch a command that has gone quiet. When a 
 
 | Tool | Purpose |
 | --- | --- |
-| `recall`, `retain`, `reflect`, `memory_edit` | Mnemopi/hindsight surfaces |
+| `recall`, `retain`, `reflect`, `memory_edit` | Mnemopi/hindsight memory tools |
 | `learn` | Autolearn (when `autolearn.enabled`) |
 
 ## Other builtins

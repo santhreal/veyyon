@@ -24,8 +24,8 @@
  * the `git.*` objects are instrumented.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
+import { recordLaunchFacts, resetLaunchFactsForTest } from "@veyyon/coding-agent/config/launch-facts";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { recordLaunchFacts, resetLaunchFactsForTest } from "@veyyon/coding-agent/modes/launch-facts";
 import type { StatusLineSettings } from "@veyyon/coding-agent/modes/terminal/components/status-line";
 import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/components/status-line";
 import { StatusPresentationProducer } from "@veyyon/coding-agent/presentation/status-producer";
@@ -95,7 +95,6 @@ const gitRow: StatusLineSettings = {
 	preset: "custom",
 	leftSegments: ["git", "pr"],
 	rightSegments: ["session_name"],
-	sessionAccent: false,
 };
 
 /**

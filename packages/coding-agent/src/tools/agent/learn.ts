@@ -1,6 +1,6 @@
 import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
-import { errorMessage } from "@veyyon/utils";
-import { type } from "arktype";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { errorMessage, lazy } from "@veyyon/utils";
 import { sanitizeSkillName, writeManagedSkill } from "../../autolearn/managed-skills";
 import { isNameClaimedByAuthoredSkill } from "../../extensibility/skills";
 import { localBackend } from "../../memory/local-backend";
@@ -8,18 +8,20 @@ import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "..";
 import { requireMnemopiSessionState } from "./memory-session";
 
-const learnSchema = type({
-	memory: type("string").describe("the durable, self-contained lesson to remember (what, when, why)"),
-	"context?": type("string").describe("optional source context for the lesson"),
-	"skill?": type({
-		action: "'create' | 'update'",
-		name: type("string").describe("kebab-case skill name"),
-		description: type("string").describe("one-line description of when to use the skill"),
-		body: type("string").describe("the SKILL.md body in markdown (no frontmatter)"),
-	}).describe("also create or enhance a managed skill in the same call"),
-});
+const learnSchema = lazy(() =>
+	type({
+		memory: type("string").describe("the durable, self-contained lesson to remember (what, when, why)"),
+		"context?": type("string").describe("optional source context for the lesson"),
+		"skill?": type({
+			action: "'create' | 'update'",
+			name: type("string").describe("kebab-case skill name"),
+			description: type("string").describe("one-line description of when to use the skill"),
+			body: type("string").describe("the SKILL.md body in markdown (no frontmatter)"),
+		}).describe("also create or enhance a managed skill in the same call"),
+	}),
+);
 
-export type LearnParams = typeof learnSchema.infer;
+export type LearnParams = typeof learnSchema.value.infer;
 
 /**
  * Orchestrating "learn" tool: persists a lesson to long-term memory and,
@@ -28,7 +30,7 @@ export type LearnParams = typeof learnSchema.infer;
  * memory backend — `hindsight`/`mnemopi` (remote/SQLite) or `local` (the
  * file-based rollout backend, where lessons append to `learned.md`).
  */
-export class LearnTool implements AgentTool<typeof learnSchema> {
+export class LearnTool implements AgentTool<typeof learnSchema.value> {
 	readonly name = "learn";
 	readonly approval = (args: unknown) =>
 		(args as Partial<LearnParams>).skill || this.session.settings.get("memory.backend") === "local"
@@ -36,7 +38,9 @@ export class LearnTool implements AgentTool<typeof learnSchema> {
 			: "read";
 	readonly label = "Learn";
 	readonly description = toolsPrompts["tools/learn"].text;
-	readonly parameters = learnSchema;
+	get parameters(): typeof learnSchema.value {
+		return learnSchema.value;
+	}
 	readonly strict = true;
 	readonly loadMode = "essential" as const;
 	readonly summary = "Capture a reusable lesson to memory (and optionally a managed skill)";

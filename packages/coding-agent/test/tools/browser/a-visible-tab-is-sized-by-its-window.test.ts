@@ -30,9 +30,7 @@ import { getTab } from "@veyyon/coding-agent/tools/web/browser/tab-supervisor";
 import { setAgentDir, TempDir } from "@veyyon/utils";
 import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 import type { Browser, Page } from "puppeteer-core";
-import { chromiumCanLaunch } from "../../helpers/chromium-can-launch";
-
-const CHROMIUM_AVAILABLE = await chromiumCanLaunch();
+import { CHROMIUM_AVAILABLE } from "./chromium";
 
 const PAGE = `data:text/html,${encodeURIComponent("<!doctype html><title>sized</title><p>sized</p>")}`;
 

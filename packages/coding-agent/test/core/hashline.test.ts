@@ -307,7 +307,7 @@ describe("hashlineEditParamsSchema — payload shape", () => {
 	}
 
 	it("declares only `input` as the model-facing field", () => {
-		const jsonSchema = getJsonSchema(hashlineEditParamsSchema) as {
+		const jsonSchema = getJsonSchema(hashlineEditParamsSchema.value) as {
 			properties?: Record<string, unknown>;
 			required?: string[];
 		};
@@ -317,7 +317,7 @@ describe("hashlineEditParamsSchema — payload shape", () => {
 	});
 
 	it("tolerates provider extra fields without declaring `path`", () => {
-		const result = arkSafeParse(hashlineEditParamsSchema, {
+		const result = arkSafeParse(hashlineEditParamsSchema.value, {
 			path: "x.ts",
 			input: `[x.ts]\nINS.HEAD:\n${repl("x")}`,
 		});
@@ -325,14 +325,14 @@ describe("hashlineEditParamsSchema — payload shape", () => {
 	});
 
 	it("rejects `_input` as an alias for `input`", () => {
-		const result = arkSafeParse(hashlineEditParamsSchema, {
+		const result = arkSafeParse(hashlineEditParamsSchema.value, {
 			_input: `[x.ts]\nINS.HEAD:\n${repl("x")}`,
 		});
 		expect(result.success).toBe(false);
 	});
 
 	it("still requires `input`", () => {
-		const result = arkSafeParse(hashlineEditParamsSchema, { path: "x.ts" });
+		const result = arkSafeParse(hashlineEditParamsSchema.value, { path: "x.ts" });
 		expect(result.success).toBe(false);
 	});
 });

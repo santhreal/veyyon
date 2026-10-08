@@ -55,17 +55,17 @@ A bare `/advisor` opens a picker listing those subcommands.
 
 | Surface | Effect |
 |---|---|
-| `advisor.enabled` setting | Persisted toggle. Set it in `/settings`, with `veyyon config set advisor.enabled true`, or in `config.yml`. The runtime starts when an advisor model is assigned. |
+| `advisor.enabled` setting | Persisted toggle. Set it in `/settings`, with `veyyon config set advisor.enabled true`, or in `config.yml`. The runtime starts when an advisor model resolves. |
 | `--advisor` CLI flag | Enable the advisor for the launched session. |
 | `WATCHDOG.yml` | Define the advisor roster (models, tools, prompts); see below. |
 
-If `advisor.enabled` is true but no `modelRoles.advisor` value resolves to an available model, the advisor stays inactive until a model is assigned.
+If `modelRoles.advisor` is set but does not resolve to an available model, the advisor stays inactive; it does not fall back to the main model. Correct or clear the assignment to start it.
 
-## What the advisor sees
+## What the advisor receives
 
 At each primary turn end, `AdvisorRuntime` receives only the new transcript delta since the last advisor update. Deltas are rendered with `formatSessionHistoryMarkdown(..., { includeThinking: true, includeToolIntent: true, watchedRoles: true, expandPrimaryContext: true })`, so the advisor can review assistant reasoning as well as user-visible text, tool calls, and tool results.
 
-Most hidden `custom` messages collapse to a one-line summary in the delta. The exception is the primary agent's injected constraint context, the types in `PRIMARY_CONTEXT_CUSTOM_TYPES` (`plan-mode-context`, `plan-mode-reference`). `expandPrimaryContext` renders these verbatim inside a `<primary-context kind="…">` wrapper (XML-escaped, so plan/objective text cannot break out or read as advisor instructions). Without this the advisor only saw a 120-char truncation of the plan-mode rules, which cut off mid-sentence at `NEVER create, edit, or delete files — excep…`, hiding the "except the single plan file" carve-out and producing false blockers against the agent writing its own plan file. Because these prompts are re-injected verbatim every primary turn, `AdvisorRuntime` dedupes them: a byte-identical re-injection collapses to a `(unchanged — still in effect)` marker, and the full body re-expands whenever the content changes or the advisor re-primes. `goal-mode-context` is deliberately excluded, its live budget counters change every turn, so it can neither dedupe nor expand cheaply.
+Most hidden `custom` messages collapse to a one-line summary in the delta. The exception is the primary agent's injected constraint context, the types in `PRIMARY_CONTEXT_CUSTOM_TYPES` (`plan-mode-context`, `plan-mode-reference`). `expandPrimaryContext` renders these verbatim inside a `<primary-context kind="…">` wrapper (XML-escaped, so plan/objective text cannot break out or read as advisor instructions). A truncated summary of these rules would drop the carve-out that lets the agent write its own plan file, and the advisor would raise blockers against that write. Because these prompts are re-injected verbatim every primary turn, `AdvisorRuntime` dedupes them: a byte-identical re-injection collapses to a `(unchanged — still in effect)` marker, and the full body re-expands whenever the content changes or the advisor re-primes. `goal-mode-context` is excluded: its live budget counters change every turn, so it can neither dedupe nor expand cheaply.
 
 Advisor messages already injected into the primary transcript are filtered out before the next delta is rendered. This prevents the advisor from recursively reviewing its own advice.
 
@@ -89,9 +89,9 @@ Every advisor has the `advise` tool for surfacing notes into the primary transcr
 - `read`
 - `search`
 
-A `WATCHDOG.yml` roster entry may broaden this with `tools: [...]`, selecting any subset of the built-in pool the session actually built (a factory that returned `null`, e.g. `lsp` with no matching servers, is absent). Grantable tools include mutating ones: `edit`, `write`, `bash`, `eval`, `browser`, `debug`, `ast_edit`, `task`, `job`, and the memory tools. Tool names outside [`BUILTIN_TOOL_NAMES`](../../../../packages/coding-agent/src/tools/core/builtin-names.ts) are dropped with a warning.
+A `WATCHDOG.yml` roster entry may broaden this with `tools: [...]`, selecting any subset of the built-in pool (a factory that returned `null`, e.g. `lsp` with no matching servers, is absent). The session builds the pool once, on the first advisor review or the first `/advisor configure`, not at startup; a failed build is retried on the next review. Grantable tools include mutating ones: `edit`, `write`, `bash`, `eval`, `browser`, `debug`, `ast_edit`, `task`, `job`, and the memory tools. Tool names outside [`BUILTIN_TOOL_NAMES`](../../../../packages/coding-agent/src/tools/core/builtin-names.ts) are dropped with a warning.
 
-Advisor grants are not routed through the primary agent's approval wrapper. The advisor pool is built from the built-in tool factories against its own `-advisor` `ToolSession` and then filtered by `WATCHDOG.yml`; it is not the primary `toolRegistry` wrapped with `ExtensionToolWrapper`. Granting write- or exec-tier tools therefore lets the advisor invoke those tools directly, subject to the tool's own runtime guards but not to `tools.approvalMode` / `tools.approval.<tool>` prompts. Keep mutating grants narrow and trusted.
+Advisor grants are not routed through the primary agent's approval wrapper. The advisor pool is built from the built-in tool factories against its own `-advisor` `ToolSession` and then filtered by `WATCHDOG.yml`; it is not the primary `toolRegistry` wrapped with `ExtensionToolWrapper`. Granting write- or exec-tier tools therefore lets the advisor invoke those tools directly, subject to each tool's own runtime checks but not to `tools.approvalMode` / `tools.approval.<tool>` prompts. Grant mutating tools only to advisors whose model and instructions you trust.
 
 The `advise` tool accepts one note and an optional severity:
 
@@ -113,18 +113,18 @@ When you interrupt the agent (Esc, or a cancel from collab, ACP, RPC, the SDK, o
 
 `advisor.immuneTurns` limits interruption frequency. After the advisor successfully delivers a `concern` or `blocker` through the steering channel, later concerns/blockers are routed as non-interrupting asides until the configured number of primary turns has completed. The default is `3`. `nit` notes are unchanged, and advice raised while user-interrupt auto-resume suppression is active is still preserved instead of restarting a stopped run.
 
-### Emission guard
+### Emission filter
 
-`AdvisorEmissionGuard` (in `src/advisor/emission-guard.ts`) sits on the `enqueueAdvice` boundary in `AgentSession` and enforces, in code, the advisor system prompt's "at most one `advise` per update" and "NEVER send the same advice twice" rules. Each call to the advisor's `advise` tool runs through the guard before it routes to the YieldQueue / steer channel:
+`AdvisorEmissionGuard` (in `src/advisor/emission-guard.ts`) runs on the `enqueueAdvice` boundary in `AgentSession` and enforces, in code, the advisor system prompt's "at most one `advise` per update" and "NEVER send the same advice twice" rules. Each call to the advisor's `advise` tool passes through it before it routes to the YieldQueue / steer channel:
 
 1. **Normalization.** Lowercase, NFKC, collapse every run of non-alphanumeric characters to a single space, trim. `"Stop."`, `"*Stop*"`, and `"  stop  "` all key to `stop`.
-2. **Content-free phrase filter.** A small allowlist of normalized phrases the advisor occasionally emits but that carry no concrete reason, `stop`, `done`, `complete`, `no issue continue`, `lgtm`, `nothing to add`, `no further input`, and similar, is suppressed silently. Silence is the correct expression of "no concerns".
+2. **Content-free phrase filter.** A small allowlist of normalized phrases the advisor occasionally emits that contain no concrete reason, `stop`, `done`, `complete`, `no issue continue`, `lgtm`, `nothing to add`, `no further input`, and similar, is suppressed silently. No note is the expression of "no concerns".
 3. **Exact-text dedupe.** Any normalized note already accepted in this session is dropped. The dedupe history is bounded by a FIFO ring (default 4096 entries).
-4. **Per-update rate limit.** At most one note per advisor model `prompt()` cycle is accepted; the runtime calls `host.beginAdvisorUpdate?.()` before each cycle to reset the gate. Suppressed calls never consume the budget: a noise call doesn't displace a real concern that follows in the same update.
+4. **Per-update rate limit.** At most one note per advisor model `prompt()` cycle is accepted; the runtime calls `host.beginAdvisorUpdate?.()` before each cycle to reset the limit. Suppressed calls never consume the budget: a noise call doesn't displace a real concern that follows in the same update.
 
 Suppression is invisible to the advisor model: `AdviseTool` still returns `Recorded.` for a dropped call. Surfacing "suppressed" back into advisor context risks the model rephrasing the same useless note to bypass the dedupe.
 
-The guard's full state, dedupe history and per-update gate, clears on every advisor reset (compaction, session switch, `/new`), so a re-primed reviewer can re-raise issues it already raised against the rewritten transcript.
+The filter's full state, dedupe history and per-update limit, clears on every advisor reset (compaction, session switch, `/new`), so a re-primed reviewer can re-raise issues it already raised against the rewritten transcript.
 
 ## Bounded catch-up with `advisor.syncBacklog`
 
@@ -190,7 +190,7 @@ Candidates in hidden owner directories are ignored unless the file is inside an 
 `WATCHDOG.md` content is expanded with the same `@` import helper used by context files:
 
 - relative imports resolve from the importing file's directory
-- `~/` resolves from the user's home directory
+- `~/` resolves from your home directory
 - imports inside fenced code blocks and inline code spans stay literal
 - cycles are skipped
 - missing or unreadable imports leave the original `@path` text in place
@@ -215,7 +215,7 @@ Later project files sit closer to the end of the advisor prompt, so narrower dir
 
 ## WATCHDOG.yml
 
-`WATCHDOG.yml` (or `WATCHDOG.yaml`) is the advisor roster. Where `WATCHDOG.md` supplies review priorities, `WATCHDOG.yml` declares the advisors themselves, one entry per name, each with its own model, tool grant, and specialization prompt. You edit this file directly in your editor; the `/advisor` slash commands, including the configure overlay, were removed. Files that fail to parse or fail schema validation are logged and skipped so one bad project config cannot kill the session.
+`WATCHDOG.yml` (or `WATCHDOG.yaml`) is the advisor roster. Where `WATCHDOG.md` supplies review priorities, `WATCHDOG.yml` declares the advisors themselves, one entry per name, each with its own model, tool grant, and specialization prompt. Edit it in your editor, or with `/advisor configure` in the interactive TUI; a client without the TUI reports that `/advisor configure` needs it. Files that fail to parse or fail schema validation are logged and skipped, and the session continues with the remaining files.
 
 Example:
 

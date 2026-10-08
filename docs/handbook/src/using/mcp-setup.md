@@ -87,10 +87,10 @@ Local stdio servers often need environment variables:
 ```
 
 A stdio server does not inherit the shell environment. It receives a baseline of variables a
-program needs in order to run — `PATH`, `HOME`, temp and locale settings, certificate and proxy
-settings, and the directories version managers use to resolve a command — plus whatever `env`
+program needs in order to run (`PATH`, `HOME`, temp and locale settings, certificate and proxy
+settings, and the directories version managers use to resolve a command), plus whatever `env`
 sets. Every other ambient variable, including provider keys and CI tokens, is withheld. On
-Windows the baseline also carries `PATHEXT`, `SystemRoot`, `ComSpec` and the `ProgramFiles`
+Windows the baseline also includes `PATHEXT`, `SystemRoot`, `ComSpec` and the `ProgramFiles`
 variants, and names match without regard to case.
 
 To forward an ambient variable, name it:
@@ -198,7 +198,7 @@ To turn a server off entirely, add its name to `disabledServers` in `mcp.json`.
 HTTP and SSE servers. After OAuth failure or cancellation, choose **Retry** to restart authorization
 or **Edit OAuth settings** to change the authorization URL, token URL, client ID, client secret or scopes.
 
-Run `/mcp list` to see exactly which tools, resources, and templates Veyyon registered.
+Run `/mcp list` to see which tools, resources, and templates Veyyon registered.
 
 ## Resolve common errors
 

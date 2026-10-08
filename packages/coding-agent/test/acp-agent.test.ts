@@ -8,6 +8,7 @@ import type {
 	CreateElicitationRequest,
 	CreateElicitationResponse,
 	PromptRequest,
+	PromptResponse,
 	SessionNotification,
 } from "@agentclientprotocol/sdk";
 import {
@@ -35,7 +36,12 @@ import {
 import type { PlanModeState } from "@veyyon/coding-agent/plan-mode/state";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
-import { SILENT_ABORT_MARKER } from "@veyyon/coding-agent/session/messages";
+import {
+	BACKGROUND_LIMIT_STOP_REASON,
+	type BackgroundHandoff,
+	BackgroundSessions,
+} from "@veyyon/coding-agent/session/background-sessions";
+import { SILENT_ABORT_MARKER, USER_INTERRUPT_LABEL } from "@veyyon/coding-agent/session/messages";
 import { DEFAULT_STT_MODEL_KEY, STT_MODEL_OPTIONS } from "@veyyon/coding-agent/speech/stt/models";
 import {
 	DEFAULT_TTS_LOCAL_MODEL_KEY,
@@ -135,7 +141,21 @@ class FakeAgentSession {
 	thinkingLevel: string | undefined;
 	customCommands: [] = [];
 	extensionRunner = undefined;
-	isStreaming = false;
+	#streaming = false;
+	#turnEnded = Promise.withResolvers<void>();
+	#disposedSignal = Promise.withResolvers<void>();
+	get isStreaming(): boolean {
+		return this.#streaming;
+	}
+	set isStreaming(streaming: boolean) {
+		if (streaming && !this.#streaming) this.#turnEnded = Promise.withResolvers<void>();
+		if (!streaming) this.#turnEnded.resolve();
+		this.#streaming = streaming;
+	}
+	/** Resolves once `dispose()` ran. */
+	get whenDisposed(): Promise<void> {
+		return this.#disposedSignal.promise;
+	}
 	queuedMessageCount = 0;
 	systemPrompt = "system";
 	disposed = false;
@@ -250,6 +270,14 @@ class FakeAgentSession {
 		await this.waitForIdleBlocker?.();
 	}
 
+	/** Resolves when the running turn ends, at once when none runs, or when `signal` aborts. */
+	async waitForQuiescence(signal?: AbortSignal): Promise<void> {
+		if (!this.#streaming || signal?.aborted) return;
+		const aborted = Promise.withResolvers<void>();
+		signal?.addEventListener("abort", () => aborted.resolve(), { once: true });
+		await Promise.race([this.#turnEnded.promise, aborted.promise]);
+	}
+
 	async drainAsyncJobDeliveriesForAcp(options?: { timeoutMs?: number }): Promise<boolean> {
 		return (await this.asyncJobDrain?.(options)) ?? false;
 	}
@@ -299,6 +327,7 @@ class FakeAgentSession {
 	async dispose(): Promise<void> {
 		this.disposed = true;
 		await this.sessionManager.close();
+		this.#disposedSignal.resolve();
 	}
 
 	async reload(): Promise<void> {}
@@ -2729,5 +2758,323 @@ describe("ACP publishes only the effort levels the model in scope declares", () 
 
 		harness.abortController.abort();
 		await Bun.sleep(0);
+	});
+});
+
+/**
+ * An ACP client moves a running turn to the background, and every way it comes back out.
+ *
+ * WHY: backgrounding a running turn was reachable only from the terminal's `/new`.
+ * `_veyyon/sessions/background` moves a streaming ACP session into the process background set.
+ * The class closed here is "a background ACP session that leaves the set some way that leaks it,
+ * answers its pending `session/prompt` wrongly or never, streams updates to a view the client is
+ * not showing, or stays hidden after the client claimed it back". `BACKGROUND_EXITS` lists every
+ * way out, and each case asserts the same facts: the pending prompt's stop reason, whether the
+ * session object was disposed or re-attached, the abort reason recorded on the turn, that no
+ * agent text reached the client while it was hidden, and that the background set is empty after.
+ *
+ * Not caught: a new way out added to `AcpAgent` without a row here (the exits are code paths, not
+ * a registry a sweep can read), a load that arrives after the background set disposed a finished
+ * session but before the agent released its record (the load waits for the release so two writers
+ * never hold the transcript; no case holds that window open), a real `AgentSession` whose abort
+ * never ends its turn (the background set bounds that), and the SDK's JSON-RPC routing above
+ * `extMethod`.
+ */
+describe("ACP background conversations", () => {
+	interface HeldTurn {
+		readonly started: Promise<void>;
+		finish(): void;
+	}
+
+	/** A turn that streams until `finish()`. An abort ends it with no further output, as a real one does. */
+	function holdTurn(session: FakeAgentSession): HeldTurn {
+		const started = Promise.withResolvers<void>();
+		const release = Promise.withResolvers<void>();
+		session.prompt = async (text: string): Promise<boolean> => {
+			session.promptCalls.push(text);
+			session.isStreaming = true;
+			started.resolve();
+			await release.promise;
+			if (!session.isStreaming) return false;
+			const assistantMessage = makeAssistantMessage("pong");
+			for (const listener of session.listeners()) {
+				listener({
+					type: "message_update",
+					message: assistantMessage,
+					assistantMessageEvent: { type: "text_delta", delta: "pong" },
+				} as AgentSessionEvent);
+			}
+			session.sessionManager.appendMessage(assistantMessage);
+			for (const listener of session.listeners()) {
+				listener({ type: "agent_end", messages: [assistantMessage] } as AgentSessionEvent);
+			}
+			session.isStreaming = false;
+			return true;
+		};
+		return { started: started.promise, finish: () => release.resolve() };
+	}
+
+	interface RunningTurn {
+		readonly sessionId: string;
+		readonly session: FakeAgentSession;
+		readonly turn: HeldTurn;
+		readonly prompt: Promise<PromptResponse>;
+		/** Reasons passed to the session's abort, in order. */
+		readonly aborts: string[];
+	}
+
+	async function startTurn(harness: AgentHarness): Promise<RunningTurn> {
+		const created = await harness.agent.newSession({ cwd: harness.cwdA, mcpServers: [] });
+		const session = harness.findSession(created.sessionId)!;
+		const aborts: string[] = [];
+		session.abort = async (options?: { reason?: string }) => {
+			aborts.push(options?.reason ?? "");
+			session.isStreaming = false;
+		};
+		const turn = holdTurn(session);
+		const prompt = harness.agent.prompt({
+			sessionId: created.sessionId,
+			messageId: crypto.randomUUID(),
+			prompt: [{ type: "text", text: "long running" }],
+		} as PromptRequest);
+		await turn.started;
+		return { sessionId: created.sessionId, session, turn, prompt, aborts };
+	}
+
+	async function moveToBackground(harness: AgentHarness, sessionId: string): Promise<BackgroundHandoff | null> {
+		const { background } = await harness.agent.extMethod("_veyyon/sessions/background", { sessionId });
+		return background as BackgroundHandoff | null;
+	}
+
+	/** The agent text the client received for `sessionId` in `updates`. */
+	function agentText(updates: readonly SessionNotification[], sessionId: string): string[] {
+		const text: string[] = [];
+		for (const notification of updates) {
+			const { update } = notification;
+			if (notification.sessionId !== sessionId || update.sessionUpdate !== "agent_message_chunk") continue;
+			if (update.content.type === "text") text.push(update.content.text);
+		}
+		return text;
+	}
+
+	interface BackgroundExit {
+		readonly name: string;
+		/** Take the session out of the background. Resolves once it left the set. */
+		exit(harness: AgentHarness, running: RunningTurn): Promise<void>;
+		readonly stopReason: PromptResponse["stopReason"];
+		/** The session object is attached to the client again rather than disposed. */
+		readonly reattached: boolean;
+		readonly abortReason: string | undefined;
+		/** The connection is still open afterwards, so the transcript can be loaded from disk. */
+		readonly connectionOpen: boolean;
+	}
+
+	const BACKGROUND_EXITS: readonly BackgroundExit[] = [
+		{
+			name: "its turn ends",
+			exit: async (_harness, running) => {
+				running.turn.finish();
+				await running.session.whenDisposed;
+			},
+			stopReason: "end_turn",
+			reattached: false,
+			abortReason: undefined,
+			connectionOpen: true,
+		},
+		{
+			name: "the client cancels it",
+			exit: async (harness, running) => {
+				await expect(
+					harness.agent.extMethod("_veyyon/sessions/background/cancel", { sessionId: running.sessionId }),
+				).resolves.toEqual({ sessionId: running.sessionId });
+				expect(running.session.disposed).toBe(true);
+			},
+			stopReason: "cancelled",
+			reattached: false,
+			abortReason: USER_INTERRUPT_LABEL,
+			connectionOpen: true,
+		},
+		{
+			name: "a newer handoff passes the limit",
+			exit: async (harness, running) => {
+				Settings.instance.set("session.backgroundLimit", 1);
+				const newer = await startTurn(harness);
+				const handoff = await moveToBackground(harness, newer.sessionId);
+				expect(handoff?.displaced).toEqual([running.sessionId]);
+				await running.session.whenDisposed;
+				newer.turn.finish();
+				await expect(newer.prompt).resolves.toMatchObject({ stopReason: "end_turn" });
+				await newer.session.whenDisposed;
+			},
+			stopReason: "cancelled",
+			reattached: false,
+			abortReason: BACKGROUND_LIMIT_STOP_REASON,
+			connectionOpen: true,
+		},
+		{
+			name: "session/load claims it back",
+			exit: async (harness, running) => {
+				await harness.agent.loadSession({ sessionId: running.sessionId, cwd: harness.cwdA, mcpServers: [] });
+			},
+			stopReason: "end_turn",
+			reattached: true,
+			abortReason: undefined,
+			connectionOpen: true,
+		},
+		{
+			name: "session/resume claims it back",
+			exit: async (harness, running) => {
+				await harness.agent.resumeSession({ sessionId: running.sessionId, cwd: harness.cwdA });
+			},
+			stopReason: "end_turn",
+			reattached: true,
+			abortReason: undefined,
+			connectionOpen: true,
+		},
+		{
+			name: "the client disconnects",
+			exit: async (harness, running) => {
+				harness.abortController.abort();
+				await running.session.whenDisposed;
+			},
+			stopReason: "cancelled",
+			reattached: false,
+			abortReason: USER_INTERRUPT_LABEL,
+			connectionOpen: false,
+		},
+	];
+
+	afterEach(async () => {
+		const keeper = BackgroundSessions.global();
+		for (const running of keeper.list()) await keeper.cancel(running.sessionId, "test teardown");
+	});
+
+	it.each(BACKGROUND_EXITS.map(exit => [exit.name, exit] as const))(
+		"leaves the background when %s",
+		async (_name, way) => {
+			const harness = await createHarness();
+			// A client initializes before anything else; that is when the agent starts watching the connection close.
+			await harness.agent.initialize({ protocolVersion: 1, clientCapabilities: {} } as Parameters<
+				typeof harness.agent.initialize
+			>[0]);
+			const running = await startTurn(harness);
+			const handoff = await moveToBackground(harness, running.sessionId);
+			expect(handoff).toEqual({
+				sessionId: running.sessionId,
+				sessionFile: running.session.sessionManager.getSessionFile(),
+				streaming: true,
+				displaced: [],
+				message: `${running.sessionId} continues in the background`,
+			});
+			const hiddenFrom = harness.updates.length;
+			// Output while hidden is tracked but never sent: the client is not showing this session.
+			const hiddenMessage = makeAssistantMessage("hidden");
+			for (const listener of running.session.listeners()) {
+				listener({
+					type: "message_update",
+					message: hiddenMessage,
+					assistantMessageEvent: { type: "text_delta", delta: "hidden" },
+				} as AgentSessionEvent);
+			}
+
+			await way.exit(harness, running);
+			const exitedAt = harness.updates.length;
+			expect(agentText(harness.updates.slice(hiddenFrom, exitedAt), running.sessionId)).toEqual([]);
+			expect(BackgroundSessions.global().size).toBe(0);
+
+			if (way.reattached) {
+				running.turn.finish();
+				// Delivery resumes from the next event once the client claimed it back.
+				await expect(running.prompt).resolves.toMatchObject({ stopReason: way.stopReason });
+				expect(agentText(harness.updates.slice(exitedAt), running.sessionId)).toEqual(["pong"]);
+			} else {
+				await expect(running.prompt).resolves.toMatchObject({ stopReason: way.stopReason });
+				running.turn.finish();
+			}
+			expect(running.session.disposed).toBe(!way.reattached);
+			expect(running.aborts).toEqual(way.abortReason === undefined ? [] : [way.abortReason]);
+
+			if (way.connectionOpen && !way.reattached) {
+				// Its transcript is a stored session now: a load opens it from disk as a new session object.
+				const before = harness.sessions.length;
+				await harness.agent.loadSession({ sessionId: running.sessionId, cwd: harness.cwdA, mcpServers: [] });
+				const reopened = harness.sessions.slice(before);
+				expect(reopened.map(session => session.sessionId)).toEqual([running.sessionId]);
+				expect(reopened[0]?.disposed).toBe(false);
+			}
+			harness.abortController.abort();
+		},
+	);
+
+	it("keeps an idle session attached: nothing runs, so nothing moves", async () => {
+		const harness = await createHarness();
+		const created = await harness.agent.newSession({ cwd: harness.cwdA, mcpServers: [] });
+		await expect(moveToBackground(harness, created.sessionId)).resolves.toBeNull();
+		expect(BackgroundSessions.global().size).toBe(0);
+		const response = await harness.agent.prompt({
+			sessionId: created.sessionId,
+			messageId: crypto.randomUUID(),
+			prompt: [{ type: "text", text: "still attached" }],
+		} as PromptRequest);
+		expect(response.stopReason).toBe("end_turn");
+		expect(agentText(harness.updates, created.sessionId)).toEqual(["pong"]);
+		harness.abortController.abort();
+	});
+
+	it("refuses requests for a hidden session until it is claimed back, and lists it as running", async () => {
+		const harness = await createHarness();
+		const running = await startTurn(harness);
+		await moveToBackground(harness, running.sessionId);
+		const hidden = `ACP session ${running.sessionId} is running in the background; load or resume it first`;
+
+		await expect(
+			harness.agent.prompt({
+				sessionId: running.sessionId,
+				messageId: crypto.randomUUID(),
+				prompt: [{ type: "text", text: "too early" }],
+			} as PromptRequest),
+		).rejects.toThrow(hidden);
+		await expect(harness.agent.setSessionMode({ sessionId: running.sessionId, modeId: "default" })).rejects.toThrow(
+			hidden,
+		);
+		await expect(moveToBackground(harness, running.sessionId)).rejects.toThrow(hidden);
+		// A load for another directory is refused before the claim, so the conversation stays where it was.
+		await expect(
+			harness.agent.loadSession({ sessionId: running.sessionId, cwd: harness.cwdB, mcpServers: [] }),
+		).rejects.toThrow(`ACP session ${running.sessionId} is already loaded for`);
+
+		await expect(harness.agent.extMethod("_veyyon/sessions/background/list", {})).resolves.toEqual({
+			sessions: [
+				{
+					sessionId: running.sessionId,
+					sessionFile: running.session.sessionManager.getSessionFile(),
+					title: running.session.sessionManager.getSessionName(),
+					detachedAt: expect.any(Number),
+					streaming: true,
+					stopping: false,
+				},
+			],
+		});
+		expect(running.session.promptCalls).toEqual(["long running"]);
+
+		running.turn.finish();
+		await running.session.whenDisposed;
+		await expect(harness.agent.extMethod("_veyyon/sessions/background/list", {})).resolves.toEqual({ sessions: [] });
+		harness.abortController.abort();
+	});
+
+	it("refuses a request that names no session or no background conversation", async () => {
+		const harness = await createHarness();
+		await expect(harness.agent.extMethod("_veyyon/sessions/background", {})).rejects.toThrow("sessionId required");
+		await expect(harness.agent.extMethod("_veyyon/sessions/background/cancel", {})).rejects.toThrow(
+			"sessionId required",
+		);
+		await expect(moveToBackground(harness, "no-such-session")).rejects.toThrow(
+			"Unsupported ACP session: no-such-session",
+		);
+		await expect(
+			harness.agent.extMethod("_veyyon/sessions/background/cancel", { sessionId: "no-such-session" }),
+		).rejects.toThrow("No background conversation no-such-session");
+		harness.abortController.abort();
 	});
 });

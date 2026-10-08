@@ -207,6 +207,11 @@ boundary rises past them (§1). Adjacent engine hooks components may implement:
   the last read, letting the engine skip marker extraction, line preparation,
   and the committed-prefix audit for that prefix. Reading consumes the report
   (the baseline re-bases), so out-of-band `render()` calls can only lower it.
+- `releaseRenderCache()` (`Component`, optional): drop the rows memoized for
+  the next render once the component's rows have left the frame for native
+  scrollback. It is idempotent, and a later `render()` rebuilds the same bytes
+  from source. `Container` forwards it to its children; `Box`, `Markdown`,
+  `Text`, `TruncatedText` and `Image` implement it.
 
 `TranscriptContainer` implements the seam for the coding agent. The live region
 is anchored at the first still-mutating block
@@ -228,6 +233,18 @@ committed keeps rendering normally, so late results, post-finalize re-layouts
 and expand toggles stay visible; a post-finalize mutation bumps
 `getTranscriptBlockVersion()` precisely so the render happens and the audit can
 see it.
+
+Once the engine reports rows committed, `TranscriptContainer` compacts the
+committed prefix: it drops leading blocks from its render output while they
+end at or above `committedRows` minus the rows it keeps in hand for a shrink.
+A block qualifies when it is finalized and its previous frame rendered it
+finalized at the same `getTranscriptBlockVersion()`, or, on a component-scoped
+frame, when it was carried whole and is still settled at the version it last
+rendered. When the first kept block's separator reaches past the drop ceiling,
+the drop backs off to the previous block that holds rows instead of
+abandoning the drop. Every dropped block receives `releaseRenderCache?.()`,
+so a resting transcript holds about a screen of rows plus the uncommitted
+tail; a replay renders the dropped blocks again from their source.
 
 ---
 
@@ -564,12 +581,16 @@ bottom.
 - **The scroll tape**: the composed frame is NOT the scroll-back source. A
   virtualized root (the coding agent's `TranscriptContainer`) drops rows from
   its render output once the engine reports them committed, which holds the
-  frame near the viewport height however long the session runs. Every prepared
-  row the engine lets scroll off is therefore recorded on `#scrollTape`
-  (`scrollTapeRows`, bounded by `setScrollTapeCap`, default 20k rows), the
-  engine's own mirror of terminal scrollback. The **scroll space** is the tape
-  followed by the frame's uncommitted rows; the frame's row 0 sits at
-  `tape.length − committedRows`, because those rows are on both.
+  frame near the viewport height however long the session runs. While scroll
+  isolation is on, every prepared row the engine lets scroll off is therefore
+  recorded on `#scrollTape` (`scrollTapeRows`, bounded by `setScrollTapeCap`,
+  default 20k rows), the engine's own mirror of terminal scrollback. With
+  isolation off nothing reads the tape, so it only counts the rows
+  (`scrolledOffRows`) and keeps none; enabling isolation after the first paint
+  replays the history, as `resetDisplay` does, so the tape records it. The
+  **scroll space** is the tape followed by the frame's uncommitted rows; the
+  frame's row 0 sits at `tape.length − committedRows`, because those rows are
+  on both.
 - **Frozen view**: wheel-up anchors `#virtualScrollTop` in scroll-space rows.
   On the first frozen frame the engine snapshots the whole scroll space, so
   nothing under the reader can move: a quiet frame still compacts, and a
@@ -597,7 +618,8 @@ bottom.
   active so clicks never leak raw SGR bytes into the focused component. The
   tracking set is re-armed after alt-screen exits and torn down on stop.
 - **Capture gate**: tracking arms while anything sits above the window — the
-  frame overflows the viewport, **or** the tape is non-empty. Gating on frame
+  frame overflows the viewport, **or** a row has scrolled off
+  (`scrolledOffRows`, counted whether or not the tape records rows). Gating on frame
   overflow alone (`d79cb7ee`, which traded it for drag-select on short screens)
   is what broke the model in practice: with a virtualized transcript the frame
   trims back to about the viewport on every quiet frame, so the gate closed,
@@ -693,4 +715,4 @@ thumb) and the attributes the terminal presents, through
 `VirtualTerminal#getViewportRowFaintColumns`. A byte assertion alone would still
 pass if a later reset in the same row cancelled the dim.
 
-*Verified against `92dde64853` on 2026-09-26.*
+*Verified against `9a035acb63` on 2026-09-30.*

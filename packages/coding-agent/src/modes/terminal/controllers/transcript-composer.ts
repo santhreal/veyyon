@@ -16,6 +16,14 @@ import type { ToolExecutionHandle } from "../components/transcript/tool-executio
 import type { TranscriptContainer } from "../components/transcript/transcript-container";
 import type { SubmittedUserInput } from "../types";
 
+/**
+ * The key that matches a user message event to the local submission that drew it: the message text and its image
+ * count. Both the submit-time registry and the echo of the message event compute it here, so the two always agree.
+ */
+export function userEchoSignature(text: string, imageCount: number): string {
+	return `${text}\u0000${imageCount}`;
+}
+
 /** The host capabilities transcript composition is a function of. Rendering
  * stays with its owners (UiHelpers via the host's delegates); the composer
  * only decides WHAT is in the chat container and remembers what it added. */
@@ -54,7 +62,7 @@ export class TranscriptComposer {
 		if (this.port.isKnownSlashCommand(text)) {
 			return () => {};
 		}
-		const signature = `${text}\u0000${imageCount}`;
+		const signature = userEchoSignature(text, imageCount);
 		this.localEchoSignatures.add(signature);
 		let disposed = false;
 		return () => {
@@ -86,7 +94,7 @@ export class TranscriptComposer {
 	 * everything needed to replace or retract it when the real event lands. */
 	showOptimistic(submission: SubmittedUserInput): void {
 		const imageCount = submission.images?.length ?? 0;
-		this.optimisticSignature = `${submission.text}\u0000${imageCount}`;
+		this.optimisticSignature = userEchoSignature(submission.text, imageCount);
 		this.#optimisticDispose = this.recordLocalSubmission(submission.text, imageCount);
 		this.#optimisticComponents = this.#captureAddedChatComponents(() => this.#renderOptimistic(submission));
 	}

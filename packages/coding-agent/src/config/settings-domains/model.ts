@@ -1,6 +1,5 @@
-import { THINKING_EFFORTS } from "@veyyon/catalog/effort";
 import { unsetNumberOption } from "@veyyon/kernel/settings/optional-number";
-import { AUTO_THINKING } from "../../thinking/constants";
+import { CONFIGURED_THINKING_LEVELS } from "../../thinking/constants";
 import {
 	SERVICE_TIER_ANTHROPIC_OPTIONS,
 	SERVICE_TIER_ANTHROPIC_VALUES,
@@ -47,11 +46,13 @@ export const MODEL_SETTINGS = {
 	/**
 	 * Retired in favour of {@link defaultEffort}'s `*` row, and still read so an
 	 * existing settings file keeps its behaviour (see `withLegacyDefaultEffort`).
-	 * No UI row: two surfaces writing one axis is the muddle this replaced.
+	 * No UI row: two surfaces writing one axis is the muddle this replaced. The
+	 * values are every level that migration accepts, `off` included: a value the
+	 * enum omits reads as the default, which would turn `off` into `high`.
 	 */
 	defaultThinkingLevel: {
 		type: "enum",
-		values: [...THINKING_EFFORTS, AUTO_THINKING],
+		values: CONFIGURED_THINKING_LEVELS,
 		default: "high",
 		retiredBy: "defaultEffort",
 	},

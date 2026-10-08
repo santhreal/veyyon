@@ -83,6 +83,49 @@ export interface RenderCache {
 }
 
 /**
+ * Width+expand keyed render cache: `compute` re-runs only when the key changes. A class rather than
+ * an object of closures, so a drawn card holds one object for it and shares the methods.
+ */
+class CachedComponent implements Component {
+	readonly #getExpanded: () => boolean;
+	readonly #compute: (width: number, expanded: boolean) => string[];
+	readonly #paddingX: number;
+	#cached: RenderCache | undefined;
+
+	constructor(getExpanded: () => boolean, compute: (width: number, expanded: boolean) => string[], paddingX: number) {
+		this.#getExpanded = getExpanded;
+		this.#compute = compute;
+		this.#paddingX = paddingX;
+	}
+
+	render(width: number): readonly string[] {
+		const expanded = this.#getExpanded();
+		const key = new Hasher().bool(expanded).u32(width).digest();
+		if (this.#cached?.key === key) return this.#cached.lines;
+		const paddingX = this.#paddingX;
+		const innerWidth = Math.max(1, width - paddingX * 2);
+		const lines = this.#compute(innerWidth, expanded);
+		const pad = paddingX === 0 ? "" : " ".repeat(paddingX);
+		const paddedLines = paddingX === 0 ? lines : lines.map(line => `${pad}${line}${pad}`);
+		this.#cached = { key, lines: paddedLines };
+		return paddedLines;
+	}
+
+	invalidate(): void {
+		this.#cached = undefined;
+	}
+
+	releaseRenderCache(): void {
+		this.#cached = undefined;
+	}
+}
+
+/** For a component whose rows never depend on an expansion: shared, so a caller allocates none. */
+export function neverExpanded(): boolean {
+	return false;
+}
+
+/**
  * Width+expand keyed render cache. `compute` re-runs only when the cache key
  * changes; the returned Component is the canonical `{ render, invalidate }` pair.
  */
@@ -91,24 +134,7 @@ export function createCachedComponent(
 	compute: (width: number, expanded: boolean) => string[],
 	options: { paddingX?: number } = {},
 ): Component {
-	let cached: { key: bigint; lines: string[] } | undefined;
-	return {
-		render(width: number): readonly string[] {
-			const expanded = getExpanded();
-			const key = new Hasher().bool(expanded).u32(width).digest();
-			if (cached?.key === key) return cached.lines;
-			const paddingX = Math.max(0, options.paddingX ?? 0);
-			const innerWidth = Math.max(1, width - paddingX * 2);
-			const lines = compute(innerWidth, expanded);
-			const pad = paddingX === 0 ? "" : " ".repeat(paddingX);
-			const paddedLines = paddingX === 0 ? lines : lines.map(line => `${pad}${line}${pad}`);
-			cached = { key, lines: paddedLines };
-			return paddedLines;
-		},
-		invalidate() {
-			cached = undefined;
-		},
-	};
+	return new CachedComponent(getExpanded, compute, Math.max(0, options.paddingX ?? 0));
 }
 
 /**

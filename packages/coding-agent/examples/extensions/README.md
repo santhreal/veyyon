@@ -109,7 +109,7 @@ export default function (pi: ExtensionAPI) {
 	});
 }
 ```
-## Key Patterns
+## Patterns
 
 **Use `z.enum` for discriminated string tool args:**
 

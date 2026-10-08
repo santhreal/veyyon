@@ -61,7 +61,7 @@ To return an assigned role or model policy to its unset state, open its picker i
 | `agent.sharedModel` | Which scope sets an agent's model and effort. Off, each agent's own row does. On, the two rows below do, for every agent. |
 | `agent.model` | Ordered model chain every agent runs while `agent.sharedModel` is on. The first entry is primary and later entries are fallbacks. Unset runs every agent on the `default` model role. |
 | `agent.thinkingLevel` | Effort every agent runs at while `agent.sharedModel` is on. |
-| `agent.agents` | Per-agent `enabled`, `model`, `thinkingLevel`, and `maxNestedSpawnDepth` choices. The `model` and `thinkingLevel` on a row decide while `agent.sharedModel` is off, and are not read while it is on. |
+| `agent.agents` | Per-agent `enabled`, `model`, `thinkingLevel`, and `maxNestedSpawnDepth` choices. The `model` and `thinkingLevel` on a row apply while `agent.sharedModel` is off, and are not read while it is on. |
 | `agent.delegation` | How strongly the model is prompted to delegate: `allowed`, `preferred`, or `required`. |
 | `compaction.model` | Ordered model chain for compaction. Unset inherits the interactive model. |
 
@@ -108,10 +108,10 @@ Every profile including `default`:
 
 ### Instruction Files: Global vs Per-Profile (`AGENTS.md`)
 
-Veyyon discovers exactly **two user-level instruction layers** before every session:
+Veyyon discovers **two user-level instruction layers** before every session:
 
 1. **Global User Layer (`~/.veyyon/AGENTS.md`)**: Applies across EVERY profile and workspace. Reserved for cross-profile standing rules.
-2. **Active Profile Layer (`~/.veyyon/profiles/<profile_name>/...`)**: Applies ONLY to the active profile. Scanned in **descending priority order** (first match wins; exactly 1 file loaded per profile to prevent duplication):
+2. **Active Profile Layer (`~/.veyyon/profiles/<profile_name>/...`)**: Applies ONLY to the active profile. Scanned in **descending priority order** (first match wins; 1 file loaded per profile to prevent duplication):
    1. `~/.veyyon/profiles/<name>/agent/AGENTS.md` (Highest)
    2. `~/.veyyon/profiles/<name>/AGENTS.md`
    3. `~/.veyyon/profiles/<name>/agent/agent.md`

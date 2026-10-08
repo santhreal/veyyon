@@ -96,114 +96,120 @@ export interface ProxyStreamOptions extends SimpleStreamOptions {
  */
 export function streamProxy(model: Model, context: Context, options: ProxyStreamOptions): ProxyMessageEventStream {
 	const stream = new ProxyMessageEventStream();
-
-	(async () => {
-		// Initialize the partial message that we'll build up from events
-		const partial: AssistantMessage = {
-			role: "assistant",
-			stopReason: "stop",
-			content: [],
-			api: model.api,
-			provider: model.provider,
-			model: model.id,
-			usage: emptyUsage(),
-			timestamp: Date.now(),
-		};
-
-		let response: Response | null = null;
-		const abortHandler = () => {
-			const body = response?.body;
-			if (body) {
-				// The user aborted, so there is no caller left to tell. A stream that refuses to cancel -- most
-				// often because it has already ended -- changes nothing about the abort that is in progress, and
-				// the abort's own error is what surfaces to the caller.
-				body.cancel("Request aborted by user").catch(() => {});
-			}
-		};
-		if (options.signal) {
-			options.signal.addEventListener("abort", abortHandler, { once: true });
-		}
-
-		try {
-			response = await (options.fetch ?? fetch)(`${options.proxyUrl}/api/stream`, {
-				method: "POST",
-				headers: {
-					Authorization: `Bearer ${options.authToken}`,
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({
-					model,
-					context,
-					options: {
-						temperature: options.temperature,
-						topP: options.topP,
-						topK: options.topK,
-						minP: options.minP,
-						presencePenalty: options.presencePenalty,
-						repetitionPenalty: options.repetitionPenalty,
-						maxTokens: options.maxTokens,
-						reasoning: options.reasoning,
-					},
-				}),
-				signal: options.signal,
-			});
-
-			if (!response.ok) {
-				let errorMessage = `Proxy error: ${response.status} ${response.statusText}`;
-				try {
-					const errorData = (await response.json()) as { error?: string };
-					if (errorData.error) {
-						errorMessage = `Proxy error: ${errorData.error}`;
-					}
-				} catch {
-					// Couldn't parse error response
-				}
-				throw new Error(errorMessage);
-			}
-
-			let sawTerminalEvent = false;
-			const partialJsonByIndex = new Map<number, string>();
-			for await (const event of readSseJson<ProxyAssistantMessageEvent>(
-				response.body as ReadableStream<Uint8Array>,
-				options.signal,
-			)) {
-				const parsedEvent = processProxyEvent(model, event, partial, partialJsonByIndex);
-				if (parsedEvent) {
-					if (parsedEvent.type === "done" || parsedEvent.type === "error") {
-						sawTerminalEvent = true;
-					}
-					stream.push(parsedEvent);
-				}
-			}
-
-			if (!sawTerminalEvent) {
-				if (options.signal?.aborted) {
-					const reason = options.signal.reason;
-					throw reason instanceof Error ? reason : new Error(String(reason ?? "Request aborted"));
-				}
-				throw new Error("Proxy stream ended without a terminal event (done or error)");
-			}
-
-			stream.end();
-		} catch (error) {
-			const reason = options.signal?.aborted ? "aborted" : "error";
-			partial.stopReason = reason;
-			partial.errorMessage = errorMessage(error);
-			scrubPartialJson(partial);
-			stream.push({
-				type: "error",
-				reason,
-				error: partial,
-			});
-			stream.end();
-		} finally {
-			if (options.signal) {
-				options.signal.removeEventListener("abort", abortHandler);
-			}
-		}
-	})();
-
+	void runProxyStream(model, context, options, stream);
 	return stream;
+}
+
+/** Drives one proxied request into `stream`, ending it with the server's terminal event or a synthesized error. */
+async function runProxyStream(
+	model: Model,
+	context: Context,
+	options: ProxyStreamOptions,
+	stream: ProxyMessageEventStream,
+): Promise<void> {
+	// Initialize the partial message that we'll build up from events
+	const partial: AssistantMessage = {
+		role: "assistant",
+		stopReason: "stop",
+		content: [],
+		api: model.api,
+		provider: model.provider,
+		model: model.id,
+		usage: emptyUsage(),
+		timestamp: Date.now(),
+	};
+
+	let response: Response | null = null;
+	const abortHandler = () => {
+		// The user aborted, so there is no caller left to tell. A stream that refuses to cancel -- most
+		// often because it has already ended -- changes nothing about the abort that is in progress, and
+		// the abort's own error is what surfaces to the caller.
+		response?.body?.cancel("Request aborted by user").catch(() => {});
+	};
+	options.signal?.addEventListener("abort", abortHandler, { once: true });
+
+	try {
+		response = await (options.fetch ?? fetch)(`${options.proxyUrl}/api/stream`, {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${options.authToken}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				model,
+				context,
+				options: {
+					temperature: options.temperature,
+					topP: options.topP,
+					topK: options.topK,
+					minP: options.minP,
+					presencePenalty: options.presencePenalty,
+					repetitionPenalty: options.repetitionPenalty,
+					maxTokens: options.maxTokens,
+					reasoning: options.reasoning,
+				},
+			}),
+			signal: options.signal,
+		});
+		if (!response.ok) throw new Error(await proxyErrorMessage(response));
+		if (!(await relayProxyEvents(model, response, options.signal, partial, stream))) {
+			throw unterminatedStreamError(options.signal);
+		}
+		stream.end();
+	} catch (error) {
+		const reason = options.signal?.aborted ? "aborted" : "error";
+		partial.stopReason = reason;
+		partial.errorMessage = errorMessage(error);
+		scrubPartialJson(partial);
+		stream.push({
+			type: "error",
+			reason,
+			error: partial,
+		});
+		stream.end();
+	} finally {
+		options.signal?.removeEventListener("abort", abortHandler);
+	}
+}
+
+/** The proxy's `{error}` body text, or its status line when the body is not that JSON. */
+async function proxyErrorMessage(response: Response): Promise<string> {
+	try {
+		const errorData = (await response.json()) as { error?: string };
+		if (errorData.error) return `Proxy error: ${errorData.error}`;
+	} catch {
+		// Couldn't parse error response
+	}
+	return `Proxy error: ${response.status} ${response.statusText}`;
+}
+
+/** Pushes each proxied event into `stream` as it arrives. True when one of them was terminal (`done` or `error`). */
+async function relayProxyEvents(
+	model: Model,
+	response: Response,
+	signal: AbortSignal | undefined,
+	partial: AssistantMessage,
+	stream: ProxyMessageEventStream,
+): Promise<boolean> {
+	let sawTerminalEvent = false;
+	const partialJsonByIndex = new Map<number, string>();
+	for await (const event of readSseJson<ProxyAssistantMessageEvent>(
+		response.body as ReadableStream<Uint8Array>,
+		signal,
+	)) {
+		const parsedEvent = processProxyEvent(model, event, partial, partialJsonByIndex);
+		if (!parsedEvent) continue;
+		if (parsedEvent.type === "done" || parsedEvent.type === "error") sawTerminalEvent = true;
+		stream.push(parsedEvent);
+	}
+	return sawTerminalEvent;
+}
+
+/** The error for a stream that ended with no terminal event: the abort's reason when the caller aborted. */
+function unterminatedStreamError(signal: AbortSignal | undefined): Error {
+	if (!signal?.aborted) return new Error("Proxy stream ended without a terminal event (done or error)");
+	const reason = signal.reason;
+	return reason instanceof Error ? reason : new Error(String(reason ?? "Request aborted"));
 }
 
 /**

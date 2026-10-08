@@ -8,8 +8,10 @@
  *                              tag and recall filters on it but still surfaces
  *                              untagged ("global") memories alongside.
  *
- * The base bank id is `bankIdPrefix-bankId` (default `veyyon`). Per-project mode
- * appends `-<project>`; tagged mode leaves the bank untouched and uses tags.
+ * The base bank id is `bankIdPrefix-bankId`. An unset `bankId` is `veyyon` for the default profile
+ * and `veyyon-<profile>` for a named one, so two profiles on one Hindsight server keep separate
+ * memories unless a bank id is set. Per-project mode appends `-<project>`; tagged mode leaves the
+ * bank untouched and uses tags.
  *
  * Bank existence is idempotent at module level — a banksSet keeps track of
  * banks we've already PUT so each session boundary doesn't fire a fresh
@@ -22,6 +24,7 @@
 
 import * as path from "node:path";
 import { logger } from "@veyyon/utils";
+import { getActiveProfile } from "@veyyon/utils/dirs";
 import * as git from "../../utils/git";
 import type { HindsightApi } from "./client";
 import type { HindsightConfig } from "./config";
@@ -58,7 +61,8 @@ export interface BankScope {
 
 /** Compose the prefixed base bank id (no project segment). */
 function baseBankId(config: HindsightConfig): string {
-	const base = config.bankId?.trim() || DEFAULT_BANK_NAME;
+	const profile = getActiveProfile();
+	const base = config.bankId?.trim() || (profile ? `${DEFAULT_BANK_NAME}-${profile}` : DEFAULT_BANK_NAME);
 	const prefix = config.bankIdPrefix?.trim() || "";
 	return prefix ? `${prefix}-${base}` : base;
 }

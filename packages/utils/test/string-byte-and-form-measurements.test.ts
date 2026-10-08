@@ -109,6 +109,24 @@ describe("utf8ByteLength", () => {
 	});
 
 	/**
+	 * A range longer than the short-range loop, measured through a slice. Every start and end
+	 * over text mixing one- to four-byte characters, so ranges on both sides of the loop's
+	 * length limit cut surrogate pairs at either end and must still agree with the encoder.
+	 */
+	it("measures a long code-unit range the way slicing it would", () => {
+		const text = "aé日😀".repeat(30);
+		const mismatches: string[] = [];
+		for (let start = 0; start <= text.length; start++) {
+			for (let end = start; end <= text.length; end++) {
+				const measured = utf8ByteLength(text, start, end);
+				const encoded = encoder.encode(text.slice(start, end)).length;
+				if (measured !== encoded) mismatches.push(`[${start},${end}): ${measured} != ${encoded}`);
+			}
+		}
+		expect(mismatches).toEqual([]);
+	});
+
+	/**
 	 * A range that cuts a surrogate pair in half. This is the case the range form is most
 	 * likely to get wrong, because the four-byte path reads the NEXT code unit and has to
 	 * stop at `end` rather than at the string's end: charging four for a half pair would
@@ -133,9 +151,8 @@ describe("utf8ByteLength", () => {
 describe("isWellFormedUtf16", () => {
 	/**
 	 * THE CONTRACT, against the platform's own answer. `String.prototype.isWellFormed` is
-	 * the specification of this predicate; this function exists because it runs per string
-	 * on payloads of arbitrary size and short-circuits without allocating, which is a
-	 * performance choice and must not become a semantic one.
+	 * the specification of this predicate and its implementation today; the differential
+	 * holds any replacement implementation to the same answer on every shape.
 	 */
 	it("agrees with String.prototype.isWellFormed on every shape", () => {
 		for (const [name, value] of CORPUS) {

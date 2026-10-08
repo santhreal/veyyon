@@ -47,6 +47,8 @@ const DOMAINS_DIR = join(SRC, "config", "settings-domains");
  * `@veyyon/kernel` is reached for `settings/optional-number`, the unset-number
  * owner, which imports nothing; `@veyyon/model` is the contract `@veyyon/ai` and `@veyyon/catalog`
  * read the instrumentation levels and the thinking efforts from, and it imports nothing that runs.
+ * `model.ts` reaches `@veyyon/agent-core` for `ThinkingLevel` in `@veyyon/agent-core/thinking`, a
+ * table that imports only `@veyyon/catalog/effort`, through the `thinking/constants` leaf.
  */
 const DOMAIN_REACH: Record<string, string[]> = {
 	"appearance.ts": ["config/"],
@@ -63,7 +65,14 @@ const DOMAIN_REACH: Record<string, string[]> = {
 	"general.ts": ["config/"],
 	"global.ts": ["config/", "npm:@veyyon/utils", "npm:yaml"],
 	"interaction.ts": ["config/", "npm:@veyyon/wire", "speech/"],
-	"model.ts": ["config/", "npm:@veyyon/catalog", "npm:@veyyon/kernel", "npm:@veyyon/model", "thinking/"],
+	"model.ts": [
+		"config/",
+		"npm:@veyyon/agent-core",
+		"npm:@veyyon/catalog",
+		"npm:@veyyon/kernel",
+		"npm:@veyyon/model",
+		"thinking/",
+	],
 	"providers.ts": ["config/", "npm:@veyyon/kernel", "npm:@veyyon/utils", "npm:yaml", "speech/", "tiny/", "tools/"],
 	"resources.ts": ["config/"],
 	"shared.ts": ["config/"],

@@ -2,14 +2,14 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { AgentToolResult } from "@veyyon/agent-core";
 import { formatHashlineHeader } from "@veyyon/hashline";
-import { type AstFindMatch, astGrep } from "@veyyon/natives";
+import { type AstFindMatch, type AstFindResult, astGrep } from "@veyyon/natives";
 import { untilAborted } from "@veyyon/utils";
 import { recordFileSnapshot, recordSeenLinesFromBody } from "../../edit/file-snapshot-store";
 import { artifactFooter, truncateHead } from "../../session/streaming-output";
 import { resolveFileDisplayMode } from "../../utils/file-display-mode";
 import { getLanguageFromPath } from "../../utils/lang-from-path";
 import type { ToolSession } from "..";
-import { createFileRecorder, formatResultPath } from "../core/file-recorder";
+import { formatResultPath } from "../core/file-recorder";
 import { formatGroupedFiles } from "../core/grouped-file-output";
 import { inlineBudgetFor, saveOutputArtifact } from "../core/output-artifact";
 import type { OutputMeta } from "../core/output-meta";
@@ -21,7 +21,7 @@ import { loadUrlReader } from "../web/manifest";
 import { parseReadUrlTarget } from "../web/read-url-target";
 import { formatMatchLine } from "./match-line-format";
 import { MATCH_LIMIT_NOTICE_PREFIX } from "./search-card-limits";
-import { isImmutableSearchSourcePath, resolveToolSearchScope } from "./search-scope";
+import { isImmutableSearchSourcePath, resolveToolSearchScope, type ToolScopeResolution } from "./search-scope";
 import { BROAD_SEARCH_INLINE_MAX_BYTES } from "./text-search";
 
 export interface StructureSearchInput {
@@ -60,39 +60,101 @@ function retainAstFindMatch(matches: AstFindMatch[], capacity: number, candidate
 	}
 }
 
+interface ResolvedTarget {
+	basePath: string;
+	isFile: boolean;
+}
+
+/**
+ * Folds per-target ast-grep results into one page. Overlapping targets (a directory plus a file
+ * nested inside it) report the same match twice; the first occurrence is kept and the totals are
+ * corrected for the repeat.
+ */
+class MultiTargetMerge {
+	readonly #retained: AstFindMatch[] = [];
+	readonly #parseErrors: string[] = [];
+	readonly #seenMatchKeys = new Set<string>();
+	readonly #seenFilesWithMatches = new Set<string>();
+	readonly #capacity: number;
+	readonly #commonBasePath: string;
+	#totalMatches = 0;
+	#filesWithMatches = 0;
+	#filesSearched = 0;
+	#limitReached = false;
+
+	constructor(capacity: number, commonBasePath: string) {
+		this.#capacity = capacity;
+		this.#commonBasePath = commonBasePath;
+	}
+
+	absorb(target: ResolvedTarget, result: AstFindResult): void {
+		this.#totalMatches += result.totalMatches;
+		this.#filesWithMatches += result.filesWithMatches;
+		this.#filesSearched += result.filesSearched;
+		this.#limitReached = this.#limitReached || result.limitReached;
+		for (const error of result.parseErrors ?? []) this.#parseErrors.push(error);
+		const targetSeenFiles = new Set<string>();
+		for (const match of result.matches) this.#absorbMatch(target, match, targetSeenFiles);
+	}
+
+	/** The sorted page after `skip`, at most `limit` long. */
+	page(skip: number, limit: number): AstFindResult {
+		this.#retained.sort(compareAstFindMatch);
+		const visible = this.#retained.slice(skip);
+		return {
+			matches: visible.slice(0, limit),
+			totalMatches: this.#totalMatches,
+			filesWithMatches: this.#filesWithMatches,
+			filesSearched: this.#filesSearched,
+			limitReached: this.#limitReached || visible.length > limit,
+			parseErrors: this.#parseErrors.length > 0 ? this.#parseErrors : undefined,
+		};
+	}
+
+	#absorbMatch(target: ResolvedTarget, match: AstFindMatch, targetSeenFiles: Set<string>): void {
+		const absolute = target.isFile ? target.basePath : path.resolve(target.basePath, match.path);
+		const matchKey = `${absolute}\0${match.startLine}\0${match.startColumn}`;
+		if (this.#seenMatchKeys.has(matchKey)) {
+			this.#discountRepeat(absolute, targetSeenFiles);
+			return;
+		}
+		this.#seenMatchKeys.add(matchKey);
+		if (!this.#seenFilesWithMatches.has(absolute)) {
+			this.#seenFilesWithMatches.add(absolute);
+			targetSeenFiles.add(absolute);
+		}
+		const rebased = path.relative(this.#commonBasePath, absolute).replace(/\\/g, "/");
+		retainAstFindMatch(this.#retained, this.#capacity, { ...match, path: rebased });
+	}
+
+	/** Take back what a repeated match added: one match, and its file once per target that repeats it. */
+	#discountRepeat(absolute: string, targetSeenFiles: Set<string>): void {
+		this.#totalMatches = Math.max(0, this.#totalMatches - 1);
+		if (this.#seenFilesWithMatches.has(absolute) && !targetSeenFiles.has(absolute)) {
+			this.#filesWithMatches = Math.max(0, this.#filesWithMatches - 1);
+			targetSeenFiles.add(absolute);
+		}
+	}
+}
+
 async function runMultiTargetAstGrep(
 	targets: Array<{ basePath: string; glob?: string }>,
 	options: { patterns: string[]; commonBasePath: string; skip: number; limit: number; signal?: AbortSignal },
-): Promise<{
-	matches: AstFindMatch[];
-	totalMatches: number;
-	filesWithMatches: number;
-	filesSearched: number;
-	limitReached: boolean;
-	parseErrors?: string[];
-}> {
-	const retainedMatches: AstFindMatch[] = [];
-	const seenMatchKeys = new Set<string>();
-	const seenFilesWithMatches = new Set<string>();
-	const retainedCapacity = options.skip + options.limit + 1;
-	const parseErrors: string[] = [];
-	let totalMatches = 0;
-	let filesWithMatches = 0;
-	let filesSearched = 0;
-	let limitReached = false;
+): Promise<AstFindResult> {
 	throwIfAborted(options.signal, "search");
 	// Resolve target kind once outside the per-match loop so file vs directory
 	// path resolution is deterministic and does not rely on string suffix matching.
-	const targetStats = await Promise.all(
-		targets.map(async target => {
-			const resolvedBase = path.resolve(target.basePath);
+	const resolvedTargets = await Promise.all(
+		targets.map(async (target): Promise<ResolvedTarget> => {
+			const basePath = path.resolve(target.basePath);
 			const isFile = await fs
-				.stat(resolvedBase)
+				.stat(basePath)
 				.then(stat => stat.isFile())
 				.catch(() => false);
-			return { basePath: resolvedBase, isFile };
+			return { basePath, isFile };
 		}),
 	);
+	const capacity = options.skip + options.limit + 1;
 	// Each target is an independent native scan on libuv's blocking pool, so
 	// they run concurrently instead of serializing behind one another. Every
 	// scan still carries the tool's own signal, so a cancellation fails each
@@ -107,58 +169,18 @@ async function runMultiTargetAstGrep(
 				path: target.basePath,
 				glob: target.glob,
 				offset: 0,
-				limit: options.skip + options.limit + 1,
+				limit: capacity,
 				includeMeta: true,
 				signal: options.signal,
 			}),
 		),
 	);
+	const merge = new MultiTargetMerge(capacity, options.commonBasePath);
 	for (const [targetIndex, outcome] of settled.entries()) {
 		if (outcome.status === "rejected") throw outcome.reason;
-		const targetInfo = targetStats[targetIndex]!;
-		const targetResult = outcome.value;
-		const targetSeenFiles = new Set<string>();
-		totalMatches += targetResult.totalMatches;
-		filesWithMatches += targetResult.filesWithMatches;
-		filesSearched += targetResult.filesSearched;
-		limitReached = limitReached || targetResult.limitReached;
-		if (targetResult.parseErrors) {
-			for (let pi = 0; pi < targetResult.parseErrors.length; pi++) parseErrors.push(targetResult.parseErrors[pi]!);
-		}
-		for (const match of targetResult.matches) {
-			const absolute = targetInfo.isFile ? targetInfo.basePath : path.resolve(targetInfo.basePath, match.path);
-			// Overlapping targets (a directory plus a file nested
-			// inside it) surface the same match twice; keep the
-			// first occurrence.
-			const matchKey = `${absolute}\0${match.startLine}\0${match.startColumn}`;
-			if (seenMatchKeys.has(matchKey)) {
-				totalMatches = Math.max(0, totalMatches - 1);
-				if (seenFilesWithMatches.has(absolute) && !targetSeenFiles.has(absolute)) {
-					filesWithMatches = Math.max(0, filesWithMatches - 1);
-					targetSeenFiles.add(absolute);
-				}
-				continue;
-			}
-			seenMatchKeys.add(matchKey);
-			if (!seenFilesWithMatches.has(absolute)) {
-				seenFilesWithMatches.add(absolute);
-				targetSeenFiles.add(absolute);
-			}
-			const rebased = path.relative(options.commonBasePath, absolute).replace(/\\/g, "/");
-			retainAstFindMatch(retainedMatches, retainedCapacity, { ...match, path: rebased });
-		}
+		merge.absorb(resolvedTargets[targetIndex]!, outcome.value);
 	}
-	retainedMatches.sort(compareAstFindMatch);
-	const visible = retainedMatches.slice(options.skip);
-	const paged = visible.slice(0, options.limit);
-	return {
-		matches: paged,
-		totalMatches,
-		filesWithMatches,
-		filesSearched,
-		limitReached: limitReached || visible.length > options.limit,
-		parseErrors: parseErrors.length > 0 ? parseErrors : undefined,
-	};
+	return merge.page(options.skip, options.limit);
 }
 
 export interface StructureSearchDetails {
@@ -208,6 +230,28 @@ export const PROSE_GRAMMARS: Record<string, true> = {
 	tsv: true,
 };
 
+/** Matches one page holds; `skip` reaches the rest. */
+const DEFAULT_AST_LIMIT = 50;
+
+interface CappedParseErrors {
+	errors: string[];
+	total: number;
+}
+
+interface CodeMatchGroups {
+	/** Files holding a code match, in first-match order. */
+	files: string[];
+	matchesByFile: Map<string, AstFindMatch[]>;
+	/** Matches set aside because their file parses with a prose grammar. */
+	proseMatchCount: number;
+	proseFiles: Set<string>;
+}
+
+interface RenderedLines {
+	model: string[];
+	display: string[];
+}
+
 export async function executeStructureSearch(
 	session: ToolSession,
 	params: StructureSearchInput,
@@ -218,280 +262,370 @@ export async function executeStructureSearch(
 		if (pattern.length === 0) {
 			throw new ToolError("Structure search input must not be empty");
 		}
-		const patterns = [pattern];
-		const skip = params.skip === undefined ? 0 : Math.floor(params.skip);
-		if (!Number.isFinite(skip) || skip < 0) {
-			throw new ToolError("skip must be a non-negative number");
-		}
-		const scopedPaths = toPathList(params.path);
-		const rawPaths = scopedPaths.length > 0 ? scopedPaths : ["."];
-		const scope = await resolveToolSearchScope({
-			rawPaths,
-			cwd: session.cwd,
-			internalUrlAction: "search",
-			trackImmutableSources: true,
-			settings: session.settings,
-			signal,
-			localProtocolOptions: session.localProtocolOptions,
-			skills: session.skills,
-			resolveExternalUrl: async rawPath => {
-				const target = parseReadUrlTarget(rawPath);
-				if (!target) return undefined;
-				const { materializeReadUrlToFile } = await loadUrlReader(session);
-				const materialized = await materializeReadUrlToFile(
-					session,
-					{ path: target.path, raw: target.raw },
-					signal,
-				);
-				return { sourcePath: materialized.path, immutable: true };
-			},
-		});
-		const {
-			searchPath: resolvedSearchPath,
-			scopePath,
-			isDirectory,
-			multiTargets,
-			globFilter,
-			immutableSourcePaths,
-		} = scope;
-
-		const DEFAULT_AST_LIMIT = 50;
-		const result = multiTargets
-			? await runMultiTargetAstGrep(multiTargets, {
-					patterns,
-					commonBasePath: resolvedSearchPath,
-					skip,
-					limit: DEFAULT_AST_LIMIT,
-					signal,
-				})
-			: await astGrep({
-					patterns,
-					path: resolvedSearchPath,
-					glob: globFilter,
-					offset: skip,
-					includeMeta: true,
-					signal,
-				});
-
-		const normalizedParseErrors = (result.parseErrors ?? []).map(error => {
-			const parseError = error.match(/^.+: (.+: parse error \(syntax tree contains error nodes\))$/);
-			return parseError?.[1] ?? error;
-		});
-		const { errors: cappedParseErrors, total: parseErrorsTotal } = capParseErrors(normalizedParseErrors);
-		const formatPath = (filePath: string): string =>
-			formatResultPath(filePath, isDirectory, resolvedSearchPath, session.cwd);
-
-		const { record: recordFile, list: fileList } = createFileRecorder();
-		const fileMatchCounts = new Map<string, number>();
-		const matchesByFile = new Map<string, AstFindMatch[]>();
-		let proseMatchCount = 0;
-		const proseFiles = new Set<string>();
-		for (const match of result.matches) {
-			const grammar = getLanguageFromPath(match.path);
-			const relativePath = formatPath(match.path);
-			if (grammar !== undefined && PROSE_GRAMMARS[grammar]) {
-				proseMatchCount++;
-				proseFiles.add(relativePath);
-				continue;
-			}
-			recordFile(relativePath);
-			if (!matchesByFile.has(relativePath)) {
-				matchesByFile.set(relativePath, []);
-			}
-			matchesByFile.get(relativePath)!.push(match);
-		}
-		const proseNote =
-			proseMatchCount > 0
-				? `Excluded ${proseMatchCount} match${proseMatchCount === 1 ? "" : "es"} in ${proseFiles.size} documentation file${proseFiles.size === 1 ? "" : "s"} (${[...proseFiles].slice(0, 3).join(", ")}): a code pattern cannot match a prose grammar.`
-				: "";
-
+		const skip = pageOffset(params.skip);
+		const scope = await resolveStructureScope(session, params.path, signal);
+		const result = await findStructureMatches(scope, [pattern], skip, signal);
+		const parseErrors = structureParseErrors(result.parseErrors);
+		const groups = groupCodeMatches(result.matches, filePath =>
+			formatResultPath(filePath, scope.isDirectory, scope.searchPath, session.cwd),
+		);
+		const proseNote = proseExclusionNote(groups);
 		const baseDetails: StructureSearchDetails = {
 			matchCount: result.totalMatches,
 			fileCount: result.filesWithMatches,
 			filesSearched: result.filesSearched,
 			limitReached: result.limitReached,
-			...(cappedParseErrors.length > 0 ? { parseErrors: cappedParseErrors, parseErrorsTotal } : {}),
-			scopePath,
-			searchPath: resolvedSearchPath,
+			...(parseErrors.errors.length > 0
+				? { parseErrors: parseErrors.errors, parseErrorsTotal: parseErrors.total }
+				: {}),
+			scopePath: scope.scopePath,
+			searchPath: scope.searchPath,
 			cwd: session.cwd,
-			files: fileList,
+			files: groups.files,
 			fileMatches: [],
 		};
-
-		if (matchesByFile.size === 0) {
-			const skipPastEnd = skip > 0 && result.totalMatches > 0 && skip >= result.totalMatches;
-			if (skipPastEnd) {
-				const parseMessage = cappedParseErrors.length
-					? `\n${formatParseErrors(cappedParseErrors, parseErrorsTotal).join("\n")}`
-					: "";
-				return toolResult(baseDetails)
-					.text(
-						`No more results (${result.totalMatches} matches total; skip=${skip} has exhausted the result set)${parseMessage}`,
-					)
-					.done();
-			}
-
-			const searched = result.filesSearched;
-			const where = scopePath ?? resolvedSearchPath;
-			// A bare "No matches found" hid WHY it was empty. The most common
-			// cause of a surprising zero is that the structure matcher selects
-			// files by language, so a mismatch (or a path with no files of that
-			// language) searches ZERO files and still says "no matches" — a
-			// silent recall hole (Law 10). Surface the file-search count so a
-			// zero-file search reads as a scoping problem, not proven absence.
-			const noMatchMessage =
-				proseMatchCount > 0
-					? `No code matches (searched ${searched} file${searched === 1 ? "" : "s"}). ${proseNote} Scope \`path\` to the language the pattern is written for.`
-					: cappedParseErrors.length
-						? "No matches found. Parse issues mean the query may be mis-scoped; narrow `path` before concluding absence."
-						: searched === 0
-							? `No matches found because NO FILES were searched (0 files under ${where}). Structure search selects files by language, so this usually means the path has no files of the target language, the path is wrong, or the language was not detected. Verify the path and language before concluding the pattern does not match.`
-							: `No matches found (searched ${searched} file${searched === 1 ? "" : "s"}). If you expected matches, check the pattern syntax for this language and that the path covers the intended files.`;
-			const parseMessage = cappedParseErrors.length
-				? `\n${formatParseErrors(cappedParseErrors, parseErrorsTotal).join("\n")}`
-				: "";
-			// Zero matches is useless even with parse issues: the follow-up
-			// call has already corrected course by the time compaction runs.
-			return toolResult(baseDetails).text(`${noMatchMessage}${parseMessage}`).useless().done();
+		if (groups.matchesByFile.size === 0) {
+			const where = scope.scopePath ?? scope.searchPath;
+			return noCodeMatchResult(baseDetails, result, skip, parseErrors, proseNote, where);
 		}
 
-		const useHashLines = resolveFileDisplayMode(session).hashLines;
-		const hashContexts = new Map<string, { tag: string }>();
-		if (useHashLines) {
-			for (const relativePath of fileList) {
-				const absolutePath = path.resolve(session.cwd, relativePath);
-				if (isImmutableSearchSourcePath(absolutePath, immutableSourcePaths)) continue;
-				// Whole-file content tag: any anchor validates while the file is
-				// unchanged; over-cap / unreadable files get no tag (plain output).
-				const tag = await recordFileSnapshot(session, absolutePath);
-				if (tag) hashContexts.set(relativePath, { tag });
-			}
-		}
-		const outputLines: string[] = [];
-		const displayLines: string[] = [];
-		const renderMatchesForFile = (relativePath: string): { model: string[]; display: string[] } => {
-			const modelOut: string[] = [];
-			const displayOut: string[] = [];
-			const fileMatches = matchesByFile.get(relativePath) ?? [];
-			const hashContext = hashContexts.get(relativePath);
-			const lineNumberWidth = fileMatches.reduce((width, match) => {
-				const lineCount = match.text.split("\n").length;
-				const endLine = match.startLine + lineCount - 1;
-				return Math.max(width, String(match.startLine).length, String(endLine).length);
-			}, 0);
-			for (const match of fileMatches) {
-				const matchLines = match.text.split("\n");
-				for (let index = 0; index < matchLines.length; index++) {
-					const lineNumber = match.startLine + index;
-					const isMatch = index === 0;
-					const line = matchLines[index] ?? "";
-					modelOut.push(formatMatchLine(lineNumber, line, isMatch, { useHashLines: hashContext !== undefined }));
-					displayOut.push(formatCodeFrameLine(isMatch ? "*" : " ", lineNumber, line, lineNumberWidth));
-				}
-				if (match.metaVariables) {
-					// An ast-grep binding is a source range inside the match printed just
-					// above, so its value restates bytes already delivered. A multi-node
-					// capture is joined onto one line, which makes `$$$BODY` a second copy
-					// of the whole body; a single-node capture spanning lines arrives with
-					// its newlines and entered the body carrying no line number at all, so
-					// no hashline anchor covered it. Over five patterns of this repository
-					// the bindings cost 8,414 tokens against 9,052 tokens of match text.
-					// A value stays while it is short enough to be a convenience; past that
-					// the name alone says the capture bound and the lines above hold it.
-					const parts = Object.entries(match.metaVariables)
-						.sort(([left], [right]) => left.localeCompare(right))
-						.map(([key, value]) =>
-							value.includes("\n") || Buffer.byteLength(value, "utf-8") > META_VALUE_MAX_BYTES
-								? `${key}=…`
-								: `${key}=${value}`,
-						);
-					if (parts.length > 0) {
-						const serializedMeta = parts.join(", ");
-						modelOut.push(`  meta: ${serializedMeta}`);
-						displayOut.push(`  meta: ${serializedMeta}`);
-					}
-				}
-				fileMatchCounts.set(relativePath, (fileMatchCounts.get(relativePath) ?? 0) + 1);
-			}
-			if (hashContext?.tag) {
-				const absoluteFilePath = path.resolve(session.cwd, relativePath);
-				recordSeenLinesFromBody(session, absoluteFilePath, hashContext.tag, modelOut.join("\n"));
-			}
-			return { model: modelOut, display: displayOut };
-		};
-
-		if (isDirectory) {
-			const grouped = formatGroupedFiles(fileList, relativePath => {
-				const rendered = renderMatchesForFile(relativePath);
-				const hashContext = hashContexts.get(relativePath);
-				return {
-					modelLines: rendered.model,
-					displayLines: rendered.display,
-					headerSuffix: hashContext?.tag ? `#${hashContext.tag}` : "",
-					skip: rendered.model.length === 0,
-				};
-			});
-			outputLines.push(...grouped.model);
-			displayLines.push(...grouped.display);
-		} else {
-			for (const relativePath of fileList) {
-				const rendered = renderMatchesForFile(relativePath);
-				if (rendered.model.length === 0) continue;
-				if (outputLines.length > 0) {
-					outputLines.push("");
-					displayLines.push("");
-				}
-				const hashContext = hashContexts.get(relativePath);
-				if (hashContext?.tag) {
-					outputLines.push(formatHashlineHeader(relativePath, hashContext.tag));
-				}
-				outputLines.push(...rendered.model);
-				displayLines.push(...rendered.display);
-			}
-		}
-
+		const tags = await snapshotHashlineTags(session, groups.files, scope.immutableSourcePaths);
+		const renderer = new FileMatchRenderer(session, groups.matchesByFile, tags);
+		const output = layoutFileMatches(groups.files, scope.isDirectory, renderer, tags);
 		const details: StructureSearchDetails = {
 			...baseDetails,
-			fileMatches: fileList.map(filePath => ({
-				path: filePath,
-				count: fileMatchCounts.get(filePath) ?? 0,
-			})),
-			displayContent: displayLines.join("\n"),
+			fileMatches: groups.files.map(filePath => ({ path: filePath, count: renderer.countOf(filePath) })),
+			displayContent: output.display.join("\n"),
 		};
-		if (result.limitReached) {
-			// `limit` is a files-only field of the search tool, so advice to raise it
-			// costs a rejected call and a round trip. `skip` is what structure search
-			// accepts, and the offset is over the unfiltered page the native layer
-			// returned, not over the matches left after the prose-grammar exclusion.
-			const nextSkip = skip + result.matches.length;
-			outputLines.push(
-				"",
-				`${MATCH_LIMIT_NOTICE_PREFIX}: ${result.totalMatches} found, ${result.matches.length} returned. Use skip=${nextSkip} for the next page, or narrow path or input.`,
-			);
-		}
-		if (proseNote) {
-			outputLines.push("", proseNote);
-		}
-		if (cappedParseErrors.length) {
-			outputLines.push("", ...formatParseErrors(cappedParseErrors, parseErrorsTotal));
-		}
-
-		const rawOutput = outputLines.join("\n");
-		const budget = inlineBudgetFor(session, BROAD_SEARCH_INLINE_MAX_BYTES);
-		const headTruncation = truncateHead(rawOutput, {
-			maxBytes: budget,
-			maxLines: Number.MAX_SAFE_INTEGER,
-		});
-		let output = headTruncation.content;
-		if (headTruncation.truncated) {
-			const spillArtifactId = await saveOutputArtifact(session, "search-structure", rawOutput);
-			if (spillArtifactId) {
-				const sep = output.endsWith("\n") ? "" : "\n";
-				output += `${sep}${artifactFooter(spillArtifactId)}`;
-			}
-		}
-		return toolResult(details).text(output).done();
+		appendNotices(output.model, result, skip, proseNote, parseErrors);
+		return toolResult(details)
+			.text(await inlineOrSpill(session, output.model.join("\n")))
+			.done();
 	});
+}
+
+/** Floor `skip`, refusing a negative or non-finite offset. */
+function pageOffset(skip: number | undefined): number {
+	const offset = skip === undefined ? 0 : Math.floor(skip);
+	if (!Number.isFinite(offset) || offset < 0) {
+		throw new ToolError("skip must be a non-negative number");
+	}
+	return offset;
+}
+
+/** Resolve `path`, the cwd when absent, to a search scope; a URL is materialized to a read-only local file. */
+function resolveStructureScope(
+	session: ToolSession,
+	rawPath: string | undefined,
+	signal?: AbortSignal,
+): Promise<ToolScopeResolution> {
+	const scopedPaths = toPathList(rawPath);
+	return resolveToolSearchScope({
+		rawPaths: scopedPaths.length > 0 ? scopedPaths : ["."],
+		cwd: session.cwd,
+		internalUrlAction: "search",
+		trackImmutableSources: true,
+		settings: session.settings,
+		signal,
+		localProtocolOptions: session.localProtocolOptions,
+		skills: session.skills,
+		resolveExternalUrl: async target => {
+			const urlTarget = parseReadUrlTarget(target);
+			if (!urlTarget) return undefined;
+			const { materializeReadUrlToFile } = await loadUrlReader(session);
+			const materialized = await materializeReadUrlToFile(
+				session,
+				{ path: urlTarget.path, raw: urlTarget.raw },
+				signal,
+			);
+			return { sourcePath: materialized.path, immutable: true };
+		},
+	});
+}
+
+/** Run the patterns over one scope, or over each of several targets merged into one page. */
+function findStructureMatches(
+	scope: ToolScopeResolution,
+	patterns: string[],
+	skip: number,
+	signal?: AbortSignal,
+): Promise<AstFindResult> {
+	if (scope.multiTargets) {
+		return runMultiTargetAstGrep(scope.multiTargets, {
+			patterns,
+			commonBasePath: scope.searchPath,
+			skip,
+			limit: DEFAULT_AST_LIMIT,
+			signal,
+		});
+	}
+	return astGrep({
+		patterns,
+		path: scope.searchPath,
+		glob: scope.globFilter,
+		offset: skip,
+		includeMeta: true,
+		signal,
+	});
+}
+
+/** Cap the parse errors, each stripped of the file prefix the native layer puts before a syntax-tree error. */
+function structureParseErrors(errors: string[] | undefined): CappedParseErrors {
+	const normalized = (errors ?? []).map(error => {
+		const parseError = error.match(/^.+: (.+: parse error \(syntax tree contains error nodes\))$/);
+		return parseError?.[1] ?? error;
+	});
+	return capParseErrors(normalized);
+}
+
+/** Group matches by display path, setting aside every match in a prose-grammar file. */
+function groupCodeMatches(matches: AstFindMatch[], formatPath: (filePath: string) => string): CodeMatchGroups {
+	const matchesByFile = new Map<string, AstFindMatch[]>();
+	const proseFiles = new Set<string>();
+	let proseMatchCount = 0;
+	for (const match of matches) {
+		const grammar = getLanguageFromPath(match.path);
+		const relativePath = formatPath(match.path);
+		if (grammar !== undefined && PROSE_GRAMMARS[grammar]) {
+			proseMatchCount++;
+			proseFiles.add(relativePath);
+			continue;
+		}
+		const fileMatches = matchesByFile.get(relativePath);
+		if (fileMatches === undefined) matchesByFile.set(relativePath, [match]);
+		else fileMatches.push(match);
+	}
+	return { files: [...matchesByFile.keys()], matchesByFile, proseMatchCount, proseFiles };
+}
+
+/** The note counting matches set aside in documentation files; empty when there were none. */
+function proseExclusionNote({ proseMatchCount: count, proseFiles: files }: CodeMatchGroups): string {
+	if (count === 0) return "";
+	const sample = [...files].slice(0, 3).join(", ");
+	return `Excluded ${count} match${count === 1 ? "" : "es"} in ${files.size} documentation file${files.size === 1 ? "" : "s"} (${sample}): a code pattern cannot match a prose grammar.`;
+}
+
+/** The result when no code match survived: why the page is empty, then any parse issues. */
+function noCodeMatchResult(
+	details: StructureSearchDetails,
+	result: AstFindResult,
+	skip: number,
+	parseErrors: CappedParseErrors,
+	proseNote: string,
+	where: string,
+): AgentToolResult<StructureSearchDetails> {
+	const parseMessage = parseErrors.errors.length
+		? `\n${formatParseErrors(parseErrors.errors, parseErrors.total).join("\n")}`
+		: "";
+	if (skip > 0 && result.totalMatches > 0 && skip >= result.totalMatches) {
+		return toolResult(details)
+			.text(
+				`No more results (${result.totalMatches} matches total; skip=${skip} has exhausted the result set)${parseMessage}`,
+			)
+			.done();
+	}
+	const message = noMatchMessage(result.filesSearched, where, proseNote, parseErrors.errors.length > 0);
+	// Zero matches is useless even with parse issues: the follow-up
+	// call has already corrected course by the time compaction runs.
+	return toolResult(details).text(`${message}${parseMessage}`).useless().done();
+}
+
+/**
+ * Why a search found nothing. A bare "No matches found" hid WHY it was empty. The most common
+ * cause of a surprising zero is that the structure matcher selects files by language, so a
+ * mismatch (or a path with no files of that language) searches ZERO files and still says "no
+ * matches" — a silent recall hole. The file-search count makes a zero-file search read as a
+ * scoping problem, not proven absence.
+ */
+function noMatchMessage(searched: number, where: string, proseNote: string, hasParseErrors: boolean): string {
+	const searchedFiles = `${searched} file${searched === 1 ? "" : "s"}`;
+	if (proseNote) {
+		return `No code matches (searched ${searchedFiles}). ${proseNote} Scope \`path\` to the language the pattern is written for.`;
+	}
+	if (hasParseErrors) {
+		return "No matches found. Parse issues mean the query may be mis-scoped; narrow `path` before concluding absence.";
+	}
+	if (searched === 0) {
+		return `No matches found because NO FILES were searched (0 files under ${where}). Structure search selects files by language, so this usually means the path has no files of the target language, the path is wrong, or the language was not detected. Verify the path and language before concluding the pattern does not match.`;
+	}
+	return `No matches found (searched ${searchedFiles}). If you expected matches, check the pattern syntax for this language and that the path covers the intended files.`;
+}
+
+/**
+ * Snapshot each editable file under hashline display so its match lines carry anchors. A
+ * read-only source, an over-cap file and an unreadable file get no tag and print plain lines.
+ */
+async function snapshotHashlineTags(
+	session: ToolSession,
+	files: string[],
+	immutableSourcePaths: ReadonlySet<string>,
+): Promise<Map<string, string>> {
+	const tags = new Map<string, string>();
+	if (!resolveFileDisplayMode(session).hashLines) return tags;
+	for (const relativePath of files) {
+		const absolutePath = path.resolve(session.cwd, relativePath);
+		if (isImmutableSearchSourcePath(absolutePath, immutableSourcePaths)) continue;
+		// Whole-file content tag: any anchor validates while the file is unchanged.
+		const tag = await recordFileSnapshot(session, absolutePath);
+		if (tag) tags.set(relativePath, tag);
+	}
+	return tags;
+}
+
+/**
+ * Renders one file's matches as model lines and display lines, counting each file's matches and
+ * recording the lines a tagged file showed the model so a later edit can anchor on them.
+ */
+class FileMatchRenderer {
+	readonly #counts = new Map<string, number>();
+	readonly #session: ToolSession;
+	readonly #matchesByFile: Map<string, AstFindMatch[]>;
+	readonly #tags: Map<string, string>;
+
+	constructor(session: ToolSession, matchesByFile: Map<string, AstFindMatch[]>, tags: Map<string, string>) {
+		this.#session = session;
+		this.#matchesByFile = matchesByFile;
+		this.#tags = tags;
+	}
+
+	countOf(relativePath: string): number {
+		return this.#counts.get(relativePath) ?? 0;
+	}
+
+	render(relativePath: string): RenderedLines {
+		const rendered: RenderedLines = { model: [], display: [] };
+		const fileMatches = this.#matchesByFile.get(relativePath) ?? [];
+		const tag = this.#tags.get(relativePath);
+		const lineOptions = { useHashLines: tag !== undefined };
+		const matchLines = fileMatches.map(match => match.text.split("\n"));
+		let width = 0;
+		for (const [index, match] of fileMatches.entries()) {
+			width = Math.max(width, String(match.startLine + matchLines[index]!.length - 1).length);
+		}
+		for (const [index, match] of fileMatches.entries()) {
+			appendMatchLines(rendered, match, matchLines[index]!, width, lineOptions);
+		}
+		this.#counts.set(relativePath, (this.#counts.get(relativePath) ?? 0) + fileMatches.length);
+		if (tag !== undefined) {
+			const absoluteFilePath = path.resolve(this.#session.cwd, relativePath);
+			recordSeenLinesFromBody(this.#session, absoluteFilePath, tag, rendered.model.join("\n"));
+		}
+		return rendered;
+	}
+}
+
+/** Append one match's source lines, the first marked as the match, and its bindings line. */
+function appendMatchLines(
+	rendered: RenderedLines,
+	match: AstFindMatch,
+	lines: string[],
+	width: number,
+	lineOptions: { useHashLines: boolean },
+): void {
+	for (const [index, line] of lines.entries()) {
+		const lineNumber = match.startLine + index;
+		const isMatch = index === 0;
+		rendered.model.push(formatMatchLine(lineNumber, line, isMatch, lineOptions));
+		rendered.display.push(formatCodeFrameLine(isMatch ? "*" : " ", lineNumber, line, width));
+	}
+	const metaLine = match.metaVariables === undefined ? undefined : formatMetaLine(match.metaVariables);
+	if (metaLine !== undefined) {
+		rendered.model.push(metaLine);
+		rendered.display.push(metaLine);
+	}
+}
+
+/**
+ * The `  meta:` line listing a match's bindings, sorted by name; undefined when it has none.
+ *
+ * An ast-grep binding is a source range inside the match printed just above, so its value
+ * restates bytes already delivered. A multi-node capture is joined onto one line, which makes
+ * `$$$BODY` a second copy of the whole body; a single-node capture spanning lines arrives with its
+ * newlines and entered the body carrying no line number at all, so no hashline anchor covered it.
+ * Over five patterns of this repository the bindings cost 8,414 tokens against 9,052 tokens of
+ * match text. A value stays while it is short enough to be a convenience; past that the name
+ * alone says the capture bound and the lines above hold it.
+ */
+function formatMetaLine(metaVariables: Record<string, string>): string | undefined {
+	const parts = Object.entries(metaVariables)
+		.sort(([left], [right]) => left.localeCompare(right))
+		.map(([key, value]) =>
+			value.includes("\n") || Buffer.byteLength(value, "utf-8") > META_VALUE_MAX_BYTES
+				? `${key}=…`
+				: `${key}=${value}`,
+		);
+	return parts.length > 0 ? `  meta: ${parts.join(", ")}` : undefined;
+}
+
+/** Lay rendered files out as a directory tree, or as one block per file headed by its hashline tag. */
+function layoutFileMatches(
+	files: string[],
+	isDirectory: boolean,
+	renderer: FileMatchRenderer,
+	tags: Map<string, string>,
+): RenderedLines {
+	if (isDirectory) {
+		return formatGroupedFiles(files, relativePath => {
+			const rendered = renderer.render(relativePath);
+			const tag = tags.get(relativePath);
+			return {
+				modelLines: rendered.model,
+				displayLines: rendered.display,
+				headerSuffix: tag ? `#${tag}` : "",
+				skip: rendered.model.length === 0,
+			};
+		});
+	}
+	const output: RenderedLines = { model: [], display: [] };
+	for (const relativePath of files) {
+		const rendered = renderer.render(relativePath);
+		if (rendered.model.length === 0) continue;
+		if (output.model.length > 0) {
+			output.model.push("");
+			output.display.push("");
+		}
+		const tag = tags.get(relativePath);
+		if (tag) output.model.push(formatHashlineHeader(relativePath, tag));
+		output.model.push(...rendered.model);
+		output.display.push(...rendered.display);
+	}
+	return output;
+}
+
+/** Append the page-limit notice, the prose exclusion note and the parse issues, each after a blank line. */
+function appendNotices(
+	lines: string[],
+	result: AstFindResult,
+	skip: number,
+	proseNote: string,
+	parseErrors: CappedParseErrors,
+): void {
+	if (result.limitReached) {
+		// `limit` is a files-only field of the search tool, so advice to raise it
+		// costs a rejected call and a round trip. `skip` is what structure search
+		// accepts, and the offset is over the unfiltered page the native layer
+		// returned, not over the matches left after the prose-grammar exclusion.
+		const nextSkip = skip + result.matches.length;
+		lines.push(
+			"",
+			`${MATCH_LIMIT_NOTICE_PREFIX}: ${result.totalMatches} found, ${result.matches.length} returned. Use skip=${nextSkip} for the next page, or narrow path or input.`,
+		);
+	}
+	if (proseNote) lines.push("", proseNote);
+	if (parseErrors.errors.length) lines.push("", ...formatParseErrors(parseErrors.errors, parseErrors.total));
+}
+
+/** Head-truncate to the inline budget; a truncated output is saved whole to an artifact named in a footer. */
+async function inlineOrSpill(session: ToolSession, rawOutput: string): Promise<string> {
+	const headTruncation = truncateHead(rawOutput, {
+		maxBytes: inlineBudgetFor(session, BROAD_SEARCH_INLINE_MAX_BYTES),
+		maxLines: Number.MAX_SAFE_INTEGER,
+	});
+	if (!headTruncation.truncated) return headTruncation.content;
+	const spillArtifactId = await saveOutputArtifact(session, "search-structure", rawOutput);
+	if (!spillArtifactId) return headTruncation.content;
+	const separator = headTruncation.content.endsWith("\n") ? "" : "\n";
+	return `${headTruncation.content}${separator}${artifactFooter(spillArtifactId)}`;
 }
 
 // =============================================================================

@@ -146,26 +146,26 @@ beside it, both at the full width of the card, and the footer prints the widest
 hint that fits, down to `esc close`. The status row drops its segments from the
 least informative end when the terminal is narrower than the row, and prints the
 loop name and `ctrl+x runs` at every width. Where the best is not the newest
-logged run, the row carries the gap as `2 since best`, which it gives up before
+logged run, the row shows the gap as `2 since best`, which it drops before
 the best itself.
 
 ## Going wider
 
 `/autoresearch` tries one change per iteration. [Autoswarm](./autoswarm.md) is
 the same loop with several candidate arms per iteration, cross-reviewed before
-one is kept, driven from its own console. Everything on this page — the
-harness, segments, scope, the correctness warning below — applies to both.
+one is kept, driven from its own console. The harness, segments, scope, and the
+correctness warning below apply to both.
 
 ## Correctness is the harness's job
 
-Autoresearch compares numbers. It does not know whether the code still works,
-and nothing in the loop discovers that a faster implementation is wrong.
+Autoresearch compares numbers. It does not test whether the code still works,
+and nothing in the loop detects that a faster implementation is wrong.
 
 Make `autoresearch.sh` exit non-zero when the result is wrong, and cover the
-inputs the optimization could break. An ASCII-only gate on a string algorithm
+inputs the optimization could break. An ASCII-only check on a string algorithm
 accepts an arm that is wrong on every non-ASCII input, because it never tries
 one. Include the boundaries the change is likely to move: empty input, the block
-sizes of any algorithm you expect to be reached for, non-ASCII text, and the
+sizes of any algorithm the change may select, non-ASCII text, and the
 degenerate cases.
 
 ## Tools
@@ -237,8 +237,8 @@ keyed on the primary checkout, so worktrees of one repository share it.
 takes, so both lower the motion floor; at the default the recorder rejects a
 take that holds still as a stuttering capture.
 
-The run screen changes layout twice as a terminal narrows -- the sidebar is
-bounded, then the panes stack -- so it is captured at three widths. `OUT_DIR` is
+The run screen changes layout twice as a terminal narrows: the sidebar is
+bounded, then the panes stack. It is captured at three widths. `OUT_DIR` is
 a bind mount and must be absolute, and each width takes its own directory,
 because one directory cannot hold two takes whose frames share a mark name.
 

@@ -23,7 +23,7 @@ Profile settings live in `~/.veyyon/profiles/<name>/agent/config.yml` (default p
 
 - **New keys** arrive with a schema default, so a missing key is never an error; the default applies until you set your own value.
 - **Renamed fields** are migrated automatically where a migration exists, and the file is rewritten in the new spelling.
-- **Removed or unknown fields** are preserved silently and never block startup (they may belong to a newer build or another tool). Delete them yourself to keep the file clean.
+- **Removed or unknown fields** are preserved silently and never block startup (they may belong to a newer build or another tool). Delete them yourself to remove them from the file.
 
 ### Updating your config
 
@@ -36,7 +36,7 @@ Profile settings live in `~/.veyyon/profiles/<name>/agent/config.yml` (default p
    ```
 
 3. Fix each reported line. If you are unsure what a key does, see [Configuration](./configuration.md) and [File locations](../reference/file-locations.md).
-4. After editing, run `veyyon plugin doctor` again to confirm the file loads cleanly.
+4. After editing, run `veyyon plugin doctor` again to confirm the file loads without errors.
 
 You do not need to rewrite the whole file. Most upgrades only add or rename a few keys, and the rest of your settings stay the same.
 

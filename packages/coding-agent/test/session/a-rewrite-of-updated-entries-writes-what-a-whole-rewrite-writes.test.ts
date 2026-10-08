@@ -1,11 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
+import { type SessionEntry, TITLE_CHANGE_ENTRY_TYPE } from "@veyyon/kernel/session/session-entries";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import {
 	FileSessionStorage,
 	type SessionFileBody,
+	type SessionStorageWriter,
 	type WriteTextAtomicOptions,
 } from "@veyyon/kernel/session/session-storage";
 import { TempDir } from "@veyyon/utils";
@@ -21,34 +22,45 @@ import { TempDir } from "@veyyon/utils";
  * than what a whole rewrite of the same state publishes". Its members: the kept prefix ends at the
  * wrong entry (the first listed, not the earliest), offsets counted in characters instead of UTF-8
  * bytes, offsets that miss the entries appended after the publish, an update that lands while a
- * rewrite is running and is reset away by it, another writer's line dropped, a title change, the
+ * rewrite is running and is reset away by it, another writer's line dropped, a title change (its
+ * line behind appends made before it was written, or ahead of an append made right after), the
  * storage step itself (head, tail, bounds, commit guard), and the publish step's EPERM fallback.
  * The manager rows compare the partial rewrite's bytes with a whole rewrite of the same in-memory
  * state, so any of those produces a different file.
  *
+ * A rename once forced the next rewrite to write the whole file: the header line held a copy of the
+ * title, and the title-change append dropped the layout. The rename rows assert the rewrite after a
+ * rename keeps the lines before its update.
+ *
  * MEASURED (mutation matrix, each mutant applied alone):
  * - M1 `#earliestIndexOf` returns the first listed entry's index: row 1 red.
- * - M2 entry offsets counted with `line.length`: rows 1, 2, 3, 5, 6 red.
+ * - M2 entry offsets counted with `line.length`: rows 1, 2, 3, 5, 7 red.
  * - M3 the hot append records the offset after adding the line's bytes: row 2 red.
  * - M4 the update watermark is reset after the publish instead of when serialization starts: row 3 red.
  * - M5 the layout is recorded while another writer's line is in the file, and the plan ignores
  *   foreign lines: row 4 red.
- * - M6 the title-change append keeps the layout: row 5 red.
- * - M7 `rewriteTailAtomic` skips the head write: row 7 red.
- * - M8 `rewriteTailAtomic` keeps a file shorter than `keepBytes`: row 8 red.
- * - M9 `rewriteTailAtomic` publishes without the commit guard: row 9 red.
- * - M10 `rewriteTailAtomic` renames without the EPERM fallback or the guard: rows 6, 9 red.
- * - M11 the plan ignores a changed header line: green. Every header change today (a rename, a cwd
- *   move) also drops the layout or asks for a whole rewrite, so the header comparison is a second
- *   check behind those.
+ * - M6 the title-change append drops the layout: rows 5, 6 red.
+ * - M6a the title-change append keeps the layout without recording its line: rows 5, 6 red.
+ * - M6b the title-change line is recorded after its write resolves instead of when it is handed to
+ *   the writer: row 6 red.
+ * - M6c the header line holds the title: rows 5, 6, the slot-rename resume row, and the queued tail
+ *   row of `a-title-change-during-a-rewrite-is-written-once.test.ts` red.
+ * - M6d the plan ignores an entry whose line is out of log order: row 5 red.
+ * - M7 `rewriteTailAtomic` skips the head write: row 8 red.
+ * - M8 `rewriteTailAtomic` keeps a file shorter than `keepBytes`: row 9 red.
+ * - M9 `rewriteTailAtomic` publishes without the commit guard: row 10 red.
+ * - M10 `rewriteTailAtomic` renames without the EPERM fallback or the guard: rows 7, 10 red.
+ * - M11 the plan ignores a changed header line: the titled-header resume row red.
  *
  * WHAT THIS DOES NOT CATCH: a caller that updates an entry in place and leaves it out of `updated`.
  * The manager cannot see an in-place mutation; that list is the caller's statement of what it
  * changed, and `a-history-rewrite-lists-every-entry-it-changed.test.ts` checks each caller's list.
- * M11 above, for the reason given.
  */
 
-/** Records which publish path each rewrite takes, and can hold a partial rewrite mid-way. */
+/**
+ * Records which publish path each rewrite takes, can hold a partial rewrite mid-way, and runs
+ * `afterAppend` with each line right after the writer took it.
+ */
 class RecordingStorage extends FileSessionStorage {
 	kept: number[] = [];
 	whole = 0;
@@ -56,6 +68,25 @@ class RecordingStorage extends FileSessionStorage {
 	reads: string[] = [];
 	failNextReplace = false;
 	beforeTail: (() => Promise<void>) | undefined;
+	afterAppend: ((line: string) => void) | undefined;
+
+	override openWriter(
+		p: string,
+		options?: { flags?: "a" | "w"; onError?: (err: Error) => void },
+	): SessionStorageWriter {
+		const writer = super.openWriter(p, options);
+		return {
+			append: line => {
+				const written = writer.append(line);
+				this.afterAppend?.(line);
+				return written;
+			},
+			flush: () => writer.flush(),
+			isOpen: () => writer.isOpen(),
+			close: () => writer.close(),
+			getError: () => writer.getError(),
+		};
+	}
 
 	override async readText(p: string): Promise<string> {
 		this.reads.push(p);
@@ -234,27 +265,64 @@ describe("a rewrite of updated entries writes what a whole rewrite writes", () =
 		await manager.close();
 	});
 
-	it("writes the current title and the entry recording it after a rename", async () => {
+	it("keeps the lines before the earliest update after a rename", async () => {
 		using tempDir = TempDir.createSync("@veyyon-tail-title-");
 		const fixture = await openSession(tempDir.path(), 40);
 		const { file, storage, manager, ids } = fixture;
-		// A new title rewrites the header line, which no kept prefix can carry.
+		// The title goes to the slot. The header line holds no copy of it, so a rename leaves every line
+		// before the title-change entry as it was.
 		await manager.setSessionName("renamed for the slot", "user");
+		const renamed = await fs.readFile(file, "utf8");
 		await manager.rewriteEntries([update(manager, ids[10]!, "after the rename")]);
-		// The same title again leaves the header alone; the entry recording it is
-		// appended apart from the ordinary appends that follow it.
-		await manager.setSessionName("renamed for the slot", "user");
-		appendUsers(manager, ids, 5);
+		expect(storage.kept).toEqual([lineOffset(renamed, ids[10]!)]);
 
-		await manager.rewriteEntries([update(manager, ids[42]!, "after the second rename")]);
+		// Appends made before the title-change entry is written land ahead of it in the file and behind
+		// it in the log, so the kept run ends at the first of them.
+		const racing = manager.setSessionName("renamed again", "user");
+		appendUsers(manager, ids, 5);
+		await racing;
+		const raced = await fs.readFile(file, "utf8");
+		expect(raced.indexOf(`"id":"${ids[40]!}"`)).toBeLessThan(raced.indexOf("renamed again", 256));
+		await manager.rewriteEntries([update(manager, ids[44]!, "after the second rename")]);
+		expect(storage.kept.at(-1)).toBe(lineOffset(raced, ids[40]!));
+
+		// That publish wrote the log's order, so the next rewrite keeps every line before its update.
+		const republished = await fs.readFile(file, "utf8");
 		await manager.rewriteEntries([update(manager, ids[43]!, "tail after the rename")]);
+		expect(storage.kept.at(-1)).toBe(lineOffset(republished, ids[43]!));
+		expect(storage.kept).toHaveLength(3);
+		expect(storage.whole).toBe(0);
 
 		const raw = await fs.readFile(file);
-		expect(raw.subarray(0, 256).toString("utf8")).toContain("renamed for the slot");
-		expect(raw.toString("utf8")).toContain("tail after the rename");
-		// Only the last rewrite follows a publish with nothing written apart since.
-		expect(storage.kept).toHaveLength(1);
+		const [slot, header] = raw.toString("utf8").split("\n");
+		expect(JSON.parse(slot!)).toMatchObject({ type: "title", title: "renamed again", source: "user" });
+		expect(JSON.parse(header!)).not.toHaveProperty("title");
 		expect(raw.equals(await wholeRewrite(fixture))).toBe(true);
+
+		await manager.close();
+	});
+
+	it("records the title-change line where it landed when an append follows it at once", async () => {
+		using tempDir = TempDir.createSync("@veyyon-tail-title-follow-");
+		const fixture = await openSession(tempDir.path(), 40);
+		const { file, storage, manager, ids } = fixture;
+		// An append that runs after the writer took the title-change line, before the step that follows
+		// the write, lands after that line.
+		storage.afterAppend = line => {
+			if (!line.includes(`"type":"${TITLE_CHANGE_ENTRY_TYPE}"`)) return;
+			storage.afterAppend = undefined;
+			queueMicrotask(() => appendUsers(manager, ids, 1));
+		};
+		await manager.setSessionName("renamed under an append", "user");
+		expect(ids).toHaveLength(41);
+		const before = await fs.readFile(file, "utf8");
+		expect(before.indexOf("renamed under an append", 256)).toBeLessThan(before.indexOf(`"id":"${ids[40]!}"`));
+
+		await manager.rewriteEntries([update(manager, ids[40]!, "after the following append")]);
+
+		expect(storage.kept).toEqual([lineOffset(before, ids[40]!)]);
+		expect(storage.whole).toBe(0);
+		expect((await fs.readFile(file)).equals(await wholeRewrite(fixture))).toBe(true);
 
 		await manager.close();
 	});
@@ -278,15 +346,21 @@ describe("a rewrite of updated entries writes what a whole rewrite writes", () =
 });
 
 /**
- * Resume `count` entries from a file this version wrote, after `alter` rewrites its bytes. The
- * reads the load itself made are cleared, so `storage.reads` holds only what a later rewrite reads.
+ * Resume `count` entries from a file this version wrote, after `prepare` runs on the seeding manager
+ * and `alter` rewrites the file's bytes. The reads the load itself made are cleared, so
+ * `storage.reads` holds only what a later rewrite reads.
  */
 async function resumeSession(
 	dir: string,
 	count: number,
-	options: { text?: string; alter?: (raw: string, ids: string[]) => string } = {},
+	options: {
+		text?: string;
+		prepare?: (manager: SessionManager) => Promise<unknown>;
+		alter?: (raw: string, ids: string[]) => string;
+	} = {},
 ): Promise<Fixture> {
 	const seeded = await openSession(dir, count, options.text);
+	if (options.prepare) await options.prepare(seeded.manager);
 	await seeded.manager.close();
 	if (options.alter)
 		await fs.writeFile(seeded.file, options.alter(await fs.readFile(seeded.file, "utf8"), seeded.ids));
@@ -312,7 +386,8 @@ function insertBefore(raw: string, id: string, line: string): string {
  * The class: a resumed file whose lines are not exactly one clean record per entry, in entry order,
  * is adopted anyway, and a partial rewrite keeps lines a whole rewrite would drop or re-link. Each
  * variant the loader cannot vouch for is a row below, asserting the whole path ran and wrote what a
- * second whole rewrite writes.
+ * second whole rewrite writes. A file whose title reached the slot after its header was written is
+ * clean, and its row asserts the first rewrite keeps the lines before its update.
  *
  * MEASURED (each mutant applied alone unless stated):
  * - adoption removed from `#switchToLoadedFile`: both resume rows red.
@@ -324,6 +399,8 @@ function insertBefore(raw: string, id: string, line: string): string {
  *   also reports the torn line; with the skipped-line guard removed too, the torn-tail row is red.
  * - the older-version guard removed: green. The migrated header no longer matches its line, and the
  *   rewrite plan already writes the whole file for a changed header.
+ * - the header line holds the title: the slot-rename row red.
+ * - the plan ignores a changed header line: the titled-header row red.
  *
  * WHAT THIS DOES NOT CATCH: another writer replacing the file between the loader's two stats and the
  * read, which needs a filesystem hook to interleave.
@@ -349,6 +426,26 @@ describe("a resumed session's first rewrite keeps the lines before its earliest 
 		await manager.close();
 	});
 
+	it("keeps the loaded lines of a file renamed through its title slot", async () => {
+		using tempDir = TempDir.createSync("@veyyon-tail-resume-renamed-");
+		// The title arrives after the header is written, as a generated title does, so only the slot holds it.
+		const fixture = await resumeSession(tempDir.path(), 40, {
+			prepare: manager => manager.setSessionName("named after the header", "auto"),
+		});
+		const { file, storage, manager, ids } = fixture;
+		const before = await fs.readFile(file, "utf8");
+		expect(manager.getSessionName()).toBe("named after the header");
+
+		await manager.rewriteEntries([update(manager, ids[30]!, "updated after the resume")]);
+
+		expect(storage.kept).toEqual([lineOffset(before, ids[30]!)]);
+		expect(storage.whole).toBe(0);
+		expect(storage.reads).toEqual([]);
+		expect((await fs.readFile(file)).equals(await wholeRewrite(fixture))).toBe(true);
+
+		await manager.close();
+	});
+
 	it.each([
 		{ name: "has no title slot", alter: (raw: string) => raw.slice(raw.indexOf("\n") + 1) },
 		{
@@ -361,6 +458,14 @@ describe("a resumed session's first rewrite keeps the lines before its earliest 
 			alter: (raw: string, ids: string[]) => insertBefore(raw, ids[5]!, foreignLine("orphan", "re-linked", "gone")),
 		},
 		{ name: "was written by an older version", alter: (raw: string) => raw.replace('"version":3', '"version":2') },
+		{
+			name: "has a header line that carries a title",
+			alter: (raw: string) =>
+				raw.replace(
+					'{"type":"session",',
+					'{"type":"session","title":"from an earlier version","titleSource":"auto",',
+				),
+		},
 	])("writes the whole file on the first rewrite when the file $name", async ({ alter }) => {
 		using tempDir = TempDir.createSync("@veyyon-tail-resume-unclean-");
 		const fixture = await resumeSession(tempDir.path(), 40, { alter });

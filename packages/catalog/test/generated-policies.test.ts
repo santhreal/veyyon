@@ -248,18 +248,19 @@ describe("generated model policies", () => {
 		expect(models[1]?.omitMaxOutputTokens).toBeUndefined();
 	});
 
-	it("marks OpenCode Go MiMo models as not supporting tool_choice", () => {
-		const models: ModelSpec<"openai-completions">[] = [
-			createSpec({
-				id: "mimo-v2.5-pro",
-				api: "openai-completions",
-				provider: "opencode-go",
-			}),
-		];
+	it("leaves the tool_choice decision on OpenCode Go rows to request time", () => {
+		// The gateway takes a pin for some of these models and rejects it for others, with no signal
+		// in the id; the provider drops a rejected form after one 400 and remembers it per model.
+		// Each row is seeded with the `false` an older snapshot carries, which the policy clears.
+		const ids = ["mimo-v2.5-pro", "mimo-v2-omni", "deepseek-v4-flash", "deepseek-v4-pro", "kimi-k2.7-code"];
+		const models: ModelSpec<"openai-completions">[] = ids.map(id => ({
+			...createSpec({ id, api: "openai-completions", provider: "opencode-go" }),
+			compat: { supportsToolChoice: false },
+		}));
 
 		applyGeneratedModelPolicies(models);
 
-		expect(models[0]?.compat?.supportsToolChoice).toBe(false);
+		expect(models.map(model => model.compat?.supportsToolChoice)).toEqual(ids.map(() => undefined));
 	});
 
 	it("sets OpenCode Go DeepSeek V4 tool-call request compat", () => {
@@ -280,7 +281,6 @@ describe("generated model policies", () => {
 
 		for (const model of models) {
 			expect(model.compat).toMatchObject({
-				supportsToolChoice: false,
 				maxTokensField: "max_tokens",
 				reasoningContentField: "reasoning_content",
 				requiresReasoningContentForToolCalls: true,

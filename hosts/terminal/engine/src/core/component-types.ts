@@ -56,6 +56,14 @@ export interface Component {
 	 */
 	invalidate?(): void;
 	/**
+	 * Optional hook to drop the rows kept for the next render. Called when the component's rows
+	 * have left the frame for native scrollback and no ordinary frame renders it again. The next
+	 * render() rebuilds the rows from source and returns the same content; nothing else the
+	 * component reports (finalization, a block version, a seam) changes. A component with
+	 * children propagates the call. Idempotent.
+	 */
+	releaseRenderCache?(): void;
+	/**
 	 * Optional hook to set whether this component ignores tight layout mode.
 	 */
 	setIgnoreTight?(ignore: boolean): void;
@@ -191,7 +199,9 @@ export function setNativeScrollbackRetainRows(component: Component, rows: number
  * Contract:
  * - The engine calls the setter immediately before the root's `render()`, with the
  *   root's direct children that contain a requested component, or `null` for a full
- *   render. A non-null set is never empty.
+ *   render. An empty set names no child: every child's previous render stands, and
+ *   the frame exists so a root implementing {@link NativeScrollbackCompaction} drops
+ *   the committed rows the engine reported after its last render.
  * - The hint applies to the next `render()` only. The implementer consumes it there,
  *   so an out-of-band render (an exporter walking the tree) is always a full one.
  * - An implementer that cannot prove its previous render still stands (a width

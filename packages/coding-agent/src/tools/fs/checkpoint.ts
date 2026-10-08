@@ -1,6 +1,6 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
-import { prompt } from "@veyyon/utils";
-import { type } from "arktype";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { lazy, prompt } from "@veyyon/utils";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "..";
 import type { OutputMeta } from "../core/output-meta";
@@ -25,17 +25,21 @@ export interface CompletedRewindState {
 	rewoundAt: string;
 }
 
-const checkpointSchema = type({
-	goal: type("string").describe("investigation goal"),
-});
+const checkpointSchema = lazy(() =>
+	type({
+		goal: type("string").describe("investigation goal"),
+	}),
+);
 
-type CheckpointParams = typeof checkpointSchema.infer;
+type CheckpointParams = typeof checkpointSchema.value.infer;
 
-const rewindSchema = type({
-	report: type("string").describe("investigation findings"),
-});
+const rewindSchema = lazy(() =>
+	type({
+		report: type("string").describe("investigation findings"),
+	}),
+);
 
-type RewindParams = typeof rewindSchema.infer;
+type RewindParams = typeof rewindSchema.value.infer;
 
 export interface CheckpointToolDetails {
 	goal: string;
@@ -54,13 +58,15 @@ function isTopLevelSession(session: ToolSession): boolean {
 	return depth === undefined || depth === 0;
 }
 
-export class CheckpointTool implements AgentTool<typeof checkpointSchema, CheckpointToolDetails> {
+export class CheckpointTool implements AgentTool<typeof checkpointSchema.value, CheckpointToolDetails> {
 	readonly name = "checkpoint";
 	readonly approval = "read" as const;
 	readonly label = "Checkpoint";
 	readonly summary = "Create a git-based checkpoint to save and restore session state";
 	readonly description: string;
-	readonly parameters = checkpointSchema;
+	get parameters(): typeof checkpointSchema.value {
+		return checkpointSchema.value;
+	}
 	readonly strict = true;
 	readonly loadMode = "discoverable";
 	readonly intent = (args: Partial<CheckpointParams>) => (args.goal ? `checkpointing: ${args.goal}` : "checkpointing");
@@ -100,13 +106,15 @@ export class CheckpointTool implements AgentTool<typeof checkpointSchema, Checkp
 	}
 }
 
-export class RewindTool implements AgentTool<typeof rewindSchema, RewindToolDetails> {
+export class RewindTool implements AgentTool<typeof rewindSchema.value, RewindToolDetails> {
 	readonly name = "rewind";
 	readonly approval = "read" as const;
 	readonly label = "Rewind";
 	readonly summary = "Rewind to a previously created checkpoint";
 	readonly description: string;
-	readonly parameters = rewindSchema;
+	get parameters(): typeof rewindSchema.value {
+		return rewindSchema.value;
+	}
 	readonly strict = true;
 	readonly loadMode = "discoverable";
 	readonly intent = (): string => "rewinding";

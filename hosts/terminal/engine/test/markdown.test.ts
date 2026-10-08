@@ -67,15 +67,23 @@ describe("Markdown component", () => {
 			expect(renderedLines(markdown, 80)).toEqual(["- Item 1", "  - Nested 1.1", "  - Nested 1.2", "- Item 2"]);
 		});
 
-		it("pads every rendered line to the full render width", () => {
-			// The trim above is for legibility; the component really does emit
-			// width-filled lines, and a caller compositing them into a frame depends
-			// on it. Asserted once here so the other cases can read cleanly.
-			const markdown = new Markdown("- Item 1\n  - Nested 1.1", 0, 0, defaultMarkdownTheme);
+		it("ends an unpainted row at its ink and fills a painted row to the render width", () => {
+			// The trim above is for legibility. An unpainted row is emitted at its own length:
+			// the renderer erases every row's tail and the overlay compositor pads what it
+			// splices, so trailing spaces would only be bytes to hold and write. A background
+			// style has to reach the edge, so a painted row is still filled to the width.
+			const text = "- Item 1\n  - Nested 1.1";
+			const bare = new Markdown(text, 2, 1, defaultMarkdownTheme);
+			const painted = new Markdown(text, 2, 1, defaultMarkdownTheme, { bgColor: t => `\x1b[44m${t}\x1b[49m` });
 
-			const widths = markdown.render(80).map(line => stripVTControlCharacters(line).length);
-
-			expect(widths).toEqual([80, 80]);
+			// The blank padding rows are empty and a content row keeps only its left margin.
+			expect(bare.render(80).map(line => stripVTControlCharacters(line))).toEqual([
+				"",
+				"  - Item 1",
+				"    - Nested 1.1",
+				"",
+			]);
+			expect(painted.render(80).map(line => stripVTControlCharacters(line).length)).toEqual([80, 80, 80, 80]);
 		});
 
 		it("indents each nesting level by two more columns, four deep", () => {
@@ -1636,7 +1644,8 @@ describe("Markdown.render reference stability", () => {
 	it("does not share oversized renders through the L2 cache", () => {
 		const width = 80;
 		const paragraph = `cache-budget sentinel ${"x".repeat(120)}`;
-		const largeText = Array.from({ length: 160 }, (_, index) => `Paragraph ${index}: ${paragraph}`).join("\n\n");
+		// 400 paragraphs lay out to more than 60,000 characters, well past the 32 KiB entry cap.
+		const largeText = Array.from({ length: 400 }, (_, index) => `Paragraph ${index}: ${paragraph}`).join("\n\n");
 
 		const first = new Markdown(largeText, 0, 0, defaultMarkdownTheme).render(width);
 		const second = new Markdown(largeText, 0, 0, defaultMarkdownTheme).render(width);

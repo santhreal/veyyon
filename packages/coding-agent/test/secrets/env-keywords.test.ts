@@ -19,13 +19,13 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { collectEnvSecrets } from "@veyyon/coding-agent/secrets";
 import {
-	BUNDLED_ENV_KEYWORDS,
 	buildEnvSecretPattern,
+	bundledEnvKeywords,
 	ENV_KEYWORDS_FILENAME,
 	loadEnvSecretKeywords,
 } from "@veyyon/coding-agent/secrets/env-keywords";
 
-const bundled = (): RegExp => buildEnvSecretPattern([...BUNDLED_ENV_KEYWORDS]);
+const bundled = (): RegExp => buildEnvSecretPattern([...bundledEnvKeywords()]);
 
 let agentDir: string;
 let cwd: string;
@@ -92,9 +92,9 @@ describe("names that are detected", () => {
 		for (const name of ["APIKEY", "PRIVKEY", "SECRETKEY", "MY_APIKEY"]) {
 			expect(pattern.test(name)).toBe(true);
 		}
-		expect(BUNDLED_ENV_KEYWORDS).not.toContain("APIKEY");
-		expect(BUNDLED_ENV_KEYWORDS).not.toContain("PRIVKEY");
-		expect(BUNDLED_ENV_KEYWORDS).not.toContain("SECRETKEY");
+		expect(bundledEnvKeywords()).not.toContain("APIKEY");
+		expect(bundledEnvKeywords()).not.toContain("PRIVKEY");
+		expect(bundledEnvKeywords()).not.toContain("SECRETKEY");
 	});
 
 	/** Case-insensitive, because a lowercase variable name is legal and people use them. */
@@ -130,7 +130,7 @@ describe("names that are deliberately NOT detected", () => {
 	it("does not match PWD or OLDPWD", () => {
 		expect(bundled().test("PWD")).toBe(false);
 		expect(bundled().test("OLDPWD")).toBe(false);
-		expect(BUNDLED_ENV_KEYWORDS).not.toContain("PWD");
+		expect(bundledEnvKeywords()).not.toContain("PWD");
 	});
 
 	/** Ordinary variables every shell has stay untouched. */
@@ -196,7 +196,7 @@ describe("the pattern builder", () => {
 describe("loading the list from disk", () => {
 	/** With no user file, the bundled list is what you get. */
 	it("returns the bundled list when no user file exists", async () => {
-		expect(await loadEnvSecretKeywords({ cwd, agentDir })).toEqual([...BUNDLED_ENV_KEYWORDS]);
+		expect(await loadEnvSecretKeywords({ cwd, agentDir })).toEqual([...bundledEnvKeywords()]);
 	});
 
 	/** A profile file adds to the list, which is the point of it being data. */
@@ -227,7 +227,7 @@ describe("loading the list from disk", () => {
 		await fs.writeFile(path.join(agentDir, ENV_KEYWORDS_FILENAME), "keywords:\n  - ONLYTHIS\n");
 
 		const keywords = await loadEnvSecretKeywords({ cwd, agentDir });
-		for (const bundledKeyword of BUNDLED_ENV_KEYWORDS) expect(keywords).toContain(bundledKeyword);
+		for (const bundledKeyword of bundledEnvKeywords()) expect(keywords).toContain(bundledKeyword);
 		expect(buildEnvSecretPattern(keywords).test("DEPLOY_TOKEN")).toBe(true);
 	});
 
@@ -332,7 +332,7 @@ describe("collecting from the real environment", () => {
 		try {
 			expect(collectEnvSecrets(bundled()).some(entry => entry.content === "another-long-enough-value")).toBe(false);
 			expect(
-				collectEnvSecrets(buildEnvSecretPattern([...BUNDLED_ENV_KEYWORDS, "SCANSEED"])).some(
+				collectEnvSecrets(buildEnvSecretPattern([...bundledEnvKeywords(), "SCANSEED"])).some(
 					entry => entry.content === "another-long-enough-value",
 				),
 			).toBe(true);

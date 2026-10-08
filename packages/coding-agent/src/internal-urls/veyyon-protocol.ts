@@ -9,8 +9,23 @@
  *
  */
 import * as path from "node:path";
-import { getDocFilenames, getEmbeddedDoc } from "./docs-index";
+import type * as docsIndexModule from "./docs-index";
 import type { InternalResource, InternalUrl, ProtocolHandler, UrlCompletion } from "./types";
+
+/**
+ * `./docs-index`, loaded on the first `veyyon://` resolve or completion.
+ *
+ * A compiled binary replaces the module's payload read with a 1.4 MB string literal, and a module on
+ * the startup graph is linked whether or not a function in it runs: statically linked into the release
+ * binary, the module held 0.8 MiB of RSS five seconds after launch. The router registers this handler
+ * for every session, so the import is the boundary that keeps the payload's chunk unlinked until a
+ * `veyyon://` URL is resolved.
+ */
+let docsIndex: Promise<typeof docsIndexModule> | undefined;
+function loadDocsIndex(): Promise<typeof docsIndexModule> {
+	docsIndex ??= import("./docs-index");
+	return docsIndex;
+}
 
 /**
  * Handler for veyyon:// URLs.
@@ -28,31 +43,15 @@ export class VeyyonProtocolHandler implements ProtocolHandler {
 		const filename = host ? (pathname && pathname !== "/" ? host + pathname : host) : "";
 
 		if (!filename) {
-			return this.#listDocs(url);
+			return listDocs(url);
 		}
 
 		return this.#readDoc(filename, url);
 	}
 
 	async complete(): Promise<UrlCompletion[]> {
+		const { getDocFilenames } = await loadDocsIndex();
 		return getDocFilenames().map(value => ({ value }));
-	}
-
-	async #listDocs(url: InternalUrl): Promise<InternalResource> {
-		const filenames = getDocFilenames();
-		if (filenames.length === 0) {
-			throw new Error("No documentation files found");
-		}
-
-		const listing = filenames.map(f => `- [${f}](veyyon://${f})`).join("\n");
-		const content = `# Documentation\n\n${filenames.length} files available:\n\n${listing}\n`;
-
-		return {
-			url: url.href,
-			content,
-			contentType: "text/markdown",
-			size: Buffer.byteLength(content, "utf-8"),
-		};
 	}
 
 	async #readDoc(filename: string, url: InternalUrl): Promise<InternalResource> {
@@ -69,10 +68,11 @@ export class VeyyonProtocolHandler implements ProtocolHandler {
 		const docPath =
 			normalized === "docs" ? "" : normalized.startsWith("docs/") ? normalized.slice("docs/".length) : normalized;
 		if (!docPath) {
-			return this.#listDocs(url);
+			return listDocs(url);
 		}
 
-		const content = (await getEmbeddedDoc(docPath)) ?? (await this.#readByBasename(docPath));
+		const { getDocFilenames, getEmbeddedDoc } = await loadDocsIndex();
+		const content = (await getEmbeddedDoc(docPath)) ?? (await readByBasename(docPath));
 		if (content === undefined) {
 			const lookup = docPath.replace(/\.md$/, "");
 			const suggestions = getDocFilenames()
@@ -92,22 +92,41 @@ export class VeyyonProtocolHandler implements ProtocolHandler {
 			size: Buffer.byteLength(content, "utf-8"),
 		};
 	}
+}
 
-	/**
-	 * Second chance for a path that names the right page in the wrong directory.
-	 *
-	 * Documentation is reorganized, and every reference to it does not move in the same commit: a
-	 * prompt, a comment, a changelog entry and an operator's memory all carry the old path. A page
-	 * that still exists under one name in the tree is served under it, so `veyyon://docs/secrets.md`
-	 * keeps working after the page becomes `handbook/src/architecture/secrets.md`.
-	 *
-	 * AMBIGUITY IS A MISS, not a guess. Two pages with the same basename are two different pages,
-	 * and picking either one silently answers a question that was not asked; the caller falls
-	 * through to the suggestion list, which names both.
-	 */
-	async #readByBasename(docPath: string): Promise<string | undefined> {
-		const wanted = docPath.split("/").at(-1);
-		const matches = getDocFilenames().filter(f => f.split("/").at(-1) === wanted);
-		return matches.length === 1 && matches[0] !== docPath ? await getEmbeddedDoc(matches[0]) : undefined;
+async function listDocs(url: InternalUrl): Promise<InternalResource> {
+	const { getDocFilenames } = await loadDocsIndex();
+	const filenames = getDocFilenames();
+	if (filenames.length === 0) {
+		throw new Error("No documentation files found");
 	}
+
+	const listing = filenames.map(f => `- [${f}](veyyon://${f})`).join("\n");
+	const content = `# Documentation\n\n${filenames.length} files available:\n\n${listing}\n`;
+
+	return {
+		url: url.href,
+		content,
+		contentType: "text/markdown",
+		size: Buffer.byteLength(content, "utf-8"),
+	};
+}
+
+/**
+ * Second chance for a path that names the right page in the wrong directory.
+ *
+ * Documentation is reorganized, and every reference to it does not move in the same commit: a
+ * prompt, a comment, a changelog entry and an operator's memory all carry the old path. A page
+ * that still exists under one name in the tree is served under it, so `veyyon://docs/secrets.md`
+ * keeps working after the page becomes `handbook/src/architecture/secrets.md`.
+ *
+ * AMBIGUITY IS A MISS, not a guess. Two pages with the same basename are two different pages,
+ * and picking either one silently answers a question that was not asked; the caller falls
+ * through to the suggestion list, which names both.
+ */
+async function readByBasename(docPath: string): Promise<string | undefined> {
+	const { getDocFilenames, getEmbeddedDoc } = await loadDocsIndex();
+	const wanted = docPath.split("/").at(-1);
+	const matches = getDocFilenames().filter(f => f.split("/").at(-1) === wanted);
+	return matches.length === 1 && matches[0] !== docPath ? await getEmbeddedDoc(matches[0]) : undefined;
 }

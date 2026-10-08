@@ -14,7 +14,11 @@
  * highlights again, or the batch highlights what no frame draws. The sweep drives one transcript
  * holding each of those, and fails when any source the frame highlights is not served from the
  * batch, or the batch holds a source the frame never highlights. The frame drawn with the batch is
- * compared byte for byte with the frame drawn without it.
+ * compared byte for byte with the frame drawn without it. And the batch losing a source before its
+ * last card draws: a source several cards draw, or one the exact cache held when the batch was
+ * taken, left for that cache on its first read, and the cache holds 256 sources, so more than that
+ * drawn in between evicted it and the next card highlighted it again. A transcript drawing one
+ * command twice with 300 others between, rebuilt twice, fails on any row not from the batch.
  *
  * WHAT IT DOES NOT CATCH. Sources a tool's own `renderCall`/`renderResult` highlights, Markdown
  * code fences, and the read group: none of them is collected, and each still highlights at the draw.
@@ -165,6 +169,35 @@ function firstFrame(entries: readonly SessionMessageEntry[]): string {
 	}
 }
 
+/** Prefix every row the native batch returns with `FROM_BATCH`, and record the key of each source it highlights. */
+function markBatchedRows(): { calls: number; batched: string[] } {
+	const record = { calls: 0, batched: [] as string[] };
+	const batch = natives.highlightCodeBatch;
+	spyOn(natives, "highlightCodeBatch").mockImplementation((sources, colors) => {
+		record.calls++;
+		for (const source of sources) record.batched.push(highlightKey(source.code, source.lang ?? undefined));
+		return batch(sources, colors).map(rows =>
+			rows
+				.split("\n")
+				.map(row => `${FROM_BATCH}${row}`)
+				.join("\n"),
+		);
+	});
+	return record;
+}
+
+/** Every source a draw highlights, with the language it named and the rows it drew. */
+function recordDraws(): { key: string; lang: string | undefined; rows: string[] }[] {
+	const drawn: { key: string; lang: string | undefined; rows: string[] }[] = [];
+	const highlight = highlightModule.highlightCode;
+	spyOn(highlightModule, "highlightCode").mockImplementation((code, lang, highlightTheme) => {
+		const rows = highlight(code, lang, highlightTheme);
+		drawn.push({ key: highlightKey(code, lang), lang, rows });
+		return rows;
+	});
+	return drawn;
+}
+
 describe("a rebuilt transcript is highlighted before its first frame", () => {
 	beforeAll(async () => {
 		resetSettingsForTest();
@@ -177,30 +210,12 @@ describe("a rebuilt transcript is highlighted before its first frame", () => {
 	});
 
 	it("serves every source the first frame highlights from one batch, and batches nothing it does not draw", () => {
-		const batched: string[] = [];
-		let batches = 0;
-		const batch = natives.highlightCodeBatch;
-		spyOn(natives, "highlightCodeBatch").mockImplementation((sources, colors) => {
-			batches++;
-			for (const source of sources) batched.push(highlightKey(source.code, source.lang ?? undefined));
-			return batch(sources, colors).map(rows =>
-				rows
-					.split("\n")
-					.map(row => `${FROM_BATCH}${row}`)
-					.join("\n"),
-			);
-		});
-		const drawn: { key: string; lang: string | undefined; rows: string[] }[] = [];
-		const highlight = highlightModule.highlightCode;
-		spyOn(highlightModule, "highlightCode").mockImplementation((code, lang, highlightTheme) => {
-			const rows = highlight(code, lang, highlightTheme);
-			drawn.push({ key: highlightKey(code, lang), lang, rows });
-			return rows;
-		});
+		const batch = markBatchedRows();
+		const drawn = recordDraws();
 
 		firstFrame(transcript("alpha"));
 
-		expect(batches).toBe(1);
+		expect(batch.calls).toBe(1);
 		// Every kind of source is in the frame: a result's code in a language with a grammar and in one
 		// without, the command, and the context runs of both the one-file change and the per-file
 		// changes, which are highlighted as TypeScript.
@@ -219,7 +234,38 @@ describe("a rebuilt transcript is highlighted before its first frame", () => {
 				rows: [],
 			});
 		}
-		expect([...new Set(batched)].sort()).toEqual([...new Set(drawn.map(call => call.key))].sort());
+		expect([...new Set(batch.batched)].sort()).toEqual([...new Set(drawn.map(call => call.key))].sort());
+	});
+
+	it("serves a source several cards draw from the batch however many sources are drawn between them", () => {
+		markBatchedRows();
+		const drawn = recordDraws();
+		const repeated = "git status --short epsilon";
+		const entries = [
+			...toolTurn("epsilon-first", "bash", { command: repeated }, { text: "ok" }),
+			...Array.from({ length: 300 }, (_, index) =>
+				toolTurn(`epsilon-${index}`, "bash", { command: `ls epsilon-${index}` }, { text: "ok" }),
+			).flat(),
+			...toolTurn("epsilon-again", "bash", { command: repeated }, { text: "ok" }),
+		];
+		// The second rebuild takes the batch while the exact cache still holds the sources the first
+		// one drew last, and the frame evicts them again before their cards draw.
+		for (const rebuild of [1, 2]) {
+			drawn.length = 0;
+			firstFrame(entries);
+			// The command is drawn after more other sources than the exact cache holds.
+			const last = drawn.findLastIndex(call => call.key.endsWith(`\x00${repeated}`));
+			const between = new Set(drawn.slice(0, Math.max(last, 0)).map(call => call.key));
+			between.delete(highlightKey(repeated, "bash"));
+			expect({ rebuild, turnedOver: between.size > 256 }).toEqual({ rebuild, turnedOver: true });
+			for (const call of drawn) {
+				expect({ rebuild, key: call.key, rows: call.rows.filter(row => !row.startsWith(FROM_BATCH)) }).toEqual({
+					rebuild,
+					key: call.key,
+					rows: [],
+				});
+			}
+		}
 	});
 
 	it("draws the frame it draws when every source is highlighted at the draw", () => {

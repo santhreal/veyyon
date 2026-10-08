@@ -1,11 +1,10 @@
 import { describe, expect, it } from "bun:test";
+import { parseSecretCommand, secretCommandUsage } from "@veyyon/coding-agent/secrets/secret-command";
 import {
-	parseSecretCommand,
 	SECRET_TUI_SUBCOMMANDS,
 	SECRET_VERB_SPELLINGS,
 	type SecretSubcommand,
-	secretCommandUsage,
-} from "@veyyon/coding-agent/secrets/secret-command";
+} from "@veyyon/coding-agent/secrets/secret-verbs";
 
 /**
  * WHY THIS SUITE EXISTS.

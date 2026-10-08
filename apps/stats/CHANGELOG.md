@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Split the session-file parser into one function per entry kind, the request-detail route and the model ranking the preference and cost charts share into their own functions; no user-visible change.
+
+### Fixed
+
+- A dashboard built from a source checkout keeps the anti-flash theme script `build.ts` writes into `index.html` instead of overwriting the page with a copy that lacks it, so a stored theme that differs from the system theme applies before the first paint instead of after the dashboard script loads.
+
 ## [1.5.4] - 2026-09-24
 
 ### Fixed

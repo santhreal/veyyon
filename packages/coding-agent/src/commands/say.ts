@@ -123,7 +123,7 @@ export default class Say extends Command {
 					sampleRate = chunk.sampleRate;
 				}
 				if (total === 0) {
-					this.#synthesisFailed(model);
+					synthesisFailed(model);
 					exitCode = 1;
 					return;
 				}
@@ -154,7 +154,7 @@ export default class Say extends Command {
 			}
 			if (spoken === 0) {
 				player.stop();
-				this.#synthesisFailed(model);
+				synthesisFailed(model);
 				exitCode = 1;
 				return;
 			}
@@ -172,12 +172,12 @@ export default class Say extends Command {
 			if (exitCode !== 0) process.exit(exitCode);
 		}
 	}
+}
 
-	#synthesisFailed(model: string): void {
-		process.stderr.write(
-			chalk.red(
-				`error: could not synthesize with local TTS model "${model}". Run \`veyyon setup speech\` to install it.\n`,
-			),
-		);
-	}
+function synthesisFailed(model: string): void {
+	process.stderr.write(
+		chalk.red(
+			`error: could not synthesize with local TTS model "${model}". Run \`veyyon setup speech\` to install it.\n`,
+		),
+	);
 }

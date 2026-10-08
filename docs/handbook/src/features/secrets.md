@@ -21,7 +21,7 @@ The setting takes effect in the current session. Veyyon reloads environment vari
 
 If the credential is already an environment variable, you have nothing to declare to keep its value out of provider requests. Veyyon treats an environment variable as secret when its value is 8 characters or longer and its name ends with, or has an underscore after, one of `KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `PASS`, `PASSPHRASE`, `AUTH`, `CREDENTIAL`, `PRIVATE`, or `OAUTH`.
 
-That boundary matters, so read each keyword as a whole word rather than a substring:
+Each keyword matches as a whole word, not as a substring:
 
 | Detected | Not detected |
 | -------- | ------------ |
@@ -64,8 +64,8 @@ export DEPLOY_TOKEN=ghp_R2d2c3poIHRva2VuIGV4YW1wbGU
 
 needs no configuration for defensive protection. Start Veyyon and that value is
 replaced whenever it appears in provider-bound text. Environment detection does
-not give the agent a readable inventory name. When the agent must choose and
-spend the credential deliberately, store the same value in the vault:
+not give the agent a readable inventory name. When the agent must select the
+credential by name and use it, store the same value in the vault:
 
 ```text
 /secret from-env DEPLOY_TOKEN
@@ -73,7 +73,7 @@ spend the credential deliberately, store the same value in the vault:
 
 That is the form you type in a terminal. Veyyon prompts for a name afterwards and generates one if you skip it. A client with no terminal, such as `--print` mode or an ACP editor, writes the name on the line as `/secret from-env DEPLOY_TOKEN DEPLOY_KEY`, because nothing there can prompt; see [On a client with no terminal](#on-a-client-with-no-terminal).
 
-## What the model sees
+## What the model receives
 
 Every occurrence of a known value is replaced before provider dispatch. This boundary covers messages, dynamic system prompts, tool descriptions and schemas, resumed assistant text, replay payloads, and nested model calls such as title generation, image analysis, memory summaries, and speech rewriting.
 
@@ -93,13 +93,13 @@ The provider receives a machine-keyed placeholder:
 DEPLOY_TOKEN=#0A1B2C3D4E5F678901234567#
 ```
 
-The placeholder is stable across restarts on the same machine. It contains a keyed HMAC rather than a load-order index, so seeing it does not give the provider an offline dictionary test for the value. A named vault entry instead uses its readable name, such as `#GITHUB_TOKEN#`, so the model can choose the right credential.
+The placeholder is stable across restarts on the same machine. It contains a keyed HMAC rather than a load-order index, so a provider that receives it has no offline dictionary test for the value. A named vault entry instead uses its readable name, such as `#GITHUB_TOKEN#`, so the model can choose the right credential.
 
 The model is told two things about a placeholder: that putting one where a credential belongs is expected and works, and that it is opaque otherwise. It does not have the value and cannot request it. For named vault entries it is told one more thing, which credentials it currently has, covered under [What the agent receives, and when](#what-the-agent-receives-and-when).
 
 ## Using a secret in a command
 
-This is the part that makes the feature useful rather than merely defensive. The model can put a placeholder into a command, and veyyon substitutes the real value before the command runs.
+The model can put a placeholder into a command, and veyyon substitutes the real value before the command runs.
 
 The model writes:
 
@@ -107,23 +107,23 @@ The model writes:
 curl -H "Authorization: Bearer #0A1B2C3D4E5F678901234567#" https://api.example.com/deploy
 ```
 
-The command that actually executes contains the real token. The substitution happens locally, after the model has produced the command and before the shell sees it. The model never learns the value, and the request still authenticates.
+The executed command contains the real token. The substitution happens locally, after the model has produced the command and before the shell receives it. The model never receives the value, and the request still authenticates.
 
-The substituted command is not written down. Veyyon records one diagnostic entry per tool call so that a session interrupted mid-call can tell you on resume what was running, and that entry stores the placeholder form, not the substituted one. This matters because `/share` uploads the session file and backups copy it. What the command prints is a separate question, covered under [What this does not protect](#what-this-does-not-protect).
+The substituted command is not written to the session. Veyyon records one diagnostic entry per tool call so that a resumed session reports what was running when a call was interrupted. `/share` uploads the session file and backups copy it, so that entry stores the placeholder form, not the substituted one. What the command prints is a separate question, covered under [What this does not protect](#what-this-does-not-protect).
 
 ## What the agent receives, and when
 
 Store `GITHUB_TOKEN` today, quit, and start a new session tomorrow. Ask for your open pull requests, and the agent writes `#GITHUB_TOKEN#` into the `curl` command without you mentioning the credential again.
 
-It can do that because the system prompt contains an **inventory**: the placeholders the agent is able to spend at that moment, listed by name and sorted. The inventory is built from the live secret runtime rather than from the conversation, and that is the whole reason it survives a restart. The vault is stored on disk; a conversation is not. Knowledge kept only in the transcript went away with the transcript, while the credential it described stayed exactly where it was.
+It can do that because the system prompt contains an **inventory**: the placeholders the agent is able to spend at that moment, listed by name and sorted. The inventory is built from the live secret runtime rather than from the conversation, so it survives a restart. The vault is stored on disk; a conversation is not.
 
-The inventory holds names, and nothing else. No value appears in it in any state, and the agent has no way to request one. Around the list the agent is told what the list is for: write the placeholder where the credential belongs, the real value is substituted locally just before the tool runs, and a name that is not listed is not available.
+The inventory holds names, and nothing else. No value appears in it in any state, and the agent has no way to request one. The text around the list states what the list is for: write the placeholder where the credential belongs, the real value is substituted locally immediately before the tool runs, and a name that is not listed is not available.
 
 Only vault entries are listed, because only they have readable names. A value detected in your environment, or declared in `secrets.yml`, becomes a machine-keyed placeholder instead, which the agent meets where the value would have appeared rather than in a list.
 
 When protection is off, or when nothing is stored, the section is absent rather than empty. An empty heading reads as "you have no credentials", and that is a different statement from "this session cannot spend any". Removing the last credential takes the whole section away again, heading included.
 
-Four moments, and what the agent learns at each:
+The agent receives the inventory, or a notice, at four points:
 
 **At session start, or on resume.** The inventory, rebuilt from whatever the vault holds right then. Nothing else is needed. A credential you stored last week does not have to be introduced again.
 
@@ -133,19 +133,19 @@ Four moments, and what the agent learns at each:
 
 **When a lifetime runs out on its own.** Substitution stops at the deadline itself, not a moment after, and the name leaves the inventory on the next rebuild. There is no notice on this path, because no command ran and so there is no turn to put one in. You are warned twice before it happens, which is covered under [Lifetimes](#lifetimes).
 
-In none of these does the agent learn a value.
+None of these gives the agent a value.
 
 ### Why a removal is stated rather than left to the list
 
-Dropping the name from the inventory would be the quieter design, and on paper it conveys the same thing. It does not work. Noticing that something has stopped being present in a long prompt is the kind of thing a model reliably fails at, so it goes on writing a placeholder that worked ten minutes ago.
+Removing the name from the inventory alone does not stop the agent from using it. A model does not reliably detect that a name has disappeared from a long prompt, so it continues to write a placeholder that worked ten minutes earlier.
 
-A revoked placeholder cannot reach a tool during the running process. Veyyon remembers the exact name it retired and rejects the call before execution:
+A revoked placeholder cannot reach a tool during the running process. Veyyon records each retired name and rejects a call that contains one before execution:
 
 ```text
 Stored secret #STRIPE_TEST_KEY# is no longer available. Store the credential again and update the command.
 ```
 
-Text that was never a live credential, such as `#TODO#`, remains ordinary input. The revocation notice gives the agent the same fact before it tries the call; the refusal is the backstop when the agent keeps using stale history.
+Text that was never a live credential, such as `#TODO#`, remains ordinary input. The revocation notice gives the agent the same fact before it tries the call; the rejection applies when the agent reuses a stale placeholder from its history.
 
 For the same reason, the removal notice is delivered even when secret protection is off. The add and extend notices are not: with protection off there is no working placeholder to advertise. A revoked one is different, because it is already sitting in the agent's history, and the agent needs to hear that it stopped working whatever the setting is.
 
@@ -180,7 +180,7 @@ Press Enter on the empty field and veyyon generates a name, `SECRET_1` and upwar
 Cancelled. Nothing was stored.
 ```
 
-That order is deliberate. The credential is what you came to store, so nothing stands between you and storing it, and the name is prompted afterwards where you are free to skip it.
+The value is taken first, and the name prompt that follows can be skipped.
 
 #### Pasting into a hidden field
 
@@ -239,9 +239,9 @@ Unknown /secret command. Nothing was stored. If what followed /secret was a cred
 your scrollback and was never protected, so rotate it and store the new one with /secret add.
 ```
 
-The refusal never repeats the word it rejected, because that word is often the credential itself.
+The error never repeats the word it rejected, because that word is often the credential itself.
 
-Earlier versions read an unrecognised first word as the credential, so `/secret ghp_...` stored it. That saved one word and cost three mechanisms: every command had to be reserved in advance so it could not be mistaken for a value, a credential beginning with a reserved word collided with the command, and the collision needed an escape spelling of its own. With the value living behind `add` there is one place a value is read and none of that is needed. `/secret add list of words that is really a passphrase` stores that line byte for byte, first word included.
+`/secret add` is the one place a value is read. `/secret add list of words that is really a passphrase` stores that line byte for byte, first word included.
 
 A command stays a command however much follows it, so a malformed one is rejected rather than quietly stored: `/secret log 50` is a `log` with an unreadable argument, not a new secret called `SECRET_1`.
 
@@ -258,13 +258,11 @@ There are no options anywhere in `/secret`. Nothing is spelled with a dash, so t
 
 Position wins wherever the two could disagree, so a secret really called `PROFILE` is removed by `/secret rm PROFILE` and one called `NEVER` has its lifetime extended by `/secret extend NEVER 7d`. Where meaning is taken from a word's shape instead, the sets provably cannot overlap: a secret name may not begin with a digit, so `/secret log 50` is fifty records and `/secret log GITHUB_TOKEN` is one credential's uses; and a name may not contain a hyphen, so the `from-env` in `/secret value <name> from-env <VAR>` is never a name.
 
-The spellings `--`, `--from-env`, `--ttl`, `--scope`, `--limit` and `--name` were the earlier grammar and are rejected, stating the plain word that replaced each one. They are rejected only as the first word after `add`, so a credential that merely begins with dashes is still stored byte for byte:
+The spellings `--`, `--from-env`, `--ttl`, `--scope`, `--limit` and `--name` are rejected, and the error states the plain word that replaces each one. They are rejected only as the first word after `add`, so a credential that begins with dashes is still stored byte for byte:
 
 ```text
 /secret add -----BEGIN OPENSSH PRIVATE KEY-----
 ```
-
-`--` was the worst of them. A slash command has no options to end, so it meant nothing here and had to be looked up, and storing it on the front of a credential produces a secret that expands into requests failing somewhere else entirely.
 
 ### What you are told when it is stored
 
@@ -282,7 +280,7 @@ Replaced GITHUB_TOKEN in the profile vault, 1d left.
 The previous value is gone. #GITHUB_TOKEN# now spends the credential you just stored.
 ```
 
-The agent is told at once that a credential exists and that it should write `#GITHUB_TOKEN#` where the value belongs. It is never given the value and cannot request it. It also keeps knowing after this session ends, because the inventory in the system prompt is rebuilt from the vault rather than remembered from the conversation. See [What the agent receives, and when](#what-the-agent-receives-and-when).
+The agent is told at once that a credential exists and that it should write `#GITHUB_TOKEN#` where the value belongs. It is never given the value and cannot request it. The name stays available to the agent after this session ends, because the inventory in the system prompt is rebuilt from the vault rather than read from the conversation. See [What the agent receives, and when](#what-the-agent-receives-and-when).
 
 ### Managing what you stored
 
@@ -313,11 +311,11 @@ Every verb below works in a terminal and on a client that has none. The value fo
 
 `scope` rejects a move onto a name the destination vault already holds, rather than overwriting it. It moves the time REMAINING rather than the original lifetime, so moving a secret cannot lengthen its life. The copy is written to the destination before the source is removed, so an interrupted move leaves two copies you can see rather than none.
 
-No verb prints a value: not on a row, not truncated onto one, not behind a key. A value put into the vault has stopped being visible, and the surface most likely to end up in a screenshot is the one that must not break that.
+No verb prints a value: not on a row, not truncated onto one, not behind a key. A value stored in the vault is never displayed again.
 
-Every change reloads the live secret runtime, so a credential you revoke stops being spendable in the session you are sitting in rather than at the next restart. A reload that fails is reported rather than swallowed, because the vault write is already durable and you are the only one who can decide what to do about the gap.
+Every change reloads the live secret runtime, so a credential you revoke stops being spendable in the current session rather than at the next restart. A reload that fails is reported, not discarded: the vault write is already durable, and the gap between the file and the running session needs your action.
 
-**Names are never completed.** The dropdown after `/secret ` offers verbs and nothing else. Completing a stored name would put part of your vault on screen on a keystroke, and accepting one would type a name onto a line whose first word distinguishes between a command and a credential. `/secret list` is where names are read.
+**Names are never completed.** The dropdown after `/secret ` offers verbs and nothing else. Completing a stored name would put part of your vault on screen on a keystroke, and accepting one would type a name onto a line whose first word distinguishes between a command and a credential. `/secret list` prints the names.
 
 ### Finding what is masked and not stored
 
@@ -357,7 +355,7 @@ request history. Nothing was stored. Read the value out of the environment inste
 /secret from-env MY_TOKEN <name>.
 ```
 
-The refusal repeats neither word after `add`. Nothing distinguishes a name followed by a credential from a credential whose first word looks like a name, so a message that quoted the part it took for the name would sooner or later quote the credential.
+The error repeats neither word after `add`. Nothing distinguishes a name followed by a credential from a credential whose first word looks like a name, so a message that quoted the part it took for the name could quote the credential.
 
 `list` prints a table:
 
@@ -405,19 +403,17 @@ the unreadable file aside. Then store the secrets it held again. The reason it c
 was <what the parser complained about>
 ```
 
-Both notices name one command, because a notice raised by the vault loader cannot determine which client
-is about to print it, and `discard` runs on all of them. It moves the file aside rather than deleting
-it: the bytes still hold a real credential under a live key, and a repair that destroyed them would
-be worse than the fault it was fixing.
+Both notices state one command, because a notice raised by the vault loader cannot determine which client
+prints it, and `discard` runs on all of them. It moves the file aside rather than deleting
+it: the bytes still hold a real credential under a live key.
 
-Read the second sentence of the second notice carefully, because it is the part that keeps a broken
-vault from becoming a leak. A scope Veyyon could not read is treated as unreadable, never as empty.
-`#NAME#` in a prompt is rejected rather than passed through as the literal text `#NAME#`, and Veyyon
-will not act as though you had stored nothing.
+The second sentence of the second notice describes what keeps a broken vault from becoming a leak.
+A scope Veyyon could not read is treated as unreadable, never as empty. `#NAME#` in a prompt is
+rejected rather than passed through as the literal text `#NAME#`, and Veyyon does not act as though
+you had stored nothing.
 
-The session starts because the repair is a command inside it. If a vault that would not open also
-stopped Veyyon from launching, the only way out would be deleting the file by hand, which is the
-one thing an encrypted store exists to stop you doing casually.
+The session starts because the repair is a command inside it. A vault that could not be opened does
+not stop Veyyon from launching, so the file does not have to be deleted by hand.
 
 Either route runs the same repair, and prints the same result:
 
@@ -431,18 +427,18 @@ assuming they are gone.
 The scope keeps working from there. You can store secrets in it again immediately, and the other two
 scopes were never affected: only the file you named moved.
 
-**Your file is moved, not deleted.** The name it moved to is in the message because that file is the
-only route back to what it held. It is still encrypted with a key that is still on disk, so if the
-damage is a truncated tail, the entries before the damage are still in there. Veyyon will not destroy
-a credential store to make itself usable again, so the cleanup is yours to do once you are sure you
-no longer need it.
+**Your file is moved, not deleted.** The message states the new name because that file is the only
+route back to what it held. It is still encrypted with a key that is still on disk, so if the
+damage is a truncated tail, the entries before the damage are still in there. Veyyon does not delete
+a credential store to make itself usable again. Delete the moved file yourself once you no longer
+need it.
 
 **You have to name the vault.** Every other command that takes one defaults to `profile`, because
-there it chooses where to put something and `/secret list` shows you the result. Here it chooses a
+there it selects where to put something and `/secret list` shows you the result. Here it selects a
 file to move aside, so a default would let a bare `/secret discard` move a working vault out from
-under the session you are sitting in. A bare invocation is rejected and states the word to add.
+under the current session. A bare invocation is rejected and states the word to add.
 
-Two things the repair refuses, both on purpose:
+The repair rejects two cases:
 
 - **A scope that reads normally.** This is not a second way to delete secrets. Revoke the entry
   instead with `/secret rm <name>`, which reports what it removed. The check happens at the moment
@@ -550,10 +546,9 @@ so #SHARED_TOKEN# still spends a credential, now that one. Run /secret rm SHARED
 remove that one too.
 ```
 
-That second sentence is the part that matters, because the placeholder keeps working. Without it
-you would read a removal, assume the name was dead, and leave a live credential reachable under a
-name you believe you revoked. The agent is told the same thing, so it does not treat the name as
-revoked either.
+The second sentence states that the placeholder still works. Without it you would read a removal,
+assume the name was dead, and leave a live credential reachable under a name you believe you
+revoked. The agent receives the same notice, so it does not treat the name as revoked either.
 
 To take a particular copy rather than the one in effect, name its scope:
 
@@ -574,13 +569,11 @@ not read one it is a word that fits no slot, and it is rejected rather than igno
 rather than dropped silently.
 ```
 
-That refusal exists because the alternative is worse than an error. An accepted-and-ignored vault
-word on `extend` reads as "the global copy was given a fresh lifetime" when what actually happened
-is that the copy in effect was re-dated and the others were left alone. The same rule covers a
-lifetime handed to `rm` and a number handed to `list`: a word veyyon would drop is a word you meant
-something by.
+An accepted-and-ignored vault word on `extend` would read as "the global copy was given a fresh
+lifetime" when the copy in effect was re-dated and the others were left alone. The same rule covers
+a lifetime passed to `rm` and a number passed to `list`.
 
-The refusal states the position and never repeats the word, because the realistic slip is muscle
+The error states the position and never repeats the word, because the realistic slip is muscle
 memory for `add` under a different command, which puts the credential itself in that position.
 
 ### Encryption, and what it does not do
@@ -605,11 +598,11 @@ These failures fail fast:
 - A vault whose nonce, ciphertext, authentication tag, or bound location changed is rejected.
 - An unsafe directory, symlink, non-regular path, hard link, or insecure permission is rejected with the path and fix.
 
-What this encryption does not protect against is someone who is already running as you. The key is readable by your own account by design. If you need to defend against a compromised account, use a hardware token or an external secret manager.
+This encryption does not protect against someone who is already running as you. The key is readable by your own account by design. To protect against a compromised account, use a hardware token or an external secret manager.
 
 ### Seeing which credential was used where
 
-Hiding a value from the provider bounds what the agent could see. It does not show what the agent did with what it could. The expansion log answers that, and `/secret log` prints it:
+Hiding a value from the provider bounds what the agent could read. It does not show what the agent did with it. The expansion log records that, and `/secret log` prints it:
 
 ```text
 3 most recent use(s), oldest first:
@@ -625,7 +618,7 @@ One use is when it happened, which tool received it, which placeholders were sub
 
 #### Narrowing it to one credential
 
-A name answers the question worth asking just before a revoke, which is what stops working:
+A name filter shows, before a revoke, which uses stop working:
 
 ```text
 /secret log GITHUB_TOKEN
@@ -707,7 +700,7 @@ A `regex` entry protects anything matching a pattern, which is how you cover cre
 
 Patterns always scan globally. You do not need the `g` flag.
 
-Veyyon rejects regexes that can make no progress, use sticky matching, or contain conservatively detected catastrophic-backtracking forms. Replacement changes only the exact matched span. Equal text outside the regex context is left alone.
+Veyyon rejects regexes that can make no progress, use sticky matching, or contain a form that cannot be proven safe from catastrophic backtracking: nested or concatenated variable quantifiers, repeated alternations, and backreferences. Replacement changes only the matched span. Equal text outside the regex context is left alone.
 
 ## The two modes
 
@@ -730,7 +723,7 @@ A generated replacement is derived with the machine placeholder key, so it does 
 
 `obfuscate` mode replaces every occurrence of the value. A three-character secret would blank out fragments of unrelated words, so short values are not obfuscated.
 
-Veyyon rejects them rather than ignoring them. A plain `obfuscate` entry under 8 characters stops startup with an error stating the entry and the fix. This is deliberate: a session that starts cleanly while sending your declared secret to the provider in plain text is worse than a session that will not start.
+Veyyon rejects them rather than ignoring them. A plain `obfuscate` entry under 8 characters stops startup with an error stating the entry and the fix, so a session never starts while sending a declared secret to the provider in plain text.
 
 The fix is `mode: replace`, which is one way and has no minimum.
 
@@ -760,9 +753,9 @@ Unknown fields are errors too. A misspelled `replacement`, a plain-only field on
 
 ## When something cannot be protected
 
-Two kinds of problem can arise, and veyyon treats them differently on purpose.
+Veyyon handles two kinds of problem differently.
 
-A problem that would mean a credential reaches the provider **stops the session**. A declared `obfuscate` entry under the minimum, a vault file whose key is missing, a `secrets.yml` that cannot be parsed: each of these is a refusal with the entry and the fix named. A session that starts cleanly while sending your secret out in plain text is worse than one that will not start.
+A problem that would mean a credential reaches the provider **stops the session**. A declared `obfuscate` entry under the minimum, a vault file whose key is missing, a `secrets.yml` that cannot be parsed: each of these stops the session with an error stating the entry and the fix.
 
 A problem that leaves protection intact but degrades something appears **in your session as a warning**, prefixed with the subsystem that raised it:
 
@@ -771,15 +764,15 @@ Warning: secrets: pattern matched a 3-character value, under this entry's 8-char
 Set "minLength" on the entry if short matches are real secrets, or tighten the pattern.
 ```
 
-An over-matching pattern is the usual example. It is discovered while obfuscating a message rather than at startup, so it cannot be a refusal, and it is worth seeing because you cannot otherwise tell a working pattern from one that is quietly reaching into prose.
+An over-matching pattern is the usual example. It is discovered while obfuscating a message rather than at startup, so it cannot stop the session. The warning is shown because a working pattern and one that matches ordinary prose are otherwise indistinguishable.
 
 In `--print` mode and other non-interactive clients the same warnings go to stderr, so a scripted run does not lose them.
 
-Nothing important goes only to the log file. That was the previous behaviour and it amounted to silence: the log has no console output by default, and nobody opens it.
+No error or warning goes only to the log file. The log has no console output by default.
 
 ## Where the value goes
 
-| Destination | Sees the real value? |
+| Destination | Receives the real value? |
 | ----------- | -------------------- |
 | Model provider | No, a placeholder |
 | Local session transcript | It can. User and tool text is kept locally as written. |

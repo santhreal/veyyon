@@ -1,6 +1,6 @@
 # Install
 
-Veyyon installs as a single self-contained binary. The release installer stages the download and proves it has the published checksum, the requested version, and working native support before it changes the active install or your shell. It then links a short `vey` launch command next to `veyyon`. Under the hood Veyyon is a TypeScript and Bun agent loop, with Rust natives handling the hot paths: grep, the file walker, the shell and PTY, and tree-sitter block resolution for hashline block edits. The prebuilt binary bundles all of that, so you do not need Bun, Node, or a package manager to run it.
+Veyyon installs as a single self-contained binary. The release installer stages the download and verifies the published checksum, the requested version, and working native support before it changes the active install or your shell. It then links a short `vey` launch command next to `veyyon`. Veyyon is a TypeScript and Bun agent loop, with Rust natives for the hot paths: grep, the file walker, the shell and PTY, and tree-sitter block resolution for hashline block edits. The prebuilt binary bundles all of that, so you do not need Bun, Node, or a package manager to run it.
 
 ## Install on Linux or macOS
 
@@ -33,7 +33,7 @@ Next steps:
 
 When the directory was already on your `PATH`, there is nothing to reload and the list starts at the launch step.
 
-The installer never calls the GitHub API. It finds the newest release from where `https://github.com/santhreal/veyyon/releases/latest` redirects to, and downloads the binary from that same host. The API is capped at 60 requests an hour per address, shared by everyone behind it, so a CI fleet or an office network that installs Veyyon repeatedly used to start getting a rate-limit failure on a machine where nothing was wrong. Nothing needs a token, and setting one changes nothing about the install.
+The installer never calls the GitHub API. It finds the newest release from where `https://github.com/santhreal/veyyon/releases/latest` redirects to, and downloads the binary from that same host. The GitHub API rate limit of 60 requests an hour per address does not apply to the install. No token is needed, and setting one has no effect on the install.
 
 ## Install on Windows
 
@@ -65,7 +65,7 @@ There is no native Windows arm64 release. On Windows arm64, run the Windows x64 
 $ vey --version
 ```
 
-The first interactive `vey` opens the first-run setup, which moves through a splash, providers, glyphs, theme, and an outro. To run it again later, use `veyyon setup`. To re-open just the providers panel inside a session, use `/setup`. To manage the accounts you already have, use `/providers`. See [Getting started](./getting-started.md).
+The first interactive `vey` opens the first-run setup, which moves through a splash, providers, glyphs, theme, and an outro. To run it again later, use `veyyon setup`. To re-open only the providers panel inside a session, use `/setup`. To manage the accounts you already have, use `/providers`. See [Getting started](./getting-started.md).
 
 Your configuration home is `~/.veyyon`, and the default profile keeps its agent directory at `~/.veyyon/profiles/default/agent/`.
 
@@ -105,7 +105,7 @@ The PowerShell installer uses named PowerShell parameters. Create a script block
 
 You cannot append parameters to `irm ... | iex`. Use the script-block form above whenever you need an option. If you downloaded `install.ps1` as a file instead, use the same parameters with `pwsh -File install.ps1`.
 
-Release tags carry a leading `v`, and `--ref 1.0.11` on POSIX or `-Ref 1.0.11` on Windows works as well as the leading-`v` form. The installer looks for the tag you named, then for the `v` form, and prints which one it resolved to before it downloads anything. It does that only for something that reads as a version. `--ref` states a published release tag and nothing else, so a branch or a commit is looked up once and then rejected.
+Release tags start with `v`, and `--ref 1.0.11` on POSIX or `-Ref 1.0.11` on Windows works as well as the leading-`v` form. The installer looks for the tag you named, then for the `v` form, and prints which one it resolved to before it downloads anything. It does that only for a value that parses as a version. `--ref` states a published release tag and nothing else, so a branch or a commit is looked up once and then rejected.
 
 ### Run an unreleased ref, or an unsupported platform
 
@@ -142,7 +142,7 @@ $ vey plugin doctor
 $ vey plugin doctor --fix
 ```
 
-`vey plugin doctor` checks plugin installation health (directories, manifests, entry paths, enabled features). Binary and provider-key checks live in `vey setup status`. For interactive diagnostics, use `/debug` in the TUI. See [Diagnostics](../features/doctor.md).
+`vey plugin doctor` checks plugin installation health (directories, manifests, entry paths, enabled features). Binary and provider-key checks are in `vey setup status`. For interactive diagnostics, use `/debug` in the TUI. See [Diagnostics](../features/doctor.md).
 
 ### When the staged binary would not run
 
@@ -150,11 +150,11 @@ The preflight runs from the staging path inside the install directory. If the bi
 
 This failure occurs before the active binary, alias, `PATH`, and completion files change. Fix the reported cause and run the installer again rather than trying to finish by hand.
 
-To ask the same questions later, on the machine as it is now, run `veyyon setup status`.
+To run the same checks later, on the machine as it is now, run `veyyon setup status`.
 It repeats the install checks and adds the two the installer cannot make: whether a second
 copy of `veyyon` earlier on your `PATH` is shadowing this one, and whether the completion
-files are still there. It exits non-zero when something is actually broken, so a script can
-gate on it. See [Diagnostics and health](../features/doctor.md).
+files are still there. It exits non-zero when a check fails, so a script can
+test its exit status. See [Diagnostics and health](../features/doctor.md).
 
 ### Relocate the config directory
 
@@ -228,12 +228,11 @@ New version available: 1.0.38
 Changelog for 1.0.38: https://veyyon.dev/changelog#v1-0-38
 ```
 
-The last line is the same changelog link `veyyon rollback` prints, so however you
-change version you are told where to read what changed. If an update fails,
-Veyyon points you at `veyyon rollback` in the same breath, since a failed update
-is the moment you most want the way back.
+The last line is the same changelog link `veyyon rollback` prints, so every
+version change prints where to read what changed. If an update fails, Veyyon
+prints the `veyyon rollback` command with the failure.
 
-A checkout install uses the same recoverable contract. That is a `veyyon` on your `PATH` that runs out of a git clone you made yourself. Before it fast-forwards, Veyyon requires a clean tracked tree and records the current Git revision. If dependency installation, generated artifacts, native provisioning, version verification, or the runtime search probe fails after the merge, it resets to that revision, restores the old dependencies and generated artifacts, and proves the restored launcher runs before it reports the failure.
+A checkout install uses the same recoverable contract. That is a `veyyon` on your `PATH` that runs out of a git clone you made yourself. Before it fast-forwards, Veyyon requires a tracked tree with no uncommitted changes and records the current Git revision. If dependency installation, generated artifacts, native provisioning, version verification, or the runtime search probe fails after the merge, it resets to that revision, restores the old dependencies and generated artifacts, and verifies the restored launcher runs before it reports the failure.
 
 ### Going back to an older version
 
@@ -262,7 +261,7 @@ VERSION  PUBLISHED
 1.1.0    2026-05-01  (previously run)
 ```
 
-The markers tell you where you stand: `current` is the version running now,
+The markers state each version's relation to this install: `current` is the version running now,
 `newer` is a version you would move forward to, and `previously run` is one this
 machine has been on before. Every version change is recorded, whether it came
 from an update, from a background automatic update, or from a rollback, so
@@ -274,21 +273,20 @@ $ veyyon rollback 1.1.0
 ```
 
 That installs 1.1.0 the same way an update installs a new release, verifies the
-binary really is the version it claims, and prints the changelog link for it. Like
+binary reports the requested version, and prints the changelog link for it. Like
 an update, it takes effect the next time you launch.
 
-Two things it will not guess at. Rolling back to the version you are
-already running does nothing useful, so it reports that instead of reinstalling and
-reporting success. And a source checkout cannot be rolled back: it updates by
-fast-forwarding its git branch, which only moves forward, so Veyyon reports
-that rather than quietly reinstalling the latest version. To run an older version
+Two requests fail without installing anything. Rolling back to the version you
+are already running reports that it is already running. A source checkout cannot
+be rolled back: it updates by fast-forwarding its git branch, which only moves
+forward, so Veyyon reports that instead of reinstalling the latest version. To run an older version
 from a checkout, check the tag out yourself, or install the binary build and roll
 back from there.
 
 Add `--json` to `--list` when you want the same information for a script; each
 row contains the version, its publish date, the markers, and the changelog URL.
 Without a terminal on both ends, the bare `veyyon rollback` prints the list
-rather than opening a picker nothing can drive, so it is safe in a pipeline.
+instead of opening a picker, so it works in a pipeline.
 
 Building that list is the one thing Veyyon queries the GitHub API for, so it is also
 the one thing that can be rejected because of the API's per-address limit. When it
@@ -297,11 +295,11 @@ the API, so `veyyon update` is unaffected. Wait a few minutes and the list comes
 back.
 
 You can also reach the picker without leaving a session. Open `/settings`, go to
-the `Interaction` tab, and you will find `Roll back version` directly under
+the `Interaction` tab. `Roll back version` is directly under
 `Automatic Updates`, showing the version you are running now. It opens the same
-picker, and choosing a version closes the settings panel first so you can watch
-the install and read anything it has to tell you. The row appears only on an
-install that can actually perform the move, so you will not see it on a source
+picker, and choosing a version closes the settings panel first so the install
+output stays visible. The row appears only on an
+install that can perform the rollback, so you will not see it on a source
 checkout.
 
 Veyyon is distributed only two ways, and it updates the way it was installed. A
@@ -321,27 +319,26 @@ one at that path, but never no binary. If the final installed check fails, the
 backup is atomically restored. A backup that is still locked on Windows, or is
 left by a hard kill, is reclaimed by a later update.
 
-A source checkout updates in its own terms: `veyyon update` fast-forwards the
+A source checkout updates differently: `veyyon update` fast-forwards the
 checkout, reinstalls dependencies, regenerates build artifacts, and refreshes
 the native addon, all in one command. It then reads the checkout's own version
-back and will not report success unless the checkout really is at the new
+back and reports success only when the checkout is at the new
 release. A fast-forward only advances the branch you are on, so a checkout on a
-feature branch, or on a fork whose upstream lags, can merge cleanly and stay
+feature branch, or on a fork whose upstream lags, can merge without conflict and stay
 behind; Veyyon reports that instead of claiming a version you do not have. The
 background updater leaves source checkouts alone and never runs git against your
 working tree. It reports that a version exists, and you run `veyyon update` when
 you want it. There is no npm, Homebrew, or other package-manager channel to go
 through. If an update fails, Veyyon reports the failure and the retry command `veyyon
-update`; it never fails quietly and leaves you on an old version without a word.
+update`.
 
-Veyyon works out which of the two you have by following the `veyyon` on your
-PATH to what it really runs. A symlink is followed, and so is a small wrapper
+Veyyon determines which of the two you have by following the `veyyon` on your
+PATH to the file it runs. A symlink is followed, and so is a small wrapper
 script that hands off to something else: if what it hands off to is a checkout's
-launcher, the install runs from that checkout and gets the checkout update. That
-matters if you keep your own wrapper in front of a checkout, to set an
-environment variable or pick a different interpreter, because without following
-it Veyyon would treat the wrapper as a binary and overwrite it with a downloaded
-release, leaving your checkout orphaned. A wrapper is recognized on either
+launcher, the install runs from that checkout and gets the checkout update. A
+wrapper you keep in front of a checkout, to set an environment variable or pick
+a different interpreter, is therefore never overwritten with a downloaded
+release. A wrapper is recognized on either
 platform: a `.cmd` or `.bat` file, or any file starting with `#!`. The release
 binary itself is never read looking for one.
 
@@ -350,7 +347,7 @@ rather than the release: a binary owned by another user, a read-only image, or a
 directory that needs elevated permissions to write. Veyyon reports that failure
 and then leaves it alone for six hours instead of repeating it on every launch. A
 newer release is never held back by an older one's failure, and `veyyon update`
-ignores the pause entirely, so you can always ask to see the error again:
+ignores the pause entirely, so running it shows the error again:
 
 ```console
 $ veyyon update
@@ -358,11 +355,11 @@ $ veyyon update
 
 An update also rewrites the shell completion files you already have, so tab
 completion covers the new version's subcommands and flags. It rewrites only
-files that are already there because the installer chooses which shells are wired.
+files that are already there because the installer selects which shells get completions.
 If a file cannot be rewritten, a manual update states the path and that it still
 describes the previous version. A background automatic update adds a visible
-warning to the TUI update notice, counts the stale completion files, and tells
-you to re-run the installer to rewrite them. The binary update remains
+warning to the TUI update notice, counts the stale completion files, and prints
+the instruction to re-run the installer to rewrite them. The binary update remains
 installed. A binary update generates completions from the new binary; a source
 update generates them from the checkout's launcher.
 
@@ -419,7 +416,7 @@ profile and adds one line to the profile that loads it:
 ```
 
 Uninstall removes that line and the script, and leaves the rest of your profile
-exactly as it was.
+unchanged.
 
 If you already have your own `vey` command, the installer never creates that
 alias, and the completions it writes do not bind the name either. Every
@@ -448,7 +445,7 @@ export PATH='/home/you/.local/bin':"$PATH"
 
 On fish it is `fish_add_path '/home/you/.local/bin'` instead. Uninstall removes that exact line, and the comment directly above it when the comment is still there, and nothing else: a line you wrote yourself that happens to name the same directory stays. Installs made before the quoting was added wrote `export PATH="/home/you/.local/bin:$PATH"`, and uninstall recognizes that older form too, so upgrading and then uninstalling does not strand a line in your profile.
 
-Because a profile is read when a shell starts, the shell you ran the uninstall in still has the old entry on its `PATH`, and bash and zsh also remember where they last found a command. The uninstall reports it:
+Because a profile is read when a shell starts, the shell you ran the uninstall in still has the old entry on its `PATH`, and bash and zsh also cache the path where they last found a command. The uninstall reports it:
 
 ```console
 veyyon uninstalled.
@@ -477,7 +474,7 @@ On Windows:
 & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Uninstall
 ```
 
-Then remove your state if you want a clean machine:
+To delete your state as well:
 
 ```console
 $ rm -rf ~/.veyyon          # irreversible: config, secrets, sessions, plugins, skills, logs

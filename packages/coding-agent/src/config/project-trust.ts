@@ -136,19 +136,6 @@ async function realPathOrSelf(target: string): Promise<string> {
 }
 
 /**
- * True when `absolutePath` lives inside the canonical project root.
- *
- * Symlink-resolved on both sides, because a symlink inside the project pointing at a file
- * outside it is still project-controlled content, and a project root reached through a symlink
- * must match the paths the gate compares against it.
- */
-export async function isInsideProject(absolutePath: string, canonicalRoot: string): Promise<boolean> {
-	const real = await realPathOrSelf(path.resolve(absolutePath));
-	const relative = path.relative(canonicalRoot, real);
-	return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
-}
-
-/**
  * The trust store for one profile.
  *
  * Loaded once per session and consulted synchronously afterwards, so a gate on a hot startup

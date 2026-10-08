@@ -85,6 +85,7 @@ const WATCHDOG_DECISIONS: Record<string, WatchdogDecision> = {
 	streamBedrock: "shared-generic-defaults",
 	streamCursor: "provider-owned-idle",
 	streamDevin: "shared-widened-budget",
+	streamGitLabDuoWorkflow: "provider-owned",
 	streamGoogle: "shared-generic-defaults",
 	streamGoogleGeminiCli: "shared-widened-budget",
 	streamGoogleVertex: "shared-generic-defaults",
@@ -144,8 +145,14 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
+/**
+ * The provider module a lazy stream factory imports. A factory either calls `import("./x")` itself or
+ * calls a loader function declared in register-builtins.ts that does (`loadOpenAICodexResponses`, which
+ * the session's websocket prewarm shares), so a call to a file-local function is followed into it.
+ */
 function extractImportPathFromFactory(node: t.Node): string {
 	const importPaths: string[] = [];
+	const loaders: t.FunctionDeclaration[] = [];
 
 	t.traverseFast(node, n => {
 		if (t.isCallExpression(n) && t.isImport(n.callee)) {
@@ -155,13 +162,19 @@ function extractImportPathFromFactory(node: t.Node): string {
 			} else {
 				throw new Error("Dynamic import argument must be a string literal");
 			}
+		} else if (t.isCallExpression(n) && t.isIdentifier(n.callee)) {
+			const loader = localFunctions.get(n.callee.name);
+			if (loader) loaders.push(loader);
 		}
 	});
+	if (importPaths.length === 0 && loaders.length === 1) {
+		return extractImportPathFromFactory(loaders[0]);
+	}
 	if (importPaths.length === 0) {
 		throw new Error("Could not find dynamic import('./...') in factory function");
 	}
-	if (importPaths.length > 1) {
-		throw new Error(`Expected exactly one dynamic import, found ${importPaths.length}`);
+	if (importPaths.length > 1 || loaders.length > 0) {
+		throw new Error(`Expected exactly one dynamic import, found ${importPaths.length + loaders.length}`);
 	}
 	return importPaths[0].replace(/^\.\//, "");
 }
@@ -171,6 +184,12 @@ const ast = parse(source, {
 	sourceType: "module",
 	plugins: ["typescript"],
 });
+
+const localFunctions = new Map<string, t.FunctionDeclaration>();
+for (const stmt of ast.program.body) {
+	const decl = t.isExportNamedDeclaration(stmt) ? stmt.declaration : stmt;
+	if (t.isFunctionDeclaration(decl) && decl.id) localFunctions.set(decl.id.name, decl);
+}
 
 const limitsByName = new Map<string, LazyStreamLimits>();
 const registrations: Registration[] = [];
@@ -278,10 +297,10 @@ const exportedProviders = Object.entries(registerBuiltins)
 
 /**
  * The other half of the membership question. `register-builtins.ts` is not the
- * only way a provider stream reaches a user: `stream.ts` dispatches some APIs
- * straight at their module (`gitlab-duo-agent`), and `transport: "pi-native"`
- * routes through the gateway client. Those paths never touch the shared
- * watchdog, so enumerating only the registrations would leave them unlocked.
+ * only way a provider stream reaches a user: `transport: "pi-native"` routes
+ * through the gateway client, and routers hand a turn to another provider's
+ * stream. Those paths never touch the shared watchdog, so enumerating only the
+ * registrations would leave them unlocked.
  *
  * Membership here is the providers DIRECTORY, so a new provider module that
  * exports a stream entry point turns this file red until its row says what ends
@@ -294,10 +313,6 @@ interface UnregisteredStreamModule {
 }
 
 const UNREGISTERED_STREAM_MODULES: Record<string, UnregisteredStreamModule> = {
-	// Bypasses register-builtins (see the `gitlab-duo-agent` branch in stream.ts)
-	// and owns a 90s WebSocket idle timer, re-armed per inbound frame, plus
-	// bounded stall/step-limit restarts.
-	"gitlab-duo-workflow": { reason: "own-watchdog", token: "GITLAB_DUO_WORKFLOW_IDLE_TIMEOUT_MS" },
 	// Gateway transport, dispatched from streamSimple; arms its own watchdog.
 	"pi-native-client": { reason: "own-watchdog", token: "iterateWithIdleTimeout(" },
 	// Thin routers over watched providers: their transport, and therefore their
@@ -499,6 +514,13 @@ describe("lazy provider stream budget coverage", () => {
 			full: ["iterateWithIdleTimeout("],
 			idle: ["startCursorLiveness(", "iterateWithIdleTimeout("],
 		};
+		// A full stand-down whose module owns both watchdogs without `iterateWithIdleTimeout` records
+		// each of its governors here, and every one must be called in its code.
+		const OWN_FULL_GOVERNORS: Record<string, string[]> = {
+			// Bounds the setup fetch before the first event, and closes and resumes a WebSocket that
+			// stays silent past its idle deadline, re-armed on every inbound frame.
+			"gitlab-duo-workflow": ["openBoundedFirstEventBudget(", "resetIdleTimer("],
+		};
 		type StandDown = { registration: Registration; kind: "full" | "idle" };
 		const standDowns = registrations.flatMap((registration): StandDown[] => {
 			if (registration.limits?.providerHandlesStreamTimeouts === true) {
@@ -513,6 +535,11 @@ describe("lazy provider stream budget coverage", () => {
 		// pass vacuously for that kind.
 		expect(standDowns.filter(entry => entry.kind === "full").length).toBeGreaterThan(0);
 		expect(standDowns.filter(entry => entry.kind === "idle").length).toBeGreaterThan(0);
+		// A row for a module that no longer takes the full stand-down exempts nothing.
+		const fullModules = new Set(
+			standDowns.filter(entry => entry.kind === "full").map(entry => entry.registration.moduleName),
+		);
+		expect(Object.keys(OWN_FULL_GOVERNORS).filter(moduleName => !fullModules.has(moduleName))).toEqual([]);
 		const unarmed: string[] = [];
 		for (const { registration, kind } of standDowns) {
 			const moduleName = registration.moduleName;
@@ -520,11 +547,14 @@ describe("lazy provider stream budget coverage", () => {
 			// Comments stripped: a module that only MENTIONS the watchdog in prose has
 			// not armed one.
 			const code = text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
-			const armed = GOVERNOR_TOKENS[kind].some(token => {
-				const symbol = token.slice(0, -1);
-				const imported = code.includes(`${symbol},`) || code.includes(`${symbol} }`);
-				return imported && code.includes(token);
-			});
+			const own = kind === "full" ? OWN_FULL_GOVERNORS[moduleName] : undefined;
+			const armed = own
+				? own.every(token => code.includes(token))
+				: GOVERNOR_TOKENS[kind].some(token => {
+						const symbol = token.slice(0, -1);
+						const imported = code.includes(`${symbol},`) || code.includes(`${symbol} }`);
+						return imported && code.includes(token);
+					});
 			if (!armed) unarmed.push(`${registration.streamExport} (${moduleName}.ts, ${kind} stand-down)`);
 		}
 		expect(unarmed).toEqual([]);

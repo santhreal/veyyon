@@ -4,8 +4,9 @@
  * The model reads the cell's output in the tool result's first text block, optionally with test
  * folding or an exit code notice appended, and `details.cells[i].output` holds the raw cell output.
  * When the content text holds `output` verbatim, {@link evalResultCodec} drops `output` from the
- * written line and records its span in the content text (`outputSpan`), restoring it when the
- * session loads.
+ * written line and records its span in the content text (`outputSpan`), restoring it as a slice of
+ * that text when the session loads; a result the session records holds the same slice, so the entry
+ * holds the output once.
  *
  * For single-cell calls, top-level `details.statusEvents` equals `cells[0].statusEvents`. When they
  * deep-equal, the top-level array is dropped from the written line with `statusEventsFrom: "cell0"`
@@ -19,6 +20,7 @@ import {
 	type CodedResultContent,
 	firstResultText,
 	MIN_CODED_TEXT,
+	type ResultTextSpan,
 	resultTextSpan,
 	sliceResultSpan,
 } from "../core/output-notice";
@@ -38,21 +40,32 @@ function firstCellEvents(cells: unknown): unknown[] | undefined {
 	return Array.isArray(events) ? events : undefined;
 }
 
+/** Each cell whose output `body` holds verbatim, with its index and that output's span in `body`. */
+function* heldOutputs(
+	cells: readonly unknown[],
+	body: string,
+): Generator<[cell: Record<string, unknown>, index: number, span: ResultTextSpan]> {
+	// Cells print in order, so each one's output is looked for after the previous one's.
+	let from = 0;
+	for (let index = 0; index < cells.length; index++) {
+		const cell = cells[index];
+		if (!isRecord(cell) || typeof cell.output !== "string" || cell.output.length < MIN_CODED_TEXT) continue;
+		const span = resultTextSpan(body, cell.output, from) ?? resultTextSpan(body, cell.output);
+		if (span === undefined) continue;
+		from = span[1];
+		yield [cell, index, span];
+	}
+}
+
 /** `cells` with each output the content text holds replaced by its span, else `cells` itself. */
 function slimCells(cells: unknown[], body: string): unknown[] {
-	let changed = false;
-	let from = 0;
-	const slimmed = cells.map(cell => {
-		if (!isRecord(cell) || typeof cell.output !== "string" || cell.output.length < MIN_CODED_TEXT) return cell;
-		// Cells print in order, so each one's output is looked for after the previous one's.
-		const span = resultTextSpan(body, cell.output, from) ?? resultTextSpan(body, cell.output);
-		if (span === undefined) return cell;
-		changed = true;
-		from = span[1];
+	let slimmed: unknown[] | undefined;
+	for (const [cell, index, span] of heldOutputs(cells, body)) {
+		slimmed ??= cells.slice();
 		const { output: _dropped, ...kept } = cell;
-		return { ...kept, outputSpan: span };
-	});
-	return changed ? slimmed : cells;
+		slimmed[index] = { ...kept, outputSpan: span };
+	}
+	return slimmed ?? cells;
 }
 
 /** How an eval result is written to a session file and read back. */
@@ -92,6 +105,13 @@ export const evalResultCodec: ToolResultCodec = {
 				delete details.statusEventsFrom;
 			}
 		}
+	},
+	// A recorded cell's output the content text holds verbatim becomes a slice of that text, as a load
+	// rebuilds it, so the entry holds the output once.
+	settle(details, content) {
+		const body = firstResultText(content);
+		if (!isRecord(details) || !Array.isArray(details.cells) || body === undefined) return;
+		for (const [cell, , [start, end]] of heldOutputs(details.cells, body)) cell.output = body.slice(start, end);
 	},
 };
 

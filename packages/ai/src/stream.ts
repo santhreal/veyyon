@@ -18,6 +18,7 @@ import {
 import { discardAttemptUsage } from "@veyyon/catalog/models";
 import { CODEX_BASE_URL } from "@veyyon/catalog/wire/codex";
 import { atomicWriteFile } from "@veyyon/utils/atomic-write";
+import { exponentialBackoffDelay } from "@veyyon/utils/backoff";
 import { getConfigRootDir } from "@veyyon/utils/dirs";
 import { $env } from "@veyyon/utils/env";
 import { isEnoent } from "@veyyon/utils/fs-error";
@@ -38,7 +39,7 @@ import type { AnthropicOptions } from "./providers/anthropic";
 import type { CursorOptions } from "./providers/cursor";
 import type { DevinOptions } from "./providers/devin";
 import { isGitLabDuoModel, streamGitLabDuo } from "./providers/gitlab-duo";
-import { type GitLabDuoWorkflowOptions, streamGitLabDuoWorkflow } from "./providers/gitlab-duo-workflow";
+import type { GitLabDuoWorkflowOptions } from "./providers/gitlab-duo-workflow";
 import type { GoogleOptions } from "./providers/google";
 import { getVertexAccessToken } from "./providers/google-auth";
 import type { GoogleGeminiCliOptions } from "./providers/google-gemini-cli";
@@ -54,13 +55,16 @@ import { streamPiNative } from "./providers/pi-native-client";
 // gitlab-duo / kimi / synthetic providers stay eager because their modules
 // export routing predicates (isGitLabDuoModel, isKimiModel, isSyntheticModel)
 // that must be callable synchronously before streaming begins, and their
-// modules are thin wrappers with no heavy SDK dependencies.
+// modules are thin wrappers with no heavy SDK dependencies. GitLab Duo
+// Workflow routes on `model.api` alone, so its 3,000-line protocol client
+// loads on the first `gitlab-duo-agent` turn.
 import {
 	streamAnthropic,
 	streamAzureOpenAIResponses,
 	streamBedrock,
 	streamCursor,
 	streamDevin,
+	streamGitLabDuoWorkflow,
 	streamGoogle,
 	streamGoogleGeminiCli,
 	streamGoogleVertex,
@@ -1025,7 +1029,11 @@ async function resolveWithThinkingLoopCook<TApi extends Api>(
 		// misclassify as a 502): throwIfAborted before backoff, and scheduler.wait
 		// rejects if the abort lands mid-delay.
 		signal?.throwIfAborted();
-		const delay = Math.min(THINKING_LOOP_RETRY_BASE_DELAY_MS * 2 ** attempt, THINKING_LOOP_RETRY_MAX_DELAY_MS);
+		const delay = exponentialBackoffDelay(attempt, {
+			baseMs: THINKING_LOOP_RETRY_BASE_DELAY_MS,
+			maxMs: THINKING_LOOP_RETRY_MAX_DELAY_MS,
+			jitter: 0,
+		});
 		await scheduler.wait(delay, { signal });
 		const stalled = message;
 		message = await dispatch().result();

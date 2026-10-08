@@ -89,7 +89,7 @@ const ADMITTED_ON_THE_FIRST_FRAME: readonly string[] = [];
  * increase then: the segment table the row composes was already reachable, because the hand-written
  * copy called into it for the location and the branch.
  *
- * The one after that is `modes/launch-facts.ts`, which lets the card state the model name, the
+ * The one after that is `config/launch-facts.ts`, which lets the card state the model name, the
  * dirty marker and the context percentage the last launch recorded instead of placeholders. It is a
  * leaf over `@veyyon/utils` entry points the card already reached — dirs, atomic-write, fs-error,
  * logger and type-guards — so it costs itself and nothing under it.
@@ -102,10 +102,28 @@ const ADMITTED_ON_THE_FIRST_FRAME: readonly string[] = [];
  * and no subsystem joined the path — which is what the reachability assertions below, not this
  * number, are the proof of.
  *
+ * 310 rather than 304 is the same kind of file count. The settings store moved to
+ * `@veyyon/kernel/settings` (`store`, `schema`, `signal`, `optional-number`) and its migrations and
+ * signals to `config/settings-migrations.ts` and `config/settings-signals.ts`; the model vocabulary
+ * moved to `@veyyon/model` (`effort`, `instrumentation`); the engine's editor helpers moved to
+ * `utils/` (`text-layout`, `hover-controller`, `search-filter`, `scroll-layout`) and its paint
+ * sequences to `core/paint-sequences.ts`; and one owner each replaced copies of the tab width
+ * (`@veyyon/utils/tab-width`), the renderer limits (`tools/core/render-limits.ts`), the status-text
+ * sanitizer and the terminal-emulator probe. Three modules joined with new code: the stall sampler
+ * (`@veyyon/utils/stall-sampler`), through which the terminal's loop watchdog records a stall's
+ * stack, and the first-frame replay pair (`cli/first-frame-replay.ts`, `cli/first-frame-recorder.ts`),
+ * which reach node builtins, `atomic-write` and a type-only engine import. No database, no cold
+ * runtime and no subsystem joined the path; the assertions above and in
+ * `the-launch-card-loads-no-cold-runtime.test.ts` are the proof of that.
+ *
+ * 311 rather than 310 is the log file writer, `@veyyon/utils/log-file`, which the logger imports
+ * statically. It replaced `winston`, `winston-daily-rotate-file` and 27 packages under them, which
+ * the logger loaded through `require` on the first log line, an edge this walk does not follow.
+ *
  * The floor is what stops a resolution table that stopped resolving from satisfying the ceiling with
  * a handful of modules while measuring nothing.
  */
-const LAUNCH_CARD_CEILING = 304;
+const LAUNCH_CARD_CEILING = 311;
 const LAUNCH_CARD_FLOOR = 150;
 
 describe("the launch card opens no database", () => {

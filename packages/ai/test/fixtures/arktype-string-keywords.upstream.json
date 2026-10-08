@@ -1,0 +1,348 @@
+{
+	"paths": {
+		"alpha": {
+			"expression": "/^[A-Za-z]*$/",
+			"description": "only letters",
+			"outcomes": "10b32606c3da9c57",
+			"moduleScope": "string"
+		},
+		"alphanumeric": {
+			"expression": "/^[\\dA-Za-z]*$/",
+			"description": "only letters and digits 0-9",
+			"outcomes": "d5f711c53bcbfeaa",
+			"moduleScope": "string"
+		},
+		"hex": {
+			"expression": "/^[\\dA-Fa-f]+$/",
+			"description": "hex characters only",
+			"outcomes": "46cd058af929f0e1",
+			"moduleScope": "string"
+		},
+		"base64": {
+			"expression": "/^(?:[\\d+/A-Za-z]{4})*(?:[\\d+/A-Za-z]{2}==|[\\d+/A-Za-z]{3}=)?$/",
+			"description": "base64-encoded",
+			"outcomes": "d83591cc9ee3eb8f",
+			"moduleScope": "string"
+		},
+		"base64.url": {
+			"expression": "/^(?:[\\w-]{4})*(?:[\\w-]{2}(?:==|%3D%3D)?|[\\w-]{3}(?:=|%3D)?)?$/",
+			"description": "base64url-encoded",
+			"outcomes": "700759318e10e720",
+			"moduleScope": "string"
+		},
+		"capitalize": {
+			"expression": "(In: string) => Out</^[A-Z].*$/>",
+			"description": "a morph from a string to capitalized",
+			"outcomes": "0c1450be5e45729b",
+			"moduleScope": "string"
+		},
+		"capitalize.preformatted": {
+			"expression": "/^[A-Z].*$/",
+			"description": "capitalized",
+			"outcomes": "2e10122e3b24a3a1",
+			"moduleScope": "string"
+		},
+		"creditCard": {
+			"expression": "/^(?:4\\d{12}(?:\\d{3,6})?|5[1-5]\\d{14}|(222[1-9]|22[3-9]\\d|2[3-6]\\d{2}|27[01]\\d|2720)\\d{12}|6(?:011|5\\d\\d)\\d{12,15}|3[47]\\d{13}|3(?:0[0-5]|[68]\\d)\\d{11}|(?:2131|1800|35\\d{3})\\d{11}|6[27]\\d{14}|^(81\\d{14,17}))$/",
+			"description": "a credit card number and a credit card number",
+			"outcomes": "87936f538149a822",
+			"moduleScope": "string"
+		},
+		"date": {
+			"expression": "string",
+			"description": "a string and a parsable date",
+			"outcomes": "c6bf925d66867e78",
+			"moduleScope": "string"
+		},
+		"date.parse": {
+			"expression": "(In: string) => Out<Date>",
+			"description": "a morph from a string and a parsable date to a Date",
+			"outcomes": "6ca07a74cb63d45a",
+			"moduleScope": "string"
+		},
+		"date.iso": {
+			"expression": "/^([+-]?\\d{4}(?!\\d{2}\\b))((-?)((0[1-9]|1[0-2])(\\3([12]\\d|0[1-9]|3[01]))?|W([0-4]\\d|5[0-3])(-?[1-7])?|(00[1-9]|0[1-9]\\d|[12]\\d{2}|3([0-5]\\d|6[1-6])))(T((([01]\\d|2[0-3])((:?)[0-5]\\d)?|24:?00)([,.]\\d+(?!:))?)?(\\17[0-5]\\d([,.]\\d+)?)?([Zz]|([+-])([01]\\d|2[0-3]):?([0-5]\\d)?)?)?)?$/",
+			"description": "an ISO 8601 (YYYY-MM-DDTHH:mm:ss.sssZ) date",
+			"outcomes": "58c69d148a7805f3",
+			"moduleScope": "string"
+		},
+		"date.iso.parse": {
+			"expression": "(In: /^([+-]?\\d{4}(?!\\d{2}\\b))((-?)((0[1-9]|1[0-2])(\\3([12]\\d|0[1-9]|3[01]))?|W([0-4]\\d|5[0-3])(-?[1-7])?|(00[1-9]|0[1-9]\\d|[12]\\d{2}|3([0-5]\\d|6[1-6])))(T((([01]\\d|2[0-3])((:?)[0-5]\\d)?|24:?00)([,.]\\d+(?!:))?)?(\\17[0-5]\\d([,.]\\d+)?)?([Zz]|([+-])([01]\\d|2[0-3]):?([0-5]\\d)?)?)?)?$/) => Out<Date>",
+			"description": "a morph from an ISO 8601 (YYYY-MM-DDTHH:mm:ss.sssZ) date to a Date",
+			"outcomes": "968b7e3d091281e4",
+			"moduleScope": "string"
+		},
+		"date.epoch": {
+			"expression": "/^(?:(?!^-0$)-?(?:(?:0|[1-9]\\d*)))$/",
+			"description": "an integer string representing a safe Unix timestamp",
+			"outcomes": "6dbc8be70d110ef6",
+			"moduleScope": "string"
+		},
+		"date.epoch.parse": {
+			"expression": "(In: /^(?:(?!^-0$)-?(?:(?:0|[1-9]\\d*)))$/) => Out<Date>",
+			"description": "a morph from an integer string representing a safe Unix timestamp to a Date",
+			"outcomes": "9d9c3284d57bfd0d",
+			"moduleScope": "string"
+		},
+		"digits": {
+			"expression": "/^\\d*$/",
+			"description": "only digits 0-9",
+			"outcomes": "f0a00153f97cf6d9",
+			"moduleScope": "string"
+		},
+		"email": {
+			"expression": "/^[\\w%+.-]+@[\\d.A-Za-z-]+\\.[A-Za-z]{2,}$/",
+			"description": "an email address",
+			"outcomes": "036dcd1859740918",
+			"moduleScope": "string"
+		},
+		"integer": {
+			"expression": "/^(?:(?!^-0$)-?(?:(?:0|[1-9]\\d*)))$/",
+			"description": "a well-formed integer string",
+			"outcomes": "20f2f719c2717894",
+			"moduleScope": "string"
+		},
+		"integer.parse": {
+			"expression": "(In: /^(?:(?!^-0$)-?(?:(?:0|[1-9]\\d*)))$/) => Out<number % 1>",
+			"description": "a morph from a well-formed integer string to an integer",
+			"outcomes": "be0195794a6ba78d",
+			"moduleScope": "string"
+		},
+		"ip": {
+			"expression": "/^((?:(?:[0-9a-fA-F]{1,4}):){7}(?:(?:[0-9a-fA-F]{1,4})|:)|(?:(?:[0-9a-fA-F]{1,4}):){6}(?:((?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])[.]){3}(?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])|:(?:[0-9a-fA-F]{1,4})|:)|(?:(?:[0-9a-fA-F]{1,4}):){5}(?::((?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])[.]){3}(?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])|(:(?:[0-9a-fA-F]{1,4})){1,2}|:)|(?:(?:[0-9a-fA-F]{1,4}):){4}(?:(:(?:[0-9a-fA-F]{1,4})){0,1}:((?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])[.]){3}(?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])|(:(?:[0-9a-fA-F]{1,4})){1,3}|:)|(?:(?:[0-9a-fA-F]{1,4}):){3}(?:(:(?:[0-9a-fA-F]{1,4})){0,2}:((?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])[.]){3}(?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])|(:(?:[0-9a-fA-F]{1,4})){1,4}|:)|(?:(?:[0-9a-fA-F]{1,4}):){2}(?:(:(?:[0-9a-fA-F]{1,4})){0,3}:((?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])[.]){3}(?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])|(:(?:[0-9a-fA-F]{1,4})){1,5}|:)|(?:(?:[0-9a-fA-F]{1,4}):){1}(?:(:(?:[0-9a-fA-F]{1,4})){0,4}:((?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])[.]){3}(?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])|(:(?:[0-9a-fA-F]{1,4})){1,6}|:)|(?::((?::(?:[0-9a-fA-F]{1,4})){0,5}:((?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])[.]){3}(?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])|(?::(?:[0-9a-fA-F]{1,4})){1,7}|:)))(%[0-9a-zA-Z.]{1,})?$/ | /^((?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])[.]){3}(?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])$/",
+			"description": "an IP address",
+			"outcomes": "85e398be36d103ef",
+			"moduleScope": "string"
+		},
+		"ip.v4": {
+			"expression": "/^((?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])[.]){3}(?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])$/",
+			"description": "an IPv4 address",
+			"outcomes": "452e5d2c5b58885d",
+			"moduleScope": "string"
+		},
+		"ip.v6": {
+			"expression": "/^((?:(?:[0-9a-fA-F]{1,4}):){7}(?:(?:[0-9a-fA-F]{1,4})|:)|(?:(?:[0-9a-fA-F]{1,4}):){6}(?:((?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])[.]){3}(?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])|:(?:[0-9a-fA-F]{1,4})|:)|(?:(?:[0-9a-fA-F]{1,4}):){5}(?::((?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])[.]){3}(?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])|(:(?:[0-9a-fA-F]{1,4})){1,2}|:)|(?:(?:[0-9a-fA-F]{1,4}):){4}(?:(:(?:[0-9a-fA-F]{1,4})){0,1}:((?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])[.]){3}(?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])|(:(?:[0-9a-fA-F]{1,4})){1,3}|:)|(?:(?:[0-9a-fA-F]{1,4}):){3}(?:(:(?:[0-9a-fA-F]{1,4})){0,2}:((?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])[.]){3}(?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])|(:(?:[0-9a-fA-F]{1,4})){1,4}|:)|(?:(?:[0-9a-fA-F]{1,4}):){2}(?:(:(?:[0-9a-fA-F]{1,4})){0,3}:((?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])[.]){3}(?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])|(:(?:[0-9a-fA-F]{1,4})){1,5}|:)|(?:(?:[0-9a-fA-F]{1,4}):){1}(?:(:(?:[0-9a-fA-F]{1,4})){0,4}:((?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])[.]){3}(?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])|(:(?:[0-9a-fA-F]{1,4})){1,6}|:)|(?::((?::(?:[0-9a-fA-F]{1,4})){0,5}:((?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])[.]){3}(?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])|(?::(?:[0-9a-fA-F]{1,4})){1,7}|:)))(%[0-9a-zA-Z.]{1,})?$/",
+			"description": "an IPv6 address",
+			"outcomes": "6bc50bf8a380b77e",
+			"moduleScope": "string"
+		},
+		"json": {
+			"expression": "string",
+			"description": "a JSON string",
+			"outcomes": "af5f740dfb4f9c48",
+			"moduleScope": "string"
+		},
+		"json.parse": {
+			"expression": "(In: string) => Out<{ [string]: $jsonObject | number | string | false | null | true }>",
+			"description": "safe JSON string parser",
+			"outcomes": "14fb4e3875913268",
+			"moduleScope": "string"
+		},
+		"lower": {
+			"expression": "(In: string) => Out</^[a-z]*$/>",
+			"description": "a morph from a string to only lowercase letters",
+			"outcomes": "e32465fb7619683c",
+			"moduleScope": "string"
+		},
+		"lower.preformatted": {
+			"expression": "/^[a-z]*$/",
+			"description": "only lowercase letters",
+			"outcomes": "93217411209fb265",
+			"moduleScope": "string"
+		},
+		"normalize": {
+			"expression": "(In: string) => Out<string>",
+			"description": "a morph from a string to NFC-normalized unicode",
+			"outcomes": "1b7d0bdfa13c5715",
+			"moduleScope": "string"
+		},
+		"normalize.NFC": {
+			"expression": "(In: string) => Out<string>",
+			"description": "a morph from a string to NFC-normalized unicode",
+			"outcomes": "1b7d0bdfa13c5715",
+			"moduleScope": "string"
+		},
+		"normalize.NFC.preformatted": {
+			"expression": "string",
+			"description": "NFC-normalized unicode",
+			"outcomes": "bb7ac20501c08a2d",
+			"moduleScope": "string"
+		},
+		"normalize.NFD": {
+			"expression": "(In: string) => Out<string>",
+			"description": "a morph from a string to NFD-normalized unicode",
+			"outcomes": "15495485d33f36cb",
+			"moduleScope": "string"
+		},
+		"normalize.NFD.preformatted": {
+			"expression": "string",
+			"description": "NFD-normalized unicode",
+			"outcomes": "e22f3bf63d14285c",
+			"moduleScope": "string"
+		},
+		"normalize.NFKC": {
+			"expression": "(In: string) => Out<string>",
+			"description": "a morph from a string to NFKC-normalized unicode",
+			"outcomes": "1b7d0bdfa13c5715",
+			"moduleScope": "string"
+		},
+		"normalize.NFKC.preformatted": {
+			"expression": "string",
+			"description": "NFKC-normalized unicode",
+			"outcomes": "bb7ac20501c08a2d",
+			"moduleScope": "string"
+		},
+		"normalize.NFKD": {
+			"expression": "(In: string) => Out<string>",
+			"description": "a morph from a string to NFKD-normalized unicode",
+			"outcomes": "15495485d33f36cb",
+			"moduleScope": "string"
+		},
+		"normalize.NFKD.preformatted": {
+			"expression": "string",
+			"description": "NFKD-normalized unicode",
+			"outcomes": "e22f3bf63d14285c",
+			"moduleScope": "string"
+		},
+		"numeric": {
+			"expression": "/^(?:(?!^-0\\.?0*$)(?:-?(?:(?:0|[1-9]\\d*)(?:\\.\\d+)?)|\\.\\d+?))$/",
+			"description": "a well-formed numeric string",
+			"outcomes": "7dd70554a1b67c0e",
+			"moduleScope": "string"
+		},
+		"numeric.parse": {
+			"expression": "(In: /^(?:(?!^-0\\.?0*$)(?:-?(?:(?:0|[1-9]\\d*)(?:\\.\\d+)?)|\\.\\d+?))$/) => Out<number>",
+			"description": "a morph from a well-formed numeric string to a number",
+			"outcomes": "28e0d461177be663",
+			"moduleScope": "string"
+		},
+		"regex": {
+			"expression": "string",
+			"description": "a string and a regex pattern",
+			"outcomes": "b01023e165a6acb8",
+			"moduleScope": "string"
+		},
+		"semver": {
+			"expression": "/^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[A-Za-z-][\\dA-Za-z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[A-Za-z-][\\dA-Za-z-]*))*))?(?:\\+([\\dA-Za-z-]+(?:\\.[\\dA-Za-z-]+)*))?$/",
+			"description": "a semantic version (see https://semver.org/)",
+			"outcomes": "77a94682d99a43de",
+			"moduleScope": "string"
+		},
+		"trim": {
+			"expression": "(In: string) => Out</^\\S.*\\S$|^\\S?$/>",
+			"description": "a morph from a string to trimmed",
+			"outcomes": "6f23e202224d09d6",
+			"moduleScope": "string"
+		},
+		"trim.preformatted": {
+			"expression": "/^\\S.*\\S$|^\\S?$/",
+			"description": "trimmed",
+			"outcomes": "b5f8f34deb4d0f74",
+			"moduleScope": "string"
+		},
+		"upper": {
+			"expression": "(In: string) => Out</^[A-Z]*$/>",
+			"description": "a morph from a string to only uppercase letters",
+			"outcomes": "e846c88d13defc42",
+			"moduleScope": "string"
+		},
+		"upper.preformatted": {
+			"expression": "/^[A-Z]*$/",
+			"description": "only uppercase letters",
+			"outcomes": "d423f38a2ce12748",
+			"moduleScope": "string"
+		},
+		"url": {
+			"expression": "string",
+			"description": "a string and a URL string",
+			"outcomes": "35a7a1914c603d4f",
+			"moduleScope": "string"
+		},
+		"url.parse": {
+			"expression": "(In: string) => Out<URL>",
+			"description": "a morph from a string and a URL string to a URL instance",
+			"outcomes": "3b0ec6742b8c5dff",
+			"moduleScope": "string"
+		},
+		"uuid": {
+			"expression": "/^[\\da-f]{8}-[\\da-f]{4}-[1-8][\\da-f]{3}-[89ab][\\da-f]{3}-[\\da-f]{12}$/i | \"00000000-0000-0000-0000-000000000000\" | \"ffffffff-ffff-ffff-ffff-ffffffffffff\"",
+			"description": "a UUID",
+			"outcomes": "9bbc5de256650b93",
+			"moduleScope": "string"
+		},
+		"uuid.v1": {
+			"expression": "/^[\\da-f]{8}-[\\da-f]{4}-1[\\da-f]{3}-[89ab][\\da-f]{3}-[\\da-f]{12}$/i",
+			"description": "a UUIDv1",
+			"outcomes": "7bbb373d98200d26",
+			"moduleScope": "string"
+		},
+		"uuid.v2": {
+			"expression": "/^[\\da-f]{8}-[\\da-f]{4}-2[\\da-f]{3}-[89ab][\\da-f]{3}-[\\da-f]{12}$/i",
+			"description": "a UUIDv2",
+			"outcomes": "d0f9938784858d18",
+			"moduleScope": "string"
+		},
+		"uuid.v3": {
+			"expression": "/^[\\da-f]{8}-[\\da-f]{4}-3[\\da-f]{3}-[89ab][\\da-f]{3}-[\\da-f]{12}$/i",
+			"description": "a UUIDv3",
+			"outcomes": "8ef44b59eaa87efa",
+			"moduleScope": "string"
+		},
+		"uuid.v4": {
+			"expression": "/^[\\da-f]{8}-[\\da-f]{4}-4[\\da-f]{3}-[89ab][\\da-f]{3}-[\\da-f]{12}$/i",
+			"description": "a UUIDv4",
+			"outcomes": "3a279e2da0f83733",
+			"moduleScope": "string"
+		},
+		"uuid.v5": {
+			"expression": "/^[\\da-f]{8}-[\\da-f]{4}-5[\\da-f]{3}-[89ab][\\da-f]{3}-[\\da-f]{12}$/i",
+			"description": "a UUIDv5",
+			"outcomes": "c3eac111fa55311b",
+			"moduleScope": "string"
+		},
+		"uuid.v6": {
+			"expression": "/^[\\da-f]{8}-[\\da-f]{4}-6[\\da-f]{3}-[89ab][\\da-f]{3}-[\\da-f]{12}$/i",
+			"description": "a UUIDv6",
+			"outcomes": "0cd3218adf83bb71",
+			"moduleScope": "string"
+		},
+		"uuid.v7": {
+			"expression": "/^[\\da-f]{8}-[\\da-f]{4}-7[\\da-f]{3}-[89ab][\\da-f]{3}-[\\da-f]{12}$/i",
+			"description": "a UUIDv7",
+			"outcomes": "eacf043ea470a6a8",
+			"moduleScope": "string"
+		},
+		"uuid.v8": {
+			"expression": "/^[\\da-f]{8}-[\\da-f]{4}-8[\\da-f]{3}-[89ab][\\da-f]{3}-[\\da-f]{12}$/i",
+			"description": "a UUIDv8",
+			"outcomes": "3879bca3a2700535",
+			"moduleScope": "string"
+		}
+	},
+	"configured": {
+		"email": {
+			"expression": "/^[\\w%+.-]+@[\\d.A-Za-z-]+\\.[A-Za-z]{2,}$/",
+			"description": "a configured email",
+			"outcomes": "351a20c9ab60288f",
+			"moduleScope": "string"
+		},
+		"url": {
+			"expression": "string",
+			"description": "a configured URL",
+			"outcomes": "d495459879361b3c",
+			"moduleScope": "string"
+		},
+		"date.iso": {
+			"expression": "/^([+-]?\\d{4}(?!\\d{2}\\b))((-?)((0[1-9]|1[0-2])(\\3([12]\\d|0[1-9]|3[01]))?|W([0-4]\\d|5[0-3])(-?[1-7])?|(00[1-9]|0[1-9]\\d|[12]\\d{2}|3([0-5]\\d|6[1-6])))(T((([01]\\d|2[0-3])((:?)[0-5]\\d)?|24:?00)([,.]\\d+(?!:))?)?(\\17[0-5]\\d([,.]\\d+)?)?([Zz]|([+-])([01]\\d|2[0-3]):?([0-5]\\d)?)?)?)?$/",
+			"description": "a configured ISO date",
+			"outcomes": "ec0f980612e28e95",
+			"moduleScope": "string"
+		},
+		"ip.v4": {
+			"expression": "/^((?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])[.]){3}(?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])$/",
+			"description": "a configured IPv4 address",
+			"outcomes": "157cffda5142e507",
+			"moduleScope": "string"
+		}
+	}
+}

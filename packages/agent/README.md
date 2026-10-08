@@ -141,7 +141,7 @@ The last message in context must be `user` or `toolResult` (not `assistant`).
 | `message_update`        | **Assistant only.** Includes `assistantMessageEvent` with delta |
 | `message_end`           | Message completes                                               |
 | `tool_execution_start`  | Tool begins                                                     |
-| `tool_execution_update` | Tool streams progress                                           |
+| `tool_execution_update` | Tool streams progress; an update reported after `agent_end` reaches subscribers outside any run |
 | `tool_execution_end`    | Tool completes                                                  |
 
 ## Agent Options
@@ -389,6 +389,10 @@ for await (const event of agentLoopContinue(context, config)) {
 }
 ```
 
+The event stream ends at `agent_end`. A tool that reports through `onUpdate` after that point, such as a
+background job that outlives its call, delivers the `tool_execution_update` to `config.onToolUpdateAfterRun`.
+`Agent` forwards it to its subscribers.
+
 ## Run-level telemetry
 Every `invoke_agent` produces two values alongside the OTEL spans:
 
@@ -472,7 +476,7 @@ const runCoverage = aggregateAgentRunCoverage(coverages);
 
 ### Tool status reporting
 
-`execute_tool` spans carry `pi.gen_ai.tool.status` ∈
+`execute_tool` spans include `pi.gen_ai.tool.status` ∈
 `"ok" | "error" | "skipped" | "blocked" | "timeout" | "aborted"`.
 `beforeToolCall` blocks throw a distinguishable `ToolCallBlockedError`
 internally; the catch path reports `status: "blocked"` instead of conflating

@@ -21,6 +21,14 @@ export interface ResourceOptions {
 const resourceCache = new Map<string, { data: unknown; updatedAt: number }>();
 const RESOURCE_CACHE_LIMIT = 64;
 
+/** Cache `data` under `key`, evicting the oldest entry once the cache holds more than {@link RESOURCE_CACHE_LIMIT}. */
+function rememberResource(key: string, data: unknown): void {
+	resourceCache.set(key, { data, updatedAt: Date.now() });
+	if (resourceCache.size <= RESOURCE_CACHE_LIMIT) return;
+	const oldestKey = resourceCache.keys().next().value;
+	if (oldestKey !== undefined) resourceCache.delete(oldestKey);
+}
+
 export function useResource<T>(
 	key: readonly unknown[],
 	fetcher: (signal: AbortSignal) => Promise<T>,
@@ -51,9 +59,7 @@ export function useResource<T>(
 	hasDataRef.current = data !== null;
 
 	const executeFetch = useCallback(async (isBackground: boolean) => {
-		if (controllerRef.current) {
-			controllerRef.current.abort();
-		}
+		controllerRef.current?.abort();
 
 		const controller = new AbortController();
 		controllerRef.current = controller;
@@ -71,11 +77,7 @@ export function useResource<T>(
 			if (controller.signal.aborted) {
 				return;
 			}
-			resourceCache.set(keyStringRef.current, { data: result, updatedAt: Date.now() });
-			if (resourceCache.size > RESOURCE_CACHE_LIMIT) {
-				const oldestKey = resourceCache.keys().next().value;
-				if (oldestKey !== undefined) resourceCache.delete(oldestKey);
-			}
+			rememberResource(keyStringRef.current, result);
 			setData(result);
 			setUpdatedAt(Date.now());
 			setError(null);

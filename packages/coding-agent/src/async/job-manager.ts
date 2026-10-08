@@ -1,4 +1,4 @@
-import { clamp, errorMessage, logger } from "@veyyon/utils";
+import { errorMessage, exponentialBackoffDelay, logger } from "@veyyon/utils";
 
 const DELIVERY_RETRY_BASE_MS = 500;
 const DELIVERY_RETRY_MAX_MS = 30_000;
@@ -150,16 +150,6 @@ export class AsyncJobManager {
 	#deliveryLoop: Promise<void> | undefined;
 	#disposed = false;
 
-	#filterJobs(jobs: Iterable<AsyncJob>, filter?: AsyncJobFilter): AsyncJob[] {
-		const ownerId = filter?.ownerId;
-		if (!ownerId) return Array.from(jobs);
-		const out: AsyncJob[] = [];
-		for (const job of jobs) {
-			if (job.ownerId === ownerId) out.push(job);
-		}
-		return out;
-	}
-
 	constructor(options: AsyncJobManagerOptions) {
 		this.#onJobComplete = options.onJobComplete;
 		this.#maxRunningJobs = Math.max(1, Math.floor(options.maxRunningJobs ?? DEFAULT_MAX_RUNNING_JOBS));
@@ -296,18 +286,18 @@ export class AsyncJobManager {
 	}
 
 	getRunningJobs(filter?: AsyncJobFilter): AsyncJob[] {
-		return this.#filterJobs(this.#jobs.values(), filter).filter(job => job.status === "running");
+		return filterJobs(this.#jobs.values(), filter).filter(job => job.status === "running");
 	}
 
 	getRecentJobs(limit = 10, filter?: AsyncJobFilter): AsyncJob[] {
-		return this.#filterJobs(this.#jobs.values(), filter)
+		return filterJobs(this.#jobs.values(), filter)
 			.filter(job => job.status !== "running")
 			.sort((a, b) => b.startTime - a.startTime)
 			.slice(0, limit);
 	}
 
 	getAllJobs(filter?: AsyncJobFilter): AsyncJob[] {
-		return this.#filterJobs(this.#jobs.values(), filter);
+		return filterJobs(this.#jobs.values(), filter);
 	}
 
 	getDeliveryState(filter?: AsyncJobFilter): AsyncJobDeliveryState {
@@ -509,7 +499,7 @@ export class AsyncJobManager {
 			}
 			const inFlightDeliveries = this.#filterInFlightDeliveries();
 			if (inFlightDeliveries.length > 0 && this.#filterDeliveries().length === 0) {
-				const delivered = await this.#waitForDeliveryPromise(inFlightDeliveries[0]?.promise, deadline);
+				const delivered = await waitForDeliveryPromise(inFlightDeliveries[0]?.promise, deadline);
 				if (delivered) continue;
 				return false;
 			}
@@ -649,7 +639,7 @@ export class AsyncJobManager {
 			if (!selected) {
 				const inFlight = this.#filterInFlightDeliveries(filter);
 				if (inFlight.length === 0) return true;
-				return this.#waitForDeliveryPromise(inFlight[0]?.promise, deadline);
+				return waitForDeliveryPromise(inFlight[0]?.promise, deadline);
 			}
 
 			const now = Date.now();
@@ -664,7 +654,7 @@ export class AsyncJobManager {
 			this.#deliveries.splice(index, 1);
 			if (this.isDeliverySuppressed(selected.jobId)) continue;
 
-			return this.#waitForDeliveryPromise(this.#deliverDelivery(selected), deadline);
+			return waitForDeliveryPromise(this.#deliverDelivery(selected), deadline);
 		}
 	}
 
@@ -736,7 +726,7 @@ export class AsyncJobManager {
 			} catch (error) {
 				delivery.attempt += 1;
 				delivery.lastError = errorMessage(error);
-				delivery.nextAttemptAt = Date.now() + this.#getRetryDelay(delivery.attempt);
+				delivery.nextAttemptAt = Date.now() + getRetryDelay(delivery.attempt);
 				if (!this.isDeliverySuppressed(delivery.jobId)) {
 					this.#deliveries.push(delivery);
 				}
@@ -758,29 +748,42 @@ export class AsyncJobManager {
 		delivery.promise = promise;
 		return promise;
 	}
+}
 
-	async #waitForDeliveryPromise(promise: Promise<void> | undefined, deadline: number): Promise<boolean> {
-		if (!promise) return true;
-		if (deadline === Number.POSITIVE_INFINITY) {
-			await promise;
-			return true;
-		}
-		const remainingMs = deadline - Date.now();
-		if (remainingMs <= 0) return false;
-		let timedOut = false;
-		await Promise.race([
-			promise,
-			Bun.sleep(remainingMs).then(() => {
-				timedOut = true;
-			}),
-		]);
-		return !timedOut;
+function filterJobs(jobs: Iterable<AsyncJob>, filter?: AsyncJobFilter): AsyncJob[] {
+	const ownerId = filter?.ownerId;
+	if (!ownerId) return Array.from(jobs);
+	const out: AsyncJob[] = [];
+	for (const job of jobs) {
+		if (job.ownerId === ownerId) out.push(job);
 	}
+	return out;
+}
 
-	#getRetryDelay(attempt: number): number {
-		const exp = clamp(attempt - 1, 0, 8);
-		const backoffMs = DELIVERY_RETRY_BASE_MS * 2 ** exp;
-		const jitterMs = Math.floor(Math.random() * DELIVERY_RETRY_JITTER_MS);
-		return Math.min(DELIVERY_RETRY_MAX_MS, backoffMs + jitterMs);
+async function waitForDeliveryPromise(promise: Promise<void> | undefined, deadline: number): Promise<boolean> {
+	if (!promise) return true;
+	if (deadline === Number.POSITIVE_INFINITY) {
+		await promise;
+		return true;
 	}
+	const remainingMs = deadline - Date.now();
+	if (remainingMs <= 0) return false;
+	let timedOut = false;
+	await Promise.race([
+		promise,
+		Bun.sleep(remainingMs).then(() => {
+			timedOut = true;
+		}),
+	]);
+	return !timedOut;
+}
+
+function getRetryDelay(attempt: number): number {
+	const backoffMs = exponentialBackoffDelay(attempt - 1, {
+		baseMs: DELIVERY_RETRY_BASE_MS,
+		maxMs: DELIVERY_RETRY_MAX_MS,
+		jitter: 0,
+	});
+	const jitterMs = Math.floor(Math.random() * DELIVERY_RETRY_JITTER_MS);
+	return Math.min(DELIVERY_RETRY_MAX_MS, backoffMs + jitterMs);
 }

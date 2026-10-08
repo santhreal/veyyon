@@ -292,8 +292,8 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 
 	#updateDisplay(): void {
 		const entries = Array.from(this.#entries.values());
-		const displayTargets = this.#displayTargetsForEntries(entries);
-		const displayRows = this.#buildSummaryRows(displayTargets);
+		const displayTargets = displayTargetsForEntries(entries);
+		const displayRows = buildSummaryRows(displayTargets);
 
 		// Clear previous children and rebuild the summary and preview blocks.
 		this.clear();
@@ -308,7 +308,7 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		if (displayRows.length === 1) {
 			const row = displayRows[0]!;
 			if (!this.#shouldRenderPreviewRow(row)) {
-				const statusSymbol = this.#formatStatus(this.#statusForTargets(row.targets));
+				const statusSymbol = formatStatus(statusForTargets(row.targets));
 				const pathDisplay = this.#formatRowPath(row);
 				this.#text.setText(
 					` ${statusSymbol} ${theme.fg("toolTitle", theme.bold("Read"))} ${pathDisplay}`.trimEnd(),
@@ -324,8 +324,8 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		const header = `${theme.fg("toolTitle", theme.bold("Read"))}${theme.fg("dim", ` (${displayRows.length})`)}`;
 		const lines = [` ${theme.format.bullet} ${header}`];
 		const entriesWithoutPreview = entries.filter(entry => !this.#shouldRenderPreview(entry));
-		const summaryTargets = this.#displayTargetsForEntries(entriesWithoutPreview);
-		const rows = this.#buildSummaryRows(summaryTargets);
+		const summaryTargets = displayTargetsForEntries(entriesWithoutPreview);
+		const rows = buildSummaryRows(summaryTargets);
 		for (const [index, row] of rows.entries()) {
 			this.#appendSummaryRow(lines, row, index, rows.length);
 		}
@@ -340,113 +340,24 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		}
 	}
 
-	#displayTargetsForEntries(entries: ReadEntry[]): ReadDisplayTarget[] {
-		const targets: ReadDisplayTarget[] = [];
-		for (const entry of entries) {
-			const pathSpecs = entry.displayPaths ?? splitReadDisplayPathSpecs(entry.path);
-			const useEntryLinkPath = pathSpecs.length === 1;
-			for (const pathSpec of pathSpecs) {
-				const split = splitPathAndSel(pathSpec);
-				const linkPath = readTargetLinkPath(split.path, useEntryLinkPath ? entry.linkPath : undefined);
-				for (const selector of splitSelectorDisplayParts(split.sel)) {
-					targets.push({
-						entry,
-						targetPath: selector ? `${split.path}:${selector}` : pathSpec,
-						basePath: split.path,
-						linkPath,
-						selector,
-					});
-				}
-			}
-		}
-		return targets;
-	}
-
-	#buildSummaryRows(targets: ReadDisplayTarget[]): ReadSummaryRow[] {
-		const selectorTargetsByBasePath = new Map<string, ReadDisplayTarget[]>();
-		for (const target of targets) {
-			if (!target.selector) continue;
-			const existing = selectorTargetsByBasePath.get(target.basePath);
-			if (existing) existing.push(target);
-			else selectorTargetsByBasePath.set(target.basePath, [target]);
-		}
-
-		const mergeableBasePaths = new Set<string>();
-		for (const [basePath, baseTargets] of selectorTargetsByBasePath) {
-			if (basePath && baseTargets.length > 1) {
-				mergeableBasePaths.add(basePath);
-			}
-		}
-
-		const emittedMergedRows = new Set<string>();
-		const rows: ReadSummaryRow[] = [];
-		for (const target of targets) {
-			if (target.selector && mergeableBasePaths.has(target.basePath)) {
-				if (!emittedMergedRows.has(target.basePath)) {
-					const mergedTargets = selectorTargetsByBasePath.get(target.basePath) ?? [target];
-					rows.push({
-						targetPath: `${target.basePath}:${formatMergedSelectorParts(
-							mergedTargets
-								.map(mergedTarget => mergedTarget.selector)
-								.filter(selector => selector !== undefined),
-						)}`,
-						basePath: target.basePath,
-						targets: mergedTargets,
-					});
-					emittedMergedRows.add(target.basePath);
-				}
-				continue;
-			}
-			rows.push({ targetPath: target.targetPath, basePath: target.basePath, targets: [target] });
-		}
-		return rows;
-	}
-
 	#appendSummaryRow(lines: string[], row: ReadSummaryRow, index: number, total: number): void {
 		const connector = index === total - 1 ? theme.tree.last : theme.tree.branch;
 		lines.push(`   ${theme.fg("dim", connector)} ${this.#formatRow(row)}`.trimEnd());
 	}
 
 	#formatRow(row: ReadSummaryRow): string {
-		const status = this.#statusForTargets(row.targets);
-		const statusPrefix = status === "success" ? "" : `${this.#formatStatus(status)} `;
+		const status = statusForTargets(row.targets);
+		const statusPrefix = status === "success" ? "" : `${formatStatus(status)} `;
 		return `${statusPrefix}${this.#formatRowPath(row)}`;
 	}
 
 	#formatRowPath(row: ReadSummaryRow): string {
 		return this.#formatPathValue(row.targetPath, {
-			correctedFrom: this.#correctedFromForTargets(row.targets),
-			conflictCount: this.#conflictCountForTargets(row.targets),
+			correctedFrom: correctedFromForTargets(row.targets),
+			conflictCount: conflictCountForTargets(row.targets),
 			line: firstSelectorLineForTargets(row.targets),
 			linkPath: linkPathForTargets(row.targets),
 		});
-	}
-
-	#statusForTargets(targets: ReadDisplayTarget[]): ReadEntry["status"] {
-		let status: ReadEntry["status"] = "success";
-		for (const target of targets) {
-			if (READ_STATUS_RANK[target.entry.status] > READ_STATUS_RANK[status]) {
-				status = target.entry.status;
-			}
-		}
-		return status;
-	}
-
-	#correctedFromForTargets(targets: ReadDisplayTarget[]): string | undefined {
-		for (const target of targets) {
-			if (target.entry.correctedFrom) return target.entry.correctedFrom;
-		}
-		return undefined;
-	}
-
-	#conflictCountForTargets(targets: ReadDisplayTarget[]): number | undefined {
-		let conflictCount = 0;
-		for (const target of targets) {
-			if (target.entry.conflictCount && target.entry.conflictCount > conflictCount) {
-				conflictCount = target.entry.conflictCount;
-			}
-		}
-		return conflictCount > 0 ? conflictCount : undefined;
 	}
 
 	#previewEntriesForRow(row: ReadSummaryRow): ReadEntry[] {
@@ -483,13 +394,8 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		if (options.correctedFrom) {
 			pathDisplay += theme.fg("dim", ` (corrected from ${shortenPath(options.correctedFrom)})`);
 		}
-		pathDisplay += this.#formatConflictBadge(options.conflictCount);
+		pathDisplay += formatConflictBadge(options.conflictCount);
 		return pathDisplay;
-	}
-
-	#formatConflictBadge(conflictCount: number | undefined): string {
-		if (!conflictCount || conflictCount <= 0) return "";
-		return ` ${theme.fg("warning", `(warn ${formatCount("conflict", conflictCount)})`)}`;
 	}
 
 	/**
@@ -512,6 +418,10 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		const title = pathDisplay ? `Read ${pathDisplay}` : "Read";
 		let cachedWidth: number | undefined;
 		let cachedLines: string[] | undefined;
+		const drop = () => {
+			cachedWidth = undefined;
+			cachedLines = undefined;
+		};
 		const expanded = this.#expanded;
 		const component: Component = {
 			render: (width: number) => {
@@ -541,10 +451,8 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 				cachedWidth = width;
 				return cachedLines;
 			},
-			invalidate: () => {
-				cachedWidth = undefined;
-				cachedLines = undefined;
-			},
+			invalidate: drop,
+			releaseRenderCache: drop,
 		};
 		this.addChild(component);
 	}
@@ -552,23 +460,115 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 	#shouldRenderPreview(entry: ReadEntry): boolean {
 		return this.#showContentPreview && entry.contentText !== undefined;
 	}
+}
 
-	#formatStatus(status: ReadEntry["status"]): string {
-		if (status === "success") {
-			return theme.fg("text", theme.status.enabled);
+function displayTargetsForEntries(entries: ReadEntry[]): ReadDisplayTarget[] {
+	const targets: ReadDisplayTarget[] = [];
+	for (const entry of entries) {
+		const pathSpecs = entry.displayPaths ?? splitReadDisplayPathSpecs(entry.path);
+		const useEntryLinkPath = pathSpecs.length === 1;
+		for (const pathSpec of pathSpecs) {
+			const split = splitPathAndSel(pathSpec);
+			const linkPath = readTargetLinkPath(split.path, useEntryLinkPath ? entry.linkPath : undefined);
+			for (const selector of splitSelectorDisplayParts(split.sel)) {
+				targets.push({
+					entry,
+					targetPath: selector ? `${split.path}:${selector}` : pathSpec,
+					basePath: split.path,
+					linkPath,
+					selector,
+				});
+			}
 		}
-		if (status === "warning") {
-			return theme.fg("warning", theme.status.warning);
-		}
-		if (status === "notExecuted") {
-			// Dim, not red: the turn failed, this read did not. It carries the warning
-			// glyph so the row is not read as a completed read, in the dim register
-			// that says nothing happened here.
-			return theme.fg("dim", theme.status.warning);
-		}
-		if (status === "error") {
-			return theme.fg("error", theme.status.error);
-		}
-		return theme.fg("dim", theme.status.pending);
 	}
+	return targets;
+}
+
+function buildSummaryRows(targets: ReadDisplayTarget[]): ReadSummaryRow[] {
+	const selectorTargetsByBasePath = new Map<string, ReadDisplayTarget[]>();
+	for (const target of targets) {
+		if (!target.selector) continue;
+		const existing = selectorTargetsByBasePath.get(target.basePath);
+		if (existing) existing.push(target);
+		else selectorTargetsByBasePath.set(target.basePath, [target]);
+	}
+
+	const mergeableBasePaths = new Set<string>();
+	for (const [basePath, baseTargets] of selectorTargetsByBasePath) {
+		if (basePath && baseTargets.length > 1) {
+			mergeableBasePaths.add(basePath);
+		}
+	}
+
+	const emittedMergedRows = new Set<string>();
+	const rows: ReadSummaryRow[] = [];
+	for (const target of targets) {
+		if (target.selector && mergeableBasePaths.has(target.basePath)) {
+			if (!emittedMergedRows.has(target.basePath)) {
+				const mergedTargets = selectorTargetsByBasePath.get(target.basePath) ?? [target];
+				rows.push({
+					targetPath: `${target.basePath}:${formatMergedSelectorParts(
+						mergedTargets.map(mergedTarget => mergedTarget.selector).filter(selector => selector !== undefined),
+					)}`,
+					basePath: target.basePath,
+					targets: mergedTargets,
+				});
+				emittedMergedRows.add(target.basePath);
+			}
+			continue;
+		}
+		rows.push({ targetPath: target.targetPath, basePath: target.basePath, targets: [target] });
+	}
+	return rows;
+}
+
+function statusForTargets(targets: ReadDisplayTarget[]): ReadEntry["status"] {
+	let status: ReadEntry["status"] = "success";
+	for (const target of targets) {
+		if (READ_STATUS_RANK[target.entry.status] > READ_STATUS_RANK[status]) {
+			status = target.entry.status;
+		}
+	}
+	return status;
+}
+
+function correctedFromForTargets(targets: ReadDisplayTarget[]): string | undefined {
+	for (const target of targets) {
+		if (target.entry.correctedFrom) return target.entry.correctedFrom;
+	}
+	return undefined;
+}
+
+function conflictCountForTargets(targets: ReadDisplayTarget[]): number | undefined {
+	let conflictCount = 0;
+	for (const target of targets) {
+		if (target.entry.conflictCount && target.entry.conflictCount > conflictCount) {
+			conflictCount = target.entry.conflictCount;
+		}
+	}
+	return conflictCount > 0 ? conflictCount : undefined;
+}
+
+function formatConflictBadge(conflictCount: number | undefined): string {
+	if (!conflictCount || conflictCount <= 0) return "";
+	return ` ${theme.fg("warning", `(warn ${formatCount("conflict", conflictCount)})`)}`;
+}
+
+function formatStatus(status: ReadEntry["status"]): string {
+	if (status === "success") {
+		return theme.fg("text", theme.status.enabled);
+	}
+	if (status === "warning") {
+		return theme.fg("warning", theme.status.warning);
+	}
+	if (status === "notExecuted") {
+		// Dim, not red: the turn failed, this read did not. It carries the warning
+		// glyph so the row is not read as a completed read, in the dim register
+		// that says nothing happened here.
+		return theme.fg("dim", theme.status.warning);
+	}
+	if (status === "error") {
+		return theme.fg("error", theme.status.error);
+	}
+	return theme.fg("dim", theme.status.pending);
 }

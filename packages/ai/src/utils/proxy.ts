@@ -17,29 +17,76 @@ export function isLocalOrMetadataHost(host: string): boolean {
 
 	// Strip IPv6 brackets before numeric checks.
 	const ip = lowerHost.replace(/^\[|\]$/g, "");
-
-	// IPv4 loopback (127/8), unspecified (0/8), RFC1918 private (10/8, 172.16/12,
-	// 192.168/16) and link-local (169.254/16 — covers IMDS 169.254.169.254 and
-	// ECS credentials 169.254.170.2). None are reachable through a remote egress
-	// proxy, and credential/metadata probes must never leak to one.
 	const v4 = ip.match(/^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/);
-	if (v4) {
-		const a = Number(v4[1]);
-		const b = Number(v4[2]);
-		if (a === 127 || a === 10 || a === 0) return true;
-		if (a === 169 && b === 254) return true;
-		if (a === 192 && b === 168) return true;
-		if (a === 172 && b >= 16 && b <= 31) return true;
-		return false;
+	return v4 ? isLocalIPv4(Number(v4[1]), Number(v4[2])) : isLocalIPv6(ip);
+}
+
+/**
+ * IPv4 loopback (127/8), unspecified (0/8), RFC1918 private (10/8, 172.16/12,
+ * 192.168/16) and link-local (169.254/16 — covers IMDS 169.254.169.254 and
+ * ECS credentials 169.254.170.2), judged from the first two octets. None are reachable through a
+ * remote egress proxy, and credential/metadata probes must never leak to one.
+ */
+function isLocalIPv4(a: number, b: number): boolean {
+	if (a === 127 || a === 10 || a === 0) return true;
+	if (a === 169) return b === 254;
+	if (a === 192) return b === 168;
+	return a === 172 && b >= 16 && b <= 31;
+}
+
+/** IPv6 loopback (::1), unspecified (::), link-local (fe80::/10) and unique-local (fc00::/7 —
+ *  covers EC2 IPv6 IMDS fd00:ec2::254), given a lowercased address without brackets. */
+function isLocalIPv6(ip: string): boolean {
+	return ip === "::1" || ip === "::" || /^fe[89ab][0-9a-f]:/.test(ip) || /^f[cd][0-9a-f]{2}:/.test(ip);
+}
+
+/** One NO_PROXY entry: a host matched exactly or as a suffix, optionally on one port. */
+interface NoProxyRule {
+	/** `*`: every host on every port. */
+	any: boolean;
+	/** The port the rule is limited to, or undefined for every port. */
+	port: string | undefined;
+	/** The host the rule matches exactly. */
+	exact: string;
+	/** The suffix a subdomain of `exact` ends with. */
+	suffix: string;
+}
+
+/** The last NO_PROXY value read and its parsed rules: the value is static for a process, and the
+ *  rules are asked for on every proxied request. */
+let noProxyRules: { raw: string; rules: NoProxyRule[] } | undefined;
+
+function parseNoProxyRule(rule: string): NoProxyRule {
+	let host = rule.toLowerCase();
+	let port: string | undefined;
+	// A bracketed address takes its port after the closing bracket, and a bare IPv6 address has no
+	// port: its colons are all its own.
+	if (host.includes("]:") || (!host.includes("]") && host.includes(":") && !net.isIPv6(host))) {
+		const lastColon = host.lastIndexOf(":");
+		port = host.slice(lastColon + 1) || undefined;
+		host = host.slice(0, lastColon);
 	}
+	// Strip IPv6 brackets
+	host = host.replace(/^\[|\]$/g, "");
+	if (net.isIPv6(host)) host = canonicalIPv6(host);
+	// A leading dot matches the bare domain and its subdomains.
+	const dotted = host.startsWith(".");
+	return { any: rule === "*", port, exact: dotted ? host.slice(1) : host, suffix: dotted ? host : `.${host}` };
+}
 
-	// IPv6 loopback (::1), unspecified (::), link-local (fe80::/10) and
-	// unique-local (fc00::/7 — covers EC2 IPv6 IMDS fd00:ec2::254).
-	if (ip === "::1" || ip === "::") return true;
-	if (/^fe[89ab][0-9a-f]:/.test(ip)) return true;
-	if (/^f[cd][0-9a-f]{2}:/.test(ip)) return true;
+/** `address` in the compressed lowercase form a URL's hostname writes it in, without brackets, so
+ *  `2001:0DB8:0::1` names the host `[2001:db8::1]`. */
+function canonicalIPv6(address: string): string {
+	const hostname = URL.parse(`http://[${address}]/`)?.hostname;
+	return hostname ? hostname.slice(1, -1) : address;
+}
 
-	return false;
+function parsedNoProxyRules(raw: string): NoProxyRule[] {
+	if (noProxyRules?.raw === raw) return noProxyRules.rules;
+	const rules: NoProxyRule[] = [];
+	for (const rule of raw.split(/[,\s]+/)) if (rule) rules.push(parseNoProxyRule(rule));
+	noProxyRules = { raw, rules };
+	return rules;
 }
 
 /**
@@ -47,61 +94,18 @@ export function isLocalOrMetadataHost(host: string): boolean {
  * or custom NO_PROXY/no_proxy environment variables rules.
  */
 export function shouldBypassProxy(urlObj: URL): boolean {
-	if (isLocalOrMetadataHost(urlObj.hostname)) {
-		return true;
-	}
-
-	const noProxyVal = Bun.env.NO_PROXY || Bun.env.no_proxy;
-	if (!noProxyVal) {
-		return false;
-	}
-
-	const rules = noProxyVal
-		.split(/[,\s]+/)
-		.map(r => r.trim())
-		.filter(Boolean);
-	const targetHost = urlObj.hostname.toLowerCase();
+	if (isLocalOrMetadataHost(urlObj.hostname)) return true;
+	const noProxyVal = process.env.NO_PROXY || process.env.no_proxy;
+	if (!noProxyVal) return false;
+	// A URL writes an IPv6 hostname in brackets and already lowercased; an entry is compared without them.
+	const hostname = urlObj.hostname;
+	const targetHost = hostname.startsWith("[") ? hostname.slice(1, -1) : hostname.toLowerCase();
 	const targetPort = urlObj.port || (urlObj.protocol === "https:" ? "443" : "80");
-
-	for (const rule of rules) {
-		if (rule === "*") {
-			return true;
-		}
-
-		let ruleHost = rule.toLowerCase();
-		let rulePort: string | undefined;
-
-		if (ruleHost.includes("]:")) {
-			const lastColon = ruleHost.lastIndexOf(":");
-			rulePort = ruleHost.slice(lastColon + 1);
-			ruleHost = ruleHost.slice(0, lastColon);
-		} else if (!ruleHost.includes("]") && ruleHost.includes(":")) {
-			const lastColon = ruleHost.lastIndexOf(":");
-			rulePort = ruleHost.slice(lastColon + 1);
-			ruleHost = ruleHost.slice(0, lastColon);
-		}
-
-		// Strip IPv6 brackets
-		ruleHost = ruleHost.replace(/^\[|\]$/g, "");
-
-		if (rulePort && rulePort !== targetPort) {
-			continue;
-		}
-
-		// Match host part
-		if (ruleHost.startsWith(".")) {
-			const suffix = ruleHost;
-			const cleanRule = ruleHost.slice(1);
-			if (targetHost === cleanRule || targetHost.endsWith(suffix)) {
-				return true;
-			}
-		} else {
-			if (targetHost === ruleHost || targetHost.endsWith(`.${ruleHost}`)) {
-				return true;
-			}
-		}
+	for (const rule of parsedNoProxyRules(noProxyVal)) {
+		if (rule.any) return true;
+		if (rule.port !== undefined && rule.port !== targetPort) continue;
+		if (targetHost === rule.exact || targetHost.endsWith(rule.suffix)) return true;
 	}
-
 	return false;
 }
 

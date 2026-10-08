@@ -31,7 +31,7 @@ These add capabilities or change how the agent runs:
 | [Export and import](./export-import.md) | Moving sessions in and out |
 | [Connectors](./connectors.md) | Third-party app integrations |
 | [Approvals](./sandbox.md) | The approval-mode boundary in depth |
-| [Secrets](../architecture/secrets.md) | Credentials the agent uses by placeholder and never sees |
+| [Secrets](../architecture/secrets.md) | Credentials the agent uses by placeholder and never receives |
 | [Code review](./review.md) | Reviewing branches, commits, and uncommitted work |
 | [Non-interactive mode](./exec.md) | Running Veyyon from a script |
 

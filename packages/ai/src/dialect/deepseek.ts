@@ -1,7 +1,14 @@
-import { parseJsonWithRepair } from "@veyyon/utils/json-parse";
+import { parseJsonWithRepair, parseStreamingJson } from "@veyyon/utils/json-parse";
 import { AI_PROMPTS } from "../prompts/registry";
 import type { Message, ToolCall } from "../types";
-import { mintToolCallId, parseToolArgsText, partialSuffixOverlapAny } from "./coercion";
+import {
+	BlockBody,
+	emitTextHoldingPartialTag,
+	mintToolCallId,
+	parseToolArgsText,
+	partialSuffixOverlapAny,
+	recordOrEmpty,
+} from "./coercion";
 import {
 	assistantTranscriptParts,
 	collectToolResultRun,
@@ -16,6 +23,7 @@ import type {
 	InbandScanEvent,
 	InbandScanner,
 	InbandScannerOptions,
+	InbandToolEnd,
 } from "./types";
 import { CODE_FENCE, THINK_CLOSE, THINK_OPEN } from "./wire-tags";
 
@@ -105,6 +113,7 @@ export class DeepSeekInbandScanner implements InbandScanner {
 	#dsmlParamIsString = true;
 	#dsmlParamRaw = "";
 	#rawBlock = "";
+	#args = new BlockBody(DEEPSEEK_TOOL_CALL_END);
 	#stripLeadingWhitespace = false;
 
 	constructor(options: InbandScannerOptions = {}) {
@@ -161,6 +170,7 @@ export class DeepSeekInbandScanner implements InbandScanner {
 			if (!this.#consumeDsmlParam(final, events)) break;
 		}
 		if (final && this.#state === "thinking") this.#endThinking(events);
+		if (final) this.#endCallAtStreamEnd(events);
 		if (final && this.#buffer.length === 0 && this.#rawBlock.length > 0) this.#rawBlock = "";
 		return events;
 	}
@@ -181,10 +191,7 @@ export class DeepSeekInbandScanner implements InbandScanner {
 			}
 			const match = findEarliestToken(this.#buffer, OUTSIDE_TOKENS);
 			if (!match) {
-				const hold = final ? 0 : partialSuffixOverlapAny(this.#buffer, OUTSIDE_TOKENS);
-				const emit = this.#buffer.slice(0, this.#buffer.length - hold);
-				if (emit.length > 0) events.push({ type: "text", text: emit });
-				this.#buffer = this.#buffer.slice(this.#buffer.length - hold);
+				this.#buffer = emitTextHoldingPartialTag(this.#buffer, OUTSIDE_TOKENS, final, events);
 				return;
 			}
 			if (match.index > 0) events.push({ type: "text", text: this.#buffer.slice(0, match.index) });
@@ -281,6 +288,7 @@ export class DeepSeekInbandScanner implements InbandScanner {
 			return true;
 		}
 		this.#startTool(head, events);
+		this.#args = new BlockBody(DEEPSEEK_TOOL_CALL_END);
 		this.#state = "args";
 		return true;
 	}
@@ -297,33 +305,66 @@ export class DeepSeekInbandScanner implements InbandScanner {
 		this.#buffer = this.#buffer.slice(rawName.length);
 		this.#rawBlock += this.#dropOneLineBreak();
 		this.#startTool(name, events);
+		this.#args = new BlockBody(DEEPSEEK_TOOL_CALL_END);
 		this.#state = "legacyArgs";
 		return true;
 	}
 
 	#consumeArgs(final: boolean, events: InbandScanEvent[]): boolean {
-		const end = this.#buffer.indexOf(DEEPSEEK_TOOL_CALL_END);
-		if (end === -1) {
-			if (final) this.#resetTool();
-			return false;
-		}
-		let rawArgs = this.#buffer.slice(0, end);
+		this.#buffer = this.#args.read(this.#buffer, final);
+		if (!this.#args.closed) return false;
+		this.#endArgsCall(this.#args.text, DEEPSEEK_TOOL_CALL_END, events);
+		this.#resetTool(this.#inToolSection ? "section" : "outside");
+		return true;
+	}
+
+	/** Ends a call whose arguments ran to `close`, or, with no `close`, to the end of the stream. */
+	#endArgsCall(rawArgsBlock: string, close: string | undefined, events: InbandScanEvent[]): void {
+		let rawArgs = rawArgsBlock;
 		if (this.#state === "legacyArgs") {
 			const fence = rawArgs.lastIndexOf(CODE_FENCE);
 			if (fence !== -1) rawArgs = rawArgs.slice(0, fence);
 		}
-		const rawTail = this.#buffer.slice(0, end + DEEPSEEK_TOOL_CALL_END.length);
-		this.#rawBlock += rawTail;
+		this.#rawBlock += rawArgsBlock + (close ?? "");
+		const end: InbandToolEnd = {
+			type: "toolEnd",
+			id: this.#id,
+			name: this.#name,
+			// Arguments the stream ended inside are truncated JSON: they are auto-closed.
+			arguments:
+				close === undefined
+					? recordOrEmpty(parseStreamingJson(rawArgs))
+					: parseToolArgsText(rawArgs, { source: "deepseek", tool: this.#name }),
+			rawBlock: this.#rawBlock,
+		};
+		if (close === undefined) end.unterminated = true;
+		events.push(end);
+	}
+
+	/** The stream ended inside an announced call: it ends with the arguments read so far. */
+	#endCallAtStreamEnd(events: InbandScanEvent[]): void {
+		if (this.#state === "args" || this.#state === "legacyArgs") {
+			this.#endArgsCall(this.#args.text, undefined, events);
+			this.#buffer = "";
+			this.#inToolSection = false;
+			this.#resetTool();
+			return;
+		}
+		if (this.#state === "dsmlParam") {
+			this.#dsmlArgs[this.#dsmlParamName] = coerceDsmlValue(this.#dsmlParamRaw, this.#dsmlParamIsString);
+			this.#state = "dsmlInvoke";
+		}
+		if (this.#state !== "dsmlInvoke") return;
 		events.push({
 			type: "toolEnd",
 			id: this.#id,
 			name: this.#name,
-			arguments: this.#parseArgs(rawArgs),
+			arguments: this.#dsmlArgs,
 			rawBlock: this.#rawBlock,
+			unterminated: true,
 		});
-		this.#buffer = this.#buffer.slice(rawTail.length);
-		this.#resetTool(this.#inToolSection ? "section" : "outside");
-		return true;
+		this.#resetDsmlTool();
+		this.#state = "outside";
 	}
 
 	#consumeDsmlSection(final: boolean, events: InbandScanEvent[]): boolean {
@@ -408,7 +449,6 @@ export class DeepSeekInbandScanner implements InbandScanner {
 			const chunk = this.#buffer.slice(0, this.#buffer.length - hold);
 			this.#streamDsmlParam(chunk, events);
 			this.#buffer = this.#buffer.slice(this.#buffer.length - hold);
-			if (final) this.#resetDsmlTool();
 			return false;
 		}
 		this.#streamDsmlParam(this.#buffer.slice(0, close.index), events);
@@ -449,10 +489,6 @@ export class DeepSeekInbandScanner implements InbandScanner {
 		if (this.#parseThinking) events.push({ type: "thinkingEnd", thinking: this.#thinking });
 		this.#thinking = "";
 		this.#state = "outside";
-	}
-
-	#parseArgs(rawArgs: string): Record<string, unknown> {
-		return parseToolArgsText(rawArgs, { source: "deepseek", tool: this.#name });
 	}
 
 	#skipWhitespace(): string {

@@ -25,21 +25,22 @@
  * `src/session/prompt-inputs.ts`; MCP startup and its reactive wiring moved into
  * `factory-mcp.ts`. The startup phases that read their inputs and return a value
  * moved beside it: the custom tools and the tool registry into `factory-tools.ts`,
- * the extensions, their provider adoption and the custom commands into
- * `startup-extensions.ts`, the Codex
- * prewarm and language-server warmup into `startup-background.ts`, the argot arm
- * and the start records into `startup-records.ts`, and the owned background-job
- * manager into `async-jobs.ts`. The rest is
- * one `try`/`catch` whose inner closures capture the MCP manager and the teardown
- * flags the `catch` block reads; turning those captures into parameters is a
- * rewrite of the startup ordering and the failure path, not a move, so the plan's
- * `factory-providers.ts`, `factory-memory.ts` and `factory-advisor.ts` have no
- * free declarations to hold and are absent rather than empty. The ceiling below
- * records where the file is.
+ * the tool discovery mode into `tool-discovery.ts`, the extensions, their provider
+ * adoption, the custom commands, the prompt templates and slash commands into
+ * `startup-extensions.ts`, the Codex prewarm, language-server warmup and memory
+ * hydration into `startup-background.ts`, the argot arm and the start records into
+ * `startup-records.ts`, the agent identity and provider prompt cache key into
+ * `startup-identity.ts`, the per-request hooks into `startup-request-hooks.ts`, the
+ * credential-disabled relay into `startup-credential-relay.ts`, and the owned
+ * background-job manager into `async-jobs.ts`. The rest is `SessionStartup`, one
+ * class whose steps run in order and whose fields hold what a later step reads and
+ * what `abandon` releases when a step throws. The plan's `factory-providers.ts`,
+ * `factory-memory.ts` and `factory-advisor.ts` have no free declarations to hold
+ * and are absent rather than empty. The ceiling below records where the file is.
  *
  * What it does not catch: a factory module that keeps its name and grows a
- * concern that belongs to another, and the coupling inside `createAgentSession`,
- * which no gate here measures.
+ * concern that belongs to another, and the coupling between the steps of
+ * `SessionStartup`, which no gate here measures.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -50,12 +51,12 @@ const SESSION_DIR = repoPath("packages/coding-agent/src/session");
 const SDK = repoPath("packages/coding-agent/src/sdk.ts");
 
 /**
- * MEASURED at 1757 lines after the custom tools, extensions and their provider adoption, tool
- * registry, background startup, start records, background-job manager and request secret leases
- * moved out, and the project half of every prompt build moved to `ProjectPromptInputs.promptOptions`.
- * This falls when `createAgentSession` is rewritten.
+ * MEASURED at 1646 lines after `createAgentSession` became the `SessionStartup` steps and the
+ * request hooks, the agent identity, the provider prompt cache key, the credential-disabled relay,
+ * the tool discovery mode, the command input discovery and the memory hydration moved into
+ * `src/session/` modules. This falls when `SessionStartup` is split again.
  */
-const SDK_CEILING = 1757;
+const SDK_CEILING = 1646;
 
 /** MEASURED: the largest factory module is `factory-extensions.ts` at 395 lines. */
 const FACTORY_CEILING = 400;

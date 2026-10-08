@@ -82,10 +82,12 @@ SCENE_COMMAND='env STARTUP_EXECUTABLE=/repo/path/to/binary bash -l' \
 ```
 
 Bundled and resolved model snapshots use `@veyyon/utils/json-snapshot`. Each write
-serializes its payload once; each read verifies the fingerprint and payload bytes
-before parsing. Replacement is atomic without a durability flush because a missing
-or invalid snapshot rebuilds from its inputs. Bundled format v4 and resolved-stage
-format v9 reject snapshots from preceding formats. The resolved stage stores only
+serializes its payload once behind a header line that states the frame version, the
+input fingerprint, and the payload's byte length and CRC-32. Each read checks those
+fields against the bytes read from disk, then parses the payload once. Replacement is
+atomic without a durability flush because a missing or invalid snapshot rebuilds from
+its inputs. Frame version 2, bundled format v4 and resolved-stage format v9 reject
+snapshots from preceding layouts. The resolved stage stores only
 discovery-derived models and provider state. Bundled models resolve once per requested
 provider, without installing a disk snapshot store during production startup.
 Explicitly installed catalog snapshot stores remain supported. Provider overrides
@@ -295,7 +297,9 @@ difference, and nothing else in the pre-paint path depends on a warm agent home.
 From the tree, binary, warm, in order of cost:
 
 - **Module load, 269ms.** Runtime init plus the static import graph reachable from `cli.ts`. Paid
-  before any marker, so no phase can be blamed for it and no lazy import inside a phase reduces it.
+  before any marker. The binary measured here was one bytecode chunk; the split build described
+  under [Embedded dependencies](#embedded-dependencies) links only the launch path's chunks before
+  the card, and reports 11.1ms for this line.
 - **`createAgentSession`, 150-320ms.** Context files, rules, watchdogs, advisor configs, prompt
   templates, slash commands, skills, tools, and the system prompt. Most children run in parallel;
   `buildSystemPrompt` dominates.
@@ -360,6 +364,40 @@ Techniques taken from openai/codex's own startup work, each with what it maps on
 - **Keep hardware and network out of the pre-paint path.** The GPU probe above is this technique
   applied: the answer is computed for the next launch instead of waited for by this one.
 
+## Embedded dependencies
+
+The compiled build splits the bundle at every dynamic `import()` (`splitting: true` in
+`packages/coding-agent/scripts/compile-binary.ts`). Bun's standalone loader links a chunk when the
+first `import()` that reaches it runs, so code outside the launch path's static graph adds nothing
+to the time before the launch card. On the split binary, warm, the `VEYYON_TIMING` tree reports
+11.1ms before instrumentation, 2.2ms for `import:cli-runner`, 0.94ms for `import:commands/launch`,
+8.8ms for `import:launch-card` and 5.8ms for `runStartupPrologue`.
+`packages/coding-agent/test/architecture/nothing-joins-the-launch-card-path-uncounted.test.ts`
+fails when a third-party package other than `chalk` and `lru-cache` joins that graph.
+
+`COMPILED_EXTERNAL_DEPENDENCIES` excludes `fastembed` and `onnxruntime-node` from the binary; both
+install on first use. Every other dependency is embedded. The table lists the dense third-party
+packages the binary embeds, measured on an unminified split build of
+`packages/coding-agent/src/cli.ts`, and the import that links each one:
+
+| Package | Bundled | Linked by | Decision |
+| --- | --- | --- | --- |
+| `puppeteer-core` | 151 modules, 8 chunks, 1.31MB | `tools/web/browser/launch.ts` | Embedded |
+| `zod` | 82 modules, 1 chunk, 0.54MB | ACP mode; the `auth-broker`, `auth-gateway`, `bench/throughput` and `dry-balance` subcommands; `extensibility/coding-agent-api.ts` | Embedded |
+| `@babel/parser` | 1 module, 0.54MB | `eval/js/shared/runtime.ts` | Embedded |
+| `@mixmark-io/domino` | 53 modules, 0.48MB | `packages/utils/src/html-markdown.ts`, `utils/markit.ts` | Embedded |
+| `linkedom` | 124 modules, 0.37MB | web search providers, `tools/web/fetch.ts`, `plugins/web` scrapers | Embedded |
+| `@xterm/headless` | 1 module, 0.28MB | `tools/shell/terminal-output.ts` | Embedded |
+| `baseline-browser-mapping` | 1 module, 0.58MB | web search providers | Embedded |
+| `dingbat-to-unicode` | 2 modules, 1.19MB | `utils/markit.ts` | Embedded |
+| `moment` | not bundled | none | None |
+
+None of these chunks is among the 102 chunks (1.76MB unminified) the launch path links, and none is
+in the static closure of `main.ts`, the runtime warmup stages or interactive mode (460 chunks,
+11.49MB). An on-demand install for any of them changes no launch measurement and makes its first
+use (a browser launch, a document conversion, a web fetch) depend on the network, so each stays
+embedded.
+
 ## Budget
 
 - First frame within 150ms on the shipped binary. A cold home carries no separate target, because a
@@ -367,8 +405,17 @@ Techniques taken from openai/codex's own startup work, each with what it maps on
 - Nothing that probes hardware, the network, or an external process runs before the first frame.
 - A phase added to the pre-paint path states its measured cost in the change that adds it.
 
-The binary meets the first target at 84ms warm and 79ms cold, medians of 5 on an idle workstation.
-It is still a target and not a gate. Wiring it to CI needs a runner whose timings are stable enough
-that a red build means a regression, and a first-frame median here moves by more than 50% between
-repetitions, and by more than that when a type check shares the machine.
-*Verified against `46980a2485` on 2026-09-11.*
+`--max <arm>=<ms>` holds an arm's median to a ceiling. The bench prints one verdict line per
+ceiling and exits `1` when a median exceeds its ceiling or the arm produced no samples. The launch
+card's ceiling is 130.5ms, the first byte the single-chunk binary measured:
+
+```sh
+bun scripts/bench-startup.ts --bin packages/coding-agent/dist/vey --only frame --runs 7 \
+  --max first-frame=130.5 --max composer=130.5
+```
+
+The split binary measures a 37ms first byte and a 42ms composer row, medians of 7, warm, on Linux x64
+with an AMD Ryzen 9 9950X. The ceiling runs where the bench runs, not in CI: a first-frame median
+moves by more than 50% between repetitions, and by more than that when a type check shares the
+machine.
+*Verified against `0946265f23` on 2026-10-04.*

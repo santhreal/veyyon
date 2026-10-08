@@ -4,7 +4,25 @@
 
 ### Changed
 
+- `COMMAND_CODE_COSTS` and the Command Code effort table use plain string keys instead of computed ones; every rate and ladder is unchanged.
+- `@veyyon/catalog/models` imports `models.json` by path and reads it when the registry is built, so a process no longer holds the 2.2 MB catalog text on its heap for its whole life.
 - `buildOpenAICompat` classifies the host and model family once and derives each chat-completions compat field from a named predicate, and the chat and Responses builders share one override-and-rederive step; every bundled and synthetic model spec resolves to the same record, no behavior change.
+- The models.dev overlay drops its parsed `api.json` 30 seconds after the last provider reads it and reads `models-dev.json` again on the next use, which cut the idle heap after a model refresh from 68.7 MiB to 59.7 MiB and its live objects from 752,441 to 595,112 (median of 3 runs).
+- Model id classification no longer keeps a process-lifetime table from each id to its answer, which cut the idle heap of an interactive session from 66.8 MiB to 63.6 MiB (median of 3 runs) and stops each newly seen model id from growing the heap.
+- Models whose resolved compat records are equal share one frozen record, which cut the retained heap of a full catalog build from 4.41 MiB to 2.69 MiB and the idle heap of an interactive session from 43.8 MiB to 41.5 MiB (median of 3 runs).
+- GitLab Duo workflow discovery parses the available-models answer without Zod, and `@veyyon/catalog` no longer depends on `zod`; every answer resolves to the same models.
+- The parsed bundled catalog and the reference index built from it are released 30 seconds after the last read and parsed again on the next one, and the provider list is kept apart so listing providers never parses the catalog, which cut the settled idle heap of an interactive session from 39.96 MiB to 38.88 MiB and its live objects from 485,605 to 471,040 (median of 5 runs).
+- Cursor and Devin model discovery modules load through `lazy` from `@veyyon/utils`; no user-visible change.
+- A discovered model's reference resolver builds the index of every bundled provider's models on the first id its own provider's references miss instead of when the provider's model manager options are created, so a launch holding only a GitHub Copilot credential builds 566 model specs from 3 providers instead of 4,560 from 59 and settles at 28.96 MiB of heap instead of 30.36 MiB (median of 5).
+- The Xiaomi Token Plan model managers read the `xiaomi` provider's bundled models on the first model a discovery returns instead of when their options are created, so a launch holding a Token Plan credential builds no `xiaomi` model.
+- A read of one bundled provider parses that provider's object out of `models.json` instead of the whole 2.3 MB catalog, and listing providers parses none of it, which cut the heap of a default-role launch 3 seconds after start from 46.70 MiB to 44.47 MiB, its live objects from 418,889 to 371,624 and `createAgentSession` from 69.7 ms to 63.5 ms (median of 5 and 11 runs).
+- A custom or discovered model's bundled reference lookup scans the model ids out of `models.json` and parses only the models the id reaches instead of the whole catalog, which cut a custom-model launch's time to a ready session from 217.2 ms to 206.6 ms and its idle heap from 36.21 MiB to 33.71 MiB and live objects from 399,664 to 350,968 (median of 11 and 5 runs).
+- A model reference lookup checks each reduction of a proxied id as it derives it and reads each lookup key once, which cut the mean lookup over every bundled id, bare and under two proxy affixes (13,218 ids), from 4.6 µs to 2.7 µs on the lazy bundled index and from 4.1 µs to 1.9 µs on the full index (2 runs before, 4 after).
+
+### Fixed
+
+- OpenCode gateway models send the `tool_choice` a caller sets, so the models that accept a pinned tool receive it; a model that rejects it pays one retried request per session.
+- A model the models.dev overlay enriches keeps the compat its bundled row declares, so wafer.ai GLM and Kimi models request the Z.ai thinking format and xAI OAuth models map `minimal` effort to `low` again; the model cache schema moves to v12 to drop rows that stored a resolved compat record as their declaration, which cut the cached rows of a full catalog refresh from 4.85 MB to 1.72 MB and the static model stage a launch restores from 10.8 MB to 7.8 MB and 4.79 MiB to 3.16 MiB retained.
 
 ## [1.5.4] - 2026-09-24
 

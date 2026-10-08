@@ -199,7 +199,9 @@ export async function resolveProviderModels<TApi extends Api = Api, TModelsDevPa
 				options.dropCachedModelIdsOnStaticMismatch,
 			);
 	const dynamicModels = fetchedDynamicModels ?? [];
-	const modelsDevModelsAll = normalizeModelList<TApi>(fetchedModelsDevModels ?? []);
+	// `fetchModelsDev` already built these rows. A second `buildModel` would read
+	// each row's resolved compat as its sparse override record.
+	const modelsDevModelsAll = fetchedModelsDevModels ?? [];
 	// An enrich-only overlay (OAuth twin surfaces) fills declared surfaces on ids
 	// some real source serves and never adds an id of its own: the endpoint's
 	// listing is subscription-gated, so overlay-only ids would fail at request time.

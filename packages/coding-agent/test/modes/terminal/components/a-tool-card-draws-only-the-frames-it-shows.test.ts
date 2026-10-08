@@ -1,24 +1,38 @@
 /**
- * A tool card draws its display at render, once, in the state that render shows.
+ * A tool card draws its display at render, once, in the state that render shows, and builds the
+ * block the display draws from only for that render.
  *
  * WHAT THIS CLOSES. The card drew its display on every change. A rebuilt transcript constructs a
  * card from the call, expands it, hands it the result and seals it, and each of those drew the card
  * again before any frame showed it. The construction drew the call view, which for a `write` is the
  * whole file highlighted, and the result view replaced it a moment later: on a 4,712-block session
  * rebuilding and drawing the transcript took 999 ms that way and takes 603 ms drawn at render. A
- * streaming call drew once per argument delta, not once per frame.
+ * streaming call drew once per argument delta, not once per frame. A terminal drawing Kitty images
+ * converts a result's pictures to PNG, and the card found them by building its block on every result
+ * it was handed: a streaming command built every view of its card once per output chunk, for a
+ * frame that drew only the last.
  *
- * THE CLASS. Any mutator of the card that draws eagerly. The sweep reads the card's public methods
- * off its prototype at run time and fails on a method nobody has classified, so a new mutator is
- * red until it is driven here. Every mutator is called with no render after it, and nothing may
- * draw; the frame after each visible change must show that change, which catches a mutator that
- * forgot to mark the display stale.
+ * The block behind the display projected every view it carries, and the card built it on every
+ * change and on every question about its state: whether to animate, whether it is finalized,
+ * whether the next call displaces it. A rebuilt 3,959-card transcript built 13,210 blocks for the
+ * 3,959 its first frame drew.
+ *
+ * THE CLASS. Any mutator of the card that draws or builds eagerly, under any image protocol the
+ * terminal reports, and any state query that builds. Every mutator runs under each protocol of the
+ * enum and under none. The sweep reads the card's public methods off its prototype at run time and
+ * fails on a method nobody has classified, so a new mutator is red until it is driven here, and a
+ * new method that neither changes nor draws the card is red until it is driven as a query. Every
+ * mutator and query is called with no render after it, and nothing may draw or project a view; the
+ * frame after each visible change must show that change, which catches a mutator that forgot to
+ * mark the display stale.
  *
  * WHAT IT DOES NOT CATCH. Components other than `ToolExecutionComponent` (the read group, assistant
- * messages, custom message renderers) are not swept. `setArgsComplete`, `seal`, `setShowImages` and
- * `invalidate` change nothing a `write` card shows, so for those only the no-draw half is asserted,
- * and `setArgsComplete` and `invalidate` leave the card's display inputs unchanged, so an eager draw
- * in either one stays green here.
+ * messages, custom message renderers) are not swept. `setArgsComplete`, `seal`, `setShowImages`,
+ * `invalidate` and `toolExecutionChanged` change nothing a `write` card shows, so for those only the
+ * no-draw half is asserted, and `setArgsComplete` and `invalidate` leave the card's display inputs
+ * unchanged, so an eager draw in either one stays green here. Builds are
+ * counted through the views a block projects, so work a build does outside them is counted only
+ * alongside them.
  */
 import { afterEach, beforeAll, describe, expect, it, spyOn, vi } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
@@ -26,10 +40,12 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { ChatTranscriptBuilder } from "@veyyon/coding-agent/modes/terminal/components/transcript/chat-transcript-builder";
 import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
 import * as drawToolViewModule from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
+import { ToolExecutionProducer } from "@veyyon/coding-agent/presentation/tool-execution";
 import * as highlightModule from "@veyyon/coding-agent/theme/highlight";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { toolViewDefinitions } from "@veyyon/coding-agent/tools/view-registry";
 import type { SessionMessageEntry } from "@veyyon/kernel/session/session-entries";
-import type { TUI } from "@veyyon/tui";
+import { ImageProtocol, setTerminalImageProtocol, TERMINAL, type TUI } from "@veyyon/tui";
 import type { ToolExecutionBlock } from "@veyyon/wire/presentation";
 import { createToolExecution } from "../../../helpers/tool-execution";
 
@@ -43,6 +59,7 @@ function fileText(lines: number, marker: string): string {
 }
 
 const ARGS = { path: "notes/plan.md", content: fileText(FILE_LINES, "draft") };
+const RESULT = { content: [{ type: "text", text: "written" }] };
 
 function plain(card: ToolExecutionComponent): string {
 	return card
@@ -85,7 +102,7 @@ const MUTATIONS: Record<string, Mutation> = {
 		apply: card => card.setArgsComplete(CALL_ID),
 	},
 	updateResult: {
-		apply: card => card.updateResult({ content: [{ type: "text", text: "written" }] }, false, CALL_ID),
+		apply: card => card.updateResult(RESULT, false, CALL_ID),
 		// The settled card shows the head of the file, where the streaming one showed its end.
 		shows: frame => /draft line 1$/m.test(frame),
 	},
@@ -102,9 +119,12 @@ const MUTATIONS: Record<string, Mutation> = {
 	invalidate: {
 		apply: card => card.invalidate(),
 	},
+	toolExecutionChanged: {
+		apply: card => card.toolExecutionChanged(),
+	},
 };
 
-/** Public methods that read the card or end its life, and never change what it draws. */
+/** Public methods that read the card, drop what it drew or end its life, and never change what it draws. */
 const NOT_MUTATIONS = [
 	"canBeDisplacedBy",
 	"constructor",
@@ -114,10 +134,28 @@ const NOT_MUTATIONS = [
 	"highlightRequests",
 	"isDisplaceableBlock",
 	"isTranscriptBlockFinalized",
+	"railState",
+	"releaseRenderCache",
 	"render",
+	"spinnerFrame",
 	"stopAnimation",
 	"whenPreviewSettled",
 ];
+
+/** The methods of those that answer a question about the card or end its life, which no frame reads. */
+const QUERIES: Record<string, (card: ToolExecutionComponent) => unknown> = {
+	canBeDisplacedBy: card => card.canBeDisplacedBy("job"),
+	getNativeScrollbackLiveRegionStart: card => card.getNativeScrollbackLiveRegionStart(),
+	getTranscriptBlockVersion: card => card.getTranscriptBlockVersion(),
+	isDisplaceableBlock: card => card.isDisplaceableBlock(),
+	isTranscriptBlockFinalized: card => card.isTranscriptBlockFinalized(),
+	releaseRenderCache: card => card.releaseRenderCache(),
+	railState: card => card.railState,
+	spinnerFrame: card => card.spinnerFrame,
+	whenPreviewSettled: card => card.whenPreviewSettled(),
+	stopAnimation: card => card.stopAnimation(),
+	dispose: card => card.dispose(),
+};
 
 let entryCounter = 0;
 function entry(message: AgentMessage): SessionMessageEntry {
@@ -131,12 +169,15 @@ function entry(message: AgentMessage): SessionMessageEntry {
 	};
 }
 
+function writeArgs(marker: string): { path: string; content: string } {
+	return { path: `notes/${marker}.md`, content: fileText(FILE_LINES, marker) };
+}
+
 /**
  * A settled `write` turn as a session records it. Its text is its own: the code section keeps the
  * last source it drew, and a text another case already drew would never reach the highlighter.
  */
-function settledWriteTurn(): SessionMessageEntry[] {
-	const args = { path: "notes/rebuilt.md", content: fileText(FILE_LINES, "rebuilt") };
+function settledWriteTurn(marker: string): SessionMessageEntry[] {
 	const usage = {
 		input: 10,
 		output: 2,
@@ -153,7 +194,7 @@ function settledWriteTurn(): SessionMessageEntry[] {
 			provider: "anthropic",
 			model: "claude-sonnet-4-5",
 			usage,
-			content: [{ type: "toolCall", id: CALL_ID, name: "write", arguments: args }],
+			content: [{ type: "toolCall", id: CALL_ID, name: "write", arguments: writeArgs(marker) }],
 			stopReason: "toolUse",
 			timestamp: 2,
 		}),
@@ -161,7 +202,7 @@ function settledWriteTurn(): SessionMessageEntry[] {
 			role: "toolResult",
 			toolCallId: CALL_ID,
 			toolName: "write",
-			content: [{ type: "text", text: "wrote notes/rebuilt.md" }],
+			content: [{ type: "text", text: `wrote notes/${marker}.md` }],
 			isError: false,
 			timestamp: 3,
 		}),
@@ -179,7 +220,39 @@ function countDraws(): { count: number } {
 	return drawn;
 }
 
+/** The number of `write` views a block build projects from here on, each projected as before. */
+function countProjections(): { count: number } {
+	const projected = { count: 0 };
+	const view = toolViewDefinitions.write?.view;
+	if (!view) throw new Error("the view registry has no `write` view");
+	const { renderCall, renderResult } = view;
+	spyOn(view, "renderCall").mockImplementation((args, context) => {
+		projected.count++;
+		return renderCall.call(view, args, context);
+	});
+	spyOn(view, "renderResult").mockImplementation((result, context, args) => {
+		projected.count++;
+		return renderResult.call(view, result, context, args);
+	});
+	return projected;
+}
+
+/** The views one build of a settled `write` card for `args` projects. */
+function projectionsOfOneBuild(args: unknown): number {
+	const reference = new ToolExecutionProducer({ toolName: "write", args, toolCallId: CALL_ID });
+	reference.updateResult(RESULT, false, CALL_ID);
+	const projections = countProjections();
+	reference.produceBlock({ expanded: false, frozen: false });
+	vi.restoreAllMocks();
+	return projections.count;
+}
+
+/** Every image protocol a terminal can report, and none, since the card does a protocol's own work on a result. */
+const PROTOCOLS: readonly (ImageProtocol | null)[] = [null, ...Object.values(ImageProtocol)];
+
 describe("a tool card draws only the frames it shows", () => {
+	const originalProtocol = TERMINAL.imageProtocol;
+
 	beforeAll(async () => {
 		resetSettingsForTest();
 		await Settings.init({ inMemory: true });
@@ -188,6 +261,8 @@ describe("a tool card draws only the frames it shows", () => {
 
 	afterEach(() => {
 		vi.restoreAllMocks();
+		vi.useRealTimers();
+		setTerminalImageProtocol(originalProtocol);
 	});
 
 	it("classifies every public method of the card", () => {
@@ -195,22 +270,45 @@ describe("a tool card draws only the frames it shows", () => {
 		expect(methods).toEqual([...Object.keys(MUTATIONS), ...NOT_MUTATIONS].sort());
 	});
 
-	for (const [name, mutation] of Object.entries(MUTATIONS)) {
-		it(`${name} draws nothing until the next render, which shows it`, () => {
-			const card = writeCard();
-			plain(card);
-			const draws = countDraws();
-			mutation.apply(card);
-			mutation.apply(card);
-			expect(draws.count).toBe(0);
-			const frame = plain(card);
-			if (mutation.shows) expect(mutation.shows(frame)).toBe(true);
-		});
+	it("drives every method that neither changes nor draws the card as a query", () => {
+		expect(NOT_MUTATIONS.filter(name => !Object.hasOwn(QUERIES, name))).toEqual([
+			"constructor",
+			"highlightRequests",
+			"render",
+		]);
+	});
+
+	for (const protocol of PROTOCOLS) {
+		for (const [name, mutation] of Object.entries(MUTATIONS)) {
+			it(`${name} draws and builds nothing until the next render, which shows it, with image protocol ${protocol}`, () => {
+				vi.useFakeTimers();
+				setTerminalImageProtocol(protocol);
+				const card = writeCard();
+				plain(card);
+				const draws = countDraws();
+				const projections = countProjections();
+				mutation.apply(card);
+				mutation.apply(card);
+				expect({ draws: draws.count, projections: projections.count }).toEqual({ draws: 0, projections: 0 });
+				const frame = plain(card);
+				if (mutation.shows) expect(mutation.shows(frame)).toBe(true);
+			});
+		}
 	}
+
+	it("answers every question about its state without building its block", async () => {
+		vi.useFakeTimers();
+		const card = writeCard();
+		plain(card);
+		const projections = countProjections();
+		card.updateResult(RESULT, false, CALL_ID);
+		for (const query of Object.values(QUERIES)) await query(card);
+		expect(projections.count).toBe(0);
+	});
 
 	it("draws nothing for a render that follows no change", () => {
 		const card = writeCard();
-		card.updateResult({ content: [{ type: "text", text: "written" }] }, false, CALL_ID);
+		card.updateResult(RESULT, false, CALL_ID);
 		const first = plain(card);
 		const draws = countDraws();
 		expect(plain(card)).toBe(first);
@@ -221,13 +319,40 @@ describe("a tool card draws only the frames it shows", () => {
 		const draws = countDraws();
 		const card = writeCard();
 		card.setExpanded(false);
-		card.updateResult({ content: [{ type: "text", text: "written" }] }, false, CALL_ID);
+		card.updateResult(RESULT, false, CALL_ID);
 		card.seal();
 		expect(draws.count).toBe(0);
 		const frame = plain(card);
 		expect(draws.count).toBe(1);
 		expect(frame).toMatch(/draft line 1$/m);
 		expect(frame).not.toContain(`draft line ${FILE_LINES}`);
+	});
+
+	it("builds a card handed its call and its result before its first frame once, for that frame", () => {
+		vi.useFakeTimers();
+		const oneBuild = projectionsOfOneBuild(ARGS);
+		const projections = countProjections();
+		const card = writeCard();
+		card.updateResult(RESULT, false, CALL_ID);
+		expect(projections.count).toBe(0);
+		plain(card);
+		plain(card);
+		expect({ oneBuild, projections: projections.count }).toEqual({ oneBuild: 1, projections: 1 });
+	});
+
+	it("builds each card of a rebuilt transcript once, for its first frame", () => {
+		vi.useFakeTimers();
+		const oneBuild = projectionsOfOneBuild(writeArgs("rebuilt-once"));
+		const projections = countProjections();
+		const builder = new ChatTranscriptBuilder({ ui, cwd: process.cwd(), requestRender: () => {} });
+		try {
+			builder.rebuild(settledWriteTurn("rebuilt-once"));
+			builder.container.render(WIDTH);
+			builder.container.render(WIDTH);
+			expect({ oneBuild, projections: projections.count }).toEqual({ oneBuild: 1, projections: 1 });
+		} finally {
+			builder.reset();
+		}
 	});
 
 	it("never highlights the whole file of a rebuilt write whose result is already recorded", () => {
@@ -239,7 +364,7 @@ describe("a tool card draws only the frames it shows", () => {
 		});
 		const builder = new ChatTranscriptBuilder({ ui, cwd: process.cwd(), requestRender: () => {} });
 		try {
-			builder.rebuild(settledWriteTurn());
+			builder.rebuild(settledWriteTurn("rebuilt"));
 			const frame = builder.container
 				.render(WIDTH)
 				.map(row => Bun.stripANSI(row))

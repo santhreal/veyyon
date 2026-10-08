@@ -15,6 +15,7 @@
   - `packages/coding-agent/src/utils/file-display-mode.ts`: decide hashline vs line-number vs raw display.
   - `packages/coding-agent/src/workspace-tree.ts`: render directory trees.
   - `packages/coding-agent/src/edit/file-snapshot-store.ts`: stores read lines for later hashline edit verification/recovery.
+  - `packages/coding-agent/src/tools/fs/read-*.ts`: the read steps `read.ts` dispatches to: `read-paths.ts` (path and suffix resolution), `read-local-file.ts` (plain-text files), `read-window.ts` (range windows), `read-lines.ts` (line formatting), `read-summary.ts` (structural summaries), `read-directory.ts`, `read-containers.ts` (archives and SQLite), `read-media.ts` (images, notebooks, converted documents), `read-pdf-images.ts`, `read-in-memory.ts` (selectors over in-memory text), `read-internal-url.ts`, `read-artifact.ts` and `read-conflicts.ts`.
   - `packages/coding-agent/src/tools/fs/read-view.ts`: `readToolView`, the host-agnostic view for the read card -- the file row, the code or document section, the notices, the image card and the error card. A host draws it; the module imports no terminal code.
   - `packages/coding-agent/src/tools/index.ts`: registers `read: s => new ReadTool(s)`.
 
@@ -68,21 +69,21 @@ URL selectors are parsed separately in `packages/coding-agent/src/tools/web/fetc
 1. `ReadTool.execute()` accepts `{ path }`. `file://...` inputs are expanded first with `expandPath()`.
 2. It tries URL handling first via `parseReadUrlTarget()` from `packages/coding-agent/src/tools/web/fetch.ts`.
    - Plain URL reads call `executeReadUrl()`.
-   - URL reads with line selectors load or refresh the URL cache with `loadReadUrlCacheEntry()` and paginate the cached text locally with `#buildInMemoryTextResult()`.
+   - URL reads with line selectors load or refresh the URL cache with `loadReadUrlCacheEntry()` and paginate the cached text locally with `buildInMemoryTextResult()`.
 3. If not a web URL, it checks `InternalUrlRouter.instance().canHandle(...)`.
    - Internal URLs are resolved with `internalRouter.resolve()`.
    - `agent://` query extraction (`/path` or `?q=`) bypasses pagination and returns the extracted content directly.
-   - Other internal resources are paginated in-memory by `#buildInMemoryTextResult()`.
-4. It tries archive resolution next with `#resolveArchiveReadPath()`.
+   - Other internal resources are paginated in-memory by `buildInMemoryTextResult()`.
+4. It tries archive resolution next with `resolveArchiveReadPath()`.
    - `parseArchivePathCandidates()` scans for `.tar`, `.tar.gz`, `.tgz`, or `.zip` anywhere before `:sub/path`.
-   - On success, `#readArchive()` either lists a directory or decodes an entry as UTF-8 text.
-5. It tries SQLite resolution with `#resolveSqliteReadPath()`.
+   - On success, `readArchive()` either lists a directory or decodes an entry as UTF-8 text.
+5. It tries SQLite resolution with `resolveSqliteReadPath()`.
    - `parseSqlitePathCandidates()` scans for `.sqlite`, `.sqlite3`, `.db`, `.db3` before any `:table`, `:key`, or `?query` suffix.
-   - `#readSqlite()` dispatches on `parseSqliteSelector()`.
+   - `readSqlite()` dispatches on `parseSqliteSelector()`.
 6. Otherwise it treats the input as a local filesystem path.
    - `resolveReadPath()` expands `~`, resolves relative to session cwd, treats bare `/` as session cwd, and retries macOS screenshot/NFD/curly-quote variants.
    - If the path does not exist, `findUniqueSuffixMatch()` does a workspace glob-based unique suffix lookup (skipped for remote mounts).
-7. Directories go through `#readDirectory()`.
+7. Directories go through `readDirectory()`.
 8. Non-directories branch by content type:
    - image metadata / inline image
    - editable notebook text
@@ -96,10 +97,10 @@ URL selectors are parsed separately in `packages/coding-agent/src/tools/web/fetc
 ## Modes / Variants
 
 ### Local text files
-- No selector: if summarization is enabled and the file is small enough, `#trySummarize()` calls `summarizeCode()`.
+- No selector: if summarization is enabled and the file is small enough, `trySummarize()` calls `summarizeCode()`.
   - Guards: file size `<= 2 MiB` (`MAX_SUMMARY_BYTES`), line count `<= 20_000` (`MAX_SUMMARY_LINES`).
   - Summary output keeps selected declarations and replaces elided spans with `…` or merged brace-pair lines containing `{ … }`. When at least one span is elided, the text content ends with a footer like `[…NNln elided; re-read needed ranges, e.g. <path>:5-16,40-80]` using concrete ranges from the actual elisions.
-  - When an elided block sits between matching brace lines, `#renderSummary()` may merge them into one anchored line rather than emitting separate opener/closer lines.
+  - When an elided block sits between matching brace lines, `renderSummary()` may merge them into one anchored line rather than emitting separate opener/closer lines.
 - Explicit selector or summarization miss: streamed text read.
   - Default open-ended limit is `min(session setting read.defaultLimit, DEFAULT_MAX_LINES)`.
   - Explicit ranges expand by `RANGE_LEADING_CONTEXT_LINES = 1` / `RANGE_TRAILING_CONTEXT_LINES = 3` on the constrained sides only. Both counts come from `rangeContextLines()`, the one owner of that arithmetic, which the in-memory path and both streaming paths call.
@@ -112,7 +113,7 @@ URL selectors are parsed separately in `packages/coding-agent/src/tools/web/fetc
 - The `edit`/hashline path consumes that header plus bare line numbers later; the four-hex tag is a content-derived hash of the whole normalized file, resolvable through the session snapshot store that recorded it. Immutable sources and `:raw` intentionally suppress hashline headers.
 
 ### Directory listings
-- `#readDirectory()` calls `buildDirectoryTree()` with:
+- `readDirectory()` calls `buildDirectoryTree()` with:
   - `maxDepth = 2`
   - `perDirLimit = 12`
   - `rootLimit = null`
@@ -128,7 +129,7 @@ URL selectors are parsed separately in `packages/coding-agent/src/tools/web/fetc
   - zip is indexed via ranged central-directory reads (`readZipEntries()`); members are inflated on demand with raw DEFLATE (`node:zlib`), and the read tool caps individual extraction at `MAX_ARCHIVE_MEMBER_BYTES = 64 MiB` in `ArchiveReader.readFile()`
 - Archive paths normalize `/`, drop `.` segments, and reject `..`.
 - Directory reads list immediate children; files show `name` plus ` (size)` when size > 0.
-- Directory listing default limit is `500` entries in `#readArchiveDirectory()`.
+- Directory listing default limit is `500` entries in `readArchiveDirectory()`.
 - File entries are UTF-8 decoded. Non-UTF-8 entries return `[Cannot read binary archive entry '...' (...)]` instead of bytes.
 - Text archive entries reuse the normal in-memory pagination/anchoring path.
 
@@ -139,7 +140,7 @@ URL selectors are parsed separately in `packages/coding-agent/src/tools/web/fetc
 #### `db.sqlite`
 - `kind: "list"`
 - Lists non-`sqlite_%` tables with row counts.
-- `#readSqlite()` caps the rendered list to `500` tables via `applyListLimit()`.
+- `readSqlite()` caps the rendered list to `500` tables via `applyListLimit()`.
 
 #### `db.sqlite:table`
 - `kind: "schema"`
@@ -168,10 +169,10 @@ URL selectors are parsed separately in `packages/coding-agent/src/tools/web/fetc
 - Rendering caps in `packages/coding-agent/src/tools/core/sqlite-reader.ts`:
   - ASCII table width `120` (`MAX_RENDER_WIDTH`)
   - per-column width `40` (`MAX_COLUMN_WIDTH`)
-- `#readSqlite()` opens Bun SQLite in `{ readonly: true, strict: true }` and sets `PRAGMA busy_timeout = 3000`.
+- `readSqlite()` opens Bun SQLite in `{ readonly: true, strict: true }` and sets `PRAGMA busy_timeout = 3000`.
 
 ### Documents
-- `CONVERTIBLE_EXTENSIONS` in `packages/coding-agent/src/tools/fs/read.ts` covers `.pdf`, `.doc`, `.docx`, `.ppt`, `.pptx`, `.xls`, `.xlsx`, `.rtf`, `.epub`.
+- `CONVERTIBLE_EXTENSIONS` in `packages/coding-agent/src/export/markit/convertible-extensions.ts` covers `.pdf`, `.doc`, `.docx`, `.ppt`, `.pptx`, `.xls`, `.xlsx`, `.rtf`, `.epub`.
 - `convertFileWithMarkit()` converts the file to text/markdown; line-range and `:raw` selectors then apply to the converted output (`file.pdf:50-100`, `:5-16,40-80`).
 - For PDFs, embedded images are surfaced as browsable handles. markit emits a `<!-- image: <id> (page N, WxHpt) -->` region for each embedded image; `read.ts` rewrites it into a `read <pdf>:<id>.png` hint (as inline code, so spaces/parens in the path can't break markdown). Reading that handle (`doc.pdf:p11-img0.png`) extracts the image, passing markit an `imageDir` that lands in a session-artifact cache (`<artifacts>/pdf-assets/<key>/`, keyed by size+mtime, converted once per file), and returns it through the normal image-loading path. `doc.pdf:` lists the extractable members; an unknown member errors with the available list. Requested members are matched against extracted basenames, so `..`/separators cannot escape the cache.
 - Conversion failures return a text block like `[Cannot read .pdf file: ...]`.
@@ -199,7 +200,7 @@ URL selectors are parsed separately in `packages/coding-agent/src/tools/web/fetc
 ### Internal URLs
 - `read` does not resolve these itself; it delegates to `InternalUrlRouter.instance().resolve()`.
 - Registered protocols are outside this file, but the router in `packages/coding-agent/src/internal-urls/router.ts` is built for `agent://`, `artifact://`, `history://`, `issue://`, `local://`, `mcp://`, `memory://`, `pr://`, `rule://`, `skill://`, `ssh://`, `vault://`, and `veyyon://`.
-- `#handleInternalUrl()` behavior:
+- `handleInternalUrl()` behavior:
   - parses the URL with `parseInternalUrl()` so colons inside the host segment are legal
   - for `agent://`, treats non-root path extraction or `?q=` extraction as a special no-pagination mode
   - otherwise paginates the resolved text in memory
@@ -251,7 +252,7 @@ Notes: ...
   - Passes session `cwd`, `settings`, and `localProtocolOptions` into the process-global `InternalUrlRouter.instance().resolve()` for internal URLs.
   - Uses `session.allocateOutputArtifact()` for cached/truncated URL output.
 - Background work / cancellation
-  - Only the deterministic disk reads are non-abortable: plain-file line/range reads (`streamLinesFromFile`, multi-range) and directory listings (`#readDirectory`) are called with `undefined` instead of the `AbortSignal`, so an interrupt mid-read can't surface a misleading "Operation aborted" on a read that would have finished instantly. Every other branch keeps the signal and its helpers call `throwIfAborted(signal)` to stop promptly: URL/internal-URL reads (network), archive, sqlite, document conversion, image decode, structural summary, conflict scan, and the suffix-glob path resolution.
+  - Only the deterministic disk reads are non-abortable: plain-file line/range reads (`streamLinesFromFile`, multi-range) and directory listings (`readDirectory`) are called with `undefined` instead of the `AbortSignal`, so an interrupt mid-read can't surface a misleading "Operation aborted" on a read that would have finished instantly. Every other branch keeps the signal and its helpers call `throwIfAborted(signal)` to stop promptly: URL/internal-URL reads (network), archive, sqlite, document conversion, image decode, structural summary, conflict scan, and the suffix-glob path resolution.
 
 ## Limits & Caps
 - Shared text truncation defaults from `packages/coding-agent/src/session/streaming-output.ts`:

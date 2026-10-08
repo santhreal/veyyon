@@ -4,7 +4,7 @@
  * once inside `wireSchemas()` in `packages/ai/src/auth-broker/wire-schemas.ts`. The two copies
  * were identical by hand, which is how #3268 happened -- a report-level `notes` field declared in
  * one copy and missing from the other, so the field survived a local read and vanished across the
- * broker. Both copies now come from `usageWireSchemas()` in `packages/ai/src/usage/report-wire.ts`.
+ * broker. Both copies now come from `usageWireSchemas.value` in `packages/ai/src/usage/report-wire.ts`.
  *
  * THE CLASS THIS CLOSES. Not "notes goes missing" but "the two validators for one payload
  * disagree about a field". The identity case below is what closes it: the broker's report schema
@@ -43,7 +43,7 @@ function reportWithNotes() {
 
 describe("the usage report wire has one owner", () => {
 	it("validates a report with provider-level notes and keeps them", () => {
-		const validated = usageWireSchemas().report(reportWithNotes());
+		const validated = usageWireSchemas.value.report(reportWithNotes());
 
 		expect(validated).not.toBeInstanceOf(type.errors);
 		expect(validated).toHaveProperty("notes", [DISCLAIMER]);
@@ -67,7 +67,7 @@ describe("the usage report wire has one owner", () => {
 	 * when the copy is field-for-field correct, which is the state the two files were in before.
 	 */
 	it("embeds the owner's report schema in the broker envelope rather than a copy of it", () => {
-		const owner = usageWireSchemas();
+		const owner = usageWireSchemas.value;
 		const envelope = wireSchemas();
 
 		expect(envelope.usageResponseSchema.get("reports").expression).toBe(owner.report.array().expression);
@@ -78,7 +78,7 @@ describe("the usage report wire has one owner", () => {
 	 * rebuild per call would put arktype's construction cost on every usage poll.
 	 */
 	it("builds the vocabulary once and hands the same schemas back", () => {
-		expect(usageWireSchemas()).toBe(usageWireSchemas());
+		expect(usageWireSchemas.value).toBe(usageWireSchemas.value);
 	});
 
 	/**

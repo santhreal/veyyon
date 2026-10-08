@@ -7,9 +7,12 @@ import * as scraperTypes from "../../src/scrapers/types";
  * record and the README, through one loader. This suite pins what that loader owes each kind: the
  * record fields the markdown states, the README section under the kind's own heading, the API
  * page's final URL, and the degrade when the record is missing or is not JSON. A README that is
- * absent or blank produces no section at all.
+ * absent or blank produces no section at all, and a field the record holds as `null` or as an
+ * empty list produces no line. A single-segment path renders as a model with the same fields as an
+ * org/model path when the model API answers, and as a user profile otherwise.
  *
- * It does not cover the single-segment `model_or_user` fallback, which fetches sequentially.
+ * It does not pin the order of the single-segment fetches (the README only after the model record
+ * parses).
  */
 
 type Page = Pick<scraperTypes.LoadPageResult, "content" | "ok" | "status">;
@@ -55,7 +58,7 @@ describe("a Hugging Face resource renders its API record and README", () => {
 				modelId: "org/demo",
 				pipeline_tag: "text-generation",
 				library_name: "transformers",
-				downloads: 950,
+				downloads: 12_345,
 				likes: 7,
 				gated: "auto",
 				cardData: { license: "mit", language: ["en", "fr"], datasets: ["org/corpus"], metrics: ["accuracy"] },
@@ -74,7 +77,7 @@ describe("a Hugging Face resource renders its API record and README", () => {
 				"",
 				"**Task:** text-generation",
 				"**Library:** transformers",
-				"**Downloads:** 950",
+				"**Downloads:** 12K",
 				"**Likes:** 7",
 				"**Access:** Gated",
 				"**License:** mit",
@@ -177,6 +180,103 @@ describe("a Hugging Face resource renders its API record and README", () => {
 
 		expect(bare.content).toBe("# org/bare\n\n**Likes:** 1");
 		expect(blank.content).toBe("# org/blank\n\n**Likes:** 1");
+	});
+
+	it("skips a field the record holds as null or as an empty list", async () => {
+		loadPageSpy = servePages({
+			"https://huggingface.co/api/models/org/sparse": json({
+				modelId: "org/sparse",
+				pipeline_tag: null,
+				library_name: "",
+				downloads: 0,
+				cardData: { license: null, language: [], datasets: [] },
+				tags: [],
+			}),
+		});
+
+		const result = render(await handleHuggingFace("https://huggingface.co/org/sparse", 10));
+
+		expect(result.content).toBe("# org/sparse\n\n**Downloads:** 0");
+	});
+
+	it("renders a single-segment model with the same fields as an org/model path", async () => {
+		loadPageSpy = servePages({
+			"https://huggingface.co/api/models/gpt2": json({
+				modelId: "gpt2",
+				pipeline_tag: "text-generation",
+				likes: 2,
+				private: true,
+				gated: true,
+				cardData: { license: "mit", language: "en" },
+				tags: ["pytorch"],
+			}),
+			"https://huggingface.co/gpt2/raw/main/README.md": { content: "GPT-2 card", ok: true, status: 200 },
+		});
+
+		const result = render(await handleHuggingFace("https://huggingface.co/gpt2", 10));
+
+		expect(result.finalUrl).toBe("https://huggingface.co/api/models/gpt2");
+		expect(result.content).toBe(
+			[
+				"# gpt2",
+				"",
+				"**Task:** text-generation",
+				"**Likes:** 2",
+				"**Visibility:** Private",
+				"**Access:** Gated",
+				"**License:** mit",
+				"**Language:** en",
+				"**Tags:** pytorch",
+				"",
+				"## Model Card",
+				"",
+				"GPT-2 card",
+			].join("\n"),
+		);
+	});
+
+	it("renders a single segment the model API does not know as a user profile", async () => {
+		loadPageSpy = servePages({
+			"https://huggingface.co/api/users/alice": json({
+				user: "alice",
+				fullname: "Alice Example",
+				numModels: 3,
+				numSpaces: 0,
+				orgs: [{ name: "org-a" }, { name: "org-b" }],
+			}),
+		});
+
+		const result = render(await handleHuggingFace("https://huggingface.co/alice", 10));
+
+		expect(result.finalUrl).toBe("https://huggingface.co/api/users/alice");
+		expect(result.content).toBe(
+			[
+				"# alice",
+				"",
+				"**Name:** Alice Example",
+				"**Models:** 3",
+				"**Spaces:** 0",
+				"**Organizations:** org-a, org-b",
+			].join("\n"),
+		);
+	});
+
+	it("titles a user profile with the path segment when the record has no user name", async () => {
+		loadPageSpy = servePages({ "https://huggingface.co/api/users/bob": json({ numModels: 1 }) });
+
+		const result = render(await handleHuggingFace("https://huggingface.co/bob", 10));
+
+		expect(result.content).toBe("# bob\n\n**Models:** 1");
+	});
+
+	it("degrades with the HTTP status when neither the model nor the user API knows a single segment", async () => {
+		loadPageSpy = servePages({});
+
+		const result = await handleHuggingFace("https://huggingface.co/nobody", 10);
+
+		expect(scraperTypes.isScraperDegrade(result)).toBe(true);
+		if (!scraperTypes.isScraperDegrade(result)) return;
+		expect(result.note).toBe("huggingface scraper failed (HTTP 404); fell back to a generic fetch");
 	});
 
 	it("degrades with the HTTP status when the API record cannot be fetched", async () => {

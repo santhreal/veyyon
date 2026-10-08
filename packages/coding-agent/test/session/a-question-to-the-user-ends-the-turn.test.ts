@@ -369,6 +369,17 @@ describe("a reply that asks the user something ends the turn", () => {
 			await settle(PLAIN_REPORT);
 			expect(continueCalls).toBe(1);
 			expect(developerTextEntries().some(text => text.includes("active checkpoint"))).toBe(true);
+			// The demand is billed to the agent, not the user, and names the tool that closes the checkpoint.
+			const demands = session.agent.state.messages.filter(
+				message =>
+					message.role === "developer" &&
+					Array.isArray(message.content) &&
+					message.content.some(item => item.type === "text" && item.text.includes("active checkpoint")),
+			);
+			expect(demands.map(message => (message.role === "developer" ? message.attribution : undefined))).toEqual([
+				"agent",
+			]);
+			expect(developerTextEntries().find(text => text.includes("active checkpoint"))).toContain("MUST call rewind");
 		});
 
 		it("does not force a plan-mode decision over a question, and still forces one afterwards", async () => {

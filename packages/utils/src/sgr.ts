@@ -7,7 +7,7 @@
  * that state is carried by. No terminal I/O.
  */
 
-import { SGR_BG_RESET, SGR_RESET, SGR_RESET_SHORT, sgrSequence } from "./ansi";
+import { ESC, SGR_BG_RESET, SGR_RESET, SGR_RESET_SHORT, sgrSequence } from "./ansi";
 import { padding } from "./padding";
 import { visibleWidth } from "./width";
 
@@ -53,12 +53,35 @@ export function compactSgrCarry(carry: string): string {
  * for `ESC [ 0 m`, which the content emitted to clear its foreground as well; for `ESC [ 49 m`
  * it makes no visible difference, because the background that follows overrides it either way,
  * and one rule is easier to read than two.
+ *
+ * One left-to-right read inserts the background once after each reset in `text`; a background
+ * that is itself a reset is never read as another one. A row with no reset is returned as is.
  */
 export function reopenBackgroundAfterResets(text: string, background: string): string {
-	return text
-		.replaceAll(SGR_RESET, `${SGR_RESET}${background}`)
-		.replaceAll(SGR_RESET_SHORT, `${SGR_RESET_SHORT}${background}`)
-		.replaceAll(SGR_BG_RESET, `${SGR_BG_RESET}${background}`);
+	if (!text.includes(SGR_RESET) && !text.includes(SGR_RESET_SHORT) && !text.includes(SGR_BG_RESET)) return text;
+	let out = "";
+	let copied = 0;
+	for (let esc = text.indexOf(ESC); esc !== -1; esc = text.indexOf(ESC, esc + 1)) {
+		const end = sgrResetEnd(text, esc);
+		if (end === -1) continue;
+		out += text.slice(copied, end) + background;
+		copied = end;
+	}
+	return out + text.slice(copied);
+}
+
+/**
+ * End of the reset starting at the `ESC` at `esc` (`SGR_RESET_SHORT`, `SGR_RESET` or `SGR_BG_RESET`),
+ * or -1. Compares code units rather than calling `startsWith` three times per escape, which a styled
+ * row holds dozens of.
+ */
+function sgrResetEnd(text: string, esc: number): number {
+	if (text.charCodeAt(esc + 1) !== 0x5b) return -1;
+	const first = text.charCodeAt(esc + 2);
+	if (first === 0x6d) return esc + 3;
+	if (first === 0x30) return text.charCodeAt(esc + 3) === 0x6d ? esc + 4 : -1;
+	if (first === 0x34 && text.charCodeAt(esc + 3) === 0x39) return text.charCodeAt(esc + 4) === 0x6d ? esc + 5 : -1;
+	return -1;
 }
 
 /**

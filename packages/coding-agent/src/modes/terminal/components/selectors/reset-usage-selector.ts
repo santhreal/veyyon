@@ -7,14 +7,12 @@ import { padding } from "@veyyon/utils/padding";
 import type { ResetUsageAccount } from "../../../../slash-commands/helpers/reset-usage";
 import { theme } from "../../../../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
+import { computeModalDims, MODAL_SIZING_MEDIUM, sizingForArea } from "../chrome/modal-geometry";
 import {
-	computeModalDims,
-	MODAL_SIZING_MEDIUM,
 	type ModalShellGeometry,
 	type ModalShortcut,
 	pointerMotionEnabled,
 	renderModalShell,
-	sizingForArea,
 } from "../chrome/modal-shell";
 import { routeModalCardMouse } from "./select-list-mouse-routing";
 import { hoverBandAt } from "./selector-helpers";

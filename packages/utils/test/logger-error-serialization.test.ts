@@ -7,7 +7,7 @@ import { logger } from "@veyyon/utils";
 /**
  * Regression: Errors logged via `logger.error("msg", { err })` previously
  * serialized to `"err":{}` because Error's own properties are non-enumerable.
- * The replacer in `logFormat` must unwrap Error instances so `name`, `message`,
+ * The logger's JSON replacer must unwrap Error instances so `name`, `message`,
  * `stack`, and custom enumerable fields all reach the rotating log.
  */
 
@@ -36,9 +36,7 @@ afterAll(() => {
 });
 
 /**
- * Poll the rotating log file until an entry whose `message` field equals
- * `targetMessage` appears. Winston's DailyRotateFile flushes asynchronously,
- * so single-shot reads race the write.
+ * Find the log entry whose `message` field equals `targetMessage`, retrying briefly.
  */
 async function waitForLogEntry(targetMessage: string): Promise<Record<string, unknown>> {
 	for (let i = 0; i < 40; i++) {

@@ -1,3 +1,4 @@
+// Subject module: tools/fs/read-paths.ts, driven through the read tool.
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";

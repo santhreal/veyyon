@@ -13,32 +13,36 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { errorMessage } from "@veyyon/utils";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { errorMessage, lazy } from "@veyyon/utils";
 import { bestEffort } from "@veyyon/utils/discarded-fault";
-import { type } from "arktype";
 import type { BrowserContext, Cookie, CookieData, Frame, HTTPRequest } from "puppeteer-core";
 import { ToolError } from "../../core/tool-errors";
 
-const storageItemSchema = type({ name: "string", value: "string" });
+const storageItemSchema = lazy(() => type({ name: "string", value: "string" }));
 
-const storageCookieSchema = type({
-	name: "string",
-	value: "string",
-	domain: "string",
-	"path?": "string",
-	/** Seconds since the epoch; -1 marks a session cookie. */
-	"expires?": "number",
-	"httpOnly?": "boolean",
-	"secure?": "boolean",
-	"sameSite?": "'Strict' | 'Lax' | 'None'",
-});
+const storageCookieSchema = lazy(() =>
+	type({
+		name: "string",
+		value: "string",
+		domain: "string",
+		"path?": "string",
+		/** Seconds since the epoch; -1 marks a session cookie. */
+		"expires?": "number",
+		"httpOnly?": "boolean",
+		"secure?": "boolean",
+		"sameSite?": "'Strict' | 'Lax' | 'None'",
+	}),
+);
 
-const storageStateSchema = type({
-	"cookies?": storageCookieSchema.array(),
-	"origins?": type({ origin: "string", localStorage: storageItemSchema.array() }).array(),
-});
+const storageStateSchema = lazy(() =>
+	type({
+		"cookies?": storageCookieSchema.value.array(),
+		"origins?": type({ origin: "string", localStorage: storageItemSchema.value.array() }).array(),
+	}),
+);
 
-export type StorageCookie = typeof storageCookieSchema.infer;
+export type StorageCookie = typeof storageCookieSchema.value.infer;
 
 export interface StorageOrigin {
 	readonly origin: string;
@@ -77,7 +81,7 @@ function isWebOrigin(origin: string): boolean {
 
 /** Validate a parsed storage state; `source` names where it came from in the error. */
 export function parseStorageState(raw: unknown, source: string): StorageState {
-	const result = storageStateSchema(raw);
+	const result = storageStateSchema.value(raw);
 	if (result instanceof type.errors) {
 		throw new ToolError(`${source} is not a storage state: ${result.summary}`);
 	}

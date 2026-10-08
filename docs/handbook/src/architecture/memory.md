@@ -1,6 +1,6 @@
 # Autonomous Memory
 
-When a memory backend is enabled, the agent automatically extracts durable knowledge from past sessions and injects a compact summary into future sessions for the same project. Over time it builds a project-scoped memory store, technical decisions, recurring workflows, pitfalls, that carries forward without manual effort.
+When a memory backend is enabled, the agent automatically extracts durable knowledge from past sessions and injects a compact summary into future sessions for the same project. Over time it builds a project-scoped memory store, technical decisions, recurring workflows, pitfalls, that persists across sessions without manual effort.
 
 ## Backends
 
@@ -34,12 +34,12 @@ A backend contributes in two locations, which determine token usage and caching 
 
 - **The system prompt** contains the guidance that does not change while the session runs. The provider caches the prompt as
   the prefix of every request, so this text is paid for once.
-- **The context tail** carries whatever changes as you work: memories recalled for the current question, and the mental-model
+- **The context tail** holds whatever changes as you work: memories recalled for the current question, and the mental-model
   block when it reloads. These arrive as a message alongside your prompt.
 
 The split exists because changing the system prompt mid-session invalidates the provider's cache prefix, and the next request
 re-reads the whole conversation at the uncached rate. Writing a recalled memory into the prompt made every recall cost a full
-re-read of everything before it. The model sees the same text in the same order either way.
+re-read of everything before it. The model receives the same text in the same order either way.
 
 A block is sent once. If a reload finds the same memories, nothing is sent, so the context does not grow by a copy of your
 memories every turn.
@@ -124,7 +124,7 @@ If the requested memory role is not configured, memory model resolution falls ba
 
 Additional tuning knobs (concurrency, lease durations, token budgets) are available in config for advanced use.
 
-## Key files
+## Files
 
 - `packages/coding-agent/src/memory/local.ts`: pipeline orchestration, injection, clear/enqueue entry points (the `/memory` command routes here via `packages/coding-agent/src/memory/local-backend.ts`)
 - `packages/coding-agent/src/memory/storage.ts`: SQLite-backed job queue and thread registry

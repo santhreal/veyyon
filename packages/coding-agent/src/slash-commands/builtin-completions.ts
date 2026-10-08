@@ -9,7 +9,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { getActiveProfile, getProjectDir, listProfiles } from "@veyyon/utils";
 import type { AutocompleteItem } from "@veyyon/utils/autocomplete";
-import { SECRET_TUI_SUBCOMMANDS } from "../secrets/secret-command";
+import { SECRET_TUI_SUBCOMMANDS } from "../secrets/secret-verbs";
 import { expandTilde } from "../tools/core/path-utils";
 import type { SubcommandDef } from "./types";
 

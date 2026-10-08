@@ -107,6 +107,16 @@ const DOMAIN_DECISIONS: Record<string, DomainSpec> = {
 			turn: { action: "degrade", capability: "fast-mode" },
 		},
 	},
+	"tool-choice": {
+		buildFixture: () =>
+			Object.assign(new Error("400 Thinking mode does not support this tool_choice"), { status: 400 }),
+		expectedFlags: Flag.ToolChoiceRejected,
+		expectedRecovery: {
+			transport: { action: "surface" },
+			credential: { action: "surface" },
+			turn: { action: "degrade", capability: "tool-choice" },
+		},
+	},
 	"tool-call": {
 		buildFixture: () => new Error("MALFORMED_FUNCTION_CALL: could not parse json"),
 		// Note: MALFORMED_FUNCTION_CALL also matches the transport-vocabulary pattern
@@ -182,7 +192,7 @@ const VALID_ACTIONS = new Set([
 	"surface",
 	"abort",
 ]);
-const VALID_CAPABILITIES = new Set(["strict-tools", "fast-mode", "server-side-items"]);
+const VALID_CAPABILITIES = new Set(["strict-tools", "fast-mode", "tool-choice", "server-side-items"]);
 
 describe("exhaustive error domain sweep", () => {
 	it("enumerates all domains from ERROR_DOMAINS and fails if an unrecorded domain is added", () => {

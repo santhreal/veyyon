@@ -318,13 +318,6 @@ export function isValidThemeColor(color: string): color is ThemeColor {
 	return VALID_THEME_COLORS.has(color);
 }
 
-const VALID_THEME_BG_COLORS: ReadonlySet<string> = new Set<string>(THEME_BG_COLORS);
-
-/** Check if a string is a valid ThemeBg value */
-export function isValidThemeBg(color: string): color is ThemeBg {
-	return VALID_THEME_BG_COLORS.has(color);
-}
-
 /**
  * Every color token a theme file must carry: both unions minus the optional list.
  */

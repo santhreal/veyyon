@@ -23,9 +23,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/sdk";
 import { BrowserTool } from "@veyyon/coding-agent/tools/web/browser";
 import { TempDir } from "@veyyon/utils";
-import { chromiumCanLaunch } from "../helpers/chromium-can-launch";
-
-const CHROMIUM_AVAILABLE = await chromiumCanLaunch();
+import { CHROMIUM_AVAILABLE } from "./browser/chromium";
 
 /** How long the next page's image takes, so its `load` comes well after its navigation commits. */
 const SLOW_IMAGE_MS = 600;

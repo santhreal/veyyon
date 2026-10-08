@@ -1,10 +1,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { errorMessage, formatCount, truncate } from "@veyyon/utils";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { errorMessage, formatCount, lazy, truncate } from "@veyyon/utils";
 import { replaceTabs } from "@veyyon/utils/tab-width";
 import { truncateToWidth } from "@veyyon/utils/width";
 import type { TextBlockView, ViewSpan, ViewTone } from "@veyyon/view";
-import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";
 import * as git from "../../utils/git";
 import { leaveArm } from "../arm-model";
@@ -46,33 +46,37 @@ function truncateAsiValue(value: ASIData[string]): string {
 	return truncate(text, 120, "...");
 }
 
-const logExperimentSchema = type({
-	metric: type("number").describe("primary metric value"),
-	status: type("'keep'|'discard'|'crash'|'checks_failed'").describe("run outcome"),
-	description: type("string").describe("short run description"),
-	"metrics?": type({ "[string]": "number" }).describe("secondary metrics"),
-	"asi?": type({ "[string]": "unknown" }).describe("free-form structured metadata"),
-	"commit?": type("string").describe("override recorded commit hash"),
-	"justification?": type("string").describe("required when keeping a scope-deviating run"),
-	"arm?": type("string").describe("candidate arm this result came from, when breadth > 1"),
-	"certified_by?": type("string").describe("arm or `director` that certified this result"),
-	"flag_runs?": type({
-		run_id: type("number.integer").describe("run id to flag"),
-		reason: type("string").describe("why this run is suspect"),
-	})
-		.array()
-		.describe("flag earlier runs as suspect"),
-});
+const logExperimentSchema = lazy(() =>
+	type({
+		metric: type("number").describe("primary metric value"),
+		status: type("'keep'|'discard'|'crash'|'checks_failed'").describe("run outcome"),
+		description: type("string").describe("short run description"),
+		"metrics?": type({ "[string]": "number" }).describe("secondary metrics"),
+		"asi?": type({ "[string]": "unknown" }).describe("free-form structured metadata"),
+		"commit?": type("string").describe("override recorded commit hash"),
+		"justification?": type("string").describe("required when keeping a scope-deviating run"),
+		"arm?": type("string").describe("candidate arm this result came from, when breadth > 1"),
+		"certified_by?": type("string").describe("arm or `director` that certified this result"),
+		"flag_runs?": type({
+			run_id: type("number.integer").describe("run id to flag"),
+			reason: type("string").describe("why this run is suspect"),
+		})
+			.array()
+			.describe("flag earlier runs as suspect"),
+	}),
+);
 
 export function createLogExperimentTool(
 	options: AutoresearchToolFactoryOptions,
-): ToolDefinition<typeof logExperimentSchema, LogDetails> {
+): ToolDefinition<typeof logExperimentSchema.value, LogDetails> {
 	return {
 		name: "log_experiment",
 		label: "Log Experiment",
 		description:
 			"Log the result of the latest run_experiment. Records the metric, optional ASI metadata, modified paths, and scope deviations. On `keep`, modified files are committed; on `discard`/`crash`/`checks_failed`, the worktree is reverted. Pass `flag_runs` to mark earlier runs as suspect; flagged runs are excluded from baseline and best-metric math.",
-		parameters: logExperimentSchema,
+		get parameters() {
+			return logExperimentSchema.value;
+		},
 		defaultInactive: true,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const sessionResult = await resolveActiveBranchSession(ctx.cwd);

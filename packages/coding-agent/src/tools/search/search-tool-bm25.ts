@@ -1,6 +1,6 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
-import { errorMessage, logger, prompt } from "@veyyon/utils";
-import { type } from "arktype";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { errorMessage, lazy, logger, prompt } from "@veyyon/utils";
 import { resolveEffectiveToolDiscoveryMode } from "../../discovery/mode";
 import {
 	buildDiscoverableToolSearchIndex,
@@ -29,12 +29,14 @@ const DEFAULT_LIMIT = 8;
  */
 const ACTIVATION_SCORE_FLOOR = 0.5;
 
-const searchToolBm25Schema = type({
-	query: type("string").describe("tool search query"),
-	"limit?": type("number>0").describe("max matches"),
-});
+const searchToolBm25Schema = lazy(() =>
+	type({
+		query: type("string").describe("tool search query"),
+		"limit?": type("number>0").describe("max matches"),
+	}),
+);
 
-export type SearchToolBm25Params = typeof searchToolBm25Schema.infer;
+export type SearchToolBm25Params = typeof searchToolBm25Schema.value.infer;
 
 export interface SearchToolBm25Match {
 	name: string;
@@ -194,7 +196,7 @@ export function renderSearchToolBm25Description(discoverableTools: DiscoverableT
  * When tools.discoveryMode === "all", this covers both MCP tools and built-in discoverable tools.
  * When tools.discoveryMode === "mcp-only" or mcp.discoveryMode === true, only MCP tools are searched.
  */
-export class SearchToolBm25Tool implements AgentTool<typeof searchToolBm25Schema, SearchToolBm25Details> {
+export class SearchToolBm25Tool implements AgentTool<typeof searchToolBm25Schema.value, SearchToolBm25Details> {
 	readonly name = "search_tool_bm25";
 	readonly approval = "read" as const;
 	readonly label = "SearchTools";
@@ -202,7 +204,9 @@ export class SearchToolBm25Tool implements AgentTool<typeof searchToolBm25Schema
 	get description(): string {
 		return renderSearchToolBm25Description(getDiscoverableToolsForDescription(this.session));
 	}
-	readonly parameters = searchToolBm25Schema;
+	get parameters(): typeof searchToolBm25Schema.value {
+		return searchToolBm25Schema.value;
+	}
 	readonly strict = true;
 	readonly view = searchToolBm25ToolView;
 

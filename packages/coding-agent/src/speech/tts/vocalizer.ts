@@ -344,7 +344,7 @@ export class Vocalizer {
 		this.#livePlayers.add(player);
 		this.#chain = this.#chain.then(async () => {
 			try {
-				await this.#play(handle, player, abort.signal);
+				await play(handle, player, abort.signal);
 			} finally {
 				this.#liveAborts.delete(abort);
 				this.#livePlayers.delete(player);
@@ -373,30 +373,30 @@ export class Vocalizer {
 		clearTimeout(this.#idleTimer);
 		this.#idleTimer = null;
 	}
+}
 
-	/** Feed each synthesized segment into the player in arrival order; abort stops it. */
-	async #play(handle: TtsStreamHandle, player: VocalizerPlayer, signal: AbortSignal): Promise<void> {
-		let started = false;
-		try {
-			for await (const chunk of handle.chunks) {
-				if (signal.aborted) break;
-				if (!started) {
-					player.start(chunk.sampleRate);
-					started = true;
-				}
-				player.write(chunk.pcm);
+/** Feed each synthesized segment into the player in arrival order; abort stops it. */
+async function play(handle: TtsStreamHandle, player: VocalizerPlayer, signal: AbortSignal): Promise<void> {
+	let started = false;
+	try {
+		for await (const chunk of handle.chunks) {
+			if (signal.aborted) break;
+			if (!started) {
+				player.start(chunk.sampleRate);
+				started = true;
 			}
-			if (started && !signal.aborted) {
-				await player.end();
-				return;
-			}
-		} catch (error) {
-			logger.debug("vocalizer: stream failed", {
-				error: errorMessage(error),
-			});
+			player.write(chunk.pcm);
 		}
-		player.stop();
+		if (started && !signal.aborted) {
+			await player.end();
+			return;
+		}
+	} catch (error) {
+		logger.debug("vocalizer: stream failed", {
+			error: errorMessage(error),
+		});
 	}
+	player.stop();
 }
 
 /** Process-level vocalizer shared by the event controller and the ask tool. */

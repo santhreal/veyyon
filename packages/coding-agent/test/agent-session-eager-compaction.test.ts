@@ -4,7 +4,7 @@ import { Agent, type AgentMessage, type AgentTool } from "@veyyon/agent-core";
 import * as compactionModule from "@veyyon/agent-core/compaction";
 import type { Model, TextContent } from "@veyyon/ai";
 import { AuthStorage } from "@veyyon/ai/auth-storage";
-import * as codexResponses from "@veyyon/ai/providers/openai-codex-responses";
+import * as codexSessionState from "@veyyon/ai/providers/openai-codex/session-state";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
@@ -406,7 +406,7 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 	it("resets Codex provider history after successful auto-compaction", async () => {
 		const model = getBundledModel("openai-codex", "gpt-5.6-terra");
 		if (!model) throw new Error("Expected gpt-5.6-terra model to exist");
-		const resetSpy = vi.spyOn(codexResponses, "resetOpenAICodexHistoryAfterCompaction");
+		const resetSpy = vi.spyOn(codexSessionState, "resetOpenAICodexHistoryAfterCompaction");
 		const { session, waitForCall } = await createHarness({}, { model });
 		stubCompaction();
 

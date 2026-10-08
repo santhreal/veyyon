@@ -42,6 +42,9 @@ export function createDeclarativeHandler<TMatch>(
 	wildcardHosts = false,
 ): SpecialHandler {
 	const hosts = new Set(decl.hosts);
+	const acceptsHost = wildcardHosts
+		? (hostname: string) => hostMatches(hosts, hostname)
+		: (hostname: string) => hosts.has(hostname);
 
 	const handler: SpecialHandler = async (
 		url: string,
@@ -50,12 +53,7 @@ export function createDeclarativeHandler<TMatch>(
 		services?: ScrapeServices,
 	): Promise<RenderResult | ScraperDegrade | null> => {
 		try {
-			const parsed = tryParseUrl(url);
-			if (!parsed) return null;
-			const hostname = parsed.hostname.toLowerCase();
-			if (!(wildcardHosts ? hostMatches(hosts, hostname) : hosts.has(hostname))) return null;
-
-			const match = decl.match(parsed);
+			const match = matchUrl(decl, url, acceptsHost);
 			if (!match) return null;
 
 			const fetchedAt = new Date().toISOString();
@@ -90,6 +88,18 @@ export function createDeclarativeHandler<TMatch>(
 	}
 	return handler;
 }
+
+/** The site's match for `url`, or `null` when it does not parse, names another host, or has another shape. */
+function matchUrl<TMatch>(
+	decl: DeclarativeSite<TMatch>,
+	url: string,
+	acceptsHost: (hostname: string) => boolean,
+): TMatch | null {
+	const parsed = tryParseUrl(url);
+	if (!parsed || !acceptsHost(parsed.hostname.toLowerCase())) return null;
+	return decl.match(parsed);
+}
+
 /** Load a JSON endpoint, returning the parsed payload or a ScraperDegrade on fetch/parse failure. */
 export async function loadJson<T>(
 	ctx: {

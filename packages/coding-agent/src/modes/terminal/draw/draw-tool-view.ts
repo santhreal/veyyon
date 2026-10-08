@@ -65,7 +65,7 @@ import { renderStatusLine } from "./status-line";
 import { styleTerminalRow } from "./terminal-row";
 import { renderTreeList } from "./tree-list";
 import type { State } from "./types";
-import { createCachedComponent, padToWidth } from "./utils";
+import { createCachedComponent, neverExpanded, padToWidth } from "./utils";
 import { wrapDiffRow } from "./wrap-diff-row";
 
 /**
@@ -474,7 +474,11 @@ function drawFittedHeader(view: StatusRowView, theme: Theme, width: number, fram
  * alone and takes the rail colour the outcome asks for, and a card that is itself a report keeps the
  * settled muted rail and carries the outcome across the plate.
  */
-export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFrame?: number): Component {
+export function drawFramedBlock(
+	view: FramedBlockView,
+	theme: Theme,
+	spinnerFrame?: number | SpinnerFrameSource,
+): Component {
 	const header = view.header;
 	const frame = view.state === undefined ? undefined : BLOCK_STATES[view.state];
 	const sections = view.sections.map(section => {
@@ -486,17 +490,21 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 		const tree = section.code === undefined && diff === undefined && !markdown ? section.tree : undefined;
 		const drawnHere =
 			section.list || section.code !== undefined || diff !== undefined || markdown || tree !== undefined;
+		// The frame the spans drawn here are drawn at. Source, a change and a document draw no span
+		// that animates.
+		const spanFrame =
+			section.list || tree !== undefined || !drawnHere ? drawnFrame(section.lines, spinnerFrame) : undefined;
 		return {
 			label: section.label === undefined ? undefined : theme.fg("toolTitle", sanitizeViewText(section.label)),
 			separator: section.separator === true,
 			lines: section.list
-				? drawItemList(section.lines, section.hidden, theme, spinnerFrame)
+				? drawItemList(section.lines, section.hidden, theme, spanFrame)
 				: section.code !== undefined
 					? drawCodeLines(section.lines, section.code, theme)
 					: diff !== undefined
 						? drawDiffLines(section.lines, diff, theme)
 						: tree !== undefined
-							? drawTreeLines(section.lines, tree, theme, spinnerFrame)
+							? drawTreeLines(section.lines, tree, theme, spanFrame)
 							: [],
 			// A change wraps in its own gutter rather than as prose, and the gutter is measured against
 			// the columns the block has, so the rows are re-broken inside the closure below.
@@ -513,7 +521,7 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 			// to what the tail leaves and the gap between the two is whatever columns are left. That is
 			// the host's width, so those rows are drawn inside the closure below and the rest are not
 			// re-drawn on every frame.
-			rows: drawnHere ? undefined : section.lines.map(line => plainRow(line, theme, spinnerFrame)),
+			rows: drawnHere ? undefined : section.lines.map(line => plainRow(line, theme, spanFrame)),
 			// Held back by the TOOL, so it stands outside the window the host cuts: a section that says
 			// what it dropped must keep saying it however few rows are left. A list states the same count
 			// on its own closing branch, so the note is already among its rows.
@@ -536,21 +544,19 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 	// One moving mark per card. A header that reports `running` itself is that mark, so the trailing
 	// row is not drawn beside it: a card with two spinners reads as two things in flight where one
 	// call is.
-	const arriving =
-		view.state === "running" && header?.status !== "running"
-			? `${spinnerFrame === undefined ? "" : `${formatStatusIcon("running", theme, spinnerFrame)} `}${theme.fg(
-					"dim",
-					"… (streaming)",
-				)}`
-			: undefined;
+	//
+	// The rows above are drawn once, and read the frame only when one of them animates. The header and
+	// this row read it on every render, so the frame moves without the block being drawn again.
+	const streaming =
+		view.state === "running" && header?.status !== "running" ? theme.fg("dim", "… (streaming)") : undefined;
 	// A body that carries its own gutter sits flush against the rail: the marker column IS the
 	// indent, and a pad in front of it is a second margin the rows were never measured with.
 	const contentPaddingLeft = view.gutter === true ? 0 : undefined;
 	return framedBlock(theme, width => ({
 		...(contentPaddingLeft === undefined ? {} : { contentPaddingLeft }),
-		header: header === undefined ? undefined : drawFittedHeader(header, theme, width, spinnerFrame),
+		header: header === undefined ? undefined : drawFittedHeader(header, theme, width, frameNow(spinnerFrame)),
 		sections: [
-			...sections.map(section => {
+			...sections.map((section, index) => {
 				const contentWidth = outputBlockContentWidth(width, contentPaddingLeft);
 				const drawn =
 					section.markdown !== undefined
@@ -560,7 +566,7 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 							: section.rows.map(row =>
 									row.tail === undefined
 										? row.drawn
-										: drawRowWithTail(row.lead, row.tail, theme, contentWidth, spinnerFrame),
+										: drawRowWithTail(row.lead, row.tail, theme, contentWidth, frameNow(spinnerFrame)),
 								);
 				// A clipped section is rows rather than prose, so a row that runs out of columns ends
 				// there. Without the cut the block WRAPS it, and one long path becomes two rows of a
@@ -581,7 +587,7 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 							)
 						: drawn;
 				const windowed =
-					section.tail === undefined ? content : drawTailWindow(content, section.tail, theme, contentWidth);
+					section.tail === undefined ? content : drawTailWindow(content, section.tail, theme, contentWidth, index);
 				const rows = section.note === undefined ? windowed : [...windowed, section.note];
 				return {
 					label: section.label,
@@ -589,7 +595,7 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 					lines: section.clip ? rows.map(line => truncateToWidth(line, contentWidth, Ellipsis.Omit)) : rows,
 				};
 			}),
-			...(arriving === undefined ? [] : [{ lines: [arriving] }]),
+			...(streaming === undefined ? [] : [{ lines: [arrivingRow(streaming, theme, frameNow(spinnerFrame))] }]),
 		],
 		state: frame?.state,
 		// A listing keeps a quiet edge whatever the write reported: the state belongs to the write and
@@ -608,6 +614,42 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 		applyBg: view.contents === undefined || view.contents === "report",
 		width,
 	}));
+}
+
+/**
+ * Where a drawn view reads its spinner frame. A framed block reads it on every render, so a card whose
+ * frame moves shows the next glyph without being drawn again: a streaming write moves its frame twelve
+ * times a second, and its body does not change with it.
+ */
+export interface SpinnerFrameSource {
+	readonly spinnerFrame: number | undefined;
+}
+
+/** The frame a drawing is at: read from its source, or the number it was handed. */
+function frameNow(spinnerFrame: number | SpinnerFrameSource | undefined): number | undefined {
+	return typeof spinnerFrame === "object" ? spinnerFrame.spinnerFrame : spinnerFrame;
+}
+
+/**
+ * The frame rows drawn once are drawn at: none unless a row animates, which is a running status or a
+ * live run. No other span reads the frame, so the rows are the same bytes either way.
+ */
+function drawnFrame(
+	lines: readonly ViewLine[],
+	spinnerFrame: number | SpinnerFrameSource | undefined,
+): number | undefined {
+	if (spinnerFrame === undefined) return undefined;
+	for (const line of lines) {
+		for (const span of line) {
+			if (span.status === "running" || span.live === true) return frameNow(spinnerFrame);
+		}
+	}
+	return undefined;
+}
+
+/** The trailing row of a block still arriving: the spinner at `frame`, then what is happening. */
+function arrivingRow(streaming: string, theme: Theme, frame: number | undefined): string {
+	return frame === undefined ? streaming : `${formatStatusIcon("running", theme, frame)} ${streaming}`;
 }
 
 /**
@@ -920,9 +962,15 @@ function drawTreeLines(lines: readonly ViewLine[], tree: ViewTreeLines, theme: T
  * A clipped section arrives already cut to one row per line, so the wrap below returns each of those
  * lines unchanged and the count is the same either way. It is not measured separately.
  */
-function drawTailWindow(lines: readonly string[], window: ViewTailWindow, theme: Theme, width: number): string[] {
+function drawTailWindow(
+	lines: readonly string[],
+	window: ViewTailWindow,
+	theme: Theme,
+	width: number,
+	slot: number,
+): string[] {
 	const rows: string[] = [];
-	for (const wrapped of wrapLines(lines, width)) {
+	for (const wrapped of wrapLines(lines, width, slot)) {
 		for (const row of wrapped) rows.push(row);
 	}
 	const viewport = Math.max(1, previewWindowRows() - (window.reserve ?? 0));
@@ -932,30 +980,60 @@ function drawTailWindow(lines: readonly string[], window: ViewTailWindow, theme:
 }
 
 /**
- * The lines the last tail window wrapped, each with the rows it wrapped to.
+ * The lines each tail window last wrapped, each with the rows it wrapped to, by the index of the
+ * window's section in its card.
  *
  * A card streaming a file redraws on every delta with the lines it drew last and more after them,
  * and the window counts the rows of every line to say how many it cut, so wrapping all of them
  * again on each redraw is quadratic in the file: a 1,500-line write spent 56% of its streaming time
- * here. One slot, for the reason `codeMemo` keeps one: the card being redrawn is the one that drew
- * last. A line is reused where the same text sits at the same index at the same width.
+ * here. The card being redrawn is the one that drew last, for the reason `codeMemo` keeps one slot,
+ * but one card can window several sections: a shell card windows its command and its output, and a
+ * single slot held the one-line command when the output was drawn after it.
  */
-const tailWrapMemo: { width: number; lines: readonly string[]; wrapped: readonly (readonly string[])[] } = {
-	width: 0,
-	lines: [],
-	wrapped: [],
-};
+const tailWrapMemos: { width: number; lines: readonly string[]; wrapped: readonly (readonly string[])[] }[] = [];
 
-function wrapLines(lines: readonly string[], width: number): readonly (readonly string[])[] {
-	const previous = tailWrapMemo.width === width ? tailWrapMemo : undefined;
-	const wrapped = lines.map((line, index) =>
-		previous !== undefined && previous.lines[index] === line
-			? (previous.wrapped[index] as readonly string[])
-			: wrapTextWithAnsi(line.trimEnd(), width),
-	);
-	tailWrapMemo.width = width;
-	tailWrapMemo.lines = lines;
-	tailWrapMemo.wrapped = wrapped;
+/**
+ * The searches one wrap may make of the previous window. A command's output arrives through a tail
+ * buffer that drops its front as it grows, which moves every line it keeps up by the same count: the
+ * first line that missed finds the new offset, and the lines after it are compared at that offset.
+ * Its first line can be a fragment the buffer cut, and its last lines new, so three searches cover
+ * the shift and bound a window that changed throughout to three passes over the previous one.
+ */
+const TAIL_WRAP_REALIGNS = 3;
+
+function wrapLines(lines: readonly string[], width: number, slot: number): readonly (readonly string[])[] {
+	let memo = tailWrapMemos[slot];
+	if (memo === undefined) {
+		memo = { width: 0, lines: [], wrapped: [] };
+		tailWrapMemos[slot] = memo;
+	}
+	const previous = memo.width === width ? memo.lines : [];
+	const previousWrapped = memo.wrapped;
+	let shift = 0;
+	let realigns = previous.length === 0 ? 0 : TAIL_WRAP_REALIGNS;
+	const wrapped = lines.map((line, index) => {
+		let at = index + shift;
+		if (previous[at] !== line && realigns > 0) {
+			realigns--;
+			// A search is anchored on the line after it as well, so a blank or a repeated line does not
+			// align the window on another copy of itself.
+			const next = lines[index + 1];
+			let found = previous.indexOf(line);
+			while (found >= 0 && next !== undefined && found + 1 < previous.length && previous[found + 1] !== next) {
+				found = previous.indexOf(line, found + 1);
+			}
+			if (found >= 0) {
+				shift = found - index;
+				at = found;
+			}
+		}
+		return previous[at] === line
+			? (previousWrapped[at] as readonly string[])
+			: wrapTextWithAnsi(line.trimEnd(), width);
+	});
+	memo.width = width;
+	memo.lines = lines;
+	memo.wrapped = wrapped;
 	return wrapped;
 }
 
@@ -972,21 +1050,18 @@ export function drawHeadedBlock(view: HeadedBlockView, theme: Theme, spinnerFram
 	const lines = view.lines;
 	const hidden = view.hidden;
 	const tail = view.tail;
-	return createCachedComponent(
-		() => false,
-		width => {
-			const rows: string[] = [];
-			if (header !== undefined) rows.push(truncateToWidth(header, width, Ellipsis.Omit));
-			const body = lines.map(line => drawRowToWidth(line, theme, Math.max(1, width - INDENT), spinnerFrame));
-			// A window is measured on the rows the lines occupy at the width the body has, which is the
-			// width minus the indent every one of them is drawn at.
-			const windowed = tail === undefined ? body : drawTailWindow(body, tail, theme, Math.max(1, width - INDENT));
-			for (const row of windowed) rows.push(`  ${row}`);
-			const note = hidden === undefined ? undefined : drawHiddenNote(hidden, theme);
-			if (note !== undefined) rows.push(truncateToWidth(`  ${note}`, width, Ellipsis.Omit));
-			return rows;
-		},
-	);
+	return createCachedComponent(neverExpanded, width => {
+		const rows: string[] = [];
+		if (header !== undefined) rows.push(truncateToWidth(header, width, Ellipsis.Omit));
+		const body = lines.map(line => drawRowToWidth(line, theme, Math.max(1, width - INDENT), spinnerFrame));
+		// A window is measured on the rows the lines occupy at the width the body has, which is the
+		// width minus the indent every one of them is drawn at.
+		const windowed = tail === undefined ? body : drawTailWindow(body, tail, theme, Math.max(1, width - INDENT), 0);
+		for (const row of windowed) rows.push(`  ${row}`);
+		const note = hidden === undefined ? undefined : drawHiddenNote(hidden, theme);
+		if (note !== undefined) rows.push(truncateToWidth(`  ${note}`, width, Ellipsis.Omit));
+		return rows;
+	});
 }
 
 /** The two columns a block's lines sit in, under the row that names them. */
@@ -1181,18 +1256,15 @@ export function drawNotice(view: NoticeView, theme: Theme): Component {
 		for (const line of view.body) lines.push(drawNoticeLine(line, theme));
 	}
 	lines.push("");
-	return createCachedComponent(
-		() => false,
-		width => {
-			const lineWidth = Math.max(3, width);
-			const innerWidth = Math.max(1, lineWidth - 2);
-			return lines.map(line => {
-				const truncated = truncateToWidth(line, innerWidth, Ellipsis.Omit);
-				const padded = padToWidth(` ${padToWidth(truncated, innerWidth)} `, lineWidth);
-				return theme.inverse(theme.fg(color, padded));
-			});
-		},
-	);
+	return createCachedComponent(neverExpanded, width => {
+		const lineWidth = Math.max(3, width);
+		const innerWidth = Math.max(1, lineWidth - 2);
+		return lines.map(line => {
+			const truncated = truncateToWidth(line, innerWidth, Ellipsis.Omit);
+			const padded = padToWidth(` ${padToWidth(truncated, innerWidth)} `, lineWidth);
+			return theme.inverse(theme.fg(color, padded));
+		});
+	});
 }
 
 /**
@@ -1201,18 +1273,20 @@ export function drawNotice(view: NoticeView, theme: Theme): Component {
  * A one-line view is `Text` with zero padding, which is what every tool renderer converted to a view
  * returned before, so the surrounding card lays the row out exactly as it did. Either block kind is a
  * container instead, because it owes the card a height at a width.
+ *
+ * A framed block reads a frame source on every render; every other kind reads it once, here.
  */
-export function drawToolView(view: ToolView, theme: Theme, spinnerFrame?: number): Component {
+export function drawToolView(view: ToolView, theme: Theme, spinnerFrame?: number | SpinnerFrameSource): Component {
 	switch (view.kind) {
 		case "framedBlock":
 			return drawFramedBlock(view, theme, spinnerFrame);
 		case "headedBlock":
-			return drawHeadedBlock(view, theme, spinnerFrame);
+			return drawHeadedBlock(view, theme, frameNow(spinnerFrame));
 		case "notice":
 			return drawNotice(view, theme);
 		case "statusRow":
 		case "textBlock":
-			return new Text(drawToolViewText(view, theme, spinnerFrame), 0, 0);
+			return new Text(drawToolViewText(view, theme, frameNow(spinnerFrame)), 0, 0);
 	}
 }
 

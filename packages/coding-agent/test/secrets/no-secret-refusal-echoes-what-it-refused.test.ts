@@ -30,8 +30,8 @@ import {
 	SECRET_SUBCOMMAND_SHAPES,
 	type SecretCommandSurface,
 	type SecretSlot,
-	type SecretSubcommand,
 } from "@veyyon/coding-agent/secrets/secret-command";
+import type { SecretSubcommand } from "@veyyon/coding-agent/secrets/secret-verbs";
 
 /**
  * A credential shaped like the ones people actually paste, and long enough to be worth protecting.

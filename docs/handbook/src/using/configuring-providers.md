@@ -34,7 +34,7 @@ providers:
 | `authHeader: true` | Inject the resolved key as `Authorization: Bearer <key>` |
 | `models` | List of `{ id, name, contextWindow, maxTokens }` entries |
 
-Notes worth knowing:
+Notes:
 
 - Custom providers are merged **alongside** built-ins; they do not silently replace `openai`.
 - A custom `ollama` / `lm-studio` / `llama.cpp` entry replaces that engine's built-in discovery.

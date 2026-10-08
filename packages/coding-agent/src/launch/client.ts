@@ -143,7 +143,7 @@ class SocketDaemonClient implements DaemonBrokerClient {
 	constructor(projectDir: string, runtimeDir: string, token: string, options: DaemonBrokerClientOptions) {
 		this.projectDir = projectDir;
 		this.#runtimeDir = runtimeDir;
-		this.#endpoint = daemonBrokerEndpoint(projectDir, runtimeDir);
+		this.#endpoint = daemonBrokerEndpoint(runtimeDir);
 		this.#token = token;
 		this.#idleGraceMs = options.idleGraceMs;
 		this.#adoptSpawnedPid = options.adoptSpawnedPid;

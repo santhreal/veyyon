@@ -77,9 +77,6 @@ function extractFolderFromPath(sessionPath: string): string {
 }
 
 /**
- * Check if an entry is an assistant message.
- */
-/**
  * Whether a session-log entry is an assistant message that can be linked to.
  *
  * TWO requirements, not one. Beyond the assistant role, the entry needs a non-empty `id`:
@@ -136,12 +133,9 @@ function entryParentId(entry: SessionLogEntry): string | null {
 }
 
 /**
- * Extract plain text from a user message content payload.
- */
-/**
  * Build user-message stats from an entry. Returns null for empty/synthetic content.
  */
-function extractUserStats(sessionFile: string, folder: string, entry: SessionMessageEntry): UserMessageStats | null {
+function extractUserStats(entry: SessionMessageEntry, context: SessionParseContext): UserMessageStats | null {
 	const msg = entry.message as { role: "user"; content?: unknown; synthetic?: boolean };
 	if (msg.role !== "user" || msg.synthetic) return null;
 	const text = contentText(msg.content, { separator: "" });
@@ -149,9 +143,9 @@ function extractUserStats(sessionFile: string, folder: string, entry: SessionMes
 	const metrics = computeUserMessageMetrics(text);
 	const ts = Date.parse(entry.timestamp);
 	return {
-		sessionFile,
+		sessionFile: context.sessionFile,
 		entryId: entry.id,
-		folder,
+		folder: context.folder,
 		timestamp: Number.isFinite(ts) ? ts : 0,
 		model: null,
 		provider: null,
@@ -177,53 +171,17 @@ function extractUserStats(sessionFile: string, folder: string, entry: SessionMes
  * (missing `model`/`provider`/`api`/`usage`) instead of crashing the whole
  * sync with a constraint violation.
  */
-function extractStats(
-	sessionFile: string,
-	folder: string,
-	entry: SessionMessageEntry,
-	currentServiceTier: ServiceTierByFamily | undefined,
-	agentType: AgentType,
-): MessageStats | null {
+function extractStats(entry: SessionMessageEntry, context: SessionParseContext): MessageStats | null {
 	const msg = entry.message as AssistantMessage;
 	if (msg?.role !== "assistant") return null;
 	if (typeof msg.model !== "string" || typeof msg.provider !== "string" || typeof msg.api !== "string") return null;
 	const rawUsage = msg.usage as Partial<Usage> | undefined;
 	if (!rawUsage || typeof rawUsage !== "object") return null;
 
-	// Backfill: when the session recorded `priority` as the active service tier
-	// at this point but the AI usage payload was captured before priority
-	// requests were folded into `premiumRequests`, derive the count here so the
-	// "Premium Reqs" stat aggregates priority traffic on re-sync. Trust any
-	// non-zero value already in `usage.premiumRequests` (Copilot multipliers or
-	// the new AI code path) and only synthesise when the field is missing/zero.
-	const recorded = rawUsage.premiumRequests ?? 0;
-	const model = { provider: msg.provider, api: msg.api, id: msg.model };
-	const tier = resolveModelServiceTier(currentServiceTier, model);
-	const derived = recorded > 0 ? recorded : getPriorityPremiumRequests(tier, model);
-	const wellFormed =
-		typeof rawUsage.input === "number" &&
-		typeof rawUsage.output === "number" &&
-		typeof rawUsage.cacheRead === "number" &&
-		typeof rawUsage.cacheWrite === "number" &&
-		typeof rawUsage.totalTokens === "number";
-	const usage: Usage =
-		wellFormed && derived === recorded
-			? (rawUsage as Usage)
-			: {
-					...rawUsage,
-					input: rawUsage.input ?? 0,
-					output: rawUsage.output ?? 0,
-					cacheRead: rawUsage.cacheRead ?? 0,
-					cacheWrite: rawUsage.cacheWrite ?? 0,
-					totalTokens: rawUsage.totalTokens ?? 0,
-					cost: rawUsage.cost ?? emptyCost(),
-					premiumRequests: derived,
-				};
-
 	return {
-		sessionFile,
+		sessionFile: context.sessionFile,
 		entryId: entry.id,
-		folder,
+		folder: context.folder,
 		model: msg.model,
 		provider: msg.provider,
 		api: msg.api,
@@ -234,8 +192,45 @@ function extractStats(
 		// normally: classify by whether it carried an error.
 		stopReason: msg.stopReason ?? (msg.errorMessage ? "error" : "aborted"),
 		errorMessage: msg.errorMessage ?? null,
-		usage,
-		agentType,
+		usage: rowUsage(rawUsage, { provider: msg.provider, api: msg.api, id: msg.model }, context.serviceTier),
+		agentType: context.agentType,
+	};
+}
+
+/**
+ * `usage` as a `messages` row stores it: every token count a number, a missing cost as zero cost.
+ *
+ * Backfill: when the session recorded `priority` as the active service tier
+ * at this point but the AI usage payload was captured before priority
+ * requests were folded into `premiumRequests`, derive the count here so the
+ * "Premium Reqs" stat aggregates priority traffic on re-sync. Trust any
+ * non-zero value already in `usage.premiumRequests` (Copilot multipliers or
+ * the new AI code path) and only synthesise when the field is missing/zero.
+ */
+function rowUsage(
+	rawUsage: Partial<Usage>,
+	model: { provider: string; api: string; id: string },
+	currentServiceTier: ServiceTierByFamily | undefined,
+): Usage {
+	const recorded = rawUsage.premiumRequests ?? 0;
+	const derived =
+		recorded > 0 ? recorded : getPriorityPremiumRequests(resolveModelServiceTier(currentServiceTier, model), model);
+	const wellFormed =
+		typeof rawUsage.input === "number" &&
+		typeof rawUsage.output === "number" &&
+		typeof rawUsage.cacheRead === "number" &&
+		typeof rawUsage.cacheWrite === "number" &&
+		typeof rawUsage.totalTokens === "number";
+	if (wellFormed && derived === recorded) return rawUsage as Usage;
+	return {
+		...rawUsage,
+		input: rawUsage.input ?? 0,
+		output: rawUsage.output ?? 0,
+		cacheRead: rawUsage.cacheRead ?? 0,
+		cacheWrite: rawUsage.cacheWrite ?? 0,
+		totalTokens: rawUsage.totalTokens ?? 0,
+		cost: rawUsage.cost ?? emptyCost(),
+		premiumRequests: derived,
 	};
 }
 
@@ -250,12 +245,7 @@ function coerceEntryTimestamp(timestamp: number | undefined, entry: SessionMessa
  * Extract one {@link ToolCallStats} per `toolCall` content block of an
  * assistant message. Returns an empty array for turns without tool calls.
  */
-function extractToolCalls(
-	sessionFile: string,
-	folder: string,
-	entry: SessionMessageEntry,
-	agentType: AgentType,
-): ToolCallStats[] {
+function extractToolCalls(entry: SessionMessageEntry, context: SessionParseContext): ToolCallStats[] {
 	const msg = entry.message as AssistantMessage;
 	if (msg?.role !== "assistant" || !Array.isArray(msg.content)) return [];
 	// `tool_calls` columns are NOT NULL: skip turns that can't be attributed
@@ -276,15 +266,15 @@ function extractToolCalls(
 			// Non-serializable arguments (shouldn't happen in persisted JSONL); size unknown.
 		}
 		return {
-			sessionFile,
+			sessionFile: context.sessionFile,
 			entryId: entry.id,
 			toolCallId: block.id,
-			folder,
+			folder: context.folder,
 			toolName: block.name,
 			model: msg.model,
 			provider: msg.provider,
 			timestamp: coerceEntryTimestamp(msg.timestamp, entry),
-			agentType,
+			agentType: context.agentType,
 			callsInTurn: blocks.length,
 			argsChars,
 		};
@@ -386,6 +376,24 @@ function scanLastServiceTier(bytes: Uint8Array): ServiceTierByFamily | undefined
 	});
 	return currentServiceTier;
 }
+
+export interface ParseSessionResult {
+	stats: MessageStats[];
+	userStats: UserMessageStats[];
+	userLinks: UserMessageLink[];
+	toolCalls: ToolCallStats[];
+	toolResults: ToolResultLink[];
+	newOffset: number;
+}
+
+/** What every row a session file produces shares, and the service tier in effect at the entry being read. */
+interface SessionParseContext {
+	readonly sessionFile: string;
+	readonly folder: string;
+	readonly agentType: AgentType;
+	serviceTier: ServiceTierByFamily | undefined;
+}
+
 /**
  * Parse a session file and extract all assistant message stats.
  * Uses incremental reading with offset tracking.
@@ -402,14 +410,6 @@ function scanLastServiceTier(bytes: Uint8Array): ServiceTierByFamily | undefined
  * The scan only keeps the current tier and does not materialize prefix
  * entries, preserving offset-based memory behavior for large sessions.
  */
-export interface ParseSessionResult {
-	stats: MessageStats[];
-	userStats: UserMessageStats[];
-	userLinks: UserMessageLink[];
-	toolCalls: ToolCallStats[];
-	toolResults: ToolResultLink[];
-	newOffset: number;
-}
 export async function parseSessionFile(sessionPath: string, fromOffset = 0): Promise<ParseSessionResult> {
 	let bytes: Uint8Array;
 	try {
@@ -420,69 +420,63 @@ export async function parseSessionFile(sessionPath: string, fromOffset = 0): Pro
 		throw err;
 	}
 
-	const folder = extractFolderFromPath(sessionPath);
-	const agentType = classifyAgentType(sessionPath);
-	const stats: MessageStats[] = [];
-	const userStats: UserMessageStats[] = [];
-	const userLinks: UserMessageLink[] = [];
-	const toolCalls: ToolCallStats[] = [];
-	const toolResults: ToolResultLink[] = [];
-	const userByEntryId = new Map<string, UserMessageStats>();
 	const start = clampLow(fromOffset, 0, bytes.length);
-	const unprocessed = bytes.subarray(start);
 	const skipped: SkippedLine[] = [];
-	const { entries, read } = parseSessionEntriesLenient(unprocessed, skip => skipped.push(skip));
+	const { entries, read } = parseSessionEntriesLenient(bytes.subarray(start), skip => skipped.push(skip));
 	reportSkippedLines(sessionPath, skipped, start);
-	let currentServiceTier: ServiceTierByFamily | undefined;
-	if (start > 0) {
-		currentServiceTier = scanLastServiceTier(bytes.subarray(0, start));
-	}
-	for (const entry of entries) {
-		if (isServiceTierChange(entry)) {
-			currentServiceTier = coerceServiceTierByFamily(entry.serviceTier);
-			continue;
-		}
-		if (isUserMessage(entry)) {
-			const userMsg = extractUserStats(sessionPath, folder, entry);
-			if (userMsg) {
-				userStats.push(userMsg);
-				userByEntryId.set(entry.id, userMsg);
-			}
-			continue;
-		}
-		if (isToolResultMessage(entry)) {
-			const link = extractToolResultLink(sessionPath, entry);
-			if (link) toolResults.push(link);
-			continue;
-		}
-		if (isLinkableAssistantEntry(entry)) {
-			const msgStats = extractStats(sessionPath, folder, entry, currentServiceTier, agentType);
-			if (msgStats) stats.push(msgStats);
-			const calls = extractToolCalls(sessionPath, folder, entry, agentType);
-			for (let ci = 0; ci < calls.length; ci++) toolCalls.push(calls[ci]!);
-			// Link assistant's responding model back to the user message it answered.
-			const parentId = (entry as SessionMessageEntry).parentId;
-			if (parentId) {
-				const msg = entry.message as AssistantMessage;
-				if (msg.model && msg.provider) {
-					// Emit unconditionally. The aggregator's UPDATE is guarded by
-					// `model IS NULL` so this is idempotent: a no-op for already
-					// linked rows, a fix-up for fresh inserts (which start NULL
-					// because the user row is recorded before its reply lands) and
-					// for cross-pass orphans whose parent was committed by an
-					// earlier incremental sync.
-					userLinks.push({
-						sessionFile: sessionPath,
-						entryId: parentId,
-						model: msg.model,
-						provider: msg.provider,
-					});
-				}
-			}
-		}
-	}
+	const context: SessionParseContext = {
+		sessionFile: sessionPath,
+		folder: extractFolderFromPath(sessionPath),
+		agentType: classifyAgentType(sessionPath),
+		serviceTier: start > 0 ? scanLastServiceTier(bytes.subarray(0, start)) : undefined,
+	};
+	const result: ParseSessionResult = {
+		stats: [],
+		userStats: [],
+		userLinks: [],
+		toolCalls: [],
+		toolResults: [],
+		newOffset: start + read,
+	};
+	for (const entry of entries) addEntryStats(entry, context, result);
+	return result;
+}
 
-	return { stats, userStats, userLinks, toolCalls, toolResults, newOffset: start + read };
+/** Add the rows one session entry produces to `result`; a service-tier change updates `context` instead. */
+function addEntryStats(entry: SessionLogEntry, context: SessionParseContext, result: ParseSessionResult): void {
+	if (isServiceTierChange(entry)) {
+		context.serviceTier = coerceServiceTierByFamily(entry.serviceTier);
+	} else if (isUserMessage(entry)) {
+		const userStats = extractUserStats(entry, context);
+		if (userStats) result.userStats.push(userStats);
+	} else if (isToolResultMessage(entry)) {
+		const link = extractToolResultLink(context.sessionFile, entry);
+		if (link) result.toolResults.push(link);
+	} else if (isLinkableAssistantEntry(entry)) {
+		addAssistantStats(entry, context, result);
+	}
+}
+
+/** Add an assistant entry's message row, its tool-call rows, and the link from the user message it answered. */
+function addAssistantStats(entry: SessionMessageEntry, context: SessionParseContext, result: ParseSessionResult): void {
+	const stats = extractStats(entry, context);
+	if (stats) result.stats.push(stats);
+	for (const call of extractToolCalls(entry, context)) result.toolCalls.push(call);
+	const msg = entry.message as AssistantMessage;
+	// Emit unconditionally. The aggregator's UPDATE is guarded by
+	// `model IS NULL` so this is idempotent: a no-op for already
+	// linked rows, a fix-up for fresh inserts (which start NULL
+	// because the user row is recorded before its reply lands) and
+	// for cross-pass orphans whose parent was committed by an
+	// earlier incremental sync.
+	if (entry.parentId && msg.model && msg.provider) {
+		result.userLinks.push({
+			sessionFile: context.sessionFile,
+			entryId: entry.parentId,
+			model: msg.model,
+			provider: msg.provider,
+		});
+	}
 }
 
 /**
@@ -570,6 +564,14 @@ export async function getSessionEntryWithContext(
 	sessionPath: string,
 	entryId: string,
 ): Promise<{ entry: SessionMessageEntry; context: SessionLogEntry[] } | null> {
+	const byId = await readEntriesById(sessionPath);
+	const target = byId?.get(entryId);
+	if (!byId || target?.type !== "message") return null;
+	return { entry: target as SessionMessageEntry, context: turnContext(byId, target) };
+}
+
+/** Every entry of a session file that carries a non-empty id, by id; null when the file is missing. */
+async function readEntriesById(sessionPath: string): Promise<Map<string, SessionLogEntry> | null> {
 	const byId = new Map<string, SessionLogEntry>();
 	try {
 		for await (const line of readLines(Bun.file(sessionPath).stream())) {
@@ -582,11 +584,11 @@ export async function getSessionEntryWithContext(
 		if (isEnoent(err)) return null;
 		throw err;
 	}
+	return byId;
+}
 
-	const target = byId.get(entryId);
-	if (target?.type !== "message") return null;
-	const targetMsg = target as SessionMessageEntry;
-
+/** `target` and its ancestors up to and including the nearest user prompt, oldest first. */
+function turnContext(byId: ReadonlyMap<string, SessionLogEntry>, target: SessionLogEntry): SessionLogEntry[] {
 	const chain: SessionLogEntry[] = [];
 	const visited = new Set<string>();
 	let cursor: SessionLogEntry | undefined = target;
@@ -599,7 +601,5 @@ export async function getSessionEntryWithContext(
 		const parentId = entryParentId(cursor);
 		cursor = parentId ? byId.get(parentId) : undefined;
 	}
-
-	chain.reverse(); // oldest-first, requested entry last
-	return { entry: targetMsg, context: chain };
+	return chain.reverse(); // oldest-first, requested entry last
 }

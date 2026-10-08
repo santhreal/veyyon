@@ -1,6 +1,6 @@
 # Sessions, turns, and threads
 
-A Veyyon run is a loop of user requests and agent responses. The session holds the whole run. Each turn is one request and the agent loop that answers it. A thread is one path through the session tree. These three ideas are the foundation for branching, plan mode, and long-running context.
+A Veyyon run is a loop of requests and agent responses. The session holds the whole run. Each turn is one request and the agent loop that answers it. A thread is one path through the session tree. Branching, plan mode, and long-running context are built on these three units.
 
 ## Lifecycle of a run
 
@@ -13,7 +13,7 @@ compose prompt ──► turn begins
         ├─ assemble context (instructions, goal card, recent history, tools)
         ├─ call model
         ├─ dispatch / repair tool calls (edit, exec, MCP, …)
-        ├─ approval-mode gate
+        ├─ approval-mode check
         └─ final reply ──► turn ends (or Esc abort)
         │
         ▼
@@ -35,7 +35,7 @@ Sessions are stored as append-oriented rollout JSONL files. Each history entry h
 
 ## What a turn is
 
-A turn is one user request plus the agent loop that responds to it. The loop calls the model, dispatches any tool calls, and produces the final reply. A turn ends when the model stops or when the harness decides to stop it.
+A turn is one request plus the agent loop that responds to it. The loop calls the model, dispatches any tool calls, and produces the final reply. A turn ends when the model stops or when the harness stops it.
 
 While a turn runs you can steer it with `Enter` or queue a follow-up with `ctrl+q` or `ctrl+enter`. A queued follow-up becomes a new turn after the current one finishes. Interrupting with `Esc` aborts the turn and returns queued messages to the composer.
 
@@ -54,11 +54,11 @@ Models have a finite token window. As a session grows, the raw transcript may no
 
 Compaction preserves the goal card, active user instructions, recent turns, and a deterministic working-set of files touched so a resumed session does not require the full raw transcript.
 
-Prefer `/compact` when you need a summary to retain state. Prefer the `/new` command when prior transcript is no longer useful and you want a clean session without summarization. See [Slash commands](../reference/slash-commands.md).
+Prefer `/compact` when you need a summary to retain state. Prefer the `/new` command when prior transcript is no longer useful and you want a fresh session without summarization. See [Slash commands](../reference/slash-commands.md).
 
 ## The rollout
 
-Session history lives in one layer: the JSONL rollout. Every event is one line: a user message, an agent response, a tool call, a compaction, a goal update, or a branch summary. The rollout is the only source of truth. Listing and resume read it through the active storage backend, including indexed Redis and SQL storage. A non-empty rollout without a valid header is rejected without changing its bytes; malformed later records are skipped with an operator-visible path, line, byte, and shape warning. Goal cards persist as rollout entries. There is no separate session-state database.
+Session history is stored in one layer: the JSONL rollout. Every event is one line: a user message, an agent response, a tool call, a compaction, a goal update, or a branch summary. The rollout is the only source of truth. Listing and resume read it through the active storage backend, including indexed Redis and SQL storage. A non-empty rollout without a valid header is rejected without changing its bytes; malformed later records are skipped with a warning that states the path, line, byte offset, and shape. Goal cards persist as rollout entries. There is no separate session-state database.
 
 ## How the pieces relate
 
@@ -68,7 +68,7 @@ Session history lives in one layer: the JSONL rollout. Every event is one line: 
 - The **rollout** is the append-only log that holds every turn, branch, and system event.
 - The **goal card** is a separate context slot that contains the current objective across turns and compactions. See [Goal state and long sessions](../context/goal-state.md).
 
-## Where the details live
+## Details
 
 - For session commands and storage, see [Sessions](../using/sessions.md).
 - For branching, forking, and cloning, see [Session branching](../features/branching.md).

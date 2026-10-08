@@ -5,8 +5,8 @@
  * used when not in patch mode.
  */
 
-import { errorMessage } from "@veyyon/utils";
-import * as Diff from "diff";
+import { errorMessage, lazy } from "@veyyon/utils";
+import type * as Diff from "diff";
 import { resolveToCwd } from "../tools/core/path-utils";
 import { type BlockContextSource, exceedsBlockContextScanCeiling, findBlockContextLines } from "../utils/block-context";
 import { parseUnifiedHunkHeader } from "../utils/unified-hunk-header";
@@ -15,6 +15,13 @@ import { DEFAULT_FUZZY_THRESHOLD, EditMatchError, findMatch } from "./match";
 import { adjustIndentation, normalizeToLF, stripBom } from "./normalize";
 import { formatNumberedDiffLine, parseNumberedDiffRow } from "./numbered-diff-row";
 import { readPreviewText } from "./preview-text-cache";
+
+/**
+ * The `diff` package, evaluated on the first diff. It is 19 modules, and the edit tool module is evaluated
+ * when a session builds its tools, before anything has been edited. `require`, because `bun build --compile`
+ * evaluates an `import defer` namespace with the rest of the graph and the diff helpers are synchronous.
+ */
+const diffPackage = lazy(() => require("diff") as typeof Diff);
 
 export interface DiffResult {
 	diff: string;
@@ -230,7 +237,7 @@ export function generateDiffString(
 	contextLines = 2,
 	source: BlockContextSource = {},
 ): DiffResult {
-	const parts = Diff.diffLines(oldContent, newContent);
+	const parts = diffPackage.value.diffLines(oldContent, newContent);
 	const output: string[] = [];
 
 	let oldLineNum = 1;
@@ -368,7 +375,7 @@ export function generateUnifiedDiffString(
 	contextLines = 3,
 	source: BlockContextSource = {},
 ): DiffResult {
-	const patch = Diff.structuredPatch("", "", oldContent, newContent, "", "", { context: contextLines });
+	const patch = diffPackage.value.structuredPatch("", "", oldContent, newContent, "", "", { context: contextLines });
 	const output: string[] = [];
 	let firstChangedLine: number | undefined;
 	for (const hunk of patch.hunks) {

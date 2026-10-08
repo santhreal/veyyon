@@ -29,7 +29,6 @@ Key files:
 Runtime indices live in a `SessionEntryIndex` helper, held as `#index` on `SessionManager` and kept in lockstep with the journal array `#entries`:
 
 - `#entriesById: Map<string, SessionEntry>`: fast lookup for any entry
-- `#children: Map<string | null, SessionEntry[]>`: parent→children adjacency
 - `#labels: Map<string, string>`: resolved labels by target entry id
 - `#leaf: string | null`: current position in the tree
 - `#usage`: running usage totals
@@ -41,7 +40,7 @@ Tree APIs:
   - parent links become children arrays
   - entries with missing parents are treated as roots
   - children are sorted oldest→newest by timestamp
-- `getChildren(parentId)` returns direct children
+- `getChildren(parentId)` filters `#entries` by `parentId` and returns direct children in record order
 - `getLabel(id)` resolves current label from the index's `#labels` map
 
 `getTree()` is a runtime projection; persistence remains append-only JSONL entries.
@@ -222,4 +221,4 @@ Session migrations still run on load:
 
 Current runtime behavior is version-3 tree semantics after migration.
 
-*Verified against `946d75b873` on 2026-09-04.*
+*Verified against `71619ee74c` on 2026-10-03.*

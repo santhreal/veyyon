@@ -171,6 +171,12 @@ function resolveSnapshotTtlMs(): number {
  *    while a profile's own config can still override it.
  * 4. `<config-root>/auth-broker.token` file (paired with a URL from env/config).
  *
+ * Only a config value that supplies the result is passed to the resolver: a
+ * value an env var overrides, and a token when no URL is configured, are not,
+ * so their `!command` does not run. A config value that resolves to an empty
+ * string counts as unset: a URL leaves no broker configured, and a token falls
+ * through to the token file.
+ *
  * Returns `null` when no broker URL is configured — callers should fall back to
  * the local SQLite store. Throws when a URL is configured but no token is
  * available, matching the TUI behavior.
@@ -178,33 +184,16 @@ function resolveSnapshotTtlMs(): number {
 export async function resolveAuthBrokerConfig(
 	options: ResolveAuthBrokerConfigOptions = {},
 ): Promise<AuthBrokerClientConfig | null> {
-	const agentDir = options.agentDir ?? getAgentDir();
 	const resolveConfig = options.configValueResolver ?? defaultResolveConfigValue;
-
-	const envUrl = $pickenv("VEYYON_AUTH_BROKER_URL");
-	const envToken = $pickenv("VEYYON_AUTH_BROKER_TOKEN");
-
-	let url = envUrl && envUrl.length > 0 ? envUrl : undefined;
-	let configToken: string | undefined;
-	if (!url || !envToken) {
-		// Per-key precedence: the profile's own config wins, the machine-wide
-		// global config fills whichever keys the profile leaves unset.
-		const fromProfile = await readConfigYaml(agentDir);
-		const fromGlobal = await readConfigYaml(getGlobalConfigRootDir());
-		const fromConfig = { url: fromProfile.url ?? fromGlobal.url, token: fromProfile.token ?? fromGlobal.token };
-		if (!url && fromConfig.url) {
-			const resolved = await resolveConfig(fromConfig.url);
-			if (resolved && resolved.length > 0) url = resolved;
-		}
-		if (fromConfig.token) {
-			const resolved = await resolveConfig(fromConfig.token);
-			if (resolved && resolved.length > 0) configToken = resolved;
-		}
-	}
+	const envUrl = $pickenv("VEYYON_AUTH_BROKER_URL") || undefined;
+	const envToken = $pickenv("VEYYON_AUTH_BROKER_TOKEN") || undefined;
+	const configured: ConfigSnapshot =
+		envUrl && envToken ? {} : await readBrokerConfigFiles(options.agentDir ?? getAgentDir());
+	const url = envUrl ?? (configured.url ? (await resolveConfig(configured.url)) || undefined : undefined);
 	if (!url) return null;
 
-	const token =
-		(envToken && envToken.length > 0 ? envToken : undefined) ?? configToken ?? (await readTokenFile()) ?? undefined;
+	const configToken = envToken || !configured.token ? undefined : (await resolveConfig(configured.token)) || undefined;
+	const token = envToken ?? configToken ?? (await readTokenFile());
 	if (!token) {
 		throw new AIError.MissingApiKeyError(
 			undefined,
@@ -213,6 +202,18 @@ export async function resolveAuthBrokerConfig(
 		);
 	}
 	return { url, token };
+}
+
+/**
+ * The broker URL and token the config files set, unresolved. Per-key precedence: the profile's own
+ * config wins, and the machine-wide global config fills whichever keys the profile leaves unset.
+ */
+async function readBrokerConfigFiles(agentDir: string): Promise<ConfigSnapshot> {
+	const [fromProfile, fromGlobal] = await Promise.all([
+		readConfigYaml(agentDir),
+		readConfigYaml(getGlobalConfigRootDir()),
+	]);
+	return { url: fromProfile.url ?? fromGlobal.url, token: fromProfile.token ?? fromGlobal.token };
 }
 
 /**
@@ -226,61 +227,77 @@ export async function discoverAuthStorage(options: DiscoverAuthStorageOptions = 
 		agentDir,
 		configValueResolver: options.configValueResolver,
 	});
+	const storage = brokerConfig
+		? await openBrokerStorage(brokerConfig, options)
+		: await openLocalStorage(agentDir, options);
+	await storage.reload();
+	return storage;
+}
 
-	if (brokerConfig) {
-		const client = new AuthBrokerClient({ url: brokerConfig.url, token: brokerConfig.token });
-		const cachePath = options.cachePath ?? getAuthBrokerSnapshotCachePath();
-		const ttlMs = resolveSnapshotTtlMs();
-		const persist =
-			ttlMs > 0
-				? (snapshot: SnapshotResponse): void => {
-						void writeAuthBrokerSnapshotCache({
-							path: cachePath,
-							token: brokerConfig.token,
-							url: brokerConfig.url,
-							snapshot,
-						}).catch(error => {
-							logger.debug("auth-broker snapshot cache write failed", { error: String(error) });
-						});
-					}
-				: undefined;
+/** An AuthStorage served by the broker at `brokerConfig`, seeded from the snapshot cache when it is fresh. */
+async function openBrokerStorage(
+	brokerConfig: AuthBrokerClientConfig,
+	options: DiscoverAuthStorageOptions,
+): Promise<AuthStorage> {
+	const client = new AuthBrokerClient({ url: brokerConfig.url, token: brokerConfig.token });
+	const cachePath = options.cachePath ?? getAuthBrokerSnapshotCachePath();
+	const ttlMs = resolveSnapshotTtlMs();
+	const persist =
+		ttlMs > 0
+			? (snapshot: SnapshotResponse): void => {
+					void writeAuthBrokerSnapshotCache({
+						path: cachePath,
+						token: brokerConfig.token,
+						url: brokerConfig.url,
+						snapshot,
+					}).catch(error => {
+						logger.debug("auth-broker snapshot cache write failed", { error: String(error) });
+					});
+				}
+			: undefined;
 
-		let initialSnapshot: SnapshotResponse | undefined;
-		if (ttlMs > 0) {
-			initialSnapshot =
-				(await readAuthBrokerSnapshotCache({
-					path: cachePath,
-					token: brokerConfig.token,
-					url: brokerConfig.url,
-					ttlMs,
-				}).catch(error => {
-					logger.debug("auth-broker snapshot cache read failed", { error: String(error) });
-					return null;
-				})) ?? undefined;
-		}
-		if (!initialSnapshot) {
-			const initialResult = await client.fetchSnapshot();
-			if (initialResult.status !== 200)
-				throw new AIError.AuthBrokerError("Auth broker returned no initial snapshot", {
-					status: initialResult.status,
-				});
-			initialSnapshot = initialResult.snapshot;
-			persist?.(initialSnapshot);
-		}
-		const store = new RemoteAuthCredentialStore({
-			client,
-			initialSnapshot,
-			onSnapshot: persist,
-		});
-		const storage = new AuthStorage(store, {
-			configValueResolver: options.configValueResolver,
-			sourceLabel: options.sourceLabel ?? `broker ${brokerConfig.url}`,
-			loadBalancing: options.loadBalancing,
-		});
-		await storage.reload();
-		return storage;
+	let initialSnapshot = ttlMs > 0 ? await readCachedSnapshot(brokerConfig, cachePath, ttlMs) : undefined;
+	if (!initialSnapshot) {
+		const initialResult = await client.fetchSnapshot();
+		if (initialResult.status !== 200)
+			throw new AIError.AuthBrokerError("Auth broker returned no initial snapshot", {
+				status: initialResult.status,
+			});
+		initialSnapshot = initialResult.snapshot;
+		persist?.(initialSnapshot);
 	}
+	const store = new RemoteAuthCredentialStore({
+		client,
+		initialSnapshot,
+		onSnapshot: persist,
+	});
+	return new AuthStorage(store, {
+		configValueResolver: options.configValueResolver,
+		sourceLabel: options.sourceLabel ?? `broker ${brokerConfig.url}`,
+		loadBalancing: options.loadBalancing,
+	});
+}
 
+/** The cached snapshot for this broker and token, or undefined when it is absent, stale or unreadable. */
+async function readCachedSnapshot(
+	brokerConfig: AuthBrokerClientConfig,
+	cachePath: string,
+	ttlMs: number,
+): Promise<SnapshotResponse | undefined> {
+	const cached = await readAuthBrokerSnapshotCache({
+		path: cachePath,
+		token: brokerConfig.token,
+		url: brokerConfig.url,
+		ttlMs,
+	}).catch(error => {
+		logger.debug("auth-broker snapshot cache read failed", { error: String(error) });
+		return null;
+	});
+	return cached ?? undefined;
+}
+
+/** An AuthStorage over the local SQLite store under `options.storeAgentDir`, or `agentDir` when unset. */
+async function openLocalStorage(agentDir: string, options: DiscoverAuthStorageOptions): Promise<AuthStorage> {
 	const storeAgentDir = options.storeAgentDir ?? agentDir;
 	const dbPath = getAgentDbPath(storeAgentDir);
 	// Shared-store first run: the machine-wide store is empty, but an older
@@ -290,17 +307,21 @@ export async function discoverAuthStorage(options: DiscoverAuthStorageOptions = 
 	// can prepend legacy locations (e.g. a per-profile `shared-auth` dir that
 	// predates the global-store move). No-op when the store dir is the per-profile
 	// dir (sharing off) or the shared store already has credentials.
+	const store = await SqliteAuthCredentialStore.open(dbPath);
 	if (options.storeAgentDir && options.storeAgentDir !== agentDir) {
 		const seedSources = options.seedSourceDbPaths ?? [getAgentDbPath(agentDir)];
-		await seedSharedCredentialStore(seedSources, dbPath);
+		try {
+			await seedSharedCredentialStore(seedSources, store, dbPath);
+		} catch (error) {
+			store.close();
+			throw error;
+		}
 	}
-	const storage = await AuthStorage.create(dbPath, {
+	return new AuthStorage(store, {
 		configValueResolver: options.configValueResolver,
 		sourceLabel: options.sourceLabel ?? `local ${dbPath}`,
 		loadBalancing: options.loadBalancing,
 	});
-	await storage.reload();
-	return storage;
 }
 
 /**
@@ -315,45 +336,52 @@ export async function discoverAuthStorage(options: DiscoverAuthStorageOptions = 
  * skipped: a known-bad login is not worth promoting. Idempotent under
  * concurrency because `replaceAuthCredentialsForProvider` is a per-provider
  * replace with identical data, so a racing second process writes the same rows.
+ *
+ * `shared` is the connection the caller goes on to serve credentials from, so
+ * a launch opens and schema-checks the shared database once rather than twice.
  */
-async function seedSharedCredentialStore(sourceDbPaths: readonly string[], sharedDbPath: string): Promise<void> {
-	const shared = await SqliteAuthCredentialStore.open(sharedDbPath);
-	try {
-		if (shared.listAuthCredentials().length > 0) return;
-		for (const sourceDbPath of sourceDbPaths) {
-			if (sourceDbPath === sharedDbPath) continue;
-			if (!existsSync(sourceDbPath)) continue;
-			const source = await SqliteAuthCredentialStore.open(sourceDbPath);
-			let seeded = false;
-			try {
-				// `listAuthCredentials` already returns only active rows; the explicit
-				// disabled guard keeps the promotion correct even if that ever changes,
-				// so a known-bad login is never carried into the shared store.
-				const rows = source.listAuthCredentials().filter(row => row.disabledCause === null);
-				if (rows.length === 0) continue;
-				const byProvider = new Map<string, AuthCredential[]>();
-				for (const row of rows) {
-					const list = byProvider.get(row.provider);
-					if (list) list.push(row.credential);
-					else byProvider.set(row.provider, [row.credential]);
-				}
-				for (const [provider, credentials] of byProvider) {
-					shared.replaceAuthCredentialsForProvider(provider, credentials);
-				}
-				seeded = true;
-				logger.info("Promoted per-profile credentials to the shared store", {
-					source: sourceDbPath,
-					shared: sharedDbPath,
-					providers: Array.from(byProvider.keys()),
-					count: rows.length,
-				});
-			} finally {
-				source.close();
+async function seedSharedCredentialStore(
+	sourceDbPaths: readonly string[],
+	shared: SqliteAuthCredentialStore,
+	sharedDbPath: string,
+): Promise<void> {
+	if (shared.listAuthCredentials().length > 0) return;
+	for (const sourceDbPath of sourceDbPaths) {
+		if (sourceDbPath === sharedDbPath || !existsSync(sourceDbPath)) continue;
+		const source = await SqliteAuthCredentialStore.open(sourceDbPath);
+		try {
+			const byProvider = activeCredentialsByProvider(source);
+			if (byProvider.size === 0) continue;
+			let count = 0;
+			for (const [provider, credentials] of byProvider) {
+				shared.replaceAuthCredentialsForProvider(provider, credentials);
+				count += credentials.length;
 			}
+			logger.info("Promoted per-profile credentials to the shared store", {
+				source: sourceDbPath,
+				shared: sharedDbPath,
+				providers: Array.from(byProvider.keys()),
+				count,
+			});
 			// First non-empty source wins; do not merge older stores on top.
-			if (seeded) return;
+			return;
+		} finally {
+			source.close();
 		}
-	} finally {
-		shared.close();
 	}
+}
+
+/** The active credentials in `store`, grouped by provider in listing order. */
+function activeCredentialsByProvider(store: SqliteAuthCredentialStore): Map<string, AuthCredential[]> {
+	const byProvider = new Map<string, AuthCredential[]>();
+	for (const row of store.listAuthCredentials()) {
+		// `listAuthCredentials` already returns only active rows; the explicit
+		// disabled guard keeps the promotion correct even if that ever changes,
+		// so a known-bad login is never carried into the shared store.
+		if (row.disabledCause !== null) continue;
+		const list = byProvider.get(row.provider);
+		if (list) list.push(row.credential);
+		else byProvider.set(row.provider, [row.credential]);
+	}
+	return byProvider;
 }

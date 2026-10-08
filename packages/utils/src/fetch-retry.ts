@@ -1,6 +1,7 @@
 import { STATUS_CODES } from "node:http";
 import { scheduler } from "node:timers/promises";
 import { cancellationError, isAbortError } from "./abortable";
+import { exponentialBackoffDelay } from "./backoff";
 
 // "reset after 1h2m3s" / "10m15s" / "39s"
 const QUOTA_RESET_PATTERN = /reset after (?:(\d+)h)?(?:(\d+)m)?(\d+(?:\.\d+)?)s/i;
@@ -12,23 +13,79 @@ const RETRY_DELAY_FIELD_PATTERN = /"retryDelay":\s*"([0-9.]+)(ms|s)"/i;
 // "try again in 5 min" / "try again in ~158 min." / "try again in 2h" /
 // "try again in 90 minutes" / "try again in 1 hour"
 const TRY_AGAIN_PATTERN = /try again in\s+~?\s*([0-9.]+)\s*(ms|sec|s|minutes?|mins?|m|hours?|hrs?|h)\b/i;
+
 /**
- * `retry-after-ms=62000` / `retry-after-ms: 62000`. This is the spelling this
- * codebase's OWN formatter appends to a provider error message when the
- * response carried a `retry-after` header, and until it was listed here the
- * text-only callers of {@link extractRetryHint} — the auth gateway passes
- * `extractRetryHint(undefined, message)` with no headers left to read — could
- * not see the very hint we had just written for them, and fell back to a flat
- * default block that returned an exhausted account to the pool early.
+ * A header value as it appears in prose: an ISO 8601 instant, an IMF-fixdate
+ * (`Wed, 21 Oct 2015 07:28:00 GMT`), or a number. The number may not run into
+ * a date (`2026-01-01 ...` is not the number 2026), so an instant the ISO arm
+ * cannot read yields no value instead of a wait measured in the year.
  */
-const RETRY_AFTER_MS_TEXT_PATTERN = /retry-after-ms\s*[:=]?\s*(\d+(?:\.\d+)?)/i;
+const HEADER_VALUE_TEXT = String.raw`\d{4}-\d{2}-\d{2}T[\d:.]+(?:Z|[+-]\d{2}:?\d{2})?|[A-Z][a-z]{2}, \d{1,2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT|\d+(?:\.\d+)?(?!\d|-\d)`;
+
+/** One rate-limit header {@link extractRetryHint} reads, and how its value becomes a wait. */
+export interface RetryHintHeader {
+	/** Lower-case header name. */
+	readonly name: string;
+	/** The wait in ms the value states, or `undefined` when it states none. */
+	read(value: string, nowMs: number): number | undefined;
+}
+
+/** `x-ratelimit-reset[-ms]`: a delta in `unitMs`, or a Unix epoch in s or ms. */
+function readResetValue(numeric: number, unitMs: number, nowMs: number): number | undefined {
+	if (!Number.isFinite(numeric) || numeric <= 0) return undefined;
+	const target = resetHeaderTargetMs(numeric);
+	if ("delta" in target) return numeric * unitMs;
+	const delta = target.atMs - nowMs;
+	return delta > 0 ? delta : undefined;
+}
+
 /**
- * `retry-after: 60` / `retry-after 60`, in seconds. Providers that answer over
- * a transport with no headers (Connect trailers, some proxies) write the value
- * into the prose instead. The `-ms` spelling is matched first, and cannot match
- * here: `-` is neither a separator nor a digit.
+ * The generic rate-limit headers, in precedence order. {@link extractRetryHint}
+ * reads each from a response's headers and, with the same `read`, from
+ * `name: value` or `name=value` written into an error message, so a transport
+ * that folds headers into prose (and this codebase's own formatter, which
+ * appends `retry-after-ms=<n>`) states a window every caller reads the same way.
  */
-const RETRY_AFTER_SECONDS_TEXT_PATTERN = /retry-after\s*[:=]?\s*(\d+(?:\.\d+)?)/i;
+export const RETRY_HINT_HEADERS: readonly RetryHintHeader[] = [
+	{
+		name: "retry-after-ms",
+		read(value) {
+			const ms = Number(value);
+			return Number.isFinite(ms) && ms >= 0 ? ms : undefined;
+		},
+	},
+	{
+		name: "retry-after",
+		read(value, nowMs) {
+			const seconds = Number(value);
+			if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+			const dateMs = Date.parse(value);
+			return Number.isNaN(dateMs) ? undefined : Math.max(0, dateMs - nowMs);
+		},
+	},
+	{ name: "x-ratelimit-reset-ms", read: (value, nowMs) => readResetValue(Number(value), 1, nowMs) },
+	{ name: "x-ratelimit-reset", read: (value, nowMs) => readResetValue(Number.parseInt(value, 10), 1000, nowMs) },
+	{
+		name: "x-ratelimit-reset-after",
+		read(value) {
+			const seconds = Number(value);
+			return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined;
+		},
+	},
+];
+
+/**
+ * One pattern per {@link RETRY_HINT_HEADERS} entry, in the same order. The name
+ * may not continue a longer name (`x-retry-after`), and a following `-` cannot
+ * start a value, so `retry-after` never reads the `-ms=` of `retry-after-ms=`.
+ */
+const RETRY_HINT_TEXT_PATTERNS: readonly RegExp[] = RETRY_HINT_HEADERS.map(
+	({ name }) =>
+		new RegExp(
+			String.raw`(?<![\w-])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\s*[:=]?\s*(${HEADER_VALUE_TEXT})`,
+			"i",
+		),
+);
 
 /**
  * Anthropic's per-bucket rate-limit reset clocks, each an RFC 3339 timestamp
@@ -141,17 +198,14 @@ export function resetHeaderTargetMs(value: number): { atMs: number } | { delta: 
  * Server-suggested retry delay extraction. Merges the patterns historically used
  * by the OpenAI Codex and Google Gemini retry helpers.
  *
- * Header sources (checked in order):
- *  - `retry-after-ms` (milliseconds)
- *  - `Retry-After` (numeric seconds, or HTTP date)
- *  - `x-ratelimit-reset-ms` (delta ms, or Unix epoch ms/s for large values)
- *  - `x-ratelimit-reset` (delta seconds, or Unix epoch s/ms for large values)
- *  - `x-ratelimit-reset-after` (seconds)
- *  - `anthropic-ratelimit-*-reset` (see {@link anthropicResetDelayMs})
+ * Header sources, in order: each entry of {@link RETRY_HINT_HEADERS}, then
+ * `anthropic-ratelimit-*-reset` (see {@link anthropicResetDelayMs}).
  *
- * Body patterns:
- *  - `retry-after-ms=62000` / `retry-after-ms: 62000` (milliseconds)
- *  - `retry-after: 60` / `retry-after 60` (seconds)
+ * Body patterns, in order:
+ *  - each entry of {@link RETRY_HINT_HEADERS} written as `name: value`,
+ *    `name=value` or `name value` (`retry-after-ms=62000`, `retry-after: 60`,
+ *    `retry-after: 2026-01-01T00:00:00Z`, `x-ratelimit-reset: 60`), read by the
+ *    same `read` as the header; a zero or elapsed window states no wait
  *  - `Your quota will reset after 18h31m10s` / `10m15s` / `39s`
  *  - `Please retry in 250ms` / `Please retry in 12s`
  *  - `"retryDelay": "34.074824224s"` (JSON error detail field)
@@ -161,62 +215,24 @@ export function resetHeaderTargetMs(value: number): { atMs: number } | { delta: 
  */
 export function extractRetryHint(source: Response | Headers | null | undefined, body?: string): number | undefined {
 	const headers = source instanceof Headers ? source : (source?.headers ?? undefined);
+	const nowMs = Date.now();
 	if (headers) {
-		const retryAfterMs = headers.get("retry-after-ms");
-		if (retryAfterMs) {
-			const ms = Number(retryAfterMs);
-			if (Number.isFinite(ms) && ms >= 0) return ms;
+		for (const header of RETRY_HINT_HEADERS) {
+			const value = headers.get(header.name);
+			if (!value) continue;
+			const ms = header.read(value, nowMs);
+			if (ms !== undefined) return ms;
 		}
-		const retryAfter = headers.get("retry-after");
-		if (retryAfter) {
-			const seconds = Number(retryAfter);
-			if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
-			const parsedDate = Date.parse(retryAfter);
-			if (!Number.isNaN(parsedDate)) return Math.max(0, parsedDate - Date.now());
-		}
-		const rateLimitResetMs = headers.get("x-ratelimit-reset-ms");
-		if (rateLimitResetMs) {
-			const value = Number(rateLimitResetMs);
-			if (Number.isFinite(value) && value > 0) {
-				const target = resetHeaderTargetMs(value);
-				if ("delta" in target) return value; // raw value is already a delta in ms
-				const delta = target.atMs - Date.now();
-				if (delta > 0) return delta;
-			}
-		}
-		const rateLimitReset = headers.get("x-ratelimit-reset");
-		if (rateLimitReset) {
-			const value = Number.parseInt(rateLimitReset, 10);
-			if (Number.isFinite(value) && value > 0) {
-				// Same three shapes as the `-ms` variant above, so the same owner
-				// disambiguates them. Read as a bare epoch this branch discarded every
-				// delta a gateway sent: `x-ratelimit-reset: 60` computed 60000 - now,
-				// which is negative, so the server's own wait was dropped.
-				const target = resetHeaderTargetMs(value);
-				if ("delta" in target) return value * 1000; // header's own unit is seconds
-				const delta = target.atMs - Date.now();
-				if (delta > 0) return delta;
-			}
-		}
-		const rateLimitResetAfter = headers.get("x-ratelimit-reset-after");
-		if (rateLimitResetAfter) {
-			const seconds = Number(rateLimitResetAfter);
-			if (Number.isFinite(seconds) && seconds > 0) return seconds * 1000;
-		}
-		const anthropicMs = anthropicResetDelayMs(headers);
+		const anthropicMs = anthropicResetDelayMs(headers, nowMs);
 		if (anthropicMs !== undefined) return anthropicMs;
 	}
 
 	if (!body) return undefined;
-	const retryAfterMsText = RETRY_AFTER_MS_TEXT_PATTERN.exec(body);
-	if (retryAfterMsText) {
-		const ms = Number.parseFloat(retryAfterMsText[1]!);
-		if (Number.isFinite(ms) && ms > 0) return ms;
-	}
-	const retryAfterSecondsText = RETRY_AFTER_SECONDS_TEXT_PATTERN.exec(body);
-	if (retryAfterSecondsText) {
-		const seconds = Number.parseFloat(retryAfterSecondsText[1]!);
-		if (Number.isFinite(seconds) && seconds > 0) return seconds * 1000;
+	for (let i = 0; i < RETRY_HINT_HEADERS.length; i++) {
+		const match = RETRY_HINT_TEXT_PATTERNS[i]!.exec(body);
+		if (!match) continue;
+		const ms = RETRY_HINT_HEADERS[i]!.read(match[1]!, nowMs);
+		if (ms !== undefined && ms > 0) return ms;
 	}
 
 	const quotaMatch = QUOTA_RESET_PATTERN.exec(body);
@@ -446,7 +462,7 @@ function resolveDefaultDelay(
 	attempt: number,
 	maxDelayMs: number,
 ): number {
-	if (option === undefined) return Math.min(500 * 2 ** attempt, maxDelayMs);
+	if (option === undefined) return exponentialBackoffDelay(attempt, { baseMs: 500, maxMs: maxDelayMs, jitter: 0 });
 	if (typeof option === "number") return Math.min(option, maxDelayMs);
 	if (typeof option === "function") return Math.min(option(attempt), maxDelayMs);
 	return Math.min(option[Math.min(attempt, option.length - 1)] ?? 0, maxDelayMs);

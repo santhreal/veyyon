@@ -71,7 +71,7 @@ providers run and no foreign-tool directory is ever scanned:
 
 - `native` (priority 100): the profile's `.../agent/skills` dir, user level only, via `src/discovery/builtin.ts`. Project-local `.veyyon/skills` is not scanned.
 - `veyyon-plugins` (priority 90): `skills/` bundled with plugins installed into the active profile
-- `veyyon-managed` (priority 5): auto-learn skills under `.../agent/managed-skills`, discovered unconditionally (only writing/nudging is gated by `autolearn.enabled`); always defers to a same-named authored skill
+- `veyyon-managed` (priority 5): auto-learn skills under `.../agent/managed-skills`, discovered unconditionally (only writing/nudging is controlled by `autolearn.enabled`); always defers to a same-named authored skill
 
 The allowlist is defined by `profileSkillProviderIds()` in `src/extensibility/skills.ts`. If `skills.enabled` is `false`, discovery returns no skills.
 
@@ -159,7 +159,7 @@ Guards:
 
 Resolution details:
 
-- skill name must match exactly
+- skill name must match verbatim
 - relative paths are URL-decoded
 - absolute paths are rejected
 - path traversal (`..`) is rejected

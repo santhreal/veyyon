@@ -1,7 +1,7 @@
 import { errorMessage, isCancellation } from "@veyyon/utils";
 import { markdownLink } from "../../markdown-link";
 import { loadJson } from "../engine/declarative";
-import type { MediaDeclaration } from "../engine/media";
+import type { MediaContext, MediaDeclaration } from "../engine/media";
 import { buildResult, formatMediaDuration, htmlToBasicMarkdown, isScraperDegrade } from "../types";
 
 // --- Discogs ---
@@ -393,6 +393,22 @@ function buildMusicBrainzArtistMarkdown(artist: MusicBrainzArtist): string {
 	return md;
 }
 
+/** One medium's label and its first {@link MUSICBRAINZ_MAX_TRACKS} tracks, or its track count when no track is listed. */
+function renderMusicBrainzMedium(medium: MusicBrainzMedium, includePosition: boolean): string {
+	const label = buildMusicBrainzMediumLabel(medium, includePosition);
+	let md = label ? `### ${label}\n\n` : "";
+	const tracks = medium.tracks ?? [];
+	if (tracks.length) {
+		md += `${tracks.slice(0, MUSICBRAINZ_MAX_TRACKS).map(formatMusicBrainzTrack).join("\n")}\n\n`;
+		if (tracks.length > MUSICBRAINZ_MAX_TRACKS) {
+			md += `_Showing first ${MUSICBRAINZ_MAX_TRACKS} of ${tracks.length} tracks._\n\n`;
+		}
+	} else if (medium["track-count"]) {
+		md += `- ${medium["track-count"]} tracks (details unavailable)\n\n`;
+	}
+	return md;
+}
+
 function buildMusicBrainzReleaseMarkdown(release: MusicBrainzRelease): string {
 	let md = `# ${release.title}\n\n`;
 
@@ -401,29 +417,10 @@ function buildMusicBrainzReleaseMarkdown(release: MusicBrainzRelease): string {
 		release["track-count"] ??
 		media.reduce((sum, medium) => sum + (medium["track-count"] ?? medium.tracks?.length ?? 0), 0);
 
-	if (totalTracks) {
-		md += `**Tracks**: ${totalTracks}\n\n`;
-	}
-
+	if (totalTracks) md += `**Tracks**: ${totalTracks}\n\n`;
 	if (media.length) {
-		md += "## Tracks\n\n";
 		const includePosition = media.length > 1;
-
-		for (const medium of media) {
-			const label = buildMusicBrainzMediumLabel(medium, includePosition);
-			if (label) md += `### ${label}\n\n`;
-
-			const tracks = medium.tracks ?? [];
-			if (tracks.length) {
-				const lines = tracks.slice(0, MUSICBRAINZ_MAX_TRACKS).map(formatMusicBrainzTrack).join("\n");
-				md += `${lines}\n\n`;
-				if (tracks.length > MUSICBRAINZ_MAX_TRACKS) {
-					md += `_Showing first ${MUSICBRAINZ_MAX_TRACKS} of ${tracks.length} tracks._\n\n`;
-				}
-			} else if (medium["track-count"]) {
-				md += `- ${medium["track-count"]} tracks (details unavailable)\n\n`;
-			}
-		}
+		md += `## Tracks\n\n${media.map(medium => renderMusicBrainzMedium(medium, includePosition)).join("")}`;
 	}
 
 	return md;
@@ -620,28 +617,28 @@ interface SpotifyOpenGraphData {
 	releaseDate?: string;
 }
 
+/** The OpenGraph field each Spotify `<meta>` property fills; property names compare case-sensitively. */
+const SPOTIFY_OG_FIELDS: Record<string, keyof SpotifyOpenGraphData> = {
+	"og:title": "title",
+	"og:description": "description",
+	"og:audio": "audio",
+	"og:image": "image",
+	"og:type": "type",
+	"music:duration": "duration",
+	"music:album": "album",
+	"music:musician": "musician",
+	"music:release_date": "releaseDate",
+	"twitter:audio:artist_name": "artist",
+};
+
+/** The page's OpenGraph metadata; a property set twice keeps its last value. */
 function parseSpotifyOpenGraph(html: string): SpotifyOpenGraphData {
 	const og: SpotifyOpenGraphData = {};
-	const metaPattern = /<meta\s+(?:property|name)="([^"]+)"\s+content="([^"]*)"[^>]*>/gi;
-	let match: RegExpExecArray | null = null;
-
-	while (true) {
-		match = metaPattern.exec(html);
-		if (match === null) break;
-		const [, property, content] = match;
-
-		if (property === "og:title") og.title = content;
-		else if (property === "og:description") og.description = content;
-		else if (property === "og:audio") og.audio = content;
-		else if (property === "og:image") og.image = content;
-		else if (property === "og:type") og.type = content;
-		else if (property === "music:duration") og.duration = content;
-		else if (property === "music:album") og.album = content;
-		else if (property === "music:musician") og.musician = content;
-		else if (property === "music:release_date") og.releaseDate = content;
-		else if (property === "twitter:audio:artist_name") og.artist = content;
+	for (const [, property, content] of html.matchAll(
+		/<meta\s+(?:property|name)="([^"]+)"\s+content="([^"]*)"[^>]*>/gi,
+	)) {
+		if (Object.hasOwn(SPOTIFY_OG_FIELDS, property)) og[SPOTIFY_OG_FIELDS[property]] = content;
 	}
-
 	return og;
 }
 
@@ -661,69 +658,83 @@ function formatSpotifyDurationSeconds(seconds: string | undefined): string | nul
 	return formatMediaDuration(num);
 }
 
+/** What each content type withholds without Spotify API credentials. */
+const SPOTIFY_AUTH_NOTES: Record<string, string> = {
+	playlist: "Playlist details (tracks, creator, follower count)",
+	album: "Track listing and detailed album information",
+	"podcast-show": "Episode listing and detailed show information",
+};
+
+/** The artist, album and duration lines of a track or an episode. */
+function spotifyTrackSections(og: SpotifyOpenGraphData): string[] {
+	const sections: string[] = [];
+	const artist = og.artist || og.musician;
+	if (artist) sections.push(`**Artist**: ${artist}\n`);
+	if (og.album) sections.push(`**Album**: ${og.album}\n`);
+	const duration = formatSpotifyDurationSeconds(og.duration);
+	if (duration) sections.push(`**Duration**: ${duration}\n`);
+	return sections;
+}
+
 function formatSpotifyOutput(
 	contentType: string,
 	oEmbed: SpotifyOEmbedResponse,
 	og: SpotifyOpenGraphData,
 	url: string,
 ): string {
-	const sections: string[] = [];
-
-	const title = og.title || oEmbed.title || "Unknown";
-	sections.push(`# ${title}\n`);
-
-	sections.push(`**Type**: ${contentType}\n`);
-
-	if (og.description) {
-		sections.push(`**Description**: ${og.description}\n`);
-	}
-
-	if (contentType === "track" || contentType === "podcast-episode") {
-		if (og.artist || og.musician) {
-			sections.push(`**Artist**: ${og.artist || og.musician}\n`);
-		}
-		if (og.album) {
-			sections.push(`**Album**: ${og.album}\n`);
-		}
-		if (og.duration) {
-			const formatted = formatSpotifyDurationSeconds(og.duration);
-			if (formatted) {
-				sections.push(`**Duration**: ${formatted}\n`);
-			}
-		}
-	}
-
-	if (contentType === "album" && og.releaseDate) {
-		sections.push(`**Release Date**: ${og.releaseDate}\n`);
-	}
+	const sections = [`# ${og.title || oEmbed.title || "Unknown"}\n`, `**Type**: ${contentType}\n`];
+	if (og.description) sections.push(`**Description**: ${og.description}\n`);
+	if (contentType === "track" || contentType === "podcast-episode") sections.push(...spotifyTrackSections(og));
+	if (contentType === "album" && og.releaseDate) sections.push(`**Release Date**: ${og.releaseDate}\n`);
 
 	sections.push("\n---\n");
-	if (contentType === "playlist") {
+	const withheld = Object.hasOwn(SPOTIFY_AUTH_NOTES, contentType) ? SPOTIFY_AUTH_NOTES[contentType] : undefined;
+	if (withheld) {
 		sections.push(
-			"**Note**: Playlist details (tracks, creator, follower count) require authentication. " +
-				"Only basic metadata is available without Spotify API credentials.\n",
-		);
-	} else if (contentType === "album") {
-		sections.push(
-			"**Note**: Track listing and detailed album information require authentication. " +
-				"Only basic metadata is available without Spotify API credentials.\n",
-		);
-	} else if (contentType === "podcast-show") {
-		sections.push(
-			"**Note**: Episode listing and detailed show information require authentication. " +
-				"Only basic metadata is available without Spotify API credentials.\n",
+			`**Note**: ${withheld} require authentication. Only basic metadata is available without Spotify API credentials.\n`,
 		);
 	}
-
 	sections.push(`**URL**: ${url}\n`);
 
-	if (oEmbed.thumbnail_url) {
-		sections.push(`**Thumbnail**: ${oEmbed.thumbnail_url}\n`);
-	} else if (og.image) {
-		sections.push(`**Image**: ${og.image}\n`);
-	}
-
+	if (oEmbed.thumbnail_url) sections.push(`**Thumbnail**: ${oEmbed.thumbnail_url}\n`);
+	else if (og.image) sections.push(`**Image**: ${og.image}\n`);
 	return sections.join("\n");
+}
+
+/** The oEmbed record; empty, with a note saying why, when the request fails or its body is not JSON. */
+async function loadSpotifyOEmbed(ctx: MediaContext, notes: string[]): Promise<SpotifyOEmbedResponse> {
+	try {
+		const oEmbedUrl = `https://open.spotify.com/oembed?url=${encodeURIComponent(ctx.url)}`;
+		const response = await ctx.loadPage(oEmbedUrl, { timeout: ctx.timeout, signal: ctx.signal });
+		if (!response.ok) {
+			notes.push(`oEmbed API returned status ${response.status || "error"}`);
+			return {};
+		}
+		const parsed = ctx.tryParseJson<SpotifyOEmbedResponse>(response.content);
+		notes.push(parsed ? "Retrieved metadata via Spotify oEmbed API" : "Failed to parse oEmbed JSON");
+		return parsed || {};
+	} catch (err) {
+		if (isCancellation(err)) throw err;
+		notes.push(`Failed to fetch oEmbed data: ${errorMessage(err)}`);
+		return {};
+	}
+}
+
+/** The page's OpenGraph metadata; empty, with a note saying why, when the page cannot be fetched. */
+async function loadSpotifyOpenGraph(ctx: MediaContext, notes: string[]): Promise<SpotifyOpenGraphData> {
+	try {
+		const pageResponse = await ctx.loadPage(ctx.url, { timeout: ctx.timeout, signal: ctx.signal });
+		if (!pageResponse.ok) {
+			notes.push(`Page fetch returned status ${pageResponse.status || "error"}`);
+			return {};
+		}
+		notes.push("Parsed Open Graph metadata from page HTML");
+		return parseSpotifyOpenGraph(pageResponse.content);
+	} catch (err) {
+		if (isCancellation(err)) throw err;
+		notes.push(`Failed to fetch page HTML: ${errorMessage(err)}`);
+		return {};
+	}
 }
 
 export const spotifyDeclaration: MediaDeclaration = {
@@ -748,49 +759,13 @@ export const spotifyDeclaration: MediaDeclaration = {
 		if (!contentType) return null;
 
 		const notes: string[] = [];
-		let oEmbedData: SpotifyOEmbedResponse = {};
-		let ogData: SpotifyOpenGraphData = {};
-
-		try {
-			const oEmbedUrl = `https://open.spotify.com/oembed?url=${encodeURIComponent(ctx.url)}`;
-			const response = await ctx.loadPage(oEmbedUrl, { timeout: ctx.timeout, signal: ctx.signal });
-
-			if (response.ok) {
-				const parsedJson = ctx.tryParseJson<SpotifyOEmbedResponse>(response.content);
-				if (parsedJson) {
-					oEmbedData = parsedJson;
-					notes.push("Retrieved metadata via Spotify oEmbed API");
-				} else {
-					notes.push("Failed to parse oEmbed JSON");
-				}
-			} else {
-				notes.push(`oEmbed API returned status ${response.status || "error"}`);
-			}
-		} catch (err) {
-			if (isCancellation(err)) throw err;
-			notes.push(`Failed to fetch oEmbed data: ${errorMessage(err)}`);
-		}
-
-		try {
-			const pageResponse = await ctx.loadPage(ctx.url, { timeout: ctx.timeout, signal: ctx.signal });
-
-			if (pageResponse.ok) {
-				ogData = parseSpotifyOpenGraph(pageResponse.content);
-				notes.push("Parsed Open Graph metadata from page HTML");
-			} else {
-				notes.push(`Page fetch returned status ${pageResponse.status || "error"}`);
-			}
-		} catch (err) {
-			if (isCancellation(err)) throw err;
-			notes.push(`Failed to fetch page HTML: ${errorMessage(err)}`);
-		}
-
+		const oEmbedData = await loadSpotifyOEmbed(ctx, notes);
+		const ogData = await loadSpotifyOpenGraph(ctx, notes);
 		if (!oEmbedData.title && !ogData.title) {
 			return ctx.scraperDegrade("spotify", "could not retrieve metadata");
 		}
 
-		const output = formatSpotifyOutput(contentType, oEmbedData, ogData, ctx.url);
-		return buildResult(output, {
+		return buildResult(formatSpotifyOutput(contentType, oEmbedData, ogData, ctx.url), {
 			url: ctx.url,
 			method: "spotify",
 			fetchedAt: ctx.fetchedAt,

@@ -7,7 +7,7 @@
  * shared banner parser, and applies harness-profile ordering without crossing
  * the provider-cache boundary between static and volatile parts.
  */
-import { logger, once } from "@veyyon/utils";
+import { lazy, logger } from "@veyyon/utils";
 import { bannerTable, leadingBannerName, type RenderedSection, splitBanneredDocument } from "./banner-grammar";
 import { BANNERED_SECTIONS, BANNERED_TEMPLATE_SECTIONS } from "./section-registry";
 
@@ -30,12 +30,15 @@ export type PromptSectionName = string;
  * CALLED the module graph is fully evaluated, so no ordering can observe the
  * binding early.
  *
- * Each memoizes through `once`, the shared no-argument memoizer, rather than through
+ * Each memoizes through `lazy`, the shared memoizer, rather than through
  * a module-level `let` and a `??=` written out three times. Three copies of a caching
  * pattern is three chances to get the cache wrong in a way that only one of them
  * shows: `??=` in particular re-runs forever if the derivation ever returns an empty
  * string or zero, which these do not today and nothing was checking.
  */
+
+const sectionIds = lazy((): readonly string[] => BANNERED_SECTIONS.map(b => b.id));
+const templateSectionIds = lazy((): readonly string[] => BANNERED_TEMPLATE_SECTIONS.map(b => b.id));
 
 /**
  * The reorderable section names, DERIVED from the one registry in
@@ -52,7 +55,9 @@ export type PromptSectionName = string;
  * away. That is settled separately, by there being one parser
  * ({@link splitBanneredDocument}) whose caller chooses strictness.
  */
-export const promptSectionNames: () => readonly string[] = once(() => BANNERED_SECTIONS.map(b => b.id));
+export function promptSectionNames(): readonly string[] {
+	return sectionIds.value;
+}
 
 /**
  * Bannered sections in the static cached-prefix document.
@@ -60,7 +65,9 @@ export const promptSectionNames: () => readonly string[] = once(() => BANNERED_S
  * {@link applyPromptSectionOrder} can reorder only this one document.
  * {@link applyPromptSectionOrderToParts} can also reorder runtime parts.
  */
-export const templateSectionNames: () => readonly string[] = once(() => BANNERED_TEMPLATE_SECTIONS.map(b => b.id));
+export function templateSectionNames(): readonly string[] {
+	return templateSectionIds.value;
+}
 
 /**
  * The system prompt's own banner table: the default this module's splitter uses.
@@ -70,7 +77,7 @@ export const templateSectionNames: () => readonly string[] = once(() => BANNERED
  * table was built by different code from every other prompt's — the one place a
  * disagreement about which banners exist could not be seen by reading either.
  */
-const sectionBannerToName: () => Record<string, PromptSectionName> = once(() => bannerTable(BANNERED_SECTIONS));
+const sectionBannerToName = lazy((): Record<string, PromptSectionName> => bannerTable(BANNERED_SECTIONS));
 
 /**
  * Split a rendered prompt on its banner lines, reporting what is there.
@@ -96,7 +103,7 @@ const sectionBannerToName: () => Record<string, PromptSectionName> = once(() => 
  */
 export function splitPromptSections(
 	rendered: string,
-	banners: Record<string, PromptSectionName> = sectionBannerToName(),
+	banners: Record<string, PromptSectionName> = sectionBannerToName.value,
 ): RenderedSection[] {
 	return splitBanneredDocument(rendered, { banners }).map((region, index, all) => ({
 		name: region.name,
@@ -178,7 +185,7 @@ export function applyPromptSectionOrderToParts(
 	// can never disagree about which section a part is.
 	const identify = (part: string): string | undefined => {
 		const name = leadingBannerName(part);
-		return name === undefined ? undefined : sectionBannerToName()[name];
+		return name === undefined ? undefined : sectionBannerToName.value[name];
 	};
 	const templateNames = new Set(templateSectionNames());
 	const runtimeNames = new Set(runtimeParts.map(identify).filter((name): name is string => name !== undefined));

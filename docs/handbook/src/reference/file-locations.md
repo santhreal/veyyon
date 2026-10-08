@@ -14,7 +14,7 @@ The root itself holds only **global, cross-profile** state. Everything else is p
 | `shared-auth/` | Shared credential store, used when `profileSharing` is on: `agent.db` (SQLite OAuth/API-key storage shared across profiles). |
 | `AGENTS.md` | **Global** instructions loaded into every profile's session. Veyyon creates it on first run with a stripped-before-load guidance header. Keep profile-specific rules in the profile's own `AGENTS.md` (below). See [Instruction layers](../features/skills.md#instruction-layers). |
 | `install-id` | Persistent per-install UUID. Shared by every profile. |
-| `profiles/` | One directory per profile, including `profiles/default/`, see below. |
+| `profiles/` | One directory per profile, including `profiles/default/`, described under Profiles. |
 
 ## Profiles (`~/.veyyon/profiles/<name>/`)
 
@@ -42,6 +42,7 @@ A profile has two layers:
 | `sessions/` | Saved session transcripts, one per thread. |
 | `blobs/` | Content-addressed attachment/blob store. |
 | `history.db`, `models.db` | Composer history, model cache. |
+| `resolved-models.json`, `accepted-models-config.json` | Resolved model catalog snapshot, last validated `models.yml`. Rebuilt when missing or stale. |
 | `skills/`, `commands/`, `prompts/`, `tools/`, `themes/`, `modules/` | Skills, slash commands, prompt templates, custom tools, themes, Python modules. |
 | `mcp.json`, `ssh.json` | MCP server and SSH target config. |
 | `keybindings.yml` | This profile's keybindings (`keybindings.yaml` accepted; legacy `keybindings.json` migrates on load). |

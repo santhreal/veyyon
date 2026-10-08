@@ -1,7 +1,7 @@
 # Connectors and Apps
 
-Veyyon does not ship provider-hosted connectors, account-gated app integrations wired through a
-provider's own connector store. Extend it with the integrations below instead.
+Veyyon does not ship provider-hosted connectors: app integrations that require a provider account
+and install through that provider's connector store. Extend Veyyon with MCP, plugins, hooks, and skills instead.
 
 ## What ships instead
 
@@ -17,7 +17,7 @@ Extend Veyyon with tools that are implemented and documented today:
 
 Tool policy uses `tools.approvalMode` and `tools.approval.<tool>`, same machinery for bash, MCP, and custom tools (`docs/handbook/src/reference/approval-mode.md`).
 
-Provider-hosted connector stores and `apps` connector tables are not part of the current product surface.
+Veyyon has no provider-hosted connector store and no `apps` connector table.
 Use MCP, plugins, hooks, and skills for integrations.
 
 ## See also

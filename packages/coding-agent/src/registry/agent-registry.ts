@@ -164,8 +164,8 @@ export interface AgentRef {
 	waitingOnPeer?: boolean;
 	/**
 	 * Set while this agent has a tool call stopped at an approval prompt, cleared
-	 * the moment the prompt is answered, abandoned or refused. See
-	 * {@link PendingApproval}.
+	 * the moment the last such prompt is answered, abandoned or refused. See
+	 * {@link PendingApproval} and {@link AgentRegistry.openApprovalWait}.
 	 *
 	 * A blocked agent is `running`, because it is mid-turn, and is therefore
 	 * indistinguishable from a working one by status alone. That is the gap this
@@ -239,6 +239,8 @@ export class AgentRegistry {
 
 	readonly #refs = new Map<string, AgentRef>();
 	readonly #listeners = new Set<RegistryListener>();
+	/** Every approval wait open on an agent, oldest first. Absent while it has none. */
+	readonly #approvalWaits = new WeakMap<AgentRef, PendingApproval[]>();
 
 	/**
 	 * Register an agent, deriving its conversation {@link AgentRef.scope} when the
@@ -389,37 +391,58 @@ export class AgentRegistry {
 	}
 
 	/**
-	 * Mark this agent as stopped at an approval prompt, or clear the mark.
+	 * Open an approval wait for this agent and return the function that closes it.
 	 *
-	 * Emits `status_changed` so a roster or dashboard repaints the moment an agent
-	 * starts or stops waiting on a person: the whole point of the state is that it
-	 * is VISIBLE, and a silent field would leave the dashboard showing a blocked
-	 * spawn as a working one until something else happened to trigger a repaint.
+	 * Emits `status_changed` on every open and close, so a roster or dashboard repaints
+	 * the moment an agent starts or stops waiting on a person. A silent field would leave
+	 * the dashboard showing a blocked spawn as a working one until something else
+	 * triggered a repaint.
+	 *
+	 * Waits overlap when one agent has several cards open at once, one per call of a
+	 * batch. The agent waits from the first opening to the last closing:
+	 * {@link AgentRef.pendingApproval} stays set through that span with `since` at its
+	 * start and names the most recently opened wait still open, and the span is banked
+	 * once into {@link AgentRef.approvalWaitedMs} when the last wait closes. One slot
+	 * written at each open and cleared at each close marked an agent sitting at its
+	 * second card as working once its first card was answered, so the runtime budget
+	 * charged it the operator's reading time.
 	 *
 	 * Does NOT touch `lastActivity`. Waiting on a human is not agent activity, and
 	 * bumping the timestamp would push out deadlines that are measured from real
 	 * work, which is the opposite of what {@link pendingApprovalSince} is for.
 	 *
-	 * Clearing an open wait BANKS its duration into {@link AgentRef.approvalWaitedMs}
-	 * first. Without that, an agent that answered a prompt and went back to work
-	 * reports nothing, and a budget reading only the open interval charges it every
-	 * second the operator spent reading. The banking happens here rather than at the
-	 * call site so no caller can forget it and silently under-credit the agent.
+	 * Banking happens here rather than at the call site so no caller can forget it and
+	 * silently under-credit the agent. Closing a wait twice is a no-op, and an id that is
+	 * not registered gets a closer that does nothing.
 	 */
-	setPendingApproval(id: string, pending: PendingApproval | undefined): void {
+	openApprovalWait(id: string, wait: PendingApproval): () => void {
 		const ref = this.#refs.get(id);
-		if (!ref) return;
-		const open = ref.pendingApproval;
-		if (open === undefined && pending === undefined) return;
-		if (open !== undefined) {
-			// `Math.max(0, …)` because a clock step backwards must never subtract from
-			// the banked total: a negative contribution would make the exclusion
-			// smaller than the waits already recorded, which is worse than not counting
-			// this one at all.
-			ref.approvalWaitedMs = (ref.approvalWaitedMs ?? 0) + Math.max(0, Date.now() - open.since);
-		}
-		ref.pendingApproval = pending;
+		if (!ref) return () => {};
+		const waits = this.#approvalWaits.get(ref) ?? [];
+		this.#approvalWaits.set(ref, waits);
+		const since = ref.pendingApproval?.since ?? wait.since;
+		waits.push(wait);
+		ref.pendingApproval = { ...wait, since };
 		this.#emit({ type: "status_changed", ref });
+		let closed = false;
+		return () => {
+			if (closed) return;
+			closed = true;
+			waits.splice(waits.indexOf(wait), 1);
+			const latest = waits.at(-1);
+			if (latest === undefined) {
+				// `Math.max(0, …)` because a clock step backwards must never subtract from
+				// the banked total: a negative contribution would make the exclusion
+				// smaller than the waits already recorded, which is worse than not counting
+				// this one at all.
+				ref.approvalWaitedMs = (ref.approvalWaitedMs ?? 0) + Math.max(0, Date.now() - since);
+				ref.pendingApproval = undefined;
+				this.#approvalWaits.delete(ref);
+			} else {
+				ref.pendingApproval = { ...latest, since };
+			}
+			if (this.#refs.get(ref.id) === ref) this.#emit({ type: "status_changed", ref });
+		};
 	}
 
 	/**

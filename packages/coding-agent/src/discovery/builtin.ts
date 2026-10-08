@@ -30,8 +30,13 @@ import {
 	createSourceMeta,
 	discoverExtensionModulePaths,
 	getExtensionNameFromPath,
+	loadCommandDirs,
+	loadCustomToolDirs,
 	loadFilesFromDir,
+	loadPromptDirs,
+	loadRuleDirs,
 	readContextFile,
+	type ScopedConfigDir,
 	scanSkillsFromDir,
 } from "./helpers";
 
@@ -65,7 +70,7 @@ async function ifNonEmptyDir(...seg: string[]): Promise<string | null> {
  * The user scope is profile-scoped: `ctx.agentDir` names the profile the CALLER
  * is loading for, not whichever profile the process booted with.
  */
-async function getConfigDirs(ctx: LoadContext): Promise<Array<{ dir: string; level: "user" | "project" }>> {
+async function getConfigDirs(ctx: LoadContext): Promise<ScopedConfigDir[]> {
 	const userDir = await ifNonEmptyDir(ctx.agentDir ?? getAgentDir());
 	return userDir ? [{ dir: userDir, level: "user" }] : [];
 }
@@ -295,52 +300,17 @@ registerProvider<DiscoveredSkill>(skillCapability.id, {
 });
 
 // Slash Commands
-async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashCommand>> {
-	const items: SlashCommand[] = [];
-	const warnings: string[] = [];
-
-	for (const { dir, level } of await getConfigDirs(ctx)) {
-		const commandsDir = path.join(dir, "commands");
-		const result = await loadFilesFromDir<SlashCommand>(commandsDir, PROVIDER_ID, level, {
-			extensions: ["md"],
-			transform: (name, content, path, source) => ({
-				name: name.replace(/\.md$/, ""),
-				path,
-				content,
-				level,
-				_source: source,
-			}),
-		});
-		items.push(...result.items);
-		if (result.warnings) warnings.push(...result.warnings);
-	}
-
-	return { items, warnings };
-}
-
 registerProvider<SlashCommand>(slashCommandCapability.id, {
 	id: PROVIDER_ID,
 	displayName: APP_DISPLAY_NAME,
 	description: DESCRIPTION,
 	priority: PRIORITY,
-	load: loadSlashCommands,
+	load: async ctx => loadCommandDirs(await getConfigDirs(ctx), PROVIDER_ID),
 });
 
 // Rules
 async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
-	const items: Rule[] = [];
-	const warnings: string[] = [];
-
-	for (const { dir, level } of await getConfigDirs(ctx)) {
-		const rulesDir = path.join(dir, "rules");
-		const result = await loadFilesFromDir<Rule>(rulesDir, PROVIDER_ID, level, {
-			extensions: ["md", "mdc"],
-			transform: (name, content, path, source) =>
-				buildRuleFromMarkdown(name, content, path, source, { stripNamePattern: /\.(md|mdc)$/ }),
-		});
-		items.push(...result.items);
-		if (result.warnings) warnings.push(...result.warnings);
-	}
+	const { items, warnings } = await loadRuleDirs(await getConfigDirs(ctx), PROVIDER_ID);
 
 	// Top-level RULES.md is a sticky always-apply rule. Documented in
 	// https://veyyon.dev/docs/context as the file that gets "re-injected near
@@ -378,34 +348,12 @@ registerProvider<Rule>(ruleCapability.id, {
 });
 
 // Prompts
-async function loadPrompts(ctx: LoadContext): Promise<LoadResult<Prompt>> {
-	const items: Prompt[] = [];
-	const warnings: string[] = [];
-
-	for (const { dir, level } of await getConfigDirs(ctx)) {
-		const promptsDir = path.join(dir, "prompts");
-		const result = await loadFilesFromDir<Prompt>(promptsDir, PROVIDER_ID, level, {
-			extensions: ["md"],
-			transform: (name, content, path, source) => ({
-				name: name.replace(/\.md$/, ""),
-				path,
-				content,
-				_source: source,
-			}),
-		});
-		items.push(...result.items);
-		if (result.warnings) warnings.push(...result.warnings);
-	}
-
-	return { items, warnings };
-}
-
 registerProvider<Prompt>(promptCapability.id, {
 	id: PROVIDER_ID,
 	displayName: APP_DISPLAY_NAME,
 	description: DESCRIPTION,
 	priority: PRIORITY,
-	load: loadPrompts,
+	load: async ctx => loadPromptDirs(await getConfigDirs(ctx), PROVIDER_ID),
 });
 
 // Extension Modules
@@ -679,119 +627,12 @@ registerProvider<Hook>(hookCapability.id, {
 });
 
 // Custom Tools
-async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomTool>> {
-	const items: DiscoveredCustomTool[] = [];
-	const warnings: string[] = [];
-
-	const configDirs = await getConfigDirs(ctx);
-	const entriesResults = await Promise.all(configDirs.map(({ dir }) => readDirEntries(path.join(dir, "tools"))));
-
-	const fileLoadPromises: Array<Promise<{ items: DiscoveredCustomTool[]; warnings?: string[] }>> = [];
-	const subDirCandidates: Array<{
-		indexPath: string;
-		entryName: string;
-		level: "user" | "project";
-	}> = [];
-
-	for (let i = 0; i < configDirs.length; i++) {
-		const { dir, level } = configDirs[i];
-		const toolEntries = entriesResults[i];
-		if (toolEntries.length === 0) continue;
-
-		const toolsDir = path.join(dir, "tools");
-
-		fileLoadPromises.push(
-			loadFilesFromDir<DiscoveredCustomTool>(toolsDir, PROVIDER_ID, level, {
-				extensions: ["json", "md", "ts", "js", "sh", "bash", "py"],
-				transform: (name, content, path, source) => {
-					if (name.endsWith(".json")) {
-						const data = tryParseJson<{ name?: string; description?: string }>(content);
-						const toolName = data?.name || name.replace(/\.json$/, "");
-						const description =
-							typeof data?.description === "string" && data.description.trim()
-								? data.description
-								: `${toolName} custom tool`;
-						return {
-							name: toolName,
-							path,
-							description,
-							level,
-							_source: source,
-						};
-					}
-					if (name.endsWith(".md")) {
-						const { frontmatter } = parseFrontmatter(content, { source: path });
-						const toolName = (frontmatter.name as string) || name.replace(/\.md$/, "");
-						const description =
-							typeof frontmatter.description === "string" && frontmatter.description.trim()
-								? String(frontmatter.description)
-								: `${toolName} custom tool`;
-						return {
-							name: toolName,
-							path,
-							description,
-							level,
-							_source: source,
-						};
-					}
-					// Executable tool files (.ts, .js, .sh, .bash, .py)
-					const toolName = name.replace(/\.(ts|js|sh|bash|py)$/, "");
-					return {
-						name: toolName,
-						path,
-						description: `${toolName} custom tool`,
-						level,
-						_source: source,
-					};
-				},
-			}),
-		);
-
-		for (const entry of toolEntries) {
-			if (entry.name.startsWith(".")) continue;
-			if (!entry.isDirectory()) continue;
-
-			subDirCandidates.push({
-				indexPath: path.join(toolsDir, entry.name, "index.ts"),
-				entryName: entry.name,
-				level,
-			});
-		}
-	}
-
-	const [fileResults, indexContents] = await Promise.all([
-		Promise.all(fileLoadPromises),
-		Promise.all(subDirCandidates.map(({ indexPath }) => readFile(indexPath))),
-	]);
-
-	for (const result of fileResults) {
-		items.push(...result.items);
-		if (result.warnings) warnings.push(...result.warnings);
-	}
-
-	for (let i = 0; i < subDirCandidates.length; i++) {
-		const indexContent = indexContents[i];
-		if (indexContent !== null) {
-			const { indexPath, entryName, level } = subDirCandidates[i];
-			items.push({
-				name: entryName,
-				path: indexPath,
-				description: `${entryName} custom tool`,
-				level,
-				_source: createSourceMeta(PROVIDER_ID, indexPath, level),
-			});
-		}
-	}
-
-	return { items, warnings };
-}
-
 registerProvider<DiscoveredCustomTool>(toolCapability.id, {
 	id: PROVIDER_ID,
 	displayName: APP_DISPLAY_NAME,
 	description: DESCRIPTION,
 	priority: PRIORITY,
-	load: loadTools,
+	load: async ctx => loadCustomToolDirs(await getConfigDirs(ctx), PROVIDER_ID),
 });
 
 /**

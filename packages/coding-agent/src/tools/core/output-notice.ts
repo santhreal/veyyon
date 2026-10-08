@@ -137,7 +137,7 @@ export function extractResultTextOrUndefined(content: ResultTextContent): string
 			result += separator + part;
 			separator = "\n";
 		} else if (part && typeof part === "object" && (part.type === "text" || !part.type)) {
-			result += separator + `${part.text ?? ""}`;
+			result += `${separator}${part.text ?? ""}`;
 			separator = "\n";
 		}
 	}

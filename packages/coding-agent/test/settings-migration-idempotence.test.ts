@@ -129,12 +129,13 @@ describe("settings migrations are fixed points", () => {
 	 * renamed key would be overwritten by a stale one on every launch.
 	 */
 	test("renames queueMode to steeringMode once", async () => {
-		writeConfig({ queueMode: "steer" });
+		// `all`, not the default: a dropped rename would read back `one-at-a-time`.
+		writeConfig({ queueMode: "all" });
 
 		const { first, second } = await loadTwice("steeringMode");
 
-		expect(first).toBe("steer");
-		expect(second).toBe("steer");
+		expect(first).toBe("all");
+		expect(second).toBe("all");
 	});
 
 	/**
@@ -228,6 +229,19 @@ describe("settings migrations are fixed points", () => {
 
 		const strategy = await loadTwice("compaction.strategy");
 		expect(strategy.first).toBe("summary");
+		expect(strategy.second).toBe("summary");
+		expect(await loadValue("compaction.enabled")).toBe(false);
+	});
+
+	/**
+	 * `off` used to win over an explicit `enabled: true` at run time. The run-time check is gone and
+	 * `enabled` is the only switch, so the migration carries the kill switch across or compaction
+	 * turns back on for a config that said `off`.
+	 */
+	test("disables compaction for the off strategy even beside an explicit enabled: true", async () => {
+		writeConfig({ compaction: { enabled: true, strategy: "off" } });
+
+		const strategy = await loadTwice("compaction.strategy");
 		expect(strategy.second).toBe("summary");
 		expect(await loadValue("compaction.enabled")).toBe(false);
 	});

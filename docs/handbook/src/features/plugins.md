@@ -98,9 +98,9 @@ $ veyyon plugin install github:sindresorhus/slugify --dry-run
 ```
 
 A git target's package name comes from the repository, not the spec, so a dry run is how you learn
-the name a git plugin will install under. A target that cannot be resolved — an unpublished npm name,
-a version that does not exist, a private or missing repository — fails with the resolver's output and
-exits 1. A dry run proves the target resolves; it does not prove the package is a veyyon plugin,
+the name a git plugin will install under. A target that cannot be resolved, such as an unpublished npm
+name, a version that does not exist, or a private or missing repository, fails with the resolver's
+output and exits 1. A dry run proves the target resolves; it does not prove the package is a veyyon plugin,
 because nothing is unpacked and no manifest is read.
 
 #### List Plugins
@@ -146,12 +146,12 @@ $ veyyon plugin doctor --json
 ```
 
 Each check reports `ok`, a warning, or an error. `doctor` exits 1 when any error is left unrepaired
-and 0 otherwise, so you can gate a script on it. Warnings never affect the exit code, and an error
+and 0 otherwise, so a script can test its exit status. Warnings never affect the exit code, and an error
 that `--fix` repaired does not either. `--json` prints the checks as an array instead of the
 human-readable report.
 
 On a machine with no plugins installed every check is `ok`: nothing is missing, because nothing was
-ever installed. That is the state a fresh install is in, and `doctor` is quiet about it on purpose.
+ever installed. A fresh install is in that state, and `doctor` reports no warning for it.
 
 The checks are:
 
@@ -243,7 +243,7 @@ those, not by hand):
   (user or project), `installPath`, `version`, install/update timestamps, the source git
   commit, and an `enabled` toggle.
 
-The one plugin-related key that does live in `config.yml` is `marketplace.autoUpdate`, which
+The one plugin-related key that is read from `config.yml` is `marketplace.autoUpdate`, which
 controls the startup update check. It runs in the background, so it never delays the first
 paint, and it takes one of three values:
 

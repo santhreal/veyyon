@@ -12,8 +12,9 @@
  * WHAT IT DOES NOT CATCH. Whether a caller uses it. The browser packages have their own owner in
  * `@veyyon/tool-render`, deliberately, and this says nothing about that one.
  */
-import { describe, expect, it } from "bun:test";
-import { shortenPath as reExported } from "@veyyon/coding-agent/tools/core/render-utils";
+import { afterEach, describe, expect, it, vi } from "bun:test";
+import * as os from "node:os";
+import { shortenPath as reExported, shortenEmbeddedPaths } from "@veyyon/coding-agent/tools/core/render-utils";
 import { shortenPath } from "@veyyon/coding-agent/tools/core/shorten-path";
 
 describe("a displayed path hides the home directory", () => {
@@ -67,5 +68,29 @@ describe("a displayed path hides the home directory", () => {
 
 	it("leaves a path outside the home directory unchanged", () => {
 		expect(shortenPath("/srv/veyyon/app.ts", "/home/operator")).toBe("/srv/veyyon/app.ts");
+	});
+
+	describe("without an explicit home", () => {
+		afterEach(() => {
+			vi.restoreAllMocks();
+		});
+
+		// The home is read once per `os.homedir` function, so a frame does not build the string for
+		// every span it shortens. A replaced `os.homedir` is a different function, and the collapse
+		// follows the home it returns rather than the one read before it.
+		it("collapses the home the current os.homedir returns, in a path and in embedded text", () => {
+			vi.spyOn(os, "homedir").mockImplementation(() => "/home/first");
+			expect(shortenPath("/home/first/a.ts")).toBe("~/a.ts");
+			expect(shortenEmbeddedPaths("at /home/first/a.ts:3")).toBe("at ~/a.ts:3");
+			vi.restoreAllMocks();
+			vi.spyOn(os, "homedir").mockImplementation(() => "/home/second");
+			expect([shortenPath("/home/second/a.ts"), shortenPath("/home/first/a.ts")]).toEqual([
+				"~/a.ts",
+				"/home/first/a.ts",
+			]);
+			expect(shortenEmbeddedPaths("at /home/second/a.ts:3 and /home/first/a.ts:3")).toBe(
+				"at ~/a.ts:3 and /home/first/a.ts:3",
+			);
+		});
 	});
 });

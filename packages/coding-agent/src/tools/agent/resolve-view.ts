@@ -9,14 +9,11 @@
 
 import { truncateToWidth } from "@veyyon/utils/width";
 import type { NoticeView, StatusRowView, ToolViewRenderer, ViewLine } from "@veyyon/view";
-import { replaceTabs, type ToolViewResult } from "../core/render-utils";
+import { replaceTabs, type ToolViewResult, TRUNCATE_LENGTHS } from "../core/render-utils";
 import type { ResolveParams, ResolveToolDetails } from "./resolve";
 
 /** The result the card reads, which is the tool's own result shape narrowed to what a card shows. */
 export interface ResolveViewResult extends ToolViewResult<ResolveToolDetails> {}
-
-/** Columns of reason the call row carries before the rest is dropped. */
-const CALL_REASON_WIDTH = 72;
 
 /** The separator a label uses to name its source before its summary. */
 const SOURCE_SEPARATOR = ": ";
@@ -36,7 +33,7 @@ function splitLabel(label: string): { source?: string; summary: string } {
 export const resolveToolView: Required<ToolViewRenderer<ResolveParams, ResolveViewResult>> = {
 	renderCall(args): StatusRowView {
 		const reason = args.reason?.trim();
-		const shown = reason ? truncateToWidth(reason, CALL_REASON_WIDTH, "") : undefined;
+		const shown = reason ? truncateToWidth(replaceTabs(reason), TRUNCATE_LENGTHS.CONTENT, "") : undefined;
 		return {
 			kind: "statusRow",
 			status: "pending",

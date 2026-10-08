@@ -11,6 +11,9 @@ import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import type { ResolveToolDetails } from "@veyyon/coding-agent/tools/agent/resolve";
 import { type ResolveViewResult, resolveToolView } from "@veyyon/coding-agent/tools/agent/resolve-view";
+import { TRUNCATE_LENGTHS } from "@veyyon/coding-agent/tools/core/render-limits";
+import { replaceTabs } from "@veyyon/coding-agent/tools/core/render-utils";
+import { truncateToWidth } from "@veyyon/utils/width";
 import * as resolveOracle from "../oracles/resolve-main-renderer";
 import { COLLAPSED, HOST_COLLAPSED, renderCompLines, renderCompText, useDifferentialTheme, WIDTH } from "./harness";
 
@@ -32,13 +35,7 @@ describe("resolve tool differential", () => {
 	}
 
 	it("draws the pending call row for both actions with exact byte parity", () => {
-		const reasons = [
-			undefined,
-			"",
-			"   ",
-			"the diff is what the plan asked for",
-			`a reason far past the seventy-two columns the row keeps ${"and then some more of it ".repeat(4)}`,
-		];
+		const reasons = [undefined, "", "   ", "the diff is what the plan asked for"];
 		for (const action of ["apply", "discard"] as const) {
 			for (const reason of reasons) {
 				const args = { action, reason: reason as string };
@@ -56,6 +53,21 @@ describe("resolve tool differential", () => {
 		);
 		expect(row).toContain("discard");
 		expect(row).toContain("proposed -> rejected");
+	});
+
+	/**
+	 * The one pinned difference: main clamped the reason at a hand-picked 72 columns and printed its tabs.
+	 * The card clamps it at `TRUNCATE_LENGTHS.CONTENT` and expands the tabs, as every other tool row does.
+	 */
+	it("clamps the pending reason at the shared content width and expands its tabs", () => {
+		const reason = `a\treason far past the content width the row keeps ${"and then some more of it ".repeat(4)}`;
+		const drawn = stripVTControlCharacters(
+			renderCompText(drawToolView(resolveToolView.renderCall({ action: "apply", reason }, COLLAPSED), theme)),
+		);
+		const flat = (text: string): string => text.replace(/\s+/g, " ").trim();
+		expect(drawn).not.toContain("\t");
+		expect(flat(drawn)).toEndWith(flat(truncateToWidth(replaceTabs(reason), TRUNCATE_LENGTHS.CONTENT, "")));
+		expect(flat(drawn)).not.toContain(flat(reason.slice(TRUNCATE_LENGTHS.CONTENT)));
 	});
 
 	it("fills the same plate the renderer filled, for every outcome and at every width", () => {

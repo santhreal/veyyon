@@ -9,23 +9,23 @@ $ veyyon setup status
 $ veyyon setup status --json
 ```
 
-The install checks run first, because nothing below them can work if the install does not. They are the same checks the installer runs at the end of every install, run against your machine as it is now:
+The install checks run first, because no later check can pass on a broken install. They are the same checks the installer runs at the end of every install, run against your machine as it is now:
 
 | Check | What it proves |
 | --- | --- |
 | `veyyon on PATH` | The shell can find it, and which file it found. |
-| `PATH copies` | Only one `veyyon` is on your PATH. A second one earlier on PATH keeps answering after an update writes the first, which is what makes an update look like it did nothing. |
+| `PATH copies` | Only one `veyyon` is on your PATH. A second one earlier on PATH still runs after an update replaces the first, so the update appears to have no effect. |
 | `veyyon runs` | It executes and reports the version you are running. If it will not start, the check quotes the system error text. |
 | `Native addon` | A real search returns a real match, so the native addon loaded. `--version` alone passes without it. |
 | `Install method` | Whether `veyyon update` swaps the binary or advances a source checkout. |
 | `vey alias` | The short name used throughout the documentation resolves. |
 | `Shell completions` | Completion files are installed, and for which shells. On Windows that is the single script beside your PowerShell profile, since PowerShell has no directory it autoloads completions from. |
 
-None of them touches the network. A health check you cannot run when the network is what broke is not much of a health check.
+None of them touches the network, so they run when the network is down.
 
 After the install checks come the credential checks: `git` on PATH (missing is an error), and provider authentication through OAuth or one of `GEMINI_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `KIMI_API_KEY` (missing is a warning).
 
-The command exits non-zero when any check reports an error, so you can gate a script on it. Warnings exit zero: they are worth reading, not worth stopping for.
+The command exits non-zero when any check reports an error, so a script can stop on it. Warnings exit zero.
 
 ## Plugin doctor
 
@@ -53,7 +53,7 @@ Opens the debug tools selector in the interactive session.
 
 Run diagnostics and statistics on the configured memory backend (`memory.backend`: mnemopi, hindsight, local) from the TUI. See [Memory](../architecture/memory.md).
 
-## Which one to reach for
+## Choosing a tool
 
 1. `veyyon setup status` when veyyon itself is misbehaving: it covers the install and your credentials.
 2. `veyyon plugin doctor` when an extension is misbehaving.

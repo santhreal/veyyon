@@ -39,7 +39,8 @@ import {
 	buildAccountInventory,
 	loadAccountInventory,
 } from "../../../session/account-inventory";
-import { BackgroundSessions } from "../../../session/background-sessions";
+import { BackgroundSessions, runningConversations } from "../../../session/background-sessions";
+import { USER_INTERRUPT_LABEL } from "../../../session/messages";
 import {
 	describeRedeemOutcome,
 	type ResetUsageAccount,
@@ -74,6 +75,7 @@ import { TranscriptBlock } from "../components/transcript/transcript-container";
 import type { SessionObserverRegistry } from "../session-observer-registry";
 import type { InteractiveModeContext } from "../types";
 import { buildCopyTargets } from "../utils/copy-targets";
+import { focusEditorSlot } from "../utils/interactive-context-helpers";
 import { settingEffect } from "./setting-effects";
 
 /**
@@ -153,19 +155,9 @@ type LoginOutcome = "stored" | "cancelled" | "failed";
 export class SelectorController {
 	constructor(private ctx: SelectorControllerContext) {}
 
-	/**
-	 * Restore keyboard focus to whatever currently owns the editor slot. The
-	 * slot can hold the editor itself or a hook selector/input/editor pushed
-	 * in by `ExtensionUiController` — e.g. an approval prompt that fired while
-	 * a fullscreen overlay was up. `overlayHandle.hide()` restores focus to
-	 * the component focused when the overlay opened, which is stale in that
-	 * case (the editor was swapped out): keys land on a hidden editor and the
-	 * visible prompt receives nothing (issue #3349). Call this after the
-	 * overlay hides to re-target focus at the visible slot owner.
-	 */
+	/** Restore keyboard focus to the editor slot's current owner; see {@link focusEditorSlot}. */
 	focusActiveEditorArea(): void {
-		const visible = this.ctx.editorContainer.children[0] ?? this.ctx.editor;
-		this.ctx.ui.setFocus(visible);
+		focusEditorSlot(this.ctx);
 	}
 
 	/**
@@ -369,6 +361,13 @@ export class SelectorController {
 			this.ctx.showError(`Failed to read the advisor configuration: ${errorMessage(err)}`);
 			return;
 		}
+		let availableToolNames: string[];
+		try {
+			availableToolNames = await this.ctx.session.getAdvisorAvailableToolNames();
+		} catch (err) {
+			this.ctx.showError(`Failed to build the advisor tools: ${errorMessage(err)}`);
+			return;
+		}
 		const advisorRole = resolveAdvisorRoleSelection(
 			this.ctx.settings,
 			this.ctx.session.modelRegistry.getAvailable(),
@@ -381,7 +380,7 @@ export class SelectorController {
 				modelRegistry: this.ctx.session.modelRegistry,
 				settings: this.ctx.settings,
 				scopedModels: this.ctx.session.scopedModels,
-				availableToolNames: this.ctx.session.getAdvisorAvailableToolNames(),
+				availableToolNames,
 				defaultModelLabel: advisorRole
 					? formatModelSelectorValue(formatModelStringWithRouting(advisorRole.model), advisorRole.thinkingLevel)
 					: undefined,
@@ -1026,6 +1025,7 @@ export class SelectorController {
 					void this.ctx.shutdown();
 				},
 				{
+					running: runningConversations(BackgroundSessions.global(), USER_INTERRUPT_LABEL),
 					onDelete: async (session: SessionInfo) => {
 						if (!(await this.#detachActiveSessionBeforeDeletion(session.path))) {
 							return false;

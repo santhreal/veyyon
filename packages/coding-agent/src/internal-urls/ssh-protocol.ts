@@ -270,7 +270,7 @@ export class SshProtocolHandler implements ProtocolHandler {
 					`ssh:// requires a host before the path: ssh://<host>${rawPath} (host-less ssh://${rawPath} is not valid)`,
 				);
 			}
-			return this.#resolveHostIndex(url, context?.cwd);
+			return resolveHostIndex(url, context?.cwd);
 		}
 		const target = await resolveTarget(url, context?.cwd);
 		const remotePath = remotePathFromUrl(url);
@@ -286,7 +286,7 @@ export class SshProtocolHandler implements ProtocolHandler {
 			// stat failed (host/connection issue) — fall through; the read gives a clearer error.
 		}
 		if (kind === "directory") {
-			return this.#resolveDirectory(target, remotePath, url, context?.signal, context?.skipDirectoryListing);
+			return resolveDirectory(target, remotePath, url, context?.signal, context?.skipDirectoryListing);
 		}
 		if (kind === "other") {
 			throw new Error(
@@ -318,39 +318,6 @@ export class SshProtocolHandler implements ProtocolHandler {
 		};
 	}
 
-	/** Resolve a remote directory to a one-level listing (no `sourcePath`; `isDirectory` so search refuses it; immutable). */
-	async #resolveDirectory(
-		target: SSHConnectionTarget,
-		remotePath: string,
-		url: InternalUrl,
-		signal?: AbortSignal,
-		skipListing?: boolean,
-	): Promise<InternalResource> {
-		// `search` rejects an ssh:// directory outright, so it passes `skipListing`
-		// to avoid draining a full remote `ls` we would only discard.
-		const content = skipListing ? "" : formatDirListing(await listRemoteDir(target, remotePath, { signal }));
-		return {
-			url: url.href,
-			content,
-			contentType: "text/plain",
-			size: Buffer.byteLength(content, "utf-8"),
-			immutable: true,
-			isDirectory: true,
-		};
-	}
-
-	/** Resolve a bare `ssh://` to a listing of configured hosts (immutable; plain virtual text, so `search` can still grep host names). */
-	async #resolveHostIndex(url: InternalUrl, cwd?: string): Promise<InternalResource> {
-		const content = formatHostIndex(await loadConfiguredHosts(cwd));
-		return {
-			url: url.href,
-			content,
-			contentType: "text/markdown",
-			size: Buffer.byteLength(content, "utf-8"),
-			immutable: true,
-		};
-	}
-
 	/** Autocomplete the host segment of `ssh://` with the configured SSH hosts. */
 	async complete(_query?: string, context?: ResolveContext): Promise<UrlCompletion[]> {
 		const hosts = await loadConfiguredHosts(context?.cwd);
@@ -366,4 +333,37 @@ export class SshProtocolHandler implements ProtocolHandler {
 		const remotePath = remotePathFromUrl(url);
 		await writeRemoteFile(target, remotePath, new TextEncoder().encode(content), { signal: context?.signal });
 	}
+}
+
+/** Resolve a remote directory to a one-level listing (no `sourcePath`; `isDirectory` so search refuses it; immutable). */
+async function resolveDirectory(
+	target: SSHConnectionTarget,
+	remotePath: string,
+	url: InternalUrl,
+	signal?: AbortSignal,
+	skipListing?: boolean,
+): Promise<InternalResource> {
+	// `search` rejects an ssh:// directory outright, so it passes `skipListing`
+	// to avoid draining a full remote `ls` we would only discard.
+	const content = skipListing ? "" : formatDirListing(await listRemoteDir(target, remotePath, { signal }));
+	return {
+		url: url.href,
+		content,
+		contentType: "text/plain",
+		size: Buffer.byteLength(content, "utf-8"),
+		immutable: true,
+		isDirectory: true,
+	};
+}
+
+/** Resolve a bare `ssh://` to a listing of configured hosts (immutable; plain virtual text, so `search` can still grep host names). */
+async function resolveHostIndex(url: InternalUrl, cwd?: string): Promise<InternalResource> {
+	const content = formatHostIndex(await loadConfiguredHosts(cwd));
+	return {
+		url: url.href,
+		content,
+		contentType: "text/markdown",
+		size: Buffer.byteLength(content, "utf-8"),
+		immutable: true,
+	};
 }

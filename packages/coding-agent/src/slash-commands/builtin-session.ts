@@ -10,6 +10,7 @@ import * as fs from "node:fs/promises";
 import { resolveResumableSession } from "@veyyon/kernel/session/session-listing";
 import { settings } from "../config/settings-instance";
 import type { FreshSessionResult } from "../session/agent-session-types";
+import { veyyonRelaunchArgv } from "../task/veyyon-command";
 import { resolveToCwd } from "../tools/core/path-utils";
 import type { BuiltinSlashCommandHandlers } from "./handler-types";
 import { commandConsumed, errorMessage, usage } from "./helpers/parse";
@@ -147,6 +148,17 @@ export const SESSION_HANDLERS = {
 			);
 			if (!match) {
 				runtime.ctx.showError(`Session "${sessionArg}" not found`);
+				return;
+			}
+			if (match.scope === "profile") {
+				// Another profile's session continues in that profile, never under this one's
+				// settings: relaunch there, as `/profile` does, and resume it by id.
+				runtime.ctx.requestRelaunch({
+					argv: veyyonRelaunchArgv(["--resume", match.session.id]),
+					env: { VEYYON_PROFILE: match.profile },
+				});
+				runtime.ctx.showStatus(`Session belongs to profile "${match.profile}", relaunching there…`);
+				void runtime.ctx.shutdown();
 				return;
 			}
 			await runtime.ctx.handleResumeSession(match.session.path);

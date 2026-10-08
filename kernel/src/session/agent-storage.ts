@@ -1,6 +1,7 @@
-import { Database, type Statement } from "bun:sqlite";
+import { constants, Database, type Statement } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { scheduler } from "node:timers/promises";
 // Each name from the module that OWNS it, which for this file is the difference between 86 modules and
 // 345. The credential TYPES are erased, so naming `auth-storage` for them costs nothing; the sqlite
 // store and the busy-error predicate are values, and taking them from the barrel (or even from
@@ -10,6 +11,7 @@ import { isSqliteBusyError } from "@veyyon/ai/auth-credential-rows";
 import type { AuthCredential, AuthCredentialStore, StoredAuthCredential } from "@veyyon/ai/auth-storage";
 import { SqliteAuthCredentialStore } from "@veyyon/ai/auth-storage-sqlite";
 import { AsyncDrain } from "@veyyon/utils/async";
+import { exponentialBackoffDelay } from "@veyyon/utils/backoff";
 import { getAgentDbPath, getStatsDbPath } from "@veyyon/utils/dirs";
 // Owners, not the `@veyyon/utils` barrel: 5 modules against 74.
 import * as logger from "@veyyon/utils/logger";
@@ -131,7 +133,12 @@ const unopenable = new Set<string>();
  */
 export class AgentStorage {
 	#db: Database;
-	#authStore: AuthCredentialStore;
+	/**
+	 * Built by {@link #auth} on the first credential or cache call. A launch opens this database to read
+	 * model usage, and constructing the credential store prepares about forty statements and runs its
+	 * schema checks on a connection the process then holds for its whole life.
+	 */
+	#authStore: AuthCredentialStore | undefined;
 
 	#upsertModelUsageStmt: Statement;
 	#listModelUsageStmt: Statement;
@@ -147,7 +154,7 @@ export class AgentStorage {
 
 	private constructor(dbPath: string) {
 		this.#autoPerfBackfill = dbPath === getAgentDbPath();
-		this.#ensureDir(dbPath);
+		ensureDir(dbPath);
 		try {
 			this.#db = new Database(dbPath);
 		} catch (err) {
@@ -162,10 +169,7 @@ export class AgentStorage {
 		}
 
 		this.#initializeSchema();
-		this.#hardenPermissions(dbPath);
-
-		// Create AuthCredentialStore with our open database
-		this.#authStore = new SqliteAuthCredentialStore(this.#db);
+		hardenPermissions(dbPath);
 
 		this.#upsertModelUsageStmt = this.#db.prepare(
 			`INSERT INTO model_usage (model_key, last_used_at) VALUES (?, ${SQLITE_NOW_EPOCH}) ON CONFLICT(model_key) DO UPDATE SET last_used_at = ${SQLITE_NOW_EPOCH}`,
@@ -201,6 +205,10 @@ ON CONFLICT(model_key) DO UPDATE SET
 		// recovery). Without this, concurrent veyyon startups can crash here with
 		// `SQLITE_BUSY` / `SQLITE_BUSY_RECOVERY`. See issue #2421.
 		this.#db.run("PRAGMA busy_timeout = 5000");
+		// Keep `agent.db-wal` and `agent.db-shm` on close, as the credential store does on its connection: a
+		// WAL database opens only when both files exist or can be created, so a read-only directory needs them
+		// left in place. This connection may close without ever building the credential store.
+		this.#db.fileControl(constants.SQLITE_FCNTL_PERSIST_WAL, 1);
 		this.#db.run(`
 PRAGMA journal_mode=WAL;
 PRAGMA synchronous=NORMAL;
@@ -296,7 +304,10 @@ CREATE TABLE settings (
 		if (schemaVersion < SCHEMA_VERSION) {
 			this.#migrateSchema(schemaVersion);
 		}
-		this.#db.prepare("INSERT OR REPLACE INTO schema_version(version) VALUES (?)").run(SCHEMA_VERSION);
+		// Rewriting the current version is a write transaction on every launch for no change.
+		if (schemaVersion !== SCHEMA_VERSION) {
+			this.#db.prepare("INSERT OR REPLACE INTO schema_version(version) VALUES (?)").run(SCHEMA_VERSION);
+		}
 	}
 
 	#migrateSchema(fromVersion: number): void {
@@ -377,7 +388,7 @@ FROM model_usage_legacy
 				}
 				lastError = err instanceof Error ? err : new Error(String(err));
 				if (attempt < maxRetries - 1) {
-					await Bun.sleep(baseDelayMs * 2 ** attempt);
+					await scheduler.wait(exponentialBackoffDelay(attempt, { baseMs: baseDelayMs, jitter: 0 }));
 				}
 			}
 		}
@@ -435,7 +446,8 @@ FROM model_usage_legacy
 		this.#listModelPerfStmt.finalize();
 		// SqliteAuthCredentialStore.close() finalizes its own statements and
 		// closes the shared #db handle — must run after our statements finalize.
-		this.#authStore.close();
+		if (this.#authStore) this.#authStore.close();
+		else this.#db.close();
 	}
 
 	/**
@@ -679,7 +691,7 @@ ON CONFLICT(model_key) DO UPDATE SET
 	 * @returns True if at least one credential is stored
 	 */
 	hasAuthCredentials(): boolean {
-		return this.#authStore.listAuthCredentials().length > 0;
+		return this.authStore.listAuthCredentials().length > 0;
 	}
 
 	/**
@@ -689,6 +701,7 @@ ON CONFLICT(model_key) DO UPDATE SET
 	 * own.
 	 */
 	get authStore(): AuthCredentialStore {
+		this.#authStore ??= new SqliteAuthCredentialStore(this.#db);
 		return this.#authStore;
 	}
 
@@ -700,7 +713,7 @@ ON CONFLICT(model_key) DO UPDATE SET
 	 * @returns Array of stored credentials with their database IDs
 	 */
 	listAuthCredentials(provider?: string, includeDisabled = false): StoredAuthCredential[] {
-		const credentials = this.#authStore.listAuthCredentials(provider);
+		const credentials = this.authStore.listAuthCredentials(provider);
 		if (!includeDisabled) return credentials;
 
 		const stmt = this.#db.prepare(
@@ -728,44 +741,31 @@ ON CONFLICT(model_key) DO UPDATE SET
 			try {
 				parsed = JSON.parse(row.data);
 			} catch (error) {
-				this.#reportUnreadableCredential(
-					row.id,
-					row.provider,
-					`stored data is not valid JSON: ${errorMessage(error)}`,
-				);
+				reportUnreadableCredential(row.id, row.provider, `stored data is not valid JSON: ${errorMessage(error)}`);
 				continue;
 			}
 			if (!isRecord(parsed)) {
-				this.#reportUnreadableCredential(row.id, row.provider, "stored data is not an object");
+				reportUnreadableCredential(row.id, row.provider, "stored data is not an object");
 				continue;
 			}
 
 			let credential: AuthCredential;
 			if (row.credential_type === "api_key") {
 				if (typeof parsed.key !== "string") {
-					this.#reportUnreadableCredential(row.id, row.provider, "api_key credential has no string key");
+					reportUnreadableCredential(row.id, row.provider, "api_key credential has no string key");
 					continue;
 				}
 				credential = { type: "api_key", key: parsed.key };
 			} else if (row.credential_type === "oauth") {
 				credential = { type: "oauth", ...parsed } as AuthCredential;
 			} else {
-				this.#reportUnreadableCredential(row.id, row.provider, `unknown credential type "${row.credential_type}"`);
+				reportUnreadableCredential(row.id, row.provider, `unknown credential type "${row.credential_type}"`);
 				continue;
 			}
 
 			results.push({ id: row.id, provider: row.provider, credential, disabledCause: row.disabled_cause });
 		}
 		return results;
-	}
-
-	#reportUnreadableCredential(id: number, provider: string, reason: string): void {
-		logger.error("AgentStorage skipped an unreadable auth credential", {
-			id,
-			provider,
-			reason,
-			fix: `Run "veyyon auth-broker login ${provider}" to replace it.`,
-		});
 	}
 
 	/**
@@ -776,7 +776,7 @@ ON CONFLICT(model_key) DO UPDATE SET
 	 * @returns Array of newly stored credentials with their database IDs
 	 */
 	replaceAuthCredentialsForProvider(provider: string, credentials: AuthCredential[]): StoredAuthCredential[] {
-		return this.#authStore.replaceAuthCredentialsForProvider(provider, credentials);
+		return this.authStore.replaceAuthCredentialsForProvider(provider, credentials);
 	}
 
 	/**
@@ -785,7 +785,7 @@ ON CONFLICT(model_key) DO UPDATE SET
 	 * @param credential - New credential data
 	 */
 	updateAuthCredential(id: number, credential: AuthCredential): void {
-		this.#authStore.updateAuthCredential(id, credential);
+		this.authStore.updateAuthCredential(id, credential);
 	}
 
 	/**
@@ -794,7 +794,7 @@ ON CONFLICT(model_key) DO UPDATE SET
 	 * @param disabledCause - Human-readable cause stored with the disabled row
 	 */
 	deleteAuthCredential(id: number, disabledCause: string): void {
-		this.#authStore.deleteAuthCredential(id, disabledCause);
+		this.authStore.deleteAuthCredential(id, disabledCause);
 	}
 
 	/**
@@ -803,64 +803,73 @@ ON CONFLICT(model_key) DO UPDATE SET
 	 * @param disabledCause - Human-readable cause stored with the disabled rows
 	 */
 	deleteAuthCredentialsForProvider(provider: string, disabledCause: string): void {
-		this.#authStore.deleteAuthCredentialsForProvider(provider, disabledCause);
+		this.authStore.deleteAuthCredentialsForProvider(provider, disabledCause);
 	}
 
 	/**
 	 * Gets a cached value by key. Returns null if not found or expired.
 	 */
 	getCache(key: string): string | null {
-		return this.#authStore.getCache(key);
+		return this.authStore.getCache(key);
 	}
 
 	/**
 	 * Sets a cached value with expiry time (unix seconds).
 	 */
 	setCache(key: string, value: string, expiresAtSec: number): void {
-		this.#authStore.setCache(key, value, expiresAtSec);
+		this.authStore.setCache(key, value, expiresAtSec);
 	}
 
 	/**
 	 * Deletes expired cache entries. Call periodically for cleanup.
 	 */
 	cleanExpiredCache(): void {
-		this.#authStore.cleanExpiredCache();
+		this.authStore.cleanExpiredCache();
+	}
+}
+
+function reportUnreadableCredential(id: number, provider: string, reason: string): void {
+	logger.error("AgentStorage skipped an unreadable auth credential", {
+		id,
+		provider,
+		reason,
+		fix: `Run "veyyon auth-broker login ${provider}" to replace it.`,
+	});
+}
+
+/**
+ * Ensures the parent directory for the database file exists.
+ * @param dbPath - Path to the database file
+ */
+function ensureDir(dbPath: string): void {
+	const dir = path.dirname(dbPath);
+	try {
+		fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+	} catch (err) {
+		const code = (err as NodeJS.ErrnoException).code;
+		// EEXIST is fine - directory already exists
+		if (code !== "EEXIST") {
+			throw new Error(`Failed to create agent storage directory '${dir}': ${code || err}`);
+		}
+	}
+	// Verify directory was created
+	if (!fs.existsSync(dir)) {
+		throw new Error(`Agent storage directory '${dir}' does not exist after creation attempt`);
+	}
+}
+
+function hardenPermissions(dbPath: string): void {
+	const dir = path.dirname(dbPath);
+	try {
+		fs.chmodSync(dir, 0o700);
+	} catch (error) {
+		logger.warn("AgentStorage failed to chmod agent dir", { path: dir, error: String(error) });
 	}
 
-	/**
-	 * Ensures the parent directory for the database file exists.
-	 * @param dbPath - Path to the database file
-	 */
-	#ensureDir(dbPath: string): void {
-		const dir = path.dirname(dbPath);
-		try {
-			fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-		} catch (err) {
-			const code = (err as NodeJS.ErrnoException).code;
-			// EEXIST is fine - directory already exists
-			if (code !== "EEXIST") {
-				throw new Error(`Failed to create agent storage directory '${dir}': ${code || err}`);
-			}
-		}
-		// Verify directory was created
-		if (!fs.existsSync(dir)) {
-			throw new Error(`Agent storage directory '${dir}' does not exist after creation attempt`);
-		}
-	}
-
-	#hardenPermissions(dbPath: string): void {
-		const dir = path.dirname(dbPath);
-		try {
-			fs.chmodSync(dir, 0o700);
-		} catch (error) {
-			logger.warn("AgentStorage failed to chmod agent dir", { path: dir, error: String(error) });
-		}
-
-		if (!fs.existsSync(dbPath)) return;
-		try {
-			fs.chmodSync(dbPath, 0o600);
-		} catch (error) {
-			logger.warn("AgentStorage failed to chmod db file", { path: dbPath, error: String(error) });
-		}
+	if (!fs.existsSync(dbPath)) return;
+	try {
+		fs.chmodSync(dbPath, 0o600);
+	} catch (error) {
+		logger.warn("AgentStorage failed to chmod db file", { path: dbPath, error: String(error) });
 	}
 }

@@ -1,11 +1,11 @@
 /**
  * WHY THIS SUITE EXISTS:
  *
- * `read.ts` converts a 1-indexed `offset` into a 0-indexed slice start at four separate sites,
+ * The read tool converts a 1-indexed `offset` into a 0-indexed slice start at four separate sites,
  * each written out longhand. `.captures/check-read-offset-slice-mutations.ts` mutates all four and
  * requires a suite to catch each one. Two sites had no such suite: the in-memory text window
- * (`#buildInMemoryTextResult`, reached here through an archive MEMBER read) and the archive entry
- * listing (`#readArchiveDirectory`). Both mutations survived, which is the gate reporting a test
+ * (`buildInMemoryTextResult` in `tools/fs/read-in-memory.ts`, reached here through an archive MEMBER read) and the archive entry
+ * listing (`readArchiveDirectory` in `tools/fs/read-containers.ts`). Both mutations survived, which is the gate reporting a test
  * nobody wrote rather than a defect.
  *
  * DEFENDS, for each of those two sites:

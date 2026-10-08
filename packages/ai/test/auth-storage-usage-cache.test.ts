@@ -10,15 +10,19 @@
  *   3. Without a previous value (a cold failure), a failure caches `null` for
  *      the failure backoff window — a repeat poll within the window is served
  *      from cache (no refetch); the entry expires and the next poll retries.
+ *
+ * The suite drives `AuthStorage`, and through it the two-tier cache in
+ * `auth-storage/usage-cache.ts`, the per-credential cache keys in
+ * `auth-storage/usage-requests.ts` and the request cap in `auth-storage/http-concurrency.ts`.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import {
-	AUTH_HTTP_CONCURRENCY_LIMIT,
 	type AuthCredential,
 	type AuthCredentialStore,
 	AuthStorage,
 	type StoredAuthCredential,
 } from "@veyyon/ai/auth-storage";
+import { AUTH_HTTP_CONCURRENCY_LIMIT } from "@veyyon/ai/auth-storage/http-concurrency";
 import type { UsageLimit, UsageReport } from "@veyyon/ai/usage";
 import * as claudeUsage from "@veyyon/ai/usage/claude";
 

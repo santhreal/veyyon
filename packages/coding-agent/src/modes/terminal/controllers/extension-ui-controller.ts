@@ -46,8 +46,6 @@ import {
 } from "../../../tools/agent/ask-option-labels";
 import { setTerminalTitle } from "../../../utils/title-generator";
 import { AskDialogComponent, boundPromptTitle } from "../components/dialogs/ask-dialog";
-import { LAUNCHER_OVERLAY, LauncherComponent } from "../components/dialogs/autoresearch-launcher";
-import { AutoresearchScreenComponent } from "../components/dialogs/autoresearch-screen";
 import { HookEditorComponent } from "../components/dialogs/hook-editor";
 import { HookInputComponent } from "../components/dialogs/hook-input";
 import { HookSelectorComponent, type HookSelectorSlider } from "../components/selectors/hook-selector";
@@ -113,6 +111,52 @@ interface CollabAskDialogWinner {
  *  `string | "unavailable" | undefined` channel that let a guest answer of
  *  "unavailable" collide with the transport sentinel. */
 type GuestUiResult = { kind: "answered"; value: string } | { kind: "cancelled" } | { kind: "unavailable" };
+
+/** What a guest answered to one ask question: the options it checked and the text it typed after picking Other. */
+interface GuestAskAnswer {
+	selected: Set<string>;
+	customInput: string | undefined;
+}
+
+/** One guest pick: a row label, or the text typed into the editor the Other row opens. */
+type GuestAskPick = { label: string } | { customInput: string };
+
+/** How a guest left an ask question without answering it: Chat, a lost transport, or a cancel. */
+type GuestAskExit = "chat" | "unavailable" | undefined;
+
+/**
+ * The select a multi-choice guest question shows with `selected` checked.
+ *
+ * Mirrors the local dialog's Next gating: the Next row is omitted until an option is checked, so a guest cannot submit
+ * an empty multi-select result (PRRT_kwDOQxs0bc6OFbDW). The remote select has no "disabled" row, so the row is omitted
+ * rather than dimmed. An Other answer ends the question, so only a checked option opens Next.
+ */
+function multiSelectRequest(
+	question: ExtensionAskDialogQuestion,
+	options: CollabUiSelectItem[],
+	other: CollabUiSelectItem[],
+	selected: Set<string>,
+): CollabUiRequestDraft {
+	const hasAnswer = selected.size > 0;
+	const rows = options.concat(other);
+	if (hasAnswer) rows.push(ASK_NEXT_OPTION_LABEL);
+	rows.push(ASK_CHAT_OPTION_LABEL);
+	const checkedIndices: number[] = [];
+	for (const [index, option] of question.options.entries()) {
+		if (selected.has(option.label)) checkedIndices.push(index);
+	}
+	return {
+		kind: "select",
+		title: question.question,
+		options: rows,
+		selectionMarker: "checkbox",
+		checkedIndices,
+		markableCount: question.options.length,
+		helpText: hasAnswer
+			? "up/down navigate  enter toggle  Next → continue  esc cancel"
+			: "up/down navigate  enter toggle  esc cancel",
+	};
+}
 
 function toWireSelectOptions(options: ExtensionUISelectItem[]): CollabUiSelectItem[] {
 	return options.map(option =>
@@ -217,8 +261,8 @@ export class ExtensionUiController {
 
 	setHookWidget(key: string, content: TerminalWidgetContent, options?: ExtensionWidgetOptions): void {
 		const placement = options?.placement ?? "aboveEditor";
-		this.#removeHookWidget(this.#hookWidgetsAbove, key);
-		this.#removeHookWidget(this.#hookWidgetsBelow, key);
+		removeHookWidget(this.#hookWidgetsAbove, key);
+		removeHookWidget(this.#hookWidgetsBelow, key);
 
 		if (content === undefined) {
 			this.#rebuildHookWidgets();
@@ -228,12 +272,6 @@ export class ExtensionUiController {
 		const target = placement === "belowEditor" ? this.#hookWidgetsBelow : this.#hookWidgetsAbove;
 		target.set(key, this.#createHookWidget(content));
 		this.#rebuildHookWidgets();
-	}
-
-	#removeHookWidget(widgets: Map<string, ExtensionUiComponent>, key: string): void {
-		const existing = widgets.get(key);
-		existing?.dispose?.();
-		widgets.delete(key);
 	}
 
 	#createHookWidget(content: TerminalWidgetContent): ExtensionUiComponent {
@@ -256,32 +294,9 @@ export class ExtensionUiController {
 	}
 
 	#rebuildHookWidgets(): void {
-		this.#renderHookWidgetContainer(this.ctx.hookWidgetContainerAbove, this.#hookWidgetsAbove, true, true);
-		this.#renderHookWidgetContainer(this.ctx.hookWidgetContainerBelow, this.#hookWidgetsBelow, false, false);
+		renderHookWidgetContainer(this.ctx.hookWidgetContainerAbove, this.#hookWidgetsAbove, true, true);
+		renderHookWidgetContainer(this.ctx.hookWidgetContainerBelow, this.#hookWidgetsBelow, false, false);
 		this.ctx.ui.requestRender();
-	}
-
-	#renderHookWidgetContainer(
-		container: Container,
-		widgets: Map<string, ExtensionUiComponent>,
-		spacerWhenEmpty: boolean,
-		leadingSpacer: boolean,
-	): void {
-		container.clear();
-
-		if (widgets.size === 0) {
-			if (spacerWhenEmpty) {
-				container.addChild(new Spacer(1));
-			}
-			return;
-		}
-
-		if (leadingSpacer) {
-			container.addChild(new Spacer(1));
-		}
-		for (const widget of widgets.values()) {
-			container.addChild(widget);
-		}
 	}
 
 	initializeHookRunner(uiContext: ExtensionUIContext, _hasUI: boolean): void {
@@ -708,107 +723,97 @@ export class ExtensionUiController {
 		question: ExtensionAskDialogQuestion,
 		signal: AbortSignal,
 	): Promise<ExtensionAskDialogResultItem | "chat" | "unavailable" | undefined> {
-		const selected = new Set<string>();
-		let customInput: string | undefined;
-		const baseOptions: CollabUiSelectItem[] = question.options.map(option =>
+		const options: CollabUiSelectItem[] = question.options.map(option =>
 			option.description?.trim() ? { label: option.label, description: option.description.trim() } : option.label,
 		);
 		// Mirror the local dialog: `allowOther: false` offers no free-text row, so a
 		// guest cannot return an answer outside the listed options.
-		const otherOption: CollabUiSelectItem[] = question.allowOther === false ? [] : [ASK_OTHER_OPTION_LABEL];
-		if (question.multi) {
-			while (true) {
-				const checkedIndices = question.options
-					.map((option, index) => (selected.has(option.label) ? index : -1))
-					.filter(index => index >= 0);
-				// Mirror the local dialog's Next gating: omit the Next option until
-				// at least one option is checked or a custom answer exists, so a
-				// guest cannot submit an empty multi-select result
-				// (PRRT_kwDOQxs0bc6OFbDW). The remote select has no "disabled" row
-				// concept, so we omit rather than dim it.
-				const hasAnswer = selected.size > 0 || customInput !== undefined;
-				const options = baseOptions.concat(otherOption);
-				if (hasAnswer) options.push(ASK_NEXT_OPTION_LABEL);
-				options.push(ASK_CHAT_OPTION_LABEL);
-				const choice = await this.#requestGuestUiString(
-					{
-						kind: "select",
-						title: question.question,
-						options,
-						selectionMarker: "checkbox",
-						checkedIndices,
-						markableCount: question.options.length,
-						helpText: hasAnswer
-							? "up/down navigate  enter toggle  Next → continue  esc cancel"
-							: "up/down navigate  enter toggle  esc cancel",
-					},
-					signal,
-				);
-				if (choice.kind === "unavailable") return "unavailable";
-				if (choice.kind === "cancelled") return undefined;
-				if (choice.value === ASK_CHAT_OPTION_LABEL) return "chat";
-				if (choice.value === ASK_NEXT_OPTION_LABEL) break;
-				if (otherOption.length > 0 && choice.value === ASK_OTHER_OPTION_LABEL) {
-					const input = await this.#requestGuestUiString(
-						{ kind: "editor", title: boundPromptTitle("Custom answer: ", question.question) },
-						signal,
-					);
-					if (input.kind === "unavailable") return "unavailable";
-					// Guest cancelled the Other editor: keep the ask open and
-					// return to the option list instead of cancelling the whole ask.
-					if (input.kind === "cancelled") continue;
-					customInput = input.value;
-					break;
-				}
-				if (selected.has(choice.value)) selected.delete(choice.value);
-				else selected.add(choice.value);
-			}
-		} else {
-			const recommended =
-				typeof question.recommended === "number" && Number.isInteger(question.recommended)
-					? question.recommended
-					: 0;
-			const initialIndex = clampLow(recommended, 0, Math.max(0, question.options.length - 1));
-			while (true) {
-				const choice = await this.#requestGuestUiString(
-					{
-						kind: "select",
-						title: question.question,
-						options: baseOptions.concat(otherOption, [ASK_CHAT_OPTION_LABEL]),
-						initialIndex,
-						selectionMarker: "radio",
-						markableCount: question.options.length,
-						helpText: "up/down navigate  enter select  esc cancel",
-					},
-					signal,
-				);
-				if (choice.kind === "unavailable") return "unavailable";
-				if (choice.kind === "cancelled") return undefined;
-				if (choice.value === ASK_CHAT_OPTION_LABEL) return "chat";
-				if (otherOption.length > 0 && choice.value === ASK_OTHER_OPTION_LABEL) {
-					const input = await this.#requestGuestUiString(
-						{ kind: "editor", title: boundPromptTitle("Custom answer: ", question.question) },
-						signal,
-					);
-					if (input.kind === "unavailable") return "unavailable";
-					// Guest cancelled the Other editor: re-show the select list
-					// instead of cancelling the whole ask.
-					if (input.kind === "cancelled") continue;
-					customInput = input.value;
-				} else {
-					selected.add(choice.value);
-				}
-				break;
-			}
-		}
+		const other: CollabUiSelectItem[] = question.allowOther === false ? [] : [ASK_OTHER_OPTION_LABEL];
+		const answer = question.multi
+			? await this.#runGuestMultiSelect(question, options, other, signal)
+			: await this.#runGuestSingleSelect(question, options, other, signal);
+		if (answer === undefined || typeof answer === "string") return answer;
+		const labels = question.options.map(option => option.label);
 		return {
 			id: question.id,
 			question: question.question,
-			options: question.options.map(option => option.label),
+			options: labels,
 			multi: question.multi ?? false,
-			selectedOptions: question.options.map(option => option.label).filter(label => selected.has(label)),
-			customInput,
+			selectedOptions: labels.filter(label => answer.selected.has(label)),
+			customInput: answer.customInput,
 		};
+	}
+
+	/** Toggles the option the guest picks until it picks Next or types an Other answer. */
+	async #runGuestMultiSelect(
+		question: ExtensionAskDialogQuestion,
+		options: CollabUiSelectItem[],
+		other: CollabUiSelectItem[],
+		signal: AbortSignal,
+	): Promise<GuestAskAnswer | GuestAskExit> {
+		const selected = new Set<string>();
+		while (true) {
+			const pick = await this.#guestPick(
+				question,
+				multiSelectRequest(question, options, other, selected),
+				other,
+				signal,
+			);
+			if (pick === undefined || typeof pick === "string") return pick;
+			if ("customInput" in pick) return { selected, customInput: pick.customInput };
+			if (pick.label === ASK_NEXT_OPTION_LABEL) return { selected, customInput: undefined };
+			if (!selected.delete(pick.label)) selected.add(pick.label);
+		}
+	}
+
+	/** The one option the guest picks, starting on the question's recommended option, or its Other answer. */
+	async #runGuestSingleSelect(
+		question: ExtensionAskDialogQuestion,
+		options: CollabUiSelectItem[],
+		other: CollabUiSelectItem[],
+		signal: AbortSignal,
+	): Promise<GuestAskAnswer | GuestAskExit> {
+		const recommended =
+			typeof question.recommended === "number" && Number.isInteger(question.recommended) ? question.recommended : 0;
+		const request: CollabUiRequestDraft = {
+			kind: "select",
+			title: question.question,
+			options: options.concat(other, [ASK_CHAT_OPTION_LABEL]),
+			initialIndex: clampLow(recommended, 0, Math.max(0, question.options.length - 1)),
+			selectionMarker: "radio",
+			markableCount: question.options.length,
+			helpText: "up/down navigate  enter select  esc cancel",
+		};
+		const pick = await this.#guestPick(question, request, other, signal);
+		if (pick === undefined || typeof pick === "string") return pick;
+		return "customInput" in pick
+			? { selected: new Set(), customInput: pick.customInput }
+			: { selected: new Set([pick.label]), customInput: undefined };
+	}
+
+	/**
+	 * The row the guest picks from `request`, the text it types after picking Other, or how it left the question. A
+	 * guest that cancels the Other editor sees `request` again rather than cancelling the whole ask.
+	 */
+	async #guestPick(
+		question: ExtensionAskDialogQuestion,
+		request: CollabUiRequestDraft,
+		other: CollabUiSelectItem[],
+		signal: AbortSignal,
+	): Promise<GuestAskPick | GuestAskExit> {
+		while (true) {
+			const choice = await this.#requestGuestUiString(request, signal);
+			if (choice.kind === "unavailable") return "unavailable";
+			if (choice.kind === "cancelled") return undefined;
+			if (choice.value === ASK_CHAT_OPTION_LABEL) return "chat";
+			if (other.length === 0 || choice.value !== ASK_OTHER_OPTION_LABEL) return { label: choice.value };
+			const input = await this.#requestGuestUiString(
+				{ kind: "editor", title: boundPromptTitle("Custom answer: ", question.question) },
+				signal,
+			);
+			if (input.kind === "unavailable") return "unavailable";
+			if (input.kind === "answered") return { customInput: input.value };
+		}
 	}
 
 	async #requestGuestUiString(request: CollabUiRequestDraft, signal: AbortSignal): Promise<GuestUiResult> {
@@ -1256,6 +1261,35 @@ export class ExtensionUiController {
 		this.#dialogQueue.shift()?.();
 	}
 }
+
+function removeHookWidget(widgets: Map<string, ExtensionUiComponent>, key: string): void {
+	const existing = widgets.get(key);
+	existing?.dispose?.();
+	widgets.delete(key);
+}
+
+function renderHookWidgetContainer(
+	container: Container,
+	widgets: Map<string, ExtensionUiComponent>,
+	spacerWhenEmpty: boolean,
+	leadingSpacer: boolean,
+): void {
+	container.clear();
+
+	if (widgets.size === 0) {
+		if (spacerWhenEmpty) {
+			container.addChild(new Spacer(1));
+		}
+		return;
+	}
+
+	if (leadingSpacer) {
+		container.addChild(new Spacer(1));
+	}
+	for (const widget of widgets.values()) {
+		container.addChild(widget);
+	}
+}
 /** The terminal host's autoresearch surfaces: the run screen and the launcher, each a `custom` overlay. */
 export const terminalAutoresearchUi: AutoresearchUiDelegate = {
 	async showScreen(ctx, runtime, model, options) {
@@ -1264,6 +1298,8 @@ export const terminalAutoresearchUi: AutoresearchUiDelegate = {
 			ctx.ui.notify("Autoresearch screen requires an interactive terminal", "warning");
 			return;
 		}
+		// The run screen and its console load when a run is first shown, not with the controller.
+		const { AutoresearchScreenComponent } = await import("../components/dialogs/autoresearch-screen");
 		await terminal.custom<void>(
 			(tui, _theme, _keybindings, done) => {
 				options.onMount({ requestRender: () => tui.requestRender() });
@@ -1292,6 +1328,7 @@ export const terminalAutoresearchUi: AutoresearchUiDelegate = {
 			ctx.ui.notify("Autoswarm launcher requires an interactive terminal", "warning");
 			return;
 		}
+		const { LAUNCHER_OVERLAY, LauncherComponent } = await import("../components/dialogs/autoresearch-launcher");
 		await terminal.custom<void>(
 			(tui, _theme, _keybindings, done) => {
 				const component = new LauncherComponent({

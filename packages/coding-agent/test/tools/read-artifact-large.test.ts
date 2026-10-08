@@ -1,3 +1,4 @@
+// Subject module: tools/fs/read-artifact.ts, driven through the read tool.
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";

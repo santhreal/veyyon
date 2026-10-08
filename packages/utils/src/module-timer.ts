@@ -18,7 +18,7 @@
  * dominates startup.
  *
  * Kept dependency-free on purpose: the sole import is Bun's `plugin`, so this is
- * cheap to preload before pi-utils (and winston) exist. The buffer is shared with
+ * cheap to preload before pi-utils (and the logger) exist. The buffer is shared with
  * the logger via a registry Symbol so neither side needs to import the other.
  *
  * **What is measured:** an inclusive per-module window. `onLoad` stamps the

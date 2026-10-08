@@ -85,7 +85,7 @@ function narrowBatchRequest(outer: LspBatchRequest | undefined, isLast: boolean)
 }
 
 interface RenderedSection {
-	toolResult: AgentToolResult<EditToolDetails, typeof hashlineEditParamsSchema>;
+	toolResult: AgentToolResult<EditToolDetails, typeof hashlineEditParamsSchema.value>;
 	perFileResult: EditToolPerFileResult;
 }
 
@@ -104,7 +104,7 @@ function renderSection(
 	sourcePath: string,
 ): RenderedSection {
 	if (result.op === "delete") {
-		const toolResult: AgentToolResult<EditToolDetails, typeof hashlineEditParamsSchema> = {
+		const toolResult: AgentToolResult<EditToolDetails, typeof hashlineEditParamsSchema.value> = {
 			content: [{ type: "text", text: `Deleted ${result.path}` }],
 			details: pruneOversizedEditSnapshots({
 				diff: "",
@@ -126,7 +126,7 @@ function renderSection(
 	}
 
 	if (result.op === "noop") {
-		const toolResult: AgentToolResult<EditToolDetails, typeof hashlineEditParamsSchema> = {
+		const toolResult: AgentToolResult<EditToolDetails, typeof hashlineEditParamsSchema.value> = {
 			content: [{ type: "text", text: noChangeDiagnostic(result.path) }],
 			details: { diff: "", op: "update", meta: outputMeta().get() },
 		};
@@ -187,7 +187,7 @@ function renderSection(
 
 export async function executeHashlineSingle(
 	options: ExecuteHashlineSingleOptions,
-): Promise<AgentToolResult<EditToolDetails, typeof hashlineEditParamsSchema>> {
+): Promise<AgentToolResult<EditToolDetails, typeof hashlineEditParamsSchema.value>> {
 	const patch = Patch.parse(options.input, { cwd: options.session.cwd });
 	if (patch.sections.length === 0) {
 		throw new Error("No hashline sections found in input.");

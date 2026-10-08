@@ -3,6 +3,17 @@ import type { Context, Message, ToolCall } from "../types";
 
 export type { Dialect } from "@veyyon/catalog/identity";
 
+/** A call's end. A call the stream ended inside ends too, marked `unterminated`. */
+export interface InbandToolEnd {
+	type: "toolEnd";
+	id: string;
+	name: string;
+	arguments: Record<string, unknown>;
+	rawBlock?: string;
+	/** The stream ended before the call's closer: `arguments` are what was read before the cut. */
+	unterminated?: true;
+}
+
 export type InbandScanEvent =
 	| { type: "text"; text: string }
 	| { type: "thinkingStart" }
@@ -10,7 +21,7 @@ export type InbandScanEvent =
 	| { type: "thinkingEnd"; thinking: string }
 	| { type: "toolStart"; id: string; name: string }
 	| { type: "toolArgDelta"; id: string; name: string; key: string; delta: string }
-	| { type: "toolEnd"; id: string; name: string; arguments: Record<string, unknown>; rawBlock?: string };
+	| InbandToolEnd;
 
 export interface InbandScanner {
 	feed(text: string): InbandScanEvent[];

@@ -1,7 +1,7 @@
 /**
- * WHY. `processInteractionUpdate` is a chain of `else if` over the name of one
- * variant of Cursor's `InteractionUpdate` oneof. A variant nobody wrote a
- * branch for falls off the end of that chain and is discarded in silence: no
+ * WHY. `processInteractionUpdate` looks up the name of one variant of
+ * Cursor's `InteractionUpdate` oneof in a table of handlers. A variant nobody
+ * wrote a handler for misses that table and is discarded in silence: no
  * error, no log the operator sees, no assertion anywhere. That is how a wire
  * update that carries real state — a summary, a step boundary, shell output —
  * becomes a feature the product does not have, and nobody finds out until a
@@ -222,6 +222,21 @@ describe("a Cursor update the machine cannot name", () => {
 		turn.send({ message: { case: "aVariantFromAFutureAgentProto", value: { text: "dropped" } } });
 
 		expect(blocks(turn)).toEqual([{ type: "text", text: "kept" }]);
+	});
+
+	it("is discarded when it is named for an Object.prototype member", () => {
+		// The machine dispatches by variant name, so a name an object inherits
+		// (`constructor`, `toString`, `__proto__`) must not resolve to that
+		// inherited member and run as a handler. Swept from the prototype itself.
+		const inherited = Object.getOwnPropertyNames(Object.prototype).sort();
+		const turn = newTurn();
+		turn.send({ message: { case: "textDelta", value: { text: "kept" } } });
+		for (const updateCase of inherited) turn.send(ignoredUpdate(updateCase));
+
+		expect(inherited).toEqual(expect.arrayContaining(["__proto__", "constructor", "hasOwnProperty", "toString"]));
+		expect(blocks(turn)).toEqual([{ type: "text", text: "kept" }]);
+		expect(eventTypes(turn)).toEqual(["text_start", "text_delta"]);
+		expect(turn.output.usage.output).toBe(0);
 	});
 
 	it("survives an update with no oneof selected", () => {

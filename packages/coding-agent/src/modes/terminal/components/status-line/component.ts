@@ -8,13 +8,13 @@ import { sanitizeStyledStatusText } from "@veyyon/utils/sanitize-status-text";
 import { scopedTimeoutSignal, withScopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import type { StatusDataSource, StatusLineState, StatusProviderUsage, StatusRunClock } from "@veyyon/wire/presentation";
+import { readLaunchFacts, recordLaunchFacts } from "../../../../config/launch-facts";
 import { settings } from "../../../../config/settings-instance";
 import { StatusPresentationProducer } from "../../../../presentation/status-producer";
 import { withIcon } from "../../../../theme/icon-label";
 import { transitionsEnabled } from "../../../../theme/shimmer";
 import { theme } from "../../../../theme/theme-binding";
 import * as git from "../../../../utils/git";
-import { readLaunchFacts, recordLaunchFacts } from "../../../launch-facts";
 import { isTreeDirty } from "./branch";
 import { canReuseCachedPr, createPrCacheContext, isSamePrCacheContext, type PrCacheContext } from "./git-utils";
 import { type LocationContext, resolveLocationContext } from "./location-context";
@@ -38,6 +38,14 @@ export { messageFingerprint } from "../../../../presentation/status-producer";
 
 const STATUS_USAGE_START_DELAY_MS = 0;
 const STATUS_USAGE_REFRESH_TIMEOUT_MS = 2_000;
+/**
+ * How old the dirty marker grows before a render runs `git status` again. A turn's end, a `!` or
+ * `%` command and a HEAD change refresh it at once through {@link StatusLineComponent.refreshGitStatus};
+ * this bounds how late any other change appears, such as an edit made outside the session or a
+ * tool's write before its turn ends. A streaming turn renders every frame, so this is also the
+ * rate at which the turn runs `git status`.
+ */
+const GIT_STATUS_MAX_AGE_MS = 10_000;
 
 function hasGitBackedSegment(segments: readonly StatusLineSegmentId[]): boolean {
 	return hasGitSegment(segments) || hasPrSegment(segments);
@@ -57,6 +65,8 @@ export interface StatusLineMotionOptions {
 	/** The clock the travel runs on. Tests pass a hand-ticked one. */
 	clock?: MotionClock;
 }
+
+const BADGE_ANIM_MS = 240;
 
 export class StatusLineComponent implements Component {
 	#source: StatusDataSource;
@@ -90,11 +100,14 @@ export class StatusLineComponent implements Component {
 	#focusedAgentId: string | undefined;
 	#activeRepoCache: LocationContext | undefined;
 
-	// Git status caching (1s TTL)
+	// Git status caching: refreshed on request, otherwise once GIT_STATUS_MAX_AGE_MS old
 	#cachedGitStatus: git.GitStatusSummary | null = null;
 	#cachedGitStatusCwd: string | undefined = undefined;
 	#gitStatusLastFetch = 0;
 	#gitStatusInFlightCwd: string | undefined = undefined;
+	/** Refresh requests made so far, and how many of them the cached status was read after. */
+	#gitStatusRequested = 0;
+	#gitStatusAnswered = 0;
 
 	// PR lookup caching (invalidated on branch/repo context changes)
 	#cachedPr: { number: number; url: string } | null | undefined = undefined;
@@ -140,10 +153,6 @@ export class StatusLineComponent implements Component {
 			this.#expansion.set(0);
 		}
 		this.#settings = statusLineSettingsFromConfig();
-	}
-
-	#gitEnabled(): boolean {
-		return settings.get("git.enabled");
 	}
 
 	#hasGitBackedSegment(): boolean {
@@ -324,7 +333,7 @@ export class StatusLineComponent implements Component {
 			this.#gitWatcher = null;
 		}
 
-		if (!this.#gitEnabled() || !this.#hasGitBackedSegment()) {
+		if (!gitEnabled() || !this.#hasGitBackedSegment()) {
 			this.#invalidateGitCaches();
 			return;
 		}
@@ -341,7 +350,7 @@ export class StatusLineComponent implements Component {
 			this.#gitWatcher = fs.watch(watchPath, () => {
 				if (this.#disposed) return;
 				this.#invalidateGitCaches();
-				this.#onGitStateChange?.();
+				this.refreshGitStatus();
 			});
 		} catch {
 			this.#invalidateGitCaches();
@@ -369,6 +378,17 @@ export class StatusLineComponent implements Component {
 		this.#invalidateGitCaches();
 	}
 
+	/**
+	 * Run `git status` on the next render instead of once the marker is
+	 * {@link GIT_STATUS_MAX_AGE_MS} old, and ask for that render, because the tree may have moved.
+	 * A lookup already running may have read the tree before the move, so a request made while it
+	 * runs asks for another render when it lands.
+	 */
+	refreshGitStatus(): void {
+		this.#gitStatusRequested++;
+		this.#onGitStateChange?.();
+	}
+
 	#invalidateSessionCaches(): void {
 		this.#clearUsageStartTimer();
 		this.#cachedUsage = null;
@@ -384,7 +404,7 @@ export class StatusLineComponent implements Component {
 	}
 
 	#getCurrentBranch(effectiveGitCwd?: string): string | null {
-		if (!this.#gitEnabled()) return null;
+		if (!gitEnabled()) return null;
 
 		const gitCwd = effectiveGitCwd ?? this.#resolveActiveRepoCache().effectiveGitCwd;
 		if (this.#cachedBranch !== undefined && this.#cachedBranchCwd === gitCwd) {
@@ -434,7 +454,7 @@ export class StatusLineComponent implements Component {
 	}
 
 	#getGitStatus(effectiveGitCwd?: string): git.GitStatusSummary | null {
-		if (!this.#gitEnabled()) return null;
+		if (!gitEnabled()) return null;
 
 		const gitCwd = effectiveGitCwd ?? this.#resolveActiveRepoCache().effectiveGitCwd;
 		if (this.#cachedGitStatusCwd === undefined && gitCwd === getProjectDir()) {
@@ -444,11 +464,16 @@ export class StatusLineComponent implements Component {
 		if (this.#gitStatusInFlightCwd !== undefined) {
 			return this.#cachedGitStatusCwd === gitCwd ? this.#cachedGitStatus : null;
 		}
-		if (this.#cachedGitStatusCwd === gitCwd && Date.now() - this.#gitStatusLastFetch < 1000) {
+		if (
+			this.#cachedGitStatusCwd === gitCwd &&
+			this.#gitStatusAnswered === this.#gitStatusRequested &&
+			Date.now() - this.#gitStatusLastFetch < GIT_STATUS_MAX_AGE_MS
+		) {
 			return this.#cachedGitStatus;
 		}
 
 		this.#gitStatusInFlightCwd = gitCwd;
+		const requested = this.#gitStatusRequested;
 
 		(async () => {
 			let nextStatus: git.GitStatusSummary | null = null;
@@ -462,8 +487,9 @@ export class StatusLineComponent implements Component {
 					this.#cachedGitStatus = nextStatus;
 					this.#cachedGitStatusCwd = gitCwd;
 					this.#gitStatusLastFetch = Date.now();
+					this.#gitStatusAnswered = requested;
 					this.#gitStatusInFlightCwd = undefined;
-					if (moved) this.#onGitStateChange?.();
+					if (moved || requested !== this.#gitStatusRequested) this.#onGitStateChange?.();
 				}
 			}
 		})();
@@ -472,7 +498,7 @@ export class StatusLineComponent implements Component {
 	}
 
 	#lookupPr(effectiveGitCwd?: string): { number: number; url: string } | null {
-		if (!this.#gitEnabled()) return null;
+		if (!gitEnabled()) return null;
 
 		const gitCwd = effectiveGitCwd ?? this.#resolveActiveRepoCache().effectiveGitCwd;
 		const branch = this.#getCurrentBranch(gitCwd);
@@ -590,7 +616,7 @@ export class StatusLineComponent implements Component {
 		let usagePromise: Promise<StatusProviderUsage | null> | undefined;
 		try {
 			usagePromise = fetchUsage(signal);
-			const result = await this.#raceUsageRefreshWithSignal(usagePromise, signal);
+			const result = await raceUsageRefreshWithSignal(usagePromise, signal);
 			if (isStale()) return;
 			this.#cachedUsage = result;
 			this.#usageFetchedAt = Date.now();
@@ -632,18 +658,6 @@ export class StatusLineComponent implements Component {
 				if (isStale()) return;
 				this.#usageFetchedAt = Date.now();
 			});
-	}
-
-	async #raceUsageRefreshWithSignal<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
-		if (signal.aborted) throw signal.reason;
-		const aborted = Promise.withResolvers<never>();
-		const onAbort = () => aborted.reject(signal.reason);
-		signal.addEventListener("abort", onAbort, { once: true });
-		try {
-			return await Promise.race([promise, aborted.promise]);
-		} finally {
-			signal.removeEventListener("abort", onAbort);
-		}
 	}
 
 	getCachedContextBreakdown(): { usedTokens: number | null; contextWindow: number } {
@@ -700,7 +714,7 @@ export class StatusLineComponent implements Component {
 			this.#recordLaunchFacts(contextPercent, contextLimit, collabOverride != null);
 		}
 
-		const shouldResolveActiveRepo = this.#gitEnabled() && (includePath || includeGit || includePr);
+		const shouldResolveActiveRepo = gitEnabled() && (includePath || includeGit || includePr);
 		const projectDir = snapshot.facts.cwd ?? getProjectDir();
 		const activeRepoCache = shouldResolveActiveRepo
 			? this.#resolveActiveRepoCache(snapshot)
@@ -768,7 +782,6 @@ export class StatusLineComponent implements Component {
 	#badgeSlotTargetWidth = 0;
 	#badgeSlotAnimStartMs = 0;
 	#badgeSlotText = "";
-	static readonly #BADGE_ANIM_MS = 240;
 
 	#animatedBadgeSlot(badgeParts: string[]): string | null {
 		const targetWidth = badgeParts.length > 0 ? visibleWidth(badgeParts.join(stateSeparator())) : 0;
@@ -787,8 +800,8 @@ export class StatusLineComponent implements Component {
 
 	#badgeSlotCurrentWidth(): number {
 		const elapsed = Date.now() - this.#badgeSlotAnimStartMs;
-		if (elapsed >= StatusLineComponent.#BADGE_ANIM_MS) return this.#badgeSlotTargetWidth;
-		const t = elapsed / StatusLineComponent.#BADGE_ANIM_MS;
+		if (elapsed >= BADGE_ANIM_MS) return this.#badgeSlotTargetWidth;
+		const t = elapsed / BADGE_ANIM_MS;
 		const eased = t * t * (3 - 2 * t);
 		return Math.round(this.#badgeSlotFromWidth + (this.#badgeSlotTargetWidth - this.#badgeSlotFromWidth) * eased);
 	}
@@ -829,7 +842,7 @@ export class StatusLineComponent implements Component {
 		const groups = gatherQuietSegments({
 			width: Math.max(0, width - visibleWidth(badge)),
 			effectiveSettings: this.#resolveSettings(),
-			gitEnabled: this.#gitEnabled(),
+			gitEnabled: gitEnabled(),
 			expansion,
 			buildContext: request =>
 				this.#buildSegmentContext(
@@ -900,5 +913,21 @@ export class StatusLineComponent implements Component {
 			hookLine = si === 0 ? sanitized : `${hookLine} ${sanitized}`;
 		}
 		return [truncateToWidth(hookLine, width)];
+	}
+}
+
+function gitEnabled(): boolean {
+	return settings.get("git.enabled");
+}
+
+async function raceUsageRefreshWithSignal<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+	if (signal.aborted) throw signal.reason;
+	const aborted = Promise.withResolvers<never>();
+	const onAbort = () => aborted.reject(signal.reason);
+	signal.addEventListener("abort", onAbort, { once: true });
+	try {
+		return await Promise.race([promise, aborted.promise]);
+	} finally {
+		signal.removeEventListener("abort", onAbort);
 	}
 }

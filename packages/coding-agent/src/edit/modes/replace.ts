@@ -4,8 +4,10 @@
  * Provides both character-level and line-level fuzzy matching with progressive
  * fallback strategies for finding text in files.
  */
+
 import type { AgentToolResult } from "@veyyon/agent-core";
-import { type } from "arktype";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { lazy } from "@veyyon/utils/abortable";
 import type { FileDiagnosticsResult, WritethroughCallback, WritethroughDeferredHandle } from "../../lsp";
 import type { ToolSession } from "../../tools";
 import { routeWriteThroughBridge } from "../../tools/core/acp-bridge";
@@ -20,19 +22,23 @@ import { detectLineEnding, normalizeToLF, restoreLineEndings } from "../normaliz
 import { readEditFileTextWithBom, serializeEditFileText } from "../read-file";
 import { pruneOversizedEditSnapshots } from "../snapshot-details";
 
-export const replaceEditEntrySchema = type({
-	old_text: "string",
-	new_text: "string",
-	"all?": "boolean",
-});
+export const replaceEditEntrySchema = lazy(() =>
+	type({
+		old_text: "string",
+		new_text: "string",
+		"all?": "boolean",
+	}),
+);
 
-export const replaceEditSchema = type({
-	path: "string",
-	edits: replaceEditEntrySchema.array(),
-});
+export const replaceEditSchema = lazy(() =>
+	type({
+		path: "string",
+		edits: replaceEditEntrySchema.value.array(),
+	}),
+);
 
-export type ReplaceEditEntry = typeof replaceEditEntrySchema.infer;
-export type ReplaceParams = typeof replaceEditSchema.infer;
+export type ReplaceEditEntry = typeof replaceEditEntrySchema.value.infer;
+export type ReplaceParams = typeof replaceEditSchema.value.infer;
 
 export interface ExecuteReplaceSingleOptions {
 	session: ToolSession;

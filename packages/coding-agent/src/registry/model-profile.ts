@@ -7,7 +7,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Model } from "@veyyon/ai/types";
-import { errorMessage, getAgentDir, isMissingPath, isRecord, logger, once } from "@veyyon/utils";
+import { errorMessage, getAgentDir, isMissingPath, isRecord, lazy, logger } from "@veyyon/utils";
 import { YAML } from "bun";
 import type { Settings } from "../config/settings";
 import { type PromptSectionName, promptSectionNames } from "../system-prompt-builder/prompt-sections";
@@ -39,9 +39,9 @@ export function resetHarnessProfileFileCache(): void {
 
 // Built on first use, not at module load: `prompt-sections.ts` derives its names
 // from `section-registry.ts`, and reading that while this module evaluates would put
-// the order dependency straight back. `once` is the shared memoizer, so this is not
+// the order dependency straight back. `lazy` is the shared memoizer, so this is not
 // a fourth hand-rolled `let` and `??=`.
-const knownPromptSectionNames: () => ReadonlySet<string> = once(() => new Set(promptSectionNames()));
+const knownPromptSectionNames = lazy((): ReadonlySet<string> => new Set(promptSectionNames()));
 
 function normalizePromptSectionOrder(value: unknown): readonly PromptSectionName[] | undefined {
 	if (!Array.isArray(value)) return undefined;
@@ -52,7 +52,7 @@ function normalizePromptSectionOrder(value: unknown): readonly PromptSectionName
 		// `promptSectionOrder: [role, 42, runtime]` dropped the 42 and applied an order
 		// the operator did not write, silently — the exact failure the branch below
 		// rejects the whole list to prevent, three lines above the comment saying so.
-		if (typeof entry !== "string" || !knownPromptSectionNames().has(entry)) {
+		if (typeof entry !== "string" || !knownPromptSectionNames.value.has(entry)) {
 			// Reject the whole list: a typo'd section silently dropped would apply a
 			// different order than the operator wrote.
 			logger.warn(

@@ -11,7 +11,7 @@ Repair runs in the agent loop **before** argument validation. Clear malformation
 | Seam | Runs at tool dispatch, before schema validation |
 | Fix-if-clear | Trailing commas, parse sentinels (`__parseError` / `__rawJson`), stringified JSON objects |
 | Refuse-if-ambiguous | Missing required strings with multiple plausible sources → unrepairable |
-| Alias / typo rename | Unknown keys that clearly map to a declared property are renamed; ambiguous renames are rejected |
+| Alias / typo rename | Unknown keys that map unambiguously to a declared property are renamed; ambiguous renames are rejected |
 | Strict unknown keys | Schemas with `additionalProperties: false` reject leftover keys after alias resolution |
 | Size bound | Inputs over 1 MiB are not repaired |
 | Disable | `VEYYON_REPAIR_DISABLE=1`, or per-model `harness.profiles` with `repair: false` |

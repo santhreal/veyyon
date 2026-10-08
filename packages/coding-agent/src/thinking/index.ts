@@ -9,7 +9,7 @@ import type { Model } from "@veyyon/ai";
 // file is on `config/settings`'s path through the settings schema, which ~530 test files import.
 import { Effort, THINKING_EFFORTS } from "@veyyon/catalog/effort";
 import { clampThinkingLevelForModel, getSupportedEfforts } from "@veyyon/catalog/model-thinking";
-import { AUTO_THINKING, type ConfiguredThinkingLevel } from "./constants";
+import { AUTO_THINKING, CONFIGURED_THINKING_LEVELS, type ConfiguredThinkingLevel } from "./constants";
 
 /**
  * Metadata used to render thinking selector values in the coding-agent UI.
@@ -141,7 +141,7 @@ export function resolveThinkingLevelForModel(
  * {@link ThinkingLevel}, so provider mapping/clamping keeps seeing concrete
  * efforts. The session resolves `auto` to a concrete effort each turn.
  */
-export { AUTO_THINKING, type ConfiguredThinkingLevel };
+export { AUTO_THINKING, CONFIGURED_THINKING_LEVELS, type ConfiguredThinkingLevel };
 
 /** Maps the session-level `auto` sentinel to `undefined`; concrete levels pass through. */
 export function concreteThinkingLevel(level: ConfiguredThinkingLevel | undefined): ThinkingLevel | undefined {
@@ -180,19 +180,6 @@ export function getConfiguredThinkingLevelMetadata(level: ConfiguredThinkingLeve
 export function hasConfigurableThinkingEffort(model: Model | undefined): model is Model {
 	return model?.reasoning === true && getSupportedEfforts(model).length > 0;
 }
-
-/**
- * The complete configuration vocabulary.
- *
- * Model pickers narrow this vocabulary to the variants the active model
- * actually exposes. This follows OpenCode's variant contract: one mechanism,
- * model-specific valid names, and no silently clamped choices.
- */
-export const CONFIGURED_THINKING_LEVELS: readonly ConfiguredThinkingLevel[] = [
-	ThinkingLevel.Off,
-	AUTO_THINKING,
-	...THINKING_EFFORTS,
-];
 
 /**
  * The choices ONE model accepts, in cycle order.

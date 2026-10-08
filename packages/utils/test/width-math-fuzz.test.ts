@@ -203,17 +203,22 @@ describe("width-math fuzz invariants", () => {
 			const tokens: string[] = [];
 			for (let t = 0; t < tokenCount; t++) {
 				let token = "";
-				while (visibleWidth(token) < width) {
+				// The width of `token`, carried from the measurement that accepted its last fragment, so
+				// each fragment costs one `visibleWidth` call: building the tokens is most of this case.
+				let tokenWidth = 0;
+				while (tokenWidth < width) {
 					const frag = wrapFragments[Math.floor(rand() * wrapFragments.length)]!;
-					if (visibleWidth(token + frag) > width) break;
+					const grown = visibleWidth(token + frag);
+					if (grown > width) break;
 					token += frag;
+					tokenWidth = grown;
 				}
 				// A token must be genuinely visible: a pure-ANSI (zero-width) token
 				// carries only its separating spaces, and a run of them sums those
 				// interior spaces past the width — an artifact of standalone
 				// zero-width tokens that never occurs in real content (ANSI codes
 				// attach to text, they are not space-separated on their own).
-				tokens.push(visibleWidth(token) >= 1 ? token : "a");
+				tokens.push(tokenWidth >= 1 ? token : "a");
 			}
 			const s = tokens.join(" ");
 			for (const line of wrapTextWithAnsi(s, width)) {

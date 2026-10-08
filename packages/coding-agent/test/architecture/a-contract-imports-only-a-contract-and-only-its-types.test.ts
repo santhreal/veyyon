@@ -29,21 +29,24 @@
  * so a new member arrives covered. It does not replace those four: they pin `wire/src/presentation`
  * specifically, including its named runtime and renderer packages, and they stay.
  *
- * WHAT IT DOES NOT CATCH. Three things. A contract that re-declares a type another contract owns
+ * WHAT IT DOES NOT CATCH. Four things. A contract that re-declares a type another contract owns
  * rather than importing it, which is duplication rather than dependency and is a design review. A
  * `devDependency` used only by the package's own tests -- `contracts/wire` uses `@veyyon/utils` that
- * way, and a test helper is not part of the shipped contract. And a contract whose SHAPE mirrors a
- * host's internals so closely that only one host can satisfy it, which no graph rule can see.
+ * way, and a test helper is not part of the shipped contract. A contract whose SHAPE mirrors a
+ * host's internals so closely that only one host can satisfy it, which no graph rule can see. And a
+ * package named in documentation prose rather than in a fenced example, which is a mention and not
+ * an import a reader copies.
  */
 
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import {
 	importSpecifiers,
 	isDirectory,
 	repoPath,
 	repoRelative,
+	sourceImportSpecifiers,
 	subdirectories,
 	typeScriptFiles,
 	valueImportSpecifiers,
@@ -112,6 +115,25 @@ function escapesPackage(contract: Contract, file: string, specifier: string): bo
 	if (!specifier.startsWith(".")) return false;
 	const target = resolve(join(file, ".."), specifier);
 	return !target.startsWith(`${contract.directory}/`);
+}
+
+/** Every Markdown file under `root`, recursively, excluding installed dependencies. */
+function markdownFiles(root: string): string[] {
+	const files: string[] = [];
+	for (const entry of readdirSync(root, { withFileTypes: true })) {
+		const path = join(root, entry.name);
+		if (entry.isDirectory()) {
+			if (entry.name !== "node_modules") files.push(...markdownFiles(path));
+		} else if (entry.name.endsWith(".md")) {
+			files.push(path);
+		}
+	}
+	return files.sort();
+}
+
+/** The body of every fenced code block in a Markdown document, whatever its language tag. */
+function fencedBlocks(markdown: string): string[] {
+	return [...markdown.matchAll(/^(`{3,}|~{3,})[^\n]*\n([\s\S]*?)^\1\s*$/gm)].map(match => match[2]!);
 }
 
 const members = contracts();
@@ -243,6 +265,32 @@ describe("a contract imports only a contract, and only its types", () => {
 			}
 		}
 		expect([...new Set(external)].sort()).toEqual([]);
+	});
+
+	/**
+	 * The documentation half of the rule. A reader copies a README example into a browser or a test
+	 * client, so an example that imports a package the source may not import hands the reader the
+	 * dependency the contract exists to avoid. Every fenced block of every Markdown file in a contract
+	 * is held to the specifier rule above, minus the relative sibling, which no reader can resolve.
+	 */
+	test("every import a contract's documentation shows is a node builtin or a contract", () => {
+		const shown: string[] = [];
+		const offLayer: string[] = [];
+		for (const member of members) {
+			for (const file of markdownFiles(member.directory)) {
+				for (const block of fencedBlocks(readFileSync(file, "utf-8"))) {
+					for (const specifier of sourceImportSpecifiers(block)) {
+						shown.push(specifier);
+						if (specifier.startsWith("node:")) continue;
+						const target = packageOf(specifier);
+						if (target !== undefined && contractNames.has(target)) continue;
+						offLayer.push(`${repoRelative(file)} -> ${specifier}`);
+					}
+				}
+			}
+		}
+		expect(shown, "anti-vacuity: the sweep read the contracts' examples").toContain("@veyyon/wire");
+		expect(offLayer, "a documented import is a dependency the reader takes").toEqual([]);
 	});
 
 	/**

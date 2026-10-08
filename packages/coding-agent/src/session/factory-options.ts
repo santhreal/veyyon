@@ -12,6 +12,7 @@ import type { HostNotifier } from "@veyyon/host";
 import type { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 import type { SessionManager } from "@veyyon/kernel/session/session-manager";
 import type { ArgotSession } from "argot";
+import type { AsyncJobManager } from "../async";
 import type { EffortSource } from "../config/effort-resolver";
 import type { ModelRegistry } from "../config/model-registry";
 import type { PromptTemplate } from "../config/prompt-templates";
@@ -194,6 +195,13 @@ export interface CreateAgentSessionOptions {
 	enableMCP?: boolean;
 	/** Existing MCP manager to reuse (skips discovery, propagates to toolSession). */
 	mcpManager?: MCPManager;
+	/**
+	 * The spawning session's background-job manager. Read only for a spawned agent
+	 * (`parentTaskPrefix` set): its background bash, `task` and `job` calls run on this
+	 * manager, so their results reach the conversation that spawned it. Absent, a spawned
+	 * agent falls back to the process-wide manager the first top-level session installed.
+	 */
+	asyncJobManager?: AsyncJobManager;
 
 	/** Enable LSP integration (tool, formatting, diagnostics, warmup). Default: true */
 	enableLsp?: boolean;
@@ -335,9 +343,9 @@ export function isSubagentSession(options: Pick<CreateAgentSessionOptions, "task
  *
  * Swapping in `isSubagentSession` here would change behaviour for a session
  * carrying depth but no prefix. It would stop installing the skills, rules and
- * MCP singletons, and it would take `AsyncJobManager.instance()` as its scoped
- * manager, which is `undefined` when nothing installed one. That session would
- * then refuse async work with no parent to route to instead.
+ * MCP singletons, and it would own no background-job manager and take its
+ * parent's instead, when it has no parent to route to. That session would then
+ * refuse async work instead.
  *
  * No in-tree caller constructs that shape today: the task executor and
  * `persisted-revive` both set the two together, and the eval bridge reaches the

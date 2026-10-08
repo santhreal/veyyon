@@ -462,7 +462,7 @@ describe("Tool Execution Display Wire and Export Projection", () => {
 
 			// Source records must NOT be mutated
 			const origAssistant = sourceEntries[0];
-			if (!origAssistant || origAssistant.type !== "message" || origAssistant.message.role !== "assistant") {
+			if (origAssistant?.type !== "message" || origAssistant.message.role !== "assistant") {
 				throw new Error("Expected assistant source entry");
 			}
 			const origToolCall = origAssistant.message.content[0];

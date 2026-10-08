@@ -1,4 +1,4 @@
-import { partialSuffixOverlapAny, ThinkingSection } from "./coercion";
+import { emitTextHoldingPartialTag, scanFencedThinking, scanThinkingText, ThinkingSection } from "./coercion";
 import { FencedThinkingScanner } from "./fenced-thinking";
 import type { InbandScanEvent, InbandScanner } from "./types";
 import { THINK_CLOSE, THINK_OPEN, XML_THINKING_CLOSE, XML_THINKING_OPEN } from "./wire-tags";
@@ -44,17 +44,7 @@ export class ThinkingInbandScanner implements InbandScanner {
 	}
 
 	flush(): InbandScanEvent[] {
-		const events = this.#consume(true);
-		if (this.#buffer.length === 0) return events;
-		if (this.#closeTag) {
-			this.#thinking.delta(this.#buffer, events);
-			this.#thinking.end(events);
-		} else {
-			events.push({ type: "text", text: this.#buffer });
-		}
-		this.#buffer = "";
-		this.#closeTag = "";
-		return events;
+		return this.#consume(true);
 	}
 
 	#consume(final: boolean): InbandScanEvent[] {
@@ -62,39 +52,26 @@ export class ThinkingInbandScanner implements InbandScanner {
 		for (;;) {
 			if (this.#fenced) {
 				// Run even with an empty buffer so a held partial close flushes on final.
-				const result = this.#fenced.feed(this.#buffer, final);
-				this.#buffer = result.closed ? result.rest : "";
-				this.#thinking.delta(result.thinking, events);
-				if (result.closed || final) {
-					this.#thinking.end(events);
-					this.#closeTag = "";
-					this.#fenced = undefined;
-				}
-				if (this.#fenced) break;
+				const { buffer, closed } = scanFencedThinking(this.#fenced, this.#buffer, final, this.#thinking, events);
+				this.#buffer = buffer;
+				if (!closed) break;
+				this.#closeTag = "";
+				this.#fenced = undefined;
 				continue;
 			}
-			if (this.#buffer.length === 0) break;
 			if (this.#closeTag) {
-				const close = this.#buffer.indexOf(this.#closeTag);
-				if (close === -1) {
-					const hold = final ? 0 : partialSuffixOverlapAny(this.#buffer, [this.#closeTag]);
-					this.#thinking.delta(this.#buffer.slice(0, this.#buffer.length - hold), events);
-					this.#buffer = this.#buffer.slice(this.#buffer.length - hold);
-					break;
-				}
-				this.#thinking.delta(this.#buffer.slice(0, close), events);
-				this.#buffer = this.#buffer.slice(close + this.#closeTag.length);
-				this.#thinking.end(events);
+				// Run even with an empty buffer so a section the stream ends inside closes on final.
+				const { buffer, closed } = scanThinkingText(this.#buffer, this.#closeTag, final, this.#thinking, events);
+				this.#buffer = buffer;
+				if (!closed) break;
 				this.#closeTag = "";
 				continue;
 			}
+			if (this.#buffer.length === 0) break;
 
 			const tag = findEarliestOpen(this.#buffer);
 			if (!tag) {
-				const hold = final ? 0 : partialSuffixOverlapAny(this.#buffer, OPENS);
-				const emit = this.#buffer.slice(0, this.#buffer.length - hold);
-				if (emit.length > 0) events.push({ type: "text", text: emit });
-				this.#buffer = this.#buffer.slice(this.#buffer.length - hold);
+				this.#buffer = emitTextHoldingPartialTag(this.#buffer, OPENS, final, events);
 				break;
 			}
 			if (tag.index > 0) events.push({ type: "text", text: this.#buffer.slice(0, tag.index) });

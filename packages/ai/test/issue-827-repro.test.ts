@@ -9,20 +9,18 @@
  * (`disableThinkingIfToolChoiceForced`): keep the forced choice and strip
  * reasoning for that one turn.
  *
- * The OpenCode gateways later stopped accepting any `tool_choice` but `"auto"`
- * (`only '"auto"' is supported for 'tool_choice'`), so on those hosts the
- * `"required"` that #827 sent became its own 400 and the choice is dropped
- * instead — which satisfies the same invariant from the other side and lets
- * reasoning through, since nothing is being forced. The strip-reasoning
- * mechanism still governs Moonshot and OpenRouter, which take a forced choice;
- * those cases are below and unchanged.
+ * The OpenCode gateways take a forced choice for some models and answer others with
+ * `Thinking mode does not support this tool_choice`. The forced choice reaches the wire first,
+ * with reasoning stripped as #827 does; when the gateway rejects it, the retry drops the choice
+ * and the reasoning policy re-reads the choice actually sent, so the retry carries reasoning and
+ * nothing forced. Moonshot and OpenRouter take a forced choice; those cases are below.
  *
- * So the assertions are written against the invariant rather than either
- * mechanism: whichever half is present on the wire, the other must be absent.
+ * So the assertions are written against the invariant rather than either mechanism: whichever
+ * half is present on the wire, the other must be absent, before and after a rejection.
  */
 import { describe, expect, it } from "bun:test";
 import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
-import type { Context, Model, ModelSpec, Tool } from "@veyyon/ai/types";
+import type { Context, FetchImpl, Model, ModelSpec, Tool } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { type } from "arktype";
@@ -94,24 +92,87 @@ interface CompletionsBody {
 	thinking?: unknown;
 }
 
+function isForced(choice: unknown): boolean {
+	return choice !== undefined && choice !== "auto" && choice !== "none";
+}
+
+/** Any field that asks the upstream to think. An explicit `thinking: { type: "disabled" }` is not one. */
+function hasThinkingSignal(body: CompletionsBody): boolean {
+	const thinking = body.thinking as { type?: unknown } | undefined;
+	return (
+		body.reasoning_effort !== undefined ||
+		body.reasoning !== undefined ||
+		(thinking !== undefined && thinking.type !== "disabled")
+	);
+}
+
+/** A gateway that answers a forced `tool_choice` with the recorded thinking-mode 400 and serves the rest. */
+function thinkingModeGateway(): { bodies: CompletionsBody[]; fetch: FetchImpl } {
+	const bodies: CompletionsBody[] = [];
+	const chunk = (delta: unknown, finish: string | null) =>
+		`data: ${JSON.stringify({ id: "c", object: "chat.completion.chunk", created: 0, choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
+	const fetch: FetchImpl = Object.assign(
+		async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+			const body = JSON.parse(typeof init?.body === "string" ? init.body : "{}") as CompletionsBody;
+			bodies.push(body);
+			if (bodies.length > 4) throw new Error("runaway retry");
+			if (isForced(body.tool_choice)) {
+				return new Response(
+					JSON.stringify({
+						error: { message: "Thinking mode does not support this tool_choice", type: "invalid_request_error" },
+					}),
+					{ status: 400, headers: { "content-type": "application/json" } },
+				);
+			}
+			return new Response(`${chunk({ content: "ok" }, null)}${chunk({}, "stop")}data: [DONE]\n\n`, {
+				status: 200,
+				headers: { "content-type": "text/event-stream" },
+			});
+		},
+		{ preconnect: globalThis.fetch.preconnect },
+	);
+	return { bodies, fetch };
+}
+
+const FORCED_SHAPES = ["any", "required", { type: "tool", name: "echo" }] as const;
+
 describe("issue #827 — kimi reasoning models drop reasoning under forced tool_choice", () => {
 	it("never puts a forced choice and a thinking signal on the wire together, on any gateway shape", async () => {
-		// Every shape a caller can force. The gateway takes none of them, so each
-		// must leave the wire with no `tool_choice` — and with reasoning intact,
-		// because there is no longer anything for thinking to be incompatible with.
-		for (const toolChoice of ["any", "required", { type: "tool", name: "echo" }] as const) {
+		for (const toolChoice of FORCED_SHAPES) {
 			const body = (await captureBody(kimiOpencodeGoModel(), {
 				reasoning: "high",
 				toolChoice,
 			})) as CompletionsBody;
 			const label = JSON.stringify(toolChoice);
 
-			expect(body.tool_choice, `${label} reaches an upstream that accepts only "auto"`).toBeUndefined();
-			// The invariant: nothing is forced, so the thinking signal is allowed.
-			expect(body.reasoning_effort, label).toBe("high");
-			expect(body.thinking, label).toBeUndefined();
-			// And the tool stays offered, or dropping the choice would cost the call.
+			expect(isForced(body.tool_choice), `${label} reaches the gateway as a forced choice`).toBe(true);
+			expect(hasThinkingSignal(body), `${label} rides with a thinking signal`).toBe(false);
 			expect(JSON.stringify(body.tools ?? []), label).toContain("echo");
+		}
+	});
+
+	it("drops the forced choice and restores reasoning once the gateway rejects it", async () => {
+		for (const toolChoice of FORCED_SHAPES) {
+			const gateway = thinkingModeGateway();
+			const label = JSON.stringify(toolChoice);
+			const result = await streamOpenAICompletions(kimiOpencodeGoModel(), ctx, {
+				apiKey: "test-key",
+				fetch: gateway.fetch,
+				reasoning: "high",
+				toolChoice,
+			}).result();
+
+			expect(result.stopReason, `${label}: ${result.errorMessage}`).toBe("stop");
+			expect(
+				gateway.bodies.map(body => isForced(body.tool_choice)),
+				label,
+			).toEqual([true, false]);
+			for (const body of gateway.bodies) {
+				expect(isForced(body.tool_choice) && hasThinkingSignal(body), label).toBe(false);
+			}
+			expect(gateway.bodies[1]?.tool_choice, label).toBeUndefined();
+			expect(gateway.bodies[1]?.reasoning_effort, `${label}: the retry keeps its thinking signal`).toBe("high");
+			expect(JSON.stringify(gateway.bodies[1]?.tools ?? []), label).toContain("echo");
 		}
 	});
 
@@ -121,9 +182,7 @@ describe("issue #827 — kimi reasoning models drop reasoning under forced tool_
 			toolChoice: "auto",
 		})) as CompletionsBody;
 
-		// `"auto"` is the one value the gateway accepts, and an omitted field is
-		// the same request; it is dropped with the rest so one rule covers them all.
-		expect(body.tool_choice).toBeUndefined();
+		expect(body.tool_choice).toBe("auto");
 		expect(body.reasoning_effort).toBe("high");
 	});
 

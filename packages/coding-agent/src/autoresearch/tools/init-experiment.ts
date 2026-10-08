@@ -1,9 +1,9 @@
 import * as path from "node:path";
-import { clamp, errorMessage, formatCount, logger } from "@veyyon/utils";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { clamp, errorMessage, formatCount, lazy, logger } from "@veyyon/utils";
 import { replaceTabs } from "@veyyon/utils/tab-width";
 import { truncateToWidth } from "@veyyon/utils/width";
 import type { TextBlockView } from "@veyyon/view";
-import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";
 import * as git from "../../utils/git";
 import { parseWorkDirDirtyPaths, tryReadHeadSha } from "../git";
@@ -41,24 +41,26 @@ function clampCount(value: number | undefined, max: number): number | null {
 	return clamp(Math.floor(value), 1, max);
 }
 
-const initExperimentSchema = type({
-	name: type("string").describe("experiment name"),
-	"goal?": type("string").describe("session goal"),
-	primary_metric: type("string").describe("primary metric name"),
-	"metric_unit?": type("string").describe("metric unit (e.g. ms, µs, mb)"),
-	"direction?": type("'lower' | 'higher'").describe("better direction (default lower)"),
-	"secondary_metrics?": type("string[]").describe("secondary metric names"),
-	"scope_paths?": type("string[]").describe("expected-to-modify paths"),
-	"off_limits?": type("string[]").describe("off-limits paths"),
-	"constraints?": type("string[]").describe("free-form constraints"),
-	"max_iterations?": type("number").describe("soft iteration cap per segment"),
-	"new_segment?": type("boolean").describe("bump to a new segment in existing session"),
-	"breadth?": type("number").describe("candidate arms explored per iteration (1 = serial, max 8)"),
-	"attempts?": type("number").describe("retries an arm may make before it is abandoned"),
-	"certify?": type("boolean").describe("have arms cross-review each other before a winner is kept"),
-});
+const initExperimentSchema = lazy(() =>
+	type({
+		name: type("string").describe("experiment name"),
+		"goal?": type("string").describe("session goal"),
+		primary_metric: type("string").describe("primary metric name"),
+		"metric_unit?": type("string").describe("metric unit (e.g. ms, µs, mb)"),
+		"direction?": type("'lower' | 'higher'").describe("better direction (default lower)"),
+		"secondary_metrics?": type("string[]").describe("secondary metric names"),
+		"scope_paths?": type("string[]").describe("expected-to-modify paths"),
+		"off_limits?": type("string[]").describe("off-limits paths"),
+		"constraints?": type("string[]").describe("free-form constraints"),
+		"max_iterations?": type("number").describe("soft iteration cap per segment"),
+		"new_segment?": type("boolean").describe("bump to a new segment in existing session"),
+		"breadth?": type("number").describe("candidate arms explored per iteration (1 = serial, max 8)"),
+		"attempts?": type("number").describe("retries an arm may make before it is abandoned"),
+		"certify?": type("boolean").describe("have arms cross-review each other before a winner is kept"),
+	}),
+);
 
-type InitExperimentParams = typeof initExperimentSchema.infer;
+type InitExperimentParams = typeof initExperimentSchema.value.infer;
 
 interface InitExperimentDetails {
 	state: ExperimentState;
@@ -71,13 +73,15 @@ interface InitExperimentDetails {
 
 export function createInitExperimentTool(
 	options: AutoresearchToolFactoryOptions,
-): ToolDefinition<typeof initExperimentSchema, InitExperimentDetails> {
+): ToolDefinition<typeof initExperimentSchema.value, InitExperimentDetails> {
 	return {
 		name: "init_experiment",
 		label: "Init Experiment",
 		description:
 			"Initialize or reconfigure the autoresearch session. On first call (Phase 1 → Phase 2 transition), requires `./autoresearch.sh` to exist and pending harness changes are auto-committed on an autoresearch branch. Pass `new_segment: true` to start a fresh baseline within an existing session.",
-		parameters: initExperimentSchema,
+		get parameters() {
+			return initExperimentSchema.value;
+		},
 		defaultInactive: true,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const storage = await openAutoresearchStorage(ctx.cwd);

@@ -206,6 +206,17 @@ export const OBSERVED_PROVIDER_ERRORS: readonly ObservedProviderError[] = [
 		verdict: "wall",
 		why: "A 4xx naming the model as the thing that is gone. Re-sending the same request to the same model reproduces it.",
 	},
+	{
+		message:
+			"400 [invalid_request_error] only '\"auto\"' is supported for 'tool_choice'. '\"none\"', '\"required\"', and named function choices are not currently supported",
+		verdict: "wall",
+		why: "A gateway that takes only an automatic tool choice. Re-sending the pin reproduces it; the provider rebuilds the request without the field instead.",
+	},
+	{
+		message: "400 Thinking mode does not support this tool_choice",
+		verdict: "wall",
+		why: "A thinking model that takes no forced tool choice. The same request fails the same way, so only a request without the field can succeed.",
+	},
 ];
 
 /**

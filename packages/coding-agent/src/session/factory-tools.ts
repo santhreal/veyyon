@@ -19,6 +19,7 @@ import {
 	type ExtensionContext,
 	type ExtensionRunner,
 	ExtensionToolWrapper,
+	type RegisteredTool,
 	type ToolDefinition,
 } from "../extensibility/extensions";
 import { HIDDEN_TOOLS, type Tool, type ToolSession } from "../tools";
@@ -103,6 +104,20 @@ export function customToolToDefinition(
 		(definition as typeof definition & Pick<AgentTool, "loadMode">).loadMode = imageGenTool.loadMode;
 	}
 	return definition;
+}
+
+/** The caller's SDK custom tools as definitions registered under `<sdk>`, legacy built-in definitions excluded. */
+export function registerSdkCustomTools(
+	customTools: readonly (CustomTool | ToolDefinition)[] | undefined,
+	obfuscateProviderText: (text: string) => string,
+): RegisteredTool[] {
+	if (!customTools) return [];
+	return customTools
+		.filter(tool => !isLegacyBuiltinToolDefinition(tool))
+		.map(tool => ({
+			definition: isCustomTool(tool) ? customToolToDefinition(tool, obfuscateProviderText) : tool,
+			extensionPath: "<sdk>",
+		}));
 }
 
 export function createCustomToolsExtension(

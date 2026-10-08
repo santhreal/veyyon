@@ -1,12 +1,12 @@
 /**
  * Every Smithery request gets the same deadline, from one place.
  *
- * WHY THIS SUITE EXISTS. Three modules talk to Smithery -- `smithery-auth` for
- * the CLI handshake, `smithery-connect` for connect, `smithery-registry` for
- * search and install -- and each declared its own `SMITHERY_*_TIMEOUT_MS =
- * 10_000` beside its own `withTimeoutSignal` call. Nineteen call sites over three
- * copies of one number, so "Smithery gets ten seconds" was a habit rather than a
- * fact, and one of the three could have drifted with nothing to notice.
+ * WHY THIS SUITE EXISTS. Smithery is reached from `smithery-auth` for the CLI
+ * handshake and `smithery-registry` for search and install, and each declared
+ * its own `SMITHERY_*_TIMEOUT_MS = 10_000` beside its own `withTimeoutSignal`
+ * call. Every call site used a copy of one number, so
+ * "Smithery gets ten seconds" was a habit rather than a fact, and one copy could
+ * have drifted with nothing to notice.
  *
  * The suite pins the value, the composition with a caller's own signal, and the
  * property that made the duplication worth removing rather than merely tidying:
@@ -80,7 +80,7 @@ describe("smitheryTimeoutSignal", () => {
 
 	/**
 	 * Without a caller signal the deadline is the only reason it can abort, which
-	 * is what the one-argument call sites in `smithery-auth` and `smithery-connect`
+	 * is what the one-argument call sites in `smithery-auth` and `smithery-registry`
 	 * rely on.
 	 */
 	it("works with no caller signal at all", () => {
@@ -109,7 +109,7 @@ describe("the deadline has one owner", () => {
 		const owner = await read("smithery-http.ts");
 		expect(owner).toContain("export const SMITHERY_HTTP_TIMEOUT_MS = 10_000;");
 
-		for (const name of ["smithery-auth.ts", "smithery-connect.ts", "smithery-registry.ts"]) {
+		for (const name of ["smithery-auth.ts", "smithery-registry.ts"]) {
 			const source = await read(name);
 			expect(source, `${name} should not declare its own timeout`).not.toMatch(/TIMEOUT_MS\s*=\s*10_000/);
 		}
@@ -121,7 +121,7 @@ describe("the deadline has one owner", () => {
 	 * inline needs no constant at all.
 	 */
 	it("is reached through smitheryTimeoutSignal at every call site", async () => {
-		for (const name of ["smithery-auth.ts", "smithery-connect.ts", "smithery-registry.ts"]) {
+		for (const name of ["smithery-auth.ts", "smithery-registry.ts"]) {
 			const source = await read(name);
 			expect(source, `${name} should not call withTimeoutSignal directly`).not.toContain("withTimeoutSignal(");
 			expect(source, `${name} should use the owner`).toContain("smitheryTimeoutSignal(");
@@ -133,10 +133,10 @@ describe("the deadline has one owner", () => {
 	 * pass if `read` silently returned an empty string.
 	 */
 	it("reads real sources rather than empty strings", async () => {
-		const connect = await read("smithery-connect.ts");
+		const auth = await read("smithery-auth.ts");
 
-		expect(connect.length).toBeGreaterThan(500);
-		expect(connect).toContain("SmitheryConnectError");
+		expect(auth.length).toBeGreaterThan(500);
+		expect(auth).toContain("smitheryTimeoutSignal(");
 		expect((await read("smithery-http.ts")).length).toBeGreaterThan(200);
 	});
 });

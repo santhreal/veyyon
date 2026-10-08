@@ -1,4 +1,4 @@
-import { type } from "arktype";
+import { type } from "@veyyon/ai/utils/schema/arktype";
 import type { CustomTool } from "../../../extensibility/custom-tools/types";
 import { CHANGELOG_CATEGORIES, type ChangelogCategory } from "../../types";
 import type { CommitAgentState } from "../state";

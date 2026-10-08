@@ -92,6 +92,8 @@ function pendingSession(id: string): { session: AgentSession; finish: () => void
 	const turn = Promise.withResolvers<void>();
 	const session = {
 		waitForIdle: () => turn.promise,
+		waitForQuiescence: () => turn.promise,
+		dispose: async () => {},
 		sessionManager: {
 			getSessionId: () => id,
 			getSessionFile: () => `/repo/.veyyon/${id}.jsonl`,
@@ -108,9 +110,9 @@ describe("the keeper reports what it is holding", () => {
 		keeper.subscribe(() => seen.push(keeper.size));
 
 		const first = pendingSession("a");
-		keeper.keep(first.session);
+		keeper.keep(first.session, Number.POSITIVE_INFINITY);
 		const second = pendingSession("b");
-		keeper.keep(second.session);
+		keeper.keep(second.session, Number.POSITIVE_INFINITY);
 
 		expect(seen).toEqual([1, 2]);
 		first.finish();
@@ -121,7 +123,7 @@ describe("the keeper reports what it is holding", () => {
 		const keeper = new BackgroundSessions();
 		const seen: number[] = [];
 		const only = pendingSession("a");
-		const kept = keeper.keep(only.session);
+		const kept = keeper.keep(only.session, Number.POSITIVE_INFINITY);
 		keeper.subscribe(() => seen.push(keeper.size));
 
 		only.finish();
@@ -139,11 +141,11 @@ describe("the keeper reports what it is holding", () => {
 	it("does not fire again for a conversation it already holds", () => {
 		const keeper = new BackgroundSessions();
 		const only = pendingSession("a");
-		keeper.keep(only.session);
+		keeper.keep(only.session, Number.POSITIVE_INFINITY);
 		const seen: number[] = [];
 		keeper.subscribe(() => seen.push(keeper.size));
 
-		keeper.keep(only.session);
+		keeper.keep(only.session, Number.POSITIVE_INFINITY);
 
 		expect(seen).toEqual([]);
 		only.finish();
@@ -179,7 +181,7 @@ describe("the keeper reports what it is holding", () => {
 	it("describes a conversation it does hold with the entry it is holding", () => {
 		const keeper = new BackgroundSessions();
 		const only = pendingSession("a");
-		const kept = keeper.keep(only.session);
+		const kept = keeper.keep(only.session, Number.POSITIVE_INFINITY);
 
 		expect(keeper.describeAttached(only.session)).toBe(kept);
 		expect(keeper.size).toBe(1);
@@ -195,7 +197,7 @@ describe("the keeper reports what it is holding", () => {
 		off();
 
 		const only = pendingSession("a");
-		keeper.keep(only.session);
+		keeper.keep(only.session, Number.POSITIVE_INFINITY);
 
 		expect(calls).toBe(0);
 		only.finish();
@@ -215,7 +217,7 @@ describe("the keeper reports what it is holding", () => {
 		keeper.subscribe(() => seen.push(keeper.size));
 
 		const only = pendingSession("a");
-		keeper.keep(only.session);
+		keeper.keep(only.session, Number.POSITIVE_INFINITY);
 
 		expect(seen).toEqual([1]);
 		only.finish();

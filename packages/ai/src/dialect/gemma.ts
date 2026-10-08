@@ -1,6 +1,14 @@
 import { AI_PROMPTS } from "../prompts/registry";
 import type { Message, ToolCall } from "../types";
-import { mintToolCallId, scanOutsideText, scanThinkingText, setToolArg, ThinkingSection } from "./coercion";
+import { matchClose, splitTopLevel, topLevelIndexOf } from "./bracket-walk";
+import {
+	mintToolCallId,
+	partialSuffixOverlap,
+	scanOutsideText,
+	scanThinkingText,
+	setToolArg,
+	ThinkingSection,
+} from "./coercion";
 import { assistantTranscriptParts, collectToolResultRun, gemmaTurn, messageContentText } from "./rendering";
 import type {
 	DialectDefinition,
@@ -46,6 +54,7 @@ class GemmaInbandScanner implements InbandScanner {
 	#buffer = "";
 	#state: State = "outside";
 	readonly #thinking = new ThinkingSection();
+	#call = new GemmaCallBody();
 	readonly #parseThinking: boolean;
 
 	constructor(options: InbandScannerOptions = {}) {
@@ -92,6 +101,7 @@ class GemmaInbandScanner implements InbandScanner {
 			this.#state = "thinking";
 			return;
 		}
+		this.#call = new GemmaCallBody();
 		this.#state = "tool";
 	}
 
@@ -107,15 +117,12 @@ class GemmaInbandScanner implements InbandScanner {
 	}
 
 	#consumeTool(final: boolean, events: InbandScanEvent[]): void {
-		const close = findCallClose(this.#buffer);
-		if (close === -1) {
-			if (final) {
-				this.#buffer = "";
-				this.#state = "outside";
-			}
+		this.#buffer = this.#call.read(this.#buffer, final);
+		if (!this.#call.closed) {
+			if (final) this.#state = "outside";
 			return;
 		}
-		const body = this.#buffer.slice(0, close);
+		const body = this.#call.text;
 		const parsed = parseGemmaCall(body);
 		if (parsed) {
 			const id = mintToolCallId();
@@ -128,7 +135,6 @@ class GemmaInbandScanner implements InbandScanner {
 				rawBlock: `${GEMMA_CALL_OPEN}${body}${GEMMA_CALL_CLOSE}`,
 			});
 		}
-		this.#buffer = this.#buffer.slice(close + GEMMA_CALL_CLOSE.length);
 		this.#state = "outside";
 	}
 }
@@ -138,17 +144,17 @@ function parseGemmaCall(body: string): ParsedCall | undefined {
 	const head = CALL_HEAD.exec(trimmed);
 	if (!head) return undefined;
 	const braceStart = head[0].length - 1;
-	const end = matchDelim(trimmed, braceStart, "{", "}");
+	const end = matchClose(trimmed, braceStart, "{", "}", skipGemmaString);
 	const argsText = end === -1 ? trimmed.slice(braceStart + 1) : trimmed.slice(braceStart + 1, end);
 	return { name: head[1]!, arguments: parseGemmaArgs(argsText) };
 }
 
 function parseGemmaArgs(text: string): Record<string, unknown> {
 	const out: Record<string, unknown> = {};
-	for (const segment of splitTopLevel(text, ",")) {
+	for (const segment of splitTopLevel(text, ",", skipGemmaString)) {
 		const trimmed = segment.trim();
 		if (trimmed.length === 0) continue;
-		const colon = topLevelIndexOf(trimmed, ":");
+		const colon = topLevelIndexOf(trimmed, ":", skipGemmaString);
 		if (colon === -1) continue;
 		const key = trimmed.slice(0, colon).trim();
 		if (!/^[A-Za-z_]\w*$/.test(key)) continue;
@@ -164,15 +170,15 @@ function parseGemmaValue(raw: string): unknown {
 		return close === -1 ? t.slice(STRING.length) : t.slice(STRING.length, close);
 	}
 	if (t.startsWith("[")) {
-		const end = matchDelim(t, 0, "[", "]");
+		const end = matchClose(t, 0, "[", "]", skipGemmaString);
 		const inner = end === -1 ? t.slice(1) : t.slice(1, end);
-		return splitTopLevel(inner, ",")
+		return splitTopLevel(inner, ",", skipGemmaString)
 			.map(part => part.trim())
 			.filter(part => part.length > 0)
 			.map(parseGemmaValue);
 	}
 	if (t.startsWith("{")) {
-		const end = matchDelim(t, 0, "{", "}");
+		const end = matchClose(t, 0, "{", "}", skipGemmaString);
 		return parseGemmaArgs(end === -1 ? t.slice(1) : t.slice(1, end));
 	}
 	if (t === "true") return true;
@@ -185,86 +191,80 @@ function parseGemmaValue(raw: string): unknown {
 	return t;
 }
 
-/** Index just past the `<|"|>`-delimited string starting at `i`. */
+/** The index just past the `<|"|>`-delimited string starting at `i`, or -1 when none starts there. */
 function skipGemmaString(text: string, i: number): number {
+	// 0x3c is `<`, the delimiter's first code unit; testing it first skips `startsWith` at every other index.
+	if (text.charCodeAt(i) !== 0x3c || !text.startsWith(STRING, i)) return -1;
 	const close = text.indexOf(STRING, i + STRING.length);
 	return close === -1 ? text.length : close + STRING.length;
 }
 
-function findCallClose(text: string): number {
-	let i = 0;
-	const n = text.length;
-	while (i < n) {
-		if (text.startsWith(STRING, i)) {
-			i = skipGemmaString(text, i);
-			continue;
-		}
-		if (text.startsWith(GEMMA_CALL_CLOSE, i)) return i;
-		i++;
+/**
+ * A call's body read up to its closer across stream deltas. A closer inside a `<|"|>` string is string text, so the
+ * body is walked once, with whether the walk is inside a string carried from one delta to the next; only a suffix
+ * that could begin a delimiter stays unread between deltas, and the body read so far is never walked again.
+ */
+class GemmaCallBody {
+	#text = "";
+	#inString = false;
+	#closed = false;
+
+	/** Whether the closer has arrived. */
+	get closed(): boolean {
+		return this.#closed;
 	}
-	return -1;
+
+	/** The body read so far; once {@link closed}, everything before the closer. */
+	get text(): string {
+		return this.#text;
+	}
+
+	/**
+	 * Reads the scanner's unread buffer and returns what stays unread: the text after the closer once it arrives,
+	 * otherwise a suffix that could begin a delimiter, or nothing when `final` is set.
+	 */
+	read(buffer: string, final: boolean): string {
+		const n = buffer.length;
+		let i = 0;
+		while (i < n) {
+			if (this.#inString) {
+				const close = buffer.indexOf(STRING, i);
+				if (close === -1) {
+					// Inside a string only the string's closing delimiter can end the walk.
+					i = final ? n : n - Math.min(n - i, partialSuffixOverlap(buffer, STRING));
+					break;
+				}
+				i = close + STRING.length;
+				this.#inString = false;
+				continue;
+			}
+			// 0x3c is `<`, the first code unit of both delimiters.
+			if (buffer.charCodeAt(i) === 0x3c) {
+				if (buffer.startsWith(STRING, i)) {
+					this.#inString = true;
+					i += STRING.length;
+					continue;
+				}
+				if (buffer.startsWith(GEMMA_CALL_CLOSE, i)) {
+					this.#text += buffer.slice(0, i);
+					this.#closed = true;
+					return buffer.slice(i + GEMMA_CALL_CLOSE.length);
+				}
+				if (!final && beginsDelimiter(buffer, i)) break;
+			}
+			i++;
+		}
+		this.#text += buffer.slice(0, i);
+		return buffer.slice(i);
+	}
 }
 
-/** Index of the `close` delimiter matching `open` at `openIndex`, skipping strings. */
-function matchDelim(text: string, openIndex: number, open: string, close: string): number {
-	let depth = 0;
-	let i = openIndex;
-	const n = text.length;
-	while (i < n) {
-		if (text.startsWith(STRING, i)) {
-			i = skipGemmaString(text, i);
-			continue;
-		}
-		const ch = text[i]!;
-		if (ch === open) depth++;
-		else if (ch === close && --depth === 0) return i;
-		i++;
-	}
-	return -1;
-}
-
-/** Split on `sep` at bracket depth 0, skipping `<|"|>` string spans. */
-function splitTopLevel(text: string, sep: string): string[] {
-	const parts: string[] = [];
-	let depth = 0;
-	let start = 0;
-	let i = 0;
-	const n = text.length;
-	while (i < n) {
-		if (text.startsWith(STRING, i)) {
-			i = skipGemmaString(text, i);
-			continue;
-		}
-		const ch = text[i]!;
-		if (ch === "{" || ch === "[" || ch === "(") depth++;
-		else if (ch === "}" || ch === "]" || ch === ")") depth--;
-		else if (depth === 0 && ch === sep) {
-			parts.push(text.slice(start, i));
-			start = i + 1;
-		}
-		i++;
-	}
-	parts.push(text.slice(start));
-	return parts;
-}
-
-/** First index of `ch` at bracket depth 0, skipping `<|"|>` string spans. */
-function topLevelIndexOf(text: string, ch: string): number {
-	let depth = 0;
-	let i = 0;
-	const n = text.length;
-	while (i < n) {
-		if (text.startsWith(STRING, i)) {
-			i = skipGemmaString(text, i);
-			continue;
-		}
-		const c = text[i]!;
-		if (c === "{" || c === "[" || c === "(") depth++;
-		else if (c === "}" || c === "]" || c === ")") depth--;
-		else if (depth === 0 && c === ch) return i;
-		i++;
-	}
-	return -1;
+/** Whether `text` from `i` to its end is a proper prefix of a delimiter, which the next delta may complete. */
+function beginsDelimiter(text: string, i: number): boolean {
+	const rest = text.length - i;
+	if (rest >= GEMMA_CALL_CLOSE.length) return false;
+	const tail = text.slice(i);
+	return STRING.startsWith(tail) || GEMMA_CALL_CLOSE.startsWith(tail);
 }
 
 function renderToolCall(call: ToolCall, _options: DialectRenderOptions = {}): string {

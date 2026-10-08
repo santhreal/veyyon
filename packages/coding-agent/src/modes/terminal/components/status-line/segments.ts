@@ -137,9 +137,8 @@ const modelSegment: StatusLineSegment = {
 		// intact. The service tier is NOT part of this tail — see below.
 		let tail = "";
 		if (!compact && thinkingDisplay) {
-			// Roomy (quiet footline): the effort merges into the model label as
-			// ONE segment (`Model @high`) — a fake ` · ` separator made it read
-			// as two segments.
+			// Roomy (the footline's default): the effort merges into the model label as
+			// one segment (`Model @high`). `roomy: false` joins them with the dot separator.
 			tail += opts.roomy ? ` @${thinkingDisplay}` : `${theme.sep.dot}${thinkingDisplay}`;
 		}
 

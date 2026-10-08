@@ -11,7 +11,7 @@
  *
  * THE DEFECT CLASS. A dispatcher that routes a type to the wrong card, or drops one, is invisible to
  * the sub-view suites: each of them passes on the card it owns while the tool draws the wrong one. So
- * the type union is resolved from `searchSchema` at run time and every member is dispatched, and each
+ * the type union is resolved from `SEARCH_TYPES`, which the schema is built from, at run time and every member is dispatched, and each
  * type's output is required to differ from every other's -- a dispatcher that collapsed two types onto
  * one card would otherwise pass. A fourth type added to the schema lands red here until it is routed.
  *
@@ -38,7 +38,7 @@ import { theme } from "@veyyon/coding-agent/theme/theme";
 import { TRUNCATE_LENGTHS } from "@veyyon/coding-agent/tools/core/render-utils";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import type { FileSearchDetails } from "@veyyon/coding-agent/tools/search/file-search";
-import { type SearchToolDetails, type SearchToolInput, searchSchema } from "@veyyon/coding-agent/tools/search/search";
+import { SEARCH_TYPES, type SearchToolDetails, type SearchToolInput } from "@veyyon/coding-agent/tools/search/search";
 import { searchToolView } from "@veyyon/coding-agent/tools/search/search-view";
 import type { StructureSearchDetails } from "@veyyon/coding-agent/tools/search/structure-search";
 import type { TextSearchDetails } from "@veyyon/coding-agent/tools/search/text-search";
@@ -131,7 +131,7 @@ const BY_TYPE = {
 } as const;
 
 /** The type union as the schema declares it, so a type the schema gains is dispatched here too. */
-const SCHEMA_TYPES: readonly string[] = searchSchema.shape.type.options;
+const SCHEMA_TYPES: readonly string[] = SEARCH_TYPES;
 
 describe("search dispatcher differential", () => {
 	it("routes every type the schema declares, and only those three", () => {

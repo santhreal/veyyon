@@ -227,34 +227,13 @@ export class Patcher {
 			return { sections: [await this.commit(prepared)] };
 		}
 
-		// Prepare every section first so any failure (stale hash, missing
-		// file, parse error, in-memory no-op) surfaces before any write.
-		const prepared: PreparedSection[] = [];
-		for (const section of patch.sections) prepared.push(await this.prepare(section));
-		assertUniqueCanonicalPaths(prepared);
-		for (const entry of prepared) {
-			if (entry.isNoop) {
-				throw new Error(`Edits to ${entry.section.path} resulted in no changes being made.`);
-			}
-		}
-
+		const prepared = await this.#prepareBatch(patch);
 		const results: PatchSectionResult[] = [];
 		for (let index = 0; index < prepared.length; index++) {
 			try {
 				results.push(await this.commit(prepared[index]));
 			} catch (error) {
-				// A mid-batch write failure leaves earlier sections on disk with no
-				// rollback; report exactly which sections landed so the caller can
-				// re-issue only the missing ones instead of double-applying.
-				const written = prepared.slice(0, index).map(entry => entry.section.path);
-				const notWritten = prepared.slice(index + 1).map(entry => entry.section.path);
-				const message = error instanceof Error ? error.message : String(error);
-				throw new Error(
-					`Failed to write ${prepared[index].section.path}: ${message}` +
-						(written.length > 0 ? ` Sections already written: ${written.join(", ")}.` : "") +
-						(notWritten.length > 0 ? ` Sections not written: ${notWritten.join(", ")}.` : ""),
-					{ cause: error },
-				);
+				throw partialBatchError(prepared, index, error);
 			}
 		}
 		return { sections: results };
@@ -265,14 +244,22 @@ export class Patcher {
 	 * No writes hit the filesystem. Use for CI checks and dry runs.
 	 */
 	async preflight(patch: Patch): Promise<void> {
+		await this.#prepareBatch(patch);
+	}
+
+	/**
+	 * Prepare every section before any write, so a stale hash, missing file,
+	 * parse error, duplicate target or in-memory no-op in any section fails
+	 * the whole batch with nothing written.
+	 */
+	async #prepareBatch(patch: Patch): Promise<PreparedSection[]> {
 		const prepared: PreparedSection[] = [];
 		for (const section of patch.sections) prepared.push(await this.prepare(section));
 		assertUniqueCanonicalPaths(prepared);
 		for (const entry of prepared) {
-			if (entry.isNoop) {
-				throw new Error(`Edits to ${entry.section.path} resulted in no changes being made.`);
-			}
+			if (entry.isNoop) throw new Error(`Edits to ${entry.section.path} resulted in no changes being made.`);
 		}
+		return prepared;
 	}
 
 	/**
@@ -322,28 +309,7 @@ export class Patcher {
 			throw new Error(`File not found: ${target.path}. Use the write tool to create new files.`);
 		}
 
-		if (fileOp?.kind === "move" && this.fs.canonicalPath(fileOp.dest) === canonicalPath) {
-			throw new Error(`MV destination is the same as ${target.path}.`);
-		}
-
-		// Refuse to move onto an existing DIFFERENT file. `fs.move` overwrites its
-		// destination unconditionally, so without this guard `MV a -> b` where `b`
-		// already holds the user's real content silently destroys `b` and leaves no
-		// trace — a destructive fs op the model can trigger by naming a wrong or
-		// hallucinated destination. Fail loudly here, during prepare, so a
-		// multi-section batch aborts before any write lands (all-or-nothing). A
-		// rename that only respells one file (case-only on a case-insensitive
-		// volume, or through a symlink) is NOT a clobber: isSameExistingFile
-		// recognises it by identity and lets it through, matching the same-file
-		// guard fs.move uses to avoid deleting the file it just wrote.
-		if (fileOp?.kind === "move" && (await this.fs.exists(fileOp.dest))) {
-			if (!(await this.fs.isSameExistingFile(target.path, fileOp.dest))) {
-				throw new Error(
-					`MV destination ${fileOp.dest} already exists; refusing to overwrite it. ` +
-						`Edit ${fileOp.dest} directly, or remove it first, then move.`,
-				);
-			}
-		}
+		if (fileOp?.kind === "move") await this.#assertMoveDestination(target.path, canonicalPath, fileOp.dest);
 
 		const { bom: bomFromText, text } = stripBom(read.rawContent);
 		const bom = bomFromText || (await this.#readBinaryBom(target.path));
@@ -368,22 +334,13 @@ export class Patcher {
 			}
 		}
 
-		const applyResult =
-			fileOp?.kind === "rem"
-				? this.#applyWithRecovery({
-						section: target,
-						canonicalPath,
-						exists: read.exists,
-						normalized,
-						edits: [],
-					})
-				: this.#applyWithRecovery({
-						section: target,
-						canonicalPath,
-						exists: read.exists,
-						normalized,
-						edits: parsed.edits,
-					});
+		const applyResult = this.#applyWithRecovery({
+			section: target,
+			canonicalPath,
+			exists: read.exists,
+			normalized,
+			edits: fileOp?.kind === "rem" ? [] : parsed.edits,
+		});
 
 		return new PreparedSection(
 			target,
@@ -396,6 +353,31 @@ export class Patcher {
 			applyResult,
 			parseWarnings,
 			fileOp,
+		);
+	}
+
+	/**
+	 * Reject a move onto the source itself, or onto an existing DIFFERENT
+	 * file. `fs.move` overwrites its destination unconditionally, so without
+	 * this guard `MV a -> b` where `b` already holds the user's real content
+	 * silently destroys `b` and leaves no trace — a destructive fs op the model
+	 * can trigger by naming a wrong or hallucinated destination. Failing here,
+	 * during prepare, aborts a multi-section batch before any write lands
+	 * (all-or-nothing). A rename that only respells one file (case-only on a
+	 * case-insensitive volume, or through a symlink) is NOT a clobber:
+	 * isSameExistingFile recognises it by identity and lets it through,
+	 * matching the same-file guard fs.move uses to avoid deleting the file it
+	 * just wrote.
+	 */
+	async #assertMoveDestination(sourcePath: string, canonicalPath: string, dest: string): Promise<void> {
+		if (this.fs.canonicalPath(dest) === canonicalPath) {
+			throw new Error(`MV destination is the same as ${sourcePath}.`);
+		}
+		if (!(await this.fs.exists(dest))) return;
+		if (await this.fs.isSameExistingFile(sourcePath, dest)) return;
+		throw new Error(
+			`MV destination ${dest} already exists; refusing to overwrite it. ` +
+				`Edit ${dest} directly, or remove it first, then move.`,
 		);
 	}
 
@@ -542,102 +524,6 @@ export class Patcher {
 		return this.snapshots.record(canonicalPath, normalized);
 	}
 
-	/**
-	 * Reject an anchored edit that references a line the read which minted
-	 * `expected` never displayed. `matchedSnapshot` is the store version whose
-	 * text equals the live normalized content — the exact snapshot the model
-	 * anchored against. Absent means no provenance was recorded (the tag was
-	 * externally minted or aged out), so the edit applies as before. Only runs
-	 * on the no-drift path, where anchor line numbers index the tagged content
-	 * 1:1.
-	 *
-	 * The rejection inlines the actual file content at the unseen anchor lines
-	 * (from `matchedSnapshot.text`, which by definition equals the live
-	 * normalized content) so the model can verify what it was about to touch.
-	 * When the reveal covers EVERY unseen anchor line in full width
-	 * (`truncated === false`) those lines also merge into the snapshot's
-	 * seen-line set, so a straight retry with the same `[path#tag]` header
-	 * succeeds without a follow-up range read — the content the model
-	 * received in the error IS proof it has now seen those lines. When the
-	 * anchor range exceeds {@link SEEN_LINE_REVEAL_CAP} lines OR any
-	 * revealed line exceeds {@link SEEN_LINE_REVEAL_MAX_COLUMNS} characters
-	 * (`truncated === true`), NO lines merge: the message keeps the
-	 * range-re-read guidance intact and the model cannot piecewise-reveal
-	 * its way past the guard across multiple retries
-	 * (over-cap retry → tail reveal → next retry applies), nor coax the tool
-	 * into dumping a minified megabyte-wide line into the error preview.
-	 *
-	 * One anchor is exempt: a PURE INSERTION beside a line the producer displayed
-	 * but CLIPPED at its column cap. `INS.PRE` / `INS.POST` read an anchor as a
-	 * place and leave its bytes byte-identical, the position is what the content
-	 * tag certifies, and the model saw the line number plus a leading prefix, so
-	 * it can identify the row. Refusing that asked for a megabyte-wide line to be
-	 * pulled into context in order to add a line next to it, and the named remedy
-	 * (`:raw`) was the only way through. Every destructive form on a clipped line
-	 * stays refused, because those rewrite bytes nobody read; and a line never
-	 * rendered AT ALL — elided body, folded summary row, outside the read range —
-	 * stays refused for every form including an insertion, since without even a
-	 * prefix there is nothing to identify.
-	 */
-	#assertSeenLines(section: PatchSection, expected: string, matchedSnapshot: Snapshot | null): void {
-		const seen = matchedSnapshot?.seenLines;
-		if (!seen || seen.size === 0) return;
-		const clipped = matchedSnapshot?.clippedLines;
-		const rewritten = collectRewrittenAnchorLines(section.edits);
-		const unseen = section
-			.collectAnchorLines()
-			.filter(line => !seen.has(line) && !(clipped?.has(line) === true && !rewritten.has(line)));
-		if (unseen.length === 0) return;
-		const sourceLines = matchedSnapshot?.text.split("\n") ?? [];
-		const revealed: RevealedLine[] = [];
-		const revealCount = Math.min(unseen.length, SEEN_LINE_REVEAL_CAP);
-		let columnTruncated = false;
-		for (let i = 0; i < revealCount; i++) {
-			const line = unseen[i];
-			// Out-of-range anchors are caught by parse/apply with a better
-			// message; skip them here so they never join the revealed set.
-			if (line < 1 || line > sourceLines.length) continue;
-			const source = sourceLines[line - 1] ?? "";
-			// Cut by code point so a wide line never reveals a lone surrogate.
-			const clipped =
-				source.length > SEEN_LINE_REVEAL_MAX_COLUMNS ? truncate(source, SEEN_LINE_REVEAL_MAX_COLUMNS, "") : source;
-			if (clipped === source) {
-				revealed.push({ line, text: source });
-			} else {
-				revealed.push({ line, text: `${clipped}…` });
-				columnTruncated = true;
-			}
-		}
-		const overCap = unseen.length > revealed.length;
-		// Whether ANY unseen line is too wide, not just one inside the reveal.
-		// `columnTruncated` above only sees the first `SEEN_LINE_REVEAL_CAP`, so a
-		// wide line past that index left `columnClipped` false, the message named
-		// a plain ranged re-read, and running it re-clipped that line and the
-		// retry was rejected again. The scan is a length check over at most a few
-		// hundred already-in-memory strings.
-		const anyUnseenTooWide =
-			columnTruncated || unseen.some(line => (sourceLines[line - 1]?.length ?? 0) > SEEN_LINE_REVEAL_MAX_COLUMNS);
-		const truncated = overCap || anyUnseenTooWide;
-		// Only merge when the reveal covered every unseen anchor line in full
-		// width. A prefix-truncated reveal would let the model split a blind
-		// edit into <=cap-line retries and land it without ever running the
-		// required range re-read; a column-clipped reveal would leave part of
-		// each line unseen while the model receives an "ok to retry" signal.
-		if (!truncated) {
-			for (const { line } of revealed) seen.add(line);
-		}
-		// `columnClipped` wins over `overCap` in the message, because `:raw` clears
-		// both and a plain ranged read clears only the second. See
-		// `UnseenLinesReveal`.
-		throw new Error(
-			unseenLinesMessage(section.path, unseen, expected, {
-				lines: revealed,
-				truncated,
-				overCap,
-				columnClipped: anyUnseenTooWide,
-			}),
-		);
-	}
 	#mismatchError(
 		section: PatchSection,
 		canonicalPath: string,
@@ -666,30 +552,17 @@ export class Patcher {
 		const { section, canonicalPath, exists, normalized, edits } = args;
 		const expected = exists ? section.fileHash : undefined;
 		// The 4-hex tag is content-derived: when the live text hashes to it,
-		// trust the match and apply directly. `storedSnapshotForTag` feeds the
-		// drift paths below (block resolution, anchor remapping); on a 16-bit
-		// tag collision it resolves to the most-recently recorded text.
-		const storedSnapshotForTag = expected === undefined ? null : this.snapshots.byHash(canonicalPath, expected);
+		// trust the match and apply directly.
 		const liveMatches = expected !== undefined && computeFileHash(normalized) === expected;
 		const matchedSnapshot = liveMatches ? this.snapshots.byContent(canonicalPath, normalized) : null;
 
 		// Resolve `replace_block N:` edits to concrete ranges before recovery
-		// runs. Block anchors are expressed against the snapshot the section tag
-		// names, so resolve against that exact text:
-		//   - live content matches the tag (or there is no tag) → resolve against
-		//     the live, normalized content;
-		//   - the file drifted → resolve against the tagged snapshot's text so the
-		//     resulting ranges can be mapped to unchanged live lines below.
-		// When a block edit needs the tagged snapshot but it is unavailable, the
-		// range cannot be placed safely — reject with a MismatchError (re-read).
+		// runs, against the text the section tag names (see #blockBaseText).
 		const blockResolutions: BlockResolution[] = [];
 		const resolveWarnings: string[] = [];
 		let resolved: readonly Edit[] = edits;
 		if (hasBlockEdit(edits)) {
-			const baseText = expected === undefined || liveMatches ? normalized : storedSnapshotForTag?.text;
-			if (baseText === undefined) {
-				throw this.#mismatchError(section, canonicalPath, normalized, expected ?? "", false);
-			}
+			const baseText = this.#blockBaseText(section, canonicalPath, normalized, expected, liveMatches);
 			resolved = resolveBlockEdits(edits, baseText, section.path, this.blockResolver, {
 				onUnresolved: "throw",
 				onResolved: resolution => blockResolutions.push(resolution),
@@ -707,7 +580,7 @@ export class Patcher {
 			// The line numbers in `edits` index the exact content the tag names.
 			// Reject any anchor the read never displayed: editing lines the model
 			// has not seen is the off-by-memory mistake that mangles files.
-			if (expected !== undefined) this.#assertSeenLines(section, expected, matchedSnapshot);
+			if (expected !== undefined) assertSeenLines(section, expected, matchedSnapshot);
 			const result = applyEdits(normalized, resolved);
 			return withResolveWarnings(blockResolutions.length > 0 ? { ...result, blockResolutions } : result);
 		}
@@ -731,4 +604,155 @@ export class Patcher {
 		const hashRecognized = this.snapshots.byHash(canonicalPath, expected) !== null;
 		throw this.#mismatchError(section, canonicalPath, normalized, expected, hashRecognized);
 	}
+
+	/**
+	 * The text block anchors index, which is the snapshot the section tag names:
+	 *   - live content matches the tag (or there is no tag) → the live,
+	 *     normalized content;
+	 *   - the file drifted → the tagged snapshot's text, so the resulting ranges
+	 *     can be mapped to unchanged live lines by recovery. On a 16-bit tag
+	 *     collision this is the most-recently recorded text.
+	 * When the file drifted and the tagged snapshot is unavailable, the range
+	 * cannot be placed safely — reject with a MismatchError (re-read).
+	 */
+	#blockBaseText(
+		section: PatchSection,
+		canonicalPath: string,
+		normalized: string,
+		expected: string | undefined,
+		liveMatches: boolean,
+	): string {
+		if (expected === undefined || liveMatches) return normalized;
+		const snapshot = this.snapshots.byHash(canonicalPath, expected);
+		if (snapshot === null) throw this.#mismatchError(section, canonicalPath, normalized, expected, false);
+		return snapshot.text;
+	}
+}
+
+/**
+ * Reject an anchored edit that references a line the read which minted
+ * `expected` never displayed. `matchedSnapshot` is the store version whose
+ * text equals the live normalized content — the exact snapshot the model
+ * anchored against. Absent means no provenance was recorded (the tag was
+ * externally minted or aged out), so the edit applies as before. Only runs
+ * on the no-drift path, where anchor line numbers index the tagged content
+ * 1:1.
+ *
+ * The rejection inlines the actual file content at the unseen anchor lines
+ * (from `matchedSnapshot.text`, which by definition equals the live
+ * normalized content) so the model can verify what it was about to touch.
+ * When the reveal covers EVERY unseen anchor line in full width
+ * (`truncated === false`) those lines also merge into the snapshot's
+ * seen-line set, so a straight retry with the same `[path#tag]` header
+ * succeeds without a follow-up range read — the content the model
+ * received in the error IS proof it has now seen those lines. When the
+ * anchor range exceeds {@link SEEN_LINE_REVEAL_CAP} lines OR any
+ * revealed line exceeds {@link SEEN_LINE_REVEAL_MAX_COLUMNS} characters
+ * (`truncated === true`), NO lines merge: the message keeps the
+ * range-re-read guidance intact and the model cannot piecewise-reveal
+ * its way past the guard across multiple retries
+ * (over-cap retry → tail reveal → next retry applies), nor coax the tool
+ * into dumping a minified megabyte-wide line into the error preview.
+ *
+ * One anchor is exempt: a PURE INSERTION beside a line the producer displayed
+ * but CLIPPED at its column cap. `INS.PRE` / `INS.POST` read an anchor as a
+ * place and leave its bytes byte-identical, the position is what the content
+ * tag certifies, and the model saw the line number plus a leading prefix, so
+ * it can identify the row. Refusing that asked for a megabyte-wide line to be
+ * pulled into context in order to add a line next to it, and the named remedy
+ * (`:raw`) was the only way through. Every destructive form on a clipped line
+ * stays refused, because those rewrite bytes nobody read; and a line never
+ * rendered AT ALL — elided body, folded summary row, outside the read range —
+ * stays refused for every form including an insertion, since without even a
+ * prefix there is nothing to identify.
+ */
+function assertSeenLines(section: PatchSection, expected: string, matchedSnapshot: Snapshot | null): void {
+	const seen = matchedSnapshot?.seenLines;
+	if (!seen || seen.size === 0) return;
+	const clipped = matchedSnapshot?.clippedLines;
+	const rewritten = collectRewrittenAnchorLines(section.edits);
+	const unseen = section
+		.collectAnchorLines()
+		.filter(line => !seen.has(line) && !(clipped?.has(line) === true && !rewritten.has(line)));
+	if (unseen.length === 0) return;
+	const sourceLines = matchedSnapshot?.text.split("\n") ?? [];
+	const { revealed, columnTruncated } = revealUnseenLines(unseen, sourceLines);
+	const overCap = unseen.length > revealed.length;
+	// Whether ANY unseen line is too wide, not just one inside the reveal.
+	// `columnTruncated` above only sees the first `SEEN_LINE_REVEAL_CAP`, so a
+	// wide line past that index left `columnClipped` false, the message named
+	// a plain ranged re-read, and running it re-clipped that line and the
+	// retry was rejected again. The scan is a length check over at most a few
+	// hundred already-in-memory strings.
+	const anyUnseenTooWide =
+		columnTruncated || unseen.some(line => (sourceLines[line - 1]?.length ?? 0) > SEEN_LINE_REVEAL_MAX_COLUMNS);
+	const truncated = overCap || anyUnseenTooWide;
+	// Only merge when the reveal covered every unseen anchor line in full
+	// width. A prefix-truncated reveal would let the model split a blind
+	// edit into <=cap-line retries and land it without ever running the
+	// required range re-read; a column-clipped reveal would leave part of
+	// each line unseen while the model receives an "ok to retry" signal.
+	if (!truncated) {
+		for (const { line } of revealed) seen.add(line);
+	}
+	// `columnClipped` wins over `overCap` in the message, because `:raw` clears
+	// both and a plain ranged read clears only the second. See
+	// `UnseenLinesReveal`.
+	throw new Error(
+		unseenLinesMessage(section.path, unseen, expected, {
+			lines: revealed,
+			truncated,
+			overCap,
+			columnClipped: anyUnseenTooWide,
+		}),
+	);
+}
+
+/**
+ * The source text at the first {@link SEEN_LINE_REVEAL_CAP} unseen anchor
+ * lines, each cut at {@link SEEN_LINE_REVEAL_MAX_COLUMNS} code points with an
+ * ellipsis, and whether any revealed line was cut. Out-of-range anchors are
+ * caught by parse/apply with a better message; they are skipped here so they
+ * never join the revealed set.
+ */
+function revealUnseenLines(
+	unseen: readonly number[],
+	sourceLines: readonly string[],
+): { revealed: RevealedLine[]; columnTruncated: boolean } {
+	const revealed: RevealedLine[] = [];
+	const revealCount = Math.min(unseen.length, SEEN_LINE_REVEAL_CAP);
+	let columnTruncated = false;
+	for (let i = 0; i < revealCount; i++) {
+		const line = unseen[i];
+		if (line < 1 || line > sourceLines.length) continue;
+		const source = sourceLines[line - 1] ?? "";
+		// Cut by code point so a wide line never reveals a lone surrogate.
+		const clipped =
+			source.length > SEEN_LINE_REVEAL_MAX_COLUMNS ? truncate(source, SEEN_LINE_REVEAL_MAX_COLUMNS, "") : source;
+		if (clipped === source) {
+			revealed.push({ line, text: source });
+		} else {
+			revealed.push({ line, text: `${clipped}…` });
+			columnTruncated = true;
+		}
+	}
+	return { revealed, columnTruncated };
+}
+
+/**
+ * The error for a batch whose write failed at `index`. Earlier sections are on
+ * disk with no rollback, so the message lists which sections landed and which
+ * did not, and the caller re-issues only the missing ones instead of
+ * double-applying.
+ */
+function partialBatchError(prepared: readonly PreparedSection[], index: number, error: unknown): Error {
+	const written = prepared.slice(0, index).map(entry => entry.section.path);
+	const notWritten = prepared.slice(index + 1).map(entry => entry.section.path);
+	const message = error instanceof Error ? error.message : String(error);
+	return new Error(
+		`Failed to write ${prepared[index].section.path}: ${message}` +
+			(written.length > 0 ? ` Sections already written: ${written.join(", ")}.` : "") +
+			(notWritten.length > 0 ? ` Sections not written: ${notWritten.join(", ")}.` : ""),
+		{ cause: error },
+	);
 }

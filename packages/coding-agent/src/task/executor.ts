@@ -25,8 +25,9 @@ import {
 	truncate,
 	untilAborted,
 } from "@veyyon/utils";
-import { sessionFileName } from "@veyyon/utils/session-file";
+import { ORPHAN_AGENT_TRANSCRIPT_PREFIX, sessionFileName } from "@veyyon/utils/session-file";
 import type { ArgotSession } from "argot";
+import type { AsyncJobManager } from "../async";
 import { ModelRegistry } from "../config/model-registry";
 import {
 	formatModelSelectorValue,
@@ -385,6 +386,8 @@ export interface ExecutorOptions {
 	 */
 	preloadedCustomToolPaths?: ToolPathWithSource[];
 	mcpManager?: MCPManager;
+	/** The spawning session's background-job manager, so the child's jobs report to that conversation. */
+	asyncJobManager?: AsyncJobManager;
 	authStorage?: AuthStorage;
 	modelRegistry?: ModelRegistry;
 	settings?: Settings;
@@ -1971,8 +1974,14 @@ function deriveAgentTelemetry(options: ExecutorOptions): AgentTelemetryConfig | 
 	return { ...parentTelemetry, agent: agentIdentity, conversationId: undefined };
 }
 
+/** The run inputs the agent's system prompt section reads. */
+type AgentPromptInputs = Pick<
+	ExecutorOptions,
+	"agent" | "context" | "planReference" | "worktree" | "outputSchema" | "outputSchemaOverridesAgent"
+>;
+
 /** The agent's own system prompt section; it depends only on the run's fixed inputs. */
-function renderAgentSystemPrompt(options: ExecutorOptions, ircEnabled: boolean): string {
+function renderAgentSystemPrompt(options: AgentPromptInputs, ircEnabled: boolean): string {
 	const { normalized: normalizedOutputSchema } = normalizeSchema(options.outputSchema);
 	return prompt.render(agentPrompts["agent/system-prompt"].text, {
 		agent: options.agent.systemPrompt,
@@ -2000,28 +2009,40 @@ function spliceAgentSystemPrompt(defaultPrompt: string[], agentPrompt: string): 
  * SessionManager differs.
  */
 function childSessionOptionsBuilder(ctx: ChildSessionContext, runModel: RunModel): ChildSessionOptionsBuilder {
-	const { options, marks } = ctx;
+	// The builder outlives the run: the live session keeps its `systemPrompt` callback, and the
+	// lifecycle reviver keeps the builder for as long as the agent is parked. Every field is read out
+	// of `ctx` here, so neither closure holds `ctx`, whose run monitor keeps every assistant text of the
+	// run, nor `ctx.options`, whose `onProgress` and `signal` belong to the spawning tool call.
+	const { options, marks, modelPatterns, toolNames, spawnsEnv, childDepth, maxNestedSpawnDepth, ircEnabled } = ctx;
 	const { modelRegistry, model, thinkingLevel } = runModel;
 	const id = options.id;
 	// A requested pattern that resolved to no model is handed to the session to resolve itself, with
 	// the parent's model as its auth fallback and the run's retry chain as its fallback role.
 	const deferredPattern = !model && options.modelOverride !== undefined;
 	const mcpProxyTools = options.mcpManager ? createMCPProxyTools(options.mcpManager) : [];
-	const telemetry = deriveAgentTelemetry(options);
+	const promptInputs: AgentPromptInputs = {
+		agent: options.agent,
+		context: options.context,
+		planReference: options.planReference,
+		worktree: options.worktree,
+		outputSchema: options.outputSchema,
+		outputSchemaOverridesAgent: options.outputSchemaOverridesAgent,
+	};
 	let agentPrompt: string | undefined;
-	return (sessionManager, settings) => ({
-		cwd: sessionManager.getCwd(),
+	const runOptions = {
 		authStorage: modelRegistry.authStorage,
 		modelRegistry,
-		settings,
+		// The parent's bus, so a child that spawns reports its own children where the root listens.
+		// Without it every session from depth 2 down emits lifecycle and progress frames nobody reads.
+		eventBus: options.eventBus,
 		bypassAllApprovals: options.bypassAllApprovals,
 		parentApprovalBypassed: options.parentApprovalBypassed,
 		model,
-		modelPattern: deferredPattern ? ctx.modelPatterns : undefined,
+		modelPattern: deferredPattern ? modelPatterns : undefined,
 		modelPatternAuthFallback: deferredPattern ? options.parentActiveModelPattern : undefined,
 		modelPatternFallbackRole: deferredPattern ? `${AGENT_RETRY_FALLBACK_ROLE_PREFIX}${id}` : undefined,
 		thinkingLevel,
-		toolNames: ctx.toolNames,
+		toolNames,
 		requireYieldTool: true,
 		contextFiles: options.contextFiles,
 		skills: options.skills,
@@ -2032,14 +2053,13 @@ function childSessionOptionsBuilder(ctx: ChildSessionContext, runModel: RunModel
 		preloadedNamedExtensionPaths: options.preloadedNamedExtensionPaths,
 		preloadedCustomToolPaths: options.preloadedCustomToolPaths,
 		systemPrompt: defaultPrompt => {
-			agentPrompt ??= renderAgentSystemPrompt(options, ctx.ircEnabled);
+			agentPrompt ??= renderAgentSystemPrompt(promptInputs, ircEnabled);
 			return spliceAgentSystemPrompt(defaultPrompt, agentPrompt);
 		},
-		sessionManager,
 		hasUI: false,
-		spawns: ctx.spawnsEnv,
-		taskDepth: ctx.childDepth,
-		maxNestedSpawnDepth: ctx.maxNestedSpawnDepth,
+		spawns: spawnsEnv,
+		taskDepth: childDepth,
+		maxNestedSpawnDepth,
 		parentHindsightSessionState: options.parentHindsightSessionState,
 		parentMnemopiSessionState: options.parentMnemopiSessionState,
 		parentArgot: options.parentArgot,
@@ -2048,17 +2068,19 @@ function childSessionOptionsBuilder(ctx: ChildSessionContext, runModel: RunModel
 		agentId: id,
 		agentDisplayName: options.agent.name,
 		enableLsp: options.enableLsp ?? true,
-		skipPythonPreflight: Array.isArray(ctx.toolNames) && !ctx.toolNames.includes("eval"),
+		skipPythonPreflight: Array.isArray(toolNames) && !toolNames.includes("eval"),
 		enableMCP: !options.mcpManager,
 		mcpManager: options.mcpManager,
+		asyncJobManager: options.asyncJobManager,
 		customTools: mcpProxyTools.length > 0 ? mcpProxyTools : undefined,
 		localProtocolOptions: options.localProtocolOptions,
-		telemetry,
+		telemetry: deriveAgentTelemetry(options),
 		parentEvalSessionId: options.parentEvalSessionId,
 		onFirstChatDispatch: () => {
 			marks.firstChatDispatchAt ??= performance.now();
 		},
-	});
+	} satisfies Omit<CreateAgentSessionOptions, "cwd" | "settings" | "sessionManager">;
+	return (sessionManager, settings) => ({ ...runOptions, cwd: sessionManager.getCwd(), settings, sessionManager });
 }
 
 /**
@@ -2088,8 +2110,10 @@ function createSessionReviver(
 	ctx: ChildSessionContext,
 	buildSessionOptions: ChildSessionOptionsBuilder,
 ): () => Promise<AgentSession> {
-	const { options, sessionFile } = ctx;
-	const id = options.id;
+	// The reviver lives as long as the parked agent, so it captures the fields it reads, never `ctx`
+	// or `ctx.options`: see `childSessionOptionsBuilder`.
+	const { options, sessionFile, settings } = ctx;
+	const { id, parentArtifactManager, parentSessionId } = options;
 	return async () => {
 		// Re-peek as well as re-open on every use: /move can rewrite the header after this closure was
 		// created, and a deleted recorded cwd must fail closed rather than use open()'s general
@@ -2107,12 +2131,12 @@ function createSessionReviver(
 			initialCwd: current.cwd,
 			suppressBreadcrumb: true,
 		});
-		if (options.parentArtifactManager) {
-			reopened.adoptArtifactManager(options.parentArtifactManager);
+		if (parentArtifactManager) {
+			reopened.adoptArtifactManager(parentArtifactManager);
 		}
-		const revivedSettings = await ctx.settings.cloneForCwd(reopened.getCwd());
+		const revivedSettings = await settings.cloneForCwd(reopened.getCwd());
 		const { session: revived } = await createSubagentSession(
-			options.parentSessionId,
+			parentSessionId,
 			buildSessionOptions(reopened, revivedSettings),
 		);
 		syncStatusWithTurns(AgentRegistry.global(), id, revived);
@@ -2471,7 +2495,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 	// history://<id> (GRAN-1).
 	const sessionFile = options.artifactsDir
 		? path.join(options.artifactsDir, sessionFileName(id))
-		: path.join(getSessionsDir(), sessionFileName(`orphan-task-${id}`));
+		: path.join(getSessionsDir(), sessionFileName(`${ORPHAN_AGENT_TRANSCRIPT_PREFIX}${id}`));
 	const effectiveCwd = worktree ?? options.cwd;
 	const settings = await createSubagentSettingsForCwd(
 		options.settings ?? Settings.isolated(),

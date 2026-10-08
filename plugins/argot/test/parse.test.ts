@@ -137,6 +137,17 @@ describe("parseDict: invalid dicts fail loud", () => {
 		);
 	});
 
+	test.each([
+		["note", "5"],
+		["note", "true"],
+		["scope", '["src"]'],
+		["scope", '{ dir = "src" }'],
+	])("rejects a non-string [meta] %s (%s)", (field, value) => {
+		expect(() => parseDict(`version = 1\n[handles]\ndb = "x"\n[meta.db]\n${field} = ${value}\n`, S)).toThrow(
+			`[meta.db].${field} must be a string`,
+		);
+	});
+
 	test("names the source file in the message", () => {
 		try {
 			parseDict(`version = 1\n`, "/repo/AGENTS.dict");

@@ -1,24 +1,28 @@
 import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
-import { logger, pluralize, untilAborted } from "@veyyon/utils";
-import { type } from "arktype";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { lazy, logger, pluralize, untilAborted } from "@veyyon/utils";
 import { formatCurrentTime, formatMemories } from "../../memory/hindsight/content";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "..";
 import { requireMnemopiSessionState } from "./memory-session";
 import { recallToolView } from "./memory-view";
 
-const memoryRecallSchema = type({
-	query: type("string").describe("natural language search query"),
-});
+const memoryRecallSchema = lazy(() =>
+	type({
+		query: type("string").describe("natural language search query"),
+	}),
+);
 
-export type MemoryRecallParams = typeof memoryRecallSchema.infer;
+export type MemoryRecallParams = typeof memoryRecallSchema.value.infer;
 
-export class MemoryRecallTool implements AgentTool<typeof memoryRecallSchema> {
+export class MemoryRecallTool implements AgentTool<typeof memoryRecallSchema.value> {
 	readonly name = "recall";
 	readonly approval = "read" as const;
 	readonly label = "Recall";
 	readonly description = toolsPrompts["tools/recall"].text;
-	readonly parameters = memoryRecallSchema;
+	get parameters(): typeof memoryRecallSchema.value {
+		return memoryRecallSchema.value;
+	}
 	readonly strict = true;
 	readonly loadMode = "discoverable";
 	readonly summary = "Search memory for relevant prior context";

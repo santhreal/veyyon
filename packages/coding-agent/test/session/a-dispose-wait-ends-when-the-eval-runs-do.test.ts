@@ -26,7 +26,13 @@ function exitTime(runs: string): { stdout: string; elapsedMs: number } {
 		"console.log(await executions.settleEvalForDispose());",
 	].join("\n");
 	const start = performance.now();
-	const child = spawnSync(process.execPath, ["-e", script], { encoding: "utf8", timeout: 10_000 });
+	// `cwd` pinned: the child otherwise inherits this process's cwd, which an earlier suite in the
+	// same run can leave pointing at a temp directory it has since deleted.
+	const child = spawnSync(process.execPath, ["-e", script], {
+		cwd: import.meta.dirname,
+		encoding: "utf8",
+		timeout: 10_000,
+	});
 	const elapsedMs = performance.now() - start;
 	if (child.status !== 0) throw new Error(`wait script failed: ${child.stderr}`);
 	return { stdout: child.stdout.trim(), elapsedMs };

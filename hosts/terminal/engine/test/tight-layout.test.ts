@@ -52,8 +52,8 @@ describe("TUI Tight Layout option", () => {
 		setTuiTight(false);
 		boxComponent.invalidate();
 		const linesNormal = boxComponent.render(10);
-		// Box adds 1 char padding on left
-		expect(linesNormal[0]).toBe(" Hi       ");
+		// Box adds 1 char padding on left; an unpainted row ends where the child's row ends
+		expect(linesNormal[0]).toBe(" Hi      ");
 
 		setTuiTight(true);
 		boxComponent.invalidate();

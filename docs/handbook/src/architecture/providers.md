@@ -23,7 +23,7 @@ The provider stack is implemented in the `@veyyon/ai` package.
 | Model catalog | Model catalog and per-model capabilities |
 | Model registry | Slug resolution to provider + model info |
 
-## Key concepts
+## Concepts
 
 - Provider metadata: a provider's auth mode and endpoint configuration.
 - Model info: per-model capabilities such as context window and vision support.
@@ -73,11 +73,11 @@ Four rules keep this narrow.
 **A stall is bounded by the budget; a server-directed wait is bounded by the
 cap.** A 429 or 503 carrying `retry-after` is the server answering and asking for
 a later attempt, so it is not rejected when the first-event budget is gone. Only a
-failure where nothing arrived at all is rejected, which makes the guard a veto
-predicate rather than a fence around a retry loop. The wait itself is bounded
+failure where nothing arrived at all is rejected, which makes the check a veto
+predicate rather than a limit around a retry loop. The wait itself is bounded
 separately: `maxRetryDelayMs` is the longest single server-directed wait a caller
-sits on, `DEFAULT_MAX_DELAY_MS` (60s) when it declares none, and a hint above
-that cap surfaces the refusal instead of sleeping on it. Every retrying path
+accepts, `DEFAULT_MAX_DELAY_MS` (60s) when it declares none, and a hint above
+that cap reports the refusal instead of waiting on it. Every retrying path
 reads the caller's number: `fetchWithRetry` for the OpenAI-compatible family,
 Bedrock, Ollama and Codex, and the Anthropic client and provider ladder for their
 own `retry-after-ms` handling.
@@ -99,7 +99,7 @@ Duo's namespace walk did this with a rejected token.
 **A stream that stopped is not a stream that finished.** Every dialect ends a
 turn with its own marker: `finish_reason` and `[DONE]`, `response.completed`,
 `message_stop`, `finishReason`, `done: true`, `messageStop`, `turn_ended`. The
-end of a body without one is a transport-clean EOF that indicates nothing about the
+end of a body without one is a transport-level EOF with no error that indicates nothing about the
 turn. Reporting a normal stop there persists whatever arrived as an answer, and
 the model reads it back as history on the next turn. Rejecting every such EOF
 fails turns that were complete, because several compatible servers do not send
@@ -125,8 +125,8 @@ every API in the union against a silent endpoint and pins the observed class per
 API, so a provider that stops honoring the number turns that suite red.
 
 `packages/ai/test/every-provider-refusal-names-what-to-do-about-it.test.ts`
-drives the same fourteen against a refusing transport — `401`, `404`, `429` with
-a two-minute `retry-after`, and `400` — and pins the class each one surfaces,
+drives the same fourteen against a refusing transport (`401`, `404`, `429` with
+a two-minute `retry-after`, and `400`) and pins the class each one reports,
 plus the invariant that no refusal echoes the api key back into its message.
 
 `packages/ai/test/a-stream-that-stops-mid-turn-is-never-reported-as-a-finished-one.test.ts`

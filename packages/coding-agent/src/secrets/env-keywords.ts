@@ -27,7 +27,9 @@
 import * as path from "node:path";
 import { CONFIG_DIR_NAME, isEnoent, isRecord } from "@veyyon/utils";
 import { errorMessage } from "@veyyon/utils/type-guards";
-import { parse as parseYaml } from "yaml";
+import { loadYaml } from "@veyyon/utils/yaml-sync";
+// No `node:` module parses YAML, and the `yaml` package costs 72 modules to evaluate.
+import { YAML } from "bun";
 import bundledYaml from "./env-keywords.yml" with { type: "text" };
 
 /** Filename a user drops to extend the list. */
@@ -42,14 +44,25 @@ const ENV_KEYWORDS_FILE_FIELDS: Readonly<Record<string, true>> = {
 	keywords: true,
 };
 
+let bundledKeywords: readonly string[] | undefined;
+
 /**
  * Keywords shipped with veyyon.
  *
- * Parsed once at module load from the embedded file. Embedded with `with { type: "text" }` rather
- * than read from disk so it survives `bun build --compile`, matching how `builtin-rules` ships its
- * data.
+ * Parsed on the first call from the embedded file, because a session with secret obfuscation off
+ * reads no keyword. Embedded with `with { type: "text" }` rather than read from disk so it survives
+ * `bun build --compile`, matching how `builtin-rules` ships its data.
+ *
+ * Bun's YAML parser reads it, the parser the settings store reads `config.yml` with, so a session
+ * with secret obfuscation on and no keyword file of its own evaluates no `yaml` package. A keyword
+ * file a user writes goes through `yaml` instead (see {@link parseKeywords}): Bun's parser keeps the
+ * last of a duplicated key, so `keywords:` written twice would drop the first list without an error,
+ * and its syntax errors carry no line.
  */
-export const BUNDLED_ENV_KEYWORDS: readonly string[] = parseKeywords(bundledYaml, "the bundled keyword list");
+export function bundledEnvKeywords(): readonly string[] {
+	bundledKeywords ??= keywordsIn(YAML.parse(bundledYaml), "the bundled keyword list");
+	return bundledKeywords;
+}
 
 /**
  * Turn a keyword list into the matcher.
@@ -78,14 +91,19 @@ export function buildEnvSecretPattern(keywords: readonly string[]): RegExp {
 	return new RegExp(`(?:${escaped.join("|")})(?:_|$)`, "i");
 }
 
-/** Parse one data file, refusing anything that is not a list of usable keywords. */
+/** Parse one keyword file a user wrote, refusing anything that is not a list of usable keywords. */
 function parseKeywords(text: string, label: string): string[] {
 	let parsed: unknown;
 	try {
-		parsed = parseYaml(text);
+		parsed = loadYaml().parse(text);
 	} catch (error) {
 		throw new Error(`Refusing to start: ${label} is not valid YAML (${errorMessage(error).split("\n", 1)[0]}).`);
 	}
+	return keywordsIn(parsed, label);
+}
+
+/** The keywords a parsed data file lists, refusing anything that is not a list of usable keywords. */
+function keywordsIn(parsed: unknown, label: string): string[] {
 	if (!isRecord(parsed)) {
 		throw new Error(`Refusing to start: ${label} must be a mapping with a "keywords" list.`);
 	}
@@ -120,7 +138,7 @@ function parseKeywords(text: string, label: string): string[] {
  * detect fewer variables than they believe are covered, silently.
  */
 export async function loadEnvSecretKeywords(options: { cwd: string; agentDir: string }): Promise<string[]> {
-	const keywords = new Set(BUNDLED_ENV_KEYWORDS);
+	const keywords = new Set(bundledEnvKeywords());
 	for (const filePath of [
 		path.join(options.agentDir, ENV_KEYWORDS_FILENAME),
 		path.join(options.cwd, CONFIG_DIR_NAME, ENV_KEYWORDS_FILENAME),

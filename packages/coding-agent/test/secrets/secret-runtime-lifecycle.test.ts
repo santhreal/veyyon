@@ -20,6 +20,7 @@ import { SecretVault } from "@veyyon/coding-agent/secrets/vault";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { runSecretCommandForSurface } from "@veyyon/coding-agent/slash-commands/helpers/secret";
 import { createPersistedAgentReviverFactory } from "@veyyon/coding-agent/task/persisted-revive";
+import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { getProjectDir, setProjectDir, TempDir } from "@veyyon/utils";
 import { useIsolatedConfigRoot } from "../helpers/isolated-agent-dir";
@@ -503,6 +504,7 @@ describe("runtime replacement", () => {
 				authStorage,
 				modelRegistry,
 				settings: fixture.settings,
+				eventBus: new EventBus(),
 				enableLsp: false,
 			});
 			const revive = await factory({

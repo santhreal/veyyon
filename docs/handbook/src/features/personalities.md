@@ -1,6 +1,6 @@
 # Personalities
 
-Configure personality via `/settings` or the `personality` key in `config.yml` (below).
+Configure personality via `/settings` or the `personality` key in `config.yml`.
 
 Personalities change **how the agent writes replies**, not which tools it has or `tools.approvalMode`.
 
@@ -37,11 +37,13 @@ The 3 shipped personalities are seeds, not a closed set. Add a `<name>.md` file 
 
 Precedence for a given name is **project > user > built-in**. For example, dropping `~/.veyyon/personalities/pirate.md` with the body `You speak like a pirate.` and setting `personality: pirate` renders `<personality>You speak like a pirate.</personality>` with no rebuild. A project `.veyyon/personalities/default.md` overrides the built-in `default` for that project only.
 
+A project file ships with the repository, so a session that renders a personality from one raises a `personality` warning stating the file. The warning appears once per session, in the TUI notice area or on stderr for a non-interactive run. Delete the file or set `personality: none` to stop the override.
+
 Edge cases:
 
 - `none` is a reserved sentinel that disables the block; a file literally named `none.md` is ignored (it can never shadow the disable behavior).
 - An empty or whitespace-only personality file is treated as absent: the next tier (or the built-in) is used instead, so the block is never emitted empty.
-- Setting `personality` to a name that resolves to nothing (no built-in, user, or project file) falls back to `default` and prints a visible warning; the `<personality>` block is never silently emitted empty for a real (non-`none`) request.
+- Setting `personality` to a name that resolves to nothing (no built-in, user, or project file) falls back to `default` and raises a `personality` warning; the `<personality>` block is never emitted empty for a real (non-`none`) request.
 
 See `packages/coding-agent/src/config/personality-resolver.ts` for the resolver implementation.
 

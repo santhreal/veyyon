@@ -146,7 +146,10 @@ describe("AsyncJobManager singleton across concurrent top-level sessions", () =>
 				// build that keys both drivers the same makes the assertion below
 				// pass only until one of them cancels.
 				expect(secondary.getAgentId()).not.toBe(primaryOwner);
-				expect(secondary.getAsyncJobSnapshot()).toBeNull();
+				// The secondary runs jobs on a manager of its own, so the primary's job is not in its view.
+				expect(secondary.asyncJobManager).toBeDefined();
+				expect(secondary.asyncJobManager).not.toBe(primaryManager);
+				expect(secondary.getAsyncJobSnapshot()?.running.some(job => job.id === jobId)).toBe(false);
 			} finally {
 				await secondary.dispose();
 			}
@@ -161,44 +164,14 @@ describe("AsyncJobManager singleton across concurrent top-level sessions", () =>
 		}
 	}, 60000);
 
-	it("refuses async bash from a secondary session instead of routing it to the primary's manager", async () => {
-		const primary = await spawnTopLevelSession({ "async.enabled": true });
-		try {
-			const primaryManager = AsyncJobManager.instance();
-			expect(primaryManager).toBeDefined();
-			const primaryJobCountBefore = primaryManager!.getAllJobs().length;
-
-			const secondary = await spawnTopLevelSession({ "async.enabled": true });
-			try {
-				const bashTool = secondary.getToolByName("bash");
-				expect(bashTool).toBeDefined();
-				await expect(bashTool!.execute("call-1", { command: "echo hi", async: true })).rejects.toThrow(
-					/Async job manager unavailable/,
-				);
-			} finally {
-				await secondary.dispose();
-			}
-
-			// The secondary's failed async attempt must not have leaked a job into
-			// the primary's manager.
-			expect(primaryManager!.getAllJobs().length).toBe(primaryJobCountBefore);
-		} finally {
-			await primary.dispose();
-		}
-	}, 60000);
-
 	/**
-	 * The rule the two paragraphs above depend on, asserted directly instead of inferred from the tests
-	 * that happen to exercise it: a top-level session that finds a manager already installed ADOPTS it and
-	 * never takes ownership. It must not construct a second manager (nothing would route to it), must not
-	 * replace the installed one (background completions would stop reaching the session that owns them,
-	 * issue #1923), and must not clear the singleton when it disposes.
-	 *
-	 * Worth pinning as behavior rather than as suite hygiene, because a real process does hit this: the
-	 * agent-creation architect in `agent-dashboard.ts` spins up a second top-level session while the first
-	 * is live, and a regression here breaks its `bash`/`task` async paths with nothing in the log.
+	 * A top-level session that finds a manager already installed builds its own and leaves the installed
+	 * one in place. Replacing it would stop background completions reaching the session that installed it
+	 * (issue #1923), and clearing it on dispose would take that session's `bash`/`task` async paths down.
+	 * A real process hits this: the agent-creation architect in `agent-dashboard.ts` and the foreground
+	 * session after a `/new` handoff are both second top-level sessions.
 	 */
-	it("adopts an already-installed manager instead of owning it", async () => {
+	it("runs on a manager of its own and leaves an already-installed manager in place", async () => {
 		const stranger = new AsyncJobManager({
 			maxRunningJobs: 1,
 			// No jobs are registered on it, so completions cannot happen; the callback is required.
@@ -208,6 +181,8 @@ describe("AsyncJobManager singleton across concurrent top-level sessions", () =>
 		try {
 			const session = await spawnTopLevelSession();
 
+			expect(session.asyncJobManager).toBeDefined();
+			expect(session.asyncJobManager).not.toBe(stranger);
 			expect(AsyncJobManager.instance()).toBe(stranger);
 			await session.dispose();
 

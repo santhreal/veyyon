@@ -18,26 +18,26 @@ import { type TranscriptNote, TranscriptNoteComponent } from "../transcript/tran
  */
 export class TodoReminderComponent extends TranscriptNoteComponent {
 	constructor(todos: TodoItem[], attempt: number, maxAttempts: number) {
-		super(TodoReminderComponent.#note(todos, attempt, maxAttempts));
+		super(note(todos, attempt, maxAttempts));
 	}
+}
 
-	static #note(todos: TodoItem[], attempt: number, maxAttempts: number): TranscriptNote {
-		const count = todos.length;
-		const label = count === 1 ? "todo remains" : "todos remain";
-		const headline = withIcon(
-			theme.icon.warning,
-			`Continue: ${count} ${label} ${theme.sep.dot.trim()} ${attempt}/${maxAttempts}`,
-		);
+function note(todos: TodoItem[], attempt: number, maxAttempts: number): TranscriptNote {
+	const count = todos.length;
+	const label = count === 1 ? "todo remains" : "todos remain";
+	const headline = withIcon(
+		theme.icon.warning,
+		`Continue: ${count} ${label} ${theme.sep.dot.trim()} ${attempt}/${maxAttempts}`,
+	);
 
-		const preview = createBoundedTodoPreview();
-		const prefix = `${theme.checkbox.unchecked} `;
-		for (const todo of prioritizeTodoItems(todos).slice(0, TODO_REMINDER_PREVIEW_LIMIT)) {
-			if (!preview.push(prefix, todo.content)) break;
-		}
-		const rows = preview.lines.map(row => theme.italic(theme.fg("text", row)));
-		const hidden = count - preview.lines.length;
-		if (hidden > 0) rows.push(theme.italic(theme.fg("muted", `… ${hidden} more in todo state`)));
-
-		return { tone: "warning", headline, rows };
+	const preview = createBoundedTodoPreview();
+	const prefix = `${theme.checkbox.unchecked} `;
+	for (const todo of prioritizeTodoItems(todos).slice(0, TODO_REMINDER_PREVIEW_LIMIT)) {
+		if (!preview.push(prefix, todo.content)) break;
 	}
+	const rows = preview.lines.map(row => theme.italic(theme.fg("text", row)));
+	const hidden = count - preview.lines.length;
+	if (hidden > 0) rows.push(theme.italic(theme.fg("muted", `… ${hidden} more in todo state`)));
+
+	return { tone: "warning", headline, rows };
 }

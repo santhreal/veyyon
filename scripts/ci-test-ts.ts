@@ -318,12 +318,15 @@ export const repoScriptTests = [
 	"scripts/a-module-is-imported-at-the-top-of-its-file.test.ts",
 	"scripts/a-package-exports-its-public-surface.test.ts",
 	"scripts/an-export-floor-only-grows.test.ts",
+	"scripts/a-package-module-loads-through-one-build.test.ts",
+	"scripts/arktype-values-load-through-the-deferred-module.test.ts",
 	"scripts/a-package-is-added-only-when-an-existing-one-cannot-serve.test.ts",
 	"scripts/a-shipped-module-arrives-with-a-test-that-names-it.test.ts",
 	"scripts/a-suite-is-named-for-the-behavior-it-defends.test.ts",
 	"scripts/a-test-proves-behavior-not-that-a-spy-was-called.test.ts",
 	"scripts/a-test-preload-points-at-a-file-that-exists.test.ts",
 	"scripts/a-production-site-deploy-has-one-owner.test.ts",
+	"scripts/a-startup-bench-ceiling-fails-a-slow-or-unmeasured-arm.test.ts",
 	"scripts/a-third-party-action-is-pinned-in-one-place.test.ts",
 	"scripts/a-type-is-named-not-derived-from-a-function.test.ts",
 	"scripts/ci-concurrency.test.ts",
@@ -501,6 +504,10 @@ export const repoScriptTests = [
 	// suite hashes the file, so editing it at all fails CI until an operator records
 	// the new hash.
 	"scripts/the-codex-compaction-route-is-locked.test.ts",
+	// Owner gates that sweep the tree across members, so no package bucket covers them.
+	"scripts/a-stale-tool-views-bundle-is-rebuilt-before-it-is-served.test.ts",
+	"scripts/an-exponential-retry-delay-is-computed-only-by-the-backoff-helper.test.ts",
+	"scripts/one-owner-calls-bun-strip-ansi.test.ts",
 ];
 
 /**

@@ -4,21 +4,25 @@
  * A read result held the file twice: the numbered rows the model reads in `content`, and the same
  * rows without their numbers in `details.displayContent.text` for the card. Every session file wrote
  * both. The read codec drops the card text from the written line when the result's own text rebuilds
- * it, and restores it on load.
+ * it, restores it on load, and settles a result the session records into the same rebuilt form.
  *
  * CLASS: for every display shape the read tool produces (a hashline window, a range, line-number
  * mode, plain mode, a raw selector, a structural summary, a multi-range read, a read cut at its
- * limit) the session writes the card text at most once and loads the details byte-for-byte as the
- * tool returned them, and the card drawn from the written form matches the card drawn from the
- * tool's own result. A result whose content no longer rebuilds the card after it was recorded (a
- * prune, other rows, renumbered rows, a shorter copy) keeps its card text on disk, and so does a card
- * text shorter than the tag that would replace it. A line written before the codec existed loads
+ * limit, and a multi-range read and a structural summary in plain mode, so that each rebuild covers
+ * a card numbered by a stored list) the session writes the card text at most once, holds the
+ * details it recorded and loads the details it wrote byte-for-byte as the tool returned them, and
+ * the card drawn from the written, recorded or loaded form matches the card drawn from the tool's
+ * own result. A result whose content no longer rebuilds the card after it was recorded (a prune,
+ * other rows, renumbered rows, a shorter copy) keeps its card text on disk, and so does a card text
+ * shorter than the tag that would replace it. A line written before the codec existed loads
  * unchanged. Every result codec the package ships has a suite: the sweep fails when one is added
  * until it has one. The edit codec's is `a-session-file-stores-an-edit-snapshot-once`, the search
  * codec's `a-session-file-stores-a-search-card-once`, the eval codec's
  * `a-session-file-stores-an-eval-cell-output-once` and the job codec's
  * `a-session-file-stores-a-job-result-once`. A tool's results are stored by one codec: registering
- * the shipped set again is a no-op, and a second codec for a tool that has one is refused.
+ * the shipped set again is a no-op, and a second codec for a tool that has one is refused. The
+ * memory a read card holds once it is recorded or loaded is bounded by
+ * `a-read-holds-no-card-text-until-it-is-drawn`.
  *
  * DOES NOT CATCH: a display shape the read tool starts producing that no row below exercises, which
  * still round-trips exactly (the codec writes whole what it cannot rebuild) but may stop saving
@@ -85,6 +89,8 @@ const SHAPES: Shape[] = [
 	{ name: "line-number mode", selector: "", settings: { readLineNumbers: true }, hasEditTool: false, from: "rows" },
 	{ name: "plain mode", selector: "", settings: {}, hasEditTool: false, from: "prefix" },
 	{ name: "raw selector", selector: ":raw", settings: {}, hasEditTool: true, from: "prefix" },
+	{ name: "plain multi-range", selector: ":1-2,9-10", settings: {}, hasEditTool: false, from: "prefix" },
+	{ name: "plain structural summary", selector: "", settings: SUMMARY_SETTINGS, hasEditTool: false, from: "prefix" },
 ];
 
 function assistantCalling(ids: readonly string[]): AssistantMessage {
@@ -213,6 +219,14 @@ describe("a session file stores a read card once", () => {
 
 	it("writes no card text for any shape a rebuild reproduces, and loads every result as the tool returned it", async () => {
 		const results = await Promise.all(SHAPES.map((shape, index) => readShape(shape, `call-${index}`)));
+		// The shapes cover a card numbered by a stored list under each rebuild, so dropping or misplacing
+		// the list is seen for both.
+		const numberedUnder = new Set(
+			SHAPES.filter((_, index) => results[index].details?.displayContent?.lineNumbers !== undefined).map(
+				shape => shape.from,
+			),
+		);
+		expect([...numberedUnder].sort()).toEqual(["prefix", "rows"]);
 		const manager = await record(results);
 		const file = manager.getSessionFile() as string;
 		const written = writtenDetails(file);
@@ -241,11 +255,24 @@ describe("a session file stores a read card once", () => {
 		}
 	});
 
-	it("leaves the result in memory whole when it writes the slim line", async () => {
-		const result = await readShape(SHAPES[0], "call-memory");
-		const text = result.details?.displayContent?.text;
-		const manager = await record([result]);
-		expect(loadedResults(manager).get("call-memory")?.details?.displayContent?.text).toBe(text);
+	it("reads back in memory the card the tool returned for every shape, after it writes the slim line", async () => {
+		const results = await Promise.all(SHAPES.map((shape, index) => readShape(shape, `memory-${index}`)));
+		// Recording settles each result's details in place, so what the tool returned is copied first.
+		const returned = results.map(result => JSON.parse(JSON.stringify(result.details)) as ReadToolDetails);
+		const cards = results.map((result, index) => draw(result, returned[index]));
+		const recorded = loadedResults(await record(results));
+		for (const [index, shape] of SHAPES.entries()) {
+			const held = recorded.get(`memory-${index}`);
+			if (held?.details === undefined) throw new Error(`${shape.name}: recorded result missing`);
+			expect({ shape: shape.name, details: JSON.parse(JSON.stringify(held.details)) }).toEqual({
+				shape: shape.name,
+				details: returned[index],
+			});
+			expect({ shape: shape.name, card: draw(held, held.details) }).toEqual({
+				shape: shape.name,
+				card: cards[index],
+			});
+		}
 	});
 
 	/**

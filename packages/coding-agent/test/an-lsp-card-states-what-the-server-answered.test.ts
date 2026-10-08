@@ -64,7 +64,7 @@ function result(text: string, details?: LspViewResult["details"], isError?: bool
 
 /** Every action the tool's own schema declares, so a new one arrives covered. */
 function declaredActions(): string[] {
-	const source = lspSchema.get("action").expression;
+	const source = lspSchema.value.get("action").expression;
 	const actions = source.match(/[a-z_]+/g) ?? [];
 	expect(actions).toContain("diagnostics");
 	expect(actions).toContain("references");

@@ -6,18 +6,20 @@ import type {
 	AgentToolResult,
 	AgentToolUpdateCallback,
 } from "@veyyon/agent-core";
-import { escapeXmlAttribute, escapeXmlText } from "@veyyon/utils";
-import { type } from "arktype";
+import { type } from "@veyyon/ai/utils/schema/arktype";
+import { escapeXmlAttribute, escapeXmlText, lazy } from "@veyyon/utils";
 import { advisorPrompts } from "../prompts/advisor/rows";
 
-const adviseSchema = type({
-	note: type("string").describe(
-		"One concrete piece of advice for the agent you are watching. Terse, specific, actionable.",
-	),
-	"severity?": type("'nit' | 'concern' | 'blocker'").describe("How strongly to weigh this. Omit for a plain nit."),
-});
+const adviseSchema = lazy(() =>
+	type({
+		note: type("string").describe(
+			"One concrete piece of advice for the agent you are watching. Terse, specific, actionable.",
+		),
+		"severity?": type("'nit' | 'concern' | 'blocker'").describe("How strongly to weigh this. Omit for a plain nit."),
+	}),
+);
 
-export type AdviseParams = typeof adviseSchema.infer;
+export type AdviseParams = typeof adviseSchema.value.infer;
 
 export type AdvisorSeverity = "nit" | "concern" | "blocker";
 
@@ -172,11 +174,13 @@ function advisorSeverityRank(severity: AdvisorSeverity | undefined): number {
 	return ADVISOR_SEVERITY_RANK[severity ?? "nit"];
 }
 
-export class AdviseTool implements AgentTool<typeof adviseSchema, AdviseDetails> {
+export class AdviseTool implements AgentTool<typeof adviseSchema.value, AdviseDetails> {
 	readonly name = "advise";
 	readonly label = "Advise";
 	readonly description = advisorPrompts["advisor/advise-tool"].text;
-	readonly parameters = adviseSchema;
+	get parameters(): typeof adviseSchema.value {
+		return adviseSchema.value;
+	}
 	readonly intent = "omit" as const;
 	/** Highest delivered severity rank per normalized note. A new call passes
 	 *  through only when its rank strictly exceeds the recorded one (a real

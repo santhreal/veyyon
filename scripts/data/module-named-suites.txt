@@ -412,7 +412,6 @@ packages/coding-agent/test/utils/image-resize.test.ts
 packages/coding-agent/test/utils/image-vision-fallback.test.ts
 packages/coding-agent/test/utils/jj.test.ts
 packages/coding-agent/test/utils/lang-from-path.test.ts
-packages/coding-agent/test/utils/local-date.test.ts
 packages/coding-agent/test/utils/markit-cache.test.ts
 packages/coding-agent/test/utils/open.test.ts
 packages/coding-agent/test/utils/prompt-path.test.ts

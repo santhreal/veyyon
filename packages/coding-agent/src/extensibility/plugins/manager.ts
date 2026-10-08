@@ -206,30 +206,9 @@ export class PluginManager {
 		this.#cwd = cwd;
 	}
 
-	// ==========================================================================
-	// Runtime Config Management
-	// ==========================================================================
-
-	async #loadRuntimeConfig(): Promise<PluginRuntimeConfig> {
-		const lockPath = getPluginsLockfile();
-		try {
-			return normalizePluginRuntimeConfig(await Bun.file(lockPath).json());
-		} catch (err) {
-			if (isEnoent(err)) return normalizePluginRuntimeConfig({});
-			logger.warn(
-				`The plugin runtime config at ${lockPath} could not be read, so every plugin is treated as ` +
-					`enabled with default settings for this run: ${errorMessage(err)}. ` +
-					"Fix: check that file's permissions, or delete it and re-apply your choices with " +
-					"`veyyon plugin enable <name>` and `veyyon plugin disable <name>`.",
-				{ path: lockPath, error: errorMessage(err) },
-			);
-			return normalizePluginRuntimeConfig({});
-		}
-	}
-
 	async #ensureConfigLoaded(): Promise<PluginRuntimeConfig> {
 		if (!this.#runtimeConfig) {
-			this.#runtimeConfig = await this.#loadRuntimeConfig();
+			this.#runtimeConfig = await loadRuntimeConfig();
 		}
 		return this.#runtimeConfig;
 	}
@@ -252,262 +231,6 @@ export class PluginManager {
 				{ path: overridesPath, error: errorMessage(err) },
 			);
 			return {};
-		}
-	}
-
-	// ==========================================================================
-	// Directory Management
-	// ==========================================================================
-
-	async #ensurePluginsDir(): Promise<void> {
-		await fs.promises.mkdir(getPluginsDir(), { recursive: true });
-		await fs.promises.mkdir(getPluginsNodeModules(), { recursive: true });
-	}
-
-	async #ensurePackageJson(): Promise<void> {
-		const pkgJsonPath = getPluginsPackageJson();
-		try {
-			await Bun.file(pkgJsonPath).json();
-		} catch (err) {
-			if (isEnoent(err)) {
-				await Bun.write(
-					pkgJsonPath,
-					JSON.stringify(
-						{
-							name: "veyyon-plugins",
-							private: true,
-							dependencies: {},
-						},
-						null,
-						2,
-					),
-				);
-				return;
-			}
-			throw err;
-		}
-	}
-
-	/**
-	 * Read the `dependencies` map from `plugins/package.json`. Returns an empty
-	 * object when the file does not exist yet so callers can diff `before`
-	 * against `after` to discover the package bun just installed under its
-	 * real name (git specs do not encode the package name in the spec itself).
-	 */
-	async #readDeps(pkgJsonPath: string): Promise<Record<string, string>> {
-		try {
-			const json = await Bun.file(pkgJsonPath).json();
-			return (json.dependencies as Record<string, string>) ?? {};
-		} catch (err) {
-			if (isEnoent(err)) return {};
-			throw err;
-		}
-	}
-
-	async #removeDependencyEntry(pkgJsonPath: string, name: string): Promise<void> {
-		const pkgJson: { dependencies?: Record<string, string>; [key: string]: unknown } =
-			await Bun.file(pkgJsonPath).json();
-		if (!pkgJson.dependencies || !(name in pkgJson.dependencies)) {
-			return;
-		}
-		delete pkgJson.dependencies[name];
-		await Bun.write(pkgJsonPath, JSON.stringify(pkgJson, null, 2));
-	}
-
-	/**
-	 * Run `bun <args>` in the plugins directory and drain both pipes concurrently
-	 * with `exited`. Awaiting `exited` before reading either pipe risks a >64 KiB
-	 * OS-pipe-buffer deadlock once bun prints enough progress, and even where Bun
-	 * buffers eagerly that leaks unbounded memory. The caller interprets the exit
-	 * code, because each subcommand reports its own failure and fix.
-	 */
-	static async #runBun(args: readonly string[]): Promise<BunRun> {
-		const proc = Bun.spawn(["bun", ...args], {
-			cwd: getPluginsDir(),
-			stdin: "ignore",
-			stdout: "pipe",
-			stderr: "pipe",
-			windowsHide: true,
-		});
-		adoptIntoPrimarySessionCpuBudget(proc.pid);
-		const [exitCode, stdout, stderr] = await Promise.all([
-			proc.exited,
-			readPipeText(proc.stdout),
-			readPipeText(proc.stderr),
-		]);
-		return { exitCode, stdout, stderr };
-	}
-
-	#collectInstalledNames(deps: Record<string, string>, config: PluginRuntimeConfig): Set<string> {
-		const installedNames = new Set<string>();
-		for (const name of Object.keys(deps)) {
-			installedNames.add(name);
-		}
-		for (const name of Object.keys(config.plugins)) {
-			installedNames.add(name);
-		}
-		return installedNames;
-	}
-	async #collectMarketplaceRuntimePackageRealpaths(): Promise<Map<string, Set<string>>> {
-		const registry = await readInstalledPluginsRegistry(getInstalledPluginsRegistryPath());
-		const packageRealpaths = new Map<string, Set<string>>();
-		await Promise.all(
-			Object.entries(registry.plugins).flatMap(([pluginId, entries]) =>
-				entries.map(async entry => {
-					// Legacy registries written before `scope` was added omit the field;
-					// `listClaudePluginRoots` treats those as user-scoped, so do the same.
-					if ((entry.scope ?? "user") !== "user") return;
-					const packageJsonPath = path.join(entry.installPath, "package.json");
-					const parsedId = parsePluginId(pluginId);
-					let packageName = parsedId?.name ?? pluginId;
-					try {
-						const pkg: RuntimePackageJson = await Bun.file(packageJsonPath).json();
-						if (typeof pkg.name === "string" && pkg.name.length > 0) {
-							packageName = pkg.name;
-						}
-					} catch (err) {
-						if (!isEnoent(err)) {
-							logger.debug("Failed to inspect marketplace plugin package path", {
-								path: entry.installPath,
-								error: String(err),
-							});
-							return;
-						}
-					}
-
-					try {
-						const installRealpath = await fs.promises.realpath(entry.installPath);
-						const realpaths = packageRealpaths.get(packageName) ?? new Set<string>();
-						realpaths.add(installRealpath);
-						packageRealpaths.set(packageName, realpaths);
-					} catch (err) {
-						if (isEnoent(err)) return;
-						throw err;
-					}
-				}),
-			),
-		);
-		return packageRealpaths;
-	}
-
-	async #isMarketplaceRuntimeLink(
-		name: string,
-		deps: Record<string, string>,
-		marketplaceRuntimeRealpaths: Map<string, Set<string>>,
-		pluginPath: string,
-	): Promise<boolean> {
-		if (name in deps) return false;
-		const realpaths = marketplaceRuntimeRealpaths.get(name);
-		if (!realpaths) return false;
-		try {
-			return realpaths.has(await fs.promises.realpath(pluginPath));
-		} catch (err) {
-			if (isEnoent(err)) return false;
-			throw err;
-		}
-	}
-
-	async #snapshotInstalledPackage(actualName: string | undefined): Promise<PluginPackageSnapshot | null> {
-		if (!actualName) {
-			return null;
-		}
-		const packagePath = path.join(getPluginsNodeModules(), actualName);
-		try {
-			await fs.promises.lstat(packagePath);
-		} catch (err) {
-			if (isEnoent(err)) {
-				return null;
-			}
-			throw err;
-		}
-
-		const backupRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "veyyon-plugin-backup-"));
-		const backupPath = path.join(backupRoot, "package");
-		await fs.promises.cp(packagePath, backupPath, { recursive: true, verbatimSymlinks: true });
-		return { actualName, packagePath, backupRoot, backupPath };
-	}
-
-	async #cleanupSnapshot(snapshot: PluginPackageSnapshot | null): Promise<void> {
-		if (!snapshot) {
-			return;
-		}
-		try {
-			await fs.promises.rm(snapshot.backupRoot, { recursive: true, force: true });
-		} catch (err) {
-			logger.warn("Failed to remove plugin install backup", { plugin: snapshot.actualName, error: String(err) });
-		}
-	}
-
-	async #rollbackFailedInstall(
-		actualName: string | undefined,
-		packageJsonBefore: string,
-		bunLockBefore: string | null,
-		snapshot: PluginPackageSnapshot | null,
-	): Promise<void> {
-		await Bun.write(getPluginsPackageJson(), packageJsonBefore);
-
-		// Restore (or remove) bun's lockfile. Without this, a `bun install` +
-		// `bun update` pair that successfully rewrote `bun.lock` would leave the
-		// rejected commit pinned even when validation rolls everything else back.
-		const bunLockPath = path.join(getPluginsDir(), "bun.lock");
-		if (bunLockBefore === null) {
-			await fs.promises.rm(bunLockPath, { force: true });
-		} else {
-			await Bun.write(bunLockPath, bunLockBefore);
-		}
-
-		// `actualName` may be undefined when the install failed before the dep
-		// key was resolved — package.json + bun.lock restoration above is the
-		// complete rollback in that case.
-		if (!actualName) {
-			return;
-		}
-		const packagePath = path.join(getPluginsNodeModules(), actualName);
-		await fs.promises.rm(packagePath, { recursive: true, force: true });
-		if (!snapshot) {
-			return;
-		}
-		await fs.promises.mkdir(path.dirname(snapshot.packagePath), { recursive: true });
-		await fs.promises.cp(snapshot.backupPath, snapshot.packagePath, { recursive: true, verbatimSymlinks: true });
-	}
-
-	async #validateInstalledExtensions(plugin: InstalledPlugin): Promise<void> {
-		const declaredEntries = resolvePluginManifestEntries(plugin, "extensions");
-		if (declaredEntries.length === 0) {
-			return;
-		}
-
-		const errors: string[] = [];
-		const loadable: string[] = [];
-		for (const { entry, resolvedPath } of declaredEntries) {
-			if (resolvedPath === null) {
-				errors.push(`${entry}: declared extension entry not found on disk`);
-			} else {
-				loadable.push(resolvedPath);
-			}
-		}
-
-		if (loadable.length > 0) {
-			installLegacyPiSpecifierShim();
-			for (const extensionPath of loadable) {
-				try {
-					const module = await withExitGuard(() => loadLegacyPiModule(extensionPath));
-					if (!hasExtensionFactoryExport(module)) {
-						errors.push(`${extensionPath}: extension does not export a valid factory function`);
-					}
-				} catch (err) {
-					const message = errorMessage(err);
-					errors.push(`${extensionPath}: ${message}`);
-				}
-			}
-		}
-
-		if (errors.length > 0) {
-			throw new Error(
-				`The plugin ${plugin.name} declares extensions that do not load, so the install was rolled back ` +
-					`and nothing changed:\n${errors.join("\n")}\n` +
-					"Fix: report this to the plugin's author; there is no local repair for a broken extension entry.",
-			);
 		}
 	}
 
@@ -542,12 +265,12 @@ export class PluginManager {
 			validatePackageName(spec.packageName);
 		}
 
-		await this.#ensurePackageJson();
+		await ensurePackageJson();
 
 		const packageInstallSpec = gitSource ? gitInstallSpec(spec.packageName, gitSource) : spec.packageName;
 
 		if (options.dryRun) {
-			return await this.#resolveDryRun(spec, packageInstallSpec);
+			return await resolveDryRun(spec, packageInstallSpec);
 		}
 		const pkgJsonPath = getPluginsPackageJson();
 		const packageJsonBefore = await Bun.file(pkgJsonPath).text();
@@ -564,11 +287,11 @@ export class PluginManager {
 			if (!isEnoent(err)) throw err;
 			bunLockBefore = null;
 		}
-		const depsBefore = await this.#readDeps(pkgJsonPath);
+		const depsBefore = await readDeps(pkgJsonPath);
 		const existingActualName = gitSource
 			? findGitPackageName(gitSource, depsBefore)
 			: extractPackageName(spec.packageName);
-		const packageSnapshot = await this.#snapshotInstalledPackage(existingActualName);
+		const packageSnapshot = await snapshotInstalledPackage(existingActualName);
 
 		// `actualName` is hoisted so the rollback handler can clean up the right
 		// node_modules entry even if a step between `bun install` and the final
@@ -582,12 +305,12 @@ export class PluginManager {
 			if (gitSource && existingActualName) {
 				const installedSource = parseGitUrl(depsBefore[existingActualName] ?? "");
 				if (installedSource && installedSource.ref !== gitSource.ref) {
-					await this.#removeDependencyEntry(pkgJsonPath, existingActualName);
+					await removeDependencyEntry(pkgJsonPath, existingActualName);
 				}
 			}
 
 			// Step 1: write the spec into plugins/package.json + node_modules.
-			const install = await PluginManager.#runBun(["install", packageInstallSpec]);
+			const install = await runBun(["install", packageInstallSpec]);
 			if (install.exitCode !== 0) {
 				throw new Error(
 					`\`bun install\` failed in ${getPluginsDir()}, so the plugin is not installed: ${install.stderr}. ` +
@@ -598,7 +321,7 @@ export class PluginManager {
 			// Resolve actual package name. npm specs encode the name (strip version);
 			// git specs do not, so diff plugins/package.json deps to find the new entry.
 			if (gitSource) {
-				const depsAfter = await this.#readDeps(pkgJsonPath);
+				const depsAfter = await readDeps(pkgJsonPath);
 				let resolved: string | undefined;
 				for (const key of Object.keys(depsAfter)) {
 					if (!(key in depsBefore)) {
@@ -634,7 +357,7 @@ export class PluginManager {
 			// cache from the remote. Rollback is handled by the outer catch.
 			if (gitSource && existingActualName) {
 				await refreshBunGitCache(gitSource, getPluginsDir());
-				const update = await PluginManager.#runBun(["update", actualName]);
+				const update = await runBun(["update", actualName]);
 				if (update.exitCode !== 0) {
 					throw new Error(
 						`\`bun update ${actualName}\` failed, so the plugin stays pinned to its previous commit: ` +
@@ -696,7 +419,7 @@ export class PluginManager {
 				enabled: true,
 			};
 
-			await this.#validateInstalledExtensions(installedPlugin);
+			await validateInstalledExtensions(installedPlugin);
 
 			// Update runtime config
 			const config = await this.#ensureConfigLoaded();
@@ -710,7 +433,7 @@ export class PluginManager {
 			return installedPlugin;
 		} catch (err) {
 			try {
-				await this.#rollbackFailedInstall(
+				await rollbackFailedInstall(
 					actualName ?? existingActualName,
 					packageJsonBefore,
 					bunLockBefore,
@@ -726,45 +449,8 @@ export class PluginManager {
 			}
 			throw err;
 		} finally {
-			await this.#cleanupSnapshot(packageSnapshot);
+			await cleanupSnapshot(packageSnapshot);
 		}
-	}
-
-	/**
-	 * Resolve a dry-run install without writing anything.
-	 *
-	 * `bun install <spec> --dry-run` runs the same registry and git resolution the
-	 * real install runs, exits non-zero when the target cannot be resolved, and
-	 * writes no package.json, lockfile or node_modules entry. Resolution is the
-	 * whole point: a dry-run that checked only spec syntax reported success for a
-	 * package that does not exist, so `plugin install <anything> --dry-run` printed
-	 * "Would install" and exited 0 for an unpublished name or a missing repository
-	 * (#911).
-	 *
-	 * The returned record carries the version bun resolved, so `--json` reports what
-	 * a real install would produce rather than a placeholder. `path` stays empty
-	 * because nothing was extracted, and `manifest` carries only that version: the
-	 * package is never unpacked, so its manifest cannot be read here. A dry-run
-	 * therefore proves the target resolves, not that it is a veyyon plugin.
-	 */
-	async #resolveDryRun(spec: ParsedPluginSpec, packageInstallSpec: string): Promise<InstalledPlugin> {
-		const { exitCode, stdout, stderr } = await PluginManager.#runBun(["install", packageInstallSpec, "--dry-run"]);
-		if (exitCode !== 0) {
-			throw new Error(
-				`${spec.packageName} cannot be installed, so the dry run failed: ${stderr}. ` +
-					"Fix: read that output; a name that was never published, a version that does not exist, " +
-					"a private or missing repository, and a missing `bun` on PATH all land here.",
-			);
-		}
-		const resolved = parseDryRunResolution(stdout);
-		return {
-			name: resolved?.name ?? extractPackageName(spec.packageName),
-			version: resolved?.version ?? "",
-			path: "",
-			manifest: { version: resolved?.version ?? "" },
-			enabledFeatures: spec.features === "*" ? null : (spec.features as string[] | null),
-			enabled: true,
-		};
 	}
 
 	/**
@@ -781,7 +467,7 @@ export class PluginManager {
 	 */
 	async uninstall(name: string): Promise<void> {
 		validatePackageName(name);
-		await this.#ensurePackageJson();
+		await ensurePackageJson();
 
 		// `bun uninstall` exits 0 even when the package was never a dependency,
 		// which would report success for a plugin that was never installed.
@@ -796,14 +482,14 @@ export class PluginManager {
 		// the symlink itself, so drop that and the runtime state directly. Running
 		// `bun uninstall` here would exit 0 having done nothing and leave the link.
 		if (!(name in deps)) {
-			await this.#unlinkPluginPath(name);
+			await unlinkPluginPath(name);
 			delete config.plugins[name];
 			delete config.settings[name];
 			await this.#saveRuntimeConfig();
 			return;
 		}
 
-		const removal = await PluginManager.#runBun(["uninstall", name]);
+		const removal = await runBun(["uninstall", name]);
 		if (removal.exitCode !== 0) {
 			// It spawns `bun uninstall` and reported `npm uninstall failed`, naming a
 			// tool this path never runs, and it dropped the stderr it had just read.
@@ -818,28 +504,6 @@ export class PluginManager {
 		delete config.plugins[name];
 		delete config.settings[name];
 		await this.#saveRuntimeConfig();
-	}
-
-	/**
-	 * Remove the node_modules entry `link` created for a locally linked plugin.
-	 *
-	 * `link` writes a symlink, but a plugin linked before that, or one whose target
-	 * was copied in by hand, can be a real directory; both are the plugin's whole
-	 * presence on disk, so both are removed. An entry that is already gone is the
-	 * intended end state, not an error.
-	 */
-	async #unlinkPluginPath(name: string): Promise<void> {
-		const linkPath = path.join(getPluginsNodeModules(), name);
-		try {
-			const stats = await fs.promises.lstat(linkPath);
-			if (stats.isSymbolicLink() || stats.isFile()) {
-				await fs.promises.unlink(linkPath);
-			} else if (stats.isDirectory()) {
-				await fs.promises.rm(linkPath, { recursive: true, force: true });
-			}
-		} catch (err) {
-			if (!isEnoent(err)) throw err;
-		}
 	}
 
 	/**
@@ -858,13 +522,13 @@ export class PluginManager {
 		const [projectOverrides, config, marketplaceRuntimeRealpaths] = await Promise.all([
 			this.#loadProjectOverrides(),
 			this.#ensureConfigLoaded(),
-			this.#collectMarketplaceRuntimePackageRealpaths(),
+			collectMarketplaceRuntimePackageRealpaths(),
 		]);
 		const plugins: InstalledPlugin[] = [];
-		const installedNames = this.#collectInstalledNames(deps, config);
+		const installedNames = collectInstalledNames(deps, config);
 		for (const name of installedNames) {
 			const pluginPath = path.join(getPluginsNodeModules(), name);
-			if (await this.#isMarketplaceRuntimeLink(name, deps, marketplaceRuntimeRealpaths, pluginPath)) continue;
+			if (await isMarketplaceRuntimeLink(name, deps, marketplaceRuntimeRealpaths, pluginPath)) continue;
 			const pluginPkgPath = path.join(pluginPath, "package.json");
 			let pluginPkg: { version: string } & ManifestHolder<PluginManifest>;
 			try {
@@ -923,7 +587,7 @@ export class PluginManager {
 			);
 		}
 
-		await this.#ensurePluginsDir();
+		await ensurePluginsDir();
 
 		const linkPath = path.join(getPluginsNodeModules(), pkg.name);
 
@@ -933,11 +597,11 @@ export class PluginManager {
 			await fs.promises.mkdir(scopeDir, { recursive: true });
 		}
 
-		// Whatever is already there is the plugin's whole presence on disk, and `#unlinkPluginPath`
+		// Whatever is already there is the plugin's whole presence on disk, and `unlinkPluginPath`
 		// is the one place that knows how to remove it. Open-coding it here called `unlink` on a
 		// real directory, which is EISDIR, so linking a local checkout over an npm-installed copy
 		// failed instead of replacing it.
-		await this.#unlinkPluginPath(pkg.name);
+		await unlinkPluginPath(pkg.name);
 
 		await fs.promises.symlink(absolutePath, linkPath);
 
@@ -1206,7 +870,7 @@ export class PluginManager {
 				});
 				return normalizePluginRuntimeConfig({});
 			}),
-			this.#collectMarketplaceRuntimePackageRealpaths().catch(err => {
+			collectMarketplaceRuntimePackageRealpaths().catch(err => {
 				checks.push({
 					name: "installed_registry",
 					status: "error",
@@ -1215,11 +879,11 @@ export class PluginManager {
 				return new Map<string, Set<string>>();
 			}),
 		]);
-		const installedNames = this.#collectInstalledNames(deps, config);
+		const installedNames = collectInstalledNames(deps, config);
 
 		for (const name of installedNames) {
 			const pluginPath = path.join(nodeModulesPath, name);
-			if (await this.#isMarketplaceRuntimeLink(name, deps, marketplaceRuntimeRealpaths, pluginPath)) continue;
+			if (await isMarketplaceRuntimeLink(name, deps, marketplaceRuntimeRealpaths, pluginPath)) continue;
 			const pluginPkgPath = path.join(pluginPath, "package.json");
 			const fromDependencies = name in deps;
 
@@ -1230,7 +894,7 @@ export class PluginManager {
 				if (isEnoent(err)) {
 					if (!(await pathExists(pluginPath, `the installed plugin ${name}`))) {
 						if (fromDependencies) {
-							const fixed = options.fix ? await this.#fixMissingPlugin() : false;
+							const fixed = options.fix ? await fixMissingPlugin() : false;
 							checks.push({
 								name: `plugin:${name}`,
 								status: "error",
@@ -1337,38 +1001,6 @@ export class PluginManager {
 		return checks;
 	}
 
-	/**
-	 * Reinstall the plugins directory for `doctor --fix`.
-	 *
-	 * The boolean becomes the check's `fixed` field, so a failure is already visible as a check that
-	 * stayed red -- but only as "Missing from node_modules", with no hint why the fix did not take. The
-	 * output was drained and thrown away even on a non-zero exit, which is the interesting half: a
-	 * network failure, a lockfile conflict and a missing `bun` on PATH all looked identical. They are
-	 * reported here, and the boolean is unchanged so the check reads the same as before.
-	 */
-	async #fixMissingPlugin(): Promise<boolean> {
-		const cwd = getPluginsDir();
-		try {
-			const { exitCode, stderr } = await PluginManager.#runBun(["install"]);
-			if (exitCode !== 0) {
-				logger.warn("Reinstalling plugins failed; the missing plugin was not restored", {
-					cwd,
-					exitCode,
-					stderr: stderr.trim().slice(-2000),
-				});
-			}
-			return exitCode === 0;
-		} catch (err) {
-			// `bun` is not on PATH, or the plugins directory cannot be entered. Nothing ran, so there is no
-			// exit code or output to attach; the reason lives only in this error.
-			logger.warn("Reinstalling plugins could not be started; the missing plugin was not restored", {
-				cwd,
-				error: errorMessage(err),
-			});
-			return false;
-		}
-	}
-
 	async #removeInvalidFeature(name: string, feat: string): Promise<boolean> {
 		const config = await this.#ensureConfigLoaded();
 		const state = config.plugins[name];
@@ -1386,6 +1018,373 @@ export class PluginManager {
 		delete config.settings[name];
 		await this.#saveRuntimeConfig();
 		return true;
+	}
+}
+
+// ==========================================================================
+// Runtime Config Management
+// ==========================================================================
+async function loadRuntimeConfig(): Promise<PluginRuntimeConfig> {
+	const lockPath = getPluginsLockfile();
+	try {
+		return normalizePluginRuntimeConfig(await Bun.file(lockPath).json());
+	} catch (err) {
+		if (isEnoent(err)) return normalizePluginRuntimeConfig({});
+		logger.warn(
+			`The plugin runtime config at ${lockPath} could not be read, so every plugin is treated as ` +
+				`enabled with default settings for this run: ${errorMessage(err)}. ` +
+				"Fix: check that file's permissions, or delete it and re-apply your choices with " +
+				"`veyyon plugin enable <name>` and `veyyon plugin disable <name>`.",
+			{ path: lockPath, error: errorMessage(err) },
+		);
+		return normalizePluginRuntimeConfig({});
+	}
+}
+
+// ==========================================================================
+// Directory Management
+// ==========================================================================
+async function ensurePluginsDir(): Promise<void> {
+	await fs.promises.mkdir(getPluginsDir(), { recursive: true });
+	await fs.promises.mkdir(getPluginsNodeModules(), { recursive: true });
+}
+
+async function ensurePackageJson(): Promise<void> {
+	const pkgJsonPath = getPluginsPackageJson();
+	try {
+		await Bun.file(pkgJsonPath).json();
+	} catch (err) {
+		if (isEnoent(err)) {
+			await Bun.write(
+				pkgJsonPath,
+				JSON.stringify(
+					{
+						name: "veyyon-plugins",
+						private: true,
+						dependencies: {},
+					},
+					null,
+					2,
+				),
+			);
+			return;
+		}
+		throw err;
+	}
+}
+
+/**
+ * Read the `dependencies` map from `plugins/package.json`. Returns an empty
+ * object when the file does not exist yet so callers can diff `before`
+ * against `after` to discover the package bun just installed under its
+ * real name (git specs do not encode the package name in the spec itself).
+ */
+async function readDeps(pkgJsonPath: string): Promise<Record<string, string>> {
+	try {
+		const json = await Bun.file(pkgJsonPath).json();
+		return (json.dependencies as Record<string, string>) ?? {};
+	} catch (err) {
+		if (isEnoent(err)) return {};
+		throw err;
+	}
+}
+
+async function removeDependencyEntry(pkgJsonPath: string, name: string): Promise<void> {
+	const pkgJson: { dependencies?: Record<string, string>; [key: string]: unknown } =
+		await Bun.file(pkgJsonPath).json();
+	if (!pkgJson.dependencies || !(name in pkgJson.dependencies)) {
+		return;
+	}
+	delete pkgJson.dependencies[name];
+	await Bun.write(pkgJsonPath, JSON.stringify(pkgJson, null, 2));
+}
+
+/**
+ * Run `bun <args>` in the plugins directory and drain both pipes concurrently
+ * with `exited`. Awaiting `exited` before reading either pipe risks a >64 KiB
+ * OS-pipe-buffer deadlock once bun prints enough progress, and even where Bun
+ * buffers eagerly that leaks unbounded memory. The caller interprets the exit
+ * code, because each subcommand reports its own failure and fix.
+ */
+async function runBun(args: readonly string[]): Promise<BunRun> {
+	const proc = Bun.spawn(["bun", ...args], {
+		cwd: getPluginsDir(),
+		stdin: "ignore",
+		stdout: "pipe",
+		stderr: "pipe",
+		windowsHide: true,
+	});
+	adoptIntoPrimarySessionCpuBudget(proc.pid);
+	const [exitCode, stdout, stderr] = await Promise.all([
+		proc.exited,
+		readPipeText(proc.stdout),
+		readPipeText(proc.stderr),
+	]);
+	return { exitCode, stdout, stderr };
+}
+
+function collectInstalledNames(deps: Record<string, string>, config: PluginRuntimeConfig): Set<string> {
+	const installedNames = new Set<string>();
+	for (const name of Object.keys(deps)) {
+		installedNames.add(name);
+	}
+	for (const name of Object.keys(config.plugins)) {
+		installedNames.add(name);
+	}
+	return installedNames;
+}
+
+async function collectMarketplaceRuntimePackageRealpaths(): Promise<Map<string, Set<string>>> {
+	const registry = await readInstalledPluginsRegistry(getInstalledPluginsRegistryPath());
+	const packageRealpaths = new Map<string, Set<string>>();
+	await Promise.all(
+		Object.entries(registry.plugins).flatMap(([pluginId, entries]) =>
+			entries.map(async entry => {
+				// Legacy registries written before `scope` was added omit the field;
+				// `listClaudePluginRoots` treats those as user-scoped, so do the same.
+				if ((entry.scope ?? "user") !== "user") return;
+				const packageJsonPath = path.join(entry.installPath, "package.json");
+				const parsedId = parsePluginId(pluginId);
+				let packageName = parsedId?.name ?? pluginId;
+				try {
+					const pkg: RuntimePackageJson = await Bun.file(packageJsonPath).json();
+					if (typeof pkg.name === "string" && pkg.name.length > 0) {
+						packageName = pkg.name;
+					}
+				} catch (err) {
+					if (!isEnoent(err)) {
+						logger.debug("Failed to inspect marketplace plugin package path", {
+							path: entry.installPath,
+							error: String(err),
+						});
+						return;
+					}
+				}
+
+				try {
+					const installRealpath = await fs.promises.realpath(entry.installPath);
+					const realpaths = packageRealpaths.get(packageName) ?? new Set<string>();
+					realpaths.add(installRealpath);
+					packageRealpaths.set(packageName, realpaths);
+				} catch (err) {
+					if (isEnoent(err)) return;
+					throw err;
+				}
+			}),
+		),
+	);
+	return packageRealpaths;
+}
+
+async function isMarketplaceRuntimeLink(
+	name: string,
+	deps: Record<string, string>,
+	marketplaceRuntimeRealpaths: Map<string, Set<string>>,
+	pluginPath: string,
+): Promise<boolean> {
+	if (name in deps) return false;
+	const realpaths = marketplaceRuntimeRealpaths.get(name);
+	if (!realpaths) return false;
+	try {
+		return realpaths.has(await fs.promises.realpath(pluginPath));
+	} catch (err) {
+		if (isEnoent(err)) return false;
+		throw err;
+	}
+}
+
+async function snapshotInstalledPackage(actualName: string | undefined): Promise<PluginPackageSnapshot | null> {
+	if (!actualName) {
+		return null;
+	}
+	const packagePath = path.join(getPluginsNodeModules(), actualName);
+	try {
+		await fs.promises.lstat(packagePath);
+	} catch (err) {
+		if (isEnoent(err)) {
+			return null;
+		}
+		throw err;
+	}
+
+	const backupRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "veyyon-plugin-backup-"));
+	const backupPath = path.join(backupRoot, "package");
+	await fs.promises.cp(packagePath, backupPath, { recursive: true, verbatimSymlinks: true });
+	return { actualName, packagePath, backupRoot, backupPath };
+}
+
+async function cleanupSnapshot(snapshot: PluginPackageSnapshot | null): Promise<void> {
+	if (!snapshot) {
+		return;
+	}
+	try {
+		await fs.promises.rm(snapshot.backupRoot, { recursive: true, force: true });
+	} catch (err) {
+		logger.warn("Failed to remove plugin install backup", { plugin: snapshot.actualName, error: String(err) });
+	}
+}
+
+async function rollbackFailedInstall(
+	actualName: string | undefined,
+	packageJsonBefore: string,
+	bunLockBefore: string | null,
+	snapshot: PluginPackageSnapshot | null,
+): Promise<void> {
+	await Bun.write(getPluginsPackageJson(), packageJsonBefore);
+
+	// Restore (or remove) bun's lockfile. Without this, a `bun install` +
+	// `bun update` pair that successfully rewrote `bun.lock` would leave the
+	// rejected commit pinned even when validation rolls everything else back.
+	const bunLockPath = path.join(getPluginsDir(), "bun.lock");
+	if (bunLockBefore === null) {
+		await fs.promises.rm(bunLockPath, { force: true });
+	} else {
+		await Bun.write(bunLockPath, bunLockBefore);
+	}
+
+	// `actualName` may be undefined when the install failed before the dep
+	// key was resolved — package.json + bun.lock restoration above is the
+	// complete rollback in that case.
+	if (!actualName) {
+		return;
+	}
+	const packagePath = path.join(getPluginsNodeModules(), actualName);
+	await fs.promises.rm(packagePath, { recursive: true, force: true });
+	if (!snapshot) {
+		return;
+	}
+	await fs.promises.mkdir(path.dirname(snapshot.packagePath), { recursive: true });
+	await fs.promises.cp(snapshot.backupPath, snapshot.packagePath, { recursive: true, verbatimSymlinks: true });
+}
+
+async function validateInstalledExtensions(plugin: InstalledPlugin): Promise<void> {
+	const declaredEntries = resolvePluginManifestEntries(plugin, "extensions");
+	if (declaredEntries.length === 0) {
+		return;
+	}
+
+	const errors: string[] = [];
+	const loadable: string[] = [];
+	for (const { entry, resolvedPath } of declaredEntries) {
+		if (resolvedPath === null) {
+			errors.push(`${entry}: declared extension entry not found on disk`);
+		} else {
+			loadable.push(resolvedPath);
+		}
+	}
+
+	if (loadable.length > 0) {
+		installLegacyPiSpecifierShim();
+		for (const extensionPath of loadable) {
+			try {
+				const module = await withExitGuard(() => loadLegacyPiModule(extensionPath));
+				if (!hasExtensionFactoryExport(module)) {
+					errors.push(`${extensionPath}: extension does not export a valid factory function`);
+				}
+			} catch (err) {
+				const message = errorMessage(err);
+				errors.push(`${extensionPath}: ${message}`);
+			}
+		}
+	}
+
+	if (errors.length > 0) {
+		throw new Error(
+			`The plugin ${plugin.name} declares extensions that do not load, so the install was rolled back ` +
+				`and nothing changed:\n${errors.join("\n")}\n` +
+				"Fix: report this to the plugin's author; there is no local repair for a broken extension entry.",
+		);
+	}
+}
+
+/**
+ * Resolve a dry-run install without writing anything.
+ *
+ * `bun install <spec> --dry-run` runs the same registry and git resolution the
+ * real install runs, exits non-zero when the target cannot be resolved, and
+ * writes no package.json, lockfile or node_modules entry. Resolution is the
+ * whole point: a dry-run that checked only spec syntax reported success for a
+ * package that does not exist, so `plugin install <anything> --dry-run` printed
+ * "Would install" and exited 0 for an unpublished name or a missing repository
+ * (#911).
+ *
+ * The returned record carries the version bun resolved, so `--json` reports what
+ * a real install would produce rather than a placeholder. `path` stays empty
+ * because nothing was extracted, and `manifest` carries only that version: the
+ * package is never unpacked, so its manifest cannot be read here. A dry-run
+ * therefore proves the target resolves, not that it is a veyyon plugin.
+ */
+async function resolveDryRun(spec: ParsedPluginSpec, packageInstallSpec: string): Promise<InstalledPlugin> {
+	const { exitCode, stdout, stderr } = await runBun(["install", packageInstallSpec, "--dry-run"]);
+	if (exitCode !== 0) {
+		throw new Error(
+			`${spec.packageName} cannot be installed, so the dry run failed: ${stderr}. ` +
+				"Fix: read that output; a name that was never published, a version that does not exist, " +
+				"a private or missing repository, and a missing `bun` on PATH all land here.",
+		);
+	}
+	const resolved = parseDryRunResolution(stdout);
+	return {
+		name: resolved?.name ?? extractPackageName(spec.packageName),
+		version: resolved?.version ?? "",
+		path: "",
+		manifest: { version: resolved?.version ?? "" },
+		enabledFeatures: spec.features === "*" ? null : (spec.features as string[] | null),
+		enabled: true,
+	};
+}
+
+/**
+ * Remove the node_modules entry `link` created for a locally linked plugin.
+ *
+ * `link` writes a symlink, but a plugin linked before that, or one whose target
+ * was copied in by hand, can be a real directory; both are the plugin's whole
+ * presence on disk, so both are removed. An entry that is already gone is the
+ * intended end state, not an error.
+ */
+async function unlinkPluginPath(name: string): Promise<void> {
+	const linkPath = path.join(getPluginsNodeModules(), name);
+	try {
+		const stats = await fs.promises.lstat(linkPath);
+		if (stats.isSymbolicLink() || stats.isFile()) {
+			await fs.promises.unlink(linkPath);
+		} else if (stats.isDirectory()) {
+			await fs.promises.rm(linkPath, { recursive: true, force: true });
+		}
+	} catch (err) {
+		if (!isEnoent(err)) throw err;
+	}
+}
+
+/**
+ * Reinstall the plugins directory for `doctor --fix`.
+ *
+ * The boolean becomes the check's `fixed` field, so a failure is already visible as a check that
+ * stayed red -- but only as "Missing from node_modules", with no hint why the fix did not take. The
+ * output was drained and thrown away even on a non-zero exit, which is the interesting half: a
+ * network failure, a lockfile conflict and a missing `bun` on PATH all looked identical. They are
+ * reported here, and the boolean is unchanged so the check reads the same as before.
+ */
+async function fixMissingPlugin(): Promise<boolean> {
+	const cwd = getPluginsDir();
+	try {
+		const { exitCode, stderr } = await runBun(["install"]);
+		if (exitCode !== 0) {
+			logger.warn("Reinstalling plugins failed; the missing plugin was not restored", {
+				cwd,
+				exitCode,
+				stderr: stderr.trim().slice(-2000),
+			});
+		}
+		return exitCode === 0;
+	} catch (err) {
+		// `bun` is not on PATH, or the plugins directory cannot be entered. Nothing ran, so there is no
+		// exit code or output to attach; the reason lives only in this error.
+		logger.warn("Reinstalling plugins could not be started; the missing plugin was not restored", {
+			cwd,
+			error: errorMessage(err),
+		});
+		return false;
 	}
 }
 

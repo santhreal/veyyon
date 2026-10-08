@@ -1202,8 +1202,8 @@ export class SecretAuditLog {
 		try {
 			const generations = await withFileLock(this.#logPath, async () => {
 				await assertParentIdentity(parent);
-				const rotated = await this.#readOne(this.#rawRotatedPath);
-				const current = await this.#readOne(this.#logPath);
+				const rotated = await readOne(this.#rawRotatedPath);
+				const current = await readOne(this.#logPath);
 				await assertParentIdentity(parent);
 				return [rotated, current];
 			});
@@ -1215,32 +1215,28 @@ export class SecretAuditLog {
 			await parent.handle.close();
 		}
 	}
+}
 
-	async #readOne(filePath: string): Promise<{ records: SecretExpansionRecord[]; malformed: number }> {
+async function readOne(filePath: string): Promise<{ records: SecretExpansionRecord[]; malformed: number }> {
+	try {
+		const opened = await openExistingAuditFile(filePath, fsConstants.O_RDONLY);
+		if (opened === null) return { records: [], malformed: 0 };
 		try {
-			const opened = await openExistingAuditFile(filePath, fsConstants.O_RDONLY);
-			if (opened === null) return { records: [], malformed: 0 };
-			try {
-				const bytes = await readBounded(opened.handle, ROTATE_AT_BYTES);
-				const after = await opened.handle.stat();
-				if (
-					!sameIdentity(after, opened.stats) ||
-					after.size !== opened.stats.size ||
-					after.size > ROTATE_AT_BYTES
-				) {
-					throw new Error("The secret audit generation changed or grew beyond its read limit.");
-				}
-				await assertPathIdentity(filePath, after);
-				return decodeLog(bytes.toString("utf8"));
-			} finally {
-				await opened.handle.close();
+			const bytes = await readBounded(opened.handle, ROTATE_AT_BYTES);
+			const after = await opened.handle.stat();
+			if (!sameIdentity(after, opened.stats) || after.size !== opened.stats.size || after.size > ROTATE_AT_BYTES) {
+				throw new Error("The secret audit generation changed or grew beyond its read limit.");
 			}
-		} catch (error) {
-			if (isEnoent(error)) return { records: [], malformed: 0 };
-			throw new Error(
-				`The secret audit log at ${escapeTerminalText(filePath)} could not be read safely ` +
-					`(${escapeTerminalText(errorMessage(error))}).`,
-			);
+			await assertPathIdentity(filePath, after);
+			return decodeLog(bytes.toString("utf8"));
+		} finally {
+			await opened.handle.close();
 		}
+	} catch (error) {
+		if (isEnoent(error)) return { records: [], malformed: 0 };
+		throw new Error(
+			`The secret audit log at ${escapeTerminalText(filePath)} could not be read safely ` +
+				`(${escapeTerminalText(errorMessage(error))}).`,
+		);
 	}
 }

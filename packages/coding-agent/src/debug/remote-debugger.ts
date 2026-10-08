@@ -139,13 +139,3 @@ async function launch({ port, start = startRemoteDebugger }: StartRemoteDebugger
 
 	throw thrown instanceof Error ? thrown : new Error(`Remote debugger socket never came up on ${host}:${chosen}`);
 }
-
-/**
- * Test-only: forget the tracked endpoint so a fresh start can be exercised.
- * Does not (and cannot) stop a real JSC inspector — callers in tests own the
- * disposable listener they injected.
- */
-export function __resetRemoteDebuggerForTests(): void {
-	active = null;
-	starting = null;
-}

@@ -15,6 +15,7 @@
 import { Database } from "bun:sqlite";
 import type { AgentTool } from "@veyyon/agent-core";
 import type { FetchImpl } from "@veyyon/ai";
+import { type } from "@veyyon/ai/utils/schema/arktype";
 import {
 	$env,
 	$flag,
@@ -26,11 +27,22 @@ import {
 	VERSION,
 } from "@veyyon/utils";
 import { sqlPlaceholders } from "@veyyon/utils/sqlite";
-import { type } from "arktype";
+import type { Type } from "arktype";
 import type { Settings } from "../..";
 import type { ToolSession } from "../index";
 
-function buildReportToolIssueParams(activeBuiltinNames: readonly string[]) {
+type ReportToolIssueParamsSchema = Type<{ tool: string; report: string }>;
+
+/**
+ * Parameter schemas by active built-in name list. ArkType registers every node a `type(...)` call
+ * builds in a process-global table and never releases it, so a schema built per session leaks 11
+ * nodes for every session and spawned agent. An entry holds only nodes the registry retains
+ * anyway, so the cache grows by one entry per distinct tool list where per-session builds grew by
+ * one schema per session.
+ */
+const reportToolIssueParamsByNames = new Map<string, ReportToolIssueParamsSchema>();
+
+function buildReportToolIssueParams(activeBuiltinNames: readonly string[]): ReportToolIssueParamsSchema {
 	// Enum gives the model a tight schema; the runtime check in `execute` is the
 	// source of truth (handles models that ignore the enum and the empty-list
 	// fallback used by call sites that don't know the active set yet).
@@ -41,6 +53,16 @@ function buildReportToolIssueParams(activeBuiltinNames: readonly string[]) {
 			"unexpected behavior; generic, NEVER PII (paths, file contents, identifiers, prompt text)",
 		),
 	});
+}
+
+function reportToolIssueParams(activeBuiltinNames: readonly string[]): ReportToolIssueParamsSchema {
+	const key = activeBuiltinNames.join(",");
+	let params = reportToolIssueParamsByNames.get(key);
+	if (!params) {
+		params = buildReportToolIssueParams(activeBuiltinNames);
+		reportToolIssueParamsByNames.set(key, params);
+	}
+	return params;
 }
 
 export function isAutoQaEnabled(settings?: Settings): boolean {
@@ -390,6 +412,7 @@ export function createReportToolIssueTool(session: ToolSession, activeBuiltinNam
 	// snapshot; mid-session drift (extensions registering later, etc.) is caught
 	// by the silent-drop guard below.
 	const allowedToolNames = new Set(activeBuiltinNames);
+	let parameters: ReportToolIssueParamsSchema | undefined;
 
 	return {
 		name: "report_tool_issue",
@@ -397,7 +420,10 @@ export function createReportToolIssueTool(session: ToolSession, activeBuiltinNam
 		strict: false,
 		approval: "write",
 		description: "Report unexpected tool behavior for automated QA tracking.",
-		parameters: buildReportToolIssueParams(activeBuiltinNames),
+		get parameters(): ReportToolIssueParamsSchema {
+			parameters ??= reportToolIssueParams(activeBuiltinNames);
+			return parameters;
+		},
 		intent: "omit",
 		async execute(_toolCallId, rawParams) {
 			// Save is unconditional: the row lives in this profile's local

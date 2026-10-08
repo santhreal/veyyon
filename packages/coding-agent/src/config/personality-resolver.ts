@@ -56,14 +56,20 @@ export function getProjectPersonalitiesDir(cwd: string = getProjectDir()): strin
 	return path.join(cwd, CONFIG_DIR_NAME, "personalities");
 }
 
+/** One Tier-B spec: the trimmed body and the file it was read from. */
+interface PersonalityFile {
+	text: string;
+	path: string;
+}
+
 /**
  * Read `*.md` personality files from `dir` into a name→spec map. Skips the
  * reserved `none` filename (it can never shadow the disable sentinel) and
  * empty/whitespace-only bodies (malformed — treated as absent so a lower
  * tier or the built-in seed provides the spec instead of a blank block).
  */
-async function readPersonalityDir(dir: string): Promise<Map<string, string>> {
-	const result = new Map<string, string>();
+async function readPersonalityDir(dir: string): Promise<Map<string, PersonalityFile>> {
+	const result = new Map<string, PersonalityFile>();
 	let entries: string[];
 	try {
 		entries = await fs.readdir(dir);
@@ -93,7 +99,7 @@ async function readPersonalityDir(dir: string): Promise<Map<string, string>> {
 			logger.warn("Ignoring empty personality file", { path: filePath });
 			continue;
 		}
-		result.set(name, trimmed);
+		result.set(name, { text: trimmed, path: filePath });
 	}
 
 	return result;
@@ -105,8 +111,21 @@ export interface PersonalityCatalogOptions {
 }
 
 interface PersonalityTiers {
-	project: Map<string, string>;
-	user: Map<string, string>;
+	project: Map<string, PersonalityFile>;
+	user: Map<string, PersonalityFile>;
+}
+
+/** Every catalog tier a spec can come from, highest precedence first. */
+export const PERSONALITY_TIERS = ["project", "user", "builtin"] as const;
+
+/** Which catalog tier a resolved spec came from. */
+export type PersonalityTier = (typeof PERSONALITY_TIERS)[number];
+
+interface TierHit {
+	text: string;
+	tier: PersonalityTier;
+	/** The file read, absent for a built-in. */
+	path?: string;
 }
 
 async function loadTiers(options: PersonalityCatalogOptions): Promise<PersonalityTiers> {
@@ -118,15 +137,19 @@ async function loadTiers(options: PersonalityCatalogOptions): Promise<Personalit
 	return { project, user };
 }
 
-function resolveFromTiers(name: string, tiers: PersonalityTiers): string | undefined {
+function resolveFromTiers(name: string, tiers: PersonalityTiers): TierHit | undefined {
 	// `Object.hasOwn`, because a bare `BUILTIN_PERSONALITIES[name]` answers every name Object.prototype
 	// carries. `personality: "toString"` resolved to a function, `resolvePersonality` then called
 	// `.replace` on it and threw, and the system prompt builder's deadline wrapper turned that throw
 	// into the built-in default with no warning printed and any Tier-B `default.md` ignored, which is
 	// the one outcome the unknown-name fallback below exists to prevent.
-	if (tiers.project.has(name)) return tiers.project.get(name);
-	if (tiers.user.has(name)) return tiers.user.get(name);
-	return Object.hasOwn(BUILTIN_PERSONALITIES, name) ? BUILTIN_PERSONALITIES[name] : undefined;
+	const project = tiers.project.get(name);
+	if (project) return { text: project.text, tier: "project", path: project.path };
+	const user = tiers.user.get(name);
+	if (user) return { text: user.text, tier: "user", path: user.path };
+	return Object.hasOwn(BUILTIN_PERSONALITIES, name)
+		? { text: BUILTIN_PERSONALITIES[name], tier: "builtin" }
+		: undefined;
 }
 
 function availableNames(tiers: PersonalityTiers): string[] {
@@ -141,7 +164,8 @@ function availableNames(tiers: PersonalityTiers): string[] {
  *
  * A Tier-B data file is untrusted content. A project-level `.veyyon/personalities/default.md` arrives
  * with a cloned repository, outranks the operator's own user-level file, and is injected into every
- * request with nothing said, so what it may spell has to be bounded. Escaping only `<personality>`
+ * request; the build announces it (see {@link describeProjectPersonality}) but does not withhold it,
+ * so what it may spell has to be bounded. Escaping only `<personality>`
  * closed the breakout but left every other tag live, and the block sits inside the DELIVERY CONTRACT
  * section, so a file could spell `<critical>` — the tag the surrounding prompt uses for its hardest
  * rules — and have it render as prompt structure rather than as the tone text it is.
@@ -217,6 +241,26 @@ export interface ResolvedPersonality {
 	text: string;
 	/** Set when the requested name could not be resolved and a fallback was used. */
 	warning?: string;
+	/** The catalog tier the rendered spec came from. Absent for `none`. */
+	tier?: PersonalityTier;
+	/** The file the rendered spec was read from. Absent for a built-in and for `none`. */
+	path?: string;
+}
+
+/**
+ * The notice raised when a project-tier file supplies the rendered spec.
+ *
+ * A project `.veyyon/personalities/<name>.md` arrives with a cloned repository and outranks the
+ * operator's own `~/.veyyon/personalities`, so resolving through it replaces the tone of every
+ * request in that directory. The notice states the file and the remedy, because deleting it or
+ * selecting `none` are the only ways to stop a project that defines every name.
+ */
+export function describeProjectPersonality(name: string, filePath: string): string {
+	return (
+		`personality "${name}" is read from ${filePath}, supplied by this project, and replaces your own ` +
+		`and the built-in tone for every request here. Delete the file or set \`personality\` to ` +
+		`\`${NONE_PERSONALITY}\` to stop it.`
+	);
 }
 
 /**
@@ -237,18 +281,32 @@ export async function resolvePersonality(
 	const tiers = await loadTiers(options);
 	const resolved = resolveFromTiers(requestedName, tiers);
 	if (resolved !== undefined) {
-		const bounded = boundPersonalityText(requestedName, resolved);
-		return { name: requestedName, text: bounded.text, warning: bounded.warning };
+		const bounded = boundPersonalityText(requestedName, resolved.text);
+		return {
+			name: requestedName,
+			text: bounded.text,
+			warning: bounded.warning,
+			tier: resolved.tier,
+			path: resolved.path,
+		};
 	}
 
 	const available = availableNames(tiers);
 	const warning = `Unknown personality "${requestedName}"; falling back to "${DEFAULT_PERSONALITY_NAME}". Available: ${available.join(", ")}, ${NONE_PERSONALITY}.`;
 	logger.warn("Unknown personality; falling back to default", { requested: requestedName, available });
-	const fallbackRaw =
-		resolveFromTiers(DEFAULT_PERSONALITY_NAME, tiers) ?? BUILTIN_PERSONALITIES[DEFAULT_PERSONALITY_NAME];
-	const bounded = boundPersonalityText(DEFAULT_PERSONALITY_NAME, fallbackRaw);
+	const fallback: TierHit = resolveFromTiers(DEFAULT_PERSONALITY_NAME, tiers) ?? {
+		text: BUILTIN_PERSONALITIES[DEFAULT_PERSONALITY_NAME],
+		tier: "builtin",
+	};
+	const bounded = boundPersonalityText(DEFAULT_PERSONALITY_NAME, fallback.text);
 	// Unknown-name and oversized-fallback are distinct conditions; surface both
 	// rather than letting the size warning silently swallow the fallback one.
 	const combinedWarning = bounded.warning ? `${warning} ${bounded.warning}` : warning;
-	return { name: DEFAULT_PERSONALITY_NAME, text: bounded.text, warning: combinedWarning };
+	return {
+		name: DEFAULT_PERSONALITY_NAME,
+		text: bounded.text,
+		warning: combinedWarning,
+		tier: fallback.tier,
+		path: fallback.path,
+	};
 }

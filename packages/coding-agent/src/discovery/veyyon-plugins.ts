@@ -18,9 +18,9 @@
  */
 
 import * as path from "node:path";
-import { isRecord, logger, parseFrontmatter, tryParseJson } from "@veyyon/utils";
+import { isRecord, logger, tryParseJson } from "@veyyon/utils";
 import { registerProvider } from "./capability";
-import { readDirEntries, readFile } from "./capability/fs";
+import { readFile } from "./capability/fs";
 import { type Hook, hookCapability } from "./capability/hook";
 import { type MCPServer, mcpCapability } from "./capability/mcp";
 import { type Prompt, promptCapability } from "./capability/prompt";
@@ -29,7 +29,17 @@ import { type DiscoveredSkill, skillCapability } from "./capability/skill";
 import { type SlashCommand, slashCommandCapability } from "./capability/slash-command";
 import { type DiscoveredCustomTool, toolCapability } from "./capability/tool";
 import type { LoadContext, LoadResult } from "./capability/types";
-import { buildRuleFromMarkdown, createSourceMeta, loadFilesFromDir, scanSkillsFromDir } from "./helpers";
+import {
+	createSourceMeta,
+	loadCommandDirs,
+	loadCustomToolDirs,
+	loadFilesFromDir,
+	loadPromptDirs,
+	loadRuleDirs,
+	mergeLoadResults,
+	type ScopedConfigDir,
+	scanSkillsFromDir,
+} from "./helpers";
 import { resolvePluginStdioPaths } from "./substitute-plugin-root";
 import { listVeyyonExtensionRoots, type VeyyonExtensionRoot } from "./veyyon-extension-roots";
 
@@ -56,82 +66,13 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>
 			}),
 		),
 	);
-	return {
-		items: results.flatMap(r => r.items),
-		warnings: results.flatMap(r => r.warnings ?? []),
-	};
+	return mergeLoadResults(results);
 }
 
-// =============================================================================
-// Slash Commands
-// =============================================================================
-
-async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashCommand>> {
+/** Every extension package root as a config directory at the root's own scope. */
+async function extensionConfigDirs(ctx: LoadContext): Promise<ScopedConfigDir[]> {
 	const roots = await listVeyyonExtensionRoots(ctx, { agentDir: ctx.agentDir });
-	const results = await Promise.all(
-		roots.map(root =>
-			loadFilesFromDir<SlashCommand>(path.join(root.path, "commands"), PROVIDER_ID, root.level, {
-				extensions: ["md"],
-				transform: (name, content, filePath, source) => ({
-					name: name.replace(/\.md$/, ""),
-					path: filePath,
-					content,
-					level: root.level,
-					_source: source,
-				}),
-			}),
-		),
-	);
-	return {
-		items: results.flatMap(r => r.items),
-		warnings: results.flatMap(r => r.warnings ?? []),
-	};
-}
-
-// =============================================================================
-// Rules
-// =============================================================================
-
-async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
-	const roots = await listVeyyonExtensionRoots(ctx, { agentDir: ctx.agentDir });
-	const results = await Promise.all(
-		roots.map(root =>
-			loadFilesFromDir<Rule>(path.join(root.path, "rules"), PROVIDER_ID, root.level, {
-				extensions: ["md", "mdc"],
-				transform: (name, content, filePath, source) =>
-					buildRuleFromMarkdown(name, content, filePath, source, { stripNamePattern: /\.(md|mdc)$/ }),
-			}),
-		),
-	);
-	return {
-		items: results.flatMap(r => r.items),
-		warnings: results.flatMap(r => r.warnings ?? []),
-	};
-}
-
-// =============================================================================
-// Prompts
-// =============================================================================
-
-async function loadPrompts(ctx: LoadContext): Promise<LoadResult<Prompt>> {
-	const roots = await listVeyyonExtensionRoots(ctx, { agentDir: ctx.agentDir });
-	const results = await Promise.all(
-		roots.map(root =>
-			loadFilesFromDir<Prompt>(path.join(root.path, "prompts"), PROVIDER_ID, root.level, {
-				extensions: ["md"],
-				transform: (name, content, filePath, source) => ({
-					name: name.replace(/\.md$/, ""),
-					path: filePath,
-					content,
-					_source: source,
-				}),
-			}),
-		),
-	);
-	return {
-		items: results.flatMap(r => r.items),
-		warnings: results.flatMap(r => r.warnings ?? []),
-	};
+	return roots.map(root => ({ dir: root.path, level: root.level }));
 }
 
 // =============================================================================
@@ -166,88 +107,7 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 			}),
 		),
 	);
-	return {
-		items: results.flatMap(r => r.items),
-		warnings: results.flatMap(r => r.warnings ?? []),
-	};
-}
-
-// =============================================================================
-// Custom Tools
-// =============================================================================
-
-const TOOL_EXTENSIONS = ["json", "md", "ts", "js", "sh", "bash", "py"];
-
-async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomTool>> {
-	const roots = await listVeyyonExtensionRoots(ctx, { agentDir: ctx.agentDir });
-	const perRoot = await Promise.all(
-		roots.map(async root => {
-			const toolsDir = path.join(root.path, "tools");
-			const [filesResult, entries] = await Promise.all([
-				loadFilesFromDir<DiscoveredCustomTool>(toolsDir, PROVIDER_ID, root.level, {
-					extensions: TOOL_EXTENSIONS,
-					transform: (name, content, filePath, source) => {
-						if (name.endsWith(".json")) {
-							const data = tryParseJson<{ name?: string; description?: string }>(content);
-							const toolName = data?.name || name.replace(/\.json$/, "");
-							const description =
-								typeof data?.description === "string" && data.description.trim()
-									? data.description
-									: `${toolName} custom tool`;
-							return { name: toolName, path: filePath, description, level: root.level, _source: source };
-						}
-						if (name.endsWith(".md")) {
-							const { frontmatter } = parseFrontmatter(content, { source: filePath });
-							const toolName = (frontmatter.name as string) || name.replace(/\.md$/, "");
-							const description =
-								typeof frontmatter.description === "string" && frontmatter.description.trim()
-									? String(frontmatter.description)
-									: `${toolName} custom tool`;
-							return { name: toolName, path: filePath, description, level: root.level, _source: source };
-						}
-						const toolName = name.replace(/\.(ts|js|sh|bash|py)$/, "");
-						return {
-							name: toolName,
-							path: filePath,
-							description: `${toolName} custom tool`,
-							level: root.level,
-							_source: source,
-						};
-					},
-				}),
-				readDirEntries(toolsDir),
-			]);
-
-			// `<tools>/<name>/index.ts` sub-directory tools, mirroring `builtin.ts:loadTools`.
-			const indexCandidates = entries
-				.filter(e => !e.name.startsWith(".") && e.isDirectory())
-				.map(e => path.join(toolsDir, e.name, "index.ts"));
-			const indexContents = await Promise.all(indexCandidates.map(p => readFile(p)));
-			const indexItems: DiscoveredCustomTool[] = [];
-			for (let i = 0; i < indexCandidates.length; i++) {
-				if (indexContents[i] === null) continue;
-				const indexPath = indexCandidates[i];
-				const toolName = path.basename(path.dirname(indexPath));
-				indexItems.push({
-					name: toolName,
-					path: indexPath,
-					description: `${toolName} custom tool`,
-					level: root.level,
-					_source: createSourceMeta(PROVIDER_ID, indexPath, root.level),
-				});
-			}
-
-			return { filesResult, indexItems };
-		}),
-	);
-
-	const items: DiscoveredCustomTool[] = [];
-	const warnings: string[] = [];
-	for (const { filesResult, indexItems } of perRoot) {
-		items.push(...filesResult.items, ...indexItems);
-		if (filesResult.warnings) warnings.push(...filesResult.warnings);
-	}
-	return { items, warnings };
+	return mergeLoadResults(results);
 }
 
 // =============================================================================
@@ -345,7 +205,7 @@ registerProvider<SlashCommand>(slashCommandCapability.id, {
 	displayName: DISPLAY_NAME,
 	description: DESCRIPTION,
 	priority: PRIORITY,
-	load: loadSlashCommands,
+	load: async ctx => loadCommandDirs(await extensionConfigDirs(ctx), PROVIDER_ID),
 });
 
 registerProvider<Rule>(ruleCapability.id, {
@@ -353,7 +213,7 @@ registerProvider<Rule>(ruleCapability.id, {
 	displayName: DISPLAY_NAME,
 	description: DESCRIPTION,
 	priority: PRIORITY,
-	load: loadRules,
+	load: async ctx => loadRuleDirs(await extensionConfigDirs(ctx), PROVIDER_ID),
 });
 
 registerProvider<Prompt>(promptCapability.id, {
@@ -361,7 +221,7 @@ registerProvider<Prompt>(promptCapability.id, {
 	displayName: DISPLAY_NAME,
 	description: DESCRIPTION,
 	priority: PRIORITY,
-	load: loadPrompts,
+	load: async ctx => loadPromptDirs(await extensionConfigDirs(ctx), PROVIDER_ID),
 });
 
 registerProvider<Hook>(hookCapability.id, {
@@ -377,7 +237,7 @@ registerProvider<DiscoveredCustomTool>(toolCapability.id, {
 	displayName: DISPLAY_NAME,
 	description: DESCRIPTION,
 	priority: PRIORITY,
-	load: loadTools,
+	load: async ctx => loadCustomToolDirs(await extensionConfigDirs(ctx), PROVIDER_ID),
 });
 
 registerProvider<MCPServer>(mcpCapability.id, {

@@ -69,14 +69,8 @@ const PRIVATE_CONSTRUCTOR = /^\s*private\s+constructor\b/;
  * This map may SHRINK and may never grow. Each entry is a file another lane is
  * editing right now, so converting it here would collide with in-flight work.
  * When that lane lands, convert the members and delete the row.
- *
- * `mnemopi/src/core/binary-vectors.ts` holds four: the connection-ownership flag
- * and table initialiser on the vector store, and the two backing arrays on the
- * in-memory index.
  */
-const GRANDFATHERED: Readonly<Record<string, number>> = {
-	"plugins/mnemopi/src/core/binary-vectors.ts": 4,
-};
+const GRANDFATHERED: Readonly<Record<string, number>> = {};
 
 /**
  * Lines that declare a member with an access keyword OUTSIDE a constructor's

@@ -114,8 +114,8 @@ opens under it. An action the situation blocks is refused on the footer with
 its reason. `↑` `↓` move through the ledger, `pgup` `pgdn` page the detail,
 the wheel scrolls the pane under the pointer and a click selects the row under
 it. Escape closes the dashboard, or returns to the ledger from the setup form
-and the detail view. Closing starts nothing and stops nothing; the swarm is
-exactly as it was.
+and the detail view. Closing starts nothing and stops nothing; the swarm state
+is unchanged.
 
 A field edited on the setup form is written to the session as it is typed.
 Breadth changed on a live session applies from the next iteration. Enter on
@@ -217,7 +217,7 @@ Breadth searches wider, but that is the smaller half. A loop scored on a number
 will find ways to move the number that have nothing to do with the work getting
 faster, and a single agent measuring its own change has no one to catch it.
 
-Four rejections happen mechanically, before a reviewer sees anything:
+Four rejections happen mechanically, before any reviewer is assigned:
 
 | Rejection | What it catches |
 |---|---|
@@ -226,9 +226,9 @@ Four rejections happen mechanically, before a reviewer sees anything:
 | `opaque` | A diff that cannot be read: a git binary patch, or a run of 512 or more base64 characters. |
 | `duplicate` | An arm whose diff another arm already produced. |
 
-`opaque` closes a specific hole. A compiled artifact encoded as a base64 string
+`opaque` rejects encoded payloads. A compiled artifact encoded as a base64 string
 and decoded at import time reads as an enormous speedup, passes an ASCII-only
-correctness gate, and cannot be reviewed by reading it. A diff nobody can read
+correctness check, and cannot be reviewed by reading it. A diff nobody can read
 is rejected rather than measured.
 
 What remains is assigned a reviewer:
@@ -288,7 +288,7 @@ reviewer concludes; the judgement on top of them does not.
 
 Breadth, attempts, certification and the per-arm models belong to the session
 rather than the installation, so the console sets them per investigation and
-`/settings` does not carry them. A [preset](#presets) saves that shape under a
+`/settings` does not list them. A [preset](#presets) saves that shape under a
 name for every repository. A run records which arm produced it and which arm
 certified it, both stated on the dashboard's detail of that run.
 
@@ -305,7 +305,7 @@ is nothing for either to do.
 raises the breadth, assigns a model per arm and types one nothing matches,
 toggles certification off and back on, sets an iteration cap, switches to the
 `wide` preset, and leaves with Escape. It is a stills take that measures under 1 fps of real change, so
-both arms turn the motion gate off; at the default the recorder rejects the take
+both arms set the recorder's motion floor (`SCENE_MOTION_FLOOR`) to 0; at the default the recorder rejects the take
 as a stutter:
 
 ```sh

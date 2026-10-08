@@ -15,6 +15,7 @@ import type {
 	InbandScanEvent,
 	InbandScanner,
 	InbandScannerOptions,
+	InbandToolEnd,
 } from "./types";
 
 const MAX_PARTIAL_TAG_LENGTH = 256;
@@ -146,12 +147,12 @@ export class AnthropicInbandScanner implements InbandScanner {
 	#consumeOutside(final: boolean, events: InbandScanEvent[]): boolean {
 		const tagStart = this.#buffer.indexOf("<");
 		if (tagStart === -1) {
-			this.#emitText(this.#buffer, events);
+			emitText(this.#buffer, events);
 			this.#buffer = "";
 			return false;
 		}
 		if (tagStart > 0) {
-			this.#emitText(this.#buffer.slice(0, tagStart), events);
+			emitText(this.#buffer.slice(0, tagStart), events);
 			this.#buffer = this.#buffer.slice(tagStart);
 			return true;
 		}
@@ -159,7 +160,7 @@ export class AnthropicInbandScanner implements InbandScanner {
 		const tag = this.#peekTag(final, this.#relevantPrefixes());
 		if (tag === "partial") return false;
 		if (!tag) {
-			this.#emitText(this.#buffer[0]!, events);
+			emitText(this.#buffer[0]!, events);
 			this.#buffer = this.#buffer.slice(1);
 			return true;
 		}
@@ -184,7 +185,7 @@ export class AnthropicInbandScanner implements InbandScanner {
 			return true;
 		}
 
-		this.#emitText(this.#buffer[0]!, events);
+		emitText(this.#buffer[0]!, events);
 		this.#buffer = this.#buffer.slice(1);
 		return true;
 	}
@@ -225,11 +226,8 @@ export class AnthropicInbandScanner implements InbandScanner {
 	#consumeInvoke(final: boolean, events: InbandScanEvent[]): boolean {
 		const tagStart = this.#buffer.indexOf("<");
 		if (tagStart === -1) {
-			if (final) this.#resetCall(this.#returnState);
-			else {
-				this.#rawBlock += this.#buffer;
-				this.#buffer = "";
-			}
+			this.#rawBlock += this.#buffer;
+			this.#buffer = "";
 			return false;
 		}
 		if (tagStart > 0) {
@@ -251,16 +249,7 @@ export class AnthropicInbandScanner implements InbandScanner {
 		this.#rawBlock += tag.raw;
 		this.#buffer = this.#buffer.slice(tag.raw.length);
 		if (tag.closing && tag.localName === "invoke") {
-			if (this.#started) {
-				events.push({
-					type: "toolEnd",
-					id: this.#id,
-					name: this.#name,
-					arguments: this.#args,
-					rawBlock: this.#rawBlock,
-				});
-			}
-			this.#resetCall(this.#returnState);
+			this.#endCall(events);
 			return true;
 		}
 		if (!tag.closing && tag.localName === "parameter") {
@@ -274,11 +263,6 @@ export class AnthropicInbandScanner implements InbandScanner {
 	#consumeParameter(final: boolean, events: InbandScanEvent[]): boolean {
 		const tagStart = this.#buffer.indexOf("<");
 		if (tagStart === -1) {
-			if (final) {
-				this.#resetCall(this.#returnState);
-				this.#buffer = "";
-				return false;
-			}
 			this.#appendParameterValue(this.#buffer, events);
 			this.#rawBlock += this.#buffer;
 			this.#buffer = "";
@@ -301,7 +285,8 @@ export class AnthropicInbandScanner implements InbandScanner {
 			return true;
 		}
 		if (final && !tag) {
-			this.#resetCall(this.#returnState);
+			this.#appendParameterValue(this.#buffer, events);
+			this.#rawBlock += this.#buffer;
 			this.#buffer = "";
 			return false;
 		}
@@ -349,12 +334,28 @@ export class AnthropicInbandScanner implements InbandScanner {
 		return true;
 	}
 
+	/** The stream ended: a section in progress ends, and an announced call ends with the arguments read so far. */
 	#flushFinal(events: InbandScanEvent[]): void {
-		if (this.#state === "outside") return;
 		if (this.#state === "thinking") this.#finishThinking(events);
-		else this.#resetCall(this.#returnState);
+		if (this.#state === "parameter") this.#finishParameter();
+		if (this.#state === "invoke") this.#endCall(events, true);
 		this.#state = "outside";
 		this.#buffer = "";
+	}
+
+	#endCall(events: InbandScanEvent[], unterminated = false): void {
+		if (this.#started) {
+			const end: InbandToolEnd = {
+				type: "toolEnd",
+				id: this.#id,
+				name: this.#name,
+				arguments: this.#args,
+				rawBlock: this.#rawBlock,
+			};
+			if (unterminated) end.unterminated = true;
+			events.push(end);
+		}
+		this.#resetCall(this.#returnState);
 	}
 
 	#startInvoke(tag: ParsedTag, returnState: ReturnState, events: InbandScanEvent[]): void {
@@ -485,10 +486,10 @@ export class AnthropicInbandScanner implements InbandScanner {
 	#relevantPrefixes(): readonly string[] {
 		return this.#parseThinking ? this.#allTagPrefixes : this.#baseTagPrefixes;
 	}
+}
 
-	#emitText(text: string, events: InbandScanEvent[]): void {
-		if (text.length > 0) events.push({ type: "text", text });
-	}
+function emitText(text: string, events: InbandScanEvent[]): void {
+	if (text.length > 0) events.push({ type: "text", text });
 }
 
 const ALL_TAG_PREFIXES = [...BASE_TAG_PREFIXES, ...ANTHROPIC_THINKING_TAG_PREFIXES] as const;

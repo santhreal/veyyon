@@ -2,7 +2,7 @@
 
 The harness assembles system and developer prompts and adapts them per provider. Base instructions
 encode control-flow discipline: **explore → plan → edit → verify → STOP**. Plan mode (`/plan`) and
-goal mode (`/goal`) add gating on top of the default prompt stack.
+goal mode (`/goal`) add conditional sections on top of the default prompt stack.
 
 ## Delivery
 
@@ -69,14 +69,14 @@ To read one of those rules, name it:
 veyyon prompt --statement delivery-contract/personality
 ```
 
-You get the rule's rendered text, which is what the model sees rather than the template behind it. If
+You get the rule's rendered text, which is what the model receives rather than the template behind it. If
 the rule is not in this prompt you get the condition that would include it and why the rule exists,
 and the command still exits 0, because a rule being off is a configuration and not a failure. An id
 that does not exist exits non-zero and quotes the ids of the section you named.
 
-Both read your real configuration. The settings the prompt is gated on -- your personality, whether
+Both read your real configuration. The settings the prompt depends on (your personality, whether
 agent delegation is preferred or required, whether Mermaid diagrams are rendered, which tool
-dialect applies -- are resolved from your profile `config.yml` before the prompt is
+dialect applies) are resolved from your profile `config.yml` before the prompt is
 assembled, so what you see is what a session would send. Change a setting, run it
 again, and the difference is visible.
 

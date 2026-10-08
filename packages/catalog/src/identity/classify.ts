@@ -51,15 +51,9 @@ export interface UnknownModel {
 export type ParsedModel = GeminiModel | AnthropicModel | OpenAIModel | UnknownModel;
 
 /** Strip a provider namespace prefix (`openai/gpt-5.4` → `gpt-5.4`). */
-// Cache keyed by model id (a bounded set of bundled/aggregator ids), so no eviction is needed.
-const bareModelIdCache = new Map<string, string>();
 export function bareModelId(modelId: string): string {
-	const cached = bareModelIdCache.get(modelId);
-	if (cached !== undefined) return cached;
 	const p = modelId.lastIndexOf("/");
-	const result = p !== -1 ? modelId.slice(p + 1) : modelId;
-	bareModelIdCache.set(modelId, result);
-	return result;
+	return p !== -1 ? modelId.slice(p + 1) : modelId;
 }
 
 export function parseKnownModel(modelId: string): ParsedModel {
@@ -72,30 +66,18 @@ export function parseKnownModel(modelId: string): ParsedModel {
 }
 
 /**
- * Wrap a parse function in a per-id memo cache. Caches the `null` result too, so
- * repeated misses (the common case — ids of other families) stay O(1) and never
- * re-run the regex/semver work.
+ * Wrap a parse function so it parses the lowercased id.
  *
- * The id is lowercased before parsing, because a model id's case is the host's
- * spelling of it and never a fact about the model. Baseten and every other host
- * that serves models under their HuggingFace repo names ships uppercase ids
- * (`zai-org/GLM-5.2`, `moonshotai/Kimi-K2.6`), and those parsed as `null` here,
- * so every identity-derived policy silently did not apply to them: Baseten's
- * GLM-5.2 rows kept an inferred `minimal…xhigh` ladder while the endpoint
- * accepts only `high`/`max` and 400s on the rest.
+ * A model id's case is the host's spelling of it and never a fact about the
+ * model. Baseten and every other host that serves models under their
+ * HuggingFace repo names ships uppercase ids (`zai-org/GLM-5.2`,
+ * `moonshotai/Kimi-K2.6`), and those parsed as `null` here, so every
+ * identity-derived policy silently did not apply to them: Baseten's GLM-5.2
+ * rows kept an inferred `minimal…xhigh` ladder while the endpoint accepts only
+ * `high`/`max` and 400s on the rest.
  */
 function parser<T>(parse: (modelId: string) => T | null): (modelId: string) => T | null {
-	const cache = new Map<string, T | null>();
-	return modelId => {
-		const key = modelId.toLowerCase();
-		const hit = cache.get(key);
-		if (hit !== undefined || cache.has(key)) {
-			return hit ?? null;
-		}
-		const result = parse(key);
-		cache.set(key, result);
-		return result;
-	};
+	return modelId => parse(modelId.toLowerCase());
 }
 
 const GEMINI_SUFFIX = "-preview";

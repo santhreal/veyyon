@@ -86,39 +86,39 @@ export class SwiftLintClient implements LinterClient {
 			return [];
 		}
 
-		return this.#parseJsonOutput(result.stdout);
-	}
-
-	#parseJsonOutput(jsonOutput: string): Diagnostic[] {
-		const diagnostics: Diagnostic[] = [];
-
-		try {
-			const violations: SwiftLintViolation[] = JSON.parse(jsonOutput);
-
-			for (const v of violations) {
-				// SwiftLint lines/characters are 1-based; LSP is 0-based
-				const line = Math.max(0, v.line - 1);
-				const character = Math.max(0, v.character - 1);
-
-				diagnostics.push({
-					range: {
-						start: { line, character },
-						end: { line, character },
-					},
-					severity: parseSeverity(v.severity),
-					message: v.reason,
-					source: "swiftlint",
-					code: v.rule_id,
-				});
-			}
-		} catch {
-			// JSON parse failed, return empty
-		}
-
-		return diagnostics;
+		return parseJsonOutput(result.stdout);
 	}
 
 	dispose(): void {
 		// Nothing to dispose for CLI client
 	}
+}
+
+function parseJsonOutput(jsonOutput: string): Diagnostic[] {
+	const diagnostics: Diagnostic[] = [];
+
+	try {
+		const violations: SwiftLintViolation[] = JSON.parse(jsonOutput);
+
+		for (const v of violations) {
+			// SwiftLint lines/characters are 1-based; LSP is 0-based
+			const line = Math.max(0, v.line - 1);
+			const character = Math.max(0, v.character - 1);
+
+			diagnostics.push({
+				range: {
+					start: { line, character },
+					end: { line, character },
+				},
+				severity: parseSeverity(v.severity),
+				message: v.reason,
+				source: "swiftlint",
+				code: v.rule_id,
+			});
+		}
+	} catch {
+		// JSON parse failed, return empty
+	}
+
+	return diagnostics;
 }

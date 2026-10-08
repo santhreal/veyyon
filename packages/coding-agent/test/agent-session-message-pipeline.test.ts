@@ -596,7 +596,7 @@ describe("AgentSession message pipeline", () => {
 		const prepared = await session.prepareSimpleStreamOptions({});
 		prepared.onSseEvent?.({ event: "message", data: "{}", raw: ["event: message", "data: {}"] });
 
-		expect(session.rawSseDebugBuffer.snapshot().totalEvents).toBe(1);
+		expect(session.rawSseDebugBuffer?.snapshot().totalEvents).toBe(1);
 		expect(requestOnSseEvent).toHaveBeenCalledWith(
 			{ event: "message", data: "{}", raw: ["event: message", "data: {}"] },
 			undefined,

@@ -1379,10 +1379,10 @@ export interface ProviderModelConfig {
 export type ExtensionFactory = (pi: ExtensionAPI) => void | Promise<void>;
 
 /**
- * The extension API without the `pi` package namespace. The product's own inline extensions are bound
- * to this, so binding them does not load the package barrel that `pi` is.
+ * The extension API without the `pi` package namespace and Zod. The product's own inline extensions are
+ * bound to this, so binding them loads neither the package barrel that `pi` is nor Zod.
  */
-export type BuiltinExtensionAPI = Omit<ExtensionAPI, "pi">;
+export type BuiltinExtensionAPI = Omit<ExtensionAPI, "pi" | "zod">;
 
 /** Factory for one of the product's own inline extensions; see {@link BuiltinExtensionAPI}. */
 export type BuiltinExtensionFactory = (api: BuiltinExtensionAPI) => void | Promise<void>;

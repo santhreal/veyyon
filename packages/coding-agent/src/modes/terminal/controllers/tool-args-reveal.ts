@@ -2,7 +2,7 @@ import type { Component } from "@veyyon/tui";
 import { parseStreamingJson, parseStreamingJsonThrottled, STREAMING_JSON_PARSE_MIN_GROWTH } from "@veyyon/utils";
 import type { ArgotSession } from "argot";
 import { expandToolArguments } from "../../../argot-wire";
-import { nextStep, STREAMING_REVEAL_FRAME_MS } from "./streaming-reveal";
+import { RevealFrameClock, RevealPacer } from "./streaming-reveal";
 
 /** Minimal component surface the reveal pushes frames into. */
 type ToolArgsRevealComponent = Component & {
@@ -14,6 +14,12 @@ type ToolArgsRevealComponent = Component & {
 // long payload updates preview args at reveal cadence instead of stalling for
 // STREAMING_JSON_PARSE_MIN_GROWTH bytes at a time. Nested-array modes (edit
 // patch/replace `edits[].diff`) still fall through to the throttled parse.
+// A tool with no entry previews its arguments from the throttled parse alone:
+// past the first STREAMING_JSON_PARSE_MIN_GROWTH bytes an `ssh` command or a
+// `browser` script advances in steps of that many bytes rather than per frame.
+// `a-string-argument-the-preview-shows-streams-as-it-arrives.test.ts` builds
+// every registered tool, renders its pending preview, and fails on a string
+// argument the preview shows that no entry here decodes.
 // `path`/`file_path` are here for two reasons that happen to want the same
 // thing. A preview's TITLE is the path, and it arrived only when the throttled
 // full parse first recovered it, so a long payload drew an untitled block for
@@ -31,12 +37,44 @@ type ToolArgsRevealComponent = Component & {
 // fails if any two names sharing a renderer stop sharing their keys.
 const EDIT_RENDERER_STREAMING_KEYS: readonly string[] = ["path", "file_path", "input", "_input"];
 
-const STREAMING_STRING_KEYS_BY_TOOL: Record<string, readonly string[]> = {
-	write: ["path", "file_path", "content"],
-	edit: EDIT_RENDERER_STREAMING_KEYS,
+export const STREAMING_STRING_KEYS_BY_TOOL: Readonly<Record<string, readonly string[]>> = {
 	apply_patch: EDIT_RENDERER_STREAMING_KEYS,
-	eval: ["code"],
-	launch: ["op", "name", "application", "text", "pattern", "signal"],
+	argot_load: ["folder_path"],
+	argot_unload: ["folder_path"],
+	bash: ["command", "cwd"],
+	browser: ["name", "url", "code"],
+	checkpoint: ["goal"],
+	debug: ["program"],
+	edit: EDIT_RENDERER_STREAMING_KEYS,
+	eval: ["code", "title"],
+	github: ["repo", "pr", "branch", "run", "query"],
+	goal: ["objective"],
+	inspect_image: ["path", "question"],
+	irc: ["to", "message", "from"],
+	launch: ["op", "name", "application", "text", "pattern", "signal", "grep"],
+	learn: ["memory", "context"],
+	lsp: ["file", "query", "new_name"],
+	manage_skill: ["name", "description", "body"],
+	memory_edit: ["id", "content", "replacement_id"],
+	read: ["path"],
+	recall: ["query"],
+	reflect: ["query"],
+	report_finding: ["title"],
+	report_tool_issue: ["tool", "report"],
+	resolve: ["reason"],
+	rewind: ["report"],
+	search: ["input", "path"],
+	search_tool_bm25: ["query"],
+	set_cwd: ["path"],
+	ssh: ["host", "command"],
+	task: ["task", "name"],
+	todo: ["task", "phase"],
+	vibe_kill: ["session"],
+	vibe_send: ["session", "message"],
+	vibe_spawn: ["prompt", "name"],
+	web_search: ["query"],
+	write: ["path", "file_path", "content"],
+	yield: ["type"],
 };
 
 /** String fields the streamed-args decode reads incrementally for `toolName`. */
@@ -103,9 +141,20 @@ class StreamingJsonStringExtractor {
 	#targetUnicode = "";
 	#values: Record<string, string> = {};
 	#changed = false;
+	/** The source length just past the opening quote of the value being read, or -1 outside one. */
+	#valueOpenedAt = -1;
 
 	constructor(keys: readonly string[]) {
 		this.#keys = new Set(keys);
+	}
+
+	/**
+	 * The source length just past the opening quote of the string value the extractor is reading, or
+	 * -1 when it is reading none. Every byte of the source beyond it belongs to that value, so a parse
+	 * of a prefix at least this long has read every byte outside the value.
+	 */
+	get valueOpenedAt(): number {
+		return this.#valueOpenedAt;
 	}
 
 	reset(): void {
@@ -122,6 +171,7 @@ class StreamingJsonStringExtractor {
 		this.#targetUnicode = "";
 		this.#values = {};
 		this.#changed = false;
+		this.#valueOpenedAt = -1;
 	}
 
 	update(prefix: string): StreamingJsonStringExtractorResult {
@@ -243,6 +293,7 @@ class StreamingJsonStringExtractor {
 			this.#targetUnicode = "";
 			this.#state = "target";
 			this.#offset++;
+			this.#valueOpenedAt = this.#offset;
 			return;
 		}
 		this.#targetKey = undefined;
@@ -272,6 +323,7 @@ class StreamingJsonStringExtractor {
 		if (ch === '"') {
 			this.#targetKey = undefined;
 			this.#state = "scan";
+			this.#valueOpenedAt = -1;
 			this.#offset++;
 			return;
 		}
@@ -320,6 +372,8 @@ type RevealEntry = {
 	target: string;
 	/** Revealed UTF-16 code units of `target`. */
 	revealed: number;
+	/** Paces `revealed` toward `target` at the rate the stream arrives. */
+	pacer: RevealPacer;
 	/** Custom-tool raw input: display args are `{ input: prefix }`, never parsed as JSON. */
 	rawInput: boolean;
 	/** Whether the renderer observes fresh raw JSON prefixes directly. */
@@ -379,7 +433,13 @@ function resetDisplayState(entry: RevealEntry): void {
  * growth-throttled cadence providers use, so a long `write` payload cannot make
  * the reveal loop re-parse the whole growing buffer every frame. Renderers that
  * read raw JSON directly still receive fresh `__partialJson` prefixes; other
- * renderers get a stable object reference while parsed fields are unchanged. */
+ * renderers get a stable object reference while parsed fields are unchanged.
+ *
+ * While the bytes that arrived since the last parse all belong to a string value
+ * the extractor reads, the prefix is not parsed at all: a parse would recover
+ * every other field as the last one did, and the extractor's value replaces the
+ * parsed one. Parsing every STREAMING_JSON_PARSE_MIN_GROWTH bytes regardless, the
+ * reveal of a 128 KB `write` parsed 27 MB of JSON; it parses the call once. */
 function displayArgsForPrefix(entry: RevealEntry, prefix: string, forceParse = false): DisplayArgsStep {
 	if (entry.rawInput) {
 		if (prefix === entry.displayPrefix) return { args: entry.displayArgs, changed: false };
@@ -393,12 +453,14 @@ function displayArgsForPrefix(entry: RevealEntry, prefix: string, forceParse = f
 		return { args, changed: true };
 	}
 
+	const extracted = entry.stringExtractor?.update(prefix);
+	const valueOpenedAt = entry.stringExtractor?.valueOpenedAt ?? -1;
 	let parsedChanged = false;
 	if (forceParse || (prefix.length > 0 && prefix.length < STREAMING_JSON_PARSE_MIN_GROWTH)) {
 		entry.parsedArgs = expandStreamedValues(entry.argot, parseStreamingJson<Record<string, unknown>>(prefix));
 		entry.parsedLen = prefix.length;
 		parsedChanged = true;
-	} else {
+	} else if (valueOpenedAt < 0 || entry.parsedLen < valueOpenedAt) {
 		const throttled = parseStreamingJsonThrottled<Record<string, unknown>>(prefix, entry.parsedLen);
 		if (throttled) {
 			entry.parsedArgs = expandStreamedValues(entry.argot, throttled.value);
@@ -406,7 +468,6 @@ function displayArgsForPrefix(entry: RevealEntry, prefix: string, forceParse = f
 			parsedChanged = true;
 		}
 	}
-	const extracted = entry.stringExtractor?.update(prefix);
 	if (extracted?.changed) {
 		entry.parsedArgs = { ...entry.parsedArgs, ...expandStreamedValues(entry.argot, extracted.values) };
 		parsedChanged = true;
@@ -524,8 +585,8 @@ export function decodeStreamedToolArgs(partialJson: string, source: StreamedTool
  * paces assistant text: providers that deliver `partialJson` in large batches
  * (or throttle their partial parses) would otherwise make write/edit/bash
  * streaming previews jump in chunks. Each pending tool call reveals its raw
- * argument stream at the shared 30fps cadence with the same adaptive
- * catch-up step. JSON prefixes are parsed only when enough new bytes arrive to
+ * argument stream at the shared 30fps cadence through its own {@link RevealPacer}.
+ * JSON prefixes are parsed only when enough new bytes arrive to
  * change renderer-visible fields, while raw-prefix consumers still receive
  * fresh `__partialJson` on every reveal frame.
  *
@@ -537,7 +598,7 @@ export class ToolArgsRevealController {
 	readonly #getSmoothStreaming: () => boolean;
 	readonly #requestRender: (component: Component) => void;
 	readonly #entries = new Map<string, RevealEntry>();
-	#timer: NodeJS.Timeout | undefined;
+	readonly #clock = new RevealFrameClock(() => this.#tick());
 
 	constructor(options: ToolArgsRevealControllerOptions) {
 		this.#getSmoothStreaming = options.getSmoothStreaming;
@@ -555,12 +616,14 @@ export class ToolArgsRevealController {
 	 */
 	setTarget(id: string, partialJson: string, target: ToolArgsRevealTarget): Record<string, unknown> {
 		const { rawInput, exposeRawPartialJson, streamingStringKeys, argot } = target;
+		const now = performance.now();
 		let entry = this.#entries.get(id);
 		if (!entry) {
 			entry = {
 				component: undefined,
 				target: partialJson,
 				revealed: clampSliceEnd(partialJson, partialJson.length),
+				pacer: new RevealPacer(),
 				rawInput,
 				exposeRawPartialJson,
 				parsedArgs: {},
@@ -594,6 +657,7 @@ export class ToolArgsRevealController {
 			}
 			entry.target = partialJson;
 		}
+		entry.pacer.arrive(now, partialJson.length, entry.revealed);
 		// Toggle may flip mid-call: snap the reveal to everything received so
 		// pacing stops (and never restarts while the toggle stays off).
 		if (!this.#getSmoothStreaming()) entry.revealed = entry.target.length;
@@ -613,7 +677,7 @@ export class ToolArgsRevealController {
 	 *  text snaps to the full message at message_end. */
 	finish(id: string): void {
 		this.#entries.delete(id);
-		if (this.#entries.size === 0) this.#stopTimer();
+		if (this.#entries.size === 0) this.#clock.stop();
 	}
 
 	/** Snap every live entry to its full received stream and clear. Used at
@@ -626,41 +690,28 @@ export class ToolArgsRevealController {
 			}
 		}
 		this.#entries.clear();
-		this.#stopTimer();
+		this.#clock.stop();
 	}
 
 	/** Clear without pushing (teardown). */
 	stop(): void {
 		this.#entries.clear();
-		this.#stopTimer();
+		this.#clock.stop();
 	}
 
 	#syncTimer(): void {
 		for (const entry of this.#entries.values()) {
 			if (entry.revealed < entry.target.length) {
-				this.#startTimer();
+				this.#clock.start();
 				return;
 			}
 		}
-		this.#stopTimer();
-	}
-
-	#startTimer(): void {
-		if (this.#timer) return;
-		this.#timer = setInterval(() => {
-			this.#tick();
-		}, STREAMING_REVEAL_FRAME_MS);
-		this.#timer.unref?.();
-	}
-
-	#stopTimer(): void {
-		if (!this.#timer) return;
-		clearInterval(this.#timer);
-		this.#timer = undefined;
+		this.#clock.stop();
 	}
 
 	#tick(): void {
-		let advanced = false;
+		const now = performance.now();
+		let backlogged = false;
 		// Collect components with changed display args; render each subtree once
 		// per tick even when multiple entries share a component (they don't
 		// today, but the API contract doesn't prevent it).
@@ -668,19 +719,19 @@ export class ToolArgsRevealController {
 		for (const [id, entry] of this.#entries) {
 			const backlog = entry.target.length - entry.revealed;
 			if (backlog <= 0 || !entry.component) continue;
-			entry.revealed = clampSliceEnd(entry.target, entry.revealed + nextStep(backlog));
-			const display = displayArgsForPrefix(entry, entry.target.slice(0, entry.revealed));
-			if (display.changed) {
-				entry.component.updateArgs(display.args, id);
-				rendered.add(entry.component);
+			const step = entry.pacer.step(now, backlog);
+			if (step > 0) {
+				entry.revealed = clampSliceEnd(entry.target, entry.revealed + step);
+				const display = displayArgsForPrefix(entry, entry.target.slice(0, entry.revealed));
+				if (display.changed) {
+					entry.component.updateArgs(display.args, id);
+					rendered.add(entry.component);
+				}
 			}
-			advanced = true;
+			if (entry.revealed < entry.target.length) backlogged = true;
 		}
-		if (advanced) {
-			for (const component of rendered) this.#requestRender(component);
-		} else {
-			// Every entry caught up (or unbound); setTarget restarts on growth.
-			this.#stopTimer();
-		}
+		for (const component of rendered) this.#requestRender(component);
+		// Every entry caught up (or unbound); setTarget restarts on growth.
+		if (!backlogged) this.#clock.stop();
 	}
 }

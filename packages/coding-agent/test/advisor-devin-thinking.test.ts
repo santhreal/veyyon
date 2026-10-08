@@ -81,7 +81,6 @@ describe("AgentSession advisor descriptor thinking level", () => {
 			sessionManager,
 			settings,
 			modelRegistry,
-			advisorTools: [],
 		});
 	});
 

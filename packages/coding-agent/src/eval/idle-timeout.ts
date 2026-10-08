@@ -1,3 +1,6 @@
+/** No-op abort listener whose only job is to keep {@link signal}.reason readable; see the constructor. */
+const anchorReason = (): void => {};
+
 /**
  * Watchdog for eval cell work.
  *
@@ -28,12 +31,9 @@ export class IdleTimeout {
 		// abort handler would see undefined and misclassify a genuine idle timeout as
 		// an ordinary cancel. Anchoring a no-op listener keeps the TimeoutError reason
 		// readable for the object's whole life, so the documented contract holds.
-		this.#controller.signal.addEventListener("abort", IdleTimeout.#anchorReason);
+		this.#controller.signal.addEventListener("abort", anchorReason);
 		this.#arm(this.#idleMs);
 	}
-
-	/** No-op abort listener whose only job is to keep {@link signal}.reason readable; see the constructor. */
-	static readonly #anchorReason = (): void => {};
 
 	/** Aborts with a `TimeoutError` reason once the active timeout window is exhausted. */
 	get signal(): AbortSignal {

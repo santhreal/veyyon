@@ -29,7 +29,7 @@ import { streamSimple } from "@veyyon/ai/stream";
 import type { HarmonyAuditEvent } from "@veyyon/ai/utils/harmony-leak";
 import { preferredDialect } from "@veyyon/catalog/identity";
 import { emptyUsage, getBundledModel } from "@veyyon/catalog/models";
-import { errorMessage, logger } from "@veyyon/utils";
+import { errorMessage, internString, logger } from "@veyyon/utils";
 import {
 	abortReasonText,
 	agentLoop,
@@ -51,6 +51,7 @@ import type {
 	AnyAgentTool,
 	AsideMessage,
 	ConfiguredDialect,
+	SteeringQueueState,
 	StreamFn,
 	ToolCallArgumentTransform,
 	ToolCallContext,
@@ -67,6 +68,16 @@ function defaultConvertToLlm(messages: AgentMessage[]): Message[] {
 		if (m.role === "assistant") return !isProviderRefusalMessage(m);
 		return m.role === "user" || m.role === "toolResult";
 	});
+}
+
+/**
+ * Replace each system prompt part with its interned instance, in place, and return the array.
+ * Agents of one kind carry equal sections (conventions, project context, role), and a spawned
+ * agent stays live after it finishes, so every live agent shares one copy of each.
+ */
+function internPromptParts(parts: string[]): string[] {
+	for (let i = 0; i < parts.length; i++) parts[i] = internString(parts[i]!);
+	return parts;
 }
 
 const ANTHROPIC_OUTPUT_BLOCKED_PREFIX = "Output blocked by conten";
@@ -367,18 +378,7 @@ interface CursorToolResultEntry {
 }
 
 export class Agent {
-	#state: AgentState = {
-		systemPrompt: [],
-		model: getBundledModel("google", "gemini-2.5-flash-lite-preview-06-17"),
-		thinkingLevel: undefined,
-		disableReasoning: false,
-		tools: [],
-		messages: [],
-		isStreaming: false,
-		streamMessage: null,
-		pendingToolCalls: new Set<string>(),
-		error: undefined,
-	};
+	#state: AgentState;
 
 	#listeners = new Set<(e: AgentEvent) => void>();
 	#abortController?: AbortController;
@@ -463,7 +463,22 @@ export class Agent {
 	hasIrcInterrupts?: AgentLoopConfig["hasIrcInterrupts"];
 
 	constructor(opts: AgentOptions = {}) {
-		this.#state = { ...this.#state, ...opts.initialState };
+		// The fallback model is read only when the caller names none: reading it builds the whole Google
+		// provider's model list, which a session that brings its own model never uses.
+		this.#state = {
+			systemPrompt: [],
+			model: opts.initialState?.model ?? getBundledModel("google", "gemini-2.5-flash-lite-preview-06-17"),
+			thinkingLevel: undefined,
+			disableReasoning: false,
+			tools: [],
+			messages: [],
+			isStreaming: false,
+			streamMessage: null,
+			pendingToolCalls: new Set<string>(),
+			error: undefined,
+			...opts.initialState,
+		};
+		internPromptParts(this.#state.systemPrompt);
 		if (opts.initialState?.messages) this.#state.messages = opts.initialState.messages.slice();
 		if (opts.initialState?.pendingToolCalls)
 			this.#state.pendingToolCalls = new Set(opts.initialState.pendingToolCalls);
@@ -871,7 +886,7 @@ export class Agent {
 
 	// State mutators
 	setSystemPrompt(v: string[] | string) {
-		this.#state.systemPrompt = typeof v === "string" ? [v] : v;
+		this.#state.systemPrompt = internPromptParts(typeof v === "string" ? [v] : v);
 	}
 
 	setModel(m: Model) {
@@ -988,28 +1003,14 @@ export class Agent {
 		return this.#abortController?.signal.aborted === true && this.#state.isStreaming;
 	}
 
-	/**
-	 * Take from `queue` what `mode` allows — the first message, or all of them — and return the
-	 * taken messages with what remains. The queue is never mutated in place.
-	 */
-	static #dequeue(
-		queue: AgentMessage[],
-		mode: "all" | "one-at-a-time",
-	): { taken: AgentMessage[]; remaining: AgentMessage[] } {
-		if (mode === "one-at-a-time") {
-			return queue.length > 0 ? { taken: [queue[0]], remaining: queue.slice(1) } : { taken: [], remaining: queue };
-		}
-		return { taken: queue.slice(), remaining: [] };
-	}
-
 	#dequeueSteeringMessages(): AgentMessage[] {
-		const { taken, remaining } = Agent.#dequeue(this.#steeringQueue, this.#steeringMode);
+		const { taken, remaining } = dequeue(this.#steeringQueue, this.#steeringMode);
 		this.#steeringQueue = remaining;
 		return taken;
 	}
 
 	#dequeueFollowUpMessages(): AgentMessage[] {
-		const { taken, remaining } = Agent.#dequeue(this.#followUpQueue, this.#followUpMode);
+		const { taken, remaining } = dequeue(this.#followUpQueue, this.#followUpMode);
 		this.#followUpQueue = remaining;
 		return taken;
 	}
@@ -1141,7 +1142,6 @@ export class Agent {
 		const model = this.#state.model;
 		if (!model) throw new Error("No model configured");
 
-		let skipInitialSteeringPoll = options?.skipInitialSteeringPoll === true;
 		using _ = new EventLoopKeepalive();
 		const { promise, resolve } = Promise.withResolvers<void>();
 		this.#runningPrompt = promise;
@@ -1155,50 +1155,47 @@ export class Agent {
 		// Clear Cursor tool result buffer at start of each run
 		this.#cursorToolResultBuffer = [];
 
-		const reasoning = this.#state.thinkingLevel;
-
 		const context: AgentContext = {
 			systemPrompt: this.#state.systemPrompt,
 			messages: this.#state.messages.slice(),
 			tools: this.#state.tools,
 		};
+		const config = this.#buildLoopConfig(model, options);
 
-		const cursorOnToolResult =
-			this.#cursorExecHandlers || this.#cursorOnToolResult
-				? async (message: ToolResultMessage) => {
-						let finalMessage = message;
-						if (this.#cursorOnToolResult) {
-							// Host hooks fail closed like convertToLlm/transformContext: a
-							// throw here propagates as a stream error instead of silently
-							// dropping the host's transformation.
-							const updated = await this.#cursorOnToolResult(message);
-							if (updated) {
-								finalMessage = updated;
-							}
-						}
-						// Cursor executes tools server-side during streaming. We buffer
-						// each toolResult and emit them right after the assistant message
-						// closes (see `#emitCursorSplitAssistantMessage`), so replay
-						// receives (assistant with interleaved toolCall blocks) → results.
-						this.#cursorToolResultBuffer.push({ toolResult: finalMessage });
-						return finalMessage;
-					}
-				: undefined;
+		let partial: AgentMessage | null = null;
 
-		const getToolChoice = (): ToolChoiceDirective | undefined => {
-			const queued = this.#getToolChoice?.();
-			if (queued !== undefined) {
-				if (isSoftToolRequirement(queued)) {
-					return (this.#state.tools ?? []).some(tool => tool.name === queued.toolName) ? queued : undefined;
-				}
-				return refreshToolChoiceForActiveTools(queued, this.#state.tools);
+		try {
+			const stream = messages
+				? agentLoop(messages, context, config, this.#abortController.signal, this.streamFn)
+				: agentLoopContinue(context, config, this.#abortController.signal, this.streamFn);
+
+			for await (const event of stream) {
+				if (event.type === "message_start" || event.type === "message_update") partial = event.message;
+				else if (event.type === "message_end") partial = null;
+				if (this.#applyLoopEvent(event)) this.#emit(event);
 			}
-			return refreshToolChoiceForActiveTools(options?.toolChoice, this.#state.tools);
-		};
+		} catch (err) {
+			this.#settleFailedRun(err, partial, model);
+		} finally {
+			this.#state.isStreaming = false;
+			this.#state.streamMessage = null;
+			this.#state.pendingToolCalls.clear();
+			this.#abortController = undefined;
+			this.#resolveRunningPrompt?.();
+			this.#runningPrompt = undefined;
+			this.#resolveRunningPrompt = undefined;
+		}
+	}
 
-		const config: AgentLoopConfig = {
+	/** The loop configuration for one run, reading live agent state through its getters. */
+	#buildLoopConfig(
+		model: Model,
+		options: (AgentPromptOptions & { skipInitialSteeringPoll?: boolean }) | undefined,
+	): AgentLoopConfig {
+		let skipInitialSteeringPoll = options?.skipInitialSteeringPoll === true;
+		return {
 			model,
-			reasoning,
+			reasoning: this.#state.thinkingLevel,
 			disableReasoning: this.#state.disableReasoning,
 			temperature: this.#temperature,
 			topP: this.#topP,
@@ -1213,7 +1210,7 @@ export class Agent {
 			sessionId: this.#sessionId,
 			deadline: this.#deadline,
 			promptCacheKey: this.#promptCacheKey,
-			metadata: this.#metadataResolver ? undefined : this.#metadata,
+			metadata: this.#metadata,
 			metadataResolver: this.#metadataResolver,
 			providerSessionState: this.#providerSessionState,
 			thinkingBudgets: this.#thinkingBudgets,
@@ -1236,7 +1233,8 @@ export class Agent {
 				context.tools = this.#state.tools;
 			},
 			cursorExecHandlers: this.#cursorExecHandlers,
-			cursorOnToolResult,
+			cursorOnToolResult:
+				this.#cursorExecHandlers || this.#cursorOnToolResult ? this.#bufferCursorToolResult : undefined,
 			cwd: this.#cwd,
 			getCwd: this.#cwdResolver,
 			transformToolCallArguments: this.#transformToolCallArguments,
@@ -1255,7 +1253,7 @@ export class Agent {
 			onAssistantMessageEvent: this.#onAssistantMessageEvent,
 			onHarmonyLeak: this.#onHarmonyLeak,
 			onTurnEnd: (messages, signal, context) => this.#onTurnEnd?.(messages, signal, context),
-			getToolChoice,
+			getToolChoice: () => this.#resolveToolChoice(options?.toolChoice),
 			getModel: () => this.#state.model ?? model,
 			getReasoning: () => this.#state.thinkingLevel,
 			getDisableReasoning: () => this.#state.disableReasoning,
@@ -1267,154 +1265,142 @@ export class Agent {
 				}
 				return this.#dequeueSteeringMessages();
 			},
-			hasSteeringMessages: () => {
-				if (this.#steeringQueue.length === 0) {
-					return { queued: false };
-				}
-				for (const message of this.#steeringQueue) {
-					const role = "role" in message ? message.role : undefined;
-					const attribution = "attribution" in message ? message.attribution : undefined;
-					if (role === "user" && attribution !== "agent") {
-						return { queued: true, source: "user" };
-					}
-				}
-				return { queued: true, source: "system" };
-			},
+			hasSteeringMessages: () => this.#steeringQueueState(),
 			hasIrcInterrupts: this.hasIrcInterrupts,
 			getFollowUpMessages: async () => this.#dequeueFollowUpMessages(),
 			getAsideMessages: async () => (await this.#asideMessageProvider?.()) ?? [],
 			onBeforeYield: () => this.#onBeforeYield?.(),
+			onToolUpdateAfterRun: event => this.#emit(event),
 			telemetry: this.#telemetry,
 		};
+	}
 
-		let partial: AgentMessage | null = null;
+	/**
+	 * Cursor executes tools server-side during streaming. Each tool result runs
+	 * through the host hook, which fails closed like convertToLlm/transformContext
+	 * (a throw propagates as a stream error instead of silently dropping the
+	 * host's transformation), and is buffered until the assistant message closes
+	 * (see `#emitCursorSplitAssistantMessage`), so replay receives the assistant
+	 * message with interleaved toolCall blocks, then the results.
+	 */
+	#bufferCursorToolResult = async (message: ToolResultMessage): Promise<ToolResultMessage> => {
+		const finalMessage = (this.#cursorOnToolResult ? await this.#cursorOnToolResult(message) : undefined) ?? message;
+		this.#cursorToolResultBuffer.push({ toolResult: finalMessage });
+		return finalMessage;
+	};
 
-		try {
-			const stream = messages
-				? agentLoop(messages, context, config, this.#abortController.signal, this.streamFn)
-				: agentLoopContinue(context, config, this.#abortController.signal, this.streamFn);
+	/**
+	 * The tool choice for the next provider call: a queued directive when one
+	 * is pending, else the run's own choice, each refreshed against the active
+	 * tools. A soft requirement for a tool that is no longer active lapses.
+	 */
+	#resolveToolChoice(runChoice: ToolChoice | undefined): ToolChoiceDirective | undefined {
+		const queued = this.#getToolChoice?.();
+		if (queued === undefined) return refreshToolChoiceForActiveTools(runChoice, this.#state.tools);
+		if (isSoftToolRequirement(queued)) {
+			return (this.#state.tools ?? []).some(tool => tool.name === queued.toolName) ? queued : undefined;
+		}
+		return refreshToolChoiceForActiveTools(queued, this.#state.tools);
+	}
 
-			for await (const event of stream) {
-				// Update internal state based on events
-				switch (event.type) {
-					case "message_start":
-						partial = event.message;
-						this.#state.streamMessage = event.message;
-						break;
+	/** Whether steering is queued, and whether a user (not an agent or the system) queued any of it. */
+	#steeringQueueState(): SteeringQueueState {
+		if (this.#steeringQueue.length === 0) return { queued: false };
+		for (const message of this.#steeringQueue) {
+			const role = "role" in message ? message.role : undefined;
+			const attribution = "attribution" in message ? message.attribution : undefined;
+			if (role === "user" && attribution !== "agent") return { queued: true, source: "user" };
+		}
+		return { queued: true, source: "system" };
+	}
 
-					case "message_update":
-						partial = event.message;
-						this.#state.streamMessage = event.message;
-						break;
-
-					case "message_end":
-						partial = null;
-						// Check if this is an assistant message with buffered Cursor tool results.
-						// If so, split the message to emit tool results at the correct position.
-						if (event.message.role === "assistant" && this.#cursorToolResultBuffer.length > 0) {
-							this.#emitCursorSplitAssistantMessage(event.message as AssistantMessage);
-							continue; // Skip default emit - split method handles everything
-						}
-						this.#state.streamMessage = null;
-						this.appendMessage(event.message);
-						break;
-
-					case "tool_execution_start":
-						this.#state.pendingToolCalls.add(event.toolCallId);
-						break;
-
-					case "tool_execution_end":
-						this.#state.pendingToolCalls.delete(event.toolCallId);
-						break;
-
-					case "turn_end":
-						// `in`-narrowing instead of a role narrow: declaration-merged
-						// CustomAgentMessages members keep AgentMessage from narrowing
-						// to AssistantMessage on `role` alone.
-						if (
-							event.message.role === "assistant" &&
-							"errorMessage" in event.message &&
-							typeof event.message.errorMessage === "string"
-						) {
-							this.#state.error = event.message.errorMessage;
-						}
-						break;
-
-					case "agent_end":
-						this.#state.isStreaming = false;
-						this.#state.streamMessage = null;
-						break;
-				}
-
-				// Emit to listeners
-				this.#emit(event);
-			}
-
-			// Handle any remaining partial message
-			if (partial && partial.role === "assistant" && Array.isArray(partial.content) && partial.content.length > 0) {
-				const onlyEmpty = !partial.content.some(
-					c =>
-						(c.type === "thinking" && c.thinking.trim().length > 0) ||
-						(c.type === "text" && c.text.trim().length > 0) ||
-						(c.type === "toolCall" && c.name.trim().length > 0),
-				);
-				if (!onlyEmpty) {
-					this.appendMessage(partial);
-				} else {
-					if (this.#abortController?.signal.aborted) {
-						throw new Error("Request was aborted");
-					}
-				}
-			}
-		} catch (err) {
-			const stoppedForAbort = this.#abortController?.signal.aborted === true;
-			// `errorMessage(err)` from `@veyyon/utils`, which this file already imports. The two tail branches
-			// here were that helper hand-rolled, and the local const SHADOWED the import, so the copy was the
-			// only version reachable in this scope. The local is named for what it holds instead.
-			const failureMessage = stoppedForAbort ? abortReasonText(this.#abortController?.signal) : errorMessage(err);
-			const shouldEmitVisibleOutputBlockedError = !stoppedForAbort && isAnthropicOutputBlockedError(failureMessage);
-			const assistantPartial = partial?.role === "assistant" ? partial : undefined;
-			const hadAssistantStart = assistantPartial !== undefined;
-			const errorMsg: AssistantMessage =
-				shouldEmitVisibleOutputBlockedError && assistantPartial
-					? { ...assistantPartial, stopReason: "error", errorMessage: failureMessage }
-					: {
-							role: "assistant",
-							content: [{ type: "text", text: "" }],
-							api: model.api,
-							provider: model.provider,
-							model: model.id,
-							usage: emptyUsage(),
-							stopReason: stoppedForAbort ? "aborted" : "error",
-							errorMessage: failureMessage,
-							timestamp: Date.now(),
-						};
-
-			if (shouldEmitVisibleOutputBlockedError) {
-				if (!hadAssistantStart) {
-					this.#state.streamMessage = errorMsg;
-					this.#emit({ type: "message_start", message: errorMsg });
+	/**
+	 * Apply one loop event to the agent state. Returns false for an assistant
+	 * `message_end` with buffered Cursor tool results, which
+	 * `#emitCursorSplitAssistantMessage` emits in split form itself.
+	 */
+	#applyLoopEvent(event: AgentEvent): boolean {
+		switch (event.type) {
+			case "message_start":
+			case "message_update":
+				this.#state.streamMessage = event.message;
+				return true;
+			case "message_end":
+				if (event.message.role === "assistant" && this.#cursorToolResultBuffer.length > 0) {
+					this.#emitCursorSplitAssistantMessage(event.message as AssistantMessage);
+					return false;
 				}
 				this.#state.streamMessage = null;
-				this.appendMessage(errorMsg);
-				this.#state.error = failureMessage;
-				this.#emit({ type: "message_end", message: errorMsg });
-				this.#emit({ type: "turn_end", message: errorMsg, toolResults: [] });
-				this.#emit({ type: "agent_end", messages: [errorMsg] });
-			} else {
-				this.appendMessage(errorMsg);
-				this.#state.error = failureMessage;
-				this.#emit({ type: "agent_end", messages: [errorMsg] });
-			}
-		} finally {
-			this.#state.isStreaming = false;
-			this.#state.streamMessage = null;
-			this.#state.pendingToolCalls.clear();
-			this.#abortController = undefined;
-			this.#resolveRunningPrompt?.();
-			this.#runningPrompt = undefined;
-			this.#resolveRunningPrompt = undefined;
+				this.appendMessage(event.message);
+				return true;
+			case "tool_execution_start":
+				this.#state.pendingToolCalls.add(event.toolCallId);
+				return true;
+			case "tool_execution_end":
+				this.#state.pendingToolCalls.delete(event.toolCallId);
+				return true;
+			case "turn_end":
+				// `in`-narrowing instead of a role narrow: declaration-merged
+				// CustomAgentMessages members keep AgentMessage from narrowing
+				// to AssistantMessage on `role` alone.
+				if (
+					event.message.role === "assistant" &&
+					"errorMessage" in event.message &&
+					typeof event.message.errorMessage === "string"
+				) {
+					this.#state.error = event.message.errorMessage;
+				}
+				return true;
+			case "agent_end":
+				this.#state.isStreaming = false;
+				this.#state.streamMessage = null;
+				return true;
 		}
+		return true;
+	}
+
+	/**
+	 * End a run the loop threw out of with an assistant error message and
+	 * `agent_end`. An Anthropic output-blocked error is shown as a full turn
+	 * (message events and `turn_end`), on the streamed partial when there is
+	 * one; any other failure, an abort included, appends the message only.
+	 */
+	#settleFailedRun(err: unknown, partial: AgentMessage | null, model: Model): void {
+		const stoppedForAbort = this.#abortController?.signal.aborted === true;
+		const failureMessage = stoppedForAbort ? abortReasonText(this.#abortController?.signal) : errorMessage(err);
+		const shouldEmitVisibleOutputBlockedError = !stoppedForAbort && isAnthropicOutputBlockedError(failureMessage);
+		const assistantPartial = partial?.role === "assistant" ? partial : undefined;
+		const errorMsg: AssistantMessage =
+			shouldEmitVisibleOutputBlockedError && assistantPartial
+				? { ...assistantPartial, stopReason: "error", errorMessage: failureMessage }
+				: {
+						role: "assistant",
+						content: [{ type: "text", text: "" }],
+						api: model.api,
+						provider: model.provider,
+						model: model.id,
+						usage: emptyUsage(),
+						stopReason: stoppedForAbort ? "aborted" : "error",
+						errorMessage: failureMessage,
+						timestamp: Date.now(),
+					};
+
+		if (!shouldEmitVisibleOutputBlockedError) {
+			this.appendMessage(errorMsg);
+			this.#state.error = failureMessage;
+			this.#emit({ type: "agent_end", messages: [errorMsg] });
+			return;
+		}
+		if (!assistantPartial) {
+			this.#state.streamMessage = errorMsg;
+			this.#emit({ type: "message_start", message: errorMsg });
+		}
+		this.#state.streamMessage = null;
+		this.appendMessage(errorMsg);
+		this.#state.error = failureMessage;
+		this.#emit({ type: "message_end", message: errorMsg });
+		this.#emit({ type: "turn_end", message: errorMsg, toolResults: [] });
+		this.#emit({ type: "agent_end", messages: [errorMsg] });
 	}
 
 	#emit(e: AgentEvent) {
@@ -1465,4 +1451,18 @@ export class Agent {
 			this.#emit({ type: "message_end", message: toolResult });
 		}
 	}
+}
+
+/**
+ * Take from `queue` what `mode` allows — the first message, or all of them — and return the
+ * taken messages with what remains. The queue is never mutated in place.
+ */
+function dequeue(
+	queue: AgentMessage[],
+	mode: "all" | "one-at-a-time",
+): { taken: AgentMessage[]; remaining: AgentMessage[] } {
+	if (mode === "one-at-a-time") {
+		return queue.length > 0 ? { taken: [queue[0]], remaining: queue.slice(1) } : { taken: [], remaining: queue };
+	}
+	return { taken: queue.slice(), remaining: [] };
 }

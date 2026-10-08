@@ -182,6 +182,63 @@ describe("TailBuffer", () => {
 		expect(tail.text()).toBe("x");
 		expect(tail.bytes()).toBe(1);
 	});
+
+	// The buffer cuts its tail by walking characters off the front of what it holds. Every UTF-8 width
+	// is swept, a two-unit pair included, under every budget up to past the widest character, read
+	// after each chunk and read rarely enough that the buffer trims on its own in between.
+	test("keeps the tail a byte cut of everything appended keeps, for every character width", () => {
+		const alphabet = ["a", "é", "✓", "😀", "\n"];
+		for (const readEvery of [1, 7]) {
+			for (let max = 1; max <= 13; max++) {
+				const tail = new TailBuffer(max);
+				let stream = "";
+				for (let step = 0; step < 60; step++) {
+					const chunk = Array.from(
+						{ length: 1 + (step % 4) },
+						(_, i) => alphabet[(step * 3 + i) % alphabet.length],
+					).join("");
+					tail.append(chunk);
+					stream += chunk;
+					if (step % readEvery !== 0) continue;
+					expect({ readEvery, max, step, text: tail.text(), bytes: tail.bytes() }).toEqual({
+						readEvery,
+						max,
+						step,
+						...truncateTailBytes(stream, max),
+					});
+				}
+			}
+		}
+	});
+
+	// A stream read as a streaming tool card reads it, after every append or every few: chunks of one
+	// UTF-16 unit, which split every pair across two appends, long enough to join the held appends
+	// into one string many times over, with a chunk larger than the budget now and then, which
+	// replaces everything held. Reading every few appends lets the buffer join while the stream ends
+	// inside a pair, so the next read walks a front string whose last unit the held appends complete.
+	// A read where the stream ends inside a pair is skipped, since the encoder the cut is checked
+	// against writes a lone half as U+FFFD.
+	test("keeps the tail a byte cut of the whole stream keeps when appends split pairs or run long", () => {
+		const units = "a😀é\n✓😀".split("");
+		for (const readEvery of [1, 3]) {
+			for (const max of [1, 3, 4, 5, 6, 64, 1000]) {
+				const tail = new TailBuffer(max);
+				let stream = "";
+				for (let step = 0; step < 2000; step++) {
+					const chunk = step % 500 === 499 ? "x".repeat(max + 1) : units[step % units.length]!;
+					tail.append(chunk);
+					stream += chunk;
+					if (step % readEvery !== 0 || (stream.charCodeAt(stream.length - 1) & 0xfc00) === 0xd800) continue;
+					expect({ readEvery, max, step, text: tail.text(), bytes: tail.bytes() }).toEqual({
+						readEvery,
+						max,
+						step,
+						...truncateTailBytes(stream, max),
+					});
+				}
+			}
+		}
+	});
 });
 
 describe("OutputSink", () => {

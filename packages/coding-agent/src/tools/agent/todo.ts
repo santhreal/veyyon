@@ -1,13 +1,13 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
 import { type SessionTelemetryDetail, sessionTelemetryDetail } from "@veyyon/ai/instrumentation";
+import { type } from "@veyyon/ai/utils/schema/arktype";
 import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
-import { NON_ALNUM_RUN_RE, prompt } from "@veyyon/utils";
+import { lazy, NON_ALNUM_RUN_RE, prompt } from "@veyyon/utils";
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { sanitizeText } from "@veyyon/utils/sanitize-text";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { isTerminalTodoStatus, type TodoStatus } from "@veyyon/wire";
-import { type } from "arktype";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "../../sdk";
 import { normalizePathLikeInput, resolveToCwd } from "../core/path-utils";
@@ -205,12 +205,16 @@ export interface TodoOpReport {
 // Schema
 // =============================================================================
 
-const TodoOp = type('"init" | "start" | "done" | "rm" | "drop" | "append" | "view"').describe("operation to apply");
+const TodoOp = lazy(() =>
+	type('"init" | "start" | "done" | "rm" | "drop" | "append" | "view"').describe("operation to apply"),
+);
 
-const InitListEntry = type({
-	"phase?": type("string").describe("phase name; omitted entries continue the previous phase"),
-	items: type("string").describe("task content").array().atLeastLength(1).describe("tasks for this phase"),
-});
+const InitListEntry = lazy(() =>
+	type({
+		"phase?": type("string").describe("phase name; omitted entries continue the previous phase"),
+		items: type("string").describe("task content").array().atLeastLength(1).describe("tasks for this phase"),
+	}),
+);
 
 /**
  * Compatibility shape: models trained on the Claude/Cursor `TodoWrite` tool
@@ -219,12 +223,14 @@ const InitListEntry = type({
  * land; the alternative was validating clean and then silently resolving to a
  * read-only `view`, so a completed board never got written.
  */
-const TodoWriteEntry = type({
-	"id?": type("string").describe("caller-side item id; veyyon keys tasks by content and ignores it"),
-	content: type("string").describe("task content"),
-	"activeForm?": type("string").describe("caller-side present-tense label; unused"),
-	status: type('"pending" | "in_progress" | "completed" | "cancelled"').describe("desired task status"),
-});
+const TodoWriteEntry = lazy(() =>
+	type({
+		"id?": type("string").describe("caller-side item id; veyyon keys tasks by content and ignores it"),
+		content: type("string").describe("task content"),
+		"activeForm?": type("string").describe("caller-side present-tense label; unused"),
+		status: type('"pending" | "in_progress" | "completed" | "cancelled"').describe("desired task status"),
+	}),
+);
 
 /**
  * `op` names the operation and is required for every call EXCEPT the
@@ -245,29 +251,31 @@ const TodoWriteEntry = type({
  * belongs at validation, which is the layer the repair loop and the model-facing
  * error path are built around.
  */
-const todoSchema = type({
-	"op?": TodoOp,
-	"list?": InitListEntry.array().describe("phased task list (init)"),
-	"task?": type("string").describe("task content"),
-	"phase?": type("string").describe("phase name"),
-	// No `atLeastLength(1)` here: `items` is only meaningful for `init`/`append`,
-	// and both enforce non-empty with op-specific errors. A stray `items: []` on
-	// an op that ignores it (e.g. `view`) must not be a hard schema rejection.
-	"items?": type("string").describe("task content").array().describe("tasks to append"),
-	"todos?": TodoWriteEntry.array().describe("compatibility whole-board write; prefer op"),
-	"merge?": type("boolean").describe("compatibility: false replaces the board, true or omitted merges by content"),
-})
-	.narrow((params, ctx) => {
-		if (params.op !== undefined || params.todos !== undefined) return true;
-		return ctx.reject({
-			expected: 'an "op" naming the operation: init, start, done, rm, drop, append or view',
-			actual: "no op",
-			path: ["op"],
-		});
+const todoSchema = lazy(() =>
+	type({
+		"op?": TodoOp.value,
+		"list?": InitListEntry.value.array().describe("phased task list (init)"),
+		"task?": type("string").describe("task content"),
+		"phase?": type("string").describe("phase name"),
+		// No `atLeastLength(1)` here: `items` is only meaningful for `init`/`append`,
+		// and both enforce non-empty with op-specific errors. A stray `items: []` on
+		// an op that ignores it (e.g. `view`) must not be a hard schema rejection.
+		"items?": type("string").describe("task content").array().describe("tasks to append"),
+		"todos?": TodoWriteEntry.value.array().describe("compatibility whole-board write; prefer op"),
+		"merge?": type("boolean").describe("compatibility: false replaces the board, true or omitted merges by content"),
 	})
-	.describe("apply a single todo operation");
+		.narrow((params, ctx) => {
+			if (params.op !== undefined || params.todos !== undefined) return true;
+			return ctx.reject({
+				expected: 'an "op" naming the operation: init, start, done, rm, drop, append or view',
+				actual: "no op",
+				path: ["op"],
+			});
+		})
+		.describe("apply a single todo operation"),
+);
 
-type TodoSchema = typeof todoSchema.infer;
+type TodoSchema = typeof todoSchema.value.infer;
 type TodoParams = TodoSchema & { op: TodoOperation };
 /** A single normalized todo op entry. */
 type TodoOpEntryValue = TodoParams;
@@ -1251,17 +1259,19 @@ function formatSummaryBody(phases: TodoPhase[], errors: string[], readOnly: bool
 // Tool Class
 // =============================================================================
 
-export class TodoTool implements AgentTool<typeof todoSchema, TodoToolDetails> {
+export class TodoTool implements AgentTool<typeof todoSchema.value, TodoToolDetails> {
 	readonly name = "todo";
 	readonly approval = "read" as const;
 	readonly label = "Todo";
 	readonly summary = "Write a structured todo list to track progress within a session";
 	readonly description: string;
-	readonly parameters = todoSchema;
+	get parameters(): typeof todoSchema.value {
+		return todoSchema.value;
+	}
 	readonly concurrency = "exclusive";
 	readonly strict = true;
 
-	readonly examples: readonly ToolExample<typeof todoSchema.infer>[] = [
+	readonly examples: readonly ToolExample<typeof todoSchema.value.infer>[] = [
 		{
 			caption: "Initial setup (multi-phase)",
 			call: {

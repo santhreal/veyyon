@@ -6,6 +6,7 @@
  * non-zero instead of reporting the refusal as success. A readable text file
  * carries no marker.
  */
+// Subject module: tools/fs/read-types.ts (the ReadToolDetails result shape), driven through ReadTool.
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";

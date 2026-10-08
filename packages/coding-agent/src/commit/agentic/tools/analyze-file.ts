@@ -1,6 +1,6 @@
 import type { AuthStorage } from "@veyyon/ai/auth-storage";
+import { type } from "@veyyon/ai/utils/schema/arktype";
 import { prompt } from "@veyyon/utils";
-import { type } from "arktype";
 import type { ModelRegistry } from "../../../config/model-registry";
 import type { Settings } from "../../../config/settings";
 import type { CustomTool, CustomToolContext } from "../../../extensibility/custom-tools/types";

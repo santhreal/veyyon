@@ -173,8 +173,8 @@ async function completionFor(
 	return seen ? found : undefined;
 }
 
-async function waitForBrokerExit(projectDir: string, runtimeDir: string): Promise<void> {
-	const endpoint = daemonBrokerEndpoint(projectDir, runtimeDir);
+async function waitForBrokerExit(runtimeDir: string): Promise<void> {
+	const endpoint = daemonBrokerEndpoint(runtimeDir);
 	const gone = await waitUntil(async () => {
 		try {
 			await fs.stat(endpoint);
@@ -344,7 +344,7 @@ describe("every termination path records who and why", () => {
 		// notice from the settle path and go, rather than wait for a client that
 		// will never close.
 		process.kill(stays.daemon.pid, "SIGKILL");
-		await waitForBrokerExit(projectDir, runtimeDir);
+		await waitForBrokerExit(runtimeDir);
 		expect(await waitUntil(() => !processExists(brokerPid), 5_000)).toBeTrue();
 	}, 30_000);
 
@@ -355,7 +355,7 @@ describe("every termination path records who and why", () => {
 		await client.request({ op: "start", spec: idleSpec("shutdown-victim") });
 		await client.request({ op: "shutdown" });
 		client.close();
-		await waitForBrokerExit(projectDir, runtimeDir);
+		await waitForBrokerExit(runtimeDir);
 
 		const recovered = await connect(projectDir, runtimeDir);
 		recordCoverage(await completionFor(recovered, "shutdown-victim", "broker-shutdown"), "broker-shutdown");
@@ -372,7 +372,7 @@ describe("every termination path records who and why", () => {
 		first.close();
 		second.close();
 		await presence.close();
-		await waitForBrokerExit(projectDir, runtimeDir);
+		await waitForBrokerExit(runtimeDir);
 
 		const recovered = await connect(projectDir, runtimeDir);
 		recordCoverage(await completionFor(recovered, "reaped", "idle-reaper"), "idle-reaper");
@@ -390,7 +390,7 @@ describe("every termination path records who and why", () => {
 		}
 		process.kill(lease.pid, "SIGTERM");
 		client.close();
-		await waitForBrokerExit(projectDir, runtimeDir);
+		await waitForBrokerExit(runtimeDir);
 
 		const recovered = await connect(projectDir, runtimeDir);
 		recordCoverage(await completionFor(recovered, "orphaned", "os-signal"), "os-signal");
@@ -530,7 +530,7 @@ describe("a completed finite job stays queryable", () => {
 
 		// Across a broker restart the record comes from the store on disk.
 		await shutdown(client);
-		await waitForBrokerExit(projectDir, runtimeDir);
+		await waitForBrokerExit(runtimeDir);
 		const recovered = await connect(projectDir, runtimeDir);
 		try {
 			const completions = await listCompletions(recovered);

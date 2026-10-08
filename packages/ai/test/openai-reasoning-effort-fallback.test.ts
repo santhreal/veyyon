@@ -243,6 +243,38 @@ describe("OpenAI reasoning effort fallback retry", () => {
 		expect(bodies.map(body => body.reasoning_effort)).toEqual(["xhigh", "max"]);
 	});
 
+	it("sends the Chat Completions effort a session's host accepted on that session's next turn only", async () => {
+		const bodies: Record<string, unknown>[] = [];
+		const fetchMock: FetchImpl = Object.assign(
+			async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+				bodies.push(parseJsonBody(init));
+				return bodies.length === 1
+					? invalidReasoningResponse("reasoning_effort", "xhigh")
+					: createChatSseResponse();
+			},
+			{ preconnect: fetch.preconnect },
+		);
+		const model = createCompletionsModel();
+		const session = new Map<string, ProviderSessionState>();
+		const options = { apiKey: "test-key", fetch: fetchMock, reasoning: "xhigh" as const };
+
+		const first = await streamOpenAICompletions(model, testContext, {
+			...options,
+			providerSessionState: session,
+		}).result();
+		const second = await streamOpenAICompletions(model, testContext, {
+			...options,
+			providerSessionState: session,
+		}).result();
+		const otherSession = await streamOpenAICompletions(model, testContext, {
+			...options,
+			providerSessionState: new Map<string, ProviderSessionState>(),
+		}).result();
+
+		expect([first.stopReason, second.stopReason, otherSession.stopReason]).toEqual(["stop", "stop", "stop"]);
+		expect(bodies.map(body => body.reasoning_effort)).toEqual(["xhigh", "max", "max", "xhigh"]);
+	});
+
 	it("retries Responses xhigh as provider max and stores the successful fallback params", async () => {
 		const bodies: Record<string, unknown>[] = [];
 		const fetchMock: FetchImpl = Object.assign(

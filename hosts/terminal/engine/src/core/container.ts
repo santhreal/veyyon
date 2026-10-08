@@ -10,6 +10,30 @@
 import type { MouseRoutable, SgrMouseEvent } from "@veyyon/utils/mouse";
 import type { Component } from "./component-types";
 
+/**
+ * The children's rows in order. A render result is never mutated (the Component render contract), so when one
+ * child holds every row its array is the joined render as it stands. A streaming message body beside empty slots
+ * is that shape, and copying its rows walked the whole block on every frame.
+ */
+function joinChildRows(refs: readonly (readonly string[])[]): readonly string[] {
+	let sole = -1;
+	for (let i = 0; i < refs.length; i++) {
+		if (refs[i]!.length === 0) continue;
+		if (sole !== -1) {
+			sole = -2;
+			break;
+		}
+		sole = i;
+	}
+	if (sole >= 0) return refs[sole]!;
+	const joined: string[] = [];
+	for (let i = 0; i < refs.length; i++) {
+		const childLines = refs[i]!;
+		for (let j = 0; j < childLines.length; j++) joined.push(childLines[j]!);
+	}
+	return joined;
+}
+
 export class Container implements Component, MouseRoutable {
 	children: Component[] = [];
 
@@ -20,7 +44,7 @@ export class Container implements Component, MouseRoutable {
 	// reference at the same width — which, per the Component render contract,
 	// proves the rows are byte-identical. Cleared on any child-list change and
 	// on invalidate().
-	#memoLines: string[] | undefined;
+	#memoLines: readonly string[] | undefined;
 	#memoChildLines: (readonly string[])[] = [];
 	#memoWidth = -1;
 
@@ -70,6 +94,15 @@ export class Container implements Component, MouseRoutable {
 		}
 	}
 
+	releaseRenderCache(): void {
+		this.#memoLines = undefined;
+		this.#memoChildLines = [];
+		this.#memoWidth = -1;
+		for (const child of this.children) {
+			child.releaseRenderCache?.();
+		}
+	}
+
 	/**
 	 * Propagate teardown to children. Call when the container's children are
 	 * being permanently discarded (not when they are detached for reuse — use
@@ -83,6 +116,19 @@ export class Container implements Component, MouseRoutable {
 
 	render(width: number): readonly string[] {
 		width = Math.max(1, width);
+		const unchanged = this.#renderChildren(width);
+		this.#memoWidth = width;
+		if (unchanged) return this.#memoLines!;
+		const lines = joinChildRows(this.#memoChildLines);
+		this.#memoLines = lines;
+		return lines;
+	}
+
+	/**
+	 * Render every child at `width` into the per-child memo. True when the joined memo is valid at this
+	 * width and every child returned the array it returned last frame.
+	 */
+	#renderChildren(width: number): boolean {
 		const children = this.children;
 		const count = children.length;
 		let refs = this.#memoChildLines;
@@ -98,15 +144,7 @@ export class Container implements Component, MouseRoutable {
 				refs[i] = childLines;
 			}
 		}
-		this.#memoWidth = width;
-		if (unchanged) return this.#memoLines!;
-		const lines: string[] = [];
-		for (let i = 0; i < count; i++) {
-			const childLines = refs[i]!;
-			for (let j = 0; j < childLines.length; j++) lines.push(childLines[j]!);
-		}
-		this.#memoLines = lines;
-		return lines;
+		return unchanged;
 	}
 
 	/**

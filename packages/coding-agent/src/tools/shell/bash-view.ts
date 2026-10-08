@@ -385,7 +385,8 @@ function outputSections(
 ): ViewSection[] {
 	const { text, artifactId } = programOutput(result);
 	// Whitespace alone is not output: a command that printed a bare newline states its facts on the
-	// stats row and nothing above it, which is the row main drew too.
+	// stats row and nothing above it, which is the row main drew too. The rows are cut from text whose
+	// home paths `programOutput` already shortened, so a row is not searched for the home again.
 	const rows = text.trim().length > 0 ? text.split("\n") : [];
 	const imageMask = getSixelLineMask(rows);
 	const carriesImage = imageMask.some(Boolean);
@@ -394,18 +395,12 @@ function outputSections(
 		// An image is as tall as it is: condensing or windowing the rows it occupies would cut the
 		// payload in half, so the whole capture is stated and no window is asked for.
 		for (const [index, row] of rows.entries()) {
-			lines.push(
-				imageMask[index] === true
-					? [{ text: row }]
-					: [{ text: replaceTabs(shortenEmbeddedPaths(row)), tone: "output" }],
-			);
+			lines.push(imageMask[index] === true ? [{ text: row }] : [{ text: replaceTabs(row), tone: "output" }]);
 		}
 	} else if (expanded) {
-		for (const row of rows) lines.push([{ text: replaceTabs(shortenEmbeddedPaths(row)), tone: "output" }]);
+		for (const row of rows) lines.push([{ text: replaceTabs(row), tone: "output" }]);
 	} else {
-		for (const line of collapsedProgressViewLines(collapseProgressRuns(rows), "output", text =>
-			replaceTabs(shortenEmbeddedPaths(text)),
-		)) {
+		for (const line of collapsedProgressViewLines(collapseProgressRuns(rows), "output", replaceTabs)) {
 			lines.push(line);
 		}
 	}

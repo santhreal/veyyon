@@ -27,6 +27,7 @@ import { notifyProviderResponse } from "../utils/provider-response";
 import { sanitizeSchemaForOpenAIResponses, toolWireSchema } from "../utils/schema";
 import { notifyRawSseEvent, resolveOpenAiSseEventName } from "../utils/sse-debug";
 import { mapToOpenAIResponsesToolChoice } from "../utils/tool-choice";
+import { parseAzureDeploymentNameMap } from "./azure-deployment-names";
 import { createInitialResponsesAssistantMessage } from "./initial-message";
 import {
 	applyOpenAIReasoningEffortFallback,
@@ -41,11 +42,10 @@ import {
 	buildResponsesInput,
 	getOpenAIPromptCacheKey,
 	isOpenAIResponsesProgressEvent,
-	parseAzureDeploymentNameMap,
 	processResponsesStream,
 } from "./openai-shared";
 
-export { parseAzureDeploymentNameMap } from "./openai-shared";
+export { parseAzureDeploymentNameMap } from "./azure-deployment-names";
 
 const DEFAULT_AZURE_API_VERSION = "v1";
 const AZURE_OPENAI_RESPONSES_FIRST_EVENT_TIMEOUT_MESSAGE =
@@ -367,6 +367,8 @@ function buildParams(
 		context,
 		strictResponsesPairing: true,
 		supportsImageDetailOriginal: model.compat.supportsImageDetailOriginal,
+		// The tools below are all `function` tools, so a custom tool call replays as a function call.
+		supportsCustomToolCalls: false,
 		supportsDeveloperRole: model.compat.supportsDeveloperRole,
 		// replay stays off (Azure assistant payloads are not spliced today), but
 		// declaring the policy opens the compaction-window seam: a stored

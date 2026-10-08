@@ -2,15 +2,13 @@
 
 How the coding-agent assembles the system prompt sent to the model, and what you can control.
 
-The system prompt is ASSEMBLED. It is composed from the section registry and from statements gated on your settings; there is no file on disk holding its text for you to edit. `PROMPT_SECTIONS/` is how you change what a section contains, per statement and validated. `--system-prompt` remains for a caller that supplies its own prompt for one invocation (the SDK, an eval harness).
+The system prompt is ASSEMBLED. It is composed from the section registry and from statements whose presence depends on your settings; there is no file on disk holding its text for you to edit. `PROMPT_SECTIONS/` is how you change what a section contains, per statement and validated. `--system-prompt` remains for a caller that supplies its own prompt for one invocation (the SDK, an eval harness).
 
 For the implementation side of the same subsystem, the block/tier model, the ordering rules, and how to decide where a new section belongs, see [System prompt architecture](../../../internal/system-prompt-architecture.md), and for how the cached prefix is marked on the wire see [Prompt caching](../../../internal/prompt-caching.md).
 
-Veyyon no longer reads a `SYSTEM.md` or `APPEND_SYSTEM.md` file from disk.
+Veyyon does not read a `SYSTEM.md` or `APPEND_SYSTEM.md` file from disk.
 
-`SYSTEM.md` replaced the whole assembled prompt with hand-written text. `APPEND_SYSTEM.md` added text to the end of it, which is what `AGENTS.md` already does, at more scopes and with a directory walk-up that `APPEND_SYSTEM.md` never had. Both were discovered out of any repository you entered, and a new profile copied them along under a checkbox labelled `AGENTS.md`.
-
-To add instructions, write them in `AGENTS.md`. To change the text of a prompt section, use `PROMPT_SECTIONS/`. If either removed file is still on disk, veyyon reports it at launch and points at the replacement rather than ignoring it in silence.
+To add instructions, write them in `AGENTS.md`, which is read from the global location, the active profile, and every directory between the working directory and the repository root. To change the text of a prompt section, use `PROMPT_SECTIONS/`. Veyyon checks the config directories, the agent directory, the project's `.veyyon/`, `.agent/` and `.agents/` directories, and `.gemini/system.md` for these files, and prints each path it finds at launch with the replacement: `AGENTS.md` for appended instructions, `PROMPT_SECTIONS/` to replace a section.
 
 Primary implementation:
 
@@ -126,9 +124,9 @@ Working in {{cwd}} on {{date}}.
 
 the rendered output contains those characters verbatim, `{{cwd}}`, `{{#if hasMemoryRoot}}`, etc. are NOT substituted. They will be shown to the model as literal Handlebars syntax.
 
-This is by design. The internal template variables (`cwd`, `date`, `environment`, `workspaceTree`, `skills`, `rules`, `toolRefs`, `hasMemoryRoot`, `hasObsidian`, `mcpDiscoveryServerSummaries`, ...) are not a supported public surface, they change between releases as the prompt is rewritten, and they would couple user configs to internals. Treat them as private.
+The internal template variables (`cwd`, `date`, `environment`, `workspaceTree`, `skills`, `rules`, `toolRefs`, `hasMemoryRoot`, `hasObsidian`, `mcpDiscoveryServerSummaries`, ...) are not a supported public interface and change between releases as the prompt is rewritten. Treat them as private.
 
-There is no supported public templating surface for a caller-supplied prompt. Write plain text (or markdown) only.
+There is no supported public templating interface for a caller-supplied prompt. Write plain text (or markdown) only.
 
 ---
 
@@ -154,7 +152,7 @@ Pass `--system-prompt`. You replace the stable default instructions in block 0, 
 $ veyyon --system-prompt ./reviewer-prompt.md
 ```
 
-There is no file veyyon picks up on its own for this. A prompt that replaces the whole assembly is a per-invocation decision by a caller who wants exactly that, not a setting that follows you into every session.
+There is no file veyyon picks up on its own for this. A prompt that replaces the whole assembly applies to one invocation; no setting applies it to every session.
 
 Use this when supplying a different base prompt. If you are keeping most of the default and changing one part, use `PROMPT_SECTIONS/` instead (section 8): it edits a single section and leaves the rest as shipped, so you do not have to maintain a copy of the default tool guidance, exploration rules, or workflow rules.
 
@@ -162,7 +160,7 @@ Use this when supplying a different base prompt. If you are keeping most of the 
 
 Use `AGENTS.md`, not `--system-prompt`. The tool inventory, role guidance, and default exploration and workflow rules come from statement modules in `src/system-prompt-builder/statements/`. A custom system prompt switches to `session/custom-system-prompt.md`, so those default statements are not available to the model.
 
-A custom system prompt still keeps the generated project content: `session/custom-system-prompt.md` renders context files, discovered skills, always-apply rules, and rules alongside your text, and the `project-prompt.md` footer still carries workstation info, the workspace tree, the current date, and cwd.
+A custom system prompt still keeps the generated project content: `session/custom-system-prompt.md` renders context files, discovered skills, always-apply rules, and rules alongside your text, and the `project-prompt.md` footer still contains workstation info, the workspace tree, the current date, and cwd.
 
 If you wanted a full replacement only to change one part, use `PROMPT_SECTIONS/` (section 8). It replaces or appends to one registry section and keeps every other statement module.
 
@@ -176,15 +174,15 @@ Generate a session name using lowercase `<type>:<primary-objective>`.
 If the message contains no concrete task, output exactly `none`.
 ```
 
-`TITLE_SYSTEM.md` is discovered project-first, then user, across the config bases. It is a prompt for a side call that titles a session, not the agent's own system prompt, which is why it is still a file. When absent, Veyyon uses the bundled `title-system.md` / `tiny-title-system.md` prompts. When present, both the online title path and the local tiny-model path keep the `<title>...</title>` wrapper while using this file as the system turn.
+`TITLE_SYSTEM.md` is discovered project-first, then user, across the config bases. It is the prompt for a side call that titles a session, not the agent's own system prompt. When absent, Veyyon uses the bundled `title-system.md` / `tiny-title-system.md` prompts. When present, both the online title path and the local tiny-model path keep the `<title>...</title>` wrapper and use `TITLE_SYSTEM.md` as the system turn.
 
 ### "Replace everything, including project context": SDK-only
 
-The CLI flag path intentionally preserves `defaultPrompt.slice(1)`. Code using `CreateAgentSessionOptions.systemPrompt` directly can return a full replacement array and omit the project footer, but that is not what `--system-prompt` does.
+The CLI flag path preserves `defaultPrompt.slice(1)`. Code using `CreateAgentSessionOptions.systemPrompt` directly can return a full replacement array and omit the project footer, but that is not what `--system-prompt` does.
 
 ### "Change one section of the default instructions, keep the rest"
 
-Use `PROMPT_SECTIONS/`, described in section 8. Put your text in `PROMPT_SECTIONS/<section>.append.md` to add to a section, or `PROMPT_SECTIONS/<section>.md` to replace it. Every other section stays exactly as shipped, including the generated skills, rules, and tool guidance, so use this option when changing one section.
+Use `PROMPT_SECTIONS/`, described in section 8. Put your text in `PROMPT_SECTIONS/<section>.append.md` to add to a section, or `PROMPT_SECTIONS/<section>.md` to replace it. Every other section stays as shipped, including the generated skills, rules, and tool guidance, so use this option when changing one section.
 
 Run `veyyon prompt --sections` to see the section names for your configuration.
 
@@ -222,9 +220,9 @@ The instruction files that ARE discovered are a different mechanism, and they st
 
 ## 8) Changing one section: `PROMPT_SECTIONS/`
 
-`--system-prompt` replaces the stable default template. The generated project footer, context files, discovered skills, and rules remain, but the tool inventory, default workflow guidance, and settings-gated default sections do not render. If you only want to add a rule or reword one part, use the narrower mechanism.
+`--system-prompt` replaces the stable default template. The generated project footer, context files, discovered skills, and rules remain, but the tool inventory, default workflow guidance, and default sections that depend on settings do not render. If you only want to add a rule or reword one part, use the narrower mechanism.
 
-`PROMPT_SECTIONS/` changes one section and leaves the others exactly as shipped.
+`PROMPT_SECTIONS/` changes one section and leaves the others as shipped.
 
 The default template is a sequence of named sections. To see the names for your configuration, run:
 
@@ -239,9 +237,9 @@ Put a file named after a section in a `PROMPT_SECTIONS/` directory under the act
 ~/.veyyon/profiles/<name>/agent/PROMPT_SECTIONS/     # named profile
 ```
 
-The active profile is the only location. A repository's `.veyyon/PROMPT_SECTIONS/` used to be read and could replace a shipped section outright; a working tree no longer contributes prompt sections.
+The active profile is the only location. Veyyon does not read `.veyyon/PROMPT_SECTIONS/` from a repository, so a working tree cannot replace a shipped section.
 
-Two filename forms decide what happens:
+The filename form selects the effect:
 
 | File | Effect |
 |---|---|
@@ -257,12 +255,12 @@ To add a rule to the delivery contract:
 Always include the exact command you ran when you report a test result.
 ```
 
-Everything else in the prompt is untouched. Overriding one section never changes another, and never disables a setting-gated block in a different section.
+Everything else in the prompt is untouched. Overriding one section never changes another, and never disables a block that depends on a setting in a different section.
 
-A few rules worth knowing:
+Rules:
 
 - A file that specifies a section that does not exist is an error, not a no-op. The message lists the valid names. A typo that silently did nothing would leave you believing a change was live when it was not.
-- Section names are the ids `veyyon prompt --sections` prints: `conventions`, `role`, `runtime`, `tool-policy`, `execution-workflow`, `delivery-contract`. The `systemPrompt.sectionOverrides` config key accepts the same ids, and also accepts the camelCase spelling (`toolPolicy`) that the SDK uses for its property names. Both reach the same section, so you can use the id everywhere and never think about the difference.
+- Section names are the ids `veyyon prompt --sections` prints: `conventions`, `role`, `runtime`, `tool-policy`, `execution-workflow`, `delivery-contract`. The `systemPrompt.sectionOverrides` config key accepts the same ids, and also accepts the camelCase spelling (`toolPolicy`) that the SDK uses for its property names. Both select the same section, so the id works everywhere.
 - Replacement and append files contain section body text only. Do not copy any registered `NAME` and `==============` banner into the file. The section registry adds the target section's canonical banner, and rejects any banner-shaped text that could manufacture a second section. An empty or whitespace-only append file is a no-op.
 - `PROMPT_SECTIONS/` cannot be combined with `--system-prompt`. A custom prompt has no sections to override, so asking for both is an error rather than a silent choice between them.
 - A directory that is not there means you have no overrides, and that is the ordinary case. A directory that IS there and cannot be read is an error stating the path and the reason, as is a file inside it that cannot be opened. Both would otherwise run the shipped prompt while your files sat on disk looking applied.
@@ -313,7 +311,7 @@ Every other exit is 0, so `veyyon prompt --sections` works as a check in a scrip
 
 The `block` column is the index of the part in the ordered array `buildSystemPrompt` returns. Block 0 is the static prefix that providers cache; later blocks hold text that changes often. Each provider serializes those parts its own way (Anthropic sends them as separate `system` text blocks, most OpenAI-wire paths as separate system or developer messages, Gemini as separate `systemInstruction` parts), so a block is a separate *part*, not necessarily a separate message. Moving content from a later block into block 0 would break the cache, which is why the breakdown reports the boundary rather than hiding it. See [System prompt architecture](../../../internal/system-prompt-architecture.md) for the per-provider mapping.
 
-`--no-tools` is useful for finding tool-gated text: run it, diff against the normal output, and every line that disappeared was behind a tool being available.
+`--no-tools` finds text that depends on a tool: run it, diff against the normal output, and every line that disappeared was behind a tool being available.
 
 Use `--json` to compare two configurations mechanically, for example to check that a settings change altered only the section you expected.
 
@@ -353,7 +351,7 @@ The sections above are data, not code. `section-registry.ts` holds two registrie
   input: { kind: "option", key: "argotPreamble" }, purpose: "..." }
 ```
 
-`computed` means `buildSystemPrompt` produces the text. `option` means a caller passes it in under the named key, which is the shape a settings-gated preamble takes: the setting is read in `sdk.ts`, and the option contains the rendered text.
+`computed` means `buildSystemPrompt` produces the text. `option` means a caller passes it in under the named key, which is the shape a preamble controlled by a setting takes: the setting is read in `sdk.ts`, and the option contains the rendered text.
 
 Adding one is two edits.
 
@@ -373,9 +371,8 @@ First, add the id to `RUNTIME_SECTION_IDS` and a row to `RUNTIME_SECTIONS`:
 A row declares the banner's NAME, never the rendered banner. `banner-grammar.ts`
 defines the `=` underline for every prompt in the product, so a section cannot ship a
 width of its own: `renderBanner` writes one, `leadingBannerName` reads one back, and
-`bannerTable` turns a set of rows into the table a splitter is driven by. Anything
-that needs to know what a banner looks like reads that module rather than spelling
-the rule out again.
+`bannerTable` turns a set of rows into the table a splitter is driven by. Code that
+renders or parses a banner reads that module rather than restating the rule.
 
 The row's own fields (`id`, `name`, `purpose`, `optional`) come from `PromptSection`
 in `packages/utils/src/prompt-registry.ts`. `TemplateSection` and `RuntimeSection`
@@ -385,11 +382,11 @@ because they answer separate questions: the grammar sets what the bytes look lik
 the row states what a section claims about itself.
 
 `optional` states whether the section may be absent, and it is checked rather than
-believed. A settings-gated section is `optional: true`, because it disappears when
+believed. A section controlled by a setting is `optional: true`, because it disappears when
 its setting is off. Mark one `false` and it must render from the barest options the
 builder accepts; mark one `true` and it must be absent until its input is supplied.
 `system-prompt-section-presence.test.ts` holds both directions, so the flag cannot
-become a comment that stopped being true.
+drift from the behavior.
 
 Second, declare that key on `BuildSystemPromptOptions` in `system-prompt.ts`:
 
@@ -408,9 +405,9 @@ Four mistakes are caught rather than shipped. Three are compile errors:
 
 Two more are test failures rather than compile errors, because no type can see them. Declaring an option and never setting it in `sdk.ts` leaves the section permanently empty; `system-prompt-wiring.test.ts` fails if a declared option has no production caller. And getting `optional` wrong in either direction fails `system-prompt-section-presence.test.ts`.
 
-Two things are worth knowing before you edit `section-registry.ts`.
+Two rules apply to editing `section-registry.ts`.
 
-`RUNTIME_SECTIONS` ends in `as const satisfies readonly RuntimeSection[]` rather than containing a `: readonly RuntimeSection[]` annotation. The annotation typechecks and reads better, and it silently disables every check above: it widens `input.key` to `string`, so "is this a real option field" starts accepting anything. `system-prompt-section-derivation.test.ts` fails if the annotation comes back.
+`RUNTIME_SECTIONS` ends in `as const satisfies readonly RuntimeSection[]` rather than containing a `: readonly RuntimeSection[]` annotation. The annotation typechecks and reads better, and it silently disables every check above: it widens `input.key` to `string`, so "is this a real option field" starts accepting anything. `system-prompt-section-derivation.test.ts` fails on that annotation.
 
 Position is the row's position in the array. There is no separate order list to keep in step, and `promptSectionOrder` permutes template and runtime sections together from the same list, so a new runtime section is reorderable by a harness profile with no extra wiring.
 
@@ -443,16 +440,16 @@ import { turnControlPrompts } from "../prompts/turn-control/rows";
 const text = turnControlPrompts["turn-control/auto-continue"].text;
 ```
 
-The import is the registration, so there is nothing else to remember. A file with no row is unreachable code rather than a prompt that quietly ships unlisted, and `prompt-registry-coverage.test.ts` fails if the directory and the rows disagree in either direction.
+The import is the registration; no other step is needed. A file with no row is unreachable code rather than a prompt that quietly ships unlisted, and `prompt-registry-coverage.test.ts` fails if the directory and the rows disagree in either direction.
 
-`prompts/registry.ts` aggregates all twenty-one row modules into `PROMPTS`, which is still the aggregate every cross-directory consumer takes, and `PromptId` is still the union of every id. Prefer the row module: it is the reason the rows are split at all. The registry held all 163 `.md` imports itself, so importing it for one string reached all 163 prompt modules, which cost the file-reading tool 167 modules for its own description. Import the aggregate when a module spans directories, or when the id is not known statically and you need `requirePrompt`.
+`prompts/registry.ts` aggregates all twenty-one row modules into `PROMPTS`, which is still the aggregate every cross-directory consumer takes, and `PromptId` is still the union of every id. Prefer the row module: importing the aggregate for one string evaluates every prompt module in every directory. Import the aggregate when a module spans directories, or when the id is not known statically and you need `requirePrompt`.
 
-The `satisfies` clause is not decoration. An annotation (`: Record<string, PromptEntry>`) typechecks and widens every key to `string`, and `PromptId` then accepts any string: a typo compiles and renders as the empty prompt.
+The `satisfies` clause is required. An annotation (`: Record<string, PromptEntry>`) typechecks and widens every key to `string`, and `PromptId` then accepts any string: a typo compiles and renders as the empty prompt.
 
-Three things that suite will refuse, each because it has happened:
+`prompt-registry-coverage.test.ts` rejects three things:
 
-- **Importing a `.md` outside a registry.** Registration would go back to being optional, and the registry back to being an incomplete list that looks authoritative. A relative path into another package's prompts tree is rejected even for a file that is otherwise fine to read, because it records that package's layout a second time.
-- **Writing a prompts directory down twice.** Consumers read `dir` off the descriptor. Four of them used to type the path themselves and one had gone stale.
+- **Importing a `.md` outside a registry.** Registration would become optional, and the registry an incomplete list. A relative path into another package's prompts tree is rejected even for a file that is otherwise fine to read, because it records that package's layout a second time.
+- **Writing a prompts directory down twice.** Consumers read `dir` off the descriptor; a path typed a second time goes stale when the directory moves.
 - **A row whose `purpose` states nothing.** The purpose is what makes the registry a list a person can read instead of a directory listing with extra steps.
 
 If you are adding the first prompt to a package that has none, give it a `src/prompts/registry.ts` of its own rather than reaching into another package's. Split rows by directory when a registry grows large enough that importing all prompts incurs unnecessary module evaluation; the other three packages hold their rows in the registry itself. A package defines its prompts; sharing the row SHAPE is what `@veyyon/utils` is for.
@@ -465,17 +462,16 @@ If you are adding the first prompt to a package that has none, give it a `src/pr
 
 The outer `system-prompt.md` scaffold holds no policy, prose, conditions, or banners. Anything that controls **what the model should do** belongs to a setting and a statement row. Put whole-statement presence conditions in `statement-registry.ts`. Put wording-level Handlebars variables inside that statement's Markdown module.
 
-The failure this rule exists to prevent is concrete. The delegation section used to carry a
-literal category list:
+A hardcoded list cannot follow a setting. For example, a delegation rule written as a literal
+category list:
 
-> "...multi-file changes, refactors, new features, tests, **investigations** — MUST be
+> "...multi-file changes, refactors, new features, tests, **investigations**: MUST be
 > decomposed and delegated."
 
-An audit is an investigation, so the prompt instructed the model to delegate audits, in every
-session, whether or not an agent suited to that work existed. That policy was invisible in
-`/settings`, unaffected by the Agents table, and only findable by reading the template. It was
-not a wording problem: a hardcoded list cannot follow a setting, so it was wrong in every
-session that did not happen to match it.
+instructs the model to delegate audits, since an audit is an investigation, in every session and
+whether or not an agent suited to that work exists. That policy does not appear in `/settings`,
+does not follow the Agents table, and is findable only by reading the template, so it is wrong in
+every session that does not match it.
 
 The check to apply when writing template text:
 
@@ -483,29 +479,28 @@ The check to apply when writing template text:
 |---|---|
 | Structure: headings, ordering, the shape of a list | Yes |
 | A fact about this session (`{{cwd}}`, the tool names, the concurrency cap) | Yes, as a variable |
-| A behavior controlled by a setting | No — a `{{#if}}` on that setting's gate |
-| A behavior with no controlling setting, stated as a rule the operator cannot see or change | No — make it a setting first |
+| A behavior controlled by a setting | No: a condition on that setting's gate variable |
+| A behavior with no controlling setting, stated as a rule no setting shows or changes | No: make it a setting first |
 
-For delegation this means the template never lists what is delegable. The enabled agents are
-the instruction: `agentNames` and `hasAgentSpecialists` carry the operator's answer, and
-the template reads them. Enabling `reviewer` is how an operator says reviews are delegable
-here, so nothing needs to say it in prose.
+For delegation, the template never lists what is delegable. The enabled agents are the
+instruction: `agentNames` and `hasAgentSpecialists` hold the enabled set, and the template reads
+them. Enabling `reviewer` makes reviews delegable, and no prose states it.
 
-### The gates
+### Settings gates (`PROMPT_GATES`)
 
-Some of the prompt's text is decided by a setting. The IRC coordination clause appears only
+Some of the prompt's text depends on a setting. The IRC coordination clause appears only
 when the session can still spawn agents, the delegation section changes wording with
 `agent.delegation`, and the personality block disappears when `personality` is `none`.
 
-Those settings are listed in one place,
-`packages/coding-agent/src/system-prompt-builder/gate-registry.ts`. Each row records the
-setting path, the template variables it controls, one line on what the prompt changes, and
-whether flipping it reaches a running session.
+Those settings are listed in one place, `PROMPT_GATES` in
+`packages/coding-agent/src/system-prompt-builder/gate-registry.ts`, and each one is a **gate**.
+Each row records the setting path, the template variables it controls, one line on what the
+prompt changes, and whether flipping it reaches a running session.
 
 ### Live and frozen gates
 
 A **live** gate takes effect when you change it. The settings UI rebuilds the system prompt
-from the registry, so the model sees the new text on its next request. These are live today:
+from the registry, so the model receives the new text on its next request. These are live today:
 
 | Setting | What changes in the prompt |
 | --- | --- |
@@ -516,15 +511,15 @@ from the registry, so the model sees the new text on its next request. These are
 | `agent.batch` | which call shape the delegation guidance specifies |
 | `agent.maxConcurrency` | the concurrency limit quoted in that guidance |
 | `agent.maxNestedSpawnDepth` | the IRC coordination clause, present only when this session can spawn |
-| `agent.agents` | which specialists delegation prose names |
-| `includeModelInPrompt` | whether the active model is surfaced in the workstation block |
+| `agent.agents` | which specialists the delegation prose lists |
+| `includeModelInPrompt` | whether the active model is shown in the workstation block |
 | `tools.format` | whether tools are described inline or left to the provider's tool list |
 | `inlineToolDescriptors` | whether descriptors are placed in the prompt or provider schemas for the active model |
-| `tools.intentTracing` | whether the prompt explains the intent field, and whether tool schemas carry it |
+| `tools.intentTracing` | whether the prompt explains the intent field, and whether tool schemas include it |
 
 `tools.intentTracing` and `inlineToolDescriptors` also control provider schema shape. When intent
 tracing is on, every tool schema sent to the model contains an extra `intent` field and the prompt
-explains it. Descriptor placement sends full descriptions in exactly one place. In `auto` mode,
+explains it. Descriptor placement sends full descriptions in one place only. In `auto` mode,
 Gemini receives them inline while other native tool-calling models receive them in their schemas.
 The agent resolves both settings on every request, so a model switch rebuilds the prompt and updates
 the schemas together.
@@ -555,10 +550,9 @@ That is not the same as a default session, and four gates differ:
 | `agentNames` | `[]`, prose lists no specialist | the agents this session can spawn |
 | `taskMaxConcurrency` | `0`, quote no cap | `32`, the shipped limit |
 
-You want the resolved values, not the fallbacks, whenever you are showing or benchmarking a real
-configuration. Call `resolveGateInputs(settings, { tools, model })` and spread the result, which is
-what both `sdk.ts` and `veyyon prompt` do. Building by omission is how `veyyon prompt` once printed
-a prompt with no delegation guidance for a session that had it.
+Use the resolved values, not the fallbacks, to show or benchmark a real configuration. Call `resolveGateInputs(settings, { tools, model })` and spread the result, which is
+what both `sdk.ts` and `veyyon prompt` do. Building by omission prints a prompt
+with no delegation guidance for a session that has it.
 
 `prompt-gate-inputs.test.ts` renders the prompt both ways and asserts the four differences above by
 value, so a fallback that starts disagreeing with its setting for no stated reason fails there.
@@ -578,16 +572,17 @@ can prove the runtime value was supplied, because statement templates read conte
 you omit renders as off. `prompt-gate-registry.test.ts` and the statement gate matrix check that
 declared variables reach observable statement output.
 
-`prompt-gate-registry.test.ts` rejects five things, each because it has happened:
+`prompt-gate-registry.test.ts` rejects five things:
 
 - **An unclassified gate.** Every `{{#if}}` variable in the template must be either a
-  registered settings gate or listed as fed by something else. A new one fails until you
-  decide which it is.
-- **A setting path the schema does not define.** Rows carry paths as strings, so a typo would
+  registered settings gate or listed as fed by something else. A new one fails until it is
+  classified.
+- **A setting path the schema does not define.** Rows hold paths as strings, so a typo would
   produce a gate that never fires and reads like a working row.
-- **A per-setting rebuild call in the controller.** That hand-written list carried two of the
-  nine gates, which is how seven settings came to change the configuration and leave the
-  prompt describing the previous one.
+- **A per-setting rebuild call in the controller.** The registry is the one list of settings that
+  rebuild the prompt. A hand-written list in the controller covers only the settings someone
+  added to it, and a setting it omits changes the configuration while the prompt describes the
+  previous one.
 - **A registered gate the context never passes.** The suite builds a real prompt and reads the
   `statementContext` it rendered with, so a variable that is missing, `undefined`, or shadowed by a
   later spread fails there rather than rendering as off.
@@ -595,15 +590,13 @@ declared variables reach observable statement output.
   the suite also asserts the value follows what the caller requested.
 
 A row marked `frozen-by-placement` also has its claim checked against `sdk.ts`: the setting
-really is read above the prompt builder. Move that read inside and the test fails, which is
-the reminder to reclassify the gate rather than leave a stale label on one that now works.
+is read above the prompt builder. Moving that read inside fails the test until the row is
+reclassified as live.
 
-That is how `tools.intentTracing` stopped being frozen. Its row said what would have to change,
-in the row itself: not only moving the read, but making the tool-schema injection follow the
-setting as well. Both happened, so the row now reads `live`, and a separate suite in
-`packages/agent` proves the schema half by flipping the resolver between two requests to the same
-agent. The prompt suite alone could not prove it, because it passes just as well on a build where
-the schemas never change.
+`tools.intentTracing` is `live` because both halves follow the setting: the prompt read and the
+tool-schema injection. `intent-tracing-follows-the-setting.test.ts` in `packages/agent` proves the
+schema half by flipping the resolver between two requests to the same agent. The prompt suite
+cannot prove that half, because it passes on a build where the schemas never change.
 
 ---
 
@@ -616,11 +609,10 @@ a condition, and a purpose. Its text is in
 
 ### Why
 
-Sections were already rows, so a section is addressable, orderable and overridable. The
-conditions inside a section were `{{#if}}` blocks buried in prose, so they were none of those
-things. Two consequences you can see in the tests: the gate suite had to run a regular expression
-over `system-prompt.md` to find out what the prompt gates on, and the end-to-end suite could only
-assert that two 76KB strings differed, because a single gated line had no name to assert on.
+A section is a row, so it is addressable, orderable and overridable. A condition written as an
+`{{#if}}` block inside prose is none of those things: a test finds what the prompt depends on only
+by running a regular expression over the prompt text, and an end-to-end test can only assert that
+two whole prompts differ, because a single conditional line has no name to assert on.
 
 A statement has a name. That is what lets you refine one point of the prompt, assert that it
 appears under the right conditions, measure what it costs in tokens, and ablate it in an eval.
@@ -647,7 +639,7 @@ each to have a name.
 
 So the check is: two adjacent `always` rows are a merge to make unless the second one opens a unit the
 document declares, meaning its text starts with a markdown heading or an XML tag. Two adjacent
-`always` rows of plain prose are still reported, which is the case the rule was written for.
+`always` rows of plain prose are still reported.
 
 ### Conditions
 
@@ -665,10 +657,10 @@ A row contains one of six conditions:
 `whenAll` and `whenAny` hold conditions rather than variable names, so they nest. The condition
 algebra can therefore say "A and not B". For example, the descriptor statement uses
 `allOf(when("hasTools"), not(when("toolListMode")))`. Write conditions with the builders
-(`when`, `contains`, `allOf`, `anyOf`, `not`) rather than object literals; they construct exactly the
+(`when`, `contains`, `allOf`, `anyOf`, `not`) rather than object literals; they construct the
 same values and the rows stay readable.
 
-The variable a condition names has to be either a registered settings gate (`gate-registry.ts`) or a
+The variable in a condition must be either a registered settings gate (`gate-registry.ts`) or a
 row in `SESSION_FACT_VARIABLES`. A typo, or a variable the builder renamed, would otherwise produce a
 statement that never appears and reports nothing, so `statement-registry.test.ts` rejects it.
 
@@ -727,13 +719,14 @@ is no prose-bearing template fallback.
 
 The test suites enforce these contracts directly:
 
-- `system-prompt.md` contains exactly the `{{templateSections}}` variable and no literal prose,
+- `system-prompt.md` contains only the `{{templateSections}}` variable and no literal prose,
   condition, or banner.
 - Every static section declared by `section-registry.ts` contains at least one statement. A missing
   section fails module loading.
 - The registry supplies section order and banner bytes.
-- Replacement files are body-only. A legacy file containing its own banner fails loudly.
-- The gate matrix renders every statement condition through the modular assembly.
+- Replacement files are body-only. A replacement file containing its own banner is an error.
+- The statement tests render every statement condition through the modular assembly, across the
+  matrix of gate values.
 - Production `buildSystemPrompt` output proves the statement modules, operator precedence, and
   section ordering reach the model.
 
@@ -748,7 +741,7 @@ Two capabilities follow from named rules:
 would be shorter by without that rule, not the length of the rule's text. The distinction is required
 because `render` ends in a `format` pass that normalizes whitespace across statement boundaries, so
 the lengths of the statement texts do not add up to the length of the section they form. Measured the
-other way, the parts reconcile with the whole exactly:
+other way, the parts reconcile with the whole:
 
 ```
 section bytes = banner + sum of statement bytes + separator
@@ -758,8 +751,8 @@ The banner belongs to the section registry, and `assembleDefaultTemplate` define
 between adjacent static sections. `prompt-inspect.test.ts` asserts that the reported parts reconcile,
 so a change to either convention cannot silently corrupt the cost breakdown.
 
-`veyyon prompt --statement <id>` prints one rule's rendered text. The text it prints weighs exactly
-what the table charges the rule, which is asserted, so the two surfaces cannot disagree about the same
+`veyyon prompt --statement <id>` prints one rule's rendered text. The text it prints weighs what the
+table charges the rule, which is asserted, so the two surfaces cannot disagree about the same
 rule. A rule that is not in this prompt reports the condition that would include it and exits 0,
 because a rule being off is a configuration rather than a failure.
 

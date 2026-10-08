@@ -7,8 +7,8 @@ veyyon
 ```
 
 The session records turns, tool activity, approvals, edits, and verification output. Long-running work
-should survive context pressure through explicit goal state, compacted history, working-set facts, and
-resume metadata rather than relying on the model to remember everything from raw transcript text.
+continues under context pressure through explicit goal state, compacted history, working-set facts, and
+resume metadata, not through the raw transcript text alone.
 
 ## Common session actions
 
@@ -19,14 +19,21 @@ resume metadata rather than relying on the model to remember everything from raw
 - Manage saved sessions with `/session`; garbage-collect old artifacts with `veyyon gc`.
 - Run a bounded non-interactive task by passing a prompt: `veyyon "…"`.
 
-Veyyon resumes from the launch picker or `/resume`, and branches with `/branch` / `/fork`.
-
-## Resuming by id
+## Resuming and forking by id
 
 On exit Veyyon prints `veyyon --resume <id>`. The id, a prefix of it, or a transcript path resumes
-that session from any directory and any profile:
+that session from any directory and any profile. The id of a spawned agent's transcript resumes that
+transcript the same way.
 
-- The launch runs under the profile that wrote the session. `--profile <name>` overrides it.
+- The launch runs under the profile that wrote the session, whichever profile it starts in.
+- `--profile <name>` naming another profile forks the session into `<name>`: a new session in that
+  profile, at the source's recorded working directory, with the source's history and the source
+  as its parent. The source stays unchanged in its own profile. The launch prints the new id.
+- `/resume <id>` inside a session relaunches Veyyon in the profile that wrote the session, as
+  `/profile` does, when that is not the running profile.
+- `--continue` and the session picker list the running profile's sessions only, and never list a
+  spawned agent's transcript. Switching a running session to another profile's transcript, from an
+  extension or RPC `switch_session`, fails and states the owning profile.
 - The session reopens in place, in its recorded working directory, and the launch moves there. It is
   not copied into the directory you launched from. `--cwd <dir>` overrides it: the session's working
   directory moves to `<dir>` and the session records the change.
@@ -35,20 +42,23 @@ that session from any directory and any profile:
 
 `veyyon --resume` with no id opens the session picker, and a picked session reopens in its recorded
 working directory the same way.
-`veyyon --fork <id>` copies the session into a new file in the current directory instead.
+
+`veyyon --fork <id>` copies the session into a new session in the current directory and leaves the
+source unchanged. The launch runs under the profile that wrote the source, so the copy is written in
+that profile. With `--profile <name>`, the copy is written in `<name>` instead.
 
 ## Long work
 
-For large tasks, make the desired outcome explicit. The harness should preserve active instructions,
-recent turns, working files, verification facts, and unresolved blockers through compaction. When a
-session resumes, Veyyon should make the important state visible to the next model turn instead of
-presenting a clean-looking summary that dropped the real constraint.
+For large tasks, make the desired outcome explicit. Compaction summarizes older turns into goal,
+constraints, progress, decisions, next steps and critical context, keeps the most recent turns
+verbatim, and appends the list of files read and modified. See
+[Compaction](../architecture/compaction.md).
 
 ## Session files are trees
 
-A session file (`~/.veyyon/profiles/default/agent/sessions/**/<timestamp>_<id>.jsonl`) is an append-oriented log whose entries form a tree. Recorded session entries carry an `id` and a `parentId`. Branching appends a new entry whose `parentId` states an earlier entry, so it starts a sibling branch from that point.
+A session file (`~/.veyyon/profiles/default/agent/sessions/**/<timestamp>_<id>.jsonl`, or `$XDG_DATA_HOME/veyyon/sessions/**` after `veyyon config init-xdg`) is an append-oriented log whose entries form a tree. Recorded session entries have an `id` and a `parentId`. Branching appends a new entry whose `parentId` states an earlier entry, so it starts a sibling branch from that point.
 
-The *active leaf* advances to each appended entry. On load it falls back to the last entry in the file. Not every line carries `parentId`: the first-line session header does not, and in-place refresh records are full replacements of the original logical record rather than tree entries. Storage maintenance may atomically rewrite the file to update the header or representation, but it preserves the history entries. Branches you navigate away from remain addressable.
+The *active leaf* advances to each appended entry. On load it falls back to the last entry in the file. Not every line has `parentId`: the first-line session header does not, and in-place refresh records are full replacements of the original logical record rather than tree entries. Storage maintenance may atomically rewrite the file to update the header or representation, but it preserves the history entries. Branches you navigate away from remain addressable.
 
 Four properties are guaranteed by the storage layer:
 
@@ -65,7 +75,7 @@ which is the exact shape they recorded.
 Run `/tree` in the TUI to browse every entry of the session, including branches you previously
 abandoned. Picking an entry opens a small action menu:
 
-- **Jump here** continues from that point. For a **user message** the jump lands just before it and
+- **Jump here** continues from that point. For a **user message** the jump lands immediately before it and
   places the full message text in the composer, ready to edit and resubmit. The **start of
   conversation** recalls the original prompt into the composer so you can edit and resubmit it.
   Anything else (an agent reply, a compaction) branches from that entry with an empty composer.

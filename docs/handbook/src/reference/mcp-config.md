@@ -1,6 +1,6 @@
 # MCP configuration in Veyyon
 
-This guide explains how to add, edit, and validate MCP servers for the Veyyon coding agent.
+How to add, edit, and validate MCP servers for the Veyyon coding agent.
 
 Source of truth in code:
 
@@ -19,21 +19,18 @@ Veyyon-native MCP config is defined in one file, in the active profile's agent d
 
 The native provider also reads `.mcp.json` beside it for compatibility, but Veyyon writes to `mcp.json`.
 
-There is no project scope, and no `/mcp` subcommand takes a scope at all. `.veyyon/mcp.json`, a root
-`mcp.json` and a root `.mcp.json` inside a working tree used to be loaded and used to be writable
-through `/mcp add --scope project`; none of them is read now, and neither the option spelling nor the
-plain words `project` and `user` are accepted. Both are rejected with the reason, on the text surface
-as well as in the terminal: the text handler kept the scope after the terminal dropped it, defaulted
-to it, and wrote a file nothing loads while reporting success. A repository is content you may not
-have written, so a checked-in file must not name a server the agent connects to or a command it
-spawns. Veyyon still discovers servers from other tools' user-level configs (`~/.claude.json`,
+There is no project scope, and no `/mcp` subcommand takes a scope at all. Veyyon does not read
+`.veyyon/mcp.json`, a root `mcp.json`, or a root `.mcp.json` inside a working tree. The
+`--scope project` option and the plain words `project` and `user` are rejected with the reason, on the
+text surface as well as in the terminal. A repository is content you may not have written, so a
+checked-in file must not specify a server the agent connects to or a command it spawns. Veyyon still discovers servers from other tools' user-level configs (`~/.claude.json`,
 `~/.claude/mcp.json`, `~/.cursor/mcp.json`, `~/.codex/config.toml`, `~/.gemini/settings.json`,
 opencode, windsurf, and more), always from your home directory, never from a working tree, and
 `/mcp list` shows the file each server came from.
 
-One project-controlled route to an MCP server remains, and it is gated rather than removed: a
-project plugin registry (`.veyyon/plugins/installed_plugins.json`) names plugin directories, and a
-plugin may ship a `.mcp.json`. The registry is withheld until you approve it. See
+One project-controlled route to an MCP server remains, and it requires approval: a project plugin
+registry (`.veyyon/plugins/installed_plugins.json`) lists plugin directories, and a plugin may ship a
+`.mcp.json`. The registry is not read until you approve it. See
 [Project trust](./project-trust.md).
 
 ### Profiles
@@ -43,7 +40,7 @@ Named profiles (`veyyon --profile <name>`, the `--alias` shortcut, or `VEYYON_PR
 - Default profile: `~/.veyyon/profiles/default/agent/mcp.json`
 - Profile `<name>`: `~/.veyyon/profiles/<name>/agent/mcp.json`
 
-Discovery, the `/mcp` commands, and the config writer all follow the active profile, so a profile sees **only** its own servers, never the default profile's `~/.veyyon/profiles/default/agent/mcp.json`. Add a server to a profile by launching under it (`veyyon --profile <name>`) and running `/mcp add`, or by editing `~/.veyyon/profiles/<name>/agent/mcp.json` directly.
+Discovery, the `/mcp` commands, and the config writer all follow the active profile, so a profile loads **only** its own servers, never the default profile's `~/.veyyon/profiles/default/agent/mcp.json`. Add a server to a profile by launching under it (`veyyon --profile <name>`) and running `/mcp add`, or by editing `~/.veyyon/profiles/<name>/agent/mcp.json` directly.
 
 External-tool configs (`.claude/`, `.cursor/`, etc.) are profile-independent because they belong to those tools rather than to a Veyyon profile.
 
@@ -113,8 +110,8 @@ Optional:
 - `type?: "stdio"`
 - `args?: string[]`
 - `env?: Record<string, string>`
-- `envPassthrough?: string[]` — ambient variables to forward by name
-- `inheritEnv?: boolean` — forward the whole ambient environment, credentials included
+- `envPassthrough?: string[]`: ambient variables to forward by name
+- `inheritEnv?: boolean`: forward the whole ambient environment, credentials included
 - `cwd?: string`
 
 A stdio server receives a baseline of variables a program needs in order to run (`PATH`, `HOME`,
@@ -217,12 +214,12 @@ server starts in a new session, so its group holds nothing else. On macOS it sta
 the system can prompt for file access, and Windows has no process groups; there the group is
 Veyyon's own and is left alone.
 
-A server that daemonizes — double-forks into its own session — is outside this. It outlives the
+A server that daemonizes (double-forks into its own session) is outside this. It outlives the
 session that started it and has to be stopped by hand.
 
 ## Auth fields
 
-Veyyon understands two auth-related objects.
+Veyyon reads two auth-related objects.
 
 ### `auth`
 
@@ -237,7 +234,7 @@ Veyyon understands two auth-related objects.
 }
 ```
 
-Use this when Veyyon should remember how to rehydrate credentials for a server.
+Use this when Veyyon should store how to rehydrate credentials for a server.
 
 You normally do not need to write this block: when Veyyon completes an OAuth flow
 for an `http`/`sse` server it stores the credential under a deterministic id
@@ -277,7 +274,7 @@ editor configs Veyyon still reads are named by file in `/mcp list`.
 
 Use this when the MCP server requires explicit OAuth client settings.
 
-`prompt` controls the OAuth `prompt` parameter sent with the authorization request. By default the parameter is omitted, matching the reference MCP SDK, except when the granted scopes include `offline_access`: OIDC Core requires `prompt=consent` to issue refresh-token access, so Veyyon sends `consent` for those requests. Without a consent prompt, a provider with an active browser session silently re-approves the same account, making it impossible to switch accounts or workspaces when reauthorizing (e.g. to use a different Linear workspace per Veyyon profile). Set it to `""` to omit the parameter for providers that reject it, or to another value the provider understands (e.g. `"select_account"`).
+`prompt` controls the OAuth `prompt` parameter sent with the authorization request. By default the parameter is omitted, matching the reference MCP SDK, except when the granted scopes include `offline_access`: OIDC Core requires `prompt=consent` to issue refresh-token access, so Veyyon sends `consent` for those requests. Without a consent prompt, a provider with an active browser session silently re-approves the same account, making it impossible to switch accounts or workspaces when reauthorizing (e.g. to use a different Linear workspace per Veyyon profile). Set it to `""` to omit the parameter for providers that reject it, or to another value the provider accepts (e.g. `"select_account"`).
 
 Slack is the clearest current example. Slack's MCP server is hosted at `https://mcp.slack.com/mcp`, uses Streamable HTTP, and requires confidential OAuth with your Slack app's client credentials.
 
@@ -404,7 +401,7 @@ This is the part that usually trips people up.
 
 Veyyon expands `${VAR}` and `${VAR:-default}` placeholders while discovering MCP configs from Veyyon-native files and standalone fallback files. Expansion applies recursively to string values in `command`, `args`, `env`, `cwd`, `url`, `headers`, `auth`, and `oauth`.
 
-An unset variable with no default leaves the placeholder text in the value. In `command`, `args`, `cwd`, `url` and `envPassthrough` that text would become a program, an argument, a directory or a hostname, so the server is not started: the connection is refused with the field and the variable named, and nothing is spawned or dialled. `env` and `headers` are resolved again before connect and refuse the same way (below). In `auth` and `oauth` the placeholder is sent to the authorization server, which rejects the exchange.
+An unset variable with no default leaves the placeholder text in the value. In `command`, `args`, `cwd`, `url` and `envPassthrough` that text would become a program, an argument, a directory or a hostname, so the server is not started: the connection is rejected with the field and the variable stated, and nothing is spawned or dialled. `env` and `headers` are resolved again before connect and fail the same way (below). In `auth` and `oauth` the placeholder is sent to the authorization server, which rejects the exchange.
 
 A placeholder in a structural field is therefore resolved here or refused; it never reaches the server as text. To let a server read a variable itself, name it in `env` (or in `envPassthrough`) and read it from the process environment inside the server.
 
@@ -463,7 +460,7 @@ Examples:
 ```
 
 - `"GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"` → copy from the current shell
-  environment, and refuse to connect when it is missing
+  environment, and fail to connect when it is missing
 - `"Authorization": "Bearer hardcoded-token"` → use the literal value
 - `"X-Api-Key": "literal:PROJECT_KEY"` → send `PROJECT_KEY` as the value, without looking it up
 - `"Authorization": "!printf 'Bearer %s' \"$GITHUB_TOKEN\""` → build the header from a command
@@ -501,11 +498,11 @@ A refresh that fails while the access token is still valid keeps connecting with
 refresh runs up to five minutes before expiry, so the session still works.
 
 A server with no stored credential connects as configured. Nothing was authorized, so an
-unauthenticated request is what the server sees, and its own answer is what Veyyon reports.
+unauthenticated request is what the server receives, and its own answer is what Veyyon reports.
 
 ## `disabledServers`
 
-`disabledServers` is read from the user config file (`~/.veyyon/profiles/default/agent/mcp.json`) when a server is discovered from any source and you want Veyyon to ignore it without editing that other tool's config.
+`disabledServers` is read from the profile's own MCP file (`~/.veyyon/profiles/default/agent/mcp.json`) when a server is discovered from any source and you want Veyyon to ignore it without editing that other tool's config.
 
 Example:
 
@@ -546,7 +543,7 @@ From `validateServerConfig()` in `packages/coding-agent/src/mcp/config.ts`:
 Practical implications:
 
 - Omitting `type` means `stdio`
-- If you paste a remote server config and forget `"type": "http"`, Veyyon will treat it as `stdio` and complain that `command` is missing
+- If you paste a remote server config and forget `"type": "http"`, Veyyon treats it as `stdio` and reports that `command` is missing
 - `sse` remains valid for compatibility, but new hosted servers should usually be configured as `http`
 
 ## Discovery and precedence
@@ -557,7 +554,7 @@ In practice:
 
 - prefer `~/.veyyon/profiles/default/agent/mcp.json` when you want a Veyyon-specific override
 - keep server names unique across tools when possible
-- use `disabledServers` in the user config when a third-party config keeps reintroducing a server you do not want
+- use `disabledServers` in the profile's `mcp.json` when a third-party config keeps reintroducing a server you do not want
 
 ## Troubleshooting
 
@@ -584,20 +581,16 @@ Run `/mcp list`: it shows the file each server came from. Veyyon discovers many 
 
 ### A call fails with a protocol error rather than a timeout
 
-JSON-RPC lets a server answer with `"id": null` when it cannot tell which request an error belongs
+JSON-RPC lets a server answer with `"id": null` when it cannot determine which request an error belongs
 to. A parse error is the usual case: the server could not read the request well enough to find its
 id, so it has nothing to attribute the failure to.
 
-Veyyon surfaces that answer instead of waiting. Every call in flight on that connection fails with
+Veyyon reports that answer instead of waiting. Every call in flight on that connection fails with
 the server's own code and message, for example:
 
 ```
 MCP error -32700: Parse error
 ```
-
-The alternative would be to ignore a reply with no request id, and then every pending call sits
-until its timeout and reports that the server did not answer. That is the opposite of what
-happened: the server answered, and told you exactly what was wrong.
 
 A `-32700` means the bytes Veyyon sent were not valid JSON to that server, so report it with the
 server name and the tool you called. It is a bug in the server or in the transport, not something a

@@ -1,3 +1,7 @@
+/**
+ * Drives `AuthStorage` credential selection for openai-codex: usage-ranked ordering in
+ * `auth-storage/usage-ranking.ts` and plan eligibility in `auth-storage/openai-codex-plan.ts`.
+ */
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";

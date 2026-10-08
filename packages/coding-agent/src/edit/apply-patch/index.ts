@@ -57,28 +57,28 @@ export class PartialApplyPatchError extends ApplyPatchError {
 		/** The underlying failure. */
 		readonly cause: unknown,
 	) {
-		super(PartialApplyPatchError.#formatMessage(affected, failedPath, unappliedPaths, cause));
+		super(formatMessage(affected, failedPath, unappliedPaths, cause));
 		this.name = "PartialApplyPatchError";
 	}
+}
 
-	static #formatMessage(
-		affected: ApplyCodexPatchResult["affected"],
-		failedPath: string,
-		unappliedPaths: string[],
-		cause: unknown,
-	): string {
-		const appliedPaths = affected.added.concat(affected.modified, affected.deleted);
-		const lines = [`Failed to apply ${failedPath}: ${errorMessage(cause)}`];
-		if (appliedPaths.length > 0) {
-			lines.push(`Files already applied: ${appliedPaths.join(", ")}.`);
-		}
-		if (unappliedPaths.length > 0) {
-			lines.push(
-				`Files NOT applied: ${unappliedPaths.join(", ")}; re-read the affected files and re-issue only the failed and unapplied files.`,
-			);
-		}
-		return lines.join("\n");
+function formatMessage(
+	affected: ApplyCodexPatchResult["affected"],
+	failedPath: string,
+	unappliedPaths: string[],
+	cause: unknown,
+): string {
+	const appliedPaths = affected.added.concat(affected.modified, affected.deleted);
+	const lines = [`Failed to apply ${failedPath}: ${errorMessage(cause)}`];
+	if (appliedPaths.length > 0) {
+		lines.push(`Files already applied: ${appliedPaths.join(", ")}.`);
 	}
+	if (unappliedPaths.length > 0) {
+		lines.push(
+			`Files NOT applied: ${unappliedPaths.join(", ")}; re-read the affected files and re-issue only the failed and unapplied files.`,
+		);
+	}
+	return lines.join("\n");
 }
 
 /**

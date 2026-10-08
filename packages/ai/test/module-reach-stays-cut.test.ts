@@ -163,8 +163,30 @@ const AUTH_STORAGE_CEILING = 227;
  * deployment contract, split out of `openai-compat.ts`. `provider-models/descriptors.ts` is in this
  * closure and takes the provider's discovery mapper from that file now; every module the file
  * imports was already reached through `openai-compat.ts`, so it adds one module and no subtree.
+ *
+ * 81 since 2026-09-18, measured: `@veyyon/utils/backoff`, the zero-import leaf holding
+ * `exponentialBackoffDelay`. `@veyyon/utils/fetch-retry`, already in this closure, computed its retry
+ * doubling inline and now takes it from that owner, so it adds one module and no subtree.
+ *
+ * 82 since 2026-09-29, measured: `@veyyon/utils/log-file`, the rotating profile log that replaced
+ * `winston` and `winston-daily-rotate-file`. `@veyyon/utils/logger`, already in this closure, writes
+ * through it, and its imports (`node:` built-ins, `./app-identity`, `./fs-error`) were already reached,
+ * so it adds one module and no subtree.
+ *
+ * 83 since 2026-09-29, measured: `catalog/compat/share.ts`, the zero-import leaf holding `shareCompat`.
+ * `catalog/build.ts`, already in this closure, returns each model's resolved compat record through it,
+ * so it adds one module and no subtree.
+ *
+ * 84 since 2026-10-01, measured: `catalog/catalog-spans.ts`, the zero-import leaf that indexes each
+ * provider's byte range in `models.json`. `catalog/models.ts`, already in this closure, parses one
+ * provider's span through it instead of the whole document, so it adds one module and no subtree.
+ *
+ * 85 since 2026-10-05, measured: `@veyyon/utils/local-time`, which reads the local clock through the C
+ * library's `localtime_r` so naming a log file builds no ICU time zone cache. `@veyyon/utils/logger` and
+ * `@veyyon/utils/log-file`, already in this closure, take the local time from it, and its only import is
+ * `bun:ffi`, so it adds one module and no subtree.
  */
-const ENV_API_KEY_CEILING = 80;
+const ENV_API_KEY_CEILING = 85;
 
 /** Measured 2026-07-26 at 75: the logger and nothing else. A backend import here is the regression. */
 const USAGE_REGISTRY_CEILING = 83;

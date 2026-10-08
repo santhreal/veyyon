@@ -82,3 +82,80 @@ describe("createCodexProviderStreamError", () => {
 		expect(err.message).toContain("nested boom");
 	});
 });
+
+// Rate-limit and policy classifiers parse these messages (`parseRateLimitReason`, the provider error
+// fixtures), so every formatting branch is pinned to its exact bytes under both labels.
+describe("the Codex failure message", () => {
+	const cases: Array<[string, Record<string, unknown>, string]> = [
+		[
+			"message with code and status",
+			{ type: "response.failed", response: { status: "failed", error: { code: "server_error", message: "boom" } } },
+			"Codex response failed: boom (code=server_error, status=failed)",
+		],
+		[
+			"error event message with code",
+			{ type: "error", code: "usage_limit_reached", message: "The usage limit has been reached" },
+			"Codex error event: The usage limit has been reached (code=usage_limit_reached)",
+		],
+		["error event message alone", { type: "error", message: "boom" }, "Codex error event: boom"],
+		[
+			"error event message that itself says response failed",
+			{ type: "error", message: "upstream response failed" },
+			"Codex error event: upstream response failed",
+		],
+		[
+			"nested message and status win over the top-level ones",
+			{
+				type: "error",
+				message: "outer",
+				status: "outer",
+				error: { message: "inner" },
+				response: { status: "inner" },
+			},
+			"Codex error event: inner (status=inner)",
+		],
+		[
+			"status alone",
+			{ type: "response.failed", response: { status: "incomplete" } },
+			"Codex response failed (status=incomplete)",
+		],
+		[
+			"error type alone",
+			{ type: "error", error: { type: "invalid_request_error" } },
+			"Codex error event (code=invalid_request_error)",
+		],
+		[
+			"no fields: the raw event as JSON",
+			{ type: "response.failed", response: { id: "resp_1" } },
+			'Codex response failed: {"type":"response.failed","response":{"id":"resp_1"}}',
+		],
+		["error event with no fields", { type: "error" }, 'Codex error event: {"type":"error"}'],
+	];
+
+	it.each(cases)("%s", (_name, rawEvent, expected) => {
+		expect(createCodexProviderStreamError(rawEvent).message).toBe(expected);
+	});
+
+	it("an event that cannot serialize falls back to the bare label", () => {
+		for (const [type, expected] of [
+			["error", "Codex error event"],
+			["response.failed", "Codex response failed"],
+		] as const) {
+			const circular: Record<string, unknown> = { type };
+			circular.self = circular;
+			expect(createCodexProviderStreamError(circular).message).toBe(expected);
+		}
+	});
+
+	it("the raw event is cut at 800 characters and states how many it dropped", () => {
+		const padded = (n: number) => ({ type: "response.failed", padding: "p".repeat(n) });
+		const fits = padded(800 - JSON.stringify(padded(0)).length);
+		expect(createCodexProviderStreamError(fits).message).toBe(`Codex response failed: ${JSON.stringify(fits)}`);
+
+		const over = padded(801 - JSON.stringify(padded(0)).length);
+		const json = JSON.stringify(over);
+		expect(createCodexProviderStreamError(over).message).toBe(
+			`Codex response failed: ${json.slice(0, 800)}…[truncated 1]`,
+		);
+	});
+});

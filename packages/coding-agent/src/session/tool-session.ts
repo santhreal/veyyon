@@ -69,6 +69,8 @@ export interface SessionToolSession {
 	setActiveToolNames(names: Iterable<string>): void;
 	/** Install the running host's out-of-band notification delivery, read by `notify`. */
 	setNotifier(notify: HostNotifier): void;
+	/** The model the session runs on now: the agent's once it exists, else the startup model. */
+	activeModel(): Model | undefined;
 	/** The model the session runs on now, formatted as `provider/id`. */
 	activeModelString(): string | undefined;
 }
@@ -93,9 +95,9 @@ export function deriveToolSession(base: ToolSession, overrides: Partial<ToolSess
 }
 
 /**
- * Every built-in tool bound to the advisor's tool session. Built whether or not an advisor runs,
- * since one can be switched on mid-session; the advisor's config `tools` selects which of these it
- * receives (read and search by default).
+ * Every built-in tool bound to the advisor's tool session. The session calls this on the first
+ * advisor turn or advisor tool listing, not when it starts; the advisor's config `tools` selects
+ * which of these it receives (read and search by default).
  */
 export async function buildAdvisorTools(advisorToolSession: ToolSession): Promise<Tool[]> {
 	const builds: Array<Tool | null | Promise<Tool | null>> = [];
@@ -284,6 +286,7 @@ export function createSessionToolSession(inputs: SessionToolSessionInputs): Sess
 		setNotifier: notify => {
 			notifier = notify;
 		},
+		activeModel,
 		activeModelString,
 	};
 }

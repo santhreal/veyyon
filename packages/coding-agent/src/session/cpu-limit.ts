@@ -1042,12 +1042,12 @@ export class SessionCpuLimit {
 			}
 			return;
 		}
-		this.#pidsEnforced = await this.#writeCgroupFile(dir, "pids.max", formatLimitFileValue(this.#maxProcesses));
+		this.#pidsEnforced = await writeCgroupFile(dir, "pids.max", formatLimitFileValue(this.#maxProcesses));
 		const memory = memoryCapControls(this.#memoryLimitGb);
-		this.#memoryEnforced = await this.#writeCgroupFile(dir, "memory.max", memory.max);
+		this.#memoryEnforced = await writeCgroupFile(dir, "memory.max", memory.max);
 		// The cap above bounds RESIDENT memory; without this the overflow goes to
 		// swap and the group runs on past the limit. See memoryCapControls.
-		await this.#writeCgroupFile(dir, "memory.swap.max", memory.swapMax);
+		await writeCgroupFile(dir, "memory.swap.max", memory.swapMax);
 		if (this.#maxProcesses > 0 && !this.#pidsEnforced) {
 			this.#emitNoticeOnce(
 				"pids-unenforceable",
@@ -1064,19 +1064,6 @@ export class SessionCpuLimit {
 					`New commands are refused rather than run unbounded. ` +
 					`Fix: set session.memoryLimitGb to 0, or run where cgroup v2 delegates the memory controller.`,
 			);
-		}
-	}
-
-	async #writeCgroupFile(dir: string, file: string, value: string): Promise<boolean> {
-		try {
-			await fs.writeFile(path.join(dir, file), value);
-			return true;
-		} catch (error) {
-			logger.debug("Session budget: controller file not writable", {
-				file: path.join(dir, file),
-				error: errorMessage(error),
-			});
-			return false;
 		}
 	}
 
@@ -1123,6 +1110,19 @@ export class SessionCpuLimit {
 			`because session.cpuLimitKill is on. A command that just stopped was killed by the CPU budget, not a crash.`;
 		this.#lastKillReport = report;
 		this.#emitNotice(report);
+	}
+}
+
+async function writeCgroupFile(dir: string, file: string, value: string): Promise<boolean> {
+	try {
+		await fs.writeFile(path.join(dir, file), value);
+		return true;
+	} catch (error) {
+		logger.debug("Session budget: controller file not writable", {
+			file: path.join(dir, file),
+			error: errorMessage(error),
+		});
+		return false;
 	}
 }
 

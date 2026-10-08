@@ -73,8 +73,17 @@ const SHAKE_CEILING = 16;
  * RE-MEASURED 2026-08-26 at 187, down from 204. It does not reach the ceiling above because it genuinely uses
  * more of the directory: the entry helpers, the message shapes and the read-selector split. 187 is that work,
  * not a leftover edge into the engine, which is why this ceiling is not "the same as shake".
+ *
+ * RE-MEASURED 2026-10-06 at 196. The one new module is `ai/dialect/json-tool-call-scanner.ts`, the
+ * `<tool_call>` JSON scanner the `hermes` and `qwen3` dialects share; both dialects were already on this
+ * closure. It imports only `./coercion` and `./wire-tags`, both already here, so the growth is that one
+ * file and no subtree.
+ *
+ * RE-MEASURED 2026-10-06 again at 197. The one new module is `ai/dialect/bracket-walk.ts`, the bracket
+ * walk that splits call arguments, which `gemini.ts` and `gemma.ts` each spelled inline before. It
+ * imports nothing, so the growth is that one file and no subtree.
  */
-const PRUNING_CEILING = 195;
+const PRUNING_CEILING = 197;
 
 /**
  * The engine and the remote summarizer both took `ProviderHttpError` from the `@veyyon/ai/error` barrel,
@@ -102,9 +111,56 @@ const PRUNING_CEILING = 195;
  * output ceilings, split out of `provider-models/openai-compat.ts`, which this closure already
  * reached through the model metadata compaction budgets are computed from. It imports only what
  * was already here, so the growth is that one file and no subtree.
+ *
+ * RE-MEASURED 2026-09-29: engine 319, remote summarizer 221. The one new module is
+ * `@veyyon/utils/log-file`, the rotating profile log that replaced `winston` and
+ * `winston-daily-rotate-file`. `@veyyon/utils/logger`, already on both reaches, writes through it, and
+ * its imports (`node:` built-ins, `./app-identity`, `./fs-error`) were already here, so the growth is
+ * that one file and no subtree.
+ *
+ * RE-MEASURED 2026-09-29 again: engine 320, remote summarizer 222. The one new module is
+ * `catalog/compat/share.ts`, the zero-import leaf holding `shareCompat`. `catalog/build.ts`, already on
+ * both reaches, returns each model's resolved compat record through it, so the growth is that one file
+ * and no subtree.
+ *
+ * RE-MEASURED 2026-09-30: engine 322, remote summarizer 224. The two new modules are
+ * `utils/prompt-precompiled.ts` and `utils/prompt-handlebars.ts`. `utils/prompt.ts`, already on both
+ * reaches, reads the binary's build-time precompiled templates from the first and loads the Handlebars
+ * compiler through the second only for a template with no precompiled form. The first imports one type
+ * from `./prompt-variables` and the second only `handlebars/runtime`, so the growth is those two files
+ * and no subtree.
+ *
+ * RE-MEASURED 2026-10-01: engine 322, remote summarizer 225. The one new module is
+ * `catalog/catalog-spans.ts`, the zero-import leaf `catalog/models.ts` indexes each provider's span of
+ * `models.json` through. The engine also lost `ai/providers/gitlab-duo-workflow.ts`, which `ai/stream.ts`
+ * now registers lazily, so its count is unchanged; the remote summarizer never reached `ai/stream.ts`.
+ *
+ * RE-MEASURED 2026-10-03: engine 303, remote summarizer 100. The engine read the Codex compaction request
+ * context from `ai/providers/openai-codex-responses.ts`, the ChatGPT Codex client; it reads it from
+ * `ai/providers/openai-codex/session-state.ts` now, so the client and the 21 modules only it reached left
+ * (its response handler and request transformer, `providers/openai-shared.ts` and what only it reaches,
+ * `providers/grammar.ts`, the four `ai/cache/` modules, `dialect/demotion.ts`, and `utils/` `sse-debug`,
+ * `provider-response`, `provider-fetch`, `first-event-budget` and `empty-completion-retry`). The engine
+ * gained the session-state leaf and `providers/openai-stable-ids.ts`, the OpenAI cache-key normalizers it
+ * imports. Both reaches gained `ai/providers/azure-deployment-names.ts`, the zero-import leaf holding the
+ * Azure deployment map: the remote summarizer took it from `providers/openai-shared.ts`, which put the
+ * bundled catalog, the dialect renderers and the schema normalizers (125 modules) behind one parser.
+ *
+ * RE-MEASURED 2026-10-05: engine 304, remote summarizer 101. Both reach the logger, which reads the local
+ * time from `@veyyon/utils/local-time` now instead of building ICU's time zone cache through `Date`. That
+ * module imports only `bun:ffi`, so the growth is the one file and no subtree.
+ *
+ * RE-MEASURED 2026-10-06: engine 305, remote summarizer 101. The one new module is
+ * `ai/dialect/json-tool-call-scanner.ts`, the `<tool_call>` JSON scanner the `hermes` and `qwen3` dialects
+ * share. It imports only `./coercion` and `./wire-tags`, both already on the engine's reach, so the growth
+ * is that one file and no subtree; the remote summarizer reaches no dialect.
+ *
+ * RE-MEASURED 2026-10-06 again: engine 306, remote summarizer 101. The one new module is
+ * `ai/dialect/bracket-walk.ts`, the bracket walk `gemini.ts` and `gemma.ts` split call arguments with.
+ * It imports nothing, so the growth is that one file and no subtree.
  */
-const COMPACTION_ENGINE_CEILING = 318;
-const REMOTE_SUMMARIZER_CEILING = 221;
+const COMPACTION_ENGINE_CEILING = 306;
+const REMOTE_SUMMARIZER_CEILING = 101;
 
 describe("the estimator is a leaf", () => {
 	it(`token-estimate reaches at most ${TOKEN_ESTIMATE_CEILING} modules`, () => {

@@ -102,11 +102,11 @@ describe("a bundled legacy module follows its package", () => {
 	 * a package that resolved to a directory holding no manifest name would drop out here rather
 	 * than silently shrink the extension surface a published binary serves.
 	 */
-	it("gives every bundled package a root entry and a unique binding", () => {
+	it("gives every bundled package a root entry and every entry a unique key", () => {
 		const keys = entries.map(entry => entry.key);
 		for (const name of BUNDLED_PACKAGE_NAMES) expect(keys).toContain(name);
 
-		expect(new Set(entries.map(entry => entry.binding)).size).toBe(entries.length);
+		expect(new Set(keys).size).toBe(entries.length);
 		// Non-vacuity: the subpath expansion runs, so this is a surface rather than six root keys.
 		expect(entries.length).toBeGreaterThan(BUNDLED_PACKAGE_NAMES.length);
 	});

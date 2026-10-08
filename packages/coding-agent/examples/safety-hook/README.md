@@ -6,7 +6,7 @@ A Veyyon extension that demonstrates `tool_call` blocking. It intercepts `bash` 
 
 - `pi.on("tool_call", ...)`: pre-execution interception
 - `return { block: true, reason: "..." }`: blocking contract
-- Regex guard on bash input (`/\brm\s+-rf\s+\//`)
+- Regex check on bash input (`/\brm\s+-rf\s+\//`)
 
 ## Install
 

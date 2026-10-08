@@ -28,6 +28,7 @@ import {
 import { hsvToRgb } from "@veyyon/utils/color";
 import { encodeTextSized, type TextSizingScale } from "@veyyon/utils/text-sizing";
 import { COMPOSER_INSET_COLS } from "../modes/terminal/components/composer/composer-chrome";
+import { TOOL_OUTPUT_IMAGE_THEME } from "../theme/image-theme";
 import { theme } from "../theme/theme";
 
 const PNG_SIGNATURE = Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
@@ -235,7 +236,7 @@ export class ProtocolProbeComponent extends Container {
 			new Image(
 				options.image.base64,
 				options.image.mimeType,
-				{ fallbackColor: (text: string) => theme.fg("toolOutput", text) },
+				TOOL_OUTPUT_IMAGE_THEME,
 				// Fixed modest caps (not the user's inline-image setting) keep the
 				// swatch a crisp, bounded preview rather than an upscaled wall.
 				{ maxWidthCells: 20, maxHeightCells: 16, budget: options.imageBudget },

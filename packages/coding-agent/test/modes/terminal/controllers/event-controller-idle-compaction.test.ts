@@ -83,7 +83,12 @@ function createContext(
 		ui: { requestRender: vi.fn() },
 		chatContainer: { removeChild: vi.fn() },
 		statusContainer: { clear: vi.fn() },
-		statusLine: { invalidate: vi.fn(), markActivityStart: vi.fn(), markActivityEnd: vi.fn() },
+		statusLine: {
+			invalidate: vi.fn(),
+			markActivityStart: vi.fn(),
+			markActivityEnd: vi.fn(),
+			refreshGitStatus: vi.fn(),
+		},
 		editor: { getText: () => options.editorText ?? "" },
 		sessionManager: { getSessionName: () => options.sessionName },
 		todoPhases: options.todoPhases ?? [],

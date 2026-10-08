@@ -125,7 +125,7 @@ Unknown magic names raise `NameError: UsageError: ...` inside the cell.
 
 ### Multi-cell behavior in a single tool call
 
-A call carries exactly one cell. To build up state, make successive calls: the retained kernel keeps every defined name between them. If a cell fails, earlier state remains in memory and the tool returns a targeted error.
+A call contains one cell. To build up state, make successive calls: the retained kernel keeps every defined name between them. If a cell fails, earlier state remains in memory and the tool returns a targeted error.
 
 `reset=true` resets that language's kernel before the cell executes.
 
@@ -191,7 +191,7 @@ The pause/resume events are the **sole** mechanism that suspends the budget. Eve
 On abort/timeout:
 
 - The host sends `kill("SIGINT")` to the runner subprocess.
-- The runner's exec-time signal handler raises `KeyboardInterrupt` inside the user code.
+- The runner's exec-time signal handler raises `KeyboardInterrupt` inside the running cell.
 - Result includes `cancelled=true`; a kernel timeout is annotated as `eval cell timed out after <n>s; kernel interrupted but remains running. Reset the kernel via { reset: true } if state appears corrupted.`
 - Between requests the runner installs `SIG_IGN` for SIGINT so a stray cancel does not tear down the kernel.
 
@@ -261,5 +261,5 @@ Each variable is read directly from the process environment under its `VEYYON_` 
 
 - `VEYYON_PY` / `VEYYON_JS`: eval backend exposure overrides
 - `VEYYON_PYTHON_SKIP_CHECK=1`: bypass Python preflight/warm checks
-- `VEYYON_PYTHON_INTEGRATION=1`: enable gated integration tests that spawn a real Python
+- `VEYYON_PYTHON_INTEGRATION=1`: enable the opt-in integration tests that spawn a real Python
 - `VEYYON_PYTHON_IPC_TRACE=1`: log NDJSON frames exchanged with the runner subprocess

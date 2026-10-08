@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/sdk";
 import { BrowserTool } from "@veyyon/coding-agent/tools/web/browser";
-import { chromiumCanLaunch } from "../helpers/chromium-can-launch";
+import { CHROMIUM_AVAILABLE } from "./browser/chromium";
 
 function makeSession(): ToolSession {
 	return {
@@ -13,8 +13,6 @@ function makeSession(): ToolSession {
 		settings: Settings.isolated({ "browser.headless": true }),
 	};
 }
-
-const CHROMIUM_AVAILABLE = await chromiumCanLaunch();
 
 describe.skipIf(!CHROMIUM_AVAILABLE)("browser tab evaluation", () => {
 	// Launches real headless Chromium; CI cold start easily exceeds bun's 5s default.

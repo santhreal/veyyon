@@ -216,17 +216,17 @@ export class BinaryVectorStore {
 	readonly conn: Database;
 	readonly dbPath: DatabasePath;
 	readonly tableName: string;
-	private readonly ownsConnection: boolean;
+	readonly #ownsConnection: boolean;
 
 	constructor(options: BinaryVectorStoreOptions = {}) {
 		this.dbPath = options.dbPath ?? ":memory:";
 		this.tableName = assertSqlIdentifier(options.tableName ?? "binary_vectors");
 		this.conn = options.conn ?? openDatabase(this.dbPath, { create: true, readwrite: true });
-		this.ownsConnection = options.conn === undefined;
-		this.initTable();
+		this.#ownsConnection = options.conn === undefined;
+		this.#initTable();
 	}
 
-	private initTable(): void {
+	#initTable(): void {
 		this.conn.exec(`
 			CREATE TABLE IF NOT EXISTS ${this.tableName} (
 				memory_id TEXT PRIMARY KEY,
@@ -339,44 +339,41 @@ export class BinaryVectorStore {
 		};
 	}
 	close(): void {
-		if (this.ownsConnection) {
+		if (this.#ownsConnection) {
 			closeQuietly(this.conn);
 		}
 	}
 }
 
 export class FastBinarySearch {
-	private readonly memoryIds: string[];
-	private readonly vectors: Uint8Array[];
+	readonly #memoryIds: string[] = [];
+	readonly #vectors: Uint8Array[] = [];
 
 	constructor(
 		binaryVectors: ReadonlyMap<string, Uint8Array | ArrayBuffer> | Record<string, Uint8Array | ArrayBuffer>,
 	) {
-		this.memoryIds = [];
-		this.vectors = [];
 		if (isReadonlyMap(binaryVectors)) {
-			for (const [memoryId, vector] of binaryVectors) {
-				this.memoryIds.push(memoryId);
-				this.vectors.push(vector instanceof Uint8Array ? vector : new Uint8Array(vector));
-			}
+			for (const [memoryId, vector] of binaryVectors) this.#add(memoryId, vector);
 		} else {
 			for (const memoryId in binaryVectors) {
 				const vector = binaryVectors[memoryId];
-				if (vector !== undefined) {
-					this.memoryIds.push(memoryId);
-					this.vectors.push(vector instanceof Uint8Array ? vector : new Uint8Array(vector));
-				}
+				if (vector !== undefined) this.#add(memoryId, vector);
 			}
 		}
+	}
+
+	#add(memoryId: string, vector: Uint8Array | ArrayBuffer): void {
+		this.#memoryIds.push(memoryId);
+		this.#vectors.push(vector instanceof Uint8Array ? vector : new Uint8Array(vector));
 	}
 
 	search(queryBinary: Uint8Array | ArrayBuffer, topK = 10): BinaryVectorSearchResult[] {
 		const query = queryBinary instanceof Uint8Array ? queryBinary : new Uint8Array(queryBinary);
 		const results: BinaryVectorSearchResult[] = [];
-		for (let i = 0; i < this.vectors.length; i += 1) {
-			const distance = hammingDistance(query, this.vectors[i] ?? new Uint8Array());
+		for (let i = 0; i < this.#vectors.length; i += 1) {
+			const distance = hammingDistance(query, this.#vectors[i] ?? new Uint8Array());
 			results.push({
-				memory_id: this.memoryIds[i] ?? "",
+				memory_id: this.#memoryIds[i] ?? "",
 				distance,
 				score: informationTheoreticScore(distance),
 			});

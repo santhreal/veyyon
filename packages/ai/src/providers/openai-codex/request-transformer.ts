@@ -5,10 +5,8 @@ import {
 	supportsCodexReasoningSummary,
 } from "@veyyon/catalog/identity";
 import { requireSupportedEffort } from "@veyyon/catalog/model-thinking";
-import * as logger from "@veyyon/utils/logger";
 import type { Model } from "../../types";
-import { mapOpenAIReasoningEffort, ORPHAN_TOOL_CALL_PLACEHOLDER } from "../openai-shared";
-import { staleToolResultNote } from "../transform-messages";
+import { mapOpenAIReasoningEffort, repairResponsesToolPairs } from "../openai-shared";
 
 /** Reasoning replay scope for the Codex Responses API (`reasoning.context`). */
 export type CodexReasoningContext = "auto" | "current_turn" | "all_turns";
@@ -184,101 +182,28 @@ function getReasoningConfig(
 	return config;
 }
 
-function filterInput(input: InputItem[] | undefined): InputItem[] | undefined {
-	if (!Array.isArray(input)) return input;
-
-	return input
-		.filter(item => item.type !== "item_reference")
-		.map(item => {
-			if (item.id != null) {
-				const { id: _id, ...rest } = item;
-				return rest as InputItem;
-			}
-			return item;
-		});
-}
-
-const CODEX_ORPHAN_OUTPUT_LIMIT = 16_000;
-
-function orphanFunctionOutputToMessage(item: InputItem, callId: string): InputItem {
-	const itemRecord = item as unknown as Record<string, unknown>;
-	const toolName = typeof itemRecord.name === "string" ? itemRecord.name : "tool";
-	let text = "";
-	try {
-		const output = itemRecord.output;
-		text = typeof output === "string" ? output : JSON.stringify(output);
-	} catch {
-		text = String(itemRecord.output ?? "");
-	}
-	if (text.length > CODEX_ORPHAN_OUTPUT_LIMIT) {
-		text = `${text.slice(0, CODEX_ORPHAN_OUTPUT_LIMIT)}\n...[truncated]`;
-	}
-	return {
-		type: "message",
-		role: "user",
-		content: staleToolResultNote({ toolName, toolCallId: callId, text }),
-	} as InputItem;
-}
-
-/**
- * Repair both halves of unpaired tool exchanges so the Responses input grammar
- * stays valid — the API rejects either orphan with a 400:
- *
- * - `function_call_output` / `custom_tool_call_output` with no matching call →
- *   folded into a user-role note (`400 No tool call found for … output`).
- *   Regression of #472 / #1351.
- * - `function_call` / `custom_tool_call` with no matching `*_output` → a
- *   placeholder output is synthesized immediately after the call
- *   (`400 No tool output found for function call …`). Hit when the user
- *   branches/navigates the session tree to a node that ends on a tool call (the
- *   tool-result child is dropped from the reconstructed history) or when a turn
- *   is aborted/crashes after the call streamed but before its result persisted.
- */
-function repairToolCallPairs(input: InputItem[]): InputItem[] {
-	const callIds = new Set<string>();
-	const outputCallIds = new Set<string>();
+/** The input without `item_reference` items and with every item's `id` dropped, in one pass. */
+function filterInput(input: readonly InputItem[]): InputItem[] {
+	const out: InputItem[] = [];
 	for (const item of input) {
-		const callId = typeof item.call_id === "string" ? item.call_id : undefined;
-		if (callId === undefined) continue;
-		if (item.type === "function_call" || item.type === "custom_tool_call") callIds.add(callId);
-		else if (item.type === "function_call_output" || item.type === "custom_tool_call_output") {
-			outputCallIds.add(callId);
-		}
-	}
-
-	const repaired: InputItem[] = [];
-	for (const item of input) {
-		const callId = typeof item.call_id === "string" ? item.call_id : undefined;
-
-		if (
-			(item.type === "function_call_output" || item.type === "custom_tool_call_output") &&
-			callId !== undefined &&
-			!callIds.has(callId)
-		) {
-			logger.warn("openai-codex: folding a tool output whose call is missing from the request", {
-				toolCallId: callId,
-				knownCallIds: [...callIds],
-				inputItems: input.length,
-			});
-			repaired.push(orphanFunctionOutputToMessage(item, callId));
+		if (item.type === "item_reference") continue;
+		if (item.id == null) {
+			out.push(item);
 			continue;
 		}
-
-		repaired.push(item);
-
-		if (
-			(item.type === "function_call" || item.type === "custom_tool_call") &&
-			callId !== undefined &&
-			!outputCallIds.has(callId)
-		) {
-			repaired.push({
-				type: item.type === "custom_tool_call" ? "custom_tool_call_output" : "function_call_output",
-				call_id: callId,
-				output: ORPHAN_TOOL_CALL_PLACEHOLDER,
-			} as InputItem);
-		}
+		const { id: _id, ...rest } = item;
+		out.push(rest);
 	}
-	return repaired;
+	return out;
+}
+
+/** Clears `detail` on every `input_image` part of one message content or tool output array. */
+function stripPartDetails(collection: unknown): void {
+	if (!Array.isArray(collection)) return;
+	for (const part of collection) {
+		if (!part || typeof part !== "object" || !("type" in part) || part.type !== "input_image") continue;
+		if ("detail" in part) part.detail = undefined;
+	}
 }
 
 /**
@@ -289,16 +214,8 @@ function repairToolCallPairs(input: InputItem[]): InputItem[] {
 function stripImageDetails(input: unknown[]): void {
 	for (const item of input) {
 		if (!item || typeof item !== "object") continue;
-		const content = "content" in item ? item.content : undefined;
-		const output = "output" in item ? item.output : undefined;
-		for (const collection of [content, output]) {
-			if (!Array.isArray(collection)) continue;
-			for (const part of collection) {
-				if (!part || typeof part !== "object") continue;
-				if (!("type" in part) || part.type !== "input_image") continue;
-				if ("detail" in part) part.detail = undefined;
-			}
-		}
+		if ("content" in item) stripPartDetails(item.content);
+		if ("output" in item) stripPartDetails(item.output);
 	}
 }
 
@@ -355,6 +272,88 @@ export function applyCodexResponsesLiteShape(body: CodexLiteShapedBody): void {
 	delete body.tools;
 }
 
+/** The input with references and item ids dropped, every tool call paired, and the prompt's developer messages first. */
+function prepareInput(body: RequestBody, developerMessages: readonly string[] | undefined): void {
+	if (Array.isArray(body.input)) body.input = repairResponsesToolPairs(filterInput(body.input));
+	if (developerMessages === undefined || developerMessages.length === 0) return;
+	const input = Array.isArray(body.input) ? body.input : [];
+	const prefix = developerMessages.map(
+		(text): InputItem => ({ type: "message", role: "developer", content: [{ type: "input_text", text }] }),
+	);
+	body.input = prefix.concat(input);
+}
+
+/** The last non-blank `input_text` in `input`, read from its last item and that item's last part back. */
+function lastInstructionText(input: readonly InputItem[]): string | undefined {
+	for (let itemIndex = input.length - 1; itemIndex >= 0; itemIndex -= 1) {
+		const content = input[itemIndex].content;
+		if (!Array.isArray(content)) continue;
+		for (let partIndex = content.length - 1; partIndex >= 0; partIndex -= 1) {
+			const part: unknown = content[partIndex];
+			if (!part || typeof part !== "object" || !("type" in part) || part.type !== "input_text") continue;
+			if ("text" in part && typeof part.text === "string" && part.text.trim().length > 0) return part.text;
+		}
+	}
+	return undefined;
+}
+
+/**
+ * The instruction a request with only developer input repeats as a user message: the prompt's last non-blank
+ * developer message, else the last non-blank `input_text` of the developer input, else non-blank `instructions`.
+ */
+function finalInstruction(
+	body: RequestBody,
+	input: readonly InputItem[],
+	developerMessages: readonly string[] | undefined,
+): string | undefined {
+	const fromPrompt = developerMessages?.findLast(text => text.trim().length > 0);
+	if (fromPrompt !== undefined) return fromPrompt;
+	const fromInput = lastInstructionText(input);
+	if (fromInput !== undefined) return fromInput;
+	return typeof body.instructions === "string" && body.instructions.trim().length > 0 ? body.instructions : undefined;
+}
+
+/** Appends the final instruction as a user message when every input item is a developer message. */
+function ensureVisibleInput(body: RequestBody, developerMessages: readonly string[] | undefined): void {
+	const input = Array.isArray(body.input) ? body.input : [];
+	if (input.some(item => item.role !== "developer")) return;
+	const instruction = finalInstruction(body, input, developerMessages);
+	if (instruction === undefined) return;
+	body.input = [...input, { type: "message", role: "user", content: [{ type: "input_text", text: instruction }] }];
+}
+
+/** Sets `reasoning` from the requested effort, summary and replay context, or deletes it when neither applies. */
+function applyReasoning(
+	body: RequestBody,
+	model: Model<"openai-codex-responses">,
+	options: CodexRequestOptions,
+	responsesLite: boolean,
+): void {
+	if (options.reasoningEffort === undefined && !responsesLite) {
+		delete body.reasoning;
+		return;
+	}
+	const reasoningConfig =
+		options.reasoningEffort !== undefined ? getReasoningConfig(model, options.reasoningEffort, options) : {};
+	const reasoning: Partial<ReasoningConfig> = { ...body.reasoning, ...reasoningConfig };
+	body.reasoning = reasoning;
+	// Default reasoning replay to `all_turns`, mirroring codex-rs; an
+	// explicit `reasoningContext` overrides the default. A model that cannot
+	// be sent `all_turns` ({@link acceptsAllTurnsReasoningContext}) has
+	// `context` dropped instead, and the server applies its `current_turn`
+	// default; that gate is authoritative, so even an explicit `all_turns`
+	// override is suppressed there, while `current_turn` and `auto` are
+	// universally supported and always pass through. Responses Lite forces
+	// `all_turns` because its server contract requires it, and it is only
+	// ever on for a model that accepts the value.
+	const context = responsesLite ? "all_turns" : (options.reasoningContext ?? "all_turns");
+	if (context === "all_turns" && !acceptsAllTurnsReasoningContext(model)) {
+		delete reasoning.context;
+	} else {
+		reasoning.context = context;
+	}
+}
+
 export async function transformRequestBody(
 	body: RequestBody,
 	model: Model<"openai-codex-responses">,
@@ -364,100 +363,14 @@ export async function transformRequestBody(
 	body.store = false;
 	body.stream = true;
 
-	if (body.input && Array.isArray(body.input)) {
-		body.input = filterInput(body.input);
-		if (body.input) {
-			body.input = repairToolCallPairs(body.input);
-		}
-	}
-
-	if (prompt?.developerMessages && prompt.developerMessages.length > 0) {
-		const developerMessages: InputItem[] = prompt.developerMessages.map(text => ({
-			type: "message",
-			role: "developer",
-			content: [{ type: "input_text", text }],
-		}));
-		const input = Array.isArray(body.input) ? body.input : [];
-		body.input = developerMessages.concat(input);
-	}
-
-	let finalInstruction = prompt?.developerMessages.findLast(text => text.trim().length > 0);
-	if (finalInstruction === undefined && Array.isArray(body.input)) {
-		for (let itemIndex = body.input.length - 1; itemIndex >= 0; itemIndex -= 1) {
-			const item = body.input[itemIndex];
-			if (item.role !== "developer" || !Array.isArray(item.content)) continue;
-			for (let partIndex = item.content.length - 1; partIndex >= 0; partIndex -= 1) {
-				const part = item.content[partIndex];
-				if (
-					part &&
-					typeof part === "object" &&
-					"type" in part &&
-					part.type === "input_text" &&
-					"text" in part &&
-					typeof part.text === "string" &&
-					part.text.trim().length > 0
-				) {
-					finalInstruction = part.text;
-					break;
-				}
-			}
-			if (finalInstruction !== undefined) break;
-		}
-	}
-	if (finalInstruction === undefined && typeof body.instructions === "string" && body.instructions.trim().length > 0) {
-		finalInstruction = body.instructions;
-	}
-	if (finalInstruction !== undefined) {
-		const input = Array.isArray(body.input) ? body.input : [];
-		let hasVisibleInput = false;
-		for (const item of input) {
-			if (item.role !== "developer") {
-				hasVisibleInput = true;
-				break;
-			}
-		}
-		if (!hasVisibleInput) {
-			body.input = [
-				...input,
-				{
-					type: "message",
-					role: "user",
-					content: [{ type: "input_text", text: finalInstruction }],
-				},
-			];
-		}
-	}
+	prepareInput(body, prompt?.developerMessages);
+	ensureVisibleInput(body, prompt?.developerMessages);
 
 	const responsesLite = resolveCodexResponsesLite(model, options.responsesLite);
 	if (responsesLite) {
 		applyCodexResponsesLiteShape(body);
 	}
-
-	if (options.reasoningEffort !== undefined || responsesLite) {
-		const reasoningConfig =
-			options.reasoningEffort !== undefined ? getReasoningConfig(model, options.reasoningEffort, options) : {};
-		body.reasoning = {
-			...body.reasoning,
-			...reasoningConfig,
-		};
-		// Default reasoning replay to `all_turns`, mirroring codex-rs; an
-		// explicit `reasoningContext` overrides the default. A model that cannot
-		// be sent `all_turns` ({@link acceptsAllTurnsReasoningContext}) has
-		// `context` dropped instead, and the server applies its `current_turn`
-		// default; that gate is authoritative, so even an explicit `all_turns`
-		// override is suppressed there, while `current_turn` and `auto` are
-		// universally supported and always pass through. Responses Lite forces
-		// `all_turns` because its server contract requires it, and it is only
-		// ever on for a model that accepts the value.
-		const context = responsesLite ? "all_turns" : (options.reasoningContext ?? "all_turns");
-		if (context === "all_turns" && !acceptsAllTurnsReasoningContext(model)) {
-			delete body.reasoning.context;
-		} else {
-			body.reasoning.context = context;
-		}
-	} else {
-		delete body.reasoning;
-	}
+	applyReasoning(body, model, options, responsesLite);
 	// Catalog pro aliases (`gpt-5.6-*-pro`): applied after the effort branch so
 	// the mode is sent even when no effort is set (the branch above deletes
 	// `body.reasoning` in that case) — mode and effort are independent fields.

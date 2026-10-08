@@ -1,7 +1,7 @@
 import { CLOUD_CODE_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
+import { getGeminiCliHeaders } from "@veyyon/catalog/wire/gemini-headers";
 import { clamp01 } from "@veyyon/utils/math";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
-import { getGeminiCliHeaders } from "../providers/google-gemini-cli";
 import type {
 	UsageAmount,
 	UsageFetchContext,

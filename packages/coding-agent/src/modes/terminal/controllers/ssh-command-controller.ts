@@ -100,84 +100,10 @@ export class SSHCommandController {
 	}
 
 	/**
-	 * Parse the argument tail of `/ssh add`.
-	 *
-	 * Both required values are POSITION: token 1 is the name and token 2 is the
-	 * address, so a host literally called `user` or `key` needs no escaping. The
-	 * optional values follow, `user`, `key` and `desc` as leading keywords because
-	 * their values are arbitrary text, `compat` as a bare literal, and the port by
-	 * PATTERN as a bare integer.
-	 *
-	 * Reading the port by its shape is sound rather than lucky. Past position 2
-	 * this grammar reads exactly four literal words — `user`, `key`, `desc`,
-	 * `compat` — and none is a run of digits, so no integer can be mistaken for a
-	 * word and no word for a port. A keyword's value is consumed by position and
-	 * never examined, so a user named `2222` is still a user.
-	 */
-	#parseAddCommand(text: string): SshAddParsed {
-		const prefixMatch = text.match(/^\/ssh\s+add\b\s*(.*)$/i);
-		const tokens = parseCommandArgs(prefixMatch?.[1]?.trim() ?? "");
-		if (tokens.length === 0) return {};
-
-		const name = tokens[0];
-		if (name.startsWith("-")) return { error: removedOptionMessage(name, SSH_ADD_REMOVED_OPTIONS, SSH_ADD_USAGE) };
-		const parsed: SshAddParsed = { name };
-		if (tokens.length === 1) return parsed;
-
-		const host = tokens[1];
-		if (host.startsWith("-")) {
-			return { ...parsed, error: removedOptionMessage(host, SSH_ADD_REMOVED_OPTIONS, SSH_ADD_USAGE) };
-		}
-		parsed.host = host;
-
-		const seen = new Set<string>();
-		let index = 2;
-		while (index < tokens.length) {
-			const token = tokens[index];
-			if (token.startsWith("-")) {
-				return { ...parsed, error: removedOptionMessage(token, SSH_ADD_REMOVED_OPTIONS, SSH_ADD_USAGE) };
-			}
-			let word: string;
-			if (token === "user" || token === "key" || token === "desc") {
-				const value = tokens[index + 1];
-				if (!value) return { ...parsed, error: `Missing value after \`${token}\`.\n${SSH_ADD_USAGE}` };
-				if (token === "user") parsed.username = value;
-				else if (token === "key") parsed.keyPath = value;
-				else parsed.description = value;
-				word = token;
-				index += 2;
-			} else if (token === "compat") {
-				parsed.compat = true;
-				word = "compat";
-				index += 1;
-			} else if (/^\d+$/.test(token)) {
-				// `Number.parseInt` accepts trailing garbage (parseInt("22oops") === 22),
-				// so the digit test above is what keeps a typo from becoming a port.
-				const port = Number(token);
-				if (port < 1 || port > 65535) {
-					return {
-						...parsed,
-						error: `Invalid port: ${token}. Use an integer between 1 and 65535.\n${SSH_ADD_USAGE}`,
-					};
-				}
-				parsed.port = port;
-				word = "port";
-				index += 1;
-			} else {
-				return { ...parsed, error: `Unknown argument: ${token}\n${SSH_ADD_USAGE}` };
-			}
-			if (seen.has(word)) return { ...parsed, error: `\`${word}\` given twice.\n${SSH_ADD_USAGE}` };
-			seen.add(word);
-		}
-
-		return parsed;
-	}
-
-	/**
 	 * Handle /ssh add - read the plain-word arguments and add the host to config
 	 */
 	async #handleAdd(text: string): Promise<void> {
-		const parsed = this.#parseAddCommand(text);
+		const parsed = parseAddCommand(text);
 		if (parsed.error) {
 			this.ctx.showError(parsed.error);
 			return;
@@ -271,7 +197,7 @@ export class SSHCommandController {
 				lines.push(theme.fg("accent", "Profile level") + theme.fg("muted", " (ssh.json):"));
 				for (const name of userHosts) {
 					const config = userConfig.hosts![name];
-					const details = this.#formatHostDetails(config);
+					const details = formatHostDetails(config);
 					lines.push(`  ${theme.fg("accent", name)} ${details}`);
 				}
 				lines.push("");
@@ -286,7 +212,7 @@ export class SSHCommandController {
 							theme.fg("dim", " read-only"),
 					);
 					for (const host of hosts) {
-						const details = this.#formatHostDetails({
+						const details = formatHostDetails({
 							host: host.host,
 							username: host.username,
 							port: host.port,
@@ -301,17 +227,6 @@ export class SSHCommandController {
 		} catch (error) {
 			this.ctx.showError(`Failed to list hosts: ${errorMessage(error)}`);
 		}
-	}
-
-	/**
-	 * Format host details (host, user, port) for display
-	 */
-	#formatHostDetails(config: { host?: string; username?: string; port?: number }): string {
-		const parts: string[] = [];
-		if (config.host) parts.push(config.host);
-		if (config.username) parts.push(`user=${config.username}`);
-		if (config.port && config.port !== 22) parts.push(`port=${config.port}`);
-		return theme.fg("dim", parts.length > 0 ? `[${parts.join(", ")}]` : "");
 	}
 
 	/**
@@ -362,4 +277,89 @@ export class SSHCommandController {
 	#showMessage(text: string): void {
 		showCommandMessage(this.ctx, text);
 	}
+}
+
+/**
+ * Parse the argument tail of `/ssh add`.
+ *
+ * Both required values are POSITION: token 1 is the name and token 2 is the
+ * address, so a host literally called `user` or `key` needs no escaping. The
+ * optional values follow, `user`, `key` and `desc` as leading keywords because
+ * their values are arbitrary text, `compat` as a bare literal, and the port by
+ * PATTERN as a bare integer.
+ *
+ * Reading the port by its shape is sound rather than lucky. Past position 2
+ * this grammar reads exactly four literal words — `user`, `key`, `desc`,
+ * `compat` — and none is a run of digits, so no integer can be mistaken for a
+ * word and no word for a port. A keyword's value is consumed by position and
+ * never examined, so a user named `2222` is still a user.
+ */
+function parseAddCommand(text: string): SshAddParsed {
+	const prefixMatch = text.match(/^\/ssh\s+add\b\s*(.*)$/i);
+	const tokens = parseCommandArgs(prefixMatch?.[1]?.trim() ?? "");
+	if (tokens.length === 0) return {};
+
+	const name = tokens[0];
+	if (name.startsWith("-")) return { error: removedOptionMessage(name, SSH_ADD_REMOVED_OPTIONS, SSH_ADD_USAGE) };
+	const parsed: SshAddParsed = { name };
+	if (tokens.length === 1) return parsed;
+
+	const host = tokens[1];
+	if (host.startsWith("-")) {
+		return { ...parsed, error: removedOptionMessage(host, SSH_ADD_REMOVED_OPTIONS, SSH_ADD_USAGE) };
+	}
+	parsed.host = host;
+
+	const seen = new Set<string>();
+	let index = 2;
+	while (index < tokens.length) {
+		const token = tokens[index];
+		if (token.startsWith("-")) {
+			return { ...parsed, error: removedOptionMessage(token, SSH_ADD_REMOVED_OPTIONS, SSH_ADD_USAGE) };
+		}
+		let word: string;
+		if (token === "user" || token === "key" || token === "desc") {
+			const value = tokens[index + 1];
+			if (!value) return { ...parsed, error: `Missing value after \`${token}\`.\n${SSH_ADD_USAGE}` };
+			if (token === "user") parsed.username = value;
+			else if (token === "key") parsed.keyPath = value;
+			else parsed.description = value;
+			word = token;
+			index += 2;
+		} else if (token === "compat") {
+			parsed.compat = true;
+			word = "compat";
+			index += 1;
+		} else if (/^\d+$/.test(token)) {
+			// `Number.parseInt` accepts trailing garbage (parseInt("22oops") === 22),
+			// so the digit test above is what keeps a typo from becoming a port.
+			const port = Number(token);
+			if (port < 1 || port > 65535) {
+				return {
+					...parsed,
+					error: `Invalid port: ${token}. Use an integer between 1 and 65535.\n${SSH_ADD_USAGE}`,
+				};
+			}
+			parsed.port = port;
+			word = "port";
+			index += 1;
+		} else {
+			return { ...parsed, error: `Unknown argument: ${token}\n${SSH_ADD_USAGE}` };
+		}
+		if (seen.has(word)) return { ...parsed, error: `\`${word}\` given twice.\n${SSH_ADD_USAGE}` };
+		seen.add(word);
+	}
+
+	return parsed;
+}
+
+/**
+ * Format host details (host, user, port) for display
+ */
+function formatHostDetails(config: { host?: string; username?: string; port?: number }): string {
+	const parts: string[] = [];
+	if (config.host) parts.push(config.host);
+	if (config.username) parts.push(`user=${config.username}`);
+	if (config.port && config.port !== 22) parts.push(`port=${config.port}`);
+	return theme.fg("dim", parts.length > 0 ? `[${parts.join(", ")}]` : "");
 }

@@ -104,4 +104,67 @@ describe("reopenBackgroundAfterResets", () => {
 	it("re-opens the ground after a trailing reset", () => {
 		expect(reopenBackgroundAfterResets(`text${SGR_RESET}`, GROUND)).toBe(`text${SGR_RESET}${GROUND}`);
 	});
+
+	/**
+	 * A background that is itself a reset (the transparent ground a theme with an empty colour
+	 * resolves to) goes in once after each reset, and is not then read as a reset of its own.
+	 *
+	 * Three chained replacements inserted it after each `ESC [ 0 m`, then found that insertion as an
+	 * `ESC [ 49 m` and inserted it again, so every reset carried a doubled ground.
+	 */
+	it("inserts a ground that is itself a reset once after each reset", () => {
+		expect(reopenBackgroundAfterResets(`a${SGR_RESET}b${SGR_BG_RESET}c`, SGR_BG_RESET)).toBe(
+			`a${SGR_RESET}${SGR_BG_RESET}b${SGR_BG_RESET}${SGR_BG_RESET}c`,
+		);
+	});
+
+	/**
+	 * Any row: the ground follows exactly the resets a left-to-right read of the row finds.
+	 *
+	 * The oracle is a global regular expression built from the three reset constants, a separate
+	 * reading of the same rule; rows mix text, each reset, the near misses that share a reset's
+	 * first bytes (`ESC [ 0`, `ESC [ 4`, `ESC [ 40 m`, `ESC [ 00 m`, a bare `ESC`), and other
+	 * colour sequences, under a colour ground, a reset ground and an empty one.
+	 */
+	it("re-opens after exactly the resets a left-to-right read finds, in any row", () => {
+		const resets = new RegExp(
+			[SGR_RESET, SGR_RESET_SHORT, SGR_BG_RESET].map(reset => reset.replace("[", "\\[")).join("|"),
+			"g",
+		);
+		const pieces = [
+			"a",
+			"text ",
+			"m",
+			"0m",
+			"[m",
+			SGR_RESET,
+			SGR_RESET_SHORT,
+			SGR_BG_RESET,
+			"\x1b",
+			"\x1b[",
+			"\x1b[0",
+			"\x1b[4",
+			"\x1b[49",
+			"\x1b[40m",
+			"\x1b[00m",
+			"\x1b[39m",
+			"\x1b[38;5;250m",
+			"\x1b]8;;x\x1b\\",
+		];
+		let state = 0x5eed;
+		const next = (bound: number): number => {
+			state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+			return (state >>> 8) % bound;
+		};
+		const mismatches: string[] = [];
+		for (let i = 0; i < 20000; i++) {
+			let row = "";
+			for (let length = 1 + next(12); length > 0; length--) row += pieces[next(pieces.length)]!;
+			for (const ground of [GROUND, SGR_BG_RESET, ""]) {
+				const expected = row.replace(resets, reset => reset + ground);
+				if (reopenBackgroundAfterResets(row, ground) !== expected) mismatches.push(JSON.stringify([row, ground]));
+			}
+		}
+		expect(mismatches.slice(0, 5)).toEqual([]);
+	});
 });

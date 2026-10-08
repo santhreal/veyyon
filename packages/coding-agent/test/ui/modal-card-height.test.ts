@@ -26,6 +26,8 @@ import { stripVTControlCharacters } from "node:util";
 import {
 	computeModalDims,
 	MODAL_SIZING_MEDIUM,
+} from "@veyyon/coding-agent/modes/terminal/components/chrome/modal-geometry";
+import {
 	type ModalShellInput,
 	minModalChromeRows,
 	renderModalShell,

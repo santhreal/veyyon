@@ -1,6 +1,15 @@
 import * as crypto from "node:crypto";
-import type { AgentMessage } from "@veyyon/agent-core";
-import type { AssistantMessage, Context, ImageContent, Message, TextContent, Tool } from "@veyyon/ai";
+import type { AgentMessage, CompactionSummaryMessage } from "@veyyon/agent-core";
+import type {
+	AssistantMessage,
+	Context,
+	ImageContent,
+	Message,
+	TextContent,
+	ThinkingContent,
+	Tool,
+	ToolCall,
+} from "@veyyon/ai";
 import { toolWireSchema } from "@veyyon/ai/utils/schema";
 import type { SessionContext } from "@veyyon/kernel/session/session-context";
 import { isWellFormedUtf16, utf8ByteLength } from "@veyyon/utils/string-length";
@@ -247,8 +256,24 @@ const MAX_LONG_TERMINAL_ALIASES = 16;
 const SHORT_ALIAS_TRIE_CODE_UNITS = 256;
 const MAX_TERMINAL_ALIAS_BYTES = 16 * 1024 * 1024;
 
+/** Counts match events against a cap and fails with `message` on the first event past it. */
+class MatchBudget {
+	#remaining: number;
+	readonly #message: string;
+
+	constructor(limit: number, message: string) {
+		this.#remaining = limit;
+		this.#message = message;
+	}
+
+	spend(): void {
+		if (--this.#remaining < 0) throw new Error(this.#message);
+	}
+}
+
 interface LiteralMatcherNode<T> {
-	children: Map<string, number>;
+	/** Child node index by the UTF-16 code unit that leads to it. */
+	children: Map<number, number>;
 	fail: number;
 	outputLink: number;
 	outputs: Array<{ literal: string; value: T }>;
@@ -259,9 +284,14 @@ interface LiteralMatcherNode<T> {
  *
  * Construction is linear in configured characters. Scanning is linear in input plus reported
  * matches, and callers cap match events before retaining replacement state.
+ *
+ * Text is mostly characters that start no literal, so the scan spends most of its time at the
+ * root. A root transition on a code unit below 256 is one typed-array load from
+ * `#rootLatin1`; every other transition is one `Map` lookup by code unit.
  */
 class LiteralMatcher<T> {
 	readonly #nodes: Array<LiteralMatcherNode<T>> = [{ children: new Map(), fail: 0, outputLink: 0, outputs: [] }];
+	readonly #rootLatin1 = new Int32Array(256);
 	readonly #longEntries: Array<{ literal: string; value: T }> = [];
 
 	constructor(entries: Iterable<readonly [string, T]>) {
@@ -274,22 +304,28 @@ class LiteralMatcher<T> {
 				this.#longEntries.push({ literal, value });
 				continue;
 			}
-			let nodeIndex = 0;
-			for (let index = 0; index < literal.length; index++) {
-				const character = literal[index];
-				const existing = this.#nodes[nodeIndex].children.get(character);
-				if (existing !== undefined) {
-					nodeIndex = existing;
-					continue;
-				}
-				const childIndex = this.#nodes.length;
-				this.#nodes.push({ children: new Map(), fail: 0, outputLink: 0, outputs: [] });
-				this.#nodes[nodeIndex].children.set(character, childIndex);
-				nodeIndex = childIndex;
-			}
-			this.#nodes[nodeIndex].outputs.push({ literal, value });
+			this.#nodes[this.#insert(literal)].outputs.push({ literal, value });
+		}
+		for (const [code, childIndex] of this.#nodes[0].children) {
+			if (code < 256) this.#rootLatin1[code] = childIndex;
 		}
 		this.#buildFailureLinks();
+	}
+
+	/** Walk the trie along `literal`, adding the nodes it lacks, and return the node it ends at. */
+	#insert(literal: string): number {
+		let nodeIndex = 0;
+		for (let index = 0; index < literal.length; index++) {
+			const code = literal.charCodeAt(index);
+			let next = this.#nodes[nodeIndex].children.get(code);
+			if (next === undefined) {
+				next = this.#nodes.length;
+				this.#nodes.push({ children: new Map(), fail: 0, outputLink: 0, outputs: [] });
+				this.#nodes[nodeIndex].children.set(code, next);
+			}
+			nodeIndex = next;
+		}
+		return nodeIndex;
 	}
 
 	#buildFailureLinks(): void {
@@ -298,12 +334,12 @@ class LiteralMatcher<T> {
 		for (let cursor = 0; cursor < queue.length; cursor++) {
 			const nodeIndex = queue[cursor];
 			const node = this.#nodes[nodeIndex];
-			for (const [character, childIndex] of node.children) {
+			for (const [code, childIndex] of node.children) {
 				let failure = node.fail;
-				while (failure !== 0 && !this.#nodes[failure].children.has(character)) {
+				while (failure !== 0 && !this.#nodes[failure].children.has(code)) {
 					failure = this.#nodes[failure].fail;
 				}
-				const transition = this.#nodes[failure].children.get(character);
+				const transition = this.#nodes[failure].children.get(code);
 				if (transition !== undefined && transition !== childIndex) failure = transition;
 				const child = this.#nodes[childIndex];
 				child.fail = failure;
@@ -318,32 +354,62 @@ class LiteralMatcher<T> {
 		visit: (start: number, end: number, value: T, literal: string) => boolean | undefined,
 		maxMatches = MAX_SECRET_MATCHES_PER_TEXT,
 	): void {
+		const budget = new MatchBudget(maxMatches, "Refusing a secret transformation with too many match events.");
+		if (this.#nodes[0].children.size > 0 && !this.#scanTrie(text, visit, budget)) return;
+		this.#scanLongEntries(text, visit, budget);
+	}
+
+	/** Report every trie literal that ends in `text`; false once `visit` stops the scan. */
+	#scanTrie(
+		text: string,
+		visit: (start: number, end: number, value: T, literal: string) => boolean | undefined,
+		budget: MatchBudget,
+	): boolean {
 		let nodeIndex = 0;
-		let matchCount = 0;
 		for (let index = 0; index < text.length; index++) {
-			const character = text[index];
-			while (nodeIndex !== 0 && !this.#nodes[nodeIndex].children.has(character)) {
-				nodeIndex = this.#nodes[nodeIndex].fail;
-			}
-			nodeIndex = this.#nodes[nodeIndex].children.get(character) ?? 0;
-			let outputNode = nodeIndex;
-			while (outputNode !== 0) {
-				for (const output of this.#nodes[outputNode].outputs) {
-					if (++matchCount > maxMatches) {
-						throw new Error("Refusing a secret transformation with too many match events.");
-					}
-					if (visit(index + 1 - output.literal.length, index + 1, output.value, output.literal) === false) {
-						return;
-					}
-				}
-				outputNode = this.#nodes[outputNode].outputLink;
+			nodeIndex = this.#advance(nodeIndex, text.charCodeAt(index));
+			if (nodeIndex !== 0 && !this.#reportOutputs(nodeIndex, index + 1, visit, budget)) return false;
+		}
+		return true;
+	}
+
+	/** The node reached from `nodeIndex` on `code`, following failure links back toward the root. */
+	#advance(nodeIndex: number, code: number): number {
+		const nodes = this.#nodes;
+		let current = nodeIndex;
+		while (current !== 0) {
+			const next = nodes[current].children.get(code);
+			if (next !== undefined) return next;
+			current = nodes[current].fail;
+		}
+		return code < 256 ? this.#rootLatin1[code] : (nodes[0].children.get(code) ?? 0);
+	}
+
+	/** Report every literal ending at `end` along the output chain of `nodeIndex`; false once `visit` stops. */
+	#reportOutputs(
+		nodeIndex: number,
+		end: number,
+		visit: (start: number, end: number, value: T, literal: string) => boolean | undefined,
+		budget: MatchBudget,
+	): boolean {
+		const nodes = this.#nodes;
+		for (let outputNode = nodeIndex; outputNode !== 0; outputNode = nodes[outputNode].outputLink) {
+			for (const output of nodes[outputNode].outputs) {
+				budget.spend();
+				if (visit(end - output.literal.length, end, output.value, output.literal) === false) return false;
 			}
 		}
+		return true;
+	}
+
+	#scanLongEntries(
+		text: string,
+		visit: (start: number, end: number, value: T, literal: string) => boolean | undefined,
+		budget: MatchBudget,
+	): void {
 		for (const output of this.#longEntries) {
 			for (let start = text.indexOf(output.literal); start >= 0; start = text.indexOf(output.literal, start + 1)) {
-				if (++matchCount > maxMatches) {
-					throw new Error("Refusing a secret transformation with too many match events.");
-				}
+				budget.spend();
 				if (visit(start, start + output.literal.length, output.value, output.literal) === false) return;
 			}
 		}
@@ -388,32 +454,33 @@ function assertBoundedTransformText(value: string): number {
  */
 function generateDeterministicReplacement(secret: string, key: Uint8Array, forbidden: LiteralMatcher<true>): string {
 	const seed = crypto.createHmac("sha256", key).update("replacement-source\0", "utf8").update(secret, "utf8").digest();
-	const counterBytes = Buffer.allocUnsafe(8);
 	for (let attempt = 0; attempt < 256; attempt++) {
-		const chunks: string[] = [];
-		let outputLength = 0;
-		for (let counter = 0; outputLength < secret.length; counter++) {
-			counterBytes.writeUInt32BE(attempt, 0);
-			counterBytes.writeUInt32BE(counter, 4);
-			const digest = crypto
-				.createHmac("sha256", key)
-				.update("replacement-expand\0", "utf8")
-				.update(seed)
-				.update(counterBytes)
-				.digest();
-			let chunk = "";
-			for (const byte of digest) {
-				if (byte >= 248) continue;
-				chunk += REPLACEMENT_CHARS[byte % REPLACEMENT_CHARS.length];
-				if (outputLength + chunk.length === secret.length) break;
-			}
-			chunks.push(chunk);
-			outputLength += chunk.length;
-		}
-		const candidate = chunks.join("");
+		const candidate = expandReplacementCandidate(seed, key, attempt, secret.length);
 		if (candidate !== secret && !forbidden.hasMatch(candidate)) return candidate;
 	}
 	throw new Error("Could not generate a replacement distinct from configured secret sources.");
+}
+
+/** Expand the keyed seed in counter mode into `length` replacement characters for one attempt. */
+function expandReplacementCandidate(seed: Buffer, key: Uint8Array, attempt: number, length: number): string {
+	const counterBytes = Buffer.allocUnsafe(8);
+	counterBytes.writeUInt32BE(attempt, 0);
+	let candidate = "";
+	for (let counter = 0; candidate.length < length; counter++) {
+		counterBytes.writeUInt32BE(counter, 4);
+		const digest = crypto
+			.createHmac("sha256", key)
+			.update("replacement-expand\0", "utf8")
+			.update(seed)
+			.update(counterBytes)
+			.digest();
+		for (const byte of digest) {
+			if (byte >= 248) continue;
+			candidate += REPLACEMENT_CHARS[byte % REPLACEMENT_CHARS.length];
+			if (candidate.length === length) break;
+		}
+	}
+	return candidate;
 }
 
 /** Refuse one-way replacement text that could later be expanded as a live credential. */
@@ -485,6 +552,117 @@ interface CompiledRegexEntry {
 	 * discovers inherits that rule's verdict and a match has no origin of its own to consult.
 	 */
 	displayRestorable: boolean;
+}
+
+/**
+ * The checks a registry passes before any of it is installed, in entry order.
+ *
+ * Accepting an entry checks its bounds and the fields its type and mode permit, and holds what
+ * later entries are compared against: the policy of each exact source and the declaration of each
+ * name, so two entries that disagree about one source or one name fail the registry.
+ */
+class RegistryValidation {
+	/** Exact plain sources, for the matcher that proves no replacement contains one. */
+	readonly configuredPlainSources: Array<readonly [string, true]> = [];
+	readonly #sourcePolicies = new Map<string, { mode: "obfuscate" | "replace"; replacement?: string }>();
+	readonly #namedPolicies = new Map<string, { content: string; expiresAt: number | null }>();
+	#configuredBytes = 0;
+	#regexEntryCount = 0;
+
+	accept(entry: SecretEntry): void {
+		this.#acceptBytes(entry);
+		assertValidExpiry(entry.expiresAt);
+		const mode = entry.mode ?? "obfuscate";
+		assertEntryFieldScopes(entry, mode);
+		if (entry.name !== undefined) this.#acceptName(entry, entry.name, mode);
+		if (entry.expiresAt !== undefined && (entry.type !== "plain" || mode !== "obfuscate")) {
+			throw new Error("Refusing an expiry where no reversible plain placeholder is created.");
+		}
+		const sourceKey = `${entry.type}\0${entry.content}`;
+		const existingPolicy = this.#sourcePolicies.get(sourceKey);
+		if (
+			existingPolicy !== undefined &&
+			(existingPolicy.mode !== mode || (mode === "replace" && existingPolicy.replacement !== entry.replacement))
+		) {
+			throw new Error("Refusing conflicting policies for the same exact secret source.");
+		}
+		this.#sourcePolicies.set(sourceKey, { mode, replacement: entry.replacement });
+		if (entry.type === "plain") this.configuredPlainSources.push([entry.content, true]);
+		else if (++this.#regexEntryCount > MAX_SECRET_REGEX_ENTRIES) {
+			throw new Error("Refusing a secret registry above the regex entry limit.");
+		}
+	}
+
+	#acceptBytes(entry: SecretEntry): void {
+		if (!isWellFormedUtf16(entry.content)) {
+			throw new Error("Refusing ill-formed UTF-16 in secret transformation data.");
+		}
+		const contentBytes = utf8ByteLength(entry.content);
+		if (contentBytes > MAX_SECRET_VALUE_BYTES) {
+			throw new Error("Refusing secret transformation data above the per-value byte limit.");
+		}
+		this.#configuredBytes += contentBytes;
+		if (entry.replacement !== undefined) {
+			assertOneWayReplacement(entry.replacement);
+			this.#configuredBytes += utf8ByteLength(entry.replacement);
+		}
+		if (this.#configuredBytes > MAX_CONFIGURED_SECRET_BYTES) {
+			throw new Error("Refusing a secret registry above the cumulative byte limit.");
+		}
+	}
+
+	#acceptName(entry: SecretEntry, name: string, mode: "obfuscate" | "replace"): void {
+		if (entry.type !== "plain" || mode !== "obfuscate") {
+			throw new Error("Refusing a secret name where no reversible plain placeholder is created.");
+		}
+		if (!isValidSecretName(name)) {
+			throw new Error("Refusing an invalid secret name in a reversible placeholder.");
+		}
+		const namedPolicy = { content: entry.content, expiresAt: entry.expiresAt ?? null };
+		const existing = this.#namedPolicies.get(name);
+		if (
+			existing !== undefined &&
+			(existing.content !== namedPolicy.content || existing.expiresAt !== namedPolicy.expiresAt)
+		) {
+			throw new Error("Refusing conflicting declarations for the same secret name.");
+		}
+		this.#namedPolicies.set(name, namedPolicy);
+	}
+}
+
+/** Refuse a `replacement`, `flags` or `minLength` on an entry whose type and mode give it no meaning. */
+function assertEntryFieldScopes(entry: SecretEntry, mode: "obfuscate" | "replace"): void {
+	if (entry.replacement !== undefined && mode !== "replace") {
+		throw new Error('Refusing a "replacement" on a secret outside "replace" mode.');
+	}
+	if (entry.flags !== undefined && entry.type !== "regex") {
+		throw new Error('Refusing regex "flags" on a plain secret.');
+	}
+	if (entry.minLength === undefined) return;
+	if (!Number.isInteger(entry.minLength) || entry.minLength < 1) {
+		throw new Error('Refusing a secret "minLength" that is not a whole number of 1 or more.');
+	}
+	if (entry.type !== "regex" || mode === "replace") {
+		throw new Error('Refusing "minLength" where no reversible regex match floor applies.');
+	}
+}
+
+/** Copy the placeholder key, refusing anything but exactly 32 bytes so a caller cannot mutate it later. */
+function copyPlaceholderKey(supplied: Uint8Array): Uint8Array {
+	if (!(supplied instanceof Uint8Array) || supplied.byteLength !== 32) {
+		throw new Error("Refusing a placeholder key that is not exactly 32 bytes.");
+	}
+	return Uint8Array.from(supplied);
+}
+
+/** Refuse a `replace` entry whose replacement would itself write a configured exact secret. */
+function assertReplacementsFreeOfSecrets(entries: SecretEntry[], forbidden: LiteralMatcher<true>): void {
+	for (const entry of entries) {
+		if ((entry.mode ?? "obfuscate") !== "replace" || entry.replacement === undefined) continue;
+		if (forbidden.hasMatch(entry.replacement)) {
+			throw new Error("Refusing a secret replacement that contains a configured secret.");
+		}
+	}
 }
 
 export class SecretObfuscator {
@@ -590,11 +768,6 @@ export class SecretObfuscator {
 		this.#rejections.push(rejection);
 		this.#onRejection?.(rejection);
 	}
-	#assertValidExpiry(expiresAt: number | null | undefined): void {
-		if (expiresAt !== undefined && expiresAt !== null && !Number.isSafeInteger(expiresAt)) {
-			throw new Error("Refusing a secret expiry that is not a finite safe-integer epoch timestamp.");
-		}
-	}
 
 	#registerAlias(alias: string, entryIndex: number): void {
 		assertBoundedSecretString(alias);
@@ -674,180 +847,106 @@ export class SecretObfuscator {
 		if (entries.length > MAX_SECRET_ENTRIES) {
 			throw new Error("Refusing a secret registry above the configured entry limit.");
 		}
-		const suppliedKey = options?.placeholderKey ?? PROCESS_PLACEHOLDER_KEY;
-		if (!(suppliedKey instanceof Uint8Array) || suppliedKey.byteLength !== 32) {
-			throw new Error("Refusing a placeholder key that is not exactly 32 bytes.");
-		}
-		this.#placeholderKey = Uint8Array.from(suppliedKey);
+		this.#placeholderKey = copyPlaceholderKey(options?.placeholderKey ?? PROCESS_PLACEHOLDER_KEY);
 		this.#onRejection = options?.onRejection;
 		this.#onExpiry = options?.onExpiry;
 		this.#now = options?.now ?? Date.now;
 
-		const sourcePolicies = new Map<string, { mode: "obfuscate" | "replace"; replacement?: string }>();
-		const namedPolicies = new Map<string, { content: string; expiresAt: number | null }>();
-		const configuredPlainSources: Array<readonly [string, true]> = [];
-		let configuredBytes = 0;
-		let regexEntryCount = 0;
-		for (const entry of entries) {
-			if (!isWellFormedUtf16(entry.content)) {
-				throw new Error("Refusing ill-formed UTF-16 in secret transformation data.");
-			}
-			const contentBytes = utf8ByteLength(entry.content);
-			if (contentBytes > MAX_SECRET_VALUE_BYTES) {
-				throw new Error("Refusing secret transformation data above the per-value byte limit.");
-			}
-			configuredBytes += contentBytes;
-			if (entry.replacement !== undefined) {
-				assertOneWayReplacement(entry.replacement);
-				configuredBytes += utf8ByteLength(entry.replacement);
-			}
-			if (configuredBytes > MAX_CONFIGURED_SECRET_BYTES) {
-				throw new Error("Refusing a secret registry above the cumulative byte limit.");
-			}
-			this.#assertValidExpiry(entry.expiresAt);
-			const mode = entry.mode ?? "obfuscate";
-			if (entry.replacement !== undefined && mode !== "replace") {
-				throw new Error('Refusing a "replacement" on a secret outside "replace" mode.');
-			}
-			if (entry.flags !== undefined && entry.type !== "regex") {
-				throw new Error('Refusing regex "flags" on a plain secret.');
-			}
-			if (entry.minLength !== undefined) {
-				if (!Number.isInteger(entry.minLength) || entry.minLength < 1) {
-					throw new Error('Refusing a secret "minLength" that is not a whole number of 1 or more.');
-				}
-				if (entry.type !== "regex" || mode === "replace") {
-					throw new Error('Refusing "minLength" where no reversible regex match floor applies.');
-				}
-			}
-			if (entry.name !== undefined) {
-				if (entry.type !== "plain" || mode !== "obfuscate") {
-					throw new Error("Refusing a secret name where no reversible plain placeholder is created.");
-				}
-				if (!isValidSecretName(entry.name)) {
-					throw new Error("Refusing an invalid secret name in a reversible placeholder.");
-				}
-				const namedPolicy = { content: entry.content, expiresAt: entry.expiresAt ?? null };
-				const existingNamedPolicy = namedPolicies.get(entry.name);
-				if (
-					existingNamedPolicy !== undefined &&
-					(existingNamedPolicy.content !== namedPolicy.content ||
-						existingNamedPolicy.expiresAt !== namedPolicy.expiresAt)
-				) {
-					throw new Error("Refusing conflicting declarations for the same secret name.");
-				}
-				namedPolicies.set(entry.name, namedPolicy);
-			}
-			if (entry.expiresAt !== undefined && (entry.type !== "plain" || mode !== "obfuscate")) {
-				throw new Error("Refusing an expiry where no reversible plain placeholder is created.");
-			}
-			const sourceKey = `${entry.type}\0${entry.content}`;
-			const existingPolicy = sourcePolicies.get(sourceKey);
-			if (
-				existingPolicy !== undefined &&
-				(existingPolicy.mode !== mode || (mode === "replace" && existingPolicy.replacement !== entry.replacement))
-			) {
-				throw new Error("Refusing conflicting policies for the same exact secret source.");
-			}
-			sourcePolicies.set(sourceKey, { mode, replacement: entry.replacement });
-			if (entry.type === "plain") configuredPlainSources.push([entry.content, true]);
-			else if (++regexEntryCount > MAX_SECRET_REGEX_ENTRIES) {
-				throw new Error("Refusing a secret registry above the regex entry limit.");
-			}
-		}
-		this.#configuredForbiddenMatcher = new LiteralMatcher(configuredPlainSources);
-		for (const entry of entries) {
-			if (
-				(entry.mode ?? "obfuscate") === "replace" &&
-				entry.replacement !== undefined &&
-				this.#configuredForbiddenMatcher.hasMatch(entry.replacement)
-			) {
-				throw new Error("Refusing a secret replacement that contains a configured secret.");
-			}
-		}
+		const validation = new RegistryValidation();
+		for (const entry of entries) validation.accept(entry);
+		this.#configuredForbiddenMatcher = new LiteralMatcher(validation.configuredPlainSources);
+		assertReplacementsFreeOfSecrets(entries, this.#configuredForbiddenMatcher);
 
 		let hasRealSecret = false;
 		for (const [entryIndex, entry] of entries.entries()) {
-			const mode = entry.mode ?? "obfuscate";
-			if (entry.type === "plain" && mode === "replace" && entry.content.length === 0) {
-				throw new Error("Refusing an empty plain secret, which cannot protect or replace any bytes.");
-			}
-			if (entry.type === "plain") {
-				if (mode === "obfuscate") {
-					if (!canObfuscatePlainValue(entry.content)) {
-						this.#reject({
-							reason: "too-short-to-obfuscate",
-							index: entryIndex,
-							length: secretCharacterLength(entry.content),
-						});
-						continue;
-					}
-					if (entry.name !== undefined && !isValidSecretName(entry.name)) {
-						throw new Error("Refusing an invalid secret name in a reversible placeholder.");
-					}
-					const placeholder =
-						entry.name === undefined
-							? this.#buildValuePlaceholder(entry.content)
-							: buildNamePlaceholder(entry.name);
-					// Display is decided by origin AND type together; see mayRestoreForDisplay.
-					this.#registerReversible(entry.content, placeholder, entry.expiresAt, mayRestoreForDisplay(entry));
-					// Recorded against the PLACEHOLDER, so the inventory below reports exactly the
-					// values still being masked rather than every entry that was ever handed in. Added
-					// rather than assigned: one value has one placeholder, so a credential declared in
-					// two places arrives twice and both labels are true answers to "where is this
-					// coming from".
-					if (entry.name === undefined && entry.source !== undefined) {
-						const sources = this.#sourcesByPlaceholder.get(placeholder);
-						if (sources === undefined) this.#sourcesByPlaceholder.set(placeholder, new Set([entry.source]));
-						else sources.add(entry.source);
-					}
-				} else {
-					const alias = resolveSafeReplacement(
-						entry.content,
-						entry.replacement,
-						this.#configuredForbiddenMatcher,
-						this.#placeholderKey,
-					);
-					this.#replaceMappings.set(entry.content, alias);
-					this.#knownSecretValues.add(entry.content);
-					this.#registerAlias(alias, entryIndex);
-				}
-				hasRealSecret = true;
-				continue;
-			}
-
-			try {
-				const regex = compileSecretRegex(entry.content, entry.flags);
-				const replacement = entry.replacement;
-				if (mode === "replace" && replacement !== undefined) {
-					if (this.#configuredForbiddenMatcher.hasMatch(replacement)) {
-						throw new Error("replacement contains a configured exact secret source");
-					}
-					this.#registerAlias(replacement, entryIndex);
-				}
-				this.#regexEntries.push({
-					regex,
-					mode,
-					replacement,
-					minLength: entry.minLength ?? MIN_OBFUSCATABLE_LENGTH,
-					entryIndex,
-					aliases: new Map(),
-					displayRestorable: mayRestoreForDisplay(entry),
-				});
-				hasRealSecret = true;
-			} catch (error) {
-				this.#reject({
-					reason: "invalid-pattern",
-					index: entryIndex,
-					length: entry.content.length,
-					detail: errorMessage(error),
-				});
-			}
+			const registered =
+				entry.type === "plain"
+					? this.#registerPlainEntry(entry, entryIndex)
+					: this.#registerRegexEntry(entry, entryIndex);
+			if (registered) hasRealSecret = true;
 		}
 
 		for (const [alias, origins] of this.#aliasOrigins) this.#assertNoCrossRuleAliasCapture(alias, origins);
 		this.#rebuildPlainMatcher();
 		this.#hasAny = hasRealSecret;
+	}
+
+	/** Install one plain entry; false when it is refused as too short to obfuscate. */
+	#registerPlainEntry(entry: SecretEntry, entryIndex: number): boolean {
+		if ((entry.mode ?? "obfuscate") === "replace") {
+			if (entry.content.length === 0) {
+				throw new Error("Refusing an empty plain secret, which cannot protect or replace any bytes.");
+			}
+			const alias = resolveSafeReplacement(
+				entry.content,
+				entry.replacement,
+				this.#configuredForbiddenMatcher,
+				this.#placeholderKey,
+			);
+			this.#replaceMappings.set(entry.content, alias);
+			this.#knownSecretValues.add(entry.content);
+			this.#registerAlias(alias, entryIndex);
+			return true;
+		}
+		if (!canObfuscatePlainValue(entry.content)) {
+			this.#reject({
+				reason: "too-short-to-obfuscate",
+				index: entryIndex,
+				length: secretCharacterLength(entry.content),
+			});
+			return false;
+		}
+		if (entry.name !== undefined && !isValidSecretName(entry.name)) {
+			throw new Error("Refusing an invalid secret name in a reversible placeholder.");
+		}
+		const placeholder =
+			entry.name === undefined ? this.#buildValuePlaceholder(entry.content) : buildNamePlaceholder(entry.name);
+		// Display is decided by origin AND type together; see mayRestoreForDisplay.
+		this.#registerReversible(entry.content, placeholder, entry.expiresAt, mayRestoreForDisplay(entry));
+		// Recorded against the PLACEHOLDER, so the inventory below reports exactly the
+		// values still being masked rather than every entry that was ever handed in. Added
+		// rather than assigned: one value has one placeholder, so a credential declared in
+		// two places arrives twice and both labels are true answers to "where is this
+		// coming from".
+		if (entry.name === undefined && entry.source !== undefined) {
+			const sources = this.#sourcesByPlaceholder.get(placeholder);
+			if (sources === undefined) this.#sourcesByPlaceholder.set(placeholder, new Set([entry.source]));
+			else sources.add(entry.source);
+		}
+		return true;
+	}
+
+	/** Compile one regex entry; false when its pattern is refused. */
+	#registerRegexEntry(entry: SecretEntry, entryIndex: number): boolean {
+		const mode = entry.mode ?? "obfuscate";
+		try {
+			const regex = compileSecretRegex(entry.content, entry.flags);
+			const replacement = entry.replacement;
+			if (mode === "replace" && replacement !== undefined) {
+				if (this.#configuredForbiddenMatcher.hasMatch(replacement)) {
+					throw new Error("replacement contains a configured exact secret source");
+				}
+				this.#registerAlias(replacement, entryIndex);
+			}
+			this.#regexEntries.push({
+				regex,
+				mode,
+				replacement,
+				minLength: entry.minLength ?? MIN_OBFUSCATABLE_LENGTH,
+				entryIndex,
+				aliases: new Map(),
+				displayRestorable: mayRestoreForDisplay(entry),
+			});
+			return true;
+		} catch (error) {
+			this.#reject({
+				reason: "invalid-pattern",
+				index: entryIndex,
+				length: entry.content.length,
+				detail: errorMessage(error),
+			});
+			return false;
+		}
 	}
 
 	/** Build an unnamed placeholder and fail closed on retained or structural collision cases. */
@@ -873,7 +972,7 @@ export class SecretObfuscator {
 		displayRestorable = false,
 	): void {
 		assertBoundedSecretString(secret);
-		this.#assertValidExpiry(expiresAt);
+		assertValidExpiry(expiresAt);
 		const existing = this.#deobfuscateMap.get(placeholder);
 		if (existing !== undefined && existing !== secret) this.#forgetPlaceholder(placeholder);
 		this.#retiredPlaceholders.delete(placeholder);
@@ -978,7 +1077,7 @@ export class SecretObfuscator {
 	 */
 	addNamedSecret(name: string, value: string, expiresAt?: number | null): string {
 		assertBoundedSecretString(value);
-		this.#assertValidExpiry(expiresAt);
+		assertValidExpiry(expiresAt);
 		if (!canObfuscatePlainValue(value)) {
 			throw new Error(
 				`Refusing to add ${name}: the value is ${secretCharacterLength(value)} characters, under the ` +
@@ -1010,7 +1109,7 @@ export class SecretObfuscator {
 	 * the old deadline and drop the secret at it.
 	 */
 	#trackExpiry(placeholder: string, expiresAt: number | null | undefined): void {
-		this.#assertValidExpiry(expiresAt);
+		assertValidExpiry(expiresAt);
 		const previous = this.#expiryByPlaceholder.get(placeholder);
 		if (expiresAt === undefined || expiresAt === null) {
 			this.#expiryByPlaceholder.delete(placeholder);
@@ -1212,129 +1311,123 @@ export class SecretObfuscator {
 		if (!this.#hasAny) return text;
 		assertBoundedTransformText(text);
 		this.#forgetExpired();
-		let state: ProtectedText = { text, spans: this.#protectedOutputSpans(text) };
-		state = this.#applyPlainRules(state);
-		let matchEvents = 0;
-
+		const initial: ProtectedText = { text, spans: this.#protectedOutputSpans(text) };
+		let state = this.#applyPlainRules(initial);
+		const budget = new MatchBudget(
+			MAX_SECRET_MATCHES_PER_TEXT,
+			"Refusing a secret transformation with too many regex matches.",
+		);
 		for (const entry of this.#regexEntries) {
-			entry.regex.lastIndex = 0;
-			const replacements: TextReplacement[] = [];
-			let protectedIndex = 0;
-			for (;;) {
-				const match = entry.regex.exec(state.text);
-				if (match === null) break;
-				if (++matchEvents > MAX_SECRET_MATCHES_PER_TEXT) {
-					entry.regex.lastIndex = 0;
-					throw new Error("Refusing a secret transformation with too many regex matches.");
-				}
+			const replacements = this.#regexReplacements(entry, state, budget);
+			if (replacements.length > 0) state = applyProtectedReplacements(state, replacements);
+		}
+
+		// The second plain pass handles literals a regex replacement moved or exposed. When neither
+		// the first plain pass nor a regex rule changed the text, it would repeat the first pass.
+		if (state === initial) return text;
+		return this.#applyPlainRules(state).text;
+	}
+
+	/** Every replacement one regex rule makes in `state`, skipping matches that reach a protected span. */
+	#regexReplacements(entry: CompiledRegexEntry, state: ProtectedText, budget: MatchBudget): TextReplacement[] {
+		const replacements: TextReplacement[] = [];
+		let protectedIndex = 0;
+		entry.regex.lastIndex = 0;
+		try {
+			for (let match = entry.regex.exec(state.text); match !== null; match = entry.regex.exec(state.text)) {
+				budget.spend();
 				const matchValue = match[0];
 				if (matchValue.length === 0) {
-					if (!this.#reportedOvermatch.has(entry.entryIndex)) {
-						this.#reportedOvermatch.add(entry.entryIndex);
-						this.#reject({
-							reason: "too-short-to-obfuscate",
-							index: entry.entryIndex,
-							length: 0,
-							detail: "pattern produced an empty match and therefore cannot protect any bytes.",
-						});
-					}
+					this.#reportOvermatch(entry, 0);
 					entry.regex.lastIndex++;
 					continue;
 				}
-
 				const matchEnd = match.index + matchValue.length;
-				while (protectedIndex < state.spans.length && state.spans[protectedIndex].end <= match.index) {
-					protectedIndex++;
-				}
+				protectedIndex = firstSpanEndingAfter(state.spans, protectedIndex, match.index);
 				const protectedSpan = state.spans[protectedIndex];
 				if (protectedSpan !== undefined && protectedSpan.start < matchEnd) continue;
-
-				assertBoundedSecretString(matchValue);
-				const characterLength = secretCharacterLength(matchValue);
-				if (entry.mode === "obfuscate" && characterLength < entry.minLength) {
-					if (!this.#reportedOvermatch.has(entry.entryIndex)) {
-						this.#reportedOvermatch.add(entry.entryIndex);
-						this.#reject({
-							reason: "too-short-to-obfuscate",
-							index: entry.entryIndex,
-							length: characterLength,
-							detail:
-								`pattern matched a ${characterLength}-character value, under this entry's ` +
-								`${entry.minLength}-character floor. Set "minLength" on the entry if short ` +
-								"matches are real secrets, or tighten the pattern.",
-						});
-					}
-					continue;
-				}
-
-				this.#rememberRuntimeSecret(matchValue);
-				let replacement: string;
-				if (entry.mode === "replace") {
-					if (entry.replacement !== undefined) {
-						replacement = entry.replacement;
-					} else {
-						const cached = entry.aliases.get(matchValue);
-						if (cached !== undefined) {
-							replacement = cached;
-						} else {
-							replacement = generateDeterministicReplacement(
-								matchValue,
-								this.#placeholderKey,
-								this.#configuredForbiddenMatcher,
-							);
-							if (this.#knownSecretValues.has(replacement)) {
-								throw new Error("Could not generate an unambiguous one-way replacement.");
-							}
-							const origins = new Set([entry.entryIndex]);
-							this.#assertNoCrossRuleAliasCapture(replacement, origins);
-							this.#registerAlias(replacement, entry.entryIndex);
-							entry.aliases.set(matchValue, replacement);
-						}
-					}
-				} else {
-					replacement =
-						this.#regexMappings.get(matchValue) ??
-						this.#plainMappings.get(matchValue) ??
-						this.#buildValuePlaceholder(matchValue);
-					if (!this.#deobfuscateMap.has(replacement)) {
-						this.#regexMappings.set(matchValue, replacement);
-						this.#deobfuscateMap.set(replacement, matchValue);
-						// A regex match is a value DISCOVERED in text already flowing through, not a
-						// declared credential, so it carries its rule's verdict rather than looking one
-						// up. See mayRestoreForDisplay for why that case may be shown and others may not.
-						if (entry.displayRestorable) this.#displayRestorable.add(replacement);
-					}
-				}
-				replacements.push({ start: match.index, end: matchEnd, replacement });
+				const replacement = this.#regexReplacement(entry, matchValue);
+				if (replacement !== undefined) replacements.push({ start: match.index, end: matchEnd, replacement });
 			}
+		} finally {
 			entry.regex.lastIndex = 0;
-
-			if (replacements.length > 0) state = this.#applyProtectedReplacements(state, replacements);
 		}
+		return replacements;
+	}
 
-		return this.#applyPlainRules(state).text;
+	/** What a regex rule writes over one match; undefined for a match under the rule's length floor. */
+	#regexReplacement(entry: CompiledRegexEntry, matchValue: string): string | undefined {
+		assertBoundedSecretString(matchValue);
+		const characterLength = secretCharacterLength(matchValue);
+		if (entry.mode === "obfuscate" && characterLength < entry.minLength) {
+			this.#reportOvermatch(entry, characterLength);
+			return undefined;
+		}
+		this.#rememberRuntimeSecret(matchValue);
+		return entry.mode === "replace"
+			? this.#oneWayRegexAlias(entry, matchValue)
+			: this.#reversibleRegexPlaceholder(entry, matchValue);
+	}
+
+	/**
+	 * Report, once per rule, that it matched a value too short to protect: an empty match, or one
+	 * under the rule's floor.
+	 */
+	#reportOvermatch(entry: CompiledRegexEntry, characterLength: number): void {
+		if (this.#reportedOvermatch.has(entry.entryIndex)) return;
+		this.#reportedOvermatch.add(entry.entryIndex);
+		this.#reject({
+			reason: "too-short-to-obfuscate",
+			index: entry.entryIndex,
+			length: characterLength,
+			detail:
+				characterLength === 0
+					? "pattern produced an empty match and therefore cannot protect any bytes."
+					: `pattern matched a ${characterLength}-character value, under this entry's ` +
+						`${entry.minLength}-character floor. Set "minLength" on the entry if short ` +
+						"matches are real secrets, or tighten the pattern.",
+		});
+	}
+
+	/** The one-way alias a replace-mode rule writes over a match, generated once per matched value. */
+	#oneWayRegexAlias(entry: CompiledRegexEntry, matchValue: string): string {
+		if (entry.replacement !== undefined) return entry.replacement;
+		const cached = entry.aliases.get(matchValue);
+		if (cached !== undefined) return cached;
+		const alias = generateDeterministicReplacement(
+			matchValue,
+			this.#placeholderKey,
+			this.#configuredForbiddenMatcher,
+		);
+		if (this.#knownSecretValues.has(alias)) {
+			throw new Error("Could not generate an unambiguous one-way replacement.");
+		}
+		this.#assertNoCrossRuleAliasCapture(alias, new Set([entry.entryIndex]));
+		this.#registerAlias(alias, entry.entryIndex);
+		entry.aliases.set(matchValue, alias);
+		return alias;
+	}
+
+	/** The placeholder an obfuscate-mode rule writes over a match, installing its reverse mapping once. */
+	#reversibleRegexPlaceholder(entry: CompiledRegexEntry, matchValue: string): string {
+		const placeholder =
+			this.#regexMappings.get(matchValue) ??
+			this.#plainMappings.get(matchValue) ??
+			this.#buildValuePlaceholder(matchValue);
+		if (!this.#deobfuscateMap.has(placeholder)) {
+			this.#regexMappings.set(matchValue, placeholder);
+			this.#deobfuscateMap.set(placeholder, matchValue);
+			// A regex match is a value DISCOVERED in text already flowing through, not a
+			// declared credential, so it carries its rule's verdict rather than looking one
+			// up. See mayRestoreForDisplay for why that case may be shown and others may not.
+			if (entry.displayRestorable) this.#displayRestorable.add(placeholder);
+		}
+		return placeholder;
 	}
 
 	/** Locate already-emitted placeholders and one-way aliases before any source rule runs. */
 	#protectedOutputSpans(text: string): ProtectedSpan[] {
-		const spans: ProtectedSpan[] = [];
-		if (text.includes("#")) {
-			const placeholders = new Set(this.#deobfuscateMap.keys());
-			for (const placeholder of this.#plainMappings.values()) placeholders.add(placeholder);
-			let placeholderCount = 0;
-			PLACEHOLDER_RE.lastIndex = 0;
-			for (;;) {
-				const match = PLACEHOLDER_RE.exec(text);
-				if (match === null) break;
-				if (++placeholderCount > MAX_PLACEHOLDERS_PER_TEXT) {
-					PLACEHOLDER_RE.lastIndex = 0;
-					throw new Error("Refusing a secret transformation with too many placeholders.");
-				}
-				if (placeholders.has(match[0])) spans.push({ start: match.index, end: match.index + match[0].length });
-			}
-			PLACEHOLDER_RE.lastIndex = 0;
-		}
-
+		const spans = text.includes("#") ? this.#placeholderSpans(text) : [];
 		this.#ensureAliasMatcher();
 		this.#aliasMatcher.forEachMatch(text, (start, end) => {
 			spans.push({ start, end, allowContainingLiteral: true });
@@ -1347,69 +1440,27 @@ export class SecretObfuscator {
 				spans.push({ start, end: start + alias.length, allowContainingLiteral: true });
 			}
 		}
-		if (spans.length < 2) return spans;
-		spans.sort((left, right) => left.start - right.start || right.end - left.end);
-		const merged: ProtectedSpan[] = [];
-		for (const span of spans) {
-			const previous = merged[merged.length - 1];
-			if (previous !== undefined && span.start < previous.end) {
-				previous.allowContainingLiteral &&= span.allowContainingLiteral === true;
-				if (span.end > previous.end) previous.end = span.end;
-			} else {
-				merged.push({ ...span });
-			}
-		}
-		return merged;
+		return mergeProtectedSpans(spans);
 	}
 
-	/** Apply non-overlapping replacements while carrying protected output spans forward. */
-	#applyProtectedReplacements(state: ProtectedText, replacements: readonly TextReplacement[]): ProtectedText {
-		let outputBytes = utf8ByteLength(state.text);
-		for (const replacement of replacements) {
-			outputBytes +=
-				utf8ByteLength(replacement.replacement) - utf8ByteLength(state.text, replacement.start, replacement.end);
-			if (outputBytes > MAX_TRANSFORMED_TEXT_BYTES) {
-				throw new Error("Refusing a secret transformation above the output byte limit.");
-			}
-		}
-
-		const chunks: string[] = [];
+	/** Spans of every placeholder in `text` that this obfuscator emitted or would emit. */
+	#placeholderSpans(text: string): ProtectedSpan[] {
+		const placeholders = new Set(this.#deobfuscateMap.keys());
+		for (const placeholder of this.#plainMappings.values()) placeholders.add(placeholder);
 		const spans: ProtectedSpan[] = [];
-		let outputLength = 0;
-		let cursor = 0;
-		let spanIndex = 0;
-		let replacementIndex = 0;
-		const append = (part: string): void => {
-			chunks.push(part);
-			outputLength += part.length;
-		};
-
-		while (spanIndex < state.spans.length || replacementIndex < replacements.length) {
-			const span = state.spans[spanIndex];
-			const replacement = replacements[replacementIndex];
-			const useSpan = replacement === undefined || (span !== undefined && span.start <= replacement.start);
-			const event = useSpan ? span : replacement;
-			if (event === undefined) break;
-			append(state.text.slice(cursor, event.start));
-			const protectedStart = outputLength;
-			if (useSpan) {
-				append(state.text.slice(event.start, event.end));
-				spanIndex++;
-			} else {
-				append(replacement.replacement);
-				replacementIndex++;
+		let placeholderCount = 0;
+		PLACEHOLDER_RE.lastIndex = 0;
+		for (;;) {
+			const match = PLACEHOLDER_RE.exec(text);
+			if (match === null) break;
+			if (++placeholderCount > MAX_PLACEHOLDERS_PER_TEXT) {
+				PLACEHOLDER_RE.lastIndex = 0;
+				throw new Error("Refusing a secret transformation with too many placeholders.");
 			}
-			if (outputLength > protectedStart) {
-				spans.push({
-					start: protectedStart,
-					end: outputLength,
-					allowContainingLiteral: useSpan ? span.allowContainingLiteral : false,
-				});
-			}
-			cursor = event.end;
+			if (placeholders.has(match[0])) spans.push({ start: match.index, end: match.index + match[0].length });
 		}
-		append(state.text.slice(cursor));
-		return { text: chunks.join(""), spans };
+		PLACEHOLDER_RE.lastIndex = 0;
+		return spans;
 	}
 
 	/**
@@ -1438,20 +1489,12 @@ export class SecretObfuscator {
 		let spanIndex = 0;
 		for (const candidate of candidates) {
 			if (candidate.start < cursor) continue;
-			while (spanIndex < state.spans.length && state.spans[spanIndex].end <= candidate.start) spanIndex++;
-			let blocked = false;
-			for (let check = spanIndex; check < state.spans.length && state.spans[check].start < candidate.end; check++) {
-				const span = state.spans[check];
-				if (span.allowContainingLiteral !== true || candidate.start > span.start || candidate.end < span.end) {
-					blocked = true;
-					break;
-				}
-			}
-			if (blocked) continue;
+			spanIndex = firstSpanEndingAfter(state.spans, spanIndex, candidate.start);
+			if (literalRewritesProtectedSpan(candidate, state.spans, spanIndex)) continue;
 			replacements.push(candidate);
 			cursor = candidate.end;
 		}
-		return replacements.length === 0 ? state : this.#applyProtectedReplacements(state, replacements);
+		return replacements.length === 0 ? state : applyProtectedReplacements(state, replacements);
 	}
 
 	/**
@@ -1632,6 +1675,105 @@ export class SecretObfuscator {
 	}
 }
 
+function assertValidExpiry(expiresAt: number | null | undefined): void {
+	if (expiresAt !== undefined && expiresAt !== null && !Number.isSafeInteger(expiresAt)) {
+		throw new Error("Refusing a secret expiry that is not a finite safe-integer epoch timestamp.");
+	}
+}
+
+/** Apply non-overlapping replacements while carrying protected output spans forward. */
+function applyProtectedReplacements(state: ProtectedText, replacements: readonly TextReplacement[]): ProtectedText {
+	assertReplacedTextBounded(state.text, replacements);
+	const chunks: string[] = [];
+	const spans: ProtectedSpan[] = [];
+	let outputLength = 0;
+	let cursor = 0;
+	let spanIndex = 0;
+	let replacementIndex = 0;
+	const append = (part: string): void => {
+		chunks.push(part);
+		outputLength += part.length;
+	};
+
+	while (spanIndex < state.spans.length || replacementIndex < replacements.length) {
+		const span = state.spans[spanIndex];
+		const replacement = replacements[replacementIndex];
+		const useSpan = replacement === undefined || (span !== undefined && span.start <= replacement.start);
+		const event = useSpan ? span : replacement;
+		if (event === undefined) break;
+		append(state.text.slice(cursor, event.start));
+		const protectedStart = outputLength;
+		if (useSpan) {
+			append(state.text.slice(event.start, event.end));
+			spanIndex++;
+		} else {
+			append(replacement.replacement);
+			replacementIndex++;
+		}
+		if (outputLength > protectedStart) {
+			spans.push({
+				start: protectedStart,
+				end: outputLength,
+				allowContainingLiteral: useSpan ? span.allowContainingLiteral : false,
+			});
+		}
+		cursor = event.end;
+	}
+	append(state.text.slice(cursor));
+	return { text: chunks.join(""), spans };
+}
+
+/** Refuse a set of replacements that would grow `text` past the transformed-text byte limit. */
+function assertReplacedTextBounded(text: string, replacements: readonly TextReplacement[]): void {
+	let outputBytes = utf8ByteLength(text);
+	for (const replacement of replacements) {
+		outputBytes += utf8ByteLength(replacement.replacement) - utf8ByteLength(text, replacement.start, replacement.end);
+		if (outputBytes > MAX_TRANSFORMED_TEXT_BYTES) {
+			throw new Error("Refusing a secret transformation above the output byte limit.");
+		}
+	}
+}
+
+/** The first span at or after `from` that ends after `position`; spans are sorted and disjoint. */
+function firstSpanEndingAfter(spans: readonly ProtectedSpan[], from: number, position: number): number {
+	let index = from;
+	while (index < spans.length && spans[index].end <= position) index++;
+	return index;
+}
+
+/**
+ * Whether a literal match starting at or after span `from` would rewrite protected output. Only a
+ * terminal alias the match contains whole may be consumed by it.
+ */
+function literalRewritesProtectedSpan(
+	candidate: TextReplacement,
+	spans: readonly ProtectedSpan[],
+	from: number,
+): boolean {
+	for (let index = from; index < spans.length && spans[index].start < candidate.end; index++) {
+		const span = spans[index];
+		if (span.allowContainingLiteral !== true || candidate.start > span.start || candidate.end < span.end) return true;
+	}
+	return false;
+}
+
+/** Sort spans by start, longest first, and merge overlaps; a merged span allows containment only if all did. */
+function mergeProtectedSpans(spans: ProtectedSpan[]): ProtectedSpan[] {
+	if (spans.length < 2) return spans;
+	spans.sort((left, right) => left.start - right.start || right.end - left.end);
+	const merged: ProtectedSpan[] = [];
+	for (const span of spans) {
+		const previous = merged[merged.length - 1];
+		if (previous !== undefined && span.start < previous.end) {
+			previous.allowContainingLiteral &&= span.allowContainingLiteral === true;
+			if (span.end > previous.end) previous.end = span.end;
+		} else {
+			merged.push({ ...span });
+		}
+	}
+	return merged;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Display restore (inbound, persisted/provider → local display)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1670,36 +1812,55 @@ export function mapAgentMessageStrings(
 	fn: (s: string) => string,
 	options?: ContentWalkOptions,
 ): AgentMessage[] {
-	let changed = false;
-	const result = messages.map((message): AgentMessage => {
-		switch (message.role) {
-			case "assistant": {
-				const content = mapAssistantContentStrings(message.content, fn, options);
-				if (content === message.content) return message;
-				changed = true;
-				return { ...message, content };
-			}
-			case "branchSummary": {
-				const summary = fn(message.summary);
-				if (summary === message.summary) return message;
-				changed = true;
-				return { ...message, summary };
-			}
-			case "compactionSummary": {
-				const summary = fn(message.summary);
-				const shortSummary = message.shortSummary === undefined ? undefined : fn(message.shortSummary);
-				const blocks = message.blocks === undefined ? undefined : mapTextBlockStrings(message.blocks, fn);
-				if (summary === message.summary && shortSummary === message.shortSummary && blocks === message.blocks) {
-					return message;
-				}
-				changed = true;
-				return { ...message, summary, shortSummary, blocks };
-			}
-			default:
-				return message;
+	return mapPreservingIdentity(messages, message => mapAgentMessage(message, fn, options));
+}
+
+function mapAgentMessage(message: AgentMessage, fn: (s: string) => string, options?: ContentWalkOptions): AgentMessage {
+	switch (message.role) {
+		case "assistant": {
+			const content = mapAssistantContentStrings(message.content, fn, options);
+			return content === message.content ? message : { ...message, content };
 		}
-	});
-	return changed ? result : messages;
+		case "branchSummary": {
+			const summary = fn(message.summary);
+			return summary === message.summary ? message : { ...message, summary };
+		}
+		case "compactionSummary":
+			return mapCompactionSummaryStrings(message, fn);
+		default:
+			return message;
+	}
+}
+
+function mapCompactionSummaryStrings(
+	message: CompactionSummaryMessage,
+	fn: (s: string) => string,
+): CompactionSummaryMessage {
+	const summary = fn(message.summary);
+	const shortSummary = message.shortSummary === undefined ? undefined : fn(message.shortSummary);
+	const blocks = message.blocks === undefined ? undefined : mapTextBlockStrings(message.blocks, fn);
+	if (summary === message.summary && shortSummary === message.shortSummary && blocks === message.blocks) {
+		return message;
+	}
+	return { ...message, summary, shortSummary, blocks };
+}
+
+/**
+ * Map `items` through `fn`, returning `items` itself when `fn` returned every item unchanged, so a
+ * walk that changes nothing allocates no array and its caller can compare identities.
+ */
+function mapPreservingIdentity<T>(items: T[], fn: (item: T) => T): T[] {
+	let result: T[] | undefined;
+	for (let index = 0; index < items.length; index++) {
+		const item = items[index];
+		const mapped = fn(item);
+		if (result === undefined) {
+			if (mapped === item) continue;
+			result = items.slice(0, index);
+		}
+		result.push(mapped);
+	}
+	return result ?? items;
 }
 
 /**
@@ -1747,46 +1908,39 @@ export function mapAssistantContentStrings(
 	fn: (s: string) => string,
 	options?: ContentWalkOptions,
 ): AssistantMessage["content"] {
-	let changed = false;
-	const result = content.map((block): AssistantMessage["content"][number] => {
+	return mapPreservingIdentity(content, (block): AssistantMessage["content"][number] => {
 		if (block.type === "text") {
 			const text = fn(block.text);
-			if (text === block.text) return block;
-			changed = true;
-			return { ...block, text };
+			return text === block.text ? block : { ...block, text };
 		}
 		if (block.type === "thinking" && options?.includeThinking) {
 			const thinking = fn(block.thinking);
-			if (thinking === block.thinking) return block;
-			changed = true;
-			return { ...block, thinking };
+			return thinking === block.thinking ? block : { ...block, thinking };
 		}
-		if (block.type === "toolCall") {
-			const args = mapJsonStrings(block.arguments as JsonWithOptionalFields, fn) as Record<string, unknown>;
-			const id = options?.includeToolMetadata ? fn(block.id) : block.id;
-			const name = options?.includeToolMetadata ? fn(block.name) : block.name;
-			const customWireName =
-				options?.includeToolMetadata && block.customWireName !== undefined
-					? fn(block.customWireName)
-					: block.customWireName;
-			const intent = block.intent === undefined ? undefined : fn(block.intent);
-			const rawBlock = block.rawBlock === undefined ? undefined : fn(block.rawBlock);
-			if (
-				args === block.arguments &&
-				id === block.id &&
-				name === block.name &&
-				customWireName === block.customWireName &&
-				intent === block.intent &&
-				rawBlock === block.rawBlock
-			) {
-				return block;
-			}
-			changed = true;
-			return { ...block, arguments: args, id, name, customWireName, intent, rawBlock };
-		}
-		return block;
+		return block.type === "toolCall" ? mapToolCallStrings(block, fn, options?.includeToolMetadata === true) : block;
 	});
-	return changed ? result : content;
+}
+
+/** Map a tool call's arguments, intent and raw block, and its id and names when `includeMetadata` is set. */
+function mapToolCallStrings(block: ToolCall, fn: (s: string) => string, includeMetadata: boolean): ToolCall {
+	const args = mapJsonStrings(block.arguments as JsonWithOptionalFields, fn) as Record<string, unknown>;
+	const id = includeMetadata ? fn(block.id) : block.id;
+	const name = includeMetadata ? fn(block.name) : block.name;
+	const customWireName =
+		includeMetadata && block.customWireName !== undefined ? fn(block.customWireName) : block.customWireName;
+	const intent = block.intent === undefined ? undefined : fn(block.intent);
+	const rawBlock = block.rawBlock === undefined ? undefined : fn(block.rawBlock);
+	if (
+		args === block.arguments &&
+		id === block.id &&
+		name === block.name &&
+		customWireName === block.customWireName &&
+		intent === block.intent &&
+		rawBlock === block.rawBlock
+	) {
+		return block;
+	}
+	return { ...block, arguments: args, id, name, customWireName, intent, rawBlock };
 }
 
 /**
@@ -1841,16 +1995,12 @@ function obfuscateTextBlocks(
 	obfuscator: SecretObfuscator,
 	content: (TextContent | ImageContent)[],
 ): (TextContent | ImageContent)[] {
-	let changed = false;
-	const result = content.map((block): TextContent | ImageContent => {
+	return mapPreservingIdentity(content, (block): TextContent | ImageContent => {
 		if (block.type !== "text") return block;
 		assertOpaqueProviderFieldSafe(obfuscator, block.textSignature, "text-signature");
 		const text = obfuscator.obfuscate(block.text);
-		if (text === block.text) return block;
-		changed = true;
-		return { ...block, text };
+		return text === block.text ? block : { ...block, text };
 	});
-	return changed ? result : content;
 }
 
 /** Obfuscate assistant replay fields while preserving authenticated bytes exactly. */
@@ -1858,46 +2008,41 @@ function obfuscateAssistantContentForProvider(
 	obfuscator: SecretObfuscator,
 	content: AssistantMessage["content"],
 ): AssistantMessage["content"] {
-	let changed = false;
-	const result = content.map((block): AssistantMessage["content"][number] => {
-		if (block.type === "text") {
-			assertOpaqueProviderFieldSafe(obfuscator, block.textSignature, "text-signature");
-			const text = obfuscator.obfuscate(block.text);
-			if (text === block.text) return block;
-			changed = true;
-			return { ...block, text };
-		}
-		if (block.type === "thinking") {
-			assertOpaqueProviderFieldSafe(obfuscator, block.thinkingSignature, "thinking-signature");
-			assertOpaqueProviderFieldSafe(obfuscator, block.itemId, "thinking-item");
-			const thinking = obfuscator.obfuscate(block.thinking);
-			if (thinking === block.thinking) return block;
-			if (block.thinkingSignature !== undefined || block.itemId !== undefined) {
-				throw new Error("Refusing to send provider context because signed thinking contains a configured secret.");
+	return mapPreservingIdentity(content, (block): AssistantMessage["content"][number] => {
+		switch (block.type) {
+			case "text": {
+				assertOpaqueProviderFieldSafe(obfuscator, block.textSignature, "text-signature");
+				const text = obfuscator.obfuscate(block.text);
+				return text === block.text ? block : { ...block, text };
 			}
-			changed = true;
-			return { ...block, thinking };
+			case "thinking":
+				return obfuscateThinkingForProvider(obfuscator, block);
+			case "redactedThinking":
+				assertOpaqueProviderFieldSafe(obfuscator, block.data, "redacted-thinking");
+				return block;
+			case "fallback": {
+				const from = obfuscator.obfuscate(block.from.model);
+				const to = obfuscator.obfuscate(block.to.model);
+				if (from === block.from.model && to === block.to.model) return block;
+				return { ...block, from: { model: from }, to: { model: to } };
+			}
+			default:
+				assertOpaqueProviderFieldSafe(obfuscator, block.thoughtSignature, "tool-thought-signature");
+				return mapToolCallStrings(block, text => obfuscator.obfuscate(text), true);
 		}
-		if (block.type === "redactedThinking") {
-			assertOpaqueProviderFieldSafe(obfuscator, block.data, "redacted-thinking");
-			return block;
-		}
-		if (block.type === "fallback") {
-			const from = obfuscator.obfuscate(block.from.model);
-			const to = obfuscator.obfuscate(block.to.model);
-			if (from === block.from.model && to === block.to.model) return block;
-			changed = true;
-			return { ...block, from: { model: from }, to: { model: to } };
-		}
-		assertOpaqueProviderFieldSafe(obfuscator, block.thoughtSignature, "tool-thought-signature");
-		const [mapped] = mapAssistantContentStrings([block], text => obfuscator.obfuscate(text), {
-			includeToolMetadata: true,
-		});
-		if (mapped === block) return block;
-		changed = true;
-		return mapped;
 	});
-	return changed ? result : content;
+}
+
+/** Obfuscate unsigned thinking; signed thinking that would need rewriting fails closed. */
+function obfuscateThinkingForProvider(obfuscator: SecretObfuscator, block: ThinkingContent): ThinkingContent {
+	assertOpaqueProviderFieldSafe(obfuscator, block.thinkingSignature, "thinking-signature");
+	assertOpaqueProviderFieldSafe(obfuscator, block.itemId, "thinking-item");
+	const thinking = obfuscator.obfuscate(block.thinking);
+	if (thinking === block.thinking) return block;
+	if (block.thinkingSignature !== undefined || block.itemId !== undefined) {
+		throw new Error("Refusing to send provider context because signed thinking contains a configured secret.");
+	}
+	return { ...block, thinking };
 }
 
 /** Map `text` blocks through `fn`; image and other blocks pass through byte-identical. */
@@ -1905,15 +2050,11 @@ function mapTextBlockStrings(
 	content: (TextContent | ImageContent)[],
 	fn: (s: string) => string,
 ): (TextContent | ImageContent)[] {
-	let changed = false;
-	const result = content.map((block): TextContent | ImageContent => {
+	return mapPreservingIdentity(content, (block): TextContent | ImageContent => {
 		if (block.type !== "text") return block;
 		const text = fn(block.text);
-		if (text === block.text) return block;
-		changed = true;
-		return { ...block, text };
+		return text === block.text ? block : { ...block, text };
 	});
-	return changed ? result : content;
 }
 
 /**
@@ -1924,38 +2065,33 @@ function mapTextBlockStrings(
  */
 export function obfuscateMessages(obfuscator: SecretObfuscator, messages: Message[]): Message[] {
 	if (!obfuscator.hasSecrets()) return messages;
-	let changed = false;
-	const result = messages.map((message): Message => {
-		if (message.role === "assistant") {
-			const content = obfuscateAssistantContentForProvider(obfuscator, message.content);
-			if (message.providerPayload !== undefined) {
-				assertOpaqueProviderPayloadSafe(obfuscator, message.providerPayload);
-			}
-			if (content === message.content) return message;
-			changed = true;
-			return { ...message, content };
-		}
+	return mapPreservingIdentity(messages, message => obfuscateMessage(obfuscator, message));
+}
 
-		if (message.role === "toolResult") {
-			const content = obfuscateTextBlocks(obfuscator, message.content);
-			const toolCallId = obfuscator.obfuscate(message.toolCallId);
-			const toolName = obfuscator.obfuscate(message.toolName);
-			if (content === message.content && toolCallId === message.toolCallId && toolName === message.toolName) {
-				return message;
-			}
-			changed = true;
-			return { ...message, content, toolCallId, toolName };
+function obfuscateMessage(obfuscator: SecretObfuscator, message: Message): Message {
+	if (message.role === "assistant") {
+		const content = obfuscateAssistantContentForProvider(obfuscator, message.content);
+		if (message.providerPayload !== undefined) {
+			assertOpaqueProviderPayloadSafe(obfuscator, message.providerPayload);
 		}
+		return content === message.content ? message : { ...message, content };
+	}
 
-		const content =
-			typeof message.content === "string"
-				? obfuscator.obfuscate(message.content)
-				: obfuscateTextBlocks(obfuscator, message.content);
-		if (content === message.content) return message;
-		changed = true;
-		return { ...message, content } as Message;
-	});
-	return changed ? result : messages;
+	if (message.role === "toolResult") {
+		const content = obfuscateTextBlocks(obfuscator, message.content);
+		const toolCallId = obfuscator.obfuscate(message.toolCallId);
+		const toolName = obfuscator.obfuscate(message.toolName);
+		if (content === message.content && toolCallId === message.toolCallId && toolName === message.toolName) {
+			return message;
+		}
+		return { ...message, content, toolCallId, toolName };
+	}
+
+	const content =
+		typeof message.content === "string"
+			? obfuscator.obfuscate(message.content)
+			: obfuscateTextBlocks(obfuscator, message.content);
+	return content === message.content ? message : ({ ...message, content } as Message);
 }
 
 function obfuscateToolDefinition(obfuscator: SecretObfuscator, tool: Tool): Tool {
@@ -1986,30 +2122,18 @@ function obfuscateToolDefinition(obfuscator: SecretObfuscator, tool: Tool): Tool
 /** Redact every provider-bound context surface, including prompts and tool schemas. */
 export function obfuscateProviderContext(obfuscator: SecretObfuscator | undefined, context: Context): Context {
 	if (!obfuscator?.hasSecrets()) return context;
-
-	let systemPrompt = context.systemPrompt;
-	if (systemPrompt !== undefined) {
-		for (let index = 0; index < systemPrompt.length; index++) {
-			const text = obfuscator.obfuscate(systemPrompt[index]);
-			if (text === systemPrompt[index]) continue;
-			if (systemPrompt === context.systemPrompt) systemPrompt = systemPrompt.slice();
-			systemPrompt[index] = text;
-		}
-	}
-
+	const systemPrompt =
+		context.systemPrompt === undefined
+			? undefined
+			: mapPreservingIdentity(context.systemPrompt, text => obfuscator.obfuscate(text));
 	const messages = obfuscateMessages(obfuscator, context.messages);
-	let tools = context.tools;
-	if (tools !== undefined) {
-		for (let index = 0; index < tools.length; index++) {
-			const tool = obfuscateToolDefinition(obfuscator, tools[index]);
-			if (tool === tools[index]) continue;
-			if (tools === context.tools) tools = tools.slice();
-			tools[index] = tool;
-		}
-	}
-
-	if (systemPrompt === context.systemPrompt && messages === context.messages && tools === context.tools)
+	const tools =
+		context.tools === undefined
+			? undefined
+			: mapPreservingIdentity(context.tools, tool => obfuscateToolDefinition(obfuscator, tool));
+	if (systemPrompt === context.systemPrompt && messages === context.messages && tools === context.tools) {
 		return context;
+	}
 	return { ...context, systemPrompt, messages, tools };
 }
 

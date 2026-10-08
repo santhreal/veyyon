@@ -7,6 +7,7 @@ import { extractPrintableText, matchesKey } from "@veyyon/utils/keys";
 import type { HoverFadeOptions } from "@veyyon/utils/motion";
 import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
+import { formatToolCallLabel } from "@veyyon/utils/tool-call-label";
 import { truncateToWidth } from "@veyyon/utils/width";
 import type { TreeFilterMode } from "../../../../config/settings-schema";
 import { resolveAssistantErrorPresentation } from "../../../../presentation/transcript-builder";
@@ -14,15 +15,13 @@ import { theme } from "../../../../theme/theme";
 import { shortenPath, TRUNCATE_LENGTHS } from "../../../../tools/core/render-utils";
 import { canonicalizeMessage } from "../../../../utils/thinking-display";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
+import { computeModalDims, MODAL_SIZING_LARGE, sizingForArea } from "../chrome/modal-geometry";
 import {
-	computeModalDims,
-	MODAL_SIZING_LARGE,
 	type ModalShellGeometry,
 	type ModalShortcut,
 	planModalChrome,
 	pointerMotionEnabled,
 	renderModalShell,
-	sizingForArea,
 } from "../chrome/modal-shell";
 import { routeModalChrome } from "./select-list-mouse-routing";
 import { centeredWindow, hoverBandAt, renderScrollableList, selectionBand } from "./selector-helpers";
@@ -299,7 +298,7 @@ class TreeList implements Component {
 			// Always show current leaf so active position is visible
 			if (entry.type === "message" && entry.message.role === "assistant" && !isCurrentLeaf) {
 				const msg = entry.message as { stopReason?: string; content?: unknown };
-				const hasText = this.#hasTextContent(msg.content);
+				const hasText = hasTextContent(msg.content);
 				const isErrorOrAborted = msg.stopReason && msg.stopReason !== "stop" && msg.stopReason !== "toolUse";
 				// Only hide if no text AND not an error/aborted message
 				if (!hasText && !isErrorOrAborted) {
@@ -378,7 +377,7 @@ class TreeList implements Component {
 				const msg = entry.message;
 				parts.push(msg.role);
 				if ("content" in msg && msg.content) {
-					parts.push(this.#extractContent(msg.content));
+					parts.push(extractContent(msg.content));
 				}
 				if (msg.role === "bashExecution") {
 					const bashMsg = msg as { command?: string };
@@ -391,7 +390,7 @@ class TreeList implements Component {
 				if (typeof entry.content === "string") {
 					parts.push(entry.content);
 				} else {
-					parts.push(this.#extractContent(entry.content));
+					parts.push(extractContent(entry.content));
 				}
 				break;
 			}
@@ -700,11 +699,11 @@ class TreeList implements Component {
 				const role = msg.role;
 				if (role === "user") {
 					const msgWithContent = msg as { content?: unknown };
-					const content = normalize(this.#extractContent(msgWithContent.content));
+					const content = normalize(extractContent(msgWithContent.content));
 					result = theme.fg("accent", "user: ") + content;
 				} else if (role === "developer") {
 					const msgWithContent = msg as { content?: unknown };
-					const content = normalize(this.#extractContent(msgWithContent.content));
+					const content = normalize(extractContent(msgWithContent.content));
 					result = theme.fg("dim", "developer: ") + theme.fg("muted", content);
 				} else if (role === "assistant") {
 					const presentation = resolveAssistantErrorPresentation(msg);
@@ -713,12 +712,13 @@ class TreeList implements Component {
 						break;
 					}
 					const msgWithContent = msg as { content?: unknown; stopReason?: string; errorMessage?: string };
-					const textContent = normalize(this.#extractContent(msgWithContent.content));
+					const textContent = normalize(extractContent(msgWithContent.content));
 					if (textContent) {
 						result = theme.fg("success", "assistant: ") + textContent;
 					} else if (presentation.kind === "full") {
 						result =
-							theme.fg("success", "assistant: ") + theme.fg("error", normalize(presentation.text).slice(0, 80));
+							theme.fg("success", "assistant: ") +
+							theme.fg("error", truncateToWidth(normalize(presentation.text), TRUNCATE_LENGTHS.CONTENT, ""));
 					} else if (msgWithContent.stopReason === "aborted") {
 						result = theme.fg("success", "assistant: ") + theme.fg("muted", "(aborted)");
 					} else {
@@ -728,7 +728,7 @@ class TreeList implements Component {
 					const toolMsg = msg as { toolCallId?: string; toolName?: string };
 					const toolCall = toolMsg.toolCallId ? this.#toolCallMap.get(toolMsg.toolCallId) : undefined;
 					if (toolCall) {
-						result = theme.fg("muted", this.#formatToolCall(toolCall.name, toolCall.arguments));
+						result = theme.fg("muted", formatToolCallLabel(toolCall.name, toolCall.arguments, shortenPath));
 					} else {
 						result = theme.fg("muted", `[${toolMsg.toolName ?? "tool"}]`);
 					}
@@ -776,84 +776,6 @@ class TreeList implements Component {
 		}
 
 		return isSelected ? theme.bold(result) : result;
-	}
-
-	#extractContent(content: unknown): string {
-		const maxLen = 200;
-		if (typeof content === "string") return content.slice(0, maxLen);
-		if (Array.isArray(content)) {
-			let result = "";
-			for (const c of content) {
-				if (typeof c === "object" && c !== null && "type" in c && c.type === "text") {
-					result += (c as { text: string }).text;
-					if (result.length >= maxLen) return result.slice(0, maxLen);
-				}
-			}
-			return result;
-		}
-		return "";
-	}
-
-	#hasTextContent(content: unknown): boolean {
-		if (typeof content === "string") return Boolean(canonicalizeMessage(content));
-		if (Array.isArray(content)) {
-			for (const c of content) {
-				if (typeof c === "object" && c !== null && "type" in c && c.type === "text") {
-					const text = (c as { text?: string }).text;
-					if (text && canonicalizeMessage(text)) return true;
-				}
-			}
-		}
-		return false;
-	}
-
-	#formatToolCall(name: string, args: Record<string, unknown>): string {
-		switch (name) {
-			case "read": {
-				const path = shortenPath(String(args.path || args.file_path || ""));
-				const offset = args.offset as number | undefined;
-				const limit = args.limit as number | undefined;
-				let display = path;
-				if (offset !== undefined || limit !== undefined) {
-					const start = offset ?? 1;
-					const end = limit !== undefined ? start + limit - 1 : "";
-					display += `:${start}${end ? `-${end}` : ""}`;
-				}
-				return `[read: ${display}]`;
-			}
-			case "write": {
-				const path = shortenPath(String(args.path || args.file_path || ""));
-				return `[write: ${path}]`;
-			}
-			case "edit": {
-				const path = shortenPath(String(args.path || args.file_path || ""));
-				return `[edit: ${path}]`;
-			}
-			case "bash": {
-				const rawCmd = String(args.command || "");
-				const cmd = rawCmd
-					.replace(/[\n\t]/g, " ")
-					.trim()
-					.slice(0, 50);
-				return `[bash: ${cmd}${rawCmd.length > 50 ? "..." : ""}]`;
-			}
-			case "search": {
-				const type = String(args.type || "?");
-				const input = String(args.input || "");
-				const scope = typeof args.path === "string" ? ` in ${shortenPath(args.path)}` : "";
-				return `[search:${type} ${input}${scope}]`;
-			}
-			case "ls": {
-				const path = shortenPath(String(args.path || "."));
-				return `[ls: ${path}]`;
-			}
-			default: {
-				// Custom tool - show name and truncated JSON args
-				const rawArgs = typeof args === "string" ? args : JSON.stringify(args ?? {});
-				const argsStr = truncateToWidth(rawArgs ?? "{}", TRUNCATE_LENGTHS.SHORT);
-				return `[${name}: ${argsStr}]`;
-			}
-		}
 	}
 
 	handleInput(keyData: string): void {
@@ -926,6 +848,35 @@ class TreeList implements Component {
 			}
 		}
 	}
+}
+
+function extractContent(content: unknown): string {
+	const maxLen = 200;
+	if (typeof content === "string") return content.slice(0, maxLen);
+	if (Array.isArray(content)) {
+		let result = "";
+		for (const c of content) {
+			if (typeof c === "object" && c !== null && "type" in c && c.type === "text") {
+				result += (c as { text: string }).text;
+				if (result.length >= maxLen) return result.slice(0, maxLen);
+			}
+		}
+		return result;
+	}
+	return "";
+}
+
+function hasTextContent(content: unknown): boolean {
+	if (typeof content === "string") return Boolean(canonicalizeMessage(content));
+	if (Array.isArray(content)) {
+		for (const c of content) {
+			if (typeof c === "object" && c !== null && "type" in c && c.type === "text") {
+				const text = (c as { text?: string }).text;
+				if (text && canonicalizeMessage(text)) return true;
+			}
+		}
+	}
+	return false;
 }
 
 /** ModalShell footer chips. One array, so the chrome plan matches the chips the card paints. */

@@ -134,6 +134,13 @@ export class Box implements Component {
 		}
 	}
 
+	releaseRenderCache(): void {
+		this.#invalidateCache();
+		for (const child of this.children) {
+			child.releaseRenderCache?.();
+		}
+	}
+
 	render(width: number): readonly string[] {
 		const children = this.children;
 		const count = children.length;
@@ -172,75 +179,78 @@ export class Box implements Component {
 		}
 		if (unchanged) return cached!.result;
 
-		const result: string[] = [];
-		if (contentRows > 0) {
-			// Hugging: emit rows at the widest child line, not the full width.
-			// The children already wrapped at contentWidth, so this only trims
-			// the padding (and the border rule) down to the real ink.
-			let emitWidth = innerWidth;
-			if (this.#hugContent) {
-				// Children like Markdown right-pad their rows with raw spaces;
-				// measure past that padding or every card measures full-width.
-				// Only bare trailing spaces are trimmed — bg-painted padding ends
-				// in escape bytes and is preserved as part of the visual design.
-				let maxChildWidth = 0;
-				for (const lines of childLines) {
-					for (const line of lines) {
-						const w = visibleWidth(line.replace(/ +$/, ""));
-						if (w > maxChildWidth) maxChildWidth = w;
-					}
-				}
-				emitWidth = Math.min(innerWidth, Math.max(1, maxChildWidth + paddingX * 2));
-			}
-			const leftPad = padding(paddingX);
-			const interior: string[] = [];
-			// Top padding
-			for (let i = 0; i < this.#paddingY; i++) {
-				interior.push(this.#applyBg("", emitWidth));
-			}
-			// Content
-			for (const lines of childLines) {
-				for (const line of lines) {
-					interior.push(
-						this.#applyBg(this.#hugContent ? leftPad + line.replace(/ +$/, "") : leftPad + line, emitWidth),
-					);
-				}
-			}
-			// Bottom padding
-			for (let i = 0; i < this.#paddingY; i++) {
-				interior.push(this.#applyBg("", emitWidth));
-			}
-
-			if (border) {
-				result.push(
-					formatBorderRule(
-						border.chars.topLeft,
-						border.chars.horizontal,
-						emitWidth,
-						border.chars.topRight,
-						border.color,
-					),
-				);
-				result.push(...frameBorderLines(interior, border.chars.vertical, border.color));
-				result.push(
-					formatBorderRule(
-						border.chars.bottomLeft,
-						border.chars.horizontal,
-						emitWidth,
-						border.chars.bottomRight,
-						border.color,
-					),
-				);
-			} else {
-				result.push(...interior);
-			}
-		}
-
+		const result = contentRows > 0 ? this.#frameRows(childLines, innerWidth, paddingX, border) : [];
 		this.#cached = { width, bgSample, borderSample, childLines, result };
 		return result;
 	}
 
-	#applyBg(line: string, width: number): string {
-		return applyLineBackground(line, width, this.#bgFn);
+	/** The children's lines with vertical padding, left padding, background and the border, if any. */
+	#frameRows(
+		childLines: readonly (readonly string[])[],
+		innerWidth: number,
+		paddingX: number,
+		border: BoxBorder | undefined,
+	): string[] {
+		// Hugging: emit rows at the widest child line, not the full width. The
+		// children already wrapped at contentWidth, so this only trims the
+		// padding (and the border rule) down to the real ink.
+		const emitWidth = this.#hugContent
+			? Math.min(innerWidth, Math.max(1, widestInk(childLines) + paddingX * 2))
+			: innerWidth;
+		const leftPad = padding(paddingX);
+		const framed = border !== undefined;
+		const interior: string[] = [];
+		// Top padding
+		for (let i = 0; i < this.#paddingY; i++) {
+			interior.push(this.#row("", emitWidth, framed));
+		}
+		// Content
+		for (const lines of childLines) {
+			for (const line of lines) {
+				interior.push(
+					this.#row(this.#hugContent ? leftPad + line.replace(/ +$/, "") : leftPad + line, emitWidth, framed),
+				);
+			}
+		}
+		// Bottom padding
+		for (let i = 0; i < this.#paddingY; i++) {
+			interior.push(this.#row("", emitWidth, framed));
+		}
+		if (!border) return interior;
+
+		const { chars, color } = border;
+		return [
+			formatBorderRule(chars.topLeft, chars.horizontal, emitWidth, chars.topRight, color),
+			...frameBorderLines(interior, chars.vertical, color),
+			formatBorderRule(chars.bottomLeft, chars.horizontal, emitWidth, chars.bottomRight, color),
+		];
 	}
+
+	/**
+	 * A row reaches `width` only when something is drawn past its ink: a background fill, or a right
+	 * border that has to sit at the frame's edge. Any other row ends at its ink. The renderer erases
+	 * each row's tail, so trailing spaces draw nothing, and the memo would hold a padded copy of every
+	 * row a resumed transcript draws.
+	 */
+	#row(line: string, width: number, framed: boolean): string {
+		if (this.#bgFn) return applyLineBackground(line, width, this.#bgFn);
+		return framed ? applyLineBackground(line, width) : line;
+	}
+}
+
+/**
+ * The widest child line. Children like Markdown right-pad their rows with raw
+ * spaces; measure past that padding or every card measures full-width. Only
+ * bare trailing spaces are trimmed — bg-painted padding ends in escape bytes
+ * and is preserved as part of the visual design.
+ */
+function widestInk(childLines: readonly (readonly string[])[]): number {
+	let widest = 0;
+	for (const lines of childLines) {
+		for (const line of lines) {
+			const w = visibleWidth(line.replace(/ +$/, ""));
+			if (w > widest) widest = w;
+		}
+	}
+	return widest;
 }

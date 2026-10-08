@@ -5,7 +5,7 @@
  * `@veyyon/utils/atomic-write` (`atomicWriteFile`, `atomicWriteFilePreservingMode`, and the sync
  * twin) and a self-contained copy inside `@veyyon/hashline/fs` (`writeFileAtomic`). Hashline is
  * published as a lean patch library whose only dependencies are `diff` and `lru-cache`, so importing
- * `@veyyon/utils` would drag winston, handlebars and the native addon into every consumer of a
+ * `@veyyon/utils` would drag the logger, handlebars and the native addon into every consumer of a
  * library that just applies patches. The duplication is the lesser cost, and the ONE PLACE rule is
  * satisfied instead by a promise in both doc comments: keep them in step by behavior.
  *
