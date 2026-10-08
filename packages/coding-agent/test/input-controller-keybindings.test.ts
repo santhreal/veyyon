@@ -264,6 +264,22 @@ describe("InputController keybinding setup", () => {
 		expect(spies.resetDisplay).toHaveBeenCalledTimes(1);
 	});
 
+	it("re-running key setup on an editor swap adds no input listener and keeps each composer key consumed once", async () => {
+		const { InputController, ctx, spies } = await createContext();
+		(ctx.canCopyBtw as unknown as { mockReturnValue(value: boolean): void }).mockReturnValue(true);
+		const controller = new InputController(ctx);
+
+		controller.setupKeyHandlers();
+		const installed = registeredInputListeners(spies.addInputListener).length;
+		controller.setupKeyHandlers();
+		controller.setupKeyHandlers();
+		const listeners = registeredInputListeners(spies.addInputListener);
+
+		expect(listeners).toHaveLength(installed);
+		expect(listeners.filter(listener => listener("c")?.consume)).toHaveLength(1);
+		expect(spies.handleBtwCopyKey).toHaveBeenCalledTimes(1);
+	});
+
 	it("does not mark pasted shell prompts as Python mode while editing", async () => {
 		const { InputController, ctx, editor } = await createContext();
 		const controller = new InputController(ctx);

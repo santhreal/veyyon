@@ -222,6 +222,7 @@
 - `/session` builds its provider, message, token, cost, language-server and MCP sections in single-purpose functions; its output is unchanged across a 20,000-case corpus.
 - `/share` runs the custom share script and the default share in separate steps, `/memory` runs each subcommand in its own method, `/move` checks and creates its target in one step, and `/compact` merges its instructions and mode in one function; no user-visible change.
 - `/mcp` runs its Smithery search, deploy and login steps from `mcp-smithery-commands.ts`, its OAuth login and reauthorization from `mcp-oauth-login.ts`, its list, resource, prompt and notification reports from `mcp-server-reports.ts` and its messages from `mcp-command-output.ts`, and `MCPOAuthFlow.storedCredential` builds the credential row a login stores; its output is unchanged across a 20,000-case corpus.
+- The composer's Esc handling, submission, `/queue` dispatch, follow-up and image-path paste run in single-purpose methods, its key listeners install once per editor, and the tiny-title download row is defined in `tiny-title-download-row.ts`; no user-visible change.
 
 ### Fixed
 
@@ -294,6 +295,7 @@
 - `tab.screenshot()` sends a second capture on a CDP session of its own when the first has not answered within 1 second, up to three, so a capture sent while the page commits a navigation no longer holds until the protocol timeout or holds later screenshots and the tab's close behind it.
 - A `tab.goto()` aborted with `net::ERR_ABORTED` by a navigation the page started, such as a click handler's redirect, is sent once more and resolves on its own URL; a goto aborted twice fails naming the navigation that aborted it last.
 - A bash command whose caller cancels while the call joins the session CPU budget returns as cancelled without running, instead of running to completion and reporting success.
+- A `/queue` or `=>` line submitted with Enter whose first message fails to send comes back to the editor as the `=>` queue it was, with its pending images and their links, instead of leaving the editor empty.
 
 ### Removed
 
