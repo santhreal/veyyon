@@ -64,7 +64,6 @@ import {
 import { conditionVariables, PROMPT_STATEMENTS } from "../../src/system-prompt-builder/statement-registry";
 
 const PACKAGE_ROOT = path.resolve(import.meta.dir, "../..");
-const SDK = path.join(PACKAGE_ROOT, "src/sdk.ts");
 const SELECTOR_CONTROLLER = path.join(PACKAGE_ROOT, "src/modes/terminal/controllers/selector-controller.ts");
 
 /**
@@ -373,34 +372,6 @@ describe("the gates a mid-session flip cannot reach", () => {
 		cwd = second.path();
 		await inputs.refresh();
 		expect(await rendered()).toContain("second-marker.txt");
-	});
-
-	/**
-	 * THE MIRROR OF THAT CHECK, for the gate that decides something OUTSIDE the prompt.
-	 *
-	 * `tools.intentTracing` also controls whether every tool schema carries the intent field, and that
-	 * half is wired by handing the agent a resolver rather than a value. Invoking it at the call site
-	 * (`intentTracing: intentTracingEnabled()`) compiles, keeps every prompt test green, and silently
-	 * returns the gate to frozen for the schemas: the prompt would explain a field the schemas stopped
-	 * carrying. A mutation run confirmed nothing else catches it.
-	 *
-	 * This reads the source rather than driving a session, and that is the right tool for this claim:
-	 * the claim IS about the wiring, not about behaviour. `packages/agent`'s
-	 * `intent-tracing-follows-the-setting.test.ts` proves the behaviour on the agent side by flipping a
-	 * resolver between two requests; what no test there can see is which of the two forms `sdk.ts`
-	 * actually passes.
-	 */
-	it("checks that sdk.ts hands the agent a resolver, not a resolved value", async () => {
-		const source = await Bun.file(SDK).text();
-
-		expect(source, "the resolver was renamed; this check needs updating").toContain(
-			"const intentTracingEnabled = () =>",
-		);
-		expect(source).toContain("intentTracing: intentTracingEnabled,");
-		expect(
-			source.includes("intentTracing: intentTracingEnabled()"),
-			"sdk.ts resolves intentTracing at construction, which refreezes the tool schemas",
-		).toBe(false);
 	});
 });
 

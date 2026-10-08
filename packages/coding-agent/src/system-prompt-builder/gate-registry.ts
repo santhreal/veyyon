@@ -190,7 +190,7 @@ export const PROMPT_GATES = [
 		variables: ["intentTracing", "intentField"],
 		renders: "the paragraph explaining the intent field injected into every tool schema",
 		// LIVE as of 2026-07-26, and it took both halves the old `because` named. `sdk.ts` now
-		// passes a RESOLVER (`intentTracingEnabled`) instead of a captured constant, and `Agent`
+		// passes a RESOLVER over `resolveIntentField` instead of a captured constant, and `Agent`
 		// calls it when it builds the provider context and again when it builds the loop config,
 		// both per turn, so the tool schemas follow the setting. `resolveIntentField` in
 		// `gate-inputs.ts` is the single owner both readers go through, because a prompt that
