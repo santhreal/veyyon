@@ -3,7 +3,8 @@ type PendingInput = {
 	resolve: (value: string) => void;
 	reject: (error: Error) => void;
 };
-type ClaimedInput = {
+/** A held `/login <value>` input slot: its pending value, and the release that rejects it. */
+export type OAuthManualInputClaim = {
 	promise: Promise<string>;
 	clear: (reason?: string) => void;
 };
@@ -26,7 +27,7 @@ export class OAuthManualInputManager {
 		return this.waitForInput(providerId);
 	}
 
-	tryClaimInput(providerId: string): ClaimedInput | undefined {
+	tryClaimInput(providerId: string): OAuthManualInputClaim | undefined {
 		if (this.#pending) return undefined;
 		const pending = createPending(providerId);
 		this.#pending = pending;
