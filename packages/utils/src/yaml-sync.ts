@@ -135,25 +135,12 @@ function syncMap(
 ): void {
 	for (const [key, value] of Object.entries(target)) {
 		const path = basePath.concat([key]);
-		const existing = current[key];
 		// `undefined` is how a reset arrives: the key is gone, not set to null.
 		if (value === undefined) {
 			if (key in current) doc.deleteIn(path);
-			continue;
+		} else {
+			syncValue(doc, path, value, current[key], key in current);
 		}
-		if (isRecord(value) && isRecord(existing)) {
-			syncMap(doc, path, value, existing);
-			continue;
-		}
-		if (Array.isArray(value) && Array.isArray(existing) && value.length === existing.length) {
-			syncSequence(doc, path, value, existing);
-			continue;
-		}
-		// Equal values are left alone so their formatting survives. JSON is enough here:
-		// settings are YAML scalars, arrays and mappings, all of which round-trip through
-		// it, and the alternative (a deep walk) would answer the same question.
-		if (key in current && JSON.stringify(existing) === JSON.stringify(value)) continue;
-		doc.setIn(path, value);
 	}
 	for (const key of Object.keys(current)) {
 		if (key in target) continue;
@@ -178,17 +165,30 @@ function syncSequence(
 	current: readonly unknown[],
 ): void {
 	for (const [index, value] of target.entries()) {
-		const existing = current[index];
-		const path = basePath.concat([index]);
-		if (isRecord(value) && isRecord(existing)) {
-			syncMap(doc, path, value, existing);
-			continue;
-		}
-		if (Array.isArray(value) && Array.isArray(existing) && value.length === existing.length) {
-			syncSequence(doc, path, value, existing);
-			continue;
-		}
-		if (JSON.stringify(existing) === JSON.stringify(value)) continue;
+		syncValue(doc, basePath.concat([index]), value, current[index], true);
+	}
+}
+
+/**
+ * Apply `value` over `existing`, the document's value at `path`, which holds nothing when
+ * `present` is false: nested mappings and same-length sequences are applied entry by entry,
+ * and any other value is set unless it equals `existing`.
+ */
+function syncValue(
+	doc: YAML.Document.Parsed | YAML.Document,
+	path: readonly YamlPathStep[],
+	value: unknown,
+	existing: unknown,
+	present: boolean,
+): void {
+	if (isRecord(value) && isRecord(existing)) {
+		syncMap(doc, path, value, existing);
+	} else if (Array.isArray(value) && Array.isArray(existing) && value.length === existing.length) {
+		syncSequence(doc, path, value, existing);
+	} else if (!present || JSON.stringify(existing) !== JSON.stringify(value)) {
+		// Equal values are left alone so their formatting survives. JSON is enough here:
+		// settings are YAML scalars, arrays and mappings, all of which round-trip through
+		// it, and the alternative (a deep walk) would answer the same question.
 		doc.setIn(path, value);
 	}
 }
