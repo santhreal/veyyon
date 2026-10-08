@@ -1,5 +1,5 @@
-import { toolResultNeverRan } from "@veyyon/agent-core";
-import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/ai";
+import { type AgentTool, toolResultNeverRan } from "@veyyon/agent-core";
+import type { AssistantMessage, ImageContent, TextContent, ToolCall } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
 import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
 import { type Component, Loader, type LoaderMessageColorFn, Spacer, TERMINAL, Text } from "@veyyon/tui";
@@ -9,6 +9,7 @@ import { extractTextContent } from "../../../commit/utils";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../../config/settings-instance";
 import { getFileSnapshotStore } from "../../../edit/file-snapshot-store";
+import type { RecoveredRetryError } from "../../../extensibility/shared-events";
 import type { PlanApprovalDetails } from "../../../plan-mode/approved-plan";
 import { SessionProjectionEngine } from "../../../presentation/session-projection-engine";
 import { compactionActionLabel, resolveCompactionKind } from "../../../presentation/summary-builder";
@@ -17,7 +18,13 @@ import { sideChannelPrompts } from "../../../prompts/side-channel/rows";
 import { SECRET_SPEND_NOTICE_SOURCE } from "../../../secrets/notices";
 import type { AgentSession } from "../../../session/agent-session";
 import type { AgentSessionEvent } from "../../../session/agent-session-types";
-import { isSilentAbort, readQueueChipText, resolveAbortLabel } from "../../../session/messages";
+import {
+	type CustomMessage,
+	type HookMessage,
+	isSilentAbort,
+	readQueueChipText,
+	resolveAbortLabel,
+} from "../../../session/messages";
 import { SpeechEnhancer } from "../../../speech/tts/speech-enhancer";
 import { vocalizer } from "../../../speech/tts/vocalizer";
 import { setShimmerActivity, shimmerText } from "../../../theme/shimmer";
@@ -50,6 +57,7 @@ import {
 } from "../utils/transcript-render-helpers";
 import { StreamingRevealController } from "./streaming-reveal";
 import { streamingStringKeysForTool, ToolArgsRevealController } from "./tool-args-reveal";
+import { userEchoSignature } from "./transcript-composer";
 
 /**
  * The slice of the interactive context this controller uses: 51 members of the
@@ -115,6 +123,8 @@ export type EventControllerContext = Pick<
 >;
 
 type AgentSessionEventKind = AgentSessionEvent["type"];
+type StartedUserMessage = Extract<Extract<AgentSessionEvent, { type: "message_start" }>["message"], { role: "user" }>;
+type ToolExecutionEndEvent = Extract<AgentSessionEvent, { type: "tool_execution_end" }>;
 
 const IRC_MESSAGE_VISIBLE_TTL_MS = 10_000;
 /**
@@ -621,11 +631,7 @@ export class EventController {
 		this.#pinnedErrorComponent?.setErrorPinned(false);
 		this.#pinnedErrorComponent = undefined;
 		this.ctx.clearPinnedError();
-		if (this.ctx.retryLoader) {
-			this.ctx.retryLoader.stop();
-			this.ctx.retryLoader = undefined;
-			this.ctx.statusContainer.disposeChildren();
-		}
+		this.#stopRetryLoader();
 		this.#cancelIdleCompaction();
 		this.#cancelIdleRecap();
 		this.ctx.statusLine.markActivityStart();
@@ -639,97 +645,102 @@ export class EventController {
 
 	async #handleMessageStart(event: Extract<AgentSessionEvent, { type: "message_start" }>): Promise<void> {
 		this.#ensureWorkingLoaderWhileStreaming();
-		if (event.message.role === "hookMessage" || event.message.role === "custom") {
-			const signature = `${event.message.role}:${event.message.customType}:${event.message.timestamp}`;
-			if (this.#renderedCustomMessages.has(signature)) {
-				return;
-			}
-			this.#renderedCustomMessages.add(signature);
+		const { message } = event;
+		if (message.role === "hookMessage" || message.role === "custom") {
+			this.#startCustomMessage(message);
+		} else if (message.role === "user") {
+			this.#startUserMessage(message);
+		} else if (message.role === "fileMention") {
 			this.#resetReadGroup();
-			this.ctx.addMessageToChat(event.message);
-			// Queued custom-message chips are derived from the agent queue; refresh the
-			// pending bar when the queued custom is consumed so the chip disappears
-			// immediately.
-			if (event.message.role === "custom" && readQueueChipText(event.message.details)) {
-				this.ctx.updatePendingMessagesDisplay();
-			}
+			this.ctx.addMessageToChat(message);
 			this.ctx.ui.requestRender();
-		} else if (event.message.role === "user") {
-			const textContent = this.ctx.getUserMessageText(event.message);
-			const imageBlocks =
-				typeof event.message.content === "string"
-					? []
-					: event.message.content.filter(
-							(content): content is ImageContent =>
-								content.type === "image" &&
-								typeof content.data === "string" &&
-								typeof content.mimeType === "string",
-						);
-			const imageCount = imageBlocks.length;
-			const signature = `${textContent}\u0000${imageCount}`;
-
-			this.#resetReadGroup();
-			this.#resolveDisplaceablePoll();
-			this.#resolveDisplaceableTodo();
-			const wasOptimistic = this.ctx.optimisticUserMessageSignature === signature;
-			const matchedLocalSubmission = this.ctx.locallySubmittedUserSignatures.delete(signature);
-			const replacesOptimistic =
-				this.ctx.optimisticUserMessageSignature !== undefined && !wasOptimistic && !matchedLocalSubmission;
-			const wasLocallySubmitted = matchedLocalSubmission || wasOptimistic || replacesOptimistic;
-			if (wasOptimistic) {
-				this.ctx.clearOptimisticUserMessage();
-			} else if (replacesOptimistic) {
-				this.ctx.replaceOptimisticUserMessage(event.message);
-			} else {
-				// Append synchronously: #emit dispatches to this listener fire-and-forget
-				// (see AgentSession.#emit), so any await between the user message_start and
-				// addMessageToChat lets later events (assistant message_start, tool execution
-				// start/end) append their components first and scramble transcript order /
-				// live-region block boundaries. addMessageToChat materializes clickable image
-				// links via the synchronous putBlobSync fallback, so no await is needed here.
-				this.ctx.addMessageToChat(event.message);
-			}
-
-			// Clear the editor only when the submission did not originate from a
-			// local submission (optimistic or queued-while-streaming). Both local
-			// paths already cleared the editor at submit time; clearing again here
-			// would race with the user typing the next prompt while the previous
-			// large redraw lands and erase their in-progress draft (#783).
-			if (!event.message.synthetic) {
-				if (!wasLocallySubmitted) {
-					this.ctx.editor.setText("");
-				}
-				this.ctx.updatePendingMessagesDisplay();
-			}
-			// A prompt landing mid-turn (queued while streaming) becomes the one
-			// being worked: move the glow so it always sits on the newest prompt.
-			if (!event.message.synthetic && this.ctx.session?.isStreaming) {
-				this.#armWorkingUserMessage();
-			}
-			this.ctx.ui.requestRender();
-		} else if (event.message.role === "fileMention") {
-			this.#resetReadGroup();
-			this.ctx.addMessageToChat(event.message);
-			this.ctx.ui.requestRender();
-		} else if (event.message.role === "assistant") {
-			this.#lastVisibleBlockCount = 0;
-			this.#visibleBlocks.clear();
-			this.#projection.recordAssistantMessageToolCalls(event.message);
-			this.ctx.streamingComponent = createAssistantMessageComponent(this.ctx);
-			this.ctx.streamingMessage = event.message;
-			this.ctx.chatContainer.addChild(this.ctx.streamingComponent);
-			const timeline = splitAssistantMessageToolTimeline(this.ctx.streamingMessage);
-			this.#streamingReveal.begin(this.ctx.streamingComponent, toAssistantMessageView(timeline.beforeTools));
-			this.ctx.ui.requestRender();
+		} else if (message.role === "assistant") {
+			this.#startAssistantMessage(message);
 		}
 	}
 
-	async #handleIrcMessage(event: Extract<AgentSessionEvent, { type: "irc_message" }>): Promise<void> {
-		const signature = `${event.message.role}:${event.message.customType}:${event.message.timestamp}`;
-		if (this.#renderedCustomMessages.has(signature)) {
-			return;
-		}
+	/**
+	 * Claims a custom message's transcript slot: its signature the first time the message starts, undefined once it
+	 * has been shown.
+	 */
+	#claimCustomMessage(message: CustomMessage | HookMessage): string | undefined {
+		const signature = `${message.role}:${message.customType}:${message.timestamp}`;
+		if (this.#renderedCustomMessages.has(signature)) return undefined;
 		this.#renderedCustomMessages.add(signature);
+		return signature;
+	}
+
+	#startCustomMessage(message: CustomMessage | HookMessage): void {
+		if (this.#claimCustomMessage(message) === undefined) return;
+		this.#resetReadGroup();
+		this.ctx.addMessageToChat(message);
+		// Queued custom-message chips are derived from the agent queue; refresh the pending bar when the queued custom
+		// message is consumed so the chip disappears immediately.
+		if (message.role === "custom" && readQueueChipText(message.details)) this.ctx.updatePendingMessagesDisplay();
+		this.ctx.ui.requestRender();
+	}
+
+	#startUserMessage(message: StartedUserMessage): void {
+		const signature = userEchoSignature(this.ctx.getUserMessageText(message), countInlineImages(message.content));
+		this.#resetReadGroup();
+		this.#resolveDisplaceablePoll();
+		this.#resolveDisplaceableTodo();
+		const wasLocallySubmitted = this.#settleSubmittedEcho(message, signature);
+		if (!message.synthetic) {
+			// Clear the editor only when the submission did not originate from a local submission (optimistic or
+			// queued-while-streaming). Both local paths already cleared the editor at submit time; clearing again here
+			// would race with the next prompt being typed while the previous large redraw lands and erase the
+			// in-progress draft (#783).
+			if (!wasLocallySubmitted) this.ctx.editor.setText("");
+			this.ctx.updatePendingMessagesDisplay();
+			// A prompt landing mid-turn (queued while streaming) becomes the one being worked: move the glow so it
+			// always sits on the newest prompt.
+			if (this.ctx.session?.isStreaming) this.#armWorkingUserMessage();
+		}
+		this.ctx.ui.requestRender();
+	}
+
+	/**
+	 * Settles a user message against what this client drew at submit time and returns whether the message came from
+	 * a local submission. A matching optimistic echo stays, an unmatched one gives way to the message, and a message
+	 * from elsewhere is appended.
+	 */
+	#settleSubmittedEcho(message: StartedUserMessage, signature: string): boolean {
+		const optimisticSignature = this.ctx.optimisticUserMessageSignature;
+		const matchedLocalSubmission = this.ctx.locallySubmittedUserSignatures.delete(signature);
+		if (optimisticSignature === signature) {
+			this.ctx.clearOptimisticUserMessage();
+			return true;
+		}
+		if (optimisticSignature !== undefined && !matchedLocalSubmission) {
+			this.ctx.replaceOptimisticUserMessage(message);
+			return true;
+		}
+		// Append synchronously: #emit dispatches to this listener fire-and-forget (see AgentSession.#emit), so any
+		// await between the user message_start and addMessageToChat lets later events (assistant message_start, tool
+		// execution start/end) append their components first and scramble transcript order / live-region block
+		// boundaries. addMessageToChat materializes clickable image links via the synchronous putBlobSync fallback, so
+		// no await is needed here.
+		this.ctx.addMessageToChat(message);
+		return matchedLocalSubmission;
+	}
+
+	#startAssistantMessage(message: AssistantMessage): void {
+		this.#lastVisibleBlockCount = 0;
+		this.#visibleBlocks.clear();
+		this.#projection.recordAssistantMessageToolCalls(message);
+		const component = createAssistantMessageComponent(this.ctx);
+		this.ctx.streamingComponent = component;
+		this.ctx.streamingMessage = message;
+		this.ctx.chatContainer.addChild(component);
+		const timeline = splitAssistantMessageToolTimeline(message);
+		this.#streamingReveal.begin(component, toAssistantMessageView(timeline.beforeTools));
+		this.ctx.ui.requestRender();
+	}
+
+	async #handleIrcMessage(event: Extract<AgentSessionEvent, { type: "irc_message" }>): Promise<void> {
+		const signature = this.#claimCustomMessage(event.message);
+		if (signature === undefined) return;
 		this.#resetReadGroup();
 		const components = this.ctx.addMessageToChat(event.message);
 		this.#scheduleIrcExpiry(signature, components);
@@ -876,171 +887,203 @@ export class EventController {
 		if (streamDelta?.type === "text_delta") setShimmerActivity("streaming");
 		else if (streamDelta?.type === "thinking_delta") setShimmerActivity("thinking");
 		vocalizeDelta(event);
-		if (this.ctx.streamingComponent && event.message.role === "assistant") {
-			this.#projection.recordAssistantMessageToolCalls(event.message);
-			const smoothStreaming = this.ctx.settings.get("display.smoothStreaming");
-			const repaintTargets = new Set<Component>();
-			const streamingComponent = this.ctx.streamingComponent;
-			const unlockedThinkingVisibility = this.ctx.noteDisplayableThinkingContent(event.message);
-			if (unlockedThinkingVisibility) {
-				streamingComponent.setHideThinkingBlock(this.ctx.effectiveHideThinkingBlock);
-				this.#streamingReveal.resyncVisibility();
-				repaintTargets.add(streamingComponent);
-			}
-			this.ctx.streamingMessage = event.message;
-			const timeline = splitAssistantMessageToolTimeline(this.ctx.streamingMessage);
-			this.#streamingReveal.setTarget(toAssistantMessageView(timeline.beforeTools));
+		const { message } = event;
+		const streamingComponent = this.ctx.streamingComponent;
+		if (streamingComponent && message.role === "assistant")
+			this.#updateStreamingAssistant(streamingComponent, message);
+	}
 
-			const visibleBlockCount = this.#countVisibleBlocks(this.ctx.streamingMessage.content);
-			if (visibleBlockCount > this.#lastVisibleBlockCount) {
-				// A new visible block after the first (e.g. thinking closed, next text
-				// block) changes transcript layout; the first block's growth is paced
-				// by the reveal timer when smooth streaming is on.
-				if (!smoothStreaming || this.#lastVisibleBlockCount >= 1) {
-					repaintTargets.add(streamingComponent);
-				}
-				this.#resetReadGroup();
-				this.#lastVisibleBlockCount = visibleBlockCount;
-			}
+	/** Projects one streamed snapshot of the assistant message: its prose, its tool-call previews and the working message. */
+	#updateStreamingAssistant(streamingComponent: AssistantMessageComponent, message: AssistantMessage): void {
+		this.#projection.recordAssistantMessageToolCalls(message);
+		const smoothStreaming = this.ctx.settings.get("display.smoothStreaming");
+		const repaintTargets = new Set<Component>();
+		if (this.ctx.noteDisplayableThinkingContent(message)) {
+			streamingComponent.setHideThinkingBlock(this.ctx.effectiveHideThinkingBlock);
+			this.#streamingReveal.resyncVisibility();
+			repaintTargets.add(streamingComponent);
+		}
+		this.ctx.streamingMessage = message;
+		const timeline = splitAssistantMessageToolTimeline(message);
+		this.#streamingReveal.setTarget(toAssistantMessageView(timeline.beforeTools));
+		this.#noteVisibleBlocks(message, smoothStreaming, streamingComponent, repaintTargets);
 
-			// Content blocks stream sequentially: a toolCall block can only begin
-			// after every preceding thinking/text block has closed, and the
-			// reveal's setTarget above force-completes the visible text for
-			// toolCall messages. Finalize the assistant block now instead of at
-			// message_end so the transcript's commit-safe run can extend through
-			// it into the streaming tool preview below — otherwise a long args
-			// stream (a big write/edit/eval) sits below a still-live block and
-			// can never reach native scrollback: the head of the preview is
-			// neither committed nor on screen and the transcript reads as cut.
-			if (this.ctx.streamingMessage.content.some(content => content.type === "toolCall")) {
-				streamingComponent.markTranscriptBlockFinalized();
-				repaintTargets.add(streamingComponent);
-			}
-			for (const content of this.ctx.streamingMessage.content) {
-				if (content.type !== "toolCall") continue;
-				if (content.name === "read") {
-					if (!readArgsHaveTarget(content.arguments)) {
-						// Args still streaming — defer until path is parseable so we can route to the
-						// read group (regular files) vs ToolExecutionComponent (internal URLs).
-						// Creating either component now would lock the read into the wrong shape.
-						continue;
-					}
-					if (!readArgsTargetInternalUrl(content.arguments)) {
-						if (this.ctx.settledToolCalls.has(content.id)) continue;
-						if (!this.ctx.pendingTools.has(content.id)) this.#resolveDisplaceablePoll(content.name);
-						this.#trackReadToolCall(content.id, content.arguments);
-						const component = this.ctx.pendingTools.get(content.id);
-						if (component) {
-							component.updateArgs(content.arguments, content.id);
-							repaintTargets.add(component);
-						} else {
-							const group = this.#getReadGroup();
-							group.updateArgs(content.arguments, content.id);
-							this.ctx.pendingTools.set(content.id, group);
-							this.#toolTimelineComponents.set(content.id, group);
-							repaintTargets.add(group);
-						}
-						continue;
-					}
-					// Internal URL read falls through to ToolExecutionComponent below.
-				}
+		// Content blocks stream sequentially: a toolCall block can only begin
+		// after every preceding thinking/text block has closed, and the
+		// reveal's setTarget above force-completes the visible text for
+		// toolCall messages. Finalize the assistant block now instead of at
+		// message_end so the transcript's commit-safe run can extend through
+		// it into the streaming tool preview below — otherwise a long args
+		// stream (a big write/edit/eval) sits below a still-live block and
+		// can never reach native scrollback: the head of the preview is
+		// neither committed nor on screen and the transcript reads as cut.
+		if (message.content.some(content => content.type === "toolCall")) {
+			streamingComponent.markTranscriptBlockFinalized();
+			repaintTargets.add(streamingComponent);
+		}
+		for (const content of message.content) {
+			if (content.type === "toolCall") this.#previewStreamingToolCall(content, smoothStreaming, repaintTargets);
+		}
+		for (const [toolCallId, segment] of timeline.afterToolCalls) {
+			const segmentComponent = this.#upsertPostToolAssistantSegment(toolCallId, segment);
+			if (segmentComponent) repaintTargets.add(segmentComponent);
+		}
+		this.#updateWorkingMessageFromToolCalls(message.content);
 
-				// Preserve the raw partial JSON only for renderers that need to surface fields before the JSON object closes.
-				// Bash uses this to show inline env assignments during streaming instead of popping them in at completion.
-				// While the JSON is still open, ToolArgsRevealController paces the
-				// reveal (write/edit/bash previews grow smoothly when a slow provider
-				// delivers large batches); once it closes, the final args render
-				// as-is — mirroring how assistant text snaps at message_end.
-				let renderArgs: Record<string, unknown>;
-				const partialJson = getStreamingPartialJson(content);
-				const rawInput = content.customWireName !== undefined;
-				const tool = this.ctx.viewSession.getToolByName(content.name);
-				if (partialJson) {
-					renderArgs = this.#toolArgsReveal.setTarget(content.id, partialJson, {
-						rawInput,
-						exposeRawPartialJson: exposesRawPartialJson(content.name, rawInput, tool),
-						streamingStringKeys: streamingStringKeysForTool(content.name, rawInput),
-						// The preview renders arguments that have NOT reached the tool yet, so
-						// they still carry `§handle` fragments; expansion at seam 1 happens
-						// just before execution. Without the codec here a streaming write or
-						// edit preview shows the handle instead of the text it stands for.
-						argot: this.ctx.viewSession.getArgotSession?.(),
-					});
-				} else {
-					this.#toolArgsReveal.finish(content.id);
-					renderArgs = content.arguments;
-				}
-				if (this.ctx.settledToolCalls.has(content.id)) continue;
-				if (!this.ctx.pendingTools.has(content.id)) {
-					this.#resolveDisplaceablePoll(content.name);
-					this.#resetReadGroup();
-					const component = new ToolExecutionComponent(
-						content.name,
-						renderArgs,
-						{
-							snapshots: getFileSnapshotStore(this.ctx.viewSession),
-							showImages: settings.get("terminal.showImages"),
-							editFuzzyThreshold: settings.get("edit.fuzzyThreshold"),
-							editAllowFuzzy: settings.get("edit.fuzzyMatch"),
-						},
-						tool,
-						this.ctx.ui,
-						this.ctx.sessionManager.getCwd(),
-						content.id,
-					);
-					component.setExpanded(this.ctx.toolOutputExpanded);
-					this.ctx.chatContainer.addChild(component);
-					this.ctx.pendingTools.set(content.id, component);
-					this.#toolTimelineComponents.set(content.id, component);
-					this.#toolArgsReveal.bind(content.id, component);
-					repaintTargets.add(component);
-				} else {
-					const component = this.ctx.pendingTools.get(content.id);
-					if (component) {
-						component.updateArgs(renderArgs, content.id);
-						this.#toolArgsReveal.bind(content.id, component);
-						// Paced args reveal schedules its own component-scoped paints.
-						if (!partialJson || !smoothStreaming) {
-							repaintTargets.add(component);
-						}
-					}
-				}
-			}
-			for (const [toolCallId, segment] of timeline.afterToolCalls) {
-				const segmentComponent = this.#upsertPostToolAssistantSegment(toolCallId, segment);
-				if (segmentComponent) {
-					repaintTargets.add(segmentComponent);
-				}
-			}
+		// Smooth assistant reveal paints on its own 30fps timer; repainting the
+		// streaming block on every provider delta duplicated full-tree walks
+		// while the revealed prefix was unchanged between ticks (issue #4377).
+		if (!smoothStreaming) repaintTargets.add(streamingComponent);
+		this.#repaintMessageUpdateComponents(repaintTargets);
+	}
 
-			// Update working message with intent from streamed tool arguments
-			for (const content of this.ctx.streamingMessage.content) {
-				if (content.type !== "toolCall") continue;
-				const args = content.arguments;
-				if (!args || typeof args !== "object") continue;
-				if (INTENT_FIELD in args) {
-					this.#updateWorkingMessageFromIntent(args[INTENT_FIELD]);
-					continue;
-				}
-				const tool = this.ctx.viewSession.getToolByName(content.name);
-				if (typeof tool?.intent !== "function") continue;
-				try {
-					const derived = tool.intent(args as never)?.trim();
-					if (derived) {
-						this.#updateWorkingMessageFromIntent(derived);
-					}
-				} catch {
-					// intent function must never break the UI
-				}
-			}
+	/**
+	 * Counts the streaming message's visible blocks. A newly visible block breaks the read run, and repaints the
+	 * streaming block unless it is the first one: a new visible block after the first (e.g. thinking closed, next text
+	 * block) changes the transcript layout, while the first block's growth is paced by the reveal timer when smooth
+	 * streaming is on.
+	 */
+	#noteVisibleBlocks(
+		message: AssistantMessage,
+		smoothStreaming: boolean,
+		streamingComponent: AssistantMessageComponent,
+		repaintTargets: Set<Component>,
+	): void {
+		const visibleBlockCount = this.#countVisibleBlocks(message.content);
+		if (visibleBlockCount <= this.#lastVisibleBlockCount) return;
+		if (!smoothStreaming || this.#lastVisibleBlockCount >= 1) repaintTargets.add(streamingComponent);
+		this.#resetReadGroup();
+		this.#lastVisibleBlockCount = visibleBlockCount;
+	}
 
-			// Smooth assistant reveal paints on its own 30fps timer; repainting the
-			// streaming block on every provider delta duplicated full-tree walks
-			// while the revealed prefix was unchanged between ticks (issue #4377).
-			if (!smoothStreaming) {
-				repaintTargets.add(streamingComponent);
+	/** Mounts or updates the preview of one streamed tool call. */
+	#previewStreamingToolCall(content: ToolCall, smoothStreaming: boolean, repaintTargets: Set<Component>): void {
+		if (content.name === "read" && this.#previewStreamingRead(content, repaintTargets)) return;
+		// Preserve the raw partial JSON only for renderers that need to surface fields before the JSON object closes.
+		// Bash uses this to show inline env assignments during streaming instead of popping them in at completion.
+		// While the JSON is still open, ToolArgsRevealController paces the
+		// reveal (write/edit/bash previews grow smoothly when a slow provider
+		// delivers large batches); once it closes, the final args render
+		// as-is — mirroring how assistant text snaps at message_end.
+		const partialJson = getStreamingPartialJson(content);
+		const tool = this.ctx.viewSession.getToolByName(content.name);
+		let renderArgs: Record<string, unknown> = content.arguments;
+		if (partialJson) {
+			const rawInput = content.customWireName !== undefined;
+			renderArgs = this.#toolArgsReveal.setTarget(content.id, partialJson, {
+				rawInput,
+				exposeRawPartialJson: exposesRawPartialJson(content.name, rawInput, tool),
+				streamingStringKeys: streamingStringKeysForTool(content.name, rawInput),
+				// The preview renders arguments that have NOT reached the tool yet, so
+				// they still carry `§handle` fragments; expansion at seam 1 happens
+				// just before execution. Without the codec here a streaming write or
+				// edit preview shows the handle instead of the text it stands for.
+				argot: this.ctx.viewSession.getArgotSession?.(),
+			});
+		} else {
+			this.#toolArgsReveal.finish(content.id);
+		}
+		if (this.ctx.settledToolCalls.has(content.id)) return;
+		const pending = this.ctx.pendingTools.get(content.id);
+		if (!pending) {
+			repaintTargets.add(this.#mountStreamingToolCall(content, renderArgs, tool));
+			return;
+		}
+		pending.updateArgs(renderArgs, content.id);
+		this.#toolArgsReveal.bind(content.id, pending);
+		// Paced args reveal schedules its own component-scoped paints.
+		if (!partialJson || !smoothStreaming) repaintTargets.add(pending);
+	}
+
+	/**
+	 * Routes a streamed `read` call into the read group; false when it targets an internal URL and falls through to a
+	 * tool card. A call whose path has not streamed yet waits, since mounting either component now would lock the read
+	 * into the wrong shape.
+	 */
+	#previewStreamingRead(content: ToolCall, repaintTargets: Set<Component>): boolean {
+		if (!readArgsHaveTarget(content.arguments)) return true;
+		if (readArgsTargetInternalUrl(content.arguments)) return false;
+		if (this.ctx.settledToolCalls.has(content.id)) return true;
+		if (!this.ctx.pendingTools.has(content.id)) this.#resolveDisplaceablePoll(content.name);
+		this.#trackReadToolCall(content.id, content.arguments);
+		const pending = this.ctx.pendingTools.get(content.id);
+		if (pending) {
+			pending.updateArgs(content.arguments, content.id);
+			repaintTargets.add(pending);
+			return true;
+		}
+		const group = this.#getReadGroup();
+		group.updateArgs(content.arguments, content.id);
+		this.ctx.pendingTools.set(content.id, group);
+		this.#toolTimelineComponents.set(content.id, group);
+		repaintTargets.add(group);
+		return true;
+	}
+
+	/** Adds the tool card of a streamed tool call to the transcript. */
+	#mountStreamingToolCall(
+		content: ToolCall,
+		renderArgs: Record<string, unknown>,
+		tool: AgentTool | undefined,
+	): ToolExecutionComponent {
+		this.#resolveDisplaceablePoll(content.name);
+		this.#resetReadGroup();
+		const component = new ToolExecutionComponent(
+			content.name,
+			renderArgs,
+			{
+				snapshots: getFileSnapshotStore(this.ctx.viewSession),
+				showImages: settings.get("terminal.showImages"),
+				editFuzzyThreshold: settings.get("edit.fuzzyThreshold"),
+				editAllowFuzzy: settings.get("edit.fuzzyMatch"),
+			},
+			tool,
+			this.ctx.ui,
+			this.ctx.sessionManager.getCwd(),
+			content.id,
+		);
+		component.setExpanded(this.ctx.toolOutputExpanded);
+		this.ctx.chatContainer.addChild(component);
+		this.ctx.pendingTools.set(content.id, component);
+		this.#toolTimelineComponents.set(content.id, component);
+		this.#toolArgsReveal.bind(content.id, component);
+		return component;
+	}
+
+	/**
+	 * Shows the intent of the last streamed tool call that states one. A later call's intent replaces an earlier one's,
+	 * so the calls before it are not read.
+	 */
+	#updateWorkingMessageFromToolCalls(content: AssistantMessage["content"]): void {
+		for (let i = content.length - 1; i >= 0; i--) {
+			const block = content[i]!;
+			if (block.type !== "toolCall") continue;
+			const intent = this.#streamedToolCallIntent(block);
+			if (intent !== undefined) {
+				this.#updateWorkingMessageFromIntent(intent);
+				return;
 			}
-			this.#repaintMessageUpdateComponents(repaintTargets);
+		}
+	}
+
+	/**
+	 * The non-blank intent a streamed tool call states: its intent field when it has one, else what its tool derives
+	 * from its arguments.
+	 */
+	#streamedToolCallIntent(block: ToolCall): string | undefined {
+		const args = block.arguments;
+		if (!args || typeof args !== "object") return undefined;
+		if (INTENT_FIELD in args) {
+			const intent: unknown = args[INTENT_FIELD];
+			return typeof intent === "string" && intent.trim() ? intent : undefined;
+		}
+		const tool = this.ctx.viewSession.getToolByName(block.name);
+		if (typeof tool?.intent !== "function") return undefined;
+		try {
+			return tool.intent(args as never)?.trim() || undefined;
+		} catch {
+			// intent function must never break the UI
+			return undefined;
 		}
 	}
 
@@ -1060,138 +1103,121 @@ export class EventController {
 	}
 
 	async #handleMessageEnd(event: Extract<AgentSessionEvent, { type: "message_end" }>): Promise<void> {
-		if (event.message.role === "user") return;
-		const unlockedThinkingVisibility =
-			event.message.role === "assistant" && this.ctx.noteDisplayableThinkingContent(event.message);
-		if (unlockedThinkingVisibility && this.ctx.streamingComponent) {
+		const { message } = event;
+		if (message.role === "user") return;
+		if (message.role === "assistant") this.#endAssistantMessage(message);
+		this.ctx.ui.requestRender();
+	}
+
+	#endAssistantMessage(message: AssistantMessage): void {
+		if (this.ctx.noteDisplayableThinkingContent(message) && this.ctx.streamingComponent) {
 			this.ctx.streamingComponent.setHideThinkingBlock(this.ctx.effectiveHideThinkingBlock);
 			this.#streamingReveal.resyncVisibility();
 		}
-		if (event.message.role === "assistant" && settings.get("speech.enabled")) {
-			if (event.message.stopReason === "aborted") {
-				// Esc / Ctrl+C / interrupt: stop speaking now and drop the trailing partial.
-				vocalizer.clear();
-			} else {
-				const mode = settings.get("speech.mode");
-				// Speak the last partial sentence of a completed message; yield mode
-				// instead speaks the whole final message at turn end.
-				if (mode === "assistant" || mode === "all") vocalizer.flush();
-			}
+		vocalizeMessageEnd(message);
+		const streamingComponent = this.ctx.streamingComponent;
+		if (streamingComponent) {
+			this.#finalizeStreamingAssistant(streamingComponent, message);
+		} else if (endsInShownError(message)) {
+			// The turn died before any streaming began (the provider rejected the request at setup: unsupported
+			// thinking effort, bad model id, auth), so there is no streaming component to hold an inline error row.
+			// Without this branch the submitted prompt vanished with no working line, no banner, and no clue. Pin the
+			// error above the editor exactly like a mid-stream failure; the next turn's agent_start clears it.
+			this.ctx.showPinnedError(message.errorMessage);
 		}
-		if (this.ctx.streamingComponent && event.message.role === "assistant") {
-			this.ctx.streamingMessage = event.message;
-			this.#streamingReveal.stop();
-			this.#toolArgsReveal.flushAll();
-			let errorMessage: string | undefined;
-			const aborted = this.ctx.streamingMessage.stopReason === "aborted";
-			const silentlyAborted = aborted && isSilentAbort(this.ctx.streamingMessage);
-			const ttsrSilenced = aborted && this.ctx.viewSession.isTtsrAbortPending;
-			if (aborted && !silentlyAborted && !ttsrSilenced) {
-				// Resolve the operator-facing label: a user-interrupt (Esc) abort
-				// carries USER_INTERRUPT_LABEL on errorMessage (threaded through the
-				// AbortController), which is preserved verbatim; any other abort with
-				// no threaded reason falls back to the retry-aware generic label.
-				// AgentSession.#handleAgentEvent already stamped SILENT_ABORT_MARKER for
-				// the plan-compact transition before this controller ran, so reaching
-				// this branch implies the abort was NOT a silent internal transition.
-				errorMessage = resolveAbortLabel(this.ctx.streamingMessage, this.ctx.viewSession.retryAttempt);
-				this.ctx.streamingMessage.errorMessage = errorMessage;
-			}
-			const displayMessage: AssistantMessage =
-				silentlyAborted || ttsrSilenced
-					? {
-							// Silence the streaming render by downgrading stopReason to "stop" for
-							// display only — does NOT mutate the persisted message's stopReason
-							// (the marker on errorMessage drives replay-side suppression).
-							...this.ctx.streamingMessage,
-							stopReason: "stop",
-						}
-					: this.ctx.streamingMessage;
-			const displayTimeline = splitAssistantMessageToolTimeline(displayMessage);
-			this.ctx.streamingComponent.updateContent(toAssistantMessageView(displayTimeline.beforeTools));
-			if (this.ctx.streamingMessage.stopReason !== "aborted" && this.ctx.streamingMessage.stopReason !== "error") {
-				for (const [toolCallId, component] of this.ctx.pendingTools.entries()) {
-					component.setArgsComplete(toolCallId);
-				}
-			} else {
-				// The turn ended without running these calls (abort/error/TTSR rewind),
-				// so they will never produce a result. Seal them so they stop animating
-				// and freeze instead of pinning the transcript live region while a retry
-				// streams fresh blocks below them. Background task calls keep updating.
-				for (const [toolCallId, component] of this.ctx.pendingTools.entries()) {
-					if (!this.#backgroundTaskCallIds.has(toolCallId) && component instanceof ToolExecutionComponent) {
-						component.seal();
-					}
-				}
-				// These calls will never produce a result either, so the tracked
-				// waiting poll cannot be displaced anymore — freeze it in place.
-				this.#resolveDisplaceablePoll();
-			}
-			// Surface a prompt-cache invalidation: if the previous turn cached a
-			// meaningful prefix and this request read none of it back, flag the turn,
-			// and name the cause when the session recorded one. A bare token count
-			// tells an operator they just paid to re-read the conversation without
-			// saying what to stop doing.
-			const usage = event.message.usage;
-			if (usage.cacheRead + usage.cacheWrite + usage.input > 0) {
-				if (settings.get("display.cacheMissMarker")) {
-					const invalidation = detectCacheInvalidation(
-						this.ctx.lastAssistantUsage,
-						usage,
-						this.#takeCacheInvalidationCause(),
-						{ explicitCache: usesExplicitPromptCache(event.message.api, event.message.model) },
-					);
-					if (invalidation) this.ctx.streamingComponent.setCacheInvalidation(invalidation);
-				}
-				this.ctx.lastAssistantUsage = usage;
-			}
-			this.ctx.streamingComponent.markTranscriptBlockFinalized();
-			let lastPostToolAssistantComponent: AssistantMessageComponent | undefined;
-			for (const [toolCallId, segment] of displayTimeline.afterToolCalls) {
-				const component = this.#upsertPostToolAssistantSegment(toolCallId, segment);
-				component?.markTranscriptBlockFinalized();
-				if (component) lastPostToolAssistantComponent = component;
-			}
-			// The turn's stop reason rides its HEAD segment, so that component is the
-			// one whose inline error the banner has to suppress. `#lastAssistantComponent`
-			// is a post-tool segment whenever the turn wrote text after a call, and those
-			// segments carry no stop reason at all: pinning one of those left the head's
-			// inline error on screen underneath a banner already saying it.
-			const errorBearingComponent = this.ctx.streamingComponent;
-			this.#lastAssistantComponent = lastPostToolAssistantComponent ?? this.ctx.streamingComponent;
-			if (settings.get("display.showTokenUsage") && assistantUsageIsBilled(event.message.usage)) {
-				this.ctx.chatContainer.addChild(
-					createUsageRowBlock(event.message.usage, event.message.duration, event.message.ttft),
-				);
-			}
-			this.ctx.streamingComponent = undefined;
-			this.ctx.streamingMessage = undefined;
-			// Pin a turn-ending provider error (e.g. Anthropic content-filter block)
-			// above the editor so it survives transcript scroll. Cleared at the next
-			// turn's agent_start. Suppress the transcript's inline `Error: …` line for
-			// the same message while pinned so the error isn't rendered twice.
-			if (event.message.stopReason === "error" && event.message.errorMessage && !isSilentAbort(event.message)) {
-				errorBearingComponent?.setErrorPinned(true);
-				this.#pinnedErrorComponent = errorBearingComponent;
-				this.ctx.showPinnedError(event.message.errorMessage);
-			}
-			this.ctx.statusLine.invalidate();
-			this.ctx.ui.requestRender();
-		} else if (
-			event.message.role === "assistant" &&
-			event.message.stopReason === "error" &&
-			event.message.errorMessage &&
-			!isSilentAbort(event.message)
-		) {
-			// The turn died before any streaming began (the provider rejected the
-			// request at setup: unsupported thinking effort, bad model id, auth),
-			// so there is no streaming component to carry an inline error row.
-			// Without this branch the submitted prompt vanished with no working
-			// line, no banner, and no clue. Pin the error above the editor exactly
-			// like a mid-stream failure; the next turn's agent_start clears it.
-			this.ctx.showPinnedError(event.message.errorMessage);
+	}
+
+	/** Freezes the streamed assistant block at the message's final content and releases the streaming slot. */
+	#finalizeStreamingAssistant(component: AssistantMessageComponent, message: AssistantMessage): void {
+		this.ctx.streamingMessage = message;
+		this.#streamingReveal.stop();
+		this.#toolArgsReveal.flushAll();
+		const timeline = splitAssistantMessageToolTimeline(this.#displayedEndOfTurn(message));
+		component.updateContent(toAssistantMessageView(timeline.beforeTools));
+		this.#settlePendingToolCalls(message.stopReason);
+		this.#noteTurnUsage(component, message);
+		component.markTranscriptBlockFinalized();
+		let lastSegmentComponent: AssistantMessageComponent | undefined;
+		for (const [toolCallId, segment] of timeline.afterToolCalls) {
+			const segmentComponent = this.#upsertPostToolAssistantSegment(toolCallId, segment);
+			if (!segmentComponent) continue;
+			segmentComponent.markTranscriptBlockFinalized();
+			lastSegmentComponent = segmentComponent;
 		}
+		this.#lastAssistantComponent = lastSegmentComponent ?? component;
+		if (settings.get("display.showTokenUsage") && assistantUsageIsBilled(message.usage)) {
+			this.ctx.chatContainer.addChild(createUsageRowBlock(message.usage, message.duration, message.ttft));
+		}
+		this.ctx.streamingComponent = undefined;
+		this.ctx.streamingMessage = undefined;
+		// Pin a turn-ending provider error (e.g. Anthropic content-filter block) above the editor so it survives
+		// transcript scroll; the next turn's agent_start clears it. The turn's stop reason is on its HEAD segment, so
+		// the streamed block, not a post-tool segment, is the one whose inline `Error: …` line the banner suppresses:
+		// post-tool segments have no stop reason, and pinning one left the head's inline error under a banner already
+		// showing it.
+		if (endsInShownError(message)) {
+			component.setErrorPinned(true);
+			this.#pinnedErrorComponent = component;
+			this.ctx.showPinnedError(message.errorMessage);
+		}
+		this.ctx.statusLine.invalidate();
 		this.ctx.ui.requestRender();
+	}
+
+	/**
+	 * The ended message as the transcript draws it. A silent abort (an internal transition) or an abort a TTSR rewind
+	 * replaces renders as a clean stop, for display only: the persisted stop reason stays, and the marker on
+	 * `errorMessage` drives replay-side suppression. Any other abort is stamped with its operator-facing label.
+	 */
+	#displayedEndOfTurn(message: AssistantMessage): AssistantMessage {
+		if (message.stopReason !== "aborted") return message;
+		if (isSilentAbort(message) || this.ctx.viewSession.isTtsrAbortPending) return { ...message, stopReason: "stop" };
+		// A user interrupt (Esc) holds USER_INTERRUPT_LABEL on errorMessage, threaded through the AbortController, and
+		// keeps it verbatim; any other abort with no threaded reason falls back to the retry-aware generic label.
+		// AgentSession.#handleAgentEvent already stamped SILENT_ABORT_MARKER for the plan-compact transition before
+		// this controller ran, so an abort reaching this line is not a silent internal transition.
+		message.errorMessage = resolveAbortLabel(message, this.ctx.viewSession.retryAttempt);
+		return message;
+	}
+
+	/**
+	 * Settles the tool calls still pending when a turn ends. A completed turn's calls have final arguments. An aborted
+	 * or failed turn (abort, error, TTSR rewind) never runs its calls, so each is sealed to stop animating instead of
+	 * pinning the live region while a retry streams fresh blocks below it, and the waiting poll freezes in place.
+	 * Background task calls keep updating.
+	 */
+	#settlePendingToolCalls(stopReason: AssistantMessage["stopReason"]): void {
+		if (stopReason !== "aborted" && stopReason !== "error") {
+			for (const [toolCallId, component] of this.ctx.pendingTools.entries()) component.setArgsComplete(toolCallId);
+			return;
+		}
+		for (const [toolCallId, component] of this.ctx.pendingTools.entries()) {
+			if (!this.#backgroundTaskCallIds.has(toolCallId) && component instanceof ToolExecutionComponent) {
+				component.seal();
+			}
+		}
+		this.#resolveDisplaceablePoll();
+	}
+
+	/**
+	 * Records the turn's usage and flags a prompt-cache invalidation: when the previous turn cached a meaningful prefix
+	 * and this request read none of it back, the block is marked with the cause the session recorded, if any. A bare
+	 * token count shows the conversation was re-read at full price without stating what caused it.
+	 */
+	#noteTurnUsage(component: AssistantMessageComponent, message: AssistantMessage): void {
+		const { usage } = message;
+		if (usage.cacheRead + usage.cacheWrite + usage.input > 0) {
+			if (settings.get("display.cacheMissMarker")) {
+				const invalidation = detectCacheInvalidation(
+					this.ctx.lastAssistantUsage,
+					usage,
+					this.#takeCacheInvalidationCause(),
+					{ explicitCache: usesExplicitPromptCache(message.api, message.model) },
+				);
+				if (invalidation) component.setCacheInvalidation(invalidation);
+			}
+			this.ctx.lastAssistantUsage = usage;
+		}
 	}
 
 	async #handleToolExecutionStart(event: Extract<AgentSessionEvent, { type: "tool_execution_start" }>): Promise<void> {
@@ -1294,108 +1320,110 @@ export class EventController {
 		}
 	}
 
-	async #handleToolExecutionEnd(event: Extract<AgentSessionEvent, { type: "tool_execution_end" }>): Promise<void> {
+	async #handleToolExecutionEnd(event: ToolExecutionEndEvent): Promise<void> {
 		this.#ensureWorkingLoaderWhileStreaming();
 		if (this.ctx.settledToolCalls.has(event.toolCallId)) return;
 		this.#projection.markToolCallRunning(event.toolCallId, false);
-		const endAsyncState = asyncToolState(event.result.details);
-		if (event.toolName !== "task" || endAsyncState !== "running") {
+		if (event.toolName !== "task" || asyncToolState(event.result.details) !== "running") {
 			this.ctx.settledToolCalls.add(event.toolCallId);
 			this.#projection.markToolCallSettled(event.toolCallId);
 		}
-		if (event.toolName === "read") {
-			if (this.#inlineReadToolImages(event.toolCallId, event.result)) {
-				const component = this.ctx.pendingTools.get(event.toolCallId);
-				if (component) {
-					component.updateResult({ ...event.result, isError: event.isError }, false, event.toolCallId);
-					this.ctx.pendingTools.delete(event.toolCallId);
-				}
-				this.#clearReadToolCall(event.toolCallId);
-				this.ctx.ui.requestRender();
-			} else {
-				let component = this.ctx.pendingTools.get(event.toolCallId);
-				if (!component) {
-					const group = this.#getReadGroup();
-					const args = this.#projection.findToolCallArgs(event.toolCallId) as Record<string, unknown> | undefined;
-					if (args) {
-						group.updateArgs(args, event.toolCallId);
-					}
-					component = group;
-					this.ctx.pendingTools.set(event.toolCallId, group);
-				}
-				component.updateResult({ ...event.result, isError: event.isError }, false, event.toolCallId);
-				this.ctx.pendingTools.delete(event.toolCallId);
-				this.#clearReadToolCall(event.toolCallId);
-				this.ctx.ui.requestRender();
-			}
-		} else {
-			const component = this.ctx.pendingTools.get(event.toolCallId);
-			if (component) {
-				const isBackgroundTask = isLiveBackgroundTask(event.toolName, event.result.details);
-				component.updateResult({ ...event.result, isError: event.isError }, isBackgroundTask, event.toolCallId);
-				if (isBackgroundTask) {
-					this.#backgroundTaskCallIds.add(event.toolCallId);
-				} else {
-					this.ctx.pendingTools.delete(event.toolCallId);
-					this.#backgroundTaskCallIds.delete(event.toolCallId);
-				}
-				if (component instanceof ToolExecutionComponent && component.isDisplaceableBlock()) {
-					if (event.toolName === "job" && component.canBeDisplacedBy("job")) {
-						// Remember the waiting poll so the next `job` call can displace it.
-						this.#displaceablePollComponent = component;
-					} else if (event.toolName === "todo" && component.canBeDisplacedBy("todo")) {
-						// Successful todo update supersedes the prior live snapshot. A failed
-						// follow-up never reaches this branch (canBeDisplacedBy("todo") returns
-						// false for errored results), so the last-good panel stays on screen.
-						const previous = this.#displaceableTodoComponent;
-						if (previous && previous !== component && previous.isDisplaceableBlock()) {
-							this.#displaceableTodoComponent = undefined;
-							if (this.ctx.chatContainer.isBlockUncommitted(previous)) {
-								this.ctx.chatContainer.removeChild(previous);
-							}
-							previous.seal();
-						}
-						this.#displaceableTodoComponent = component;
-					}
-				}
-				this.ctx.ui.requestRender();
-			}
-		}
-		// Update todo display when todo tool completes
-		if (event.toolName === "todo" && !event.isError) {
-			const details = event.result.details as { phases?: TodoPhase[] } | undefined;
-			if (details?.phases) {
-				this.ctx.setTodos(details.phases);
-			}
-		} else if (event.toolName === "todo" && event.isError && !toolResultNeverRan(event.result.details)) {
-			// A never-ran placeholder is not a todo failure. The turn died in transport
-			// before the call was dispatched, which the error card and the batch ledger
-			// already say once; repeating it per `todo` call in the dead batch (three
-			// identical lines on one reported turn) says nothing new and buries the one
-			// message that names the real cause.
-			const textContent = event.result.content.find(
-				(content): content is TextContent => content.type === "text",
-			)?.text;
-			// A warning is a notice, not a place to paste a report. The result text
-			// carries the error, the plan's standing and the open work, and the card
-			// under this line draws all three properly — inlined here it was an
-			// eleven-line amber block whose FIRST line was the only news in it. The
-			// notice takes that line and leaves the ledger to the card.
-			const headline = textContent?.split("\n", 1)[0]?.trim();
-			this.ctx.showWarning(
-				`Todo update failed${headline ? `: ${headline}` : ". Progress may be stale until todo succeeds."}`,
-			);
-		}
-		if (event.toolName === "resolve" && !event.isError) {
-			const details = event.result.details as ResolveToolDetails | undefined;
-			if (details?.sourceToolName === "plan_approval" && details.action === "apply") {
-				const planDetails = details.sourceResultDetails as PlanApprovalDetails | undefined;
-				if (planDetails) {
-					await this.ctx.handlePlanApproval(planDetails);
-				}
-			}
+		if (event.toolName === "read") this.#endReadToolCall(event);
+		else this.#endToolCall(event);
+		if (event.toolName === "todo") this.#showTodoOutcome(event);
+		else if (event.toolName === "resolve" && !event.isError) {
+			await this.#applyResolvedPlan(event.result.details as ResolveToolDetails | undefined);
 		}
 	}
+
+	/**
+	 * Settles a read call. Its images inline into the assistant block that issued it; a call that inlined nothing and
+	 * mounted no card of its own lands its result in the read group.
+	 */
+	#endReadToolCall(event: ToolExecutionEndEvent): void {
+		const { toolCallId } = event;
+		const inlinedImages = this.#inlineReadToolImages(toolCallId, event.result);
+		let component = this.ctx.pendingTools.get(toolCallId);
+		if (!component && !inlinedImages) {
+			const group = this.#getReadGroup();
+			const args = this.#projection.findToolCallArgs(toolCallId) as Record<string, unknown> | undefined;
+			if (args) group.updateArgs(args, toolCallId);
+			component = group;
+		}
+		component?.updateResult({ ...event.result, isError: event.isError }, false, toolCallId);
+		this.ctx.pendingTools.delete(toolCallId);
+		this.#clearReadToolCall(toolCallId);
+		this.ctx.ui.requestRender();
+	}
+
+	/** Settles a non-read call's card; a live background task keeps its card pending for later updates. */
+	#endToolCall(event: ToolExecutionEndEvent): void {
+		const { toolCallId, toolName } = event;
+		const component = this.ctx.pendingTools.get(toolCallId);
+		if (!component) return;
+		const isBackgroundTask = isLiveBackgroundTask(toolName, event.result.details);
+		component.updateResult({ ...event.result, isError: event.isError }, isBackgroundTask, toolCallId);
+		if (isBackgroundTask) {
+			this.#backgroundTaskCallIds.add(toolCallId);
+		} else {
+			this.ctx.pendingTools.delete(toolCallId);
+			this.#backgroundTaskCallIds.delete(toolCallId);
+		}
+		if (component instanceof ToolExecutionComponent && component.isDisplaceableBlock()) {
+			this.#trackDisplaceableBlock(toolName, component);
+		}
+		this.ctx.ui.requestRender();
+	}
+
+	/**
+	 * Tracks a displaceable block so the next call of its kind replaces it: a waiting job poll for the next `job` call,
+	 * a todo panel for the next successful todo update. A successful update supersedes the previous live todo panel; a
+	 * failed one never gets here (canBeDisplacedBy("todo") is false for an errored result), so the last good panel
+	 * stays on screen.
+	 */
+	#trackDisplaceableBlock(toolName: string, component: ToolExecutionComponent): void {
+		if (toolName === "job" && component.canBeDisplacedBy("job")) {
+			this.#displaceablePollComponent = component;
+			return;
+		}
+		if (toolName !== "todo" || !component.canBeDisplacedBy("todo")) return;
+		const previous = this.#displaceableTodoComponent;
+		if (previous && previous !== component && previous.isDisplaceableBlock()) {
+			this.#displaceableTodoComponent = undefined;
+			if (this.ctx.chatContainer.isBlockUncommitted(previous)) this.ctx.chatContainer.removeChild(previous);
+			previous.seal();
+		}
+		this.#displaceableTodoComponent = component;
+	}
+
+	/** Updates the todo display from a successful todo call, or warns with the first line of a failed one that ran. */
+	#showTodoOutcome(event: ToolExecutionEndEvent): void {
+		if (!event.isError) {
+			const details = event.result.details as { phases?: TodoPhase[] } | undefined;
+			if (details?.phases) this.ctx.setTodos(details.phases);
+			return;
+		}
+		// A never-ran placeholder is not a todo failure. The turn died in transport before the call was dispatched,
+		// which the error card and the batch ledger already state once; repeating it per `todo` call in the dead batch
+		// adds nothing and buries the one message that states the real cause.
+		if (toolResultNeverRan(event.result.details)) return;
+		// A warning is a notice, not a report. The result text holds the error, the plan's standing and the open
+		// work, and the card under this line draws all three; the notice takes the first line and leaves the ledger
+		// to the card.
+		const text = event.result.content.find((content): content is TextContent => content.type === "text")?.text;
+		const headline = text?.split("\n", 1)[0]?.trim();
+		this.ctx.showWarning(
+			`Todo update failed${headline ? `: ${headline}` : ". Progress may be stale until todo succeeds."}`,
+		);
+	}
+
+	/** Applies the plan a resolve call approved through plan_approval. */
+	async #applyResolvedPlan(details: ResolveToolDetails | undefined): Promise<void> {
+		if (details?.sourceToolName !== "plan_approval" || details.action !== "apply") return;
+		const planDetails = details.sourceResultDetails as PlanApprovalDetails | undefined;
+		if (planDetails) await this.ctx.handlePlanApproval(planDetails);
+	}
+
 	async #handleAgentEnd(_event: Extract<AgentSessionEvent, { type: "agent_end" }>): Promise<void> {
 		// A superseded agent_end: the agent is already streaming a fresh turn, so
 		// this event belongs to a turn that has already been replaced. The session
@@ -1615,25 +1643,11 @@ export class EventController {
 	}
 
 	async #handleAutoRetryEnd(event: Extract<AgentSessionEvent, { type: "auto_retry_end" }>): Promise<void> {
-		if (this.ctx.retryLoader) {
-			this.ctx.retryLoader.stop();
-			this.ctx.retryLoader = undefined;
-			this.ctx.statusContainer.disposeChildren();
-		}
+		this.#stopRetryLoader();
 		setShimmerActivity("thinking");
 		const { summary, error } = this.#projection.recordAutoRetryEnd(event);
 		if (event.success) {
-			let appliedRecovered = false;
-			for (const recovered of event.recoveredErrors ?? []) {
-				const component = this.#takeRetrySupersededAssistantComponent(recovered.persistenceKey);
-				if (!component) continue;
-				component.applyRetryRecovery(resolveAssistantErrorPresentation({ retryRecovery: recovered.retryRecovery }));
-				if (this.#pinnedErrorComponent === component) this.#pinnedErrorComponent = undefined;
-				appliedRecovered = true;
-			}
-			if (appliedRecovered || (event.recoveredErrors?.length ?? 0) > 0) {
-				this.ctx.clearPinnedError();
-			}
+			this.#applyRetryRecoveries(event.recoveredErrors ?? []);
 			this.#clearRetrySupersededAssistantComponents();
 			if (summary) this.ctx.showStatus(summary);
 		} else {
@@ -1642,6 +1656,25 @@ export class EventController {
 		}
 		this.#ensureWorkingLoaderWhileStreaming();
 		this.ctx.ui.requestRender();
+	}
+
+	/** Stops and removes the auto-retry countdown, if one is showing. */
+	#stopRetryLoader(): void {
+		if (!this.ctx.retryLoader) return;
+		this.ctx.retryLoader.stop();
+		this.ctx.retryLoader = undefined;
+		this.ctx.statusContainer.disposeChildren();
+	}
+
+	/** Marks each recovered error's superseded block as recovered; any recovery clears the pinned error banner. */
+	#applyRetryRecoveries(recoveredErrors: readonly RecoveredRetryError[]): void {
+		for (const recovered of recoveredErrors) {
+			const component = this.#takeRetrySupersededAssistantComponent(recovered.persistenceKey);
+			if (!component) continue;
+			component.applyRetryRecovery(resolveAssistantErrorPresentation({ retryRecovery: recovered.retryRecovery }));
+			if (this.#pinnedErrorComponent === component) this.#pinnedErrorComponent = undefined;
+		}
+		if (recoveredErrors.length > 0) this.ctx.clearPinnedError();
 	}
 
 	async #handleRetryFallbackApplied(
@@ -1845,6 +1878,36 @@ function vocalizeDelta(event: Extract<AgentSessionEvent, { type: "message_update
 	} else if (delta.type === "thinking_delta" && mode === "all") {
 		vocalizer.pushDelta(delta.delta);
 	}
+}
+
+/**
+ * End-of-message vocalization: an abort (Esc, Ctrl+C, interrupt) stops speech now and drops the trailing partial;
+ * assistant and all modes speak the last partial sentence of a completed message, while yield mode speaks the whole
+ * final message at turn end.
+ */
+function vocalizeMessageEnd(message: AssistantMessage): void {
+	if (!settings.get("speech.enabled")) return;
+	if (message.stopReason === "aborted") {
+		vocalizer.clear();
+		return;
+	}
+	const mode = settings.get("speech.mode");
+	if (mode === "assistant" || mode === "all") vocalizer.flush();
+}
+
+/** Whether a message ended in an error to show: an error stop with a message, not suppressed by the silent-abort marker. */
+function endsInShownError(message: AssistantMessage): message is AssistantMessage & { errorMessage: string } {
+	return message.stopReason === "error" && !!message.errorMessage && !isSilentAbort(message);
+}
+
+/** The image blocks with inline data in a user message, the count the local-echo signature records. */
+function countInlineImages(content: StartedUserMessage["content"]): number {
+	if (typeof content === "string") return 0;
+	let count = 0;
+	for (const block of content) {
+		if (block.type === "image" && typeof block.data === "string" && typeof block.mimeType === "string") count++;
+	}
+	return count;
 }
 
 /**
