@@ -1,6 +1,6 @@
 import { markdownLink } from "../../markdown-link";
 import { loadJson } from "../engine/declarative";
-import { renderKeyValues } from "../engine/markdown-assembly";
+import { renderCappedSection, renderKeyValues } from "../engine/markdown-assembly";
 import type { SecurityAdvisoryDeclaration } from "../engine/security-advisory";
 import { formatIsoDate, isScraperDegrade } from "../types";
 
@@ -123,6 +123,12 @@ interface Weakness {
 	description: Description[];
 }
 
+interface NvdMetrics {
+	cvssMetricV31?: CvssMetric[];
+	cvssMetricV30?: CvssMetric[];
+	cvssMetricV2?: CvssMetric[];
+}
+
 interface CveItem {
 	id: string;
 	sourceIdentifier?: string;
@@ -130,11 +136,7 @@ interface CveItem {
 	lastModified: string;
 	vulnStatus?: string;
 	descriptions: Description[];
-	metrics?: {
-		cvssMetricV31?: CvssMetric[];
-		cvssMetricV30?: CvssMetric[];
-		cvssMetricV2?: CvssMetric[];
-	};
+	metrics?: NvdMetrics;
 	weaknesses?: Weakness[];
 	configurations?: Configuration[];
 	references?: Reference[];
@@ -160,6 +162,54 @@ function extractNvdCpes(configurations?: Configuration[]): string[] {
 	return Array.from(cpes);
 }
 
+function renderNvdCvss3(version: string, metric: CvssMetric): string {
+	const cvssData = metric.cvssData as CvssV31;
+	let md = `### CVSS ${version}\n\n`;
+	md += `- **Base Score:** ${cvssData.baseScore} (${cvssData.baseSeverity})\n`;
+	md += `- **Vector:** \`${cvssData.vectorString}\`\n`;
+	return md;
+}
+
+/** The v2 severity sits in `cvssData` on older records and beside it on current ones. */
+function renderNvdCvss2(cvss2: CvssMetric): string {
+	const cvssData = cvss2.cvssData as CvssV2;
+	const severity = cvssData.severity || cvssData.baseSeverity || cvss2.severity || cvss2.baseSeverity;
+	let md = `### CVSS 2.0\n\n`;
+	md += `- **Base Score:** ${cvssData.baseScore}`;
+	if (severity) md += ` (${severity})`;
+	return `${md}\n- **Vector:** \`${cvssData.vectorString}\`\n\n`;
+}
+
+/** The CVSS 3.1 score with its exploitability and impact, else the 3.0 score; then the 2.0 score. */
+function renderNvdCvssScores(metrics: NvdMetrics | undefined): string {
+	const cvss31 = metrics?.cvssMetricV31?.[0];
+	const cvss30 = metrics?.cvssMetricV30?.[0];
+	const cvss2 = metrics?.cvssMetricV2?.[0];
+	if (!(cvss31 || cvss30 || cvss2)) return "";
+	let md = `## CVSS Scores\n\n`;
+	if (cvss31) {
+		md += renderNvdCvss3("3.1", cvss31);
+		if (cvss31.exploitabilityScore !== undefined) md += `- **Exploitability:** ${cvss31.exploitabilityScore}\n`;
+		if (cvss31.impactScore !== undefined) md += `- **Impact:** ${cvss31.impactScore}\n`;
+		md += "\n";
+	} else if (cvss30) {
+		md += `${renderNvdCvss3("3.0", cvss30)}\n`;
+	}
+	if (cvss2) md += renderNvdCvss2(cvss2);
+	return md;
+}
+
+/** The English CWE entries, without NVD's `NVD-CWE-Other` and `NVD-CWE-noinfo` placeholders. */
+function renderNvdWeaknesses(weaknesses: Weakness[] | undefined): string {
+	const cwes = weaknesses
+		?.flatMap(w => w.description)
+		.filter(d => d.lang === "en" && d.value !== "NVD-CWE-Other" && d.value !== "NVD-CWE-noinfo");
+	if (!cwes?.length) return "";
+	let md = `## Weaknesses\n\n`;
+	for (const cwe of cwes) md += `- ${cwe.value}\n`;
+	return `${md}\n`;
+}
+
 export const nvdDeclaration: SecurityAdvisoryDeclaration = {
 	site: "nvd",
 	method: "nvd",
@@ -181,93 +231,26 @@ export const nvdDeclaration: SecurityAdvisoryDeclaration = {
 		if (!vuln) return null;
 
 		let md = `# ${vuln.id}\n\n`;
-
-		if (vuln.vulnStatus) {
-			md += `**Status:** ${vuln.vulnStatus}\n`;
-		}
+		if (vuln.vulnStatus) md += `**Status:** ${vuln.vulnStatus}\n`;
 		md += `**Published:** ${formatIsoDate(vuln.published)}`;
 		md += ` · **Modified:** ${formatIsoDate(vuln.lastModified)}\n\n`;
 
 		const desc = vuln.descriptions.find(d => d.lang === "en")?.value;
-		if (desc) {
-			md += `## Description\n\n${desc}\n\n`;
-		}
+		if (desc) md += `## Description\n\n${desc}\n\n`;
 
-		const cvss31 = vuln.metrics?.cvssMetricV31?.[0];
-		const cvss30 = vuln.metrics?.cvssMetricV30?.[0];
-		const cvss2 = vuln.metrics?.cvssMetricV2?.[0];
-
-		if (cvss31 || cvss30 || cvss2) {
-			md += `## CVSS Scores\n\n`;
-
-			if (cvss31) {
-				const cvssData = cvss31.cvssData as CvssV31;
-				md += `### CVSS 3.1\n\n`;
-				md += `- **Base Score:** ${cvssData.baseScore} (${cvssData.baseSeverity})\n`;
-				md += `- **Vector:** \`${cvssData.vectorString}\`\n`;
-				if (cvss31.exploitabilityScore !== undefined) {
-					md += `- **Exploitability:** ${cvss31.exploitabilityScore}\n`;
-				}
-				if (cvss31.impactScore !== undefined) {
-					md += `- **Impact:** ${cvss31.impactScore}\n`;
-				}
-				md += "\n";
-			}
-
-			if (cvss30 && !cvss31) {
-				const cvssData = cvss30.cvssData as CvssV31;
-				md += `### CVSS 3.0\n\n`;
-				md += `- **Base Score:** ${cvssData.baseScore} (${cvssData.baseSeverity})\n`;
-				md += `- **Vector:** \`${cvssData.vectorString}\`\n`;
-				md += "\n";
-			}
-
-			if (cvss2) {
-				const cvssData = cvss2.cvssData as CvssV2;
-				const severity = cvssData.severity || cvssData.baseSeverity || cvss2.severity || cvss2.baseSeverity;
-				md += `### CVSS 2.0\n\n`;
-				md += `- **Base Score:** ${cvssData.baseScore}`;
-				if (severity) md += ` (${severity})`;
-				md += `\n- **Vector:** \`${cvssData.vectorString}\`\n\n`;
-			}
-		}
-
-		const cwes = vuln.weaknesses
-			?.flatMap(w => w.description)
-			.filter(d => d.lang === "en" && d.value !== "NVD-CWE-Other" && d.value !== "NVD-CWE-noinfo");
-
-		if (cwes?.length) {
-			md += `## Weaknesses\n\n`;
-			for (const cwe of cwes) {
-				md += `- ${cwe.value}\n`;
-			}
-			md += "\n";
-		}
-
-		const cpes = extractNvdCpes(vuln.configurations);
-		if (cpes.length > 0) {
-			md += `## Affected Products\n\n`;
-			const shown = cpes.slice(0, 20);
-			for (const cpe of shown) {
-				md += `- \`${cpe}\`\n`;
-			}
-			if (cpes.length > 20) {
-				md += `\n[…${cpes.length - 20} CPEs elided…]\n`;
-			}
-			md += "\n";
-		}
-
-		if (vuln.references?.length) {
-			md += `## References\n\n`;
-			for (const ref of vuln.references.slice(0, 15)) {
-				const tags = ref.tags?.length ? ` (${ref.tags.join(", ")})` : "";
-				md += `- ${ref.url}${tags}\n`;
-			}
-			if (vuln.references.length > 15) {
-				md += `\n[…${vuln.references.length - 15} references elided…]\n`;
-			}
-		}
-
+		md += renderNvdCvssScores(vuln.metrics);
+		md += renderNvdWeaknesses(vuln.weaknesses);
+		md += renderCappedSection(
+			"## Affected Products",
+			extractNvdCpes(vuln.configurations),
+			20,
+			"CPEs",
+			cpe => `- \`${cpe}\`\n`,
+		);
+		md += renderCappedSection("## References", vuln.references, 15, "references", ref => {
+			const tags = ref.tags?.length ? ` (${ref.tags.join(", ")})` : "";
+			return `- ${ref.url}${tags}\n`;
+		});
 		return md;
 	},
 };
@@ -302,6 +285,12 @@ interface OsvReference {
 	url: string;
 }
 
+interface OsvCredit {
+	name: string;
+	contact?: string[];
+	type?: string;
+}
+
 interface OsvVulnerability {
 	id: string;
 	summary?: string;
@@ -313,8 +302,72 @@ interface OsvVulnerability {
 	severity?: OsvSeverity[];
 	affected?: OsvAffected[];
 	references?: OsvReference[];
-	credits?: Array<{ name: string; contact?: string[]; type?: string }>;
+	credits?: OsvCredit[];
 	database_specific?: Record<string, unknown>;
+}
+
+function renderOsvMetadata(vuln: OsvVulnerability): string {
+	let md = "## Metadata\n\n";
+	if (vuln.aliases?.length) md += `**Aliases:** ${vuln.aliases.join(", ")}\n`;
+	if (vuln.published) md += `**Published:** ${formatIsoDate(vuln.published)}\n`;
+	if (vuln.modified) md += `**Modified:** ${formatIsoDate(vuln.modified)}\n`;
+	if (vuln.withdrawn) md += `**Withdrawn:** ${formatIsoDate(vuln.withdrawn)}\n`;
+	const severities = vuln.severity || vuln.affected?.flatMap(a => a.severity || []) || [];
+	if (severities.length) {
+		const formatted = severities.map(s => `${s.type}: ${s.score}`).join(", ");
+		md += `**Severity:** ${formatted}\n`;
+	}
+	return `${md}\n`;
+}
+
+/** A range's events in order, such as `introduced: 0 → fixed: 1.2`; empty when it lists none. */
+function formatOsvRangeEvents(range: OsvAffectedRange): string {
+	const parts: string[] = [];
+	for (const event of range.events ?? []) {
+		if (event.introduced) parts.push(`introduced: ${event.introduced}`);
+		if (event.fixed) parts.push(`fixed: ${event.fixed}`);
+		if (event.last_affected) parts.push(`last_affected: ${event.last_affected}`);
+		if (event.limit) parts.push(`limit: ${event.limit}`);
+	}
+	return parts.join(" → ");
+}
+
+const MAX_OSV_VERSIONS = 10;
+
+/** One package's ranges and its first versions; empty for an entry that names no package. */
+function renderOsvAffectedPackage(affected: OsvAffected): string {
+	const pkg = affected.package;
+	if (!pkg) return "";
+	let md = `### ${pkg.ecosystem}: ${pkg.name}\n\n`;
+	for (const range of affected.ranges ?? []) {
+		const events = formatOsvRangeEvents(range);
+		if (events) md += `- **${range.type}:** ${events}\n`;
+	}
+	if (affected.versions?.length) {
+		const versions =
+			affected.versions.length > MAX_OSV_VERSIONS
+				? `${affected.versions.slice(0, MAX_OSV_VERSIONS).join(", ")}… (${affected.versions.length} total)`
+				: affected.versions.join(", ");
+		md += `- **Versions:** ${versions}\n`;
+	}
+	return `${md}\n`;
+}
+
+function renderOsvReferences(references: OsvReference[] | undefined): string {
+	if (!references?.length) return "";
+	let md = "## References\n\n";
+	for (const ref of references) md += `- ${markdownLink(ref.type, ref.url)}\n`;
+	return `${md}\n`;
+}
+
+function renderOsvCredits(credits: OsvCredit[] | undefined): string {
+	if (!credits?.length) return "";
+	let md = "## Credits\n\n";
+	for (const credit of credits) {
+		const type = credit.type ? ` (${credit.type})` : "";
+		md += `- ${credit.name}${type}\n`;
+	}
+	return md;
 }
 
 export const osvDeclaration: SecurityAdvisoryDeclaration = {
@@ -335,88 +388,15 @@ export const osvDeclaration: SecurityAdvisoryDeclaration = {
 		if (isScraperDegrade(vuln)) return vuln;
 		if (!vuln?.id) return ctx.scraperDegrade("osv", "unexpected response shape");
 		let md = `# ${vuln.id}\n\n`;
-
-		if (vuln.summary) {
-			md += `${vuln.summary}\n\n`;
-		}
-
-		md += "## Metadata\n\n";
-		if (vuln.aliases?.length) {
-			md += `**Aliases:** ${vuln.aliases.join(", ")}\n`;
-		}
-		if (vuln.published) {
-			md += `**Published:** ${formatIsoDate(vuln.published)}\n`;
-		}
-		if (vuln.modified) {
-			md += `**Modified:** ${formatIsoDate(vuln.modified)}\n`;
-		}
-		if (vuln.withdrawn) {
-			md += `**Withdrawn:** ${formatIsoDate(vuln.withdrawn)}\n`;
-		}
-
-		const severities = vuln.severity || vuln.affected?.flatMap(a => a.severity || []) || [];
-		if (severities.length) {
-			const formatted = severities.map(s => `${s.type}: ${s.score}`).join(", ");
-			md += `**Severity:** ${formatted}\n`;
-		}
-		md += "\n";
-
-		if (vuln.details) {
-			md += `## Details\n\n${vuln.details}\n\n`;
-		}
-
+		if (vuln.summary) md += `${vuln.summary}\n\n`;
+		md += renderOsvMetadata(vuln);
+		if (vuln.details) md += `## Details\n\n${vuln.details}\n\n`;
 		if (vuln.affected?.length) {
 			md += "## Affected Packages\n\n";
-			for (const affected of vuln.affected) {
-				const pkg = affected.package;
-				if (!pkg) continue;
-
-				md += `### ${pkg.ecosystem}: ${pkg.name}\n\n`;
-
-				if (affected.ranges?.length) {
-					for (const range of affected.ranges) {
-						if (!range.events?.length) continue;
-						const parts: string[] = [];
-						for (const event of range.events) {
-							if (event.introduced) parts.push(`introduced: ${event.introduced}`);
-							if (event.fixed) parts.push(`fixed: ${event.fixed}`);
-							if (event.last_affected) parts.push(`last_affected: ${event.last_affected}`);
-							if (event.limit) parts.push(`limit: ${event.limit}`);
-						}
-						if (parts.length) {
-							md += `- **${range.type}:** ${parts.join(" → ")}\n`;
-						}
-					}
-				}
-
-				if (affected.versions?.length) {
-					const versions =
-						affected.versions.length > 10
-							? `${affected.versions.slice(0, 10).join(", ")}… (${affected.versions.length} total)`
-							: affected.versions.join(", ");
-					md += `- **Versions:** ${versions}\n`;
-				}
-
-				md += "\n";
-			}
+			for (const affected of vuln.affected) md += renderOsvAffectedPackage(affected);
 		}
-
-		if (vuln.references?.length) {
-			md += "## References\n\n";
-			for (const ref of vuln.references) {
-				md += `- ${markdownLink(ref.type, ref.url)}\n`;
-			}
-			md += "\n";
-		}
-
-		if (vuln.credits?.length) {
-			md += "## Credits\n\n";
-			for (const credit of vuln.credits) {
-				const type = credit.type ? ` (${credit.type})` : "";
-				md += `- ${credit.name}${type}\n`;
-			}
-		}
-
+		md += renderOsvReferences(vuln.references);
+		md += renderOsvCredits(vuln.credits);
 		return md;
 	},
 };

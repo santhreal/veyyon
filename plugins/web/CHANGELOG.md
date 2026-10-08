@@ -9,6 +9,7 @@
 - The bioRxiv, Crossref, ORCID, PubMed, RFC and Semantic Scholar handlers are split into one function per step; behavior is unchanged.
 - The Reddit, Lobsters, Lemmy, Discourse, dev.to and Stack Exchange handlers are split into one function per step; behavior is unchanged.
 - The Artifact Hub, Homebrew, Chocolatey, Clojars, Docker Hub, Firefox Add-ons, Flathub, Go, Hex, JetBrains Marketplace, npm, NuGet, Open VSX, Packagist, pub.dev, PyPI, Repology, Snapcraft, Terraform and VS Code Marketplace handlers are split into one function per step; behavior is unchanged.
+- The NVD and OSV handlers are split into one function per step, and the Terraform, pub.dev and NVD capped lists share one section renderer; behavior is unchanged.
 
 ### Fixed
 

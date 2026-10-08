@@ -3,6 +3,7 @@ import { escapeMarkdownTableCell } from "@veyyon/utils/markdown-table";
 import { parseHTML } from "linkedom";
 import { markdownLink } from "../../markdown-link";
 import {
+	renderCappedSection,
 	renderDescriptionSection,
 	renderHeader,
 	renderReadme,
@@ -2677,19 +2678,20 @@ const MAX_PUB_DEV_DEPENDENCIES = 20;
 
 /** The first dependencies with their version constraints; a path, git or hosted source shows as `complex`. */
 function renderPubDevDependencies(dependencies: Record<string, unknown> | undefined): string {
-	const deps = Object.keys(dependencies ?? {});
-	if (!dependencies || deps.length === 0) return "";
-	let md = `## Dependencies (${deps.length})\n\n`;
-	for (const dep of deps.slice(0, MAX_PUB_DEV_DEPENDENCIES)) {
-		const constraint = dependencies[dep];
-		const constraintStr =
-			typeof constraint === "string" ? constraint : typeof constraint === "object" ? "complex" : "";
-		md += constraintStr ? `- ${dep}: ${constraintStr}\n` : `- ${dep}\n`;
-	}
-	if (deps.length > MAX_PUB_DEV_DEPENDENCIES) {
-		md += `\n[…${deps.length - MAX_PUB_DEV_DEPENDENCIES} dependencies elided…]\n`;
-	}
-	return `${md}\n`;
+	if (!dependencies) return "";
+	return renderCappedSection(
+		"## Dependencies",
+		Object.keys(dependencies),
+		MAX_PUB_DEV_DEPENDENCIES,
+		"dependencies",
+		dep => {
+			const constraint = dependencies[dep];
+			const constraintStr =
+				typeof constraint === "string" ? constraint : typeof constraint === "object" ? "complex" : "";
+			return constraintStr ? `- ${dep}: ${constraintStr}\n` : `- ${dep}\n`;
+		},
+		{ counted: true },
+	);
 }
 
 /** The README section from the version's page, or nothing when the page fails or the README is under 100 characters. */
@@ -3414,25 +3416,6 @@ async function fetchTerraformJson<T>(apiUrl: string, ctx: PackageRegistryContext
 	return ctx.tryParseJson<T>(result.content);
 }
 
-/**
- * A `heading (n)` section: `preamble`, the first `cap` items, a note counting the rest, a blank line. Empty when
- * there are no items.
- */
-function renderTerraformSection<T>(
-	heading: string,
-	items: T[] | undefined,
-	cap: number,
-	noun: string,
-	renderLine: (item: T) => string,
-	preamble = "",
-): string {
-	if (!(items && items.length > 0)) return "";
-	let md = `${heading} (${items.length})\n\n${preamble}`;
-	for (const item of items.slice(0, cap)) md += renderLine(item);
-	if (items.length > cap) md += `\n[…${items.length - cap} ${noun} elided…]\n`;
-	return `${md}\n`;
-}
-
 function renderTerraformProvenance(entry: { published_at?: string; source?: string }): string {
 	let md = "";
 	if (entry.published_at) md += `**Published:** ${new Date(entry.published_at).toLocaleDateString()}\n`;
@@ -3449,21 +3432,47 @@ function renderTerraformInputRow(input: TerraformModuleInput): string {
 }
 
 function renderTerraformModuleContents(mod: TerraformModule): string {
+	const counted = { counted: true };
 	const inputsTable = "| Name | Type | Required | Description |\n|------|------|----------|-------------|\n";
-	let md = renderTerraformSection("## Inputs", mod.root?.inputs, 30, "inputs", renderTerraformInputRow, inputsTable);
-	md += renderTerraformSection("## Outputs", mod.root?.outputs, 20, "outputs", output => {
-		const description = output.description ? `: ${output.description.replace(/\n/g, " ").slice(0, 100)}` : "";
-		return `- **${output.name}**${description}\n`;
+	let md = renderCappedSection("## Inputs", mod.root?.inputs, 30, "inputs", renderTerraformInputRow, {
+		counted: true,
+		preamble: inputsTable,
 	});
-	md += renderTerraformSection("## Dependencies", mod.root?.dependencies, 15, "dependencies", dep => {
-		return `- **${dep.name}**: ${dep.source}${dep.version ? ` (${dep.version})` : ""}\n`;
-	});
-	md += renderTerraformSection("## Resources", mod.root?.resources, 20, "resources", res => {
-		return `- \`${res.type}\` (${res.name})\n`;
-	});
-	md += renderTerraformSection("## Submodules", mod.submodules, 10, "submodules", sub => {
-		return `- **${sub.name}**: \`${sub.path}\`\n`;
-	});
+	md += renderCappedSection(
+		"## Outputs",
+		mod.root?.outputs,
+		20,
+		"outputs",
+		output => {
+			const description = output.description ? `: ${output.description.replace(/\n/g, " ").slice(0, 100)}` : "";
+			return `- **${output.name}**${description}\n`;
+		},
+		counted,
+	);
+	md += renderCappedSection(
+		"## Dependencies",
+		mod.root?.dependencies,
+		15,
+		"dependencies",
+		dep => `- **${dep.name}**: ${dep.source}${dep.version ? ` (${dep.version})` : ""}\n`,
+		counted,
+	);
+	md += renderCappedSection(
+		"## Resources",
+		mod.root?.resources,
+		20,
+		"resources",
+		res => `- \`${res.type}\` (${res.name})\n`,
+		counted,
+	);
+	md += renderCappedSection(
+		"## Submodules",
+		mod.submodules,
+		10,
+		"submodules",
+		sub => `- **${sub.name}**: \`${sub.path}\`\n`,
+		counted,
+	);
 	return md;
 }
 
@@ -3501,10 +3510,17 @@ function renderTerraformProviderDocs(
 	let md = "## Documentation\n\n";
 	for (const [category, group] of categories) {
 		const heading = `### ${category.charAt(0).toUpperCase() + category.slice(1)}`;
-		md += renderTerraformSection(heading, group, 15, "documents", doc => {
-			const docUrl = `https://registry.terraform.io/providers/${namespace}/${type}/latest/docs/${doc.category}/${doc.slug}`;
-			return `- ${markdownLink(doc.title, docUrl)}\n`;
-		});
+		md += renderCappedSection(
+			heading,
+			group,
+			15,
+			"documents",
+			doc => {
+				const docUrl = `https://registry.terraform.io/providers/${namespace}/${type}/latest/docs/${doc.category}/${doc.slug}`;
+				return `- ${markdownLink(doc.title, docUrl)}\n`;
+			},
+			{ counted: true },
+		);
 	}
 	return md;
 }

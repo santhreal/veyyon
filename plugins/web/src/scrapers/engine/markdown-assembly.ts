@@ -28,6 +28,25 @@ export function renderSimpleList<T>(
 	return md;
 }
 
+/**
+ * A `heading` section, ` (n)` appended when `counted`: `preamble`, `formatLine` over the first `limit` items, a note
+ * counting the `noun`s left out, then a blank line. Empty when there are no items.
+ */
+export function renderCappedSection<T>(
+	heading: string,
+	items: T[] | undefined | null,
+	limit: number,
+	noun: string,
+	formatLine: (item: T) => string,
+	options: { counted?: boolean; preamble?: string } = {},
+): string {
+	if (!(items && items.length > 0)) return "";
+	let md = `${heading}${options.counted ? ` (${items.length})` : ""}\n\n${options.preamble ?? ""}`;
+	for (const item of items.slice(0, limit)) md += formatLine(item);
+	if (items.length > limit) md += `\n[…${items.length - limit} ${noun} elided…]\n`;
+	return `${md}\n`;
+}
+
 export function renderDescriptionSection(description?: string | null, title = "Description"): string {
 	if (!description) return "";
 	return `\n## ${title}\n\n${description}\n`;
