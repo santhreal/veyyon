@@ -168,57 +168,63 @@ function entryTokens(entry: SessionEntry): number {
  * `@veyyon/utils` `format()` so behavior stays aligned with prompt rendering.
  */
 function scanTextForBlockRanges(text: string): Array<{ start: number; end: number }> {
-	const ranges: Array<{ start: number; end: number }> = [];
-	let inFence = false;
-	let fenceStart = -1;
-	const tagStack: string[] = [];
-	let xmlStart = -1;
-
+	const scanner = new BlockRangeScanner();
 	let lineStart = 0;
 	for (let i = 0; i <= text.length; i++) {
 		if (i !== text.length && text[i] !== "\n") continue;
-		const line = text.slice(lineStart, i);
-		const lineEnd = i; // offset of the newline (or end of text); excludes the "\n"
-		const trimmedStart = line.trimStart();
-
-		const isFenceLine = trimmedStart.startsWith("```") || trimmedStart.startsWith("~~~");
-		if (isFenceLine) {
-			if (!inFence) {
-				inFence = true;
-				fenceStart = lineStart;
-			} else {
-				inFence = false;
-				ranges.push({ start: fenceStart, end: lineEnd });
-				fenceStart = -1;
-			}
-			lineStart = i + 1;
-			continue;
-		}
-
-		if (!inFence) {
-			const isOpeningXml = line.length === trimmedStart.length && OPENING_XML.test(trimmedStart);
-			if (isOpeningXml) {
-				const match = OPENING_XML.exec(trimmedStart);
-				if (match) {
-					if (tagStack.length === 0) xmlStart = lineStart;
-					tagStack.push(match[1]);
-				}
-			} else {
-				const closingMatch = CLOSING_XML.exec(trimmedStart);
-				if (closingMatch && tagStack.length > 0 && tagStack[tagStack.length - 1] === closingMatch[1]) {
-					tagStack.pop();
-					if (tagStack.length === 0 && xmlStart >= 0) {
-						ranges.push({ start: xmlStart, end: lineEnd });
-						xmlStart = -1;
-					}
-				}
-			}
-		}
-
+		// `i` is the offset of the newline, or the end of the text; the range excludes the "\n".
+		scanner.line(text.slice(lineStart, i), lineStart, i);
 		lineStart = i + 1;
 	}
+	return mergeRanges(scanner.ranges);
+}
 
-	return mergeRanges(ranges);
+/** The state {@link scanTextForBlockRanges} carries from line to line: the open fence and the open XML tags. */
+class BlockRangeScanner {
+	readonly ranges: Array<{ start: number; end: number }> = [];
+	/** Offset of the open fence's first line; `undefined` outside a fence. */
+	#fenceStart: number | undefined;
+	readonly #tagStack: string[] = [];
+	/** Offset of the outermost open tag's line; `-1` when no tag is open. */
+	#xmlStart = -1;
+
+	/** Read the line that spans `[start, end)`. */
+	line(line: string, start: number, end: number): void {
+		const trimmedStart = line.trimStart();
+		if (trimmedStart.startsWith("```") || trimmedStart.startsWith("~~~")) {
+			this.#fenceLine(start, end);
+			return;
+		}
+		if (this.#fenceStart !== undefined) return;
+		const opening = line.length === trimmedStart.length ? OPENING_XML.exec(trimmedStart) : null;
+		if (opening) {
+			if (this.#tagStack.length === 0) this.#xmlStart = start;
+			this.#tagStack.push(opening[1]);
+			return;
+		}
+		this.#closingLine(trimmedStart, end);
+	}
+
+	/** A fence line opens a fence, or closes the open one and records it. */
+	#fenceLine(start: number, end: number): void {
+		if (this.#fenceStart === undefined) {
+			this.#fenceStart = start;
+			return;
+		}
+		this.ranges.push({ start: this.#fenceStart, end });
+		this.#fenceStart = undefined;
+	}
+
+	/** A line that closes the innermost open tag pops it, and records the span once the outermost one closes. */
+	#closingLine(trimmedStart: string, end: number): void {
+		const closing = CLOSING_XML.exec(trimmedStart);
+		if (!closing || this.#tagStack.at(-1) !== closing[1]) return;
+		this.#tagStack.pop();
+		if (this.#tagStack.length === 0 && this.#xmlStart >= 0) {
+			this.ranges.push({ start: this.#xmlStart, end });
+			this.#xmlStart = -1;
+		}
+	}
 }
 
 /**
@@ -329,53 +335,71 @@ export function collectShakeRegions(entries: SessionEntry[], config: ShakeConfig
 	// protect window counts only what is sent, so no walk below reaches them.
 	const boundaryIndex = resolveCompactionBoundaryIndex(entries, config.keepBoundaryId);
 	const live = boundaryIndex === 0 ? entries : entries.slice(boundaryIndex);
-	const n = live.length;
-	if (n === 0) return [];
+	if (live.length === 0) return [];
 
-	// Tokens of all live entries strictly more recent than index i.
-	const accumulatedAfter = new Array<number>(n);
-	let acc = 0;
-	for (let i = n - 1; i >= 0; i--) {
-		accumulatedAfter[i] = acc;
-		acc += entryTokens(live[i]);
-	}
-
+	const tokensAfter = tokensAfterEach(live);
 	const toolCallsById = collectToolCallsById(entries, boundaryIndex);
 
 	const regions: ShakeRegion[] = [];
-	for (let i = 0; i < n; i++) {
+	for (let i = 0; i < live.length; i++) {
 		const entry = live[i];
 		const toolResult = getToolResultMessage(entry);
 		// Useless-flagged results carry no information once consumed; they are
 		// eligible even inside the protect-recent window.
-		const uselessResult = toolResult !== undefined && toolResult.useless === true && toolResult.isError !== true;
-		if (!uselessResult && accumulatedAfter[i] < config.protectTokens) continue;
+		const uselessResult = toolResult?.useless === true && toolResult.isError !== true;
+		if (!uselessResult && tokensAfter[i] < config.protectTokens) continue;
 		if (toolResult) {
-			if (toolResult.prunedAt !== undefined) continue;
-			if (isProtectedToolResult(toolResult, toolCallsById.get(toolResult.toolCallId), config.protectedTools))
-				continue;
-			const text = toolResultText(toolResult);
-			if (text.length === 0) continue;
-			regions.push({
-				kind: "toolResult",
-				entry: entry as SessionMessageEntry,
-				tokens: estimateTokens(toolResult as AgentMessage),
-				originalText: text,
-				label: toolResult.toolName,
-			});
-			continue;
-		}
-
-		if (entry.type === "message" || entry.type === "custom_message") {
+			pushToolResultRegion(entry as SessionMessageEntry, toolResult, toolCallsById, config.protectedTools, regions);
+		} else if (entry.type === "message" || entry.type === "custom_message") {
 			collectBlockRegions(entry as SessionMessageEntry | CustomMessageEntry, config, regions);
 		}
 	}
 
 	let savings = 0;
 	for (const region of regions) savings += Math.max(0, region.tokens - PLACEHOLDER_TOKEN_ESTIMATE);
-	if (savings < config.minSavings) return [];
+	return savings < config.minSavings ? [] : regions;
+}
 
-	return regions;
+/** For each live entry, the tokens of every live entry more recent than it. */
+function tokensAfterEach(live: readonly SessionEntry[]): number[] {
+	const after = new Array<number>(live.length);
+	let acc = 0;
+	for (let i = live.length - 1; i >= 0; i--) {
+		after[i] = acc;
+		acc += entryTokens(live[i]);
+	}
+	return after;
+}
+
+/** Add `toolResult` as one whole-result region when its text is elidable. */
+function pushToolResultRegion(
+	entry: SessionMessageEntry,
+	toolResult: ToolResultMessage,
+	toolCallsById: ReadonlyMap<string, AgentToolCall>,
+	protectedTools: ProtectedToolMatcher[],
+	out: ShakeRegion[],
+): void {
+	const text = elidableToolResultText(toolResult, toolCallsById, protectedTools);
+	if (text === undefined) return;
+	out.push({
+		kind: "toolResult",
+		entry,
+		tokens: estimateTokens(toolResult as AgentMessage),
+		originalText: text,
+		label: toolResult.toolName,
+	});
+}
+
+/** The text of a tool result a reducer may elide: one not pruned yet, not from a protected tool, and not empty. */
+function elidableToolResultText(
+	toolResult: ToolResultMessage,
+	toolCallsById: ReadonlyMap<string, AgentToolCall>,
+	protectedTools: ProtectedToolMatcher[],
+): string | undefined {
+	if (toolResult.prunedAt !== undefined) return undefined;
+	if (isProtectedToolResult(toolResult, toolCallsById.get(toolResult.toolCallId), protectedTools)) return undefined;
+	const text = toolResultText(toolResult);
+	return text.length === 0 ? undefined : text;
 }
 
 /**
@@ -431,12 +455,9 @@ export function collectRedundantToolResultRegions(entries: SessionEntry[], confi
 
 	for (let i = boundaryIndex; i < n; i++) {
 		const toolResult = getToolResultMessage(entries[i]);
-		if (!toolResult) continue;
-		if (toolResult.prunedAt !== undefined) continue;
-		if (toolResult.isError === true) continue;
-		if (isProtectedToolResult(toolResult, toolCallsById.get(toolResult.toolCallId), config.protectedTools)) continue;
-		const text = toolResultText(toolResult);
-		if (text.length === 0) continue;
+		if (!toolResult || toolResult.isError === true) continue;
+		const text = elidableToolResultText(toolResult, toolCallsById, config.protectedTools);
+		if (text === undefined) continue;
 		const signature = redundancySignature(toolResult.toolName, toolCallsById.get(toolResult.toolCallId), text);
 		candidates.push({ index: i, entry: entries[i] as SessionMessageEntry, message: toolResult, signature, text });
 		latestBySignature.set(signature, i);
@@ -518,44 +539,38 @@ function collectTruncationCandidates(
 ): void {
 	// Fields by name, not a switch over roles: see ShakeTextAddress.
 	const message = (entry.type === "message" ? entry.message : entry) as unknown as Record<string, unknown>;
-	const label =
-		typeof message.toolName === "string"
-			? message.toolName
-			: typeof message.customType === "string"
-				? message.customType
-				: String(message.role ?? entry.type);
+	const label = truncationLabel(message, entry.type);
+	const push = (address: ShakeTextAddress, text: unknown): void =>
+		pushTruncationCandidate(entry, address, text, label, minTextTokens, out);
 
 	const content = message.content;
 	if (typeof content === "string") {
-		pushTruncationCandidate(entry, CONTENT_STRING, content, label, minTextTokens, out);
+		push(CONTENT_STRING, content);
 	} else if (Array.isArray(content)) {
 		for (let bi = 0; bi < content.length; bi++) {
 			const block: unknown = content[bi];
-			if (isTextBlock(block)) {
-				pushTruncationCandidate(entry, { field: "content", blockIndex: bi }, block.text, label, minTextTokens, out);
-			}
+			if (isTextBlock(block)) push({ field: "content", blockIndex: bi }, block.text);
 		}
 	}
 
-	pushTruncationCandidate(entry, { field: "output" }, message.output, label, minTextTokens, out);
-	pushTruncationCandidate(entry, { field: "summary" }, message.summary, label, minTextTokens, out);
+	push({ field: "output" }, message.output);
+	push({ field: "summary" }, message.summary);
 
 	const files = message.files;
-	if (Array.isArray(files)) {
-		for (let fi = 0; fi < files.length; fi++) {
-			const file: unknown = files[fi];
-			if (file !== null && typeof file === "object" && "content" in file) {
-				pushTruncationCandidate(
-					entry,
-					{ field: "fileContent", fileIndex: fi },
-					file.content,
-					label,
-					minTextTokens,
-					out,
-				);
-			}
+	if (!Array.isArray(files)) return;
+	for (let fi = 0; fi < files.length; fi++) {
+		const file: unknown = files[fi];
+		if (file !== null && typeof file === "object" && "content" in file) {
+			push({ field: "fileContent", fileIndex: fi }, file.content);
 		}
 	}
+}
+
+/** A truncated text's label: the tool that produced it, else its custom type, else its role, else the entry type. */
+function truncationLabel(message: Record<string, unknown>, entryType: string): string {
+	if (typeof message.toolName === "string") return message.toolName;
+	if (typeof message.customType === "string") return message.customType;
+	return String(message.role ?? entryType);
 }
 
 /**
@@ -596,58 +611,70 @@ function collectTruncationCandidates(
 export function collectOversizedTextRegions(entries: SessionEntry[], config: TruncationConfig): ShakeRegion[] {
 	if (config.excessTokens <= 0 || entries.length === 0) return [];
 
-	const boundaryIndex = resolveCompactionBoundaryIndex(entries, config.keepBoundaryId);
-	const toolCallsById = collectToolCallsById(entries, boundaryIndex);
-
-	const candidates: TruncationCandidate[] = [];
-	for (let i = boundaryIndex; i < entries.length; i++) {
-		const entry = entries[i];
-		if (entry.type !== "message" && entry.type !== "custom_message") continue;
-		const toolResult = getToolResultMessage(entry);
-		if (toolResult) {
-			// A protected tool's output is protected here too: the whole point of the
-			// matcher is that the model must keep seeing those bytes.
-			if (isProtectedToolResult(toolResult, toolCallsById.get(toolResult.toolCallId), config.protectedTools)) {
-				continue;
-			}
-		}
-		collectTruncationCandidates(entry as SessionMessageEntry | CustomMessageEntry, config.minTextTokens, candidates);
-	}
-
+	const candidates = truncationCandidates(entries, config);
 	candidates.sort((a, b) => b.tokens - a.tokens);
 
 	const regions: ShakeRegion[] = [];
 	let freed = 0;
 	for (const candidate of candidates) {
 		if (freed >= config.excessTokens) break;
-		// Tokens do not map to character offsets, and the splice needs offsets.
-		// The text's own average is the only ratio that describes THIS text, and
-		// the edges it produces are then measured exactly below, so an unusual
-		// encoding costs a slightly wider or narrower edge and never an
-		// unbounded one.
-		const charsPerToken = candidate.text.length / candidate.tokens;
-		const edgeChars = Math.max(1, Math.floor(config.keepEdgeTokens * charsPerToken));
-		const start = Math.min(edgeChars, candidate.text.length);
-		const end = Math.max(start, candidate.text.length - edgeChars);
-		const middle = candidate.text.slice(start, end);
-		if (middle.length === 0) continue;
-		const middleTokens = countTokens(middle);
-		if (middleTokens <= 0) continue;
-		regions.push({
-			kind: "block",
-			entry: candidate.entry,
-			address: candidate.address,
-			start,
-			end,
-			tokens: middleTokens,
-			originalText: middle,
-			label: candidate.label,
-			truncation: true,
-		});
-		freed += middleTokens;
+		const region = middleRegion(candidate, config.keepEdgeTokens);
+		if (region === undefined) continue;
+		regions.push(region);
+		freed += region.tokens;
 	}
 
 	return regions;
+}
+
+/** Every text at or after the compaction boundary, outside a protected tool's result, large enough to cut into. */
+function truncationCandidates(entries: SessionEntry[], config: TruncationConfig): TruncationCandidate[] {
+	const boundaryIndex = resolveCompactionBoundaryIndex(entries, config.keepBoundaryId);
+	const toolCallsById = collectToolCallsById(entries, boundaryIndex);
+	const candidates: TruncationCandidate[] = [];
+	for (let i = boundaryIndex; i < entries.length; i++) {
+		const entry = entries[i];
+		if (entry.type !== "message" && entry.type !== "custom_message") continue;
+		const toolResult = getToolResultMessage(entry);
+		// A protected tool's output is protected here too: the whole point of the
+		// matcher is that the model must keep seeing those bytes.
+		if (
+			toolResult &&
+			isProtectedToolResult(toolResult, toolCallsById.get(toolResult.toolCallId), config.protectedTools)
+		) {
+			continue;
+		}
+		collectTruncationCandidates(entry as SessionMessageEntry | CustomMessageEntry, config.minTextTokens, candidates);
+	}
+	return candidates;
+}
+
+/** The middle of `candidate` between `keepEdgeTokens` of head and of tail, or `undefined` when no middle is left. */
+function middleRegion(candidate: TruncationCandidate, keepEdgeTokens: number): BlockShakeRegion | undefined {
+	// Tokens do not map to character offsets, and the splice needs offsets.
+	// The text's own average is the only ratio that describes THIS text, and
+	// the edges it produces are then measured exactly below, so an unusual
+	// encoding costs a slightly wider or narrower edge and never an
+	// unbounded one.
+	const charsPerToken = candidate.text.length / candidate.tokens;
+	const edgeChars = Math.max(1, Math.floor(keepEdgeTokens * charsPerToken));
+	const start = Math.min(edgeChars, candidate.text.length);
+	const end = Math.max(start, candidate.text.length - edgeChars);
+	const middle = candidate.text.slice(start, end);
+	if (middle.length === 0) return undefined;
+	const middleTokens = countTokens(middle);
+	if (middleTokens <= 0) return undefined;
+	return {
+		kind: "block",
+		entry: candidate.entry,
+		address: candidate.address,
+		start,
+		end,
+		tokens: middleTokens,
+		originalText: middle,
+		label: candidate.label,
+		truncation: true,
+	};
 }
 
 interface TextSlot {

@@ -34,6 +34,7 @@
 - Split the telemetry text sanitizer into a class with one method per surface (text, attribute, exception) and the span start, value summary, manual chat record and tool span finish into one function per step; no user-visible change.
 - Split `Agent`'s run loop into one method per step (loop config, Cursor tool-result buffering, tool choice, steering queue state, per-event state, failed-run settlement) and removed its handling of an assistant message left open at the end of a run, which the agent loop never produces; no user-visible change.
 - A GPT-5 turn no longer allocates an abort controller that nothing aborts and an `AbortSignal.any` over it, and `normalizeTools` skips its slot filter when its cache answers the call.
+- Split message conversion, tool-call resolution, the superseded and aged tool-result prunes, shake and truncation region collection, file-operation extraction, summary transforms, conversation serialization, the remote summarizer request, the proxy stream and the run summary tally into one function per step or case; no user-visible change.
 
 ### Fixed
 
@@ -46,6 +47,7 @@
 - A branch summary over session history held on disk reads each message's fields before it redacts them, so navigating the tree with a summary no longer fails with "Branch summary provider text transformation failed." when the history was moved out of memory again while the credential resolved.
 - The turn loop no longer holds every streamed event until the turn ends: it waits on each provider event through one `LoopRace` instead of racing it against a long-lived abort promise, which cut the heap held by a 20,000-delta turn from 4.0 MiB and 120,359 objects to 0.3 MiB and 2,438 objects and the loop's cost per event from 1,160 ns to 877 ns (median of seven).
 - A tool call released from the pause gate by a cancel of the run is answered as skipped because the run was cancelled and never started, instead of as skipped for a pending steering message with advice to retry after a queued message that does not exist.
+- A run summary counts a tool name, stop reason or error type that names an `Object.prototype` member (`constructor`, `toString`, `__proto__`) under its own key, instead of reporting `NaN` or a string for its count or dropping it from `tools.byName`.
 
 ## [1.5.4] - 2026-09-24
 

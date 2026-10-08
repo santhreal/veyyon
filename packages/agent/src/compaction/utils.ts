@@ -2,7 +2,7 @@
  * Shared utilities for compaction and branch summarization.
  */
 
-import type { Message, ToolCall } from "@veyyon/ai";
+import type { AssistantMessage, ImageContent, Message, TextContent, ToolCall, ToolResultMessage } from "@veyyon/ai";
 import type { Dialect } from "@veyyon/ai/dialect";
 // The factory declares it; the dialect barrel re-exports every definition alongside it.
 import { getDialectDefinition } from "@veyyon/ai/dialect/factory";
@@ -89,47 +89,66 @@ export function mutatedPathsFromToolResult(
 	toolName: string,
 	detailsValue: unknown,
 ): { kind: "written" | "edited"; paths: string[] } | null {
-	if (!detailsValue || typeof detailsValue !== "object") return null;
-	let details = detailsValue as Record<string, unknown>;
-	let effectiveTool = toolName;
-	if (toolName === "resolve" && details.action === "apply" && details.sourceToolName === "ast_edit") {
-		effectiveTool = "ast_edit";
-		if (!details.sourceResultDetails || typeof details.sourceResultDetails !== "object") return null;
-		details = details.sourceResultDetails as Record<string, unknown>;
-	}
-
-	let candidates: unknown[] = [];
-	if (effectiveTool === "write") {
-		candidates = [details.resolvedPath];
-	} else if (effectiveTool === "edit") {
-		const perFileResults = Array.isArray(details.perFileResults) ? details.perFileResults : [];
-		candidates = [
-			details.path,
-			details.sourcePath,
-			...perFileResults.flatMap(value => {
-				if (!value || typeof value !== "object") return [];
-				const result = value as Record<string, unknown>;
-				return [result.path, result.sourcePath];
-			}),
-		];
-	} else if (
-		effectiveTool === "ast_edit" &&
-		details.applied === true &&
-		typeof details.totalReplacements === "number" &&
-		details.totalReplacements > 0
-	) {
-		candidates = Array.isArray(details.files) ? details.files : [];
-	} else {
-		return null;
-	}
-
-	const paths: string[] = [];
-	for (const candidate of candidates) {
-		if (typeof candidate !== "string" || candidate.length === 0 || isUrlSchemePath(candidate)) continue;
-		paths.push(candidate);
-	}
+	const resolved = resolveMutationDetails(toolName, detailsValue);
+	if (resolved === undefined) return null;
+	const candidates = mutationPathCandidates(resolved.tool, resolved.details);
+	if (candidates === undefined) return null;
+	const paths = candidates.filter(
+		(candidate): candidate is string =>
+			typeof candidate === "string" && candidate.length > 0 && !isUrlSchemePath(candidate),
+	);
 	if (paths.length === 0) return null;
-	return { kind: effectiveTool === "write" ? "written" : "edited", paths };
+	return { kind: resolved.tool === "write" ? "written" : "edited", paths };
+}
+
+/**
+ * The tool a result reports for, and the details it reports: applying an `ast_edit` preview through `resolve`
+ * reports the `ast_edit` result it applied. `undefined` when the details are not an object.
+ */
+function resolveMutationDetails(
+	toolName: string,
+	detailsValue: unknown,
+): { tool: string; details: Record<string, unknown> } | undefined {
+	if (!detailsValue || typeof detailsValue !== "object") return undefined;
+	const details = detailsValue as Record<string, unknown>;
+	if (toolName !== "resolve" || details.action !== "apply" || details.sourceToolName !== "ast_edit") {
+		return { tool: toolName, details };
+	}
+	const source = details.sourceResultDetails;
+	if (!source || typeof source !== "object") return undefined;
+	return { tool: "ast_edit", details: source as Record<string, unknown> };
+}
+
+/** The values a mutating tool's details state its paths in; `undefined` when `tool` changed no file. */
+function mutationPathCandidates(tool: string, details: Record<string, unknown>): unknown[] | undefined {
+	switch (tool) {
+		case "write":
+			return [details.resolvedPath];
+		case "edit": {
+			const perFileResults = Array.isArray(details.perFileResults) ? details.perFileResults : [];
+			return [
+				details.path,
+				details.sourcePath,
+				...perFileResults.flatMap(value => {
+					if (!value || typeof value !== "object") return [];
+					const result = value as Record<string, unknown>;
+					return [result.path, result.sourcePath];
+				}),
+			];
+		}
+		case "ast_edit": {
+			const replacements = details.totalReplacements;
+			if (details.applied !== true || typeof replacements !== "number" || !(replacements > 0)) return undefined;
+			return Array.isArray(details.files) ? details.files : [];
+		}
+		default:
+			return undefined;
+	}
+}
+
+interface RecordedToolCall {
+	name: string;
+	arguments: Record<string, unknown> | undefined;
 }
 
 /**
@@ -138,41 +157,55 @@ export function mutatedPathsFromToolResult(
  * successful tool result and prefer its exact affected-path details.
  */
 export function extractFileOpsFromMessages(messages: readonly AgentMessage[], fileOps: FileOperations): void {
-	const calls = new Map<string, { name: string; arguments: Record<string, unknown> | undefined }>();
+	const calls = new Map<string, RecordedToolCall>();
 	for (const message of messages) {
 		if (message.role !== "assistant" || !Array.isArray(message.content)) continue;
 		for (const block of message.content) {
-			if (block.type !== "toolCall") continue;
-			calls.set(block.id, {
-				name: block.name,
-				arguments:
-					block.arguments && typeof block.arguments === "object"
-						? (block.arguments as Record<string, unknown>)
-						: undefined,
-			});
-			if (block.name === "read") {
-				const path = typeof block.arguments?.path === "string" ? block.arguments.path : undefined;
-				if (path && !isUrlSchemePath(path)) fileOps.read.add(stripReadSelector(path));
-			}
+			if (block.type === "toolCall") recordToolCall(block, calls, fileOps);
 		}
 	}
-
 	for (const message of messages) {
-		if (message.role !== "toolResult" || message.isError === true) continue;
-		const call = calls.get(message.toolCallId);
-		const toolName = message.toolName || call?.name;
-		if (!toolName) continue;
-		const mutation = mutatedPathsFromToolResult(toolName, message.details);
-		if (mutation) {
-			const target = mutation.kind === "written" ? fileOps.written : fileOps.edited;
-			for (const mutated of mutation.paths) target.add(mutated);
-			continue;
+		if (message.role === "toolResult" && message.isError !== true) {
+			addCompletedMutation(message, calls.get(message.toolCallId), fileOps);
 		}
-		if (toolName !== "write" && toolName !== "edit") continue;
-		const path = typeof call?.arguments?.path === "string" ? call.arguments.path : undefined;
-		if (!path || isUrlSchemePath(path)) continue;
-		(toolName === "write" ? fileOps.written : fileOps.edited).add(path);
 	}
+}
+
+/** Keep `block` for the result that answers it, and add the file a `read` call names to the read set. */
+function recordToolCall(block: ToolCall, calls: Map<string, RecordedToolCall>, fileOps: FileOperations): void {
+	calls.set(block.id, {
+		name: block.name,
+		arguments:
+			block.arguments && typeof block.arguments === "object"
+				? (block.arguments as Record<string, unknown>)
+				: undefined,
+	});
+	if (block.name !== "read") return;
+	const path = typeof block.arguments?.path === "string" ? block.arguments.path : undefined;
+	if (path && !isUrlSchemePath(path)) fileOps.read.add(stripReadSelector(path));
+}
+
+/**
+ * Add the files a successful tool result changed: the paths its details state, else the path its `write` or `edit`
+ * call was given.
+ */
+function addCompletedMutation(
+	message: ToolResultMessage,
+	call: RecordedToolCall | undefined,
+	fileOps: FileOperations,
+): void {
+	const toolName = message.toolName || call?.name;
+	if (!toolName) return;
+	const mutation = mutatedPathsFromToolResult(toolName, message.details);
+	if (mutation) {
+		const target = mutation.kind === "written" ? fileOps.written : fileOps.edited;
+		for (const mutated of mutation.paths) target.add(mutated);
+		return;
+	}
+	if (toolName !== "write" && toolName !== "edit") return;
+	const path = typeof call?.arguments?.path === "string" ? call.arguments.path : undefined;
+	if (!path || isUrlSchemePath(path)) return;
+	(toolName === "write" ? fileOps.written : fileOps.edited).add(path);
 }
 
 /**
@@ -323,22 +356,7 @@ export function transformMessagesForSummary(messages: Message[], transform: Summ
 		}
 
 		if (message.role === "assistant") {
-			const content = message.content.map(block => {
-				if (block.type === "text") return { ...block, text: transform(block.text) };
-				if (block.type === "thinking") return { ...block, thinking: transform(block.thinking) };
-				if (block.type === "toolCall") {
-					return {
-						...block,
-						arguments: transformJsonStringValues(block.arguments, transform, new WeakMap()) as Record<
-							string,
-							unknown
-						>,
-						...(block.intent === undefined ? {} : { intent: transform(block.intent) }),
-					};
-				}
-				return block;
-			});
-			return { ...message, content };
+			return { ...message, content: message.content.map(block => transformAssistantBlock(block, transform)) };
 		}
 
 		return {
@@ -348,6 +366,27 @@ export function transformMessagesForSummary(messages: Message[], transform: Summ
 			),
 		};
 	});
+}
+
+/** `block` with its prose transformed: text, thinking, and a tool call's argument keys, string values and intent. */
+function transformAssistantBlock(
+	block: AssistantMessage["content"][number],
+	transform: SummaryTextTransform,
+): AssistantMessage["content"][number] {
+	switch (block.type) {
+		case "text":
+			return { ...block, text: transform(block.text) };
+		case "thinking":
+			return { ...block, thinking: transform(block.thinking) };
+		case "toolCall":
+			return {
+				...block,
+				arguments: transformJsonStringValues(block.arguments, transform, new WeakMap()) as Record<string, unknown>,
+				...(block.intent === undefined ? {} : { intent: transform(block.intent) }),
+			};
+		default:
+			return block;
+	}
 }
 
 const HARMONY_CONTROL_TOKEN_RE = /<\|(start|end|message|channel|constrain|return|call)\|>/g;
@@ -396,77 +435,79 @@ export function serializeConversation(messages: Message[], dialect?: Dialect): s
 		}
 	}
 	if (dialect) {
-		const processed: Message[] = [];
-		for (const msg of messages) {
-			if (msg.role === "assistant") {
-				const content = msg.content.filter(
-					block => block.type !== "thinking" && (block.type !== "toolCall" || !uselessCallIds.has(block.id)),
-				);
-				if (content.length > 0) processed.push(content.length === msg.content.length ? msg : { ...msg, content });
-				continue;
-			}
-			if (msg.role === "toolResult") {
-				if (uselessCallIds.has(msg.toolCallId)) continue;
-				const text = msg.content
-					.filter((c): c is { type: "text"; text: string } => c.type === "text")
-					.map(c => c.text)
-					.join("");
-				if (!text) continue;
-				processed.push({
-					...msg,
-					content: [{ type: "text", text: truncateToolResultForSummary(text) }],
-				});
-				continue;
-			}
-			processed.push(msg);
-		}
-		return getDialectDefinition(dialect).renderTranscript(processed);
+		return getDialectDefinition(dialect).renderTranscript(dialectTranscriptMessages(messages, uselessCallIds));
 	}
 
 	const parts: string[] = [];
+	for (const msg of messages) pushTranscriptParts(msg, uselessCallIds, parts);
+	return parts.join("\n\n");
+}
+
+/**
+ * The messages a dialect renders as the transcript: assistant turns without thinking or calls whose result was
+ * useless, and tool results reduced to their truncated text, with useless and textless results dropped.
+ */
+function dialectTranscriptMessages(messages: Message[], uselessCallIds: ReadonlySet<string>): Message[] {
+	const processed: Message[] = [];
 	for (const msg of messages) {
-		if (msg.role === "user") {
-			const content =
-				typeof msg.content === "string"
-					? msg.content
-					: msg.content
-							.filter((c): c is { type: "text"; text: string } => c.type === "text")
-							.map(c => c.text)
-							.join("");
+		const rendered = dialectTranscriptMessage(msg, uselessCallIds);
+		if (rendered) processed.push(rendered);
+	}
+	return processed;
+}
+
+/** `msg` as a dialect transcript renders it, or `undefined` when none of it is rendered. */
+function dialectTranscriptMessage(msg: Message, uselessCallIds: ReadonlySet<string>): Message | undefined {
+	if (msg.role === "assistant") {
+		const content = msg.content.filter(
+			block => block.type !== "thinking" && (block.type !== "toolCall" || !uselessCallIds.has(block.id)),
+		);
+		if (content.length === 0) return undefined;
+		return content.length === msg.content.length ? msg : { ...msg, content };
+	}
+	if (msg.role !== "toolResult") return msg;
+	if (uselessCallIds.has(msg.toolCallId)) return undefined;
+	const text = joinedText(msg.content);
+	return text ? { ...msg, content: [{ type: "text", text: truncateToolResultForSummary(text) }] } : undefined;
+}
+
+/** The plain transcript parts of `msg`: user text, assistant text and tool calls, and truncated tool results. */
+function pushTranscriptParts(msg: Message, uselessCallIds: ReadonlySet<string>, parts: string[]): void {
+	switch (msg.role) {
+		case "user": {
+			const content = typeof msg.content === "string" ? msg.content : joinedText(msg.content);
 			if (content) parts.push(`[User]: ${content}`);
-		} else if (msg.role === "assistant") {
-			const textParts: string[] = [];
-			const toolCalls: ToolCall[] = [];
-
-			for (const block of msg.content) {
-				if (block.type === "text") {
-					textParts.push(block.text);
-				} else if (block.type === "toolCall") {
-					if (uselessCallIds.has(block.id)) continue;
-					toolCalls.push(block);
-				}
-			}
-
-			if (textParts.length > 0) {
-				parts.push(`[Assistant]: ${textParts.join("\n")}`);
-			}
-			if (toolCalls.length > 0) {
-				parts.push(`[Tool Call]: ${renderToolCalls(toolCalls)}`);
-			}
-		} else if (msg.role === "toolResult") {
-			if (uselessCallIds.has(msg.toolCallId)) continue;
-			const content = msg.content
-				.filter((c): c is { type: "text"; text: string } => c.type === "text")
-				.map(c => c.text)
-				.join("");
-			if (content) {
-				const text = truncateToolResultForSummary(content);
-				parts.push(`[Tool Result]: ${text}`);
-			}
+			return;
+		}
+		case "assistant":
+			pushAssistantParts(msg, uselessCallIds, parts);
+			return;
+		case "toolResult": {
+			if (uselessCallIds.has(msg.toolCallId)) return;
+			const content = joinedText(msg.content);
+			if (content) parts.push(`[Tool Result]: ${truncateToolResultForSummary(content)}`);
+			return;
 		}
 	}
+}
 
-	return parts.join("\n\n");
+/** An assistant turn's text as one part, then its tool calls, apart from calls whose result was useless, as another. */
+function pushAssistantParts(message: AssistantMessage, uselessCallIds: ReadonlySet<string>, parts: string[]): void {
+	const textParts: string[] = [];
+	const toolCalls: ToolCall[] = [];
+	for (const block of message.content) {
+		if (block.type === "text") textParts.push(block.text);
+		else if (block.type === "toolCall" && !uselessCallIds.has(block.id)) toolCalls.push(block);
+	}
+	if (textParts.length > 0) parts.push(`[Assistant]: ${textParts.join("\n")}`);
+	if (toolCalls.length > 0) parts.push(`[Tool Call]: ${renderToolCalls(toolCalls)}`);
+}
+
+/** The text blocks of `content`, concatenated. */
+function joinedText(content: readonly (TextContent | ImageContent)[]): string {
+	let text = "";
+	for (const block of content) if (block.type === "text") text += block.text;
+	return text;
 }
 
 /**

@@ -1,10 +1,12 @@
 import type {
+	DeveloperMessage,
 	ImageContent,
 	Message,
 	MessageAttribution,
 	ProviderPayload,
 	TextContent,
 	ToolResultMessage,
+	UserMessage,
 } from "@veyyon/ai";
 import * as prompt from "@veyyon/utils/prompt";
 import { AGENT_PROMPTS } from "../prompts/registry";
@@ -178,15 +180,11 @@ function isCoreCompactionMessage(message: AgentMessage): message is AgentMessage
 	);
 }
 
-interface CachedConvertedUserMessage {
-	role: "user";
-	converted: Message;
-	attribution: MessageAttribution | undefined;
-	content: unknown;
-}
+/** A user, developer, custom or hook message: its conversion depends on its role, attribution and content. */
+type AuthoredMessage = UserMessage | DeveloperMessage | CustomMessage | HookMessage;
 
-interface CachedConvertedDeveloperMessage {
-	role: "developer";
+interface CachedConvertedAuthoredMessage {
+	role: AuthoredMessage["role"];
 	converted: Message;
 	attribution: MessageAttribution | undefined;
 	content: unknown;
@@ -200,13 +198,6 @@ interface CachedConvertedToolResultMessage {
 	prunedAt: number | undefined;
 	isError: boolean | undefined;
 	toolCallId: string;
-}
-
-interface CachedConvertedCustomMessage {
-	role: "custom" | "hookMessage";
-	converted: Message;
-	attribution: MessageAttribution | undefined;
-	content: unknown;
 }
 
 interface CachedConvertedBranchSummaryMessage {
@@ -225,10 +216,8 @@ interface CachedConvertedCompactionSummaryMessage {
 }
 
 type CachedConvertedMessage =
-	| CachedConvertedUserMessage
-	| CachedConvertedDeveloperMessage
+	| CachedConvertedAuthoredMessage
 	| CachedConvertedToolResultMessage
-	| CachedConvertedCustomMessage
 	| CachedConvertedBranchSummaryMessage
 	| CachedConvertedCompactionSummaryMessage;
 
@@ -245,182 +234,156 @@ const convertedMessageCache = new WeakMap<AgentMessage, CachedConvertedMessage>(
  * compaction-summary image blocks once silently fell off the provider request.
  */
 export function convertMessageToLlm(message: AgentMessage): Message | undefined {
-	if (isCoreCompactionMessage(message)) {
-		switch (message.role) {
-			case "custom":
-			case "hookMessage": {
-				const cached = convertedMessageCache.get(message);
-				if (
-					cached?.role === message.role &&
-					cached.attribution === message.attribution &&
-					cached.content === message.content
-				) {
-					return cached.converted;
-				}
-				const content =
-					typeof message.content === "string"
-						? [{ type: "text" as const, text: message.content }]
-						: message.content;
-				const converted: Message = {
-					role: "developer",
-					content,
-					attribution: message.attribution,
-					timestamp: message.timestamp,
-				};
-				convertedMessageCache.set(message, {
-					role: message.role,
-					converted,
-					attribution: message.attribution,
-					content: message.content,
-				});
-				return converted;
-			}
-			case "branchSummary": {
-				const cached = convertedMessageCache.get(message);
-				if (cached?.role === "branchSummary" && cached.summary === message.summary) {
-					return cached.converted;
-				}
-				const converted: Message = {
-					role: "developer",
-					content: [
-						{
-							type: "text" as const,
-							text: renderBranchSummaryContext(message.summary),
-						},
-					],
-					attribution: "agent",
-					historyRewriteAt: message.timestamp,
-					timestamp: message.timestamp,
-				};
-				convertedMessageCache.set(message, {
-					role: "branchSummary",
-					converted,
-					summary: message.summary,
-				});
-				return converted;
-			}
-			case "compactionSummary": {
-				const cached = convertedMessageCache.get(message);
-				if (
-					cached?.role === "compactionSummary" &&
-					cached.summary === message.summary &&
-					cached.blocks === message.blocks &&
-					cached.images === message.images &&
-					cached.providerPayload === message.providerPayload
-				) {
-					return cached.converted;
-				}
-				const converted: Message = {
-					role: "user",
-					content:
-						message.blocks !== undefined
-							? [
-									{
-										type: "text" as const,
-										text: renderCompactionSummaryContext(message.summary),
-									},
-									...message.blocks.map(block =>
-										block.type === "text"
-											? { ...block, text: withoutSummaryPresentationTags(block.text) }
-											: block,
-									),
-								]
-							: [
-									{
-										type: "text" as const,
-										text: renderCompactionSummaryContext(message.summary),
-									},
-									...(message.images ?? []),
-								],
-					attribution: "agent",
-					historyRewriteAt: message.timestamp,
-					providerPayload: message.providerPayload,
-					timestamp: message.timestamp,
-				};
-				convertedMessageCache.set(message, {
-					role: "compactionSummary",
-					converted,
-					summary: message.summary,
-					blocks: message.blocks,
-					images: message.images,
-					providerPayload: message.providerPayload,
-				});
-				return converted;
-			}
-		}
-	}
-
+	if (isCoreCompactionMessage(message)) return convertCompactionMessage(message);
 	switch (message.role) {
-		case "user": {
-			const cached = convertedMessageCache.get(message);
-			if (
-				cached?.role === "user" &&
-				cached.attribution === message.attribution &&
-				cached.content === message.content
-			) {
-				return cached.converted;
-			}
-			const converted: Message = { ...message, attribution: message.attribution ?? "user" };
-			convertedMessageCache.set(message, {
-				role: "user",
-				converted,
-				attribution: message.attribution,
-				content: message.content,
-			});
-			return converted;
-		}
-		case "developer": {
-			const cached = convertedMessageCache.get(message);
-			if (
-				cached?.role === "developer" &&
-				cached.attribution === message.attribution &&
-				cached.content === message.content
-			) {
-				return cached.converted;
-			}
-			const converted: Message = { ...message, attribution: message.attribution ?? "agent" };
-			convertedMessageCache.set(message, {
-				role: "developer",
-				converted,
-				attribution: message.attribution,
-				content: message.content,
-			});
-			return converted;
-		}
+		case "user":
+			return (
+				cachedAuthoredConversion(message) ??
+				cacheAuthoredConversion(message, { ...message, attribution: message.attribution ?? "user" })
+			);
+		case "developer":
+			return (
+				cachedAuthoredConversion(message) ??
+				cacheAuthoredConversion(message, { ...message, attribution: message.attribution ?? "agent" })
+			);
 		case "assistant":
 			return message;
-		case "toolResult": {
-			const tr = message as ToolResultMessage;
-			const cached = convertedMessageCache.get(message);
-			if (
-				cached?.role === "toolResult" &&
-				cached.attribution === tr.attribution &&
-				cached.content === tr.content &&
-				cached.prunedAt === tr.prunedAt &&
-				cached.isError === tr.isError &&
-				cached.toolCallId === tr.toolCallId
-			) {
-				return cached.converted;
-			}
-			const converted: Message = {
-				...tr,
-				content: getPrunedToolResultContent(tr),
-				attribution: tr.attribution ?? "agent",
-			};
-			convertedMessageCache.set(message, {
-				role: "toolResult",
-				converted,
-				attribution: tr.attribution,
-				content: tr.content,
-				prunedAt: tr.prunedAt,
-				isError: tr.isError,
-				toolCallId: tr.toolCallId,
-			});
-			return converted;
-		}
+		case "toolResult":
+			return convertToolResultMessage(message as ToolResultMessage);
 		default:
 			return undefined;
 	}
+}
+
+function convertCompactionMessage(message: CoreCompactionMessage): Message {
+	switch (message.role) {
+		case "custom":
+		case "hookMessage":
+			return (
+				cachedAuthoredConversion(message) ??
+				cacheAuthoredConversion(message, {
+					role: "developer",
+					content:
+						typeof message.content === "string" ? [{ type: "text", text: message.content }] : message.content,
+					attribution: message.attribution,
+					timestamp: message.timestamp,
+				})
+			);
+		case "branchSummary":
+			return convertBranchSummaryMessage(message);
+		case "compactionSummary":
+			return convertCompactionSummaryMessage(message);
+	}
+}
+
+/** The cached conversion of `message`, when its role, attribution and content are those it was converted from. */
+function cachedAuthoredConversion(message: AuthoredMessage): Message | undefined {
+	const cached = convertedMessageCache.get(message);
+	if (cached === undefined || !("attribution" in cached)) return undefined;
+	return cached.role === message.role &&
+		cached.attribution === message.attribution &&
+		cached.content === message.content
+		? cached.converted
+		: undefined;
+}
+
+/** Record `converted` as the conversion of `message`'s current role, attribution and content, and return it. */
+function cacheAuthoredConversion(message: AuthoredMessage, converted: Message): Message {
+	convertedMessageCache.set(message, {
+		role: message.role,
+		converted,
+		attribution: message.attribution,
+		content: message.content,
+	});
+	return converted;
+}
+
+function convertBranchSummaryMessage(message: BranchSummaryMessage): Message {
+	const cached = convertedMessageCache.get(message);
+	if (cached?.role === "branchSummary" && cached.summary === message.summary) {
+		return cached.converted;
+	}
+	const converted: Message = {
+		role: "developer",
+		content: [{ type: "text", text: renderBranchSummaryContext(message.summary) }],
+		attribution: "agent",
+		historyRewriteAt: message.timestamp,
+		timestamp: message.timestamp,
+	};
+	convertedMessageCache.set(message, { role: "branchSummary", converted, summary: message.summary });
+	return converted;
+}
+
+/**
+ * A compaction summary as untrusted user history: the rendered summary, then the legacy archive blocks with their
+ * presentation tags stripped, or else the legacy images.
+ */
+function convertCompactionSummaryMessage(message: CompactionSummaryMessage): Message {
+	const cached = convertedMessageCache.get(message);
+	if (
+		cached?.role === "compactionSummary" &&
+		cached.summary === message.summary &&
+		cached.blocks === message.blocks &&
+		cached.images === message.images &&
+		cached.providerPayload === message.providerPayload
+	) {
+		return cached.converted;
+	}
+	const header: TextContent = { type: "text", text: renderCompactionSummaryContext(message.summary) };
+	const converted: Message = {
+		role: "user",
+		content:
+			message.blocks !== undefined
+				? [
+						header,
+						...message.blocks.map(block =>
+							block.type === "text" ? { ...block, text: withoutSummaryPresentationTags(block.text) } : block,
+						),
+					]
+				: [header, ...(message.images ?? [])],
+		attribution: "agent",
+		historyRewriteAt: message.timestamp,
+		providerPayload: message.providerPayload,
+		timestamp: message.timestamp,
+	};
+	convertedMessageCache.set(message, {
+		role: "compactionSummary",
+		converted,
+		summary: message.summary,
+		blocks: message.blocks,
+		images: message.images,
+		providerPayload: message.providerPayload,
+	});
+	return converted;
+}
+
+function convertToolResultMessage(message: ToolResultMessage): Message {
+	const cached = convertedMessageCache.get(message);
+	if (
+		cached?.role === "toolResult" &&
+		cached.attribution === message.attribution &&
+		cached.content === message.content &&
+		cached.prunedAt === message.prunedAt &&
+		cached.isError === message.isError &&
+		cached.toolCallId === message.toolCallId
+	) {
+		return cached.converted;
+	}
+	const converted: Message = {
+		...message,
+		content: getPrunedToolResultContent(message),
+		attribution: message.attribution ?? "agent",
+	};
+	convertedMessageCache.set(message, {
+		role: "toolResult",
+		converted,
+		attribution: message.attribution,
+		content: message.content,
+		prunedAt: message.prunedAt,
+		isError: message.isError,
+		toolCallId: message.toolCallId,
+	});
+	return converted;
 }
 
 /**
