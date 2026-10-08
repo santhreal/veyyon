@@ -242,7 +242,6 @@ function providerTextTransformError(): Error {
 
 const MAX_PROVIDER_TRANSFORM_DEPTH = 64;
 const MAX_PROVIDER_TRANSFORM_NODES = 100_000;
-const MAX_PROVIDER_TRANSFORM_KEYS = 100_000;
 const MAX_PROVIDER_TRANSFORM_STRING_CHARS = 16 * 1024 * 1024;
 
 const PROVIDER_PROTOCOL_STRING_FIELDS: Record<string, true> = {
@@ -342,7 +341,6 @@ function isToolArgumentField(parent: object, key: string): boolean {
 interface ProviderTransformTraversal {
 	ancestors: WeakSet<object>;
 	nodes: number;
-	keys: number;
 	sourceStringChars: number;
 	transformedStringChars: number;
 }
@@ -380,7 +378,6 @@ function transformProviderValue<T>(value: T, transform: ObfuscateProviderText): 
 	const traversal: ProviderTransformTraversal = {
 		ancestors: new WeakSet<object>(),
 		nodes: 0,
-		keys: 0,
 		sourceStringChars: 0,
 		transformedStringChars: 0,
 	};
@@ -405,16 +402,7 @@ function transformProviderValueBounded<T>(
 	traversal.nodes += 1;
 	if (traversal.nodes > MAX_PROVIDER_TRANSFORM_NODES) throw providerTextTransformError();
 	if (typeof value === "string") {
-		if (protocolShape && parentKey !== undefined && OPAQUE_PROVIDER_STRING_FIELDS[parentKey] === true) {
-			const checked = transformProviderText(value, transform, traversal);
-			if (checked !== value) throw providerTextTransformError();
-			return value;
-		}
-		return (
-			protocolShape && parentKey !== undefined && PROVIDER_PROTOCOL_STRING_FIELDS[parentKey] === true
-				? value
-				: transformProviderText(value, transform, traversal)
-		) as T;
+		return transformProviderString(value, transform, traversal, protocolShape, parentKey) as T;
 	}
 	if (value === null || typeof value !== "object") return value;
 
@@ -424,58 +412,102 @@ function transformProviderValueBounded<T>(
 
 	traversal.ancestors.add(value);
 	try {
-		if (Array.isArray(value)) {
-			if (Object.getPrototypeOf(value) !== Array.prototype || value.length > MAX_PROVIDER_TRANSFORM_NODES) {
-				throw providerTextTransformError();
-			}
-			const transformed = new Array(value.length);
-			for (let index = 0; index < value.length; index += 1) {
-				const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-				if (!descriptor) continue;
-				if (!("value" in descriptor)) throw providerTextTransformError();
-				transformed[index] = transformProviderValueBounded(
-					descriptor.value,
-					transform,
-					traversal,
-					depth + 1,
-					protocolShape,
-					parentKey,
-				);
-			}
-			return transformed as T;
-		}
-
-		const prototype = Object.getPrototypeOf(value);
-		if (prototype !== Object.prototype && prototype !== null) throw providerTextTransformError();
-		const transformed: Record<string, unknown> = {};
-		for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
-			if (!("value" in descriptor)) throw providerTextTransformError();
-			if (!descriptor.enumerable) continue;
-			traversal.keys += 1;
-			if (traversal.keys > MAX_PROVIDER_TRANSFORM_KEYS) throw providerTextTransformError();
-			const transformedKey =
-				protocolShape && PROVIDER_PROTOCOL_KEYS[key] === true
-					? key
-					: transformProviderText(key, transform, traversal);
-			if (Object.hasOwn(transformed, transformedKey)) throw providerTextTransformError();
-			Object.defineProperty(transformed, transformedKey, {
-				value: transformProviderValueBounded(
-					descriptor.value,
-					transform,
-					traversal,
-					depth + 1,
-					protocolShape && !isToolArgumentField(value, key),
-					key,
-				),
-				enumerable: true,
-				configurable: true,
-				writable: true,
-			});
-		}
-		return transformed as T;
+		return (
+			Array.isArray(value)
+				? transformProviderArray(value, transform, traversal, depth, protocolShape, parentKey)
+				: transformProviderRecord(value, transform, traversal, depth, protocolShape)
+		) as T;
 	} finally {
 		traversal.ancestors.delete(value);
 	}
+}
+
+/**
+ * Transform a string by the field that holds it. An opaque field must come
+ * back from the transform unchanged, a protocol field passes through without
+ * reaching the transform, and every other string is transformed.
+ */
+function transformProviderString(
+	value: string,
+	transform: ObfuscateProviderText,
+	traversal: ProviderTransformTraversal,
+	protocolShape: boolean,
+	parentKey: string | undefined,
+): string {
+	if (!protocolShape || parentKey === undefined) return transformProviderText(value, transform, traversal);
+	if (OPAQUE_PROVIDER_STRING_FIELDS[parentKey] === true) {
+		if (transformProviderText(value, transform, traversal) !== value) throw providerTextTransformError();
+		return value;
+	}
+	if (PROVIDER_PROTOCOL_STRING_FIELDS[parentKey] === true) return value;
+	return transformProviderText(value, transform, traversal);
+}
+
+/** Transform each element of a plain array; a hole stays a hole and an accessor fails closed. */
+function transformProviderArray(
+	value: unknown[],
+	transform: ObfuscateProviderText,
+	traversal: ProviderTransformTraversal,
+	depth: number,
+	protocolShape: boolean,
+	parentKey: string | undefined,
+): unknown[] {
+	if (Object.getPrototypeOf(value) !== Array.prototype || value.length > MAX_PROVIDER_TRANSFORM_NODES) {
+		throw providerTextTransformError();
+	}
+	const transformed = new Array(value.length);
+	for (let index = 0; index < value.length; index += 1) {
+		const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+		if (!descriptor) continue;
+		if (!("value" in descriptor)) throw providerTextTransformError();
+		transformed[index] = transformProviderValueBounded(
+			descriptor.value,
+			transform,
+			traversal,
+			depth + 1,
+			protocolShape,
+			parentKey,
+		);
+	}
+	return transformed;
+}
+
+/**
+ * Transform the enumerable data properties of a plain object, keeping protocol
+ * keys and transforming every other key. A non-plain prototype, an accessor, or
+ * two keys that transform to one fail closed.
+ */
+function transformProviderRecord(
+	value: object,
+	transform: ObfuscateProviderText,
+	traversal: ProviderTransformTraversal,
+	depth: number,
+	protocolShape: boolean,
+): Record<string, unknown> {
+	const prototype = Object.getPrototypeOf(value);
+	if (prototype !== Object.prototype && prototype !== null) throw providerTextTransformError();
+	const transformed: Record<string, unknown> = {};
+	for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
+		if (!("value" in descriptor)) throw providerTextTransformError();
+		if (!descriptor.enumerable) continue;
+		const transformedKey =
+			protocolShape && PROVIDER_PROTOCOL_KEYS[key] === true ? key : transformProviderText(key, transform, traversal);
+		if (Object.hasOwn(transformed, transformedKey)) throw providerTextTransformError();
+		Object.defineProperty(transformed, transformedKey, {
+			value: transformProviderValueBounded(
+				descriptor.value,
+				transform,
+				traversal,
+				depth + 1,
+				protocolShape && !isToolArgumentField(value, key),
+				key,
+			),
+			enumerable: true,
+			configurable: true,
+			writable: true,
+		});
+	}
+	return transformed;
 }
 
 function resolveProviderTextTransform(options: GenerateBranchSummaryOptions): ObfuscateProviderText | undefined {
@@ -522,38 +554,60 @@ function prepareBranchEntriesForProvider(
 	tokenBudget: number,
 	transform?: ObfuscateProviderText,
 ): BranchPreparation {
-	const messages: AgentMessage[] = [];
+	// File ops come from every entry, even those the token budget leaves out,
+	// so the summary's file lists stay cumulative across nested branch summaries.
+	const fileOps = collectBranchFileOps(entries);
+	const { messages, totalTokens } = newestMessagesWithinBudget(entries, tokenBudget, transform);
+	return { messages, fileOps, totalTokens };
+}
+
+/**
+ * Collect the file operations of every message entry and of every branch
+ * summary this module wrote (`fromExtension !== true`); an extension's summary
+ * contributes none.
+ */
+function collectBranchFileOps(entries: SessionEntry[]): FileOperations {
 	const fileOps = createFileOps();
 	const fileMessages: AgentMessage[] = [];
-	let totalTokens = 0;
-
-	// First pass: collect file ops from ALL entries (even if they don't fit in token budget)
-	// This ensures we capture cumulative file tracking from nested branch summaries
-	// Only extract from pi-generated summaries (fromExtension !== true), not extension-generated ones
 	for (const entry of entries) {
 		if (entry.type === "message") fileMessages.push(entry.message);
-		if (entry.type === "branch_summary" && !entry.fromExtension && entry.details) {
-			const details = entry.details as BranchSummaryDetails;
-			if (Array.isArray(details.readFiles)) {
-				for (const f of details.readFiles) fileOps.read.add(stripReadSelector(f));
-			}
-			if (Array.isArray(details.modifiedFiles)) {
-				// Modified files go into both edited and written for proper deduplication
-				for (const f of details.modifiedFiles) {
-					fileOps.edited.add(f);
-				}
-			}
+		else if (entry.type === "branch_summary" && !entry.fromExtension && entry.details) {
+			addBranchSummaryFileOps(entry.details as BranchSummaryDetails, fileOps);
 		}
 	}
 	extractFileOpsFromMessages(fileMessages, fileOps);
+	return fileOps;
+}
 
-	// Second pass: walk from newest to oldest, adding messages until token budget
+function addBranchSummaryFileOps(details: BranchSummaryDetails, fileOps: FileOperations): void {
+	if (Array.isArray(details.readFiles)) {
+		for (const f of details.readFiles) fileOps.read.add(stripReadSelector(f));
+	}
+	// Modified files go into `edited`, where they deduplicate against the edits of tool calls.
+	if (Array.isArray(details.modifiedFiles)) {
+		for (const f of details.modifiedFiles) fileOps.edited.add(f);
+	}
+}
+
+/**
+ * Walk entries from newest to oldest and keep messages until the next one
+ * exceeds `tokenBudget` (0 = no limit). A compaction or branch summary that
+ * exceeds it is still kept while the kept messages are under 90% of the budget,
+ * since it holds the context before it. Messages come back oldest first.
+ */
+function newestMessagesWithinBudget(
+	entries: SessionEntry[],
+	tokenBudget: number,
+	transform: ObfuscateProviderText | undefined,
+): { messages: AgentMessage[]; totalTokens: number } {
+	const newestFirst: AgentMessage[] = [];
+	let totalTokens = 0;
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const entry = entries[i];
 		const rawMessage = getMessageFromEntry(entry);
 		if (!rawMessage) continue;
 
-		// File tracking above retains raw paths. Clone and transform only the
+		// File tracking retains raw paths. Clone and transform only the
 		// separately provider-bound message before lossy processing. The walk runs
 		// over the message's fields as read: a session entry held on disk keeps its
 		// message's large fields behind accessors that read them back from the
@@ -561,24 +615,19 @@ function prepareBranchEntriesForProvider(
 		const message = transform ? transformProviderValue({ ...rawMessage }, transform) : rawMessage;
 		const tokens = estimateBranchSummaryTokens(message);
 
-		// Check budget before adding
 		if (tokenBudget > 0 && totalTokens + tokens > tokenBudget) {
-			// If this is a summary entry, try to fit it anyway as it's important context
-			if (entry.type === "compaction" || entry.type === "branch_summary") {
-				if (totalTokens < tokenBudget * 0.9) {
-					messages.unshift(message);
-					totalTokens += tokens;
-				}
+			const isSummary = entry.type === "compaction" || entry.type === "branch_summary";
+			if (isSummary && totalTokens < tokenBudget * 0.9) {
+				newestFirst.push(message);
+				totalTokens += tokens;
 			}
-			// Stop - we've hit the budget
 			break;
 		}
 
-		messages.unshift(message);
+		newestFirst.push(message);
 		totalTokens += tokens;
 	}
-
-	return { messages, fileOps, totalTokens };
+	return { messages: newestFirst.reverse(), totalTokens };
 }
 
 export function prepareBranchEntries(entries: SessionEntry[], tokenBudget: number = 0): BranchPreparation {

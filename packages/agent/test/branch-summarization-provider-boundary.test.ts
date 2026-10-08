@@ -630,4 +630,161 @@ describe("branch summary provider boundary", () => {
 		expect((error as Error).message).toBe("Branch summary provider text transformation failed.");
 		expect((error as Error).message).not.toContain(RAW_MARKER);
 	});
+
+	/**
+	 * Tool arguments are user data even where their field names match the
+	 * provider protocol: a `name` or `type` inside a call's arguments is the
+	 * model's text, not a discriminant, and is redacted like any other string.
+	 * The sweep covers every container a call's arguments arrive in; `input`
+	 * counts only under a tool-call `type`, so the control keeps the protocol
+	 * shape of an `input` under any other type.
+	 */
+	describe("tool arguments are redacted whatever their field names", () => {
+		const argumentsWithProtocolNames = { name: RAW_MARKER, type: RAW_MARKER, id: RAW_MARKER };
+		const containers: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
+			["arguments", { type: "function", arguments: argumentsWithProtocolNames }],
+			["args", { type: "function", args: argumentsWithProtocolNames }],
+			...["custom_tool_call", "function_call", "toolCall", "tool_use"].map(
+				type => [`input of ${type}`, { type, input: argumentsWithProtocolNames }] as const,
+			),
+		];
+
+		for (const [label, block] of containers) {
+			test(`redacts protocol-named fields in ${label}`, async () => {
+				let payloadText = "";
+				await generateBranchSummary(branchEntries(), {
+					model: MODEL,
+					apiKey: "static-key",
+					signal: new AbortController().signal,
+					resolveObfuscateProviderText: () => text => text.replaceAll(RAW_MARKER, "#ARG#"),
+					completeImpl: async (model, _context, options) => {
+						payloadText = JSON.stringify(await options.onPayload?.({ input: [block] }, model));
+						return assistant();
+					},
+				});
+
+				expect(payloadText).toContain('{"name":"#ARG#","type":"#ARG#","id":"#ARG#"}');
+				expect(payloadText).not.toContain(RAW_MARKER);
+			});
+		}
+
+		test("keeps protocol-named fields in the input of a non-call type", async () => {
+			let transformedPayload: unknown;
+			await generateBranchSummary(branchEntries(), {
+				model: MODEL,
+				apiKey: "static-key",
+				signal: new AbortController().signal,
+				resolveObfuscateProviderText: () => text => text.replaceAll(RAW_MARKER, "#ARG#"),
+				completeImpl: async (model, _context, options) => {
+					transformedPayload = await options.onPayload?.(
+						{ type: "reasoning", input: { name: RAW_MARKER } },
+						model,
+					);
+					return assistant();
+				},
+			});
+
+			expect(transformedPayload).toEqual({ type: "reasoning", input: { name: RAW_MARKER } });
+		});
+
+		test("redacts protocol-named argument fields of a recorded tool call", async () => {
+			const entries = branchEntries();
+			const call = entries[1];
+			if (call.type !== "message" || call.message.role !== "assistant") throw new Error("fixture changed");
+			call.message.content = [
+				{ type: "toolCall", id: "call-read", name: "read", arguments: { name: RAW_MARKER, type: RAW_MARKER } },
+			];
+			let capturedContext = "";
+			await generateBranchSummary(entries, {
+				model: MODEL,
+				apiKey: "static-key",
+				signal: new AbortController().signal,
+				resolveObfuscateProviderText: () => text => text.replaceAll(RAW_MARKER, "#ARG#"),
+				completeImpl: async (_model, context) => {
+					capturedContext = contextText(context);
+					return assistant();
+				},
+			});
+
+			expect(capturedContext).toContain("#ARG#");
+			expect(capturedContext).not.toContain(RAW_MARKER);
+		});
+	});
+
+	/**
+	 * The walk returns an exact redacted copy or nothing. A value whose copy
+	 * would drop or re-read data (an accessor, a symbol key, an exotic
+	 * prototype) fails closed with the fixed error before the wire call,
+	 * instead of sending a copy that differs from what the provider was given.
+	 */
+	describe("a payload the walk cannot copy exactly never reaches the wire", () => {
+		class TaggedArray extends Array<unknown> {}
+		const unwalkable: ReadonlyArray<readonly [string, () => unknown]> = [
+			["an accessor property", () => Object.defineProperty({}, "text", { get: () => RAW_MARKER, enumerable: true })],
+			[
+				"an accessor array element",
+				() => Object.defineProperty([], "0", { get: () => RAW_MARKER, enumerable: true, configurable: true }),
+			],
+			["an array subclass", () => TaggedArray.of(RAW_MARKER)],
+			["a symbol-keyed object", () => ({ text: "plain", [Symbol("tag")]: RAW_MARKER })],
+			["a symbol-keyed array", () => Object.assign([RAW_MARKER], { [Symbol("tag")]: RAW_MARKER })],
+		];
+
+		for (const [label, build] of unwalkable) {
+			test(`rejects ${label}`, async () => {
+				let reachedWire = false;
+				const request = generateBranchSummary(branchEntries(), {
+					model: MODEL,
+					apiKey: "static-key",
+					signal: new AbortController().signal,
+					resolveObfuscateProviderText: () => text => text.replaceAll(RAW_MARKER, "#COPY#"),
+					completeImpl: async (model, _context, options) => {
+						await options.onPayload?.({ input: [build()] }, model);
+						reachedWire = true;
+						return assistant();
+					},
+				});
+				const error = await request.catch((caught: unknown) => caught);
+
+				expect(error).toBeInstanceOf(Error);
+				expect((error as Error).message).toBe("Branch summary provider text transformation failed.");
+				expect(reachedWire).toBe(false);
+			});
+		}
+	});
+
+	/**
+	 * The node bound counts every value the walk visits, the root included,
+	 * and admits exactly 100,000 of them.
+	 */
+	describe("the walk visits at most 100,000 values", () => {
+		async function sendWideArray(width: number): Promise<{ reachedWire: boolean; error: unknown }> {
+			let reachedWire = false;
+			const error = await generateBranchSummary(branchEntries(), {
+				model: MODEL,
+				apiKey: "static-key",
+				signal: new AbortController().signal,
+				resolveObfuscateProviderText: () => text => text.replaceAll(RAW_MARKER, "#WIDE#"),
+				completeImpl: async (model, _context, options) => {
+					await options.onPayload?.(new Array<string>(width).fill("v"), model);
+					reachedWire = true;
+					return assistant();
+				},
+			}).then(
+				() => undefined,
+				(caught: unknown) => caught,
+			);
+			return { reachedWire, error };
+		}
+
+		test("admits an array whose elements and root make 100,000 values", async () => {
+			expect(await sendWideArray(99_999)).toEqual({ reachedWire: true, error: undefined });
+		});
+
+		test("rejects an array whose elements and root make 100,001 values", async () => {
+			const { reachedWire, error } = await sendWideArray(100_000);
+			expect(reachedWire).toBe(false);
+			expect((error as Error).message).toBe("Branch summary provider text transformation failed.");
+		});
+	});
 });
