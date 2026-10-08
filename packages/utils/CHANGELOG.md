@@ -68,6 +68,9 @@
 - The `rearmingTimeout` documentation records its measured effect on an idle interactive session of the linux-x64 binary; no user-visible change.
 - `CombinedAutocompleteProvider` builds slash command, argument, `@` reference and path suggestions in separate steps, with 4,251 differential cases identical to the previous build; no user-visible change.
 - `truncateHeadBytes`, `truncateTailBytes`, `utf8ByteLength`, `escapeTerminalText` and `contentText` share or split out their per-mode and per-unit steps, with 6.7 million differential checks identical to the previous build; no user-visible change.
+- `matchPositions` checks a word boundary by character code instead of a regular expression, cutting a call from 154.5 ns to 135.6 ns, and `fuzzyMatch` counts a repeated token's matching words in its own step, with 200,800 differential checks identical to the previous build.
+- `wrapTextWithAnsi` checks a fitting row's leading indent, its content and its hanging-indent rebuild in separate steps, cutting a fitting 120-cell row from 92.6 ns to 86.6 ns with 375,000 differential checks identical to the previous build.
+- `planDeccaraFills` and `analyzeBgFillLine` scan backgrounds and plan fills in separate steps, cutting a frame's fill plan from 18.1 µs to 16.7 µs and a line's analysis from 308 ns to 265 ns with 240,000 differential checks identical to the previous build.
 
 ### Fixed
 
