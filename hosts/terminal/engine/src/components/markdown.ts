@@ -2674,8 +2674,7 @@ function appendInlineToken(token: Token, ctx: InlineWalkContext, state: InlineWa
 		case "paragraph":
 			// Paragraph tokens contain nested inline tokens
 			if (!ctx.handleBlocks) break;
-			markInlineContent(state, plainInlineTokens(token.tokens || []));
-			state.out += ctx.renderNested(token.tokens || []);
+			appendInlineParagraph(token.tokens, ctx, state);
 			return;
 		case "br":
 			if (!ctx.handleBlocks) break;
@@ -2683,13 +2682,13 @@ function appendInlineToken(token: Token, ctx: InlineWalkContext, state: InlineWa
 			state.trimLeadingWhitespace = true;
 			return;
 		case "strong":
-			appendInlineSpan(token.tokens || [], "bold", ctx, state);
+			appendInlineSpan(token.tokens, "bold", ctx, state);
 			return;
 		case "em":
-			appendInlineSpan(token.tokens || [], "italic", ctx, state);
+			appendInlineSpan(token.tokens, "italic", ctx, state);
 			return;
 		case "del":
-			appendInlineSpan(token.tokens || [], "strikethrough", ctx, state);
+			appendInlineSpan(token.tokens, "strikethrough", ctx, state);
 			return;
 		case "codespan": {
 			markInlineContent(state, token.text);
@@ -2706,11 +2705,23 @@ function appendInlineToken(token: Token, ctx: InlineWalkContext, state: InlineWa
 			return;
 	}
 	// Handle any other inline token types (and the block cases a context does not handle) as plain text
+	appendInlinePlainToken(token, ctx, state);
+}
+
+/** Append `token.text` unstyled when the token holds text; a token without text appends nothing. */
+function appendInlinePlainToken(token: Token, ctx: InlineWalkContext, state: InlineWalkState): void {
 	if ("text" in token && typeof token.text === "string") {
 		const text = takeInlineText(state, token.text);
 		markInlineContent(state, text);
 		state.out += ctx.applyTextWithNewlines(text);
 	}
+}
+
+/** Append a paragraph's nested inline tokens unstyled. */
+function appendInlineParagraph(nested: Token[] | undefined, ctx: InlineWalkContext, state: InlineWalkState): void {
+	const tokens = nested || [];
+	markInlineContent(state, plainInlineTokens(tokens));
+	state.out += ctx.renderNested(tokens);
 }
 
 function appendInlineText(
@@ -2728,13 +2739,14 @@ function appendInlineText(
 
 /** Append a `**strong**`, `*em*` or `~~del~~` span: its nested tokens styled by `style`, then the style prefix. */
 function appendInlineSpan(
-	nested: Token[],
+	nested: Token[] | undefined,
 	style: "bold" | "italic" | "strikethrough",
 	ctx: InlineWalkContext,
 	state: InlineWalkState,
 ): void {
-	markInlineContent(state, plainInlineTokens(nested));
-	state.out += ctx.theme[style](ctx.renderNested(nested)) + ctx.stylePrefix;
+	const tokens = nested || [];
+	markInlineContent(state, plainInlineTokens(tokens));
+	state.out += ctx.theme[style](ctx.renderNested(tokens)) + ctx.stylePrefix;
 }
 
 /** A styled link; with hyperlinks on, an OSC-8 link followed by ` (href)` unless the text already is the href. */
