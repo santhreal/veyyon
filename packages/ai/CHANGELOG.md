@@ -111,6 +111,7 @@
 - The auth gateway's Chat Completions request parser converts messages, decoding options and request options in separate steps and maps every content part through one function; parsed requests and errors are identical across 100,000 generated bodies and parse time is unchanged.
 - `decontaminateZodInstance` rewrites each Zod kind in its own function and copies an object or array only once a value under it changes, so a tool schema with nothing to rewrite is walked without copying any of its objects or arrays; output is identical across 30,000 generated schemas.
 - The Cursor provider applies each interaction-update variant in its own function, selected from a table by variant name; content blocks, events and usage are identical across 30,000 generated update sequences.
+- An org-scoped login matches a stored row keyed under its org by one of its base identities without decoding the stored credential's tokens, cutting the check against an account-keyed row from 2.29 to 1.14 µs (median of nine) with identical matches across 300,000 generated credential pairs.
 
 ### Fixed
 

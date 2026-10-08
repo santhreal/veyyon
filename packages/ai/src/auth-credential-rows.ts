@@ -221,40 +221,65 @@ export function matchesReplacementCredential(
 	if (incomingIdentityKey === null) return false;
 	if (incomingIdentityKey === existingIdentityKey) return true;
 	if (existingIdentityKey === null) return false;
-	// One-way upgrade, applied only when the INCOMING identity key carries the
-	// org qualifier (only anthropic keys do, so other providers never reach the
-	// checks below). An org-scoped login `org:<o>` claims (and re-keys) any
-	// existing row that denotes the same subscription:
-	//   - `org:<o>` — org-only row stored when identity recovery failed, claimed
-	//     once a later same-org login recovers a base identity;
-	//   - `<b>` for any base identity `<b>` (email/account/project) the incoming
-	//     credential carries — a pre-org legacy row, mirroring the pre-org
-	//     replace behavior;
-	//   - `<b>|org:<o>` for any such base — the same subscription keyed by a
-	//     different base, e.g. an account-keyed row stored while the email could
-	//     not be recovered, claimed once a later login recovers the email;
-	//   - any same-org row whose STORED credential shares a base identity with
-	//     the incoming one — a stored credential can retain identifiers its key
-	//     does not use (an email-keyed row also carries the account UUID), so a
-	//     later login that loses the email but keeps the account still updates
-	//     its row instead of duplicating the subscription.
-	// The reverse stays a non-match: an org-less credential only ever replaces
-	// via exact key equality above and must never clobber an org-scoped row.
+	return orgScopedLoginClaimsRow(incomingIdentifiers, incomingIdentityKey, existing, existingIdentityKey);
+}
+
+/**
+ * One-way upgrade, applied only when the INCOMING identity key carries the org qualifier (only
+ * anthropic keys do, so other providers never reach the checks below). An org-scoped login
+ * `org:<o>` claims (and re-keys) any existing row that denotes the same subscription:
+ *   - `org:<o>` — org-only row stored when identity recovery failed, claimed once a later
+ *     same-org login recovers a base identity;
+ *   - `<b>` for any base identity `<b>` (email/account/project) the incoming credential
+ *     carries — a pre-org legacy row, mirroring the pre-org replace behavior;
+ *   - `<b>|org:<o>` for any such base — the same subscription keyed by a different base, e.g.
+ *     an account-keyed row stored while the email could not be recovered, claimed once a later
+ *     login recovers the email;
+ *   - any same-org row whose STORED credential shares a base identity with the incoming one — a
+ *     stored credential can retain identifiers its key does not use (an email-keyed row also
+ *     carries the account UUID), so a later login that loses the email but keeps the account
+ *     still updates its row instead of duplicating the subscription.
+ * The reverse stays a non-match: an org-less credential only ever replaces via exact key
+ * equality and must never clobber an org-scoped row.
+ */
+function orgScopedLoginClaimsRow(
+	incomingIdentifiers: readonly string[],
+	incomingIdentityKey: string,
+	existing: AuthCredential,
+	existingIdentityKey: string,
+): boolean {
 	const orgIdentifier = incomingIdentifiers.find(identifier => identifier.startsWith("org:"));
 	if (orgIdentifier === undefined) return false;
-	if (incomingIdentityKey !== orgIdentifier && !incomingIdentityKey.endsWith(`|${orgIdentifier}`)) return false;
+	const orgSuffix = `|${orgIdentifier}`;
+	if (incomingIdentityKey !== orgIdentifier && !incomingIdentityKey.endsWith(orgSuffix)) return false;
 	if (existingIdentityKey === orgIdentifier) return true;
-	const existingIdentifiers =
-		existing.type === "oauth" && existingIdentityKey.endsWith(`|${orgIdentifier}`)
-			? extractOAuthCredentialIdentifiers(existing)
-			: null;
+	// The existing key's base when it is scoped to the incoming org, else null: `<b>|org:<o>` gives `<b>`.
+	const existingSameOrgBase = existingIdentityKey.endsWith(orgSuffix)
+		? existingIdentityKey.slice(0, -orgSuffix.length)
+		: null;
+	return loginBaseClaimsRow(incomingIdentifiers, existing, existingIdentityKey, existingSameOrgBase);
+}
+
+/**
+ * Whether a base identity (email/account/project) of an org-scoped login keys the stored row bare or
+ * under the login's org, or, for a row stored under the login's org, is among the stored credential's
+ * identifiers. The stored credential's identifiers are extracted only when the cheaper key checks fail.
+ */
+function loginBaseClaimsRow(
+	incomingIdentifiers: readonly string[],
+	existing: AuthCredential,
+	existingIdentityKey: string,
+	existingSameOrgBase: string | null,
+): boolean {
+	let existingIdentifiers: string[] | undefined;
 	for (const identifier of incomingIdentifiers) {
 		const isBase =
 			identifier.startsWith("email:") || identifier.startsWith("account:") || identifier.startsWith("project:");
 		if (!isBase) continue;
-		if (existingIdentityKey === identifier) return true;
-		if (existingIdentityKey === `${identifier}|${orgIdentifier}`) return true;
-		if (existingIdentifiers?.includes(identifier)) return true;
+		if (identifier === existingIdentityKey || identifier === existingSameOrgBase) return true;
+		if (existingSameOrgBase === null || existing.type !== "oauth") continue;
+		existingIdentifiers ??= extractOAuthCredentialIdentifiers(existing);
+		if (existingIdentifiers.includes(identifier)) return true;
 	}
 	return false;
 }
@@ -269,42 +294,41 @@ export function extractOAuthCredentialIdentifiers(credential: OAuthCredential): 
 	if (projectId) identifiers.add(`project:${projectId}`);
 	const orgId = normalizeStoredAccountId(credential.orgId);
 	if (orgId) identifiers.add(`org:${orgId}`);
-	const accessIdentifiers = extractOAuthTokenIdentifiers(credential.access) ?? [];
-	for (const identifier of accessIdentifiers) {
-		identifiers.add(identifier);
-	}
-	const refreshIdentifiers = extractOAuthTokenIdentifiers(credential.refresh) ?? [];
-	for (const identifier of refreshIdentifiers) {
-		identifiers.add(identifier);
-	}
+	addOAuthTokenIdentifiers(credential.access, identifiers);
+	addOAuthTokenIdentifiers(credential.refresh, identifiers);
 	return Array.from(identifiers);
 }
 
 export function extractOAuthTokenIdentifiers(token: string | undefined): string[] | undefined {
-	if (!token) return undefined;
-	const payload = decodeJwtPayload(token);
-	if (!payload) return undefined;
 	const identifiers = new Set<string>();
+	addOAuthTokenIdentifiers(token, identifiers);
+	return identifiers.size > 0 ? Array.from(identifiers) : undefined;
+}
+
+/** JWT claims a token's account id is read from, in order; the first claim holding a string wins. */
+const TOKEN_ACCOUNT_CLAIMS = ["account_id", "accountId", "user_id", "sub"] as const;
+
+/** Adds the email and account identifiers a JWT's claims carry, in that order; a token that is not a JWT adds none. */
+function addOAuthTokenIdentifiers(token: string | undefined, identifiers: Set<string>): void {
+	if (!token) return;
+	const payload = decodeJwtPayload(token);
+	if (!payload) return;
 	const directEmail = normalizeStoredEmail(typeof payload.email === "string" ? payload.email : undefined);
 	if (directEmail) identifiers.add(`email:${directEmail}`);
 	// Both OpenAI claim namespaces, and the rule that an empty claim is no claim, belong to
-	// `@veyyon/catalog/wire/codex`. They were spelled here as bare literals, which is the copy a grep for
-	// either constant name never finds.
+	// `@veyyon/catalog/wire/codex`, which also trims and lowercases the email it returns.
 	const codexClaims = readCodexClaimsFromPayload(payload);
-	if (codexClaims.email) identifiers.add(`email:${normalizeStoredEmail(codexClaims.email)}`);
-	const accountId = normalizeStoredAccountId(
-		typeof payload.account_id === "string"
-			? payload.account_id
-			: typeof payload.accountId === "string"
-				? payload.accountId
-				: typeof payload.user_id === "string"
-					? payload.user_id
-					: typeof payload.sub === "string"
-						? payload.sub
-						: codexClaims.accountId,
-	);
+	if (codexClaims.email) identifiers.add(`email:${codexClaims.email}`);
+	let accountClaim = codexClaims.accountId;
+	for (const claim of TOKEN_ACCOUNT_CLAIMS) {
+		const value = payload[claim];
+		if (typeof value === "string") {
+			accountClaim = value;
+			break;
+		}
+	}
+	const accountId = normalizeStoredAccountId(accountClaim);
 	if (accountId) identifiers.add(`account:${accountId}`);
-	return identifiers.size > 0 ? Array.from(identifiers) : undefined;
 }
 
 /**
