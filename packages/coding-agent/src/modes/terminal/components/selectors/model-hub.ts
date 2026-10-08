@@ -70,6 +70,40 @@ type RolesRow =
 	| { kind: "newFallback" }
 	| { kind: "newRole" };
 
+/** What a key does to the Roles view's cursor row. */
+type RolesCommand = "activate" | "remove" | "earlier" | "later" | "fallback" | "cycle" | "name" | "thinking";
+
+/**
+ * The Roles-view command a key stands for, or nothing when it stands for none.
+ *
+ * `x` and Backspace/Delete remove; `[` / shift+↑ moves the row earlier and `]` / shift+↓ later,
+ * which is cycle order on a role row and chain order on a fallback row.
+ */
+function rolesCommandFor(data: string): RolesCommand | undefined {
+	if (matchesKey(data, "enter") || matchesKey(data, "return") || data === "\n") return "activate";
+	if (matchesKey(data, "backspace") || matchesKey(data, "delete")) return "remove";
+	if (matchesKey(data, "shift+up")) return "earlier";
+	if (matchesKey(data, "shift+down")) return "later";
+	switch (extractPrintableText(data)) {
+		case "x":
+			return "remove";
+		case "[":
+			return "earlier";
+		case "]":
+			return "later";
+		case "f":
+			return "fallback";
+		case "c":
+			return "cycle";
+		case "n":
+			return "name";
+		case "t":
+			return "thinking";
+		default:
+			return undefined;
+	}
+}
+
 /**
  * What the model browser is currently picking for: a role's model, a slot in
  * a fallback chain (`role` may be a role name, model selector, or `provider/*`
@@ -126,16 +160,19 @@ interface StripChip {
 	thinkingLevel?: ConfiguredThinkingLevel;
 }
 
+/** A footer strip of chips: role assignment or thinking level for one model. */
+interface ChipStrip {
+	kind: "role" | "thinking";
+	item: ModelBrowserItem;
+	role?: string;
+	chips: StripChip[];
+	index: number;
+	/** Where to land when a thinking strip closes. */
+	returnToRoles: boolean;
+}
+
 type StripState =
-	| {
-			kind: "role" | "thinking";
-			item: ModelBrowserItem;
-			role?: string;
-			chips: StripChip[];
-			index: number;
-			/** Where to land when a thinking strip closes. */
-			returnToRoles: boolean;
-	  }
+	| ChipStrip
 	| {
 			/** Footer text input naming a new custom role. */
 			kind: "roleName";
@@ -147,6 +184,27 @@ interface ChipRange {
 	start: number;
 	end: number;
 	index: number;
+}
+
+/** Where a pointer report lands in the sidebar|body split. */
+interface HubPointer {
+	/** Row within the split, counted from its first row. */
+	contentLine: number;
+	/** Row within the body pane, whose row 0 is the status row. */
+	bodyLine: number;
+	overSidebar: boolean;
+	overBody: boolean;
+}
+
+/** What every Roles-view row is composed against. */
+interface RolesRowStyle {
+	width: number;
+	/** Widest role tag, which role rows pad to and fallback rows indent past. */
+	tagWidth: number;
+	/** The quick-switch cycle, whose stops role rows badge. */
+	cycleOrder: readonly string[];
+	/** Whether the rows own the arrows, which is when the cursor glyph is drawn. */
+	listFocused: boolean;
 }
 
 const PROVIDER_REFRESH_DEBOUNCE_MS = 120;
@@ -1086,72 +1144,81 @@ export class ModelHubComponent implements Component {
 		}
 
 		if (matchesSelectCancel(data)) {
-			if (this.#assigning !== null) {
-				this.#cancelAssign();
-				return;
-			}
-			const entry = this.#activeEntry();
-			if (this.#isBrowserView(entry) && this.#browser.query.length > 0) {
-				this.#browser.handleCancel();
-				return;
-			}
-			this.#callbacks.onCancel();
+			this.#cancel();
 			return;
 		}
 
 		const entry = this.#activeEntry();
-		const rolesView = entry.kind === "roles" && this.#assigning === null;
-		const lockedView = entry.kind === "provider" && entry.locked && this.#assigning === null;
-
-		if (matchesKey(data, "tab") || matchesKey(data, "shift+tab")) {
-			this.#focus = this.#focus === "scope" ? "list" : "scope";
-			return;
-		}
-		if (matchesKey(data, "f5")) {
-			if (entry.kind === "provider" && !entry.locked) {
-				this.#scheduleProviderRefresh(entry.providerId ?? "", { force: true });
-			}
-			return;
-		}
-
-		// ←/→ are spatial pane switches: the sidebar sits left of the rows.
-		// They never reach the search caret — fuzzy queries don't need one.
-		if (matchesKey(data, "left")) {
-			this.#focus = "scope";
-			return;
-		}
-		if (matchesKey(data, "right")) {
-			// Only views with rows can take list focus (not the locked pane).
-			if (rolesView || this.#isBrowserView(entry)) {
-				this.#focus = "list";
-			}
-			return;
-		}
-
-		// Arrow ownership: scope mode hops the sidebar even while the search
-		// bar holds the caret; list mode navigates rows.
-		if (this.#focus === "scope") {
-			if (matchesSelectUp(data)) {
-				this.#moveSidebar(-1);
-				return;
-			}
-			if (matchesSelectDown(data)) {
-				this.#moveSidebar(1);
-				return;
-			}
-		}
-
-		if (rolesView) {
+		if (this.#handlePaneKey(data, entry)) return;
+		if (entry.kind === "roles" && this.#assigning === null) {
 			this.#handleRolesViewInput(data);
 			return;
 		}
-		if (lockedView) {
+		if (entry.kind === "provider" && entry.locked && this.#assigning === null) {
 			if (matchesKey(data, "enter") || matchesKey(data, "return") || data === "\n") {
 				this.#requestLogin(entry);
 			}
 			return;
 		}
 		this.#browser.handleInput(data);
+	}
+
+	/** Escape leaves an assignment first, then clears a search, and only then closes the hub. */
+	#cancel(): void {
+		if (this.#assigning !== null) {
+			this.#cancelAssign();
+			return;
+		}
+		if (this.#isBrowserView(this.#activeEntry()) && this.#browser.query.length > 0) {
+			this.#browser.handleCancel();
+			return;
+		}
+		this.#callbacks.onCancel();
+	}
+
+	/**
+	 * Apply a key that moves focus or refreshes rather than acting on a row, and report whether the
+	 * key was one: Tab toggles the focused pane, F5 refreshes a provider, ←/→ switch panes, and the
+	 * arrows hop scopes while the sidebar has focus.
+	 */
+	#handlePaneKey(data: string, entry: SidebarEntry): boolean {
+		if (matchesKey(data, "tab") || matchesKey(data, "shift+tab")) {
+			this.#focus = this.#focus === "scope" ? "list" : "scope";
+			return true;
+		}
+		if (matchesKey(data, "f5")) {
+			if (entry.kind === "provider" && !entry.locked) {
+				this.#scheduleProviderRefresh(entry.providerId ?? "", { force: true });
+			}
+			return true;
+		}
+
+		// ←/→ are spatial pane switches: the sidebar sits left of the rows.
+		// They never reach the search caret — fuzzy queries don't need one.
+		if (matchesKey(data, "left")) {
+			this.#focus = "scope";
+			return true;
+		}
+		if (matchesKey(data, "right")) {
+			// Only views with rows can take list focus (not the locked pane).
+			if ((entry.kind === "roles" && this.#assigning === null) || this.#isBrowserView(entry)) {
+				this.#focus = "list";
+			}
+			return true;
+		}
+
+		// Arrow ownership: scope mode hops the sidebar even while the search
+		// bar holds the caret; list mode navigates rows.
+		if (this.#focus !== "scope") return false;
+		if (matchesSelectUp(data)) {
+			this.#moveSidebar(-1);
+			return true;
+		}
+		if (matchesSelectDown(data)) {
+			this.#moveSidebar(1);
+			return true;
+		}
+		return false;
 	}
 
 	#isBrowserView(entry: SidebarEntry): boolean {
@@ -1270,75 +1337,68 @@ export class ModelHubComponent implements Component {
 			this.#roleIndex = this.#stepRoleIndex(this.#roleIndex, 1);
 			return;
 		}
-		const row = this.#rolesRows[this.#roleIndex];
+		const command = rolesCommandFor(data);
+		if (command) this.#runRolesCommand(command, this.#rolesRows[this.#roleIndex]);
+	}
+
+	/** Apply a roles-view command to the row under the cursor. */
+	#runRolesCommand(command: RolesCommand, row: RolesRow | undefined): void {
 		const role = row?.kind === "role" ? row.role : undefined;
-		if (matchesKey(data, "enter") || matchesKey(data, "return") || data === "\n") {
-			if (row) this.#activateRolesRow(row);
-			return;
+		switch (command) {
+			case "activate":
+				if (row) this.#activateRolesRow(row);
+				return;
+			case "remove":
+				this.#removeRolesRow(row, role);
+				return;
+			case "earlier":
+				this.#moveRolesRow(row, role, -1);
+				return;
+			case "later":
+				this.#moveRolesRow(row, role, 1);
+				return;
+			case "fallback":
+				if (row?.kind === "newFallback") this.#startAssignFallbackKey();
+				else if (row && row.kind !== "newRole" && row.kind !== "separator") {
+					this.#startAssignFallback(row.role, null);
+				}
+				return;
+			case "cycle":
+				if (role) this.#toggleCycleMembership(role);
+				return;
+			case "name":
+				this.#openRoleNameStrip();
+				return;
+			case "thinking":
+				if (role) this.#openRoleThinkingStrip(role);
+				return;
 		}
-		if (matchesKey(data, "backspace") || matchesKey(data, "delete")) {
-			if (role) this.#unassignRole(role);
-			else if (row?.kind === "fallback") this.#removeFallback(row);
-			else if (row?.kind === "chainKey") this.#setFallbackChain(row.role, []);
-			return;
-		}
-		// Reordering: [ / shift+↑ moves the row earlier, ] / shift+↓ later —
-		// cycle order on a role row, chain order on a fallback row.
-		if (matchesKey(data, "shift+up")) {
-			if (role) this.#moveCycleMembership(role, -1);
-			else if (row?.kind === "fallback") this.#moveFallback(row, -1);
-			return;
-		}
-		if (matchesKey(data, "shift+down")) {
-			if (role) this.#moveCycleMembership(role, 1);
-			else if (row?.kind === "fallback") this.#moveFallback(row, 1);
-			return;
-		}
-		const printable = extractPrintableText(data);
-		if (printable === "x") {
-			if (role) this.#unassignRole(role);
-			else if (row?.kind === "fallback") this.#removeFallback(row);
-			else if (row?.kind === "chainKey") this.#setFallbackChain(row.role, []);
-			return;
-		}
-		if (printable === "f") {
-			if (row?.kind === "newFallback") this.#startAssignFallbackKey();
-			else if (row && row.kind !== "newRole" && row.kind !== "separator") {
-				this.#startAssignFallback(row.role, null);
-			}
-			return;
-		}
-		if (printable === "c") {
-			if (role) this.#toggleCycleMembership(role);
-			return;
-		}
-		if (printable === "[") {
-			if (role) this.#moveCycleMembership(role, -1);
-			else if (row?.kind === "fallback") this.#moveFallback(row, -1);
-			return;
-		}
-		if (printable === "]") {
-			if (role) this.#moveCycleMembership(role, 1);
-			else if (row?.kind === "fallback") this.#moveFallback(row, 1);
-			return;
-		}
-		if (printable === "n") {
-			this.#openRoleNameStrip();
-			return;
-		}
-		if (printable === "t") {
-			const assignment = role ? this.#roles[role] : undefined;
-			if (role && assignment) {
-				const item: ModelBrowserItem = {
-					provider: assignment.model.provider,
-					id: assignment.model.id,
-					model: assignment.model,
-					selector: `${assignment.model.provider}/${assignment.model.id}`,
-				};
-				this.#openThinkingStrip(item, role, true);
-			}
-			return;
-		}
+	}
+
+	/** Unassign a role, drop one chain entry, or clear a whole chain, by what the row is. */
+	#removeRolesRow(row: RolesRow | undefined, role: string | undefined): void {
+		if (role) this.#unassignRole(role);
+		else if (row?.kind === "fallback") this.#removeFallback(row);
+		else if (row?.kind === "chainKey") this.#setFallbackChain(row.role, []);
+	}
+
+	/** Move a role through the quick-switch cycle, or a fallback entry through its chain. */
+	#moveRolesRow(row: RolesRow | undefined, role: string | undefined, delta: -1 | 1): void {
+		if (role) this.#moveCycleMembership(role, delta);
+		else if (row?.kind === "fallback") this.#moveFallback(row, delta);
+	}
+
+	/** Open the thinking strip for a role's assigned model; a role with no model has nothing to tune. */
+	#openRoleThinkingStrip(role: string): void {
+		const assignment = this.#roles[role];
+		if (!assignment) return;
+		const item: ModelBrowserItem = {
+			provider: assignment.model.provider,
+			id: assignment.model.id,
+			model: assignment.model,
+			selector: `${assignment.model.provider}/${assignment.model.id}`,
+		};
+		this.#openThinkingStrip(item, role, true);
 	}
 
 	#requestLogin(entry: SidebarEntry): void {
@@ -1365,111 +1425,130 @@ export class ModelHubComponent implements Component {
 		});
 		if (consumed) return true;
 
-		// row() insets content by the border column plus a space; the card may
-		// be centered, so the sidebar|body split starts at `frameLeft + 2`.
-		const contentColInset = 2 + this.#frameLeft;
-		const innerCol = event.col - contentColInset;
-		const contentLine = event.row - this.#contentRowStart;
-		const overSplitRows = contentLine >= 0 && contentLine < this.#splitRowCount;
-		const bodyColStart = this.#sidebarWidthLast + 3; // sidebar + " │ " separator
-		const overSidebar = overSplitRows && innerCol >= 0 && innerCol < this.#sidebarWidthLast;
-		const overBody = overSplitRows && innerCol >= bodyColStart;
-		const bodyLine = contentLine - 1; // body row 0 is the status row
-		const entry = this.#activeEntry();
-
 		// Strip/hint row: a full-width row below the split, not part of
 		// ModalShell's own shortcut chips. Chip ranges are card-relative
 		// columns (see #renderStripRow), so subtract just `frameLeft`.
 		if (event.row === this.#stripRow && this.#strip) {
-			const strip = this.#strip;
-			if (event.leftClick && strip.kind !== "roleName") {
-				const stripInnerCol = event.col - this.#frameLeft;
-				for (const range of this.#chipRanges) {
-					if (stripInnerCol >= range.start && stripInnerCol < range.end) {
-						strip.index = range.index;
-						this.#activateStripChip();
-						return true;
-					}
-				}
+			if (event.leftClick && this.#strip.kind !== "roleName") {
+				this.#clickStripChip(this.#strip, event.col - this.#frameLeft);
 			}
 			return true;
 		}
 
-		if (event.wheel !== null) {
-			if (overSidebar) {
-				// Wheel pans the sidebar viewport; picking a scope is click/keys only.
-				const maxScroll = Math.max(0, this.#entries.length - this.#splitRowCount);
-				this.#sidebarScroll = clampLow(this.#sidebarScroll + event.wheel, 0, maxScroll);
-				this.#setSidebarHover(this.#sidebarEntryIndexAt(contentLine));
-			} else if (overBody) {
-				if (entry.kind === "roles" && this.#assigning === null) {
-					this.#roleIndex = this.#stepRoleIndex(this.#roleIndex, event.wheel > 0 ? 1 : -1, { wrap: false });
-				} else if (this.#isBrowserView(entry)) {
-					this.#browser.routeMouse(event, bodyLine);
-				}
-			}
-			return true;
-		}
-
-		if (event.motion) {
-			this.#setSidebarHover(overSidebar ? this.#sidebarEntryIndexAt(contentLine) : null);
-			if (overBody && entry.kind === "roles" && this.#assigning === null) {
-				const roleLine = bodyLine - this.#rolesRowStart + this.#rolesScroll;
-				this.#setRoleHover(roleLine >= 0 && roleLine < this.#rolesRowCount ? roleLine : null);
-			} else {
-				this.#setRoleHover(null);
-				if (overBody && this.#isBrowserView(entry)) {
-					this.#browser.routeMouse(event, bodyLine);
-				} else {
-					// Pointer left the browser pane: without this, the last
-					// hovered row keeps its band while the sidebar hovers too.
-					this.#browser.clearHover();
-				}
-			}
-			return true;
-		}
-
-		if (!event.leftClick) return true;
-
-		if (overSidebar) {
-			const index = this.#sidebarEntryIndexAt(contentLine);
-			const clicked = index !== null ? this.#entries[index] : undefined;
-			if (clicked && clicked.kind !== "separator") {
-				const already = clicked.id === this.#activeEntryId;
-				if (clicked.kind === "roles") this.#assigning = null;
-				this.#setActiveEntry(clicked.id);
-				// A click on Roles is a deliberate dive into the rows.
-				if (clicked.kind === "roles") this.#focus = "list";
-				if (already && clicked.kind === "provider" && clicked.locked) {
-					this.#requestLogin(clicked);
-				}
-			}
-			return true;
-		}
-
-		if (overBody) {
-			if (entry.kind === "roles" && this.#assigning === null) {
-				this.#focus = "list";
-				const roleLine = bodyLine - this.#rolesRowStart + this.#rolesScroll;
-				if (roleLine >= 0 && roleLine < this.#rolesRowCount) {
-					const rowDef = this.#rolesRows[roleLine];
-					if (rowDef && rowDef.kind !== "separator") {
-						if (roleLine === this.#roleIndex) {
-							this.#activateRolesRow(rowDef);
-						} else {
-							this.#roleIndex = roleLine;
-						}
-					}
-				}
-			} else if (entry.kind === "provider" && entry.locked && this.#assigning === null) {
-				if (this.#lockedLoginLine !== null && bodyLine === this.#lockedLoginLine) {
-					this.#requestLogin(entry);
-				}
-			} else if (this.#isBrowserView(entry)) {
-				this.#browser.routeMouse(event, bodyLine);
-			}
-		}
+		const pointer = this.#pointerAt(event);
+		const entry = this.#activeEntry();
+		if (event.wheel !== null) this.#routeWheel(event, event.wheel, pointer, entry);
+		else if (event.motion) this.#routeMotion(event, pointer, entry);
+		else if (event.leftClick) this.#routeClick(event, pointer, entry);
 		return true;
+	}
+
+	/** Where a pointer report lands in the sidebar|body split. */
+	#pointerAt(event: SgrMouseEvent): HubPointer {
+		// row() insets content by the border column plus a space; the card may
+		// be centered, so the sidebar|body split starts at `frameLeft + 2`.
+		const innerCol = event.col - (2 + this.#frameLeft);
+		const contentLine = event.row - this.#contentRowStart;
+		const overSplitRows = contentLine >= 0 && contentLine < this.#splitRowCount;
+		return {
+			contentLine,
+			bodyLine: contentLine - 1, // body row 0 is the status row
+			overSidebar: overSplitRows && innerCol >= 0 && innerCol < this.#sidebarWidthLast,
+			overBody: overSplitRows && innerCol >= this.#sidebarWidthLast + 3, // sidebar + " │ " separator
+		};
+	}
+
+	/** The Roles-view row a body line shows, or null past either end of the list. */
+	#roleLineAt(bodyLine: number): number | null {
+		const roleLine = bodyLine - this.#rolesRowStart + this.#rolesScroll;
+		return roleLine >= 0 && roleLine < this.#rolesRowCount ? roleLine : null;
+	}
+
+	#clickStripChip(strip: ChipStrip, stripInnerCol: number): void {
+		for (const range of this.#chipRanges) {
+			if (stripInnerCol >= range.start && stripInnerCol < range.end) {
+				strip.index = range.index;
+				this.#activateStripChip();
+				return;
+			}
+		}
+	}
+
+	#routeWheel(event: SgrMouseEvent, wheel: -1 | 1, pointer: HubPointer, entry: SidebarEntry): void {
+		if (pointer.overSidebar) {
+			// Wheel pans the sidebar viewport; picking a scope is click/keys only.
+			const maxScroll = Math.max(0, this.#entries.length - this.#splitRowCount);
+			this.#sidebarScroll = clampLow(this.#sidebarScroll + wheel, 0, maxScroll);
+			this.#setSidebarHover(this.#sidebarEntryIndexAt(pointer.contentLine));
+			return;
+		}
+		if (!pointer.overBody) return;
+		if (entry.kind === "roles" && this.#assigning === null) {
+			this.#roleIndex = this.#stepRoleIndex(this.#roleIndex, wheel > 0 ? 1 : -1, { wrap: false });
+		} else if (this.#isBrowserView(entry)) {
+			this.#browser.routeMouse(event, pointer.bodyLine);
+		}
+	}
+
+	#routeMotion(event: SgrMouseEvent, pointer: HubPointer, entry: SidebarEntry): void {
+		this.#setSidebarHover(pointer.overSidebar ? this.#sidebarEntryIndexAt(pointer.contentLine) : null);
+		if (pointer.overBody && entry.kind === "roles" && this.#assigning === null) {
+			this.#setRoleHover(this.#roleLineAt(pointer.bodyLine));
+			return;
+		}
+		this.#setRoleHover(null);
+		if (pointer.overBody && this.#isBrowserView(entry)) {
+			this.#browser.routeMouse(event, pointer.bodyLine);
+		} else {
+			// Pointer left the browser pane: without this, the last
+			// hovered row keeps its band while the sidebar hovers too.
+			this.#browser.clearHover();
+		}
+	}
+
+	#routeClick(event: SgrMouseEvent, pointer: HubPointer, entry: SidebarEntry): void {
+		if (pointer.overSidebar) {
+			this.#clickSidebar(pointer.contentLine);
+			return;
+		}
+		if (!pointer.overBody) return;
+		if (entry.kind === "roles" && this.#assigning === null) {
+			this.#clickRolesRow(pointer.bodyLine);
+		} else if (entry.kind === "provider" && entry.locked && this.#assigning === null) {
+			if (this.#lockedLoginLine !== null && pointer.bodyLine === this.#lockedLoginLine) {
+				this.#requestLogin(entry);
+			}
+		} else if (this.#isBrowserView(entry)) {
+			this.#browser.routeMouse(event, pointer.bodyLine);
+		}
+	}
+
+	#clickSidebar(contentLine: number): void {
+		const index = this.#sidebarEntryIndexAt(contentLine);
+		const clicked = index !== null ? this.#entries[index] : undefined;
+		if (!clicked || clicked.kind === "separator") return;
+		const already = clicked.id === this.#activeEntryId;
+		if (clicked.kind === "roles") this.#assigning = null;
+		this.#setActiveEntry(clicked.id);
+		// A click on Roles is a deliberate dive into the rows.
+		if (clicked.kind === "roles") this.#focus = "list";
+		if (already && clicked.kind === "provider" && clicked.locked) {
+			this.#requestLogin(clicked);
+		}
+	}
+
+	/** A click on a Roles-view row selects it, and a click on the selected row activates it. */
+	#clickRolesRow(bodyLine: number): void {
+		this.#focus = "list";
+		const roleLine = this.#roleLineAt(bodyLine);
+		if (roleLine === null) return;
+		const rowDef = this.#rolesRows[roleLine];
+		if (!rowDef || rowDef.kind === "separator") return;
+		if (roleLine === this.#roleIndex) {
+			this.#activateRolesRow(rowDef);
+		} else {
+			this.#roleIndex = roleLine;
+		}
 	}
 
 	/** Map a content-line index to a sidebar entry index (accounting for scroll). */
@@ -1493,9 +1572,28 @@ export class ModelHubComponent implements Component {
 	}
 
 	#renderSidebar(width: number, rows: number): string[] {
-		// The scroll offset is persistent: the wheel pans it freely. Only an
-		// activation (keys, click, programmatic) snaps the viewport to the
-		// active entry, and only far enough to reveal it.
+		this.#scrollSidebar(rows);
+		const lines: string[] = [];
+		const end = Math.min(this.#entries.length, this.#sidebarScroll + rows);
+		for (let i = this.#sidebarScroll; i < end; i++) {
+			const entry = this.#entries[i];
+			if (!entry) continue;
+			lines.push(
+				entry.kind === "separator"
+					? theme.fg("borderAccent", "─".repeat(width))
+					: this.#sidebarLine(entry, i, width),
+			);
+		}
+		return lines;
+	}
+
+	/**
+	 * Keep the sidebar's scroll offset inside its entries.
+	 *
+	 * The offset is persistent: the wheel pans it freely. Only an activation (keys, click,
+	 * programmatic) snaps the viewport to the active entry, and only far enough to reveal it.
+	 */
+	#scrollSidebar(rows: number): void {
 		if (this.#sidebarFollowActive) {
 			const activeIndex = Math.max(
 				0,
@@ -1509,75 +1607,46 @@ export class ModelHubComponent implements Component {
 			this.#sidebarFollowActive = false;
 		}
 		this.#sidebarScroll = clampLow(this.#sidebarScroll, 0, Math.max(0, this.#entries.length - rows));
+	}
 
-		const lines: string[] = [];
-		for (let i = this.#sidebarScroll; i < Math.min(this.#entries.length, this.#sidebarScroll + rows); i++) {
-			const entry = this.#entries[i];
-			if (!entry) continue;
-			if (entry.kind === "separator") {
-				lines.push(theme.fg("borderAccent", "─".repeat(width)));
-				continue;
-			}
-			const active = entry.id === this.#activeEntryId;
-			const hoverStrength = this.#sidebarStrength(i);
-			const searching = this.#searchCounts !== null;
-			let matchCount: number | undefined;
-			if (searching) {
-				if (entry.kind === "provider" && !entry.locked) {
-					matchCount = this.#searchCounts?.get(entry.providerId ?? "") ?? 0;
-				} else if (entry.kind === "recent") {
-					matchCount = this.#recentSearchCount;
-				} else if (entry.kind === "all") {
-					matchCount = this.#searchTotal;
-				}
-			}
-			// While searching, entries the hop skips gray out: locked and
-			// zero-match providers, an empty Recent, and the Roles view.
-			const muted = entry.locked || matchCount === 0 || (searching && entry.kind === "roles");
-			// The sidebar's active entry is state, not a cursor: accent label
-			// plus a cursor glyph while the sidebar owns the arrows. The band
-			// stays in the body pane so the two never look alike.
-			const cursor = active && this.#focus === "scope" ? theme.fg("accent", theme.nav.cursor) : " ";
+	/** How many models a search matched in an entry's scope, or undefined while not searching or for a scope that counts none. */
+	#sidebarMatchCount(entry: SidebarEntry): number | undefined {
+		if (this.#searchCounts === null) return undefined;
+		if (entry.kind === "provider" && !entry.locked) return this.#searchCounts.get(entry.providerId ?? "") ?? 0;
+		if (entry.kind === "recent") return this.#recentSearchCount;
+		if (entry.kind === "all") return this.#searchTotal;
+		return undefined;
+	}
 
-			let icon: string;
-			if (entry.kind === "recent") {
-				icon = theme.icon.time;
-			} else if (entry.kind === "roles") {
-				icon = theme.icon.extensionSkill;
-			} else if (entry.kind === "all") {
-				icon = theme.icon.model;
-			} else {
-				icon = muted ? theme.status.shadowed : theme.status.enabled;
-			}
-			const labelStyled = muted
-				? theme.fg("dim", entry.label)
-				: active
-					? theme.bold(theme.fg("accent", entry.label))
-					: entry.label;
-
-			const refreshing = entry.providerId ? this.#refreshingProviders.has(entry.providerId) : false;
-			const annotationText = matchCount !== undefined ? String(matchCount) : (entry.annotation ?? "");
-			const annotationStyled = refreshing
-				? theme.fg("warning", theme.spinnerFrames[this.#refreshSpinnerFrame % theme.spinnerFrames.length] ?? "")
-				: theme.fg("dim", annotationText);
-
-			const left = `${cursor} ${muted ? theme.fg("dim", icon) : theme.fg(entry.kind === "provider" ? "success" : "accent", icon)} ${labelStyled}`;
-			const leftWidth = visibleWidth(left);
-			const annWidth = visibleWidth(annotationStyled);
-			let line: string;
-			if (leftWidth + annWidth + 1 <= width) {
-				line = `${left}${" ".repeat(width - leftWidth - annWidth)}${annotationStyled}`;
-			} else {
-				line = truncateToWidth(left, width);
-				const lineWidth = visibleWidth(line);
-				if (lineWidth < width) line += " ".repeat(width - lineWidth);
-			}
-			if (hoverStrength > 0) {
-				line = hoverBandAt(line, width, hoverStrength);
-			}
-			lines.push(line);
+	/** The right-aligned annotation: a spinner while the provider refreshes, else the match count or the entry's own. */
+	#sidebarAnnotation(entry: SidebarEntry, matchCount: number | undefined): string {
+		const refreshing = entry.providerId ? this.#refreshingProviders.has(entry.providerId) : false;
+		if (refreshing) {
+			return theme.fg("warning", theme.spinnerFrames[this.#refreshSpinnerFrame % theme.spinnerFrames.length] ?? "");
 		}
-		return lines;
+		return theme.fg("dim", matchCount !== undefined ? String(matchCount) : (entry.annotation ?? ""));
+	}
+
+	#sidebarLine(entry: SidebarEntry, index: number, width: number): string {
+		const active = entry.id === this.#activeEntryId;
+		const hoverStrength = this.#sidebarStrength(index);
+		const matchCount = this.#sidebarMatchCount(entry);
+		// While searching, entries the hop skips gray out: locked and
+		// zero-match providers, an empty Recent, and the Roles view.
+		const muted = entry.locked || matchCount === 0 || (this.#searchCounts !== null && entry.kind === "roles");
+		// The sidebar's active entry is state, not a cursor: accent label
+		// plus a cursor glyph while the sidebar owns the arrows. The band
+		// stays in the body pane so the two never look alike.
+		const cursor = active && this.#focus === "scope" ? theme.fg("accent", theme.nav.cursor) : " ";
+		const icon = sidebarIcon(entry.kind, muted);
+		const labelStyled = muted
+			? theme.fg("dim", entry.label)
+			: active
+				? theme.bold(theme.fg("accent", entry.label))
+				: entry.label;
+		const left = `${cursor} ${muted ? theme.fg("dim", icon) : theme.fg(entry.kind === "provider" ? "success" : "accent", icon)} ${labelStyled}`;
+		const line = fitSidebarRow(left, this.#sidebarAnnotation(entry, matchCount), width);
+		return hoverStrength > 0 ? hoverBandAt(line, width, hoverStrength) : line;
 	}
 
 	#statusRow(width: number): string {
@@ -1657,22 +1726,12 @@ export class ModelHubComponent implements Component {
 	}
 
 	#renderRolesView(fullWidth: number, rows: number): string[] {
-		const lines: string[] = [];
-		lines.push("");
+		const lines: string[] = [""];
 		// First row's offset in bodyLine coordinates: the mouse router's
 		// `bodyLine` has already dropped the status row, so this is just the
 		// leading blank line — no extra status-row offset here.
 		this.#rolesRowStart = lines.length;
-
-		let tagWidth = 0;
-		for (const rowDef of this.#rolesRows) {
-			if (rowDef.kind !== "role") continue;
-			const info = getRoleInfo(rowDef.role, this.#settings);
-			tagWidth = Math.max(tagWidth, visibleWidth(info.tag ?? info.name ?? rowDef.role));
-		}
-
 		const cycleOrder = this.#cycleOrder();
-		const listFocused = this.#focus === "list";
 
 		// The roles list is taller than its pane once a role has a fallback chain
 		// (eight roles, + New role…, the separator, then a chain key, its
@@ -1693,92 +1752,7 @@ export class ModelHubComponent implements Component {
 		// second convention. It reserves two columns when the list overflows, and
 		// rows are composed inside that band so nothing is truncated against it.
 		const overflows = this.#rolesRows.length > visibleRows;
-		const barCols = overflows ? 2 : 0;
-		const width = fullWidth - barCols;
-		const rowLines: string[] = [];
-
-		for (let i = this.#rolesScroll; i < this.#rolesRows.length && rowLines.length < visibleRows; i++) {
-			const rowDef = this.#rolesRows[i];
-			if (!rowDef) continue;
-			const selected = i === this.#roleIndex;
-			const hoverStrength = this.#roleStrength(i);
-			// The unfocused pane draws no cursor; accent text still marks the row.
-			const cursor = selected && listFocused ? theme.fg("accent", theme.nav.cursor) : " ";
-
-			if (rowDef.kind === "separator") {
-				rowLines.push(`   ${theme.fg("borderAccent", "─".repeat(Math.max(1, width - 6)))}`);
-				continue;
-			}
-
-			if (rowDef.kind === "newRole" || rowDef.kind === "newFallback") {
-				const label = rowDef.kind === "newRole" ? "+ New role…" : "+ New fallback…";
-				let line = ` ${cursor} ${theme.fg(selected ? "accent" : "dim", label)}`;
-				line = finishRolesRow(line, width, hoverStrength);
-				rowLines.push(line);
-				continue;
-			}
-
-			if (rowDef.kind === "chainKey") {
-				const key = rowDef.role;
-				const slash = key.lastIndexOf("/");
-				const tail = key.slice(slash + 1);
-				const keyStyled = theme.fg("dim", key.slice(0, slash + 1)) + (selected ? theme.fg("accent", tail) : tail);
-				let line = ` ${cursor} ${theme.fg("dim", theme.status.shadowed)} ${keyStyled}`;
-				line = finishRolesRow(line, width, hoverStrength);
-				rowLines.push(line);
-				continue;
-			}
-
-			if (rowDef.kind === "fallback") {
-				const branch = theme.fg("dim", `${"".padEnd(tagWidth + 3)}↳`);
-				const selector = selected ? theme.fg("accent", rowDef.selector) : theme.fg("muted", rowDef.selector);
-				let line = ` ${cursor} ${branch} ${selector}`;
-				line = finishRolesRow(line, width, hoverStrength);
-				rowLines.push(line);
-				continue;
-			}
-
-			const role = rowDef.role;
-			const info = getRoleInfo(role, this.#settings);
-			const assignment = this.#roles[role];
-			const tag = (info.tag ?? info.name ?? role).padEnd(tagWidth);
-
-			let dot: string;
-			let tagStyled: string;
-			let value: string;
-			let levelStyled = "";
-			if (assignment) {
-				dot = theme.fg(info.color ?? "muted", theme.status.enabled);
-				tagStyled = theme.fg(info.color ?? "muted", tag);
-				value = `${theme.fg("dim", `${assignment.model.provider}/`)}${selected ? theme.fg("accent", assignment.model.id) : assignment.model.id}`;
-				const glyph = thinkingLevelGlyph(assignment.thinkingLevel);
-				const label = getConfiguredThinkingLevelMetadata(assignment.thinkingLevel).label;
-				if (assignment.thinkingLevel !== ThinkingLevel.Inherit) {
-					levelStyled = theme.fg("dim", glyph ? `${glyph} ${label}` : label);
-				}
-			} else {
-				// Unset: the role follows the main model. Say so, rather than showing a
-				// dash (nothing happens) or an `auto →` model the operator never picked.
-				dot = theme.fg("dim", theme.status.shadowed);
-				tagStyled = theme.fg("dim", tag);
-				value = theme.fg("dim", info.unsetLabel ?? ROLE_INHERIT_LABEL);
-			}
-
-			// Quick-cycle membership badge (`◐2` = second stop of the ctrl+p cycle).
-			const cycleIndex = cycleOrder.indexOf(role);
-			const cycleStyled = cycleIndex >= 0 ? theme.fg("accent", `${theme.icon.loop}${cycleIndex + 1}`) : "";
-
-			let line = ` ${cursor} ${dot} ${tagStyled}  ${value}`;
-			const right = [levelStyled, cycleStyled].filter(part => part.length > 0).join("  ");
-			const rightWidth = visibleWidth(right);
-			const lineWidth = visibleWidth(line);
-			if (rightWidth > 0 && lineWidth + rightWidth + 2 <= width) {
-				line = `${line}${" ".repeat(width - lineWidth - rightWidth - 1)}${right}`;
-			}
-			line = finishRolesRow(line, width, hoverStrength);
-			rowLines.push(line);
-		}
-
+		const rowLines = this.#rolesRowLines(fullWidth - (overflows ? 2 : 0), visibleRows, cycleOrder);
 		if (overflows) {
 			const scrollView = new ScrollView(rowLines, {
 				height: rowLines.length,
@@ -1792,29 +1766,134 @@ export class ModelHubComponent implements Component {
 			lines.push(...rowLines);
 		}
 
-		// Live preview of the quick-switch cycle, rendered with the exact
-		// segment track the ctrl+p status uses; the selected role's chip fills.
 		while (lines.length < rows - 1) lines.push("");
-		if (rows >= 2) {
-			const cycleKey = getKeybindings().getKeys("app.model.cycleForward")[0] ?? "ctrl+p";
-			if (cycleOrder.length > 0) {
-				const selectedRow = this.#rolesRows[this.#roleIndex];
-				const selectedRole =
-					selectedRow && (selectedRow.kind === "role" || selectedRow.kind === "fallback") ? selectedRow.role : "";
-				const activeIndex = cycleOrder.indexOf(selectedRole);
-				const track = renderSegmentTrack(
-					cycleOrder.map(role => ({ label: role })),
-					activeIndex,
-				);
-				lines[rows - 1] = truncateToWidth(`  ${theme.fg("dim", `${cycleKey} cycle:`)} ${track}`, fullWidth);
-			} else {
-				lines[rows - 1] = truncateToWidth(
-					theme.fg("dim", `  ${cycleKey} cycle is empty — press c on a role to add it`),
-					fullWidth,
+		if (rows >= 2) lines[rows - 1] = this.#cycleTrackLine(cycleOrder, fullWidth);
+		return lines;
+	}
+
+	/** The widest role tag, which role rows pad to and fallback rows indent past. */
+	#rolesTagWidth(): number {
+		let tagWidth = 0;
+		for (const rowDef of this.#rolesRows) {
+			if (rowDef.kind !== "role") continue;
+			const info = getRoleInfo(rowDef.role, this.#settings);
+			tagWidth = Math.max(tagWidth, visibleWidth(info.tag ?? info.name ?? rowDef.role));
+		}
+		return tagWidth;
+	}
+
+	/** The scrolled window of Roles-view rows, each composed to the style's width. */
+	#rolesRowLines(width: number, visibleRows: number, cycleOrder: readonly string[]): string[] {
+		const style: RolesRowStyle = {
+			width,
+			tagWidth: this.#rolesTagWidth(),
+			cycleOrder,
+			listFocused: this.#focus === "list",
+		};
+		const rowLines: string[] = [];
+		for (let i = this.#rolesScroll; i < this.#rolesRows.length && rowLines.length < visibleRows; i++) {
+			const rowDef = this.#rolesRows[i];
+			if (rowDef) rowLines.push(this.#rolesRowLine(rowDef, i, style));
+		}
+		return rowLines;
+	}
+
+	#rolesRowLine(rowDef: RolesRow, index: number, style: RolesRowStyle): string {
+		const { width } = style;
+		const selected = index === this.#roleIndex;
+		const hoverStrength = this.#roleStrength(index);
+		// The unfocused pane draws no cursor; accent text still marks the row.
+		const cursor = selected && style.listFocused ? theme.fg("accent", theme.nav.cursor) : " ";
+		switch (rowDef.kind) {
+			case "separator":
+				return `   ${theme.fg("borderAccent", "─".repeat(Math.max(1, width - 6)))}`;
+			case "newRole":
+			case "newFallback": {
+				const label = rowDef.kind === "newRole" ? "+ New role…" : "+ New fallback…";
+				return finishRolesRow(` ${cursor} ${theme.fg(selected ? "accent" : "dim", label)}`, width, hoverStrength);
+			}
+			case "chainKey": {
+				const key = rowDef.role;
+				const slash = key.lastIndexOf("/");
+				const tail = key.slice(slash + 1);
+				const keyStyled = theme.fg("dim", key.slice(0, slash + 1)) + (selected ? theme.fg("accent", tail) : tail);
+				return finishRolesRow(
+					` ${cursor} ${theme.fg("dim", theme.status.shadowed)} ${keyStyled}`,
+					width,
+					hoverStrength,
 				);
 			}
+			case "fallback": {
+				const branch = theme.fg("dim", `${"".padEnd(style.tagWidth + 3)}↳`);
+				const selector = selected ? theme.fg("accent", rowDef.selector) : theme.fg("muted", rowDef.selector);
+				return finishRolesRow(` ${cursor} ${branch} ${selector}`, width, hoverStrength);
+			}
+			case "role":
+				return finishRolesRow(this.#roleRowText(rowDef.role, selected, cursor, style), width, hoverStrength);
 		}
-		return lines;
+	}
+
+	/**
+	 * A role row before its band: the role's tag and model, then its thinking level and its stop in
+	 * the quick-switch cycle right-aligned when they fit.
+	 */
+	#roleRowText(role: string, selected: boolean, cursor: string, style: RolesRowStyle): string {
+		const info = getRoleInfo(role, this.#settings);
+		const assignment = this.#roles[role];
+		const tag = (info.tag ?? info.name ?? role).padEnd(style.tagWidth);
+
+		let dot: string;
+		let tagStyled: string;
+		let value: string;
+		let levelStyled = "";
+		if (assignment) {
+			dot = theme.fg(info.color ?? "muted", theme.status.enabled);
+			tagStyled = theme.fg(info.color ?? "muted", tag);
+			value = `${theme.fg("dim", `${assignment.model.provider}/`)}${selected ? theme.fg("accent", assignment.model.id) : assignment.model.id}`;
+			const glyph = thinkingLevelGlyph(assignment.thinkingLevel);
+			const label = getConfiguredThinkingLevelMetadata(assignment.thinkingLevel).label;
+			if (assignment.thinkingLevel !== ThinkingLevel.Inherit) {
+				levelStyled = theme.fg("dim", glyph ? `${glyph} ${label}` : label);
+			}
+		} else {
+			// Unset: the role follows the main model. Say so, rather than showing a
+			// dash (nothing happens) or an `auto →` model the operator never picked.
+			dot = theme.fg("dim", theme.status.shadowed);
+			tagStyled = theme.fg("dim", tag);
+			value = theme.fg("dim", info.unsetLabel ?? ROLE_INHERIT_LABEL);
+		}
+
+		// Quick-cycle membership badge (`◐2` = second stop of the ctrl+p cycle).
+		const cycleIndex = style.cycleOrder.indexOf(role);
+		const cycleStyled = cycleIndex >= 0 ? theme.fg("accent", `${theme.icon.loop}${cycleIndex + 1}`) : "";
+
+		const line = ` ${cursor} ${dot} ${tagStyled}  ${value}`;
+		const right = [levelStyled, cycleStyled].filter(part => part.length > 0).join("  ");
+		const rightWidth = visibleWidth(right);
+		const lineWidth = visibleWidth(line);
+		if (rightWidth > 0 && lineWidth + rightWidth + 2 <= style.width) {
+			return `${line}${" ".repeat(style.width - lineWidth - rightWidth - 1)}${right}`;
+		}
+		return line;
+	}
+
+	/**
+	 * Live preview of the quick-switch cycle under the roles list, rendered with the exact segment
+	 * track the ctrl+p status uses; the selected role's chip fills.
+	 */
+	#cycleTrackLine(cycleOrder: readonly string[], width: number): string {
+		const cycleKey = getKeybindings().getKeys("app.model.cycleForward")[0] ?? "ctrl+p";
+		if (cycleOrder.length === 0) {
+			return truncateToWidth(theme.fg("dim", `  ${cycleKey} cycle is empty — press c on a role to add it`), width);
+		}
+		const selectedRow = this.#rolesRows[this.#roleIndex];
+		const selectedRole =
+			selectedRow && (selectedRow.kind === "role" || selectedRow.kind === "fallback") ? selectedRow.role : "";
+		const track = renderSegmentTrack(
+			cycleOrder.map(role => ({ label: role })),
+			cycleOrder.indexOf(selectedRole),
+		);
+		return truncateToWidth(`  ${theme.fg("dim", `${cycleKey} cycle:`)} ${track}`, width);
 	}
 
 	#renderLockedView(entry: SidebarEntry, width: number, rows: number): string[] {
@@ -2131,4 +2210,25 @@ function thinkingOptionsFor(model: Model): ConfiguredThinkingLevel[] {
 function finishRolesRow(line: string, width: number, hoverStrength: number): string {
 	if (hoverStrength > 0) return hoverBandAt(line, width, hoverStrength);
 	return truncateToWidth(line, width);
+}
+
+/** The glyph a sidebar row starts with: one per view, and a provider's state for a provider. */
+function sidebarIcon(kind: SidebarEntry["kind"], muted: boolean): string {
+	if (kind === "recent") return theme.icon.time;
+	if (kind === "roles") return theme.icon.extensionSkill;
+	if (kind === "all") return theme.icon.model;
+	return muted ? theme.status.shadowed : theme.status.enabled;
+}
+
+/**
+ * A sidebar row at `width`: the label left and the annotation right-aligned when both fit with a
+ * column between them, else the label cut to the width and padded out to it.
+ */
+function fitSidebarRow(left: string, annotation: string, width: number): string {
+	const leftWidth = visibleWidth(left);
+	const annWidth = visibleWidth(annotation);
+	if (leftWidth + annWidth + 1 <= width) return `${left}${" ".repeat(width - leftWidth - annWidth)}${annotation}`;
+	const line = truncateToWidth(left, width);
+	const lineWidth = visibleWidth(line);
+	return lineWidth < width ? line + " ".repeat(width - lineWidth) : line;
 }
