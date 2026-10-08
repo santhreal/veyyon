@@ -6,6 +6,7 @@ import { Editor } from "@veyyon/tui/components/editor";
 import {
 	type AutocompleteItem,
 	type AutocompleteProvider,
+	type AutocompleteSuggestions,
 	CombinedAutocompleteProvider,
 	findLeadingSlashCommandStart,
 } from "@veyyon/utils/autocomplete";
@@ -27,7 +28,7 @@ class HashActionProvider implements AutocompleteProvider {
 		lines: string[],
 		_cursorLine: number,
 		cursorCol: number,
-	): Promise<{ items: AutocompleteItem[]; prefix: string } | null> {
+	): Promise<AutocompleteSuggestions | null> {
 		const prefix = (lines[0] || "").slice(0, cursorCol);
 		if (prefix !== "#") {
 			return null;
@@ -185,11 +186,11 @@ class SyncSlashProvider implements AutocompleteProvider {
 		_lines: string[],
 		_cursorLine: number,
 		_cursorCol: number,
-	): Promise<{ items: AutocompleteItem[]; prefix: string } | null> {
+	): Promise<AutocompleteSuggestions | null> {
 		return null;
 	}
 
-	trySyncSlashCompletion(textBeforeCursor: string): { items: AutocompleteItem[]; prefix: string } | null {
+	trySyncSlashCompletion(textBeforeCursor: string): AutocompleteSuggestions | null {
 		this.callCount += 1;
 		const slashStart = findLeadingSlashCommandStart(textBeforeCursor);
 		if (slashStart === null) return null;
@@ -596,7 +597,7 @@ class TodoSubcommandProvider implements AutocompleteProvider {
 		lines: string[],
 		cursorLine: number,
 		cursorCol: number,
-	): Promise<{ items: AutocompleteItem[]; prefix: string } | null> {
+	): Promise<AutocompleteSuggestions | null> {
 		const line = lines[cursorLine] || "";
 		const before = line.slice(0, cursorCol);
 		if (before.startsWith("/todo ") && !before.includes("\n")) {

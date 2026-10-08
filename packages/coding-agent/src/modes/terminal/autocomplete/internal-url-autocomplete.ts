@@ -7,7 +7,7 @@
  * popup, this module decides whether there are candidates to show.
  */
 
-import type { AutocompleteItem } from "@veyyon/utils/autocomplete";
+import type { AutocompleteItem, AutocompleteSuggestions } from "@veyyon/utils/autocomplete";
 import { isSubsequenceMatch, subsequenceScore } from "@veyyon/utils/fuzzy";
 import type { Skill } from "../../../extensibility/skills";
 import { InternalUrlRouter } from "../../../internal-urls/router";
@@ -66,7 +66,7 @@ export async function getInternalUrlSuggestions(
 	textBeforeCursor: string,
 	cwd?: string,
 	skills?: readonly Skill[],
-): Promise<{ items: AutocompleteItem[]; prefix: string } | null> {
+): Promise<AutocompleteSuggestions | null> {
 	const ctx = extractInternalUrlContext(textBeforeCursor);
 	if (!ctx) return null;
 

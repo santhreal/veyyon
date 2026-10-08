@@ -13,6 +13,7 @@
 
 ### Changed
 
+- The emoji, GitHub reference, internal URL and prompt-action autocomplete providers declare their results as `AutocompleteSuggestions`; no user-visible change.
 - The assistant text reveal and the tool argument reveal run on one `RevealFrameClock`; both still tick at 30 frames per second only while text is held back.
 - The stdio, streamable-HTTP and SSE MCP transports answer a server-to-client request through one `answerServerRequest` in `mcp/types`; each answer is unchanged.
 - Tool result text joining and the web tool display projection use template literals and optional chains; their output is unchanged.

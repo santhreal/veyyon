@@ -1,7 +1,7 @@
 import "./warm-natives"; // load the native addon under the real platform before any process.platform mock
 import { describe, expect, it } from "bun:test";
 import { Container, Editor, TUI } from "@veyyon/tui";
-import type { AutocompleteItem, AutocompleteProvider } from "@veyyon/utils/autocomplete";
+import type { AutocompleteItem, AutocompleteProvider, AutocompleteSuggestions } from "@veyyon/utils/autocomplete";
 import { settleFrames } from "./helpers/settle-frames";
 import { defaultEditorTheme } from "./test-themes";
 import { VirtualTerminal } from "./virtual-terminal";
@@ -11,7 +11,7 @@ class SlashProvider implements AutocompleteProvider {
 		lines: string[],
 		cursorLine: number,
 		cursorCol: number,
-	): Promise<{ items: AutocompleteItem[]; prefix: string } | null> {
+	): Promise<AutocompleteSuggestions | null> {
 		const text = (lines[cursorLine] ?? "").slice(0, cursorCol);
 		if (!text.startsWith("/")) return null;
 		const prefix = text.slice(1).toLowerCase();

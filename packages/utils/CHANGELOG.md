@@ -36,6 +36,7 @@
 - `@veyyon/utils/log-file` exports `RotatingLogFile`, which appends each line to the profile's day file in one `write(2)`, moves a full file to the next free numbered generation, gzips a generation no writer has appended to for 3 seconds and keeps the newest five files, and `logFileName`, the day file's name for a local date.
 - `@veyyon/utils/yaml-sync` exports `loadYaml`, which returns the `yaml` module namespace and evaluates the package on its first call.
 - `@veyyon/utils/local-time` exports `localTime`, an instant's local date, clock time and UTC offset, read from the C library's `localtime_r` on Linux and macOS and from a `Date` on Windows or while `process.env.TZ` differs from its launch value, and `localCalendarDate`, the instant's local `YYYY-MM-DD`.
+- `@veyyon/utils/autocomplete` exports `AutocompleteSuggestions`, the `{ items, prefix }` result of `getSuggestions`, `getForceFileSuggestions` and `trySyncSlashCompletion`.
 
 ### Changed
 
@@ -65,6 +66,7 @@
 - `LoopWatchdog` and `IdleTrim` re-arm one timeout per `start()` through `rearmingTimeout` instead of creating a timeout, a handle object and two closures on every tick.
 - While a host is attached to its activity signal, `LoopWatchdog` arms no tick after 10 seconds of ticks without a block or busy CPU, `IdleTrim` arms no window after the window that follows a trim, and `stallSampler` samples once a second, until the host reports work.
 - The `rearmingTimeout` documentation records its measured effect on an idle interactive session of the linux-x64 binary; no user-visible change.
+- `CombinedAutocompleteProvider` builds slash command, argument, `@` reference and path suggestions in separate steps, with 4,251 differential cases identical to the previous build; no user-visible change.
 
 ### Fixed
 
