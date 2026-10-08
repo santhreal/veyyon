@@ -1323,20 +1323,16 @@ async function collectExtensionModules(entryRealPath: string): Promise<Map<strin
 	// again as a module of its own when the walk reaches it. Both come from here.
 	const sources = new Map<string, Promise<string>>();
 	const readSource: SourceReader = file => memoized(sources, file, () => Bun.file(file).text());
-	const queuedFollowBareDependencies = new Map<string, boolean>([[entryRealPath, true]]);
-	const queue: Array<{ file: string; followBareDependencies: boolean }> = [
-		{ file: entryRealPath, followBareDependencies: true },
-	];
+	// The flag a queued file is walked with: true when any importer that queued it follows bare
+	// dependencies. The newest queued copy of a file pops first and carries the merged flag.
+	const queuedFollowBareDependencies = new Map<string, boolean>();
+	const queue: GraphEdge[] = [{ file: entryRealPath, followBareDependencies: true }];
 	while (queue.length > 0) {
 		const item = queue.pop();
-		if (!item) {
+		if (!item || modules.has(item.file)) {
 			continue;
 		}
-		const file = item.file;
-		const followBareDependencies = queuedFollowBareDependencies.get(file) ?? item.followBareDependencies;
-		if (modules.has(file)) {
-			continue;
-		}
+		const { file, followBareDependencies } = item;
 		let source: string;
 		try {
 			source = await readSource(file);
@@ -1344,84 +1340,24 @@ async function collectExtensionModules(entryRealPath: string): Promise<Map<strin
 			continue;
 		}
 		modules.set(file, source);
-		const dir = path.dirname(file);
-		const specifiers = new Set<string>();
-		const requiredSpecifiers = new Set<string>();
-		for (const match of source.matchAll(EXTENSION_GRAPH_SPECIFIER_REGEX)) {
-			if (match[2]) specifiers.add(match[2]);
-		}
-		for (const match of source.matchAll(NATIVE_ADDON_REQUIRE_SPECIFIER_REGEX)) {
-			if (match[2]) {
-				specifiers.add(match[2]);
-				requiredSpecifiers.add(match[2]);
-			}
-		}
+		const { specifiers, requiredSpecifiers } = graphSpecifiers(source);
 		for (const specifier of specifiers) {
+			const isRequired = requiredSpecifiers.has(specifier);
+			let edge: GraphEdge | null;
 			try {
-				let resolved: string | null = null;
-				let nextFollowsBareDependencies = followBareDependencies;
-				const isRequired = requiredSpecifiers.has(specifier);
-				if (specifier.startsWith(".")) {
-					const candidate = Bun.resolveSync(specifier, dir);
-					if (
-						hasSourceModuleExtension(candidate) &&
-						(isRequired
-							? await moduleRequiresNativeAddon(candidate)
-							: !(await isCommonJsModule(candidate, readSource)))
-					) {
-						resolved = await realpathOrSelf(candidate);
-					}
-				} else if (specifier.startsWith("#")) {
-					const candidate = await resolvePackageImportSpecifier(specifier, file);
-					if (
-						candidate &&
-						(isRequired
-							? await moduleRequiresNativeAddon(candidate)
-							: !(await isCommonJsModule(candidate, readSource)))
-					) {
-						resolved = candidate;
-					}
-				} else if (
-					followBareDependencies &&
-					isBareExtensionDependencySpecifier(specifier) &&
-					!remapLegacyPiSpecifier(specifier) &&
-					specifier !== "typebox" &&
-					specifier !== "@sinclair/typebox"
-				) {
-					const parsed = splitBarePackageSpecifier(specifier);
-					const packageRoot = parsed ? await findNodePackageRoot(parsed.name, file) : null;
-					const manifest = packageRoot ? await readPackageManifest(packageRoot) : null;
-					const dependencyEntry = manifest ? await resolveExtensionBareDependency(specifier, file) : null;
-					const dependencyExtension = dependencyEntry ? path.extname(dependencyEntry) : null;
-					const isCommonJsEntry =
-						dependencyExtension === ".cjs" ||
-						dependencyExtension === ".cts" ||
-						((dependencyExtension === ".js" || dependencyExtension === ".jsx") && manifest?.type !== "module");
-					const isHookableEntry = Boolean(dependencyEntry && hasSourceModuleExtension(dependencyEntry));
-					const hookCommonJsEntry =
-						isHookableEntry && isCommonJsEntry && dependencyEntry
-							? await moduleRequiresNativeAddon(dependencyEntry)
-							: false;
-					if (isHookableEntry && dependencyEntry && ((!isRequired && !isCommonJsEntry) || hookCommonJsEntry)) {
-						resolved = await realpathOrSelf(dependencyEntry);
-					}
-					if (resolved && hookCommonJsEntry) {
-						nativeAddonLoaderModulePaths.add(resolved);
-					}
-					nextFollowsBareDependencies = false;
-				}
-				if (resolved && isRequired) {
-					nativeAddonLoaderModulePaths.add(resolved);
-				}
-				if (resolved && !modules.has(resolved)) {
-					const queuedFollowsBareDependencies = queuedFollowBareDependencies.get(resolved) ?? false;
-					const mergedFollowsBareDependencies = queuedFollowsBareDependencies || nextFollowsBareDependencies;
-					queuedFollowBareDependencies.set(resolved, mergedFollowsBareDependencies);
-					queue.push({ file: resolved, followBareDependencies: mergedFollowsBareDependencies });
-				}
+				edge = await resolveGraphEdge(specifier, file, isRequired, followBareDependencies, readSource);
 			} catch {
 				// Unresolvable import (e.g. a type-only path); skip it.
+				continue;
 			}
+			if (!edge) continue;
+			if (isRequired) {
+				nativeAddonLoaderModulePaths.add(edge.file);
+			}
+			if (modules.has(edge.file)) continue;
+			const merged = (queuedFollowBareDependencies.get(edge.file) ?? false) || edge.followBareDependencies;
+			queuedFollowBareDependencies.set(edge.file, merged);
+			queue.push({ file: edge.file, followBareDependencies: merged });
 		}
 	}
 	for (const modulePath of nativeAddonLoaderModulePaths) {
@@ -1431,6 +1367,111 @@ async function collectExtensionModules(entryRealPath: string): Promise<Map<strin
 		}
 	}
 	return modules;
+}
+
+/** A graph module the walk reaches, and whether it follows bare dependencies imported from it. */
+interface GraphEdge {
+	file: string;
+	followBareDependencies: boolean;
+}
+
+/**
+ * Every specifier a module imports, `require()`s included: a required specifier joins the graph only
+ * when it leads to a native-addon loader, so those are also returned on their own.
+ */
+function graphSpecifiers(source: string): { specifiers: Set<string>; requiredSpecifiers: Set<string> } {
+	const specifiers = new Set<string>();
+	const requiredSpecifiers = new Set<string>();
+	for (const match of source.matchAll(EXTENSION_GRAPH_SPECIFIER_REGEX)) {
+		if (match[2]) specifiers.add(match[2]);
+	}
+	for (const match of source.matchAll(NATIVE_ADDON_REQUIRE_SPECIFIER_REGEX)) {
+		if (match[2]) {
+			specifiers.add(match[2]);
+			requiredSpecifiers.add(match[2]);
+		}
+	}
+	return { specifiers, requiredSpecifiers };
+}
+
+/**
+ * The graph module `specifier` reaches from `importer`, or null when it stays on Bun's native loader.
+ *
+ * A relative import or a package `imports` alias is graph-owned unless it is CommonJS; a required one
+ * is graph-owned only when it is a native-addon loader. A bare dependency is followed only from a
+ * module that follows bare dependencies, and nothing past it does.
+ */
+async function resolveGraphEdge(
+	specifier: string,
+	importer: string,
+	isRequired: boolean,
+	followBareDependencies: boolean,
+	readSource: SourceReader,
+): Promise<GraphEdge | null> {
+	if (specifier.startsWith(".")) {
+		const candidate = Bun.resolveSync(specifier, path.dirname(importer));
+		if (
+			!hasSourceModuleExtension(candidate) ||
+			!(isRequired ? await moduleRequiresNativeAddon(candidate) : !(await isCommonJsModule(candidate, readSource)))
+		) {
+			return null;
+		}
+		return { file: await realpathOrSelf(candidate), followBareDependencies };
+	}
+	if (specifier.startsWith("#")) {
+		const candidate = await resolvePackageImportSpecifier(specifier, importer);
+		if (
+			!candidate ||
+			!(isRequired ? await moduleRequiresNativeAddon(candidate) : !(await isCommonJsModule(candidate, readSource)))
+		) {
+			return null;
+		}
+		return { file: candidate, followBareDependencies };
+	}
+	if (
+		!followBareDependencies ||
+		!isBareExtensionDependencySpecifier(specifier) ||
+		remapLegacyPiSpecifier(specifier) ||
+		specifier === "typebox" ||
+		specifier === "@sinclair/typebox"
+	) {
+		return null;
+	}
+	const file = await resolveBareDependencyEntry(specifier, importer, isRequired);
+	return file ? { file, followBareDependencies: false } : null;
+}
+
+/**
+ * The realpath of the source entry a bare dependency resolves to, when the graph hooks it: an ES entry
+ * imported rather than required, or a CommonJS entry that loads a native addon, which is also marked
+ * for the synchronous loader that pins its addon requires.
+ */
+async function resolveBareDependencyEntry(
+	specifier: string,
+	importer: string,
+	isRequired: boolean,
+): Promise<string | null> {
+	const parsed = splitBarePackageSpecifier(specifier);
+	const packageRoot = parsed ? await findNodePackageRoot(parsed.name, importer) : null;
+	const manifest = packageRoot ? await readPackageManifest(packageRoot) : null;
+	const entry = manifest ? await resolveExtensionBareDependency(specifier, importer) : null;
+	if (!entry || !hasSourceModuleExtension(entry)) {
+		return null;
+	}
+	const extension = path.extname(entry);
+	const isCommonJsEntry =
+		extension === ".cjs" ||
+		extension === ".cts" ||
+		((extension === ".js" || extension === ".jsx") && manifest?.type !== "module");
+	if (!isCommonJsEntry) {
+		return isRequired ? null : realpathOrSelf(entry);
+	}
+	if (!(await moduleRequiresNativeAddon(entry))) {
+		return null;
+	}
+	const resolved = await realpathOrSelf(entry);
+	nativeAddonLoaderModulePaths.add(resolved);
+	return resolved;
 }
 
 /**
