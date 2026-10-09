@@ -66,7 +66,7 @@ const model: Model = buildModel({
 const modelRegistry = {
 	isKeylessProvider: () => false,
 	hasConfiguredAuth: () => true,
-	authStorage: { hasAuth: () => true },
+	authStorage: { hasAuth: () => true, getAll: () => ({}) },
 } as unknown as ModelRegistry;
 
 type OverrideLayer = "runtime" | "config-file";
