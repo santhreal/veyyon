@@ -2,7 +2,16 @@ import { setTimeout as sleep } from "node:timers/promises";
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
 import { type } from "@veyyon/ai/utils/schema/arktype";
-import { errorMessage, isCancellation, lazy, logger, prompt, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
+import {
+	errorMessage,
+	isCancellation,
+	lazy,
+	logger,
+	prompt,
+	trimTrailingSlashes,
+	untilAborted,
+	withTimeout,
+} from "@veyyon/utils";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "../../sdk";
 import { enforceInlineByteCap } from "../../session/streaming-output";
@@ -34,6 +43,7 @@ import { safeJsonStringify } from "./browser/run-output";
 import { readStorageStateFile, type StorageState, type StorageStateLoaded } from "./browser/storage-state";
 import type { BrowserRunError, Observation, RunResultOk, ScreenshotResult } from "./browser/tab-protocol";
 import {
+	type AcquireTabResult,
 	acquireTab,
 	captureTabState,
 	dropHeadlessTabs,
@@ -412,41 +422,48 @@ export class BrowserTool implements AgentTool<typeof browserSchema.value, Browse
 		}
 		const url = params.url ?? moved?.url;
 
-		const browser = await untilAborted(signal, () =>
-			acquireBrowser(kind, {
-				cwd: this.session.cwd,
-				viewport: params.viewport
-					? {
-							width: params.viewport.width,
-							height: params.viewport.height,
-							deviceScaleFactor: params.viewport.scale,
-						}
-					: undefined,
-				appArgs: params.app?.args,
-				signal,
-			}),
-		);
+		let browser: BrowserHandle;
+		let result: AcquireTabResult;
+		try {
+			browser = await untilAborted(signal, () =>
+				acquireBrowser(kind, {
+					cwd: this.session.cwd,
+					viewport: params.viewport
+						? {
+								width: params.viewport.width,
+								height: params.viewport.height,
+								deviceScaleFactor: params.viewport.scale,
+							}
+						: undefined,
+					appArgs: params.app?.args,
+					signal,
+				}),
+			);
 
-		const result = await untilAborted(signal, () =>
-			acquireTab(name, browser, {
-				url,
-				waitUntil: params.wait_until,
-				viewport: params.viewport
-					? {
-							width: params.viewport.width,
-							height: params.viewport.height,
-							deviceScaleFactor: params.viewport.scale,
-						}
-					: undefined,
-				target: params.app?.target,
-				timeoutMs,
-				dialogs: params.dialogs ?? moved?.dialogs,
-				signal,
-				ownerSessionId: this.session.getSessionId?.() ?? undefined,
-				context: params.context ?? moved?.context,
-				storageState: moved?.state ?? fileState,
-			}),
-		);
+			result = await untilAborted(signal, () =>
+				acquireTab(name, browser, {
+					url,
+					waitUntil: params.wait_until,
+					viewport: params.viewport
+						? {
+								width: params.viewport.width,
+								height: params.viewport.height,
+								deviceScaleFactor: params.viewport.scale,
+							}
+						: undefined,
+					target: params.app?.target,
+					timeoutMs,
+					dialogs: params.dialogs ?? moved?.dialogs,
+					signal,
+					ownerSessionId: this.session.getSessionId?.() ?? undefined,
+					context: params.context ?? moved?.context,
+					storageState: moved?.state ?? fileState,
+				}),
+			);
+		} catch (error) {
+			if (moved) await this.#returnTab(name, moved, timeoutMs, error);
+			throw error;
+		}
 		// An interstitial check is waited out before the page is described, so the rows below show where it led.
 		const challenge = url === undefined ? undefined : await this.#challengeNotice(name, timeoutMs, signal);
 		const tab = getTab(name) ?? result.tab;
@@ -501,7 +518,14 @@ export class BrowserTool implements AgentTool<typeof browserSchema.value, Browse
 			typeof run.returnValue === "string" && /^(?:https?|file):/i.test(run.returnValue)
 				? run.returnValue
 				: undefined;
-		const state = await captureTabState(name);
+		// Every page of the tab's context is read, and one with an open dialog or a busy main thread answers
+		// nothing until the protocol gives up a minute later; the tab has not left yet, so it stays.
+		const state = await withTimeout(
+			captureTabState(name),
+			timeoutMs,
+			`Reading the cookies and localStorage of tab ${JSON.stringify(name)} took longer than ${Math.round(timeoutMs / 1000)} s: a page in its context is not answering, such as one with a dialog open. The tab stays where it is; close the dialog or the page, then move it again.`,
+			signal,
+		);
 		const moved: MovedTab = {
 			from,
 			state,
@@ -513,6 +537,38 @@ export class BrowserTool implements AgentTool<typeof browserSchema.value, Browse
 		};
 		await releaseTab(name, { kill: false });
 		return moved;
+	}
+
+	/**
+	 * Put tab `name` back on the browser a move took it from, with the page, session, context and dialog
+	 * policy it took along, when the move failed or was cancelled after the tab left: otherwise the tab,
+	 * and every cookie it carried, is gone. The move's own error states the outcome; a cancelled move
+	 * still waits for the tab to return.
+	 */
+	async #returnTab(name: string, moved: MovedTab, timeoutMs: number, error: unknown): Promise<void> {
+		const stated = error instanceof Error && !isCancellation(error);
+		try {
+			const browser = await acquireBrowser(moved.from, { cwd: this.session.cwd });
+			await acquireTab(name, browser, {
+				url: moved.url,
+				timeoutMs,
+				dialogs: moved.dialogs,
+				context: moved.context,
+				storageState: moved.state,
+				ownerSessionId: this.session.getSessionId?.() ?? undefined,
+			});
+			if (stated) {
+				error.message += `\nTab ${JSON.stringify(name)} is back on ${describeKind(moved.from)} with its session.`;
+			}
+		} catch (returnError) {
+			logger.warn("A browser tab whose move failed could not return to its browser", {
+				tab: name,
+				error: errorMessage(returnError),
+			});
+			if (stated) {
+				error.message += `\nTab ${JSON.stringify(name)} could not be put back on ${describeKind(moved.from)}: ${errorMessage(returnError)}`;
+			}
+		}
 	}
 
 	/** The tab's page as the challenge probe reads it, or undefined when it gives nothing to read. */
