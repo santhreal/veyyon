@@ -32,7 +32,7 @@ import { useTrackedTempDirs } from "../../../helpers/tracked-temp-dir";
 
 const MODE_PATH = "composer.predictions.mode";
 const HINT = "Connect ChatGPT Pro for free, usage-less predictions.";
-const UP = "\x1b[A";
+const DOWN = "\x1b[B";
 
 /**
  * Whether the option's label opens in the select list's description paint, the grey an inert row
@@ -153,7 +153,8 @@ describe("the ChatGPT Pro prediction mode without a Pro login", () => {
 			"a stored Pro login replaced by a models.yml key command that yields nothing",
 			{ stored: ["pro"], modelsYml: 'providers:\n  openai-codex:\n    apiKey: "!exit 1"\n' },
 		],
-	])("reads as off on the row with %s", async (_case, logins) => {
+	])("reads as off on the row when chosen with %s", async (_case, logins) => {
+		await settings.set(MODE_PATH, "chatgpt-pro");
 		expect(modeRow(await selectorOnModeRow(logins))).toContain("Off (no ChatGPT Pro account)");
 	});
 
@@ -171,14 +172,15 @@ describe("the ChatGPT Pro prediction mode without a Pro login", () => {
 		await settings.set(MODE_PATH, "off");
 		const component = await selectorOnModeRow({ stored: ["pro"], runtimeKey: "sk-runtime" });
 		component.handleInput("\n");
-		component.handleInput(UP);
+		component.handleInput(DOWN);
 		component.handleInput("\n");
 		expect(settings.get(MODE_PATH)).toBe("off");
 	});
 });
 
 describe("the ChatGPT Pro prediction mode with a Pro login", () => {
-	it("reads as the mode on the row", async () => {
+	it("reads as the mode on the row when chosen", async () => {
+		await settings.set(MODE_PATH, "chatgpt-pro");
 		const row = modeRow(await selectorOnModeRow({ stored: ["pro"] }));
 		expect(row).toContain("ChatGPT Pro included");
 		expect(row).not.toContain("no ChatGPT Pro account");
@@ -194,7 +196,7 @@ describe("the ChatGPT Pro prediction mode with a Pro login", () => {
 		component.handleInput("\n");
 		expect(lines(component).join("\n")).not.toContain(HINT);
 		expect(proOptionIsGrey(component)).toBe(false);
-		component.handleInput(UP);
+		component.handleInput(DOWN);
 		component.handleInput("\n");
 		expect(settings.get(MODE_PATH)).toBe("chatgpt-pro");
 	});

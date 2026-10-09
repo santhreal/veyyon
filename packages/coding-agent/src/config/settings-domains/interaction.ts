@@ -146,8 +146,8 @@ export const INTERACTION_SETTINGS = {
 
 	"composer.predictions.mode": {
 		type: "enum",
-		values: ["chatgpt-pro", "off", "custom"] as const,
-		default: "chatgpt-pro",
+		values: ["off", "chatgpt-pro", "custom"] as const,
+		default: "off",
 		ui: {
 			tab: "interaction",
 			group: "Composer Predictions",
@@ -155,13 +155,13 @@ export const INTERACTION_SETTINGS = {
 			description:
 				"After each turn, suggest the message you are likely to send next as dim text in the empty composer. Tab inserts it; typing replaces it. Nothing is sent without Enter.",
 			options: [
+				{ value: "off", label: "Off", description: "No predictions." },
 				{
 					value: "chatgpt-pro",
 					label: "ChatGPT Pro included",
 					description:
 						"The ChatGPT Codex prediction service on GPT-6 Astra or GPT-6.1 Sol, sent with a linked OpenAI Codex account on a ChatGPT Pro plan. During the beta, OpenAI counts these predictions against no Codex usage limits or credits. Without a Pro account, or when an API key replaces the Codex login, no prediction is requested.",
 				},
-				{ value: "off", label: "Off", description: "No predictions." },
 				{
 					value: "custom",
 					label: "Custom (choose model)",

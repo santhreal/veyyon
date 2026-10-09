@@ -176,7 +176,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `composer.predictions.mode` | Composer Predictions | enum | `chatgpt-pro` | After each turn, suggest the message you are likely to send next as dim text in the empty composer. Tab inserts it; typing replaces it. Nothing is sent without Enter. Values: `chatgpt-pro`, `off`, `custom`. |
+| `composer.predictions.mode` | Composer Predictions | enum | `off` | After each turn, suggest the message you are likely to send next as dim text in the empty composer. Tab inserts it; typing replaces it. Nothing is sent without Enter. Values: `off`, `chatgpt-pro`, `custom`. |
 | `composer.predictions.model` | Prediction Model | modelChain | _(unset)_ | Models that write predictions in Custom mode, from any provider, tried in order: the first one with credentials is used. A :level suffix sets its thinking level. Inherit: the session's model. |
 
 ### Session

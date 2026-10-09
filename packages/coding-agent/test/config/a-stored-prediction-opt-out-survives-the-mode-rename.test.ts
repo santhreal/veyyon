@@ -1,9 +1,9 @@
 /**
- * `composer.predictions.enabled` and `.source` became one `composer.predictions.mode`, whose default
- * (`chatgpt-pro`) runs whenever a ChatGPT Pro Codex login is present. A config that stored
- * `enabled: false` stored an opt-out; dropping the old key would let that default switch
- * predictions back on. Each case loads a config file through the real loader and reads the mode
- * back, and the rewrite case checks that the retired keys leave the file.
+ * `composer.predictions.enabled` and `.source` became one `composer.predictions.mode`. A config that
+ * stored `enabled: false` stored an opt-out, which must load as `off` whatever the mode's default; a
+ * config that stored `enabled: true` stored an opt-in, which must load as the matching mode rather
+ * than fall back to the `off` default. Each case loads a config file through the real loader and
+ * reads the mode back, and the rewrite case checks that the retired keys leave the file.
  *
  * Not covered: an opt-out held anywhere other than a settings source the loader migrates.
  */
@@ -62,7 +62,7 @@ describe("the composer prediction mode rename", () => {
 	});
 
 	test("leaves the default in place when no retired key was stored", async () => {
-		expect(await modeAfterLoading({ composer: { predictions: { model: "openai/gpt-5.5" } } })).toBe("chatgpt-pro");
+		expect(await modeAfterLoading({ composer: { predictions: { model: "openai/gpt-5.5" } } })).toBe("off");
 	});
 
 	test("writes the opt-out back as mode: off and drops the retired keys", async () => {
