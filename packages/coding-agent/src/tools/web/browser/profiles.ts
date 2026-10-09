@@ -16,7 +16,15 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getBrowserProfilesDir, isEnoent, isEnotdir, isProcessAlive, isRecord } from "@veyyon/utils";
+import {
+	errorMessage,
+	getBrowserProfilesDir,
+	isEnoent,
+	isEnotdir,
+	isProcessAlive,
+	isRecord,
+	logger,
+} from "@veyyon/utils";
 import { bestEffort } from "@veyyon/utils/discarded-fault";
 import { ToolError } from "../../core/tool-errors";
 
@@ -55,7 +63,8 @@ export async function createProfile(): Promise<string> {
 /**
  * Remove every temporary profile in `parent` whose owner, a process on this host, no longer runs and
  * which no running Chromium holds: a process that crashed or was killed never removed its own. A
- * profile with no owner file, an owner on another host, or a live owner is kept.
+ * profile with no owner file, an owner file this process cannot read, an owner on another host, or a
+ * live owner is kept: the system temp directory is shared, and another user's profile is theirs.
  */
 export async function sweepOrphanedProfiles(parent: string): Promise<void> {
 	let entries: string[];
@@ -73,9 +82,16 @@ export async function sweepOrphanedProfiles(parent: string): Promise<void> {
 		try {
 			owner = await fs.promises.readFile(path.join(dir, PROFILE_OWNER_FILE), "utf8");
 		} catch (error) {
-			// No owner file: a profile from before owners were written, or one still being made.
-			if (isEnoent(error) || isEnotdir(error)) continue;
-			throw error;
+			// No owner file: a profile from before owners were written, or one still being made. An owner
+			// file that cannot be read (another user's profile, mode 0700 like every `mkdtemp`, or anything
+			// else planted under the prefix) is not this process's to sweep, and must not stop the launch.
+			if (!isEnoent(error) && !isEnotdir(error)) {
+				logger.debug("Keeping a temporary browser profile whose owner cannot be read", {
+					dir,
+					error: errorMessage(error),
+				});
+			}
+			continue;
 		}
 		const dash = owner.lastIndexOf("-");
 		const pid = Number(owner.slice(dash + 1));
