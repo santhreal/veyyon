@@ -113,6 +113,7 @@
 
 ### Fixed
 
+- `RotatingLogFile` keeps a full log file under one generation when two processes rotate it at once, instead of leaving a second generation that repeats every line of it.
 - `renderMathInText` prints the text before a bare `\begin{…}` math block once when the block's `lhs =` or previous-line lead-in reaches back past an earlier block or an unterminated `\begin`, instead of rendering that text a second time (`\begin{matrix}a\end{matrix} = \begin{matrix}b\end{matrix}` printed `aa = b`).
 - `parseJsonlLenient` returns every record after a skipped malformed line instead of throwing `RangeError` when more than about a million records follow it, and parses a 2,000-record file with 500 malformed lines in 367 µs instead of 424 µs.
 - The default profile ignores an inherited `VEYYON_CODING_AGENT_DIR` equal to any profile's agent dir, so `/profile default` or `/resume` of a default-profile session from a named profile no longer runs the default profile in the named profile's agent dir.

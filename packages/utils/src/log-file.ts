@@ -147,15 +147,30 @@ function highestGeneration(dir: string, base: string): number {
 }
 
 /**
- * Completes a rotation once `moved` is a hard link claimed for the live file `target` (inode `ino`).
- * Undoes the claim when `moved` names another inode, because another writer already moved `ino`;
- * otherwise unlinks `target` while it still names `ino`.
+ * Whether a generation of `target` numbered below `generation` already names inode `ino`: another
+ * writer claimed the same full file first, under a number this writer found taken or under the
+ * highest number its scan saw. Either lies within {@link MAX_ROTATE_ATTEMPTS} below `generation`.
  */
-function finishRotation(target: string, moved: string, ino: number): void {
+function claimedBelow(target: string, generation: number, ino: number): boolean {
+	for (let lower = generation - 1; lower >= Math.max(1, generation - MAX_ROTATE_ATTEMPTS); lower--) {
+		if (statUnlessMissing(`${target}.${lower}`)?.ino === ino) return true;
+	}
+	return false;
+}
+
+/**
+ * Completes a rotation once `moved` (generation `generation`) is a hard link claimed for the live file
+ * `target` (inode `ino`). Undoes the claim when `moved` names another inode, because another writer
+ * already moved `ino`. Drops the claim when a lower generation already names `ino`, because another
+ * writer claimed the same file first and a second name would hold every line twice; the live name is
+ * still released, as that writer releases it. Otherwise unlinks `target` while it still names `ino`.
+ */
+function finishRotation(target: string, moved: string, generation: number, ino: number): void {
 	if (fs.statSync(moved).ino !== ino) {
 		fs.unlinkSync(moved);
 		return;
 	}
+	if (claimedBelow(target, generation, ino)) fs.unlinkSync(moved);
 	try {
 		if (fs.statSync(target).ino === ino) fs.unlinkSync(target);
 	} catch (error) {
@@ -264,7 +279,7 @@ export class RotatingLogFile {
 				if (isEnoent(error)) return;
 				throw error;
 			}
-			finishRotation(target, moved, ino);
+			finishRotation(target, moved, generation, ino);
 			return;
 		}
 	}
