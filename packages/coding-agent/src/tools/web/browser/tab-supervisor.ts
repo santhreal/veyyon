@@ -274,7 +274,7 @@ async function contextOfTab(tab: WorkerTabSession): Promise<BrowserContext> {
  */
 export async function captureTabState(name: string): Promise<StorageState> {
 	const tab = tabs.get(name);
-	if (!tab || tab.state !== "alive") throw new ToolError(`Tab ${JSON.stringify(name)} is not alive.`);
+	if (tab?.state !== "alive") throw new ToolError(`Tab ${JSON.stringify(name)} is not alive.`);
 	if (tab.backend !== "worker") throw new ToolError(headlessOnly(tab.browser));
 	return await captureStorageState(await contextOfTab(tab));
 }
