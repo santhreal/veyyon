@@ -6,8 +6,10 @@
  * inert option leaves a stored Off in place.
  *
  * Drives the real `SettingsSelectorComponent` against a model registry whose stored Codex
- * credential is a JWT carrying the plan claim. Not covered: a login held only in the
- * `OPENAI_CODEX_OAUTH_TOKEN` environment variable, which `hasIncludedPredictionLogin` also reads.
+ * credential is a JWT carrying the plan claim, and against the `OPENAI_CODEX_OAUTH_TOKEN`
+ * environment login, which `hasIncludedPredictionLogin` also reads. Not covered: a runtime or
+ * models.yml key override, or several stored Codex accounts on different plans; the predictor
+ * uses the one credential auth routing selects, while this screen accepts any stored Pro login.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
@@ -54,8 +56,10 @@ function registryWith(plan: string | undefined): ModelRegistry {
 	} as unknown as ModelRegistry;
 }
 
+const ENV_TOKEN = "OPENAI_CODEX_OAUTH_TOKEN";
 let geometryStub: { restore(): void } | undefined;
 let policy: AnsiPolicy;
+let envToken: string | undefined;
 
 beforeAll(async () => {
 	await initTheme();
@@ -69,10 +73,15 @@ beforeEach(async () => {
 	// Paint is identity under the piped policy, which would make grey and plain rows byte-identical.
 	policy = getAnsiPolicy();
 	setAnsiPolicy("full");
+	// The host's own Codex login must not decide what this suite observes.
+	envToken = Bun.env[ENV_TOKEN];
+	delete Bun.env[ENV_TOKEN];
 });
 
 afterEach(() => {
 	setAnsiPolicy(policy);
+	if (envToken === undefined) delete Bun.env[ENV_TOKEN];
+	else Bun.env[ENV_TOKEN] = envToken;
 	geometryStub?.restore();
 	geometryStub = undefined;
 	invalidateSettingDefsCache();
@@ -133,6 +142,11 @@ describe("the ChatGPT Pro prediction mode without a Pro login", () => {
 		component.handleInput("\n");
 		expect(settings.get(MODE_PATH)).toBe("off");
 	});
+
+	it("reads as off with a Plus plan login held only in the environment", () => {
+		Bun.env[ENV_TOKEN] = codexToken("plus");
+		expect(modeRow(selectorOnModeRow(undefined))).toContain("Off (no ChatGPT Pro account)");
+	});
 });
 
 describe("the ChatGPT Pro prediction mode with a Pro login", () => {
@@ -147,6 +161,17 @@ describe("the ChatGPT Pro prediction mode with a Pro login", () => {
 		const component = selectorOnModeRow("pro");
 		component.handleInput("\n");
 		expect(lines(component).join("\n")).not.toContain(HINT);
+		expect(proOptionIsGrey(component)).toBe(false);
+		component.handleInput(UP);
+		component.handleInput("\n");
+		expect(settings.get(MODE_PATH)).toBe("chatgpt-pro");
+	});
+
+	it("counts a Pro plan login held only in the environment", async () => {
+		Bun.env[ENV_TOKEN] = codexToken("pro");
+		await settings.set(MODE_PATH, "off");
+		const component = selectorOnModeRow(undefined);
+		component.handleInput("\n");
 		expect(proOptionIsGrey(component)).toBe(false);
 		component.handleInput(UP);
 		component.handleInput("\n");

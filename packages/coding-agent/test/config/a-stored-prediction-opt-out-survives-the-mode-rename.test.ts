@@ -68,8 +68,8 @@ describe("the composer prediction mode rename", () => {
 	test("writes the opt-out back as mode: off and drops the retired keys", async () => {
 		writeConfig({ composer: { predictions: { enabled: false, source: "codex" } } });
 		const settings = await Settings.loadIsolated({ agentDir, cwd: agentDir });
-		await settings.set("ask.notify" as never, "on" as never);
-		await settings.flush?.();
+		await settings.set("ask.notify", "on");
+		await settings.flush();
 
 		const written = YAML.parse(fs.readFileSync(path.join(agentDir, "config.yml"), "utf8")) as {
 			composer?: { predictions?: Record<string, unknown> };
