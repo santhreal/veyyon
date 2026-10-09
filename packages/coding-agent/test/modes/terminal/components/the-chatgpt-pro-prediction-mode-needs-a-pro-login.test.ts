@@ -5,31 +5,34 @@
  * a ChatGPT Pro account. Choosing it again is also how an explicit Off would be overridden, so an
  * inert option leaves a stored Off in place.
  *
- * Drives the real `SettingsSelectorComponent` against a model registry whose stored Codex
- * credential is a JWT carrying the plan claim, and against the `OPENAI_CODEX_OAUTH_TOKEN`
- * environment login, which `hasIncludedPredictionLogin` also reads. Not covered: a runtime or
- * models.yml key override, or several stored Codex accounts on different plans; the predictor
- * uses the one credential auth routing selects, while this screen accepts any stored Pro login.
+ * The screen and the predictor read one function, `includedPredictionLogins`, so they agree on
+ * every login shape: any stored account on the Pro plan counts, whatever its position; the
+ * `OPENAI_CODEX_OAUTH_TOKEN` environment login counts; and an `--api-key`, a `models.yml` key or a
+ * `models.yml` key command for the Codex provider replaces every Codex login, so none counts.
+ *
+ * Drives the real `SettingsSelectorComponent` over a real `ModelRegistry` and `AuthStorage`
+ * holding Codex OAuth accounts whose access tokens carry the plan claim. Not covered: a stored
+ * token whose plan changes on refresh, which only the predictor reads.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import { stripVTControlCharacters } from "node:util";
-import { CODEX_JWT_AUTH_CLAIM } from "@veyyon/catalog/wire/codex";
-import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { clearConfigValueCache } from "@veyyon/coding-agent/config/resolve-config-value";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import { invalidateSettingDefsCache } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
 import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-selector";
 import { getSelectListTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
+import { CODEX_ENV_TOKEN, codexToken, storeCodexLogins } from "../../../helpers/codex-logins";
 import { stubStdoutGeometry } from "../../../helpers/stdout-geometry";
+import { useTrackedTempDirs } from "../../../helpers/tracked-temp-dir";
 
 const MODE_PATH = "composer.predictions.mode";
 const HINT = "Connect ChatGPT Pro for free, usage-less predictions.";
 const UP = "\x1b[A";
-
-function codexToken(plan: string): string {
-	const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
-	return `${encode({ alg: "RS256" })}.${encode({ [CODEX_JWT_AUTH_CLAIM]: { chatgpt_plan_type: plan } })}.sig`;
-}
 
 /**
  * Whether the option's label opens in the select list's description paint, the grey an inert row
@@ -43,23 +46,39 @@ function proOptionIsGrey(component: SettingsSelectorComponent): boolean {
 	return line?.includes(`${greyOpen}ChatGPT Pro included`) ?? false;
 }
 
-/** A registry whose stored OpenAI Codex login is on `plan`, or that holds no Codex login. */
-function registryWith(plan: string | undefined): ModelRegistry {
-	const stored =
-		plan === undefined
-			? {}
-			: { "openai-codex": { type: "oauth", access: codexToken(plan), refresh: "", expires: 0 } };
-	return {
-		isKeylessProvider: () => false,
-		hasConfiguredAuth: () => true,
-		authStorage: { hasAuth: () => true, getAll: () => stored },
-	} as unknown as ModelRegistry;
+/** The Codex logins a case starts with. */
+interface CodexLogins {
+	/** Plans of the stored OpenAI Codex accounts, in storage order. */
+	stored?: readonly string[];
+	/** The `OPENAI_CODEX_OAUTH_TOKEN` value. */
+	env?: string;
+	/** An `--api-key` for the Codex provider. */
+	runtimeKey?: string;
+	/** The `models.yml` body. */
+	modelsYml?: string;
 }
 
-const ENV_TOKEN = "OPENAI_CODEX_OAUTH_TOKEN";
+const makeTempDir = useTrackedTempDirs("veyyon-prediction-mode-");
+const stores: AuthStorage[] = [];
+
+/** A real model registry over a fresh credential store holding `logins`. */
+async function registryWith(logins: CodexLogins): Promise<ModelRegistry> {
+	const dir = makeTempDir();
+	const auth = await AuthStorage.create(path.join(dir, "auth.db"));
+	stores.push(auth);
+	await storeCodexLogins(auth, logins.stored ?? []);
+	if (logins.env !== undefined) Bun.env[CODEX_ENV_TOKEN] = logins.env;
+	if (logins.runtimeKey !== undefined) auth.setRuntimeApiKey("openai-codex", logins.runtimeKey);
+	const modelsPath = path.join(dir, "models.yml");
+	if (logins.modelsYml !== undefined) await fs.writeFile(modelsPath, logins.modelsYml);
+	return new ModelRegistry(auth, modelsPath, {
+		fetch: () => Promise.reject(new Error("network disabled in prediction mode test")),
+	});
+}
+
 let geometryStub: { restore(): void } | undefined;
 let policy: AnsiPolicy;
-let envToken: string | undefined;
+let hostEnvToken: string | undefined;
 
 beforeAll(async () => {
 	await initTheme();
@@ -74,21 +93,24 @@ beforeEach(async () => {
 	policy = getAnsiPolicy();
 	setAnsiPolicy("full");
 	// The host's own Codex login must not decide what this suite observes.
-	envToken = Bun.env[ENV_TOKEN];
-	delete Bun.env[ENV_TOKEN];
+	hostEnvToken = Bun.env[CODEX_ENV_TOKEN];
+	delete Bun.env[CODEX_ENV_TOKEN];
+	clearConfigValueCache();
 });
 
 afterEach(() => {
 	setAnsiPolicy(policy);
-	if (envToken === undefined) delete Bun.env[ENV_TOKEN];
-	else Bun.env[ENV_TOKEN] = envToken;
+	if (hostEnvToken === undefined) delete Bun.env[CODEX_ENV_TOKEN];
+	else Bun.env[CODEX_ENV_TOKEN] = hostEnvToken;
+	for (const auth of stores.splice(0)) auth.close();
+	clearConfigValueCache();
 	geometryStub?.restore();
 	geometryStub = undefined;
 	invalidateSettingDefsCache();
 	resetSettingsForTest();
 });
 
-function selectorOnModeRow(plan: string | undefined): SettingsSelectorComponent {
+async function selectorOnModeRow(logins: CodexLogins): Promise<SettingsSelectorComponent> {
 	const component = new SettingsSelectorComponent(
 		{
 			availableThinkingLevels: [],
@@ -97,7 +119,7 @@ function selectorOnModeRow(plan: string | undefined): SettingsSelectorComponent 
 			availablePersonalities: ["default"],
 			providers: ["openai-codex"],
 			cwd: process.cwd(),
-			modelRegistry: registryWith(plan),
+			modelRegistry: await registryWith(logins),
 			availableModels: [],
 		},
 		{ onChange: () => {}, onCancel: () => {} },
@@ -116,16 +138,27 @@ function modeRow(component: SettingsSelectorComponent): string {
 }
 
 describe("the ChatGPT Pro prediction mode without a Pro login", () => {
-	it.each([
-		["no Codex login", undefined],
-		["a Plus plan Codex login", "plus"],
-	])("reads as off on the row with %s", (_case, plan) => {
-		expect(modeRow(selectorOnModeRow(plan))).toContain("Off (no ChatGPT Pro account)");
+	it.each<[string, CodexLogins]>([
+		["no Codex login", {}],
+		["a Plus plan Codex login", { stored: ["plus"] }],
+		["a Plus plan login held only in the environment", { env: codexToken("plus") }],
+		["a stored Pro login replaced by an --api-key", { stored: ["pro"], runtimeKey: "sk-runtime" }],
+		["an environment Pro login replaced by an --api-key", { env: codexToken("pro"), runtimeKey: "sk-runtime" }],
+		[
+			"a stored Pro login replaced by a models.yml key",
+			{ stored: ["pro"], modelsYml: "providers:\n  openai-codex:\n    apiKey: literal:sk-config\n" },
+		],
+		[
+			"a stored Pro login replaced by a models.yml key command that yields nothing",
+			{ stored: ["pro"], modelsYml: 'providers:\n  openai-codex:\n    apiKey: "!exit 1"\n' },
+		],
+	])("reads as off on the row with %s", async (_case, logins) => {
+		expect(modeRow(await selectorOnModeRow(logins))).toContain("Off (no ChatGPT Pro account)");
 	});
 
 	it("is greyed out in the submenu with the connect hint", async () => {
 		await settings.set(MODE_PATH, "off");
-		const component = selectorOnModeRow(undefined);
+		const component = await selectorOnModeRow({});
 		component.handleInput("\n");
 		const rendered = lines(component).join("\n");
 		expect(rendered).toContain("ChatGPT Pro included");
@@ -135,42 +168,30 @@ describe("the ChatGPT Pro prediction mode without a Pro login", () => {
 
 	it("cannot be chosen, so a stored Off stays off", async () => {
 		await settings.set(MODE_PATH, "off");
-		const component = selectorOnModeRow(undefined);
+		const component = await selectorOnModeRow({ stored: ["pro"], runtimeKey: "sk-runtime" });
 		component.handleInput("\n");
 		component.handleInput(UP);
 		component.handleInput("\n");
 		expect(settings.get(MODE_PATH)).toBe("off");
 	});
-
-	it("reads as off with a Plus plan login held only in the environment", () => {
-		Bun.env[ENV_TOKEN] = codexToken("plus");
-		expect(modeRow(selectorOnModeRow(undefined))).toContain("Off (no ChatGPT Pro account)");
-	});
 });
 
 describe("the ChatGPT Pro prediction mode with a Pro login", () => {
-	it("reads as the mode on the row", () => {
-		const row = modeRow(selectorOnModeRow("pro"));
+	it("reads as the mode on the row", async () => {
+		const row = modeRow(await selectorOnModeRow({ stored: ["pro"] }));
 		expect(row).toContain("ChatGPT Pro included");
 		expect(row).not.toContain("no ChatGPT Pro account");
 	});
 
-	it("offers the option without the connect hint and can be chosen over a stored Off", async () => {
+	it.each<[string, CodexLogins]>([
+		["a stored Pro login", { stored: ["pro"] }],
+		["a Pro account stored after a Plus account", { stored: ["plus", "pro"] }],
+		["a Pro login held only in the environment", { env: codexToken("pro") }],
+	])("is offered without the connect hint and can be chosen over a stored Off with %s", async (_case, logins) => {
 		await settings.set(MODE_PATH, "off");
-		const component = selectorOnModeRow("pro");
+		const component = await selectorOnModeRow(logins);
 		component.handleInput("\n");
 		expect(lines(component).join("\n")).not.toContain(HINT);
-		expect(proOptionIsGrey(component)).toBe(false);
-		component.handleInput(UP);
-		component.handleInput("\n");
-		expect(settings.get(MODE_PATH)).toBe("chatgpt-pro");
-	});
-
-	it("counts a Pro plan login held only in the environment", async () => {
-		Bun.env[ENV_TOKEN] = codexToken("pro");
-		await settings.set(MODE_PATH, "off");
-		const component = selectorOnModeRow(undefined);
-		component.handleInput("\n");
 		expect(proOptionIsGrey(component)).toBe(false);
 		component.handleInput(UP);
 		component.handleInput("\n");

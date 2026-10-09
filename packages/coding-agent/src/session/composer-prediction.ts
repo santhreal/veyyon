@@ -6,13 +6,18 @@
  * `/btw` pipeline): it reads the conversation and writes nothing back.
  * `composer.predictions.mode` selects who answers it:
  *
- * - `chatgpt-pro` follows the Codex desktop app, and only on a ChatGPT Pro
- *   plan, so the request is covered by the subscription and bills no API
- *   usage. The plan is read from the Codex access token; any other plan, or
- *   no Codex login, requests nothing and reports nothing. The ChatGPT backend
- *   serves the prompt, the reasoning effort and the models it refuses
- *   (`/wham/predictions/config`), and the turn goes to an OpenAI Codex model
- *   classified as an ephemeral fork with `thread_source: "composer_predictions"`.
+ * - `chatgpt-pro` follows the Codex desktop app, and only where OpenAI states
+ *   predictions use no Codex limits or credits during the beta: a ChatGPT Pro
+ *   plan and a model in {@link INCLUDED_PREDICTION_MODELS}.
+ *   {@link includedPredictionLogins} selects the Codex logins whose access
+ *   token states the Pro plan; the request is sent with that exact token,
+ *   never one the session's account routing picks, so no other account can
+ *   serve it. Any other plan, no Codex login, a key that replaces the Codex
+ *   logins, or no supported model requests nothing and reports nothing. The
+ *   ChatGPT backend serves the prompt, the reasoning effort and the models it
+ *   refuses (`/wham/predictions/config`), and the turn goes to an OpenAI Codex
+ *   model classified as an ephemeral fork with
+ *   `thread_source: "composer_predictions"`.
  * - `custom` sends this package's prompt to the first Prediction Model with
  *   credentials, from any provider, or to the session's model when none is set.
  * - `off` requests nothing.
@@ -21,12 +26,11 @@
  */
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, Model } from "@veyyon/ai";
-import type { AuthStorage } from "@veyyon/ai/auth-storage";
 import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import type { FetchImpl } from "@veyyon/ai/types";
 import { type CodexPredictionsConfig, fetchCodexPredictionsConfig } from "@veyyon/ai/usage/openai-codex-predictions";
-import { DEFAULT_MODEL_PER_PROVIDER } from "@veyyon/catalog/provider-models";
 import { getCodexAccountId, getCodexPlanType } from "@veyyon/catalog/wire/codex";
+import type { ModelRegistry } from "../config/model-registry";
 import { getModelMatchPreferences, normalizeModelPatternList, resolveCliModel } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
 import { sideChannelPrompts } from "../prompts/side-channel/rows";
@@ -42,23 +46,54 @@ const CODEX_CONFIG_TTL_MS = 5 * 60 * 1000;
 /** The ChatGPT plan whose subscription covers `chatgpt-pro` predictions. */
 export const INCLUDED_PREDICTION_PLAN = "pro";
 
-/** Provider whose default model answers `chatgpt-pro` predictions when the session's model is not a Codex model. */
+/**
+ * Models OpenAI lists as supported for composer predictions
+ * (https://help.openai.com/en/articles/20001601-composer-predictions-in-codex). A prediction runs
+ * only on one of these that the backend config does not refuse; a model outside the list predicts
+ * nothing rather than risk a turn the beta does not cover, which could draw on purchased credits.
+ */
+export const INCLUDED_PREDICTION_MODELS: readonly string[] = ["gpt-6-astra", "gpt-6.1-sol"];
+
+/** Provider of the logins and models that answer `chatgpt-pro` predictions. */
 const CODEX_PROVIDER = "openai-codex";
 
 const CODEX_API: Api = "openai-codex-responses";
 
+/** A Codex login that can answer a `chatgpt-pro` prediction. */
+export type IncludedPredictionLogin =
+	/** A stored OAuth account, by its position in `AuthStorage.listOAuthAccounts`. */
+	| { kind: "account"; position: number }
+	/** The `OPENAI_CODEX_OAUTH_TOKEN` environment token. */
+	| { kind: "env"; token: string };
+
+function statesIncludedPlan(token: string | undefined): boolean {
+	return token !== undefined && getCodexPlanType(token) === INCLUDED_PREDICTION_PLAN;
+}
+
 /**
- * Whether an OpenAI Codex login on a ChatGPT Pro plan is present: a stored OAuth credential, or the
- * environment token, whose access token states the `pro` plan. Reads stored tokens without refreshing
- * them, for the settings screen; a request reads the plan from the token it is sent with.
+ * The Codex logins whose access token states the ChatGPT Pro plan, in the order a prediction tries
+ * them: stored OAuth accounts, the one routed to `sessionId` first, then the environment token.
+ * Empty when a runtime or configured key replaces the Codex logins, since every Codex request then
+ * authenticates with that key. Reads stored tokens without refreshing them, so the settings screen
+ * and the predictor select from the same set; the predictor checks the plan again on the
+ * refreshed token it sends.
  */
-export function hasIncludedPredictionLogin(authStorage: AuthStorage): boolean {
-	const stored = authStorage.getAll()[CODEX_PROVIDER];
-	const entries = stored === undefined ? [] : Array.isArray(stored) ? stored : [stored];
-	const tokens = entries.flatMap(entry => (entry.type === "oauth" ? [entry.access] : []));
+export function includedPredictionLogins(registry: ModelRegistry, sessionId?: string): IncludedPredictionLogin[] {
+	if (registry.hasApiKeyOverride(CODEX_PROVIDER)) return [];
+	const auth = registry.authStorage;
+	const accessById = new Map<number, string>();
+	for (const row of auth.listStoredCredentials(CODEX_PROVIDER)) {
+		if (row.credential.type === "oauth") accessById.set(row.id, row.credential.access);
+	}
+	const routed = sessionId ? auth.sessionCredentialRouting(CODEX_PROVIDER, sessionId)?.activeCredentialId : undefined;
+	const accounts = auth
+		.listOAuthAccounts(CODEX_PROVIDER)
+		.filter(account => statesIncludedPlan(accessById.get(account.credentialId)))
+		.sort((a, b) => Number(b.credentialId === routed) - Number(a.credentialId === routed));
+	const logins: IncludedPredictionLogin[] = accounts.map(account => ({ kind: "account", position: account.position }));
 	const envToken = getEnvApiKey(CODEX_PROVIDER);
-	if (envToken) tokens.push(envToken);
-	return tokens.some(token => getCodexPlanType(token) === INCLUDED_PREDICTION_PLAN);
+	if (envToken && statesIncludedPlan(envToken)) logins.push({ kind: "env", token: envToken });
+	return logins;
 }
 
 /** JSON Schema of the reply, appended to the Codex prompt as the Codex app appends it. */
@@ -83,6 +118,8 @@ interface PredictionTurn {
 	promptText: string;
 	thinkingLevel?: ThinkingLevel;
 	codexThreadSource?: string;
+	/** The bearer the turn is sent with, bypassing the session's account routing. */
+	apiKey?: string;
 }
 
 /**
@@ -141,42 +178,65 @@ export class ComposerPredictor {
 	}
 
 	/**
-	 * A prediction covered by a ChatGPT Pro subscription. Every candidate whose
-	 * credential is not a Pro-plan Codex token is passed over before any request,
-	 * so a missing login or another plan never reaches a billable endpoint.
+	 * A prediction covered by a ChatGPT Pro subscription. Each Pro login from
+	 * {@link includedPredictionLogins} is refreshed on its own, its plan read
+	 * again from the refreshed token, and that token sent as the request's key,
+	 * so neither a missing login, another plan, nor an account rotation can put
+	 * the request on credentials the subscription does not cover.
 	 */
 	async #predictIncluded(signal: AbortSignal): Promise<ComposerPredictionOutcome> {
-		for (const model of this.#includedCandidates()) {
-			const accessToken = await this.session.modelRegistry.getApiKey(model, this.session.sessionId);
-			if (!accessToken || getCodexPlanType(accessToken) !== INCLUDED_PREDICTION_PLAN) continue;
-			const config = await this.#codexConfig(model, accessToken, signal);
-			if (!config.enabled || config.unsupportedModels.includes(model.id)) continue;
-			return this.#run(
-				{
-					model,
-					promptText: `${config.prompt}\n\nReturn only JSON matching this schema: ${SUGGESTION_SCHEMA}.`,
-					thinkingLevel: parseThinkingLevel(config.reasoningEffort),
-					codexThreadSource: CODEX_PREDICTION_THREAD_SOURCE,
-				},
-				signal,
-			);
+		const logins = includedPredictionLogins(this.session.modelRegistry, this.session.sessionId);
+		const models = logins.length === 0 ? [] : this.#includedCandidates();
+		for (const login of logins) {
+			if (models.length === 0) break;
+			const accessToken = await this.#includedAccessToken(login, signal);
+			if (!accessToken) continue;
+			for (const model of models) {
+				const config = await this.#codexConfig(model, accessToken, signal);
+				if (!config.enabled) break;
+				if (config.unsupportedModels.includes(model.id)) continue;
+				return this.#run(
+					{
+						model,
+						promptText: `${config.prompt}\n\nReturn only JSON matching this schema: ${SUGGESTION_SCHEMA}.`,
+						thinkingLevel: parseThinkingLevel(config.reasoningEffort),
+						codexThreadSource: CODEX_PREDICTION_THREAD_SOURCE,
+						apiKey: accessToken,
+					},
+					signal,
+				);
+			}
 		}
 		return { kind: "skipped" };
 	}
 
-	/** The session's model when it is a Codex model, then the OpenAI Codex provider's default model. */
+	/** The login's current access token when it still states the Pro plan; refreshes a stored account alone. */
+	async #includedAccessToken(login: IncludedPredictionLogin, signal: AbortSignal): Promise<string | undefined> {
+		if (login.kind === "env") return login.token;
+		const access = await this.session.modelRegistry.authStorage.getOAuthAccessAt(CODEX_PROVIDER, login.position, {
+			signal,
+		});
+		return access?.ok && statesIncludedPlan(access.accessToken) ? access.accessToken : undefined;
+	}
+
+	/**
+	 * The session's model when it is a supported OpenAI Codex model, then each other supported model
+	 * the registry has. Only the `openai-codex` provider qualifies: another provider on the Codex API
+	 * has its own endpoint, which must never receive a ChatGPT token.
+	 */
 	#includedCandidates(): Model<Api>[] {
 		const registry = this.session.modelRegistry;
-		const candidates: Model<Api>[] = [];
 		const current = this.session.model;
-		if (current?.api === CODEX_API && registry.hasConfiguredAuth(current)) candidates.push(current);
-		const fallback = registry.find(CODEX_PROVIDER, DEFAULT_MODEL_PER_PROVIDER[CODEX_PROVIDER]);
-		if (
-			fallback?.api === CODEX_API &&
-			registry.hasConfiguredAuth(fallback) &&
-			!(current?.provider === fallback.provider && current.id === fallback.id)
-		) {
-			candidates.push(fallback);
+		const candidates: Model<Api>[] =
+			current?.provider === CODEX_PROVIDER &&
+			current.api === CODEX_API &&
+			INCLUDED_PREDICTION_MODELS.includes(current.id)
+				? [current]
+				: [];
+		for (const id of INCLUDED_PREDICTION_MODELS) {
+			if (id === candidates[0]?.id) continue;
+			const model = registry.find(CODEX_PROVIDER, id);
+			if (model?.provider === CODEX_PROVIDER && model.api === CODEX_API) candidates.push(model);
 		}
 		return candidates;
 	}

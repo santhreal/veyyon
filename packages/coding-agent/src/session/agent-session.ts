@@ -8544,7 +8544,9 @@ export class AgentSession {
 	 *
 	 * `model` and `thinkingLevel` default to the session's. `codexThreadSource`
 	 * marks the request, on an OpenAI Codex model, as an ephemeral fork of this
-	 * session's Codex thread with that `thread_source`.
+	 * session's Codex thread with that `thread_source`. `apiKey` sends that exact
+	 * bearer, with no refresh and no move to another account, for a caller that
+	 * checked which account it belongs to; absent, the session's routing applies.
 	 */
 	async runEphemeralTurn(args: {
 		promptText: string;
@@ -8554,6 +8556,7 @@ export class AgentSession {
 		model?: Model;
 		thinkingLevel?: ThinkingLevel;
 		codexThreadSource?: string;
+		apiKey?: string;
 	}): Promise<{ replyText: string; assistantMessage: AssistantMessage }> {
 		const model = args.model ?? this.model;
 		if (!model) {
@@ -8570,7 +8573,7 @@ export class AgentSession {
 		const context = await this.agent.buildSideRequestContext(llmMessages, undefined, model);
 		const options = await this.prepareSimpleStreamOptions(
 			{
-				apiKey: this.#config.modelRegistry.resolver(model, cacheSessionId),
+				apiKey: args.apiKey ?? this.#config.modelRegistry.resolver(model, cacheSessionId),
 				// Side-channel turns must not share OpenAI/Codex append-only
 				// conversation state with the main agent turn: IRC and /btw can run
 				// while the main turn is mid-tool-call. Keep the prompt-cache key
