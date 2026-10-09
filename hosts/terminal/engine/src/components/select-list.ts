@@ -1,6 +1,6 @@
 import { Ellipsis } from "@veyyon/natives";
 import { fuzzyFilter, matchPositions } from "@veyyon/utils/fuzzy";
-import { getKeybindings } from "@veyyon/utils/keybindings";
+import { getKeybindings, type KeybindingsManager } from "@veyyon/utils/keybindings";
 import { popLoopPhase, pushLoopPhase } from "@veyyon/utils/loop-phase";
 import { clamp, clampLow } from "@veyyon/utils/math";
 import type { HoverFadeOptions } from "@veyyon/utils/motion";
@@ -139,22 +139,26 @@ export interface SelectListLayoutOptions {
 	searchPrompt?: boolean;
 }
 
-type SelectItemLayout =
-	| {
-			kind: "description";
-			prefix: string;
-			truncatedValue: string;
-			spacing: string;
-			descriptionSingleLine: string;
-			descriptionStart: number;
-			remainingWidth: number;
-	  }
-	| {
-			kind: "primary";
-			prefix: string;
-			truncatedValue: string;
-			spacing: "";
-	  };
+/** A row with a description column beside its label. */
+interface DescribedItemLayout {
+	kind: "description";
+	prefix: string;
+	truncatedValue: string;
+	spacing: string;
+	descriptionSingleLine: string;
+	descriptionStart: number;
+	remainingWidth: number;
+}
+
+/** A row that shows only its label. */
+interface PrimaryItemLayout {
+	kind: "primary";
+	prefix: string;
+	truncatedValue: string;
+	spacing: "";
+}
+
+type SelectItemLayout = DescribedItemLayout | PrimaryItemLayout;
 
 export class SelectList implements Component, MouseRoutable {
 	#filteredItems: ReadonlyArray<SelectItem>;
@@ -454,35 +458,10 @@ export class SelectList implements Component, MouseRoutable {
 		}
 
 		const primaryColumnWidth = this.#getPrimaryColumnWidth();
-		const wrapEnabled = this.layout.wrapDescription === true;
 		// `maxVisible` is the picker's visual row budget. For non-wrap layouts
 		// every item is one row, so the budget matches the original item count.
 		const visualBudget = this.maxVisible;
-
-		// Compute per-item visual row counts at the conservative width (i.e.
-		// assume the scrollbar column might be reserved). For non-wrap layouts
-		// every count is 1, so visualTotal == #filteredItems and overflow falls
-		// back to the original `N > maxVisible` predicate exactly.
-		const conservativeRowWidth = Math.max(0, width - 1);
-		const conservativePrimaryColumnWidth = wrapEnabled
-			? this.#fitPrimaryColumnWidth(primaryColumnWidth, conservativeRowWidth)
-			: primaryColumnWidth;
-		const rowCounts = new Array<number>(this.#filteredItems.length);
-		let visualTotal = 0;
-		for (let i = 0; i < this.#filteredItems.length; i++) {
-			const item = this.#filteredItems[i];
-			if (!item) {
-				rowCounts[i] = 0;
-				continue;
-			}
-			rowCounts[i] = wrapEnabled
-				? this.#computeItemRowCount(item, conservativeRowWidth, conservativePrimaryColumnWidth)
-				: 1;
-			// A group header rides on its group's first surviving item, so the
-			// window/scroll math counts it as part of that item's rows.
-			if (this.#headerBefore(i)) rowCounts[i] = (rowCounts[i] ?? 1) + 1;
-			visualTotal += rowCounts[i];
-		}
+		const { rowCounts, visualTotal } = this.#visualRowCounts(width, primaryColumnWidth);
 
 		const overflow = visualTotal > visualBudget;
 		const rowWidth = Math.max(0, width - (overflow ? 1 : 0));
@@ -492,29 +471,7 @@ export class SelectList implements Component, MouseRoutable {
 		// rows. Falls through to the original item-count window when every row
 		// count is 1.
 		const { startIndex, endIndex, visualOffset } = this.#pickWindow(rowCounts, visualBudget);
-
-		// Render visible items. Cap rows at the budget so a single item that
-		// wraps to more than `visualBudget` rows (pathological — e.g. a 5-row
-		// description with maxVisible=3) still keeps the popup bounded; the
-		// scrollbar carries the offscreen rows.
-		const rows: string[] = [];
-		for (let i = startIndex; i < endIndex && rows.length < visualBudget; i++) {
-			const item = this.#filteredItems[i];
-			if (!item) continue;
-			if (this.#headerBefore(i) && rows.length < visualBudget) {
-				// Header rows are chrome: not selectable, not hoverable — the
-				// hitRows slot stays undefined so mouse routing skips them.
-				rows.push(this.theme.groupHeader!(item.group!));
-			}
-			const band = this.theme.hovered;
-			const strength = this.#hoverStrength(i);
-			const itemRows = this.#renderItem(item, i === this.#selectedIndex, rowWidth, rowPrimaryColumnWidth);
-			for (const row of itemRows) {
-				if (rows.length >= visualBudget) break;
-				this.#hitRows[rows.length] = i;
-				rows.push(band !== undefined && strength > 0 ? band(row, strength) : row);
-			}
-		}
+		const rows = this.#windowRows(startIndex, endIndex, visualBudget, rowWidth, rowPrimaryColumnWidth);
 
 		const sv = new ScrollView(rows, {
 			height: rows.length,
@@ -537,6 +494,67 @@ export class SelectList implements Component, MouseRoutable {
 		return lines;
 	}
 
+	/**
+	 * Visual rows per filtered item and their total, measured at the width left when the scrollbar column is
+	 * reserved. A group header counts as part of the first surviving item of its group, so the window and scroll
+	 * math moves it with that item. For non-wrap layouts every item is one row, so the total equals the item count
+	 * plus the headers.
+	 */
+	#visualRowCounts(width: number, primaryColumnWidth: number): { rowCounts: number[]; visualTotal: number } {
+		const wrapEnabled = this.layout.wrapDescription === true;
+		const conservativeRowWidth = Math.max(0, width - 1);
+		const conservativePrimaryColumnWidth = wrapEnabled
+			? this.#fitPrimaryColumnWidth(primaryColumnWidth, conservativeRowWidth)
+			: primaryColumnWidth;
+		const rowCounts = new Array<number>(this.#filteredItems.length);
+		let visualTotal = 0;
+		for (let i = 0; i < this.#filteredItems.length; i++) {
+			const item = this.#filteredItems[i];
+			if (!item) {
+				rowCounts[i] = 0;
+				continue;
+			}
+			let rows = wrapEnabled
+				? this.#computeItemRowCount(item, conservativeRowWidth, conservativePrimaryColumnWidth)
+				: 1;
+			if (this.#headerBefore(i)) rows += 1;
+			rowCounts[i] = rows;
+			visualTotal += rows;
+		}
+		return { rowCounts, visualTotal };
+	}
+
+	/**
+	 * The rows of filtered items `[startIndex, endIndex)`, group headers included, recording the item index of each
+	 * item row in `#hitRows`. Rows stop at `budget`, so a single item that wraps to more than `budget` rows (a 5-row
+	 * description with maxVisible=3) still keeps the popup bounded; the scrollbar shows the offscreen rows.
+	 */
+	#windowRows(
+		startIndex: number,
+		endIndex: number,
+		budget: number,
+		rowWidth: number,
+		primaryColumnWidth: number,
+	): string[] {
+		const rows: string[] = [];
+		const band = this.theme.hovered;
+		for (let i = startIndex; i < endIndex && rows.length < budget; i++) {
+			const item = this.#filteredItems[i];
+			if (!item) continue;
+			// Header rows are chrome: not selectable, not hoverable — the
+			// hitRows slot stays undefined so mouse routing skips them.
+			if (this.#headerBefore(i)) rows.push(this.theme.groupHeader!(item.group!));
+			const strength = this.#hoverStrength(i);
+			const banded = band !== undefined && strength > 0;
+			for (const row of this.#renderItem(item, i === this.#selectedIndex, rowWidth, primaryColumnWidth)) {
+				if (rows.length >= budget) break;
+				this.#hitRows[rows.length] = i;
+				rows.push(banded ? band(row, strength) : row);
+			}
+		}
+		return rows;
+	}
+
 	handleInput(keyData: string): void {
 		const kb = getKeybindings();
 		// Escape or Ctrl+C. Cancel-key ladder, matching ModelBrowser.handleCancel:
@@ -555,35 +573,35 @@ export class SelectList implements Component, MouseRoutable {
 		}
 
 		if (this.#filteredItems.length === 0) return;
-		// Up arrow - wrap to bottom when at top
-		if (kb.matches(keyData, "tui.select.up")) {
-			this.#selectedIndex = this.#selectedIndex === 0 ? this.#filteredItems.length - 1 : this.#selectedIndex - 1;
+		const target = this.#navigationTarget(kb, keyData);
+		if (target !== undefined) {
+			this.#selectedIndex = target;
 			this.#notifySelectionChange();
-		}
-		// Down arrow - wrap to top when at bottom
-		else if (kb.matches(keyData, "tui.select.down")) {
-			this.#selectedIndex = this.#selectedIndex === this.#filteredItems.length - 1 ? 0 : this.#selectedIndex + 1;
-			this.#notifySelectionChange();
-		}
-		// PageUp - jump up by one visible page
-		else if (kb.matches(keyData, "tui.select.pageUp")) {
-			this.#selectedIndex = Math.max(0, this.#selectedIndex - this.maxVisible);
-			this.#notifySelectionChange();
-		}
-		// PageDown - jump down by one visible page
-		else if (kb.matches(keyData, "tui.select.pageDown")) {
-			this.#selectedIndex = Math.min(this.#filteredItems.length - 1, this.#selectedIndex + this.maxVisible);
-			this.#notifySelectionChange();
+			return;
 		}
 		// Enter. A disabled row is reachable but inert, so it never reaches
 		// `onSelect` — the guard belongs here rather than in each caller's handler,
 		// where one forgetful callback would make the row quietly live again.
-		else if (kb.matches(keyData, "tui.select.confirm") || keyData === "\n") {
+		if (kb.matches(keyData, "tui.select.confirm") || keyData === "\n") {
 			const selectedItem = this.#filteredItems[this.#selectedIndex];
 			if (selectedItem && !selectedItem.disabled && this.onSelect) {
 				this.onSelect(selectedItem);
 			}
 		}
+	}
+
+	/**
+	 * The index an up, down, page-up or page-down key moves the selection to, or `undefined` for any other key. Up
+	 * from the first item wraps to the last and down from the last wraps to the first; a page moves by `maxVisible`
+	 * and stops at either end.
+	 */
+	#navigationTarget(kb: KeybindingsManager, keyData: string): number | undefined {
+		const last = this.#filteredItems.length - 1;
+		if (kb.matches(keyData, "tui.select.up")) return this.#selectedIndex === 0 ? last : this.#selectedIndex - 1;
+		if (kb.matches(keyData, "tui.select.down")) return this.#selectedIndex === last ? 0 : this.#selectedIndex + 1;
+		if (kb.matches(keyData, "tui.select.pageUp")) return Math.max(0, this.#selectedIndex - this.maxVisible);
+		if (kb.matches(keyData, "tui.select.pageDown")) return Math.min(last, this.#selectedIndex + this.maxVisible);
+		return undefined;
 	}
 
 	/**
@@ -601,27 +619,8 @@ export class SelectList implements Component, MouseRoutable {
 		const { prefix, truncatedValue, spacing } = layout;
 
 		if (layout.kind === "description") {
-			const { descriptionSingleLine, descriptionStart, remainingWidth } = layout;
-			if (this.layout.wrapDescription) {
-				const wrapped = wrapTextWithAnsi(descriptionSingleLine, remainingWidth);
-				if (wrapped.length === 0) wrapped.push("");
-				const indent = padding(descriptionStart);
-				const first = wrapped[0] ?? "";
-				if (isSelected) {
-					const rows = [this.#paintSelectedRow(prefix, `${truncatedValue}${spacing}${first}`)];
-					for (let i = 1; i < wrapped.length; i++) {
-						rows.push(this.theme.selectedText(`${indent}${wrapped[i]}`));
-					}
-					return rows;
-				}
-				const rows = [
-					prefix + this.#paintLabel(item, truncatedValue, false) + this.theme.description(spacing + first),
-				];
-				for (let i = 1; i < wrapped.length; i++) {
-					rows.push(this.theme.description(`${indent}${wrapped[i]}`));
-				}
-				return rows;
-			}
+			const { descriptionSingleLine, remainingWidth } = layout;
+			if (this.layout.wrapDescription) return this.#renderWrappedDescription(item, layout, isSelected);
 
 			// Ellipsis, not a silent cut. A description clipped with nothing to mark
 			// it read as finished copy that happened to end mid-word ("Every tool
@@ -642,6 +641,23 @@ export class SelectList implements Component, MouseRoutable {
 			return [this.#paintSelectedRow(prefix, truncatedValue)];
 		}
 		return [prefix + this.#paintLabel(item, truncatedValue, true)];
+	}
+
+	/** The rows of a described item whose description wraps under its own column instead of being truncated. */
+	#renderWrappedDescription(item: SelectItem, layout: DescribedItemLayout, isSelected: boolean): string[] {
+		const { prefix, truncatedValue, spacing } = layout;
+		const wrapped = wrapTextWithAnsi(layout.descriptionSingleLine, layout.remainingWidth);
+		if (wrapped.length === 0) wrapped.push("");
+		const indent = padding(layout.descriptionStart);
+		const first = wrapped[0] ?? "";
+		const rows = isSelected
+			? [this.#paintSelectedRow(prefix, `${truncatedValue}${spacing}${first}`)]
+			: [prefix + this.#paintLabel(item, truncatedValue, false) + this.theme.description(spacing + first)];
+		for (let i = 1; i < wrapped.length; i++) {
+			const continuation = `${indent}${wrapped[i]}`;
+			rows.push(isSelected ? this.theme.selectedText(continuation) : this.theme.description(continuation));
+		}
+		return rows;
 	}
 
 	/**
@@ -705,7 +721,8 @@ export class SelectList implements Component, MouseRoutable {
 	 * mid-window: first expands up by ⌊budget/2⌋ rows, then fills downward,
 	 * then back upward with any remaining budget. For non-wrap layouts (every
 	 * `rowCounts[i] === 1`) this resolves to the same `[start, start+maxVisible)`
-	 * window the prior arithmetic produced.
+	 * window the prior arithmetic produced. Every slot of `rowCounts` holds a
+	 * count, and every index read below is bounded to `[0, n)`.
 	 */
 	#pickWindow(
 		rowCounts: ReadonlyArray<number>,
@@ -720,30 +737,30 @@ export class SelectList implements Component, MouseRoutable {
 		let rowsAboveSelected = 0;
 		// Step 1: expand upward up to `half` rows above the selection so it
 		// lands near the visual middle, matching the prior centering.
-		while (lo > 0 && rowsAboveSelected + (rowCounts[lo - 1] ?? 0) <= half) {
+		while (lo > 0 && rowsAboveSelected + rowCounts[lo - 1]! <= half) {
 			lo--;
-			rowsAboveSelected += rowCounts[lo] ?? 0;
+			rowsAboveSelected += rowCounts[lo]!;
 		}
 
 		// Step 2: expand downward until the budget is filled. The selected
 		// item's own rows are always counted; if it alone exceeds `budget`
 		// the surplus is clipped at render time and the scrollbar carries it.
 		let hi = selected + 1;
-		let used = rowsAboveSelected + (rowCounts[selected] ?? 0);
-		while (hi < n && used + (rowCounts[hi] ?? 0) <= budget) {
-			used += rowCounts[hi] ?? 0;
+		let used = rowsAboveSelected + rowCounts[selected]!;
+		while (hi < n && used + rowCounts[hi]! <= budget) {
+			used += rowCounts[hi]!;
 			hi++;
 		}
 
 		// Step 3: if room remains (selection sat near the bottom), keep
 		// expanding upward.
-		while (lo > 0 && used + (rowCounts[lo - 1] ?? 0) <= budget) {
+		while (lo > 0 && used + rowCounts[lo - 1]! <= budget) {
 			lo--;
-			used += rowCounts[lo] ?? 0;
+			used += rowCounts[lo]!;
 		}
 
 		let visualOffset = 0;
-		for (let i = 0; i < lo; i++) visualOffset += rowCounts[i] ?? 0;
+		for (let i = 0; i < lo; i++) visualOffset += rowCounts[i]!;
 		return { startIndex: lo, endIndex: hi, visualOffset };
 	}
 

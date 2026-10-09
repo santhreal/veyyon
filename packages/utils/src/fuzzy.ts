@@ -164,23 +164,19 @@ function scoreCharacters(queryLower: string, textLower: string): CharacterMatch 
 	let consecutiveMatches = 0;
 
 	for (let i = 0; i < textLower.length && queryIndex < queryLower.length; i++) {
-		if (textLower[i] === queryLower[queryIndex]) {
-			if (firstMatchIndex < 0) firstMatchIndex = i;
-
-			if (lastMatchIndex === i - 1) {
-				consecutiveMatches++;
-				score -= consecutiveMatches * 5;
-			} else {
-				consecutiveMatches = 0;
-				if (lastMatchIndex >= 0) {
-					score += (i - lastMatchIndex - 1) * 2;
-				}
-			}
-
-			score += i * 0.1;
-			lastMatchIndex = i;
-			queryIndex++;
+		if (textLower[i] !== queryLower[queryIndex]) continue;
+		if (firstMatchIndex < 0) firstMatchIndex = i;
+		// A match at index 0 counts as consecutive: lastMatchIndex starts at -1.
+		if (lastMatchIndex === i - 1) {
+			consecutiveMatches++;
+			score -= consecutiveMatches * 5;
+		} else {
+			consecutiveMatches = 0;
+			if (lastMatchIndex >= 0) score += (i - lastMatchIndex - 1) * 2;
 		}
+		score += i * 0.1;
+		lastMatchIndex = i;
+		queryIndex++;
 	}
 
 	if (queryIndex < queryLower.length) {
@@ -356,15 +352,18 @@ function hasDistinctWordsForRepeatedTokens(tokens: readonly string[], index: Sea
 	const needed = new Map<string, number>();
 	for (const token of tokens) needed.set(token, (needed.get(token) ?? 0) + 1);
 	for (const [token, count] of needed) {
-		if (count < 2) continue;
-		let available = 0;
-		for (const word of index.words) {
-			if (scoreTokenAgainstWord(token, word) !== null) available++;
-			if (available >= count) break;
-		}
-		if (available < count) return false;
+		if (count >= 2 && countMatchingWords(token, index, count) < count) return false;
 	}
 	return true;
+}
+
+/** How many words of `index` match `token`, counting no further than `limit`. */
+function countMatchingWords(token: string, index: SearchIndex, limit: number): number {
+	let count = 0;
+	for (const word of index.words) {
+		if (scoreTokenAgainstWord(token, word) !== null && ++count === limit) break;
+	}
+	return count;
 }
 
 function fuzzyMatchCore(pq: PreparedQuery | null, index: SearchIndex): FuzzyMatch {
@@ -545,32 +544,37 @@ export function matchPositions(query: string, text: string): number[] {
 	const hits = new Set<number>();
 	for (const token of q.split(/\s+/)) {
 		if (token.length === 0) continue;
-		// Word-boundary substring first, then any substring.
-		let at = -1;
-		for (let i = t.indexOf(token); i >= 0; i = t.indexOf(token, i + 1)) {
-			const boundary = i === 0 || !/[a-z0-9]/.test(t[i - 1] ?? "");
-			if (boundary) {
-				at = i;
-				break;
-			}
-			if (at < 0) at = i;
-		}
-		if (at >= 0) {
-			for (let i = 0; i < token.length; i++) hits.add(at + i);
+		const at = substringMatchStart(t, token);
+		if (at < 0) {
+			addSubsequenceHits(t, token, hits);
 			continue;
 		}
-		// In-order subsequence fallback.
-		let qi = 0;
-		for (let ti = 0; ti < t.length && qi < token.length; ti++) {
-			if (t[ti] === token[qi]) {
-				hits.add(ti);
-				qi++;
-			}
-		}
+		for (let i = 0; i < token.length; i++) hits.add(at + i);
 	}
 	const result = new Array<number>(hits.size);
 	let ri = 0;
 	for (const h of hits) result[ri++] = h;
 	result.sort((a, b) => a - b);
 	return result;
+}
+
+/** Where `token` first occurs in `text` at a word boundary, else where it first occurs, else -1. */
+function substringMatchStart(text: string, token: string): number {
+	const first = text.indexOf(token);
+	for (let i = first; i >= 0; i = text.indexOf(token, i + 1)) {
+		// At index 0, charCodeAt reads NaN, which is no word char: a boundary.
+		const before = text.charCodeAt(i - 1);
+		if (!((before >= 0x61 && before <= 0x7a) || (before >= 0x30 && before <= 0x39))) return i;
+	}
+	return first;
+}
+
+/** Adds the indices of `text` that spell `token` in order, as far as the spelling gets. */
+function addSubsequenceHits(text: string, token: string, hits: Set<number>): void {
+	let qi = 0;
+	for (let ti = 0; ti < text.length && qi < token.length; ti++) {
+		if (text.charCodeAt(ti) !== token.charCodeAt(qi)) continue;
+		hits.add(ti);
+		qi++;
+	}
 }

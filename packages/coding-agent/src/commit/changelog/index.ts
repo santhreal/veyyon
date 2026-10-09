@@ -4,40 +4,51 @@ import type { Api, ApiKey, Model } from "@veyyon/ai";
 import { errorMessage, logger } from "@veyyon/utils";
 import * as git from "../../utils/git";
 import type { ResolveObfuscateProviderText } from "../shared-llm";
-import { CHANGELOG_CATEGORIES } from "../types";
+import { CHANGELOG_CATEGORIES, type UnreleasedCategory, type UnreleasedLayout } from "../types";
 import { detectChangelogBoundaries } from "./detect";
 import { generateChangelogEntries } from "./generate";
-import { parseUnreleasedSection } from "./parse";
+import { parseUnreleasedLayout, parseUnreleasedSection } from "./parse";
 
 const CHANGELOG_SECTIONS = CHANGELOG_CATEGORIES;
 
-/** Lower-cased section header -> its Keep-a-Changelog canonical casing. Item text
- *  is already matched case-insensitively (the `.toLowerCase()` compares in
- *  applyDeletions/mergeEntries), so the section KEY must be normalized the same
- *  way or a model-proposed "fixed" would neither match the parsed "Fixed" nor
- *  render (renderUnreleasedSections only emits the canonical keys). */
+/** Lower-cased section header -> its Keep-a-Changelog canonical casing, so a
+ *  proposed "fixed" lands under an existing "### Fixed" heading. */
 const CANONICAL_SECTION_BY_LOWER = new Map<string, string>(
 	CHANGELOG_SECTIONS.map(section => [section.toLowerCase(), section]),
 );
 
+/** Keep-a-Changelog order of each canonical section. Other names sort after all of them. */
+const SECTION_RANK = new Map<string, number>(CHANGELOG_SECTIONS.map((section, rank) => [section, rank]));
+
 /** Map any-case section header to its canonical Keep-a-Changelog casing. An
- *  unknown name is trimmed but otherwise preserved (the renderer's fixed section
- *  list already governs which sections surface). */
+ *  unknown name is trimmed but otherwise preserved. */
 function canonicalizeSectionName(name: string): string {
 	const trimmed = name.trim();
 	return CANONICAL_SECTION_BY_LOWER.get(trimmed.toLowerCase()) ?? trimmed;
 }
 
-/** Rebuild a section-keyed record under canonical section names, concatenating
- *  the items of any keys that collapse to the same canonical section (e.g. a file
- *  that carries both "Fixed" and "fixed"). Order within a section is preserved. */
-function canonicalizeSectionKeys(entries: Record<string, string[]>): Record<string, string[]> {
-	const result: Record<string, string[]> = {};
-	for (const [section, items] of Object.entries(entries)) {
-		const key = canonicalizeSectionName(section);
-		result[key] = result[key] ? result[key].concat(items) : items.slice();
+function sectionRank(section: string): number {
+	return SECTION_RANK.get(section) ?? CHANGELOG_SECTIONS.length;
+}
+
+/** Group section-keyed items under their canonical section name, concatenating the
+ *  items of keys that differ only in case, in order. A blank name is dropped. */
+function groupByCanonicalSection(entries: Record<string, string[]>): Map<string, string[]> {
+	const grouped = new Map<string, string[]>();
+	for (const [name, items] of Object.entries(entries)) {
+		const section = canonicalizeSectionName(name);
+		if (!section) continue;
+		const list = grouped.get(section);
+		if (list) list.push(...items);
+		else grouped.set(section, items.slice());
 	}
-	return result;
+	return grouped;
+}
+
+/** The form two entries share when they state the same change: case, runs of
+ *  whitespace, and one trailing period do not distinguish them. */
+function entryKey(text: string): string {
+	return text.trim().replace(/\s+/g, " ").replace(/\.$/, "").toLowerCase();
 }
 
 const DEFAULT_MAX_DIFF_CHARS = 120_000;
@@ -93,13 +104,13 @@ export async function runChangelogFlow({
 		const stat = await git.diff(cwd, { stat: true, cached: true, files: boundary.files });
 		const changelogContent = await Bun.file(boundary.changelogPath).text();
 		const sanitizeProviderText = await resolveObfuscateProviderText();
-		let unreleased: { startLine: number; endLine: number; entries: Record<string, string[]> };
-		let providerUnreleased: { startLine: number; endLine: number; entries: Record<string, string[]> };
+		let layout: UnreleasedLayout;
+		let providerEntries: Record<string, string[]>;
 		try {
-			unreleased = parseUnreleasedSection(changelogContent);
+			layout = parseUnreleasedLayout(changelogContent);
 			// The provider projection is derived only after the whole raw
 			// changelog has crossed the confidentiality boundary.
-			providerUnreleased = parseUnreleasedSection(sanitizeProviderText(changelogContent));
+			providerEntries = parseUnreleasedSection(sanitizeProviderText(changelogContent)).entries;
 		} catch (error) {
 			logger.warn("commit changelog parse skipped", {
 				path: sanitizeProviderText(boundary.changelogPath),
@@ -107,7 +118,7 @@ export async function runChangelogFlow({
 			});
 			continue;
 		}
-		const existingEntries = formatExistingEntries(providerUnreleased.entries);
+		const existingEntries = formatExistingEntries(providerEntries);
 		const isPackageChangelog = path.resolve(boundary.changelogPath) !== path.resolve(cwd, "CHANGELOG.md");
 		const generated = await generateChangelogEntries({
 			model,
@@ -123,7 +134,8 @@ export async function runChangelogFlow({
 		});
 		if (Object.keys(generated.entries).length === 0) continue;
 
-		const updatedContent = applyChangelogEntries(changelogContent, unreleased, generated.entries);
+		const updatedContent = applyChangelogEntries(layout, generated.entries);
+		if (updatedContent === changelogContent) continue;
 		if (!dryRun) {
 			await Bun.write(boundary.changelogPath, updatedContent);
 			await git.stage.files(cwd, [path.relative(cwd, boundary.changelogPath)]);
@@ -157,9 +169,9 @@ export async function applyChangelogProposals({
 			continue;
 		}
 		const changelogContent = await Bun.file(proposal.path).text();
-		let unreleased: { startLine: number; endLine: number; entries: Record<string, string[]> };
+		let layout: UnreleasedLayout;
 		try {
-			unreleased = parseUnreleasedSection(changelogContent);
+			layout = parseUnreleasedLayout(changelogContent);
 		} catch (error) {
 			logger.warn("commit changelog parse skipped", { path: proposal.path, error: errorMessage(error) });
 			continue;
@@ -167,7 +179,8 @@ export async function applyChangelogProposals({
 		const normalized = normalizeEntries(proposal.entries);
 		const normalizedDeletions = proposal.deletions ? normalizeEntries(proposal.deletions) : undefined;
 		if (Object.keys(normalized).length === 0 && !normalizedDeletions) continue;
-		const updatedContent = applyChangelogEntries(changelogContent, unreleased, normalized, normalizedDeletions);
+		const updatedContent = applyChangelogEntries(layout, normalized, normalizedDeletions);
+		if (updatedContent === changelogContent) continue;
 		if (!dryRun) {
 			await Bun.write(proposal.path, updatedContent);
 			await git.stage.files(cwd, [path.relative(cwd, proposal.path)]);
@@ -179,10 +192,11 @@ export async function applyChangelogProposals({
 }
 
 function formatExistingEntries(entries: Record<string, string[]>): string {
+	const grouped = groupByCanonicalSection(entries);
 	const lines: string[] = [];
 	for (const section of CHANGELOG_SECTIONS) {
-		const values = entries[section] ?? [];
-		if (values.length === 0) continue;
+		const values = grouped.get(section);
+		if (!values?.length) continue;
 		lines.push(`${section}:`);
 		for (const value of values) {
 			lines.push(`- ${value}`);
@@ -191,101 +205,223 @@ function formatExistingEntries(entries: Record<string, string[]>): string {
 	return lines.join("\n");
 }
 
-/** @internal Exported for testing. */
+/** Lines to emit before one line of the changelog. */
+interface Insertion {
+	/** Bullets appended to the category whose entries end here. */
+	bullets: string[];
+	/** New `### <Section>` blocks, each a heading followed by its bullets. */
+	blocks: string[][];
+}
+
+/** What one edit removes from and inserts into the changelog's lines. */
+interface EditPlan {
+	/** 1 at the index of every removed line. */
+	removed: Uint8Array;
+	inserts: Map<number, Insertion>;
+	/** First category of each canonical section, where that section's additions go. */
+	firstOf: Map<string, UnreleasedCategory>;
+	/** Entry keys of each canonical section that survive the deletions. */
+	keptKeys: Map<string, Set<string>>;
+	/** Categories whose every entry is deleted and that hold nothing else. */
+	emptied: Set<UnreleasedCategory>;
+}
+
+/**
+ * Add `entries` to and delete `deletions` from the Unreleased section of `layout`.
+ *
+ * The edit is surgical: the result differs from `layout.lines` only by the lines of
+ * each deleted entry, each added bullet, each new category block, the heading of a
+ * category whose every entry was deleted, and the blank lines that would otherwise
+ * double up where a removal joins two blank runs. Prose, unknown categories, wrapped
+ * and nested entries, bullet markers and all other spacing are kept byte-for-byte.
+ *
+ * Section names match the Keep-a-Changelog categories case-insensitively; entry text
+ * matches by {@link entryKey}, so an addition already present is skipped and a
+ * deletion finds its entry whatever its case or trailing period.
+ *
+ * @internal Exported for testing.
+ */
 export function applyChangelogEntries(
-	content: string,
-	unreleased: { startLine: number; endLine: number; entries: Record<string, string[]> },
+	layout: UnreleasedLayout,
 	entries: Record<string, string[]>,
 	deletions?: Record<string, string[]>,
 ): string {
-	const lines = content.split("\n");
-	const before = lines.slice(0, unreleased.startLine + 1);
-	const after = lines.slice(unreleased.endLine);
-
-	// Canonicalize every section key up front — the parsed base, the incoming
-	// entries, and the deletions — so all three agree on case. Both callers
-	// (updateChangelogForCommit with raw generated.entries, and applyChangelogEntries
-	// via the commit agent) funnel through here, so this is the single owner of
-	// section-key casing.
-	let base = canonicalizeSectionKeys(unreleased.entries);
-	const canonicalEntries = canonicalizeSectionKeys(entries);
-	if (deletions) {
-		base = applyDeletions(base, canonicalizeSectionKeys(deletions));
+	const adding = groupByCanonicalSection(entries);
+	const plan = planDeletions(layout, groupByCanonicalSection(deletions ?? {}), adding);
+	const created = planAdditions(plan, adding);
+	for (const category of plan.emptied) {
+		plan.removed.fill(1, category.headingLine, category.contentEnd);
 	}
-	const merged = mergeEntries(base, canonicalEntries);
-	const sectionLines = renderUnreleasedSections(merged);
-	// `after` begins at the next `## [x.y.z]` release heading (parse's endLine points
-	// AT it, so there is no leading blank). Keep-a-Changelog requires a blank line
-	// before a heading, so insert exactly one separator when there is following
-	// content, and none at end-of-file so the changelog gains no trailing blank.
-	const separator = after.length > 0 ? [""] : [];
-	return before.concat(sectionLines, separator, after).join("\n");
+	placeNewCategories(layout, plan, created);
+	return emitEdited(layout, plan);
 }
 
-function applyDeletions(
-	existing: Record<string, string[]>,
-	deletions: Record<string, string[]>,
-): Record<string, string[]> {
-	const result: Record<string, string[]> = {};
-	for (const [section, items] of Object.entries(existing)) {
-		const toDelete = new Set((deletions[section] ?? []).map(d => d.toLowerCase()));
-		const filtered = items.filter(item => !toDelete.has(item.toLowerCase()));
-		if (filtered.length > 0) {
-			result[section] = filtered;
+/** Mark deleted entries and collect the entry keys of every section the edit touches;
+ *  a section neither side names is never keyed. */
+function planDeletions(
+	layout: UnreleasedLayout,
+	deleting: Map<string, string[]>,
+	adding: Map<string, string[]>,
+): EditPlan {
+	const { lines } = layout;
+	const plan: EditPlan = {
+		removed: new Uint8Array(lines.length),
+		inserts: new Map(),
+		firstOf: new Map(),
+		keptKeys: new Map(),
+		emptied: new Set(),
+	};
+	const doomedBySection = new Map<string, Set<string>>();
+	for (const [section, items] of deleting) doomedBySection.set(section, new Set(items.map(entryKey)));
+	for (const category of layout.categories) {
+		const section = canonicalizeSectionName(category.name);
+		if (!plan.firstOf.has(section)) plan.firstOf.set(section, category);
+		const doomed = doomedBySection.get(section);
+		if (!doomed && !adding.has(section)) continue;
+		let keys = plan.keptKeys.get(section);
+		if (!keys) {
+			keys = new Set<string>();
+			plan.keptKeys.set(section, keys);
 		}
-	}
-	return result;
-}
-
-function mergeEntries(
-	existing: Record<string, string[]>,
-	incoming: Record<string, string[]>,
-): Record<string, string[]> {
-	const merged: Record<string, string[]> = { ...existing };
-	for (const [section, items] of Object.entries(incoming)) {
-		const current = merged[section] ?? [];
-		const lower = new Set(current.map(item => item.toLowerCase()));
-		for (const item of items) {
-			const key = item.toLowerCase();
-			if (!lower.has(key)) {
-				current.push(item);
-				// Track the just-added item so duplicates LATER in the same incoming
-				// batch are also deduped — without this the membership set was stale and
-				// every repeat within one batch slipped through.
-				lower.add(key);
+		let survivors = 0;
+		for (const entry of category.entries) {
+			const key = entryKey(entry.text);
+			if (doomed?.has(key)) {
+				plan.removed.fill(1, entry.startLine, entry.endLine);
+			} else {
+				keys.add(key);
+				survivors += 1;
 			}
 		}
-		merged[section] = current;
+		if (survivors === 0 && category.entries.length > 0 && !hasProse(lines, category)) {
+			plan.emptied.add(category);
+		}
 	}
-	return merged;
+	return plan;
 }
 
-// Render the Unreleased body: one leading blank line after the `## [Unreleased]`
-// header, then each non-empty category. It deliberately returns NO trailing blank
-// line; the caller (applyChangelogEntries) owns spacing to whatever follows.
-function renderUnreleasedSections(entries: Record<string, string[]>): string[] {
-	const lines: string[] = [""];
-	for (const section of CHANGELOG_SECTIONS) {
-		const items = entries[section] ?? [];
-		if (items.length === 0) continue;
-		lines.push(`### ${section}`);
+/** Queue each new bullet after the last entry of its section's first category, or after
+ *  that category's content when it has no entry, so the bullet never sits above an
+ *  indented line it would absorb. Returns the bullets of sections with no category yet. */
+function planAdditions(plan: EditPlan, adding: Map<string, string[]>): Array<{ section: string; bullets: string[] }> {
+	const created: Array<{ section: string; bullets: string[] }> = [];
+	for (const [section, items] of adding) {
+		const seen = plan.keptKeys.get(section) ?? new Set<string>();
+		const bullets: string[] = [];
 		for (const item of items) {
-			lines.push(`- ${item}`);
+			const key = entryKey(item);
+			if (!key || seen.has(key)) continue;
+			seen.add(key);
+			bullets.push(`- ${item.trim()}`);
 		}
-		lines.push("");
+		if (bullets.length === 0) continue;
+		const target = plan.firstOf.get(section);
+		if (target) {
+			plan.emptied.delete(target);
+			const at = target.entries.at(-1)?.endLine ?? target.contentEnd;
+			insertionAt(plan.inserts, at).bullets.push(...bullets);
+		} else {
+			created.push({ section, bullets });
+		}
 	}
-	if (lines[lines.length - 1] === "") {
-		lines.pop();
+	return created;
+}
+
+/** A new category goes after the last kept category that sorts before it, else after
+ *  the text that precedes the first category. Blocks sharing a position keep section order. */
+function placeNewCategories(
+	layout: UnreleasedLayout,
+	plan: EditPlan,
+	created: Array<{ section: string; bullets: string[] }>,
+): void {
+	created.sort((a, b) => sectionRank(a.section) - sectionRank(b.section));
+	for (const { section, bullets } of created) {
+		const rank = sectionRank(section);
+		let at = layout.preambleEnd;
+		for (const category of layout.categories) {
+			if (!plan.emptied.has(category) && sectionRank(canonicalizeSectionName(category.name)) < rank) {
+				at = category.contentEnd;
+			}
+		}
+		insertionAt(plan.inserts, at).blocks.push([`### ${section}`, ...bullets]);
 	}
-	return lines;
+}
+
+/**
+ * Write the kept lines with the insertions in place. A new block is set off by one
+ * blank line on each side. A blank line that follows a removal and would extend a
+ * blank run already written is dropped, and so is a trailing blank line the source
+ * did not end with, so a removal never leaves a doubled gap or adds a final newline.
+ */
+function emitEdited(layout: UnreleasedLayout, plan: EditPlan): string {
+	const { lines, startLine, endLine } = layout;
+	// Every removal and insertion lies inside the section, so the lines through its
+	// heading, and from the next release heading on, are copied unchanged.
+	const out = lines.slice(0, startLine + 1);
+	let blankBeforeNext = false;
+	let removedSinceWrite = false;
+	for (let i = startLine + 1; i <= endLine; i += 1) {
+		const insert = plan.inserts.get(i);
+		if (insert) {
+			out.push(...insert.bullets);
+			for (const block of insert.blocks) {
+				if (out[out.length - 1].trim() !== "") out.push("");
+				out.push(...block);
+				blankBeforeNext = true;
+			}
+		}
+		if (i === endLine) break;
+		const line = lines[i];
+		const blank = line.trim() === "";
+		if (plan.removed[i] === 1 || (blank && removedSinceWrite && out[out.length - 1].trim() === "")) {
+			removedSinceWrite = true;
+			continue;
+		}
+		if (blankBeforeNext && !blank) out.push("");
+		blankBeforeNext = false;
+		removedSinceWrite = false;
+		out.push(line);
+	}
+	if (endLine < lines.length) {
+		// `lines[endLine]` is the next `## ` heading, never blank.
+		if (blankBeforeNext) out.push("");
+		for (let i = endLine; i < lines.length; i += 1) out.push(lines[i]);
+	} else if (lines[endLine - 1].trim() !== "") {
+		// The section ends the file without a final newline; the Unreleased heading stops the loop.
+		while (out[out.length - 1].trim() === "") out.pop();
+	}
+	return out.join("\n");
+}
+
+function insertionAt(inserts: Map<number, Insertion>, line: number): Insertion {
+	let insert = inserts.get(line);
+	if (!insert) {
+		insert = { bullets: [], blocks: [] };
+		inserts.set(line, insert);
+	}
+	return insert;
+}
+
+/** Whether a non-blank line under the category heading lies outside every entry. */
+function hasProse(lines: string[], category: UnreleasedCategory): boolean {
+	let line = category.headingLine + 1;
+	for (const entry of category.entries) {
+		for (; line < entry.startLine; line += 1) {
+			if (lines[line].trim() !== "") return true;
+		}
+		line = entry.endLine;
+	}
+	for (; line < category.contentEnd; line += 1) {
+		if (lines[line].trim() !== "") return true;
+	}
+	return false;
 }
 
 function normalizeEntries(entries: Record<string, string[]>): Record<string, string[]> {
-	const result: Record<string, string[]> = {};
+	const normalized: Array<[string, string[]]> = [];
 	for (const [section, items] of Object.entries(entries)) {
 		const trimmed = items.map(item => item.trim().replace(/\.$/, "")).filter(item => item.length > 0);
-		if (trimmed.length === 0) continue;
-		result[section] = Array.from(new Set(trimmed.map(item => item.trim())));
+		if (trimmed.length > 0) normalized.push([section, trimmed]);
 	}
-	return result;
+	return Object.fromEntries(normalized);
 }

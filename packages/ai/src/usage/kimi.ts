@@ -1,5 +1,11 @@
 // (Refresh is the sole responsibility of AuthStorage; no provider-direct refresh here.)
+
 import { toNumber } from "@veyyon/catalog/utils";
+import {
+	KIMI_CODE_REGIONS,
+	kimiCodeRegionOfApiEndpoint,
+	kimiCodeRegionOfBaseUrl,
+} from "@veyyon/catalog/wire/kimi-code";
 import { $env } from "@veyyon/utils/env";
 import { clamp01 } from "@veyyon/utils/math";
 import { DAY_MS, HOUR_MS, MINUTE_MS, SECOND_MS } from "@veyyon/utils/time";
@@ -17,7 +23,6 @@ import type {
 import { isRecord } from "../utils";
 import { usageStatusFromUsedFraction } from "./shared";
 
-const DEFAULT_BASE_URL = "https://api.kimi.com/coding/v1";
 const USAGE_PATH = "usages";
 
 interface KimiUsagePayload {
@@ -34,12 +39,15 @@ type KimiUsageRow = {
 	window?: UsageWindow;
 };
 
-// Kimi's own env/default resolution: prefer the explicit arg, then the
-// KIMI_CODE_BASE_URL override, then the built-in default. Slash/whitespace
-// normalization is delegated to the shared @veyyon/utils owner.
-function resolveKimiBaseUrl(baseUrl?: string): string {
-	const candidate = baseUrl?.trim() || $env.KIMI_CODE_BASE_URL?.trim() || DEFAULT_BASE_URL;
-	return normalizeBaseUrl(candidate, DEFAULT_BASE_URL);
+// Kimi's own env/default resolution: prefer the explicit arg, then the KIMI_CODE_BASE_URL override,
+// then the base of the deployment that issued the credential. An explicit official base of either
+// deployment is the catalog default and resolves to the credential's deployment; a custom one is
+// kept. Slash/whitespace normalization is delegated to the shared @veyyon/utils owner.
+function resolveKimiBaseUrl(baseUrl: string | undefined, apiEndpoint: string | undefined): string {
+	const deployment = KIMI_CODE_REGIONS[kimiCodeRegionOfApiEndpoint(apiEndpoint)].baseUrl;
+	let explicit = baseUrl?.trim();
+	if (explicit && kimiCodeRegionOfBaseUrl(explicit) !== undefined) explicit = deployment;
+	return normalizeBaseUrl(explicit || $env.KIMI_CODE_BASE_URL?.trim() || deployment, deployment);
 }
 
 function buildUsageUrl(baseUrl: string): string {
@@ -236,7 +244,7 @@ export const kimiUsageProvider: UsageProvider = {
 			return null;
 		}
 
-		const baseUrl = resolveKimiBaseUrl(params.baseUrl);
+		const baseUrl = resolveKimiBaseUrl(params.baseUrl, credential.apiEndpoint);
 		const url = buildUsageUrl(baseUrl);
 		// Build the request headers OUTSIDE the network try. Header construction
 		// is deterministic and non-network; if it ever fails it is a real local

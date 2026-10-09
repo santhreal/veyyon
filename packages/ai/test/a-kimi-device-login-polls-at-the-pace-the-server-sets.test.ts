@@ -60,7 +60,7 @@ async function runLogin(answers: TokenAnswer[], deviceIntervalSeconds: number): 
 	}) as typeof fetch);
 
 	try {
-		const credentials = await loginKimi({});
+		const credentials = await loginKimi({}, "mainland-cn");
 		return { waits, polls, outcome: { access: credentials.access, refresh: credentials.refresh } };
 	} catch (error) {
 		if (!(error instanceof OAuthError)) throw error;

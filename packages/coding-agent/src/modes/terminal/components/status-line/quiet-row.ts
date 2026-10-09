@@ -419,36 +419,8 @@ function fillLocation(
 	// Two passes: every clippable part down to the width a name still reads at, and only then
 	// down to the fewest cells the part is worth painting at all -- which counts its pinned
 	// icon, since the clipper spends the icon before the name.
-	//
-	// A FAVOURED part is the half a click named, and a click means "show me this one". It is
-	// therefore asked last: it gives up nothing while any other part is still above the floor
-	// of the pass, which is what makes the clicked half whole on a row that can hold it whole
-	// at all. Without this the water-fill converged the two halves on a shared width and the
-	// click widened a path that was still clipped -- the row had the cells, and spent them
-	// keeping the OTHER half long.
-	for (const stage of ["preferred", "readable"] as const) {
-		while (over > 0) {
-			let widest = -1;
-			let widestFavoured = -1;
-			for (const [index, width] of allotted.entries()) {
-				const part = parts[index];
-				if (part === undefined) continue;
-				if ((full[index] ?? 0) <= MIN_LOCATION_PART) continue;
-				if (width <= (stage === "preferred" ? MIN_LOCATION_PART : readableFloor(part))) continue;
-				if (favour !== undefined && part.id === favour) {
-					widestFavoured = index;
-					continue;
-				}
-				// Ties go to the LATER part: the directory is the head a reader places the row
-				// by, so when two parts are equally wide the branch gives up the cell.
-				if (widest < 0 || width >= (allotted[widest] ?? 0)) widest = index;
-			}
-			if (widest < 0) widest = widestFavoured;
-			if (widest < 0) break;
-			allotted[widest] = (allotted[widest] ?? 0) - 1;
-			over--;
-		}
-	}
+	over = shaveLocation(parts, full, allotted, over, () => MIN_LOCATION_PART, favour);
+	over = shaveLocation(parts, full, allotted, over, readableFloor, favour);
 	if (over > 0) return null;
 	return {
 		contents: parts.map((part, index) =>
@@ -456,6 +428,65 @@ function fillLocation(
 		),
 		cramped: allotted.some((width, index) => width < Math.min(full[index] ?? 0, MIN_LOCATION_PART)),
 	};
+}
+
+/**
+ * One pass of the hand-out: the part {@link widestAboveFloor} picks gives up a cell until `over`
+ * is paid or no part is left above its floor. A part whose full width is at or under
+ * MIN_LOCATION_PART is never asked. Returns the cells still owed.
+ */
+function shaveLocation(
+	parts: readonly QuietPart[],
+	full: readonly number[],
+	allotted: number[],
+	over: number,
+	floorOf: (part: QuietPart) => number,
+	favour: string | undefined,
+): number {
+	if (over <= 0) return over;
+	const floors = parts.map((part, index) =>
+		full[index]! <= MIN_LOCATION_PART ? Number.POSITIVE_INFINITY : floorOf(part),
+	);
+	let owed = over;
+	while (owed > 0) {
+		const index = widestAboveFloor(parts, allotted, floors, favour);
+		if (index < 0) break;
+		allotted[index] = allotted[index]! - 1;
+		owed--;
+	}
+	return owed;
+}
+
+/**
+ * The part that gives up the next cell: the widest one above its floor, or -1 when none is.
+ *
+ * A FAVOURED part is the half a click named, and a click means "show me this one". It is
+ * therefore asked last: it gives up nothing while any other part is still above the floor
+ * of the pass, which is what makes the clicked half whole on a row that can hold it whole
+ * at all. Without this the water-fill converged the two halves on a shared width and the
+ * click widened a path that was still clipped -- the row had the cells, and spent them
+ * keeping the OTHER half long.
+ */
+function widestAboveFloor(
+	parts: readonly QuietPart[],
+	allotted: readonly number[],
+	floors: readonly number[],
+	favour: string | undefined,
+): number {
+	let widest = -1;
+	let widestFavoured = -1;
+	for (let index = 0; index < allotted.length; index++) {
+		const width = allotted[index]!;
+		if (width <= floors[index]!) continue;
+		if (favour !== undefined && parts[index]!.id === favour) {
+			widestFavoured = index;
+			continue;
+		}
+		// Ties go to the LATER part: the directory is the head a reader places the row
+		// by, so when two parts are equally wide the branch gives up the cell.
+		if (widest < 0 || width >= allotted[widest]!) widest = index;
+	}
+	return widest < 0 ? widestFavoured : widest;
 }
 
 /** Join `contents` and record the painted extent of each part, in columns of the join. */
@@ -640,14 +671,45 @@ export function hasPathSegment(segments: readonly StatusLineSegmentId[]): boolea
 	return segments.includes("path");
 }
 
+/** The segments the footline lays out as its location rather than in the right group. */
+const LOCATION_SEGMENT_IDS: Record<string, true> = { path: true, git: true, pr: true };
+/** The context gauge segments, the footline's one live value. */
+const CONTEXT_SEGMENT_IDS: Record<string, true> = { context_pct: true, context_total: true };
+
 export function gatherQuietSegments(input: QuietGatherInput): QuietGroups {
-	const { width, effectiveSettings, gitEnabled, expansion, buildContext, agentBadge, badgeSlot } = input;
-	const leftCfg = effectiveSettings.leftSegments;
-	const rightCfg = effectiveSettings.rightSegments;
-	const includePath = hasPathSegment(leftCfg) || hasPathSegment(rightCfg);
-	const includeContext = hasContextSegment(leftCfg) || hasContextSegment(rightCfg);
-	const includeGit = gitEnabled && (hasGitSegment(leftCfg) || hasGitSegment(rightCfg));
-	const includePr = gitEnabled && (hasPrSegment(leftCfg) || hasPrSegment(rightCfg));
+	const { effectiveSettings, buildContext, agentBadge, badgeSlot } = input;
+	const ctx = buildContext(quietContextRequest(input));
+	const location: QuietPart[] = [];
+	const capLeft: QuietPart[] = [];
+	const capRight: QuietPart[] = [];
+	// The context gauge is the footline's one LIVE value; everything else on the
+	// right is standing state. A gauge configured on the left still belongs in the
+	// right group (it is a capability reading, not a location), but pushing it there
+	// during this first loop put it AHEAD of every right-configured segment, so the
+	// default preset read `model · gauge · session-name`: the number that changes
+	// every turn sandwiched between two that do not. Nobody chose that order; it
+	// fell out of which loop ran first. Held aside and appended after the right
+	// group instead, so the live value is the line's last word. A gauge the user
+	// configured on the RIGHT keeps the position they gave it.
+	const contextFromLeft: QuietPart[] = [];
+	for (const id of effectiveSettings.leftSegments) {
+		if (LOCATION_SEGMENT_IDS[id]) pushQuietSegment(id, ctx, location);
+		else if (CONTEXT_SEGMENT_IDS[id]) pushQuietSegment(id, ctx, contextFromLeft);
+		else pushQuietSegment(id, ctx, capLeft);
+	}
+	for (const id of effectiveSettings.rightSegments) {
+		pushQuietSegment(id, ctx, LOCATION_SEGMENT_IDS[id] ? location : capRight);
+	}
+	capRight.push(...contextFromLeft);
+	if (badgeSlot !== null) capRight.unshift({ id: "badges", content: badgeSlot });
+	capRight.unshift({ id: "agents", content: agentBadge });
+	return { location, capLeft, capRight };
+}
+
+/** What the footline asks its segment context for: the zones its lists name, and the options it renders them with. */
+function quietContextRequest(input: QuietGatherInput): QuietContextRequest {
+	const { width, effectiveSettings, gitEnabled, expansion } = input;
+	const { leftSegments, rightSegments, segmentOptions } = effectiveSettings;
 	// The footline joins the model and its effort as one label (`Model @high`) unless
 	// `segmentOptions.model.roomy: false` asks for the dot separator instead. The
 	// per-kind git counts and the token-text context gauge that the other
@@ -662,7 +724,7 @@ export function gatherQuietSegments(input: QuietGatherInput): QuietGroups {
 	//
 	// EXPANDED PATH. A click on the path toggles `#pathExpanded`: the location zone
 	// gives up its clamp and takes the room the model chip vacates, so a path too long
-	// for the footline can be read without resizing the terminal. The shed loop below
+	// for the footline can be read without resizing the terminal. The shed loop
 	// still clips the location to the row, so this widens the budget rather than
 	// promising the whole path.
 	//
@@ -670,57 +732,31 @@ export function gatherQuietSegments(input: QuietGatherInput): QuietGroups {
 	// the path grows a cell at a time out of the room the chip is giving back. Both ends
 	// of the trade are driven by ONE progress value, so the row can never be mid-way
 	// through widening while the chip is already gone.
-	const collapsedPathBudget = effectiveSettings.segmentOptions?.path?.maxLength ?? 30;
+	const collapsedPathBudget = segmentOptions?.path?.maxLength ?? 30;
 	// A row narrower than the clamp has nothing to widen INTO, and interpolating toward it
 	// would make the click cut the path shorter than the clamp already had it.
 	const expandedPathBudget = Math.max(collapsedPathBudget, width);
 	const pathBudget = Math.round(collapsedPathBudget + (expandedPathBudget - collapsedPathBudget) * expansion);
-	const quietOptions = {
-		...effectiveSettings.segmentOptions,
-		path: {
-			...effectiveSettings.segmentOptions?.path,
-			maxLength: pathBudget,
+	return {
+		width,
+		options: {
+			...segmentOptions,
+			path: { ...segmentOptions?.path, maxLength: pathBudget },
+			model: { ...segmentOptions?.model, roomy: segmentOptions?.model?.roomy ?? true },
 		},
-		model: {
-			...effectiveSettings.segmentOptions?.model,
-			roomy: effectiveSettings.segmentOptions?.model?.roomy ?? true,
-		},
+		includePath: hasPathSegment(leftSegments) || hasPathSegment(rightSegments),
+		includeContext: hasContextSegment(leftSegments) || hasContextSegment(rightSegments),
+		includeGit: gitEnabled && (hasGitSegment(leftSegments) || hasGitSegment(rightSegments)),
+		includePr: gitEnabled && (hasPrSegment(leftSegments) || hasPrSegment(rightSegments)),
 	};
-	const ctx = buildContext({ width, options: quietOptions, includePath, includeContext, includeGit, includePr });
-	const LOCATION_IDS: Record<string, true> = { path: true, git: true, pr: true };
-	const CONTEXT_IDS: Record<string, true> = { context_pct: true, context_total: true };
-	const location: QuietPart[] = [];
-	const capLeft: QuietPart[] = [];
-	const capRight: QuietPart[] = [];
-	const push = (id: StatusLineSegmentId, out: QuietPart[]) => {
-		if (id === "agents") return;
-		const rendered = renderSegment(id, ctx);
-		if (!rendered.visible || !rendered.content) return;
-		out.push({ id, content: rendered.content, pin: rendered.pin });
-	};
-	// The context gauge is the footline's one LIVE value; everything else on the
-	// right is standing state. A gauge configured on the left still belongs in the
-	// right group (it is a capability reading, not a location), but pushing it there
-	// during this first loop put it AHEAD of every right-configured segment, so the
-	// default preset read `model · gauge · session-name`: the number that changes
-	// every turn sandwiched between two that do not. Nobody chose that order; it
-	// fell out of which loop ran first. Held aside and appended after the right
-	// group instead, so the live value is the line's last word. A gauge the user
-	// configured on the RIGHT keeps the position they gave it.
-	const contextFromLeft: QuietPart[] = [];
-	for (const id of leftCfg) {
-		if (LOCATION_IDS[id]) push(id, location);
-		else if (CONTEXT_IDS[id]) push(id, contextFromLeft);
-		else push(id, capLeft);
-	}
-	for (const id of rightCfg) {
-		if (LOCATION_IDS[id]) push(id, location);
-		else push(id, capRight);
-	}
-	capRight.push(...contextFromLeft);
-	if (badgeSlot !== null) capRight.unshift({ id: "badges", content: badgeSlot });
-	capRight.unshift({ id: "agents", content: agentBadge });
-	return { location, capLeft, capRight };
+}
+
+/** Render `id` into `out` unless it renders nothing. The agent count is added by the gatherer itself. */
+function pushQuietSegment(id: StatusLineSegmentId, ctx: SegmentContext, out: QuietPart[]): void {
+	if (id === "agents") return;
+	const rendered = renderSegment(id, ctx);
+	if (!rendered.visible || !rendered.content) return;
+	out.push({ id, content: rendered.content, pin: rendered.pin });
 }
 
 /**
@@ -741,46 +777,62 @@ export function composeQuietLines(input: QuietRowInput): {
 	const sep = segmentSeparator();
 	// One cell of right margin, always — nothing kisses the terminal edge.
 	const budget = Math.max(1, width - 1);
-	let locationLine: string | null = null;
-	if (location.length > 0) {
-		const left = joinWithRunClock(
-			location.map(part => part.content),
-			sep,
-			clock,
-		);
-		const right = locationRight ?? null;
-		if (right && visibleWidth(left) + visibleWidth(right) + 2 <= budget) {
-			locationLine = left + padding(budget - visibleWidth(left) - visibleWidth(right)) + right;
-		} else if (visibleWidth(left) <= budget) {
-			locationLine = left;
-		} else {
-			// Same fitter as the one-line row: the branch goes before the directory does.
-			// The run clock is dropped with it, since it is chrome and this row is full.
-			locationLine = fitLocation(location, sep, budget).text;
-		}
+	return {
+		locationLine: location.length > 0 ? quietLocationLine(location, sep, budget, clock, locationRight ?? null) : null,
+		capabilityLine:
+			capLeft.length > 0 || capRight.length > 0 ? quietCapabilityLine(capLeft, capRight, sep, budget) : null,
+	};
+}
+
+/** The location with its run clock, the location-right content beside it when both fit. */
+function quietLocationLine(
+	location: readonly QuietPart[],
+	sep: string,
+	budget: number,
+	clock: string,
+	right: string | null,
+): string {
+	const left = joinWithRunClock(
+		location.map(part => part.content),
+		sep,
+		clock,
+	);
+	const leftWidth = visibleWidth(left);
+	if (right) {
+		const rightWidth = visibleWidth(right);
+		if (leftWidth + rightWidth + 2 <= budget) return left + padding(budget - leftWidth - rightWidth) + right;
 	}
-	let capabilityLine: string | null = null;
-	if (capLeft.length > 0 || capRight.length > 0) {
-		const left = capLeft.map(part => part.content).join(sep);
-		const rightParts = capRight.map(part => part.content);
-		let right = rightParts.join(sep);
-		// Free space between the groups is the design; on narrow terminals the
-		// right group sheds parts before the gap closes below breathing room.
-		while (rightParts.length > 0 && visibleWidth(left) + visibleWidth(right) + 2 > budget) {
-			rightParts.pop();
-			right = rightParts.join(sep);
-		}
-		if (left && right) {
-			capabilityLine = left + padding(budget - visibleWidth(left) - visibleWidth(right)) + right;
-		} else {
-			capabilityLine = truncateToWidth(left || right, budget);
-		}
+	if (leftWidth <= budget) return left;
+	// Same fitter as the one-line row: the branch goes before the directory does.
+	// The run clock is dropped with it, since it is chrome and this row is full.
+	return fitLocation(location, sep, budget).text;
+}
+
+/** The capability parts split left and right, the right group shedding from its end until the gap fits. */
+function quietCapabilityLine(
+	capLeft: readonly QuietPart[],
+	capRight: readonly QuietPart[],
+	sep: string,
+	budget: number,
+): string {
+	const left = capLeft.map(part => part.content).join(sep);
+	const leftWidth = visibleWidth(left);
+	const rightParts = capRight.map(part => part.content);
+	let right = rightParts.join(sep);
+	let rightWidth = visibleWidth(right);
+	// Free space between the groups is the design; on narrow terminals the
+	// right group sheds parts before the gap closes below breathing room.
+	while (rightParts.length > 0 && leftWidth + rightWidth + 2 > budget) {
+		rightParts.pop();
+		right = rightParts.join(sep);
+		rightWidth = visibleWidth(right);
 	}
-	return { locationLine, capabilityLine };
+	if (left && right) return left + padding(budget - leftWidth - rightWidth) + right;
+	return truncateToWidth(left || right, budget);
 }
 
 export function composeQuietRow(input: QuietRowInput): QuietRow {
-	const { width, badge, location, capLeft, capRight, clock, expansion, expandedHalf, locationRight } = input;
+	const { width, badge } = input;
 	// The focus badge rides the footline while the view is proxied onto an
 	// agent. It was built for `getTopBorder`, but the borderless composer
 	// never asks for a top border: the editor's border is hidden and this
@@ -793,7 +845,6 @@ export function composeQuietRow(input: QuietRowInput): QuietRow {
 	// `renderFocusBadge` clamps it: an agent id long enough to outrun the terminal wrapped the
 	// footline and pushed the composer up a row on every render.
 	const badgeWidth = visibleWidth(badge);
-	const sep = segmentSeparator();
 	// One cell of right margin, always — nothing kisses the terminal edge. Floored at ZERO, not
 	// at one: a badge that already fills the row leaves no room to compete for, and clamping to
 	// one cell is what let a 28-cell badge plus a segment render onto an 8-cell row.
@@ -801,166 +852,159 @@ export function composeQuietRow(input: QuietRowInput): QuietRow {
 	if (budget === 0) {
 		return { line: badge === "" ? null : badge, bounds: [] };
 	}
-	const locationContents = location.map(part => part.content);
-	let left = joinWithRunClock(locationContents, sep, clock);
-	const rightParts = [...capLeft, ...capRight];
-	if (locationRight) rightParts.push({ id: "location_right", content: locationRight });
-	let right = rightParts.map(part => part.content).join(sep);
-	// The run clock is comfort chrome; the capability segments (context
-	// gauge, mode, badges) are operating data. On a tight width the clock
-	// degrades FIRST — its roomy gap shrinks to two cells, then the clock
-	// drops entirely — so it can never squeeze a segment off the line.
-	let clockStage = 0;
-	let locationShortened = false;
+	const row = new QuietRowFit(input, budget);
+	row.shed();
+	row.payFloor();
+	if (input.expansion > 0) row.spendOnClick(input.expansion);
+	return row.compose(badge, badgeWidth);
+}
+
+/**
+ * One {@link composeQuietRow} layout: the location on the left, the right group anchored to the
+ * right edge, and the ladders that settle what each keeps within the budget. Both halves keep
+ * their painted width beside their text, so a ladder step measures only what it changed.
+ */
+class QuietRowFit {
+	readonly #location: readonly QuietPart[];
+	readonly #locationContents: string[];
+	readonly #sep: string;
+	readonly #budget: number;
+	readonly #clock: string;
+	readonly #favour: string | undefined;
+	/** The right group: capability parts left then right, then the location-right content. */
+	readonly #parts: QuietPart[];
+	#left = "";
+	#leftWidth = 0;
+	#right = "";
+	#rightWidth = 0;
+	// Whether the location has been handed to the fitter, which happens once every unranked
+	// right part is gone.
+	#shortened = false;
 	// Painted extents of the location parts once the fitter has had them, or null while
 	// the location is still whole and its parts sit where the join put them.
-	let locationSlots: QuietSegmentBounds[] | null = null;
+	#slots: QuietSegmentBounds[] | null = null;
 	// Whether the fitter had to cut the location below its own floors to fit it.
-	let locationCramped = false;
-	// Fit the location into the room the CURRENT right group leaves, for the caller to take.
-	// Asked again every time the group loses a part on the zone's behalf, because the room a
-	// shed frees belongs to the location: fitting once and latching a flag is what put an
-	// empty zone on a row with twenty-one cells of slack. The zone was fitted to the budget
-	// left by a right group that still held the session name and the context gauge -- a
-	// budget of ZERO -- and when those two left a moment later nothing asked the fitter
-	// again, so the row rendered the directory and the branch as nothing at all.
-	const favour = expansion > 0 ? expandedHalf : undefined;
-	const fitToTheRoomLeft = () =>
-		fitLocation(location, sep, Math.max(0, budget - visibleWidth(right) - (right ? 2 : 0)), favour);
-	while (rightParts.length > 0 && visibleWidth(left) + visibleWidth(right) + (left && right ? 2 : 0) > budget) {
-		if (clockStage === 0) {
-			clockStage = 1;
-			left = joinWithRunClock(locationContents, sep, clock, "  ");
-			continue;
-		}
-		if (clockStage === 1) {
-			clockStage = 2;
-			left = locationContents.join(sep);
-			continue;
-		}
-		// Shed the LOWEST-RANKED remaining part, walking from the end so equally
-		// ranked parts still go right-to-left. Everything unlisted ranks 0 and goes
-		// first; see RIGHT_PART_SHED_RANK for why the four ranked ids outrank it.
-		//
-		// Every unranked part goes before the location is touched at all, so nothing here
-		// has to be re-fitted: the zone is still whole.
-		const weakest = weakestRightPart(rightParts);
-		const dropIndex = weakest.index;
-		const dropRank = weakest.rank;
-		if (dropRank === 0 && dropIndex >= 0) {
-			rightParts.splice(dropIndex, 1);
-			right = rightParts.map(part => part.content).join(sep);
-			continue;
-		}
-		// Only ranked parts are left. Shorten the location before touching any of
-		// them: a clipped path still says where you are, and these do not degrade.
-		if (!locationShortened) {
-			locationShortened = true;
-			const fitted = fitToTheRoomLeft();
-			left = fitted.text;
-			locationSlots = fitted.slots;
-			locationCramped = fitted.cramped;
-			continue;
-		}
-		// The ranked parts still do not fit, so the ranking has to resolve. Shedding the
-		// weakest is the whole point of having one: the alternative is what shipped before
-		// it existed, where the return below truncated the joined group and a budget of one
-		// cell rendered a bare `…` — every ranked part destroyed at once, including the
-		// persistent agent count that outranks all of them.
-		//
-		// The zone is not re-fitted inside this branch: a shed that does not end the overflow
-		// is followed by another, so there is nothing settled to fit against yet. The shed
-		// that DOES end it is accounted for below, once the group has stopped moving.
-		if (rightParts.length > 1 && dropIndex >= 0) {
-			rightParts.splice(dropIndex, 1);
-			right = rightParts.map(part => part.content).join(sep);
-			continue;
-		}
-		break;
+	#cramped = false;
+
+	constructor(input: QuietRowInput, budget: number) {
+		const { location, capLeft, capRight, clock, expansion, expandedHalf, locationRight } = input;
+		this.#location = location;
+		this.#locationContents = location.map(part => part.content);
+		this.#sep = segmentSeparator();
+		this.#budget = budget;
+		this.#clock = clock;
+		this.#favour = expansion > 0 ? expandedHalf : undefined;
+		this.#parts = [...capLeft, ...capRight];
+		if (locationRight) this.#parts.push({ id: "location_right", content: locationRight });
+		this.#setLeft(joinWithRunClock(this.#locationContents, this.#sep, clock));
+		this.#joinRight();
 	}
-	// The group has stopped shedding, so the room it leaves is final -- and the shed that
-	// ended the loop above freed cells nobody has handed over yet. The zone was fitted
-	// against the group as it stood BEFORE that shed, which on a narrow row is two parts
-	// wider, so it kept a width the row had already outgrown: the same latch as the reported
-	// defect, one shed later. At 40 columns it left the zone blank with the model chip and a
-	// mode rung standing in the middle of the row.
-	if (locationShortened) {
-		const settled = fitToTheRoomLeft();
-		left = settled.text;
-		locationSlots = settled.slots;
-		locationCramped = settled.cramped;
+
+	/**
+	 * Shed until the row fits. The run clock is comfort chrome; the capability segments
+	 * (context gauge, mode, badges) are operating data. On a tight width the clock degrades
+	 * FIRST — its roomy gap shrinks to two cells, then the clock drops entirely — so it can
+	 * never squeeze a segment off the line.
+	 */
+	shed(): void {
+		let clockStage = 0;
+		while (this.#parts.length > 0 && this.#overflows()) {
+			if (clockStage === 0) {
+				clockStage = 1;
+				this.#setLeft(joinWithRunClock(this.#locationContents, this.#sep, this.#clock, "  "));
+				continue;
+			}
+			if (clockStage === 1) {
+				clockStage = 2;
+				this.#setLeft(this.#locationContents.join(this.#sep));
+				continue;
+			}
+			// Shed the LOWEST-RANKED remaining part, walking from the end so equally
+			// ranked parts still go right-to-left. Everything unlisted ranks 0 and goes
+			// first; see RIGHT_PART_SHED_RANK for why the four ranked ids outrank it.
+			//
+			// Every unranked part goes before the location is touched at all, so nothing here
+			// has to be re-fitted: the zone is still whole.
+			const weakest = weakestRightPart(this.#parts);
+			if (weakest.rank === 0) {
+				this.#drop(weakest.index);
+				continue;
+			}
+			// Only ranked parts are left. Shorten the location before touching any of
+			// them: a clipped path still says where you are, and these do not degrade.
+			if (!this.#shortened) {
+				this.#shortened = true;
+				this.#refit();
+				continue;
+			}
+			// The ranked parts still do not fit, so the ranking has to resolve. Shedding the
+			// weakest is the whole point of having one: the alternative is what shipped before
+			// it existed, where the return below truncated the joined group and a budget of one
+			// cell rendered a bare `…` — every ranked part destroyed at once, including the
+			// persistent agent count that outranks all of them.
+			//
+			// The zone is not re-fitted inside this branch: a shed that does not end the overflow
+			// is followed by another, so there is nothing settled to fit against yet. The shed
+			// that DOES end it is accounted for below, once the group has stopped moving.
+			if (this.#parts.length === 1) break;
+			this.#drop(weakest.index);
+		}
+		// The group has stopped shedding, so the room it leaves is final -- and the shed that
+		// ended the loop above freed cells nobody has handed over yet. The zone was fitted
+		// against the group as it stood BEFORE that shed, which on a narrow row is two parts
+		// wider, so it kept a width the row had already outgrown: the same latch as the reported
+		// defect, one shed later. At 40 columns it left the zone blank with the model chip and a
+		// mode rung standing in the middle of the row.
+		if (this.#shortened) this.#refit();
 	}
-	// A location squeezed under its floors is a zone that no longer reads: `…izer  ·  …g-path`
-	// says neither where the session is nor what it is on. At that point the budget is what
-	// has to move, so the row pays the zone out of what it can re-read on the next frame --
-	// the context gauge, the draft token estimate, owner-pinned right content (see
-	// FLOOR_SPENDABLE) -- and asks the fitter again after each one. It never pays with the
-	// model chip, which is what this row exists to retain, never with a mode rung, which says
-	// what the next keystroke does, and never with the running-agent count, which the row
-	// sheds last of everything.
-	while (locationCramped && locationShortened && rightParts.length > 0) {
-		const index = weakestSpendablePart(rightParts);
-		if (index < 0) break;
-		rightParts.splice(index, 1);
-		right = rightParts.map(part => part.content).join(sep);
-		const fitted = fitToTheRoomLeft();
-		left = fitted.text;
-		locationSlots = fitted.slots;
-		locationCramped = fitted.cramped;
+
+	/**
+	 * A location squeezed under its floors is a zone that no longer reads: `…izer  ·  …g-path`
+	 * says neither where the session is nor what it is on. At that point the budget is what
+	 * has to move, so the row pays the zone out of what it can re-read on the next frame --
+	 * the context gauge, the draft token estimate, owner-pinned right content (see
+	 * FLOOR_SPENDABLE) -- and asks the fitter again after each one. It never pays with the
+	 * model chip, which is what this row exists to retain, never with a mode rung, which says
+	 * what the next keystroke does, and never with the running-agent count, which the row
+	 * sheds last of everything.
+	 */
+	payFloor(): void {
+		while (this.#cramped && this.#parts.length > 0) {
+			const index = weakestSpendablePart(this.#parts);
+			if (index < 0) break;
+			this.#drop(index);
+			this.#refit();
+		}
 	}
-	// THE CLICK'S TRADE, settled last.
-	//
-	// A click says "show me this half". So the row shows it WHOLE, and it may spend the rest
-	// of the bar to do it: the model chip first, then whatever is weakest, until the clicked
-	// half is whole or the bar has nothing left to give. Only a half longer than the entire
-	// row is still clipped. The second click returns every cell and every part.
-	//
-	// Settled AFTER the ladders above, and that ordering is the trade. The ladders decide
-	// what the row holds while the right group is still standing at full width, so they
-	// reach the same decisions the collapsed row reached, and the cells freed here have
-	// nowhere to go but the location. Retracting first is what shipped, and at 78 columns it
-	// moved the zone by ONE cell: the collapsed row had shed the context gauge under
-	// pressure, the narrower chip took that pressure off, and the gauge came back and ate
-	// all twenty cells. On screen the click flashed a gauge in and a chip out and left the
-	// directory exactly where it was. Nothing the collapsed row gave up may return because
-	// the click freed room -- the room is the location's.
-	//
-	// The spend TRAVELS with the progress value instead of switching on it. Whole parts
-	// leaving the row the instant a click lands is the other way this reads as a flash: the
-	// cells have to slide out of the group and into the zone across the same frames, so each
-	// part in turn narrows and only then goes.
-	if (expansion > 0 && rightParts.length > 0) {
-		// What the row is short of showing the CLICKED half whole, with the other half at the
-		// width a name still reads at. Targeting both halves whole is the greedier answer and
-		// the wrong one: it spent the mode rungs to lengthen a branch nobody pointed at. The
-		// fitter hands any cells left over back to the other half afterwards, so this is a
-		// floor on what it keeps, not a cap.
-		const sepWidth = visibleWidth(sep);
-		const wanted =
-			location.reduce(
-				(sum, part) =>
-					sum +
-					(part.id === favour
-						? visibleWidth(part.content)
-						: Math.min(visibleWidth(part.content), MIN_LOCATION_PART)),
-				0,
-			) +
-			sepWidth * Math.max(0, location.length - 1);
-		const held = budget - visibleWidth(right) - (right ? 2 : 0);
-		// The chip goes first: it is the biggest single readout and the one the reader is
-		// trading away knowingly. After that the row gives up its weakest, which is the same
-		// order it uses under width pressure.
-		const order: number[] = [];
-		const chip = rightParts.findIndex(part => part.id === "model");
-		if (chip >= 0) order.push(chip);
-		const remaining = rightParts.map((_, index) => index).filter(index => index !== chip);
-		remaining.sort((a, b) => {
-			const rankA = RIGHT_PART_SHED_RANK[rightParts[a]?.id ?? ""] ?? 0;
-			const rankB = RIGHT_PART_SHED_RANK[rightParts[b]?.id ?? ""] ?? 0;
-			return rankA === rankB ? b - a : rankA - rankB;
-		});
-		order.push(...remaining);
-		const onOffer = order.reduce((sum, index) => sum + visibleWidth(rightParts[index]?.content ?? "") + sepWidth, 0);
+
+	/**
+	 * THE CLICK'S TRADE, settled last.
+	 *
+	 * A click says "show me this half". So the row shows it WHOLE, and it may spend the rest
+	 * of the bar to do it: the model chip first, then whatever is weakest, until the clicked
+	 * half is whole or the bar has nothing left to give. Only a half longer than the entire
+	 * row is still clipped. The second click returns every cell and every part.
+	 *
+	 * Settled AFTER the ladders above, and that ordering is the trade. The ladders decide
+	 * what the row holds while the right group is still standing at full width, so they
+	 * reach the same decisions the collapsed row reached, and the cells freed here have
+	 * nowhere to go but the location. Retracting first is what shipped, and at 78 columns it
+	 * moved the zone by ONE cell: the collapsed row had shed the context gauge under
+	 * pressure, the narrower chip took that pressure off, and the gauge came back and ate
+	 * all twenty cells. On screen the click flashed a gauge in and a chip out and left the
+	 * directory exactly where it was. Nothing the collapsed row gave up may return because
+	 * the click freed room -- the room is the location's.
+	 *
+	 * The spend TRAVELS with the progress value instead of switching on it. Whole parts
+	 * leaving the row the instant a click lands is the other way this reads as a flash: the
+	 * cells have to slide out of the group and into the zone across the same frames, so each
+	 * part in turn narrows and only then goes.
+	 */
+	spendOnClick(expansion: number): void {
+		if (this.#parts.length === 0) return;
+		const sepWidth = visibleWidth(this.#sep);
+		const held = this.#budget - this.#rightWidth - (this.#right ? 2 : 0);
+		const order = this.#spendOrder();
 		// NOT scaled by the progress a second time. `wanted` is measured from the location's
 		// CURRENT text, and that text is already on the curve -- the path's own clamp travels
 		// from the preset budget out to the row. Scaling here as well put two interpolations
@@ -968,107 +1012,190 @@ export function composeQuietRow(input: QuietRowInput): QuietRow {
 		// four cells before any room had been freed for it, so the ladders clipped the zone
 		// and its right edge stepped BACKWARD at the start of every expansion. The room now
 		// covers exactly what the text is asking for, frame by frame, which is one motion.
-		const spend = Math.min(Math.max(0, wanted - held), onOffer);
-		if (spend > 0) {
-			let owed = spend;
-			const spent: number[] = [];
-			for (const index of order) {
-				if (owed <= 0) break;
-				const part = rightParts[index];
-				if (part === undefined) continue;
-				const width = visibleWidth(part.content);
-				// A part is narrowed cell by cell while the row is travelling, because that is
-				// the motion: the readout is visibly standing down. Where it lands is a
-				// different question -- `clau…` is not a model name, and a row that RESTS on a
-				// fragment has not stood the readout down, it has broken it. So at rest a part
-				// that cannot keep the width a name reads at goes instead, and every cell it
-				// was holding goes to the location.
-				const floor = expansion >= 1 ? MIN_LOCATION_PART : MIN_READABLE_PART;
-				if (owed >= width - floor) {
-					spent.push(index);
-					owed -= width + sepWidth;
-					continue;
-				}
-				rightParts[index] = { ...part, content: truncateToWidth(part.content, width - owed) };
-				owed = 0;
-			}
-			// Descending, so an earlier removal cannot shift a later index.
-			for (const index of spent.sort((a, b) => b - a)) rightParts.splice(index, 1);
-			right = rightParts.map(part => part.content).join(sep);
-			const widened = fitToTheRoomLeft();
-			left = widened.text;
-			locationSlots = widened.slots;
-			locationCramped = widened.cramped;
+		// A spend larger than the group sheds every part, the same as a spend of exactly its
+		// width, so it is not capped.
+		const spend = Math.max(0, this.#clickedWidth(sepWidth) - held);
+		if (spend <= 0) return;
+		// A part is narrowed cell by cell while the row is travelling, because that is
+		// the motion: the readout is visibly standing down. Where it lands is a
+		// different question -- `clau…` is not a model name, and a row that RESTS on a
+		// fragment has not stood the readout down, it has broken it. So at rest a part
+		// that cannot keep the width a name reads at goes instead, and every cell it
+		// was holding goes to the location.
+		this.#spendParts(order, spend, expansion >= 1 ? MIN_LOCATION_PART : MIN_READABLE_PART, sepWidth);
+		this.#joinRight();
+		this.#refit();
+	}
+
+	/**
+	 * What the row is short of showing the CLICKED half whole, with the other half at the
+	 * width a name still reads at. Targeting both halves whole is the greedier answer and
+	 * the wrong one: it spent the mode rungs to lengthen a branch nobody pointed at. The
+	 * fitter hands any cells left over back to the other half afterwards, so this is a
+	 * floor on what it keeps, not a cap.
+	 */
+	#clickedWidth(sepWidth: number): number {
+		let wanted = sepWidth * Math.max(0, this.#location.length - 1);
+		for (const part of this.#location) {
+			const width = visibleWidth(part.content);
+			wanted += part.id === this.#favour ? width : Math.min(width, MIN_LOCATION_PART);
 		}
+		return wanted;
 	}
-	if (!left && !right) {
-		return { line: badge === "" ? null : badge, bounds: [] };
+
+	/**
+	 * The order a click spends the right group in. The chip goes first: it is the biggest
+	 * single readout and the one the reader is trading away knowingly. After that the row
+	 * gives up its weakest, which is the same order it uses under width pressure.
+	 */
+	#spendOrder(): number[] {
+		const parts = this.#parts;
+		const chip = parts.findIndex(part => part.id === "model");
+		const remaining = parts.map((_, index) => index).filter(index => index !== chip);
+		remaining.sort((a, b) => {
+			const rankA = RIGHT_PART_SHED_RANK[parts[a]!.id] ?? 0;
+			const rankB = RIGHT_PART_SHED_RANK[parts[b]!.id] ?? 0;
+			return rankA === rankB ? b - a : rankA - rankB;
+		});
+		if (chip >= 0) remaining.unshift(chip);
+		return remaining;
 	}
-	// Record where each surviving segment landed, in 0-based columns of the
-	// returned line, so a footer click can be resolved back to a segment id
-	// (see quietSegmentAt). The math mirrors the assembly exactly: location
-	// parts start at column 0 and are sep-joined; the right group is
-	// right-aligned at the budget when a left group exists, else it renders
-	// from column 0 and truncates.
-	const sepWidth = visibleWidth(sep);
-	const bounds: QuietSegmentBounds[] = [];
-	if (left) {
-		// Once the fitter has run it is the authority on where the parts landed: it is
-		// what dropped a part and what clipped the head, so it knows the painted columns
-		// and this loop would only be guessing at them. Otherwise the location is whole
-		// and each part sits where the join put it.
-		if (locationSlots !== null) {
-			bounds.push(...locationSlots);
-		} else {
-			let col = 0;
-			const leftWidth = visibleWidth(left);
-			for (const part of location) {
+
+	/** Take `spend` cells from the parts in `order`: a part that would fall under `floor` goes whole, the last one narrows. */
+	#spendParts(order: readonly number[], spend: number, floor: number, sepWidth: number): void {
+		const parts = this.#parts;
+		let owed = spend;
+		const spent: number[] = [];
+		for (const index of order) {
+			if (owed <= 0) break;
+			const part = parts[index]!;
+			const width = visibleWidth(part.content);
+			if (owed >= width - floor) {
+				spent.push(index);
+				owed -= width + sepWidth;
+				continue;
+			}
+			parts[index] = { ...part, content: truncateToWidth(part.content, width - owed) };
+			owed = 0;
+		}
+		// Descending, so an earlier removal cannot shift a later index.
+		for (const index of spent.sort((a, b) => b - a)) parts.splice(index, 1);
+	}
+
+	/** The row, and where each surviving segment landed on it. */
+	compose(badge: string, badgeWidth: number): QuietRow {
+		const left = this.#left;
+		const right = this.#right;
+		const budget = this.#budget;
+		if (!left && !right) {
+			return { line: badge === "" ? null : badge, bounds: [] };
+		}
+		// The right group is anchored to the right edge whether or not a location shares the
+		// row with it. Anchoring it only when a location survived is what left a row of state
+		// hanging off the LEFT margin at the widths where the zone could not fit: the model
+		// chip, the rungs and the counters all jumped a screen-width left, and the eye that
+		// had learnt where to find them on every other row had to hunt for them on this one.
+		const rightStart = right ? Math.max(0, budget - this.#rightWidth) : 0;
+		const bounds = this.#bounds(rightStart, badgeWidth);
+		if (left && right) {
+			return { line: badge + left + padding(budget - this.#leftWidth - this.#rightWidth) + right, bounds };
+		}
+		// A location alone on the row is what a click on a name longer than the whole bar comes
+		// to: the reader asked for that name, and the row spent every readout it had to show as
+		// much of it as fits. Before the click could spend the last part this was unreachable --
+		// the agent badge is appended to `capRight` unconditionally, so `right` was never
+		// empty -- and the lone-group return below dropped the location on the floor, painting
+		// an empty row on the one click that most needed to answer.
+		if (left) return { line: badge + truncateToWidth(left, budget), bounds };
+		// A lone right group has no head worth keeping, so it loses its tail -- and it keeps the
+		// right edge, so the state it carries sits where the eye already looks for it.
+		return { line: badge + padding(rightStart) + truncateToWidth(right, budget), bounds };
+	}
+
+	/**
+	 * Where each surviving segment landed, in 0-based columns of the returned line, so a
+	 * footer click can be resolved back to a segment id (see quietSegmentAt). The math mirrors
+	 * the assembly: location parts start at column 0 and are sep-joined; the right group
+	 * starts at `rightStart`. Single-group lines truncate to the budget, so the bounds clamp
+	 * the same way, and the badge shifts every segment right by its width.
+	 */
+	#bounds(rightStart: number, badgeWidth: number): QuietSegmentBounds[] {
+		const sepWidth = visibleWidth(this.#sep);
+		const bounds: QuietSegmentBounds[] = [];
+		if (this.#left) this.#locationBounds(bounds, sepWidth);
+		if (this.#right) {
+			let col = rightStart;
+			for (const part of this.#parts) {
 				const partWidth = visibleWidth(part.content);
-				if (col >= leftWidth) break;
-				bounds.push({ id: part.id, start: col, end: Math.min(col + partWidth, leftWidth) });
+				bounds.push({ id: part.id, start: col, end: col + partWidth });
 				col += partWidth + sepWidth;
 			}
 		}
+		const budget = this.#budget;
+		const painted: QuietSegmentBounds[] = [];
+		for (const entry of bounds) {
+			if (entry.start >= budget) continue;
+			painted.push({ ...entry, start: entry.start + badgeWidth, end: Math.min(entry.end, budget) + badgeWidth });
+		}
+		return painted;
 	}
-	// The right group is anchored to the right edge whether or not a location shares the
-	// row with it. Anchoring it only when a location survived is what left a row of state
-	// hanging off the LEFT margin at the widths where the zone could not fit: the model
-	// chip, the rungs and the counters all jumped a screen-width left, and the eye that
-	// had learnt where to find them on every other row had to hunt for them on this one.
-	const rightStart = right ? Math.max(0, budget - visibleWidth(right)) : 0;
-	if (right) {
-		let col = rightStart;
-		for (const part of rightParts) {
+
+	/**
+	 * Once the fitter has run it is the authority on where the location parts landed: it is
+	 * what dropped a part and what clipped the head, so it knows the painted columns and this
+	 * loop would only be guessing at them. Otherwise the location is whole and each part sits
+	 * where the join put it.
+	 */
+	#locationBounds(bounds: QuietSegmentBounds[], sepWidth: number): void {
+		if (this.#slots !== null) {
+			bounds.push(...this.#slots);
+			return;
+		}
+		let col = 0;
+		for (const part of this.#location) {
 			const partWidth = visibleWidth(part.content);
-			bounds.push({ id: part.id, start: col, end: col + partWidth });
+			if (col >= this.#leftWidth) break;
+			bounds.push({ id: part.id, start: col, end: Math.min(col + partWidth, this.#leftWidth) });
 			col += partWidth + sepWidth;
 		}
 	}
-	// Single-group lines truncate to the budget: clamp bounds the same way.
-	// The badge shifts every segment right by its width; the recorded bounds
-	// answer in columns of the RETURNED line (quietSegmentAt hit-testing), so
-	// they shift with it.
-	const painted = bounds
-		.filter(entry => entry.start < budget)
-		.map(entry => ({
-			...entry,
-			start: entry.start + badgeWidth,
-			end: Math.min(entry.end, budget) + badgeWidth,
-		}));
-	if (left && right) {
-		return {
-			line: badge + left + padding(budget - visibleWidth(left) - visibleWidth(right)) + right,
-			bounds: painted,
-		};
+
+	#overflows(): boolean {
+		return this.#leftWidth + this.#rightWidth + (this.#left && this.#right ? 2 : 0) > this.#budget;
 	}
-	// A location alone on the row is what a click on a name longer than the whole bar comes
-	// to: the reader asked for that name, and the row spent every readout it had to show as
-	// much of it as fits. Before the click could spend the last part this was unreachable --
-	// the agent badge is appended to `capRight` unconditionally, so `right` was never
-	// empty -- and the lone-group return below dropped the location on the floor, painting
-	// an empty row on the one click that most needed to answer.
-	if (left) return { line: badge + truncateToWidth(left, budget), bounds: painted };
-	// A lone right group has no head worth keeping, so it loses its tail -- and it keeps the
-	// right edge, so the state it carries sits where the eye already looks for it.
-	return { line: badge + padding(rightStart) + truncateToWidth(right, budget), bounds: painted };
+
+	#drop(index: number): void {
+		this.#parts.splice(index, 1);
+		this.#joinRight();
+	}
+
+	/**
+	 * Fit the location into the room the CURRENT right group leaves. Asked again every time the
+	 * group loses a part on the zone's behalf, because the room a shed frees belongs to the
+	 * location: fitting once and latching a flag is what put an empty zone on a row with
+	 * twenty-one cells of slack. The zone was fitted to the budget left by a right group that
+	 * still held the session name and the context gauge -- a budget of ZERO -- and when those
+	 * two left a moment later nothing asked the fitter again, so the row rendered the directory
+	 * and the branch as nothing at all.
+	 */
+	#refit(): void {
+		const room = Math.max(0, this.#budget - this.#rightWidth - (this.#right ? 2 : 0));
+		const fitted = fitLocation(this.#location, this.#sep, room, this.#favour);
+		this.#setLeft(fitted.text);
+		this.#slots = fitted.slots;
+		this.#cramped = fitted.cramped;
+	}
+
+	#setLeft(text: string): void {
+		this.#left = text;
+		this.#leftWidth = visibleWidth(text);
+	}
+
+	#joinRight(): void {
+		let right = "";
+		for (let i = 0; i < this.#parts.length; i++)
+			right += i === 0 ? this.#parts[i]!.content : this.#sep + this.#parts[i]!.content;
+		this.#right = right;
+		this.#rightWidth = visibleWidth(right);
+	}
 }

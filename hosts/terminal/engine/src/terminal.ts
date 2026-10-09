@@ -110,55 +110,51 @@ export function chunkForConPTY(data: string, maxChunkBytes: number = MAX_CONPTY_
 	// Fast path: whole buffer fits in one write.
 	if (Buffer.byteLength(data, "utf8") <= maxChunkBytes) return [data];
 	const chunks: string[] = [];
-	const len = data.length;
-	let pos = 0;
-	while (pos < len) {
-		let bytes = 0;
-		// Index just past the most recent `\n` we've consumed inside [pos, i):
-		// the natural cut point that leaves escape sequences intact.
-		let lastNewlineEnd = -1;
-		let i = pos;
-		while (i < len) {
-			const cu = data.charCodeAt(i);
-			let cuLen = 1;
-			let cuBytes: number;
-			if (cu < 0x80) {
-				cuBytes = 1;
-			} else if (cu < 0x800) {
-				cuBytes = 2;
-			} else if (cu >= 0xd800 && cu < 0xdc00) {
-				// High surrogate: pair with the following low surrogate (4 bytes
-				// across two code units); an unpaired surrogate UTF-8-encodes as
-				// the 3-byte U+FFFD replacement character.
-				const next = i + 1 < len ? data.charCodeAt(i + 1) : 0;
-				if (next >= 0xdc00 && next < 0xe000) {
-					cuBytes = 4;
-					cuLen = 2;
-				} else {
-					cuBytes = 3;
-				}
-			} else {
-				// BMP non-surrogate or unpaired low surrogate → 3 bytes.
-				cuBytes = 3;
-			}
-			if (bytes + cuBytes > maxChunkBytes && i > pos) {
-				// Would overflow the cap. Cut at the last newline if we found one,
-				// otherwise hard-cut at the current code-point boundary.
-				const cut = lastNewlineEnd > pos ? lastNewlineEnd : i;
-				chunks.push(data.slice(pos, cut));
-				pos = cut;
-				break;
-			}
-			bytes += cuBytes;
-			i += cuLen;
-			if (cu === 0x0a) lastNewlineEnd = i;
-		}
-		if (i >= len) {
-			chunks.push(data.slice(pos));
-			pos = len;
-		}
+	for (let pos = 0; pos < data.length; ) {
+		const cut = conptyChunkEnd(data, pos, maxChunkBytes);
+		chunks.push(data.slice(pos, cut));
+		pos = cut;
 	}
 	return chunks;
+}
+
+/**
+ * End of the chunk that starts at `pos`: just past the last `\n` within the
+ * cap, else the last code-point boundary within it, else the end of `data`.
+ * A chunk holds at least one code point, so the end is always past `pos`.
+ */
+function conptyChunkEnd(data: string, pos: number, maxChunkBytes: number): number {
+	const len = data.length;
+	let bytes = 0;
+	// Index just past the most recent `\n` consumed inside [pos, i): the
+	// natural cut point that leaves escape sequences intact.
+	let lastNewlineEnd = -1;
+	let i = pos;
+	while (i < len) {
+		const cu = data.charCodeAt(i);
+		const cuBytes = utf8CodePointBytes(data, i, cu);
+		if (bytes + cuBytes > maxChunkBytes && i > pos) return lastNewlineEnd > pos ? lastNewlineEnd : i;
+		bytes += cuBytes;
+		// Only a surrogate pair is 4 bytes, and it spans two code units.
+		i += cuBytes === 4 ? 2 : 1;
+		if (cu === 0x0a) lastNewlineEnd = i;
+	}
+	return len;
+}
+
+/** UTF-8 bytes of the code point whose first code unit `cu` is at `i`. */
+function utf8CodePointBytes(data: string, i: number, cu: number): number {
+	if (cu < 0x80) return 1;
+	if (cu < 0x800) return 2;
+	if (cu >= 0xd800 && cu < 0xdc00) {
+		// High surrogate: pair with the following low surrogate (4 bytes
+		// across two code units); an unpaired surrogate UTF-8-encodes as
+		// the 3-byte U+FFFD replacement character.
+		const next = i + 1 < data.length ? data.charCodeAt(i + 1) : 0;
+		return next >= 0xdc00 && next < 0xe000 ? 4 : 3;
+	}
+	// BMP non-surrogate or unpaired low surrogate → 3 bytes.
+	return 3;
 }
 
 /**
@@ -375,62 +371,67 @@ export function emergencyTerminalRestore(): void {
 		// real terminal; no-op when the stderr guard is inactive.
 		restoreTerminalStderr();
 		const terminal = activeTerminal;
-		if (terminal) {
-			terminal.stop();
-			// stop() never touches the alternate screen — the TUI owns that
-			// state and exits it on the normal shutdown path. Only crash paths
-			// with a fullscreen overlay still hold the alt buffer here. The
-			// leave sequence is gated on the tracked state because it is NOT a
-			// universally safe no-op: Windows' VT dispatcher homes the cursor
-			// on DECRST 1049 even when the alt buffer is inactive.
-			if (altScreenActive) {
-				terminal.write("\x1b[?1049l");
-				altScreenActive = false;
-			}
-			// stop() already reset an instance-held OSC 11 override; this covers
-			// a crash landing between setBackgroundColor and stop().
-			if (osc11BackgroundOverridden) {
-				terminal.write(OSC11_RESET_BACKGROUND_SEQUENCE);
-				osc11BackgroundOverridden = false;
-			}
-			terminal.showCursor();
-		} else if (terminalEverStarted && !isTerminalHeadless()) {
-			// Blind restore only if we know a terminal was started but lost track of it
-			// This avoids writing escape sequences for non-TUI commands (grep, commit, etc.)
-			process.stdout.write(
-				"\x1b[?2026l" + // End synchronized output
-					"\x1b[?7h" + // Restore autowrap
-					"\x1b[?2004l" + // Disable bracketed paste
-					FOCUS_REPORTING_DISABLE + // Stop focus reporting (mode 1004)
-					"\x1b[?2031l" + // Disable Mode 2031 appearance notifications
-					"\x1b[?2048l" + // Disable in-band resize notifications
-					// Enhanced paste (DEC 5522), only when some terminal in this process
-					// armed it. This is the blind restore path -- it has lost the terminal
-					// object, so the module flag is the only record that the mode was ever
-					// set, and a reset for a mode nobody set is just a parse error in the
-					// user's terminal log.
-					(enhancedPasteArmed ? "\x1b[?5522l" : "") +
-					"\x1b[<u" + // Pop kitty keyboard protocol
-					"\x1b[>4;0m" + // Disable modifyOtherKeys fallback
-					"\x1b[?1006l\x1b[?1003l\x1b[?1000l" + // Disable mouse tracking (fullscreen overlays)
-					// Leave the alternate screen only when a fullscreen overlay
-					// actually holds it — on Windows, DECRST 1049 on the main
-					// buffer homes the cursor (unconditional CursorRestoreState
-					// with no prior save), corrupting the shell handoff on exit.
-					(altScreenActive ? "\x1b[?1049l" : "") +
-					// Reset an OSC 11 background override so a crash never leaves
-					// the user's terminal recolored to the theme ground.
-					(osc11BackgroundOverridden ? OSC11_RESET_BACKGROUND_SEQUENCE : "") +
-					"\x1b[?25h", // Show cursor
-			);
-			altScreenActive = false;
-			osc11BackgroundOverridden = false;
-			if (process.stdin.setRawMode) {
-				process.stdin.setRawMode(false);
-			}
-		}
+		if (terminal) restoreTrackedTerminal(terminal);
+		// Blind restore only if we know a terminal was started but lost track of it
+		// This avoids writing escape sequences for non-TUI commands (grep, commit, etc.)
+		else if (terminalEverStarted && !isTerminalHeadless()) blindTerminalRestore();
 	} catch {
 		// Terminal may already be dead during crash cleanup - ignore errors
+	}
+}
+
+function restoreTrackedTerminal(terminal: ProcessTerminal): void {
+	terminal.stop();
+	// stop() never touches the alternate screen — the TUI owns that
+	// state and exits it on the normal shutdown path. Only crash paths
+	// with a fullscreen overlay still hold the alt buffer here. The
+	// leave sequence is gated on the tracked state because it is NOT a
+	// universally safe no-op: Windows' VT dispatcher homes the cursor
+	// on DECRST 1049 even when the alt buffer is inactive.
+	if (altScreenActive) {
+		terminal.write("\x1b[?1049l");
+		altScreenActive = false;
+	}
+	// stop() already reset an instance-held OSC 11 override; this covers
+	// a crash landing between setBackgroundColor and stop().
+	if (osc11BackgroundOverridden) {
+		terminal.write(OSC11_RESET_BACKGROUND_SEQUENCE);
+		osc11BackgroundOverridden = false;
+	}
+	terminal.showCursor();
+}
+
+function blindTerminalRestore(): void {
+	process.stdout.write(
+		"\x1b[?2026l" + // End synchronized output
+			"\x1b[?7h" + // Restore autowrap
+			"\x1b[?2004l" + // Disable bracketed paste
+			FOCUS_REPORTING_DISABLE + // Stop focus reporting (mode 1004)
+			"\x1b[?2031l" + // Disable Mode 2031 appearance notifications
+			"\x1b[?2048l" + // Disable in-band resize notifications
+			// Enhanced paste (DEC 5522), only when some terminal in this process
+			// armed it. This is the blind restore path -- it has lost the terminal
+			// object, so the module flag is the only record that the mode was ever
+			// set, and a reset for a mode nobody set is just a parse error in the
+			// user's terminal log.
+			(enhancedPasteArmed ? "\x1b[?5522l" : "") +
+			"\x1b[<u" + // Pop kitty keyboard protocol
+			"\x1b[>4;0m" + // Disable modifyOtherKeys fallback
+			"\x1b[?1006l\x1b[?1003l\x1b[?1000l" + // Disable mouse tracking (fullscreen overlays)
+			// Leave the alternate screen only when a fullscreen overlay
+			// actually holds it — on Windows, DECRST 1049 on the main
+			// buffer homes the cursor (unconditional CursorRestoreState
+			// with no prior save), corrupting the shell handoff on exit.
+			(altScreenActive ? "\x1b[?1049l" : "") +
+			// Reset an OSC 11 background override so a crash never leaves
+			// the user's terminal recolored to the theme ground.
+			(osc11BackgroundOverridden ? OSC11_RESET_BACKGROUND_SEQUENCE : "") +
+			"\x1b[?25h", // Show cursor
+	);
+	altScreenActive = false;
+	osc11BackgroundOverridden = false;
+	if (process.stdin.setRawMode) {
+		process.stdin.setRawMode(false);
 	}
 }
 /** Terminal-reported appearance (dark/light mode). */

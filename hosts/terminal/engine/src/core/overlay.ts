@@ -349,14 +349,7 @@ export function drawScrollTrack(
 export class OverlayStack {
 	#entries: OverlayEntry[] = [];
 	readonly #viewport: OverlayViewport;
-	#frames: Array<{
-		entry: OverlayEntry;
-		row: number;
-		col: number;
-		width: number;
-		height: number;
-		lineOffset: number;
-	}> = [];
+	#frames: OverlayFrame[] = [];
 
 	constructor(viewport: OverlayViewport) {
 		this.#viewport = viewport;
@@ -466,32 +459,54 @@ export class OverlayStack {
 			// Get layout with height=0 first to determine width and maxHeight
 			// (width and maxHeight don't depend on overlay height).
 			const { width, maxHeight } = resolveOverlayLayout(options, 0, termWidth, termHeight, footerTop);
-			let overlayLines = component.render(width);
-			const renderedRows = overlayLines.length;
-			if (overlayLines.length > maxHeight) {
-				const anchor = options?.anchor ?? "center";
-				overlayLines =
-					anchor === "bottom-left" || anchor === "bottom-center" || anchor === "bottom-right"
-						? overlayLines.slice(overlayLines.length - maxHeight)
-						: overlayLines.slice(0, maxHeight);
-			}
+			const rendered = component.render(width);
+			const overlayLines = clipOverlayRows(rendered, maxHeight, options?.anchor);
 			const { row, col } = resolveOverlayLayout(options, overlayLines.length, termWidth, termHeight, footerTop);
-			this.#frames.push({
+			const frame: OverlayFrame = {
 				entry,
 				row,
 				col,
 				width,
 				height: overlayLines.length,
-				lineOffset: renderedRows - overlayLines.length,
-			});
-			for (let i = 0; i < overlayLines.length; i++) {
-				const idx = row + i;
-				if (idx < 0 || idx >= result.length) continue;
-				const truncatedOverlayLine =
-					visibleWidth(overlayLines[i]) > width ? sliceByColumn(overlayLines[i], 0, width, true) : overlayLines[i];
-				result[idx] = compositeLineAt(result[idx], truncatedOverlayLine, col, width, termWidth);
-			}
+				lineOffset: rendered.length - overlayLines.length,
+			};
+			this.#frames.push(frame);
+			paintOverlayRows(result, overlayLines, frame, termWidth);
 		}
 		return result;
+	}
+}
+
+/** Where an overlay landed in the last composite, in screen cells. */
+interface OverlayFrame {
+	entry: OverlayEntry;
+	row: number;
+	col: number;
+	width: number;
+	height: number;
+	/** Rows clipped off the top of the overlay's render to fit its maximum height. */
+	lineOffset: number;
+}
+
+/**
+ * The rows of an overlay's render that fit `maxHeight`: a bottom-anchored
+ * overlay keeps its last rows, any other its first.
+ */
+function clipOverlayRows(lines: readonly string[], maxHeight: number, anchor?: OverlayAnchor): readonly string[] {
+	if (lines.length <= maxHeight) return lines;
+	return anchor === "bottom-left" || anchor === "bottom-center" || anchor === "bottom-right"
+		? lines.slice(lines.length - maxHeight)
+		: lines.slice(0, maxHeight);
+}
+
+/** Composites an overlay's rows onto the window rows its frame covers, each cut to the frame width. */
+function paintOverlayRows(window: string[], rows: readonly string[], frame: OverlayFrame, termWidth: number): void {
+	const { row, col, width } = frame;
+	for (let i = 0; i < rows.length; i++) {
+		const idx = row + i;
+		if (idx < 0 || idx >= window.length) continue;
+		const line = rows[i]!;
+		const fitted = visibleWidth(line) > width ? sliceByColumn(line, 0, width, true) : line;
+		window[idx] = compositeLineAt(window[idx]!, fitted, col, width, termWidth);
 	}
 }

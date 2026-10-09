@@ -544,6 +544,11 @@ class Rng {
 		}
 		return items[this.int(0, items.length - 1)]!;
 	}
+
+	/** A percentage drawn from `percents` with `probability`, otherwise an integer cell count in `[min, max]`. */
+	sizeValue(probability: number, percents: readonly number[], min: number, max: number): `${number}%` | number {
+		return this.chance(probability) ? (`${this.pick(percents)}%` as `${number}%`) : this.int(min, max);
+	}
 }
 
 interface StressRandomStreams {
@@ -1354,52 +1359,53 @@ class StressDriver {
 	}
 
 	#chooseOperation(index: number, before: Snapshot): OperationKind {
-		if (
-			(this.#traits.ed3ScrollbackEraseRisk || this.#traits.conptyHostScrollbackUnobservable) &&
-			before.position.baseY > 0
-		) {
-			if (before.atBottom && index % 47 === 0) return "scrollUp";
-			if (!before.atBottom && index % 47 === 1) {
-				return this.#traits.foregroundStreaming ? "streamOne" : "eagerStreamingMutation";
-			}
-		}
-
-		if (
-			this.#traits.strictNativeScrollback &&
-			before.atBottom &&
-			before.frame.length > before.height + 8 &&
-			index % 43 === 0
-		) {
-			return "collapseToFew";
-		}
-		if (
-			this.#traits.strictNativeScrollback &&
-			before.atBottom &&
-			before.frame.length > before.height + 8 &&
-			!this.#hasVisibleOverlay() &&
-			index % 37 === 0
-		) {
-			return "highWaterPreviewCollapse";
-		}
-		if (this.#traits.strictNativeScrollback && before.atBottom && index % 41 === 0) {
-			return "offscreenEditAppendRepeatedTail";
-		}
+		const scheduled = this.#scheduledOperation(index, before);
+		if (scheduled !== undefined) return scheduled;
 		if (!before.atBottom && this.#streams.ops.chance(0.28)) {
 			return "scrollToBottom";
 		}
+		return weightedPick(this.#streams.ops, [
+			...this.#contentAndViewportWeights(before),
+			...this.#overlayAndStructureWeights(),
+		]);
+	}
 
+	/** The operation a scenario's traits force at a fixed index cadence, drawn before any random number. */
+	#scheduledOperation(index: number, before: Snapshot): OperationKind | undefined {
+		const traits = this.#traits;
+		const scrollbackRisk =
+			(traits.ed3ScrollbackEraseRisk || traits.conptyHostScrollbackUnobservable) && before.position.baseY > 0;
+		if (scrollbackRisk && before.atBottom && index % 47 === 0) return "scrollUp";
+		if (scrollbackRisk && !before.atBottom && index % 47 === 1) {
+			return traits.foregroundStreaming ? "streamOne" : "eagerStreamingMutation";
+		}
+		if (!traits.strictNativeScrollback || !before.atBottom) return undefined;
+		const overflowing = before.frame.length > before.height + 8;
+		if (overflowing && index % 43 === 0) return "collapseToFew";
+		if (overflowing && !this.#hasVisibleOverlay() && index % 37 === 0) return "highWaterPreviewCollapse";
+		if (index % 41 === 0) return "offscreenEditAppendRepeatedTail";
+		return undefined;
+	}
+
+	/**
+	 * Weights of the content, edit, scroll, resize, render and cursor operations: the head of the weighted table, whose
+	 * order fixes which operation a draw selects.
+	 */
+	#contentAndViewportWeights(before: Snapshot): WeightedCandidate<OperationKind>[] {
 		// Exact-width rows are the pending-wrap / DECAWM boundary case: a row whose
 		// visible width equals the terminal width writes its last cell, latching
 		// pending-wrap on autowrap terminals so a following cursor move can wrap and
 		// staircase. The renderer disables autowrap around paints (\x1b[?7l). Skipped
 		// for uniqueContent scenarios — at width 1-2 the finite cell alphabet cannot
 		// stay unique across hundreds of ops.
-		const weighted: readonly WeightedCandidate<OperationKind>[] = [
+		const unique = this.#scenario.uniqueContent;
+		const hasScrollback = before.position.baseY > 0;
+		return [
 			{ item: "appendSmall", weight: 14 },
 			{ item: "streamOne", weight: 12 },
-			{ item: "appendExactWidth", weight: this.#scenario.uniqueContent ? 0 : 5 },
-			{ item: "appendRepeatedTail", weight: this.#scenario.uniqueContent ? 2 : 8 },
-			{ item: "appendDuplicateOfExisting", weight: this.#scenario.uniqueContent ? 2 : 8 },
+			{ item: "appendExactWidth", weight: unique ? 0 : 5 },
+			{ item: "appendRepeatedTail", weight: unique ? 2 : 8 },
+			{ item: "appendDuplicateOfExisting", weight: unique ? 2 : 8 },
 			{ item: "injectBlankCluster", weight: 5 },
 			{ item: "appendBulk", weight: 3 },
 			{ item: "editVisibleLine", weight: 8 },
@@ -1412,8 +1418,8 @@ class StressDriver {
 			{ item: "replaceAll", weight: 1 },
 			{ item: "toggleCollapsible", weight: 2 },
 			{ item: "tickStatusHeader", weight: 8 },
-			{ item: "scrollUp", weight: before.position.baseY > 0 ? 4 : 0 },
-			{ item: "scrollPartial", weight: before.position.baseY > 0 ? 3 : 0 },
+			{ item: "scrollUp", weight: hasScrollback ? 4 : 0 },
+			{ item: "scrollPartial", weight: hasScrollback ? 3 : 0 },
 			{ item: "scrollToBottom", weight: before.atBottom ? 2 : 8 },
 			{ item: "resizeWidth", weight: 3 },
 			{ item: "resizeHeight", weight: 3 },
@@ -1424,11 +1430,18 @@ class StressDriver {
 			{ item: "toggleFocusInput", weight: 2 },
 			{ item: "moveCursorVisible", weight: 3 },
 			{ item: "moveCursorOffscreen", weight: 2 },
-			{ item: "showOverlay", weight: this.#overlays.length < 2 ? 3 : 1 },
-			{ item: "hideOverlay", weight: this.#overlays.length > 0 ? 2 : 0 },
-			{ item: "toggleOverlayHidden", weight: this.#overlays.length > 0 ? 2 : 0 },
-			{ item: "editOverlay", weight: this.#overlays.length > 0 ? 4 : 0 },
-			{ item: "moveOverlayCursor", weight: this.#overlays.length > 0 ? 2 : 0 },
+		];
+	}
+
+	/** Weights of the overlay, burst, collapse, combined-resize and child operations: the tail of the weighted table. */
+	#overlayAndStructureWeights(): WeightedCandidate<OperationKind>[] {
+		const overlays = this.#overlays.length;
+		return [
+			{ item: "showOverlay", weight: overlays < 2 ? 3 : 1 },
+			{ item: "hideOverlay", weight: overlays > 0 ? 2 : 0 },
+			{ item: "toggleOverlayHidden", weight: overlays > 0 ? 2 : 0 },
+			{ item: "editOverlay", weight: overlays > 0 ? 4 : 0 },
+			{ item: "moveOverlayCursor", weight: overlays > 0 ? 2 : 0 },
 			{ item: "coalescedBurst", weight: 6 },
 			{ item: "rotateUp", weight: 4 },
 			{ item: "swapOffscreenRows", weight: 3 },
@@ -1449,7 +1462,6 @@ class StressDriver {
 			{ item: "reorderChildren", weight: this.#children.filter(child => child.active).length > 1 ? 1 : 0 },
 			{ item: "mutateChild", weight: this.#children.some(child => child.active) ? 3 : 0 },
 		];
-		return weightedPick(this.#streams.ops, weighted);
 	}
 
 	async #applyOperation(kind: OperationKind): Promise<AppliedOperation> {
@@ -1790,24 +1802,21 @@ class StressDriver {
 
 	#randomOverlayOptions(): { options: OverlayOptions; detail: JsonObject } {
 		const rng = this.#streams.overlay;
+		const { columns, rows } = this.#term;
 		const options: OverlayOptions = {};
 		const detail: JsonObject = {};
 		if (rng.chance(0.75)) {
-			const width = rng.chance(0.35)
-				? (`${rng.pick([25, 40, 60, 80])}%` as `${number}%`)
-				: rng.int(1, Math.max(1, this.#term.columns + 8));
+			const width = rng.sizeValue(0.35, [25, 40, 60, 80], 1, Math.max(1, columns + 8));
 			options.width = width;
 			detail.width = width;
 		}
 		if (rng.chance(0.35)) {
-			const maxHeight = rng.chance(0.35)
-				? (`${rng.pick([25, 50, 75])}%` as `${number}%`)
-				: rng.int(1, Math.max(1, this.#term.rows));
+			const maxHeight = rng.sizeValue(0.35, [25, 50, 75], 1, Math.max(1, rows));
 			options.maxHeight = maxHeight;
 			detail.maxHeight = maxHeight;
 		}
 		if (rng.chance(0.25)) {
-			const minWidth = rng.int(1, Math.max(1, this.#term.columns + 4));
+			const minWidth = rng.int(1, Math.max(1, columns + 4));
 			options.minWidth = minWidth;
 			detail.minWidth = minWidth;
 		}
@@ -1820,32 +1829,19 @@ class StressDriver {
 			detail.offsetX = options.offsetX;
 			detail.offsetY = options.offsetY;
 		} else {
-			const row = rng.chance(0.45)
-				? (`${rng.pick([0, 25, 50, 75, 100])}%` as `${number}%`)
-				: rng.int(-2, this.#term.rows + 2);
-			const col = rng.chance(0.45)
-				? (`${rng.pick([0, 25, 50, 75, 100])}%` as `${number}%`)
-				: rng.int(-4, this.#term.columns + 4);
+			const row = rng.sizeValue(0.45, [0, 25, 50, 75, 100], -2, rows + 2);
+			const col = rng.sizeValue(0.45, [0, 25, 50, 75, 100], -4, columns + 4);
 			options.row = row;
 			options.col = col;
 			detail.row = row;
 			detail.col = col;
 		}
 		if (rng.chance(0.6)) {
-			if (rng.chance(0.5)) {
-				const margin = rng.int(0, 2);
-				options.margin = margin;
-				detail.margin = margin;
-			} else {
-				const margin = {
-					top: rng.int(0, 2),
-					right: rng.int(0, 2),
-					bottom: rng.int(0, 2),
-					left: rng.int(0, 2),
-				};
-				options.margin = margin;
-				detail.margin = margin;
-			}
+			const margin = rng.chance(0.5)
+				? rng.int(0, 2)
+				: { top: rng.int(0, 2), right: rng.int(0, 2), bottom: rng.int(0, 2), left: rng.int(0, 2) };
+			options.margin = margin;
+			detail.margin = margin;
 		}
 		return { options, detail };
 	}
@@ -2261,31 +2257,7 @@ class StressDriver {
 		after: Snapshot,
 		index: number,
 	): void {
-		if (params.includes(2026)) {
-			if (this.#traits.syncOutputDisabled) {
-				this.#fail(
-					final === "h"
-						? "synchronized-output begin emitted while VEYYON_NO_SYNC_OUTPUT is set"
-						: "synchronized-output end emitted while VEYYON_NO_SYNC_OUTPUT is set",
-					op,
-					before,
-					after,
-					index,
-					{ sequence: final === "h" ? "BSU" : "ESU" },
-				);
-			}
-			this.#syncDepth += final === "h" ? 1 : -1;
-			if (this.#syncDepth > 1) {
-				this.#fail("nested synchronized-output begin (BSU within BSU)", op, before, after, index, {
-					syncDepth: this.#syncDepth,
-				});
-			}
-			if (this.#syncDepth < 0) {
-				this.#fail("synchronized-output end (ESU) without matching begin", op, before, after, index, {
-					syncDepth: this.#syncDepth,
-				});
-			}
-		}
+		if (params.includes(2026)) this.#consumeSyncBracket(final, op, before, after, index);
 		if (params.includes(7)) {
 			this.#autowrapOffDepth += final === "l" ? 1 : -1;
 			if (this.#autowrapOffDepth < 0) {
@@ -2293,6 +2265,32 @@ class StressDriver {
 					autowrapOffDepth: this.#autowrapOffDepth,
 				});
 			}
+		}
+	}
+
+	/** Tracks one synchronized-output begin (`h`) or end (`l`) and fails on nesting, underflow or a disabled mode. */
+	#consumeSyncBracket(final: "h" | "l", op: AppliedOperation, before: Snapshot, after: Snapshot, index: number): void {
+		const begin = final === "h";
+		if (this.#traits.syncOutputDisabled) {
+			this.#fail(
+				`synchronized-output ${begin ? "begin" : "end"} emitted while VEYYON_NO_SYNC_OUTPUT is set`,
+				op,
+				before,
+				after,
+				index,
+				{ sequence: begin ? "BSU" : "ESU" },
+			);
+		}
+		this.#syncDepth += begin ? 1 : -1;
+		if (this.#syncDepth > 1) {
+			this.#fail("nested synchronized-output begin (BSU within BSU)", op, before, after, index, {
+				syncDepth: this.#syncDepth,
+			});
+		}
+		if (this.#syncDepth < 0) {
+			this.#fail("synchronized-output end (ESU) without matching begin", op, before, after, index, {
+				syncDepth: this.#syncDepth,
+			});
 		}
 	}
 
@@ -2725,46 +2723,50 @@ class StressDriver {
 		index: number,
 	): void {
 		if (!this.#scenario.uniqueContent) return;
-		// All comparisons run with non-spacing marks stripped: the virtual
-		// terminal drops them on input (ghostty-web 0.4 margin-cluster crash
-		// workaround), so buffer readback and frame/tape rows would otherwise
-		// never collide on marked rows.
-		const strip = (line: string): string => line.replace(NONSPACING_MARKS, "");
 		// Accumulate even when the check below is skipped (scrolled/overlay): the
 		// frame's legitimate duplicates commit to scrollback regardless of where
-		// the viewport is parked. The shadow tape contributes too: a no-seam
-		// offscreen insert re-indexes committed content, so the shifted rows
-		// legitimately commit a second time (the exact tape-equality oracle has
-		// already proven the buffer matches the ledger row for row).
-		for (const line of duplicateNonblankLines(after.frame)) {
-			this.#everDuplicatedFrameLines.add(strip(line));
-		}
-		const tapeSeen = new Set<string>();
-		for (const raw of this.#shadowTape) {
-			if (raw.length === 0) continue;
-			const line = strip(raw);
-			if (tapeSeen.has(line)) this.#everDuplicatedFrameLines.add(line);
-			tapeSeen.add(line);
-		}
-		// A committed row that still sits in the visible window (window floored
-		// at the commit boundary) legitimately appears in both regions of the
-		// whole-tape buffer snapshot.
-		for (let r = 0; r < after.height; r++) {
-			const raw = this.#shadowFrame[this.#shadowWindowTop + r] ?? "";
-			if (raw.length === 0) continue;
-			const line = strip(raw);
-			if (tapeSeen.has(line)) this.#everDuplicatedFrameLines.add(line);
-		}
+		// the viewport is parked.
+		this.#recordLegitimateDuplicates(after);
 		if (this.#hasVisibleOverlay() || !after.atBottom) return;
 		const allowed = this.#everDuplicatedFrameLines;
 		const seen = new Set<string>();
 		for (const raw of after.buffer) {
 			if (raw.length === 0) continue;
-			const line = strip(raw);
+			const line = raw.replace(NONSPACING_MARKS, "");
 			if (seen.has(line) && !allowed.has(line)) {
 				this.#fail("unexpected duplicate native scrollback line", op, before, after, index, { line });
 			}
 			seen.add(line);
+		}
+	}
+
+	/**
+	 * Adds every row that may legitimately appear twice in native scrollback to `#everDuplicatedFrameLines`.
+	 *
+	 * All rows are compared with non-spacing marks stripped: the virtual terminal drops them on input (ghostty-web 0.4
+	 * margin-cluster crash workaround), so buffer readback and frame/tape rows would otherwise never collide on marked
+	 * rows. The shadow tape contributes: a no-seam offscreen insert re-indexes committed content, so the shifted rows
+	 * commit a second time (the exact tape-equality oracle has already proven the buffer matches the ledger row for
+	 * row). A committed row that still sits in the visible window (window floored at the commit boundary) appears in
+	 * both regions of the whole-tape buffer snapshot.
+	 */
+	#recordLegitimateDuplicates(after: Snapshot): void {
+		const ledger = this.#everDuplicatedFrameLines;
+		for (const line of duplicateNonblankLines(after.frame)) {
+			ledger.add(line.replace(NONSPACING_MARKS, ""));
+		}
+		const tapeSeen = new Set<string>();
+		for (const raw of this.#shadowTape) {
+			if (raw.length === 0) continue;
+			const line = raw.replace(NONSPACING_MARKS, "");
+			if (tapeSeen.has(line)) ledger.add(line);
+			tapeSeen.add(line);
+		}
+		for (let r = 0; r < after.height; r++) {
+			const raw = this.#shadowFrame[this.#shadowWindowTop + r] ?? "";
+			if (raw.length === 0) continue;
+			const line = raw.replace(NONSPACING_MARKS, "");
+			if (tapeSeen.has(line)) ledger.add(line);
 		}
 	}
 
@@ -3019,34 +3021,52 @@ function expectedBackgroundColumns(line: string, width: number): number[] {
 	let col = 0;
 	for (const segment of SEGMENTER.segment(fitted)) {
 		if (segment.index < skipUntil) continue;
-		if (fitted.charCodeAt(segment.index) === 0x1b) {
-			const next = segment.index + 1;
-			if (fitted[next] === "[") {
-				const terminator = findCsiTerminator(fitted, next + 1);
-				if (terminator === -1) break;
-				if (fitted[terminator] === "m") {
-					backgroundActive = applySgrBackground(backgroundActive, fitted.slice(next + 1, terminator));
-				}
-				skipUntil = terminator + 1;
-				continue;
-			}
-			if (fitted[next] === "]") {
-				const terminator = findOscTerminator(fitted, next + 1);
-				if (terminator === -1) break;
-				skipUntil = terminator;
-				continue;
-			}
+		const step = stepOverEscape(fitted, segment.index, backgroundActive);
+		if (step !== undefined) {
+			backgroundActive = step.backgroundActive;
+			skipUntil = step.resume;
+			continue;
 		}
 		const segmentWidth = visibleWidth(segment.segment);
 		if (segmentWidth <= 0) continue;
-		if (backgroundActive) {
-			const end = Math.min(safeWidth, col + segmentWidth);
-			for (let column = col; column < end; column++) columns.push(column);
-		}
+		const end = backgroundActive ? Math.min(safeWidth, col + segmentWidth) : col;
+		for (let column = col; column < end; column++) columns.push(column);
 		col += segmentWidth;
 		if (col >= safeWidth) break;
 	}
 	return columns;
+}
+
+/** Where a background scan resumes after one escape sequence, and the SGR background state that sequence leaves. */
+interface EscapeStep {
+	/** Index the scan resumes at; the text length when the sequence is unterminated, which skips the rest of the row. */
+	resume: number;
+	backgroundActive: boolean;
+}
+
+/**
+ * Steps over the CSI or OSC sequence that starts at `index`, applying an SGR sequence to `backgroundActive`. Returns
+ * `undefined` when `index` does not start a CSI or OSC sequence, so the grapheme there is measured as a visible cell.
+ */
+function stepOverEscape(text: string, index: number, backgroundActive: boolean): EscapeStep | undefined {
+	if (text.charCodeAt(index) !== 0x1b) return undefined;
+	const next = index + 1;
+	if (text[next] === "[") {
+		const terminator = findCsiTerminator(text, next + 1);
+		if (terminator === -1) return { resume: text.length, backgroundActive };
+		const sgr = text[terminator] === "m";
+		return {
+			resume: terminator + 1,
+			backgroundActive: sgr
+				? applySgrBackground(backgroundActive, text.slice(next + 1, terminator))
+				: backgroundActive,
+		};
+	}
+	if (text[next] === "]") {
+		const terminator = findOscTerminator(text, next + 1);
+		return { resume: terminator === -1 ? text.length : terminator, backgroundActive };
+	}
+	return undefined;
 }
 
 function applySgrBackground(current: boolean, paramsText: string): boolean {
@@ -3072,37 +3092,53 @@ function compositeExpectedOverlays(
 	termWidth: number,
 	termHeight: number,
 ): string[] {
-	if (overlays.length === 0) return [...lines];
 	const result = [...lines];
-	const rendered: { overlayLines: string[]; row: number; col: number; w: number }[] = [];
-	let minLinesNeeded = result.length;
-	for (const entry of overlays) {
-		if (!isExpectedOverlayVisible(entry, termWidth, termHeight)) continue;
-		const firstLayout = resolveExpectedOverlayLayout(entry.options, 0, termWidth, termHeight);
-		let overlayLines = entry.component.render(firstLayout.width);
-		if (overlayLines.length > firstLayout.maxHeight) {
-			overlayLines = overlayLines.slice(0, firstLayout.maxHeight);
-		}
-		const layout = resolveExpectedOverlayLayout(entry.options, overlayLines.length, termWidth, termHeight);
-		rendered.push({ overlayLines, row: layout.row, col: layout.col, w: layout.width });
-		minLinesNeeded = Math.max(minLinesNeeded, layout.row + overlayLines.length);
-	}
-	const workingHeight = Math.max(result.length, minLinesNeeded);
+	const placed = layoutExpectedOverlays(overlays, termWidth, termHeight);
+	let workingHeight = result.length;
+	for (const overlay of placed) workingHeight = Math.max(workingHeight, overlay.row + overlay.lines.length);
 	while (result.length < workingHeight) {
 		result.push("");
 	}
 	const viewportStart = Math.max(0, workingHeight - termHeight);
-	for (const { overlayLines, row, col, w } of rendered) {
+	for (const { lines: overlayLines, row, col, width } of placed) {
 		for (let i = 0; i < overlayLines.length; i++) {
 			const index = viewportStart + row + i;
 			if (index < 0 || index >= result.length) continue;
 			const overlayLine = overlayLines[i] ?? "";
 			const truncatedOverlayLine =
-				visibleWidth(overlayLine) > w ? sliceByColumn(overlayLine, 0, w, true) : overlayLine;
-			result[index] = compositeExpectedLineAt(result[index] ?? "", truncatedOverlayLine, col, w, termWidth);
+				visibleWidth(overlayLine) > width ? sliceByColumn(overlayLine, 0, width, true) : overlayLine;
+			result[index] = compositeExpectedLineAt(result[index] ?? "", truncatedOverlayLine, col, width, termWidth);
 		}
 	}
 	return result;
+}
+
+/** A visible overlay's rendered rows, clipped to its max height, and the viewport cell its top-left corner lands on. */
+interface PlacedExpectedOverlay {
+	lines: string[];
+	row: number;
+	col: number;
+	width: number;
+}
+
+/** Renders and positions every visible overlay the way the TUI does: size first, then place by rendered height. */
+function layoutExpectedOverlays(
+	overlays: readonly StressOverlayEntry[],
+	termWidth: number,
+	termHeight: number,
+): PlacedExpectedOverlay[] {
+	const placed: PlacedExpectedOverlay[] = [];
+	for (const entry of overlays) {
+		if (!isExpectedOverlayVisible(entry, termWidth, termHeight)) continue;
+		const sizing = resolveExpectedOverlayLayout(entry.options, 0, termWidth, termHeight);
+		let lines = entry.component.render(sizing.width);
+		if (lines.length > sizing.maxHeight) {
+			lines = lines.slice(0, sizing.maxHeight);
+		}
+		const layout = resolveExpectedOverlayLayout(entry.options, lines.length, termWidth, termHeight);
+		placed.push({ lines, row: layout.row, col: layout.col, width: layout.width });
+	}
+	return placed;
 }
 
 function isExpectedOverlayVisible(entry: StressOverlayEntry, termWidth: number, termHeight: number): boolean {
@@ -3117,16 +3153,9 @@ export function resolveExpectedOverlayLayout(
 	termHeight: number,
 ): { width: number; row: number; col: number; maxHeight: number } {
 	const opt = options ?? {};
-	const margin =
-		typeof opt.margin === "number"
-			? { top: opt.margin, right: opt.margin, bottom: opt.margin, left: opt.margin }
-			: (opt.margin ?? {});
-	const marginTop = Math.max(0, margin.top ?? 0);
-	const marginRight = Math.max(0, margin.right ?? 0);
-	const marginBottom = Math.max(0, margin.bottom ?? 0);
-	const marginLeft = Math.max(0, margin.left ?? 0);
-	const availWidth = Math.max(1, termWidth - marginLeft - marginRight);
-	const availHeight = Math.max(1, termHeight - marginTop - marginBottom);
+	const margin = expectedOverlayMargin(opt.margin);
+	const availWidth = Math.max(1, termWidth - margin.left - margin.right);
+	const availHeight = Math.max(1, termHeight - margin.top - margin.bottom);
 	let width = parseOverlaySizeValue(opt.width, termWidth) ?? Math.min(80, availWidth);
 	if (opt.minWidth !== undefined) {
 		width = Math.max(width, opt.minWidth);
@@ -3135,29 +3164,37 @@ export function resolveExpectedOverlayLayout(
 	let maxHeight = parseOverlaySizeValue(opt.maxHeight, termHeight) ?? availHeight;
 	maxHeight = Math.max(1, Math.min(maxHeight, availHeight));
 	const effectiveHeight = Math.min(overlayHeight, maxHeight);
-	let row: number;
-	let col: number;
-	if (opt.row !== undefined) {
-		row =
-			typeof opt.row === "string"
-				? resolveOverlayPercentPosition(opt.row, Math.max(0, availHeight - effectiveHeight), marginTop)
-				: opt.row;
-	} else {
-		row = resolveExpectedAnchorRow(opt.anchor ?? "center", effectiveHeight, availHeight, marginTop);
-	}
-	if (opt.col !== undefined) {
-		col =
-			typeof opt.col === "string"
-				? resolveOverlayPercentPosition(opt.col, Math.max(0, availWidth - width), marginLeft)
-				: opt.col;
-	} else {
-		col = resolveExpectedAnchorCol(opt.anchor ?? "center", width, availWidth, marginLeft);
-	}
+	const anchor = opt.anchor ?? "center";
+	let row =
+		opt.row === undefined
+			? resolveExpectedAnchorRow(anchor, effectiveHeight, availHeight, margin.top)
+			: resolveOverlayPosition(opt.row, Math.max(0, availHeight - effectiveHeight), margin.top);
+	let col =
+		opt.col === undefined
+			? resolveExpectedAnchorCol(anchor, width, availWidth, margin.left)
+			: resolveOverlayPosition(opt.col, Math.max(0, availWidth - width), margin.left);
 	if (opt.offsetY !== undefined) row += opt.offsetY;
 	if (opt.offsetX !== undefined) col += opt.offsetX;
-	row = Math.max(marginTop, Math.min(row, termHeight - marginBottom - effectiveHeight));
-	col = Math.max(marginLeft, Math.min(col, termWidth - marginRight - width));
+	row = Math.max(margin.top, Math.min(row, termHeight - margin.bottom - effectiveHeight));
+	col = Math.max(margin.left, Math.min(col, termWidth - margin.right - width));
 	return { width, row, col, maxHeight };
+}
+
+/** The four overlay margins, a number applying to every side, each clamped to be non-negative. */
+function expectedOverlayMargin(margin: OverlayOptions["margin"]): {
+	top: number;
+	right: number;
+	bottom: number;
+	left: number;
+} {
+	const sides =
+		typeof margin === "number" ? { top: margin, right: margin, bottom: margin, left: margin } : (margin ?? {});
+	return {
+		top: Math.max(0, sides.top ?? 0),
+		right: Math.max(0, sides.right ?? 0),
+		bottom: Math.max(0, sides.bottom ?? 0),
+		left: Math.max(0, sides.left ?? 0),
+	};
 }
 
 function parseOverlaySizeValue(value: OverlayOptions["width"] | undefined, referenceSize: number): number | undefined {
@@ -3167,7 +3204,16 @@ function parseOverlaySizeValue(value: OverlayOptions["width"] | undefined, refer
 	return match ? Math.floor((referenceSize * Number.parseFloat(match[1] ?? "0")) / 100) : undefined;
 }
 
-function resolveOverlayPercentPosition(value: string, maxPosition: number, margin: number): number {
+/**
+ * An explicit row or column: an absolute cell index as given, or a percentage of `maxPosition` offset by `margin`. A
+ * malformed percentage centers.
+ */
+function resolveOverlayPosition(
+	value: NonNullable<OverlayOptions["row"]>,
+	maxPosition: number,
+	margin: number,
+): number {
+	if (typeof value === "number") return value;
 	const match = value.match(/^(\d+(?:\.\d+)?)%$/);
 	if (!match) return margin + Math.floor(maxPosition / 2);
 	return margin + Math.floor(maxPosition * (Number.parseFloat(match[1] ?? "0") / 100));
@@ -3439,7 +3485,6 @@ export function buildScenarios(): Scenario[] {
 		throw new Error("TUI_STRESS_REPLAY_LOG requires TUI_STRESS_REPLAY to select the scenario and seed");
 	}
 	if (replay !== null) {
-		const maxHeight = maxOf(replay.template.heightChoices);
 		return [
 			materializeScenario(
 				replay.template,
@@ -3447,33 +3492,32 @@ export function buildScenarios(): Scenario[] {
 				replayOperations?.length ?? replay.iterations,
 				SOAK_BULK_MAX,
 				SOAK_TIMEOUT_MS,
-				maxHeight,
 				replayOperations ?? undefined,
 			),
 		];
 	}
+	return seededScenarios(templates, soak);
+}
+
+/** One scenario per seed, cycling through `templates`, then every pinned regression replay the template set holds. */
+function seededScenarios(templates: readonly ScenarioTemplate[], soak: boolean): Scenario[] {
 	const defaultSeedCount = Math.max(BASE_SEEDS.length, templates.length);
 	const seedCount = parsePositiveInt("TUI_STRESS_SEEDS", defaultSeedCount);
-	const iterations = parsePositiveInt("TUI_STRESS_ITER", soak ? SOAK_ITERATIONS : CORE_ITERATIONS);
-	const bulkMax = soak ? SOAK_BULK_MAX : CORE_BULK_MAX;
 	const baseIterations = soak ? SOAK_ITERATIONS : CORE_ITERATIONS;
+	const iterations = parsePositiveInt("TUI_STRESS_ITER", baseIterations);
+	const bulkMax = soak ? SOAK_BULK_MAX : CORE_BULK_MAX;
 	const baseTimeoutMs = soak ? SOAK_TIMEOUT_MS : CORE_TIMEOUT_MS;
 	// Higher-iteration hunts scale worse than linearly because exhaustive
 	// scrollback probes and resize/overlay rebuilds revisit larger buffers.
 	const timeoutMs = Math.max(baseTimeoutMs, Math.ceil((baseTimeoutMs * iterations * 3) / baseIterations));
-	const seeds = buildSeeds(seedCount);
-	const scenarios: Scenario[] = [];
-	for (let i = 0; i < seeds.length; i++) {
-		const template = templates[i % templates.length]!;
-		const maxHeight = maxOf(template.heightChoices);
-		scenarios.push(materializeScenario(template, seeds[i]!, iterations, bulkMax, timeoutMs, maxHeight));
-	}
+	const scenarios = buildSeeds(seedCount).map((seed, i) =>
+		materializeScenario(templates[i % templates.length]!, seed, iterations, bulkMax, timeoutMs),
+	);
 	for (const pinned of REGRESSION_REPLAYS) {
 		const template = templates.find(t => t.name === pinned.template);
 		if (template === undefined) continue; // soak template set may not carry it
 		if (scenarios.some(s => s.name === pinned.template && s.seed === pinned.seed)) continue;
-		const maxHeight = maxOf(template.heightChoices);
-		scenarios.push(materializeScenario(template, pinned.seed, iterations, bulkMax, timeoutMs, maxHeight));
+		scenarios.push(materializeScenario(template, pinned.seed, iterations, bulkMax, timeoutMs));
 	}
 	return scenarios;
 }
@@ -3484,13 +3528,13 @@ function materializeScenario(
 	iterations: number,
 	bulkMax: number,
 	timeoutMs: number,
-	maxHeight: number,
 	replayOperations?: readonly OperationKind[],
 ): Scenario {
 	const strictScrollback =
 		template.envMode !== "tmux" && template.terminalMode === "normal" && template.platform !== "win32";
 	const foregroundStream = template.foregroundStream ?? false;
 	const reflow = template.reflow ?? false;
+	const maxHeight = maxOf(template.heightChoices);
 	return {
 		...template,
 		seed,
@@ -3870,21 +3914,7 @@ function soakTemplates(): ScenarioTemplate[] {
 		for (const terminalMode of terminalModes) {
 			for (const envMode of envModes) {
 				for (const geometryMode of geometries) {
-					const large = geometryMode === "large";
-					templates.push({
-						name: `${platform}-${terminalMode}-${envMode}-${geometryMode}`,
-						platform,
-						terminalMode,
-						envMode,
-						geometryMode,
-						columns: large ? 80 : 32,
-						rows: large ? 12 : 4,
-						widthChoices: large ? [80, 120] : [2, 10, 16, 24, 32, 40],
-						heightChoices: large ? [12, 24] : [3, 4, 6],
-						...(!large && terminalMode === "normal" && envMode === "plain"
-							? { scrollbackRows: 5, uniqueContent: true }
-							: {}),
-					});
+					templates.push(soakMatrixTemplate(platform, terminalMode, envMode, geometryMode));
 				}
 			}
 		}
@@ -3892,17 +3922,12 @@ function soakTemplates(): ScenarioTemplate[] {
 	// WSL fronted by Windows Terminal (#1610): only the unknown terminal mode is
 	// realistic — the kernel32 viewport probe never answers from a Linux process.
 	for (const geometryMode of geometries) {
-		const large = geometryMode === "large";
 		templates.push({
 			name: `linux-unknown-wsl-${geometryMode}`,
 			platform: "linux",
 			terminalMode: "unknown",
 			envMode: "wsl",
-			geometryMode,
-			columns: large ? 80 : 32,
-			rows: large ? 12 : 4,
-			widthChoices: large ? [80, 120] : [2, 10, 16, 24, 32, 40],
-			heightChoices: large ? [12, 24] : [3, 4, 6],
+			...soakGeometry(geometryMode, [12, 24]),
 		});
 	}
 	// Foreground tool streaming on an ED3-risk terminal with an unobservable
@@ -3911,21 +3936,48 @@ function soakTemplates(): ScenarioTemplate[] {
 	// lags the high-water mark — a later shrink must still re-anchor the viewport
 	// bottom rather than drifting rows up over one another.
 	for (const geometryMode of geometries) {
-		const large = geometryMode === "large";
 		templates.push({
 			name: `darwin-unknown-ghostty-stream-${geometryMode}`,
 			platform: "darwin",
 			terminalMode: "unknown",
 			envMode: "ghostty",
-			geometryMode,
-			columns: large ? 80 : 32,
-			rows: large ? 12 : 4,
-			widthChoices: large ? [80, 120] : [2, 10, 16, 24, 32, 40],
-			heightChoices: large ? [8, 12, 24] : [3, 4, 6],
+			...soakGeometry(geometryMode, [8, 12, 24]),
 			foregroundStream: true,
 		});
 	}
 	return templates;
+}
+
+/**
+ * One cell of the soak platform × terminal-mode × environment × geometry matrix. The small plain normal-mode cell runs
+ * with a 5-row scrollback and unique content, so duplicate native scrollback rows are detectable.
+ */
+function soakMatrixTemplate(
+	platform: TestPlatform,
+	terminalMode: TerminalMode,
+	envMode: EnvMode,
+	geometryMode: GeometryMode,
+): ScenarioTemplate {
+	return {
+		name: `${platform}-${terminalMode}-${envMode}-${geometryMode}`,
+		platform,
+		terminalMode,
+		envMode,
+		...soakGeometry(geometryMode, [12, 24]),
+		...(geometryMode === "small" && terminalMode === "normal" && envMode === "plain"
+			? { scrollbackRows: 5, uniqueContent: true }
+			: {}),
+	};
+}
+
+/** Initial size and resize choices of a soak template; `largeHeights` are the large geometry's height choices. */
+function soakGeometry(
+	geometryMode: GeometryMode,
+	largeHeights: readonly number[],
+): Pick<ScenarioTemplate, "geometryMode" | "columns" | "rows" | "widthChoices" | "heightChoices"> {
+	return geometryMode === "large"
+		? { geometryMode, columns: 80, rows: 12, widthChoices: [80, 120], heightChoices: largeHeights }
+		: { geometryMode, columns: 32, rows: 4, widthChoices: [2, 10, 16, 24, 32, 40], heightChoices: [3, 4, 6] };
 }
 
 export interface StressEnvSnapshot {

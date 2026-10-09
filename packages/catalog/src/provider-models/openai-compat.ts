@@ -42,6 +42,7 @@ import {
 	PERSONAL_GITHUB_COPILOT_BASE_URL,
 	parseGitHubCopilotApiKey,
 } from "../wire/github-copilot";
+import { resolveKimiCodeEndpoint } from "../wire/kimi-code";
 import { getOpenCodeUserAgent } from "../wire/opencode-headers";
 import { basetenRouteReasoning } from "./baseten-reasoning";
 import { createBundledReferenceMap, createReferenceResolver, toModelSpec } from "./bundled-references";
@@ -2791,8 +2792,9 @@ export interface KimiCodeModelManagerConfig {
 export function kimiCodeModelManagerOptions(
 	config?: KimiCodeModelManagerConfig,
 ): ModelManagerOptions<"openai-completions"> {
-	const apiKey = config?.apiKey;
-	const baseUrl = config?.baseUrl ?? "https://api.kimi.com/coding/v1";
+	// A global credential's key names kimi.ai, and its token lists models only there. An empty key
+	// resolves to the configured deployment and skips discovery below.
+	const { apiKey, baseUrl } = resolveKimiCodeEndpoint(config?.apiKey ?? "", config?.baseUrl);
 	const references = createBundledReferenceMap<"openai-completions">("kimi-code");
 	return {
 		providerId: "kimi-code",

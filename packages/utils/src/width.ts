@@ -514,99 +514,101 @@ export function visibleWidth(str: string): number {
 	// Long non-escape text is faster through Bun's native scanner than through
 	// a JS printable-ASCII prepass.
 	if (str.length >= LONG_WIDTH_FAST_PATH_MIN && !str.includes(ESC)) {
-		let width = correctedBunWidth(str);
-		const tabCount = countTabs(str);
-		if (tabCount > 0) width += tabCount * DEFAULT_TAB_WIDTH;
-		return width;
+		return correctedBunWidth(str) + countTabs(str) * DEFAULT_TAB_WIDTH;
 	}
+	const scanned = scannedWidth(str);
+	return scanned === -1 ? measuredWidth(str) : scanned;
+}
 
-	// Printable ASCII, one-cell units past ASCII (box drawing, gutters, arrows,
-	// punctuation, Latin-1), tabs and SGR sequences (`ESC [`, digits, `:` or `;`,
-	// then `m`) are counted here: a styled row of rendered prose or chrome is only
-	// these, and each SGR sequence draws nothing. The scan stops at anything else,
-	// which the native measure below reads from the start of the string.
+/**
+ * Width of a string that holds only printable ASCII, one-cell units past ASCII
+ * (box drawing, gutters, arrows, punctuation, Latin-1), tabs and SGR sequences
+ * (`ESC [`, digits, `:` or `;`, then `m`), counted in one pass; -1 at the first
+ * unit that is anything else, and {@link measuredWidth} reads the string from
+ * the start. A styled row of rendered prose or chrome is only these, and each
+ * SGR sequence draws nothing.
+ */
+function scannedWidth(str: string): number {
 	let tabCount = 0;
 	let sgrLength = 0;
-	let i = 0;
-	for (; i < str.length; i++) {
+	for (let i = 0; i < str.length; i++) {
 		const code = str.charCodeAt(i);
 		if (code >= 0x20 && code <= 0x7e) continue;
 		if (code === 0x09) {
 			tabCount++;
 			continue;
 		}
-		if (code === 0x1b && str.charCodeAt(i + 1) === 0x5b) {
-			let end = i + 2;
-			while (end < str.length) {
-				const param = str.charCodeAt(end);
-				if (param < 0x30 || param > 0x3b) break;
-				end++;
-			}
-			if (str.charCodeAt(end) === 0x6d) {
-				sgrLength += end + 1 - i;
-				i = end;
-				continue;
-			}
+		if (code === 0x1b) {
+			const end = sgrEnd(str, i);
+			if (end === -1) return -1;
+			sgrLength += end + 1 - i;
+			i = end;
+		} else if (code < 0x7f || !isOneCellUnit(code)) {
+			return -1;
 		}
-		if (code > 0x7e && isOneCellUnit(code)) continue;
-		break;
 	}
-	if (i === str.length) {
-		return str.length - sgrLength + tabCount * (DEFAULT_TAB_WIDTH - 1);
+	return str.length - sgrLength + tabCount * (DEFAULT_TAB_WIDTH - 1);
+}
+
+/** Index of the `m` that ends the SGR sequence at `start`, or -1 when no SGR sequence starts there. */
+function sgrEnd(str: string, start: number): number {
+	if (str.charCodeAt(start + 1) !== 0x5b) return -1;
+	let end = start + 2;
+	for (; end < str.length; end++) {
+		const param = str.charCodeAt(end);
+		if (param < 0x30 || param > 0x3b) break;
 	}
+	return str.charCodeAt(end) === 0x6d ? end : -1;
+}
 
-	for (let tabIndex = str.indexOf(TAB, i + 1); tabIndex !== -1; tabIndex = str.indexOf(TAB, tabIndex + 1)) {
-		tabCount++;
-	}
-
-	// `Bun.stringWidth` is a JSC builtin (no per-call N-API number box, unlike
-	// the native scanner that traps under Bun 1.3.x GC/N-API load). It strips
-	// CSI/OSC to zero cells and shares the native engine's UAX#11 width tables.
-
+/**
+ * Width of a string through `Bun.stringWidth`, a JSC builtin (no per-call N-API
+ * number box, unlike the native scanner that traps under Bun 1.3.x GC/N-API
+ * load). It strips CSI/OSC to zero cells and shares the native engine's UAX#11
+ * width tables.
+ */
+function measuredWidth(str: string): number {
 	// Strip OSC sequences before measuring: they draw nothing, and an OSC 8
 	// hyperlink measured at its escape length rather than its label length is
 	// what pushed Markdown table columns out of place (upstream #6282).
 	const strippedStr = str.includes(OSC) ? str.replace(OSC_SEQUENCE_REGEX, OSC_STRIP_MARKER) : str;
-	let width = correctedBunWidth(strippedStr);
 
-	// Tabs were counted over the RAW string, and the width above came from the
-	// stripped one, so every tab that lived INSIDE an OSC sequence was charged a
-	// tab stop for text the terminal never draws. A hyperlink whose URL contains a
-	// tab, or a window-title OSC, measured three cells wider here than natively.
-	// Recount over the text actually measured; only OSC-bearing input pays for it,
-	// and that input already paid for the `replace` on the line above.
-	if (strippedStr !== str) tabCount = countTabs(strippedStr);
+	// Tabs are counted over the text measured, not the raw string: a tab inside
+	// an OSC sequence is text the terminal never draws, and counting it charged a
+	// hyperlink whose URL contains a tab, or a window-title OSC, three cells more
+	// than the native.
+	let width = correctedBunWidth(strippedStr) + countTabs(strippedStr) * DEFAULT_TAB_WIDTH;
 
-	if (tabCount > 0) width += tabCount * DEFAULT_TAB_WIDTH;
-
-	// OSC 66: add back each stripped span as `scale * (explicit w ?? payload
-	// width)`. Matched rather than replaced to avoid reallocating the string.
-	if (str.includes(OSC66, i)) {
+	// OSC 66: add back each stripped span. Matched rather than replaced to avoid
+	// reallocating the string.
+	if (str.includes(OSC66)) {
 		OSC66_SPAN_REGEX.lastIndex = 0;
 		for (let m = OSC66_SPAN_REGEX.exec(str); m !== null; m = OSC66_SPAN_REGEX.exec(str)) {
-			let scale = 1;
-			let explicit: number | undefined;
-			for (const part of m[1].split(":")) {
-				// metadata keys are single chars, e.g. `s=2`, `w=5`
-				if (part.indexOf("=") !== 1) continue;
-				const value = parseOsc66MetaValue(part.slice(2));
-				if (value === undefined) continue;
-				if (part[0] === "s") {
-					if (value >= 1 && value <= 7) scale = value;
-				} else if (part[0] === "w" && value > 0) {
-					explicit = value;
-				}
-			}
-			// A tab in the payload scales with the span like everything else in it, so
-			// it is counted HERE rather than in the outer pass. Counting it outside was
-			// the other half of the tab-scope bug: `s=3` charged one tab stop where the
-			// native charged three.
-			const payloadWidth = explicit ?? correctedBunWidth(m[2]) + countTabs(m[2]) * DEFAULT_TAB_WIDTH;
-			width += scale * payloadWidth;
+			width += osc66SpanWidth(m[1], m[2]);
 		}
 	}
-
 	return width;
+}
+
+/** Cells an OSC 66 span draws: `scale * (explicit w ?? payload width)`. */
+function osc66SpanWidth(metadata: string, payload: string): number {
+	let scale = 1;
+	let explicit: number | undefined;
+	for (const part of metadata.split(":")) {
+		// metadata keys are single chars, e.g. `s=2`, `w=5`
+		if (part.indexOf("=") !== 1) continue;
+		const value = parseOsc66MetaValue(part.slice(2));
+		if (value === undefined) continue;
+		if (part[0] === "s") {
+			if (value >= 1 && value <= 7) scale = value;
+		} else if (part[0] === "w" && value > 0) {
+			explicit = value;
+		}
+	}
+	// A tab in the payload scales with the span like everything else in it, so
+	// it is counted here rather than in the outer pass: `s=3` charges three tab
+	// stops, as the native does.
+	return scale * (explicit ?? correctedBunWidth(payload) + countTabs(payload) * DEFAULT_TAB_WIDTH);
 }
 
 const THAI_LAO_AM_GLOBAL_REGEX = /[\u0e33\u0eb3]/g;

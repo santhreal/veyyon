@@ -189,100 +189,26 @@ export interface AnalyzeOptions {
 	readonly helperNames?: Iterable<string>;
 }
 
+/** The references one walk of a template has collected, and the names it reads as helper calls. */
+interface Walk {
+	readonly sightings: Map<string, Sighting[]>;
+	readonly helperNames: ReadonlySet<string>;
+}
+
 /** Collect every context reference in `template`, classified and scope-aware. */
 export function analyzeTemplate(template: string, options: AnalyzeOptions = {}): TemplateVariables {
 	const ast = parseTemplate(template) as unknown as Node;
-	const sightings = new Map<string, Sighting[]>();
-	const helperNames = new Set([...DEFAULT_HELPER_NAMES, ...(options.helperNames ?? [])]);
-
-	function record(path: PathExpressionNode, use: TemplateVariableUse, frame: Frame): void {
-		const root = contextRoot(path);
-		if (root === null) return;
-		// A reference from inside a rescoped block belongs to the item, not the
-		// context, unless it climbed out with `../` or `@root`.
-		if (!frame.atRootScope && path.depth === 0 && !path.data) return;
-		// A name tested by the very block it sits inside is the author declaring it
-		// optional, so it stops being a hole regardless of anything else.
-		const effective: TemplateVariableUse = use === "interpolated" && frame.guarded.has(root) ? "conditional" : use;
-		const list = sightings.get(root) ?? [];
-		list.push({ use: effective, path: path.original, guards: [...frame.guarded] });
-		sightings.set(root, list);
-	}
-
-	/** Params and hash values are argument positions: tested, never printed. */
-	function visitArguments(node: Node, frame: Frame): void {
-		for (const param of node.params ?? []) {
-			if (isPath(param)) record(param as unknown as PathExpressionNode, "conditional", frame);
-			else if (isSubExpression(param)) visitArguments(param as unknown as Node, frame);
-		}
-		for (const pair of node.hash?.pairs ?? []) {
-			const value = pair.value;
-			if (isPath(value)) record(value as unknown as PathExpressionNode, "conditional", frame);
-			else if (isSubExpression(value)) visitArguments(value as unknown as Node, frame);
-		}
-	}
-
-	/** Every context root named anywhere in a block's arguments, however deep. */
-	function guardsFrom(node: Node, frame: Frame): Set<string> {
-		const roots = new Set<string>();
-		const collect = (n: Node): void => {
-			for (const param of n.params ?? []) {
-				if (isPath(param)) {
-					const root = contextRoot(param as unknown as PathExpressionNode);
-					if (root !== null) roots.add(root);
-				} else if (isSubExpression(param)) collect(param as unknown as Node);
-			}
-		};
-		collect(node);
-		return new Set(Array.from(frame.guarded).concat(Array.from(roots)));
-	}
-
-	function visit(nodes: readonly Node[], frame: Frame): void {
-		for (const node of nodes) {
-			if (node.type === "MustacheStatement") {
-				const path = node.path;
-				if (!path) continue;
-				const name = path.parts[0];
-				const isHelperCall = (node.params?.length ?? 0) > 0 || (node.hash?.pairs?.length ?? 0) > 0;
-				if (isHelperCall || (name !== undefined && helperNames.has(name) && path.parts.length === 1)) {
-					// `{{helper a b}}` prints the helper's return value, and its
-					// arguments are tested rather than printed.
-					visitArguments(node, frame);
-				} else {
-					record(path, "interpolated", frame);
-				}
-				continue;
-			}
-
-			if (node.type === "BlockStatement") {
-				const helper = node.path?.parts[0] ?? "";
-				visitArguments(node, frame);
-				const guarded = GUARDING_HELPERS.has(helper) ? guardsFrom(node, frame) : frame.guarded;
-				const atRootScope = frame.atRootScope && !RESCOPING_BLOCKS.has(helper);
-				const inner: Frame = { guarded, atRootScope };
-				if (node.program?.body) visit(node.program.body, inner);
-				// The `{{else}}` arm is not covered by the guard: it runs precisely
-				// when the tested value was absent.
-				if (node.inverse?.body) visit(node.inverse.body, { guarded: frame.guarded, atRootScope });
-				continue;
-			}
-
-			if (node.type === "PartialStatement" || node.type === "SubExpression") {
-				visitArguments(node, frame);
-				continue;
-			}
-
-			if (node.program?.body) visit(node.program.body, frame);
-		}
-	}
-
-	visit(ast.body ?? [], { guarded: new Set(), atRootScope: true });
+	const walk: Walk = {
+		sightings: new Map(),
+		helperNames: new Set([...DEFAULT_HELPER_NAMES, ...(options.helperNames ?? [])]),
+	};
+	visit(walk, ast.body ?? [], { guarded: new Set(), atRootScope: true });
 
 	const required: TemplateVariable[] = [];
 	const optional: TemplateVariable[] = [];
 	// Code-unit order, as `paths` below: `localeCompare` builds the ICU collator on its first call,
 	// 0.2 ms and 2.2 MiB of mapped collation data at launch, for names that are identifiers.
-	for (const [name, list] of Array.from(sightings).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+	for (const [name, list] of Array.from(walk.sightings).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
 		const paths = Array.from(new Set(list.map(s => s.path))).sort();
 		const printed = list.filter(s => s.use === "interpolated");
 		const requiredWhen = dedupeGuardSets(printed.map(s => s.guards));
@@ -290,6 +216,82 @@ export function analyzeTemplate(template: string, options: AnalyzeOptions = {}):
 		else optional.push({ name, use: "conditional", paths, requiredWhen: [] });
 	}
 	return { required, optional };
+}
+
+function record(walk: Walk, path: PathExpressionNode, use: TemplateVariableUse, frame: Frame): void {
+	const root = contextRoot(path);
+	if (root === null) return;
+	// A reference from inside a rescoped block belongs to the item, not the
+	// context, unless it climbed out with `../` or `@root`.
+	if (!frame.atRootScope && path.depth === 0 && !path.data) return;
+	// A name tested by the very block it sits inside is the author declaring it
+	// optional, so it stops being a hole regardless of anything else.
+	const effective: TemplateVariableUse = use === "interpolated" && frame.guarded.has(root) ? "conditional" : use;
+	const sighting: Sighting = { use: effective, path: path.original, guards: [...frame.guarded] };
+	const list = walk.sightings.get(root);
+	if (list) list.push(sighting);
+	else walk.sightings.set(root, [sighting]);
+}
+
+/** Params and hash values are argument positions: tested, never printed. */
+function visitArguments(walk: Walk, node: Node, frame: Frame): void {
+	for (const param of node.params ?? []) visitArgument(walk, param, frame);
+	for (const pair of node.hash?.pairs ?? []) visitArgument(walk, pair.value, frame);
+}
+
+function visitArgument(walk: Walk, value: Node, frame: Frame): void {
+	if (isPath(value)) record(walk, value as unknown as PathExpressionNode, "conditional", frame);
+	else if (isSubExpression(value)) visitArguments(walk, value as unknown as Node, frame);
+}
+
+/** The roots guarded in `frame` plus every context root named anywhere in a block's params, however deep. */
+function guardsFrom(node: Node, frame: Frame): Set<string> {
+	const guarded = new Set(frame.guarded);
+	addParamRoots(node, guarded);
+	return guarded;
+}
+
+function addParamRoots(node: Node, roots: Set<string>): void {
+	for (const param of node.params ?? []) {
+		if (isPath(param)) {
+			const root = contextRoot(param as unknown as PathExpressionNode);
+			if (root !== null) roots.add(root);
+		} else if (isSubExpression(param)) addParamRoots(param as unknown as Node, roots);
+	}
+}
+
+function visit(walk: Walk, nodes: readonly Node[], frame: Frame): void {
+	for (const node of nodes) {
+		if (node.type === "MustacheStatement") visitMustache(walk, node, frame);
+		else if (node.type === "BlockStatement") visitBlock(walk, node, frame);
+		else if (node.type === "PartialStatement" || node.type === "SubExpression") visitArguments(walk, node, frame);
+		else if (node.program?.body) visit(walk, node.program.body, frame);
+	}
+}
+
+function visitMustache(walk: Walk, node: Node, frame: Frame): void {
+	const path = node.path;
+	if (!path) return;
+	const name = path.parts[0];
+	const isHelperCall = (node.params?.length ?? 0) > 0 || (node.hash?.pairs?.length ?? 0) > 0;
+	// `{{helper a b}}` prints the helper's return value, and its arguments are
+	// tested rather than printed.
+	if (isHelperCall || (name !== undefined && walk.helperNames.has(name) && path.parts.length === 1)) {
+		visitArguments(walk, node, frame);
+	} else {
+		record(walk, path, "interpolated", frame);
+	}
+}
+
+function visitBlock(walk: Walk, node: Node, frame: Frame): void {
+	const helper = node.path?.parts[0] ?? "";
+	visitArguments(walk, node, frame);
+	const guarded = GUARDING_HELPERS.has(helper) ? guardsFrom(node, frame) : frame.guarded;
+	const atRootScope = frame.atRootScope && !RESCOPING_BLOCKS.has(helper);
+	if (node.program?.body) visit(walk, node.program.body, { guarded, atRootScope });
+	// The `{{else}}` arm is not covered by the guard: it runs precisely
+	// when the tested value was absent.
+	if (node.inverse?.body) visit(walk, node.inverse.body, { guarded: frame.guarded, atRootScope });
 }
 
 /** Collapse guard sets to the distinct ones, dropping any that a weaker one subsumes. */

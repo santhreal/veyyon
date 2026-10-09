@@ -65,53 +65,41 @@ function nextBackground(bg: BgState, params: string): BgState | typeof BAIL {
 		const token = tokens[i];
 		// An empty parameter defaults to 0 (reset), matching terminal behavior.
 		const n = token.length === 0 ? 0 : Number(token);
-		if (!Number.isInteger(n)) return BAIL;
-		if (n === 0 || n === 49) {
-			result = null;
-			continue;
-		}
-		if ((n >= 40 && n <= 47) || (n >= 100 && n <= 107)) {
-			result = token;
-			continue;
-		}
-		if (n === 48) {
-			const mode = tokens[i + 1];
-			if (mode === "5") {
-				const idx = tokens[i + 2];
-				if (idx === undefined) return BAIL;
-				result = `48;5;${idx}`;
-				i += 2;
-				continue;
-			}
-			if (mode === "2") {
-				const r = tokens[i + 2];
-				const g = tokens[i + 3];
-				const b = tokens[i + 4];
-				if (r === undefined || g === undefined || b === undefined) return BAIL;
-				result = `48;2;${r};${g};${b}`;
-				i += 4;
-				continue;
-			}
-			// Colon-form (`48:2:...`) collapses to a single non-integer token and is
-			// rejected above; anything else following 48 is unexpected — bail.
-			return BAIL;
-		}
-		if (n === 38) {
-			// Foreground extended color: skip its sub-parameters, leave bg alone.
-			const mode = tokens[i + 1];
-			if (mode === "5") {
-				i += 2;
-				continue;
-			}
-			if (mode === "2") {
-				i += 4;
-				continue;
-			}
-			return BAIL;
-		}
-		// Every other parameter (foreground 30-39/90-97, styles) leaves bg alone.
+		const extended = n === 38 || n === 48;
+		const next = extended ? extendedBackground(n, tokens, i, result) : plainBackground(n, token, result);
+		if (next === BAIL) return BAIL;
+		result = next;
+		// The sub-parameters extendedBackground accepted are consumed with their color.
+		if (extended) i += tokens[i + 1] === "5" ? 2 : 4;
 	}
 	return result;
+}
+
+/**
+ * The background after the plain parameter `n`, spelled `token`: none after a reset, the basic or
+ * bright color it sets, or `bg` for any other parameter; BAIL for a non-integer.
+ */
+function plainBackground(n: number, token: string, bg: BgState): BgState | typeof BAIL {
+	if (!Number.isInteger(n)) return BAIL;
+	if (n === 0 || n === 49) return null;
+	if ((n >= 40 && n <= 47) || (n >= 100 && n <= 107)) return token;
+	// Every other parameter (foreground 30-39/90-97, styles) leaves bg alone.
+	return bg;
+}
+
+/**
+ * The background after the extended color `n` (`38` or `48`) at `tokens[at]`: `bg` for a foreground,
+ * else the `48;5;<index>` or `48;2;<r>;<g>;<b>` it sets. BAIL for a mode other than `5` or `2`, and for
+ * a background whose sub-parameters run past the list. Colon-form (`48:2:...`) never reaches here: it
+ * is one non-integer token.
+ */
+function extendedBackground(n: number, tokens: readonly string[], at: number, bg: BgState): BgState | typeof BAIL {
+	const mode = tokens[at + 1];
+	if (mode !== "5" && mode !== "2") return BAIL;
+	// A foreground color changes no background, whatever sub-parameters follow it.
+	if (n === 38) return bg;
+	if (mode === "5") return at + 2 < tokens.length ? `48;5;${tokens[at + 2]}` : BAIL;
+	return at + 4 < tokens.length ? `48;2;${tokens[at + 2]};${tokens[at + 3]};${tokens[at + 4]}` : BAIL;
 }
 
 /** Where to cut a fillable line and the background to paint over the remainder. */
@@ -137,87 +125,94 @@ export interface BgFillAnalysis {
  */
 export function analyzeBgFillLine(line: string, width: number): BgFillAnalysis | null {
 	if (width <= 0 || line.length === 0) return null;
-	let i = 0;
-	let col = 0;
-	let bg: BgState = null;
-	// Byte index / column immediately after the last non-space printable glyph.
-	let nonSpaceEndByte = 0;
-	let nonSpaceEndCol = 0;
-	// Background covering the current trailing run of spaces, and whether that
-	// trailing run has started. `null` is a real "default background" value, so
-	// it cannot double as the uninitialized sentinel.
-	let trailBg: BgState = null;
-	let trailStarted = false;
-	let trailConsistent = true;
-
-	while (i < line.length) {
-		if (line.charCodeAt(i) === 0x1b) {
-			// Only CSI SGR (`\x1b[ ... m`) is tolerated. OSC, APC, and any other
-			// CSI mean styled hyperlinks/images/cursor markers — refuse to touch.
-			if (line.charCodeAt(i + 1) !== 0x5b) return null;
-			let j = i + 2;
-			while (j < line.length) {
-				const c = line.charCodeAt(j);
-				if (c >= 0x40 && c <= 0x7e) break;
-				j++;
-			}
-			if (j >= line.length) return null; // unterminated CSI
-			if (line.charCodeAt(j) !== 0x6d) return null; // non-SGR CSI (final byte != 'm')
-			const next = nextBackground(bg, line.slice(i + 2, j));
-			if (next === BAIL) return null;
-			bg = next;
-			i = j + 1;
-			continue;
-		}
-
-		// Printable run up to the next escape.
-		let j = i;
-		while (j < line.length && line.charCodeAt(j) !== 0x1b) j++;
-		const text = line.slice(i, j);
-		let nonSpaceLen = text.length;
-		while (nonSpaceLen > 0 && text.charCodeAt(nonSpaceLen - 1) === 0x20) nonSpaceLen--;
-
-		if (nonSpaceLen > 0) {
-			// Run carries a non-space glyph: the trailing region restarts after it.
-			const nonSpaceWidth = visibleWidth(text.slice(0, nonSpaceLen));
-			nonSpaceEndByte = i + nonSpaceLen;
-			nonSpaceEndCol = col + nonSpaceWidth;
-			// Spaces after the last non-space glyph in this same printable run sit
-			// under the current bg. If there are none, the trailing region has not
-			// started yet; a later SGR can still begin a uniform fill safely.
-			if (nonSpaceLen < text.length) {
-				trailBg = bg;
-				trailStarted = true;
-			} else {
-				trailBg = null;
-				trailStarted = false;
-			}
-			trailConsistent = true;
-		} else if (text.length > 0) {
-			// Whole run is spaces: it extends the trailing region. Track bg drift.
-			if (!trailStarted) {
-				trailBg = bg;
-				trailStarted = true;
-			} else if (bg !== trailBg) {
-				trailConsistent = false;
-			}
-		}
-		col += visibleWidth(text);
-		i = j;
-	}
-
-	if (col !== width) return null; // not a full-width fill
-	if (nonSpaceEndCol >= width) return null; // no trailing padding to drop
-	if (!trailStarted || trailBg === null || !trailConsistent) return null; // default/mixed bg — nothing safe to paint
-	return { cut: nonSpaceEndByte, leftCol: nonSpaceEndCol, bg: trailBg };
+	return new BgFillScanner(line).analyze(width);
 }
 
+/** Background under the trailing padding: `undefined` before any padding, BAIL once it changes. */
+type TrailBg = BgState | typeof BAIL | undefined;
+
+/** One left-to-right pass of {@link analyzeBgFillLine} over a line. */
+class BgFillScanner {
+	readonly #line: string;
+	#bg: BgState = null;
+	/** Visible columns scanned so far. */
+	#col = 0;
+	/** Byte index and column immediately after the last non-space printable glyph. */
+	#contentEnd = 0;
+	#contentEndCol = 0;
+	/** `null` is a real "default background" value, so it cannot double as the not-started state. */
+	#trail: TrailBg = undefined;
+
+	constructor(line: string) {
+		this.#line = line;
+	}
+
+	analyze(width: number): BgFillAnalysis | null {
+		const line = this.#line;
+		let i = 0;
+		while (i < line.length) {
+			i = line.charCodeAt(i) === 0x1b ? this.#escape(i) : this.#run(i);
+			if (i < 0) return null;
+		}
+		// Not a full-width fill, or no trailing padding to drop.
+		if (this.#col !== width || this.#contentEndCol >= width) return null;
+		const trail = this.#trail;
+		// A default or mixed background under the padding leaves nothing safe to paint.
+		if (trail === undefined || trail === null || trail === BAIL) return null;
+		return { cut: this.#contentEnd, leftCol: this.#contentEndCol, bg: trail };
+	}
+
+	/** Folds the escape at `i` into the background: the index past it, or -1 for anything but SGR. */
+	#escape(i: number): number {
+		// Only CSI SGR (`\x1b[ ... m`) is tolerated. OSC, APC, and any other
+		// CSI mean styled hyperlinks/images/cursor markers — refuse to touch.
+		const line = this.#line;
+		if (line.charCodeAt(i + 1) !== 0x5b) return -1;
+		let end = i + 2;
+		while (end < line.length) {
+			const c = line.charCodeAt(end);
+			if (c >= 0x40 && c <= 0x7e) break;
+			end++;
+		}
+		// An unterminated CSI reads NaN past the end; a non-SGR CSI has a final byte other than `m`.
+		if (line.charCodeAt(end) !== 0x6d) return -1;
+		const next = nextBackground(this.#bg, line.slice(i + 2, end));
+		if (next === BAIL) return -1;
+		this.#bg = next;
+		return end + 1;
+	}
+
+	/** Measures the printable run at `i`, which ends at the next escape: the index past it. */
+	#run(i: number): number {
+		const line = this.#line;
+		let end = line.indexOf("\x1b", i);
+		if (end < 0) end = line.length;
+		const text = line.slice(i, end);
+		let contentLength = text.length;
+		while (contentLength > 0 && text.charCodeAt(contentLength - 1) === 0x20) contentLength--;
+		if (contentLength === 0) {
+			// The whole run is spaces: it extends the trailing padding, whose background must not drift.
+			this.#trail = this.#trail === undefined || this.#trail === this.#bg ? this.#bg : BAIL;
+			this.#col += visibleWidth(text);
+			return end;
+		}
+		// A run with a glyph restarts the padding after it. Spaces after the glyph sit under the current
+		// background; with none, the padding has not started and a later SGR can still begin a uniform fill.
+		const contentWidth = visibleWidth(text.slice(0, contentLength));
+		this.#contentEnd = i + contentLength;
+		this.#contentEndCol = this.#col + contentWidth;
+		this.#trail = contentLength < text.length ? this.#bg : undefined;
+		this.#col += contentLength === text.length ? contentWidth : visibleWidth(text);
+		return end;
+	}
+}
+
+/** A fillable row: its rectangle's 1-based left column and background, the row it shortens to, and the bytes that drops. */
 interface FillCandidate {
 	left: number;
-	right: number;
 	bg: string;
 	short: string;
-	origLen: number;
+	removed: number;
 }
 
 /** Per-frame plan: the (possibly shortened) row strings and the DECCARA batch. */
@@ -242,66 +237,31 @@ export function planDeccaraFills(lines: string[], width: number, firstScreenRow 
 	const n = lines.length;
 	const texts: string[] = new Array(n);
 	const candidates: (FillCandidate | null)[] = new Array(n);
-
 	for (let k = 0; k < n; k++) {
-		const line = lines[k];
-		texts[k] = line;
-		const analysis = analyzeBgFillLine(line, width);
-		if (!analysis) {
-			candidates[k] = null;
-			continue;
-		}
-		// Cut at the last non-space glyph and re-close attributes. An all-space row
-		// (cut 0) needs no styled text at all — the caller's erase plus the
-		// rectangle paint it. A content row keeps its prefix and a fresh reset so
-		// the inline background never bleeds past the row.
-		const short = analysis.cut === 0 ? "" : line.slice(0, analysis.cut) + SGR_RESET;
-		candidates[k] = { left: analysis.leftCol + 1, right: width, bg: analysis.bg, short, origLen: line.length };
+		texts[k] = lines[k];
+		candidates[k] = fillCandidate(lines[k], width);
 	}
 
 	// Collect coalesced groups whose rectangle at least pays for its own bytes.
 	// The DECSACE wrapper is a single per-frame cost, so it is charged once below
 	// rather than amortized into each group (which would over-reject lone rows).
-	interface Group {
-		start: number;
-		end: number;
-		rect: string;
-	}
-	const groups: Group[] = [];
-	let removedTotal = 0;
-	let rectBytesTotal = 0;
-	let k = 0;
-	while (k < n) {
+	const groups: FillGroup[] = [];
+	let saved = 0;
+	for (let k = 0; k < n; k++) {
 		const head = candidates[k];
-		if (!head) {
-			k++;
-			continue;
-		}
-		// Extend the group over adjacent rows sharing the same fill span.
-		let end = k;
-		while (end + 1 < n) {
-			const next = candidates[end + 1];
-			if (!next || next.left !== head.left || next.right !== head.right || next.bg !== head.bg) break;
-			end++;
-		}
-		const rect = encodeDeccara(firstScreenRow + k + 1, head.left, firstScreenRow + end + 1, head.right, head.bg);
-		let removed = 0;
-		for (let r = k; r <= end; r++) {
-			const c = candidates[r];
-			if (c) removed += c.origLen - c.short.length;
-		}
+		if (!head) continue;
+		const end = groupEnd(candidates, k, head);
+		const rect = encodeDeccara(firstScreenRow + k + 1, head.left, firstScreenRow + end + 1, width, head.bg);
+		const removed = removedBytes(candidates, k, end);
 		if (removed > rect.length) {
 			groups.push({ start: k, end, rect });
-			removedTotal += removed;
-			rectBytesTotal += rect.length;
+			saved += removed - rect.length;
 		}
-		k = end + 1;
+		k = end;
 	}
 
 	// Emit nothing unless the batch beats the original by more than the wrapper.
-	if (groups.length === 0 || removedTotal - rectBytesTotal <= DECSACE_WRAPPER_BYTES) {
-		return { texts, sequence: "" };
-	}
+	if (groups.length === 0 || saved <= DECSACE_WRAPPER_BYTES) return { texts, sequence: "" };
 	let sequence = DECSACE_RECT;
 	for (const group of groups) {
 		for (let r = group.start; r <= group.end; r++) {
@@ -310,6 +270,42 @@ export function planDeccaraFills(lines: string[], width: number, firstScreenRow 
 		}
 		sequence += group.rect;
 	}
-	sequence += DECSACE_DEFAULT;
-	return { texts, sequence };
+	return { texts, sequence: sequence + DECSACE_DEFAULT };
+}
+
+/** Rows `start` through `end` of a frame, coalesced under the one rectangle `rect`. */
+interface FillGroup {
+	start: number;
+	end: number;
+	rect: string;
+}
+
+/** The {@link FillCandidate} for `line`, or `null` when it is not a fillable row. */
+function fillCandidate(line: string, width: number): FillCandidate | null {
+	const analysis = analyzeBgFillLine(line, width);
+	if (!analysis) return null;
+	// Cut at the last non-space glyph and re-close attributes. An all-space row
+	// (cut 0) needs no styled text at all — the caller's erase plus the
+	// rectangle paint it. A content row keeps its prefix and a fresh reset so
+	// the inline background never bleeds past the row.
+	const short = analysis.cut === 0 ? "" : line.slice(0, analysis.cut) + SGR_RESET;
+	return { left: analysis.leftCol + 1, bg: analysis.bg, short, removed: line.length - short.length };
+}
+
+/** The last row from `start` that shares `head`'s fill span, so one rectangle covers them all. */
+function groupEnd(candidates: readonly (FillCandidate | null)[], start: number, head: FillCandidate): number {
+	let end = start;
+	while (end + 1 < candidates.length) {
+		const next = candidates[end + 1];
+		if (!next || next.left !== head.left || next.bg !== head.bg) break;
+		end++;
+	}
+	return end;
+}
+
+/** Bytes that rows `start` through `end` drop when shortened. */
+function removedBytes(candidates: readonly (FillCandidate | null)[], start: number, end: number): number {
+	let removed = 0;
+	for (let r = start; r <= end; r++) removed += candidates[r]?.removed ?? 0;
+	return removed;
 }

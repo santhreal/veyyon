@@ -48,12 +48,11 @@ export function selectConditionalTarget(target: unknown): string | null {
 		}
 		return null;
 	}
-	if (isRecord(target)) {
-		for (const condition in target) {
-			if (!RUNTIME_CONDITIONS[condition]) continue;
-			const resolved = selectConditionalTarget(target[condition]);
-			if (resolved) return resolved;
-		}
+	if (!isRecord(target)) return null;
+	for (const condition in target) {
+		if (!RUNTIME_CONDITIONS[condition]) continue;
+		const resolved = selectConditionalTarget(target[condition]);
+		if (resolved) return resolved;
 	}
 	return null;
 }
@@ -250,33 +249,8 @@ export function installRuntimeModuleResolver({ runtimeNodeModules, stubs = {} }:
 		if (bare) {
 			const parentFile = parentFilename(parent);
 			for (const registration of resolverRegistry()) {
-				const parentInRuntime = parentFile !== null && pathContains(registration.runtimeNodeModules, parentFile);
-				if (parentInRuntime) {
-					const stub = registration.stubs[request];
-					if (stub) return stub;
-					if (!stockResolved || !pathContains(registration.runtimeNodeModules, stockResolved)) {
-						const fallback = resolveRuntimeModule(registration.runtimeNodeModules, request);
-						if (fallback) return fallback;
-					}
-				}
-				if (stockResolved) {
-					// Correct a stock hit only inside the top-level package the
-					// request names. A hit in a nested node_modules (e.g. tar's
-					// minizlib resolving its own minipass@3 under
-					// <root>/minizlib/node_modules/) is version-correct — overriding
-					// it with the top-level instance would cross major versions.
-					const { packageName } = splitBareSpecifier(request);
-					const pkgDir = path.join(registration.runtimeNodeModules, ...packageName.split("/"));
-					if (!stockResolved.startsWith(pkgDir + path.sep)) continue;
-					if (path.relative(pkgDir, stockResolved).split(path.sep).includes("node_modules")) continue;
-					const expected = resolveRuntimeModule(registration.runtimeNodeModules, request);
-					if (expected) return expected;
-				} else {
-					const stub = registration.stubs[request];
-					if (stub) return stub;
-					const fallback = resolveRuntimeModule(registration.runtimeNodeModules, request);
-					if (fallback) return fallback;
-				}
+				const resolved = resolveInRegistration(registration, request, parentFile, stockResolved);
+				if (resolved) return resolved;
 			}
 		}
 		if (stockResolved) return stockResolved;
@@ -284,6 +258,47 @@ export function installRuntimeModuleResolver({ runtimeNodeModules, stubs = {} }:
 	};
 	target[PATCHED] = true;
 	(target as { [ORIGINAL]?: ModuleResolver["_resolveFilename"] })[ORIGINAL] = stock;
+}
+
+/**
+ * What one registered runtime root resolves the bare `request` to, or null to consult the next root. A
+ * parent inside the root takes the root's stub, then the root's own entry when stock resolution missed or
+ * landed outside the root. Otherwise a stock hit is corrected by {@link correctStockHit}, and a stock miss
+ * takes the root's stub, then its entry.
+ */
+function resolveInRegistration(
+	registration: ResolverRegistration,
+	request: string,
+	parentFile: string | null,
+	stockResolved: string | null,
+): string | null {
+	const root = registration.runtimeNodeModules;
+	if (parentFile !== null && pathContains(root, parentFile)) {
+		const stub = registration.stubs[request];
+		if (stub) return stub;
+		// A stock miss falls through to the same stub and entry below, so it is answered here once.
+		if (!stockResolved) return resolveRuntimeModule(root, request);
+		if (!pathContains(root, stockResolved)) {
+			const fallback = resolveRuntimeModule(root, request);
+			if (fallback) return fallback;
+		}
+	}
+	if (!stockResolved) return registration.stubs[request] || resolveRuntimeModule(root, request);
+	return correctStockHit(root, request, stockResolved);
+}
+
+/**
+ * The manifest-aware entry for a stock hit inside the top-level package `request` names, or null for a hit
+ * anywhere else. A hit in a nested node_modules (tar's minizlib resolving its own minipass@3 under
+ * `<root>/minizlib/node_modules/`) is version-correct, and overriding it with the top-level instance would
+ * cross major versions.
+ */
+function correctStockHit(root: string, request: string, stockResolved: string): string | null {
+	const { packageName } = splitBareSpecifier(request);
+	const pkgDir = path.join(root, ...packageName.split("/"));
+	if (!stockResolved.startsWith(pkgDir + path.sep)) return null;
+	if (path.relative(pkgDir, stockResolved).split(path.sep).includes("node_modules")) return null;
+	return resolveRuntimeModule(root, request);
 }
 
 /**

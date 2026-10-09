@@ -56,12 +56,17 @@ function shouldExternalizeImagePayload(
 }
 
 /**
- * Recursively truncate large strings in an object for session persistence.
- * - Truncates oversized string fields (key-agnostic), except signed/encrypted
- *   blocks and signature keys, which persist verbatim
+ * Recursively prepare an object for session persistence.
+ * - Externalizes oversized string fields (key-agnostic) to the blob store,
+ *   except signed/encrypted blocks and signature keys, which persist verbatim
  * - Externalizes oversized image payloads to blob refs
- * - Updates lineCount when content is truncated
- * - Returns original object if no changes needed (structural sharing)
+ * - Drops the transient `jsonlEvents` field
+ * - Returns the original value when nothing changed (structural sharing), and
+ *   copies an array or object only from its first changed child on
+ *
+ * Every other field persists as it was, so a `lineCount` beside a `content` keeps
+ * the producer's count: a file mention's `content` is the head of the file and its
+ * `lineCount` is the whole file's.
  *
  * Runs in one synchronous tick so an OOM/SIGKILL landing right after a persist
  * call returns cannot lose the entry. Image externalization happens via the
@@ -112,59 +117,50 @@ function truncateForPersistence(obj: unknown, blobStore: BlobStore, key?: string
 		return obj;
 	}
 
-	if (Array.isArray(obj)) {
-		let changed = false;
-		const result: unknown[] = new Array(obj.length);
-		for (let i = 0; i < obj.length; i++) {
-			const item = obj[i];
-			const newItem = truncateForPersistence(item, blobStore, key);
-			if (newItem !== item) changed = true;
-			result[i] = newItem;
-		}
-		return changed ? result : obj;
-	}
-
-	if (typeof obj === "object") {
-		let changed = false;
-		const entries: Array<readonly [string, unknown]> = [];
-		for (const [childKey, value] of Object.entries(obj)) {
-			// Strip transient/redundant properties that shouldn't be persisted.
-			// - jsonlEvents: a legacy/foreign field of raw per-chunk subprocess stream
-			//   events. No current code path produces it, so this is a defensive drop:
-			//   should such a field ever reappear on a message it must never bloat the
-			//   durable record. The finest-grained streaming detail we DO keep lives in
-			//   the durable message itself (AssistantMessage.turnMetrics/request timing
-			//   and throughput) and in child agent transcripts plus externalized
-			//   blobs, whose GC retention is proven in gc-cli.test.ts (GRAN-7).
-			if (childKey === "jsonlEvents") {
-				changed = true;
-				continue;
-			}
-			const newValue = truncateForPersistence(value, blobStore, childKey);
-			if (newValue !== value) changed = true;
-			entries.push([childKey, newValue]);
-		}
-		if (!changed) return obj;
-
-		const contentEntry = entries.find(([childKey]) => childKey === "content");
-		const lineCountEntry = entries.find(([childKey]) => childKey === "lineCount");
-		if (
-			contentEntry &&
-			typeof contentEntry[1] === "string" &&
-			!isTextBlobRef(contentEntry[1]) &&
-			lineCountEntry &&
-			typeof lineCountEntry[1] === "number"
-		) {
-			const content = contentEntry[1];
-			const updatedEntries = entries.map(([childKey, value]) =>
-				childKey === "lineCount" ? ([childKey, content.split("\n").length] as const) : ([childKey, value] as const),
-			);
-			return Object.fromEntries(updatedEntries);
-		}
-		return Object.fromEntries(entries);
-	}
-
+	if (Array.isArray(obj)) return prepareArray(obj, blobStore, key);
+	if (typeof obj === "object") return prepareObject(obj as Record<string, unknown>, blobStore);
 	return obj;
+}
+
+/** `items` with each item prepared under the array's own key, or `items` itself when no item changed. */
+function prepareArray(items: unknown[], blobStore: BlobStore, key: string | undefined): unknown[] {
+	let result: unknown[] | undefined;
+	for (let i = 0; i < items.length; i++) {
+		const item = items[i];
+		const prepared = truncateForPersistence(item, blobStore, key);
+		if (result === undefined) {
+			if (prepared === item) continue;
+			result = items.slice(0, i);
+		}
+		result.push(prepared);
+	}
+	return result ?? items;
+}
+
+/** `source` with each field prepared under its own key, or `source` itself when no field changed. */
+function prepareObject(source: Record<string, unknown>, blobStore: BlobStore): unknown {
+	const keys = Object.keys(source);
+	let entries: Array<readonly [string, unknown]> | undefined;
+	for (let i = 0; i < keys.length; i++) {
+		const childKey = keys[i]!;
+		const value = source[childKey];
+		// `jsonlEvents` is a legacy/foreign field of raw per-chunk subprocess stream
+		// events. No current code path produces it, so this is a defensive drop:
+		// should such a field ever reappear on a message it must never bloat the
+		// durable record. The finest-grained streaming detail we DO keep lives in
+		// the durable message itself (AssistantMessage.turnMetrics/request timing
+		// and throughput) and in child agent transcripts plus externalized
+		// blobs, whose GC retention is proven in gc-cli.test.ts (GRAN-7).
+		const dropped = childKey === "jsonlEvents";
+		const prepared = dropped ? undefined : truncateForPersistence(value, blobStore, childKey);
+		if (entries === undefined) {
+			if (!dropped && prepared === value) continue;
+			entries = [];
+			for (let j = 0; j < i; j++) entries.push([keys[j]!, source[keys[j]!]]);
+		}
+		if (!dropped) entries.push([childKey, prepared]);
+	}
+	return entries === undefined ? source : Object.fromEntries(entries);
 }
 
 /**

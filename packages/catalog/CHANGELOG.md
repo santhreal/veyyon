@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `@veyyon/catalog/wire/kimi-code` exports `KIMI_CODE_REGIONS`, the display name, site, OAuth host and API hosts of the global (kimi.ai) and mainland China (kimi.com) Kimi Code deployments in the order the login lists them, with `kimiCodeApiKey`, which encodes a credential's deployment into its API key, and `resolveKimiCodeEndpoint`, which reads the token and API bases a request uses from that key.
+
 ### Changed
 
 - `COMMAND_CODE_COSTS` and the Command Code effort table use plain string keys instead of computed ones; every rate and ladder is unchanged.
@@ -18,9 +22,11 @@
 - A read of one bundled provider parses that provider's object out of `models.json` instead of the whole 2.3 MB catalog, and listing providers parses none of it, which cut the heap of a default-role launch 3 seconds after start from 46.70 MiB to 44.47 MiB, its live objects from 418,889 to 371,624 and `createAgentSession` from 69.7 ms to 63.5 ms (median of 5 and 11 runs).
 - A custom or discovered model's bundled reference lookup scans the model ids out of `models.json` and parses only the models the id reaches instead of the whole catalog, which cut a custom-model launch's time to a ready session from 217.2 ms to 206.6 ms and its idle heap from 36.21 MiB to 33.71 MiB and live objects from 399,664 to 350,968 (median of 11 and 5 runs).
 - A model reference lookup checks each reduction of a proxied id as it derives it and reads each lookup key once, which cut the mean lookup over every bundled id, bare and under two proxy affixes (13,218 ids), from 4.6 µs to 2.7 µs on the lazy bundled index and from 4.1 µs to 1.9 µs on the full index (2 runs before, 4 after).
+- `collapseEffortVariants` plans each hand-table family, its live effort routing, its collapsed spec and its recycled alias rows in separate steps, and the collapse and the snapshot refresh build the thinking surface through one `familyThinkingConfig`; every collapsed catalog, discovered model list and cached snapshot is unchanged across 92,001 randomized and bundled inputs compared with the previous implementation.
 
 ### Fixed
 
+- Kimi Code model discovery with a kimi.ai credential lists models at api.kimi.ai instead of api.kimi.com, and a model on api.kimi.ai gets the Moonshot-native compat (`moonshot-mfjs` tool schemas and K2.6 `thinking.keep`) that api.kimi.com gets.
 - OpenCode gateway models send the `tool_choice` a caller sets, so the models that accept a pinned tool receive it; a model that rejects it pays one retried request per session.
 - A model the models.dev overlay enriches keeps the compat its bundled row declares, so wafer.ai GLM and Kimi models request the Z.ai thinking format and xAI OAuth models map `minimal` effort to `low` again; the model cache schema moves to v12 to drop rows that stored a resolved compat record as their declaration, which cut the cached rows of a full catalog refresh from 4.85 MB to 1.72 MB and the static model stage a launch restores from 10.8 MB to 7.8 MB and 4.79 MiB to 3.16 MiB retained.
 

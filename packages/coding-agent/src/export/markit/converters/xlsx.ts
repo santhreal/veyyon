@@ -2,8 +2,9 @@
 
 import { renderMarkdownTable } from "@veyyon/utils/markdown-table";
 import { XMLParser } from "fast-xml-parser";
-import { resolveArchiveMemberPath, unzip, unzipText } from "../../../utils/zip";
+import { unzip, unzipText } from "../../../utils/zip";
 import type { ConversionResult, Converter, StreamInfo } from "../types";
+import { readPartRelationships } from "./opc-relationships";
 import { xmlNodeText } from "./xml-text";
 
 const EXTENSIONS = [".xlsx"];
@@ -42,13 +43,8 @@ interface WorkbookDoc {
 interface SharedStringsDoc {
 	sst?: { si?: StringItem | StringItem[] };
 }
-interface Relationship {
-	"@_Id": string;
-	"@_Target": string;
-}
-interface RelationshipsDoc {
-	Relationships?: { Relationship?: Relationship | Relationship[] };
-}
+
+const WORKBOOK_PART = "xl/workbook.xml";
 
 export class XlsxConverter implements Converter {
 	name = "xlsx";
@@ -73,27 +69,17 @@ export class XlsxConverter implements Converter {
 		const siList = ss?.sst?.si;
 		const shared = toArray(siList);
 		// Parse workbook for sheet names
-		const wbXml = unzipText(entries, "xl/workbook.xml");
+		const wbXml = unzipText(entries, WORKBOOK_PART);
 		if (!wbXml) throw new Error("Invalid XLSX: missing workbook.xml");
 		const wb = parser.parse(wbXml) as WorkbookDoc;
 		const sheets = toArray(wb.workbook?.sheets?.sheet);
-		// Parse workbook rels to map rIds to sheet files
-		const relsXml = unzipText(entries, "xl/_rels/workbook.xml.rels");
-		const rels = relsXml ? (parser.parse(relsXml) as RelationshipsDoc) : null;
-		const relList = toArray(rels?.Relationships?.Relationship);
-		const relMap = new Map<string, string>();
-		for (const r of relList) {
-			relMap.set(r["@_Id"], r["@_Target"]);
-		}
+		const relationships = readPartRelationships(entries, parser, WORKBOOK_PART);
 		const sections: string[] = [];
 		for (const sheet of sheets) {
 			const sheetName = sheet["@_name"];
 			const rId = sheet["@_r:id"];
-			const target = relMap.get(rId);
-			if (!target) continue;
-			// The workbook rel Target is relative to xl/ (e.g. worksheets/sheet1.xml,
-			// or ../somesheet.xml); decode and normalize it through the shared resolver.
-			const sheetPath = resolveArchiveMemberPath("xl", target);
+			const sheetPath = relationships.get(rId)?.member;
+			if (!sheetPath) continue;
 			const sheetXml = unzipText(entries, sheetPath);
 			if (!sheetXml) continue;
 			const parsed = parser.parse(sheetXml) as WorksheetDoc;

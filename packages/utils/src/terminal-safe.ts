@@ -10,37 +10,36 @@ export function escapeTerminalText(value: string): string {
 	let escaped = "";
 	for (let index = 0; index < value.length; index++) {
 		const first = value.charCodeAt(index);
-		if (first >= 0xd800 && first <= 0xdbff) {
-			const second = value.charCodeAt(index + 1);
-			if (second >= 0xdc00 && second <= 0xdfff) {
-				const pair = value.slice(index, index + 2);
-				const codePoint = 0x10000 + ((first - 0xd800) << 10) + (second - 0xdc00);
-				escaped += /\p{Cf}/u.test(pair) ? `\\u{${hex(codePoint, 5)}}` : pair;
-				index++;
-				continue;
-			}
-			escaped += `\\u${hex(first, 4)}`;
+		if (first < 0xd800 || first > 0xdfff) {
+			escaped += escapeBmpUnit(first, value[index]);
 			continue;
 		}
-		if (first >= 0xdc00 && first <= 0xdfff) {
-			escaped += `\\u${hex(first, 4)}`;
-			continue;
-		}
-
-		const character = value[index];
-		if (
-			first <= 0x1f ||
-			(first >= 0x7f && first <= 0x9f) ||
-			first === 0x2028 ||
-			first === 0x2029 ||
-			/\p{Cf}/u.test(character)
-		) {
-			escaped += `\\u${hex(first, 4)}`;
+		// Past the end, charCodeAt reads NaN, which fails both range tests: a lone high surrogate.
+		const second = value.charCodeAt(index + 1);
+		if (first <= 0xdbff && second >= 0xdc00 && second <= 0xdfff) {
+			const pair = value.slice(index, index + 2);
+			const codePoint = 0x10000 + ((first - 0xd800) << 10) + (second - 0xdc00);
+			escaped += /\p{Cf}/u.test(pair) ? `\\u{${hex(codePoint, 5)}}` : pair;
+			index++;
 		} else {
-			escaped += character;
+			escaped += `\\u${hex(first, 4)}`;
 		}
 	}
 	return escaped;
+}
+
+/** A code unit outside the surrogate range, escaped when it is a control, a line separator or a format character. */
+function escapeBmpUnit(code: number, character: string): string {
+	if (
+		code <= 0x1f ||
+		(code >= 0x7f && code <= 0x9f) ||
+		code === 0x2028 ||
+		code === 0x2029 ||
+		/\p{Cf}/u.test(character)
+	) {
+		return `\\u${hex(code, 4)}`;
+	}
+	return character;
 }
 
 function hex(value: number, width: number): string {

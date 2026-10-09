@@ -171,21 +171,20 @@ function recordSymlinkHop(seen: Set<string>, target: string, filePath: string): 
  */
 function assertRegularFileTarget(stats: fs.Stats, target: string): void {
 	if (stats.isFile()) return;
-	const kind = stats.isDirectory()
-		? "a directory"
-		: stats.isSymbolicLink()
-			? "a symbolic link"
-			: stats.isFIFO()
-				? "a named pipe (FIFO)"
-				: stats.isSocket()
-					? "a socket"
-					: stats.isBlockDevice() || stats.isCharacterDevice()
-						? "a device node"
-						: "not a regular file";
 	throw new Error(
-		`Refusing to write ${target}: it is ${kind}, and an atomic write would replace it with a regular file. ` +
+		`Refusing to write ${target}: it is ${nonRegularKind(stats)}, and an atomic write would replace it with a regular file. ` +
 			`Point the write at a regular file path instead.`,
 	);
+}
+
+/** How {@link assertRegularFileTarget} describes an entry that is not a regular file. */
+function nonRegularKind(stats: fs.Stats): string {
+	if (stats.isDirectory()) return "a directory";
+	if (stats.isSymbolicLink()) return "a symbolic link";
+	if (stats.isFIFO()) return "a named pipe (FIFO)";
+	if (stats.isSocket()) return "a socket";
+	if (stats.isBlockDevice() || stats.isCharacterDevice()) return "a device node";
+	return "not a regular file";
 }
 
 /** Blocking twin of {@link resolveWriteTarget}; see that function for the reasoning. */
@@ -258,6 +257,42 @@ function assertReplaceableTargetSync(target: string): void {
 	}
 }
 
+/**
+ * Runs `operation`, then `close` whether or not the operation failed. A failed operation is the
+ * primary diagnosis and is thrown over a close failure; a close failure after a successful
+ * operation is thrown on its own.
+ */
+async function closingAfter(operation: () => Promise<void>, close: () => Promise<void>): Promise<void> {
+	let operationError: unknown;
+	try {
+		await operation();
+	} catch (error) {
+		operationError = error;
+	}
+	try {
+		await close();
+	} catch (error) {
+		if (operationError === undefined) operationError = error;
+	}
+	if (operationError !== undefined) throw operationError;
+}
+
+/** Blocking twin of {@link closingAfter}. */
+function closingAfterSync(operation: () => void, close: () => void): void {
+	let operationError: unknown;
+	try {
+		operation();
+	} catch (error) {
+		operationError = error;
+	}
+	try {
+		close();
+	} catch (error) {
+		if (operationError === undefined) operationError = error;
+	}
+	if (operationError !== undefined) throw operationError;
+}
+
 async function renameTempOverTarget(tmpPath: string, target: string): Promise<void> {
 	try {
 		await fsp.rename(tmpPath, target);
@@ -318,21 +353,15 @@ async function fsyncDirEntry(dir: string): Promise<void> {
 		if (isDirectoryFsyncUnsupported(error)) return;
 		throw error;
 	}
+	await closingAfter(
+		() => dirHandle.sync().catch(rethrowUnlessDirectoryFsyncUnsupported),
+		() => dirHandle.close(),
+	);
+}
 
-	let syncError: unknown;
-	try {
-		await dirHandle.sync();
-	} catch (error) {
-		if (!isDirectoryFsyncUnsupported(error)) syncError = error;
-	}
-	try {
-		await dirHandle.close();
-	} catch (error) {
-		// A failed durability operation is the primary diagnosis; a close failure
-		// must not replace it. If sync succeeded, the close failure still matters.
-		if (syncError === undefined) syncError = error;
-	}
-	if (syncError !== undefined) throw syncError;
+/** Rethrows a directory fsync failure, unless it is one {@link isDirectoryFsyncUnsupported} accepts. */
+function rethrowUnlessDirectoryFsyncUnsupported(error: unknown): void {
+	if (!isDirectoryFsyncUnsupported(error)) throw error;
 }
 
 /**
@@ -468,44 +497,16 @@ async function atomicWriteFileWithImpl(
 	const dir = path.dirname(target);
 	if (!viaSymlink) await fsp.mkdir(dir, { recursive: true });
 
-	const reserved = await reserveTempFile(dir, path.basename(target), mode, target);
-	const { tmpPath } = reserved;
+	const { handle, tmpPath } = await reserveTempFile(dir, path.basename(target), mode, target);
 	try {
 		if (writer.kind === "handle") {
-			let operationError: unknown;
-			try {
-				await writer.write(reserved.handle);
-			} catch (error) {
-				operationError = error;
-			}
-			try {
-				await reserved.handle.close();
-			} catch (error) {
-				if (operationError === undefined) operationError = error;
-			}
-			if (operationError !== undefined) throw operationError;
+			await closingAfter(
+				() => writer.write(handle),
+				() => handle.close(),
+			);
 		} else {
-			await reserved.handle.close();
-			await writer.write(tmpPath);
-
-			// The producer owns only the bytes, never the type or permissions of
-			// the staging entry. A directory or link must not become the target.
-			assertRegularFileTarget(await fsp.lstat(tmpPath), tmpPath);
-			const handle = await fsp.open(tmpPath, "r+");
-			let operationError: unknown;
-			try {
-				const finalMode = process.platform === "win32" ? mode : mode & ~process.umask();
-				await handle.chmod(finalMode);
-				if (fsync && fsyncTempFile) await handle.sync();
-			} catch (error) {
-				operationError = error;
-			}
-			try {
-				await handle.close();
-			} catch (error) {
-				if (operationError === undefined) operationError = error;
-			}
-			if (operationError !== undefined) throw operationError;
+			await handle.close();
+			await fillTempFromPath(writer.write, tmpPath, mode, fsync && fsyncTempFile);
 		}
 
 		// Recheck both names after user-controlled work and immediately before
@@ -519,6 +520,30 @@ async function atomicWriteFileWithImpl(
 		throw withTargetInMessage(error, target, tmpPath);
 	}
 	if (fsync) await fsyncDirEntry(dir);
+}
+
+/**
+ * Lets a path producer write the reserved temp, then takes the entry it left over: it must be a
+ * regular file, and it gets `mode` under the umask and, when `flush` is set, an fsync.
+ */
+async function fillTempFromPath(
+	write: (tempPath: string) => Promise<void>,
+	tmpPath: string,
+	mode: number,
+	flush: boolean,
+): Promise<void> {
+	await write(tmpPath);
+	// The producer owns only the bytes, never the type or permissions of
+	// the staging entry. A directory or link must not become the target.
+	assertRegularFileTarget(await fsp.lstat(tmpPath), tmpPath);
+	const handle = await fsp.open(tmpPath, "r+");
+	await closingAfter(
+		async () => {
+			await handle.chmod(process.platform === "win32" ? mode : mode & ~process.umask());
+			if (flush) await handle.sync();
+		},
+		() => handle.close(),
+	);
 }
 
 /**
@@ -537,71 +562,59 @@ export function atomicWriteFileSync(
 	if (!viaSymlink) fs.mkdirSync(dir, { recursive: true });
 
 	const { fd, tmpPath } = reserveTempFileSync(dir, path.basename(target), mode, target);
-	let operationError: unknown;
 	try {
-		fs.writeFileSync(fd, data);
-		if (fsync) fs.fsyncSync(fd);
+		closingAfterSync(
+			() => {
+				fs.writeFileSync(fd, data);
+				if (fsync) fs.fsyncSync(fd);
+			},
+			() => fs.closeSync(fd),
+		);
+		assertRegularFileTarget(fs.lstatSync(tmpPath), tmpPath);
+		assertReplaceableTargetSync(target);
+		renameTempOverTargetSync(tmpPath, target);
 	} catch (error) {
-		operationError = error;
-	}
-	try {
-		fs.closeSync(fd);
-	} catch (error) {
-		if (operationError === undefined) operationError = error;
-	}
-	if (operationError !== undefined) {
 		try {
 			removeTempSync(tmpPath);
 		} catch {}
-		throw withTargetInMessage(operationError, target, tmpPath);
+		throw withTargetInMessage(error, target, tmpPath);
 	}
-
-	try {
-		assertRegularFileTarget(fs.lstatSync(tmpPath), tmpPath);
-		assertReplaceableTargetSync(target);
-		fs.renameSync(tmpPath, target);
-	} catch (error) {
-		if (isRenameClobberError(error)) {
-			assertReplaceableTargetSync(target);
-			const backupPath = nextTempPath(dir, `${path.basename(target)}.previous`);
-			try {
-				fs.renameSync(target, backupPath);
-			} catch (backupError) {
-				if (!isEnoent(backupError)) throw withTargetInMessage(backupError, target, tmpPath);
-				fs.renameSync(tmpPath, target);
-				if (fsync) fsyncDirEntrySync(dir);
-				return;
-			}
-			try {
-				fs.renameSync(tmpPath, target);
-			} catch (renameError) {
-				try {
-					fs.renameSync(backupPath, target);
-				} catch (restoreError) {
-					throw new AggregateError(
-						[renameError, restoreError],
-						`Failed to replace ${target}, then failed to restore its previous contents`,
-					);
-				}
-				try {
-					removeTempSync(tmpPath);
-				} catch {}
-				throw withTargetInMessage(renameError, target, tmpPath);
-			}
-			try {
-				removeTempSync(backupPath);
-			} catch (cleanupError) {
-				throw withTargetInMessage(cleanupError, target, backupPath);
-			}
-		} else {
-			try {
-				removeTempSync(tmpPath);
-			} catch {}
-			throw withTargetInMessage(error, target, tmpPath);
-		}
-	}
-
 	if (fsync) fsyncDirEntrySync(dir);
+}
+
+/** Blocking twin of {@link renameTempOverTarget}; see that function for the reasoning. */
+function renameTempOverTargetSync(tmpPath: string, target: string): void {
+	try {
+		fs.renameSync(tmpPath, target);
+		return;
+	} catch (error) {
+		if (!isRenameClobberError(error)) throw error;
+	}
+
+	assertReplaceableTargetSync(target);
+	const backupPath = nextTempPath(path.dirname(target), `${path.basename(target)}.previous`);
+	try {
+		fs.renameSync(target, backupPath);
+	} catch (error) {
+		if (!isEnoent(error)) throw error;
+		// Another writer removed the target after our failed clobber attempt.
+		fs.renameSync(tmpPath, target);
+		return;
+	}
+	try {
+		fs.renameSync(tmpPath, target);
+	} catch (replacementError) {
+		try {
+			fs.renameSync(backupPath, target);
+		} catch (restoreError) {
+			throw new AggregateError(
+				[replacementError, restoreError],
+				`Failed to replace ${target}, then failed to restore its previous contents`,
+			);
+		}
+		throw replacementError;
+	}
+	removeTempSync(backupPath);
 }
 
 function fsyncDirEntrySync(dir: string): void {
@@ -612,17 +625,14 @@ function fsyncDirEntrySync(dir: string): void {
 		if (isDirectoryFsyncUnsupported(error)) return;
 		throw error;
 	}
-
-	let syncError: unknown;
-	try {
-		fs.fsyncSync(dirFd);
-	} catch (error) {
-		if (!isDirectoryFsyncUnsupported(error)) syncError = error;
-	}
-	try {
-		fs.closeSync(dirFd);
-	} catch (error) {
-		if (syncError === undefined) syncError = error;
-	}
-	if (syncError !== undefined) throw syncError;
+	closingAfterSync(
+		() => {
+			try {
+				fs.fsyncSync(dirFd);
+			} catch (error) {
+				rethrowUnlessDirectoryFsyncUnsupported(error);
+			}
+		},
+		() => fs.closeSync(dirFd),
+	);
 }

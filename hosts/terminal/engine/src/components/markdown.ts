@@ -49,6 +49,7 @@ const HTML_TAG_REGEX = /<\/?(?:br|p|ol|ul|li|span|summary|text|code|hr|blockquot
 // `<hr>` becomes a rule and balanced `<blockquote>…</blockquote>` renders with
 // quote styling. Group 1 captures blockquote inner content; it is undefined for hr.
 const BLOCK_HTML_REGEX = /<hr\b[^>]*\/?>|<blockquote\b[^>]*>([\s\S]*?)<\/blockquote>/gi;
+const SELF_CLOSING_HTML_TAG = /\/\s*>$/;
 
 function htmlTagName(tag: string): string {
 	const match = /^<\/?\s*([A-Za-z][A-Za-z0-9:-]*)/.exec(tag);
@@ -86,6 +87,97 @@ function isAtEmptyHtmlListItem(state: HtmlNormalizationState): boolean {
 	return state.openItems[itemIndex] === true && state.itemHasContent[itemIndex] !== true;
 }
 
+/** Break before an opening `<p>`/`<blockquote>` that follows text on the same row, and after a closing one. */
+function htmlParagraphBreak(output: string, closing: boolean, state: HtmlNormalizationState): string {
+	if (closing) return appendHtmlLineBreak(output);
+	if (output.trim() !== "" && !output.endsWith("\n") && !isAtEmptyHtmlListItem(state)) {
+		return appendHtmlLineBreak(output);
+	}
+	return output;
+}
+
+/** Open an `<ol>`/`<ul>`: a list nested in an open item starts on its own row. */
+function openHtmlList(output: string, name: "ol" | "ul", tag: string, state: HtmlNormalizationState): string {
+	const nestedInItem = state.openItems.length > 0 && state.openItems[state.openItems.length - 1];
+	const opened = nestedInItem ? appendHtmlListBreak(output, state) : output;
+	state.lists.push({ type: name, next: name === "ol" ? htmlOlStart(tag) : 1 });
+	state.openItems.push(false);
+	state.itemHasContent.push(false);
+	return opened;
+}
+
+/** Open an `<li>`: end the previous item's row, then write the item's indent and marker. */
+function openHtmlListItem(output: string, state: HtmlNormalizationState): string {
+	let opened = output;
+	if (state.openItems.length > 0) {
+		const itemOpenIndex = state.openItems.length - 1;
+		if (state.openItems[itemOpenIndex]) opened = appendHtmlListBreak(opened, state);
+		state.openItems[itemOpenIndex] = true;
+		state.itemHasContent[itemOpenIndex] = false;
+	} else if (opened.trim() !== "" && !opened.endsWith("\n")) {
+		opened = appendHtmlLineBreak(opened);
+	}
+	const list = state.lists[state.lists.length - 1];
+	const indent = htmlListIndent(state);
+	if (list?.type === "ol") return `${opened}${indent}${list.next++}. `;
+	return `${opened}${indent}• `;
+}
+
+/** Apply one block-level tag (everything but the inline `span`/`summary`/`text` and `code`) to the output. */
+function applyHtmlBlockTag(output: string, name: string, tag: string, state: HtmlNormalizationState): string {
+	const isClosing = tag.startsWith("</");
+	switch (name) {
+		case "br":
+		case "hr":
+			return appendHtmlLineBreak(output, true);
+		case "p":
+		case "blockquote":
+			return htmlParagraphBreak(output, isClosing, state);
+		case "ol":
+		case "ul":
+			if (isClosing) {
+				state.lists.pop();
+				state.openItems.pop();
+				state.itemHasContent.pop();
+				return output;
+			}
+			return SELF_CLOSING_HTML_TAG.test(tag) ? output : openHtmlList(output, name, tag, state);
+		case "li":
+			return isClosing ? appendHtmlLineBreak(output) : openHtmlListItem(output, state);
+		default:
+			return output + tag;
+	}
+}
+
+/**
+ * Append the text that precedes a tag. Inline contexts — span, summary, text,
+ * and the content inside a `<code>` run — keep their surrounding whitespace
+ * verbatim because it is significant. For block-level tags, HTML formatting
+ * whitespace between tags (e.g. the newlines and indentation in pretty-printed
+ * `<ul>\n  <li>…`) is not rendered content; appending it literally would leak
+ * source indentation before bullets and blank rows between items, so a
+ * whitespace-only slice is dropped unless `verbatim`. `codeHook`, passed only
+ * inside a `<code>` run, applies the inline-code theme without leaking the raw
+ * `<code>`/`</code>` tags.
+ */
+function appendHtmlText(
+	output: string,
+	text: string,
+	verbatim: boolean,
+	codeHook: ((text: string) => string) | undefined,
+	state: HtmlNormalizationState,
+): string {
+	if (!verbatim && text.trim() === "") return output;
+	markCurrentHtmlItemContent(state, text);
+	return output + (codeHook ? codeHook(text) : text);
+}
+
+/** Whether a `<code>` run is open after `tag`, given whether one was open before it. */
+function codeRunOpenAfter(tag: string, inCode: boolean): boolean {
+	if (tag.startsWith("</")) return false;
+	return inCode || !SELF_CLOSING_HTML_TAG.test(tag);
+}
+
 function normalizeHtmlForTerminal(
 	raw: string,
 	state: HtmlNormalizationState = createHtmlNormalizationState(),
@@ -99,95 +191,22 @@ function normalizeHtmlForTerminal(
 	for (const match of withoutComments.matchAll(HTML_TAG_REGEX)) {
 		const tag = match[0];
 		const index = match.index ?? 0;
-		const textBeforeTag = unescapeHtml(withoutComments.slice(lastIndex, index));
 		const name = htmlTagName(tag);
-		// Most tags handled here are block-level. Inline contexts — span, summary,
-		// text, and the content inside a `<code>` run — keep their surrounding
-		// whitespace verbatim because it is significant. For block-level tags, HTML formatting
-		// whitespace between tags (e.g. the newlines and indentation in
-		// pretty-printed `<ul>\n  <li>…`) is not rendered content; appending it
-		// literally would leak source indentation before bullets and blank rows
-		// between items, so a whitespace-only slice is dropped. Text inside a
-		// `<code>` run is routed through `codeHook` so the inline-code theme is
-		// applied without leaking the raw `<code>`/`</code>` tags.
 		const isInlineTag = name === "span" || name === "summary" || name === "text";
-		if (isInlineTag || inCode || textBeforeTag.trim() !== "") {
-			output += inCode && codeHook ? codeHook(textBeforeTag) : textBeforeTag;
-			markCurrentHtmlItemContent(state, textBeforeTag);
-		}
+		const textBeforeTag = unescapeHtml(withoutComments.slice(lastIndex, index));
+		output = appendHtmlText(output, textBeforeTag, isInlineTag || inCode, inCode ? codeHook : undefined, state);
 		lastIndex = index + tag.length;
 
-		const isClosing = /^<\//.test(tag);
-		const isSelfClosing = /\/\s*>$/.test(tag);
-
-		switch (name) {
-			case "span":
-			case "summary":
-			case "text":
-				break;
-			case "code":
-				if (isClosing) inCode = false;
-				else if (!isSelfClosing) inCode = true;
-				break;
-			case "br":
-			case "hr":
-				output = appendHtmlLineBreak(output, true);
-				break;
-			case "p":
-			case "blockquote":
-				if (isClosing) {
-					output = appendHtmlLineBreak(output);
-				} else if (output.trim() !== "" && !output.endsWith("\n") && !isAtEmptyHtmlListItem(state)) {
-					output = appendHtmlLineBreak(output);
-				}
-				break;
-			case "ol":
-			case "ul":
-				if (isClosing) {
-					state.lists.pop();
-					state.openItems.pop();
-					state.itemHasContent.pop();
-				} else if (!isSelfClosing) {
-					if (state.openItems.length > 0 && state.openItems[state.openItems.length - 1]) {
-						output = appendHtmlListBreak(output, state);
-					}
-					state.lists.push({ type: name, next: name === "ol" ? htmlOlStart(tag) : 1 });
-					state.openItems.push(false);
-					state.itemHasContent.push(false);
-				}
-				break;
-			case "li": {
-				if (isClosing) {
-					output = appendHtmlLineBreak(output);
-					break;
-				}
-				if (state.openItems.length > 0) {
-					const itemOpenIndex = state.openItems.length - 1;
-					if (state.openItems[itemOpenIndex]) output = appendHtmlListBreak(output, state);
-					state.openItems[itemOpenIndex] = true;
-					state.itemHasContent[itemOpenIndex] = false;
-				} else if (output.trim() !== "" && !output.endsWith("\n")) {
-					output = appendHtmlLineBreak(output);
-				}
-				const list = state.lists[state.lists.length - 1];
-				const indent = htmlListIndent(state);
-				if (list?.type === "ol") {
-					output += `${indent}${list.next}. `;
-					list.next++;
-				} else {
-					output += `${indent}• `;
-				}
-				break;
-			}
-			default:
-				output += tag;
-				break;
+		if (name === "code") {
+			inCode = codeRunOpenAfter(tag, inCode);
+		} else if (!isInlineTag) {
+			// Most tags handled here are block-level.
+			output = applyHtmlBlockTag(output, name, tag, state);
 		}
 	}
 
 	const remainingText = unescapeHtml(withoutComments.slice(lastIndex));
-	markCurrentHtmlItemContent(state, remainingText);
-	return output + (inCode && codeHook ? codeHook(remainingText) : remainingText);
+	return appendHtmlText(output, remainingText, true, inCode ? codeHook : undefined, state);
 }
 
 function splitTerminalLines(text: string): string[] {
@@ -284,6 +303,35 @@ function matchTreeGuidePrefix(line: string): TreeGuidePrefix | undefined {
 	return { end: i, codes, guides };
 }
 
+/** The guide prefix of a line that overflows `width` and leaves its node text enough cells, else undefined. */
+function hangingTreePrefix(line: string, width: number): TreeGuidePrefix | undefined {
+	if (visibleWidth(line) <= width) return undefined;
+	const prefix = matchTreeGuidePrefix(line);
+	if (!prefix || width - visibleWidth(prefix.guides) < MIN_TREE_CONTENT_WIDTH) return undefined;
+	return prefix;
+}
+
+/**
+ * Wrap a tree line's node text in the cells beside its guides and append the rows to `out`, each
+ * continuation row under the node text. `carry` is the SGR state open where the line starts.
+ */
+function pushHungTreeLine(out: string[], line: string, prefix: TreeGuidePrefix, carry: string, width: number): void {
+	const guideWidth = visibleWidth(prefix.guides);
+	// Re-play the SGR state ahead of the node text so the wrapper carries
+	// it onto every continuation row; the codes are zero-width, so measured
+	// row widths are unaffected.
+	const activeCodes = carry + prefix.codes;
+	const rows = wrapTextWithAnsi(activeCodes + line.slice(prefix.end), width - guideWidth);
+	let hang = "";
+	for (const guide of prefix.guides) hang += TREE_GUIDE_CONTINUATION[guide] ?? " ";
+	const hangShortfall = guideWidth - visibleWidth(hang);
+	if (hangShortfall > 0) hang += padding(hangShortfall);
+	out.push(carry + line.slice(0, prefix.end) + rows[0]!.slice(activeCodes.length));
+	for (let i = 1; i < rows.length; i++) {
+		out.push(activeCodes + hang + rows[i]!);
+	}
+}
+
 /**
  * Hanging wrap for box-drawing tree lines inside prose block text.
  *
@@ -298,37 +346,16 @@ function hangWrapTreeGuideLines(text: string, width: number): string[] | undefin
 	if (width < MIN_TREE_CONTENT_WIDTH || !TREE_GUIDE_ANCHOR_RE.test(text)) return undefined;
 
 	const sourceLines = text.split("\n");
-	const hangs = (line: string): TreeGuidePrefix | undefined => {
-		if (visibleWidth(line) <= width) return undefined;
-		const prefix = matchTreeGuidePrefix(line);
-		if (!prefix) return undefined;
-		if (width - visibleWidth(prefix.guides) < MIN_TREE_CONTENT_WIDTH) return undefined;
-		return prefix;
-	};
-	if (!sourceLines.some(line => hangs(line) !== undefined)) return undefined;
+	const prefixes = sourceLines.map(line => hangingTreePrefix(line, width));
+	if (!prefixes.some(prefix => prefix !== undefined)) return undefined;
 
 	const out: string[] = [];
 	let carry = "";
-	for (const line of sourceLines) {
-		const prefix = hangs(line);
-		if (!prefix) {
-			out.push(carry ? carry + line : line);
-			carry = sgrCarryAfter(carry, line);
-			continue;
-		}
-		// Re-play the SGR state ahead of the node text so the wrapper carries
-		// it onto every continuation row; the codes are zero-width, so measured
-		// row widths are unaffected.
-		const activeCodes = carry + prefix.codes;
-		const rows = wrapTextWithAnsi(activeCodes + line.slice(prefix.end), width - visibleWidth(prefix.guides));
-		let hang = "";
-		for (const guide of prefix.guides) hang += TREE_GUIDE_CONTINUATION[guide] ?? " ";
-		const hangShortfall = visibleWidth(prefix.guides) - visibleWidth(hang);
-		if (hangShortfall > 0) hang += padding(hangShortfall);
-		out.push(carry + line.slice(0, prefix.end) + rows[0]!.slice(activeCodes.length));
-		for (let i = 1; i < rows.length; i++) {
-			out.push(activeCodes + hang + rows[i]!);
-		}
+	for (let i = 0; i < sourceLines.length; i++) {
+		const line = sourceLines[i]!;
+		const prefix = prefixes[i];
+		if (prefix) pushHungTreeLine(out, line, prefix, carry, width);
+		else out.push(carry ? carry + line : line);
 		carry = sgrCarryAfter(carry, line);
 	}
 	return out;
@@ -624,6 +651,15 @@ function capMarkdownNesting(text: string): string {
 	return text.replace(BLOCKQUOTE_CAP, "$1").replace(INDENT_CAP, "$1");
 }
 
+// A quote border (`│ `) takes two cells. A quote too narrow to keep a content
+// cell beside it drops the border and lays its content out at the full width:
+// re-wrapping a deeper quote's bordered rows at one cell splits each of them in
+// two, doubling the row count at every further nesting level.
+const QUOTE_BORDER_CELLS = 2;
+function quoteContentWidth(width: number): number {
+	return width > QUOTE_BORDER_CELLS ? width - QUOTE_BORDER_CELLS : Math.max(1, width);
+}
+
 /** Drop all L2 cache entries. Call on theme change to prevent stale styled output. */
 export function clearRenderCache(): void {
 	renderCache.clear();
@@ -717,6 +753,16 @@ type TableToken = Token & {
 	raw?: string;
 };
 
+/** Column geometry shared by every row of one rendered table. */
+interface TableLayout {
+	columnWidths: number[];
+	align: TableAlign[];
+	styleContext: InlineStyleContext | undefined;
+}
+
+/** The most cells a column's longest unbroken word adds to the column's minimum width; a longer word wraps. */
+const TABLE_MAX_UNBROKEN_WORD_WIDTH = 30;
+
 /**
  * Pad `text` to `width` according to a column's alignment.
  *
@@ -736,6 +782,89 @@ function alignCellText(text: string, width: number, align: TableAlign): string {
 		return padding(left) + text + padding(slack - left);
 	}
 	return text + padding(slack);
+}
+
+/**
+ * Per-column minimum widths when the longest unbroken words of every column do not fit in `availableForCells`:
+ * each column gets one cell, and the cells left over are shared in proportion to how far each column's longest
+ * word exceeds one cell, with rounding leftovers going to the leftmost columns.
+ */
+function squeezedMinColumnWidths(minWordWidths: number[], numCols: number, availableForCells: number): number[] {
+	const widths: number[] = new Array(numCols).fill(1);
+	const remaining = availableForCells - numCols;
+	if (remaining <= 0) return widths;
+
+	const totalWeight = minWordWidths.reduce((total, width) => total + Math.max(0, width - 1), 0);
+	const growth = minWordWidths.map(width =>
+		totalWeight > 0 ? Math.floor((Math.max(0, width - 1) / totalWeight) * remaining) : 0,
+	);
+	for (let i = 0; i < numCols; i++) {
+		widths[i] += growth[i] ?? 0;
+	}
+
+	let leftover = remaining - growth.reduce((total, width) => total + width, 0);
+	for (let i = 0; leftover > 0 && i < numCols; i++) {
+		widths[i]++;
+		leftover--;
+	}
+	return widths;
+}
+
+/**
+ * Column widths for a table whose natural widths overflow `availableForCells`: every column starts at its minimum
+ * and grows toward its natural width in proportion to how far short of it the column is, then the cells lost to
+ * rounding go one at a time, left to right, to columns still below their natural width.
+ */
+function shrunkColumnWidths(
+	naturalWidths: number[],
+	minColumnWidths: number[],
+	numCols: number,
+	availableForCells: number,
+): number[] {
+	const totalGrowPotential = naturalWidths.reduce(
+		(total, width, index) => total + Math.max(0, width - minColumnWidths[index]),
+		0,
+	);
+	const extraWidth = Math.max(0, availableForCells - minColumnWidths.reduce((a, b) => a + b, 0));
+	const columnWidths = minColumnWidths.map((minWidth, index) => {
+		if (totalGrowPotential <= 0) return minWidth;
+		const minWidthDelta = Math.max(0, naturalWidths[index] - minWidth);
+		return minWidth + Math.floor((minWidthDelta / totalGrowPotential) * extraWidth);
+	});
+
+	let remaining = availableForCells - columnWidths.reduce((a, b) => a + b, 0);
+	let grew = true;
+	while (remaining > 0 && grew) {
+		grew = false;
+		for (let i = 0; i < numCols && remaining > 0; i++) {
+			if (columnWidths[i] < naturalWidths[i]) {
+				columnWidths[i]++;
+				remaining--;
+				grew = true;
+			}
+		}
+	}
+	return columnWidths;
+}
+
+/**
+ * Column widths that fit `availableForCells`, given each column's natural (unwrapped) width and the width of its
+ * longest unbroken word.
+ */
+function tableColumnWidths(
+	naturalWidths: number[],
+	minWordWidths: number[],
+	numCols: number,
+	availableForCells: number,
+): number[] {
+	const minColumnWidths =
+		minWordWidths.reduce((a, b) => a + b, 0) > availableForCells
+			? squeezedMinColumnWidths(minWordWidths, numCols, availableForCells)
+			: minWordWidths;
+	if (naturalWidths.reduce((a, b) => a + b, 0) <= availableForCells) {
+		return naturalWidths.map((width, index) => Math.max(width, minColumnWidths[index]));
+	}
+	return shrunkColumnWidths(naturalWidths, minColumnWidths, numCols, availableForCells);
 }
 
 function formatHyperlink(text: string, target: string): string {
@@ -813,6 +942,22 @@ function soleDisplayMath(tokens?: Token[]): (Token & { text: string }) | null {
 	return math;
 }
 
+/**
+ * The LaTeX a list-item token renders as stacked display math: a math token, or a text or
+ * paragraph token whose only content is one display math token. Undefined for anything else.
+ */
+function listItemDisplayMath(token: Token): string | undefined {
+	if (isMathToken(token)) return token.text;
+	if (token.type !== "text" && token.type !== "paragraph") return undefined;
+	return soleDisplayMath(token.tokens)?.text;
+}
+
+/** A row of a rendered list item; a nested list's rows are `nested` and already carry their full indent. */
+interface ListItemLine {
+	text: string;
+	nested: boolean;
+}
+
 /** A blank row follows a block when another block comes next; a space token supplies its own. */
 function gapFollowsBlock(nextTokenType: string | undefined): boolean {
 	return nextTokenType !== undefined && nextTokenType !== "" && nextTokenType !== "space";
@@ -869,34 +1014,38 @@ function inlineHtmlTag(token: Token): { name: string; closing: boolean } | null 
  * tag is present (the common case).
  */
 function collapseInlineHtml(tokens: Token[]): Token[] {
-	let hasCode = false;
-	for (const token of tokens) {
-		if (inlineHtmlTag(token)?.name === "code") {
-			hasCode = true;
-			break;
-		}
-	}
-	if (!hasCode) return tokens;
+	if (!tokens.some(token => inlineHtmlTag(token)?.name === "code")) return tokens;
 
 	const out: Token[] = [];
+	// Once a `<code>` finds no closer, no later one can: every later opener is dropped unsearched.
+	let closersExhausted = false;
 	for (let i = 0; i < tokens.length; i++) {
 		const tag = inlineHtmlTag(tokens[i]);
-		if (tag?.name === "code") {
-			if (tag.closing) continue; // stray `</code>` — drop it
-			let j = i + 1;
-			for (; j < tokens.length; j++) {
-				const close = inlineHtmlTag(tokens[j]);
-				if (close?.name === "code" && close.closing) break;
-			}
-			if (j >= tokens.length) continue; // unmatched `<code>` — drop it, render the rest normally
-			const text = unescapeHtml(plainInlineTokens(tokens.slice(i + 1, j)));
-			out.push({ type: "codespan", raw: text, text } as Token);
-			i = j;
+		if (tag?.name !== "code") {
+			out.push(tokens[i]);
 			continue;
 		}
-		out.push(tokens[i]);
+		// A stray `</code>` and an unmatched `<code>` are dropped; the rest renders normally.
+		if (tag.closing || closersExhausted) continue;
+		const close = closingCodeTagIndex(tokens, i + 1);
+		if (close < 0) {
+			closersExhausted = true;
+			continue;
+		}
+		const text = unescapeHtml(plainInlineTokens(tokens.slice(i + 1, close)));
+		out.push({ type: "codespan", raw: text, text } as Token);
+		i = close;
 	}
 	return out;
+}
+
+/** Index of the first closing `</code>` tag at or after `from`, or -1. */
+function closingCodeTagIndex(tokens: Token[], from: number): number {
+	for (let j = from; j < tokens.length; j++) {
+		const tag = inlineHtmlTag(tokens[j]);
+		if (tag?.name === "code" && tag.closing) return j;
+	}
+	return -1;
 }
 
 // ---------------------------------------------------------------------------
@@ -1021,6 +1170,34 @@ interface StreamingDiffLineCache extends RenderSignature {
 /** Carried across rows while laying out: whether the previous row was an OSC 66 sized heading. */
 interface RowLayoutState {
 	afterOsc66: boolean;
+}
+
+/**
+ * Lay out one wrapped row: the left margin, then the row, filled to `width` when `bgFn` paints a
+ * background. Image lines and OSC 66 sized headings are output raw: no margins or background.
+ */
+function layoutRow(
+	row: string,
+	state: RowLayoutState,
+	margin: string,
+	width: number,
+	bgFn: ((text: string) => string) | undefined,
+): string {
+	// The first empty row after a scale>1 OSC 66 heading is structural: it reserves the
+	// lower cells occupied by the multicell glyphs. It is not padded or background-filled,
+	// because real spaces on that row can interact with Kitty's multicell overwrite rules
+	// during the first paint, and stays a cursor-only newline.
+	if (state.afterOsc66 && row === "") {
+		state.afterOsc66 = false;
+		return "";
+	}
+	const osc66 = isOsc66Line(row);
+	if (osc66 || TERMINAL.isImageLine(row)) {
+		state.afterOsc66 = osc66;
+		return row;
+	}
+	state.afterOsc66 = false;
+	return bgFn ? applyLineBackground(margin + row + margin, width, bgFn) : margin + row;
 }
 
 /**
@@ -1284,41 +1461,21 @@ export class Markdown implements Component {
 	#freezeStablePrefix(text: string, tokens: Token[], opts: { preserveExisting: boolean }): void {
 		const existingText = opts.preserveExisting ? this.#streamPrefixText : undefined;
 		const existingTokens = existingText === undefined ? undefined : this.#streamPrefixTokens;
-		let pos = existingText === undefined ? 0 : existingText.length;
-		let frozenEnd = pos;
-		let frozenCount = existingTokens?.length ?? 0;
-		for (let i = frozenCount; i < tokens.length; i++) {
-			const raw = tokens[i].raw;
-			const end = pos + raw.length;
-			// A `space` token ending in "\n\n" closes the preceding block, but a
-			// `list` before it can still be extended by a following same-marker
-			// item across the blank line (CommonMark loose-list continuation),
-			// which marked merges into one renumbered loose list. Freezing across
-			// such a cut would keep the lists separate. Never freeze right after a
-			// list — it stays in the re-lexed tail.
-			if (raw.endsWith("\n\n") && tokens[i - 1]?.type !== "list") {
-				frozenEnd = end;
-				frozenCount = i + 1;
-			}
-			pos = end;
-		}
+		const boundary = lastFreezeBoundary(tokens, existingTokens?.length ?? 0, existingText?.length ?? 0);
 		// Freeze only when the tail begins with real block content. If the next
 		// char is whitespace (an extra blank line, or an indented continuation),
 		// the block separator straddles the cut and lex(prefix)++lex(tail) would
 		// desync from a full lex — e.g. a fence followed by "\n\n\n- list". When
-		// frozenEnd is at end-of-text the next char is unknown, so defer.
-		if (frozenCount > 0 && frozenEnd < text.length) {
-			const next = text.charCodeAt(frozenEnd);
-			if (next !== 0x20 /* space */ && next !== 0x0a /* \n */) {
-				if (existingText === undefined || frozenEnd > existingText.length) {
-					this.#streamPrefixText = text.slice(0, frozenEnd);
-					this.#streamPrefixTokens = tokens.slice(0, frozenCount);
-					this.#streamPrefixBase = existingText;
-				}
-				return;
+		// the boundary is at end-of-text the next char is unknown, so defer.
+		const next = text.charCodeAt(boundary.end);
+		if (boundary.count > 0 && boundary.end < text.length && next !== 0x20 /* space */ && next !== 0x0a /* \n */) {
+			if (existingText === undefined || boundary.end > existingText.length) {
+				this.#streamPrefixText = text.slice(0, boundary.end);
+				this.#streamPrefixTokens = tokens.slice(0, boundary.count);
+				this.#streamPrefixBase = existingText;
 			}
+			return;
 		}
-
 		if (!opts.preserveExisting) this.#dropFrozenPrefix();
 	}
 
@@ -1450,61 +1607,72 @@ export class Markdown implements Component {
 			return this.#renderContentLines(tokens, 0, tokens.length, contentWidth, signature);
 		}
 
-		// The frozen rows are held as one immutable array and reused by reference
-		// while nothing new freezes, so a frame copies them exactly once — into
-		// the array it returns. Spreading them into an accumulator and slicing
-		// that accumulator back into the cache copied every settled row twice per
-		// frame, and `push(...rows)` puts one argument on the stack per row,
-		// which a long transcript is eventually large enough to overflow.
-		const reusablePrefix = this.#matchingStreamPrefixLineCache(frozenText, signature);
-		let frozenLines: readonly string[];
-		if (reusablePrefix && reusablePrefix.tokenCount === frozenTokenCount) {
-			frozenLines = reusablePrefix.lines;
-		} else {
-			const reusedUntil =
-				reusablePrefix && reusablePrefix.tokenCount < frozenTokenCount ? reusablePrefix.tokenCount : 0;
-			// Frozen tokens render with full fidelity (syntax highlighting on)
-			// so these cached rows byte-match the finalized render.
-			this.#renderingFrozenPrefix = true;
-			let rendered: string[];
-			try {
-				rendered = this.#renderContentLines(tokens, reusedUntil, frozenTokenCount, contentWidth, signature);
-			} finally {
-				this.#renderingFrozenPrefix = false;
-			}
-			frozenLines = reusedUntil > 0 && reusablePrefix ? reusablePrefix.lines.concat(rendered) : rendered;
-			this.#streamPrefixLineCache = {
-				...signature,
-				text: frozenText,
-				tokenCount: frozenTokenCount,
-				lines: frozenLines,
-			};
-		}
-
-		// Settled exposure (hard-monotone): these rows are declared final to
-		// the host, so expose them only while the frozen text still extends
-		// the previously exposed prefix; a rewind resets to 0 and re-earns on
-		// the rewritten lineage.
-		if (frozenLines.length > 0) {
-			const exposed = this.#settledExposedText;
-			if (
-				exposed === undefined ||
-				exposed === frozenText ||
-				exposed === this.#streamPrefixBase ||
-				frozenText.startsWith(exposed)
-			) {
-				this.#settledExposedText = frozenText;
-				this.#lastRenderSettledRows = signature.paddingY + frozenLines.length;
-			} else {
-				this.#settledExposedText = undefined;
-			}
-		}
+		const frozenLines = this.#frozenPrefixLines(tokens, frozenText, frozenTokenCount, contentWidth, signature);
+		if (frozenLines.length > 0) this.#exposeSettledRows(frozenText, frozenLines.length, signature);
 
 		if (frozenTokenCount < tokens.length) {
 			const tail = this.#renderContentLines(tokens, frozenTokenCount, tokens.length, contentWidth, signature);
 			return frozenLines.concat(tail);
 		}
 		return frozenLines.slice();
+	}
+
+	/**
+	 * The rows of the frozen prefix: the cached rows when they cover every frozen token, else the cached rows
+	 * extended by the tokens frozen since. The frozen rows are held as one immutable array and reused by reference
+	 * while nothing new freezes, so a frame copies them exactly once — into the array it returns. Spreading them into
+	 * an accumulator and slicing that accumulator back into the cache copied every settled row twice per frame, and
+	 * `push(...rows)` puts one argument on the stack per row, which a long transcript is eventually large enough to
+	 * overflow.
+	 */
+	#frozenPrefixLines(
+		tokens: Token[],
+		frozenText: string,
+		frozenTokenCount: number,
+		contentWidth: number,
+		signature: RenderSignature,
+	): readonly string[] {
+		const reusablePrefix = this.#matchingStreamPrefixLineCache(frozenText, signature);
+		if (reusablePrefix && reusablePrefix.tokenCount === frozenTokenCount) return reusablePrefix.lines;
+		const reusedUntil =
+			reusablePrefix && reusablePrefix.tokenCount < frozenTokenCount ? reusablePrefix.tokenCount : 0;
+		// Frozen tokens render with full fidelity (syntax highlighting on)
+		// so these cached rows byte-match the finalized render.
+		this.#renderingFrozenPrefix = true;
+		let rendered: string[];
+		try {
+			rendered = this.#renderContentLines(tokens, reusedUntil, frozenTokenCount, contentWidth, signature);
+		} finally {
+			this.#renderingFrozenPrefix = false;
+		}
+		const frozenLines = reusedUntil > 0 && reusablePrefix ? reusablePrefix.lines.concat(rendered) : rendered;
+		this.#streamPrefixLineCache = {
+			...signature,
+			text: frozenText,
+			tokenCount: frozenTokenCount,
+			lines: frozenLines,
+		};
+		return frozenLines;
+	}
+
+	/**
+	 * Settled exposure (hard-monotone): the frozen rows are declared final to the host, so expose them only while the
+	 * frozen text still extends the previously exposed prefix; a rewind resets to 0 and re-earns on the rewritten
+	 * lineage.
+	 */
+	#exposeSettledRows(frozenText: string, frozenRows: number, signature: RenderSignature): void {
+		const exposed = this.#settledExposedText;
+		if (
+			exposed === undefined ||
+			exposed === frozenText ||
+			exposed === this.#streamPrefixBase ||
+			frozenText.startsWith(exposed)
+		) {
+			this.#settledExposedText = frozenText;
+			this.#lastRenderSettledRows = signature.paddingY + frozenRows;
+		} else {
+			this.#settledExposedText = undefined;
+		}
 	}
 
 	// `frozenText` is already known to be a prefix of `normalizedText`, so an entry
@@ -1563,26 +1731,7 @@ export class Markdown implements Component {
 			// Image protocol lines and OSC 66 sized headings are not wrapped: wrapping would corrupt
 			// the escape sequence or split the indivisible sized span.
 			const rows = TERMINAL.isImageLine(line) || isOsc66Line(line) ? [line] : wrapTextWithAnsi(line, contentWidth);
-			for (const row of rows) {
-				// The first empty row after a scale>1 OSC 66 heading is structural: it reserves the
-				// lower cells occupied by the multicell glyphs. It is not padded or background-filled,
-				// because real spaces on that row can interact with Kitty's multicell overwrite rules
-				// during the first paint, and stays a cursor-only newline.
-				if (state.afterOsc66 && row === "") {
-					out.push("");
-					state.afterOsc66 = false;
-					continue;
-				}
-				// Image lines and OSC 66 sized headings are output raw: no margins or background.
-				const osc66 = isOsc66Line(row);
-				if (osc66 || TERMINAL.isImageLine(row)) {
-					out.push(row);
-					state.afterOsc66 = osc66;
-					continue;
-				}
-				state.afterOsc66 = false;
-				out.push(bgFn ? applyLineBackground(margin + row + margin, signature.width, bgFn) : margin + row);
-			}
+			for (const row of rows) out.push(layoutRow(row, state, margin, signature.width, bgFn));
 		}
 	}
 
@@ -1682,43 +1831,37 @@ export class Markdown implements Component {
 	}
 
 	#renderCodeBodyLines(token: Token, codeIndent: string): string[] {
-		const bodyLines: string[] = [];
 		const tokenText = "text" in token && typeof token.text === "string" ? token.text : "";
 		const lang = "lang" in token && typeof token.lang === "string" ? token.lang : undefined;
-		const normalizedLang = lang?.toLowerCase();
-		const canStreamDiff =
-			this.transientRenderCache &&
-			!this.#renderingFrozenPrefix &&
-			this.#theme.highlightCode &&
-			STREAMED_DIFF_LANGS.has(normalizedLang ?? "");
-
 		if (this.#theme.highlightCode && (!this.transientRenderCache || this.#renderingFrozenPrefix)) {
-			const highlightedLines = this.#theme.highlightCode(tokenText, lang);
-			for (const hlLine of highlightedLines) {
-				bodyLines.push(`${codeIndent}${hlLine}`);
-			}
-			return bodyLines;
+			return this.#theme.highlightCode(tokenText, lang).map(line => `${codeIndent}${line}`);
 		}
-
-		if (canStreamDiff) {
-			const closedFence = codeTokenHasClosingFence(token);
-			const lineEnd = tokenText.lastIndexOf("\n");
-			if (closedFence || lineEnd >= 0) {
-				const completedText = closedFence ? tokenText : tokenText.slice(0, lineEnd);
-				for (const hlLine of this.#highlightStreamingDiffLines(completedText, lang)) {
-					bodyLines.push(`${codeIndent}${hlLine}`);
-				}
-				if (!closedFence) {
-					for (const codeLine of tokenText.slice(lineEnd + 1).split("\n")) {
-						bodyLines.push(`${codeIndent}${this.#theme.codeBlock(codeLine)}`);
-					}
-				}
-				return bodyLines;
-			}
+		if (this.#theme.highlightCode && STREAMED_DIFF_LANGS.has(lang?.toLowerCase() ?? "")) {
+			const diffLines = this.#streamingDiffBodyLines(token, tokenText, lang, codeIndent);
+			if (diffLines) return diffLines;
 		}
+		return tokenText.split("\n").map(line => `${codeIndent}${this.#theme.codeBlock(line)}`);
+	}
 
-		for (const codeLine of tokenText.split("\n")) {
-			bodyLines.push(`${codeIndent}${this.#theme.codeBlock(codeLine)}`);
+	/**
+	 * The body of a diff fence still streaming: its complete lines highlighted one at a time, the
+	 * line still arriving plain until the fence closes. Undefined before the first line completes.
+	 */
+	#streamingDiffBodyLines(
+		token: Token,
+		tokenText: string,
+		lang: string | undefined,
+		codeIndent: string,
+	): string[] | undefined {
+		const closedFence = codeTokenHasClosingFence(token);
+		const lineEnd = tokenText.lastIndexOf("\n");
+		if (!closedFence && lineEnd < 0) return undefined;
+		const completedText = closedFence ? tokenText : tokenText.slice(0, lineEnd);
+		const bodyLines = this.#highlightStreamingDiffLines(completedText, lang).map(line => `${codeIndent}${line}`);
+		if (!closedFence) {
+			for (const codeLine of tokenText.slice(lineEnd + 1).split("\n")) {
+				bodyLines.push(`${codeIndent}${this.#theme.codeBlock(codeLine)}`);
+			}
 		}
 		return bodyLines;
 	}
@@ -1898,12 +2041,9 @@ export class Markdown implements Component {
 			case "blockquote":
 				this.#renderBlockquote(out, token as Tokens.Blockquote, width, nextTokenType);
 				return;
-			case "hr": {
-				const raw = "raw" in token && typeof token.raw === "string" ? token.raw.trim() : "";
-				out.push(this.#renderHrLine(width, raw[0] || ""));
-				if (gapFollowsBlock(nextTokenType)) out.push("");
+			case "hr":
+				this.#renderHr(out, token as Tokens.Hr, width, nextTokenType);
 				return;
-			}
 			case "html":
 				if ("raw" in token && typeof token.raw === "string") out.push(...this.#renderHtmlBlock(token.raw, width));
 				return;
@@ -1919,6 +2059,13 @@ export class Markdown implements Component {
 
 	#pushDisplayMath(out: string[], tex: string): void {
 		for (const mathLine of latexToBlock(tex)) out.push(this.#applyDefaultStyle(mathLine));
+	}
+
+	/** A rule drawn with the character its source used. */
+	#renderHr(out: string[], token: Tokens.Hr, width: number, nextTokenType: string | undefined): void {
+		const raw = typeof token.raw === "string" ? token.raw.trim() : "";
+		out.push(this.#renderHrLine(width, raw[0] || ""));
+		if (gapFollowsBlock(nextTokenType)) out.push("");
 	}
 
 	#renderHeading(
@@ -1993,14 +2140,14 @@ export class Markdown implements Component {
 			applyText: (text: string) => text,
 			stylePrefix: "",
 		};
-		const quoteContentWidth = Math.max(1, width - 2);
+		const contentWidth = quoteContentWidth(width);
 		const quoteTokens = token.tokens || [];
 		const renderedQuoteLines: string[] = [];
 		for (let i = 0; i < quoteTokens.length; i++) {
 			this.#renderToken(
 				renderedQuoteLines,
 				quoteTokens[i]!,
-				quoteContentWidth,
+				contentWidth,
 				quoteTokens[i + 1]?.type,
 				quoteInlineStyleContext,
 			);
@@ -2020,7 +2167,8 @@ export class Markdown implements Component {
 
 	/**
 	 * Wrap already-rendered lines in the blockquote border and quote styling.
-	 * `width` is the full content width; the border reserves two cells.
+	 * `width` is the full content width; the border reserves two cells and is
+	 * omitted when no content cell would remain beside it.
 	 */
 	#applyQuoteBorder(renderedLines: string[], width: number): string[] {
 		const quoteStyle = (text: string) => this.#theme.quote(this.#theme.italic(text));
@@ -2032,12 +2180,12 @@ export class Markdown implements Component {
 			const lineWithReappliedStyle = line.replaceAll(SGR_RESET, `${SGR_RESET}${quoteStylePrefix}`);
 			return quoteStyle(lineWithReappliedStyle);
 		};
-		const quoteContentWidth = Math.max(1, width - 2);
+		const contentWidth = quoteContentWidth(width);
+		const border = width > QUOTE_BORDER_CELLS ? this.#theme.quoteBorder(`${this.#theme.symbols.quoteBorder} `) : "";
 		const lines: string[] = [];
 		for (const quoteLine of renderedLines) {
-			const styledLine = applyQuoteStyle(quoteLine);
-			for (const wrappedLine of wrapTextWithAnsi(styledLine, quoteContentWidth)) {
-				lines.push(this.#theme.quoteBorder(`${this.#theme.symbols.quoteBorder} `) + wrappedLine);
+			for (const wrappedLine of wrapTextWithAnsi(applyQuoteStyle(quoteLine), contentWidth)) {
+				lines.push(border + wrappedLine);
 			}
 		}
 		return lines;
@@ -2131,45 +2279,34 @@ export class Markdown implements Component {
 		const indent = "  ".repeat(depth);
 		// Use the list's start property (defaults to 1 for ordered lists)
 		const startNumber = token.start ?? 1;
-
 		for (let i = 0; i < token.items.length; i++) {
-			const item = token.items[i];
 			const bullet = token.ordered ? `${startNumber + i}. ` : "- ";
-			// Continuation rows align under the item text, so the hang matches the
-			// actual bullet width (`10. ` is 4 cells, not 2).
-			const continuationIndent = indent + padding(bullet.length);
-
 			// Process item tokens; nested-list lines arrive structurally tagged and
 			// already carry their own full indent.
-			const itemLines = this.#renderListItem(item.tokens || [], depth, styleContext);
-
-			if (itemLines.length > 0) {
-				const firstLine = itemLines[0]!;
-				if (firstLine.nested) {
-					// Nested list first - keep as-is (already has full indent)
-					lines.push(firstLine.text);
-				} else {
-					// Regular text content - add indent and bullet
-					lines.push(indent + this.#theme.listBullet(bullet) + firstLine.text);
-				}
-
-				// Rest of the lines
-				for (let j = 1; j < itemLines.length; j++) {
-					const line = itemLines[j]!;
-					if (line.nested) {
-						// Nested list line - already has full indent
-						lines.push(line.text);
-					} else {
-						// Regular content - hang under the item text
-						lines.push(continuationIndent + line.text);
-					}
-				}
-			} else {
-				lines.push(indent + this.#theme.listBullet(bullet));
-			}
+			const itemLines = this.#renderListItem(token.items[i].tokens || [], depth, styleContext);
+			this.#pushListItemLines(lines, itemLines, indent, bullet);
 		}
-
 		return lines;
+	}
+
+	/**
+	 * Append one item's rows: the bullet before the first, every later row hung under the item
+	 * text. A nested list's rows already carry their full indent and pass through as they are.
+	 */
+	#pushListItemLines(out: string[], itemLines: ListItemLine[], indent: string, bullet: string): void {
+		if (itemLines.length === 0) {
+			out.push(indent + this.#theme.listBullet(bullet));
+			return;
+		}
+		// Continuation rows align under the item text, so the hang matches the
+		// actual bullet width (`10. ` is 4 cells, not 2).
+		const continuationIndent = indent + padding(bullet.length);
+		const first = itemLines[0]!;
+		out.push(first.nested ? first.text : indent + this.#theme.listBullet(bullet) + first.text);
+		for (let j = 1; j < itemLines.length; j++) {
+			const line = itemLines[j]!;
+			out.push(line.nested ? line.text : continuationIndent + line.text);
+		}
 	}
 
 	/**
@@ -2178,64 +2315,56 @@ export class Markdown implements Component {
 	 * belong to a nested list are tagged `nested` so the caller never has to
 	 * sniff theme-dependent ANSI bytes to recognize them.
 	 */
-	#renderListItem(
-		tokens: Token[],
-		parentDepth: number,
-		styleContext?: InlineStyleContext,
-	): Array<{ text: string; nested: boolean }> {
-		const lines: Array<{ text: string; nested: boolean }> = [];
+	#renderListItem(tokens: Token[], parentDepth: number, styleContext?: InlineStyleContext): ListItemLine[] {
+		const lines: ListItemLine[] = [];
 		const apply = styleContext?.applyText ?? ((t: string) => this.#applyDefaultStyle(t));
-		const pushMath = (latex: string) => {
-			for (const mathLine of latexToBlock(latex)) lines.push({ text: apply(mathLine), nested: false });
-		};
-
-		for (const token of tokens) {
-			if (token.type === "list") {
-				// Nested list - render with one additional indent level
-				// These lines carry their own indent, so tag them for pass-through
-				const nestedLines = this.#renderList(token as ListToken, parentDepth + 1, styleContext);
-				for (const nestedLine of nestedLines) {
-					lines.push({ text: nestedLine, nested: true });
-				}
-			} else if (token.type === "text") {
-				// Text content (may have inline tokens, or a sole display-math token)
-				const displayMath = soleDisplayMath(token.tokens);
-				if (displayMath) {
-					pushMath(displayMath.text);
-				} else {
-					const text =
-						token.tokens && token.tokens.length > 0
-							? this.#renderInlineTokens(token.tokens, styleContext)
-							: token.text || "";
-					lines.push({ text, nested: false });
-				}
-			} else if (token.type === "paragraph") {
-				const displayMath = soleDisplayMath(token.tokens);
-				if (displayMath) {
-					pushMath(displayMath.text);
-				} else {
-					lines.push({ text: this.#renderInlineTokens(token.tokens || [], styleContext), nested: false });
-				}
-			} else if (token.type === "code") {
-				// Code block in list item
-				const codeIndent = padding(this.#codeBlockIndent);
-				lines.push({ text: this.#codeFenceRow(token.lang, "open"), nested: false });
-				for (const bodyLine of this.#renderCodeBodyLines(token, codeIndent)) {
-					lines.push({ text: bodyLine, nested: false });
-				}
-				lines.push({ text: this.#codeFenceRow(token.lang, "close"), nested: false });
-			} else if (isMathToken(token)) {
-				pushMath(token.text);
-			} else {
-				// Other token types - try to render as inline
-				const text = this.#renderInlineTokens([token], styleContext);
-				if (text) {
-					lines.push({ text, nested: false });
-				}
-			}
-		}
-
+		for (const token of tokens) this.#pushListItemToken(lines, token, parentDepth, styleContext, apply);
 		return lines;
+	}
+
+	#pushListItemToken(
+		lines: ListItemLine[],
+		token: Token,
+		parentDepth: number,
+		styleContext: InlineStyleContext | undefined,
+		apply: (text: string) => string,
+	): void {
+		if (token.type === "list") {
+			// Nested list - render with one additional indent level
+			// These lines carry their own indent, so tag them for pass-through
+			for (const nestedLine of this.#renderList(token as ListToken, parentDepth + 1, styleContext)) {
+				lines.push({ text: nestedLine, nested: true });
+			}
+			return;
+		}
+		if (token.type === "code") {
+			const codeIndent = padding(this.#codeBlockIndent);
+			lines.push({ text: this.#codeFenceRow(token.lang, "open"), nested: false });
+			for (const bodyLine of this.#renderCodeBodyLines(token, codeIndent)) {
+				lines.push({ text: bodyLine, nested: false });
+			}
+			lines.push({ text: this.#codeFenceRow(token.lang, "close"), nested: false });
+			return;
+		}
+		const latex = listItemDisplayMath(token);
+		if (latex !== undefined) {
+			for (const mathLine of latexToBlock(latex)) lines.push({ text: apply(mathLine), nested: false });
+			return;
+		}
+		const text = this.#listItemInlineText(token, styleContext);
+		if (text !== undefined) lines.push({ text, nested: false });
+	}
+
+	/** The inline row of a list-item token; undefined for a token other than text or a paragraph that renders empty. */
+	#listItemInlineText(token: Token, styleContext: InlineStyleContext | undefined): string | undefined {
+		if (token.type === "text") {
+			return token.tokens && token.tokens.length > 0
+				? this.#renderInlineTokens(token.tokens, styleContext)
+				: token.text || "";
+		}
+		if (token.type === "paragraph") return this.#renderInlineTokens(token.tokens || [], styleContext);
+		// Other token types - try to render as inline
+		return this.#renderInlineTokens([token], styleContext) || undefined;
 	}
 
 	/**
@@ -2248,186 +2377,165 @@ export class Markdown implements Component {
 		nextTokenType?: string,
 		styleContext?: InlineStyleContext,
 	): string[] {
-		const lines: string[] = [];
 		const numCols = token.header.length;
-
 		if (numCols === 0) {
-			return lines;
+			return [];
 		}
+		const trailingBlank = nextTokenType !== undefined && nextTokenType !== "" && nextTokenType !== "space";
 
 		// Calculate border overhead: "│ " + (n-1) * " │ " + " │"
 		// = 2 + (n-1) * 3 + 2 = 3n + 1
-		const borderOverhead = 3 * numCols + 1;
-		const availableForCells = availableWidth - borderOverhead;
+		const availableForCells = availableWidth - (3 * numCols + 1);
 		if (availableForCells < numCols) {
 			// Too narrow to render a stable table. Fall back to raw markdown.
 			const fallbackLines = token.raw ? wrapTextWithAnsi(token.raw, availableWidth) : [];
-			if (nextTokenType && nextTokenType !== "space") {
-				fallbackLines.push("");
-			}
+			if (trailingBlank) fallbackLines.push("");
 			return fallbackLines;
 		}
 
-		const maxUnbrokenWordWidth = 30;
-
-		// Calculate natural column widths (what each column needs without constraints)
+		// Natural column widths (what each column needs unwrapped) and the longest unbroken word in each.
 		const naturalWidths: number[] = new Array(numCols).fill(0);
 		const minWordWidths: number[] = new Array(numCols).fill(1);
-		const inspectCells = (rowCells: typeof token.header) => {
-			for (let i = 0; i < rowCells.length; i++) {
-				const text = this.#renderInlineTokens(rowCells[i]?.tokens || [], styleContext);
-				const lineWidths = terminalLineWidths(text);
-				naturalWidths[i] = Math.max(naturalWidths[i] || 0, ...lineWidths, 0);
-				minWordWidths[i] = Math.max(minWordWidths[i] || 1, getLongestWordWidth(text, maxUnbrokenWordWidth));
-			}
+		this.#measureTableCells(token.header, naturalWidths, minWordWidths, styleContext);
+		for (const row of token.rows) this.#measureTableCells(row, naturalWidths, minWordWidths, styleContext);
+
+		const layout: TableLayout = {
+			columnWidths: tableColumnWidths(naturalWidths, minWordWidths, numCols, availableForCells),
+			// A table whose delimiter row omits a column, or a token from a source that
+			// does not populate `align`, falls back to the GFM default rather than
+			// indexing past the end.
+			align: Array.from({ length: numCols }, (_, i) => token.align?.[i] ?? null),
+			styleContext,
 		};
-		inspectCells(token.header);
-		for (const row of token.rows) inspectCells(row);
-
-		let minColumnWidths = minWordWidths;
-		let minCellsWidth = minColumnWidths.reduce((a, b) => a + b, 0);
-
-		if (minCellsWidth > availableForCells) {
-			minColumnWidths = new Array(numCols).fill(1);
-			const remaining = availableForCells - numCols;
-
-			if (remaining > 0) {
-				const totalWeight = minWordWidths.reduce((total, width) => total + Math.max(0, width - 1), 0);
-				const growth = minWordWidths.map(width => {
-					const weight = Math.max(0, width - 1);
-					return totalWeight > 0 ? Math.floor((weight / totalWeight) * remaining) : 0;
-				});
-
-				for (let i = 0; i < numCols; i++) {
-					minColumnWidths[i] += growth[i] ?? 0;
-				}
-
-				const allocated = growth.reduce((total, width) => total + width, 0);
-				let leftover = remaining - allocated;
-				for (let i = 0; leftover > 0 && i < numCols; i++) {
-					minColumnWidths[i]++;
-					leftover--;
-				}
-			}
-
-			minCellsWidth = minColumnWidths.reduce((a, b) => a + b, 0);
-		}
-
-		// Calculate column widths that fit within available width
-		const totalNaturalWidth = naturalWidths.reduce((a, b) => a + b, 0) + borderOverhead;
-		let columnWidths: number[];
-
-		if (totalNaturalWidth <= availableWidth) {
-			// Everything fits naturally
-			columnWidths = naturalWidths.map((width, index) => Math.max(width, minColumnWidths[index]));
-		} else {
-			// Need to shrink columns to fit
-			const totalGrowPotential = naturalWidths.reduce((total, width, index) => {
-				return total + Math.max(0, width - minColumnWidths[index]);
-			}, 0);
-			const extraWidth = Math.max(0, availableForCells - minCellsWidth);
-			columnWidths = minColumnWidths.map((minWidth, index) => {
-				const naturalWidth = naturalWidths[index];
-				const minWidthDelta = Math.max(0, naturalWidth - minWidth);
-				let grow = 0;
-				if (totalGrowPotential > 0) {
-					grow = Math.floor((minWidthDelta / totalGrowPotential) * extraWidth);
-				}
-				return minWidth + grow;
-			});
-
-			// Adjust for rounding errors - distribute remaining space
-			const allocated = columnWidths.reduce((a, b) => a + b, 0);
-			let remaining = availableForCells - allocated;
-			while (remaining > 0) {
-				let grew = false;
-				for (let i = 0; i < numCols && remaining > 0; i++) {
-					if (columnWidths[i] < naturalWidths[i]) {
-						columnWidths[i]++;
-						remaining--;
-						grew = true;
-					}
-				}
-				if (!grew) {
-					break;
-				}
-			}
-		}
 
 		const t = this.#theme.symbols.table;
-		const h = t.horizontal;
-		const v = t.vertical;
-		// A table whose delimiter row omits a column, or a token from a source that
-		// does not populate `align`, falls back to the GFM default rather than
-		// indexing past the end.
-		const align: TableAlign[] = Array.from({ length: numCols }, (_, i) => token.align?.[i] ?? null);
-
-		const rule = (left: string, mid: string, right: string) =>
-			`${left}${h}${columnWidths.map(w => h.repeat(w)).join(`${h}${mid}${h}`)}${h}${right}`;
-		const renderRowCells = (cells: typeof token.header, isHeader: boolean): string[] => {
-			const cellLines = cells.map((cell, i) =>
-				wrapCellText(this.#renderInlineTokens(cell.tokens || [], styleContext), columnWidths[i]),
-			);
-			const maxLines = Math.max(...cellLines.map(c => c.length));
-			const out: string[] = [];
-			for (let lineIdx = 0; lineIdx < maxLines; lineIdx++) {
-				const rowParts = cellLines.map((lines, colIdx) => {
-					const text = alignCellText(lines[lineIdx] || "", columnWidths[colIdx], align[colIdx]);
-					return isHeader ? this.#theme.bold(text) : text;
-				});
-				out.push(`${v} ${rowParts.join(` ${v} `)} ${v}`);
-			}
-			return out;
-		};
-
-		lines.push(rule(t.topLeft, t.teeDown, t.topRight));
-		lines.push(...renderRowCells(token.header, true));
-		const separatorLine = rule(t.teeRight, t.cross, t.teeLeft);
+		const lines = [this.#tableRule(layout, t.topLeft, t.teeDown, t.topRight)];
+		lines.push(...this.#tableRowLines(token.header, layout, true));
+		const separatorLine = this.#tableRule(layout, t.teeRight, t.cross, t.teeLeft);
 		lines.push(separatorLine);
 
 		let prevRowWrapped = false;
 		for (let rowIndex = 0; rowIndex < token.rows.length; rowIndex++) {
-			const row = token.rows[rowIndex];
-			const renderedRow = renderRowCells(row, false);
-			if (rowIndex > 0 && (prevRowWrapped || renderedRow.length > 1)) {
+			const renderedRow = this.#tableRowLines(token.rows[rowIndex], layout, false);
+			const wrapped = renderedRow.length > 1;
+			if (rowIndex > 0 && (prevRowWrapped || wrapped)) {
 				lines.push(separatorLine);
 			}
 			lines.push(...renderedRow);
-			prevRowWrapped = renderedRow.length > 1;
+			prevRowWrapped = wrapped;
 		}
-		lines.push(rule(t.bottomLeft, t.teeUp, t.bottomRight));
-		if (nextTokenType && nextTokenType !== "space") {
-			lines.push("");
-		}
+		lines.push(this.#tableRule(layout, t.bottomLeft, t.teeUp, t.bottomRight));
+		if (trailingBlank) lines.push("");
 		return lines;
 	}
+
+	/** Widen `naturalWidths` and `minWordWidths` to fit every cell of one table row. */
+	#measureTableCells(
+		cells: TableCellToken[],
+		naturalWidths: number[],
+		minWordWidths: number[],
+		styleContext: InlineStyleContext | undefined,
+	): void {
+		for (let i = 0; i < cells.length; i++) {
+			const text = this.#renderInlineTokens(cells[i]?.tokens || [], styleContext);
+			naturalWidths[i] = Math.max(naturalWidths[i] || 0, ...terminalLineWidths(text), 0);
+			minWordWidths[i] = Math.max(minWordWidths[i] || 1, getLongestWordWidth(text, TABLE_MAX_UNBROKEN_WORD_WIDTH));
+		}
+	}
+
+	/** A horizontal table border: `left`, then each column's run of `horizontal` joined by `mid`, then `right`. */
+	#tableRule(layout: TableLayout, left: string, mid: string, right: string): string {
+		const h = this.#theme.symbols.table.horizontal;
+		return `${left}${h}${layout.columnWidths.map(w => h.repeat(w)).join(`${h}${mid}${h}`)}${h}${right}`;
+	}
+
+	/** The terminal lines of one table row, each cell wrapped to its column and aligned, header cells bold. */
+	#tableRowLines(cells: TableCellToken[], layout: TableLayout, isHeader: boolean): string[] {
+		const { columnWidths, align, styleContext } = layout;
+		const v = this.#theme.symbols.table.vertical;
+		const cellLines = cells.map((cell, i) =>
+			wrapCellText(this.#renderInlineTokens(cell.tokens || [], styleContext), columnWidths[i]),
+		);
+		const maxLines = Math.max(...cellLines.map(c => c.length));
+		const out: string[] = [];
+		for (let lineIdx = 0; lineIdx < maxLines; lineIdx++) {
+			const rowParts = cellLines.map((lines, colIdx) => {
+				const text = alignCellText(lines[lineIdx] || "", columnWidths[colIdx], align[colIdx]);
+				return isHeader ? this.#theme.bold(text) : text;
+			});
+			out.push(`${v} ${rowParts.join(` ${v} `)} ${v}`);
+		}
+		return out;
+	}
+}
+
+interface FreezeBoundary {
+	/** Text offset the frozen prefix ends at. */
+	end: number;
+	/** Tokens the frozen prefix holds. */
+	count: number;
+}
+
+/**
+ * The last boundary a frozen stream prefix may end at, scanning `tokens` from token `count`, which starts at text
+ * offset `end`; the given boundary when no later token ends one.
+ */
+function lastFreezeBoundary(tokens: Token[], count: number, end: number): FreezeBoundary {
+	const boundary: FreezeBoundary = { end, count };
+	let pos = end;
+	for (let i = count; i < tokens.length; i++) {
+		const raw = tokens[i].raw;
+		pos += raw.length;
+		// A `space` token ending in "\n\n" closes the preceding block, but a
+		// `list` before it can still be extended by a following same-marker
+		// item across the blank line (CommonMark loose-list continuation),
+		// which marked merges into one renumbered loose list. Freezing across
+		// such a cut would keep the lists separate. Never freeze right after a
+		// list — it stays in the re-lexed tail.
+		if (raw.endsWith("\n\n") && tokens[i - 1]?.type !== "list") {
+			boundary.end = pos;
+			boundary.count = i + 1;
+		}
+	}
+	return boundary;
+}
+
+interface FenceMarker {
+	char: string;
+	length: number;
+}
+
+/** The marker opening a fence on `line`: up to three cells of indent, then three or more backticks or tildes. */
+function openingFenceMarker(line: string): FenceMarker | undefined {
+	const trimmed = line.trimStart();
+	if (line.length - trimmed.length > 3) return undefined;
+	const char = trimmed.charAt(0);
+	if (char !== "`" && char !== "~") return undefined;
+	let length = 0;
+	while (trimmed.charAt(length) === char) length++;
+	return length >= 3 ? { char, length } : undefined;
+}
+
+/** Whether `line` closes the fence `marker` opened: up to three cells of indent, a run as long or longer, then blanks. */
+function closesFence(line: string, marker: FenceMarker): boolean {
+	const trimmed = line.trimStart();
+	if (line.length - trimmed.length > 3) return false;
+	let length = 0;
+	while (trimmed.charAt(length) === marker.char) length++;
+	return length >= marker.length && trimmed.slice(length).trim().length === 0;
 }
 
 function codeTokenHasClosingFence(token: Token): boolean {
 	const raw = "raw" in token && typeof token.raw === "string" ? token.raw : "";
 	const firstLineEnd = raw.indexOf("\n");
 	if (firstLineEnd < 0) return false;
-	const openingLine = raw.slice(0, firstLineEnd);
-	const openingTrimmed = openingLine.trimStart();
-	const openingIndent = openingLine.length - openingTrimmed.length;
-	if (openingIndent > 3) return false;
-	const fenceChar = openingTrimmed.charAt(0);
-	if (fenceChar !== "`" && fenceChar !== "~") return false;
-	let fenceLength = 0;
-	while (openingTrimmed.charAt(fenceLength) === fenceChar) fenceLength++;
-	if (fenceLength < 3) return false;
+	const marker = openingFenceMarker(raw.slice(0, firstLineEnd));
+	if (!marker) return false;
 
 	let lineStart = firstLineEnd + 1;
 	while (lineStart <= raw.length) {
 		const lineEnd = raw.indexOf("\n", lineStart);
-		const line = lineEnd >= 0 ? raw.slice(lineStart, lineEnd) : raw.slice(lineStart);
-		const trimmed = line.trimStart();
-		const indent = line.length - trimmed.length;
-		let closingLength = 0;
-		while (trimmed.charAt(closingLength) === fenceChar) closingLength++;
-		if (indent <= 3 && closingLength >= fenceLength && trimmed.slice(closingLength).trim().length === 0) {
-			return true;
-		}
+		if (closesFence(lineEnd >= 0 ? raw.slice(lineStart, lineEnd) : raw.slice(lineStart), marker)) return true;
 		if (lineEnd < 0) break;
 		lineStart = lineEnd + 1;
 	}
@@ -2509,145 +2617,161 @@ interface InlineWalkContext {
  * former hand-copied switches — locked by markdown-inline-one-place.test.ts.
  */
 function walkInlineTokens(tokens: Token[], ctx: InlineWalkContext): string {
-	let result = "";
-	let trimLeadingWhitespace = false;
-	const htmlState = ctx.useHtmlState ? createHtmlNormalizationState() : null;
-	const markContent = (text: string): void => {
-		if (htmlState) markCurrentHtmlItemContent(htmlState, text);
+	const state: InlineWalkState = {
+		out: "",
+		trimLeadingWhitespace: false,
+		htmlState: ctx.useHtmlState ? createHtmlNormalizationState() : null,
 	};
-	const appendDefaultText = (token: Token): void => {
-		if ("text" in token && typeof token.text === "string") {
-			const rawText = trimLeadingWhitespace ? token.text.replace(/^\s+/, "") : token.text;
-			const text = unescapeHtml(rawText);
-			trimLeadingWhitespace = false;
-			markContent(text);
-			result += ctx.applyTextWithNewlines(text);
-		}
-	};
-
 	for (const token of collapseInlineHtml(tokens)) {
-		if (isMathToken(token)) {
-			markContent(token.text);
-			result += ctx.applyTextWithNewlines(renderMathToken(token.text));
-			continue;
-		}
-		switch (token.type) {
-			case "text": {
-				const rawText = trimLeadingWhitespace ? token.text.replace(/^\s+/, "") : token.text;
-				const text = unescapeHtml(rawText);
-				trimLeadingWhitespace = false;
-				markContent(text);
-				if (token.tokens) markContent(plainInlineTokens(token.tokens));
-				// Text tokens in list items can have nested tokens for inline formatting
-				if (token.tokens && token.tokens.length > 0) {
-					result += ctx.renderNested(token.tokens);
-				} else {
-					result += ctx.renderLeafText(text);
-				}
-				break;
-			}
-
-			case "paragraph":
-				// Paragraph tokens contain nested inline tokens
-				if (ctx.handleBlocks) {
-					markContent(plainInlineTokens(token.tokens || []));
-					result += ctx.renderNested(token.tokens || []);
-				} else {
-					appendDefaultText(token);
-				}
-				break;
-
-			case "strong": {
-				markContent(plainInlineTokens(token.tokens || []));
-				const boldContent = ctx.renderNested(token.tokens || []);
-				result += ctx.theme.bold(boldContent) + ctx.stylePrefix;
-				break;
-			}
-
-			case "em": {
-				const italicContent = ctx.renderNested(token.tokens || []);
-				markContent(plainInlineTokens(token.tokens || []));
-				result += ctx.theme.italic(italicContent) + ctx.stylePrefix;
-				break;
-			}
-
-			case "codespan": {
-				markContent(token.text);
-				const swatch = ctx.swatchGlyph ? codespanSwatch(token.text, ctx.swatchGlyph) : "";
-				result += swatch + ctx.theme.code(token.text) + ctx.stylePrefix;
-				break;
-			}
-
-			case "link": {
-				markContent(token.text);
-				const linkText = ctx.renderNested(token.tokens || []);
-				const styledLinkText = ctx.theme.link(ctx.theme.underline(linkText));
-				if (!ctx.hyperlinks) {
-					result += styledLinkText + ctx.stylePrefix;
-					break;
-				}
-				const clickableLinkText = formatHyperlink(styledLinkText, token.href);
-				// If link text matches href, only show the link once. Compare raw text
-				// (token.text) not styled text (linkText) since linkText has ANSI codes.
-				// For mailto: links, strip the prefix before comparing (autolinked emails
-				// have text="foo@bar.com" but href="mailto:foo@bar.com").
-				const hrefForComparison = token.href.startsWith("mailto:") ? token.href.slice(7) : token.href;
-				if (token.text === token.href || token.text === hrefForComparison) {
-					result += clickableLinkText + ctx.stylePrefix;
-				} else {
-					const styledLinkUrl = ctx.theme.linkUrl(` (${token.href})`);
-					result += clickableLinkText + formatHyperlink(styledLinkUrl, token.href) + ctx.stylePrefix;
-				}
-				break;
-			}
-
-			case "br":
-				if (ctx.handleBlocks) {
-					result += "\n";
-					trimLeadingWhitespace = true;
-				} else {
-					appendDefaultText(token);
-				}
-				break;
-
-			case "del": {
-				const delContent = ctx.renderNested(token.tokens || []);
-				markContent(plainInlineTokens(token.tokens || []));
-				result += ctx.theme.strikethrough(delContent) + ctx.stylePrefix;
-				break;
-			}
-
-			case "html":
-				if ("raw" in token && typeof token.raw === "string") {
-					const cleaned = normalizeHtmlForTerminal(token.raw, htmlState ?? undefined);
-					result += ctx.applyTextWithNewlines(cleaned);
-					if (ctx.handleBlocks) {
-						if (cleaned.endsWith("\n")) {
-							trimLeadingWhitespace = true;
-						} else if (cleaned.length > 0) {
-							trimLeadingWhitespace = false;
-						}
-					}
-				}
-				break;
-
-			default:
-				// Handle any other inline token types as plain text
-				appendDefaultText(token);
-		}
+		appendInlineToken(token, ctx, state);
 	}
 
 	// Strip dangling re-opened-default SGR prefix left over from the last inline
 	// token (strong/em/codespan/link/del/etc.) so the emitted line self-terminates
 	// at its last styled segment instead of carrying an unmatched SGR open into
 	// the next line. Matches upstream behavior.
+	let result = state.out;
 	if (ctx.stripTrailingPrefix) {
 		while (ctx.stylePrefix && result.endsWith(ctx.stylePrefix)) {
 			result = result.slice(0, -ctx.stylePrefix.length);
 		}
 	}
-
 	return result;
+}
+
+/** What {@link walkInlineTokens} carries from one inline token to the next. */
+interface InlineWalkState {
+	/** The styled string so far. */
+	out: string;
+	/** Set after a line break, so the next text drops its leading whitespace. */
+	trimLeadingWhitespace: boolean;
+	/** HTML list state threaded across the run; null when the context does not use it. */
+	htmlState: HtmlNormalizationState | null;
+}
+
+function markInlineContent(state: InlineWalkState, text: string): void {
+	if (state.htmlState) markCurrentHtmlItemContent(state.htmlState, text);
+}
+
+/** `text` unescaped, without its leading whitespace when a line break preceded it; clears the pending trim. */
+function takeInlineText(state: InlineWalkState, text: string): string {
+	const rawText = state.trimLeadingWhitespace ? text.replace(/^\s+/, "") : text;
+	state.trimLeadingWhitespace = false;
+	return unescapeHtml(rawText);
+}
+
+/** Append one inline token to `state.out`. */
+function appendInlineToken(token: Token, ctx: InlineWalkContext, state: InlineWalkState): void {
+	if (isMathToken(token)) {
+		markInlineContent(state, token.text);
+		state.out += ctx.applyTextWithNewlines(renderMathToken(token.text));
+		return;
+	}
+	switch (token.type) {
+		case "text":
+			appendInlineText(token.text, token.tokens, ctx, state);
+			return;
+		case "paragraph":
+			// Paragraph tokens contain nested inline tokens
+			if (!ctx.handleBlocks) break;
+			appendInlineParagraph(token.tokens, ctx, state);
+			return;
+		case "br":
+			if (!ctx.handleBlocks) break;
+			state.out += "\n";
+			state.trimLeadingWhitespace = true;
+			return;
+		case "strong":
+			appendInlineSpan(token.tokens, "bold", ctx, state);
+			return;
+		case "em":
+			appendInlineSpan(token.tokens, "italic", ctx, state);
+			return;
+		case "del":
+			appendInlineSpan(token.tokens, "strikethrough", ctx, state);
+			return;
+		case "codespan": {
+			markInlineContent(state, token.text);
+			const swatch = ctx.swatchGlyph ? codespanSwatch(token.text, ctx.swatchGlyph) : "";
+			state.out += swatch + ctx.theme.code(token.text) + ctx.stylePrefix;
+			return;
+		}
+		case "link":
+			markInlineContent(state, token.text);
+			state.out += inlineLink(token.text, token.href, token.tokens || [], ctx) + ctx.stylePrefix;
+			return;
+		case "html":
+			if ("raw" in token && typeof token.raw === "string") appendInlineHtml(token.raw, ctx, state);
+			return;
+	}
+	// Handle any other inline token types (and the block cases a context does not handle) as plain text
+	appendInlinePlainToken(token, ctx, state);
+}
+
+/** Append `token.text` unstyled when the token holds text; a token without text appends nothing. */
+function appendInlinePlainToken(token: Token, ctx: InlineWalkContext, state: InlineWalkState): void {
+	if ("text" in token && typeof token.text === "string") {
+		const text = takeInlineText(state, token.text);
+		markInlineContent(state, text);
+		state.out += ctx.applyTextWithNewlines(text);
+	}
+}
+
+/** Append a paragraph's nested inline tokens unstyled. */
+function appendInlineParagraph(nested: Token[] | undefined, ctx: InlineWalkContext, state: InlineWalkState): void {
+	const tokens = nested || [];
+	markInlineContent(state, plainInlineTokens(tokens));
+	state.out += ctx.renderNested(tokens);
+}
+
+function appendInlineText(
+	rawText: string,
+	nested: Token[] | undefined,
+	ctx: InlineWalkContext,
+	state: InlineWalkState,
+): void {
+	const text = takeInlineText(state, rawText);
+	markInlineContent(state, text);
+	if (nested) markInlineContent(state, plainInlineTokens(nested));
+	// Text tokens in list items can have nested tokens for inline formatting
+	state.out += nested && nested.length > 0 ? ctx.renderNested(nested) : ctx.renderLeafText(text);
+}
+
+/** Append a `**strong**`, `*em*` or `~~del~~` span: its nested tokens styled by `style`, then the style prefix. */
+function appendInlineSpan(
+	nested: Token[] | undefined,
+	style: "bold" | "italic" | "strikethrough",
+	ctx: InlineWalkContext,
+	state: InlineWalkState,
+): void {
+	const tokens = nested || [];
+	markInlineContent(state, plainInlineTokens(tokens));
+	state.out += ctx.theme[style](ctx.renderNested(tokens)) + ctx.stylePrefix;
+}
+
+/** A styled link; with hyperlinks on, an OSC-8 link followed by ` (href)` unless the text already is the href. */
+function inlineLink(text: string, href: string, nested: Token[], ctx: InlineWalkContext): string {
+	const styledLinkText = ctx.theme.link(ctx.theme.underline(ctx.renderNested(nested)));
+	if (!ctx.hyperlinks) return styledLinkText;
+	const clickableLinkText = formatHyperlink(styledLinkText, href);
+	// If link text matches href, only show the link once. Compare raw text
+	// (token.text) not styled text (linkText) since linkText has ANSI codes.
+	// For mailto: links, strip the prefix before comparing (autolinked emails
+	// have text="foo@bar.com" but href="mailto:foo@bar.com").
+	const hrefForComparison = href.startsWith("mailto:") ? href.slice(7) : href;
+	if (text === href || text === hrefForComparison) return clickableLinkText;
+	return clickableLinkText + formatHyperlink(ctx.theme.linkUrl(` (${href})`), href);
+}
+
+function appendInlineHtml(raw: string, ctx: InlineWalkContext, state: InlineWalkState): void {
+	const cleaned = normalizeHtmlForTerminal(raw, state.htmlState ?? undefined);
+	state.out += ctx.applyTextWithNewlines(cleaned);
+	if (!ctx.handleBlocks) return;
+	if (cleaned.endsWith("\n")) {
+		state.trimLeadingWhitespace = true;
+	} else if (cleaned.length > 0) {
+		state.trimLeadingWhitespace = false;
+	}
 }
 
 /**
@@ -2655,31 +2779,33 @@ function walkInlineTokens(tokens: Token[], ctx: InlineWalkContext): string {
  * Unlike the full Markdown component, this produces a single line with no block-level elements.
  */
 export function renderInlineMarkdown(text: string, mdTheme: MarkdownTheme, baseColor?: (t: string) => string): string {
-	// Guard against undefined/null during streaming — partial JSON can leave fields unpopulated.
-	if (typeof text !== "string") return (baseColor ?? (t => t))(text != null ? String(text) : "");
-	const tokens = markdownParser.lexer(text);
 	const applyText = baseColor ?? ((t: string) => t);
+	// Guard against undefined/null during streaming — partial JSON can leave fields unpopulated.
+	if (typeof text !== "string") return applyText(text != null ? String(text) : "");
 	let result = "";
-	for (const token of tokens) {
+	for (const token of markdownParser.lexer(text)) {
 		if (isMathToken(token)) {
 			result += applyText(renderMathToken(token.text));
-			continue;
-		}
-		if (token.type === "paragraph" && token.tokens) {
+		} else if (token.type === "paragraph" && token.tokens) {
 			result += renderInlineTokens(token.tokens, mdTheme, applyText);
 		} else if (token.type === "list") {
-			result += token.items
-				.map((item: Tokens.ListItem, index: number) => {
-					const prefix = token.ordered ? `${(token.start || 1) + index}. ` : "• ";
-					const content = item.tokens ? renderInlineTokens(item.tokens, mdTheme, applyText) : applyText(item.text);
-					return `${applyText(prefix)}${content}`;
-				})
-				.join(applyText(" "));
+			result += inlineListText(token as Tokens.List, mdTheme, applyText);
 		} else if ("text" in token && typeof token.text === "string") {
 			result += applyText(unescapeHtml(token.text));
 		}
 	}
 	return result;
+}
+
+/** A list flattened to one line: each item's bullet or number, then its inline content, items joined by a space. */
+function inlineListText(list: Tokens.List, mdTheme: MarkdownTheme, applyText: (t: string) => string): string {
+	return list.items
+		.map((item, index) => {
+			const prefix = list.ordered ? `${(list.start || 1) + index}. ` : "• ";
+			const content = item.tokens ? renderInlineTokens(item.tokens, mdTheme, applyText) : applyText(item.text);
+			return `${applyText(prefix)}${content}`;
+		})
+		.join(applyText(" "));
 }
 
 function renderInlineTokens(

@@ -493,26 +493,23 @@ interface FileRenamePair {
 /**
  * Enumerate the {oldUri, newUri} pairs needed for an LSP willRenameFiles/didRenameFiles request.
  * For files this is a single pair. For directories this walks every regular file underneath
- * and produces a parallel pair anchored at the new directory root.
+ * and produces a parallel pair anchored at the new directory root; null when the directory holds
+ * more than {@link MAX_RENAME_PAIRS} files.
  */
 async function enumerateRenamePairs(
 	source: string,
 	dest: string,
-): Promise<{ pairs: FileRenamePair[]; directory: boolean; exceeded: boolean }> {
-	const stat = await fs.promises.stat(source);
-	if (!stat.isDirectory()) {
-		return {
-			pairs: [{ oldUri: fileToUri(source), newUri: fileToUri(dest) }],
-			directory: false,
-			exceeded: false,
-		};
+	directory: boolean,
+): Promise<FileRenamePair[] | null> {
+	if (!directory) {
+		return [{ oldUri: fileToUri(source), newUri: fileToUri(dest) }];
 	}
 	const entries = await fs.promises.readdir(source, { recursive: true, withFileTypes: true });
 	const pairs: FileRenamePair[] = [];
 	for (const entry of entries) {
 		if (!entry.isFile()) continue;
 		if (pairs.length >= MAX_RENAME_PAIRS) {
-			return { pairs, directory: true, exceeded: true };
+			return null;
 		}
 		const parent = entry.parentPath ?? source;
 		const absOld = path.join(parent, entry.name);
@@ -522,7 +519,268 @@ async function enumerateRenamePairs(
 			newUri: fileToUri(path.join(dest, rel)),
 		});
 	}
-	return { pairs, directory: true, exceeded: false };
+	return pairs;
+}
+
+/** What a `rename_file` call moves: the resolved paths, whether the source is a directory, and its file pairs. */
+interface RenameTarget {
+	readonly source: string;
+	readonly dest: string;
+	readonly directory: boolean;
+	readonly pairs: FileRenamePair[];
+}
+
+/** The rename from `file` to `newName`, or the error text that rejects it. */
+async function resolveRenameTarget(
+	file: string | undefined,
+	newName: string | undefined,
+	cwd: string,
+): Promise<RenameTarget | string> {
+	if (!file || !newName) {
+		return "Error: rename_file requires both `file` (source path) and `new_name` (destination path)";
+	}
+	const source = resolveToCwd(file, cwd);
+	const dest = resolveToCwd(newName, cwd);
+	if (source === dest) {
+		return "Error: source and destination paths are identical";
+	}
+	let sourceStat: fs.Stats;
+	try {
+		sourceStat = await fs.promises.stat(source);
+	} catch {
+		return `Error: source path does not exist: ${formatPathRelativeToCwd(source, cwd)}`;
+	}
+	const destExists = await fs.promises.stat(dest).then(
+		() => true,
+		() => false,
+	);
+	if (destExists) {
+		return `Error: destination already exists: ${formatPathRelativeToCwd(dest, cwd)}`;
+	}
+	const directory = sourceStat.isDirectory();
+	const pairs = await enumerateRenamePairs(source, dest, directory);
+	if (!pairs) {
+		return `Error: directory contains more than ${MAX_RENAME_PAIRS} files; rename in smaller batches to keep LSP edits accurate`;
+	}
+	if (pairs.length === 0) {
+		return "Error: no files to rename";
+	}
+	return { source, dest, directory, pairs };
+}
+
+/**
+ * The configured language servers whose file types match the source, the destination or any renamed
+ * file. Asking every configured server about a .md/.sql/.txt rename stacked willRenameFiles requests
+ * against irrelevant language servers until the wall-clock timeout hit.
+ */
+function renameServers(config: LspConfig, target: RenameTarget): Array<[string, ServerConfig]> {
+	const relevantNames = new Set<string>();
+	const collectRelevant = (filePath: string) => {
+		for (const [name] of getLspServersForFile(config, filePath)) {
+			relevantNames.add(name);
+		}
+	};
+	collectRelevant(target.source);
+	collectRelevant(target.dest);
+	for (const pair of target.pairs) {
+		collectRelevant(uriToFile(pair.oldUri));
+		collectRelevant(uriToFile(pair.newUri));
+	}
+	return getLspServers(config).filter(([name]) => relevantNames.has(name));
+}
+
+/** What the servers answered a willRenameFiles request with. */
+interface RenameProposals {
+	/** Every server that answered, edits or not. */
+	readonly respondingServers: Set<string>;
+	/** Each answer that carries edits, in server order. */
+	readonly perServerEdits: Array<{ serverName: string; edit: WorkspaceEdit }>;
+	/** One line per server that failed with anything but MethodNotFound. */
+	readonly serverNotes: string[];
+}
+
+/** One server's willRenameFiles answer, asked once a project-aware server has loaded its project. */
+async function askRenameServer(
+	serverConfig: ServerConfig,
+	lspParams: { files: FileRenamePair[] },
+	cwd: string,
+	signal: AbortSignal,
+): Promise<WorkspaceEdit | null> {
+	const client = await getOrCreateClient(serverConfig, cwd, undefined, signal);
+	if (isProjectAwareLspServer(serverConfig)) {
+		await waitForProjectLoaded(client, signal);
+	}
+	return (await sendRequest(client, "workspace/willRenameFiles", lspParams, signal)) as WorkspaceEdit | null;
+}
+
+/** Ask each server for the edits a rename implies; an abort ends the rename. */
+async function requestRenameEdits(
+	servers: Array<[string, ServerConfig]>,
+	lspParams: { files: FileRenamePair[] },
+	cwd: string,
+	signal: AbortSignal,
+): Promise<RenameProposals> {
+	const proposals: RenameProposals = { respondingServers: new Set(), perServerEdits: [], serverNotes: [] };
+	for (const [serverName, serverConfig] of servers) {
+		throwIfAborted(signal);
+		try {
+			const result = await askRenameServer(serverConfig, lspParams, cwd, signal);
+			proposals.respondingServers.add(serverName);
+			if (result && (result.changes || result.documentChanges)) {
+				proposals.perServerEdits.push({ serverName, edit: result });
+			}
+		} catch (err) {
+			if (err instanceof ToolAbortError || signal?.aborted) {
+				throw err;
+			}
+			if (!isMethodNotFoundError(err)) {
+				proposals.serverNotes.push(`  ${serverName}: ${errorMessage(err)}`);
+			}
+		}
+	}
+	return proposals;
+}
+
+/** The `apply: false` report: each server's proposed edits, and its notes. */
+function renamePreview(heading: string, proposals: RenameProposals, cwd: string): string {
+	const lines = [`Rename preview: ${heading}`];
+	if (proposals.perServerEdits.length === 0) {
+		lines.push("  No LSP edits would be applied");
+	}
+	for (const { serverName, edit } of proposals.perServerEdits) {
+		const edits = formatWorkspaceEdit(edit, cwd);
+		if (edits.length === 0) continue;
+		lines.push(`  ${serverName}:`);
+		for (const e of edits) {
+			lines.push(`    ${e}`);
+		}
+	}
+	if (proposals.serverNotes.length > 0) {
+		lines.push("  Server notes:", ...proposals.serverNotes);
+	}
+	return lines.join("\n");
+}
+
+/** The edits accepted for one file: the primary server's, plus each other server's that overlaps none. */
+interface AcceptedBucket {
+	primaryServer: string;
+	edits: TextEdit[];
+	discarded: number;
+	conflictServers: Set<string>;
+}
+
+/**
+ * Coalesce per-URI edits across servers before applying. Each server computed positions against the
+ * pre-edit file content, so applying server A then re-reading for server B yields stale positions and
+ * produces malformed imports. Group all text edits by URI, prefer the project-primary (project-aware)
+ * server on overlap, and apply once per URI from a single snapshot.
+ */
+function coalesceRenameEdits(
+	perServerEdits: RenameProposals["perServerEdits"],
+	servers: Array<[string, ServerConfig]>,
+): Map<string, AcceptedBucket> {
+	const serverConfigByName = new Map(servers);
+	const isPrimary = (serverName: string): boolean => {
+		const cfg = serverConfigByName.get(serverName);
+		return cfg ? isProjectAwareLspServer(cfg) : false;
+	};
+	const acceptedByUri = new Map<string, AcceptedBucket>();
+	for (const { serverName, edit } of perServerEdits) {
+		const incomingPrimary = isPrimary(serverName);
+		for (const [uri, edits] of flattenWorkspaceTextEdits(edit)) {
+			const existing = acceptedByUri.get(uri);
+			if (!existing) {
+				acceptedByUri.set(uri, { primaryServer: serverName, edits, discarded: 0, conflictServers: new Set() });
+			} else if (incomingPrimary && !isPrimary(existing.primaryServer)) {
+				promoteBucket(existing, serverName, edits);
+			} else {
+				mergeIntoBucket(existing, serverName, edits);
+			}
+		}
+	}
+	return acceptedByUri;
+}
+
+/** Make `serverName` a bucket's primary: its edits win, and each accepted edit they overlap is discarded. */
+function promoteBucket(bucket: AcceptedBucket, serverName: string, edits: TextEdit[]): void {
+	const keptOld: TextEdit[] = [];
+	let discardedOld = 0;
+	for (const oe of bucket.edits) {
+		if (edits.some(ne => rangesOverlap(ne.range, oe.range))) discardedOld++;
+		else keptOld.push(oe);
+	}
+	if (discardedOld > 0) bucket.conflictServers.add(bucket.primaryServer);
+	bucket.discarded += discardedOld;
+	bucket.primaryServer = serverName;
+	bucket.edits = edits.concat(keptOld);
+}
+
+/** Add `serverName`'s edits to a bucket, discarding each one that overlaps an accepted edit. */
+function mergeIntoBucket(bucket: AcceptedBucket, serverName: string, edits: TextEdit[]): void {
+	let discardedNew = 0;
+	for (const ne of edits) {
+		if (bucket.edits.some(ae => rangesOverlap(ae.range, ne.range))) {
+			discardedNew++;
+		} else {
+			bucket.edits.push(ne);
+		}
+	}
+	if (discardedNew > 0) {
+		bucket.conflictServers.add(serverName);
+		bucket.discarded += discardedNew;
+	}
+}
+
+/** Apply each file's accepted edits; one summary line per file, and a note for its discarded overlaps. */
+async function applyRenameEdits(acceptedByUri: Map<string, AcceptedBucket>, cwd: string): Promise<string[]> {
+	const summary: string[] = [];
+	for (const [uri, bucket] of acceptedByUri) {
+		const filePath = uriToFile(uri);
+		await applyTextEdits(filePath, bucket.edits);
+		const rel = formatPathRelativeToCwd(filePath, cwd);
+		summary.push(`  ${bucket.primaryServer}: applied ${bucket.edits.length} edit(s) to ${rel}`);
+		if (bucket.discarded > 0) {
+			const others = Array.from(bucket.conflictServers).join(", ");
+			summary.push(
+				`    note: discarded ${bucket.discarded} overlapping edit(s) from ${others} (kept ${bucket.primaryServer})`,
+			);
+			logger.warn(
+				`lsp rename_file: discarded ${bucket.discarded} overlapping edit(s) from ${others} on ${rel}; kept ${bucket.primaryServer}`,
+			);
+		}
+	}
+	return summary;
+}
+
+/**
+ * Close each renamed file a server holds open and send it didRenameFiles; one note per server that
+ * failed. An abort ends the rename.
+ */
+async function notifyRenamed(
+	servers: Array<[string, ServerConfig]>,
+	lspParams: { files: FileRenamePair[] },
+	cwd: string,
+	signal: AbortSignal,
+): Promise<string[]> {
+	const notes: string[] = [];
+	for (const [serverName, serverConfig] of servers) {
+		try {
+			const client = await getOrCreateClient(serverConfig, cwd, undefined, signal);
+			for (const { oldUri } of lspParams.files) {
+				if (client.openFiles.has(oldUri)) {
+					await sendNotification(client, "textDocument/didClose", { textDocument: { uri: oldUri } }, signal);
+					client.openFiles.delete(oldUri);
+				}
+			}
+			await sendNotification(client, "workspace/didRenameFiles", lspParams, signal);
+		} catch (err) {
+			if (err instanceof ToolAbortError || signal?.aborted) {
+				throw err;
+			}
+			notes.push(`  ${serverName}: ${errorMessage(err)}`);
+		}
+	}
+	return notes;
 }
 
 /**
@@ -2266,289 +2524,49 @@ export class LspTool implements AgentTool<typeof lspSchema.value, LspToolDetails
 		config: LspConfig,
 		signal: AbortSignal,
 	): Promise<AgentToolResult<LspToolDetails>> {
-		const { action, file, new_name, apply } = params;
-		if (!file || !new_name) {
+		const { action, apply } = params;
+		const cwd = this.session.cwd;
+		const target = await resolveRenameTarget(params.file, params.new_name, cwd);
+		if (typeof target === "string") {
 			return {
-				content: [
-					{
-						type: "text",
-						text: "Error: rename_file requires both `file` (source path) and `new_name` (destination path)",
-					},
-				],
+				content: [{ type: "text", text: target }],
 				details: { action, success: false, request: params },
 			};
 		}
 
-		const source = resolveToCwd(file, this.session.cwd);
-		const dest = resolveToCwd(new_name, this.session.cwd);
-
-		if (source === dest) {
-			return {
-				content: [{ type: "text", text: "Error: source and destination paths are identical" }],
-				details: { action, success: false, request: params },
-			};
-		}
-
-		let sourceStat: fs.Stats;
-		try {
-			sourceStat = await fs.promises.stat(source);
-		} catch {
-			return {
-				content: [
-					{
-						type: "text",
-						text: `Error: source path does not exist: ${formatPathRelativeToCwd(source, this.session.cwd)}`,
-					},
-				],
-				details: { action, success: false, request: params },
-			};
-		}
-
-		let destExists = false;
-		try {
-			await fs.promises.stat(dest);
-			destExists = true;
-		} catch {
-			// expected: destination must not exist
-		}
-		if (destExists) {
-			return {
-				content: [
-					{
-						type: "text",
-						text: `Error: destination already exists: ${formatPathRelativeToCwd(dest, this.session.cwd)}`,
-					},
-				],
-				details: { action, success: false, request: params },
-			};
-		}
-
-		const enumerated = await enumerateRenamePairs(source, dest);
-		if (enumerated.exceeded) {
-			return {
-				content: [
-					{
-						type: "text",
-						text: `Error: directory contains more than ${MAX_RENAME_PAIRS} files; rename in smaller batches to keep LSP edits accurate`,
-					},
-				],
-				details: { action, success: false, request: params },
-			};
-		}
-		const { pairs } = enumerated;
-		if (pairs.length === 0) {
-			return {
-				content: [{ type: "text", text: "Error: no files to rename" }],
-				details: { action, success: false, request: params },
-			};
-		}
-
-		const lspParams = { files: pairs };
-		// Filter to servers whose fileTypes match either the source or any
-		// destination path. Asking every configured server about a .md/.sql/.txt
-		// rename used to stack up willRenameFiles requests against irrelevant
-		// language servers and hit the wall-clock timeout. A server only has
-		// something useful to say about a rename if it understands one of the
-		// affected file extensions.
-		const allLspServers = getLspServers(config);
-		const relevantNames = new Set<string>();
-		const collectRelevant = (filePath: string) => {
-			for (const [name] of getLspServersForFile(config, filePath)) {
-				relevantNames.add(name);
-			}
-		};
-		collectRelevant(source);
-		collectRelevant(dest);
-		for (const pair of pairs) {
-			collectRelevant(uriToFile(pair.oldUri));
-			collectRelevant(uriToFile(pair.newUri));
-		}
-		const servers = allLspServers.filter(([name]) => relevantNames.has(name));
-		const respondingServers = new Set<string>();
-		const perServerEdits: Array<{ serverName: string; edit: WorkspaceEdit }> = [];
-		const serverNotes: string[] = [];
-
-		for (const [serverName, serverConfig] of servers) {
-			throwIfAborted(signal);
-			try {
-				const client = await getOrCreateClient(serverConfig, this.session.cwd, undefined, signal);
-				if (isProjectAwareLspServer(serverConfig)) {
-					await waitForProjectLoaded(client, signal);
-				}
-				const result = (await sendRequest(
-					client,
-					"workspace/willRenameFiles",
-					lspParams,
-					signal,
-				)) as WorkspaceEdit | null;
-				respondingServers.add(serverName);
-				if (result && (result.changes || result.documentChanges)) {
-					perServerEdits.push({ serverName, edit: result });
-				}
-			} catch (err) {
-				if (err instanceof ToolAbortError || signal?.aborted) {
-					throw err;
-				}
-				if (!isMethodNotFoundError(err)) {
-					const msg = errorMessage(err);
-					serverNotes.push(`  ${serverName}: ${msg}`);
-				}
-			}
-		}
-
-		const sourceLabel = formatPathRelativeToCwd(source, this.session.cwd);
-		const destLabel = formatPathRelativeToCwd(dest, this.session.cwd);
-		const fileCountLabel = sourceStat.isDirectory()
-			? `${pairs.length} file${pairs.length !== 1 ? "s" : ""} under ${sourceLabel}`
+		const lspParams = { files: target.pairs };
+		const servers = renameServers(config, target);
+		const proposals = await requestRenameEdits(servers, lspParams, cwd, signal);
+		const sourceLabel = formatPathRelativeToCwd(target.source, cwd);
+		const destLabel = formatPathRelativeToCwd(target.dest, cwd);
+		const pairCount = target.pairs.length;
+		const fileCountLabel = target.directory
+			? `${pairCount} file${pairCount !== 1 ? "s" : ""} under ${sourceLabel}`
 			: sourceLabel;
-
-		const shouldApply = apply !== false;
-		if (!shouldApply) {
-			const lines: string[] = [];
-			lines.push(`Rename preview: ${fileCountLabel} → ${destLabel}`);
-			if (perServerEdits.length === 0) {
-				lines.push("  No LSP edits would be applied");
-			} else {
-				for (const { serverName, edit } of perServerEdits) {
-					const edits = formatWorkspaceEdit(edit, this.session.cwd);
-					if (edits.length === 0) continue;
-					lines.push(`  ${serverName}:`);
-					for (const e of edits) {
-						lines.push(`    ${e}`);
-					}
-				}
-			}
-			if (serverNotes.length > 0) {
-				lines.push("  Server notes:");
-				for (let ni = 0; ni < serverNotes.length; ni++) lines.push(serverNotes[ni]!);
-			}
+		const details: LspToolDetails = {
+			action,
+			serverName: Array.from(proposals.respondingServers).join(", "),
+			success: true,
+			request: params,
+		};
+		if (apply === false) {
 			return {
-				content: [{ type: "text", text: lines.join("\n") }],
-				details: {
-					action,
-					serverName: Array.from(respondingServers).join(", "),
-					success: true,
-					request: params,
-				},
+				content: [{ type: "text", text: renamePreview(`${fileCountLabel} → ${destLabel}`, proposals, cwd) }],
+				details,
 			};
 		}
 
-		const summary: string[] = [];
-
-		// Coalesce per-URI edits across servers before applying. Each server
-		// computed positions against the pre-edit file content, so applying
-		// server A then re-reading for server B yields stale positions and
-		// produces malformed imports. Group all text edits by URI, prefer the
-		// project-primary (project-aware) server on overlap, and apply once
-		// per URI from a single snapshot.
-		const serverConfigByName = new Map(servers);
-		interface AcceptedBucket {
-			primaryServer: string;
-			edits: TextEdit[];
-			discarded: number;
-			conflictServers: Set<string>;
-		}
-		const acceptedByUri = new Map<string, AcceptedBucket>();
-		for (const { serverName, edit } of perServerEdits) {
-			const cfg = serverConfigByName.get(serverName);
-			const incomingPrimary = cfg ? isProjectAwareLspServer(cfg) : false;
-			const flat = flattenWorkspaceTextEdits(edit);
-			for (const [uri, edits] of flat) {
-				const existing = acceptedByUri.get(uri);
-				if (!existing) {
-					acceptedByUri.set(uri, {
-						primaryServer: serverName,
-						edits: edits.slice(),
-						discarded: 0,
-						conflictServers: new Set(),
-					});
-					continue;
-				}
-				const existingCfg = serverConfigByName.get(existing.primaryServer);
-				const existingIsPrimary = existingCfg ? isProjectAwareLspServer(existingCfg) : false;
-				if (incomingPrimary && !existingIsPrimary) {
-					// Promote incoming to primary; keep existing edits that don't overlap.
-					const keptOld: TextEdit[] = [];
-					let discardedOld = 0;
-					for (const oe of existing.edits) {
-						if (edits.some(ne => rangesOverlap(ne.range, oe.range))) discardedOld++;
-						else keptOld.push(oe);
-					}
-					if (discardedOld > 0) existing.conflictServers.add(existing.primaryServer);
-					existing.discarded += discardedOld;
-					existing.primaryServer = serverName;
-					existing.edits = edits.concat(keptOld);
-				} else {
-					// Existing wins; discard incoming edits that overlap any accepted edit.
-					let discardedNew = 0;
-					for (const ne of edits) {
-						if (existing.edits.some(ae => rangesOverlap(ae.range, ne.range))) {
-							discardedNew++;
-						} else {
-							existing.edits.push(ne);
-						}
-					}
-					if (discardedNew > 0) {
-						existing.conflictServers.add(serverName);
-						existing.discarded += discardedNew;
-					}
-				}
-			}
-		}
-
-		for (const [uri, bucket] of acceptedByUri) {
-			const filePath = uriToFile(uri);
-			await applyTextEdits(filePath, bucket.edits);
-			const rel = formatPathRelativeToCwd(filePath, this.session.cwd);
-			summary.push(`  ${bucket.primaryServer}: applied ${bucket.edits.length} edit(s) to ${rel}`);
-			if (bucket.discarded > 0) {
-				const others = Array.from(bucket.conflictServers).join(", ");
-				summary.push(
-					`    note: discarded ${bucket.discarded} overlapping edit(s) from ${others} (kept ${bucket.primaryServer})`,
-				);
-				logger.warn(
-					`lsp rename_file: discarded ${bucket.discarded} overlapping edit(s) from ${others} on ${rel}; kept ${bucket.primaryServer}`,
-				);
-			}
-		}
-
-		await fs.promises.mkdir(path.dirname(dest), { recursive: true });
-		await fs.promises.rename(source, dest);
+		const summary = await applyRenameEdits(coalesceRenameEdits(proposals.perServerEdits, servers), cwd);
+		await fs.promises.mkdir(path.dirname(target.dest), { recursive: true });
+		await fs.promises.rename(target.source, target.dest);
 		summary.push(`  Renamed ${sourceLabel} → ${destLabel}`);
-
-		for (const [serverName, serverConfig] of servers) {
-			try {
-				const client = await getOrCreateClient(serverConfig, this.session.cwd, undefined, signal);
-				for (const { oldUri } of pairs) {
-					if (client.openFiles.has(oldUri)) {
-						await sendNotification(client, "textDocument/didClose", { textDocument: { uri: oldUri } }, signal);
-						client.openFiles.delete(oldUri);
-					}
-				}
-				await sendNotification(client, "workspace/didRenameFiles", lspParams, signal);
-			} catch (err) {
-				if (err instanceof ToolAbortError || signal?.aborted) {
-					throw err;
-				}
-				const msg = errorMessage(err);
-				serverNotes.push(`  ${serverName}: ${msg}`);
-			}
+		const notes = proposals.serverNotes.concat(await notifyRenamed(servers, lspParams, cwd, signal));
+		if (notes.length > 0) {
+			summary.push("  Server notes:", ...notes);
 		}
-
-		if (serverNotes.length > 0) {
-			summary.push("  Server notes:");
-			for (let ni = 0; ni < serverNotes.length; ni++) summary.push(serverNotes[ni]!);
-		}
-
-		const header = `Renamed ${fileCountLabel} → ${destLabel}`;
 		return {
-			content: [{ type: "text", text: `${header}\n${summary.join("\n")}` }],
-			details: {
-				action,
-				serverName: Array.from(respondingServers).join(", "),
-				success: true,
-				request: params,
-			},
+			content: [{ type: "text", text: `Renamed ${fileCountLabel} → ${destLabel}\n${summary.join("\n")}` }],
+			details,
 		};
 	}
 

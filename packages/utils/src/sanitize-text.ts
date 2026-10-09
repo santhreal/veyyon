@@ -51,18 +51,25 @@ function sanitizeWellFormedText(text: string): string {
  */
 const MAX_PARTIAL_ESCAPE = 4096;
 
-const BEL_CHAR = "\x07";
+/** Where {@link splitTrailingPartialEscape} is inside an escape sequence it has started. */
+type EscapeScan = "esc" | "csi" | "string" | "string-esc";
 
-/** CSI parameter bytes, `0x30..=0x3f`. */
-function isCsiParameter(char: string): boolean {
-	const code = char.charCodeAt(0);
-	return code >= 0x30 && code <= 0x3f;
-}
-
-/** CSI intermediate bytes, `0x20..=0x2f`. */
-function isCsiIntermediate(char: string): boolean {
-	const code = char.charCodeAt(0);
-	return code >= 0x20 && code <= 0x2f;
+/** The scan state after code unit `code`, or `"ground"` when `code` ends or rejects the sequence. */
+function scanEscape(state: EscapeScan, code: number): EscapeScan | "ground" {
+	switch (state) {
+		case "esc":
+			if (code === 0x5b) return "csi";
+			// OSC `]`, DCS `P`, SOS `X`, PM `^` and APC `_` open a string.
+			return code === 0x5d || code === 0x50 || code === 0x58 || code === 0x5e || code === 0x5f ? "string" : "ground";
+		case "csi":
+			// Parameter bytes `0x30..=0x3f` and intermediate bytes `0x20..=0x2f` continue it.
+			return code >= 0x20 && code <= 0x3f ? "csi" : "ground";
+		case "string":
+			if (code === 0x07) return "ground";
+			return code === 0x1b ? "string-esc" : "string";
+		case "string-esc":
+			return code === 0x5c ? "ground" : "string";
+	}
 }
 
 /**
@@ -87,73 +94,48 @@ function isCsiIntermediate(char: string): boolean {
  * ends first: a sequence that never completed is not text.
  */
 export function splitTrailingPartialEscape(text: string): { head: string; partial: string } {
-	if (text.indexOf(ESC_CHAR) === -1) return { head: text, partial: "" };
-
-	let state: "ground" | "esc" | "csi" | "string" | "string-esc" = "ground";
-	let start = -1;
+	let state: EscapeScan | "ground" = "ground";
+	let start = 0;
 	for (let index = 0; index < text.length; index++) {
-		const char = text[index] as string;
-		switch (state) {
-			case "ground":
-				if (char === ESC_CHAR) {
-					state = "esc";
-					start = index;
-				}
-				break;
-			case "esc":
-				if (char === "[") state = "csi";
-				else if (char === "]" || char === "P" || char === "X" || char === "^" || char === "_") state = "string";
-				else {
-					state = "ground";
-					start = -1;
-				}
-				break;
-			case "csi":
-				if (isCsiParameter(char) || isCsiIntermediate(char)) break;
-				state = "ground";
-				start = -1;
-				break;
-			case "string":
-				if (char === BEL_CHAR) {
-					state = "ground";
-					start = -1;
-				} else if (char === ESC_CHAR) state = "string-esc";
-				break;
-			case "string-esc":
-				if (char === "\\") {
-					state = "ground";
-					start = -1;
-				} else state = "string";
-				break;
+		if (state !== "ground") {
+			state = scanEscape(state, text.charCodeAt(index));
+			continue;
 		}
+		// Only ESC leaves the ground state, so the scan skips to the next one.
+		index = text.indexOf(ESC_CHAR, index);
+		if (index === -1) break;
+		state = "esc";
+		start = index;
 	}
 
-	if (start === -1) return { head: text, partial: "" };
-	if (text.length - start > MAX_PARTIAL_ESCAPE) return { head: text, partial: "" };
+	if (state === "ground" || text.length - start > MAX_PARTIAL_ESCAPE) return { head: text, partial: "" };
 	return { head: text.slice(0, start), partial: text.slice(start) };
 }
 
-function escapeXml(input: string, escapeQuotes: boolean): string {
-	let firstEscapable = -1;
-	for (let index = 0; index < input.length; index++) {
-		const char = input.charCodeAt(index);
-		if (char === 38 || char === 60 || char === 62 || (escapeQuotes && char === 34)) {
-			firstEscapable = index;
-			break;
-		}
-	}
-	if (firstEscapable === -1) return input;
+/** The characters {@link escapeXmlText} replaces. */
+const XML_TEXT_ESCAPABLE = /[&<>]/g;
+/** The characters {@link escapeXmlAttribute} replaces. */
+const XML_ATTRIBUTE_ESCAPABLE = /[&<>"]/g;
+/** What {@link escapeXml} writes for each character it replaces. */
+const XML_ENTITIES: Record<number, string> = { 38: "&amp;", 60: "&lt;", 62: "&gt;", 34: "&quot;" };
 
-	let output = input.slice(0, firstEscapable);
-	for (let index = firstEscapable; index < input.length; index++) {
-		const char = input[index];
-		if (char === "&") output += "&amp;";
-		else if (char === "<") output += "&lt;";
-		else if (char === ">") output += "&gt;";
-		else if (escapeQuotes && char === '"') output += "&quot;";
-		else output += char;
-	}
-	return output;
+/**
+ * Replace each match of `escapable`, a global pattern of single characters, with its entity. `test`
+ * finds the next match without allocating a match array and leaves `lastIndex` just past it; the
+ * failing `test` that ends the scan resets `lastIndex` to 0.
+ */
+function escapeXml(input: string, escapable: RegExp): string {
+	escapable.lastIndex = 0;
+	if (!escapable.test(input)) return input;
+	let output = "";
+	// End of the input already copied to `output`.
+	let copied = 0;
+	do {
+		const index = escapable.lastIndex - 1;
+		output += input.slice(copied, index) + XML_ENTITIES[input.charCodeAt(index)];
+		copied = index + 1;
+	} while (escapable.test(input));
+	return output + input.slice(copied);
 }
 
 /**
@@ -163,7 +145,7 @@ function escapeXml(input: string, escapeQuotes: boolean): string {
  * — use it for element text, not attribute values.
  */
 export function escapeXmlText(input: string): string {
-	return escapeXml(input, false);
+	return escapeXml(input, XML_TEXT_ESCAPABLE);
 }
 
 /**
@@ -174,5 +156,5 @@ export function escapeXmlText(input: string): string {
  * values; {@link escapeXmlText} is for element bodies and leaves `"` intact.
  */
 export function escapeXmlAttribute(input: string): string {
-	return escapeXml(input, true);
+	return escapeXml(input, XML_ATTRIBUTE_ESCAPABLE);
 }

@@ -100,6 +100,9 @@ function buildGlobPattern(globStr: string, recursive: boolean): string {
 /** Patterns already reported as unusable, so each bad `.editorconfig` section is named once. */
 const reportedBadGlobs = new Set<string>();
 
+/** Compiled section globs by pattern, so a lookup matches against each section without compiling it again. */
+const compiledGlobs = new Map<string, Bun.Glob>();
+
 /**
  * Match a path against an `.editorconfig`-derived glob.
  *
@@ -113,8 +116,12 @@ const reportedBadGlobs = new Set<string>();
  */
 function globMatches(pattern: string, relativePath: string): boolean {
 	try {
-		const g = new Bun.Glob(pattern);
-		return g.match(relativePath);
+		let glob = compiledGlobs.get(pattern);
+		if (glob === undefined) {
+			glob = new Bun.Glob(pattern);
+			compiledGlobs.set(pattern, glob);
+		}
+		return glob.match(relativePath);
 	} catch (error) {
 		if (!reportedBadGlobs.has(pattern)) {
 			reportedBadGlobs.add(pattern);
@@ -147,41 +154,37 @@ function matchesEditorConfigPattern(pattern: string, relativePath: string): bool
 
 function parseEditorConfigFile(content: string): ParsedEditorConfig {
 	const parsed: ParsedEditorConfig = { root: false, sections: [] };
-	let currentSectionIdx: number | undefined;
+	// The current section's properties; `undefined` before the first section and after an empty `[]`.
+	let properties: Map<string, string> | undefined;
 
-	for (const rawLine of content.split(/\n/)) {
+	for (const rawLine of content.split("\n")) {
 		const line = rawLine.trim();
-		if (line === "") continue;
-		if (line.startsWith("#") || line.startsWith(";")) continue;
+		if (line === "" || line.startsWith("#") || line.startsWith(";")) continue;
 
-		if (line.startsWith("[") && line.endsWith("]") && line.length >= 2) {
-			const secPattern = line.slice(1, -1).trim();
-			if (secPattern === "") {
-				currentSectionIdx = undefined;
-				continue;
-			}
-			parsed.sections.push({ pattern: secPattern, properties: new Map() });
-			currentSectionIdx = parsed.sections.length - 1;
+		if (line.startsWith("[") && line.endsWith("]")) {
+			const pattern = line.slice(1, -1).trim();
+			properties = pattern === "" ? undefined : new Map();
+			if (properties) parsed.sections.push({ pattern, properties });
 			continue;
 		}
-
-		const eq = line.indexOf("=");
-		if (eq === -1) continue;
-		const key = line.slice(0, eq).trim().toLowerCase();
-		const value = line
-			.slice(eq + 1)
-			.trim()
-			.toLowerCase();
-		if (key === "") continue;
-
-		if (currentSectionIdx !== undefined) {
-			parsed.sections[currentSectionIdx]!.properties.set(key, value);
-		} else if (key === "root") {
-			parsed.root = value === "true";
-		}
+		readPropertyLine(parsed, properties, line);
 	}
 
 	return parsed;
+}
+
+/** Record a `key = value` line in the current section, or `root` when no section is open. */
+function readPropertyLine(parsed: ParsedEditorConfig, properties: Map<string, string> | undefined, line: string): void {
+	const eq = line.indexOf("=");
+	if (eq === -1) return;
+	const key = line.slice(0, eq).trim().toLowerCase();
+	if (key === "") return;
+	const value = line
+		.slice(eq + 1)
+		.trim()
+		.toLowerCase();
+	if (properties) properties.set(key, value);
+	else if (key === "root") parsed.root = value === "true";
 }
 
 function parseCachedEditorConfig(configPath: string): ParsedEditorConfig | undefined {
@@ -257,41 +260,17 @@ function collectEditorConfigChain(startDir: string): ChainEntry[] {
 }
 
 function resolveEditorConfigMatch(absoluteFile: string): EditorConfigMatch | undefined {
-	const fileDir = path.dirname(absoluteFile);
-	const chain = collectEditorConfigChain(fileDir);
+	const chain = collectEditorConfigChain(path.dirname(absoluteFile));
 	if (chain.length === 0) {
 		return undefined;
 	}
 
 	const match: EditorConfigMatch = {};
 	for (const { dir, parsed } of chain) {
+		if (parsed.sections.length === 0) continue;
 		const relativePath = relativePathUnified(dir, absoluteFile);
 		for (const section of parsed.sections) {
-			if (!matchesEditorConfigPattern(section.pattern, relativePath)) {
-				continue;
-			}
-
-			const style = section.properties.get("indent_style");
-			if (style === "space") {
-				match.indentStyle = IndentStyle.Space;
-			} else if (style === "tab") {
-				match.indentStyle = IndentStyle.Tab;
-			}
-
-			const rawSize = section.properties.get("indent_size");
-			if (rawSize === "tab") {
-				match.indentSize = { kind: "tab" };
-			} else if (rawSize !== undefined) {
-				const n = parsePositiveInteger(rawSize);
-				if (n !== undefined) {
-					match.indentSize = { kind: "spaces", n };
-				}
-			}
-
-			const tw = parsePositiveInteger(section.properties.get("tab_width"));
-			if (tw !== undefined) {
-				match.tabWidth = tw;
-			}
+			if (matchesEditorConfigPattern(section.pattern, relativePath)) applySection(match, section.properties);
 		}
 	}
 
@@ -299,6 +278,31 @@ function resolveEditorConfigMatch(absoluteFile: string): EditorConfigMatch | und
 		return undefined;
 	}
 	return match;
+}
+
+/** Apply a matching section's indentation properties over what earlier sections set. */
+function applySection(match: EditorConfigMatch, properties: Map<string, string>): void {
+	const style = properties.get("indent_style");
+	if (style === "space") {
+		match.indentStyle = IndentStyle.Space;
+	} else if (style === "tab") {
+		match.indentStyle = IndentStyle.Tab;
+	}
+
+	const rawSize = properties.get("indent_size");
+	if (rawSize === "tab") {
+		match.indentSize = { kind: "tab" };
+	} else if (rawSize !== undefined) {
+		const n = parsePositiveInteger(rawSize);
+		if (n !== undefined) {
+			match.indentSize = { kind: "spaces", n };
+		}
+	}
+
+	const tw = parsePositiveInteger(properties.get("tab_width"));
+	if (tw !== undefined) {
+		match.tabWidth = tw;
+	}
 }
 
 function hasOverlongPathComponent(filePath: string): boolean {

@@ -45,6 +45,7 @@ function truncateBytesWindowed(
 ): ByteTruncationResult {
 	if (maxBytes <= 0) return { text: "", bytes: 0 };
 
+	let buf: Buffer;
 	if (typeof data === "string") {
 		// A string of N chars is at least N bytes, so this fast path is only
 		// reachable when the input might actually fit.
@@ -53,37 +54,21 @@ function truncateBytesWindowed(
 			if (len <= maxBytes) return { text: data, bytes: len };
 			// Multibyte-heavy input: fall through, encoding the whole string.
 		}
-
 		// Encoding only the window that can possibly survive keeps this O(maxBytes)
 		// rather than O(input) for very large inputs.
 		const window =
-			mode === "head"
-				? data.substring(0, Math.min(data.length, maxBytes))
-				: data.substring(Math.max(0, data.length - maxBytes));
-		const buf = Buffer.from(window, "utf-8");
-
-		if (mode === "head") {
-			const end = findUtf8BoundaryBackward(buf, maxBytes);
-			if (end <= 0) return { text: "", bytes: 0 };
-			const slice = buf.subarray(0, end);
-			return { text: slice.toString("utf-8"), bytes: slice.length };
-		}
-		const start = findUtf8BoundaryForward(buf, Math.max(0, buf.length - maxBytes));
-		const slice = buf.subarray(start);
-		return { text: slice.toString("utf-8"), bytes: slice.length };
+			mode === "head" ? data.substring(0, maxBytes) : data.substring(Math.max(0, data.length - maxBytes));
+		buf = Buffer.from(window, "utf-8");
+	} else {
+		buf = asBuffer(data);
+		if (buf.length <= maxBytes) return { text: buf.toString("utf-8"), bytes: buf.length };
 	}
 
-	const buf = asBuffer(data);
-	if (buf.length <= maxBytes) return { text: buf.toString("utf-8"), bytes: buf.length };
-
-	if (mode === "head") {
-		const end = findUtf8BoundaryBackward(buf, maxBytes);
-		if (end <= 0) return { text: "", bytes: 0 };
-		const slice = buf.subarray(0, end);
+	if (mode === "tail") {
+		const slice = buf.subarray(findUtf8BoundaryForward(buf, buf.length - maxBytes));
 		return { text: slice.toString("utf-8"), bytes: slice.length };
 	}
-	const start = findUtf8BoundaryForward(buf, buf.length - maxBytes);
-	const slice = buf.subarray(start);
+	const slice = buf.subarray(0, findUtf8BoundaryBackward(buf, maxBytes));
 	return { text: slice.toString("utf-8"), bytes: slice.length };
 }
 

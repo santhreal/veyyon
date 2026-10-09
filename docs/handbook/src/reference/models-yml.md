@@ -644,7 +644,7 @@ Reasoning / thinking:
 - `allowsSyntheticReasoningContentForToolCalls`: allow a placeholder reasoning field when a prior assistant tool-call turn lacks provider reasoning content. Default: `true`; set `false` for providers that validate the exact reasoning value.
 - `requiresAssistantContentForToolCalls`: assistant tool-call turns must include non-empty text content (Kimi). Default: `false`.
 - `reasoningDisableMode`: how a request turns reasoning off: `"omit"`, `"lowest-effort"`, `"openrouter-enabled-false"`, `"zai-thinking-disabled"`, `"qwen-enable-thinking-false"`, or `"qwen-template-false"`. Default: derived from `thinkingFormat`.
-- `thinkingKeep`: `"all"` sends `thinking: { type: "enabled", keep: "all" }` with the `"zai"` format, so Moonshot keeps earlier turns' reasoning in context; `false` omits `keep`. Default: `"all"` for Kimi K2.6 on api.moonshot.ai and api.kimi.com, unset elsewhere.
+- `thinkingKeep`: `"all"` sends `thinking: { type: "enabled", keep: "all" }` with the `"zai"` format, so Moonshot keeps earlier turns' reasoning in context; `false` omits `keep`. Default: `"all"` for Kimi K2.6 on api.moonshot.ai, api.kimi.com and api.kimi.ai, unset elsewhere.
 - `omitReasoningEffort`: never send a reasoning effort field, even for a model that reasons. Default: `false`.
 - `includeEncryptedReasoning`: ask the Responses API for encrypted reasoning items to replay. Default: `true`.
 - `filterReasoningHistory`: strip native `type: "reasoning"` items from replayed Responses history. Default: auto (OpenRouter `anthropic/*`).
@@ -663,7 +663,7 @@ Tool / message normalization:
 - `requiresMistralToolIds`: normalize tool-call ids to 9 alphanumeric chars. Default: auto.
 - `supportsStrictMode`: accept the per-tool `strict` field on tool schemas. Default: auto-detect per provider/baseUrl.
 - `toolStrictMode`: `"all_strict"` forces strict on every tool, `"none"` forces it off; unset keeps the existing per-tool mixed behavior.
-- `toolSchemaFlavor`: `"moonshot-mfjs"` rewrites tool parameter schemas into the JSON Schema subset Moonshot accepts; `"none"` sends them unchanged. Default: auto (api.moonshot.ai and api.kimi.com).
+- `toolSchemaFlavor`: `"moonshot-mfjs"` rewrites tool parameter schemas into the JSON Schema subset Moonshot accepts; `"none"` sends them unchanged. Default: auto (api.moonshot.ai, api.kimi.com and api.kimi.ai).
 - `usesOpenAIToolCallIdLimit`: shorten tool-call ids to OpenAI's 40-character limit. Default: auto.
 - `stripDeepseekSpecialTokens`: remove leaked DeepSeek chat-template tokens from visible text. Default: auto.
 - `streamMarkupHealingPattern`: remove leaked template markup from visible text: `"kimi"`, `"dsml"`, or `"thinking"`. Default: auto.

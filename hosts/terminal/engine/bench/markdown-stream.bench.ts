@@ -70,39 +70,46 @@ function benchNewInstancePerUpdate(label: string, token: TokenFn, tokens: number
 	reportBench(`${label} new-instance`, samples, `chars=${text.length}`, 40);
 }
 
+interface ScalingRun {
+	trimmed: number;
+	p95: number;
+	/** Frame times of the second half of the stream. */
+	second: number[];
+	cumulative: number;
+}
+
+/** One prose stream of `tokens` tokens through one instance, measured on its second half. */
+function streamScalingRun(tokens: number): ScalingRun {
+	const md = new Markdown("", 0, 0, defaultMarkdownTheme);
+	md.transientRenderCache = true;
+	let text = "";
+	const samples: number[] = [];
+	const start = performance.now();
+	for (let t = 0; t < tokens; t++) {
+		text += proseToken(t);
+		if (t === tokens - 1) text += " FINAL_SENTINEL";
+		md.setText(text);
+		const frame = performance.now();
+		md.render(WIDTH);
+		samples.push(performance.now() - frame);
+	}
+	const cumulative = performance.now() - start;
+	if (!md.render(WIDTH).join("\n").includes("FINAL_SENTINEL")) {
+		benchFail(`prose scaling ${tokens}: last token never rendered`);
+	}
+	const second = samples.slice(Math.floor(samples.length / 2));
+	return { trimmed: trimmedMean(second, 0.9), p95: benchStats(second).p95, second, cumulative };
+}
+
 function benchStreamScaling(): void {
-	const marginal = new Map<number, { trimmed: number; p95: number }>();
+	const marginal = new Map<number, ScalingRun>();
 	for (const tokens of [500, 2000, 10000]) {
-		let best: { trimmed: number; p95: number; second: number[]; cumulative: number } | undefined;
-		for (let repeat = 0; repeat < 3; repeat++) {
-			const md = new Markdown("", 0, 0, defaultMarkdownTheme);
-			md.transientRenderCache = true;
-			let text = "";
-			const samples: number[] = [];
-			const start = performance.now();
-			for (let t = 0; t < tokens; t++) {
-				text += proseToken(t);
-				if (t === tokens - 1) text += " FINAL_SENTINEL";
-				md.setText(text);
-				const frame = performance.now();
-				md.render(WIDTH);
-				samples.push(performance.now() - frame);
-			}
-			const cumulative = performance.now() - start;
-			if (!md.render(WIDTH).join("\n").includes("FINAL_SENTINEL")) {
-				benchFail(`prose scaling ${tokens}: last token never rendered`);
-			}
-			const second = samples.slice(Math.floor(samples.length / 2));
-			const trimmed = trimmedMean(second, 0.9);
-			if (best === undefined || trimmed < best.trimmed) {
-				best = { trimmed, p95: benchStats(second).p95, second, cumulative };
-			}
+		let best = streamScalingRun(tokens);
+		for (let repeat = 1; repeat < 3; repeat++) {
+			const run = streamScalingRun(tokens);
+			if (run.trimmed < best.trimmed) best = run;
 		}
-		if (best === undefined) {
-			benchFail(`prose scaling ${tokens}: no run completed`);
-			return;
-		}
-		marginal.set(tokens, { trimmed: best.trimmed, p95: best.p95 });
+		marginal.set(tokens, best);
 		reportBench(
 			`prose scaling (${tokens} tokens)`,
 			best.second,

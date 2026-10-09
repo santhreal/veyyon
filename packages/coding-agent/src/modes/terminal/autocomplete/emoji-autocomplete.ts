@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { AutocompleteItem } from "@veyyon/utils/autocomplete";
+import type { AutocompleteItem, AutocompleteSuggestions } from "@veyyon/utils/autocomplete";
 import emojisAsset from "../data/emojis.json" with { type: "file" };
 
 // Bucket layout: `{ "<first-char>": [["<name>", "<emoji>"], ...] }`, with each
@@ -141,7 +141,7 @@ function extractTrigger(text: string): EmojiTrigger | null {
 	return { prefix: `:${name}`, query: name.toLowerCase() };
 }
 
-export function getEmojiSuggestions(textBeforeCursor: string): { items: AutocompleteItem[]; prefix: string } | null {
+export function getEmojiSuggestions(textBeforeCursor: string): AutocompleteSuggestions | null {
 	const trigger = extractTrigger(textBeforeCursor);
 	if (!trigger) return null;
 	// Wait until the user has typed at least one letter so a bare `:` in prose

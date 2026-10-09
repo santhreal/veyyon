@@ -17,6 +17,7 @@
 - `SessionLoadOptions.coolCompactedHistory` makes a streamed load move compacted history to disk as it reads and return the store and the session's usage totals as `cold`, and `SessionEntryIndex.rebuild` takes those totals instead of counting every entry.
 - `readColdEntry` returns an entry whose payloads are held in the session file as its line reads back, and leaves the entry's payloads in the file.
 - A `ToolResultCodec` can define `settle`, which a persisting `SessionManager` calls on a tool result it records, before writing it, to replace in place each `details` field `slim` drops with the form `restore` builds.
+- `SessionManagerStateSnapshot`, the type `SessionManager.captureState()` returns and `restoreState()` takes, is exported from `@veyyon/kernel/session/session-manager`.
 
 ### Changed
 
@@ -61,6 +62,7 @@
 - A session load's string-pooling walk writes a string back only when an earlier equal string replaces it and skips a cold entry's moved fields by one cursor over its key order, which cut the walk over a 108,163-entry synthetic session with two thirds of it cooled from 89 ms to 80 ms (median of 7 rounds, 2 runs each) and its median open from 500 ms to 494 ms (6 interleaved runs).
 - The pass that moves unreachable entries out of memory after a resume, a publish or a compaction matches entries to a never-branched session's active branch by file position instead of building a set of the live entries, which cut that pass over a 312 MB, 108,163-entry synthetic session from 2.86 ms to 2.51 ms (median of 5 interleaved runs of 31 passes each).
 - `AgentStorage` builds its credential store on the first credential or cache call instead of when it opens, and leaves a current schema version row unwritten, which cut the memory of a launch's held `agent.db` connection from 384 KiB to 209 KiB and its open plus model-usage read from 827 µs to 606 µs (median of 7 alternating runs of 60 opens).
+- `prepareEntryForPersistence` copies an array or object only from its first changed child on, cutting the persistence pass over a 400-entry session with nothing to externalize from 0.33 ms to 0.10 ms (median of 200 alternating rounds, three runs).
 
 ### Fixed
 
@@ -76,6 +78,7 @@
 - A tool call recorded in an OpenAI Responses or Codex native history payload keeps its provider id through outbound canonicalization, so its result is sent as that call's output instead of a stale-output note after a "No tool output was recorded" placeholder on every turn.
 - A session file under 8 MiB opened for a partial rewrite no longer keeps its whole text alive through the header line the loaded layout holds, which held a second copy of the file for as long as the session stayed open.
 - `isSamplingKnob` answers `false` for a name inherited from `Object.prototype`, such as `toString` or `constructor`, instead of `true`.
+- A persisted session entry keeps the `lineCount` its producer wrote beside a `content` string instead of recounting it from that string when another field of the same object is dropped or externalized, which recorded the shown head's line count for a mentioned file as the file's.
 
 ## [1.5.5] - 2026-09-25
 

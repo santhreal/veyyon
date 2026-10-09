@@ -135,29 +135,38 @@ export interface WorkspacePackage {
 export function workspacePackages(repoRoot: string): WorkspacePackage[] {
 	const found: WorkspacePackage[] = [];
 	for (const dir of packageDirs(repoRoot)) {
-		let manifest: Record<string, unknown>;
-		try {
-			manifest = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf-8")) as Record<string, unknown>;
-		} catch {
-			continue;
-		}
+		const manifest = readManifest(dir);
+		if (manifest === undefined) continue;
 		const name = manifest.name;
 		if (typeof name !== "string" || name.length === 0) continue;
-
-		const declared = manifest.exports;
-		const entries: Array<readonly [string, string]> = [];
-		if (declared !== null && typeof declared === "object") {
-			for (const [key, value] of Object.entries(declared as Record<string, unknown>)) {
-				const target = exportTarget(value);
-				if (target !== undefined) entries.push([key, target]);
-			}
-		} else if (typeof manifest.main === "string" && manifest.main.startsWith("./")) {
-			// No `exports` map: the bare name is all this package offers, and `main` is where it points.
-			entries.push([".", manifest.main]);
-		}
-		found.push({ name, dir, exports: entries });
+		found.push({ name, dir, exports: manifestExports(manifest) });
 	}
 	return found;
+}
+
+/** The parsed `package.json` in `dir`, or `undefined` when it cannot be read or parsed. */
+function readManifest(dir: string): Record<string, unknown> | undefined {
+	try {
+		return JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf-8")) as Record<string, unknown>;
+	} catch {
+		return undefined;
+	}
+}
+
+/** A manifest's `exports` entries that resolve to source, or `[".", main]` when it declares no map. */
+function manifestExports(manifest: Record<string, unknown>): Array<readonly [string, string]> {
+	const declared = manifest.exports;
+	const entries: Array<readonly [string, string]> = [];
+	if (declared !== null && typeof declared === "object") {
+		for (const [key, value] of Object.entries(declared as Record<string, unknown>)) {
+			const target = exportTarget(value);
+			if (target !== undefined) entries.push([key, target]);
+		}
+	} else if (typeof manifest.main === "string" && manifest.main.startsWith("./")) {
+		// No `exports` map: the bare name is all this package offers, and `main` is where it points.
+		entries.push([".", manifest.main]);
+	}
+	return entries;
 }
 
 /**
@@ -176,43 +185,46 @@ export function workspacePackages(repoRoot: string): WorkspacePackage[] {
  * `@veyyon/mnemopi/anything-else` still resolves through the `./*` alias.
  */
 export function workspaceModuleReachResolution(repoRoot: string): ModuleReachResolution {
-	const packages: Array<readonly [string, string]> = [];
-	const aliases: Array<readonly [string, string]> = [];
-	const seenNames = new Set<string>();
-	const seenPrefixes = new Set<string>();
-
+	const table: ResolutionTable = { packages: [], aliases: [], seenNames: new Set(), seenPrefixes: new Set() };
 	for (const pkg of workspacePackages(repoRoot)) {
-		for (const [key, target] of pkg.exports) {
-			if (key === ".") {
-				if (seenNames.has(pkg.name)) continue;
-				seenNames.add(pkg.name);
-				packages.push([pkg.name, path.join(pkg.dir, target)]);
-				continue;
-			}
-			if (!key.startsWith("./")) continue;
+		for (const [key, target] of pkg.exports) addExport(table, pkg, key, target);
+	}
+	return { packages: table.packages, aliases: table.aliases };
+}
 
-			const star = key.indexOf("*");
-			if (star === -1) {
-				const specifier = pkg.name + key.slice(1);
-				if (seenNames.has(specifier)) continue;
-				seenNames.add(specifier);
-				packages.push([specifier, path.join(pkg.dir, target)]);
-				continue;
-			}
+/** The resolution under construction. The first package to declare a name or a prefix keeps it. */
+interface ResolutionTable {
+	readonly packages: Array<readonly [string, string]>;
+	readonly aliases: Array<readonly [string, string]>;
+	readonly seenNames: Set<string>;
+	readonly seenPrefixes: Set<string>;
+}
 
-			// A wildcard export becomes a prefix alias, which needs the `*` to be the LAST thing in the key:
-			// `./*.js` and `./*` describe the same prefix with different extensions, and this table maps a
-			// prefix to a directory rather than rewriting extensions. `resolveFile` already tries `.ts`, so
-			// the `./*` form covers both and the `./*.js` form would only add a duplicate prefix.
-			if (star !== key.length - 1) continue;
-			const targetStar = target.indexOf("*");
-			if (targetStar === -1) continue;
-			const prefix = pkg.name + key.slice(1, star);
-			if (seenPrefixes.has(prefix)) continue;
-			seenPrefixes.add(prefix);
-			aliases.push([prefix, path.join(pkg.dir, target.slice(0, targetStar))]);
-		}
+/**
+ * Add one export entry: `.` and an exact `./sub` as a package name, a trailing `./prefix*` as an alias,
+ * and nothing for any other key.
+ */
+function addExport(table: ResolutionTable, pkg: WorkspacePackage, key: string, target: string): void {
+	if (key !== "." && !key.startsWith("./")) return;
+	const star = key.indexOf("*");
+	if (star === -1) {
+		// `.` slices to "", so the bare name and an exact subpath share one spelling.
+		const specifier = pkg.name + key.slice(1);
+		if (table.seenNames.has(specifier)) return;
+		table.seenNames.add(specifier);
+		table.packages.push([specifier, path.join(pkg.dir, target)]);
+		return;
 	}
 
-	return { packages, aliases };
+	// A wildcard export becomes a prefix alias, which needs the `*` to be the LAST thing in the key:
+	// `./*.js` and `./*` describe the same prefix with different extensions, and this table maps a
+	// prefix to a directory rather than rewriting extensions. `resolveFile` already tries `.ts`, so
+	// the `./*` form covers both and the `./*.js` form would only add a duplicate prefix.
+	if (star !== key.length - 1) return;
+	const targetStar = target.indexOf("*");
+	if (targetStar === -1) return;
+	const prefix = pkg.name + key.slice(1, star);
+	if (table.seenPrefixes.has(prefix)) return;
+	table.seenPrefixes.add(prefix);
+	table.aliases.push([prefix, path.join(pkg.dir, target.slice(0, targetStar))]);
 }

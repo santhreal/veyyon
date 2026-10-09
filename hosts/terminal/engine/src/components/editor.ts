@@ -77,230 +77,200 @@ export function wordWrapLine(line: string, maxWidth: number): TextChunk[] {
 	if (!line || maxWidth <= 0) {
 		return [{ text: "", startIndex: 0, endIndex: 0 }];
 	}
-
-	const lineWidth = visibleWidth(line);
-	if (lineWidth <= maxWidth) {
+	if (visibleWidth(line) <= maxWidth) {
 		return [{ text: line, startIndex: 0, endIndex: line.length }];
 	}
+	const wrapper = new LineWrapper(maxWidth);
+	for (const token of wrapTokens(line)) wrapper.add(token);
+	return wrapper.finish(line.length);
+}
 
-	const chunks: TextChunk[] = [];
+/** A run of word or whitespace graphemes and its code-unit span in the line. */
+interface WrapToken extends TextChunk {
+	isWhitespace: boolean;
+}
 
-	// Split into tokens (words and whitespace runs)
-	const tokens: { text: string; startIndex: number; endIndex: number; isWhitespace: boolean }[] = [];
+/** Split a line into alternating word and whitespace runs. */
+function wrapTokens(line: string): WrapToken[] {
+	const tokens: WrapToken[] = [];
 	let currentToken = "";
 	let tokenStart = 0;
 	let inWhitespace = false;
 	let charIndex = 0;
-
 	for (const seg of getSegmenter().segment(line)) {
 		const grapheme = seg.segment;
 		const graphemeIsWhitespace = getWordNavKind(grapheme) === "whitespace";
-
 		if (currentToken === "") {
 			inWhitespace = graphemeIsWhitespace;
 			tokenStart = charIndex;
 		} else if (graphemeIsWhitespace !== inWhitespace) {
-			// Token type changed - save current token
-			tokens.push({
-				text: currentToken,
-				startIndex: tokenStart,
-				endIndex: charIndex,
-				isWhitespace: inWhitespace,
-			});
+			tokens.push({ text: currentToken, startIndex: tokenStart, endIndex: charIndex, isWhitespace: inWhitespace });
 			currentToken = "";
 			tokenStart = charIndex;
 			inWhitespace = graphemeIsWhitespace;
 		}
-
 		currentToken += grapheme;
 		charIndex += grapheme.length;
 	}
-
-	// Push final token
 	if (currentToken) {
-		tokens.push({
-			text: currentToken,
-			startIndex: tokenStart,
-			endIndex: charIndex,
-			isWhitespace: inWhitespace,
-		});
+		tokens.push({ text: currentToken, startIndex: tokenStart, endIndex: charIndex, isWhitespace: inWhitespace });
+	}
+	return tokens;
+}
+
+/** The longest grapheme prefix of `text` that fits `availableWidth` columns, and its length in code units. */
+function consumePrefixToWidth(text: string, availableWidth: number): { text: string; len: number } {
+	let prefix = "";
+	let prefixWidth = 0;
+	let len = 0;
+	for (const seg of getSegmenter().segment(text)) {
+		const grapheme = seg.segment;
+		const graphemeWidth = visibleWidth(grapheme);
+		if (prefixWidth + graphemeWidth > availableWidth) break;
+		prefix += grapheme;
+		prefixWidth += graphemeWidth;
+		len += grapheme.length;
+		if (prefixWidth === availableWidth) break;
+	}
+	return { text: prefix, len };
+}
+
+function hasWideGrapheme(text: string): boolean {
+	for (const seg of getSegmenter().segment(text)) {
+		if (visibleWidth(seg.segment) > 1) return true;
+	}
+	return false;
+}
+
+/**
+ * The chunks of one line under construction, fed its alternating word and whitespace runs in order. Every code unit
+ * past the line's leading whitespace stays inside some chunk's span, including whitespace collapsed at a wrap point,
+ * so every cursor position resolves to a layout line.
+ */
+class LineWrapper {
+	readonly #maxWidth: number;
+	readonly #chunks: TextChunk[] = [];
+	#chunk = "";
+	#width = 0;
+	#start = 0;
+
+	constructor(maxWidth: number) {
+		this.#maxWidth = maxWidth;
 	}
 
-	// Build chunks using word wrapping
-	let currentChunk = "";
-	let currentWidth = 0;
-	let chunkStartIndex = 0;
-	let atLineStart = true; // Track if we're at the start of a line (for skipping whitespace)
+	add(token: WrapToken): void {
+		// Leading whitespace starts no chunk: the first chunk starts after it.
+		if (token.startIndex === 0 && token.isWhitespace) {
+			this.#start = token.endIndex;
+			return;
+		}
+		const tokenWidth = visibleWidth(token.text);
+		if (tokenWidth > this.#maxWidth) {
+			this.#breakLongToken(token);
+		} else if (this.#width + tokenWidth > this.#maxWidth) {
+			this.#wrapBefore(token, tokenWidth);
+		} else {
+			this.#chunk += token.text;
+			this.#width += tokenWidth;
+		}
+	}
 
-	function consumePrefixToWidth(text: string, availableWidth: number): { text: string; len: number } {
-		let prefix = "";
-		let prefixWidth = 0;
-		let len = 0;
-		for (const seg of getSegmenter().segment(text)) {
+	finish(lineLength: number): TextChunk[] {
+		if (this.#chunk) {
+			this.#chunks.push({ text: this.#chunk, startIndex: this.#start, endIndex: lineLength });
+		}
+		return this.#chunks.length > 0 ? this.#chunks : [{ text: "", startIndex: 0, endIndex: 0 }];
+	}
+
+	/** A token wider than a whole line: fill the current line with its prefix, then cut the rest by grapheme. */
+	#breakLongToken(token: WrapToken): void {
+		// JS string index (code units) consumed from token.text into the current line.
+		let consumedLen = 0;
+		if (this.#chunk) {
+			let consumedPrefix = "";
+			if (this.#width < this.#maxWidth) {
+				const consumed = consumePrefixToWidth(token.text, this.#maxWidth - this.#width);
+				consumedPrefix = consumed.text;
+				consumedLen = consumed.len;
+			}
+			this.#push(this.#chunk + consumedPrefix, token.startIndex + consumedLen);
+		}
+		const remainingText = consumedLen > 0 ? token.text.slice(consumedLen) : token.text;
+		let tokenChunk = "";
+		let tokenChunkWidth = 0;
+		let tokenChunkStart = token.startIndex + consumedLen;
+		let tokenCharIndex = tokenChunkStart;
+		for (const seg of getSegmenter().segment(remainingText)) {
 			const grapheme = seg.segment;
 			const graphemeWidth = visibleWidth(grapheme);
-			if (prefixWidth + graphemeWidth > availableWidth) break;
-			prefix += grapheme;
-			prefixWidth += graphemeWidth;
-			len += grapheme.length;
-			if (prefixWidth === availableWidth) break;
-		}
-		return { text: prefix, len };
-	}
-	function hasWideGrapheme(text: string): boolean {
-		for (const seg of getSegmenter().segment(text)) {
-			if (visibleWidth(seg.segment) > 1) return true;
-		}
-		return false;
-	}
-	for (const token of tokens) {
-		const tokenWidth = visibleWidth(token.text);
-
-		// Skip leading whitespace at line start. Keep the skipped run mapped onto the
-		// preceding chunk (when one exists) so every cursor position resolves to a
-		// layout line instead of falling through to the buffer's last visual line.
-		if (atLineStart && token.isWhitespace) {
-			const prev = chunks[chunks.length - 1];
-			if (prev) prev.endIndex = token.endIndex;
-			chunkStartIndex = token.endIndex;
-			continue;
-		}
-		atLineStart = false;
-
-		// If this single token is wider than maxWidth, we need to break it
-		if (tokenWidth > maxWidth) {
-			// If we're mid-line, try to use the remaining width by consuming a prefix of this long token.
-			let consumedPrefix = "";
-			let consumedPrefixLen = 0; // JS string index (code units) consumed from token.text
-			if (currentChunk && currentWidth < maxWidth) {
-				const remainingWidth = maxWidth - currentWidth;
-				const consumed = consumePrefixToWidth(token.text, remainingWidth);
-				consumedPrefix = consumed.text;
-				consumedPrefixLen = consumed.len;
-			}
-			// First, push any accumulated chunk (optionally filled with the prefix).
-			if (currentChunk) {
-				if (consumedPrefix) {
-					chunks.push({
-						text: currentChunk + consumedPrefix,
-						startIndex: chunkStartIndex,
-						endIndex: token.startIndex + consumedPrefixLen,
-					});
-					currentChunk = "";
-					currentWidth = 0;
-					chunkStartIndex = token.startIndex + consumedPrefixLen;
-				} else {
-					chunks.push({
-						text: currentChunk,
-						startIndex: chunkStartIndex,
-						endIndex: token.startIndex,
-					});
-					currentChunk = "";
-					currentWidth = 0;
-					chunkStartIndex = token.startIndex;
-				}
-			}
-			// Break the remaining long token by grapheme
-			const remainingText = consumedPrefixLen > 0 ? token.text.slice(consumedPrefixLen) : token.text;
-			let tokenChunk = "";
-			let tokenChunkWidth = 0;
-			let tokenChunkStart = token.startIndex + consumedPrefixLen;
-			let tokenCharIndex = token.startIndex + consumedPrefixLen;
-			for (const seg of getSegmenter().segment(remainingText)) {
-				const grapheme = seg.segment;
-				const graphemeWidth = visibleWidth(grapheme);
-				if (tokenChunkWidth + graphemeWidth > maxWidth && tokenChunk) {
-					chunks.push({
-						text: tokenChunk,
-						startIndex: tokenChunkStart,
-						endIndex: tokenCharIndex,
-					});
-					tokenChunk = grapheme;
-					tokenChunkWidth = graphemeWidth;
-					tokenChunkStart = tokenCharIndex;
-				} else {
-					tokenChunk += grapheme;
-					tokenChunkWidth += graphemeWidth;
-				}
-				tokenCharIndex += grapheme.length;
-			}
-			// Keep remainder as start of next chunk
-			if (tokenChunk) {
-				currentChunk = tokenChunk;
-				currentWidth = tokenChunkWidth;
-				chunkStartIndex = tokenChunkStart;
-			}
-			continue;
-		}
-
-		// Check if adding this token would exceed width
-		if (currentWidth + tokenWidth > maxWidth) {
-			// For wide-character tokens (e.g., CJK runs), prefer using remaining width before wrapping
-			// the whole token to the next line. This avoids leaving a short ASCII word alone.
-			if (currentChunk && !token.isWhitespace && currentWidth < maxWidth && hasWideGrapheme(token.text)) {
-				const remainingWidth = maxWidth - currentWidth;
-				const consumed = consumePrefixToWidth(token.text, remainingWidth);
-				if (consumed.text) {
-					chunks.push({
-						text: currentChunk + consumed.text,
-						startIndex: chunkStartIndex,
-						endIndex: token.startIndex + consumed.len,
-					});
-					const remainder = token.text.slice(consumed.len);
-					currentChunk = remainder;
-					currentWidth = visibleWidth(remainder);
-					chunkStartIndex = token.startIndex + consumed.len;
-					atLineStart = false;
-					continue;
-				}
-			}
-			// Push current chunk (trimming trailing whitespace for display)
-			const trimmedChunk = currentChunk.trimEnd();
-			if (trimmedChunk || chunks.length === 0) {
-				chunks.push({
-					text: trimmedChunk,
-					startIndex: chunkStartIndex,
-					endIndex: chunkStartIndex + currentChunk.length,
-				});
+			if (tokenChunkWidth + graphemeWidth > this.#maxWidth && tokenChunk) {
+				this.#chunks.push({ text: tokenChunk, startIndex: tokenChunkStart, endIndex: tokenCharIndex });
+				tokenChunk = grapheme;
+				tokenChunkWidth = graphemeWidth;
+				tokenChunkStart = tokenCharIndex;
 			} else {
-				// All-whitespace chunk collapsed away: keep its span mapped on the
-				// previous chunk so cursor positions inside it stay addressable.
-				const prev = chunks[chunks.length - 1];
-				if (prev) prev.endIndex = chunkStartIndex + currentChunk.length;
+				tokenChunk += grapheme;
+				tokenChunkWidth += graphemeWidth;
 			}
-			// Start new line - skip leading whitespace
-			atLineStart = true;
-			if (token.isWhitespace) {
-				// Extend the preceding chunk over the whitespace run skipped at the wrap
-				// point; otherwise cursor positions inside it map to no layout line.
-				const prev = chunks[chunks.length - 1];
-				if (prev) prev.endIndex = token.endIndex;
-				currentChunk = "";
-				currentWidth = 0;
-				chunkStartIndex = token.endIndex;
-			} else {
-				currentChunk = token.text;
-				currentWidth = tokenWidth;
-				chunkStartIndex = token.startIndex;
-				atLineStart = false;
+			tokenCharIndex += grapheme.length;
+		}
+		// Keep remainder as start of next chunk
+		if (tokenChunk) {
+			this.#chunk = tokenChunk;
+			this.#width = tokenChunkWidth;
+			this.#start = tokenChunkStart;
+		}
+	}
+
+	/** A token that overflows the current line: end the line before it, or inside it for a wide-character run. */
+	#wrapBefore(token: WrapToken, tokenWidth: number): void {
+		// For wide-character tokens (e.g., CJK runs), prefer using remaining width before wrapping
+		// the whole token to the next line. This avoids leaving a short ASCII word alone.
+		if (this.#chunk && !token.isWhitespace && this.#width < this.#maxWidth && hasWideGrapheme(token.text)) {
+			const consumed = consumePrefixToWidth(token.text, this.#maxWidth - this.#width);
+			if (consumed.text) {
+				this.#push(this.#chunk + consumed.text, token.startIndex + consumed.len);
+				this.#chunk = token.text.slice(consumed.len);
+				this.#width = visibleWidth(this.#chunk);
+				return;
 			}
+		}
+		// Push current chunk (trimming trailing whitespace for display)
+		const chunkEnd = this.#start + this.#chunk.length;
+		const trimmedChunk = this.#chunk.trimEnd();
+		if (trimmedChunk || this.#chunks.length === 0) {
+			this.#chunks.push({ text: trimmedChunk, startIndex: this.#start, endIndex: chunkEnd });
 		} else {
-			// Add token to current chunk
-			currentChunk += token.text;
-			currentWidth += tokenWidth;
+			// All-whitespace chunk collapsed away: keep its span mapped on the
+			// previous chunk so cursor positions inside it stay addressable.
+			this.#extendLast(chunkEnd);
+		}
+		if (token.isWhitespace) {
+			// Start the new line past the whitespace run skipped at the wrap point, extending the preceding chunk
+			// over it; otherwise cursor positions inside it map to no layout line.
+			this.#extendLast(token.endIndex);
+			this.#chunk = "";
+			this.#width = 0;
+			this.#start = token.endIndex;
+		} else {
+			this.#chunk = token.text;
+			this.#width = tokenWidth;
+			this.#start = token.startIndex;
 		}
 	}
 
-	// Push final chunk
-	if (currentChunk) {
-		chunks.push({
-			text: currentChunk,
-			startIndex: chunkStartIndex,
-			endIndex: line.length,
-		});
+	/** Close the current line as `text` ending at `endIndex`; the next line starts there. */
+	#push(text: string, endIndex: number): void {
+		this.#chunks.push({ text, startIndex: this.#start, endIndex });
+		this.#chunk = "";
+		this.#width = 0;
+		this.#start = endIndex;
 	}
 
-	return chunks.length > 0 ? chunks : [{ text: "", startIndex: 0, endIndex: 0 }];
+	#extendLast(endIndex: number): void {
+		const last = this.#chunks[this.#chunks.length - 1];
+		if (last) last.endIndex = endIndex;
+	}
 }
 
 /** Highest visual column the cursor may occupy on a wrap segment: the full width
@@ -1053,39 +1023,49 @@ export class Editor implements Component, Focusable, MouseRoutable {
 			text = sliceByColumn(text, 0, contentWidth, true);
 			width = visibleWidth(text);
 		}
+		const isLastRow = index === paint.lastRow;
+		if (!hasCursor) return this.#renderPlainRow(text, width, gutterText, isLastRow, paint);
+		const placed = this.#useTerminalCursor
+			? this.#placeTerminalCursor(text, width, row.cursorPos!, paint)
+			: this.#placeSoftwareCursor(text, width, row.cursorPos!, paint);
+		// A branch that left the user text intact: decorate the whole line. `#decorate`
+		// splits around CURSOR_MARKER so a keyword glued to the cursor still satisfies
+		// its right-boundary lookahead.
+		const placedText = placed.decorated ? placed.text : this.#decorate(placed.text);
+		return this.#chromeRow(placedText, placed.width, placed.overflow, gutterText, isLastRow, paint);
+	}
 
-		let decorated = false;
-		let overflow = 0;
-		if (hasCursor) {
-			const placed = this.#useTerminalCursor
-				? this.#placeTerminalCursor(text, width, row.cursorPos!, paint)
-				: this.#placeSoftwareCursor(text, width, row.cursorPos!, paint);
-			text = placed.text;
-			width = placed.width;
-			decorated = placed.decorated;
-			overflow = placed.overflow;
+	/** A row without the cursor: decorated, then truncated to the content width. */
+	#renderPlainRow(text: string, width: number, gutterText: string, isLastRow: boolean, paint: RowPaint): string {
+		const decorated = this.#decorate(text);
+		// A decorator may change what is drawn (the queue header replaces `->`), so a
+		// decorated row is measured again; an undecorated one kept its width.
+		let drawnWidth = decorated === text ? width : visibleWidth(decorated);
+		let drawn = decorated;
+		if (drawnWidth > paint.contentWidth) {
+			drawn = truncateToWidth(drawn, paint.contentWidth);
+			drawnWidth = visibleWidth(drawn);
 		}
+		return this.#chromeRow(drawn, drawnWidth, 0, gutterText, isLastRow, paint);
+	}
 
-		// No cursor on this line, or a branch that left the user text intact: decorate
-		// the whole line. `#decorate` splits around CURSOR_MARKER so a keyword glued to
-		// the cursor still satisfies its right-boundary lookahead.
-		if (!decorated) {
-			const plain = text;
-			text = this.#decorate(text);
-			// A decorator may change what is drawn (the queue header replaces `->`), so a
-			// decorated cursor-free row is measured again; an undecorated one kept its width.
-			if (!hasCursor && text !== plain) width = visibleWidth(text);
-		}
-		if (!hasCursor && width > contentWidth) {
-			text = truncateToWidth(text, contentWidth);
-			width = visibleWidth(text);
-		}
-
-		const linePad = padding(Math.max(0, contentWidth - width));
-		if (!borderVisible) {
+	/**
+	 * Pad a row's content to the content width and frame it: the gutter in gutter mode, else the side borders, or the
+	 * bottom corners on the last row. `overflow` cells of cursor glyph come out of the right chrome.
+	 */
+	#chromeRow(
+		text: string,
+		width: number,
+		overflow: number,
+		gutterText: string,
+		isLastRow: boolean,
+		paint: RowPaint,
+	): string {
+		const linePad = padding(Math.max(0, paint.contentWidth - width));
+		if (!paint.borderVisible) {
 			return gutterText + text + linePad;
 		}
-		if (index === paint.lastRow) {
+		if (isLastRow) {
 			const bottomRight = overflow === 0 ? paint.bottomRight : this.#bottomRightChrome(paint.paddingX, overflow);
 			return `${paint.bottomLeft}${text}${linePad}${bottomRight}`;
 		}
@@ -1241,7 +1221,13 @@ export class Editor implements Component, Focusable, MouseRoutable {
 			return;
 		}
 
-		if (this.#handleKillOrLineKey(data) || this.#handleEnterKey(data, kb) || this.#handleCursorKey(data, kb)) {
+		if (
+			this.#handleKillKey(data) ||
+			this.#handleLineEdgeKey(data) ||
+			this.#handleEnterKey(data, kb) ||
+			this.#handleDeleteOrPageKey(data, kb) ||
+			this.#handleMotionKey(data, kb)
+		) {
 			return;
 		}
 
@@ -1302,8 +1288,8 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		return !isSlash;
 	}
 
-	/** Emacs-style kill, yank and line-edge keys, and Alt+Enter; false when `data` is none of them. */
-	#handleKillOrLineKey(data: string): boolean {
+	/** Emacs-style kill and yank keys; false when `data` is none of them. */
+	#handleKillKey(data: string): boolean {
 		// Ctrl+K - Delete to end of line
 		if (matchesKey(data, "ctrl+k")) {
 			this.#deleteLineSpan("to-end");
@@ -1337,9 +1323,16 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		// Alt+Y - Yank-pop (cycle kill ring)
 		else if (matchesKey(data, "alt+y")) {
 			this.#yankPop();
+		} else {
+			return false;
 		}
+		return true;
+	}
+
+	/** Ctrl+A and Ctrl+E line-edge keys, and Alt+Enter; false when `data` is none of them. */
+	#handleLineEdgeKey(data: string): boolean {
 		// Ctrl+A - Move to start of line
-		else if (matchesKey(data, "ctrl+a")) {
+		if (matchesKey(data, "ctrl+a")) {
 			this.#moveToLineStart();
 		}
 		// Ctrl+E - Move to end of line
@@ -1411,8 +1404,8 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		result.onApplied?.();
 	}
 
-	/** Deletion, cursor, paging, Shift+Space and character-jump keys; false when `data` is none of them. */
-	#handleCursorKey(data: string, kb: KeybindingsManager): boolean {
+	/** Deletion, line-edge and paging keys; false when `data` is none of them. */
+	#handleDeleteOrPageKey(data: string, kb: KeybindingsManager): boolean {
 		// Backspace (including Shift+Backspace)
 		if (kb.matches(data, "tui.editor.deleteCharBackward") || matchesKey(data, "shift+backspace")) {
 			this.#handleBackspace();
@@ -1435,9 +1428,16 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		// Forward delete (Fn+Backspace or Delete key, including Shift+Delete)
 		else if (kb.matches(data, "tui.editor.deleteCharForward") || matchesKey(data, "shift+delete")) {
 			this.#handleForwardDelete();
+		} else {
+			return false;
 		}
+		return true;
+	}
+
+	/** Word and arrow motion, Shift+Space and character-jump keys; false when `data` is none of them. */
+	#handleMotionKey(data: string, kb: KeybindingsManager): boolean {
 		// Word navigation (Option/Alt + Arrow or Ctrl + Arrow)
-		else if (kb.matches(data, "tui.editor.cursorWordLeft")) {
+		if (kb.matches(data, "tui.editor.cursorWordLeft")) {
 			this.#resetKillSequence();
 			this.#moveWord("backward");
 		} else if (kb.matches(data, "tui.editor.cursorWordRight")) {
@@ -1450,9 +1450,9 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		} else if (kb.matches(data, "tui.editor.cursorDown")) {
 			this.#handleDownKey();
 		} else if (kb.matches(data, "tui.editor.cursorRight")) {
-			this.#moveCursor(0, 1);
+			this.#moveCursorHorizontally(1);
 		} else if (kb.matches(data, "tui.editor.cursorLeft")) {
-			this.#moveCursor(0, -1);
+			this.#moveCursorHorizontally(-1);
 		}
 		// Shift+Space - insert regular space (Kitty protocol sends escape sequence)
 		else if (matchesKey(data, "shift+space")) {
@@ -1479,7 +1479,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 			// Already at top - jump to start of line
 			this.#moveToLineStart();
 		} else {
-			this.#moveCursor(-1, 0); // Cursor movement (within text or history entry)
+			this.#moveCursorVertically(-1); // Cursor movement (within text or history entry)
 		}
 	}
 
@@ -1491,7 +1491,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 			// Already at bottom - jump to end of line
 			this.#moveToLineEnd();
 		} else {
-			this.#moveCursor(1, 0); // Cursor movement (within text or history entry)
+			this.#moveCursorVertically(1); // Cursor movement (within text or history entry)
 		}
 	}
 
@@ -1809,12 +1809,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 				this.#setCursorCol(this.#state.cursorCol - removable);
 				remaining -= removable;
 			} else if (this.#state.cursorLine > 0) {
-				const prev = this.#state.lines[this.#state.cursorLine - 1] ?? "";
-				const cur = this.#state.lines[this.#state.cursorLine] ?? "";
-				this.#state.lines[this.#state.cursorLine - 1] = prev + cur;
-				this.#state.lines.splice(this.#state.cursorLine, 1);
-				this.#state.cursorLine -= 1;
-				this.#setCursorCol(prev.length);
+				this.#joinLineAbove();
 				remaining -= 1;
 			} else {
 				break;
@@ -1839,39 +1834,19 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		});
 	}
 
-	// All the editor methods from before...
+	/**
+	 * Insert typed text at the cursor, coalescing a word run into one undo unit, then apply an inline replacement or
+	 * open or update autocomplete.
+	 */
 	#insertCharacter(char: string): void {
 		this.#exitHistoryForEditing();
 		// Undo coalescing: consecutive word typing collapses into one undo unit
 		// (mirrors Input); any other action resets the run via #lastAction.
-		let isWordChunk = true;
-		let isAscii = true;
-		for (let i = 0; i < char.length; i++) {
-			if (char.charCodeAt(i) >= 128) {
-				isAscii = false;
-				break;
-			}
-		}
-		if (isAscii) {
-			for (let i = 0; i < char.length; i++) {
-				const code = char.charCodeAt(i);
-				if (code === 32 || code === 9 || code === 10 || code === 13) {
-					isWordChunk = false;
-					break;
-				}
-			}
-		} else {
-			for (const seg of getSegmenter().segment(char)) {
-				if (getWordNavKind(seg.segment) === "whitespace") {
-					isWordChunk = false;
-					break;
-				}
-			}
-		}
-		if (!isWordChunk || this.#lastAction !== "type-word") {
+		const wordChunk = isWordChunk(char);
+		if (!wordChunk || this.#lastAction !== "type-word") {
 			this.#recordUndoState();
 		}
-		this.#lastAction = isWordChunk ? "type-word" : null;
+		this.#lastAction = wordChunk ? "type-word" : null;
 
 		const line = this.#state.lines[this.#state.cursorLine] || "";
 		const col = this.#state.cursorCol;
@@ -1891,74 +1866,55 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		// Synchronous inline replacement (e.g. emoji shortcodes `:joy:` → 😂).
 		// Runs before autocomplete trigger so the popup doesn't briefly chase a
 		// prefix that's about to be rewritten.
-		if (char.length === 1 && this.#autocompleteProvider?.trySyncInlineReplace) {
-			const replaceLine = this.#state.lines[this.#state.cursorLine] || "";
-			const textBeforeCursor = replaceLine.slice(0, this.#state.cursorCol);
-			const replacement = this.#autocompleteProvider.trySyncInlineReplace(textBeforeCursor);
-			if (replacement) {
-				const before = replaceLine.slice(0, this.#state.cursorCol - replacement.replaceLen);
-				const after = replaceLine.slice(this.#state.cursorCol);
-				this.#state.lines[this.#state.cursorLine] = before + replacement.insert + after;
-				this.#setCursorCol(before.length + replacement.insert.length);
-				if (this.onChange) {
-					this.onChange(this.getText());
-				}
-				if (this.#autocompleteState) {
-					this.#cancelAutocomplete();
-					this.onAutocompleteUpdate?.();
-				}
-				return;
-			}
-		}
+		if (char.length === 1 && this.#applyInlineReplacement()) return;
 
-		// Check if we should trigger or update autocomplete
-		if (!this.#autocompleteState) {
-			// Auto-trigger for "/" at the start of a submitted command or a mid-prompt skill lookup.
-			if (char === "/" && (this.#isAtStartOfSubmittedMessage() || this.#isInMidPromptSkillSlashContext())) {
-				this.#tryTriggerAutocomplete();
-			}
-			// Auto-trigger for "@" file reference (fuzzy search)
-			else if (char === "@") {
-				const currentLine = this.#state.lines[this.#state.cursorLine] || "";
-				const textBeforeCursor = currentLine.slice(0, this.#state.cursorCol);
-				// Only trigger if @ is after whitespace or at start of line
-				const charBeforeAt = textBeforeCursor[textBeforeCursor.length - 2];
-				if (textBeforeCursor.length === 1 || charBeforeAt === " " || charBeforeAt === "\t") {
-					this.#tryTriggerAutocomplete();
-				}
-			}
-			// Auto-trigger for "#" prompt actions anywhere in the current token
-			else if (char === "#") {
-				this.#tryTriggerAutocomplete();
-			}
-			// Also auto-trigger when typing letters/path chars in a completable context
-			else if (/[a-zA-Z0-9.\-_/]/.test(char)) {
-				const currentLine = this.#state.lines[this.#state.cursorLine] || "";
-				const textBeforeCursor = currentLine.slice(0, this.#state.cursorCol);
-				// Check if we're in a slash command or mid-prompt skill lookup.
-				if (this.#isInSlashAutocompleteContext()) {
-					this.#tryTriggerAutocomplete();
-				}
-				// Check if we're in an @ file reference context
-				else if (textBeforeCursor.match(/(?:^|[\s])@[^\s]*$/)) {
-					this.#tryTriggerAutocomplete();
-				}
-				// Check if we're in a # prompt action context
-				else if (textBeforeCursor.match(/#[^\s#]*$/)) {
-					this.#tryTriggerAutocomplete();
-				}
-				// Check if we're in a :emoji shortcode context
-				else if (textBeforeCursor.match(/(?:^|[\s([{>]):[a-zA-Z0-9_+-]*$/)) {
-					this.#tryTriggerAutocomplete();
-				}
-				// Check if we're typing an internal URL scheme (e.g. local://, skill://)
-				else if (textTriggersUrlAutocomplete(textBeforeCursor)) {
-					this.#tryTriggerAutocomplete();
-				}
-			}
-		} else {
+		if (this.#autocompleteState) {
 			this.#debouncedUpdateAutocomplete();
+		} else if (this.#typedCharTriggersAutocomplete(char)) {
+			this.#tryTriggerAutocomplete();
 		}
+	}
+
+	/** Rewrite the inline shortcode ending at the cursor; false when the provider has no replacement for it. */
+	#applyInlineReplacement(): boolean {
+		const provider = this.#autocompleteProvider;
+		if (!provider?.trySyncInlineReplace) return false;
+		const replaceLine = this.#state.lines[this.#state.cursorLine] || "";
+		const replacement = provider.trySyncInlineReplace(replaceLine.slice(0, this.#state.cursorCol));
+		if (!replacement) return false;
+		const before = replaceLine.slice(0, this.#state.cursorCol - replacement.replaceLen);
+		const after = replaceLine.slice(this.#state.cursorCol);
+		this.#state.lines[this.#state.cursorLine] = before + replacement.insert + after;
+		this.#setCursorCol(before.length + replacement.insert.length);
+		if (this.onChange) {
+			this.onChange(this.getText());
+		}
+		if (this.#autocompleteState) {
+			this.#cancelAutocomplete();
+			this.onAutocompleteUpdate?.();
+		}
+		return true;
+	}
+
+	/**
+	 * Typing `char` opens autocomplete: `/` starting a submitted command or a mid-prompt skill lookup, `@` at a word
+	 * start, `#` anywhere, or a letter or path character inside a completable token.
+	 */
+	#typedCharTriggersAutocomplete(char: string): boolean {
+		if (char === "/" && (this.#isAtStartOfSubmittedMessage() || this.#isInMidPromptSkillSlashContext())) return true;
+		if (char === "#") return true;
+		const currentLine = this.#state.lines[this.#state.cursorLine] || "";
+		if (char === "@") {
+			// Only trigger if @ is after whitespace or at start of line
+			const textBeforeCursor = currentLine.slice(0, this.#state.cursorCol);
+			const charBeforeAt = textBeforeCursor[textBeforeCursor.length - 2];
+			return textBeforeCursor.length === 1 || charBeforeAt === " " || charBeforeAt === "\t";
+		}
+		if (!/[a-zA-Z0-9.\-_/]/.test(char)) return false;
+		return (
+			this.#isInSlashAutocompleteContext() ||
+			tokenContextTriggersAutocomplete(currentLine.slice(0, this.#state.cursorCol))
+		);
 	}
 
 	#handlePaste(pastedText: string): void {
@@ -2185,15 +2141,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 				this.#setCursorCol(this.#state.cursorCol - graphemeLength);
 			}
 		} else if (this.#state.cursorLine > 0) {
-			// Merge with previous line
-			const currentLine = this.#state.lines[this.#state.cursorLine] || "";
-			const previousLine = this.#state.lines[this.#state.cursorLine - 1] || "";
-
-			this.#state.lines[this.#state.cursorLine - 1] = previousLine + currentLine;
-			this.#state.lines.splice(this.#state.cursorLine, 1);
-
-			this.#state.cursorLine--;
-			this.#setCursorCol(previousLine.length);
+			this.#joinLineAbove();
 		}
 
 		if (this.onChange) {
@@ -2218,7 +2166,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 
 	/**
 	 * Move cursor to a target visual line, applying sticky column logic.
-	 * Shared by moveCursor() and pageScroll().
+	 * Shared by #moveCursorVertically() and #pageScroll().
 	 */
 	#moveToVisualLine(
 		visualLines: Array<{ logicalLine: number; startCol: number; length: number }>,
@@ -2451,41 +2399,45 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	#deleteYankedText(): boolean {
 		const yankedText = this.#killRing.peek();
 		if (!yankedText) return false;
-
 		const yankLines = yankedText.split("\n");
+		return yankLines.length === 1 ? this.#deleteYankedSpan(yankedText) : this.#deleteYankedLines(yankLines);
+	}
+
+	/** Delete a one-line yank that ends at the cursor; false when the text before the cursor is not the yank. */
+	#deleteYankedSpan(yankedText: string): boolean {
+		const endLine = this.#state.cursorLine;
+		const endCol = this.#state.cursorCol;
+		const line = this.#state.lines[endLine] ?? "";
+		const startCol = endCol - yankedText.length;
+		if (startCol < 0 || line.slice(startCol, endCol) !== yankedText) return false;
+		this.#state.lines[endLine] = line.slice(0, startCol) + line.slice(endCol);
+		this.#setCursorCol(startCol);
+		return true;
+	}
+
+	/** Delete a multi-line yank that ends at the cursor; false when the lines around the cursor are not the yank. */
+	#deleteYankedLines(yankLines: readonly string[]): boolean {
 		const endLine = this.#state.cursorLine;
 		const endCol = this.#state.cursorCol;
 		const startLine = endLine - (yankLines.length - 1);
 		if (startLine < 0) return false;
-
-		if (yankLines.length === 1) {
-			const line = this.#state.lines[endLine] ?? "";
-			const startCol = endCol - yankedText.length;
-			if (startCol < 0) return false;
-			if (line.slice(startCol, endCol) !== yankedText) return false;
-
-			this.#state.lines[endLine] = line.slice(0, startCol) + line.slice(endCol);
-			this.#state.cursorLine = endLine;
-			this.#setCursorCol(startCol);
-			return true;
-		}
-
 		const firstInserted = yankLines[0] ?? "";
 		const lastInserted = yankLines[yankLines.length - 1] ?? "";
 		const firstLineText = this.#state.lines[startLine] ?? "";
 		const lastLineText = this.#state.lines[endLine] ?? "";
-
-		if (!firstLineText.endsWith(firstInserted)) return false;
-		if (endCol !== lastInserted.length) return false;
-		if (lastLineText.slice(0, endCol) !== lastInserted) return false;
-
+		if (
+			!firstLineText.endsWith(firstInserted) ||
+			endCol !== lastInserted.length ||
+			lastLineText.slice(0, endCol) !== lastInserted
+		) {
+			return false;
+		}
 		const startCol = firstLineText.length - firstInserted.length;
-		if (startCol < 0) return false;
-
-		const suffix = lastLineText.slice(endCol);
-		const newLine = firstLineText.slice(0, startCol) + suffix;
-
-		this.#state.lines.splice(startLine, yankLines.length, newLine);
+		this.#state.lines.splice(
+			startLine,
+			yankLines.length,
+			firstLineText.slice(0, startCol) + lastLineText.slice(endCol),
+		);
 		this.#state.cursorLine = startLine;
 		this.#setCursorCol(startCol);
 		return true;
@@ -2494,39 +2446,58 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	#deleteLineSpan(direction: "to-start" | "to-end"): void {
 		this.#historyIndex = -1;
 		this.#recordUndoState();
-		const currentLine = this.#state.lines[this.#state.cursorLine] || "";
-		let deletedText = "";
 		if (direction === "to-start") {
-			if (this.#state.cursorCol > 0) {
-				const { end } = this.#expandRangeOverAtomicTokens(currentLine, 0, this.#state.cursorCol);
-				deletedText = currentLine.slice(0, end);
-				this.#state.lines[this.#state.cursorLine] = currentLine.slice(end);
-				this.#setCursorCol(0);
-			} else if (this.#state.cursorLine > 0) {
-				deletedText = "\n";
-				const previousLine = this.#state.lines[this.#state.cursorLine - 1] || "";
-				this.#state.lines[this.#state.cursorLine - 1] = previousLine + currentLine;
-				this.#state.lines.splice(this.#state.cursorLine, 1);
-				this.#state.cursorLine--;
-				this.#setCursorCol(previousLine.length);
-			}
-			this.#recordKill(deletedText, "backward");
+			this.#recordKill(this.#deleteToLineStart(), "backward");
 		} else {
-			if (this.#state.cursorCol < currentLine.length) {
-				const { start } = this.#expandRangeOverAtomicTokens(currentLine, this.#state.cursorCol, currentLine.length);
-				deletedText = currentLine.slice(start);
-				this.#state.lines[this.#state.cursorLine] = currentLine.slice(0, start);
-				if (start < this.#state.cursorCol) this.#setCursorCol(start);
-			} else if (this.#state.cursorLine < this.#state.lines.length - 1) {
-				const nextLine = this.#state.lines[this.#state.cursorLine + 1] || "";
-				deletedText = "\n";
-				this.#state.lines[this.#state.cursorLine] = currentLine + nextLine;
-				this.#state.lines.splice(this.#state.cursorLine + 1, 1);
-			}
-			this.#recordKill(deletedText, "forward");
+			this.#recordKill(this.#deleteToLineEnd(), "forward");
 		}
 		if (this.onChange) this.onChange(this.getText());
 		this.#retriggerAutocompleteAtCursor();
+	}
+
+	/** Delete from the line start to the cursor, or the newline before a cursor at column 0; returns what went. */
+	#deleteToLineStart(): string {
+		const currentLine = this.#state.lines[this.#state.cursorLine] || "";
+		if (this.#state.cursorCol > 0) {
+			const { end } = this.#expandRangeOverAtomicTokens(currentLine, 0, this.#state.cursorCol);
+			this.#state.lines[this.#state.cursorLine] = currentLine.slice(end);
+			this.#setCursorCol(0);
+			return currentLine.slice(0, end);
+		}
+		if (this.#state.cursorLine === 0) return "";
+		this.#joinLineAbove();
+		return "\n";
+	}
+
+	/** Delete from the cursor to the line end, or the newline after a cursor at the line end; returns what went. */
+	#deleteToLineEnd(): string {
+		const currentLine = this.#state.lines[this.#state.cursorLine] || "";
+		if (this.#state.cursorCol < currentLine.length) {
+			const { start } = this.#expandRangeOverAtomicTokens(currentLine, this.#state.cursorCol, currentLine.length);
+			this.#state.lines[this.#state.cursorLine] = currentLine.slice(0, start);
+			if (start < this.#state.cursorCol) this.#setCursorCol(start);
+			return currentLine.slice(start);
+		}
+		if (this.#state.cursorLine >= this.#state.lines.length - 1) return "";
+		this.#joinLineBelow();
+		return "\n";
+	}
+
+	/** Join the cursor line onto the end of the line above and put the cursor at the join. Needs a line above. */
+	#joinLineAbove(): void {
+		const cursorLine = this.#state.cursorLine;
+		const previousLine = this.#state.lines[cursorLine - 1] || "";
+		this.#state.lines[cursorLine - 1] = previousLine + (this.#state.lines[cursorLine] || "");
+		this.#state.lines.splice(cursorLine, 1);
+		this.#state.cursorLine = cursorLine - 1;
+		this.#setCursorCol(previousLine.length);
+	}
+
+	/** Join the line below onto the end of the cursor line; the cursor stays. Needs a line below. */
+	#joinLineBelow(): void {
+		const cursorLine = this.#state.cursorLine;
+		this.#state.lines[cursorLine] = (this.#state.lines[cursorLine] || "") + (this.#state.lines[cursorLine + 1] || "");
+		this.#state.lines.splice(cursorLine + 1, 1);
 	}
 
 	#deleteWordSpan(direction: "backward" | "forward"): void {
@@ -2538,16 +2509,10 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		if (atBoundary) {
 			if (direction === "backward" && this.#state.cursorLine > 0) {
 				this.#recordKill("\n", "backward");
-				const previousLine = this.#state.lines[this.#state.cursorLine - 1] || "";
-				this.#state.lines[this.#state.cursorLine - 1] = previousLine + currentLine;
-				this.#state.lines.splice(this.#state.cursorLine, 1);
-				this.#state.cursorLine--;
-				this.#setCursorCol(previousLine.length);
+				this.#joinLineAbove();
 			} else if (direction === "forward" && this.#state.cursorLine < this.#state.lines.length - 1) {
 				this.#recordKill("\n", "forward");
-				const nextLine = this.#state.lines[this.#state.cursorLine + 1] || "";
-				this.#state.lines[this.#state.cursorLine] = currentLine + nextLine;
-				this.#state.lines.splice(this.#state.cursorLine + 1, 1);
+				this.#joinLineBelow();
 			}
 		} else {
 			const oldCursorCol = this.#state.cursorCol;
@@ -2591,9 +2556,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 			}
 		} else if (this.#state.cursorLine < this.#state.lines.length - 1) {
 			// At end of line - merge with next line
-			const nextLine = this.#state.lines[this.#state.cursorLine + 1] || "";
-			this.#state.lines[this.#state.cursorLine] = currentLine + nextLine;
-			this.#state.lines.splice(this.#state.cursorLine + 1, 1);
+			this.#joinLineBelow();
 		}
 
 		if (this.onChange) {
@@ -2650,50 +2613,43 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		return visualLines.length - 1;
 	}
 
-	#moveCursor(deltaLine: number, deltaCol: number): void {
+	/** Move the cursor `delta` visual lines, keeping its preferred visual column; no move past either end. */
+	#moveCursorVertically(delta: -1 | 1): void {
 		this.#resetKillSequence();
 		const visualLines = this.#buildVisualLineMap(this.#lastLayoutWidth);
 		const currentVisualLine = this.#findCurrentVisualLine(visualLines);
-
-		if (deltaLine !== 0) {
-			const targetVisualLine = currentVisualLine + deltaLine;
-
-			if (targetVisualLine >= 0 && targetVisualLine < visualLines.length) {
-				this.#moveToVisualLine(visualLines, currentVisualLine, targetVisualLine);
-			}
+		const targetVisualLine = currentVisualLine + delta;
+		if (targetVisualLine >= 0 && targetVisualLine < visualLines.length) {
+			this.#moveToVisualLine(visualLines, currentVisualLine, targetVisualLine);
 		}
+	}
 
-		if (deltaCol !== 0) {
-			const currentLine = this.#state.lines[this.#state.cursorLine] || "";
-
-			if (deltaCol > 0) {
-				// Moving right - move by one grapheme (handles emojis, combining characters, etc.)
-				if (this.#state.cursorCol < currentLine.length) {
-					const afterCursor = currentLine.slice(this.#state.cursorCol);
-					this.#setCursorCol(this.#state.cursorCol + (firstGrapheme(afterCursor).length || 1));
-				} else if (this.#state.cursorLine < this.#state.lines.length - 1) {
-					// Wrap to start of next logical line
-					this.#state.cursorLine++;
-					this.#setCursorCol(0);
-				} else {
-					// At end of last line - can't move, but set preferredVisualCol for up/down navigation
-					const currentVL = visualLines[currentVisualLine];
-					if (currentVL) {
-						const segmentText = currentLine.slice(currentVL.startCol, currentVL.startCol + currentVL.length);
-						this.#preferredVisualCol = visualColAtOffset(segmentText, this.#state.cursorCol - currentVL.startCol);
-					}
-				}
-			} else {
-				// Moving left - move by one grapheme (handles emojis, combining characters, etc.)
-				if (this.#state.cursorCol > 0) {
-					const beforeCursor = currentLine.slice(0, this.#state.cursorCol);
-					this.#setCursorCol(this.#state.cursorCol - (lastGrapheme(beforeCursor).length || 1));
-				} else if (this.#state.cursorLine > 0) {
-					// Wrap to end of previous logical line
-					this.#state.cursorLine--;
-					const prevLine = this.#state.lines[this.#state.cursorLine] || "";
-					this.#setCursorCol(prevLine.length);
-				}
+	/**
+	 * Move the cursor one grapheme (emoji, combining sequence) left or right, wrapping across logical lines. At the
+	 * end of the last line it stays and records its visual column for Up and Down.
+	 */
+	#moveCursorHorizontally(direction: -1 | 1): void {
+		this.#resetKillSequence();
+		const currentLine = this.#state.lines[this.#state.cursorLine] || "";
+		const col = this.#state.cursorCol;
+		if (direction < 0) {
+			if (col > 0) {
+				this.#setCursorCol(col - (lastGrapheme(currentLine.slice(0, col)).length || 1));
+			} else if (this.#state.cursorLine > 0) {
+				this.#state.cursorLine--;
+				this.#setCursorCol((this.#state.lines[this.#state.cursorLine] || "").length);
+			}
+		} else if (col < currentLine.length) {
+			this.#setCursorCol(col + (firstGrapheme(currentLine.slice(col)).length || 1));
+		} else if (this.#state.cursorLine < this.#state.lines.length - 1) {
+			this.#state.cursorLine++;
+			this.#setCursorCol(0);
+		} else {
+			const visualLines = this.#buildVisualLineMap(this.#lastLayoutWidth);
+			const currentVL = visualLines[this.#findCurrentVisualLine(visualLines)];
+			if (currentVL) {
+				const segmentText = currentLine.slice(currentVL.startCol, currentVL.startCol + currentVL.length);
+				this.#preferredVisualCol = visualColAtOffset(segmentText, col - currentVL.startCol);
 			}
 		}
 	}
@@ -2828,31 +2784,23 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		if (currentTextBeforeCursor === this.#autocompletePrefix) return true;
 
 		if (item?.value.startsWith("skill:") && findTrailingSlashCommandStart(this.#autocompletePrefix) !== null) {
-			const currentTrailingStart = findTrailingSlashCommandStart(currentTextBeforeCursor);
-			if (currentTrailingStart !== null) {
-				const token = currentTextBeforeCursor.slice(currentTrailingStart);
-				if (!token.includes(" ") && !token.slice(1).includes("/")) {
-					// Guard the timing window where the popup was built for an earlier
-					// query (e.g. bare `/`) and the user typed further characters before
-					// the 100 ms debounced refresh fired: accept the stale skill only
-					// when the refreshed popup would still surface it (same gate as
-					// buildMidPromptSkillCompletions). `tmp` after a bare slash
-					// therefore falls through to file completion instead of rewriting
-					// the user's `/tmp` to `/skill:…`.
-					const lowerToken = token.slice(1).toLowerCase();
-					if (midPromptSkillTokenMatches(lowerToken, item.value, item.description)) return true;
-				}
-			}
-			return false;
+			const token = cleanSlashToken(currentTextBeforeCursor, findTrailingSlashCommandStart(currentTextBeforeCursor));
+			// Guard the timing window where the popup was built for an earlier
+			// query (e.g. bare `/`) and the user typed further characters before
+			// the 100 ms debounced refresh fired: accept the stale skill only
+			// when the refreshed popup would still surface it (same gate as
+			// buildMidPromptSkillCompletions). `tmp` after a bare slash
+			// therefore falls through to file completion instead of rewriting
+			// the user's `/tmp` to `/skill:…`.
+			return (
+				token !== null && midPromptSkillTokenMatches(token.slice(1).toLowerCase(), item.value, item.description)
+			);
 		}
 
 		if (findLeadingSlashCommandStart(this.#autocompletePrefix) !== null && !this.#selectedCompletionIsPath()) {
-			const currentLeadingStart = findLeadingSlashCommandStart(currentTextBeforeCursor);
-			if (currentLeadingStart !== null) {
-				const token = currentTextBeforeCursor.slice(currentLeadingStart);
-				if (!token.includes(" ") && !token.slice(1).includes("/")) return true;
-			}
-			return false;
+			return (
+				cleanSlashToken(currentTextBeforeCursor, findLeadingSlashCommandStart(currentTextBeforeCursor)) !== null
+			);
 		}
 
 		if (this.#autocompletePrefix.startsWith("@")) {
@@ -3293,4 +3241,43 @@ function sanitizePastedText(pastedText: string): string {
  */
 function textTriggersUrlAutocomplete(textBeforeCursor: string): boolean {
 	return /(?:^|[\s"'`(<=])[a-z][a-z0-9+.-]*:\/{1,2}[^\s"'`()<>]*$/i.test(textBeforeCursor);
+}
+
+/** The slash token from `start` to the end of `text`; null when `start` is null or the token has a space or an inner `/`. */
+function cleanSlashToken(text: string, start: number | null): string | null {
+	if (start === null) return null;
+	const token = text.slice(start);
+	return token.includes(" ") || token.indexOf("/", 1) !== -1 ? null : token;
+}
+
+/** The text before the cursor ends in an `@` reference, a `#` action, a `:emoji` shortcode or a URL scheme. */
+function tokenContextTriggersAutocomplete(textBeforeCursor: string): boolean {
+	return (
+		/(?:^|[\s])@[^\s]*$/.test(textBeforeCursor) ||
+		/#[^\s#]*$/.test(textBeforeCursor) ||
+		/(?:^|[\s([{>]):[a-zA-Z0-9_+-]*$/.test(textBeforeCursor) ||
+		textTriggersUrlAutocomplete(textBeforeCursor)
+	);
+}
+
+/** Typed text that extends a word run, which undo coalesces into one unit: it contains no whitespace. */
+function isWordChunk(text: string): boolean {
+	let isAscii = true;
+	for (let i = 0; i < text.length; i++) {
+		if (text.charCodeAt(i) >= 128) {
+			isAscii = false;
+			break;
+		}
+	}
+	if (!isAscii) {
+		for (const seg of getSegmenter().segment(text)) {
+			if (getWordNavKind(seg.segment) === "whitespace") return false;
+		}
+		return true;
+	}
+	for (let i = 0; i < text.length; i++) {
+		const code = text.charCodeAt(i);
+		if (code === 32 || code === 9 || code === 10 || code === 13) return false;
+	}
+	return true;
 }

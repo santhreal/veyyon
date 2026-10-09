@@ -547,6 +547,8 @@ const MODULE_TREE_CHILD_TOP = 8;
 
 interface ModuleTimingNode {
 	span: Span;
+	/** The span's `modulePath`. A load recorded without one has no node. */
+	path: string;
 	children: ModuleTimingNode[];
 	parents: number;
 	body: number;
@@ -587,52 +589,63 @@ function printSpan(span: Span, depth: number, lines: string[]): void {
 
 /** Render module-load spans as a dependency-aware DAG/tree. */
 function printModuleLoadSummary(loads: Span[], depth: number, lines: string[]): void {
-	const childIndent = "  ".repeat(depth);
-	const grandIndent = "  ".repeat(depth + 1);
-	let unionStart = Number.POSITIVE_INFINITY;
-	let unionEnd = 0;
+	const nodes = buildModuleTimingGraph(loads);
+	lines.push(`${"  ".repeat(depth)}(modules): ${loads.length} loaded, wall ${fmtMs(moduleLoadWallMs(loads))}`);
+	if (nodes.length === 0) return;
+	const showAll = timingModeIncludes("full");
+	const indent = "  ".repeat(depth + 1);
+	printTopModuleBodies(nodes, indent, lines, showAll);
+	printModuleTree(nodes, depth, lines, showAll);
+}
+
+/** Time from the first finished module load's start to the last one's end, 0 when none finished. */
+function moduleLoadWallMs(loads: Span[]): number {
+	let first = Number.POSITIVE_INFINITY;
+	let last = 0;
 	for (const span of loads) {
 		if (span.end === undefined) continue;
-		if (span.start < unionStart) unionStart = span.start;
-		if (span.end > unionEnd) unionEnd = span.end;
+		if (span.start < first) first = span.start;
+		if (span.end > last) last = span.end;
 	}
-	const wall = unionEnd > unionStart ? unionEnd - unionStart : 0;
-	const nodes = buildModuleTimingGraph(loads);
-	lines.push(`${childIndent}(modules): ${loads.length} loaded, wall ${fmtMs(wall)}`);
-	if (nodes.length === 0) return;
+	return last > first ? last - first : 0;
+}
 
-	const showAll = timingModeIncludes("full");
+/** The modules with the longest own body or top-level await, longest first. */
+function printTopModuleBodies(nodes: ModuleTimingNode[], indent: string, lines: string[], showAll: boolean): void {
+	// A copy: the tree below orders `nodes` itself when no module is a root, and ties keep input order.
 	const byBody = nodes.slice().sort(compareModuleNodes);
 	const topBody = showAll ? byBody : byBody.slice(0, MODULE_LOAD_VERBOSE_TOP);
-	lines.push(`${grandIndent}top body/TLA:`);
+	lines.push(`${indent}top body/TLA:`);
 	for (const node of topBody) {
 		if (!showAll && node.body < LOGGED_TIMING_THRESHOLD_MS) break;
-		lines.push(`${grandIndent}  ${node.span.op}: body ${fmtMs(node.body)} (total ${fmtMs(durationOf(node.span))})`);
+		lines.push(`${indent}  ${node.span.op}: body ${fmtMs(node.body)} (total ${fmtMs(durationOf(node.span))})`);
 	}
 	if (!showAll && byBody.length > MODULE_LOAD_VERBOSE_TOP) {
-		lines.push(`${grandIndent}  … ${byBody.length - MODULE_LOAD_VERBOSE_TOP} more (VEYYON_TIMING=full to show all)`);
+		lines.push(`${indent}  … ${byBody.length - MODULE_LOAD_VERBOSE_TOP} more (VEYYON_TIMING=full to show all)`);
 	}
+}
 
+/** The import tree from every module nothing imports, or from every module when all are imported. */
+function printModuleTree(nodes: ModuleTimingNode[], depth: number, lines: string[], showAll: boolean): void {
+	const indent = "  ".repeat(depth + 1);
 	const roots = nodes.filter(node => node.parents === 0);
 	const treeRoots = (roots.length > 0 ? roots : nodes).sort((a, b) => durationOf(b.span) - durationOf(a.span));
 	const visibleRoots = showAll ? treeRoots : treeRoots.slice(0, MODULE_TREE_ROOT_TOP);
-	lines.push(`${grandIndent}tree:`);
-	const rendered = new Set<string>();
-	for (const node of visibleRoots) {
-		renderModuleTimingNode(node, depth + 2, lines, rendered, new Set<string>(), showAll);
-	}
+	lines.push(`${indent}tree:`);
+	// Every node removes itself from `ancestors` on the way out, so one set serves every root.
+	const tree: ModuleTree = { lines, rendered: new Set(), ancestors: new Set(), showAll };
+	for (const node of visibleRoots) renderModuleTimingNode(node, depth + 2, tree);
 	if (!showAll && treeRoots.length > MODULE_TREE_ROOT_TOP) {
-		lines.push(
-			`${grandIndent}  … ${treeRoots.length - MODULE_TREE_ROOT_TOP} more roots (VEYYON_TIMING=full to show all)`,
-		);
+		lines.push(`${indent}  … ${treeRoots.length - MODULE_TREE_ROOT_TOP} more roots (VEYYON_TIMING=full to show all)`);
 	}
 }
 
 function buildModuleTimingGraph(loads: Span[]): ModuleTimingNode[] {
 	const nodes = new Map<string, ModuleTimingNode>();
 	for (const span of loads) {
-		if (!span.modulePath || span.end === undefined) continue;
-		nodes.set(span.modulePath, { span, children: [], parents: 0, body: span.moduleBodyMs ?? 0 });
+		const path = span.modulePath;
+		if (!path || span.end === undefined) continue;
+		nodes.set(path, { span, path, children: [], parents: 0, body: span.moduleBodyMs ?? 0 });
 	}
 	for (const node of nodes.values()) {
 		for (const childPath of node.span.moduleImports ?? []) {
@@ -654,49 +667,60 @@ function compareModuleNodes(a: ModuleTimingNode, b: ModuleTimingNode): number {
 	return durationOf(b.span) - durationOf(a.span);
 }
 
-function renderModuleTimingNode(
-	node: ModuleTimingNode,
-	depth: number,
-	lines: string[],
-	rendered: Set<string>,
-	ancestors: Set<string>,
-	showAll: boolean,
-): void {
-	const path = node.span.modulePath;
-	if (!path) return;
-	const indent = "  ".repeat(depth);
+/** The state one module tree render threads through its recursion. */
+interface ModuleTree {
+	lines: string[];
+	/** Modules already printed with their imports; a later occurrence prints as `[already shown]`. */
+	rendered: Set<string>;
+	/** Modules on the path from the root to the node being printed; a repeat is an import cycle. */
+	ancestors: Set<string>;
+	showAll: boolean;
+}
+
+/** One module of the import tree at `depth`, then its imports one level deeper. */
+function renderModuleTimingNode(node: ModuleTimingNode, depth: number, tree: ModuleTree): void {
+	const path = node.path;
 	const total = durationOf(node.span);
-	if (!showAll && total < LOGGED_TIMING_THRESHOLD_MS && node.children.length === 0) return;
-	const wait = Math.max(0, total - node.body);
-	const shared = node.parents > 1 ? " [shared]" : "";
+	if (!tree.showAll && total < LOGGED_TIMING_THRESHOLD_MS && node.children.length === 0) return;
+	const cycle = tree.ancestors.has(path);
+	const alreadyRendered = tree.rendered.has(path);
+	const suffix = cycle ? " [cycle]" : alreadyRendered ? " [already shown]" : "";
+	// A `repeat` is a flat string. Appending two spaces to the parent's indent instead nests a rope
+	// level per depth in JavaScriptCore, and a full report then takes 40% longer to print.
+	const indent = "  ".repeat(depth);
+	tree.lines.push(moduleNodeLine(node, total, indent, suffix));
+	if (cycle || alreadyRendered) return;
+	tree.rendered.add(path);
+	tree.ancestors.add(path);
+	renderModuleImports(node, depth, indent, tree);
+	tree.ancestors.delete(path);
+}
+
+/** `op: total (body …, wait …) [shared]` for one module of the import tree, between `indent` and `suffix`. */
+function moduleNodeLine(node: ModuleTimingNode, total: number, indent: string, suffix: string): string {
 	const timing =
 		node.body > LOGGED_TIMING_THRESHOLD_MS || node.children.length > 0
-			? ` (body ${fmtMs(node.body)}, wait ${fmtMs(wait)})`
+			? ` (body ${fmtMs(node.body)}, wait ${fmtMs(Math.max(0, total - node.body))})`
 			: "";
-	const alreadyRendered = rendered.has(path);
-	const cycle = ancestors.has(path);
-	const suffix = cycle ? " [cycle]" : alreadyRendered ? " [already shown]" : "";
-	lines.push(`${indent}${node.span.op}: ${fmtMs(total)}${timing}${shared}${suffix}`);
-	if (cycle || alreadyRendered) return;
-	rendered.add(path);
-	ancestors.add(path);
-	if (!showAll && ancestors.size >= MODULE_TREE_MAX_DEPTH) {
+	const shared = node.parents > 1 ? " [shared]" : "";
+	return `${indent}${node.span.op}: ${fmtMs(total)}${timing}${shared}${suffix}`;
+}
+
+/** The imports of `node` at `depth`, or a count of them past {@link MODULE_TREE_MAX_DEPTH}. */
+function renderModuleImports(node: ModuleTimingNode, depth: number, indent: string, tree: ModuleTree): void {
+	if (!tree.showAll && tree.ancestors.size >= MODULE_TREE_MAX_DEPTH) {
 		if (node.children.length > 0) {
-			lines.push(`${indent}  … ${node.children.length} imports deeper (VEYYON_TIMING=full to show all)`);
+			tree.lines.push(`${indent}  … ${node.children.length} imports deeper (VEYYON_TIMING=full to show all)`);
 		}
-		ancestors.delete(path);
 		return;
 	}
-	const visibleChildren = showAll ? node.children : node.children.slice(0, MODULE_TREE_CHILD_TOP);
-	for (const child of visibleChildren) {
-		renderModuleTimingNode(child, depth + 1, lines, rendered, ancestors, showAll);
-	}
-	if (!showAll && node.children.length > MODULE_TREE_CHILD_TOP) {
-		lines.push(
+	const visibleChildren = tree.showAll ? node.children : node.children.slice(0, MODULE_TREE_CHILD_TOP);
+	for (const child of visibleChildren) renderModuleTimingNode(child, depth + 1, tree);
+	if (!tree.showAll && node.children.length > MODULE_TREE_CHILD_TOP) {
+		tree.lines.push(
 			`${indent}  … ${node.children.length - MODULE_TREE_CHILD_TOP} more imports (VEYYON_TIMING=full to show all)`,
 		);
 	}
-	ancestors.delete(path);
 }
 
 /** A span is parallel if it overlaps a sibling that started before it. */

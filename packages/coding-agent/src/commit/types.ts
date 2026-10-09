@@ -113,6 +113,40 @@ export interface UnreleasedSection {
 	entries: Record<string, string[]>;
 }
 
+/** One bullet of an Unreleased category and the lines it spans. */
+export interface UnreleasedEntry {
+	/** Bullet text, with each more-indented continuation line appended after one space. */
+	text: string;
+	/** Index of the bullet line. */
+	startLine: number;
+	/** Index one past the entry's last non-blank line. */
+	endLine: number;
+}
+
+/** One `### <Category>` heading of the Unreleased section. */
+export interface UnreleasedCategory {
+	/** Heading text, trimmed. */
+	name: string;
+	/** Index of the heading line. */
+	headingLine: number;
+	/** Index one past the category's last non-blank line. */
+	contentEnd: number;
+	entries: UnreleasedEntry[];
+}
+
+/** The Unreleased section with the line span of every category heading and entry. */
+export interface UnreleasedLayout {
+	/** The changelog split on newlines. */
+	lines: string[];
+	/** Index of the `## [Unreleased]` heading. */
+	startLine: number;
+	/** Index of the next `## ` heading, or `lines.length`. */
+	endLine: number;
+	/** Index one past the last non-blank line between the Unreleased heading and the first category. */
+	preambleEnd: number;
+	categories: UnreleasedCategory[];
+}
+
 export interface ChangelogGenerationResult {
 	entries: Record<string, string[]>;
 }

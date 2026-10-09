@@ -2,7 +2,7 @@ import { performance } from "node:perf_hooks";
 import { type ActivitySignal, processActivity } from "./activity-signal";
 import { BUSY_CPU_RATIO } from "./idle-trim";
 import * as logger from "./logger";
-import { takeLoopPhaseProfile } from "./loop-phase";
+import { type LoopPhaseProfile, takeLoopPhaseProfile } from "./loop-phase";
 import { rearmingTimeout } from "./rearming-timeout";
 import type { StallStackSource } from "./stall-sampler";
 
@@ -178,64 +178,78 @@ export class LoopWatchdog {
 		// Consume the profile every tick (block or not) so attribution is scoped to
 		// the just-elapsed interval and never carries a stale phase forward to a
 		// later, phase-less block.
-		const { phase, ms } = takeLoopPhaseProfile();
+		const profile = takeLoopPhaseProfile();
 		if (blockedMs > this.#thresholdMs) {
 			this.#quietSinceMs = now;
 			if (!this.#wasBlocked) {
 				this.#wasBlocked = true;
-				const phaseMs = Math.round(ms);
-				// Half the block is the bar for calling a phase the cause. Under it the
-				// phase ran and finished inside an interval something else spent, which
-				// is evidence AGAINST it, so the line reports it as ruled out.
-				const attributed = phase !== undefined && ms * 2 >= blockedMs;
-				// The process cannot have blocked the loop with work it never ran.
-				// Half the overshoot is the bar, mirroring the phase rule: below it
-				// the loop was off-CPU — descheduled by a loaded host, or parked in a
-				// blocking syscall — and that is a fact about the machine, not a
-				// defect, so it is recorded rather than warned about.
-				//
-				// `process.cpuUsage` is the whole process, every thread of it, and
-				// this process runs threads that are not the loop: the JS eval kernel
-				// and each browser tab supervisor. One thread cannot burn more CPU
-				// than the wall time it spanned — measured, a pinned thread reports
-				// 1.013 of it — so a figure above that bound proves another thread
-				// ran, and the number then says nothing about whether the LOOP did.
-				// Attributing it anyway would warn about host jitter for as long as a
-				// worker is busy, which is the false alarm this split exists to end.
-				const elapsedMs = this.#intervalMs + blockedMs;
-				const loopThreadOnly = cpuMs <= elapsedMs * SINGLE_THREAD_CPU_RATIO;
-				const ranTheBlock = loopThreadOnly && cpuMs * 2 >= blockedMs;
-				const line = {
-					blockedMs: Math.round(blockedMs),
-					cpuMs: Math.round(cpuMs),
-					phase: attributed ? phase : "unknown",
-					phaseMs,
-					...(attributed ? {} : { topPhase: phase ?? "none" }),
-					...(loopThreadOnly ? {} : { cpuThreads: "multiple" }),
-				};
-				const log = ranTheBlock ? logger.warn : logger.debug;
-				log("ui.loop-blocked", line);
-				// The stall began somewhere after this interval was armed, possibly before its
-				// deadline, so the whole interval is read. The samples arrive once the profiler has
-				// answered, which is after the loop came back, so this line follows the block line.
-				void this.#stacks?.stacksBetween(this.#armedAtMs, this.#now()).then(stacks => {
-					if (stacks) log("ui.loop-blocked.stack", { blockedMs: line.blockedMs, ...stacks });
-				});
+				this.#reportBlock(blockedMs, cpuMs, profile);
 			}
-		} else {
-			this.#wasBlocked = false;
-			// The sampler drops to its idle interval while the process does no work, so each quiet
-			// tick reports whether the interval's CPU went over an idle share of its wall time.
-			const busy = cpuMs > (this.#intervalMs + blockedMs) * BUSY_CPU_RATIO;
-			this.#stacks?.quiet(now, busy);
-			if (busy) {
-				this.#quietSinceMs = now;
-			} else if (now - this.#quietSinceMs >= this.#parkAfterMs && this.#activity.park(this.#wake)) {
-				this.#parked = true;
-				this.#stacks?.park();
-				return;
-			}
+		} else if (!this.#quietTick(now, blockedMs, cpuMs)) {
+			return;
 		}
 		this.#armTick();
+	}
+
+	/** Log the first late tick of a block, then the stacks sampled across its interval. */
+	#reportBlock(blockedMs: number, cpuMs: number, { phase, ms }: LoopPhaseProfile): void {
+		const phaseMs = Math.round(ms);
+		// Half the block is the bar for calling a phase the cause. Under it the
+		// phase ran and finished inside an interval something else spent, which
+		// is evidence AGAINST it, so the line reports it as ruled out.
+		const attributed = phase !== undefined && ms * 2 >= blockedMs;
+		// The process cannot have blocked the loop with work it never ran.
+		// Half the overshoot is the bar, mirroring the phase rule: below it
+		// the loop was off-CPU — descheduled by a loaded host, or parked in a
+		// blocking syscall — and that is a fact about the machine, not a
+		// defect, so it is recorded rather than warned about.
+		//
+		// `process.cpuUsage` is the whole process, every thread of it, and
+		// this process runs threads that are not the loop: the JS eval kernel
+		// and each browser tab supervisor. One thread cannot burn more CPU
+		// than the wall time it spanned — measured, a pinned thread reports
+		// 1.013 of it — so a figure above that bound proves another thread
+		// ran, and the number then says nothing about whether the LOOP did.
+		// Attributing it anyway would warn about host jitter for as long as a
+		// worker is busy, which is the false alarm this split exists to end.
+		const elapsedMs = this.#intervalMs + blockedMs;
+		const loopThreadOnly = cpuMs <= elapsedMs * SINGLE_THREAD_CPU_RATIO;
+		const ranTheBlock = loopThreadOnly && cpuMs * 2 >= blockedMs;
+		const line = {
+			blockedMs: Math.round(blockedMs),
+			cpuMs: Math.round(cpuMs),
+			phase: attributed ? phase : "unknown",
+			phaseMs,
+			...(attributed ? {} : { topPhase: phase ?? "none" }),
+			...(loopThreadOnly ? {} : { cpuThreads: "multiple" }),
+		};
+		const log = ranTheBlock ? logger.warn : logger.debug;
+		log("ui.loop-blocked", line);
+		// The stall began somewhere after this interval was armed, possibly before its
+		// deadline, so the whole interval is read. The samples arrive once the profiler has
+		// answered, which is after the loop came back, so this line follows the block line.
+		void this.#stacks?.stacksBetween(this.#armedAtMs, this.#now()).then(stacks => {
+			if (stacks) log("ui.loop-blocked.stack", { blockedMs: line.blockedMs, ...stacks });
+		});
+	}
+
+	/**
+	 * Report an on-time tick's CPU share to the stack sampler and park after `parkAfterMs` of
+	 * quiet ticks. False when the watchdog parked and no tick is to be armed.
+	 */
+	#quietTick(now: number, blockedMs: number, cpuMs: number): boolean {
+		this.#wasBlocked = false;
+		// The sampler drops to its idle interval while the process does no work, so each quiet
+		// tick reports whether the interval's CPU went over an idle share of its wall time.
+		const busy = cpuMs > (this.#intervalMs + blockedMs) * BUSY_CPU_RATIO;
+		this.#stacks?.quiet(now, busy);
+		if (busy) {
+			this.#quietSinceMs = now;
+		} else if (now - this.#quietSinceMs >= this.#parkAfterMs && this.#activity.park(this.#wake)) {
+			this.#parked = true;
+			this.#stacks?.park();
+			return false;
+		}
+		return true;
 	}
 }

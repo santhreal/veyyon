@@ -550,10 +550,9 @@ export class LaunchComposerFoot implements Component {
 					gitEnabled && (request.includePath || request.includeGit || request.includePr)
 						? resolveLocationContext(projectDir)
 						: null;
+				// Only the git zone prints the branch; the card has no PR to look up.
 				const branch =
-					(request.includeGit || request.includePr) && location?.repository
-						? branchLabelFromFiles(location.repository)
-						: null;
+					request.includeGit && location?.repository ? branchLabelFromFiles(location.repository) : null;
 				return launchSegmentContext({
 					width: request.width,
 					options: request.options,

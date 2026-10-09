@@ -13,7 +13,7 @@
  * candidates to that kind. Anything that is not a standalone `#<number>` token
  * keeps falling through to the existing prompt-action menu.
  */
-import type { AutocompleteItem } from "@veyyon/utils/autocomplete";
+import type { AutocompleteItem, AutocompleteSuggestions } from "@veyyon/utils/autocomplete";
 
 /** Candidate kinds, in default display order. */
 const GITHUB_REF_KINDS = [
@@ -58,9 +58,7 @@ export function getGithubRefContext(textBeforeCursor: string): GithubRefContext 
  * offered. Returns `null` when the text before the cursor is not a standalone
  * `#<number>` token.
  */
-export function getGithubRefSuggestions(
-	textBeforeCursor: string,
-): { items: AutocompleteItem[]; prefix: string } | null {
+export function getGithubRefSuggestions(textBeforeCursor: string): AutocompleteSuggestions | null {
 	const context = getGithubRefContext(textBeforeCursor);
 	if (!context) return null;
 	const kinds = context.qualifier

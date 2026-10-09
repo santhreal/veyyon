@@ -135,31 +135,27 @@ export function parseWriteDetails(details: unknown): ParsedWriteDetails {
 	if (!isRecord(details)) {
 		return { madeExecutable: false, diagnostics: null };
 	}
-	const madeExecutable = details.madeExecutable === true;
-	let diagnostics: WriteDiagnosticsSummary | null = null;
+	return {
+		madeExecutable: details.madeExecutable === true,
+		diagnostics: isRecord(details.diagnostics) ? parseWriteDiagnostics(details.diagnostics) : null,
+	};
+}
 
-	if (isRecord(details.diagnostics)) {
-		const d = details.diagnostics;
-		const messages: string[] = [];
-		if (Array.isArray(d.messages)) {
-			for (const m of d.messages) {
-				if (typeof m === "string") messages.push(m);
-			}
-		}
-		const summary = getStringProperty(d, "summary") ?? null;
-		if (messages.length > 0 || summary !== null) {
-			diagnostics = {
-				server: getStringProperty(d, "server") ?? null,
-				messages,
-				summary,
-				errored: d.errored === true,
-			};
+/** The diagnostics a write reported; null when they hold neither a message nor a summary. */
+function parseWriteDiagnostics(d: Record<string, unknown>): WriteDiagnosticsSummary | null {
+	const messages: string[] = [];
+	if (Array.isArray(d.messages)) {
+		for (const m of d.messages) {
+			if (typeof m === "string") messages.push(m);
 		}
 	}
-
+	const summary = getStringProperty(d, "summary") ?? null;
+	if (messages.length === 0 && summary === null) return null;
 	return {
-		madeExecutable,
-		diagnostics,
+		server: getStringProperty(d, "server") ?? null,
+		messages,
+		summary,
+		errored: d.errored === true,
 	};
 }
 

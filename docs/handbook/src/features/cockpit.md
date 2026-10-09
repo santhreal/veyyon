@@ -74,6 +74,11 @@ named in the log once. `stripWorkPrefix: false` turns the whole step off.
 A project inside a temporary directory is shown relative to that temporary directory instead,
 with its own icon, regardless of `displayRoots`.
 
+In a linked git worktree the segment shows the primary checkout's name and the worktree
+directory, `monorepo/topic`. The directory is omitted when it equals the branch and the `git`
+segment on the same row prints that branch, so the name appears once. A row with no `git`
+segment, or with `segmentOptions.git.showBranch: false`, keeps the directory.
+
 The launch composer accepts input while the session initializes. Enter submits the
 current text and attachments after initialization completes. Later drafts remain
 editable and are not cleared by the earlier submission. Input buffered before the
@@ -109,7 +114,11 @@ rest: the prompt size the provider reported for the last response, plus an estim
 after it, with the tools, skills and system prompt counted at the size recorded with that response.
 A transcript whose responses recorded no such size is measured as the session mounts. A tree
 committed from another terminal since the last launch keeps the recorded marker until `git status`
-answers, about 130ms in. A project you open for the first time
+answers, about 130ms in. The status line records the configured default model's name and effort on
+every redraw, and the dirty marker on every answer from `git status` in the project directory,
+whichever segments it shows. A row without the `git` segment or following another repository
+records no marker, a failed `git status` keeps the last one, and a collab guest's row records
+nothing. A project you open for the first time
 has no dirty marker. The gauge reads `?` only until a session on this model has left rest once;
 after that a new project starts at the model's
 subtracted reading and the session adds what this project's own context costs, so the bar fills

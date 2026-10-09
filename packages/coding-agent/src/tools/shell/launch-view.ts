@@ -196,16 +196,50 @@ function textLines(text: string): ViewLine[] {
 		.map(line => [{ text: line, tone: "output" as const }] as ViewLine);
 }
 
+/** How many rows a collapsed card keeps, and the unit of the count it holds back. */
+interface CollapsedCap {
+	readonly limit: number;
+	readonly noun: ViewHiddenCount["noun"];
+}
+
+/** A failure prints whatever the process said, which has no ceiling of its own. */
+const ERROR_CAP: CollapsedCap = { limit: PREVIEW_LIMITS.OUTPUT_COLLAPSED, noun: LINE_NOUN };
+
+/** `list` prints a row per process, which has no ceiling of its own. */
+const LIST_CAP: CollapsedCap = { limit: PREVIEW_LIMITS.COLLAPSED_ITEMS, noun: PROCESS_NOUN };
+
 /** The rows a card shows and the count it kept back, for a body the tool caps itself. */
-function capped(lines: readonly ViewLine[], limit: number | undefined, noun: ViewHiddenCount["noun"]): ViewSection {
-	if (limit === undefined || lines.length <= limit) return { lines, clip: true };
-	const hidden = heldBack(lines.length - limit, noun);
+function capped(lines: readonly ViewLine[], cap: CollapsedCap | undefined): ViewSection {
+	if (cap === undefined || lines.length <= cap.limit) return { lines, clip: true };
+	const hidden = heldBack(lines.length - cap.limit, cap.noun);
 	return {
-		lines: lines.slice(0, limit),
+		lines: lines.slice(0, cap.limit),
 		...(hidden === undefined ? {} : { hidden }),
 		clip: true,
 	};
 }
+
+/** What a settled card states for its op: the rows under the title, the body, and a subject the op sets itself. */
+interface ResultContent {
+	meta: ViewLine[];
+	body: ViewLine[];
+	description?: string;
+}
+
+/**
+ * A card about one process: the call's context, then the process's facts, then `body`. A result that
+ * arrived without its process states its text after `body` instead.
+ */
+function processContent(
+	daemon: DaemonSnapshot | undefined,
+	call: ViewLine[],
+	body: ViewLine[],
+	text: string,
+): ResultContent {
+	if (daemon) return { meta: call.concat(daemonMeta(daemon)), body };
+	return { meta: call, body: body.concat(textLines(text)) };
+}
+
 /** What the `start` op reports beyond the process's own facts: what matched, and what did not. */
 function startBody(details: LaunchToolDetails | undefined, args: LaunchRenderArgs): ViewLine[] {
 	const daemon = details?.daemon;
@@ -289,12 +323,110 @@ function describeBody(details: LaunchToolDetails | undefined): ViewLine[] {
  * carry no styling of their own and are the tool's `output` tone.
  */
 function logsBody(details: LaunchToolDetails | undefined, text: string): ViewLine[] {
-	// The trailing `[name: state; cursor=N]` suffix is what the model is told, not what a reader is.
-	const logText = text.replace(/\n?\[[^\n]*\]$/, "").trimEnd();
 	const terminalRows = details?.terminalRows;
 	if (terminalRows) return terminalRows.map((row): ViewLine => [{ text: row, captured: true }]);
+	// The trailing `[name: state; cursor=N]` suffix is what the model is told, not what a reader is.
+	const logText = text.replace(/\n?\[[^\n]*\]$/, "").trimEnd();
 	if (!logText) return [];
 	return logText.split("\n").map(line => [{ text: replaceTabs(line), tone: "output" as const }] as ViewLine);
+}
+
+/** What `logs` states about the read itself: the process's state, the cursor to resume from, and a follow that ran out. */
+function logsMeta(details: LaunchToolDetails | undefined): ViewLine[] {
+	const meta: ViewLine[] = [];
+	if (details?.state) meta.push([{ text: details.state, tone: stateTone(details.state) }]);
+	if (details?.cursor !== undefined) meta.push([{ text: `cursor ${details.cursor}` }]);
+	if (details?.timedOut) meta.push([{ text: "follow timed out", tone: "warning" }]);
+	return meta;
+}
+
+/**
+ * What `list` is titled by: how many processes are live, or `no processes` for a text-only result
+ * that said nothing. A text-only result that said something leaves the subject to the caller.
+ */
+function listDescription(details: LaunchToolDetails | undefined, text: string): string | undefined {
+	const daemons = details?.daemons;
+	if (daemons !== undefined) return `${daemons.length || "no"} ${pluralize("process", daemons.length)}`;
+	return text.trim() ? undefined : "no processes";
+}
+
+/** The meta and body a successful result states for `op`. */
+function resultContent(
+	op: string | undefined,
+	details: LaunchToolDetails | undefined,
+	params: LaunchRenderArgs,
+	text: string,
+): ResultContent {
+	const daemon = details?.daemon;
+	switch (op) {
+		case "start":
+			return processContent(daemon, callEntries(params), startBody(details, params), text);
+		case "send":
+			return processContent(daemon, callEntries(params), [], text);
+		case "stop":
+		case "restart":
+			return processContent(daemon, [], [], text);
+		case "wait":
+			return processContent(daemon, callEntries(params), waitBody(details), text);
+		case "list": {
+			// `textLines` is empty for a blank result, which is the one a structured list replaces.
+			const fallback = details?.daemons === undefined ? textLines(text) : [];
+			return { meta: [], body: fallback.concat(listBody(details)), description: listDescription(details, text) };
+		}
+		case "logs":
+			return { meta: logsMeta(details), body: logsBody(details, text) };
+		case "describe": {
+			const spec = describeBody(details);
+			return { meta: daemon ? daemonMeta(daemon) : [], body: spec.length > 0 ? spec : textLines(text) };
+		}
+		default:
+			return { meta: [], body: textLines(text) };
+	}
+}
+
+/** A failed call's text, every line of it in the error tone. */
+function errorContent(text: string): ResultContent {
+	const body = replaceTabs(shortenEmbeddedPaths(text.trimEnd()))
+		.split("\n")
+		.map(line => [{ text: line, tone: "error" as const }] as ViewLine);
+	return { meta: [], body };
+}
+
+/**
+ * The `logs` card: the one op whose body is the process's own output. It frames, and the state goes on
+ * the card's edge rather than across output nobody highlighted.
+ */
+function logsCard(
+	head: StatusRowView,
+	body: ViewLine[],
+	state: FramedBlockView["state"],
+	expanded: boolean | undefined,
+): FramedBlockView {
+	return {
+		kind: "framedBlock",
+		header: head,
+		state,
+		contents: "data",
+		sections: [
+			{
+				label: "Output",
+				lines: body.length > 0 ? body : [[{ text: "(no output)", tone: "dim" }]],
+				clip: true,
+				...(expanded ? {} : { tail: { max: DEFAULT_TERMINAL_PREVIEW_LINES } }),
+			},
+		],
+	};
+}
+
+/** Every other card: the head row, then the body, capped while collapsed when it has no ceiling of its own. */
+function headedCard(head: StatusRowView, body: ViewLine[], cap: CollapsedCap | undefined): ToolView {
+	const section = capped(body, cap);
+	return {
+		kind: "headedBlock",
+		header: head,
+		lines: section.lines,
+		...(section.hidden === undefined ? {} : { hidden: section.hidden }),
+	};
 }
 
 export const launchToolView: Required<ToolViewRenderer<LaunchRenderArgs, LaunchViewResult>> = {
@@ -325,115 +457,23 @@ export const launchToolView: Required<ToolViewRenderer<LaunchRenderArgs, LaunchV
 		const params = args ?? {};
 		const op = details?.op ?? params.op;
 		const isError = result.isError === true;
-		const daemon = details?.daemon;
-		const failed = isError || daemon?.state === "failed";
+		const failed = isError || details?.daemon?.state === "failed";
 		const partial = context.partial === true;
 		const text = extractResultText(result.content);
-
-		const meta: ViewLine[] = [];
-		let body: ViewLine[] = [];
-		let description = params.name ?? daemon?.name;
-
-		if (isError) {
-			body = replaceTabs(shortenEmbeddedPaths(text.trimEnd()))
-				.split("\n")
-				.map(line => [{ text: line, tone: "error" as const }] as ViewLine);
-		} else {
-			switch (op) {
-				case "start":
-					meta.push(...callEntries(params));
-					if (daemon) meta.push(...daemonMeta(daemon));
-					body = startBody(details, params);
-					if (!daemon) body.push(...textLines(text));
-					break;
-				case "send":
-					meta.push(...callEntries(params));
-					if (daemon) meta.push(...daemonMeta(daemon));
-					if (!daemon) body = textLines(text);
-					break;
-				case "stop":
-				case "restart":
-					if (daemon) meta.push(...daemonMeta(daemon));
-					if (!daemon) body = textLines(text);
-					break;
-				case "wait":
-					meta.push(...callEntries(params));
-					if (daemon) meta.push(...daemonMeta(daemon));
-					body = waitBody(details);
-					if (!daemon) body.push(...textLines(text));
-					break;
-				case "list": {
-					const daemons = details?.daemons;
-					if (daemons !== undefined) {
-						description = `${daemons.length || "no"} ${pluralize("process", daemons.length)}`;
-					} else if (!text.trim()) {
-						description = "no processes";
-					}
-					body = daemons === undefined && text.trim() ? textLines(text) : [];
-					body.push(...listBody(details));
-					break;
-				}
-				case "logs":
-					if (details?.state) meta.push([{ text: details.state, tone: stateTone(details.state) }]);
-					if (details?.cursor !== undefined) meta.push([{ text: `cursor ${details.cursor}` }]);
-					if (details?.timedOut) meta.push([{ text: "follow timed out", tone: "warning" }]);
-					body = logsBody(details, text);
-					break;
-				case "describe":
-					if (daemon) meta.push(...daemonMeta(daemon));
-					body = describeBody(details);
-					if (body.length === 0) body = textLines(text);
-					break;
-				default:
-					body = textLines(text);
-			}
-		}
-
+		const content = isError ? errorContent(text) : resultContent(op, details, params, text);
+		const description = content.description ?? params.name ?? details?.daemon?.name;
 		const head = header(op, description ? replaceTabs(description) : undefined, {
 			...(failed
 				? { status: "error" as const }
 				: partial
 					? { status: "pending" as const }
 					: { emblem: LAUNCH_EMBLEM }),
-			meta,
+			meta: content.meta,
 		});
-
 		if (op === "logs") {
-			// The one op whose body is the process's own output: it frames, and the state goes on the
-			// card's edge rather than across output nobody highlighted.
-			const rows = body.length > 0 ? body : [[{ text: "(no output)", tone: "dim" as const }] as ViewLine];
-			const card: FramedBlockView = {
-				kind: "framedBlock",
-				header: head,
-				state: partial ? "pending" : failed ? "error" : "success",
-				contents: "data",
-				sections: [
-					{
-						label: "Output",
-						lines: rows,
-						clip: true,
-						...(context.expanded ? {} : { tail: { max: DEFAULT_TERMINAL_PREVIEW_LINES } }),
-					},
-				],
-			};
-			return card;
+			return logsCard(head, content.body, partial ? "pending" : failed ? "error" : "success", context.expanded);
 		}
-
-		// A failure prints whatever the process said and `list` prints a row per process; neither has a
-		// ceiling of its own, so both are capped until the reader asks for the rest.
-		const limit = context.expanded
-			? undefined
-			: isError
-				? PREVIEW_LIMITS.OUTPUT_COLLAPSED
-				: op === "list"
-					? PREVIEW_LIMITS.COLLAPSED_ITEMS
-					: undefined;
-		const section = capped(body, limit, isError ? LINE_NOUN : PROCESS_NOUN);
-		return {
-			kind: "headedBlock",
-			header: head,
-			lines: section.lines,
-			...(section.hidden === undefined ? {} : { hidden: section.hidden }),
-		};
+		if (context.expanded) return headedCard(head, content.body, undefined);
+		return headedCard(head, content.body, isError ? ERROR_CAP : op === "list" ? LIST_CAP : undefined);
 	},
 };

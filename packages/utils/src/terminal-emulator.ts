@@ -16,10 +16,6 @@ export type TerminalId =
 	| "base"
 	| "trueColor";
 
-function caseEq(a: string, b: string): boolean {
-	return a.toLowerCase() === b.toLowerCase();
-}
-
 /** Resolve terminal emulator identity from environment markers used by common emulators. */
 export function detectTerminalId(env: NodeJS.ProcessEnv = Bun.env): TerminalId {
 	const {
@@ -42,19 +38,27 @@ export function detectTerminalId(env: NodeJS.ProcessEnv = Bun.env): TerminalId {
 	if (ALACRITTY_WINDOW_ID) return "alacritty";
 
 	if (TERM_PROGRAM) {
-		if (caseEq(TERM_PROGRAM, "kitty")) return "kitty";
-		if (caseEq(TERM_PROGRAM, "ghostty")) return "ghostty";
-		if (caseEq(TERM_PROGRAM, "wezterm")) return "wezterm";
-		if (caseEq(TERM_PROGRAM, "iterm.app")) return "iterm2";
-		if (caseEq(TERM_PROGRAM, "vscode")) return "vscode";
-		if (caseEq(TERM_PROGRAM, "alacritty")) return "alacritty";
-		if (caseEq(TERM_PROGRAM, "warpterminal")) return "warp";
+		switch (TERM_PROGRAM.toLowerCase()) {
+			case "kitty":
+				return "kitty";
+			case "ghostty":
+				return "ghostty";
+			case "wezterm":
+				return "wezterm";
+			case "iterm.app":
+				return "iterm2";
+			case "vscode":
+				return "vscode";
+			case "alacritty":
+				return "alacritty";
+			case "warpterminal":
+				return "warp";
+		}
 	}
 
 	if (TERM?.toLowerCase().includes("ghostty")) return "ghostty";
 
-	if (COLORTERM) {
-		if (caseEq(COLORTERM, "truecolor") || caseEq(COLORTERM, "24bit")) return "trueColor";
-	}
+	const colorterm = COLORTERM?.toLowerCase();
+	if (colorterm === "truecolor" || colorterm === "24bit") return "trueColor";
 	return "base";
 }

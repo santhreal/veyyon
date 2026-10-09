@@ -78,23 +78,24 @@ export function parseEnvFile(filePath: string, onUnreadable: UnreadableEnvFileRe
 		return result;
 	}
 
-	for (const line of content.split("\n")) {
-		const trimmed = line.trim();
-		if (!trimmed || trimmed.startsWith("#")) continue;
-
-		const eqIndex = trimmed.indexOf("=");
-		if (eqIndex === -1) continue;
-
-		const key = trimmed.slice(0, eqIndex).trim();
-		if (!isValidEnvName(key)) continue;
-
-		let value = trimmed.slice(eqIndex + 1).trim();
-		if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-			value = value.slice(1, -1);
-		}
-		if (!isSafeEnvValue(value)) continue;
-
-		result[key] = value;
-	}
+	for (const line of content.split("\n")) addEnvLine(result, line);
 	return result;
+}
+
+/** Add the `KEY=value` entry on `line` to `result`; a blank, comment, malformed or unsafe line adds nothing. */
+function addEnvLine(result: Record<string, string>, line: string): void {
+	const trimmed = line.trim();
+	if (!trimmed || trimmed.startsWith("#")) return;
+
+	const eqIndex = trimmed.indexOf("=");
+	if (eqIndex === -1) return;
+
+	const key = trimmed.slice(0, eqIndex).trim();
+	if (!isValidEnvName(key)) return;
+
+	let value = trimmed.slice(eqIndex + 1).trim();
+	if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+		value = value.slice(1, -1);
+	}
+	if (isSafeEnvValue(value)) result[key] = value;
 }

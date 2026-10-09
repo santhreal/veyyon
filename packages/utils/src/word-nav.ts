@@ -83,52 +83,50 @@ function floorToGraphemeBoundary(text: string, cursor: number): number {
 export function moveWordLeft(text: string, cursor: number): number {
 	const len = text.length;
 	if (len === 0) return 0;
-	let i = floorToGraphemeBoundary(text, clamp(cursor, 0, len));
-	if (i === 0) return 0;
+	const start = floorToGraphemeBoundary(text, clamp(cursor, 0, len));
+	if (start === 0) return 0;
 
-	const graphemes = [...getSegmenter().segment(text.slice(0, i))];
-	if (graphemes.length === 0) return 0;
-
+	const graphemes = [...getSegmenter().segment(text.slice(0, start))];
 	// Skip trailing whitespace.
-	while (graphemes.length > 0 && getWordNavKind(graphemes[graphemes.length - 1]?.segment || "") === "whitespace") {
-		i -= graphemes.pop()?.segment.length || 0;
-	}
-	if (i === 0 || graphemes.length === 0) return i;
+	const end = runStartLeft(graphemes, graphemes.length, "whitespace");
+	if (end === 0) return 0;
 
-	const kind = getWordNavKind(graphemes[graphemes.length - 1]?.segment || "");
-	if (kind === "delimiter" || kind === "cjk") {
-		while (graphemes.length > 0 && getWordNavKind(graphemes[graphemes.length - 1]?.segment || "") === kind) {
-			i -= graphemes.pop()?.segment.length || 0;
-		}
-		return i;
-	}
-
-	if (kind === "word") {
-		// Skip word run (letters/numbers/underscore), keeping common joiners inside words.
-		let hasRightWord = false;
-		while (graphemes.length > 0) {
-			const g = graphemes[graphemes.length - 1]?.segment || "";
-			const k = getWordNavKind(g);
-			if (k === "word") {
-				hasRightWord = true;
-				i -= graphemes.pop()?.segment.length || 0;
-				continue;
-			}
-			if (hasRightWord && k === "delimiter" && isWordNavJoiner(g)) {
-				const left = graphemes[graphemes.length - 2]?.segment || "";
-				if (getWordNavKind(left) === "word") {
-					i -= graphemes.pop()?.segment.length || 0;
-					continue;
-				}
-			}
-			break;
-		}
-		return i;
-	}
-
+	const kind = getWordNavKind(graphemes[end - 1].segment);
 	// Fallback: move by one grapheme.
-	i -= graphemes.pop()?.segment.length || 0;
-	return Math.max(0, i);
+	let to = end - 1;
+	if (kind === "delimiter" || kind === "cjk") to = runStartLeft(graphemes, end, kind);
+	else if (kind === "word") to = wordStartLeft(graphemes, end);
+	return graphemes[to].index;
+}
+
+/** Index of the first grapheme in the run of `kind` that ends before grapheme `end`. */
+function runStartLeft(graphemes: readonly Intl.SegmentData[], end: number, kind: WordNavKind): number {
+	let n = end;
+	while (n > 0 && getWordNavKind(graphemes[n - 1].segment) === kind) n--;
+	return n;
+}
+
+/**
+ * Index of the first grapheme in the word run that ends before grapheme `end`, a `word` grapheme:
+ * letters, numbers and underscores, and a joiner with a word grapheme on each side.
+ */
+function wordStartLeft(graphemes: readonly Intl.SegmentData[], end: number): number {
+	let n = end;
+	while (n > 0) {
+		const segment = graphemes[n - 1].segment;
+		const kind = getWordNavKind(segment);
+		if (kind !== "word") {
+			// A joiner (`'`, `-`, ...) stays in the word only with a word grapheme on its left too.
+			const joined =
+				kind === "delimiter" &&
+				isWordNavJoiner(segment) &&
+				n > 1 &&
+				getWordNavKind(graphemes[n - 2].segment) === "word";
+			if (!joined) break;
+		}
+		n--;
+	}
+	return n;
 }
 
 /**
@@ -139,52 +137,56 @@ export function moveWordLeft(text: string, cursor: number): number {
 export function moveWordRight(text: string, cursor: number): number {
 	const len = text.length;
 	if (len === 0) return 0;
-	let i = floorToGraphemeBoundary(text, clamp(cursor, 0, len));
-	if (i === len) return len;
+	const start = floorToGraphemeBoundary(text, clamp(cursor, 0, len));
+	if (start === len) return len;
 
-	const iterator = getSegmenter().segment(text.slice(i))[Symbol.iterator]();
-	let next = iterator.next();
-
+	// Graphemes are read lazily: a move reads only up to the end of the next word.
+	const graphemes = getSegmenter().segment(text.slice(start))[Symbol.iterator]();
 	// Skip leading whitespace.
-	while (!next.done && getWordNavKind(next.value.segment) === "whitespace") {
-		i += next.value.segment.length;
-		next = iterator.next();
-	}
-	if (next.done) return i;
+	const first = skipRunRight(graphemes.next(), graphemes, "whitespace");
+	if (first.done) return len;
 
-	const firstKind = getWordNavKind(next.value.segment);
-	if (firstKind === "delimiter" || firstKind === "cjk") {
-		while (!next.done && getWordNavKind(next.value.segment) === firstKind) {
-			i += next.value.segment.length;
-			next = iterator.next();
-		}
-		return i;
-	}
-
-	if (firstKind === "word") {
-		let hasLeftWord = false;
-		while (!next.done) {
-			const segment = next.value.segment;
-			const k = getWordNavKind(segment);
-			if (k === "word") {
-				hasLeftWord = true;
-				i += segment.length;
-				next = iterator.next();
-				continue;
-			}
-			if (hasLeftWord && k === "delimiter" && isWordNavJoiner(segment)) {
-				const lookahead = iterator.next();
-				if (!lookahead.done && getWordNavKind(lookahead.value.segment) === "word") {
-					i += segment.length;
-					next = lookahead;
-					continue;
-				}
-			}
-			break;
-		}
-		return i;
-	}
-
+	const kind = getWordNavKind(first.value.segment);
+	let stop: IteratorResult<Intl.SegmentData>;
+	if (kind === "delimiter" || kind === "cjk") stop = skipRunRight(first, graphemes, kind);
+	else if (kind === "word") stop = skipWordRight(first, graphemes);
 	// Fallback: move by one grapheme.
-	return i + next.value.segment.length;
+	else return start + first.value.index + first.value.segment.length;
+	return stop.done ? len : start + stop.value.index;
+}
+
+/** The first grapheme from `from` on that is not of `kind`. */
+function skipRunRight(
+	from: IteratorResult<Intl.SegmentData>,
+	graphemes: Iterator<Intl.SegmentData>,
+	kind: WordNavKind,
+): IteratorResult<Intl.SegmentData> {
+	let step = from;
+	while (!step.done && getWordNavKind(step.value.segment) === kind) step = graphemes.next();
+	return step;
+}
+
+/**
+ * The first grapheme past the word run that starts at `from`, a `word` grapheme: letters, numbers
+ * and underscores, and a joiner with a word grapheme on each side.
+ */
+function skipWordRight(
+	from: IteratorResult<Intl.SegmentData>,
+	graphemes: Iterator<Intl.SegmentData>,
+): IteratorResult<Intl.SegmentData> {
+	let step = from;
+	while (!step.done) {
+		const segment = step.value.segment;
+		const kind = getWordNavKind(segment);
+		if (kind === "word") {
+			step = graphemes.next();
+			continue;
+		}
+		// A joiner (`'`, `-`, ...) stays in the word only with a word grapheme on its right too.
+		if (kind !== "delimiter" || !isWordNavJoiner(segment)) return step;
+		const lookahead = graphemes.next();
+		if (lookahead.done || getWordNavKind(lookahead.value.segment) !== "word") return step;
+		step = lookahead;
+	}
+	return step;
 }

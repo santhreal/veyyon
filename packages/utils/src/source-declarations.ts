@@ -56,43 +56,55 @@ const SIMPLE_ESCAPES: Record<string, string> = {
 };
 
 /**
+ * Index just past the escape whose backslash is at `at`: `\xNN` and `\uNNNN` take their fixed width
+ * whatever it holds, `\u{N...}` runs to the first `}`, and any other escape is the backslash and one unit.
+ */
+function escapeEnd(body: string, at: number): number {
+	switch (body.charCodeAt(at + 1)) {
+		case 0x78: // x
+			return at + 4;
+		case 0x75: {
+			// u
+			const close = body.charCodeAt(at + 2) === 0x7b ? body.indexOf("}", at + 3) : -1;
+			return close === -1 ? at + 6 : close + 1;
+		}
+		default:
+			return at + 2;
+	}
+}
+
+/** The characters the escape spanning `[at, end)` stands for; `end` comes from {@link escapeEnd}. */
+function decodeEscape(body: string, at: number, end: number): string {
+	const kind = body.charAt(at + 1);
+	switch (kind) {
+		case "x":
+			return String.fromCharCode(Number.parseInt(body.slice(at + 2, end), 16));
+		case "u": {
+			const braced = body.charCodeAt(at + 2) === 0x7b && body.charCodeAt(end - 1) === 0x7d;
+			return String.fromCodePoint(Number.parseInt(body.slice(braced ? at + 3 : at + 2, braced ? end - 1 : end), 16));
+		}
+		default:
+			return SIMPLE_ESCAPES[kind] ?? kind;
+	}
+}
+
+/**
  * The characters a literal's body stands for.
  *
  * `JSON.parse` handles the double-quoted case and nothing else, and the single-quoted and template forms
  * are as common here as the double-quoted one, so the escapes are resolved directly: the six control
  * escapes, `\xNN`, `\uNNNN`, `\u{N...}`, and any other escaped character as itself (`\\`, `\"`, `` \` ``).
+ * A lone backslash at the end stands for nothing.
  */
 function decodeStringLiteral(body: string): string {
 	let out = "";
-	for (let i = 0; i < body.length; i++) {
-		const char = body[i];
-		if (char !== "\\") {
-			out += char;
-			continue;
-		}
-		const next = body[++i];
-		if (next === undefined) return out;
-		if (next === "x") {
-			out += String.fromCharCode(Number.parseInt(body.slice(i + 1, i + 3), 16));
-			i += 2;
-			continue;
-		}
-		if (next === "u") {
-			if (body[i + 1] === "{") {
-				const end = body.indexOf("}", i + 2);
-				if (end !== -1) {
-					out += String.fromCodePoint(Number.parseInt(body.slice(i + 2, end), 16));
-					i = end;
-					continue;
-				}
-			}
-			out += String.fromCodePoint(Number.parseInt(body.slice(i + 1, i + 5), 16));
-			i += 4;
-			continue;
-		}
-		out += SIMPLE_ESCAPES[next] ?? next;
+	let from = 0;
+	for (let at = body.indexOf("\\"); at !== -1; at = body.indexOf("\\", from)) {
+		const end = escapeEnd(body, at);
+		out += body.slice(from, at) + decodeEscape(body, at, end);
+		from = end;
 	}
-	return out;
+	return out + body.slice(from);
 }
 
 /**
@@ -154,6 +166,22 @@ const EXPORTED_DECLARATION_RE =
 /** `export { a, b as c }` with no `from`, which exports names declared in this module. */
 const LOCAL_EXPORT_CLAUSE_RE = /(?:^|\n)[ \t]*export\s+(?:type\s+)?\{([^}]*)\}\s*(?!\s*from)[;\n]/g;
 
+/** `type ` before an export clause entry. */
+const CLAUSE_TYPE_PREFIX_RE = /^type\s+/;
+
+/** ` as ` between a clause entry's local name and the name it exports. */
+const CLAUSE_RENAME_RE = /\s+as\s+/;
+
+/** Appends to `found` the names one `export { ... }` clause body exports. */
+function pushClauseExports(clause: string, found: string[]): void {
+	for (const entry of clause.split(",")) {
+		// `a as b` exports `b`, which is the name a consumer imports.
+		const parts = entry.trim().replace(CLAUSE_TYPE_PREFIX_RE, "").split(CLAUSE_RENAME_RE);
+		const exported = parts[1] ?? parts[0];
+		if (exported) found.push(exported);
+	}
+}
+
 /**
  * The names `source` declares and exports, in source order.
  *
@@ -172,16 +200,7 @@ export function exportedDeclarationsIn(source: string): string[] {
 	for (const match of code.matchAll(EXPORTED_DECLARATION_RE)) {
 		if (match[1]) found.push(match[1]);
 	}
-	for (const match of code.matchAll(LOCAL_EXPORT_CLAUSE_RE)) {
-		for (const entry of (match[1] ?? "").split(",")) {
-			const name = entry.trim().replace(/^type\s+/, "");
-			if (!name) continue;
-			// `a as b` exports `b`, which is the name a consumer imports.
-			const parts = name.split(/\s+as\s+/);
-			const exported = (parts.length > 1 ? parts[1] : parts[0])?.trim();
-			if (exported) found.push(exported);
-		}
-	}
+	for (const match of code.matchAll(LOCAL_EXPORT_CLAUSE_RE)) pushClauseExports(match[1] ?? "", found);
 	return found;
 }
 

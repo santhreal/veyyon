@@ -101,6 +101,14 @@ const EVENT_LOG_COMPACT_BUDGET = 256_000;
 const SYNC_OUTPUT_BEGIN = "\x1b[?2026h";
 const SYNC_OUTPUT_END = "\x1b[?2026l";
 const OSC_SEQUENCE = /\x1b\][\s\S]*?(?:\x07|\x1b\\)/g;
+
+/** End of the engine write chunk that starts at `offset`: never splits a surrogate pair, always past `offset`. */
+function ghosttyChunkEnd(data: string, offset: number): number {
+	let end = Math.min(offset + MAX_GHOSTTY_WRITE_CHUNK, data.length);
+	const last = data.charCodeAt(end - 1);
+	if (end < data.length && last >= 0xd800 && last <= 0xdbff) end--;
+	return end <= offset ? Math.min(offset + 1, data.length) : end;
+}
 // Compare readback against the configured defaults directly; Ghostty's
 // getColors() currently reports render-state metadata, not these cell colors.
 const DEFAULT_FG_R = (DEFAULT_FG_RGB >> 16) & 0xff;
@@ -533,21 +541,14 @@ export class VirtualTerminal implements Terminal {
 			this.#eventLog.push(data);
 			this.#eventLogBytes += data.length;
 		}
-		let offset = 0;
-		while (offset < data.length) {
-			let end = Math.min(offset + MAX_GHOSTTY_WRITE_CHUNK, data.length);
-			const last = data.charCodeAt(end - 1);
-			if (end < data.length && last >= 0xd800 && last <= 0xdbff) end--;
-			if (end <= offset) end = Math.min(offset + 1, data.length);
+		for (let offset = 0; offset < data.length; ) {
+			const end = ghosttyChunkEnd(data, offset);
 			const chunk = data.slice(offset, end);
 			try {
 				this.#term.write(chunk);
 			} catch (error) {
 				if (this.#replayingLog) {
-					const dumpPath = `${os.tmpdir()}/ghostty-trap-log-${Date.now()}.json`;
-					try {
-						fs.writeFileSync(dumpPath, JSON.stringify(this.#eventLog));
-					} catch {}
+					const dumpPath = this.#dumpEventLog();
 					throw new Error(
 						`ghostty write failed during OOM-recovery replay (chunk ${chunk.length} chars at offset ${offset} of ${data.length}): ${String(error)}\n` +
 							`event log dumped to ${dumpPath}\n` +
@@ -570,6 +571,15 @@ export class VirtualTerminal implements Terminal {
 			this.#compactEventLog();
 			this.#rebuildEngineFromLog();
 		}
+	}
+
+	/** Writes the event log to a fresh file for post-mortem replay and returns its path; a failed write is ignored. */
+	#dumpEventLog(): string {
+		const dumpPath = `${os.tmpdir()}/ghostty-trap-log-${Date.now()}.json`;
+		try {
+			fs.writeFileSync(dumpPath, JSON.stringify(this.#eventLog));
+		} catch {}
+		return dumpPath;
 	}
 
 	/**
@@ -613,14 +623,15 @@ export class VirtualTerminal implements Terminal {
 				out += bg === -1 ? "\x1b[49m" : `\x1b[48;2;${cell.bg_r};${cell.bg_g};${cell.bg_b}m`;
 				currentBg = bg;
 			}
-			if (cell.codepoint === 0) {
-				out += " ";
-			} else {
-				out +=
-					cell.grapheme_len > 0 ? this.#term.getGraphemeString(row, col) : this.#safeCodepointText(cell.codepoint);
-			}
+			out += this.#activeCellText(cell, row, col);
 		}
 		return `${out}\x1b[0m`;
+	}
+
+	/** An active-grid cell's text: a blank cell is a space, a grapheme cluster is read from the grid. */
+	#activeCellText(cell: GhosttyCell, row: number, col: number): string {
+		if (cell.codepoint === 0) return " ";
+		return cell.grapheme_len > 0 ? this.#term.getGraphemeString(row, col) : this.#safeCodepointText(cell.codepoint);
 	}
 
 	/**
@@ -645,10 +656,7 @@ export class VirtualTerminal implements Terminal {
 			// The re-applied write trapped even on the compacted state: there is
 			// no weaker state to retry against. Fail loudly with the dump path
 			// (never silently drop the bytes and continue with a wrong terminal).
-			const dumpPath = `${os.tmpdir()}/ghostty-trap-log-${Date.now()}.json`;
-			try {
-				fs.writeFileSync(dumpPath, JSON.stringify(this.#eventLog));
-			} catch {}
+			const dumpPath = this.#dumpEventLog();
 			throw new Error(
 				`ghostty write trapped again after OOM recovery onto a compacted state; event log dumped to ${dumpPath}`,
 			);
@@ -768,12 +776,7 @@ export class VirtualTerminal implements Terminal {
 		for (let col = 0; col < this.#columns; col++) {
 			const cell = cells[base + col];
 			if (!cell || cell.width === 0) continue; // wide-char trailing spacer
-			if (cell.codepoint === 0) {
-				text += " ";
-			} else {
-				text +=
-					cell.grapheme_len > 0 ? this.#term.getGraphemeString(row, col) : this.#safeCodepointText(cell.codepoint);
-			}
+			text += this.#activeCellText(cell, row, col);
 		}
 		return text.replace(/\s+$/u, "");
 	}

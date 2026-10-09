@@ -255,164 +255,176 @@ export abstract class Command {
 		const Cmd = _Cmd as CommandCtor;
 		const flagDefs = (Cmd.flags ?? {}) as Record<string, FlagDescriptor>;
 		const argDefs = (Cmd.args ?? {}) as Record<string, ArgDescriptor>;
-		const strict = Cmd.strict !== false;
-
-		// Build node:util parseArgs options from flag descriptors
-		const options: Record<
-			string,
-			{ type: "string" | "boolean"; short?: string; multiple?: boolean; default?: string | boolean }
-		> = {};
-		// Alias long name -> canonical long name. Registered as its own parseArgs
-		// option (node:util has no alias concept) and folded back onto the
-		// canonical name below, so a command reads one field no matter which
-		// spelling the user typed.
-		const aliasToCanonical = new Map<string, string>();
-		for (const [name, desc] of Object.entries(flagDefs)) {
-			const opt: (typeof options)[string] = {
-				type: desc.kind === "boolean" ? "boolean" : "string",
-			};
-			if (desc.char) opt.short = desc.char;
-			if (desc.multiple) opt.multiple = true;
-			if (desc.default !== undefined) {
-				opt.default = desc.kind === "boolean" ? Boolean(desc.default) : String(desc.default);
-			}
-			options[name] = opt;
-		}
-		// Aliases register in a SECOND pass, after every canonical name exists.
-		// Doing it inline would make the collision check depend on declaration
-		// order: an alias declared before the flag it shadows would find nothing to
-		// collide with and then be silently overwritten.
-		for (const [name, desc] of Object.entries(flagDefs)) {
-			for (const alias of desc.aliases ?? []) {
-				if (options[alias]) {
-					throw new Error(
-						`Flag alias --${alias} on --${name} collides with an existing flag. ` +
-							"Rename the alias or drop the duplicate declaration.",
-					);
-				}
-				aliasToCanonical.set(alias, name);
-				// The alias never carries the default: it would then look "provided"
-				// on every run and win over the canonical name in the fold below.
-				options[alias] = {
-					type: options[name].type,
-					...(options[name].multiple ? { multiple: true } : {}),
-				};
-			}
-		}
-
-		// strict=false when command declares args (positionals must pass through)
-		// or when the command itself opts out
-		const { values: rawValues, positionals } = (() => {
-			// `node:util` parseArgs reads any leading `-` as an option, so a negative
-			// number is rejected as an unknown short flag: `veyyon config set
-			// presencePenalty -1` failed on a value the setting accepts, and the only
-			// way through was the `-- "-1"` escape. Negative numbers are hidden behind
-			// a sentinel for the parse and restored after, so they arrive as the value
-			// they are while unknown-flag detection stays strict for everything else.
-			const { args: maskedArgs, restore } = maskNegativeNumbers(this.argv);
-			try {
-				const parsed = nodeParseArgs({
-					args: maskedArgs,
-					options,
-					allowPositionals: true,
-					strict,
-				});
-				return restore(parsed);
-			} catch (error) {
-				throw new CliUsageError(errorMessage(error));
-			}
-		})();
-
+		const { options, aliasToCanonical } = parseOptions(flagDefs);
+		const { values: rawValues, positionals } = parseArgv(this.argv, options, Cmd.strict !== false);
 		// Fold an alias onto its canonical name before typing and validation, so
-		// every check below (options constraint, required, integer parse) applies
-		// to the alias exactly as it would to the canonical spelling. The canonical
-		// name wins when both were given: a user who wrote both meant the one the
-		// command actually reads, and picking the alias would be surprising.
+		// every check in typedFlags (options constraint, required, integer parse)
+		// applies to the alias exactly as it would to the canonical spelling. The
+		// canonical name wins when both were given: a user who wrote both meant the
+		// one the command reads, and picking the alias would be surprising.
 		for (const [alias, canonical] of aliasToCanonical) {
 			const aliasValue = rawValues[alias];
 			if (aliasValue !== undefined && rawValues[canonical] === undefined) {
 				rawValues[canonical] = aliasValue;
 			}
 		}
-
-		// Convert raw values to proper types and validate
-		const flags: Record<string, unknown> = {};
-		for (const [name, desc] of Object.entries(flagDefs)) {
-			const raw = rawValues[name];
-			if (desc.kind === "integer") {
-				if (raw === undefined || typeof raw === "boolean") {
-					flags[name] = desc.default ?? undefined;
-				} else {
-					const n = Number.parseInt(raw as string, 10);
-					if (Number.isNaN(n)) {
-						throw new CliUsageError(`Expected integer for --${name}, got "${raw}"`);
-					}
-					flags[name] = n;
-				}
-			} else if (desc.kind === "boolean") {
-				flags[name] =
-					raw !== undefined ? Boolean(raw) : desc.default !== undefined ? Boolean(desc.default) : undefined;
-			} else {
-				// string
-				const val = raw !== undefined && typeof raw !== "boolean" ? raw : (desc.default ?? undefined);
-				// Validate options constraint
-				if (val !== undefined && desc.options && !Array.isArray(val)) {
-					if (!desc.options.includes(val as string)) {
-						throw new CliUsageError(
-							`Expected --${name} to be one of: ${desc.options.slice().join(", ")}; got "${val}"`,
-						);
-					}
-				}
-				flags[name] = val;
-			}
-			// Validate required
-			if (desc.required && flags[name] === undefined) {
-				throw new CliUsageError(`Missing required flag: --${name}`);
-			}
-		}
-
-		// Map positionals to named args in declaration order and validate
-		const args: Record<string, unknown> = {};
-		let posIdx = 0;
-		for (const [argName, desc] of Object.entries(argDefs)) {
-			if (desc.multiple) {
-				const val = positionals.slice(posIdx);
-				args[argName] = val.length > 0 ? val : undefined;
-				posIdx = positionals.length;
-			} else {
-				const val = positionals[posIdx];
-				args[argName] = val;
-				posIdx++;
-			}
-			// Validate required
-			if (desc.required && args[argName] === undefined) {
-				throw new CliUsageError(`Missing required argument: ${argName}`);
-			}
-			// Validate options constraint
-			const argVal = args[argName];
-			if (argVal !== undefined && desc.options && typeof argVal === "string") {
-				if (!desc.options.includes(argVal)) {
-					throw new CliUsageError(
-						`Expected ${argName} to be one of: ${desc.options.slice().join(", ")}; got "${argVal}"`,
-					);
-				}
-			}
-		}
-
-		// Reject positionals that no declared arg consumed. Silently dropping them
-		// lets an intuitive-but-wrong invocation run with a wider scope than the
-		// user wrote — `usage invalidate anthropic` swallows `anthropic` and
-		// invalidates every provider at exit 0 — so fail closed and name the stray
-		// token instead (Law 10: no silent fallbacks). A command that means to take
-		// arbitrary trailing positionals declares a `multiple` arg, which consumes
-		// them here and never reaches this check.
-		if (posIdx < positionals.length) {
-			const stray = positionals.slice(posIdx);
-			const label = stray.length === 1 ? "argument" : "arguments";
-			throw new CliUsageError(`Unexpected ${label}: ${stray.map(token => `"${token}"`).join(", ")}`);
-		}
-
+		const flags = typedFlags(flagDefs, rawValues);
+		const args = namedArgs(argDefs, positionals);
 		return { flags, args, argv: positionals } as never;
+	}
+}
+
+/** One `node:util` parseArgs option, built from a {@link FlagDescriptor}. */
+interface ParseOption {
+	type: "string" | "boolean";
+	short?: string;
+	multiple?: boolean;
+	default?: string | boolean;
+}
+
+/**
+ * The parseArgs options for `flagDefs`, one per flag and one per alias, and the
+ * canonical name of each alias. node:util has no alias concept, so an alias is
+ * its own option, folded back onto the canonical name after the parse.
+ */
+function parseOptions(flagDefs: Record<string, FlagDescriptor>): {
+	options: Record<string, ParseOption>;
+	aliasToCanonical: Map<string, string>;
+} {
+	const options: Record<string, ParseOption> = {};
+	for (const [name, desc] of Object.entries(flagDefs)) options[name] = parseOption(desc);
+	// Aliases register in a SECOND pass, after every canonical name exists.
+	// Doing it inline would make the collision check depend on declaration
+	// order: an alias declared before the flag it shadows would find nothing to
+	// collide with and then be silently overwritten.
+	const aliasToCanonical = new Map<string, string>();
+	for (const [name, desc] of Object.entries(flagDefs)) {
+		for (const alias of desc.aliases ?? []) {
+			if (options[alias]) {
+				throw new Error(
+					`Flag alias --${alias} on --${name} collides with an existing flag. ` +
+						"Rename the alias or drop the duplicate declaration.",
+				);
+			}
+			aliasToCanonical.set(alias, name);
+			// The alias never carries the default: it would then look "provided"
+			// on every run and win over the canonical name in the fold.
+			options[alias] = {
+				type: options[name].type,
+				...(options[name].multiple ? { multiple: true } : {}),
+			};
+		}
+	}
+	return { options, aliasToCanonical };
+}
+
+/** The parseArgs option of one flag: its value type, short name, repetition and default. */
+function parseOption(desc: FlagDescriptor): ParseOption {
+	const opt: ParseOption = { type: desc.kind === "boolean" ? "boolean" : "string" };
+	if (desc.char) opt.short = desc.char;
+	if (desc.multiple) opt.multiple = true;
+	if (desc.default !== undefined) {
+		opt.default = desc.kind === "boolean" ? Boolean(desc.default) : String(desc.default);
+	}
+	return opt;
+}
+
+/**
+ * `argv` parsed against `options`, with a parse failure thrown as a {@link CliUsageError}.
+ *
+ * `node:util` parseArgs reads any leading `-` as an option, so a negative number is rejected as
+ * an unknown short flag: `veyyon config set presencePenalty -1` failed on a value the setting
+ * accepts, and the only way through was the `-- "-1"` escape. Negative numbers are hidden behind a
+ * sentinel for the parse and restored after, so they arrive as the value they are while
+ * unknown-flag detection stays strict for everything else.
+ */
+function parseArgv(argv: readonly string[], options: Record<string, ParseOption>, strict: boolean): ParsedArgs {
+	const { args, restore } = maskNegativeNumbers(argv);
+	try {
+		return restore(nodeParseArgs({ args, options, allowPositionals: true, strict }));
+	} catch (error) {
+		throw new CliUsageError(errorMessage(error));
+	}
+}
+
+/** Each flag of `flagDefs` typed from its raw parsed value, validated in declaration order. */
+function typedFlags(
+	flagDefs: Record<string, FlagDescriptor>,
+	rawValues: ParsedArgs["values"],
+): Record<string, unknown> {
+	const flags: Record<string, unknown> = {};
+	for (const [name, desc] of Object.entries(flagDefs)) {
+		const value = flagValue(name, desc, rawValues[name]);
+		if (desc.required && value === undefined) {
+			throw new CliUsageError(`Missing required flag: --${name}`);
+		}
+		flags[name] = value;
+	}
+	return flags;
+}
+
+/** The typed value of flag `--name` from its raw parsed value, or its default. */
+function flagValue(name: string, desc: FlagDescriptor, raw: ParsedArgs["values"][string]): unknown {
+	if (desc.kind === "boolean") {
+		return raw !== undefined ? Boolean(raw) : desc.default !== undefined ? Boolean(desc.default) : undefined;
+	}
+	if (desc.kind === "integer") return integerFlag(name, desc, raw);
+	const value = raw !== undefined && typeof raw !== "boolean" ? raw : (desc.default ?? undefined);
+	if (value !== undefined && desc.options && !Array.isArray(value)) assertOneOf(`--${name}`, desc.options, value);
+	return value;
+}
+
+/** The integer value of flag `--name`, or its default when it was not given a value. */
+function integerFlag(name: string, desc: FlagDescriptor, raw: ParsedArgs["values"][string]): unknown {
+	if (raw === undefined || typeof raw === "boolean") return desc.default ?? undefined;
+	const n = Number.parseInt(raw as string, 10);
+	if (Number.isNaN(n)) {
+		throw new CliUsageError(`Expected integer for --${name}, got "${raw}"`);
+	}
+	return n;
+}
+
+/**
+ * `positionals` mapped to the args of `argDefs` in declaration order and validated. A `multiple`
+ * arg takes every positional left.
+ *
+ * A positional that no declared arg consumed is rejected. Silently dropping it lets an
+ * intuitive-but-wrong invocation run with a wider scope than the user wrote — `usage invalidate
+ * anthropic` swallows `anthropic` and invalidates every provider at exit 0 — so fail closed and name
+ * the stray token instead (Law 10: no silent fallbacks). A command that means to take arbitrary
+ * trailing positionals declares a `multiple` arg, which consumes them.
+ */
+function namedArgs(argDefs: Record<string, ArgDescriptor>, positionals: readonly string[]): Record<string, unknown> {
+	const args: Record<string, unknown> = {};
+	let posIdx = 0;
+	for (const [argName, desc] of Object.entries(argDefs)) {
+		let value: string | string[] | undefined;
+		if (desc.multiple) {
+			const rest = positionals.slice(posIdx);
+			value = rest.length > 0 ? rest : undefined;
+			posIdx = positionals.length;
+		} else {
+			value = positionals[posIdx];
+			posIdx++;
+		}
+		args[argName] = value;
+		if (desc.required && value === undefined) {
+			throw new CliUsageError(`Missing required argument: ${argName}`);
+		}
+		if (desc.options && typeof value === "string") assertOneOf(argName, desc.options, value);
+	}
+	if (posIdx < positionals.length) {
+		const stray = positionals.slice(posIdx);
+		const label = stray.length === 1 ? "argument" : "arguments";
+		throw new CliUsageError(`Unexpected ${label}: ${stray.map(token => `"${token}"`).join(", ")}`);
+	}
+	return args;
+}
+
+/** Throws the usage error for a `value` of `label` outside the `options` it accepts. */
+function assertOneOf(label: string, options: readonly string[], value: unknown): void {
+	if (!options.includes(value as string)) {
+		throw new CliUsageError(`Expected ${label} to be one of: ${options.slice().join(", ")}; got "${value}"`);
 	}
 }
 
@@ -667,59 +679,9 @@ export function renderCommandHelp(bin: string, id: string, Cmd: CommandCtor): vo
 }
 
 function renderCommandBody(lines: string[], Cmd: CommandCtor): void {
-	const argDefs = Cmd.args ?? {};
-	const flagDefs = Cmd.flags ?? {};
 	const width = helpWidth();
-
-	// Arguments
-	const argEntries = Object.entries(argDefs);
-	if (argEntries.length > 0) {
-		lines.push("ARGUMENTS");
-		const lefts = argEntries.map(([name]) => `  ${name.toUpperCase()}`);
-		const column = gutter(lefts, width);
-		for (const [index, [, desc]] of argEntries.entries()) {
-			const parts: string[] = [];
-			if (desc.description) parts.push(desc.description);
-			if (desc.options) parts.push(`(${desc.options.slice().join("|")})`);
-			pushWrapped(lines, lefts[index] ?? "", parts.join(" "), column, width);
-		}
-		lines.push("");
-	}
-
-	// Flags
-	const flagEntries = Object.entries(flagDefs);
-	if (flagEntries.length > 0) {
-		lines.push("FLAGS");
-		const formatted: [string, string][] = [];
-		for (const [name, desc] of flagEntries) {
-			const charPart = desc.char ? `-${desc.char}, ` : "    ";
-			// Aliases share the canonical entry rather than getting one of their own:
-			// two entries for one behaviour reads as two behaviours.
-			const aliasPart = (desc.aliases ?? []).map(alias => `, --${alias}`).join("");
-			const namePart = `--${name}${aliasPart}`;
-			// Enum-constrained flags render their accepted values like args do —
-			// values that only surface as a parse error are invisible until guessed.
-			const typePart =
-				desc.kind === "boolean"
-					? ""
-					: desc.options
-						? `=<${desc.options.slice().join("|")}>`
-						: desc.kind === "integer"
-							? "=<int>"
-							: "=<value>";
-			formatted.push([`  ${charPart}${namePart}${typePart}`, desc.description ?? ""]);
-		}
-		const column = gutter(
-			formatted.map(([left]) => left),
-			width,
-		);
-		for (const [left, right] of formatted) {
-			pushWrapped(lines, left, right, column, width);
-		}
-		lines.push("");
-	}
-
-	// Examples
+	pushArgumentsSection(lines, Cmd.args ?? {}, width);
+	pushFlagsSection(lines, Cmd.flags ?? {}, width);
 	if (Cmd.examples && Cmd.examples.length > 0) {
 		lines.push("EXAMPLES");
 		for (const ex of Cmd.examples) {
@@ -729,6 +691,57 @@ function renderCommandBody(lines: string[], Cmd: CommandCtor): void {
 		}
 		lines.push("");
 	}
+}
+
+/** The ARGUMENTS section: each arg's name, description and accepted values. Nothing for no args. */
+function pushArgumentsSection(lines: string[], argDefs: Record<string, ArgDescriptor>, width: number): void {
+	const argEntries = Object.entries(argDefs);
+	if (argEntries.length === 0) return;
+	lines.push("ARGUMENTS");
+	const lefts = argEntries.map(([name]) => `  ${name.toUpperCase()}`);
+	const column = gutter(lefts, width);
+	for (const [index, [, desc]] of argEntries.entries()) {
+		const parts: string[] = [];
+		if (desc.description) parts.push(desc.description);
+		if (desc.options) parts.push(`(${desc.options.slice().join("|")})`);
+		pushWrapped(lines, lefts[index] ?? "", parts.join(" "), column, width);
+	}
+	lines.push("");
+}
+
+/** The FLAGS section: each flag's spellings and value shape, then its description. Nothing for no flags. */
+function pushFlagsSection(lines: string[], flagDefs: Record<string, FlagDescriptor>, width: number): void {
+	const flagEntries = Object.entries(flagDefs);
+	if (flagEntries.length === 0) return;
+	lines.push("FLAGS");
+	const formatted = flagEntries.map(([name, desc]) => [flagHelpLeft(name, desc), desc.description ?? ""] as const);
+	const column = gutter(
+		formatted.map(([left]) => left),
+		width,
+	);
+	for (const [left, right] of formatted) {
+		pushWrapped(lines, left, right, column, width);
+	}
+	lines.push("");
+}
+
+/** A flag's help entry: its short name, its long name and aliases, and the value it takes. */
+function flagHelpLeft(name: string, desc: FlagDescriptor): string {
+	const charPart = desc.char ? `-${desc.char}, ` : "    ";
+	// Aliases share the canonical entry rather than getting one of their own:
+	// two entries for one behaviour reads as two behaviours.
+	const aliasPart = (desc.aliases ?? []).map(alias => `, --${alias}`).join("");
+	// Enum-constrained flags render their accepted values like args do —
+	// values that only surface as a parse error are invisible until guessed.
+	const typePart =
+		desc.kind === "boolean"
+			? ""
+			: desc.options
+				? `=<${desc.options.slice().join("|")}>`
+				: desc.kind === "integer"
+					? "=<int>"
+					: "=<value>";
+	return `  ${charPart}--${name}${aliasPart}${typePart}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -834,30 +847,32 @@ export async function run(opts: RunOptions): Promise<void> {
 		return;
 	}
 
+	await runCommand(bin, version, entry, commandArgv);
+}
+
+/**
+ * Load `entry` and run its command on `argv`. A usage mistake (missing/invalid arg or flag) is not
+ * a crash: it prints the message and the command's usage line and exits CLI_EXIT_USAGE. Letting it
+ * reach the process-level catch would dump a minified `dist/cli.js` code frame over a plain
+ * argument error (issue #5369).
+ *
+ * The status is 2, not 1, because a subcommand's command line is still a command line: `veyyon
+ * --nope` and `veyyon config --nope` are the same mistake, and the published exit-code table
+ * promises 2 for "an unrecognized flag, a bad flag value". Returning 1 here split one mistake down
+ * the middle and told a wrapper script that retrying might help.
+ */
+async function runCommand(bin: string, version: string, entry: CommandEntry, argv: string[]): Promise<void> {
 	const Cmd = await loadEntry(entry);
 	const config: CliConfig = { bin, version, commands: new Map([[entry.name, Cmd]]) };
-	const instance = new Cmd(commandArgv, config);
+	const instance = new Cmd(argv, config);
 	try {
 		await instance.run();
 	} catch (error) {
-		// A usage mistake (missing/invalid arg or flag) is not a crash: print the
-		// message and the command's usage line, then exit CLI_EXIT_USAGE. Letting it
-		// reach the process-level catch would dump a minified `dist/cli.js` code
-		// frame over a plain argument error (issue #5369).
-		//
-		// The status is 2, not 1, because a subcommand's command line is still a
-		// command line: `veyyon --nope` and `veyyon config --nope` are the same
-		// mistake, and the published exit-code table promises 2 for "an
-		// unrecognized flag, a bad flag value". Returning 1 here split one mistake
-		// down the middle and told a wrapper script that retrying might help.
-		if (error instanceof CliUsageError) {
-			process.stderr.write(`Error: ${error.message}\n\n`);
-			process.stderr.write(`USAGE\n  ${commandUsageLine(bin, entry.name, Cmd)}\n`);
-			process.stderr.write(`\nRun \`${bin} ${entry.name} --help\` for details.\n`);
-			process.exitCode = CLI_EXIT_USAGE;
-			return;
-		}
-		throw error;
+		if (!(error instanceof CliUsageError)) throw error;
+		process.stderr.write(`Error: ${error.message}\n\n`);
+		process.stderr.write(`USAGE\n  ${commandUsageLine(bin, entry.name, Cmd)}\n`);
+		process.stderr.write(`\nRun \`${bin} ${entry.name} --help\` for details.\n`);
+		process.exitCode = CLI_EXIT_USAGE;
 	}
 }
 

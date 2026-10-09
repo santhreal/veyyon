@@ -68,33 +68,38 @@ function trackBackground(current: string | undefined, params: string): string | 
 	const codes = params === "" ? ["0"] : params.split(";");
 	let background = current;
 	for (let i = 0; i < codes.length; i++) {
-		const code = codes[i];
-		if (code === "0" || code === "") background = undefined;
-		else if (code === "49") background = undefined;
+		const code = codes[i]!;
+		if (code === "0" || code === "" || code === "49") background = undefined;
 		else if (code === "48") {
 			// 48;2;r;g;b is truecolor and readable; 48;5;n is indexed and is not.
-			if (codes[i + 1] === "2") {
-				const r = Number(codes[i + 2]);
-				const g = Number(codes[i + 3]);
-				const b = Number(codes[i + 4]);
-				background =
-					Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b) ? toHexColor(r, g, b) : undefined;
+			const kind = codes[i + 1];
+			if (kind === "2") {
+				background = rgbBackground(codes[i + 2], codes[i + 3], codes[i + 4]);
 				i += 4;
-			} else if (codes[i + 1] === "5") {
+			} else if (kind === "5") {
 				background = undefined;
 				i += 2;
 			}
-		} else if (code.startsWith("48:")) {
-			// Colon form: `48:2::r:g:b` or `48:2:r:g:b`.
-			const parts = code.split(":").filter(part => part !== "");
-			if (parts[1] === "2" && parts.length >= 5) {
-				const [r, g, b] = parts.slice(-3).map(Number);
-				background =
-					Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b) ? toHexColor(r, g, b) : undefined;
-			} else background = undefined;
-		}
+		} else if (code.startsWith("48:")) background = colonBackground(code);
 	}
 	return background;
+}
+
+/** The background a colon-form `48:2::r:g:b` or `48:2:r:g:b` sets. Any other colon form is unreadable. */
+function colonBackground(code: string): string | undefined {
+	const parts = code.split(":").filter(part => part !== "");
+	const n = parts.length;
+	return parts[1] === "2" && n >= 5 ? rgbBackground(parts[n - 3], parts[n - 2], parts[n - 1]) : undefined;
+}
+
+/** The hex colour of a truecolor triple, or undefined when a component is missing or not a number. */
+function rgbBackground(r: string | undefined, g: string | undefined, b: string | undefined): string | undefined {
+	const red = Number(r);
+	const green = Number(g);
+	const blue = Number(b);
+	return Number.isFinite(red) && Number.isFinite(green) && Number.isFinite(blue)
+		? toHexColor(red, green, blue)
+		: undefined;
 }
 
 /**

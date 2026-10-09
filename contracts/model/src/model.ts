@@ -417,7 +417,7 @@ export interface OpenAICompat {
 	 * normalization (collapse `const`→`enum`, infer `type` on bare enums, strip
 	 * unsupported validators/`prefixItems`) because Moonshot/Kimi native hosts
 	 * reject standard JSON Schema constructs with HTTP 400. Default:
-	 * auto-detected (`"moonshot-mfjs"` on api.moonshot.ai / api.kimi.com). Set
+	 * auto-detected (`"moonshot-mfjs"` on api.moonshot.ai / api.kimi.com / api.kimi.ai). Set
 	 * `"none"` to opt a custom Moonshot-compatible host out.
 	 */
 	toolSchemaFlavor?: "moonshot-mfjs" | "none";

@@ -602,10 +602,21 @@ export function recordLaunchFacts(update: LaunchFactsUpdate): Promise<void> {
 	});
 }
 
-/** Every fact but the timestamp, which moves on each call and is not itself a fact about the entry. */
+/**
+ * Every fact but the timestamp, which moves on each call and is not itself a fact about the entry.
+ *
+ * Field by field, because a redraw that changed nothing runs this three times per frame. A merged
+ * entry shares an unchanged scan summary with the recorded one, so only a new summary is serialized.
+ */
 function sameFacts<T extends { recordedAt: number }>(left: T, right: T): boolean {
-	const strip = ({ recordedAt: _, ...rest }: T): Omit<T, "recordedAt"> => rest;
-	return JSON.stringify(strip(left)) === JSON.stringify(strip(right));
+	let facts = 0;
+	for (const key in left) {
+		if (key === "recordedAt") continue;
+		facts++;
+		if (left[key] !== right[key] && JSON.stringify(left[key]) !== JSON.stringify(right[key])) return false;
+	}
+	for (const key in right) if (key !== "recordedAt") facts--;
+	return facts === 0;
 }
 
 /** The newest {@link MAX_ENTRIES} entries, so neither map can grow without bound. */

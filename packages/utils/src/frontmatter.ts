@@ -10,26 +10,34 @@ function stripHtmlComments(content: string): string {
 /** Recursively normalize object keys from kebab-case to camelCase */
 function normalizeKeys<T>(obj: T): T {
 	if (obj === null || typeof obj !== "object") return obj;
-	if (Array.isArray(obj)) {
-		let changed = false;
-		const out: unknown[] = new Array(obj.length);
-		for (let i = 0; i < obj.length; i++) {
-			const v = obj[i];
-			const nv = normalizeKeys(v);
-			out[i] = nv;
-			if (nv !== v) changed = true;
-		}
-		return (changed ? (out as unknown) : obj) as T;
+	return (Array.isArray(obj) ? normalizeArrayKeys(obj) : normalizeRecordKeys(obj as Record<string, unknown>)) as T;
+}
+
+/** `items` with every element's keys normalized; `items` itself when no element changed. */
+function normalizeArrayKeys(items: unknown[]): unknown[] {
+	let changed = false;
+	const out: unknown[] = new Array(items.length);
+	for (let i = 0; i < items.length; i++) {
+		const v = items[i];
+		const nv = normalizeKeys(v);
+		out[i] = nv;
+		if (nv !== v) changed = true;
 	}
+	return changed ? out : items;
+}
+
+/** `record` with kebab-case keys in camelCase at every depth; `record` itself when no key or value changed. */
+function normalizeRecordKeys(record: Record<string, unknown>): Record<string, unknown> {
 	let changed = false;
 	const result: Record<string, unknown> = {};
-	for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+	for (const key of Object.keys(record)) {
+		const value = record[key];
 		const nk = key.includes("-") ? kebabToCamel(key) : key;
 		const nv = normalizeKeys(value);
 		result[nk] = nv;
 		if (nk !== key || nv !== value) changed = true;
 	}
-	return (changed ? result : obj) as T;
+	return changed ? result : record;
 }
 
 const PLAIN_SCALAR_KEY_VALUE = /^(\s*[A-Za-z_][\w-]*:\s+)(\S.*?)(\s*)$/;
@@ -55,6 +63,35 @@ function parseYamlRecord(metadata: string): Record<string, unknown> | null {
 	if (loaded === null || loaded === undefined) return null;
 	if (typeof loaded !== "object" || Array.isArray(loaded)) return null;
 	return loaded as Record<string, unknown>;
+}
+
+const KEY_VALUE_LINE = /^([\w-]+):\s*(.*)$/;
+
+/**
+ * Report the YAML failure `error` at `level`, thrown as a `FrontmatterError` at
+ * `fatal`, then read `metadata` as plain `key: value` lines over `frontmatter`.
+ */
+function keyValueFrontmatter(
+	metadata: string,
+	frontmatter: Record<string, unknown>,
+	error: unknown,
+	source: unknown,
+	level: "off" | "warn" | "fatal",
+): Record<string, unknown> {
+	const err = new FrontmatterError(error instanceof Error ? error : new Error(`YAML: ${error}`), source);
+	if (level === "warn" || level === "fatal") {
+		logger.warn("Failed to parse YAML frontmatter", { err: err.toString() });
+	}
+	if (level === "fatal") {
+		throw err;
+	}
+	for (const line of metadata.split("\n")) {
+		const match = line.match(KEY_VALUE_LINE);
+		if (match) {
+			frontmatter[match[1]] = match[2].trim();
+		}
+	}
+	return normalizeKeys(frontmatter);
 }
 
 export class FrontmatterError extends Error {
@@ -133,25 +170,7 @@ export function parseFrontmatter(
 			}
 		}
 
-		const err = new FrontmatterError(
-			error instanceof Error ? error : new Error(`YAML: ${error}`),
-			loc ?? `Inline '${truncate(content, 64)}'`,
-		);
-		if (level === "warn" || level === "fatal") {
-			logger.warn("Failed to parse YAML frontmatter", { err: err.toString() });
-		}
-		if (level === "fatal") {
-			throw err;
-		}
-
-		// Simple YAML parsing - just key: value pairs
-		for (const line of metadata.split("\n")) {
-			const match = line.match(/^([\w-]+):\s*(.*)$/);
-			if (match) {
-				frontmatter[match[1]] = match[2].trim();
-			}
-		}
-
-		return { frontmatter: normalizeKeys(frontmatter) as Record<string, unknown>, body };
+		const errorSource = loc ?? `Inline '${truncate(content, 64)}'`;
+		return { frontmatter: keyValueFrontmatter(metadata, frontmatter, error, errorSource, level), body };
 	}
 }

@@ -300,20 +300,23 @@ function delimColumn(key: string, height: number, baseline: number): Box | null 
 		return only ? { lines: [only], baseline: 0, width: visibleWidth(only) } : null;
 	}
 	const width = visibleWidth(pieces?.only ?? key);
+	if (pieces) return { lines: stretchedDelim(pieces, height, baseline), baseline, width };
 	const blank = spaces(width);
 	const lines: string[] = [];
-	if (!pieces) {
-		for (let y = 0; y < height; y++) lines.push(y === baseline ? key : blank);
-		return { lines, baseline, width };
-	}
-	const axisRow = clamp(baseline, 1, height - 2);
-	for (let y = 0; y < height; y++) {
-		if (y === 0) lines.push(pieces.top);
-		else if (y === height - 1) lines.push(pieces.bot);
-		else if (y === axisRow && pieces.axis) lines.push(pieces.axis);
-		else lines.push(pieces.mid);
-	}
+	for (let y = 0; y < height; y++) lines.push(y === baseline ? key : blank);
 	return { lines, baseline, width };
+}
+
+/**
+ * `height` (at least 2) rows of `pieces`: the top piece, the middle fill with the
+ * axis piece on the baseline row (kept off the two end rows), the bottom piece.
+ */
+function stretchedDelim(pieces: DelimPieces, height: number, baseline: number): string[] {
+	const axisRow = clamp(baseline, 1, height - 2);
+	const lines = [pieces.top];
+	for (let y = 1; y < height - 1; y++) lines.push(y === axisRow && pieces.axis ? pieces.axis : pieces.mid);
+	lines.push(pieces.bot);
+	return lines;
 }
 
 /** Wrap `inner` in (possibly stretched) delimiters, padding tall content. */
@@ -378,27 +381,44 @@ function limitsBox(glyph: Box, sub: Box | null, sup: Box | null): Box {
  */
 function attachScripts(base: Box, sub: Box | null, sup: Box | null): Box {
 	if (sub === null && sup === null) return base;
-	const single = base.lines.length === 1;
 	const width = Math.max(sub?.width ?? 0, sup?.width ?? 0);
 	const blank = spaces(width);
 	const lines: string[] = [];
 	let baseline = 0;
 	if (sup) {
-		const lift = single ? 1 : base.baseline;
-		for (const line of sup.lines) lines.push(padRight(line, width));
-		for (let k = 0; k < lift; k++) lines.push(blank);
+		pushPadded(lines, sup, width);
+		pushBlank(lines, base.lines.length === 1 ? 1 : base.baseline, blank);
 		baseline = lines.length - 1;
 	}
 	if (sub) {
-		const below = base.lines.length - 1 - base.baseline - (sub.lines.length - 1);
-		let drop = Math.max(below, single ? 1 : 0);
-		if (sup && drop < 1) drop = 1;
+		const drop = subscriptDrop(base, sub);
 		// Rows between the baseline row and the subscript's top row.
-		const gap = lines.length === 0 ? drop : drop - 1;
-		for (let k = 0; k < gap; k++) lines.push(blank);
-		for (const line of sub.lines) lines.push(padRight(line, width));
+		pushBlank(lines, lines.length === 0 ? drop : drop - 1, blank);
+		pushPadded(lines, sub, width);
 	}
 	return hconcat([base, { lines, baseline, width }]);
+}
+
+/**
+ * Rows from the base's baseline row down to the subscript's top row: level with
+ * the base's bottom row, and at least one row below a single-line base. Under a
+ * superscript, which ends on the baseline row, a drop of 0 places the subscript
+ * on the next row as a drop of 1 does, since `pushBlank` adds no row for a
+ * count below one.
+ */
+function subscriptDrop(base: Box, sub: Box): number {
+	const below = base.lines.length - 1 - base.baseline - (sub.lines.length - 1);
+	return Math.max(below, base.lines.length === 1 ? 1 : 0);
+}
+
+/** Append every line of `box` padded on the right to `width` visible columns. */
+function pushPadded(lines: string[], box: Box, width: number): void {
+	for (const line of box.lines) lines.push(padRight(line, width));
+}
+
+/** Append `count` copies of `blank`. */
+function pushBlank(lines: string[], count: number, blank: string): void {
+	for (let k = 0; k < count; k++) lines.push(blank);
 }
 
 /**
@@ -409,29 +429,14 @@ function attachScripts(base: Box, sub: Box | null, sup: Box | null): Box {
  * braces get a real middle piece even for two content rows.
  */
 function gridBox(rows: Box[][], align: (col: number) => CellAlign, gap: (col: number) => number, rowGap = 0): Box {
-	let ncols = 0;
-	for (const row of rows) ncols = Math.max(ncols, row.length);
-	if (ncols === 0 || rows.length === 0) return textBox("");
-	const widths = new Array<number>(ncols).fill(0);
-	for (const row of rows) {
-		row.forEach((cell, j) => {
-			widths[j] = Math.max(widths[j], cell.width);
-		});
-	}
+	const widths = columnWidths(rows);
+	if (widths.length === 0) return textBox("");
 	const rowBoxes: Box[] = [];
 	for (const row of rows) {
 		if (rowGap > 0 && rowBoxes.length > 0) {
 			for (let g = 0; g < rowGap; g++) rowBoxes.push({ lines: [""], baseline: 0, width: 0 });
 		}
-		const parts: Box[] = [];
-		for (let j = 0; j < ncols; j++) {
-			if (j > 0) {
-				const g = gap(j);
-				if (g > 0) parts.push({ lines: [spaces(g)], baseline: 0, width: g });
-			}
-			parts.push(padBox(row[j] ?? { lines: [""], baseline: 0, width: 0 }, widths[j], align(j)));
-		}
-		rowBoxes.push(hconcat(parts));
+		rowBoxes.push(gridRow(row, widths, align, gap));
 	}
 	const grid = vconcat(rowBoxes);
 	if (rowGap > 0 && rows.length > 1 && grid.lines.length % 2 === 0) {
@@ -440,40 +445,56 @@ function gridBox(rows: Box[][], align: (col: number) => CellAlign, gap: (col: nu
 	return grid;
 }
 
+/** The widest cell of each column; as many columns as the longest row has cells. */
+function columnWidths(rows: Box[][]): number[] {
+	const widths: number[] = [];
+	for (const row of rows) {
+		for (let j = 0; j < row.length; j++) widths[j] = Math.max(widths[j] ?? 0, row[j].width);
+	}
+	return widths;
+}
+
+/** One grid row: each cell padded to its column's width and alignment, `gap(col)` columns before each later cell. */
+function gridRow(row: Box[], widths: number[], align: (col: number) => CellAlign, gap: (col: number) => number): Box {
+	const parts: Box[] = [];
+	for (let j = 0; j < widths.length; j++) {
+		const g = j > 0 ? gap(j) : 0;
+		if (g > 0) parts.push({ lines: [spaces(g)], baseline: 0, width: g });
+		parts.push(padBox(row[j] ?? { lines: [""], baseline: 0, width: 0 }, widths[j], align(j)));
+	}
+	return hconcat(parts);
+}
+
 interface Span {
 	text: string;
 	end: number;
 }
 
-/** Read a balanced `{…}` beginning at `i` (which must point at `{`). */
+const BACKSLASH = 0x5c;
+const OPEN_BRACE = 0x7b;
+const CLOSE_BRACE = 0x7d;
+
+/**
+ * Read a balanced `{…}` beginning at `i` (which must point at `{`): the text
+ * between the outer braces, escapes and inner groups verbatim. An unbalanced
+ * group runs to the end of `src`.
+ */
 function readBraceGroup(src: string, i: number): Span {
 	let depth = 0;
-	let out = "";
 	let j = i;
 	for (; j < src.length; j++) {
-		const c = src[j];
-		if (c === "\\") {
-			out += c + (src[j + 1] ?? "");
-			j++;
-			continue;
-		}
-		if (c === "{") {
-			depth++;
-			if (depth > 1) out += c;
-			continue;
-		}
-		if (c === "}") {
-			depth--;
-			if (depth === 0) {
-				j++;
-				break;
-			}
-			out += c;
-			continue;
-		}
-		out += c;
+		const c = src.charCodeAt(j);
+		if (c === BACKSLASH) j++;
+		else if (c === OPEN_BRACE) depth++;
+		else if (c === CLOSE_BRACE && --depth === 0) return { text: src.slice(i + 1, j), end: j + 1 };
 	}
-	return { text: out, end: j };
+	return { text: src.slice(i + 1), end: j };
+}
+
+/** The index after the run of ASCII letters starting at `j`. */
+function letterRunEnd(src: string, j: number): number {
+	while (isAsciiLetter(src.charCodeAt(j))) j++;
+	return j;
 }
 
 /**
@@ -486,26 +507,27 @@ function readArg(src: string, i: number): Span {
 	if (i >= src.length) return { text: "", end: i };
 	if (src[i] === "{") return readBraceGroup(src, i);
 	if (src[i] !== "\\") return { text: src[i], end: i + 1 };
-	let j = i + 1;
-	let name = "";
-	while (/[A-Za-z]/.test(src[j] ?? "")) {
-		name += src[j];
-		j++;
-	}
-	if (name === "begin") {
+	const j = letterRunEnd(src, i + 1);
+	if (j === i + 1) return { text: src.slice(i, i + 2), end: i + 2 }; // non-letter command (\,, \{, …)
+	if (j === i + 6 && src.startsWith("begin", i + 1)) {
 		const env = consumeEnvironment(src, i);
 		if (env) return env;
 	}
-	if (!name) return { text: src.slice(i, i + 2), end: i + 2 }; // non-letter command (\,, \{, …)
-	let end = j;
-	while (src[end] === "[" || src[end] === "{") {
-		if (src[end] === "{") end = readBraceGroup(src, end).end;
-		else {
-			const close = src.indexOf("]", end);
-			end = close === -1 ? src.length : close + 1;
+	const end = skipAttachedArgs(src, j);
+	return { text: src.slice(i, end), end };
+}
+
+/** The index after the `[…]`/`{…}` arguments attached at `j`; an unclosed `[` runs to the end of `src`. */
+function skipAttachedArgs(src: string, j: number): number {
+	while (src[j] === "[" || src[j] === "{") {
+		if (src[j] === "{") {
+			j = readBraceGroup(src, j).end;
+		} else {
+			const close = src.indexOf("]", j);
+			j = close === -1 ? src.length : close + 1;
 		}
 	}
-	return { text: src.slice(i, end), end };
+	return j;
 }
 
 /** Read a `\left`/`\right`/`\middle` delimiter token (char or `\command`). */
@@ -513,10 +535,9 @@ function readDelimToken(src: string, i: number): Span | null {
 	while (src[i] === " ") i++;
 	if (i >= src.length) return null;
 	if (src[i] !== "\\") return { text: src[i], end: i + 1 };
-	let j = i + 1;
-	if (!/[A-Za-z]/.test(src[j] ?? "")) return { text: src.slice(i, j + 1), end: j + 1 };
-	while (/[A-Za-z]/.test(src[j] ?? "")) j++;
-	return { text: src.slice(i, j), end: j };
+	const j = letterRunEnd(src, i + 1);
+	const end = j === i + 1 ? j + 1 : j;
+	return { text: src.slice(i, end), end };
 }
 
 /** Piece-table key for a delimiter token; unknown commands resolve via Unicode. */
@@ -544,37 +565,59 @@ function readLeftRight(src: string, start: number): LeftRightParts | null {
 	let depth = 1;
 	let k = left.end;
 	let segStart = k;
-	while (k < src.length) {
-		if (src[k] !== "\\") {
-			k++;
-			continue;
-		}
-		if (src.startsWith("\\left", k) && !/[A-Za-z]/.test(src[k + 5] ?? "")) {
+	for (let cmd = nextDelimCommand(src, k); cmd !== null; cmd = nextDelimCommand(src, k)) {
+		if (cmd.name === "middle" && depth !== 1) {
+			k = cmd.at + 2; // a nested pair's `\middle`: only its head is skipped
+		} else if (cmd.name === "left") {
 			depth++;
-			const tok = readDelimToken(src, k + 5);
-			k = tok ? tok.end : k + 5;
-			continue;
-		}
-		if (src.startsWith("\\right", k) && !/[A-Za-z]/.test(src[k + 6] ?? "")) {
-			depth--;
-			const tok = readDelimToken(src, k + 6);
-			if (depth === 0) {
-				segments.push(src.slice(segStart, k));
-				return { left: left.text, segments, middles, right: tok ? tok.text : ".", end: tok ? tok.end : k + 6 };
+			k = delimTokenAfter(src, cmd).end;
+		} else if (cmd.name === "middle") {
+			segments.push(src.slice(segStart, cmd.at));
+			const tok = delimTokenAfter(src, cmd);
+			middles.push(tok.text);
+			k = segStart = tok.end;
+		} else {
+			const tok = delimTokenAfter(src, cmd);
+			if (--depth === 0) {
+				segments.push(src.slice(segStart, cmd.at));
+				return { left: left.text, segments, middles, right: tok.text, end: tok.end };
 			}
-			k = tok ? tok.end : k + 6;
-			continue;
+			k = tok.end;
 		}
-		if (depth === 1 && src.startsWith("\\middle", k) && !/[A-Za-z]/.test(src[k + 7] ?? "")) {
-			segments.push(src.slice(segStart, k));
-			const tok = readDelimToken(src, k + 7);
-			middles.push(tok ? tok.text : "|");
-			k = segStart = tok ? tok.end : k + 7;
-			continue;
-		}
-		k += 2; // escaped char / other command head — never a boundary
 	}
 	return null; // unbalanced
+}
+
+const DELIM_COMMANDS = ["left", "right", "middle"] as const;
+
+interface DelimCommand {
+	name: (typeof DELIM_COMMANDS)[number];
+	/** Index of the command's backslash. */
+	at: number;
+}
+
+/**
+ * The next `\left`, `\right` or `\middle` at or after `k` (not `\leftarrow`);
+ * any other backslash skips the character after it, so an escaped `\\left`
+ * never reads as a command.
+ */
+function nextDelimCommand(src: string, k: number): DelimCommand | null {
+	for (let at = src.indexOf("\\", k); at !== -1; at = src.indexOf("\\", at + 2)) {
+		for (const name of DELIM_COMMANDS) {
+			if (src.startsWith(name, at + 1) && !isAsciiLetter(src.charCodeAt(at + 1 + name.length))) return { name, at };
+		}
+	}
+	return null;
+}
+
+/**
+ * The delimiter token after `cmd`, or the null delimiter `.` ending right after the
+ * command when the source ends there. Only a `\right` can end the source and still
+ * close the pair, and `.` draws nothing in its place.
+ */
+function delimTokenAfter(src: string, cmd: DelimCommand): Span {
+	const start = cmd.at + 1 + cmd.name.length;
+	return readDelimToken(src, start) ?? { text: ".", end: start };
 }
 
 /**
@@ -615,27 +658,37 @@ function readEnvironment(src: string, start: number): EnvParts | null {
 	while (src[i] === " ") i++;
 	if (src[i] !== "{") return null;
 	const nameGroup = readBraceGroup(src, i);
-	let k = nameGroup.end;
+	return closeEnvironment(src, nameGroup.text.trim(), nameGroup.end);
+}
+
+/**
+ * The parts of environment `env` whose body starts at `bodyStart`: the body ends
+ * at the backslash of the balancing `\end`, the block after its `{…}` name. With
+ * no balancing `\end`, both run to the end of `src`.
+ */
+function closeEnvironment(src: string, env: string, bodyStart: number): EnvParts {
 	let depth = 1;
-	let bodyEnd = src.length;
-	while (k < src.length && depth > 0) {
+	let k = bodyStart;
+	while (k < src.length) {
 		if (src.startsWith("\\begin", k)) {
 			depth++;
 			k += 6;
-			continue;
+		} else if (src.startsWith("\\end", k)) {
+			const bodyEnd = k;
+			k = skipEnvironmentName(src, k + 4);
+			if (--depth === 0) return { env, bodyStart, bodyEnd, end: k };
+		} else {
+			const next = src.indexOf("\\", k + 1);
+			k = next === -1 ? src.length : next;
 		}
-		if (src.startsWith("\\end", k)) {
-			depth--;
-			if (depth === 0) bodyEnd = k;
-			k += 4;
-			while (src[k] === " ") k++;
-			if (src[k] === "{") k = readBraceGroup(src, k).end;
-			if (depth === 0) break;
-			continue;
-		}
-		k++;
 	}
-	return { env: nameGroup.text.trim(), bodyStart: nameGroup.end, bodyEnd, end: k };
+	return { env, bodyStart, bodyEnd: src.length, end: k };
+}
+
+/** The index after the spaces and `{…}` name that follow `\end` at `k`. */
+function skipEnvironmentName(src: string, k: number): number {
+	while (src[k] === " ") k++;
+	return src[k] === "{" ? readBraceGroup(src, k).end : k;
 }
 
 /** The full `\begin{env}…\end{env}` substring as an inline run. */
@@ -645,88 +698,89 @@ function consumeEnvironment(src: string, start: number): Span | null {
 }
 
 /**
+ * Brace and environment depth while scanning source left to right, so a
+ * separator counts only at the top level.
+ */
+class NestingDepth {
+	#braces = 0;
+	#environments = 0;
+
+	get topLevel(): boolean {
+		return this.#braces === 0 && this.#environments === 0;
+	}
+
+	/**
+	 * The index after the construct at `i`, counting `\begin`, `\end` and braces.
+	 * Any other backslash spans two characters, so `\{` and `\\` never change the depth.
+	 */
+	advance(src: string, i: number): number {
+		const c = src.charCodeAt(i);
+		if (c === BACKSLASH) {
+			if (src.startsWith("begin", i + 1)) {
+				this.#environments++;
+				return i + 6;
+			}
+			if (src.startsWith("end", i + 1)) {
+				this.#environments--;
+				return i + 4;
+			}
+			return i + 2;
+		}
+		if (c === OPEN_BRACE) this.#braces++;
+		else if (c === CLOSE_BRACE) this.#braces--;
+		return i + 1;
+	}
+}
+
+/**
  * Split on top-level `\\` row breaks (depth-aware: never inside braces or a nested
  * environment). An environment body has no other row separator; display source
  * also breaks on a top-level `\n`, so `latexToBlock` passes `newlineBreaks`.
  */
 function splitRowBreaks(src: string, newlineBreaks: boolean): string[] {
 	const rows: string[] = [];
-	let braceDepth = 0;
-	let envDepth = 0;
+	const depth = new NestingDepth();
 	let last = 0;
 	let i = 0;
 	while (i < src.length) {
-		if (src.startsWith("\\begin", i)) {
-			envDepth++;
-			i += 6;
-			continue;
-		}
-		if (src.startsWith("\\end", i)) {
-			envDepth--;
-			i += 4;
-			continue;
-		}
-		const c = src[i];
-		if (c === "\\") {
-			if (src[i + 1] === "\\" && braceDepth === 0 && envDepth === 0) {
-				rows.push(src.slice(last, i));
-				i += 2;
-				while (src[i] === " ") i++;
-				if (src[i] === "[") {
-					const close = src.indexOf("]", i);
-					i = close === -1 ? src.length : close + 1;
-				}
-				last = i;
-				continue;
-			}
-			i += 2; // skip escaped char / second backslash so `\{`/`\\` never skew depth
-			continue;
-		}
-		if (c === "{") braceDepth++;
-		else if (c === "}") braceDepth--;
-		else if (c === "\n" && newlineBreaks && braceDepth === 0 && envDepth === 0) {
+		if (src.charCodeAt(i) === BACKSLASH && src.charCodeAt(i + 1) === BACKSLASH && depth.topLevel) {
 			rows.push(src.slice(last, i));
-			last = i + 1;
+			i = last = skipRowBreakSpacing(src, i + 2);
+		} else if (newlineBreaks && src[i] === "\n" && depth.topLevel) {
+			rows.push(src.slice(last, i));
+			last = ++i;
+		} else {
+			i = depth.advance(src, i);
 		}
-		i++;
 	}
 	rows.push(src.slice(last));
 	return rows;
 }
 
+/** The index after the spaces and optional `[…]` spacing argument following a `\\` row break at `i`. */
+function skipRowBreakSpacing(src: string, i: number): number {
+	while (src[i] === " ") i++;
+	if (src[i] !== "[") return i;
+	const close = src.indexOf("]", i);
+	return close === -1 ? src.length : close + 1;
+}
+
 /** Split a row on top-level `&` column separators (depth-aware), trimming cells. */
 function splitCells(row: string): string[] {
 	const cells: string[] = [];
-	let braceDepth = 0;
-	let envDepth = 0;
+	const depth = new NestingDepth();
 	let last = 0;
 	let i = 0;
 	while (i < row.length) {
-		if (row.startsWith("\\begin", i)) {
-			envDepth++;
-			i += 6;
-			continue;
+		if (row[i] === "&" && depth.topLevel) {
+			cells.push(row.slice(last, i).trim());
+			last = ++i;
+		} else {
+			i = depth.advance(row, i);
 		}
-		if (row.startsWith("\\end", i)) {
-			envDepth--;
-			i += 4;
-			continue;
-		}
-		const c = row[i];
-		if (c === "\\") {
-			i += 2; // `\&` and command heads never split
-			continue;
-		}
-		if (c === "{") braceDepth++;
-		else if (c === "}") braceDepth--;
-		else if (c === "&" && braceDepth === 0 && envDepth === 0) {
-			cells.push(row.slice(last, i));
-			last = i + 1;
-		}
-		i++;
 	}
-	cells.push(row.slice(last));
-	return cells.map(cell => cell.trim());
+	cells.push(row.slice(last).trim());
+	return cells;
 }
 
 /** Append a script (`^`/`_`) and its argument to the inline run verbatim. */
@@ -742,9 +796,8 @@ function readScript(src: string, i: number): Span {
 		return { text: `${out}{${group.text}}`, end: group.end };
 	}
 	if (src[i] === "\\") {
-		let j = i + 1;
-		if (/[A-Za-z]/.test(src[j] ?? "")) while (/[A-Za-z]/.test(src[j] ?? "")) j++;
-		else j++;
+		let j = letterRunEnd(src, i + 1);
+		if (j === i + 1) j++;
 		return { text: out + src.slice(i, j), end: j };
 	}
 	if (i < src.length) return { text: out + src[i], end: i + 1 };
@@ -756,6 +809,26 @@ function scriptArgOf(text: string): string {
 	let arg = text.slice(1).trimStart();
 	if (arg.startsWith("{") && arg.endsWith("}")) arg = arg.slice(1, -1);
 	return arg;
+}
+
+/** A `^`/`_` script and an immediately following opposite script (`M_i^j`), read as one pair. */
+interface ScriptPair {
+	sup: string | undefined;
+	sub: string | undefined;
+	end: number;
+}
+
+/**
+ * Read the `c` script at `i` together with an immediately following opposite
+ * script, so both land in one shared column instead of two successive ones.
+ */
+function readScriptPair(src: string, i: number, c: "^" | "_"): ScriptPair {
+	const first = readScript(src, i);
+	let n = first.end;
+	while (src[n] === " ") n++;
+	const second = src[n] === (c === "^" ? "_" : "^") ? readScript(src, n) : null;
+	const end = second === null ? first.end : second.end;
+	return c === "^" ? { sup: first.text, sub: second?.text, end } : { sup: second?.text, sub: first.text, end };
 }
 
 /**
@@ -770,38 +843,67 @@ function parseEnvironment(src: string, start: number, ctx: Ctx): { box: Box; end
 	const starred = env.env.endsWith("*");
 	const base = starred ? env.env.slice(0, -1) : env.env;
 	const gridDelims = GRID_ENVIRONMENTS.get(base);
-	if (gridDelims) {
-		let p = env.bodyStart;
-		while (src[p] === " " || src[p] === "\n" || src[p] === "\t") p++;
-		if (starred && src[p] === "[") {
-			// Starred matrix variants take an optional alignment argument.
-			const close = src.indexOf("]", p);
-			if (close !== -1 && close < env.bodyEnd) {
-				p = close + 1;
-				while (src[p] === " " || src[p] === "\n" || src[p] === "\t") p++;
-			}
-		}
-		let colSpec: CellAlign[] | null = null;
-		if (base === "array" && src[p] === "{") {
-			const spec = readBraceGroup(src, p);
-			colSpec = [...spec.text].filter((ch): ch is CellAlign => ch === "l" || ch === "c" || ch === "r");
-			p = spec.end;
-		}
-		const cells = splitRowBreaks(src.slice(p, env.bodyEnd), false)
-			.map(row => row.trim())
-			.filter(row => row !== "")
-			.map(row => splitCells(row).map(cell => parseExpr(cell, ctx)));
-		const isCases = base === "cases" || base === "dcases" || base === "rcases" || base === "drcases";
-		const align: (col: number) => CellAlign = colSpec ? col => colSpec[col] ?? "c" : isCases ? () => "l" : () => "c";
-		const grid = gridBox(cells, align, () => 2, 1);
-		return { box: delimBox(grid, gridDelims[0], gridDelims[1]), end: env.end };
+	let box: Box;
+	if (gridDelims) box = gridEnvironmentBox(src, env, base, starred, gridDelims, ctx);
+	else if (DISPLAY_ROW_ENVIRONMENTS.has(base)) box = rowEnvironmentBox(src, env, base, ctx);
+	else box = textBox(latexToUnicode(ctx.wrap(src.slice(start, env.end))));
+	return { box, end: env.end };
+}
+
+const CASES_ENVIRONMENTS: ReadonlySet<string> = new Set(["cases", "dcases", "rcases", "drcases"]);
+
+/** A matrix-family, cases or array body as a grid of parsed cells inside its stretched delimiters. */
+function gridEnvironmentBox(
+	src: string,
+	env: EnvParts,
+	base: string,
+	starred: boolean,
+	delims: readonly [string, string],
+	ctx: Ctx,
+): Box {
+	let p = skipLayoutSpace(src, env.bodyStart);
+	if (starred && src[p] === "[") {
+		// Starred matrix variants take an optional alignment argument.
+		const close = src.indexOf("]", p);
+		if (close !== -1 && close < env.bodyEnd) p = skipLayoutSpace(src, close + 1);
 	}
-	if (!DISPLAY_ROW_ENVIRONMENTS.has(base)) {
-		return { box: textBox(latexToUnicode(ctx.wrap(src.slice(start, env.end)))), end: env.end };
+	let colSpec: CellAlign[] | null = null;
+	if (base === "array" && src[p] === "{") {
+		const spec = readBraceGroup(src, p);
+		colSpec = [...spec.text].filter((ch): ch is CellAlign => ch === "l" || ch === "c" || ch === "r");
+		p = spec.end;
 	}
+	const cells = splitRowBreaks(src.slice(p, env.bodyEnd), false)
+		.map(row => row.trim())
+		.filter(row => row !== "")
+		.map(row => splitCells(row).map(cell => parseExpr(cell, ctx)));
+	const align: (col: number) => CellAlign = colSpec
+		? col => colSpec[col] ?? "c"
+		: CASES_ENVIRONMENTS.has(base)
+			? () => "l"
+			: () => "c";
+	return delimBox(
+		gridBox(cells, align, () => 2, 1),
+		delims[0],
+		delims[1],
+	);
+}
+
+/** The index after the spaces, newlines and tabs at `p`. */
+function skipLayoutSpace(src: string, p: number): number {
+	while (src[p] === " " || src[p] === "\n" || src[p] === "\t") p++;
+	return p;
+}
+
+// Row environments that take a required column-count argument `{n}` before the body.
+const COLUMN_COUNT_ENVIRONMENTS: ReadonlySet<string> = new Set(["alignat", "alignedat", "gatheredat"]);
+// Row environments whose single-column rows are centered rather than left-aligned.
+const CENTERED_ROW_ENVIRONMENTS: ReadonlySet<string> = new Set(["gather", "gathered", "multline"]);
+
+/** An `align`/`gather`-family body: each `\\` row parsed, with `&` columns aligned. */
+function rowEnvironmentBox(src: string, env: EnvParts, base: string, ctx: Ctx): Box {
 	let bodyStart = env.bodyStart;
-	if (base === "alignat" || base === "alignedat" || base === "gatheredat") {
-		// These carry a required column-count argument `{n}` before the body.
+	if (COLUMN_COUNT_ENVIRONMENTS.has(base)) {
 		let p = bodyStart;
 		while (src[p] === " " || src[p] === "\n") p++;
 		if (src[p] === "{") bodyStart = readBraceGroup(src, p).end;
@@ -809,28 +911,23 @@ function parseEnvironment(src: string, start: number, ctx: Ctx): { box: Box; end
 	const rows = splitRowBreaks(src.slice(bodyStart, env.bodyEnd), false)
 		.map(row => row.trim())
 		.filter(row => row !== "");
-	if (rows.length === 0) return { box: textBox(""), end: env.end };
+	if (rows.length === 0) return textBox("");
 	const cellRows = rows.map(splitCells);
 	let ncols = 0;
 	for (const row of cellRows) ncols = Math.max(ncols, row.length);
 	if (ncols <= 1) {
-		const centered = base === "gather" || base === "gathered" || base === "multline";
-		return {
-			box: vconcat(
-				rows.map(row => parseExpr(row, ctx)),
-				centered ? "c" : "l",
-			),
-			end: env.end,
-		};
+		return vconcat(
+			rows.map(row => parseExpr(row, ctx)),
+			CENTERED_ROW_ENVIRONMENTS.has(base) ? "c" : "l",
+		);
 	}
 	// `align`-family semantics: columns alternate right/left in `rl` pairs, a
 	// thin gap inside each pair and a wide gap between pairs.
-	const grid = gridBox(
+	return gridBox(
 		cellRows.map(row => row.map(cell => parseExpr(cell, ctx))),
 		col => (col % 2 === 0 ? "r" : "l"),
 		col => (col % 2 === 1 ? 1 : 3),
 	);
-	return { box: grid, end: env.end };
 }
 
 /**
@@ -908,6 +1005,34 @@ function leftRightBox(lr: LeftRightParts, segments: Box[], height: number, above
 	return hconcat(parts);
 }
 
+/** The `[model]{color}` arguments of `\textcolor`, re-emitted as `prefix`, and the scope they select. */
+interface TextColorSpec {
+	prefix: string;
+	scope: ((text: string) => string) | null;
+	/** Index after the color argument and the spaces following it. */
+	end: number;
+}
+
+/** The `\textcolor` color arguments at `k`; null when no `{color}` argument follows. */
+function readTextColorSpec(src: string, k: number): TextColorSpec | null {
+	let model: string | null = null;
+	let prefix = "";
+	if (src[k] === "[") {
+		const close = src.indexOf("]", k);
+		if (close !== -1) {
+			model = src.slice(k + 1, close).trim();
+			prefix = src.slice(k, close + 1);
+			k = close + 1;
+			while (src[k] === " ") k++;
+		}
+	}
+	if (src[k] !== "{") return null;
+	const spec = readBraceGroup(src, k);
+	let end = spec.end;
+	while (src[end] === " ") end++;
+	return { prefix: `${prefix}{${spec.text}}`, scope: latexColorScope(model, spec.text), end };
+}
+
 /**
  * One left-to-right pass over a math fragment. Finished 2-D constructs collect
  * in `#boxes`; flat text accumulates in `#inline` and becomes one
@@ -976,24 +1101,29 @@ class ExprParser {
 
 	#command(): void {
 		const src = this.#src;
-		let j = this.#i + 1;
-		while (j < src.length && isAsciiLetter(src.charCodeAt(j))) j++;
+		const j = letterRunEnd(src, this.#i + 1);
 		const name = src.slice(this.#i + 1, j);
 		if (!name) {
 			// Non-letter command (`\\`, `\,`, `\{`, …): keep the 2-char token inline.
 			this.#inline += `\\${src[j] ?? ""}`;
 			this.#i = j + 1;
-			return;
+		} else if (!this.#layoutCommand(name, j)) {
+			this.#otherCommand(name, j);
 		}
-		if (FRAC_COMMANDS.has(name)) return this.#twoArgs(j, fracBox);
-		if (BINOM_COMMANDS.has(name)) return this.#twoArgs(j, binomBox);
-		if (name === "sqrt") return this.#sqrt(j);
-		if (name === "left" && this.#leftRight()) return;
-		if (LIMIT_OPERATORS.has(name) || INTEGRAL_OPERATORS.has(name)) return this.#bigOperator(name, j);
-		if (name === "color" || name === "normalcolor") return this.#setColor(name, j);
-		if (name === "begin" && this.#environment()) return;
-		if ((MATH_FONT_COMMANDS.has(name) || name === "textcolor") && this.#scopedWrapper(name, j)) return;
-		this.#otherCommand(name, j);
+	}
+
+	/** Lay out a command with a 2-D form; false when `name` stays an ordinary inline command. */
+	#layoutCommand(name: string, j: number): boolean {
+		if (FRAC_COMMANDS.has(name)) this.#twoArgs(j, fracBox);
+		else if (BINOM_COMMANDS.has(name)) this.#twoArgs(j, binomBox);
+		else if (name === "sqrt") this.#sqrt(j);
+		else if (name === "left") return this.#leftRight();
+		else if (LIMIT_OPERATORS.has(name) || INTEGRAL_OPERATORS.has(name)) this.#bigOperator(name, j);
+		else if (name === "color" || name === "normalcolor") this.#setColor(name, j);
+		else if (name === "begin") return this.#environment();
+		else if (MATH_FONT_COMMANDS.has(name) || name === "textcolor") return this.#scopedWrapper(name, j);
+		else return false;
+		return true;
 	}
 
 	/** `\frac{a}{b}` / `\binom{n}{k}`: two arguments laid out by `layout`. */
@@ -1157,26 +1287,15 @@ class ExprParser {
 		let prefix = `\\${name}`;
 		let scope: ((text: string) => string) | null = null;
 		if (name === "textcolor") {
-			let model: string | null = null;
-			if (src[k] === "[") {
-				const close = src.indexOf("]", k);
-				if (close !== -1) {
-					model = src.slice(k + 1, close).trim();
-					prefix += src.slice(k, close + 1);
-					k = close + 1;
-					while (src[k] === " ") k++;
-				}
-			}
-			if (src[k] !== "{") {
-				this.#inline += `\\${name}`;
+			const color = readTextColorSpec(src, k);
+			if (color === null) {
+				this.#inline += prefix;
 				this.#i = j;
 				return true;
 			}
-			const spec = readBraceGroup(src, k);
-			prefix += `{${spec.text}}`;
-			scope = latexColorScope(model, spec.text);
-			k = spec.end;
-			while (src[k] === " ") k++;
+			prefix += color.prefix;
+			scope = color.scope;
+			k = color.end;
 		}
 		if (src[k] !== "{") return false;
 		const content = readBraceGroup(src, k);
@@ -1215,23 +1334,13 @@ class ExprParser {
 
 	/** `^`/`_` scripts, consuming an immediately following opposite script. */
 	#scripts(c: "^" | "_"): void {
-		const src = this.#src;
 		const start = this.#i;
-		const first = readScript(src, start);
-		// Consume an immediately following opposite script (`M_i^j`) so both
-		// land in one shared column instead of two successive ones.
-		let second: Span | null = null;
-		let n = first.end;
-		while (src[n] === " ") n++;
-		if (src[n] === (c === "^" ? "_" : "^")) second = readScript(src, n);
-		const end = second === null ? first.end : second.end;
-		const supText = c === "^" ? first.text : second?.text;
-		const subText = c === "_" ? first.text : second?.text;
-		const supBox = supText === undefined ? null : parseExpr(scriptArgOf(supText), this.#inner());
-		const subBox = subText === undefined ? null : parseExpr(scriptArgOf(subText), this.#inner());
+		const { sup, sub, end } = readScriptPair(this.#src, start, c);
+		const supBox = sup === undefined ? null : parseExpr(scriptArgOf(sup), this.#inner());
+		const subBox = sub === undefined ? null : parseExpr(scriptArgOf(sub), this.#inner());
 		this.#i = end;
 		const tall = (supBox !== null && supBox.lines.length > 1) || (subBox !== null && subBox.lines.length > 1);
-		if (tall || isUnconvertibleScript(supText) || isUnconvertibleScript(subText)) {
+		if (tall || isUnconvertibleScript(sup) || isUnconvertibleScript(sub)) {
 			// Block script (`x^{\frac{1}{2}}`, `x^q`): raise/lower the boxes
 			// against the run or box they follow.
 			this.#flush();
@@ -1245,10 +1354,10 @@ class ExprParser {
 			// Scripts directly on a tall box (`M^T`, `\right|_{x=a}`): pin
 			// the Unicode script glyphs (guaranteed convertible here after
 			// the gate above) to its corners.
-			boxes[boxes.length - 1] = this.#paint(attachScripts(last, this.#corner(subText), this.#corner(supText)));
+			boxes[boxes.length - 1] = this.#paint(attachScripts(last, this.#corner(sub), this.#corner(sup)));
 			return;
 		}
-		this.#inline += src.slice(start, end);
+		this.#inline += this.#src.slice(start, end);
 	}
 
 	/** A convertible script as a flat corner glyph in the active color. */

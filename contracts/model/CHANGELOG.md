@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The `toolSchemaFlavor` documentation lists api.kimi.ai among the hosts that select `"moonshot-mfjs"` automatically; the type is unchanged.
+
 ## [1.5.0] - 2026-09-18
 
 ### Added

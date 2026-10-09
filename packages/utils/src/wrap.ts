@@ -85,35 +85,44 @@ const HANGING_INDENT_MIN_TEXT = 4;
  * cells: the native hanging indent writes the indent's spaces first, then its sequences in order.
  */
 function fittingRow(text: string, width: number): string | undefined {
-	let cells = 0;
 	let indent = 0;
-	let contentAt = -1;
-	let escapeInIndent = false;
+	let escapeSeen = false;
 	let reordered = false;
-	for (let i = 0; i < text.length; i++) {
-		const code = text.charCodeAt(i);
+	let contentAt = 0;
+	for (; contentAt < text.length; contentAt++) {
+		const code = text.charCodeAt(contentAt);
 		if (code === 0x1b) {
-			if (text.charCodeAt(i + 1) !== 0x5b) return undefined;
-			let end = i + 2;
-			for (; end < text.length; end++) {
-				const param = text.charCodeAt(end);
-				if (param < 0x30 || param > 0x3b) break;
-			}
-			if (text.charCodeAt(end) !== 0x6d) return undefined;
-			if (contentAt === -1) escapeInIndent = true;
-			i = end;
-			continue;
-		}
-		if ((code < 0x20 || code > 0x7e) && !isOneCellCluster(code)) return undefined;
-		if (++cells > width) return undefined;
-		if (contentAt !== -1) continue;
-		if (code !== 0x20) contentAt = i;
-		else {
+			contentAt = sgrEnd(text, contentAt);
+			if (contentAt < 0) return undefined;
+			escapeSeen = true;
+		} else if (code === 0x20) {
 			indent++;
-			if (escapeInIndent) reordered = true;
+			reordered ||= escapeSeen;
+		} else {
+			break;
 		}
 	}
-	if (!reordered || contentAt === -1 || indent + HANGING_INDENT_MIN_TEXT > width) return text;
+	if (indent > width || !fitsFrom(text, contentAt, indent, width)) return undefined;
+	if (!reordered || contentAt === text.length || indent + HANGING_INDENT_MIN_TEXT > width) return text;
+	return hungRow(text, indent, contentAt);
+}
+
+/** Whether `text` from `start` holds only printable ASCII, SGR and one-cell units, fitting `width` with `cells` used. */
+function fitsFrom(text: string, start: number, cells: number, width: number): boolean {
+	for (let i = start; i < text.length; i++) {
+		const code = text.charCodeAt(i);
+		if (code === 0x1b) {
+			i = sgrEnd(text, i);
+			if (i < 0) return false;
+		} else if (((code < 0x20 || code > 0x7e) && !isOneCellCluster(code)) || ++cells > width) {
+			return false;
+		}
+	}
+	return true;
+}
+
+/** The row the native hanging indent writes: the indent's spaces, then its SGR sequences in order, then the content. */
+function hungRow(text: string, indent: number, contentAt: number): string {
 	let row = " ".repeat(indent);
 	for (let i = 0; i < contentAt; i++) {
 		if (text.charCodeAt(i) === 0x20) continue;
@@ -122,6 +131,17 @@ function fittingRow(text: string, width: number): string | undefined {
 		i = end - 1;
 	}
 	return row + text.slice(contentAt);
+}
+
+/** The index of the `m` closing the SGR sequence that starts at `start`, or -1 when none does. */
+function sgrEnd(text: string, start: number): number {
+	if (text.charCodeAt(start + 1) !== 0x5b) return -1;
+	let end = start + 2;
+	for (; end < text.length; end++) {
+		const param = text.charCodeAt(end);
+		if (param < 0x30 || param > 0x3b) break;
+	}
+	return text.charCodeAt(end) === 0x6d ? end : -1;
 }
 
 /**

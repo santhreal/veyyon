@@ -9,17 +9,18 @@ import {
 	type Scenario,
 } from "./render-stress-harness";
 
-function extractReplayOperations(parsed: unknown): OperationKind[] {
-	const entries = Array.isArray(parsed)
-		? parsed
-		: isRecord(parsed) && Array.isArray(parsed.opLog)
-			? parsed.opLog
-			: isRecord(parsed) && Array.isArray(parsed.operations)
-				? parsed.operations
-				: null;
-	if (entries === null) {
-		throw new Error("Replay log must be an array, { opLog }, or { operations }.");
+/** The entries of a replay log: a bare array, or the `opLog` or `operations` array of a record. */
+function replayEntries(parsed: unknown): unknown[] {
+	if (Array.isArray(parsed)) return parsed;
+	if (isRecord(parsed)) {
+		if (Array.isArray(parsed.opLog)) return parsed.opLog;
+		if (Array.isArray(parsed.operations)) return parsed.operations;
 	}
+	throw new Error("Replay log must be an array, { opLog }, or { operations }.");
+}
+
+function extractReplayOperations(parsed: unknown): OperationKind[] {
+	const entries = replayEntries(parsed);
 	const operations: OperationKind[] = [];
 	for (let index = 0; index < entries.length; index++) {
 		const entry = entries[index];

@@ -59,26 +59,6 @@ export function streamEventCeiling(limits?: StreamFrameLimits): number {
 	return declared !== undefined && declared > 0 ? declared : streamFrameCeiling(limits);
 }
 
-type JsonlChunkResult = {
-	values: unknown[];
-	error: unknown;
-	read: number;
-	done: boolean;
-};
-
-function parseJsonlChunkCompat(input: Uint8Array, beg?: number, end?: number): JsonlChunkResult;
-function parseJsonlChunkCompat(input: string): JsonlChunkResult;
-function parseJsonlChunkCompat(input: Uint8Array | string, beg?: number, end?: number): JsonlChunkResult {
-	if (typeof input === "string") {
-		const { values, error, read, done } = Bun.JSONL.parseChunk(input);
-		return { values, error, read, done };
-	}
-	const start = beg ?? 0;
-	const stop = end ?? input.length;
-	const { values, error, read, done } = Bun.JSONL.parseChunk(input, start, stop);
-	return { values, error, read, done };
-}
-
 export async function* readLines(
 	stream: ReadableStream<Uint8Array>,
 	signal?: AbortSignal,
@@ -117,20 +97,7 @@ export async function* readJsonl<T>(
 		for await (const chunk of source) {
 			yield* buffer.pullJSONL<T>(chunk, 0, chunk.length);
 		}
-		if (!buffer.isEmpty) {
-			const tail = buffer.flush();
-			if (tail) {
-				buffer.clear();
-				const { values, error, done } = parseJsonlChunkCompat(tail, 0, tail.length);
-				if (values.length > 0) {
-					yield* values as T[];
-				}
-				if (error) throw error;
-				if (!done) {
-					throw new Error("JSONL stream ended unexpectedly");
-				}
-			}
-		}
+		if (!buffer.isEmpty) yield* buffer.drainJSONL<T>();
 	} catch (err) {
 		// Abort errors are expected — just stop the generator.
 		if (signal?.aborted) return;
@@ -240,7 +207,7 @@ class ConcatSink {
 	}
 	*pullJSONL<T>(chunk: Uint8Array, beg: number, end: number) {
 		if (this.isEmpty) {
-			const { values, error, read, done } = parseJsonlChunkCompat(chunk, beg, end);
+			const { values, error, read, done } = Bun.JSONL.parseChunk(chunk, beg, end);
 			if (values.length > 0) {
 				yield* values as T[];
 			}
@@ -262,7 +229,7 @@ class ConcatSink {
 		space.set(chunk.subarray(beg, end), offset);
 		this.#length = total;
 
-		const { values, error, read, done } = parseJsonlChunkCompat(space.subarray(0, total), 0, total);
+		const { values, error, read, done } = Bun.JSONL.parseChunk(space.subarray(0, total), 0, total);
 		if (values.length > 0) {
 			yield* values as T[];
 		}
@@ -277,24 +244,25 @@ class ConcatSink {
 		}
 		this.#length = rem;
 	}
+
+	/**
+	 * The values of the record a stream left without a closing LF when it ended, then the parse error
+	 * if that record is malformed, or a refusal if it is cut off.
+	 */
+	*drainJSONL<T>() {
+		const tail = this.flush();
+		if (!tail) return;
+		this.clear();
+		const { values, error, done } = Bun.JSONL.parseChunk(tail, 0, tail.length);
+		if (values.length > 0) {
+			yield* values as T[];
+		}
+		if (error) throw error;
+		if (!done) throw new Error("JSONL stream ended unexpectedly");
+	}
 }
 
-/**
- * Stream parsed JSON objects from SSE `data:` lines.
- *
- * Thin wrapper over {@link readSseEvents}: yields one parsed JSON value per
- * dispatched SSE event, skipping events with empty `data` and stopping at the
- * OpenAI-style `[DONE]` sentinel. If your consumer doesn't care about `event:`
- * names or doesn't need a custom parse step, use this; otherwise call
- * `readSseEvents` directly.
- *
- * @example
- * ```ts
- * for await (const obj of readSseJson(response.body!)) {
- *   console.log(obj);
- * }
- * ```
- */
+/** Receives every event {@link readSseJson} reads, before its `data` is parsed; a throw is ignored. */
 export type SseEventObserver = (event: ServerSentEvent) => void;
 
 function notifySseEventObserver(observer: SseEventObserver | undefined, event: ServerSentEvent): void {
@@ -318,6 +286,22 @@ function isRecoverableTrailingJson(data: string): boolean {
 	return typeof recovered === "object" && recovered !== null;
 }
 
+/**
+ * Stream parsed JSON objects from SSE `data:` lines.
+ *
+ * Thin wrapper over {@link readSseEvents}: yields one parsed JSON value per
+ * dispatched SSE event, skipping events with empty `data` and stopping at the
+ * OpenAI-style `[DONE]` sentinel. If your consumer doesn't care about `event:`
+ * names or doesn't need a custom parse step, use this; otherwise call
+ * `readSseEvents` directly.
+ *
+ * @example
+ * ```ts
+ * for await (const obj of readSseJson(response.body!)) {
+ *   console.log(obj);
+ * }
+ * ```
+ */
 export async function* readSseJson<T>(
 	stream: ReadableStream<Uint8Array>,
 	signal?: AbortSignal,
@@ -444,6 +428,21 @@ function pushSseLine(line: Uint8Array, state: SseEventState, maxEventBytes: numb
 }
 
 /**
+ * The event a stream leaves pending when it ends: a last line with no terminating LF counts as a
+ * complete line, and an event no blank line dispatched is dispatched anyway, since real services do not
+ * always close on one. A last line that dispatches leaves nothing pending, so there is at most one.
+ */
+function trailingSseEvent(lineBuffer: ConcatSink, state: SseEventState, maxEventBytes: number): ServerSentEvent | null {
+	const tail = lineBuffer.flush();
+	if (tail) {
+		lineBuffer.clear();
+		const event = pushSseLine(tail, state, maxEventBytes);
+		if (event) return event;
+	}
+	return flushSseEvent(state);
+}
+
+/**
  * Stream raw Server-Sent Events from an HTTP response body.
  *
  * Yields one `ServerSentEvent` per blank-line dispatch. The consumer is
@@ -479,20 +478,7 @@ export async function* readSseEvents(
 				if (event) yield event;
 			}
 		}
-		// Treat any trailing partial line (no terminating LF) as a complete line.
-		if (!lineBuffer.isEmpty) {
-			const tail = lineBuffer.flush();
-			if (tail) {
-				lineBuffer.clear();
-				const event = pushSseLine(tail, state, maxEventBytes);
-				if (event) {
-					trailingEvents.add(event);
-					yield event;
-				}
-			}
-		}
-		// Real services don't always close on a blank line — flush any pending event.
-		const trailing = flushSseEvent(state);
+		const trailing = trailingSseEvent(lineBuffer, state, maxEventBytes);
 		if (trailing) {
 			trailingEvents.add(trailing);
 			yield trailing;
@@ -523,6 +509,24 @@ export interface ParseJsonlLenientOptions {
 }
 
 /**
+ * Where parsing resumes after `parseChunk` stopped on an error at `read`, or 0 when no line follows.
+ *
+ * `read > 0` means `parseChunk` consumed good record(s), already collected, and the error belongs to the
+ * NEXT record: `read` points at the delimiter just before it. Parsing resumes past the good records
+ * WITHOUT counting a skip; the malformed record resurfaces at the head (`read === 0`) on the next pass,
+ * where it is skipped and reported through `onSkip` exactly once. Counting here as well is what
+ * double-reported every malformed line.
+ */
+function resumeAfterError(buffer: string, read: number, consumed: number, options?: ParseJsonlLenientOptions): number {
+	const nextNewline = buffer.indexOf("\n", read);
+	if (read === 0) {
+		const snippetEnd = nextNewline === -1 ? 200 : Math.min(nextNewline, 200);
+		options?.onSkip?.({ offset: consumed, snippet: buffer.slice(0, snippetEnd) });
+	}
+	return nextNewline + 1;
+}
+
+/**
  * Parse a complete JSONL string, skipping malformed lines instead of throwing.
  *
  * Uses `Bun.JSONL.parseChunk` internally. On parse errors, the malformed
@@ -536,46 +540,21 @@ export interface ParseJsonlLenientOptions {
  * ```
  */
 export function parseJsonlLenient<T>(buffer: string, options?: ParseJsonlLenientOptions): T[] {
-	let entries: T[] | undefined;
+	// Each parse between skips is kept whole and joined once at the end: spreading a batch into `push`
+	// passes every record as a call argument, which throws `RangeError` past about a million of them.
+	const batches: unknown[][] = [];
 	let consumed = 0;
 
 	while (buffer.length > 0) {
-		const { values, error, read, done } = parseJsonlChunkCompat(buffer);
-		if (values.length > 0) {
-			const ext = values as T[];
-			if (!entries) {
-				entries = ext;
-			} else {
-				entries.push(...ext);
-			}
-		}
-		if (error) {
-			// `read > 0` means parseChunk consumed good record(s) (already collected
-			// above) and the error belongs to the NEXT record — `read` points at the
-			// delimiter just before it. Advance past the good records WITHOUT counting a
-			// skip; the malformed record resurfaces at the head (`read === 0`) on the
-			// next iteration, where it is skipped and reported through onSkip exactly
-			// once. Counting here as well is what double-reported every malformed line.
-			const isHeadError = read === 0;
-			const nextNewline = buffer.indexOf("\n", read);
-			if (nextNewline === -1) {
-				if (isHeadError) options?.onSkip?.({ offset: consumed, snippet: buffer.slice(0, 200) });
-				break;
-			}
-			if (isHeadError) {
-				options?.onSkip?.({ offset: consumed, snippet: buffer.slice(0, Math.min(nextNewline, 200)) });
-			}
-			const step = nextNewline + 1;
-			consumed += step;
-			buffer = buffer.substring(step);
-			continue;
-		}
-		if (read === 0) break;
-		consumed += read;
-		buffer = buffer.substring(read);
-		if (done) break;
+		const { values, error, read, done } = Bun.JSONL.parseChunk(buffer);
+		if (values.length > 0) batches.push(values);
+		const step = error ? resumeAfterError(buffer, read, consumed, options) : read;
+		if (step === 0) break;
+		consumed += step;
+		buffer = buffer.substring(step);
+		if (done && !error) break;
 	}
-	return entries ?? [];
+	return (batches.length === 1 ? batches[0] : batches.flat()) as T[];
 }
 
 /**

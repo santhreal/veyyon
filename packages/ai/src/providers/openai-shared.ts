@@ -20,6 +20,7 @@ import {
 	removeBlankCoreWeaveProjectHeaders,
 } from "@veyyon/catalog/wire/coreweave";
 import { parseGitHubCopilotApiKey } from "@veyyon/catalog/wire/github-copilot";
+import { resolveKimiCodeEndpoint } from "@veyyon/catalog/wire/kimi-code";
 import { $env } from "@veyyon/utils/env";
 import { extractHttpStatusFromError } from "@veyyon/utils/fetch-retry";
 import { stringifyJson, structuredCloneJSON } from "@veyyon/utils/json";
@@ -306,6 +307,11 @@ function resolveOpenAIProviderEndpoint(
 		case "alibaba-coding-plan":
 			if (options.alibabaCodingPlanAuth) return resolveAlibabaCodingPlanEndpoint(rawApiKey, model.baseUrl);
 			break;
+		case "kimi-code": {
+			// The key names the deployment that issued the token; a token reaches only that deployment.
+			const { apiKey, baseUrl } = resolveKimiCodeEndpoint(rawApiKey, model.baseUrl);
+			return { apiKey, baseUrl };
+		}
 	}
 	return { apiKey: rawApiKey, baseUrl: model.baseUrl };
 }

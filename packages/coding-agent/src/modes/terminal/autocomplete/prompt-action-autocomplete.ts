@@ -1,6 +1,7 @@
 import {
 	type AutocompleteItem,
 	type AutocompleteProvider,
+	type AutocompleteSuggestions,
 	CombinedAutocompleteProvider,
 	findLeadingSlashCommandStart,
 	type SlashCommand,
@@ -121,7 +122,7 @@ export class PromptActionAutocompleteProvider implements AutocompleteProvider {
 		lines: string[],
 		cursorLine: number,
 		cursorCol: number,
-	): Promise<{ items: AutocompleteItem[]; prefix: string } | null> {
+	): Promise<AutocompleteSuggestions | null> {
 		const currentLine = lines[cursorLine] || "";
 		const textBeforeCursor = currentLine.slice(0, cursorCol);
 		const leadingSlashStart = findLeadingSlashCommandStart(textBeforeCursor);
@@ -230,7 +231,7 @@ export class PromptActionAutocompleteProvider implements AutocompleteProvider {
 	getInlineHint(lines: string[], cursorLine: number, cursorCol: number): string | null {
 		return this.#baseProvider.getInlineHint?.(lines, cursorLine, cursorCol) ?? null;
 	}
-	trySyncSlashCompletion(textBeforeCursor: string): { items: AutocompleteItem[]; prefix: string } | null {
+	trySyncSlashCompletion(textBeforeCursor: string): AutocompleteSuggestions | null {
 		return this.#baseProvider.trySyncSlashCompletion?.(textBeforeCursor) ?? null;
 	}
 	trySyncInlineReplace(textBeforeCursor: string): { replaceLen: number; insert: string } | null {

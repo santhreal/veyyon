@@ -45,6 +45,11 @@ const LOOP_MEASURED_RANGE_CODE_UNITS = 64;
 export function utf8ByteLength(value: string, start = 0, end = value.length): number {
 	if (start === 0 && end === value.length) return Buffer.byteLength(value, "utf8");
 	if (end - start > LOOP_MEASURED_RANGE_CODE_UNITS) return Buffer.byteLength(value.slice(start, end), "utf8");
+	return loopUtf8ByteLength(value, start, end);
+}
+
+/** {@link utf8ByteLength} of `value.slice(start, end)`, read code unit by code unit. */
+function loopUtf8ByteLength(value: string, start: number, end: number): number {
 	let bytes = 0;
 	for (let index = start; index < end; index++) {
 		const codeUnit = value.charCodeAt(index);

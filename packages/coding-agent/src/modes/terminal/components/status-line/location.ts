@@ -121,9 +121,7 @@ export function resolveDisplayRoots(roots: readonly string[]): string[] {
 	const resolved: string[] = [];
 	for (const root of roots) {
 		const trimmed = typeof root === "string" ? root.trim() : "";
-		const afterTilde = trimmed.startsWith("~/") || trimmed.startsWith("~\\") ? trimmed.slice(2) : null;
-		const expanded =
-			trimmed === "~" ? os.homedir() : afterTilde === null ? trimmed : path.join(os.homedir(), afterTilde);
+		const expanded = expandHomeTilde(trimmed);
 		if (expanded !== "" && path.isAbsolute(expanded)) {
 			resolved.push(expanded);
 			continue;
@@ -133,6 +131,13 @@ export function resolveDisplayRoots(roots: readonly string[]): string[] {
 		logger.warn("Status line path display root ignored: not an absolute path", { root });
 	}
 	return resolved;
+}
+
+/** `root` with a leading `~`, `~/` or `~\` read as the home directory. */
+function expandHomeTilde(root: string): string {
+	if (root === "~") return os.homedir();
+	if (root.startsWith("~/") || root.startsWith("~\\")) return path.join(os.homedir(), root.slice(2));
+	return root;
 }
 
 /**
@@ -261,15 +266,9 @@ export function renderLocation(input: LocationInput): RenderedLocation {
 	}
 
 	const { scratch, relative } = classifyProjectDir(input.projectDir);
-	let pwd = input.projectDir;
-
-	if (stripPrefix) {
-		if (scratch) {
-			if (relative) pwd = relative;
-		} else {
-			pwd = stripDisplayRoot(pwd, opts.displayRoots);
-		}
-	}
+	let pwd = stripPrefix
+		? strippedProjectDir(input.projectDir, scratch, relative, opts.displayRoots)
+		: input.projectDir;
 	const repoSuffix = input.activeRepoRelativeRoot ? ` ↳ ${sanitizeStatusText(input.activeRepoRelativeRoot)}` : "";
 	if (opts.abbreviate !== false) {
 		pwd = shortenPath(pwd);
@@ -281,12 +280,19 @@ export function renderLocation(input: LocationInput): RenderedLocation {
 	// row would hand the terminal. Sanitized BEFORE the clamp, so the budget is measured on
 	// the cells that reach the screen. The same treatment the PR title and the account label
 	// already get; the path and the branch were reading straight from the filesystem.
-	pwd = clampPathLength(sanitizeStatusText(pwd), opts.maxLength ?? DEFAULT_PATH_MAX_LENGTH);
-	if (repoSuffix) {
-		pwd = `${pwd}${repoSuffix}`;
-	}
+	pwd = clampPathLength(sanitizeStatusText(pwd), opts.maxLength ?? DEFAULT_PATH_MAX_LENGTH) + repoSuffix;
 
-	const showScratchIcon = scratch && stripPrefix;
-	const icon = showScratchIcon ? theme.icon.scratchFolder : theme.icon.folder;
+	const icon = scratch && stripPrefix ? theme.icon.scratchFolder : theme.icon.folder;
 	return { content: theme.fg("statusLinePath", withIcon(icon, pwd)), pin: iconPin(icon) };
+}
+
+/** The project directory below the scratch root it sits under, else below the first display root that holds it. */
+function strippedProjectDir(
+	projectDir: string,
+	scratch: boolean,
+	relative: string | null,
+	displayRoots: readonly string[] | undefined,
+): string {
+	if (scratch) return relative || projectDir;
+	return stripDisplayRoot(projectDir, displayRoots);
 }

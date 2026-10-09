@@ -1082,31 +1082,53 @@ function normalizeCssColor(spec: string, allowMix: boolean): string | null {
 	return lower !== trimmed && Bun.color(lower, "css") !== null ? lower : null;
 }
 
+function hexColor(spec: string): string | null {
+	const hex = spec.trim().replace(/^#/u, "");
+	return /^[0-9A-Fa-f]{3,8}$/u.test(hex) ? `#${hex}` : null;
+}
+
+function grayColor(spec: string, scale: number): string | null {
+	const value = parseColorComponents(spec, 1)?.[0];
+	if (value === undefined) return null;
+	const byte = clamp01(value / scale) * 255;
+	return cssRgb({ r: byte, g: byte, b: byte });
+}
+
+function hsvColor(spec: string, hueScale: number): string | null {
+	const values = parseColorComponents(spec, 3);
+	return values === null ? null : rgbFromHsv(values, hueScale);
+}
+
+type ColorModel = (spec: string) => string | null;
+
+// xcolor model names whose meaning depends on case (`RGB` takes 0-255 bytes,
+// `Gray` takes 0-15 steps, `Hsb`/`HSV` take a unit hue), checked before the
+// case-insensitive table. An unlisted model resolves `spec` as a color name.
+const CASED_COLOR_MODELS = new Map<string, ColorModel>([
+	["HTML", hexColor],
+	["Html", hexColor],
+	["html", hexColor],
+	["wave", rgbFromWave],
+	["RGB", spec => rgbFromByte(parseColorComponents(spec, 3) ?? [])],
+	["Gray", spec => grayColor(spec, 15)],
+	["Grey", spec => grayColor(spec, 15)],
+	["Hsb", spec => hsvColor(spec, 1)],
+	["HSV", spec => hsvColor(spec, 1)],
+]);
+
+const COLOR_MODELS = new Map<string, ColorModel>([
+	["rgb", spec => rgbFromUnit(parseColorComponents(spec, 3) ?? [])],
+	["cmyk", spec => rgbFromCmyk(parseColorComponents(spec, 4) ?? [])],
+	["gray", spec => grayColor(spec, 1)],
+	["grey", spec => grayColor(spec, 1)],
+	["hsb", spec => hsvColor(spec, 360)],
+	["hsv", spec => hsvColor(spec, 360)],
+]);
+
 function resolveModeledColor(model: string, spec: string): string | null {
-	const trimmedModel = model.trim();
-	if (trimmedModel === "" || trimmedModel === "named") return normalizeCssColor(spec, true);
-	if (trimmedModel === "HTML" || trimmedModel === "Html" || trimmedModel === "html") {
-		const hex = spec.trim().replace(/^#/u, "");
-		return /^[0-9A-Fa-f]{3,8}$/u.test(hex) ? `#${hex}` : null;
-	}
-	if (trimmedModel === "wave") return rgbFromWave(spec);
-	const lower = trimmedModel.toLowerCase();
-	if (trimmedModel === "RGB") return rgbFromByte(parseColorComponents(spec, 3) ?? []);
-	if (lower === "rgb") return rgbFromUnit(parseColorComponents(spec, 3) ?? []);
-	if (lower === "cmyk") return rgbFromCmyk(parseColorComponents(spec, 4) ?? []);
-	if (lower === "gray" || lower === "grey") {
-		const value = parseColorComponents(spec, 1)?.[0];
-		if (value === undefined) return null;
-		const unit = trimmedModel === "Gray" || trimmedModel === "Grey" ? value / 15 : value;
-		const byte = clamp01(unit) * 255;
-		return cssRgb({ r: byte, g: byte, b: byte });
-	}
-	if (lower === "hsb" || lower === "hsv") {
-		const values = parseColorComponents(spec, 3);
-		if (values === null) return null;
-		return rgbFromHsv(values, trimmedModel === "Hsb" || trimmedModel === "HSV" ? 1 : 360);
-	}
-	return normalizeCssColor(spec, true);
+	const trimmed = model.trim();
+	const convert = CASED_COLOR_MODELS.get(trimmed) ?? COLOR_MODELS.get(trimmed.toLowerCase());
+	return convert === undefined ? normalizeCssColor(spec, true) : convert(spec);
 }
 
 function resolveLatexColor(model: string | null, spec: string): string | null {
@@ -1608,41 +1630,37 @@ class LatexParser {
 	/** Read a raw (unparsed) argument, returning its literal source text. */
 	#rawArgument(): string {
 		while (this.#s[this.#i] === " ") this.#i++;
-		if (this.#s[this.#i] !== "{") {
-			const c = this.#s[this.#i];
-			if (c === undefined) return "";
-			if (c === "\\") {
-				this.#i++;
-				const name = this.#letterRun();
-				if (name !== "") return `\\${name}`;
-				const escaped = this.#s[this.#i] ?? "";
-				this.#i++;
-				return `\\${escaped}`;
-			}
-			this.#i++;
-			return c;
-		}
-		this.#i++; // past {
+		const c = this.#s[this.#i];
+		if (c === undefined) return "";
+		this.#i++;
+		if (c === "{") return this.#braceBody();
+		if (c !== "\\") return c;
+		const name = this.#letterRun();
+		if (name !== "") return `\\${name}`;
+		const escaped = this.#s[this.#i] ?? "";
+		this.#i++;
+		return `\\${escaped}`;
+	}
+
+	/** Source up to the `}` closing a group whose `{` is consumed; the rest of the source when unclosed. */
+	#braceBody(): string {
 		const start = this.#i;
 		let depth = 1;
-		while (this.#i < this.#s.length && depth > 0) {
+		while (this.#i < this.#s.length) {
 			const c = this.#s[this.#i];
-			if (c === "\\") {
-				this.#i += 2;
-				continue;
-			}
-			if (c === "{") depth++;
-			else if (c === "}") {
-				depth--;
-				if (depth === 0) {
-					const end = this.#i;
-					this.#i++;
-					return this.#s.slice(start, end);
-				}
-			}
+			if (c === "\\") this.#i++;
+			else if (c === "{") depth++;
+			else if (c === "}" && --depth === 0) return this.#closeGroup(start);
 			this.#i++;
 		}
 		return this.#s.slice(start, this.#i);
+	}
+
+	/** Consume the closing delimiter at the cursor and return the group body that began at `start`. */
+	#closeGroup(start: number): string {
+		const body = this.#s.slice(start, this.#i);
+		this.#i++;
+		return body;
 	}
 
 	#script(style: FontStyle | null, sup: boolean): string {
@@ -1711,26 +1729,21 @@ class LatexParser {
 		while (this.#s[this.#i] === " ") this.#i++;
 		if (this.#s[this.#i] !== "[") return null;
 		this.#i++;
+		return this.#bracketBody();
+	}
+
+	/** Source up to the `]` closing an optional argument whose `[` is consumed, ignoring brackets inside braces; the rest of the source when unclosed. */
+	#bracketBody(): string {
 		const start = this.#i;
 		let bracketDepth = 1;
 		let braceDepth = 0;
-		while (this.#i < this.#s.length && bracketDepth > 0) {
+		while (this.#i < this.#s.length) {
 			const c = this.#s[this.#i];
-			if (c === "\\") {
-				this.#i += 2;
-				continue;
-			}
-			if (c === "{") braceDepth++;
+			if (c === "\\") this.#i++;
+			else if (c === "{") braceDepth++;
 			else if (c === "}" && braceDepth > 0) braceDepth--;
 			else if (braceDepth === 0 && c === "[") bracketDepth++;
-			else if (braceDepth === 0 && c === "]") {
-				bracketDepth--;
-				if (bracketDepth === 0) {
-					const end = this.#i;
-					this.#i++;
-					return this.#s.slice(start, end);
-				}
-			}
+			else if (braceDepth === 0 && c === "]" && --bracketDepth === 0) return this.#closeGroup(start);
 			this.#i++;
 		}
 		return this.#s.slice(start, this.#i);
@@ -1886,19 +1899,28 @@ function renderBareMathInText(text: string): string {
 			i = blockEnd;
 			continue;
 		}
-		const lineStart = text.lastIndexOf("\n", begin - 1) + 1;
-		const prefix = text.slice(lineStart, begin);
-		let start = prefix.includes("\\") || prefix.includes("=") ? lineStart : begin;
-		if (start === begin && prefix.trim() === "" && lineStart > 0) {
-			const previousLineEnd = lineStart - 1;
-			const previousLineStart = text.lastIndexOf("\n", previousLineEnd - 1) + 1;
-			const previousLine = text.slice(previousLineStart, previousLineEnd);
-			if (/[=([{]\s*$/.test(previousLine)) start = previousLineStart;
-		}
+		// The lead-in never reaches back into text already emitted.
+		const start = Math.max(i, bareMathBlockStart(text, begin));
 		out += renderBareMathLines(text.slice(i, start));
 		out += latexToUnicode(text.slice(start, blockEnd)).replace(NEWLINES, " ");
 		i = blockEnd;
 	}
+}
+
+const OPENS_CONTINUATION = /[=([{]\s*$/;
+
+// Index where the rendered span of a bare math block opening at `begin` starts:
+// its line start when the text before it on that line is math-shaped
+// (`lhs = \begin…`), the previous line's start when the block opens its own line
+// and the previous line ends in `=`, `(`, `[` or `{`, else `begin`.
+function bareMathBlockStart(text: string, begin: number): number {
+	const lineStart = text.lastIndexOf("\n", begin - 1) + 1;
+	const prefix = text.slice(lineStart, begin);
+	if (prefix.includes("\\") || prefix.includes("=")) return lineStart;
+	if (lineStart === 0 || prefix.trim() !== "") return begin;
+	const previousLineEnd = lineStart - 1;
+	const previousLineStart = text.lastIndexOf("\n", previousLineEnd - 1) + 1;
+	return OPENS_CONTINUATION.test(text.slice(previousLineStart, previousLineEnd)) ? previousLineStart : begin;
 }
 
 function renderBareMathLines(text: string): string {
@@ -1947,69 +1969,78 @@ export function renderMathInText(text: string): string {
 		return text;
 	}
 
-	const conv = (inner: string): string => latexToUnicode(inner).replace(NEWLINES, " ");
-	let out = "";
-	let i = 0;
-	const n = text.length;
-	while (i < n) {
-		const c = text[i];
-		if (c === "\\") {
-			const d = text[i + 1];
-			if (d === "\\") {
-				// Escaped backslash: emit verbatim so a following `(`/`[` is plain text.
-				out += "\\\\";
-				i += 2;
-				continue;
-			}
-			if (d === "(") {
-				const close = text.indexOf("\\)", i + 2);
-				if (close !== -1) {
-					out += conv(text.slice(i + 2, close));
-					i = close + 2;
-					continue;
-				}
-			} else if (d === "[") {
-				const close = text.indexOf("\\]", i + 2);
-				if (close !== -1) {
-					out += conv(text.slice(i + 2, close));
-					i = close + 2;
-					continue;
-				}
-			} else if (d === "$") {
-				out += "$";
-				i += 2;
-				continue;
-			}
-			out += c;
-			i++;
-			continue;
-		}
-		if (c === "$") {
-			if (text[i + 1] === "$") {
-				const close = text.indexOf("$$", i + 2);
-				if (close !== -1 && text.slice(i + 2, close).trim().length > 0) {
-					out += conv(text.slice(i + 2, close));
-					i = close + 2;
-					continue;
-				}
-				out += "$$";
-				i += 2;
-				continue;
-			}
-			const close = inlineMathSpanEnd(text, i);
-			if (close !== -1) {
-				out += conv(text.slice(i + 1, close));
-				i = close + 1;
-				continue;
-			}
-			out += "$";
-			i++;
-			continue;
-		}
-		out += c;
-		i++;
+	return renderBareMathInText(new MathSpanRenderer(text).render());
+}
+
+const BACKSLASH = 0x5c;
+const DOLLAR = 0x24;
+
+// Delimited-span pass of `renderMathInText`: copies prose verbatim and replaces
+// each `$$…$$`, `\[…\]`, `$…$` and `\(…\)` span, delimiters included, with its
+// single-line rendering. `\$` becomes a literal `$`; `\\` stays verbatim so a
+// following `(` or `[` is plain text.
+class MathSpanRenderer {
+	readonly #text: string;
+	#out = "";
+	#i = 0;
+	// Start of the source run not yet copied to `#out`.
+	#copied = 0;
+
+	constructor(text: string) {
+		this.#text = text;
 	}
-	return renderBareMathInText(out);
+
+	render(): string {
+		const text = this.#text;
+		while (this.#i < text.length) {
+			const c = text.charCodeAt(this.#i);
+			if (c === BACKSLASH) this.#backslash();
+			else if (c === DOLLAR) this.#dollar();
+			else this.#i++;
+		}
+		return this.#out + text.slice(this.#copied);
+	}
+
+	#backslash(): void {
+		const d = this.#text[this.#i + 1];
+		if (d === "(") this.#bracketed("\\)");
+		else if (d === "[") this.#bracketed("\\]");
+		else if (d === "$") this.#replace(2, "$");
+		else this.#i += d === "\\" ? 2 : 1;
+	}
+
+	#bracketed(closer: string): void {
+		const close = this.#text.indexOf(closer, this.#i + 2);
+		if (close === -1) this.#i++;
+		else this.#render(this.#i + 2, close, 2);
+	}
+
+	#dollar(): void {
+		const text = this.#text;
+		const i = this.#i;
+		if (text[i + 1] !== "$") {
+			const close = inlineMathSpanEnd(text, i);
+			if (close === -1) this.#i++;
+			else this.#render(i + 1, close, 1);
+			return;
+		}
+		const close = text.indexOf("$$", i + 2);
+		if (close !== -1 && text.slice(i + 2, close).trim().length > 0) this.#render(i + 2, close, 2);
+		else this.#i += 2;
+	}
+
+	/** Replace the source from the cursor through the closer at `close` with the rendering of `[start, close)`. */
+	#render(start: number, close: number, closerWidth: number): void {
+		const rendered = latexToUnicode(this.#text.slice(start, close)).replace(NEWLINES, " ");
+		this.#replace(close + closerWidth - this.#i, rendered);
+	}
+
+	/** Copy the pending source run, then replace the next `width` source units with `replacement`. */
+	#replace(width: number, replacement: string): void {
+		this.#out += this.#text.slice(this.#copied, this.#i) + replacement;
+		this.#i += width;
+		this.#copied = this.#i;
+	}
 }
 
 /**
@@ -2025,20 +2056,25 @@ export function inlineMathSpanEnd(text: string, open: number): number {
 	if (after === undefined || after === " " || after === "\t" || after === "\n" || after === "$") {
 		return -1;
 	}
-	for (let j = open + 1; j < text.length; j++) {
-		const ch = text[j];
-		if (ch === "\\") {
-			j++;
-			continue;
-		}
-		if (ch === "\n") return -1;
-		if (ch === "$") {
-			const prev = text[j - 1];
-			if (prev === " " || prev === "\t") return -1;
-			const next = text[j + 1];
-			if (next !== undefined && next >= "0" && next <= "9") continue; // currency: keep scanning
-			return text.slice(open + 1, j).trim().length > 0 ? j : -1;
-		}
+	for (let j = nextInlineStop(text, open + 1); j < text.length; j = nextInlineStop(text, j + 1)) {
+		if (text[j] === "\n") return -1;
+		const prev = text[j - 1];
+		if (prev === " " || prev === "\t") return -1;
+		// A `$` before a digit is currency (`$5`): keep scanning.
+		const next = text.charCodeAt(j + 1);
+		if (!(next >= 0x30 && next <= 0x39)) return text.slice(open + 1, j).trim().length > 0 ? j : -1;
 	}
 	return -1;
+}
+
+// Index of the first newline or unescaped `$` at or after `from`; at least
+// `text.length` when there is none.
+function nextInlineStop(text: string, from: number): number {
+	let j = from;
+	while (j < text.length) {
+		const ch = text[j];
+		if (ch === "\n" || ch === "$") return j;
+		j += ch === "\\" ? 2 : 1;
+	}
+	return j;
 }
