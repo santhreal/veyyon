@@ -7,9 +7,11 @@
  * The contract, driven through the real tool against real headless Chromium in both input modes: each
  * fill below leaves the value asked for, and every `input` and `change` the input receives is trusted.
  * The cases cover each field kind the editors have (year, month, day, week, hour on a 12-hour clock
- * with AM and PM, minute, second, millisecond), midnight and noon, a five-digit year, clearing, and a
- * range's step, negative bounds, right-to-left direction and vertical writing mode. A range whose
- * value is more than 40 keys away is set by script, with its events untrusted, as before.
+ * with AM and PM, minute, second, millisecond), midnight and noon, a five-digit year, clearing, a
+ * `min` and `max` that narrow the hour field's range (once set by script, since a narrowed range is
+ * no clock's whole range) or fix the year or the day, an hourly `step`, and a range's step, negative
+ * bounds, right-to-left direction and vertical writing mode. A range whose value is more than 40 keys
+ * away is set by script, with its events untrusted, as before.
  *
  * What it does not catch: a browser locale that orders or names the fields otherwise, which only a
  * browser launched in that locale shows; field order comes from the editor, so the plan does not
@@ -40,6 +42,15 @@ const CASES: ReadonlyArray<{
 	{ id: "dt", markup: `<input type="datetime-local" id="dt" value="2026-01-01T08:00">`, value: "2026-02-28T13:07" },
 	{ id: "m1", markup: `<input type="month" id="m1">`, value: "2026-12" },
 	{ id: "w1", markup: `<input type="week" id="w1">`, value: "2026-W53" },
+	{ id: "n1", markup: `<input type="time" id="n1" min="13:00" max="17:00">`, value: "15:30" },
+	{ id: "n2", markup: `<input type="time" id="n2" min="08:00" max="11:00">`, value: "09:45" },
+	{ id: "n3", markup: `<input type="time" id="n3" step="3600">`, value: "14:00" },
+	{ id: "n4", markup: `<input type="date" id="n4" min="2026-01-01" max="2026-12-31">`, value: "2026-05-10" },
+	{
+		id: "n5",
+		markup: `<input type="datetime-local" id="n5" min="2026-03-07T08:00" max="2026-03-07T18:00">`,
+		value: "2026-03-07T09:30",
+	},
 	{ id: "r1", markup: `<input type="range" id="r1">`, value: "73" },
 	{ id: "r2", markup: `<input type="range" id="r2" step="5" value="10">`, value: "95" },
 	{ id: "r3", markup: `<input type="range" id="r3" min="-50" max="50">`, value: "-25" },

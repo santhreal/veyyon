@@ -21,7 +21,7 @@ export interface CdpNode {
 export interface DateField {
 	/** What part of the value it holds: `year`, `month`, `day`, `hour`, `minute`, `second`, `millisecond`, `ampm`, `week`. */
 	readonly part: string;
-	/** `aria-valuemin` and `aria-valuemax`: an hour field's range tells its clock. */
+	/** `aria-valuemin` and `aria-valuemax`: an hour field's range, with the AM/PM field beside it or not, tells its clock. */
 	readonly min: number;
 	readonly max: number;
 	readonly backendNodeId: number;
@@ -105,13 +105,32 @@ function parseValue(type: string, value: string): ValueParts | undefined {
 
 const pad = (value: number, width: number): string => String(value).padStart(width, "0");
 
-/** The digits an hour field takes for `hour` (0 to 23), by the clock its range shows. */
-function hourDigits(hour: number, field: DateField): string | undefined {
-	if (field.min === 1 && field.max === 12) return pad(hour % 12 === 0 ? 12 : hour % 12, 2);
-	if (field.min === 0 && field.max === 11) return pad(hour % 12, 2);
-	if (field.min === 0 && field.max === 23) return pad(hour, 2);
-	if (field.min === 1 && field.max === 24) return pad(hour === 0 ? 24 : hour, 2);
-	return undefined;
+/** The clocks an hour field runs on: its whole range, and whether the editor shows AM/PM beside it. */
+const HOUR_CLOCKS = [
+	{ min: 1, max: 12, twelveHour: true },
+	{ min: 0, max: 11, twelveHour: true },
+	{ min: 0, max: 23, twelveHour: false },
+	{ min: 1, max: 24, twelveHour: false },
+] as const;
+
+/**
+ * The digits an hour field takes for `hour` (0 to 23). The field's range is its clock's whole range
+ * unless the input's `min` and `max` narrow it (`Range12From23` and its siblings in Chromium's
+ * `date_time_field_elements.cc`), and an editor with an AM/PM field runs a 12-hour clock. The clocks
+ * that hold the range, those of the editor's kind first, are the field's, and every one of them must
+ * write the hour alike: a whole range is held by its own clock alone, and a range inside both clocks
+ * of a kind leaves midnight, and noon on a 12-hour clock, unknown.
+ */
+function hourDigits(hour: number, field: DateField, twelveHour: boolean): string | undefined {
+	const holding = HOUR_CLOCKS.filter(clock => clock.min <= field.min && field.max <= clock.max);
+	const ofKind = holding.filter(clock => clock.twelveHour === twelveHour);
+	const written = new Set(
+		(ofKind.length > 0 ? ofKind : holding).map(clock => {
+			const onClock = clock.twelveHour ? hour % 12 : hour;
+			return pad(onClock === 0 && clock.min === 1 ? clock.max : onClock, 2);
+		}),
+	);
+	return written.size === 1 ? [...written][0] : undefined;
 }
 
 /**
@@ -124,6 +143,7 @@ export function planDateKeys(type: string, value: string, fields: readonly DateF
 	if (value === "") return fields.map(() => "");
 	const parts = parseValue(type, value);
 	if (!parts) return undefined;
+	const twelveHour = fields.some(field => field.part === "ampm");
 	const keys: string[] = [];
 	for (const field of fields) {
 		let digits: string | undefined;
@@ -141,7 +161,7 @@ export function planDateKeys(type: string, value: string, fields: readonly DateF
 				digits = parts.week === undefined ? undefined : pad(parts.week, 2);
 				break;
 			case "hour":
-				digits = parts.hour === undefined ? undefined : hourDigits(parts.hour, field);
+				digits = parts.hour === undefined ? undefined : hourDigits(parts.hour, field, twelveHour);
 				break;
 			case "minute":
 				digits = parts.minute === undefined ? undefined : pad(parts.minute, 2);

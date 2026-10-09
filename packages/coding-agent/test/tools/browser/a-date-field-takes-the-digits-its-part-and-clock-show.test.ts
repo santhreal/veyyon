@@ -12,6 +12,13 @@
  * in the input's form, a field this does not know, or no fields at all yield no plan, so the script
  * sets the value instead.
  *
+ * An input's `min` and `max` narrow its hour field's range (`Range11From23`, `Range12From23` and
+ * `Range24From23` in Chromium's `date_time_field_elements.cc`, ported below as the oracle), and a
+ * narrowed range is no clock's whole range: such a field once yielded no plan, so a time between
+ * `min="13:00"` and `max="17:00"` was set by script with untrusted events. Every `min` and `max` hour
+ * pair on every clock is swept: an hour inside the range gets that clock's digits, and an hour
+ * outside it gets them or no plan, never another clock's digits.
+ *
  * What it does not catch: whether Chromium takes the digits, which the driven suite proves.
  */
 import { describe, expect, it } from "bun:test";
@@ -67,6 +74,52 @@ describe("an hour field", () => {
 	it("with a range no clock has yields no plan", () => {
 		expect(planDateKeys("time", "09:05", [field("hour", 0, 99), MINUTE])).toBeUndefined();
 	});
+});
+
+/** The range an hour field shows for an input whose `min` and `max` hours are `low` and `high`. */
+const NARROWED: Record<keyof typeof CLOCKS, (low: number, high: number) => [number, number]> = {
+	"0-11": (low, high) => (high < 12 ? [low, high] : low >= 12 ? [low - 12, high - 12] : [0, 11]),
+	"1-12": (low, high) => {
+		let [min, max] = high < 12 ? [low, high] : low >= 12 ? [low - 12, high - 12] : [1, 12];
+		if (min === 0) min = 12;
+		if (max === 0) max = 12;
+		return min > max ? [1, 12] : [min, max];
+	},
+	"0-23": (low, high) => [low, high],
+	"1-24": (low, high) => {
+		const [min, max] = [low || 24, high || 24];
+		return min > max ? [1, 24] : [min, max];
+	},
+};
+
+/** The digits each clock takes for any hour. */
+const ON_CLOCK: Record<keyof typeof CLOCKS, (hour: number) => string> = {
+	"0-11": hour => String(hour % 12).padStart(2, "0"),
+	"1-12": hour => String(hour % 12 || 12).padStart(2, "0"),
+	"0-23": hour => String(hour).padStart(2, "0"),
+	"1-24": hour => String(hour || 24).padStart(2, "0"),
+};
+
+describe("an hour field that min and max narrow", () => {
+	for (const clock of Object.keys(CLOCKS) as (keyof typeof CLOCKS)[]) {
+		it(`on a ${clock} clock takes that clock's digits for an hour in range, and never another's`, () => {
+			const twelveHour = clock === "0-11" || clock === "1-12";
+			const wrong: string[] = [];
+			for (let low = 0; low < 24; low++) {
+				for (let high = low; high < 24; high++) {
+					const [min, max] = NARROWED[clock](low, high);
+					const fields = twelveHour ? [field("hour", min, max), MINUTE, AMPM] : [field("hour", min, max), MINUTE];
+					for (let hour = 0; hour < 24; hour++) {
+						const planned = planDateKeys("time", `${String(hour).padStart(2, "0")}:05`, fields)?.[0];
+						const inRange = hour >= low && hour <= high;
+						if (planned === ON_CLOCK[clock](hour) || (!inRange && planned === undefined)) continue;
+						wrong.push(`min ${low} max ${high} (field ${min}-${max}) hour ${hour}: ${planned}`);
+					}
+				}
+			}
+			expect(wrong).toEqual([]);
+		});
+	}
 });
 
 describe("a date or time value", () => {
