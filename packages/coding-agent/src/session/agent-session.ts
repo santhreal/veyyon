@@ -130,7 +130,11 @@ import {
 	type SessionEntry,
 } from "@veyyon/kernel/session/session-entries";
 import { foreignSessionFileProfile } from "@veyyon/kernel/session/session-listing";
-import { cleanupEmptyMoveSession, type SessionManager } from "@veyyon/kernel/session/session-manager";
+import {
+	cleanupEmptyMoveSession,
+	type SessionManager,
+	type SessionManagerStateSnapshot,
+} from "@veyyon/kernel/session/session-manager";
 import {
 	isAwaitingUserAnswer,
 	mayContinueAtSettle,
@@ -365,7 +369,7 @@ import { computeNonMessageBreakdown, computeNonMessageTokens, takeHeldAtRestRead
 import { SESSION_STATE_MESSAGE_TYPE, SESSION_STOP_CONTINUATION_CAP } from "./nudges";
 import { didSessionMessagesChange } from "./provider-replay-projection";
 import { AdvisorRoster, type AdvisorRosterHost } from "./runtime/advisor-roster";
-import { CheckpointRuntime } from "./runtime/checkpoint-runtime";
+import { CheckpointRuntime, type CheckpointSnapshot } from "./runtime/checkpoint-runtime";
 import { CompactionRuntime } from "./runtime/compaction-runtime";
 import { ContextAccounting } from "./runtime/context-accounting";
 import { ExtensionEventForwarder } from "./runtime/extension-event-forwarder";
@@ -388,7 +392,7 @@ import { SessionScope } from "./runtime/session-scope";
 import { type SecretsRefreshOptions, SessionSecrets } from "./runtime/session-secrets";
 import { StopRetries } from "./runtime/stop-retries";
 import { StreamingEditGuard } from "./runtime/streaming-edit-guard";
-import { ThinkingRuntime } from "./runtime/thinking-runtime";
+import { type ResolvedThinkingState, ThinkingRuntime } from "./runtime/thinking-runtime";
 import { TodoRuntime } from "./runtime/todo-runtime";
 import { sameToolNames, ToolDiscovery } from "./runtime/tool-discovery";
 import { TtsrRuntime } from "./runtime/ttsr-runtime";
@@ -549,6 +553,53 @@ function extractUserMessageText(content: string | Array<{ type: string; text?: s
 /** The persisted form of a per-family tier map: `null` when no family carries a tier. */
 function serviceTierEntry(byFamily: ServiceTierByFamily): ServiceTierByFamily | null {
 	return Object.keys(byFamily).length > 0 ? byFamily : null;
+}
+
+/**
+ * The runtime a session switch puts back when loading the target transcript fails. Message arrays
+ * hold the original objects: the switch replaces them wholesale, and extension metadata that is
+ * valid to persist is not always structured-cloneable.
+ */
+interface TranscriptRollback {
+	readonly sessionState: SessionManagerStateSnapshot;
+	/**
+	 * Built only for a same-session reload, which compares it against the reloaded transcript to
+	 * detect rollback edits. A different-session switch skips it: on a large session it materializes
+	 * every legacy compaction frame and remote-compaction replacement history (issue #3846). The
+	 * rollback rebuilds it from the restored state when it needs one.
+	 */
+	readonly sessionContext: SessionContext | undefined;
+	readonly agentMessages: AgentMessage[];
+	readonly steeringMessages: AgentMessage[];
+	readonly followUpMessages: AgentMessage[];
+	readonly pendingNextTurnMessages: CustomMessage[];
+	readonly scheduledHiddenNextTurnGeneration: number | undefined;
+	readonly model: Model | undefined;
+	readonly thinking: ResolvedThinkingState;
+	readonly serviceTierByFamily: ServiceTierByFamily;
+	readonly selectedMCPToolNames: Set<string>;
+	readonly fallbackSelectedMCPToolNames: string[] | undefined;
+	readonly tools: AgentState["tools"];
+	readonly baseSystemPrompt: string[];
+	readonly systemPrompt: AgentState["systemPrompt"];
+	readonly freshProviderSessionId: string | undefined;
+	readonly inheritedProviderPromptCacheKey: string | undefined;
+	/**
+	 * The value that reaches the wire. The switch rewrites it together with the inherited key, so
+	 * restoring only the inherited key leaves a failed switch sending the target's `prompt_cache_key`.
+	 */
+	readonly agentPromptCacheKey: string | undefined;
+	/** The success path rehydrates checkpoint state from the target branch. */
+	readonly checkpoint: CheckpointSnapshot;
+	readonly wirePathRoots: readonly string[];
+	/** Set before the cwd-scoped runtime moves, so a rescope that fails partway is still undone. */
+	scopeTransitionAttempted: boolean;
+}
+
+/** Fields every warning logged while rolling back a failed session switch includes. */
+interface SessionSwitchLogFields {
+	previousSessionFile: string | undefined;
+	targetSessionFile: string;
 }
 
 /**
@@ -8660,264 +8711,305 @@ export class AgentSession {
 
 		// Flush pending writes before switching so restore snapshots reflect committed state.
 		await this.sessionManager.flush();
-		const previousSessionState = this.sessionManager.captureState();
-		// Only same-session reloads compare against the prior context to detect
-		// rollback edits (`didSessionMessagesChange` below). Building it for a
-		// different-session switch is a pure waste — and on huge pre-fix sessions
-		// it materializes every persisted legacy compaction frame plus the
-		// `openaiRemoteCompaction.replacementHistory` payload into messages,
-		// blowing the heap before the new session even loads (issue #3846). The
-		// error-recovery path rebuilds the context on demand from the restored
-		// state instead.
-		const previousSessionContext = switchingToDifferentSession ? undefined : this.buildDisplaySessionContext();
-		// switchSession replaces these arrays wholesale during load/rollback, so retaining
-		// the existing message objects is sufficient and avoids structured-clone failures for
-		// extension/custom metadata that is valid to persist but not cloneable.
-		const previousAgentMessages = [...this.agent.state.messages];
-		const previousSteeringMessages = [...this.agent.peekSteeringQueue()];
-		const previousFollowUpMessages = [...this.agent.peekFollowUpQueue()];
-		const previousPendingNextTurnMessages = [...this.#pendingNextTurnMessages];
-		const previousScheduledHiddenNextTurnGeneration = this.#scheduledHiddenNextTurnGeneration;
-		const previousModel = this.model;
-		const previousThinking = this.#thinking.snapshot();
-		const previousServiceTierByFamily = this.#serviceTierByFamily;
-		const previousSelectedMCPToolNames = this.#discovery.snapshotSelectedMCP();
-		const previousTools = [...this.agent.state.tools];
-		const previousBaseSystemPrompt = this.#baseSystemPrompt;
-		const previousSystemPrompt = this.agent.state.systemPrompt;
-		const previousFreshProviderSessionId = this.#providerSessions.freshId;
-		const previousInheritedProviderPromptCacheKey = this.#providerSessions.inheritedCacheKey;
-		// The inherited key only mirrors what the agent routes on;
-		// the value that actually reaches the wire is `agent.promptCacheKey`. The
-		// try block rewrites BOTH (clear + adopt the target header's identity), so
-		// restoring only the mirror leaves a failed switch sending the target
-		// session's `prompt_cache_key` for every later turn of the source session.
-		const previousAgentPromptCacheKey = this.agent.promptCacheKey;
-		const previousFallbackSelectedMCPToolNames = previousSessionFile
-			? this.#discovery.sessionDefaults(previousSessionFile)
-			: undefined;
-
-		// Snapshot the full checkpoint runtime state: the success path rehydrates it
-		// from the target branch. On rollback it must be restored, or a failed switch
-		// leaks the target session's checkpoint state.
-		const previousCheckpoint = this.#checkpoint.snapshot();
-		const previousWirePathRoots = this.#wire.roots;
-
-		let scopeTransitionAttempted = false;
+		const rollback = this.#captureTranscriptRollback(previousSessionFile, switchingToDifferentSession);
 
 		this.agent.clearAllQueues();
 		this.#pendingNextTurnMessages = [];
 		this.#scheduledHiddenNextTurnGeneration = undefined;
 
 		try {
-			await this.sessionManager.setSessionFile(sessionPath);
-			// `setSessionFile` normally adopts the header cwd itself. Reassert the
-			// recorded directory here when it is reachable so switchSession owns
-			// the complete transcript+runtime transition rather than depending on
-			// how the manager was originally constructed.
-			const recordedTargetCwd = this.sessionManager.getHeader()?.cwd;
-			if (recordedTargetCwd && path.resolve(recordedTargetCwd) !== path.resolve(this.sessionManager.getCwd())) {
-				let recordedTargetCwdReachable = false;
-				try {
-					recordedTargetCwdReachable = (await fs.promises.stat(recordedTargetCwd)).isDirectory();
-				} catch {
-					// Preserve SessionManager's moved/deleted-worktree contract:
-					// an unreachable recorded cwd keeps the caller's current root.
-				}
-				if (recordedTargetCwdReachable) {
-					// Keep mutation failures in switchSession's outer transaction;
-					// only the reachability probe above is an allowed fallback.
-					await this.sessionManager.setCwd(recordedTargetCwd, { validate: false });
-				}
-			}
-			const targetCwd = this.sessionManager.getCwd();
-			if (path.resolve(targetCwd) !== path.resolve(previousSessionState.cwd)) {
-				scopeTransitionAttempted = true;
-				await this.#scope.rescope(targetCwd);
-				this.#wire.rootAt(targetCwd);
-			}
-
-			if (switchingToDifferentSession) {
-				this.#providerSessions.freshId = undefined;
-				this.#providerSessions.clearInheritedCacheKey("session-switch");
-				this.#providerSessions.adoptInheritedCacheKey();
-			}
-			this.#providerSessions.sync();
-			this.#memory.rekey();
-
-			let sessionContext = this.buildDisplaySessionContext();
-			const didReloadConversationChange =
-				previousSessionContext !== undefined &&
-				didSessionMessagesChange(previousSessionContext.messages, sessionContext.messages);
-			const fallbackSelectedMCPToolNames = this.#discovery.sessionDefaults(sessionPath);
-			await this.#restoreMCPSelectionsForSessionContext(sessionContext, { fallbackSelectedMCPToolNames });
-			this.#checkpoint.rehydrate(this.sessionManager.getBranch());
-
-			// Emit session_switch event to hooks
-			if (this.#config.extensionRunner) {
-				await this.#config.extensionRunner.emit({
-					type: "session_switch",
-					reason: "resume",
-					previousSessionFile,
-				});
-			}
-
-			this.agent.replaceMessages(sessionContext.messages);
-			this.#advisorRoster.resetSessionState();
-			this.#todo.syncFromBranch();
-			// The board just came back from the branch, so every latch describing
-			// the pre-switch board (including a failed write against it) is about a
-			// board this session no longer holds.
-			this.#todo.resetForNewContext();
-			if (switchingToDifferentSession) {
-				this.#providerSessions.closeAll("session switch");
-			} else if (didReloadConversationChange) {
-				this.#providerSessions.closeAll("session reload");
-			}
-
-			// Restore model if saved
-			const targetModelStrings = getRestorableSessionModels(
-				sessionContext.models,
-				this.sessionManager.getLastModelChangeRole(),
+			await this.#enterTargetTranscript(sessionPath, rollback);
+			await this.#loadTargetTranscript(
+				sessionPath,
+				previousSessionFile,
+				switchingToDifferentSession,
+				rollback.sessionContext,
 			);
-			if (targetModelStrings.length > 0) {
-				const availableModels = this.#config.modelRegistry.getAvailable();
-				let match: Model | undefined;
-				for (const targetModelStr of targetModelStrings) {
-					const slashIdx = targetModelStr.indexOf("/");
-					if (slashIdx <= 0) continue;
-					const provider = targetModelStr.slice(0, slashIdx);
-					const modelId = targetModelStr.slice(slashIdx + 1);
-					match = availableModels.find(m => m.provider === provider && m.id === modelId);
-					if (match) break;
-				}
-				if (match) {
-					const currentModel = this.model;
-					const shouldResetProviderState =
-						switchingToDifferentSession ||
-						(currentModel !== undefined &&
-							(currentModel.provider !== match.provider ||
-								currentModel.id !== match.id ||
-								currentModel.api !== match.api));
-					if (shouldResetProviderState) {
-						this.#setModelWithProviderSessionReset(match);
-					} else {
-						this.agent.setModel(match);
-					}
-				}
-			}
-
-			const model = this.model;
-			if (model) {
-				const interruptedTurnAbort = createInterruptedTurnAbortMessage(this.sessionManager.getBranch(), {
-					api: model.api,
-					provider: model.provider,
-					model: model.id,
-				});
-				if (interruptedTurnAbort) {
-					this.sessionManager.appendMessage(interruptedTurnAbort);
-					sessionContext = this.buildDisplaySessionContext();
-					this.agent.replaceMessages(sessionContext.messages);
-				}
-			}
-
-			const hasThinkingEntry = this.sessionManager.getBranch().some(entry => entry.type === "thinking_level_change");
-			const hasServiceTierEntry = this.sessionManager
-				.getBranch()
-				.some(entry => entry.type === "service_tier_change");
-			const defaultThinkingLevel = parseConfiguredThinkingLevel(this.settings.get("defaultThinkingLevel"));
-			const configuredServiceTierByFamily = buildServiceTierByFamily(
-				this.settings.get("tier.openai"),
-				this.settings.get("tier.anthropic"),
-				this.settings.get("tier.google"),
-			);
-			// Restore the thinking selector. Each change persists the configured
-			// selector (`auto` or a concrete level), so prefer it: an `auto` session
-			// resumes in auto mode (reclassifying the next turn) instead of freezing at
-			// the last resolved level. Entries written before the `configured` field
-			// existed fall back to the concrete level (legacy pin-on-resume behavior).
-			// With no thinking entry, fall back to the global default so fresh sessions
-			// still classify their first turn.
-			const restoredConfigured = sessionContext.configuredThinkingLevel;
-			const restoredThinkingLevel: ConfiguredThinkingLevel | undefined =
-				hasThinkingEntry || (defaultThinkingLevel === AUTO_THINKING && sessionContext.thinkingLevel !== "off")
-					? restoredConfigured === AUTO_THINKING
-						? AUTO_THINKING
-						: (sessionContext.thinkingLevel as ThinkingLevel | undefined)
-					: defaultThinkingLevel;
-			this.#thinking.seed(restoredThinkingLevel);
-			this.#serviceTierByFamily = hasServiceTierEntry
-				? (sessionContext.serviceTier ?? {})
-				: configuredServiceTierByFamily;
-
-			if (switchingToDifferentSession) {
-				this.#resetMemoryContextForNewTranscript();
-				await this.#rescopeAgentRegistry();
-			}
 		} catch (error) {
-			this.sessionManager.restoreState(previousSessionState);
-			this.#wire.restoreRoots(previousWirePathRoots);
-			let restoreScopeError: unknown;
-			if (scopeTransitionAttempted) {
-				try {
-					await this.#scope.restore(previousSessionState.cwd);
-				} catch (scopeError) {
-					restoreScopeError = scopeError;
-					logger.warn("Failed to restore cwd-scoped runtime after switch error", {
-						previousSessionFile,
-						targetSessionFile: sessionPath,
-						error: String(scopeError),
-					});
-				}
-			}
+			await this.#rollBackTranscriptAdoption(error, rollback, {
+				previousSessionFile,
+				targetSessionFile: sessionPath,
+			});
+		}
+	}
 
-			this.#providerSessions.freshId = previousFreshProviderSessionId;
-			this.#providerSessions.sync(previousSessionState.sessionId);
-			this.#memory.rekey();
-			let restoreMcpError: unknown;
-			try {
-				// `previousSessionContext` was skipped on different-session switches to
-				// avoid materializing the previous session's heavy compaction payload
-				// in the success path; rebuild it here on demand from the restored
-				// state so MCP selection restoration still has its inputs.
-				const mcpRestoreContext = previousSessionContext ?? this.buildDisplaySessionContext();
-				await this.#restoreMCPSelectionsForSessionContext(mcpRestoreContext, {
-					fallbackSelectedMCPToolNames: previousFallbackSelectedMCPToolNames,
-				});
-			} catch (mcpError) {
-				restoreMcpError = mcpError;
-				logger.warn("Failed to restore MCP selections after switch error", {
-					previousSessionFile,
-					targetSessionFile: sessionPath,
-					error: String(mcpError),
-				});
-				this.#discovery.restoreSelectedMCP(previousSelectedMCPToolNames);
-				this.agent.setTools(previousTools);
-				this.#baseSystemPrompt = previousBaseSystemPrompt;
-				this.agent.setSystemPrompt(previousSystemPrompt);
-			}
-			this.#baseSystemPrompt = previousBaseSystemPrompt;
-			this.agent.setSystemPrompt(previousSystemPrompt);
-			this.agent.replaceMessages(previousAgentMessages);
-			this.agent.replaceQueues(previousSteeringMessages, previousFollowUpMessages);
-			this.#pendingNextTurnMessages = previousPendingNextTurnMessages;
-			this.#scheduledHiddenNextTurnGeneration = previousScheduledHiddenNextTurnGeneration;
-			this.#providerSessions.restoreCacheKeys(previousInheritedProviderPromptCacheKey, previousAgentPromptCacheKey);
-			this.#checkpoint.restore(previousCheckpoint);
-			if (previousModel) {
-				this.agent.setModel(previousModel);
-			}
-			this.#thinking.restore(previousThinking);
-			this.#serviceTierByFamily = previousServiceTierByFamily;
-			this.#todo.syncFromBranch();
-			this.#resetAllAdvisorRuntimes();
-			if (restoreScopeError || restoreMcpError) {
-				throw new AggregateError(
-					[error, restoreScopeError, restoreMcpError].filter(candidate => candidate !== undefined),
-					"Failed to switch sessions and fully restore the previous runtime.",
+	#captureTranscriptRollback(
+		previousSessionFile: string | undefined,
+		switchingToDifferentSession: boolean,
+	): TranscriptRollback {
+		return {
+			sessionState: this.sessionManager.captureState(),
+			sessionContext: switchingToDifferentSession ? undefined : this.buildDisplaySessionContext(),
+			agentMessages: [...this.agent.state.messages],
+			steeringMessages: [...this.agent.peekSteeringQueue()],
+			followUpMessages: [...this.agent.peekFollowUpQueue()],
+			pendingNextTurnMessages: [...this.#pendingNextTurnMessages],
+			scheduledHiddenNextTurnGeneration: this.#scheduledHiddenNextTurnGeneration,
+			model: this.model,
+			thinking: this.#thinking.snapshot(),
+			serviceTierByFamily: this.#serviceTierByFamily,
+			selectedMCPToolNames: this.#discovery.snapshotSelectedMCP(),
+			tools: [...this.agent.state.tools],
+			baseSystemPrompt: this.#baseSystemPrompt,
+			systemPrompt: this.agent.state.systemPrompt,
+			freshProviderSessionId: this.#providerSessions.freshId,
+			inheritedProviderPromptCacheKey: this.#providerSessions.inheritedCacheKey,
+			agentPromptCacheKey: this.agent.promptCacheKey,
+			fallbackSelectedMCPToolNames: previousSessionFile
+				? this.#discovery.sessionDefaults(previousSessionFile)
+				: undefined,
+			checkpoint: this.#checkpoint.snapshot(),
+			wirePathRoots: this.#wire.roots,
+			scopeTransitionAttempted: false,
+		};
+	}
+
+	/** Points the session manager at `sessionPath` and moves the cwd-scoped runtime to its directory. */
+	async #enterTargetTranscript(sessionPath: string, rollback: TranscriptRollback): Promise<void> {
+		await this.sessionManager.setSessionFile(sessionPath);
+		await this.#adoptRecordedTranscriptCwd();
+		const targetCwd = this.sessionManager.getCwd();
+		if (path.resolve(targetCwd) === path.resolve(rollback.sessionState.cwd)) return;
+		rollback.scopeTransitionAttempted = true;
+		await this.#scope.rescope(targetCwd);
+		this.#wire.rootAt(targetCwd);
+	}
+
+	/**
+	 * `setSessionFile` normally adopts the header cwd itself. Reassert the recorded directory when it
+	 * is reachable, so the switch owns the complete transcript and runtime transition rather than
+	 * depending on how the manager was constructed. An unreachable recorded cwd (a moved or deleted
+	 * worktree) keeps the current root; a failure to set a reachable one fails the switch.
+	 */
+	async #adoptRecordedTranscriptCwd(): Promise<void> {
+		const recordedCwd = this.sessionManager.getHeader()?.cwd;
+		if (!recordedCwd || path.resolve(recordedCwd) === path.resolve(this.sessionManager.getCwd())) return;
+		let reachable = false;
+		try {
+			reachable = (await fs.promises.stat(recordedCwd)).isDirectory();
+		} catch {
+			// Unreachable: keep the current root.
+		}
+		if (reachable) await this.sessionManager.setCwd(recordedCwd, { validate: false });
+	}
+
+	/**
+	 * Adopts the transcript the session manager now holds: provider session identity, messages, MCP
+	 * selections, checkpoints, model, thinking selector and service tier.
+	 */
+	async #loadTargetTranscript(
+		sessionPath: string,
+		previousSessionFile: string | undefined,
+		switchingToDifferentSession: boolean,
+		previousSessionContext: SessionContext | undefined,
+	): Promise<void> {
+		if (switchingToDifferentSession) {
+			this.#providerSessions.freshId = undefined;
+			this.#providerSessions.clearInheritedCacheKey("session-switch");
+			this.#providerSessions.adoptInheritedCacheKey();
+		}
+		this.#providerSessions.sync();
+		this.#memory.rekey();
+
+		const sessionContext = this.buildDisplaySessionContext();
+		const didReloadConversationChange =
+			previousSessionContext !== undefined &&
+			didSessionMessagesChange(previousSessionContext.messages, sessionContext.messages);
+		await this.#restoreMCPSelectionsForSessionContext(sessionContext, {
+			fallbackSelectedMCPToolNames: this.#discovery.sessionDefaults(sessionPath),
+		});
+		this.#checkpoint.rehydrate(this.sessionManager.getBranch());
+
+		if (this.#config.extensionRunner) {
+			await this.#config.extensionRunner.emit({ type: "session_switch", reason: "resume", previousSessionFile });
+		}
+
+		this.agent.replaceMessages(sessionContext.messages);
+		this.#advisorRoster.resetSessionState();
+		this.#todo.syncFromBranch();
+		// The board just came back from the branch, so every latch describing
+		// the pre-switch board (including a failed write against it) is about a
+		// board this session no longer holds.
+		this.#todo.resetForNewContext();
+		if (switchingToDifferentSession) {
+			this.#providerSessions.closeAll("session switch");
+		} else if (didReloadConversationChange) {
+			this.#providerSessions.closeAll("session reload");
+		}
+
+		this.#restoreTranscriptModel(sessionContext, switchingToDifferentSession);
+		const closedTurnContext = this.#closeInterruptedTranscriptTurn();
+		this.#restoreTranscriptThinkingAndTier(closedTurnContext ?? sessionContext);
+
+		if (switchingToDifferentSession) {
+			this.#resetMemoryContextForNewTranscript();
+			await this.#rescopeAgentRegistry();
+		}
+	}
+
+	/** Selects the newest model the transcript recorded that is still available, if any. */
+	#restoreTranscriptModel(sessionContext: SessionContext, switchingToDifferentSession: boolean): void {
+		const match = this.#findRestorableTranscriptModel(sessionContext);
+		if (!match) return;
+		const currentModel = this.model;
+		const shouldResetProviderState =
+			switchingToDifferentSession ||
+			(currentModel !== undefined &&
+				(currentModel.provider !== match.provider ||
+					currentModel.id !== match.id ||
+					currentModel.api !== match.api));
+		if (shouldResetProviderState) {
+			this.#setModelWithProviderSessionReset(match);
+		} else {
+			this.agent.setModel(match);
+		}
+	}
+
+	#findRestorableTranscriptModel(sessionContext: SessionContext): Model | undefined {
+		const targetModelStrings = getRestorableSessionModels(
+			sessionContext.models,
+			this.sessionManager.getLastModelChangeRole(),
+		);
+		if (targetModelStrings.length === 0) return undefined;
+		const availableModels = this.#config.modelRegistry.getAvailable();
+		for (const targetModelStr of targetModelStrings) {
+			const slashIdx = targetModelStr.indexOf("/");
+			if (slashIdx <= 0) continue;
+			const provider = targetModelStr.slice(0, slashIdx);
+			const modelId = targetModelStr.slice(slashIdx + 1);
+			const match = availableModels.find(m => m.provider === provider && m.id === modelId);
+			if (match) return match;
+		}
+		return undefined;
+	}
+
+	/**
+	 * Appends a terminal assistant record when the transcript's last process exit left its turn open.
+	 * Returns the rebuilt context when it appended one.
+	 */
+	#closeInterruptedTranscriptTurn(): SessionContext | undefined {
+		const model = this.model;
+		if (!model) return undefined;
+		const interruptedTurnAbort = createInterruptedTurnAbortMessage(this.sessionManager.getBranch(), {
+			api: model.api,
+			provider: model.provider,
+			model: model.id,
+		});
+		if (!interruptedTurnAbort) return undefined;
+		this.sessionManager.appendMessage(interruptedTurnAbort);
+		const sessionContext = this.buildDisplaySessionContext();
+		this.agent.replaceMessages(sessionContext.messages);
+		return sessionContext;
+	}
+
+	/**
+	 * Restores the thinking selector and service tier the transcript recorded, or the configured
+	 * defaults when it recorded none. Each thinking change persists the configured selector (`auto`
+	 * or a concrete level), so an `auto` session resumes in auto mode and reclassifies the next turn
+	 * instead of freezing at the last resolved level. Entries written before the `configured` field
+	 * existed fall back to their concrete level. With no thinking entry the global default applies,
+	 * so a fresh session still classifies its first turn.
+	 */
+	#restoreTranscriptThinkingAndTier(sessionContext: SessionContext): void {
+		const branch = this.sessionManager.getBranch();
+		const hasThinkingEntry = branch.some(entry => entry.type === "thinking_level_change");
+		const hasServiceTierEntry = branch.some(entry => entry.type === "service_tier_change");
+		const defaultThinkingLevel = parseConfiguredThinkingLevel(this.settings.get("defaultThinkingLevel"));
+		const restoredThinkingLevel: ConfiguredThinkingLevel | undefined =
+			hasThinkingEntry || (defaultThinkingLevel === AUTO_THINKING && sessionContext.thinkingLevel !== "off")
+				? sessionContext.configuredThinkingLevel === AUTO_THINKING
+					? AUTO_THINKING
+					: (sessionContext.thinkingLevel as ThinkingLevel | undefined)
+				: defaultThinkingLevel;
+		this.#thinking.seed(restoredThinkingLevel);
+		this.#serviceTierByFamily = hasServiceTierEntry
+			? (sessionContext.serviceTier ?? {})
+			: buildServiceTierByFamily(
+					this.settings.get("tier.openai"),
+					this.settings.get("tier.anthropic"),
+					this.settings.get("tier.google"),
 				);
-			}
-			throw error;
+	}
+
+	/**
+	 * Puts back the transcript and runtime `rollback` captured, then rethrows `error`. A failure to
+	 * restore the cwd-scoped runtime or the MCP selections joins `error` in an `AggregateError`.
+	 */
+	async #rollBackTranscriptAdoption(
+		error: unknown,
+		rollback: TranscriptRollback,
+		logFields: SessionSwitchLogFields,
+	): Promise<never> {
+		this.sessionManager.restoreState(rollback.sessionState);
+		this.#wire.restoreRoots(rollback.wirePathRoots);
+		const restoreScopeError = rollback.scopeTransitionAttempted
+			? await this.#restoreScopeAfterFailedSwitch(rollback.sessionState.cwd, logFields)
+			: undefined;
+
+		this.#providerSessions.freshId = rollback.freshProviderSessionId;
+		this.#providerSessions.sync(rollback.sessionState.sessionId);
+		this.#memory.rekey();
+		const restoreMcpError = await this.#restoreMCPAfterFailedSwitch(rollback, logFields);
+		this.#baseSystemPrompt = rollback.baseSystemPrompt;
+		this.agent.setSystemPrompt(rollback.systemPrompt);
+		this.agent.replaceMessages(rollback.agentMessages);
+		this.agent.replaceQueues(rollback.steeringMessages, rollback.followUpMessages);
+		this.#pendingNextTurnMessages = rollback.pendingNextTurnMessages;
+		this.#scheduledHiddenNextTurnGeneration = rollback.scheduledHiddenNextTurnGeneration;
+		this.#providerSessions.restoreCacheKeys(rollback.inheritedProviderPromptCacheKey, rollback.agentPromptCacheKey);
+		this.#checkpoint.restore(rollback.checkpoint);
+		if (rollback.model) {
+			this.agent.setModel(rollback.model);
+		}
+		this.#thinking.restore(rollback.thinking);
+		this.#serviceTierByFamily = rollback.serviceTierByFamily;
+		this.#todo.syncFromBranch();
+		this.#resetAllAdvisorRuntimes();
+		if (restoreScopeError || restoreMcpError) {
+			throw new AggregateError(
+				[error, restoreScopeError, restoreMcpError].filter(candidate => candidate !== undefined),
+				"Failed to switch sessions and fully restore the previous runtime.",
+			);
+		}
+		throw error;
+	}
+
+	/** Moves the cwd-scoped runtime back to `cwd`. Returns the failure rather than throwing it. */
+	async #restoreScopeAfterFailedSwitch(cwd: string, logFields: SessionSwitchLogFields): Promise<unknown> {
+		try {
+			await this.#scope.restore(cwd);
+			return undefined;
+		} catch (scopeError) {
+			logger.warn("Failed to restore cwd-scoped runtime after switch error", {
+				...logFields,
+				error: String(scopeError),
+			});
+			return scopeError;
+		}
+	}
+
+	/**
+	 * Restores the previous transcript's MCP selections. On failure, puts back the selections and
+	 * tools captured before the switch and returns the failure rather than throwing it.
+	 */
+	async #restoreMCPAfterFailedSwitch(
+		rollback: TranscriptRollback,
+		logFields: SessionSwitchLogFields,
+	): Promise<unknown> {
+		try {
+			const context = rollback.sessionContext ?? this.buildDisplaySessionContext();
+			await this.#restoreMCPSelectionsForSessionContext(context, {
+				fallbackSelectedMCPToolNames: rollback.fallbackSelectedMCPToolNames,
+			});
+			return undefined;
+		} catch (mcpError) {
+			logger.warn("Failed to restore MCP selections after switch error", {
+				...logFields,
+				error: String(mcpError),
+			});
+			this.#discovery.restoreSelectedMCP(rollback.selectedMCPToolNames);
+			this.agent.setTools(rollback.tools);
+			return mcpError;
 		}
 	}
 

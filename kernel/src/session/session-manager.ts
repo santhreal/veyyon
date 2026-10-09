@@ -279,7 +279,7 @@ export interface SessionManagerNoticeOptions {
 	instrumentation?: InstrumentationLevel;
 }
 
-interface SessionManagerStateSnapshot {
+export interface SessionManagerStateSnapshot {
 	cwd: string;
 	sessionDir: string;
 	sessionId: string;
