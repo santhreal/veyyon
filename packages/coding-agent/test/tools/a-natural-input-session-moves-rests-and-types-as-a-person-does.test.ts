@@ -184,6 +184,8 @@ beforeAll(async () => {
 	url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
 	if (!CHROMIUM_AVAILABLE) return;
 	settings = Settings.isolated({ "browser.headless": true });
+	// An override outranks `set`, so the setting the off-runs toggle is set rather than overridden.
+	settings.set("browser.naturalInput", true);
 	const session: ToolSession = {
 		cwd: process.cwd(),
 		hasUI: false,

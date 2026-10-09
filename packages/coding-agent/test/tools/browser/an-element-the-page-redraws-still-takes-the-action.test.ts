@@ -26,10 +26,14 @@
  * that only shows when a redraw lands between two round trips, such as an action that checks the
  * node in one and acts in the next, which the redrawing pages hit on some iterations and not on
  * every one; keystrokes from `fill`, `type` and `press`, which go to whatever holds focus when
- * they arrive; and a click with `browser.naturalInput` on, on a page that redraws faster than the
- * button is held, which runs only with natural input off: the redraw lands between the button going
- * down on one node and coming up on its replacement, so the click goes to the nodes' common ancestor,
- * as a person's would.
+ * they arrive.
+ *
+ * A click with `browser.naturalInput` on holds the button down longer than the redrawing pages keep a
+ * node, so the button goes down on one node and comes up on its replacement, and Chromium sends no
+ * click. The click counts on those pages prove the press is made again on the replacement until it
+ * reaches it, once: a missed click left unreported, or one pressed again after it reached the
+ * element, changes the count. Not caught: such a click through a handle with no relocation (a CSS
+ * selector), which ends without a click, as a press that takes its element away does.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as http from "node:http";
@@ -168,7 +172,7 @@ const SELECTOR_ACTIONS: Record<string, ActionCase> = {
 
 const TAB = `redraw-${process.pid}`;
 const INSTANT_TAB = `redraw-instant-${process.pid}`;
-/** The default session, with `browser.naturalInput` on. */
+/** A session with `browser.naturalInput` on. */
 let tool: BrowserTool;
 /** A session with `browser.naturalInput` off, whose presses are puppeteer's instant ones. */
 let instantTool: BrowserTool;
@@ -203,7 +207,7 @@ describe.skipIf(!CHROMIUM_AVAILABLE)("an element the page redraws still takes th
 		server.listen(0, "127.0.0.1", () => resolve());
 		await promise;
 		base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-		tool = new BrowserTool(sessionWith({}));
+		tool = new BrowserTool(sessionWith({ "browser.naturalInput": true }));
 		instantTool = new BrowserTool(sessionWith({ "browser.naturalInput": false }));
 		await tool.execute("open", { action: "open", name: TAB, url: "about:blank" });
 		await instantTool.execute("open", { action: "open", name: INSTANT_TAB, url: "about:blank" });
@@ -420,24 +424,21 @@ return outcome + ' | clicks=' + await tab.evaluate(() => ${CLICKS_ON_SAVE});`;
 		describe(`on a page that redraws ${cadence}, every pointer action reaches the live node`, () => {
 			const TIMES = 20;
 			const SAVE_ID = "const id = (await tab.observe()).elements.find(e => e.name === 'Save').id;";
-			const loops: Record<string, { loop: string; read: string; expected: string; held?: true }> = {
+			const loops: Record<string, { loop: string; read: string; expected: string }> = {
 				"click through tab.id": {
 					loop: `${SAVE_ID}\nfor (let i = 0; i < ${TIMES}; i++) await (await tab.id(id)).click();`,
 					read: CLICKS_ON_SAVE,
 					expected: String(TIMES),
-					held: true,
 				},
 				"click through a held tab.ref handle": {
 					loop: `${REACH["tab.ref"]("Save")}\nfor (let i = 0; i < ${TIMES}; i++) await h.click();`,
 					read: CLICKS_ON_SAVE,
 					expected: String(TIMES),
-					held: true,
 				},
 				'click through tab.click("aria-ref=…")': {
 					loop: `${REF_OF}\nconst sel = 'aria-ref=' + refOf(await tab.ariaSnapshot(), 'Save');\nfor (let i = 0; i < ${TIMES}; i++) await tab.click(sel);`,
 					read: CLICKS_ON_SAVE,
 					expected: String(TIMES),
-					held: true,
 				},
 				"tap through tab.id": {
 					loop: `${SAVE_ID}\nfor (let i = 0; i < ${TIMES}; i++) await (await tab.id(id)).tap();`,
@@ -459,9 +460,7 @@ return outcome + ' | clicks=' + await tab.evaluate(() => ${CLICKS_ON_SAVE});`;
 				},
 			};
 			for (const naturalInput of [true, false]) {
-				for (const [label, { loop, read, expected, held }] of Object.entries(loops)) {
-					// A natural click holds the button down longer than the page keeps a node (see the header).
-					if (naturalInput && held) continue;
+				for (const [label, { loop, read, expected }] of Object.entries(loops)) {
 					it(`${label}, natural input ${naturalInput ? "on" : "off"}`, async () => {
 						const body = `${loop}\nreturn String(await tab.evaluate(() => ${read}));`;
 						expect(await runOn(path, body, naturalInput)).toBe(expected);

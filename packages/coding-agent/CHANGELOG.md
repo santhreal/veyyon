@@ -15,7 +15,7 @@
 - A `browser` action's selector may end in Playwright's `:has-text("…")`, such as `button:has-text("Sign in")`, which acts on the first element its CSS matches that holds the text, case and spacing aside, or on the innermost element holding it when no CSS precedes it; `:has-text()` nested in another pseudo-class stays refused.
 - The `browser` tool's `tab.reload()` loads the tab's current URL again with `goto`'s waiting and deadline, fetching a page that a form's POST produced with a GET instead of submitting the form a second time; a selector passed as an object names `tab.id(n)` and `tab.ref("eN")`.
 - A `browser` run whose `fetch` fails on a relative URL such as `/api/items` says that run code executes outside the page and gives the `tab.evaluate` form that makes the page's own request with its cookies.
-- Added `browser.naturalInput` (default on): browser clicks, hovers and drags move the pointer along a curved, eased path and rest before pressing, typing pauses between keys, short fills are typed key by key, and off-screen elements are scrolled to with the mouse wheel; off restores the instant input.
+- Added `browser.naturalInput` (default off): browser clicks, hovers and drags move the pointer along a curved, eased path and rest before pressing, typing pauses between keys, short fills are typed key by key, and off-screen elements are scrolled to with the mouse wheel; off restores the instant input.
 - The `browser` tool reports a bot challenge it finds after `open` and `run`, naming its vendor, whether it clears on its own, needs a person or blocks the browser, and the evidence, once per page.
 - The `browser` tool waits up to 20 seconds, or the call's timeout when shorter, for an interstitial bot check such as Cloudflare's to clear, and states where the page led or that it did not clear.
 - The `browser` tool's `open` takes `visible: true | false`, which moves a tab between headless Chromium and a browser window with its page, cookies and localStorage, so a person can solve a challenge and the run continues.
@@ -258,6 +258,8 @@
 
 ### Fixed
 
+- With `browser.naturalInput` on, a click through a `tab.id()` or `tab.ref()` handle whose element the page replaces while the button is held is made again on the replacement instead of reporting success with no click sent.
+- The `browser` tool removes the temporary Chrome profiles a crashed or killed process left in the system temp directory before it makes the next one.
 - With `browser.naturalInput` on, a `tab.id()` or `tab.ref()` handle whose element the page re-renders while the wheel scrolls to it scrolls to the replacement instead of failing as detached, and loading the `browser` tool no longer evaluates arktype before its first schema is built.
 - A TTSR interrupt retries the turn it aborted when the aborted turn settles with a message whose timestamp differs from the partial it streamed, instead of dropping the injection and releasing the resume gate with no continuation.
 - An expanded task card draws an agent's `Output` heading once when the agent returned `{}`, `[]` or an empty JSON value, and when a running agent's live output is one, instead of twice.

@@ -9,13 +9,14 @@
  * Chromium allows one process per profile directory and marks the holder with a lock: `SingletonLock`, a
  * symlink to `<host>-<pid>`, on Linux and macOS, and `lockfile`, held open without sharing, on Windows. A
  * second Chromium started on a held directory hands its window to the holder and exits, so a named profile
- * is checked for the lock before its browser starts.
+ * is checked for the lock before anything in it is written and its browser starts; a process that takes the
+ * lock after that check is found by the launcher, which checks again when the launch fails.
  */
 
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getBrowserProfilesDir, isEnoent, isProcessAlive, isRecord } from "@veyyon/utils";
+import { getBrowserProfilesDir, isEnoent, isEnotdir, isProcessAlive, isRecord } from "@veyyon/utils";
 import { bestEffort } from "@veyyon/utils/discarded-fault";
 import { ToolError } from "../../core/tool-errors";
 
@@ -30,12 +31,58 @@ const PROFILE_PREFERENCES = {
 	profile: { password_manager_leak_detection: false },
 };
 
-/** A fresh profile directory holding {@link PROFILE_PREFERENCES}; whoever disposes the browser removes it. */
+/** The prefix of every temporary profile directory {@link createProfile} makes. */
+const TEMPORARY_PROFILE_PREFIX = "veyyon-chrome-profile-";
+
+/** The file in a temporary profile holding `<host>-<pid>` of the process that made it. */
+const PROFILE_OWNER_FILE = "veyyon-owner";
+
+/**
+ * A fresh profile directory holding {@link PROFILE_PREFERENCES}; whoever disposes the browser removes it.
+ * The temporary profiles of processes that ended without removing theirs are removed first
+ * ({@link sweepOrphanedProfiles}).
+ */
 export async function createProfile(): Promise<string> {
-	const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "veyyon-chrome-profile-"));
+	const parent = os.tmpdir();
+	await sweepOrphanedProfiles(parent);
+	const dir = await fs.promises.mkdtemp(path.join(parent, TEMPORARY_PROFILE_PREFIX));
+	await fs.promises.writeFile(path.join(dir, PROFILE_OWNER_FILE), `${os.hostname()}-${process.pid}`);
 	await fs.promises.mkdir(path.join(dir, "Default"));
 	await fs.promises.writeFile(path.join(dir, "Default", "Preferences"), JSON.stringify(PROFILE_PREFERENCES));
 	return dir;
+}
+
+/**
+ * Remove every temporary profile in `parent` whose owner, a process on this host, no longer runs and
+ * which no running Chromium holds: a process that crashed or was killed never removed its own. A
+ * profile with no owner file, an owner on another host, or a live owner is kept.
+ */
+export async function sweepOrphanedProfiles(parent: string): Promise<void> {
+	let entries: string[];
+	try {
+		entries = await fs.promises.readdir(parent);
+	} catch (error) {
+		if (isEnoent(error)) return;
+		throw error;
+	}
+	const host = os.hostname();
+	for (const entry of entries) {
+		if (!entry.startsWith(TEMPORARY_PROFILE_PREFIX)) continue;
+		const dir = path.join(parent, entry);
+		let owner: string;
+		try {
+			owner = await fs.promises.readFile(path.join(dir, PROFILE_OWNER_FILE), "utf8");
+		} catch (error) {
+			// No owner file: a profile from before owners were written, or one still being made.
+			if (isEnoent(error) || isEnotdir(error)) continue;
+			throw error;
+		}
+		const dash = owner.lastIndexOf("-");
+		const pid = Number(owner.slice(dash + 1));
+		if (owner.slice(0, dash) !== host || !Number.isInteger(pid) || pid <= 0 || isProcessAlive(pid)) continue;
+		if (await profileLock(dir)) continue;
+		await removeProfile(dir);
+	}
 }
 
 /** Remove a temporary profile directory {@link createProfile} made, once its browser is gone. */

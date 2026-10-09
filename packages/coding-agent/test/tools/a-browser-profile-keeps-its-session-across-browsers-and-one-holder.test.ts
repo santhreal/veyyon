@@ -10,19 +10,20 @@
  * the password-manager preferences hold on every launch, even after the file says otherwise; a
  * profile another Chromium process holds, or a host other than this one, is refused naming the
  * profile and the lock, and opens once that process is gone or when its lock names a process on this
- * host that no longer runs; a name that is not one directory under the profiles directory is refused
- * before anything is created.
+ * host that no longer runs; a refused profile keeps the preferences its holder runs on, since the
+ * check before the launch refuses before they are written; a process that takes the profile between
+ * that check and the launch is refused the same way by the check after the launch; a name that is not
+ * one directory under the profiles directory is refused before anything is created.
  *
  * Driven through the real tool against real headless Chromium and a local server, with the agent
  * directory in a temporary directory. Skipped where Chromium cannot run.
  *
  * What it does NOT catch: the Windows lock (`lockfile` held without sharing), which this Linux
- * suite cannot reach; which of the two lock checks refused (the one before the launch, or the one
- * after a launch that lost a race for the lock), since both give the same refusal; session cookies,
- * which end with the browser as they do in Chrome.
+ * suite cannot reach; a preference write the holder's own write replaces before the read; session
+ * cookies, which end with the browser as they do in Chrome.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as http from "node:http";
 import type { AddressInfo } from "node:net";
@@ -32,9 +33,10 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/sdk";
 import { BrowserTool } from "@veyyon/coding-agent/tools/web/browser";
 import { ensureChromiumExecutable, loadPuppeteer } from "@veyyon/coding-agent/tools/web/browser/launch";
-import { profileDirectory } from "@veyyon/coding-agent/tools/web/browser/profiles";
+import * as profiles from "@veyyon/coding-agent/tools/web/browser/profiles";
 import { getBrowserProfilesDir, setAgentDir, TempDir } from "@veyyon/utils";
 import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
+import type { Browser } from "puppeteer-core";
 import { CHROMIUM_AVAILABLE } from "./browser/chromium";
 
 let server: http.Server;
@@ -140,6 +142,10 @@ afterAll(async () => {
 });
 
 describe.skipIf(!CHROMIUM_AVAILABLE)("a named browser profile", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
 	it("keeps a cookie, localStorage and IndexedDB after its browser closes and starts again, and shares them with no one else", async () => {
 		const opened = text(
 			await tool.execute("open", {
@@ -194,7 +200,7 @@ describe.skipIf(!CHROMIUM_AVAILABLE)("a named browser profile", () => {
 	it("runs with the password manager's save offer and breach check off, even after its preferences said otherwise", async () => {
 		await tool.execute("open", { action: "open", name: "eps-1", profile: "eps", url: "about:blank" });
 		await close("eps-1");
-		const file = path.join(profileDirectory("eps"), "Default", "Preferences");
+		const file = path.join(profiles.profileDirectory("eps"), "Default", "Preferences");
 		const prefs = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
 		fs.writeFileSync(
 			file,
@@ -215,7 +221,7 @@ return { save: all.credentials_enable_service?.value, breach: all.profile?.passw
 	}, 90_000);
 
 	it("is refused while another Chromium process holds it, naming the profile and the lock, and opens once that process is gone", async () => {
-		const dir = profileDirectory("gamma");
+		const dir = profiles.profileDirectory("gamma");
 		fs.mkdirSync(dir, { recursive: true });
 		const puppeteer = await loadPuppeteer();
 		const other = await puppeteer.launch({
@@ -226,10 +232,14 @@ return { save: all.credentials_enable_service?.value, breach: all.profile?.passw
 		});
 		const pid = other.process()?.pid;
 		let refusal = "";
+		let held: Record<string, unknown> = {};
 		try {
 			await tool.execute("open", { action: "open", name: "gamma-1", profile: "gamma", url: `${base}/whoami` });
 		} catch (error) {
 			refusal = (error as Error).message;
+			// Read while the holder still runs: Chrome writes its preferences back when it exits.
+			const written = path.join(dir, "Default", "Preferences");
+			held = fs.existsSync(written) ? JSON.parse(fs.readFileSync(written, "utf8")) : {};
 		} finally {
 			await other.close();
 		}
@@ -238,6 +248,7 @@ return { save: all.credentials_enable_service?.value, breach: all.profile?.passw
 				? `Browser profile "gamma" is in use by another Chromium process (lock ${path.join(dir, "lockfile")}). Close the browser running on it, or open another profile.`
 				: `Browser profile "gamma" is in use by pid ${pid} (lock ${path.join(dir, "SingletonLock")}). Close the browser running on it, or open another profile.`,
 		);
+		expect(held.credentials_enable_service).toBeUndefined();
 		const opened = text(
 			await tool.execute("open", { action: "open", name: "gamma-1", profile: "gamma", url: `${base}/whoami` }),
 		);
@@ -245,10 +256,40 @@ return { save: all.credentials_enable_service?.value, breach: all.profile?.passw
 		await close("gamma-1");
 	}, 90_000);
 
+	it("is refused naming the profile and the lock when another process takes it between the check and the launch", async () => {
+		const prepare = profiles.preparePersistentProfile;
+		const puppeteer = await loadPuppeteer();
+		let other: Browser | undefined;
+		vi.spyOn(profiles, "preparePersistentProfile").mockImplementation(async name => {
+			const dir = await prepare(name);
+			other = await puppeteer.launch({
+				headless: true,
+				executablePath: await ensureChromiumExecutable(),
+				args: ["--no-sandbox"],
+				userDataDir: dir,
+			});
+			return dir;
+		});
+		let refusal = "";
+		try {
+			await tool.execute("open", { action: "open", name: "delta-1", profile: "delta", url: `${base}/whoami` });
+		} catch (error) {
+			refusal = (error as Error).message;
+		}
+		const pid = other?.process()?.pid;
+		await other?.close();
+		const dir = profiles.profileDirectory("delta");
+		expect(refusal).toBe(
+			process.platform === "win32"
+				? `Browser profile "delta" is in use by another Chromium process (lock ${path.join(dir, "lockfile")}). Close the browser running on it, or open another profile.`
+				: `Browser profile "delta" is in use by pid ${pid} (lock ${path.join(dir, "SingletonLock")}). Close the browser running on it, or open another profile.`,
+		);
+	}, 90_000);
+
 	it.skipIf(process.platform === "win32")(
 		"is refused under a lock from another host, and opens over one left by a process on this host that is gone, as Chromium does",
 		async () => {
-			const dir = profileDirectory("stale");
+			const dir = profiles.profileDirectory("stale");
 			const lock = path.join(dir, "SingletonLock");
 			fs.mkdirSync(dir, { recursive: true });
 			fs.symlinkSync("another-host-123", lock);

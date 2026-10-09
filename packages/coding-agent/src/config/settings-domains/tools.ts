@@ -489,7 +489,7 @@ export const TOOLS_SETTINGS = {
 	},
 	"browser.naturalInput": {
 		type: "boolean",
-		default: true,
+		default: false,
 		ui: {
 			tab: "tools",
 			group: "Browser",
