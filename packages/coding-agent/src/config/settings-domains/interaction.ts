@@ -159,7 +159,7 @@ export const INTERACTION_SETTINGS = {
 					value: "chatgpt-pro",
 					label: "ChatGPT Pro included",
 					description:
-						"The ChatGPT Codex prediction service, only when a linked OpenAI Codex account is on a ChatGPT Pro plan and the session's model is an OpenAI Codex model the service predicts for. Otherwise no prediction is requested.",
+						"The ChatGPT Codex prediction service on GPT-6 Astra or GPT-6.1 Sol, sent with a linked OpenAI Codex account on a ChatGPT Pro plan. During the beta, OpenAI counts these predictions against no Codex usage limits or credits. Without a Pro account, or when an API key replaces the Codex login, no prediction is requested.",
 				},
 				{ value: "off", label: "Off", description: "No predictions." },
 				{

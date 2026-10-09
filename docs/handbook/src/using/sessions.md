@@ -188,12 +188,16 @@ writes nothing to the session.
 
 `composer.predictions.mode` selects which model writes the prediction:
 
-- `chatgpt-pro` (default) uses the ChatGPT Codex prediction service, and only when an OpenAI Codex
-  login is on a ChatGPT Pro plan, read from the login's access token. The service supplies the
-  prompt and reasoning effort and lists the models it serves no predictions for. The request goes
-  to the session's model when it is an OpenAI Codex model, otherwise to the OpenAI Codex default
-  model, and is sent as an ephemeral fork of the session's thread. Without a Pro-plan Codex login
-  no request is sent and no warning is shown, so this mode uses no API usage. In `/settings` the
+- `chatgpt-pro` (default) uses the ChatGPT Codex prediction service, and only with a ChatGPT Pro
+  plan OpenAI Codex login, read from the login's access token. Any stored Codex account on the Pro
+  plan qualifies, the one the session is routed to first, then `OPENAI_CODEX_OAUTH_TOKEN`. The
+  request is sent with that login's own token, never with an account the session's routing would
+  move to. The service supplies the prompt and reasoning effort and lists the models it serves no
+  predictions for. The request goes to GPT-6 Astra or GPT-6.1 Sol, the models OpenAI supports for
+  predictions, preferring the session's model when it is one of them, and is sent as an ephemeral
+  fork of the session's thread. During the beta, OpenAI counts these predictions against no Codex
+  usage limits or credits. Without a Pro-plan Codex login, or when `--api-key` or a `models.yml`
+  `apiKey` replaces the Codex logins, no request is sent and no warning is shown. In `/settings` the
   row then reads `Off (no ChatGPT Pro account)`, and the option is greyed out and cannot be chosen
   until a ChatGPT Pro account is connected.
 - `off` requests no predictions. A stored `off` is never changed by connecting an account; the

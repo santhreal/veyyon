@@ -625,6 +625,14 @@ export class AuthStorage {
 	}
 
 	/**
+	 * True when a runtime key (`--api-key`) or a configured key (`models.yml`) authenticates `provider`
+	 * in place of its stored logins and environment token.
+	 */
+	hasApiKeyOverride(provider: string): boolean {
+		return this.#runtimeOverrides.has(provider) || this.#configOverrides.has(provider);
+	}
+
+	/**
 	 * Set a fallback resolver for API keys not found in storage or env vars.
 	 * Used for custom provider keys from models.json.
 	 */
@@ -1958,7 +1966,7 @@ export class AuthStorage {
 
 		// Runtime / config overrides bypass OAuth account_uuid attribution — the
 		// caller is authenticating with an explicit key, not the broker's OAuth.
-		if (this.#runtimeOverrides.has(provider) || this.#configOverrides.has(provider)) return undefined;
+		if (this.hasApiKeyOverride(provider)) return undefined;
 
 		// Prefer the session-sticky credential when available.
 		const sessionPref = this.#routing.getSessionCredential(provider, sessionId);
@@ -3917,7 +3925,7 @@ export class AuthStorage {
 		// Runtime / config overrides intentionally short-circuit OAuth: when the
 		// user has pinned an API key, they expect the OAuth identity to be
 		// suppressed (same contract as `getOAuthAccountId`).
-		if (this.#runtimeOverrides.has(provider) || this.#configOverrides.has(provider)) {
+		if (this.hasApiKeyOverride(provider)) {
 			return undefined;
 		}
 		const resolved = await this.#resolveOAuthSelection(provider, sessionId, options);
@@ -4006,7 +4014,7 @@ export class AuthStorage {
 	 * account" UI should render `position + 1`.
 	 */
 	listOAuthAccounts(provider: string): OAuthAccountSummary[] {
-		if (this.#runtimeOverrides.has(provider) || this.#configOverrides.has(provider)) {
+		if (this.hasApiKeyOverride(provider)) {
 			return [];
 		}
 		return this.#getStoredOAuthSelections(provider).map((selection, position) => ({
@@ -4030,7 +4038,7 @@ export class AuthStorage {
 	 * exercise each stored account exactly once.
 	 */
 	async getOAuthAccesses(provider: string, options?: AuthApiKeyOptions): Promise<OAuthAccessResolution[]> {
-		if (this.#runtimeOverrides.has(provider) || this.#configOverrides.has(provider)) {
+		if (this.hasApiKeyOverride(provider)) {
 			return [];
 		}
 		const providerKey = getProviderTypeKey(provider, "oauth");
@@ -4057,7 +4065,7 @@ export class AuthStorage {
 		position: number,
 		options?: AuthApiKeyOptions,
 	): Promise<OAuthAccessResolution | undefined> {
-		if (this.#runtimeOverrides.has(provider) || this.#configOverrides.has(provider)) {
+		if (this.hasApiKeyOverride(provider)) {
 			return undefined;
 		}
 		const selection = this.#getStoredOAuthSelections(provider)[position];

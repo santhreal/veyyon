@@ -65,7 +65,7 @@ import { loadCapability } from "../../../../discovery";
 import { PROVIDER_ID as NATIVE_RULES_PROVIDER_ID } from "../../../../discovery/builtin";
 import { BUILTIN_RULE_SECTIONS, type BuiltinRuleSection } from "../../../../discovery/builtin-rules";
 import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "../../../../discovery/capability/rule";
-import { hasIncludedPredictionLogin } from "../../../../session/composer-prediction";
+import { includedPredictionLogins } from "../../../../session/composer-prediction";
 import {
 	AGENT_ENABLE_STATE_LABEL,
 	agentEnableState,
@@ -3155,13 +3155,13 @@ export class SettingsSelectorComponent implements Component {
 	}
 
 	/**
-	 * True when the settings screen can tell that no ChatGPT Pro plan Codex login is present, so
-	 * the ChatGPT Pro included prediction mode would request nothing. False when no model
-	 * registry is available to tell.
+	 * True when the settings screen can tell that no Codex login would answer a ChatGPT Pro
+	 * included prediction (see `includedPredictionLogins`), so that mode would request nothing.
+	 * False when no model registry is available to tell.
 	 */
 	lacksProPredictionLogin(): boolean {
 		const registry = this.context.modelRegistry;
-		return registry !== undefined && !hasIncludedPredictionLogin(registry.authStorage);
+		return registry !== undefined && includedPredictionLogins(registry).length === 0;
 	}
 
 	/** The submenu's options, with the ChatGPT Pro prediction mode greyed out while no Pro login is present. */

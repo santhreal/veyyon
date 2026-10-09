@@ -2321,6 +2321,17 @@ export class ModelRegistry {
 		);
 	}
 
+	/**
+	 * True when a runtime key (`--api-key`), a `models.yml` key or a `models.yml` key command
+	 * authenticates `provider` in place of its stored logins and environment token. A key command
+	 * counts even when it produced no key, since {@link getApiKey} then sends none.
+	 */
+	hasApiKeyOverride(provider: string): boolean {
+		return (
+			isConfigValueCommand(this.#customProviderApiKeys.get(provider)) || this.authStorage.hasApiKeyOverride(provider)
+		);
+	}
+
 	/** True when the provider is usable without stored credentials (ollama, lm-studio, …). */
 	isKeylessProvider(provider: string): boolean {
 		return this.#keylessProviders.has(provider);
