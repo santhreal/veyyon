@@ -8,31 +8,18 @@ async function refreshKimiCodeCredentials(credentials: OAuthCredentials): Promis
 	return refreshKimiToken(credentials.refresh, credentials.apiEndpoint);
 }
 
-/** Kimi Code accounts of mainland China, which sign in at kimi.com. */
+/**
+ * Kimi Code. The login asks which deployment the account belongs to, mainland China on kimi.com or
+ * global on kimi.ai, and signs in there; the credential records its region, so refresh and every
+ * request go to the same deployment.
+ */
 export const kimiCodeProvider = {
 	id: "kimi-code",
-	name: "Kimi Code (kimi.com/code)",
+	name: "Kimi Code",
 	login: async (cb: OAuthLoginCallbacks) => {
-		const { loginKimi } = await import("./oauth/kimi");
-		return loginKimi(cb, "mainland-cn");
+		const { askKimiCodeRegion, loginKimi } = await import("./oauth/kimi");
+		return loginKimi(cb, await askKimiCodeRegion(cb));
 	},
 	credential: "oauth",
 	refreshToken: refreshKimiCodeCredentials,
-} as const satisfies ProviderDefinition;
-
-/**
- * Kimi Code accounts outside mainland China, which sign in at kimi.ai. The credential is the same
- * product's and is filed under `kimi-code`; it records its region, so refresh and every request go to
- * kimi.ai.
- */
-export const kimiCodeGlobalProvider = {
-	id: "kimi-code-global",
-	name: "Kimi Code (kimi.ai/code)",
-	login: async (cb: OAuthLoginCallbacks) => {
-		const { loginKimi } = await import("./oauth/kimi");
-		return loginKimi(cb, "global");
-	},
-	credential: "oauth",
-	refreshToken: refreshKimiCodeCredentials,
-	storeCredentialsAs: "kimi-code",
 } as const satisfies ProviderDefinition;

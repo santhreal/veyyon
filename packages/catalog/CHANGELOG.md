@@ -4,7 +4,7 @@
 
 ### Added
 
-- `@veyyon/catalog/wire/kimi-code` exports `KIMI_CODE_REGIONS`, the OAuth and API hosts of the mainland China (kimi.com) and global (kimi.ai) Kimi Code deployments, with `kimiCodeApiKey`, which encodes a credential's deployment into its API key, and `resolveKimiCodeEndpoint`, which reads the token and API bases a request uses from that key.
+- `@veyyon/catalog/wire/kimi-code` exports `KIMI_CODE_REGIONS`, the display name, site, OAuth host and API hosts of the global (kimi.ai) and mainland China (kimi.com) Kimi Code deployments in the order the login lists them, with `kimiCodeApiKey`, which encodes a credential's deployment into its API key, and `resolveKimiCodeEndpoint`, which reads the token and API bases a request uses from that key.
 
 ### Changed
 

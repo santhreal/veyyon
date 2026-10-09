@@ -13,6 +13,10 @@ import { trimTrailingSlashes } from "@veyyon/utils/url";
 export type KimiCodeRegion = "mainland-cn" | "global";
 
 export interface KimiCodeRegionEndpoints {
+	/** The region's name in the login's region menu. */
+	readonly name: string;
+	/** The site an account of the region signs in at, shown beside {@link name}. */
+	readonly site: string;
 	/** OAuth host of the device-code login and the token refresh. */
 	readonly oauthHost: string;
 	/** OpenAI-compatible API base. Usage, search and model listing are paths under it. */
@@ -21,16 +25,21 @@ export interface KimiCodeRegionEndpoints {
 	readonly anthropicBaseUrl: string;
 }
 
+/** Every region, in the order the login lists them. The first is the one an empty answer selects. */
 export const KIMI_CODE_REGIONS: Readonly<Record<KimiCodeRegion, KimiCodeRegionEndpoints>> = {
-	"mainland-cn": {
-		oauthHost: "https://auth.kimi.com",
-		baseUrl: "https://api.kimi.com/coding/v1",
-		anthropicBaseUrl: "https://api.kimi.com/coding",
-	},
 	global: {
+		name: "Global",
+		site: "kimi.ai",
 		oauthHost: "https://auth.kimi.ai",
 		baseUrl: "https://api.kimi.ai/coding/v1",
 		anthropicBaseUrl: "https://api.kimi.ai/coding",
+	},
+	"mainland-cn": {
+		name: "Mainland China",
+		site: "kimi.com",
+		oauthHost: "https://auth.kimi.com",
+		baseUrl: "https://api.kimi.com/coding/v1",
+		anthropicBaseUrl: "https://api.kimi.com/coding",
 	},
 };
 

@@ -261,6 +261,40 @@ async function pollForToken(
 	});
 }
 
+/** The regions in the order the region menu lists them; an empty answer selects the first. */
+const REGION_MENU = Object.keys(KIMI_CODE_REGIONS) as KimiCodeRegion[];
+
+/**
+ * Ask which Kimi Code deployment the account belongs to. The menu lists every region of
+ * `KIMI_CODE_REGIONS` by number; an empty answer selects the first, and any other answer that is not
+ * a listed number fails the login.
+ */
+export async function askKimiCodeRegion(options: OAuthController): Promise<KimiCodeRegion> {
+	if (!options.onPrompt) throw new AIError.OnPromptRequiredError("Kimi Code");
+	const numbers = REGION_MENU.map((_, index) => String(index + 1));
+	const choices = REGION_MENU.map((region, index) => {
+		const { name, site } = KIMI_CODE_REGIONS[region];
+		return `${numbers[index]}=${name} (${site}${index === 0 ? ", default" : ""})`;
+	});
+	const answer = await options.onPrompt({
+		message: `Select your Kimi Code region: ${choices.join(", ")} — enter ${numbers.join(" or ")}`,
+		placeholder: numbers[0],
+		// A menu number, not a credential: masking it would hide which region you picked.
+		secret: false,
+	});
+	// Escape answers "" and aborts the signal; an empty answer without an abort selects the default.
+	if (options.signal?.aborted) throw new AIError.LoginCancelledError();
+	const choice = answer.trim();
+	const index = choice === "" ? 0 : numbers.indexOf(choice);
+	const region = REGION_MENU[index];
+	if (region === undefined) {
+		throw new AIError.ConfigurationError(
+			`Unknown Kimi Code region "${choice}". Fix: run the login again and enter ${numbers.join(" or ")}.`,
+		);
+	}
+	return region;
+}
+
 /**
  * Login with Kimi Code OAuth (device code flow) at the deployment of `region`: `mainland-cn` signs in
  * at kimi.com, `global` at kimi.ai. An OAuth host set in the environment overrides the region's host,

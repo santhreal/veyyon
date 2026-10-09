@@ -217,9 +217,9 @@ Base URL resolution: option `azureBaseUrl` → env `AZURE_OPENAI_BASE_URL` → o
 | `KIMI_OAUTH_HOST`      | Fallback OAuth host override for both regions                                                         |
 | `KIMI_CODE_BASE_URL`   | Overrides the Kimi usage endpoint base URL (`usage/kimi.ts`) when no explicit custom base is supplied |
 
-OAuth host chain: `KIMI_CODE_OAUTH_HOST` → `KIMI_OAUTH_HOST` → the region's host: `https://auth.kimi.com` for `/login kimi-code` (mainland China) and `https://auth.kimi.ai` for `/login kimi-code-global` (every other region).
+OAuth host chain: `KIMI_CODE_OAUTH_HOST` → `KIMI_OAUTH_HOST` → the host of the region the Kimi Code login asks for: `https://auth.kimi.ai` for Global (the default) and `https://auth.kimi.com` for Mainland China.
 
-A Kimi Code credential is accepted only by the deployment that issued it. Requests, token refresh, usage, web search and model discovery for a `kimi-code-global` credential go to `https://api.kimi.ai/coding/v1`; a mainland credential and a `KIMI_API_KEY` go to the configured base, `https://api.kimi.com/coding/v1` by default. A custom base URL configured for the model is kept for either region.
+A Kimi Code credential is accepted only by the deployment that issued it. Requests, token refresh, usage, web search and model discovery for a Global credential go to `https://api.kimi.ai/coding/v1`; a Mainland China credential and a `KIMI_API_KEY` go to the configured base, `https://api.kimi.com/coding/v1` by default. A custom base URL configured for the model is kept for either region.
 
 ### Gemini CLI compatibility
 

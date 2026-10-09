@@ -2,24 +2,30 @@
  * WHY: Kimi Code runs two deployments, mainland China on kimi.com and every other region on kimi.ai,
  * and a token one deployment issues is rejected by the other. Every Kimi request went to kimi.com, so
  * an account outside mainland China could not sign in, and a kimi.ai token sent to kimi.com failed.
+ * The first fix put kimi.ai behind a second registry row, which `/login` never offered: the account
+ * manager lists one entry per stored provider, and its Kimi Code entry started the kimi.com login.
  *
- * Class closed: every way a Kimi Code token leaves the process goes to the deployment that issued it,
- * for every deployment in `KIMI_CODE_REGIONS`: the device login, a turn through `streamSimple` in both
- * API formats, a turn through `stream` straight to chat completions, the usage probe, model discovery,
- * and the token refresh, plus a turn with the refreshed token, both as `AuthStorage` stores it and as
- * the provider's refresh returns it with no stored row merged under it. Each row is driven from
- * `/login` through the real `AuthStorage`, so the region has to survive storage, key derivation and
- * refresh. The Kimi login rows are read from `PROVIDER_REGISTRY` and pinned by exact equality, so a
- * new Kimi login row turns this suite red until its deployment is recorded here. Beside the
- * per-consumer URLs, every request a row makes is checked against the origins of its own deployment,
- * so a consumer this file does not name still fails it by reaching the other deployment.
+ * Class closed: every deployment in `KIMI_CODE_REGIONS` is reached from the one Kimi Code login the
+ * account manager starts, by the number its region menu shows beside the deployment's site, and every
+ * way that login's token leaves the process goes to the deployment that issued it: the device login, a
+ * turn through `streamSimple` in both API formats, a turn through `stream` straight to chat
+ * completions, the usage probe, model discovery, and the token refresh, plus a turn with the refreshed
+ * token, both as `AuthStorage` stores it and as the provider's refresh returns it with no stored row
+ * merged under it. Each region is driven from `/login` through the real `AuthStorage`, so the region
+ * has to survive storage, key derivation and refresh. The rows that store a Kimi Code credential are
+ * read from `PROVIDER_REGISTRY` and pinned by exact equality, so a second Kimi login row, which the
+ * account manager would hide, turns this suite red. Beside the per-consumer URLs, every request a
+ * login makes is checked against the origins of its own deployment, so a consumer this file does not
+ * name still fails it by reaching the other deployment. An empty answer signs in at the region the
+ * menu marks as the default, and an unlisted answer or Escape ends the login before any request.
  *
  * A custom base URL (a proxy) is kept for either deployment, a plain key (`KIMI_API_KEY`), which
  * names no deployment, follows the configured base, and a model served from either deployment's host
  * gets the Moonshot-native compat whatever its provider id.
  *
- * NOT CAUGHT: whether either deployment accepts the requests (there is no network here), and the web
- * search provider, which is in coding-agent and is covered by its own suite there.
+ * NOT CAUGHT: whether either deployment accepts the requests (there is no network here), whether the
+ * terminal dialog shows the prompt (any `onPrompt` a host supplies is what reaches the menu), and the
+ * web search provider, which is in coding-agent and is covered by its own suite there.
  */
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
@@ -36,15 +42,12 @@ import { buildModel } from "@veyyon/catalog/build";
 import { kimiCodeModelManagerOptions } from "@veyyon/catalog/provider-models/openai-compat";
 import { KIMI_CODE_REGIONS, type KimiCodeRegion, kimiCodeApiKey } from "@veyyon/catalog/wire/kimi-code";
 
-/** The deployment each Kimi login row signs in at. A new row is recorded here by whoever read its flow. */
-const ROW_REGION: Readonly<Record<string, KimiCodeRegion>> = {
-	"kimi-code": "mainland-cn",
-	"kimi-code-global": "global",
-};
-
+/** Every registry row whose login stores a Kimi Code credential. */
 const KIMI_LOGIN_ROWS = PROVIDER_REGISTRY.filter(
 	row => typeof row.login === "function" && (row.id === "kimi-code" || row.storeCredentialsAs === "kimi-code"),
 );
+
+const REGIONS = Object.keys(KIMI_CODE_REGIONS) as KimiCodeRegion[];
 
 const CONTEXT: Context = { messages: [{ role: "user", content: "hello", timestamp: 0 }] };
 
@@ -137,6 +140,40 @@ async function runTurn(
 	await aiStream.streamSimple(model, CONTEXT, { apiKey, fetch: fetchImpl, kimiApiFormat: format }).result();
 }
 
+function escapeRegExp(text: string): string {
+	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** The number the region menu shows beside `region`'s site, read from the prompt as a user reads it. */
+function menuNumber(message: string, region: KimiCodeRegion): string {
+	const { name, site } = KIMI_CODE_REGIONS[region];
+	const entry = new RegExp(`(\\d+)=${escapeRegExp(name)} \\(${escapeRegExp(site)}[,)]`).exec(message);
+	if (!entry?.[1]) throw new Error(`the Kimi Code region menu lists no entry for ${site}: ${message}`);
+	return entry[1];
+}
+
+/** Every prompt a login showed, and the requests it made, for an answer chosen from each prompt. */
+async function kimiLogin(
+	storage: AuthStorage,
+	answer: (message: string) => string,
+	signal?: AbortSignal,
+): Promise<{ prompts: string[]; sent: Sent[]; outcome: Promise<unknown> }> {
+	const prompts: string[] = [];
+	const sent: Sent[] = [];
+	vi.spyOn(globalThis, "fetch").mockImplementation(kimiServer(sent));
+	const outcome = storage.login("kimi-code", {
+		signal,
+		onAuth: () => {},
+		onProgress: () => {},
+		onPrompt: async ({ message }) => {
+			prompts.push(message);
+			return answer(message);
+		},
+	});
+	await outcome.catch(() => {});
+	return { prompts, sent, outcome };
+}
+
 describe("a Kimi token reaches only the deployment that issued it", () => {
 	let db: Database;
 	let store: SqliteAuthCredentialStore;
@@ -157,26 +194,28 @@ describe("a Kimi token reaches only the deployment that issued it", () => {
 		store.close();
 	});
 
-	it("offers one login per deployment, and records which deployment each one signs in at", () => {
-		expect(KIMI_LOGIN_ROWS.map(row => row.id).sort()).toEqual(Object.keys(ROW_REGION).sort());
-		expect([...new Set<string>(Object.values(ROW_REGION))].sort()).toEqual(Object.keys(KIMI_CODE_REGIONS).sort());
+	it("has one Kimi Code login, the one the account manager starts", () => {
+		expect(KIMI_LOGIN_ROWS.map(row => row.id)).toEqual(["kimi-code"]);
 	});
 
-	for (const row of KIMI_LOGIN_ROWS) {
-		const region = ROW_REGION[row.id];
-		it(`sends every request of a ${row.id} login to the ${region} deployment`, async () => {
-			if (region === undefined) throw new Error(`no deployment recorded for Kimi login row ${row.id}`);
+	for (const region of REGIONS) {
+		it(`sends every request of a login that picks ${region} to that deployment`, async () => {
 			const endpoints = KIMI_CODE_REGIONS[region];
 			const sent: Sent[] = [];
 			const server = kimiServer(sent);
 			vi.spyOn(globalThis, "fetch").mockImplementation(server);
 			const model = kimiModel();
 
-			await storage.login(row.id as Parameters<AuthStorage["login"]>[0], {
+			const prompts: string[] = [];
+			await storage.login("kimi-code", {
 				onAuth: () => {},
 				onProgress: () => {},
-				onPrompt: async () => "",
+				onPrompt: async ({ message }) => {
+					prompts.push(message);
+					return menuNumber(message, region);
+				},
 			});
+			expect(prompts).toHaveLength(1);
 			expect(since(sent, 0).filter(entry => entry.url.includes("/api/oauth/"))).toEqual([
 				{ url: `${endpoints.oauthHost}/api/oauth/device_authorization`, credential: null },
 				{ url: `${endpoints.oauthHost}/api/oauth/token`, credential: null },
@@ -242,6 +281,54 @@ describe("a Kimi token reaches only the deployment that issued it", () => {
 			expect(sent.map(entry => new URL(entry.url).origin).filter(origin => !ownOrigins.has(origin))).toEqual([]);
 		});
 	}
+
+	it("signs in at the region the menu marks as the default when the answer is empty", async () => {
+		const { prompts, sent, outcome } = await kimiLogin(storage, () => "");
+		await outcome;
+		const message = prompts[0] ?? "";
+		const marked = REGIONS.filter(region => message.includes(`(${KIMI_CODE_REGIONS[region].site}, default)`));
+		expect(marked).toHaveLength(1);
+		const { oauthHost } = KIMI_CODE_REGIONS[marked[0] as KimiCodeRegion];
+		expect(since(sent, 0)).toEqual([
+			{ url: `${oauthHost}/api/oauth/device_authorization`, credential: null },
+			{ url: `${oauthHost}/api/oauth/token`, credential: null },
+		]);
+	});
+
+	it("ends the login before any request on an answer the menu does not list", async () => {
+		for (const answer of ["0", "9", "global", "kimi.ai", "1.0"]) {
+			const { sent, outcome } = await kimiLogin(storage, () => answer);
+			await expect(outcome).rejects.toThrow(`Unknown Kimi Code region "${answer}"`);
+			expect(sent).toEqual([]);
+		}
+		expect(store.listAuthCredentials("kimi-code")).toEqual([]);
+	});
+
+	it("reads an answer with surrounding spaces as the number it holds", async () => {
+		const region = REGIONS[REGIONS.length - 1] as KimiCodeRegion;
+		const { sent, outcome } = await kimiLogin(storage, message => ` ${menuNumber(message, region)} \n`);
+		await outcome;
+		const { oauthHost } = KIMI_CODE_REGIONS[region];
+		expect(since(sent, 0)).toEqual([
+			{ url: `${oauthHost}/api/oauth/device_authorization`, credential: null },
+			{ url: `${oauthHost}/api/oauth/token`, credential: null },
+		]);
+	});
+
+	it("ends the login before any request when the region prompt is escaped", async () => {
+		const dialog = new AbortController();
+		const { sent, outcome } = await kimiLogin(
+			storage,
+			() => {
+				dialog.abort();
+				return "";
+			},
+			dialog.signal,
+		);
+		await expect(outcome).rejects.toThrow("Login cancelled");
+		expect(sent).toEqual([]);
+		expect(store.listAuthCredentials("kimi-code")).toEqual([]);
+	});
 
 	it("keeps a custom base URL for a token from either deployment", async () => {
 		const proxy = "https://proxy.example.test/kimi/v1";
