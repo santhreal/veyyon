@@ -140,3 +140,15 @@ export function getCodexAccountId(accessToken: string | undefined): string | und
 export function getCodexAccountEmail(accessToken: string | undefined): string | undefined {
 	return readCodexTokenIdentity(accessToken).email;
 }
+
+/**
+ * Extract the ChatGPT plan a Codex JWT access token was minted for (`chatgpt_plan_type` in the auth claim:
+ * `free`, `plus`, `pro`, `team`, ...), trimmed and lowercased. Undefined for a missing or malformed token, or one
+ * that carries no plan claim.
+ */
+export function getCodexPlanType(accessToken: string | undefined): string | undefined {
+	if (!accessToken) return undefined;
+	const auth = decodeJwtPayload(accessToken)?.[CODEX_JWT_AUTH_CLAIM];
+	if (auth === null || typeof auth !== "object" || !("chatgpt_plan_type" in auth)) return undefined;
+	return usableClaim(auth.chatgpt_plan_type)?.toLowerCase();
+}

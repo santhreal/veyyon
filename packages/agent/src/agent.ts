@@ -789,12 +789,16 @@ export class Agent {
 	 * same cached prefix as the main loop. Callers that must pin a different prompt
 	 * (e.g. handoff generation, which uses the base prompt rather than a per-turn
 	 * `before_agent_start` hook override) pass it explicitly.
+	 *
+	 * `model` defaults to the live agent model. A side request sent to another
+	 * model (a composer prediction on its own model) passes it, so messages and
+	 * tools are normalized for the model that receives them.
 	 */
 	async buildSideRequestContext(
 		llmMessages: Message[],
 		systemPrompt: string[] = this.#state.systemPrompt,
+		model: Model | undefined = this.#state.model,
 	): Promise<Context> {
-		const model = this.#state.model;
 		if (!model) throw new Error("No active model on agent");
 		const ownedDialect = resolveConfiguredDialect(this.#dialect, model);
 		const messages = normalizeMessagesForProvider(llmMessages, model);

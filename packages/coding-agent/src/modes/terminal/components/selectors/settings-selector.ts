@@ -65,6 +65,7 @@ import { loadCapability } from "../../../../discovery";
 import { PROVIDER_ID as NATIVE_RULES_PROVIDER_ID } from "../../../../discovery/builtin";
 import { BUILTIN_RULE_SECTIONS, type BuiltinRuleSection } from "../../../../discovery/builtin-rules";
 import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "../../../../discovery/capability/rule";
+import { hasIncludedPredictionLogin } from "../../../../session/composer-prediction";
 import {
 	AGENT_ENABLE_STATE_LABEL,
 	agentEnableState,
@@ -133,6 +134,10 @@ import {
 } from "./settings-defs";
 
 const DECIMAL_NUMBER = /^-?\d+(?:\.\d+)?$/;
+
+const PREDICTIONS_MODE_PATH: SettingPath = "composer.predictions.mode";
+const INCLUDED_PREDICTION_MODE = "chatgpt-pro";
+const CONNECT_PRO_PREDICTION_HINT = "Connect ChatGPT Pro for free, usage-less predictions.";
 
 export const UNSET_NUMBER_INPUT = "unset";
 
@@ -2378,6 +2383,13 @@ export const SETTING_KIND_HANDLERS: SettingKindHandlers = {
 	submenu: {
 		formatValue: (self, def, currentValue) => self.getSubmenuCurrentValue(def.path, currentValue),
 		labelForValue: (self, def) => value => {
+			if (
+				def.path === PREDICTIONS_MODE_PATH &&
+				value === INCLUDED_PREDICTION_MODE &&
+				self.lacksProPredictionLogin()
+			) {
+				return "Off (no ChatGPT Pro account)";
+			}
 			const option = self.submenuOptions(def).find(opt => opt.value === value);
 			return humanizeOptionLabel(option?.label, value);
 		},
@@ -2403,7 +2415,7 @@ export const SETTING_KIND_HANDLERS: SettingKindHandlers = {
 	},
 	modelSelector: {
 		formatValue: (self, _def, currentValue) => self.formatModelSelectorValue(currentValue),
-		createSubmenu: (self, def, _currentValue, done) => self.createModelSelectorInput(def.path, done),
+		createSubmenu: (self, def, _currentValue, done) => self.createModelSelectorInput(def.path, def.label, done),
 	},
 	defaultEffort: {
 		formatValue: self => self.formatDefaultEffortValue(),
@@ -3142,12 +3154,33 @@ export class SettingsSelectorComponent implements Component {
 		return def.options;
 	}
 
+	/**
+	 * True when the settings screen can tell that no ChatGPT Pro plan Codex login is present, so
+	 * the ChatGPT Pro included prediction mode would request nothing. False when no model
+	 * registry is available to tell.
+	 */
+	lacksProPredictionLogin(): boolean {
+		const registry = this.context.modelRegistry;
+		return registry !== undefined && !hasIncludedPredictionLogin(registry.authStorage);
+	}
+
+	/** The submenu's options, with the ChatGPT Pro prediction mode greyed out while no Pro login is present. */
+	#submenuItems(def: SettingDef & { type: "submenu" }): ReadonlyArray<SelectItem> {
+		const options = this.submenuOptions(def);
+		if (def.path !== PREDICTIONS_MODE_PATH || !this.lacksProPredictionLogin()) return options;
+		return options.map(option =>
+			option.value === INCLUDED_PREDICTION_MODE
+				? { ...option, description: CONNECT_PRO_PREDICTION_HINT, disabled: true }
+				: option,
+		);
+	}
+
 	createSubmenu(
 		def: SettingDef & { type: "submenu" },
 		currentValue: string,
 		done: (value?: string) => void,
 	): Container {
-		const options = this.submenuOptions(def);
+		const options = this.#submenuItems(def);
 		const description = def.description;
 
 		let onPreview: ((value: string) => void | Promise<void>) | undefined;
@@ -3269,14 +3302,13 @@ export class SettingsSelectorComponent implements Component {
 		return assigned === 0 ? "All inherit" : `${assigned} assigned`;
 	}
 
-	createModelSelectorInput(path: SettingPath, done: (value?: string) => void): Container {
+	createModelSelectorInput(path: SettingPath, label: string, done: (value?: string) => void): Container {
 		return this.#withModelPickerContext(done, ctx => {
 			const current: unknown = settings.get(path);
 			const rawCurrent =
 				typeof current === "string" || (Array.isArray(current) && current.every(v => typeof v === "string"))
 					? (current as string | string[])
 					: undefined;
-			const label = path === "compaction.model" ? "Compaction Model" : String(path);
 			return new ModelChainSubmenu(
 				path,
 				ctx.registry,

@@ -172,6 +172,13 @@ veyyon config get compaction.threshold
 | `emojiAutocomplete` | Emoji Autocomplete | boolean | `true` | Suggest emojis from `:name:` shortcodes and expand text emoticons like `:D` or `:-)`. |
 | `paste.largeMenuThreshold` | Large Paste Menu | number | `100` | When a paste reaches this many lines, offer a menu to wrap it in a code block, wrap it in XML tags, or save it to a file. 0 disables the menu (large pastes still collapse to a [Paste] marker). |
 
+### Composer Predictions
+
+| Key | Setting | Type | Default | What it does |
+|---|---|---|---|---|
+| `composer.predictions.mode` | Composer Predictions | enum | `chatgpt-pro` | After each turn, suggest the message you are likely to send next as dim text in the empty composer. Tab inserts it; typing replaces it. Nothing is sent without Enter. Values: `chatgpt-pro`, `off`, `custom`. |
+| `composer.predictions.model` | Prediction Model | modelChain | _(unset)_ | Models that write predictions in Custom mode, from any provider, tried in order: the first one with credentials is used. A :level suffix sets its thinking level. Inherit: the session's model. |
+
 ### Session
 
 | Key | Setting | Type | Default | What it does |
@@ -899,4 +906,4 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `tui.maxInlineImageRows` | number | `20` |  |
 | `tui.maxInlineImages` | number | `8` |  |
 
-355 settings in /settings, 118 configuration-file keys, 473 in all.
+357 settings in /settings, 118 configuration-file keys, 475 in all.

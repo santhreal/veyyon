@@ -178,6 +178,38 @@ Recalling a queued follow-up is a TUI-local action (`Esc` or the dequeue chord);
 RPC protocol has no recall command. An empty follow-up is a no-op in the TUI, and `/queue` with no
 text shows a usage warning.
 
+## Composer predictions
+
+After each finished turn, a prediction of the message you are likely to send next is shown as dim
+text in the empty composer. `Tab` inserts it for editing; `Enter` then sends it. Typing dismisses
+it, and a new turn, a session switch or compaction clears it. No prediction is requested after an
+aborted or failed turn, or while the composer holds text. A prediction reads the conversation and
+writes nothing to the session.
+
+`composer.predictions.mode` selects which model writes the prediction:
+
+- `chatgpt-pro` (default) uses the ChatGPT Codex prediction service, and only when an OpenAI Codex
+  login is on a ChatGPT Pro plan, read from the login's access token. The service supplies the
+  prompt and reasoning effort and lists the models it serves no predictions for. The request goes
+  to the session's model when it is an OpenAI Codex model, otherwise to the OpenAI Codex default
+  model, and is sent as an ephemeral fork of the session's thread. Without a Pro-plan Codex login
+  no request is sent and no warning is shown, so this mode uses no API usage. In `/settings` the
+  row then reads `Off (no ChatGPT Pro account)`, and the option is greyed out and cannot be chosen
+  until a ChatGPT Pro account is connected.
+- `off` requests no predictions. A stored `off` is never changed by connecting an account; the
+  mode stays off until you choose another one.
+- `custom` sends a built-in prompt to the models in `composer.predictions.model`, chosen from every
+  provider in the settings model picker. The first one with credentials writes the prediction; a
+  `:level` suffix sets its thinking level. Unset, the session's model writes it. When no listed
+  model is usable, the reason is shown once as a warning.
+
+```yaml
+composer:
+  predictions:
+    mode: custom
+    model: [anthropic/claude-sonnet-4-5, openai/gpt-5.5:low]
+```
+
 ## Next
 
 Read [Examples](./examples.md) for concrete prompts and workflows.

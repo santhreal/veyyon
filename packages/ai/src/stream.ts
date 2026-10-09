@@ -1464,6 +1464,7 @@ function optionsForApi(mapping: OptionsMapping): OptionsForApi<Api> {
 				serviceTier: options.serviceTier,
 				preferWebsockets: options.preferWebsockets,
 				codexCompaction: options.codexCompaction,
+				codexFork: options.codexFork,
 				reasoningSummary: options.hideThinkingSummary ? null : "detailed",
 				textVerbosity: options.textVerbosity,
 			} satisfies OptionsForApi<"openai-codex-responses">;

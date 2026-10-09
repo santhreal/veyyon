@@ -26,6 +26,7 @@ import {
 	CODEX_JWT_PROFILE_CLAIM,
 	getCodexAccountEmail,
 	getCodexAccountId,
+	getCodexPlanType,
 	JWT_CLAIM_PATH,
 	readCodexClaimsFromPayload,
 	readCodexTokenIdentity,
@@ -192,6 +193,32 @@ describe("reading a Codex token's identity", () => {
 			email: undefined,
 		});
 		expect(readCodexClaimsFromPayload({})).toEqual({ accountId: undefined, email: undefined });
+	});
+});
+
+/**
+ * The plan claim decides whether a ChatGPT Pro included composer prediction may be requested, so a token that does
+ * not state `pro` in the auth claim must read as some other plan or none: a misread here bills usage the
+ * subscription does not cover.
+ */
+describe("reading a Codex token's plan", () => {
+	it.each([
+		["pro", { [CODEX_JWT_AUTH_CLAIM]: { chatgpt_plan_type: "pro" } }, "pro"],
+		["a padded, upper-case plan", { [CODEX_JWT_AUTH_CLAIM]: { chatgpt_plan_type: " Plus " } }, "plus"],
+		["a blank plan", { [CODEX_JWT_AUTH_CLAIM]: { chatgpt_plan_type: "  " } }, undefined],
+		["a non-string plan", { [CODEX_JWT_AUTH_CLAIM]: { chatgpt_plan_type: 1 } }, undefined],
+		["no auth claim", { [CODEX_JWT_PROFILE_CLAIM]: { chatgpt_plan_type: "pro" } }, undefined],
+		["an auth claim that is not an object", { [CODEX_JWT_AUTH_CLAIM]: "pro" }, undefined],
+	])("reads %s", (_case, payload, expected) => {
+		expect(getCodexPlanType(tokenFor(payload))).toBe(expected);
+	});
+
+	it.each([
+		["no token", undefined],
+		["an empty token", ""],
+		["a token that is not a JWT", "sk-not-a-jwt"],
+	])("reads no plan from %s", (_case, token) => {
+		expect(getCodexPlanType(token)).toBeUndefined();
 	});
 });
 

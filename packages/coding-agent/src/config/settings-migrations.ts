@@ -1019,6 +1019,34 @@ function migrateArgotEncode(raw: RawSettings): void {
 }
 
 /**
+ * composer.predictions.enabled (boolean) + .source ("codex" | "model") -> .mode.
+ *
+ * An explicit `enabled: false` becomes `off`, so a stored opt-out is never
+ * replaced by the `chatgpt-pro` default. `enabled: true` maps `source: model`
+ * to `custom` and every other source to `chatgpt-pro`, which requests only on
+ * a ChatGPT Pro plan. A `mode` already present wins. Both spellings, flat and
+ * nested, are folded and dropped, which makes this a fixed point.
+ */
+function migrateComposerPredictionsMode(raw: RawSettings): void {
+	const read = (key: string): unknown => {
+		const flat = `composer.predictions.${key}`;
+		const value = flat in raw ? raw[flat] : getByPath(raw, ["composer", "predictions", key]);
+		delete raw[flat];
+		deleteByPath(raw, ["composer", "predictions", key]);
+		return value;
+	};
+	const enabled = read("enabled");
+	const source = read("source");
+	if (typeof enabled !== "boolean") return;
+	if ("composer.predictions.mode" in raw || getByPath(raw, ["composer", "predictions", "mode"]) !== undefined) return;
+	setByPath(
+		raw,
+		["composer", "predictions", "mode"],
+		!enabled ? "off" : source === "model" ? "custom" : "chatgpt-pro",
+	);
+}
+
+/**
  * Every field-level migration, in the order it runs.
  *
  * Optional numeric settings once stored `-1` to mean "unset", which made -1
@@ -1066,6 +1094,7 @@ const RAW_SETTINGS_MIGRATIONS: readonly RawSettingsMigration[] = [
 	migrateSearchSettings,
 	migrateServiceTier,
 	migrateArgotEncode,
+	migrateComposerPredictionsMode,
 ];
 
 /**

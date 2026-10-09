@@ -5284,3 +5284,91 @@ describe("openai-codex SSE statelessness", () => {
 		expect(stats).toMatchObject({ fullContextRequests: 2, deltaRequests: 0 });
 	});
 });
+
+/**
+ * A composer prediction is an ephemeral fork of the session's Codex thread. Codex classifies it
+ * by `thread_source` and links it to the parent by `forked_from_thread_id` in the turn envelope;
+ * a fork that dropped either would be billed and analysed as an ordinary turn of a new thread.
+ * These drive `streamSimple`, so the `SimpleStreamOptions` mapping is covered as well as the
+ * provider. Not covered: the websocket transport, which reads the same request metadata.
+ */
+describe("openai-codex ephemeral fork metadata", () => {
+	function createMetadataCapturingFetch(sent: Array<Record<string, unknown>>): FetchImpl {
+		return vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+			const body = requireRecord(JSON.parse(String(init?.body)), "request body");
+			sent.push(parseTurnMetadata(requireRecord(body.client_metadata, "client_metadata")));
+			return new Response(createCompletedCodexSse("ok"), {
+				status: 200,
+				headers: { "content-type": "text/event-stream" },
+			});
+		}) as FetchImpl;
+	}
+
+	function sseOptions(
+		fetchMock: FetchImpl,
+		sessionId: string,
+		providerSessionState: Map<string, ProviderSessionState>,
+	) {
+		return {
+			fetch: fetchMock,
+			apiKey: createCodexTestToken(),
+			sessionId,
+			providerSessionState,
+			preferWebsockets: false,
+		};
+	}
+
+	it("names the parent's thread and the thread source on a fork of a live session", async () => {
+		setAgentDir(TempDir.createSync("@pi-codex-fork-").path());
+		const sent: Array<Record<string, unknown>> = [];
+		const fetchMock = createMetadataCapturingFetch(sent);
+		const model = createCodexTestModel("https://chatgpt.com/backend-api");
+		const providerSessionState = new Map<string, ProviderSessionState>();
+
+		await streamSimple(
+			model,
+			createCodexTestContext(),
+			sseOptions(fetchMock, "parent", providerSessionState),
+		).result();
+		await streamSimple(model, createCodexTestContext(), {
+			...sseOptions(fetchMock, "parent:side:1", providerSessionState),
+			codexFork: { parentSessionId: "parent", threadSource: "composer_predictions" },
+		}).result();
+
+		const [parent, fork] = sent;
+		expect(parent?.thread_source).toBeUndefined();
+		expect(parent?.forked_from_thread_id).toBeUndefined();
+		expect(typeof parent?.thread_id).toBe("string");
+		expect(fork?.thread_source).toBe("composer_predictions");
+		expect(fork?.forked_from_thread_id).toBe(parent?.thread_id);
+		expect(fork?.thread_id).not.toBe(parent?.thread_id);
+	});
+
+	it("still names the thread source when the parent has sent no Codex turn", async () => {
+		setAgentDir(TempDir.createSync("@pi-codex-fork-").path());
+		const sent: Array<Record<string, unknown>> = [];
+		const model = createCodexTestModel("https://chatgpt.com/backend-api");
+
+		await streamSimple(model, createCodexTestContext(), {
+			...sseOptions(createMetadataCapturingFetch(sent), "fresh:side:1", new Map()),
+			codexFork: { parentSessionId: "fresh", threadSource: "composer_predictions" },
+		}).result();
+
+		expect(sent[0]?.thread_source).toBe("composer_predictions");
+		expect(sent[0]?.forked_from_thread_id).toBeUndefined();
+	});
+
+	it("lets no caller metadata impersonate a fork", async () => {
+		setAgentDir(TempDir.createSync("@pi-codex-fork-").path());
+		const sent: Array<Record<string, unknown>> = [];
+		const model = createCodexTestModel("https://chatgpt.com/backend-api");
+
+		await streamOpenAICodexResponses(model, createCodexTestContext(), {
+			...sseOptions(createMetadataCapturingFetch(sent), "plain", new Map()),
+			clientMetadata: { thread_source: "composer_predictions", forked_from_thread_id: "thread-x" },
+		}).result();
+
+		expect(sent[0]?.thread_source).toBeUndefined();
+		expect(sent[0]?.forked_from_thread_id).toBeUndefined();
+	});
+});

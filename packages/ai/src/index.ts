@@ -52,6 +52,7 @@ export * from "./usage/kimi";
 export * from "./usage/minimax-code";
 export * from "./usage/ollama";
 export * from "./usage/openai-codex";
+export * from "./usage/openai-codex-predictions";
 export * from "./usage/openai-codex-reset";
 export * from "./usage/opencode-go";
 export * from "./usage/zai";

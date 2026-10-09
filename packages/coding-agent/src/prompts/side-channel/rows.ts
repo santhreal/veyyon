@@ -22,6 +22,7 @@ import { definePromptRows, type PromptEntry } from "@veyyon/utils/prompt-registr
 
 import sideChannelBackgroundTanDispatch from "./background-tan-dispatch.md" with { type: "text" };
 import sideChannelBtwUser from "./btw-user.md" with { type: "text" };
+import sideChannelComposerPrediction from "./composer-prediction.md" with { type: "text" };
 import sideChannelIrcAutoreply from "./irc-autoreply.md" with { type: "text" };
 import sideChannelIrcIncoming from "./irc-incoming.md" with { type: "text" };
 import sideChannelOmfgUser from "./omfg-user.md" with { type: "text" };
@@ -39,6 +40,10 @@ export const sideChannelPrompts = definePromptRows({
 	"side-channel/btw-user": {
 		text: sideChannelBtwUser,
 		purpose: "an ephemeral side question answered from context with no tools",
+	},
+	"side-channel/composer-prediction": {
+		text: sideChannelComposerPrediction,
+		purpose: "predicts the user's next message for the empty composer",
 	},
 	"side-channel/irc-autoreply": {
 		text: sideChannelIrcAutoreply,
