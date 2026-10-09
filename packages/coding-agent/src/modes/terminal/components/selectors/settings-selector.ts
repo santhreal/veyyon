@@ -2403,7 +2403,7 @@ export const SETTING_KIND_HANDLERS: SettingKindHandlers = {
 	},
 	modelSelector: {
 		formatValue: (self, _def, currentValue) => self.formatModelSelectorValue(currentValue),
-		createSubmenu: (self, def, _currentValue, done) => self.createModelSelectorInput(def.path, done),
+		createSubmenu: (self, def, _currentValue, done) => self.createModelSelectorInput(def.path, def.label, done),
 	},
 	defaultEffort: {
 		formatValue: self => self.formatDefaultEffortValue(),
@@ -3269,14 +3269,13 @@ export class SettingsSelectorComponent implements Component {
 		return assigned === 0 ? "All inherit" : `${assigned} assigned`;
 	}
 
-	createModelSelectorInput(path: SettingPath, done: (value?: string) => void): Container {
+	createModelSelectorInput(path: SettingPath, label: string, done: (value?: string) => void): Container {
 		return this.#withModelPickerContext(done, ctx => {
 			const current: unknown = settings.get(path);
 			const rawCurrent =
 				typeof current === "string" || (Array.isArray(current) && current.every(v => typeof v === "string"))
 					? (current as string | string[])
 					: undefined;
-			const label = path === "compaction.model" ? "Compaction Model" : String(path);
 			return new ModelChainSubmenu(
 				path,
 				ctx.registry,

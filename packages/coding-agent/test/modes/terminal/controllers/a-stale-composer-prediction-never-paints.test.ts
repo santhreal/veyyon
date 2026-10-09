@@ -1,7 +1,8 @@
 /**
  * The terminal requests a composer prediction when a turn ends and paints it as ghost text.
  * A reply that lands after anything newer (a new turn, a session switch, text in the composer)
- * must not paint, and an unavailable configuration is reported once rather than every turn.
+ * must not paint, an unavailable configuration is reported once rather than every turn, and the
+ * default mode without a ChatGPT Pro Codex login neither requests nor reports anything.
  *
  * Drives `ComposerPredictionController` over a real `AgentSession` and a real `Editor`; only the
  * provider stream is replaced, and it is held open so the test controls when the reply lands.
@@ -79,7 +80,15 @@ function harness(settings: Record<string, unknown>): Harness {
 		}),
 		sessionManager: SessionManager.inMemory(),
 		settings: Settings.isolated({ "compaction.enabled": false, ...settings }),
-		modelRegistry: { getApiKey: vi.fn(async () => "token"), resolver: vi.fn(() => async () => "token") } as never,
+		// No provider has credentials; the session's model is used without a credential check.
+		modelRegistry: {
+			getAll: () => [MODEL],
+			getProviderModels: (provider: string) => (provider === MODEL.provider ? [MODEL] : []),
+			find: () => undefined,
+			hasConfiguredAuth: () => false,
+			getApiKey: vi.fn(async () => undefined),
+			resolver: vi.fn(() => async () => "token"),
+		} as never,
 		sideStreamFn,
 	});
 	sessions.push(session);
@@ -106,7 +115,7 @@ function harness(settings: Record<string, unknown>): Harness {
 	};
 }
 
-const ENABLED = { "composer.predictions.enabled": true, "composer.predictions.source": "model" };
+const CUSTOM = { "composer.predictions.mode": "custom" };
 
 describe("ComposerPredictionController", () => {
 	beforeAll(async () => {
@@ -119,7 +128,7 @@ describe("ComposerPredictionController", () => {
 	});
 
 	it("paints the prediction for the turn that just ended", async () => {
-		const h = harness(ENABLED);
+		const h = harness(CUSTOM);
 		const run = h.controller.request();
 		(await h.nextRequest())('{"suggestion":"run the tests"}');
 		await run;
@@ -127,7 +136,7 @@ describe("ComposerPredictionController", () => {
 	});
 
 	it("does not paint a reply that lands after the request was cancelled", async () => {
-		const h = harness(ENABLED);
+		const h = harness(CUSTOM);
 		const run = h.controller.request();
 		const answer = await h.nextRequest();
 		h.controller.cancel();
@@ -137,7 +146,7 @@ describe("ComposerPredictionController", () => {
 	});
 
 	it("paints only the newest of two overlapping requests", async () => {
-		const h = harness(ENABLED);
+		const h = harness(CUSTOM);
 		const first = h.controller.request();
 		const answerFirst = await h.nextRequest();
 		const second = h.controller.request();
@@ -150,7 +159,7 @@ describe("ComposerPredictionController", () => {
 	});
 
 	it("does not paint over text written while the request was in flight", async () => {
-		const h = harness(ENABLED);
+		const h = harness(CUSTOM);
 		const run = h.controller.request();
 		const answer = await h.nextRequest();
 		h.editor.handleInput("x");
@@ -161,20 +170,30 @@ describe("ComposerPredictionController", () => {
 		expect(h.editor.prediction).toBeUndefined();
 	});
 
-	it("requests nothing while disabled or while the composer holds text", () => {
-		const disabled = harness({ "composer.predictions.enabled": false });
-		expect(disabled.controller.request()).toBeUndefined();
-		const drafting = harness(ENABLED);
+	it("requests nothing while off or while the composer holds text", () => {
+		const off = harness({ "composer.predictions.mode": "off" });
+		expect(off.controller.request()).toBeUndefined();
+		const drafting = harness(CUSTOM);
 		drafting.editor.setText("draft");
 		expect(drafting.controller.request()).toBeUndefined();
 	});
 
+	it("sends and reports nothing in the default mode without a ChatGPT Pro Codex login", async () => {
+		const h = harness({});
+		await h.controller.request();
+		await h.controller.request();
+		expect(h.warnings).toEqual([]);
+		expect(h.requestCount()).toBe(0);
+		expect(h.editor.prediction).toBeUndefined();
+	});
+
 	it("reports an unavailable configuration once, not every turn", async () => {
-		const h = harness({ ...ENABLED, "composer.predictions.source": "codex" });
+		const h = harness({ ...CUSTOM, "composer.predictions.model": "anthropic/claude-test" });
 		await h.controller.request();
 		await h.controller.request();
-		expect(h.warnings).toHaveLength(1);
-		expect(h.warnings[0]).toContain("OpenAI Codex model");
+		expect(h.warnings).toEqual([
+			"Composer predictions: No Prediction Model is usable: anthropic/claude-test has no credentials. Log in to a provider or choose another model.",
+		]);
 		expect(h.requestCount()).toBe(0);
 	});
 });

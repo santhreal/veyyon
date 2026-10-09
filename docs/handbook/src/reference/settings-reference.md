@@ -176,9 +176,8 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `composer.predictions.enabled` | Composer Predictions | boolean | `false` | After each turn, suggest the message you are likely to send next as dim text in the empty composer. Tab inserts it; typing replaces it. Nothing is sent without Enter. |
-| `composer.predictions.source` | Prediction Source | enum | `codex` | Where a prediction comes from. Values: `codex`, `model`. |
-| `composer.predictions.model` | Prediction Model | modelChain | _(unset)_ | Model that writes predictions. Unset: the session's model. With source Codex it must be an OpenAI Codex model. Only the first entry is used; a :level suffix sets its thinking level. |
+| `composer.predictions.mode` | Composer Predictions | enum | `chatgpt-pro` | After each turn, suggest the message you are likely to send next as dim text in the empty composer. Tab inserts it; typing replaces it. Nothing is sent without Enter. Values: `chatgpt-pro`, `off`, `custom`. |
+| `composer.predictions.model` | Prediction Model | modelChain | _(unset)_ | Models that write predictions in Custom mode, from any provider, tried in order: the first one with credentials is used. A :level suffix sets its thinking level. Inherit: the session's model. |
 
 ### Session
 
@@ -906,4 +905,4 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `tui.maxInlineImageRows` | number | `20` |  |
 | `tui.maxInlineImages` | number | `8` |  |
 
-357 settings in /settings, 118 configuration-file keys, 475 in all.
+356 settings in /settings, 118 configuration-file keys, 474 in all.

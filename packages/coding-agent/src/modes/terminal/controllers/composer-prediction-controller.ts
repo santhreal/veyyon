@@ -29,7 +29,7 @@ export class ComposerPredictionController {
 	request(): Promise<void> | undefined {
 		this.cancel();
 		const session = this.ctx.viewSession;
-		if (!session.settings.get("composer.predictions.enabled")) return undefined;
+		if (session.settings.get("composer.predictions.mode") === "off") return undefined;
 		if (session.isStreaming || session.isCompacting) return undefined;
 		if (this.ctx.editor.getText().trim()) return undefined;
 		const last = session.getLastAssistantMessage();

@@ -144,41 +144,30 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
-	"composer.predictions.enabled": {
-		type: "boolean",
-		default: false,
+	"composer.predictions.mode": {
+		type: "enum",
+		values: ["chatgpt-pro", "off", "custom"] as const,
+		default: "chatgpt-pro",
 		ui: {
 			tab: "interaction",
 			group: "Composer Predictions",
 			label: "Composer Predictions",
 			description:
 				"After each turn, suggest the message you are likely to send next as dim text in the empty composer. Tab inserts it; typing replaces it. Nothing is sent without Enter.",
-		},
-	},
-
-	"composer.predictions.source": {
-		type: "enum",
-		values: ["codex", "model"] as const,
-		default: "codex",
-		ui: {
-			tab: "interaction",
-			group: "Composer Predictions",
-			label: "Prediction Source",
-			description: "Where a prediction comes from.",
 			options: [
 				{
-					value: "codex",
-					label: "Codex",
+					value: "chatgpt-pro",
+					label: "ChatGPT Pro included prediction",
 					description:
-						"The ChatGPT Codex prediction service, through your OpenAI Codex login: the prompt, effort and model list the Codex app uses. Requires an OpenAI Codex model.",
+						"The ChatGPT Codex prediction service, only when a linked OpenAI Codex account is on a ChatGPT Pro plan and the session's model is an OpenAI Codex model the service predicts for. Otherwise no prediction is requested.",
 				},
+				{ value: "off", label: "Off", description: "No predictions." },
 				{
-					value: "model",
-					label: "Model",
-					description: "Any model you have credentials for, chosen in Prediction Model.",
+					value: "custom",
+					label: "Custom (choose model)",
+					description: "Predictions from the model chosen in Prediction Model, from any provider.",
 				},
 			],
-			condition: "composerPredictionsEnabled",
 		},
 	},
 
@@ -190,8 +179,8 @@ export const INTERACTION_SETTINGS = {
 			group: "Composer Predictions",
 			label: "Prediction Model",
 			description:
-				"Model that writes predictions. Unset: the session's model. With source Codex it must be an OpenAI Codex model. Only the first entry is used; a :level suffix sets its thinking level.",
-			condition: "composerPredictionsEnabled",
+				"Models that write predictions in Custom mode, from any provider, tried in order: the first one with credentials is used. A :level suffix sets its thinking level. Inherit: the session's model.",
+			condition: "composerPredictionsCustom",
 		},
 	},
 

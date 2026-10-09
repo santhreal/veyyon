@@ -180,30 +180,31 @@ text shows a usage warning.
 
 ## Composer predictions
 
-With `composer.predictions.enabled: true`, each finished turn requests the message you are likely
-to send next and shows it as dim text in the empty composer. `Tab` inserts it for editing; `Enter`
-then sends it. Typing dismisses it, and a new turn, a session switch or compaction clears it. No
-prediction is requested after an aborted or failed turn, or while the composer holds text.
+After each finished turn, a prediction of the message you are likely to send next is shown as dim
+text in the empty composer. `Tab` inserts it for editing; `Enter` then sends it. Typing dismisses
+it, and a new turn, a session switch or compaction clears it. No prediction is requested after an
+aborted or failed turn, or while the composer holds text. A prediction reads the conversation and
+writes nothing to the session.
 
-`composer.predictions.source` selects where the prediction comes from:
+`composer.predictions.mode` selects which model writes the prediction:
 
-- `codex` (default) uses the ChatGPT Codex prediction service through your OpenAI Codex login. The
-  service supplies the prompt and reasoning effort and lists the models it serves no predictions
-  for. The request is sent as an ephemeral fork of the session's Codex thread. It requires an
-  OpenAI Codex model.
-- `model` sends a built-in prompt to any model you have credentials for.
-
-`composer.predictions.model` sets the model that writes predictions; unset, the session's model
-writes them. A `:level` suffix sets its thinking level. A prediction reads the conversation and
-writes nothing to the session. When the configuration cannot produce predictions, the reason is
-shown once as a warning.
+- `chatgpt-pro` (default) uses the ChatGPT Codex prediction service, and only when an OpenAI Codex
+  login is on a ChatGPT Pro plan, read from the login's access token. The service supplies the
+  prompt and reasoning effort and lists the models it serves no predictions for. The request goes
+  to the session's model when it is an OpenAI Codex model, otherwise to the OpenAI Codex default
+  model, and is sent as an ephemeral fork of the session's thread. Without a Pro-plan Codex login
+  no request is sent and no warning is shown, so this mode uses no API usage.
+- `off` requests no predictions.
+- `custom` sends a built-in prompt to the models in `composer.predictions.model`, chosen from every
+  provider in the settings model picker. The first one with credentials writes the prediction; a
+  `:level` suffix sets its thinking level. Unset, the session's model writes it. When no listed
+  model is usable, the reason is shown once as a warning.
 
 ```yaml
 composer:
   predictions:
-    enabled: true
-    source: model
-    model: anthropic/claude-sonnet-4-5
+    mode: custom
+    model: [anthropic/claude-sonnet-4-5, openai/gpt-5.5:low]
 ```
 
 ## Next

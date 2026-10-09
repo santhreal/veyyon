@@ -10,7 +10,7 @@
 - `/resume` marks conversations running off-screen as `running`, and `ctrl+x` stops the selected one without resuming it.
 - A bash approval card offers `Approve "<pattern>" for session`, which allows later calls reporting the same pattern (`git status *` for `git status -s`) without prompting; a call with quoting, expansion, a pipe, a redirect, an environment variable, a working directory, or a guard flag offers no pattern row, and a program that runs another command (`sudo`, `xargs`, `env`) is granted only its exact command.
 - The `lsp` tool's `incoming_calls` and `outgoing_calls` actions list the functions that call the symbol at the cursor, or that it calls, with each call site, as the language server resolved them.
-- Composer predictions (`composer.predictions.enabled`, off by default) show the message you are likely to send next as dim text in the empty composer after each turn, inserted by Tab and sent only by Enter; `composer.predictions.source` selects the ChatGPT Codex prediction service (`codex`, the default) or any model (`model`), and `composer.predictions.model` sets the model that writes them.
+- Composer predictions show the message you are likely to send next as dim text in the empty composer after each turn, inserted by Tab and sent only by Enter; `composer.predictions.mode` selects `chatgpt-pro` (the default, which requests a ChatGPT Codex prediction only through a ChatGPT Pro plan Codex login and otherwise sends nothing), `off`, or `custom`, which uses the first model with credentials in `composer.predictions.model`, chosen from any provider in the settings model picker.
 
 ### Changed
 
