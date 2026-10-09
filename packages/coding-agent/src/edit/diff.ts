@@ -414,6 +414,7 @@ const CHANGE_CONTEXT_MARKER = "@@ ";
 const EMPTY_CHANGE_CONTEXT_MARKER = "@@";
 const LINE_HINT_REGEX = /^lines?\s+(\d+)(?:\s*-\s*(\d+))?(?:\s*@@)?$/i;
 const TOP_OF_FILE_REGEX = /^(top|start|beginning)\s+of\s+file$/i;
+const EMPTY_HEADER_REGEX = /^@@\s*@@$/;
 // `diff --git ` is git's own marker, not part of the apply-patch envelope, so it is
 // added here rather than kept in the shared marker list.
 const MULTI_FILE_MARKERS = [...FILE_OP_MARKERS, "diff --git "];
@@ -528,153 +529,133 @@ interface ParseHunkResult {
 	linesConsumed: number;
 }
 
-function parseOneHunk(lines: string[], lineNumber: number, allowMissingContext: boolean): ParseHunkResult {
-	if (lines.length === 0) {
-		throw new ParseError("Diff does not contain any lines", lineNumber);
-	}
+/** A hunk's leading `@@` line: the change contexts and start lines it states. */
+interface HunkHeader {
+	changeContexts: string[];
+	oldStartLine?: number;
+	newStartLine?: number;
+}
 
-	const changeContexts: string[] = [];
-	let oldStartLine: number | undefined;
-	let newStartLine: number | undefined;
-	let startIndex: number;
-
-	const headerLine = lines[0];
+/**
+ * Read a hunk's leading line: an empty `@@` marker, a unified `@@ -a,b +c,d @@` header, an `@@ ` line
+ * hint, top-of-file marker or change context, or a bare `@@context`. Undefined for a line that does not
+ * start with `@@`, which is the hunk's first body line.
+ */
+function parseHunkHeader(headerLine: string, lineNumber: number): HunkHeader | undefined {
+	if (!headerLine.startsWith("@@")) return undefined;
 	const headerTrimmed = headerLine.trimEnd();
-	const isHeaderLine = headerLine.startsWith("@@");
-	const unifiedHeader = isHeaderLine ? parseUnifiedHunkHeader(headerTrimmed) : undefined;
-	const isEmptyContextMarker = /^@@\s*@@$/.test(headerTrimmed);
-
-	if (isHeaderLine && (headerTrimmed === EMPTY_CHANGE_CONTEXT_MARKER || isEmptyContextMarker)) {
-		startIndex = 1;
-	} else if (unifiedHeader) {
+	if (EMPTY_HEADER_REGEX.test(headerTrimmed)) {
+		return { changeContexts: [] };
+	}
+	const unifiedHeader = parseUnifiedHunkHeader(headerTrimmed);
+	if (unifiedHeader) {
 		if (unifiedHeader.oldStart < 1 || unifiedHeader.newStart < 1) {
 			throw new ParseError("Line numbers in @@ header must be >= 1", lineNumber);
 		}
-		if (unifiedHeader.changeContext) {
-			changeContexts.push(unifiedHeader.changeContext);
-		}
-		oldStartLine = unifiedHeader.oldStart;
-		newStartLine = unifiedHeader.newStart;
-		startIndex = 1;
-	} else if (isHeaderLine && headerTrimmed.startsWith(CHANGE_CONTEXT_MARKER)) {
-		const contextValue = headerTrimmed.slice(CHANGE_CONTEXT_MARKER.length);
-		const trimmedContextValue = contextValue.trim();
-		const normalizedContextValue = trimmedContextValue.replace(/^@@\s*/u, "");
-
-		const lineHintMatch = normalizedContextValue.match(LINE_HINT_REGEX);
-		if (lineHintMatch) {
-			oldStartLine = Number(lineHintMatch[1]);
-			newStartLine = oldStartLine;
-			if (oldStartLine < 1) {
-				throw new ParseError("Line hint must be >= 1", lineNumber);
-			}
-		} else if (TOP_OF_FILE_REGEX.test(normalizedContextValue)) {
-			oldStartLine = 1;
-			newStartLine = 1;
-		} else if (trimmedContextValue.length > 0) {
-			changeContexts.push(contextValue);
-		}
-		startIndex = 1;
-	} else if (isHeaderLine) {
-		const contextValue = headerTrimmed.slice(2).trim();
-		if (contextValue.length > 0) {
-			changeContexts.push(contextValue);
-		}
-		startIndex = 1;
-	} else {
-		if (!allowMissingContext) {
-			throw new ParseError(`Expected hunk to start with @@ context marker, got: '${lines[0]}'`, lineNumber);
-		}
-		startIndex = 0;
+		return {
+			changeContexts: unifiedHeader.changeContext ? [unifiedHeader.changeContext] : [],
+			oldStartLine: unifiedHeader.oldStart,
+			newStartLine: unifiedHeader.newStart,
+		};
 	}
-
-	if (oldStartLine !== undefined && oldStartLine < 1) {
-		throw new ParseError(`Line numbers must be >= 1 (got ${oldStartLine})`, lineNumber);
+	if (headerTrimmed.startsWith(CHANGE_CONTEXT_MARKER)) {
+		return parseChangeContextHeader(headerTrimmed.slice(CHANGE_CONTEXT_MARKER.length), lineNumber);
 	}
-	if (newStartLine !== undefined && newStartLine < 1) {
-		throw new ParseError(`Line numbers must be >= 1 (got ${newStartLine})`, lineNumber);
-	}
+	const contextValue = headerTrimmed.slice(2).trim();
+	return { changeContexts: contextValue.length > 0 ? [contextValue] : [] };
+}
 
-	while (startIndex < lines.length) {
-		const nextLine = lines[startIndex];
-		if (!nextLine.startsWith("@@")) {
-			break;
+/**
+ * The text after an `@@ ` header: a `line N` hint, a top-of-file marker, or a change context. The text
+ * follows `@@ ` on a right-trimmed line, so it is never blank.
+ */
+function parseChangeContextHeader(contextValue: string, lineNumber: number): HunkHeader {
+	const trimmedContextValue = contextValue.trim();
+	const normalizedContextValue = trimmedContextValue.replace(/^@@\s*/u, "");
+	const lineHintMatch = normalizedContextValue.match(LINE_HINT_REGEX);
+	if (lineHintMatch) {
+		const startLine = Number(lineHintMatch[1]);
+		if (startLine < 1) {
+			throw new ParseError("Line hint must be >= 1", lineNumber);
 		}
-		const trimmed = nextLine.trimEnd();
+		return { changeContexts: [], oldStartLine: startLine, newStartLine: startLine };
+	}
+	if (TOP_OF_FILE_REGEX.test(normalizedContextValue)) {
+		return { changeContexts: [], oldStartLine: 1, newStartLine: 1 };
+	}
+	return { changeContexts: [contextValue] };
+}
+
+/**
+ * Skip the `@@ context` and bare `@@` lines after a header, collecting each context they state. Each line
+ * is right-trimmed before the `@@ ` test, so a context it collects is never blank.
+ */
+function skipNestedContextMarkers(lines: string[], start: number, changeContexts: string[]): number {
+	let index = start;
+	while (index < lines.length && lines[index].startsWith("@@")) {
+		const trimmed = lines[index].trimEnd();
 		if (trimmed.startsWith(CHANGE_CONTEXT_MARKER)) {
-			const nestedContext = trimmed.slice(CHANGE_CONTEXT_MARKER.length);
-			if (nestedContext.trim().length > 0) {
-				changeContexts.push(nestedContext);
-			}
-			startIndex++;
-		} else if (trimmed === EMPTY_CHANGE_CONTEXT_MARKER) {
-			startIndex++;
-		} else {
+			changeContexts.push(trimmed.slice(CHANGE_CONTEXT_MARKER.length));
+		} else if (trimmed !== EMPTY_CHANGE_CONTEXT_MARKER) {
 			break;
 		}
+		index++;
 	}
+	return index;
+}
 
-	if (startIndex >= lines.length) {
-		throw new ParseError("Hunk does not contain any lines", lineNumber + 1);
+/**
+ * Add one body line to the hunk: an elision (`...`, `…`), a blank or ` ` context line, a `+` addition,
+ * a `-` removal, or any other line as context. False for an `@@` line, which ends the hunk.
+ */
+function appendHunkLine(hunk: DiffHunk, line: string): boolean {
+	const trimmed = line.trim();
+	if (trimmed === "..." || trimmed === "…") {
+		hunk.hasContextLines = true;
+		return true;
 	}
+	switch (line.charAt(0)) {
+		case "":
+			hunk.hasContextLines = true;
+			hunk.oldLines.push("");
+			hunk.newLines.push("");
+			return true;
+		case " ":
+			hunk.hasContextLines = true;
+			hunk.oldLines.push(line.slice(1));
+			hunk.newLines.push(line.slice(1));
+			return true;
+		case "+":
+			hunk.newLines.push(line.slice(1));
+			return true;
+		case "-":
+			hunk.oldLines.push(line.slice(1));
+			return true;
+		default:
+			if (line.startsWith("@@")) return false;
+			hunk.hasContextLines = true;
+			hunk.oldLines.push(line);
+			hunk.newLines.push(line);
+			return true;
+	}
+}
 
-	const changeContext = changeContexts.length > 0 ? changeContexts.join("\n") : undefined;
-
-	const hunk: DiffHunk = {
-		changeContext,
-		oldStartLine,
-		newStartLine,
-		hasContextLines: false,
-		oldLines: [],
-		newLines: [],
-		isEndOfFile: false,
-	};
-
+/** Parse the hunk body that starts at `lines[start]`; returns how many lines it consumed. */
+function parseHunkBody(hunk: DiffHunk, lines: string[], start: number, lineNumber: number): number {
 	let parsedLines = 0;
-
-	for (let i = startIndex; i < lines.length; i++) {
+	for (let i = start; i < lines.length; i++) {
 		const line = lines[i];
-		const trimmed = line.trim();
-		const nextLine = lines[i + 1];
-
-		if (line === "" && parsedLines > 0 && nextLine?.trimStart().startsWith("@@")) {
+		if (line === "" && parsedLines > 0 && lines[i + 1]?.trimStart().startsWith("@@")) {
 			break;
 		}
-
-		if (!isDiffContentLine(line) && line.trimEnd() === EOF_MARKER && line.startsWith(EOF_MARKER)) {
+		if (line.startsWith(EOF_MARKER) && line.trimEnd() === EOF_MARKER) {
 			if (parsedLines === 0) {
 				throw new ParseError("Hunk does not contain any lines", lineNumber + 1);
 			}
 			hunk.isEndOfFile = true;
-			parsedLines++;
-			break;
+			return parsedLines + 1;
 		}
-
-		if (trimmed === "..." || trimmed === "…") {
-			hunk.hasContextLines = true;
-			parsedLines++;
-			continue;
-		}
-
-		const firstChar = line[0];
-
-		if (firstChar === undefined || firstChar === "") {
-			hunk.hasContextLines = true;
-			hunk.oldLines.push("");
-			hunk.newLines.push("");
-		} else if (firstChar === " ") {
-			hunk.hasContextLines = true;
-			hunk.oldLines.push(line.slice(1));
-			hunk.newLines.push(line.slice(1));
-		} else if (firstChar === "+") {
-			hunk.newLines.push(line.slice(1));
-		} else if (firstChar === "-") {
-			hunk.oldLines.push(line.slice(1));
-		} else if (!line.startsWith("@@")) {
-			hunk.hasContextLines = true;
-			hunk.oldLines.push(line);
-			hunk.newLines.push(line);
-		} else {
+		if (!appendHunkLine(hunk, line)) {
 			if (parsedLines === 0) {
 				throw new ParseError(
 					`Unexpected line in hunk: '${line}'. Lines must start with ' ' (context), '+' (add), or '-' (remove)`,
@@ -685,13 +666,33 @@ function parseOneHunk(lines: string[], lineNumber: number, allowMissingContext: 
 		}
 		parsedLines++;
 	}
+	return parsedLines;
+}
 
-	if (parsedLines === 0) {
-		throw new ParseError("Hunk does not contain any lines", lineNumber + startIndex);
+/**
+ * Parse the hunk that starts at `lines[start]`. A hunk with no `@@` line starts at its first body line;
+ * each line after the header up to the next hunk, the end-of-file marker or the end of the diff is body.
+ */
+function parseOneHunk(lines: string[], start: number): ParseHunkResult {
+	const lineNumber = start + 1;
+	const header = parseHunkHeader(lines[start], lineNumber);
+	const changeContexts = header?.changeContexts ?? [];
+	const bodyStart = skipNestedContextMarkers(lines, header ? start + 1 : start, changeContexts);
+	if (bodyStart >= lines.length) {
+		throw new ParseError("Hunk does not contain any lines", lineNumber + 1);
 	}
-
+	const hunk: DiffHunk = {
+		changeContext: changeContexts.length > 0 ? changeContexts.join("\n") : undefined,
+		oldStartLine: header?.oldStartLine,
+		newStartLine: header?.newStartLine,
+		hasContextLines: false,
+		oldLines: [],
+		newLines: [],
+		isEndOfFile: false,
+	};
+	const parsedLines = parseHunkBody(hunk, lines, bodyStart, lineNumber);
 	stripLineNumberPrefixes(hunk);
-	return { hunk, linesConsumed: parsedLines + startIndex };
+	return { hunk, linesConsumed: bodyStart + parsedLines - start };
 }
 
 function stripLineNumberPrefixes(hunk: DiffHunk): void {
@@ -782,6 +783,9 @@ export function parseDiffHunks(diff: string): DiffHunk[] {
 
 	const normalizedDiff = normalizeDiff(diff);
 	const lines = normalizedDiff.split("\n");
+	// The last non-blank line. An `@@` line there is a header with no body, which ends the diff.
+	let lastContent = lines.length - 1;
+	while (lastContent >= 0 && lines[lastContent].trim() === "") lastContent--;
 	const hunks: DiffHunk[] = [];
 	let i = 0;
 
@@ -801,11 +805,11 @@ export function parseDiffHunks(diff: string): DiffHunk[] {
 			continue;
 		}
 
-		if (trimmed.startsWith("@@") && lines.slice(i + 1).every(next => next.trim() === "")) {
+		if (i === lastContent && trimmed.startsWith("@@")) {
 			break;
 		}
 
-		const { hunk, linesConsumed } = parseOneHunk(lines.slice(i), i + 1, true);
+		const { hunk, linesConsumed } = parseOneHunk(lines, i);
 		hunks.push(hunk);
 		i += linesConsumed;
 	}
