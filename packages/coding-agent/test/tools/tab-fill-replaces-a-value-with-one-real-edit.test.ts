@@ -21,7 +21,8 @@
  * editor that holds it. Every way to reach fill (a selector, an aria ref, a handle from `tab.id` or
  * `tab.waitFor`) replaces the value the same way. Every case runs with the setting off and on.
  *
- * Driven through the real tool against real headless Chromium. Skipped where Chromium cannot run.
+ * Driven through the real tool against real headless Chromium, which reaches the planner and the
+ * edits in `tools/web/browser/fill.ts`. Skipped where Chromium cannot run.
  *
  * What it does NOT catch: a field inside a cross-origin frame, and a framework's own component code;
  * the tracker below is the check React's onChange makes, not React.

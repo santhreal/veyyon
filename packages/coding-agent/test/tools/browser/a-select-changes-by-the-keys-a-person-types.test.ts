@@ -89,7 +89,7 @@ function text(result: { content: ReadonlyArray<{ type: string; text?: string }> 
 }
 
 let origin = "";
-let server: ReturnType<typeof Bun.serve> | undefined;
+let server: Bun.Server<undefined> | undefined;
 
 beforeAll(() => {
 	server = Bun.serve({

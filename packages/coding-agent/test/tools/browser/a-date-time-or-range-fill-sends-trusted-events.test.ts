@@ -67,7 +67,7 @@ function text(result: { content: ReadonlyArray<{ type: string; text?: string }> 
 	return result.content.map(part => (part.type === "text" ? (part.text ?? "") : "")).join("");
 }
 
-let server: ReturnType<typeof Bun.serve> | undefined;
+let server: Bun.Server<undefined> | undefined;
 
 beforeAll(() => {
 	server = Bun.serve({ port: 0, fetch: () => new Response(PAGE, { headers: { "Content-Type": "text/html" } }) });
