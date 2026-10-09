@@ -83,15 +83,35 @@ export interface LocalTrialLayout {
 	readonly tmp: string;
 }
 
+/** The longest path Chrome makes a Unix socket at; a longer one aborts its launch. */
+const CHROME_SOCKET_PATH_MAX = 107;
+
+/** What a trial's scratch adds below the root on the way to Chrome's socket under its TMPDIR. */
+const CHROME_SOCKET_UNDER_ROOT = path.join("/", "0".repeat(12), "tmp", "com.google.Chrome.XXXXXX", "SingletonSocket");
+
 /**
  * The directory every trial's scratch is made under, one per user; hidden from every trial but its
- * own part.
+ * own part. `VEYYON_EVAL_SCRATCH_ROOT` names another, an absolute path outside every project tree.
  *
  * Short on purpose: Chrome makes a Unix socket under TMPDIR, and a socket path longer than 107
  * bytes aborts its launch. `/tmp/vey-<uid>/<12 hex>/tmp/com.google.Chrome.XXXXXX/SingletonSocket`
- * fits; a scratch named after the run, variant and task did not.
+ * fits; a scratch named after the run, variant and task did not. A named root too long for it fails.
  */
 export function trialScratchRoot(): string {
+	const named = process.env.VEYYON_EVAL_SCRATCH_ROOT;
+	if (named) {
+		if (!path.isAbsolute(named)) {
+			throw new Error(`VEYYON_EVAL_SCRATCH_ROOT=${named} is not an absolute path: name the directory from /`);
+		}
+		const root = path.resolve(named);
+		const longest = CHROME_SOCKET_PATH_MAX - Buffer.byteLength(CHROME_SOCKET_UNDER_ROOT);
+		if (Buffer.byteLength(root) > longest) {
+			throw new Error(
+				`VEYYON_EVAL_SCRATCH_ROOT=${root} is ${Buffer.byteLength(root)} bytes; Chrome's socket under it needs a root of at most ${longest}: name a shorter one`,
+			);
+		}
+		return root;
+	}
 	const uid = process.getuid?.();
 	return uid === undefined ? path.join(os.tmpdir(), "vey") : path.join("/tmp", `vey-${uid}`);
 }

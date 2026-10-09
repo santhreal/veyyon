@@ -26,6 +26,8 @@ CLI finds no repository context file, settings or git root above its working dir
 belongs to the user running the evals, mode 0700; a root another user owns, or a symbolic link in its
 place, is refused. The directory name is 12 hex digits of a hash of the trial's record path; it is
 short because Chrome aborts when the socket it makes under TMPDIR has a path longer than 107 bytes.
+`VEYYON_EVAL_SCRATCH_ROOT` names another root: an absolute path outside every project tree, short
+enough that the socket fits (49 bytes at most). A relative path or a longer one fails the trial.
 
 ```
 /tmp/vey-<uid>/<hash>/
