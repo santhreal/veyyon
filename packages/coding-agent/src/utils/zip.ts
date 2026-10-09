@@ -12,7 +12,11 @@ import { formatBytes } from "@veyyon/utils/format";
 import * as logger from "@veyyon/utils/logger";
 import { ToolError, toolFailure } from "../tools/core/tool-errors";
 
-/** A ZIP archive decoded to a `path → bytes` map of its file members. */
+/**
+ * A ZIP archive decoded to a `path → bytes` map of its file members. A map built from archive member
+ * names has a null prototype: a member named `__proto__` is an own key like any other, and a lookup of
+ * an absent name such as `toString` finds nothing.
+ */
 export type Unzipped = Record<string, Uint8Array>;
 
 const ENCODER = new TextEncoder();
@@ -76,7 +80,7 @@ export function resolveArchiveMemberPath(baseDir: string, ref: string): string {
 export function unzip(bytes: Uint8Array): Unzipped {
 	const info = readCentralDirectoryInfoSync(bytes);
 	const centralDirectory = readMemoryRange(bytes, info.offset, info.offset + info.size);
-	const out: Unzipped = {};
+	const out: Unzipped = Object.create(null);
 	for (const entry of parseZipCentralDirectory(memoryByteSource(bytes), centralDirectory, info.entries)) {
 		if (entry.isDirectory || entry.storage?.type !== "zip") continue;
 		out[entry.path] = extractZipMember(bytes, entry.storage, entry.size);
@@ -965,7 +969,7 @@ export async function writeArchive(
 	entries: Iterable<readonly [string, ArchiveMemberContent]>,
 ): Promise<void> {
 	if (format === "zip") {
-		const record: Record<string, Uint8Array> = {};
+		const record: Unzipped = Object.create(null);
 		for (const [name, content] of entries) {
 			record[name.replace(/\\/g, "/")] = await memberToBytes(content);
 		}
@@ -973,7 +977,7 @@ export async function writeArchive(
 		return;
 	}
 
-	const record: Record<string, ArchiveMemberContent> = {};
+	const record: Record<string, ArchiveMemberContent> = Object.create(null);
 	for (const [name, content] of entries) {
 		record[name.replace(/\\/g, "/")] = content;
 	}

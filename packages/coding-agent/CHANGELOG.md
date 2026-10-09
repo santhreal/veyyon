@@ -238,6 +238,7 @@
 
 ### Fixed
 
+- Writing into a ZIP or tar archive that holds a member named `__proto__`, or extracting or reading every member of such a ZIP, keeps that member under its own name instead of dropping it or listing its bytes as members `0`, `1`, ..., and converting an EPUB or XLSX whose reference names an absent member called `toString` or another `Object.prototype` property skips the reference instead of failing.
 - Reading a PDF, or attaching one with `@`, returns when a page's content stream ends in `<`, instead of never returning.
 - Escape or `abort_retry` that lands while an unreplayable tool batch's continuation is being announced cancels the continuation, instead of the session sleeping out the wait, re-requesting the turn and reporting a recovery that was cancelled.
 - In a linked worktree named after its branch, the status line's `path` segment and the launch card keep the worktree directory (`monorepo/topic`) on a row with a `pr` segment and no `git` segment, or with `segmentOptions.git.showBranch: false`, instead of showing `monorepo` with neither the worktree nor its branch on the row.
