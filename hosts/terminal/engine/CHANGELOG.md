@@ -51,6 +51,7 @@
 - A frame in which two or more root children report rows dropped from native scrollback splices each child's rows out of the committed record at that child's own start, from the last child back, instead of splicing their sum at the topmost child's start, so the record no longer diverges from the terminal and forces a transcript replay on the next frame.
 - A streamed `Markdown` lexes each frame's tail from a copy of its own and drops its stream state when it seals, so a 206,000-character streamed answer holds 2.0 MiB of heap while it streams instead of 76.3 MiB, and the same heap as one render of its text once sealed.
 - A `Markdown` blockquote too narrow to keep a content cell beside its two-cell border renders without the border instead of re-wrapping deeper bordered rows at one cell, so a `>`×20 quote around 15 characters renders 7 rows in 0.4 ms at width 12 instead of 425,984 rows in 410 ms, and no quote row exceeds the render width.
+- A nested `Markdown` blockquote styles each row once, at the outermost quote, instead of once per level, so a `>`×20 quote row is 257 bytes instead of 3,687, renders in 0.05 ms instead of 1.3 ms averaged over widths 1 to 40, and no longer emits a blank row for a space wrapped at a narrow width.
 
 ## [1.5.4] - 2026-09-24
 
