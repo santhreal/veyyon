@@ -689,4 +689,48 @@ describe("AgentSession context promotion", () => {
 		expect(session.model?.provider).toBe(codexModel.provider);
 		expect(session.model?.id).toBe(codexModel.id);
 	});
+
+	it("retries on the promoted model when an overflow arrives stamped with the model it was promoted from", async () => {
+		// A promotion that lands while the failing call is in flight leaves the overflow
+		// stamped with the smaller model while the session already runs on its promotion
+		// target. That turn is dropped and retried on the promoted model, not surfaced.
+		const sparkModel = modelRegistry.find("openai-codex", "gpt-5.3-codex-spark");
+		const codexModel = modelRegistry.find("openai-codex", "gpt-5.5");
+		if (!sparkModel || !codexModel) {
+			throw new Error("Expected codex spark and codex models to exist");
+		}
+
+		const agent = new Agent({
+			initialState: {
+				model: codexModel,
+				systemPrompt: ["Test"],
+				tools: [],
+				messages: [],
+			},
+		});
+		const continued = Promise.withResolvers<void>();
+		const continueSpy = vi.spyOn(agent, "continue").mockImplementation(async () => continued.resolve());
+
+		session = new AgentSession({
+			agent,
+			sessionManager: SessionManager.inMemory(),
+			settings: Settings.isolated({ "compaction.enabled": false, "contextPromotion.enabled": true }),
+			modelRegistry,
+		});
+
+		const overflowMessage = createOverflowMessage(sparkModel);
+		session.agent.emitExternalEvent({ type: "message_end", message: overflowMessage });
+		session.agent.emitExternalEvent({ type: "agent_end", messages: [overflowMessage] });
+
+		await continued.promise;
+
+		expect(continueSpy).toHaveBeenCalledTimes(1);
+		expect(session.model?.id).toBe(codexModel.id);
+		expect(session.agent.state.messages).not.toContain(overflowMessage);
+		expect(
+			session.sessionManager
+				.getBranch()
+				.some(entry => entry.type === "message" && entry.message.role === "assistant"),
+		).toBe(false);
+	});
 });

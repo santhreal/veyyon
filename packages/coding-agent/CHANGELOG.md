@@ -239,6 +239,7 @@
 - `/mcp` runs its Smithery search, deploy and login steps from `mcp-smithery-commands.ts`, its OAuth login and reauthorization from `mcp-oauth-login.ts`, its list, resource, prompt and notification reports from `mcp-server-reports.ts` and its messages from `mcp-command-output.ts`, and `MCPOAuthFlow.storedCredential` builds the credential row a login stores; its output is unchanged across a 20,000-case corpus.
 - The composer's Esc handling, submission, `/queue` dispatch, follow-up and image-path paste run in single-purpose methods, its key listeners install once per editor, and the tiny-title download row is defined in `tiny-title-download-row.ts`; no user-visible change.
 - A session switch or reload captures its rollback, enters the target transcript, loads it and rolls back a failure in single-purpose steps instead of one 269-line method, and reads the branch once to restore the thinking selector and service tier; behavior is unchanged across 11,160 generated switch and injected-fault cases.
+- The end-of-turn context check recovers an overflow, retries an overflow stamped with the pre-promotion model, recovers a length stop and runs threshold maintenance in separate methods instead of one 231-line method; no user-visible change.
 
 ### Fixed
 
