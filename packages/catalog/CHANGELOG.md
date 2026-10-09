@@ -22,6 +22,7 @@
 - A read of one bundled provider parses that provider's object out of `models.json` instead of the whole 2.3 MB catalog, and listing providers parses none of it, which cut the heap of a default-role launch 3 seconds after start from 46.70 MiB to 44.47 MiB, its live objects from 418,889 to 371,624 and `createAgentSession` from 69.7 ms to 63.5 ms (median of 5 and 11 runs).
 - A custom or discovered model's bundled reference lookup scans the model ids out of `models.json` and parses only the models the id reaches instead of the whole catalog, which cut a custom-model launch's time to a ready session from 217.2 ms to 206.6 ms and its idle heap from 36.21 MiB to 33.71 MiB and live objects from 399,664 to 350,968 (median of 11 and 5 runs).
 - A model reference lookup checks each reduction of a proxied id as it derives it and reads each lookup key once, which cut the mean lookup over every bundled id, bare and under two proxy affixes (13,218 ids), from 4.6 µs to 2.7 µs on the lazy bundled index and from 4.1 µs to 1.9 µs on the full index (2 runs before, 4 after).
+- `collapseEffortVariants` plans each hand-table family, its live effort routing, its collapsed spec and its recycled alias rows in separate steps, and the collapse and the snapshot refresh build the thinking surface through one `familyThinkingConfig`; every collapsed catalog, discovered model list and cached snapshot is unchanged across 92,001 randomized and bundled inputs compared with the previous implementation.
 
 ### Fixed
 
