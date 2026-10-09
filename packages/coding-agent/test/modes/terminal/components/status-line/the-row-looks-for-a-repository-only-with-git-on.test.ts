@@ -59,17 +59,23 @@ afterEach(() => {
 	Settings.instance.override("git.enabled", true);
 });
 
-/** `git status` answers dirty in the child repository and clean anywhere else; `gh` finds no PR. */
-function stubGitProcesses() {
-	const summary = spyOn(git.status, "summary").mockImplementation(async cwd =>
-		cwd === childRepo
+/**
+ * `git status` answers dirty in the child repository and clean anywhere else; `gh` finds no PR.
+ * Each stand-in records the process it stands for, so a case reads which processes the row started.
+ */
+function stubGitProcesses(): { started: string[] } {
+	const started: string[] = [];
+	spyOn(git.status, "summary").mockImplementation(async cwd => {
+		started.push(`git status in ${cwd}`);
+		return cwd === childRepo
 			? { staged: 0, unstaged: 1, untracked: 0, truncated: false }
-			: { staged: 0, unstaged: 0, untracked: 0, truncated: false },
-	);
-	const gh = spyOn(git.github, "run").mockImplementation(
-		async () => ({ exitCode: 1, stdout: "", stderr: "" }) as never,
-	);
-	return { summary, gh };
+			: { staged: 0, unstaged: 0, untracked: 0, truncated: false };
+	});
+	spyOn(git.github, "run").mockImplementation(async () => {
+		started.push("gh");
+		return { exitCode: 1, stdout: "", stderr: "" } as never;
+	});
+	return { started };
 }
 
 function mountRow(gitEnabled: boolean, segments: StatusLineSegmentId[]) {
@@ -116,7 +122,7 @@ describe("a workspace holding one repository, with git on", () => {
 
 describe("the same workspace with git off", () => {
 	it("reads as a plain directory and starts no git process for any zone", () => {
-		const { summary, gh } = stubGitProcesses();
+		const { started } = stubGitProcesses();
 		const { row } = mountRow(false, ["path", "git", "pr"]);
 		try {
 			const painted = zone(row, "path");
@@ -124,8 +130,7 @@ describe("the same workspace with git off", () => {
 			expect(painted).not.toContain("app-backend");
 			expect(zone(row, "git")).toBeNull();
 			expect(zone(row, "pr")).toBeNull();
-			expect(summary).not.toHaveBeenCalled();
-			expect(gh).not.toHaveBeenCalled();
+			expect(started).toEqual([]);
 		} finally {
 			row.dispose();
 		}
