@@ -115,8 +115,13 @@ function runtimeImportsOf(relative: string): string[] {
  * cost is exactly the one module. The two cuts this file exists to hold are asserted by name below and
  * both still pass, and `env-api-key.ts` (68) and `usage/registry.ts` (20) do not reach the barrel and
  * did not move.
+ *
+ * RAISED BY ONE A FIFTH TIME, from 227, for `@veyyon/catalog/wire/kimi-code`, the Kimi Code region table and
+ * the API-key envelope that carries a credential's region. The Kimi Code login and token refresh, already
+ * in this graph, sign in at the deployment that issued the token through it, and its one import,
+ * `@veyyon/utils/url`, was already reached, so the cost is exactly the one module.
  */
-const AUTH_STORAGE_CEILING = 227;
+const AUTH_STORAGE_CEILING = 228;
 
 /**
  * Measured 2026-07-26 at 158, down from 204/212. This module is four functions over a table and its doc
@@ -185,8 +190,12 @@ const AUTH_STORAGE_CEILING = 227;
  * library's `localtime_r` so naming a log file builds no ICU time zone cache. `@veyyon/utils/logger` and
  * `@veyyon/utils/log-file`, already in this closure, take the local time from it, and its only import is
  * `bun:ffi`, so it adds one module and no subtree.
+ *
+ * 86 since 2026-10-08, measured: `catalog/wire/kimi-code.ts`, the Kimi Code region table.
+ * `provider-models/openai-compat.ts`, already in this closure, resolves the Kimi Code base URL through
+ * it, and its one import, `@veyyon/utils/url`, was already reached, so it adds one module and no subtree.
  */
-const ENV_API_KEY_CEILING = 85;
+const ENV_API_KEY_CEILING = 86;
 
 /** Measured 2026-07-26 at 75: the logger and nothing else. A backend import here is the regression. */
 const USAGE_REGISTRY_CEILING = 83;
