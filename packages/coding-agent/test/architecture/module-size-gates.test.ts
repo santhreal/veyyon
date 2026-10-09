@@ -35,13 +35,13 @@
  * its own render-oracle evidence. Its headroom is under two percent rather
  * than the table's ten, because this is the module the ratchet exists for.
  *
- * `core/renderer.ts` is 589 lines and holds the frame preparation the engine
- * calls per row: line fitting, prefix resync, cursor-marker extraction. It is
+ * `core/renderer.ts` is 621 lines and holds the frame preparation the engine
+ * calls per row: line fitting, SGR coalescing, cursor-marker extraction. It is
  * under the plan's figure and listed for the same reason. RE-MEASURED
- * 2026-10-09, after SGR coalescing moved to `core/sgr-coalesce.ts`; it was 750
- * before, past its 700 ceiling since the render and parse hotspots were split
- * into single-purpose helpers, and its ceiling drops to 650 so the moved lines
- * do not grow back.
+ * 2026-10-09, after the committed-prefix audit moved to `core/committed-prefix.ts`;
+ * it was 750 before, past its 700 ceiling since the render and parse hotspots
+ * were split into single-purpose helpers, and its ceiling drops to 650 so the
+ * moved lines do not grow back.
  *
  * What it does NOT catch: a module that stays small by pushing its complexity
  * into a sibling, and it says nothing about whether the lines are any good.
@@ -63,8 +63,8 @@ import { isDirectory, lineCount, repoPath, repoRelative, typeScriptFiles } from 
  * RE-MEASURED 2026-10-09: `core/frame-plan.ts` at 83 after `RenderIntent` moved
  * to `core/render-intent.ts`, and `core/cursor.ts` at 202 after it took
  * `screenCaret` from `core/tui.ts`. The modules carved out that day enter at
- * their measured size plus roughly ten percent: `core/sgr-coalesce.ts` at 166,
- * `core/frame-segments.ts` at 87, `core/render-intent.ts` at 36 and
+ * their measured size plus roughly ten percent: `core/committed-prefix.ts` at 138,
+ * `core/frame-segments.ts` at 87, `core/render-intent.ts` at 35 and
  * `core/render-scheduler.ts` at 30.
  */
 const CORE_CEILINGS: Record<string, number> = {
@@ -81,7 +81,7 @@ const CORE_CEILINGS: Record<string, number> = {
 	"core/paint-sequences.ts": 430,
 	"core/frame-plan.ts": 90,
 	"core/frame-pacing.ts": 150,
-	"core/sgr-coalesce.ts": 185,
+	"core/committed-prefix.ts": 155,
 	"core/frame-segments.ts": 95,
 	"core/render-intent.ts": 40,
 	"core/render-scheduler.ts": 35,

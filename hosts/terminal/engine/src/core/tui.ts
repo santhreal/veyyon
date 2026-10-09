@@ -36,6 +36,7 @@ import {
 	synchronizedOutputUserOverride,
 	TERMINAL,
 } from "../terminal-capabilities";
+import { auditCommittedPrefix, firstRowDivergence } from "./committed-prefix";
 import {
 	asViewportTailProvider,
 	type Component,
@@ -102,11 +103,9 @@ import {
 import { frameIntent, type RenderIntent } from "./render-intent";
 import { DEFAULT_RENDER_SCHEDULER, type RenderScheduler, type RenderTimer } from "./render-scheduler";
 import {
-	auditCommittedPrefix,
 	extractCursorMarkers,
 	extractLineCursorMarker,
 	findVisibleCursorMarker,
-	firstRowDivergence,
 	isPathIntact,
 	LINE_TERMINATOR,
 	lineRewriteSequence,
@@ -2375,7 +2374,8 @@ export class TUI extends Container {
 		// top), prepare lines, and build the visible window slice.
 		const view = this.#assembleWindow(rawFrame, width, height, plan, hasVisibleOverlay);
 
-		const intent = frameIntent(fullPaint, divergenceRebuild, replaceRequested || geometryRebuild, plan);
+		const rebuildClearsScrollback = (replaceRequested || geometryRebuild) && !isMultiplexerSession();
+		const intent = frameIntent(fullPaint, divergenceRebuild, rebuildClearsScrollback, plan);
 		this.#logRedraw(intent, frameLength, height);
 
 		const imageTransmitBuffer = this.#takeImageTransmits();

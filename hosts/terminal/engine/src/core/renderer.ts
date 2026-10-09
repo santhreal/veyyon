@@ -8,13 +8,13 @@
  * append-only render contract these primitives serve.
  */
 import { Ellipsis } from "@veyyon/natives";
-import { SGR_RESET, sgrSequence } from "@veyyon/utils/ansi";
+import { SGR_RESET } from "@veyyon/utils/ansi";
+import { $flag } from "@veyyon/utils/env";
 import { normalizeTerminalOutput, truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { isConPTYHosted } from "../terminal";
 import { encodeKittyClippedPlacementLine, type KittyDirectPlacement, TERMINAL } from "../terminal-capabilities";
 import { type Component, CURSOR_MARKER } from "./component-types";
 import type { Container } from "./container";
-import { coalesceAdjacentSgr } from "./sgr-coalesce";
 
 /** Geometry lookup required when a direct image placement is clipped. */
 export interface DirectImagePlacementLookup {
@@ -80,133 +80,165 @@ export function isPathIntact(path: readonly Component[]): boolean {
 	return true;
 }
 
-const SGR_SEQUENCE = sgrSequence("g");
+// SGR coalescing. The renderer's component tree emits a styled span as
+// `<set-color>text<reset>`, so adjacent spans produce runs of byte-adjacent
+// SGR sequences (e.g. a `CSI 39 m` fg-reset immediately followed by the next
+// span's `CSI 38;2;r;g;b m`). Two byte-adjacent SGR sequences are semantically
+// identical to one SGR carrying both parameter lists (SGR params apply
+// left-to-right), so merging the run into a single `CSI … m` is
+// behavior-preserving: it drops the redundant `ESC[`/`m` framing and lets the
+// terminal dispatch one SGR instead of several. On a real transcript ~40% of
+// all SGR sequences are collapsible this way, which meaningfully cuts the
+// per-frame byte volume and SGR-dispatch count a slow (xterm.js/WebGL) terminal
+// must process. On by default; `VEYYON_NO_SGR_COALESCE=1` disables it.
+const SGR_COALESCE_ENABLED = !$flag("VEYYON_NO_SGR_COALESCE");
+const CC_ESC = 0x1b;
+const CC_BRACKET = 0x5b; // [
+const CC_M = 0x6d; // m
+const CC_SEMI = 0x3b; // ;
+const CC_COLON = 0x3a; // :
+// Max parameter tokens per emitted merged SGR. Kept well under xterm.js's
+// 32-param cap (and the tighter limits of some real terminals) so a long
+// adjacent run is split into several valid CSIs instead of overflowing one.
+const MERGE_TOKEN_CAP = 16;
 
-/** Compare two rows ignoring SGR styling (theme restyles keep alignment). */
-export function rowsEquivalent(a: string, b: string): boolean {
-	if (a === b) return true;
-	return a.replace(SGR_SEQUENCE, "") === b.replace(SGR_SEQUENCE, "");
+function isSgrParamByte(c: number): boolean {
+	return (c >= 0x30 && c <= 0x39) || c === CC_SEMI || c === CC_COLON;
 }
 
-export function isBlankRow(row: string): boolean {
-	if (row.length === 0) return true;
-	return row.replace(SGR_SEQUENCE, "").trim().length === 0;
-}
-
-/** Find the first index in [from, limit) where rows are not equivalent. Returns -1 if none. */
-export function firstRowDivergence(a: readonly string[], b: readonly string[], limit: number, from = 0): number {
-	for (let i = from; i < limit; i++) {
-		if (!rowsEquivalent(a[i]!, b[i]!)) return i;
+// True when a parameter list ends mid extended-color spec in the ambiguous
+// semicolon form: `38/48/58;2` with fewer than three channel values, or
+// `38/48/58;5` with no palette index. Concatenating another list after such a
+// run would let the next code be absorbed as the missing channel/index (e.g.
+// `38;2;255;0` + `31` → `38;2;255;0;31`, where `31` becomes blue instead of a
+// standalone fg-red), changing the rendered color. The self-delimiting colon
+// form (`38:2::r:g:b`) is unambiguous — its tokens never equal a bare `38`, so
+// the scan treats it as a complete unit and merging stays safe.
+function endsWithIncompleteExtendedColor(params: string): boolean {
+	const t = params.split(";");
+	for (let i = 0; i < t.length; ) {
+		const span = extendedColorTokens(t, i);
+		if (span < 0) return true;
+		i += span;
 	}
-	return -1;
-}
-
-// Tail-alignment sampling bounds: look back through up to LOOKBACK rows of
-// the committed prefix to collect SAMPLES non-blank comparisons.
-const RESYNC_TAIL_LOOKBACK = 24;
-const RESYNC_TAIL_SAMPLES = 8;
-
-/**
- * Decide whether `frame` still aligns with the committed prefix, and where to
- * re-anchor the commit index when it does not. Returns the resync row index,
- * or -1 when no resync is needed.
- *
- * Zones (verifiedTo ≤ finalTo ≤ prefix.length):
- *   [0, verifiedTo)         VERIFIED exact rows — sampled with tolerance.
- *   [verifiedTo, finalTo)   NEWLY-FINAL rows — frozen visual snapshots whose
- *       source just became declared-final (the block finalized / a barrier
- *       cleared). Hard-scanned in FULL with no tolerance: any content change
- *       (a pending header settling, a preview replaced by its result, a tail
- *       shifting up after a barrier removal) re-anchors so the engine can
- *       erase-and-replay history with the final content exactly once (or, on
- *       ED3-unsafe multiplexers, recommit it below the frozen snapshot —
- *       duplication, never loss) instead of committing it nowhere and
- *       painting it nowhere.
- *   [finalTo, prefix.length) FROZEN visual snapshots of still-live rows —
- *       exempt: their drift is expected (a collapsing preview, a ticking
- *       progress tree) and must never spray re-anchors mid-run.
- *
- * The verified zone's sampled check exploits the asymmetry between the two
- * mutation classes: an in-place edit/restyle disturbs only the touched rows
- * (alignment below stays intact; the stale copy in history is the accepted
- * artifact), while an insertion/deletion shifts EVERY row below it. Up to 8
- * non-blank rows within the last 24 verified rows are compared SGR-stripped
- * (theme changes stay quiet), tolerating a SINGLE mismatch. The tolerance is
- * load-bearing for roots that report NO seam: an animated row already in
- * history would otherwise re-anchor on every glyph tick.
- *
- * Highly repetitive tails (identical filler rows) can mask a shift in the tail
- * sample, in which case the skipped rows are content-identical to the committed
- * ones — observationally harmless. Exported for the render-stress harness, whose
- * shadow commit ledger must mirror the engine's law exactly.
- */
-export function findCommittedPrefixResync(
-	frame: readonly string[],
-	prefix: readonly string[],
-	verifiedTo: number = prefix.length,
-	finalTo: number = verifiedTo,
-): number {
-	const verified = Math.min(prefix.length, Math.max(0, Math.trunc(verifiedTo)));
-	const hardEnd = Math.min(prefix.length, Math.max(verified, Math.trunc(finalTo)));
-	if (hardEnd === 0) return -1;
-	// 1. Hard scan: frozen snapshots whose source just became final. Full
-	// scan, no tolerance — a finalized row that changed must re-anchor.
-	// 2. Tail sample over the verified zone, only when the hard scan is clean.
-	if (
-		frame.length >= hardEnd &&
-		firstRowDivergence(frame, prefix, hardEnd, verified) === -1 &&
-		tailSampleAligned(frame, prefix, verified)
-	) {
-		return -1;
-	}
-	// Misaligned (hard mismatch, tail-sample shift, or the frame no longer
-	// covers the checked zones): re-anchor at the first row whose content
-	// changed.
-	const limit = Math.min(hardEnd, frame.length);
-	const diverged = firstRowDivergence(frame, prefix, limit);
-	return diverged >= 0 ? diverged : limit < hardEnd ? limit : -1;
+	return false;
 }
 
 /**
- * The tail sample over the verified zone `[0, verified)`: walk up from its end until LOOKBACK rows or SAMPLES
- * non-blank comparisons. Aligned when the sample has no signal (an all-blank tail) or at most one edited row.
+ * The tokens the code at `t[i]` spans: 5 for `38/48/58;2;r;g;b`, 3 for `38/48/58;5;n`, 1 for any other code, and -1
+ * when the list ends before an extended-color spec does.
  */
-function tailSampleAligned(frame: readonly string[], prefix: readonly string[], verified: number): boolean {
-	let samples = 0;
-	let mismatches = 0;
-	for (let j = 1; j <= verified && j <= RESYNC_TAIL_LOOKBACK && samples < RESYNC_TAIL_SAMPLES; j++) {
-		const idx = verified - j;
-		const row = frame[idx]!;
-		const old = prefix[idx]!;
-		if (row === old) {
-			if (!isBlankRow(row)) samples++;
+function extendedColorTokens(t: readonly string[], i: number): number {
+	const tok = t[i];
+	if (tok !== "38" && tok !== "48" && tok !== "58") return 1;
+	const mode = t[i + 1];
+	if (mode === undefined) return -1; // introducer with no mode
+	if (mode === "2") return i + 4 >= t.length ? -1 : 5; // missing r/g/b
+	if (mode === "5") return i + 2 >= t.length ? -1 : 3; // missing index
+	return 1;
+}
+
+/**
+ * Merge runs of byte-adjacent SGR sequences (`CSI [0-9;:]* m`) into one. Only
+ * CSI-SGR sequences are touched; text, cursor moves, OSC, hyperlinks and image
+ * payloads pass through verbatim. Returns the original reference when nothing
+ * merges, so SGR-light lines incur only a single `indexOf` scan.
+ */
+export function coalesceAdjacentSgr(line: string): string {
+	if (!SGR_COALESCE_ENABLED || line.indexOf("\x1b[") === -1) return line;
+	const n = line.length;
+	let out = "";
+	let copiedUpto = 0;
+	let i = 0;
+	while (i < n) {
+		if (line.charCodeAt(i) !== CC_ESC || line.charCodeAt(i + 1) !== CC_BRACKET) {
+			i++;
 			continue;
 		}
-		if (isBlankRow(row) && isBlankRow(old)) continue;
-		samples++;
-		if (!rowsEquivalent(row, old)) mismatches++;
+		// Scan a candidate SGR sequence: ESC [ <params> m.
+		const j = sgrParamsEnd(line, i + 2);
+		if (j >= n || line.charCodeAt(j) !== CC_M) {
+			// Not an SGR (e.g. cursor move); leave it in the pending region.
+			i = j;
+			continue;
+		}
+		// Collect the run of adjacent SGR sequences starting here.
+		const params: string[] = [line.slice(i + 2, j)];
+		const k = collectSgrRun(line, j + 1, params);
+		if (params.length > 1) {
+			out += line.slice(copiedUpto, i);
+			out += mergedSgr(params);
+			copiedUpto = k;
+		}
+		i = k;
 	}
-	return samples === 0 || mismatches <= 1;
+	if (copiedUpto === 0) return line;
+	return out + line.slice(copiedUpto);
+}
+
+/** The index of the first byte at or after `from` that is not an SGR parameter byte. */
+function sgrParamsEnd(line: string, from: number): number {
+	let j = from;
+	while (j < line.length && isSgrParamByte(line.charCodeAt(j))) j++;
+	return j;
 }
 
 /**
- * Audit committed source alignment and accept tolerated verified-row changes.
- * Frozen rows retain their original snapshots until strict finalization.
- * The physical history remains in ScrollTape; this prefix tracks alignment.
+ * Append to `params` the parameter list of each SGR sequence that follows byte-adjacently from `from`; returns the
+ * index after the last one.
  */
-export function auditCommittedPrefix(
-	frame: readonly string[],
-	prefix: string[],
-	verifiedTo: number,
-	finalTo: number,
-): number {
-	const resyncTo = findCommittedPrefixResync(frame, prefix, verifiedTo, finalTo);
-	if (resyncTo >= 0) return resyncTo;
-	const verified = Math.min(prefix.length, Math.max(0, Math.trunc(verifiedTo)));
-	for (let i = Math.max(0, verified - RESYNC_TAIL_LOOKBACK); i < verified; i++) {
-		prefix[i] = frame[i]!;
+function collectSgrRun(line: string, from: number, params: string[]): number {
+	const n = line.length;
+	let k = from;
+	while (k < n && line.charCodeAt(k) === CC_ESC && line.charCodeAt(k + 1) === CC_BRACKET) {
+		const p = sgrParamsEnd(line, k + 2);
+		if (p >= n || line.charCodeAt(p) !== CC_M) break;
+		params.push(line.slice(k + 2, p));
+		k = p + 1;
 	}
-	return -1;
+	return k;
+}
+
+/**
+ * The merged form of a run of SGR parameter lists. The current group is flushed
+ * before a list is appended when (a) the previous list ended mid extended-color,
+ * so the next code cannot be absorbed as its missing channel/index, or (b) the
+ * token count would exceed MERGE_TOKEN_CAP. SGR params apply left-to-right
+ * regardless of how they are grouped across adjacent CSIs, so a capped/guarded
+ * split stays behavior-preserving — while a single unbounded merge would
+ * overflow a terminal's CSI parameter buffer (xterm.js caps at 32 and silently
+ * truncates the rest, corrupting colors). Empty params (`CSI m`) mean a full
+ * reset; normalize to `0` so the merged list stays unambiguous.
+ */
+function mergedSgr(params: readonly string[]): string {
+	let out = "";
+	let group = "";
+	let groupTokens = 0;
+	let groupOpenSafe = true;
+	for (const param of params) {
+		const norm = param.length === 0 ? "0" : param;
+		const tk = sgrTokenCount(norm);
+		if (groupTokens > 0 && (!groupOpenSafe || groupTokens + tk > MERGE_TOKEN_CAP)) {
+			out += `\x1b[${group}m`;
+			group = "";
+			groupTokens = 0;
+		}
+		group += group.length === 0 ? norm : `;${norm}`;
+		groupTokens += tk;
+		groupOpenSafe = !endsWithIncompleteExtendedColor(norm);
+	}
+	if (group.length > 0) out += `\x1b[${group}m`;
+	return out;
+}
+
+/** The parameter tokens in an SGR list: one more than its `;` and `:` separators. */
+function sgrTokenCount(params: string): number {
+	let tokens = 1;
+	for (let z = 0; z < params.length; z++) {
+		const cc = params.charCodeAt(z);
+		if (cc === CC_SEMI || cc === CC_COLON) tokens++;
+	}
+	return tokens;
 }
 
 /**

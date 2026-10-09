@@ -3,8 +3,6 @@
  * plan and the frame's classification; the intent selects the emitter. Split out of `frame-plan.ts`
  * and `tui.ts` so the record and the rule that produces it are read together.
  */
-import type { WindowPlan } from "./frame-plan";
-import { isMultiplexerSession } from "./terminal-session";
 
 /**
  * Render intent. `#doRender` classifies each frame, and the matching `#emit*`
@@ -24,13 +22,14 @@ export type RenderIntent =
 /**
  * The paint a classified frame takes: an incremental update of the planned window, or a full paint that clears
  * native scrollback after a divergence, or after a requested replace or geometry rebuild outside a multiplexer.
+ * `rebuildClearsScrollback` is true when a rebuild was requested and the session is not inside a multiplexer.
  */
 export function frameIntent(
 	fullPaint: boolean,
 	divergenceRebuild: boolean,
-	rebuildRequested: boolean,
-	plan: WindowPlan,
+	rebuildClearsScrollback: boolean,
+	window: { readonly chunkTo: number; readonly windowTop: number },
 ): RenderIntent {
-	if (!fullPaint) return { kind: "update", chunkTo: plan.chunkTo, windowTop: plan.windowTop };
-	return { kind: "fullPaint", clearScrollback: divergenceRebuild || (rebuildRequested && !isMultiplexerSession()) };
+	if (!fullPaint) return { kind: "update", chunkTo: window.chunkTo, windowTop: window.windowTop };
+	return { kind: "fullPaint", clearScrollback: divergenceRebuild || rebuildClearsScrollback };
 }

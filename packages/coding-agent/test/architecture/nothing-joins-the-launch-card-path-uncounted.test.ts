@@ -101,7 +101,7 @@ const ADMITTED_THIRD_PARTY = ["chalk", "lru-cache"];
  * windows split out of `core/tui.ts`, which the card already evaluates. It imports nothing.
  *
  * 337 rather than 333 is four more splits of modules the card already evaluates, each importing only
- * what its source did: `core/sgr-coalesce.ts` from `core/renderer.ts`, and `core/render-scheduler.ts`,
+ * what its source did: `core/committed-prefix.ts` from `core/renderer.ts`, and `core/render-scheduler.ts`,
  * `core/frame-segments.ts` and `core/render-intent.ts` from `core/tui.ts` and `core/frame-plan.ts`.
  */
 const CARD_PATH_CEILING = 337;
