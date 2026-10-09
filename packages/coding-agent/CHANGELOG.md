@@ -23,6 +23,7 @@
 - The `lsp` tool's `rename_file` action resolves its target, asks each server, merges their edits, applies them and notifies the servers in per-step functions in `lsp/index.ts`; every preview, applied edit, discarded overlap and notification is unchanged.
 - The patch parser reads each hunk in place instead of copying the rest of the diff for every hunk and every `@@` line, so a 400-hunk patch parses in 0.71 ms instead of 1.78 ms (median of three runs of 15 alternating rounds), and it reads a hunk's header, nested `@@` markers and body in per-step functions in `edit/diff.ts`; every parsed hunk and every parse error is unchanged.
 - The PDF converter reads a page's content stream through `skipStringLiteral`, `tokenEnd` and `skipInlineImageData` in `export/markit/converters/pdf/extract.ts`; the tokens of every stream that does not end in `<` are unchanged.
+- The PPTX converter reads its slide order, each slide and each slide's pictures and notes in per-step functions in `export/markit/converters/pptx.ts`, and the PPTX and XLSX converters read a part's relationships through `readPartRelationships` in `export/markit/converters/opc-relationships.ts`; a deck or workbook whose parts sit at their conventional names converts to the same markdown.
 - The emoji, GitHub reference, internal URL and prompt-action autocomplete providers declare their results as `AutocompleteSuggestions`; no user-visible change.
 - The assistant text reveal and the tool argument reveal run on one `RevealFrameClock`; both still tick at 30 frames per second only while text is held back.
 - The stdio, streamable-HTTP and SSE MCP transports answer a server-to-client request through one `answerServerRequest` in `mcp/types`; each answer is unchanged.
@@ -238,6 +239,7 @@
 
 ### Fixed
 
+- Reading a PowerPoint deck shows each slide's notes under that slide instead of under the slide whose number matches the notes part, so notes added to a later slide first no longer appear under an earlier slide, and it reads a slide named by an absolute or percent-encoded target, and the pictures and notes of a slide part not named `ppt/slides/slideN.xml`, instead of dropping them.
 - Writing into a ZIP or tar archive that holds a member named `__proto__`, or extracting or reading every member of such a ZIP, keeps that member under its own name instead of dropping it or listing its bytes as members `0`, `1`, ..., and converting an EPUB or XLSX whose reference names an absent member called `toString` or another `Object.prototype` property skips the reference instead of failing.
 - Reading a PDF, or attaching one with `@`, returns when a page's content stream ends in `<`, instead of never returning.
 - Escape or `abort_retry` that lands while an unreplayable tool batch's continuation is being announced cancels the continuation, instead of the session sleeping out the wait, re-requesting the turn and reporting a recovery that was cancelled.
