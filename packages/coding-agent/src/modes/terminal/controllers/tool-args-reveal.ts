@@ -42,7 +42,7 @@ export const STREAMING_STRING_KEYS_BY_TOOL: Readonly<Record<string, readonly str
 	argot_load: ["folder_path"],
 	argot_unload: ["folder_path"],
 	bash: ["command", "cwd"],
-	browser: ["name", "url", "code"],
+	browser: ["name", "url", "code", "context", "storage_state"],
 	checkpoint: ["goal"],
 	debug: ["program"],
 	edit: EDIT_RENDERER_STREAMING_KEYS,
