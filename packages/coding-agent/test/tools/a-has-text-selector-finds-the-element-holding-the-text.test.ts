@@ -5,14 +5,17 @@
  *
  * The contract: a selector ending in `:has-text(…)` acts on the first element its CSS matches whose
  * text holds the text, case and spacing aside; a bare `:has-text(…)` acts on the innermost element
- * holding the text, not an ancestor such as `<body>`; it works as an alternative of a comma list; one
- * that matches nothing fails within the zero-match window; `:has-text()` nested inside another
- * pseudo-class is still refused as Playwright-only.
+ * holding the text, not an ancestor such as `<body>`; an element's text is the text Playwright
+ * matches, so the `<title>`, an inline `<script>`, a `<style>` or a `<noscript>` holding the same
+ * words is not the element acted on (each once was, and the action timed out on an element with no
+ * box), a submit input's value is its text, and a shadow root's text is its host's; it works as an
+ * alternative of a comma list; one that matches nothing fails within the zero-match window;
+ * `:has-text()` nested inside another pseudo-class is still refused as Playwright-only.
  *
  * Driven through the real tool against real headless Chromium. Skipped where Chromium cannot run.
  *
  * What it does NOT catch: Playwright's other text engines (`text=`, `:text()`, `:text-is()`), which
- * stay refused, and text inside a shadow root, which a CSS query does not reach.
+ * stay refused, and an element inside a shadow root, which a CSS query does not reach.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
@@ -24,12 +27,21 @@ import { BrowserTool } from "@veyyon/coding-agent/tools/web/browser";
 import { TempDir } from "@veyyon/utils";
 import { CHROMIUM_AVAILABLE } from "./browser/chromium";
 
-const PAGE = `<!doctype html><title>page</title>
+const PAGE = `<!doctype html><title>Save your work</title>
 <button onclick="note('cancel')">Cancel</button>
 <button onclick="note('sign-in')">Sign   in</button>
 <a href="#one" onclick="note('take-over')">Could you take over?</a>
 <a href="#two" onclick="note('later')">Take over later</a>
 <div id="box" onclick="note('box')" style="padding:40px"><span onclick="event.stopPropagation(); note('save')">Save</span></div>
+<script>window.label = "Archive this page";</script>
+<button onclick="note('archive')">Archive</button>
+<style>.publish::after { content: "Publish"; }</style>
+<button onclick="note('publish')">Publish</button>
+<noscript>Export</noscript>
+<button onclick="note('export')">Export</button>
+<span id="host" onclick="note('shadow')"></span>
+<script>document.getElementById("host").attachShadow({ mode: "open" }).innerHTML = "<b>Shadowed</b>";</script>
+<form onsubmit="event.preventDefault(); note('send')"><input type="submit" value="Send it"></form>
 <ol id="log"></ol>
 <script>function note(text) { const item = document.createElement("li"); item.textContent = text; document.getElementById("log").append(item); }</script>`;
 
@@ -87,9 +99,24 @@ await tab.click('button:has-text("sign in")');
 await tab.click('a[href^="#"]:has-text("could you take over")');
 await tab.click(':has-text("Save")');
 await tab.click('#nope, button:has-text("Cancel")');
+await tab.click(':has-text("Archive")');
+await tab.click(':has-text("Publish")');
+await tab.click(':has-text("Export")');
+await tab.click(':has-text("Shadowed")');
+await tab.click('input:has-text("send it")');
 return await tab.evaluate(() => Array.from(document.querySelectorAll("#log li"), item => item.textContent));`);
 		expect(failure).toBeNull();
-		expect(JSON.parse(text)).toEqual(["sign-in", "take-over", "save", "cancel"]);
+		expect(JSON.parse(text)).toEqual([
+			"sign-in",
+			"take-over",
+			"save",
+			"cancel",
+			"archive",
+			"publish",
+			"export",
+			"shadow",
+			"send",
+		]);
 	}, 60_000);
 
 	it("fails within the zero-match window when nothing holds the text, and stays refused when nested", async () => {

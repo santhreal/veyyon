@@ -274,6 +274,8 @@
 
 ### Fixed
 
+- A `browser` `:has-text()` selector matches the text Playwright matches, so a page whose `<title>`, inline `<script>`, `<style>` or `<noscript>` holds the words acts on the element showing them instead of timing out on an element with no box, and a submit input's value and a shadow root's text count as their element's text.
+- `tab.fill` on a time or datetime input whose `min` and `max` narrow the hour field, such as `min="13:00" max="17:00"`, types the hour as a person does instead of setting the value by script with untrusted `input` and `change` events.
 - With `browser.naturalInput` on, a click through a `tab.id()` or `tab.ref()` handle whose element the page replaces while the button is held is made again on the replacement instead of reporting success with no click sent.
 - The `browser` tool removes the temporary Chrome profiles a crashed or killed process left in the system temp directory before it makes the next one.
 - A headless `browser` tab opens while another user of the host has a browser open or left a temporary profile in the shared temp directory, instead of every launch failing with `EACCES` on that user's profile.
