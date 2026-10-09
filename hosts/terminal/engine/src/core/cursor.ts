@@ -49,6 +49,20 @@ export function relativeMoveY(rowDelta: number): string {
 	return "";
 }
 
+/**
+ * Screen position of the frame caret when its row falls in the frame span `[spanTop, spanEnd)` painted from
+ * screen row `screenTop`; null when the caret is absent or outside that span.
+ */
+export function screenCaret(
+	cursorPos: { row: number; col: number } | null,
+	spanTop: number,
+	spanEnd: number,
+	screenTop: number,
+): { row: number; col: number } | null {
+	if (cursorPos === null || cursorPos.row < spanTop || cursorPos.row >= spanEnd) return null;
+	return { row: screenTop + (cursorPos.row - spanTop), col: cursorPos.col };
+}
+
 export class HardwareCursorTracker {
 	/** Actual terminal cursor row (may differ from the caret due to IME positioning). */
 	row = 0;

@@ -16,7 +16,6 @@
  * throwing. See `docs/internal/tui-core-renderer.md`.
  */
 import * as fs from "node:fs";
-import { performance } from "node:perf_hooks";
 import { type ActivitySignal, processActivity } from "@veyyon/utils/activity-signal";
 import { getDebugLogPath } from "@veyyon/utils/dirs";
 import { $flag, isBunTestRuntime } from "@veyyon/utils/env";
@@ -43,7 +42,6 @@ import {
 	CURSOR_MARKER,
 	canPrepareNativeScrollbackReplay,
 	type FrameSegment,
-	getNativeScrollbackLiveRegionStart,
 	getRenderStablePrefixRows,
 	hasNativeScrollbackLiveRegion,
 	isFocusable,
@@ -58,7 +56,7 @@ import {
 	type ViewportTailProvider,
 } from "./component-types";
 import { Container } from "./container";
-import { HardwareCursorTracker, type HardwareCursorUpdate, relativeMoveY } from "./cursor";
+import { HardwareCursorTracker, type HardwareCursorUpdate, relativeMoveY, screenCaret } from "./cursor";
 import {
 	CONPTY_POST_FULL_PAINT_SETTLE_MS,
 	FramePacer,
@@ -66,14 +64,15 @@ import {
 	MULTIPLEXER_RESIZE_DEBOUNCE_MS,
 	RESIZE_VIEWPORT_SETTLE_MS,
 } from "./frame-pacing";
-import type {
-	AssembledWindow,
-	FrameTransition,
-	PrefixReconciliation,
-	RenderIntent,
-	UpdateGeometry,
-	WindowPlan,
-} from "./frame-plan";
+import type { AssembledWindow, FrameTransition, PrefixReconciliation, UpdateGeometry, WindowPlan } from "./frame-plan";
+import {
+	addScopedChild,
+	type DirectWrite,
+	liveRegionLocalStart,
+	pinnedFooterRows,
+	segmentAcceptsDirectWrite,
+	unchangedSegmentRows,
+} from "./frame-segments";
 import { DEFAULT_MAX_INLINE_IMAGES, ImageBudget } from "./image-budget";
 import {
 	footerWantsPointer,
@@ -100,6 +99,8 @@ import {
 	seamRewriteSequence,
 	windowDiffSequence,
 } from "./paint-sequences";
+import { frameIntent, type RenderIntent } from "./render-intent";
+import { DEFAULT_RENDER_SCHEDULER, type RenderScheduler, type RenderTimer } from "./render-scheduler";
 import {
 	auditCommittedPrefix,
 	extractCursorMarkers,
@@ -144,16 +145,6 @@ import {
 	type StartListener,
 } from "./terminal-session";
 
-export interface RenderTimer {
-	cancel(): void;
-}
-
-export interface RenderScheduler {
-	now(): number;
-	scheduleImmediate(callback: () => void): void;
-	scheduleRender(callback: () => void, delayMs: number): RenderTimer;
-}
-
 export interface TUIOptions {
 	renderScheduler?: RenderScheduler;
 	/**
@@ -166,124 +157,6 @@ export interface TUIOptions {
 export interface TUIStartOptions {
 	/** Clear saved native scrollback before the first paint. */
 	clearScrollback?: boolean;
-}
-
-const DEFAULT_RENDER_SCHEDULER: RenderScheduler = {
-	now: () => performance.now(),
-	scheduleImmediate: callback => {
-		setImmediate(callback);
-	},
-	scheduleRender: (callback, delayMs) => {
-		const timer = setTimeout(callback, delayMs);
-		return {
-			cancel: () => {
-				clearTimeout(timer);
-			},
-		};
-	},
-};
-
-/** Where a freshly rendered root child's live region starts among its `rowCount` rows; undefined when it reports none. */
-function liveRegionLocalStart(child: Component, rowCount: number): number | undefined {
-	const liveRegionStart = getNativeScrollbackLiveRegionStart(child);
-	if (liveRegionStart === undefined) return undefined;
-	return Number.isFinite(liveRegionStart) ? clampLow(Math.trunc(liveRegionStart), 0, rowCount) : rowCount;
-}
-
-/**
- * Leading rows of a root child's composed `lines` unchanged since the previous compose, given the previous frame's
- * segment in the same slot. A child's stable-prefix report (`reported`) overrides reference equality, and rows
- * beyond the previous row count cannot be "unchanged". Undefined when the slot held another child or the segment
- * moved.
- */
-function unchangedSegmentRows(
-	previous: FrameSegment | undefined,
-	child: Component,
-	start: number,
-	lines: readonly string[],
-	reported: number | undefined,
-): number | undefined {
-	if (previous === undefined || previous.component !== child || previous.start !== start) return undefined;
-	if (reported !== undefined) {
-		return Number.isFinite(reported)
-			? Math.max(0, Math.min(lines.length, previous.rowCount, Math.trunc(reported)))
-			: 0;
-	}
-	return previous.lines === lines ? lines.length : 0;
-}
-
-/** Frame rows spanned by the last `pinnedChildCount` root children, which scroll isolation pins as the footer. */
-function pinnedFooterRows(segments: readonly FrameSegment[], frameRows: number, pinnedChildCount: number): number {
-	if (pinnedChildCount <= 0 || segments.length < pinnedChildCount) return 0;
-	return frameRows - segments[segments.length - pinnedChildCount]!.start;
-}
-
-/**
- * A segment may be rewritten in place only when none of it is committed to native scrollback and it holds no live
- * region, or is live from its first row.
- */
-function segmentAcceptsDirectWrite(segment: FrameSegment, committedRows: number): boolean {
-	if (segment.start < committedRows) return false;
-	return segment.liveLocalStart === undefined || segment.liveLocalStart === 0;
-}
-
-/** A root child's re-rendered rows, checked to fit its segment and screen position unchanged. */
-interface DirectWrite {
-	segmentIndex: number;
-	segment: FrameSegment;
-	nextLines: readonly string[];
-	/** Frame row the visible window starts at. */
-	windowTop: number;
-	/** Screen row the segment starts at. */
-	screenStart: number;
-	width: number;
-	height: number;
-}
-
-/**
- * Record that `root` re-renders for a target reached through its direct child `via`; an undefined `via` (the target
- * is the root) re-renders all of it, recorded as null.
- */
-function addScopedChild(
-	scoped: Map<Component, Set<Component> | null>,
-	root: Component,
-	via: Component | undefined,
-): void {
-	if (via === undefined) {
-		scoped.set(root, null);
-		return;
-	}
-	const children = scoped.get(root);
-	if (children === undefined) scoped.set(root, new Set([via]));
-	else if (children !== null) children.add(via);
-}
-
-/**
- * The paint a classified frame takes: an incremental update of the planned window, or a full paint that clears
- * native scrollback after a divergence, or after a requested replace or geometry rebuild outside a multiplexer.
- */
-function frameIntent(
-	fullPaint: boolean,
-	divergenceRebuild: boolean,
-	rebuildRequested: boolean,
-	plan: WindowPlan,
-): RenderIntent {
-	if (!fullPaint) return { kind: "update", chunkTo: plan.chunkTo, windowTop: plan.windowTop };
-	return { kind: "fullPaint", clearScrollback: divergenceRebuild || (rebuildRequested && !isMultiplexerSession()) };
-}
-
-/**
- * Screen position of the frame caret when its row falls in the frame span `[spanTop, spanEnd)` painted from
- * screen row `screenTop`; null when the caret is absent or outside that span.
- */
-function screenCaret(
-	cursorPos: { row: number; col: number } | null,
-	spanTop: number,
-	spanEnd: number,
-	screenTop: number,
-): { row: number; col: number } | null {
-	if (cursorPos === null || cursorPos.row < spanTop || cursorPos.row >= spanEnd) return null;
-	return { row: screenTop + (cursorPos.row - spanTop), col: cursorPos.col };
 }
 
 /**
