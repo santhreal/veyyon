@@ -170,6 +170,19 @@ export interface CodexCompactionRequestContext extends CodexCompactionMetadata {
 	operationId: string;
 }
 
+/**
+ * Classification of an ephemeral fork of a live Codex thread: a side request
+ * that reads the parent conversation and never writes back to it, such as a
+ * composer prediction. Codex serializes it as `forked_from_thread_id` and
+ * `thread_source` in the turn envelope.
+ */
+export interface CodexForkRequestContext {
+	/** Transport session id of the parent conversation; resolves its Codex thread id. */
+	parentSessionId: string;
+	/** `thread_source` value, spelled as codex-rs spells it (`composer_predictions`). */
+	threadSource: string;
+}
+
 export interface StreamOptions {
 	temperature?: number;
 	topP?: number;
@@ -268,6 +281,8 @@ export interface StreamOptions {
 	providerSessionState?: Map<string, ProviderSessionState>;
 	/** Canonical Codex compaction classification; ignored by other providers. */
 	codexCompaction?: CodexCompactionRequestContext;
+	/** Codex ephemeral-fork classification; ignored by other providers. */
+	codexFork?: CodexForkRequestContext;
 	/**
 	 * Optional per-provider concurrent request cap for LLM stream calls. Keys are
 	 * provider ids (`model.provider`); positive numeric values cap in-flight

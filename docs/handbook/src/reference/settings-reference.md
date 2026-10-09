@@ -172,6 +172,14 @@ veyyon config get compaction.threshold
 | `emojiAutocomplete` | Emoji Autocomplete | boolean | `true` | Suggest emojis from `:name:` shortcodes and expand text emoticons like `:D` or `:-)`. |
 | `paste.largeMenuThreshold` | Large Paste Menu | number | `100` | When a paste reaches this many lines, offer a menu to wrap it in a code block, wrap it in XML tags, or save it to a file. 0 disables the menu (large pastes still collapse to a [Paste] marker). |
 
+### Composer Predictions
+
+| Key | Setting | Type | Default | What it does |
+|---|---|---|---|---|
+| `composer.predictions.enabled` | Composer Predictions | boolean | `false` | After each turn, suggest the message you are likely to send next as dim text in the empty composer. Tab inserts it; typing replaces it. Nothing is sent without Enter. |
+| `composer.predictions.source` | Prediction Source | enum | `codex` | Where a prediction comes from. Values: `codex`, `model`. |
+| `composer.predictions.model` | Prediction Model | modelChain | _(unset)_ | Model that writes predictions. Unset: the session's model. With source Codex it must be an OpenAI Codex model. Only the first entry is used; a :level suffix sets its thinking level. |
+
 ### Session
 
 | Key | Setting | Type | Default | What it does |
@@ -898,4 +906,4 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `tui.maxInlineImageRows` | number | `20` |  |
 | `tui.maxInlineImages` | number | `8` |  |
 
-354 settings in /settings, 118 configuration-file keys, 472 in all.
+357 settings in /settings, 118 configuration-file keys, 475 in all.

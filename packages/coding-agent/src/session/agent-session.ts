@@ -8540,17 +8540,25 @@ export class AgentSession {
 	 * the snapshot + stream pipeline. The snapshot includes any in-flight
 	 * streaming assistant text so the model sees the half-finished response
 	 * rather than missing context.
+	 *
+	 * `model` and `thinkingLevel` default to the session's. `codexThreadSource`
+	 * marks the request, on an OpenAI Codex model, as an ephemeral fork of this
+	 * session's Codex thread with that `thread_source`.
 	 */
 	async runEphemeralTurn(args: {
 		promptText: string;
 		onTextDelta?: (delta: string) => void;
 		signal?: AbortSignal;
 		dedupeReply?: boolean;
+		model?: Model;
+		thinkingLevel?: ThinkingLevel;
+		codexThreadSource?: string;
 	}): Promise<{ replyText: string; assistantMessage: AssistantMessage }> {
-		const model = this.model;
+		const model = args.model ?? this.model;
 		if (!model) {
 			throw new Error("No active model on session");
 		}
+		const thinkingLevel = args.thinkingLevel ?? this.thinkingLevel;
 		const cacheSessionId = this.sessionId;
 		// Providers route on `promptCacheKey ?? sessionId`. The live loop sends the
 		// agent's pinned key when it has one (fork, tan, shared session), so mirror
@@ -8558,7 +8566,7 @@ export class AgentSession {
 		const ephemeralPromptCacheKey = this.agent.promptCacheKey ?? cacheSessionId;
 		const snapshot = buildEphemeralSnapshot(this.messages, this.agent.state.streamMessage, args.promptText);
 		const llmMessages = await this.convertMessagesToLlm(snapshot, args.signal);
-		const context = await this.agent.buildSideRequestContext(llmMessages);
+		const context = await this.agent.buildSideRequestContext(llmMessages, undefined, model);
 		const options = await this.prepareSimpleStreamOptions(
 			{
 				apiKey: this.#config.modelRegistry.resolver(model, cacheSessionId),
@@ -8572,10 +8580,13 @@ export class AgentSession {
 				promptCacheKey: ephemeralPromptCacheKey,
 				preferWebsockets: this.#config.preferWebsockets,
 				providerSessionState: this.#providerSessions.states,
-				reasoning: toReasoningEffort(this.thinkingLevel),
-				disableReasoning: shouldDisableReasoning(this.thinkingLevel),
+				reasoning: toReasoningEffort(thinkingLevel),
+				disableReasoning: shouldDisableReasoning(thinkingLevel),
 				hideThinkingSummary: this.agent.hideThinkingSummary,
 				serviceTier: this.#effectiveServiceTier(model),
+				codexFork: args.codexThreadSource
+					? { parentSessionId: this.agent.sessionId ?? cacheSessionId, threadSource: args.codexThreadSource }
+					: undefined,
 				signal: args.signal,
 			},
 			model.provider,

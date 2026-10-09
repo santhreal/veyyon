@@ -96,6 +96,7 @@ function createContext(
 		session: {
 			isCompacting: options.isCompacting ?? false,
 			isStreaming: options.isStreaming ?? false,
+			settings: { get: () => false },
 			runIdleCompaction,
 			runEphemeralTurn,
 			model: { provider: "anthropic", id: "claude-sonnet-4-5" },

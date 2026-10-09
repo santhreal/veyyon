@@ -432,6 +432,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	#promptGutter: string | undefined;
 	#promptGutterContinuation: string | undefined;
 	#placeholder: string | undefined;
+	#prediction: string | undefined;
 	#rowBackground: string | undefined;
 
 	// Store last layout width for cursor navigation
@@ -590,6 +591,18 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	/** Ghost text shown when the composer is empty (the resting prompt hint). */
 	setPlaceholder(placeholder: string | undefined): void {
 		this.#placeholder = placeholder;
+	}
+
+	/**
+	 * Suggested next message shown as ghost text over an empty composer, in
+	 * place of the placeholder. Tab inserts it; it is never submitted on its own.
+	 */
+	setPrediction(prediction: string | undefined): void {
+		this.#prediction = prediction || undefined;
+	}
+
+	get prediction(): string | undefined {
+		return this.#prediction;
 	}
 
 	/**
@@ -1186,8 +1199,12 @@ export class Editor implements Component, Focusable, MouseRoutable {
 			this.#jumpMode = null;
 		}
 
-		if (this.#pasteHandler.route(data, this.#pasteSinks)) return;
-		this.#handleKeyInput(data);
+		if (!this.#pasteHandler.route(data, this.#pasteSinks)) this.#handleKeyInput(data);
+		// A prediction lasts until the user writes: text in the composer dismisses it,
+		// so clearing that text again shows the placeholder, not the stale suggestion.
+		if (this.#prediction !== undefined && (this.#state.lines.length > 1 || this.#state.lines[0] !== "")) {
+			this.#prediction = undefined;
+		}
 	}
 
 	#handleKeyInput(data: string): void {
@@ -1212,6 +1229,20 @@ export class Editor implements Component, Focusable, MouseRoutable {
 			this.#autocompleteList &&
 			this.#handleAutocompleteKey(data, kb, this.#autocompleteList)
 		) {
+			return;
+		}
+
+		// Tab over an empty composer inserts the prediction it is showing.
+		if (
+			kb.matches(data, "tui.input.tab") &&
+			!this.#autocompleteState &&
+			this.#prediction &&
+			this.#state.lines.length === 1 &&
+			this.#state.lines[0] === ""
+		) {
+			const prediction = this.#prediction;
+			this.#prediction = undefined;
+			this.insertText(prediction);
 			return;
 		}
 
@@ -3169,9 +3200,10 @@ export class Editor implements Component, Focusable, MouseRoutable {
 			return selected?.hint ?? null;
 		}
 
-		// The placeholder: ghost text over an empty composer.
-		if (this.#placeholder && this.#state.lines.length === 1 && this.#state.lines[0] === "") {
-			return this.#placeholder;
+		// Over an empty composer: the prediction, else the placeholder.
+		if (this.#state.lines.length === 1 && this.#state.lines[0] === "") {
+			const ghost = this.#prediction ?? this.#placeholder;
+			if (ghost) return ghost;
 		}
 
 		// Fall back to provider's getInlineHint

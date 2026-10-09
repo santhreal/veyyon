@@ -41,6 +41,7 @@ import type {
 	Api,
 	AssistantMessage,
 	CodexCompactionRequestContext,
+	CodexForkRequestContext,
 	Context,
 	FetchImpl,
 	Model,
@@ -424,6 +425,12 @@ interface CodexMetadataSessionState {
 	reuseTurnForNextRequest?: boolean;
 }
 
+/** Fork identity serialized into the turn envelope of an ephemeral fork. */
+interface CodexForkMetadata {
+	threadSource: string;
+	forkedFromThreadId?: string;
+}
+
 interface CodexCompatibilityIdentity {
 	installationId: string;
 	sessionId: string;
@@ -527,6 +534,7 @@ function createCodexRequestMetadata(
 		turnStartedAtUnixMs?: number;
 		clientMetadata?: Readonly<Record<string, string>>;
 		compaction?: CodexCompactionRequestContext;
+		fork?: CodexForkMetadata;
 	},
 ): CodexRequestMetadata {
 	if (options.startNewTurn || !session.turnId) {
@@ -563,6 +571,10 @@ function createCodexRequestMetadata(
 			phase: options.compaction.phase,
 			strategy: options.compaction.strategy,
 		};
+	}
+	if (options.fork) {
+		if (options.fork.forkedFromThreadId) turnMetadata.forked_from_thread_id = options.fork.forkedFromThreadId;
+		turnMetadata.thread_source = options.fork.threadSource;
 	}
 	if (session.turnStartedAtUnixMs !== undefined) {
 		turnMetadata.turn_started_at_unix_ms = session.turnStartedAtUnixMs;
@@ -1433,7 +1445,23 @@ function createCodexTurnRequestMetadata(
 		turnStartedAtUnixMs,
 		clientMetadata: transformedBody.client_metadata,
 		compaction,
+		fork: resolveCodexForkMetadata(options?.codexFork, providerSessionState),
 	});
+}
+
+/**
+ * Resolve a fork request to the parent's Codex thread id. The parent has a
+ * thread id only once one of its turns has gone out; a fork of a session that
+ * never reached Codex still carries its `thread_source`.
+ */
+function resolveCodexForkMetadata(
+	fork: CodexForkRequestContext | undefined,
+	providerSessionState: CodexProviderSessionState | undefined,
+): CodexForkMetadata | undefined {
+	if (!fork) return undefined;
+	const parentSessionId = normalizeOpenAIPromptCacheKey(fork.parentSessionId);
+	const parent = parentSessionId ? providerSessionState?.metadataSessions.get(parentSessionId) : undefined;
+	return { threadSource: fork.threadSource, forkedFromThreadId: parent?.threadId };
 }
 
 /** @internal Exported for tests. */

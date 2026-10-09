@@ -178,6 +178,34 @@ Recalling a queued follow-up is a TUI-local action (`Esc` or the dequeue chord);
 RPC protocol has no recall command. An empty follow-up is a no-op in the TUI, and `/queue` with no
 text shows a usage warning.
 
+## Composer predictions
+
+With `composer.predictions.enabled: true`, each finished turn requests the message you are likely
+to send next and shows it as dim text in the empty composer. `Tab` inserts it for editing; `Enter`
+then sends it. Typing dismisses it, and a new turn, a session switch or compaction clears it. No
+prediction is requested after an aborted or failed turn, or while the composer holds text.
+
+`composer.predictions.source` selects where the prediction comes from:
+
+- `codex` (default) uses the ChatGPT Codex prediction service through your OpenAI Codex login. The
+  service supplies the prompt and reasoning effort and lists the models it serves no predictions
+  for. The request is sent as an ephemeral fork of the session's Codex thread. It requires an
+  OpenAI Codex model.
+- `model` sends a built-in prompt to any model you have credentials for.
+
+`composer.predictions.model` sets the model that writes predictions; unset, the session's model
+writes them. A `:level` suffix sets its thinking level. A prediction reads the conversation and
+writes nothing to the session. When the configuration cannot produce predictions, the reason is
+shown once as a warning.
+
+```yaml
+composer:
+  predictions:
+    enabled: true
+    source: model
+    model: anthropic/claude-sonnet-4-5
+```
+
 ## Next
 
 Read [Examples](./examples.md) for concrete prompts and workflows.

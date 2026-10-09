@@ -126,6 +126,7 @@ export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
 	],
 	interaction: [
 		"Input",
+		"Composer Predictions",
 		"Session",
 		"Approvals",
 		"Notifications",

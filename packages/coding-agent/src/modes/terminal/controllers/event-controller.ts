@@ -55,6 +55,7 @@ import {
 	assistantUsageIsBilled,
 	splitAssistantMessageToolTimeline,
 } from "../utils/transcript-render-helpers";
+import { ComposerPredictionController } from "./composer-prediction-controller";
 import { StreamingRevealController } from "./streaming-reveal";
 import { streamingStringKeysForTool, ToolArgsRevealController } from "./tool-args-reveal";
 import { userEchoSignature } from "./transcript-composer";
@@ -199,6 +200,7 @@ export class EventController {
 	// In-flight ephemeral recap turn; aborted by #cancelIdleRecap when any
 	// activity (new turn, compaction, editor draft) supersedes the idle recap.
 	#idleRecapAbort?: AbortController;
+	#composerPrediction: ComposerPredictionController;
 	#ircExpiryTimers = new Map<string, NodeJS.Timeout>();
 	// Insertion-ordered IRC cards not yet retired; values are the transcript
 	// components each card contributed (see #retireIrcCard for the guard).
@@ -227,6 +229,7 @@ export class EventController {
 	#namedCacheInvalidations = 0;
 
 	constructor(private ctx: EventControllerContext) {
+		this.#composerPrediction = new ComposerPredictionController(ctx);
 		// Enhanced speech (`speech.enhanced`) rewrites blocks through the
 		// tiny/smol role with this session's registry and credentials; the
 		// vocalizer falls back to mechanical cleanup when unset. Tolerates
@@ -324,6 +327,7 @@ export class EventController {
 		this.#toolArgsReveal.stop();
 		this.#cancelIdleCompaction();
 		this.#cancelIdleRecap();
+		this.#composerPrediction.cancel();
 		this.#setTerminalProgress(false);
 		for (const timer of this.#ircExpiryTimers.values()) {
 			clearTimeout(timer);
@@ -494,6 +498,7 @@ export class EventController {
 		this.#pinnedErrorComponent = undefined;
 		this.#cancelIdleCompaction();
 		this.#cancelIdleRecap();
+		this.#composerPrediction.cancel();
 		for (const timer of this.#ircExpiryTimers.values()) {
 			clearTimeout(timer);
 		}
@@ -634,6 +639,7 @@ export class EventController {
 		this.#stopRetryLoader();
 		this.#cancelIdleCompaction();
 		this.#cancelIdleRecap();
+		this.#composerPrediction.cancel();
 		this.ctx.statusLine.markActivityStart();
 		this.#setTerminalProgress(true);
 		// The turn opens with the model reasoning before any token streams.
@@ -1498,6 +1504,7 @@ export class EventController {
 		this.ctx.ui.requestRender();
 		this.#scheduleIdleCompaction();
 		this.#scheduleIdleRecap();
+		void this.#composerPrediction.request();
 		this.sendCompletionNotification();
 	}
 
@@ -1541,6 +1548,7 @@ export class EventController {
 	): Promise<void> {
 		this.#cancelIdleCompaction();
 		this.#cancelIdleRecap();
+		this.#composerPrediction.cancel();
 		this.#setTerminalProgress(true);
 		this.#stopWorkingLoader();
 		this.ctx.statusContainer.disposeChildren();

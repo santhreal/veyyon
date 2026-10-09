@@ -300,6 +300,7 @@ const CONDITIONS: Record<string, () => boolean> = {
 	),
 	secretsEnabled: settingFlag("secrets.enabled"),
 	prewalkEnabled: settingFlag("prewalk.enabled"),
+	composerPredictionsEnabled: settingFlag("composer.predictions.enabled"),
 };
 
 // ═══════════════════════════════════════════════════════════════════════════

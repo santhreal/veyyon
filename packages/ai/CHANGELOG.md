@@ -17,6 +17,7 @@
 - `@veyyon/ai/auth-gateway` exports `AUTH_GATEWAY_COMPLETION_PATHS`, every path the gateway answers a completion `POST` on.
 - `@veyyon/ai/auth-broker` exports `AUTH_BROKER_AUTHORIZED_ROUTES`, every broker route that requires a bearer, and `AuthStorage.hasCredentialId(id)` reports whether a loaded credential row has the id.
 - `EventStream.takeQueued()` removes and returns the events pushed and not yet read, oldest first.
+- `@veyyon/ai/usage/openai-codex-predictions` exports `fetchCodexPredictionsConfig` and `parseCodexPredictionsConfig`, which read the Codex composer-prediction configuration from `/wham/predictions/config`, and the `codexFork` stream option sends an OpenAI Codex request as an ephemeral fork of another session's thread, setting `thread_source` and `forked_from_thread_id` in its turn metadata.
 - `@veyyon/ai/utils/schema` exports `ZOD_INSTANCE_KINDS`, every Zod 4 kind by which `decontaminateZodInstance` recognizes a serialized instance.
 
 ### Changed

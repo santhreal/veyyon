@@ -144,6 +144,57 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
+	"composer.predictions.enabled": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "interaction",
+			group: "Composer Predictions",
+			label: "Composer Predictions",
+			description:
+				"After each turn, suggest the message you are likely to send next as dim text in the empty composer. Tab inserts it; typing replaces it. Nothing is sent without Enter.",
+		},
+	},
+
+	"composer.predictions.source": {
+		type: "enum",
+		values: ["codex", "model"] as const,
+		default: "codex",
+		ui: {
+			tab: "interaction",
+			group: "Composer Predictions",
+			label: "Prediction Source",
+			description: "Where a prediction comes from.",
+			options: [
+				{
+					value: "codex",
+					label: "Codex",
+					description:
+						"The ChatGPT Codex prediction service, through your OpenAI Codex login: the prompt, effort and model list the Codex app uses. Requires an OpenAI Codex model.",
+				},
+				{
+					value: "model",
+					label: "Model",
+					description: "Any model you have credentials for, chosen in Prediction Model.",
+				},
+			],
+			condition: "composerPredictionsEnabled",
+		},
+	},
+
+	"composer.predictions.model": {
+		type: "modelChain",
+		default: undefined,
+		ui: {
+			tab: "interaction",
+			group: "Composer Predictions",
+			label: "Prediction Model",
+			description:
+				"Model that writes predictions. Unset: the session's model. With source Codex it must be an OpenAI Codex model. Only the first entry is used; a :level suffix sets its thinking level.",
+			condition: "composerPredictionsEnabled",
+		},
+	},
+
 	"startup.quiet": {
 		type: "boolean",
 		default: false,

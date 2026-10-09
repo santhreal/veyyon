@@ -46,7 +46,7 @@ function createContext() {
 		sessionManager: { getSessionName: () => "test-session" },
 		ensureLoadingAnimation: vi.fn(),
 		ui: { requestRender: vi.fn() },
-		viewSession: { isCompacting: false, getLastAssistantMessage: () => undefined },
+		viewSession: { isCompacting: false, getLastAssistantMessage: () => undefined, settings: { get: () => false } },
 		session: {
 			get isStreaming() {
 				return streamState.isStreaming;
