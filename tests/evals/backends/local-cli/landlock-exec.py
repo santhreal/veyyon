@@ -10,9 +10,11 @@
 The rules are `[{"path": ..., "access": "list" | "read" | "write"}]`. Beneath each path the command
 lists directories (`list`), also reads and runs files (`read`), or also creates, changes and deletes
 (`write`); every other file access is refused with EACCES. A path that does not exist grants nothing.
-The restriction binds this process and every process the command starts. Landlock needs no
-privilege and no user namespace, only a kernel built with it (5.13 or later) and enabled in its LSM
-list. `--no-rules` applies none, on a host without Landlock, and keeps what follows.
+The restriction binds this process and every process the command starts. On a kernel with Landlock
+ABI 6 or later it also scopes signals and abstract Unix sockets: the command cannot signal a process
+outside the ruleset or connect to an abstract socket one created. Landlock needs no privilege and no
+user namespace, only a kernel built with it (5.13 or later) and enabled in its LSM list. `--no-rules`
+applies none, on a host without Landlock, and keeps what follows.
 
 The command runs as a child of this process, which is a child subreaper: a process the command
 starts in a session of its own (a browser a launcher detaches, a daemon that calls setsid) is
@@ -55,13 +57,19 @@ IOCTL_DEV = 1 << 15
 READ = EXECUTE | READ_FILE | READ_DIR
 # The only rights a rule on a file rather than a directory may hold.
 FILE_RIGHTS = EXECUTE | WRITE_FILE | READ_FILE | TRUNCATE | IOCTL_DEV
+# ABI 6: an abstract Unix socket or a process outside the ruleset is out of reach.
+SCOPE_ABSTRACT_UNIX_SOCKET = 1 << 0
+SCOPE_SIGNAL = 1 << 1
+SCOPED = SCOPE_ABSTRACT_UNIX_SOCKET | SCOPE_SIGNAL
 
 libc = ctypes.CDLL(None, use_errno=True)
 libc.syscall.restype = ctypes.c_long
 
 
 class RulesetAttr(ctypes.Structure):
-    _fields_ = [("handled_access_fs", ctypes.c_uint64)]
+    # The kernel reads the fields its ABI knows and requires the rest to be zero.
+    _fields_ = [("handled_access_fs", ctypes.c_uint64), ("handled_access_net", ctypes.c_uint64),
+                ("scoped", ctypes.c_uint64)]
 
 
 class PathBeneathAttr(ctypes.Structure):
@@ -96,8 +104,9 @@ def handled_rights(version):
 
 
 def restrict(rules):
-    handled = handled_rights(abi())
-    attr = RulesetAttr(handled)
+    version = abi()
+    handled = handled_rights(version)
+    attr = RulesetAttr(handled, 0, SCOPED if version >= 6 else 0)
     ruleset = libc.syscall(
         SYS_LANDLOCK_CREATE_RULESET, ctypes.byref(attr), ctypes.c_size_t(ctypes.sizeof(attr)), ctypes.c_uint32(0)
     )

@@ -5,17 +5,18 @@
  * and a shell both read any file that user can. A trial therefore runs under a ruleset that hides the
  * runner's home, the runs directory, the tests of the build it runs, this package, and the git
  * history of the checkout and the build, which hold the graders, the fixture sources and every
- * earlier trial's transcript. It also hides every user's home, the system temp directories and
- * mounted media, since a trial has a home and a TMPDIR of its own and reads nothing else a user
- * keeps. The build, the runtime, the overlays and the trial's own directories are granted back
- * inside them.
+ * earlier trial's transcript. It also hides every user's home and runtime directory, the system temp
+ * directories and mounted media, since a trial has a home and a TMPDIR of its own and reads nothing
+ * else a user keeps. The build, the runtime, the overlays and the trial's own directories are granted
+ * back inside them.
  *
  * Landlock only grants, so a directory that holds a hidden one is granted entry by entry around it.
  * A symbolic link among those entries gets no grant: a grant attaches to the link's target, and a
  * target outside the hidden directories is granted where it is. Listing stays open everywhere
  * because module resolution opens every directory above the file that imports, so a trial can
  * read the names in a hidden directory but not its files. Landlock does not govern connecting to a
- * Unix socket.
+ * Unix socket by its path, so a trial reaches every such socket the runner's user can. On ABI 6 or
+ * later a trial cannot signal a process outside it or connect to an abstract socket made outside it.
  */
 
 import { spawnSync } from "node:child_process";
@@ -76,11 +77,22 @@ export interface SandboxLayout {
 }
 
 /**
- * What no trial reads, besides what its run hides: every user's home, the system temp directories
- * and mounted media.
+ * What no trial reads, besides what its run hides: every user's home and runtime directory, the
+ * system temp directories and mounted media.
  */
 export function hostDataDirectories(): string[] {
-	const candidates = ["/home", "/root", "/mnt", "/media", "/run/media", "/tmp", "/var/tmp", os.tmpdir(), os.homedir()];
+	const candidates = [
+		"/home",
+		"/root",
+		"/run/user",
+		"/mnt",
+		"/media",
+		"/run/media",
+		"/tmp",
+		"/var/tmp",
+		os.tmpdir(),
+		os.homedir(),
+	];
 	return [...new Set(candidates.map(entry => path.resolve(entry)))];
 }
 

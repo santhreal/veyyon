@@ -48,13 +48,22 @@ On Linux the trial runs under Landlock (`backends/local-cli/landlock-exec.py`). 
 directory and reads every file except in the runner's home, the runs directory, every other trial's
 scratch, this package, the `tests` of the build it runs, the git history of this checkout and of the
 build (`.git`, and for a worktree the git directories its `.git` file names), every user's home
-(`/home`, `/root`), the system temp directories (`/tmp`, `/var/tmp`, `TMPDIR`) and mounted media
-(`/mnt`, `/media`, `/run/media`); it writes only its own scratch, `/dev` and `/proc`. The build, the
-Bun runtime, the overlays and the paths a suite names are granted back. A symbolic link beside a
-hidden directory is not followed into one. The agent's tools therefore cannot open a grader, a
-fixture's source, an earlier trial's transcript, or another user's files. Names in a hidden
-directory stay listable, and Landlock does not govern connecting to a Unix socket. On a host without
-Landlock the backend refuses the run unless `--unsandboxed` is given.
+(`/home`, `/root`) and runtime directory (`/run/user`), the system temp directories (`/tmp`,
+`/var/tmp`, `TMPDIR`) and mounted media (`/mnt`, `/media`, `/run/media`); it writes only its own
+scratch, `/dev` and `/proc`. The build, the Bun runtime, the overlays and the paths a suite names are
+granted back. A symbolic link beside a hidden directory is not followed into one. The agent's tools
+therefore cannot open a grader, a fixture's source, an earlier trial's transcript, or another user's
+files by path. Names in a hidden directory stay listable. On a kernel with Landlock ABI 6 or later a
+trial cannot signal a process outside it, the runner included, or connect to an abstract Unix socket
+made outside it. On a host without Landlock the backend refuses the run unless `--unsandboxed` is
+given.
+
+Landlock does not govern connecting to a Unix socket by its path. A trial connects to every pathname
+Unix socket the runner's user can, among them the user's session bus (`/run/user/<uid>/bus`), through
+which `systemd-run --user` runs a command outside the sandbox, and the Docker daemon
+(`/run/docker.sock`) when the user is in the `docker` group. A trial that uses either reads every
+file the runner's user can. Run the evals as a user with no session bus and outside the `docker`
+group when a result must not depend on whether the agent did so.
 
 Landlock rules on this backend cover files, not network connections. A trial reaches every listener
 on the host's loopback interface, including the sites and the browser debugging ports of the trials

@@ -14,7 +14,8 @@
  * the graders), a link in the build that points at the tests, or a file another process left in the
  * system temp directory, while its own workspace, home, task settings and the build's
  * `node_modules` still work, so a sandbox that refused everything would fail too. The rules
- * themselves are checked to hide every host data directory on any Linux host.
+ * themselves are checked to hide every host data directory on any Linux host, every user's runtime
+ * directory (`/run/user`, which holds session cookies and agent sockets) among them.
  *
  * Not caught: that `/proc` and `/dev` stay writable for Chrome; a real browser trial is the check.
  * Without Landlock (every host but Linux, a kernel without it, or no python3) the probe case skips.
@@ -324,7 +325,7 @@ describe("a local trial", () => {
 	}
 
 	it.skipIf(process.platform !== "linux")(
-		"reads no user's home, temp directory or mounted media, beyond what is granted in one",
+		"reads no user's home, runtime directory, temp directory or mounted media, beyond what is granted in one",
 		async () => {
 			// A runner whose home and TMPDIR sit outside `/home` and `/tmp`: each is hidden by its own
 			// entry, not by the conventional directory above it.
@@ -351,6 +352,7 @@ describe("a local trial", () => {
 			const userFiles = [
 				"/home/someone/notes.txt",
 				"/root/.ssh/id_ed25519",
+				"/run/user/1000/ICEauthority",
 				"/tmp/another-process/state.json",
 				"/var/tmp/another-process/state.json",
 				"/mnt/data/report.csv",

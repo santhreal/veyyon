@@ -30,6 +30,8 @@ All notable changes to `@veyyon/evals` will be documented in this file.
 - A descendant in a trial's process group that ignores SIGTERM is killed once the trial's process exits.
 - The resume command printed after SIGINT or SIGTERM restates every flag of the interrupted run.
 - A plan whose variant names reduce to one directory name is refused, naming both variants.
+- A sandboxed local-cli trial can no longer signal a process outside it or connect to an abstract Unix socket made outside it on a kernel with Landlock ABI 6 or later.
+- A sandboxed local-cli trial can no longer read files in `/run/user`, and `docs/backends.md` states that a trial still connects to every pathname Unix socket the runner's user can, the session bus and the Docker daemon among them.
 
 ## [1.5.0] - 2026-09-18
 
