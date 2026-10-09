@@ -308,11 +308,15 @@ const AGGREGATE = path.join(SRC, "prompts", "all-registries.ts");
  * already here, resolves the Kimi Code base URL through it so a request reaches the deployment that
  * issued its token. Its one import, `utils/url`, is already here.
  *
+ * 1476 to 1477: `prompts/side-channel/composer-prediction.md`, the prompt the composer's next-message
+ * prediction sends. `prompts/side-channel/rows.ts`, already here, holds it beside the other
+ * side-channel prompts as a text import, so the growth is the one file and no subtree.
+ *
  * A ratchet, not a target: nothing breaks when it grows, which is exactly why it is pinned. There
  * is no margin left on purpose — the next module on this graph is a barrel someone reached for
  * and owes a line here.
  */
-const LAUNCH_REACH_CEILING = 1476;
+const LAUNCH_REACH_CEILING = 1477;
 
 /**
  * Measured at 498, down from 538 at the merge base and 718 before the aggregate edge was cut. The
