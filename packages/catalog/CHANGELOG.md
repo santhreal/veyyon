@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `@veyyon/catalog/wire/kimi-code` exports `KIMI_CODE_REGIONS`, the OAuth and API hosts of the mainland China (kimi.com) and global (kimi.ai) Kimi Code deployments, with `kimiCodeApiKey`, which encodes a credential's deployment into its API key, and `resolveKimiCodeEndpoint`, which reads the token and API bases a request uses from that key.
+
 ### Changed
 
 - `COMMAND_CODE_COSTS` and the Command Code effort table use plain string keys instead of computed ones; every rate and ladder is unchanged.
@@ -21,6 +25,7 @@
 
 ### Fixed
 
+- Kimi Code model discovery with a kimi.ai credential lists models at api.kimi.ai instead of api.kimi.com, and a model on api.kimi.ai gets the Moonshot-native compat (`moonshot-mfjs` tool schemas and K2.6 `thinking.keep`) that api.kimi.com gets.
 - OpenCode gateway models send the `tool_choice` a caller sets, so the models that accept a pinned tool receive it; a model that rejects it pays one retried request per session.
 - A model the models.dev overlay enriches keeps the compat its bundled row declares, so wafer.ai GLM and Kimi models request the Z.ai thinking format and xAI OAuth models map `minimal` effort to `low` again; the model cache schema moves to v12 to drop rows that stored a resolved compat record as their declaration, which cut the cached rows of a full catalog refresh from 4.85 MB to 1.72 MB and the static model stage a launch restores from 10.8 MB to 7.8 MB and 4.79 MiB to 3.16 MiB retained.
 

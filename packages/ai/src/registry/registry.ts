@@ -25,7 +25,7 @@ import { groqProvider } from "./groq";
 import { huggingfaceProvider } from "./huggingface";
 import { kagiProvider } from "./kagi";
 import { kiloProvider } from "./kilo";
-import { kimiCodeProvider } from "./kimi-code";
+import { kimiCodeGlobalProvider, kimiCodeProvider } from "./kimi-code";
 import { litellmProvider } from "./litellm";
 import { llamaCppProvider } from "./llama-cpp";
 import { lmStudioProvider } from "./lm-studio";
@@ -84,6 +84,7 @@ const ALL = [
 	anthropicProvider,
 	zaiProvider,
 	kimiCodeProvider,
+	kimiCodeGlobalProvider,
 	openrouterProvider,
 	githubCopilotProvider,
 	cursorProvider,

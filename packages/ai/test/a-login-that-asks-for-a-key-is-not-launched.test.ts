@@ -41,6 +41,7 @@ const BROWSER_LOGIN_PROVIDERS = [
 	"google-gemini-cli",
 	"kilo",
 	"kimi-code",
+	"kimi-code-global",
 	"nous-research",
 	"openai-codex",
 	"openai-codex-device",

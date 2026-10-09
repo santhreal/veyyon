@@ -2,6 +2,7 @@
 // High-level API
 // ============================================================================
 
+import { kimiCodeApiKey } from "@veyyon/catalog/wire/kimi-code";
 import { decodeJwtPayload } from "@veyyon/utils/jwt";
 import * as AIError from "../../error";
 import { getProviderDefinition, PROVIDER_REGISTRY } from "../registry";
@@ -145,18 +146,24 @@ export async function getOAuthApiKey(
 		provider === "google-gemini-cli" ||
 		provider === "google-antigravity" ||
 		provider === "alibaba-coding-plan";
-	const apiKey = needsStructuredApiKey
-		? JSON.stringify({
-				apiEndpoint: creds.apiEndpoint,
-				token: creds.access,
-				enterpriseUrl: creds.enterpriseUrl,
-				projectId: creds.projectId,
-				refreshToken: creds.refresh,
-				expiresAt: creds.expires,
-				email: creds.email,
-				accountId: creds.accountId,
-			})
-		: creds.access;
+	let apiKey: string;
+	if (provider === "kimi-code") {
+		// The deployment that issued the token rides in the key, so the request goes to its API host.
+		apiKey = kimiCodeApiKey(creds.access, creds.apiEndpoint);
+	} else if (needsStructuredApiKey) {
+		apiKey = JSON.stringify({
+			apiEndpoint: creds.apiEndpoint,
+			token: creds.access,
+			enterpriseUrl: creds.enterpriseUrl,
+			projectId: creds.projectId,
+			refreshToken: creds.refresh,
+			expiresAt: creds.expires,
+			email: creds.email,
+			accountId: creds.accountId,
+		});
+	} else {
+		apiKey = creds.access;
+	}
 	return { newCredentials: creds, apiKey };
 }
 

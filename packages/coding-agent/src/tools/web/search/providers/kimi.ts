@@ -2,10 +2,12 @@
  * Kimi Web Search Provider
  *
  * Uses Moonshot Kimi Code search API to retrieve web results.
- * Endpoint: POST https://api.kimi.com/coding/v1/search
+ * Endpoint: POST <deployment base>/search, where the base is https://api.kimi.com/coding/v1 for
+ * mainland China and https://api.kimi.ai/coding/v1 for every other region.
  */
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
+import { KIMI_CODE_REGIONS, type KimiCodeRegion, parseKimiCodeApiKey } from "@veyyon/catalog/wire/kimi-code";
 import { $env } from "@veyyon/utils";
 import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import {
@@ -19,7 +21,7 @@ import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import { handleProviderHttpError } from "./utils";
 
-const KIMI_SEARCH_URL = "https://api.kimi.com/coding/v1/search";
+const KIMI_SEARCH_PATH = "/search";
 
 const MAX_NUM_RESULTS = 20;
 const DEFAULT_TIMEOUT_SECONDS = 30;
@@ -56,8 +58,13 @@ function asTrimmed(value: string | undefined): string | undefined {
 	return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function resolveBaseUrl(): string {
-	return asTrimmed($env.MOONSHOT_SEARCH_BASE_URL) ?? asTrimmed($env.KIMI_SEARCH_BASE_URL) ?? KIMI_SEARCH_URL;
+/** The search URL: an environment override, else the search path of the deployment that issued the token. */
+function resolveSearchUrl(region: KimiCodeRegion | undefined): string {
+	return (
+		asTrimmed($env.MOONSHOT_SEARCH_BASE_URL) ??
+		asTrimmed($env.KIMI_SEARCH_BASE_URL) ??
+		`${KIMI_CODE_REGIONS[region ?? "mainland-cn"].baseUrl}${KIMI_SEARCH_PATH}`
+	);
 }
 
 /**
@@ -106,12 +113,14 @@ async function callKimiSearch(
 			transform,
 			"Kimi search request",
 		);
-		const response = await fetchImpl(resolveBaseUrl(), {
+		// A `kimi-code` key names the deployment that issued its token; a plain key is sent as it is.
+		const { token, region } = parseKimiCodeApiKey(apiKey);
+		const response = await fetchImpl(resolveSearchUrl(region), {
 			method: "POST",
 			headers: {
 				Accept: "application/json",
 				"Content-Type": "application/json",
-				Authorization: `Bearer ${apiKey}`,
+				Authorization: `Bearer ${token}`,
 			},
 			body: JSON.stringify(requestBody),
 			signal: hardSignal,

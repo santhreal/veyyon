@@ -505,8 +505,8 @@ export const PROVIDERS_SETTINGS = {
 			label: "Kimi API Format",
 			description: "API format for Kimi Code provider",
 			options: [
-				{ value: "openai", label: "OpenAI", description: "api.kimi.com" },
-				{ value: "anthropic", label: "Anthropic", description: "api.moonshot.ai" },
+				{ value: "openai", label: "OpenAI", description: "OpenAI-compatible Chat Completions API" },
+				{ value: "anthropic", label: "Anthropic", description: "Anthropic-compatible Messages API" },
 			],
 		},
 	},

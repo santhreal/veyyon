@@ -7,6 +7,7 @@
 - `clearAnthropicFastModeFallback` moved from `@veyyon/ai/providers/anthropic` to `@veyyon/ai/providers/anthropic-session-state`, `deriveClaudeDeviceId` to `providers/claude-device-id`, `createOpenAICodexCompactionRequestContext`, `resetOpenAICodexHistoryAfterCompaction`, `getOpenAICodexTransportDetails`, `getOpenAICodexWebSocketDebugStats` and their option and result types from `providers/openai-codex-responses` to `providers/openai-codex/session-state`, `normalizeOpenAIPromptCacheKey` and `normalizeOpenRouterResponsesSessionId` from `providers/openai-shared` to `providers/openai-stable-ids`, and `signaturePolicy`, `sendsSignature`, `elidedSignatureBytes`, `firstRetainedAssistantIndex` and `SignaturePolicy` from `providers/google-shared` to `providers/google-thought-signatures`; the `@veyyon/ai` barrel keeps every name it exported.
 - `@veyyon/ai/auth-gateway/http` no longer exports `json`, `resolvePeer`, `timingSafeEqual` or `isAuthorized`; import them from `@veyyon/ai/auth-gateway` or `@veyyon/ai/utils/http-server`, which also exports `BearerAllowList`.
 - `providers/openai-shared` exports `repairResponsesToolPairs`, which repairs an unpaired tool call and an unpaired tool output in one pass and returns the input itself when every call is paired, in place of `repairOrphanResponsesToolOutputs` and `repairOrphanResponsesToolCalls`; `BuildResponsesInputOptions.repairOrphanOutputs` has no effect, since `buildResponsesInput` repairs every input it builds.
+- `loginKimi` from `@veyyon/ai/registry/oauth/kimi` takes the Kimi Code region to sign in at (`"mainland-cn"` or `"global"`), and `refreshKimiToken` takes the credential's `apiEndpoint` so the refresh goes to the deployment that issued it.
 
 ### Added
 
@@ -120,6 +121,7 @@
 
 ### Fixed
 
+- Kimi Code accounts outside mainland China sign in with `/login kimi-code-global` at auth.kimi.ai, and their turns, token refreshes, usage probes and model discovery go to api.kimi.ai instead of kimi.com, which rejects their tokens; a mainland login and a `KIMI_API_KEY` are unchanged.
 - Broker discovery passes an `auth.broker.token` config value to the config resolver only when that value supplies the token, so its `!command` no longer runs when `VEYYON_AUTH_BROKER_TOKEN` overrides it or no broker URL is configured.
 - A `NO_PROXY` entry naming an IPv6 address, written bare (`2001:db8::1`), bracketed (`[2001:db8::1]`), with a port (`[2001:db8::1]:8443`) or uncompressed, now sends a request to that address around the provider proxy instead of through it.
 - `decontaminateZodInstance` no longer takes a node whose kind is named for an `Object.prototype` member, such as `constructor`, for a Zod instance, and on a rewritten node keeps a key such as `constructor` that it dropped and drops a null `toString` that it kept.

@@ -63,7 +63,10 @@ export const KNOWN_HOSTS = {
 	qwenPortal: { providers: ["qwen-portal"], urlMarkers: ["portal.qwen.ai"] },
 	/** NVIDIA NIM (`integrate.api.nvidia.com`). Qwen NIM endpoints take `chat_template_kwargs.enable_thinking`, never top-level `enable_thinking`. */
 	nvidia: { providers: ["nvidia"], urlMarkers: ["integrate.api.nvidia.com"] },
-	moonshotNative: { providers: ["moonshot", "kimi-code"], urlMarkers: ["api.moonshot.ai", "api.kimi.com"] },
+	moonshotNative: {
+		providers: ["moonshot", "kimi-code"],
+		urlMarkers: ["api.moonshot.ai", "api.kimi.com", "api.kimi.ai"],
+	},
 	opencode: { providers: ["opencode-go", "opencode-zen"], urlMarkers: ["opencode.ai"] },
 	/** ZenMux's Anthropic-compatible proxy (`zenmux.ai/api/anthropic`) forwards to signature-enforcing Anthropic. */
 	zenmux: { providers: ["zenmux"], urlMarkers: ["zenmux.ai"] },

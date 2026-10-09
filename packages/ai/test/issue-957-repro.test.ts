@@ -48,7 +48,7 @@ describe("issue #957 - Kimi OAuth refresh", () => {
 			),
 		);
 
-		const refreshed = await kimiOauth.refreshKimiToken("refresh-0");
+		const refreshed = await kimiOauth.refreshKimiToken("refresh-0", undefined);
 
 		expect(refreshed.access).toBe("access-1");
 		expect(refreshed.refresh).toBe("refresh-1");
