@@ -276,6 +276,9 @@
 
 - With `browser.naturalInput` on, a click through a `tab.id()` or `tab.ref()` handle whose element the page replaces while the button is held is made again on the replacement instead of reporting success with no click sent.
 - The `browser` tool removes the temporary Chrome profiles a crashed or killed process left in the system temp directory before it makes the next one.
+- A headless `browser` tab opens while another user of the host has a browser open or left a temporary profile in the shared temp directory, instead of every launch failing with `EACCES` on that user's profile.
+- A `browser` `open` with `visible` whose move fails or is interrupted after the tab left its browser, such as on a page that cannot load, puts the tab back on its browser with its page, context, cookies and localStorage instead of losing it, and a move whose tab has a page holding a dialog open fails within the call's timeout instead of after a minute.
+- A `browser` click or hover on an element in a cross-site frame, including a frame inside a frame, waits for the frames to draw first, so a press right after the page loads reaches the element instead of the document above its frame while reporting success.
 - With `browser.naturalInput` on, a `tab.id()` or `tab.ref()` handle whose element the page re-renders while the wheel scrolls to it scrolls to the replacement instead of failing as detached, and loading the `browser` tool no longer evaluates arktype before its first schema is built.
 - A session switch, `/resume`, reload, `/new` or `/drop` that fails part-way, such as on a disk error while the outgoing transcript is flushed, keeps the session listening, so later turns reach the screen and the session file instead of running unseen and unsaved.
 - Kimi web search with a kimi.ai credential posts to api.kimi.ai instead of api.kimi.com, and the Kimi API Format options describe the API each one uses instead of naming a host.

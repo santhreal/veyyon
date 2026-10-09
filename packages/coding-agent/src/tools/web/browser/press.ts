@@ -242,6 +242,41 @@ async function reachThroughFrames(frame: Frame, point: FramePoint | undefined): 
 	return { cover: null, at };
 }
 
+/**
+ * The longest a press waits for one frame to draw before it goes on: a frame the browser draws nothing
+ * for, as in a page in the background, is not waited out.
+ */
+const FRAME_DRAW_WAIT_MS = 250;
+
+/** Resolve once the frame has run two animation frames, by when it has drawn one. Serialized into the page. */
+function twoAnimationFrames(): Promise<void> {
+	const view = globalThis as unknown as { requestAnimationFrame(callback: () => void): number };
+	const drawn = Promise.withResolvers<void>();
+	view.requestAnimationFrame(() => view.requestAnimationFrame(() => drawn.resolve()));
+	return drawn.promise;
+}
+
+/**
+ * Let `frame` and every frame above it draw before a press reaches into it. The browser sends a press
+ * to the frame its last drawn picture shows at the point, and a frame in another process that has not
+ * drawn since it loaded is not in that picture yet: the press goes to the document above it, though
+ * every document places the element at the point and the probes find it clear.
+ */
+async function drawnThroughFrames(frame: Frame, signal: AbortSignal | undefined): Promise<void> {
+	for (let at: Frame | null = frame; at; at = at.parentFrame()) {
+		const drawing = at;
+		await untilAborted(signal, () =>
+			Promise.race([
+				optionalResult(
+					drawing.evaluate(twoAnimationFrames),
+					"a frame that navigates or detaches has nothing left to draw before the press",
+				),
+				delay(FRAME_DRAW_WAIT_MS, undefined, { signal }),
+			]),
+		);
+	}
+}
+
 /** The element a press was waiting on left the page before it was pressed; nothing was pressed. */
 export class DetachedPressTarget extends ToolError {}
 
@@ -411,6 +446,8 @@ export async function pressUncovered(
 	const started = Date.now();
 	let centred = false;
 	let placed = false;
+	/** Whether the element's frame and the frames above it have drawn since this press began. */
+	let drawn = false;
 	/** The point the pointer went to for this press: the aim that finds it again, and where it is in the top document. */
 	let arrived: { readonly aim: PressAim; readonly at: FramePoint } | null = null;
 	let target = handle;
@@ -455,6 +492,12 @@ export async function pressUncovered(
 					const centre = await untilAborted(signal, () => reachThroughFrames(target.frame, probe.point));
 					cover = centre.cover;
 					if (centre.cover === null) {
+						// Once per press, and only for an element in a frame: the frames draw, then the point is checked again.
+						if (!drawn && target.frame.parentFrame()) {
+							drawn = true;
+							await drawnThroughFrames(target.frame, signal);
+							continue;
+						}
 						if (!input || !aim || !probe.point || !centre.at) {
 							await untilAborted(signal, () => press(target));
 							return;
