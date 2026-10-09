@@ -382,7 +382,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"plugins/web/src/scrapers/rawg.ts",
 	"plugins/web/src/scrapers/searchcode.ts",
 	"plugins/web/src/scrapers/snapcraft.ts",
-	"plugins/web/src/scrapers/sourcegraph.ts",
 	"plugins/web/src/scrapers/spdx.ts",
 	"plugins/web/src/scrapers/vscode-marketplace.ts",
 ];

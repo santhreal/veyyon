@@ -48,7 +48,7 @@ export function readPartRelationships(
 		if (!id || !target || node["@_TargetMode"] === "External") continue;
 		relationships.set(id, {
 			type: node["@_Type"] ?? "",
-			member: resolveArchiveMemberPath(dir === "." ? "" : dir, target),
+			member: resolveArchiveMemberPath(dir, target),
 		});
 	}
 	return relationships;
