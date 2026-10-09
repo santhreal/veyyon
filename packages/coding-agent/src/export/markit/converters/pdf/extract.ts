@@ -490,9 +490,18 @@ export function extractSegmentsFromContentStream(raw: string, pageNumber: number
 	return segments;
 }
 
+// Content-stream bytes the tokenizer dispatches on.
+const CH_PERCENT = 37;
+const CH_LPAREN = 40;
+const CH_RPAREN = 41;
+const CH_LT = 60;
+const CH_GT = 62;
+const CH_BACKSLASH = 92;
+
 /**
  * Fast tokenizer for PDF content streams.
- * Splits on whitespace, skipping comments, string literals, and inline image payloads.
+ * Splits on whitespace, skipping comments, string literals, and inline image payloads. Every branch
+ * consumes at least one byte, so any input ends.
  */
 function tokenizeContentStream(raw: string): string[] {
 	const tokens: string[] = [];
@@ -501,84 +510,91 @@ function tokenizeContentStream(raw: string): string[] {
 	let inInlineImage = false;
 	while (i < len) {
 		const ch = raw.charCodeAt(i);
-		// Skip whitespace
 		if (ch <= 32) {
 			i++;
-			continue;
-		}
-		// Skip comments
-		if (ch === 37 /* % */) {
-			while (i < len && raw.charCodeAt(i) !== 10) i++;
-			continue;
-		}
-		// Skip string literals (...)
-		if (ch === 40 /* ( */) {
-			let depth = 1;
-			i++;
-			while (i < len && depth > 0) {
-				const c = raw.charCodeAt(i);
-				if (c === 92 /* \ */) {
-					i++;
-				} else if (c === 40) {
-					depth++;
-				} else if (c === 41) {
-					depth--;
-				}
-				i++;
+		} else if (ch === CH_PERCENT) {
+			const lineEnd = raw.indexOf("\n", i);
+			i = lineEnd === -1 ? len : lineEnd;
+		} else if (ch === CH_LPAREN) {
+			i = skipStringLiteral(raw, i + 1);
+		} else if (ch === CH_LT) {
+			// `<<` opens a dictionary. Any other `<`, including one that ends the stream, opens a hex string.
+			if (raw.charCodeAt(i + 1) === CH_LT) {
+				i += 2;
+			} else {
+				const close = raw.indexOf(">", i + 1);
+				i = close === -1 ? len : close + 1;
 			}
-			continue;
-		}
-		// Skip hex strings <...>
-		if (ch === 60 /* < */ && i + 1 < len && raw.charCodeAt(i + 1) !== 60) {
+		} else if (ch === CH_GT || ch === CH_RPAREN) {
+			// A closer the skips above did not consume is a stray from a malformed stream, or half of a `>>`
+			// dictionary close. Neither starts a token.
 			i++;
-			while (i < len && raw.charCodeAt(i) !== 62) i++;
-			i++; // skip >
-			continue;
-		}
-		// Skip dict delimiters << >>
-		if (ch === 60 && i + 1 < len && raw.charCodeAt(i + 1) === 60) {
-			i += 2;
-			continue;
-		}
-		if (ch === 62 && i + 1 < len && raw.charCodeAt(i + 1) === 62) {
-			i += 2;
-			continue;
-		}
-		// Skip stray closing delimiters from malformed streams. They cannot start
-		// a token, so leaving i unchanged would spin forever.
-		if (ch === 41 || ch === 62) {
-			i++;
-			continue;
-		}
-		// Regular token: read until whitespace or delimiter
-		const start = i;
-		while (i < len) {
-			const c = raw.charCodeAt(i);
-			if (c <= 32 || c === 40 || c === 41 || c === 60 || c === 62 || c === 37) break;
-			i++;
-		}
-		if (i > start) {
+		} else {
+			const start = i;
+			i = tokenEnd(raw, i);
 			const token = raw.substring(start, i);
 			tokens.push(token);
 			if (token === "BI") {
 				inInlineImage = true;
 			} else if (token === "ID" && inInlineImage) {
-				while (i < len && raw.charCodeAt(i) <= 32) i++;
-				while (i < len) {
-					const c = raw.charCodeAt(i);
-					const prev = i === 0 ? 32 : raw.charCodeAt(i - 1);
-					const next = i + 2 >= len ? 32 : raw.charCodeAt(i + 2);
-					if (c === 69 && raw.charCodeAt(i + 1) === 73 && prev <= 32 && next <= 32) {
-						i += 2;
-						break;
-					}
-					i++;
-				}
+				i = skipInlineImageData(raw, i);
 				inInlineImage = false;
 			}
 		}
 	}
 	return tokens;
+}
+
+/** The index after the `)` closing a string literal whose body starts at `start`, honoring nesting and `\` escapes. */
+function skipStringLiteral(raw: string, start: number): number {
+	const len = raw.length;
+	let i = start;
+	let depth = 1;
+	while (i < len && depth > 0) {
+		const c = raw.charCodeAt(i);
+		if (c === CH_BACKSLASH) {
+			i++;
+		} else if (c === CH_LPAREN) {
+			depth++;
+		} else if (c === CH_RPAREN) {
+			depth--;
+		}
+		i++;
+	}
+	return i;
+}
+
+/** The index of the first whitespace or delimiter byte at or after `start`. */
+function tokenEnd(raw: string, start: number): number {
+	const len = raw.length;
+	let i = start;
+	while (i < len) {
+		const c = raw.charCodeAt(i);
+		if (c <= 32 || c === CH_LPAREN || c === CH_RPAREN || c === CH_LT || c === CH_GT || c === CH_PERCENT) break;
+		i++;
+	}
+	return i;
+}
+
+/**
+ * The index after the `EI` ending the data of an inline image whose `ID` operator ends at `start`. `EI`
+ * counts only between whitespace bytes, since the binary data can hold those two letters; an `EI` that
+ * ends the stream counts.
+ */
+function skipInlineImageData(raw: string, start: number): number {
+	const len = raw.length;
+	for (let i = start; i < len; i++) {
+		const next = i + 2 >= len ? 32 : raw.charCodeAt(i + 2);
+		if (
+			raw.charCodeAt(i) === 69 /* E */ &&
+			raw.charCodeAt(i + 1) === 73 /* I */ &&
+			raw.charCodeAt(i - 1) <= 32 &&
+			next <= 32
+		) {
+			return i + 2;
+		}
+	}
+	return len;
 }
 
 // ---------------------------------------------------------------------------

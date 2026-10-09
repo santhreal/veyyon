@@ -22,6 +22,7 @@
 - The extension loader resolves each import of an extension's module graph through `graphSpecifiers`, `resolveGraphEdge` and `resolveBareDependencyEntry` in `extensibility/plugins/legacy-pi-compat.ts`; every module it hooks and every native-addon loader it rewrites is unchanged.
 - The `lsp` tool's `rename_file` action resolves its target, asks each server, merges their edits, applies them and notifies the servers in per-step functions in `lsp/index.ts`; every preview, applied edit, discarded overlap and notification is unchanged.
 - The patch parser reads each hunk in place instead of copying the rest of the diff for every hunk and every `@@` line, so a 400-hunk patch parses in 0.71 ms instead of 1.78 ms (median of three runs of 15 alternating rounds), and it reads a hunk's header, nested `@@` markers and body in per-step functions in `edit/diff.ts`; every parsed hunk and every parse error is unchanged.
+- The PDF converter reads a page's content stream through `skipStringLiteral`, `tokenEnd` and `skipInlineImageData` in `export/markit/converters/pdf/extract.ts`; the tokens of every stream that does not end in `<` are unchanged.
 - The emoji, GitHub reference, internal URL and prompt-action autocomplete providers declare their results as `AutocompleteSuggestions`; no user-visible change.
 - The assistant text reveal and the tool argument reveal run on one `RevealFrameClock`; both still tick at 30 frames per second only while text is held back.
 - The stdio, streamable-HTTP and SSE MCP transports answer a server-to-client request through one `answerServerRequest` in `mcp/types`; each answer is unchanged.
@@ -237,6 +238,7 @@
 
 ### Fixed
 
+- Reading a PDF, or attaching one with `@`, returns when a page's content stream ends in `<`, instead of never returning.
 - Escape or `abort_retry` that lands while an unreplayable tool batch's continuation is being announced cancels the continuation, instead of the session sleeping out the wait, re-requesting the turn and reporting a recovery that was cancelled.
 - In a linked worktree named after its branch, the status line's `path` segment and the launch card keep the worktree directory (`monorepo/topic`) on a row with a `pr` segment and no `git` segment, or with `segmentOptions.git.showBranch: false`, instead of showing `monorepo` with neither the worktree nor its branch on the row.
 - The launch card draws the dirty marker (`*`) and the effort the last launch's status line settled on when that row had no context gauge, instead of drawing a dirty branch clean or an older effort until the session mounted; a row that follows another repository no longer records that repository's tree status under the project.
