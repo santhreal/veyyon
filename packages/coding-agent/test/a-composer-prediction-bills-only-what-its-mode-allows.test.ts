@@ -14,6 +14,7 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import { Agent, type StreamFn } from "@veyyon/agent-core";
 import type { Api, Context, Model, ModelSpec, SimpleStreamOptions } from "@veyyon/ai";
+import type { FetchImpl } from "@veyyon/ai/types";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { buildModel } from "@veyyon/catalog/build";
 import { Effort } from "@veyyon/catalog/effort";
@@ -66,11 +67,17 @@ interface Sent {
 	options: SimpleStreamOptions | undefined;
 }
 
-function configFetch(payload: Record<string, unknown>) {
-	return vi.fn(
-		async (_input: string | URL | Request, _init?: RequestInit) =>
-			new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } }),
-	);
+/**
+ * The Codex prediction config endpoint answering `payload`. `requested` holds the URL of every request
+ * the endpoint received, so a case reads which config reads the predictor made.
+ */
+function configFetch(payload: Record<string, unknown>): { fetch: FetchImpl; requested: string[] } {
+	const requested: string[] = [];
+	const fetch: FetchImpl = async input => {
+		requested.push(input instanceof Request ? input.url : String(input));
+		return new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
+	};
+	return { fetch, requested };
 }
 
 const CODEX_CONFIG = {
@@ -160,8 +167,8 @@ describe("ComposerPredictor", () => {
 
 		it("sends the backend's prompt and effort as a Codex prediction fork on a Pro login", async () => {
 			const { session, settings, sent } = setup({ activeModel: CODEX_MODEL, logins: PRO_LOGIN });
-			const fetchImpl = configFetch(CODEX_CONFIG);
-			const outcome = await new ComposerPredictor(session, settings, fetchImpl).predict(
+			const config = configFetch(CODEX_CONFIG);
+			const outcome = await new ComposerPredictor(session, settings, config.fetch).predict(
 				new AbortController().signal,
 			);
 
@@ -182,7 +189,7 @@ describe("ComposerPredictor", () => {
 				activeModel: ANTHROPIC_MODEL,
 				logins: { ...PRO_LOGIN, anthropic: "sk-ant-test" },
 			});
-			const outcome = await new ComposerPredictor(session, settings, configFetch(CODEX_CONFIG)).predict(
+			const outcome = await new ComposerPredictor(session, settings, configFetch(CODEX_CONFIG).fetch).predict(
 				new AbortController().signal,
 			);
 
@@ -194,11 +201,11 @@ describe("ComposerPredictor", () => {
 
 		it("falls back to the Codex default model when the backend refuses the session's", async () => {
 			const { session, settings, sent } = setup({ activeModel: CODEX_MODEL, logins: PRO_LOGIN });
-			const fetchImpl = configFetch({ ...CODEX_CONFIG, unsupported_models: [CODEX_MODEL.id] });
-			await new ComposerPredictor(session, settings, fetchImpl).predict(new AbortController().signal);
+			const config = configFetch({ ...CODEX_CONFIG, unsupported_models: [CODEX_MODEL.id] });
+			await new ComposerPredictor(session, settings, config.fetch).predict(new AbortController().signal);
 
 			expect(sent.map(entry => entry.model.id)).toEqual([CODEX_DEFAULT_MODEL.id]);
-			expect(fetchImpl).toHaveBeenCalledTimes(1);
+			expect(config.requested).toHaveLength(1);
 		});
 
 		it("reads the Codex config once across consecutive predictions", async () => {
@@ -207,11 +214,11 @@ describe("ComposerPredictor", () => {
 				logins: PRO_LOGIN,
 				reply: '{"suggestion":null}',
 			});
-			const fetchImpl = configFetch(CODEX_CONFIG);
-			const predictor = new ComposerPredictor(session, settings, fetchImpl);
+			const config = configFetch(CODEX_CONFIG);
+			const predictor = new ComposerPredictor(session, settings, config.fetch);
 			await predictor.predict(new AbortController().signal);
 			await predictor.predict(new AbortController().signal);
-			expect(fetchImpl).toHaveBeenCalledTimes(1);
+			expect(config.requested).toHaveLength(1);
 		});
 
 		it.each([
@@ -223,12 +230,12 @@ describe("ComposerPredictor", () => {
 		])("requests and reports nothing when %s", async (_case, logins) => {
 			for (const activeModel of [CODEX_MODEL, ANTHROPIC_MODEL]) {
 				const { session, settings, sent } = setup({ activeModel, logins });
-				const fetchImpl = configFetch(CODEX_CONFIG);
-				const outcome = await new ComposerPredictor(session, settings, fetchImpl).predict(
+				const config = configFetch(CODEX_CONFIG);
+				const outcome = await new ComposerPredictor(session, settings, config.fetch).predict(
 					new AbortController().signal,
 				);
 				expect(outcome).toEqual({ kind: "skipped" });
-				expect(fetchImpl).not.toHaveBeenCalled();
+				expect(config.requested).toEqual([]);
 				expect(sent).toHaveLength(0);
 			}
 		});
@@ -241,7 +248,7 @@ describe("ComposerPredictor", () => {
 			],
 		])("sends no prediction and reports nothing when %s", async (_case, payload) => {
 			const { session, settings, sent } = setup({ activeModel: CODEX_MODEL, logins: PRO_LOGIN });
-			const outcome = await new ComposerPredictor(session, settings, configFetch(payload)).predict(
+			const outcome = await new ComposerPredictor(session, settings, configFetch(payload).fetch).predict(
 				new AbortController().signal,
 			);
 			expect(outcome).toEqual({ kind: "skipped" });
@@ -255,11 +262,13 @@ describe("ComposerPredictor", () => {
 			logins: PRO_LOGIN,
 			settings: { "composer.predictions.mode": "off" },
 		});
-		const fetchImpl = configFetch(CODEX_CONFIG);
-		const outcome = await new ComposerPredictor(session, settings, fetchImpl).predict(new AbortController().signal);
+		const config = configFetch(CODEX_CONFIG);
+		const outcome = await new ComposerPredictor(session, settings, config.fetch).predict(
+			new AbortController().signal,
+		);
 
 		expect(outcome).toEqual({ kind: "skipped" });
-		expect(fetchImpl).not.toHaveBeenCalled();
+		expect(config.requested).toEqual([]);
 		expect(sent).toHaveLength(0);
 	});
 
@@ -271,13 +280,13 @@ describe("ComposerPredictor", () => {
 				reply: '{"suggestion":null}',
 				settings: { "composer.predictions.mode": "custom" },
 			});
-			const fetchImpl = configFetch(CODEX_CONFIG);
-			const outcome = await new ComposerPredictor(session, settings, fetchImpl).predict(
+			const config = configFetch(CODEX_CONFIG);
+			const outcome = await new ComposerPredictor(session, settings, config.fetch).predict(
 				new AbortController().signal,
 			);
 
 			expect(outcome).toEqual({ kind: "none" });
-			expect(fetchImpl).not.toHaveBeenCalled();
+			expect(config.requested).toEqual([]);
 			expect(sent[0]?.model.id).toBe(ANTHROPIC_MODEL.id);
 			expect(lastUserText(sent[0]?.context)).toStartWith(
 				sideChannelPrompts["side-channel/composer-prediction"].text.trim(),
@@ -294,7 +303,7 @@ describe("ComposerPredictor", () => {
 					"composer.predictions.model": ["anthropic/claude-test", "openai/gpt-test:low"],
 				},
 			});
-			const outcome = await new ComposerPredictor(session, settings, configFetch(CODEX_CONFIG)).predict(
+			const outcome = await new ComposerPredictor(session, settings, configFetch(CODEX_CONFIG).fetch).predict(
 				new AbortController().signal,
 			);
 
@@ -312,7 +321,7 @@ describe("ComposerPredictor", () => {
 					"composer.predictions.model": ["anthropic/claude-test", "openai/gpt-test"],
 				},
 			});
-			const outcome = await new ComposerPredictor(session, settings, configFetch(CODEX_CONFIG)).predict(
+			const outcome = await new ComposerPredictor(session, settings, configFetch(CODEX_CONFIG).fetch).predict(
 				new AbortController().signal,
 			);
 
@@ -332,7 +341,9 @@ describe("ComposerPredictor", () => {
 				settings: { "composer.predictions.mode": "custom" },
 			});
 			await expect(
-				new ComposerPredictor(session, settings, configFetch(CODEX_CONFIG)).predict(new AbortController().signal),
+				new ComposerPredictor(session, settings, configFetch(CODEX_CONFIG).fetch).predict(
+					new AbortController().signal,
+				),
 			).rejects.toThrow("not a JSON suggestion");
 		});
 	});
