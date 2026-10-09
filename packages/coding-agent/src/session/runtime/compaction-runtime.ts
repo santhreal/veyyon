@@ -38,7 +38,7 @@ import {
 	declaredContextWindow,
 	mergeLlmCompactionPreserveData,
 } from "@veyyon/kernel/session/agent-session-compaction-policy";
-import { findCompactMode } from "@veyyon/kernel/session/compact-modes";
+import { type CompactModeDef, findCompactMode } from "@veyyon/kernel/session/compact-modes";
 import { getLatestCompactionEntry, type SessionContext } from "@veyyon/kernel/session/session-context";
 import type { CompactionEntry, SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { errorMessage, isAbortError, logger } from "@veyyon/utils";
@@ -83,9 +83,8 @@ export interface CompactionHost extends CompactionSummarizerHost, CompactionReco
 	/** Rebuild what was read from the replaced history: the plan reference, the advisors and the todo list. */
 	afterHistoryCompacted(): void;
 	closeCodexProviderSessionsForHistoryRewrite(): void;
-	/** Stop routing agent events to the session for the length of a manual compaction. */
-	disconnectFromAgent(): void;
-	reconnectToAgent(): void;
+	/** Run `run` with agent events detached from the session, reattaching them when it settles. */
+	whileDisconnectedFromAgent<T>(run: () => Promise<T>): Promise<T>;
 }
 
 /** The fields a compaction entry records, taken from a hook's or a summarizer's result. */
@@ -158,13 +157,22 @@ export class CompactionRuntime {
 		const compactMode = options?.mode ? findCompactMode(options.mode) : undefined;
 		const compactionAbortController = new AbortController();
 		this.#compactionAbortController = compactionAbortController;
+		return this.#host.whileDisconnectedFromAgent(() =>
+			this.#compactDetached(customInstructions, options, compactMode, compactionAbortController),
+		);
+	}
 
+	async #compactDetached(
+		customInstructions: string | undefined,
+		options: CompactOptions | undefined,
+		compactMode: CompactModeDef | undefined,
+		compactionAbortController: AbortController,
+	): Promise<CompactionResult> {
 		// Hoisted so the catch can roll the preparation's tail elisions back:
 		// prepareCompaction applies them to the live branch as a side effect.
 		let preparation: CompactionPreparation | undefined;
 
 		try {
-			this.#host.disconnectFromAgent();
 			await this.#session.abort({ goalReason: "internal", preserveCompaction: true });
 			if (!this.#session.model) {
 				throw new Error(
@@ -278,7 +286,6 @@ export class CompactionRuntime {
 			if (this.#compactionAbortController === compactionAbortController) {
 				this.#compactionAbortController = undefined;
 			}
-			this.#host.reconnectToAgent();
 		}
 	}
 

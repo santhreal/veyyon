@@ -1115,8 +1115,7 @@ export class AgentSession {
 			this.#todo.syncFromBranch();
 		},
 		closeCodexProviderSessionsForHistoryRewrite: () => this.#providerSessions.closeCodexForHistoryRewrite(this.model),
-		disconnectFromAgent: () => this.#disconnectFromAgent(),
-		reconnectToAgent: () => this.#reconnectToAgent(),
+		whileDisconnectedFromAgent: run => this.#whileDisconnectedFromAgent(run),
 	});
 
 	// Branch summarization state
@@ -3553,11 +3552,7 @@ export class AgentSession {
 		}
 	}
 
-	/**
-	 * Temporarily disconnect from agent events.
-	 * User listeners are preserved and will receive events again after resubscribe().
-	 * Used internally during operations that need to pause event processing.
-	 */
+	/** Detach from agent events for good. Dispose is the only caller; a transition uses {@link #whileDisconnectedFromAgent}. */
 	#disconnectFromAgent(): void {
 		if (this.#unsubscribeAgent) {
 			this.#unsubscribeAgent();
@@ -3566,12 +3561,20 @@ export class AgentSession {
 	}
 
 	/**
-	 * Reconnect to agent events after _disconnectFromAgent().
-	 * Preserves all existing listeners.
+	 * Runs `run` with agent events detached and reattaches them when it settles, resolved or
+	 * rejected. The handler is the only path that persists a turn and forwards its events to
+	 * listeners, so a transition that fails part-way must not leave every later turn unwritten and
+	 * unseen. Listeners are preserved throughout.
 	 */
-	#reconnectToAgent(): void {
-		if (this.#unsubscribeAgent) return; // Already connected
-		this.#unsubscribeAgent = this.agent.subscribe(this.#handleAgentEvent);
+	async #whileDisconnectedFromAgent<T>(run: () => Promise<T>): Promise<T> {
+		this.#disconnectFromAgent();
+		try {
+			return await run();
+		} finally {
+			if (!this.#unsubscribeAgent) {
+				this.#unsubscribeAgent = this.agent.subscribe(this.#handleAgentEvent);
+			}
+		}
 	}
 
 	/** Every provider cache-key discard this session paid for, in order, by reason. */
@@ -6441,7 +6444,28 @@ export class AgentSession {
 			}
 		}
 
-		this.#disconnectFromAgent();
+		await this.#whileDisconnectedFromAgent(() =>
+			this.#startNewTranscript(previousSessionFile, nextDiscoverySessionToolNames, options),
+		);
+
+		// Emit session_switch event with reason "new" to hooks
+		if (this.#config.extensionRunner) {
+			await this.#config.extensionRunner.emit({
+				type: "session_switch",
+				reason: "new",
+				previousSessionFile,
+			});
+		}
+
+		return true;
+	}
+
+	/** Saves or drops the outgoing transcript and starts an empty one. Runs with agent events detached. */
+	async #startNewTranscript(
+		previousSessionFile: string | undefined,
+		nextDiscoverySessionToolNames: string[] | undefined,
+		options: NewSessionOptions | undefined,
+	): Promise<void> {
 		await this.abort();
 		this.#cancelOwnAsyncJobs();
 		this.#providerSessions.closeAll("new session");
@@ -6489,18 +6513,6 @@ export class AgentSession {
 		this.#todo.resetForNewContext();
 		this.#planMode.resetReference();
 		this.#advisorRoster.resetSessionState();
-		this.#reconnectToAgent();
-
-		// Emit session_switch event with reason "new" to hooks
-		if (this.#config.extensionRunner) {
-			await this.#config.extensionRunner.emit({
-				type: "session_switch",
-				reason: "new",
-				previousSessionFile,
-			});
-		}
-
-		return true;
 	}
 
 	/**
@@ -8620,7 +8632,30 @@ export class AgentSession {
 			}
 		}
 
-		this.#disconnectFromAgent();
+		await this.#whileDisconnectedFromAgent(() =>
+			this.#adoptSessionTranscript(sessionPath, previousSessionFile, switchingToDifferentSession),
+		);
+		try {
+			await this.#sessionSwitchReconciler?.();
+		} catch (error) {
+			logger.warn("Failed to reconcile session mode after switch", {
+				targetSessionFile: sessionPath,
+				error: errorMessage(error),
+			});
+		}
+		return true;
+	}
+
+	/**
+	 * Loads `sessionPath` into this session: flushes the outgoing transcript, then adopts the
+	 * target's cwd, messages, model, thinking selector and service tier. A failure restores the
+	 * previous transcript and runtime and rethrows. Runs with agent events detached.
+	 */
+	async #adoptSessionTranscript(
+		sessionPath: string,
+		previousSessionFile: string | undefined,
+		switchingToDifferentSession: boolean,
+	): Promise<void> {
 		await this.abort({ goalReason: "internal" });
 
 		// Flush pending writes before switching so restore snapshots reflect committed state.
@@ -8819,16 +8854,6 @@ export class AgentSession {
 				this.#resetMemoryContextForNewTranscript();
 				await this.#rescopeAgentRegistry();
 			}
-			this.#reconnectToAgent();
-			try {
-				await this.#sessionSwitchReconciler?.();
-			} catch (error) {
-				logger.warn("Failed to reconcile session mode after switch", {
-					targetSessionFile: sessionPath,
-					error: errorMessage(error),
-				});
-			}
-			return true;
 		} catch (error) {
 			this.sessionManager.restoreState(previousSessionState);
 			this.#wire.restoreRoots(previousWirePathRoots);
@@ -8886,7 +8911,6 @@ export class AgentSession {
 			this.#serviceTierByFamily = previousServiceTierByFamily;
 			this.#todo.syncFromBranch();
 			this.#resetAllAdvisorRuntimes();
-			this.#reconnectToAgent();
 			if (restoreScopeError || restoreMcpError) {
 				throw new AggregateError(
 					[error, restoreScopeError, restoreMcpError].filter(candidate => candidate !== undefined),

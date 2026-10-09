@@ -241,6 +241,7 @@
 
 ### Fixed
 
+- A session switch, `/resume`, reload, `/new` or `/drop` that fails part-way, such as on a disk error while the outgoing transcript is flushed, keeps the session listening, so later turns reach the screen and the session file instead of running unseen and unsaved.
 - Kimi web search with a kimi.ai credential posts to api.kimi.ai instead of api.kimi.com, and the Kimi API Format options describe the API each one uses instead of naming a host.
 - Reading a PowerPoint deck shows each slide's notes under that slide instead of under the slide whose number matches the notes part, so notes added to a later slide first no longer appear under an earlier slide, and it reads a slide named by an absolute or percent-encoded target, and the pictures and notes of a slide part not named `ppt/slides/slideN.xml`, instead of dropping them.
 - Writing into a ZIP or tar archive that holds a member named `__proto__`, or extracting or reading every member of such a ZIP, keeps that member under its own name instead of dropping it or listing its bytes as members `0`, `1`, ..., and converting an EPUB or XLSX whose reference names an absent member called `toString` or another `Object.prototype` property skips the reference instead of failing.
