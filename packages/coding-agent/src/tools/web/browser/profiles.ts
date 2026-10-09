@@ -20,7 +20,7 @@ import {
 	errorMessage,
 	getBrowserProfilesDir,
 	isEnoent,
-	isEnotdir,
+	isMissingPath,
 	isProcessAlive,
 	isRecord,
 	logger,
@@ -85,7 +85,7 @@ export async function sweepOrphanedProfiles(parent: string): Promise<void> {
 			// No owner file: a profile from before owners were written, or one still being made. An owner
 			// file that cannot be read (another user's profile, mode 0700 like every `mkdtemp`, or anything
 			// else planted under the prefix) is not this process's to sweep, and must not stop the launch.
-			if (!isEnoent(error) && !isEnotdir(error)) {
+			if (!isMissingPath(error)) {
 				logger.debug("Keeping a temporary browser profile whose owner cannot be read", {
 					dir,
 					error: errorMessage(error),
