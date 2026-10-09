@@ -157,7 +157,7 @@ export const INTERACTION_SETTINGS = {
 			options: [
 				{
 					value: "chatgpt-pro",
-					label: "ChatGPT Pro included prediction",
+					label: "ChatGPT Pro included",
 					description:
 						"The ChatGPT Codex prediction service, only when a linked OpenAI Codex account is on a ChatGPT Pro plan and the session's model is an OpenAI Codex model the service predicts for. Otherwise no prediction is requested.",
 				},

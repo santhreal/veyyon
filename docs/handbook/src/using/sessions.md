@@ -193,8 +193,11 @@ writes nothing to the session.
   prompt and reasoning effort and lists the models it serves no predictions for. The request goes
   to the session's model when it is an OpenAI Codex model, otherwise to the OpenAI Codex default
   model, and is sent as an ephemeral fork of the session's thread. Without a Pro-plan Codex login
-  no request is sent and no warning is shown, so this mode uses no API usage.
-- `off` requests no predictions.
+  no request is sent and no warning is shown, so this mode uses no API usage. In `/settings` the
+  row then reads `Off (no ChatGPT Pro account)`, and the option is greyed out and cannot be chosen
+  until a ChatGPT Pro account is connected.
+- `off` requests no predictions. A stored `off` is never changed by connecting an account; the
+  mode stays off until you choose another one.
 - `custom` sends a built-in prompt to the models in `composer.predictions.model`, chosen from every
   provider in the settings model picker. The first one with credentials writes the prediction; a
   `:level` suffix sets its thinking level. Unset, the session's model writes it. When no listed

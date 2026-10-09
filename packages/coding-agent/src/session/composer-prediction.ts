@@ -21,6 +21,8 @@
  */
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, Model } from "@veyyon/ai";
+import type { AuthStorage } from "@veyyon/ai/auth-storage";
+import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import type { FetchImpl } from "@veyyon/ai/types";
 import { type CodexPredictionsConfig, fetchCodexPredictionsConfig } from "@veyyon/ai/usage/openai-codex-predictions";
 import { DEFAULT_MODEL_PER_PROVIDER } from "@veyyon/catalog/provider-models";
@@ -44,6 +46,20 @@ export const INCLUDED_PREDICTION_PLAN = "pro";
 const CODEX_PROVIDER = "openai-codex";
 
 const CODEX_API: Api = "openai-codex-responses";
+
+/**
+ * Whether an OpenAI Codex login on a ChatGPT Pro plan is present: a stored OAuth credential, or the
+ * environment token, whose access token states the `pro` plan. Reads stored tokens without refreshing
+ * them, for the settings screen; a request reads the plan from the token it is sent with.
+ */
+export function hasIncludedPredictionLogin(authStorage: AuthStorage): boolean {
+	const stored = authStorage.getAll()[CODEX_PROVIDER];
+	const entries = stored === undefined ? [] : Array.isArray(stored) ? stored : [stored];
+	const tokens = entries.flatMap(entry => (entry.type === "oauth" ? [entry.access] : []));
+	const envToken = getEnvApiKey(CODEX_PROVIDER);
+	if (envToken) tokens.push(envToken);
+	return tokens.some(token => getCodexPlanType(token) === INCLUDED_PREDICTION_PLAN);
+}
 
 /** JSON Schema of the reply, appended to the Codex prompt as the Codex app appends it. */
 const SUGGESTION_SCHEMA =
