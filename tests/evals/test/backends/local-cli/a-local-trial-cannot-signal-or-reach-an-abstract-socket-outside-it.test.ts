@@ -120,7 +120,9 @@ describe("a sandboxed local trial", () => {
 				const artifacts = await new LocalCliBackend().runTrial(cell, context);
 
 				expect(artifacts.extra?.exitCode).toBe(0);
-				const scoped = JSON.parse(await fs.readFile(path.join(layout.trialDir, "workspace", "scoped.json"), "utf8"));
+				const scoped = JSON.parse(
+					await fs.readFile(path.join(layout.trialDir, "workspace", "scoped.json"), "utf8"),
+				);
 				expect(scoped).toEqual({
 					signalOutside: "EPERM",
 					signalOwn: "ok",
