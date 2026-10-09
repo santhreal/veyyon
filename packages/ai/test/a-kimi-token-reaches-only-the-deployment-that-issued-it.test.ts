@@ -41,6 +41,7 @@ import { getBundledModel } from "@veyyon/catalog";
 import { buildModel } from "@veyyon/catalog/build";
 import { kimiCodeModelManagerOptions } from "@veyyon/catalog/provider-models/openai-compat";
 import { KIMI_CODE_REGIONS, type KimiCodeRegion, kimiCodeApiKey } from "@veyyon/catalog/wire/kimi-code";
+import { escapeRegExp } from "@veyyon/utils";
 
 /** Every registry row whose login stores a Kimi Code credential. */
 const KIMI_LOGIN_ROWS = PROVIDER_REGISTRY.filter(
@@ -138,10 +139,6 @@ async function runTurn(
 		return;
 	}
 	await aiStream.streamSimple(model, CONTEXT, { apiKey, fetch: fetchImpl, kimiApiFormat: format }).result();
-}
-
-function escapeRegExp(text: string): string {
-	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /** The number the region menu shows beside `region`'s site, read from the prompt as a user reads it. */
