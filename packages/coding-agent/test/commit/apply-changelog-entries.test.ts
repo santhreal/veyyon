@@ -1,30 +1,31 @@
 import { describe, expect, it } from "bun:test";
 import { applyChangelogEntries } from "../../src/commit/changelog/index";
-import { parseUnreleasedSection } from "../../src/commit/changelog/parse";
+import { parseUnreleasedLayout } from "../../src/commit/changelog/parse";
 
 /**
- * applyChangelogEntries rewrites the "## [Unreleased]" body of a Keep-a-Changelog
- * file in place: it keeps everything up to and including the header, regenerates
- * the category lists from the merged entries, then re-attaches whatever followed
- * (the next `## [x.y.z]` release block, or nothing at EOF).
+ * applyChangelogEntries edits the "## [Unreleased]" body of a Keep-a-Changelog
+ * file in place: a new bullet goes after the last entry of its category, a new
+ * category goes after the last category that sorts before it, and every other
+ * line is kept, including whatever follows (the next `## [x.y.z]` release block,
+ * or nothing at EOF).
  *
- * Regression for FINDING-CHANGELOG-MISSING-BLANK-BEFORE-NEXT-RELEASE: the render
- * step drops its trailing blank line, and parse's endLine points AT the next
- * release heading (no leading blank), so the old code spliced the last Unreleased
- * entry directly against `## [1.0.0] ...` with no separating blank line. That
- * violates Keep-a-Changelog (a heading must be preceded by a blank line) and
- * strict Markdown renderers then fail to treat the release line as a heading.
+ * Regression for FINDING-CHANGELOG-MISSING-BLANK-BEFORE-NEXT-RELEASE: an earlier
+ * renderer dropped its trailing blank line, and parse's endLine points AT the next
+ * release heading (no leading blank), so the last Unreleased entry was spliced
+ * directly against `## [1.0.0] ...` with no separating blank line. That violates
+ * Keep-a-Changelog (a heading must be preceded by a blank line) and strict
+ * Markdown renderers then fail to treat the release line as a heading.
  *
- * These pin the exact spliced bytes for the three shapes that matter:
+ * These pin the exact edited bytes for three shapes:
  *   - entries followed by a release heading  -> exactly one blank line between them;
  *   - an empty Unreleased section followed by a release heading -> same one blank;
  *   - an Unreleased section at end-of-file    -> no spurious trailing blank added.
- * They run through the real parseUnreleasedSection so the startLine/endLine coupling
- * is exercised end to end, exactly as production does.
+ * They run through the real parseUnreleasedLayout so the line-span coupling is
+ * exercised end to end, exactly as production does.
  */
 describe("applyChangelogEntries", () => {
 	function apply(content: string, entries: Record<string, string[]>): string {
-		return applyChangelogEntries(content, parseUnreleasedSection(content), entries);
+		return applyChangelogEntries(parseUnreleasedLayout(content), entries);
 	}
 
 	it("separates the last Unreleased entry from the next release heading with one blank line", () => {
@@ -90,9 +91,8 @@ describe("applyChangelogEntries", () => {
 	});
 
 	it("inserts exactly one blank line, never two, when the source already had a blank before the release", () => {
-		// The source's blank line before `## [1.0.0]` lives inside the replaced Unreleased
-		// body, so it is discarded and re-supplied by the separator. The result must have a
-		// single blank line, not a doubled one.
+		// The source's blank line before `## [1.0.0]` stays where it is and the new bullet
+		// goes above it. The result must have a single blank line, not a doubled one.
 		const content = ["## [Unreleased]", "", "### Added", "- x", "", "## [1.0.0]", "- released"].join("\n");
 		const result = apply(content, { Added: ["y"] });
 

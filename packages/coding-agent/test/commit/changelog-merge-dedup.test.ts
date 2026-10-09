@@ -1,26 +1,26 @@
 import { describe, expect, it } from "bun:test";
 import { applyChangelogEntries } from "../../src/commit/changelog/index";
-import { parseUnreleasedSection } from "../../src/commit/changelog/parse";
+import { parseUnreleasedLayout } from "../../src/commit/changelog/parse";
 
 /**
- * mergeEntries dedups within one incoming batch (stale-set fix).
+ * applyChangelogEntries dedups within one incoming batch (stale-set fix).
  *
  * The bug this suite locks out (HUNT2-coercion-mergeentries-staleset, found
- * 2026-07-22): mergeEntries built its case-insensitive membership Set once from
+ * 2026-07-22): the merge built its case-insensitive membership Set once from
  * the EXISTING items, then appended each non-duplicate incoming item but never
  * added the just-appended item back into the Set. So two identical bullets in the
  * SAME incoming batch both passed the `!has()` guard and were both written — a
  * changelog with a duplicated line. Cross-batch dedup (against existing entries)
  * already worked; only intra-batch repeats leaked.
  *
- * These drive the real applyChangelogEntries -> mergeEntries path and assert the
- * rendered Unreleased body contains each bullet exactly once.
+ * These drive the real applyChangelogEntries path and assert the edited
+ * Unreleased body contains each bullet exactly once.
  */
 describe("changelog merge dedups within a single batch", () => {
 	const BASE = ["# Changelog", "", "## [Unreleased]", ""].join("\n");
 
 	function apply(content: string, entries: Record<string, string[]>): string {
-		return applyChangelogEntries(content, parseUnreleasedSection(content), entries);
+		return applyChangelogEntries(parseUnreleasedLayout(content), entries);
 	}
 
 	function bulletCount(rendered: string, bullet: string): number {

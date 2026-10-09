@@ -317,6 +317,7 @@
 - A `tab.goto()` aborted with `net::ERR_ABORTED` by a navigation the page started, such as a click handler's redirect, is sent once more and resolves on its own URL; a goto aborted twice fails naming the navigation that aborted it last.
 - A bash command whose caller cancels while the call joins the session CPU budget returns as cancelled without running, instead of running to completion and reporting success.
 - A `/queue` or `=>` line submitted with Enter whose first message fails to send comes back to the editor as the `=>` queue it was, with its pending images and their links, instead of leaving the editor empty.
+- `veyyon commit` edits a changelog's Unreleased section line by line, so adding or deleting an entry keeps the section's prose, categories outside Keep a Changelog, wrapped and nested entries and the file's final newline instead of dropping them, a `### toString` heading no longer stops the changelog from being read, an entry differing from a proposed one only in case, spacing or a trailing period counts as the same entry for duplicates and deletions, and a changelog the proposal leaves unchanged is no longer rewritten, staged or reported as updated.
 
 ### Removed
 
