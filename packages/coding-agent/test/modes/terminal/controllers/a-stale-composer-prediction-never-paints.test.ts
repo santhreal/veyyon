@@ -2,7 +2,7 @@
  * The terminal requests a composer prediction when a turn ends and paints it as ghost text.
  * A reply that lands after anything newer (a new turn, a session switch, text in the composer)
  * must not paint, an unavailable configuration is reported once rather than every turn, and the
- * default mode without a ChatGPT Pro Codex login neither requests nor reports anything.
+ * ChatGPT Pro included mode without a ChatGPT Pro Codex login neither requests nor reports anything.
  *
  * Drives `ComposerPredictionController` over a real `AgentSession` and a real `Editor`; only the
  * provider stream is replaced, and it is held open so the test controls when the reply lands.
@@ -178,8 +178,8 @@ describe("ComposerPredictionController", () => {
 		expect(drafting.controller.request()).toBeUndefined();
 	});
 
-	it("sends and reports nothing in the default mode without a ChatGPT Pro Codex login", async () => {
-		const h = harness({});
+	it("sends and reports nothing in ChatGPT Pro included mode without a ChatGPT Pro Codex login", async () => {
+		const h = harness({ "composer.predictions.mode": "chatgpt-pro" });
 		await h.controller.request();
 		await h.controller.request();
 		expect(h.warnings).toEqual([]);

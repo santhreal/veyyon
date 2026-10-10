@@ -46,6 +46,99 @@ describe("findBlockContextLines lexical fallback", () => {
 		expect(findBlockContextLines(src, [1], {})).toEqual(new Map([[4, ")"]]));
 	});
 
+	it.each([
+		["parentheses", "(", ")"],
+		["square brackets", "[", "]"],
+		["braces", "{", "}"],
+	])("pairs %s", (_kind, open, close) => {
+		const src = lines(`x${open}\n  1,\n${close}`);
+		expect(findBlockContextLines(src, [1], {})).toEqual(new Map([[3, close]]));
+	});
+
+	it("pairs a closer with one opener, not every open one of its kind", () => {
+		const src = lines("outer(\n  inner(\n  )\n)");
+		expect(findBlockContextLines(src, [1], {})).toEqual(new Map([[4, ")"]]));
+	});
+
+	it("ignores a bracket inside a single-quoted string", () => {
+		const src = lines("arr(\n  ')',\n  item\n)");
+		expect(findBlockContextLines(src, [1], {})).toEqual(new Map([[4, ")"]]));
+	});
+
+	it("does not end a string at a quote of another kind", () => {
+		const src = lines('arr(\n  "it\'s" )\n  item\n)');
+		expect(findBlockContextLines(src, [1], {})).toEqual(new Map([[2, '  "it\'s" )']]));
+	});
+
+	it("does not read the star of /* as the start of its */", () => {
+		const src = lines("arr(\n  /*/ )\n  */\n)");
+		expect(findBlockContextLines(src, [1], {})).toEqual(new Map([[4, ")"]]));
+	});
+
+	it("does not read the slash that ends a block comment as the start of a line comment", () => {
+		const src = lines("arr(\n  /* x *// )\n  item\n)");
+		expect(findBlockContextLines(src, [1], {})).toEqual(new Map([[2, "  /* x *// )"]]));
+	});
+
+	it("does not carry an escape at the end of a quoted line into the next line's string", () => {
+		const src = lines('arr(\n  \'x\\\n  "" )\n  item\n)');
+		expect(findBlockContextLines(src, [1], {})).toEqual(new Map([[3, '  "" )']]));
+	});
+
+	it("does not end a string at an escaped quote", () => {
+		const src = lines('arr(\n  "\\")",\n  item\n)');
+		expect(findBlockContextLines(src, [1], {})).toEqual(new Map([[4, ")"]]));
+	});
+
+	it("ends a string at a quote that follows an escaped backslash", () => {
+		const src = lines('arr(\n  "\\\\")\nitem');
+		expect(findBlockContextLines(src, [1], {})).toEqual(new Map([[2, '  "\\\\")']]));
+	});
+
+	it.each([
+		["single", "'"],
+		["double", '"'],
+	])("ends an unterminated %s-quoted string with its line", (_kind, quote) => {
+		const src = lines(`arr(\n  ${quote}it\n)`);
+		expect(findBlockContextLines(src, [1], {})).toEqual(new Map([[3, ")"]]));
+	});
+
+	it("carries a template literal across lines", () => {
+		const src = lines("arr(\n  `\n  )\n  `\n)");
+		expect(findBlockContextLines(src, [1], {})).toEqual(new Map([[5, ")"]]));
+	});
+
+	it("carries a block comment across lines", () => {
+		const src = lines("arr(\n  /*\n  )\n  */\n)");
+		expect(findBlockContextLines(src, [1], {})).toEqual(new Map([[5, ")"]]));
+	});
+
+	it("pairs a bracket that follows a block comment closed on the same line", () => {
+		const src = lines("arr(\n  /* x */ )\n  item\n)");
+		expect(findBlockContextLines(src, [1], {})).toEqual(new Map([[2, "  /* x */ )"]]));
+	});
+
+	it.each([
+		["spaces", "  # )"],
+		["a tab", "\t# )"],
+		["nothing", "# )"],
+	])("reads # after %s as a line comment", (_prefix, comment) => {
+		const src = lines(`arr(\n${comment}\n)`);
+		expect(findBlockContextLines(src, [1], {})).toEqual(new Map([[3, ")"]]));
+	});
+
+	it("reads # after code as code", () => {
+		const src = lines("arr(\n  x # )\n  item\n)");
+		expect(findBlockContextLines(src, [1], {})).toEqual(new Map([[2, "  x # )"]]));
+	});
+
+	it("pairs a closer with the nearest opener of its kind and drops the openers inside it", () => {
+		// The ")" on line 3 closes line 1 and drops the "[" on line 2, so the "]" on line 4 has no
+		// opener and the visible "[" reports nothing.
+		const src = lines("a(\n  [\n  )\n  ]\n)");
+		expect(findBlockContextLines(src, [1, 2], {})).toEqual(new Map([[3, "  )"]]));
+	});
+
 	it("returns an empty map when the whole file is visible", () => {
 		const src = lines("a(\n)");
 		expect(findBlockContextLines(src, [1, 2], {}).size).toBe(0);

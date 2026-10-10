@@ -137,7 +137,7 @@ const DECIMAL_NUMBER = /^-?\d+(?:\.\d+)?$/;
 
 const PREDICTIONS_MODE_PATH: SettingPath = "composer.predictions.mode";
 const INCLUDED_PREDICTION_MODE = "chatgpt-pro";
-const CONNECT_PRO_PREDICTION_HINT = "Connect ChatGPT Pro for free, usage-less predictions.";
+const CONNECT_PRO_PREDICTION_HINT = "Connect a ChatGPT Pro account to use this mode.";
 
 export const UNSET_NUMBER_INPUT = "unset";
 

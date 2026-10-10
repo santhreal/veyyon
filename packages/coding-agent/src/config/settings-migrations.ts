@@ -1021,10 +1021,10 @@ function migrateArgotEncode(raw: RawSettings): void {
 /**
  * composer.predictions.enabled (boolean) + .source ("codex" | "model") -> .mode.
  *
- * An explicit `enabled: false` becomes `off`, so a stored opt-out is never
- * replaced by the `chatgpt-pro` default. `enabled: true` maps `source: model`
- * to `custom` and every other source to `chatgpt-pro`, which requests only on
- * a ChatGPT Pro plan. A `mode` already present wins. Both spellings, flat and
+ * An explicit `enabled: false` becomes `off`. `enabled: true` maps
+ * `source: model` to `custom` and every other source to `chatgpt-pro`, which
+ * requests only on a ChatGPT Pro plan, so a stored opt-in is not lost to the
+ * `off` default. A `mode` already present wins. Both spellings, flat and
  * nested, are folded and dropped, which makes this a fixed point.
  */
 function migrateComposerPredictionsMode(raw: RawSettings): void {

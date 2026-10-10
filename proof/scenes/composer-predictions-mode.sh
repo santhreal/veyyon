@@ -2,10 +2,10 @@
 # The Composer Predictions settings on a profile with no OpenAI Codex login.
 #
 # Opens Settings, filters to the Composer Predictions group by search, and opens
-# the selected row's submenu. The recording profile holds no Codex login, so the
-# ChatGPT Pro included mode can request nothing: the mode row reads
-# "Off (no ChatGPT Pro account)", and in the mode submenu "ChatGPT Pro included"
-# is greyed out with the connect hint, beside "Off" and "Custom (choose model)".
+# the selected row's submenu. The mode defaults to Off, the first option. The
+# recording profile holds no Codex login, so in the mode submenu "ChatGPT Pro
+# included" is greyed out with the connect hint, between "Off" and "Custom
+# (choose model)".
 #
 #   proof/record.sh --pair proof/scenes/composer-predictions-mode.sh
 #

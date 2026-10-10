@@ -2,18 +2,6 @@ import { enclosingBlockBoundaries } from "@veyyon/natives";
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import * as logger from "@veyyon/utils/logger";
 
-const OPEN_TO_CLOSE: Record<string, string> = {
-	"(": ")",
-	"[": "]",
-	"{": "}",
-};
-
-const CLOSE_TO_OPEN: Record<string, string> = {
-	")": "(",
-	"]": "[",
-	"}": "{",
-};
-
 export interface LineSpan {
 	startLine: number;
 	endLine: number;
@@ -34,20 +22,47 @@ export interface BlockContextSource {
 
 export type LineEntry = { kind: "line"; lineNumber: number; text: string; context: boolean } | { kind: "ellipsis" };
 
+/** An unmatched opening bracket: its own code unit, and the line it opened on. */
 interface StackEntry {
-	opener: string;
+	opener: number;
 	lineNumber: number;
 	text: string;
 	visible: boolean;
 }
 
-type ScannerMode = "code" | "single" | "double" | "template" | "blockComment";
+type QuotedMode = "single" | "double" | "template";
+type ScannerMode = "code" | QuotedMode | "blockComment";
 
-const QUOTE_TO_MODE: Record<string, ScannerMode> = {
-	"'": "single",
-	'"': "double",
-	"`": "template",
+/** The UTF-16 code units the lexical scan acts on. */
+const SLASH = 0x2f;
+const STAR = 0x2a;
+const HASH = 0x23;
+const SPACE = 0x20;
+const TAB = 0x09;
+const BACKSLASH = 0x5c;
+const SINGLE_QUOTE = 0x27;
+const DOUBLE_QUOTE = 0x22;
+const BACKTICK = 0x60;
+const OPEN_PAREN = 0x28;
+const CLOSE_PAREN = 0x29;
+const OPEN_SQUARE = 0x5b;
+const CLOSE_SQUARE = 0x5d;
+const OPEN_CURLY = 0x7b;
+const CLOSE_CURLY = 0x7d;
+
+const CLOSING_QUOTE: Record<QuotedMode, number> = {
+	single: SINGLE_QUOTE,
+	double: DOUBLE_QUOTE,
+	template: BACKTICK,
 };
+
+/** Lexical scan state carried from one line to the next. */
+interface BracketScan {
+	mode: ScannerMode;
+	escaped: boolean;
+	readonly stack: StackEntry[];
+	readonly context: Map<number, string>;
+}
 
 function normalizeLineSpans(spans: readonly LineSpan[], totalLines: number): LineSpan[] {
 	if (totalLines <= 0) return [];
@@ -188,119 +203,135 @@ function nativeBlockContext(
 	return context;
 }
 
-function findMatchingStackIndex(stack: readonly StackEntry[], opener: string): number {
-	for (let index = stack.length - 1; index >= 0; index--) {
-		if (stack[index].opener === opener) return index;
-	}
-	return -1;
-}
-
-function isHashCommentStart(line: string, index: number): boolean {
-	if (line[index] !== "#") return false;
+/** Whether only spaces and tabs precede `index`, which makes a `#` there a line comment. */
+function onlyBlanksBefore(line: string, index: number): boolean {
 	for (let i = 0; i < index; i++) {
-		const ch = line[i];
-		if (ch !== " " && ch !== "\t") return false;
+		const code = line.charCodeAt(i);
+		if (code !== SPACE && code !== TAB) return false;
 	}
 	return true;
+}
+
+/**
+ * Pair a closing bracket with the nearest open `opener`, dropping every bracket opened after it,
+ * and record the endpoint that sits outside the visible window. A closer with no opener is ignored.
+ */
+function closeBracket(scan: BracketScan, opener: number, lineNumber: number, line: string, lineVisible: boolean): void {
+	const stack = scan.stack;
+	for (let at = stack.length - 1; at >= 0; at--) {
+		const matched = stack[at];
+		if (matched.opener !== opener) continue;
+		stack.length = at;
+		if (lineVisible && !matched.visible) scan.context.set(matched.lineNumber, matched.text);
+		if (matched.visible && !lineVisible) scan.context.set(lineNumber, line);
+		return;
+	}
+}
+
+/** Open a string. `escaped` is already false: code is only reached past an unescaped closing quote or a line end. */
+function openQuoted(scan: BracketScan, mode: QuotedMode, index: number): number {
+	scan.mode = mode;
+	return index;
+}
+
+/**
+ * Scan code from `index` until the line ends or a string or block comment opens, pairing brackets
+ * on the way. Returns where the scan stopped; a line comment stops it at the line's end.
+ */
+function scanCode(line: string, index: number, lineNumber: number, lineVisible: boolean, scan: BracketScan): number {
+	while (index < line.length) {
+		const code = line.charCodeAt(index++);
+		switch (code) {
+			case SLASH: {
+				const next = line.charCodeAt(index);
+				if (next === SLASH) return line.length;
+				if (next === STAR) {
+					scan.mode = "blockComment";
+					return index + 1;
+				}
+				break;
+			}
+			case HASH:
+				if (onlyBlanksBefore(line, index - 1)) return line.length;
+				break;
+			case SINGLE_QUOTE:
+				return openQuoted(scan, "single", index);
+			case DOUBLE_QUOTE:
+				return openQuoted(scan, "double", index);
+			case BACKTICK:
+				return openQuoted(scan, "template", index);
+			case OPEN_PAREN:
+			case OPEN_SQUARE:
+			case OPEN_CURLY:
+				scan.stack.push({ opener: code, lineNumber, text: line, visible: lineVisible });
+				break;
+			case CLOSE_PAREN:
+				closeBracket(scan, OPEN_PAREN, lineNumber, line, lineVisible);
+				break;
+			case CLOSE_SQUARE:
+				closeBracket(scan, OPEN_SQUARE, lineNumber, line, lineVisible);
+				break;
+			case CLOSE_CURLY:
+				closeBracket(scan, OPEN_CURLY, lineNumber, line, lineVisible);
+				break;
+		}
+	}
+	return index;
+}
+
+/** Skip a string body from `index` to just past its closing quote, honoring backslash escapes. */
+function skipQuoted(line: string, index: number, scan: BracketScan, quote: number): number {
+	while (index < line.length) {
+		const code = line.charCodeAt(index++);
+		if (scan.escaped) {
+			scan.escaped = false;
+		} else if (code === BACKSLASH) {
+			scan.escaped = true;
+		} else if (code === quote) {
+			scan.mode = "code";
+			return index;
+		}
+	}
+	return index;
+}
+
+/** Skip a block comment body from `index` to just past its `*\/`, or to the line's end. */
+function skipBlockComment(line: string, index: number, scan: BracketScan): number {
+	const end = line.indexOf("*/", index);
+	if (end === -1) return line.length;
+	scan.mode = "code";
+	return end + 2;
+}
+
+function scanLine(line: string, lineNumber: number, lineVisible: boolean, scan: BracketScan): void {
+	let index = 0;
+	while (index < line.length) {
+		const mode = scan.mode;
+		if (mode === "code") index = scanCode(line, index, lineNumber, lineVisible, scan);
+		else if (mode === "blockComment") index = skipBlockComment(line, index, scan);
+		else index = skipQuoted(line, index, scan, CLOSING_QUOTE[mode]);
+	}
+	// A quoted string ends with its line; a template literal and a block comment run on.
+	if (scan.mode === "single" || scan.mode === "double") {
+		scan.mode = "code";
+		scan.escaped = false;
+	}
 }
 
 /**
  * Lexical bracket-matching fallback for sources tree-sitter can't parse
  * (unknown extensions, syntax errors). Pairs `()[]{}` while skipping strings
  * and line/block comments, and reports the matching line when one endpoint is
- * visible and the other is not.
+ * visible and the other is not. Only the hidden endpoint is recorded, so no
+ * visible line is ever in the result.
  */
 function lexicalBracketContext(fullLines: readonly string[], visible: ReadonlySet<number>): Map<number, string> {
-	const context = new Map<number, string>();
-	const stack: StackEntry[] = [];
-	let mode: ScannerMode = "code";
-	let escaped = false;
-
+	const scan: BracketScan = { mode: "code", escaped: false, stack: [], context: new Map() };
 	for (let lineIndex = 0; lineIndex < fullLines.length; lineIndex++) {
 		const lineNumber = lineIndex + 1;
-		const line = fullLines[lineIndex] ?? "";
-		const lineVisible = visible.has(lineNumber);
-		let index = 0;
-		while (index < line.length) {
-			const ch = line[index];
-			const next = index + 1 < line.length ? line[index + 1] : "";
-
-			if (mode === "blockComment") {
-				if (ch === "*" && next === "/") {
-					mode = "code";
-					index += 2;
-					continue;
-				}
-				index++;
-				continue;
-			}
-
-			if (mode === "single" || mode === "double" || mode === "template") {
-				if (escaped) {
-					escaped = false;
-					index++;
-					continue;
-				}
-				if (ch === "\\") {
-					escaped = true;
-					index++;
-					continue;
-				}
-				if (
-					(mode === "single" && ch === "'") ||
-					(mode === "double" && ch === '"') ||
-					(mode === "template" && ch === "`")
-				) {
-					mode = "code";
-				}
-				index++;
-				continue;
-			}
-
-			if (ch === "/" && next === "/") break;
-			if (ch === "/" && next === "*") {
-				mode = "blockComment";
-				index += 2;
-				continue;
-			}
-			if (isHashCommentStart(line, index)) break;
-			const quoteMode = QUOTE_TO_MODE[ch];
-			if (quoteMode) {
-				mode = quoteMode;
-				escaped = false;
-				index++;
-				continue;
-			}
-
-			if (OPEN_TO_CLOSE[ch]) {
-				stack.push({ opener: ch, lineNumber, text: line, visible: lineVisible });
-				index++;
-				continue;
-			}
-
-			const opener = CLOSE_TO_OPEN[ch];
-			if (opener) {
-				const matchIndex = findMatchingStackIndex(stack, opener);
-				if (matchIndex !== -1) {
-					const [matched] = stack.splice(matchIndex);
-					if (matched) {
-						if (lineVisible && !matched.visible) context.set(matched.lineNumber, matched.text);
-						if (matched.visible && !lineVisible) context.set(lineNumber, line);
-					}
-				}
-			}
-
-			index++;
-		}
-
-		if (mode === "single" || mode === "double") {
-			mode = "code";
-			escaped = false;
-		}
+		scanLine(fullLines[lineIndex] ?? "", lineNumber, visible.has(lineNumber), scan);
 	}
-
-	for (const lineNumber of visible) context.delete(lineNumber);
-	return context;
+	return scan.context;
 }
 
 /**

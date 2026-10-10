@@ -1,6 +1,7 @@
 /**
  * Composer predictions run after every turn, unasked, so the mode decides what each one may cost.
- * `chatgpt-pro` (the default) requests one only where OpenAI states predictions draw on no Codex
+ * The default is `off`, which sends nothing, so no prediction draws on an account until a mode is
+ * chosen. `chatgpt-pro` requests one only where OpenAI states predictions draw on no Codex
  * limits or credits: a ChatGPT Pro plan login and a model OpenAI lists as supported
  * (`INCLUDED_PREDICTION_MODELS`). The request carries that Pro login's own token, never one the
  * session's account routing picks. Any other plan, a token that is not a JWT, no Codex login, a
@@ -222,13 +223,28 @@ describe("ComposerPredictor", () => {
 			: message.content.map(block => (block.type === "text" ? block.text : "")).join("");
 	}
 
-	describe("ChatGPT Pro included prediction (the default)", () => {
-		it("is the default mode", () => {
-			expect(Settings.isolated({}).get("composer.predictions.mode")).toBe("chatgpt-pro");
+	describe("the default", () => {
+		it("is off", () => {
+			expect(Settings.isolated({}).get("composer.predictions.mode")).toBe("off");
 		});
 
+		it("requests nothing, even on a Pro login with a supported model", async () => {
+			const { session, settings, sent } = await setup({ activeModel: CODEX_MODEL, codex: { stored: ["pro"] } });
+			const config = configFetch(CODEX_CONFIG);
+			const outcome = await predict(session, settings, config.fetch);
+
+			expect(outcome).toEqual({ kind: "skipped" });
+			expect(config.requested).toEqual([]);
+			expect(sent).toHaveLength(0);
+		});
+	});
+
+	describe("ChatGPT Pro included prediction", () => {
+		const setupPro: typeof setup = options =>
+			setup({ ...options, settings: { "composer.predictions.mode": "chatgpt-pro", ...options.settings } });
+
 		it("sends the backend's prompt and effort as a Codex prediction fork with the Pro login's token", async () => {
-			const { session, settings, sent, tokens } = await setup({
+			const { session, settings, sent, tokens } = await setupPro({
 				activeModel: CODEX_MODEL,
 				codex: { stored: ["pro"] },
 			});
@@ -248,7 +264,7 @@ describe("ComposerPredictor", () => {
 		});
 
 		it("predicts with the first supported Codex model when the session's model is from another provider", async () => {
-			const { session, settings, sent } = await setup({
+			const { session, settings, sent } = await setupPro({
 				activeModel: ANTHROPIC_MODEL,
 				codex: { stored: ["pro"] },
 				keys: { anthropic: "sk-ant-test" },
@@ -260,7 +276,7 @@ describe("ComposerPredictor", () => {
 		});
 
 		it("predicts with a supported model, never the session's, when the session's Codex model is not listed", async () => {
-			const { session, settings, sent } = await setup({
+			const { session, settings, sent } = await setupPro({
 				activeModel: UNLISTED_CODEX_MODEL,
 				codex: { stored: ["pro"] },
 			});
@@ -270,7 +286,7 @@ describe("ComposerPredictor", () => {
 		});
 
 		it("falls back to the next supported model when the backend refuses the session's", async () => {
-			const { session, settings, sent } = await setup({ activeModel: CODEX_MODEL, codex: { stored: ["pro"] } });
+			const { session, settings, sent } = await setupPro({ activeModel: CODEX_MODEL, codex: { stored: ["pro"] } });
 			const config = configFetch({ ...CODEX_CONFIG, unsupported_models: [CODEX_MODEL.id] });
 			await predict(session, settings, config.fetch);
 
@@ -279,7 +295,7 @@ describe("ComposerPredictor", () => {
 		});
 
 		it("reads the Codex config once across consecutive predictions", async () => {
-			const { session, settings } = await setup({
+			const { session, settings } = await setupPro({
 				activeModel: CODEX_MODEL,
 				codex: { stored: ["pro"] },
 				reply: '{"suggestion":null}',
@@ -292,7 +308,7 @@ describe("ComposerPredictor", () => {
 		});
 
 		it("sends a stored Pro account's token when an earlier stored account is on another plan", async () => {
-			const { session, settings, sent, tokens } = await setup({
+			const { session, settings, sent, tokens } = await setupPro({
 				activeModel: CODEX_MODEL,
 				codex: { stored: ["plus", "pro"] },
 			});
@@ -304,7 +320,7 @@ describe("ComposerPredictor", () => {
 		});
 
 		it("prefers the Pro account the session is routed to over an earlier stored one", async () => {
-			const { session, settings, sent, auth, tokens } = await setup({
+			const { session, settings, sent, auth, tokens } = await setupPro({
 				activeModel: CODEX_MODEL,
 				codex: { stored: ["pro", "pro"] },
 			});
@@ -318,7 +334,7 @@ describe("ComposerPredictor", () => {
 
 		it("sends the environment login's token when it is the only Pro login", async () => {
 			const envToken = codexToken("pro", "acct_env");
-			const { session, settings, sent } = await setup({
+			const { session, settings, sent } = await setupPro({
 				activeModel: CODEX_MODEL,
 				codex: { stored: ["plus"], env: envToken },
 			});
@@ -345,7 +361,7 @@ describe("ComposerPredictor", () => {
 				),
 			),
 		)("requests and reports nothing when %s, on a %s session", async (_case, _provider, activeModel, codex, keys) => {
-			const { session, settings, sent } = await setup({ activeModel, codex, keys });
+			const { session, settings, sent } = await setupPro({ activeModel, codex, keys });
 			const config = configFetch(CODEX_CONFIG);
 			const outcome = await predict(session, settings, config.fetch);
 			expect(outcome).toEqual({ kind: "skipped" });
@@ -354,7 +370,7 @@ describe("ComposerPredictor", () => {
 		});
 
 		it("requests and reports nothing on a Pro login when no supported model is from OpenAI Codex", async () => {
-			const { session, settings, sent } = await setup({
+			const { session, settings, sent } = await setupPro({
 				activeModel: UNLISTED_CODEX_MODEL,
 				codex: { stored: ["pro"] },
 				models: [UNLISTED_CODEX_MODEL, FOREIGN_CODEX_API_MODEL, ANTHROPIC_MODEL],
@@ -374,7 +390,7 @@ describe("ComposerPredictor", () => {
 				{ ...CODEX_CONFIG, unsupported_models: [CODEX_MODEL.id, SECOND_CODEX_MODEL.id] },
 			],
 		])("sends no prediction and reports nothing when %s", async (_case, payload) => {
-			const { session, settings, sent } = await setup({ activeModel: CODEX_MODEL, codex: { stored: ["pro"] } });
+			const { session, settings, sent } = await setupPro({ activeModel: CODEX_MODEL, codex: { stored: ["pro"] } });
 			const outcome = await predict(session, settings, configFetch(payload).fetch);
 			expect(outcome).toEqual({ kind: "skipped" });
 			expect(sent).toHaveLength(0);
