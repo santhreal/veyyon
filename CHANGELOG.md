@@ -89,6 +89,7 @@
 
 ### Changed
 
+- The lexical bracket scan behind `read` windows and edit previews, used for a source tree-sitter cannot parse, dispatches on character codes, skips a block comment with one search and scans each mode in its own function in `utils/block-context.ts`, so a lookup on a 9,815-line TypeScript file with a syntax error takes 0.85 ms instead of 7.74 ms, and on a 4,083-line `.txt` file 1.20 ms instead of 12.70 ms (median of 15 alternating rounds of 40 lookups); every boundary line is unchanged.
 - The status line fits its footline in one `QuietRowFit` pass in `status-line/quiet-row.ts` that keeps each half's joined text and width instead of re-joining the halves after every shed, so composing a default footline takes 999 ns instead of 1,454 ns at 160 columns and 9.46 µs instead of 12.15 µs at 60 columns, where it sheds zones (median of nine rounds of 20,000 calls); the drawn row is unchanged.
 - `StatusLineComponent` builds a frame's segment context through `#locationContext`, `#gitFacts` and `contextGaugeReadings`, and `renderLocation` and the `model` segment build their text in per-step functions; the drawn row and the git lookups it starts are unchanged.
 - The launch-facts recorder compares a recorded entry field by field instead of serializing both copies, so a status-row redraw that changes no recorded fact files in 338 ns instead of 1,119 ns, and a `git status` that finds the recorded tree in 528 ns instead of 1,313 ns (median of seven alternating processes of 450,000 calls).
