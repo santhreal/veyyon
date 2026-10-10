@@ -605,30 +605,47 @@ export interface DiffStats {
 	lines: number;
 }
 
+const PLUS = 0x2b;
+const MINUS = 0x2d;
+
+function isChangeLine(line: string): boolean {
+	const code = line.charCodeAt(0);
+	return code === PLUS || code === MINUS;
+}
+
 export function getDiffStats(diffText: string): DiffStats {
-	const lines = diffText ? diffText.split("\n") : [];
+	if (!diffText) return { added: 0, removed: 0, hunks: 0, lines: 0 };
 	let added = 0;
 	let removed = 0;
 	let hunks = 0;
+	let lines = 0;
 	let inHunk = false;
-
-	for (const line of lines) {
-		const isAdded = line.startsWith("+");
-		const isRemoved = line.startsWith("-");
-		const isChange = isAdded || isRemoved;
-
-		if (isAdded) added++;
-		if (isRemoved) removed++;
-
-		if (isChange && !inHunk) {
-			hunks++;
-			inHunk = true;
-		} else if (!isChange) {
-			inHunk = false;
-		}
+	let start = 0;
+	while (true) {
+		// `charCodeAt` past the end is NaN, so the empty line after a trailing newline is context.
+		const code = diffText.charCodeAt(start);
+		const isChange = code === PLUS || code === MINUS;
+		if (code === PLUS) added++;
+		else if (code === MINUS) removed++;
+		if (isChange && !inHunk) hunks++;
+		inHunk = isChange;
+		lines++;
+		const newline = diffText.indexOf("\n", start);
+		if (newline === -1) break;
+		start = newline + 1;
 	}
+	return { added, removed, hunks, lines };
+}
 
-	return { added, removed, hunks, lines: lines.length };
+function countHunks(lines: readonly string[]): number {
+	let hunks = 0;
+	let inHunk = false;
+	for (const line of lines) {
+		const isChange = isChangeLine(line);
+		if (isChange && !inHunk) hunks++;
+		inHunk = isChange;
+	}
+	return hunks;
 }
 
 /**
@@ -641,34 +658,118 @@ export function diffStatsMetaLines(added: number, removed: number): ViewLine[] {
 	return meta;
 }
 
+/** A run of lines `[start, end)` of one kind. */
 interface DiffSegment {
-	lines: string[];
+	start: number;
+	end: number;
 	isChange: boolean;
 	isEllipsis: boolean;
 }
 
-function parseDiffSegments(lines: string[]): DiffSegment[] {
+/** A blank line, or one whose first non-whitespace text is `...`: a gap marker of its own. */
+const ELLIPSIS_OR_BLANK = /^\s*(?:\.\.\.|$)/;
+
+function parseDiffSegments(lines: readonly string[]): DiffSegment[] {
 	const segments: DiffSegment[] = [];
 	let current: DiffSegment | null = null;
 
-	for (const line of lines) {
-		const isChange = line.startsWith("+") || line.startsWith("-");
-		const isEllipsis = line.trimStart().startsWith("...") || line.trim().length === 0;
-
-		if (isEllipsis) {
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+		if (ELLIPSIS_OR_BLANK.test(line)) {
 			if (current) segments.push(current);
-			segments.push({ lines: [line], isChange: false, isEllipsis: true });
+			segments.push({ start: i, end: i + 1, isChange: false, isEllipsis: true });
 			current = null;
-		} else if (!current || current.isChange !== isChange) {
+			continue;
+		}
+		const isChange = isChangeLine(line);
+		if (!current || current.isChange !== isChange) {
 			if (current) segments.push(current);
-			current = { lines: [line], isChange, isEllipsis: false };
+			current = { start: i, end: i + 1, isChange, isEllipsis: false };
 		} else {
-			current.lines.push(line);
+			current.end = i + 1;
 		}
 	}
 
 	if (current) segments.push(current);
 	return segments;
+}
+
+function pushRange(out: string[], lines: readonly string[], start: number, end: number): void {
+	for (let i = start; i < end; i++) out.push(lines[i]);
+}
+
+/** The lines of an over-budget diff a collapsed preview keeps, head first. */
+function keepDiffLines(lines: readonly string[], maxHunks: number, maxLines: number): string[] {
+	const segments = parseDiffSegments(lines);
+	let changeLineCount = 0;
+	let totalContextLines = 0;
+	let contextSegmentCount = 0;
+	for (const seg of segments) {
+		if (seg.isChange) {
+			changeLineCount += seg.end - seg.start;
+		} else if (!seg.isEllipsis) {
+			totalContextLines += seg.end - seg.start;
+			contextSegmentCount++;
+		}
+	}
+
+	const kept: string[] = [];
+	let keptHunks = 0;
+
+	if (changeLineCount > maxLines) {
+		// The change lines alone overflow, so lines are kept head first up to the budget, cutting the
+		// segment that reaches it: a single change run longer than the budget is cut too.
+		for (const seg of segments) {
+			if (seg.isChange && ++keptHunks > maxHunks) break;
+			pushRange(kept, lines, seg.start, Math.min(seg.end, seg.start + maxLines - kept.length));
+			if (kept.length >= maxLines) break;
+		}
+		return kept;
+	}
+
+	const contextBudget = maxLines - changeLineCount;
+	if (totalContextLines <= contextBudget) {
+		for (const seg of segments) {
+			if (seg.isChange && ++keptHunks > maxHunks) break;
+			pushRange(kept, lines, seg.start, seg.end);
+		}
+		return kept;
+	}
+
+	const contextRatio = contextSegmentCount > 0 ? contextBudget / totalContextLines : 0;
+	for (let i = 0; i < segments.length; i++) {
+		const seg = segments[i];
+		if (seg.isChange) {
+			if (++keptHunks > maxHunks) break;
+			pushRange(kept, lines, seg.start, seg.end);
+			continue;
+		}
+		if (seg.isEllipsis) {
+			pushRange(kept, lines, seg.start, seg.end);
+			continue;
+		}
+		const length = seg.end - seg.start;
+		const allowedLines = Math.max(1, Math.floor(length * contextRatio));
+		const isBeforeChange = segments[i + 1]?.isChange;
+		const isAfterChange = segments[i - 1]?.isChange;
+		if (isBeforeChange && isAfterChange) {
+			if (length > allowedLines) {
+				const half = Math.ceil(allowedLines / 2);
+				pushRange(kept, lines, seg.start, seg.start + half);
+				kept.push("");
+				pushRange(kept, lines, seg.end - half, seg.end);
+			} else {
+				pushRange(kept, lines, seg.start, seg.end);
+			}
+		} else if (isBeforeChange) {
+			pushRange(kept, lines, Math.max(seg.start, seg.end - allowedLines), seg.end);
+		} else if (isAfterChange) {
+			pushRange(kept, lines, seg.start, Math.min(seg.end, seg.start + allowedLines));
+		} else {
+			pushRange(kept, lines, seg.start, Math.min(seg.end, seg.start + Math.min(allowedLines, 2)));
+		}
+	}
+	return kept;
 }
 
 export function truncateDiffByHunk(
@@ -677,109 +778,20 @@ export function truncateDiffByHunk(
 	maxLines: number,
 	options?: { fromTail?: boolean },
 ): { text: string; hiddenHunks: number; hiddenLines: number } {
-	if (options?.fromTail) {
-		// Streaming previews want to track the tail of the diff as new hunks
-		// arrive. Reversing the line buffer reuses the head-mode logic without
-		// duplicating the segment-budget bookkeeping: hunk runs survive
-		// reversal (a continuous `+`/`-` block stays contiguous) and so do the
-		// per-line `+`/`-` markers, so getDiffStats yields identical counts.
-		const reversed = (diffText ?? "").split("\n").reverse().join("\n");
-		const result = truncateDiffByHunk(reversed, maxHunks, maxLines);
-		return {
-			text: result.text.split("\n").reverse().join("\n"),
-			hiddenHunks: result.hiddenHunks,
-			hiddenLines: result.hiddenLines,
-		};
-	}
 	const lines = diffText ? diffText.split("\n") : [];
-	const totalStats = getDiffStats(diffText);
-
-	if (lines.length <= maxLines && totalStats.hunks <= maxHunks) {
+	const totalHunks = countHunks(lines);
+	if (lines.length <= maxLines && totalHunks <= maxHunks) {
 		return { text: diffText, hiddenHunks: 0, hiddenLines: 0 };
 	}
-
-	const segments = parseDiffSegments(lines);
-
-	const changeSegments = segments.filter(s => s.isChange);
-	const changeLineCount = changeSegments.reduce((sum, s) => sum + s.lines.length, 0);
-
-	if (changeLineCount > maxLines) {
-		const kept: string[] = [];
-		let keptHunks = 0;
-
-		for (const seg of segments) {
-			if (seg.isChange) {
-				keptHunks++;
-				if (keptHunks > maxHunks) break;
-			}
-			kept.push(...seg.lines);
-			if (kept.length >= maxLines) break;
-		}
-
-		const keptStats = getDiffStats(kept.join("\n"));
-		return {
-			text: kept.join("\n"),
-			hiddenHunks: Math.max(0, totalStats.hunks - keptStats.hunks),
-			hiddenLines: Math.max(0, lines.length - kept.length),
-		};
-	}
-
-	const contextBudget = maxLines - changeLineCount;
-	const contextSegments = segments.filter(s => !s.isChange && !s.isEllipsis);
-	const totalContextLines = contextSegments.reduce((sum, s) => sum + s.lines.length, 0);
-
-	const kept: string[] = [];
-	let keptHunks = 0;
-
-	if (totalContextLines <= contextBudget) {
-		for (const seg of segments) {
-			if (seg.isChange) {
-				keptHunks++;
-				if (keptHunks > maxHunks) break;
-			}
-			kept.push(...seg.lines);
-		}
-	} else {
-		const contextRatio = contextSegments.length > 0 ? contextBudget / totalContextLines : 0;
-
-		for (let i = 0; i < segments.length; i++) {
-			const seg = segments[i];
-
-			if (seg.isChange) {
-				keptHunks++;
-				if (keptHunks > maxHunks) break;
-				kept.push(...seg.lines);
-			} else if (seg.isEllipsis) {
-				kept.push(...seg.lines);
-			} else {
-				const allowedLines = Math.max(1, Math.floor(seg.lines.length * contextRatio));
-				const isBeforeChange = segments[i + 1]?.isChange;
-				const isAfterChange = segments[i - 1]?.isChange;
-
-				if (isBeforeChange && isAfterChange) {
-					const half = Math.ceil(allowedLines / 2);
-					if (seg.lines.length > allowedLines) {
-						kept.push(...seg.lines.slice(0, half));
-						kept.push("");
-						kept.push(...seg.lines.slice(-half));
-					} else {
-						kept.push(...seg.lines);
-					}
-				} else if (isBeforeChange) {
-					kept.push(...seg.lines.slice(-allowedLines));
-				} else if (isAfterChange) {
-					kept.push(...seg.lines.slice(0, allowedLines));
-				} else {
-					kept.push(...seg.lines.slice(0, Math.min(allowedLines, 2)));
-				}
-			}
-		}
-	}
-
-	const keptStats = getDiffStats(kept.join("\n"));
+	// Streaming previews want to track the tail of the diff as new hunks arrive. Reversing the lines
+	// reuses the head-first budget: a continuous `+`/`-` run stays contiguous and every line keeps
+	// its marker, so the hunk counts are the same either way.
+	if (options?.fromTail) lines.reverse();
+	const kept = keepDiffLines(lines, maxHunks, maxLines);
+	if (options?.fromTail) kept.reverse();
 	return {
 		text: kept.join("\n"),
-		hiddenHunks: Math.max(0, totalStats.hunks - keptStats.hunks),
+		hiddenHunks: Math.max(0, totalHunks - countHunks(kept)),
 		hiddenLines: Math.max(0, lines.length - kept.length),
 	};
 }

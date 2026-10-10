@@ -299,6 +299,44 @@ describe("truncateDiffByHunk", () => {
 		expect(r.hiddenHunks).toBe(0);
 		expect(r.hiddenLines).toBe(1);
 	});
+
+	it("cuts one change run longer than the budget to the budget, from the head or the tail", () => {
+		// The change lines alone overflow, and they are one run: the run itself is cut rather than
+		// copied whole, and every line past the budget is counted as hidden.
+		const diff = [" ctx", ...Array.from({ length: 20 }, (_, i) => `+n${i}`), " end"].join("\n");
+		const head = truncateDiffByHunk(diff, 4, 6);
+		expect(head.text).toBe(" ctx\n+n0\n+n1\n+n2\n+n3\n+n4");
+		expect(head.hiddenLines).toBe(16);
+		expect(head.hiddenHunks).toBe(0);
+		const tail = truncateDiffByHunk(diff, 4, 6, { fromTail: true });
+		expect(tail.text).toBe("+n15\n+n16\n+n17\n+n18\n+n19\n end");
+		expect(tail.hiddenLines).toBe(16);
+		expect(tail.hiddenHunks).toBe(0);
+	});
+
+	it("stops at the hunk cap before the line budget when the change lines overflow", () => {
+		const diff = ["-a0", " c", "-a1", " c", "-a2", " c", "-a3", " c", "-a4"].join("\n");
+		const r = truncateDiffByHunk(diff, 1, 4);
+		expect(r.text).toBe("-a0\n c");
+		expect(r.hiddenHunks).toBe(4);
+		expect(r.hiddenLines).toBe(7);
+	});
+
+	it("keeps a blank line as a gap of its own between trimmed context blocks", () => {
+		// As a gap, the blank splits the context into a block after the change (3 of 6 kept) and one
+		// before the next (1 of 1); as context it would merge them into one block split around a gap.
+		const diff = ["-a", "c1", "c2", "c3", "c4", "c5", "c6", "", "c7", "+b"].join("\n");
+		const r = truncateDiffByHunk(diff, 10, 6);
+		expect(r.text).toBe("-a\nc1\nc2\nc3\n\nc7\n+b");
+		expect(r.hiddenLines).toBe(3);
+	});
+
+	it("keeps a `...` line as a gap of its own between trimmed context blocks", () => {
+		const diff = ["-a", "c1", "c2", "c3", "c4", "  ... 9 more", "c5", "+b"].join("\n");
+		const r = truncateDiffByHunk(diff, 10, 4);
+		expect(r.text).toBe("-a\nc1\n  ... 9 more\nc5\n+b");
+		expect(r.hiddenLines).toBe(3);
+	});
 });
 
 describe("formatErrorMessage (F4 sanitization)", () => {
@@ -381,6 +419,9 @@ describe("getDiffStats", () => {
 		// + and - both present, split by a context line -> two separate hunks.
 		expect(getDiffStats("+a\n-b\n c\n+d")).toEqual({ added: 2, removed: 1, hunks: 2, lines: 4 });
 		expect(getDiffStats("")).toEqual({ added: 0, removed: 0, hunks: 0, lines: 0 });
+		// The empty line after a trailing newline is a line, and it is context.
+		expect(getDiffStats("+a\n")).toEqual({ added: 1, removed: 0, hunks: 1, lines: 2 });
+		expect(getDiffStats("+a\n\n+b")).toEqual({ added: 2, removed: 0, hunks: 2, lines: 3 });
 	});
 
 	it("counts unified-diff file headers as add/remove lines (they start with +++/---)", () => {
