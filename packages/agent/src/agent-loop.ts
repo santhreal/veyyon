@@ -739,7 +739,7 @@ function leadWithExistingIntent(
  * `@veyyon/ai/utils/schema/stamps`), so the expensive schema conversion
  * itself is not repeated — but every call still re-runs the outer `.map()`
  * (object spreads, `injectIntentIntoSchema`, `renderToolExamples`) even when
- * `tools` and the flags are unchanged. Callers like `takeSnapshot` in
+ * `tools` and the flags are unchanged. Callers like `StablePrefix.build` in
  * `append-only-context.ts` and `Agent#buildSideRequestContext` invoke this
  * with the SAME `tools` array reference on every turn/request, so keying a
  * single-slot cache off that array identity (invalidated whenever the flags

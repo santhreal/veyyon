@@ -82,6 +82,19 @@ describe("StablePrefix", () => {
 		expect(changed).toBe(true);
 	});
 
+	// A caller that rewrites the live prompt array keeps the same array, so the
+	// prefix compares against what it built from, not against the array itself.
+	it("returns true when the system prompt array is rewritten in place", () => {
+		const p = new StablePrefix();
+		const ctx = makeContext({ systemPrompt: ["Old prompt"] });
+		p.build(ctx, BUILD_OPTS);
+
+		ctx.systemPrompt[0] = "New prompt";
+		expect(p.build(ctx, BUILD_OPTS)).toBe(true);
+		expect(p.toContext().systemPrompt).toEqual(["New prompt"]);
+		expect(p.build(ctx, BUILD_OPTS)).toBe(false);
+	});
+
 	it("returns true when tools change", () => {
 		const p = new StablePrefix();
 		p.build(makeContext({ tools: [makeTool("read")] }), BUILD_OPTS);

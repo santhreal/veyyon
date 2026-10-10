@@ -49,6 +49,8 @@ export interface BuildOptions {
  */
 export class StablePrefix {
 	#snapshot: StablePrefixSnapshot | null = null;
+	/** The JSON-visible structure the snapshot was built from; see {@link snapshotJson}. */
+	#identity: unknown = null;
 	#version = 0;
 
 	get fingerprint(): string {
@@ -66,11 +68,19 @@ export class StablePrefix {
 	 * Returns `true` if the prefix actually changed (cache miss imminent).
 	 */
 	build(context: AgentContext, options: BuildOptions): boolean {
-		const snapshot = takeSnapshot(context, options);
-		if (this.#snapshot && this.#snapshot.fingerprint === snapshot.fingerprint) {
+		const tools =
+			normalizeTools(context.tools, options.intentTracing, options.exampleDialect, options.pruneToolDescriptions) ??
+			[];
+		const identity = prefixIdentity(context.systemPrompt, tools, options);
+		if (this.#snapshot && matchesSnapshot(identity, this.#identity)) {
 			return false;
 		}
-		this.#snapshot = snapshot;
+		this.#snapshot = {
+			systemPrompt: context.systemPrompt.slice(),
+			tools,
+			fingerprint: computeFingerprint(identity),
+		};
+		this.#identity = snapshotJson(identity);
 		this.#version++;
 		return true;
 	}
@@ -418,19 +428,9 @@ function matchesSnapshot(value: unknown, snapshot: unknown): boolean {
 // Snapshot helpers
 // ---------------------------------------------------------------------------
 
-function takeSnapshot(context: AgentContext, options: BuildOptions): StablePrefixSnapshot {
-	const systemPrompt = context.systemPrompt.slice();
-	const tools =
-		normalizeTools(context.tools, options.intentTracing, options.exampleDialect, options.pruneToolDescriptions) ?? [];
+/** Everything the stable prefix sends, in the shape its fingerprint serializes. */
+function prefixIdentity(systemPrompt: readonly string[], tools: readonly Tool[], options: BuildOptions): object {
 	return {
-		systemPrompt,
-		tools,
-		fingerprint: computeFingerprint(systemPrompt, tools, options),
-	};
-}
-
-function computeFingerprint(systemPrompt: string[], tools: Tool[], options: BuildOptions): string {
-	const payload = JSON.stringify({
 		s: systemPrompt,
 		t: tools.map(t => ({
 			n: t.name,
@@ -443,7 +443,11 @@ function computeFingerprint(systemPrompt: string[], tools: Tool[], options: Buil
 		i: options.intentTracing,
 		ex: options.exampleDialect,
 		pd: options.pruneToolDescriptions,
-	});
+	};
+}
+
+function computeFingerprint(identity: object): string {
+	const payload = JSON.stringify(identity);
 	let hash = 0;
 	for (let i = 0; i < payload.length; i++) {
 		hash = ((hash << 5) - hash + payload.charCodeAt(i)) | 0;

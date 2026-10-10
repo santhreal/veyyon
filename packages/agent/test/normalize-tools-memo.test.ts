@@ -24,7 +24,7 @@ function makeTool(): AgentTool<typeof toolSchema, { path: string }> {
  * stamped per-tool, but `normalizeTools` itself re-ran its full `.map()` (object
  * spreads, intent injection, example rendering) on every call even when called
  * repeatedly with the SAME `tools` array and flags — which real callers
- * (`takeSnapshot` in append-only-context.ts, `Agent#buildSideRequestContext`) do
+ * (`StablePrefix.build` in append-only-context.ts, `Agent#buildSideRequestContext`) do
  * on every turn/request. A second call with an unchanged array + flags must
  * reuse the cached result instead of rebuilding it.
  */
