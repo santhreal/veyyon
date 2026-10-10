@@ -11,20 +11,20 @@
  * Plus the ExecutionBackend (containerized or in-process execution engine).
  */
 
-import type { ContainerProgramContext, StagedProgram } from "./container-program";
+import type { ContainerProgramContext, StagedProgram } from "./harness/container-program";
 
 /**
  * Identifier for an execution backend (e.g. "pier", "harbor", "in-process").
  */
-export type BackendId = "pier" | "harbor" | "in-process" | (string & {});
+export type BackendId = "pier" | "harbor" | "in-process" | "local-cli" | (string & {});
 
 /**
  * One axis of the variant matrix that needs an applier: a config overlay, a prompt-variant
- * overlay, or an arm attachment. The harness and the model reach every backend and are not
- * on this list. `core/variant-support.ts` owns the labels, the harness capability each axis
+ * overlay, an arm attachment, or a build. The harness and the model reach every backend and are
+ * not on this list. `plan/variant-axes.ts` holds the labels, the harness capability each axis
  * needs, and the refusal.
  */
-export type VariantAxis = "config" | "promptVariant" | "attachments";
+export type VariantAxis = "config" | "promptVariant" | "attachments" | "build";
 
 /**
  * Result of a preflight check before commencing a run or trial.
@@ -150,12 +150,46 @@ export interface EvalSuite {
 	 * none, and the run says so rather than writing an empty report.
 	 */
 	writeRunReport?(context: SuiteReportContext): Promise<void> | void;
+	/**
+	 * Start what one trial needs before its agent does: a service the task is performed against,
+	 * files in the trial directory, the tools and settings the task requires. A backend that runs a
+	 * suite declaring it calls it once per trial, before the agent starts, and calls the returned
+	 * `finish` once the agent has stopped, whether or not it finished, before the trial is scored.
+	 * Optional: a suite whose tasks are files alone declares none.
+	 */
+	prepareTrial?(cell: TrialCell, context: TrialPrepareContext): Promise<TrialEnvironment>;
+}
+
+/** What a suite prepares one trial in. */
+export interface TrialPrepareContext {
+	/** The trial's directory, where `finish` writes what the grader reads. The agent cannot read it. */
+	readonly trialDir: string;
+	/** The agent's working directory: a task's files go here. */
+	readonly workspace: string;
+	readonly signal?: AbortSignal;
+	readonly options?: Readonly<Record<string, unknown>>;
+}
+
+/** What one trial runs against, from `EvalSuite.prepareTrial`. */
+export interface TrialEnvironment {
+	/** The instruction the agent is sent, in place of the task's own; it may name a URL the suite just started. */
+	readonly instruction?: string;
+	/** The tools the agent runs with, when the task needs a set other than the backend's default. */
+	readonly tools?: readonly string[];
+	/** Settings the task needs, applied under the variant's own config overlay. */
+	readonly settings?: Readonly<Record<string, unknown>>;
+	/** Variables the agent's tools need, such as the browser executable to launch. */
+	readonly env?: Readonly<Record<string, string>>;
+	/** Paths the sandboxed agent must read, such as that executable's directory. */
+	readonly readable?: readonly string[];
+	/** Stop what `prepareTrial` started and write what the grader reads into the trial directory. */
+	finish(): Promise<void>;
 }
 
 /**
  * What a suite renders a finished run from. The run directory holds the journal, the run
- * record and every artifact a backend filed; the model, tasks and repeats are the plan's,
- * so a report names them without re-deriving them from the rows.
+ * record and every artifact a backend filed; the model, tasks, repeats and variants are the
+ * plan's, so a report names them without re-deriving them from the rows.
  */
 export interface SuiteReportContext {
 	readonly runDir: string;
@@ -163,6 +197,8 @@ export interface SuiteReportContext {
 	readonly model: string;
 	readonly tasks: readonly string[];
 	readonly repeats: number;
+	/** The variants' names in plan order; the first is the baseline a paired report compares against. */
+	readonly variants: readonly string[];
 }
 
 /**
@@ -173,6 +209,11 @@ export interface HarnessCapabilities {
 	readonly compaction: boolean;
 	readonly armAttachments: boolean;
 	readonly promptOverrides: boolean;
+	/**
+	 * Whether the harness runs a build a variant names (`--build`), so one plan can compare two
+	 * builds of the same agent trial by trial. A harness that runs only its installed build says no.
+	 */
+	readonly builds: boolean;
 	readonly extra?: Readonly<Record<string, unknown>>;
 }
 
@@ -281,8 +322,45 @@ export interface HarnessAdapter {
 	 * source mount and seeds a credential store) declares none and keeps its own agents.
 	 */
 	containerProgram?(context: ContainerProgramContext): StagedProgram;
+	/**
+	 * How this harness runs as a local process for the `local-cli` backend: one non-interactive run
+	 * of the agent on one instruction, printing its JSON event stream to stdout. A harness that
+	 * declares none cannot run under `local-cli`.
+	 */
+	localCommand?(context: LocalCommandContext): LocalCommand;
+	/**
+	 * Why `build` (a variant's `--build`) cannot run under this harness, or null when it can. The
+	 * `local-cli` backend asks before any trial starts, so a tree without the harness's entry point
+	 * or a file that is not executable is refused once instead of failing every trial.
+	 */
+	validateBuild?(build: string): Promise<string | null>;
 	validatePreflight?(context: SystemPreflightContext): Promise<SystemPreflightResult> | SystemPreflightResult;
 	buildJobConfigKwargs?(context: SystemJobConfigContext): Record<string, unknown>;
+}
+
+/** What a harness builds its local command from. */
+export interface LocalCommandContext {
+	readonly model: string;
+	readonly instruction: string;
+	/** Tools the agent runs with; empty means the harness's own default set. */
+	readonly tools: readonly string[];
+	/** Settings overlay files, applied in order. */
+	readonly configFiles: readonly string[];
+	/** The build the variant names: a source tree or an executable, or null for the harness's default. */
+	readonly build: string | null;
+	/** The directory holding the credential the model needs, and nothing else. */
+	readonly agentDir: string;
+	readonly options: Readonly<Record<string, unknown>>;
+}
+
+/** One local run of a harness. */
+export interface LocalCommand {
+	readonly command: string;
+	readonly args: readonly string[];
+	/** Variables the run needs beyond the backend's own minimal environment. */
+	readonly env: Readonly<Record<string, string>>;
+	/** Paths the sandboxed run must read: the build, the runtime it runs on. */
+	readonly readable: readonly string[];
 }
 
 /**
@@ -343,7 +421,7 @@ export interface ExecutionBackend {
 }
 
 /**
- * One member of the variant matrix: product of harness × config × prompt variant × model.
+ * One member of the variant matrix: product of harness × config × prompt variant × model × build.
  */
 export interface Variant {
 	readonly name: string;
@@ -352,6 +430,8 @@ export interface Variant {
 	readonly promptVariantPath: string | null;
 	readonly model: string;
 	readonly attachments: readonly string[];
+	/** The build the variant runs (`--build`), or absent for the harness's default build. */
+	readonly build?: string | null;
 }
 
 /**

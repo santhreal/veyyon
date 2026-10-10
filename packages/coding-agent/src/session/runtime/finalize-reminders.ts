@@ -44,15 +44,18 @@ export interface FinalizeRemindersHost {
 	awaitingRewind(): boolean;
 	/** Schedule the continuation that answers a reminder, in the current prompt generation. */
 	scheduleContinue(): void;
+	/** The session's active tool names, so the verification reminder names only checks it can run. */
+	activeToolNames(): Iterable<string>;
 }
 
 export class FinalizeReminders {
 	/** Tool executions and user turns, read by the verification and review reminders. */
-	readonly evidence = new VerificationEvidenceLedger();
+	readonly evidence: VerificationEvidenceLedger;
 	readonly #host: FinalizeRemindersHost;
 
 	constructor(host: FinalizeRemindersHost) {
 		this.#host = host;
+		this.evidence = new VerificationEvidenceLedger(() => host.activeToolNames());
 	}
 
 	/** Remind an agent with an open checkpoint to rewind before it yields. `true` when sent. */

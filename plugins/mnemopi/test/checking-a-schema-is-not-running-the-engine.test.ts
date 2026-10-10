@@ -150,9 +150,17 @@ describe("asking whether a model is configured is not calling one", () => {
 		expect(reach(relative)).toBeLessThanOrEqual(ceiling);
 	});
 
-	/** The calling half keeps the engine, because calling a model requires the streaming engine. Measured at 203. */
-	it("local-llm reaches at most 215 modules", () => {
-		expect(reach("core/local-llm.ts")).toBeLessThanOrEqual(215);
+	/**
+	 * The calling half keeps the engine, because calling a model requires the streaming engine. Measured
+	 * at 203. RE-MEASURED 2026-10-09 at 216: the leaves the streaming engine took since, each imported by
+	 * a module already here and none of them a barrel. `contracts/model` split out `effort.ts`,
+	 * `service-tier.ts` and `stream-block.ts`; the dialects share `bracket-walk.ts` and
+	 * `json-tool-call-scanner.ts`; the catalog reads `catalog-spans.ts`, `compat/share.ts`,
+	 * `provider-models/command-code.ts`, `wire/opencode-headers.ts` and `wire/kimi-code.ts`; the logger
+	 * writes through `log-file.ts` and reads `local-time.ts`.
+	 */
+	it("local-llm reaches at most 220 modules", () => {
+		expect(reach("core/local-llm.ts")).toBeLessThanOrEqual(220);
 	});
 
 	/**

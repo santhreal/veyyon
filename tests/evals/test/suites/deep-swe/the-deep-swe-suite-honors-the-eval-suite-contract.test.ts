@@ -1,8 +1,8 @@
 import { describe, expect, it, spyOn } from "bun:test";
 import { AuthStorage } from "@veyyon/ai";
 import type { EvalSuite } from "../../../engine/contracts";
-import { suites } from "../../../engine/loaded-members";
-import { Registry } from "../../../engine/member-registry";
+import { suites } from "../../../engine/members/loaded";
+import { Registry } from "../../../engine/members/registry";
 import { deepSweSuite } from "../../../suites/deep-swe/main";
 
 describe("DeepSweSuite", () => {

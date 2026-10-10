@@ -55,14 +55,16 @@ export class RunOutput {
 }
 
 /**
- * Render a value as JSON for a run's display output.
+ * Render a value as JSON for a run's display output: compact, since the model reads every character
+ * of it on every later turn, and an observation pretty-printed with two-space indentation is about
+ * two fifths whitespace. The card re-indents it for a person.
  *
  * Delegates to the shared owner in `@veyyon/utils`. This used to be one of five
  * hand-rolled copies that all ended in `String(value)`, so a cyclic or bigint
  * value displayed as the literal text `[object Object]` (see `stringifyJsonSafe`).
  */
 export function safeJsonStringify(value: unknown): string {
-	return stringifyJsonSafe(value, 2);
+	return stringifyJsonSafe(value);
 }
 
 /**

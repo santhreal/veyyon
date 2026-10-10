@@ -25,7 +25,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { ARM_ATTACHMENT_SUFFIXES } from "../../engine/arm-attachments";
+import { ARM_ATTACHMENT_SUFFIXES } from "../../engine/harness/arm-attachments";
 
 /**
  * What one arm reduces to: its parsed config overlay, an optional per-section

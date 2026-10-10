@@ -59,8 +59,13 @@ const FACADE = `${SESSION_DIR}/facade.ts`;
  * prompt count with the macOS power assertion left as collaborators under `runtime/`.
  * The number falls again when the next one leaves. It ratchets: slack is what it takes to not fail
  * on the next honest edit, and a ceiling left far above a shrinking file stops being a bound.
+ * RE-MEASURED 2026-10-09 at 9811: the session-switch rollback record and its single-purpose
+ * adoption steps (+92), the end-of-turn context check split into its recovery cases (+32), the
+ * agent-event reattachment after a part-way failed transition (+24), the composer prediction hook
+ * (+11) and the verification reminder's active-tool-name source (+1) grew the class in place. The
+ * session-switch adoption and rollback is the next concern to leave, and the ceiling falls with it.
  */
-const RUNTIME_CEILING = 9_660;
+const RUNTIME_CEILING = 9_830;
 
 /** The one subdirectory `src/session/` holds: the collaborators. */
 const RUNTIME_DIR = "runtime";

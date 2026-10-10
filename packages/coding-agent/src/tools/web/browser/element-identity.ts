@@ -213,7 +213,7 @@ export async function pointerPoint(target: ElementHandle, offset?: Offset): Prom
  * a detached-node message, and a node that evaluates as disconnected. A connected node that cannot
  * be clicked, and a node whose document is gone, both fail the evaluation and keep their error.
  */
-async function leftTheDocument(target: ElementHandle, error: unknown): Promise<boolean> {
+export async function leftTheDocument(target: ElementHandle, error: unknown): Promise<boolean> {
 	const message = errorMessage(error);
 	if (!DETACHED_ELEMENT_MESSAGES.some(fragment => message.includes(fragment))) return false;
 	const disconnected = await optionalResult(

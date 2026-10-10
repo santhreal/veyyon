@@ -13,7 +13,7 @@ import type {
 	TrialCell,
 	TrialScore,
 } from "../../../engine/contracts";
-import { harnesses } from "../../../engine/loaded-members";
+import { harnesses } from "../../../engine/members/loaded";
 
 function createMockSuite(overrides: Partial<EvalSuite> = {}): EvalSuite {
 	return {

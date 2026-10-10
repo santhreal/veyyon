@@ -134,8 +134,7 @@ function lines(component: SettingsSelectorComponent): string[] {
 }
 
 function modeRow(component: SettingsSelectorComponent): string {
-	// The group heading shares the setting's label; the setting row is the one without the heading glyph.
-	return lines(component).find(line => line.includes("Composer Predictions") && !line.includes("◆")) ?? "";
+	return lines(component).find(line => line.includes("Prediction Source")) ?? "";
 }
 
 describe("the ChatGPT Pro prediction mode without a Pro login", () => {

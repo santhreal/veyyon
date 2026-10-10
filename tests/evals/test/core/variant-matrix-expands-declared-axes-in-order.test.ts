@@ -23,7 +23,7 @@ import {
 	type MutableVariantCellInput,
 	VARIANT_MATRIX_AXES,
 	type VariantMatrixSelection,
-} from "../../engine/variant-matrix";
+} from "../../engine/plan/variant-matrix";
 
 describe("variant matrix declared axis contracts", () => {
 	it("sweeps declared axes at runtime and verifies normalizers, ids, and plurals", () => {
@@ -125,6 +125,7 @@ describe("variant matrix declared axis contracts", () => {
 				promptVariants: axis.id === "promptVariants" ? [] : ["concise"],
 				models: axis.id === "models" ? [] : ["claude-3-7-sonnet"],
 				attachments: axis.id === "attachments" ? [] : undefined,
+				builds: axis.id === "builds" ? [] : undefined,
 			};
 
 			if (EMPTY_SELECTION_IS_A_VALUE.includes(axis.id)) {

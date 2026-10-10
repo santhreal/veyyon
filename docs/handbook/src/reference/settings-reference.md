@@ -176,7 +176,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `composer.predictions.mode` | Composer Predictions | enum | `off` | After each turn, suggest the message you are likely to send next as dim text in the empty composer. Tab inserts it; typing replaces it. Nothing is sent without Enter. Values: `off`, `chatgpt-pro`, `custom`. |
+| `composer.predictions.mode` | Prediction Source | enum | `off` | After each turn, suggest the message you are likely to send next as dim text in the empty composer. Tab inserts it; typing replaces it. Nothing is sent without Enter. Values: `off`, `chatgpt-pro`, `custom`. |
 | `composer.predictions.model` | Prediction Model | modelChain | _(unset)_ | Models that write predictions in Custom mode, from any provider, tried in order: the first one with credentials is used. A :level suffix sets its thinking level. Inherit: the session's model. |
 
 ### Session
@@ -513,6 +513,7 @@ veyyon config get compaction.threshold
 | `browser.headless` | Headless Browser | boolean | `true` | Launch browser in headless mode (disable to show browser UI). |
 | `browser.cmux` | cmux Browser | boolean | `true` | Use cmux WKWebView surfaces for browser automation when a cmux socket is available. Set VEYYON_BROWSER_CMUX=0 or VEYYON_BROWSER_CMUX=1 to override. |
 | `browser.screenshotDir` | Screenshot Directory | string | _(unset)_ | Directory to save screenshots. If unset, screenshots go to a temp file. Supports ~. Examples: ~/Downloads, ~/Desktop, /sdcard/Download (Android). |
+| `browser.naturalInput` | Natural Input | boolean | `false` | Move the pointer along a curved path and rest before each click, pause between typed keys, fill short values one key at a time, and scroll with the wheel. Off: instant clicks, keys without pauses, and every fill in one insertion. Applies from the next browser run. |
 
 ### GitHub
 
@@ -905,4 +906,4 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `tui.maxInlineImageRows` | number | `20` |  |
 | `tui.maxInlineImages` | number | `8` |  |
 
-356 settings in /settings, 118 configuration-file keys, 474 in all.
+357 settings in /settings, 118 configuration-file keys, 475 in all.

@@ -19,7 +19,7 @@ import {
 	readArmAttachment,
 	stageArmAttachment,
 	writeArmAttachmentManifest,
-} from "../../engine/arm-attachments";
+} from "../../engine/harness/arm-attachments";
 import type { Variant } from "../../engine/contracts";
 
 export interface StagedPierAssets {

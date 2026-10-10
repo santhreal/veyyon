@@ -1,0 +1,378 @@
+/**
+ * WHY: an agent's tools run code with the file access of the user running the evals. Browser run
+ * code and a shell can open a task's grader, its fixture sources, or an earlier trial's transcript,
+ * and print a token from the environment into the transcript. This suite runs the real local-cli
+ * backend on a one-task kit suite whose harness command is a probe instead of an agent. The probe
+ * reports what it could read and write, which variables it inherited, and which credentials its
+ * store holds; the report comes back through the backend's own event parsing as the trial's answer.
+ *
+ * It proves a trial inherits only the variables it runs on plus the ones its harness and suite
+ * name; that its credential store holds the model provider's sign-in and nothing else, and is gone
+ * after the trial; and, where the kernel has Landlock, that it cannot open this package, a sibling
+ * trial's files, the tests of the build it runs, the build's git history (a `.git` directory, or a
+ * worktree's `.git` file and the git directories it names, each holding every committed version of
+ * the graders), a link in the build that points at the tests, or a file another process left in the
+ * system temp directory, while its own workspace, home, task settings and the build's
+ * `node_modules` still work, so a sandbox that refused everything would fail too. The rules
+ * themselves are checked to hide every host data directory on any Linux host, every user's runtime
+ * directory (`/run/user`, which holds session cookies and agent sockets) among them.
+ *
+ * Not caught: that `/proc` and `/dev` stay writable for Chrome; a real browser trial is the check.
+ * Without Landlock (every host but Linux, a kernel without it, or no python3) the probe case skips.
+ */
+import { describe, expect, it, spyOn } from "bun:test";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+import { TempDir } from "@veyyon/utils";
+import { credentialSource } from "../../../backends/local-cli/credentials";
+import { LocalCliBackend, type LocalTrialLayout, localTrialLayout } from "../../../backends/local-cli/main";
+import {
+	hostDataDirectories,
+	landlockSandbox,
+	type SandboxRule,
+	sandboxRules,
+} from "../../../backends/local-cli/sandbox";
+import type { RunContext, Variant } from "../../../engine/contracts";
+import { kitTask } from "../../../engine/kit/catalog";
+import { defineSuite } from "../../../engine/kit/suite";
+import { LOCAL_TRIAL_FILES, trialDirFor } from "../../../engine/run/layout";
+import { lookup, probeHarness, writeCredentials } from "./probe-fixtures";
+
+/** Imports a package the build installs, reads and writes what its plan names, and reports as an assistant message. */
+const PROBE = `import * as fs from "node:fs";
+import { Database } from "bun:sqlite";
+import { value } from "probe-dep";
+const plan = JSON.parse(process.argv.at(-1));
+const reads = {};
+for (const file of plan.read) {
+	try { reads[file] = fs.readFileSync(file, "utf8"); } catch (error) { reads[file] = error.code; }
+}
+const writes = {};
+for (const file of plan.write) {
+	try { fs.writeFileSync(file, ""); writes[file] = "ok"; } catch (error) { writes[file] = error.code; }
+}
+const db = new Database(process.env.VEYYON_CODING_AGENT_DIR + "/agent.db", { readonly: true });
+const providers = db.query("SELECT provider FROM auth_credentials ORDER BY provider").all().map(row => row.provider);
+const cached = db.query("SELECT COUNT(*) AS count FROM cache").get().count;
+const report = {
+	home: process.env.HOME,
+	tmp: process.env.TMPDIR,
+	dep: value,
+	planted: Object.keys(process.env).filter(name => name.startsWith("VEYYON_BENCH_PROBE_")),
+	fromHarness: process.env.PROBE_FROM_HARNESS ?? null,
+	providers,
+	cached,
+	reads,
+	writes,
+};
+console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: JSON.stringify(report) }], usage: { input: 10, output: 5 } } }));
+`;
+
+interface Probe {
+	readonly read: readonly string[];
+	readonly write: readonly string[];
+}
+
+/** How the probe tree keeps its history: a `.git` directory, or a worktree's `.git` file. */
+type GitLayout = "directory" | "worktree";
+
+async function writeTree(
+	root: string,
+	git: GitLayout,
+): Promise<{ tree: string; answers: string; answersLink: string; history: string[] }> {
+	const tree = path.join(root, "tree");
+	const answers = path.join(tree, "tests", "answers.ts");
+	const answersLink = path.join(tree, "answers-link.ts");
+	const dep = path.join(tree, "node_modules", "probe-dep");
+	await fs.mkdir(path.dirname(answers), { recursive: true });
+	await fs.mkdir(dep, { recursive: true });
+	await fs.writeFile(path.join(tree, "probe.ts"), PROBE);
+	await fs.writeFile(answers, "the expected answer");
+	// Beside the hidden directory, pointing into it: a grant on the link would land on the answers.
+	await fs.symlink(path.join("tests", "answers.ts"), answersLink);
+	await fs.writeFile(
+		path.join(dep, "package.json"),
+		'{ "name": "probe-dep", "type": "module", "exports": "./index.js" }',
+	);
+	await fs.writeFile(path.join(dep, "index.js"), 'export const value = "resolved";');
+	return { tree, answers, answersLink, history: await writeHistory(tree, git) };
+}
+
+/**
+ * The tree's git history, holding the graders as a checkout's history does. Every part sits inside
+ * the tree, which the trial is granted, so only hiding them keeps them closed. Returns the files a
+ * trial must not open.
+ */
+async function writeHistory(tree: string, git: GitLayout): Promise<string[]> {
+	if (git === "directory") {
+		const object = path.join(tree, ".git", "objects", "graders");
+		await fs.mkdir(path.dirname(object), { recursive: true });
+		await fs.writeFile(object, "the graders, as committed");
+		return [object];
+	}
+	// A worktree's `.git` states its git directory, whose `commondir` names the one with the objects.
+	const common = path.join(tree, "vendor", "git");
+	const gitDir = path.join(common, "worktrees", "tree");
+	const object = path.join(common, "objects", "graders");
+	await fs.mkdir(gitDir, { recursive: true });
+	await fs.mkdir(path.dirname(object), { recursive: true });
+	await fs.writeFile(path.join(tree, ".git"), `gitdir: ${gitDir}\n`);
+	await fs.writeFile(path.join(gitDir, "commondir"), "../..\n");
+	await fs.writeFile(path.join(gitDir, "HEAD"), "ref: refs/heads/main\n");
+	await fs.writeFile(object, "the graders, as committed");
+	return [path.join(tree, ".git"), path.join(gitDir, "HEAD"), object];
+}
+
+interface ProbeRun {
+	readonly report: {
+		readonly home: string;
+		readonly tmp: string;
+		readonly dep: string;
+		readonly planted: readonly string[];
+		readonly fromHarness: string | null;
+		readonly providers: readonly string[];
+		readonly cached: number;
+		readonly reads: Readonly<Record<string, string>>;
+		readonly writes: Readonly<Record<string, string>>;
+	};
+	readonly layout: LocalTrialLayout;
+	readonly paths: Readonly<Record<string, string>>;
+	/** The build's git history files the probe tried to read. */
+	readonly history: readonly string[];
+}
+
+/** One trial of the probe under the real backend, with a sibling trial's files beside it. */
+async function runProbe(
+	root: string,
+	options: { readonly unsandboxed: boolean; readonly git: GitLayout },
+): Promise<ProbeRun> {
+	const { tree, answers, answersLink, history } = await writeTree(root, options.git);
+	const authDb = path.join(root, "agent.db");
+	writeCredentials(authDb);
+	const runsDir = path.join(root, "runs");
+	const cell = { variant: "arm", suite: "sandbox-probe", task: "probe-task", repeat: 0 };
+	// The scratch root is the system temp directory's, shared with any other run on the host.
+	const runId = `probe-${path.basename(root)}`;
+	const sibling = path.join(trialDirFor(runsDir, runId, { ...cell, task: "other-task" }), LOCAL_TRIAL_FILES.events);
+	await fs.mkdir(path.dirname(sibling), { recursive: true });
+	await fs.writeFile(sibling, "an earlier trial's transcript");
+	// A concurrent trial's scratch, which sits beside this trial's own.
+	const other = localTrialLayout(runsDir, runId, { ...cell, task: "other-task" });
+	const otherScratch = path.join(other.workspace, "secret.txt");
+	await fs.mkdir(path.dirname(otherScratch), { recursive: true });
+	await fs.writeFile(otherScratch, "another trial's workspace");
+	await using _otherScratch = { [Symbol.asyncDispose]: () => fs.rm(other.scratch, { recursive: true, force: true }) };
+	// A directory in the system temp directory beside the scratch: another process's, which a trial
+	// with its own TMPDIR has no reason to read or change.
+	const outside = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-probe-outside-"));
+	await using _outside = { [Symbol.asyncDispose]: () => fs.rm(outside, { recursive: true, force: true }) };
+	const planted = path.join(outside, "note.txt");
+	await fs.writeFile(planted, "another process's file");
+	const layout = localTrialLayout(runsDir, runId, cell);
+	const paths: Record<string, string> = {
+		answers,
+		answersLink,
+		planted,
+		sibling,
+		otherScratch,
+		grader: import.meta.filename,
+	};
+
+	const task = kitTask<Record<string, never>>({
+		id: "probe-task",
+		title: "probe",
+		capabilities: ["probe"],
+		difficulty: "easy",
+		async start({ workspace }) {
+			const scratch = path.dirname(workspace);
+			paths.taskFile = path.join(workspace, "task.txt");
+			paths.settings = path.join(scratch, "agent", "task-settings.yml");
+			paths.workspaceOut = path.join(workspace, "out.txt");
+			paths.homeOut = path.join(scratch, "home", "out.txt");
+			paths.tmpOut = path.join(scratch, "tmp", "out.txt");
+			paths.siblingOut = path.join(path.dirname(sibling), "x");
+			paths.systemTmpOut = path.join(outside, "escape.txt");
+			await fs.writeFile(paths.taskFile, "the task's own file");
+			const plan: Probe = {
+				read: [
+					paths.taskFile,
+					paths.settings,
+					answers,
+					answersLink,
+					planted,
+					sibling,
+					otherScratch,
+					import.meta.filename,
+					...history,
+				],
+				write: [paths.workspaceOut, paths.homeOut, paths.tmpOut, "/dev/null", paths.siblingOut, paths.systemTmpOut],
+			};
+			return { instruction: JSON.stringify(plan), solve: async () => "", finish: async () => ({}) };
+		},
+		checks: [{ id: "answered", description: "answered", pass: (_state, answer) => answer.length > 0 }],
+	});
+	const suite = defineSuite({
+		id: "sandbox-probe",
+		version: "1.0.0",
+		displayName: "Sandbox probe",
+		description: "one probe task",
+		sourceDir: root,
+		capabilities: { probe: "probe" },
+		tasks: [task],
+		tools: [],
+		settings: { probe: { enabled: true } },
+		defaultTimeBudgetSec: 60,
+	});
+	const variant: Variant = {
+		name: "arm",
+		harness: "probe",
+		configPath: null,
+		promptVariantPath: null,
+		model: "probe/model",
+		attachments: [],
+		build: tree,
+	};
+	const context: RunContext = {
+		runId,
+		suite,
+		workDir: root,
+		runsDir,
+		harnesses: lookup(probeHarness(tree, "probe.ts")),
+		options: { variants: [variant], authDb, ...(options.unsandboxed ? { unsandboxed: true } : {}) },
+	};
+	const backend = new LocalCliBackend();
+	const verdict = await backend.preflight(context);
+	expect(verdict).toEqual({ ok: true });
+
+	// Set for this one trial and removed at once: the backend reads the runner's own environment.
+	process.env.VEYYON_BENCH_PROBE_TOKEN = "not-a-real-token";
+	try {
+		const artifacts = await backend.runTrial(cell, context);
+		expect(artifacts.trialDir).toBe(layout.trialDir);
+		expect(artifacts.usage?.extra).toEqual({ turns: 1, toolCalls: 0 });
+	} finally {
+		delete process.env.VEYYON_BENCH_PROBE_TOKEN;
+	}
+	const answer = await fs.readFile(path.join(layout.trialDir, LOCAL_TRIAL_FILES.answer), "utf8");
+	return { report: JSON.parse(answer), layout, paths, history };
+}
+
+describe("a local trial", () => {
+	it("gives Chrome a temp directory short enough for its socket, however long the trial's names", () => {
+		const long = "x".repeat(120);
+		const layout = localTrialLayout(path.join("/", long, "runs"), long, {
+			variant: long,
+			suite: long,
+			task: long,
+			repeat: 9,
+		});
+		// Chrome aborts its launch when the socket it makes under TMPDIR exceeds 107 bytes.
+		const socket = path.join(layout.tmp, "com.google.Chrome.XXXXXX", "SingletonSocket");
+		expect(Buffer.byteLength(socket)).toBeLessThanOrEqual(107);
+		expect(layout.scratch).not.toBe(
+			localTrialLayout("/runs", "other", { variant: "a", suite: "s", task: "t", repeat: 0 }).scratch,
+		);
+	});
+
+	it("inherits only its own variables and holds only its model provider's sign-in", async () => {
+		await using dir = await TempDir.create("@evals-local-cli-env-");
+		const { report, layout } = await runProbe(dir.path(), {
+			unsandboxed: !landlockSandbox().usable,
+			git: "directory",
+		});
+		expect(report.home).toBe(layout.home);
+		expect(report.tmp).toBe(layout.tmp);
+		expect(report.planted).toEqual([]);
+		expect(report.fromHarness).toBe("set");
+		expect(report.providers).toEqual(["probe"]);
+		expect(report.cached).toBe(0);
+		expect(report.dep).toBe("resolved");
+		// The scratch, and the credential in it, is gone; the workspace is kept in the record.
+		expect(await fs.stat(layout.scratch).catch(() => null)).toBeNull();
+		expect(await fs.readFile(path.join(layout.trialDir, "workspace", "task.txt"), "utf8")).toBe(
+			"the task's own file",
+		);
+	});
+
+	for (const git of ["directory", "worktree"] as const) {
+		it.skipIf(!landlockSandbox().usable)(
+			`opens its own files and none of the graders, with a ${git} history`,
+			async () => {
+				await using dir = await TempDir.create("@evals-local-cli-sandbox-");
+				const { report, paths, history } = await runProbe(dir.path(), { unsandboxed: false, git });
+				expect(report.reads).toEqual({
+					[paths.taskFile as string]: "the task's own file",
+					[paths.settings as string]: "probe:\n  enabled: true\n",
+					[paths.answers as string]: "EACCES",
+					[paths.answersLink as string]: "EACCES",
+					[paths.planted as string]: "EACCES",
+					[paths.sibling as string]: "EACCES",
+					[paths.otherScratch as string]: "EACCES",
+					[paths.grader as string]: "EACCES",
+					...Object.fromEntries(history.map(file => [file, "EACCES"])),
+				});
+				expect(report.writes).toEqual({
+					[paths.workspaceOut as string]: "ok",
+					[paths.homeOut as string]: "ok",
+					[paths.tmpOut as string]: "ok",
+					"/dev/null": "ok",
+					[paths.siblingOut as string]: "EACCES",
+					[paths.systemTmpOut as string]: "EACCES",
+				});
+			},
+		);
+	}
+
+	it.skipIf(process.platform !== "linux")(
+		"reads no user's home, runtime directory, temp directory or mounted media, beyond what is granted in one",
+		async () => {
+			// A runner whose home and TMPDIR sit outside `/home` and `/tmp`: each is hidden by its own
+			// entry, not by the conventional directory above it.
+			const home = "/var/lib/veyyon-probe-home";
+			const tmp = "/var/lib/veyyon-probe-tmp";
+			const homedir = spyOn(os, "homedir").mockReturnValue(home);
+			const tmpdir = spyOn(os, "tmpdir").mockReturnValue(tmp);
+			let rules: SandboxRule[];
+			let hostData: string[];
+			try {
+				hostData = hostDataDirectories();
+				rules = await sandboxRules({ hidden: [], read: [path.join(home, "src", "veyyon")], write: [] });
+			} finally {
+				homedir.mockRestore();
+				tmpdir.mockRestore();
+			}
+			expect(hostData).toEqual(expect.arrayContaining([home, tmp]));
+			const opens = (file: string) =>
+				rules.some(
+					rule =>
+						rule.access !== "list" &&
+						(file === rule.path || file.startsWith(rule.path === "/" ? "/" : `${rule.path}/`)),
+				);
+			const userFiles = [
+				"/home/someone/notes.txt",
+				"/root/.ssh/id_ed25519",
+				"/run/user/1000/ICEauthority",
+				"/tmp/another-process/state.json",
+				"/var/tmp/another-process/state.json",
+				"/mnt/data/report.csv",
+				"/media/usb/photo.jpg",
+				"/run/media/someone/usb/photo.jpg",
+				path.join(tmp, "another-process", "state.json"),
+				path.join(home, ".ssh", "id_ed25519"),
+			];
+			expect(userFiles.filter(opens)).toEqual([]);
+			const granted = [path.join(home, "src", "veyyon", "src", "cli.ts"), "/etc/hosts", "/usr/lib/os-release"];
+			expect(granted.filter(opens)).toEqual(granted);
+		},
+	);
+});
+
+describe("the credential store a local trial copies", () => {
+	it("is the one the run names, by the harness flag or by a caller's option", () => {
+		expect(credentialSource({ "auth-db": "stores/agent.db" })).toBe(path.resolve("stores/agent.db"));
+		expect(credentialSource({ authDb: "/stores/a.db", "auth-db": "/stores/b.db" })).toBe(
+			path.resolve("/stores/a.db"),
+		);
+	});
+});

@@ -6,9 +6,9 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { AUTH_DB_SOURCES, requireStagedAuthCanServeToken } from "../../../engine/auth-preflight";
-import { decideAuthSeed, probeCredentialStore, snapshotCredentialStore } from "../../../engine/auth-seed";
-import { BUILD_COMMAND_TIMEOUT_MS, syncCommandOptions } from "../../../engine/bounded-command";
+import { AUTH_DB_SOURCES, requireStagedAuthCanServeToken } from "../../../engine/auth/preflight";
+import { decideAuthSeed, probeCredentialStore, snapshotCredentialStore } from "../../../engine/auth/seed";
+import { BUILD_COMMAND_TIMEOUT_MS, syncCommandOptions } from "../../../engine/io/bounded-command";
 import { assetsDir, authDbPath, codingAgentDir, evalsPackageDir, veyBinaryPath } from "../../../engine/package-paths";
 import { BinaryBuildFailedError, MissingCredentialStoreError, MissingRequiredFileError } from "./errors";
 

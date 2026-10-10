@@ -25,8 +25,15 @@
  * the point lookup and the mouse event, which lands the click where the element was; a regression
  * that only shows when a redraw lands between two round trips, such as an action that checks the
  * node in one and acts in the next, which the redrawing pages hit on some iterations and not on
- * every one; and keystrokes from `fill`, `type` and `press`, which go to whatever holds focus when
+ * every one; keystrokes from `fill`, `type` and `press`, which go to whatever holds focus when
  * they arrive.
+ *
+ * A click with `browser.naturalInput` on holds the button down longer than the redrawing pages keep a
+ * node, so the button goes down on one node and comes up on its replacement, and Chromium sends no
+ * click. The click counts on those pages prove the press is made again on the replacement until it
+ * reaches it, once: a missed click left unreported, or one pressed again after it reached the
+ * element, changes the count. Not caught: such a click through a handle with no relocation (a CSS
+ * selector), which ends without a click, as a press that takes its element away does.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as http from "node:http";
@@ -136,11 +143,11 @@ const WRAPPED_ACTIONS: Record<string, ActionCase> = {
 		expected: "Query:true",
 	},
 	fill: { element: "Query", act: "await h.fill('hello');", read: QUERY_VALUE, expected: "hello" },
+	type: { element: "Query", act: "await h.type('abc');", read: QUERY_VALUE, expected: "abc" },
 };
 
 /** Puppeteer actions that reach the element through the handle's wrapped `focus()`. */
 const FOCUS_ACTIONS: Record<string, ActionCase> = {
-	type: { element: "Query", act: "await h.type('abc');", read: QUERY_VALUE, expected: "abc" },
 	press: { element: "Query", act: "await h.press('x');", read: QUERY_VALUE, expected: "x" },
 };
 
@@ -164,15 +171,30 @@ const SELECTOR_ACTIONS: Record<string, ActionCase> = {
 };
 
 const TAB = `redraw-${process.pid}`;
+const INSTANT_TAB = `redraw-instant-${process.pid}`;
+/** A session with `browser.naturalInput` on. */
 let tool: BrowserTool;
+/** A session with `browser.naturalInput` off, whose presses are puppeteer's instant ones. */
+let instantTool: BrowserTool;
 let server: http.Server;
 let base: string;
 
-/** Loads `path` fresh in the shared tab, runs `body`, and returns its result or `error: <message>`. */
-async function runOn(path: string, body: string): Promise<string> {
+/** Loads `path` fresh in a shared tab, runs `body`, and returns its result or `error: <message>`. */
+async function runOn(path: string, body: string, naturalInput = true): Promise<string> {
 	const code = `await tab.goto(${JSON.stringify(`${base}${path}`)});\ntry {\n${body}\n} catch (e) { return 'error: ' + e.message; }`;
-	const result = await tool.execute("run", { action: "run", name: TAB, code, timeout: 60 });
+	const [runner, name] = naturalInput ? [tool, TAB] : [instantTool, INSTANT_TAB];
+	const result = await runner.execute("run", { action: "run", name, code, timeout: 60 });
 	return result.content.flatMap(part => (part.type === "text" ? [part.text] : [])).join("");
+}
+
+function sessionWith(settings: Record<string, unknown>): ToolSession {
+	return {
+		cwd: import.meta.dirname,
+		hasUI: false,
+		getSessionFile: () => null,
+		getSessionSpawns: () => "*",
+		settings: Settings.isolated({ "browser.headless": true, ...settings }),
+	};
 }
 
 describe.skipIf(!CHROMIUM_AVAILABLE)("an element the page redraws still takes the action", () => {
@@ -185,18 +207,14 @@ describe.skipIf(!CHROMIUM_AVAILABLE)("an element the page redraws still takes th
 		server.listen(0, "127.0.0.1", () => resolve());
 		await promise;
 		base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-		const session: ToolSession = {
-			cwd: import.meta.dirname,
-			hasUI: false,
-			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
-			settings: Settings.isolated({ "browser.headless": true }),
-		};
-		tool = new BrowserTool(session);
+		tool = new BrowserTool(sessionWith({ "browser.naturalInput": true }));
+		instantTool = new BrowserTool(sessionWith({ "browser.naturalInput": false }));
 		await tool.execute("open", { action: "open", name: TAB, url: "about:blank" });
+		await instantTool.execute("open", { action: "open", name: INSTANT_TAB, url: "about:blank" });
 	}, 60_000);
 
 	afterAll(async () => {
+		await instantTool.execute("close", { action: "close", name: INSTANT_TAB });
 		await tool.execute("close", { action: "close", name: TAB, kill: true });
 		server.close();
 	});
@@ -441,11 +459,13 @@ return outcome + ' | clicks=' + await tab.evaluate(() => ${CLICKS_ON_SAVE});`;
 					expected: String(TIMES),
 				},
 			};
-			for (const [label, { loop, read, expected }] of Object.entries(loops)) {
-				it(label, async () => {
-					const body = `${loop}\nreturn String(await tab.evaluate(() => ${read}));`;
-					expect(await runOn(path, body)).toBe(expected);
-				}, 60_000);
+			for (const naturalInput of [true, false]) {
+				for (const [label, { loop, read, expected }] of Object.entries(loops)) {
+					it(`${label}, natural input ${naturalInput ? "on" : "off"}`, async () => {
+						const body = `${loop}\nreturn String(await tab.evaluate(() => ${read}));`;
+						expect(await runOn(path, body, naturalInput)).toBe(expected);
+					}, 60_000);
+				}
 			}
 		});
 	}

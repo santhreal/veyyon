@@ -4,7 +4,7 @@ import {
 	isDecidedTrialStatus,
 	isTrialStatus,
 	type TrialStatus,
-} from "../../engine/store-shapes";
+} from "../../engine/wire/store-shapes";
 import { TaskChips } from "./task-chips";
 import { RoleTag } from "./ui";
 

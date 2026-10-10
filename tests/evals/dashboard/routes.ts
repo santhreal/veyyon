@@ -1,4 +1,4 @@
-import { type HttpMethod, SERVER_ROUTES } from "../engine/store-shapes";
+import { type HttpMethod, SERVER_ROUTES } from "../engine/wire/store-shapes";
 
 /**
  * Resolves a server route path by looking up the declared RouteDescriptor in SERVER_ROUTES

@@ -35,15 +35,33 @@ describe("collapseWhitespace", () => {
  */
 describe("collapse-whitespace source lock", () => {
 	const IDIOM = 'replace(/\\s+/g, " ").trim()';
+	/**
+	 * Sources whose copy of the idiom runs in a browser page, where no module can be imported:
+	 * `probePress` and `probeFrameHit` in the browser tool's press module are serialized into the page
+	 * they probe, and so is the `:has-text()` query handler puppeteer injects. Permanent, since the
+	 * reason is where the code runs; a key that stops naming a file with the idiom fails below, because
+	 * a key that matches nothing exempts nothing.
+	 */
+	const RUNS_IN_THE_PAGE = new Set([
+		"coding-agent/src/tools/web/browser/press.ts",
+		"coding-agent/src/tools/web/browser/has-text.ts",
+	]);
 
 	// The monorepo walk + skip-set is shared with every other source-ownership
 	// lock (see ./support/package-sources).
 	it("no production source re-inlines the collapse idiom outside the owner", async () => {
 		const offenders: string[] = [];
+		const exemptSeen = new Set<string>();
 		for (const { rel, text } of await collectPackageSources({ dirs: ["src"] })) {
 			if (rel === "utils/src/collapse-whitespace.ts") continue;
-			if (text.includes(IDIOM)) offenders.push(rel);
+			if (!text.includes(IDIOM)) continue;
+			if (RUNS_IN_THE_PAGE.has(rel)) exemptSeen.add(rel);
+			else offenders.push(rel);
 		}
 		expect(offenders, "inline collapse idiom — import collapseWhitespace from @veyyon/utils").toEqual([]);
+		expect(
+			[...RUNS_IN_THE_PAGE].filter(rel => !exemptSeen.has(rel)),
+			"RUNS_IN_THE_PAGE entries that no longer name a file with the idiom — repoint or drop the key",
+		).toEqual([]);
 	});
 });

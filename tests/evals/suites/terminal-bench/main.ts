@@ -3,7 +3,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { $which, errorMessage } from "@veyyon/utils";
-import { sumOfMeasured } from "../../engine/trial-outcomes";
+import { sumOfMeasured } from "../../engine/trial/outcomes";
 import type {
 	BackendId,
 	EvalSuite,

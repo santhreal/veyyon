@@ -39,18 +39,20 @@ function markdownFiles(dir: string, out: string[] = []): string[] {
 			markdownFiles(path.join(dir, entry.name), out);
 			continue;
 		}
-		if (entry.name.endsWith(".md")) out.push(path.join(dir, entry.name));
+		// A changelog records paths as they were when each entry was written.
+		if (entry.name.endsWith(".md") && entry.name !== "CHANGELOG.md") out.push(path.join(dir, entry.name));
 	}
 	return out;
 }
 
 /**
  * A token is a candidate path when it names one of this repository's source extensions, or starts
- * at a directory this repository has. Python module paths (`pier.agents.installed.base`), container
- * paths (`/opt/veyyon/src`), URLs and placeholders (`<name>`) are not repository paths and are not
- * candidates.
+ * at a directory this repository or this package has. Python module paths
+ * (`pier.agents.installed.base`), container paths (`/opt/veyyon/src`), URLs and placeholders
+ * (`<name>`) are not repository paths and are not candidates.
  */
-const CANDIDATE = /^(?:packages\/|crates\/|scripts\/|docs\/|website\/|src\/|test\/|agents\/|proof\/)[\w./-]+$/;
+const CANDIDATE =
+	/^(?:packages\/|crates\/|scripts\/|docs\/|website\/|src\/|test\/|agents\/|proof\/|engine\/|backends\/|suites\/|harnesses\/|benches\/|measurements\/|tools\/|arms\/|store\/|api\/)[\w./-]+$/;
 const SOURCE_FILE = /\.(?:ts|tsx|js|py|rs|json|toml|yml|yaml|sh|md|sql|sqlite)$/;
 
 function candidatePaths(text: string): string[] {

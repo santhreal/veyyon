@@ -7,8 +7,8 @@ import * as path from "node:path";
 import { escapeMarkdownTableCell } from "@veyyon/utils/markdown-table";
 import { clampLow } from "@veyyon/utils";
 import type { HarnessBackendBinding } from "../../engine/contracts";
-import type { TrialStatus } from "../../engine/store-shapes";
-import { formatUsd } from "../../engine/store-shapes";
+import type { TrialStatus } from "../../engine/wire/store-shapes";
+import { formatUsd } from "../../engine/wire/store-shapes";
 import type { Config } from "./config";
 import { aggregate, readJobResult, readTrials, type Trial } from "./results";
 

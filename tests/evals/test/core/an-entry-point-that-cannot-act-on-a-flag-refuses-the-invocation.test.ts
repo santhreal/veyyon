@@ -45,7 +45,7 @@ import {
 	parseArgv,
 	parseFlags,
 	UnknownFlagError,
-} from "../../engine/flag-grammar";
+} from "../../engine/plan/flag-grammar";
 
 const run = promisify(execFile);
 

@@ -7,8 +7,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { trimTrailingSlashes } from "@veyyon/utils";
 import type { Server } from "bun";
-import { fetchWithin } from "../../engine/bounded-fetch";
-import { syncCommandOptions } from "../../engine/bounded-command";
+import { fetchWithin } from "../../engine/io/bounded-fetch";
+import { syncCommandOptions } from "../../engine/io/bounded-command";
 import { type Config, VMNET_HOST_IP } from "./config";
 
 export interface VmnetGatewayForwarder {

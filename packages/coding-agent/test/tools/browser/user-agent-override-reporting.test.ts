@@ -3,9 +3,9 @@
  * say so.
  *
  * `sendUserAgentOverride` applies the override through two CDP domains. Every
- * failure was swallowed: `Network.enable` by a bare `catch {}`, and both
- * `setUserAgentOverride` calls at `logger.debug`. So a target that kept its
- * headless user agent was indistinguishable from one that took the override.
+ * failure was swallowed: both `setUserAgentOverride` calls logged at
+ * `logger.debug`. So a target that kept its headless user agent was
+ * indistinguishable from one that took the override.
  *
  * That is not cosmetic. The override is what stops a page detecting that it is
  * automated, so losing it means the page can serve different content, a
@@ -24,23 +24,26 @@ import { logger } from "@veyyon/utils";
 
 const OVERRIDE: UserAgentOverride = {
 	userAgent: "Mozilla/5.0 (X11; Linux x86_64) Chrome/120.0.0.0",
-	platform: "Linux x86_64",
-	acceptLanguage: "en-US,en",
 	userAgentMetadata: {
 		brands: [{ brand: "Chromium", version: "120" }],
 		fullVersion: "120.0.0.0",
 		fullVersionList: [{ brand: "Chromium", version: "120.0.0.0" }],
 		bitness: "64",
 		platform: "Linux",
-		platformVersion: "6.1.0",
+		platformVersion: "",
 		architecture: "x86",
 		model: "",
 		mobile: false,
+		wow64: false,
+		formFactors: ["Desktop"],
 	},
 };
 
 /** A CDP client that fails exactly the methods named, and records every call. */
-function client(failing: string[]): {
+function client(
+	failing: string[],
+	reason = "is not supported by this target",
+): {
 	send: (method: string, params?: Record<string, unknown>) => Promise<unknown>;
 	calls: string[];
 } {
@@ -49,7 +52,7 @@ function client(failing: string[]): {
 		calls,
 		async send(method: string): Promise<unknown> {
 			calls.push(method);
-			if (failing.includes(method)) throw new Error(`${method} is not supported by this target`);
+			if (failing.includes(method)) throw new Error(`${method} ${reason}`);
 			return {};
 		},
 	};
@@ -76,7 +79,7 @@ describe("sendUserAgentOverride", () => {
 
 		await sendUserAgentOverride(cdp, OVERRIDE);
 
-		expect(cdp.calls).toEqual(["Network.enable", "Network.setUserAgentOverride", "Emulation.setUserAgentOverride"]);
+		expect(cdp.calls).toEqual(["Network.setUserAgentOverride", "Emulation.setUserAgentOverride"]);
 		expect(warnings).toEqual([]);
 	});
 
@@ -153,41 +156,29 @@ describe("sendUserAgentOverride", () => {
 		expect(String(warnings[0]?.fields.fix)).toContain("Sites may block or behave differently");
 	});
 
-	it("includes a Network.enable failure in the report when everything else also failed", async () => {
-		// `Network.enable` was the one swallowed outright. On its own it is not an
-		// override failure, but when the override IS lost it is the likeliest
-		// explanation, so it belongs in the same report.
-		const cdp = client(["Network.enable", "Network.setUserAgentOverride", "Emulation.setUserAgentOverride"]);
-
-		await sendUserAgentOverride(cdp, OVERRIDE);
-
-		expect(String(warnings[0]?.fields.networkEnable)).toContain("Network.enable is not supported");
-	});
-
-	it("does not mention Network.enable when it succeeded", async () => {
-		// A field that is always present teaches the reader to skip it.
-		const cdp = client(["Network.setUserAgentOverride", "Emulation.setUserAgentOverride"]);
-
-		await sendUserAgentOverride(cdp, OVERRIDE);
-
-		expect(warnings[0]?.fields).not.toHaveProperty("networkEnable");
-	});
-
-	it("does not warn when Network.enable fails but the override still applied", async () => {
-		// `Emulation` does not need the Network domain, so this is a complete
-		// success and must read as one.
-		const cdp = client(["Network.enable", "Network.setUserAgentOverride"]);
+	it("stays quiet when both domains are missing from the target, because a tab or the browser takes no override", async () => {
+		// Every attaching target receives the override before its type is known, so a target without
+		// either domain is the expected shape, not a lost capability.
+		const cdp = client(["Network.setUserAgentOverride", "Emulation.setUserAgentOverride"], "wasn't found");
 
 		await sendUserAgentOverride(cdp, OVERRIDE);
 
 		expect(warnings).toEqual([]);
 	});
 
+	it("sends both commands before it first yields, so a target waiting for its debugger has them before its resume", () => {
+		const cdp = client([]);
+
+		void sendUserAgentOverride(cdp, OVERRIDE);
+
+		expect(cdp.calls).toEqual(["Network.setUserAgentOverride", "Emulation.setUserAgentOverride"]);
+	});
+
 	it("resolves rather than throwing when every call fails", async () => {
 		// It is called from a CDP event handler for every new target. Throwing
 		// there would take down attachment handling for an override that is best
 		// effort by nature.
-		const cdp = client(["Network.enable", "Network.setUserAgentOverride", "Emulation.setUserAgentOverride"]);
+		const cdp = client(["Network.setUserAgentOverride", "Emulation.setUserAgentOverride"]);
 
 		await expect(sendUserAgentOverride(cdp, OVERRIDE)).resolves.toBeUndefined();
 	});
@@ -206,7 +197,7 @@ describe("sendUserAgentOverride", () => {
 
 		await sendUserAgentOverride(cdp, OVERRIDE);
 
+		expect(sent[0]).toEqual(OVERRIDE as unknown as Record<string, unknown>);
 		expect(sent[1]).toEqual(OVERRIDE as unknown as Record<string, unknown>);
-		expect(sent[2]).toEqual(OVERRIDE as unknown as Record<string, unknown>);
 	});
 });

@@ -31,17 +31,18 @@ import type {
 	TrialScore,
 	Variant,
 } from "../../engine/contracts";
-import { backends, harnesses } from "../../engine/loaded-members";
+import { backends, harnesses } from "../../engine/members/loaded";
 
 /**
  * Backends whose trials are not driven here, and why. Pinned by exact equality: a backend added to
  * the registry turns this red until someone drives it or records it.
  *
- * `pier` and `harbor` spawn their own binaries, which the test sandbox does not have. Both wait on a
- * trial through `awaitTrialProcessOutput`, whose listener pairing is proven in
+ * `pier` and `harbor` spawn their own binaries, which the test sandbox does not have, and `local-cli`
+ * spawns the harness's own command. All three wait on a trial through `awaitTrialProcessOutput`,
+ * whose listener pairing is proven in
  * `test/core/a-cancelled-trial-stops-waiting-on-the-pipes-its-tree-held-open.test.ts`.
  */
-const NOT_DRIVEN_HERE = ["harbor", "pier"];
+const NOT_DRIVEN_HERE = ["harbor", "local-cli", "pier"];
 
 interface ListenerLedger {
 	readonly signal: AbortSignal;

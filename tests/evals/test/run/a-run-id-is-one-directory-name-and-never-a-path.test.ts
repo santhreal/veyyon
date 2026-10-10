@@ -26,11 +26,11 @@ import * as path from "node:path";
 import { ManagerServer } from "../../api/main";
 import { RunnerManager } from "../../api/runner";
 import type { EvalSuite, PreflightVerdict, TaskDescriptor, TrialScore } from "../../engine/contracts";
-import { harnesses } from "../../engine/loaded-members";
+import { harnesses } from "../../engine/members/loaded";
 import { UnsafePathSegmentError } from "../../engine/package-paths";
-import { journalPathFor } from "../../engine/run-journal";
-import { buildRunPlan } from "../../engine/run-plan";
-import { FREE_FORM_PARAMS, PATH_SEGMENT_PARAMS, SERVER_ROUTES } from "../../engine/store-shapes";
+import { buildRunPlan } from "../../engine/plan/run-plan";
+import { journalPathFor } from "../../engine/run/journal";
+import { FREE_FORM_PARAMS, PATH_SEGMENT_PARAMS, SERVER_ROUTES } from "../../engine/wire/store-shapes";
 import { main, parseEvalsArgs } from "../../evals";
 import { assertSafeJobName, RunStore } from "../../store/sqlite";
 

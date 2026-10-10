@@ -21,6 +21,7 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { HarnessAdapter, Variant } from "../../engine/contracts";
 import {
 	CONTAINER_PROGRAM_FILE,
 	CONTAINER_PROGRAM_PLACEHOLDERS,
@@ -29,9 +30,8 @@ import {
 	containerProgramPath,
 	programDirFor,
 	validateContainerProgram,
-} from "../../engine/container-program";
-import type { HarnessAdapter, Variant } from "../../engine/contracts";
-import { harnesses } from "../../engine/loaded-members";
+} from "../../engine/harness/container-program";
+import { harnesses } from "../../engine/members/loaded";
 import { agentsDir } from "../../engine/package-paths";
 
 /** Harnesses whose container run is one declaration. A new one turns the sweep red. */

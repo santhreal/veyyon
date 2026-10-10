@@ -22,8 +22,10 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { TrialArtifacts, TrialCell } from "../../engine/contracts";
-import { suites } from "../../engine/loaded-members";
+import { KIT_FILES } from "../../engine/kit/suite";
+import { suites } from "../../engine/members/loaded";
 import { internalScratchDir } from "../../engine/package-paths";
+import { LOCAL_TRIAL_FILES } from "../../engine/run/layout";
 
 function createScratchDir(prefix: string): string {
 	const base = internalScratchDir();
@@ -167,7 +169,42 @@ const SUITE_SCORE_DRIVERS: Record<string, SuiteScoreDriver> = {
 			};
 		},
 	},
+
+	browser: kitSuiteDriver("browser", "shop-warranty-answer", {
+		orders: [],
+		returns: [],
+		cart: [],
+		appliedCoupon: null,
+		newsletterSignups: 0,
+		failedSignins: 0,
+		stock: {},
+		expected: { names: ["A", "B", "C"], sku: "SK-AAAAA", years: 5 },
+	}),
+
+	miniwob: kitSuiteDriver("miniwob", "enter-text", { reward: -1, reason: "the text entered did not match" }),
 };
+
+/**
+ * A kit suite grades the `state.json` its services wrote and the `answer.txt` the backend wrote. A
+ * trial that left no state is infrastructure; a trial whose state records nothing done is a zero.
+ */
+function kitSuiteDriver(suite: string, task: string, idleState: unknown): SuiteScoreDriver {
+	const cell: TrialCell = { suite, variant: "baseline", task, repeat: 0 };
+	return {
+		async createInfrastructureFailureArtifacts(scratchDir: string) {
+			const trialDir = path.join(scratchDir, `${suite}-no-state`);
+			fs.mkdirSync(trialDir, { recursive: true });
+			return { cell, artifacts: { trialDir, filePaths: {} } };
+		},
+		async createGenuineZeroArtifacts(scratchDir: string) {
+			const trialDir = path.join(scratchDir, `${suite}-zero`);
+			fs.mkdirSync(trialDir, { recursive: true });
+			fs.writeFileSync(path.join(trialDir, KIT_FILES.state), JSON.stringify(idleState), "utf8");
+			fs.writeFileSync(path.join(trialDir, LOCAL_TRIAL_FILES.answer), "", "utf8");
+			return { cell, artifacts: { trialDir, filePaths: {} } };
+		},
+	};
+}
 
 describe("Score Honesty — every registered suite maps infrastructure failures to reward: null", () => {
 	const registeredSuites = suites.list();

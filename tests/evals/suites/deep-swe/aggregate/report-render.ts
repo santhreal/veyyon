@@ -5,14 +5,13 @@ import { costShares, priceTokens, REFERENCE_RATE_CARD } from "../cost-model";
 import { interpretEncodeArm } from "./encode-probe";
 import { classifyError, providerQuotaStop } from "./error-classification";
 import type { TaskSetProvenance } from "./merge";
+import { holmBonferroni, sweepCanReachSignificance } from "../../../engine/compare/stats";
 import {
 	ceilingBelowNoise,
-	holmBonferroni,
 	mean,
 	pairwiseArmDeltas,
 	pairwiseMetricDeltas,
 	summarizeCell,
-	sweepCanReachSignificance,
 	withinTaskSpreadPct,
 } from "./stats";
 import type { ArmResult, CellSummary } from "./types";

@@ -3,10 +3,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { $which, readPipeText } from "@veyyon/utils";
-import { runBoundedCommand } from "../../engine/bounded-command"
-import { DEFAULT_GRACE_PERIOD_MS } from "../../engine/trial-deadline"
-import { awaitTrialProcessOutput, terminateProcessTree } from "../../engine/trial-process";
-import { boundRawOutput, resolveTrialTimeoutSec } from "../../engine/trial-deadline";
+import { runBoundedCommand } from "../../engine/io/bounded-command"
+import { DEFAULT_GRACE_PERIOD_MS } from "../../engine/trial/deadline"
+import { awaitTrialProcessOutput, terminateProcessTree } from "../../engine/trial/process";
+import { boundRawOutput, resolveTrialTimeoutSec } from "../../engine/trial/deadline";
 import type { PreflightVerdict, TrialArtifacts } from "../../engine/contracts";
 import { MINIMUM_DEEPSWE_PIER_VERSION, pierSupportsSeparateVerifierCollect } from "./version";
 

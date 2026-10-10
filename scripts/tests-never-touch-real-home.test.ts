@@ -214,6 +214,12 @@ export const ALLOWLIST: ReadonlyArray<AllowlistEntry> = [
 			'`runtime.pythonPath` is the interpreter the setup path discovered, either the system python or the managed environment\'s. The spawn is `-c "import matplotlib"`, a capability probe against that specific interpreter, which is the one thing a hardcoded path would answer wrongly.',
 	},
 	{
+		file: "tests/evals/test/backends/local-cli/a-finished-local-trial-leaves-no-process-running.test.ts",
+		rule: "unresolved-spawn-target",
+		reason:
+			"`launch.command` is what `sandboxedLaunch` returns for a host without Landlock: the `python3` that `$which` resolved, running the backend's own `landlock-exec.py --no-rules` launcher over `process.execPath` and an agent script the test wrote into its temp directory. The suite's subject is that launch line, so the spawn runs what `sandboxedLaunch` built rather than a literal; the child runs in the temp cwd, writes only its own child's pid there, and reads no config root.",
+	},
+	{
 		file: "packages/coding-agent/test/cli/startup/an-exiting-timing-run-prints-its-tree-on-the-terminal.test.ts",
 		rule: "unresolved-spawn-target",
 		reason:

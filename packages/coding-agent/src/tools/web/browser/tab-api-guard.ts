@@ -26,6 +26,7 @@ export const TAB_REQUIRED_ARGUMENTS = {
 	evaluate: ["fn"],
 	drag: ["from", "to"],
 	scroll: ["deltaX", "deltaY"],
+	loadStorageState: ["stateOrPath"],
 } as const satisfies Record<string, readonly [string, ...string[]]>;
 
 // Both lookups below are keyed by a name the model wrote, so they are a Set and
@@ -107,7 +108,7 @@ function checkArguments(method: string, args: readonly unknown[]): void {
 			throw new ToolError(
 				typeof value === "string"
 					? `tab.${method}: selector is empty`
-					: `tab.${method}: selector must be a string, got ${typeof value}`,
+					: `tab.${method}: selector must be a string, got ${typeof value}. An element from tab.observe() is tab.id(n), and a snapshot ref is tab.ref("eN") or "aria-ref=eN".`,
 			);
 		}
 	}

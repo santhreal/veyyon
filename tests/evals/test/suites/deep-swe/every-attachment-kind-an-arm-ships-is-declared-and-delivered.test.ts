@@ -36,7 +36,7 @@ import {
 	readArmAttachment,
 	stageArmAttachment,
 	writeArmAttachmentManifest,
-} from "../../../engine/arm-attachments";
+} from "../../../engine/harness/arm-attachments";
 import { agentsDir, armsDir } from "../../../engine/package-paths";
 import {
 	ARM_ATTACHMENT_SUFFIXES,

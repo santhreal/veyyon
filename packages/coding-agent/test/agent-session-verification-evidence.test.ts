@@ -77,6 +77,19 @@ describe("verification evidence ledger", () => {
 		]);
 	});
 
+	/** The reminder names a check only through a tool the session has; a session without the browser tool never reads "browser". */
+	it("names only the proof tools the session has", () => {
+		const named = (active: string[]): string | undefined => {
+			const ledger = new VerificationEvidenceLedger(() => active);
+			recordEdit(ledger);
+			return ledger.takeFinalizationReminder()?.match(/run an appropriate (.*?)check before finalizing/)?.[1];
+		};
+		expect(named(["read", "edit", "bash", "eval", "debug", "browser"])).toBe("bash, eval, debug or browser ");
+		expect(named(["read", "edit", "bash", "eval"])).toBe("bash or eval ");
+		expect(named(["edit", "browser"])).toBe("browser ");
+		expect(named(["read", "edit"])).toBe("");
+	});
+
 	/** A later successful proof candidate must release the finalization gate. */
 	it("allows finalization after a successful post-mutation proof candidate", () => {
 		const ledger = new VerificationEvidenceLedger();

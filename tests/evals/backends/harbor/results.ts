@@ -5,8 +5,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { isRecord, tryParseJson } from "@veyyon/utils";
-import { sumOfMeasured } from "../../engine/trial-outcomes";
-import type { TrialStatus } from "../../engine/store-shapes";
+import { sumOfMeasured } from "../../engine/trial/outcomes";
+import type { TrialStatus } from "../../engine/wire/store-shapes";
 import { harborAgentLogPath } from "./main";
 import { dropCostProbe, probeTrialCost } from "./cost-probe";
 

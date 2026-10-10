@@ -11,7 +11,7 @@ import { describe, expect, it } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ArmRow } from "../../dashboard/components/arm-row";
 import { Delta, pickReferenceArm } from "../../dashboard/components/delta";
-import type { ArmSummary, RunRow } from "../../engine/store-shapes";
+import type { ArmSummary, RunRow } from "../../engine/wire/store-shapes";
 
 function makeRunRow(overrides: Partial<RunRow> = {}): RunRow {
 	return {

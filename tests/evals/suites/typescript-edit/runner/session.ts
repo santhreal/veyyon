@@ -14,7 +14,7 @@ import * as path from "node:path";
 import { RpcClient } from "@veyyon/coding-agent";
 import { errorMessage, estimateTokensFromText, isRecord } from "@veyyon/utils";
 import { InProcessClient, type SharedInfra } from "../../../backends/in-process/client";
-import { teardownWithin } from "../../../engine/trial-deadline";
+import { teardownWithin } from "../../../engine/trial/deadline";
 import { repoRootDir, runsDir } from "../../../engine/package-paths";
 import { formatDirectory } from "../formatter";
 import type { EditTask } from "../tasks";

@@ -8,10 +8,12 @@ violate**. Scope is the core engine only:
 
 - [`hosts/terminal/engine/src/core/tui.ts`](../../hosts/terminal/engine/src/core/tui.ts): frame pipeline, commit ledger, window math, paint emission, cursor placement.
 - [`hosts/terminal/engine/src/core/paint-sequences.ts`](../../hosts/terminal/engine/src/core/paint-sequences.ts): the escape sequence each paint writes (scroll append, window diff, seam and home rewrites, full-paint replay, alternate-screen frame), built from the rows it is given and holding no engine state.
-- [`hosts/terminal/engine/src/core/frame-plan.ts`](../../hosts/terminal/engine/src/core/frame-plan.ts): the records one frame phase returns to the next (render intent, transition, prefix reconciliation, window plan, assembled window).
-- [`hosts/terminal/engine/src/core/renderer.ts`](../../hosts/terminal/engine/src/core/renderer.ts): per-row frame preparation — SGR coalescing, line fitting, committed-prefix resync, cursor-marker extraction.
+- [`hosts/terminal/engine/src/core/frame-plan.ts`](../../hosts/terminal/engine/src/core/frame-plan.ts): the records one frame phase returns to the next (transition, prefix reconciliation, window plan, assembled window, update geometry).
+- [`hosts/terminal/engine/src/core/render-intent.ts`](../../hosts/terminal/engine/src/core/render-intent.ts): the render intent a planned frame takes (full paint or incremental update) and the rule that selects it.
+- [`hosts/terminal/engine/src/core/renderer.ts`](../../hosts/terminal/engine/src/core/renderer.ts): per-row frame preparation (`PreparedFrameCache`, `prepareLine`), cursor-marker extraction, the bytes each row is written as (`terminalLine`, which merges byte-adjacent SGR sequences with `coalesceAdjacentSgr`), and the ConPTY full-paint bound (`truncateLargeConptyFrame`).
+- [`hosts/terminal/engine/src/core/committed-prefix.ts`](../../hosts/terminal/engine/src/core/committed-prefix.ts): the committed-prefix audit (`auditCommittedPrefix`, `findCommittedPrefixResync`, `firstRowDivergence`), which checks a frame against the rows already in native scrollback and returns the row to re-anchor at.
 - [`hosts/terminal/engine/src/core/component-types.ts`](../../hosts/terminal/engine/src/core/component-types.ts): `Component`, the native-scrollback seam interfaces and their accessors.
-- [`hosts/terminal/engine/src/core/overlay.ts`](../../hosts/terminal/engine/src/core/overlay.ts), [`core/scroll.ts`](../../hosts/terminal/engine/src/core/scroll.ts), [`core/cursor.ts`](../../hosts/terminal/engine/src/core/cursor.ts), [`core/image-budget.ts`](../../hosts/terminal/engine/src/core/image-budget.ts), [`core/container.ts`](../../hosts/terminal/engine/src/core/container.ts), [`core/terminal-session.ts`](../../hosts/terminal/engine/src/core/terminal-session.ts), [`core/mouse-routing.ts`](../../hosts/terminal/engine/src/core/mouse-routing.ts): the sibling modules the pipeline calls. `hosts/terminal/engine/src/tui.ts` is a barrel over them and holds no logic.
+- [`hosts/terminal/engine/src/core/overlay.ts`](../../hosts/terminal/engine/src/core/overlay.ts), [`core/scroll.ts`](../../hosts/terminal/engine/src/core/scroll.ts), [`core/cursor.ts`](../../hosts/terminal/engine/src/core/cursor.ts), [`core/image-budget.ts`](../../hosts/terminal/engine/src/core/image-budget.ts), [`core/container.ts`](../../hosts/terminal/engine/src/core/container.ts), [`core/terminal-session.ts`](../../hosts/terminal/engine/src/core/terminal-session.ts), [`core/mouse-routing.ts`](../../hosts/terminal/engine/src/core/mouse-routing.ts), [`core/frame-segments.ts`](../../hosts/terminal/engine/src/core/frame-segments.ts), [`core/render-scheduler.ts`](../../hosts/terminal/engine/src/core/render-scheduler.ts), [`core/frame-pacing.ts`](../../hosts/terminal/engine/src/core/frame-pacing.ts): the sibling modules the pipeline calls. `hosts/terminal/engine/src/tui.ts` is a barrel over them and holds no logic.
 - [`hosts/terminal/engine/src/terminal.ts`](../../hosts/terminal/engine/src/terminal.ts): `ProcessTerminal`, capability probes, private-CSI reassembly.
 - [`hosts/terminal/engine/src/terminal-capabilities.ts`](../../hosts/terminal/engine/src/terminal-capabilities.ts): `TERMINAL` profile, sync-output / DECCARA / image detection.
 - [`hosts/terminal/engine/src/stdin-buffer.ts`](../../hosts/terminal/engine/src/stdin-buffer.ts): escape-sequence reassembly.
@@ -103,7 +105,7 @@ scrolled reader could be looking at.
    exclude the alternate screen.
 1. Compose the frame (`render(width)`), collecting `liveRegionStart` from the
    root children (absolute row indices; the topmost reporter wins).
-2. **Audit the committed prefix** (`auditCommittedPrefix`, skipped on geometry
+2. **Audit the committed prefix** (`auditCommittedPrefix` in `core/committed-prefix.ts`, skipped on geometry
    frames and on `clearScrollback` frames). Components must never
    re-layout declared-final rows, but real flows violate it (a TTSR rewind
    truncating a streamed block, an image-cap demotion shrinking a committed
@@ -130,35 +132,51 @@ scrolled reader could be looking at.
    excuses a terminal from the geometry rebuild: multiplexer panes, and
    terminals that re-report their size on alt-screen toggles (Warp, or
    `VEYYON_TUI_RESIZE_IN_PLACE=1`).
+   A frame that collapsed to a byte-identical prefix of the committed record
+   (pinned chrome taller than the viewport squeezed the transcript) re-bases
+   the commit index and takes no divergence rebuild. When a root child that
+   implements `NativeScrollbackReplay` may have dropped committed rows, the
+   divergence rebuild discards the frame and composes it again as a replace
+   (`#rehydrateDivergence`), so the replay holds the whole transcript.
 4. Window math as in §1. Two special rules:
-   - **Commits freeze** (`C' = C`) while an overlay is visible, and on a
-     geometry frame: composited rows must never enter history, and a resizing
+   - **Commits freeze** (`C' = C`) while an overlay is visible, on a
+     geometry frame, and when the window top would pass the history end
+     (`#historyEndRow`: the end of the last root child that implements
+     `NativeScrollbackReplay`, capped at the pinned footer's first row).
+     Composited rows and chrome rows must never enter history, and a resizing
      multiplexer pane keeps its own old-wrap history (the audit prefix
      re-slices at the new width so the accepted wrap drift is not read as a
-     violation). The hidden gap backfills via the chunk on a later frame.
-   - **Tail re-anchor**, on either of two triggers: the frame shrank into the
+     violation). The hidden gap backfills via the chunk on a later frame. A
+     full paint commits `[0, min(W, history end))`.
+   - **Tail re-anchor**, on any of three triggers: the frame shrank into the
      committed prefix (`L ≤ C`), or the live tail below the boundary no longer
-     fills the viewport while a cursor marker sits in it. Both re-anchor
-     `W = max(0, L − height)` and reset `C = W` (the audit mark re-bases to
-     `min(C, B)` after the emit), keeping the stale history above, with no
-     gesture and no erase.
+     fills the viewport while a cursor marker sits in it or while the previous
+     window already showed committed rows. Each re-anchors
+     `W = max(0, L − height)` and keeps `C`: the rows above the new window top
+     are already in history, the next growth slides the window in place with
+     an in-window rewrite until it passes `C`, and only rows past `C` scroll
+     into history. A geometry frame that leaves `C > L` (a multiplexer pane
+     reflowed its own history) lowers `C` to `L`. No gesture and no erase.
 5. Cursor markers were stripped at compose time into `#frameCursorMarkers`
    (they never reach the terminal, the prefix ledger, or the audit); pick the
    bottom-most marker at or below the window top with `findVisibleCursorMarker`,
-   also used by direct writes, then prepare lines (width fitting,
-   `prepareLinesArray` over `core/renderer.ts`, cached per width in
-   `PreparedFrameCache`), slice the window (or, while a frozen scroll-isolation view
+   also used by direct writes, then prepare lines (`PreparedFrameCache.prepare`
+   in `core/renderer.ts` fits each row with `prepareLine` and reuses a row whose
+   raw bytes and width are unchanged), slice the window (or, while a frozen scroll-isolation view
    is up, assemble it from the scroll snapshot above the live footer, §11),
    then composite overlays **into the window slice only** (screen
-   coordinates, an overlay never touches the frame or the ledger).
+   coordinates, an overlay never touches the frame or the ledger) and re-fit
+   the composited window with the stateless `prepareLinesArray`. Each row is
+   written through `terminalLine`, which merges byte-adjacent SGR sequences
+   (`coalesceAdjacentSgr`) and appends the line terminator.
 6. Emit:
 
 | Emitter | Bytes | When |
 |---|---|---|
 | `#emitFullPaint` | with `clearScrollback`, home + ED3, then `frame[0, C')` + window rows; otherwise kitty's ED22 (where supported) + ED2 + home ahead of the same replay | gestures, plus the default-on divergence rebuild |
-| `#emitUpdate` scroll-append | `\r\n` + new bottom rows + changed-row range | the rows leaving the screen are exactly the chunk, the previous window's top rows still hold that content, and nothing forced a rewrite |
-| `#emitUpdate` in-window diff | relative move + changed-row range rewrite | nothing commits: cursor-only when nothing changed, and a top-clamped whole-window rewrite when the window slid without committing, an overlay is up, a frozen view repaints, or an in-place resize forced it |
-| `#emitUpdate` seam rewrite | chunk rows + full window rewrite | a commit advance the scroll-append shape cannot carry: the hidden-gap backfill after an overlay closes, a chunk that is not exactly the scroll distance, a previous window whose top rows no longer match, or a forced rewrite |
+| `#emitUpdate` → `#emitScrollAppend` | `\r\n` + new bottom rows + changed-row range | the rows leaving the screen are exactly the chunk, the previous window's top rows still hold that content, and nothing forced a rewrite |
+| `#emitUpdate` → `#emitWindowDiff` | relative move + changed-row range rewrite | nothing commits: cursor-only when nothing changed, and a top-clamped whole-window rewrite when the window slid without committing, an overlay is up, a frozen view repaints, or a forced repaint or in-place resize requires it |
+| `#emitUpdate` → `#emitSeamRewrite` | chunk rows + full window rewrite | a commit advance the scroll-append shape cannot carry: the hidden-gap backfill after an overlay closes, a chunk that is not exactly the scroll distance, a previous window whose top rows no longer match, or a forced rewrite |
 | `#emitAltFrame` | per-row viewport rewrite on the alternate screen | a fullscreen overlay's borrow, and every frame of the `alt-arrows` transport; never ED3, append-tail, or any native-scrollback byte |
 
 **ED3 (`CSI 3 J`) is emitted in exactly one place**, `#emitFullPaint` with
@@ -254,12 +272,12 @@ tail; a replay renders the dropped blocks again from their source.
    `#emitFullPaint({ clearScrollback: true })`, gestures and the default-on
    divergence rebuild, never inside multiplexers.
 2. **NEVER rewrite a committed row from the update path.** No `#emitUpdate`
-   shape may touch frame rows `< C`, and `W ≥ C` always (re-showing a
-   committed row on the grid duplicates it for a scrolling reader, the
-   historical corruption family). The tail re-anchor is the one place the
-   window drops below the old boundary, and it lowers `C` to the new `W` first
-   rather than painting under it. The gesture full paint replays `[0, C')`
-   from home by design, and is not covered by this rule. When a *component*
+   shape may write frame rows `< C` into history again, and `W ≥ C` on every
+   frame except a tail re-anchor. The tail re-anchor re-shows the frame tail
+   over rows already in history and keeps `C` where it is, so those rows are
+   never committed a second time; lowering `C` there appended the same rows to
+   history on every insert/retract cycle. The gesture full paint replays
+   `[0, C')` from home by design, and is not covered by this rule. When a *component*
    violates immutability, the audit (§2) degrades to a rebuild (when authorized
    by a segment at the resync row declaring `NativeScrollbackLiveRegion` or
    `NativeScrollbackReplay`) or to duplication (plain components preserve
@@ -437,7 +455,7 @@ terminal and one seed is not verified.
 
 ### What proves a split of the engine changed no bytes
 
-`tui.ts` was 5415 lines and is now twelve modules under `hosts/terminal/engine/src/core/`.
+`tui.ts` was 5415 lines and is now seventeen modules under `hosts/terminal/engine/src/core/`.
 The evidence that the move emitted the same bytes is the corpus already here:
 `render-regressions.test.ts` and `render-stress-oracles.test.ts` assert exact
 emitted ANSI against a `VirtualTerminal`, and they passed against the split
@@ -535,6 +553,7 @@ the block knows a picture it already drew is gone.
 | `VEYYON_HARDWARE_CURSOR=1` | Show the real hardware cursor instead of a rendered one. |
 | `VEYYON_NOTIFICATIONS=off\|0\|false` | Suppress terminal notifications. |
 | `VEYYON_DEBUG_REDRAW=1` | Log the chosen render intent + ledger state per frame to the debug log. |
+| `VEYYON_NO_SGR_COALESCE=1` | Write each row's SGR sequences unmerged (disables `coalesceAdjacentSgr`). |
 | `VEYYON_TUI_RESIZE_IN_PLACE=1\|0` | Force resize to repaint in place (no alt-screen borrow, no ED3 rewrap) on / off. Default-on for terminals that re-report size on alt-screen toggles (Warp). |
 
 Removed with the old engine: `VEYYON_TUI_ED3_SAFE` (no ED3-risk lever exists),
@@ -549,8 +568,8 @@ replay/reduce tooling).
 - [ ] Are you about to emit `CSI 3 J` anywhere other than
       `#emitFullPaint({ clearScrollback: true })`, reached from a gesture or the
       divergence rebuild? **Stop.**
-- [ ] Could any code path rewrite, or re-show on the grid, a frame row below
-      `committedRows`? **Stop.**
+- [ ] Could any code path rewrite a frame row below `committedRows`, or
+      commit it to history a second time? **Stop.**
 - [ ] Does your byte shape scroll rows that are not the commit chunk? That
       breaks `scrollback == frame[0..C)`.
 - [ ] Are you adding a viewport probe, a platform fork, or a terminal-brand
@@ -715,4 +734,4 @@ thumb) and the attributes the terminal presents, through
 `VirtualTerminal#getViewportRowFaintColumns`. A byte assertion alone would still
 pass if a later reset in the same row cancelled the dim.
 
-*Verified against `9a035acb63` on 2026-09-30.*
+*Verified against `7c10649879` on 2026-10-09.*

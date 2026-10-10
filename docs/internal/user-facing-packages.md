@@ -37,15 +37,15 @@ Sources: [`apps/stats/README.md`](../../apps/stats/README.md), [`apps/stats/pack
 
 ### `tests/evals`: model and agent evaluation
 
-Sources: [`tests/evals/package.json`](../../tests/evals/package.json), [`tests/evals/engine/contracts.ts`](../../tests/evals/engine/contracts.ts), [`tests/evals/suites/typescript-edit/generate.ts`](../../tests/evals/suites/typescript-edit/generate.ts), [`tests/evals/suites/typescript-edit/verify.ts`](../../tests/evals/suites/typescript-edit/verify.ts), [`tests/evals/backends/in-process/client.ts`](../../tests/evals/backends/in-process/client.ts), [`tests/evals/EVALS.md`](../../tests/evals/EVALS.md).
+Sources: [`tests/evals/package.json`](../../tests/evals/package.json), [`tests/evals/engine/contracts.ts`](../../tests/evals/engine/contracts.ts), [`tests/evals/engine/kit/suite.ts`](../../tests/evals/engine/kit/suite.ts), [`tests/evals/backends/local-cli/main.ts`](../../tests/evals/backends/local-cli/main.ts), [`tests/evals/suites/typescript-edit/generate.ts`](../../tests/evals/suites/typescript-edit/generate.ts), [`tests/evals/suites/typescript-edit/verify.ts`](../../tests/evals/suites/typescript-edit/verify.ts), [`tests/evals/backends/in-process/client.ts`](../../tests/evals/backends/in-process/client.ts), [`tests/evals/docs/README.md`](../../tests/evals/docs/README.md).
 
 - Package: private `@veyyon/evals`; bin: `evals`, the suite runner; `evals serve` starts the run store API and dashboard.
-- Feature: one runner over five axes — eval suite, agent harness, configuration arm, prompt variant, and model — across three execution backends (`pier` for DeepSWE containers, `harbor` for Terminal-Bench 3.0, `in-process` for the TypeScript-edit suite).
-- Suites: `suites/deep-swe` (SWE tasks in Pier containers), `suites/terminal-bench` (Terminal-Bench 3.0 through Harbor), `suites/typescript-edit` (in-process TypeScript source mutations).
-- Modules: `engine` holds the suite, harness and backend contracts plus the variant matrix and the run engine; `store` holds the SQLite run store and experiment grouping; `api` serves the REST/SSE API; `dashboard` is the live dashboard; `tools` renders aggregates and markdown tables.
+- Feature: one runner over six axes — eval suite, agent harness, configuration arm, prompt variant, model, and build of the agent — across four execution backends (`pier` for DeepSWE containers, `harbor` for Terminal-Bench 3.0, `in-process` for the TypeScript-edit suite, `local-cli` for sandboxed CLI runs on the host).
+- Suites: `suites/deep-swe` (SWE tasks in Pier containers), `suites/terminal-bench` (Terminal-Bench 3.0 through Harbor), `suites/typescript-edit` (in-process TypeScript source mutations), `suites/browser` (web tasks on seeded local applications, graded by recorded state), `suites/miniwob` (MiniWoB++ pages).
+- Modules: `engine` holds the suite, harness and backend contracts, the variant matrix, the run engine, and `engine/kit` for writing a benchmark as seeded tasks; `store` holds the SQLite run store and experiment grouping; `api` serves the REST/SSE API; `dashboard` is the live dashboard; `tools` renders aggregates and markdown tables.
 - TypeScript-edit CLI (`suites/typescript-edit/cli.ts`): `--model` and `--output` (required), `--tasks <ids>`, `--max-tasks` (default 80), `--task-concurrency` (default 32), `--runs`, `--list`.
 - Fixtures: each TypeScript-edit task directory contains `prompt.md`, `input/`, `expected/` and `metadata.json`; the bundled distribution is `datasets/typescript-edit/fixtures.tar.gz`. DeepSWE task lists are `datasets/deep-swe/tasks/*.txt`; Terminal-Bench task lists are `datasets/terminal-bench/tasks/*.txt`.
 - Outputs: trial directories and JSON result snapshots under `tests/evals/runs/`, plus the run rows the dashboard reads.
 - Side effects/limits: extracts fixture archives, clones upstream task repositories into `datasets/repo-cache/`, vendors pinned datasets into `.cache/`, and runs Docker containers for the `pier` and `harbor` backends.
 
-*Verified against `eeffc5978d` on 2026-09-04.*
+*Verified against `6c7a3b7837` on 2026-09-26.*

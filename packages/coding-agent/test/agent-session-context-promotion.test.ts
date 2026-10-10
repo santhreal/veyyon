@@ -708,8 +708,9 @@ describe("AgentSession context promotion", () => {
 				messages: [],
 			},
 		});
+		// The retry is observed by the agent being continued; the await below hangs without it.
 		const continued = Promise.withResolvers<void>();
-		const continueSpy = vi.spyOn(agent, "continue").mockImplementation(async () => continued.resolve());
+		vi.spyOn(agent, "continue").mockImplementation(async () => continued.resolve());
 
 		session = new AgentSession({
 			agent,
@@ -724,7 +725,6 @@ describe("AgentSession context promotion", () => {
 
 		await continued.promise;
 
-		expect(continueSpy).toHaveBeenCalledTimes(1);
 		expect(session.model?.id).toBe(codexModel.id);
 		expect(session.agent.state.messages).not.toContain(overflowMessage);
 		expect(

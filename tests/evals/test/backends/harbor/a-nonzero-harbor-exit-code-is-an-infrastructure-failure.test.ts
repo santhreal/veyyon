@@ -14,7 +14,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { HarborBackend } from "../../../backends/harbor/main";
 import type { EvalSuite, RunContext, TaskDescriptor, TrialCell, Variant } from "../../../engine/contracts";
-import { harnesses } from "../../../engine/loaded-members";
+import { harnesses } from "../../../engine/members/loaded";
 
 /** One fully specified matrix member; the trial's identity is irrelevant to an exit-code check. */
 const FIXTURE_VARIANT: Variant = {

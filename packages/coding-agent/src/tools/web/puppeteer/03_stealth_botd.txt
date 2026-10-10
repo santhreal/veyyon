@@ -333,8 +333,10 @@ if (window.chrome && !("runtime" in window.chrome) && isSecureOrigin) {
 		sendMessage: null,
 	};
 
-	const sendMessageProxy = new Window_Proxy(function sendMessage() {}, sendMessageHandler);
-	const connectProxy = new Window_Proxy(function connect() {}, connectHandler);
+	// Extension API functions are not constructors and have no `prototype`; methods share both traits.
+	const runtimeTargets = { sendMessage() {}, connect() {} };
+	const sendMessageProxy = new Window_Proxy(runtimeTargets.sendMessage, sendMessageHandler);
+	const connectProxy = new Window_Proxy(runtimeTargets.connect, connectHandler);
 	patchToString(sendMessageProxy, "sendMessage");
 	patchToString(connectProxy, "connect");
 	window.chrome.runtime.sendMessage = sendMessageProxy;

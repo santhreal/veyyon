@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { RunOutput } from "@veyyon/coding-agent/tools/web/browser/run-output";
-import { formatSelectorMatchHint, toActionableHandle } from "@veyyon/coding-agent/tools/web/browser/tab-worker";
-import type { ElementHandle } from "puppeteer-core";
+import { formatSelectorMatchHint } from "@veyyon/coding-agent/tools/web/browser/tab-worker";
 
 // Regression coverage for the invisible-output failure mode: `display("string")`,
 // `console.log`, and `print` reach the runtime as `onText` chunks, which the browser
@@ -23,11 +22,7 @@ describe("browser run output — stream text reaches the tool result", () => {
 		output.pushText("after\n");
 
 		const entries = output.finish();
-		expect(entries.map(e => (e.type === "text" ? e.text : e.type))).toEqual([
-			"before",
-			JSON.stringify({ a: 1 }, null, 2),
-			"after",
-		]);
+		expect(entries.map(e => (e.type === "text" ? e.text : e.type))).toEqual(["before", '{"a":1}', "after"]);
 	});
 
 	it("flushes pending text before pre-built entries (screenshot captions) and emits images verbatim", () => {
@@ -45,42 +40,6 @@ describe("browser run output — stream text reaches the tool result", () => {
 
 	it("returns no entries when nothing was displayed", () => {
 		expect(new RunOutput().finish()).toEqual([]);
-	});
-});
-
-// The tool docs promise `.fill()` on handles from tab.id()/tab.ref()/tab.waitFor();
-// raw puppeteer ElementHandles only expose `.type()`. `input.fill is not a function`
-// was a live failure.
-describe("browser handle enrichment — fill()", () => {
-	it("adds a fill() that clears the current value before typing", async () => {
-		const calls: string[] = [];
-		const node = { value: "old", focused: false };
-		const stub = {
-			evaluate: async (fn: (el: unknown) => unknown) => {
-				calls.push("evaluate");
-				fn({
-					get value() {
-						return node.value;
-					},
-					set value(v: string) {
-						node.value = v;
-					},
-					focus: () => {
-						node.focused = true;
-					},
-				});
-			},
-			type: async (text: string) => {
-				calls.push("type");
-				node.value += text;
-			},
-		} as unknown as ElementHandle;
-
-		await toActionableHandle(stub).fill("fresh");
-
-		expect(calls).toEqual(["evaluate", "type"]);
-		expect(node.focused).toBe(true);
-		expect(node.value).toBe("fresh");
 	});
 });
 

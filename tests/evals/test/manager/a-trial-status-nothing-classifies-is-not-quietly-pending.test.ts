@@ -30,7 +30,7 @@ import {
 	TRIAL_STATUSES,
 	type TraceRow,
 	type TrialStatus,
-} from "../../engine/store-shapes";
+} from "../../engine/wire/store-shapes";
 import { pickMergedTrials, summarizeArm } from "../../store/experiments";
 import { RunStore } from "../../store/sqlite";
 

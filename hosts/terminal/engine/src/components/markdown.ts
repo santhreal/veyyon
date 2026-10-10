@@ -1230,6 +1230,12 @@ export class Markdown implements Component {
 	#renderDepth = 0;
 	/** Current inline-render recursion depth (nested strong/em/link/del). */
 	#inlineDepth = 0;
+	/**
+	 * Number of blockquotes enclosing the token being rendered. A quote inside another leaves its rows
+	 * unstyled and the outermost quote styles each row once: styling at every level re-opens the style
+	 * after every close the inner levels wrote, so a row's escapes grow with the square of the depth.
+	 */
+	#quoteDepth = 0;
 
 	// Cache for rendered output. Cached arrays are shared and returned by
 	// reference (render contract: results are component-owned and immutable to
@@ -2143,14 +2149,19 @@ export class Markdown implements Component {
 		const contentWidth = quoteContentWidth(width);
 		const quoteTokens = token.tokens || [];
 		const renderedQuoteLines: string[] = [];
-		for (let i = 0; i < quoteTokens.length; i++) {
-			this.#renderToken(
-				renderedQuoteLines,
-				quoteTokens[i]!,
-				contentWidth,
-				quoteTokens[i + 1]?.type,
-				quoteInlineStyleContext,
-			);
+		this.#quoteDepth++;
+		try {
+			for (let i = 0; i < quoteTokens.length; i++) {
+				this.#renderToken(
+					renderedQuoteLines,
+					quoteTokens[i]!,
+					contentWidth,
+					quoteTokens[i + 1]?.type,
+					quoteInlineStyleContext,
+				);
+			}
+		} finally {
+			this.#quoteDepth--;
 		}
 		while (renderedQuoteLines.length > 0 && renderedQuoteLines[renderedQuoteLines.length - 1] === "") {
 			renderedQuoteLines.pop();
@@ -2168,12 +2179,14 @@ export class Markdown implements Component {
 	/**
 	 * Wrap already-rendered lines in the blockquote border and quote styling.
 	 * `width` is the full content width; the border reserves two cells and is
-	 * omitted when no content cell would remain beside it.
+	 * omitted when no content cell would remain beside it. Inside an enclosing
+	 * quote the lines keep no style of their own: the outermost quote styles them.
 	 */
 	#applyQuoteBorder(renderedLines: string[], width: number): string[] {
 		const quoteStyle = (text: string) => this.#theme.quote(this.#theme.italic(text));
 		const quoteStylePrefix = getStylePrefix(quoteStyle);
 		const applyQuoteStyle = (line: string): string => {
+			if (this.#quoteDepth > 0) return line;
 			if (!quoteStylePrefix) {
 				return quoteStyle(line);
 			}

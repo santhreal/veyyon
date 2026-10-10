@@ -23,7 +23,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { parseFinishedTrialResult, parseTrial } from "../../../backends/harbor/results";
-import type { TrialStatus } from "../../../engine/store-shapes";
+import type { TrialStatus } from "../../../engine/wire/store-shapes";
 import { clearBenchmarkCache, readBenchmarkSnapshot } from "../../../store/benchmarks";
 
 interface Expected {

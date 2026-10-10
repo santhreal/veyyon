@@ -2,16 +2,16 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { Settings } from "@veyyon/coding-agent";
 import { errorMessage } from "@veyyon/utils";
-import { resolveCellVariant } from "../../engine/cell-variant";
-import { listFiles } from "../../engine/list-files";
+import { resolveCellVariant } from "../../engine/plan/cell-variant";
+import { listFiles } from "../../engine/io/list-files";
 import {
 	boundRawOutput,
 	teardownGraceFromOptions,
 	teardownWithin,
 	trialTimeoutFromOptions,
-} from "../../engine/trial-deadline";
-import { resolveTrialModel } from "../../engine/trial-model";
-import { trialDirFor } from "../../engine/run-layout";
+} from "../../engine/trial/deadline";
+import { resolveTrialModel } from "../../engine/trial/model";
+import { trialDirFor } from "../../engine/run/layout";
 import type {
 	BackendId,
 	ExecutionBackend,
@@ -31,7 +31,7 @@ import {
 	type InProcessSessionState,
 	type SharedInfra,
 } from "./client";
-import { loadAndValidateConfigOverlay, loadAndValidatePromptOverlay } from "./overlays";
+import { loadAndValidateConfigOverlay, loadAndValidatePromptOverlay } from "../../engine/plan/overlays";
 
 export interface InProcessSessionStats {
 	tokens: {

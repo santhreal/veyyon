@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { errorMessage, isTimeoutError, postmortem, Snowflake, untilAborted } from "@veyyon/utils";
 // The owner, not the barrel: this module reaches the two discard contracts and nothing else.
@@ -9,12 +10,16 @@ import type { HTMLElement } from "linkedom";
 import type {
 	Browser,
 	CDPSession,
+	ClickOptions,
 	Dialog,
 	ElementHandle,
+	FileChooser,
+	Frame,
 	HTTPRequest,
 	HTTPResponse,
 	ImageFormat,
 	JSHandle,
+	KeyboardTypeOptions,
 	KeyInput,
 	Page,
 	PuppeteerLifeCycleEvent,
@@ -34,8 +39,9 @@ import {
 	parseAriaRefSelector,
 	resolveAriaRefHandle,
 } from "./aria-snapshot";
+import { type ChainedHandle, chainHandle } from "./chained-handle";
+import { PortTransport } from "./connection-relay";
 import {
-	DETACHED_NODE_MESSAGE,
 	type ElementIdentity,
 	focusConnected,
 	type HandleRelocation,
@@ -45,7 +51,9 @@ import {
 	selectConnected,
 	withRelocation,
 } from "./element-identity";
+import { fillViaHandle } from "./fill";
 import { releaseHandle, releaseHandles } from "./handle-release";
+import { hasTextSelector } from "./has-text";
 import {
 	applyStealthPatches,
 	applyViewport,
@@ -53,6 +61,8 @@ import {
 	DEFAULT_VIEWPORT,
 	loadPuppeteer,
 } from "./launch";
+import { type Extent, NaturalInput } from "./natural-input";
+import { DetachedPressTarget, type Gesture, PRESS_REPORT_MARGIN_MS, pressUncovered } from "./press";
 import { extractReadableFromHtml, type ReadableFormat } from "./readable";
 import {
 	CELL_BUDGET_SLACK_MS,
@@ -70,6 +80,16 @@ import {
 	hedgeCapture,
 	startCapture,
 } from "./screenshot-capture";
+import { planSelect, readSelectState, type SelectPlan, type SelectState, settleSelection } from "./select-keys";
+import {
+	applyStorageState,
+	captureStorageState,
+	parseStorageState,
+	readStorageStateFile,
+	type StorageState,
+	type StorageStateLoaded,
+	writeStorageStateFile,
+} from "./storage-state";
 import { guardTabApi } from "./tab-api-guard";
 import type {
 	Observation,
@@ -144,6 +164,62 @@ const SELECTOR_HANDLER_PREFIXES = [
 const PLAYWRIGHT_ONLY_SELECTOR_RE =
 	/:has-text\(|:text\(|:text-is\(|:text-matches\(|:visible\b|:hidden\b|:nth-match\(|:near\(|:above\(|:below\(|:right-of\(|:left-of\(/;
 
+/**
+ * A snapshot line's own form, `role "name"` (`textbox "Email"`), which a model copies from
+ * `tab.ariaSnapshot()`. It is no CSS, and it names one element exactly: the one with that role and
+ * that accessible name, which puppeteer's aria handler finds.
+ */
+const SNAPSHOT_LINE_SELECTOR = /^([a-z]+) "((?:[^"\\]|\\.)*)"$/;
+
+/**
+ * A role and a name in attribute form: `textbox[name="Email"]`, or Playwright's
+ * `role=button[name="Sign in"]`. Without `role=` the word must be one of the roles below, so a CSS
+ * selector such as `input[name="q"]` keeps its meaning.
+ */
+const ROLE_NAME_SELECTOR = /^(role=)?([a-z]+)\[name=(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')\]$/;
+
+/**
+ * Playwright's `css:has-text("text")`, the pseudo-class ending the selector: the elements the CSS
+ * matches whose text holds the text, case and spacing aside. It resolves through the query handler
+ * `has-text.ts` registers with puppeteer.
+ */
+const HAS_TEXT_SELECTOR = /^(.*?):has-text\((?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|([^"')]*))\)$/;
+
+/**
+ * ARIA roles no HTML element is named after, plus `link`, whose `<link>` element takes no `name`
+ * attribute: `<role>[name=…]` matches nothing as CSS and can only mean the role.
+ */
+const ROLES_WITHOUT_AN_ELEMENT = new Set([
+	"alert",
+	"cell",
+	"checkbox",
+	"columnheader",
+	"combobox",
+	"gridcell",
+	"heading",
+	"link",
+	"listbox",
+	"listitem",
+	"menuitem",
+	"menuitemcheckbox",
+	"menuitemradio",
+	"radio",
+	"row",
+	"rowheader",
+	"searchbox",
+	"slider",
+	"spinbutton",
+	"switch",
+	"tab",
+	"textbox",
+	"treeitem",
+]);
+
+/** Puppeteer's aria selector for the element with `role` and the exact name `quoted` unescapes to. */
+function ariaRoleSelector(role: string, quoted: string): string {
+	return `aria/${quoted.replace(/\\(.)/g, "$1")}[role="${role}"]`;
+}
+
 type DialogPolicy = "accept" | "dismiss";
 type DragTarget = string | { readonly x: number; readonly y: number };
 type ActionabilityResult = { ok: true; x: number; y: number } | { ok: false; reason: string };
@@ -183,6 +259,13 @@ const OP_DEADLINE_SLACK_MS = CELL_BUDGET_SLACK_MS;
 const ZERO_MATCH_FAIL_FAST_MS = 2_000;
 /** Poll cadence for the zero-match watchdog. */
 const ZERO_MATCH_POLL_MS = 250;
+/** How long a failed run waits for the page to say whether it has a name the run could not find. */
+const PAGE_GLOBAL_PROBE_MS = 1_000;
+/** The ops that wait for a navigation themselves, by label: one after them is not waiting on theirs. */
+const NAVIGATING_OP = /^tab\.(?:goto|reload|waitForNavigation|waitForUrl)\(/;
+/** The ops that read or wait and change no page, by label: they never start a navigation. */
+const READ_ONLY_OP =
+	/^(?:wait\(|tab\.(?:title|observe|ariaSnapshot|screenshot|extract|waitFor|waitForSelector|waitForResponse|storageState)\()/;
 
 export interface OpTimeouts {
 	/** Largest per-op deadline allowed — strictly below the cell budget. */
@@ -238,6 +321,8 @@ export interface TabApi {
 		url: string,
 		opts?: { waitUntil?: "load" | "domcontentloaded" | "networkidle0" | "networkidle2" },
 	): Promise<void>;
+	/** Load the current URL again, with `goto`'s waiting and deadline. */
+	reload(opts?: { waitUntil?: "load" | "domcontentloaded" | "networkidle0" | "networkidle2" }): Promise<void>;
 	observe(opts?: { includeAll?: boolean; viewportOnly?: boolean }): Promise<Observation>;
 	ariaSnapshot(selector?: string, opts?: AriaSnapshotOptions): Promise<string>;
 	screenshot(opts?: ScreenshotOptions): Promise<ScreenshotResult>;
@@ -269,19 +354,39 @@ export interface TabApi {
 		waitUntil?: "load" | "domcontentloaded" | "networkidle0" | "networkidle2";
 		timeout?: number;
 	}): Promise<HTTPResponse | null>;
-	id(n: number): Promise<ActionableHandle>;
-	ref(id: string): Promise<ActionableHandle>;
+	id(n: number): ChainedHandle<ActionableHandle>;
+	ref(id: string): ChainedHandle<ActionableHandle>;
+	/** The tab's context: every cookie it holds and the localStorage of every origin open in it; `path` also writes it there. */
+	storageState(opts?: { path?: string }): Promise<StorageState>;
+	/** Load a state, or the state file at a path, into the tab's context. */
+	loadStorageState(stateOrPath: string | StorageState): Promise<StorageStateLoaded>;
 }
 
 export function normalizeSelector(selector: string): string {
 	if (!selector) return selector;
+	const trimmed = selector.trim();
+	const line = SNAPSHOT_LINE_SELECTOR.exec(trimmed);
+	if (line?.[1]) return ariaRoleSelector(line[1], line[2] ?? "");
+	const named = ROLE_NAME_SELECTOR.exec(trimmed);
+	if (named?.[2] && (named[1] || ROLES_WITHOUT_AN_ELEMENT.has(named[2])))
+		return ariaRoleSelector(named[2], named[3] ?? named[4] ?? "");
+	const hasText = HAS_TEXT_SELECTOR.exec(trimmed);
+	const hasTextCss = hasText?.[1]?.trim() ?? "";
+	if (
+		hasText &&
+		!SELECTOR_HANDLER_PREFIXES.some(prefix => trimmed.startsWith(prefix)) &&
+		!PLAYWRIGHT_ONLY_SELECTOR_RE.test(hasTextCss)
+	) {
+		const text = (hasText[2] ?? hasText[3] ?? hasText[4] ?? "").replace(/\\(.)/g, "$1");
+		return hasTextSelector({ css: hasTextCss || "*", text });
+	}
 	if (
 		!SELECTOR_HANDLER_PREFIXES.some(prefix => selector.startsWith(prefix)) &&
 		PLAYWRIGHT_ONLY_SELECTOR_RE.test(selector)
 	) {
 		throw new ToolError(
 			`Playwright-only selector ${JSON.stringify(selector)} is not supported by the browser tool. ` +
-				`Use a puppeteer text selector ("text/Allow all"), an aria selector ("aria/Name"), CSS, or "xpath/...".`,
+				`Use css:has-text("…") at the end of a selector, a puppeteer text selector ("text/Allow all"), an aria selector ("aria/Name"), CSS, or "xpath/...".`,
 		);
 	}
 	if (selector.startsWith("p-") && !LEGACY_SELECTOR_PREFIXES.some(prefix => selector.startsWith(prefix))) {
@@ -300,6 +405,52 @@ export function normalizeSelector(selector: string): string {
 		return `aria/${rest}`;
 	}
 	return selector;
+}
+
+/**
+ * The alternatives of a comma list that uses a form CSS does not have (`aria-ref=e5`, `[ref=e5]`,
+ * `textbox "Email"`, `text/Sign in`), in the order written; null for any other selector, a plain CSS
+ * list included, which the browser matches itself. A selector that starts with a query handler
+ * (`text/`, `aria/`, …) is that handler's payload to its end, commas included. Commas inside
+ * brackets, parentheses or quotes do not split.
+ */
+export function selectorAlternatives(selector: string): string[] | null {
+	const trimmed = selector.trim();
+	if (SELECTOR_HANDLER_PREFIXES.some(prefix => trimmed.startsWith(prefix))) return null;
+	const parts: string[] = [];
+	let depth = 0;
+	let quote = "";
+	let start = 0;
+	for (let index = 0; index < trimmed.length; index++) {
+		const char = trimmed[index];
+		if (quote !== "") {
+			if (char === "\\") index++;
+			else if (char === quote) quote = "";
+		} else if (char === '"' || char === "'") quote = char;
+		else if (char === "(" || char === "[") depth++;
+		else if (char === ")" || char === "]") depth--;
+		else if (char === "," && depth === 0) {
+			parts.push(trimmed.slice(start, index).trim());
+			start = index + 1;
+		}
+	}
+	parts.push(trimmed.slice(start).trim());
+	if (parts.length < 2 || parts.includes("")) return null;
+	const plainCss = (part: string): boolean =>
+		parseAriaRefSelector(part) === null &&
+		!SELECTOR_HANDLER_PREFIXES.some(prefix => part.startsWith(prefix)) &&
+		normalizeSelector(part) === part;
+	return parts.every(plainCss) ? null : parts;
+}
+
+/** Whether a query failed because its selector does not parse, which waiting cannot change. */
+function isInvalidSelector(error: unknown): boolean {
+	return /is not a valid selector/.test(errorMessage(error));
+}
+
+/** The failure for a selector that does not parse, with the forms a selector may take instead. */
+function invalidSelectorMessage(label: string, selector: string): string {
+	return `${label}: ${JSON.stringify(selector)} is not a valid selector. Use CSS, aria-ref=eN, role "name", text/… or aria/…, alone or as alternatives of a comma list.`;
 }
 
 function isInteractiveNode(node: SerializedAXNode): boolean {
@@ -328,73 +479,161 @@ function navigationKey(url: string): string {
 	return URL.canParse(url) ? new URL(url).href : url;
 }
 
-/** ElementHandle enriched with the `fill()` the tool docs promise on handles from `tab.id()`/`tab.ref()`/`tab.waitFor()`. */
+/**
+ * ElementHandle enriched with the `fill()` the tool docs promise on handles from `tab.id()`/`tab.ref()`/`tab.waitFor()`,
+ * with a `click()` and `hover()` that never press what covers the element, and a `type()` at a person's pace.
+ */
 export type ActionableHandle = ElementHandle & { fill(value: string): Promise<void> };
 
-/** Handles whose actions already relocate; enriching one again would wrap its wrappers. */
-const relocatingHandles = new WeakSet<ElementHandle>();
+/** What a handle's actions reach of the run in progress on its tab. */
+interface HandleActions {
+	/**
+	 * Run a handle's action as an op of the run in progress on its tab, given that run's action deadline, so
+	 * the action ends with its run and fails naming itself before the run's own deadline.
+	 */
+	run(label: string, action: (signal: AbortSignal, timeoutMs: number) => Promise<void>): Promise<void>;
+	/** The natural input of the run in progress, or null when that run has it off or no run is in progress. */
+	input(): NaturalInput | null;
+}
+
+/** A handle's own pointer and key actions, read before it is enriched, so a wrapper acts through puppeteer and not through another wrapper. */
+interface OwnActions {
+	click(options?: Readonly<ClickOptions>): Promise<void>;
+	hover(): Promise<void>;
+	tap(): Promise<void>;
+	type(text: string, options?: Readonly<KeyboardTypeOptions>): Promise<void>;
+}
+
+const ownActions = new WeakMap<ElementHandle, OwnActions>();
+
+/** `handle`'s own actions, kept at the first read so a later enrichment wraps puppeteer's, not a wrapper. */
+function ownOf(handle: ElementHandle): OwnActions {
+	let own = ownActions.get(handle);
+	if (!own) {
+		own = {
+			click: handle.click.bind(handle),
+			hover: handle.hover.bind(handle),
+			tap: handle.tap.bind(handle),
+			type: handle.type.bind(handle),
+		};
+		ownActions.set(handle, own);
+	}
+	return own;
+}
 
 /**
- * Attach `fill()` to a puppeteer ElementHandle before handing it to user code.
- * Puppeteer handles expose `type()` but no `fill()`; the semantics mirror the
- * selector-based `tab.fill()`: focus, clear any existing value, then type.
- *
- * With a `relocation`, which an id or ARIA ref handle carries, every action
- * that fails because the page re-rendered the node runs again on the element
- * that replaced it (see {@link withRelocation}). Scrolling, focusing or selecting a detached node
- * succeeds and changes nothing the page shows, so those actions check the node and act on it in one
- * evaluation (see {@link scrollConnected}). Puppeteer's `type()` and `press()` focus through
- * `this.focus()`, the wrapped focus, and need no wrapper.
+ * How each `tab.id()` and ARIA ref handle finds the element that replaced its node when the page
+ * re-rendered it (see `element-identity.ts`). A handle a CSS selector resolved has none.
  */
-export function toActionableHandle(handle: ElementHandle, relocation?: HandleRelocation): ActionableHandle {
+const relocations = new WeakMap<ElementHandle, HandleRelocation>();
+
+/** Run `act` on `handle`, or on the element that replaced its node when `handle` has a relocation ({@link withRelocation}). */
+function onElement<T>(handle: ElementHandle, act: (target: ElementHandle) => Promise<T>): Promise<T> {
+	const relocation = relocations.get(handle);
+	return relocation ? withRelocation(handle, relocation, act) : act(handle);
+}
+
+/**
+ * Attach `fill()` to a puppeteer ElementHandle before handing it to user code, route its `click()` and
+ * `hover()` through {@link pressUncovered}, and pace its `type()` when natural input is on, each as an
+ * action `actions` runs. Puppeteer handles expose `type()` but no `fill()`; the semantics are the
+ * selector-based `tab.fill()`'s.
+ *
+ * An id or ARIA ref handle carries a relocation: every action that fails because the page re-rendered
+ * the node runs again on the element that replaced it. Scrolling, focusing or selecting a detached
+ * node succeeds and changes nothing the page shows, so those actions check the node and act on it in
+ * one evaluation (see {@link scrollConnected}). Puppeteer's `type()` and `press()` focus through
+ * `this.focus()`, the wrapped focus.
+ */
+function toActionableHandle(handle: ElementHandle, actions: HandleActions): ActionableHandle {
+	const own = ownOf(handle);
+	const relocation = relocations.get(handle);
 	const enriched = handle as ActionableHandle;
-	// A cached id handle is enriched on every tab.id(); its methods are already the wrappers.
-	if (relocatingHandles.has(handle)) return enriched;
-	const { type } = handle;
-	if (!relocation) {
-		enriched.fill = value => fillViaHandle(handle, type, value);
-		return enriched;
-	}
-	const { click, hover, tap } = handle;
-	// Pointer actions aim in one evaluation, so a node the page redraws between puppeteer's round
-	// trips still receives them (see pointerPoint). A node in a child frame keeps puppeteer's path,
-	// which adds the frame offsets.
+	enriched.fill = value =>
+		actions.run("handle.fill()", (signal, timeoutMs) => {
+			const input = actions.input();
+			return onElement(handle, target =>
+				fillViaHandle(target, value, signal, input && { input, withinMs: timeoutMs / 2 }),
+			);
+		});
+	// The press gives up before its op's deadline, so the reason it waited (a cover, a disabled control) is reported.
 	enriched.click = options =>
-		withRelocation(handle, relocation, async target => {
-			if (target.frame.parentFrame()) return click.call(target, options);
-			const { x, y } = await pointerPoint(target, options?.offset);
-			await target.frame.page().mouse.click(x, y, options);
+		actions.run("handle.click()", (signal, timeoutMs) => {
+			const gesture: Gesture = {
+				kind: "click",
+				button: options?.button,
+				count: options?.count,
+				holdMs: options?.delay,
+			};
+			return pressUncovered(
+				handle,
+				"handle.click()",
+				puppeteerPress("click", relocation !== undefined, options),
+				Math.max(1, timeoutMs - PRESS_REPORT_MARGIN_MS),
+				{
+					signal,
+					gesture,
+					// A fixed offset or a highlighted press is puppeteer's own; a natural press aims for itself.
+					input: options?.offset === undefined && !options?.debugHighlight ? actions.input() : null,
+					relocation,
+				},
+			);
 		});
 	enriched.hover = () =>
-		withRelocation(handle, relocation, async target => {
-			if (target.frame.parentFrame()) return hover.call(target);
-			const { x, y } = await pointerPoint(target);
-			await target.frame.page().mouse.move(x, y);
+		actions.run("handle.hover()", (signal, timeoutMs) =>
+			pressUncovered(
+				handle,
+				"handle.hover()",
+				puppeteerPress("hover", relocation !== undefined),
+				Math.max(1, timeoutMs - PRESS_REPORT_MARGIN_MS),
+				{ signal, gesture: { kind: "hover" }, input: actions.input(), relocation },
+			),
+		);
+	enriched.type = (text, options) => {
+		const input = actions.input();
+		// A caller that sets its own pace types at that pace, as puppeteer does.
+		if (input === null || options?.delay !== undefined) return own.type(text, options);
+		return actions.run("handle.type()", async (signal, timeoutMs) => {
+			await untilAborted(signal, () => handle.focus());
+			await input.type(text, timeoutMs / 2, signal);
 		});
+	};
+	if (!relocation) return enriched;
+	// A tap aims in one evaluation, so a node the page redraws between puppeteer's round trips still
+	// receives it (see pointerPoint). A node in a child frame keeps puppeteer's path, which adds the frame offsets.
 	enriched.tap = () =>
 		withRelocation(handle, relocation, async target => {
-			if (target.frame.parentFrame()) return tap.call(target);
+			if (target.frame.parentFrame()) return ownOf(target).tap();
 			const { x, y } = await pointerPoint(target);
 			await target.frame.page().touchscreen.tap(x, y);
 		});
 	enriched.select = (...values) => withRelocation(handle, relocation, target => selectConnected(target, values));
 	enriched.scrollIntoView = () => withRelocation(handle, relocation, scrollConnected);
 	enriched.focus = () => withRelocation(handle, relocation, focusConnected);
-	enriched.fill = value => withRelocation(handle, relocation, target => fillViaHandle(target, type, value));
-	relocatingHandles.add(handle);
 	return enriched;
 }
 
-/** Focus, clear any existing value, then retype through puppeteer's `type`; fails on a node that left the document. */
-async function fillViaHandle(handle: ElementHandle, type: ElementHandle["type"], value: string): Promise<void> {
-	const connected = await handle.evaluate(el => {
-		const node = el as unknown as { value?: string; focus?: () => void; isConnected?: boolean };
-		node.focus?.();
-		if ("value" in node) node.value = "";
-		return node.isConnected;
-	});
-	if (connected === false) throw new Error(DETACHED_NODE_MESSAGE);
-	await type.call(handle, value, { delay: 0 });
+/**
+ * Puppeteer's press for `kind` on the element a {@link pressUncovered} check passed. A relocating
+ * handle's press aims in one evaluation, so a node the page redraws between puppeteer's round trips
+ * still receives it (see pointerPoint); a node in a child frame keeps puppeteer's path, which adds
+ * the frame offsets.
+ */
+function puppeteerPress(
+	kind: "click" | "hover",
+	relocating: boolean,
+	options?: Readonly<ClickOptions>,
+): (target: ElementHandle) => Promise<void> {
+	return async target => {
+		if (!relocating || target.frame.parentFrame()) {
+			const own = ownOf(target);
+			return kind === "click" ? own.click(options) : own.hover();
+		}
+		const { x, y } = await pointerPoint(target, kind === "click" ? options?.offset : undefined);
+		const mouse = target.frame.page().mouse;
+		if (kind === "click") await mouse.click(x, y, options);
+		else await mouse.move(x, y);
+	};
 }
 
 /**
@@ -463,7 +702,9 @@ async function collectObservationEntries(
 	options: { viewportOnly: boolean; includeAll: boolean; identities: Map<string, number> },
 ): Promise<void> {
 	if (options.includeAll || isInteractiveNode(node)) {
-		const handle = await node.elementHandle();
+		// A node of a popup the page opened (a date or colour picker) belongs to no document of the page:
+		// its element resolves to nothing, puppeteer's lookup throws, and it cannot be acted on by id.
+		const handle = await optionalResult(node.elementHandle(), "a node in a picker popup has no element in the page");
 		if (handle) {
 			let inViewport = true;
 			if (options.viewportOnly) {
@@ -617,11 +858,21 @@ async function isClickActionable(handle: ElementHandle): Promise<ActionabilityRe
 	})) as ActionabilityResult;
 }
 
+/** How long a `<select>` joins typed keys into one type-ahead search (`kTypeAheadTimeout`), and a margin. */
+const TYPE_AHEAD_SESSION_MS = 1_100;
+
+/** How long `tab.uploadFile` waits, after pressing a control, for the file chooser it opens. */
+const CHOOSER_WAIT_MS = 2_000;
+
+/** The target a natural drag's travel time takes a bare `{ x, y }` point to be. */
+const DRAG_POINT_TARGET: Extent = { width: 20, height: 20 };
+
 async function clickQueryHandlerText(
 	page: Page,
 	selector: string,
 	timeoutMs: number,
-	signal?: AbortSignal,
+	signal: AbortSignal | undefined,
+	input: NaturalInput | null,
 ): Promise<void> {
 	const clickTimeout = scopedTimeoutSignal(timeoutMs, signal);
 	const clickSignal = clickTimeout.signal;
@@ -647,7 +898,16 @@ async function clickQueryHandlerText(
 				continue;
 			}
 			try {
-				await untilAborted(clickSignal, () => target.click());
+				// The target passed the actionability check above; a natural press also checks the point it goes to.
+				await (input
+					? pressUncovered(
+							target,
+							`tab.click(${JSON.stringify(selector)})`,
+							element => element.click(),
+							Math.max(1, timeoutMs - (Date.now() - start)),
+							{ signal: clickSignal, gesture: { kind: "click" }, input },
+						)
+					: untilAborted(clickSignal, () => target.click()));
 				return;
 			} catch (err) {
 				lastReason = errorMessage(err);
@@ -711,6 +971,61 @@ interface ActiveRun {
 	/** Helper invocations currently awaiting the page/network, keyed by op id. */
 	inflight: Map<number, InflightOp>;
 	opCounter: number;
+	/** The run's deadline for one interactive action (`resolveOpTimeouts`). */
+	actionOpMs: number;
+	/** The name the run's code runs under, which a rejection that code floated carries in its stack. */
+	filename: string;
+	/** Rejections the run's code floated, calls it did not await, claimed while the run is in progress. */
+	floatingRejections: unknown[];
+	/**
+	 * The last op in this run that could change the page (reads and `wait` are skipped): whether it waits
+	 * for a navigation itself (`goto`, `reload`, `waitForNavigation`, `waitForUrl`), and how many main-frame
+	 * navigations had happened when it began.
+	 */
+	lastOp: { readonly navigating: boolean; readonly navigationsAtStart: number } | null;
+	/** The page's natural input when the run's session has `browser.naturalInput` on, else null for instant input. */
+	input: NaturalInput | null;
+}
+
+/**
+ * Where a tab's core runs. In the tab's own worker thread only run code and the core float promises, so
+ * the core claims every unhandled rejection there. Inline, on the main thread, it shares the realm with
+ * the session and claims, through postmortem, only a rejection whose stack names a run's code.
+ */
+export type WorkerCoreOptions =
+	| { readonly realm: "thread" }
+	| {
+			readonly realm: "inline";
+			interceptUnhandledRejections(handler: (reason: unknown) => boolean): () => void;
+	  };
+
+/** How many ended runs' file names stay known, so a rejection one of them floats late is traced to it. */
+const RECENT_RUN_FILES_MAX = 64;
+
+/**
+ * Run code's `fetch` is the tab worker's, which has no page URL to resolve a path such as
+ * `/api/items` against and none of the page's cookies: the call fails as a bare "URL is invalid".
+ * The failure says where a request the page would make belongs.
+ */
+function explainRelativeFetch(error: unknown): unknown {
+	if (
+		!(error instanceof Error) ||
+		error.name !== "TypeError" ||
+		!/^fetch\(\) URL is invalid|^Failed to parse URL from /.test(error.message)
+	)
+		return error;
+	const explained = new ToolError(
+		`${error.message}: run code executes in the tab worker, whose \`fetch\` has no page URL to resolve a path against and none of the page's cookies. Make the page's own request with \`await tab.evaluate(() => fetch("/path").then(r => r.json()))\`, or pass an absolute URL.`,
+	);
+	explained.stack = error.stack;
+	return explained;
+}
+
+/** Report the rejections a run's code floated, beyond the one its result carries, in its output. */
+function reportFloatingRejections(output: RunOutput, reasons: readonly unknown[]): void {
+	for (const reason of reasons) {
+		output.push({ type: "text", text: `[unhandled rejection (missing await?)] ${errorMessage(reason)}` });
+	}
 }
 
 /** Human-readable label for a screenshot op, used in op tracking + timeout errors. */
@@ -759,15 +1074,88 @@ export class WorkerCore {
 	#runtime: JsRuntime | null = null;
 	#unsub: () => void;
 	#mode?: WorkerInitPayload["mode"];
+	/** Whether the page is in a browser window, whose content area is its viewport. */
+	#visible = false;
+	/** The content area and scale last read from a page no viewport is emulated on. */
+	#windowViewport?: ReadyInfo["viewport"];
 	#dialogPolicy?: DialogPolicy;
 	#dialogHandler?: (dialog: Dialog) => void;
 	#openDialog?: OpenDialogInfo;
+	/** Main-frame navigations the page has made, which `tab.waitForNavigation()` compares against. */
+	#mainNavigations = 0;
+	/** The file names of runs that have ended, most recent last, at most {@link RECENT_RUN_FILES_MAX}. */
+	#recentRunFiles = new Set<string>();
+	/** The frames the latest `tab.ariaSnapshot()` followed, by the prefix of their refs (`f1`). */
+	#snapshotFrames: ReadonlyMap<string, Frame> = new Map();
+	#uninstallRejectionGuard: () => void;
+	/** The page's natural input, which follows the page's pointer from the moment the page opens. */
+	#naturalInput?: NaturalInput;
+	/** When `tab.select` last typed type-ahead keys on the page, whose session the next select waits out. */
+	#typeAheadAt = 0;
+	/**
+	 * What a handle's actions reach of the run in progress on this tab. A handle outlives the run that
+	 * made it, so an action belongs to the run it is called in and ends with that run; one called when no
+	 * run is in progress, by code a finished or cancelled run left behind, does nothing.
+	 */
+	#handleActions: HandleActions = {
+		run: (label, action) => {
+			const active = this.#active;
+			if (!active) {
+				return markHandled(
+					Promise.reject(new ToolError(`${label}: no run is in progress on this tab, so nothing was done.`)),
+				);
+			}
+			return markHandled(
+				this.#runOp(active, label, active.signal, active.actionOpMs, signal => action(signal, active.actionOpMs)),
+			);
+		},
+		input: () => this.#active?.input ?? null,
+	};
 
-	constructor(transport: TabWorkerTransport) {
+	constructor(transport: TabWorkerTransport, options: WorkerCoreOptions) {
 		this.#transport = transport;
 		this.#unsub = this.#transport.onMessage(msg => {
 			void this.#handleMessage(msg as TabWorkerInbound);
 		});
+		this.#uninstallRejectionGuard =
+			options.realm === "inline"
+				? options.interceptUnhandledRejections(reason => this.#claimRejection(reason, false))
+				: this.#listenForRejections();
+	}
+
+	/** The tab thread's own unhandled-rejection listener: every rejection in that thread is the core's. */
+	#listenForRejections(): () => void {
+		const onRejection = (reason: unknown): void => {
+			this.#claimRejection(reason, true);
+		};
+		process.on("unhandledRejection", onRejection);
+		return () => {
+			process.off("unhandledRejection", onRejection);
+		};
+	}
+
+	/**
+	 * Claim an unhandled rejection run code floated, a call it did not await, so that it fails the run in
+	 * progress or, once its run has ended, is logged, instead of ending the worker and leaving the tab to
+	 * hang until it is killed. A rejection whose stack names a run belongs to that run. In the tab's own
+	 * thread (`ownsRealm`) any other rejection belongs to the run in progress, or is logged when none is.
+	 * Returns false for a rejection that is not the core's, which keeps its default fatal path.
+	 */
+	#claimRejection(reason: unknown, ownsRealm: boolean): boolean {
+		// A teardown abort nobody consumed; the main thread's handler drops these before asking.
+		if (postmortem.isExpectedCleanupError(reason)) return ownsRealm;
+		const stack = reason instanceof Error && typeof reason.stack === "string" ? reason.stack : "";
+		const fromEndedRun = Array.from(this.#recentRunFiles).some(file => stack.includes(file));
+		const active = this.#active;
+		if (active && (stack.includes(active.filename) || (ownsRealm && !fromEndedRun))) {
+			active.floatingRejections.push(reason);
+			return true;
+		}
+		if (!ownsRealm && !fromEndedRun) return false;
+		this.#log("warn", "Unhandled rejection from a browser run that has ended (missing await?)", {
+			error: errorPayload(reason),
+		});
+		return true;
 	}
 
 	nextElementId(): number {
@@ -782,7 +1170,7 @@ export class WorkerCore {
 	async #handleMessage(msg: TabWorkerInbound): Promise<void> {
 		switch (msg.type) {
 			case "init":
-				await this.#init(msg.payload);
+				await this.#init(msg.payload, msg.port);
 				return;
 			case "run":
 				await this.#run(msg);
@@ -804,21 +1192,29 @@ export class WorkerCore {
 		}
 	}
 
-	async #init(payload: WorkerInitPayload): Promise<void> {
+	async #init(payload: WorkerInitPayload, port: MessagePort | undefined): Promise<void> {
 		try {
-			this.#mode = payload.mode;
+			// A tab of a browser this process launched stays one when a new worker re-adopts it.
+			this.#mode = payload.mode === "attach" && payload.present ? "headless" : payload.mode;
+			this.#visible = payload.mode === "headless" ? payload.visible === true : payload.present?.visible === true;
 			const puppeteer = await loadPuppeteer();
 			this.#browser = await puppeteer.connect({
-				browserWSEndpoint: payload.browserWSEndpoint,
+				...(port ? { transport: new PortTransport(port) } : { browserWSEndpoint: payload.browserWSEndpoint }),
 				defaultViewport: null,
 				protocolTimeout: BROWSER_PROTOCOL_TIMEOUT_MS,
 			});
 			if (payload.mode === "headless") {
-				this.#page = await this.#browser.newPage();
+				const context =
+					payload.browserContextId === undefined
+						? this.#browser.defaultBrowserContext()
+						: this.#browser.browserContexts().find(candidate => candidate.id === payload.browserContextId);
+				if (!context) throw new ToolError("The tab's browser context closed before its page opened");
+				this.#page = await context.newPage();
 				this.#observeDialogs();
-				await applyStealthPatches(this.#browser, this.#page, { browserSession: null, override: null });
-				await applyViewport(this.#page, payload.viewport);
+				await applyStealthPatches(this.#page, payload.identity);
+				await applyViewport(this.#page, payload.viewport, this.#visible);
 				if (payload.dialogs) this.#applyDialogPolicy(payload.dialogs);
+
 				if (payload.url) {
 					await this.#page.goto(payload.url, {
 						// Default to "load" because dev servers with HMR/WS never reach networkidle.
@@ -836,8 +1232,16 @@ export class WorkerCore {
 				if (!page) throw new ToolError(`Target ${payload.targetId} is no longer available on the attached browser`);
 				this.#page = page;
 				this.#observeDialogs();
+				if (payload.present) {
+					// The page's overrides and scripts went with the old worker's connection, which the
+					// replacement closed; this connection sends them again before the next document loads.
+					// A window keeps the size it has, which a person may have given it.
+					await applyStealthPatches(page, payload.present.identity);
+					if (!payload.present.visible) await applyViewport(page, payload.present.viewport, false);
+				}
 				if (payload.dialogs) this.#applyDialogPolicy(payload.dialogs);
 			}
+			this.#naturalInput = new NaturalInput(this.#page);
 			this.#targetId = await targetIdForPage(this.#page);
 			this.#transport.send({ type: "ready", info: await this.#currentReadyInfo() });
 		} catch (error) {
@@ -885,7 +1289,7 @@ export class WorkerCore {
 	 * Record JS dialogs for timeout attribution without handling them (semantics of an
 	 * unset `dialogs` policy are unchanged — the page stays blocked until user code or
 	 * the policy handler acts). Cleared when the policy handler settles the dialog or a
-	 * main-frame navigation proves the modal is gone.
+	 * main-frame navigation proves the modal is gone. Main-frame navigations are counted.
 	 */
 	#observeDialogs(): void {
 		const page = this.#requirePage();
@@ -893,7 +1297,9 @@ export class WorkerCore {
 			this.#openDialog = { type: dialog.type(), message: dialog.message() };
 		});
 		page.on("framenavigated", frame => {
-			if (frame === page.mainFrame()) this.#openDialog = undefined;
+			if (frame !== page.mainFrame()) return;
+			this.#openDialog = undefined;
+			this.#mainNavigations++;
 		});
 	}
 
@@ -906,9 +1312,28 @@ export class WorkerCore {
 			// Reported to the operator for display; `undefined` is distinct from an empty string, which would
 			// claim the page has no title.
 			title: await optionalResult(page.title(), "a page mid-navigation has no title yet"),
-			viewport: page.viewport() ?? DEFAULT_VIEWPORT,
+			viewport: await this.#viewportNow(page),
 			targetId,
 		};
+	}
+
+	/**
+	 * The page's viewport: the emulated one, or, where none is emulated (a visible tab, an attached app), its
+	 * window's content area at the display's scale, read in the isolated world. A page that cannot be read
+	 * mid-navigation reports the last size read.
+	 */
+	async #viewportNow(page: Page): Promise<ReadyInfo["viewport"]> {
+		const emulated = page.viewport();
+		if (emulated) return emulated;
+		const read = await optionalResult(
+			page.evaluate(() => {
+				const view = globalThis as unknown as { innerWidth: number; innerHeight: number; devicePixelRatio: number };
+				return { width: view.innerWidth, height: view.innerHeight, deviceScaleFactor: view.devicePixelRatio };
+			}),
+			"a page mid-navigation has no window to read; the last size read stands",
+		);
+		if (read) this.#windowViewport = read;
+		return this.#windowViewport ?? DEFAULT_VIEWPORT;
 	}
 
 	#applyDialogPolicy(policy: DialogPolicy): void {
@@ -968,11 +1393,27 @@ export class WorkerCore {
 			pendingTools: new Map(),
 			inflight: new Map(),
 			opCounter: 0,
+			actionOpMs: resolveOpTimeouts(msg.timeoutMs).actionOpMs,
+			filename: `browser-run-${msg.id}.js`,
+			floatingRejections: [],
+			lastOp: null,
+			input: msg.session.naturalInput ? (this.#naturalInput ?? null) : null,
 		};
 		this.#active = active;
 		try {
 			throwIfAborted(signal);
 			const page = this.#requirePage();
+			// Chromium runs no animation frames in a background page, and a locator's click, hover and
+			// drag wait on two of them: with several tabs on one headless browser, a run in any tab but
+			// the newest stalled until its action timed out. The run activates its own tab first.
+			if (this.#mode === "headless") {
+				await bestEffort(
+					untilAborted(signal, () => page.bringToFront()),
+					"a page that is already active or closing runs as it is",
+				);
+			}
+			const viewport = msg.viewport;
+			if (viewport) await untilAborted(signal, () => applyViewport(page, viewport, this.#visible));
 			const browser = this.#requireBrowser();
 			const tabApi = guardTabApi(
 				this.#createTabApi(msg.name, msg.timeoutMs, signal, msg.session, output, screenshots, active),
@@ -1038,10 +1479,18 @@ export class WorkerCore {
 				const hooks = this.#hooksForActiveRun();
 				if (!hooks) throw new ToolError("Browser runtime started without an active run");
 				const returnValue = await Promise.race([
-					runtime.run(msg.code, `browser-run-${msg.id}.js`, hooks, { runId: msg.id, cwd: msg.session.cwd }),
+					runtime.run(msg.code, active.filename, hooks, { runId: msg.id, cwd: msg.session.cwd }),
 					cancelRejection,
 				]);
 				await this.#postReadyInfo();
+				// One turn more, so a rejection the code floated just before it returned is still this run's.
+				await delay(0);
+				// A call the code did not await failed: the run failed, and says what it forgot to await.
+				const floated = active.floatingRejections.splice(0);
+				if (floated.length > 0) {
+					reportFloatingRejections(output, floated.slice(1));
+					throw new ToolError(`Unhandled rejection (missing await?): ${errorMessage(floated[0])}`);
+				}
 				this.#transport.send({
 					type: "result",
 					id: msg.id,
@@ -1056,18 +1505,54 @@ export class WorkerCore {
 			// `display()` produced before the throw, and those lines are usually the only evidence
 			// of why it threw; dropping them left a timed-out cell reporting a bare deadline and
 			// nothing that explains it. Screenshots ride along for the same reason.
+			const failure = explainRelativeFetch(await this.#explainPageGlobal(error));
+			reportFloatingRejections(output, active.floatingRejections.splice(0));
 			this.#transport.send({
 				type: "result",
 				id: msg.id,
 				ok: false,
-				error: errorPayload(error),
+				error: errorPayload(failure),
 				partial: { displays: output.finish(), screenshots },
 			});
 		} finally {
 			cellTimeout.cancel();
 			if (this.#active?.id === msg.id) this.#active = null;
+			this.#recentRunFiles.add(active.filename);
+			if (this.#recentRunFiles.size > RECENT_RUN_FILES_MAX) {
+				const oldest = this.#recentRunFiles.values().next().value;
+				if (oldest !== undefined) this.#recentRunFiles.delete(oldest);
+			}
 			runAc.abort(postmortem.markExpectedCleanupError(new ToolAbortError("Browser run ended")));
 		}
+	}
+
+	/**
+	 * Run code executes in the tab worker, and a model that reaches for `document`, `window` or a
+	 * page's own global (`jQuery`, an app object) gets a bare "X is not defined". When the page has
+	 * that name, the error says where it lives and how to reach it, so the next attempt is right.
+	 */
+	async #explainPageGlobal(error: unknown): Promise<unknown> {
+		if (!(error instanceof Error) || error.name !== "ReferenceError" || !this.#page) return error;
+		const name = /^(?:Can't find variable: )?([A-Za-z_$][\w$]*)(?: is not defined)?$/.exec(error.message)?.[1];
+		if (!name) return error;
+		const probe = Promise.withResolvers<boolean | undefined>();
+		const timer = setTimeout(() => probe.resolve(undefined), PAGE_GLOBAL_PROBE_MS);
+		// The main world, as `tab.evaluate` uses: a page's own globals are not visible from the isolated one.
+		void optionalResult(
+			this.#page
+				.mainFrame()
+				.mainRealm()
+				.evaluate(global => global in globalThis, name),
+			"a page that cannot answer leaves the error as it was",
+		).then(probe.resolve);
+		const inPage = await probe.promise;
+		clearTimeout(timer);
+		if (inPage !== true) return error;
+		const explained = new ToolError(
+			`${error.message}: \`${name}\` exists in the page, but run code executes in the tab worker. Use it inside \`await tab.evaluate(() => …)\`.`,
+		);
+		explained.stack = error.stack;
+		return explained;
 	}
 
 	#ensureRuntime(session: SessionSnapshot): JsRuntime {
@@ -1133,27 +1618,41 @@ export class WorkerCore {
 		label: string,
 		cellSignal: AbortSignal,
 		perOpTimeoutMs: number,
-		fn: (signal: AbortSignal) => Promise<T>,
+		fn: (signal: AbortSignal, selector: string | undefined) => Promise<T>,
 		opts?: { selector?: string; zeroMatchAfterMs?: number },
 	): Promise<T> {
 		const opId = active.opCounter++;
 		active.inflight.set(opId, { label, startedAt: Date.now() });
+		// A read or a sleep between an action and the wait on its navigation leaves the action as the one waited on.
+		if (!READ_ONLY_OP.test(label)) {
+			active.lastOp = { navigating: NAVIGATING_OP.test(label), navigationsAtStart: this.#mainNavigations };
+		}
 		const capped = Number.isFinite(perOpTimeoutMs) && perOpTimeoutMs > 0;
 		const opTimeout = capped ? scopedTimeoutSignal(perOpTimeoutMs) : undefined;
 		const opSignal = opTimeout ? AbortSignal.any([cellSignal, opTimeout.signal]) : cellSignal;
-		const selector = opts?.selector;
-		const watchdog =
-			selector !== undefined && opts?.zeroMatchAfterMs !== undefined && parseAriaRefSelector(selector) === null
-				? { selector, afterMs: opts.zeroMatchAfterMs }
-				: undefined;
+		let selector = opts?.selector;
 		// Fired when the watchdog wins the race (tears down the in-flight action) and in
 		// the finally (stops the watchdog's polling once the op settles either way).
 		const earlyAc = new AbortController();
 		try {
-			if (!watchdog) return await fn(opSignal);
+			// A list mixing the tool's own forms is decided here, so the op and its watchdog see one selector.
+			const alternatives = selector === undefined ? null : selectorAlternatives(selector);
+			if (alternatives !== null) {
+				selector = await this.#firstMatchingAlternative(
+					alternatives,
+					label,
+					opts?.zeroMatchAfterMs ?? perOpTimeoutMs,
+					opSignal,
+				);
+			}
+			const watchdog =
+				selector !== undefined && opts?.zeroMatchAfterMs !== undefined && parseAriaRefSelector(selector) === null
+					? { selector, afterMs: opts.zeroMatchAfterMs }
+					: undefined;
+			if (!watchdog) return await fn(opSignal, selector);
 			const racedSignal = AbortSignal.any([opSignal, earlyAc.signal]);
 			return await Promise.race([
-				fn(racedSignal),
+				fn(racedSignal, selector),
 				this.#zeroMatchWatchdog(watchdog.selector, label, watchdog.afterMs, racedSignal),
 			]);
 		} catch (err) {
@@ -1191,7 +1690,9 @@ export class WorkerCore {
 				const handles = await page.$$(resolved);
 				count = handles.length;
 				for (const handle of handles) void releaseHandle(handle);
-			} catch {
+			} catch (error) {
+				// A selector that does not parse never will: fail now instead of at the op's deadline.
+				if (isInvalidSelector(error)) throw new ToolError(invalidSelectorMessage(label, selector));
 				// Inconclusive probe — keep polling without advancing toward failure.
 			}
 			if (count !== null && count > 0) break;
@@ -1205,6 +1706,49 @@ export class WorkerCore {
 			}
 		}
 		return await new Promise<never>(() => {});
+	}
+
+	/**
+	 * The first alternative of a selector list, in the order written, that matches an element, tried
+	 * until one does or `withinMs` passes. A ref alternative matches when the latest snapshot's ref
+	 * resolves.
+	 */
+	async #firstMatchingAlternative(
+		alternatives: readonly string[],
+		label: string,
+		withinMs: number,
+		signal: AbortSignal,
+	): Promise<string> {
+		const page = this.#requirePage();
+		const deadline = Date.now() + withinMs;
+		for (;;) {
+			for (const alternative of alternatives) {
+				const ref = parseAriaRefSelector(alternative);
+				let handle: ElementHandle | null = null;
+				try {
+					handle =
+						ref === null
+							? ((await untilAborted(signal, () =>
+									page.$(normalizeSelector(alternative)),
+								)) as ElementHandle | null)
+							: await untilAborted(signal, () => resolveAriaRefHandle(page, ref, this.#snapshotFrames));
+				} catch (error) {
+					if (signal.aborted) throw error;
+					if (isInvalidSelector(error)) throw new ToolError(invalidSelectorMessage(label, alternative));
+					// A probe that fails mid-navigation counts as no match this round.
+				}
+				if (handle !== null) {
+					void releaseHandle(handle);
+					return alternative;
+				}
+			}
+			if (Date.now() >= deadline) {
+				throw new ToolError(
+					`${label} failed fast after ${withinMs}ms; no alternative of the list matches an element — run tab.ariaSnapshot() to inspect the page`,
+				);
+			}
+			await untilAborted(signal, () => delay(ZERO_MATCH_POLL_MS));
+		}
 	}
 
 	/**
@@ -1240,38 +1784,45 @@ export class WorkerCore {
 		const { budgetBound, quickOpMs, actionOpMs } = resolveOpTimeouts(timeoutMs);
 		const waitMs = (explicit?: number): number => resolveWaitTimeout(timeoutMs, explicit);
 		const INF = Number.POSITIVE_INFINITY;
+		// Typing takes at most half of what an action that began at `started` has left of its deadline.
+		const typingWithin = (started: number): number => Math.max(0, actionOpMs - (Date.now() - started)) / 2;
 		const op = <T>(
 			label: string,
 			perOpMs: number,
-			fn: (sig: AbortSignal) => Promise<T>,
+			// `target` is the selector the op acts on: the one given, or the alternative of a list that matched.
+			fn: (sig: AbortSignal, target: string | undefined) => Promise<T>,
 			selectorOpts?: { selector?: string; zeroMatchAfterMs?: number },
 		): Promise<T> => markHandled(this.#runOp(active, label, signal, perOpMs, fn, selectorOpts));
+		type WaitUntil = "load" | "domcontentloaded" | "networkidle0" | "networkidle2";
+		const load = (label: string, url: string, waitUntil: WaitUntil | undefined): Promise<void> =>
+			op(label, INF, async sig => {
+				this.#clearElementCache();
+				try {
+					// Default to "load" because dev servers with HMR/WS never reach networkidle.
+					// budgetBound (not the full cell) so a hung navigation fails named and
+					// catchable inside the run instead of dying with the whole cell.
+					await this.#navigate(label, page, url, waitUntil ?? "load", budgetBound, sig);
+				} catch (err) {
+					if (isTimeoutError(err)) {
+						// Abandon the hung navigation NOW — a still-pending load stalls every
+						// later op on this page and cascades into more opaque timeouts.
+						await this.#stopLoading();
+						throw new ToolError(
+							`${label} timed out after ${budgetBound}ms; pending navigation stopped — retry with a longer tool timeout or waitUntil:"domcontentloaded"`,
+						);
+					}
+					throw err;
+				}
+			});
 		return {
 			name,
 			page,
 			signal,
 			url: () => page.url(),
 			title: () => op("tab.title()", INF, sig => untilAborted(sig, () => page.title())),
-			goto: (url, opts) =>
-				op(`tab.goto(${JSON.stringify(url)})`, INF, async sig => {
-					this.#clearElementCache();
-					try {
-						// Default to "load" because dev servers with HMR/WS never reach networkidle.
-						// budgetBound (not the full cell) so a hung navigation fails named and
-						// catchable inside the run instead of dying with the whole cell.
-						await this.#navigate(page, url, opts?.waitUntil ?? "load", budgetBound, sig);
-					} catch (err) {
-						if (isTimeoutError(err)) {
-							// Abandon the hung navigation NOW — a still-pending load stalls every
-							// later op on this page and cascades into more opaque timeouts.
-							await this.#stopLoading();
-							throw new ToolError(
-								`tab.goto(${JSON.stringify(url)}) timed out after ${budgetBound}ms; pending navigation stopped — retry with a longer tool timeout or waitUntil:"domcontentloaded"`,
-							);
-						}
-						throw err;
-					}
-				}),
+			goto: (url, opts) => load(`tab.goto(${JSON.stringify(url)})`, url, opts?.waitUntil),
+			// Loading the URL again rather than `page.reload()`, which would post a submitted form a second time.
+			reload: opts => load("tab.reload()", page.url(), opts?.waitUntil),
 			observe: opts => op("tab.observe()", quickOpMs, sig => this.#collectObservation({ ...opts, signal: sig })),
 			ariaSnapshot: (selector, opts) =>
 				op(
@@ -1290,6 +1841,7 @@ export class WorkerCore {
 						}
 						try {
 							const capture = await untilAborted(sig, () => captureAriaSnapshot(page, root, opts));
+							this.#snapshotFrames = capture.frames;
 							await this.#recordAriaRefs(page, capture, root === null);
 							return capture.text;
 						} finally {
@@ -1322,33 +1874,23 @@ export class WorkerCore {
 				op(
 					`tab.click(${JSON.stringify(selector)})`,
 					actionOpMs,
-					async sig => {
-						if (parseAriaRefSelector(selector) !== null) {
-							const handle = await this.#resolveAriaRef(selector);
-							try {
-								await untilAborted(sig, () => handle.click());
-							} finally {
-								await releaseHandle(handle);
-							}
-							return;
-						}
-						const resolved = normalizeSelector(selector);
-						if (resolved.startsWith("text/")) await clickQueryHandlerText(page, resolved, actionOpMs, sig);
-						else
-							await untilAborted(sig, () =>
-								page.locator(resolved).setTimeout(actionOpMs).click({ signal: sig }),
-							);
-					},
+					(sig, target = selector) =>
+						this.#click(target, `tab.click(${JSON.stringify(selector)})`, actionOpMs, sig, active.input),
 					{ selector, zeroMatchAfterMs: ZERO_MATCH_FAIL_FAST_MS },
 				),
 			type: (selector, text) =>
 				op(
 					`tab.type(${JSON.stringify(selector)})`,
 					actionOpMs,
-					async sig => {
-						const handle = await this.#resolveActionHandle(selector, actionOpMs, sig);
+					async (sig, target = selector) => {
+						const started = Date.now();
+						const handle = await this.#resolveActionHandle(target, actionOpMs, sig);
 						try {
-							await untilAborted(sig, () => handle.type(text, { delay: 0 }));
+							const input = active.input;
+							// Focused in the evaluation that checks the node, so a ref's re-rendered element takes the keys.
+							await untilAborted(sig, () => onElement(handle, focusConnected));
+							if (input === null) await untilAborted(sig, () => page.keyboard.type(text));
+							else await input.type(text, typingWithin(started), sig);
 						} finally {
 							await releaseHandle(handle);
 						}
@@ -1359,37 +1901,52 @@ export class WorkerCore {
 				op(
 					`tab.fill(${JSON.stringify(selector)})`,
 					actionOpMs,
-					async sig => {
-						if (parseAriaRefSelector(selector) !== null) {
-							const handle = await this.#resolveAriaRef(selector);
-							try {
-								await untilAborted(sig, () => handle.fill(value));
-							} finally {
-								await releaseHandle(handle);
-							}
-							return;
+					async (sig, target = selector) => {
+						const started = Date.now();
+						// Visible before it is filled, as a click waits: a field that is still animating in is waited
+						// for rather than refused for not taking focus.
+						const handle = await this.#resolveActionHandle(target, actionOpMs, sig, { visible: true });
+						try {
+							const input = active.input;
+							await onElement(handle, element =>
+								fillViaHandle(element, value, sig, input && { input, withinMs: typingWithin(started) }),
+							);
+						} finally {
+							await releaseHandle(handle);
 						}
-						await untilAborted(sig, () =>
-							page.locator(normalizeSelector(selector)).setTimeout(actionOpMs).fill(value, { signal: sig }),
-						);
 					},
 					{ selector, zeroMatchAfterMs: ZERO_MATCH_FAIL_FAST_MS },
 				),
-			press: (key, opts) =>
-				op(`tab.press(${JSON.stringify(key)})`, actionOpMs, async sig => {
-					const selector = opts?.selector;
-					if (selector) await untilAborted(sig, () => page.focus(normalizeSelector(selector)));
-					await untilAborted(sig, () => page.keyboard.press(key));
-				}),
+			press: (key, opts) => {
+				const selector = opts?.selector;
+				return op(
+					`tab.press(${JSON.stringify(key)})`,
+					actionOpMs,
+					async (sig, target) => {
+						// The element takes focus as a click's does, so a ref or a snapshot line's form reaches it too.
+						if (target !== undefined) {
+							const handle = await this.#resolveActionHandle(target, actionOpMs, sig);
+							try {
+								await untilAborted(sig, () => onElement(handle, focusConnected));
+							} finally {
+								await releaseHandle(handle);
+							}
+						}
+						await untilAborted(sig, () => page.keyboard.press(key));
+					},
+					selector ? { selector, zeroMatchAfterMs: ZERO_MATCH_FAIL_FAST_MS } : undefined,
+				);
+			},
 			scroll: (deltaX, deltaY) =>
 				op("tab.scroll()", actionOpMs, sig => untilAborted(sig, () => page.mouse.wheel({ deltaX, deltaY }))),
-			drag: (from, to) => op("tab.drag()", actionOpMs, sig => this.#drag(from, to, sig)),
+			drag: (from, to) => op("tab.drag()", actionOpMs, sig => this.#drag(from, to, sig, active.input)),
 			waitFor: (selector, opts) => {
 				const w = waitMs(opts?.timeout);
 				return op(
 					`tab.waitFor(${JSON.stringify(selector)})`,
 					w,
-					sig => this.#resolveActionHandle(selector, w, sig),
+					async (sig, target = selector) =>
+						toActionableHandle(await this.#resolveActionHandle(target, w, sig), this.#handleActions),
 					{ selector, zeroMatchAfterMs: opts?.timeout === undefined ? ZERO_MATCH_FAIL_FAST_MS : undefined },
 				);
 			},
@@ -1398,20 +1955,22 @@ export class WorkerCore {
 				return op(
 					`tab.waitForSelector(${JSON.stringify(selector)})`,
 					w,
-					async sig => {
-						if (parseAriaRefSelector(selector) !== null) return this.#resolveAriaRef(selector);
+					async (sig, target = selector) => {
+						if (parseAriaRefSelector(target) !== null)
+							return toActionableHandle(await this.#resolveAriaRef(target), this.#handleActions);
 						const handle = (await untilAborted(sig, () =>
-							page.waitForSelector(normalizeSelector(selector), {
+							page.waitForSelector(normalizeSelector(target), {
 								timeout: w,
 								visible: opts?.visible,
 								hidden: opts?.hidden,
 								signal: sig,
 							}),
 						)) as ElementHandle | null;
-						return handle ? toActionableHandle(handle) : null;
+						return handle ? toActionableHandle(handle, this.#handleActions) : null;
 					},
 					{
-						selector,
+						// A list waited on for its absence is not narrowed to the one alternative present now.
+						selector: opts?.hidden ? undefined : selector,
 						// `hidden: true` waits for zero matches — that is success, never a fast-fail.
 						zeroMatchAfterMs: opts?.timeout === undefined && !opts?.hidden ? ZERO_MATCH_FAIL_FAST_MS : undefined,
 					},
@@ -1419,11 +1978,19 @@ export class WorkerCore {
 			},
 			waitForNavigation: opts => {
 				const w = waitMs(opts?.timeout);
-				return op("tab.waitForNavigation()", w, sig =>
-					untilAborted(sig, () =>
+				// Read before the op below replaces it: the action this wait is meant to follow.
+				const previous = active.lastOp;
+				return op("tab.waitForNavigation()", w, async sig => {
+					// `await tab.click(…); await tab.waitForNavigation()` starts waiting after the click's navigation
+					// began, and puppeteer's wait would then time out on a navigation that already happened.
+					if (previous && !previous.navigating && this.#mainNavigations > previous.navigationsAtStart) {
+						await this.#waitForLoadState(opts?.waitUntil ?? "load", w, sig);
+						return null;
+					}
+					return await untilAborted(sig, () =>
 						page.waitForNavigation({ waitUntil: opts?.waitUntil ?? "load", timeout: w, signal: sig }),
-					),
-				);
+					);
+				});
 			},
 			evaluate: (fn, ...args) =>
 				op("tab.evaluate()", INF, sig =>
@@ -1440,10 +2007,16 @@ export class WorkerCore {
 				op(
 					`tab.scrollIntoView(${JSON.stringify(selector)})`,
 					actionOpMs,
-					async sig => {
-						const handle = await this.#resolveActionHandle(selector, actionOpMs, sig);
+					async (sig, target = selector) => {
+						const handle = await this.#resolveActionHandle(target, actionOpMs, sig);
 						try {
-							await untilAborted(sig, () => handle.scrollIntoView());
+							// The wheel brings the element near the centre; an instant scroll centres one it cannot.
+							const input = active.input;
+							const relocation = relocations.get(handle);
+							await onElement(handle, async element => {
+								if (input && (await input.scrollIntoView(element, sig, relocation?.relocate))) return;
+								await untilAborted(sig, () => scrollConnected(element));
+							});
 						} finally {
 							await releaseHandle(handle);
 						}
@@ -1454,14 +2027,17 @@ export class WorkerCore {
 				op(
 					`tab.select(${JSON.stringify(selector)})`,
 					actionOpMs,
-					sig => this.#select(selector, values, actionOpMs, sig),
+					(sig, target = selector) => {
+						const started = Date.now();
+						return this.#select(target, values, actionOpMs, sig, active.input, () => typingWithin(started));
+					},
 					{ selector, zeroMatchAfterMs: ZERO_MATCH_FAIL_FAST_MS },
 				),
 			uploadFile: (selector, ...filePaths) =>
 				op(
 					`tab.uploadFile(${JSON.stringify(selector)})`,
 					actionOpMs,
-					sig => this.#uploadFile(selector, filePaths, actionOpMs, sig, session),
+					(sig, target = selector) => this.#uploadFile(target, filePaths, actionOpMs, sig, session, active.input),
 					{ selector, zeroMatchAfterMs: ZERO_MATCH_FAIL_FAST_MS },
 				),
 			waitForUrl: (pattern, opts) => {
@@ -1472,8 +2048,14 @@ export class WorkerCore {
 				const w = waitMs(opts?.timeout);
 				return op("tab.waitForResponse()", w, sig => this.#waitForResponse(pattern, w, sig));
 			},
-			id: id => this.#resolveCachedHandle(id),
-			ref: id => this.#resolveAriaRef(id),
+			id: id =>
+				chainHandle(this.#resolveCachedHandle(id).then(handle => toActionableHandle(handle, this.#handleActions))),
+			ref: id =>
+				chainHandle(this.#resolveAriaRef(id).then(handle => toActionableHandle(handle, this.#handleActions))),
+			storageState: opts =>
+				op("tab.storageState()", actionOpMs, sig => this.#storageState(opts?.path, sig, session)),
+			loadStorageState: stateOrPath =>
+				op("tab.loadStorageState()", actionOpMs, sig => this.#loadStorageState(stateOrPath, sig, session)),
 		};
 	}
 
@@ -1493,13 +2075,14 @@ export class WorkerCore {
 		const entries: ObservationEntry[] = [];
 		const identities = countIdentities(snapshot, includeAll, new Map());
 		await collectObservationEntries(this, snapshot, entries, { includeAll, viewportOnly, identities });
-		const scroll = (await untilAborted(options.signal, () =>
+		const { dpr, ...scroll } = (await untilAborted(options.signal, () =>
 			page.evaluate(() => {
 				const win = globalThis as unknown as {
 					scrollX: number;
 					scrollY: number;
 					innerWidth: number;
 					innerHeight: number;
+					devicePixelRatio: number;
 					document: { documentElement: { scrollWidth: number; scrollHeight: number } };
 				};
 				const doc = win.document.documentElement;
@@ -1510,13 +2093,15 @@ export class WorkerCore {
 					height: win.innerHeight,
 					scrollWidth: doc.scrollWidth,
 					scrollHeight: doc.scrollHeight,
+					dpr: win.devicePixelRatio,
 				};
 			}),
-		)) as Observation["scroll"];
+		)) as Observation["scroll"] & { dpr: number };
 		return {
 			url: page.url(),
 			title: (await untilAborted(options.signal, () => page.title())) as string,
-			viewport: page.viewport() ?? DEFAULT_VIEWPORT,
+			// Where no viewport is emulated (a visible tab, an attached app), the window's content area is the viewport.
+			viewport: page.viewport() ?? { width: scroll.width, height: scroll.height, deviceScaleFactor: dpr },
 			scroll,
 			elements: entries,
 		};
@@ -1627,12 +2212,65 @@ export class WorkerCore {
 		return info;
 	}
 
-	async #drag(from: DragTarget, to: DragTarget, signal: AbortSignal): Promise<void> {
+	/**
+	 * Press the element `selector` names once nothing covers it ({@link pressUncovered}). A CSS or handler
+	 * selector is resolved again when its element leaves the page before the press, as a re-rendering
+	 * framework replaces it; an `aria-ref` press goes on at the single element holding the role and name
+	 * the ref had ({@link HandleRelocation}).
+	 */
+	async #click(
+		selector: string,
+		label: string,
+		timeoutMs: number,
+		signal: AbortSignal,
+		input: NaturalInput | null,
+	): Promise<void> {
+		const pressMs = Math.max(1, timeoutMs - PRESS_REPORT_MARGIN_MS);
+		if (parseAriaRefSelector(selector) !== null) {
+			const handle = await this.#resolveAriaRef(selector);
+			try {
+				const relocation = relocations.get(handle);
+				await pressUncovered(handle, label, puppeteerPress("click", relocation !== undefined), pressMs, {
+					signal,
+					gesture: { kind: "click" },
+					input,
+					relocation,
+				});
+			} finally {
+				await releaseHandle(handle);
+			}
+			return;
+		}
+		const resolved = normalizeSelector(selector);
+		if (resolved.startsWith("text/")) {
+			await clickQueryHandlerText(this.#requirePage(), resolved, timeoutMs, signal, input);
+			return;
+		}
+		const started = Date.now();
+		for (;;) {
+			const remaining = Math.max(1, pressMs - (Date.now() - started));
+			const handle = await this.#resolveActionHandle(selector, remaining, signal, { visible: true });
+			try {
+				await pressUncovered(handle, label, element => element.click(), remaining, {
+					signal,
+					gesture: { kind: "click" },
+					input,
+				});
+				return;
+			} catch (err) {
+				if (!(err instanceof DetachedPressTarget) || Date.now() - started >= pressMs) throw err;
+			} finally {
+				await releaseHandle(handle);
+			}
+		}
+	}
+
+	async #drag(from: DragTarget, to: DragTarget, signal: AbortSignal, input: NaturalInput | null): Promise<void> {
 		const page = this.#requirePage();
 		const resolveDragPoint = async (
 			target: DragTarget,
 			role: "from" | "to",
-		): Promise<{ x: number; y: number; handle?: ElementHandle }> => {
+		): Promise<{ x: number; y: number; size?: Extent; handle?: ElementHandle }> => {
 			if (typeof target === "string") {
 				const handle = (await untilAborted(signal, () =>
 					page.$(normalizeSelector(target)),
@@ -1648,7 +2286,7 @@ export class WorkerCore {
 					await releaseHandle(handle);
 					throw new ToolError(`Drag ${role} element has no bounding box (likely not visible): ${target}`);
 				}
-				return { x: box.x + box.width / 2, y: box.y + box.height / 2, handle };
+				return { x: box.x + box.width / 2, y: box.y + box.height / 2, size: box, handle };
 			}
 			if (
 				target !== null &&
@@ -1663,9 +2301,18 @@ export class WorkerCore {
 			);
 		};
 		const start = await resolveDragPoint(from, "from");
-		let end: { x: number; y: number; handle?: ElementHandle } | undefined;
+		let end: { x: number; y: number; size?: Extent; handle?: ElementHandle } | undefined;
 		try {
 			end = await resolveDragPoint(to, "to");
+			if (input) {
+				await input.drag(
+					start,
+					end,
+					{ from: start.size ?? DRAG_POINT_TARGET, to: end.size ?? DRAG_POINT_TARGET },
+					signal,
+				);
+				return;
+			}
 			await untilAborted(signal, () => page.mouse.move(start.x, start.y));
 			await untilAborted(signal, () => page.mouse.down());
 			await untilAborted(signal, () => page.mouse.move(end!.x, end!.y, { steps: 12 }));
@@ -1676,71 +2323,212 @@ export class WorkerCore {
 		}
 	}
 
-	async #select(selector: string, values: string[], timeoutMs: number, signal: AbortSignal): Promise<string[]> {
-		const page = this.#requirePage();
-		const handle = (await untilAborted(signal, () =>
-			page.locator(normalizeSelector(selector)).setTimeout(timeoutMs).waitHandle({ signal }),
-		)) as ElementHandle;
+	/**
+	 * Select `values` in a `<select>` by type-ahead, then by a modified click for each further option of
+	 * a multiple select ({@link planSelect}), so the page gets the trusted events a person's input sends.
+	 * A state no key or click reaches is set by script, with the events dispatched, as before.
+	 */
+	async #select(
+		selector: string,
+		values: string[],
+		timeoutMs: number,
+		signal: AbortSignal,
+		input: NaturalInput | null,
+		typingMs: () => number,
+	): Promise<string[]> {
+		const handle = await this.#resolveActionHandle(selector, timeoutMs, signal);
 		try {
-			return (await untilAborted(signal, () =>
-				handle.evaluate((el, vals) => {
-					interface SelectOption {
-						value: string;
-						selected: boolean;
-					}
-					interface SelectLike {
-						tagName: string;
-						options: ArrayLike<SelectOption>;
-						dispatchEvent: (event: unknown) => boolean;
-					}
-					const select = el as unknown as SelectLike;
-					if (select?.tagName !== "SELECT") throw new Error("tab.select() requires a <select> element");
-					const EventCtor = (
-						globalThis as unknown as { Event: new (type: string, init?: { bubbles: boolean }) => unknown }
-					).Event;
-					const wanted = new Set(vals as string[]);
-					const selected: string[] = [];
-					for (let i = 0; i < select.options.length; i++) {
-						const opt = select.options[i] as SelectOption;
-						opt.selected = wanted.has(opt.value);
-						if (opt.selected) selected.push(opt.value);
-					}
-					select.dispatchEvent(new EventCtor("input", { bubbles: true }));
-					select.dispatchEvent(new EventCtor("change", { bubbles: true }));
-					return selected;
-				}, values),
-			)) as string[];
+			const state = (await untilAborted(signal, () => handle.evaluate(readSelectState))) as SelectState;
+			if (!state.isSelect) throw new ToolError("tab.select() requires a <select> element");
+			const plan = planSelect(state, values);
+			if (plan.kind === "input")
+				await this.#selectByInput(handle, state, plan, input, typingMs(), timeoutMs, signal);
+			const settled = (await untilAborted(signal, () => handle.evaluate(settleSelection, values))) as {
+				selected: string[];
+				scripted: boolean;
+			};
+			if (settled.scripted) {
+				this.#log("debug", "tab.select() set the selection by script", {
+					reason: plan.kind === "script" ? plan.reason : "the keys and clicks left another selection",
+				});
+			}
+			return settled.selected;
 		} finally {
 			await releaseHandle(handle);
 		}
 	}
 
+	async #selectByInput(
+		handle: ElementHandle,
+		state: SelectState,
+		plan: Extract<SelectPlan, { kind: "input" }>,
+		input: NaturalInput | null,
+		typingMs: number,
+		timeoutMs: number,
+		signal: AbortSignal,
+	): Promise<void> {
+		const page = this.#requirePage();
+		// Keys reach an open drop-down's popup, where they move a highlight; Escape closes it unchanged.
+		if (state.open) await untilAborted(signal, () => page.keyboard.press("Escape"));
+		// A session the select keeps from keys typed a moment ago would join these keys to those. Natural
+		// input waits it out, at a person's pace; instant input ends it with a blur, which resets it.
+		const since = Date.now() - this.#typeAheadAt;
+		if (state.focused && since < TYPE_AHEAD_SESSION_MS) {
+			if (input) await delay(TYPE_AHEAD_SESSION_MS - since, undefined, { signal });
+			else await untilAborted(signal, () => handle.evaluate(el => (el as unknown as { blur(): void }).blur()));
+		}
+		await untilAborted(signal, () => handle.focus());
+		await this.#typeKeys(plan.keys, input, typingMs, signal);
+		this.#typeAheadAt = Date.now();
+		for (const index of plan.extra) {
+			const found = await untilAborted(signal, () =>
+				handle.evaluateHandle(
+					(el, at) => (el as unknown as { options: ArrayLike<unknown> }).options[at as number],
+					index,
+				),
+			);
+			const option = found.asElement() as ElementHandle | null;
+			if (!option) {
+				await releaseHandle(found);
+				continue;
+			}
+			try {
+				await untilAborted(signal, () => page.keyboard.down(plan.modifier));
+				try {
+					await pressUncovered(
+						option,
+						"tab.select()",
+						element => element.click(),
+						Math.max(1, timeoutMs - PRESS_REPORT_MARGIN_MS),
+						{ signal, gesture: { kind: "click" }, input },
+					);
+				} finally {
+					await bestEffort(
+						page.keyboard.up(plan.modifier),
+						"puppeteer clears a modifier from its own state before it sends",
+					);
+				}
+			} finally {
+				await releaseHandle(option);
+			}
+		}
+	}
+
+	/**
+	 * Type `text` at the focused element as keys that each send a `keypress`, which type-ahead reads: a
+	 * character of puppeteer's layout through its keyboard, any other through `Input.dispatchKeyEvent`,
+	 * as puppeteer inserts such a character as text without one.
+	 */
+	async #typeKeys(text: string, input: NaturalInput | null, withinMs: number, signal: AbortSignal): Promise<void> {
+		const page = this.#requirePage();
+		let session: CDPSession | undefined;
+		const send = async (char: string, holdMs: number): Promise<void> => {
+			if (char >= " " && char <= "~") {
+				await page.keyboard.type(char, { delay: holdMs });
+				return;
+			}
+			session ??= await page.createCDPSession();
+			await session.send("Input.dispatchKeyEvent", { type: "keyDown", key: char, text: char, unmodifiedText: char });
+			if (holdMs > 0) await delay(holdMs);
+			await session.send("Input.dispatchKeyEvent", { type: "keyUp", key: char });
+		};
+		try {
+			if (input) await input.type(text, withinMs, signal, send);
+			else for (const char of text) await untilAborted(signal, () => send(char, 0));
+		} finally {
+			if (session) await bestEffort(session.detach(), "a session goes with its page");
+		}
+	}
+
+	/**
+	 * Attach files to an `<input type="file">`, or press the control that opens a file chooser (a button,
+	 * a label, a drop zone that clicks a hidden input) and hand the chooser the files.
+	 */
 	async #uploadFile(
 		selector: string,
 		filePaths: string[],
 		timeoutMs: number,
 		signal: AbortSignal,
 		session: SessionSnapshot,
+		input: NaturalInput | null,
 	): Promise<void> {
 		if (!filePaths.length) throw new ToolError("tab.uploadFile() requires at least one file path");
 		const page = this.#requirePage();
-		const handle = (await untilAborted(signal, () =>
-			page.locator(normalizeSelector(selector)).setTimeout(timeoutMs).waitHandle({ signal }),
-		)) as ElementHandle;
+		const label = `tab.uploadFile(${JSON.stringify(selector)})`;
+		const started = Date.now();
+		const handle = await this.#resolveActionHandle(selector, timeoutMs, signal);
 		try {
 			const absolute = filePaths.map(filePath => resolveToCwd(filePath, session.cwd));
-			const upload = handle as unknown as { uploadFile: (...paths: string[]) => Promise<void> };
-			const tagName = (await untilAborted(signal, () =>
-				handle.evaluate(el => (el as unknown as { tagName: string }).tagName),
+			const kind = (await untilAborted(signal, () =>
+				handle.evaluate(el => {
+					const element = el as unknown as { tagName: string; type?: string };
+					const tag = element.tagName.toLowerCase();
+					return tag === "input" ? `input:${(element.type ?? "text").toLowerCase()}` : tag;
+				}),
 			)) as string;
-			if (tagName !== "INPUT")
+			if (kind === "input:file") {
+				const upload = handle as unknown as { uploadFile: (...paths: string[]) => Promise<void> };
+				await untilAborted(signal, () => upload.uploadFile(...absolute));
+				return;
+			}
+			if (kind.startsWith("input:")) {
 				throw new ToolError(
-					`tab.uploadFile() requires an <input type="file"> element (got <${tagName.toLowerCase()}>)`,
+					`${label}: an <input type="${kind.slice("input:".length)}"> takes no files. Pass the <input type="file">, or the control that opens its chooser.`,
 				);
-			await untilAborted(signal, () => upload.uploadFile(...absolute));
+			}
+			const remaining = Math.max(1, timeoutMs - PRESS_REPORT_MARGIN_MS - (Date.now() - started));
+			const chooser = markHandled(page.waitForFileChooser({ timeout: remaining, signal }));
+			await pressUncovered(handle, label, element => element.click(), remaining, {
+				signal,
+				gesture: { kind: "click" },
+				input,
+			});
+			let opened: FileChooser | null;
+			try {
+				opened = await untilAborted(signal, () =>
+					Promise.race([chooser, delay(CHOOSER_WAIT_MS, null, { signal })]),
+				);
+			} catch (err) {
+				if (!isTimeoutError(err)) throw err;
+				opened = null;
+			}
+			if (!opened) {
+				throw new ToolError(
+					`${label}: pressing the <${kind}> opened no file chooser. Pass the <input type="file">, or the control that opens its chooser.`,
+				);
+			}
+			await untilAborted(signal, () => opened.accept(absolute));
 		} finally {
 			await releaseHandle(handle);
 		}
+	}
+
+	/**
+	 * Wait until the page that a navigation already committed reaches `waitUntil`, the state
+	 * `page.waitForNavigation` would have waited for had it started before the navigation.
+	 */
+	async #waitForLoadState(
+		waitUntil: "load" | "domcontentloaded" | "networkidle0" | "networkidle2",
+		timeout: number,
+		signal: AbortSignal,
+	): Promise<void> {
+		const page = this.#requirePage();
+		if (waitUntil === "networkidle0" || waitUntil === "networkidle2") {
+			await untilAborted(signal, () =>
+				page.waitForNetworkIdle({ concurrency: waitUntil === "networkidle0" ? 0 : 2, timeout, signal }),
+			);
+			return;
+		}
+		await untilAborted(signal, () =>
+			page.waitForFunction(
+				(complete: boolean) => {
+					const state = (globalThis as unknown as { document: { readyState: string } }).document.readyState;
+					return complete ? state === "complete" : state !== "loading";
+				},
+				{ timeout, signal, polling: 50 },
+				waitUntil === "load",
+			),
+		);
 	}
 
 	/**
@@ -1753,6 +2541,7 @@ export class WorkerCore {
 	 * an abort waits up to {@link NAVIGATION_INTERRUPT_GRACE_MS} for it.
 	 */
 	async #navigate(
+		label: string,
 		page: Page,
 		url: string,
 		waitUntil: PuppeteerLifeCycleEvent,
@@ -1792,7 +2581,7 @@ export class WorkerCore {
 					}
 					if (attempt === 2) {
 						throw new ToolError(
-							`tab.goto(${JSON.stringify(url)}) was aborted twice by other navigations, the last to ${interrupter}; wait for the page to settle (tab.waitForNavigation()) and retry`,
+							`${label} was aborted twice by other navigations, the last to ${interrupter}; wait for the page to settle (tab.waitForNavigation()) and retry`,
 						);
 					}
 				}
@@ -1840,9 +2629,10 @@ export class WorkerCore {
 	/**
 	 * The element behind an observe id. A node the page re-rendered out of the document is replaced
 	 * by the single element holding its role and name (see `element-identity.ts`); a node whose
-	 * document a navigation replaced, or one with no single replacement, makes every id stale.
+	 * document a navigation replaced, or one with no single replacement, makes every id stale. The
+	 * handle's relocation is registered for the actions that act on it.
 	 */
-	async #resolveCachedHandle(id: number): Promise<ActionableHandle> {
+	async #resolveCachedHandle(id: number): Promise<ElementHandle> {
 		const entry = this.#elementCache.get(id);
 		if (!entry) throw new ToolError(`Unknown element id ${id}. Run tab.observe() to refresh the element list.`);
 		const page = this.#requirePage();
@@ -1872,15 +2662,17 @@ export class WorkerCore {
 			this.#retiredHandles.push(entry.handle);
 			entry.handle = fresh;
 		}
-		return toActionableHandle(entry.handle, relocation);
+		relocations.set(entry.handle, relocation);
+		return entry.handle;
 	}
 
 	/**
 	 * The element behind an ARIA ref of the latest snapshot. A ref whose element the page re-rendered
 	 * resolves to the single element holding the role and name the ref had, as long as the document
-	 * the snapshot read is still the page's.
+	 * the snapshot read is still the page's. The handle's relocation is registered for the actions
+	 * that act on it.
 	 */
-	async #resolveAriaRef(id: string): Promise<ActionableHandle> {
+	async #resolveAriaRef(id: string): Promise<ElementHandle> {
 		const ref = parseAriaRefSelector(id) ?? id.trim();
 		const page = this.#requirePage();
 		const identity = this.#ariaRefIdentities.get(ref) ?? null;
@@ -1899,13 +2691,14 @@ export class WorkerCore {
 					`ARIA ref ${JSON.stringify(ref)} is stale (${cause})${identity ? `, and no single element with role ${JSON.stringify(identity.role)} and name ${JSON.stringify(identity.name)} replaced it` : ""}. Run tab.ariaSnapshot() to refresh refs.`,
 				),
 		};
-		const handle = (await resolveAriaRefHandle(page, ref)) ?? (await relocation.relocate());
+		const handle = (await resolveAriaRefHandle(page, ref, this.#snapshotFrames)) ?? (await relocation.relocate());
 		if (!handle) {
 			throw new ToolError(
 				`Unknown ARIA ref ${JSON.stringify(ref)}. Run tab.ariaSnapshot() to refresh refs (they renumber each snapshot).`,
 			);
 		}
-		return toActionableHandle(handle, relocation);
+		relocations.set(handle, relocation);
+		return handle;
 	}
 
 	/**
@@ -1934,15 +2727,22 @@ export class WorkerCore {
 	/**
 	 * Resolve a selector to an ElementHandle for handle-based actions. An
 	 * `aria-ref=eN` selector resolves against the latest ariaSnapshot's refs
-	 * (main world); anything else goes through the normal locator wait.
+	 * (main world); anything else goes through the normal locator wait, which
+	 * also waits for the element to be visible when `visible` is set.
 	 */
-	async #resolveActionHandle(selector: string, timeoutMs: number, sig: AbortSignal): Promise<ActionableHandle> {
+	async #resolveActionHandle(
+		selector: string,
+		timeoutMs: number,
+		sig: AbortSignal,
+		opts?: { visible?: boolean },
+	): Promise<ElementHandle> {
 		if (parseAriaRefSelector(selector) !== null) return this.#resolveAriaRef(selector);
-		const handle = (await untilAborted(sig, () =>
-			this.#requirePage().locator(normalizeSelector(selector)).setTimeout(timeoutMs).waitHandle({ signal: sig }),
+		const locator = this.#requirePage().locator(normalizeSelector(selector)).setTimeout(timeoutMs);
+		return (await untilAborted(sig, () =>
+			(opts?.visible ? locator.setVisibility("visible") : locator).waitHandle({ signal: sig }),
 		)) as ElementHandle;
-		return toActionableHandle(handle);
 	}
+
 	#clearElementCache(): void {
 		this.#elementCounter = 0;
 		if (this.#elementCache.size === 0 && this.#retiredHandles.length === 0) return;
@@ -1976,13 +2776,46 @@ export class WorkerCore {
 		const page = this.#page;
 		if (this.#dialogHandler && page && !page.isClosed()) page.off("dialog", this.#dialogHandler);
 		// The worker is shutting down and reports `closed` below regardless: a page that will not close is either
-		// already closing or belongs to a browser that is going away with it, and the disconnect follows.
+		// already closing or belongs to a browser that is going away with it, and the disconnect follows. A named
+		// context is the supervisor's, which closes it when its last tab goes.
 		if (this.#mode === "headless" && page && !page.isClosed()) {
 			await bestEffort(page.close(), "a page that will not close is already closing or going with its browser");
 		}
 		if (this.#browser?.connected) this.#browser.disconnect();
 		this.#transport.send({ type: "closed" });
 		this.#transport.close();
+		this.#uninstallRejectionGuard();
+	}
+
+	async #storageState(file: string | undefined, signal: AbortSignal, session: SessionSnapshot): Promise<StorageState> {
+		const context = this.#requirePage().browserContext();
+		return await untilAborted(signal, async () => {
+			const state = await captureStorageState(context);
+			if (file !== undefined) await writeStorageStateFile(resolveToCwd(file, session.cwd), state);
+			return state;
+		});
+	}
+
+	async #loadStorageState(
+		stateOrPath: string | StorageState,
+		signal: AbortSignal,
+		session: SessionSnapshot,
+	): Promise<StorageStateLoaded> {
+		// Reading a spawned or connected browser's session is how one is carried into a headless tab;
+		// writing one would overwrite the cookies of a profile a person or an app signs in with.
+		if (this.#mode !== "headless") {
+			throw new ToolError(
+				"tab.loadStorageState() needs the headless browser: this tab runs in a spawned or connected browser's own profile, and a load would write cookies and localStorage into that profile. Load the state into a tab opened without app.",
+			);
+		}
+		const context = this.#requirePage().browserContext();
+		return await untilAborted(signal, async () => {
+			const state =
+				typeof stateOrPath === "string"
+					? await readStorageStateFile(resolveToCwd(stateOrPath, session.cwd))
+					: parseStorageState(stateOrPath, "tab.loadStorageState()'s argument");
+			return await applyStorageState(context, state);
+		});
 	}
 
 	#requirePage(): Page {

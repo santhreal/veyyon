@@ -106,8 +106,8 @@ describe("importing any module the package ships first", () => {
 		expect(files).toContain("backends/harbor/launch-args.ts");
 		expect(files).toContain("benches/search/main.ts");
 		expect(files).toContain("engine/contracts.ts");
-		expect(files).toContain("engine/member-registry.ts");
-		expect(files).toContain("engine/system-comparison.ts");
+		expect(files).toContain("engine/members/registry.ts");
+		expect(files).toContain("engine/compare/system-comparison.ts");
 		expect(files).toContain("store/sqlite.ts");
 		expect(files).toContain("tools/bench-report.ts");
 		expect(files).toContain("api/controllers/runs.ts");

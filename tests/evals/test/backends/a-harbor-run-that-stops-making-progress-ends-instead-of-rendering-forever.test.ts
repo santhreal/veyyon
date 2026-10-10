@@ -25,7 +25,7 @@ import {
 	RUN_WATCHDOG_GRACE_SEC,
 	runCeilingMs,
 } from "../../backends/harbor/run-watchdog";
-import { DEFAULT_TRIAL_TIMEOUT_SEC } from "../../engine/trial-deadline";
+import { DEFAULT_TRIAL_TIMEOUT_SEC } from "../../engine/trial/deadline";
 
 interface FakeClock {
 	readonly elapsedMs: () => number;

@@ -19,7 +19,7 @@
 
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import type { BackendId, HarnessAdapter } from "../../engine/contracts";
-import { backends, harnesses, suites as loadedSuites } from "../../engine/loaded-members";
+import { backends, harnesses, suites as loadedSuites } from "../../engine/members/loaded";
 import { describeRegistries, main } from "../../evals";
 
 type ListedSuite = Parameters<typeof describeRegistries>[0][number];

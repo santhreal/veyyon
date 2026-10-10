@@ -31,7 +31,7 @@ import * as path from "node:path";
 import { PierExecutionBackend } from "../../../backends/pier/main";
 import * as pierRunner from "../../../backends/pier/runner";
 import type { EvalSuite, RunContext, TaskDescriptor, TrialCell, TrialScore, Variant } from "../../../engine/contracts";
-import { harnesses, suites } from "../../../engine/loaded-members";
+import { harnesses, suites } from "../../../engine/members/loaded";
 import { CliUsageError, parseEvalsArgs, suiteContext } from "../../../evals";
 
 const TASK = "bound-the-agent";

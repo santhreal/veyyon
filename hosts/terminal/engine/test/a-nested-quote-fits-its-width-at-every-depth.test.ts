@@ -11,6 +11,11 @@
  * paragraph, a list, a heading and an HTML `<blockquote>`. Each frame must fit its width, and hold no more rows than
  * the source has characters, since every row carries at least one source character.
  *
+ * The same nesting once grew each row's bytes instead of its count: every level re-applied the quote style, which
+ * re-opens the style after every close the inner levels wrote, so `>`×20 around "deep" was a 3,687-byte row and a
+ * width sweep spent most of its time styling escapes. Each row must stay within a fixed number of bytes per level,
+ * the cost of one border, plus a constant for the content's own styling.
+ *
  * Not caught: a single quote level whose content row overflows by one wide grapheme at a one-cell width, which wraps
  * once and does not compound; content that is not ASCII is outside the width assertion for that reason.
  */
@@ -20,6 +25,10 @@ import { visibleWidth } from "@veyyon/utils/width";
 import { defaultMarkdownTheme } from "./test-themes.js";
 
 const MAX_WIDTH = 40;
+/** Bytes one quote level adds to a row: its styled `│ ` border. */
+const ROW_BYTES_PER_LEVEL = 16;
+/** Bytes a row's content and its styling may take regardless of depth. */
+const ROW_BYTES_BASE = 96;
 const MAX_DEPTH = Markdown.MAX_RENDER_DEPTH + 8;
 const MARKERS = { unspaced: (depth: number) => ">".repeat(depth), spaced: (depth: number) => "> ".repeat(depth) };
 const CONTENT = {
@@ -41,6 +50,8 @@ describe("a nested quote", () => {
 						expect({ label, rows: rows.length <= source.length }).toEqual({ label, rows: true });
 						const wide = rows.filter(row => visibleWidth(row) > width);
 						expect({ label, wide }).toEqual({ label, wide: [] });
+						const bloated = rows.filter(row => row.length > ROW_BYTES_BASE + ROW_BYTES_PER_LEVEL * depth);
+						expect({ label, bloated }).toEqual({ label, bloated: [] });
 					}
 				}
 			});

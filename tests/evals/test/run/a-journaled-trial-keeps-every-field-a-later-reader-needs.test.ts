@@ -11,9 +11,9 @@
  */
 import { describe, expect, it } from "bun:test";
 import type { TrialArtifacts } from "../../engine/contracts";
-import { sanitizeArtifacts, sanitizeTrialRecord } from "../../engine/run-journal";
-import type { TrialResultRecord } from "../../engine/run-record";
-import { RAW_OUTPUT_MAX_BYTES } from "../../engine/trial-deadline";
+import { sanitizeArtifacts, sanitizeTrialRecord } from "../../engine/run/journal";
+import type { TrialResultRecord } from "../../engine/run/record";
+import { RAW_OUTPUT_MAX_BYTES } from "../../engine/trial/deadline";
 
 /** Every field TrialArtifacts declares, each with a distinguishable value. */
 const fullArtifacts: TrialArtifacts = {

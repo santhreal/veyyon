@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { type ArmSummary, type ExperimentDetail, isTrialStatus, type TrialStatus } from "../../engine/store-shapes";
+import { type ArmSummary, type ExperimentDetail, isTrialStatus, type TrialStatus } from "../../engine/wire/store-shapes";
 import { isDecided, type TaskStat } from "./focus-panel";
 import { shortTask } from "./task-chips";
 

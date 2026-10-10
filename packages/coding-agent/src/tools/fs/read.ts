@@ -19,7 +19,7 @@ import { parseInternalUrl } from "../../internal-urls/parse";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "../../sdk";
 import { DEFAULT_MAX_LINES } from "../../session/streaming-output";
-import { resolveFileDisplayMode } from "../../utils/file-display-mode";
+import { type FileDisplayMode, resolveFileDisplayMode } from "../../utils/file-display-mode";
 import {
 	type DelimitedPathSplitOptions,
 	expandDelimitedPathEntriesSync,
@@ -123,16 +123,16 @@ export class ReadTool implements AgentTool<typeof readSchema.value, ReadToolDeta
 	readonly filesystemTargets = (args: unknown, cwd = this.session.cwd): string[] => readFilesystemTargets(args, cwd);
 	readonly label = "Read";
 	readonly loadMode = "essential";
-	readonly description: string;
 	get parameters(): typeof readSchema.value {
 		return readSchema.value;
 	}
 	readonly strict = true;
 
 	readonly #ctx: ReadContext;
+	readonly #displayMode: FileDisplayMode;
 
 	constructor(private readonly session: ToolSession) {
-		const displayMode = resolveFileDisplayMode(session);
+		this.#displayMode = resolveFileDisplayMode(session);
 		const autoResizeImages = session.settings.get("images.autoResize");
 		const defaultLimit = Math.max(
 			1,
@@ -140,11 +140,16 @@ export class ReadTool implements AgentTool<typeof readSchema.value, ReadToolDeta
 		);
 		const inspectImageEnabled = session.settings.get("inspect_image.enabled");
 		this.#ctx = { session, defaultLimit, autoResizeImages, inspectImageEnabled };
-		this.description = prompt.render(toolsPrompts["tools/read"].text, {
-			DEFAULT_LIMIT: String(defaultLimit),
-			IS_HL_MODE: displayMode.hashLines,
-			IS_LINE_NUMBER_MODE: !displayMode.hashLines && displayMode.lineNumbers,
-			INSPECT_IMAGE_ENABLED: inspectImageEnabled,
+	}
+
+	/** Rendered on each read so the text follows the session's active tools, as bash's does. */
+	get description(): string {
+		return prompt.render(toolsPrompts["tools/read"].text, {
+			DEFAULT_LIMIT: String(this.#ctx.defaultLimit),
+			IS_HL_MODE: this.#displayMode.hashLines,
+			IS_LINE_NUMBER_MODE: !this.#displayMode.hashLines && this.#displayMode.lineNumbers,
+			INSPECT_IMAGE_ENABLED: this.#ctx.inspectImageEnabled,
+			hasBrowser: this.session.isToolActive?.("browser") ?? this.session.settings.get("browser.enabled"),
 		});
 	}
 

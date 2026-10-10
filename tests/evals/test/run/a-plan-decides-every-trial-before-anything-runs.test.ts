@@ -38,18 +38,9 @@ import type {
 	TrialCell,
 	TrialScore,
 } from "../../engine/contracts";
-import type { ExecuteRunOptions } from "../../engine/execute-run";
-import {
-	BackendPreflightError,
-	executeRun as baseExecuteRun,
-	HarnessPreflightError,
-	InvalidConcurrencyError,
-	SuitePreflightError,
-} from "../../engine/execute-run";
-import { harnesses as loadedHarnesses } from "../../engine/loaded-members";
-import { MemberNotFoundError, Registry } from "../../engine/member-registry";
-import { journalPathFor, readRunJournal } from "../../engine/run-journal";
-import type { RunPlan, RunPlanRequest } from "../../engine/run-plan";
+import { harnesses as loadedHarnesses } from "../../engine/members/loaded";
+import { MemberNotFoundError, Registry } from "../../engine/members/registry";
+import type { RunPlan, RunPlanRequest } from "../../engine/plan/run-plan";
 import {
 	buildRunPlan,
 	describeRunPlan,
@@ -57,8 +48,17 @@ import {
 	InvalidRepeatsError,
 	UnboundHarnessBackendError,
 	UnknownTaskError,
-} from "../../engine/run-plan";
-import { summarizeRunCells } from "../../engine/run-record";
+} from "../../engine/plan/run-plan";
+import type { ExecuteRunOptions } from "../../engine/run/execute";
+import {
+	BackendPreflightError,
+	executeRun as baseExecuteRun,
+	HarnessPreflightError,
+	InvalidConcurrencyError,
+	SuitePreflightError,
+} from "../../engine/run/execute";
+import { journalPathFor, readRunJournal } from "../../engine/run/journal";
+import { summarizeRunCells } from "../../engine/run/record";
 
 // The plan resolves each variant's harness before it expands a single cell, so every
 // call here needs a registry holding the real builtin adapters. This file owns its own
@@ -713,7 +713,13 @@ describe("executeRun", () => {
 			description: "Refuses preflight",
 			flags: [],
 			defaultModel: "test-model",
-			capabilities: { replay: false, compaction: false, armAttachments: false, promptOverrides: false },
+			capabilities: {
+				replay: false,
+				compaction: false,
+				armAttachments: false,
+				promptOverrides: false,
+				builds: false,
+			},
 			backends: { "in-process": {} },
 			async stageAssets() {},
 			async preflight() {

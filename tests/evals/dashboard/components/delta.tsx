@@ -1,4 +1,4 @@
-import type { ArmSummary } from "../../engine/store-shapes";
+import type { ArmSummary } from "../../engine/wire/store-shapes";
 
 /**
  * The comparison anchor for an experiment: the completed baseline arm with the

@@ -10,9 +10,9 @@ import {
 	writePierJobConfig,
 } from "../../../backends/pier/runner";
 import type { EvalSuite, RunContext, SuiteProvenance, TaskDescriptor, TrialScore } from "../../../engine/contracts";
-import { backends, harnesses } from "../../../engine/loaded-members";
-import { boundRawOutput } from "../../../engine/trial-deadline";
-import { terminateProcessTree } from "../../../engine/trial-process";
+import { backends, harnesses } from "../../../engine/members/loaded";
+import { boundRawOutput } from "../../../engine/trial/deadline";
+import { terminateProcessTree } from "../../../engine/trial/process";
 
 function createMockSuite(): EvalSuite {
 	return {

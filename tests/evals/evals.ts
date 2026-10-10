@@ -14,25 +14,27 @@
  */
 
 import { spawn } from "node:child_process";
+import { writeSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { errorMessage, logger } from "@veyyon/utils";
 import type { EvalSuite, HarnessAdapter, SuiteContext } from "./engine/contracts";
-import { executeRun } from "./engine/execute-run";
-import { preflightHarnesses } from "./engine/harness-preflight";
-import { backends, harnesses, harnessFlags, suites } from "./engine/loaded-members";
-import { findMembers, MEMBER_KINDS } from "./engine/member-discovery";
+import { preflightHarnesses } from "./engine/harness/preflight";
+import { findMembers, MEMBER_KINDS } from "./engine/members/discovery";
+import { backends, harnesses, harnessFlags, suites } from "./engine/members/loaded";
 import { runsDir as defaultRunsDir, requirePathSegment } from "./engine/package-paths";
-import { checkRunDirectories } from "./engine/run-directories";
-import { journalExists, journalPathFor, readRunJournal, requireJournalPlan } from "./engine/run-journal";
-import type { RunPlan } from "./engine/run-plan";
-import { buildRunPlan, describeRunPlan } from "./engine/run-plan";
-import { planIdentity } from "./engine/run-plan-identity";
-import type { CellSummary, EvalRunRecord } from "./engine/run-record";
-import { judgeRunOutcome, summarizeRunCells } from "./engine/run-record";
-import { DEFAULT_TRIAL_ATTEMPTS, MAX_TRIAL_ATTEMPTS } from "./engine/trial-retry";
-import { checkVariantSupport, type UnappliedVariantAxisError, variantSupportQuery } from "./engine/variant-axes";
-import type { ConfigSpec, PromptVariantSpec, VariantMatrixSelection } from "./engine/variant-matrix";
+import { planIdentity } from "./engine/plan/plan-identity";
+import type { RunPlan } from "./engine/plan/run-plan";
+import { buildRunPlan, describeRunPlan } from "./engine/plan/run-plan";
+import { checkVariantSupport, type UnappliedVariantAxisError, variantSupportQuery } from "./engine/plan/variant-axes";
+import type { ConfigSpec, PromptVariantSpec, VariantMatrixSelection } from "./engine/plan/variant-matrix";
+import { checkRunDirectories } from "./engine/run/directories";
+import { executeRun } from "./engine/run/execute";
+import { runUnderSignals } from "./engine/run/interrupt";
+import { journalExists, journalPathFor, readRunJournal, requireJournalPlan } from "./engine/run/journal";
+import type { CellSummary, EvalRunRecord } from "./engine/run/record";
+import { judgeRunOutcome, summarizeRunCells } from "./engine/run/record";
+import { DEFAULT_TRIAL_ATTEMPTS, MAX_TRIAL_ATTEMPTS } from "./engine/trial/retry";
 
 /**
  * Flags that take a value. A flag outside this table, and outside the harness-declared
@@ -47,6 +49,7 @@ export const VALUE_FLAGS: Record<string, true> = {
 	"--harness": true,
 	"--config": true,
 	"--prompts": true,
+	"--build": true,
 	"--model": true,
 	"--tasks": true,
 	"--limit": true,
@@ -67,6 +70,7 @@ export const BOOLEAN_FLAGS: Record<string, true> = {
 	"--list": true,
 	"--resume": true,
 	"--help": true,
+	"--unsandboxed": true,
 	"--no-gateway": true,
 };
 
@@ -75,6 +79,8 @@ export interface EvalsCliArgs {
 	readonly harnesses: readonly string[];
 	readonly configs: readonly string[];
 	readonly promptVariants: readonly string[];
+	/** Builds of the agent, `name=path` or a bare path, one variant each. */
+	readonly builds: readonly string[];
 	readonly models: readonly string[];
 	readonly tasks: readonly string[];
 	/**
@@ -106,6 +112,8 @@ export interface EvalsCliArgs {
 	 * credentials directly. Used for local models (Ollama, lm-studio) that need no auth.
 	 */
 	readonly noGateway: boolean;
+	/** When true, a local-cli trial runs without Landlock, so its tools can read the graders. */
+	readonly unsandboxed: boolean;
 	/**
 	 * Values passed under a harness-declared flag, keyed by the dashed option key the
 	 * adapter declared (`--vey-binary` arrives as `vey-binary`), which is the key its
@@ -142,6 +150,7 @@ export function parseEvalsArgs(
 	const harnesses: string[] = [];
 	const configs: string[] = [];
 	const promptVariants: string[] = [];
+	const builds: string[] = [];
 	const models: string[] = [];
 	const tasks: string[] = [];
 	const suites: string[] = [];
@@ -161,6 +170,7 @@ export function parseEvalsArgs(
 	let resume = false;
 	let help = false;
 	let noGateway = false;
+	let unsandboxed = false;
 	for (let index = 0; index < argv.length; index += 1) {
 		const arg = argv[index] as string;
 		if (!arg.startsWith("--")) {
@@ -180,6 +190,7 @@ export function parseEvalsArgs(
 			if (name === "--resume") resume = true;
 			if (name === "--help") help = true;
 			if (name === "--no-gateway") noGateway = true;
+			if (name === "--unsandboxed") unsandboxed = true;
 			continue;
 		}
 
@@ -224,6 +235,9 @@ export function parseEvalsArgs(
 				break;
 			case "--prompts":
 				promptVariants.push(...items);
+				break;
+			case "--build":
+				builds.push(...items);
 				break;
 			case "--model":
 				models.push(...items);
@@ -313,6 +327,7 @@ export function parseEvalsArgs(
 		harnesses,
 		configs,
 		promptVariants,
+		builds,
 		models,
 		tasks,
 		limit,
@@ -331,6 +346,7 @@ export function parseEvalsArgs(
 		resume,
 		help,
 		noGateway,
+		unsandboxed,
 		harnessOptions,
 	};
 }
@@ -363,6 +379,8 @@ Axes:
   --harness <a,b>           harness axis (default: veyyon)
   --config <path,path>      config overlay files, one variant each
   --prompts <path,path>     prompt-variant overlay files, one variant each
+  --build <name=path,...>   agent builds (a source tree or an executable), one variant each;
+                            a local-cli suite runs every build on the same trials
   --model <id,id>           model axis, one variant each
 
 Selection and execution:
@@ -392,6 +410,8 @@ Selection and execution:
                             at 3600s; a budget a task states for itself is honored to 86400s
   --dry-run                 print the plan and every preflight verdict, run nothing
   --no-gateway              skip the auth gateway; forward provider keys directly (local models)
+  --unsandboxed             run local-cli trials without Landlock (non-Linux hosts); the
+                            agent's tools can then read every file the runner can, graders included
   --resume                  resume a prior run from its trials.jsonl journal
   --help                    this text
 ${harnessSection}`;
@@ -430,6 +450,42 @@ export function tasksForSuite(tasks: readonly string[], suite: string, running: 
 		if (prefix === suite) scoped.push(entry.slice(eq + 1));
 	}
 	return scoped.length > 0 ? scoped : unscoped;
+}
+
+/** The flags a resume replaces with its own values, and `--resume` itself. */
+const RESUME_REPLACES: Record<string, true> = { "--suite": true, "--tasks": true, "--run-id": true, "--resume": true };
+
+/**
+ * The arguments that resume one suite's run of an invocation: every flag it was given, that suite
+ * alone with the tasks that applied to it, the run's id and `--resume`. A resume command that named
+ * only the suite and the run id was refused for want of `--model`, and given one planned a run other
+ * than the one interrupted.
+ */
+export function resumeArguments(
+	argv: readonly string[],
+	resume: { readonly suite: string; readonly tasks: readonly string[]; readonly runId: string },
+): string[] {
+	const kept: string[] = [];
+	for (let index = 0; index < argv.length; index += 1) {
+		const arg = argv[index] as string;
+		const eq = arg.indexOf("=");
+		const name = eq === -1 ? arg : arg.slice(0, eq);
+		if (!RESUME_REPLACES[name]) {
+			kept.push(arg);
+			continue;
+		}
+		// A value flag written apart from its value takes the next argument with it.
+		if (eq === -1 && name !== "--resume") index += 1;
+	}
+	return [
+		...kept,
+		"--suite",
+		resume.suite,
+		...(resume.tasks.length > 0 ? ["--tasks", resume.tasks.join(",")] : []),
+		"--run-id",
+		resume.runId,
+		"--resume",
+	];
 }
 
 /**
@@ -712,7 +768,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
 	let worst = 0;
 	for (const suite of selected) {
 		if (selected.length > 1) process.stdout.write(`\n=== ${suite.id} ===\n`);
-		const code = await runOneSuite(args, suite, names);
+		const code = await runOneSuite(args, suite, names, argv);
 		if (code > worst) worst = code;
 	}
 	return worst;
@@ -728,6 +784,7 @@ export function suiteContext(args: EvalsCliArgs, suite: EvalSuite): SuiteContext
 			// same name: `--model` is the axis, and an adapter reads its own keys.
 			...args.harnessOptions,
 			...(args.noGateway ? { gateway: false } : {}),
+			...(args.unsandboxed ? { unsandboxed: true } : {}),
 			dryRun: args.dryRun,
 			ensureBinary: !args.dryRun,
 			model: args.models[0],
@@ -747,7 +804,12 @@ export function suiteContext(args: EvalsCliArgs, suite: EvalSuite): SuiteContext
  * Plans and runs one suite. Returns the process exit code this suite earned: 0
  * clean, 1 a refusal or a trial error.
  */
-async function runOneSuite(args: EvalsCliArgs, suite: EvalSuite, running: readonly string[]): Promise<number> {
+async function runOneSuite(
+	args: EvalsCliArgs,
+	suite: EvalSuite,
+	running: readonly string[],
+	argv: readonly string[],
+): Promise<number> {
 	const context = suiteContext(args, suite);
 	const workDir = args.workDir ?? process.cwd();
 	const runsDir = path.resolve(args.runsDir ?? defaultRunsDir());
@@ -774,10 +836,12 @@ async function runOneSuite(args: EvalsCliArgs, suite: EvalSuite, running: readon
 		args.configs.length > 0 ? args.configs.map(file => ({ path: file })) : undefined;
 	const promptVariants: readonly PromptVariantSpec[] | undefined =
 		args.promptVariants.length > 0 ? args.promptVariants.map(file => ({ path: file })) : undefined;
+	const builds: readonly string[] | undefined = args.builds.length > 0 ? args.builds : undefined;
 	const selection: VariantMatrixSelection = {
 		harnesses: args.harnesses.length > 0 ? args.harnesses : ["veyyon"],
 		configs,
 		promptVariants,
+		builds,
 		models: args.models,
 	};
 	const runId = args.runId === null ? undefined : running.length > 1 ? `${args.runId}-${suite.id}` : args.runId;
@@ -894,58 +958,61 @@ async function runOneSuite(args: EvalsCliArgs, suite: EvalSuite, running: readon
 	}
 
 	const total = plan.cells.length;
-	const controller = new AbortController();
-	let abortedSignal: string | null = null;
-	const onSigInt = () => {
-		if (!controller.signal.aborted) {
-			abortedSignal = "SIGINT";
-			controller.abort();
-		}
-	};
-	const onSigTerm = () => {
-		if (!controller.signal.aborted) {
-			abortedSignal = "SIGTERM";
-			controller.abort();
-		}
-	};
+	const resume = resumeArguments(argv, {
+		suite: suite.id,
+		tasks: tasksForSuite(args.tasks, suite.id, running),
+		runId: plan.runId,
+	})
+		.map(word => (/^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`))
+		.join(" ");
+	const interruptionNote = (signal: string, completed: number) =>
+		`\nRun ${plan.runId} interrupted by ${signal} (${completed}/${total} trials completed).\n` +
+		`To resume this run:\n  evals ${resume}\n`;
 
-	process.on("SIGINT", onSigInt);
-	process.on("SIGTERM", onSigTerm);
-
-	let record: EvalRunRecord | undefined;
+	let record: EvalRunRecord;
+	let interrupted: string | null;
 	try {
-		record = await executeRun({
-			plan,
-			harnesses,
-			backend,
-			workDir,
-			runsDir,
-			jobs: args.jobs,
-			signal: controller.signal,
-			resume: args.resume,
-			// The whole bag every other call site hands a backend, plus the dataset directory
-			// `executeRun` validates. This passed `{ datasetDir }` alone, so on a real run a
-			// backend saw none of the options this file parsed: `--vey-binary` fell back to the
-			// checkout's own build, `--trial-timeout`, `--agent-timeout`,
-			// `--timeout-multiplier` and `--attempts` changed nothing, and a run comparing two
-			// builds measured one build twice. Only the dry-run path above was correct.
-			options: {
-				...context.options,
-				...(args.datasetDir === null ? {} : { datasetDir: args.datasetDir }),
-			},
-			onSkip: (skipped, totalCount) => {
-				process.stdout.write(
-					`resumed run ${plan.runId}: skipping ${skipped} already-settled trial(s) out of ${totalCount}\n`,
-				);
-			},
-			onReportFailure: (reason: string) => {
-				process.stderr.write(`\nRun ${plan.runId} produced no report: ${reason}\n`);
-			},
-			onTrial: (trial, index) => {
-				const outcome = trial.score.error !== null ? `error: ${trial.score.error}` : `reward ${trial.score.reward}`;
-				process.stdout.write(`[${index + 1}/${total}] ${trial.cell.variant} ${trial.cell.task} — ${outcome}\n`);
-			},
-		});
+		({ result: record, interrupted } = await runUnderSignals(
+			`evals-run:${plan.runId}`,
+			signal =>
+				executeRun({
+					plan,
+					harnesses,
+					backend,
+					workDir,
+					runsDir,
+					jobs: args.jobs,
+					signal,
+					resume: args.resume,
+					// The whole bag every other call site hands a backend, plus the dataset directory
+					// `executeRun` validates. This passed `{ datasetDir }` alone, so on a real run a
+					// backend saw none of the options this file parsed: `--vey-binary` fell back to the
+					// checkout's own build, `--trial-timeout`, `--agent-timeout`,
+					// `--timeout-multiplier` and `--attempts` changed nothing, and a run comparing two
+					// builds measured one build twice. Only the dry-run path above was correct.
+					options: {
+						...context.options,
+						...(args.datasetDir === null ? {} : { datasetDir: args.datasetDir }),
+					},
+					onSkip: (skipped, totalCount) => {
+						process.stdout.write(
+							`resumed run ${plan.runId}: skipping ${skipped} already-settled trial(s) out of ${totalCount}\n`,
+						);
+					},
+					onReportFailure: (reason: string) => {
+						process.stderr.write(`\nRun ${plan.runId} produced no report: ${reason}\n`);
+					},
+					onTrial: (trial, index) => {
+						const outcome =
+							trial.score.error !== null ? `error: ${trial.score.error}` : `reward ${trial.score.reward}`;
+						process.stdout.write(
+							`[${index + 1}/${total}] ${trial.cell.variant} ${trial.cell.task} — ${outcome}\n`,
+						);
+					},
+				}),
+			// Written synchronously: the process exits as soon as the run hands its cleanup back.
+			(signal, settledRecord) => writeSync(2, interruptionNote(signal, settledRecord?.results.length ?? 0)),
+		));
 	} catch (error) {
 		// Every refusal `executeRun` states — a journal of another plan, a preflight that said
 		// no, a directory it cannot use — arrived here as an unhandled rejection: Bun printed a
@@ -954,19 +1021,8 @@ async function runOneSuite(args: EvalsCliArgs, suite: EvalSuite, running: readon
 		process.stderr.write(`${errorMessage(error)}\n`);
 		logger.error("evals run failed", { runId: plan.runId, suite: suite.id, error });
 		return 1;
-	} finally {
-		process.removeListener("SIGINT", onSigInt);
-		process.removeListener("SIGTERM", onSigTerm);
 	}
-
-	if (controller.signal.aborted || abortedSignal !== null) {
-		const completedCount = record ? record.results.length : 0;
-		process.stderr.write(
-			`\nRun ${plan.runId} interrupted by ${abortedSignal ?? "signal"} (${completedCount}/${total} trials completed).\n` +
-				`To resume this run:\n  evals --suite ${suite.id} --run-id ${plan.runId} --resume\n`,
-		);
-		return 130;
-	}
+	if (interrupted !== null) return 130;
 
 	process.stdout.write(`\n${summaryTable(summarizeRunCells(record))}\n`);
 

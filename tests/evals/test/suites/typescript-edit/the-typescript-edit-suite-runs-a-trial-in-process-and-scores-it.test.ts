@@ -4,8 +4,8 @@ import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
 import { InProcessBackend, inProcessBackend } from "../../../backends/in-process/main";
 import type { EvalSuite, RunContext, TrialArtifacts, TrialCell } from "../../../engine/contracts";
-import { backends, harnesses, suites } from "../../../engine/loaded-members";
-import { Registry } from "../../../engine/member-registry";
+import { backends, harnesses, suites } from "../../../engine/members/loaded";
+import { Registry } from "../../../engine/members/registry";
 import { TypescriptEditSuite, typescriptEditSuite } from "../../../suites/typescript-edit/main";
 import { verifyExpectedFiles } from "../../../suites/typescript-edit/verify";
 

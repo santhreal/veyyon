@@ -1,4 +1,4 @@
-import type { ElementHandle, JSHandle, Page } from "puppeteer-core";
+import type { ElementHandle, Frame, JSHandle, Page } from "puppeteer-core";
 import ariaBundle from "./aria-snapshot.bundle.txt" with { type: "text" };
 import { releaseHandle } from "./handle-release";
 // `aria-snapshot.bundle.txt` is a generated, committed artifact: Playwright's
@@ -19,11 +19,11 @@ export interface AriaSnapshotOptions {
  * page CSP never applies. They run the generated Playwright ARIA-snapshot bundle
  * (CJS, see scripts/generate-aria-snapshot.ts) in a throwaway module scope.
  *
- * Puppeteer serializes these functions to a CDP `Runtime.evaluate` in the page's
- * MAIN world (the only world where the bundle's `_ariaRef` ref expandos live —
- * isolated-world locators/query-handlers cannot see them). Nothing is installed
- * on `window`; the only footprint is the `_ariaRef` markers the snapshot writes,
- * which are the price of actionable `[ref=eN]` ids.
+ * `frame.evaluate` runs them in puppeteer's isolated world (the pinned puppeteer patch
+ * sends every evaluation there unless its function opts into the main world), so a
+ * page that replaces DOM methods in its own world neither sees the snapshot's calls
+ * nor changes what they return. The `_ariaRef` markers the snapshot writes are that
+ * world's expandos, which only {@link resolveAriaRefHandle}, running there too, reads.
  */
 function buildEvaluator(params: string, result: string): (...args: unknown[]) => unknown {
 	return new Function(
@@ -55,34 +55,273 @@ const evaluateAriaSnapshot = buildEvaluator(
 );
 const evaluateResolveRef = buildEvaluator("ref", "module.exports.resolveAriaRef(ref)");
 
-/** A snapshot's text and, for each `[ref=eN]` it prints, the ref's role and accessible name. */
-export interface AriaSnapshotCapture {
+/** A ref the page holds, as its ref, role and accessible name. */
+export type AriaRefIdentity = [ref: string, role: string, name: string];
+
+/** What the page-side evaluator returns for one frame. */
+interface FrameCapture {
 	text: string;
-	refs: Array<[ref: string, role: string, name: string]>;
+	refs: AriaRefIdentity[];
 }
+
+/** A snapshot's text, the frames its frame refs point into, and the role and name of each main-frame ref. */
+export interface AriaSnapshotCapture {
+	readonly text: string;
+	/** `f1` for the frame whose refs read `f1e…`, one per iframe the snapshot followed. */
+	readonly frames: ReadonlyMap<string, Frame>;
+	/** Every `[ref=eN]` of the main frame. A frame ref has none: its element is relocated by nothing. */
+	readonly refs: readonly AriaRefIdentity[];
+}
+
+/** How many iframes deep a snapshot follows. */
+const FRAME_DEPTH_MAX = 3;
+
+/** An iframe's line of a snapshot: its indent and its ref. */
+const IFRAME_LINE = /^(\s*)- iframe\b.*\[ref=((?:f\d+)?e\d+)\]/;
 
 /**
  * Capture a Playwright-format ARIA snapshot of `root` (or the whole document when
  * null). Always runs in `ai` mode so every node carries a `[ref=eN]` id; resolve
  * those to elements with {@link resolveAriaRefHandle}. Ids are renumbered from e1
- * on each call and remain valid until the next snapshot.
+ * on each call and remain valid until the next snapshot. Bare `generic` wrappers,
+ * and detail other lines already state, are left out ({@link compactSnapshot}).
+ *
+ * An iframe's content, same-origin or not, is snapshotted in its own frame and
+ * nested under the iframe's line, its refs prefixed with the frame (`f1e3`), up to
+ * {@link FRAME_DEPTH_MAX} frames deep, so an element in a payment or sign-in frame
+ * is read and acted on like any other.
  */
 export async function captureAriaSnapshot(
 	page: Page,
 	root: ElementHandle | null,
 	options: AriaSnapshotOptions = {},
 ): Promise<AriaSnapshotCapture> {
-	const request = { depth: options.depth, boxes: options.boxes };
-	return (await page.evaluate(evaluateAriaSnapshot as never, root as never, request as never)) as AriaSnapshotCapture;
+	const frames = new Map<string, Frame>();
+	const refs: AriaRefIdentity[] = [];
+	const text = await snapshotFrame(page.mainFrame(), root, "", options, frames, FRAME_DEPTH_MAX, refs);
+	return { text, frames, refs };
+}
+
+async function snapshotFrame(
+	frame: Frame,
+	root: ElementHandle | null,
+	refPrefix: string,
+	options: AriaSnapshotOptions,
+	frames: Map<string, Frame>,
+	depthLeft: number,
+	refs: AriaRefIdentity[] | null,
+): Promise<string> {
+	const request = { depth: options.depth, boxes: options.boxes, refPrefix };
+	const capture = (await frame.evaluate(
+		evaluateAriaSnapshot as never,
+		root as never,
+		request as never,
+	)) as FrameCapture;
+	if (refs) refs.push(...capture.refs);
+	const yaml = compactSnapshot(capture.text);
+	if (depthLeft === 0 || !yaml.includes("- iframe")) return yaml;
+	const lines: string[] = [];
+	for (const line of yaml.split("\n")) {
+		lines.push(line);
+		const iframe = IFRAME_LINE.exec(line);
+		if (!iframe) continue;
+		const child = await contentFrameOf(frame, iframe[2] ?? "");
+		if (!child) continue;
+		const prefix = `f${frames.size + 1}`;
+		frames.set(prefix, child);
+		// A frame that navigates or goes away while it is read keeps its line and loses its content.
+		const inner = await snapshotFrame(child, null, prefix, options, frames, depthLeft - 1, null).catch(() => "");
+		if (inner.trim() === "") continue;
+		if (!line.endsWith(":")) lines[lines.length - 1] = `${line}:`;
+		for (const innerLine of inner.split("\n")) if (innerLine.trim() !== "") lines.push(`${iframe[1]}  ${innerLine}`);
+	}
+	return lines.join("\n");
+}
+
+/** The document inside the iframe `ref` names in `frame`, or null when it has none. */
+async function contentFrameOf(frame: Frame, ref: string): Promise<Frame | null> {
+	const handle = (await frame
+		.evaluateHandle(evaluateResolveRef as never, ref as never)
+		.catch(() => null)) as JSHandle | null;
+	if (!handle) return null;
+	try {
+		const element = handle.asElement();
+		return element ? await (element as ElementHandle).contentFrame() : null;
+	} finally {
+		await releaseHandle(handle);
+	}
+}
+
+/** A `generic` node with no name, no text, no state and no pointer: a layout `<div>` and nothing else. */
+const BARE_WRAPPER = /^\s*- generic \[ref=(?:f\d+)?e\d+\]:$/;
+
+/**
+ * The snapshot without its bare `generic` wrappers, each one's children lifted a level into its
+ * place. Layout `<div>`s are 7–30% of a real page's snapshot and hold nothing a model reads or acts
+ * on; a generic that has a name, text, `[active]`, `[cursor=pointer]` or a box stays. Every other
+ * line, and every ref on it, is unchanged.
+ */
+export function withoutBareWrappers(yaml: string): string {
+	const kept: string[] = [];
+	// Indents of the dropped wrappers whose children are still being read.
+	const lifted: number[] = [];
+	for (const line of yaml.split("\n")) {
+		const indent = line.length - line.trimStart().length;
+		while (lifted.length > 0 && indent <= lifted[lifted.length - 1]!) lifted.pop();
+		if (BARE_WRAPPER.test(line)) {
+			lifted.push(indent);
+			continue;
+		}
+		kept.push(lifted.length === 0 ? line : line.slice(2 * lifted.length));
+	}
+	return kept.join("\n");
+}
+
+/** Roles clickable by definition, on which `[cursor=pointer]` states nothing. */
+const CLICKABLE_ROLES = new Set([
+	"button",
+	"checkbox",
+	"link",
+	"menuitem",
+	"menuitemcheckbox",
+	"menuitemradio",
+	"option",
+	"radio",
+	"switch",
+	"tab",
+	"treeitem",
+]);
+
+/** Roles a model names to act on (`button "Save"`), whose names stay even when their content repeats them. */
+const CONTROL_ROLES = new Set([
+	...CLICKABLE_ROLES,
+	"combobox",
+	"listbox",
+	"searchbox",
+	"slider",
+	"spinbutton",
+	"textbox",
+]);
+
+/** A node's line: indent, role, quoted name, the `[…]` attributes, the `:` that opens children, inline text. */
+const NODE_LINE = /^(\s*)- ([a-z]+)(?: "((?:[^"\\]|\\.)*)")?((?: \[[^\]]*\])*)(:?)(?: (.*))?$/;
+
+interface SnapshotNode {
+	readonly line: number;
+	readonly indent: string;
+	readonly role: string;
+	/** The name as the snapshot quotes it, without the quotes; undefined for a node without one. */
+	readonly quotedName: string | undefined;
+	readonly attributes: string;
+	readonly colon: string;
+	/** The inline text after the `:`, as the snapshot quotes it. */
+	readonly inline: string | undefined;
+	readonly children: SnapshotNode[];
+	/** What the node's text adds to its parent's name computed from content; set children first. */
+	content: string;
+}
+
+/** A snapshot string as the page wrote it: a quoted one decoded, a bare one as it stands. */
+function unquote(text: string): string {
+	if (text.length < 2 || !text.startsWith('"') || !text.endsWith('"')) return text;
+	try {
+		const decoded: unknown = JSON.parse(text);
+		return typeof decoded === "string" ? decoded : text;
+	} catch {
+		return text;
+	}
+}
+
+/** Whitespace is where a name computed from content and its parts' texts differ. */
+function withoutWhitespace(text: string): string {
+	return text.replace(/\s+/g, "");
 }
 
 /**
- * Resolve a `[ref=eN]` id from the latest snapshot to a live `ElementHandle`, or
- * null when the ref no longer matches any element. Runs in the main world so it
- * sees the `_ariaRef` expandos the snapshot wrote.
+ * The snapshot without what its other lines already state, every ref kept:
+ *
+ * - the name of a node that is not a control, when it is its children's names and texts joined, as the
+ *   page computes a row's, a list item's or a column header's name from its content;
+ * - `[cursor=pointer]` on a role that is clickable by definition, such as a link or a button.
+ *
+ * A table's rows repeat every cell they hold this way, and every snapshot is sent again on each later
+ * turn. A control keeps its name, which a selector copied from its line (`button "Save"`) names.
  */
-export async function resolveAriaRefHandle(page: Page, ref: string): Promise<ElementHandle | null> {
-	const handle = (await page.evaluateHandle(evaluateResolveRef as never, ref as never)) as JSHandle;
+export function withoutRepeatedDetail(yaml: string): string {
+	const lines = yaml.split("\n");
+	const nodes: SnapshotNode[] = [];
+	// The nodes that can still take children, outermost first; property lines (`- /url: …`) take none.
+	const open: SnapshotNode[] = [];
+	for (let index = 0; index < lines.length; index++) {
+		const line = lines[index] ?? "";
+		const indent = line.length - line.trimStart().length;
+		while (open.length > 0 && open[open.length - 1]!.indent.length >= indent) open.pop();
+		const match = NODE_LINE.exec(line);
+		if (!match) continue;
+		const node: SnapshotNode = {
+			line: index,
+			indent: match[1] ?? "",
+			role: match[2] ?? "",
+			quotedName: match[3],
+			attributes: match[4] ?? "",
+			colon: match[5] ?? "",
+			inline: match[6],
+			children: [],
+			content: "",
+		};
+		open[open.length - 1]?.children.push(node);
+		open.push(node);
+		nodes.push(node);
+	}
+	// A child's line comes after its parent's, so in reverse every child's content is known first.
+	for (let index = nodes.length - 1; index >= 0; index--) {
+		const node = nodes[index]!;
+		if (node.quotedName !== undefined) node.content = unquote(`"${node.quotedName}"`);
+		else if (node.inline !== undefined) node.content = unquote(node.inline);
+		else node.content = node.children.map(child => child.content).join(" ");
+	}
+	for (const node of nodes) {
+		const pointer = CLICKABLE_ROLES.has(node.role) && node.attributes.includes(" [cursor=pointer]");
+		const name = node.quotedName === undefined ? "" : withoutWhitespace(node.content);
+		const repeated =
+			name !== "" &&
+			!CONTROL_ROLES.has(node.role) &&
+			withoutWhitespace(node.children.map(child => child.content).join("")) === name;
+		if (!pointer && !repeated) continue;
+		const quoted = repeated || node.quotedName === undefined ? "" : ` "${node.quotedName}"`;
+		const attributes = pointer ? node.attributes.replace(" [cursor=pointer]", "") : node.attributes;
+		const inline = node.inline === undefined ? "" : ` ${node.inline}`;
+		lines[node.line] = `${node.indent}- ${node.role}${quoted}${attributes}${node.colon}${inline}`;
+	}
+	return lines.join("\n");
+}
+
+/** A snapshot as the tool sends it: without bare wrappers, and without detail its other lines state. */
+export function compactSnapshot(yaml: string): string {
+	return withoutRepeatedDetail(withoutBareWrappers(yaml));
+}
+
+/** A ref in a frame's part of a snapshot: the frame's prefix, then the element's id. */
+const FRAME_REF = /^(f\d+)e\d+$/;
+
+/**
+ * Resolve a `[ref=eN]` id from the latest snapshot to a live `ElementHandle`, or
+ * null when the ref no longer matches any element. A frame ref (`f1e3`) resolves in
+ * the frame `frames` names for its prefix, and to null once that frame is gone.
+ * Runs in the isolated world, where the snapshot wrote its `_ariaRef` expandos.
+ */
+export async function resolveAriaRefHandle(
+	page: Page,
+	ref: string,
+	frames: ReadonlyMap<string, Frame> = new Map(),
+): Promise<ElementHandle | null> {
+	const framePrefix = FRAME_REF.exec(ref)?.[1];
+	const frame = framePrefix === undefined ? page.mainFrame() : frames.get(framePrefix);
+	if (!frame || frame.detached) return null;
+	const handle = (await frame
+		.evaluateHandle(evaluateResolveRef as never, ref as never)
+		.catch(() => null)) as JSHandle | null;
+	if (!handle) return null;
 	const element = handle.asElement();
 	if (!element) {
 		await releaseHandle(handle);
@@ -93,24 +332,27 @@ export async function resolveAriaRefHandle(page: Page, ref: string): Promise<Ele
 
 const ARIA_REF_PREFIXES = ["aria-ref=", "aria-ref/", "ariaref/"];
 
+/** A snapshot line's own ref form, `[ref=e5]`, which a model copies from the line it acts on. */
+const BRACKET_REF = /^\[ref=((?:f\d+)?e\d+)\]$/;
+
 /**
  * Recognize the explicit `[ref=eN]` selector forms and return the bare ref id,
- * else null. Accepts `aria-ref=e5` (Playwright-MCP style), `aria-ref/e5`, and
- * `ariaref/e5` — lets `tab.click("aria-ref=e5")` etc. act on snapshot refs. A
- * bare `e5` is intentionally NOT a ref selector: the cmux backend already uses
- * bare `eN`/`@eN` for its own observe ids, so requiring the prefix keeps action
- * selectors meaning the same thing on both backends. (`tab.ref("e5")` still
- * accepts a bare id directly.)
+ * else null. Accepts `aria-ref=e5` (Playwright-MCP style), `aria-ref/e5`,
+ * `ariaref/e5` and the snapshot's own `[ref=e5]` — lets `tab.click("aria-ref=e5")`
+ * etc. act on snapshot refs. A bare `e5` is intentionally NOT a ref selector: the
+ * cmux backend already uses bare `eN`/`@eN` for its own observe ids, so requiring
+ * the prefix keeps action selectors meaning the same thing on both backends.
+ * (`tab.ref("e5")` still accepts a bare id directly.)
  */
 export function parseAriaRefSelector(selector: string): string | null {
 	const trimmed = selector.trim();
 	for (const prefix of ARIA_REF_PREFIXES) {
 		if (trimmed.startsWith(prefix)) {
 			const id = trimmed.slice(prefix.length).trim();
-			return /^e\d+$/.test(id) ? id : null;
+			return /^(?:f\d+)?e\d+$/.test(id) ? id : null;
 		}
 	}
-	return null;
+	return BRACKET_REF.exec(trimmed)?.[1] ?? null;
 }
 
 /**

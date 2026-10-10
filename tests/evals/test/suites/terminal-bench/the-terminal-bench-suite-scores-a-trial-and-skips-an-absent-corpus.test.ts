@@ -4,8 +4,8 @@ import { existsSync, readdirSync } from "node:fs";
 import * as path from "node:path";
 import { join, resolve } from "node:path";
 import type { EvalSuite, SuiteContext, TrialArtifacts, TrialCell } from "../../../engine/contracts";
-import { suites } from "../../../engine/loaded-members";
-import { Registry } from "../../../engine/member-registry";
+import { suites } from "../../../engine/members/loaded";
+import { Registry } from "../../../engine/members/registry";
 import { internalScratchDir } from "../../../engine/package-paths";
 import {
 	getDefaultTerminalBenchCacheDir,

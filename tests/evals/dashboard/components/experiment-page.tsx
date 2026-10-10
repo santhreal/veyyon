@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { type ArmSummary, type ExperimentDetail, formatUsd } from "../../engine/store-shapes";
+import { type ArmSummary, type ExperimentDetail, formatUsd } from "../../engine/wire/store-shapes";
 import { usePolled } from "../hooks/use-polled";
 import { AddArmForm } from "./add-arm-form";
 import { ArmEditorRow } from "./arm-editor-row";

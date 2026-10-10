@@ -6,7 +6,7 @@
  * inspect, format, and map failures to appropriate exit codes.
  */
 
-import { FlagValueError, UnknownFlagError } from "../../../engine/flag-grammar";
+import { FlagValueError, UnknownFlagError } from "../../../engine/plan/flag-grammar";
 
 export class DeepSweRunnerError extends Error {
 	readonly exitCode: number;

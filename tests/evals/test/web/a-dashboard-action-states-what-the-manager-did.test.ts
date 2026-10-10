@@ -18,7 +18,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { forgetAuthToken, type MutationOutcome, mutate } from "../../dashboard/api";
-import type { CancelRunResponse } from "../../engine/store-shapes";
+import type { CancelRunResponse } from "../../engine/wire/store-shapes";
 
 interface Call {
 	readonly url: string;

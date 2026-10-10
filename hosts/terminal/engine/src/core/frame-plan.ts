@@ -1,23 +1,8 @@
 /**
  * The records one frame's render phases pass between them. `TUI#doRender` captures the
  * transition, reconciles the committed prefix, plans the window, assembles its rows and selects
- * an intent; each record is the output of one phase and the input of the next.
+ * an intent (`render-intent.ts`); each record is the output of one phase and the input of the next.
  */
-
-/**
- * Render intent. `#doRender` classifies each frame, and the matching `#emit*`
- * method owns the bytes written and the state update.
- *
- * - `fullPaint`: gesture-driven replay — initial paint, session replacement,
- *   resize, resetDisplay. Rewrites the frame from home; destructive replaces
- *   clear native scrollback via ED3 without first blanking the viewport. The
- *   only ED3 callsite in the engine.
- * - `update`: ordinary frame. Commits the newly settled chunk at the
- *   scrollback seam (if any) and repaints the window with relative moves.
- */
-export type RenderIntent =
-	| { kind: "fullPaint"; clearScrollback: boolean }
-	| { kind: "update"; chunkTo: number; windowTop: number };
 
 /**
  * Window and cursor state `#doRender` captures before any emitter runs, and

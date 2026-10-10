@@ -29,8 +29,9 @@ import { describe, expect, it } from "bun:test";
 import * as harborCleanup from "../../backends/harbor/cleanup";
 import * as harborBackend from "../../backends/harbor/main";
 import * as inProcessBackend from "../../backends/in-process/main";
+import * as localCliBackend from "../../backends/local-cli/main";
 import * as pierRunner from "../../backends/pier/runner";
-import { backends, suites } from "../../engine/loaded-members";
+import { backends, suites } from "../../engine/members/loaded";
 import {
 	boundRawOutput,
 	DEFAULT_GRACE_PERIOD_MS,
@@ -41,10 +42,10 @@ import {
 	RAW_OUTPUT_MAX_BYTES,
 	resolveTrialTimeoutSec,
 	trialTimeoutFromOptions,
-} from "../../engine/trial-deadline";
+} from "../../engine/trial/deadline";
 import { CliUsageError, parseEvalsArgs, suiteContext } from "../../evals";
 
-const BACKEND_IDS: readonly string[] = ["in-process", "pier", "harbor"];
+const BACKEND_IDS: readonly string[] = ["in-process", "pier", "harbor", "local-cli"];
 
 /** Every module a backend reaches its deadline and its output bound through. */
 const BACKEND_MODULES: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
@@ -52,6 +53,7 @@ const BACKEND_MODULES: Readonly<Record<string, Readonly<Record<string, unknown>>
 	"pier/runner": pierRunner,
 	"harbor/backend": harborBackend,
 	"harbor/runner/cleanup": harborCleanup,
+	"local-cli/backend": localCliBackend,
 };
 
 /** Names that belong to src/core/trial-deadline.ts and to nothing else. */

@@ -6,7 +6,8 @@
  * sees it full. A rotation that renames over a generation another writer just created, a writer
  * that keeps appending to a moved file past the point it is compressed, or a compression that
  * publishes before the copy finishes each loses lines in silence: nothing reads the log until
- * something has gone wrong. The multi-process test drives real concurrent writers on the real
+ * something has gone wrong. Two writers that claim the same full file under two generation numbers
+ * keep every line of it twice. The multi-process test drives real concurrent writers on the real
  * clock, because the compression bound ({@link SETTLED_MS}) is a statement about wall time.
  *
  * The single-process tests pass a synthetic `now` to reach each maintenance branch (rotation,
@@ -348,6 +349,30 @@ describe("rotation", () => {
 		expect(Object.fromEntries(readLogFiles(dir))).toEqual({
 			[`${live}.1`]: [FULL_LINE],
 			[live]: [JSON.stringify({ i: 1 })],
+		});
+	});
+
+	it("keeps one generation when another writer claims the same full file before this one releases it", async () => {
+		const dir = tempDir();
+		const first = new RotatingLogFile(dir, { maxBytes: 64, keep: 100, onError: noErrors() });
+		const second = new RotatingLogFile(dir, { maxBytes: 64, keep: 100, onError: noErrors() });
+		const start = Date.now();
+		const live = logFileName(new Date(start));
+		first.write(`${FULL_LINE}\n`, new Date(start));
+		second.write(`${OTHER_LINE}\n`, new Date(start));
+		// The first writer claims generation 1 and, before it releases the live name, the second writer
+		// finds the same file full, scans, sees generation 1 and claims generation 2 of the same inode.
+		withWriterAfterClaim(
+			() => second.write(`${JSON.stringify({ second: 1 })}\n`, new Date(start + CHECK_INTERVAL_MS)),
+			() => first.write(`${JSON.stringify({ first: 1 })}\n`, new Date(start + CHECK_INTERVAL_MS)),
+		);
+		first.close();
+		second.close();
+		await settled(dir);
+
+		expect(Object.fromEntries(readLogFiles(dir))).toEqual({
+			[`${live}.1`]: [FULL_LINE, OTHER_LINE],
+			[live]: [JSON.stringify({ second: 1 }), JSON.stringify({ first: 1 })],
 		});
 	});
 });

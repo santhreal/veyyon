@@ -25,7 +25,7 @@ import {
 	flagCount,
 	parseFlags,
 	UnknownFlagError,
-} from "../../engine/flag-grammar";
+} from "../../engine/plan/flag-grammar";
 import type { SearchArm, SearchArmResult, SearchArmRunner } from "./arms";
 import type { SearchBenchmarkCase, SearchCaseSuite } from "./cases";
 import { materializeCorpus } from "./corpus";

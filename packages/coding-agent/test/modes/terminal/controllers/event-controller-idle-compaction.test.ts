@@ -96,7 +96,8 @@ function createContext(
 		session: {
 			isCompacting: options.isCompacting ?? false,
 			isStreaming: options.isStreaming ?? false,
-			settings: { get: () => false },
+			// Predictions off: a finished turn would otherwise request one from this session.
+			settings: { get: (path: string) => (path === "composer.predictions.mode" ? "off" : false) },
 			runIdleCompaction,
 			runEphemeralTurn,
 			model: { provider: "anthropic", id: "claude-sonnet-4-5" },
