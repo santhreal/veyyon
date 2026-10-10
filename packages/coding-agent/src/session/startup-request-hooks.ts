@@ -34,7 +34,13 @@ export interface SessionRequestHooks {
 		model: Model,
 		requestLease?: SecretRuntimeLease,
 	) => Promise<Context>;
-	readonly onPayload: (payload: unknown, model?: Model) => Promise<unknown>;
+	/**
+	 * The extensions' `before_provider_request` hook, or `undefined` while no extension handles that
+	 * event. Resolved per request: a provider given any `onPayload` serializes the request, parses a
+	 * copy for the hook and serializes it again, which on a long transcript is the most expensive step
+	 * of building a request.
+	 */
+	readonly payloadHook: () => SimpleStreamOptions["onPayload"];
 	readonly onResponse: SimpleStreamOptions["onResponse"];
 }
 
@@ -48,6 +54,10 @@ export function createRequestHooks(
 	extensionRunner: ExtensionRunner,
 ): SessionRequestHooks {
 	const requestLeases = new SecretRequestLeases(secretRuntime);
+	// The raw extension hook. The leased stream wrapper performs the final redaction after this
+	// await, with the request's immutable runtime.
+	const extensionPayloadHook = async (payload: unknown): Promise<unknown> =>
+		(await extensionRunner.emitBeforeProviderRequest(payload)) ?? payload;
 	return {
 		requestLeases,
 		transformContext: async messages => {
@@ -65,9 +75,8 @@ export function createRequestHooks(
 			requestLeases.redactMessages(messages, filterProviderReplayMessages(convertToLlm(messages))),
 		transformProviderContext: async (context, _model, requestLease) =>
 			requestLeases.redactContext(context, requestLease),
-		// The raw extension hook. The leased stream wrapper performs the final redaction after this
-		// await, with the request's immutable runtime.
-		onPayload: async payload => (await extensionRunner.emitBeforeProviderRequest(payload)) ?? payload,
+		payloadHook: () =>
+			extensionRunner.hasHandlers("before_provider_request") ? extensionPayloadHook : undefined,
 		onResponse: async (response, model) => {
 			await extensionRunner.emitAfterProviderResponse(response, model);
 		},
@@ -76,11 +85,13 @@ export function createRequestHooks(
 
 /**
  * The agent's stream function. `onFirstChatDispatch`, the launch-latency marker, fires once, before the
- * first request reaches the provider transport. Each request's payload passes through the secret lease
- * the request was admitted under, after any `onPayload` the request carries.
+ * first request reaches the provider transport. Each request's payload passes through the session's
+ * payload hook, then any `onPayload` the request carries, then the secret lease the request was
+ * admitted under.
  */
 export function createLeasedStreamFn(
 	requestLeases: SecretRequestLeases,
+	payloadHook: SessionRequestHooks["payloadHook"],
 	streamFn: StreamFn,
 	onFirstChatDispatch: (() => void) | undefined,
 ): StreamFn {
@@ -97,12 +108,17 @@ export function createLeasedStreamFn(
 		}
 		const runtime = requestLeases.requestLease(context);
 		const optionsForRequest = streamOptions ?? {};
+		const sessionOnPayload = payloadHook();
 		const requestOnPayload = optionsForRequest.onPayload;
 		const leasedOnPayload =
-			runtime.hasRedactions || requestOnPayload
+			runtime.hasRedactions || sessionOnPayload || requestOnPayload
 				? async (payload: unknown, payloadModel?: Model) => {
-						const replacement = requestOnPayload ? await requestOnPayload(payload, payloadModel) : undefined;
-						return runtime.obfuscatePayload(replacement ?? payload);
+						const sessionPayload = sessionOnPayload ? await sessionOnPayload(payload, payloadModel) : undefined;
+						const sessionResolvedPayload = sessionPayload ?? payload;
+						const replacement = requestOnPayload
+							? await requestOnPayload(sessionResolvedPayload, payloadModel)
+							: undefined;
+						return runtime.obfuscatePayload(replacement ?? sessionResolvedPayload);
 					}
 				: undefined;
 		return streamFn(streamModel, context, { ...optionsForRequest, onPayload: leasedOnPayload });

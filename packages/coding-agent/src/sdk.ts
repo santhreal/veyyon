@@ -1286,7 +1286,6 @@ class SessionStartup {
 			// the original repository's git remote.
 			cwdResolver: () => sessionManager.getCwd(),
 			convertToLlm: hooks.convertToLlm,
-			onPayload: hooks.onPayload,
 			onResponse: hooks.onResponse,
 			sessionId: this.#providerSessionId,
 			promptCacheKey: this.#providerPromptCache.key,
@@ -1310,7 +1309,12 @@ class SessionStartup {
 			preferWebsockets: this.#preferWebsockets,
 			getToolContext: toolCall => this.#toolContextStore.getContext(toolCall),
 			getApiKey: requestModel => this.#modelRegistry.resolver(requestModel, agent.sessionId),
-			streamFn: createLeasedStreamFn(hooks.requestLeases, this.#sideStreamFn, options.onFirstChatDispatch),
+			streamFn: createLeasedStreamFn(
+				hooks.requestLeases,
+				hooks.payloadHook,
+				this.#sideStreamFn,
+				options.onFirstChatDispatch,
+			),
 			cursorExecHandlers: this.#cursorExecHandlers,
 			transformToolCallArguments: createToolArgumentTransform({
 				settings,
@@ -1414,7 +1418,7 @@ class SessionStartup {
 			builtInToolNames: this.#builtInRegistryToolNames,
 			transformContext: hooks.transformContext,
 			transformProviderContext: hooks.transformProviderContext,
-			onPayload: hooks.onPayload,
+			payloadHook: hooks.payloadHook,
 			onResponse: hooks.onResponse,
 			sideStreamFn: this.#sideStreamFn,
 			preferWebsockets: this.#preferWebsockets,

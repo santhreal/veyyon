@@ -253,8 +253,11 @@ export interface AgentSessionConfig {
 	advisorStreamFn?: StreamFn;
 	/** Hint that OpenAI Codex requests should prefer websocket transport when supported. */
 	preferWebsockets?: boolean;
-	/** Provider payload hook used by the active session request path */
-	onPayload?: SimpleStreamOptions["onPayload"];
+	/**
+	 * The session's provider payload hook for the active request path, resolved per request;
+	 * `undefined` from it means no hook runs and the provider serializes the request once.
+	 */
+	payloadHook?: () => SimpleStreamOptions["onPayload"];
 	/** Provider response hook used by the active session request path */
 	onResponse?: SimpleStreamOptions["onResponse"];
 	/** Raw SSE hook used by the active session request path */

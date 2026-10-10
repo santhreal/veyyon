@@ -180,7 +180,7 @@ describe("AgentSession advisor provider-options parity", () => {
 			settings: settings(),
 			modelRegistry,
 			advisorStreamFn: captureStreamFn,
-			onPayload,
+			payloadHook: () => onPayload,
 			onResponse,
 			onSseEvent,
 			transformProviderContext,

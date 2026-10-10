@@ -125,7 +125,8 @@ export interface AdvisorProviderShaping {
 	/** The advisor stream override; `streamSimple` when unset. */
 	readonly streamFn: StreamFn | undefined;
 	readonly preferWebsockets: boolean | undefined;
-	readonly onPayload: SimpleStreamOptions["onPayload"] | undefined;
+	/** The session's payload hook, resolved per request; `undefined` while no hook runs. */
+	readonly payloadHook: (() => SimpleStreamOptions["onPayload"]) | undefined;
 	readonly onResponse: SimpleStreamOptions["onResponse"] | undefined;
 	readonly onSseEvent: SimpleStreamOptions["onSseEvent"] | undefined;
 	readonly transformProviderContext:
@@ -724,7 +725,7 @@ export class AdvisorRoster {
 				advisorSecretRuntime ??
 				provider.resolveSecretRuntimeLeaseForContext?.(requestContext) ??
 				(await host.leaseSecretRuntime());
-			const sessionOnPayload = provider.onPayload;
+			const sessionOnPayload = provider.payloadHook?.();
 			const requestOnPayload = requestOptions?.onPayload;
 			const onPayload =
 				runtime.hasRedactions || sessionOnPayload || requestOnPayload
