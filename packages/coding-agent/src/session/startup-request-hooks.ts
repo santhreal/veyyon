@@ -75,8 +75,7 @@ export function createRequestHooks(
 			requestLeases.redactMessages(messages, filterProviderReplayMessages(convertToLlm(messages))),
 		transformProviderContext: async (context, _model, requestLease) =>
 			requestLeases.redactContext(context, requestLease),
-		payloadHook: () =>
-			extensionRunner.hasHandlers("before_provider_request") ? extensionPayloadHook : undefined,
+		payloadHook: () => (extensionRunner.hasHandlers("before_provider_request") ? extensionPayloadHook : undefined),
 		onResponse: async (response, model) => {
 			await extensionRunner.emitAfterProviderResponse(response, model);
 		},
