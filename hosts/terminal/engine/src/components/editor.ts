@@ -357,6 +357,8 @@ interface RowPaint {
 	/** The hardware cursor marker when focused without a showing list, else empty. */
 	marker: string;
 	inlineHint: string | null;
+	/** Kept after `inlineHint` when the row is narrow: the hint text is truncated first. */
+	inlineHintTail: string | undefined;
 	hintStyle: (text: string) => string;
 	/** Framed chrome with no cursor overflow; empty in gutter mode. */
 	leftBorder: string;
@@ -380,10 +382,21 @@ const DEFAULT_HINT_STYLE = (text: string): string => `\x1b[2m${text}\x1b[0m`;
 
 /**
  * The dim ghost hint after an end-of-line cursor, one blank cell after `usedWidth` cells, truncated
- * to the rest of the row. Empty when no hint cell fits.
+ * to the rest of the row. Empty when no hint cell fits. A tail follows the hint after one blank
+ * cell; on a row too narrow for both the hint is truncated to keep the tail, and the tail is
+ * dropped only when the truncated hint would get fewer cells than the tail itself.
  */
 function ghostHint(hint: string, paint: RowPaint, usedWidth: number): { text: string; width: number } {
 	const availWidth = Math.max(0, paint.contentWidth - usedWidth - 1);
+	const tail = paint.inlineHintTail;
+	if (tail) {
+		const tailWidth = visibleWidth(tail);
+		const hintRoom = availWidth - 1 - tailWidth;
+		if (visibleWidth(hint) <= hintRoom || hintRoom >= tailWidth) {
+			const text = `${truncateToWidth(hint, hintRoom)} ${tail}`;
+			return { text: ` ${paint.hintStyle(text)}`, width: 1 + visibleWidth(text) };
+		}
+	}
 	const truncated = truncateToWidth(hint, availWidth);
 	if (truncated.length === 0) return { text: "", width: 0 };
 	return { text: ` ${paint.hintStyle(truncated)}`, width: 1 + Math.min(visibleWidth(hint), availWidth) };
@@ -433,6 +446,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	#promptGutterContinuation: string | undefined;
 	#placeholder: string | undefined;
 	#prediction: string | undefined;
+	#predictionAcceptHint: string | undefined;
 	#rowBackground: string | undefined;
 
 	// Store last layout width for cursor navigation
@@ -596,9 +610,12 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	/**
 	 * Suggested next message shown as ghost text over an empty composer, in
 	 * place of the placeholder. Tab inserts it; it is never submitted on its own.
+	 * `acceptHint` follows the suggestion in the same ghost style (for example
+	 * "· tab to accept") and leaves with it.
 	 */
-	setPrediction(prediction: string | undefined): void {
+	setPrediction(prediction: string | undefined, acceptHint?: string): void {
 		this.#prediction = prediction || undefined;
+		this.#predictionAcceptHint = this.#prediction ? acceptHint || undefined : undefined;
 	}
 
 	get prediction(): string | undefined {
@@ -991,6 +1008,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 			marker: this.focused && !this.#autocompleteState ? CURSOR_MARKER : "",
 			// Inline hint text (dim ghost text after cursor)
 			inlineHint: this.#getInlineHint(),
+			inlineHintTail: this.#getInlineHintTail(),
 			hintStyle: this.#theme.hintStyle ?? DEFAULT_HINT_STYLE,
 			leftBorder: borderVisible ? this.borderColor(`${box.vertical}${padding(paddingX)}`) : "",
 			rightBorder: borderVisible ? this.#rightChrome(paddingX, 0) : "",
@@ -3216,6 +3234,13 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		}
 
 		return null;
+	}
+
+	/** The prediction's accept hint, while the prediction is the ghost the empty composer shows. */
+	#getInlineHintTail(): string | undefined {
+		if (this.#autocompleteState || this.#prediction === undefined) return undefined;
+		if (this.#state.lines.length !== 1 || this.#state.lines[0] !== "") return undefined;
+		return this.#predictionAcceptHint;
 	}
 }
 

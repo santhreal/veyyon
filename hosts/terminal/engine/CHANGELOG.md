@@ -15,7 +15,7 @@
 - `RenderSignature`, every input besides the text that a `Markdown` render's rows depend on, is exported from `@veyyon/tui/components/markdown`.
 - `TUI.reusedRows(child)`, read inside `onBeforeCompose`, returns the rows a component-scoped frame keeps for a root child it does not re-render, and `undefined` when the frame renders the child or outside the sizing pass.
 - `ImageRenderResult` and `ImageFit`, the types `renderImage` and `calculateImageFit` return, are exported from `@veyyon/tui/terminal-capabilities`.
-- `Editor.setPrediction()` shows a suggested message as ghost text over the empty composer in place of the placeholder; Tab inserts it, and the first edit that leaves text in the composer dismisses it.
+- `Editor.setPrediction()` shows a suggested message as ghost text over the empty composer in place of the placeholder; Tab inserts it, the first edit that leaves text in the composer dismisses it, and its optional `acceptHint` follows the suggestion in the same style and leaves with it.
 
 ### Changed
 

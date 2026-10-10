@@ -27,11 +27,13 @@
 #     proof/scenes/composer-prediction-ghost.sh
 #
 # A prediction replaces the composer's resting hint, "ask anything", with the
-# suggested message in the same dim style. The off arm keeps the resting hint
-# after the turn; the on arm waits for the hint to be replaced, then presses Tab.
+# suggested message and a "· tab to accept" hint in the same dim style. The off
+# arm keeps the resting hint after the turn; the on arm waits for the hint to be
+# replaced, checks the accept hint, holds the frame, then presses Tab, which
+# inserts the suggestion without the accept hint.
 #
 # Frames:
-#   predicted   the empty composer after the turn (off: the resting hint; on: the suggestion)
+#   predicted   the empty composer after the turn (off: the resting hint; on: the suggestion and accept hint)
 #   tab         on arm only: the composer after Tab inserted the suggestion
 set -euo pipefail
 
@@ -59,6 +61,7 @@ case "${arm}" in
 off)
 	settle 45
 	screen_has "ask anything" || abandon_take "predicted" "the off arm replaced the resting hint"
+	screen_has "tab to accept" && abandon_take "predicted" "the off arm shows an accept hint"
 	shot predicted
 	;;
 on)
@@ -70,9 +73,12 @@ on)
 	done
 	echo "scene: prediction shown ${waited}s after the turn settled" >&2
 	settle 2
+	screen_has "tab to accept" || abandon_take "predicted" "the prediction shows no accept hint"
+	settle 6
 	shot predicted
 	k Tab
 	settle 2
+	screen_has "tab to accept" && abandon_take "tab" "the accept hint outlived the inserted suggestion"
 	shot tab
 	;;
 esac

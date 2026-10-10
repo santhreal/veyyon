@@ -181,10 +181,13 @@ text shows a usage warning.
 ## Composer predictions
 
 With composer predictions on, after each finished turn a prediction of the message you are likely
-to send next is shown as dim text in the empty composer. `Tab` inserts it for editing; `Enter` then
-sends it. Typing dismisses it, and a new turn, a session switch or compaction clears it. No
-prediction is requested after an aborted or failed turn, or while the composer holds text. A
-prediction reads the conversation and writes nothing to the session.
+to send next is shown as dim text in the empty composer, followed by `· tab to accept`, which shows
+the key bound to `tui.input.tab`. `Tab` inserts the prediction for editing; `Enter` then sends it.
+Typing dismisses the prediction and its hint, and a new turn, a session switch or compaction clears
+them. On a row too narrow for both, the prediction is shortened to keep the hint, and the hint is
+dropped when the prediction would get fewer cells than the hint. No prediction is requested after
+an aborted or failed turn, or while the composer holds text. A prediction reads the conversation
+and writes nothing to the session.
 
 `composer.predictions.mode` selects which model writes the prediction. The default is `off`, so no
 prediction request is sent until you choose another mode.

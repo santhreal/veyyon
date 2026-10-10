@@ -9,6 +9,7 @@
  * Not covered: which `EventController` events call `request` and `cancel`.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
+import { stripVTControlCharacters } from "node:util";
 import { Agent, type StreamFn } from "@veyyon/agent-core";
 import type { Api, Model, ModelSpec } from "@veyyon/ai";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
@@ -21,6 +22,7 @@ import {
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { getEditorTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
+import { CURSOR_MARKER } from "@veyyon/tui";
 import { Editor } from "@veyyon/tui/components/editor";
 import { createAssistantMessage } from "../../../helpers/agent-session-setup";
 
@@ -127,12 +129,14 @@ describe("ComposerPredictionController", () => {
 		for (const session of sessions.splice(0)) await session.dispose();
 	});
 
-	it("paints the prediction for the turn that just ended", async () => {
+	it("paints the prediction for the turn that just ended, followed by the Tab hint", async () => {
 		const h = harness(CUSTOM);
 		const run = h.controller.request();
 		(await h.nextRequest())('{"suggestion":"run the tests"}');
 		await run;
 		expect(h.editor.prediction).toBe("run the tests");
+		const rows = h.editor.render(80).map(row => stripVTControlCharacters(row.replaceAll(CURSOR_MARKER, "")));
+		expect(rows.join("\n")).toContain("run the tests · tab to accept");
 	});
 
 	it("does not paint a reply that lands after the request was cancelled", async () => {

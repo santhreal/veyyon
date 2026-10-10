@@ -1,6 +1,7 @@
 import { logger } from "@veyyon/utils";
 import type { AgentSession } from "../../../session/agent-session";
 import { ComposerPredictor } from "../../../session/composer-prediction";
+import { editorKey } from "../components/composer/keybinding-hints";
 import type { InteractiveModeContext } from "../types";
 
 export type ComposerPredictionContext = Pick<InteractiveModeContext, "editor" | "showWarning" | "ui" | "viewSession">;
@@ -62,7 +63,7 @@ export class ComposerPredictionController {
 				if (session !== this.ctx.viewSession || session.isStreaming) return;
 				// The user started writing while the request was in flight.
 				if (this.ctx.editor.getText().trim()) return;
-				this.ctx.editor.setPrediction(outcome.text);
+				this.ctx.editor.setPrediction(outcome.text, `· ${editorKey("tui.input.tab")} to accept`);
 				this.#painted = true;
 				this.ctx.ui.requestRender();
 			} else if (outcome.kind === "unavailable" && !this.#reportedReasons.has(outcome.reason)) {
