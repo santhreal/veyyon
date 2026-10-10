@@ -132,6 +132,7 @@ export const PROMPT_IDS: readonly string[] = [
 	"session/vibe-mode-active",
 	"side-channel/background-tan-dispatch",
 	"side-channel/btw-user",
+	"side-channel/composer-prediction",
 	"side-channel/irc-autoreply",
 	"side-channel/irc-incoming",
 	"side-channel/omfg-user",
