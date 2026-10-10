@@ -96,7 +96,8 @@ function createContext(
 		session: {
 			isCompacting: options.isCompacting ?? false,
 			isStreaming: options.isStreaming ?? false,
-			settings: { get: () => false },
+			// Predictions off, so a finished turn does not reach the composer predictor.
+			settings: { get: (key: string) => (key === "composer.predictions.mode" ? "off" : false) },
 			runIdleCompaction,
 			runEphemeralTurn,
 			model: { provider: "anthropic", id: "claude-sonnet-4-5" },
