@@ -855,7 +855,7 @@ describe("tool examples injection through build()", () => {
 // Tool-call mutation detection
 // ---------------------------------------------------------------------------
 
-describe("syncMessages detects tool_calls mutation", () => {
+describe("syncMessages detects in-place rewrites", () => {
 	it("rebuilds the log when tool_calls is mutated in place", () => {
 		const mgr = new AppendOnlyContextManager();
 		mgr.build(makeContext(), BUILD_OPTS);
@@ -880,5 +880,61 @@ describe("syncMessages detects tool_calls mutation", () => {
 		const rebuilt = mgr.log.toMessages()[1] as unknown as Record<string, unknown>;
 		const rebuiltTc = (rebuilt.tool_calls as Array<{ function: { arguments: string } }>)[0];
 		expect(rebuiltTc.function.arguments).toBe('{"path":"/b"}');
+	});
+
+	// A shake region rewrites `block.text` on the live message object, so the
+	// log entry and the incoming message are the same object: only a comparison
+	// against what was synced, not against the log, can see the change. A missed
+	// rewrite leaves the pre-rewrite record in place, so a later fresh copy of the
+	// rewritten message reads as diverged and evicts the entry it should keep.
+	it("re-syncs from a content block whose text was rewritten in place", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+
+		const first = partialMsg({ role: "user", content: "q" });
+		const block = { type: "text", text: "long tool output" };
+		const result = partialMsg({ role: "toolResult", toolCallId: "c1", content: [block] });
+		mgr.syncMessages([first, result]);
+
+		block.text = "[pruned]";
+		mgr.syncMessages([first, result]);
+
+		mgr.syncMessages([
+			partialMsg({ role: "user", content: "q" }),
+			partialMsg({ role: "toolResult", toolCallId: "c1", content: [{ type: "text", text: "[pruned]" }] }),
+		]);
+		const entries = mgr.log.entries();
+		expect(entries).toHaveLength(2);
+		expect(entries[0]).toBe(first);
+		expect(entries[1]).toBe(result);
+	});
+
+	it("treats a fresh copy that serializes to the same JSON as stable", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+
+		const original = partialMsg({
+			role: "assistant",
+			content: [{ type: "text", text: "a", score: null }],
+			id: "m1",
+		});
+		mgr.syncMessages([original]);
+
+		// An explicit `undefined` field is omitted and a non-finite number is
+		// written as `null`, as `JSON.stringify` writes them.
+		mgr.syncMessages([
+			partialMsg({
+				role: "assistant",
+				content: [{ type: "text", text: "a", score: Number.NaN, extra: undefined }],
+				id: "m1",
+			}),
+		]);
+		expect(mgr.log.entries()[0]).toBe(original);
+
+		// Key order changes the serialized bytes, so it is a divergence.
+		mgr.syncMessages([
+			partialMsg({ role: "assistant", content: [{ text: "a", type: "text", score: null }], id: "m1" }),
+		]);
+		expect(mgr.log.entries()[0]).not.toBe(original);
 	});
 });
