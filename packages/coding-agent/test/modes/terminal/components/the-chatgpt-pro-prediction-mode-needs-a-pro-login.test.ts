@@ -31,7 +31,7 @@ import { stubStdoutGeometry } from "../../../helpers/stdout-geometry";
 import { useTrackedTempDirs } from "../../../helpers/tracked-temp-dir";
 
 const MODE_PATH = "composer.predictions.mode";
-const HINT = "Connect ChatGPT Pro for free, usage-less predictions.";
+const HINT = "Connect a ChatGPT Pro account to use this mode.";
 const DOWN = "\x1b[B";
 
 /**

@@ -160,7 +160,7 @@ export const INTERACTION_SETTINGS = {
 					value: "chatgpt-pro",
 					label: "ChatGPT Pro included",
 					description:
-						"The ChatGPT Codex prediction service on GPT-6 Astra or GPT-6.1 Sol, sent with a linked OpenAI Codex account on a ChatGPT Pro plan. During the beta, OpenAI counts these predictions against no Codex usage limits or credits. Without a Pro account, or when an API key replaces the Codex login, no prediction is requested.",
+						"The ChatGPT Codex prediction service on GPT-6 Astra or GPT-6.1 Sol, sent with a linked OpenAI Codex account on a ChatGPT Pro plan. OpenAI states that predictions in its Codex app use no Codex usage limits or credits during the beta; that statement does not cover Veyyon, and these requests may count against the account's limits. Without a Pro account, or when an API key replaces the Codex login, no prediction is requested.",
 				},
 				{
 					value: "custom",
