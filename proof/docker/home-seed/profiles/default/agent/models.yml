@@ -29,6 +29,14 @@ providers:
         name: Qwen2.5 1.5B f16 (local)
         contextWindow: 32768
         maxTokens: 1024
+      # Qwen2.5 7B on the same llama.cpp server, for scenes whose side-channel
+      # request must return the JSON object its prompt asks for. The 1.5B answers
+      # a composer-prediction request with bare prose, which the prediction parser
+      # rejects; the 7B returns the object.
+      - id: qwen2.5-7b
+        name: Qwen2.5 7B (local)
+        contextWindow: 32768
+        maxTokens: 1024
       # The HD demo runs against a 30B mixture-of-experts served by ollama on the
       # recorder host instead of the 1.5B above: a demo has to show real tool use,
       # and a 1.5B answers a question but does not drive an edit. Ollama DOES honor
