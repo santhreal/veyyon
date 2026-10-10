@@ -246,6 +246,7 @@
 
 ### Fixed
 
+- A transcript rebuild, such as after a compaction, releases the tool cards and assistant segments it removed from the screen and the arguments of calls that settled, instead of holding every card a long agent run ever drew, so a 900-second soak of tool turns and compactions ends at 987 MB RSS instead of 1,512 MB with 481,732 heap objects instead of 945,900.
 - A session switch, `/resume`, reload, `/new` or `/drop` that fails part-way, such as on a disk error while the outgoing transcript is flushed, keeps the session listening, so later turns reach the screen and the session file instead of running unseen and unsaved.
 - Kimi web search with a kimi.ai credential posts to api.kimi.ai instead of api.kimi.com, and the Kimi API Format options describe the API each one uses instead of naming a host.
 - Reading a PowerPoint deck shows each slide's notes under that slide instead of under the slide whose number matches the notes part, so notes added to a later slide first no longer appear under an earlier slide, and it reads a slide named by an absolute or percent-encoded target, and the pictures and notes of a slide part not named `ppt/slides/slideN.xml`, instead of dropping them.

@@ -162,6 +162,18 @@ export class SessionProjectionEngine {
 		this.#toolArgs.clear();
 	}
 
+	/**
+	 * Forget the arguments of every settled call that is not running. A settled call's end has been
+	 * handled, and {@link findToolCallArgs} reads a call the record no longer holds from its message.
+	 */
+	releaseSettledToolCalls(): void {
+		for (const toolCallId of this.#toolArgs.keys()) {
+			if (this.#settledToolCalls.has(toolCallId) && !this.#runningToolCalls.has(toolCallId)) {
+				this.#toolArgs.delete(toolCallId);
+			}
+		}
+	}
+
 	recordAutoRetryStart(
 		event: Pick<RetryLineInput, "attempt" | "delayMs" | "errorId" | "errorMessage" | "mode">,
 	): RetryTrace {

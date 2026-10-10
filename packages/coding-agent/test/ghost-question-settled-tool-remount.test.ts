@@ -213,6 +213,9 @@ const CONTROLLER_ENTRY_POINTS = {
 	attachTo: "inert",
 	dispose: "inert",
 	resetTranscriptAnchors: "inert",
+	// Unlinks components a rebuild already detached and the arguments of settled calls; it only
+	// reads `settledToolCalls`, so a settled call stays settled and nothing is mounted.
+	releaseDetachedTranscriptAnchors: "inert",
 	inheritDisplaceableTodo: "inert",
 	sendCompletionNotification: "inert",
 } as const;
@@ -267,6 +270,8 @@ function createFixture(opts: { isStreaming?: boolean; messages?: AgentMessage[] 
 		sessionManager: { getCwd: () => process.cwd(), getSessionName: () => "test-session", getEntries: () => [] },
 		isStreaming: opts.isStreaming ?? true,
 		systemPromptInvalidations: () => [],
+		// Predictions off, so a finished turn does not reach the composer predictor.
+		settings: { get: (key: string) => (key === "composer.predictions.mode" ? "off" : undefined) },
 		// What `renderInitialMessages` replays. Same messages the direct
 		// `renderSessionContext` driver uses, reached through the production
 		// caller instead of by hand.

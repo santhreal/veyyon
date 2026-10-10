@@ -1904,6 +1904,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// The composer owns the rebuild's live-component preservation (#3656)
 		// and the pre-streaming optimistic replay (#2372).
 		this.#transcriptComposer.rebuild();
+		this.#eventController.releaseDetachedTranscriptAnchors();
 	}
 
 	/**

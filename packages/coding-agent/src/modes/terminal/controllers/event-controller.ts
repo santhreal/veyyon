@@ -511,6 +511,33 @@ export class EventController {
 		this.#toolArgsReveal.stop();
 	}
 
+	/**
+	 * Drop every reference to a transcript component a rebuild detached, and the arguments of the
+	 * calls that settled.
+	 *
+	 * The per-call maps are emptied at agent start and end, so within one agent run they gain an
+	 * entry for every tool call. A component no longer in the transcript is never drawn or anchored
+	 * after again: {@link #insertAfterTranscriptComponent} cannot find it, and a read's images inlined
+	 * into it would show nowhere instead of in the read group. Without this, a long run kept every
+	 * card a compaction collapsed, with its arguments and result text.
+	 */
+	releaseDetachedTranscriptAnchors(): void {
+		const attached = new Set<Component>(this.ctx.chatContainer.children);
+		for (const [toolCallId, component] of this.#toolTimelineComponents) {
+			if (!attached.has(component)) this.#toolTimelineComponents.delete(toolCallId);
+		}
+		for (const [toolCallId, component] of this.#postToolAssistantComponents) {
+			if (!attached.has(component)) this.#postToolAssistantComponents.delete(toolCallId);
+		}
+		for (const [toolCallId, component] of this.#readToolCallAssistantComponents) {
+			if (!attached.has(component)) this.#readToolCallAssistantComponents.delete(toolCallId);
+		}
+		if (this.#lastAssistantComponent && !attached.has(this.#lastAssistantComponent)) {
+			this.#lastAssistantComponent = undefined;
+		}
+		this.#projection.releaseSettledToolCalls();
+	}
+
 	async handleEvent(event: AgentSessionEvent): Promise<void> {
 		if (!this.ctx.isInitialized) {
 			await this.ctx.init();
