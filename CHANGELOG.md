@@ -89,6 +89,7 @@
 
 ### Changed
 
+- A provider request carries a payload hook only while an extension handles `before_provider_request`, so a session with no such handler skips cloning and re-serializing every request body, which cut request building on a 300-turn transcript from 0.90 ms to 0.26 ms per request.
 - The lexical bracket scan behind `read` windows and edit previews, used for a source tree-sitter cannot parse, dispatches on character codes, skips a block comment with one search and scans each mode in its own function in `utils/block-context.ts`, so a lookup on a 9,815-line TypeScript file with a syntax error takes 0.85 ms instead of 7.74 ms, and on a 4,083-line `.txt` file 1.20 ms instead of 12.70 ms (median of 15 alternating rounds of 40 lookups); every boundary line is unchanged.
 - The status line fits its footline in one `QuietRowFit` pass in `status-line/quiet-row.ts` that keeps each half's joined text and width instead of re-joining the halves after every shed, so composing a default footline takes 999 ns instead of 1,454 ns at 160 columns and 9.46 µs instead of 12.15 µs at 60 columns, where it sheds zones (median of nine rounds of 20,000 calls); the drawn row is unchanged.
 - `StatusLineComponent` builds a frame's segment context through `#locationContext`, `#gitFacts` and `contextGaugeReadings`, and `renderLocation` and the `model` segment build their text in per-step functions; the drawn row and the git lookups it starts are unchanged.
@@ -323,6 +324,8 @@
 - `Agent` reads its fallback Google model only when the initial state names no model, so a session that brings its own model no longer builds the Google provider's bundled models, and a launch with no credential builds 478 model specs instead of 521.
 - The per-turn stale-result and threshold prunes and the shake, dedup and truncation collectors scan only the entries from the compaction boundary to the leaf instead of the whole branch, which cut the two per-turn prunes on a 238,084-entry session with 390 compactions from 420ms to 4.4ms per turn.
 - `resolveCompactionBoundaryIndex` searches for the keep marker from the end of the branch, which takes about 9ms off rebuilding the context of a 238,084-entry branch.
+- Append-only context mode compares each synced message against a structural snapshot that shares its strings instead of re-serializing and hashing the whole transcript every turn, which cut syncing a 601-message transcript over 300 turns from 354ms to 13ms and removes the 32-bit hash collision that could hide an in-place rewrite.
+- Append-only context mode checks an unchanged system prompt and tool set against a structural snapshot instead of re-serializing and hashing it every turn, which cut each turn's prefix check from 430µs to 55µs on an 80 KB prompt with 40 tools.
 - Split the agent loop's turn driver into per-step functions (pause park, directive resolution, sampling with Harmony-leak recovery, failed-turn settling, tool-call settling, queue drains); no user-visible change.
 - `estimateTokens` collects a message's fragments and the shape digest its cache compares in one walk on a first estimate instead of two, cutting the first estimate of a 26,806-entry resumed session's messages from 21.5 ms to 16.8 ms.
 - `Agent` holds each system prompt section as the shared copy of its text, whether it arrives in the initial state or through `setSystemPrompt`, so live agents with equal sections hold one buffer of each.
@@ -625,6 +628,8 @@
 
 ### Fixed
 
+- A transcript rebuild, such as after a compaction, releases the tool cards and assistant segments it removed from the screen and the arguments of calls that settled, instead of holding every card a long agent run ever drew, so a 900-second soak of tool turns and compactions ends at 987 MB RSS instead of 1,512 MB with 481,732 heap objects instead of 945,900.
+- A collapsed edit card whose change lines alone pass 40 draws 40 diff rows and counts the rest as hidden, instead of drawing every line of the run that crossed the budget (a 600-line replacement drew 603 rows) or overflowing the call stack on a run of a million lines, and cutting the diff and counting its lines no longer copy each run or re-split the kept text, so cutting a 5,600-line, 400-hunk diff takes 355 µs instead of 544 µs and counting it 56 µs instead of 190 µs (median of nine rounds of 300).
 - A session switch, `/resume`, reload, `/new` or `/drop` that fails part-way, such as on a disk error while the outgoing transcript is flushed, keeps the session listening, so later turns reach the screen and the session file instead of running unseen and unsaved.
 - Kimi web search with a kimi.ai credential posts to api.kimi.ai instead of api.kimi.com, and the Kimi API Format options describe the API each one uses instead of naming a host.
 - Reading a PowerPoint deck shows each slide's notes under that slide instead of under the slide whose number matches the notes part, so notes added to a later slide first no longer appear under an earlier slide, and it reads a slide named by an absolute or percent-encoded target, and the pictures and notes of a slide part not named `ppt/slides/slideN.xml`, instead of dropping them.
