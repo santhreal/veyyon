@@ -18,19 +18,19 @@ import { isRecord } from "@veyyon/utils/type-guards";
 import type { BuiltinToolName } from "../core/builtin-names";
 import { type CodedResultContent, firstResultText, MIN_CODED_TEXT } from "../core/output-notice";
 import { formatCodeFrameLine } from "../core/render-utils";
-import { cardDisplayRows } from "./search-card-limits";
 
 /**
  * How a dropped `displayContent` is rebuilt from the result's text. `text` is the text itself.
  * `rows` redraws each numbered row with the card's gutter, padded to the widest line number of its
  * file, keeps `#` headers, blank lines and `  meta:` lines, drops `[path#TAG]` snapshot headers, and
- * stops at the first other line, which begins the notices after the rows. `cardRows` is the leading
- * rows of `rows` a card draws, as {@link cardDisplayRows} keeps them.
+ * stops at the first other line, which begins the notices after the rows. `rowsPrefix` is the first
+ * `displayContentLength` characters of `rows`, which is the card body a text search keeps when its
+ * card draws fewer rows than the result holds (`cardDisplayRows`).
  *
  * Persisted tags. Changing what a rebuild produces is a new tag with the old rebuild kept, or every
  * session written before the change draws a different card.
  */
-export type SearchDisplayFrom = "text" | "rows" | "cardRows";
+export type SearchDisplayFrom = "text" | "rows" | "rowsPrefix";
 
 /** The tag a written line carries in place of `files`: the paths of `fileMatches`, in order. */
 const FILES_FROM_MATCHES = "fileMatches";
@@ -42,6 +42,8 @@ const META_FROM_RESULT = "result";
 export interface SearchDisplaySource {
 	displayContent?: string;
 	displayContentFrom?: SearchDisplayFrom;
+	/** The characters of the `rowsPrefix` rebuild that are the card text. */
+	displayContentLength?: number;
 }
 
 /** A model-facing row: its match marker, its line number and, after the separator, the line. */
@@ -95,30 +97,26 @@ function redrawRows(text: string): string {
 	return out.join("\n");
 }
 
-/** The `cardRows` rebuild: the leading rows of `rows` a card draws. */
-function redrawCardRows(rows: string): string {
-	return cardDisplayRows(rows.split("\n")).rows.join("\n");
-}
-
-function rebuildDisplay(from: unknown, content: CodedResultContent): string | undefined {
+function rebuildDisplay(from: unknown, length: unknown, content: CodedResultContent): string | undefined {
 	const text = firstResultText(content);
 	if (text === undefined) return undefined;
 	if (from === "text") return text;
 	if (from === "rows") return redrawRows(text);
-	if (from === "cardRows") return redrawCardRows(redrawRows(text));
+	if (from === "rowsPrefix" && typeof length === "number") return redrawRows(text).slice(0, length);
 	return undefined;
 }
 
-/** The tag that rebuilds `display` from `content`, or undefined when none reproduces it. */
-function displaySource(display: string, content: CodedResultContent): SearchDisplayFrom | undefined {
+/** The fields that rebuild `display` from `content` in its place, or undefined when none reproduces it. */
+function displaySource(display: string, content: CodedResultContent): SearchDisplaySource | undefined {
 	if (display.length < MIN_CODED_TEXT) return undefined;
 	const text = firstResultText(content);
 	if (text === undefined) return undefined;
-	if (text === display) return "text";
+	if (text === display) return { displayContentFrom: "text" };
 	const rows = redrawRows(text);
-	if (rows === display) return "rows";
-	// A display shorter than the rows is the leading rows a card draws, when the tool kept those.
-	return rows.length > display.length && redrawCardRows(rows) === display ? "cardRows" : undefined;
+	if (rows === display) return { displayContentFrom: "rows" };
+	return rows.startsWith(display)
+		? { displayContentFrom: "rowsPrefix", displayContentLength: display.length }
+		: undefined;
 }
 
 /** True when `files` is `fileMatches`' paths in order and long enough to be worth a tag. */
@@ -138,10 +136,10 @@ function filesAreMatchPaths(files: unknown, fileMatches: unknown): boolean {
 function slimResult(result: Record<string, unknown>, content: CodedResultContent): Record<string, unknown> {
 	let slimmed = result;
 	const display = result.displayContent;
-	const from = typeof display === "string" ? displaySource(display, content) : undefined;
-	if (from !== undefined) {
+	const source = typeof display === "string" ? displaySource(display, content) : undefined;
+	if (source !== undefined) {
 		const { displayContent: _dropped, ...kept } = slimmed;
-		slimmed = { ...kept, displayContentFrom: from };
+		slimmed = { ...kept, ...source };
 	}
 	if (filesAreMatchPaths(result.files, result.fileMatches)) {
 		const { files: _dropped, ...kept } = slimmed;
@@ -152,10 +150,11 @@ function slimResult(result: Record<string, unknown>, content: CodedResultContent
 
 function restoreResult(result: Record<string, unknown>, content: CodedResultContent): void {
 	if (result.displayContent === undefined && result.displayContentFrom !== undefined) {
-		const display = rebuildDisplay(result.displayContentFrom, content);
+		const display = rebuildDisplay(result.displayContentFrom, result.displayContentLength, content);
 		if (display !== undefined) {
 			result.displayContent = display;
 			delete result.displayContentFrom;
+			delete result.displayContentLength;
 		}
 	}
 	if (result.filesFrom === FILES_FROM_MATCHES && result.files === undefined && Array.isArray(result.fileMatches)) {
@@ -204,5 +203,7 @@ export function resolveSearchDisplay(
 ): string | undefined {
 	if (details === undefined) return undefined;
 	if (details.displayContent !== undefined) return details.displayContent;
-	return details.displayContentFrom === undefined ? undefined : rebuildDisplay(details.displayContentFrom, content);
+	return details.displayContentFrom === undefined
+		? undefined
+		: rebuildDisplay(details.displayContentFrom, details.displayContentLength, content);
 }

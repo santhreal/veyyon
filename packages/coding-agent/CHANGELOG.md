@@ -5,6 +5,7 @@
 ### Changed
 
 - A text search result keeps only the card rows its card can draw and a count of the matches past them, so a 30-turn session with broad searches writes 4.1 MB to its session file instead of 7.2 MB and 21 MB to disk instead of 31 MB, with the card drawn as before.
+- A session file records a text search's kept card rows as a length of the rows its result redraws, so a resumed card draws the rows it was written with whatever the card's row limits become, and the search codec no longer loads the card limits at launch.
 - A live tool or assistant block's rows enter terminal scrollback once, when final, instead of as copies taken while they scroll off mid-run, so a 20-turn session with parallel tool calls writes 1.0 MB to the terminal instead of 4.1 MB with no whole-transcript replays, and a running tool's rows above the screen reach scrollback when it finishes.
 - The working line and live tool-card spinners advance every 200 ms instead of every 80 ms and repainted rows no longer send their blank padding, so a session waiting 30 s on a model and a tool writes 94 KB in 327 frames to the terminal instead of 197 KB in 548.
 - No user-visible change: `/btw` and `/omfg` show, replace, dismiss and fail a request through one `SidePanelSlot` in `modes/terminal/controllers/side-panel-slot.ts` instead of two copies, and a `/btw` answer is held on its request instead of in controller fields cleared on close.

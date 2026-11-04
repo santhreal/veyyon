@@ -141,7 +141,7 @@ const SHAPES: Shape[] = [
 		input: { type: "text", input: "needle", path: "broad" },
 		settings: CONTEXT_SETTINGS,
 		hasEditTool: true,
-		from: "cardRows",
+		from: "rowsPrefix",
 	},
 ];
 
