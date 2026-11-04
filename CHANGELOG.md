@@ -180,6 +180,7 @@
 - The request, model, model-performance, cost and tool-call time series read through one bucketed query; no user-facing change.
 - `resultTextOf` joins a result's text blocks through `contentText` from `@veyyon/utils/content-text`; rendered output is unchanged.
 - `TUI` commits only rows above the live-region boundary to native scrollback, holding a live row that scrolls above the window off-screen until the boundary passes it, and reports each root child's rows above the window through the new `NativeScrollbackDepartedRows` hook.
+- No user-visible change: the native-scrollback commit boundary is computed with `clampLow` from `@veyyon/utils/math`.
 - A row rewrite stops sending the spaces after the row's last drawn cell unless an attribute that draws on a blank, such as a background or an underline, is open over them.
 - `Loader` advances its spinner every `SPINNER_ADVANCE_MS`, now exported and 200 ms instead of 80 ms.
 - No user-visible change: `pathToDescendant` and `isPathIntact` moved from `core/renderer.ts` to `core/component-path.ts`.
