@@ -27,6 +27,7 @@
 
 ### Changed
 
+- A live tool or assistant block's rows enter terminal scrollback once, when final, instead of as copies taken while they scroll off mid-run, so a 20-turn session with parallel tool calls writes 1.0 MB to the terminal instead of 4.1 MB with no whole-transcript replays, and a running tool's rows above the screen reach scrollback when it finishes.
 - The working line and live tool-card spinners advance every 200 ms instead of every 80 ms and repainted rows no longer send their blank padding, so a session waiting 30 s on a model and a tool writes 94 KB in 327 frames to the terminal instead of 197 KB in 548.
 - No user-visible change: `/btw` and `/omfg` show, replace, dismiss and fail a request through one `SidePanelSlot` in `modes/terminal/controllers/side-panel-slot.ts` instead of two copies, and a `/btw` answer is held on its request instead of in controller fields cleared on close.
 - No user-visible change: the collab host and guest connect through `RelayClient` from `@veyyon/wire/relay-client` instead of a private copy of the relay client, and `collab/crypto` no longer wraps `sealFrame` and `openFrame`.
@@ -178,6 +179,7 @@
 - The overall, per-model and per-folder totals read from one aggregate query, and the user-message table schema is written once for creation and for the rebuild of a stale table; no user-facing change.
 - The request, model, model-performance, cost and tool-call time series read through one bucketed query; no user-facing change.
 - `resultTextOf` joins a result's text blocks through `contentText` from `@veyyon/utils/content-text`; rendered output is unchanged.
+- `TUI` commits only rows above the live-region boundary to native scrollback, holding a live row that scrolls above the window off-screen until the boundary passes it, and reports each root child's rows above the window through the new `NativeScrollbackDepartedRows` hook.
 - A row rewrite stops sending the spaces after the row's last drawn cell unless an attribute that draws on a blank, such as a background or an underline, is open over them.
 - `Loader` advances its spinner every `SPINNER_ADVANCE_MS`, now exported and 200 ms instead of 80 ms.
 - No user-visible change: `pathToDescendant` and `isPathIntact` moved from `core/renderer.ts` to `core/component-path.ts`.
