@@ -52,6 +52,7 @@ import { toolResult } from "../core/tool-result";
 import { loadUrlReader } from "../web/manifest";
 import { parseReadUrlTarget } from "../web/read-url-target";
 import { formatMatchLine } from "./match-line-format";
+import { cardDisplayRows } from "./search-card-limits";
 import {
 	isImmutableSearchSourcePath,
 	type ResolvedExternalSearchUrl,
@@ -832,8 +833,11 @@ export interface TextSearchDetails {
 	error?: string;
 	/** Pre-formatted text for the user-visible TUI render. Mirrors the model-facing
 	 * `result.text` lines but uses a `│` gutter and `*` to mark match lines (vs space for
-	 * context). The TUI uses this directly so it never parses model-facing hashline anchors. */
+	 * context). The TUI uses this directly so it never parses model-facing hashline anchors.
+	 * Holds only the leading rows a card draws (`cardDisplayRows`). */
 	displayContent?: string;
+	/** Marked matches past the rows `displayContent` keeps, which the card counts as held back. */
+	displayHeldMatches?: number;
 	/** Absolute base directory used during search. Used by the renderer to resolve
 	 * display-relative paths to absolute paths for OSC 8 hyperlinks. */
 	searchPath?: string;
@@ -1646,6 +1650,7 @@ async function presentTextSearch(
 	const { fileList } = search;
 	const useGroupedOutput = scope.isDirectory || isMultiScope;
 	const body = formatSearchBody(search, useGroupedOutput);
+	const card = cardDisplayRows(body.display);
 	const outputLines = body.model;
 	const bodyLineCount = outputLines.length;
 	const timeoutNotice = timeoutNoticeText(outcome);
@@ -1685,7 +1690,8 @@ async function presentTextSearch(
 		timeoutNotice,
 		fileLimitReached: page.fileLimitReached ? DEFAULT_FILE_LIMIT : undefined,
 		perFileLimitReached: page.perFileLimitReached ? perFileMatchCap : undefined,
-		displayContent: body.display.join("\n"),
+		displayContent: card.rows.join("\n"),
+		displayHeldMatches: card.heldMatches > 0 ? card.heldMatches : undefined,
 		missingPaths: scope.missingPaths.length > 0 ? scope.missingPaths : undefined,
 	};
 	if (truncation?.truncated) details.truncation = truncationSummary(truncation);

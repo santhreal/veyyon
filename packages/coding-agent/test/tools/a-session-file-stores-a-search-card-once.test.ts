@@ -61,6 +61,15 @@ const FIXTURES: Record<string, string> = {
 		"const filler3 = 3;",
 	].join("\n"),
 	"src/services/gamma-service-client.ts": ['export const gamma = "needle five";', "const filler = 0;"].join("\n"),
+	// Matches well past the rows a card draws, so the tool keeps only the rows the card can show.
+	...Object.fromEntries(
+		Array.from({ length: 8 }, (_, file) => [
+			`broad/module-${file}.ts`,
+			Array.from({ length: 16 }, (_, line) =>
+				line % 2 === 0 ? `const needle${line} = ${line};` : `const filler${line} = ${line};`,
+			).join("\n"),
+		]),
+	),
 };
 
 /** One file's path, long enough that its one-entry path list is worth a tag. */
@@ -126,6 +135,13 @@ const SHAPES: Shape[] = [
 		settings: {},
 		hasEditTool: false,
 		from: "rows",
+	},
+	{
+		name: "rows past what a card draws",
+		input: { type: "text", input: "needle", path: "broad" },
+		settings: CONTEXT_SETTINGS,
+		hasEditTool: true,
+		from: "cardRows",
 	},
 ];
 
@@ -341,6 +357,11 @@ describe("a session file stores a search card once", () => {
 				),
 		},
 		{ name: "a paths list cut short", shape: 4, replace: text => text.slice(0, text.length / 2) },
+		{
+			name: "a prune notice over rows past what a card draws",
+			shape: 7,
+			replace: () => "[Output truncated - 120 tokens]",
+		},
 	];
 
 	it("writes the card text whole once the result's content no longer rebuilds it", async () => {

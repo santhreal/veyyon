@@ -18,17 +18,19 @@ import { isRecord } from "@veyyon/utils/type-guards";
 import type { BuiltinToolName } from "../core/builtin-names";
 import { type CodedResultContent, firstResultText, MIN_CODED_TEXT } from "../core/output-notice";
 import { formatCodeFrameLine } from "../core/render-utils";
+import { cardDisplayRows } from "./search-card-limits";
 
 /**
  * How a dropped `displayContent` is rebuilt from the result's text. `text` is the text itself.
  * `rows` redraws each numbered row with the card's gutter, padded to the widest line number of its
  * file, keeps `#` headers, blank lines and `  meta:` lines, drops `[path#TAG]` snapshot headers, and
- * stops at the first other line, which begins the notices after the rows.
+ * stops at the first other line, which begins the notices after the rows. `cardRows` is the leading
+ * rows of `rows` a card draws, as {@link cardDisplayRows} keeps them.
  *
  * Persisted tags. Changing what a rebuild produces is a new tag with the old rebuild kept, or every
  * session written before the change draws a different card.
  */
-export type SearchDisplayFrom = "text" | "rows";
+export type SearchDisplayFrom = "text" | "rows" | "cardRows";
 
 /** The tag a written line carries in place of `files`: the paths of `fileMatches`, in order. */
 const FILES_FROM_MATCHES = "fileMatches";
@@ -93,11 +95,17 @@ function redrawRows(text: string): string {
 	return out.join("\n");
 }
 
+/** The `cardRows` rebuild: the leading rows of `rows` a card draws. */
+function redrawCardRows(rows: string): string {
+	return cardDisplayRows(rows.split("\n")).rows.join("\n");
+}
+
 function rebuildDisplay(from: unknown, content: CodedResultContent): string | undefined {
 	const text = firstResultText(content);
 	if (text === undefined) return undefined;
 	if (from === "text") return text;
 	if (from === "rows") return redrawRows(text);
+	if (from === "cardRows") return redrawCardRows(redrawRows(text));
 	return undefined;
 }
 
@@ -107,7 +115,10 @@ function displaySource(display: string, content: CodedResultContent): SearchDisp
 	const text = firstResultText(content);
 	if (text === undefined) return undefined;
 	if (text === display) return "text";
-	return redrawRows(text) === display ? "rows" : undefined;
+	const rows = redrawRows(text);
+	if (rows === display) return "rows";
+	// A display shorter than the rows is the leading rows a card draws, when the tool kept those.
+	return rows.length > display.length && redrawCardRows(rows) === display ? "cardRows" : undefined;
 }
 
 /** True when `files` is `fileMatches`' paths in order and long enough to be worth a tag. */

@@ -40,7 +40,7 @@ import {
 	scopeMetaLine,
 	type ToolViewResult,
 } from "../core/render-utils";
-import { COLLAPSED_TEXT_LIMIT, EXPANDED_TEXT_LIMIT } from "./search-card-limits";
+import { COLLAPSED_TEXT_LIMIT, EXPANDED_TEXT_LIMIT, isHeader, isMarkedMatch } from "./search-card-limits";
 import { resolveSearchDisplay } from "./search-result-codec";
 import type { TextSearchDetails, TextSearchRenderArgs } from "./text-search";
 
@@ -52,12 +52,6 @@ const TEXT_SEARCH_EMBLEM = "icon.search";
 
 /** The line number a body row carries, which is what makes it a match rather than context. */
 const CODE_FRAME_LINE_RE = /^\s*\*?(\d+)│/;
-
-/** A body row the search itself marked as the match, rather than the lines around it. */
-const MARKED_MATCH_RE = /^\s*\*\d+(?:│|[:|])/;
-
-/** A grouped-output header, which is the row that names the file or directory under it. */
-const HEADER_RE = /^#+ /;
 
 /** The `## ` a url header wears, which the card links without it. */
 const URL_HEADER_PREFIX_RE = /^#+\s+/;
@@ -114,14 +108,6 @@ function scopeMeta(details: TextSearchDetails | undefined): ViewLine | undefined
 function missingLine(details: TextSearchDetails | undefined): ViewLine | undefined {
 	const missing = details?.missingPaths ?? [];
 	return missing.length === 0 ? undefined : [{ text: `skipped missing: ${missing.join(", ")}`, tone: "warning" }];
-}
-
-function isMarkedMatch(raw: string): boolean {
-	return MARKED_MATCH_RE.test(raw);
-}
-
-function isHeader(raw: string): boolean {
-	return HEADER_RE.test(raw);
 }
 
 /**
@@ -252,14 +238,17 @@ function budgetedBody(
 	maxLines: number,
 	matchCount: number,
 	compact: boolean,
-	unit: "match" | "file" = "match",
+	unit: "match" | "file",
+	heldMatches: number,
 ): BudgetedBody {
 	if (maxLines <= 0) return { lines: [] };
 	const rendered = groups.map(group => (compact ? compactGroup(group) : group)).filter(group => group.length > 0);
 	if (rendered.length === 0) return { lines: [] };
 
-	let totalRows = 0;
-	let totalMarked = 0;
+	// The tool keeps no rows past the ones a card can draw (`cardDisplayRows`); the matches it held
+	// back are rows of the body all the same, so they count toward the note.
+	let totalRows = heldMatches;
+	let totalMarked = heldMatches;
 	let totalFallback = 0;
 	for (const group of rendered) {
 		totalRows += group.length;
@@ -378,6 +367,7 @@ export const textSearchToolView: Required<ToolViewRenderer<TextSearchRenderArgs,
 			details.pathsOnly === true ? fileCount : matchCount,
 			!context.expanded,
 			details.pathsOnly === true ? "file" : "match",
+			details.displayHeldMatches ?? 0,
 		);
 
 		const sections: ViewSection[] = [
