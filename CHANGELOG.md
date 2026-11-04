@@ -12,6 +12,7 @@
 
 - `AGENT_EVENT_TYPES` in `@veyyon/agent-core/types` lists every agent event type and fails to compile when the event union gains a type it lacks.
 - `toolSchema(id, build)` in `@veyyon/ai/utils/schema/tool-schema` holds a tool parameter schema with its wire form, which a compiled build stores per build in the profile's `cache/tool-wire-schemas.json`, and `Tool.wireParameters` supplies that wire form to a request without building `parameters`.
+- `SgrState` in `@veyyon/utils/sgr` holds the SGR attributes open at a point in a styled row, and its `marksBlank` reports whether a space written there draws anything an erased cell does not.
 - `AppliedCompletion` in `@veyyon/utils/autocomplete` is the draft and cursor that `AutocompleteProvider.applyCompletion` and `applyAutocompleteCompletion` return.
 - `wrapIndex(index, count)` in `@veyyon/utils/math` maps `index` onto a ring of `count` slots, so a step past either end of a list lands on the other end.
 - `packageModuleReach(repoRoot, src, namesRelativeTo?)` in `@veyyon/utils/module-reach-workspace` returns one package's `reach`, `reachedNames` and `runtimeImportsOf` over the workspace resolution with one shared memo; no user-facing change.
@@ -26,6 +27,7 @@
 
 ### Changed
 
+- The working line and live tool-card spinners advance every 200 ms instead of every 80 ms and repainted rows no longer send their blank padding, so a session waiting 30 s on a model and a tool writes 94 KB in 327 frames to the terminal instead of 197 KB in 548.
 - No user-visible change: `/btw` and `/omfg` show, replace, dismiss and fail a request through one `SidePanelSlot` in `modes/terminal/controllers/side-panel-slot.ts` instead of two copies, and a `/btw` answer is held on its request instead of in controller fields cleared on close.
 - No user-visible change: the collab host and guest connect through `RelayClient` from `@veyyon/wire/relay-client` instead of a private copy of the relay client, and `collab/crypto` no longer wraps `sealFrame` and `openFrame`.
 - No user-visible change: the memory tools resolve their backend through `memory-session`, the JS eval host and worker encode errors through one `eval/js/error-payload` codec, and `config get`, `set` and `reset` report a missing or unknown key through one helper.
@@ -174,6 +176,8 @@
 - The overall, per-model and per-folder totals read from one aggregate query, and the user-message table schema is written once for creation and for the rebuild of a stale table; no user-facing change.
 - The request, model, model-performance, cost and tool-call time series read through one bucketed query; no user-facing change.
 - `resultTextOf` joins a result's text blocks through `contentText` from `@veyyon/utils/content-text`; rendered output is unchanged.
+- A row rewrite stops sending the spaces after the row's last drawn cell unless an attribute that draws on a blank, such as a background or an underline, is open over them.
+- `Loader` advances its spinner every `SPINNER_ADVANCE_MS`, now exported and 200 ms instead of 80 ms.
 - No user-visible change: `Form`, `SettingsList` and `TabBar` step through their fields, rows, sections and tabs with `wrapIndex`.
 - No user-visible change: the terminal capabilities read `HostNotification` from `@veyyon/host/notification` instead of a `@veyyon/utils` re-export.
 - `HoverController.set` returns whether the hovered row changed, so a caller repaints only on a change.
