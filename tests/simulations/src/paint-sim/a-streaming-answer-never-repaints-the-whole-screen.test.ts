@@ -19,12 +19,16 @@
  * whether an ordinary frame is destructive. So the sweep drives identical
  * traffic across header heights, HUD heights, footer heights, viewport heights
  * and both settings of the rebuild knob, and in every one of them pins erases
- * to zero and whole-screen repaints to the frames the scenario itself made
- * SHORTER plus the frames that regrow the difference — a frame that shrinks
- * has to move every row on screen, and until the frame is back to its length
- * the rows it re-showed are already in native scrollback, so growth slides the
- * window in place rather than scrolling them off a second time. Each costs one
- * bounded in-place rewrite, and a repaint on any other frame is the defect.
+ * to zero and whole-screen repaints to the script's own model: the frames the
+ * scenario made SHORTER, the frames that regrow the difference, and, under the
+ * virtualized transcript, the frames that grow while the live answer's first
+ * row is above the window. A frame that shrinks has to move every row on
+ * screen, and until the frame is back to its length the rows it re-showed are
+ * already in native scrollback, so growth slides the window in place rather
+ * than scrolling them off a second time; and only final rows enter native
+ * scrollback, so a window whose top is inside the live answer slides in place
+ * rather than scrolling live rows into history. Each costs one bounded
+ * in-place rewrite, and a repaint on any other frame is the defect.
  *
  * WHAT IT DOES NOT CATCH. It measures composition, not cadence: a repaint
  * SOURCE that asks for sixty frames a second (an animation that never settles)
@@ -80,11 +84,13 @@ describe("a streaming answer never repaints the whole screen", () => {
 				// costs one in-place rewrite of the window — bounded, non
 				// destructive, and nothing enters or leaves scrollback — and so does
 				// every frame that grows it back while the rows the shrink re-showed
-				// are still on screen and already in native scrollback. Every other
-				// frame must be a differential update. The count is pinned to the
-				// script's own model, so an extra repaint on a frame that only grew
-				// past the committed boundary is red, which is exactly the defect: a
-				// streamed row that repainted the screen.
+				// are still on screen and already in native scrollback, and every
+				// frame that grows while the window's top row is inside the live
+				// answer, which may not scroll into native scrollback until it is
+				// final. Every other frame must be a differential update. The count
+				// is pinned to the script's own model, so an extra repaint on a frame
+				// that only grew past the committed boundary is red, which is the
+				// defect: a streamed row that repainted the screen.
 				expect({ arm: label(shape), redraws: report.fullRedraws }).toEqual({
 					arm: label(shape),
 					redraws: report.slideRewrites,

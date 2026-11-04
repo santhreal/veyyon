@@ -114,10 +114,11 @@ describe("ToolExecutionComponent write repaint seam", () => {
 			// Counted rather than merely present, for the same reason as the SSH
 			// repaint suite: the bug this exists to catch is a frame drawn a second
 			// time below the first, and `some(...)` is true whether the row was
-			// repainted in place or duplicated.
-			// The note is the host's: it counts the WRAPPED rows it dropped, one of which it spends on
-			// the note itself, and it offers the expand gesture the tool no longer words.
-			expect(pendingRows.filter(row => row.includes("… 9 earlier lines"))).toHaveLength(1);
+			// repainted in place or duplicated. The card is live and taller than the
+			// three rows above the editor, so only its tail is on screen: its earlier
+			// rows, the host's elision note among them, are not final and never
+			// enter native scrollback.
+			expect(pendingRows.filter(row => row.includes("earlier lines"))).toHaveLength(0);
 			expect(pendingRows.filter(row => row.includes("… (streaming)"))).toHaveLength(1);
 			expect(pendingRows.filter(row => row.includes("20 line 20"))).toHaveLength(1);
 
@@ -134,11 +135,24 @@ describe("ToolExecutionComponent write repaint seam", () => {
 			expect(rows.some(row => row.includes("… (streaming)"))).toBe(false);
 			expect(rows.some(row => row.includes("earlier lines"))).toBe(false);
 			expect(rows.some(row => row.includes("20 line 20"))).toBe(false);
-			// The first partial-result frame is what remains: progress line plus the
-			// top-anchored preview.
-			expect(rows.filter(row => row.includes("Writing notes.txt..."))).toHaveLength(1);
-			expect(rows.filter(row => row.includes("  1 line 1"))).toHaveLength(1);
+			// The first partial-result frame's tail is what the window shows: the
+			// top-anchored preview's last line and its continuation note.
+			expect(rows.filter(row => row.includes("  6 line 6"))).toHaveLength(1);
 			expect(rows.filter(row => row.includes("… 14 more lines"))).toHaveLength(1);
+
+			component.updateResult(partialWriteResult("Wrote notes.txt"), false);
+			tui.requestRender();
+			await scheduler.drain(term);
+
+			// Settled, the card is final and enters native scrollback whole and
+			// once, with nothing of the pending tail window above it.
+			const settledRows = plainBuffer(term);
+			expect(settledRows.some(row => row.includes("… (streaming)"))).toBe(false);
+			expect(settledRows.some(row => row.includes("20 line 20"))).toBe(false);
+			expect(settledRows.filter(row => row.includes("Write: notes.txt"))).toHaveLength(1);
+			expect(settledRows.filter(row => row.includes("  1 line 1"))).toHaveLength(1);
+			expect(settledRows.filter(row => row.includes("  6 line 6"))).toHaveLength(1);
+			expect(settledRows.filter(row => row.includes("… 14 more lines"))).toHaveLength(1);
 		} finally {
 			tui.stop();
 			await term.flush();

@@ -108,8 +108,11 @@ export interface PaintReport {
 	 * window rewrite; and while the frame is still shorter than it was before
 	 * that shrink, every frame that grows it costs one more, because the rows
 	 * the shrink re-showed are already in native scrollback and sliding them
-	 * off the top again would append them there a second time. Nothing else
-	 * may repaint the screen.
+	 * off the top again would append them there a second time. Only final rows
+	 * enter native scrollback, so under a transcript that reports a live seam a
+	 * frame that grows while the answer's first row is above the window slides
+	 * the window over rows that may not scroll into history, which costs one
+	 * more. Nothing else may repaint the screen.
 	 */
 	slideRewrites: number;
 	/**
@@ -348,15 +351,24 @@ async function paintScenario(shape: PaintShape): Promise<PaintReport> {
 			hud.setRows(gone ? 0 : shape.hudRows);
 			delta += gone ? -shape.hudRows : shape.hudRows;
 		}
+		tui.requestRender();
+		await settleFrames(term, tui);
+		// Rows from the answer's first row to the bottom of the frame: more than
+		// the screen holds puts the window top inside the live answer.
+		const fromLive =
+			live.render().length +
+			hud.render().length +
+			shape.footerRows +
+			(anchor ? anchor.bottomFill.render(shape.width).length : 0);
 		if (delta < 0) {
 			deficit -= delta;
 			slideRewrites++;
 		} else if (deficit > 0) {
 			deficit = Math.max(0, deficit - delta);
 			slideRewrites++;
+		} else if (shape.virtualized && fromLive > shape.height) {
+			slideRewrites++;
 		}
-		tui.requestRender();
-		await settleFrames(term, tui);
 		frames.push({
 			fullRedraws: tui.fullRedraws - before.redraws,
 			erases: paints.erases() - before.erases,

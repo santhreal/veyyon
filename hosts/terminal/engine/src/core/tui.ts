@@ -2987,7 +2987,7 @@ export class TUI extends Container {
 			chunkTo =
 				hasVisibleOverlay || geometryChanged || commitWouldTakeLiveRows
 					? this.#committedRows
-					: Math.max(this.#committedRows, Math.min(windowTop, finalBoundary));
+					: clampLow(windowTop, this.#committedRows, finalBoundary);
 		}
 		// A full paint replays the prefix it commits; a geometry change re-bases it at the new width.
 		const committedPrefixResliced = fullPaint || geometryChanged;
