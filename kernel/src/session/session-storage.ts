@@ -9,7 +9,7 @@ import * as logger from "@veyyon/utils/logger";
 import { peekFileEnds } from "@veyyon/utils/peek-file";
 import { sessionBackupName, sessionFileStem } from "@veyyon/utils/session-file";
 import { Snowflake } from "@veyyon/utils/snowflake";
-import { toError } from "@veyyon/utils/type-guards";
+import { isRecord, toError } from "@veyyon/utils/type-guards";
 import { overlayTitleSlotContent, type SessionTitleUpdate, serializeTitleSlot } from "./session-title-slot";
 
 const utf8Decoder = new TextDecoder("utf-8");
@@ -20,8 +20,8 @@ export interface SessionStorageStat {
 	mtime: Date;
 	/**
 	 * What the path names RIGHT NOW, for a backend where a path can start naming
-	 * a different object: `dev:ino` on a real filesystem, where a rewrite is a
-	 * temp write plus a rename and every open handle on the old inode keeps
+	 * a different object: `dev:ino` on a real filesystem, where a whole rewrite is
+	 * a temp write plus a rename and every open handle on the old inode keeps
 	 * writing into a file nothing can reach. Left undefined by backends that
 	 * address by path (memory, sql, redis), which cannot have that problem.
 	 */
@@ -47,7 +47,9 @@ export interface SessionStorageWriter {
 /**
  * A read handle on the object a session path named when it was opened. Reads keep answering from
  * that object after the path is republished over, renamed or unlinked, so byte offsets recorded
- * against it stay valid for as long as the handle is open.
+ * against it stay valid for as long as the handle is open. A tail rewrite in place
+ * ({@link SessionStorage.rewriteTailAtomic}) changes the object's bytes after the lines it keeps;
+ * a line that was among them has to be found again by its id.
  */
 export interface PinnedSessionReader {
 	/** {@link SessionStorageStat.identity} of the object the handle reads. */
@@ -209,6 +211,200 @@ async function copyRange(
 	}
 }
 
+/**
+ * Read `length` bytes at `position` of `fd` into the start of `buffer`, or throw naming `source`. A
+ * read past the end of the file comes back short.
+ */
+function readFullySync(fd: number, buffer: Buffer, length: number, position: number, source: string): void {
+	for (let filled = 0; filled < length; ) {
+		const read = fs.readSync(fd, buffer, filled, length - filled, position + filled);
+		if (read === 0) throw new Error(`Short read from ${source}: ${filled} of ${length} bytes at ${position}`);
+		filled += read;
+	}
+}
+
+/** Write the first `length` bytes of `buffer` at `position` of `fd`, or throw. */
+function writeFullySync(fd: number, buffer: Buffer, length: number, position: number): void {
+	for (let written = 0; written < length; ) {
+		const wrote = fs.writeSync(fd, buffer, written, length - written, position + written);
+		if (wrote === 0) throw new Error(`Short write: ${written} of ${length} bytes at ${position}`);
+		written += wrote;
+	}
+}
+
+/** Copy `length` bytes from byte `from` of `source` to byte `to` of `target` through `buffer`. */
+function copyBytesSync(
+	source: number,
+	from: number,
+	target: number,
+	to: number,
+	length: number,
+	buffer: Buffer,
+	sourceName: string,
+): void {
+	for (let done = 0; done < length; ) {
+		const bytes = Math.min(buffer.length, length - done);
+		readFullySync(source, buffer, bytes, from + done, sourceName);
+		writeFullySync(target, buffer, bytes, to + done);
+		done += bytes;
+	}
+}
+
+/** Whether `length` bytes from byte `aFrom` of `a` equal those from byte `bFrom` of `b`. */
+function bytesEqualSync(a: number, aFrom: number, b: number, bFrom: number, length: number, source: string): boolean {
+	const size = Math.min(COPY_CHUNK_BYTES, length);
+	const left = Buffer.allocUnsafe(size);
+	const right = Buffer.allocUnsafe(size);
+	for (let done = 0; done < length; ) {
+		const bytes = Math.min(size, length - done);
+		readFullySync(a, left, bytes, aFrom + done, source);
+		readFullySync(b, right, bytes, bFrom + done, source);
+		if (left.compare(right, 0, bytes, 0, bytes) !== 0) return false;
+		done += bytes;
+	}
+	return true;
+}
+
+/**
+ * Longest old tail {@link FileSessionStorage.rewriteTailAtomic} replaces inside the session file
+ * itself. The new tail is copied into the file in one synchronous stretch, so that no read in this
+ * process meets a file half rewritten: 8 MiB copies in 1.6 ms (median of 9 runs, 2.9 ms the
+ * slowest) on ext4 with a warm page cache. A prune, shake or dedupe writes a tail no longer than the
+ * one it replaces. A longer old tail goes to a copy of the file that is renamed over it, which
+ * writes every kept byte again.
+ */
+const IN_PLACE_TAIL_BYTES = 8 << 20;
+
+/** Last bytes of a whole tail journal. A journal that does not end with them was never applied. */
+const TAIL_JOURNAL_MAGIC = Buffer.from("VYTAIL01", "latin1");
+
+/** Bytes after a tail journal's record: the record's length, then {@link TAIL_JOURNAL_MAGIC}. */
+const TAIL_JOURNAL_FOOTER_BYTES = 4 + TAIL_JOURNAL_MAGIC.length;
+
+/** Format of the record a tail journal ends with. */
+const TAIL_JOURNAL_VERSION = 1;
+
+/**
+ * A whole tail journal in a format this version does not read. The rewrite it records may have
+ * stopped part way through the file, so it is neither applied nor dropped.
+ */
+class TailJournalFormatError extends Error {}
+
+/**
+ * The record at the end of a tail journal. The journal holds `head` bytes that go over the start of
+ * the session file, then `tail` bytes that go after its first `keep` bytes, then this record as
+ * JSON. `identity` is the object the journal was written for, and `size` its size then.
+ */
+interface TailJournal {
+	identity: string;
+	size: number;
+	keep: number;
+	head: number;
+	tail: number;
+}
+
+function isByteCount(value: unknown): value is number {
+	return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+/** End the journal with `record` after its first `position` bytes, which makes it whole. */
+async function sealTailJournal(
+	journal: fs.promises.FileHandle,
+	journalPath: string,
+	record: TailJournal,
+	position: number,
+): Promise<void> {
+	const json = Buffer.from(JSON.stringify({ v: TAIL_JOURNAL_VERSION, ...record }), "utf-8");
+	const sealed = Buffer.allocUnsafe(json.length + TAIL_JOURNAL_FOOTER_BYTES);
+	json.copy(sealed);
+	sealed.writeUInt32LE(json.length, json.length);
+	TAIL_JOURNAL_MAGIC.copy(sealed, json.length + 4);
+	const { bytesWritten } = await journal.write(sealed, 0, sealed.length, position);
+	if (bytesWritten !== sealed.length) {
+		throw new Error(`Short write to ${journalPath}: ${bytesWritten} of ${sealed.length} bytes`);
+	}
+}
+
+/**
+ * The record ending the journal open at `journal`, or undefined when the journal is not whole.
+ * Throws {@link TailJournalFormatError} for a whole journal in another format.
+ */
+function readTailJournalSync(journal: number, journalPath: string): TailJournal | undefined {
+	const { size } = fs.fstatSync(journal);
+	if (size < TAIL_JOURNAL_FOOTER_BYTES) return undefined;
+	const footer = Buffer.allocUnsafe(TAIL_JOURNAL_FOOTER_BYTES);
+	readFullySync(journal, footer, footer.length, size - footer.length, journalPath);
+	if (!footer.subarray(4).equals(TAIL_JOURNAL_MAGIC)) return undefined;
+	const recordBytes = footer.readUInt32LE(0);
+	const recordAt = size - footer.length - recordBytes;
+	if (recordAt < 0) return undefined;
+	const json = Buffer.allocUnsafe(recordBytes);
+	readFullySync(journal, json, recordBytes, recordAt, journalPath);
+	let record: unknown;
+	try {
+		record = JSON.parse(json.toString("utf-8"));
+	} catch {
+		return undefined;
+	}
+	if (!isRecord(record)) return undefined;
+	if (record.v !== TAIL_JOURNAL_VERSION) {
+		throw new TailJournalFormatError(
+			`it is in journal format ${JSON.stringify(record.v)}, and this version reads format ${TAIL_JOURNAL_VERSION}`,
+		);
+	}
+	const { identity, size: fileSize, keep, head, tail } = record;
+	if (typeof identity !== "string") return undefined;
+	if (!isByteCount(fileSize) || !isByteCount(keep) || !isByteCount(head) || !isByteCount(tail)) return undefined;
+	if (head > keep || head + tail !== recordAt) return undefined;
+	return { identity, size: fileSize, keep, head, tail };
+}
+
+/**
+ * Write the journal's head over the start of `target`, cut `target` to its first `keep` bytes, and
+ * write the journal's tail after them. Synchronous, so no read in this process lands between the
+ * first write and the last.
+ */
+function applyTailJournalSync(target: number, journal: number, record: TailJournal, journalPath: string): void {
+	const buffer = Buffer.allocUnsafe(Math.max(1, Math.min(COPY_CHUNK_BYTES, Math.max(record.head, record.tail))));
+	copyBytesSync(journal, 0, target, 0, record.head, buffer, journalPath);
+	fs.ftruncateSync(target, record.keep);
+	copyBytesSync(journal, record.head, target, record.keep, record.tail, buffer, journalPath);
+}
+
+/**
+ * Bring the file at `fpath` to what the journal describes, when a rewrite from it stopped part way:
+ * the file is the object the journal was written for, it does not already hold the journal's head
+ * and tail, and nothing grew it after the rewrite began.
+ */
+function finishTailJournalSync(fpath: string, journal: number, record: TailJournal, journalPath: string): void {
+	let target: number;
+	try {
+		target = fs.openSync(fpath, "r+");
+	} catch (err) {
+		if (isEnoent(err)) return;
+		throw err;
+	}
+	try {
+		const stats = fs.fstatSync(target);
+		if (fileObjectIdentity(stats) !== record.identity || stats.size < record.keep) return;
+		const end = record.keep + record.tail;
+		if (
+			stats.size >= end &&
+			bytesEqualSync(target, 0, journal, 0, record.head, journalPath) &&
+			bytesEqualSync(target, record.keep, journal, record.head, record.tail, journalPath)
+		) {
+			return;
+		}
+		// Longer than the file the rewrite began on and than the one it writes: lines appended to a
+		// file the rewrite never touched.
+		if (stats.size !== record.size && stats.size > end) return;
+		applyTailJournalSync(target, journal, record, journalPath);
+		fs.fdatasyncSync(target);
+	} finally {
+		fs.closeSync(target);
+	}
+}
+
 export interface SessionStorage {
 	ensureDirSync(dir: string): void;
 	existsSync(path: string): boolean;
@@ -259,17 +455,19 @@ export interface SessionStorage {
 	/**
 	 * Open a {@link PinnedSessionReader} on what `path` names now.
 	 *
-	 * OPTIONAL: only a backend whose rewrites publish a new object by rename can keep an old object
-	 * readable behind a handle. Absent, or returning `undefined`, means the caller holds every entry
+	 * OPTIONAL: only a backend whose whole rewrites publish a new object by rename can keep an old
+	 * object readable behind a handle. Its tail rewrites may keep the object and change the bytes
+	 * after the lines they keep. Absent, or returning `undefined`, means the caller holds every entry
 	 * in memory. A path that is gone throws.
 	 */
 	openPinnedReaderSync?(path: string): PinnedSessionReader | undefined;
 	writeText(path: string, content: string): Promise<void>;
 	writeTextAtomic(path: string, body: SessionFileBody, options?: WriteTextAtomicOptions): Promise<void>;
 	/**
-	 * Replace `path` atomically with `head`, then the file's bytes from `headBytes` up to
-	 * `keepBytes`, then `tail`: `head` takes the place of the first `headBytes` bytes. `commitGuard`
-	 * applies as it does to {@link writeTextAtomic}.
+	 * Make `path` hold `head`, then the file's bytes from `headBytes` up to `keepBytes`, then `tail`:
+	 * `head` takes the place of the first `headBytes` bytes. `commitGuard` applies as it does to
+	 * {@link writeTextAtomic}. A crash at any point leaves the old file, or a rewrite
+	 * {@link recoverInterruptedRewriteSync} finishes.
 	 *
 	 * OPTIONAL: a session rewrite that changed only its header and its last entries uses this to keep
 	 * the bytes of every entry before them instead of serializing the whole transcript again. A
@@ -285,6 +483,12 @@ export interface SessionStorage {
 		tail: SessionFileBody,
 		options?: WriteTextAtomicOptions,
 	): Promise<void>;
+	/**
+	 * Finish or drop a {@link rewriteTailAtomic} of `path` that a crash stopped part way, so that a
+	 * load reads a whole file. OPTIONAL: only a backend that rewrites a file in place can leave one
+	 * half written.
+	 */
+	recoverInterruptedRewriteSync?(path: string): void;
 	rename(path: string, nextPath: string): Promise<void>;
 	/**
 	 * Relocate a session transcript and every artifact beneath its sibling
@@ -341,16 +545,7 @@ class FilePinnedSessionReader implements PinnedSessionReader {
 		const fd = this.#fd;
 		if (fd === undefined) throw new Error("Pinned session reader is closed");
 		const buffer = Buffer.allocUnsafe(length);
-		let filled = 0;
-		while (filled < length) {
-			const read = fs.readSync(fd, buffer, filled, length - filled, offset + filled);
-			if (read === 0) {
-				throw new Error(
-					`Short read from session object ${this.identity}: ${filled} of ${length} bytes at ${offset}`,
-				);
-			}
-			filled += read;
-		}
+		readFullySync(fd, buffer, length, offset, `session object ${this.identity}`);
 		return buffer.toString("utf-8");
 	}
 
@@ -726,10 +921,12 @@ export class FileSessionStorage implements SessionStorage {
 	}
 
 	/**
-	 * A head as long as the bytes it replaces is written over a copy of the file, which is a reflink
-	 * where the filesystem supports one (btrfs, XFS, APFS) and an in-kernel copy elsewhere, so the kept
-	 * bytes never pass through this process. A head of another length moves every kept byte, which no
-	 * reflink can express, so those bytes are copied through one reused buffer behind the new head.
+	 * A head as long as the bytes it replaces leaves every kept byte where it is, so a short enough
+	 * tail is rewritten inside the file itself ({@link #rewriteTailInPlace}) and the kept bytes are
+	 * neither read nor written. Otherwise the head and tail go over a copy of the file that is renamed
+	 * over it: for a head of the same length a reflink where the filesystem supports one (btrfs, XFS,
+	 * APFS) and an in-kernel copy elsewhere, and for a head of another length, which moves every kept
+	 * byte and which no reflink can express, the kept bytes copied through one reused buffer.
 	 */
 	async rewriteTailAtomic(
 		fpath: string,
@@ -742,14 +939,15 @@ export class FileSessionStorage implements SessionStorage {
 		if (headBytes > keepBytes) {
 			throw new Error(`A tail rewrite cannot replace ${headBytes} head bytes when it keeps only ${keepBytes}`);
 		}
-		const tempPath = stagingPath(fpath);
 		const headLength = Buffer.byteLength(head, "utf-8");
+		const sameLength = headLength === headBytes;
+		if (sameLength && (await this.#rewriteTailInPlace(fpath, keepBytes, head, tail, options))) return;
+		const tempPath = stagingPath(fpath);
 		try {
-			const inPlace = headLength === headBytes;
-			if (inPlace) await fs.promises.copyFile(fpath, tempPath, fs.constants.COPYFILE_FICLONE);
-			const handle = await fs.promises.open(tempPath, inPlace ? "r+" : "w");
+			if (sameLength) await fs.promises.copyFile(fpath, tempPath, fs.constants.COPYFILE_FICLONE);
+			const handle = await fs.promises.open(tempPath, sameLength ? "r+" : "w");
 			try {
-				if (inPlace) {
+				if (sameLength) {
 					const { size } = await handle.stat();
 					if (size < keepBytes) throw keptBytesMissing(size, keepBytes);
 					await handle.truncate(keepBytes);
@@ -770,6 +968,102 @@ export class FileSessionStorage implements SessionStorage {
 			throw toError(err);
 		}
 		this.#publishStaged(tempPath, fpath, options);
+	}
+
+	/**
+	 * Rewrite the tail of `fpath` inside the file. The head and the tail go to a journal beside the
+	 * file, which is flushed and then sealed with a record of where they go, and only then copied into
+	 * the file and the file flushed. A crash at any point leaves the old file, or a journal that
+	 * {@link recoverInterruptedRewriteSync} finishes the rewrite from.
+	 *
+	 * Returns false, having written nothing, when the old tail is longer than
+	 * {@link IN_PLACE_TAIL_BYTES} or than the kept bytes, or a journal for `fpath` is already there:
+	 * another rewrite of the file is under way, or one stopped and the file has not been loaded since.
+	 */
+	async #rewriteTailInPlace(
+		fpath: string,
+		keepBytes: number,
+		head: string,
+		tail: SessionFileBody,
+		options?: WriteTextAtomicOptions,
+	): Promise<boolean> {
+		const target = await fs.promises.open(fpath, "r+");
+		const journalPath = tailJournalPath(fpath);
+		let journal: fs.promises.FileHandle | undefined;
+		// Set while the file is being written: a rewrite that stops then leaves the journal behind.
+		let keepJournal = false;
+		try {
+			const stats = await target.stat();
+			if (stats.size - keepBytes > Math.min(IN_PLACE_TAIL_BYTES, keepBytes)) return false;
+			try {
+				journal = await fs.promises.open(journalPath, "wx+");
+			} catch (err) {
+				if (hasFsCode(err, "EEXIST")) return false;
+				throw err;
+			}
+			const headLength = await writeTextAt(journal, journalPath, head, 0);
+			let position = headLength;
+			for (const chunk of sessionBodyChunks(tail)) {
+				position += await writeTextAt(journal, journalPath, chunk, position);
+			}
+			// Flushed before the record goes on, so a sealed journal never holds bytes a crash lost.
+			await journal.datasync();
+			const record: TailJournal = {
+				identity: fileObjectIdentity(stats),
+				size: stats.size,
+				keep: keepBytes,
+				head: headLength,
+				tail: position - headLength,
+			};
+			await sealTailJournal(journal, journalPath, record, position);
+			await journal.datasync();
+			// Guard-check and the first write MUST NOT be separated by an await, as in #publishStaged.
+			if (options?.commitGuard && !options.commitGuard()) return true;
+			const { size } = fs.fstatSync(target.fd);
+			if (size < keepBytes) throw keptBytesMissing(size, keepBytes);
+			keepJournal = true;
+			applyTailJournalSync(target.fd, journal.fd, record, journalPath);
+			await target.datasync();
+			keepJournal = false;
+			return true;
+		} finally {
+			await Promise.all([target.close(), journal?.close()]);
+			if (journal !== undefined && !keepJournal) discardTemp(journalPath, fpath);
+		}
+	}
+
+	/**
+	 * Finish a {@link rewriteTailAtomic} of `fpath` that stopped part way, from the journal it left
+	 * beside the file, then delete the journal. A journal that is not whole, or that was written for
+	 * an object `fpath` no longer names, is deleted and the file left as it is: that rewrite never
+	 * began writing the file, or a whole rewrite has replaced the file since.
+	 */
+	recoverInterruptedRewriteSync(fpath: string): void {
+		const journalPath = tailJournalPath(fpath);
+		let journal: number;
+		try {
+			journal = fs.openSync(journalPath, "r");
+		} catch (err) {
+			if (isEnoent(err)) return;
+			throw toError(err);
+		}
+		try {
+			const record = readTailJournalSync(journal, journalPath);
+			if (record !== undefined) finishTailJournalSync(fpath, journal, record, journalPath);
+		} catch (err) {
+			const error = toError(err);
+			const action =
+				err instanceof TailJournalFormatError
+					? "Open the session with the version that wrote the journal."
+					: "Make both files readable and writable, then open the session again.";
+			throw new Error(
+				`${fpath} was left part way through a rewrite, and finishing it from ${journalPath} failed: ${error.message}. ${action}`,
+				{ cause: error },
+			);
+		} finally {
+			fs.closeSync(journal);
+		}
+		discardTemp(journalPath, fpath);
 	}
 
 	/** Make a fully written temp file the file at `fpath`, or discard it. */
@@ -968,6 +1262,14 @@ export class FileSessionStorage implements SessionStorage {
 /** A temp path beside `fpath`, so the publish is a rename within one directory. */
 function stagingPath(fpath: string): string {
 	return path.join(path.resolve(fpath, ".."), `.${path.basename(fpath)}.${Snowflake.next()}.tmp`);
+}
+
+/**
+ * The journal a tail rewrite of `fpath` writes before it writes the file. One per session file, at a
+ * fixed name, so a load finds the journal a crash left and a second rewrite finds one under way.
+ */
+function tailJournalPath(fpath: string): string {
+	return path.join(path.dirname(fpath), `.${path.basename(fpath)}.tail`);
 }
 
 function discardTemp(tempPath: string, targetPath: string): void {

@@ -94,14 +94,16 @@
  * every compaction and rescue after that failed on one entry while its line sat intact further on.
  * The relocation sweep rewrites the file in place, moving every line under the pinned handle, and
  * pins that each entry reads back as a fresh load restores it, that one scan of the object finds them
- * all, and that an entry read back once reads from its new place after. An entry whose line is gone,
- * or whose id another kind of entry now holds, still fails naming the entry.
+ * all, and that an entry read back once reads from its new place after. A second rewrite in place
+ * moves the lines the index of the first scan points at, and the read-back that misses through it
+ * builds it again once: the double-rewrite row pins two scans. An entry whose line is gone, or whose
+ * id another kind of entry now holds, still fails naming the entry.
  *
  * A compaction republishes the file and then moves history out of memory twice, and on a
  * 198,874-entry session that chain held the event loop for about 280 ms: every cold entry was
  * pointed at the new object one at a time, and the second walk visited every entry the first had
  * just visited. A republish now moves every cold entry of the replaced object at once, and a walk
- * over the object, branch and read-backs the last walk saw is skipped. That opens a third class: an
+ * over the publish, branch and read-backs the last walk saw is skipped. That opens a third class: an
  * entry moved out after a republish recording its offset on the wrong base, a read-back that looks
  * for a moved line in the replaced object's lines, and a skipped walk that leaves summarized,
  * read-back or newly unreachable history in memory. The rebase sweep moves history out between two
@@ -122,9 +124,8 @@
  * memory backend that walks the summarized span, still reads the history back.
  * A cold entry whose line opens with neither `id` nor a string `type` and then `id` is not found by
  * the relocation scan, and its read-back still fails once its offset stops holding its line.
- * A republish whose new object reuses the inode number the last walk read, after an in-place update
- * that read nothing back and left the branch as it was, skips the walk. An entry no longer in the
- * session whose line a republish did not keep reads back the line its id holds in the new object.
+ * An entry no longer in the session whose line a republish did not keep reads back the line its id
+ * holds in the new object.
  * The flush of a staged rewrite before its rename is not exercised: no sweep cuts the power.
  */
 
@@ -1152,13 +1153,12 @@ describe.skipIf(!pins)("compacted history reads back from the session file", () 
 	);
 
 	it.each(LOAD_PATHS)(
-		"keeps an in-place update of a cold entry across a tail republish, and moves the rest onto the new file ($load)",
+		"keeps an in-place update of a cold entry across a tail republish, and reads the rest back from the file at the path ($load)",
 		async arm => {
 			const fixture = await writeSession(everyKindHistory(), arm.padding);
 			useLoadPath(fixture.file, arm);
 			const storage = new ObservedStorage();
 			const manager = await SessionManager.open(fixture.file, fixture.dir, storage, { suppressBreadcrumb: true });
-			const original = storage.statSync(fixture.file).identity!;
 
 			const entries = manager.getEntries();
 			const custom = entries.find(entry => entry.type === "custom");
@@ -1174,10 +1174,9 @@ describe.skipIf(!pins)("compacted history reads back from the session file", () 
 			summary.summary = "replaced summary";
 			await manager.rewriteEntries([custom, summary]);
 
-			const republished = storage.statSync(fixture.file).identity!;
-			expect(republished).not.toBe(original);
-			// The replaced object is released: every cold entry now reads from the new one.
-			expect(storage.openIdentities()).toEqual([republished]);
+			// Whether the tail was rewritten inside the file or a staged copy replaced it, every cold entry
+			// now reads from the object at the path; a replaced object is released.
+			expect(storage.openIdentities()).toEqual([storage.statSync(fixture.file).identity!]);
 
 			const expected = await freshLoad(fixture);
 			expect(JSON.parse(expected.get(custom.id)!).data.note).toBe("edited in place");
@@ -1655,6 +1654,40 @@ describe.skipIf(!pins)("compacted history reads back from the session file", () 
 				expect(entry && JSON.stringify(entry)).toBe(line);
 			}
 			expect(storage.scans).toBe(1);
+			expect(storage.open.size).toBe(0);
+			await manager.close();
+		},
+	);
+
+	it.each(LOAD_PATHS)(
+		"reads each cold entry from where its line moved when the file is rewritten in place twice ($load)",
+		async arm => {
+			const fixture = await writeSession(everyKindHistory(), arm.padding);
+			useLoadPath(fixture.file, arm);
+			const expected = await freshLoad(fixture);
+			const storage = new ObservedStorage();
+			const manager = await SessionManager.open(fixture.file, fixture.dir, storage, { suppressBreadcrumb: true });
+			const custom = manager.getEntries().find(entry => entry.type === "custom");
+			if (custom === undefined) throw new Error("fixture lost its custom entry");
+			expect(coldFieldsOf(custom)).toBeDefined();
+			const identity = storage.statSync(fixture.file).identity;
+
+			// Each rewrite puts another line ahead of the session's own. The read-back after the first builds
+			// the line index; the second moves every line that index points at.
+			for (const label of ["first", "second"]) {
+				fs.writeFileSync(
+					fixture.file,
+					`${foreignLabel(`foreign-${label}`, label)}${fs.readFileSync(fixture.file, "utf8")}`,
+				);
+				expect(storage.statSync(fixture.file).identity).toBe(identity);
+				expect(JSON.stringify(readColdEntry(custom))).toBe(expected.get(custom.id)!);
+			}
+
+			for (const [id, line] of expected) {
+				const entry = manager.getEntry(id);
+				expect(entry && JSON.stringify(entry)).toBe(line);
+			}
+			expect(storage.scans).toBe(2);
 			expect(storage.open.size).toBe(0);
 			await manager.close();
 		},

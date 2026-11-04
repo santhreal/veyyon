@@ -777,6 +777,7 @@ export async function loadSessionFile(
 	storage: SessionStorage = new FileSessionStorage(),
 	options: SessionLoadOptions = {},
 ): Promise<LoadedSessionFile> {
+	storage.recoverInterruptedRewriteSync?.(filePath);
 	let loaded: ParsedSessionContent;
 	let before: SessionStorageStat;
 	try {
@@ -822,8 +823,9 @@ async function endsInsideALine(storage: SessionStorage, filePath: string): Promi
 
 /**
  * `layout` as a description of the file at `filePath`, when the read covered all of it and nothing
- * replaced or grew the file while it was read. Appends only grow a file and a publish replaces the
- * object, so an unchanged identity and size on both sides of the read rule out both.
+ * wrote the file while it was read. Appends grow a file, a whole publish replaces the object and a
+ * tail rewrite in place can leave its size as it was, so the identity, the size and the modification
+ * time all have to be the same on both sides of the read.
  */
 function verifiedLayout(
 	storage: SessionStorage,
@@ -838,7 +840,9 @@ function verifiedLayout(
 	} catch {
 		return undefined;
 	}
-	if (after.identity !== before.identity || after.size !== before.size) return undefined;
+	if (after.identity !== before.identity || after.size !== before.size || after.mtimeMs !== before.mtimeMs) {
+		return undefined;
+	}
 	return { size: before.size, identity: before.identity, entryOffsets: layout.entryOffsets };
 }
 

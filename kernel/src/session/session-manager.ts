@@ -140,6 +140,13 @@ interface PublishedLines {
 	entryOffsets: number[];
 }
 
+/** What a manager published at its session path; every publish and load installs a new one. */
+interface PublishedFileState {
+	size: number;
+	identity?: string;
+	lines?: PublishedLines;
+}
+
 /** `lines` batched into writes of about {@link CHUNK_TARGET_CHARS}. */
 function* batchLines(lines: Iterable<string>): Generator<string> {
 	let chunk = "";
@@ -459,7 +466,7 @@ export class SessionManager {
 	 * without reading the file: a different inode means someone republished the
 	 * path, whether or not the body they wrote is the same length as ours.
 	 */
-	#publishedFileState: { size: number; identity?: string; lines?: PublishedLines } | null = null;
+	#publishedFileState: PublishedFileState | null = null;
 	/**
 	 * The line layout the most recent {@link #fileLines} or {@link #tailLines} pass produced,
 	 * installed with {@link #lastBodyBytes} once that body is published.
@@ -472,15 +479,17 @@ export class SessionManager {
 	 */
 	#firstUpdatedEntry = Number.POSITIVE_INFINITY;
 	/**
-	 * What the last {@link #coolUnreachablePayloads} walk that visited every entry read: the file
-	 * object, the active path with its length, and how many cold entries had been read back. Every
-	 * entry the index takes either extends its cached path, changing the length, or drops it, so the
-	 * next path is another array, and a load replaces the cold store and the path together. A walk
-	 * over the same four finds nothing new to move, and is skipped: a compaction's tail republish
-	 * walks and the compaction then asks for a walk, and each took 21-43ms of the event loop on a
-	 * 198,874-entry session.
+	 * What the last {@link #coolUnreachablePayloads} walk that visited every entry read: the
+	 * published file state, the active path with its length, and how many cold entries had been read
+	 * back. Every publish and load installs a new state, an in-place tail rewrite included, which
+	 * keeps the file object. Every entry the index takes either extends its cached path, changing the
+	 * length, or drops it, so the next path is another array. A walk over the same four finds nothing
+	 * new to move, and is skipped: a compaction's tail republish walks and the compaction then asks
+	 * for a walk, and each took 21-43ms of the event loop on a 198,874-entry session.
 	 */
-	#cooledWalk: { identity: string; path: readonly SessionEntry[]; pathLength: number; warmed: number } | undefined;
+	#cooledWalk:
+		| { published: PublishedFileState; path: readonly SessionEntry[]; pathLength: number; warmed: number }
+		| undefined;
 
 	#artifactManager: ArtifactManager | null = null;
 	#artifactManagerSessionFile: string | null = null;
@@ -1303,9 +1312,10 @@ export class SessionManager {
 
 	/**
 	 * After a publish of this manager's that kept the bytes before its first rewritten entry, read
-	 * the cold entries in that prefix from the new file, so the one it replaced is released. `from`
-	 * is the identity the publish started from; cold entries recorded against any other object
-	 * stay on it. `shift` is how many bytes the publish moved the kept lines by.
+	 * the cold entries in that prefix from the file it published, releasing the object it replaced
+	 * when it replaced one. `from` is the identity the publish started from; cold entries recorded
+	 * against any other object stay on it. `shift` is how many bytes the publish moved the kept lines
+	 * by.
 	 */
 	#rebaseColdPayloads(from: string | undefined, shift: number): void {
 		const sessionFile = this.#sessionFile;
@@ -1367,7 +1377,7 @@ export class SessionManager {
 		const walked = this.#cooledWalk;
 		if (
 			walked !== undefined &&
-			walked.identity === identity &&
+			walked.published === state &&
 			walked.path === path &&
 			walked.pathLength === path.length &&
 			walked.warmed === this.#cold.warmed
@@ -1416,7 +1426,7 @@ export class SessionManager {
 			}
 			this.#cold.cool(entry, offset, end - offset);
 		}
-		this.#cooledWalk = { identity, path, pathLength: path.length, warmed: this.#cold.warmed };
+		this.#cooledWalk = { published: state, path, pathLength: path.length, warmed: this.#cold.warmed };
 	}
 
 	/**

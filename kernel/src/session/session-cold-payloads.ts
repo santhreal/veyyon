@@ -452,6 +452,30 @@ function locateLine(file: ColdFile, id: string): LinePosition | undefined {
 }
 
 /**
+ * `entry` restored from where the line index of its object has its line, and pointed there, or
+ * undefined when the index has no line for it or the line there is not the entry.
+ */
+function restoreIndexed(entry: SessionEntry, state: ColdState): Record<string, unknown> | undefined {
+	const { file } = state;
+	const moved = locateLine(file, entry.id);
+	if (moved === undefined || (moved.offset === state.offset && moved.length === state.length)) return undefined;
+	const relocated = restoreAt(entry, state, moved.offset, moved.length);
+	if (relocated instanceof Error) return undefined;
+	ColdEntrySlot.relocate(entry, moved.offset, moved.length);
+	const index = file.lines;
+	if (index !== undefined && !index.reported) {
+		index.reported = true;
+		logger.warn("Session entries read back from lines that moved in the session file", {
+			sessionObject: file.reader.identity,
+			entryId: entry.id,
+			recordedOffset: state.offset,
+			offset: moved.offset,
+		});
+	}
+	return relocated;
+}
+
+/**
  * Read the line of the cold `entry` back as a load restores it, and check that it is the entry
  * the line was recorded for.
  *
@@ -459,26 +483,20 @@ function locateLine(file: ColdFile, id: string): LinePosition | undefined {
  * and the entry is pointed at the line found there, which must pass the same check. Without that, an
  * offset recorded wrong once failed every later read-back of the entry, every compaction and every
  * rescue that touched it, for as long as the process lived, while the line sat intact further on in
- * the file. An entry whose line is in no part of the object still fails, naming the bytes it read.
+ * the file. An index built before the object was rewritten in place can miss as well: it is built
+ * again once. An entry whose line is in no part of the object still fails, naming the bytes it read.
  */
 function readBack(entry: SessionEntry, state: ColdState): Record<string, unknown> {
 	const restored = restoreAt(entry, state, state.offset, state.length);
 	if (!(restored instanceof Error)) return restored;
-	const moved = locateLine(state.file, entry.id);
-	if (moved === undefined || (moved.offset === state.offset && moved.length === state.length)) throw restored;
-	const relocated = restoreAt(entry, state, moved.offset, moved.length);
-	if (relocated instanceof Error) throw restored;
-	ColdEntrySlot.relocate(entry, moved.offset, moved.length);
-	const index = state.file.lines;
-	if (index !== undefined && !index.reported) {
-		index.reported = true;
-		logger.warn("Session entries read back from lines that moved in the session file", {
-			sessionObject: state.file.reader.identity,
-			entryId: entry.id,
-			recordedOffset: state.offset,
-			offset: moved.offset,
-		});
+	const { file } = state;
+	const indexed = file.lines !== undefined;
+	let relocated = restoreIndexed(entry, state);
+	if (relocated === undefined && indexed) {
+		file.lines = undefined;
+		relocated = restoreIndexed(entry, state);
 	}
+	if (relocated === undefined) throw restored;
 	return relocated;
 }
 
@@ -567,7 +585,9 @@ export class ColdEntryPayloads {
 	 * `identity`, each line `shift` bytes further on. The caller guarantees that object holds the
 	 * same bytes at every cold entry's moved offset: it is a republish that kept the file's lines and
 	 * wrote a head `shift` bytes longer. A line it did not keep is found again by id on read-back.
-	 * Returns false, and moves nothing, when no handle on that object can be opened.
+	 * When that object is the one the handle reads, the republish rewrote it in place and nothing
+	 * moves: a line index built before is rebuilt by the read-back it fails. Returns false, and moves
+	 * nothing, when no handle on that object can be opened.
 	 */
 	rebase(identity: string, open: () => PinnedSessionReader | undefined, shift: number): boolean {
 		const file = this.#current;
