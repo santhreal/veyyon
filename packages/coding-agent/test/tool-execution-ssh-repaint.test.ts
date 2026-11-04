@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
+import { RAIL_SETTLE_FRAME_MS, RAIL_SETTLE_FRAMES } from "@veyyon/coding-agent/modes/terminal/draw/rail-motion";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { type Component, TUI } from "@veyyon/tui";
 import { StressRenderScheduler } from "../../../hosts/terminal/engine/test/render-stress-scheduler";
@@ -40,6 +41,7 @@ describe("ToolExecutionComponent SSH repaint seams", () => {
 		for (const component of components) component.stopAnimation();
 		components.length = 0;
 		vi.restoreAllMocks();
+		vi.useRealTimers();
 	});
 
 	function makeComponent(args: unknown) {
@@ -103,6 +105,10 @@ describe("ToolExecutionComponent SSH repaint seams", () => {
 	});
 
 	it("removes streamed SSH placeholder rows from the terminal buffer when the first result arrives", async () => {
+		// Fake timers so the rail settle animation a coloured live card plays after
+		// its final result can be run to its end; the stress scheduler drains
+		// renders but never advances a real interval.
+		vi.useFakeTimers();
 		const term = new VirtualTerminal(90, 8, 1_000);
 		const scheduler = new StressRenderScheduler();
 		const tui = new TUI(term, undefined, { renderScheduler: scheduler });
@@ -141,6 +147,10 @@ describe("ToolExecutionComponent SSH repaint seams", () => {
 			expect(rows.filter(row => row.includes("partial output"))).toHaveLength(1);
 
 			component.updateResult(sshResult("partial output"), false);
+			// A card that streamed under a coloured rail settles for RAIL_SETTLE_FRAMES
+			// frames and stays in the live region until the last one. With no colour
+			// (NO_COLOR) there is no rail to animate and the card is final at once.
+			vi.advanceTimersByTime(RAIL_SETTLE_FRAME_MS * RAIL_SETTLE_FRAMES);
 			tui.requestRender();
 			await drain(scheduler, term);
 
@@ -163,6 +173,7 @@ describe("ToolExecutionComponent SSH repaint seams", () => {
 	});
 
 	it("removes provisional SSH partial chrome from the terminal buffer when the result settles", async () => {
+		vi.useFakeTimers();
 		const term = new VirtualTerminal(90, 8, 1_000);
 		const scheduler = new StressRenderScheduler();
 		const tui = new TUI(term, undefined, { renderScheduler: scheduler });
@@ -185,6 +196,7 @@ describe("ToolExecutionComponent SSH repaint seams", () => {
 			expect(partialRows.filter(row => row.includes("partial output"))).toHaveLength(1);
 
 			component.updateResult(sshResult("final output"), false);
+			vi.advanceTimersByTime(RAIL_SETTLE_FRAME_MS * RAIL_SETTLE_FRAMES);
 			tui.requestRender();
 			await drain(scheduler, term);
 
