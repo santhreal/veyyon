@@ -6,6 +6,7 @@ import { hasFsCode, isEnoent } from "@veyyon/utils/fs-error";
 import { type PathState, pathStateSync } from "@veyyon/utils/fs-optional";
 // Owners, not the `@veyyon/utils` barrel: 5 modules against 74.
 import * as logger from "@veyyon/utils/logger";
+import { clampLow } from "@veyyon/utils/math";
 import { peekFileEnds } from "@veyyon/utils/peek-file";
 import { sessionBackupName, sessionFileStem } from "@veyyon/utils/session-file";
 import { Snowflake } from "@veyyon/utils/snowflake";
@@ -365,7 +366,7 @@ function readTailJournalSync(journal: number, journalPath: string): TailJournal 
  * first write and the last.
  */
 function applyTailJournalSync(target: number, journal: number, record: TailJournal, journalPath: string): void {
-	const buffer = Buffer.allocUnsafe(Math.max(1, Math.min(COPY_CHUNK_BYTES, Math.max(record.head, record.tail))));
+	const buffer = Buffer.allocUnsafe(clampLow(Math.max(record.head, record.tail), 1, COPY_CHUNK_BYTES));
 	copyBytesSync(journal, 0, target, 0, record.head, buffer, journalPath);
 	fs.ftruncateSync(target, record.keep);
 	copyBytesSync(journal, record.head, target, record.keep, record.tail, buffer, journalPath);

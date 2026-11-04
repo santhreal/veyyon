@@ -13,6 +13,7 @@
 - The machine budget and the settings store import the config-root and global-config helpers from the `@veyyon/utils` modules split out of `@veyyon/utils/dirs`; no user-facing change.
 - `session/history-storage` exports `historyQueryTokens`, the tokenizer prompt history search matches with; no user-facing change.
 - A prune, shake or dedupe rewrites the changed tail inside the session file through a journal beside it instead of copying the whole file first, which cuts the bytes a 30-turn session writes to its session file from 41.3 MB to 22.6 MB, and a load finishes a rewrite a crash stopped part way.
+- The tail journal sizes its copy buffer with `clampLow` from `@veyyon/utils/math` instead of an inline clamp; no user-facing change.
 
 ### Fixed
 
