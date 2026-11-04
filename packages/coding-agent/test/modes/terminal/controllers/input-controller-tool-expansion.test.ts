@@ -25,16 +25,16 @@ function makeContext(toolOutputExpanded = false) {
 }
 
 describe("InputController tool output expansion", () => {
-	it("expands children and forces a full display reset to bypass frozen snapshots", () => {
+	it("expands children and forces a full display reset to replay committed rows", () => {
 		const { ctx, expandable, requestRender, resetDisplay } = makeContext();
 
 		new InputController(ctx).toggleToolOutputExpansion();
 
 		expect(ctx.toolOutputExpanded).toBe(true);
 		expect(expandable.setExpanded).toHaveBeenCalledWith(true);
-		// resetDisplay() is the only path that retires the transcript's frozen
-		// block snapshots and re-emits the whole transcript at its new heights.
-		// A plain requestRender would replay the stale (collapsed) snapshots.
+		// resetDisplay() is the only path that re-emits the whole transcript,
+		// rows already committed to native scrollback included, at its new
+		// heights. A plain requestRender would leave the collapsed rows stale.
 		expect(resetDisplay).toHaveBeenCalledTimes(1);
 		expect(requestRender).not.toHaveBeenCalled();
 	});

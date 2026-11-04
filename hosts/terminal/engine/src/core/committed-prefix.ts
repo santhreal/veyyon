@@ -41,18 +41,17 @@ const RESYNC_TAIL_SAMPLES = 8;
  *
  * Zones (verifiedTo ≤ finalTo ≤ prefix.length):
  *   [0, verifiedTo)         VERIFIED exact rows — sampled with tolerance.
- *   [verifiedTo, finalTo)   NEWLY-FINAL rows — frozen visual snapshots whose
- *       source just became declared-final (the block finalized / a barrier
- *       cleared). Hard-scanned in FULL with no tolerance: any content change
- *       (a pending header settling, a preview replaced by its result, a tail
- *       shifting up after a barrier removal) re-anchors so the engine can
+ *   [verifiedTo, finalTo)   NEWLY-FINAL rows — committed rows the exactness
+ *       boundary retreated over (a markdown rewind, a re-opened block) whose
+ *       source just became declared-final again. Hard-scanned in FULL with no
+ *       tolerance: any content change re-anchors so the engine can
  *       erase-and-replay history with the final content exactly once (or, on
- *       ED3-unsafe multiplexers, recommit it below the frozen snapshot —
+ *       ED3-unsafe multiplexers, recommit it below the stale copy —
  *       duplication, never loss) instead of committing it nowhere and
  *       painting it nowhere.
- *   [finalTo, prefix.length) FROZEN visual snapshots of still-live rows —
- *       exempt: their drift is expected (a collapsing preview, a ticking
- *       progress tree) and must never spray re-anchors mid-run.
+ *   [finalTo, prefix.length) committed rows whose source is still live —
+ *       exempt: their drift is expected (a re-opened block re-flowing) and
+ *       must never spray re-anchors mid-run.
  *
  * The verified zone's sampled check exploits the asymmetry between the two
  * mutation classes: an in-place edit/restyle disturbs only the touched rows
@@ -77,8 +76,8 @@ export function findCommittedPrefixResync(
 	const verified = Math.min(prefix.length, Math.max(0, Math.trunc(verifiedTo)));
 	const hardEnd = Math.min(prefix.length, Math.max(verified, Math.trunc(finalTo)));
 	if (hardEnd === 0) return -1;
-	// 1. Hard scan: frozen snapshots whose source just became final. Full
-	// scan, no tolerance — a finalized row that changed must re-anchor.
+	// 1. Hard scan: committed rows the boundary retreated over, final again.
+	// Full scan, no tolerance — a finalized row that changed must re-anchor.
 	// 2. Tail sample over the verified zone, only when the hard scan is clean.
 	if (
 		frame.length >= hardEnd &&

@@ -97,10 +97,10 @@ export function isOverlayFocusTarget(owner: Component, component: Component | nu
  * FINAL — byte-stable at the current width for the component's lifetime — and
  * commit to native scrollback as exact, audited content. Rows at/after the
  * boundary repaint in place inside the visible window; when they scroll above
- * the window top they still commit — the tape records what was on screen —
- * but as frozen visual snapshots that are permanently audit-exempt: later
- * re-layout of their source never re-anchors or recommits them. A root that
- * reports no seam commits everything that scrolls as final (shell semantics).
+ * the window top they wait off-screen, painted nowhere and committed nowhere,
+ * and commit once the boundary passes them, so history holds only final rows.
+ * A root that reports no seam commits everything that scrolls as final (shell
+ * semantics).
  *
  * When several root children report a seam in the same frame, the topmost one
  * defines the boundary: exactness is prefix-only, so everything below the
@@ -129,6 +129,20 @@ export interface NativeScrollbackCommittedRows {
 
 export function setNativeScrollbackCommittedRows(component: Component, rows: number): void {
 	(component as Component & Partial<NativeScrollbackCommittedRows>).setNativeScrollbackCommittedRows?.(rows);
+}
+
+/**
+ * A root child is told how many of its rows sit above the visible window after each paint: the
+ * committed ones and the live ones waiting off-screen for the {@link NativeScrollbackLiveRegion}
+ * boundary to pass them. A block kept live only so a later call can retract it seals itself once
+ * its rows leave the screen; left live, it would hold every row below it out of history.
+ */
+export interface NativeScrollbackDepartedRows {
+	setNativeScrollbackDepartedRows(rows: number): void;
+}
+
+export function setNativeScrollbackDepartedRows(component: Component, rows: number): void {
+	(component as Component & Partial<NativeScrollbackDepartedRows>).setNativeScrollbackDepartedRows?.(rows);
 }
 
 /**

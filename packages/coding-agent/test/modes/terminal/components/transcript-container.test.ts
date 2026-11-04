@@ -816,15 +816,14 @@ class DisplaceableBlock implements Component {
 	}
 }
 
-// Seal-on-commit: rows on the native-scrollback tape are immutable, so once the
-// commit boundary covers any of a displaceable snapshot's rows the container
-// must seal it in place — retracting it would strand an orphaned copy in
-// terminal history, and left unfinalized it would pin the live-region seam
-// open. setNativeScrollbackCommittedRows is a pure store; the seal walk runs at
-// the start of the NEXT render, over the previous frame's segments (the
-// geometry the committed count was computed against), before the seam scan so
-// the seam unpins in that same frame.
-describe("TranscriptContainer seal-on-commit", () => {
+// Seal-on-departure: only final rows enter native scrollback, so a displaceable
+// snapshot whose rows have left the screen must seal in place — left
+// unfinalized it pins the live-region seam open and holds every row below it
+// out of history for the rest of the turn. setNativeScrollbackDepartedRows is
+// a pure store; the seal walk runs at the start of the NEXT render, over the
+// previous frame's segments (the geometry the departed count was computed
+// against), before the seam scan so the seam unpins in that same frame.
+describe("TranscriptContainer seal-on-departure", () => {
 	const W = 40;
 
 	// history(0) | sep(1) | todo-header(2) | todo-body(3); the leading
@@ -838,26 +837,28 @@ describe("TranscriptContainer seal-on-commit", () => {
 		return { container, card };
 	}
 
-	it("seals on the next render once the boundary covers the block's rows", () => {
+	it("seals on the next render once the block's rows leave the screen", () => {
 		const { container, card } = cardAfterHistory();
 		// The unsealed card pins the live-region seam at its own rows.
 		expect(container.getNativeScrollbackLiveRegionStart()).toBe(2);
-		// Rows 0..2 (through the card's header) are immutable history now.
-		container.setNativeScrollbackCommittedRows(3);
+		// Rows 0..2 (through the card's header) sit above the window now.
+		container.setNativeScrollbackDepartedRows(3);
 		// The setter is a pure store: sealing waits for the next compose.
 		expect(card.sealCount).toBe(0);
 		container.render(W);
 		expect(card.sealCount).toBe(1);
-		expect(container.isBlockUncommitted(card)).toBe(false);
+		// Departed is not committed: the rows wait off-screen, out of history,
+		// so the block can still be retracted without editing the tape.
+		expect(container.isBlockUncommitted(card)).toBe(true);
 		// The seal pre-pass ran before the seam scan: the SAME render already
 		// reports the seam unpinned (no still-mutating block left).
 		expect(container.getNativeScrollbackLiveRegionStart()).toBeUndefined();
 	});
 
-	it("does not seal while the boundary stays above the block", () => {
+	it("does not seal while the departed rows stay above the block", () => {
 		const { container, card } = cardAfterHistory();
-		// Only "history" committed; the card's rows are all still retractable.
-		container.setNativeScrollbackCommittedRows(1);
+		// Only "history" left the screen; the card's rows are all still on it.
+		container.setNativeScrollbackDepartedRows(1);
 		container.render(W);
 		expect(card.sealCount).toBe(0);
 		expect(container.isBlockUncommitted(card)).toBe(true);
@@ -865,14 +866,14 @@ describe("TranscriptContainer seal-on-commit", () => {
 
 	it("never seals across same-value or decreasing republishes above the block", () => {
 		const { container, card } = cardAfterHistory();
-		// The engine republishes the committed count every frame (compose and
+		// The engine republishes the departed count every frame (compose and
 		// post-emit): repeated same-value and decreasing stores above the
 		// card's rows never accumulate into a seal.
-		container.setNativeScrollbackCommittedRows(1);
+		container.setNativeScrollbackDepartedRows(1);
 		container.render(W);
-		container.setNativeScrollbackCommittedRows(1);
+		container.setNativeScrollbackDepartedRows(1);
 		container.render(W);
-		container.setNativeScrollbackCommittedRows(0);
+		container.setNativeScrollbackDepartedRows(0);
 		container.render(W);
 		expect(card.sealCount).toBe(0);
 		expect(container.isBlockUncommitted(card)).toBe(true);
@@ -887,12 +888,12 @@ describe("TranscriptContainer seal-on-commit", () => {
 		expect(container.render(W)).toEqual(["history", "", "todo-header", "todo-body", "", "tail"]);
 		// First crossing (through the header) seals; the sealed block stops
 		// reporting displaceable.
-		container.setNativeScrollbackCommittedRows(3);
+		container.setNativeScrollbackDepartedRows(3);
 		container.render(W);
 		expect(card.sealCount).toBe(1);
 		// A later sweep past the whole block, and every subsequent render at
 		// that boundary, must not seal again.
-		container.setNativeScrollbackCommittedRows(6);
+		container.setNativeScrollbackDepartedRows(6);
 		container.render(W);
 		container.render(W);
 		expect(card.sealCount).toBe(1);
@@ -905,8 +906,8 @@ describe("TranscriptContainer seal-on-commit", () => {
 		container.addChild(empty);
 		container.addChild(new MutableBlock(["tail"]));
 		expect(container.render(W)).toEqual(["history", "", "tail"]);
-		// None of the block's rows are on the tape: nothing to seal, ever.
-		container.setNativeScrollbackCommittedRows(3);
+		// The block has no rows, so none of them can leave the screen: nothing to seal, ever.
+		container.setNativeScrollbackDepartedRows(3);
 		container.render(W);
 		expect(empty.sealCount).toBe(0);
 		expect(container.isBlockUncommitted(empty)).toBe(true);
@@ -920,22 +921,23 @@ describe("TranscriptContainer seal-on-commit", () => {
 		container.addChild(card);
 		expect(container.render(W)).toEqual(["plain-block", "", "todo-header"]);
 		container.setNativeScrollbackCommittedRows(3);
-		// The pre-pass visits the plain block first (its rows also committed);
+		container.setNativeScrollbackDepartedRows(3);
+		// The pre-pass visits the plain block first (its rows also departed);
 		// absent duck-typed methods are a no-op and the card below still seals.
 		container.render(W);
 		expect(card.sealCount).toBe(1);
 		expect(container.isBlockUncommitted(plain)).toBe(false);
 	});
 
-	it("seals a block that became displaceable after its rows committed", () => {
-		// A pending tool's preview rows scroll into native scrollback before
-		// its successful result arrives; only then does the block become a
-		// displaceable snapshot. The walk runs every render, so the flip is
-		// caught on the next compose — not only when the boundary moves.
+	it("seals a block that became displaceable after its rows left the screen", () => {
+		// A pending tool's preview rows leave the screen before its successful
+		// result arrives; only then does the block become a displaceable
+		// snapshot. The walk runs every render, so the flip is caught on the
+		// next compose — not only when the departed count moves.
 		const { container, card } = cardAfterHistory(false);
-		container.setNativeScrollbackCommittedRows(3);
+		container.setNativeScrollbackDepartedRows(3);
 		container.render(W);
-		// Rows committed while not displaceable: nothing to seal yet.
+		// Rows departed while not displaceable: nothing to seal yet.
 		expect(card.sealCount).toBe(0);
 		card.makeDisplaceable();
 		container.render(W);

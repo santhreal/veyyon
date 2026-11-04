@@ -4,6 +4,7 @@
 
 ### Changed
 
+- A live tool or assistant block's rows enter terminal scrollback once, when final, instead of as copies taken while they scroll off mid-run, so a 20-turn session with parallel tool calls writes 1.0 MB to the terminal instead of 4.1 MB with no whole-transcript replays, and a running tool's rows above the screen reach scrollback when it finishes.
 - The working line and live tool-card spinners advance every 200 ms instead of every 80 ms and repainted rows no longer send their blank padding, so a session waiting 30 s on a model and a tool writes 94 KB in 327 frames to the terminal instead of 197 KB in 548.
 - No user-visible change: `/btw` and `/omfg` show, replace, dismiss and fail a request through one `SidePanelSlot` in `modes/terminal/controllers/side-panel-slot.ts` instead of two copies, and a `/btw` answer is held on its request instead of in controller fields cleared on close.
 - No user-visible change: the collab host and guest connect through `RelayClient` from `@veyyon/wire/relay-client` instead of a private copy of the relay client, and `collab/crypto` no longer wraps `sealFrame` and `openFrame`.

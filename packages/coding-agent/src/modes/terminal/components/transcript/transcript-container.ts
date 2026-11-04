@@ -5,6 +5,7 @@ import {
 	Loader,
 	type NativeScrollbackCommittedRows,
 	type NativeScrollbackCompaction,
+	type NativeScrollbackDepartedRows,
 	type NativeScrollbackLiveRegion,
 	type NativeScrollbackReplay,
 	type RenderStablePrefix,
@@ -48,11 +49,11 @@ interface FinalizableBlock {
 	/**
 	 * Whether the block is a displaceable snapshot (todo/poll card) kept
 	 * unfinalized only so a follow-up matching call can retract it. Paired
-	 * with {@link seal}: once any of its rows enters native scrollback the
-	 * container seals it — rows on the tape are immutable, so retraction is
-	 * no longer possible, and an unfinalized block would otherwise pin the
-	 * live-region seam open for the rest of the turn (every row committed
-	 * below it audit-exempt, mass-recommitted when it finally finalizes).
+	 * with {@link seal}: once any of its rows leaves the screen the container
+	 * seals it. An unfinalized block holds the live-region seam open, and a
+	 * live row above the window waits off-screen for the seam to pass it, so
+	 * left live it would keep every row below it out of native scrollback for
+	 * the rest of the turn.
 	 */
 	isDisplaceableBlock?(): boolean;
 	/** Finalize a displaceable snapshot in place (settle animation, freeze bytes). */
@@ -122,8 +123,8 @@ function settledContributionRows(child: Component, raw: readonly string[], contr
 	return clampLow(settledRaw - lead, 0, contribution.length);
 }
 
-/** Seal a displaceable snapshot whose rows entered native scrollback (see {@link FinalizableBlock.isDisplaceableBlock}). */
-function sealCommittedSnapshot(child: Component): void {
+/** Seal a displaceable snapshot whose rows left the screen (see {@link FinalizableBlock.isDisplaceableBlock}). */
+function sealDepartedSnapshot(child: Component): void {
 	const block = child as Component & FinalizableBlock;
 	if (block.isDisplaceableBlock?.()) block.seal?.();
 }
@@ -261,8 +262,8 @@ function reuseOrCreateSegment(
  * the first still-live block's declared settled rows
  * ({@link FinalizableBlock.getTranscriptBlockSettledRows}). Rows below it
  * commit to native scrollback as exact, audited content; rows above it that
- * scroll off the window commit as frozen visual snapshots the engine never
- * re-anchors or recommits (the tape records what was on screen).
+ * scroll off the window commit nowhere and wait off-screen until the boundary
+ * passes them, so native scrollback holds only final rows.
  *
  * The engine never rewrites committed history: rows that have entered the
  * tape keep whatever bytes they were committed with ("let the history be"),
@@ -284,6 +285,7 @@ export class TranscriptContainer
 		ComponentScopedRender,
 		NativeScrollbackLiveRegion,
 		NativeScrollbackCommittedRows,
+		NativeScrollbackDepartedRows,
 		NativeScrollbackCompaction,
 		NativeScrollbackReplay,
 		RenderStablePrefix,
@@ -305,6 +307,9 @@ export class TranscriptContainer
 	// Finalized blocks wholly before this boundary are immutable on-screen history;
 	// their previous contribution can be replayed without calling render().
 	#committedRows = 0;
+	// Local rows above the visible window after the previous paint: the
+	// committed ones and the live ones waiting off-screen for the seam.
+	#departedRows = 0;
 	// Leading children whose rows were handed to native scrollback and dropped
 	// from the local frame. Children remain owned by the session and can be
 	// re-rendered when the TUI prepares a destructive full replay.
@@ -336,8 +341,8 @@ export class TranscriptContainer
 	#renderedGeneration = -1;
 	// First unfinalized child of the last completed render, or -1 when none.
 	#liveStartIndex = -1;
-	// First child whose segment the last seal pass found uncommitted: every
-	// child before it was checked for sealing while its rows were on the tape.
+	// First child whose segment the last seal pass found still on screen: every
+	// child before it was checked for sealing after its rows left the screen.
 	#sealScanFrom = 0;
 	// Walk state of the render in progress (see AssemblyCursor).
 	readonly #cursor: AssemblyCursor = { row: 0, stableRows: 0, chainStable: false, liveStartIndex: -1 };
@@ -390,6 +395,10 @@ export class TranscriptContainer
 
 	setNativeScrollbackCommittedRows(rows: number): void {
 		this.#committedRows = Number.isFinite(rows) ? Math.max(0, Math.trunc(rows)) : 0;
+	}
+
+	setNativeScrollbackDepartedRows(rows: number): void {
+		this.#departedRows = Number.isFinite(rows) ? Math.max(0, Math.trunc(rows)) : 0;
 	}
 
 	prepareNativeScrollbackReplay(): void {
@@ -547,7 +556,7 @@ export class TranscriptContainer
 		// every child above it is unchanged since the last render, so its segment,
 		// its rows and the rows under it all stand as they are.
 		let resume = this.#scopedResumeIndex(scoped, width, count);
-		this.#sealCommittedSnapshots(resume, firstChild, count);
+		this.#sealDepartedSnapshots(resume, firstChild, count);
 		// The seal pass can finalize the block that set the last render's seam. A
 		// scoped frame re-derives from that block then, so the walk finds the next
 		// live block instead of keeping the seam pinned on a sealed one.
@@ -610,24 +619,25 @@ export class TranscriptContainer
 	}
 
 	/**
-	 * Seal displaceable snapshots whose rows are already on the tape (per the
-	 * previous frame's segments — the geometry the committed count was
-	 * computed against): immutable history can no longer be retracted, and
-	 * left unfinalized such a block would pin the live-region seam open below
-	 * it. Runs before the live-block scan so the seam unpins in this same
-	 * frame, and every full frame so a block that BECAME displaceable after
-	 * its pending-preview rows committed (late result on a scrolled-off call)
-	 * is caught too. A scoped frame starts where the last pass stopped: a
-	 * child above that was checked while committed and has not changed since.
+	 * Seal displaceable snapshots whose rows have left the screen (per the
+	 * previous frame's segments — the geometry the departed count was computed
+	 * against): left unfinalized such a block would pin the live-region seam
+	 * open below it, and every row under the seam that scrolls off waits
+	 * off-screen until the seam passes it. Runs before the live-block scan so
+	 * the seam unpins in this same frame, and every full frame so a block that
+	 * BECAME displaceable after its pending-preview rows left the screen (late
+	 * result on a scrolled-off call) is caught too. A scoped frame starts where
+	 * the last pass stopped: a child above that was checked after it left the
+	 * screen and has not changed since.
 	 */
-	#sealCommittedSnapshots(resume: number, firstChild: number, count: number): void {
+	#sealDepartedSnapshots(resume: number, firstChild: number, count: number): void {
 		let seal = resume > firstChild ? Math.max(firstChild, Math.min(this.#sealScanFrom, resume)) : firstChild;
 		for (; seal < count && seal < this.#segments.length; seal++) {
 			const previous = this.#segments[seal];
 			if (previous === undefined) continue;
-			if (previous.startRow >= this.#committedRows) break;
+			if (previous.startRow >= this.#departedRows) break;
 			if (previous.rowCount === 0 || previous.component !== this.children[seal]) continue;
-			sealCommittedSnapshot(previous.component);
+			sealDepartedSnapshot(previous.component);
 		}
 		this.#sealScanFrom = seal;
 	}
@@ -944,6 +954,7 @@ export class TranscriptContainer
 		}
 		this.#compactedChildStart = dropUntil;
 		this.#committedRows = Math.max(0, this.#committedRows - dropRows);
+		this.#departedRows = Math.max(0, this.#departedRows - dropRows);
 		this.#stableRowsFloor = 0;
 		if (this.#nativeScrollbackLiveRegionStart !== undefined) {
 			this.#nativeScrollbackLiveRegionStart = Math.max(0, this.#nativeScrollbackLiveRegionStart - dropRows);

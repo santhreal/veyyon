@@ -2,13 +2,13 @@
  * Minimal TUI implementation with differential rendering.
  *
  * Append-only render contract: rows committed to native scrollback are
- * immutable — the tape is the terminal's visual record. Whatever scrolls
- * above the window enters history exactly once, in order: as exact-final
- * bytes when the component seam (`NativeScrollbackLiveRegion`) declared them
- * final, else as a frozen snapshot of what was on screen. When recorded
- * history diverges from the frame (a finalized block replacing its
- * scrolled-off live render), the engine erases and replays (ED3, `CSI 3 J`)
- * so history holds the content exactly once — the same replay used for
+ * immutable — the tape is the terminal's visual record. Only rows the
+ * component seam (`NativeScrollbackLiveRegion`) declared final commit, in
+ * order, as they scroll above the window; a live row above the window waits
+ * off-screen until the seam passes it. When recorded history diverges from
+ * the frame (the seam retreated over committed rows and their source then
+ * changed), the engine erases and replays (ED3, `CSI 3 J`) so history holds
+ * the content exactly once — the same replay used for
  * gestures (session replace, resize, resetDisplay). Multiplexer panes, where
  * ED3 is unsafe, instead re-anchor and recommit below the stale fragment —
  * duplication, never loss. The engine never probes or guesses the terminal's
@@ -53,6 +53,7 @@ import {
 	type RenderRequestOptions,
 	setComponentScopedRenderChildren,
 	setNativeScrollbackCommittedRows,
+	setNativeScrollbackDepartedRows,
 	setNativeScrollbackRetainRows,
 	takeNativeScrollbackDroppedRows,
 	type ViewportTailProvider,
@@ -238,15 +239,15 @@ export class TUI extends Container {
 	);
 	// Rows of the current frame physically committed to the terminal tape
 	// (native scrollback or scrolled past the window top). Immutable by
-	// contract: the engine never rewrites them. Rows below
-	// #committedPrefixAuditRows entered as exact-final bytes (the component
-	// seam declared them); rows at/after it are frozen visual snapshots that
-	// scrolled off the window top while still live.
+	// contract: the engine never rewrites them. Rows commit only while below
+	// the exactness boundary; rows at/after #committedPrefixAuditRows are ones
+	// the boundary retreated over after they committed.
 	#committedRows = 0;
 	// Source-alignment baseline for [0, #committedRows). Verified rows accept
 	// tolerated in-place edits after each audit, so independent edits cannot
-	// accumulate into a false shift. Still-live rows retain their original
-	// snapshots for strict finalization. The physical record is #scrollTape.
+	// accumulate into a false shift. Rows whose source is live again retain
+	// their committed bytes for strict finalization. The physical record is
+	// #scrollTape.
 	#committedPrefix: string[] = [];
 	// Rows the current compose's children dropped out of the front of their own
 	// output (see NativeScrollbackCompaction), as flat `[at, rows]` pairs in
@@ -266,17 +267,17 @@ export class TUI extends Container {
 	// shift every row of a live-frame-sourced view out from under the reader.
 	#scrollSnapshot: string[] | null = null;
 	// Rows of the committed prefix that were HARD-VERIFIED as exact-final
-	// bytes (committed below the exactness boundary, or frozen snapshots that
-	// passed the one-time strict scan when the boundary rose past them). Rows
-	// in [#committedPrefixAuditRows, #committedRows) are frozen visual
-	// snapshots of still-live content — the terminal's record of what was on
-	// screen when it scrolled off — and are audit-exempt while their source
-	// remains live, so a collapsing preview never sprays re-anchors mid-run.
-	// When the exactness boundary rises past them (the block finalized), they
-	// are strict-scanned exactly once: unchanged rows join the verified zone,
-	// a divergence re-anchors so the final content recommits below the frozen
-	// snapshot (duplication, never loss). Re-based on full paints / shrinks /
-	// geometry frames.
+	// bytes (committed below the exactness boundary, or re-opened rows that
+	// passed the one-time strict scan when the boundary rose past them again).
+	// Rows in [#committedPrefixAuditRows, #committedRows) committed final and
+	// then the boundary retreated over them (a markdown rewind, a re-opened
+	// block): their source is live again, so they are audit-exempt and a
+	// re-opened block never sprays re-anchors mid-run. When the boundary
+	// rises past them they are strict-scanned exactly once: unchanged rows
+	// rejoin the verified zone, a divergence re-anchors so the final content
+	// replays (or, in a multiplexer, recommits below the stale copy;
+	// duplication, never loss). Re-based on full paints / shrinks / geometry
+	// frames.
 	#committedPrefixAuditRows = 0;
 	// Frame row currently mapped to screen row 0. Monotonic between full
 	// paints, with one exception: the tail re-anchor in #doRender pulls the
@@ -2355,12 +2356,12 @@ export class TUI extends Container {
 		const rawFrame = this.#composeForPaint(width, height);
 		if (rawFrame === null) return;
 
-		// Exactness boundary (used by the audit-zone math below). Rows below it
-		// are declared FINAL by the component seam: when they commit, they enter
-		// the audited zone (byte-exact, repairable on violation). Rows above it
-		// that scroll off the window commit as frozen visual snapshots (see
-		// #committedPrefixAuditRows). The whole frame is final when the root
-		// reports no seam (shell semantics).
+		// Exactness boundary. Rows below it are declared FINAL by the component
+		// seam: they commit as they scroll above the window and enter the
+		// audited zone (byte-exact, repairable on violation). Rows at or after
+		// it are live and never commit: one above the window waits off-screen
+		// until the boundary passes it (see #planWindow). The whole frame is
+		// final when the root reports no seam (shell semantics).
 		const frameLength = rawFrame.length;
 		const finalBoundary = clampLow(this.#nativeScrollbackLiveRegionStart ?? frameLength, 0, frameLength);
 
@@ -2389,7 +2390,7 @@ export class TUI extends Container {
 		);
 		const fullPaint = firstPaint || replaceRequested || geometryRebuild || divergenceRebuild;
 		if (divergenceRebuild && this.#rehydrateDivergence()) return;
-		const plan = this.#planWindow(rawFrame, height, transition, hasVisibleOverlay, fullPaint);
+		const plan = this.#planWindow(rawFrame, height, transition, hasVisibleOverlay, fullPaint, finalBoundary);
 
 		// 5. Pick the visible cursor marker (bottom-most at or below the window
 		// top), prepare lines, and build the visible window slice.
@@ -2739,17 +2740,17 @@ export class TUI extends Container {
 		geometryChanged: boolean,
 	): PrefixReconciliation {
 		// Committed-prefix audit. Rows below the audit mark are hard-verified
-		// exact bytes; rows between the mark and the current exactness boundary
-		// are frozen snapshots whose source JUST became final and must be
-		// verified once (a pending header settling, a barrier clearing above a
-		// shifted tail); rows past the boundary are still-live frozen snapshots,
-		// exempt so a collapsing preview can never spray re-anchors mid-run. A
-		// divergence re-anchors — feeding the divergenceRebuild erase-and-replay
-		// in #doRender (mux fallback: recommit below the stale copy; duplication,
-		// never loss) — instead of silently skipping rows (committed nowhere,
-		// painted nowhere). Skipped on geometry frames (a rewrap legitimately
-		// reflows every row), and skipped when the composed frame's stable prefix
-		// covers every verified row and no rows newly became final.
+		// exact bytes. Only final rows commit, so a committed row past the mark
+		// is one the boundary retreated over after it committed: its source is
+		// live again, it stays exempt while live so a re-opened block never
+		// sprays re-anchors mid-run, and it is verified once when the boundary
+		// passes it again. A divergence re-anchors — feeding the
+		// divergenceRebuild erase-and-replay in #doRender (mux fallback:
+		// recommit below the stale copy; duplication, never loss) — instead of
+		// silently skipping rows (committed nowhere, painted nowhere). Skipped
+		// on geometry frames (a rewrap legitimately reflows every row), and
+		// skipped when the composed frame's stable prefix covers every verified
+		// row and no rows newly became final.
 		let committedRowsResynced = false;
 		const newlyFinalEnd = Math.min(this.#committedRows, finalBoundary);
 		// The exactness boundary can RETREAT (a markdown rewind, a mermaid fence
@@ -2910,6 +2911,7 @@ export class TUI extends Container {
 		transition: FrameTransition,
 		hasVisibleOverlay: boolean,
 		fullPaint: boolean,
+		finalBoundary: number,
 	): WindowPlan {
 		const { prevWindowTop, geometryChanged } = transition;
 		const frameLength = rawFrame.length;
@@ -2923,7 +2925,7 @@ export class TUI extends Container {
 		let chunkTo: number;
 		if (fullPaint) {
 			windowTop = Math.max(0, frameLength - height);
-			chunkTo = Math.min(windowTop, historyEnd);
+			chunkTo = Math.min(windowTop, historyEnd, finalBoundary);
 		} else if (this.#reanchorsToTail(frameLength, height, prevWindowTop)) {
 			// Tail re-anchor (a direct terminal may instead take the
 			// divergenceRebuild full paint above when the prefix resynced):
@@ -2971,27 +2973,21 @@ export class TUI extends Container {
 			// multiplexer resize the pane reflowed its own history; committed
 			// rows keep their old wrap there, same as any shell output.
 			windowTop = Math.max(this.#committedRows, frameLength - height, 0);
-			// Whatever scrolls above the window commits — the tape is the visual
-			// record; nothing that was painted may vanish. Overlays freeze
-			// commits: composited rows must never enter history, and the hidden
-			// gap backfills via the chunk once the overlay closes. A multiplexer
-			// resize also commits nothing — the pane keeps its own (old-wrap)
-			// history — and re-bases the audit prefix at the new width so the
-			// accepted wrap drift does not read as a violation on the next
-			// ordinary frame.
-			// Rows at or after `finalBoundary` are still LIVE — a HUD mounted
-			// between the transcript and the footer, a streaming block's tail.
-			// Committing one writes a row that is about to change into immutable
-			// history; the next frame's audit reads that as a prefix violation and
-			// repairs it by erasing native scrollback and replaying the whole
-			// transcript, on every frame of the turn. That is the screen strobing,
-			// and a tall todo list or a busy agent HUD is all it takes: once the
-			// pinned chrome outgrows the viewport, `frameLength - height` lands
-			// inside the live band. Freeze commits for such a frame — the window
-			// still paints in place, and the only rows that miss native scrollback
-			// are chrome rows, which were never history to begin with.
+			// Only final rows commit: a row at or after `finalBoundary` (a pending
+			// tool card, a streaming tail) that scrolls above the window waits
+			// off-screen until its source finalizes, then commits once. Committing
+			// it as painted recorded a snapshot the late result contradicted, and
+			// the repair replayed the whole transcript. Overlays freeze commits
+			// (composited rows never enter history; the gap backfills once the
+			// overlay closes), and so does a multiplexer resize (the pane keeps its
+			// old-wrap history; the audit prefix re-bases at the new width). Chrome
+			// past `historyEnd` (a HUD, the composer) never commits: a row that
+			// rewrites itself every frame would be repaired every frame, a strobe.
 			const commitWouldTakeLiveRows = windowTop > historyEnd;
-			chunkTo = hasVisibleOverlay || geometryChanged || commitWouldTakeLiveRows ? this.#committedRows : windowTop;
+			chunkTo =
+				hasVisibleOverlay || geometryChanged || commitWouldTakeLiveRows
+					? this.#committedRows
+					: Math.max(this.#committedRows, Math.min(windowTop, finalBoundary));
 		}
 		// A full paint replays the prefix it commits; a geometry change re-bases it at the new width.
 		const committedPrefixResliced = fullPaint || geometryChanged;
@@ -3372,13 +3368,14 @@ export class TUI extends Container {
 
 	/**
 	 * Push the post-emit committed-row count to root children that implement
-	 * {@link NativeScrollbackCommittedRows}. Compose feeds the same signal
-	 * before each child render (see {@link render}), but guards that run
-	 * BETWEEN frames — e.g. a controller consulting the transcript's
-	 * committed boundary to decide whether a displaceable block may still be
-	 * retracted — would otherwise observe a count one frame stale and retract
-	 * rows that just entered immutable native scrollback, stranding an
-	 * orphaned copy above the repainted block.
+	 * {@link NativeScrollbackCommittedRows}, and the rows above the window to
+	 * those that implement `NativeScrollbackDepartedRows`. Compose feeds the
+	 * committed signal before each child render (see {@link render}), but
+	 * guards that run BETWEEN frames — e.g. a controller consulting the
+	 * transcript's committed boundary to decide whether a displaceable block
+	 * may still be retracted — would otherwise observe a count one frame stale
+	 * and retract rows that just entered immutable native scrollback,
+	 * stranding an orphaned copy above the repainted block.
 	 *
 	 * A virtualized root drops committed rows only while it renders, reading
 	 * the claim the previous frame published. Rows this frame committed past
@@ -3392,9 +3389,14 @@ export class TUI extends Container {
 	 */
 	#publishCommittedRows(committedBefore: number): void {
 		const grew = this.#committedRows > committedBefore;
+		const departed = Math.max(this.#committedRows, this.#windowTopRow);
 		for (const segment of this.#frameSegments) {
 			const claim = Math.min(segment.rowCount, Math.max(0, this.#committedRows - segment.start));
 			setNativeScrollbackCommittedRows(segment.component, claim);
+			setNativeScrollbackDepartedRows(
+				segment.component,
+				Math.min(segment.rowCount, Math.max(0, departed - segment.start)),
+			);
 			if (grew && claim > this.terminal.rows && canPrepareNativeScrollbackReplay(segment.component)) {
 				this.#requestCompaction(segment.component);
 			}

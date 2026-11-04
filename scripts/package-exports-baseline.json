@@ -3996,6 +3996,7 @@
 			"setCellDimensions",
 			"setComponentScopedRenderChildren",
 			"setNativeScrollbackCommittedRows",
+			"setNativeScrollbackDepartedRows",
 			"setNativeScrollbackRetainRows",
 			"setOsc99Supported",
 			"setTerminalDeccara",

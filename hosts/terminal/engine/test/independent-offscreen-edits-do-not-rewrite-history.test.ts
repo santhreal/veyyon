@@ -6,7 +6,7 @@ import { VirtualTerminal } from "./virtual-terminal";
 /**
  * Independent accepted edits must not accumulate into a false row shift and an
  * erase-and-replay of history under a scrolled reader. Exercise the real TUI
- * against the terminal parser, including frozen rows becoming final and a real
+ * against the terminal parser, including live rows becoming final and a real
  * insertion after accepted edits. This does not infer native scroll position or
  * change the existing policy for simultaneous multi-row structural divergence.
  */
@@ -106,7 +106,7 @@ describe("independent offscreen edits preserve committed history", () => {
 		}
 	});
 
-	it("retains frozen snapshots until their source becomes final", async () => {
+	it("holds live rows off history until their source becomes final, then commits their final form", async () => {
 		const term = new VirtualTerminal(32, 4);
 		const tui = new TUI(term);
 		const rows = new Rows();
@@ -115,8 +115,11 @@ describe("independent offscreen edits preserve committed history", () => {
 			tui.addChild(rows);
 			tui.start();
 			await settleFrames(term, tui);
+			// Only the six declared-final rows reached history; the live rows
+			// above the window wait off-screen.
+			expect(term.getBufferPosition().baseY).toBe(6);
 			const original = buffer(term);
-			for (let index = 0; index < term.getBufferPosition().baseY; index++) {
+			for (let index = 0; index < 12; index++) {
 				rows.edit(index);
 				tui.requestRender();
 				await settleFrames(term, tui);
@@ -125,7 +128,10 @@ describe("independent offscreen edits preserve committed history", () => {
 			rows.seam = Number.POSITIVE_INFINITY;
 			tui.requestRender();
 			await settleFrames(term, tui);
-			expect(buffer(term)).toEqual(rows.lines);
+			// The committed final rows keep their recorded bytes (an independent
+			// edit is accepted, never replayed); the live rows commit in the form
+			// they finalized with.
+			expect(buffer(term)).toEqual([...original.slice(0, 6), ...rows.lines.slice(6)]);
 		} finally {
 			tui.stop();
 		}

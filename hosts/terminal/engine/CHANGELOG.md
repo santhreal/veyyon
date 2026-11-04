@@ -4,6 +4,7 @@
 
 ### Changed
 
+- `TUI` commits only rows above the live-region boundary to native scrollback, holding a live row that scrolls above the window off-screen until the boundary passes it, and reports each root child's rows above the window through the new `NativeScrollbackDepartedRows` hook.
 - A row rewrite stops sending the spaces after the row's last drawn cell unless an attribute that draws on a blank, such as a background or an underline, is open over them.
 - `Loader` advances its spinner every `SPINNER_ADVANCE_MS`, now exported and 200 ms instead of 80 ms.
 - No user-visible change: `pathToDescendant` and `isPathIntact` moved from `core/renderer.ts` to `core/component-path.ts`.

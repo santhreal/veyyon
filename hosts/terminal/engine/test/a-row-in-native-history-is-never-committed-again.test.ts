@@ -5,7 +5,7 @@
  *
  * WHY THIS CLOSES THE DEFECT.
  * A tall running tool card (an eval cell with its agent rows) overflows the
- * viewport, so its upper rows scroll off and commit as frozen snapshots. Below
+ * viewport, so its upper rows scroll off and wait off-screen. Below
  * it the product inserts and retracts short-lived rows all turn long: an IRC
  * card arriving and expiring, a displaced todo snapshot, an agent sub-row, a HUD
  * row, the ask dialog's inline editor. Each retraction shrank the frame below
@@ -31,8 +31,9 @@
  *
  * WHAT IT DOES NOT CATCH.
  * The multiplexer fallback at finalization ("recommit below the stale copy")
- * still duplicates by design when a frozen snapshot's source changed before it
- * became final; the sweep measures the cycles, not that repair. A product
+ * still duplicates by design when a committed row the boundary retreated over
+ * changed before it became final again; the sweep measures the cycles, not
+ * that repair. A product
  * controller that retracts a block whose rows are already committed is a host
  * defect the transcript container's `isBlockUncommitted` guard defends; the
  * driver here honours the same rule, so the engine is never asked to un-commit.

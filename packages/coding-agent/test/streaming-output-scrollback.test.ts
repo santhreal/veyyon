@@ -299,7 +299,7 @@ describe("streaming tool output never sprays duplicate scrollback banners", () =
 		}
 	}, 30_000);
 
-	test("expanded live eval output records painted rows without spraying after settle", async () => {
+	test("expanded live eval output enters scrollback once it settles, without spraying after", async () => {
 		const rows = 8;
 		stubStdoutRows(rows);
 		const term = new VirtualTerminal(60, rows);
@@ -328,8 +328,11 @@ describe("streaming tool output never sprays duplicate scrollback banners", () =
 				await settleFrames(term, tui);
 			}
 
+			// The running block is live: its rows above the window wait
+			// off-screen, out of history, while its tail stays on screen.
 			const midRunRows = plainScrollBuffer(term);
-			expect(midRunRows.some(row => row.includes("probe-line-0"))).toBe(true);
+			expect(midRunRows.some(row => row.includes("probe-line-0"))).toBe(false);
+			expect(midRunRows.some(row => row.includes("probe-line-29"))).toBe(true);
 
 			component.updateResult(makeEvalProbeResult(output, "complete"), false);
 			for (let i = 0; i < 2; i++) {

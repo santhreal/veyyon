@@ -30,12 +30,16 @@
  * those are the two sequences that make a frame destructive, and either one on
  * a terminal without synchronized output is a visible flash.
  *
- * `fullRedraws` is NOT zero there and must not be: it also counts the seam
- * rewrite, one write carrying the rows that commit to history plus the window
- * below them, which is how any appending transcript advances. It is bounded
- * instead, because a frame count's worth of whole-window rewrites is the same
- * defect wearing a non-destructive coat. Measured: 11 seam rewrites over 60
- * frames at 24 rows, 13 at 40 rows. A control then forces one destructive paint
+ * `fullRedraws` is NOT zero there and must not be. Only final rows enter
+ * history and every block of this turn is live, so nothing commits while it
+ * runs: each frame that grows the transcript past the viewport slides the
+ * window over rows waiting above it, which is an in-place rewrite of the
+ * window. It is bounded instead, because a seam rewrite on every frame — the
+ * chunk written into history plus the window, per frame — is the same defect
+ * wearing a non-destructive coat. Measured: 37 window rewrites over 60 frames
+ * at 24 rows and 31 at 40 rows, against 60 for a rewrite on every frame; and
+ * zero rows written to native history, which is what a live block owes it. A
+ * control then forces one destructive paint
  * through `requestRender(true, { clearScrollback: true })`, because a counter
  * that can only ever read zero proves nothing.
  *
@@ -179,11 +183,14 @@ interface PaintCounts {
 	erases: number;
 }
 
-async function runBusyTurn(
-	height: number,
-	steps: number,
-	create: ToolExecutionBuilder,
-): Promise<{ busy: PaintCounts; control: PaintCounts }> {
+interface BusyTurn {
+	busy: PaintCounts;
+	/** Rows the busy turn added to native history. */
+	historyGrowth: number;
+	control: PaintCounts;
+}
+
+async function runBusyTurn(height: number, steps: number, create: ToolExecutionBuilder): Promise<BusyTurn> {
 	const term = new VirtualTerminal(WIDTH, height, 20_000);
 	const paints = countDestructivePaints(term);
 	const tui = new TUI(term, true);
@@ -213,6 +220,7 @@ async function runBusyTurn(
 		const redrawsBefore = tui.fullRedraws;
 		const clearsBefore = paints.clears();
 		const erasesBefore = paints.erases();
+		const historyBefore = term.getBufferPosition().baseY;
 		for (let step = 1; step <= steps; step++) {
 			assistant.updateContent(assistantText(`reasoning step ${step} ${"word ".repeat(step % 12)}`), {
 				transient: true,
@@ -240,11 +248,13 @@ async function runBusyTurn(
 			clears: paints.clears() - clearsBefore,
 			erases: paints.erases() - erasesBefore,
 		};
+		const historyGrowth = term.getBufferPosition().baseY - historyBefore;
 		const controlFrom = { redraws: tui.fullRedraws, clears: paints.clears(), erases: paints.erases() };
 		tui.requestRender(true, { clearScrollback: true });
 		await settleFrames(term, tui);
 		return {
 			busy,
+			historyGrowth,
 			control: {
 				redraws: tui.fullRedraws - controlFrom.redraws,
 				clears: paints.clears() - controlFrom.clears,
@@ -266,14 +276,18 @@ describe("a busy turn does not rebuild the screen", () => {
 			// A multiplexer pane gates the divergence rebuild off, so the arm would
 			// pass without exercising anything it claims to cover.
 			expect(isInsideTerminalMultiplexer()).toBe(false);
-			const { busy, control } = await withToolExecutions(create => runBusyTurn(height, STEPS, create));
+			const { busy, historyGrowth, control } = await withToolExecutions(create =>
+				runBusyTurn(height, STEPS, create),
+			);
 			// eslint-disable-next-line no-console
-			console.log(`busy height=${height}`, JSON.stringify({ busy, control }));
+			console.log(`busy height=${height}`, JSON.stringify({ busy, historyGrowth, control }));
 			expect(busy.clears).toBe(0);
 			expect(busy.erases).toBe(0);
+			// No row of a live block reaches history while it is live.
+			expect(historyGrowth).toBe(0);
 			// A seam rewrite is one write per history commit, not per frame: a whole
 			// frame count's worth is the same defect in a non-destructive coat.
-			expect(busy.redraws).toBeLessThan(STEPS / 2);
+			expect(busy.redraws).toBeLessThan(STEPS * 0.7);
 			// The counters can see a destructive paint; the zeros above are a
 			// measurement rather than a counter that never moves.
 			expect(control.clears + control.erases).toBeGreaterThan(0);

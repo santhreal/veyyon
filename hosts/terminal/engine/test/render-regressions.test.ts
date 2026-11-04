@@ -2151,16 +2151,25 @@ describe("TUI terminal-state regressions", () => {
 		it("rebuilds history on divergence when a declared segment becomes fully final (undefined live boundary)", async () => {
 			const term = new VirtualTerminal(40, 5);
 			const tui = new TUI(term);
-			const liveComponent = new FinalizingLinesComponent([...rows("base-", 8), ...rows("streaming-", 6)], 8);
+			// Declared final through streaming-0 at first paint, so the nine rows
+			// above the 5-row window (base-0..7, streaming-0) commit.
+			const liveComponent = new FinalizingLinesComponent([...rows("base-", 8), ...rows("streaming-", 6)], 9);
 			tui.addChild(liveComponent);
 
 			try {
 				tui.start();
 				await settleFrames(term, tui);
 
+				// The boundary retreats over streaming-0 (a markdown rewind): a
+				// committed row whose source is live again.
+				liveComponent.setLines([...rows("base-", 8), ...rows("streaming-", 6)], 8);
+				tui.requestRender();
+				await settleFrames(term, tui);
+
 				// When the component completes, its live region start becomes undefined (fully final)
 				// and its rows collapse to the final form. The engine treats undefined live region on
-				// a declared component as an authorized final transition.
+				// a declared component as an authorized final transition, and the committed
+				// streaming-0 now diverges from final-0.
 				const writes = captureWrites(term);
 				liveComponent.setLines([...rows("base-", 8), "final-0", "final-1"], undefined);
 				tui.requestRender();

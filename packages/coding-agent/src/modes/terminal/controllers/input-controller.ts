@@ -689,11 +689,11 @@ export class InputController {
 		}
 
 		// Every block now carries the new flag, but on ED3-risk terminals the
-		// blocks that scrolled past the live region are frozen snapshots in
-		// committed scrollback — a plain repaint replays them stale, so scrolling
-		// up still shows the old thinking expanded. resetDisplay() retires those
-		// snapshots (it invalidates every block) and forces a full clear + replay
-		// of the whole transcript, matching setToolsExpanded()'s redraw.
+		// blocks already committed to native scrollback hold their old bytes —
+		// a plain repaint leaves them stale, so scrolling up still shows the old
+		// thinking expanded. resetDisplay() invalidates every block and forces a
+		// full clear + replay of the whole transcript, matching
+		// setToolsExpanded()'s redraw.
 		this.ctx.ui.resetDisplay();
 
 		this.ctx.showStatus(`Thinking blocks: ${this.ctx.hideThinkingBlock ? "hidden" : "visible"}`);

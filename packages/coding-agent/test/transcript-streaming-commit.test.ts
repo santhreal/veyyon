@@ -1,11 +1,13 @@
 /**
  * What the transcript commits while an assistant message is still streaming.
  *
- * The rule: only the rows the live block DECLARES settled may be committed, and a
- * row committed while a fenced diff is still open keeps its diff styling. Both
- * halves regressed together, because a commit that runs ahead of the declared
- * head reads styling from a fence the renderer has not finished parsing, and the
- * result is a row that changes color after it has already scrolled past.
+ * The rule: only the rows the live block DECLARES settled may be committed. An
+ * open fenced diff declares none of its rows settled, so they wait off-screen
+ * and enter history once, highlighted, when the block finalizes; a closed
+ * fence the block declares settled commits while prose still streams below it
+ * and keeps its diff styling. A commit that ran ahead of the declared head read
+ * styling from a fence the renderer had not finished parsing, and left a row in
+ * history that changed color after it had already scrolled past.
  */
 import { describe, expect, it } from "bun:test";
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/terminal/components/transcript/transcript-container";
@@ -112,7 +114,7 @@ describe("transcript streaming commit (assistant text)", () => {
 		expect(chat.getNativeScrollbackLiveRegionStart()).toBe(2);
 	});
 
-	it("keeps diff foreground on rows committed while a streamed fence is still open", async () => {
+	it("holds an open diff fence out of history, then commits it highlighted once final", async () => {
 		if (process.platform === "win32") return;
 		const rows = 6;
 		const term = new VirtualTerminal(48, rows);
@@ -138,10 +140,11 @@ describe("transcript streaming commit (assistant text)", () => {
 			tui.requestRender();
 			await scheduler.drain(term);
 
+			// The open fence declares no settled rows: its rows above the window
+			// wait off-screen and none of them reaches history.
 			const streamedRows = term.getScrollBuffer().map(row => Bun.stripANSI(row).trimEnd());
-			const streamedRow = streamedRows.findIndex(row => row.includes("+changed-00"));
-			expect(streamedRow).toBeGreaterThanOrEqual(0);
-			expect(streamedRow).toBeLessThan(term.getBufferPosition().baseY);
+			expect(streamedRows.some(row => row.includes("+changed-00"))).toBe(false);
+			expect(term.getBufferPosition().baseY).toBe(0);
 
 			block.finalize(closedFence);
 			tui.requestRender();
@@ -149,7 +152,7 @@ describe("transcript streaming commit (assistant text)", () => {
 
 			const finalRows = term.getScrollBuffer().map(row => Bun.stripANSI(row).trimEnd());
 			const finalRow = finalRows.findIndex(row => row.includes("+changed-00"));
-			expect(finalRow).toBe(streamedRow);
+			expect(finalRow).toBeGreaterThanOrEqual(0);
 			expect(finalRow).toBeLessThan(term.getBufferPosition().baseY);
 			expect(foregroundColumnsForBufferRow(term, finalRow).length).toBeGreaterThan(0);
 		} finally {
@@ -158,7 +161,7 @@ describe("transcript streaming commit (assistant text)", () => {
 		}
 	});
 
-	it("keeps the final closed diff row highlighted while following prose streams", async () => {
+	it("commits a settled closed diff fence highlighted while following prose streams", async () => {
 		if (process.platform === "win32") return;
 		const rows = 6;
 		const term = new VirtualTerminal(52, rows);
@@ -177,7 +180,9 @@ describe("transcript streaming commit (assistant text)", () => {
 			{ length: 12 },
 			(_value, index) => `still streaming prose line ${String(index).padStart(2, "0")}`,
 		).join("\n");
-		const closedFenceWithLiveTail = `\`\`\`diff\n${codeBlockSource}\n\`\`\`\n${streamingProse}`;
+		// The blank line after the fence ends a block, so the fence is declared
+		// settled while the prose paragraph below it is still live.
+		const closedFenceWithLiveTail = `\`\`\`diff\n${codeBlockSource}\n\`\`\`\n\n${streamingProse}`;
 		chat.addChild(block);
 		tui.addChild(chat);
 

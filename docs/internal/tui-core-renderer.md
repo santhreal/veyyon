@@ -49,37 +49,43 @@ selection, transcript persists after exit). The engine maintains one ledger:
 - **`windowTopRow` (W)**: the frame row mapped to grid row 0. The visible
   window is frame rows `[W, W + height)`, repainted in place with relative
   cursor moves.
-- **live-region boundary**: reported by the component tree per frame
+- live-region boundary: reported by the component tree per frame
   (`NativeScrollbackLiveRegion.getNativeScrollbackLiveRegionStart()`), a single
-  frame-row index. Rows above the boundary are declared **FINAL**, byte-stable
+  frame-row index. Rows above the boundary are declared FINAL, byte-stable
   at the current width for the component's lifetime, and commit as exact,
-  **audited** content. Rows at/after the boundary repaint in place inside the
-  window; when they scroll above the window top they *still commit* (the tape
-  records what was on screen) but as **frozen visual snapshots** that are
-  audit-exempt while their source stays live, later drift of the source never
-  re-anchors or recommits them mid-run.
+  audited content. Rows at/after the boundary are live: they repaint in place
+  inside the window, and when they scroll above the window top they commit
+  nowhere. They wait off-screen, painted nowhere, until the boundary passes
+  them, then commit as final rows.
 
-Per ordinary frame: `W = max(C, L − height)` and the only bytes that ever touch
-history are the **chunk** `frame[C, C')` written at the scrollback seam. The
-engine also tracks **`#committedPrefixAuditRows` (A ≤ C)**, rows in `[0, A)`
-are HARD-VERIFIED exact-final bytes; rows in `[A, C)` are the frozen snapshots.
-When the boundary later rises past a frozen snapshot (the block finalized), it
-is strict-scanned exactly once: unchanged rows join the verified zone; a
-divergence re-anchors so the final content lands in history correctly, via an
-erase-and-replay rebuild where enabled, else by recommitting below the stale
-snapshot (duplication, never loss). Scrollback therefore equals `frame[0..C)`,
-every row exactly once, in order, with its content at commit time. There is
-nothing to guess, nothing to defer, and nothing to reconcile: the scroll
-position is irrelevant because ordinary updates never rewrite anything a
-scrolled reader could be looking at.
+Per ordinary frame: `W = max(C, L − height)` and `C' = max(C, min(W, B))`,
+where `B` is the boundary. The only bytes that ever touch history are the
+chunk `frame[C, C')` written at the scrollback seam. Rows in `[C, W)` are the
+off-screen live rows; a frame that slides the window over them rewrites the
+window in place, because a scroll would push them into history before they
+are final. The engine also tracks
+`#committedPrefixAuditRows` (A ≤ C): rows in `[0, A)` are HARD-VERIFIED
+exact-final bytes; rows in `[A, C)` committed final and then the boundary
+retreated over them (a markdown rewind, a re-opened block). When the boundary
+later rises past them it strict-scans them exactly once: unchanged rows join
+the verified zone; a divergence re-anchors so the final content lands in
+history, via an erase-and-replay rebuild where enabled, else by recommitting
+below the stale copy (duplication, never loss). Scrollback therefore equals
+`frame[0..C)`, every row exactly once, in order, final. There is nothing to
+guess, nothing to defer, and nothing to reconcile: the scroll position is
+irrelevant because ordinary updates never rewrite anything a scrolled reader
+could be looking at.
 
 ### What this costs (the accepted tradeoffs)
 
-- A block that has scrolled past the window top cannot reflow in place. A
-  still-live block's scrolled-off rows commit as frozen snapshots, so a late
-  layout change of an already-committed row is a frozen stale row in history
-  (repaired by the one-time strict scan at finalization, rebuild or
-  duplication, never loss), not a dropped row.
+- A live block taller than the window shows only its rows inside the window
+  until it finalizes or declares rows settled
+  (`getTranscriptBlockSettledRows`): its rows above the window are not in
+  native scrollback yet, so scrolling up mid-run does not reach them. They
+  enter history once, final, which is what removes the mid-run duplicate
+  copies and the whole-transcript replays a stale committed row used to cost.
+- Each frame that slides the window over off-screen live rows is an in-place
+  rewrite of the window rather than a scroll.
 - A component tree that reports **no seam** gets shell semantics: whatever
   scrolls off is final. Shrinking such a frame into its committed prefix
   re-anchors the window and leaves the stale copy in history (§3).
@@ -211,13 +217,18 @@ of the audited history. The interface is a **single method**:
   boundary wins.
 
 There is no component-reported deeper boundary: the engine itself guarantees
-no loss, because live rows that scroll above the window top commit as frozen,
-audit-exempt visual snapshots, then get their one-time strict scan when the
-boundary rises past them (§1). Adjacent engine hooks components may implement:
+no loss, because live rows that scroll above the window top wait off-screen
+and commit once the boundary passes them (§1). Adjacent engine hooks
+components may implement:
 
 - `NativeScrollbackCommittedRows.setNativeScrollbackCommittedRows(rows)`: the
   engine pushes each child's committed-row count down after commits, letting
-  the child drop or seal content it no longer needs to re-render.
+  the child drop content it no longer needs to re-render.
+- `NativeScrollbackDepartedRows.setNativeScrollbackDepartedRows(rows)`: the
+  engine pushes each child's count of rows above the window (committed plus
+  off-screen live) after each paint. A block kept live only so a later call
+  can retract it seals itself once its rows leave the screen; left live, it
+  would hold every row below it out of history.
 - `NativeScrollbackReplay.prepareNativeScrollbackReplay()`: a component that
   discards rows after they enter scrollback rehydrates its complete frame here
   before a destructive full replay.
