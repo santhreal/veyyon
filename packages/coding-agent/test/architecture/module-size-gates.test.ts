@@ -65,7 +65,9 @@ import { isDirectory, lineCount, repoPath, repoRelative, typeScriptFiles } from 
  * `screenCaret` from `core/tui.ts`. The modules carved out that day enter at
  * their measured size plus roughly ten percent: `core/committed-prefix.ts` at 138,
  * `core/frame-segments.ts` at 87, `core/render-intent.ts` at 35 and
- * `core/render-scheduler.ts` at 30.
+ * `core/render-scheduler.ts` at 30. `core/row-escapes.ts`, carved out of
+ * `core/renderer.ts` on 2026-11-04 with the escape scanners and the blank-tail
+ * trim, enters at 114.
  */
 const CORE_CEILINGS: Record<string, number> = {
 	"core/tui.ts": 3860,
@@ -85,6 +87,7 @@ const CORE_CEILINGS: Record<string, number> = {
 	"core/frame-segments.ts": 95,
 	"core/render-intent.ts": 40,
 	"core/render-scheduler.ts": 35,
+	"core/row-escapes.ts": 125,
 };
 
 /** Ceiling for every module in the presentation layer, which is new and has no legacy. */
