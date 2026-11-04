@@ -1,7 +1,7 @@
 /**
  * Build a `ToolExecutionComponent` for a test and stop its animation when that test ends.
  *
- * WHY THIS EXISTS. A live tool block runs an 80ms spinner `setInterval` and a 60ms rail interval, each
+ * WHY THIS EXISTS. A live tool block runs a spinner `setInterval` and a 60ms rail interval, each
  * asking the TUI to repaint. `stopAnimation()` clears both, and 16 test files never called it, so each
  * left intervals calling `requestScopedRender` on a component nobody would render again for the rest of
  * the `bun test` process. One of those leaks turned a different suite's global theme mutation into 12

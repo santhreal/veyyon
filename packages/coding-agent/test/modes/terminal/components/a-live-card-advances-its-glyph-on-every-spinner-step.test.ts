@@ -43,11 +43,10 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
-import { SPINNER_GLYPH_ADVANCE_MS } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
 import { transitionsEnabled } from "@veyyon/coding-agent/theme/shimmer";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
-import type { TUI } from "@veyyon/tui";
+import { SPINNER_ADVANCE_MS, type TUI } from "@veyyon/tui";
 import { createToolExecution } from "../../../helpers/tool-execution";
 
 /** The columns the transcript gives a card, which is where a shed segment is decided. */
@@ -156,7 +155,7 @@ function declaredRows(): Array<{ tool: string; mode: Mode }> {
 /**
  * The rows whose card paints no byte a frame can move, each with the reason it is here.
  *
- * A declaration asks the block for a repaint every 80ms; a card that draws no frame spends those
+ * A declaration asks the block for a repaint every spinner step; a card that draws no frame spends those
  * repaints on identical bytes. These two are not this branch's doing -- the renderers they replaced
  * read `options.spinnerFrame` in their CALL render and never in their result -- so the declaration
  * has always bought a still frame there. Pinned by exact equality rather than skipped, so a card
@@ -246,7 +245,7 @@ describe("a card that declares it animates", () => {
 		const frames: string[] = [];
 		for (let step = 0; step < 3; step++) {
 			frames.push(component.render(WIDTH).join("\n"));
-			vi.advanceTimersByTime(SPINNER_GLYPH_ADVANCE_MS);
+			vi.advanceTimersByTime(SPINNER_ADVANCE_MS);
 		}
 
 		// Two steps, not one: a rebuild whose key omits the frame repaints the first step (the card is
@@ -259,17 +258,17 @@ describe("a card that declares it animates", () => {
 	/**
 	 * The interval is bounded by the block's life, so a stopped card is silent however long the
 	 * process runs. Without this a fix that animated by scheduling more work would pass the sweep
-	 * above and leak a repaint per 80ms for every card the transcript ever held.
+	 * above and leak a repaint per spinner step for every card the transcript ever held.
 	 */
 	it.each(declaredRows())("stops ticking once stopped (%o)", ({ tool, mode }) => {
 		vi.useFakeTimers();
 		const component = liveCard(tool, mode);
 		component.render(WIDTH);
-		vi.advanceTimersByTime(SPINNER_GLYPH_ADVANCE_MS);
+		vi.advanceTimersByTime(SPINNER_ADVANCE_MS);
 
 		component.stopAnimation();
 		const stopped = component.render(WIDTH).join("\n");
-		vi.advanceTimersByTime(SPINNER_GLYPH_ADVANCE_MS * 40);
+		vi.advanceTimersByTime(SPINNER_ADVANCE_MS * 40);
 		expect(component.render(WIDTH).join("\n")).toBe(stopped);
 	});
 
@@ -282,7 +281,7 @@ describe("a card that declares it animates", () => {
 		vi.useFakeTimers();
 		const component = liveCard(tool, mode);
 		const first = component.render(WIDTH).join("\n");
-		vi.advanceTimersByTime(SPINNER_GLYPH_ADVANCE_MS * 3);
+		vi.advanceTimersByTime(SPINNER_ADVANCE_MS * 3);
 		expect(component.render(WIDTH).join("\n")).toBe(first);
 		component.stopAnimation();
 	});

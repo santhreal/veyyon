@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, setSystemTime, spyOn, vi } from "bun:test";
 import { Container, TUI } from "@veyyon/tui";
-import { Loader, type LoaderMessageColorFn } from "@veyyon/tui/components/loader";
+import { Loader, type LoaderMessageColorFn, SPINNER_ADVANCE_MS } from "@veyyon/tui/components/loader";
 import { visibleWidth } from "@veyyon/utils/width";
 import { VirtualTerminal } from "./virtual-terminal";
 
@@ -41,7 +41,7 @@ describe("Loader component", () => {
 		colorMessage.animated = true;
 		const loader = new Loader(ui as unknown as TUI, text => text, colorMessage, "Checking", ["0", "1", "2", "3"]);
 
-		vi.advanceTimersByTime(170);
+		vi.advanceTimersByTime(SPINNER_ADVANCE_MS * 2 + 50);
 
 		expect(ui.requestDirectWrite).toHaveBeenCalledTimes(3);
 		expect(ui.requestComponentRender).not.toHaveBeenCalled();
@@ -82,7 +82,7 @@ describe("Loader component", () => {
 		vi.advanceTimersByTime(34);
 		expect(ui.requestDirectWrite).toHaveBeenCalledTimes(1);
 
-		vi.advanceTimersByTime(67);
+		vi.advanceTimersByTime(SPINNER_ADVANCE_MS);
 		expect(ui.requestDirectWrite).toHaveBeenCalledTimes(2);
 		expect(ui.requestComponentRender).not.toHaveBeenCalled();
 		expect(loader.render(20).join("\n")).toContain("1 Checking");
@@ -171,7 +171,7 @@ describe("Loader component", () => {
 		vi.advanceTimersByTime(34);
 		expect(ui.requestDirectWrite).toHaveBeenCalledTimes(1);
 
-		vi.advanceTimersByTime(67);
+		vi.advanceTimersByTime(SPINNER_ADVANCE_MS);
 		expect(ui.requestDirectWrite).toHaveBeenCalledTimes(2);
 		expect(ui.requestComponentRender).not.toHaveBeenCalled();
 		expect(loader.render(40).join("\n")).toContain("1 Checking-");

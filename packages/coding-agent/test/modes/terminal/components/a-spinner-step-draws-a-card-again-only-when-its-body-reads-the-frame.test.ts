@@ -2,7 +2,7 @@
  * A spinner step draws a streaming card again only when what it drew reads the frame, and on every
  * step the card shows what the same card drawn from nothing at that moment shows.
  *
- * WHAT THIS CLOSES. A streaming `write`, `edit` or `apply_patch` card moves its spinner every 80ms,
+ * WHAT THIS CLOSES. A streaming `write`, `edit` or `apply_patch` card moves its spinner every step,
  * and each step drew the whole card again for one glyph: the producer rebuilt the block, the view
  * projected the call again and the code section highlighted the whole file. A 1,500-line streaming
  * edit spent 175.6µs a step that way and spends 10.5µs once the body is kept. The glyph is read where
@@ -27,15 +27,12 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn, vi } from "bun:test";
 import type { AgentTool } from "@veyyon/agent-core";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import {
-	SPINNER_GLYPH_ADVANCE_MS,
-	type ToolExecutionComponent,
-} from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
 import * as drawToolViewModule from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { transitionsEnabled } from "@veyyon/coding-agent/theme/shimmer";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { toolViewDefinitions } from "@veyyon/coding-agent/tools/view-registry";
-import { Text, type TUI } from "@veyyon/tui";
+import { SPINNER_ADVANCE_MS, Text, type TUI } from "@veyyon/tui";
 import type { StatusRowView, ToolView, ToolViewContext, ToolViewRenderer, ViewLine } from "@veyyon/view";
 import { createToolExecution } from "../../../helpers/tool-execution";
 
@@ -304,7 +301,7 @@ describe("a spinner step on a streaming card", () => {
 		let shown = subject.render(WIDTH).join("\n");
 		const costs: StepCost[] = [];
 		for (let step = 0; step < STEPS; step++) {
-			vi.advanceTimersByTime(SPINNER_GLYPH_ADVANCE_MS);
+			vi.advanceTimersByTime(SPINNER_ADVANCE_MS);
 			const before = { draws: draws.count, projections: counted?.counted() ?? 0 };
 			const next = subject.render(WIDTH).join("\n");
 			costs.push({

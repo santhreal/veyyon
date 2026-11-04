@@ -4,7 +4,11 @@ import type { TUI } from "../tui";
 import { Text } from "./text";
 
 const RENDER_INTERVAL_MS = 1000 / 30;
-const SPINNER_ADVANCE_MS = 80;
+/**
+ * Milliseconds between spinner frames, for the working line and every live tool card. Each frame is a
+ * terminal repaint, which the terminal and the desktop compositor then draw: a 10-frame breath takes 2 s.
+ */
+export const SPINNER_ADVANCE_MS = 200;
 
 type ColorFn = (str: string) => string;
 

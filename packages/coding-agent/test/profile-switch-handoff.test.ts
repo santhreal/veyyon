@@ -28,6 +28,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { Agent } from "@veyyon/agent-core";
 import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { createProfile } from "@veyyon/coding-agent/cli/profile-cli";
@@ -38,7 +39,7 @@ import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { executeBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/builtin-registry";
 import { initTheme, setTheme, stopThemeWatcher } from "@veyyon/coding-agent/theme/theme";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
-import { TUI } from "@veyyon/tui";
+import { SPINNER_ADVANCE_MS, TUI } from "@veyyon/tui";
 import { postmortem, setProfile, TempDir } from "@veyyon/utils";
 import { VirtualTerminal } from "../../../hosts/terminal/engine/test/virtual-terminal";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
@@ -275,13 +276,13 @@ describe("profile switch handoff (atomic teardown + relaunch)", () => {
 		h.terminal.sendInput("h");
 		h.terminal.sendInput("i");
 		await h.terminal.waitForRender(h.mode.ui);
-		// Wait out two full spinner cadences (~80ms each at 12.5fps) so a loader
+		// Wait out two full spinner cadences so a loader
 		// left running by a missing frame freeze has definitely ticked. Real
 		// wall-clock wait, deliberately: the Loader owns a real setInterval that
 		// fake timers cannot reach through this harness's real async dispose
 		// chain, and the assertion below is symmetric: with the freeze in place
 		// NOTHING can write no matter how long the wait.
-		await Bun.sleep(250);
+		await sleep(SPINNER_ADVANCE_MS * 2 + 50);
 
 		// The dying session must not accept the keystrokes…
 		expect(h.mode.editor.getText()).toBe("");

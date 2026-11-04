@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
-import type { TUI } from "@veyyon/tui";
+import { SPINNER_ADVANCE_MS, type TUI } from "@veyyon/tui";
 import { createToolExecution } from "../../../helpers/tool-execution";
 
 // Contract under test: live tool previews that render a pending/running status
@@ -33,7 +33,7 @@ describe("ToolExecutionComponent live preview spinners", () => {
 
 		try {
 			const firstFrame = stripVTControlCharacters(component.render(80).join("\n"));
-			vi.advanceTimersByTime(120);
+			vi.advanceTimersByTime(SPINNER_ADVANCE_MS + 40);
 			const secondFrame = stripVTControlCharacters(component.render(80).join("\n"));
 
 			expect(requestComponentRender).toHaveBeenCalledWith(component);
@@ -61,7 +61,7 @@ describe("ToolExecutionComponent live preview spinners", () => {
 
 		try {
 			const firstFrame = stripVTControlCharacters(component.render(80).join("\n"));
-			vi.advanceTimersByTime(120);
+			vi.advanceTimersByTime(SPINNER_ADVANCE_MS + 40);
 			const secondFrame = stripVTControlCharacters(component.render(80).join("\n"));
 
 			expect(requestComponentRender).toHaveBeenCalledWith(component);

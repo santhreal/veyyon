@@ -221,7 +221,7 @@ Status lane ownership:
 
 Loader behavior:
 
-- `Loader` advances its spinner every 80ms (animated message colorizers redraw at ~30fps) and requests a direct row rewrite (`requestDirectWrite`, which downgrades to a component-scoped `requestComponentRender` whenever the frame is not a safe single-component change) only when the spinner frame or the message changed, or on every tick while the colorizer animates, so idle spinner ticks repaint without re-walking the transcript. When every spinner frame is one unbreakable word of the same width (`layoutFrameFor`), the message is wrapped against one representative frame, so a tick that only advances the spinner re-wraps nothing.
+- `Loader` advances its spinner every `SPINNER_ADVANCE_MS` (200ms; animated message colorizers redraw at ~30fps) and requests a direct row rewrite (`requestDirectWrite`, which downgrades to a component-scoped `requestComponentRender` whenever the frame is not a safe single-component change) only when the spinner frame or the message changed, or on every tick while the colorizer animates, so idle spinner ticks repaint without re-walking the transcript. When every spinner frame is one unbreakable word of the same width (`layoutFrameFor`), the message is wrapped against one representative frame, so a tick that only advances the spinner re-wraps nothing.
 - Escape cancels an in-progress auto-compaction, handoff generation, or auto-retry of the view session: `ComposerEscape.handleEscape()` (`controllers/composer-escape.ts`) dispatches on live session state (`isCompacting`/`isGeneratingHandoff`/`isRetrying`) and calls the matching abort method, rather than swapping the handler. While an agent view is focused, Esc returns to the main view instead.
 - On end/cancel paths, controllers stop/clear the loader components.
 
@@ -276,7 +276,7 @@ Event-driven updates:
 Throttled/debounced paths:
 
 - TUI rendering coalesces requests into one scheduled frame paced by `FramePacer` (`requestRender` coalescing).
-- Loader animation is interval-driven (80ms spinner advance; ~30fps when the message colorizer is animated), each changed frame requesting a direct row rewrite (`requestDirectWrite`, falling back to a component-scoped render when the frame is unsafe).
+- Loader animation is interval-driven (200ms spinner advance; ~30fps when the message colorizer is animated), each changed frame requesting a direct row rewrite (`requestDirectWrite`, falling back to a component-scoped render when the frame is unsafe).
 
 The runtime therefore mixes event-driven state transitions with bounded render cadence to keep interactivity responsive without repaint storms.
 

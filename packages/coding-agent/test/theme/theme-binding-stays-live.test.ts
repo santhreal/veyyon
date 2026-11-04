@@ -30,7 +30,7 @@ describe("the active theme binding stays live", () => {
 	 * That is not hypothetical: leaving one installed made 12 tests in three unrelated suites
 	 * (session-manager migration, large-session memory guards, eval/idle-timeout) fail with
 	 * `TypeError: undefined is not an object (evaluating 'theme.spinnerFrames.length')` from a
-	 * `ToolExecution` spinner interval still ticking every 80ms, reported by bun as an unhandled error
+	 * `ToolExecution` spinner interval still ticking every step, reported by bun as an unhandled error
 	 * between tests and blamed on whichever test happened to be running. Restoring the previous value
 	 * costs one line and keeps this suite's blast radius inside this suite.
 	 */

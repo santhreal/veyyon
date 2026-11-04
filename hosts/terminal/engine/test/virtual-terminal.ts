@@ -458,6 +458,29 @@ export class VirtualTerminal implements Terminal {
 	}
 
 	/**
+	 * What each cell of a viewport row shows, one string per cell. A blank (an erased cell or a written
+	 * space) under no underline, strike-through or inverse shows only its background; any other cell
+	 * shows its glyph, foreground, background and flags.
+	 */
+	getViewportRowPresentation(row: number): string[] {
+		this.#term.update();
+		const drawsOnBlank = CellFlags.UNDERLINE | CellFlags.STRIKETHROUGH | CellFlags.INVERSE;
+		const shown: string[] = [];
+		for (const cell of this.#presentedRowCells(row) ?? []) {
+			const bg = `bg=${cell.bg_r},${cell.bg_g},${cell.bg_b}`;
+			const blank = cell.codepoint === 0 || cell.codepoint === 0x20;
+			if (blank && (cell.flags & drawsOnBlank) === 0) {
+				shown.push(`blank ${bg}`);
+				continue;
+			}
+			const glyph = blank ? " " : this.#safeCodepointText(cell.codepoint);
+			const flags = blank ? cell.flags & drawsOnBlank : cell.flags;
+			shown.push(`${glyph} fg=${cell.fg_r},${cell.fg_g},${cell.fg_b} ${bg} flags=${flags}`);
+		}
+		return shown;
+	}
+
+	/**
 	 * Get the hardware cursor position within the visible viewport.
 	 * Both coordinates are 0-indexed; row is relative to the top of the active grid.
 	 */

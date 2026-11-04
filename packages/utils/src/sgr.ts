@@ -328,6 +328,44 @@ function applySgrSequences(set: SetParam[], text: string, esc: number): void {
 	}
 }
 
+/** The attributes open at a point in a styled row, advanced one SGR sequence at a time. */
+export class SgrState {
+	readonly #set: SetParam[] = [];
+
+	/** Close every attribute, as `ESC [ 0 m` does. */
+	reset(): void {
+		this.#set.length = 0;
+	}
+
+	/** Apply the SGR sequence whose `ESC` is at `esc` in `text` and whose `m` is at `end`, as `sgrEnd` reports it. */
+	apply(text: string, esc: number, end: number): void {
+		applySgrParams(this.#set, text, esc + 2, end);
+	}
+
+	/**
+	 * Whether a space written now draws anything an erased cell does not: a background, inverse video, an
+	 * underline, a strike-through, an overline, a frame or an ideogram line is open, or a parameter this state
+	 * does not recognise, which is taken to draw.
+	 */
+	get marksBlank(): boolean {
+		for (const { slot } of this.#set) {
+			if (
+				slot === BACKGROUND ||
+				slot === INVERSE ||
+				slot === UNDERLINE ||
+				slot === STRIKE ||
+				slot === OVERLINE ||
+				slot === FRAME ||
+				slot === IDEOGRAM ||
+				slot === UNKNOWN
+			) {
+				return true;
+			}
+		}
+		return false;
+	}
+}
+
 /**
  * Apply background color to a line, padding to full width.
  *

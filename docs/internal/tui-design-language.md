@@ -161,7 +161,7 @@ bytes in leaf widgets.
 
 | Kind | Budget |
 | --- | --- |
-| Spinner glyph | One frame per 80 ms (~12.5 fps), phase-locked across live tool blocks by `sharedSpinnerFrame` (`tool-execution.ts`). `Loader` ticks at 1000/30 ms only when its message color is animated, and that faster tick repaints the shimmer without advancing the glyph (`hosts/terminal/engine/src/components/loader.ts`) |
+| Spinner glyph | One frame per `SPINNER_ADVANCE_MS` (200 ms, 5 fps; `hosts/terminal/engine/src/components/loader.ts`), phase-locked across live tool blocks by `sharedSpinnerFrame` (`tool-execution.ts`). `Loader` ticks at 1000/30 ms only when its message color is animated, and that faster tick repaints the shimmer without advancing the glyph (`hosts/terminal/engine/src/components/loader.ts`) |
 | Cursor | No blink loop and no SGR blink attribute. The hardware cursor keeps the terminal's own cadence; the software cursor glyph renders steady, because Ghostty and cmux leave afterimages for SGR-blink cells during rapid input-row repaints (`#getStyledInputCursor` in `hosts/terminal/engine/src/components/editor.ts`) |
 | Gauge frontier | Live turns only, same-vocabulary `▰`↔`▱` pulse (see [Gauges](#gauges)). The frontier cell steps every 1000 ms, halving to 500 ms past the error threshold (`CONTEXT_BAR_TIP_STEP_MS` / `CONTEXT_BAR_TIP_STEP_URGENT_MS`) |
 | Goal spinner | One frame per 120 ms of ACTIVE time (`GOAL_SPINNER_PERIOD_MS` in `status-line/segments.ts`), steady while idle or paused |

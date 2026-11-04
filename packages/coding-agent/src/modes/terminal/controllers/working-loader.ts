@@ -142,7 +142,7 @@ export class WorkingLoaderController {
 			};
 			// Shimmer drives the 30fps redraw; when it is disabled the working
 			// message is static, so leave `animated` unset and let the loader use
-			// the spinner-only ~12.5fps cadence instead of repainting a frozen line.
+			// the spinner-only cadence instead of repainting a frozen line.
 			if (shimmerEnabled()) messageColorFn.animated = true;
 			this.#loader = new Loader(
 				this.#context.ui,

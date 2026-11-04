@@ -1,13 +1,13 @@
 /**
  * A live spinner whose theme disappears must stop and say so, not throw inside its timer forever.
  *
- * WHY THIS SUITE EXISTS. The spinner tick reads the active theme from a live module binding every 80ms,
+ * WHY THIS SUITE EXISTS. The spinner tick reads the active theme from a live module binding every spinner step,
  * on purpose, so switching themes takes effect mid-spin. The binding is process-global and merely
  * DECLARED (`export var theme: Theme`), so it holds `undefined` until a theme is applied and holds
  * whatever was published after that. A tick that dereferences it blindly throws from a `setInterval`
  * callback, where there is no caller to catch it: bun reports it as an unhandled error between tests and
- * attributes it to whichever test is running, and the interval keeps firing, so it repeats twelve times
- * a second for the rest of the process.
+ * attributes it to whichever test is running, and the interval keeps firing, so it repeats on every spinner
+ * step for the rest of the process.
  *
  * That is not a theoretical failure. A test suite that published a probe object into the binding and did
  * not restore it produced exactly this: 12 failures across session-manager migration, large-session
@@ -26,7 +26,7 @@ import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { setActiveTheme, theme } from "@veyyon/coding-agent/theme/theme-binding";
 import type { Theme } from "@veyyon/coding-agent/theme/theme-class";
-import type { TUI } from "@veyyon/tui";
+import { SPINNER_ADVANCE_MS, type TUI } from "@veyyon/tui";
 import { logger } from "@veyyon/utils";
 import { createToolExecution } from "../../../helpers/tool-execution";
 
@@ -77,7 +77,7 @@ describe("a spinner whose theme is replaced by something that is not a theme", (
 		component.render(80);
 
 		setActiveTheme({ name: "probe" } as unknown as Theme);
-		vi.advanceTimersByTime(240);
+		vi.advanceTimersByTime(SPINNER_ADVANCE_MS * 3);
 
 		expect(warningsNamed(WARNING)).toHaveLength(1);
 		component.stopAnimation();
@@ -97,7 +97,7 @@ describe("a spinner whose theme is replaced by something that is not a theme", (
 		component.render(80);
 
 		setActiveTheme(undefined as unknown as Theme);
-		vi.advanceTimersByTime(120);
+		vi.advanceTimersByTime(SPINNER_ADVANCE_MS + 40);
 
 		expect(warningsNamed(WARNING)[0]?.theme).toBe("unset");
 		expect(warningsNamed(WARNING)[0]?.tool).toBe("eval");
@@ -105,8 +105,8 @@ describe("a spinner whose theme is replaced by something that is not a theme", (
 	});
 
 	/**
-	 * Stopping means stopping: a guard that warned but left the interval alive would still fire twelve
-	 * times a second, which is the half of the bug that made it expensive rather than merely wrong.
+	 * Stopping means stopping: a guard that warned but left the interval alive would still fire on every
+	 * spinner step, which is the half of the bug that made it expensive rather than merely wrong.
 	 */
 	it("does not keep warning after it has stopped", () => {
 		vi.useFakeTimers();
@@ -118,7 +118,7 @@ describe("a spinner whose theme is replaced by something that is not a theme", (
 		component.render(80);
 
 		setActiveTheme({ name: "probe" } as unknown as Theme);
-		vi.advanceTimersByTime(80 * 50);
+		vi.advanceTimersByTime(SPINNER_ADVANCE_MS * 50);
 
 		expect(warningsNamed(WARNING)).toHaveLength(1);
 		component.stopAnimation();
@@ -140,7 +140,7 @@ describe("a spinner with a working theme", () => {
 		const component = liveComponent();
 
 		const first = component.render(80).join("\n");
-		vi.advanceTimersByTime(120);
+		vi.advanceTimersByTime(SPINNER_ADVANCE_MS + 40);
 		const second = component.render(80).join("\n");
 
 		expect(second).not.toBe(first);

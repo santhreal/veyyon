@@ -1,7 +1,7 @@
 /**
  * A spinner tick draws the row a fresh layout of its frame draws, without laying the message out again.
  *
- * WHY. The working line repaints on every 80 ms spinner tick while the agent works, through a tool
+ * WHY. The working line repaints on every spinner tick while the agent works, through a tool
  * run as much as through a streamed answer. The tick changes one glyph, yet `Loader` composed
  * `${frame} ${message}` as new text, so every tick re-wrapped the message and re-measured each row:
  * a tick's render took 1.95 µs, and 0.1 µs without the layout. A loader whose frames are
@@ -24,9 +24,8 @@
  */
 import { afterEach, describe, expect, it, spyOn, vi } from "bun:test";
 import type { TUI } from "@veyyon/tui";
-import { Loader } from "@veyyon/tui/components/loader";
+import { Loader, SPINNER_ADVANCE_MS } from "@veyyon/tui/components/loader";
 
-const SPINNER_ADVANCE_MS = 80;
 // Undefined runs the frames Loader draws when given none, listed in DEFAULT_FRAMES.
 const DEFAULT_FRAMES = ["·", ":", "░", "▒", "▓", "█", "▓", "▒", "░", ":"];
 

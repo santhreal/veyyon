@@ -6,6 +6,7 @@
 
 ### Added
 
+- `SgrState` in `@veyyon/utils/sgr` holds the SGR attributes open at a point in a styled row, and its `marksBlank` reports whether a space written there draws anything an erased cell does not.
 - `AppliedCompletion` in `@veyyon/utils/autocomplete` is the draft and cursor that `AutocompleteProvider.applyCompletion` and `applyAutocompleteCompletion` return.
 - `wrapIndex(index, count)` in `@veyyon/utils/math` maps `index` onto a ring of `count` slots, so a step past either end of a list lands on the other end.
 - `packageModuleReach(repoRoot, src, namesRelativeTo?)` in `@veyyon/utils/module-reach-workspace` returns one package's `reach`, `reachedNames` and `runtimeImportsOf` over the workspace resolution with one shared memo; no user-facing change.

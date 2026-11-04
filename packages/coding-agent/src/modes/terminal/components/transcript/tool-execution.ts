@@ -11,6 +11,7 @@ import {
 	ImageProtocol,
 	imageFallback,
 	type NativeScrollbackLiveRegion,
+	SPINNER_ADVANCE_MS,
 	Spacer,
 	TERMINAL,
 	Text,
@@ -187,11 +188,9 @@ export interface ToolExecutionHandle extends Component {
 	seal(): void;
 }
 
-export const SPINNER_RENDER_INTERVAL_MS = 80;
-export const SPINNER_GLYPH_ADVANCE_MS = 80;
-
+/** The spinner frame every live card draws at `now`, so cards that share a screen breathe in step. */
 export function sharedSpinnerFrame(frameCount: number, now: number = performance.now()): number {
-	return frameCount > 0 ? Math.floor(now / SPINNER_GLYPH_ADVANCE_MS) % frameCount : 0;
+	return frameCount > 0 ? Math.floor(now / SPINNER_ADVANCE_MS) % frameCount : 0;
 }
 
 let toolExecutionInstanceSeq = 0;
@@ -726,7 +725,7 @@ export class ToolExecutionComponent
 				this.#spinnerFrame = sharedSpinnerFrame(fCount, performance.now());
 				this.#updateDisplay();
 				this.#requestScopedRender();
-			}, SPINNER_RENDER_INTERVAL_MS);
+			}, SPINNER_ADVANCE_MS);
 		} else if (!needsSpinner && this.#spinnerInterval) {
 			clearInterval(this.#spinnerInterval);
 			this.#spinnerInterval = undefined;

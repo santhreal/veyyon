@@ -2,12 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	SPINNER_GLYPH_ADVANCE_MS,
-	sharedSpinnerFrame,
-} from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
+import { sharedSpinnerFrame } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
 import { SPINNER_FRAMES } from "@veyyon/coding-agent/theme/symbols";
 import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
+import { SPINNER_ADVANCE_MS } from "@veyyon/tui";
 import { getCustomThemesDir, removeWithRetries, setAgentDir } from "@veyyon/utils";
 import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 import { requireTheme } from "./helpers/require-theme";
@@ -91,13 +89,13 @@ describe("theme symbols.spinnerFrames", () => {
 
 	it("derives live tool spinner frames from a shared clock", () => {
 		const frameCount = 4;
-		const now = SPINNER_GLYPH_ADVANCE_MS * 3 + 12;
+		const now = SPINNER_ADVANCE_MS * 3 + 12;
 
 		expect(sharedSpinnerFrame(frameCount, now)).toBe(sharedSpinnerFrame(frameCount, now));
-		expect(sharedSpinnerFrame(frameCount, now + SPINNER_GLYPH_ADVANCE_MS)).toBe(
+		expect(sharedSpinnerFrame(frameCount, now + SPINNER_ADVANCE_MS)).toBe(
 			(sharedSpinnerFrame(frameCount, now) + 1) % frameCount,
 		);
-		expect(sharedSpinnerFrame(frameCount, SPINNER_GLYPH_ADVANCE_MS * frameCount)).toBe(0);
+		expect(sharedSpinnerFrame(frameCount, SPINNER_ADVANCE_MS * frameCount)).toBe(0);
 		expect(sharedSpinnerFrame(0, now)).toBe(0);
 	});
 });
