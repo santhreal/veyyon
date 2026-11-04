@@ -169,6 +169,7 @@
 - The `SideCompleteImpl` documentation names `ProviderTransport.sideComplete` as the transport the session's own side requests run on ([#892](https://github.com/santhreal/veyyon/issues/892)); no user-facing change.
 - The machine budget and the settings store import the config-root and global-config helpers from the `@veyyon/utils` modules split out of `@veyyon/utils/dirs`; no user-facing change.
 - `session/history-storage` exports `historyQueryTokens`, the tokenizer prompt history search matches with; no user-facing change.
+- A prune, shake or dedupe rewrites the changed tail inside the session file through a journal beside it instead of copying the whole file first, which cuts the bytes a 30-turn session writes to its session file from 41.3 MB to 22.6 MB, and a load finishes a rewrite a crash stopped part way.
 - The shell's built-in output filters compile their output-stage regular expressions the first time each filter applies instead of when the registry loads; a filter file loaded from config still rejects a bad regular expression at load.
 - No user-visible change: the resource hook and the request drawer coerce a failed fetch with `toError` from `@veyyon/utils/type-guards` instead of inline copies.
 - No user-visible change: the Models and Tools charts take their legend and tooltip from `buildSharedPlugins`, and the Behavior and Costs charts build their line and bar configs with `timeChartData` and `timeChartOptions` instead of two copies.
