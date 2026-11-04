@@ -37,6 +37,7 @@ import {
 	TERMINAL,
 } from "../terminal-capabilities";
 import { auditCommittedPrefix, firstRowDivergence } from "./committed-prefix";
+import { isPathIntact, pathToDescendant } from "./component-path";
 import {
 	asViewportTailProvider,
 	type Component,
@@ -106,11 +107,9 @@ import {
 	extractCursorMarkers,
 	extractLineCursorMarker,
 	findVisibleCursorMarker,
-	isPathIntact,
 	LINE_TERMINATOR,
 	lineRewriteSequence,
 	PreparedFrameCache,
-	pathToDescendant,
 	prepareLinesArray,
 } from "./renderer";
 import {

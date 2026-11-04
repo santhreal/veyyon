@@ -6,7 +6,7 @@
 
 - A row rewrite stops sending the spaces after the row's last drawn cell unless an attribute that draws on a blank, such as a background or an underline, is open over them.
 - `Loader` advances its spinner every `SPINNER_ADVANCE_MS`, now exported and 200 ms instead of 80 ms.
-- No user-visible change: the row escape scanners and the blank-tail trim moved from `core/renderer.ts` to `core/row-escapes.ts`.
+- No user-visible change: `pathToDescendant` and `isPathIntact` moved from `core/renderer.ts` to `core/component-path.ts`.
 - No user-visible change: `Form`, `SettingsList` and `TabBar` step through their fields, rows, sections and tabs with `wrapIndex`.
 - No user-visible change: the terminal capabilities read `HostNotification` from `@veyyon/host/notification` instead of a `@veyyon/utils` re-export.
 - `HoverController.set` returns whether the hovered row changed, so a caller repaints only on a change.

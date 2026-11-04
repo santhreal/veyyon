@@ -137,10 +137,13 @@ const ADMITTED_ON_THE_FIRST_FRAME: readonly string[] = [];
  * the config root, the reader of the global `config.yml` and its writer, each importing only what
  * its source did.
  *
+ * 321 rather than 320 is `core/component-path.ts`, the component chain helpers split out of
+ * `core/renderer.ts`, which the card already evaluates. It imports types only.
+ *
  * The floor is what stops a resolution table that stopped resolving from satisfying the ceiling with
  * a handful of modules while measuring nothing.
  */
-const LAUNCH_CARD_CEILING = 320;
+const LAUNCH_CARD_CEILING = 321;
 const LAUNCH_CARD_FLOOR = 150;
 
 describe("the launch card opens no database", () => {
