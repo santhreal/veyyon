@@ -1031,6 +1031,7 @@ impl Sink for MatchCollector {
 	}
 }
 
+#[derive(Default)]
 pub struct SearchResultInternal {
 	pub matches:       Vec<CollectedMatch>,
 	pub match_count:   u64,

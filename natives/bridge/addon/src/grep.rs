@@ -234,6 +234,9 @@ enum ReadFile {
 	Oversized,
 	/// Unreadable or not a regular file; silently skipped.
 	Skipped,
+	/// The file's first [`BINARY_WINDOW_BYTES`] hold a NUL, so the searcher
+	/// would end its search before the first match; the read stopped there.
+	Binary,
 }
 
 struct SearchWorker {
@@ -293,6 +296,15 @@ struct SearchParams {
 	max_count_per_file: Option<u64>,
 	offset:             u64,
 	multiline:          bool,
+}
+
+impl SearchParams {
+	/// Whether a read for this search stops at a head that marks the file
+	/// binary: a content or count search returns no match for the file, while a
+	/// files search asks the matcher alone, which matches binary files too.
+	fn stops_at_binary(self) -> bool {
+		self.mode != OutputMode::FilesWithMatches
+	}
 }
 
 fn run_search<M: Matcher + Sync>(
@@ -385,72 +397,139 @@ fn build_searcher(
 
 const FILE_CLASSIFICATION_READ_BYTES: u64 = MAX_FILE_BYTES + 1;
 
+/// Bytes at the start of a file the searcher checks for a NUL before it
+/// searches the file: a NUL there ends the search before the first match.
+/// `grep_searcher`'s slice search checks its `DEFAULT_BUFFER_CAPACITY`, 64 KiB.
+const BINARY_WINDOW_BYTES: u64 = 64 * 1024;
+
+/// Bytes a search reads from the start of a file first: a file with a NUL in
+/// them costs this read and no other.
+const HEAD_READ_BYTES: u64 = 16 * 1024;
+
+/// Byte-order marks that make the searcher transcode a file before it checks
+/// for a NUL: `encoding_rs::Encoding::for_bom`'s UTF-8, UTF-16LE and UTF-16BE.
+const TRANSCODED_BOMS: [&[u8]; 3] = [b"\xEF\xBB\xBF", b"\xFF\xFE", b"\xFE\xFF"];
+
 fn file_len_exceeds_limit(len: usize) -> bool {
 	u64::try_from(len).map_or(true, |len| len > MAX_FILE_BYTES)
 }
 
+/// Whether the first bytes of a file, `head`, make the searcher end its search
+/// before the first match: a NUL in its first [`BINARY_WINDOW_BYTES`], unless
+/// a byte-order mark makes it transcode the file first, as it does UTF-16,
+/// whose ASCII text is half NULs. `checked` bytes of `head` held no NUL.
+fn head_marks_binary(head: &[u8], checked: usize) -> bool {
+	let window = head.len().min(BINARY_WINDOW_BYTES as usize);
+	checked < window
+		&& !TRANSCODED_BOMS.iter().any(|bom| head.starts_with(bom))
+		&& head[checked..window].contains(&0)
+}
+
+/// Read up to `limit` bytes of `file` into `buffer`.
+///
+/// With `stop_at_binary`, the read takes [`HEAD_READ_BYTES`], then the rest of
+/// [`BINARY_WINDOW_BYTES`], then the rest, and stops after a step whose bytes
+/// mark the file binary to the searcher: what the searcher would return for
+/// the file is then known, so a binary file costs its head and not its length.
+/// A file that ends within a step is read whole, and only the searcher checks
+/// it for a NUL.
 fn read_owned_prefix(
 	mut file: File,
 	limit: u64,
 	capacity_hint: u64,
+	stop_at_binary: bool,
 	buffer: &mut Vec<u8>,
-) -> io::Result<()> {
+) -> io::Result<ReadFile> {
 	buffer.clear();
 	let capacity = capacity_hint.min(limit);
 	buffer.reserve(usize::try_from(capacity).expect("bounded read capacity fits usize"));
-	file.by_ref().take(limit).read_to_end(buffer)?;
-	Ok(())
+	if stop_at_binary {
+		for end in [HEAD_READ_BYTES, BINARY_WINDOW_BYTES] {
+			let end = end.min(limit);
+			let checked = buffer.len();
+			file
+				.by_ref()
+				.take(end - checked as u64)
+				.read_to_end(buffer)?;
+			if (buffer.len() as u64) < end {
+				return Ok(ReadFile::Read);
+			}
+			if head_marks_binary(buffer, checked) {
+				return Ok(ReadFile::Binary);
+			}
+		}
+	}
+	let read = buffer.len() as u64;
+	file.take(limit - read).read_to_end(buffer)?;
+	Ok(ReadFile::Read)
 }
 
 /// Read file bytes, distinguishing oversized files from other skips.
-fn read_file_bytes(path: &Path, buffer: &mut Vec<u8>) -> io::Result<ReadFile> {
-	read_opened_file_bytes(path, None, None, buffer)
+/// `stop_at_binary` is [`read_owned_prefix`]'s.
+fn read_file_bytes(
+	path: &Path,
+	stop_at_binary: bool,
+	buffer: &mut Vec<u8>,
+) -> io::Result<ReadFile> {
+	read_opened_file_bytes(path, None, None, stop_at_binary, buffer)
 }
 
-/// `prefetched`, or the file at `path` opened now when a batch did not open it
-/// ahead; `None` when the file is gone or unreadable, which a search skips.
-fn open_or_skip(path: &Path, prefetched: Option<File>) -> io::Result<Option<File>> {
-	match prefetched.map_or_else(|| File::open(path), Ok) {
-		Ok(file) => Ok(Some(file)),
+/// A candidate opened for its search, with its length.
+struct OpenedFile {
+	file: File,
+	len:  u64,
+}
+
+/// Open the file at `path` and learn its length: `size_hint` when the walk
+/// recorded one, else the open file's. `None` when the file is gone,
+/// unreadable or not a regular file, which a search skips.
+fn open_regular(path: &Path, size_hint: Option<u64>) -> io::Result<Option<OpenedFile>> {
+	let file = match File::open(path) {
+		Ok(file) => file,
 		Err(err)
 			if matches!(err.kind(), io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied) =>
 		{
-			Ok(None)
+			return Ok(None);
 		},
-		Err(err) => Err(err),
-	}
+		Err(err) => return Err(err),
+	};
+	let len = if let Some(len) = size_hint {
+		len
+	} else {
+		let metadata = file.metadata()?;
+		if !metadata.is_file() {
+			return Ok(None);
+		}
+		metadata.len()
+	};
+	Ok(Some(OpenedFile { file, len }))
 }
 
 /// Read the bytes of the file at `path`, from `prefetched` when a batch opened
 /// it ahead, with an optional size hint from directory traversal,
-/// distinguishing oversized files from other skips.
+/// distinguishing oversized files from other skips. `stop_at_binary` is
+/// [`read_owned_prefix`]'s.
 fn read_opened_file_bytes(
 	path: &Path,
-	prefetched: Option<File>,
+	prefetched: Option<OpenedFile>,
 	size_hint: Option<u64>,
+	stop_at_binary: bool,
 	buffer: &mut Vec<u8>,
 ) -> io::Result<ReadFile> {
-	let Some(file) = open_or_skip(path, prefetched)? else {
+	let Some(OpenedFile { file, len }) =
+		prefetched.map_or_else(|| open_regular(path, size_hint), |opened| Ok(Some(opened)))?
+	else {
 		return Ok(ReadFile::Skipped);
 	};
-	let size = if let Some(size) = size_hint {
-		size
-	} else {
-		let metadata = file.metadata()?;
-		if !metadata.is_file() {
-			return Ok(ReadFile::Skipped);
-		}
-		metadata.len()
-	};
-	if size > MAX_FILE_BYTES {
+	if len > MAX_FILE_BYTES {
 		return Ok(ReadFile::Oversized);
 	}
 
-	read_owned_prefix(file, FILE_CLASSIFICATION_READ_BYTES, size, buffer)?;
-	if file_len_exceeds_limit(buffer.len()) {
+	let read = read_owned_prefix(file, FILE_CLASSIFICATION_READ_BYTES, len, stop_at_binary, buffer)?;
+	if matches!(read, ReadFile::Read) && file_len_exceeds_limit(buffer.len()) {
 		return Ok(ReadFile::Oversized);
 	}
-	Ok(ReadFile::Read)
+	Ok(read)
 }
 
 // ---------------------------------------------------------------------------
@@ -690,17 +769,6 @@ enum ReadPolicy {
 	Prefix,
 }
 
-impl ReadPolicy {
-	/// Bytes a read under this policy takes from the start of a file, which is
-	/// what a batch asks the system to read ahead.
-	const fn read_len(self) -> u64 {
-		match self {
-			Self::Full => FILE_CLASSIFICATION_READ_BYTES,
-			Self::Prefix => MAX_FILE_BYTES,
-		}
-	}
-}
-
 /// Outcome of attempting to search one candidate.
 enum FileOutcome {
 	/// File was searched (possibly zero matches); counts toward
@@ -775,55 +843,62 @@ struct DirectorySearch {
 /// only over their leading window; the remainder is dropped. The bounded owned
 /// read avoids mmap page faults when the backing file is rewritten
 /// concurrently.
-fn read_file_prefix(path: &Path, buffer: &mut Vec<u8>) -> io::Result<ReadFile> {
-	read_opened_file_prefix(path, None, buffer)
+fn read_file_prefix(
+	path: &Path,
+	stop_at_binary: bool,
+	buffer: &mut Vec<u8>,
+) -> io::Result<ReadFile> {
+	read_opened_file_prefix(path, None, stop_at_binary, buffer)
 }
 
 /// [`read_file_prefix`] of the file at `path`, from `prefetched` when a batch
-/// opened it ahead.
+/// opened it ahead. `stop_at_binary` is [`read_owned_prefix`]'s.
 fn read_opened_file_prefix(
 	path: &Path,
-	prefetched: Option<File>,
+	prefetched: Option<OpenedFile>,
+	stop_at_binary: bool,
 	buffer: &mut Vec<u8>,
 ) -> io::Result<ReadFile> {
-	let Some(file) = open_or_skip(path, prefetched)? else {
+	let Some(OpenedFile { file, len }) =
+		prefetched.map_or_else(|| open_regular(path, None), |opened| Ok(Some(opened)))?
+	else {
 		return Ok(ReadFile::Skipped);
 	};
-	let metadata = file.metadata()?;
-	if !metadata.is_file() {
-		return Ok(ReadFile::Skipped);
-	}
-	let len = metadata.len();
 	if len == 0 {
 		buffer.clear();
 		return Ok(ReadFile::Read);
 	}
 	let window = len.min(MAX_FILE_BYTES);
-	read_owned_prefix(file, window, window, buffer)?;
-	Ok(ReadFile::Read)
+	read_owned_prefix(file, window, window, stop_at_binary, buffer)
 }
 
 /// Read one candidate per `policy`, from `prefetched` when a batch opened it
-/// ahead, and search it, classifying the result.
+/// ahead, and search it, classifying the result. The read stops at a binary
+/// head per [`SearchParams::stops_at_binary`].
 fn search_one_file<M: Matcher + Sync>(
 	worker: &mut SearchWorker,
 	matcher: &M,
 	file: &veyyon_walker::FileCandidate,
-	prefetched: Option<File>,
+	prefetched: Option<OpenedFile>,
 	file_params: SearchParams,
 	policy: ReadPolicy,
 ) -> FileOutcome {
+	let stop_at_binary = file_params.stops_at_binary();
 	let read = match policy {
 		ReadPolicy::Full => read_opened_file_bytes(
 			&file.path,
 			prefetched,
 			file_size_hint(file.size),
+			stop_at_binary,
 			&mut worker.buffer,
 		),
-		ReadPolicy::Prefix => read_opened_file_prefix(&file.path, prefetched, &mut worker.buffer),
+		ReadPolicy::Prefix => {
+			read_opened_file_prefix(&file.path, prefetched, stop_at_binary, &mut worker.buffer)
+		},
 	};
 	match read {
 		Ok(ReadFile::Read) => {},
+		Ok(ReadFile::Binary) => return FileOutcome::Searched(SearchResultInternal::default()),
 		Ok(ReadFile::Oversized) => return FileOutcome::Defer,
 		Ok(ReadFile::Skipped) => {
 			return match policy {
@@ -836,12 +911,7 @@ fn search_one_file<M: Matcher + Sync>(
 	// A searcher error counts as searched-with-no-matches, matching the prior
 	// behavior (the file was read and attempted).
 	let search = search_file_bytes(&mut worker.searcher, matcher, &worker.buffer, file_params)
-		.unwrap_or(SearchResultInternal {
-			matches:       Vec::new(),
-			match_count:   0,
-			collected:     0,
-			limit_reached: false,
-		});
+		.unwrap_or_default();
 	FileOutcome::Searched(search)
 }
 
@@ -849,7 +919,7 @@ fn search_one_file<M: Matcher + Sync>(
 /// fold its outcome into the shared [`PassState`].
 fn handle_file<M: Matcher + Sync>(
 	file: &veyyon_walker::FileCandidate,
-	prefetched: Option<File>,
+	prefetched: Option<OpenedFile>,
 	worker: &mut SearchWorker,
 	matcher: &M,
 	file_params: SearchParams,
@@ -891,12 +961,41 @@ fn handle_file<M: Matcher + Sync>(
 	Ok(())
 }
 
+/// Bytes of a file of `len` a search asks the system to read ahead: what the
+/// search reads of it, none when `policy` defers it to the oversized pass, or
+/// its first [`HEAD_READ_BYTES`] when that is more than [`BINARY_WINDOW_BYTES`]
+/// and the read stops at a head `stop_at_binary` marks binary.
+fn read_ahead_len(len: u64, policy: ReadPolicy, stop_at_binary: bool) -> u64 {
+	let read = match policy {
+		ReadPolicy::Full if len > MAX_FILE_BYTES => return 0,
+		ReadPolicy::Full | ReadPolicy::Prefix => len.min(MAX_FILE_BYTES),
+	};
+	if stop_at_binary && read > BINARY_WINDOW_BYTES {
+		HEAD_READ_BYTES
+	} else {
+		read
+	}
+}
+
+/// Open `candidate` for a batch and ask the system to read its
+/// [`read_ahead_len`] ahead. `None` when the batch cannot, as when the process
+/// has no descriptor to spare: the search opens it again when its turn comes.
+fn open_ahead(
+	candidate: &veyyon_walker::FileCandidate,
+	policy: ReadPolicy,
+	stop_at_binary: bool,
+) -> Option<OpenedFile> {
+	let opened = open_regular(&candidate.path, file_size_hint(candidate.size)).ok()??;
+	readahead::read_ahead(&opened.file, 0, read_ahead_len(opened.len, policy, stop_at_binary));
+	Some(opened)
+}
+
 /// Search `chunk`, at most [`PREFETCH_BATCH`] candidates: open each and ask the
-/// system to read it ahead, then search them in order, so the first read waits
-/// for one file and not the chunk, and the rest arrive while it is searched. A
-/// file the chunk cannot open ahead, as when the process has no descriptor to
-/// spare, is opened again when its turn comes, after the files before it
-/// closed.
+/// system to read its [`read_ahead_len`] ahead, then search them in order, so
+/// the first read waits for one file and not the chunk, and the rest arrive
+/// while it is searched. A file the chunk cannot open ahead, as when the
+/// process has no descriptor to spare, is opened again when its turn comes,
+/// after the files before it closed.
 fn handle_chunk<M: Matcher + Sync>(
 	chunk: &[veyyon_walker::FileCandidate],
 	worker: &mut SearchWorker,
@@ -910,9 +1009,10 @@ fn handle_chunk<M: Matcher + Sync>(
 	if stop_after_matches.is_some_and(|stop| state.emitted.load(Ordering::Relaxed) >= stop) {
 		return Ok(());
 	}
-	let prefetched: SmallVec<[Option<File>; PREFETCH_BATCH]> = chunk
+	let stop_at_binary = file_params.stops_at_binary();
+	let prefetched: SmallVec<[Option<OpenedFile>; PREFETCH_BATCH]> = chunk
 		.iter()
-		.map(|file| readahead::open_ahead(&file.path, Some(policy.read_len())).ok())
+		.map(|candidate| open_ahead(candidate, policy, stop_at_binary))
 		.collect();
 	chunk
 		.iter()
@@ -1592,21 +1692,31 @@ fn grep_sync_with_matcher<M: Matcher + Sync>(
 			return Ok(GrepResult::default());
 		}
 
+		// The matcher alone answers a files search with no budget, and it reads
+		// binary files too; the searcher answers every other one, and returns no
+		// match for a file whose first bytes mark it binary.
+		let matcher_only =
+			output_mode == OutputMode::FilesWithMatches && max_count.is_none() && offset == 0;
+		let binary = || Ok(GrepResult { files_searched: 1, ..Default::default() });
 		let mut buffer = Vec::new();
-		let bytes = match read_file_bytes(&search_path, &mut buffer) {
+		let bytes = match read_file_bytes(&search_path, !matcher_only, &mut buffer) {
 			Ok(ReadFile::Read) => &buffer,
-			Ok(ReadFile::Oversized) => match read_file_prefix(&search_path, &mut buffer) {
-				Ok(ReadFile::Read) => &buffer,
-				_ => {
-					return Ok(GrepResult { skipped_oversized: Some(1), ..Default::default() });
-				},
+			Ok(ReadFile::Binary) => return binary(),
+			Ok(ReadFile::Oversized) => {
+				match read_file_prefix(&search_path, !matcher_only, &mut buffer) {
+					Ok(ReadFile::Read) => &buffer,
+					Ok(ReadFile::Binary) => return binary(),
+					_ => {
+						return Ok(GrepResult { skipped_oversized: Some(1), ..Default::default() });
+					},
+				}
 			},
 			Ok(ReadFile::Skipped) | Err(_) => {
 				return Ok(GrepResult::default());
 			},
 		};
 
-		if output_mode == OutputMode::FilesWithMatches && max_count.is_none() && offset == 0 {
+		if matcher_only {
 			let matched = matcher
 				.is_match(bytes.as_slice())
 				.map_err(|err| to_napi_with("Search failed", err))?;
@@ -2530,6 +2640,312 @@ mod tests {
 		assert_eq!(set, 0, "lower the descriptor limit: {}", std::io::Error::last_os_error());
 	}
 
+	/// WHY: a content search read each file whole, up to [`MAX_FILE_BYTES`],
+	/// and asked the system to read as much ahead for a batch of files at a
+	/// time, before the searcher checked the file's first
+	/// [`BINARY_WINDOW_BYTES`] and returned no match on a NUL there. A tree of
+	/// build output, media or archives cost its whole size in disk reads on
+	/// every search, and those reads evicted the page cache the rest of the
+	/// machine ran from. A search now stops reading a file once its first bytes
+	/// mark it binary, and returns what it returned when it read them all.
+	///
+	/// Every search path and output mode, a multiline search, and a search of
+	/// one file are swept over a tree that puts a NUL on each side of each read
+	/// boundary, behind each byte-order mark the searcher transcodes, and in
+	/// files over [`MAX_FILE_BYTES`], and each result is checked against the
+	/// searcher or the matcher run over the file's whole bytes.
+	///
+	/// The read-ahead a batch asks for is checked as the length it asks for a
+	/// file of a given length, since no read counts it. Not caught: a system
+	/// that reads ahead past the length asked for, and a batch that passes a
+	/// length other than the opened file's.
+	///
+	/// [`MAX_FILE_BYTES`]: super::MAX_FILE_BYTES
+	/// [`BINARY_WINDOW_BYTES`]: super::BINARY_WINDOW_BYTES
+	#[cfg(unix)]
+	mod a_binary_file_costs_a_search_its_head {
+		use std::{collections::BTreeMap, path::Path};
+
+		use grep_matcher::Matcher;
+
+		use super::{
+			super::{
+				BINARY_WINDOW_BYTES, GrepResult, HEAD_READ_BYTES, MAX_FILE_BYTES, OutputMode,
+				build_matcher, run_search,
+			},
+			GrepConfig, GrepOutputMode,
+			a_search_past_its_timeout_returns_what_it_found::configs,
+			base_grep_config, grep_sync, task, temp_dir_guard, unlimited_params,
+		};
+
+		const HEAD: usize = HEAD_READ_BYTES as usize;
+		const WINDOW: usize = BINARY_WINDOW_BYTES as usize;
+		const MAX: usize = MAX_FILE_BYTES as usize;
+
+		/// `len` bytes of lines that do not match `needle`, with each of
+		/// `inserts` written over them at its offset.
+		fn text_with(len: usize, inserts: &[(usize, &str)]) -> Vec<u8> {
+			let mut bytes: Vec<u8> = b"haystack line\n"
+				.iter()
+				.copied()
+				.cycle()
+				.take(len)
+				.collect();
+			for (at, insert) in inserts {
+				bytes[*at..*at + insert.len()].copy_from_slice(insert.as_bytes());
+			}
+			bytes
+		}
+
+		/// `text` behind the byte-order mark of UTF-16 in either byte order.
+		fn utf16(text: &str, big_endian: bool) -> Vec<u8> {
+			let mut bytes = if big_endian {
+				vec![0xfe, 0xff]
+			} else {
+				vec![0xff, 0xfe]
+			};
+			for unit in text.encode_utf16() {
+				bytes.extend(if big_endian {
+					unit.to_be_bytes()
+				} else {
+					unit.to_le_bytes()
+				});
+			}
+			bytes
+		}
+
+		/// Files whose bytes put a NUL on each side of the head read and of the
+		/// binary window, behind each transcoded byte-order mark, in UTF-16 too
+		/// long to read in one step, and in files over the size cap, each with a
+		/// `needle` line the searcher finds unless the NUL makes it return no
+		/// match.
+		fn edge_files() -> Vec<(&'static str, Vec<u8>)> {
+			let needle = "needle\n";
+			let bom8: &[u8] = b"\xEF\xBB\xBF";
+			let lines = |len| String::from_utf8(text_with(len, &[(0, needle)])).expect("ASCII lines");
+			vec![
+				("empty.txt", Vec::new()),
+				("plain.txt", needle.into()),
+				("short-nul.bin", "needle\n\0".into()),
+				("nul-first.bin", text_with(HEAD * 4, &[(0, "\0"), (HEAD * 2, "\nneedle\n")])),
+				("nul-last-in-head.bin", text_with(HEAD * 4, &[(0, needle), (HEAD - 1, "\0")])),
+				("nul-first-past-head.bin", text_with(HEAD * 4, &[(0, needle), (HEAD, "\0")])),
+				("head-long-nul-at-end.bin", text_with(HEAD, &[(0, needle), (HEAD - 1, "\0")])),
+				("nul-last-in-window.bin", text_with(WINDOW * 2, &[(0, needle), (WINDOW - 1, "\0")])),
+				("window-long-nul-at-end.bin", text_with(WINDOW, &[(0, needle), (WINDOW - 1, "\0")])),
+				(
+					"nul-first-past-window.txt",
+					text_with(WINDOW * 2, &[(0, needle), (WINDOW, "\0needle\n")]),
+				),
+				("utf8-bom.txt", [bom8, needle.as_bytes()].concat()),
+				("utf8-bom-nul.bin", [bom8, b"needle\n\0"].concat()),
+				("utf16le.txt", utf16(needle, false)),
+				("utf16be.txt", utf16(needle, true)),
+				("utf16le-past-head.txt", utf16(&lines(HEAD), false)),
+				("utf16be-past-window.txt", utf16(&lines(WINDOW), true)),
+				(
+					"oversized-nul-first.bin",
+					text_with(MAX + HEAD, &[(0, "\0"), (HEAD * 2, "\nneedle\n")]),
+				),
+				(
+					"oversized-nul-past-window.txt",
+					text_with(MAX + HEAD, &[(0, needle), (WINDOW * 2, "\0")]),
+				),
+			]
+		}
+
+		/// Matches per path in `result`: matched lines in a content search, the
+		/// count in a count search, one per file in a files search.
+		fn counts_by_path(result: &GrepResult) -> BTreeMap<String, u64> {
+			let mut counts = BTreeMap::new();
+			for matched in &result.matches {
+				*counts.entry(matched.path.clone()).or_default() +=
+					matched.match_count.map_or(1, u64::from);
+			}
+			counts
+		}
+
+		/// What a search of `bytes` returned when it read the whole file: the
+		/// searcher's match count over its first [`MAX_FILE_BYTES`], or for a
+		/// files search whether the matcher alone matches them.
+		fn whole_file_count(bytes: &[u8], mode: Option<GrepOutputMode>, multiline: bool) -> u64 {
+			let (matcher, _) = build_matcher("needle", false, multiline).expect("compile the pattern");
+			let searched = &bytes[..bytes.len().min(MAX)];
+			if mode == Some(GrepOutputMode::FilesWithMatches) {
+				return u64::from(matcher.is_match(searched).expect("match the whole file"));
+			}
+			let params =
+				super::super::SearchParams { multiline, ..unlimited_params(OutputMode::Content, 0) };
+			run_search(&matcher, searched, params)
+				.expect("search the whole file")
+				.match_count
+		}
+
+		/// One `grep` call per search path and output mode, and a multiline one.
+		fn lanes(root: &Path) -> Vec<(&'static str, GrepConfig)> {
+			let mut lanes = configs(root);
+			lanes.push(("multiline", GrepConfig { multiline: Some(true), ..base_grep_config(root) }));
+			lanes
+		}
+
+		#[test]
+		fn a_search_returns_what_it_returned_reading_every_file_whole() {
+			let root = temp_dir_guard();
+			let files = edge_files();
+			for (name, bytes) in &files {
+				std::fs::write(root.path().join(name), bytes).expect("write an edge file");
+			}
+			// Enough files that match nothing to send a search down its parallel
+			// path, and few enough matches that no budget stops a search early.
+			let fillers = 300;
+			for index in 0..fillers {
+				std::fs::write(root.path().join(format!("filler-{index:03}.txt")), "haystack\n")
+					.expect("write a filler file");
+			}
+
+			for (lane, config) in lanes(root.path()) {
+				let (mode, multiline) = (config.mode, config.multiline.unwrap_or(false));
+				let expected: BTreeMap<String, u64> = files
+					.iter()
+					.map(|(name, bytes)| ((*name).to_string(), whole_file_count(bytes, mode, multiline)))
+					.filter(|(_, count)| *count > 0)
+					.collect();
+				let result = grep_sync(config, None, task::CancelToken::default())
+					.unwrap_or_else(|err| panic!("{lane}: the search failed: {err}"));
+				assert_eq!(counts_by_path(&result), expected, "{lane}: matches per file");
+				assert_eq!(
+					(result.files_searched as usize, result.skipped_oversized),
+					(files.len() + fillers, None),
+					"{lane}: files searched"
+				);
+
+				for (name, bytes) in &files {
+					let one = GrepConfig {
+						mode,
+						multiline: Some(multiline),
+						..base_grep_config(&root.path().join(name))
+					};
+					let result = grep_sync(one, None, task::CancelToken::default())
+						.unwrap_or_else(|err| panic!("{lane}, {name} alone: the search failed: {err}"));
+					assert_eq!(
+						counts_by_path(&result).values().sum::<u64>(),
+						whole_file_count(bytes, mode, multiline),
+						"{lane}, {name} alone: matches"
+					);
+					assert_eq!(result.files_searched, 1, "{lane}, {name} alone: files searched");
+				}
+			}
+		}
+
+		/// Bytes this process has passed to `read` and its siblings so far.
+		#[cfg(all(target_os = "linux", target_env = "gnu"))]
+		fn bytes_read() -> u64 {
+			let io = std::fs::read_to_string("/proc/self/io").expect("read /proc/self/io");
+			io.lines()
+				.find_map(|line| line.strip_prefix("rchar: "))
+				.expect("/proc/self/io has rchar")
+				.parse()
+				.expect("rchar is a count")
+		}
+
+		/// Bytes the reads of `/proc/self/io` that measure a search add to it.
+		#[cfg(all(target_os = "linux", target_env = "gnu"))]
+		const MEASURE_READS: u64 = 4096;
+
+		/// The child runs alone, so every byte its reads return is the search's,
+		/// apart from the reads of `/proc/self/io` that measure them.
+		#[cfg(all(target_os = "linux", target_env = "gnu"))]
+		#[test]
+		fn a_search_reads_a_binary_file_no_further_than_its_head() {
+			use super::a_search_past_its_timeout_returns_what_it_found::needle_tree;
+			use crate::heap_pages::measure::in_child;
+
+			let name = "a_search_reads_a_binary_file_no_further_than_its_head";
+			if !in_child(module_path!(), name, &[]) {
+				return;
+			}
+			let root = temp_dir_guard();
+			let text_bytes = (needle_tree(root.path(), 300).len() * b"needle\n".len()) as u64;
+			let binaries: [(usize, u64); 2] = [(1 << 20, 8), (MAX + (1 << 20), 2)];
+			for (len, count) in binaries {
+				for index in 0..count {
+					let path = root.path().join(format!("binary-{len}-{index}.bin"));
+					std::fs::write(path, text_with(len, &[(0, "\0")])).expect("write a binary file");
+				}
+			}
+			let binary_count: u64 = binaries.iter().map(|(_, count)| count).sum();
+			let head_bound = text_bytes + binary_count * HEAD_READ_BYTES + MEASURE_READS;
+
+			let mut past_head = Vec::new();
+			for (lane, config) in lanes(root.path()) {
+				let before = bytes_read();
+				grep_sync(config, None, task::CancelToken::default())
+					.unwrap_or_else(|err| panic!("{lane}: the search failed: {err}"));
+				let read = bytes_read() - before;
+				if read > head_bound {
+					past_head.push((lane, read));
+				}
+			}
+			// A files search asks the matcher alone, which matches binary files,
+			// so it reads them whole, up to the cap of an oversized one.
+			let files_read = text_bytes
+				+ binaries
+					.iter()
+					.map(|(len, count)| (*len).min(MAX) as u64 * count)
+					.sum::<u64>();
+			assert_eq!(
+				past_head
+					.iter()
+					.map(|(lane, read)| (*lane, *read >= files_read))
+					.collect::<Vec<_>>(),
+				[("files", true)],
+				"lanes that read a binary file past its head, bound {head_bound} bytes: {past_head:?}"
+			);
+		}
+
+		/// A batch reads a file ahead as far as its search reads it: no further
+		/// than its head when the file is larger than the binary window and the
+		/// read stops at a binary head, and not at all when the pass defers it to
+		/// the oversized pass.
+		#[test]
+		fn a_batch_reads_a_file_ahead_no_further_than_its_search_reads_it() {
+			use super::super::{ReadPolicy, read_ahead_len};
+			let lens = [
+				0,
+				1,
+				HEAD_READ_BYTES,
+				BINARY_WINDOW_BYTES,
+				BINARY_WINDOW_BYTES + 1,
+				MAX_FILE_BYTES,
+				MAX_FILE_BYTES + 1,
+				1 << 34,
+			];
+			let lanes = [
+				("whole, to the binary head", ReadPolicy::Full, true),
+				("whole, every byte", ReadPolicy::Full, false),
+				("prefix, to the binary head", ReadPolicy::Prefix, true),
+				("prefix, every byte", ReadPolicy::Prefix, false),
+			];
+			let asked: Vec<_> = lanes
+				.iter()
+				.map(|(lane, policy, stop_at_binary)| {
+					let asked: Vec<_> = lens
+						.iter()
+						.map(|len| read_ahead_len(*len, *policy, *stop_at_binary))
+						.collect();
+					(*lane, asked)
+				})
+				.collect();
+			let (head, window, max) = (HEAD_READ_BYTES, BINARY_WINDOW_BYTES, MAX_FILE_BYTES);
+			assert_eq!(asked, [
+				("whole, to the binary head", vec![0, 1, head, window, head, head, 0, 0]),
+				("whole, every byte", vec![0, 1, head, window, window + 1, max, 0, 0]),
+				("prefix, to the binary head", vec![0, 1, head, window, head, head, head, head]),
+				("prefix, every byte", vec![0, 1, head, window, window + 1, max, max, max]),
+			]);
+		}
+	}
+
 	#[cfg(unix)]
 	#[test]
 	fn grep_special_root_path_returns_empty_result() {
@@ -3127,7 +3543,8 @@ mod tests {
 		fs::write(&path, vec![b'a'; oversized_len]).expect("write original oversized file");
 
 		let mut buffer = Vec::new();
-		let outcome = super::read_file_prefix(&path, &mut buffer).expect("read oversized prefix");
+		let outcome =
+			super::read_file_prefix(&path, false, &mut buffer).expect("read oversized prefix");
 		assert!(matches!(outcome, super::ReadFile::Read));
 		assert_eq!(buffer.len(), prefix_len);
 

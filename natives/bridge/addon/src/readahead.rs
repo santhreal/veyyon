@@ -22,14 +22,24 @@ pub const PREFETCH_BATCH: usize = 32;
 pub fn open_ahead(path: &Path, len: Option<u64>) -> io::Result<File> {
 	let file = File::open(path)?;
 	#[cfg(target_os = "linux")]
-	advise_will_read(&file, len);
+	advise_will_read(&file, 0, len);
 	#[cfg(not(target_os = "linux"))]
 	let _ = len;
 	Ok(file)
 }
 
+/// Ask the system to start reading `len` bytes of `file` from `offset` into
+/// the page cache without waiting for them. Like [`open_ahead`]'s advice, it
+/// changes no result.
+pub fn read_ahead(file: &File, offset: u64, len: u64) {
+	#[cfg(target_os = "linux")]
+	advise_will_read(file, offset, Some(len));
+	#[cfg(not(target_os = "linux"))]
+	let _ = (file, offset, len);
+}
+
 #[cfg(target_os = "linux")]
-fn advise_will_read(file: &File, len: Option<u64>) {
+fn advise_will_read(file: &File, offset: u64, len: Option<u64>) {
 	use std::os::fd::AsRawFd;
 	// `posix_fadvise` reads a length of zero as "to the end of the file", so a
 	// read of nothing asks for nothing.
@@ -38,9 +48,10 @@ fn advise_will_read(file: &File, len: Option<u64>) {
 		Some(len) => libc::off_t::try_from(len).unwrap_or(libc::off_t::MAX),
 		None => 0,
 	};
+	let offset = libc::off_t::try_from(offset).unwrap_or(libc::off_t::MAX);
 	// SAFETY: `file` holds the descriptor open for the call, and the advice reads
 	// and writes no memory of this process.
 	unsafe {
-		libc::posix_fadvise(file.as_raw_fd(), 0, len, libc::POSIX_FADV_WILLNEED);
+		libc::posix_fadvise(file.as_raw_fd(), offset, len, libc::POSIX_FADV_WILLNEED);
 	}
 }
