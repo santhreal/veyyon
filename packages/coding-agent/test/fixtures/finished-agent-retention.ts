@@ -1,8 +1,8 @@
 /**
  * What a finished agent keeps alive, measured in the process that runs this file.
  *
- * Spawns one agent through the task tool, parks it, wakes it with a follow-up turn, and holds what
- * outlives both runs in a real session: the options the child session was created with, the parked
+ * Spawns one agent through the task tool, puts it to sleep, wakes it with a follow-up turn, and holds what
+ * outlives both runs in a real session: the options the child session was created with, the asleep
  * agent's reviver and live session (both held by the lifecycle manager), each run's result and the
  * last progress snapshot each caller received. Each run streams `MESSAGES` assistant messages of
  * `MESSAGE_CHARS` distinct characters, so a run whose transient state stays reachable shows its
@@ -34,7 +34,7 @@ export interface FinishedAgentRetention {
 	streamedChars: number;
 	/** String bytes live after both runs, less the bytes live before the first. */
 	retainedBytes: number;
-	/** Child sessions created: the spawn and the revive before the follow-up. */
+	/** Child sessions created: the spawn and the wake before the follow-up. */
 	sessionsCreated: number;
 	/** Whether each run's caller callback (the tool call's `onUpdate`, the follow-up's `onProgress`) was collected. */
 	callbacksCollected: boolean[];
@@ -97,7 +97,7 @@ let nextTurn: Turn = streamingTurn("warm", 1, 1024);
 
 vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [AGENT], projectAgentsDir: null });
 // Registers and attaches the child as `createAgentSession` does, and hands it the session manager the
-// executor opened, which is what parking flushes.
+// executor opened, which is what a sleep flushes.
 vi.spyOn(sdkModule, "createAgentSession").mockImplementation(async (options = {}) => {
 	heldOptions.push(options);
 	const session = createMockSession(call => nextTurn(call), { activeToolNames: ["read", "yield"] });
@@ -167,7 +167,7 @@ async function spawn(name: string): Promise<HeldRun> {
 	};
 }
 
-/** One follow-up turn to a parked agent, which revives it first. */
+/** One follow-up turn to an asleep agent, which wakes it first. */
 async function followUp(id: string): Promise<HeldRun> {
 	const controller = new AbortController();
 	let last: AgentProgress | undefined;
@@ -186,7 +186,7 @@ async function followUp(id: string): Promise<HeldRun> {
 
 const lifecycle = AgentLifecycleManager.global();
 const warm = await spawn("Warm");
-await lifecycle.park(warm.id);
+await lifecycle.sleep(warm.id);
 await followUp(warm.id);
 await lifecycle.release(warm.id);
 heldOptions.length = 0;
@@ -194,7 +194,7 @@ heldOptions.length = 0;
 const before = await liveStringBytes();
 nextTurn = streamingTurn("spawn", MESSAGES, MESSAGE_CHARS);
 const spawned = await spawn("Measured");
-await lifecycle.park(spawned.id);
+await lifecycle.sleep(spawned.id);
 nextTurn = streamingTurn("follow", MESSAGES, MESSAGE_CHARS);
 const followed = await followUp(spawned.id);
 nextTurn = streamingTurn("idle", 1, 1024);

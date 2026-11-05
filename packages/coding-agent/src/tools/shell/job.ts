@@ -58,7 +58,7 @@ interface CancelOutcome {
 
 /**
  * A live agent from the AgentRegistry that has no backing job in the
- * AsyncJobManager — e.g. an idle agent woken (or a parked agent revived) via
+ * AsyncJobManager — e.g. an idle or asleep agent woken via
  * `irc`, or a spawn owned by another agent. Surfaced by `list` and empty-poll
  * snapshots so the job tool's picture matches the UI's running-agent count.
  */
@@ -301,20 +301,19 @@ export class JobTool implements AgentTool<typeof jobSchema.value, JobToolDetails
 	}
 
 	/**
-	 * Kill a running agent that has no job row, when `cancel` names one.
+	 * Stop a running agent that has no job row, when `cancel` names one.
 	 *
-	 * A spawner could always SEE these agents (`job list` reports them under
-	 * "Running Agents") and could never stop them, and the tool said so: it told
-	 * the model to coordinate via `irc`. That is fine advice for an agent that is
-	 * working and unfine for two agents answering each other forever, which is
-	 * the case where the only thing left to do is kill one of them. Now the same
-	 * id the listing prints is an id `cancel` accepts.
+	 * A spawner can SEE these agents (`job list` reports them under "Running
+	 * Agents"), and two agents answering each other forever is the case where the
+	 * only thing left to do is stop one of them, so the id the listing prints is an
+	 * id `cancel` accepts. The agent and everything it spawned stop and fall asleep;
+	 * nothing is removed, and a message wakes them.
 	 *
-	 * Bounded by descent, not by scope. The caller may kill an agent it spawned,
-	 * directly or transitively, and nothing else: a child must not be able to
-	 * kill its own parent (which would orphan the whole run) or a sibling it does
-	 * not own. Scope alone would allow both, because everything in one
-	 * conversation shares a scope.
+	 * Bounded by descent, not by scope. The caller may stop an agent it spawned,
+	 * directly or transitively, and nothing else: a child must not be able to stop
+	 * its own parent (which would stall the whole run) or a sibling it does not
+	 * own. Scope alone would allow both, because everything in one conversation
+	 * shares a scope.
 	 */
 	async #cancelAgent(id: string, ownerId: string | undefined): Promise<CancelOutcome> {
 		const registry = this.session.agentRegistry;
@@ -325,30 +324,30 @@ export class JobTool implements AgentTool<typeof jobSchema.value, JobToolDetails
 		if (ownerId && !isDescendant(registry, id, ownerId)) {
 			return { id, status: "not_found", message: `Background job not found: ${id}` };
 		}
-		if (ref.status === "aborted") {
-			return { id, status: "already_completed", message: `Agent ${id} is already aborted.` };
+		if (ref.status === "asleep") {
+			return { id, status: "already_completed", message: `Agent ${id} is already asleep.` };
 		}
 		try {
-			await AgentLifecycleManager.global().terminate(id, `Killed by ${ownerId ?? "the operator"}`);
+			await AgentLifecycleManager.global().stop(id, `Stopped by ${ownerId ?? "the operator"}`);
 		} catch (error) {
-			// The agent is still there: terminate leaves it registered when the
-			// abort fails, so reporting a kill would be a lie the spawner acts on.
+			// A session that cannot abort is still running, so reporting a stop would
+			// be a lie the spawner acts on.
 			return {
 				id,
 				status: "not_found",
-				message: `Could not kill agent ${id} — it is still running: ${errorMessage(error)}`,
+				message: `Could not stop agent ${id} — it is still running: ${errorMessage(error)}`,
 			};
 		}
 		return {
 			id,
 			status: "cancelled",
-			message: `Killed agent ${id}. Its transcript remains readable at history://${id}.`,
+			message: `Stopped agent ${id}. It wakes when messaged; its transcript is at history://${id}.`,
 		};
 	}
 
 	/**
 	 * Running agents from the registry that are not covered by one of the
-	 * caller's running jobs. Agents woken via `irc` (idle wake / park revival)
+	 * caller's running jobs. Agents woken via `irc` (idle wake / wake from sleep)
 	 * and spawns owned by another agent run with no AsyncJobManager entry, yet
 	 * the UI's agent badge counts them — a snapshot must account for that
 	 * activity instead of implying the system is quiet. Existence is already

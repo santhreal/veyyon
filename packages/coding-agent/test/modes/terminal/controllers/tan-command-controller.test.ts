@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "bun:test";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "bun:test";
 import * as path from "node:path";
 import type { AssistantMessage, Model } from "@veyyon/ai";
 import { emptyUsage } from "@veyyon/catalog/models";
@@ -8,6 +8,7 @@ import { TanCommandController } from "@veyyon/coding-agent/modes/terminal/contro
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
 import * as sdkModule from "@veyyon/coding-agent/sdk";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { CreateAgentSessionResult } from "@veyyon/coding-agent/session/factory-options";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
@@ -314,42 +315,59 @@ describe("TanCommandController", () => {
 		expect(opts?.providerSessionId).toMatch(/^parent-session:tan:/);
 	});
 
-	it("parks the finished tan in the registry so it stays visible in the agent dashboard", async () => {
-		const harness = createContext();
-		vi.spyOn(SessionManager, "forkFrom").mockResolvedValue(harness.cloneManager);
-		const appendSessionInit = vi.fn();
-		const { clone } = createCloneStub({ sessionManager: { appendSessionInit } });
-		vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue({
-			session: clone,
-		} as unknown as CreateAgentSessionResult);
-		const registry = AgentRegistry.global();
-		const setStatus = vi.spyOn(registry, "setStatus");
-		const detachSession = vi.spyOn(registry, "detachSession");
-		const unregister = vi.spyOn(registry, "unregister");
-		const controller = new TanCommandController(harness.ctx);
+	/**
+	 * A tan is never released: finished or stopped, it stays in the registry asleep, with its
+	 * session closed and its transcript left for a message to wake it from. Before this, a
+	 * stopped tan was unregistered and its work could not be picked back up.
+	 */
+	for (const ending of ["finishes", "is stopped"] as const) {
+		it(`keeps the tan in the registry asleep when it ${ending}`, async () => {
+			const harness = createContext();
+			vi.spyOn(SessionManager, "forkFrom").mockResolvedValue(harness.cloneManager);
+			const appendSessionInit = vi.fn();
+			const stop = new AbortController();
+			const { clone } = createCloneStub({
+				sessionManager: { appendSessionInit },
+				prompt: async () => {
+					if (ending === "is stopped") stop.abort();
+				},
+			});
+			const registry = AgentRegistry.global();
+			let cloneId: string | undefined;
+			// The sdk registers the agent and attaches the session it built; the stub does the same.
+			vi.spyOn(sdkModule, "createAgentSession").mockImplementation(async opts => {
+				cloneId = opts?.agentId;
+				if (!cloneId) throw new Error("the tan was created without an agent id");
+				registry.register({
+					id: cloneId,
+					displayName: "tan",
+					kind: "sub",
+					parentId: opts?.parentAgentId,
+					session: clone as unknown as AgentSession,
+				});
+				return { session: clone } as unknown as CreateAgentSessionResult;
+			});
+			onTestFinished(() => {
+				if (cloneId) registry.unregister(cloneId);
+			});
+			const controller = new TanCommandController(harness.ctx);
 
-		await controller.start("park me");
-		const run = harness.capturedRun;
-		if (!run) throw new Error("run function was not captured");
-		const result = await run({
-			jobId: "job-123",
-			signal: new AbortController().signal,
-			reportProgress: async () => {},
-		});
+			await controller.start("finish and sleep");
+			const run = harness.capturedRun;
+			if (!run) throw new Error("run function was not captured");
+			await run({ jobId: "job-123", signal: stop.signal, reportProgress: async () => {} });
 
-		expect(result).toBe("done");
-		expect(appendSessionInit).toHaveBeenCalledWith({
-			systemPrompt: "system prompt",
-			task: "park me",
-			tools: ["read", "bash"],
+			expect(appendSessionInit).toHaveBeenCalledWith({
+				systemPrompt: "system prompt",
+				task: "finish and sleep",
+				tools: ["read", "bash"],
+			});
+			expect(cloneId).toMatch(/^Tan-/);
+			const ref = registry.get(cloneId ?? "");
+			expect({ status: ref?.status, session: ref?.session }).toEqual({ status: "asleep", session: null });
+			expect(clone.dispose).toHaveBeenCalledTimes(1);
 		});
-		// Parked (not unregistered) before dispose, then the disposed session is nulled
-		// out — the hub keeps the ref and reads its transcript from the session file.
-		expect(setStatus).toHaveBeenCalledWith(expect.stringMatching(/^Tan-/), "parked");
-		expect(detachSession).toHaveBeenCalledWith(expect.stringMatching(/^Tan-/));
-		expect(clone.dispose).toHaveBeenCalled();
-		expect(unregister).not.toHaveBeenCalled();
-	});
+	}
 
 	it("isolates the fork: clears inherited todos, injects the fork notice, and re-injects after compaction", async () => {
 		const harness = createContext();

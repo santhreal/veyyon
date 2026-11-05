@@ -62,7 +62,7 @@ export function orderSessionDisposal(
 				// below opens an async gap before AgentSession.dispose() would otherwise set its guards.
 				session.beginDispose();
 				if (lastTopLevel) {
-					// The last top-level teardown ends the global agent lifecycle: park timers, adopted
+					// The last top-level teardown ends the global agent lifecycle: sleep timers, adopted
 					// spawned agent sessions, revivers. It runs while shared resources (kernels, MCP, LSP)
 					// are still live.
 					await AgentLifecycleManager.global().dispose();

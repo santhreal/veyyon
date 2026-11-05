@@ -3,7 +3,7 @@
  *
  * Replaces the old auto-reply model: a `send` never blocks on the recipient
  * generating anything. Delivery resolves the recipient via the global
- * AgentRegistry — parked agents are revived through the
+ * AgentRegistry — asleep agents are woken from their transcript through the
  * AgentLifecycleManager, idle agents are woken with a real turn, and busy
  * agents receive the message as a non-interrupting aside at the next step
  * boundary (see AgentSession.deliverIrcMessage). Replies are real turns by
@@ -64,7 +64,7 @@ export interface IrcDeliveryTelemetry {
 	recipientClass?: IrcRecipientClass;
 	/** Ultra: hand-off path through refusal, wait, wake, live injection, revival, or buffering. */
 	route?: IrcDeliveryRoute;
-	/** Ultra: whether a parked recipient was revived before hand-off. */
+	/** Ultra: whether an asleep recipient was woken from its transcript before hand-off. */
 	revived?: boolean;
 	/** Ultra: end-to-end send-to-record latency, in milliseconds. */
 	deliveryLatencyMs?: number;
@@ -209,14 +209,15 @@ const PING_PONG_CAP = 16;
  *
  * - `running`: the peer must be actively running. A bare `wait` uses this,
  *   because nothing in that call will wake anyone.
- * - `revivable`: the peer must still exist and not be terminated. A `send` with
- *   `await` uses this, because its own delivery wakes an idle or parked peer,
- *   and a parked ref is absent from the `running` roster altogether.
+ * - `wakeable`: the peer must still exist and must not fall asleep while the
+ *   wait is armed. A `send` with `await` uses this, because its own delivery
+ *   wakes an idle or asleep peer, and an asleep ref is absent from the `running`
+ *   roster altogether.
  */
 export interface IrcLivenessOptions {
 	registry: AgentRegistry;
 	senderId: string;
-	mode?: "running" | "revivable";
+	mode?: "running" | "wakeable";
 }
 
 export class IrcBus {
@@ -250,7 +251,7 @@ export class IrcBus {
 	) {
 		this.#registry = registry;
 		// Lazy: the lifecycle global self-constructs against the global registry,
-		// so only touch it when a parked recipient actually needs reviving.
+		// so only touch it when an asleep recipient actually needs waking.
 		this.#lifecycle = () => lifecycle ?? AgentLifecycleManager.global();
 		this.#instrumentationLevel = instrumentationLevel;
 	}
@@ -258,7 +259,7 @@ export class IrcBus {
 	/**
 	 * Fire-and-forget delivery. Never blocks on the recipient generating
 	 * anything: the receipt reports how the message reached the recipient
-	 * (waiter/aside = "injected", idle wake = "woken", park revival =
+	 * (waiter/aside = "injected", idle wake = "woken", wake from sleep =
 	 * "revived"), not what they did with it.
 	 *
 	 * Mailbox semantics: a successfully delivered message never lingers in
@@ -535,16 +536,6 @@ export class IrcBus {
 				revived: false,
 			};
 		}
-		if (ref.status === "aborted") {
-			return {
-				to: message.to,
-				outcome: "failed",
-				error: `Agent "${message.to}" was hard-aborted and cannot be messaged or revived. Its transcript remains readable at history://${message.to}.`,
-				recipientClass: ref.kind,
-				route: "refused",
-				revived: false,
-			};
-		}
 		// Advisor refs are observability-only transcripts, never messageable peers.
 		if (ref.kind === "advisor") {
 			return {
@@ -573,7 +564,7 @@ export class IrcBus {
 		}
 
 		let revived = false;
-		if (ref.status === "parked") {
+		if (ref.status === "asleep") {
 			try {
 				await this.#lifecycle().ensureLive(message.to);
 				revived = true;
@@ -676,7 +667,7 @@ export class IrcBus {
 		const liveness = options?.liveness;
 		const livenessMode = liveness?.mode ?? "running";
 		const livenessReason =
-			livenessMode === "revivable"
+			livenessMode === "wakeable"
 				? `IRC wait aborted: agent "${filter.from}" has exited and cannot reply`
 				: filter.from
 					? `IRC wait aborted: agent "${filter.from}" is not running`
@@ -739,31 +730,34 @@ export class IrcBus {
 			const { registry, senderId } = liveness;
 			const hasRunningSender = (from?: string): boolean =>
 				registry.listVisibleTo(senderId).some(ref => ref.status === "running" && (!from || ref.id === from));
-			// `revivable` asks whether the peer could still answer, not whether it
-			// is answering now. A recipient that is idle or parked is woken by the
-			// delivery this wait accompanies, and `listVisibleTo` drops a parked ref
-			// entirely, so the `running` predicate would abort a send the moment it
-			// was armed. Only a terminated ref, or one no longer in the registry,
-			// can never reply.
-			const canStillReply = (from: string): boolean => {
-				const ref = registry.get(from);
-				return ref !== undefined && ref.status !== "aborted" && registry.canAddress(senderId, from);
-			};
+			// `wakeable` asks whether the peer could still answer, not whether it
+			// is answering now. A recipient that is idle or asleep is woken by the
+			// delivery this wait accompanies, so the `running` predicate would abort a
+			// send the moment it was armed. A ref no longer in the registry, or one the
+			// sender may no longer address, can never reply. Nor can a peer that falls
+			// asleep after the wait is armed: it was stopped, failed, or finished
+			// without replying, and it answers nothing until it is messaged again.
 			const target = filter.from;
-			const check =
-				livenessMode === "revivable" && target
-					? () => canStillReply(target)
-					: target
-						? () => hasRunningSender(target)
-						: () => hasRunningSender();
+			let targetStatus = target ? registry.get(target)?.status : undefined;
+			const wakeableReason = (from: string): string | undefined => {
+				const ref = registry.get(from);
+				if (!ref || !registry.canAddress(senderId, from)) return livenessReason;
+				const fellAsleep = targetStatus !== "asleep" && ref.status === "asleep";
+				targetStatus = ref.status;
+				return fellAsleep
+					? `IRC wait aborted: agent "${from}" fell asleep before replying. Message it again to wake it.`
+					: undefined;
+			};
+			const check: () => string | undefined =
+				livenessMode === "wakeable" && target
+					? () => wakeableReason(target)
+					: () => (hasRunningSender(target) ? undefined : livenessReason);
 			unsubscribeLiveness = registry.onChange(() => {
-				if (!check()) {
-					settle({ kind: "abort", error: new Error(livenessReason) });
-				}
+				const reason = check();
+				if (reason) settle({ kind: "abort", error: new Error(reason) });
 			});
-			if (!check()) {
-				settle({ kind: "abort", error: new Error(livenessReason) });
-			}
+			const reason = check();
+			if (reason) settle({ kind: "abort", error: new Error(reason) });
 		}
 
 		return promise;

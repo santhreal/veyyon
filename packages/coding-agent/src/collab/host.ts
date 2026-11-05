@@ -679,24 +679,17 @@ export class CollabHost {
 					this.#sendTo({ t: "error", message: `agent ${agentId}: empty chat message` }, fromPeer);
 					return;
 				}
-				// Mirrors the hub's #submitChatMessage: revive if parked, steer if mid-turn.
+				// Mirrors the hub's #submitChatMessage: wake if asleep, steer if mid-turn.
 				AgentLifecycleManager.global()
 					.ensureLive(agentId)
 					.then(session => session.prompt(trimmed, { streamingBehavior: "steer" }))
 					.catch(fail);
 				break;
 			}
-			case "kill": {
-				const kill = async () => {
-					const ref = AgentRegistry.global().get(agentId);
-					if (ref && ref.status === "running" && ref.session) {
-						await ref.session.abort({ reason: USER_INTERRUPT_LABEL });
-					}
-					await AgentLifecycleManager.global().release(agentId);
-				};
-				kill().catch(fail);
+			case "kill":
+				// Stops the agent and its children; each falls asleep and wakes when messaged.
+				AgentLifecycleManager.global().stop(agentId, USER_INTERRUPT_LABEL).catch(fail);
 				break;
-			}
 			case "revive":
 				AgentLifecycleManager.global().ensureLive(agentId).catch(fail);
 				break;

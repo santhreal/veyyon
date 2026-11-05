@@ -2,10 +2,10 @@
  * WHY. Seven fixes on the base landed on one mechanism, the agent lifecycle, and
  * none named the invariant: a ref's status may only move along the edges the
  * lifecycle defines. Every writer (executor, lifecycle manager, tan controller,
- * a revived session's turn sync) called `setStatus` with whatever it had in
- * hand, so `aborted → idle` (a late `agent_end` after a kill) and
- * `parked → running` (a turn reported on a ref whose session was released)
- * were silently accepted and the roster showed an agent that did not exist.
+ * a woken session's turn sync) called `setStatus` with whatever it had in
+ * hand, so `asleep → running` (a turn reported on a ref whose session was
+ * already let go) was silently accepted and the roster showed a live agent
+ * that had no session behind it.
  *
  * This suite closes the class at the choke point: `AgentRegistry.setStatus` is
  * the only writer of `AgentRef.status`, and it consults `AGENT_TRANSITIONS`.
@@ -34,13 +34,10 @@ import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-sessi
 /** Every edge the lifecycle performs, pinned by exact equality. */
 const LEGAL_EDGES: ReadonlySet<`${AgentStatus}->${AgentStatus}`> = new Set([
 	"running->idle",
-	"running->parked",
-	"running->aborted",
+	"running->asleep",
 	"idle->running",
-	"idle->parked",
-	"idle->aborted",
-	"parked->idle",
-	"parked->aborted",
+	"idle->asleep",
+	"asleep->idle",
 ]);
 
 function sessionStub(): AgentSession {
@@ -104,14 +101,15 @@ describe("a status write follows the transition table", () => {
 		}
 	});
 
-	it("keeps aborted terminal", () => {
-		expect(AGENT_TRANSITIONS.aborted).toEqual([]);
+	/** A wake always lands on idle first, so the turn that follows is reported by the turn sync. */
+	it("wakes an asleep agent only to idle", () => {
+		expect(AGENT_TRANSITIONS.asleep).toEqual(["idle"]);
 	});
 
 	it("lets a collab mirror copy a status the host reached through states the guest never saw", () => {
 		registry.register({ id: "peer", displayName: "peer", kind: "sub", session: null, status: "running" });
-		registry.mirrorStatus("peer", "parked");
-		expect(registry.get("peer")?.status).toBe("parked");
+		registry.mirrorStatus("peer", "asleep");
+		expect(registry.get("peer")?.status).toBe("asleep");
 		registry.mirrorStatus("peer", "running");
 		expect(registry.get("peer")?.status).toBe("running");
 	});
@@ -151,19 +149,19 @@ describe("a status write follows the transition table", () => {
 			expect(registry.get("w")?.status).toBe("idle");
 		});
 
-		it("drops a turn end that lands after a kill instead of resurrecting the agent", () => {
+		it("drops a turn end that lands after a stop instead of waking the agent", () => {
 			registry.register({ id: "w", displayName: "w", kind: "sub", session, status: "running" });
 			syncStatusWithTurns(registry, "w", session);
-			registry.setStatus("w", "aborted");
+			registry.setStatus("w", "asleep");
 			emit("agent_end");
-			expect(registry.get("w")?.status).toBe("aborted");
+			expect(registry.get("w")?.status).toBe("asleep");
 		});
 
-		it("drops a turn start reported on a parked ref", () => {
-			registry.register({ id: "w", displayName: "w", kind: "sub", session: null, status: "parked" });
+		it("drops a turn start reported on an asleep ref", () => {
+			registry.register({ id: "w", displayName: "w", kind: "sub", session: null, status: "asleep" });
 			syncStatusWithTurns(registry, "w", session);
 			emit("agent_start");
-			expect(registry.get("w")?.status).toBe("parked");
+			expect(registry.get("w")?.status).toBe("asleep");
 			expect(lifecycle.has("w")).toBe(false);
 		});
 	});

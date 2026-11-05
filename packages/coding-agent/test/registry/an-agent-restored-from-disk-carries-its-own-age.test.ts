@@ -1,33 +1,28 @@
 /**
- * An agent read back from disk is as old as its transcript, and the operator's
- * prune budget reaches it.
+ * An agent read back from disk is as old as its transcript, it is never dropped,
+ * and its age decides where the roster's fold puts it.
  *
  * THE DEFECT. `registerPersistedAgents` walks the session tree and registers
- * every agent of every previous run as `parked`. It passed no timestamps, so
+ * every agent of every previous run as `asleep`. It passed no timestamps, so
  * `AgentRegistry.register` stamped `createdAt`/`lastActivity` with the moment of
  * the scan, and the roster's age column reported "just now" for work finished
  * yesterday — for every row at once, which is the column saying nothing at all.
- * The same field decides when a parked ref is pruned, so each restored agent was
- * also handed a full prune budget starting from the scan.
- *
- * THE SECOND HALF. Nothing adopted those refs. A deadline is only ever derived
- * for an adopted agent, `parked` is a stable state, and only a status change
- * re-derives one, so a restored ref had no deadline and nothing would ever give
- * it one: "Prune After" governed the agents this process spawned and nothing
- * else. A resumed session accumulated every agent it had ever written, eighty
- * rows deep.
+ * The same field decides which asleep rows a roster names and which it folds
+ * into "+ N older asleep agents", so every restored agent also competed with the
+ * agents this process spawned as if it had just finished.
  *
  * THE CLASS. Any ref restored rather than started — today the persisted scan for
  * both `sub` and `advisor` kinds — must carry the times of the thing it was
- * restored from, and any parked agent, however it got there, must answer to
- * the same prune budget. The kind sweep below reads `AgentKind` at run time and
- * pins the set this path prunes by exact equality, so a fourth kind turns this
- * suite red until someone records a decision for it.
+ * restored from, and no restored row of any kind is ever dropped: an agent with a
+ * transcript wakes for the rest of the session. The kind sweep below reads every
+ * `AgentKind`, so a new kind is held to the same rule.
  *
  * WHAT IT DOES NOT CATCH. It asserts the registry, not the dashboard's rendered
  * string: `formatAge` is exercised by the dashboard's own suites. It also does
  * not cover a filesystem that reports no `mtime` at all, where the fallback is
- * the pre-existing behaviour of stamping now.
+ * the pre-existing behaviour of stamping now. The fold case cannot pin the
+ * defect in every scan order, because `readdir` order is the filesystem's; the
+ * direct age assertions above it can.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
@@ -35,14 +30,20 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
-import { type AgentKind, type AgentRef, AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
+import {
+	type AgentKind,
+	type AgentRef,
+	AgentRegistry,
+	foldOlderAsleep,
+	ROSTER_ASLEEP_LIMIT,
+} from "@veyyon/coding-agent/registry/agent-registry";
 import { registerPersistedAgents } from "@veyyon/coding-agent/registry/persisted-agents";
 import { Snowflake } from "@veyyon/utils";
 import { drainMicrotasks } from "../../../utils/test/helpers/drain-microtasks";
 
 const HOUR = 60 * 60_000;
-/** The operator's "Prune After", chosen so one fixture sits either side of it. */
-const CLOSE_AFTER = 1 * HOUR;
+/** The idle timer a restored agent gets when woken, far shorter than any fixture's age. */
+const SLEEP_AFTER = 5 * 60_000;
 
 /** Every kind the registry knows, read from the union's own inhabitants. */
 const AGENT_KINDS: readonly AgentKind[] = ["main", "sub", "advisor"];
@@ -60,17 +61,14 @@ async function seedTranscript(file: string, ageMs: number): Promise<number> {
 	return at.getTime();
 }
 
-/** Settle the async prune chain (timer callback → prune() → release() → unregister). */
+/** Settle any timer callback chain the lifecycle could have started. */
 async function flushAsync(): Promise<void> {
 	await drainMicrotasks(8);
 }
 
-/** Install the budget the non-ACP bootstrap installs, with no reviver available. */
-function installBudget(afterMs: number): void {
-	lifecycle.setPersistedAgentReviverFactory(async () => undefined, 0, {
-		afterMs,
-		waitingAfterMs: afterMs,
-	});
+/** Install what the non-ACP bootstrap installs, with no reviver available. */
+function installPersistedReviver(): void {
+	lifecycle.setPersistedAgentReviverFactory(async () => undefined, SLEEP_AFTER);
 }
 
 beforeEach(async () => {
@@ -131,112 +129,32 @@ describe("an agent restored from disk carries the age of its transcript", () => 
 	});
 });
 
-describe("the prune budget reaches an agent restored from disk", () => {
+describe("an agent restored from disk is never dropped", () => {
 	/**
-	 * The whole point of the age: an agent quiet for longer than "Prune After" is
-	 * dropped from the roster, and one inside the budget is kept. Both arms in one
-	 * test, because the failure that matters is pruning everything or nothing.
+	 * However old, a restored agent stays registered, so it wakes by name, and
+	 * its transcript stays on disk, so `history://` can read it.
 	 */
-	it("prunes one older than the budget and keeps one inside it", async () => {
-		await seedTranscript(path.join(root, "main", "Kestrel.jsonl"), 3 * HOUR);
-		await seedTranscript(path.join(root, "main", "Otter.jsonl"), 10 * 60_000);
-		installBudget(CLOSE_AFTER);
-		vi.useFakeTimers();
-
-		await registerPersistedAgents(registry, path.join(root, "main.jsonl"), "session-a");
-		vi.advanceTimersByTime(1);
-		await flushAsync();
-
-		expect(registry.get("Kestrel")).toBeUndefined();
-		expect(registry.get("Otter")).toBeDefined();
-	});
-
-	/**
-	 * Pruning frees the view. It does not delete the operator's record: the
-	 * transcript is what `history://` reads, and a roster that tidies itself by
-	 * deleting work is not a roster anyone can trust.
-	 */
-	it("leaves the transcript on disk when it drops the row", async () => {
+	it("keeps a restored agent of any age, and its transcript", async () => {
 		const file = path.join(root, "main", "Kestrel.jsonl");
-		await seedTranscript(file, 3 * HOUR);
-		installBudget(CLOSE_AFTER);
+		await seedTranscript(file, 30 * 24 * HOUR);
+		installPersistedReviver();
 		vi.useFakeTimers();
 
 		await registerPersistedAgents(registry, path.join(root, "main.jsonl"), "session-a");
-		vi.advanceTimersByTime(1);
+		vi.advanceTimersByTime(24 * HOUR);
 		await flushAsync();
 
-		expect(registry.get("Kestrel")).toBeUndefined();
+		expect(registry.get("Kestrel")?.status).toBe("asleep");
 		await expect(fs.stat(file)).resolves.toBeDefined();
 	});
 
 	/**
-	 * The off switch. `agent.prune.enabled` resolves to a zero budget, and
-	 * a zero budget must keep every restored agent listed however old it is — that
-	 * is what "keep every finished agent listed until you exit" means.
+	 * Swept over every kind, including the ones the scan never restores: no
+	 * timer, however long, removes an asleep row with a transcript.
 	 */
-	it("keeps every restored agent when the budget is off", async () => {
-		await seedTranscript(path.join(root, "main", "Kestrel.jsonl"), 3 * HOUR);
-		installBudget(0);
+	it("drops no asleep row of any kind as time passes", async () => {
+		installPersistedReviver();
 		vi.useFakeTimers();
-
-		await registerPersistedAgents(registry, path.join(root, "main.jsonl"), "session-a");
-		vi.advanceTimersByTime(HOUR);
-		await flushAsync();
-
-		expect(registry.get("Kestrel")).toBeDefined();
-	});
-
-	/**
-	 * A host that installed no budget at all — ACP, an SDK embed, a test — keeps
-	 * the behaviour it had before this path existed.
-	 */
-	it("keeps every restored agent when no budget was installed", async () => {
-		await seedTranscript(path.join(root, "main", "Kestrel.jsonl"), 3 * HOUR);
-		vi.useFakeTimers();
-
-		await registerPersistedAgents(registry, path.join(root, "main.jsonl"), "session-a");
-		vi.advanceTimersByTime(HOUR);
-		await flushAsync();
-
-		expect(registry.get("Kestrel")).toBeDefined();
-	});
-
-	/**
-	 * A collab guest mirrors the host's rows into its own registry. They are
-	 * `parked`, they can be arbitrarily old, and they carry NO session file
-	 * because the host owns the transcript. Pruning one would delete a row this
-	 * process does not own, and the next snapshot would put it back.
-	 */
-	it("never prunes a mirrored row, which owns no transcript", async () => {
-		installBudget(CLOSE_AFTER);
-		vi.useFakeTimers();
-
-		const mirrored = registry.register({
-			id: "Sable",
-			displayName: "Sable",
-			kind: "sub",
-			session: null,
-			status: "parked",
-		});
-		mirrored.lastActivity = Date.now() - 3 * HOUR;
-		vi.advanceTimersByTime(HOUR);
-		await flushAsync();
-
-		expect(registry.get("Sable")).toBeDefined();
-	});
-
-	/**
-	 * Which kinds this path may drop, swept over the union rather than asserted
-	 * for the one that prompted it. A `main` ref is a conversation, not a finished
-	 * spawn, and an `advisor` row belongs to the session it observes; only `sub`
-	 * is an agent the roster prunes. Pinned by exact equality, so a fourth kind
-	 * arrives red.
-	 */
-	it("prunes agents and nothing else", async () => {
-		installBudget(CLOSE_AFTER);
-		vi.useFakeTimers();
-		const pruned: AgentKind[] = [];
 
 		for (const kind of AGENT_KINDS) {
 			const file = path.join(root, "main", `${kind}-row.jsonl`);
@@ -247,17 +165,39 @@ describe("the prune budget reaches an agent restored from disk", () => {
 				kind,
 				session: null,
 				sessionFile: file,
-				status: "parked",
+				status: "asleep",
 				lastActivity: Date.now() - 3 * HOUR,
 			});
 			expect(ref.kind).toBe(kind);
 		}
-		vi.advanceTimersByTime(1);
+		vi.advanceTimersByTime(24 * HOUR);
 		await flushAsync();
 
-		for (const kind of AGENT_KINDS) {
-			if (!registry.get(`${kind}-row`)) pruned.push(kind);
+		const kept = AGENT_KINDS.filter(kind => registry.get(`${kind}-row`) !== undefined);
+		expect(kept).toEqual([...AGENT_KINDS]);
+	});
+});
+
+describe("the roster fold reads a restored agent's own age", () => {
+	/**
+	 * Two more restored agents than a roster names, with the two OLDEST in the
+	 * middle of the alphabet, so neither the first nor the last ten by name is
+	 * the right answer. The fold must name the ten most recently written and
+	 * count the other two.
+	 */
+	it("names the most recently active restored agents and counts the rest", async () => {
+		const names = "ABCDEFGHIJKL".split("").map(letter => `Agent${letter}`);
+		expect(names).toHaveLength(ROSTER_ASLEEP_LIMIT + 2);
+		const oldest = new Set(["AgentF", "AgentG"]);
+		for (const [index, name] of names.entries()) {
+			const ageMs = oldest.has(name) ? 48 * HOUR + index * 60_000 : HOUR + index * 60_000;
+			await seedTranscript(path.join(root, "main", `${name}.jsonl`), ageMs);
 		}
-		expect(pruned).toEqual(["sub"]);
+
+		await registerPersistedAgents(registry, path.join(root, "main.jsonl"), "session-a");
+		const folded = foldOlderAsleep(registry.list().filter(ref => ref.kind === "sub"));
+
+		expect(folded.olderAsleep).toBe(2);
+		expect(folded.rows.map(ref => ref.id).sort()).toEqual(names.filter(name => !oldest.has(name)));
 	});
 });

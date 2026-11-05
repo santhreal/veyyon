@@ -1,12 +1,12 @@
 /**
- * Termination is a deliberate two-step interaction in the agent dashboard.
+ * Stopping an agent is a deliberate two-step interaction in the agent dashboard.
  *
- * WHY. A single stray `x` used to abort a live provider turn and remove the
- * agent immediately. The confirmation keeps that destructive action reversible
- * until it is explicitly accepted, without changing the established
- * abort-before-release lifecycle once accepted. The pointer affordance follows
- * the same rule: it is local to a terminable row, appears only while that row is
- * hovered, and opens the same confirmation instead of becoming a faster kill.
+ * WHY. A single stray `x` used to abort a live provider turn immediately. The
+ * confirmation keeps that interruption from happening until it is explicitly
+ * accepted, without changing the abort-before-sleep lifecycle once accepted.
+ * The pointer affordance follows the same rule: it is local to a stoppable row,
+ * appears only while that row is hovered, and opens the same confirmation
+ * instead of becoming a faster stop.
  *
  * These tests drive the rendered dashboard and its real keyboard/SGR mouse
  * input. Coordinates are derived from the frame produced by ModalShell so the
@@ -101,6 +101,14 @@ function frameOf(component: RenderedComponent): string {
 	return renderedLines(component).join("\n");
 }
 
+/** The card's text with its border and wrapping removed, so a wrapped sentence reads whole. */
+function proseOf(component: RenderedComponent): string {
+	return renderedLines(component)
+		.map(line => line.replace(/[│╭╮╰╯─]/g, "").trim())
+		.join(" ")
+		.replace(/\s+/g, " ");
+}
+
 /** Locate visible text in the real ModalShell frame for pointer input. */
 function positionOf(component: RenderedComponent, needle: string): { row: number; col: number } {
 	const lines = renderedLines(component);
@@ -121,30 +129,26 @@ function recordingSession(events: string[]): AgentSession {
 
 /**
  * A lifecycle double whose completion promise lets confirmation tests observe
- * the fire-and-forget termination without relying on arbitrary sleeps.
+ * the fire-and-forget stop without relying on arbitrary sleeps.
  *
- * It records `terminate`, which is the whole lifecycle surface the dashboard
- * touches. The abort-then-release ordering inside a termination belongs to the
+ * It records `stop`, which is the whole lifecycle surface the dashboard
+ * touches. The abort-then-sleep ordering inside a stop belongs to the
  * real manager and is pinned against it in
  * test/tools/job-cancels-an-agent-with-no-job.test.ts; what these tests own is
  * that confirmation, and only confirmation, reaches the lifecycle at all.
  */
 function recordingLifecycle(events: string[]): {
 	lifecycle: () => AgentLifecycleManager;
-	firstRelease: Promise<void>;
+	firstStop: Promise<void>;
 } {
-	const released = Promise.withResolvers<void>();
+	const stopped = Promise.withResolvers<void>();
 	const manager = {
-		terminate: async (id: string, reason: string) => {
-			events.push(`terminate:${id}:${reason}`);
-			released.resolve();
-		},
-		release: async (id: string) => {
-			events.push(`release:${id}`);
-			released.resolve();
+		stop: async (id: string, reason: string) => {
+			events.push(`stop:${id}:${reason}`);
+			stopped.resolve();
 		},
 	} as unknown as AgentLifecycleManager;
-	return { lifecycle: () => manager, firstRelease: released.promise };
+	return { lifecycle: () => manager, firstStop: stopped.promise };
 }
 
 /** Register the running agent used by the keyboard interaction cases. */
@@ -171,13 +175,13 @@ function dashboardWith(
 	return dashboard;
 }
 
-describe("Agent dashboard termination confirmation", () => {
+describe("Agent dashboard stop confirmation", () => {
 	/**
-	 * `x` only asks the destructive question. Seeing both the selected agent and
-	 * the consequence before any lifecycle call is what separates confirmation
-	 * from the former immediate-kill behavior.
+	 * `x` only asks the question. Seeing both the selected agent and the
+	 * consequence before any lifecycle call is what separates confirmation from
+	 * the former immediate-kill behavior.
 	 */
-	test("opens the confirmation with x without aborting or releasing", () => {
+	test("opens the confirmation with x without aborting or stopping", () => {
 		const events: string[] = [];
 		const overlays = new OverlayHarness();
 		registerWorker(events);
@@ -186,12 +190,13 @@ describe("Agent dashboard termination confirmation", () => {
 		dashboard.handleInput("x");
 
 		const frame = frameOf(overlays.overlay);
-		expect(frame).toContain("Terminate agent?");
+		expect(frame).toContain("Stop agent?");
 		expect(frame).toContain("Kestrel");
-		expect(frame).toContain("This stops the current turn and removes the agent from the roster.");
-		expect(frame).toContain("Its transcript stays on disk.");
+		expect(proseOf(overlays.overlay)).toContain(
+			"This stops the current turn and puts the agent to sleep. Message it to continue; its transcript stays on disk.",
+		);
 		expect(frame).toContain("esc dismiss");
-		expect(frame).toContain("enter yes, terminate");
+		expect(frame).toContain("enter yes, stop");
 		expect(events).toEqual([]);
 	});
 
@@ -200,7 +205,7 @@ describe("Agent dashboard termination confirmation", () => {
 	 * users, while the rendered dismiss action proves the footer is a real mouse
 	 * target rather than explanatory text.
 	 */
-	test("dismisses with Escape or the footer action without terminating", () => {
+	test("dismisses with Escape or the footer action without stopping", () => {
 		const events: string[] = [];
 		const overlays = new OverlayHarness();
 		registerWorker(events);
@@ -222,7 +227,7 @@ describe("Agent dashboard termination confirmation", () => {
 	 * Accepting is what reaches the lifecycle, and it names the operator as the
 	 * reason so the agent's transcript records why it stopped.
 	 */
-	test("confirms with Enter and terminates the agent", async () => {
+	test("confirms with Enter and stops the agent", async () => {
 		const events: string[] = [];
 		const overlays = new OverlayHarness();
 		registerWorker(events);
@@ -232,15 +237,15 @@ describe("Agent dashboard termination confirmation", () => {
 		dashboard.handleInput("x");
 		expect(events).toEqual([]);
 		overlays.handleInput("\r");
-		await lifecycle.firstRelease;
+		await lifecycle.firstStop;
 
-		expect(events).toEqual(["terminate:Worker:Interrupted by user"]);
+		expect(events).toEqual(["stop:Worker:Interrupted by user"]);
 	});
 
 	/**
 	 * The affirmative footer is an action, not a label. A repeated pointer press
-	 * on the same rendered dialog still terminates once, which prevents a terminal
-	 * that reports a double-click from issuing two lifecycle releases.
+	 * on the same rendered dialog still stops once, which prevents a terminal
+	 * that reports a double-click from issuing two lifecycle stops.
 	 */
 	test("confirms through the clickable Yes action exactly once", async () => {
 		const events: string[] = [];
@@ -251,22 +256,22 @@ describe("Agent dashboard termination confirmation", () => {
 
 		dashboard.handleInput("x");
 		const dialog = overlays.overlay;
-		const confirm = positionOf(dialog, "enter yes, terminate");
+		const confirm = positionOf(dialog, "enter yes, stop");
 		const click = sgrPress(confirm.row, confirm.col);
 		dialog.handleInput(click);
 		dialog.handleInput(click);
-		await lifecycle.firstRelease;
+		await lifecycle.firstStop;
 
 		expect(overlays.visible).toBe(false);
-		expect(events).toEqual(["terminate:Worker:Interrupted by user"]);
+		expect(events).toEqual(["stop:Worker:Interrupted by user"]);
 	});
 
 	/**
-	 * Hover advertises termination only where it is valid. Clicking that exact
+	 * Hover advertises a stop only where it is valid. Clicking that exact
 	 * row-local target asks for confirmation, while an ordinary row click keeps
 	 * its existing meaning of opening the agent.
 	 */
-	test("reveals and clicks a row-local [x] only for a terminable agent", () => {
+	test("reveals and clicks a row-local [x] only for a stoppable agent", () => {
 		const events: string[] = [];
 		const opened: string[] = [];
 		const overlays = new OverlayHarness();
@@ -285,7 +290,7 @@ describe("Agent dashboard termination confirmation", () => {
 			parentId: MAIN_AGENT_ID,
 			session: null,
 			sessionFile: "/tmp/advisor.jsonl",
-			status: "parked",
+			status: "asleep",
 		});
 		AgentRegistry.global().register({
 			id: "Worker",
@@ -315,9 +320,9 @@ describe("Agent dashboard termination confirmation", () => {
 		dashboard.handleInput(sgrMotion(scout.row, scout.col));
 		const hoveredScoutRow = renderedLines(dashboard)[scout.row]!;
 		expect(hoveredScoutRow).toContain("[x]");
-		const terminateCol = hoveredScoutRow.lastIndexOf("[x]");
-		dashboard.handleInput(sgrPress(scout.row, terminateCol));
-		expect(frameOf(overlays.overlay)).toContain("Terminate agent?");
+		const stopCol = hoveredScoutRow.lastIndexOf("[x]");
+		dashboard.handleInput(sgrPress(scout.row, stopCol));
+		expect(frameOf(overlays.overlay)).toContain("Stop agent?");
 		expect(events).toEqual([]);
 
 		overlays.handleInput("\x1b");

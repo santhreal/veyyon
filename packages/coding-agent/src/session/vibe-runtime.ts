@@ -6,8 +6,8 @@
  * spawned once through {@link runSubprocess} (keep-alive), continued
  * turn-by-turn through {@link runSubagentFollowUpTurn}. Between turns the
  * worker lives in the AgentRegistry / AgentLifecycleManager as an adopted idle
- * agent (TTL park + JSONL revive), so its conversation context survives across
- * turns and even across parking.
+ * agent (asleep after the idle TTL, woken from its JSONL), so its conversation
+ * context survives across turns and even across sleeping.
  *
  * Every turn runs as an AsyncJobManager job, so a completed turn self-delivers
  * into the director's conversation exactly like an async `task` result, and
@@ -405,7 +405,7 @@ export class VibeSessionRegistry {
 
 	/**
 	 * Send a message to a worker. Mid-turn and streaming → steering; mid-turn
-	 * otherwise → queued for the next turn; idle/parked → starts a new
+	 * otherwise → queued for the next turn; idle/asleep → starts a new
 	 * background turn immediately.
 	 */
 	async send(session: ToolSession, args: { session: string; message: string }): Promise<VibeSendOutcome> {

@@ -656,10 +656,10 @@ function buildResultPayload(
 		preview = lastNewline >= 0 ? slice.slice(0, lastNewline) : slice;
 		truncated = true;
 	}
-	// A stopped-but-adopted agent (soft-budget stop) stays messageable; tell
-	// the parent so it can resume via irc instead of redoing the work.
-	const refStatus = AgentRegistry.global().get(result.id)?.status;
-	const resumable = result.aborted && (refStatus === "idle" || refStatus === "parked");
+	// A stopped agent stays registered: idle after a request-limit stop, asleep after
+	// any other. Tell the parent so it messages the agent via irc instead of redoing
+	// the work.
+	const resumable = result.aborted && AgentRegistry.global().get(result.id) !== undefined;
 	const summary = prompt.render(toolsPrompts["tools/task-summary"].text, {
 		agentName: result.agent,
 		id: result.id,

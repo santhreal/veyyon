@@ -1,7 +1,7 @@
 /**
  * WHY: `AgentLifecycleManager.global()` captured `AgentRegistry.global()` once, when first called. A
- * test that replaced the process registry left the process lifecycle manager terminating, parking
- * and releasing through the registry it captured, which nothing read any more: `/new` handing a
+ * test that replaced the process registry left the process lifecycle manager terminating, putting
+ * agents to sleep and releasing them through the registry it captured, which nothing read any more: `/new` handing a
  * conversation off ended none of the agents it spawned, because the walk for its children ran over
  * an empty registry. The failure showed only when an earlier file in the same process had replaced
  * the registry, so it passed alone and failed in a combined run.
@@ -51,7 +51,7 @@ describe("the process lifecycle manager after the process registry is replaced",
 		expect(AgentRegistry.global().get("0-Worker")).toBeUndefined();
 	});
 
-	it("no longer parks an agent of the registry it was built for", async () => {
+	it("no longer puts an agent of the registry it was built for to sleep", async () => {
 		vi.useFakeTimers();
 		const disposed: string[] = [];
 		AgentRegistry.global().register({

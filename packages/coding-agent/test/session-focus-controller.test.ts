@@ -219,21 +219,20 @@ describe("SessionFocusController", () => {
 		]);
 	});
 
-	it("aborting the focused agent auto-unfocuses back to the main session, while parking retains focus", async () => {
+	it("a focused agent that falls asleep returns the view to the main session", async () => {
+		// WHY: a focused agent is pinned against its idle timer, so it falls asleep only
+		// when stopped, and falling asleep disposes its session. The screen must not
+		// stay attached to a disposed session.
 		const h = makeHarness();
 		const worker = makeSessionStub();
 		registerSub(h.registry, "Worker", worker.session, MAIN_AGENT_ID);
+		const statuses: string[] = [];
+		h.ctx.showStatus = (text: string) => void statuses.push(text);
 
 		await h.controller.focusAgent("Worker");
 		expect(h.controller.focusedAgentId).toBe("Worker");
 
-		// Parking the focused agent keeps the operator focused on the agent
-		h.registry.setStatus("Worker", "parked");
-		await flushAsync();
-		expect(h.controller.focusedAgentId).toBe("Worker");
-
-		// Aborting the focused agent returns to main
-		h.registry.setStatus("Worker", "aborted");
+		h.registry.setStatus("Worker", "asleep");
 		await flushAsync();
 
 		expect(h.controller.focusedAgentId).toBeUndefined();
@@ -241,14 +240,28 @@ describe("SessionFocusController", () => {
 			[worker.session, "Worker"],
 			[h.main.session, undefined],
 		]);
+		// The status line shows the last message; the reason is what it ends on.
+		expect(statuses.at(-1)).toBe("Agent Worker is asleep; returned to main session");
 	});
 
-	it("re-attaches live subscription and view when a focused parked agent is revived with a new session", async () => {
-		// WHY: When an agent is focused and sits idle, its idle TTL parks it (session
-		// disposed). If it is subsequently woken by an incoming peer message or task
-		// tool, a new AgentSession is created. The focused view must re-attach to the
-		// new session so live events stream to the transcript without requiring a manual
-		// re-focus cycle.
+	it("an idle or running transition never unfocuses", async () => {
+		const h = makeHarness();
+		const worker = makeSessionStub();
+		registerSub(h.registry, "Worker", worker.session, MAIN_AGENT_ID);
+
+		await h.controller.focusAgent("Worker");
+		h.registry.setStatus("Worker", "idle");
+		h.registry.setStatus("Worker", "running");
+		await flushAsync();
+
+		expect(h.controller.focusedAgentId).toBe("Worker");
+		expect(h.controller.target).toBe(worker.session);
+	});
+
+	it("re-attaches live subscription and view when the focused agent's session is replaced while it stays live", async () => {
+		// WHY: whatever hands the focused agent a new AgentSession, the focused view
+		// must move onto it so live events stream to the transcript without a manual
+		// re-focus cycle, and the old session's subscription must be dropped.
 		const h = makeHarness();
 		const workerInitial = makeSessionStub();
 		registerSub(h.registry, "Worker", workerInitial.session, MAIN_AGENT_ID);
@@ -257,17 +270,14 @@ describe("SessionFocusController", () => {
 		expect(h.controller.focusedAgentId).toBe("Worker");
 		expect(h.controller.target).toBe(workerInitial.session);
 
-		// Agent parks: session detached in registry, but focus view remains on Worker
+		h.registry.setStatus("Worker", "idle");
 		h.registry.detachSession("Worker");
-		h.registry.setStatus("Worker", "parked");
 		await flushAsync();
 		expect(h.controller.focusedAgentId).toBe("Worker");
 
-		// Agent is revived with a new session: the lifecycle attaches it and reports
-		// `idle`, then the turn's own agent_start reports `running`.
+		// The replacement session is attached, and its turn's agent_start reports `running`.
 		const workerRevived = makeSessionStub({ isStreaming: true });
 		h.registry.attachSession("Worker", workerRevived.session);
-		h.registry.setStatus("Worker", "idle");
 		h.registry.setStatus("Worker", "running");
 		await flushAsync();
 
@@ -275,7 +285,7 @@ describe("SessionFocusController", () => {
 		expect(h.controller.target).toBe(workerRevived.session);
 		expect(workerInitial.unsubscribeCalls()).toBe(1);
 
-		// Newly revived streaming session synthesizes agent_start and handles live events
+		// The replacement streaming session synthesizes agent_start and handles live events
 		expect(h.handledEvents).toContainEqual({ type: "agent_start" });
 		const liveEvent = { type: "message_start", message: { role: "assistant" } };
 		await workerRevived.emit(liveEvent);
@@ -293,14 +303,14 @@ describe("SessionFocusController", () => {
 		const { promise: slowRevivePromise, resolve: resolveSlowRevive } = Promise.withResolvers<AgentSession>();
 		const slowWorker = makeSessionStub();
 
-		// Register WorkerA as parked with a controlled deferred revive
+		// Register WorkerA as asleep with a controlled deferred wake
 		h.registry.register({
 			id: "WorkerA",
 			displayName: "WorkerA",
 			kind: "sub",
 			parentId: MAIN_AGENT_ID,
 			session: null,
-			status: "parked",
+			status: "asleep",
 		});
 
 		const lifecycle = new AgentLifecycleManager(h.registry);
@@ -335,7 +345,7 @@ describe("SessionFocusController", () => {
 			kind: "sub",
 			parentId: MAIN_AGENT_ID,
 			session: null,
-			status: "parked",
+			status: "asleep",
 		});
 		lifecycle.adopt("WorkerC", {
 			idleTtlMs: 10_000,
@@ -354,9 +364,9 @@ describe("SessionFocusController", () => {
 		expect(controller.target).toBeUndefined();
 	});
 
-	it("refuses to attach when an agent is removed or aborted during in-flight revival", async () => {
-		// WHY: If an agent is unregistered or terminated while its revival promise is
-		// resolving, attaching its reconstructed session would leave a defunct view.
+	it("refuses to attach when an agent is removed during an in-flight wake", async () => {
+		// WHY: If an agent is unregistered while its wake promise is resolving,
+		// attaching its reconstructed session would leave a defunct view.
 		const h = makeHarness();
 		const { promise: slowRevivePromise, resolve: resolveSlowRevive } = Promise.withResolvers<AgentSession>();
 		const workerStub = makeSessionStub();
@@ -367,7 +377,7 @@ describe("SessionFocusController", () => {
 			kind: "sub",
 			parentId: MAIN_AGENT_ID,
 			session: null,
-			status: "parked",
+			status: "asleep",
 		});
 
 		const lifecycle = new AgentLifecycleManager(h.registry);
@@ -388,7 +398,7 @@ describe("SessionFocusController", () => {
 	});
 
 	it("auto-unfocuses when the focused agent is removed from the registry", async () => {
-		// WHY: Removing an agent from the registry (e.g. close budget expiry or release)
+		// WHY: Removing an agent from the registry (its conversation ending)
 		// while the operator is focused on it must return the view to main.
 		const h = makeHarness();
 		const worker = makeSessionStub();
@@ -481,7 +491,7 @@ describe("SessionFocusController", () => {
 
 		// Registry events after dispose do not trigger any further status/unfocus calls
 		const callsBefore = h.setSessionCalls.length;
-		h.registry.setStatus("Worker", "aborted");
+		h.registry.setStatus("Worker", "asleep");
 		await flushAsync();
 		expect(h.setSessionCalls.length).toBe(callsBefore);
 	});

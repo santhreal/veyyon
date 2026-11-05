@@ -103,7 +103,7 @@ const RETAINED: Readonly<Record<string, readonly string[]>> = {
 		// removed a duplicated "never send a progress report" list. What no cut may
 		// take: what a message COSTS, and the two prohibitions that stop a loop.
 		"NEVER invent names",
-		"WAKES an `idle` or `parked` peer",
+		"WAKES an `idle` or `asleep` peer",
 		"Silence IS the acknowledgement",
 		"traded 16 in a row",
 		"NEVER send JSON status objects",

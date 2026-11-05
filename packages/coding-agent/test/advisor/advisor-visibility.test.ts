@@ -45,14 +45,14 @@ describe("advisor registry visibility", () => {
 			kind: "advisor",
 			session: null,
 			sessionFile: "/tmp/x/__advisor.jsonl",
-			status: "parked",
+			status: "asleep",
 		});
 		const bus = new IrcBus(registry);
 
 		const receipt = await bus.send({ from: "Main", to: "Main/advisor", body: "hi" });
 		expect(receipt.outcome).toBe("failed");
 		expect(receipt.error).toContain("advisor");
-		// It must still be parked — a refused send never revives an advisor transcript.
-		expect(registry.get("Main/advisor")?.status).toBe("parked");
+		// It must still be asleep — a refused send never wakes an advisor transcript.
+		expect(registry.get("Main/advisor")?.status).toBe("asleep");
 	});
 });

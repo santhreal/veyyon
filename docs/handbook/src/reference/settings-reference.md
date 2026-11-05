@@ -604,19 +604,16 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `agent.maxConcurrency` | Max Concurrent Agents | number | `32` | Maximum number of spawned agents running at once. Unlimited: no cap. |
-| `agent.maxRuntimeMs` | Max Agent Runtime | number | `0` | Maximum wall-clock time a spawned agent may run. An agent that reaches it is aborted with a 'timed out' reason. Unlimited: no limit. |
-| `agent.softRequestBudget` | Soft Request Budget | number | `200` | Number of model requests a spawned agent may make per run before it is asked to wrap up. At 1.5 times this number the run is stopped and the agent returns what it has. Disabled: no limit. The bundled scout and sonic agents have a lower built-in budget. |
-| `agent.softRequestBudgetNotice` | Soft Request Budget Notice | boolean | `true` | Send an agent one steering notice when it crosses its Soft Request Budget, asking it to wrap up before the forced stop. |
+| `agent.maxRuntimeMs` | Max Agent Runtime | number | `0` | Maximum wall-clock time a spawned agent may run in one go. An agent that reaches it is stopped and falls asleep; message it to continue. Unlimited: no limit. |
+| `agent.softRequestBudget` | Request Limit | number | `0` | How many model requests a spawned agent may make in one run. At the limit the agent is asked to wrap up; at 1.5 times the limit it is stopped and returns what it has, and it can be messaged to continue. Unlimited: no limit. |
+| `agent.softRequestBudgetNotice` | Wrap-Up Notice | boolean | `true` | Send an agent one message asking it to wrap up when it reaches its Request Limit, before it is stopped at 1.5 times the limit. |
 | `agent.enableLsp` | LSP in Agents | boolean | `false` | Allow spawned agents to use the lsp tool. Off keeps agents cheaper. |
 
 ### Idle Agents
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `agent.idleTtlMs` | Park Idle Agents After | number | `300000` | How long a spawned agent that has finished its turn stays live before it is parked. A parked agent releases its process, MCP clients and memory; it stays in the roster and is rebuilt from its transcript when messaged or opened. Counted from the agent's last activity. Until exit: idle agents stay live for the whole session. |
-| `agent.prune.enabled` | Prune Parked Agents | boolean | `true` | Remove parked agents from the roster after Prune After. A pruned agent cannot be messaged or opened again; its transcript stays on disk and readable at history://\<agent>. Off: parked agents stay in the roster until the session exits. |
-| `agent.prune.afterMs` | Prune After | number | `3600000` | How long a parked agent stays in the roster before it is pruned, counted from when it was parked. |
-| `agent.prune.waitingAfterMs` | Prune After While Waiting | number | `7200000` | Prune After for a parked agent whose last message was that it is waiting on another agent. A value below Prune After is raised to it. |
+| `agent.idleTtlMs` | Sleep Idle Agents After | number | `300000` | How long a spawned agent that has finished its turn stays live before it falls asleep. An asleep agent releases its process, MCP clients and memory; it stays in the roster and wakes from its transcript when messaged or opened. Counted from the agent's last activity. Never: idle agents stay live until the session exits. |
 
 ### Isolation
 
@@ -899,4 +896,4 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `tui.maxInlineImageRows` | number | `20` |  |
 | `tui.maxInlineImages` | number | `8` |  |
 
-355 settings in /settings, 118 configuration-file keys, 473 in all.
+352 settings in /settings, 118 configuration-file keys, 470 in all.

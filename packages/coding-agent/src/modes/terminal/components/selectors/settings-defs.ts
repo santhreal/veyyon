@@ -223,7 +223,6 @@ const CONDITIONS: Record<string, () => boolean> = {
 	cpuLimitEnabled: settingValue("session.cpuLimitCores", v => v > 0),
 	writeBudgetEnabled: settingValue("session.writeBudgetGb", v => v > 0),
 	cacheRejectionReported: settingFlag("cache.reportRejection"),
-	agentPruneEnabled: settingFlag("agent.prune.enabled"),
 	agentSharedModel: settingFlag("agent.sharedModel"),
 	agentIsolationEnabled: settingValue("agent.isolation.mode", v => v !== "none"),
 	agentSoftRequestBudgetEnabled: settingValue("agent.softRequestBudget", v => (v ?? 0) > 0),

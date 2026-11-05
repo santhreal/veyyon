@@ -71,8 +71,8 @@ describe("a declared setting is a reachable control", () => {
 	 * satisfies all of them. These are the numbers as measured, as floors.
 	 */
 	it("reads the whole declared surface", () => {
-		expect(UI_PATHS.length).toBeGreaterThanOrEqual(353);
-		expect(DEFS.length).toBeGreaterThanOrEqual(354);
+		expect(UI_PATHS.length).toBeGreaterThanOrEqual(352);
+		expect(DEFS.length).toBeGreaterThanOrEqual(352);
 		expect(RETIRED.length).toBeGreaterThanOrEqual(5);
 		expect(SETTING_TYPES.length).toBe(7);
 	});

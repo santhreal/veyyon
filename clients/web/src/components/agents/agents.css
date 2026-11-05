@@ -125,14 +125,6 @@
 	animation: ag-pulse 1.6s ease-out infinite;
 }
 
-.ag-dot--parked {
-	background: var(--warn);
-}
-
-.ag-dot--aborted {
-	background: var(--err);
-}
-
 @keyframes ag-pulse {
 	0% {
 		box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 45%, transparent);
@@ -160,16 +152,6 @@
 .ag-chip--running {
 	border-color: color-mix(in srgb, var(--ok) 35%, transparent);
 	color: var(--ok);
-}
-
-.ag-chip--parked {
-	border-color: color-mix(in srgb, var(--warn) 35%, transparent);
-	color: var(--warn);
-}
-
-.ag-chip--aborted {
-	border-color: color-mix(in srgb, var(--err) 35%, transparent);
-	color: var(--err);
 }
 
 .ag-chip--model {

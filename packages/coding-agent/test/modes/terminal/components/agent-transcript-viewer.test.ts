@@ -134,7 +134,7 @@ function makeViewer(file: string, remote?: AgentTranscriptRemote, ui?: TUI) {
 		parentId: "Main",
 		session: null,
 		sessionFile: remote ? undefined : file,
-		status: "parked",
+		status: "asleep",
 	});
 	const viewer = new AgentTranscriptViewer({
 		agentId: "Main/advisor",

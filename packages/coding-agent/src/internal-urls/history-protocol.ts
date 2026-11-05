@@ -2,7 +2,7 @@
  * Protocol handler for history:// URLs.
  *
  * Exposes agent transcripts as concise markdown. Live refs render from the
- * in-memory message array; parked refs (session disposed, sessionFile
+ * in-memory message array; asleep refs (session disposed, sessionFile
  * retained) load read-only from the JSONL session file — no writer, no lock.
  *
  * Agents that are no longer in the `AgentRegistry` — one-shot helpers
@@ -49,7 +49,7 @@ interface IndexEntry {
  * Handler for history:// URLs.
  *
  * Resolves agent ids against the global AgentRegistry, then falls back to
- * on-disk `.jsonl` transcripts, serving read-only history for live, parked,
+ * on-disk `.jsonl` transcripts, serving read-only history for live, asleep,
  * and unregistered agents alike.
  */
 export class HistoryProtocolHandler implements ProtocolHandler {

@@ -199,10 +199,10 @@ describe("listVisibleTo", () => {
 
 	/**
 	 * Scoping is added to the existing rules, not substituted for them. A peer
-	 * roster that started naming the caller, an advisor transcript, or a parked
-	 * or hard-killed agent would offer addresses that cannot answer.
+	 * roster that started naming the caller, an advisor transcript, or an
+	 * asleep agent would offer addresses that cannot answer right now.
 	 */
-	test("still excludes the caller, advisors, and agents that are parked or aborted", () => {
+	test("still excludes the caller, advisors, and asleep agents", () => {
 		registry.register({ id: "Main", displayName: "main", kind: "main", session: null, scope: "session-a" });
 		registry.register({ id: "Live", displayName: "reviewer", kind: "sub", parentId: "Main", session: null });
 		registry.register({
@@ -213,20 +213,12 @@ describe("listVisibleTo", () => {
 			session: null,
 		});
 		registry.register({
-			id: "Parked",
+			id: "Asleep",
 			displayName: "scout",
 			kind: "sub",
 			parentId: "Main",
 			session: null,
-			status: "parked",
-		});
-		registry.register({
-			id: "Aborted",
-			displayName: "scout",
-			kind: "sub",
-			parentId: "Main",
-			session: null,
-			status: "aborted",
+			status: "asleep",
 		});
 
 		expect(ids(registry.listVisibleTo("Main"))).toEqual(["Live"]);

@@ -9,11 +9,9 @@
  *   same row, so the dashboard actively hid the one thing it exists to surface.
  *   `AgentRef.pendingApproval` is the only discriminator; there is no status for
  *   it.
- * - An agent that stopped to wait on a peer is `parked`, exactly like one that
- *   simply finished. `AgentRef.waitingOnPeer` already carried the difference and
- *   the lifecycle manager already spent it on a longer close budget, so the
- *   state was trusted everywhere except on screen. That is the abandoned-agent
- *   case.
+ * - An agent that stopped to wait on a peer is `asleep`, exactly like one that
+ *   simply finished. `AgentRef.waitingOnPeer` already carried the difference,
+ *   and the roster did not draw it. That is the abandoned-agent case.
  *
  * PINNED HERE: the rendered words and the column arithmetic. The status column
  * is measured over every row, so a longer word than the raw status would slide
@@ -127,25 +125,25 @@ describe("an agent blocked on an approval prompt", () => {
 	});
 });
 
-describe("an agent parked waiting on a peer", () => {
+describe("an agent asleep waiting on a peer", () => {
 	/**
-	 * The abandonment case. Both rows are `parked` to the registry; only one of
+	 * The abandonment case. Both rows are `asleep` to the registry; only one of
 	 * them is stopped on a reply that may never come.
 	 */
-	test("reads as waiting, and a finished one still reads as parked", () => {
+	test("reads as waiting, and a finished one still reads as asleep", () => {
 		const registry = AgentRegistry.global();
 		registerSub("0-Sub", "reviewer");
 		registerSub("1-Sub", "scout");
 		registry.setWaitingOnPeer("1-Sub", true);
-		registry.setStatus("0-Sub", "parked");
-		registry.setStatus("1-Sub", "parked");
+		registry.setStatus("0-Sub", "asleep");
+		registry.setStatus("1-Sub", "asleep");
 		const dashboard = new AgentDashboard({ terminalHeight: 40 });
 		try {
 			const finished = rowsOf(dashboard, "Kestrel")[0] ?? "";
 			const waiting = rowsOf(dashboard, "Otter")[0] ?? "";
-			expect(finished).toContain("parked");
+			expect(finished).toContain("asleep");
 			expect(waiting).toContain("waiting");
-			expect(waiting).not.toContain("parked");
+			expect(waiting).not.toContain("asleep");
 		} finally {
 			dashboard.dispose();
 		}
@@ -171,7 +169,7 @@ describe("an agent parked waiting on a peer", () => {
 	});
 
 	/**
-	 * THE COLUMN GUARD. `waiting` is one cell wider than the `parked` it is
+	 * THE COLUMN GUARD. `waiting` is one cell wider than the `asleep` it is
 	 * derived from, and the status column is padded to the widest value across
 	 * the whole roster. Measuring `agent.status` while painting the display word
 	 * pads one cell short, and every column after it slides left on the wider
@@ -182,8 +180,8 @@ describe("an agent parked waiting on a peer", () => {
 		registerSub("0-Sub", "reviewer");
 		registerSub("1-Sub", "scout");
 		registry.setWaitingOnPeer("1-Sub", true);
-		registry.setStatus("0-Sub", "parked");
-		registry.setStatus("1-Sub", "parked");
+		registry.setStatus("0-Sub", "asleep");
+		registry.setStatus("1-Sub", "asleep");
 		const dashboard = new AgentDashboard({ terminalHeight: 40 });
 		try {
 			const finished = rowsOf(dashboard, "Kestrel")[0] ?? "";
@@ -230,7 +228,7 @@ describe("a card closed before its disk scan lands", () => {
 			expect(repaints).toBe(0);
 			// The scan still ran and still registered the agent: what is suppressed
 			// is the card's reaction to it, not the registry write.
-			expect(AgentRegistry.global().get("0-Sub")?.status).toBe("parked");
+			expect(AgentRegistry.global().get("0-Sub")?.status).toBe("asleep");
 		} finally {
 			await fs.rm(root, { recursive: true, force: true });
 		}

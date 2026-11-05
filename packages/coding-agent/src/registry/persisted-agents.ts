@@ -4,7 +4,7 @@
  * The registry only knows agents this PROCESS started. Restart veyyon, or come
  * back to a session tomorrow, and every spawned agent it created is gone from it
  * while its transcript is still on disk. This walks the session directory tree
- * and registers each one as `parked`: revivable, readable, and visible in the
+ * and registers each one as `asleep`: wakeable, readable, and visible in the
  * live roster instead of silently absent.
  *
  * It lived inside one of the four agent overlays, which is why the roster and the
@@ -74,7 +74,7 @@ export async function registerPersistedAgents(
  *
  * The file's own times, because they are the only record of the agent's history
  * that survives the process that ran it: the roster prints this as the row's age
- * and the close budget counts from it. An unreadable stat falls back to now,
+ * and folds the least recently active sleepers by it. An unreadable stat falls back to now,
  * which is the pre-existing behaviour and keeps a scan working on a filesystem
  * that reports no times rather than dropping the agent from the roster.
  *
@@ -117,7 +117,7 @@ async function registerPersistedAgentsFromDir(
 		const sessionFile = path.join(dir, entry.name);
 		// The advisor transcript is observability-only: register it as a non-peer
 		// `advisor` kind under its owning session so its read-only transcript can be
-		// opened, but it never joins agent-facing rosters and is not revivable.
+		// opened, but it never joins agent-facing rosters and is never woken.
 		if (isAdvisorTranscriptName(entry.name)) {
 			const owner = parentId ?? MAIN_AGENT_ID;
 			// `__advisor.jsonl` → the default advisor (no slug); `__advisor.<slug>.jsonl`
@@ -140,7 +140,7 @@ async function registerPersistedAgentsFromDir(
 					parentId: owner,
 					session: null,
 					sessionFile,
-					status: "parked",
+					status: "asleep",
 					scope,
 					createdAt: wrote.createdAt,
 					lastActivity: wrote.lastActivity,
@@ -159,7 +159,7 @@ async function registerPersistedAgentsFromDir(
 				parentId: parentId ?? MAIN_AGENT_ID,
 				session: null,
 				sessionFile,
-				status: "parked",
+				status: "asleep",
 				scope,
 				createdAt: wrote.createdAt,
 				lastActivity: wrote.lastActivity,

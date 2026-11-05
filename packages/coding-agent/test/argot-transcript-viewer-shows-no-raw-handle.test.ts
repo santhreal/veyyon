@@ -102,7 +102,7 @@ function makeViewer(file: string, expandArgot?: (e: SessionMessageEntry[]) => Se
 		parentId: "Main",
 		session: null,
 		sessionFile: file,
-		status: "parked",
+		status: "asleep",
 	});
 	const viewer = new AgentTranscriptViewer({
 		agentId: "Main/advisor",

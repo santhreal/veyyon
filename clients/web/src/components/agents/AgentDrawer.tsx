@@ -65,7 +65,7 @@ export function AgentDrawer(props: {
 	};
 
 	// Live resolved model when the agent is running, else the model recorded on
-	// the snapshot at launch so parked/idle agents still show what they ran on.
+	// the snapshot at launch so asleep/idle agents still show what they ran on.
 	const model = progress?.progress.resolvedModel ?? agent.model;
 
 	return (
@@ -125,22 +125,22 @@ export function AgentDrawer(props: {
 	);
 }
 
-/** Kill for a running agent, revive for a parked or aborted one, nothing otherwise. */
+/** Stop for a running agent, wake for an asleep one, nothing otherwise. */
 function AgentLifecycleButton(props: { agent: AgentSnapshot; client: GuestClient }): ReactNode {
 	const { agent, client } = props;
 	if (agent.status === "running") {
 		return (
 			<button type="button" className="ag-btn ag-btn--danger" onClick={() => client.sendAgentCmd("kill", agent.id)}>
 				<OctagonX size={13} aria-hidden />
-				kill
+				stop
 			</button>
 		);
 	}
-	if (agent.status === "parked" || agent.status === "aborted") {
+	if (agent.status === "asleep") {
 		return (
 			<button type="button" className="ag-btn" onClick={() => client.sendAgentCmd("revive", agent.id)}>
 				<RotateCcw size={13} aria-hidden />
-				revive
+				wake
 			</button>
 		);
 	}

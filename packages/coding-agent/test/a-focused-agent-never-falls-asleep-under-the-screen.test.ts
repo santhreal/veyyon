@@ -1,14 +1,14 @@
 /**
  * WHY. `SessionFocusController.focusAgent` attaches the transcript, the status
  * line and the editor's interrupt to `ensureLive(id)`, which returns `ref.session`
- * whenever one is set. `AgentLifecycleManager.park` flushes that same session,
- * then disposes it and detaches it. The two ran independently: a park whose
- * flush was in flight when the operator pressed the key disposed the session
- * the screen had just attached, and the screen stayed on a dead session until
- * the next revive. The same race ran the other way when the idle TTL elapsed
- * while an agent was on screen.
+ * whenever one is set. `AgentLifecycleManager.sleep` flushes that same session,
+ * then disposes it and detaches it. The two ran independently: a sleep whose
+ * flush was in flight when the focus key landed disposed the session the screen
+ * had just attached, and the screen stayed on a dead session until the next
+ * wake. The same race ran the other way when the idle TTL elapsed while an
+ * agent was on screen.
  *
- * Closed here: a focus pins the agent for as long as it is focused, and a park
+ * Closed here: a focus pins the agent for as long as it is focused, and a sleep
  * observing a pin is deferred to the unpin, at which point the idle TTL counts
  * again from that moment. Every dispose the lifecycle performs on a focused
  * session is a defect this suite catches, whichever side of the flush the focus
@@ -86,7 +86,7 @@ function makeController(registry: AgentRegistry, lifecycle: AgentLifecycleManage
 	return new SessionFocusController(ctx, registry, () => lifecycle);
 }
 
-describe("a focused agent is never parked under the screen", () => {
+describe("a focused agent never falls asleep under the screen", () => {
 	const registry = new AgentRegistry();
 	const lifecycle = new AgentLifecycleManager(registry);
 	const main = makeSessionStub();
@@ -113,31 +113,31 @@ describe("a focused agent is never parked under the screen", () => {
 		return stub;
 	}
 
-	it("a focus arriving while the park is flushing keeps the session live", async () => {
+	it("a focus arriving while the sleep is flushing keeps the session live", async () => {
 		const stub = idleAdopted("Scout-flush", 0);
-		const park = lifecycle.park("Scout-flush");
+		const sleep = lifecycle.sleep("Scout-flush");
 		await stub.flushEntered;
 		await controller.focusAgent("Scout-flush");
 		stub.releaseFlush();
-		await park;
+		await sleep;
 		expect(stub.disposeCalls()).toBe(0);
 		expect(registry.get("Scout-flush")?.status).toBe("idle");
 		expect(registry.get("Scout-flush")?.session).toBe(stub.session);
 		expect(controller.target).toBe(stub.session);
 	});
 
-	it("the pin is taken before the revive, so a park that finishes during the revive cannot dispose", async () => {
+	it("the pin is taken before the wake, so a sleep that finishes during the wake cannot dispose", async () => {
 		const stub = idleAdopted("Scout-race", 0);
-		const park = lifecycle.park("Scout-race");
+		const sleep = lifecycle.sleep("Scout-race");
 		await stub.flushEntered;
-		// A revive is slow (transcript replay, MCP, auth). Modelled by an ensureLive
-		// that lets the in-flight park run to completion before it returns: only a
-		// pin taken before the revive is seen by the park's post-flush check.
+		// A wake is slow (transcript replay, MCP, auth). Modelled by an ensureLive
+		// that lets the in-flight sleep run to completion before it returns: only a
+		// pin taken before the wake is seen by the sleep's post-flush check.
 		const ensureLive = lifecycle.ensureLive.bind(lifecycle);
 		const slow = vi.spyOn(lifecycle, "ensureLive").mockImplementation(async id => {
 			const session = await ensureLive(id);
 			stub.releaseFlush();
-			await park;
+			await sleep;
 			return session;
 		});
 		try {
@@ -150,7 +150,7 @@ describe("a focused agent is never parked under the screen", () => {
 		expect(controller.target).toBe(stub.session);
 	});
 
-	it("an idle TTL elapsing on a focused agent defers the park to the unfocus", async () => {
+	it("an idle TTL elapsing on a focused agent defers the sleep to the unfocus", async () => {
 		vi.useFakeTimers();
 		const stub = idleAdopted("Scout-ttl", 1_000);
 		await controller.focusAgent("Scout-ttl");
@@ -173,7 +173,7 @@ describe("a focused agent is never parked under the screen", () => {
 		await drainMicrotasks(16);
 		await drainMicrotasks(16);
 		expect(stub.disposeCalls()).toBe(1);
-		expect(registry.get("Scout-ttl")?.status).toBe("parked");
+		expect(registry.get("Scout-ttl")?.status).toBe("asleep");
 	});
 
 	it("a focus that fails leaves no pin behind", async () => {
@@ -193,9 +193,9 @@ describe("a focused agent is never parked under the screen", () => {
 		expect(lifecycle.isPinned("Scout-second")).toBe(true);
 		first.releaseFlush();
 		second.releaseFlush();
-		await lifecycle.park("Scout-first");
-		expect(registry.get("Scout-first")?.status).toBe("parked");
-		await lifecycle.park("Scout-second");
+		await lifecycle.sleep("Scout-first");
+		expect(registry.get("Scout-first")?.status).toBe("asleep");
+		await lifecycle.sleep("Scout-second");
 		expect(registry.get("Scout-second")?.status).toBe("idle");
 	});
 });

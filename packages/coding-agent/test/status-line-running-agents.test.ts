@@ -119,7 +119,7 @@ describe("persistent running-agent footline count", () => {
 		registry.register({ id: "main", displayName: "Main", kind: "main", session: null, status: "running" });
 		registry.register({ id: "advisor", displayName: "Advisor", kind: "advisor", session: null, status: "running" });
 		registry.register({ id: "done", displayName: "Done", kind: "sub", session: null, status: "idle" });
-		registry.register({ id: "closed", displayName: "Closed", kind: "sub", session: null, status: "parked" });
+		registry.register({ id: "closed", displayName: "Closed", kind: "sub", session: null, status: "asleep" });
 		expectTheCount(0);
 
 		registry.register({ id: "one", displayName: "One", kind: "sub", session: null, status: "running" });
@@ -129,7 +129,7 @@ describe("persistent running-agent footline count", () => {
 		expectTheCount(3);
 
 		registry.setStatus("one", "idle");
-		registry.setStatus("two", "parked");
+		registry.setStatus("two", "asleep");
 		registry.setStatus("three", "idle");
 		expectTheCount(0);
 		expect(render()).not.toContain("3");

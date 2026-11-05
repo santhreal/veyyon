@@ -107,7 +107,7 @@ import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "./sess
 import { dispatchBuiltinSlashCommand } from "./slash-commands/dispatch";
 import { shouldShowStartupSplash } from "./startup-splash";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "./system-prompt";
-import { resolveAgentIdleTtlMs, resolveAgentPruneBudget } from "./task/agent-settings";
+import { resolveAgentIdleTtlMs } from "./task/agent-settings";
 import { createPersistedAgentReviverFactory } from "./task/persisted-revive";
 import { initTelemetryExport, isTelemetryExportEnabled } from "./telemetry-export";
 import { initTheme, stopThemeWatcher } from "./theme/theme";
@@ -2142,7 +2142,7 @@ interface LaunchSessionShared {
 }
 
 /**
- * Cold-revive support: a `parked` agent ref restored from disk (the persisted-agent
+ * Cold-wake support: an `asleep` agent ref restored from disk (the persisted-agent
  * scan, collab mirror, resumed process) has a sessionFile but no in-memory
  * reviver, so `ensureLive` (IRC sends, hub focus) would refuse it. Install a
  * factory — bound to THIS top-level session — that rebuilds the agent from
@@ -2166,14 +2166,9 @@ function installPersistedAgentReviver(
 			eventBus,
 			enableLsp,
 		}),
+		// Read through a function rather than snapshotted here, so a change in
+		// /settings governs every agent woken after it.
 		() => resolveAgentIdleTtlMs(settings),
-		// The operator's close budgets, so a ref restored from disk or revived
-		// rejoins the close stage instead of staying listed for the rest of the
-		// session. Read through a function rather than snapshotted here, so a
-		// change in /settings governs every agent adopted after it; the deadlines
-		// already armed keep the budget they were armed with until their next
-		// status change re-derives them.
-		() => resolveAgentPruneBudget(settings),
 	);
 }
 

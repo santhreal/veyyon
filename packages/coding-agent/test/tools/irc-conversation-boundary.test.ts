@@ -62,7 +62,7 @@ beforeEach(() => {
 	AgentLifecycleManager.resetGlobalForTests();
 	IrcBus.resetGlobalForTests();
 	registry = AgentRegistry.global();
-	// Conversation A: a driving root, one running spawn, one parked spawn.
+	// Conversation A: a driving root, one running spawn, one asleep spawn.
 	registry.register({ id: "acp:a", displayName: "main", kind: "main", session: liveSession(), scope: "session-a" });
 	registry.register({
 		id: "Scout-A",
@@ -79,7 +79,7 @@ beforeEach(() => {
 		parentId: "acp:a",
 		session: null,
 		sessionFile: "/tmp/archivist-a.jsonl",
-		status: "parked",
+		status: "asleep",
 	});
 	// Conversation B, opened in the same process by a second `session/new`.
 	registry.register({ id: "acp:b", displayName: "main", kind: "main", session: liveSession(), scope: "session-b" });
@@ -105,7 +105,7 @@ describe("The roster an agent reads", () => {
 	 * model will hand to `send`, so the set has to be pinned rather than sampled:
 	 * a missing peer is a coordination failure and an extra one is the leak.
 	 */
-	test("names this conversation's peers, including the parked one, and nobody else's", async () => {
+	test("names this conversation's peers, including the asleep one, and nobody else's", async () => {
 		const listed = await textOf(toolFor(registry, "Scout-A"), { op: "list" });
 
 		const ids = listed
@@ -113,7 +113,7 @@ describe("The roster an agent reads", () => {
 			.filter(line => line.startsWith("- "))
 			.map(line => line.slice(2, line.indexOf(" [")));
 		expect(ids.sort()).toEqual(["Archivist-A", "acp:a"]);
-		expect(listed).toContain("Parked agents are revived automatically when you message them.");
+		expect(listed).toContain("Asleep agents wake automatically when you message them by id.");
 	});
 
 	/** The same question from the other conversation, so a filter that empties the roster fails. */
@@ -130,7 +130,7 @@ describe("The roster an agent reads", () => {
 
 describe("Delivery across the boundary", () => {
 	/**
-	 * Refused BY NAME. A directed send revives a parked recipient, so an
+	 * Refused BY NAME. A directed send wakes an asleep recipient, so an
 	 * unguarded one does not merely deliver across the boundary: it restarts an
 	 * agent of a conversation the sender has nothing to do with and has it answer
 	 * into that conversation's transcript.

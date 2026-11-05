@@ -437,7 +437,7 @@ describe("agent settings migration", () => {
 	/**
 	 * The product vocabulary migrated from `subagent` to `agent`. The whole
 	 * `subagent.*` subtree on disk is folded leaf-for-leaf into `agent.*`,
-	 * including deeply nested keys such as prune thresholds and isolation options.
+	 * including deeply nested keys such as isolation options.
 	 */
 	test("folds a legacy subagent.* subtree leaf-for-leaf onto agent.*", async () => {
 		writeConfig({
@@ -450,11 +450,6 @@ describe("agent settings migration", () => {
 				softRequestBudget: 25,
 				softRequestBudgetNotice: false,
 				showResolvedModelBadge: false,
-				prune: {
-					enabled: false,
-					afterMs: 300_000,
-					waitingAfterMs: 600_000,
-				},
 				isolation: {
 					mode: "rcopy",
 					merge: "branch",
@@ -477,9 +472,6 @@ describe("agent settings migration", () => {
 		expect(settings.get("agent.softRequestBudget")).toBe(25);
 		expect(settings.get("agent.softRequestBudgetNotice")).toBe(false);
 		expect(settings.get("agent.showResolvedModelBadge")).toBe(false);
-		expect(settings.get("agent.prune.enabled")).toBe(false);
-		expect(settings.get("agent.prune.afterMs")).toBe(300_000);
-		expect(settings.get("agent.prune.waitingAfterMs")).toBe(600_000);
 		expect(settings.get("agent.isolation.mode")).toBe("rcopy");
 		expect(settings.get("agent.isolation.merge")).toBe("branch");
 		expect(settings.get("agent.isolation.commits")).toBe("ai");
@@ -495,12 +487,10 @@ describe("agent settings migration", () => {
 		writeConfig({
 			subagent: {
 				maxConcurrency: 4,
-				prune: { afterMs: 100_000 },
 				model: "openai/gpt-5",
 			},
 			agent: {
 				maxConcurrency: 16,
-				prune: { afterMs: 500_000 },
 				model: "anthropic/claude-opus-4-5",
 			},
 		});
@@ -508,7 +498,6 @@ describe("agent settings migration", () => {
 		const settings = await load();
 
 		expect(settings.get("agent.maxConcurrency")).toBe(16);
-		expect(settings.get("agent.prune.afterMs")).toBe(500_000);
 		expect(settings.get("agent.model")).toBe("anthropic/claude-opus-4-5");
 	});
 
@@ -557,25 +546,31 @@ describe("agent settings migration", () => {
 	});
 
 	/**
-	 * The older `autoClose` stage was renamed to `prune`. A legacy `subagent.autoClose.parkedMs`
-	 * folds first onto `agent.autoClose.parkedMs` and then migrates onto `agent.prune.afterMs`.
+	 * Spawned agents are never dropped from the roster any more, so the stage that dropped
+	 * them is retired: `agent.prune.*` and its older name `agent.autoClose.*` are deleted in
+	 * every spelling a config file can hold, and the rest of the section is kept.
 	 */
-	test("translates legacy subagent.autoClose keys through the fold onto agent.prune", async () => {
-		writeConfig({
-			subagent: {
-				autoClose: {
-					enabled: false,
-					parkedMs: 45_000,
-					waitingMs: 90_000,
-				},
-			},
-		});
+	test.each([
+		["nested agent.prune", { agent: { prune: { enabled: false, afterMs: 1, waitingAfterMs: 2 } } }],
+		["nested agent.autoClose", { agent: { autoClose: { enabled: false, parkedMs: 1, waitingMs: 2 } } }],
+		["nested subagent.prune", { subagent: { prune: { enabled: false, afterMs: 1, waitingAfterMs: 2 } } }],
+		["nested subagent.autoClose", { subagent: { autoClose: { enabled: false, parkedMs: 1, waitingMs: 2 } } }],
+		["flat agent.prune", { "agent.prune.enabled": false, "agent.prune.afterMs": 1, "agent.prune.waitingAfterMs": 2 }],
+		["flat agent.autoClose", { "agent.autoClose.enabled": false, "agent.autoClose.parkedMs": 1 }],
+		["flat subagent.autoClose", { "subagent.autoClose.enabled": false, "subagent.autoClose.waitingMs": 2 }],
+		["dotted inside subagent", { subagent: { "autoClose.parkedMs": 1, "prune.afterMs": 2 } }],
+	] as const)("deletes retired %s keys and keeps the rest of the section", async (_spelling, retired) => {
+		writeConfig({ ...retired, task: { maxConcurrency: 6 } });
 
 		const settings = await load();
+		expect(settings.get("agent.maxConcurrency")).toBe(6);
+		await settings.set("ask.notify" as never, "on" as never);
+		await settings.flush?.();
 
-		expect(settings.get("agent.prune.enabled")).toBe(false);
-		expect(settings.get("agent.prune.afterMs")).toBe(45_000);
-		expect(settings.get("agent.prune.waitingAfterMs")).toBe(90_000);
+		const rawOnDisk = fs.readFileSync(path.join(agentDir, "config.yml"), "utf8");
+		expect(rawOnDisk).not.toContain("prune");
+		expect(rawOnDisk).not.toContain("autoClose");
+		expect(rawOnDisk).not.toContain("parkedMs");
 	});
 
 	/**
@@ -599,15 +594,11 @@ describe("agent settings migration", () => {
 		const second = await load();
 
 		expect(first.get("agent.maxConcurrency")).toBe(8);
-		expect(first.get("agent.prune.afterMs")).toBe(60_000);
-		expect(first.get("agent.prune.waitingAfterMs")).toBe(120_000);
 		expect(first.get("tier.agent")).toBe("flex");
 		expect(first.get("advisor.agents")).toBe(false);
 		expect(first.get("argot.agents")).toBe("inherit");
 
 		expect(second.get("agent.maxConcurrency")).toBe(8);
-		expect(second.get("agent.prune.afterMs")).toBe(60_000);
-		expect(second.get("agent.prune.waitingAfterMs")).toBe(120_000);
 		expect(second.get("tier.agent")).toBe("flex");
 		expect(second.get("advisor.agents")).toBe(false);
 		expect(second.get("argot.agents")).toBe("inherit");
@@ -618,6 +609,8 @@ describe("agent settings migration", () => {
 		const rawOnDisk = fs.readFileSync(path.join(agentDir, "config.yml"), "utf8");
 		expect(rawOnDisk).not.toContain("subagent");
 		expect(rawOnDisk).not.toContain("subagents");
+		expect(rawOnDisk).not.toContain("prune");
+		expect(rawOnDisk).not.toContain("autoClose");
 
 		const onDisk = YAML.parse(rawOnDisk) as Record<string, unknown>;
 		expect(onDisk.subagent).toBeUndefined();
@@ -653,32 +646,6 @@ describe("agent settings migration", () => {
 			expect(settings.get("agent.batch")).toBe(false);
 			expect(settings.get("agent.enableLsp")).toBe(true);
 			expect(settings.get("agent.maxRuntimeMs")).toBe(45_000);
-		});
-
-		test("migrates flat subagent.autoClose and subagent.prune keys onto agent.prune", async () => {
-			writeConfig({
-				"subagent.autoClose.parkedMs": 45_000,
-				"subagent.autoClose.waitingMs": 90_000,
-				"subagent.autoClose.enabled": false,
-			});
-
-			const settings = await load();
-			expect(settings.get("agent.prune.afterMs")).toBe(45_000);
-			expect(settings.get("agent.prune.waitingAfterMs")).toBe(90_000);
-			expect(settings.get("agent.prune.enabled")).toBe(false);
-		});
-
-		test("migrates flat agent.autoClose keys onto agent.prune", async () => {
-			writeConfig({
-				"agent.autoClose.parkedMs": 55_000,
-				"agent.autoClose.waitingMs": 110_000,
-				"agent.autoClose.enabled": false,
-			});
-
-			const settings = await load();
-			expect(settings.get("agent.prune.afterMs")).toBe(55_000);
-			expect(settings.get("agent.prune.waitingAfterMs")).toBe(110_000);
-			expect(settings.get("agent.prune.enabled")).toBe(false);
 		});
 
 		test("migrates flat task.* keys (eager, maxConcurrency, agentIdleTtlMs, disabledAgents, maxRecursionDepth)", async () => {
@@ -792,7 +759,6 @@ describe("agent settings migration", () => {
 			});
 
 			const settings = await load();
-			expect(settings.get("agent.prune.afterMs")).toBe(45_000);
 			expect(settings.get("agent.isolation.mode")).toBe("rcopy");
 			expect(settings.get("agent.delegation")).toBe("required");
 
@@ -802,6 +768,7 @@ describe("agent settings migration", () => {
 			const rawOnDisk = fs.readFileSync(path.join(agentDir, "config.yml"), "utf8");
 			expect(rawOnDisk).not.toContain("subagent");
 			expect(rawOnDisk).not.toContain("task");
+			expect(rawOnDisk).not.toContain("autoClose");
 
 			const onDisk = YAML.parse(rawOnDisk) as Record<string, unknown>;
 			expect(onDisk.subagent).toBeUndefined();
@@ -851,9 +818,6 @@ describe("agent settings migration", () => {
 
 		/** Settings that never existed before this section, so there is nothing to carry. */
 		const NO_LEGACY_SOURCE: readonly string[] = [
-			"agent.prune.enabled",
-			"agent.prune.afterMs",
-			"agent.prune.waitingAfterMs",
 			"agent.modelByDepth",
 			"agent.thinkingLevel",
 			// New with the roster's shared switch: nothing older asked this question,

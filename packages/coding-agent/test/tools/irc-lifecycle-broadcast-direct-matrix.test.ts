@@ -5,7 +5,7 @@
  *
  * 1. Cross-scope IrcTool direct message refusal (multi-conversation separation).
  * 2. Concurrent unregistration of a target during broadcast fan-out.
- * 3. Parked agent revival failures (reviver throwing, delivery failing post-revival).
+ * 3. Asleep agent wake failures (reviver throwing, delivery failing after the wake).
  * 4. Waiter liveness abort races (immediate abort on non-running targets, and
  *    mid-wait aborts when the target or all running peers exit or transition to idle).
  *
@@ -179,16 +179,16 @@ describe("IRC Lifecycle and Concurrency Boundaries", () => {
 		});
 	});
 
-	describe("Parked revival failure modes", () => {
-		it("reports failed receipt when reviver throws an exception and leaves target parked", async () => {
+	describe("Asleep agent wake failure modes", () => {
+		it("reports failed receipt when reviver throws an exception and leaves target asleep", async () => {
 			registry.register({
-				id: "Parked-Faulty",
+				id: "Asleep-Faulty",
 				displayName: "faulty",
 				kind: "sub",
 				session: null,
-				status: "parked",
+				status: "asleep",
 			});
-			lifecycle.adopt("Parked-Faulty", {
+			lifecycle.adopt("Asleep-Faulty", {
 				idleTtlMs: 0,
 				revive: async () => {
 					throw new Error("Corrupt session transcript file");
@@ -196,36 +196,36 @@ describe("IRC Lifecycle and Concurrency Boundaries", () => {
 			});
 
 			const tool = createTool(registry, "Main");
-			const result = await tool.execute("call-revive", { op: "send", to: "Parked-Faulty", message: "wake" });
+			const result = await tool.execute("call-wake", { op: "send", to: "Asleep-Faulty", message: "wake" });
 
 			expect(result.isError).toBe(true);
 			expect(result.details?.receipts?.[0]?.outcome).toBe("failed");
 			expect(result.details?.receipts?.[0]?.error).toContain("Corrupt session transcript file");
-			expect(registry.get("Parked-Faulty")?.status).toBe("parked");
+			expect(registry.get("Asleep-Faulty")?.status).toBe("asleep");
 		});
 
-		it("reports failed receipt and buffers mailbox mail when post-revival delivery throws", async () => {
+		it("reports failed receipt and buffers mailbox mail when delivery after the wake throws", async () => {
 			const mock = createMockSession("woken");
-			mock.setError(new Error("Socket closed immediately after revival"));
+			mock.setError(new Error("Socket closed immediately after the wake"));
 
-			registry.register({ id: "Parked-Drop", displayName: "drop", kind: "sub", session: null, status: "parked" });
-			lifecycle.adopt("Parked-Drop", {
+			registry.register({ id: "Asleep-Drop", displayName: "drop", kind: "sub", session: null, status: "asleep" });
+			lifecycle.adopt("Asleep-Drop", {
 				idleTtlMs: 0,
 				revive: async () => mock.session,
 			});
 
 			const tool = createTool(registry, "Main");
-			const result = await tool.execute("call-revive", {
+			const result = await tool.execute("call-wake", {
 				op: "send",
-				to: "Parked-Drop",
+				to: "Asleep-Drop",
 				message: "wake and execute",
 			});
 
 			expect(result.isError).toBe(true);
 			expect(result.details?.receipts?.[0]?.outcome).toBe("failed");
-			expect(result.details?.receipts?.[0]?.error).toContain("Socket closed immediately after revival");
-			expect(bus.unreadCount("Parked-Drop")).toBe(1);
-			expect(bus.inbox("Parked-Drop").map(m => m.body)).toEqual(["wake and execute"]);
+			expect(result.details?.receipts?.[0]?.error).toContain("Socket closed immediately after the wake");
+			expect(bus.unreadCount("Asleep-Drop")).toBe(1);
+			expect(bus.inbox("Asleep-Drop").map(m => m.body)).toEqual(["wake and execute"]);
 		});
 	});
 
@@ -295,7 +295,7 @@ describe("IRC Lifecycle and Concurrency Boundaries", () => {
 
 			// Transition both running workers away
 			registry.setStatus("Worker-1", "idle");
-			registry.setStatus("Worker-2", "parked");
+			registry.setStatus("Worker-2", "asleep");
 
 			const result = await waitPromise;
 			expect(result.isError).toBe(true);

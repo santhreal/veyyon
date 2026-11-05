@@ -7,6 +7,7 @@
 ### Breaking Changes
 
 - `summarizeCode()` returns a `Promise` and parses on libuv's thread pool instead of on the calling thread, where an 18,000-line TypeScript source held the event loop 68 ms.
+- Bumped `COLLAB_PROTO` to `5`: `AgentSnapshot.status` is `"running" | "idle" | "asleep"`, `"parked"` and `"aborted"` are removed, and an asleep agent wakes when messaged. Peers speaking proto v4 or below are rejected with the protocol-mismatch error.
 
 ### Added
 
@@ -27,6 +28,11 @@
 
 ### Changed
 
+- Spawned agents have three states, running, idle and asleep: an idle agent falls asleep after 5 minutes (`agent.idleTtlMs`, "Sleep Idle Agents After") and frees its session, and any agent with a transcript, including a stopped, failed or killed one, wakes when messaged for the rest of the session instead of being pruned or left unrevivable.
+- `job cancel` on an agent and `x` in the agent dashboard stop the agent and everything it spawned and put them to sleep, so a stopped agent wakes when messaged instead of being terminated.
+- The `irc` roster lists the 10 most recently active asleep agents and a count of older ones, which still wake by id, and a blocking `irc` send to a peer that falls asleep before replying ends at once instead of waiting for its timeout.
+- `agent.softRequestBudget` defaults to Unlimited instead of 200 requests, offers 200, 500, 1000 and 2000, and the bundled scout and sonic agents no longer carry a lower built-in limit.
+- Collab hosts and guests speak protocol 5, which reports closed agents as `asleep`; a peer on protocol 4 is rejected with the protocol-mismatch error.
 - A text search result keeps only the card rows its card can draw and a count of the matches past them, so a 30-turn session with broad searches writes 4.1 MB to its session file instead of 7.2 MB and 21 MB to disk instead of 31 MB, with the card drawn as before.
 - A session file records a text search's kept card rows as a length of the rows its result redraws, so a resumed card draws the rows it was written with whatever the card's row limits become, and the search codec no longer loads the card limits at launch.
 - A live tool or assistant block's rows enter terminal scrollback once, when final, instead of as copies taken while they scroll off mid-run, so a 20-turn session with parallel tool calls writes 1.0 MB to the terminal instead of 4.1 MB with no whole-transcript replays, and a running tool's rows above the screen reach scrollback when it finishes.
@@ -166,6 +172,7 @@
 - Both Ollama providers read capability names case-insensitively, accept a capability map as well as a list, and treat `image` as `vision`.
 - The local Ollama provider and its URL helpers moved from `provider-models/openai-compat` to `provider-models/ollama`; import `ollamaModelManagerOptions`, `normalizeOllamaBaseUrl` and `toOllamaNativeBaseUrl` from there or from `@veyyon/catalog/provider-models`.
 - The guest holds sends back while its socket has 64 KiB or more queued and drains them below 32 KiB, as the CLI does, by binding `RelayClient` from `@veyyon/wire/relay-client` instead of its own copy of the relay client.
+- The guest speaks collab protocol 5 and shows a closed agent as `asleep` with a wake action instead of `parked` or `aborted` with a revive action; a host on protocol 4 rejects it with the protocol-mismatch error.
 - `check:types` covers `bench/` and `scripts/`, and the recovery session-chain bench writes `SWAP` hunks, so it runs again; no user-facing change.
 - The agent storage retry loop and owned-resource disposal coerce a thrown value with `toError` from `@veyyon/utils/type-guards` instead of inline copies; no user-facing change.
 - `emptyUsageStatistics()` is defined in `session/session-entries.ts` beside `UsageStatistics` instead of in `session/session-entry-index.ts`, so a caller reads it without evaluating the session context; no user-facing change.
@@ -181,6 +188,7 @@
 - The overall, per-model and per-folder totals read from one aggregate query, and the user-message table schema is written once for creation and for the rebuild of a stale table; no user-facing change.
 - The request, model, model-performance, cost and tool-call time series read through one bucketed query; no user-facing change.
 - `resultTextOf` joins a result's text blocks through `contentText` from `@veyyon/utils/content-text`; rendered output is unchanged.
+- The `irc` roster card sorts and colours `asleep` peers where it sorted and coloured `parked` ones.
 - `TUI` commits only rows above the live-region boundary to native scrollback, holding a live row that scrolls above the window off-screen until the boundary passes it, and reports each root child's rows above the window through the new `NativeScrollbackDepartedRows` hook.
 - No user-visible change: the native-scrollback commit boundary is computed with `clampLow` from `@veyyon/utils/math`.
 - A row rewrite stops sending the spaces after the row's last drawn cell unless an attribute that draws on a blank, such as a background or an underline, is open over them.
@@ -211,6 +219,7 @@
 
 ### Removed
 
+- The `agent.prune.enabled`, `agent.prune.afterMs` and `agent.prune.waitingAfterMs` settings are removed with the agent pruning they controlled; a config that sets them loads with the keys dropped.
 - `AgentSession.markMovedFromEmptySessionFile` and the dispose step that read it are removed; nothing called the method, so the step never ran; no user-facing change.
 - The terminal's `emitCustomToolSessionEvent` and `showToolError` are removed; nothing called them; no user-facing change.
 - The `ssr`, `expandMacro`, `runnables` and `relatedTests` LSP server capabilities are removed from the built-in rust-analyzer entry and the documentation; no code read them, and a config that still sets them loads unchanged.

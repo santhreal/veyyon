@@ -495,7 +495,7 @@ class SessionStartup {
 
 	/** Release what no session took over. */
 	async #releaseUnstarted(): Promise<void> {
-		if (this.#registered) this.#unregisterUnlessParked();
+		if (this.#registered) this.#unregisterUnlessAsleep();
 		const jobs = this.#asyncJobManager;
 		if (jobs) {
 			if (AsyncJobManager.instance() === jobs) AsyncJobManager.setInstance(undefined);
@@ -514,14 +514,14 @@ class SessionStartup {
 	}
 
 	/**
-	 * Forget the agent ref on teardown, unless the agent is being parked or already is. Parking disposes
-	 * the session but keeps the ref addressable (history://, revive); only process teardown or an
-	 * explicit kill unregisters.
+	 * Forget the agent ref on teardown, unless the agent is falling asleep or already is. Sleeping
+	 * disposes the session but keeps the ref addressable (history://, wake); only the end of its
+	 * conversation or process teardown unregisters.
 	 */
-	#unregisterUnlessParked(): void {
+	#unregisterUnlessAsleep(): void {
 		const id = this.#identity.id;
-		if (this.#agentRegistry.get(id)?.status === "parked") return;
-		if (AgentLifecycleManager.global().isParking(id)) return;
+		if (this.#agentRegistry.get(id)?.status === "asleep") return;
+		if (AgentLifecycleManager.global().isFallingAsleep(id)) return;
 		this.#agentRegistry.unregister(id);
 	}
 
@@ -1508,7 +1508,7 @@ class SessionStartup {
 			await this.#secretRuntime.flushAuditLog();
 		} finally {
 			this.#detachNoticeSinks();
-			this.#unregisterUnlessParked();
+			this.#unregisterUnlessAsleep();
 			this.#credentialDisabled.dispose();
 		}
 	}

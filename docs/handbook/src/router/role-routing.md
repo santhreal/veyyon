@@ -21,7 +21,7 @@ Veyyon is provider-agnostic: no policy hard-codes a provider.
 - **Addressed inter-agent messaging** via the `irc` tool (`packages/coding-agent/src/tools/agent/irc.ts`,
   `packages/coding-agent/src/task/irc-bus.ts`): `send`/`wait`/`inbox`/`list` ops over a process-global bus.
   `send` is fire-and-forget with delivery receipts; the bus wakes an idle recipient with a real turn,
-  revives a parked one, or injects a non-interrupting aside into a busy one, the shipped analogue of
+  wakes an asleep one from its transcript, or injects a non-interrupting aside into a busy one, the shipped analogue of
   wake-now-vs-defer message routing. `wait` (or `send await:true`) observes the recipient's reply as a
   real turn. Controlled by `isIrcEnabled`: available to every agent and to a top-level session that can
   still spawn agents.

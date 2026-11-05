@@ -506,7 +506,7 @@ describe("runtime replacement", () => {
 				displayName: "Lifecycle Revived",
 				kind: "sub",
 				parentId: "Main",
-				status: "parked",
+				status: "asleep",
 				session: null,
 				sessionFile: sessionFile!,
 				createdAt: Date.now(),

@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- Bumped `COLLAB_PROTO` to `5`: `AgentSnapshot.status` is `"running" | "idle" | "asleep"`, `"parked"` and `"aborted"` are removed, and an asleep agent wakes when messaged. Peers speaking proto v4 or below are rejected with the protocol-mismatch error.
+
 ### Added
 
 - `@veyyon/wire/relay-client` exports `RelayClient`, the collab relay client (send ordering, send backpressure, reconnect, fatal close codes) that the CLI host, the CLI guest and the browser guest bind with their own frame types, backoff schedule and log sink.

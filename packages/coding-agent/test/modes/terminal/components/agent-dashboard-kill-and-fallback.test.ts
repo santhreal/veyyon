@@ -1,6 +1,6 @@
 /**
- * The two Live-view actions that are not "hand the main view over": confirmed
- * agent termination, and the read-only transcript fallback for agents the card
+ * The two Live-view actions that are not "hand the main view over": a confirmed
+ * stop, and the read-only transcript fallback for agents the card
  * cannot hand over at all.
  *
  * WHY THE FALLBACK EXISTS. Enter normally focuses the agent's live session so
@@ -11,14 +11,14 @@
  * Both open the read-only viewer instead, which is a narrower surface honestly
  * labelled rather than a focus call that would quietly do nothing.
  *
- * WHY KILL ORDERS ITS STEPS. A running agent is aborted BEFORE it is released:
- * releasing a session mid-turn leaves the provider request in flight with
- * nothing left to receive the response.
+ * WHY STOP ORDERS ITS STEPS. A running agent's turn is aborted BEFORE it is put
+ * to sleep: closing a session mid-turn leaves the provider request in flight
+ * with nothing left to receive the response.
  *
- * WHY PARKED AGENTS ARE HERE. The registry only knows agents this PROCESS
+ * WHY ASLEEP AGENTS ARE HERE. The registry only knows agents this PROCESS
  * started. Restart, or come back tomorrow, and every agent is absent from it
  * while its transcript is still on disk, so the card seeds them from the session
- * tree and shows them as parked instead of pretending the session never had any.
+ * tree and shows them as asleep instead of pretending the session never had any.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as path from "node:path";
@@ -59,7 +59,7 @@ interface InputTarget {
 }
 
 /** Interactive overlay host that lets execution tests confirm the safety guard. */
-function terminationConfirmationHarness(): { ui: TUI; confirm: () => void } {
+function stopConfirmationHarness(): { ui: TUI; confirm: () => void } {
 	let overlay: InputTarget | undefined;
 	const ui = {
 		showOverlay: (component: InputTarget) => {
@@ -73,7 +73,7 @@ function terminationConfirmationHarness(): { ui: TUI; confirm: () => void } {
 	return {
 		ui,
 		confirm: () => {
-			if (!overlay) throw new Error("Expected the termination confirmation overlay to be mounted");
+			if (!overlay) throw new Error("Expected the stop confirmation overlay to be mounted");
 			overlay.handleInput("\r");
 		},
 	};
@@ -91,9 +91,9 @@ function abortableSession(aborts: string[]): AgentSession {
 
 /**
  * A lifecycle manager double that records what the dashboard asked it to do,
- * plus a promise that settles on the first termination.
+ * plus a promise that settles on the first stop.
  *
- * `terminate` is the whole surface the dashboard uses: the abort-then-release
+ * `stop` is the whole surface the dashboard uses: the abort-then-sleep
  * ordering lives inside the real manager (and is pinned against it in
  * test/tools/job-cancels-an-agent-with-no-job.test.ts), because the `x` key and
  * `job cancel` are the same operation reached two ways and a second copy of
@@ -105,37 +105,33 @@ function abortableSession(aborts: string[]): AgentSession {
  * fixed `await Bun.sleep(0)` passes or fails on how many `await`s the
  * implementation happens to contain today.
  */
-function recordingLifecycle(released: string[]): {
+function recordingLifecycle(stopped: string[]): {
 	lifecycle: () => AgentLifecycleManager;
-	firstRelease: Promise<void>;
+	firstStop: Promise<void>;
 	reasons: string[];
 } {
 	const first = Promise.withResolvers<void>();
 	const reasons: string[] = [];
 	const manager = {
-		terminate: async (id: string, reason: string) => {
-			released.push(id);
+		stop: async (id: string, reason: string) => {
+			stopped.push(id);
 			reasons.push(reason);
 			first.resolve();
 		},
-		release: async (id: string) => {
-			released.push(id);
-			first.resolve();
-		},
 	} as unknown as AgentLifecycleManager;
-	return { lifecycle: () => manager, firstRelease: first.promise, reasons };
+	return { lifecycle: () => manager, firstStop: first.promise, reasons };
 }
 
-describe("Confirmed agent termination", () => {
+describe("Confirmed agent stop", () => {
 	/**
-	 * The dashboard's own contract: the confirmed `x` terminates the SELECTED
-	 * agent, and it says the kill came from the operator, which is the reason
-	 * text that ends up in the agent's transcript. Abort-before-release is the
-	 * lifecycle's contract and is pinned against the real manager.
+	 * The dashboard's own contract: the confirmed `x` stops the SELECTED agent,
+	 * and it says the stop came from the operator, which is the reason text that
+	 * ends up in the agent's transcript. Abort-before-sleep is the lifecycle's
+	 * contract and is pinned against the real manager.
 	 */
-	test("terminates the selected running agent as a user interrupt", async () => {
+	test("stops the selected running agent as a user interrupt", async () => {
 		const aborts: string[] = [];
-		const released: string[] = [];
+		const stopped: string[] = [];
 		AgentRegistry.global().register({
 			id: "Worker",
 			displayName: "reviewer",
@@ -145,45 +141,47 @@ describe("Confirmed agent termination", () => {
 			sessionFile: null,
 			status: "running",
 		});
-		const { lifecycle, firstRelease, reasons } = recordingLifecycle(released);
-		const confirmation = terminationConfirmationHarness();
+		const { lifecycle, firstStop, reasons } = recordingLifecycle(stopped);
+		const confirmation = stopConfirmationHarness();
 		const dashboard = new AgentDashboard({ terminalHeight: 40, lifecycle, ui: confirmation.ui });
 
 		dashboard.handleInput("x");
 		confirmation.confirm();
-		await firstRelease;
+		await firstStop;
 
-		expect(released).toEqual(["Worker"]);
+		expect(stopped).toEqual(["Worker"]);
 		expect(reasons).toEqual(["Interrupted by user"]);
+		// The dashboard leaves the abort to the lifecycle, so the session saw none from it.
+		expect(aborts).toEqual([]);
 		dashboard.dispose();
 	});
 
 	/**
-	 * A parked agent has no session to abort, so it is released directly. Calling
-	 * `abort` on a null session would throw inside a fire-and-forget handler and
-	 * the row would simply never go away, with no error anywhere the operator can
-	 * see it.
+	 * An asleep agent has no session to abort, but it may still have running
+	 * children, so the stop goes to the lifecycle, which stops the subtree. Calling
+	 * `abort` on a null session would throw inside a fire-and-forget handler, with
+	 * no error anywhere the operator can see it.
 	 */
-	test("releases a parked agent without trying to abort a session it does not have", async () => {
-		const released: string[] = [];
+	test("stops an asleep agent without trying to abort a session it does not have", async () => {
+		const stopped: string[] = [];
 		AgentRegistry.global().register({
-			id: "Parked",
+			id: "Sleeper",
 			displayName: "scout",
 			kind: "sub",
 			parentId: MAIN_AGENT_ID,
 			session: null,
 			sessionFile: null,
-			status: "parked",
+			status: "asleep",
 		});
-		const { lifecycle, firstRelease } = recordingLifecycle(released);
-		const confirmation = terminationConfirmationHarness();
+		const { lifecycle, firstStop } = recordingLifecycle(stopped);
+		const confirmation = stopConfirmationHarness();
 		const dashboard = new AgentDashboard({ terminalHeight: 40, lifecycle, ui: confirmation.ui });
 
 		dashboard.handleInput("x");
 		confirmation.confirm();
-		await firstRelease;
+		await firstStop;
 
-		expect(released).toEqual(["Parked"]);
+		expect(stopped).toEqual(["Sleeper"]);
 		dashboard.dispose();
 	});
 
@@ -193,7 +191,7 @@ describe("Confirmed agent termination", () => {
 	 * operator that the key is broken.
 	 */
 	test("refuses to stop an advisor and states why", () => {
-		const released: string[] = [];
+		const stopped: string[] = [];
 		AgentRegistry.global().register({
 			id: "Main/advisor",
 			displayName: "advisor",
@@ -201,25 +199,25 @@ describe("Confirmed agent termination", () => {
 			parentId: MAIN_AGENT_ID,
 			session: null,
 			sessionFile: "/tmp/does-not-matter.jsonl",
-			status: "parked",
+			status: "asleep",
 		});
-		const dashboard = new AgentDashboard({ terminalHeight: 40, lifecycle: recordingLifecycle(released).lifecycle });
+		const dashboard = new AgentDashboard({ terminalHeight: 40, lifecycle: recordingLifecycle(stopped).lifecycle });
 
 		dashboard.handleInput("x");
 
 		expect(frameOf(dashboard)).toContain("read-only advisor transcript");
-		expect(released).toEqual([]);
+		expect(stopped).toEqual([]);
 		dashboard.dispose();
 	});
 
 	/** `x` on an empty roster is a no-op, not a crash reading `undefined.kind`. */
 	test("does nothing when there is no agent under the cursor", () => {
-		const released: string[] = [];
-		const dashboard = new AgentDashboard({ terminalHeight: 40, lifecycle: recordingLifecycle(released).lifecycle });
+		const stopped: string[] = [];
+		const dashboard = new AgentDashboard({ terminalHeight: 40, lifecycle: recordingLifecycle(stopped).lifecycle });
 
 		dashboard.handleInput("x");
 
-		expect(released).toEqual([]);
+		expect(stopped).toEqual([]);
 		dashboard.dispose();
 	});
 
@@ -229,7 +227,7 @@ describe("Confirmed agent termination", () => {
 	 * mirrors the host's.
 	 */
 	test("routes a guest's kill to the host rather than the local lifecycle", () => {
-		const released: string[] = [];
+		const stopped: string[] = [];
 		const killed: string[] = [];
 		const registry = new AgentRegistry();
 		registry.register({
@@ -247,12 +245,12 @@ describe("Confirmed agent termination", () => {
 			revive: () => {},
 			readTranscript: async () => null,
 		};
-		const confirmation = terminationConfirmationHarness();
+		const confirmation = stopConfirmationHarness();
 		const dashboard = new AgentDashboard({
 			terminalHeight: 40,
 			registry,
 			remote,
-			lifecycle: recordingLifecycle(released).lifecycle,
+			lifecycle: recordingLifecycle(stopped).lifecycle,
 			ui: confirmation.ui,
 		});
 
@@ -260,7 +258,7 @@ describe("Confirmed agent termination", () => {
 		confirmation.confirm();
 
 		expect(killed).toEqual(["HostWorker"]);
-		expect(released).toEqual([]);
+		expect(stopped).toEqual([]);
 		dashboard.dispose();
 	});
 });
@@ -280,7 +278,7 @@ describe("The read-only transcript fallback", () => {
 			parentId: MAIN_AGENT_ID,
 			session: null,
 			sessionFile: "/tmp/does-not-matter.jsonl",
-			status: "parked",
+			status: "asleep",
 		});
 		const dashboard = new AgentDashboard({
 			terminalHeight: 40,
@@ -344,7 +342,7 @@ describe("Agents persisted by earlier runs", () => {
 	 * this scan the card would report "Nothing running" for a session with a dozen
 	 * agent transcripts sitting next to it on disk.
 	 */
-	test("registers a previous run's agents as parked and shows them", async () => {
+	test("registers a previous run's agents as asleep and shows them", async () => {
 		using tempDir = TempDir.createSync("@veyyon-dashboard-persisted-");
 		const sessionFile = path.join(tempDir.path(), "main.jsonl");
 		const workerSessionFile = path.join(tempDir.path(), "main", "Worker.jsonl");
@@ -357,9 +355,9 @@ describe("Agents persisted by earlier runs", () => {
 
 		const shown = frameOf(dashboard);
 		expect(shown).toContain("Kestrel");
-		expect(shown).toContain("parked");
+		expect(shown).toContain("asleep");
 		expect(registry.get("Worker")?.sessionFile).toBe(workerSessionFile);
-		expect(registry.get("Worker")?.status).toBe("parked");
+		expect(registry.get("Worker")?.status).toBe("asleep");
 		dashboard.dispose();
 	});
 
@@ -422,7 +420,7 @@ describe("Agents persisted by earlier runs", () => {
 
 describe("What a failure says to the operator", () => {
 	/**
-	 * A failed kill names the agent and the action. It used to print the
+	 * A failed stop names the agent and the action. It used to print the
 	 * exception's own words: stopping an agent whose session could not abort put
 	 * "ref.session.abort is not a function. (In 'ref.session.abort({ reason:
 	 * USER_INTERRUPT_LABEL })', 'ref.session.abort' is undefined)" on the notice
@@ -441,7 +439,7 @@ describe("What a failure says to the operator", () => {
 			} as unknown as AgentSession,
 			status: "running",
 		});
-		const confirmation = terminationConfirmationHarness();
+		const confirmation = stopConfirmationHarness();
 		const dashboard = new AgentDashboard({ terminalHeight: 40, ui: confirmation.ui });
 		const surfaced = Promise.withResolvers<void>();
 		dashboard.onRequestRender = () => {
@@ -454,7 +452,7 @@ describe("What a failure says to the operator", () => {
 		await surfaced.promise;
 
 		const shown = stripVTControlCharacters(dashboard.render(120).join("\n"));
-		expect(shown).toContain("Could not terminate Kestrel");
+		expect(shown).toContain("Could not stop Kestrel");
 		expect(shown).toContain("the session is already gone");
 		dashboard.dispose();
 	});

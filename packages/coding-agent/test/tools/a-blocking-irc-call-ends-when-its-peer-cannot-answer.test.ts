@@ -3,7 +3,7 @@
  * `irc` has two blocking calls, and they disagreed about who counts as alive.
  * `op: "wait"` passed a `liveness` watcher to `IrcBus.wait`, so it ended the
  * moment its peer stopped running. `op: "send"` with `await: true` omitted it
- * entirely, so a sender whose recipient was killed, crashed, or terminated sat
+ * entirely, so a sender whose recipient was killed, crashed, or stopped sat
  * for the full `irc.timeoutMs` (120s by default) — or forever with
  * `timeoutMs: 0` — waiting for a reply that could never arrive.
  *
@@ -13,12 +13,13 @@
  *
  * The two paths need different predicates, and getting that wrong is the
  * regression this suite is most concerned with. A bare `wait` wakes nobody, so
- * its peer must be actively `running`. A `send` wakes an idle or parked
- * recipient by delivering to it, and `listVisibleTo` omits a parked ref
+ * its peer must be actively `running`. A `send` wakes an idle or asleep
+ * recipient by delivering to it, and `listVisibleTo` omits an asleep ref
  * altogether, so reusing the `running` predicate there would abort every
  * send-await to an idle peer — the ordinary case — the instant it was armed.
- * `revivable` therefore asks only whether the peer still exists and was not
- * terminated.
+ * `wakeable` therefore asks whether the peer still exists and has not fallen
+ * asleep since the wait was armed: a stop, a failure and an idle timeout all end
+ * in `asleep`, and an asleep agent answers nothing until it is messaged again.
  *
  * Each death assertion pins the REASON the call ended, not merely that it
  * ended. The peer is killed while the call is armed, and a short timeout runs
@@ -31,9 +32,9 @@
  *
  * What this does NOT catch:
  * - A recipient that receives the message, finishes its turn without replying,
- *   and goes `idle`. It stays revivable and the wait runs to its timeout. That
- *   is deliberate: another agent or the operator may still wake it, and the
- *   timeout already reports "they may answer later".
+ *   and goes `idle`. It is still live and the wait runs to its timeout or to the
+ *   moment the idle agent falls asleep. That is deliberate: another agent may
+ *   still prompt it, and the timeout already reports "they may answer later".
  * - Delivery-transport failures inside a live peer's session.
  */
 
@@ -91,7 +92,7 @@ describe("a blocking irc call ends when its peer cannot answer", () => {
 	});
 
 	describe("both blocking paths end rather than run to their timeout", () => {
-		it("ends a send-await when the recipient is terminated", async () => {
+		it("ends a send-await when the recipient is stopped mid-turn", async () => {
 			registry.register({
 				id: "Worker",
 				displayName: "worker",
@@ -110,9 +111,39 @@ describe("a blocking irc call ends when its peer cannot answer", () => {
 				await: true,
 				timeoutMs: 25,
 			});
-			registry.setStatus("Worker", "aborted");
+			registry.setStatus("Worker", "asleep");
 
-			await expect(pending).rejects.toThrow(/agent "Worker" has exited and cannot reply/);
+			await expect(pending).rejects.toThrow(
+				'IRC wait aborted: agent "Worker" fell asleep before replying. Message it again to wake it.',
+			);
+		});
+
+		/**
+		 * A stop of a follow-up turn reaches `asleep` through `idle`: the abort
+		 * ends the turn, and the stop then puts the idle agent to sleep. Both
+		 * edges have to end the wait, not only the direct one.
+		 */
+		it("ends a send-await when the recipient reaches asleep through idle", async () => {
+			registry.register({
+				id: "Worker",
+				displayName: "worker",
+				kind: "sub",
+				session: makePeer(),
+				status: "running",
+			});
+			const tool = new IrcTool(makeToolSession(registry, "Main"));
+
+			const pending = tool.execute("call-1", {
+				op: "send",
+				to: "Worker",
+				message: "are you there",
+				await: true,
+				timeoutMs: 25,
+			});
+			registry.setStatus("Worker", "idle");
+			registry.setStatus("Worker", "asleep");
+
+			await expect(pending).rejects.toThrow(/agent "Worker" fell asleep before replying/);
 		});
 
 		it("ends a send-await when the recipient leaves the registry", async () => {
@@ -148,7 +179,7 @@ describe("a blocking irc call ends when its peer cannot answer", () => {
 			const tool = new IrcTool(makeToolSession(registry, "Main"));
 
 			const pending = tool.execute("call-1", { op: "wait", from: "Worker", timeoutMs: 25 });
-			registry.setStatus("Worker", "aborted");
+			registry.setStatus("Worker", "asleep");
 
 			const result = await pending;
 			expect(result.isError).toBe(true);
@@ -212,7 +243,7 @@ describe("a blocking irc call ends when its peer cannot answer", () => {
 		});
 	});
 
-	describe("the revivable predicate across every agent status", () => {
+	describe("the wakeable predicate across every agent status", () => {
 		/**
 		 * Sweeps the status union from source at run time, so a new member turns
 		 * this red until someone records a decision for it.
@@ -222,11 +253,11 @@ describe("a blocking irc call ends when its peer cannot answer", () => {
 				id: "Worker",
 				displayName: "worker",
 				kind: "sub",
-				session: status === "parked" ? null : makePeer(),
+				session: status === "asleep" ? null : makePeer(),
 				status,
 			});
 			const waiting = bus.wait("Main", { from: "Worker" }, 0, undefined, {
-				liveness: { registry, senderId: "Main", mode: "revivable" },
+				liveness: { registry, senderId: "Main", mode: "wakeable" },
 			});
 			// If the watcher aborted while arming, the waiter is already gone and
 			// this message lands in the mailbox instead of satisfying the wait.
@@ -237,7 +268,7 @@ describe("a blocking irc call ends when its peer cannot answer", () => {
 			);
 		}
 
-		it("treats only a terminated peer as unable to reply", async () => {
+		it("arms against a peer in every status, since the delivery wakes it", async () => {
 			const aborting: AgentStatus[] = [];
 			const surviving: AgentStatus[] = [];
 			for (const status of AGENT_STATUSES) {
@@ -256,8 +287,8 @@ describe("a blocking irc call ends when its peer cannot answer", () => {
 				});
 			}
 
-			expect(aborting).toEqual(["aborted"]);
-			expect(surviving).toEqual(["running", "idle", "parked"]);
+			expect(aborting).toEqual([]);
+			expect(surviving).toEqual([...AGENT_STATUSES]);
 		});
 	});
 });

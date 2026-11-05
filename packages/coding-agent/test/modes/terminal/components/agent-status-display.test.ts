@@ -41,8 +41,7 @@ describe("agent status display (ONE-PLACE)", () => {
 		expect(agentStatusColor("blocked")).toBe("warning");
 		expect(agentStatusColor("idle")).toBe("success");
 		expect(agentStatusColor("waiting")).toBe("link");
-		expect(agentStatusColor("parked")).toBe("muted");
-		expect(agentStatusColor("aborted")).toBe("error");
+		expect(agentStatusColor("asleep")).toBe("muted");
 	});
 
 	/**
@@ -55,7 +54,7 @@ describe("agent status display (ONE-PLACE)", () => {
 	 * as the reason it is stopped now.
 	 */
 	it("pins the exact source-derived display state set", () => {
-		const expected = ["aborted", "blocked", "idle", "parked", "running", "waiting"] satisfies AgentDisplayState[];
+		const expected = ["asleep", "blocked", "idle", "running", "waiting"] satisfies AgentDisplayState[];
 		expect([...AGENT_DISPLAY_STATES].sort()).toEqual(expected.sort());
 	});
 
@@ -66,21 +65,19 @@ describe("agent status display (ONE-PLACE)", () => {
 	 * Precedence hierarchy under test:
 	 * 1. `running` + `blockedOnApproval` -> `blocked` (open approval outranks busy)
 	 * 2. `running` without approval -> `running` (stale `waitingOnPeer` ignored)
-	 * 3. `aborted` -> `aborted` (terminal error beats open approval and peer wait)
-	 * 4. `idle` / `parked` + `waitingOnPeer` -> `waiting` (stopped on peer)
-	 * 5. `idle` / `parked` without peer wait -> `idle` / `parked` (stale approval ignored)
+	 * 3. `idle` / `asleep` + `waitingOnPeer` -> `waiting` (stopped on peer)
+	 * 4. `idle` / `asleep` without peer wait -> `idle` / `asleep` (stale approval ignored)
 	 */
 	it("derives blocked and waiting from the ref, with approval winning while running", () => {
 		expect(agentDisplayState({ status: "running" })).toBe("running");
 		expect(agentDisplayState({ status: "running", blockedOnApproval: true })).toBe("blocked");
-		expect(agentDisplayState({ status: "parked", waitingOnPeer: true })).toBe("waiting");
+		expect(agentDisplayState({ status: "asleep", waitingOnPeer: true })).toBe("waiting");
 		expect(agentDisplayState({ status: "idle", waitingOnPeer: true })).toBe("waiting");
-		expect(agentDisplayState({ status: "parked", waitingOnPeer: false })).toBe("parked");
+		expect(agentDisplayState({ status: "asleep", waitingOnPeer: false })).toBe("asleep");
 		expect(agentDisplayState({ status: "running", waitingOnPeer: true })).toBe("running");
-		expect(agentDisplayState({ status: "parked", waitingOnPeer: true, blockedOnApproval: true })).toBe("waiting");
-		expect(agentDisplayState({ status: "aborted", blockedOnApproval: true })).toBe("aborted");
+		expect(agentDisplayState({ status: "asleep", waitingOnPeer: true, blockedOnApproval: true })).toBe("waiting");
 		expect(agentDisplayState({ status: "idle", blockedOnApproval: true })).toBe("idle");
-		expect(agentDisplayState({ status: "parked", blockedOnApproval: true })).toBe("parked");
+		expect(agentDisplayState({ status: "asleep", blockedOnApproval: true })).toBe("asleep");
 	});
 
 	/**
@@ -103,21 +100,15 @@ describe("agent status display (ONE-PLACE)", () => {
 
 			// Case 3: waitingOnPeer = true
 			const waiting = agentDisplayState({ status, waitingOnPeer: true });
-			if (status === "idle" || status === "parked") {
-				expect(waiting).toBe("waiting");
+			if (status === "running") {
+				expect(waiting).toBe(status); // A running agent ignores a stale waitingOnPeer
 			} else {
-				expect(waiting).toBe(status); // Running and aborted ignore waitingOnPeer
+				expect(waiting).toBe("waiting");
 			}
 
 			// Case 4: both blockedOnApproval = true AND waitingOnPeer = true
 			const both = agentDisplayState({ status, blockedOnApproval: true, waitingOnPeer: true });
-			if (status === "running") {
-				expect(both).toBe("blocked");
-			} else if (status === "idle" || status === "parked") {
-				expect(both).toBe("waiting");
-			} else {
-				expect(both).toBe("aborted"); // Aborted ignores both
-			}
+			expect(both).toBe(status === "running" ? "blocked" : "waiting");
 		}
 	});
 

@@ -92,7 +92,7 @@ function makeViewer(): Harness {
 		parentId: "Main",
 		session: null,
 		sessionFile: file,
-		status: "parked",
+		status: "asleep",
 	});
 	const onClose = vi.fn();
 	const viewer = new AgentTranscriptViewer({

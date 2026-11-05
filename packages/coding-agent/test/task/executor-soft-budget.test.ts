@@ -26,8 +26,11 @@ import {
  *    partial report — not as an abort with no output.
  * 2. If the agent still refuses to yield (grace exhausted → hard abort), a
  *    kept-alive agent stays adopted (`idle`), so `irc` can message/resume it.
- * 3. Caller-signal aborts remain terminal, and the irc bus names the aborted
- *    agent precisely instead of claiming it is unknown.
+ * 3. A caller-signal abort is not terminal either: the agent falls asleep with
+ *    its session disposed, and a message goes to its transcript reviver rather
+ *    than to a refusal. The mock session writes no transcript, so the wake
+ *    itself fails here; `an-agent-that-stopped-can-always-be-woken.test.ts`
+ *    drives a wake that succeeds.
  *
  * The fake session comes from `test/helpers/agent-session.ts`, which is also what every other
  * `runSubprocess` suite drives, so a member the executor starts reading is stubbed once. The only
@@ -43,8 +46,7 @@ function createMockSession(onPrompt: Parameters<typeof createMockSessionHandle>[
 function mockCreateAgentSession(session: AgentSession) {
 	return vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
 }
-// Named "task": bundled scout/sonic budgets are built-in and override the
-// `task.softRequestBudget` setting, which these tests pin to a tiny value.
+// These tests pin `agent.softRequestBudget` to a tiny value; every agent reads that one setting.
 const baseAgent: AgentDefinition = {
 	name: "task",
 	description: "test",
@@ -205,7 +207,7 @@ describe("runSubprocess soft request budget", () => {
 		expect(handle.prompts[1]?.text).toMatch(/request budget/);
 	});
 
-	it("a caller-signal abort stays terminal and irc names the aborted agent precisely", async () => {
+	it("a caller-signal abort leaves the agent asleep, and a message tries to wake it", async () => {
 		const id = "CancelledScout";
 		const controller = new AbortController();
 		const handle = createMockSession(({ promptIndex, pushTurn }) => {
@@ -219,12 +221,16 @@ describe("runSubprocess soft request budget", () => {
 		const result = await runSubprocess({ ...baseOptions(id), signal: controller.signal });
 
 		expect(result.aborted).toBe(true);
-		expect(AgentRegistry.global().get(id)?.status).toBe("aborted");
+		expect(AgentRegistry.global().get(id)?.status).toBe("asleep");
 		expect(handle.disposeCalls()).toBeGreaterThanOrEqual(1);
 
 		const receipt = await new IrcBus().send({ from: "Main", to: id, body: "resume" });
-		expect(receipt.outcome).toBe("failed");
-		expect(receipt.error).toMatch(/hard-aborted/);
-		expect(receipt.error).toMatch(new RegExp(`history://${id}`));
+		// The reviver ran: a refusal would read "cannot be woken (its transcript or workspace is gone)".
+		expect(receipt).toEqual({
+			to: id,
+			outcome: "failed",
+			error: `Cannot revive ${id}: persisted session contract is missing`,
+		});
+		expect(AgentRegistry.global().get(id)?.status).toBe("asleep");
 	});
 });

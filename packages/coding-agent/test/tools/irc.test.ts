@@ -148,15 +148,9 @@ describe("IRC", () => {
 			expect(main.relayed[0]?.details).toEqual({ from: "0-A", to: "0-B", body: "sibling note" });
 		});
 
-		it("send to an unknown or aborted agent fails", async () => {
+		it("send to an unknown agent fails", async () => {
 			const unknown = await bus.send({ from: "0-Main", to: "0-Ghost", body: "hello?" });
 			expect(unknown.outcome).toBe("failed");
-
-			const sub = makeFakeSession();
-			registry.register({ id: "0-Dead", displayName: "task", kind: "sub", session: sub.session });
-			registry.setStatus("0-Dead", "aborted");
-			const aborted = await bus.send({ from: "0-Main", to: "0-Dead", body: "hello?" });
-			expect(aborted.outcome).toBe("failed");
 		});
 
 		it("send surfaces recipient delivery errors as failed", async () => {
@@ -168,25 +162,25 @@ describe("IRC", () => {
 			expect(bus.unreadCount("0-Sub")).toBe(1);
 		});
 
-		it("send revives a parked recipient through the lifecycle manager", async () => {
+		it("send wakes an asleep recipient through the lifecycle manager", async () => {
 			const sub = makeFakeSession();
 			sub.setOutcome("woken");
-			registry.register({ id: "0-Parked", displayName: "task", kind: "sub", session: null, status: "parked" });
-			AgentLifecycleManager.global().adopt("0-Parked", {
+			registry.register({ id: "0-Asleep", displayName: "task", kind: "sub", session: null, status: "asleep" });
+			AgentLifecycleManager.global().adopt("0-Asleep", {
 				idleTtlMs: 0,
 				revive: async () => sub.session,
 			});
 
-			const receipt = await bus.send({ from: "0-Main", to: "0-Parked", body: "wake up" });
+			const receipt = await bus.send({ from: "0-Main", to: "0-Asleep", body: "wake up" });
 			expect(receipt.outcome).toBe("revived");
 			expect(sub.delivered.map(msg => msg.body)).toEqual(["wake up"]);
-			expect(registry.get("0-Parked")?.status).toBe("idle");
+			expect(registry.get("0-Asleep")?.status).toBe("idle");
 		});
 
-		it("send fails cleanly when a parked recipient has no reviver", async () => {
-			registry.register({ id: "0-Parked", displayName: "task", kind: "sub", session: null, status: "parked" });
-			AgentLifecycleManager.global().adopt("0-Parked", { idleTtlMs: 0 });
-			const receipt = await bus.send({ from: "0-Main", to: "0-Parked", body: "wake up" });
+		it("send fails cleanly when an asleep recipient has no reviver", async () => {
+			registry.register({ id: "0-Asleep", displayName: "task", kind: "sub", session: null, status: "asleep" });
+			AgentLifecycleManager.global().adopt("0-Asleep", { idleTtlMs: 0 });
+			const receipt = await bus.send({ from: "0-Main", to: "0-Asleep", body: "wake up" });
 			expect(receipt.outcome).toBe("failed");
 			expect(receipt.error).toBeTruthy();
 		});
@@ -356,19 +350,19 @@ describe("IRC", () => {
 			expect(pending[pending.length - 1]?.body).toBe("msg-100");
 		});
 
-		it("send surfaces the reviver's error message when revival fails", async () => {
-			registry.register({ id: "0-Parked", displayName: "task", kind: "sub", session: null, status: "parked" });
-			AgentLifecycleManager.global().adopt("0-Parked", {
+		it("send surfaces the reviver's error message when the wake fails", async () => {
+			registry.register({ id: "0-Asleep", displayName: "task", kind: "sub", session: null, status: "asleep" });
+			AgentLifecycleManager.global().adopt("0-Asleep", {
 				idleTtlMs: 0,
 				revive: async () => {
 					throw new Error("revive exploded");
 				},
 			});
 
-			const receipt = await bus.send({ from: "0-Main", to: "0-Parked", body: "wake up" });
-			expect(receipt).toEqual({ to: "0-Parked", outcome: "failed", error: "revive exploded" });
-			// Failed revival never enqueues: the message is lost, not buffered.
-			expect(bus.unreadCount("0-Parked")).toBe(0);
+			const receipt = await bus.send({ from: "0-Main", to: "0-Asleep", body: "wake up" });
+			expect(receipt).toEqual({ to: "0-Asleep", outcome: "failed", error: "revive exploded" });
+			// A failed wake never enqueues: the message is lost, not buffered.
+			expect(bus.unreadCount("0-Asleep")).toBe(0);
 		});
 
 		it("wait with liveness aborts when the last running sender becomes idle after commitment", async () => {
@@ -471,7 +465,7 @@ describe("IRC", () => {
 			expect(IrcTool.createIf(session)).toBeNull();
 		});
 
-		it("op=list includes parked peers, unread counts, and parent ids", async () => {
+		it("op=list includes asleep peers, unread counts, and parent ids", async () => {
 			const sub = makeFakeSession();
 			registry.register({
 				id: "0-AuthLoader",
@@ -480,7 +474,7 @@ describe("IRC", () => {
 				parentId: "0-Main",
 				session: sub.session,
 			});
-			registry.register({ id: "0-Parked", displayName: "task", kind: "sub", session: null, status: "parked" });
+			registry.register({ id: "0-Asleep", displayName: "task", kind: "sub", session: null, status: "asleep" });
 			const main = makeFakeSession();
 			registry.register({ id: "0-Main", displayName: "main", kind: "main", session: main.session });
 			sub.setError(new Error("temporarily unavailable"));
@@ -491,10 +485,10 @@ describe("IRC", () => {
 			expect(result.details?.op).toBe("list");
 			expect(result.details?.peers).toMatchObject([
 				{ id: "0-AuthLoader", status: "running", parentId: "0-Main", unread: 1 },
-				{ id: "0-Parked", status: "parked", unread: 0 },
+				{ id: "0-Asleep", status: "asleep", unread: 0 },
 			]);
 			const text = result.content[0]?.type === "text" ? result.content[0].text : "";
-			expect(text).toContain("Parked agents are revived automatically");
+			expect(text).toContain("Asleep agents wake automatically when you message them by id.");
 		});
 
 		it("op=list hides advisor-kind refs from the peer roster", async () => {
@@ -505,7 +499,7 @@ describe("IRC", () => {
 				displayName: "advisor",
 				kind: "advisor",
 				session: null,
-				status: "parked",
+				status: "asleep",
 			});
 
 			const tool = new IrcTool(makeToolSession(registry, "0-Main"));
@@ -533,11 +527,11 @@ describe("IRC", () => {
 			const b = makeFakeSession();
 			b.setError(new Error("kaput"));
 			registry.register({ id: "0-B", displayName: "task", kind: "sub", session: b.session });
-			registry.register({ id: "0-Parked", displayName: "task", kind: "sub", session: null, status: "parked" });
+			registry.register({ id: "0-Asleep", displayName: "task", kind: "sub", session: null, status: "asleep" });
 
 			const tool = new IrcTool(makeToolSession(registry, "0-Main"));
 			const result = await tool.execute("call-1", { op: "send", to: "all", message: "anyone there?" });
-			// Broadcast skips parked agents; one failure does not block the other delivery.
+			// Broadcast skips asleep agents; one failure does not block the other delivery.
 			expect(result.details?.receipts).toEqual([
 				{ to: "0-A", outcome: "injected" },
 				{ to: "0-B", outcome: "failed", error: "kaput" },
@@ -686,7 +680,7 @@ describe("IRC", () => {
 		});
 
 		it("op=wait returns an error if the requested specific 'from' agent is not active", async () => {
-			registry.register({ id: "0-Sub", displayName: "sub", kind: "sub", session: null, status: "parked" });
+			registry.register({ id: "0-Sub", displayName: "sub", kind: "sub", session: null, status: "asleep" });
 			const tool = new IrcTool(makeToolSession(registry, "0-Main"));
 			const result = await tool.execute("call-1", { op: "wait", from: "0-Sub", timeoutMs: 5 });
 			expect(result.isError).toBe(true);

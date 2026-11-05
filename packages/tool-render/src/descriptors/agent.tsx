@@ -493,7 +493,7 @@ function parseInbox(value: unknown): IrcMsg[] {
 	return out;
 }
 
-const PEER_STATUS_ORDER: Record<string, number> = { running: 0, idle: 1, parked: 2 };
+const PEER_STATUS_ORDER: Record<string, number> = { running: 0, idle: 1, asleep: 2 };
 
 function parsePeers(value: unknown): IrcPeer[] {
 	if (!Array.isArray(value)) return [];
@@ -534,7 +534,7 @@ function peerStatusTone(status: string): Tone | undefined {
 			return "accent";
 		case "idle":
 			return "ok";
-		case "parked":
+		case "asleep":
 			return undefined;
 		default:
 			return "err";

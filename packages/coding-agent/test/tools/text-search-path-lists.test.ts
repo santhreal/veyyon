@@ -368,7 +368,7 @@ describe("tool path arrays", () => {
 			parentId: "Main",
 			session: null,
 			sessionFile,
-			status: "parked",
+			status: "asleep",
 		});
 
 		const viewer = new AgentTranscriptViewer({

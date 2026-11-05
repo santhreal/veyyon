@@ -3,7 +3,7 @@
  *
  * WHY THESE TESTS. The badge has three possible sources and they do not all
  * exist at the same time. A running agent's model comes from the session
- * observer, which reports what the executor RESOLVED; an agent that is parked,
+ * observer, which reports what the executor RESOLVED; an agent that is asleep,
  * or that registered a moment before its session reference landed, has no
  * observer entry at all and only the model recorded on its registry ref. Before
  * that fallback existed, exactly those rows showed no model, which is the
@@ -75,7 +75,7 @@ function observersReporting(id: string, resolvedModel: string, fellBackFrom?: st
 
 describe("Model badge sources", () => {
 	/**
-	 * The gap this fallback fills. A parked agent, or one registered before its
+	 * The gap this fallback fills. An asleep agent, or one registered before its
 	 * session reference lands, has no observer entry, so the only model anyone
 	 * knows is the one recorded on the ref at registration. Such a row used to
 	 * render with no model at all.
@@ -86,7 +86,7 @@ describe("Model badge sources", () => {
 			displayName: "scout",
 			kind: "sub",
 			session: null,
-			status: "parked",
+			status: "asleep",
 			model: "anthropic/claude-opus-4-8",
 		});
 		const dashboard = new AgentDashboard({ terminalHeight: 40, showModelBadge: true });
@@ -108,7 +108,7 @@ describe("Model badge sources", () => {
 			displayName: "scout",
 			kind: "sub",
 			session: null,
-			status: "parked",
+			status: "asleep",
 			model: "anthropic/claude-opus-4-8",
 		});
 		const dashboard = new AgentDashboard({ terminalHeight: 40, showModelBadge: true });
@@ -232,7 +232,7 @@ describe("Model badge sources", () => {
 			displayName: "scout",
 			kind: "sub",
 			session: null,
-			status: "parked",
+			status: "asleep",
 		});
 		const dashboard = new AgentDashboard({ terminalHeight: 40, showModelBadge: true });
 
@@ -258,7 +258,7 @@ describe("The showResolvedModelBadge gate", () => {
 			displayName: "scout",
 			kind: "sub",
 			session: null,
-			status: "parked",
+			status: "asleep",
 			model: "anthropic/claude-opus-4-8",
 		});
 		const dashboard = new AgentDashboard({ terminalHeight: 40, showModelBadge: false });
@@ -277,7 +277,7 @@ describe("The showResolvedModelBadge gate", () => {
 			displayName: "scout",
 			kind: "sub",
 			session: null,
-			status: "parked",
+			status: "asleep",
 			model: "anthropic/claude-opus-4-8",
 		});
 		const dashboard = new AgentDashboard({ terminalHeight: 40, showModelBadge: true });

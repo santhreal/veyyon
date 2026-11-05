@@ -146,9 +146,8 @@ function foldFlatModelRoles(raw: RawSettings): void {
 /**
  * The area itself was `subagent.*` before it was `agent.*`. Fold it first,
  * leaf for leaf, so the older migrations below see one tree: a legacy
- * `subagent.autoClose.parkedMs` becomes `agent.autoClose.parkedMs` here and
- * `agent.prune.afterMs` a few steps later. `advisor.subagents` and
- * `argot.subagents` moved with it; `tier.subagent` is folded with the other
+ * `subagent.isolation.mode` becomes `agent.isolation.mode` here. `advisor.subagents`
+ * and `argot.subagents` moved with it; `tier.subagent` is folded with the other
  * tier keys by the tier migration.
  */
 function foldSubagentArea(keys: LegacySettingsKeys): void {
@@ -218,29 +217,23 @@ const TASK_SCALAR_KEYS = [
 	["showResolvedModelBadge", "showResolvedModelBadge"],
 ] as const;
 
-/** `agent.autoClose.*` leaves and the `agent.prune.*` leaves they became. */
-const AUTO_CLOSE_PRUNE_KEYS = [
-	["enabled", "enabled"],
-	["parkedMs", "afterMs"],
-	["waitingMs", "waitingAfterMs"],
-] as const;
+/**
+ * Spawned agents once had a stage after sleep that dropped them from the roster, set by
+ * `agent.prune.*` and before that `agent.autoClose.*`. An agent is never dropped now, so
+ * those keys decide nothing and are deleted in every spelling, with the containers they
+ * leave empty.
+ */
+const RETIRED_AGENT_SECTIONS = ["prune", "autoClose"] as const;
+const RETIRED_AGENT_SECTION_LEAVES = ["enabled", "afterMs", "waitingAfterMs", "parkedMs", "waitingMs"] as const;
 
 function migrateRenamedScalars(keys: LegacySettingsKeys): void {
 	for (const [legacy, next] of TASK_SCALAR_KEYS) {
 		keys.setAgent([next], keys.take(["task", legacy]));
 	}
-
-	// The close stage became the PRUNE stage, and the keys moved with it. "Close"
-	// read as the opposite of park, when the two are consecutive stages of one
-	// lifecycle: parking releases the session and keeps the row, pruning drops the
-	// row. The container is deleted with the leaves so a migrated file carries no
-	// empty `agent.autoClose` block.
-	for (const [legacy, next] of AUTO_CLOSE_PRUNE_KEYS) {
-		keys.setAgent(["prune", next], keys.take(["agent", "autoClose", legacy]));
-	}
-	if (keys.read(["agent", "autoClose"]) !== undefined) deleteByPath(keys.raw, ["agent", "autoClose"]);
-	for (const [legacy] of AUTO_CLOSE_PRUNE_KEYS) {
-		delete keys.raw[`agent.autoClose.${legacy}`];
+	for (const section of RETIRED_AGENT_SECTIONS) {
+		for (const leaf of RETIRED_AGENT_SECTION_LEAVES) keys.take(["agent", section, leaf]);
+		if (keys.read(["agent", section]) !== undefined) deleteByPath(keys.raw, ["agent", section]);
+		delete keys.raw[`agent.${section}`];
 	}
 }
 

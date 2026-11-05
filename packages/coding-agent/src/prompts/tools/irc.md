@@ -5,7 +5,7 @@ Send and receive short text messages between the agents running in this process.
 
 # Sending
 - **Fire and forget.** `op: "send"` never blocks and returns a receipt (`delivered` or `failed`). A `failed` receipt means the peer is gone; do not retry.
-- **A message is not free.** It WAKES an `idle` or `parked` peer: it stops what it was doing, spends a full turn reading you, and pays for that turn. `to: "all"` charges that to every peer at once.
+- **A message is not free.** It WAKES an `idle` or `asleep` peer: it stops what it was doing, spends a full turn reading you, and pays for that turn. `to: "all"` charges that to every peer at once.
 - **Plain prose only.** NEVER send JSON status objects. Keep it terse and share payloads as `local://` or `artifact://` URLs, never pasted blobs.
 - **Answering:** lead with the answer, NEVER quote the question, and set `replyTo` so the peer can correlate it.
 

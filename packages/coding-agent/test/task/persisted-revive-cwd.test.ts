@@ -93,7 +93,7 @@ it("reopens a reusable persisted reviver at the child's latest cwd, and at no pr
 			displayName: id,
 			kind: "sub",
 			parentId: MAIN_AGENT_ID,
-			status: "parked",
+			status: "asleep",
 			session: null,
 			sessionFile: sessionFile!,
 			createdAt: Date.now(),

@@ -7,6 +7,7 @@
 ### Changed
 
 - The guest holds sends back while its socket has 64 KiB or more queued and drains them below 32 KiB, as the CLI does, by binding `RelayClient` from `@veyyon/wire/relay-client` instead of its own copy of the relay client.
+- The guest speaks collab protocol 5 and shows a closed agent as `asleep` with a wake action instead of `parked` or `aborted` with a revive action; a host on protocol 4 rejects it with the protocol-mismatch error.
 
 ## [1.5.0] - 2026-09-18
 

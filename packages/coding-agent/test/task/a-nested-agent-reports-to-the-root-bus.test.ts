@@ -185,7 +185,7 @@ describe("a nested agent reports to the root bus", () => {
 				displayName: id,
 				kind: "sub",
 				parentId: MAIN_AGENT_ID,
-				status: "parked",
+				status: "asleep",
 				session: null,
 				sessionFile,
 				createdAt: Date.now(),

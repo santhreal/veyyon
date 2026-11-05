@@ -273,63 +273,62 @@ a count appears; the header is bare.
 
 The remaining groups in the tab are operational: how many agents run at once
 (`agent.maxConcurrency`), how deeply they may nest (`agent.maxNestedSpawnDepth`),
-per-run wall clock and request budgets, how long a finished agent stays live
-before parking (`agent.idleTtlMs`) and how long it stays listed after that
-(`agent.prune.*`), and whether its edits land in an isolated
+per-run wall clock and request limits, how long a finished agent stays live
+before it falls asleep (`agent.idleTtlMs`), and whether its edits land in an isolated
 copy of the tree first (`agent.isolation.*`, see [Safety](../using/safety.md)).
 
-A spawned agent that has finished its turn is `idle`. After `agent.idleTtlMs` ("Park Idle
-Agents After", five minutes by default) it is `parked`: its process, MCP clients and memory
-are released, its transcript is flushed to disk, and its roster row stays. Messaging or
-opening a parked agent rebuilds it from the transcript. `0` ("Until exit") keeps idle
-agents live until the session exits.
+### Running, idle, asleep
 
-After `agent.prune.afterMs` ("Prune After", one hour by default) a parked agent is pruned:
-its roster row is removed and it can no longer be messaged or opened. Nothing on disk is
-deleted; the transcript stays readable at `history://<name>`. `agent.prune.enabled` off
-keeps every parked agent in the roster until the session exits, and does not affect
-parking.
+An agent is `running`, `idle` or `asleep`.
 
-`agent.prune.waitingAfterMs` ("Prune After While Waiting", two hours by default) replaces
-Prune After for a parked agent whose last message was that it is waiting on another agent.
-A value below Prune After is raised to it.
+- `running`: a turn is in flight.
+- `idle`: the turn finished and the session is still in memory.
+- `asleep`: the session is released and its transcript is on disk.
 
-### When each budget starts counting
+An idle agent falls asleep after `agent.idleTtlMs` ("Sleep Idle Agents After", five
+minutes by default). Its process, MCP clients and memory are released and its transcript
+is flushed to disk. `0` ("Never") keeps idle agents live until the session exits.
 
-The park budget counts from the agent's last activity; a revived agent starts it again
-from the revival. The prune budget counts from the moment the agent was parked. An agent
-read back from a previous run is aged from when its transcript was last written, not from
-when this session found it.
+Messaging or opening an asleep agent wakes it from its transcript. Every agent with a
+transcript can be woken for the rest of the session, including one that was stopped,
+failed, timed out or hit its request limit. No status is terminal and no agent is removed
+from the roster.
 
-### Only idle and parked agents have a deadline
+`running` moves to `idle` when the turn drains, or to `asleep` when the run is stopped or
+ran in an isolated copy of the tree. `idle` moves to `running` on the next turn, or to
+`asleep` on the idle timeout or a stop. `asleep` moves to `idle` when woken. Any other move
+is rejected, so a turn event that arrives after a stop cannot restart the agent.
 
-A `running` or `aborted` agent has no deadline. An agent waiting on an approval prompt is
-mid-turn and stays `running`, so no park or prune timer applies to it.
+### Stopping an agent
 
-### An agent on screen is not parked
+`x` on the `/agents` roster, `job cancel` and a collab guest's kill stop an agent: its turn
+is aborted and it and every agent it spawned fall asleep. Message it to continue.
+
+### The roster
+
+`irc list` names every running and idle agent and the ten asleep agents active most
+recently. Older asleep agents are counted on one line and still wake when messaged by id.
+The `/agents` dashboard lists every agent.
+
+### When the idle timeout starts counting
+
+The idle timeout counts from the agent's last activity; a woken agent starts it again from
+the wake. An agent read back from a previous run is aged from when its transcript was last
+written, not from when this session found it.
+
+A `running` agent has no deadline. An agent waiting on an approval prompt is mid-turn and
+stays `running`.
+
+### An agent on screen does not fall asleep
 
 Opening an agent's session from the `/agents` dashboard keeps it live for as long as the
-main view points at it. A park deadline that elapses meanwhile is deferred; the idle TTL
-counts again from the moment Esc returns the view to your own session.
-
-### The status graph
-
-An agent is `running`, `idle`, `parked` or `aborted`. `running` moves to `idle` when the
-turn drains, to `parked` when a run finishes with no session to keep, or to `aborted` when
-killed. `idle` moves to `running` on the next turn, to `parked` on the idle TTL, or to
-`aborted`. `parked` moves to `idle` on revival or to `aborted`. `aborted` is terminal. Any
-other move is rejected, so a turn event that arrives after a kill cannot revive the agent.
-
-### Turning it off
-
-`agent.prune.afterMs` set to `0` disables pruning for every parked agent, including one
-that is waiting on a peer, whatever `agent.prune.waitingAfterMs` is.
+main view points at it. A sleep deadline that elapses meanwhile is deferred; the idle
+timeout counts again from the moment Esc returns the view to your own session.
 
 ### If the session cannot be saved
 
-Parking flushes the agent's session to disk before releasing it. If the flush fails, the
-agent stays live, its timer is re-armed, and the park is attempted again at the next
-expiry.
+Falling asleep flushes the agent's session to disk before releasing it. If the flush
+fails, the agent stays live, its timer is re-armed, and the next expiry tries again.
 
 ### Nesting depth
 

@@ -5,6 +5,7 @@ import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { errorMessage, prompt, Snowflake } from "@veyyon/utils";
 import { sessionFileName } from "@veyyon/utils/session-file";
 import { sideChannelPrompts } from "../../../prompts/side-channel/rows";
+import { AgentLifecycleManager } from "../../../registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID } from "../../../registry/agent-registry";
 import * as sdk from "../../../sdk";
 import type { AgentSession } from "../../../session/agent-session";
@@ -183,20 +184,10 @@ export class TanCommandController {
 						}
 					} finally {
 						// Keep the finished tan in the Control Center roster instead of unregistering it:
-						// flip the ref to parked BEFORE dispose so the sdk dispose wrapper
-						// skips its unregister, then null the disposed session so the hub
-						// treats it as a transcript-only parked agent. An aborted tan is
-						// terminal — let dispose unregister it.
-						if (clone) {
-							if (signal.aborted) {
-								agentRegistry.setStatus(cloneId, "aborted");
-								await clone.dispose();
-							} else {
-								agentRegistry.setStatus(cloneId, "parked");
-								await clone.dispose();
-								agentRegistry.detachSession(cloneId);
-							}
-						}
+						// it falls asleep whether it finished or was stopped, and a message wakes it from
+						// its transcript. `fallAsleep` marks the close before dispose runs, so the sdk
+						// dispose hook skips its unregister.
+						if (clone) await AgentLifecycleManager.global().fallAsleep(cloneId, clone);
 					}
 				},
 				{ ownerId, agentId: cloneId },

@@ -1018,7 +1018,7 @@ export function createAgentRunMonitor(args: RunMonitorArgs): AgentRunMonitor {
 		budgetStopRequested: () => budgetStopRequested,
 		waitForBudgetStop: () => budgetStopAbortPromise ?? Promise.resolve(),
 		// A soft stop that never escalated still identifies as a budget abort so
-		// the lifecycle can park the agent as resumable instead of killing it.
+		// the lifecycle puts the agent to sleep, so it can be messaged to continue.
 		abortKind: () => abortReason ?? (budgetStopRequested ? "budget" : undefined),
 		isAbortedRun: () =>
 			abortReason === "signal" || runtimeLimitExceeded || budgetLimitExceeded || abortReason === undefined,

@@ -52,6 +52,11 @@ function frameOf(dashboard: AgentDashboard): string {
 	return stripVTControlCharacters(dashboard.render(120).join("\n"));
 }
 
+/** The card's words with its borders and line breaks folded away, so a sentence the card wraps reads whole. */
+function cardText(dashboard: AgentDashboard): string {
+	return frameOf(dashboard).replace(/[│\n]/g, " ").replace(/\s+/g, " ");
+}
+
 /** A dashboard disposed when the test that opened it ends, so its age timer ends with the test. */
 function openDashboard(deps?: AgentDashboardDeps): AgentDashboard {
 	const opened = new AgentDashboard(deps);
@@ -228,7 +233,7 @@ describe("Opening an agent", () => {
 	 */
 	test("keeps the card open and states the reason when the hand-over is refused", async () => {
 		registerSub("0-Sub", "reviewer");
-		const message = 'Agent "0-Sub" is aborted and cannot be revived';
+		const message = 'Agent "0-Sub" is asleep and cannot be woken (its transcript or workspace is gone)';
 		let closeCalls = 0;
 		const rendered = Promise.withResolvers<void>();
 		const dashboard = openDashboard({
@@ -244,7 +249,7 @@ describe("Opening an agent", () => {
 		await rendered.promise;
 
 		expect(closeCalls).toBe(0);
-		expect(frameOf(dashboard)).toContain(message);
+		expect(cardText(dashboard)).toContain(message);
 		dashboard.dispose();
 	});
 
@@ -283,7 +288,7 @@ describe("Card chrome", () => {
 	/**
 	 * An empty roster offers no key that does nothing.
 	 *
-	 * Navigate, open and terminate all act on a selected row, and with no rows there is
+	 * Navigate, open and stop all act on a selected row, and with no rows there is
 	 * no row to act on. The empty state already says what will appear here, so
 	 * three dead keys under it read as a broken panel rather than an idle one. The
 	 * two chips that still work stay, which is what makes this a dropped chip
@@ -295,7 +300,7 @@ describe("Card chrome", () => {
 		const shown = frameOf(dashboard);
 
 		expect(shown).toContain("Nothing running.");
-		expect(shown).not.toContain("x terminate");
+		expect(shown).not.toContain("x stop");
 		expect(shown).not.toContain("enter open agent");
 		expect(shown).not.toContain("up/down navigate");
 		expect(shown).toContain("left/right view");
@@ -312,7 +317,7 @@ describe("Card chrome", () => {
 
 		expect(shown).toContain("up/down navigate");
 		expect(shown).toContain("enter open agent");
-		expect(shown).toContain("x terminate");
+		expect(shown).toContain("x stop");
 		dashboard.dispose();
 	});
 

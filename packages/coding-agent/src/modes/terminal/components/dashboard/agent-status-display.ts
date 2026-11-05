@@ -23,12 +23,10 @@ import { theme } from "../../../../theme/theme-binding";
  *   prompt, and a roster that draws it as `running` shows a spawn waiting on a
  *   person as one grinding through a build. `AgentRef.pendingApproval` is the
  *   discriminator and the only one: there is no status to read.
- * - `waiting` is `idle` or `parked`. The agent stopped to let a peer answer,
+ * - `waiting` is `idle` or `asleep`. The agent stopped to let a peer answer,
  *   which is also what an abandoned agent looks like, and it read exactly like
  *   one that had simply finished. `AgentRef.waitingOnPeer` carries it, written
- *   from the sign-off by `task/executor.ts`; the lifecycle manager already
- *   spends it on a longer close budget, so the state was trusted everywhere
- *   except on screen.
+ *   from the sign-off by `task/executor.ts`.
  */
 export type AgentDisplayState = AgentStatus | "blocked" | "waiting";
 
@@ -38,8 +36,7 @@ const AGENT_STATUS_COLOR: Record<AgentDisplayState, ThemeColor> = {
 	blocked: "warning", // stopped at an approval prompt — needs YOU
 	idle: "success", // live and finished, awaiting work — ready (green)
 	waiting: "link", // stopped on a peer that may never answer
-	parked: "muted", // session disposed, revivable — dim
-	aborted: "error", // hard-killed, terminal — error
+	asleep: "muted", // session closed, wakes when messaged — dim
 };
 
 /** Theme symbol key per display state (the glyph shown in compact rosters). */
@@ -48,8 +45,7 @@ const AGENT_STATUS_SYMBOL = {
 	blocked: "status.warning",
 	idle: "status.enabled",
 	waiting: "status.pending",
-	parked: "status.shadowed",
-	aborted: "status.aborted",
+	asleep: "status.shadowed",
 } as const;
 
 /** All canonical agent display states derived from the visual language owner. */
@@ -70,8 +66,8 @@ export const AGENT_DISPLAY_STATES = Object.keys(AGENT_STATUS_COLOR) as readonly 
  *
  * An open approval outranks working while the agent is `running`, because it is
  * the one state a person has to act on. Only a RUNNING agent can be `blocked`:
- * `pendingApproval` is written during a turn, and once the agent stops, is aborted,
- * or completes, the terminal state takes precedence.
+ * `pendingApproval` is written during a turn, and once the agent stops or
+ * completes, the stopped state takes precedence.
  *
  * Only a STOPPED agent can be `waiting`: `waitingOnPeer` is written at the end of
  * a run and left in place while the agent is woken again, so reading it on a
@@ -84,7 +80,7 @@ export function agentDisplayState(agent: {
 }): AgentDisplayState {
 	if (agent.status === "running" && agent.blockedOnApproval === true) return "blocked";
 	if (agent.waitingOnPeer !== true) return agent.status;
-	return agent.status === "idle" || agent.status === "parked" ? "waiting" : agent.status;
+	return agent.status === "idle" || agent.status === "asleep" ? "waiting" : agent.status;
 }
 
 /** The color the given display state is rendered in, everywhere. */
@@ -97,7 +93,7 @@ export function agentStatusGlyph(status: AgentDisplayState): string {
 	return theme.styledSymbol(AGENT_STATUS_SYMBOL[status], AGENT_STATUS_COLOR[status]);
 }
 
-/** Colored status word (`running`/`idle`/`waiting`/`parked`/`aborted`) for labels. */
+/** Colored status word (`running`/`idle`/`waiting`/`asleep`) for labels. */
 export function agentStatusWord(status: AgentDisplayState): string {
 	return theme.fg(AGENT_STATUS_COLOR[status], status);
 }

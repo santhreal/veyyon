@@ -4,8 +4,8 @@
  * WHY THIS SUITE EXISTS. `ViewTab.count` says in its own doc comment that it is
  * "rows behind the tab, so the strip says how much is there before you switch".
  * It was counting only the RUNNING agents while the pane listed every agent in
- * the roster, parked and idle ones included. A twenty-agent roster with three
- * parked read `Live (17)` directly above twenty visible rows, so the one number
+ * the roster, asleep and idle ones included. A twenty-agent roster with three
+ * asleep read `Live (17)` directly above twenty visible rows, so the one number
  * on screen disagreed with the list under it, in a card whose whole job is
  * answering "what is running right now".
  *
@@ -18,12 +18,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { AgentDashboard } from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-dashboard";
-import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
+import { AgentRegistry, type AgentStatus } from "@veyyon/coding-agent/registry/agent-registry";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../../helpers/stdout-geometry";
 
 /** A registry entry the way the task executor writes one. */
-function register(id: string, status: "running" | "idle" | "parked" | "aborted"): void {
+function register(id: string, status: AgentStatus): void {
 	AgentRegistry.global().register({ id, displayName: "reviewer", kind: "sub", session: null, status });
 }
 
@@ -53,10 +53,10 @@ describe("the Live tab counts the rows behind it", () => {
 	 * is asserted against the ROWS ACTUALLY DRAWN rather than against a literal,
 	 * so the two can never drift apart again without this failing.
 	 */
-	test("a roster with parked and idle agents counts every row it draws", () => {
+	test("a roster with asleep and idle agents counts every row it draws", () => {
 		register("0-Sub", "running");
 		register("1-Sub", "idle");
-		register("2-Sub", "parked");
+		register("2-Sub", "asleep");
 		register("3-Sub", "running");
 		const dashboard = new AgentDashboard({ terminalHeight: 40 });
 
@@ -93,8 +93,8 @@ describe("the Live tab counts the rows behind it", () => {
 	 */
 	test("a roster with nothing running still counts its rows", () => {
 		register("0-Sub", "idle");
-		register("1-Sub", "parked");
-		register("2-Sub", "aborted");
+		register("1-Sub", "asleep");
+		register("2-Sub", "asleep");
 		const dashboard = new AgentDashboard({ terminalHeight: 40 });
 
 		const { text, rows } = frameOf(dashboard);

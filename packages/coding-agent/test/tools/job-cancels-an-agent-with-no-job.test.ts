@@ -1,5 +1,5 @@
 /**
- * `job cancel` kills a running agent that has no background-job row.
+ * `job cancel` stops a running agent that has no background-job row.
  *
  * WHY IT EXISTS. A spawner could always SEE these agents: `job list` reports
  * them under "Running Agents — not job-backed", which covers anything woken via
@@ -10,12 +10,13 @@
  * The result was a class of agent that was visible, running, burning tokens,
  * and immortal for the life of the process.
  *
- * The kill is bounded by DESCENT rather than by scope, and that is the half
- * worth pinning hardest: everything in one conversation shares a scope, so a
- * scope check would let a child kill its own parent (orphaning the run) or a
- * sibling it does not own. Below: an owned descendant dies, a parent and a
- * stranger do not, the transcript is advertised as surviving, and a real job id
- * still takes the ordinary job path.
+ * A stop aborts the agent's turn and puts it to sleep: it stays in the roster
+ * and wakes when messaged. The stop is bounded by DESCENT rather than by scope,
+ * and that is the half worth pinning hardest: everything in one conversation
+ * shares a scope, so a scope check would let a child stop its own parent
+ * (stalling the run) or a sibling it does not own. Below: an owned descendant
+ * stops, a parent and a stranger do not, and the transcript is advertised as
+ * surviving.
  */
 import { beforeEach, describe, expect, test } from "bun:test";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
@@ -33,12 +34,17 @@ interface Spy {
 
 let spy: Spy;
 
-/** A session that records abort/dispose so termination can be observed. */
+/**
+ * A session that records abort/dispose so a stop can be observed. Its abort ends
+ * the turn the way a real one does: the turn's `agent_end` reports the agent idle.
+ */
 function trackedSession(id: string): AgentSession {
 	return {
+		sessionManager: { flush: async () => {} },
 		abort: async () => {
 			spy.events.push(`abort:${id}`);
 			spy.aborted.push(id);
+			AgentRegistry.global().setStatus(id, "idle");
 		},
 		dispose: async () => {
 			spy.events.push(`dispose:${id}`);
@@ -47,6 +53,7 @@ function trackedSession(id: string): AgentSession {
 	} as unknown as AgentSession;
 }
 
+/** A running spawned agent, adopted the way the executor adopts one. */
 function register(id: string, parentId?: string): void {
 	AgentRegistry.global().register({
 		id,
@@ -56,6 +63,11 @@ function register(id: string, parentId?: string): void {
 		status: "running",
 		...(parentId ? { parentId } : {}),
 	});
+	AgentLifecycleManager.global().adopt(id, { idleTtlMs: 0 });
+}
+
+function statusOf(id: string): string | undefined {
+	return AgentRegistry.global().get(id)?.status;
 }
 
 /** An empty job manager, so every cancel falls through to the registry path. */
@@ -102,23 +114,42 @@ describe("job cancel on an agent with no job row", () => {
 	 * session mid-turn leaves the provider request in flight with nothing to
 	 * receive it.
 	 */
-	test("kills a direct child and aborts before disposing", async () => {
+	test("stops a direct child, aborting before disposing, and keeps it asleep", async () => {
 		register("Parent");
 		register("Child", "Parent");
 
 		const text = await cancel(toolForParent(), "Child");
 
 		expect(spy.events).toEqual(["abort:Child", "dispose:Child"]);
-		expect(text).toContain("Killed agent Child");
-		expect(AgentRegistry.global().get("Child")).toBeUndefined();
+		expect(text).toContain("Stopped agent Child");
+		expect(statusOf("Child")).toBe("asleep");
+	});
+
+	/** An agent that is already asleep has nothing to stop, and is left untouched. */
+	test("reports an asleep agent as already asleep", async () => {
+		register("Parent");
+		AgentRegistry.global().register({
+			id: "Sleeper",
+			displayName: "worker",
+			kind: "sub",
+			parentId: "Parent",
+			session: null,
+			status: "asleep",
+		});
+
+		const text = await cancel(toolForParent(), "Sleeper");
+
+		expect(text).toContain("Agent Sleeper is already asleep.");
+		expect(spy.events).toEqual([]);
+		expect(statusOf("Sleeper")).toBe("asleep");
 	});
 
 	/**
 	 * A session whose abort throws cannot have its provider request stopped, so
-	 * terminate refuses to dispose it and the agent stays registered. The report
-	 * has to say so: an earlier draft swallowed the abort failure and reported a
-	 * kill, which leaves the spawner believing a still-running agent is gone and
-	 * is strictly worse than refusing.
+	 * the stop refuses to dispose it and the agent stays running. The report has
+	 * to say so: an earlier draft swallowed the abort failure and reported a
+	 * stop, which leaves the spawner believing a still-running agent is stopped
+	 * and is strictly worse than refusing.
 	 */
 	test("reports an agent it could not stop as still running", async () => {
 		register("Parent");
@@ -140,10 +171,10 @@ describe("job cancel on an agent with no job row", () => {
 
 		const text = await cancel(toolForParent(), "Wedged");
 
-		expect(text).toContain("still running");
+		expect(text).toContain("Could not stop agent Wedged — it is still running");
 		expect(text).toContain("the session is already gone");
 		expect(spy.events).toEqual([]);
-		expect(AgentRegistry.global().get("Wedged")).toBeDefined();
+		expect(statusOf("Wedged")).toBe("running");
 	});
 
 	/**
@@ -151,7 +182,7 @@ describe("job cancel on an agent with no job row", () => {
 	 * layer or more below whoever notices, so a parent-only check would leave the
 	 * exact case unreachable.
 	 */
-	test("kills a grandchild", async () => {
+	test("stops a grandchild", async () => {
 		register("Parent");
 		register("Child", "Parent");
 		register("Grandchild", "Child");
@@ -162,32 +193,32 @@ describe("job cancel on an agent with no job row", () => {
 	});
 
 	/**
-	 * The containment that scope alone would not give. A child killing its parent
-	 * destroys the run that is waiting on it.
+	 * The containment that scope alone would not give. A child stopping its parent
+	 * stalls the run that is waiting on it.
 	 */
-	test("refuses to kill its own parent", async () => {
+	test("refuses to stop its own parent", async () => {
 		register("Root");
 		register("Parent", "Root");
 
 		await cancel(toolForParent(), "Root");
 
 		expect(spy.aborted).toEqual([]);
-		expect(AgentRegistry.global().get("Root")).toBeDefined();
+		expect(statusOf("Root")).toBe("running");
 	});
 
-	/** A sibling is in scope and is still not the caller's to kill. */
-	test("refuses to kill an agent it did not spawn", async () => {
+	/** A sibling is in scope and is still not the caller's to stop. */
+	test("refuses to stop an agent it did not spawn", async () => {
 		register("Parent");
 		register("Stranger");
 
 		await cancel(toolForParent(), "Stranger");
 
 		expect(spy.aborted).toEqual([]);
-		expect(AgentRegistry.global().get("Stranger")).toBeDefined();
+		expect(statusOf("Stranger")).toBe("running");
 	});
 
 	/**
-	 * Killing the agent must not read as destroying the record of what it did,
+	 * Stopping the agent must not read as destroying the record of what it did,
 	 * or a spawner will hesitate to use it on a loop that has already produced
 	 * work worth reading.
 	 */
@@ -199,22 +230,16 @@ describe("job cancel on an agent with no job row", () => {
 	});
 
 	/**
-	 * Killing an agent kills everything it spawned, deepest first.
+	 * Stopping an agent stops everything it spawned, deepest first.
 	 *
-	 * The kill used to stop at the named agent, and the shape of the registry
-	 * turned that into a permanent leak rather than a tidiness problem. Descent is
-	 * resolved by walking `parentId` through the registry, so unregistering the
-	 * middle agent detaches its whole subtree: the grandchild keeps running and
-	 * spending tokens, `job list` still shows it because that listing is scoped
-	 * rather than descended, and every attempt to kill it is refused because its
-	 * parent chain now dead-ends at an id the registry no longer holds. Visible,
-	 * running, immortal, which is the exact condition `cancel` was given this
-	 * capability to abolish.
+	 * The stop used to end at the named agent, so a grandchild kept running and
+	 * spending tokens on behalf of a parent that had stopped. Deepest first, so
+	 * no child is still running when the agent above it stops.
 	 *
-	 * Order is asserted, not just membership. A parent released before its
-	 * children is the same detachment happening inside the teardown.
+	 * Order is asserted, not just membership. A parent stopped before its
+	 * children is the same leak happening inside the sweep.
 	 */
-	test("kills the whole subtree below the agent it was given, deepest first", async () => {
+	test("stops the whole subtree below the agent it was given, deepest first", async () => {
 		register("Parent");
 		register("Child", "Parent");
 		register("GrandChild", "Child");
@@ -230,9 +255,9 @@ describe("job cancel on an agent with no job row", () => {
 			"abort:Child",
 			"dispose:Child",
 		]);
-		expect(text).toContain("Killed agent Child");
+		expect(text).toContain("Stopped agent Child");
 		for (const id of ["Child", "GrandChild", "GreatGrandChild"]) {
-			expect(AgentRegistry.global().get(id)).toBeUndefined();
+			expect(statusOf(id)).toBe("asleep");
 		}
 	});
 
@@ -250,21 +275,19 @@ describe("job cancel on an agent with no job row", () => {
 		await cancel(toolForParent(), "Child");
 
 		expect(spy.aborted).toEqual(["GrandChild", "Child"]);
-		expect(AgentRegistry.global().get("Sibling")).toBeDefined();
-		expect(AgentRegistry.global().get("SiblingChild")).toBeDefined();
+		expect(statusOf("Sibling")).toBe("running");
+		expect(statusOf("SiblingChild")).toBe("running");
 	});
 
 	/**
-	 * A descendant that will not abort stops the whole kill, and the named agent
-	 * stays registered.
+	 * A descendant that will not abort stops the whole sweep, and the named agent
+	 * keeps running.
 	 *
-	 * That is the point rather than a limitation. The wedged grandchild is only
-	 * reachable for a later retry while its parent chain is intact, so releasing
-	 * the agent above it would trade a failed kill for an unkillable one. The
-	 * report already refuses to claim a kill it did not perform; this keeps the
-	 * subtree in a state where the claim can become true.
+	 * The report already refuses to claim a stop it did not perform; this keeps
+	 * the agents above the wedged one untouched rather than half-stopped, so a
+	 * retry finds the same subtree.
 	 */
-	test("refuses the kill and keeps the parent when a descendant cannot be aborted", async () => {
+	test("refuses the stop and keeps the parent running when a descendant cannot be aborted", async () => {
 		register("Parent");
 		register("Child", "Parent");
 		AgentRegistry.global().register({
@@ -285,27 +308,25 @@ describe("job cancel on an agent with no job row", () => {
 
 		const text = await cancel(toolForParent(), "Child");
 
-		expect(text).toContain("Could not kill agent Child");
+		expect(text).toContain("Could not stop agent Child");
 		expect(text).toContain("stream will not stop");
 		expect(spy.disposed).toEqual([]);
-		expect(AgentRegistry.global().get("Child")).toBeDefined();
-		expect(AgentRegistry.global().get("WedgedGrandChild")).toBeDefined();
+		expect(statusOf("Child")).toBe("running");
+		expect(statusOf("WedgedGrandChild")).toBe("running");
 	});
 
 	/**
-	 * A descendant that finished on its own between the walk and the kill is not
+	 * A descendant that finished on its own between the walk and the stop is not
 	 * an error, and does not strand its live siblings.
 	 *
-	 * The window is real: the subtree is snapshotted before anything is
-	 * unregistered, and every abort in between is awaited, so an agent can leave
-	 * `running` after it appears in the snapshot and before its turn comes.
-	 * Treating that as a failure would be the worst possible reading of it, since
-	 * the sweep stops at the first throw: one child that beat the kill to the exit
-	 * would leave every sibling below the same parent running and detached, which
-	 * is the orphan this walk exists to prevent, produced by a child doing the
-	 * right thing.
+	 * The window is real: the subtree is snapshotted before anything is stopped,
+	 * and every abort in between is awaited, so an agent can leave `running`
+	 * after it appears in the snapshot and before its turn comes. Treating that
+	 * as a failure would be the worst possible reading of it, since the sweep
+	 * stops at the first throw: one child that beat the stop to the exit would
+	 * leave every sibling below the same parent running.
 	 */
-	test("keeps sweeping past a descendant that exited on its own", async () => {
+	test("keeps sweeping past a descendant that finished on its own", async () => {
 		register("Parent");
 		register("Child", "Parent");
 		register("Finished", "Child");
@@ -314,21 +335,22 @@ describe("job cancel on an agent with no job row", () => {
 
 		const text = await cancel(toolForParent(), "Child");
 
-		// The finished one is released without an abort it has no turn to receive.
+		// The finished one is put to sleep without an abort it has no turn to receive.
 		expect(spy.aborted).toEqual(["StillRunning", "Child"]);
-		expect(text).toContain("Killed agent Child");
+		expect(spy.disposed.sort()).toEqual(["Child", "Finished", "StillRunning"]);
+		expect(text).toContain("Stopped agent Child");
 		for (const id of ["Child", "Finished", "StillRunning"]) {
-			expect(AgentRegistry.global().get(id)).toBeUndefined();
+			expect(statusOf(id)).toBe("asleep");
 		}
 	});
 
 	/**
-	 * A parentage cycle terminates, and kills each agent exactly once.
+	 * A parentage cycle terminates, and ends each agent exactly once.
 	 *
 	 * `parentId` is written at registration and never rewritten, so a cycle should
 	 * not be constructible, but the graph is assembled from runtime registrations
 	 * and nothing in the type forbids one. A teardown is the worst place to
-	 * discover otherwise: the walk would not return and the kill would never
+	 * discover otherwise: the walk would not return and the teardown would never
 	 * start. `descendantsOf` seeds its visited set with the agent it was asked
 	 * about and skips anything already seen, so the snapshot the sweep iterates is
 	 * finite and repeat-free whatever the links say.

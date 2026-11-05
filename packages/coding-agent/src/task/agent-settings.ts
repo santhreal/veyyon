@@ -57,7 +57,7 @@ export function agentsEnabled(settings: Settings): boolean {
 }
 
 /**
- * Resolve how long a finished agent remains live before parking.
+ * Resolve how long a finished agent stays live before it falls asleep.
  *
  * This lifecycle budget is intentionally model-independent. Provider cache
  * policies may change request economics, but they do not justify retaining a
@@ -65,43 +65,6 @@ export function agentsEnabled(settings: Settings): boolean {
  */
 export function resolveAgentIdleTtlMs(settings: Settings): number {
 	return Math.max(0, Math.trunc(settings.get("agent.idleTtlMs")));
-}
-
-/** How long a parked agent survives before it is closed, by whether it was waiting. */
-export interface AgentPruneBudget {
-	/** Ordinary parked agent. 0 disables closing entirely. */
-	afterMs: number;
-	/** Parked agent whose last message said it was waiting on another agent. */
-	waitingAfterMs: number;
-}
-
-/**
- * Resolve when a PARKED agent stops being listed at all.
- *
- * Parking already released the session; this is the second stage, and without it a
- * long session accumulates every finished agent in `irc list` and the Control
- * Center forever. Disabled (`agent.prune.enabled` off) resolves to zero
- * budgets, which the lifecycle manager reads as "never close", so the operator's
- * off switch is a real off switch rather than a very long timer.
- *
- * A waiting agent gets its own budget because it stopped on purpose to let a peer
- * finish: closing it on the ordinary timer would drop the one agent most likely to
- * be messaged next. The waiting budget is floored at the ordinary one, so a
- * misconfiguration can only ever lengthen a waiting agent's grace, never shorten
- * it below a quiet agent's.
- */
-export function resolveAgentPruneBudget(settings: Settings): AgentPruneBudget {
-	if (!settings.get("agent.prune.enabled")) {
-		return { afterMs: 0, waitingAfterMs: 0 };
-	}
-	const readMs = (path: "agent.prune.afterMs" | "agent.prune.waitingAfterMs"): number =>
-		Math.max(0, Math.trunc(settings.get(path)));
-	const afterMs = readMs("agent.prune.afterMs");
-	const waitingAfterMs = readMs("agent.prune.waitingAfterMs");
-	// A zero parked budget means "never close", so a waiting budget cannot revive
-	// closing for the waiting case alone.
-	if (afterMs === 0) return { afterMs: 0, waitingAfterMs: 0 };
-	return { afterMs, waitingAfterMs: Math.max(afterMs, waitingAfterMs) };
 }
 
 /**

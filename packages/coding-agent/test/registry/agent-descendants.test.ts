@@ -84,29 +84,29 @@ describe("AgentRegistry.descendantsOf", () => {
 	});
 
 	/**
-	 * A parked or aborted agent is still in the tree, and its own children may still
+	 * An asleep agent is still in the tree, and its own children may still
 	 * be live. Filtering by status here would hide exactly the orphan the walk is
 	 * for, so status is the caller's business.
 	 */
 	it("includes descendants whatever their status", () => {
 		add("Main");
 		registry.register({
-			id: "parked-worker",
-			displayName: "parked-worker",
+			id: "asleep-worker",
+			displayName: "asleep-worker",
 			kind: "sub",
 			parentId: "Main",
 			session: null,
-			status: "parked",
+			status: "asleep",
 		});
 		registry.register({
 			id: "live-helper",
 			displayName: "live-helper",
 			kind: "sub",
-			parentId: "parked-worker",
+			parentId: "asleep-worker",
 			session: null,
 			status: "running",
 		});
-		expect(registry.descendantsOf("Main")).toEqual(["parked-worker", "live-helper"]);
+		expect(registry.descendantsOf("Main")).toEqual(["asleep-worker", "live-helper"]);
 	});
 
 	/**

@@ -307,9 +307,9 @@ describe("Consumers identify the driver by role", () => {
 	});
 
 	/**
-	 * Adoption arms a park-then-prune timer, which is meaningless for a session
-	 * the operator is typing into and destructive for one running in the
-	 * background: parking releases the session. Refused by role, so BOTH drivers
+	 * Adoption arms an idle sleep timer, which is meaningless for a session the
+	 * operator is typing into and destructive for one running in the
+	 * background: falling asleep releases the session. Refused by role, so BOTH drivers
 	 * are refused rather than only the one that answers to the old name.
 	 */
 	test("neither conversation's driver can be adopted", () => {
@@ -317,8 +317,8 @@ describe("Consumers identify the driver by role", () => {
 		const b = driver(CONVERSATION_B);
 		const lifecycle = new AgentLifecycleManager(registry);
 
-		lifecycle.adopt(a.id, { idleTtlMs: 1, pruneAfterMs: 1, pruneWaitingAfterMs: 1, revive: undefined });
-		lifecycle.adopt(b.id, { idleTtlMs: 1, pruneAfterMs: 1, pruneWaitingAfterMs: 1, revive: undefined });
+		lifecycle.adopt(a.id, { idleTtlMs: 1, revive: undefined });
+		lifecycle.adopt(b.id, { idleTtlMs: 1, revive: undefined });
 
 		expect(lifecycle.has(a.id)).toBe(false);
 		expect(lifecycle.has(b.id)).toBe(false);
@@ -331,7 +331,7 @@ describe("Consumers identify the driver by role", () => {
 		agent("Worker", a.id, CONVERSATION_A);
 		const lifecycle = new AgentLifecycleManager(registry);
 
-		lifecycle.adopt("Worker", { idleTtlMs: 60_000, pruneAfterMs: 0, pruneWaitingAfterMs: 0, revive: undefined });
+		lifecycle.adopt("Worker", { idleTtlMs: 60_000, revive: undefined });
 
 		expect(lifecycle.has("Worker")).toBe(true);
 		lifecycle.dispose();

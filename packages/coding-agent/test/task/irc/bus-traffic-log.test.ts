@@ -134,14 +134,14 @@ describe("IrcBus traffic log", () => {
 		expect(log[0].error).toContain("recipient disposed");
 	});
 
-	/** An aborted agent cannot be messaged, and the refusal says so in the log. */
-	it("keeps the refusal for an aborted recipient", async () => {
-		registry.register({ id: "0-Sub", displayName: "reviewer", kind: "sub", session: null, status: "aborted" });
+	/** An asleep agent with nothing to wake from cannot be messaged, and the refusal says why in the log. */
+	it("keeps the refusal for an asleep recipient that cannot be woken", async () => {
+		registry.register({ id: "0-Sub", displayName: "reviewer", kind: "sub", session: null, status: "asleep" });
 
 		await bus.send({ from: "Main", to: "0-Sub", body: "hello" });
 
 		expect(bus.log()[0].outcome).toBe("failed");
-		expect(bus.log()[0].error).toContain("hard-aborted");
+		expect(bus.log()[0].error).toContain("cannot be woken (its transcript or workspace is gone)");
 	});
 
 	/** Watchers see each line as it is recorded, which is what makes the view live. */
@@ -320,20 +320,20 @@ describe("IrcBus traffic log", () => {
 			expect(instrumented.log().map(entry => entry.telemetry?.outcome)).toEqual(["woken", "injected"]);
 		});
 
-		it("records revival separately from the underlying wake hand-off", async () => {
+		it("records a wake from sleep separately from the underlying wake hand-off", async () => {
 			const session = fakeSession({ outcome: "woken" });
 			registry.register({
-				id: "0-Parked",
-				displayName: "parked",
+				id: "0-Asleep",
+				displayName: "asleep",
 				kind: "sub",
 				session: null,
-				status: "parked",
+				status: "asleep",
 			});
 			const lifecycle = AgentLifecycleManager.global();
-			lifecycle.adopt("0-Parked", { idleTtlMs: 0, revive: async () => session });
+			lifecycle.adopt("0-Asleep", { idleTtlMs: 0, revive: async () => session });
 			const instrumented = new IrcBus(registry, lifecycle, () => "ultra");
 
-			await instrumented.send({ from: "Main", to: "0-Parked", body: "resume" });
+			await instrumented.send({ from: "Main", to: "0-Asleep", body: "resume" });
 
 			expect(instrumented.log()[0]?.telemetry).toMatchObject({
 				outcome: "revived",

@@ -708,7 +708,7 @@ configures nothing. Move between its two views with the left and right arrows, w
 
 | View | What it answers |
 |---|---|
-| Live | Which agents exist right now, what type each one is (`reviewer`, `scout`, the definition it was spawned from), and what it is doing. Agents from earlier runs of the session appear too, marked `parked`. Press `enter` on a row, or click it, to open that agent's session in the main view: you read its transcript and can type to it, and `esc` returns you to your own session. Press `x` to stop an agent. |
+| Live | Which agents exist right now, what type each one is (`reviewer`, `scout`, the definition it was spawned from), and what it is doing. Agents from earlier runs of the session appear too, marked `asleep`. Press `enter` on a row, or click it, to open that agent's session in the main view: you read its transcript and can type to it, and `esc` returns you to your own session. Press `x` to stop an agent; it falls asleep and wakes when messaged. |
 | Comms | The agent-to-agent messages, streaming as they are sent, including the ones that failed to reach their recipient and why. Long messages are folded to their first few lines with a count of what was hidden; `ctrl+o` unfolds them. |
 
 Live only ever lists agents that exist in this session, so a disabled specialist
@@ -732,8 +732,8 @@ what each one runs on, is configured in the Roster row of the Agents tab.
 | `agent.maxConcurrency` | number | `32` | Agents running at once. |
 | `agent.maxNestedSpawnDepth` | number | `0` | Nested levels that agents may spawn. Direct children receive no `task` tool at `0`; an agent-specific override may raise the limit. |
 | `agent.maxRuntimeMs` | number | `0` | Hard per-agent wall-clock limit in ms; `0` disables it. |
-| `agent.idleTtlMs` | number | `300000` | How long a finished agent stays live before parking. The default is 5 minutes for every model and provider. Set a positive millisecond value to override it. `0` keeps idle agents live until exit. Parking closes the live session but retains its transcript for revival. |
-| `agent.softRequestBudget` | number | `200` | Requests after which an agent is asked to wrap up; `0` disables the wrap-up request. |
+| `agent.idleTtlMs` | number | `300000` | How long a finished agent stays live before it falls asleep. The default is 5 minutes for every model and provider. Set a positive millisecond value to override it. `0` keeps idle agents live until exit. Falling asleep closes the live session and keeps its transcript; a message wakes the agent from it. |
+| `agent.softRequestBudget` | number | `0` | Requests per run after which an agent is asked to wrap up, and at 1.5 times which it is stopped; `0` sets no limit. The limit is the same for every agent. |
 | `agent.softRequestBudgetNotice` | boolean | `true` | Inject that wrap-up notice once. |
 | `agent.showResolvedModelBadge` | boolean | `true` | Show each agent's resolved model, and the setting that selected it, on the task widget and the agent surfaces. |
 | `agent.enableLsp` | boolean | `false` | Let agents use the `lsp` tool. |

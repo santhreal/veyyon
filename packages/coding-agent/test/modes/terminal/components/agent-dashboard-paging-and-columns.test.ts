@@ -190,7 +190,7 @@ describe("Paging the Comms stream", () => {
 });
 
 describe("Roster columns", () => {
-	/** Statuses of different lengths, and ages that do and do not exist. */
+	/** Status words of different lengths, and ages that do and do not exist. */
 	function registerMixed(): void {
 		AgentRegistry.global().register({
 			id: MAIN_AGENT_ID,
@@ -202,8 +202,8 @@ describe("Roster columns", () => {
 		const specs: Array<[string, string, AgentStatus, number]> = [
 			["a", "scout", "running", 0],
 			["b", "reviewer", "idle", 8 * 60_000],
-			["c", "librarian", "parked", 95 * 60_000],
-			["d", "designer", "aborted", 45_000],
+			["c", "librarian", "asleep", 95 * 60_000],
+			["d", "designer", "idle", 45_000],
 		];
 		for (const [id, type, status, idleMs] of specs) {
 			AgentRegistry.global().register({
@@ -218,11 +218,13 @@ describe("Roster columns", () => {
 			const ref = AgentRegistry.global().get(id);
 			if (ref) ref.lastActivity = now - idleMs;
 		}
+		// Renders as `waiting`, the longest status word.
+		AgentRegistry.global().setWaitingOnPeer("d", true);
 	}
 
 	/** Every roster row, as plain text. */
 	function rosterRows(dashboard: AgentDashboard): string[] {
-		return frame(dashboard).filter(line => /\b(running|idle|parked|aborted)\b/.test(line));
+		return frame(dashboard).filter(line => /\b(running|idle|asleep|waiting)\b/.test(line));
 	}
 
 	/**
@@ -249,7 +251,7 @@ describe("Roster columns", () => {
 		registerMixed();
 		const dashboard = new AgentDashboard({ terminalHeight: ROWS, showModelBadge: true });
 
-		const columns = new Set(rosterRows(dashboard).map(row => row.search(/\b(running|idle|parked|aborted)\b/)));
+		const columns = new Set(rosterRows(dashboard).map(row => row.search(/\b(running|idle|asleep|waiting)\b/)));
 
 		expect(columns.size).toBe(1);
 		dashboard.dispose();

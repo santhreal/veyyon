@@ -550,7 +550,8 @@ export interface AgentSnapshot {
 	displayName: string;
 	kind: "main" | "sub";
 	parentId?: string;
-	status: "running" | "idle" | "parked" | "aborted";
+	/** `asleep`: the session is closed and the transcript kept; a message wakes the agent. */
+	status: "running" | "idle" | "asleep";
 	/** Whether the host has a transcript file for this agent (gates remote transcript fetch). */
 	hasSessionFile: boolean;
 	createdAt: number;
@@ -710,8 +711,10 @@ export type WireFrame = GuestFrame | HostFrame;
  * - `4`: tool execution displays are projected on tool calls, results, and
  *   live events (`display?: ToolExecutionDisplay`), preserving complete raw
  *   data for full output/inspection while carrying canonical visual presentation.
+ * - `5`: `AgentSnapshot.status` is `running | idle | asleep`; `parked` and
+ *   `aborted` are gone, so a v4 peer would misread every closed agent.
  */
-export const COLLAB_PROTO = 4;
+export const COLLAB_PROTO = 5;
 
 /** Parameter key used for intent tracing (e.g. prompt explanation/reasoning) */
 export const INTENT_FIELD = "i";

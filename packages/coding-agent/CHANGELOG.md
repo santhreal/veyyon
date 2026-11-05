@@ -4,6 +4,11 @@
 
 ### Changed
 
+- Spawned agents have three states, running, idle and asleep: an idle agent falls asleep after 5 minutes (`agent.idleTtlMs`, "Sleep Idle Agents After") and frees its session, and any agent with a transcript, including a stopped, failed or killed one, wakes when messaged for the rest of the session instead of being pruned or left unrevivable.
+- `job cancel` on an agent and `x` in the agent dashboard stop the agent and everything it spawned and put them to sleep, so a stopped agent wakes when messaged instead of being terminated.
+- The `irc` roster lists the 10 most recently active asleep agents and a count of older ones, which still wake by id, and a blocking `irc` send to a peer that falls asleep before replying ends at once instead of waiting for its timeout.
+- `agent.softRequestBudget` defaults to Unlimited instead of 200 requests, offers 200, 500, 1000 and 2000, and the bundled scout and sonic agents no longer carry a lower built-in limit.
+- Collab hosts and guests speak protocol 5, which reports closed agents as `asleep`; a peer on protocol 4 is rejected with the protocol-mismatch error.
 - A text search result keeps only the card rows its card can draw and a count of the matches past them, so a 30-turn session with broad searches writes 4.1 MB to its session file instead of 7.2 MB and 21 MB to disk instead of 31 MB, with the card drawn as before.
 - A session file records a text search's kept card rows as a length of the rows its result redraws, so a resumed card draws the rows it was written with whatever the card's row limits become, and the search codec no longer loads the card limits at launch.
 - A live tool or assistant block's rows enter terminal scrollback once, when final, instead of as copies taken while they scroll off mid-run, so a 20-turn session with parallel tool calls writes 1.0 MB to the terminal instead of 4.1 MB with no whole-transcript replays, and a running tool's rows above the screen reach scrollback when it finishes.
@@ -225,6 +230,7 @@
 
 ### Removed
 
+- The `agent.prune.enabled`, `agent.prune.afterMs` and `agent.prune.waitingAfterMs` settings are removed with the agent pruning they controlled; a config that sets them loads with the keys dropped.
 - `AgentSession.markMovedFromEmptySessionFile` and the dispose step that read it are removed; nothing called the method, so the step never ran; no user-facing change.
 - The terminal's `emitCustomToolSessionEvent` and `showToolError` are removed; nothing called them; no user-facing change.
 - The `ssr`, `expandMacro`, `runnables` and `relatedTests` LSP server capabilities are removed from the built-in rust-analyzer entry and the documentation; no code read them, and a config that still sets them loads unchanged.

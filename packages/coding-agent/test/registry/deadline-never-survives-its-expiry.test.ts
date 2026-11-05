@@ -8,18 +8,18 @@
  * same already-past deadline as the nearest wake, computed
  * `Math.max(0, past - now)` = 0, and armed another timer. Which fired at once.
  * Which found the same entry. Forever: a hot loop rearming a zero-delay timer,
- * one agent never parked, and no error anywhere. `arm`/`disarm` now write
- * `deadline` and `stage` as a pair and the expiry clears before it decides.
+ * one agent never put to sleep, and no error anywhere. The expiry now clears the
+ * deadline before it decides.
  *
  * WHY IT WAS INVISIBLE. Every functional assertion in the suite advances fake
- * time and then asks "did it park?". A spin never changes an agent's status, so it
+ * time and then asks "did it fall asleep?". A spin never changes an agent's status, so it
  * changes no functional answer; it only burns the loop. The observable proxy for
  * "the deadline was actioned and then let go" is the SCHEDULING COUNT: a settled
  * manager stops arming timers, a spinning one arms them without bound. That count
- * is what these cases assert, alongside the park itself.
+ * is what these cases assert, alongside the sleep itself.
  *
  * IF THIS REGRESSES: one adopted agent pins the event loop at 100% for the
- * lifetime of the process, and the agent it was supposed to park stays live
+ * lifetime of the process, and the agent it was supposed to put to sleep stays live
  * forever holding its session, MCP clients and file handles.
  */
 
@@ -29,7 +29,7 @@ import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { drainMicrotasks } from "../../../utils/test/helpers/drain-microtasks";
 
-/** Minimal durable session exposing the flush-before-dispose boundary park drives. */
+/** Minimal durable session exposing the flush-before-dispose boundary a sleep drives. */
 function makeSessionStub(): { session: AgentSession; disposeCalls: () => number } {
 	let disposeCount = 0;
 	const stub = {
@@ -41,13 +41,12 @@ function makeSessionStub(): { session: AgentSession; disposeCalls: () => number 
 	return { session: stub as unknown as AgentSession, disposeCalls: () => disposeCount };
 }
 
-/** Settle the async park chain (timer callback → park() → dispose → setStatus). */
+/** Settle the async sleep chain (timer callback → sleep() → dispose → setStatus). */
 async function flushAsync(): Promise<void> {
 	await drainMicrotasks(8);
 }
 
 const TTL = 20;
-const CLOSE = 40;
 
 describe("a due deadline is always cleared by the expiry that reads it", () => {
 	let registry: AgentRegistry;
@@ -95,12 +94,11 @@ describe("a due deadline is always cleared by the expiry that reads it", () => {
 	}
 
 	/**
-	 * The park stage. One deadline in, one park out, and then SILENCE: with the
-	 * prune budget disabled a parked agent has no next stage, so the manager must
-	 * arm nothing more. Advancing fifty further TTLs is the spin detector — the
-	 * defect arms a timer on every one of them.
+	 * One deadline in, one sleep out, and then SILENCE: an asleep agent has no
+	 * next stage, so the manager must arm nothing more. Advancing fifty further
+	 * TTLs is the spin detector — the defect arms a timer on every one of them.
 	 */
-	it("parks on the due deadline and then arms no further timer", async () => {
+	it("falls asleep on the due deadline and then arms no further timer", async () => {
 		const stub = makeSessionStub();
 		registerIdleSub("Settle", stub.session);
 		lifecycle.adopt("Settle", { idleTtlMs: TTL });
@@ -108,60 +106,62 @@ describe("a due deadline is always cleared by the expiry that reads it", () => {
 		vi.advanceTimersByTime(TTL);
 		await flushAsync();
 
-		expect(registry.get("Settle")?.status).toBe("parked");
+		expect(registry.get("Settle")?.status).toBe("asleep");
 		expect(stub.disposeCalls()).toBe(1);
-		const armedThroughPark = delays.length;
+		const armedThroughSleep = delays.length;
 
 		vi.advanceTimersByTime(TTL * 50);
 		await flushAsync();
 
 		// The deadline was cleared, so there is nothing left to re-select. A spin
 		// would have added one timer per turn of the loop.
-		expect(delays.length).toBe(armedThroughPark);
+		expect(delays.length).toBe(armedThroughSleep);
 		// And no arming was ever a zero-delay self-retrigger.
 		expect(delays.filter(delay => delay === 0)).toEqual([]);
 	});
 
 	/**
-	 * The two-stage walk, which is where a single uncleared entry does the most
-	 * damage: the park expiry hands off to a prune deadline, so the timer is armed
-	 * again on purpose. That makes "the manager armed another timer" legitimate
-	 * here, and the invariant becomes a BOUND: two stages cost a bounded number of
-	 * arms and end with the ref gone, never an unbounded rearm at zero delay.
+	 * The full cycle, which arms the timer again on purpose: a wake makes the agent
+	 * idle, so a fresh deadline is legitimate. The invariant becomes a BOUND: a
+	 * sleep, a wake and a second sleep cost a bounded number of arms and end in
+	 * silence, never an unbounded rearm at zero delay.
 	 */
-	it("walks idle → parked → pruned on bounded arming, never a zero-delay rearm", async () => {
-		const stub = makeSessionStub();
-		registerIdleSub("Walk", stub.session);
-		lifecycle.adopt("Walk", { idleTtlMs: TTL, pruneAfterMs: CLOSE });
+	it("walks idle → asleep → woken → asleep on bounded arming, never a zero-delay rearm", async () => {
+		const first = makeSessionStub();
+		const second = makeSessionStub();
+		registerIdleSub("Walk", first.session);
+		lifecycle.adopt("Walk", { idleTtlMs: TTL, revive: async () => second.session });
 
 		vi.advanceTimersByTime(TTL);
 		await flushAsync();
-		expect(registry.get("Walk")?.status).toBe("parked");
+		expect(registry.get("Walk")?.status).toBe("asleep");
 
-		vi.advanceTimersByTime(CLOSE);
+		expect(await lifecycle.ensureLive("Walk")).toBe(second.session);
+		expect(registry.get("Walk")?.status).toBe("idle");
+
+		vi.advanceTimersByTime(TTL);
 		await flushAsync();
-
-		// Pruned for good: the ref is dropped and the adoption released.
-		expect(registry.get("Walk")).toBeUndefined();
-		expect(lifecycle.has("Walk")).toBe(false);
-		// Two real stages, so a handful of arms. A spin on either stage blows past this.
+		expect(registry.get("Walk")?.status).toBe("asleep");
+		expect(second.disposeCalls()).toBe(1);
+		// The agent is still adopted: the next message wakes it again.
+		expect(lifecycle.has("Walk")).toBe(true);
 		expect(delays.length).toBeLessThanOrEqual(8);
 		expect(delays.filter(delay => delay === 0)).toEqual([]);
 
-		const armedThroughPrune = delays.length;
-		vi.advanceTimersByTime(CLOSE * 50);
+		const armedThroughCycle = delays.length;
+		vi.advanceTimersByTime(TTL * 50);
 		await flushAsync();
-		expect(delays.length).toBe(armedThroughPrune);
+		expect(delays.length).toBe(armedThroughCycle);
 	});
 
 	/**
-	 * The refused park, which is the reachable shape of "an expiry that cannot act
-	 * on what it read". The park deadline comes due while the agent is `running`, so
-	 * `park()` declines. The expiry has already cleared the deadline, so nothing is
-	 * left to re-read; the next idle transition arms a fresh one and THAT one parks.
+	 * The refused sleep, which is the reachable shape of "an expiry that cannot act
+	 * on what it read". The deadline comes due while the agent is `running`, so
+	 * `sleep()` declines. The expiry has already cleared the deadline, so nothing is
+	 * left to re-read; the next idle transition arms a fresh one and THAT one sleeps.
 	 * The old shape kept the stale deadline and spun until the agent went idle.
 	 */
-	it("re-derives from the ref after a park it could not perform, rather than re-reading a stale deadline", async () => {
+	it("re-derives from the ref after a sleep it could not perform, rather than re-reading a stale deadline", async () => {
 		const stub = makeSessionStub();
 		registerIdleSub("Busy", stub.session);
 		lifecycle.adopt("Busy", { idleTtlMs: TTL });
@@ -182,7 +182,7 @@ describe("a due deadline is always cleared by the expiry that reads it", () => {
 		vi.advanceTimersByTime(TTL);
 		await flushAsync();
 
-		expect(registry.get("Busy")?.status).toBe("parked");
+		expect(registry.get("Busy")?.status).toBe("asleep");
 		expect(stub.disposeCalls()).toBe(1);
 		// The running window cost no arming beyond the one status transition.
 		expect(delays.length - armedWhileRunning).toBeLessThanOrEqual(3);

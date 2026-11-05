@@ -1,16 +1,16 @@
 /**
  * WHY:
  * When an agent completes its task, its session is kept alive in memory with
- * status "idle" for its idle TTL before being parked. Previously, `irc send to:all`
+ * status "idle" for its idle TTL before it falls asleep. Previously, `irc send to:all`
  * broadcast to all visible peers (`running` or `idle`), which delivered messages to
  * completed agents and woke them, starting unexpected new turns on
  * finished agents.
  *
  * This test suite defends the invariant that:
  * 1. Broadcast (`to: "all"`) ONLY delivers to active running peers and NEVER
- *    targets or wakes completed (idle), parked, or aborted peers.
+ *    targets or wakes completed (idle) or asleep peers.
  * 2. Direct messages (`to: "<id>"`) PRESERVE the documented contract that explicitly
- *    messaging a specific peer can wake an idle peer or revive a parked peer.
+ *    messaging a specific peer wakes an idle or asleep peer.
  * 3. Every member of the runtime `AgentStatus` union is covered.
  *
  * What this does NOT catch:
@@ -20,7 +20,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
-import { AgentRegistry, type AgentStatus } from "@veyyon/coding-agent/registry/agent-registry";
+import { AGENT_STATUSES, AgentRegistry, type AgentStatus } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { IrcBus, type IrcMessage } from "@veyyon/coding-agent/task/irc-bus";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
@@ -90,22 +90,40 @@ describe("IRC broadcast vs direct message wake lifecycle", () => {
 		IrcBus.resetGlobalForTests();
 	});
 
-	it("covers all members of the runtime AgentStatus union and fails closed on unrecognised status", () => {
-		const statusBroadcastPolicy: Record<AgentStatus, { eligibleForBroadcast: boolean }> = {
-			running: { eligibleForBroadcast: true },
-			idle: { eligibleForBroadcast: false },
-			parked: { eligibleForBroadcast: false },
-			aborted: { eligibleForBroadcast: false },
-		};
-		// Ensure every status defined in the union is explicitly accounted for
-		const definedStatuses = Object.keys(statusBroadcastPolicy) as AgentStatus[];
-		expect(definedStatuses).toHaveLength(4);
-		expect(definedStatuses).toEqual(["running", "idle", "parked", "aborted"]);
-		expect(statusBroadcastPolicy.running.eligibleForBroadcast).toBe(true);
-		expect(statusBroadcastPolicy.idle.eligibleForBroadcast).toBe(false);
-		expect(statusBroadcastPolicy.parked.eligibleForBroadcast).toBe(false);
-		expect(statusBroadcastPolicy.aborted.eligibleForBroadcast).toBe(false);
+	/** Swept from the runtime union, so a new status is broadcast to only if this table says so. */
+	it("broadcasts to a peer in each AgentStatus only while it is running", async () => {
+		const eligible: Record<AgentStatus, boolean> = { running: true, idle: false, asleep: false };
+		const peers = new Map<AgentStatus, FakeSession>();
+		for (const status of AGENT_STATUSES) {
+			const peer = makeFakeSession("woken");
+			peers.set(status, peer);
+			registry.register({
+				id: `Worker-${status}`,
+				displayName: "worker",
+				kind: "sub",
+				session: status === "asleep" ? null : peer.session,
+				status,
+			});
+			if (status === "asleep") {
+				AgentLifecycleManager.global().adopt(`Worker-${status}`, {
+					idleTtlMs: 0,
+					revive: async () => peer.session,
+				});
+			}
+		}
+
+		const tool = new IrcTool(makeToolSession(registry, "Main"));
+		await tool.execute("call-1", { op: "send", to: "all", message: "sweep" });
+
+		for (const status of AGENT_STATUSES) {
+			expect({ status, delivered: peers.get(status)?.delivered.length }).toEqual({
+				status,
+				delivered: eligible[status] ? 1 : 0,
+			});
+			expect(registry.get(`Worker-${status}`)?.status).toBe(status);
+		}
 	});
+
 	describe("Direct messages (op: 'send' with specific 'to')", () => {
 		it("delivers to running peer as injected aside", async () => {
 			const runningPeer = makeFakeSession("injected");
@@ -169,43 +187,45 @@ describe("IRC broadcast vs direct message wake lifecycle", () => {
 			expect(idlePeer.wokenCount).toBe(1);
 		});
 
-		it("revives a parked peer on direct send", async () => {
-			const parkedPeer = makeFakeSession("woken");
+		it("wakes an asleep peer on direct send", async () => {
+			const asleepPeer = makeFakeSession("woken");
 			registry.register({
-				id: "Worker-Parked",
+				id: "Worker-Asleep",
 				displayName: "worker",
 				kind: "sub",
 				session: null,
-				status: "parked",
+				status: "asleep",
 			});
-			AgentLifecycleManager.global().adopt("Worker-Parked", {
+			AgentLifecycleManager.global().adopt("Worker-Asleep", {
 				idleTtlMs: 0,
-				revive: async () => parkedPeer.session,
+				revive: async () => asleepPeer.session,
 			});
 
 			const tool = new IrcTool(makeToolSession(registry, "Main"));
-			const result = await tool.execute("call-1", { op: "send", to: "Worker-Parked", message: "revive request" });
+			const result = await tool.execute("call-1", { op: "send", to: "Worker-Asleep", message: "wake request" });
 
 			expect(result.isError).toBeFalsy();
-			expect(result.details?.receipts).toEqual([{ to: "Worker-Parked", outcome: "revived" }]);
-			expect(parkedPeer.delivered.map(m => m.body)).toEqual(["revive request"]);
+			expect(result.details?.receipts).toEqual([{ to: "Worker-Asleep", outcome: "revived" }]);
+			expect(asleepPeer.delivered.map(m => m.body)).toEqual(["wake request"]);
 		});
 
-		it("refuses to message an aborted peer", async () => {
+		it("names the missing transcript when an asleep peer has nothing to wake from", async () => {
 			registry.register({
-				id: "Worker-Aborted",
+				id: "Worker-Gone",
 				displayName: "worker",
 				kind: "sub",
 				session: null,
-				status: "aborted",
+				status: "asleep",
 			});
 
 			const tool = new IrcTool(makeToolSession(registry, "Main"));
-			const result = await tool.execute("call-1", { op: "send", to: "Worker-Aborted", message: "hello" });
+			const result = await tool.execute("call-1", { op: "send", to: "Worker-Gone", message: "hello" });
 
 			expect(result.isError).toBe(true);
 			expect(result.details?.receipts?.[0]?.outcome).toBe("failed");
-			expect(result.details?.receipts?.[0]?.error).toContain("hard-aborted");
+			expect(result.details?.receipts?.[0]?.error).toBe(
+				'Agent "Worker-Gone" is asleep and cannot be woken (its transcript or workspace is gone). Read history://Worker-Gone for what it did.',
+			);
 		});
 
 		it("refuses to message caller/self", async () => {
@@ -238,7 +258,7 @@ describe("IRC broadcast vs direct message wake lifecycle", () => {
 	});
 
 	describe("Broadcast messages (op: 'send' with to: 'all')", () => {
-		it("broadcasts ONLY to running and waiting peers, completely ignoring idle, parked, and aborted peers", async () => {
+		it("broadcasts ONLY to running and waiting peers, completely ignoring idle and asleep peers", async () => {
 			const runningPeer = makeFakeSession("injected");
 			registry.register({
 				id: "Worker-Running",
@@ -267,25 +287,17 @@ describe("IRC broadcast vs direct message wake lifecycle", () => {
 				status: "idle",
 			});
 
-			const parkedPeer = makeFakeSession("woken");
+			const asleepPeer = makeFakeSession("woken");
 			registry.register({
-				id: "Worker-Parked",
+				id: "Worker-Asleep",
 				displayName: "worker",
 				kind: "sub",
 				session: null,
-				status: "parked",
+				status: "asleep",
 			});
-			AgentLifecycleManager.global().adopt("Worker-Parked", {
+			AgentLifecycleManager.global().adopt("Worker-Asleep", {
 				idleTtlMs: 0,
-				revive: async () => parkedPeer.session,
-			});
-
-			registry.register({
-				id: "Worker-Aborted",
-				displayName: "worker",
-				kind: "sub",
-				session: null,
-				status: "aborted",
+				revive: async () => asleepPeer.session,
 			});
 
 			const callerSession = makeFakeSession("injected");
@@ -302,14 +314,9 @@ describe("IRC broadcast vs direct message wake lifecycle", () => {
 
 			expect(result.isError).toBeFalsy();
 
-			// Only running & waiting peers should be in the receipts, excluding self, idle, parked, aborted
+			// Only running & waiting peers are in the receipts, excluding self, idle and asleep
 			const receiptTargets = result.details?.receipts?.map(r => r.to) ?? [];
-			expect(receiptTargets).toContain("Worker-Running");
-			expect(receiptTargets).toContain("Worker-Waiting");
-			expect(receiptTargets).not.toContain("Worker-IdleCompleted");
-			expect(receiptTargets).not.toContain("Worker-Parked");
-			expect(receiptTargets).not.toContain("Worker-Aborted");
-			expect(receiptTargets).not.toContain("Main");
+			expect(receiptTargets.sort()).toEqual(["Worker-Running", "Worker-Waiting"]);
 
 			// Running peer received the message
 			expect(runningPeer.delivered.map(m => m.body)).toEqual(["broadcast announcement"]);
@@ -325,9 +332,9 @@ describe("IRC broadcast vs direct message wake lifecycle", () => {
 			expect(idlePeer.delivered).toEqual([]);
 			expect(idlePeer.wokenCount).toBe(0);
 
-			// Parked peer was NEVER revived
-			expect(parkedPeer.delivered).toEqual([]);
-			expect(registry.get("Worker-Parked")?.status).toBe("parked");
+			// Asleep peer was NEVER woken
+			expect(asleepPeer.delivered).toEqual([]);
+			expect(registry.get("Worker-Asleep")?.status).toBe("asleep");
 		});
 
 		it("fails closed on any unrecognised or non-running status member", async () => {
@@ -349,7 +356,7 @@ describe("IRC broadcast vs direct message wake lifecycle", () => {
 			expect(customStatusPeer.wokenCount).toBe(0);
 		});
 
-		it("returns 'No live peers to broadcast to' when only idle, parked, or aborted peers exist", async () => {
+		it("returns 'No live peers to broadcast to' when only idle or asleep peers exist", async () => {
 			const idlePeer = makeFakeSession("woken");
 			registry.register({
 				id: "Worker-Idle",
@@ -359,18 +366,11 @@ describe("IRC broadcast vs direct message wake lifecycle", () => {
 				status: "idle",
 			});
 			registry.register({
-				id: "Worker-Parked",
+				id: "Worker-Asleep",
 				displayName: "worker",
 				kind: "sub",
 				session: null,
-				status: "parked",
-			});
-			registry.register({
-				id: "Worker-Aborted",
-				displayName: "worker",
-				kind: "sub",
-				session: null,
-				status: "aborted",
+				status: "asleep",
 			});
 
 			const tool = new IrcTool(makeToolSession(registry, "Main"));

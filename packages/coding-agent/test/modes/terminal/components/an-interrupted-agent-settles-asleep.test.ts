@@ -1,19 +1,18 @@
 /**
- * An interrupted or terminal agent renders as its terminal status (aborted/error/red,
- * idle, parked), never retaining a transient blocked/running state.
+ * An interrupted agent renders as the state it stopped in (asleep, muted), never
+ * retaining a transient blocked/running state.
  *
  * WHY THIS EXISTS.
  * The defect: When an agent paused at an approval prompt (`blockedOnApproval: true`)
- * was interrupted (`status: "aborted"`), `agentDisplayState` evaluated `blockedOnApproval`
- * before checking whether the agent was still running. As a result, the sidebar/HUD/roster
- * row retained the "blocked" warning status instead of turning red ("aborted"), leaving
- * the operator looking at an actionable prompt indicator for a terminated agent.
+ * was interrupted, `agentDisplayState` evaluated `blockedOnApproval` before checking
+ * whether the agent was still running. As a result, the sidebar/HUD/roster row
+ * retained the "blocked" warning status after the stop, leaving the operator looking
+ * at an actionable prompt indicator for an agent that was no longer running.
  *
  * THE CLASS IT CLOSES.
- * Agent terminal state overrides: Transient state modifiers (such as `blockedOnApproval`)
- * only apply while an agent is actively running (`status: "running"`). Once an agent
- * reaches a terminal or stopped state (`aborted`, `idle`, `parked`), the underlying status
- * (or `waitingOnPeer` for idle/parked) MUST take precedence.
+ * Transient state modifiers (such as `blockedOnApproval` and the activity gist) only
+ * apply while an agent is actively running (`status: "running"`). Once an agent stops
+ * (`idle`, `asleep`), the underlying status (or `waitingOnPeer`) MUST take precedence.
  *
  * WHAT IT DOES NOT CATCH.
  * Terminal rendering font fallbacks for glyphs across exotic terminal emulators.
@@ -23,7 +22,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "bu
 import { stripVTControlCharacters } from "node:util";
 import { AgentDashboard } from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-dashboard";
 import { AgentTranscriptViewer } from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-transcript-viewer";
-import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
+import { AgentRegistry, type AgentStatus } from "@veyyon/coding-agent/registry/agent-registry";
 import { IrcBus } from "@veyyon/coding-agent/task/irc-bus";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import type { TUI } from "@veyyon/tui";
@@ -60,10 +59,10 @@ function rawRowsOf(dashboard: AgentDashboard, callSign: string, width = 120): st
 	return dashboard.render(width).filter(line => line.includes(callSign));
 }
 
-describe("an interrupted or terminal agent settles to terminal display state", () => {
+describe("an interrupted agent settles to the state it stopped in", () => {
 	useFullColor();
 
-	test("reproduces the pause+interrupt defect: an interrupted agent that was blocked on approval turns red (aborted)", () => {
+	test("reproduces the pause+interrupt defect: an interrupted agent that was blocked on approval settles asleep", () => {
 		const registry = AgentRegistry.global();
 		registry.register({
 			id: "0-Sub",
@@ -79,64 +78,26 @@ describe("an interrupted or terminal agent settles to terminal display state", (
 		try {
 			const blockedRow = rowsOf(dashboardWhileBlocked, "Kestrel")[0] ?? "";
 			expect(blockedRow).toContain("blocked");
-			expect(blockedRow).not.toContain("aborted");
+			expect(blockedRow).not.toContain("asleep");
 		} finally {
 			dashboardWhileBlocked.dispose();
 		}
 
-		// 2. Agent is interrupted (status transitions to aborted)
-		registry.setStatus("0-Sub", "aborted");
+		// 2. Agent is interrupted (the stop puts it to sleep)
+		registry.setStatus("0-Sub", "asleep");
 		const dashboardAfterInterrupt = new AgentDashboard({ terminalHeight: 40 });
 		try {
 			const row = rowsOf(dashboardAfterInterrupt, "Kestrel")[0] ?? "";
-			expect(row).toContain("aborted");
+			expect(row).toContain("asleep");
 			expect(row).not.toContain("blocked");
 
-			// Visual check: row must carry the error / red color code and aborted glyph
+			// Visual check: row carries the muted colour and the asleep glyph, not the warning
 			const rawRow = rawRowsOf(dashboardAfterInterrupt, "Kestrel")[0] ?? "";
-			const errorAnsi = theme.getFgAnsi("error");
-			expect(rawRow).toContain(errorAnsi);
-			expect(rawRow).toContain(theme.symbol("status.aborted"));
+			expect(rawRow).toContain(theme.getFgAnsi("muted"));
+			expect(rawRow).toContain(theme.symbol("status.shadowed"));
+			expect(rawRow).not.toContain(theme.symbol("status.warning"));
 		} finally {
 			dashboardAfterInterrupt.dispose();
-		}
-	});
-
-	test("an interrupted agent that had waitingOnPeer set turns red (aborted), not waiting", () => {
-		const registry = AgentRegistry.global();
-		registry.register({
-			id: "0-Sub",
-			displayName: "scout",
-			kind: "sub",
-			session: null,
-			status: "parked",
-		});
-		registry.setWaitingOnPeer("0-Sub", true);
-
-		// While parked + waitingOnPeer, it renders as waiting
-		const dashboardWaiting = new AgentDashboard({ terminalHeight: 40 });
-		try {
-			const waitingRow = rowsOf(dashboardWaiting, "Kestrel")[0] ?? "";
-			expect(waitingRow).toContain("waiting");
-			expect(waitingRow).not.toContain("aborted");
-		} finally {
-			dashboardWaiting.dispose();
-		}
-
-		// Agent is interrupted / aborted: terminal status must override waitingOnPeer
-		registry.setStatus("0-Sub", "aborted");
-		const dashboardAborted = new AgentDashboard({ terminalHeight: 40 });
-		try {
-			const row = rowsOf(dashboardAborted, "Kestrel")[0] ?? "";
-			expect(row).toContain("aborted");
-			expect(row).not.toContain("waiting");
-
-			const rawRow = rawRowsOf(dashboardAborted, "Kestrel")[0] ?? "";
-			const errorAnsi = theme.getFgAnsi("error");
-			expect(rawRow).toContain(errorAnsi);
-			expect(rawRow).toContain(theme.symbol("status.aborted"));
-		} finally {
-			dashboardAborted.dispose();
 		}
 	});
 
@@ -160,15 +121,15 @@ describe("an interrupted or terminal agent settles to terminal display state", (
 			dashboardRunning.dispose();
 		}
 
-		// Aborting must clear the activity
-		registry.setStatus("0-Sub", "aborted");
-		const dashboardAborted = new AgentDashboard({ terminalHeight: 40 });
+		// Stopping must clear the activity
+		registry.setStatus("0-Sub", "asleep");
+		const dashboardStopped = new AgentDashboard({ terminalHeight: 40 });
 		try {
-			const abortedRow = rowsOf(dashboardAborted, "Kestrel")[0] ?? "";
-			expect(abortedRow).toContain("aborted");
-			expect(abortedRow).not.toContain("running test suite");
+			const stoppedRow = rowsOf(dashboardStopped, "Kestrel")[0] ?? "";
+			expect(stoppedRow).toContain("asleep");
+			expect(stoppedRow).not.toContain("running test suite");
 		} finally {
-			dashboardAborted.dispose();
+			dashboardStopped.dispose();
 		}
 	});
 
@@ -176,16 +137,15 @@ describe("an interrupted or terminal agent settles to terminal display state", (
 		const registry = AgentRegistry.global();
 		const states: Array<{
 			id: string;
-			status: "running" | "idle" | "parked" | "aborted";
+			status: AgentStatus;
 			blocked?: boolean;
 			waiting?: boolean;
 		}> = [
 			{ id: "0-Sub", status: "running" },
 			{ id: "1-Sub", status: "running", blocked: true },
 			{ id: "2-Sub", status: "idle" },
-			{ id: "3-Sub", status: "parked", waiting: true },
-			{ id: "4-Sub", status: "parked" },
-			{ id: "5-Sub", status: "aborted" },
+			{ id: "3-Sub", status: "asleep", waiting: true },
+			{ id: "4-Sub", status: "asleep" },
 		];
 
 		for (const s of states) {
@@ -262,22 +222,22 @@ describe("an interrupted or terminal agent settles to terminal display state", (
 			viewerBlocked.dispose();
 		}
 
-		// 3. Interrupted / aborted (must override pending approval)
-		registry.setStatus("0-Sub", "aborted");
-		const viewerAborted = makeViewer();
+		// 3. Interrupted: asleep must override the pending approval
+		registry.setStatus("0-Sub", "asleep");
+		const viewerStopped = makeViewer();
 		try {
-			const lines = viewerAborted.render(80);
-			const statusLine = lines.find(l => l.includes("aborted")) ?? "";
+			const lines = viewerStopped.render(80);
+			const statusLine = lines.find(l => l.includes("asleep")) ?? "";
 			expect(statusLine).toContain("0-Sub");
-			expect(statusLine).toContain("aborted");
+			expect(statusLine).toContain("asleep");
 			expect(statusLine).not.toContain("blocked");
-			expect(statusLine).toContain(theme.getFgAnsi("error"));
+			expect(statusLine).toContain(theme.getFgAnsi("muted"));
 		} finally {
-			viewerAborted.dispose();
+			viewerStopped.dispose();
 		}
 	});
 
-	test("termination dialog formats status cleanly with and without type prefix", () => {
+	test("stop dialog formats status cleanly with and without type prefix", () => {
 		const registry = AgentRegistry.global();
 		registry.register({
 			id: "0-Sub",
@@ -303,12 +263,12 @@ describe("an interrupted or terminal agent settles to terminal display state", (
 
 		const dashboard = new AgentDashboard({ terminalHeight: 40, ui });
 		try {
-			// Open termination dialog with 'x'
+			// Open the stop dialog with 'x'
 			dashboard.handleInput("x");
 			expect(currentOverlay).toBeDefined();
 			const lines = currentOverlay!.render(120);
 			const rendered = lines.map(l => stripVTControlCharacters(l)).join("\n");
-			expect(rendered).toContain("Terminate agent?");
+			expect(rendered).toContain("Stop agent?");
 			expect(rendered).toContain("Kestrel  reviewer · running");
 		} finally {
 			dashboard.dispose();
@@ -330,7 +290,7 @@ describe("an interrupted or terminal agent settles to terminal display state", (
 			expect(currentOverlay).toBeDefined();
 			const lines = currentOverlay!.render(120);
 			const rendered = lines.map(l => stripVTControlCharacters(l)).join("\n");
-			expect(rendered).toContain("Terminate agent?");
+			expect(rendered).toContain("Stop agent?");
 			// Must not contain leading ' · ' before status
 			expect(rendered).not.toContain(" · running");
 			expect(rendered).toContain("Otter  running");

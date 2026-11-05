@@ -195,7 +195,7 @@ describe("the irc card for a peer list", () => {
 							id: "RateLimiter",
 							displayName: "task",
 							kind: "sub",
-							status: "parked",
+							status: "asleep",
 							parentId: "Main",
 							unread: 2,
 							lastActivity: Date.now() - 12 * 60_000,
@@ -215,9 +215,9 @@ describe("the irc card for a peer list", () => {
 			{ op: "list" },
 		);
 		expect(rendered[0]).toContain("1 running");
-		expect(rendered[0]).toContain("1 parked");
+		expect(rendered[0]).toContain("1 asleep");
 		expect(rendered[0]).toContain("2 unread");
-		// Running peers sort above parked ones regardless of input order.
+		// Running peers sort above asleep ones regardless of input order.
 		const authIndex = rendered.findIndex(line => line.includes("AuthLoader"));
 		const rateIndex = rendered.findIndex(line => line.includes("RateLimiter"));
 		expect(authIndex).toBeGreaterThan(0);

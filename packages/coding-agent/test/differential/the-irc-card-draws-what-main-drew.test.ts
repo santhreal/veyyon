@@ -456,7 +456,7 @@ describe("irc tool differential", () => {
 		expect(drawn[3]).toContain(theme.fg("error", 'unknown agent "RateLimiter"'));
 		expect(oracle[3]).toContain(theme.fg("error", `${theme.format.dash} unknown agent "RateLimiter"`));
 		// The unread badge on a roster row is the same decision.
-		const unread = result({ op: "list", from: "Main", peers: [peer({ unread: 2, status: "parked" })] });
+		const unread = result({ op: "list", from: "Main", peers: [peer({ unread: 2, status: "asleep" })] });
 		const roster = viewLines(unread, COLLAPSED, { op: "list" }, 200);
 		expect(roster.join("")).toContain(theme.fg("warning", "2 unread"));
 		expect(stripVTControlCharacters(oracleLines(unread, HOST_COLLAPSED, { op: "list" }, 200).join(""))).toContain(

@@ -51,14 +51,14 @@ const RECIPIENT_NOUN = { one: "recipient", many: "recipients" } as const;
 const MESSAGE_NOUN = { one: "message", many: "messages" } as const;
 const PEER_NOUN = { one: "peer", many: "peers" } as const;
 
-/** The order a roster reads in: who is working, then who is waiting, then who is parked. */
-const PEER_STATUS_ORDER: Record<string, number> = { running: 0, idle: 1, parked: 2 };
+/** The order a roster reads in: who is working, then who is waiting, then who is asleep. */
+const PEER_STATUS_ORDER: Record<string, number> = { running: 0, idle: 1, asleep: 2 };
 
 /** The symbol key and tone a peer's state draws as, which the host resolves from its own registry. */
 const PEER_STATUS_MARKS: Record<string, { symbol: string; tone: ViewTone }> = {
 	running: { symbol: "status.running", tone: "accent" },
 	idle: { symbol: "status.enabled", tone: "success" },
-	parked: { symbol: "status.shadowed", tone: "muted" },
+	asleep: { symbol: "status.shadowed", tone: "muted" },
 };
 
 function outcomeTone(outcome: IrcDeliveryReceipt["outcome"]): ViewTone {
@@ -329,6 +329,7 @@ function peersCard(details: Partial<IrcDetails>, expanded: boolean): FramedBlock
 	const counts = new Map<string, number>();
 	for (const peer of peers) counts.set(peer.status, (counts.get(peer.status) ?? 0) + 1);
 	const meta: ViewLine[] = [...counts].map(([status, count]) => [{ text: `${count} ${status}` }]);
+	if (details.olderAsleep) meta.push([{ text: `${details.olderAsleep} older asleep`, tone: "dim" }]);
 	const unreadTotal = peers.reduce((sum, peer) => sum + peer.unread, 0);
 	if (unreadTotal > 0) meta.push([{ text: `${unreadTotal} unread`, tone: "warning" }]);
 

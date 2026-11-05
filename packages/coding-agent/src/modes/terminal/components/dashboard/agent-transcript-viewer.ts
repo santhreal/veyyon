@@ -10,7 +10,7 @@
  * hands the main view to that agent's live session, where the transcript
  * renders through the regular pipeline and you can reply. This viewer is for
  * the two cases where there is no live session to hand over: an advisor
- * transcript (observability-only, never revivable) and a collab guest (no local
+ * transcript (observability-only, never woken) and a collab guest (no local
  * sessions at all, so reads are proxied to the host).
  *
  * Local transcripts tail append-only growth: unchanged file identity plus stable
@@ -61,7 +61,7 @@ export interface AgentTranscriptRemoteRead {
  * Guest-side proxy for agent actions executed on the collab host.
  *
  * A guest has no local sessions, so every action a local operator performs
- * directly (prompt, kill, revive, read the transcript) crosses the wire.
+ * directly (prompt, stop, wake, read the transcript) crosses the wire.
  */
 export interface AgentTranscriptRemote {
 	chat(id: string, text: string): void;
@@ -588,7 +588,7 @@ export class AgentTranscriptViewer implements Component {
 		if (!lifecycle) return;
 		void (async () => {
 			try {
-				// Revives a parked agent; returns the live session for running/idle.
+				// Wakes an asleep agent; returns the live session for running/idle.
 				const session = await lifecycle().ensureLive(id);
 				// Steers a mid-turn agent; sends a normal prompt to an idle one.
 				await session.prompt(trimmed, { streamingBehavior: "steer" });

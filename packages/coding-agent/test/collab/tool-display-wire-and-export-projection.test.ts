@@ -17,7 +17,7 @@
  * 5. HTML export (`projectSessionEntriesForExport` and `exportFromFile`) projects tool displays
  *    across primary sessions and nested subagent sessions without mutating source session records.
  * 6. Secret redaction obfuscates secrets across BOTH raw message content and projected displays.
- * 7. Protocol version `COLLAB_PROTO = 4` is enforced at the hello handshake: stale peers (v3 and
+ * 7. Protocol version `COLLAB_PROTO = 5` is enforced at the hello handshake: stale peers (v4 and
  *    below) are rejected with a protocol-mismatch error and never admitted.
  */
 
@@ -834,7 +834,7 @@ describe("Tool Execution Display Wire and Export Projection", () => {
 			5000,
 		);
 
-		it("rejects guest hello with stale COLLAB_PROTO <= 3 with protocol mismatch notice", async () => {
+		it("rejects guest hello with stale COLLAB_PROTO <= 4 with protocol mismatch notice", async () => {
 			const host = new CollabHost(makeHostContext());
 			await host.start("ws://localhost:8787");
 			const guest = await joinRawGuest(host.link, COLLAB_PROTO - 1);
@@ -850,8 +850,8 @@ describe("Tool Execution Display Wire and Export Projection", () => {
 			}
 		});
 
-		it("admits guest hello with current COLLAB_PROTO = 4", async () => {
-			expect(COLLAB_PROTO).toBe(4);
+		it("admits guest hello with current COLLAB_PROTO = 5", async () => {
+			expect(COLLAB_PROTO).toBe(5);
 			const host = new CollabHost(makeHostContext());
 			await host.start("ws://localhost:8787");
 			const guest = await joinRawGuest(host.link, COLLAB_PROTO);
@@ -859,7 +859,7 @@ describe("Tool Execution Display Wire and Export Projection", () => {
 				const welcome = await guest.nextFrame();
 				expect(welcome).toMatchObject({
 					t: "welcome",
-					proto: 4,
+					proto: 5,
 				});
 			} finally {
 				guest.socket.close();

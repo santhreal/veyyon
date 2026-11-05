@@ -6,7 +6,7 @@
  * only ever exercise the benign case: it passes identically whether the boundary
  * is checked or not.
  *
- * WHY THIS ONE MATTERS MORE THAN A DISPLAY FILTER. `ensureLive` REVIVES a parked
+ * WHY THIS ONE MATTERS MORE THAN A DISPLAY FILTER. `ensureLive` WAKES an asleep
  * ref. An unguarded call therefore did not merely show a stranger's transcript,
  * it restarted that agent inside this process and pointed the transcript, the
  * status line and the editor's interrupt key at it. The roster the operator
@@ -74,7 +74,7 @@ function harness(): { controller: SessionFocusController; registry: AgentRegistr
 		parentId: "acp:b",
 		session: null,
 		sessionFile: "/tmp/scout-b.jsonl",
-		status: "parked",
+		status: "asleep",
 	});
 
 	return { controller: new SessionFocusController(ctx, registry, () => spied), registry, revivals };
@@ -86,7 +86,7 @@ describe("Focusing an agent respects the conversation boundary", () => {
 	 * damage happens before anything is displayed: a thrown error after the revive
 	 * would look like a refusal while having already restarted the agent.
 	 */
-	it("refuses a parked agent of another conversation without reviving it", async () => {
+	it("refuses an asleep agent of another conversation without waking it", async () => {
 		const h = harness();
 
 		await expect(h.controller.focusAgent("Scout-B")).rejects.toThrow(/different conversation/);

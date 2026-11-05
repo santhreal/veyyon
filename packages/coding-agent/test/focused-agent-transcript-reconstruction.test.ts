@@ -1,13 +1,13 @@
 /**
- * WHY: Focusing a parked agent attaches its durable transcript and reconstructs
+ * WHY: Focusing an asleep agent attaches its durable transcript and reconstructs
  * all conversation history, tool calls, and tool execution results. When durable state
  * is unrevivable (missing file, deleted cwd, corrupted JSONL), focusing must fail cleanly
  * without corrupting or orphaning the driving session view.
  *
  * Closes the class of:
- * - Transcript component loss on parked agent revival
- * - Unhandled crashes / orphaned views when revived session directory or file is missing/corrupted
- * - Spurious auto-unfocus on parked state vs true termination
+ * - Transcript component loss when an asleep agent is woken
+ * - Unhandled crashes / orphaned views when the woken session's directory or file is missing/corrupted
+ * - A view left attached to a session that fell asleep and was disposed
  */
 import "./helpers/tool-views-preload";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
@@ -94,7 +94,7 @@ describe("focused agent transcript reconstruction", () => {
 		stopThemeWatcher();
 	});
 
-	it("reconstructs assistant tool calls and results when focusing a parked agent with durable session file", async () => {
+	it("reconstructs assistant tool calls and results when focusing an asleep agent with durable session file", async () => {
 		if (!mode || !terminal || !mainSession || !agentDir) throw new Error("not booted");
 
 		// Synthetic durable session: enough history to prove every visible role is rebuilt.
@@ -210,7 +210,7 @@ describe("focused agent transcript reconstruction", () => {
 		];
 		await fs.writeFile(sessionFilePath, `${sessionLines.join("\n")}\n`, "utf-8");
 
-		// Register the agent as parked with sessionFile in AgentRegistry
+		// Register the agent as asleep with sessionFile in AgentRegistry
 		const registry = AgentRegistry.global();
 		registry.register({
 			id: "Worker",
@@ -219,7 +219,7 @@ describe("focused agent transcript reconstruction", () => {
 			parentId: MAIN_AGENT_ID,
 			session: null,
 			sessionFile: sessionFilePath,
-			status: "parked",
+			status: "asleep",
 		});
 
 		// Install persisted reviver factory like in main.ts
@@ -252,13 +252,13 @@ describe("focused agent transcript reconstruction", () => {
 		expect(assistantComponents.length).toBe(2);
 		expect(toolComponents.length).toBe(1);
 
-		// Verify parking the agent does not eject the focused view
-		registry.setStatus("Worker", "parked");
+		// Falling asleep again disposes the session, so the view returns to main
+		registry.setStatus("Worker", "asleep");
 		await drainMicrotasks(5);
-		expect(mode.focusedAgentId).toBe("Worker");
+		expect(mode.focusedAgentId).toBeUndefined();
 	});
 
-	it("refuses to focus a parked agent whose session file does not exist, keeping main view intact", async () => {
+	it("refuses to focus an asleep agent whose session file does not exist, keeping main view intact", async () => {
 		if (!mode || !terminal || !mainSession || !agentDir) throw new Error("not booted");
 
 		const missingFilePath = path.join(agentDir.path(), "NonExistent.jsonl");
@@ -270,7 +270,7 @@ describe("focused agent transcript reconstruction", () => {
 			parentId: MAIN_AGENT_ID,
 			session: null,
 			sessionFile: missingFilePath,
-			status: "parked",
+			status: "asleep",
 		});
 
 		const settings = Settings.isolated({ "startup.quiet": true });
@@ -291,7 +291,7 @@ describe("focused agent transcript reconstruction", () => {
 		expect(mode.viewSession).toBe(mainSession);
 	});
 
-	it("refuses to focus a parked agent whose recorded working directory was deleted", async () => {
+	it("refuses to focus an asleep agent whose recorded working directory was deleted", async () => {
 		if (!mode || !terminal || !mainSession || !agentDir) throw new Error("not booted");
 
 		const deletedSubDir = path.join(agentDir.path(), "deleted-worktree");
@@ -327,7 +327,7 @@ describe("focused agent transcript reconstruction", () => {
 			parentId: MAIN_AGENT_ID,
 			session: null,
 			sessionFile: sessionFilePath,
-			status: "parked",
+			status: "asleep",
 		});
 
 		const settings = Settings.isolated({ "startup.quiet": true });
@@ -348,7 +348,7 @@ describe("focused agent transcript reconstruction", () => {
 		expect(mode.viewSession).toBe(mainSession);
 	});
 
-	it("refuses to focus a parked agent with corrupted or truncated JSONL", async () => {
+	it("refuses to focus an asleep agent with corrupted or truncated JSONL", async () => {
 		if (!mode || !terminal || !mainSession || !agentDir) throw new Error("not booted");
 
 		const corruptFilePath = path.join(agentDir.path(), "Corrupt.jsonl");
@@ -367,7 +367,7 @@ describe("focused agent transcript reconstruction", () => {
 			parentId: MAIN_AGENT_ID,
 			session: null,
 			sessionFile: corruptFilePath,
-			status: "parked",
+			status: "asleep",
 		});
 
 		const settings = Settings.isolated({ "startup.quiet": true });
@@ -415,7 +415,7 @@ describe("focused agent transcript reconstruction", () => {
 			parentId: "ForeignMain",
 			session: null,
 			sessionFile: path.join(agentDir.path(), "foreign.jsonl"),
-			status: "parked",
+			status: "asleep",
 			scope: "foreign-session-scope",
 		});
 

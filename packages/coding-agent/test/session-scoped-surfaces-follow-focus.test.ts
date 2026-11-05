@@ -229,11 +229,11 @@ describe("session-scoped surfaces while the view is focused on an agent", () => 
 
 		/**
 		 * Leak 1, detach direction under the registry-driven auto-unfocus: a
-		 * viewed agent that dies returns the view to main WITHOUT an Esc, through
+		 * viewed agent that is stopped falls asleep and returns the view to main WITHOUT an Esc, through
 		 * `SessionFocusController#onRegistryEvent`. The board has to come back on
 		 * that path too, or the only way to recover it is another manual switch.
 		 */
-		it("restores the driving board when the viewed agent dies and the view auto-unfocuses", async () => {
+		it("restores the driving board when the viewed agent falls asleep and the view auto-unfocuses", async () => {
 			const { mode: m, terminal: t } = booted();
 			mainSession?.setTodoPhases([{ name: "Todos", tasks: [{ content: "Parent work", status: "pending" }] }]);
 			await m.reloadTodos();
@@ -243,7 +243,7 @@ describe("session-scoped surfaces while the view is focused on an agent", () => 
 			await focusChild();
 			expect(m.todoContainer.render(WIDTH)).toEqual([]);
 
-			AgentRegistry.global().setStatus("AuthLoader", "aborted");
+			AgentRegistry.global().setStatus("AuthLoader", "asleep");
 			// The registry handler auto-unfocuses through a floating promise, so the
 			// return lands a few microtasks after the status write. Drained, not
 			// slept on: the chain is microtask-only, so no wall clock is involved.
@@ -432,7 +432,7 @@ describe("AgentRegistry.runningAgentCount", () => {
 
 	it("ignores spawns that are not running", () => {
 		const registry = seed();
-		registry.setStatus("Anna.Bob", "parked");
+		registry.setStatus("Anna.Bob", "asleep");
 		expect(registry.runningAgentCount(undefined, "Anna")).toBe(1);
 	});
 });

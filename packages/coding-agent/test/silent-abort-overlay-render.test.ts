@@ -52,7 +52,7 @@ function makeViewer(sessionFile: string, observed: ObservableSession[]): AgentTr
 		parentId: "Main",
 		session: null,
 		sessionFile,
-		status: "parked",
+		status: "asleep",
 	});
 	const ui = { requestRender: () => {}, requestComponentRender: () => {} } as unknown as TUI;
 	return new AgentTranscriptViewer({

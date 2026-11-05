@@ -2,8 +2,8 @@
  * Canned session data for the offline collab harness.
  *
  * One realistic host session (header + ~14 entries covering every renderer
- * branch), an agent registry (main + a running sub with ticking progress + a
- * parked sub with a transcript), an agent transcript JSONL blob, and a
+ * branch), an agent registry (main + a running sub with ticking progress + an
+ * asleep sub with a transcript), an agent transcript JSONL blob, and a
  * scripted streaming turn the mock host replays on every guest prompt.
  */
 import type {
@@ -375,7 +375,7 @@ export const fixtureAgents: AgentSnapshot[] = [
 		displayName: "DocSweep",
 		kind: "sub",
 		parentId: "main",
-		status: "parked",
+		status: "asleep",
 		hasSessionFile: true,
 		createdAt: NOW - 25 * MIN,
 		lastActivity: NOW - 11 * MIN,

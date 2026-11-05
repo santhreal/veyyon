@@ -123,41 +123,14 @@ export const DEFAULT_ENABLED_BUNDLED_AGENT = "deep";
 export const DEFAULT_AGENT_MAX_NESTED_SPAWN_DEPTH = 0;
 
 /**
- * A finished agent goes through TWO stages, and they are not the same event.
+ * How long a finished agent stays live before it falls asleep.
  *
- * PARK ({@link DEFAULT_AGENT_IDLE_TTL_MS}) releases the live session: the
- * process, its MCP clients and its file handles go, the memory is freed. The row
- * stays in the roster, the transcript stays on disk, and messaging or opening the
- * agent rebuilds it. Nothing is lost by parking.
- *
- * PRUNE ({@link DEFAULT_AGENT_PRUNE_MS}) drops the parked row: the roster
- * stops listing it and it can no longer be woken. It deletes nothing — the
- * transcript stays on disk and stays readable at `history://<agent>` — so what a
- * prune costs is the ability to continue that agent, not the record of what it
- * did.
+ * Falling asleep releases the live session: the process, its MCP clients and its file
+ * handles go, and the memory is freed. The agent stays in the roster, its transcript
+ * stays on disk, and messaging or opening it wakes it from that transcript. An agent
+ * is never dropped for being asleep, so nothing is lost by sleeping.
  */
-
-/** Stage one: how long a finished agent stays live before it parks. */
 export const DEFAULT_AGENT_IDLE_TTL_MS = 5 * 60_000;
-
-/**
- * Stage two: how long a parked agent keeps its row before it is pruned.
- *
- * An hour, counted from the agent's last activity. Long enough that everything
- * from the session you are in is still there to open, short enough that a
- * conversation resumed tomorrow does not begin behind every agent it has ever
- * written — the roster of one such session held eighty rows.
- */
-export const DEFAULT_AGENT_PRUNE_MS = 60 * 60_000;
-
-/**
- * The same budget for an agent whose last words said it was waiting on another
- * agent. It stopped on purpose to let a peer finish, so pruning it on the
- * ordinary budget would throw away the one agent most likely to be messaged next.
- * Twice the ordinary grace, because the thing it waits for is another agent's
- * whole run.
- */
-export const DEFAULT_AGENT_WAITING_PRUNE_MS = 2 * 60 * 60_000;
 
 /** Shared recursion choices for the blanket setting and each per-agent override. */
 export const AGENT_RECURSION_DEPTH_OPTIONS = [
@@ -433,7 +406,7 @@ export const AGENTS_SETTINGS = {
 			group: "Limits",
 			label: "Max Agent Runtime",
 			description:
-				"Maximum wall-clock time a spawned agent may run. An agent that reaches it is aborted with a 'timed out' reason. Unlimited: no limit.",
+				"Maximum wall-clock time a spawned agent may run in one go. An agent that reaches it is stopped and falls asleep; message it to continue. Unlimited: no limit.",
 			options: [
 				{ value: "0", label: "Unlimited", description: "Default" },
 				{ value: "300000", label: "5 minutes" },
@@ -449,19 +422,15 @@ export const AGENTS_SETTINGS = {
 		default: DEFAULT_AGENT_IDLE_TTL_MS,
 		ui: {
 			tab: "agents",
-			// Parking is not conditioned on the prune switch: it happens whether or not
-			// the row is later dropped, so this row stays visible while pruning is off.
 			group: "Idle Agents",
-			label: "Park Idle Agents After",
+			label: "Sleep Idle Agents After",
 			description:
-				"How long a spawned agent that has finished its turn stays live before it is parked. A parked agent releases its process, MCP clients and memory; it stays in the roster and is rebuilt from its transcript when messaged or opened. Counted from the agent's last activity. Until exit: idle agents stay live for the whole session.",
+				"How long a spawned agent that has finished its turn stays live before it falls asleep. An asleep agent releases its process, MCP clients and memory; it stays in the roster and wakes from its transcript when messaged or opened. Counted from the agent's last activity. Never: idle agents stay live until the session exits.",
 			// A numeric setting with no option list is dropped by the UI adapter
-			// (`pathToSettingDef` treats optionless numbers as schema-only), so stage one
-			// of the lifecycle was documented, defaulted and honored while being
-			// unreachable from /settings. The list is what makes the row exist, and what
-			// renders 300000 as "5 minutes".
+			// (`pathToSettingDef` treats optionless numbers as schema-only), so the list is
+			// what makes the row exist, and what renders 300000 as "5 minutes".
 			options: [
-				{ value: "0", label: "Until exit" },
+				{ value: "0", label: "Never" },
 				{ value: "60000", label: "1 minute" },
 				{ value: "300000", label: "5 minutes", description: "Default" },
 				{ value: "900000", label: "15 minutes" },
@@ -470,71 +439,21 @@ export const AGENTS_SETTINGS = {
 		},
 	},
 
-	"agent.prune.enabled": {
-		type: "boolean",
-		default: true,
-		ui: {
-			tab: "agents",
-			group: "Idle Agents",
-			label: "Prune Parked Agents",
-			description:
-				"Remove parked agents from the roster after Prune After. A pruned agent cannot be messaged or opened again; its transcript stays on disk and readable at history://<agent>. Off: parked agents stay in the roster until the session exits.",
-		},
-	},
-
-	"agent.prune.afterMs": {
-		type: "number",
-		default: DEFAULT_AGENT_PRUNE_MS,
-		ui: {
-			tab: "agents",
-			group: "Idle Agents",
-			label: "Prune After",
-			description:
-				"How long a parked agent stays in the roster before it is pruned, counted from when it was parked.",
-			options: [
-				{ value: "900000", label: "15 minutes" },
-				{ value: "1800000", label: "30 minutes" },
-				{ value: "3600000", label: "1 hour", description: "Default" },
-				{ value: "14400000", label: "4 hours" },
-				{ value: "86400000", label: "1 day" },
-			],
-			condition: "agentPruneEnabled",
-		},
-	},
-
-	"agent.prune.waitingAfterMs": {
-		type: "number",
-		default: DEFAULT_AGENT_WAITING_PRUNE_MS,
-		ui: {
-			tab: "agents",
-			group: "Idle Agents",
-			label: "Prune After While Waiting",
-			description:
-				"Prune After for a parked agent whose last message was that it is waiting on another agent. A value below Prune After is raised to it.",
-			options: [
-				{ value: "3600000", label: "1 hour" },
-				{ value: "7200000", label: "2 hours", description: "Default" },
-				{ value: "14400000", label: "4 hours" },
-				{ value: "86400000", label: "1 day" },
-			],
-			condition: "agentPruneEnabled",
-		},
-	},
-
 	"agent.softRequestBudget": {
 		type: "number",
-		default: 200,
+		default: 0,
 		ui: {
 			tab: "agents",
 			group: "Limits",
-			label: "Soft Request Budget",
+			label: "Request Limit",
 			description:
-				"Number of model requests a spawned agent may make per run before it is asked to wrap up. At 1.5 times this number the run is stopped and the agent returns what it has. Disabled: no limit. The bundled scout and sonic agents have a lower built-in budget.",
+				"How many model requests a spawned agent may make in one run. At the limit the agent is asked to wrap up; at 1.5 times the limit it is stopped and returns what it has, and it can be messaged to continue. Unlimited: no limit.",
 			options: [
-				{ value: "0", label: "Disabled" },
-				{ value: "90", label: "90 requests" },
-				{ value: "150", label: "150 requests" },
-				{ value: "200", label: "200 requests", description: "Default" },
+				{ value: "0", label: "Unlimited", description: "Default" },
+				{ value: "200", label: "200 requests" },
+				{ value: "500", label: "500 requests" },
+				{ value: "1000", label: "1000 requests" },
+				{ value: "2000", label: "2000 requests" },
 			],
 		},
 	},
@@ -545,12 +464,11 @@ export const AGENTS_SETTINGS = {
 		ui: {
 			tab: "agents",
 			group: "Limits",
-			label: "Soft Request Budget Notice",
+			label: "Wrap-Up Notice",
 			description:
-				"Send an agent one steering notice when it crosses its Soft Request Budget, asking it to wrap up before the forced stop.",
-			// Only reachable behaviour while a budget exists: with the guard disabled
-			// there is no crossing to announce, so the row is hidden rather than
-			// shown doing nothing.
+				"Send an agent one message asking it to wrap up when it reaches its Request Limit, before it is stopped at 1.5 times the limit.",
+			// Only reachable behaviour while a limit exists: with no limit there is no
+			// crossing to announce, so the row is hidden rather than shown doing nothing.
 			condition: "agentSoftRequestBudgetEnabled",
 		},
 	},

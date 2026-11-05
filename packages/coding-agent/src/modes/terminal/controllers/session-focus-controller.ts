@@ -67,7 +67,7 @@ export class SessionFocusController {
 	 * `ensureLive` runs. Refusal rather than a silent no-op because the operator
 	 * pressed a key and is owed an answer, and refusal rather than filtering
 	 * because there is nothing to filter: the caller named one agent. The order
-	 * matters more than the check: `ensureLive` REVIVES a parked ref, so an
+	 * matters more than the check: `ensureLive` WAKES an asleep ref, so an
 	 * unguarded call did not merely display a stranger's session, it restarted
 	 * one, replaying another conversation's context into this process and
 	 * pointing the transcript, the status line and the editor's interrupt at it.
@@ -91,7 +91,7 @@ export class SessionFocusController {
 			throw new Error(`Agent ${id} belongs to a different conversation and cannot be viewed from this one.`);
 		}
 		const gen = ++this.#focusGeneration;
-		// Pinned BEFORE the revive so a park whose flush is already in flight is
+		// Pinned BEFORE the wake so a sleep whose flush is already in flight is
 		// refused rather than disposing the session this screen is about to attach.
 		const unpin = this.lifecycle().pin(id);
 		let session: AgentSession;
@@ -102,12 +102,8 @@ export class SessionFocusController {
 				return;
 			}
 			const current = this.registry.get(id);
-			if (!current || current.status === "aborted") {
-				throw new Error(
-					current
-						? `Agent "${id}" was terminated and cannot be viewed.`
-						: `Unknown agent "${id}" — it was never registered or has been released.`,
-				);
+			if (!current) {
+				throw new Error(`Unknown agent "${id}" — it was never registered or its conversation has ended.`);
 			}
 			if (!AgentRegistry.sameScope(current.scope, scope)) {
 				throw new Error(`Agent ${id} belongs to a different conversation and cannot be viewed from this one.`);
@@ -166,9 +162,11 @@ export class SessionFocusController {
 
 	#onRegistryEvent(event: RegistryEvent): void {
 		if (event.ref.id !== this.#focusedAgentId) return;
+		// A focused agent is pinned against its idle TTL, but a stop still closes its
+		// session, and the screen must not stay attached to a disposed one.
 		const gone = event.type === "removed";
-		const dead = event.type === "status_changed" && event.ref.status === "aborted";
-		if (gone || dead) {
+		const closed = event.type === "status_changed" && event.ref.status === "asleep";
+		if (gone || closed) {
 			const transition = this.unfocus();
 			const gen = this.#focusGeneration;
 			void transition.then(() => {

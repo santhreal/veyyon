@@ -3,7 +3,7 @@
  *
  * WHY THIS SUITE EXISTS. `AgentRef` is written once, by `register`, and the
  * driving session was wired to nothing after that: `task/executor.ts` reports a
- * agent's status and activity, `persisted-revive.ts` reports a revived one's,
+ * agent's status and activity, `persisted-revive.ts` reports a woken one's,
  * and no caller reported the main agent's. So its agent dashboard row was
  * frozen at process start — it named the model the process booted on however
  * many times the operator had switched since, and its age counted from the
@@ -67,8 +67,8 @@ describe("a roster row tracks the live model and the current conversation", () =
 		expect(rowFor(registry, MAIN_AGENT_ID).model).toBe("zai/glm-5.2");
 	});
 
-	test("a parked agent with no session keeps the model recorded at registration", () => {
-		// The recorded value is not dead weight: a parked ref has no session to ask,
+	test("an asleep agent with no session keeps the model recorded at registration", () => {
+		// The recorded value is not dead weight: an asleep ref has no session to ask,
 		// and dropping it would blank the column for exactly the agents an operator
 		// opens the roster to find.
 		registry.register({
@@ -76,7 +76,7 @@ describe("a roster row tracks the live model and the current conversation", () =
 			displayName: "task",
 			kind: "sub",
 			session: null,
-			status: "parked",
+			status: "asleep",
 			model: "google/gemini-3.7-flash",
 		});
 

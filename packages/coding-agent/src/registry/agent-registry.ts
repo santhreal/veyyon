@@ -4,9 +4,10 @@
  *
  * Tracks each agent's status and (when live) its AgentSession so peers can be
  * addressed by id (`irc`, `task resume`, `history://`). Sessions are
- * registered explicitly at creation; finished agents stay registered as
- * `idle` (live) or `parked` (session disposed, ref + sessionFile retained for
- * revival) and are only removed on explicit release/teardown.
+ * registered explicitly at creation; finished and stopped agents stay registered
+ * as `idle` (live) or `asleep` (session disposed, ref + sessionFile retained so
+ * a message wakes it) and are only removed when their conversation ends or the
+ * process exits.
  */
 
 // Owner subpaths, not the "@veyyon/utils" barrel. This module is the SOLE path by which
@@ -51,32 +52,57 @@ export function mainAgentIdFor(sessionId: string): string {
  * - `running`: a turn is in flight.
  * - `idle`: live AgentSession in memory, awaiting work. Finished agents are
  *   `idle`, not removed.
- * - `parked`: session disposed; AgentRef + sessionFile retained, revivable.
- * - `aborted`: hard-killed, terminal.
+ * - `asleep`: session disposed; AgentRef + sessionFile retained. A message or a
+ *   focus wakes it from its transcript. Stopped, failed and timed-out agents
+ *   land here too: no status is terminal.
  */
-export const AGENT_STATUSES = ["running", "idle", "parked", "aborted"] as const;
+export const AGENT_STATUSES = ["running", "idle", "asleep"] as const;
 export type AgentStatus = (typeof AGENT_STATUSES)[number];
 
 /**
  * The status transitions a live process may perform, keyed by the current status.
  *
- * - `running → idle`: the turn drained. `running → parked`: the run finished with
- *   no session to keep (isolated run, tan clone). `running → aborted`: killed.
- * - `idle → running`: a follow-up turn started. `idle → parked`: the idle TTL
- *   elapsed. `idle → aborted`: killed.
- * - `parked → idle`: revived. `parked → aborted`: killed while parked.
- * - `aborted` is terminal.
+ * - `running → idle`: the turn drained. `running → asleep`: the run was stopped,
+ *   or finished with no session to keep (isolated run, tan clone).
+ * - `idle → running`: a follow-up turn started. `idle → asleep`: the idle TTL
+ *   elapsed, or the agent was stopped.
+ * - `asleep → idle`: woken.
  *
- * `parked → running` is absent because a parked ref has no session to run a turn
- * on: a revive attaches the session and reports `idle` first, and the turn's own
+ * `asleep → running` is absent because an asleep ref has no session to run a turn
+ * on: a wake attaches the session and reports `idle` first, and the turn's own
  * `agent_start` then reports `running`.
  */
 export const AGENT_TRANSITIONS: Readonly<Record<AgentStatus, readonly AgentStatus[]>> = {
-	running: ["idle", "parked", "aborted"],
-	idle: ["running", "parked", "aborted"],
-	parked: ["idle", "aborted"],
-	aborted: [],
+	running: ["idle", "asleep"],
+	idle: ["running", "asleep"],
+	asleep: ["idle"],
 };
+
+/**
+ * How many asleep agents a roster names. Older asleep agents are counted rather
+ * than listed, and still wake when messaged by id.
+ */
+export const ROSTER_ASLEEP_LIMIT = 10;
+
+/**
+ * A roster with its older asleep rows folded into a count.
+ *
+ * Agents are never dropped, so a long session accumulates every agent it ever
+ * spawned. Every running and idle row is kept; of the asleep rows, the
+ * {@link ROSTER_ASLEEP_LIMIT} most recently active are kept and the rest are
+ * counted in `olderAsleep`. Kept rows stay in input order.
+ */
+export function foldOlderAsleep<T extends { status: AgentStatus; lastActivity: number }>(
+	rows: readonly T[],
+): { rows: T[]; olderAsleep: number } {
+	const asleep = rows.filter(row => row.status === "asleep");
+	if (asleep.length <= ROSTER_ASLEEP_LIMIT) return { rows: [...rows], olderAsleep: 0 };
+	const kept = new Set(asleep.sort((a, b) => b.lastActivity - a.lastActivity).slice(0, ROSTER_ASLEEP_LIMIT));
+	return {
+		rows: rows.filter(row => row.status !== "asleep" || kept.has(row)),
+		olderAsleep: asleep.length - ROSTER_ASLEEP_LIMIT,
+	};
+}
 
 /** Thrown by {@link AgentRegistry.setStatus} for a transition {@link AGENT_TRANSITIONS} does not list. */
 export class AgentTransitionError extends Error {
@@ -93,7 +119,7 @@ export class AgentTransitionError extends Error {
  * - `main`/`sub`: the user-facing agent tree (driving agent + spawned task agents).
  * - `advisor`: a passive review transcript persisted like a spawned agent for usage
  *   attribution and Control Center observability, but never a peer — hidden from
- *   agent-facing rosters (`irc`, `history://`) and not messageable/revivable.
+ *   agent-facing rosters (`irc`, `history://`) and not messageable or wakeable.
  */
 export type AgentKind = "main" | "sub" | "advisor";
 
@@ -127,7 +153,7 @@ export interface AgentRef {
 	kind: AgentKind;
 	parentId?: string;
 	status: AgentStatus;
-	/** Null exactly when parked/aborted. */
+	/** Null exactly when asleep. */
 	session: AgentSession | null;
 	sessionFile: string | null;
 	createdAt: number;
@@ -156,10 +182,8 @@ export interface AgentRef {
 	model?: string;
 	/**
 	 * The agent's last message said it was waiting on another agent, so it stopped
-	 * on purpose rather than simply going quiet. Read by the lifecycle manager to
-	 * grant it a longer grace before a parked agent is closed for good: it is the
-	 * one most likely to be messaged next, and closing it on the ordinary timer
-	 * throws away exactly the peer the operator is about to need.
+	 * on purpose rather than simply going quiet. Display-only: a roster names such
+	 * an agent `waiting`, which is what separates it from one that finished.
 	 */
 	waitingOnPeer?: boolean;
 	/**
@@ -214,9 +238,9 @@ export interface RegisterInput {
 	 * moment of the scan threw that history away: every agent from every previous
 	 * run reported "just now" in the roster for as long as the process lived, so
 	 * the column that exists to separate this minute's work from yesterday's said
-	 * the same thing about all of it. The age also decides when the close budget
-	 * drops the ref, so a restored agent that had been quiet for a day was given a
-	 * full budget from the scan.
+	 * the same thing about all of it. The roster also folds the least recently
+	 * active sleepers behind a count, so a restored agent stamped "now" would push
+	 * this session's own sleepers out of view.
 	 */
 	createdAt?: number;
 	lastActivity?: number;
@@ -317,8 +341,8 @@ export class AgentRegistry {
 	/**
 	 * Copy a status reported by another process, without the transition check. A
 	 * collab guest mirrors the host's roster from snapshots that may skip states
-	 * (a host that went `running → idle → parked` between two snapshots reports
-	 * `parked`), and the host is the authority on its own agents.
+	 * (a host that went `running → idle → asleep` between two snapshots reports
+	 * `asleep`), and the host is the authority on its own agents.
 	 */
 	mirrorStatus(id: string, status: AgentStatus): void {
 		const ref = this.#refs.get(id);
@@ -578,15 +602,13 @@ export class AgentRegistry {
 	}
 
 	/**
-	 * Peers `id` may address at all, including PARKED ones.
+	 * Peers `id` may address at all, including ASLEEP ones.
 	 *
-	 * Parked is not dead: messaging a parked peer revives it, and that is a
-	 * supported flow, so the roster a model reads has to list them or the revival
-	 * is unreachable. `aborted` is excluded because it is the one terminal state
-	 * the bus refuses outright.
+	 * Asleep is not dead: messaging an asleep peer wakes it, so the roster a model
+	 * reads has to list them or the wake is unreachable.
 	 */
 	listAddressableBy(id: string): AgentRef[] {
-		return this.list().filter(ref => this.canAddress(id, ref.id) && ref.status !== "aborted");
+		return this.list().filter(ref => this.canAddress(id, ref.id));
 	}
 
 	/**

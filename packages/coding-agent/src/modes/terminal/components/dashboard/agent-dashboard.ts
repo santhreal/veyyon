@@ -32,11 +32,11 @@
  *
  * What each of the folded surfaces contributed, and where it went:
  * - The hub's persisted-agent scan (agents from previous runs, registered
- *   `parked` so they survive a restart) is now `registry/persisted-agents.ts`,
+ *   `asleep` so they survive a restart) is now `registry/persisted-agents.ts`,
  *   called here.
  * - The hub's model badge is `agent-model-badge.ts`, shared with the task widget.
- * - The hub's kill (`x`) is here. Its revive (`r`) is gone as a separate key:
- *   opening a parked agent revives it, so a key that only revived was a second
+ * - The hub's kill (`x`) is here, as stop. Its revive (`r`) is gone as a separate
+ *   key: opening an asleep agent wakes it, so a key that only woke it was a second
  *   way to do the same thing badly.
  * - The hub's in-overlay transcript viewer is still mounted, but only for the
  *   two cases with no live session to hand over: an advisor transcript, and a
@@ -46,7 +46,7 @@
  * - Up/Down or j/k: move selection (Live) or scroll (Comms)
  * - Tab / Shift+Tab or Left/Right: switch view
  * - Enter: open the selected agent (Live)
- * - x: confirm termination of the selected agent (Live)
+ * - x: confirm stopping the selected agent (Live)
  * - Ctrl+O: expand folded messages (Comms)
  * - f: cycle the stream through each agent's traffic (Comms)
  * - Esc, or the key that opened it: close
@@ -129,9 +129,7 @@ const VIEW_ORDER: readonly ViewId[] = ["live", "comms"];
  */
 function liveShortcuts(rosterRows: number): readonly ModalShortcut[] {
 	return [
-		...(rosterRows > 0
-			? [{ label: "up/down navigate" }, { label: "enter open agent" }, { label: "x terminate" }]
-			: []),
+		...(rosterRows > 0 ? [{ label: "up/down navigate" }, { label: "enter open agent" }, { label: "x stop" }] : []),
 		{ label: "left/right view" },
 		{ label: "esc close", clickable: true, id: "close" },
 	];
@@ -250,7 +248,7 @@ interface RosterColumns {
 }
 
 /**
- * The Live roster: one row per agent that exists, including the ones parked on
+ * The Live roster: one row per agent that exists, including the ones asleep on
  * disk from previous runs.
  *
  * Deliberately NOT a configuration list. It only ever shows agents that exist,
@@ -264,7 +262,7 @@ class LiveRosterPane implements Component {
 		private readonly extrasFor: (agent: LiveAgent) => RosterExtras,
 		private readonly selectedIndex: number,
 		private readonly hoveredIndex: number,
-		private readonly canTerminate: (agent: LiveAgent) => boolean,
+		private readonly canStop: (agent: LiveAgent) => boolean,
 		private readonly scrollOffset: number,
 		private readonly maxVisible: number,
 		/**
@@ -297,7 +295,7 @@ class LiveRosterPane implements Component {
 				theme.fg("muted", "  Nothing running."),
 				"",
 				theme.fg("dim", "  Spawned agents appear here the moment they spawn,"),
-				theme.fg("dim", "  and the ones from earlier runs appear parked."),
+				theme.fg("dim", "  and the ones from earlier runs appear asleep."),
 				theme.fg("dim", "  Enter opens one in the main view, where you can talk to it."),
 			];
 		}
@@ -332,7 +330,7 @@ class LiveRosterPane implements Component {
 				cap,
 			),
 			// The DISPLAYED word, not `agent.status`: a waiting agent's word is
-			// longer than the `parked` it is derived from, and measuring the raw
+			// longer than the `asleep` it is derived from, and measuring the raw
 			// status padded the column one cell short, sliding every following
 			// column left on exactly the rows that most need reading.
 			status: widest(agent => agentDisplayState(agent)),
@@ -380,7 +378,7 @@ class LiveRosterPane implements Component {
 		width: number,
 		now: number,
 	): string {
-		const terminable = this.canTerminate(agent);
+		const stoppable = this.canStop(agent);
 		// Give an idle row its whole width. Hover overlays [x] on the final four
 		// cells instead of permanently evicting the model or activity, and the
 		// prefix stays fixed while the pointer target appears.
@@ -448,7 +446,7 @@ class LiveRosterPane implements Component {
 		const prefixWidth = Math.max(0, width - actionWidth);
 		const actionPrefix = truncateToWidth(content, prefixWidth);
 		const line =
-			terminable && hovered
+			stoppable && hovered
 				? `${actionPrefix}${padding(Math.max(0, prefixWidth - visibleWidth(actionPrefix)))} ${theme.fg("error", "[x]")}`
 				: contentPadded;
 		if (!selected) return line;
@@ -460,9 +458,9 @@ class LiveRosterPane implements Component {
 	invalidate(): void {}
 }
 
-const TERMINATION_SHORTCUTS: readonly ModalShortcut[] = [
+const STOP_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "esc dismiss", clickable: true, id: "close" },
-	{ label: "enter yes, terminate", clickable: true, id: "confirm" },
+	{ label: "enter yes, stop", clickable: true, id: "confirm" },
 ];
 
 /**
@@ -472,7 +470,7 @@ const TERMINATION_SHORTCUTS: readonly ModalShortcut[] = [
  * are explicit clickable actions. Enter confirms because focus is already inside
  * the dialog; Escape, the close glyph and click-outside all dismiss.
  */
-class AgentTerminationDialog implements Component {
+class AgentStopDialog implements Component {
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
 	onRequestRender?: () => void;
@@ -524,7 +522,7 @@ class AgentTerminationDialog implements Component {
 		const statusWord = agentStatusWord(agentDisplayState(this.agent));
 		const kindAndStatus = type ? `${type} · ${statusWord}` : statusWord;
 		const warning =
-			"This stops the current turn and removes the agent from the roster. Its transcript stays on disk.";
+			"This stops the current turn and puts the agent to sleep. Message it to continue; its transcript stays on disk.";
 		const body = [
 			`${theme.bold(replaceTabs(this.agent.callSign))}  ${theme.fg("muted", kindAndStatus)}`,
 			"",
@@ -532,11 +530,11 @@ class AgentTerminationDialog implements Component {
 		];
 		const shell = renderModalShell(
 			planModalChrome(dims, {
-				shortcuts: TERMINATION_SHORTCUTS,
+				shortcuts: STOP_SHORTCUTS,
 				hoveredShortcutId: this.#hoveredShortcutId,
 			}),
 			{
-				title: "Terminate agent?",
+				title: "Stop agent?",
 				body,
 				preferredBodyRows: body.length,
 				showClose: true,
@@ -556,7 +554,7 @@ class AgentTerminationDialog implements Component {
  * next step boundary) and gets nothing: a badge on every single row is a badge
  * nobody reads. The other two say something the body cannot. `woken` means the
  * message started a turn in an agent that had stopped, and `revived` means it
- * brought a parked agent back from disk, which is the difference between "they
+ * woke an asleep agent from its transcript, which is the difference between "they
  * were listening" and "your message is why they are running".
  */
 const OUTCOME_BADGE: Partial<Record<IrcLogEntry["outcome"], string>> = {
@@ -624,7 +622,7 @@ interface CommsPaneOptions {
  * Three things ride on the head line besides who spoke, and each earns its
  * space by answering a question the body cannot:
  *  - the DELIVERY, when it was not the ordinary live hand-off, because a
- *    message that woke or revived its recipient changed what that agent is
+ *    message that woke its recipient changed what that agent is
  *    doing, and a message that failed changes what YOU do next;
  *  - the REPLY link, because `replyTo` is recorded on every answered message
  *    and was previously shown nowhere, leaving an interleaved four-agent stream
@@ -769,13 +767,13 @@ export interface AgentDashboardDeps {
 	registry?: AgentRegistry;
 	/** Injectable for tests; defaults to the process-global bus. */
 	irc?: IrcBus;
-	/** Injectable for tests; defaults to the process-global lifecycle manager. Lazy: only termination touches it. */
+	/** Injectable for tests; defaults to the process-global lifecycle manager. Lazy: only stopping touches it. */
 	lifecycle?: () => AgentLifecycleManager;
 	/** Spawn descriptions and executor-reported models. Absent in render-only tests. */
 	observers?: SessionObserverRegistry;
 	/** `agent.showResolvedModelBadge`: whether rows carry the model badge. */
 	showModelBadge?: boolean;
-	/** Current main session file; seeds parked agents from previous runs. */
+	/** Current main session file; seeds asleep agents from previous runs. */
 	sessionFile?: string | null;
 	/**
 	 * Conversation this card is rendered for (`SessionManager.getSessionId()`).
@@ -893,9 +891,9 @@ export class AgentDashboard extends Container {
 	/** Fullscreen read-only transcript overlay, when one is open. */
 	#transcriptOverlay: OverlayHandle | undefined;
 	#transcriptViewer: AgentTranscriptViewer | undefined;
-	/** Focused confirmation overlay guarding a roster termination. */
-	#terminationOverlay: OverlayHandle | undefined;
-	#terminationDialog: AgentTerminationDialog | undefined;
+	/** Focused confirmation overlay guarding a roster stop. */
+	#stopOverlay: OverlayHandle | undefined;
+	#stopDialog: AgentStopDialog | undefined;
 
 	readonly #deps: AgentDashboardDeps;
 	readonly #registry: AgentRegistry;
@@ -919,7 +917,7 @@ export class AgentDashboard extends Container {
 		this.#registry = deps.registry ?? AgentRegistry.global();
 		this.#irc = deps.irc ?? IrcBus.global();
 		// Lazy: the lifecycle global self-constructs against the global registry,
-		// so only touch it when confirmed termination actually needs it.
+		// so only touch it when a confirmed stop needs it.
 		this.#lifecycle = () => (deps.lifecycle ?? AgentLifecycleManager.global)();
 		this.#observers = deps.observers;
 		this.#expandKeys = deps.expandKeys ?? [];
@@ -1013,7 +1011,7 @@ export class AgentDashboard extends Container {
 			this.#dataChangeTimer = undefined;
 		}
 		this.#closeTranscriptOverlay({ restoreFocus: false });
-		this.#closeTerminationOverlay({ restoreFocus: false });
+		this.#closeStopOverlay({ restoreFocus: false });
 	}
 
 	#scheduleDataChange(): void {
@@ -1030,7 +1028,7 @@ export class AgentDashboard extends Container {
 		const selectedId = this.#liveAgents[this.#liveSelectedIndex]?.id;
 		this.#liveHoveredIndex = -1;
 		this.#liveAgents = collectLiveAgents(this.#registry.listInScope(this.#deps.scope));
-		// Keep the cursor on the AGENT, not on the row number: a spawn or a park
+		// Keep the cursor on the AGENT, not on the row number: a spawn or a sleep
 		// reorders the roster under an operator who is about to press Enter.
 		const kept = selectedId ? this.#liveAgents.findIndex(agent => agent.id === selectedId) : -1;
 		this.#liveSelectedIndex =
@@ -1174,7 +1172,7 @@ export class AgentDashboard extends Container {
 	 * Tab strip labels and counts.
 	 *
 	 * Live counts what is RUNNING rather than what is registered, because an idle
-	 * or parked agent is history, and a count that includes history never returns
+	 * or asleep agent is history, and a count that includes history never returns
 	 * to zero once the session has spawned anything.
 	 */
 	#viewTabs(): ViewTab[] {
@@ -1182,7 +1180,7 @@ export class AgentDashboard extends Container {
 			// The count is ROWS BEHIND THE TAB, which is what {@link ViewTab.count}
 			// promises and what the reader compares against the list in front of
 			// them. It used to count only the RUNNING agents while the pane listed
-			// every one of them, so a roster with three parked agents read
+			// every one of them, so a roster with three asleep agents read
 			// "Live (17)" above twenty rows and the strip contradicted the body.
 			{ id: "live", label: "Live", count: this.#liveAgents.length },
 			{ id: "comms", label: "Comms", count: this.#filteredComms().length },
@@ -1348,7 +1346,7 @@ export class AgentDashboard extends Container {
 	 * Focusing retargets the transcript, the editor and the status line at the
 	 * agent (`SessionFocusController`), which is the whole point: you read what it
 	 * is doing and then answer it, and `esc` there returns you to your own
-	 * session. Parked agents revive on the way in (`ensureLive`), so an agent from
+	 * session. Asleep agents wake on the way in (`ensureLive`), so an agent from
 	 * an earlier run opens the same way a running one does.
 	 *
 	 * Two cases have no live session to hand over and fall back to the read-only
@@ -1430,15 +1428,15 @@ export class AgentDashboard extends Container {
 		this.onRequestRender?.();
 	}
 
-	/** Whether this roster row represents a child session the operator may terminate. */
-	#canTerminate(agent: LiveAgent): boolean {
+	/** Whether this roster row represents a child session the operator may stop. */
+	#canStop(agent: LiveAgent): boolean {
 		return agent.kind !== "main" && agent.kind !== "advisor";
 	}
 
 	/**
-	 * `x`: ask before terminating the selected agent.
+	 * `x`: ask before stopping the selected agent.
 	 *
-	 * A conversation is not terminated here, whether it is the one on screen or
+	 * A conversation is not stopped here, whether it is the one on screen or
 	 * one running off it: stopping a conversation ends a turn, closes a provider
 	 * stream and settles a transcript, which is the owning session's job. The
 	 * `/resume` picker stops an off-screen conversation with ctrl+x. An advisor is a read-only
@@ -1449,70 +1447,67 @@ export class AgentDashboard extends Container {
 	killSelectedAgent(): void {
 		const agent = this.#liveAgents[this.#liveSelectedIndex];
 		if (!agent) return;
-		this.#requestTermination(agent);
+		this.#requestStop(agent);
 	}
 
-	#requestTermination(agent: LiveAgent): void {
+	#requestStop(agent: LiveAgent): void {
 		if (agent.kind === "main") {
-			this.#notice = "The main session cannot be terminated from its own roster.";
+			this.#notice = "The main session cannot be stopped from its own roster.";
 			this.#rebuildAndRender();
 			return;
 		}
 		if (agent.kind === "advisor") {
-			this.#notice = `"${agent.id}" is a read-only advisor transcript, so there is nothing to terminate.`;
+			this.#notice = `"${agent.id}" is a read-only advisor transcript, so there is nothing to stop.`;
 			this.#rebuildAndRender();
 			return;
 		}
 		if (typeof this.#ui.showOverlay !== "function") {
 			// A destructive fallback would make the guard disappear in embedded
 			// hosts. Refuse instead, with a reason the host can render.
-			this.#notice = `Could not confirm termination of ${agent.callSign} in this non-interactive view.`;
+			this.#notice = `Could not confirm stopping ${agent.callSign} in this non-interactive view.`;
 			this.#rebuildAndRender();
 			return;
 		}
 
 		this.#notice = undefined;
-		this.#closeTerminationOverlay({ restoreFocus: false });
+		this.#closeStopOverlay({ restoreFocus: false });
 		let settled = false;
-		const dialog = new AgentTerminationDialog(
+		const dialog = new AgentStopDialog(
 			agent,
 			() => this.#terminalRows(),
 			() => {
 				if (settled) return;
 				settled = true;
-				this.#closeTerminationOverlay({ restoreFocus: true });
-				this.#terminateAgent(agent);
+				this.#closeStopOverlay({ restoreFocus: true });
+				this.#stopAgent(agent);
 			},
 			() => {
 				if (settled) return;
 				settled = true;
-				this.#closeTerminationOverlay({ restoreFocus: true });
+				this.#closeStopOverlay({ restoreFocus: true });
 			},
 		);
 		dialog.onRequestRender = () => this.onRequestRender?.();
-		this.#terminationDialog = dialog;
-		this.#terminationOverlay = this.#ui.showOverlay(dialog, { width: "100%", margin: 0, fullscreen: true });
+		this.#stopDialog = dialog;
+		this.#stopOverlay = this.#ui.showOverlay(dialog, { width: "100%", margin: 0, fullscreen: true });
 		this.#ui.setFocus?.(dialog);
 		this.onRequestRender?.();
 	}
 
-	#closeTerminationOverlay(options: { restoreFocus: boolean }): void {
-		if (!this.#terminationOverlay && !this.#terminationDialog) return;
-		this.#terminationOverlay?.hide();
-		this.#terminationOverlay = undefined;
-		this.#terminationDialog = undefined;
+	#closeStopOverlay(options: { restoreFocus: boolean }): void {
+		if (!this.#stopOverlay && !this.#stopDialog) return;
+		this.#stopOverlay?.hide();
+		this.#stopOverlay = undefined;
+		this.#stopDialog = undefined;
 		if (options.restoreFocus) this.#ui.setFocus?.(this);
 		this.onRequestRender?.();
 	}
 
 	/**
-	 * Apply a confirmed termination.
-	 *
-	 * A running agent is aborted first, then released, because releasing a
-	 * session mid-turn leaves the provider request in flight with nothing to
-	 * receive it. A parked agent has no turn to abort and is released directly.
+	 * Apply a confirmed stop: abort the agent's turn and put it and everything it
+	 * spawned to sleep. The agent stays in the roster and wakes when messaged.
 	 */
-	#terminateAgent(agent: LiveAgent): void {
+	#stopAgent(agent: LiveAgent): void {
 		const remote = this.#deps.remote;
 		if (remote) {
 			remote.kill(agent.id);
@@ -1521,10 +1516,10 @@ export class AgentDashboard extends Container {
 		}
 		void (async () => {
 			try {
-				await this.#lifecycle().terminate(agent.id, USER_INTERRUPT_LABEL);
+				await this.#lifecycle().stop(agent.id, USER_INTERRUPT_LABEL);
 			} catch (error) {
-				logger.warn("Agent dashboard: termination failed", { id: agent.id, error: String(error) });
-				this.#notice = actionFailedNotice("terminate", agent.callSign, error);
+				logger.warn("Agent dashboard: stop failed", { id: agent.id, error: String(error) });
+				this.#notice = actionFailedNotice("stop", agent.callSign, error);
 			}
 			this.#refreshLiveAgents();
 			this.#rebuildAndRender();
@@ -1585,7 +1580,7 @@ export class AgentDashboard extends Container {
 					agent => this.#extrasFor(agent),
 					this.#liveSelectedIndex,
 					this.#liveHoveredIndex,
-					agent => this.#canTerminate(agent),
+					agent => this.#canStop(agent),
 					this.#liveScrollOffset,
 					this.#computeBodyHeight(),
 					() => Date.now(),
@@ -1662,9 +1657,9 @@ export class AgentDashboard extends Container {
 	}
 
 	/** Whether a screen column lands on the right-aligned [x] for this row. */
-	#isTerminationActionAt(index: number, col: number): boolean {
+	#isStopActionAt(index: number, col: number): boolean {
 		const agent = this.#liveAgents[index];
-		if (!agent || !this.#canTerminate(agent)) return false;
+		if (!agent || !this.#canStop(agent)) return false;
 		// The width the roster actually drew, reported by the pane itself. Do not
 		// re-derive it here by predicting the scrollbar: `sv.contentWidth` already
 		// owns that rule, and a second copy of it drifts the [x] hit box off the
@@ -1684,11 +1679,11 @@ export class AgentDashboard extends Container {
 	/**
 	 * Route an SGR mouse report against the last render's ModalShell geometry:
 	 * the chrome (close glyph, click-outside, footer chips), view tabs, roster
-	 * rows, and each terminable row's hover-only [x].
+	 * rows, and each stoppable row's hover-only [x].
 	 *
 	 * Clicking a row still opens it. Clicking its [x] selects that same row and
-	 * opens the confirmation guard instead, so no pointer gesture can terminate
-	 * immediately.
+	 * opens the confirmation guard instead, so no pointer gesture can stop an
+	 * agent immediately.
 	 */
 	#handleMouse(data: string): void {
 		routeSgrMouseInput(data, event => {
@@ -1736,7 +1731,7 @@ export class AgentDashboard extends Container {
 				this.#liveSelectedIndex = index;
 				this.#buildLayout();
 				const agent = this.#liveAgents[index];
-				if (agent && this.#isTerminationActionAt(index, event.col)) this.#requestTermination(agent);
+				if (agent && this.#isStopActionAt(index, event.col)) this.#requestStop(agent);
 				else this.openSelectedAgent();
 				this.onRequestRender?.();
 			}

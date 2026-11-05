@@ -2,7 +2,7 @@
  * IRC tool — agent-to-agent messaging over the process-global IrcBus.
  *
  * `send` is fire-and-forget: the bus routes the message to the recipient
- * (waking idle agents with a real turn, reviving parked ones via the
+ * (waking idle agents with a real turn, waking asleep ones from their transcript via the
  * lifecycle manager, injecting a non-interrupting aside into busy ones) and
  * returns delivery receipts immediately. Replies are real turns by the
  * recipient, observed with `wait` (or the `await: true` send sugar). `inbox`
@@ -15,7 +15,7 @@ import { type } from "@veyyon/ai/utils/schema/arktype";
 import { toolSchema } from "@veyyon/ai/utils/schema/tool-schema";
 import { errorMessage, formatDuration, prompt, toError } from "@veyyon/utils";
 import { toolsPrompts } from "../../prompts/tools/rows";
-import type { AgentRegistry } from "../../registry/agent-registry";
+import { type AgentRegistry, foldOlderAsleep } from "../../registry/agent-registry";
 import { IrcBus, type IrcDeliveryReceipt, type IrcMessage } from "../../task/irc-bus";
 import type { ToolSession } from "..";
 import { isIrcEnabled } from "./irc-enabled";
@@ -57,6 +57,8 @@ export interface IrcDetails {
 	waited?: IrcMessage | null;
 	inbox?: IrcMessage[];
 	peers?: IrcPeerInfo[];
+	/** Asleep peers left out of `peers` because newer ones fill the roster; each still wakes by id. */
+	olderAsleep?: number;
 }
 
 function formatIncoming(msg: IrcMessage): string {
@@ -88,7 +90,7 @@ export class IrcTool implements AgentTool<typeof ircSchema.value, IrcDetails> {
 
 	readonly examples: readonly ToolExample<typeof ircSchema.value.infer>[] = [
 		{
-			caption: "Fire-and-forget DM — same send wakes idle/parked peers",
+			caption: "Fire-and-forget DM — same send wakes idle/asleep peers",
 			call: {
 				op: "send",
 				to: "AuthLoader",
@@ -189,7 +191,7 @@ export class IrcTool implements AgentTool<typeof ircSchema.value, IrcDetails> {
 			? bus
 					.wait(senderId, { from: to }, timeoutMs ?? DEFAULT_IRC_TIMEOUT_MS, awaitAbort?.signal, {
 						drainPending: false,
-						liveness: { registry, senderId, mode: "revivable" },
+						liveness: { registry, senderId, mode: "wakeable" },
 					})
 					.then(
 						message => ({ message, error: null as Error | null }),
@@ -212,11 +214,11 @@ export class IrcTool implements AgentTool<typeof ircSchema.value, IrcDetails> {
 		}
 
 		try {
-			// Broadcasts fan out to running peers only; reviving every parked agent or
+			// Broadcasts fan out to running peers only; waking every asleep agent or
 			// waking completed/idle agents on a broadcast would restart finished spawned agents
-			// and cause stampedes. Direct sends still go through the bus so an idle
-			// recipient is woken and a parked recipient is revived, but only where
-			// `canAddress` says the caller may reach it: `bus.send` revives whatever
+			// and cause stampedes. Direct sends still go through the bus so an idle or
+			// asleep recipient is woken, but only where
+			// `canAddress` says the caller may reach it: `bus.send` wakes whatever
 			// id it is handed, so an unguarded directed send is the one path that
 			// can wake an agent belonging to a transcript the operator already left,
 			// and have it answer into that transcript. Refused by name rather than
@@ -385,9 +387,11 @@ function executeList(registry: AgentRegistry, senderId: string): AgentToolResult
 	// send below consults, so the roster can no longer offer a peer the send
 	// would refuse, or withhold one it would accept. It replaces a hand-rolled
 	// pair of filters that restated the caller, advisor and scope rules a
-	// second time; two spellings of one rule is how the drift starts. Parked
-	// peers are listed because messaging one revives it, which is supported.
-	const peers = registry.listAddressableBy(senderId).map(ref => ({
+	// second time; two spellings of one rule is how the drift starts. Asleep
+	// peers are listed because messaging one wakes it. Only the most recently
+	// active ones are named; the rest are counted and still wake by id.
+	const { rows, olderAsleep } = foldOlderAsleep(registry.listAddressableBy(senderId));
+	const peers = rows.map(ref => ({
 		id: ref.id,
 		displayName: ref.displayName,
 		kind: ref.kind,
@@ -411,14 +415,15 @@ function executeList(registry: AgentRegistry, senderId: string): AgentToolResult
 			].filter(Boolean);
 			lines.push(`- ${peer.id} [${peer.displayName} · ${peer.kind} · ${peer.status}] — ${extras.join(", ")}`);
 		}
-		if (peers.some(peer => peer.status === "parked")) {
+		if (olderAsleep > 0) lines.push(`+ ${olderAsleep} older asleep agent(s), not listed.`);
+		if (olderAsleep > 0 || peers.some(peer => peer.status === "asleep")) {
 			lines.push("");
-			lines.push("Parked agents are revived automatically when you message them.");
+			lines.push("Asleep agents wake automatically when you message them by id.");
 		}
 	}
 	return {
 		content: [{ type: "text", text: lines.join("\n") }],
-		details: { op: "list", from: senderId, peers },
+		details: { op: "list", from: senderId, peers, olderAsleep: olderAsleep > 0 ? olderAsleep : undefined },
 	};
 }
 

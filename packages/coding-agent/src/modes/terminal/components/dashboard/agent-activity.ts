@@ -91,7 +91,7 @@ export interface LiveAgent {
 	 *
 	 * Carried onto the row because it is the only thing that separates an agent
 	 * blocked on a reply that may never come from one that simply finished:
-	 * `AgentStatus` calls both of them `parked`. See `agentDisplayState`.
+	 * `AgentStatus` calls both of them `idle` or `asleep`. See `agentDisplayState`.
 	 */
 	waitingOnPeer?: boolean;
 	/**
@@ -142,7 +142,7 @@ function rosterOrder(a: AgentRef, b: AgentRef): number {
  * times the operator has switched since, and the driving session is the worst
  * case because it outlives every model change made in it: a day-old `Main` row
  * named the model the process started on while the status line named the one
- * actually answering. A parked agent has no session, and the recorded value is
+ * actually answering. An asleep agent has no session, and the recorded value is
  * then the only answer there is.
  */
 function liveModelOf(ref: AgentRef): string | undefined {

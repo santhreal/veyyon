@@ -85,6 +85,13 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 		const blockZero = systemPrompt[0] as string;
 
 		expect({ sha: sha(blockZero), length: blockZero.length }).toEqual({
+			// Updated 2026-11-04, deliberately: `522f3fb5fb1c5d11` / 10_764 ->
+			// `0debba7e4759fabb` / 10_764 (edited in place).
+			//
+			// WHAT THE EDIT IS. The `history://` statement lists the agent states as
+			// `live, asleep, or released` instead of `live, parked, or released`: the
+			// agent lifecycle is running, idle and asleep, and `parked` no longer exists.
+			//
 			// Updated 2026-09-12, deliberately: `909a57db336489da` / 10_748 ->
 			// `522f3fb5fb1c5d11` / 10_764 (+16).
 			//
@@ -202,7 +209,7 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 			//
 			// The one-time cost this gate exists to surface is real and was accepted:
 			// every conversation re-reads its prefix once after the release.
-			sha: "522f3fb5fb1c5d11",
+			sha: "0debba7e4759fabb",
 			length: 10_764,
 		});
 	});

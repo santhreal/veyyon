@@ -255,12 +255,16 @@ function settleInlineProgress(
 /** What the parent reads once a background agent stops: how to reach it and where its transcript is. */
 function followUpHint(agentId: string, aborted: boolean, ircEnabled: boolean): string {
 	if (aborted) {
+		// A request-limit stop leaves the agent idle and every other stop puts it to
+		// sleep; a message picks either back up.
 		const status = AgentRegistry.global().get(agentId)?.status;
-		if (status === "idle" || status === "parked") {
-			const followUp = ircEnabled ? "message it via `irc` to resume; " : "";
-			return `\n\n${agentId} was stopped but is still resumable — ${followUp}transcript at history://${agentId}`;
+		if (status) {
+			const followUp = ircEnabled
+				? `message it via \`irc\` to ${status === "asleep" ? "wake it" : "continue"}; `
+				: "";
+			return `\n\n${agentId} was stopped and is ${status} — ${followUp}transcript at history://${agentId}`;
 		}
-		return `\n\n${agentId} was aborted — transcript at history://${agentId}`;
+		return `\n\n${agentId} was stopped — transcript at history://${agentId}`;
 	}
 	const followUp = ircEnabled ? "message it via `irc` to follow up; " : "";
 	return `\n\n${agentId} is now idle — ${followUp}transcript at history://${agentId}`;

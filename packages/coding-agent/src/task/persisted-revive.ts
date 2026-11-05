@@ -32,8 +32,8 @@ export interface PersistedAgentReviveContext {
 }
 
 /**
- * Build the factory the {@link AgentLifecycleManager} uses to cold-revive a
- * `parked` spawned agent ref restored from disk (the roster's persisted scan, collab mirror, or a
+ * Build the factory the {@link AgentLifecycleManager} uses to cold-wake an
+ * `asleep` spawned agent ref restored from disk (the roster's persisted scan, collab mirror, or a
  * resumed process). Such a ref carries a sessionFile but no in-memory adoption —
  * the executor's live reviver closure died with the process/turn that spawned
  * it — so `ensureLive` (IRC sends, hub focus) would otherwise refuse it.
@@ -148,8 +148,8 @@ export function createPersistedAgentReviverFactory(ctx: PersistedAgentReviveCont
 			// `alwaysInclude` can re-add non-defaultInactive extension/custom tools
 			// the original run didn't carry. Unknown/missing names are ignored.
 			await session.setActiveToolsByName(init.tools);
-			// A cold revive installs the turn sync itself; the live path does it in the
-			// executor. Without it the idle TTL would park the agent mid-turn.
+			// A cold wake installs the turn sync itself; the live path does it in the
+			// executor. Without it the idle TTL would put the agent to sleep mid-turn.
 			syncStatusWithTurns(registry, ref.id, session);
 			return session;
 		};

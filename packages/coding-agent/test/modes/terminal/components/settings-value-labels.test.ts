@@ -5,7 +5,7 @@
  * displayed and the value it stored. For a duration setting those are not the same
  * thing, so every row backed by a millisecond count showed the count. `Max Agent
  * Runtime` rendered `0` while its own option list called that `Unlimited`, and the
- * prune budgets rendered `300000` and `1800000`. The labels existed the whole
+ * idle-agent timers rendered `300000` and `1800000`. The labels existed the whole
  * time and only the submenu ever showed them, so the panel an operator scans read as
  * raw numbers while the picker behind it read as English.
  *
@@ -67,49 +67,46 @@ function agentsPanel(cwd: string = process.cwd(), width = 100): string {
 }
 
 /**
- * A profile dir plus an explicit `--config` overlay that owns the budget, which is
+ * A profile dir plus an explicit `--config` overlay that owns the idle timer, which is
  * what makes the row read-only and routes it through the provenance branch. A
  * repository's own `.veyyon/config.yml` used to be the fixture here and no longer
  * owns anything: project scope is gone, so the overlay an operator names on the
  * command line is the layer that can still outrank the profile.
  */
-function overlayOwnedBudget(ms: number): { agentDir: string; cwd: string; configFiles: string[] } {
+function overlayOwnedIdleTtl(ms: number): { agentDir: string; cwd: string; configFiles: string[] } {
 	const root = makeTempDir();
 	const agentDir = path.join(root, "profile");
 	const cwd = path.join(root, "project");
 	const overlay = path.join(root, "overlay.yml");
 	fs.mkdirSync(agentDir, { recursive: true });
 	fs.mkdirSync(cwd, { recursive: true });
-	fs.writeFileSync(overlay, YAML.stringify({ agent: { prune: { afterMs: ms } } }));
+	fs.writeFileSync(overlay, YAML.stringify({ agent: { idleTtlMs: ms } }));
 	return { agentDir, cwd, configFiles: [overlay] };
 }
 
 describe("settings rows show option labels, not stored values", () => {
 	/**
-	 * The two prune budgets are the rows this was found on. At their defaults they
-	 * must read as durations; the millisecond counts are what the operator should never
-	 * have to see.
+	 * The idle timer is a millisecond row of the kind this was found on. At its default
+	 * it must read as a duration; the millisecond count is what the operator should
+	 * never have to see. Max Agent Runtime offers the same labels, so the assertions
+	 * read the row, not the panel.
 	 */
-	it("renders the prune budgets as durations", () => {
+	it("renders the idle timer as a duration", () => {
 		const panel = agentsPanel();
 
-		expect(panel).toContain("Prune After");
-		expect(panel).toContain("1 hour");
-		expect(panel).toContain("2 hours");
-		expect(panel).not.toContain("3600000");
-		expect(panel).not.toContain("7200000");
+		expect(panel).toMatch(/Sleep Idle Agents After\s+‹?\s*5 minutes/);
+		expect(panel).not.toContain("300000");
 	});
 
 	/**
 	 * A zero that the option list names is the worst case for a raw-value row, because
 	 * `0` looks like a real answer and quietly means the opposite of one. `Max Agent
-	 * Runtime` is that row, and it predates the prune settings entirely.
+	 * Runtime` is that row.
 	 */
 	it("renders a named zero by its label", () => {
 		const panel = agentsPanel();
 
-		expect(panel).toContain("Max Agent Runtime");
-		expect(panel).toContain("Unlimited");
+		expect(panel).toMatch(/Max Agent Runtime\s+‹?\s*Unlimited/);
 	});
 
 	/**
@@ -118,26 +115,26 @@ describe("settings rows show option labels, not stored values", () => {
 	 * which is exactly when they are looking at it.
 	 */
 	it("labels a configured value, not only the default", async () => {
-		await Settings.instance.set("agent.prune.afterMs", 3_600_000);
+		await Settings.instance.set("agent.idleTtlMs", 1_800_000);
 
 		const panel = agentsPanel();
 
-		expect(panel).toContain("1 hour");
-		expect(panel).not.toContain("3600000");
+		expect(panel).toMatch(/Sleep Idle Agents After\s+‹?\s*30 minutes/);
+		expect(panel).not.toContain("1800000");
 	});
 
 	/**
 	 * The label is display only. This is the regression that would matter most: if the
 	 * mapping reached the store, the setting would hold a string like "5 minutes" and
 	 * every consumer doing millisecond arithmetic on it would produce NaN deadlines,
-	 * which read as "never expire" and would silently disable pruning altogether.
+	 * which read as "never expire" and would keep every finished agent's memory live.
 	 */
 	it("keeps the stored value numeric while showing a label", () => {
 		agentsPanel();
 
-		const stored = Settings.instance.get("agent.prune.waitingAfterMs");
+		const stored = Settings.instance.get("agent.idleTtlMs");
 		expect(typeof stored).toBe("number");
-		expect(stored).toBe(7_200_000);
+		expect(stored).toBe(300_000);
 	});
 
 	/**
@@ -146,9 +143,9 @@ describe("settings rows show option labels, not stored values", () => {
 	 * would hide a setting that is genuinely in effect.
 	 */
 	it("falls back to the raw value when no option matches", async () => {
-		await Settings.instance.set("agent.prune.afterMs", 111_000);
+		await Settings.instance.set("agent.idleTtlMs", 111_000);
 
-		expect(agentsPanel()).toContain("111000");
+		expect(agentsPanel()).toMatch(/Sleep Idle Agents After\s+‹?\s*111000/);
 	});
 
 	/**
@@ -163,7 +160,7 @@ describe("settings rows show option labels, not stored values", () => {
 	 * trying to work out which layer set it.
 	 */
 	it("labels a value owned by a lower layer", async () => {
-		const fixture = overlayOwnedBudget(3_600_000);
+		const fixture = overlayOwnedIdleTtl(1_800_000);
 		// Reset first: `beforeEach` already initialized an in-memory Settings, and a second
 		// `init` is a no-op, so without the reset the fixture never takes effect and the
 		// row renders the schema default while both assertions look plausible.
@@ -178,8 +175,8 @@ describe("settings rows show option labels, not stored values", () => {
 		geometryStub = stubStdoutGeometry({ columns: 140, rows: 40 });
 		const panel = agentsPanel(fixture.cwd, 140);
 
-		expect(panel).toContain("--config file · 1 hour");
-		expect(panel).not.toContain("3600000");
+		expect(panel).toContain("--config file · 30 minutes");
+		expect(panel).not.toContain("1800000");
 	});
 
 	it("renders boolean settings as On/Off while writing boolean to storage", async () => {
@@ -243,66 +240,56 @@ describe("settings rows show option labels, not stored values", () => {
 });
 
 /**
- * The Prune group hides its timers when nothing prunes.
+ * The Wrap-Up Notice row follows the Request Limit.
  *
- * WHY THIS EXISTS. A duration row that is visible but inert is worse than no row:
- * the operator reads "Prune After: 5 minutes" next to a switch they just turned off
- * and has no way to tell which one is telling the truth. So the two budgets are
- * conditional on the switch, the way Block On Cache Rejection is conditional on
- * reporting. The switch itself always stays, because a group that disappeared
- * entirely would leave no way back on.
+ * WHY THIS EXISTS. A row that is visible but inert is worse than no row: with no
+ * request limit there is no crossing to announce, so a "Wrap-Up Notice: On" row
+ * would claim a behaviour that never runs. The notice is conditional on a limit
+ * existing, the way Block On Cache Rejection is conditional on reporting. The limit
+ * row itself always stays, because it is the way back on.
  */
-describe("the Prune group follows its own switch", () => {
-	/** On: the switch and both budgets. */
-	it("shows both budgets while prune is enabled", () => {
+describe("the Wrap-Up Notice follows the Request Limit", () => {
+	/** The default is no limit, so only the limit row shows. */
+	it("hides the notice while requests are unlimited", () => {
 		const panel = agentsPanel();
 
-		expect(panel).toContain("Prune Parked Agents");
-		expect(panel).toContain("Prune After");
-		expect(panel).toContain("Prune After While Waiting");
+		expect(panel).toMatch(/Request Limit\s+‹?\s*Unlimited/);
+		expect(panel).not.toContain("Wrap-Up Notice");
 	});
 
-	/** Off: the switch alone, so no inert timer is left claiming a schedule. */
-	it("hides both budgets while prune is disabled", async () => {
-		await Settings.instance.set("agent.prune.enabled", false);
+	/** A limit makes the notice reachable. */
+	it("shows the notice once a limit is set", async () => {
+		await Settings.instance.set("agent.softRequestBudget", 500);
 
 		const panel = agentsPanel();
 
-		expect(panel).toContain("Prune Parked Agents");
-		expect(panel).not.toContain("Prune After");
+		expect(panel).toMatch(/Request Limit\s+‹?\s*500 requests/);
+		expect(panel).toContain("Wrap-Up Notice");
 	});
 });
 
 /**
- * Stage one of the park/prune lifecycle is reachable at all.
+ * The idle sleep timer is reachable at all.
  *
- * WHY THIS EXISTS. `agent.idleTtlMs` decides when a finished agent releases
- * its session, it carries a `ui` block with a tab, a group, a label and a
- * description, and `docs/handbook/src/reference/settings-reference.md` lists it as a setting. It rendered
- * nowhere. `pathToSettingDef` drops a numeric setting that declares no `ui.options`,
- * treating an optionless number as deliberately schema-only, so the row was
- * documented, defaulted and honored while being unreachable from `/settings`. The
- * operator could configure the second stage of the lifecycle and not the first.
+ * WHY THIS EXISTS. `agent.idleTtlMs` decides when a finished agent falls asleep and
+ * releases its session, it carries a `ui` block with a tab, a group, a label and a
+ * description, and `docs/handbook/src/reference/settings-reference.md` lists it as a
+ * setting. It once rendered nowhere: `pathToSettingDef` drops a numeric setting that
+ * declares no `ui.options`, treating an optionless number as deliberately
+ * schema-only, so the row was documented, defaulted and honored while being
+ * unreachable from `/settings`.
  *
  * It is asserted through the rendered panel rather than through the def list because
  * the def list is what was already lying: the schema entry existed the whole time.
  */
-describe("stage one of the park/prune lifecycle is on the settings screen", () => {
-	it("renders the Park Idle Agents After row as a duration beside the prune budgets", () => {
-		const panel = agentsPanel();
-
-		expect(panel).toContain("Park Idle Agents After");
-		expect(panel).toContain("5 minutes");
-		expect(panel).not.toContain("300000");
-	});
-
+describe("the idle sleep timer is on the settings screen", () => {
 	/** The off value has a name, and a bare `0` in a duration column reads as a bug. */
 	it("renders a zero idle TTL by its label", async () => {
 		await Settings.instance.set("agent.idleTtlMs", 0);
 
 		const panel = agentsPanel();
 
-		expect(panel).toContain("Until exit");
+		expect(panel).toMatch(/Sleep Idle Agents After\s+‹?\s*Never/);
 	});
 
 	/**
@@ -311,10 +298,10 @@ describe("stage one of the park/prune lifecycle is on the settings screen", () =
 	 * all, so the displayed label and `resolveAgentIdleTtlMs` are asserted from one
 	 * write.
 	 */
-	it("feeds the value the park timer reads", async () => {
+	it("feeds the value the sleep timer reads", async () => {
 		await Settings.instance.set("agent.idleTtlMs", 900_000);
 
-		expect(agentsPanel()).toContain("15 minutes");
+		expect(agentsPanel()).toMatch(/Sleep Idle Agents After\s+‹?\s*15 minutes/);
 		expect(resolveAgentIdleTtlMs(Settings.instance)).toBe(900_000);
 	});
 });
@@ -322,13 +309,13 @@ describe("stage one of the park/prune lifecycle is on the settings screen", () =
 /**
  * The search result list is a SECOND render path, built by `#setSearchQuery` into its
  * own `SettingsList`, and it is the path an operator reaches these rows by most of
- * the time: typing "prune" is faster than finding the Agents tab. Both paths build
+ * the time: typing "sleep" is faster than finding the Agents tab. Both paths build
  * their rows through `#defToItem`, so the labeller reaches search today, but nothing
  * held that: a search-specific item builder would regress it while every tab-panel
  * assertion above stayed green.
  */
 describe("search results are labelled too", () => {
-	it("shows the prune budget as a duration in a search result row", () => {
+	it("shows the idle timer as a duration in a search result row", () => {
 		const component = new SettingsSelectorComponent(
 			{
 				availableThinkingLevels: [],
@@ -342,11 +329,10 @@ describe("search results are labelled too", () => {
 		);
 		component.openTab("agents");
 		// A printable keystroke is what opens the cross-tab search.
-		component.handleInput("prune after");
+		component.handleInput("sleep idle");
 		const panel = component.render(100).map(stripVTControlCharacters).join("\n");
 
-		expect(panel).toContain("Prune After");
-		expect(panel).toContain("1 hour");
-		expect(panel).not.toContain("3600000");
+		expect(panel).toMatch(/Sleep Idle Agents After\s+‹?\s*5 minutes/);
+		expect(panel).not.toContain("300000");
 	});
 });

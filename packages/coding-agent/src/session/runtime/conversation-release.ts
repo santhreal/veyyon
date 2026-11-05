@@ -63,7 +63,7 @@ export class ConversationRelease {
 	 *
 	 * The registry is process-global, so every spawned agent of the previous conversation would stay
 	 * registered: the agent dashboard would list it, `irc list` would offer it as a peer, and
-	 * messaging it would wake an agent whose replies land in a transcript already left. A parked ref
+	 * messaging it would wake an agent whose replies land in a transcript already left. An asleep ref
 	 * holds its session file and a live one holds a whole session, so it is a leak as well.
 	 *
 	 * The descendants are terminated BEFORE the re-scope, while they still resolve as this agent's
