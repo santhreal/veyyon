@@ -146,6 +146,7 @@
 - The transcript builder and the presentation event bridge state a tool call's arguments through the tool block's own serializer instead of a second copy of it; no user-facing change.
 - The Streamable HTTP and legacy HTTP+SSE MCP transports send every JSON-RPC message through one `postJsonRpc` with one auth-retry path, and a refreshed credential replaces the transport's headers instead of writing into the configuration object it was created with.
 - The stdio, Streamable HTTP and legacy HTTP+SSE MCP transports classify a server's messages through one `routeIncomingMessage`, and the two HTTP transports POST the answer to a server request through one `deliverServerResponse`.
+- The `web_search` tool guidance treats results that name versions, models or products newer than the model's training as current, confirms one with at most two targeted follow-up searches, and prefers corroborated results over prior knowledge ([#882](https://github.com/santhreal/veyyon/issues/882)).
 - Tool normalization reads a tool's supplied `wireParameters` instead of building its `parameters`, and copies a wrapped tool without reading `parameters`.
 - The remote summarizer resolves an Azure model's deployment through the same `@veyyon/ai` helper as Azure turns; no user-facing change.
 - Tool normalization renders a tool's examples against the wire schema it already built instead of converting that schema again; the examples text is unchanged.
