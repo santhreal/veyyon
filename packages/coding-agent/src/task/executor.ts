@@ -28,6 +28,7 @@ import {
 import { ORPHAN_AGENT_TRANSCRIPT_PREFIX, sessionFileName } from "@veyyon/utils/session-file";
 import type { ArgotSession } from "argot";
 import type { AsyncJobManager } from "../async";
+import { normalizeModelPatternList } from "../config/model-pattern-list";
 import { ModelRegistry } from "../config/model-registry";
 import {
 	formatModelSelectorValue,
@@ -123,17 +124,6 @@ export function resolveEffectiveSubagentThinkingLevel(
 	configuredThinkingLevel: ConfiguredThinkingLevel | undefined,
 ): ConfiguredThinkingLevel | undefined {
 	return explicitThinkingLevel ? resolvedThinkingLevel : (configuredThinkingLevel ?? resolvedThinkingLevel);
-}
-
-function normalizeModelPatterns(value: string | string[] | undefined): string[] {
-	if (!value) return [];
-	if (Array.isArray(value)) {
-		return value.map(entry => entry.trim()).filter(Boolean);
-	}
-	return value
-		.split(",")
-		.map(entry => entry.trim())
-		.filter(Boolean);
 }
 
 interface AgentRetryFallbackCandidate {
@@ -2433,7 +2423,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 			// The caller resolved this through `resolveAgentModel`, the one owner of "what model does
 			// this agent run", and handed the patterns down. Falling back to `agent.model` here would let
 			// the definition's frontmatter decide on any path that forgot to resolve.
-			modelPatterns: normalizeModelPatterns(modelOverride),
+			modelPatterns: normalizeModelPatternList(modelOverride),
 			toolNames: resolveChildToolNames(agent, atMaxDepth, settings),
 			spawnsEnv: childSpawnsEnv(agent, atMaxDepth),
 			childDepth,
