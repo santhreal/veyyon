@@ -522,7 +522,7 @@ class AgentStopDialog implements Component {
 		const statusWord = agentStatusWord(agentDisplayState(this.agent));
 		const kindAndStatus = type ? `${type} · ${statusWord}` : statusWord;
 		const warning =
-			"This stops the current turn and puts the agent to sleep. Message it to continue; its transcript stays on disk.";
+			"This stops the current turn and puts the agent and every agent it spawned to sleep. Message it to continue; its transcript stays on disk.";
 		const body = [
 			`${theme.bold(replaceTabs(this.agent.callSign))}  ${theme.fg("muted", kindAndStatus)}`,
 			"",

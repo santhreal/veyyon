@@ -324,7 +324,9 @@ export class JobTool implements AgentTool<typeof jobSchema.value, JobToolDetails
 		if (ownerId && !isDescendant(registry, id, ownerId)) {
 			return { id, status: "not_found", message: `Background job not found: ${id}` };
 		}
-		if (ref.status === "asleep") {
+		// The stop reaches the whole subtree, and an asleep agent can have an agent under it
+		// that a message woke, so only a subtree that is asleep throughout has nothing to stop.
+		if ([id, ...registry.descendantsOf(id)].every(agent => registry.get(agent)?.status === "asleep")) {
 			return { id, status: "already_completed", message: `Agent ${id} is already asleep.` };
 		}
 		try {
@@ -550,7 +552,7 @@ function describeAgents(agents: AgentActivitySnapshot[]): string[] {
 	}
 	lines.push(
 		"",
-		"These agents have no job entry. Coordinate via `irc`, read transcripts at `history://<id>`, and kill one you spawned by passing its id to `cancel`.",
+		"These agents have no job entry. Coordinate via `irc`, read transcripts at `history://<id>`, and stop one you spawned by passing its id to `cancel`; it falls asleep and wakes when messaged.",
 	);
 	return lines;
 }

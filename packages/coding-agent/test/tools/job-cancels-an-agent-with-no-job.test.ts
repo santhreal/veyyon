@@ -145,6 +145,30 @@ describe("job cancel on an agent with no job row", () => {
 	});
 
 	/**
+	 * An asleep agent can still have a running agent under it: one a message woke after
+	 * its parent fell asleep. A stop reaches the whole subtree, as the dashboard's does,
+	 * so the running one is stopped rather than reported as already asleep.
+	 */
+	test("stops the running agents under an asleep agent", async () => {
+		register("Parent");
+		AgentRegistry.global().register({
+			id: "Sleeper",
+			displayName: "worker",
+			kind: "sub",
+			parentId: "Parent",
+			session: null,
+			status: "asleep",
+		});
+		register("Woken", "Sleeper");
+
+		const text = await cancel(toolForParent(), "Sleeper");
+
+		expect(text).toContain("Stopped agent Sleeper");
+		expect(spy.events).toEqual(["abort:Woken", "dispose:Woken"]);
+		expect(statusOf("Woken")).toBe("asleep");
+	});
+
+	/**
 	 * A session whose abort throws cannot have its provider request stopped, so
 	 * the stop refuses to dispose it and the agent stays running. The report has
 	 * to say so: an earlier draft swallowed the abort failure and reported a

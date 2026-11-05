@@ -193,7 +193,7 @@ describe("Agent dashboard stop confirmation", () => {
 		expect(frame).toContain("Stop agent?");
 		expect(frame).toContain("Kestrel");
 		expect(proseOf(overlays.overlay)).toContain(
-			"This stops the current turn and puts the agent to sleep. Message it to continue; its transcript stays on disk.",
+			"This stops the current turn and puts the agent and every agent it spawned to sleep. Message it to continue; its transcript stays on disk.",
 		);
 		expect(frame).toContain("esc dismiss");
 		expect(frame).toContain("enter yes, stop");
