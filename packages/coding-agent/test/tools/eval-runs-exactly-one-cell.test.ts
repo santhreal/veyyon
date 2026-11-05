@@ -93,7 +93,9 @@ describe("the details a failing run reports", () => {
 	 * The error path built its output through the same accumulator, so it gets the
 	 * same proof: one cell, marked `error`, with the run's real output still
 	 * attached. A result that reported zero cells here would leave the renderer with
-	 * nothing to show for a run the operator watched happen.
+	 * nothing to show for a run the operator watched happen. The result itself is
+	 * flagged `isError`, which is the field the agent loop reads: a cell that threw
+	 * reported as a success to the loop, unlike a failed `bash` command.
 	 */
 	it("still reports exactly one cell, marked error, when the code throws", async () => {
 		const tool = new EvalTool(makeToolSessionAt(process.cwd()));
@@ -103,6 +105,7 @@ describe("the details a failing run reports", () => {
 		});
 		const details = result.details as EvalToolDetails;
 
+		expect(result.isError).toBe(true);
 		expect(details.isError).toBe(true);
 		expect(details.cells).toHaveLength(1);
 		expect(details.cells![0]!.status).toBe("error");
