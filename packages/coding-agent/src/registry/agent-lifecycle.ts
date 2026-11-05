@@ -13,6 +13,7 @@
 
 import { clamp, errorMessage, logger } from "@veyyon/utils";
 import type { AgentSession } from "../session/agent-session";
+import { hasRunningJobsUnder } from "../session/runtime/owned-async-jobs";
 import { type AgentRef, AgentRegistry, MAIN_AGENT_ID, type RegistryEvent } from "./agent-registry";
 
 export type AgentReviver = () => Promise<AgentSession>;
@@ -524,6 +525,13 @@ export class AgentLifecycleManager {
 					// A deadline here was re-derived during the drain by a status change or a
 					// re-adoption: it describes the agent as it is now, so this expiry is stale.
 					if (!adopted || adopted.deadline !== undefined) continue;
+					// Falling asleep disposes the session, which cancels the background jobs the agent
+					// and the agents it spawned started. While one runs the agent is not done: its
+					// result is still on its way, so the expiry is pushed back one idle period.
+					if (this.#hasRunningWork(id)) {
+						this.#rearmIdle(id);
+						continue;
+					}
 					await this.sleep(id);
 				}
 			})();
@@ -542,6 +550,12 @@ export class AgentLifecycleManager {
 		if (event.type !== "status_changed") return;
 		this.#refreshDeadline(event.ref.id, adopted);
 		this.#scheduleNext();
+	}
+
+	/** True while a background job this agent or an agent it spawned started is still running. */
+	#hasRunningWork(id: string): boolean {
+		const manager = this.#registry.get(id)?.session?.asyncJobManager;
+		return manager !== undefined && hasRunningJobsUnder(manager, id);
 	}
 
 	/** The operator's current idle TTL for a ref woken from disk. */

@@ -152,10 +152,7 @@ export class OwnedAsyncJobs {
 		const agentId = this.#agentId;
 		const manager = this.#manager;
 		if (!agentId || !manager) return;
-		manager.cancelAll({ ownerId: agentId });
-		for (const descendant of AgentRegistry.global().descendantsOf(agentId)) {
-			manager.cancelAll({ ownerId: descendant });
-		}
+		for (const owner of jobOwnersUnder(agentId)) manager.cancelAll({ ownerId: owner });
 	}
 
 	/**
@@ -217,4 +214,20 @@ export class OwnedAsyncJobs {
 			return drained && (before.queued !== after.queued || before.delivering !== after.delivering);
 		});
 	}
+}
+
+/**
+ * The agents whose jobs {@link OwnedAsyncJobs.cancelOwn} cancels for `agentId`: the agent and every
+ * agent it spawned, directly or transitively.
+ */
+function jobOwnersUnder(agentId: string): string[] {
+	return [agentId, ...AgentRegistry.global().descendantsOf(agentId)];
+}
+
+/**
+ * True while a job the teardown of `agentId`'s session would cancel is still running on `manager`:
+ * one registered by the agent or by an agent it spawned.
+ */
+export function hasRunningJobsUnder(manager: AsyncJobManager, agentId: string): boolean {
+	return jobOwnersUnder(agentId).some(owner => manager.getRunningJobs({ ownerId: owner }).length > 0);
 }
