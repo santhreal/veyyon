@@ -57,29 +57,24 @@ describe("a thinking suffix never selects a sibling model", () => {
 		expect(LEVELS).toContain(AUTO_THINKING);
 	});
 
-	it("resolves `provider/id:<level>` to that model at that level, for every bundled model", () => {
-		const wrong: string[] = [];
-		for (const [model, level, pattern, catalog] of selectors(key)) {
-			const parsed = parseModelPattern(pattern, catalog);
-			const got = parsed.model ? key(parsed.model) : "none";
-			if (got !== key(model) || parsed.thinkingLevel !== level) {
-				wrong.push(`${pattern} -> ${got}:${parsed.thinkingLevel ?? "default"}`);
+	// Every bundled model at every level is tens of thousands of parses; a CI runner needs seconds for it.
+	const forms: [string, (model: Model<Api>) => string][] = [
+		["`provider/id:<level>`", key],
+		["a bare `id:<level>`", model => model.id],
+	];
+	for (const [name, form] of forms) {
+		it(`resolves ${name} to that model at that level, for every bundled model`, () => {
+			const wrong: string[] = [];
+			for (const [model, level, pattern, catalog] of selectors(form)) {
+				const parsed = parseModelPattern(pattern, catalog);
+				const got = parsed.model ? key(parsed.model) : "none";
+				if (got !== key(model) || parsed.thinkingLevel !== level) {
+					wrong.push(`${pattern} -> ${got}:${parsed.thinkingLevel ?? "default"}`);
+				}
 			}
-		}
-		expect(wrong).toEqual([]);
-	});
-
-	it("resolves a bare `id:<level>` to that model at that level, for every bundled model", () => {
-		const wrong: string[] = [];
-		for (const [model, level, pattern, catalog] of selectors(model => model.id)) {
-			const parsed = parseModelPattern(pattern, catalog);
-			const got = parsed.model ? key(parsed.model) : "none";
-			if (got !== key(model) || parsed.thinkingLevel !== level) {
-				wrong.push(`${pattern} -> ${got}:${parsed.thinkingLevel ?? "default"}`);
-			}
-		}
-		expect(wrong).toEqual([]);
-	});
+			expect(wrong).toEqual([]);
+		}, 60_000);
+	}
 
 	it("resolves the reported selector to the model it names", () => {
 		const parsed = parseModelPattern("kimi-code/k3.1-pro:high", models);
