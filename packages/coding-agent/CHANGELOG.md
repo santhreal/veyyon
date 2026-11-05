@@ -128,6 +128,7 @@
 
 ### Fixed
 - A model selector with an effort suffix, such as `kimi-code/k3.1-pro:high` for an agent, resolves to the model it names at that effort instead of a sibling whose id contains the suffix's letters, such as `kimi-code/k3.1-pro-highspeed`; an unknown suffix such as `:hgh` is dropped with a warning instead of picking such a sibling.
+- A spawned agent whose first configured model has no working credentials runs the next configured model that has them instead of falling back to the parent session's model, and a keyless local parent model (Ollama, llama.cpp, LM Studio) is accepted as the fallback.
 - An idle agent with a running background job, its own or one an agent it spawned started, stays awake instead of falling asleep on the idle timeout and cancelling the job.
 - `job cancel` on an asleep agent stops the agents still running under it instead of reporting the agent already asleep.
 - A background agent that ran in an isolated worktree reports that messages cannot reach it, and a stopped isolated agent's result no longer says to message it via `irc`, since its worktree is removed when the run ends.

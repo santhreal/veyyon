@@ -1045,6 +1045,14 @@ export function resolveModelFromString(
 	return parseModelPattern(value, available, matchPreferences).model;
 }
 
+/** The model one override list resolves to, and the effort its matched pattern named. */
+export interface ModelOverrideResolution {
+	model?: Model<Api>;
+	thinkingLevel?: ConfiguredThinkingLevel;
+	explicitThinkingLevel: boolean;
+	warning?: string;
+}
+
 /**
  * Resolve a list of override patterns to the first matching model.
  */
@@ -1052,7 +1060,7 @@ export function resolveModelOverride(
 	modelPatterns: string[],
 	modelRegistry: ModelLookupRegistry,
 	settings?: Settings,
-): { model?: Model<Api>; thinkingLevel?: ConfiguredThinkingLevel; explicitThinkingLevel: boolean; warning?: string } {
+): ModelOverrideResolution {
 	if (modelPatterns.length === 0) return { explicitThinkingLevel: false };
 	const availableModels = modelRegistry.getAvailable();
 	const matchPreferences = getModelMatchPreferences(settings);
@@ -1076,13 +1084,15 @@ export function resolveModelOverride(
 }
 
 /**
- * Resolve a list of override patterns to the first matching model, with an
- * auth-aware fallback to the parent session's active model.
+ * Resolve a list of override patterns to the first matching model whose provider
+ * has working credentials, with an auth-aware fallback to the parent session's
+ * active model.
  *
- * If the resolved spawned agent model has no working credentials (provider has no
- * usable auth), and the parent's active model resolves with working auth,
- * use the parent's model instead. This prevents spawned agent dispatch from
- * silently routing to a provider the user can't actually call (e.g.
+ * The patterns are the agent's own fallback chain, so a later pattern whose
+ * provider authenticates outranks the parent's model. Only when no configured
+ * pattern resolves to a usable model, and the parent's active model resolves with
+ * working auth, does the agent run the parent's model. This prevents spawned agent
+ * dispatch from silently routing to a provider the user can't actually call (e.g.
  * an agent model pointing at an unqualified id whose only available
  * provider variant has no configured credentials — see #985).
  *
@@ -1093,12 +1103,12 @@ export function resolveModelOverride(
  *
  * Keyless-by-design providers (llama.cpp, ollama, lm-studio) advertise the
  * `kNoAuth` sentinel from `getApiKey` to signal that they do not require
- * credentials. Those are treated as authenticated here so an explicitly
- * configured local model is never silently rerouted to the parent's remote
- * provider (see #1008).
+ * credentials. Those are treated as authenticated, for the agent's patterns and
+ * the parent's model alike, so an explicitly configured local model is never
+ * silently rerouted to a remote provider (see #1008).
  *
- * If neither the spawned agent nor the parent has working auth, returns the
- * primary resolution unchanged so the existing error path still surfaces
+ * If neither a configured pattern nor the parent has working auth, returns the
+ * first configured resolution unchanged so the existing error path still surfaces
  * a meaningful failure downstream.
  */
 export async function resolveModelOverrideWithAuthFallback(
@@ -1107,35 +1117,34 @@ export async function resolveModelOverrideWithAuthFallback(
 	modelRegistry: ModelLookupRegistry & Pick<ModelRegistry, "getApiKey">,
 	settings?: Settings,
 	sessionId?: string,
-): Promise<{
-	model?: Model<Api>;
-	thinkingLevel?: ConfiguredThinkingLevel;
-	explicitThinkingLevel: boolean;
-	authFallbackUsed: boolean;
-	warning?: string;
-}> {
-	const primary = resolveModelOverride(modelPatterns, modelRegistry, settings);
-	if (!primary.model || !parentActiveModelPattern) {
-		return { ...primary, authFallbackUsed: false };
+): Promise<ModelOverrideResolution & { authFallbackUsed: boolean }> {
+	const patterns = normalizeModelPatternList(modelPatterns);
+	// One pattern and no parent model leave nothing to fall back to, so no credential is looked up.
+	if (patterns.length <= 1 && !parentActiveModelPattern) {
+		return { ...resolveModelOverride(patterns, modelRegistry, settings), authFallbackUsed: false };
 	}
-
-	const primaryKey = await modelRegistry.getApiKey(primary.model, sessionId);
-	if (primaryKey === kNoAuth || isAuthenticated(primaryKey)) {
-		return { ...primary, authFallbackUsed: false };
+	const canCall = async (model: Model<Api>): Promise<boolean> => {
+		const key = await modelRegistry.getApiKey(model, sessionId);
+		return key === kNoAuth || isAuthenticated(key);
+	};
+	let primary: ModelOverrideResolution | undefined;
+	let unmatchedWarning: string | undefined;
+	for (const pattern of patterns) {
+		const resolved = resolveModelOverride([pattern], modelRegistry, settings);
+		if (!resolved.model) {
+			unmatchedWarning ??= resolved.warning;
+			continue;
+		}
+		primary ??= resolved;
+		if (await canCall(resolved.model)) return { ...resolved, authFallbackUsed: false };
 	}
+	if (!primary?.model) return { explicitThinkingLevel: false, warning: unmatchedWarning, authFallbackUsed: false };
+	if (!parentActiveModelPattern) return { ...primary, authFallbackUsed: false };
 
 	const fallback = resolveModelOverride([parentActiveModelPattern], modelRegistry, settings);
-	if (!fallback.model) {
+	if (!fallback.model || modelsAreEqual(fallback.model, primary.model) || !(await canCall(fallback.model))) {
 		return { ...primary, authFallbackUsed: false };
 	}
-	if (modelsAreEqual(fallback.model, primary.model)) {
-		return { ...primary, authFallbackUsed: false };
-	}
-	const fallbackKey = await modelRegistry.getApiKey(fallback.model, sessionId);
-	if (!isAuthenticated(fallbackKey)) {
-		return { ...primary, authFallbackUsed: false };
-	}
-
 	return { ...fallback, authFallbackUsed: true, warning: primary.warning ?? fallback.warning };
 }
 
