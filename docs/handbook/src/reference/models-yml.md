@@ -450,7 +450,10 @@ Resolution precedence for exact selectors:
 1. exact `provider/modelId` bypasses coalescing
 2. exact canonical id resolves through the canonical index
 3. exact bare concrete id still works
-4. fuzzy and glob matching run after the exact paths
+4. a valid `:thinkingLevel` suffix is split off and the rest resolved from step 1; in a settings
+   or agent selector any other suffix after the last colon is dropped with a warning
+5. fuzzy and substring matching run only when steps 1 to 4 find nothing, so `k3.1-pro:high`
+   selects `k3.1-pro` at `high`, never a sibling such as `k3.1-pro-highspeed`
 
 A selector that matches nothing is reported by cause, not as a bare "not found", in this
 order: the registry failed to load; the registry is empty; the registry has models but none

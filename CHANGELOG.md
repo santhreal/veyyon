@@ -148,6 +148,7 @@
 - The stdio, Streamable HTTP and legacy HTTP+SSE MCP transports classify a server's messages through one `routeIncomingMessage`, and the two HTTP transports POST the answer to a server request through one `deliverServerResponse`.
 - The `web_search` tool guidance treats results that name versions, models or products newer than the model's training as current, confirms one with at most two targeted follow-up searches, and prefers corroborated results over prior knowledge ([#882](https://github.com/santhreal/veyyon/issues/882)).
 - No user-visible change: `--mode json` states why it dropped a line through `errorMessage` from `@veyyon/utils` instead of an inline copy.
+- No user-visible change: a spawned agent's model list is split by the same `normalizeModelPatternList` the settings layers use instead of a second copy in the executor.
 - Tool normalization reads a tool's supplied `wireParameters` instead of building its `parameters`, and copies a wrapped tool without reading `parameters`.
 - The remote summarizer resolves an Azure model's deployment through the same `@veyyon/ai` helper as Azure turns; no user-facing change.
 - Tool normalization renders a tool's examples against the wire schema it already built instead of converting that schema again; the examples text is unchanged.
@@ -230,6 +231,7 @@
 
 ### Fixed
 
+- A model selector with an effort suffix, such as `kimi-code/k3.1-pro:high` for an agent, resolves to the model it names at that effort instead of a sibling whose id contains the suffix's letters, such as `kimi-code/k3.1-pro-highspeed`; an unknown suffix such as `:hgh` is dropped with a warning instead of picking such a sibling.
 - An idle agent with a running background job, its own or one an agent it spawned started, stays awake instead of falling asleep on the idle timeout and cancelling the job.
 - `job cancel` on an asleep agent stops the agents still running under it instead of reporting the agent already asleep.
 - A background agent that ran in an isolated worktree reports that messages cannot reach it, and a stopped isolated agent's result no longer says to message it via `irc`, since its worktree is removed when the run ends.

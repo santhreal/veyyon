@@ -2,13 +2,15 @@
  * Model resolution, scoping, and initial selection.
  *
  * Layering:
- * - `matchModel` is the single matching engine. Order: exact `provider/id`
- *   reference (with variant-alias and OpenRouter routed/date fallbacks) →
- *   exact bare id → retired variant alias → provider-scoped fuzzy → substring
- *   with alias-vs-dated pick.
+ * - `matchModelExactly` and `matchModelLoosely` are the matching engine.
+ *   Exact: `provider/id` reference (with variant-alias and OpenRouter
+ *   routed/date fallbacks) → bare id → Bedrock inference profile → retired
+ *   variant alias. Loose: provider-scoped fuzzy → substring with
+ *   alias-vs-dated pick.
  * - `parseModelPatternWithContext`/`parseModelPattern` layer the selector
  *   grammar on top: trailing `:level` thinking suffixes (`splitThinkingSuffix`)
- *   and `@upstream` provider routing (`splitUpstreamRouting`).
+ *   and `@upstream` provider routing (`splitUpstreamRouting`). Loose matching
+ *   runs only after the suffix is split off, so a suffix never picks the model.
  * - Everything else (`resolveModelFromString`, `resolveModelOverride*`,
  *   `resolveModelSelectorValue`, `resolveModelScope`, `resolveCliModel`)
  *   adapts inputs — settings patterns, CLI flags, scope globs — onto that
@@ -659,16 +661,14 @@ function findExactModelReferenceMatch(
 	return undefined;
 }
 /**
- * The single model-matching engine. Tries, in order:
+ * The exact stages of model matching, in order:
  * 1. exact `provider/id` reference (variant-alias and OpenRouter routed/date
  *    fallbacks included),
  * 2. exact bare id (preference-ranked),
- * 3. retired effort-tier variant alias (collapsed catalog entries),
- * 4. provider-scoped fuzzy match,
- * 5. substring match with the alias-vs-dated pick.
- * Returns the matched model or undefined if no match found.
+ * 3. Bedrock inference profile id,
+ * 4. retired effort-tier variant alias (collapsed catalog entries).
  */
-function matchModel(
+function matchModelExactly(
 	modelPattern: string,
 	availableModels: readonly Model<Api>[],
 	context: ModelPreferenceContext,
@@ -711,6 +711,21 @@ function matchModel(
 			return pickPreferredModel(preferred.length > 0 ? preferred : aliasMatches, context);
 		}
 	}
+	return undefined;
+}
+
+/**
+ * The loose stages of model matching, tried only after every exact stage failed:
+ * 1. provider-scoped fuzzy match,
+ * 2. substring match with the alias-vs-dated pick.
+ */
+function matchModelLoosely(
+	modelPattern: string,
+	availableModels: readonly Model<Api>[],
+	context: ModelPreferenceContext,
+): Model<Api> | undefined {
+	if (!modelPattern || modelPattern === PROVIDER_WILDCARD_ID) return undefined;
+	const lowerPattern = modelPattern.toLowerCase();
 	// Check for provider/modelId format — fuzzy match within provider only.
 	const slashIndex = modelPattern.indexOf("/");
 	if (slashIndex !== -1) {
@@ -804,13 +819,14 @@ export interface ParsedModelResult {
  * Handles models with colons in their IDs (e.g., OpenRouter's :exacto suffix).
  *
  * Algorithm:
- * 1. Try to match full pattern as a model
- * 2. If found, return it with undefined thinking level
- * 3. If not found and has colons, split on last colon:
- *    - If suffix is valid thinking level, use it and recurse on prefix
- *    - If suffix is invalid, warn and recurse on prefix
+ * 1. An exact match of the full pattern wins, so a literal id containing a colon keeps winning.
+ * 2. A valid thinking suffix (`:high`) is split off and the prefix resolved.
+ * 3. Any other suffix after the last colon is dropped with a warning and the prefix resolved.
+ * 4. Only then is the full pattern matched loosely (fuzzy, substring).
  *
- * @internal Exported for testing
+ * Loose matching runs last because it consumes the suffix as part of the id: `k3.1-pro:high`
+ * is a fuzzy subsequence of `k3.1-pro-highspeed`, so trying it first resolved a pattern that
+ * names `k3.1-pro` at effort `high` to a different model.
  */
 function parseModelPatternWithContext(
 	pattern: string,
@@ -818,14 +834,12 @@ function parseModelPatternWithContext(
 	context: ModelPreferenceContext,
 	options?: { allowInvalidThinkingSelectorFallback?: boolean },
 ): ParsedModelResult {
-	// Try exact match first
-	const exactMatch = matchModel(pattern, availableModels, context);
+	const exactMatch = matchModelExactly(pattern, availableModels, context);
 	if (exactMatch) {
 		return { model: exactMatch, thinkingLevel: undefined, warning: undefined, explicitThinkingLevel: false };
 	}
 
-	// No match - try stripping a valid thinking suffix and recursing.
-	// `max` is accepted only after the full pattern failed, so literal model IDs
+	// `max` is accepted only after the exact full pattern failed, so literal model IDs
 	// ending in `:max` keep winning over the thinking suffix.
 	const { base, level } = splitThinkingSuffix(pattern, -1, MAX_THINKING_SUFFIX_OPTIONS);
 	if (level) {
@@ -840,33 +854,32 @@ function parseModelPatternWithContext(
 				explicitThinkingLevel,
 			};
 		}
-		return result;
+	} else {
+		const lastColonIndex = pattern.lastIndexOf(":");
+		if (lastColonIndex !== -1 && (options?.allowInvalidThinkingSelectorFallback ?? true)) {
+			const suffix = pattern.substring(lastColonIndex + 1);
+			const result = parseModelPatternWithContext(
+				pattern.substring(0, lastColonIndex),
+				availableModels,
+				context,
+				options,
+			);
+			if (result.model) {
+				return {
+					model: result.model,
+					thinkingLevel: undefined,
+					warning: `Invalid thinking level "${suffix}" in pattern "${pattern}". Using default instead.`,
+					explicitThinkingLevel: false,
+				};
+			}
+		}
 	}
 
-	const lastColonIndex = pattern.lastIndexOf(":");
-	if (lastColonIndex === -1) {
-		// No colons, pattern simply doesn't match any model
-		return { model: undefined, thinkingLevel: undefined, warning: undefined, explicitThinkingLevel: false };
+	const looseMatch = matchModelLoosely(pattern, availableModels, context);
+	if (looseMatch) {
+		return { model: looseMatch, thinkingLevel: undefined, warning: undefined, explicitThinkingLevel: false };
 	}
-	const prefix = pattern.substring(0, lastColonIndex);
-	const suffix = pattern.substring(lastColonIndex + 1);
-
-	const allowFallback = options?.allowInvalidThinkingSelectorFallback ?? true;
-	if (!allowFallback) {
-		return { model: undefined, thinkingLevel: undefined, warning: undefined, explicitThinkingLevel: false };
-	}
-
-	// Invalid suffix - recurse on prefix and warn
-	const result = parseModelPatternWithContext(prefix, availableModels, context, options);
-	if (result.model) {
-		return {
-			model: result.model,
-			thinkingLevel: undefined,
-			warning: `Invalid thinking level "${suffix}" in pattern "${pattern}". Using default instead.`,
-			explicitThinkingLevel: false,
-		};
-	}
-	return result;
+	return { model: undefined, thinkingLevel: undefined, warning: undefined, explicitThinkingLevel: false };
 }
 
 /** Match a single pattern with a pre-built preference context (direct match plus
@@ -1497,7 +1510,7 @@ export function resolveCliModel(options: {
 		const idPart = splitThinkingSuffix(pattern, -1, MAX_THINKING_SUFFIX_OPTIONS).base;
 		if (idPart === "" || idPart === PROVIDER_WILDCARD_ID) {
 			// A provider and no model is a selector error, not a lookup miss: the
-			// matcher rejects it (see `matchModel`), and the remedy is the provider's
+			// matcher rejects it (see `matchModelLoosely`), and the remedy is the provider's
 			// own default rather than a near-match list an empty id cannot produce.
 			const suggested = isKnownProvider(provider)
 				? `${provider}/${DEFAULT_MODEL_PER_PROVIDER[provider]}`
