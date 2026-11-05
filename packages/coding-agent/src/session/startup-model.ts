@@ -14,7 +14,7 @@ import type { Model, ServiceTierByFamily } from "@veyyon/ai";
 import { getRestorableSessionModels, type SessionContext } from "@veyyon/kernel/session/session-context";
 import type { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { logger } from "@veyyon/utils";
-import { isAuthenticated, kNoAuth } from "../config/auth-state";
+import { hasUsableCredential } from "../config/auth-state";
 import { type EffortSource, resolveEffort, withLegacyDefaultEffort } from "../config/effort-resolver";
 import { normalizeModelPatternList } from "../config/model-pattern-list";
 import type { ModelRegistry } from "../config/model-registry";
@@ -72,13 +72,6 @@ type MatchedModel = ParsedModelResult & { model: Model };
 
 function isMatched(result: ParsedModelResult): result is MatchedModel {
 	return result.model !== undefined;
-}
-
-/** The deferred `--model` patterns, trimmed, with empty ones dropped. */
-function deferredModelPatterns(modelPattern: string | string[] | undefined): string[] {
-	if (Array.isArray(modelPattern)) return modelPattern.map(pattern => pattern.trim()).filter(Boolean);
-	const trimmed = modelPattern?.trim();
-	return trimmed ? [trimmed] : [];
 }
 
 /**
@@ -199,7 +192,7 @@ export class StartupModelSelection {
 	) {
 		const { options, sessionManager, existingSession, hasExistingSession } = inputs;
 		this.#inputs = inputs;
-		this.#deferredPatterns = deferredModelPatterns(options.modelPattern);
+		this.#deferredPatterns = normalizeModelPatternList(options.modelPattern);
 		this.hasExplicitModel = options.model !== undefined || this.#deferredPatterns.length > 0;
 		this.#matchPreferences = matchPreferences;
 		this.#defaultModelSpec = defaultModelSpec;
@@ -427,11 +420,13 @@ export class StartupModelSelection {
 	/**
 	 * Resolve deferred `--model`/agent patterns now that extension models are registered. Comma
 	 * chains split into their entries first, so the deferred path accepts everything the
-	 * immediate path (resolveModelOverride → resolveModelSelectorValue) accepts.
+	 * immediate path (resolveModelOverrideWithAuthFallback) accepts, in the same order: the first
+	 * pattern whose provider can serve a request, then `modelPatternAuthFallback`, then the first
+	 * pattern that matched at all so the request names the credential it lacks.
 	 */
 	async #resolveDeferredPatterns(): Promise<void> {
 		const { options, settings, modelRegistry } = this.#inputs;
-		const expandedModelPatterns = normalizeModelPatternList(this.#deferredPatterns);
+		const patterns = this.#deferredPatterns;
 		let availableModels = modelRegistry.getAll();
 		const matchPreferences = getModelMatchPreferences(settings);
 		// The background refresh (refreshInBackground at startup) may not have completed yet.
@@ -440,28 +435,33 @@ export class StartupModelSelection {
 		// won't resolve against the static-only registry. Do a synchronous cache-aware discovery
 		// pass and retry before reporting failure. This mirrors the non-explicit fallback in
 		// `#resolveFallbackModel`.
-		if (!expandedModelPatterns.some(pattern => parseModelPattern(pattern, availableModels, matchPreferences).model)) {
+		if (!patterns.some(pattern => parseModelPattern(pattern, availableModels, matchPreferences).model)) {
 			await logger.time("resolveExplicitModelDiscovery", () => modelRegistry.refresh("online-if-uncached"));
 			availableModels = modelRegistry.getAll();
 		}
-		for (let patternIndex = 0; patternIndex < expandedModelPatterns.length; patternIndex += 1) {
-			const primary = parseModelPattern(expandedModelPatterns[patternIndex], availableModels, matchPreferences);
-			if (!isMatched(primary)) continue;
-			const authFallback = await this.#authFallback(primary, availableModels, matchPreferences);
-			const selected = authFallback ?? primary;
-			if (authFallback === undefined && options.modelPatternFallbackChain) {
-				installPatternFallbackChain(
-					settings,
-					primary,
-					expandedModelPatterns.slice(patternIndex + 1),
-					availableModels,
-					matchPreferences,
-				);
+		// One pattern and no auth fallback leave nothing to fall back to, so no credential is looked up.
+		const hasAlternative = patterns.length > 1 || options.modelPatternAuthFallback !== undefined;
+		const usable = async (model: Model): Promise<boolean> =>
+			hasUsableCredential(await modelRegistry.getApiKey(model));
+		let first: { match: MatchedModel; index: number } | undefined;
+		for (const [index, pattern] of patterns.entries()) {
+			const match = parseModelPattern(pattern, availableModels, matchPreferences);
+			if (!isMatched(match)) continue;
+			first ??= { match, index };
+			if (!hasAlternative || (await usable(match.model))) {
+				this.#adoptPatternMatch(match, patterns.slice(index + 1), availableModels, matchPreferences);
+				return;
 			}
-			if (selected.explicitThinkingLevel) {
-				this.#restoredThinkingLevel = selected.thinkingLevel;
+		}
+		if (first) {
+			const fallback = options.modelPatternAuthFallback
+				? parseModelPattern(options.modelPatternAuthFallback, availableModels, matchPreferences)
+				: undefined;
+			if (fallback && isMatched(fallback) && (await usable(fallback.model))) {
+				this.#adoptPatternMatch(fallback, [], availableModels, matchPreferences);
+			} else {
+				this.#adoptPatternMatch(first.match, patterns.slice(first.index + 1), availableModels, matchPreferences);
 			}
-			this.#adopt(selected.model);
 			return;
 		}
 		// Never assume the id is at fault. An empty registry, or one whose credentials can no
@@ -469,26 +469,21 @@ export class StartupModelSelection {
 		// what sent a real investigation into model allowlists for a day (BACKLOG
 		// AUTH-FAILURE-BLAMES-MODEL-ID). The classification is `modelResolutionFailureMessage`,
 		// under test.
-		this.#fallbackMessage = modelResolutionFailureMessage(this.#deferredPatterns, modelRegistry);
+		this.#fallbackMessage = modelResolutionFailureMessage(patterns, modelRegistry);
 	}
 
-	/**
-	 * The `modelPatternAuthFallback` match, when `primary` has no usable credential and the
-	 * fallback does. Undefined keeps `primary`.
-	 */
-	async #authFallback(
-		primary: MatchedModel,
+	/** Run `match`, with the patterns after it as its retry chain when the caller asked for one. */
+	#adoptPatternMatch(
+		match: MatchedModel,
+		laterPatterns: readonly string[],
 		availableModels: readonly Model[],
 		matchPreferences: ModelMatchPreferences,
-	): Promise<MatchedModel | undefined> {
-		const { options, modelRegistry } = this.#inputs;
-		if (!options.modelPatternAuthFallback) return undefined;
-		const primaryKey = await modelRegistry.getApiKey(primary.model);
-		if (primaryKey === kNoAuth || isAuthenticated(primaryKey)) return undefined;
-		const fallback = parseModelPattern(options.modelPatternAuthFallback, availableModels, matchPreferences);
-		if (!isMatched(fallback)) return undefined;
-		const fallbackKey = await modelRegistry.getApiKey(fallback.model);
-		return isAuthenticated(fallbackKey) ? fallback : undefined;
+	): void {
+		if (this.#inputs.options.modelPatternFallbackChain) {
+			installPatternFallbackChain(this.#inputs.settings, match, laterPatterns, availableModels, matchPreferences);
+		}
+		if (match.explicitThinkingLevel) this.#restoredThinkingLevel = match.thinkingLevel;
+		this.#adopt(match.model);
 	}
 
 	/**

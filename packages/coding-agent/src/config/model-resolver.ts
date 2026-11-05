@@ -37,7 +37,7 @@ import {
 	parseThinkingLevel,
 	resolveThinkingLevelForModel,
 } from "../thinking";
-import { isAuthenticated, kNoAuth } from "./auth-state";
+import { hasUsableCredential } from "./auth-state";
 import { normalizeModelPatternList } from "./model-pattern-list";
 import type { ModelRegistry } from "./model-registry";
 import { type ModelRegistryView, modelResolutionFailureMessage } from "./model-resolution-failure";
@@ -1128,10 +1128,8 @@ export async function resolveModelOverrideWithAuthFallback(
 	if (patterns.length <= 1 && !parentActiveModelPattern) {
 		return { ...resolveModelOverride(patterns, modelRegistry, settings), authFallbackUsed: false };
 	}
-	const canCall = async (model: Model<Api>): Promise<boolean> => {
-		const key = await modelRegistry.getApiKey(model, sessionId);
-		return key === kNoAuth || isAuthenticated(key);
-	};
+	const canCall = async (model: Model<Api>): Promise<boolean> =>
+		hasUsableCredential(await modelRegistry.getApiKey(model, sessionId));
 	let primary: ModelOverrideResolution | undefined;
 	let unmatchedWarning: string | undefined;
 	for (const pattern of patterns) {

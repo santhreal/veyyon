@@ -29,3 +29,11 @@ export const kNoAuth = "N/A";
 export function isAuthenticated(apiKey: string | undefined | null): apiKey is string {
 	return Boolean(apiKey) && apiKey !== kNoAuth;
 }
+
+/**
+ * True when a request can be sent with `apiKey`: a real credential, or the
+ * keyless sentinel of a provider that needs none.
+ */
+export function hasUsableCredential(apiKey: string | undefined | null): boolean {
+	return apiKey === kNoAuth || isAuthenticated(apiKey);
+}

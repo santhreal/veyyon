@@ -8,6 +8,7 @@ import { buildModel } from "@veyyon/catalog/build";
 import { writeModelCache } from "@veyyon/catalog/model-cache";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { AsyncJobManager } from "@veyyon/coding-agent/async/job-manager";
+import { kNoAuth } from "@veyyon/coding-agent/config/auth-state";
 import { ModelRegistry, type ProviderConfigInput } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession, type ExtensionFactory } from "@veyyon/coding-agent/sdk";
@@ -244,6 +245,57 @@ describe("createAgentSession deferred model pattern resolution", () => {
 			await session.dispose();
 			getApiKeySpy.mockRestore();
 		}
+	});
+
+	async function createDeferredSession(
+		modelPattern: string[],
+		credential: (model: { provider: string; id: string }) => string | undefined,
+	) {
+		const parentModel = requireBundledModel("anthropic", "claude-sonnet-4-5");
+		const authStorage = await AuthStorage.create(path.join(tempDir, `chain-auth-${Snowflake.next()}.db`));
+		authStoragesToClose.push(authStorage);
+		const modelRegistry = new ModelRegistry(authStorage, path.join(tempDir, `chain-models-${Snowflake.next()}.yml`));
+		vi.spyOn(modelRegistry, "getApiKey").mockImplementation(async requested => credential(requested));
+		const { session } = await createAgentSession({
+			cwd: tempDir,
+			agentDir: tempDir,
+			authStorage,
+			modelRegistry,
+			sessionManager: SessionManager.inMemory(),
+			disableExtensionDiscovery: true,
+			extensions: [providerExtension],
+			skills: [],
+			contextFiles: [],
+			promptTemplates: [],
+			slashCommands: [],
+			enableMCP: false,
+			enableLsp: false,
+			skipPythonPreflight: true,
+			modelPattern,
+			modelPatternAuthFallback: `${parentModel.provider}/${parentModel.id}`,
+			modelPatternFallbackChain: true,
+		});
+		sessionsToDispose.push(session);
+		return { session };
+	}
+
+	test("a later deferred agent pattern with working credentials outranks the auth fallback", async () => {
+		const { session } = await createDeferredSession(
+			["runtime-provider/runtime-model", "runtime-provider/runtime-reasoning-model"],
+			model => (model.id === "runtime-model" ? undefined : "test-key"),
+		);
+
+		expect(session.model?.provider).toBe("runtime-provider");
+		expect(session.model?.id).toBe("runtime-reasoning-model");
+	});
+
+	test("a keyless auth fallback model is used when no deferred pattern has credentials", async () => {
+		const { session } = await createDeferredSession(["runtime-provider/runtime-model"], model =>
+			model.provider === "anthropic" ? kNoAuth : undefined,
+		);
+
+		expect(session.model?.provider).toBe("anthropic");
+		expect(session.model?.id).toBe("claude-sonnet-4-5");
 	});
 
 	test("installs fallback chain for remaining deferred agent modelPattern candidates", async () => {
