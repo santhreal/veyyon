@@ -41,6 +41,7 @@ Does not cover `/tree` UI rendering behavior beyond semantics that affect sessio
 
 `src/session/runtime/` holds the subsystems extracted from `AgentSession`. A collaborator owns
 every field of one subsystem and reaches the session through a host interface it declares itself.
+The table describes a subset of the modules in the directory.
 
 |Module|Owns|Host names|
 |---|---|---|
@@ -890,6 +891,7 @@ Before persisting entries:
   - on load `resolveBlobRefsInEntries` restores the exact original string, so a huge tool result round-trips losslessly and stays fully readable when studying the session
   - signed/encrypted blocks (see the persistence pipeline) are exempt and persist verbatim
 - The transient field `jsonlEvents` is removed.
+- A value that loops back to one of its own ancestors is written as `CIRCULAR_MARKER` (`"[Circular]"`, `@veyyon/utils/json`) where the loop closes, so the entry still reaches the file instead of overflowing the stack. An object reached twice without a loop persists whole both times.
 - Duplicate `thinkingSignature` values on assistant thinking blocks are dropped when the reasoning item (`encrypted_content` or `id`) is already carried in the message's `providerPayload.items` (`openaiResponsesHistory`), leaving the in-memory entry untouched.
 - If an object has both `content` and `lineCount`, line count is recomputed from the inline content, but not when `content` is a `blobtext:` ref (the ref is one line; the real count is preserved).
 - Image blocks in `content` arrays with base64 length >= 1024 are externalized to blob refs:
@@ -938,4 +940,4 @@ Every listing reads a 4KB prefix per file through `readTextSlices(...)`, escalat
 
 Use session files for conversation graph/state replay; use `HistoryStorage` for prompt history UX.
 
-*Verified against `980793ac4160be113a4855f3b052a629d16f4b62` on 2026-10-27.*
+*Verified against `454ff6aec890de9fcb236f4563e12db6f873d25c` on 2026-11-04.*

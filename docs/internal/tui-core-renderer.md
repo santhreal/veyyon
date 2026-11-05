@@ -113,7 +113,8 @@ could be looking at.
 1. Compose the frame (`render(width)`), collecting `liveRegionStart` from the
    root children (absolute row indices; the topmost reporter wins).
 2. **Audit the committed prefix** (`auditCommittedPrefix` in `core/committed-prefix.ts`, skipped on geometry
-   frames and on `clearScrollback` frames). Components must never
+   frames, on `clearScrollback` frames, and on a frame shorter than the committed rows, which the
+   re-base in step 3 judges alone). Components must never
    re-layout declared-final rows, but real flows violate it (a TTSR rewind
    truncating a streamed block, an image-cap demotion shrinking a committed
    image) and the violation must not become content loss. The verified zone's
@@ -139,9 +140,13 @@ could be looking at.
    excuses a terminal from the geometry rebuild: multiplexer panes, and
    terminals that re-report their size on alt-screen toggles (Warp, or
    `VEYYON_TUI_RESIZE_IN_PLACE=1`).
-   A frame that collapsed to a byte-identical prefix of the committed record
-   (pinned chrome taller than the viewport squeezed the transcript) re-bases
-   the commit index and takes no divergence rebuild. When a root child that
+   A frame shorter than the committed rows (a live suffix collapsing on abort or
+   result) re-bases the commit index at its first row that differs from the
+   recorded prefix, so a row the collapse replaced is committed again and
+   reaches history; the audit's one-edit tolerance would have kept it counted
+   as committed. A collapse to a byte-identical prefix of the record (pinned
+   chrome taller than the viewport squeezed the transcript) takes no
+   divergence rebuild. When a root child that
    implements `NativeScrollbackReplay` may have dropped committed rows, the
    divergence rebuild discards the frame and composes it again as a replace
    (`#rehydrateDivergence`), so the replay holds the whole transcript.
@@ -175,7 +180,11 @@ could be looking at.
    coordinates, an overlay never touches the frame or the ledger) and re-fit
    the composited window with the stateless `prepareLinesArray`. Each row is
    written through `terminalLine`, which merges byte-adjacent SGR sequences
-   (`coalesceAdjacentSgr`) and appends the line terminator.
+   (`coalesceAdjacentSgr`) and appends the line terminator. A rewrite that
+   erases the rest of its row (`lineRewriteSequence`) first drops the row's
+   trailing spaces under no attribute that marks a blank (`SgrState.marksBlank`),
+   since an erased cell draws the same; components pad every row to the width,
+   so that padding was most of a repainted row's bytes.
 6. Emit:
 
 | Emitter | Bytes | When |
@@ -494,9 +503,15 @@ a non-answering terminal is detected when DA1 returns first. Replies can arrive
   **complete** reply. A new `\x1b` mid-reassembly or >256 bytes abandons the
   partial so real keys still reach input.
 - `#da1SentinelOwners` is a **typed FIFO** discriminated by `kind`
-  (`keyboard`, `osc11`, `privateMode`, `osc99Probe`) so a keyboard DA1 cannot be
-  mistaken for an OSC 11 background query, a DECRQM report, or the OSC 99
-  notification-capability probe.
+  (`keyboard`, `osc11`, `privateMode`, `osc99Probe`, `inputFence`) so a keyboard
+  DA1 cannot be mistaken for an OSC 11 background query, a DECRQM report, or the
+  OSC 99 notification-capability probe.
+- `drainInput()` at exit pops the keyboard protocols, then, on a terminal that
+  answered a DA1 sentinel since `start()`, writes one more DA1 query
+  (`inputFence`) and ends when its answer arrives: the terminal answers in the
+  order it reads, so a key it encoded under a popped protocol arrives first. A
+  terminal that never answered DA1 is drained until no input arrives for
+  `idleMs` (50 ms).
 - DECRQM probes drive runtime feature gating: 2026 (synchronized output) gates
   the begin/end markers, 2048 (in-band resize) is enabled only once the terminal
   confirms it, 2031 (appearance change) drives mid-session theme tracking, and
@@ -721,9 +736,8 @@ entry.
   in scrollback is what this must not look like. A crash cannot run it: the alt
   buffer restores whatever preceded launch and the transcript is then only in the
   session file.
-- **Still open.** No settings entry yet (adding one regenerates
-  `docs/handbook/src/reference/settings-reference.md`, which currently carries unrelated pending schema
-  changes), and the engine does not yet push a kitty level that guarantees event
+- **Still open.** No settings entry yet, and the engine does not yet push a kitty
+  level that guarantees event
   reporting, so terminals that support the protocol still take the fallback until
   it does. `test/scroll-transport-alt-arrows.test.ts` covers the transport,
   residency, classification, exit replay and the env door; it states the transport
@@ -746,4 +760,4 @@ thumb) and the attributes the terminal presents, through
 `VirtualTerminal#getViewportRowFaintColumns`. A byte assertion alone would still
 pass if a later reset in the same row cancelled the dim.
 
-*Verified against `7c10649879` on 2026-10-09.*
+*Verified against `454ff6aec890de9fcb236f4563e12db6f873d25c` on 2026-11-04.*

@@ -290,4 +290,4 @@ sequence in an ordinary widget is a design-system bug. Keep any required raw seq
 component or terminal-protocol owner.
 
 
-*Verified against `3092eac38d895e4b9f3daa57e1d70add27b212fa` on 2026-10-28.*
+*Verified against `454ff6aec890de9fcb236f4563e12db6f873d25c` on 2026-11-04.*
