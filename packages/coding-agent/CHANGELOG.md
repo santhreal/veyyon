@@ -127,6 +127,7 @@
 - An idle agent with a running background job, its own or one an agent it spawned started, stays awake instead of falling asleep on the idle timeout and cancelling the job.
 - `job cancel` on an asleep agent stops the agents still running under it instead of reporting the agent already asleep.
 - A background agent that ran in an isolated worktree reports that messages cannot reach it, and a stopped isolated agent's result no longer says to message it via `irc`, since its worktree is removed when the run ends.
+- A stopped background agent's result offers to message it via `irc` once instead of twice.
 - The `/agents` stop confirmation states that the agents a stopped agent spawned also fall asleep, and the `job` agent listing says `cancel` stops an agent, which then wakes when messaged, instead of saying it kills it.
 - A message sent while an earlier one is still preparing its images no longer reaches the model ahead of it: a prompt claims the turn before preparing its images, and steers, follow-ups and extension messages are delivered in the order they were sent.
 - An active goal keeps driving after a turn that ends in prose without a tool call, including the reply to the `/goal` objective, and stops with a warning only after 3 such turns in a row instead of stopping silently after one.

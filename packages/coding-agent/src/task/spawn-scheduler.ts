@@ -265,11 +265,11 @@ function followUpHint(agentId: string, run: { aborted: boolean; isolated: boolea
 	}
 	if (run.aborted) {
 		// A request-limit stop leaves the agent idle and every other stop puts it to
-		// sleep; a message picks either back up.
+		// sleep; a message picks either back up with its full context.
 		const status = AgentRegistry.global().get(agentId)?.status;
 		if (status) {
 			const followUp = run.ircEnabled
-				? `message it via \`irc\` to ${status === "asleep" ? "wake it" : "continue"}; `
+				? `message it via \`irc\` to ${status === "asleep" ? "wake it and " : ""}continue its work instead of redoing it; `
 				: "";
 			return `\n\n${agentId} was stopped and is ${status} — ${followUp}${transcript}`;
 		}

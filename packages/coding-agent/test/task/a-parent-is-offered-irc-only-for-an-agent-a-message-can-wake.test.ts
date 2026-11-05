@@ -10,9 +10,9 @@
  *
  * THE CLASS THIS CLOSES. Every text a parent reads after a spawn settles (the inline summary and the
  * background delivery, for a run that finished and for one that was stopped) offers `irc` only while
- * the workspace a wake rebuilds in still exists. The suite drives the real task tool, executor,
- * isolation backend, job manager and registry with only the model session stubbed, and checks the
- * workspace on disk rather than the flag that chose the text.
+ * the workspace a wake rebuilds in still exists, and offers it once. The suite drives the real task
+ * tool, executor, isolation backend, job manager and registry with only the model session stubbed,
+ * and checks the workspace on disk rather than the flag that chose the text.
  *
  * WHAT IT DOES NOT CATCH. The wake itself: the stubbed session writes no session contract, so no
  * revive is attempted here; the reviver's fail-closed check of the recorded cwd is covered by
@@ -187,9 +187,10 @@ describe("a parent is offered irc only for an agent a message can wake", () => {
 					expect(wakeable).toBe(workspace === "shared");
 
 					// An inline run that finished offers no follow-up at all; every other text offers
-					// one exactly when a message can wake the agent.
+					// one exactly when a message can wake the agent, and offers it once: a background
+					// delivery wraps the run's summary, and the two used to repeat the offer.
 					const offers = delivery === "inline" && ending === "finished" ? false : wakeable;
-					expect(text.includes(OFFERS_IRC)).toBe(offers);
+					expect(text.split(OFFERS_IRC).length - 1).toBe(offers ? 1 : 0);
 					if (delivery === "background") expect(text).toContain(`history://${id}`);
 					if (delivery === "background" && workspace === "isolated") {
 						expect(text).toContain("messages cannot reach it");
