@@ -20,7 +20,7 @@ import type {
 	CollabUiResponseValue,
 	WireSessionEntry,
 } from "@veyyon/wire";
-import { mapJsonStrings } from "../json-transform";
+import { jsonWireForm, mapJsonStrings } from "../json-transform";
 import type { InteractiveModeContext } from "../modes/terminal/types";
 import {
 	extractToolResultContent,
@@ -213,13 +213,15 @@ export class CollabHost {
 	 * same transcript routed through `/share` or `/export` has its configured secrets replaced
 	 * with placeholders, so a guest must not receive the literal value instead. This is the one
 	 * seam every outbound frame passes through, so the walk lives here rather than at each of the
-	 * eight send sites. Identity, and free, when nothing is configured.
+	 * eight send sites. Identity, and free, when nothing is configured. The walk runs over the
+	 * frame's JSON form, which is what the guest receives: live session events hold symbol-keyed
+	 * streaming state and lazily built getters that the walker rejects.
 	 */
 	#redact(frame: CollabFrame): CollabFrame {
 		if (!this.#ctx.settings.get("share.redactSecrets")) return frame;
 		const obfuscator = this.#ctx.session.providerRedactor;
 		if (!obfuscator?.hasSecrets()) return frame;
-		return mapJsonStrings(frame, text => obfuscator.obfuscate(text));
+		return mapJsonStrings(jsonWireForm(frame) as CollabFrame, text => obfuscator.obfuscate(text));
 	}
 
 	/** Send one frame to one peer, redacted. Every host-to-guest send goes through here. */

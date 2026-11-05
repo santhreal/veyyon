@@ -36,6 +36,8 @@ Run `veyyon --help` for the generated flag set. Common options:
 | `--model` / `--plan` | Model selection for the run |
 | `--approval-mode` / `--yolo` | Approval policy for the run |
 
+`--mode json` writes one JSON line per session event, after the session header. Configured secrets in a line are replaced with their placeholders. A line that cannot be redacted is not written, and a `Dropped a --mode json line` message is written to stderr instead.
+
 Headless runs have no TTY for approval prompts: choose a mode that does not block (`--yolo` only on disposable runners) or expect the turn to stop when a prompt would be required. See [Approvals](./sandbox.md).
 
 ## Related

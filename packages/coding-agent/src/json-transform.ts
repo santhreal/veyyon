@@ -350,3 +350,14 @@ function rebuiltRecord(frame: JsonWalkFrame, keys: string[], values: unknown[]):
 export function mapJsonStrings<T>(value: T, fn: (s: string) => string): T {
 	return new BoundedJsonWalk(fn).run(value) as T;
 }
+
+/**
+ * `value` as `JSON.stringify` writes it: getters read, symbol keys, functions and `undefined`
+ * members dropped, `toJSON` applied. A sink that serializes in-memory session data maps this form
+ * rather than the live objects, which carry symbol-keyed streaming state and lazily built getters
+ * that {@link mapJsonStrings} rejects. Undefined when `JSON.stringify` writes nothing.
+ */
+export function jsonWireForm(value: unknown): unknown {
+	const json = JSON.stringify(value);
+	return json === undefined ? undefined : JSON.parse(json);
+}

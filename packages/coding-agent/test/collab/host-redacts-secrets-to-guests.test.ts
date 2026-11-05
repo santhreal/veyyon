@@ -10,10 +10,13 @@
  *   - the snapshot a joining guest receives carries placeholders, not secret values;
  *   - so does a live frame broadcast after the join, which is a different send site;
  *   - ordinary transcript text is untouched, so this is not a blanket scrub;
- *   - with `share.redactSecrets` off the operator still gets the verbatim stream they asked for.
+ *   - with `share.redactSecrets` off the operator still gets the verbatim stream they asked for;
+ *   - a live entry holding in-memory-only state (a provider's symbol-keyed streaming marker on a
+ *     block, a lazily built card behind a getter) still reaches the guest, redacted, in its JSON form.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { kStreamingBlockIndex } from "@veyyon/ai/utils/block-symbols";
 import { importRoomKey } from "@veyyon/coding-agent/collab/crypto";
 import { CollabHost } from "@veyyon/coding-agent/collab/host";
 import { COLLAB_PROTO, type CollabFrame, parseCollabLink } from "@veyyon/coding-agent/collab/protocol";
@@ -21,6 +24,7 @@ import { CollabSocket } from "@veyyon/coding-agent/collab/relay-client";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
 import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
+import { withTimeout } from "@veyyon/utils";
 import { installInMemoryRelay, uninstallInMemoryRelay } from "./helpers/in-memory-relay";
 
 const SECRET = "sk-live-COLLABLEAK-0123456789";
@@ -150,6 +154,45 @@ describe("collab host secret redaction", () => {
 		const wire = JSON.stringify(frame);
 		expect(wire).not.toContain(SECRET);
 		expect(wire).toContain(`later leak ${PLACEHOLDER}`);
+	});
+
+	it("delivers a live entry that holds symbol-keyed and getter state, redacted", async () => {
+		await startHost(true);
+		const guest = await joinGuest();
+		await guest.joined;
+
+		const live = Promise.withResolvers<CollabFrame>();
+		guest.socket.onFrame = frame => {
+			if (frame.t === "entry") live.resolve(frame);
+		};
+		ctx.sessionManager.onEntryAppended?.({
+			type: "message",
+			id: "e1",
+			parentId: "e0",
+			timestamp: "2026-08-05T00:00:02Z",
+			message: {
+				role: "toolResult",
+				toolCallId: "call_read",
+				toolName: "read",
+				content: [{ type: "text", text: `1:token = ${SECRET}`, [kStreamingBlockIndex]: 0 }],
+				details: {
+					displayContent: {
+						get text() {
+							return `token = ${SECRET}`;
+						},
+						startLine: 1,
+					},
+				},
+				isError: false,
+				timestamp: 0,
+			},
+		} as unknown as SessionEntry);
+
+		const frame = await withTimeout(live.promise, 5_000, "the live entry never reached the guest");
+		const wire = JSON.stringify(frame);
+		expect(wire).not.toContain(SECRET);
+		expect(wire).toContain(`1:token = ${PLACEHOLDER}`);
+		expect(wire).toContain(`"text":"token = ${PLACEHOLDER}"`);
 	});
 
 	it("leaves ordinary transcript text and frame structure intact", async () => {

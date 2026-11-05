@@ -10,6 +10,7 @@ import type { AssistantMessage, ImageContent } from "@veyyon/ai";
 import { logger, sanitizeText } from "@veyyon/utils";
 import { EXIT_FAILURE, EXIT_INTERRUPTED } from "../cli/exit-codes";
 import { awaitStdoutDrain } from "../cli/stdout-drain";
+import { jsonWireForm } from "../json-transform";
 import { transformProviderPayload } from "../provider-boundary";
 import { SECRET_SPEND_NOTICE_SOURCE } from "../secrets/notices";
 import type { AgentSession } from "../session/agent-session";
@@ -156,14 +157,27 @@ export async function runPrintMode(session: PrintModeSession, options: PrintMode
 	// `transformProviderPayload` is the walker the outbound provider seam already uses,
 	// so this is that seam applied to one more sink rather than a second scrubber that
 	// can drift from it — and it fails closed: a transform that throws takes the write
-	// with it instead of emitting unredacted bytes.
+	// with it instead of emitting unredacted bytes, and says so on stderr.
+	//
+	// The walk runs over the line's JSON form, not the live event. Session events hold
+	// symbol-keyed streaming state on content blocks and lazily built getters on tool
+	// results; the walker rejects both, and walking the live objects dropped every
+	// tool-call message, `turn_end` and `agent_end` from the stream.
 	const writeJsonLine = (payload: unknown): void => {
-		const redacted = transformProviderPayload(
-			payload,
-			text => session.obfuscateProviderText(text),
-			JSON_OUTPUT_BOUNDARY,
-		);
-		process.stdout.write(`${JSON.stringify(redacted)}\n`);
+		let line: string;
+		try {
+			const redacted = transformProviderPayload(
+				jsonWireForm(payload),
+				text => session.obfuscateProviderText(text),
+				JSON_OUTPUT_BOUNDARY,
+			);
+			line = JSON.stringify(redacted);
+		} catch (error) {
+			const reason = error instanceof Error ? error.message : String(error);
+			process.stderr.write(`${sanitizeText(`Dropped a --mode json line: ${reason}`)}\n`);
+			return;
+		}
+		process.stdout.write(`${line}\n`);
 	};
 
 	// Emit session header for JSON mode
