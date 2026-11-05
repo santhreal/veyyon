@@ -105,12 +105,11 @@ describe("classifyUnexpectedStop", () => {
 			sessionId: "session-1",
 			obfuscateProviderText: text => text,
 		});
-		const options = completeSimpleMock.mock.calls[0]?.[2] as
-			| { disableReasoning?: boolean; maxTokens?: number }
-			| undefined;
+		const options = completeSimpleMock.mock.calls[0]?.[2] as { reasoning?: unknown; maxTokens?: number } | undefined;
 
 		expect(result).toBe(true);
-		expect(options).toMatchObject({ disableReasoning: true, maxTokens: 1024 });
+		// No effort is sent, so the answer cap stays for a backend that thinks anyway (#4355).
+		expect(options).toMatchObject({ reasoning: undefined, maxTokens: 1024 });
 	});
 });
 

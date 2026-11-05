@@ -9,15 +9,15 @@ import { completeCommitSimple, type ResolveObfuscateProviderText } from "../comm
 import type { ModelRegistry } from "../config/model-registry";
 import type { Settings } from "../config/settings";
 import { commitPrompts } from "../prompts/commit/rows";
-import { resolveHelperModel } from "../task/helper-settings";
-import { concreteThinkingLevel, toReasoningEffort } from "../thinking";
+import { helperMaxTokens, helperReasoningOptions, resolveHelperModel } from "../task/helper-settings";
+import { concreteThinkingLevel } from "../thinking";
 
 const COMMIT_SYSTEM_PROMPT = prompt.render(commitPrompts["commit/message-system"].text);
 const MAX_DIFF_CHARS = 4000;
-// Cover the "backend ignores `disableReasoning`" case unconditionally: the
-// static `model.reasoning` catalog flag can't distinguish a thinking model
+// The answer cap when no effort is sent. It covers backends that think anyway:
+// the static `model.reasoning` catalog flag can't distinguish a thinking model
 // declared `reasoning: false` (e.g. Qwen3 served locally via llama.cpp) from
-// one that never emits thinking. `maxTokens` is a hard cap — non-thinking
+// one that never emits thinking. `maxTokens` is a hard cap, so non-thinking
 // completions still return in a handful of tokens (issue #4355).
 const COMMIT_MAX_TOKENS = 1024;
 
@@ -93,7 +93,8 @@ export async function generateCommitMessage(
 		if (!apiKey) continue;
 
 		try {
-			const maxTokens = COMMIT_MAX_TOKENS;
+			// `veyyon commit` runs outside a session, so only the commit helper's own effort applies.
+			const reasoning = helperReasoningOptions(candidate.model, candidate.thinkingLevel, undefined);
 			const response = await completeCommitSimple(
 				candidate.model,
 				sanitize => {
@@ -112,8 +113,8 @@ export async function generateCommitMessage(
 				},
 				{
 					apiKey: registry.resolver(candidate.model, sessionId),
-					maxTokens,
-					reasoning: toReasoningEffort(candidate.thinkingLevel),
+					maxTokens: helperMaxTokens(reasoning, COMMIT_MAX_TOKENS),
+					...reasoning,
 				},
 				resolveObfuscateProviderText,
 			);

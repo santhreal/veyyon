@@ -18,6 +18,7 @@ import type { Settings } from "../config/settings";
 import { AgentRegistry } from "../registry/agent-registry";
 import type { AgentSession } from "../session/agent-session";
 import type { AgentSessionEvent } from "../session/agent-session-types";
+import { type ConfiguredThinkingLevel, concreteThinkingLevel } from "../thinking";
 // SIDE-EFFECT IMPORT, and it is load-bearing.
 //
 // `tools/agent/yield.ts` registers the `yield` handler on `subprocessToolRegistry` at module load, and
@@ -198,6 +199,8 @@ export interface RunMonitorArgs {
 	 * file last named, which is not necessarily a model that answers.
 	 */
 	parentActiveModelPattern?: string;
+	/** The parent session's effort, which the label runs at when the title helper names none. */
+	parentThinkingLevel?: ConfiguredThinkingLevel;
 	obfuscateProviderText?: (text: string) => string;
 	completeImpl?: SideCompleteImpl;
 	modelOverride?: string | string[];
@@ -562,6 +565,7 @@ export function createAgentRunMonitor(args: RunMonitorArgs): AgentRunMonitor {
 			args.obfuscateProviderText,
 			args.completeImpl,
 			liveModel,
+			concreteThinkingLevel(args.parentThinkingLevel),
 		)
 			.then(label => {
 				if (!label || abortSignal.aborted || progress.description) return;

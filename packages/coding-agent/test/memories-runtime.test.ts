@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi 
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import type { Context, Model, SimpleStreamOptions } from "@veyyon/ai";
 import * as ai from "@veyyon/ai/stream";
 import { Effort } from "@veyyon/catalog/effort";
@@ -327,11 +328,10 @@ describe("memories runtime", () => {
 	});
 
 	test("clamps stage1 and phase2 reasoning effort against the model's supported range", async () => {
-		// Regression for #1480: memory pipeline hardcoded `Effort.Low`/`Effort.Medium`,
-		// which `requireSupportedEffort` rejects on models whose supported range starts
-		// above `low` (e.g. deepseek-v4-pro → [high, xhigh]). The fix routes both call
-		// sites through `clampThinkingLevelForModel`, lifting the requested effort to
-		// the model's floor instead of throwing.
+		// Regression for #1480: an effort below a model's supported range (e.g.
+		// deepseek-v4-pro → [high, xhigh]) used to reach `requireSupportedEffort`
+		// and throw. Both passes run at the session's effort here, `low`, and must
+		// lift it to the model's floor instead.
 		const fx = await createFixture();
 		const constrainedModel: Model = {
 			...fx.model,
@@ -339,6 +339,7 @@ describe("memories runtime", () => {
 			thinking: { mode: "effort", efforts: [Effort.High, Effort.XHigh] },
 		};
 		fx.session.model = constrainedModel;
+		fx.session.thinkingLevel = ThinkingLevel.Low;
 		fx.modelRegistry.find = vi.fn(() => constrainedModel);
 		fx.modelRegistry.getAll = vi.fn(() => [constrainedModel]);
 
@@ -398,8 +399,7 @@ describe("memories runtime", () => {
 		expect((await fs.readFile(path.join(memoryRoot, "MEMORY.md"), "utf8")).trim()).toBe("# Memory\n\nBody");
 
 		expect(spy).toHaveBeenCalledTimes(2);
-		// stage1 requested `low`, phase2 requested `medium`; both must clamp up to the
-		// model's floor (`high`) instead of being passed through and throwing.
+		// Both passes ran at the session's `low`, lifted to the model's floor (`high`).
 		expect(spy.mock.calls[0]?.[2]?.reasoning).toBe(Effort.High);
 		expect(spy.mock.calls[1]?.[2]?.reasoning).toBe(Effort.High);
 	});

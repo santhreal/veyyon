@@ -15,6 +15,7 @@
  *   mechanical {@link SpeakableStream} cleanup — speech never blocks on the
  *   model.
  */
+import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { ApiKeyResolver, AssistantMessage, Context, Model } from "@veyyon/ai";
 import { completeSimple } from "@veyyon/ai/stream";
 import { assistantText } from "@veyyon/ai/utils/message-text";
@@ -24,14 +25,14 @@ import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
 import { sideChannelPrompts } from "../../prompts/side-channel/rows";
 import { withAtomicSecretPlaceholders } from "../../secrets/placeholder";
-import { resolveHelperModel } from "../../task/helper-settings";
+import { helperMaxTokens, helperReasoningOptions, resolveHelperModel } from "../../task/helper-settings";
 
 const SYSTEM_PROMPT = prompt.render(sideChannelPrompts["side-channel/speech-rewrite"].text);
-// Rewrite budget: a paragraph in, a spoken paragraph (usually shorter) out.
-// Always reserve enough room to survive backends that ignore `disableReasoning`
-// (e.g. Qwen3 via llama.cpp catalogued `reasoning: false` but still emitting
-// thinking). `maxTokens` is a hard cap — non-thinking completions still return
-// in a normal spoken-paragraph budget (issue #4355).
+// Rewrite budget when no effort is sent: a paragraph in, a spoken paragraph
+// (usually shorter) out, with room for backends that think anyway (e.g. Qwen3 via
+// llama.cpp catalogued `reasoning: false` but still emitting thinking).
+// `maxTokens` is a hard cap, so non-thinking completions still return in a
+// normal spoken-paragraph budget (issue #4355).
 const ANSWER_MAX_TOKENS = 1536;
 /** Per-block completion deadline before falling back to mechanical cleanup. */
 const REWRITE_TIMEOUT_MS = 6000;
@@ -45,6 +46,8 @@ export interface SpeechEnhancerDeps {
 	sessionId: string;
 	/** The session's live model, which the `speech` helper runs when it names none. */
 	currentModel?: () => Model | undefined;
+	/** The session's effective effort, which the `speech` helper runs at when it names none. */
+	thinkingLevel?: () => ThinkingLevel | undefined;
 	metadataResolver?: (provider: string) => Record<string, unknown> | undefined;
 	/** Final outbound confidentiality boundary for provider-bound session text. */
 	obfuscateProviderText?: (text: string) => string;
@@ -70,13 +73,9 @@ export class SpeechEnhancer {
 	async rewrite(block: string, signal?: AbortSignal): Promise<string | null> {
 		try {
 			const { settings, registry, sessionId } = this.#deps;
-			const model = resolveHelperModel(
-				settings,
-				"speech",
-				registry.getAvailable(),
-				this.#deps.currentModel?.(),
-			)?.model;
-			if (!model) return null;
+			const selection = resolveHelperModel(settings, "speech", registry.getAvailable(), this.#deps.currentModel?.());
+			if (!selection) return null;
+			const { model } = selection;
 			const apiKey = await registry.getApiKey(model, sessionId);
 			if (!apiKey) return null;
 			// Resolve metadata after getApiKey so the session-sticky credential is recorded first.
@@ -103,10 +102,11 @@ export class SpeechEnhancer {
 			const timeout = scopedTimeoutSignal(REWRITE_TIMEOUT_MS, signal);
 			let response: AssistantMessage;
 			try {
+				const reasoning = helperReasoningOptions(model, selection.thinkingLevel, this.#deps.thinkingLevel?.());
 				response = await completeSimple(model, requestContext, {
 					apiKey: resolveAttemptApiKey,
-					maxTokens: ANSWER_MAX_TOKENS,
-					disableReasoning: true,
+					maxTokens: helperMaxTokens(reasoning, ANSWER_MAX_TOKENS),
+					...reasoning,
 					metadata,
 					signal: timeout.signal,
 				});

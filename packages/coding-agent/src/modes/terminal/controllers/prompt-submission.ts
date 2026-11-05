@@ -396,6 +396,7 @@ export class PromptSubmission {
 			this.ctx.session.titleSystemPrompt,
 			providerText => this.ctx.session.obfuscateProviderText(providerText),
 			this.ctx.session.sideComplete,
+			this.ctx.session.thinkingLevel,
 		)
 			.then(async title => {
 				// Re-check: a concurrent attempt for an earlier message may have

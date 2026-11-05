@@ -2,10 +2,8 @@ import type { Database } from "bun:sqlite";
 import type * as fsNode from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { clampPassEffort } from "@veyyon/agent-core/effort-clamp";
 import type { ApiKey, Context, Model } from "@veyyon/ai";
 import { completeSimple } from "@veyyon/ai/stream";
-import { Effort } from "@veyyon/catalog/effort";
 import { emptyCost } from "@veyyon/catalog/models";
 import {
 	clampLow,
@@ -20,17 +18,18 @@ import {
 } from "@veyyon/utils";
 import { isSessionFileName, sessionFileStem } from "@veyyon/utils/session-file";
 
-/** Memory passes request Low/Medium by convention; a model with a narrower ladder moves the level. */
-function clampMemoryEffort(model: Model, requested: Effort): Effort | undefined {
-	return clampPassEffort(model, requested, "Memory pass");
-}
-
 import { refreshAfterEachApiKeyResolution } from "../config/api-key-resolver";
 import type { ModelRegistry } from "../config/model-registry";
 import type { Settings } from "../config/settings";
 import { memoriesPrompts } from "../prompts/memories/rows";
 import type { AgentSession } from "../session/agent-session";
-import { helperSettingPath, resolveHelperModel } from "../task/helper-settings";
+import {
+	type HelperReasoningOptions,
+	helperMaxTokens,
+	helperReasoningOptions,
+	helperSettingPath,
+	resolveHelperModel,
+} from "../task/helper-settings";
 import { getMemoryRoot } from "./paths";
 import {
 	claimStage1Jobs,
@@ -343,11 +342,12 @@ async function runPhase1(options: {
 		const threads = await collectThreads(session, currentThreadId);
 		upsertThreads(db, threads);
 
-		const phase1Model = resolveMemoryModel(modelRegistry, session);
-		if (!phase1Model) {
+		const phase1 = resolveMemoryRequest(modelRegistry, session);
+		if (!phase1) {
 			logger.debug("Phase1 skipped: no model available");
 			return;
 		}
+		const phase1Model = phase1.model;
 		const phase1ApiKey = await modelRegistry.getApiKey(phase1Model, session.sessionId);
 		if (!phase1ApiKey) {
 			logger.debug("Phase1 skipped: no API key for phase1 model", {
@@ -386,6 +386,7 @@ async function runPhase1(options: {
 				model: phase1Model,
 				apiKey: modelRegistry.resolver(phase1Model, session.sessionId),
 				modelMaxTokens: computeModelTokenBudget(phase1Model, config),
+				reasoning: phase1.reasoning,
 				config,
 				metadata: session.agent?.metadataForProvider(phase1Model.provider),
 				obfuscateProviderText,
@@ -497,8 +498,8 @@ async function runPhase2(options: {
 			return;
 		}
 
-		const phase2Model = resolveMemoryModel(modelRegistry, session);
-		if (!phase2Model) {
+		const phase2 = resolveMemoryRequest(modelRegistry, session);
+		if (!phase2) {
 			markPhase2FailureWithFallback(db, {
 				claim,
 				retryDelaySeconds: config.phase2RetryDelaySeconds,
@@ -508,6 +509,7 @@ async function runPhase2(options: {
 			});
 			return;
 		}
+		const phase2Model = phase2.model;
 		const phase2ApiKey = await modelRegistry.getApiKey(phase2Model, session.sessionId);
 		if (!phase2ApiKey) {
 			markPhase2FailureWithFallback(db, {
@@ -540,6 +542,7 @@ async function runPhase2(options: {
 			const consolidated = await runConsolidationModel({
 				memoryRoot,
 				model: phase2Model,
+				reasoning: phase2.reasoning,
 				apiKey: modelRegistry.resolver(phase2Model, session.sessionId),
 				metadata: session.agent?.metadataForProvider(phase2Model.provider),
 				obfuscateProviderText,
@@ -724,6 +727,7 @@ async function runStage1Job(options: {
 	model: Model;
 	apiKey: ApiKey;
 	modelMaxTokens: number;
+	reasoning: HelperReasoningOptions;
 	config: MemoryRuntimeConfig;
 	metadata?: Record<string, unknown>;
 	obfuscateProviderText?: (text: string) => string;
@@ -774,8 +778,8 @@ async function runStage1Job(options: {
 		const response = await completeSimple(model, providerContext, {
 			apiKey: refreshAfterEachApiKeyResolution(apiKey, refreshProviderContext),
 			metadata: options.metadata,
-			maxTokens: clampLow(Math.floor(modelMaxTokens * 0.2), 1024, 4096),
-			reasoning: clampMemoryEffort(model, Effort.Low),
+			maxTokens: helperMaxTokens(options.reasoning, clampLow(Math.floor(modelMaxTokens * 0.2), 1024, 4096)),
+			...options.reasoning,
 		});
 
 		if (response.stopReason === "error") {
@@ -925,6 +929,7 @@ export async function readRolloutSummaries(memoryRoot: string): Promise<string> 
 async function runConsolidationModel(options: {
 	memoryRoot: string;
 	model: Model;
+	reasoning: HelperReasoningOptions;
 	apiKey: ApiKey;
 	metadata?: Record<string, unknown>;
 	obfuscateProviderText?: (text: string) => string;
@@ -964,8 +969,8 @@ async function runConsolidationModel(options: {
 	const response = await completeSimple(model, providerContext, {
 		apiKey: refreshAfterEachApiKeyResolution(apiKey, refreshProviderContext),
 		metadata: options.metadata,
-		maxTokens: 8192,
-		reasoning: clampMemoryEffort(model, Effort.Medium),
+		maxTokens: helperMaxTokens(options.reasoning, 8192),
+		...options.reasoning,
 	});
 	if (response.stopReason === "error") {
 		throw new Error(sanitize(response.errorMessage || "phase2 model error"));
@@ -1311,15 +1316,25 @@ function computeModelTokenBudget(model: Model, config: MemoryRuntimeConfig): num
 	return Math.max(2048, Math.floor(maxTokens));
 }
 
-/** The `memory` helper's model: its configured chain, else the session's model. */
-function resolveMemoryModel(modelRegistry: ModelRegistry, session: AgentSession): Model | undefined {
+/**
+ * The `memory` helper's model and the reasoning its passes send: its configured chain and effort,
+ * else the session's model and effort.
+ */
+function resolveMemoryRequest(
+	modelRegistry: ModelRegistry,
+	session: AgentSession,
+): { model: Model; reasoning: HelperReasoningOptions } | undefined {
 	const selection = resolveHelperModel(session.settings, "memory", modelRegistry.getAll(), session.model);
 	if (!selection) {
 		logger.warn("Memory pass skipped: the configured model matches no model", {
 			setting: helperSettingPath("memory", "model"),
 		});
+		return undefined;
 	}
-	return selection?.model;
+	return {
+		model: selection.model,
+		reasoning: helperReasoningOptions(selection.model, selection.thinkingLevel, session.thinkingLevel),
+	};
 }
 
 function loadMemoryConfig(settings: Settings): MemoryRuntimeConfig {

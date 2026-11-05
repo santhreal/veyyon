@@ -25,6 +25,7 @@ export function installSpeechEnhancer(session: AgentSession | undefined): void {
 					registry: session.modelRegistry,
 					sessionId: session.sessionId,
 					currentModel: () => session.model,
+					thinkingLevel: () => session.thinkingLevel,
 					metadataResolver: provider => session.agent.metadataForProvider(provider),
 					obfuscateProviderText: text => session.obfuscateProviderText(text),
 				})

@@ -2,6 +2,7 @@
  * Generate session titles with the `title` helper model.
  */
 import * as path from "node:path";
+import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, ApiKeyResolver, AssistantMessage, Context, Model } from "@veyyon/ai";
 import { completeSimple } from "@veyyon/ai/stream";
 import { StreamMarkupHealing } from "@veyyon/ai/utils/stream-markup-healing";
@@ -11,7 +12,12 @@ import type { ModelRegistry } from "../config/model-registry";
 import type { Settings } from "../config/settings";
 import { titlesPrompts } from "../prompts/titles/rows";
 import { withAtomicSecretPlaceholders } from "../secrets/placeholder";
-import { resolveHelperModel } from "../task/helper-settings";
+import {
+	type HelperModelSelection,
+	helperMaxTokens,
+	helperReasoningOptions,
+	resolveHelperModel,
+} from "../task/helper-settings";
 import { formatTitleUserMessage } from "../tiny/message-preproc";
 import { isTinyTitleLocalModelKey, ONLINE_TINY_TITLE_MODEL_KEY } from "../tiny/models";
 import { isLowSignalTitleInput, normalizeGeneratedTitle } from "../tiny/text";
@@ -23,14 +29,11 @@ const TITLE_MARKER_INSTRUCTION = prompt.render(titlesPrompts["titles/marker-inst
 const DEFAULT_TERMINAL_TITLE = "vey";
 const TERMINAL_TITLE_CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]/g;
 
-// Cover the "backend ignores `disableReasoning`" case unconditionally: the
-// static `model.reasoning` catalog flag can't distinguish a thinking model that
-// was declared with `reasoning: false` (e.g. Qwen3 served locally via llama.cpp,
-// whose bundled jinja chat template forces `enable_thinking: true`) from one
-// that never emits thinking. `maxTokens` is a hard cap, not a target — the
-// happy-path completion still returns in a handful of tokens, so raising the
-// ceiling costs nothing when thinking is genuinely suppressed and keeps the
-// `<title>` marker output reachable when it isn't (issue #4355).
+// The answer cap when no effort is sent. It covers backends that think anyway: the static
+// `model.reasoning` catalog flag can't distinguish a thinking model that was declared with
+// `reasoning: false` (e.g. Qwen3 served locally via llama.cpp, whose bundled jinja chat template
+// forces `enable_thinking: true`) from one that never emits thinking. `maxTokens` is a hard cap, not
+// a target, so the `<title>` marker stays reachable when such a backend thinks (issue #4355).
 const TITLE_MAX_TOKENS = 1024;
 
 /** Matches the title the model wraps in `<title>...</title>`. */
@@ -43,11 +46,15 @@ const LEADING_THINKING_FENCE_RE = /^\s*```(?:thinking|reasoning)\b[\s\S]*?```\s*
 const LEADING_PROSE_THINKING_PREAMBLE_RE =
 	/^[ \t]*(?:(?:here(?:['’]s| is)[ \t]+(?:a|the|my)[ \t]+)|my[ \t]+)?(?:thinking|thought|reasoning)[ \t]+process[ \t]*:?[ \t]*(?:\r?\n|$)/i;
 
-function getTitleModel(registry: ModelRegistry, settings: Settings, currentModel?: Model<Api>): Model<Api> | undefined {
+function getTitleModel(
+	registry: ModelRegistry,
+	settings: Settings,
+	currentModel?: Model<Api>,
+): HelperModelSelection | undefined {
 	const availableModels = registry.getAvailable();
 	if (availableModels.length === 0) return undefined;
 
-	return resolveHelperModel(settings, "title", availableModels, currentModel)?.model;
+	return resolveHelperModel(settings, "title", availableModels, currentModel);
 }
 
 /**
@@ -89,6 +96,7 @@ export async function generateSessionTitle(
 	customSystemPrompt?: string,
 	obfuscateProviderText?: (text: string) => string,
 	completeImpl?: SideCompleteImpl,
+	sessionThinkingLevel?: ThinkingLevel,
 ): Promise<string | null> {
 	// Hard off switch: --no-title / VEYYON_NO_TITLE disables auto-titling for
 	// every caller of this function (first-input AND replan refresh), so no
@@ -119,6 +127,7 @@ export async function generateSessionTitle(
 			customSystemPrompt,
 			obfuscateProviderText,
 			completeImpl,
+			sessionThinkingLevel,
 		);
 	}
 
@@ -172,12 +181,15 @@ export async function generateTitleOnline(
 	customSystemPrompt?: string,
 	obfuscateProviderText?: (text: string) => string,
 	completeImpl?: SideCompleteImpl,
+	/** The session's effective effort, which the title runs at when the title helper names none. */
+	sessionThinkingLevel?: ThinkingLevel,
 ): Promise<string | null> {
-	const model = getTitleModel(registry, settings, currentModel);
-	if (!model) {
+	const selection = getTitleModel(registry, settings, currentModel);
+	if (!selection) {
 		logger.warn("title-generator: no title model found", { sessionId, reason: "no-title-model" });
 		return null;
 	}
+	const { model } = selection;
 
 	const modelName = `${model.provider}/${model.id}`;
 	const modelContext = {
@@ -231,16 +243,15 @@ export async function generateTitleOnline(
 			return key;
 		};
 
-		// Title generation is a 3-7 word task, but the ceiling has to survive
-		// backends that ignore `disableReasoning` (see TITLE_MAX_TOKENS above).
-		const maxTokens = TITLE_MAX_TOKENS;
-		logger.debug("title-generator: request", { ...modelContext, maxTokens });
+		const reasoning = helperReasoningOptions(model, selection.thinkingLevel, sessionThinkingLevel);
+		const maxTokens = helperMaxTokens(reasoning, TITLE_MAX_TOKENS);
+		logger.debug("title-generator: request", { ...modelContext, maxTokens, reasoning: reasoning.reasoning });
 
 		const complete = completeImpl ?? completeSimple;
 		const response = await complete(model, requestContext, {
 			apiKey: resolveAttemptApiKey,
 			maxTokens,
-			disableReasoning: true,
+			...reasoning,
 			metadata,
 			signal,
 		});

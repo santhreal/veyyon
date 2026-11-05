@@ -2395,6 +2395,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 		modelRegistry: options.modelRegistry,
 		settings,
 		parentActiveModelPattern: options.parentActiveModelPattern,
+		parentThinkingLevel: options.parentThinkingLevel,
 		obfuscateProviderText: options.obfuscateProviderText,
 		completeImpl: options.completeImpl,
 		modelOverride,

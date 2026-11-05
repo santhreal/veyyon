@@ -46,12 +46,9 @@ describe("title generator", () => {
 
 		expect(title).toBe("Structured Title");
 		const request = completeSimpleMock.mock.calls[0]?.[1] as { tools?: unknown } | undefined;
-		const options = completeSimpleMock.mock.calls[0]?.[2] as
-			| { toolChoice?: unknown; disableReasoning?: boolean }
-			| undefined;
+		const options = completeSimpleMock.mock.calls[0]?.[2] as { toolChoice?: unknown } | undefined;
 		expect(request?.tools).toBeUndefined();
 		expect(options?.toolChoice).toBeUndefined();
-		expect(options?.disableReasoning).toBe(true);
 	});
 
 	it("redacts first-turn secrets at the online title provider boundary", async () => {

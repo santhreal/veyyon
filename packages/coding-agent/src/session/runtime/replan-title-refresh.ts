@@ -5,7 +5,7 @@
  * request uses and the one refresh allowed in flight, and reaches the session only through
  * {@link ReplanTitleRefreshHost}. A title the user set is never replaced.
  */
-import type { AgentMessage } from "@veyyon/agent-core";
+import type { AgentMessage, ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, Model } from "@veyyon/ai";
 import type { SessionTitleSource } from "@veyyon/kernel/session/session-entries";
 import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
@@ -41,6 +41,8 @@ export interface ReplanTitleRefreshHost {
 	readonly settings: Settings;
 	readonly modelRegistry: ModelRegistry;
 	model(): Model<Api> | undefined;
+	/** The session's effective effort, which the title runs at when the title helper names none. */
+	thinkingLevel(): ThinkingLevel | undefined;
 	obfuscateProviderText(text: string): string;
 	readonly sideComplete: SideCompleteImpl;
 }
@@ -109,6 +111,7 @@ export class ReplanTitleRefresh {
 			this.systemPrompt,
 			text => host.obfuscateProviderText(text),
 			host.sideComplete,
+			host.thinkingLevel(),
 		);
 		if (!title) return;
 		const { settings, sessionStore } = host;

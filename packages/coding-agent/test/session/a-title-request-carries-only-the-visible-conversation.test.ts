@@ -76,6 +76,7 @@ async function titleRequestFor(messages: AgentMessage[]): Promise<string | undef
 				throw new Error("the generator is replaced; no side request is made");
 			},
 			model: () => undefined,
+			thinkingLevel: () => undefined,
 			obfuscateProviderText: text => text,
 		},
 		undefined,

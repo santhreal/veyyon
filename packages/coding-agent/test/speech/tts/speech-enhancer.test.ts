@@ -31,12 +31,11 @@ describe("SpeechEnhancer rewriting", () => {
 		const rewritten = await new SpeechEnhancer({ settings, registry, sessionId: "session-1" }).rewrite(
 			"**Spoken text**",
 		);
-		const options = completeSimpleMock.mock.calls[0]?.[2] as
-			| { disableReasoning?: boolean; maxTokens?: number }
-			| undefined;
+		const options = completeSimpleMock.mock.calls[0]?.[2] as { reasoning?: unknown; maxTokens?: number } | undefined;
 
 		expect(rewritten).toBe("Spoken text");
-		expect(options).toMatchObject({ disableReasoning: true, maxTokens: 1536 });
+		// No effort is sent, so the answer cap stays for a backend that thinks anyway (#4355).
+		expect(options).toMatchObject({ reasoning: undefined, maxTokens: 1536 });
 	});
 
 	it("obfuscates enhanced speech text immediately before the nested rewrite request", async () => {

@@ -72,6 +72,7 @@ function refreshFor(store: FakeStore, settings: Settings): ReplanTitleRefresh {
 			throw new Error("the generator is replaced; no side request is made");
 		},
 		model: () => undefined,
+		thinkingLevel: () => undefined,
 		obfuscateProviderText: text => text,
 	};
 	return new ReplanTitleRefresh(host, undefined);

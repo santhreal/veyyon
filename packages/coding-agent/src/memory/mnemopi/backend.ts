@@ -12,7 +12,12 @@ import type { ModelRegistry } from "../../config/model-registry";
 import { resolveConfigValue } from "../../config/resolve-config-value";
 import { memoriesPrompts } from "../../prompts/memories/rows";
 import type { AgentSession } from "../../session/agent-session";
-import { helperSettingPath, resolveHelperModel } from "../../task/helper-settings";
+import {
+	helperMaxTokens,
+	helperReasoningOptions,
+	helperSettingPath,
+	resolveHelperModel,
+} from "../../task/helper-settings";
 import { isTinyMemoryLocalModelKey, ONLINE_MEMORY_MODEL_KEY } from "../../tiny/models";
 import { tinyTitleClient } from "../../tiny/title-client";
 import { shortenPath } from "../../tools/core/render-utils";
@@ -507,13 +512,14 @@ async function resolveMnemopiProviderOptions(
 
 	try {
 		// An unset memory helper runs the session's model, as every helper does.
-		const model = resolveHelperModel(settings, "memory", modelRegistry.getAvailable(), session.model)?.model;
-		if (!model) {
+		const selection = resolveHelperModel(settings, "memory", modelRegistry.getAvailable(), session.model);
+		if (!selection) {
 			logger.warn(
 				`Mnemopi: llmMode=online but the memory helper (${helperSettingPath("memory", "model")}) resolves to no available model; continuing without LLM.`,
 			);
 			return base;
 		}
+		const { model } = selection;
 		const onlineCompletion = Object.assign(
 			async (prompt: string, opts?: MnemopiLlmCompleteOptions) => {
 				if (opts?.onPayload === undefined) {
@@ -531,6 +537,8 @@ async function resolveMnemopiProviderOptions(
 				// The fetch wrapper runs after completeSimple resolves credentials
 				// and rebuilds the body through onPayload for every physical send,
 				// including pi-native, whose wire options intentionally omit hooks.
+				// The effort is read per request, so a session that changes effort moves its memory calls too.
+				const reasoning = helperReasoningOptions(model, selection.thinkingLevel, session.thinkingLevel);
 				const message = await completeSimple(
 					model,
 					{
@@ -538,7 +546,8 @@ async function resolveMnemopiProviderOptions(
 					},
 					{
 						apiKey: modelRegistry.resolver(model, sessionId),
-						maxTokens: opts.maxTokens,
+						maxTokens: helperMaxTokens(reasoning, opts.maxTokens),
+						...reasoning,
 						temperature: opts.temperature,
 						fetch: createMnemopiAttemptFetch(opts.fetch ?? globalThis.fetch, opts.onPayload),
 					},

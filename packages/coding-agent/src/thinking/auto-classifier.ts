@@ -13,6 +13,7 @@
  * Throws on any failure (no model, no key, unparseable output, abort/timeout);
  * the caller falls back to a concrete level and continues the turn.
  */
+import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import type { ApiKeyResolver, Context, Model } from "@veyyon/ai";
 import { completeSimple } from "@veyyon/ai/stream";
 import { assistantText } from "@veyyon/ai/utils/message-text";
@@ -24,7 +25,12 @@ import type { ModelRegistry } from "../config/model-registry";
 import type { Settings } from "../config/settings";
 import { thinkingPrompts } from "../prompts/thinking/rows";
 import { withAtomicSecretPlaceholders } from "../secrets/placeholder";
-import { helperSettingPath, resolveHelperModel } from "../task/helper-settings";
+import {
+	helperMaxTokens,
+	helperReasoningOptions,
+	helperSettingPath,
+	resolveHelperModel,
+} from "../task/helper-settings";
 import { preprocessTinyMessage } from "../tiny/message-preproc";
 import {
 	isTinyMemoryLocalModelKey,
@@ -76,7 +82,8 @@ export async function classifyDifficulty(
 
 async function classifyOnline(input: string, deps: ClassifyDifficultyDeps): Promise<Effort> {
 	// An unset `autoThinking` helper runs the live main model (the classification prompt is tiny).
-	const model = resolveHelperModel(deps.settings, "autoThinking", deps.registry.getAvailable(), deps.model)?.model;
+	const selection = resolveHelperModel(deps.settings, "autoThinking", deps.registry.getAvailable(), deps.model);
+	const model = selection?.model;
 	if (!model) {
 		throw new Error(
 			`auto-thinking: ${helperSettingPath("autoThinking", "model")} matches no available model for classification`,
@@ -88,7 +95,10 @@ async function classifyOnline(input: string, deps: ClassifyDifficultyDeps): Prom
 	}
 	// Resolve metadata after getApiKey so the session-sticky credential is recorded first.
 	const metadata = deps.metadataResolver?.(model.provider);
-	const maxTokens = REASONING_SAFE_MAX_TOKENS;
+	// The session's effort is `auto` while this runs, which is the level being chosen, so a helper
+	// that names no effort classifies with reasoning off rather than at a previous turn's level.
+	const reasoning = helperReasoningOptions(model, selection?.thinkingLevel, ThinkingLevel.Off);
+	const maxTokens = helperMaxTokens(reasoning, REASONING_SAFE_MAX_TOKENS);
 	const requestContext: Context = { systemPrompt: [], messages: [] };
 	const refreshProviderContext = (): void => {
 		const sanitize = deps.obfuscateProviderText ?? ((text: string) => text);
@@ -118,7 +128,7 @@ async function classifyOnline(input: string, deps: ClassifyDifficultyDeps): Prom
 	const response = await complete(model, requestContext, {
 		apiKey: resolveAttemptApiKey,
 		maxTokens,
-		disableReasoning: true,
+		...reasoning,
 		metadata,
 		signal: deps.signal,
 	});

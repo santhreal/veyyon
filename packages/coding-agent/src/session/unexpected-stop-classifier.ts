@@ -1,3 +1,4 @@
+import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { AssistantMessage, Model } from "@veyyon/ai";
 import { seedApiKeyResolver, withAuth } from "@veyyon/ai/auth-retry";
 import { ProviderHttpError } from "@veyyon/ai/error";
@@ -9,7 +10,12 @@ import { errorMessage, logger, prompt } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 import type { Settings } from "../config/settings";
 import { turnControlPrompts } from "../prompts/turn-control/rows";
-import { helperSettingPath, resolveHelperModel } from "../task/helper-settings";
+import {
+	helperMaxTokens,
+	helperReasoningOptions,
+	helperSettingPath,
+	resolveHelperModel,
+} from "../task/helper-settings";
 import { isTinyMemoryLocalModelKey, ONLINE_MEMORY_MODEL_KEY } from "../tiny/models";
 import { tinyTitleClient } from "../tiny/title-client";
 
@@ -33,6 +39,8 @@ export interface ClassifyUnexpectedStopDeps {
 	registry: ModelRegistry;
 	/** Live main model, which the `unexpectedStop` helper runs when it names none. */
 	model?: Model;
+	/** The session's effective effort, which the classifier runs at when the helper names none. */
+	thinkingLevel?: ThinkingLevel;
 	sessionId: string;
 	metadataResolver?: (provider: string) => Record<string, unknown> | undefined;
 	signal?: AbortSignal;
@@ -101,7 +109,8 @@ function createOnlineClassificationError(response: AssistantMessage, deps: Class
 }
 
 async function classifyOnline(text: string, deps: ClassifyUnexpectedStopDeps): Promise<boolean | undefined> {
-	const model = resolveHelperModel(deps.settings, "unexpectedStop", deps.registry.getAvailable(), deps.model)?.model;
+	const selection = resolveHelperModel(deps.settings, "unexpectedStop", deps.registry.getAvailable(), deps.model);
+	const model = selection?.model;
 	if (!model) {
 		throw new Error(
 			`unexpected-stop: ${helperSettingPath("unexpectedStop", "model")} matches no available model for classification`,
@@ -112,7 +121,8 @@ async function classifyOnline(text: string, deps: ClassifyUnexpectedStopDeps): P
 		throw new Error(`unexpected-stop: no API key for ${model.provider}/${model.id}`);
 	}
 	const metadata = deps.metadataResolver?.(model.provider);
-	const maxTokens = REASONING_SAFE_MAX_TOKENS;
+	const reasoning = helperReasoningOptions(model, selection?.thinkingLevel, deps.thinkingLevel);
+	const maxTokens = helperMaxTokens(reasoning, REASONING_SAFE_MAX_TOKENS);
 	const complete = deps.completeImpl ?? completeSimple;
 
 	const response = await withAuth(
@@ -131,7 +141,7 @@ async function classifyOnline(text: string, deps: ClassifyUnexpectedStopDeps): P
 				{
 					apiKey: key,
 					maxTokens,
-					disableReasoning: true,
+					...reasoning,
 					metadata,
 					signal: deps.signal,
 				},

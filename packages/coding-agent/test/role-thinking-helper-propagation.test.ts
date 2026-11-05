@@ -50,9 +50,10 @@ describe("helper thinking propagation", () => {
 			() => text => text,
 		);
 		expect(message).toBe("fix scope handling");
+		// A request that sends an effort carries no answer cap, which would cut its reasoning off.
 		expect(completeSimpleMock.mock.calls[0]?.[2]).toMatchObject({
 			reasoning: Effort.Low,
-			maxTokens: 1024,
+			maxTokens: undefined,
 		});
 	});
 
@@ -81,7 +82,7 @@ describe("helper thinking propagation", () => {
 		});
 	});
 
-	it("disables reasoning for title generation even when the title helper has an effort", async () => {
+	it("runs title generation at the title helper's effort", async () => {
 		const model = requireBundledModel("anthropic", "claude-opus-4-5");
 		const settings = createSettings({ title: { thinkingLevel: "low" } }, `${model.provider}/${model.id}:high`);
 		const registry = {
@@ -96,6 +97,10 @@ describe("helper thinking propagation", () => {
 
 		const title = await generateSessionTitle("Investigate resolver", registry as never, settings);
 		expect(title).toBe("Investigate resolver");
-		expect(completeSimpleMock.mock.calls[0]?.[2]).toMatchObject({ disableReasoning: true });
+		expect(completeSimpleMock.mock.calls[0]?.[2]).toMatchObject({
+			reasoning: Effort.Low,
+			disableReasoning: false,
+			maxTokens: undefined,
+		});
 	});
 });

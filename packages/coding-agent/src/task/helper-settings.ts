@@ -189,3 +189,12 @@ export function helperReasoningOptions(
 	const level = resolveThinkingLevelForModel(model, concreteThinkingLevel(helperLevel) ?? sessionLevel);
 	return { reasoning: toReasoningEffort(level), disableReasoning: shouldDisableReasoning(level) };
 }
+
+/**
+ * The output cap of a helper's one-shot request whose answer fits in `answerTokens`. A request that
+ * sends an effort has none: a provider that takes an effort counts its reasoning inside the cap, so an
+ * answer-sized cap cuts the reasoning off before any answer arrives.
+ */
+export function helperMaxTokens(options: HelperReasoningOptions, answerTokens: number | undefined): number | undefined {
+	return options.reasoning === undefined ? answerTokens : undefined;
+}

@@ -1,6 +1,7 @@
 /**
  * Tiny-model UI labels for spawned agents.
  */
+import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, Model } from "@veyyon/ai";
 import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
 import { logger, prompt } from "@veyyon/utils";
@@ -21,6 +22,8 @@ const TASK_LABEL_SYSTEM_PROMPT = prompt.render(agentPrompts["agent/task-label"].
  * unset, exactly as a session title inherits it. Without it the title
  * generator takes its headless path and resolves the persisted `defaultModel`,
  * which is whatever the config file last named rather than what the session runs.
+ * `liveThinkingLevel` is the parent session's effort, which the label runs at
+ * when the title helper names none.
  */
 export async function generateTaskLabel(
 	assignment: string,
@@ -30,6 +33,7 @@ export async function generateTaskLabel(
 	obfuscateProviderText?: (text: string) => string,
 	completeImpl?: SideCompleteImpl,
 	liveModel?: Model<Api>,
+	liveThinkingLevel?: ThinkingLevel,
 ): Promise<string | null> {
 	const trimmedAssignment = assignment.trim();
 	if (!trimmedAssignment) return null;
@@ -49,6 +53,7 @@ export async function generateTaskLabel(
 			TASK_LABEL_SYSTEM_PROMPT,
 			obfuscateProviderText,
 			completeImpl,
+			liveThinkingLevel,
 		);
 	} catch {
 		logger.debug("task-label: generation failed", { sessionId });
