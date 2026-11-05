@@ -99,28 +99,42 @@ function formatImageBlock(localUrl: string, description: string): string {
 	return `<image path="${localUrl}">\n${description}\n</image>`;
 }
 
+/** The model that reads images for a session, from {@link resolveVisionModel}. */
+export interface VisionModelChoice {
+	/** The first image-capable model of the `vision` helper, `defaultModel`, the active model, then any available model. */
+	model?: Model<Api>;
+	/** The model the `vision` helper names when no entry of that chain reads images. */
+	textOnlyHelper?: Model<Api>;
+}
+
 /**
- * Resolve a vision-capable model, mirroring the inspect_image priority
- * (the `vision` helper → `defaultModel` → active → first image-capable
- * available), but never returning a text-only model.
+ * Resolve the vision model in priority order: the `vision` helper, `defaultModel`, the active
+ * model, then the first image-capable available model. A tier's text-only model is skipped, so a
+ * text-only default never hides an image-capable active model. A text-only `vision` helper is
+ * returned beside the choice, since only an explicit setting is a configuration error.
  */
-function resolveVisionModel(deps: DescribeAttachedImagesDeps): Model<Api> | undefined {
-	const available = deps.modelRegistry.getAvailable();
-	if (available.length === 0) return undefined;
-	const preferences = getModelMatchPreferences(deps.settings);
-	const resolveChain = (patterns: readonly string[]): Model<Api> | undefined => {
+export function resolveVisionModel(
+	settings: Settings,
+	available: Model<Api>[],
+	activeModelString: string | undefined,
+): VisionModelChoice {
+	const preferences = getModelMatchPreferences(settings);
+	let textOnlyHelper: Model<Api> | undefined;
+	const resolveChain = (patterns: readonly string[], isHelper: boolean): Model<Api> | undefined => {
 		for (const pattern of patterns) {
 			const model = resolveModelFromString(pattern, available, preferences);
-			if (model?.input.includes("image")) return model;
+			if (!model) continue;
+			if (model.input.includes("image")) return model;
+			if (isHelper) textOnlyHelper ??= model;
 		}
 		return undefined;
 	};
-	return (
-		resolveChain(helperModelPatterns(deps.settings, "vision")) ??
-		resolveChain(normalizeModelPatternList(deps.settings.get("defaultModel"))) ??
-		resolveChain(normalizeModelPatternList(deps.activeModelString)) ??
-		available.find(model => model.input.includes("image"))
-	);
+	const model =
+		resolveChain(helperModelPatterns(settings, "vision"), true) ??
+		resolveChain(normalizeModelPatternList(settings.get("defaultModel")), false) ??
+		resolveChain(normalizeModelPatternList(activeModelString), false) ??
+		available.find(candidate => candidate.input.includes("image"));
+	return { model, textOnlyHelper };
 }
 
 /** Run one vision-description round-trip; returns trimmed text or `null` on any failure. */
@@ -184,7 +198,11 @@ export async function describeAttachedImagesForTextModel(
 	signal?: AbortSignal,
 ): Promise<TextContent[]> {
 	const localRoot = resolveLocalRoot(deps.localProtocolOptions);
-	const visionModel = resolveVisionModel(deps);
+	const { model: visionModel } = resolveVisionModel(
+		deps.settings,
+		deps.modelRegistry.getAvailable(),
+		deps.activeModelString,
+	);
 	const apiKey = visionModel ? await deps.modelRegistry.getApiKey(visionModel, deps.sessionId) : undefined;
 	const canDescribe = Boolean(visionModel && apiKey);
 	const telemetry = resolveTelemetry(deps.telemetryConfig, deps.sessionId);

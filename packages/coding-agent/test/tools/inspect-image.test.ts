@@ -457,6 +457,60 @@ describe("InspectImageTool", () => {
 		expect(stub.calls).toHaveLength(0);
 	});
 
+	// A text-only model at a tier nobody set for images (the default model, the active model, the
+	// first available one) is skipped rather than failing the call: only the `vision` helper is a
+	// choice about images, so only a text-only helper is a configuration error.
+	it("a text-only default model does not hide an image-capable active model", async () => {
+		const imagePath = path.join(testDir, "screen.png");
+		fs.writeFileSync(imagePath, Buffer.from(TINY_PNG_BASE64, "base64"));
+		const settings = Settings.isolated();
+		settings.setDefaultModel(`${textOnlyModel.provider}/${textOnlyModel.id}`);
+		const stub = createCompleteSimpleSuccessStub("Active model used");
+		const tool = new InspectImageTool(
+			createSession(testDir, visionModel, "test-key", settings, {
+				configureVisionRole: false,
+				availableModels: [textOnlyModel, visionModel],
+				activeModel: visionModel,
+			}),
+			stub.fn,
+		);
+
+		const result = await tool.execute("call-2b", { path: imagePath, question: "What is visible?" });
+		expect(result.details?.model).toBe("openai/gpt-4o");
+	});
+
+	it("with no image-capable configured model, an image-capable available model reads the image", async () => {
+		const imagePath = path.join(testDir, "screen.png");
+		fs.writeFileSync(imagePath, Buffer.from(TINY_PNG_BASE64, "base64"));
+		const stub = createCompleteSimpleSuccessStub("Available model used");
+		const tool = new InspectImageTool(
+			createSession(testDir, textOnlyModel, "test-key", Settings.isolated(), {
+				configureVisionRole: false,
+				availableModels: [textOnlyModel, visionModel],
+				activeModel: textOnlyModel,
+			}),
+			stub.fn,
+		);
+
+		const result = await tool.execute("call-2c", { path: imagePath, question: "What is visible?" });
+		expect(result.details?.model).toBe("openai/gpt-4o");
+	});
+
+	it("fails naming the vision setting when no available model reads images", async () => {
+		const imagePath = path.join(testDir, "screen.png");
+		fs.writeFileSync(imagePath, Buffer.from(TINY_PNG_BASE64, "base64"));
+		const stub = createCompleteSimpleForbiddenStub();
+		const tool = new InspectImageTool(
+			createSession(testDir, textOnlyModel, "test-key", Settings.isolated(), { configureVisionRole: false }),
+			stub.fn,
+		);
+
+		await expect(tool.execute("call-2d", { path: imagePath, question: "What is visible?" })).rejects.toThrow(
+			/No available model supports image input\. Configure a vision-capable model for agent\.helpers\.vision\.model/,
+		);
+		expect(stub.calls).toHaveLength(0);
+	});
+
 	it("fails with actionable error when API key is missing", async () => {
 		const imagePath = path.join(testDir, "screen.png");
 		fs.writeFileSync(imagePath, Buffer.from(TINY_PNG_BASE64, "base64"));

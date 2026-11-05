@@ -1,6 +1,6 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import { instrumentedCompleteSimple, resolveTelemetry } from "@veyyon/agent-core";
-import type { Api, ImageContent, Model, ToolExample } from "@veyyon/ai";
+import type { ImageContent, ToolExample } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { completeSimple } from "@veyyon/ai/stream";
 import "@veyyon/ai/usage/defaults";
@@ -8,10 +8,8 @@ import { type } from "@veyyon/ai/utils/schema/arktype";
 import { toolSchema } from "@veyyon/ai/utils/schema/tool-schema";
 import { prompt } from "@veyyon/utils";
 import { extractTextContent } from "../../commit/utils";
-import { normalizeModelPatternList } from "../../config/model-pattern-list";
-import { getModelMatchPreferences, resolveModelFromString } from "../../config/model-resolver";
 import { toolsPrompts } from "../../prompts/tools/rows";
-import { helperModelPatterns, helperSettingPath } from "../../task/helper-settings";
+import { helperSettingPath } from "../../task/helper-settings";
 import {
 	ImageInputTooLargeError,
 	type LoadedImageInput,
@@ -20,6 +18,7 @@ import {
 	MAX_IMAGE_INPUT_BYTES,
 	webpExclusionForModel,
 } from "../../utils/image-loading";
+import { resolveVisionModel } from "../../utils/image-vision-fallback";
 import { ToolError } from "../core/tool-errors";
 import type { ToolSession } from "../index";
 import { inspectImageToolView } from "./inspect-image-view";
@@ -180,29 +179,17 @@ export class InspectImageTool implements AgentTool<typeof inspectImageSchema.val
 			throw new ToolError("No models available for inspect_image.");
 		}
 
-		const settings = this.session.settings;
-		const matchPreferences = getModelMatchPreferences(settings);
-		const resolveChain = (patterns: readonly string[]): Model<Api> | undefined => {
-			for (const pattern of patterns) {
-				const model = resolveModelFromString(pattern, availableModels, matchPreferences);
-				if (model) return model;
-			}
-			return undefined;
-		};
-
-		const activeModelPattern = this.session.getActiveModelString?.() ?? this.session.getModelString?.();
-		const model =
-			resolveChain(helperModelPatterns(settings, "vision")) ??
-			resolveChain(normalizeModelPatternList(settings.get("defaultModel"))) ??
-			resolveChain(normalizeModelPatternList(activeModelPattern)) ??
-			availableModels[0];
-		if (!model) {
-			throw new ToolError("Unable to resolve a model for inspect_image.");
-		}
-
-		if (!model.input.includes("image")) {
+		const activeModelString = this.session.getActiveModelString?.() ?? this.session.getModelString?.();
+		const { model, textOnlyHelper } = resolveVisionModel(this.session.settings, availableModels, activeModelString);
+		const visionSetting = `${helperSettingPath("vision", "model")} (Agents → Roster → Helpers)`;
+		if (textOnlyHelper) {
 			throw new ToolError(
-				`Resolved model ${model.provider}/${model.id} does not support image input. Configure a vision-capable model for ${helperSettingPath("vision", "model")} (Agents → Roster → Helpers).`,
+				`Resolved model ${textOnlyHelper.provider}/${textOnlyHelper.id} does not support image input. Configure a vision-capable model for ${visionSetting}.`,
+			);
+		}
+		if (!model) {
+			throw new ToolError(
+				`No available model supports image input. Configure a vision-capable model for ${visionSetting}.`,
 			);
 		}
 
