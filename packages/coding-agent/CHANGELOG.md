@@ -125,6 +125,7 @@
 - The `web_search` tool guidance treats results that name versions, models or products newer than the model's training as current, confirms one with at most two targeted follow-up searches, and prefers corroborated results over prior knowledge ([#882](https://github.com/santhreal/veyyon/issues/882)).
 - No user-visible change: `--mode json` states why it dropped a line through `errorMessage` from `@veyyon/utils` instead of an inline copy.
 - No user-visible change: a spawned agent's model list is split by the same `normalizeModelPatternList` the settings layers use instead of a second copy in the executor.
+- No user-visible change: `--models` scoping and `enabledModels` filtering detect a glob selector through one predicate instead of two copies.
 
 ### Fixed
 - A model selector with an effort suffix, such as `kimi-code/k3.1-pro:high` for an agent, resolves to the model it names at that effort instead of a sibling whose id contains the suffix's letters, such as `kimi-code/k3.1-pro-highspeed`; an unknown suffix such as `:hgh` is dropped with a warning instead of picking such a sibling.

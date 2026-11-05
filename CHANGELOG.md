@@ -149,6 +149,7 @@
 - The `web_search` tool guidance treats results that name versions, models or products newer than the model's training as current, confirms one with at most two targeted follow-up searches, and prefers corroborated results over prior knowledge ([#882](https://github.com/santhreal/veyyon/issues/882)).
 - No user-visible change: `--mode json` states why it dropped a line through `errorMessage` from `@veyyon/utils` instead of an inline copy.
 - No user-visible change: a spawned agent's model list is split by the same `normalizeModelPatternList` the settings layers use instead of a second copy in the executor.
+- No user-visible change: `--models` scoping and `enabledModels` filtering detect a glob selector through one predicate instead of two copies.
 - Tool normalization reads a tool's supplied `wireParameters` instead of building its `parameters`, and copies a wrapped tool without reading `parameters`.
 - The remote summarizer resolves an Azure model's deployment through the same `@veyyon/ai` helper as Azure turns; no user-facing change.
 - Tool normalization renders a tool's examples against the wire schema it already built instead of converting that schema again; the examples text is unchanged.

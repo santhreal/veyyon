@@ -130,6 +130,11 @@ function splitThinkingSuffix(
 	return level ? { base: pattern.slice(0, colonIdx), level } : { base: pattern };
 }
 
+/** Whether a scope pattern is a glob (`openai/*`, `*sonnet*`) rather than one model selector. */
+function isGlobPattern(pattern: string): boolean {
+	return pattern.includes("*") || pattern.includes("?") || pattern.includes("[");
+}
+
 function matchingGlobModels(pattern: string, availableModels: readonly Model<Api>[]): Model<Api>[] {
 	const glob = new Bun.Glob(pattern.toLowerCase());
 	return availableModels.filter(model => {
@@ -1216,8 +1221,7 @@ export async function resolveModelScope(
 	};
 
 	for (const pattern of patterns) {
-		// Check if pattern contains glob characters
-		if (pattern.includes("*") || pattern.includes("?") || pattern.includes("[")) {
+		if (isGlobPattern(pattern)) {
 			// Extract optional thinking level suffix (e.g., "provider/*:high") only
 			// after literal `:max` globs had a chance to match real model IDs.
 			const {
@@ -1320,22 +1324,13 @@ export function filterAvailableModelsByEnabledPatterns(
 
 	const context = buildPreferenceContext(available, undefined);
 	const allowedModels: Model<Api>[] = [];
-	const addAllowed = (model: Model<Api>) => {
-		allowedModels.push(model);
-	};
-
 	for (const pattern of patterns) {
-		if (pattern.includes("*") || pattern.includes("?") || pattern.includes("[")) {
-			for (const model of resolveGlobScopePattern(pattern, available).models) {
-				addAllowed(model);
-			}
+		if (isGlobPattern(pattern)) {
+			allowedModels.push(...resolveGlobScopePattern(pattern, available).models);
 			continue;
 		}
-
 		const { model } = parseModelPatternWithContext(pattern, available, context);
-		if (model) {
-			addAllowed(model);
-		}
+		if (model) allowedModels.push(model);
 	}
 
 	return includeSyntheticAllowedModels(available, allowedModels);
