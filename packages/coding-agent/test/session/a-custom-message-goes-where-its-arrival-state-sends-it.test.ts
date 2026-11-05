@@ -74,6 +74,9 @@ class RecordingHost implements CustomMessagesHost {
 		scheduleDrain: (): void => {
 			this.drains++;
 		},
+		// One message at a time here; the order across messages is the session suites' subject.
+		deliverInOrder: async <T, R>(prepared: Promise<T>, deliver: (value: T) => R): Promise<R> =>
+			deliver(await prepared),
 	};
 	readonly agent = {
 		appendMessage: (message: AgentMessage): void => {

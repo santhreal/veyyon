@@ -4,8 +4,9 @@
  * into a turn of its own, what the queue chip counts, and which of them the editor takes back on a
  * dequeue or an interrupt.
  *
- * This is a session collaborator. It holds the count of prompts waiting for the agent to go idle,
- * and reaches the session only through {@link QueuedMessagesHost}.
+ * This is a session collaborator. It holds the count of prompts waiting for the agent to go idle and
+ * the order queued messages are delivered in, and reaches the session only through
+ * {@link QueuedMessagesHost}.
  * The queues themselves are the agent's.
  */
 import type { AgentMessage } from "@veyyon/agent-core";
@@ -68,9 +69,32 @@ export class QueuedMessages {
 	 * anything is coming reads the turn that is.
 	 */
 	#waitingOnIdle = 0;
+	/** Settles once every message handed to {@link deliverInOrder} so far is delivered or has failed. */
+	#delivered: Promise<void> = Promise.resolve();
 
 	constructor(host: QueuedMessagesHost) {
 		this.#host = host;
+	}
+
+	/**
+	 * Deliver prepared messages in the order they were handed over. Preparing one (normalizing its
+	 * images, describing them to a text-only model) takes as long as its images make it take, and a
+	 * message delivered as soon as it was ready overtook an earlier one still preparing. Preparations
+	 * proceed concurrently; `deliver` runs once `prepared` settles and every earlier `deliver` has run,
+	 * and a failed preparation holds its place until those have. A promise `deliver` returns (a turn it
+	 * started) is handed back without holding later deliveries for it.
+	 */
+	async deliverInOrder<T, R>(prepared: Promise<T>, deliver: (value: T) => R): Promise<R> {
+		const earlier = this.#delivered;
+		const delivered = Promise.withResolvers<void>();
+		this.#delivered = delivered.promise;
+		try {
+			const value = await prepared;
+			await earlier;
+			return deliver(value);
+		} finally {
+			void earlier.then(delivered.resolve);
+		}
 	}
 
 	/**
@@ -81,16 +105,17 @@ export class QueuedMessages {
 	 */
 	async queueUser(text: string, images: ImageContent[] | undefined, mode: "steer" | "followUp"): Promise<void> {
 		this.#host.advisors.allowAutoResume();
-		const { content, imageDescriptionNotice } = await this.#host.textWithImages(text, images);
-		const agent = this.#host.agent;
-		if (mode === "followUp") {
-			if (imageDescriptionNotice) agent.followUp(imageDescriptionNotice);
-			agent.followUp({ role: "user", content, attribution: "user", timestamp: Date.now() });
-		} else {
-			if (imageDescriptionNotice) agent.steer(imageDescriptionNotice);
-			agent.steer({ role: "user", content, steering: true, attribution: "user", timestamp: Date.now() });
-		}
-		this.scheduleDrain();
+		await this.deliverInOrder(this.#host.textWithImages(text, images), ({ content, imageDescriptionNotice }) => {
+			const agent = this.#host.agent;
+			if (mode === "followUp") {
+				if (imageDescriptionNotice) agent.followUp(imageDescriptionNotice);
+				agent.followUp({ role: "user", content, attribution: "user", timestamp: Date.now() });
+			} else {
+				if (imageDescriptionNotice) agent.steer(imageDescriptionNotice);
+				agent.steer({ role: "user", content, steering: true, attribution: "user", timestamp: Date.now() });
+			}
+			this.scheduleDrain();
+		});
 	}
 
 	/**
@@ -103,10 +128,11 @@ export class QueuedMessages {
 		images: ImageContent[] | undefined,
 		attribution: MessageAttribution,
 	): Promise<void> {
-		const { content, imageDescriptionNotice } = await this.#host.textWithImages(text, images);
-		if (imageDescriptionNotice) this.#host.agent.followUp(imageDescriptionNotice);
-		this.#host.agent.followUp({ role: "developer", content, attribution, timestamp: Date.now() });
-		this.scheduleDrain();
+		await this.deliverInOrder(this.#host.textWithImages(text, images), ({ content, imageDescriptionNotice }) => {
+			if (imageDescriptionNotice) this.#host.agent.followUp(imageDescriptionNotice);
+			this.#host.agent.followUp({ role: "developer", content, attribution, timestamp: Date.now() });
+			this.scheduleDrain();
+		});
 	}
 
 	/** Put `message` on the steering or the follow-up queue, scheduling no drain. */

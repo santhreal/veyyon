@@ -124,6 +124,7 @@
 - The stdio, Streamable HTTP and legacy HTTP+SSE MCP transports classify a server's messages through one `routeIncomingMessage`, and the two HTTP transports POST the answer to a server request through one `deliverServerResponse`.
 
 ### Fixed
+- A message sent while an earlier one is still preparing its images no longer reaches the model ahead of it: a prompt claims the turn before preparing its images, and steers, follow-ups and extension messages are delivered in the order they were sent.
 - An active goal keeps driving after a turn that ends in prose without a tool call, including the reply to the `/goal` objective, and stops with a warning only after 3 such turns in a row instead of stopping silently after one.
 - The goal continuation after a turn that ended without a tool call states that the turn did no work and directs the model to start an untried approach, so a model that answers with a status report returns to work.
 - A goal continuation held by a draft or attached images in the composer is sent once the draft is deleted without being sent, instead of leaving the goal idle until the next message.

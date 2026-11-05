@@ -60,8 +60,8 @@ export interface CustomMessagesHost {
 	readonly images: Pick<ImageAttachments, "normalizeMessage">;
 	/** The hidden messages held for the next turn. */
 	readonly nextTurn: Pick<NextTurnMessages, "queue">;
-	/** The steer and follow-up queues and the drain that starts a turn on them. */
-	readonly queue: Pick<QueuedMessages, "enqueue" | "scheduleDrain">;
+	/** The steer and follow-up queues, the drain that starts a turn on them, and the order messages reach them in. */
+	readonly queue: Pick<QueuedMessages, "enqueue" | "scheduleDrain" | "deliverInOrder">;
 	/** The agent whose context an appended message joins. */
 	readonly agent: Pick<Agent, "appendMessage">;
 	/** The session file an appended message is recorded in. */
@@ -121,7 +121,8 @@ export class CustomMessages {
 	 * as a steer or a follow-up. When no turn streams, `triggerTurn` starts one with the message, unless
 	 * the client defers the turns the agent starts on its own, which holds it for the next turn instead;
 	 * without `triggerTurn` the message joins the context with no turn. A message that starts a turn
-	 * waits for the startup hydration a prompt waits for, since it reaches the same tools.
+	 * waits for the startup hydration a prompt waits for, since it reaches the same tools. Messages are
+	 * routed in the order they were sent, whatever their images take to normalize.
 	 *
 	 * `false` covers every path that did not run a turn, including a `triggerTurn` the client deferred,
 	 * so a caller that mirrors the turn's `agent_end` does not act on one that never ran.
@@ -143,14 +144,24 @@ export class CustomMessages {
 			attribution: normalizedPayload.attribution,
 			timestamp: Date.now(),
 		};
-		const normalizedAppMessage = await host.images.normalizeMessage(appMessage);
+		return host.queue.deliverInOrder(host.images.normalizeMessage(appMessage), normalized =>
+			this.#route(normalized, options),
+		);
+	}
+
+	/**
+	 * Route a normalized message by what the session reads when its turn to be delivered comes. A turn
+	 * the message starts is returned unawaited, so the messages handed over after it are not held for it.
+	 */
+	#route<T>(message: CustomMessage<T>, options: SendCustomMessageOptions | undefined): boolean | Promise<boolean> {
+		const host = this.#host;
 		if (host.isStreaming()) {
 			if (options?.deliverAs === "nextTurn") {
-				host.nextTurn.queue(normalizedAppMessage, options?.triggerTurn ?? false);
+				host.nextTurn.queue(message, options?.triggerTurn ?? false);
 				return false;
 			}
 
-			host.queue.enqueue(normalizedAppMessage, options?.deliverAs === "followUp" ? "followUp" : "steer");
+			host.queue.enqueue(message, options?.deliverAs === "followUp" ? "followUp" : "steer");
 			host.queue.scheduleDrain();
 			return false;
 		}
@@ -158,28 +169,26 @@ export class CustomMessages {
 		if (options?.deliverAs === "nextTurn") {
 			if (options?.triggerTurn) {
 				if (host.defersAgentInitiatedTurns()) {
-					host.nextTurn.queue(normalizedAppMessage, false);
+					host.nextTurn.queue(message, false);
 					return false;
 				}
-				await host.promptAgentInitiated(normalizedAppMessage, {
-					acceptTerminalEmptyStop: options.acceptTerminalEmptyStop === true,
-				});
-				return true;
+				return host
+					.promptAgentInitiated(message, { acceptTerminalEmptyStop: options.acceptTerminalEmptyStop === true })
+					.then(() => true);
 			}
-			this.append(normalizedAppMessage);
+			this.append(message);
 			return false;
 		}
 
 		if (options?.triggerTurn) {
 			if (host.defersAgentInitiatedTurns()) {
-				host.nextTurn.queue(normalizedAppMessage, false);
+				host.nextTurn.queue(message, false);
 				return false;
 			}
-			await host.promptAgentInitiated(normalizedAppMessage);
-			return true;
+			return host.promptAgentInitiated(message).then(() => true);
 		}
 
-		this.append(normalizedAppMessage);
+		this.append(message);
 		return false;
 	}
 
@@ -209,12 +218,15 @@ export class CustomMessages {
 			if (!options.streamingBehavior) {
 				throw new AgentBusyError();
 			}
-			// The keyword notices are text, so they carry no image to normalize.
-			for (const notice of keywordNotices)
-				host.queue.enqueue(queuedCustomMessage(notice), options.streamingBehavior);
-			host.queue.enqueue(
-				await host.images.normalizeMessage(queuedCustomMessage(message, options.queueChipText)),
-				options.streamingBehavior,
+			const mode = options.streamingBehavior;
+			// The keyword notices are text with no image to normalize; they are delivered with the
+			// message so nothing handed over meanwhile lands between them.
+			await host.queue.deliverInOrder(
+				host.images.normalizeMessage(queuedCustomMessage(message, options.queueChipText)),
+				normalized => {
+					for (const notice of keywordNotices) host.queue.enqueue(queuedCustomMessage(notice), mode);
+					host.queue.enqueue(normalized, mode);
+				},
 			);
 			return;
 		}
