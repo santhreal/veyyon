@@ -4,7 +4,7 @@
 
 ### Changed
 
-- Spawned agents have three states, running, idle and asleep: an idle agent falls asleep after 5 minutes (`agent.idleTtlMs`, "Sleep Idle Agents After") and frees its session, and any agent with a transcript, including a stopped, failed or killed one, wakes when messaged for the rest of the session instead of being pruned or left unrevivable.
+- Spawned agents have three states, running, idle and asleep: an idle agent falls asleep after 5 minutes (`agent.idleTtlMs`, "Sleep Idle Agents After") and frees its session, and any agent with a transcript, including a stopped, failed or killed one, wakes when messaged for the rest of the session instead of being pruned or left unrevivable; an agent that ran in an isolated worktree stays readable at `history://<id>` but cannot be woken, since the worktree is removed when its run ends.
 - `job cancel` on an agent and `x` in the agent dashboard stop the agent and everything it spawned and put them to sleep, so a stopped agent wakes when messaged instead of being terminated.
 - The `irc` roster lists the 10 most recently active asleep agents and a count of older ones, which still wake by id, and a blocking `irc` send to a peer that falls asleep before replying ends at once instead of waiting for its timeout.
 - `agent.softRequestBudget` defaults to Unlimited instead of 200 requests, offers 200, 500, 1000 and 2000, and the bundled scout and sonic agents no longer carry a lower built-in limit.
@@ -124,6 +124,10 @@
 - The stdio, Streamable HTTP and legacy HTTP+SSE MCP transports classify a server's messages through one `routeIncomingMessage`, and the two HTTP transports POST the answer to a server request through one `deliverServerResponse`.
 
 ### Fixed
+- An idle agent with a running background job, its own or one an agent it spawned started, stays awake instead of falling asleep on the idle timeout and cancelling the job.
+- `job cancel` on an asleep agent stops the agents still running under it instead of reporting the agent already asleep.
+- A background agent that ran in an isolated worktree reports that messages cannot reach it, and a stopped isolated agent's result no longer says to message it via `irc`, since its worktree is removed when the run ends.
+- The `/agents` stop confirmation states that the agents a stopped agent spawned also fall asleep, and the `job` agent listing says `cancel` stops an agent, which then wakes when messaged, instead of saying it kills it.
 - A message sent while an earlier one is still preparing its images no longer reaches the model ahead of it: a prompt claims the turn before preparing its images, and steers, follow-ups and extension messages are delivered in the order they were sent.
 - An active goal keeps driving after a turn that ends in prose without a tool call, including the reply to the `/goal` objective, and stops with a warning only after 3 such turns in a row instead of stopping silently after one.
 - The goal continuation after a turn that ended without a tool call states that the turn did no work and directs the model to start an untried approach, so a model that answers with a status report returns to work.

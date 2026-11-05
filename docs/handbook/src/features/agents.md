@@ -292,7 +292,9 @@ is flushed to disk. `0` ("Never") keeps idle agents live until the session exits
 Messaging or opening an asleep agent wakes it from its transcript. Every agent with a
 transcript can be woken for the rest of the session, including one that was stopped,
 failed, timed out or hit its request limit. No status is terminal and no agent is removed
-from the roster.
+from the roster. An agent that ran in an isolated copy of the tree cannot be woken: the
+copy is removed when its run ends, and an agent wakes only in the tree it ran in. Its
+transcript stays readable at `history://<id>`.
 
 `running` moves to `idle` when the turn drains, or to `asleep` when the run is stopped or
 ran in an isolated copy of the tree. `idle` moves to `running` on the next turn, or to
@@ -324,6 +326,13 @@ stays `running`.
 Opening an agent's session from the `/agents` dashboard keeps it live for as long as the
 main view points at it. A sleep deadline that elapses meanwhile is deferred; the idle
 timeout counts again from the moment Esc returns the view to your own session.
+
+### An agent with background work running does not fall asleep
+
+Falling asleep releases the agent's session, and releasing it cancels the background jobs
+the agent and the agents it spawned started. While one of those jobs runs, an elapsed idle
+timeout is pushed back by `agent.idleTtlMs`, and the agent falls asleep after the work ends.
+A stop cancels the jobs.
 
 ### If the session cannot be saved
 

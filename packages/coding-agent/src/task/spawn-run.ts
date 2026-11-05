@@ -603,7 +603,9 @@ async function runPreparedSpawn(
 	}
 
 	recordSpawn(session, result, spawn.artifacts.dir, isolation);
-	return buildResultPayload(result, projectAgentsDir, Date.now() - startTime, mergeSummary);
+	// An agent wakes only in the workspace it ran in, and an isolated run's worktree is removed by now, so
+	// no message can reach it.
+	return buildResultPayload(result, projectAgentsDir, Date.now() - startTime, mergeSummary, isolation === null);
 }
 
 /**
@@ -633,6 +635,7 @@ function buildResultPayload(
 	projectAgentsDir: string | null,
 	totalDurationMs: number,
 	mergeSummary: string,
+	messageable: boolean,
 ): AgentToolResult<TaskToolDetails> {
 	const outcome = classifyAgentOutcome(result);
 	const status = outcome.label;
@@ -656,10 +659,9 @@ function buildResultPayload(
 		preview = lastNewline >= 0 ? slice.slice(0, lastNewline) : slice;
 		truncated = true;
 	}
-	// A stopped agent stays registered: idle after a request-limit stop, asleep after
-	// any other. Tell the parent so it messages the agent via irc instead of redoing
-	// the work.
-	const resumable = result.aborted && AgentRegistry.global().get(result.id) !== undefined;
+	// A stopped agent stays registered: idle after a request-limit stop, asleep after any other. Tell the
+	// parent so it messages the agent via irc instead of redoing the work, when a message can reach it.
+	const resumable = messageable && result.aborted && AgentRegistry.global().get(result.id) !== undefined;
 	const summary = prompt.render(toolsPrompts["tools/task-summary"].text, {
 		agentName: result.agent,
 		id: result.id,
