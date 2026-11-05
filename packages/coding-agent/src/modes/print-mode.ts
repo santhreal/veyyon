@@ -7,7 +7,7 @@
  */
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent } from "@veyyon/ai";
-import { logger, sanitizeText } from "@veyyon/utils";
+import { errorMessage, logger, sanitizeText } from "@veyyon/utils";
 import { EXIT_FAILURE, EXIT_INTERRUPTED } from "../cli/exit-codes";
 import { awaitStdoutDrain } from "../cli/stdout-drain";
 import { jsonWireForm } from "../json-transform";
@@ -173,8 +173,7 @@ export async function runPrintMode(session: PrintModeSession, options: PrintMode
 			);
 			line = JSON.stringify(redacted);
 		} catch (error) {
-			const reason = error instanceof Error ? error.message : String(error);
-			process.stderr.write(`${sanitizeText(`Dropped a --mode json line: ${reason}`)}\n`);
+			process.stderr.write(`${sanitizeText(`Dropped a --mode json line: ${errorMessage(error)}`)}\n`);
 			return;
 		}
 		process.stdout.write(`${line}\n`);
