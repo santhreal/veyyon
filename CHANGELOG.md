@@ -236,6 +236,9 @@
 - A spawned agent whose first configured model has no working credentials runs the next configured model that has them instead of falling back to the parent session's model, and a keyless local parent model (Ollama, llama.cpp, LM Studio) is accepted as the fallback.
 - A model list that resolves after extensions load, such as an agent or `--model` naming an extension provider's model, starts on the first listed model whose provider has working credentials instead of the first listed model or the parent session's model, and accepts a keyless parent model as the fallback.
 - `inspect_image` with no `agent.helpers.vision.model` set skips a text-only default or active model and reads the image with an image-capable one, the same order attached-image descriptions use, instead of failing with "does not support image input".
+- `inspect_image` and the description a text-only session reads for an attached image run at the Vision helper's effort, or a `:level` on its model, else the session's effort, instead of the provider's default.
+- Eval `completion()` with no `model` or with `"default"` runs at the Eval Completion helper's effort, else the session's, instead of the provider's default; a `:off` suffix disables reasoning, and an effort the model lacks is fitted down to its nearest offered effort instead of up to its highest.
+- `/guided-goal` fits its effort to the efforts the plan model offers instead of sending one the model lacks.
 - An idle agent with a running background job, its own or one an agent it spawned started, stays awake instead of falling asleep on the idle timeout and cancelling the job.
 - `job cancel` on an asleep agent stops the agents still running under it instead of reporting the agent already asleep.
 - A background agent that ran in an isolated worktree reports that messages cannot reach it, and a stopped isolated agent's result no longer says to message it via `irc`, since its worktree is removed when the run ends.

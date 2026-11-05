@@ -971,6 +971,7 @@ export class AgentSession {
 			localProtocol: localProtocolOptions(this.sessionManager),
 			telemetry: () => this.agent.telemetry,
 			sessionId: () => this.sessionId,
+			thinkingLevel: () => this.thinkingLevel,
 		});
 		this.#approvals = new SessionApprovals(
 			{

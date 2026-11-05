@@ -6,7 +6,7 @@
  * This is a session collaborator. It holds no state and reaches the session through
  * {@link ImageAttachmentsHost}.
  */
-import type { AgentMessage, AgentTelemetryConfig } from "@veyyon/agent-core";
+import type { AgentMessage, AgentTelemetryConfig, ThinkingLevel } from "@veyyon/agent-core";
 import type { ImageContent, Model, TextContent } from "@veyyon/ai";
 import { errorMessage, logger } from "@veyyon/utils";
 import { formatModelString } from "../../config/model-resolver";
@@ -31,6 +31,8 @@ export interface ImageAttachmentsHost {
 	telemetry(): AgentTelemetryConfig | undefined;
 	/** The provider-facing session id the vision request is keyed by. */
 	sessionId(): string;
+	/** The session's effective effort, which a description runs at unless the `vision` helper names one. */
+	thinkingLevel(): ThinkingLevel | undefined;
 }
 
 /** An image a tool can address, numbered within the message it arrived in. */
@@ -133,6 +135,7 @@ export class ImageAttachments {
 				activeModelString: formatModelString(model),
 				telemetryConfig: this.#host.telemetry(),
 				sessionId: this.#host.sessionId(),
+				thinkingLevel: this.#host.thinkingLevel(),
 			});
 		} catch (err) {
 			logger.warn("image attachment vision fallback failed; image left undescribed", {

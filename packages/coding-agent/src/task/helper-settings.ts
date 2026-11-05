@@ -12,14 +12,22 @@
  * Import this instead of reading `agent.helpers` directly.
  */
 
-import type { Api, Model } from "@veyyon/ai";
+import type { ThinkingLevel } from "@veyyon/agent-core";
+import type { Api, Effort, Model } from "@veyyon/ai";
 import { isRecord } from "@veyyon/utils";
 import { parseConfiguredEffortSetting } from "../config/effort-resolver";
 import { namesInheritedModel, normalizeModelPatternList } from "../config/model-pattern-list";
 import { getModelMatchPreferences, resolveModelSelectorValue } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
 import type { HelperLaneSettings } from "../config/settings-domains/agents";
-import { AUTO_THINKING, type ConfiguredThinkingLevel, resolveThinkingLevelForModel } from "../thinking";
+import {
+	AUTO_THINKING,
+	type ConfiguredThinkingLevel,
+	concreteThinkingLevel,
+	resolveThinkingLevelForModel,
+	shouldDisableReasoning,
+	toReasoningEffort,
+} from "../thinking";
 
 /** Every helper, in the order the Roster page lists them. */
 export const HELPER_IDS = [
@@ -160,4 +168,24 @@ export function resolveHelperModel(
 		resolveModelSelectorValue(settings.get("defaultModel"), availableModels, { settings, matchPreferences }).model;
 	if (!model) return undefined;
 	return { model, thinkingLevel: fitThinkingLevel(model, level), inherited: true };
+}
+
+/** The reasoning fields of a helper's one-shot request. */
+export interface HelperReasoningOptions {
+	reasoning: Effort | undefined;
+	disableReasoning: boolean;
+}
+
+/**
+ * The reasoning a helper's request to `model` sends: the helper's own effort, else the session's
+ * effective effort, fitted to the efforts `model` offers. `off` disables reasoning; no effort at
+ * all sends none, so the provider's default applies.
+ */
+export function helperReasoningOptions(
+	model: Model<Api>,
+	helperLevel: ConfiguredThinkingLevel | undefined,
+	sessionLevel: ThinkingLevel | undefined,
+): HelperReasoningOptions {
+	const level = resolveThinkingLevelForModel(model, concreteThinkingLevel(helperLevel) ?? sessionLevel);
+	return { reasoning: toReasoningEffort(level), disableReasoning: shouldDisableReasoning(level) };
 }

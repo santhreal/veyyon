@@ -7,8 +7,7 @@ import { missingCredentialsMessage } from "../config/missing-credentials";
 import { goalsPrompts } from "../prompts/goals/rows";
 import { mapJsonStrings } from "../secrets/obfuscator";
 import type { AgentSession } from "../session/agent-session";
-import { helperSettingPath } from "../task/helper-settings";
-import { concreteThinkingLevel, shouldDisableReasoning, toReasoningEffort } from "../thinking";
+import { helperReasoningOptions, helperSettingPath } from "../task/helper-settings";
 
 const RESPOND_TOOL_NAME = "respond";
 
@@ -94,7 +93,10 @@ export async function runGuidedGoalTurn(
 			`No model is available for /guided-goal: ${helperSettingPath("plan", "model")} matches no available model, or no session model is set.`,
 		);
 	}
-	const resolved = { model: plan.model, thinkingLevel: plan.thinkingLevel ?? session.thinkingLevel };
+	const resolved = {
+		model: plan.model,
+		...helperReasoningOptions(plan.model, plan.thinkingLevel, session.thinkingLevel),
+	};
 
 	let apiKey: string | undefined;
 	try {
@@ -125,7 +127,6 @@ export async function runGuidedGoalTurn(
 		];
 		providerContext.tools = [RESPOND_TOOL];
 	};
-	const thinkingLevel = concreteThinkingLevel(resolved.thinkingLevel);
 	const response = await instrumentedCompleteSimple(
 		resolved.model,
 		providerContext,
@@ -135,8 +136,8 @@ export async function runGuidedGoalTurn(
 				refreshProviderContext,
 			),
 			signal: options.signal,
-			reasoning: toReasoningEffort(thinkingLevel),
-			disableReasoning: shouldDisableReasoning(thinkingLevel),
+			reasoning: resolved.reasoning,
+			disableReasoning: resolved.disableReasoning,
 			toolChoice: { type: "tool", name: RESPOND_TOOL_NAME },
 			// Provider adapters may introduce another serialized string surface. Walk the final
 			// payload with the then-current session runtime for every physical send.

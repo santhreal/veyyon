@@ -9,7 +9,7 @@ import { toolSchema } from "@veyyon/ai/utils/schema/tool-schema";
 import { prompt } from "@veyyon/utils";
 import { extractTextContent } from "../../commit/utils";
 import { toolsPrompts } from "../../prompts/tools/rows";
-import { helperSettingPath } from "../../task/helper-settings";
+import { helperReasoningOptions, helperSettingPath } from "../../task/helper-settings";
 import {
 	ImageInputTooLargeError,
 	type LoadedImageInput,
@@ -180,7 +180,11 @@ export class InspectImageTool implements AgentTool<typeof inspectImageSchema.val
 		}
 
 		const activeModelString = this.session.getActiveModelString?.() ?? this.session.getModelString?.();
-		const { model, textOnlyHelper } = resolveVisionModel(this.session.settings, availableModels, activeModelString);
+		const { model, thinkingLevel, textOnlyHelper } = resolveVisionModel(
+			this.session.settings,
+			availableModels,
+			activeModelString,
+		);
 		const visionSetting = `${helperSettingPath("vision", "model")} (Agents → Roster → Helpers)`;
 		if (textOnlyHelper) {
 			throw new ToolError(
@@ -254,7 +258,7 @@ export class InspectImageTool implements AgentTool<typeof inspectImageSchema.val
 		const response = await instrumentedCompleteSimple(
 			model,
 			buildProviderContext(),
-			{ signal },
+			{ signal, ...helperReasoningOptions(model, thinkingLevel, this.session.thinkingLevel) },
 			{
 				telemetry,
 				oneshotKind: "inspect_image",

@@ -17,19 +17,27 @@ import {
 	type AgentTelemetryConfig,
 	instrumentedCompleteSimple,
 	resolveTelemetry,
+	type ThinkingLevel,
 } from "@veyyon/agent-core";
 import type { Api, completeSimple, ImageContent, Model, TextContent } from "@veyyon/ai";
 import { logger, prompt, toError } from "@veyyon/utils";
 import { extractTextContent } from "../commit/utils";
 import { normalizeModelPatternList } from "../config/model-pattern-list";
 import type { ModelRegistry } from "../config/model-registry";
-import { getModelMatchPreferences, resolveModelFromString } from "../config/model-resolver";
+import { getModelMatchPreferences, resolveModelSelectorValue } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
 // The owning module, not the `../internal-urls` barrel: the barrel re-exports every protocol
 // handler and reaches hundreds of modules, and both of these live in `local-protocol`.
 import { type LocalProtocolOptions, resolveLocalRoot } from "../internal-urls/local-protocol";
 import { toolsPrompts } from "../prompts/tools/rows";
-import { helperModelPatterns, helperSettingPath } from "../task/helper-settings";
+import {
+	type HelperReasoningOptions,
+	helperModelPatterns,
+	helperReasoningOptions,
+	helperSettingPath,
+	helperThinkingLevel,
+} from "../task/helper-settings";
+import type { ConfiguredThinkingLevel } from "../thinking";
 import { canonicalizeImageContent } from "./image-resize";
 
 /** Telemetry tag for the oneshot vision-description calls. */
@@ -56,6 +64,8 @@ export interface DescribeAttachedImagesDeps {
 	activeModelString?: string;
 	telemetryConfig?: AgentTelemetryConfig;
 	sessionId?: string;
+	/** The session's effective effort; the description runs at it unless the `vision` helper names one. */
+	thinkingLevel?: ThinkingLevel;
 	/** Test seam: overrides the underlying completeSimple call. */
 	completeImpl?: typeof completeSimple;
 }
@@ -103,6 +113,8 @@ function formatImageBlock(localUrl: string, description: string): string {
 export interface VisionModelChoice {
 	/** The first image-capable model of the `vision` helper, `defaultModel`, the active model, then any available model. */
 	model?: Model<Api>;
+	/** The `vision` helper's effort: a `:level` on its matched entry, else its Effort row; undefined runs the session's. */
+	thinkingLevel?: ConfiguredThinkingLevel;
 	/** The model the `vision` helper names when no entry of that chain reads images. */
 	textOnlyHelper?: Model<Api>;
 }
@@ -118,29 +130,43 @@ export function resolveVisionModel(
 	available: Model<Api>[],
 	activeModelString: string | undefined,
 ): VisionModelChoice {
-	const preferences = getModelMatchPreferences(settings);
+	const matchPreferences = getModelMatchPreferences(settings);
 	let textOnlyHelper: Model<Api> | undefined;
-	const resolveChain = (patterns: readonly string[], isHelper: boolean): Model<Api> | undefined => {
-		for (const pattern of patterns) {
-			const model = resolveModelFromString(pattern, available, preferences);
-			if (!model) continue;
-			if (model.input.includes("image")) return model;
-			if (isHelper) textOnlyHelper ??= model;
+	for (const pattern of helperModelPatterns(settings, "vision")) {
+		const resolved = resolveModelSelectorValue(pattern, available, { settings, matchPreferences });
+		if (!resolved.model) continue;
+		if (!resolved.model.input.includes("image")) {
+			textOnlyHelper ??= resolved.model;
+			continue;
 		}
-		return undefined;
-	};
-	const model =
-		resolveChain(helperModelPatterns(settings, "vision"), true) ??
-		resolveChain(normalizeModelPatternList(settings.get("defaultModel")), false) ??
-		resolveChain(normalizeModelPatternList(activeModelString), false) ??
-		available.find(candidate => candidate.input.includes("image"));
-	return { model, textOnlyHelper };
+		return {
+			model: resolved.model,
+			thinkingLevel: resolved.explicitThinkingLevel
+				? resolved.thinkingLevel
+				: helperThinkingLevel(settings, "vision"),
+		};
+	}
+	const unconfigured = [
+		...normalizeModelPatternList(settings.get("defaultModel")),
+		...normalizeModelPatternList(activeModelString),
+	];
+	let model: Model<Api> | undefined;
+	for (const pattern of unconfigured) {
+		const candidate = resolveModelSelectorValue(pattern, available, { settings, matchPreferences }).model;
+		if (candidate?.input.includes("image")) {
+			model = candidate;
+			break;
+		}
+	}
+	model ??= available.find(candidate => candidate.input.includes("image"));
+	return { model, thinkingLevel: helperThinkingLevel(settings, "vision"), textOnlyHelper };
 }
 
 /** Run one vision-description round-trip; returns trimmed text or `null` on any failure. */
 async function describeImage(
 	image: ImageContent,
 	visionModel: Model<Api>,
+	reasoning: HelperReasoningOptions,
 	deps: DescribeAttachedImagesDeps,
 	telemetry: AgentTelemetry | undefined,
 	signal: AbortSignal | undefined,
@@ -165,7 +191,7 @@ async function describeImage(
 					},
 				],
 			},
-			{ apiKey: deps.modelRegistry.resolver(visionModel, deps.sessionId), signal },
+			{ apiKey: deps.modelRegistry.resolver(visionModel, deps.sessionId), signal, ...reasoning },
 			{ telemetry, oneshotKind: ONESHOT_KIND, completeImpl: deps.completeImpl },
 		);
 		if (response.stopReason === "error" || response.stopReason === "aborted") {
@@ -198,22 +224,21 @@ export async function describeAttachedImagesForTextModel(
 	signal?: AbortSignal,
 ): Promise<TextContent[]> {
 	const localRoot = resolveLocalRoot(deps.localProtocolOptions);
-	const { model: visionModel } = resolveVisionModel(
-		deps.settings,
-		deps.modelRegistry.getAvailable(),
-		deps.activeModelString,
-	);
+	const vision = resolveVisionModel(deps.settings, deps.modelRegistry.getAvailable(), deps.activeModelString);
+	const visionModel = vision.model;
 	const apiKey = visionModel ? await deps.modelRegistry.getApiKey(visionModel, deps.sessionId) : undefined;
-	const canDescribe = Boolean(visionModel && apiKey);
+	const reasoning =
+		visionModel && apiKey ? helperReasoningOptions(visionModel, vision.thinkingLevel, deps.thinkingLevel) : undefined;
 	const telemetry = resolveTelemetry(deps.telemetryConfig, deps.sessionId);
 
 	return Promise.all(
 		images.map(async (image): Promise<TextContent> => {
 			const localUrl = await saveImage(image, localRoot);
 			let description: string;
-			if (canDescribe && visionModel) {
+			if (visionModel && reasoning) {
 				description =
-					(await describeImage(image, visionModel, deps, telemetry, signal)) ?? DESCRIPTION_UNAVAILABLE_NOTE;
+					(await describeImage(image, visionModel, reasoning, deps, telemetry, signal)) ??
+					DESCRIPTION_UNAVAILABLE_NOTE;
 			} else {
 				description = NO_VISION_MODEL_NOTE;
 			}

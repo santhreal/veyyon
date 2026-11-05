@@ -16,7 +16,13 @@ import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 
 const planModel = { provider: "test", id: "plan" } as unknown as Model<Api>;
-const currentModel = { provider: "test", id: "current" } as unknown as Model<Api>;
+// A reasoning model: a guided-goal request fits the effort it sends to the efforts its model offers.
+const currentModel = {
+	provider: "test",
+	id: "current",
+	reasoning: true,
+	thinking: { mode: "effort", efforts: [ThinkingLevel.Low, ThinkingLevel.High] },
+} as unknown as Model<Api>;
 
 function createSession(options?: { plan?: boolean; current?: boolean; thinkingLevel?: ThinkingLevel }): AgentSession {
 	const plan = options?.plan ?? true;
@@ -220,6 +226,20 @@ describe("guided goal setup", () => {
 		});
 
 		expect((complete.mock.calls[0]?.[2] as { disableReasoning?: boolean } | undefined)?.disableReasoning).toBe(true);
+	});
+
+	it("fits the session effort down to the nearest effort the model offers", async () => {
+		const complete = spyOn(core, "instrumentedCompleteSimple").mockResolvedValue(
+			mockResponse({ kind: "ready", objective: "Deliver at a fitted effort." }) as never,
+		);
+
+		await runGuidedGoalTurn(createSession({ plan: false, current: true, thinkingLevel: ThinkingLevel.XHigh }), {
+			messages: [{ role: "user", content: "Ship it" }],
+		});
+
+		expect((complete.mock.calls[0]?.[2] as { reasoning?: ThinkingLevel } | undefined)?.reasoning).toBe(
+			ThinkingLevel.High,
+		);
 	});
 
 	it("rejects malformed structured responses", async () => {

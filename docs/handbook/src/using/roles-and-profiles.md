@@ -44,7 +44,7 @@ Each helper reads `agent.helpers.<id>.model` and `agent.helpers.<id>.thinkingLev
 
 A helper with no model runs the session's live model, and one with no effort runs the session's effort. A caller with no session, such as `veyyon commit` or a headless title, runs `defaultModel` instead. A helper model is an ordered chain like `defaultModel`; a `:level` suffix on the matching entry outranks the helper's `thinkingLevel`. A configured chain that matches no available model leaves the feature without a model, and the feature reports the setting to fix.
 
-The `vision` helper searches further, because its job is to find a model that accepts images when the session model does not. `inspect_image` tries the `vision` chain, then `defaultModel`, then the session model, then the first available model. Image description for a text-only session model takes the first image-capable match in the same order.
+The `vision` helper searches further, because its job is to find a model that accepts images when the session model does not. `inspect_image` and image description for a text-only session model both take the first image-capable model from the `vision` chain, then `defaultModel`, then the session model, then any available model, skipping text-only models. A `vision` chain whose matched models are all text-only fails `inspect_image` with the setting to fix. The request runs at the `vision` helper's effort, or a `:level` on its matched entry, else the session's effort, fitted to the efforts the chosen model offers.
 
 ```yaml
 agent:

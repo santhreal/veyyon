@@ -14,8 +14,6 @@
 import { instrumentedCompleteSimple, resolveTelemetry } from "@veyyon/agent-core";
 import type { Api, Model, Tool } from "@veyyon/ai";
 import { type } from "@veyyon/ai/utils/schema/arktype";
-import type { Effort } from "@veyyon/catalog/effort";
-import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
 import { lazy } from "@veyyon/utils";
 import { extractTextContent, extractToolCall, parseJsonPayload } from "../commit/utils";
 import {
@@ -24,8 +22,8 @@ import {
 	resolveModelFromString,
 	resolveModelSelectorValue,
 } from "../config/model-resolver";
-import { helperSettingPath, resolveHelperModel } from "../task/helper-settings";
-import { AUTO_THINKING, type ConfiguredThinkingLevel, toReasoningEffort } from "../thinking";
+import { helperReasoningOptions, helperSettingPath, resolveHelperModel } from "../task/helper-settings";
+import type { ConfiguredThinkingLevel } from "../thinking";
 import type { ToolSession } from "../tools";
 import { ToolError } from "../tools/core/tool-errors";
 import { withBridgeTimeoutPause } from "./bridge-timeout";
@@ -62,12 +60,13 @@ interface CompletionModel {
 }
 
 /**
- * Resolve the model a `completion()` call runs. An omitted `model` runs the
- * completion helper, which is the session's model until
- * `agent.helpers.completion.model` names another. `"default"` runs the
- * session's active model. Any other value is a model selector, and its
- * `:level` suffix sets the effort. Throws a {@link ToolError} naming what to
- * fix when nothing matches.
+ * Resolve the model a `completion()` call runs and its effort. An omitted
+ * `model` runs the completion helper, which is the session's model until
+ * `agent.helpers.completion.model` names another, at the helper's effort or
+ * else the session's. `"default"` runs the session's active model at the
+ * session's effort. Any other value is a model selector, and only its `:level`
+ * suffix sets the effort. Throws a {@link ToolError} naming what to fix when
+ * nothing matches.
  */
 function resolveCompletionModel(selector: string | undefined, session: ToolSession): CompletionModel {
 	const available = session.modelRegistry?.getAvailable() ?? [];
@@ -84,11 +83,11 @@ function resolveCompletionModel(selector: string | undefined, session: ToolSessi
 				`completion() could not resolve a model: ${helperSettingPath("completion", "model")} matches no available model. Fix it in Agents → Roster → Helpers, or pass \`model\`.`,
 			);
 		}
-		return helper;
+		return { model: helper.model, thinkingLevel: helper.thinkingLevel ?? session.thinkingLevel };
 	}
 	if (selector === SESSION_MODEL_SELECTOR) {
 		if (!activeModel) throw new ToolError("completion() could not resolve the session's active model.");
-		return { model: activeModel };
+		return { model: activeModel, thinkingLevel: session.thinkingLevel };
 	}
 	const resolved = resolveModelSelectorValue(selector, available, { settings: session.settings, matchPreferences });
 	if (!resolved.model) {
@@ -98,20 +97,6 @@ function resolveCompletionModel(selector: string | undefined, session: ToolSessi
 		model: resolved.model,
 		thinkingLevel: resolved.explicitThinkingLevel ? resolved.thinkingLevel : undefined,
 	};
-}
-
-/**
- * The reasoning effort a completion sends: the effort named for it, or none.
- * Models that cannot reason get none, so `requireSupportedEffort` never throws
- * downstream, and the effort is clamped to what the model supports.
- */
-function completionReasoning(model: Model<Api>, level: ConfiguredThinkingLevel | undefined): Effort | undefined {
-	if (!model.reasoning || level === undefined || level === AUTO_THINKING) return undefined;
-	const effort = toReasoningEffort(level);
-	if (effort === undefined) return undefined;
-	const efforts = getSupportedEfforts(model);
-	if (efforts.length === 0) return undefined;
-	return efforts.includes(effort) ? effort : efforts[efforts.length - 1];
 }
 
 /**
@@ -227,7 +212,7 @@ export async function runEvalCompletion(
 			{
 				apiKey: registry.resolver(model, options.session.getSessionId?.() ?? undefined),
 				signal: options.signal,
-				reasoning: completionReasoning(model, thinkingLevel),
+				...helperReasoningOptions(model, thinkingLevel, undefined),
 				toolChoice: schema ? { type: "tool", name: STRUCTURED_TOOL_NAME } : undefined,
 				onPayload: payload => sanitizeProviderJson(payload, sanitizeLive),
 			},
