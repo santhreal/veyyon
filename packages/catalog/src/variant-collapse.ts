@@ -89,6 +89,13 @@ export interface EffortVariantFamily {
 
 export interface VariantCollapseTable {
 	families: readonly EffortVariantFamily[];
+	/**
+	 * Collapse every served `X-low`, `X-medium`, `X-high` triple that no family claims into one `X`
+	 * row whose low, medium and high efforts route to the three deployments. Set for providers that
+	 * serve each effort tier of a model as its own deployment, so a model they start serving gets
+	 * its effort ladder without a family written for it.
+	 */
+	deriveTierTriplets?: boolean;
 }
 
 /**
@@ -486,11 +493,13 @@ const SHARED_CCA_FAMILIES: readonly EffortVariantFamily[] = [
 /** `google-antigravity` (daily-cloudcode-pa): Gemini 3.x on the budget transport. */
 export const ANTIGRAVITY_VARIANT_COLLAPSE_TABLE: VariantCollapseTable = {
 	families: [geminiFlashFamily("budget"), geminiProFamily("budget"), ...SHARED_CCA_FAMILIES],
+	deriveTierTriplets: true,
 };
 
 /** `google-gemini-cli` (cloudcode-pa): Gemini 3.x on the level transport (official CLI parity). */
 export const GEMINI_CLI_VARIANT_COLLAPSE_TABLE: VariantCollapseTable = {
 	families: [geminiFlashFamily("google-level"), geminiProFamily("google-level"), ...SHARED_CCA_FAMILIES],
+	deriveTierTriplets: true,
 };
 export const DEVIN_VARIANT_COLLAPSE_TABLE: VariantCollapseTable = {
 	families: [
@@ -1056,6 +1065,34 @@ interface CollapsePlan<TSpec> {
 	familyIdBySpecId: Map<string, string>;
 }
 
+const TIER_TRIPLET_EFFORTS: readonly Effort[] = [Effort.Low, Effort.Medium, Effort.High];
+const TIER_TRIPLET_SUFFIX_RE = /-(?:low|medium|high)$/;
+
+/**
+ * One `tierFamily` per served `X-low`/`X-medium`/`X-high` triple on one api that `table` does not
+ * claim. A raw row already named `X` blocks the triple: it is a different model, and folding it into
+ * a tier row would hide it. The name is the low member's display name without its `(Low)` marker.
+ */
+function deriveTierTripletFamilies<TSpec extends VariantSpecLike>(
+	byId: ReadonlyMap<string, TSpec>,
+	table: VariantCollapseTable,
+): EffortVariantFamily[] {
+	const claimed = getAliasIndex(table);
+	const families: EffortVariantFamily[] = [];
+	for (const [id, low] of byId) {
+		if (!id.endsWith("-low")) continue;
+		const base = id.slice(0, -"-low".length);
+		if (base.length === 0 || claimed.familyIds.has(base) || claimed.forward.has(id.toLowerCase())) continue;
+		const bare = byId.get(base);
+		if (bare !== undefined && bare.thinking?.effortRouting === undefined) continue;
+		const medium = byId.get(`${base}-medium`);
+		const high = byId.get(`${base}-high`);
+		if (medium?.api !== low.api || high?.api !== low.api) continue;
+		families.push(tierFamily(base, low.name.replace(/\s*\(low\)$/i, "") || base, TIER_TRIPLET_EFFORTS));
+	}
+	return families;
+}
+
 /**
  * Collapse every family in `table` found in `specs`. Non-member specs pass
  * through verbatim (by reference), order preserved; the collapsed spec
@@ -1066,11 +1103,14 @@ export function collapseEffortVariants<TSpec extends VariantSpecLike>(
 	table: VariantCollapseTable,
 ): TSpec[] {
 	const byId = indexFirstById(specs);
+	const families = table.deriveTierTriplets
+		? [...table.families, ...deriveTierTripletFamilies(byId, table)]
+		: table.families;
 	const plan: CollapsePlan<TSpec> = { replacement: new Map(), familyIdBySpecId: new Map() };
-	for (const family of table.families) planFamily(family, byId, plan);
+	for (const family of families) planFamily(family, byId, plan);
 	// Alias rows are planned after every family, so an alias row that any
 	// family consumes is skipped rather than refreshed.
-	for (const family of table.families) planAliasRefreshes(family, byId, plan);
+	for (const family of families) planAliasRefreshes(family, byId, plan);
 	if (plan.replacement.size === 0) return specs.slice();
 
 	const emitted = new Set<string>();
@@ -1316,15 +1356,21 @@ function getAliasIndex(table: VariantCollapseTable): VariantAliasIndex {
 
 /**
  * Resolve a retired effort-tier variant id (collapsed member, recycled id) to
- * its replacement model id for `provider` via the hand table. Returns
- * `undefined` when the id is not a known alias; derived `X-thinking` members
- * resolve through `stripThinkingVariantToken` instead. Callers must try an
- * exact model lookup first — a live model always wins over an alias.
+ * its replacement model id for `provider` via the hand table, then, for a
+ * table that derives tier triplets, by dropping a `-low`/`-medium`/`-high`
+ * suffix. Returns `undefined` when the id is not a known alias; derived
+ * `X-thinking` members resolve through `stripThinkingVariantToken` instead.
+ * Callers must try an exact model lookup first — a live model always wins
+ * over an alias, and a derived base that is not live resolves to nothing.
  */
 export function resolveVariantAlias(provider: Provider, modelId: string): string | undefined {
 	const table = VARIANT_COLLAPSE_TABLES[provider] ?? VARIANT_COLLAPSE_TABLES[provider.toLowerCase()];
 	if (!table) return undefined;
-	return getAliasIndex(table).forward.get(modelId.trim().toLowerCase());
+	const normalized = modelId.trim().toLowerCase();
+	const hand = getAliasIndex(table).forward.get(normalized);
+	if (hand !== undefined || !table.deriveTierTriplets) return hand;
+	const base = normalized.replace(TIER_TRIPLET_SUFFIX_RE, "");
+	return base !== normalized && base.length > 0 ? base : undefined;
 }
 
 /** Bare-id alias hit: replacement id plus the providers declaring it. */

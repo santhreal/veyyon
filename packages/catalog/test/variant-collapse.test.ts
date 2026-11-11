@@ -272,6 +272,80 @@ describe("collapseEffortVariants", () => {
 		expect(off.wireModelId).toBe(`${id}-low`);
 	});
 
+	/**
+	 * The CCA endpoints serve each new model per tier (`X-{low,medium,high}`, no bare `X`), and every one
+	 * of them used to need a hand family: Gemini 4 Argon, Claude Opus and Sonnet 5.5, then Gemini 4 Carbon,
+	 * which arrived as three raw rows each offering a minimal..xhigh budget ladder the deployment does not
+	 * take. The CCA tables now derive the family from the served triple. `gemini-9-zinc` is a tier no
+	 * table will ever name, so these cases pass only through the derived rule.
+	 */
+	describe("derived tier triplets on the CCA tables", () => {
+		const triple = (base: string, name: string, overrides: Partial<ModelSpec<"google-gemini-cli">> = {}) =>
+			(["Low", "Medium", "High"] as const).map(tier =>
+				memberSpec(`${base}-${tier.toLowerCase()}`, { name: `${name} (${tier})`, ...overrides }),
+			);
+
+		it.each([
+			["google-antigravity", ANTIGRAVITY_VARIANT_COLLAPSE_TABLE],
+			["google-gemini-cli", GEMINI_CLI_VARIANT_COLLAPSE_TABLE],
+		] as const)("collapses an unnamed served triple onto one effort-routed row on %s", (provider, table) => {
+			for (const [base, name] of [
+				["gemini-4-carbon", "Gemini 4 Carbon"],
+				["gemini-9-zinc", "Gemini 9 Zinc"],
+			] as const) {
+				const out = collapseEffortVariants(triple(base, name, { maxTokens: 262_144 }), table);
+				expect(out.map(spec => spec.id)).toEqual([base]);
+				const row = out[0] as ModelSpec<"google-gemini-cli">;
+				expect(row.name).toBe(name);
+				expect(row.maxTokens).toBe(262_144);
+				for (const tier of ["low", "medium", "high"]) {
+					expect(resolveVariantAlias(provider, `${base}-${tier}`)).toBe(base);
+				}
+
+				const model = buildModel(row);
+				expect(model.thinking?.mode).toBe("effort");
+				expect(model.thinking?.efforts).toEqual([Effort.Low, Effort.Medium, Effort.High]);
+				// Gemini 4 reasoning is mandatory: off clamps to the low tier, never to a minimal one.
+				expect(model.thinking?.requiresEffort).toBe(true);
+				expect(resolveWireModelId(model, Effort.Low)).toBe(`${base}-low`);
+				expect(resolveWireModelId(model, Effort.Medium)).toBe(`${base}-medium`);
+				expect(resolveWireModelId(model, Effort.High)).toBe(`${base}-high`);
+				expect(resolveReasoningSelection(model, { disabled: true }).effort).toBe(Effort.Low);
+
+				expect(collapseEffortVariants(out, table)).toEqual(out);
+			}
+		});
+
+		it.each([
+			["two tiers served", triple("gemini-9-zinc", "Gemini 9 Zinc").slice(0, 2)],
+			[
+				"a bare row of the same id is served",
+				[memberSpec("gemini-9-zinc"), ...triple("gemini-9-zinc", "Gemini 9 Zinc")],
+			],
+			[
+				"the tiers span two apis",
+				[
+					...triple("gemini-9-zinc", "Gemini 9 Zinc").slice(0, 2),
+					{
+						...memberSpec("gemini-9-zinc-high"),
+						api: "google-generative-ai",
+					} as unknown as ModelSpec<"google-gemini-cli">,
+				],
+			],
+		])("leaves the rows raw when %s", (_case, specs) => {
+			const out = collapseEffortVariants(specs, ANTIGRAVITY_VARIANT_COLLAPSE_TABLE);
+			expect(out.map(spec => spec.id)).toEqual(specs.map(spec => spec.id));
+		});
+
+		it("does not derive on a table that has not opted in", () => {
+			const specs = triple("gemini-9-zinc", "Gemini 9 Zinc");
+			expect(collapseEffortVariants(specs, DEVIN_VARIANT_COLLAPSE_TABLE).map(spec => spec.id)).toEqual(
+				specs.map(spec => spec.id),
+			);
+			expect(resolveVariantAlias("devin", "gemini-9-zinc-low")).toBeUndefined();
+		});
+	});
+
 	// A client reporting 3.0.0 or later is also listed `gemini-3.8-flash-{low,medium,high}` beside the
 	// tiered deployment. They join the 3.8 row instead of adding three raw rows, and requests stay on
 	// the tiered id the row has always used.

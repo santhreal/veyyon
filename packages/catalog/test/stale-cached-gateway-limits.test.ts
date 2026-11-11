@@ -44,14 +44,15 @@ import type { Api, Model } from "../src/types";
 /**
  * The version the current writer stamps on a row. Bumping
  * `CACHE_SCHEMA_VERSION` retires cached records whose persisted contract has
- * changed. v15 retired Anthropic rows discovered before `/v1/models` limits and capabilities were
+ * changed. v16 retired CCA rows cached before served tier triples collapsed into one row; v15
+ * retired Anthropic rows discovered before `/v1/models` limits and capabilities were
  * read; v14 retired Codex rows discovered before `available_access_programs` was read;
  * v13 retired Antigravity lists discovered as client 2.1.4, which lack Gemini 4
  * Argon; v12 retired rows whose sparse compat held a resolved record; v11
  * adds the row-content fingerprint consumed by static-registry snapshots; v10
  * retired gateway rows with assumed limits.
  */
-const EXPECTED_CACHE_VERSION = 15;
+const EXPECTED_CACHE_VERSION = 16;
 
 const TTL_MS = 24 * 60 * 60 * 1000;
 

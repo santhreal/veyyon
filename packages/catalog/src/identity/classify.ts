@@ -12,11 +12,12 @@ export type SemVer = {
 };
 
 /**
- * The tier word after a Gemini version. Gemini 4 replaced `pro` with a named tier (`argon`), so a
- * classifier that knew only `pro` and `flash` read `gemini-4-argon` as an unknown family and every
+ * The tier word after a Gemini version. Gemini 1 to 3 name `pro` or `flash`. Gemini 4 replaced `pro`
+ * with named tiers (`argon`, `carbon`), so from major version 4 on any word in that position is the
+ * tier. A classifier that listed the tiers by name read each new one as an unknown family, and every
  * Gemini policy (level transport, mandatory reasoning) skipped it.
  */
-export type GeminiKind = "pro" | "flash" | "argon";
+export type GeminiKind = "pro" | "flash" | (string & {});
 export type AnthropicKind = "opus" | "sonnet" | "fable" | "mythos";
 export type OpenAIVariant = "base" | "codex" | "codex-max" | "codex-mini" | "codex-spark" | "mini" | "max" | "nano";
 export type GlmVariant = "base" | "air" | "turbo" | "flash" | "flashx" | "preview";
@@ -90,7 +91,7 @@ export const parseGeminiModel = parser((modelId): GeminiModel | null => {
 	if (modelId.endsWith(GEMINI_SUFFIX)) {
 		modelId = modelId.slice(0, -GEMINI_SUFFIX.length);
 	}
-	const match = /gemini-(\d+(?:\.\d+){0,2})-(pro|flash|argon)\b/.exec(modelId);
+	const match = /gemini-(\d+(?:\.\d+){0,2})-([a-z]+)\b/.exec(modelId);
 	if (!match) {
 		return null;
 	}
@@ -98,7 +99,11 @@ export const parseGeminiModel = parser((modelId): GeminiModel | null => {
 	if (!version) {
 		return null;
 	}
-	return { family: "gemini", kind: match[2] as GeminiKind, version };
+	const kind = match[2] as string;
+	if (kind !== "pro" && kind !== "flash" && version.major < 4) {
+		return null;
+	}
+	return { family: "gemini", kind, version };
 });
 
 export const parseAnthropicModel = parser((modelId): AnthropicModel | null => {
