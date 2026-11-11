@@ -353,6 +353,7 @@
 - The ask dialog and the plan review shed their padding on short terminals like every other card, showing up to four more body rows at 24 rows.
 - A required tool call under an in-band tool dialect is asked for in the conversation text instead of being sent as a native `tool_choice` the dialect never reads.
 - Shake and duplicate elision leave a tool result, block or truncated middle in place when its marker is not smaller than it, and size a captioned image result by its caption, so `/shake` no longer reports a kept image as freed tokens.
+- The Anthropic OAuth user-agent reports `agent-sdk/0.3.322`, the Agent SDK release published beside Claude Code 2.1.322.
 - An Anthropic Messages stream from the auth gateway whose upstream ends without a `done` event reports the token usage of the last event received in its closing `message_delta`, instead of zero input, output and cache tokens.
 - A required tool call on a request that cannot force it (a model or host that rejects a forced `tool_choice`, a host without `tool_choice`, a remembered rejection, Ollama, Cursor, Devin, GitLab Duo, and Claude on Antigravity) is asked for in the request text, instead of the tool only being offered.
 - A provider request whose dial was refused, found no route or got no resolver answer is dialed once and handed to the turn, whose visible countdown retries it, instead of being redialed by every provider's hidden retry loop inside each turn attempt.
@@ -360,6 +361,7 @@
 - An Anthropic connection failure reports the underlying error (`ECONNREFUSED: Unable to connect…`, `getaddrinfo ENOTFOUND …`) instead of `Connection error.`, and a host that does not resolve is no longer retried by the Anthropic stream and the turn.
 - A GitLab Duo turn whose host cannot be reached reports the connection error and is retried by the turn, instead of failing with a request to set `GITLAB_DUO_NAMESPACE_ID`.
 - A cancelled Cursor, GitHub Copilot, OpenAI Codex device, Kilo, Kimi, xAI, Perplexity, Nous Research or OpenCode login stops its pending request or poll wait, sends no further request and stores no approval that arrives after the cancel, instead of waiting out the poll interval or a hung request.
+- The Claude Code fingerprint version is 2.1.322, so Anthropic OAuth requests for `claude-mythos-5-2` are no longer rejected with `claude_code_version_too_old`.
 - Ollama discovery no longer drops every model when one `/api/show` body is `null` or not an object, or when `/api/tags` answers `null` or a `models` value that is not a list; the body is reported as a `payload` failure and the affected model keeps default metadata.
 - Ollama Cloud no longer takes a `context_length` of `0` or below as a model's context window, no longer fails discovery on a non-list `capabilities`, and no longer grants thinking and image input from a `capabilities` string.
 - GitLab Duo namespace discovery stops at the first request that throws and reports that error, instead of trying every remaining candidate against the same unreachable host and concluding that `GITLAB_DUO_NAMESPACE_ID` should be set.

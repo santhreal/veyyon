@@ -16,6 +16,7 @@
 
 ### Fixed
 
+- The Claude Code fingerprint version is 2.1.322, so Anthropic OAuth requests for `claude-mythos-5-2` are no longer rejected with `claude_code_version_too_old`.
 - Ollama discovery no longer drops every model when one `/api/show` body is `null` or not an object, or when `/api/tags` answers `null` or a `models` value that is not a list; the body is reported as a `payload` failure and the affected model keeps default metadata.
 - Ollama Cloud no longer takes a `context_length` of `0` or below as a model's context window, no longer fails discovery on a non-list `capabilities`, and no longer grants thinking and image input from a `capabilities` string.
 - GitLab Duo namespace discovery stops at the first request that throws and reports that error, instead of trying every remaining candidate against the same unreachable host and concluding that `GITLAB_DUO_NAMESPACE_ID` should be set.

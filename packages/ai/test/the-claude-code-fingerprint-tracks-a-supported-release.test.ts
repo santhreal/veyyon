@@ -41,6 +41,8 @@ const RECORDED_REJECTIONS = [
 	"Claude Code 2.1.165 does not support this model; version 2.1.251 or newer is required. Run 'claude update', or update the Claude desktop app, then try again.",
 	// Sent 2.1.257, requesting claude-opus-5-5. Every OAuth request for that model came back 400.
 	"Claude Code 2.1.257 does not support this model; version 2.1.280 or newer is required. Run 'claude update', or update the Claude desktop app, then try again.",
+	// Sent 2.1.280, requesting claude-mythos-5-2.
+	"Claude Code 2.1.280 does not support this model; version 2.1.290 or newer is required. Run 'claude update', or update the Claude desktop app, then try again.",
 ] as const;
 
 /** The minimum one rejection demands, or undefined when the message is not one of these rejections. */
@@ -100,14 +102,14 @@ describe("the Claude Code fingerprint tracks a supported release", () => {
 	 * version and pass the floor case on anything.
 	 */
 	it("reads the demanded minimum, not the version that was sent, and nothing else", () => {
-		expect(demandedMinimum(RECORDED_REJECTIONS[1])).toBe("2.1.280");
-		expect(OBSERVED_API_MINIMUM).toBe("2.1.280");
+		expect(demandedMinimum(RECORDED_REJECTIONS[2])).toBe("2.1.290");
+		expect(OBSERVED_API_MINIMUM).toBe("2.1.290");
 		expect(demandedMinimum("400 invalid_request_error: something else entirely")).toBeUndefined();
 	});
 
 	/**
 	 * The user-agent sends `claude-cli/<cli> (external, local-agent, agent-sdk/<sdk>)`, and upstream ships the
-	 * two in lockstep: npm publishes CLI 2.1.280 beside SDK 0.3.280. Bumping one alone produces a pair that no
+	 * two in lockstep: npm publishes CLI 2.1.322 beside SDK 0.3.322. Bumping one alone produces a pair that no
 	 * real client ever sent, which is the inconsistency the fingerprint exists to avoid.
 	 */
 	it("pairs the agent-sdk version with the CLI patch it ships beside", () => {
