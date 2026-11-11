@@ -128,6 +128,7 @@
 - No user-visible change: `--models` scoping and `enabledModels` filtering detect a glob selector through one predicate instead of two copies.
 
 ### Fixed
+- A model with no known context window no longer reports that the session compacts at 1 token; threshold compaction does not run for such a model and the compaction-threshold notice stays silent.
 - A model selector with an effort suffix, such as `kimi-code/k3.1-pro:high` for an agent, resolves to the model it names at that effort instead of a sibling whose id contains the suffix's letters, such as `kimi-code/k3.1-pro-highspeed`; an unknown suffix such as `:hgh` is dropped with a warning instead of picking such a sibling.
 - A spawned agent whose first configured model has no working credentials runs the next configured model that has them instead of falling back to the parent session's model, and a keyless local parent model (Ollama, llama.cpp, LM Studio) is accepted as the fallback.
 - A model list that resolves after extensions load, such as an agent or `--model` naming an extension provider's model, starts on the first listed model whose provider has working credentials instead of the first listed model or the parent session's model, and accepts a keyless parent model as the fallback.

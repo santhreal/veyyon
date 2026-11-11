@@ -56,7 +56,7 @@ describe("compaction threshold clamp warning", () => {
 		}
 	});
 
-	async function createSession(threshold: string): Promise<void> {
+	async function createSession(threshold: string, contextWindow: number | null = WINDOW): Promise<void> {
 		tempDir = TempDir.createSync("@pi-compaction-threshold-warning-");
 		authStorage = await AuthStorage.create(path.join(tempDir.path(), "testauth.db"));
 		authStorage.setRuntimeApiKey("anthropic", "test-key");
@@ -66,7 +66,7 @@ describe("compaction threshold clamp warning", () => {
 		const bundled = requireBundledModel("anthropic", "claude-sonnet-4-5");
 		// Pin the window: the warning text quotes it verbatim, so a catalog
 		// regeneration must not shift the asserted bytes.
-		const model = { ...bundled, contextWindow: WINDOW, maxTokens: 64_000 };
+		const model = { ...bundled, contextWindow, maxTokens: 64_000 };
 
 		const agent = new Agent({
 			initialState: { model, systemPrompt: ["Test"], tools: [], messages: [] },
@@ -175,5 +175,22 @@ describe("compaction threshold clamp warning", () => {
 					"The compaction threshold (200000 tokens) is more than a 200000-token model can reach, so this session compacts at 170k (fixed 200k, capped to the most a 200k-window model can reach). A model with a larger window uses the full amount.",
 			},
 		]);
+	});
+
+	// A model whose window is unknown (a discovered row no catalog describes) never threshold-compacts,
+	// because `shouldCompact` rejects a window of 0. The notice used to fire anyway and report that the
+	// session "compacts at 1 (fixed 256k, capped to the most a 0-window model can reach)".
+	it.each([
+		["256000", null],
+		["256000", 0],
+		["85%", null],
+		["not-a-threshold", null],
+	] as const)("stays silent for threshold %s on a model whose window is %p", async (threshold, contextWindow) => {
+		await createSession(threshold, contextWindow);
+		const notices = collectCompactionNotices();
+
+		await emitModestTurn();
+
+		expect(notices).toEqual([]);
 	});
 });

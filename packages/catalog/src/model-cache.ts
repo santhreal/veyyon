@@ -8,7 +8,10 @@ import { DAY_MS, getModelDbPath } from "@veyyon/utils";
 import type { Api, Model, ModelSpec } from "./types";
 
 // Rows persist ModelSpec JSON (sparse `compat`, never the resolved record);
-// the model manager rebuilds via `buildModel` on load. v14 invalidates Codex
+// the model manager rebuilds via `buildModel` on load. v15 invalidates Anthropic
+// rows discovered before `/v1/models` limits and capabilities were read: a model
+// newer than the bundle and models.dev (Claude Mythos 5.2) cached with no context
+// window, no reasoning and text-only input for up to the 24 hour TTL. v14 invalidates Codex
 // rows discovered before `available_access_programs` was read: a cached row
 // without `accountAccess` sends no `access_programs.cyber` for up to the 24
 // hour TTL. v13 invalidates
@@ -41,7 +44,7 @@ import type { Api, Model, ModelSpec } from "./types";
 // (222222/8888); v5 invalidated rows predating effort-tier variant collapsing
 // (raw `-low`/`-high`/`-thinking` member ids); v4 dropped the pre-efforts
 // ThinkingConfig shape.
-const CACHE_SCHEMA_VERSION = 14;
+const CACHE_SCHEMA_VERSION = 15;
 
 interface CacheRow {
 	provider_id: string;

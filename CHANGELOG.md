@@ -232,6 +232,7 @@
 
 ### Fixed
 
+- A model with no known context window no longer reports that the session compacts at 1 token; threshold compaction does not run for such a model and the compaction-threshold notice stays silent.
 - A model selector with an effort suffix, such as `kimi-code/k3.1-pro:high` for an agent, resolves to the model it names at that effort instead of a sibling whose id contains the suffix's letters, such as `kimi-code/k3.1-pro-highspeed`; an unknown suffix such as `:hgh` is dropped with a warning instead of picking such a sibling.
 - A spawned agent whose first configured model has no working credentials runs the next configured model that has them instead of falling back to the parent session's model, and a keyless local parent model (Ollama, llama.cpp, LM Studio) is accepted as the fallback.
 - A model list that resolves after extensions load, such as an agent or `--model` naming an extension provider's model, starts on the first listed model whose provider has working credentials instead of the first listed model or the parent session's model, and accepts a keyless parent model as the fallback.
@@ -362,6 +363,7 @@
 - A GitLab Duo turn whose host cannot be reached reports the connection error and is retried by the turn, instead of failing with a request to set `GITLAB_DUO_NAMESPACE_ID`.
 - A cancelled Cursor, GitHub Copilot, OpenAI Codex device, Kilo, Kimi, xAI, Perplexity, Nous Research or OpenCode login stops its pending request or poll wait, sends no further request and stores no approval that arrives after the cancel, instead of waiting out the poll interval or a hung request.
 - The Claude Code fingerprint version is 2.1.322, so Anthropic OAuth requests for `claude-mythos-5-2` are no longer rejected with `claude_code_version_too_old`.
+- An Anthropic model that neither the bundle nor models.dev catalogs, such as `claude-mythos-5-2`, `claude-opus-5-5` or `claude-sonnet-5-5`, takes the context window, output cap, image input and effort ladder `/v1/models` declares instead of a null window, no reasoning and text-only input; the model cache schema moves to v15 to drop rows discovered without them.
 - Ollama discovery no longer drops every model when one `/api/show` body is `null` or not an object, or when `/api/tags` answers `null` or a `models` value that is not a list; the body is reported as a `payload` failure and the affected model keeps default metadata.
 - Ollama Cloud no longer takes a `context_length` of `0` or below as a model's context window, no longer fails discovery on a non-list `capabilities`, and no longer grants thinking and image input from a `capabilities` string.
 - GitLab Duo namespace discovery stops at the first request that throws and reports that error, instead of trying every remaining candidate against the same unreachable host and concluding that `GITLAB_DUO_NAMESPACE_ID` should be set.

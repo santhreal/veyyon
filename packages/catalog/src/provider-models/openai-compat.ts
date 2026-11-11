@@ -7,7 +7,7 @@ import {
 	type OpenAICompatibleModelMapperContext,
 	type OpenAICompatibleModelRecord,
 } from "../discovery/openai-compatible";
-import { canonicalizeEfforts, Effort, isEffort } from "../effort";
+import { canonicalizeEfforts, Effort, isEffort, THINKING_EFFORTS } from "../effort";
 import {
 	FIREPASS_WIRE_PREFIX,
 	FIREWORKS_FAST_SUFFIX,
@@ -37,6 +37,8 @@ import {
 	isAnthropicOAuthToken,
 	isRecord,
 	toBoolean,
+	toFields,
+	toFiniteNumber,
 	toNonEmptyString,
 	toNumber,
 	toPositiveNumber,
@@ -290,8 +292,8 @@ function buildAnthropicReferenceMap(
 	for (const model of modelsDevModels) {
 		merged.set(model.id, model);
 	}
-	// Anthropic /v1/models does not carry token limits, so bundled metadata stays canonical
-	// for known models while models.dev only fills gaps for newly discovered ids.
+	// Bundled metadata stays canonical for known models and models.dev fills gaps for newer ids;
+	// an id neither one catalogs takes the limits and capabilities `/v1/models` declares.
 	const bundledModels = getBundledModels("anthropic").filter(
 		(model): model is Model<"anthropic-messages"> => model.api === "anthropic-messages",
 	);
@@ -4276,6 +4278,48 @@ export function githubCopilotModelManagerOptions(config?: GithubCopilotModelMana
 // 24. Anthropic
 // ---------------------------------------------------------------------------
 
+/** The parts of a model row Anthropic's `/v1/models` entry declares. */
+type AnthropicDeclaredSurface = Partial<
+	Pick<ModelSpec<"anthropic-messages">, "contextWindow" | "maxTokens" | "input" | "reasoning" | "reasoningOptions">
+>;
+
+/**
+ * Read `max_input_tokens`, `max_tokens` and `capabilities` from one `/v1/models` entry.
+ *
+ * A field the entry omits or states in an unreadable shape is left out, so the row keeps
+ * whatever it had. Limits are read strictly, as numbers: a numeric string means the wire shape
+ * changed. The effort ladder is the declared levels with `supported: true`, in canonical order,
+ * and only when thinking itself is supported.
+ */
+export function readAnthropicDeclaredSurface(entry: OpenAICompatibleModelRecord): AnthropicDeclaredSurface {
+	const declared: AnthropicDeclaredSurface = {};
+	const positive = (value: unknown): number | undefined => {
+		const parsed = toFiniteNumber(value);
+		return parsed !== undefined && parsed > 0 ? parsed : undefined;
+	};
+	const contextWindow = positive(entry.max_input_tokens);
+	if (contextWindow !== undefined) declared.contextWindow = contextWindow;
+	const maxTokens = positive(entry.max_tokens);
+	if (maxTokens !== undefined) declared.maxTokens = maxTokens;
+
+	const capabilities = toFields(entry.capabilities);
+	if (capabilities === undefined) return declared;
+	const supported = (node: unknown): boolean | undefined => {
+		const value = toFields(node)?.supported;
+		return typeof value === "boolean" ? value : undefined;
+	};
+	const image = supported(capabilities.image_input);
+	if (image !== undefined) declared.input = image ? ["text", "image"] : ["text"];
+	const thinking = supported(capabilities.thinking);
+	if (thinking !== undefined) declared.reasoning = thinking;
+	const effort = toFields(capabilities.effort);
+	if (thinking === true && effort !== undefined && supported(effort) === true) {
+		const efforts = THINKING_EFFORTS.filter(level => supported(effort[level]) === true);
+		if (efforts.length > 0) declared.reasoningOptions = { efforts };
+	}
+	return declared;
+}
+
 export interface AnthropicModelManagerConfig {
 	apiKey?: string;
 	baseUrl?: string;
@@ -4331,10 +4375,12 @@ export function anthropicModelManagerOptions(
 							_context: OpenAICompatibleModelMapperContext<"anthropic-messages">,
 						): ModelSpec<"anthropic-messages"> => {
 							const discoveredName = typeof entry.display_name === "string" ? entry.display_name : defaults.name;
+							const declared = readAnthropicDeclaredSurface(entry);
 							const reference = references.get(defaults.id);
 							if (!reference) {
 								return {
 									...defaults,
+									...declared,
 									name: discoveredName,
 								};
 							}
@@ -4345,6 +4391,8 @@ export function anthropicModelManagerOptions(
 								api: "anthropic-messages",
 								provider: "anthropic",
 								baseUrl,
+								contextWindow: reference.contextWindow ?? declared.contextWindow ?? null,
+								maxTokens: reference.maxTokens ?? declared.maxTokens ?? null,
 							};
 						},
 						fetch: config?.fetch,

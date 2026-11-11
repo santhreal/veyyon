@@ -416,8 +416,12 @@ export class CompactionRuntime {
 	 * invisible: an absolute amount capped for this model's window, a value still
 	 * coming from one of the two retired keys rather than `compaction.threshold`,
 	 * and a value that parsed as nothing and therefore fell back to auto.
+	 *
+	 * A model with no known window gets no notice: `shouldCompact` never fires
+	 * for it, so any trigger quoted here would not exist.
 	 */
 	noticeCompactionThresholdClamp(contextWindow: number, compactionSettings: CompactionSettings): void {
+		if (contextWindow <= 0) return;
 		const resolved = resolveThresholdWithOrigin(contextWindow, compactionSettings);
 		const surprising = resolved.clamped || resolved.legacyKey !== undefined || resolved.invalidRaw !== undefined;
 		if (!surprising) return;
