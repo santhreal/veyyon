@@ -1,6 +1,6 @@
 /**
  * The bus refuses to carry a closed two-agent loop past a bounded number of
- * turns.
+ * work-free messages.
  *
  * WHY IT EXISTS. Two agents that answer each other and nothing else cannot
  * stop on their own. Every inbound message wakes the recipient, a wake is
@@ -10,12 +10,16 @@
  * per-run soft request budget resets because a woken agent keeps re-entering.
  * The observed failure is a pair trading turns until the process is killed.
  *
- * The bus is the only participant that watches both halves, so the bound lives
- * here. What is pinned below is the whole contract: the cap fires on a genuinely
- * closed loop, it does NOT fire on a pair that is also talking to anyone else,
- * it does not fire on one agent sending repeatedly in one direction, the
- * refusal is a delivery failure rather than a throw, and a third party breaking
- * in resets the pair's budget.
+ * The bound is on the pattern, not on message content. An earlier content rule
+ * matched "understood", "heads up" and "working on" at the start of a message
+ * and discouraged real coordination; it is gone. What is pinned below: the cap
+ * fires on a closed loop with no work in it, a non-coordination tool call by
+ * either agent resets it, coordination calls (`irc`, `job`, `todo`) do not, a
+ * revive does not, a third party resets it, and the refusal is a receipt.
+ *
+ * Not caught here: whether the session wiring reports tool calls to the
+ * registry; `a-tool-call-counts-as-work-for-the-irc-loop-bound.test.ts` drives
+ * that through a real session.
  */
 import { beforeEach, describe, expect, test } from "bun:test";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
@@ -31,26 +35,24 @@ function receivingSession(): AgentSession {
 	} as unknown as AgentSession;
 }
 
-/** Mirrors PING_PONG_CAP in src/irc/bus.ts. */
-const CAP = 16;
+/** Mirrors WORK_FREE_EXCHANGE_CAP in src/task/irc-bus.ts. */
+const CAP = 8;
+const REFUSAL = "messages with no work done by either of you in between";
 
 let bus: IrcBus;
+let registry: AgentRegistry;
+
+function register(id: string): void {
+	registry.register({ id, displayName: "reviewer", kind: "sub", session: receivingSession(), status: "running" });
+}
 
 beforeEach(() => {
 	AgentRegistry.resetGlobalForTests();
 	AgentLifecycleManager.resetGlobalForTests();
 	IrcBus.resetGlobalForTests();
 	bus = IrcBus.global();
-	const registry = AgentRegistry.global();
-	for (const id of ["Alpha", "Beta", "Gamma", "Delta"]) {
-		registry.register({
-			id,
-			displayName: "reviewer",
-			kind: "sub",
-			session: receivingSession(),
-			status: "running",
-		});
-	}
+	registry = AgentRegistry.global();
+	for (const id of ["Alpha", "Beta", "Gamma", "Delta"]) register(id);
 });
 
 /** Alternate `count` messages starting from `first`, returning the last receipt. */
@@ -64,7 +66,7 @@ async function pingPong(count: number, first = "Alpha", second = "Beta") {
 	return receipt;
 }
 
-describe("IRC ping-pong cap", () => {
+describe("IRC work-free exchange cap", () => {
 	/**
 	 * The bound itself. The message AT the cap still lands, so the number is the
 	 * count of exchanges allowed and not one less; the next one is refused.
@@ -75,25 +77,87 @@ describe("IRC ping-pong cap", () => {
 
 		const overCap = await bus.send({ from: "Alpha", to: "Beta", body: "one too many" });
 		expect(overCap.outcome).toBe("failed");
-		expect(overCap.error).toContain(`${CAP} messages in a row`);
+		expect(overCap.error).toContain(`${CAP} ${REFUSAL}`);
 	});
 
 	/**
 	 * The refusal has to tell the agent what to do instead, because an agent
-	 * that only learns "failed" retries. Both exits are named: decide it
-	 * yourself, or escalate to the spawner.
+	 * that only learns "failed" retries.
 	 */
-	test("names both ways out of the loop in the refusal", async () => {
+	test("names the ways out of the loop in the refusal", async () => {
 		await pingPong(CAP);
 		const refused = await bus.send({ from: "Alpha", to: "Beta", body: "again" });
-		expect(refused.error).toContain("Stop messaging that agent");
+		expect(refused.error).toContain("Do the work the conversation is about");
 		expect(refused.error).toContain("report to whoever spawned you");
 	});
 
 	/**
-	 * The false-positive guard, and the reason the chain is counted from the log
-	 * rather than from a per-pair counter. A pair that is also reporting to a
-	 * third agent is coordinating, not looping, and must never be cut off.
+	 * The false-positive guard this cap exists to keep: a pair that works between
+	 * messages is collaborating, however long it talks. Either side's work
+	 * resets the chain, so the recipient doing the work counts as much as the
+	 * sender doing it. Runs to four times the cap to prove there is no second,
+	 * hidden bound on total traffic.
+	 */
+	test.each(["sender", "recipient"] as const)(
+		"a pair whose %s works between messages is never refused",
+		async worker => {
+			for (let index = 0; index < CAP * 4; index++) {
+				const from = index % 2 === 0 ? "Alpha" : "Beta";
+				const to = from === "Alpha" ? "Beta" : "Alpha";
+				if (index % 3 === 0) registry.noteToolCall(worker === "sender" ? from : to, "edit");
+				const receipt = await bus.send({ from, to, body: String(index) });
+				expect(receipt.outcome).not.toBe("failed");
+			}
+		},
+	);
+
+	/**
+	 * Talking and waiting are not work. A pair that answers each other between
+	 * `job` polls, todo updates, or more `irc` calls is still looping, so these
+	 * calls must not reset the chain.
+	 */
+	test.each(["irc", "job", "todo"])("a %s call between messages does not reset the chain", async tool => {
+		for (let index = 0; index < CAP; index++) {
+			const from = index % 2 === 0 ? "Alpha" : "Beta";
+			registry.noteToolCall(from, tool);
+			await bus.send({ from, to: from === "Alpha" ? "Beta" : "Alpha", body: String(index) });
+		}
+		registry.noteToolCall("Alpha", tool);
+		const overCap = await bus.send({ from: "Alpha", to: "Beta", body: "one too many" });
+		expect(overCap.outcome).toBe("failed");
+	});
+
+	/**
+	 * Work resets the chain; it does not disable the cap. After one tool call the
+	 * pair gets a fresh CAP of work-free messages and is refused after that, so a
+	 * loop that once did work is still bounded.
+	 */
+	test("the chain counts again from zero after work", async () => {
+		await pingPong(CAP);
+		registry.noteToolCall("Beta", "bash");
+		const afterWork = await pingPong(CAP);
+		expect(afterWork.outcome).not.toBe("failed");
+
+		const overCap = await bus.send({ from: "Alpha", to: "Beta", body: "one too many" });
+		expect(overCap.outcome).toBe("failed");
+	});
+
+	/**
+	 * A revive re-registers the agent's ref. Counts are keyed by id so the fresh
+	 * ref does not read as work done, which would let a pair of sleepers loop
+	 * forever by waking each other.
+	 */
+	test("re-registering an agent does not reset the chain", async () => {
+		registry.noteToolCall("Beta", "read");
+		await pingPong(CAP);
+		register("Beta");
+		const overCap = await bus.send({ from: "Alpha", to: "Beta", body: "one too many" });
+		expect(overCap.outcome).toBe("failed");
+	});
+
+	/**
+	 * A pair that is also reporting to a third agent is coordinating, not
+	 * looping, and must never be cut off.
 	 */
 	test("a third agent in the middle resets the chain", async () => {
 		await pingPong(CAP);
@@ -104,16 +168,11 @@ describe("IRC ping-pong cap", () => {
 	});
 
 	/**
-	 * The evasion this bound was hardened against. An earlier version counted
-	 * strict alternation, which one repeated send resets to nothing: a pair that
-	 * mostly alternates and occasionally doubles up never accumulates and never
-	 * trips the cap, while looping exactly as hard. Confinement to the pair is
-	 * what closes it.
+	 * Counting strict alternation is evaded by one repeated send. Confinement to
+	 * the pair closes it.
 	 */
 	test("a double send does not reset the pair's budget", async () => {
 		for (let index = 0; index < CAP; index++) {
-			// Every third message repeats the previous sender, breaking alternation
-			// without involving anyone else.
 			const from = index % 3 === 0 ? "Alpha" : index % 2 === 0 ? "Alpha" : "Beta";
 			await bus.send({ from, to: from === "Alpha" ? "Beta" : "Alpha", body: String(index) });
 		}
@@ -121,10 +180,7 @@ describe("IRC ping-pong cap", () => {
 		expect(overCap.outcome).toBe("failed");
 	});
 
-	/**
-	 * One agent talking past the cap with nobody answering and nobody else
-	 * involved is the same runaway with one side mute, so it is bounded too.
-	 */
+	/** One agent talking past the cap with no work and no answer is the same runaway. */
 	test("a one-directional runaway is bounded as well", async () => {
 		for (let index = 0; index < CAP; index++) {
 			await bus.send({ from: "Alpha", to: "Beta", body: `update ${index}` });
@@ -133,10 +189,7 @@ describe("IRC ping-pong cap", () => {
 		expect(overCap.outcome).toBe("failed");
 	});
 
-	/**
-	 * The cap is per pair. A second pair sharing the process must not inherit
-	 * the first pair's exhausted budget, which a global counter would do.
-	 */
+	/** The cap is per pair; a second pair does not inherit the first pair's chain. */
 	test("the cap is scoped to the pair that looped", async () => {
 		await pingPong(CAP);
 		expect((await bus.send({ from: "Alpha", to: "Beta", body: "over" })).outcome).toBe("failed");
@@ -146,38 +199,25 @@ describe("IRC ping-pong cap", () => {
 	});
 
 	/**
-	 * The concurrency hole, and the reason this cap did not work in practice.
-	 *
-	 * The log is global and several agents run at once, so the tail of it is
-	 * interleaved. Ending the pair's chain at any foreign line meant a message
-	 * between two OTHER agents reset Alpha and Beta's budget, even though it says
-	 * nothing about whether Alpha and Beta are looping. With four agents live
-	 * something almost always landed in between, the count almost never reached
-	 * the cap, and the guard was effectively off in exactly the situation it was
-	 * written for: a real loop observed while other agents worked.
-	 *
-	 * Traffic that involves neither of the pair is skipped, not counted and not
-	 * treated as a break. Only one of the pair talking to somebody else ends the
-	 * chain, which is the rule the refusal text has always stated.
+	 * The log is global and several agents run at once. Traffic that involves
+	 * neither of the pair is skipped, not treated as a break, or concurrency
+	 * would keep the chain from ever reaching the cap.
 	 */
 	test("unrelated traffic between two other agents does not reset the pair", async () => {
 		for (let index = 0; index < CAP; index++) {
 			const from = index % 2 === 0 ? "Alpha" : "Beta";
 			await bus.send({ from, to: from === "Alpha" ? "Beta" : "Alpha", body: String(index) });
-			// A fully foreign line, in both fields, between every exchange.
 			await bus.send({ from: "Gamma", to: "Delta", body: `unrelated ${index}` });
+			// Work by agents outside the pair is not the pair's work either.
+			registry.noteToolCall("Gamma", "edit");
 		}
 
 		const overCap = await bus.send({ from: "Alpha", to: "Beta", body: "one too many" });
 		expect(overCap.outcome).toBe("failed");
-		expect(overCap.error).toContain(`${CAP} messages in a row`);
+		expect(overCap.error).toContain(REFUSAL);
 	});
 
-	/**
-	 * The other half of the same rule, kept explicit so a fix that simply
-	 * ignored every foreign line would still be caught. A pair reporting
-	 * outward is coordinating, and the reset must survive.
-	 */
+	/** The other half of the same rule: one of the pair messaging outward still resets. */
 	test("one of the pair messaging a third agent still resets the chain", async () => {
 		await pingPong(CAP);
 		await bus.send({ from: "Gamma", to: "Delta", body: "noise" });
@@ -187,11 +227,7 @@ describe("IRC ping-pong cap", () => {
 		expect(afterBreak.outcome).not.toBe("failed");
 	});
 
-	/**
-	 * A refusal is a receipt, not an exception. The sender's turn continues and
-	 * reads the error, which is what lets it act on the advice; a throw would
-	 * unwind the tool call instead.
-	 */
+	/** A refusal is a receipt, not an exception, so the sender's turn reads the advice. */
 	test("refuses as a delivery receipt rather than throwing", async () => {
 		await pingPong(CAP);
 		const refused = await bus.send({ from: "Alpha", to: "Beta", body: "reply" });

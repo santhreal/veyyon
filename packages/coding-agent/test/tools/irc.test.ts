@@ -314,13 +314,11 @@ describe("IRC", () => {
 		/**
 		 * The 100-message mailbox cap, driven by two senders alternating.
 		 *
-		 * One sender cannot reach the cap any more: the ping-pong guard refuses a
-		 * message once a pair has traded PING_PONG_CAP (16) in a row with nobody else
-		 * involved, so a single pair sending 101 messages lands 16 and this case
-		 * silently stopped testing the cap at all (it asserted 100 and saw 16). A
-		 * second sender breaks the pair chain on every message, which is exactly the
-		 * traffic the guard is meant to leave alone, so the mailbox cap is measured
-		 * on its own here rather than through the loop refusal.
+		 * One sender cannot reach the cap: the loop bound refuses a message once a
+		 * pair has traded 8 in a row with no work and nobody else involved, so a
+		 * single pair sending 101 messages lands 8 and the cap goes unmeasured. A
+		 * second sender breaks the pair chain on every message, which is traffic
+		 * the bound leaves alone, so the mailbox cap is measured on its own here.
 		 */
 		it("mailbox drops the oldest message beyond the 100-message cap", async () => {
 			const main = makeFakeSession();
@@ -341,7 +339,7 @@ describe("IRC", () => {
 				// unmeasured, which is how this case rotted the first time. A delivery
 				// failure is expected and is the point: the recipient's session is down,
 				// so the message lands in the mailbox.
-				expect(receipt.error ?? "").not.toContain("messages in a row");
+				expect(receipt.error ?? "").not.toContain("no work done");
 			}
 
 			expect(bus.unreadCount("0-Main")).toBe(100);

@@ -44,7 +44,6 @@ import tsPromiseWithResolvers from "./typescript/ts-promise-with-resolvers.md" w
 import tsRedundantClearGuard from "./typescript/ts-redundant-clear-guard.md" with { type: "text" };
 import tsSetMap from "./typescript/ts-set-map.md" with { type: "text" };
 import cwdReroot from "./workflow/cwd-reroot.md" with { type: "text" };
-import ircSignal from "./workflow/irc-signal.md" with { type: "text" };
 import projectAuthority from "./workflow/project-authority.md" with { type: "text" };
 
 /** The directories a bundled rule may live in. */
@@ -90,7 +89,6 @@ export interface BuiltinRuleSource {
 /** All bundled default rules, ordered by section then name. */
 export const BUILTIN_RULE_SOURCES: readonly BuiltinRuleSource[] = [
 	{ name: "cwd-reroot", section: "workflow", content: cwdReroot },
-	{ name: "irc-signal", section: "workflow", content: ircSignal },
 	{ name: "project-authority", section: "workflow", content: projectAuthority },
 	{ name: "go-add-cleanup", section: "go", content: goAddCleanup },
 	{ name: "go-bench-loop", section: "go", content: goBenchLoop },

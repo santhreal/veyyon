@@ -76,13 +76,11 @@ function armed(ttsr: TtsrManager, rule: Rule): boolean {
 /** A payload each bundled per-compact rule actually matches, so the check is the real one. */
 const SAMPLE_MATCH: Record<string, string> = {
 	"test-scope": "bun test",
-	"irc-signal": '{"op":"send","to":"Main","message":"ack"}',
 	"cwd-reroot": '{"path":"/work/other-project/crates/cli/src/main.rs"}',
 };
 
 const TOOL: Record<string, string> = {
 	"test-scope": "bash",
-	"irc-signal": "irc",
 	"cwd-reroot": "read",
 };
 

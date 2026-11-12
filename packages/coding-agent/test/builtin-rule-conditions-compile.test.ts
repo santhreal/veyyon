@@ -1,6 +1,5 @@
 /**
- * Every bundled rule's condition compiles, tool-scoped rules choose an interrupt policy, and
- * `irc-signal` fires on the traffic it exists for.
+ * Every bundled rule's condition compiles, and tool-scoped rules choose an interrupt policy.
  *
  * WHY THIS SUITE EXISTS. A bundled rule can fail in three quiet ways.
  *
@@ -18,13 +17,6 @@
  * A tool-scoped rule that inherits the global interrupt mode can silently turn post-tool guidance
  * into a stream abort and retry. Requiring every bundled tool rule to choose a policy closes that
  * omission, and pinning the intentional interrupt list makes a new aborting rule fail by default.
- * The remaining tests pin `irc-signal`'s behavior, which exists because agents wake each other
- * with acknowledgements and progress reports: a message stops an idle peer, costs it a full turn,
- * and changes nothing it does, which is also how a two-agent loop sustains itself.
- *
- * The quiet cases are not decoration. A rule that fires on every IRC message would be worse than
- * no rule, because it would train the model to ignore the reminder, so a substantive message
- * naming a file or a decision MUST NOT trip it.
  */
 import { describe, expect, it } from "bun:test";
 import { BUILTIN_RULE_SOURCES } from "@veyyon/coding-agent/discovery/builtin-rules/index";
@@ -35,11 +27,6 @@ function ruleNamed(name: string) {
 	if (!source) throw new Error(`bundled rule "${name}" is not registered in BUILTIN_RULE_SOURCES`);
 	const meta = createSourceMeta("builtin-defaults", `builtin:${name}`, "user");
 	return buildRuleFromMarkdown(name, source.content, `builtin:${name}`, meta, { ruleName: name });
-}
-
-/** The streamed tool-argument text a TTSR condition is matched against. */
-function ircArgs(message: string): string {
-	return JSON.stringify({ op: "send", to: "Main", message });
 }
 
 describe("bundled rule conditions", () => {
@@ -72,35 +59,5 @@ describe("bundled rule conditions", () => {
 		expect(toolRules.flatMap(({ name, rule }) => (rule.interruptMode !== "never" ? [name] : []))).toEqual([
 			"ts-no-inline-cast-access",
 		]);
-	});
-});
-
-describe("irc-signal", () => {
-	const rule = ruleNamed("irc-signal");
-	const patterns = rule.condition ?? [];
-	const condition = new RegExp(patterns.length === 1 ? patterns[0]! : "(?!)");
-
-	it("is scoped to the irc tool, so it never fires on file edits", () => {
-		expect(rule.scope).toContain("tool:irc");
-	});
-
-	it.each([
-		["a bare acknowledgement", "Ack"],
-		["an agreement", "Understood, will do"],
-		["a receipt", "Noted, thanks"],
-		["an announcement of work", "Starting on the parser now"],
-		["a progress report", "Quick update: still working on the parser"],
-		["a status line", "Status update: 3 of 5 files done"],
-	])("fires on %s", (_label, message) => {
-		expect(condition.test(ircArgs(message))).toBe(true);
-	});
-
-	it.each([
-		["a fact with a location", "agent-session.ts:8992 drops a tool missing from the registry with no log"],
-		["a file claim", "I need packages/ai/src/providers/cursor.ts, are you holding it?"],
-		["a named decision", "Do we cap the retry ladder at 5 minutes or read the provider window?"],
-		["a refusal", "I will not weaken that assertion; the contract is the exit byte"],
-	])("stays quiet on %s", (_label, message) => {
-		expect(condition.test(ircArgs(message))).toBe(false);
 	});
 });

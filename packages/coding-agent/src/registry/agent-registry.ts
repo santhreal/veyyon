@@ -20,6 +20,12 @@ import type { AgentSession } from "../session/agent-session";
 import { oneLineLabel } from "../task/types";
 
 /**
+ * Tools that talk or wait instead of working. A call to one of these between two IRC messages is
+ * not progress, so it does not reset the bus's work-free exchange bound.
+ */
+const COORDINATION_TOOLS: Record<string, true> = { irc: true, job: true, todo: true };
+
+/**
  * The name a driving agent answers to INSIDE its own conversation, and the name
  * the model is told to address. Not a key: a process holds several
  * conversations at once and each has its own driving agent, so resolving this
@@ -265,6 +271,12 @@ export class AgentRegistry {
 	readonly #listeners = new Set<RegistryListener>();
 	/** Every approval wait open on an agent, oldest first. Absent while it has none. */
 	readonly #approvalWaits = new WeakMap<AgentRef, PendingApproval[]>();
+	/**
+	 * Completed tool calls per agent id that were not coordination, for the IRC bus's loop bound.
+	 * Keyed by id rather than stored on the ref, because a revive re-registers the ref and a fresh
+	 * zero would read to the bus as work done between two messages.
+	 */
+	readonly #workCounts = new Map<string, number>();
 
 	/**
 	 * Register an agent, deriving its conversation {@link AgentRef.scope} when the
@@ -401,6 +413,20 @@ export class AgentRegistry {
 	}
 
 	/**
+	 * Record one finished tool call by this agent. Calls to {@link COORDINATION_TOOLS} talk or wait
+	 * rather than work, so they leave the count alone. Emits nothing: the bus reads the count on demand.
+	 */
+	noteToolCall(id: string, toolName: string): void {
+		if (Object.hasOwn(COORDINATION_TOOLS, toolName) || !this.#refs.has(id)) return;
+		this.#workCounts.set(id, (this.#workCounts.get(id) ?? 0) + 1);
+	}
+
+	/** Monotonic count of this agent's non-coordination tool calls; 0 when none or unregistered. */
+	workCount(id: string): number {
+		return this.#workCounts.get(id) ?? 0;
+	}
+
+	/**
 	 * Record whether the agent's last message said it was waiting on another agent.
 	 *
 	 * Emits nothing and does not touch `lastActivity`: this is a property OF the
@@ -514,6 +540,7 @@ export class AgentRegistry {
 		const ref = this.#refs.get(id);
 		if (!ref) return;
 		this.#refs.delete(id);
+		this.#workCounts.delete(id);
 		this.#emit({ type: "removed", ref });
 	}
 

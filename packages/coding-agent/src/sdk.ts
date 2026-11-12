@@ -1487,6 +1487,8 @@ class SessionStartup {
 		session.subscribe(event => {
 			if (event.type === "agent_start" || event.type === "agent_end") {
 				this.#agentRegistry.noteTurn(agentId);
+			} else if (event.type === "tool_execution_end") {
+				this.#agentRegistry.noteToolCall(agentId, event.toolName);
 			}
 		});
 		orderSessionDisposal(session, {

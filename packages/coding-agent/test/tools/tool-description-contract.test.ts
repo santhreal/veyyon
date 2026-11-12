@@ -99,13 +99,12 @@ const RETAINED: Readonly<Record<string, readonly string[]>> = {
 		"NEVER summarize into fewer tasks",
 	],
 	irc: [
-		// The prose cut collapsed two statements of the narration rule into one and
-		// removed a duplicated "never send a progress report" list. What no cut may
-		// take: what a message COSTS, and the two prohibitions that stop a loop.
+		// What no cut may take: that delivery wakes the peer, and the loop bound with its
+		// definition of work, which is how a pair learns the refusal before it hits it.
 		"NEVER invent names",
 		"WAKES an `idle` or `asleep` peer",
-		"Silence IS the acknowledgement",
-		"traded 16 in a row",
+		"exchanged 8 in a row with no work by either of you in between",
+		"Work is any tool call other than `irc`, `job` and `todo`",
 		"NEVER send JSON status objects",
 		"DM them before editing, not after",
 	],
