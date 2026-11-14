@@ -11,6 +11,7 @@
 
 ### Added
 
+- `secrets.askBeforeUse` ("Ask Before Using A Secret", default on) selects whether a tool call that spends a stored secret prompts first; off, agents spend stored secrets unasked and `secrets.auditLog` still records each use.
 - `AGENT_EVENT_TYPES` in `@veyyon/agent-core/types` lists every agent event type and fails to compile when the event union gains a type it lacks.
 - `toolSchema(id, build)` in `@veyyon/ai/utils/schema/tool-schema` holds a tool parameter schema with its wire form, which a compiled build stores per build in the profile's `cache/tool-wire-schemas.json`, and `Tool.wireParameters` supplies that wire form to a request without building `parameters`.
 - `SgrState` in `@veyyon/utils/sgr` holds the SGR attributes open at a point in a styled row, and its `marksBlank` reports whether a space written there draws anything an erased cell does not.
@@ -28,6 +29,10 @@
 
 ### Changed
 
+- Tool approval prompts pass the full call (tool, arguments, reasons, scope and answer labels) to the terminal permission surface; the prompt still looks and answers the same.
+- An approval prompt states the category it was raised about (`destructive`, `secret`, `outside`, `command`, `edit` or `read`), led by the highest-ranked concern the call raises, and its session rows remember only that category: a secret prompt offers `Approve <NAMES> for session` and `Deny <NAMES> for session`, which cover those secrets whichever tool spends them, instead of the tool-wide rows.
+- A destructive or outside-the-working-directory approval prompt offers only Approve and Deny, instead of session rows that recorded nothing.
+- The tool approval prompt takes the whole screen, centred: the command is laid out one pipeline stage or chained command a line beside a bar in the colour of its risk, the answers are a list with a ring of light that glides to the selected one and turns ember over a refusal (↑↓ or the letter keys, ⏎ to answer, esc to refuse), what the selected answer does is written beside it, and a destructive call opens with refusal selected.
 - Spawned agents have three states, running, idle and asleep: an idle agent falls asleep after 5 minutes (`agent.idleTtlMs`, "Sleep Idle Agents After") and frees its session, and any agent with a transcript, including a stopped, failed or killed one, wakes when messaged for the rest of the session instead of being pruned or left unrevivable; an agent that ran in an isolated worktree stays readable at `history://<id>` but cannot be woken, since the worktree is removed when its run ends.
 - `job cancel` on an agent and `x` in the agent dashboard stop the agent and everything it spawned and put them to sleep, so a stopped agent wakes when messaged instead of being terminated.
 - The `irc` roster lists the 10 most recently active asleep agents and a count of older ones, which still wake by id, and a blocking `irc` send to a peer that falls asleep before replying ends at once instead of waiting for its timeout.
