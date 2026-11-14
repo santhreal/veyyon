@@ -8,7 +8,7 @@
  */
 import type { Component, OverlayOptions, TUI } from "@veyyon/tui";
 import type { ApprovalCard, ExtensionUISelectItem } from "../../../../extensibility/extensions";
-import { HookSelectorComponent } from "../selectors/hook-selector";
+import { SignalPrompt } from "./signal";
 
 /** Where a permission surface is mounted. */
 export type PermissionPlacement =
@@ -33,19 +33,6 @@ export interface PermissionSurfaceContext {
 	requestRender(): void;
 }
 
-export function createPermissionSurface(_card: ApprovalCard, ctx: PermissionSurfaceContext): PermissionSurface {
-	const selector = new HookSelectorComponent(
-		ctx.title,
-		[...ctx.options],
-		option => ctx.settle(option),
-		() => ctx.settle(undefined),
-		{ selectionMarker: "radio", tui: ctx.tui, onRequestRender: ctx.requestRender },
-	);
-	return {
-		component: selector,
-		placement: {
-			kind: "overlay",
-			options: { anchor: "top-left", width: "100%", maxHeight: "100%", margin: 0, fullscreen: true },
-		},
-	};
+export function createPermissionSurface(card: ApprovalCard, ctx: PermissionSurfaceContext): PermissionSurface {
+	return { component: new SignalPrompt(card, ctx), placement: { kind: "composer" } };
 }

@@ -1,6 +1,7 @@
 import { abortDetached } from "@veyyon/kernel/session/detached-abort";
 import {
 	type Component,
+	canAnimateOverlayExit,
 	DEFAULT_MASK_CHAR,
 	type OverlayHandle,
 	type OverlayOptions,
@@ -566,7 +567,8 @@ export class ExtensionUiController {
 				requestRender: () => this.ctx.ui.requestRender(),
 			});
 			const { component, placement } = surface;
-			const overlay = placement.kind === "overlay" ? this.ctx.ui.showOverlay(component, placement.options) : undefined;
+			const overlay =
+				placement.kind === "overlay" ? this.ctx.ui.showOverlay(component, placement.options) : undefined;
 			if (placement.kind === "composer") {
 				this.ctx.editorContainer.clear();
 				this.ctx.editorContainer.addChild(component);
@@ -576,12 +578,21 @@ export class ExtensionUiController {
 			return () => {
 				component.dispose?.();
 				overlay?.hide();
-				if (placement.kind === "composer") {
-					this.ctx.editorContainer.clear();
-					this.ctx.editorContainer.addChild(this.ctx.editor);
-				}
+				const restore = (): void => {
+					if (placement.kind === "composer") {
+						this.ctx.editorContainer.clear();
+						this.ctx.editorContainer.addChild(this.ctx.editor);
+					}
+					this.ctx.ui.requestRender();
+				};
+				// Keystrokes go to the composer at once; a composer-placed surface keeps its slot only
+				// for as long as its exit plays.
 				this.ctx.focusActiveEditorArea();
-				this.ctx.ui.requestRender();
+				const animates =
+					placement.kind === "composer" &&
+					canAnimateOverlayExit(component) &&
+					component.beginOverlayExit(() => this.ctx.ui.requestRender(), restore);
+				if (!animates) restore();
 			};
 		});
 	}

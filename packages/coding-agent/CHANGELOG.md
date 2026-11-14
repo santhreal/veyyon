@@ -5,6 +5,7 @@
 ### Changed
 
 - Tool approval prompts pass the full call (tool, arguments, reasons, scope and answer labels) to the terminal permission surface; the prompt still looks and answers the same.
+- The tool approval prompt draws in the composer as a console: the call decodes in place, the answers sit on a sliding segmented control (←→ or the letter keys, ⏎ to answer, esc to refuse), a destructive call opens with refusal selected, and the console folds away after an answer before the editor returns.
 - Spawned agents have three states, running, idle and asleep: an idle agent falls asleep after 5 minutes (`agent.idleTtlMs`, "Sleep Idle Agents After") and frees its session, and any agent with a transcript, including a stopped, failed or killed one, wakes when messaged for the rest of the session instead of being pruned or left unrevivable; an agent that ran in an isolated worktree stays readable at `history://<id>` but cannot be woken, since the worktree is removed when its run ends.
 - `job cancel` on an agent and `x` in the agent dashboard stop the agent and everything it spawned and put them to sleep, so a stopped agent wakes when messaged instead of being terminated.
 - The `irc` roster lists the 10 most recently active asleep agents and a count of older ones, which still wake by id, and a blocking `irc` send to a peer that falls asleep before replying ends at once instead of waiting for its timeout.
