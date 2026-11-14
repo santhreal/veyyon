@@ -15,12 +15,10 @@
  *     env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-permission-card.ts --width 100 --deny |
  *       bun scripts/demos/render-proof.ts --out /tmp/permission-deny --width 100 --scale 2
  */
-import {
-	APPROVAL_DIALOG_OPTIONS,
-	APPROVAL_SELECT_OPTIONS,
-} from "../../packages/coding-agent/src/extensibility/extensions/wrapper";
+import { APPROVAL_DIALOG_OPTIONS } from "../../packages/coding-agent/src/extensibility/extensions/wrapper";
 import { HookSelectorComponent } from "../../packages/coding-agent/src/modes/terminal/components/selectors/hook-selector";
 import { formatApprovalCard } from "../../packages/coding-agent/src/tools/core/approval";
+import { type ApprovalConcern, approvalPrompt } from "../../packages/coding-agent/src/tools/core/approval-gate";
 import { renderDemo } from "./render-args";
 
 await renderDemo(({ width, hasFlag }) => {
@@ -40,9 +38,11 @@ await renderDemo(({ width, hasFlag }) => {
 		{ command },
 		reason,
 	);
+	const concerns: ApprovalConcern[] = [{ category: "destructive", text: reason, keys: [] }];
+	const { choices } = approvalPrompt({ toolName: "bash", mode: "auto", concerns, pattern: undefined }, concerns);
 	const selector = new HookSelectorComponent(
 		prompt,
-		APPROVAL_SELECT_OPTIONS,
+		choices.map(({ label, description }) => ({ label, description })),
 		() => {},
 		() => {},
 		{
