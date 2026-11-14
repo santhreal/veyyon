@@ -15,6 +15,7 @@ import type { CollabUiRequestDraft } from "@veyyon/wire";
 import { type AutoresearchUiDelegate, registerAutoresearchUi } from "../../../autoresearch/dashboard";
 import { KeybindingsManager } from "../../../config/keybindings";
 import type {
+	ApprovalCard,
 	CompactOptions,
 	ExtensionActions,
 	ExtensionAskDialogQuestion,
@@ -39,6 +40,7 @@ import { setTerminalTitle } from "../../../utils/title-generator";
 import { AskDialogComponent } from "../components/dialogs/ask-dialog";
 import { HookEditorComponent } from "../components/dialogs/hook-editor";
 import { HookInputComponent } from "../components/dialogs/hook-input";
+import { createPermissionSurface } from "../components/permission/surface";
 import { HookSelectorComponent, type HookSelectorSlider } from "../components/selectors/hook-selector";
 import type { InteractiveModeContext, InteractiveSelectorDialogOptions } from "../types";
 import { guestSelectRequest, raceCollabAskDialog, raceCollabDialog } from "./collab-guest-dialogs";
@@ -493,6 +495,7 @@ export class ExtensionUiController {
 		dialogOptions?: InteractiveSelectorDialogOptions,
 		extra?: { slider?: HookSelectorSlider },
 	): Promise<string | undefined> {
+		if (dialogOptions?.approval) return this.#showPermission(dialogOptions.approval, title, options, dialogOptions);
 		return this.#dialogs.present(dialogOptions?.signal, settle => {
 			const maxVisible = clampLow(this.ctx.ui.terminal.rows - 12, 4, 15);
 			const selector = new HookSelectorComponent(
@@ -541,6 +544,45 @@ export class ExtensionUiController {
 			this.ctx.ui.setFocus(selector);
 			this.ctx.ui.requestRender();
 			return () => this.hideHookSelector();
+		});
+	}
+
+	/**
+	 * Show a tool approval prompt on the permission surface. It answers with an option label, as
+	 * the selector would, so the approval policy reads both the same way.
+	 */
+	#showPermission(
+		card: ApprovalCard,
+		title: string,
+		options: ExtensionUISelectItem[],
+		dialogOptions: InteractiveSelectorDialogOptions,
+	): Promise<string | undefined> {
+		return this.#dialogs.present(dialogOptions.signal, settle => {
+			const surface = createPermissionSurface(card, {
+				tui: this.ctx.ui,
+				title,
+				options,
+				settle,
+				requestRender: () => this.ctx.ui.requestRender(),
+			});
+			const { component, placement } = surface;
+			const overlay = placement.kind === "overlay" ? this.ctx.ui.showOverlay(component, placement.options) : undefined;
+			if (placement.kind === "composer") {
+				this.ctx.editorContainer.clear();
+				this.ctx.editorContainer.addChild(component);
+			}
+			this.ctx.ui.setFocus(component);
+			this.ctx.ui.requestRender();
+			return () => {
+				component.dispose?.();
+				overlay?.hide();
+				if (placement.kind === "composer") {
+					this.ctx.editorContainer.clear();
+					this.ctx.editorContainer.addChild(this.ctx.editor);
+				}
+				this.ctx.focusActiveEditorArea();
+				this.ctx.ui.requestRender();
+			};
 		});
 	}
 	/**

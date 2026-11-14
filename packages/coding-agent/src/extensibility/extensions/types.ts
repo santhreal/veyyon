@@ -193,6 +193,46 @@ export interface ExtensionUIDialogOptions {
 	 *  trailing options (e.g. "Other"/"Done" actions) keep the plain cursor.
 	 *  Defaults to all options when `selectionMarker` is set. */
 	markableCount?: number;
+	/**
+	 * Select dialogs raised by the tool approval policy: the call the dialog is about. A host
+	 * with a dedicated permission surface draws that surface from this and still answers with
+	 * one of the select options' labels; any other host shows the plain select.
+	 */
+	approval?: ApprovalCard;
+}
+
+/** Why an approval prompt was raised. One call can carry several. */
+export interface ApprovalCardReason {
+	/** `policy`: the tier or `tools.approval`; `critical`: the tool judged this call destructive;
+	 *  `boundary`: a path leaves the working directory; `secret`: the arguments spend a credential. */
+	kind: "policy" | "critical" | "boundary" | "secret";
+	text: string;
+}
+
+/** One tool call waiting on an approval answer, as a permission surface draws it. */
+export interface ApprovalCard {
+	toolName: string;
+	/** The spawned agent the call belongs to; absent for the root session. */
+	requester?: string;
+	/** The call's arguments as the model sent them. */
+	args: unknown;
+	/** The tool's own `Label: value` description of the call. */
+	details: readonly string[];
+	reasons: readonly ApprovalCardReason[];
+	/** The working directory the call runs in. */
+	cwd: string;
+	/** The approval mode in force. */
+	mode: string;
+	/** The pattern a pattern-scoped session grant would cover, when the tool reported one. */
+	pattern?: string;
+	/** Option labels, so the surface answers with the same strings the select would. */
+	choices: {
+		approveOnce: string;
+		approvePattern?: string;
+		approveSession?: string;
+		denyOnce: string;
+		denySession: string;
+	};
 }
 
 /** Raw terminal input listener for extensions. */

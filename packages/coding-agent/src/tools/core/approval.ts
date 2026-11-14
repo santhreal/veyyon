@@ -455,7 +455,8 @@ export function formatApprovalCard(tool: ApprovalSubject, args: unknown, reason?
 	return lines.join("\n");
 }
 
-function approvalDetailLines(tool: ApprovalSubject, args: unknown): string[] {
+/** The tool's own description of one call, as non-empty `Label: value` lines. */
+export function approvalDetailLines(tool: ApprovalSubject, args: unknown): string[] {
 	const details = tool.formatApprovalDetails?.(args);
 	if (typeof details === "string") return details.length > 0 ? [details] : [];
 	if (Array.isArray(details)) return details.filter(detail => detail.length > 0);

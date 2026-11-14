@@ -11,6 +11,7 @@ import { AgentRegistry } from "../../registry/agent-registry";
 import type { Theme } from "../../theme/theme";
 import {
 	type ApprovalMode,
+	approvalDetailLines,
 	formatApprovalCard,
 	requiresApproval,
 	resolveEffectiveApprovalMode,
@@ -21,6 +22,8 @@ import { secretUseApprovalReason } from "../../tools/core/secret-use-boundary";
 import { normalizeToolEventInput, resolveToolEventInput } from "../tool-event-input";
 import type { ExtensionRunner } from "./runner";
 import type {
+	ApprovalCard,
+	ApprovalCardReason,
 	ExtensionUIContext,
 	ExtensionUIDialogOptions,
 	ExtensionUISelectOption,
@@ -200,6 +203,8 @@ interface ApprovalGate {
 	required: boolean;
 	/** Every reason the call prompts, joined for the card. */
 	reason: string | undefined;
+	/** The same reasons, each with what raised it, for a surface that draws them apart. */
+	reasons: ApprovalCardReason[];
 	/** Whether a standing session answer may retire the prompt; see {@link resolveApprovalGate}. */
 	grantMayApply: boolean;
 	/** The pattern this call reported for a pattern-scoped grant, with its grant key and row label. */
@@ -280,12 +285,15 @@ function resolveApprovalGate<TParameters extends TSchema, TDetails>(
 	// pattern THIS call reports, so it cannot widen past the string the
 	// operator read on the card.
 	const pattern = grantMayApply ? check.pattern : undefined;
+	const reasons: ApprovalCardReason[] = [];
+	if (check.reason !== undefined) reasons.push({ kind: check.critical ? "critical" : "policy", text: check.reason });
+	if (boundaryReason !== undefined) reasons.push({ kind: "boundary", text: boundaryReason });
+	if (secretReason !== undefined) reasons.push({ kind: "secret", text: secretReason });
 	return {
 		mode,
 		required: check.required || boundaryReason !== undefined || secretReason !== undefined,
-		reason:
-			[check.reason, boundaryReason, secretReason].filter((part): part is string => part !== undefined).join(" ") ||
-			undefined,
+		reason: reasons.map(part => part.text).join(" ") || undefined,
+		reasons,
 		grantMayApply,
 		pattern,
 		patternKey: pattern === undefined ? undefined : patternGrantKey(tool.name, pattern),
@@ -318,6 +326,7 @@ class ApprovalRequest<TParameters extends TSchema, TDetails> {
 	readonly #approvals: SessionToolApprovals | undefined;
 	readonly #sessionId: string;
 	readonly #reported: boolean;
+	readonly #cwd: string;
 
 	constructor(
 		tool: AgentTool<TParameters, TDetails>,
@@ -333,6 +342,7 @@ class ApprovalRequest<TParameters extends TSchema, TDetails> {
 		this.#approvals = context?.sessionApprovals;
 		this.#reported = runner.hasHandlers("tool_approval_requested") || runner.hasHandlers("tool_approval_resolved");
 		this.#sessionId = context?.sessionManager?.getSessionId() ?? "";
+		this.#cwd = context?.sessionManager?.getCwd?.() ?? "";
 	}
 
 	/** Resolve once the call may run; throw when it is refused or no surface can show the card. */
@@ -490,7 +500,7 @@ class ApprovalRequest<TParameters extends TSchema, TDetails> {
 			choice = await uiContext.select(
 				formatApprovalCard(this.#tool, params, this.#gate.reason, requester),
 				approvalSelectOptions(this.#gate.pattern),
-				APPROVAL_DIALOG_OPTIONS,
+				{ ...APPROVAL_DIALOG_OPTIONS, approval: this.#card(params, requester) },
 			);
 		} catch (err) {
 			await this.#resolve(false, err instanceof Error ? err.message : "approval aborted");
@@ -513,6 +523,26 @@ class ApprovalRequest<TParameters extends TSchema, TDetails> {
 			release();
 		}
 		return choice;
+	}
+
+	#card(params: Static<TParameters>, requester: string | undefined): ApprovalCard {
+		return {
+			toolName: this.#tool.name,
+			...(requester ? { requester } : {}),
+			args: params,
+			details: approvalDetailLines(this.#tool, params),
+			reasons: this.#gate.reasons,
+			cwd: this.#cwd,
+			mode: this.#gate.mode,
+			...(this.#gate.pattern !== undefined ? { pattern: this.#gate.pattern } : {}),
+			choices: {
+				approveOnce: APPROVAL_CHOICE.approveOnce,
+				...(this.#gate.patternLabel !== undefined ? { approvePattern: this.#gate.patternLabel } : {}),
+				approveSession: APPROVAL_CHOICE.approveSession,
+				denyOnce: APPROVAL_CHOICE.denyOnce,
+				denySession: APPROVAL_CHOICE.denySession,
+			},
+		};
 	}
 }
 
