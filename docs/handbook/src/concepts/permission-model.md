@@ -111,6 +111,10 @@ the shipped `auto` included. A call that
 mentions a placeholder without expanding it, such as one made while `secrets.enabled` is
 false, is not a credential reference and does not prompt.
 
+**Approve `GITHUB_TOKEN` for session** on that prompt stops later calls from asking about
+`GITHUB_TOKEN`, whichever tool spends it. To let agents spend stored secrets without asking at
+all, set `secrets.askBeforeUse: false`; `secrets.auditLog` still records each use.
+
 ## Per-tool overrides
 
 When you want one tool to behave differently from its tier, name it under

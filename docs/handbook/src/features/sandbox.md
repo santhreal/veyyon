@@ -44,22 +44,37 @@ tools:
 ## The approval prompt
 
 When the active mode requires approval for a tool call, the TUI shows a **Permission required**
-card. The card shows the tool, states that the decision applies to this call only, separates the
-reason from the requested command or file operation, and waits on four options, five for a bash
-call that reports a pattern:
+card. Each card is raised about one category, the highest-ranked concern the call raises:
+
+|Category|Raised when|Session rows|
+|---|---|---|
+|`destructive`|The guard flags the call, such as a recursive delete of your home directory.|None|
+|`secret`|The arguments spend a stored secret.|Remember the named secrets|
+|`outside`|The call touches a path outside the working directory.|None|
+|`command`, `edit`, `read`|The mode prompts for the tool's tier.|Remember the tool|
+
+A card lists every concern the call raises, and answering it settles all of them for this call.
+Only the leading category's answer can be remembered. The card offers these options:
 
 - **Approve**: run this call once. Nothing is remembered.
 - **`Approve "<pattern>" for session`**: run this and every later call that reports the same
-  pattern, until you exit. Only bash reports one.
-- **Approve for session**: run this and every later call to this tool, until you exit.
+  pattern, until you exit. Only a bash tier card offers it.
+- **Approve for session**: run this and every later call to this tool, until you exit. On a
+  secret card the row reads **Approve `<NAMES>` for session**, and no later call is asked about
+  those secrets again, whichever tool spends them.
 - **Deny**: reject this call and return `Tool call denied by user: <name>` to the model.
-- **Deny for session**: reject this and every later call to this tool, until you exit.
+- **Deny for session**: reject this and every later call to this tool, until you exit. On a
+  secret card the row reads **Deny `<NAMES>` for session** and rejects every later call that
+  spends one of them.
 
 The "for session" rows are session memory, not policy: nothing is written to
-`tools.approval`, and the next launch prompts again. A remembered decision also covers only
-the ordinary tier prompt. The three prompts that are about a call's ARGUMENTS rather than
-its tool name still prompt every time: a flagged bash command, a path outside the working
-directory, and a call that spends a stored credential.
+`tools.approval`, and the next launch prompts again. A `destructive` or `outside` card offers
+only **Approve** and **Deny**, because those concerns are about one call's arguments and no
+earlier answer covers them. A secret card that includes a secret with no name, or arguments that
+cannot be inspected, also offers only those two.
+
+`secrets.askBeforeUse: false` removes the `secret` category: a call that spends a stored secret
+runs without a prompt, and `secrets.auditLog` still records it.
 
 A bash pattern keeps the program and, for a subcommand, the subcommand: `git status -s` reports
 `git status *`, which covers `git status` and `git status --short src` and not `git log`. A second

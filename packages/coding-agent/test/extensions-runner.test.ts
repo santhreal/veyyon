@@ -17,7 +17,7 @@ import {
 	noOpUIContext,
 	testSetExtensionHandlerTimeoutMs,
 } from "@veyyon/coding-agent/extensibility/extensions/runner";
-import { APPROVAL_SELECT_OPTIONS, ExtensionToolWrapper } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
+import { ExtensionToolWrapper } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
 import { Type } from "@veyyon/kernel/registry/typebox";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { attachFaultSink, type Fault, getProjectAgentDir, logger, TempDir } from "@veyyon/utils";
@@ -1352,13 +1352,14 @@ describe("ExtensionRunner", () => {
 			]);
 			expect(select).toHaveBeenCalledWith(
 				expect.stringContaining("## Permission required\n**Tool:** `dangerous_tool`\n**Scope:** This call only"),
-				// The prompt's option list is one exported array; pin the identity of
-				// the choices rather than a copy that goes stale when a rung changes
-				// which of them the operator is offered.
-				APPROVAL_SELECT_OPTIONS,
+				// A tier prompt offers the one-call answers and their session-scoped twins.
+				["Approve", "Approve for session", "Deny", "Deny for session"].map(label =>
+					expect.objectContaining({ label }),
+				),
 				{
 					selectionMarker: "radio",
 					helpText: "↑/↓ navigate  enter confirm  esc cancel",
+					approval: expect.objectContaining({ category: "command", toolName: "dangerous_tool" }),
 				},
 			);
 			delete globalState.__approvalEvents;

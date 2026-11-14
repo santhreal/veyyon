@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { APPROVAL_DIALOG_OPTIONS, APPROVAL_SELECT_OPTIONS } from "../src/extensibility/extensions/wrapper";
+import { APPROVAL_DIALOG_OPTIONS } from "../src/extensibility/extensions/wrapper";
 import { formatApprovalCard } from "../src/tools/core/approval";
+import { approvalPrompt, resolveApprovalGate } from "../src/tools/core/approval-gate";
 
 describe("interactive permission card presentation", () => {
 	/**
@@ -15,11 +16,17 @@ describe("interactive permission card presentation", () => {
 		expect(formatApprovalCard({ name: "bash" }, {})).toBe(
 			"## Permission required\n**Tool:** `bash`\n**Scope:** This call only",
 		);
-		expect(APPROVAL_SELECT_OPTIONS).toEqual([
+		const askContext = { settings: { get: (key: string) => (key === "tools.approvalMode" ? "ask" : undefined) } };
+		const gate = resolveApprovalGate({ name: "bash", approval: "exec" } as never, {}, askContext as never);
+		const rows = approvalPrompt(gate, gate.concerns).choices.map(({ label, description }) => ({
+			label,
+			description,
+		}));
+		expect(rows).toEqual([
 			{ label: "Approve", description: "Run this call once. Nothing is remembered." },
-			{ label: "Approve for session", description: "Run this and every later call to this tool, until you exit." },
+			{ label: "Approve for session", description: "Run this and every later call to bash, until you exit." },
 			{ label: "Deny", description: "Do not run this call." },
-			{ label: "Deny for session", description: "Refuse this and every later call to this tool, until you exit." },
+			{ label: "Deny for session", description: "Refuse this and every later call to bash, until you exit." },
 		]);
 	});
 

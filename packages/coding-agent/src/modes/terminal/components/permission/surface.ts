@@ -8,7 +8,7 @@
  */
 import type { Component, OverlayOptions, TUI } from "@veyyon/tui";
 import type { ApprovalCard, ExtensionUISelectItem } from "../../../../extensibility/extensions";
-import { SignalPrompt } from "./signal";
+import { CurrentPrompt } from "./current";
 
 /** Where a permission surface is mounted. */
 export type PermissionPlacement =
@@ -34,5 +34,11 @@ export interface PermissionSurfaceContext {
 }
 
 export function createPermissionSurface(card: ApprovalCard, ctx: PermissionSurfaceContext): PermissionSurface {
-	return { component: new SignalPrompt(card, ctx), placement: { kind: "composer" } };
+	return {
+		component: new CurrentPrompt(card, ctx),
+		placement: {
+			kind: "overlay",
+			options: { anchor: "top-left", width: "100%", maxHeight: "100%", margin: 0, fullscreen: true },
+		},
+	};
 }

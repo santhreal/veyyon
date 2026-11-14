@@ -148,6 +148,7 @@ describe("auto keeps a tool's own approval override, yolo does not", () => {
 		expect(result).toMatchObject({ policy: "prompt", tier: "exec", override: true, reason: "Guard says ask" });
 		expect(requiresApproval(guarded, { command: "danger" }, "auto")).toEqual({
 			required: true,
+			tier: "exec",
 			reason: "Guard says ask",
 		});
 	});

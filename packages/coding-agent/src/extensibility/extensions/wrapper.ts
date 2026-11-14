@@ -6,100 +6,31 @@ import type { ImageContent, Static, TextContent, TSchema } from "@veyyon/ai";
 import { applyToolProxy } from "@veyyon/kernel/registry/tool-proxy";
 import { errorMessage, isCancellation, toError } from "@veyyon/utils";
 import type { ToolViewRenderer } from "@veyyon/view";
-import type { Settings } from "../../config/settings";
 import { AgentRegistry } from "../../registry/agent-registry";
 import type { Theme } from "../../theme/theme";
+import { approvalDetailLines, formatApprovalCard } from "../../tools/core/approval";
 import {
-	type ApprovalMode,
-	approvalDetailLines,
-	formatApprovalCard,
-	requiresApproval,
-	resolveEffectiveApprovalMode,
-} from "../../tools/core/approval";
-import { patternGrantKey, type SessionToolApprovals } from "../../tools/core/approval-modes";
-import { cwdEscapingTargets, formatCwdBoundaryReason } from "../../tools/core/cwd-boundary";
-import { secretUseApprovalReason } from "../../tools/core/secret-use-boundary";
+	type ApprovalChoice,
+	type ApprovalConcern,
+	type ApprovalGate,
+	type ApprovalPrompt,
+	approvalPrompt,
+	openConcerns,
+	recordAnswer,
+	resolveApprovalGate,
+	standingRefusal,
+} from "../../tools/core/approval-gate";
+import type { SessionToolApprovals } from "../../tools/core/approval-modes";
 import { normalizeToolEventInput, resolveToolEventInput } from "../tool-event-input";
 import type { ExtensionRunner } from "./runner";
 import type {
 	ApprovalCard,
-	ApprovalCardReason,
 	ExtensionUIContext,
 	ExtensionUIDialogOptions,
-	ExtensionUISelectOption,
 	RegisteredTool,
 	ToolCallEventResult,
 	ToolRenderResultOptions,
 } from "./types";
-
-/**
- * The four row labels, named ONCE.
- *
- * The dialog returns the selected row's label as a bare string, and `execute`
- * decides what happened by comparing it. Those comparisons used to be four more
- * literals restating this list, so renaming a row here without editing all four
- * turned that row into a silent denial: the operator picks "Approve", the
- * comparison misses, and the call is refused with "denied by user". Nothing on
- * screen would say the two lists had drifted.
- */
-const APPROVAL_CHOICE = {
-	approveOnce: "Approve",
-	approveSession: "Approve for session",
-	denyOnce: "Deny",
-	denySession: "Deny for session",
-} as const;
-
-/**
- * The choices offered at an interactive one-call approval.
- *
- * The two "for this session" rows are what make the `ask` and `ask-command`
- * rungs usable rather than merely safe. A run that edits twenty files asks
- * twenty times without them, and an operator who has to answer that many
- * identical prompts turns approvals off entirely, so a dialog with no memory is
- * not a stricter product, it is the same yolo reached by a worse road.
- *
- * The memory is SESSION-scoped and never written to settings. A standing grant
- * in `tools.approval` outlives the task it was granted for and is invisible the
- * next time you launch; this one dies with the session, so tomorrow asks again.
- * Writing a permanent policy stays an explicit act in `/settings`.
- */
-export const APPROVAL_SELECT_OPTIONS: ExtensionUISelectOption[] = [
-	{ label: APPROVAL_CHOICE.approveOnce, description: "Run this call once. Nothing is remembered." },
-	{
-		label: APPROVAL_CHOICE.approveSession,
-		description: "Run this and every later call to this tool, until you exit.",
-	},
-	{ label: APPROVAL_CHOICE.denyOnce, description: "Do not run this call." },
-	{
-		label: APPROVAL_CHOICE.denySession,
-		description: "Refuse this and every later call to this tool, until you exit.",
-	},
-];
-
-/**
- * The row label offering a session grant scoped to one pattern. Built from the
- * pattern the tool reported for THIS call, so the operator reads the exact
- * string a later call must reproduce to be dismissed.
- */
-export function approvePatternLabel(pattern: string): string {
-	return `Approve "${pattern}" for session`;
-}
-
-/**
- * The dialog rows for one call: {@link APPROVAL_SELECT_OPTIONS}, plus a
- * pattern-scoped grant after "Approve" when the tool reported a pattern.
- */
-export function approvalSelectOptions(pattern: string | undefined): ExtensionUISelectOption[] {
-	if (pattern === undefined) return APPROVAL_SELECT_OPTIONS;
-	return [
-		...APPROVAL_SELECT_OPTIONS.slice(0, 1),
-		{
-			label: approvePatternLabel(pattern),
-			description: "Run this and every later call with this same pattern, until you exit.",
-		},
-		...APPROVAL_SELECT_OPTIONS.slice(1),
-	];
-}
 
 export const APPROVAL_DIALOG_OPTIONS: ExtensionUIDialogOptions = {
 	selectionMarker: "radio",
@@ -197,126 +128,9 @@ export function wrapRegisteredTools(registeredTools: RegisteredTool[], runner: E
 	return registeredTools.map(rt => wrapRegisteredTool(rt, runner));
 }
 
-/** What one call needs from the approval policy, resolved before any prompt is raised. */
-interface ApprovalGate {
-	mode: ApprovalMode;
-	required: boolean;
-	/** Every reason the call prompts, joined for the card. */
-	reason: string | undefined;
-	/** The same reasons, each with what raised it, for a surface that draws them apart. */
-	reasons: ApprovalCardReason[];
-	/** Whether a standing session answer may retire the prompt; see {@link resolveApprovalGate}. */
-	grantMayApply: boolean;
-	/** The pattern this call reported for a pattern-scoped grant, with its grant key and row label. */
-	pattern: string | undefined;
-	patternKey: string | undefined;
-	patternLabel: string | undefined;
-}
-
-/** Resolve the approval mode, the policy prompt and both argument boundaries for one call. */
-function resolveApprovalGate<TParameters extends TSchema, TDetails>(
-	tool: AgentTool<TParameters, TDetails>,
-	params: Static<TParameters>,
-	context: AgentToolContext | undefined,
-): ApprovalGate {
-	// CLI `--auto-approve` / `--yolo` sets approval mode to yolo.
-	// User `tools.approval.<tool>` policies are still applied in all modes.
-	const cliAutoApprove = context?.autoApprove === true;
-	const settings: Settings | undefined = context?.settings;
-	// No fallback spelled here. An absent `Settings` means nothing is
-	// configured, and `resolveEffectiveApprovalMode` decides that case from
-	// `DEFAULT_APPROVAL_MODE`, the schema's own default. A literal here would
-	// be a second source of truth: a `yolo` one used to silently outrank a
-	// missing setting, which is how an approval system nobody had configured
-	// became an approval system that never fired.
-	const configuredMode = settings?.get("tools.approvalMode");
-	const planModeActive = context?.planModeActive === true;
-	const bypassAllApprovals = context?.bypassAllApprovals === true;
-	const mode = resolveEffectiveApprovalMode(configuredMode, { planModeActive, cliAutoApprove });
-	const userPolicies = (settings?.get("tools.approval") ?? {}) as Record<string, unknown>;
-	const check = requiresApproval(tool, params, mode, userPolicies, { planModeActive, bypassAllApprovals });
-
-	// Filesystem cwd boundary: a read/write whose target escapes the session
-	// working directory requires explicit permission in every non-yolo mode.
-	// yolo (autonomy or the `/yolo` bypass) opts out of all permission, so it
-	// opts out of this too. The read/write *tier* auto-approves by tier alone
-	// and never inspects the path, so this is the only place out-of-cwd access
-	// is gated. See cwd-boundary.ts. A `deny` already threw above, so this only
-	// adds a prompt; it never downgrades a denial.
-	const unbounded = mode === "yolo" || bypassAllApprovals;
-	const cwd = unbounded ? "" : (context?.sessionManager?.getCwd?.() ?? "");
-	const boundaryTargets = unbounded ? [] : cwdEscapingTargets(tool, params, cwd);
-	const boundaryReason = boundaryTargets.length > 0 ? formatCwdBoundaryReason(cwd, boundaryTargets) : undefined;
-	// Secret-use boundary: a call whose arguments carry a real credential needs
-	// explicit permission in every non-yolo mode, by the same rule as the cwd
-	// boundary above. The tier decides what kind of tool this is and never what
-	// the arguments contain, so without this a `bash` that spends a stored token
-	// was indistinguishable from one that lists a directory. Expansion was
-	// audited and never gated, so the log could say afterwards which credential
-	// was spent and nothing could ask first. See secret-use-boundary.ts.
-	const secretReason = unbounded ? undefined : secretUseApprovalReason(params, context);
-
-	// A standing answer the operator already gave at this dialog, this session.
-	//
-	// IT IS AN ANSWER ABOUT A TOOL NAME, so it may only retire a prompt that
-	// was raised about the tool name: the ordinary tier/policy one. Three
-	// prompts are raised about these ARGUMENTS instead, and no answer given on
-	// an earlier call can have been about them:
-	//
-	//   - `critical`: the bash guard judged THIS command destructive.
-	//   - the cwd boundary: THIS path leaves the working directory.
-	//   - the secret-use boundary: THESE arguments spend a stored credential.
-	//
-	// Without this bound the grant defeated all three. Measured: rung `ask`,
-	// `bash ls`, answer "Approve for session", then `bash rm -rf $HOME` ran
-	// with no prompt at all — including under `yolo`, whose critical floor
-	// exists because "every published home-directory wipe happened in exactly
-	// that configuration". The dialog says "Run this and every later call to
-	// this tool"; an operator reading that has not consented to a later call
-	// that wipes their home directory, and the card they read it on says the
-	// scope is this call only.
-	//
-	// A `deny` grant is not bounded the same way. It only ever refuses more,
-	// so applying it everywhere is the safe direction.
-	const grantMayApply = check.critical !== true && boundaryReason === undefined && secretReason === undefined;
-	// A pattern grant is bounded like the tool-wide one and narrower still: the
-	// resolver reports a pattern only for a plain prompt, never for an
-	// `override` or `critical` one. It is read by string equality with the
-	// pattern THIS call reports, so it cannot widen past the string the
-	// operator read on the card.
-	const pattern = grantMayApply ? check.pattern : undefined;
-	const reasons: ApprovalCardReason[] = [];
-	if (check.reason !== undefined) reasons.push({ kind: check.critical ? "critical" : "policy", text: check.reason });
-	if (boundaryReason !== undefined) reasons.push({ kind: "boundary", text: boundaryReason });
-	if (secretReason !== undefined) reasons.push({ kind: "secret", text: secretReason });
-	return {
-		mode,
-		required: check.required || boundaryReason !== undefined || secretReason !== undefined,
-		reason: reasons.map(part => part.text).join(" ") || undefined,
-		reasons,
-		grantMayApply,
-		pattern,
-		patternKey: pattern === undefined ? undefined : patternGrantKey(tool.name, pattern),
-		patternLabel: pattern === undefined ? undefined : approvePatternLabel(pattern),
-	};
-}
-
-/** Whether a standing session answer allows the call: the tool-wide grant, or this call's pattern grant. */
-function standingGrantAllows(
-	gate: ApprovalGate,
-	toolName: string,
-	approvals: SessionToolApprovals | undefined,
-): boolean {
-	return (
-		gate.grantMayApply &&
-		(approvals?.get(toolName) === "allow" ||
-			(gate.patternKey !== undefined && approvals?.get(gate.patternKey) === "allow"))
-	);
-}
-
 /**
  * One call's interactive approval: the `tool_approval_requested` / `tool_approval_resolved` pair
- * for the extensions that listen, the card, and the session grant the answer records.
+ * for the extensions that listen, the card, and the session answer the choice records.
  */
 class ApprovalRequest<TParameters extends TSchema, TDetails> {
 	readonly #tool: AgentTool<TParameters, TDetails>;
@@ -327,18 +141,22 @@ class ApprovalRequest<TParameters extends TSchema, TDetails> {
 	readonly #sessionId: string;
 	readonly #reported: boolean;
 	readonly #cwd: string;
+	/** The prompt as the call first raised it; a wait behind another card may narrow it. */
+	#prompt: ApprovalPrompt;
 
 	constructor(
 		tool: AgentTool<TParameters, TDetails>,
 		runner: ExtensionRunner,
 		toolCallId: string,
 		gate: ApprovalGate,
+		open: readonly ApprovalConcern[],
 		context: AgentToolContext | undefined,
 	) {
 		this.#tool = tool;
 		this.#runner = runner;
 		this.#toolCallId = toolCallId;
 		this.#gate = gate;
+		this.#prompt = approvalPrompt(gate, open);
 		this.#approvals = context?.sessionApprovals;
 		this.#reported = runner.hasHandlers("tool_approval_requested") || runner.hasHandlers("tool_approval_resolved");
 		this.#sessionId = context?.sessionManager?.getSessionId() ?? "";
@@ -353,7 +171,7 @@ class ApprovalRequest<TParameters extends TSchema, TDetails> {
 				sessionId: this.#sessionId,
 				toolName: this.#tool.name,
 				toolCallId: this.#toolCallId,
-				...(this.#gate.reason ? { reason: this.#gate.reason } : {}),
+				...(this.#prompt.reason ? { reason: this.#prompt.reason } : {}),
 				approvalMode: this.#gate.mode,
 			});
 		}
@@ -380,12 +198,11 @@ class ApprovalRequest<TParameters extends TSchema, TDetails> {
 		// once gets asked again for the same tool after the work is finished.
 		//
 		// Waiting on the in-flight prompt instead of queueing a second card is
-		// what closes that window. The answer is re-read after the wait, so a
+		// what closes that window. The answers are re-read after the wait, so a
 		// session grant dismisses this call with no card at all, and "Approve
 		// once" still asks again, because that answer was only ever about one
-		// call. The bound on a grant is re-applied here rather than inherited:
-		// a critical or boundary call is about ITS arguments and is never
-		// dismissed by a tool-wide allow.
+		// call. Each concern is retired only by an answer in its own category,
+		// so a destructive or boundary call is never dismissed by a tool-wide allow.
 		const inFlightKey = this.#sessionId ? `${this.#sessionId}\u0000${this.#tool.name}` : undefined;
 		const release = await this.#awaitTurn(inFlightKey);
 		if (release === undefined) {
@@ -393,15 +210,17 @@ class ApprovalRequest<TParameters extends TSchema, TDetails> {
 			return;
 		}
 
-		const choice = await this.#ask(uiContext, params, requester, release);
-		const approved =
-			choice === APPROVAL_CHOICE.approveOnce ||
-			choice === APPROVAL_CHOICE.approveSession ||
-			(this.#gate.patternLabel !== undefined && choice === this.#gate.patternLabel);
+		const answer = await this.#ask(uiContext, params, requester, release);
+		const approved = this.#choice(answer)?.allow === true;
 		await this.#resolve(approved, approved ? undefined : "denied by user");
 		if (!approved) {
 			throw new Error(`Tool call denied by user: ${this.#tool.name}`);
 		}
+	}
+
+	/** The offered row a dialog answer names; undefined for a dismissed dialog or a label never offered. */
+	#choice(answer: string | undefined): ApprovalChoice | undefined {
+		return this.#prompt.choices.find(choice => choice.label === answer);
 	}
 
 	async #resolve(approved: boolean, reason?: string): Promise<void> {
@@ -431,7 +250,7 @@ class ApprovalRequest<TParameters extends TSchema, TDetails> {
 	 */
 	#headlessRefusal(requester: string | undefined): Error {
 		const toolName = this.#tool.name;
-		const detail = this.#gate.reason ? `${this.#gate.reason}\n` : "";
+		const detail = this.#prompt.reason ? `${this.#prompt.reason}\n` : "";
 		const forAgent = requester ? ` (requested by ${requester})` : "";
 		return new Error(
 			`${detail}Tool "${toolName}"${forAgent} requires approval but no interactive UI available.\n` +
@@ -444,8 +263,8 @@ class ApprovalRequest<TParameters extends TSchema, TDetails> {
 
 	/**
 	 * Wait out every prompt already on screen for this session and tool, then hold the screen for
-	 * this call; the returned function releases it and the calls queued behind it. Undefined when a
-	 * session grant given at an earlier card allows this call; a session deny given at one refuses it.
+	 * this call; the returned function releases it and the calls queued behind it. Undefined when
+	 * session answers given at earlier cards retire every concern; a session refusal throws.
 	 *
 	 * The lookup that finds the screen free and the claim run in one synchronous block, so two calls
 	 * woken by the same answer cannot both find it free and both raise a card.
@@ -459,11 +278,14 @@ class ApprovalRequest<TParameters extends TSchema, TDetails> {
 			pending = IN_FLIGHT_APPROVALS.get(inFlightKey)
 		) {
 			await pending;
-			if (this.#approvals?.get(this.#tool.name) === "deny") {
+			const refusal = standingRefusal(this.#gate, this.#approvals);
+			if (refusal) {
 				await this.#resolve(false, "denied for this session");
-				throw new Error(`Tool call denied for this session: ${this.#tool.name}`);
+				throw refusal;
 			}
-			if (standingGrantAllows(this.#gate, this.#tool.name, this.#approvals)) return undefined;
+			const open = openConcerns(this.#gate, this.#approvals);
+			if (open.length === 0) return undefined;
+			this.#prompt = approvalPrompt(this.#gate, open);
 		}
 		IN_FLIGHT_APPROVALS.set(inFlightKey, promptSettled);
 		return () => {
@@ -491,15 +313,15 @@ class ApprovalRequest<TParameters extends TSchema, TDetails> {
 		const closeWait = requester
 			? AgentRegistry.global().openApprovalWait(requester, {
 					toolName: this.#tool.name,
-					...(this.#gate.reason ? { reason: this.#gate.reason } : {}),
+					...(this.#prompt.reason ? { reason: this.#prompt.reason } : {}),
 					since: Date.now(),
 				})
 			: undefined;
-		let choice: string | undefined;
+		let answer: string | undefined;
 		try {
-			choice = await uiContext.select(
-				formatApprovalCard(this.#tool, params, this.#gate.reason, requester),
-				approvalSelectOptions(this.#gate.pattern),
+			answer = await uiContext.select(
+				formatApprovalCard(this.#tool, params, this.#prompt.reason, requester),
+				this.#prompt.choices.map(({ label, description }) => ({ label, description })),
 				{ ...APPROVAL_DIALOG_OPTIONS, approval: this.#card(params, requester) },
 			);
 		} catch (err) {
@@ -514,34 +336,33 @@ class ApprovalRequest<TParameters extends TSchema, TDetails> {
 			// The answer is recorded and the waiters released in the same
 			// synchronous block, so no waiter can wake between the two and read
 			// a grant that is about to exist.
-			if (this.#gate.grantMayApply) {
-				if (choice === APPROVAL_CHOICE.approveSession) this.#approvals?.set(this.#tool.name, "allow");
-				else if (choice === APPROVAL_CHOICE.denySession) this.#approvals?.set(this.#tool.name, "deny");
-				else if (this.#gate.patternKey !== undefined && choice === this.#gate.patternLabel)
-					this.#approvals?.set(this.#gate.patternKey, "allow");
-			}
+			const choice = this.#choice(answer);
+			if (choice) recordAnswer(choice, this.#approvals);
 			release();
 		}
-		return choice;
+		return answer;
 	}
 
 	#card(params: Static<TParameters>, requester: string | undefined): ApprovalCard {
+		const prompt = this.#prompt;
 		return {
 			toolName: this.#tool.name,
 			...(requester ? { requester } : {}),
+			category: prompt.category,
 			args: params,
 			details: approvalDetailLines(this.#tool, params),
-			reasons: this.#gate.reasons,
+			reasons: prompt.concerns
+				.filter(concern => concern.text.length > 0)
+				.map(({ category, text }) => ({ category, text })),
 			cwd: this.#cwd,
 			mode: this.#gate.mode,
 			...(this.#gate.pattern !== undefined ? { pattern: this.#gate.pattern } : {}),
-			choices: {
-				approveOnce: APPROVAL_CHOICE.approveOnce,
-				...(this.#gate.patternLabel !== undefined ? { approvePattern: this.#gate.patternLabel } : {}),
-				approveSession: APPROVAL_CHOICE.approveSession,
-				denyOnce: APPROVAL_CHOICE.denyOnce,
-				denySession: APPROVAL_CHOICE.denySession,
-			},
+			choices: prompt.choices.map(({ id, label, allow, scope }) => ({
+				id,
+				label,
+				allow,
+				...(scope !== undefined ? { scope } : {}),
+			})),
 		};
 	}
 }
@@ -672,12 +493,11 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 		// 1. Check approval policy (before extension handlers).
 		const gate = resolveApprovalGate(this.tool, params, context);
 		const sessionApprovals = context?.sessionApprovals;
-		const standing = gate.required ? sessionApprovals?.get(this.tool.name) : undefined;
-		if (standing === "deny") {
-			throw new Error(`Tool call denied for this session: ${this.tool.name}`);
-		}
-		if (gate.required && !standingGrantAllows(gate, this.tool.name, sessionApprovals)) {
-			await new ApprovalRequest(this.tool, this.runner, toolCallId, gate, context).obtain(params);
+		const refusal = standingRefusal(gate, sessionApprovals);
+		if (refusal) throw refusal;
+		const open = openConcerns(gate, sessionApprovals);
+		if (open.length > 0) {
+			await new ApprovalRequest(this.tool, this.runner, toolCallId, gate, open, context).obtain(params);
 		}
 
 		// 2. Emit tool_call event - extensions can block execution

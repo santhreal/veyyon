@@ -113,6 +113,30 @@ export const PROVIDERS_SETTINGS = {
 	},
 
 	/**
+	 * Whether a tool call that spends a stored secret prompts first.
+	 *
+	 * ON by default: storing a credential lets an agent spend it, and the prompt is the one point
+	 * where a person sees which credential a call spends before it is spent. The prompt is its own
+	 * category, so "for session" at it remembers the secret names, not the tool, and a later call
+	 * of any tool that spends the same secrets runs unasked.
+	 *
+	 * OFF lets agents spend stored secrets without asking. Every other prompt the call raises still
+	 * asks, and `secrets.auditLog` still records each use. yolo never asks either way.
+	 */
+	"secrets.askBeforeUse": {
+		type: "boolean",
+		default: true,
+		ui: {
+			tab: "providers",
+			group: "Privacy",
+			label: "Ask Before Using A Secret",
+			condition: "secretsEnabled",
+			description:
+				"Prompt before a tool call spends a stored secret. Off: agents use stored secrets without asking. yolo never asks",
+		},
+	},
+
+	/**
 	 * Whether each use of a stored secret is recorded.
 	 *
 	 * ON by default. The record holds no values (it is written from the arguments as the model

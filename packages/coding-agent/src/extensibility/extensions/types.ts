@@ -51,6 +51,7 @@ import type { CustomMessage, CustomMessagePayload } from "../../session/messages
 import type { Theme } from "../../theme/theme";
 import type { BashToolInput, ReadToolInput, SearchToolInput, WriteToolInput } from "../../tools";
 import type { ApprovalMode } from "../../tools/core/approval";
+import type { ApprovalCategory, ApprovalChoiceId } from "../../tools/core/approval-gate";
 import type { EventBus } from "../../utils/event-bus";
 import type {
 	AgentEndEvent,
@@ -201,12 +202,21 @@ export interface ExtensionUIDialogOptions {
 	approval?: ApprovalCard;
 }
 
-/** Why an approval prompt was raised. One call can carry several. */
+/** Why an approval prompt was raised. One call can carry several, highest rank first. */
 export interface ApprovalCardReason {
-	/** `policy`: the tier or `tools.approval`; `critical`: the tool judged this call destructive;
-	 *  `boundary`: a path leaves the working directory; `secret`: the arguments spend a credential. */
-	kind: "policy" | "critical" | "boundary" | "secret";
+	category: ApprovalCategory;
 	text: string;
+}
+
+/** One answer the prompt offers. */
+export interface ApprovalCardChoice {
+	id: ApprovalChoiceId;
+	/** The select label the surface answers with. */
+	label: string;
+	/** Whether the answer runs the call. */
+	allow: boolean;
+	/** What a "for session" answer covers: the tool name, the pattern, or the secret names. */
+	scope?: string;
 }
 
 /** One tool call waiting on an approval answer, as a permission surface draws it. */
@@ -214,6 +224,8 @@ export interface ApprovalCard {
 	toolName: string;
 	/** The spawned agent the call belongs to; absent for the root session. */
 	requester?: string;
+	/** What the prompt asks about: the highest-ranked reason, which also selects the answers. */
+	category: ApprovalCategory;
 	/** The call's arguments as the model sent them. */
 	args: unknown;
 	/** The tool's own `Label: value` description of the call. */
@@ -225,14 +237,8 @@ export interface ApprovalCard {
 	mode: string;
 	/** The pattern a pattern-scoped session grant would cover, when the tool reported one. */
 	pattern?: string;
-	/** Option labels, so the surface answers with the same strings the select would. */
-	choices: {
-		approveOnce: string;
-		approvePattern?: string;
-		approveSession?: string;
-		denyOnce: string;
-		denySession: string;
-	};
+	/** The answers, in the order the select offers them. */
+	choices: readonly ApprovalCardChoice[];
 }
 
 /** Raw terminal input listener for extensions. */

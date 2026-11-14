@@ -5,12 +5,18 @@
  * A surface reads the palette on every frame rather than once, so a theme switch while a
  * prompt is open repaints it in the new colours.
  */
-import { blendHex } from "@veyyon/utils/motion";
+import type { Component } from "@veyyon/tui";
+import { matchesKey } from "@veyyon/utils/keys";
+import { type Animation, blendHex, MOTION, motionClock } from "@veyyon/utils/motion";
 import { replaceTabs } from "@veyyon/utils/tab-width";
+import { truncateToWidth } from "@veyyon/utils/width";
 import type { ApprovalCard, ApprovalCardReason, ExtensionUISelectItem } from "../../../../extensibility/extensions";
 import { groundHairlineHex, groundRaisedHex } from "../../../../theme/ground-tints";
 import { theme } from "../../../../theme/theme-binding";
+import type { ApprovalCategory, ApprovalChoiceId } from "../../../../tools/core/approval-gate";
+import { matchesSelectCancel } from "../../utils/keybinding-matchers";
 import { pointerMotionEnabled } from "../chrome/modal-shell";
+import type { PermissionSurfaceContext } from "./surface";
 
 // ── palette ──────────────────────────────────────────────────────────────────────────────────
 
@@ -195,21 +201,29 @@ export function shellTokens(command: string): Token[] {
 
 export type Risk = "routine" | "elevated" | "critical";
 
+/** How loud each category draws: a destructive call is critical, an argument boundary elevated. */
+const CATEGORY_RISK: Record<ApprovalCategory, Risk> = {
+	destructive: "critical",
+	secret: "elevated",
+	outside: "elevated",
+	command: "routine",
+	edit: "routine",
+	read: "routine",
+};
+
 export function riskOf(card: ApprovalCard): Risk {
-	if (card.reasons.some(r => r.kind === "critical")) return "critical";
-	if (card.reasons.some(r => r.kind === "boundary" || r.kind === "secret")) return "elevated";
-	return "routine";
+	return CATEGORY_RISK[card.category];
 }
 
-/** The reasons worth a line: every non-policy reason, else the policy one. */
+/** The reasons worth a line: every elevated or critical reason, else the tier one. */
 export function shownReasons(card: ApprovalCard): readonly ApprovalCardReason[] {
-	const loud = card.reasons.filter(r => r.kind !== "policy");
+	const loud = card.reasons.filter(r => CATEGORY_RISK[r.category] !== "routine");
 	return loud.length > 0 ? loud : card.reasons;
 }
 
 // ── answers ──────────────────────────────────────────────────────────────────────────────────
 
-export type ChoiceId = "once" | "pattern" | "session" | "deny" | "never";
+export type ChoiceId = ApprovalChoiceId;
 
 export interface Choice {
 	id: ChoiceId;
@@ -217,65 +231,50 @@ export interface Choice {
 	key: string;
 	/** The option label the policy reads back. */
 	label: string;
-	/** A one-word name for tight layouts. */
-	name: string;
+	/** What a session answer covers, sanitized: the tool, the pattern or the secret names. */
+	scope: string;
 	/** What answering this does, in one sentence. */
 	note: string;
 	allow: boolean;
 }
 
-/** The answers the policy offered, in a fixed order, each mapped back to its option label. */
+/** Each answer's key and note; `scope` is what a session answer covers. */
+const CHOICE_FACE: Record<ChoiceId, { key: string; note: (scope: string, secret: boolean) => string }> = {
+	once: { key: "y", note: () => "Run this call. Nothing is remembered." },
+	pattern: { key: "p", note: scope => `Run every \`${scope}\` call until you exit.` },
+	session: {
+		key: "a",
+		note: (scope, secret) =>
+			secret ? `Let any call spend ${scope} until you exit.` : `Run every ${scope} call until you exit.`,
+	},
+	deny: { key: "n", note: () => "Skip this call. The agent is told it was refused." },
+	never: {
+		key: "N",
+		note: (scope, secret) =>
+			secret
+				? `Refuse every call that spends ${scope} until you exit.`
+				: `Refuse every ${scope} call until you exit.`,
+	},
+};
+
+/** The answers the policy offered, in its order, each mapped back to its option label. */
 export function choicesFor(card: ApprovalCard, options: readonly ExtensionUISelectItem[]): Choice[] {
 	const offered = new Set(options.map(o => (typeof o === "string" ? o : o.label)));
-	const tool = sanitize(card.toolName);
-	const pattern = card.pattern ? sanitize(card.pattern) : undefined;
-	const all: (Choice | undefined)[] = [
-		{
-			id: "once",
-			key: "y",
-			label: card.choices.approveOnce,
-			name: "once",
-			note: "Run this call. Nothing is remembered.",
-			allow: true,
-		},
-		card.choices.approvePattern
-			? {
-					id: "pattern",
-					key: "p",
-					label: card.choices.approvePattern,
-					name: "pattern",
-					note: `Run every ${pattern ? `\`${pattern}\`` : "matching"} call until you exit.`,
-					allow: true,
-				}
-			: undefined,
-		card.choices.approveSession
-			? {
-					id: "session",
-					key: "a",
-					label: card.choices.approveSession,
-					name: "session",
-					note: `Run every ${tool} call until you exit.`,
-					allow: true,
-				}
-			: undefined,
-		{
-			id: "deny",
-			key: "n",
-			label: card.choices.denyOnce,
-			name: "deny",
-			note: "Skip this call. The agent is told it was refused.",
-			allow: false,
-		},
-		{
-			id: "never",
-			key: "N",
-			label: card.choices.denySession,
-			name: "never",
-			note: `Refuse every ${tool} call until you exit.`,
-			allow: false,
-		},
-	];
-	return all.filter((c): c is Choice => c !== undefined && offered.has(c.label));
+	const secret = card.category === "secret";
+	return card.choices
+		.filter(choice => offered.has(choice.label))
+		.map(choice => {
+			const face = CHOICE_FACE[choice.id];
+			const scope = sanitize(choice.scope ?? card.toolName);
+			return {
+				id: choice.id,
+				key: face.key,
+				label: choice.label,
+				scope,
+				note: face.note(scope, secret),
+				allow: choice.allow,
+			};
+		});
 }
 
 /** Where the selection starts: on refusal for a destructive call, else on running it once. */
@@ -287,15 +286,224 @@ export function initialChoice(choices: readonly Choice[], risk: Risk): number {
 	);
 }
 
+const VERB_PHRASE: Record<CallView["verb"], string> = {
+	exec: "wants to run",
+	write: "wants to write",
+	edit: "wants to edit",
+	read: "wants to read",
+	fetch: "wants to open",
+	call: "wants to call",
+};
+
+/** `bash  wants to run`, or `designer · bash  wants to run` for a spawned agent's call. */
+export function leadCells(card: ApprovalCard, view: CallView, k: Ink): Cell[] {
+	return [
+		...(card.requester ? cellsOf(`${card.requester} · `, { fg: k.muted }) : []),
+		...cellsOf(card.toolName, { fg: k.bright, bold: true }),
+		...cellsOf(`  ${VERB_PHRASE[view.verb]}`, { fg: k.muted }),
+	];
+}
+
+/** A number that springs toward each target it is given, on `MOTION.move`; it jumps with motion off. */
+export class Glide {
+	#animation: Animation | undefined;
+	readonly #motion: boolean;
+
+	constructor(motion: boolean) {
+		this.#motion = motion;
+	}
+
+	/** Aim at `target` and return where the value is now. */
+	toward(target: number): number {
+		if (!this.#animation) {
+			this.#animation = motionClock.animate(MOTION.move, { from: target, to: target, enabled: this.#motion });
+		} else if (target !== this.#animation.target) {
+			this.#animation.retarget(target);
+			if (this.#motion) motionClock.resume(this.#animation);
+			else this.#animation.finish();
+		}
+		return this.#animation.value;
+	}
+}
+
+// ── the prompt ───────────────────────────────────────────────────────────────────────────────
+
+/** How the prompt was answered: the choice (none for a cancel, which denies) and when, on the ticker. */
+export interface Answer {
+	choice: Choice | undefined;
+	allow: boolean;
+	at: number;
+}
+
+export interface PromptTiming {
+	/** Repaint rate while nothing is scripted to move; 30 keeps a flowing field smooth. */
+	ambientFps: number;
+	/** How long the entrance runs at full rate. */
+	enterMs: number;
+	/** How long the exit plays before the composer comes back. */
+	exitMs: number;
+}
+
+/**
+ * A waiting permission prompt: the call, its answers, the selection, and the keys that move and
+ * settle it. A direction draws {@link PermissionPrompt.frame} from these and from the ticker's
+ * time; it never handles a key or settles the prompt itself.
+ *
+ * Keys: left, up, shift+tab, `h` and `k` select the previous answer; right, down, tab, `l` and
+ * `j` the next; enter answers with the selection; an answer's own key selects and answers; escape
+ * cancels, which the policy reads as a refusal.
+ */
+export abstract class PermissionPrompt implements Component {
+	readonly card: ApprovalCard;
+	readonly view: CallView;
+	readonly risk: Risk;
+	readonly choices: Choice[];
+	readonly ticker: Ticker;
+	readonly #ctx: PermissionSurfaceContext;
+	readonly #exitMs: number;
+	#index: number;
+	#selectedAt = 0;
+	#answer: Answer | undefined;
+	#exiting = false;
+
+	constructor(card: ApprovalCard, ctx: PermissionSurfaceContext, timing: PromptTiming) {
+		this.card = card;
+		this.#ctx = ctx;
+		this.view = callView(card);
+		this.risk = riskOf(card);
+		this.choices = choicesFor(card, ctx.options);
+		this.#index = initialChoice(this.choices, this.risk);
+		this.#exitMs = timing.exitMs;
+		this.ticker = new Ticker(ctx.requestRender, timing.ambientFps);
+		this.ticker.start();
+		this.ticker.hot(timing.enterMs);
+	}
+
+	get index(): number {
+		return this.#index;
+	}
+
+	get selected(): Choice {
+		return this.choices[this.#index]!;
+	}
+
+	/** Ticker time the selection last moved; 0 until it does. */
+	get selectedAt(): number {
+		return this.#selectedAt;
+	}
+
+	get answer(): Answer | undefined {
+		return this.#answer;
+	}
+
+	/** Whether the exit is playing. */
+	get exiting(): boolean {
+		return this.#exiting;
+	}
+
+	/** Progress through the exit in [0, 1]; 0 until it starts. */
+	get leaving(): number {
+		if (!this.#exiting || !this.#answer) return 0;
+		return Math.min(1, Math.max(0, (this.ticker.elapsed - this.#answer.at) / this.#exitMs));
+	}
+
+	/** Seconds of ambient time, for fields that drift. Fixed at 0 with motion off, so the still is stable. */
+	get flow(): number {
+		return this.ticker.motion ? this.ticker.elapsed / 1000 : 0;
+	}
+
+	/** Rows of the terminal the prompt is drawn on, for a prompt that fills the screen. */
+	get screenRows(): number {
+		return this.#ctx.tui.terminal.rows;
+	}
+
+	dispose(): void {
+		this.ticker.stop();
+	}
+
+	invalidate(): void {}
+
+	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
+		if (!this.ticker.motion) return false;
+		this.#answer ??= { choice: undefined, allow: false, at: this.ticker.elapsed };
+		this.#exiting = true;
+		const end = this.#answer.at + this.#exitMs;
+		const timer = setInterval(() => {
+			requestRender();
+			if (this.ticker.elapsed >= end) {
+				clearInterval(timer);
+				done();
+			}
+		}, 1000 / 60);
+		timer.unref?.();
+		return true;
+	}
+
+	handleInput(data: string): void {
+		if (this.#answer) return;
+		if (matchesSelectCancel(data)) {
+			this.#settle(undefined);
+		} else if (
+			matchesKey(data, "left") ||
+			matchesKey(data, "up") ||
+			matchesKey(data, "shift+tab") ||
+			data === "h" ||
+			data === "k"
+		) {
+			this.#select(this.#index - 1);
+		} else if (
+			matchesKey(data, "right") ||
+			matchesKey(data, "down") ||
+			matchesKey(data, "tab") ||
+			data === "l" ||
+			data === "j"
+		) {
+			this.#select(this.#index + 1);
+		} else if (matchesKey(data, "enter") || matchesKey(data, "return") || data === "\n") {
+			this.#settle(this.selected);
+		} else {
+			const keyed = this.choices.findIndex(c => c.key === data);
+			if (keyed < 0) return;
+			this.#select(keyed);
+			this.#settle(this.choices[keyed]);
+		}
+	}
+
+	render(width: number): readonly string[] {
+		return this.frame(width, ink()).map(line => truncateToWidth(line, width));
+	}
+
+	/** The prompt's rows at `width`, drawn from the selection, the answer and the ticker's time. */
+	abstract frame(width: number, k: Ink): string[];
+
+	/** Called after the selection moves, before the repaint. */
+	onSelect(_previous: number, _next: number): void {}
+
+	#select(index: number): void {
+		const next = Math.max(0, Math.min(this.choices.length - 1, index));
+		if (next === this.#index) return;
+		const previous = this.#index;
+		this.#index = next;
+		this.#selectedAt = this.ticker.elapsed;
+		this.ticker.hot(900);
+		this.onSelect(previous, next);
+		this.#ctx.requestRender();
+	}
+
+	#settle(choice: Choice | undefined): void {
+		this.#answer = { choice, allow: choice?.allow ?? false, at: this.ticker.elapsed };
+		this.ticker.hot(this.#exitMs + 200);
+		this.#ctx.settle(choice?.label);
+	}
+}
+
 // ── ambient motion ───────────────────────────────────────────────────────────────────────────
 
 const FRAME_MS = 1000 / 30;
-/** Ambient frames (breathing, a timer) are drawn at this interval when nothing is moving. */
-const AMBIENT_MS = 1000 / 12;
 
 /**
  * The clock a waiting prompt draws its own time from. It repaints at 30fps while
- * something is moving ({@link Ticker.hot}) and at 12fps otherwise, and at 1fps with
+ * something is moving ({@link Ticker.hot}), at `ambientFps` otherwise, and at 1fps with
  * motion off, which is enough for a waiting timer.
  */
 export class Ticker {
@@ -305,9 +513,11 @@ export class Ticker {
 	#lastPaint = 0;
 	#timer: NodeJS.Timeout | undefined;
 	#requestRender: () => void;
+	readonly #ambientMs: number;
 
-	constructor(requestRender: () => void) {
+	constructor(requestRender: () => void, ambientFps = 12) {
 		this.#requestRender = requestRender;
+		this.#ambientMs = 1000 / ambientFps;
 	}
 
 	start(): void {
@@ -349,7 +559,7 @@ export class Ticker {
 
 	#tick(): void {
 		const now = performance.now();
-		if (this.motion && now >= this.#hotUntil && now - this.#lastPaint < AMBIENT_MS) return;
+		if (this.motion && now >= this.#hotUntil && now - this.#lastPaint < this.#ambientMs) return;
 		this.#lastPaint = now;
 		this.#requestRender();
 	}
@@ -499,21 +709,48 @@ export function wrapCells(cells: readonly Cell[], width: number, rows: number, k
 }
 
 /** The mark in front of a reason: the accent for a destructive call, a warning for a boundary. */
-export function reasonGlyph(reason: ApprovalCardReason, k: Ink): Cell {
-	switch (reason.kind) {
-		case "critical":
-			return { ch: "▲", fg: k.ember };
-		case "boundary":
-			return { ch: "↗", fg: k.warn };
-		case "secret":
-			return { ch: "◆", fg: k.warn };
-		default:
-			return { ch: "·", fg: k.dim };
-	}
-}
+const REASON_MARK: Record<ApprovalCategory, (k: Ink) => Cell> = {
+	destructive: k => ({ ch: "▲", fg: k.ember }),
+	secret: k => ({ ch: "◆", fg: k.warn }),
+	outside: k => ({ ch: "↗", fg: k.warn }),
+	command: k => ({ ch: "·", fg: k.dim }),
+	edit: k => ({ ch: "·", fg: k.dim }),
+	read: k => ({ ch: "·", fg: k.dim }),
+};
 
 /** `text` truncated to `room` cells with an ellipsis. */
 export function fitCells(cells: readonly Cell[], room: number, k: Ink): Cell[] {
 	if (cells.length <= room) return [...cells];
 	return room <= 0 ? [] : [...cells.slice(0, room - 1), { ch: "…", fg: k.dim }];
+}
+
+/** The call's other details as `label  value` rows, at most two, each fitted to `room`. */
+export function detailRows(view: CallView, room: number, k: Ink): Cell[][] {
+	return view.extra.slice(0, 2).map(detail => {
+		const label = detail.label ? `${detail.label.toLowerCase()}  ` : "";
+		return fitCells([...cellsOf(label, { fg: k.dim }), ...cellsOf(detail.value, { fg: k.muted })], room, k);
+	});
+}
+
+/** Why the call is asked about, a mark then the reason, at most two rows; the approval mode when no reason is given. */
+export function reasonRows(card: ApprovalCard, room: number, k: Ink): Cell[][] {
+	const reasons = shownReasons(card);
+	if (reasons.length === 0) {
+		return [
+			fitCells([...cellsOf("approval mode  ", { fg: k.dim }), ...cellsOf(card.mode, { fg: k.muted })], room, k),
+		];
+	}
+	return reasons
+		.slice(0, 2)
+		.map(reason =>
+			fitCells(
+				[
+					REASON_MARK[reason.category](k),
+					{ ch: " " },
+					...cellsOf(reason.text, { fg: CATEGORY_RISK[reason.category] === "routine" ? k.dim : k.muted }),
+				],
+				room,
+				k,
+			),
+		);
 }

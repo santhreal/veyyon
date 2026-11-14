@@ -32,7 +32,7 @@ import type { AgentTool, ToolApprovalDecision } from "@veyyon/agent-core";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions/runner";
-import { approvePatternLabel, ExtensionToolWrapper } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
+import { ExtensionToolWrapper } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { SessionToolApprovals } from "@veyyon/coding-agent/tools/core/approval-modes";
@@ -47,6 +47,11 @@ import { isolatedAuthStorage } from "../helpers/isolated-auth-storage";
 useIsolatedAgentDir({ globalSettings: true });
 
 const SESSION_CWD = "/repo";
+
+/** The row a pattern grant is answered with; the wrapper matches the returned label by exact string. */
+function approvePatternLabel(pattern: string): string {
+	return `Approve "${pattern}" for session`;
+}
 
 interface BashArgs {
 	command: string;
@@ -263,7 +268,8 @@ describe("a pattern grant does not reach a call the card did not show", () => {
 		// Every word is plain, so the missing row comes from the flag alone.
 		expect(bashApprovalPattern("rm -rf /")).toBe("rm -rf /");
 		const outcome = await call(makeStore(), { command: "rm -rf /" });
-		expect(outcome.cards).toEqual([["Approve", "Approve for session", "Deny", "Deny for session"]]);
+		// A destructive card remembers nothing, so it offers no session row at all.
+		expect(outcome.cards).toEqual([["Approve", "Deny"]]);
 	});
 
 	/**
@@ -307,7 +313,7 @@ describe("a pattern grant does not reach a call the card did not show", () => {
 		]);
 		const outside = await call(store, { command: "x" }, "Deny", escaping);
 
-		expect(outside.cards).toEqual([["Approve", "Approve for session", "Deny", "Deny for session"]]);
+		expect(outside.cards).toEqual([["Approve", "Deny"]]);
 		expect(outside.ran).toBe(false);
 	});
 

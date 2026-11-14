@@ -12,8 +12,8 @@
  * THE CLASS THIS CLOSES is a fixed-height surface that sheds the wrong region.
  * The options are the reason the card exists and the title has a legible
  * substitute, so the rows come off the title and it says how many it lost. The
- * cases below sweep `APPROVAL_SELECT_OPTIONS` from the module rather than naming
- * the four labels, so a fifth approval row is covered the day it is added, and
+ * cases below sweep the rows `approvalPrompt` offers a patterned tier prompt, its
+ * widest set, rather than naming the labels, so a new approval row is covered the day it is added, and
  * they assert the pointer still lands on the right option after the elision —
  * the hit map is built from body rows, so a fix that trimmed rows without
  * rebuilding it would answer clicks with the wrong answer.
@@ -23,14 +23,21 @@
  * presentation, where the host owns clipping and passes no budget.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { APPROVAL_SELECT_OPTIONS } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
 import { HookSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/hook-selector";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { formatApprovalCard } from "@veyyon/coding-agent/tools/core/approval";
+import { approvalPrompt, resolveApprovalGate } from "@veyyon/coding-agent/tools/core/approval-gate";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import { clickAt } from "../../../helpers/sgr-pointer";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../../helpers/stdout-geometry";
 
+/** Every row an approval prompt can offer: an `ask`-rung tier prompt whose tool reported a pattern. */
+const APPROVAL_OPTIONS = (() => {
+	const ask = { settings: { get: (key: string) => (key === "tools.approvalMode" ? "ask" : undefined) } };
+	const tool = { name: "bash", approval: () => ({ tier: "exec", pattern: "rsync *" }) };
+	const gate = resolveApprovalGate(tool as never, {}, ask as never);
+	return approvalPrompt(gate, gate.concerns).choices.map(({ label, description }) => ({ label, description }));
+})();
 const WIDTH = 110;
 const ROWS = 40;
 
@@ -61,7 +68,7 @@ function bashSubject(command: string): Parameters<typeof formatApprovalCard>[0] 
 function cardFor(command: string, onSelect: (label: string) => void = () => {}): HookSelectorComponent {
 	return new HookSelectorComponent(
 		formatApprovalCard(bashSubject(command), { command }),
-		APPROVAL_SELECT_OPTIONS,
+		APPROVAL_OPTIONS,
 		onSelect,
 		() => {},
 		{ initialIndex: 0, selectionMarker: "radio" },
@@ -83,7 +90,7 @@ describe("an approval card whose command is long", () => {
 			.map(line => Bun.stripANSI(line))
 			.join("\n");
 
-		for (const option of APPROVAL_SELECT_OPTIONS) {
+		for (const option of APPROVAL_OPTIONS) {
 			expect(plain).toContain(option.label);
 		}
 	});
@@ -109,7 +116,7 @@ describe("an approval card whose command is long", () => {
 
 		expect(plain).toContain(SHORT_COMMAND);
 		expect(plain).not.toMatch(/\[…\d+ more lines?…]/);
-		for (const option of APPROVAL_SELECT_OPTIONS) {
+		for (const option of APPROVAL_OPTIONS) {
 			expect(plain).toContain(option.label);
 		}
 	});
@@ -120,7 +127,7 @@ describe("an approval card whose command is long", () => {
 	 * for a click on "Approve".
 	 */
 	it("answers a click on an option with that option after the title is elided", () => {
-		for (const option of APPROVAL_SELECT_OPTIONS) {
+		for (const option of APPROVAL_OPTIONS) {
 			const picked: string[] = [];
 			const component = cardFor(LONG_COMMAND, label => picked.push(label));
 			const lines = component.render(WIDTH).map(line => Bun.stripANSI(line));

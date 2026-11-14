@@ -383,8 +383,8 @@ export function requiresApproval(
 	mode: ApprovalMode,
 	userConfig: Record<string, unknown> = {},
 	options?: ApprovalResolutionOptions,
-): { required: boolean; reason?: string; critical?: boolean; pattern?: string } {
-	const { policy, reason, critical, pattern } = resolveApproval(tool, args, mode, userConfig, options);
+): { required: boolean; tier: ToolTier; reason?: string; critical?: boolean; pattern?: string } {
+	const { policy, tier, reason, critical, pattern } = resolveApproval(tool, args, mode, userConfig, options);
 
 	if (policy === "deny") {
 		const detail =
@@ -394,8 +394,8 @@ export function requiresApproval(
 		throw new Error(detail);
 	}
 
-	if (policy === "prompt") return { required: true, reason, critical, ...(pattern ? { pattern } : {}) };
-	return { required: false };
+	if (policy === "prompt") return { required: true, tier, reason, critical, ...(pattern ? { pattern } : {}) };
+	return { required: false, tier };
 }
 
 export function truncateForPrompt(value: string, maxChars = DEFAULT_PROMPT_TRUNCATE_CHARS): string {

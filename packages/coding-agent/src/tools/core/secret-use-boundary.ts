@@ -10,9 +10,9 @@
  * already spent, and nothing could ask you first.
  *
  * yolo (the `yolo` autonomy level and the `/yolo` bypass) opts out of all permission, so it opts
- * out of this too. That is the intended "yolo bypasses everything" posture, and it is why this
- * boundary costs nothing at the shipped default. A hard user `deny` and a plan-mode mutation block
- * remain hard denials; this only ever ADDS a prompt and never downgrades a denial.
+ * out of this too, and `secrets.askBeforeUse: false` opts out of this prompt alone. A hard user
+ * `deny` and a plan-mode mutation block remain hard denials; this only ever ADDS a prompt and
+ * never downgrades a denial.
  *
  * DETECTION HOLDS NO SECOND COPY OF WHAT A SECRET LOOKS LIKE. Placeholders are already expanded by
  * the time a tool executes, so the question "does this call carry a credential" is answered by
@@ -31,6 +31,20 @@ import { PLACEHOLDER_RE } from "../../secrets/placeholder";
 /** The part of the tool context this boundary needs: the session's live redactor. */
 export interface SecretUseInspectionContext {
 	obfuscateProviderText?: (text: string) => string;
+}
+
+/** What one call would spend, read from the redacted arguments. */
+export interface SecretUse {
+	/** The named vault entries the call spends, sorted. */
+	names: readonly string[];
+	/**
+	 * Whether `names` is every secret the call spends. False for an unnamed value placeholder, for a
+	 * `mode: replace` value that leaves no placeholder, and for arguments the walk could not inspect:
+	 * a standing answer about a name cannot cover a secret that has none.
+	 */
+	named: boolean;
+	/** One sentence naming what the call would spend. Never contains a value. */
+	reason: string;
 }
 
 /**
@@ -61,8 +75,8 @@ function describeSecrets(redactedStrings: readonly string[]): { names: string[];
 	return { names: Array.from(names).sort(), unnamed };
 }
 
-/** One sentence naming what the call would spend, and what approving it means. */
-function formatSecretUseReason(redactedStrings: readonly string[]): string {
+/** What the redacted strings spend, and one sentence saying so. */
+function describeSecretUse(redactedStrings: readonly string[]): SecretUse {
 	const { names, unnamed } = describeSecrets(redactedStrings);
 	const parts: string[] = [];
 	if (names.length > 0) parts.push(names.join(", "));
@@ -71,19 +85,27 @@ function formatSecretUseReason(redactedStrings: readonly string[]): string {
 		// Reachable when a secret is configured with `mode: replace`, which rewrites
 		// the value one-way and leaves no placeholder to name. The call still spends
 		// a credential, so it still needs approval; only the name is unavailable.
-		return "This call carries a stored secret value. Approving it runs the call with the real credential.";
+		return {
+			names,
+			named: false,
+			reason: "This call carries a stored secret value. Approving it runs the call with the real credential.",
+		};
 	}
-	return `This call uses stored secret${names.length + unnamed > 1 ? "s" : ""}: ${parts.join(" and ")}. Approving it runs the call with the real credential.`;
+	return {
+		names,
+		named: unnamed === 0,
+		reason: `This call uses stored secret${names.length + unnamed > 1 ? "s" : ""}: ${parts.join(" and ")}. Approving it runs the call with the real credential.`,
+	};
 }
 
 /**
- * Why this call needs approval for its secret use, or `undefined` when it carries none.
+ * The stored secrets this call spends, or `undefined` when it carries none.
  *
  * @param args The tool arguments as they will be executed, with placeholders already expanded.
  * @param context The tool context, for the session's live redactor. Without one there is no way to
  *   know what is secret, and no secrets are configured either, so the boundary does not apply.
  */
-export function secretUseApprovalReason(args: unknown, context?: SecretUseInspectionContext): string | undefined {
+export function secretUse(args: unknown, context?: SecretUseInspectionContext): SecretUse | undefined {
 	const redact = context?.obfuscateProviderText;
 	if (!redact) return undefined;
 
@@ -111,8 +133,8 @@ export function secretUseApprovalReason(args: unknown, context?: SecretUseInspec
 		// The live confidentiality transform failing is not an inspection-limit result and must
 		// remain a hard refusal. Only the bounded walk's own failures become an explicit prompt.
 		if (transformThrew) throw transformError;
-		return UNINSPECTABLE_REASON;
+		return { names: [], named: false, reason: UNINSPECTABLE_REASON };
 	}
 	if (!changed) return undefined;
-	return formatSecretUseReason(redactedStrings);
+	return describeSecretUse(redactedStrings);
 }

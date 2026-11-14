@@ -77,7 +77,8 @@ in `plan`, `ask`, `ask-command` and `auto`, and the prompt states the secret wit
 
 `yolo` opts out of all permission and so opts out of this too. A call that mentions a
 placeholder without expanding it, such as one made while `secrets.enabled` is false, contains
-no credential and does not prompt.
+no credential and does not prompt. `secrets.askBeforeUse: false` turns this boundary off in
+every mode; the prompt's session rows remember secrets by name rather than by tool.
 
 ## The `/yolo` command (full session bypass)
 

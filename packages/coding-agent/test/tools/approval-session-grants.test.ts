@@ -25,7 +25,7 @@
 import { describe, expect, it } from "bun:test";
 import type { AgentTool } from "@veyyon/agent-core";
 import type { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions/runner";
-import { APPROVAL_SELECT_OPTIONS, ExtensionToolWrapper } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
+import { ExtensionToolWrapper } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
 import type { SessionToolApprovals } from "@veyyon/coding-agent/tools/core/approval-modes";
 import { type } from "arktype";
 
@@ -62,14 +62,20 @@ const BOUNDARY_CONTEXT = {
 
 /**
  * Arguments that each raise the prompt about THIS call rather than about the
- * tool name: the three argument-scoped reasons the approval gate resolves. A
- * fourth such reason in `resolveApprovalGate` needs a row here; nothing makes
- * this table fail on its own when one is added.
+ * tool name: the argument-scoped categories the approval gate resolves.
+ * `a-session-answer-covers-only-its-own-category.test.ts` sweeps every category;
+ * this table pins the tool-wide grant against each one.
  */
 const ARGUMENT_SCOPED: Record<string, Record<string, unknown>> = {
 	"a command the bash guard judges critical": { danger: true },
 	"a path outside the working directory": { target: "/elsewhere/notes.txt" },
 	"a stored credential in the arguments": { content: `token=${TOKEN}` },
+};
+
+/** The argument-scoped prompts that remember nothing, so offer no session row. */
+const REMEMBERS_NOTHING: Record<string, Record<string, unknown>> = {
+	"a command the bash guard judges critical": { danger: true },
+	"a path outside the working directory": { target: "/elsewhere/notes.txt" },
 };
 
 /**
@@ -188,25 +194,22 @@ async function runCall(options: RunOptions = {}): Promise<RunOutcome> {
 describe("the labels offered at an approval prompt", () => {
 	/**
 	 * THE CONTRACT THAT LOOKS LIKE COSMETICS. The wrapper compares the returned
-	 * label to these exact strings, so renaming "Approve for session" to
-	 * "Always approve" makes every use of that row fall through to `approved ===
-	 * false` and deny the call. Order is part of it too: the two approve rows are
-	 * adjacent so the destructive row is never the one under the cursor.
+	 * label to the offered rows by exact string, so the rows a tier prompt hands
+	 * the UI are pinned here in bytes. Order is part of it too: the two approve
+	 * rows are adjacent so the destructive row is never the one under the cursor.
 	 */
-	it("offers exactly the four rows, in order", () => {
-		expect(APPROVAL_SELECT_OPTIONS.map(option => option.label)).toEqual([
-			"Approve",
-			"Approve for session",
-			"Deny",
-			"Deny for session",
-		]);
-	});
-
-	/** The wrapper hands that same list to the UI, unmodified. */
-	it("presents those rows at the prompt", async () => {
+	it("presents the one-call answers and their session twins, in order", async () => {
 		const outcome = await runCall({ choice: "Approve" });
 
 		expect(outcome.selectCalls).toEqual([["Approve", "Approve for session", "Deny", "Deny for session"]]);
+	});
+
+	/** A label the prompt never offered is not an answer: the call is refused and nothing is recorded. */
+	it("refuses the call for a label the prompt did not offer", async () => {
+		const outcome = await runCall({ choice: "Always approve" });
+
+		expect(outcome.error?.message).toBe("Tool call denied by user: bash");
+		expect(outcome.store.get("bash")).toBeUndefined();
 	});
 });
 
@@ -354,29 +357,50 @@ describe("a session grant answers for the tool name, never for one call's argume
 		},
 	);
 
-	it.each(Object.entries(ARGUMENT_SCOPED))(
-		"records no grant when the card for %s is answered Approve for session",
-		async (_reason, params) => {
-			const store = makeStore();
+	it.each(Object.entries(REMEMBERS_NOTHING))("offers no session row on the card for %s", async (_reason, params) => {
+		const store = makeStore();
 
-			const first = await runCall({
-				tool: argumentScopedTool(),
-				context: BOUNDARY_CONTEXT,
-				params,
-				store,
-				choice: "Approve for session",
-			});
-			expect(first.error).toBeUndefined();
-			expect(first.text).toBe(RAN);
-			expect(store.get("bash")).toBeUndefined();
+		const first = await runCall({
+			tool: argumentScopedTool(),
+			context: BOUNDARY_CONTEXT,
+			params,
+			store,
+			choice: "Approve",
+		});
+		expect(first.selectCalls).toEqual([["Approve", "Deny"]]);
+		expect(first.text).toBe(RAN);
+		expect(store.get("bash")).toBeUndefined();
+	});
 
-			const second = await runCall({
-				tool: argumentScopedTool(),
-				context: BOUNDARY_CONTEXT,
-				store,
-				choice: "Approve",
-			});
-			expect(second.selectCalls).toHaveLength(1);
-		},
-	);
+	/**
+	 * A secret card remembers the SECRET, so its session row names the secret and
+	 * records nothing about the tool: the next call spending the same secret is
+	 * asked about the tool alone, on the tool's own rows.
+	 */
+	it("records the secret, not the tool, when the secret card is answered for the session", async () => {
+		const store = makeStore();
+
+		const first = await runCall({
+			tool: argumentScopedTool(),
+			context: BOUNDARY_CONTEXT,
+			params: ARGUMENT_SCOPED["a stored credential in the arguments"],
+			store,
+			choice: "Approve DEPLOY_TOKEN for session",
+		});
+		expect(first.selectCalls).toEqual([
+			["Approve", "Approve DEPLOY_TOKEN for session", "Deny", "Deny DEPLOY_TOKEN for session"],
+		]);
+		expect(first.text).toBe(RAN);
+		expect(store.get("bash")).toBeUndefined();
+
+		const second = await runCall({
+			tool: argumentScopedTool(),
+			context: BOUNDARY_CONTEXT,
+			params: ARGUMENT_SCOPED["a stored credential in the arguments"],
+			store,
+			choice: "Approve",
+		});
+		expect(second.selectCalls).toEqual([["Approve", "Approve for session", "Deny", "Deny for session"]]);
+		expect(second.text).toBe(RAN);
+	});
 });

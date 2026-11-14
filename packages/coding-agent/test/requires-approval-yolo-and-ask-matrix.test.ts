@@ -12,7 +12,7 @@ describe("requiresApproval yolo and ask matrix", () => {
 
 	for (const tool of tools) {
 		it(`yolo ${tool.name} not required`, () => {
-			expect(requiresApproval(tool, {}, "yolo")).toEqual({ required: false });
+			expect(requiresApproval(tool, {}, "yolo")).toEqual({ required: false, tier: "exec" });
 		});
 
 		it(`ask ${tool.name} required`, () => {

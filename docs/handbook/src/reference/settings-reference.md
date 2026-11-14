@@ -711,6 +711,7 @@ veyyon config get compaction.threshold
 | `images.blockImages` | Block Images | boolean | `false` | Prevent images from being sent to LLM providers. |
 | `secrets.enabled` | Hide Secrets | boolean | `false` | Obfuscate secrets before sending to AI providers. Storing a credential with /secret turns this on for you. |
 | `secrets.defaultTtl` | Secret Lifetime | string | `1d` | How long a /secret lasts when the command does not say. Default 1d; also accepts forms like 30m, 12h, 7d, 2w, or "never". |
+| `secrets.askBeforeUse` | Ask Before Using A Secret | boolean | `true` | Prompt before a tool call spends a stored secret. Off: agents use stored secrets without asking. yolo never asks. |
 | `secrets.auditLog` | Record Secret Use | boolean | `true` | Append which secret was used in which command to the profile's log. Never records values. |
 | `secrets.expiryWarnings` | Warn Before A Secret Expires | boolean | `true` | Say at the start of a session when a stored secret is halfway through its lifetime, and again near the end. Off: /secret list still shows the STATUS column and the status line still shows a deadline in the last hour. |
 
@@ -896,4 +897,4 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `tui.maxInlineImageRows` | number | `20` |  |
 | `tui.maxInlineImages` | number | `8` |  |
 
-352 settings in /settings, 118 configuration-file keys, 470 in all.
+353 settings in /settings, 118 configuration-file keys, 471 in all.
